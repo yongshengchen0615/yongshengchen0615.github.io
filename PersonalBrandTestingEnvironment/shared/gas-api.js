@@ -97,6 +97,37 @@
     parent.appendChild(link);
   }
 
+  function performanceNow() {
+    return window.performance && typeof window.performance.now === "function"
+      ? window.performance.now()
+      : Date.now();
+  }
+
+  function emitTransportMetric(startedAt, source) {
+    if (
+      typeof window.dispatchEvent !== "function" ||
+      typeof window.CustomEvent !== "function"
+    ) {
+      return;
+    }
+    try {
+      window.dispatchEvent(
+        new window.CustomEvent("persona:gas-performance", {
+          detail: Object.freeze({
+            phase: "gas_request",
+            durationMs: Math.max(
+              0,
+              Math.round((performanceNow() - startedAt) * 10) / 10
+            ),
+            source: source,
+          }),
+        })
+      );
+    } catch (_error) {
+      // Diagnostics must never affect request delivery.
+    }
+  }
+
   function sendRequest(options) {
     options = options || {};
     var requestId =
@@ -135,10 +166,30 @@
         createError("INVALID_GAS_URL", "GAS Web App 網址格式不正確，請使用正式 /exec 網址。")
       );
     }
-    return postWithFetch(gasUrl, request).catch(function (error) {
-      if (!shouldUseBridgeFallback(error)) throw error;
-      return postWithBridge(gasUrl, request);
-    });
+
+    var startedAt = performanceNow();
+    return postWithFetch(gasUrl, request).then(
+      function (result) {
+        emitTransportMetric(startedAt, "fetch");
+        return result;
+      },
+      function (error) {
+        if (!shouldUseBridgeFallback(error)) {
+          emitTransportMetric(startedAt, "fetch-error");
+          throw error;
+        }
+        return postWithBridge(gasUrl, request).then(
+          function (result) {
+            emitTransportMetric(startedAt, "bridge");
+            return result;
+          },
+          function (bridgeError) {
+            emitTransportMetric(startedAt, "bridge-error");
+            throw bridgeError;
+          }
+        );
+      }
+    );
   }
 
   function postWithFetch(gasUrl, request) {
