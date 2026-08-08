@@ -9,11 +9,12 @@ const loaderCode = fs.readFileSync(
   "utf8"
 );
 
-test("a prewarmed Lottery runtime hands ticket open directly to the real controller", async () => {
-  let showModalCalls = 0;
+test("a prewarmed Lottery runtime prepares first and only then opens the real controller", async () => {
+  let lotteryShowModalCalls = 0;
+  let realPrepareCalls = 0;
   let realOpenCalls = 0;
   const scripts = new Map();
-  const dialog = {
+  const lotteryDialog = {
     open: false,
     attrs: new Set(["hidden"]),
     setAttribute(name) {
@@ -28,13 +29,13 @@ test("a prewarmed Lottery runtime hands ticket open directly to the real control
       return this.attrs.has(name);
     },
     showModal() {
-      showModalCalls += 1;
+      lotteryShowModalCalls += 1;
       this.open = true;
       this.attrs.add("open");
     },
   };
   const elements = {
-    "member-lottery-dialog": dialog,
+    "member-lottery-dialog": lotteryDialog,
     "member-lottery-loading-state": { hidden: true },
     "member-lottery-error-state": { hidden: false },
     "member-lottery-wheel-state": { hidden: false },
@@ -47,6 +48,11 @@ test("a prewarmed Lottery runtime hands ticket open directly to the real control
   };
   const realFacade = {
     configure() {},
+    prepareForOpen() {
+      realPrepareCalls += 1;
+      assert.equal(lotteryDialog.open, false);
+      return Promise.resolve(true);
+    },
     open() {
       realOpenCalls += 1;
       return Promise.resolve(true);
@@ -163,7 +169,7 @@ test("a prewarmed Lottery runtime hands ticket open directly to the real control
   });
 
   assert.equal(await loader.prewarm(), true);
-  assert.equal(showModalCalls, 0);
+  assert.equal(lotteryShowModalCalls, 0);
 
   const opened = await loader.open({
     settingVersion: "PCS-ABCDEFGHIJKL",
@@ -174,6 +180,7 @@ test("a prewarmed Lottery runtime hands ticket open directly to the real control
   });
 
   assert.equal(opened, true);
+  assert.equal(realPrepareCalls, 1);
   assert.equal(realOpenCalls, 1);
-  assert.equal(showModalCalls, 0);
+  assert.equal(lotteryShowModalCalls, 0);
 });
