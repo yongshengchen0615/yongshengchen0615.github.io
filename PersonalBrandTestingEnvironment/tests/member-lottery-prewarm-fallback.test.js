@@ -9,16 +9,18 @@ const loaderCode = fs.readFileSync(
   "utf8"
 );
 
-test("WebViews without requestIdleCallback enqueue Lottery prewarm on the next task without a fixed delay", () => {
+test("login Lottery preload starts immediately without an artificial timer", () => {
   const scheduledDelays = [];
+  const appended = [];
   const context = {
     console,
     document: {
-      head: { appendChild() {} },
+      head: { appendChild(script) { appended.push(script.src); } },
       documentElement: null,
       createElement() {
         return {
           dataset: {},
+          src: "",
           addEventListener() {},
         };
       },
@@ -60,11 +62,12 @@ test("WebViews without requestIdleCallback enqueue Lottery prewarm on the next t
     getMemberId: () => "MBR-ABCDEF1234",
     isDemo: () => false,
     request() {
-      throw new Error("runtime prewarm must not call GAS");
+      throw new Error("config request cannot start before runtime is loaded");
     },
   });
 
   context.MemberLotteryDialog.prewarm();
 
-  assert.deepEqual(scheduledDelays, [0]);
+  assert.deepEqual(scheduledDelays, []);
+  assert.deepEqual(appended, ["../shared/lottery-wheel.js", "../shared/module-registry.js"]);
 });
