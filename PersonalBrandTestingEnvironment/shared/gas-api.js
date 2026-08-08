@@ -169,8 +169,7 @@
 
     var startedAt = performanceNow();
     var transportSource = "fetch";
-    return postWithFetch(gasUrl, request)
-      .catch(function (error) {
+    return postWithFetch(gasUrl, request).catch(function (error) {
         if (!shouldUseBridgeFallback(error)) throw error;
         transportSource = "bridge";
         return postWithBridge(gasUrl, request);
