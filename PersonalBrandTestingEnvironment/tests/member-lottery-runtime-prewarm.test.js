@@ -34,30 +34,46 @@ test("host triggers Lottery session preload after an authenticated member has a 
   assert.doesNotMatch(body, /drawLottery|createRequestId|requestId/);
 });
 
-test("loader prewarm now loads runtime plus one authoritative session workspace", () => {
-  const start = loader.indexOf("function loadSessionConfig()") ;
-  const end = loader.indexOf("function getPendingStorageKey", start);
-  assert.notEqual(start, -1);
-  assert.notEqual(end, -1);
-  const body = loader.slice(start, end);
+test("loader prewarm loads runtime plus one authoritative session workspace", () => {
+  const loadStart = loader.indexOf("function loadSessionConfig()");
+  const loadEnd = loader.indexOf("function preloadSession", loadStart);
+  assert.notEqual(loadStart, -1);
+  assert.notEqual(loadEnd, -1);
+  const loadBody = loader.slice(loadStart, loadEnd);
 
-  assert.match(body, /ensureLoaded\(\)/);
-  assert.match(body, /rawRequest\("getLotteryConfig", \{\}, undefined\)/);
-  assert.match(body, /sessionConfigResponse/);
-  assert.match(body, /controller\.refreshTickets\(\{ force: true \}\)/);
-  assert.match(body, /function prewarm\(\)[\s\S]*return preloadSession\(\)/);
-  assert.doesNotMatch(body, /drawLottery|createRequestId|\brequestId\b/);
+  assert.match(loadBody, /rawRequest\("getLotteryConfig", \{\}, undefined\)/);
+  assert.match(loadBody, /sessionConfigResponse/);
+  assert.doesNotMatch(loadBody, /drawLottery|createRequestId|\brequestId\b/);
 
-  const refreshStart = loader.indexOf("function refreshTickets(options)");
+  const preloadStart = loader.indexOf("function preloadSession()");
+  const preloadEnd = loader.indexOf("function prewarm()", preloadStart);
+  assert.notEqual(preloadStart, -1);
+  assert.notEqual(preloadEnd, -1);
+  const preloadBody = loader.slice(preloadStart, preloadEnd);
+
+  assert.match(preloadBody, /ensureLoaded\(\)/);
+  assert.match(preloadBody, /loadSessionConfig\(\)/);
+  assert.match(preloadBody, /controller\.refreshTickets\(\{ force: true \}\)/);
+  assert.doesNotMatch(preloadBody, /drawLottery|createRequestId|\brequestId\b/);
+  assert.match(loader, /function prewarm\(\)[\s\S]*return preloadSession\(\)/);
+
+  const refreshStart = loader.indexOf("function refreshTickets()");
   const refreshEnd = loader.indexOf("function restorePending", refreshStart);
+  assert.notEqual(refreshStart, -1);
+  assert.notEqual(refreshEnd, -1);
   const refreshBody = loader.slice(refreshStart, refreshEnd);
-  assert.doesNotMatch(refreshBody, /rawRequest|getLotteryConfig/);
-  assert.match(refreshBody, /sessionConfigResponse/);
+  assert.doesNotMatch(
+    refreshBody,
+    /rawRequest|getLotteryConfig|ensureLoaded|controller\.refreshTickets/
+  );
+  assert.match(refreshBody, /currentCardSummary\(\)/);
 });
 
 test("loader uses registry-first parallel definitions and an entry-last composition phase", () => {
-  const start = loader.indexOf("function ensureLoaded()") ;
-  const end = loader.indexOf("function sessionRequest", start);
+  const start = loader.indexOf("function ensureLoaded()");
+  const end = loader.indexOf("function getSessionConfigView", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
   const body = loader.slice(start, end);
 
   assert.match(body, /loadScript\(REGISTRY_SOURCE\)/);
@@ -68,7 +84,7 @@ test("loader uses registry-first parallel definitions and an entry-last composit
 });
 
 test("host startup no longer requires LotteryWheel before lazy runtime activation", () => {
-  const start = host.indexOf("function configureMemberLotteryDialog()") ;
+  const start = host.indexOf("function configureMemberLotteryDialog()");
   const end = host.indexOf("function openPointHistoryDialog", start);
   const body = host.slice(start, end);
 
