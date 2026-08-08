@@ -34,6 +34,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime-prewarm.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-warm-open.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-critical-path.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preopen-boundary.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-gas-read-optimization.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
@@ -83,6 +84,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime-prewarm.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-warm-open.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-critical-path.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preopen-boundary.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-gas-read-optimization.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
@@ -164,6 +166,7 @@ jobs:
             PersonalBrandTestingEnvironment/tests/member-lottery-runtime-prewarm.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-warm-open.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-preload-critical-path.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-preopen-boundary.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-gas-read-optimization.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js \
