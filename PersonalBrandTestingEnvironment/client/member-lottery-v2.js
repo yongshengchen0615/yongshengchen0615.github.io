@@ -46,7 +46,8 @@
 
       if (state === "loading") {
         dialog.setAttribute("aria-busy", "true");
-        status.textContent = "正在背景同步最新抽獎券；目前票券仍可直接選擇。";
+        status.textContent =
+          "正在背景同步最新抽獎券；若現在選擇票券，會先完成轉盤準備再開啟。";
         status.dataset.tone = "loading";
         return;
       }
@@ -59,7 +60,7 @@
       }
 
       status.textContent =
-        "背景同步暫時失敗；目前票券仍可選擇，開啟轉盤時會再次安全驗證。";
+        "背景同步暫時失敗；選擇票券後會先重新完成安全驗證，再開啟轉盤。";
       status.dataset.tone = "warning";
     });
   }
