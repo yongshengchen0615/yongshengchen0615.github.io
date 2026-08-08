@@ -33,6 +33,7 @@ function createHarness(options = {}) {
   const performanceEvents = [];
   let realConfigureCalls = 0;
   let realRefreshCalls = 0;
+  let realPrepareCalls = 0;
   let realOpenCalls = 0;
   let realRestoreCalls = 0;
 
@@ -44,6 +45,10 @@ function createHarness(options = {}) {
     refreshTickets() {
       realRefreshCalls += 1;
       return Promise.resolve({ availableDraws: 2 });
+    },
+    prepareForOpen() {
+      realPrepareCalls += 1;
+      return Promise.resolve(true);
     },
     open() {
       realOpenCalls += 1;
@@ -181,6 +186,7 @@ function createHarness(options = {}) {
       return {
         realConfigureCalls,
         realRefreshCalls,
+        realPrepareCalls,
         realOpenCalls,
         realRestoreCalls,
       };
@@ -307,6 +313,7 @@ test("background prewarm is runtime-only and shares the same loader transaction"
   assert.equal(requestCalls, 0);
   assert.equal(harness.appendedSources.length, 13);
   assert.equal(harness.counts().realRefreshCalls, 0);
+  assert.equal(harness.counts().realPrepareCalls, 0);
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
@@ -335,7 +342,17 @@ test("pending draw is detectable before modules load and delegates recovery afte
   assert.equal(harness.counts().realConfigureCalls, 1);
 });
 
-test("closing during lazy load prevents a late real-controller open", async () => {
+test("opening prepares through the real controller before local open delegation", async () => {
+  const harness = createHarness();
+  const loader = harness.context.MemberLotteryDialog;
+  configure(loader);
+
+  assert.equal(await loader.open(createTicket()), true);
+  assert.equal(harness.counts().realPrepareCalls, 1);
+  assert.equal(harness.counts().realOpenCalls, 1);
+});
+
+test("closing during lazy load prevents preparation and late real-controller open", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
@@ -344,6 +361,7 @@ test("closing during lazy load prevents a late real-controller open", async () =
   assert.equal(loader.requestClose({ returnToTickets: true }), true);
   assert.equal(await opening, false);
   assert.equal(harness.counts().realConfigureCalls, 1);
+  assert.equal(harness.counts().realPrepareCalls, 0);
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
@@ -356,6 +374,7 @@ test("closing after runtime prewarm invalidates a queued open before real-contro
   const opening = loader.open(createTicket());
   assert.equal(loader.requestClose({ returnToTickets: true }), true);
   assert.equal(await opening, false);
+  assert.equal(harness.counts().realPrepareCalls, 1);
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
@@ -374,6 +393,7 @@ test("module load failure fails closed without invoking draw or request code", a
 
   assert.equal(opened, false);
   assert.equal(requestCalls, 0);
+  assert.equal(harness.counts().realPrepareCalls, 0);
   assert.equal(harness.counts().realOpenCalls, 0);
   assert.equal(harness.counts().realConfigureCalls, 0);
 });
