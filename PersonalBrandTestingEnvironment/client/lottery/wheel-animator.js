@@ -9,9 +9,11 @@
     ["lottery.contracts"],
     function (contracts) {
       var INITIAL_DEGREES_PER_MS = 1.45;
+      var PENDING_DEGREES_PER_MS = 1.45;
       var FINAL_SPIN_TURNS = 3;
       var MIN_DURATION_MS = 2200;
       var MAX_DURATION_MS = 3200;
+      var MAX_PENDING_FRAME_DELTA_MS = 64;
 
       function create(options) {
         options = options && typeof options === "object" ? options : {};
@@ -37,6 +39,8 @@
         }
 
         var rotation = 0;
+        var pendingFrame = 0;
+        var pendingLastTime = null;
         var settlingFrame = 0;
         var animationVersion = 0;
         var preparedConfigVersion = "";
@@ -102,6 +106,11 @@
         }
 
         function stop() {
+          if (pendingFrame) {
+            runtime.cancelAnimationFrame(pendingFrame);
+            pendingFrame = 0;
+          }
+          pendingLastTime = null;
           if (settlingFrame) {
             runtime.cancelAnimationFrame(settlingFrame);
             settlingFrame = 0;
@@ -147,6 +156,38 @@
           preparedTargets = targets;
           preparedConfigVersion = String(lottery.configVersion || "");
           emitMetric("wheel_prepare", startedAt);
+          return true;
+        }
+
+        function startPendingSpin() {
+          stop();
+          if (
+            prefersReducedMotion() ||
+            typeof runtime.requestAnimationFrame !== "function"
+          ) {
+            return false;
+          }
+
+          var currentVersion = animationVersion;
+          pendingLastTime = null;
+
+          function spin(timestamp) {
+            if (currentVersion !== animationVersion) return;
+            if (pendingLastTime === null) pendingLastTime = timestamp;
+            var elapsed = Math.max(
+              0,
+              Math.min(
+                MAX_PENDING_FRAME_DELTA_MS,
+                Number(timestamp) - Number(pendingLastTime)
+              )
+            );
+            pendingLastTime = timestamp;
+            rotation += PENDING_DEGREES_PER_MS * elapsed;
+            renderRotation(rotation);
+            pendingFrame = runtime.requestAnimationFrame(spin);
+          }
+
+          pendingFrame = runtime.requestAnimationFrame(spin);
           return true;
         }
 
@@ -238,6 +279,7 @@
         return Object.freeze({
           draw: draw,
           prepare: prepare,
+          startPendingSpin: startPendingSpin,
           reset: reset,
           settle: settle,
           stop: stop,
