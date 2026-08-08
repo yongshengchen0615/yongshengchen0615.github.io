@@ -17,10 +17,13 @@
   ];
   var ENTRY_SOURCE = "member-lottery-v2.js";
   var REQUEST_STORAGE_PREFIX = "persona-member-lottery-round-request:";
+  var MEMBER_ID_PATTERN = /^MBR-[A-Z0-9]{10}$/;
+
   var configuredOptions = null;
   var rawRequest = null;
   var sessionConfigResponse = null;
   var sessionConfigPromise = null;
+  var sessionMemberId = "";
   var realFacade = null;
   var loadPromise = null;
   var prewarmPromise = null;
@@ -60,7 +63,7 @@
         })
       );
     } catch (_error) {
-      // Diagnostics must never affect runtime activation.
+      // Diagnostics must never affect Lottery behavior.
     }
   }
 
@@ -163,6 +166,59 @@
     };
   }
 
+  function safeIsDemo() {
+    try {
+      return Boolean(
+        configuredOptions &&
+          typeof configuredOptions.isDemo === "function" &&
+          configuredOptions.isDemo() === true
+      );
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function currentMemberId() {
+    if (!configuredOptions || typeof configuredOptions.getMemberId !== "function") {
+      return "";
+    }
+    try {
+      var memberId = String(configuredOptions.getMemberId() || "").trim();
+      return MEMBER_ID_PATTERN.test(memberId) ? memberId : "";
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function currentCardSummary() {
+    if (
+      !configuredOptions ||
+      typeof configuredOptions.getCurrentCardSummary !== "function"
+    ) {
+      return null;
+    }
+    try {
+      return configuredOptions.getCurrentCardSummary() || null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function currentTotalPoints(fallbackValue) {
+    if (
+      configuredOptions &&
+      typeof configuredOptions.getCurrentTotalPoints === "function"
+    ) {
+      try {
+        var value = Number(configuredOptions.getCurrentTotalPoints());
+        if (Number.isSafeInteger(value) && value >= 0) return value;
+      } catch (_error) {
+        // Fall through to the cached authoritative value.
+      }
+    }
+    return fallbackValue;
+  }
+
   function closeLoaderDialog() {
     var documentValue = root.document;
     if (!documentValue || typeof documentValue.getElementById !== "function") {
@@ -194,7 +250,7 @@
 
     dialog.setAttribute("aria-busy", "true");
     status.textContent =
-      "正在準備轉盤：使用登入時載入的抽獎資料建立轉盤；完成後即開啟。";
+      "正在建立轉盤畫面；抽獎資料已於登入時載入，此步驟不會再向後端取得設定。";
     status.dataset.tone = "loading";
     if (typeof dialog.querySelectorAll === "function") {
       dialog.querySelectorAll(".lottery-ticket-button").forEach(function (button) {
@@ -247,7 +303,7 @@
     if (!dialog || !status || !isDialogOpen(dialog)) return;
     dialog.setAttribute("aria-busy", "false");
     status.textContent =
-      message || "登入時的轉盤資料尚未載入完成，請重新整理後再試。";
+      message || "登入時的抽獎資料尚未載入完成，請重新整理後再試。";
     status.dataset.tone = "warning";
     if (typeof dialog.querySelectorAll === "function") {
       dialog.querySelectorAll(".lottery-ticket-button").forEach(function (button) {
@@ -337,22 +393,88 @@
     return promise;
   }
 
-  function safeIsDemo() {
-    try {
-      return Boolean(
-        configuredOptions &&
-          typeof configuredOptions.isDemo === "function" &&
-          configuredOptions.isDemo() === true
-      );
-    } catch (_error) {
-      return false;
+  function getSessionConfigView() {
+    if (!sessionConfigResponse) return null;
+    if (!safeIsDemo() && sessionMemberId !== currentMemberId()) return null;
+
+    var data = sessionConfigResponse.data || {};
+    var cachedTotal = Number(
+      data.totalPoints == null ? data.pointBalance : data.totalPoints
+    );
+    var totalPoints = currentTotalPoints(cachedTotal);
+    var hostCard = currentCardSummary();
+
+    return Object.assign({}, sessionConfigResponse, {
+      data: Object.assign({}, data, {
+        card: hostCard || data.card,
+        totalPoints: totalPoints,
+      }),
+    });
+  }
+
+  function updateSessionConfigFromDraw(response) {
+    if (
+      !sessionConfigResponse ||
+      !response ||
+      response.ok !== true ||
+      !response.data ||
+      !response.data.card ||
+      !response.data.lotteryType
+    ) {
+      return response;
     }
+
+    var previous = sessionConfigResponse.data || {};
+    var selectedType = response.data.lotteryType;
+    var selectedId = String(selectedType.lotteryTypeId || "");
+    var previousTypes = Array.isArray(previous.lotteryTypes)
+      ? previous.lotteryTypes
+      : [];
+    var replaced = false;
+    var nextTypes = previousTypes.map(function (type) {
+      if (String((type && type.lotteryTypeId) || "") !== selectedId) {
+        return type;
+      }
+      replaced = true;
+      return selectedType;
+    });
+    if (!replaced && selectedId) nextTypes.push(selectedType);
+
+    var nextTotal = Number(
+      response.data.totalPoints == null
+        ? response.data.pointBalance
+        : response.data.totalPoints
+    );
+    if (!Number.isSafeInteger(nextTotal) || nextTotal < 0) {
+      nextTotal = Number(
+        previous.totalPoints == null ? previous.pointBalance : previous.totalPoints
+      );
+    }
+
+    sessionConfigResponse = Object.assign({}, sessionConfigResponse, {
+      data: Object.assign({}, previous, {
+        lotteryTypes: nextTypes,
+        card: response.data.card,
+        totalPoints: nextTotal,
+      }),
+    });
+    return response;
   }
 
   function sessionRequest(action, fields, requestId) {
     if (action === "getLotteryConfig") {
-      if (sessionConfigResponse) return Promise.resolve(sessionConfigResponse);
-      if (sessionConfigPromise) return sessionConfigPromise;
+      var snapshot = getSessionConfigView();
+      if (snapshot) return Promise.resolve(snapshot);
+      if (sessionConfigPromise) {
+        return sessionConfigPromise.then(function () {
+          var nextSnapshot = getSessionConfigView();
+          if (nextSnapshot) return nextSnapshot;
+          throw createLoaderError(
+            "LOTTERY_SESSION_NOT_READY",
+            "登入時的抽獎資料尚未載入完成，請重新整理後再試。"
+          );
+        });
+      }
       return Promise.reject(
         createLoaderError(
           "LOTTERY_SESSION_NOT_READY",
@@ -365,17 +487,45 @@
         createLoaderError("NOT_CONFIGURED", "會員抽獎尚未完成初始化。")
       );
     }
-    return rawRequest(action, fields, requestId);
+    return Promise.resolve()
+      .then(function () {
+        return rawRequest(action, fields, requestId);
+      })
+      .then(function (response) {
+        return action === "drawLottery"
+          ? updateSessionConfigFromDraw(response)
+          : response;
+      });
   }
 
   function loadSessionConfig() {
-    if (sessionConfigResponse) return Promise.resolve(sessionConfigResponse);
-    if (sessionConfigPromise) return sessionConfigPromise;
+    if (safeIsDemo()) return Promise.resolve(null);
+
+    var memberId = currentMemberId();
+    if (!memberId) {
+      return Promise.reject(
+        createLoaderError(
+          "LOTTERY_MEMBER_NOT_READY",
+          "會員登入尚未完成，無法預載抽獎資料。"
+        )
+      );
+    }
+
+    if (sessionConfigResponse && sessionMemberId === memberId) {
+      return Promise.resolve(getSessionConfigView());
+    }
+    if (sessionConfigPromise && sessionMemberId === memberId) {
+      return sessionConfigPromise;
+    }
     if (typeof rawRequest !== "function") {
       return Promise.reject(
         createLoaderError("NOT_CONFIGURED", "會員抽獎尚未完成初始化。")
       );
     }
+
+    sessionConfigResponse = null;
+    sessionConfigPromise = null;
+    sessionMemberId = memberId;
 
     var startedAt = performanceNow();
     var promise = Promise.resolve()
@@ -389,11 +539,18 @@
             "登入時取得的抽獎資料格式不完整。"
           );
         }
+        if (currentMemberId() !== memberId) {
+          throw createLoaderError(
+            "LOTTERY_SESSION_CHANGED",
+            "會員狀態已變更，請重新載入抽獎資料。"
+          );
+        }
         sessionConfigResponse = response;
         emitMetric("lottery_session_preload", startedAt, "network");
-        return response;
+        return getSessionConfigView();
       })
       .catch(function (error) {
+        if (sessionMemberId === memberId) sessionConfigResponse = null;
         emitMetric("lottery_session_preload", startedAt, "network-error");
         throw error;
       })
@@ -405,17 +562,25 @@
   }
 
   function preloadSession() {
-    if (safeIsDemo()) {
-      return ensureLoaded().then(
-        function () {
-          return true;
-        },
-        function () {
-          return false;
-        }
-      );
-    }
     if (prewarmPromise) return prewarmPromise;
+
+    if (safeIsDemo()) {
+      var demoPromise = ensureLoaded()
+        .then(
+          function () {
+            return true;
+          },
+          function () {
+            return false;
+          }
+        )
+        .finally(function () {
+          if (prewarmPromise === demoPromise) prewarmPromise = null;
+        });
+      prewarmPromise = demoPromise;
+      return demoPromise;
+    }
+
     var promise = ensureLoaded()
       .then(function (controller) {
         return loadSessionConfig().then(function () {
@@ -447,28 +612,10 @@
   function getPendingStorageKey() {
     if (!configuredOptions) return "";
     var liffId = String(configuredOptions.liffId || "unknown").trim() || "unknown";
-    var isDemo = false;
-    try {
-      isDemo =
-        typeof configuredOptions.isDemo === "function" &&
-        configuredOptions.isDemo() === true;
-    } catch (_error) {
-      isDemo = false;
-    }
-    if (isDemo) return REQUEST_STORAGE_PREFIX + liffId + ":demo";
+    if (safeIsDemo()) return REQUEST_STORAGE_PREFIX + liffId + ":demo";
 
-    var memberId = "";
-    try {
-      memberId =
-        typeof configuredOptions.getMemberId === "function"
-          ? String(configuredOptions.getMemberId() || "").trim()
-          : "";
-    } catch (_error) {
-      memberId = "";
-    }
-    return /^MBR-[A-Z0-9]{10}$/.test(memberId)
-      ? REQUEST_STORAGE_PREFIX + liffId + ":" + memberId
-      : "";
+    var memberId = currentMemberId();
+    return memberId ? REQUEST_STORAGE_PREFIX + liffId + ":" + memberId : "";
   }
 
   function hasStoredPending() {
@@ -507,10 +654,12 @@
       var status = documentValue.getElementById("member-ticket-refresh-status");
       if (!dialog || !status || !isDialogOpen(dialog)) return;
       dialog.setAttribute("aria-busy", "false");
-      status.textContent = sessionConfigResponse
-        ? "抽獎資料已於登入時載入，可直接選擇票券。"
-        : "登入時的抽獎資料尚未載入完成。";
-      status.dataset.tone = sessionConfigResponse ? "ready" : "warning";
+      status.textContent =
+        safeIsDemo() || getSessionConfigView()
+          ? "抽獎資料已於登入時載入，可直接選擇票券。"
+          : "登入時的抽獎資料尚未載入完成。";
+      status.dataset.tone =
+        safeIsDemo() || getSessionConfigView() ? "ready" : "warning";
     }, 0);
   }
 
@@ -519,6 +668,7 @@
     rawRequest = typeof sourceOptions.request === "function" ? sourceOptions.request : null;
     sessionConfigResponse = null;
     sessionConfigPromise = null;
+    sessionMemberId = "";
     configuredOptions = Object.assign({}, sourceOptions, {
       request: sessionRequest,
     });
@@ -528,11 +678,11 @@
 
   function open(ticket) {
     var expectedOpenVersion = ++openVersion;
-    var preparationDialogShown = showTicketPreparing();
+    var preparationDialogShown = false;
     var demo = safeIsDemo();
     var sessionReady = demo
       ? Promise.resolve(true)
-      : sessionConfigResponse
+      : getSessionConfigView()
         ? Promise.resolve(true)
         : prewarmPromise
           ? prewarmPromise
@@ -540,16 +690,18 @@
 
     return sessionReady
       .then(function (ready) {
-        if (!ready || (!demo && !sessionConfigResponse)) {
+        if (!ready || (!demo && !getSessionConfigView())) {
           throw createLoaderError(
             "LOTTERY_SESSION_NOT_READY",
             "登入時的抽獎資料尚未載入完成，請重新整理後再試。"
           );
         }
+        if (expectedOpenVersion !== openVersion) return null;
+        preparationDialogShown = showTicketPreparing();
         return ensureLoaded();
       })
       .then(function (controller) {
-        if (expectedOpenVersion !== openVersion) return false;
+        if (!controller || expectedOpenVersion !== openVersion) return false;
         return controller.prepareForOpen(ticket);
       })
       .then(function (prepared) {
@@ -573,36 +725,25 @@
       });
   }
 
-  function refreshTickets(options) {
-    var snapshot =
-      configuredOptions &&
-      typeof configuredOptions.getCurrentCardSummary === "function"
-        ? configuredOptions.getCurrentCardSummary()
-        : null;
+  function refreshTickets() {
     scheduleTicketLoadingCopy();
-    if (!safeIsDemo() && !sessionConfigResponse) return Promise.resolve(snapshot);
-    ensureLoaded()
-      .then(function (controller) {
-        return controller.refreshTickets(options);
-      })
-      .catch(function (error) {
-        showLoaderError(error);
-      });
-    return Promise.resolve(snapshot);
+    return Promise.resolve(currentCardSummary());
   }
 
   function restorePending() {
     var demo = safeIsDemo();
     var sessionReady = demo
-      ? Promise.resolve(true)
-      : sessionConfigResponse
+      ? ensureLoaded().then(function () {
+          return true;
+        })
+      : getSessionConfigView()
         ? Promise.resolve(true)
         : prewarmPromise
           ? prewarmPromise
           : preloadSession();
     return sessionReady
       .then(function (ready) {
-        if (!ready || (!demo && !sessionConfigResponse)) return false;
+        if (!ready || (!demo && !getSessionConfigView())) return false;
         return ensureLoaded();
       })
       .then(function (controller) {
