@@ -85,6 +85,10 @@
           );
         }
 
+        function setCompositingHint(active) {
+          rotor.style.willChange = active ? "transform" : "auto";
+        }
+
         function renderRotation(value) {
           rotor.style.transform = "rotate(" + value + "deg)";
         }
@@ -115,6 +119,7 @@
             runtime.cancelAnimationFrame(settlingFrame);
             settlingFrame = 0;
           }
+          setCompositingHint(false);
           animationVersion += 1;
         }
 
@@ -174,6 +179,7 @@
 
           var currentVersion = animationVersion;
           pendingLastTime = null;
+          setCompositingHint(true);
 
           function spin(timestamp) {
             if (currentVersion !== animationVersion) return;
@@ -239,6 +245,7 @@
           if (prefersReducedMotion()) {
             rotation = targetRotation;
             renderRotation(rotation);
+            setCompositingHint(false);
             return new Promise(function (resolve) {
               runtime.setTimeout(function () {
                 if (currentVersion === animationVersion) resolve();
@@ -246,6 +253,7 @@
             });
           }
 
+          setCompositingHint(true);
           var duration = Math.min(
             MAX_DURATION_MS,
             Math.max(
@@ -272,6 +280,7 @@
               settlingFrame = 0;
               rotation = targetRotation;
               renderRotation(rotation);
+              setCompositingHint(false);
               resolve();
             }
 
