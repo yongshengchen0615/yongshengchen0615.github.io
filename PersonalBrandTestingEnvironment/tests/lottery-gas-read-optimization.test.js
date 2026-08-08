@@ -62,12 +62,15 @@ test("drawLottery keeps fresh server-side revalidation without a shared settings
 });
 
 test("GAS scale diagnostics reflect one PointCardSettings scan for getLotteryConfig", () => {
-  const configEstimateStart = diagnostics.indexOf("getLotteryConfig:");
-  const recommendationStart = diagnostics.indexOf("var recommendations", configEstimateStart);
-  assert.notEqual(configEstimateStart, -1);
-  assert.notEqual(recommendationStart, -1);
-  const estimate = diagnostics.slice(configEstimateStart, recommendationStart);
+  const multiplierStart = diagnostics.indexOf("var getLotteryConfigScanMultipliers");
+  const drawMultiplierStart = diagnostics.indexOf(
+    "var drawLotterySuccessfulScanMultipliers",
+    multiplierStart
+  );
+  assert.notEqual(multiplierStart, -1);
+  assert.notEqual(drawMultiplierStart, -1);
+  const multipliers = diagnostics.slice(multiplierStart, drawMultiplierStart);
 
-  assert.match(estimate, /byKey\.pointCardSettings\.estimatedCells\s*\+/);
-  assert.doesNotMatch(estimate, /pointCardSettings\.estimatedCells\s*\*\s*2/);
+  assert.match(multipliers, /pointCardSettings:\s*1/);
+  assert.doesNotMatch(multipliers, /pointCardSettings:\s*[2-9]/);
 });
