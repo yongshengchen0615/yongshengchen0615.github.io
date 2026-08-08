@@ -9,10 +9,11 @@ const loaderCode = fs.readFileSync(
   "utf8"
 );
 
-test("a prewarmed Lottery runtime prepares first and only then opens the real controller", async () => {
+test("a login-preloaded Lottery session prepares locally and then opens the real controller", async () => {
   let lotteryShowModalCalls = 0;
   let realPrepareCalls = 0;
   let realOpenCalls = 0;
+  let configRequestCalls = 0;
   const scripts = new Map();
   const lotteryDialog = {
     open: false,
@@ -137,10 +138,6 @@ test("a prewarmed Lottery runtime prepares first and only then opens the real co
     setTimeout,
     clearTimeout,
     queueMicrotask,
-    requestIdleCallback(callback) {
-      queueMicrotask(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
-      return 1;
-    },
     sessionStorage: {
       getItem() {
         return null;
@@ -162,13 +159,24 @@ test("a prewarmed Lottery runtime prepares first and only then opens the real co
     getCurrentCardSummary: () => ({ availableRewards: [] }),
     isDemo: () => false,
     normalizeError: (error) => ({ code: error.code, message: error.message }),
-    request() {
-      throw new Error("warm handoff must not call GAS from the loader");
+    request(action) {
+      assert.equal(action, "getLotteryConfig");
+      configRequestCalls += 1;
+      return Promise.resolve({
+        ok: true,
+        data: {
+          access: { allowed: true },
+          lotteryTypes: [],
+          card: { availableRewards: [] },
+          totalPoints: 0,
+        },
+      });
     },
     showToast() {},
   });
 
   assert.equal(await loader.prewarm(), true);
+  assert.equal(configRequestCalls, 1);
   assert.equal(lotteryShowModalCalls, 0);
 
   const opened = await loader.open({
@@ -180,6 +188,7 @@ test("a prewarmed Lottery runtime prepares first and only then opens the real co
   });
 
   assert.equal(opened, true);
+  assert.equal(configRequestCalls, 1);
   assert.equal(realPrepareCalls, 1);
   assert.equal(realOpenCalls, 1);
   assert.equal(lotteryShowModalCalls, 0);
