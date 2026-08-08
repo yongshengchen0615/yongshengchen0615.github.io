@@ -13,41 +13,42 @@ const controllerSource = fs.readFileSync(
   path.join(root, "client/lottery/dialog-controller.js"),
   "utf8"
 );
-const preparationSource = fs.readFileSync(
-  path.join(root, "client/lottery/preparation-service.js"),
-  "utf8"
-);
 
-test("member login preloads Lottery runtime and authoritative workspace", () => {
-  assert.match(scriptSource, /MemberLotteryDialog\.preloadSession\(\)/);
+test("authenticated member card prewarm now loads runtime plus authoritative Lottery workspace", () => {
+  assert.match(scriptSource, /MemberLotteryDialog\.prewarm\(\)/);
   assert.match(loaderSource, /function preloadSession\(\)/);
-  assert.match(loaderSource, /controller\.preloadSession\(\)/);
-  assert.match(controllerSource, /function preloadSession\(\)/);
-  assert.match(controllerSource, /workspaceService\s*\.load\(\{ force: true \}\)/);
+  assert.match(loaderSource, /function prewarm\(\)[\s\S]*return preloadSession\(\)/);
+  assert.match(loaderSource, /rawRequest\("getLotteryConfig", \{\}, undefined\)/);
+  assert.match(loaderSource, /lottery_session_preload/);
 });
 
-test("post-login preparation consumes the session snapshot without another workspace read", () => {
-  assert.match(controllerSource, /sessionWorkspaceResponse/);
-  assert.match(controllerSource, /workspaceResponse:\s*sessionWorkspaceResponse/);
-  assert.match(preparationSource, /prepareOptions\.workspaceResponse/);
-  assert.match(preparationSource, /validateWorkspace\(\s*prepareOptions\.workspaceResponse/);
+test("post-login getLotteryConfig calls are served from the in-memory session snapshot", () => {
+  const requestMatch = loaderSource.match(
+    /function sessionRequest\(action, fields, requestId\) \{([\s\S]*?)\n  \}\n\n  function loadSessionConfig/
+  );
+  assert.ok(requestMatch, "sessionRequest implementation should be discoverable");
+  assert.match(requestMatch[1], /action === "getLotteryConfig"/);
+  assert.match(requestMatch[1], /sessionConfigResponse/);
+  assert.match(requestMatch[1], /Promise\.resolve\(sessionConfigResponse\)/);
+  assert.match(requestMatch[1], /LOTTERY_SESSION_NOT_READY/);
 });
 
-test("ticket refresh after login is local-only", () => {
-  const refreshMatch = controllerSource.match(
-    /function refreshTickets\(refreshOptions\) \{([\s\S]*?)\n        \}\n\n        function restorePending/
+test("ticket refresh after login cannot start another authoritative config request", () => {
+  const refreshMatch = loaderSource.match(
+    /function refreshTickets\(options\) \{([\s\S]*?)\n  \}\n\n  function restorePending/
   );
   assert.ok(refreshMatch, "refreshTickets implementation should be discoverable");
-  assert.doesNotMatch(refreshMatch[1], /workspaceService\s*\.load\(/);
-  assert.match(refreshMatch[1], /sessionWorkspaceResponse|workspace/);
+  assert.doesNotMatch(refreshMatch[1], /rawRequest|getLotteryConfig/);
+  assert.match(refreshMatch[1], /sessionConfigResponse/);
 });
 
-test("session preload stays read-only and formal draw remains separate", () => {
-  const preloadMatch = controllerSource.match(
-    /function preloadSession\(\) \{([\s\S]*?)\n        \}\n\n        function prepareCurrent/
-  );
-  assert.ok(preloadMatch, "preloadSession implementation should be discoverable");
-  assert.doesNotMatch(preloadMatch[1], /drawLottery|performDraw|drawService\.draw/);
+test("formal draw stays in DrawService and bypasses the config snapshot", () => {
+  assert.match(loaderSource, /return rawRequest\(action, fields, requestId\)/);
   assert.match(controllerSource, /function performDraw\(\)/);
   assert.match(controllerSource, /drawService\.draw\(selectedTicket\)/);
+  const preloadMatch = loaderSource.match(
+    /function loadSessionConfig\(\) \{([\s\S]*?)\n  \}\n\n  function preloadSession/
+  );
+  assert.ok(preloadMatch, "loadSessionConfig implementation should be discoverable");
+  assert.doesNotMatch(preloadMatch[1], /drawLottery/);
 });
