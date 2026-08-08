@@ -48,6 +48,8 @@
         var workspace = null;
         var selectedTicket = null;
         var selectedType = null;
+        var preparedTicketKey = "";
+        var preparedPending = false;
         var isPreparing = false;
         var isBusy = false;
         var loadVersion = 0;
@@ -206,6 +208,22 @@
           return store ? store.read() : null;
         }
 
+        function resolveTicketSelection(ticketValue) {
+          var pending = store.read();
+          var requestedTicket = contracts.normalizeTicket(ticketValue);
+          var nextTicket = requestedTicket;
+          if (pending) {
+            nextTicket = contracts.normalizeTicket(pending);
+            if (ticketKey(nextTicket) !== ticketKey(requestedTicket)) {
+              safeShowToast("請先完成上一次尚未確認的抽獎。");
+            }
+          }
+          return {
+            ticket: nextTicket,
+            pending: Boolean(pending),
+          };
+        }
+
         function canClose() {
           if (!configured) return true;
           return !isPreparing && !isBusy && !getPending();
@@ -328,6 +346,8 @@
           workspace = null;
           selectedTicket = null;
           selectedType = null;
+          preparedTicketKey = "";
+          preparedPending = false;
           isPreparing = false;
           isBusy = false;
           activeOpenKey = "";
@@ -338,7 +358,7 @@
           return api;
         }
 
-        function prepareCurrent(expectedVersion, pendingBeforePrepare) {
+        function prepareCurrent(expectedVersion, pendingBeforePrepare, renderReady) {
           var preparePromise = safeIsDemo()
             ? demoProvider.prepare(selectedTicket)
             : preparationService.prepare(selectedTicket, {
@@ -365,11 +385,11 @@
               selectedType = nextSelectedType;
               animator.prepare(selectedType.lottery);
               isPreparing = false;
-              view.markReady(
-                selectedTicket,
-                selectedType,
-                Boolean(pendingBeforePrepare)
-              );
+              preparedTicketKey = ticketKey(selectedTicket);
+              preparedPending = Boolean(pendingBeforePrepare);
+              if (renderReady !== false) {
+                view.markReady(selectedTicket, selectedType, preparedPending);
+              }
               safeCardUpdated(workspace.card, workspace.totalPoints);
               updateControls();
               return true;
@@ -377,6 +397,8 @@
             .catch(function (error) {
               if (expectedVersion !== loadVersion) return false;
               isPreparing = false;
+              preparedTicketKey = "";
+              preparedPending = false;
               animator.stop();
               if (delegateAuthorizationError(error)) {
                 updateControls();
@@ -384,74 +406,117 @@
               }
               var definitive = preparationService.isDefinitiveNoDrawError(error);
               if (definitive) syncLatestWorkspaceSnapshot();
+              updateControls();
+              if (renderReady === false) throw error;
               view.showError(error, {
                 pending: Boolean(getPending()),
                 definitive: definitive,
               });
-              updateControls();
               return false;
             });
         }
 
-        function open(ticketValue) {
+        function prepareForOpen(ticketValue) {
           ensureConfigured();
-          var pendingBeforePrepare = store.read();
-          var requestedTicket;
-          var nextTicket;
-
+          var resolved;
           try {
-            requestedTicket = contracts.normalizeTicket(ticketValue);
-            if (pendingBeforePrepare) {
-              nextTicket = contracts.normalizeTicket(pendingBeforePrepare);
-              if (ticketKey(nextTicket) !== ticketKey(requestedTicket)) {
-                safeShowToast("請先完成上一次尚未確認的抽獎。");
-              }
-            } else {
-              nextTicket = requestedTicket;
-            }
+            resolved = resolveTicketSelection(ticketValue);
           } catch (error) {
-            selectedTicket = null;
-            workspace = null;
-            selectedType = null;
-            isPreparing = false;
-            view.markPreparing(null, "準備轉盤");
-            view.showError(error, { pending: false, definitive: true });
-            updateControls();
-            return Promise.resolve(false);
+            return Promise.reject(error);
           }
 
+          var nextTicket = resolved.ticket;
           var key = ticketKey(nextTicket);
           if (isBusy) {
-            safeShowToast("轉盤正在處理抽獎，請稍候完成。");
-            return Promise.resolve(false);
+            return Promise.reject(
+              contracts.createError(
+                "LOTTERY_DRAW_BUSY",
+                "轉盤正在處理抽獎，請稍候完成。"
+              )
+            );
           }
           if (isPreparing && activeOpenPromise) {
             if (activeOpenKey === key) return activeOpenPromise;
-            safeShowToast("另一張抽獎券正在準備中，請稍候完成。");
-            return Promise.resolve(false);
+            return Promise.reject(
+              contracts.createError(
+                "LOTTERY_PREPARATION_BUSY",
+                "另一張抽獎券正在準備中，請稍候完成。"
+              )
+            );
+          }
+          if (
+            !isPreparing &&
+            preparedTicketKey === key &&
+            workspace &&
+            selectedType
+          ) {
+            return Promise.resolve(true);
           }
 
           selectedTicket = nextTicket;
           var expectedVersion = ++loadVersion;
           workspace = null;
           selectedType = null;
+          preparedTicketKey = "";
+          preparedPending = resolved.pending;
           isPreparing = true;
           isBusy = false;
           animator.reset();
-          view.markPreparing(selectedTicket, "準備轉盤");
           updateControls();
 
-          var promise = prepareCurrent(expectedVersion, pendingBeforePrepare).finally(
-            function () {
-              if (activeOpenPromise === promise) {
-                activeOpenPromise = null;
-                activeOpenKey = "";
-              }
+          var promise = prepareCurrent(
+            expectedVersion,
+            resolved.pending,
+            false
+          ).finally(function () {
+            if (activeOpenPromise === promise) {
+              activeOpenPromise = null;
+              activeOpenKey = "";
             }
-          );
+          });
           activeOpenKey = key;
           activeOpenPromise = promise;
           return promise;
+        }
+
+        function open(ticketValue) {
+          ensureConfigured();
+          var resolved;
+          try {
+            resolved = resolveTicketSelection(ticketValue);
+          } catch (error) {
+            safeShowToast(normalizeError(error).message);
+            return Promise.resolve(false);
+          }
+
+          if (isBusy || isPreparing) {
+            safeShowToast(
+              isBusy
+                ? "轉盤正在處理抽獎，請稍候完成。"
+                : "轉盤資料仍在準備中，請稍候完成。"
+            );
+            return Promise.resolve(false);
+          }
+
+          var key = ticketKey(resolved.ticket);
+          if (
+            !workspace ||
+            !selectedType ||
+            preparedTicketKey !== key
+          ) {
+            safeShowToast("轉盤資料尚未完成準備，請重新選擇抽獎券。");
+            return Promise.resolve(false);
+          }
+
+          selectedTicket = resolved.ticket;
+          preparedPending = resolved.pending;
+          // Opening the Lottery dialog is now a local-only transition. All
+          // authoritative config loading, ticket validation, and Canvas work
+          // completed in prepareForOpen() before this point.
+          view.markPreparing(selectedTicket, selectedType.name || "準備轉盤");
+          view.markReady(selectedTicket, selectedType, preparedPending);
+          updateControls();
+          return Promise.resolve(true);
         }
 
         function refreshTickets(refreshOptions) {
@@ -484,9 +549,9 @@
             activeTicketRefresh = promise;
           }
 
-          // Ticket lists use stale-while-revalidate: release the host UI on the
-          // current snapshot immediately while the authoritative refresh remains
-          // in flight. Preparation will share that same WorkspaceService request.
+          // Ticket lists remain stale-while-revalidate. If a user selects a
+          // ticket while this refresh is in flight, prepareForOpen() joins the
+          // same WorkspaceService request before the Lottery dialog is shown.
           return Promise.resolve(options.getCurrentCardSummary());
         }
 
@@ -494,7 +559,9 @@
           ensureConfigured();
           var pending = store.read();
           if (!pending) return Promise.resolve(false);
-          return open(pending);
+          return prepareForOpen(pending).then(function (prepared) {
+            return prepared ? open(pending) : false;
+          });
         }
 
         function hasPending() {
@@ -631,6 +698,8 @@
           workspace = null;
           selectedTicket = null;
           selectedType = null;
+          preparedTicketKey = "";
+          preparedPending = false;
           view.setStatus("");
           updateControls();
 
@@ -656,6 +725,7 @@
 
         var api = Object.freeze({
           configure: configure,
+          prepareForOpen: prepareForOpen,
           open: open,
           refreshTickets: refreshTickets,
           restorePending: restorePending,
