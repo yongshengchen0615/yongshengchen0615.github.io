@@ -24,6 +24,7 @@
   var sessionConfigResponse = null;
   var sessionConfigPromise = null;
   var sessionMemberId = "";
+  var authenticatedPreloadObserver = null;
   var realFacade = null;
   var loadPromise = null;
   var prewarmPromise = null;
@@ -584,6 +585,7 @@
     var promise = ensureLoaded()
       .then(function (controller) {
         return loadSessionConfig().then(function () {
+          // Prime controller state from sessionRequest(); this does not reach GAS.
           return controller.refreshTickets({ force: true });
         });
       })
@@ -603,10 +605,60 @@
   }
 
   function prewarm() {
-    // The host calls prewarm as soon as the authenticated member card exposes
-    // an available reward. It now warms both runtime and authoritative Lottery
-    // workspace so later ticket/wheel interactions stay network-free.
+    // Existing host fast-path. The authenticated-session observer below is the
+    // general login trigger, including members who currently have zero rewards.
     return preloadSession();
+  }
+
+  function stopAuthenticatedPreloadObserver() {
+    if (!authenticatedPreloadObserver) return;
+    try {
+      authenticatedPreloadObserver.disconnect();
+    } catch (_error) {
+      // Observer cleanup is best-effort only.
+    }
+    authenticatedPreloadObserver = null;
+  }
+
+  function tryAuthenticatedSessionPreload() {
+    if (safeIsDemo()) {
+      stopAuthenticatedPreloadObserver();
+      return false;
+    }
+
+    var memberId = currentMemberId();
+    if (!memberId) return false;
+
+    stopAuthenticatedPreloadObserver();
+    preloadSession().catch(function () {
+      // preloadSession resolves false for ordinary preload failures; this catch
+      // is defensive and must not interrupt the authenticated host UI.
+    });
+    return true;
+  }
+
+  function armAuthenticatedSessionPreload() {
+    stopAuthenticatedPreloadObserver();
+    if (tryAuthenticatedSessionPreload()) return;
+
+    var documentValue = root.document;
+    var target =
+      documentValue && (documentValue.body || documentValue.documentElement);
+    if (
+      !target ||
+      typeof root.MutationObserver !== "function"
+    ) {
+      return;
+    }
+
+    authenticatedPreloadObserver = new root.MutationObserver(function () {
+      tryAuthenticatedSessionPreload();
+    });
+    authenticatedPreloadObserver.observe(target, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
   }
 
   function getPendingStorageKey() {
@@ -673,6 +725,7 @@
       request: sessionRequest,
     });
     if (realFacade) realFacade.configure(configuredOptions);
+    armAuthenticatedSessionPreload();
     return facade;
   }
 
