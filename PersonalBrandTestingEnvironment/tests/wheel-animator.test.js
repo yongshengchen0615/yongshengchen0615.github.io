@@ -153,6 +153,95 @@ test("pending spin starts without a prize and settles continuously after the aut
   assert.equal(rotor.style.transform, `rotate(${settledRotation}deg)`);
 });
 
+test("authoritative config changes redraw prizes without resetting pending rotation", async () => {
+  const factory = createFactory();
+  const frames = new Map();
+  let nextFrameId = 1;
+  let transformValue = "";
+  const transformHistory = [];
+  const style = {};
+  Object.defineProperty(style, "transform", {
+    get() {
+      return transformValue;
+    },
+    set(value) {
+      transformValue = value;
+      transformHistory.push(value);
+    },
+  });
+  const rotor = { style };
+  const runtime = {
+    matchMedia() { return { matches: false }; },
+    setTimeout(callback) { callback(); },
+    requestAnimationFrame(callback) {
+      const id = nextFrameId++;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      frames.delete(id);
+    },
+  };
+  function runFrame(timestamp) {
+    const entry = frames.entries().next().value;
+    assert.ok(entry, `expected animation frame at ${timestamp}ms`);
+    const [id, callback] = entry;
+    frames.delete(id);
+    callback(timestamp);
+  }
+
+  const animator = factory.create({
+    root: runtime,
+    rotor,
+    canvas: {},
+    renderer: { draw() { return true; } },
+  });
+  const preparedLottery = {
+    configVersion: "CFG-1",
+    prizes: [
+      { prizeId: "A" },
+      { prizeId: "B" },
+      { prizeId: "C" },
+      { prizeId: "D" },
+    ],
+  };
+  const authoritativeLottery = {
+    configVersion: "CFG-2",
+    prizes: [
+      { prizeId: "A" },
+      { prizeId: "C" },
+      { prizeId: "B" },
+      { prizeId: "D" },
+    ],
+  };
+
+  animator.prepare(preparedLottery);
+  animator.startPendingSpin();
+  runFrame(0);
+  runFrame(100);
+
+  const pendingRotation = animator.getRotation();
+  const pendingTransform = rotor.style.transform;
+  const historyLengthBeforeSettle = transformHistory.length;
+  const settlePromise = animator.settle({ prizeId: "B" }, authoritativeLottery);
+
+  assert.equal(animator.getRotation(), pendingRotation);
+  assert.equal(rotor.style.transform, pendingTransform);
+  assert.equal(
+    transformHistory.slice(historyLengthBeforeSettle).includes("rotate(0deg)"),
+    false,
+    "authoritative config refresh must not visibly reset the spinning rotor"
+  );
+
+  runFrame(100);
+  runFrame(1200);
+  runFrame(2300);
+  runFrame(3400);
+  await settlePromise;
+
+  assert.equal(((animator.getRotation() % 360) + 360) % 360, 135);
+});
+
 test("pending spin respects reduced motion and does not schedule continuous frames", () => {
   const factory = createFactory();
   let frameCalls = 0;
