@@ -337,6 +337,18 @@
     return promise;
   }
 
+  function safeIsDemo() {
+    try {
+      return Boolean(
+        configuredOptions &&
+          typeof configuredOptions.isDemo === "function" &&
+          configuredOptions.isDemo() === true
+      );
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function sessionRequest(action, fields, requestId) {
     if (action === "getLotteryConfig") {
       if (sessionConfigResponse) return Promise.resolve(sessionConfigResponse);
@@ -393,6 +405,16 @@
   }
 
   function preloadSession() {
+    if (safeIsDemo()) {
+      return ensureLoaded().then(
+        function () {
+          return true;
+        },
+        function () {
+          return false;
+        }
+      );
+    }
     if (prewarmPromise) return prewarmPromise;
     var promise = ensureLoaded()
       .then(function (controller) {
@@ -507,15 +529,18 @@
   function open(ticket) {
     var expectedOpenVersion = ++openVersion;
     var preparationDialogShown = showTicketPreparing();
-    var sessionReady = sessionConfigResponse
+    var demo = safeIsDemo();
+    var sessionReady = demo
       ? Promise.resolve(true)
-      : prewarmPromise
-        ? prewarmPromise
-        : Promise.resolve(false);
+      : sessionConfigResponse
+        ? Promise.resolve(true)
+        : prewarmPromise
+          ? prewarmPromise
+          : Promise.resolve(false);
 
     return sessionReady
       .then(function (ready) {
-        if (!ready || !sessionConfigResponse) {
+        if (!ready || (!demo && !sessionConfigResponse)) {
           throw createLoaderError(
             "LOTTERY_SESSION_NOT_READY",
             "登入時的抽獎資料尚未載入完成，請重新整理後再試。"
@@ -555,7 +580,7 @@
         ? configuredOptions.getCurrentCardSummary()
         : null;
     scheduleTicketLoadingCopy();
-    if (!sessionConfigResponse) return Promise.resolve(snapshot);
+    if (!safeIsDemo() && !sessionConfigResponse) return Promise.resolve(snapshot);
     ensureLoaded()
       .then(function (controller) {
         return controller.refreshTickets(options);
@@ -567,14 +592,17 @@
   }
 
   function restorePending() {
-    var sessionReady = sessionConfigResponse
+    var demo = safeIsDemo();
+    var sessionReady = demo
       ? Promise.resolve(true)
-      : prewarmPromise
-        ? prewarmPromise
-        : preloadSession();
+      : sessionConfigResponse
+        ? Promise.resolve(true)
+        : prewarmPromise
+          ? prewarmPromise
+          : preloadSession();
     return sessionReady
       .then(function (ready) {
-        if (!ready || !sessionConfigResponse) return false;
+        if (!ready || (!demo && !sessionConfigResponse)) return false;
         return ensureLoaded();
       })
       .then(function (controller) {
