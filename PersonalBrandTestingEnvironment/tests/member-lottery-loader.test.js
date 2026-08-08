@@ -194,6 +194,18 @@ function createHarness(options = {}) {
   };
 }
 
+function configResponse() {
+  return {
+    ok: true,
+    data: {
+      access: { allowed: true },
+      lotteryTypes: [],
+      card: { availableRewards: [], availableDraws: 0 },
+      totalPoints: 0,
+    },
+  };
+}
+
 function configure(loader, overrides = {}) {
   const summary = { availableDraws: 1, availableRewards: [] };
   loader.configure({
@@ -206,8 +218,9 @@ function configure(loader, overrides = {}) {
       message: error.message,
     }),
     showToast() {},
-    request() {
-      throw new Error("loader must not call GAS directly");
+    request(action) {
+      if (action === "getLotteryConfig") return Promise.resolve(configResponse());
+      throw new Error(`unexpected action: ${action}`);
     },
     ...overrides,
   });
@@ -278,31 +291,26 @@ test("wheel and registry start together, definitions wait for registry, and entr
   assert.equal(harness.counts().realConfigureCalls, 1);
 });
 
-test("concurrent loader calls share one module load and refresh stays stale-while-revalidate", async () => {
+test("ticket refresh before login preload stays local and does not start Lottery I/O", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   const summary = configure(loader);
 
-  const first = loader.ensureLoaded();
-  const second = loader.ensureLoaded();
-  assert.equal(first, second);
-  await Promise.all([first, second]);
-  assert.equal(harness.appendedSources.length, 13);
-
   const returned = await loader.refreshTickets({ force: true });
   assert.equal(returned, summary);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(harness.counts().realRefreshCalls, 1);
+  assert.equal(harness.appendedSources.length, 0);
+  assert.equal(harness.counts().realRefreshCalls, 0);
 });
 
-test("background prewarm is runtime-only and shares the same loader transaction", async () => {
+test("login prewarm single-flights runtime plus one authoritative config snapshot", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   let requestCalls = 0;
   configure(loader, {
-    request() {
+    request(action) {
+      assert.equal(action, "getLotteryConfig");
       requestCalls += 1;
-      return Promise.resolve({ ok: true });
+      return Promise.resolve(configResponse());
     },
   });
 
@@ -310,14 +318,17 @@ test("background prewarm is runtime-only and shares the same loader transaction"
   const second = loader.prewarm();
   assert.equal(first, second);
   assert.equal(await first, true);
-  assert.equal(requestCalls, 0);
+  assert.equal(requestCalls, 1);
   assert.equal(harness.appendedSources.length, 13);
-  assert.equal(harness.counts().realRefreshCalls, 0);
+  assert.equal(harness.counts().realRefreshCalls, 1);
   assert.equal(harness.counts().realPrepareCalls, 0);
   assert.equal(harness.counts().realOpenCalls, 0);
+  assert.ok(
+    harness.performanceEvents.some((event) => event.phase === "lottery_session_preload")
+  );
 });
 
-test("pending draw is detectable before modules load and delegates recovery after load", async () => {
+test("pending draw recovery can preload session state before delegating", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
@@ -340,32 +351,33 @@ test("pending draw is detectable before modules load and delegates recovery afte
   assert.equal(await loader.restorePending(), true);
   assert.equal(harness.counts().realRestoreCalls, 1);
   assert.equal(harness.counts().realConfigureCalls, 1);
+  assert.equal(harness.counts().realRefreshCalls, 1);
 });
 
-test("opening prepares through the real controller before local open delegation", async () => {
+test("opening after login preload prepares locally then delegates open", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
 
+  assert.equal(await loader.prewarm(), true);
   assert.equal(await loader.open(createTicket()), true);
   assert.equal(harness.counts().realPrepareCalls, 1);
   assert.equal(harness.counts().realOpenCalls, 1);
 });
 
-test("closing during lazy load prevents preparation and late real-controller open", async () => {
+test("opening before session preload fails closed without starting Lottery I/O", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
 
-  const opening = loader.open(createTicket());
-  assert.equal(loader.requestClose({ returnToTickets: true }), true);
-  assert.equal(await opening, false);
-  assert.equal(harness.counts().realConfigureCalls, 1);
+  assert.equal(await loader.open(createTicket()), false);
+  assert.equal(harness.appendedSources.length, 0);
+  assert.equal(harness.counts().realConfigureCalls, 0);
   assert.equal(harness.counts().realPrepareCalls, 0);
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
-test("closing after runtime prewarm cancels preparation and local open delegation", async () => {
+test("closing after login preload cancels queued preparation and local open delegation", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
@@ -378,20 +390,18 @@ test("closing after runtime prewarm cancels preparation and local open delegatio
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
-test("module load failure fails closed without invoking draw or request code", async () => {
+test("module load failure during login preload fails closed before any config or draw request", async () => {
   const harness = createHarness({ failSource: "lottery/draw-service.js" });
   const loader = harness.context.MemberLotteryDialog;
   let requestCalls = 0;
   configure(loader, {
     request() {
       requestCalls += 1;
-      return Promise.resolve({ ok: true });
+      return Promise.resolve(configResponse());
     },
   });
 
-  const opened = await loader.open(createTicket());
-
-  assert.equal(opened, false);
+  assert.equal(await loader.prewarm(), false);
   assert.equal(requestCalls, 0);
   assert.equal(harness.counts().realPrepareCalls, 0);
   assert.equal(harness.counts().realOpenCalls, 0);
