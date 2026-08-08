@@ -9,13 +9,17 @@ const loaderCode = fs.readFileSync(
   "utf8"
 );
 
-test("Lottery prewarm reports only privacy-safe scheduling wait data", () => {
+test("login Lottery preload no longer waits for idle scheduling", () => {
   const events = [];
-  let idleCallback = null;
-  let now = 100;
+  let idleCallbackCalls = 0;
+  const appended = [];
 
   const document = {
-    head: { appendChild() {} },
+    head: {
+      appendChild(script) {
+        appended.push(script.src);
+      },
+    },
     documentElement: null,
     createElement() {
       return {
@@ -48,15 +52,11 @@ test("Lottery prewarm reports only privacy-safe scheduling wait data", () => {
     Date,
     Math,
     CustomEvent,
-    performance: {
-      now() {
-        return now;
-      },
-    },
+    performance: { now: () => 100 },
     setTimeout,
     clearTimeout,
-    requestIdleCallback(callback) {
-      idleCallback = callback;
+    requestIdleCallback() {
+      idleCallbackCalls += 1;
       return 1;
     },
     sessionStorage: {
@@ -79,26 +79,16 @@ test("Lottery prewarm reports only privacy-safe scheduling wait data", () => {
     getMemberId: () => "MBR-ABCDEF1234",
     isDemo: () => false,
     request() {
-      throw new Error("runtime prewarm must not call GAS");
+      throw new Error("config request cannot start before runtime is loaded");
     },
   });
 
   context.MemberLotteryDialog.prewarm();
-  assert.equal(typeof idleCallback, "function");
 
-  now = 175;
-  idleCallback({ didTimeout: false, timeRemaining: () => 30 });
-
-  assert.equal(events.length, 1);
-  assert.equal(events[0].type, "persona:lottery-performance");
-  assert.deepEqual(Object.keys(events[0].detail).sort(), [
-    "durationMs",
-    "phase",
-    "source",
-  ]);
-  assert.equal(events[0].detail.phase, "lottery_runtime_prewarm_wait");
-  assert.equal(events[0].detail.durationMs, 75);
-  assert.equal(events[0].detail.source, "idle");
-  assert.equal(JSON.stringify(events[0].detail).includes("MBR-ABCDEF1234"), false);
-  assert.equal(JSON.stringify(events[0].detail).includes("2000000000-abcdefgh"), false);
+  assert.equal(idleCallbackCalls, 0);
+  assert.deepEqual(appended, ["../shared/lottery-wheel.js", "../shared/module-registry.js"]);
+  assert.equal(
+    events.some((event) => event.detail?.phase === "lottery_runtime_prewarm_wait"),
+    false
+  );
 });
