@@ -76,24 +76,49 @@
           }
         }
 
-        function validateDrawResponse(response, ticket) {
+        function normalizeDrawResponseShape(response, ticket) {
           contracts.assertSuccessfulResponse(response);
           var data = response.data;
+          var lotteryType =
+            data && data.lotteryType && typeof data.lotteryType === "object"
+              ? data.lotteryType
+              : null;
+          var lottery =
+            data && data.lottery && typeof data.lottery === "object"
+              ? data.lottery
+              : lotteryType &&
+                  lotteryType.lottery &&
+                  typeof lotteryType.lottery === "object"
+                ? lotteryType.lottery
+                : null;
+
           if (
             !data ||
             !data.draw ||
-            !data.lottery ||
-            !data.lotteryType ||
+            !lottery ||
+            !lotteryType ||
             !data.card ||
             String(data.draw.cardRoundKey || "") !== ticket.cardRoundKey ||
             String(data.draw.lotteryTypeId || "") !== ticket.lotteryTypeId ||
-            String(data.lottery.lotteryTypeId || "") !== ticket.lotteryTypeId ||
-            String(data.lotteryType.lotteryTypeId || "") !== ticket.lotteryTypeId
+            String(lottery.lotteryTypeId || "") !== ticket.lotteryTypeId ||
+            String(lotteryType.lotteryTypeId || "") !== ticket.lotteryTypeId
           ) {
             throw contracts.createError(
               "INVALID_RESPONSE",
-              "後台回傳的抽獎結果格式不完整或不一致。"
+              "後台回傳的抽獎結果缺少必要欄位，票券已保留，可安全重試。"
             );
+          }
+
+          if (!lotteryType.lottery || data.lottery !== lottery) {
+            var normalizedLotteryType = Object.assign({}, lotteryType, {
+              lottery: lottery,
+            });
+            return Object.assign({}, response, {
+              data: Object.assign({}, data, {
+                lottery: lottery,
+                lotteryType: normalizedLotteryType,
+              }),
+            });
           }
           return response;
         }
@@ -136,7 +161,7 @@
             })
             .then(function (response) {
               emitMetric("draw_lottery", startedAt);
-              return validateDrawResponse(response, ticket);
+              return normalizeDrawResponseShape(response, ticket);
             })
             .catch(function (error) {
               emitMetric("draw_lottery", startedAt);
