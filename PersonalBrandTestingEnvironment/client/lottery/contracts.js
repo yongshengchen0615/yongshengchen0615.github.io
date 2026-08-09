@@ -10,10 +10,40 @@
     var REQUEST_ID_PATTERN = /^[A-Za-z0-9-]{10,80}$/;
     var SETTING_VERSION_PATTERN = /^PCS-[A-Z0-9]{12}$/;
     var LOTTERY_TYPE_ID_PATTERN = /^LTY-[A-Z0-9]{10}$/;
+    var LOTTERY_RESPONSE_ERROR_CODE = "LOTTERY_RESPONSE_INVALID";
+
+    function emitContractError(message) {
+      if (
+        typeof root.dispatchEvent !== "function" ||
+        typeof root.CustomEvent !== "function"
+      ) {
+        return;
+      }
+      try {
+        root.dispatchEvent(
+          new root.CustomEvent("persona:lottery-contract-error", {
+            detail: Object.freeze({
+              code: LOTTERY_RESPONSE_ERROR_CODE,
+              reason: String(message || "抽獎回應格式不正確。").slice(0, 120),
+              source: "client-validator",
+            }),
+          })
+        );
+      } catch (_error) {
+        // Diagnostics must never affect Lottery behavior.
+      }
+    }
 
     function createError(code, message) {
+      var normalizedCode = String(code || "LOTTERY_ERROR");
       var error = new Error(message);
-      error.code = code;
+      if (normalizedCode === "INVALID_RESPONSE") {
+        error.code = LOTTERY_RESPONSE_ERROR_CODE;
+        error.originalCode = normalizedCode;
+        emitContractError(message);
+      } else {
+        error.code = normalizedCode;
+      }
       return error;
     }
 
@@ -88,12 +118,25 @@
       );
     }
 
+    function isRecoverableResponseError(errorValue) {
+      var code = String(
+        (errorValue && (errorValue.code || errorValue.name)) || ""
+      );
+      return (
+        code === LOTTERY_RESPONSE_ERROR_CODE ||
+        code === "INVALID_RESPONSE" ||
+        code === "BACKEND_RESPONSE_MISMATCH"
+      );
+    }
+
     return Object.freeze({
       createError: createError,
       normalizeTicket: normalizeTicket,
       normalizeRequestId: normalizeRequestId,
       assertSuccessfulResponse: assertSuccessfulResponse,
       isDefinitiveNoDrawError: isDefinitiveNoDrawError,
+      isRecoverableResponseError: isRecoverableResponseError,
+      responseErrorCode: LOTTERY_RESPONSE_ERROR_CODE,
     });
   });
 })(window);
