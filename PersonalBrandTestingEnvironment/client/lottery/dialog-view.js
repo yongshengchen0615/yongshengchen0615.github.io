@@ -140,9 +140,9 @@
             byId(id).hidden = id !== activeId;
           });
           var descriptions = {
-            "member-lottery-loading-state": "正在確認抽獎券與最新轉盤設定，尚未正式開獎。",
+            "member-lottery-loading-state": "正在載入登入時已準備的抽獎資料與轉盤畫面。",
             "member-lottery-error-state": "轉盤目前無法使用，請查看錯誤內容。",
-            "member-lottery-wheel-state": "轉盤已就緒，可點選中央正式抽獎。",
+            "member-lottery-wheel-state": "轉盤已就緒，可點選中央播放抽獎揭曉動畫。",
             "member-lottery-result-state": "抽獎結果已顯示。",
           };
           setText(
@@ -209,14 +209,14 @@
         function setPreparationStage(phase) {
           var stages = {
             loading_workspace: {
-              title: "正在取得最新獎項",
-              message: "正在同步抽獎券與非敏感轉盤設定，此階段不會開獎。",
-              status: "正在取得最新獎項…",
+              title: "正在載入抽獎資料",
+              message: "正在讀取登入時已準備的抽獎券與轉盤設定，不會再呼叫後端。",
+              status: "正在載入預先準備的抽獎資料…",
             },
             validating_ticket: {
               title: "正在確認抽獎券",
-              message: "正在確認這張券仍可使用，完成後才會開放中央抽獎按鈕。",
-              status: "正在確認抽獎券…",
+              message: "正在本機確認這張券有完整的預抽結果，完成後即可播放揭曉動畫。",
+              status: "正在確認預抽獎券…",
             },
           };
           var stage = stages[String(phase || "")];
@@ -239,20 +239,20 @@
           setText("member-lottery-loading-title", "正在準備轉盤");
           setText(
             "member-lottery-loading-message",
-            "正在驗證抽獎券並載入最新獎項；完成前不會使用抽獎券，也不會決定中獎結果。"
+            "抽獎結果已於登入時由後端完成並保存；目前只在本機建立轉盤畫面。"
           );
           setState("member-lottery-loading-state");
           byId("member-lottery-dialog").setAttribute("aria-busy", "true");
-          setStatus("正在準備轉盤…");
+          setStatus("正在準備轉盤畫面…");
           slowPreparationTimer = runtime.setTimeout(function () {
             slowPreparationTimer = 0;
             if (byId("member-lottery-loading-state").hidden) return;
-            setText("member-lottery-loading-title", "網路較慢，仍在同步最新設定");
+            setText("member-lottery-loading-title", "正在完成轉盤畫面");
             setText(
               "member-lottery-loading-message",
-              "請保持頁面開啟；目前仍只是準備階段，不會先行開獎或使用抽獎券。"
+              "所有抽獎資料已在登入時準備完成；目前僅整理本機畫面，不會再送出抽獎請求。"
             );
-            setStatus("仍在確認抽獎券與最新獎項…");
+            setStatus("正在完成本機轉盤畫面…");
           }, 1800);
         }
 
@@ -265,8 +265,8 @@
           setState("member-lottery-wheel-state");
           setStatus(
             pending
-              ? "上次抽獎請求尚待確認，點選中央使用同一次請求安全重試。"
-              : "轉盤已就緒；只有點選中央後才會正式送出抽獎請求。"
+              ? "上次揭曉動畫尚未完成，點選中央使用同一個預抽結果安全重播。"
+              : "轉盤已就緒；點選中央只會播放本機揭曉動畫，不會再呼叫後端。"
           );
           focus(byId("member-lottery-spin-button"));
         }
@@ -298,10 +298,10 @@
           setText(
             "member-lottery-error-guidance",
             pending
-              ? "抽獎請求識別碼已保留。請按「安全重試」使用同一次請求確認結果，不會重複使用抽獎券。"
+              ? "預抽結果與揭曉識別碼已保留。請按「安全重試」重新播放同一結果，不會再次抽獎。"
               : definitive
-                ? "後端已確認本次沒有完成開獎，可返回抽獎券清單查看最新狀態。"
-                : "請確認網路後重新載入；若持續失敗，請保留錯誤代碼並聯絡服務人員。"
+                ? "目前沒有可揭曉的抽獎結果，可返回抽獎券清單查看最新狀態。"
+                : "請重新整理以重新完成登入預載；若持續失敗，請保留錯誤代碼並聯絡服務人員。"
           );
           retryButton.hidden = definitive;
           setButtonLabel(retryButton, pending ? "安全重試" : "重新載入");
