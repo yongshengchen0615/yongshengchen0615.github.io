@@ -201,15 +201,11 @@ function createHarness({ initialPending = false, deferDraw = false } = {}) {
         prepare() {
           viewEvents.push("prepare-wheel");
         },
-        startPendingSpin() {
-          viewEvents.push("pending-spin");
-          return true;
-        },
         reset() {
           viewEvents.push("reset-wheel");
         },
         settle() {
-          viewEvents.push("settle");
+          viewEvents.push("reveal-spin");
           return Promise.resolve();
         },
         stop() {
@@ -379,7 +375,7 @@ test("prepare-for-open loads the latest config while dialog open stays local-onl
   assert.ok(harness.viewEvents.includes("ready"));
 });
 
-test("central spin creates the request id, starts pending motion, calls drawLottery once, then settles", async () => {
+test("central reveal creates one request id and starts motion only after the prepared result resolves", async () => {
   const harness = createHarness();
   await harness.controller.prepareForOpen(harness.ticket);
   await harness.controller.open(harness.ticket);
@@ -387,7 +383,8 @@ test("central spin creates the request id, starts pending motion, calls drawLott
   harness.handlers().onSpin();
   assert.equal(harness.requestCalls[1].action, "drawLottery");
   assert.equal(harness.requestCalls[1].requestId, "request-0001");
-  assert.ok(harness.viewEvents.includes("pending-spin"));
+  assert.equal(harness.viewEvents.includes("reveal-spin"), false);
+
   await flush();
   await flush();
 
@@ -395,13 +392,13 @@ test("central spin creates the request id, starts pending motion, calls drawLott
     harness.requestCalls.map((call) => call.action),
     ["getLotteryConfig", "drawLottery"]
   );
-  assert.ok(harness.viewEvents.includes("settle"));
+  assert.ok(harness.viewEvents.includes("reveal-spin"));
   assert.ok(harness.viewEvents.includes("result"));
   assert.equal(harness.pending(), null);
   assert.equal(harness.controller.canClose(), true);
 });
 
-test("pending motion is immediate while a slow authoritative draw is still unresolved", async () => {
+test("a slow prepared-result adapter keeps the wheel stationary until the result is available", async () => {
   const harness = createHarness({ deferDraw: true });
   await harness.controller.prepareForOpen(harness.ticket);
   await harness.controller.open(harness.ticket);
@@ -413,8 +410,7 @@ test("pending motion is immediate while a slow authoritative draw is still unres
     1
   );
   assert.equal(harness.pending().requestId, "request-0001");
-  assert.ok(harness.viewEvents.includes("pending-spin"));
-  assert.equal(harness.viewEvents.includes("settle"), false);
+  assert.equal(harness.viewEvents.includes("reveal-spin"), false);
   assert.equal(harness.viewEvents.includes("result"), false);
   assert.equal(harness.controller.canClose(), false);
 
@@ -422,36 +418,39 @@ test("pending motion is immediate while a slow authoritative draw is still unres
   await flush();
   await flush();
 
-  assert.ok(
-    harness.viewEvents.indexOf("pending-spin") < harness.viewEvents.indexOf("settle")
-  );
+  assert.ok(harness.viewEvents.includes("reveal-spin"));
   assert.ok(harness.viewEvents.includes("result"));
+  assert.ok(
+    harness.viewEvents.indexOf("reveal-spin") < harness.viewEvents.indexOf("result")
+  );
 });
 
-test("rapid duplicate spin clicks cannot create a second draw request", async () => {
+test("rapid duplicate reveal clicks cannot create a second prepared-result request", async () => {
   const harness = createHarness({ deferDraw: true });
   await harness.controller.prepareForOpen(harness.ticket);
   await harness.controller.open(harness.ticket);
 
   harness.handlers().onSpin();
   harness.handlers().onSpin();
-  await flush();
+
   assert.equal(
     harness.requestCalls.filter((call) => call.action === "drawLottery").length,
     1
   );
-  assert.equal(
-    harness.viewEvents.filter((event) => event === "pending-spin").length,
-    1
-  );
+  assert.equal(harness.viewEvents.includes("reveal-spin"), false);
 
   harness.resolveDeferredDraw();
   await flush();
   await flush();
+
+  assert.equal(
+    harness.viewEvents.filter((event) => event === "reveal-spin").length,
+    1
+  );
   assert.ok(harness.viewEvents.includes("result"));
 });
 
-test("a restored pending request is prepared read-only and reuses its request id on spin", async () => {
+test("a restored pending reveal reuses its request id and replays the same prepared result", async () => {
   const harness = createHarness({ initialPending: true });
   await harness.controller.restorePending();
 
@@ -463,11 +462,14 @@ test("a restored pending request is prepared read-only and reuses its request id
   assert.equal(harness.controller.canClose(), false);
 
   harness.handlers().onSpin();
-  assert.ok(harness.viewEvents.includes("pending-spin"));
+  assert.equal(harness.viewEvents.includes("reveal-spin"), false);
   await flush();
   await flush();
+
   assert.equal(harness.requestCalls[1].action, "drawLottery");
   assert.equal(harness.requestCalls[1].requestId, "request-existing");
+  assert.ok(harness.viewEvents.includes("reveal-spin"));
+  assert.ok(harness.viewEvents.includes("result"));
   assert.equal(harness.pending(), null);
 });
 
