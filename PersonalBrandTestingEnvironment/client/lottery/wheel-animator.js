@@ -8,12 +8,11 @@
     "lottery.wheel-animator",
     ["lottery.contracts"],
     function (contracts) {
-      var INITIAL_DEGREES_PER_MS = 1.45;
-      var PENDING_DEGREES_PER_MS = 1.45;
-      var FINAL_SPIN_TURNS = 3;
-      var MIN_DURATION_MS = 2200;
-      var MAX_DURATION_MS = 3200;
-      var MAX_PENDING_FRAME_DELTA_MS = 64;
+      var FULL_SPIN_TURNS = 8;
+      var ACCEL_DURATION_MS = 320;
+      var CRUISE_DURATION_MS = 760;
+      var DECEL_DURATION_MS = 2400;
+      var REDUCED_MOTION_DELAY_MS = 30;
 
       function create(options) {
         options = options && typeof options === "object" ? options : {};
@@ -39,9 +38,7 @@
         }
 
         var rotation = 0;
-        var pendingFrame = 0;
-        var pendingLastTime = null;
-        var settlingFrame = 0;
+        var animationFrame = 0;
         var animationVersion = 0;
         var preparedConfigVersion = "";
         var preparedTargets = Object.create(null);
@@ -110,14 +107,9 @@
         }
 
         function stop() {
-          if (pendingFrame) {
-            runtime.cancelAnimationFrame(pendingFrame);
-            pendingFrame = 0;
-          }
-          pendingLastTime = null;
-          if (settlingFrame) {
-            runtime.cancelAnimationFrame(settlingFrame);
-            settlingFrame = 0;
+          if (animationFrame) {
+            runtime.cancelAnimationFrame(animationFrame);
+            animationFrame = 0;
           }
           setCompositingHint(false);
           animationVersion += 1;
@@ -168,48 +160,14 @@
           return prepareLottery(lotteryValue, true);
         }
 
-        function startPendingSpin() {
-          stop();
-          if (
-            prefersReducedMotion() ||
-            typeof runtime.requestAnimationFrame !== "function"
-          ) {
-            return false;
-          }
-
-          var currentVersion = animationVersion;
-          pendingLastTime = null;
-          setCompositingHint(true);
-
-          function spin(timestamp) {
-            if (currentVersion !== animationVersion) return;
-            if (pendingLastTime === null) pendingLastTime = timestamp;
-            var elapsed = Math.max(
-              0,
-              Math.min(
-                MAX_PENDING_FRAME_DELTA_MS,
-                Number(timestamp) - Number(pendingLastTime)
-              )
-            );
-            pendingLastTime = timestamp;
-            rotation += PENDING_DEGREES_PER_MS * elapsed;
-            renderRotation(rotation);
-            pendingFrame = runtime.requestAnimationFrame(spin);
-          }
-
-          pendingFrame = runtime.requestAnimationFrame(spin);
-          return true;
-        }
-
         function calculateTarget(drawResult, lottery) {
           var configVersion = String(lottery.configVersion || "");
           if (
             preparedConfigVersion !== configVersion ||
             preparedTargets[String(drawResult.prizeId || "")] == null
           ) {
-            // An authoritative draw may return a newer config than the READY
-            // snapshot. Refresh the Canvas/target mapping without resetting the
-            // rotor so pending motion remains visually continuous.
+            // Scheme B already knows the authoritative prepared result before
+            // motion starts. If its config differs, redraw once while stationary.
             prepareLottery(lottery, false);
           }
           var currentModulo = ((rotation % 360) + 360) % 360;
@@ -221,15 +179,26 @@
             );
           }
           var alignment = (desiredModulo - currentModulo + 360) % 360;
-          return rotation + 360 * FINAL_SPIN_TURNS + alignment;
+          return rotation + 360 * FULL_SPIN_TURNS + alignment;
         }
 
-        function settle(drawResult, lotteryValue) {
+        // Smoothstep velocity ramp integral. The velocity itself is
+        // 3u^2 - 2u^3, so this integral gives continuous position and velocity.
+        function rampDistance(u) {
+          return u * u * u - 0.5 * u * u * u * u;
+        }
+
+        function decelDistance(u) {
+          return u - u * u * u + 0.5 * u * u * u * u;
+        }
+
+        function spinTo(drawResult, lotteryValue) {
           var lottery =
             lotteryValue && typeof lotteryValue === "object"
               ? lotteryValue
               : {};
           stop();
+
           var startRotation = rotation;
           var targetRotation;
           try {
@@ -238,54 +207,100 @@
           } catch (error) {
             return Promise.reject(error);
           }
+
           var currentVersion = animationVersion;
           var rotationDelta = targetRotation - startRotation;
+          var startedMetricAt = performanceNow();
 
-          setStatus("轉盤旋轉中，請稍候結果…");
-          if (prefersReducedMotion()) {
+          setStatus("正在揭曉抽獎結果…");
+          if (
+            prefersReducedMotion() ||
+            typeof runtime.requestAnimationFrame !== "function"
+          ) {
             rotation = targetRotation;
             renderRotation(rotation);
             setCompositingHint(false);
+            emitMetric("wheel_reveal", startedMetricAt);
             return new Promise(function (resolve) {
               runtime.setTimeout(function () {
                 if (currentVersion === animationVersion) resolve();
-              }, 30);
+              }, REDUCED_MOTION_DELAY_MS);
             });
           }
 
+          var weightedDuration =
+            0.5 * ACCEL_DURATION_MS +
+            CRUISE_DURATION_MS +
+            0.5 * DECEL_DURATION_MS;
+          var peakVelocity = rotationDelta / weightedDuration;
+          var accelDistance = 0.5 * peakVelocity * ACCEL_DURATION_MS;
+          var cruiseDistance = peakVelocity * CRUISE_DURATION_MS;
+          var totalDuration =
+            ACCEL_DURATION_MS + CRUISE_DURATION_MS + DECEL_DURATION_MS;
+
           setCompositingHint(true);
-          var duration = Math.min(
-            MAX_DURATION_MS,
-            Math.max(
-              MIN_DURATION_MS,
-              (3 * rotationDelta) / INITIAL_DEGREES_PER_MS
-            )
-          );
           return new Promise(function (resolve) {
             var startedAt = null;
 
-            function decelerate(timestamp) {
+            function animate(timestamp) {
               if (currentVersion !== animationVersion) return;
               if (startedAt === null) startedAt = timestamp;
-              var progress = Math.min(1, (timestamp - startedAt) / duration);
-              var eased = 1 - Math.pow(1 - progress, 3);
-              rotation = startRotation + rotationDelta * eased;
+
+              var elapsed = Math.max(
+                0,
+                Math.min(totalDuration, Number(timestamp) - Number(startedAt))
+              );
+              var travelled;
+
+              if (elapsed <= ACCEL_DURATION_MS) {
+                var accelProgress = elapsed / ACCEL_DURATION_MS;
+                travelled =
+                  peakVelocity *
+                  ACCEL_DURATION_MS *
+                  rampDistance(accelProgress);
+              } else if (elapsed <= ACCEL_DURATION_MS + CRUISE_DURATION_MS) {
+                travelled =
+                  accelDistance +
+                  peakVelocity * (elapsed - ACCEL_DURATION_MS);
+              } else {
+                var decelElapsed =
+                  elapsed - ACCEL_DURATION_MS - CRUISE_DURATION_MS;
+                var decelProgress = Math.min(
+                  1,
+                  decelElapsed / DECEL_DURATION_MS
+                );
+                travelled =
+                  accelDistance +
+                  cruiseDistance +
+                  peakVelocity *
+                    DECEL_DURATION_MS *
+                    decelDistance(decelProgress);
+              }
+
+              rotation = startRotation + travelled;
               renderRotation(rotation);
 
-              if (progress < 1) {
-                settlingFrame = runtime.requestAnimationFrame(decelerate);
+              if (elapsed < totalDuration) {
+                animationFrame = runtime.requestAnimationFrame(animate);
                 return;
               }
 
-              settlingFrame = 0;
+              animationFrame = 0;
               rotation = targetRotation;
               renderRotation(rotation);
               setCompositingHint(false);
+              emitMetric("wheel_reveal", startedMetricAt);
               resolve();
             }
 
-            settlingFrame = runtime.requestAnimationFrame(decelerate);
+            animationFrame = runtime.requestAnimationFrame(animate);
           });
+        }
+
+        // Compatibility alias for older callers/tests while the public flow moves
+        // to the clearer Scheme-B name.
+        function settle(drawResult, lotteryValue) {
+          return spinTo(drawResult, lotteryValue);
         }
 
         function getRotation() {
@@ -295,7 +310,7 @@
         return Object.freeze({
           draw: draw,
           prepare: prepare,
-          startPendingSpin: startPendingSpin,
+          spinTo: spinTo,
           reset: reset,
           settle: settle,
           stop: stop,
