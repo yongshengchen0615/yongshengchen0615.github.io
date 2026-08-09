@@ -58,6 +58,24 @@
           }
         }
 
+        function emitDrawStart() {
+          if (
+            typeof root.dispatchEvent !== "function" ||
+            typeof root.CustomEvent !== "function"
+          ) {
+            return;
+          }
+          try {
+            root.dispatchEvent(
+              new root.CustomEvent("persona:lottery-draw-start", {
+                detail: Object.freeze({ phase: "requesting_result" }),
+              })
+            );
+          } catch (_error) {
+            // Motion diagnostics must never block the authoritative draw.
+          }
+        }
+
         function validateDrawResponse(response, ticket) {
           contracts.assertSuccessfulResponse(response);
           var data = response.data;
@@ -103,6 +121,10 @@
           var startedAt = performanceNow();
           var promise = Promise.resolve()
             .then(function () {
+              // The central button is the transaction boundary. Motion starts
+              // immediately, while this same persistent request id is sent to
+              // the authoritative backend exactly once/replayed on retry.
+              emitDrawStart();
               return options.request(
                 "drawLottery",
                 {
