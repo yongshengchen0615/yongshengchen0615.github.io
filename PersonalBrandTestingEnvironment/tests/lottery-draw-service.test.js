@@ -8,6 +8,10 @@ const source = fs.readFileSync(
   path.resolve(__dirname, "../client/lottery/draw-service.js"),
   "utf8"
 );
+const contractsSource = fs.readFileSync(
+  path.resolve(__dirname, "../client/lottery/contracts.js"),
+  "utf8"
+);
 
 class Registry {
   constructor() {
@@ -78,6 +82,41 @@ function createFactory() {
   return registry.get("lottery.draw-service");
 }
 
+function createContractsHarness() {
+  const registry = new Registry();
+  const events = [];
+  class CustomEvent {
+    constructor(type, options = {}) {
+      this.type = type;
+      this.detail = options.detail;
+    }
+  }
+  const window = {
+    PersonaModules: registry,
+    CustomEvent,
+    dispatchEvent(event) {
+      events.push(event);
+    },
+  };
+  window.window = window;
+  vm.runInContext(
+    contractsSource,
+    vm.createContext({
+      window,
+      Array,
+      Boolean,
+      Date,
+      Error,
+      Math,
+      Number,
+      Object,
+      RegExp,
+      String,
+    })
+  );
+  return { contracts: registry.get("lottery.contracts"), events };
+}
+
 function ticket() {
   return {
     lotteryTypeId: "LTY-A",
@@ -144,6 +183,63 @@ test("draw starts only when draw service is invoked and coalesces rapid repeats"
   assert.equal(typeof resolveRequest, "function");
   resolveRequest(drawResponse());
   await first;
+});
+
+test("draw response accepts nested lottery config when the duplicate top-level field is absent", async () => {
+  const factory = createFactory();
+  const store = createStore();
+  const service = factory.create({
+    store,
+    request() {
+      const response = drawResponse();
+      response.data.lotteryType.lottery = response.data.lottery;
+      delete response.data.lottery;
+      return Promise.resolve(response);
+    },
+    workspaceService: { invalidate() {} },
+  });
+
+  const response = await service.draw(ticket());
+  assert.equal(response.data.lottery.lotteryTypeId, "LTY-A");
+  assert.equal(response.data.lotteryType.lottery.lotteryTypeId, "LTY-A");
+});
+
+test("draw response accepts top-level lottery config and fills the nested copy", async () => {
+  const factory = createFactory();
+  const store = createStore();
+  const service = factory.create({
+    store,
+    request() {
+      return Promise.resolve(drawResponse());
+    },
+    workspaceService: { invalidate() {} },
+  });
+
+  const response = await service.draw(ticket());
+  assert.equal(response.data.lottery.lotteryTypeId, "LTY-A");
+  assert.equal(response.data.lotteryType.lottery.lotteryTypeId, "LTY-A");
+});
+
+test("an incomplete draw response preserves the pending request for safe retry", async () => {
+  const factory = createFactory();
+  const store = createStore();
+  const service = factory.create({
+    store,
+    request() {
+      const response = drawResponse();
+      delete response.data.lottery;
+      return Promise.resolve(response);
+    },
+    workspaceService: { invalidate() {} },
+  });
+
+  await assert.rejects(
+    service.draw(ticket()),
+    (error) =>
+      error.code === "INVALID_RESPONSE" &&
+      /票券已保留/.test(error.message)
+  );
+  assert.equal(store.read().requestId, "request-0001");
 });
 
 test("an ambiguous network failure keeps the same request id for safe retry", async () => {
@@ -217,4 +313,25 @@ test("completion clears pending request and invalidates cached workspace", async
   service.complete();
   assert.equal(store.read(), null);
   assert.equal(invalidations, 1);
+});
+
+test("lottery contract validation keeps the precise reason and emits a privacy-safe diagnostic", () => {
+  const { contracts, events } = createContractsHarness();
+  const error = contracts.createError(
+    "INVALID_RESPONSE",
+    "後台回傳的抽獎結果缺少必要欄位，票券已保留，可安全重試。"
+  );
+
+  assert.equal(error.code, "LOTTERY_RESPONSE_INVALID");
+  assert.equal(error.originalCode, "INVALID_RESPONSE");
+  assert.equal(contracts.isRecoverableResponseError(error), true);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "persona:lottery-contract-error");
+  assert.equal(events[0].detail.code, "LOTTERY_RESPONSE_INVALID");
+  assert.equal(events[0].detail.source, "client-validator");
+  assert.match(events[0].detail.reason, /票券已保留/);
+  assert.deepEqual(
+    Object.keys(events[0].detail).sort(),
+    ["code", "reason", "source"]
+  );
 });
