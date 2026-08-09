@@ -588,7 +588,8 @@
     }
 
     var memberId = currentMemberId();
-    if (sessionPrepared && memberId && sessionMemberId === memberId) {
+    if (!memberId) return Promise.resolve(false);
+    if (sessionPrepared && sessionMemberId === memberId) {
       return Promise.resolve(true);
     }
 
@@ -761,15 +762,17 @@
     // page was closed.
     var preparationDialogShown = memberReady ? showTicketPreparing() : false;
 
-    var sessionReady = demo
-      ? ensureLoaded().then(function () {
-          return true;
-        })
-      : sessionPrepared && sessionMemberId === currentMemberId()
-        ? Promise.resolve(true)
-        : prewarmPromise
-          ? prewarmPromise
-          : preloadSession();
+    var sessionReady = !memberReady
+      ? Promise.resolve(false)
+      : demo
+        ? ensureLoaded().then(function () {
+            return true;
+          })
+        : sessionPrepared && sessionMemberId === currentMemberId()
+          ? Promise.resolve(true)
+          : prewarmPromise
+            ? prewarmPromise
+            : preloadSession();
 
     return Promise.resolve(sessionReady)
       .then(function (ready) {
@@ -814,15 +817,18 @@
 
   function restorePending() {
     var demo = safeIsDemo();
-    var sessionReady = demo
-      ? ensureLoaded().then(function () {
-          return true;
-        })
-      : sessionPrepared && sessionMemberId === currentMemberId()
-        ? Promise.resolve(true)
-        : prewarmPromise
-          ? prewarmPromise
-          : preloadSession();
+    var memberReady = demo || Boolean(currentMemberId());
+    var sessionReady = !memberReady
+      ? Promise.resolve(false)
+      : demo
+        ? ensureLoaded().then(function () {
+            return true;
+          })
+        : sessionPrepared && sessionMemberId === currentMemberId()
+          ? Promise.resolve(true)
+          : prewarmPromise
+            ? prewarmPromise
+            : preloadSession();
     return Promise.resolve(sessionReady)
       .then(function (ready) {
         if (!ready || (!demo && !sessionPrepared)) return false;
