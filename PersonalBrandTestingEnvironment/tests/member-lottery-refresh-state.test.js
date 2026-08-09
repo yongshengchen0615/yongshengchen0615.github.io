@@ -69,6 +69,13 @@ function createHarness() {
     document,
     MemberApi: {},
     LotteryWheel: {},
+    sessionStorage: {
+      getItem() {
+        return null;
+      },
+      setItem() {},
+      removeItem() {},
+    },
     addEventListener(name, callback) {
       listeners.set(name, callback);
     },
@@ -83,9 +90,15 @@ function createHarness() {
     source,
     vm.createContext({
       window,
+      Array,
+      Boolean,
       Error,
+      JSON,
+      Math,
+      Number,
       Object,
       Promise,
+      RegExp,
       String,
     })
   );
@@ -112,12 +125,15 @@ function createHarness() {
   };
 }
 
-test("composition root preserves the existing MemberLotteryDialog facade", () => {
+test("composition root wraps the existing MemberLotteryDialog controller", () => {
   const harness = createHarness();
-  assert.equal(harness.window.MemberLotteryDialog, harness.controller);
+  assert.notEqual(harness.window.MemberLotteryDialog, harness.controller);
+  assert.equal(typeof harness.window.MemberLotteryDialog.configure, "function");
+  assert.equal(typeof harness.window.MemberLotteryDialog.prepareForOpen, "function");
+  assert.equal(typeof harness.window.MemberLotteryDialog.open, "function");
 });
 
-test("background loading reasserts truthful sync state after host releases ticket buttons", () => {
+test("background loading reasserts truthful prepared-reveal state after host releases ticket buttons", () => {
   const harness = createHarness();
 
   harness.emit({
@@ -137,12 +153,12 @@ test("background loading reasserts truthful sync state after host releases ticke
   assert.equal(harness.dialog.getAttribute("aria-busy"), "true");
   assert.equal(
     harness.status.textContent,
-    "正在背景同步最新抽獎券；若現在選擇票券，會先完成轉盤準備再開啟。"
+    "正在整理登入時預載的抽獎資料…"
   );
   assert.equal(harness.status.dataset.tone, "loading");
 });
 
-test("ready and error states settle aria-busy without disabling selection", () => {
+test("ready and error states describe zero-GAS reveal behavior", () => {
   const harness = createHarness();
 
   harness.emit({
@@ -155,7 +171,7 @@ test("ready and error states settle aria-busy without disabling selection", () =
   assert.equal(harness.dialog.getAttribute("aria-busy"), "false");
   assert.equal(
     harness.status.textContent,
-    "最新抽獎券狀態已同步，可直接選擇票券。"
+    "抽獎資料已完成登入預載；開券與轉盤動畫不會再呼叫後端。"
   );
   assert.equal(harness.status.dataset.tone, "ready");
 
@@ -167,9 +183,8 @@ test("ready and error states settle aria-busy without disabling selection", () =
   });
   harness.runTimers();
   assert.equal(harness.dialog.getAttribute("aria-busy"), "false");
-  assert.match(harness.status.textContent, /選擇票券後/);
-  assert.match(harness.status.textContent, /安全驗證/);
-  assert.match(harness.status.textContent, /再開啟轉盤/);
+  assert.match(harness.status.textContent, /登入預載暫時失敗/);
+  assert.match(harness.status.textContent, /重新整理/);
   assert.equal(harness.status.dataset.tone, "warning");
 });
 
@@ -218,7 +233,7 @@ test("a fast ready event cancels the queued loading copy to avoid flicker", () =
   assert.equal(harness.dialog.getAttribute("aria-busy"), "false");
   assert.equal(
     harness.status.textContent,
-    "最新抽獎券狀態已同步，可直接選擇票券。"
+    "抽獎資料已完成登入預載；開券與轉盤動畫不會再呼叫後端。"
   );
   assert.equal(harness.status.dataset.tone, "ready");
 });
