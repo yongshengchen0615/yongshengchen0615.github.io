@@ -34,16 +34,17 @@ test("workspace service bounds stale preview reuse without weakening explicit re
   assert.match(source, /persona:lottery-performance/);
 });
 
-test("preparation UI states explicitly say no draw occurs before ready", () => {
+test("preparation UI states describe local prepared-result rendering", () => {
   const source = read("client/lottery/dialog-view.js");
 
   [
     "正在確認抽獎券",
-    "正在取得最新獎項",
-    "此階段不會開獎",
-    "不會使用抽獎券",
-    "只有點選中央後才會正式送出抽獎請求",
+    "正在載入抽獎資料",
+    "登入時已準備",
+    "不會再呼叫後端",
+    "本機揭曉動畫",
   ].forEach((text) => assert.match(source, new RegExp(text)));
+  assert.doesNotMatch(source, /只有點選中央後才會正式送出抽獎請求/);
   assert.match(source, /ticket_to_ready/);
   assert.match(source, /persona:lottery-phase/);
 });
@@ -56,7 +57,7 @@ test("canvas preparation reports bounded diagnostics without backend calls", () 
   assert.doesNotMatch(source, /getLotteryConfig|drawLottery/);
 });
 
-test("wheel click delegates mutation to draw service without reloading config", () => {
+test("wheel click delegates to the local prepared-result adapter without reloading config", () => {
   const source = read("client/lottery/dialog-controller.js");
   const handleSpin = source.slice(
     source.indexOf("function handleSpin"),
