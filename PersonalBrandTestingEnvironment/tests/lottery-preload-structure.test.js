@@ -82,9 +82,18 @@ test("dialog controller reaches READY from preparation and invokes DrawService o
   assert.doesNotMatch(spinBody, /getLotteryConfig|options\.request/);
 });
 
-test("V2 composition root remains current while HTML loads only the lazy facade", () => {
+test("V2 composition root pre-draws during login preload and keeps HTML on the lazy facade", () => {
   assert.match(bootstrap, /registry\.get\(["']lottery\.dialog-controller["']\)/);
-  assert.match(bootstrap, /root\.MemberLotteryDialog\s*=\s*controllerFactory\.create/);
+  assert.match(bootstrap, /createPreparedFacade\(controllerFactory\)/);
+  assert.match(bootstrap, /sourceRequest\(\s*["']drawLottery["']/);
+  assert.match(
+    bootstrap,
+    /if \(action === ["']drawLottery["'] && !safeIsDemo\(\)\)/
+  );
+  assert.match(
+    bootstrap,
+    /root\.MemberLotteryDialog\s*=\s*createPreparedFacade\(controllerFactory\)/
+  );
   assert.match(memberHtml, /src=["']member-lottery-loader\.js["']/);
   assert.doesNotMatch(memberHtml, /src=["']lottery\/draw-service\.js["']/);
   assert.match(loader, /"lottery\/draw-service\.js"/);
