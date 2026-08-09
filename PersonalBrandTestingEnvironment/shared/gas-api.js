@@ -128,6 +128,28 @@
     }
   }
 
+  function emitContractError(reason) {
+    if (
+      typeof window.dispatchEvent !== "function" ||
+      typeof window.CustomEvent !== "function"
+    ) {
+      return;
+    }
+    try {
+      window.dispatchEvent(
+        new window.CustomEvent("persona:api-contract-error", {
+          detail: Object.freeze({
+            code: "BACKEND_RESPONSE_MISMATCH",
+            reason: String(reason || "invalid_envelope").slice(0, 80),
+            source: "gas-transport",
+          }),
+        })
+      );
+    } catch (_error) {
+      // Contract diagnostics are best-effort and contain no response payload.
+    }
+  }
+
   function sendRequest(options) {
     options = options || {};
     var requestId =
@@ -359,8 +381,26 @@
   }
 
   function validateResponseEnvelope(result, requestId) {
-    if (!result || typeof result !== "object" || result.requestId !== requestId) {
-      throw createError("INVALID_RESPONSE", "無法確認 GAS 回應與本次請求相符。");
+    if (!result || typeof result !== "object" || Array.isArray(result)) {
+      emitContractError("response_not_object");
+      throw createError(
+        "BACKEND_RESPONSE_MISMATCH",
+        "GAS 回應不是可辨識的資料物件，請安全重試。"
+      );
+    }
+    if (result.requestId !== requestId) {
+      emitContractError("request_id_mismatch");
+      throw createError(
+        "BACKEND_RESPONSE_MISMATCH",
+        "無法確認 GAS 回應與本次請求相符，已保留原請求識別碼。"
+      );
+    }
+    if (typeof result.ok !== "boolean") {
+      emitContractError("missing_ok_flag");
+      throw createError(
+        "BACKEND_RESPONSE_MISMATCH",
+        "GAS 回應缺少處理狀態，請安全重試。"
+      );
     }
     return result;
   }
