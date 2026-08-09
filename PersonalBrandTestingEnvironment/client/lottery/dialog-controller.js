@@ -492,27 +492,22 @@
           if (isBusy || isPreparing) {
             safeShowToast(
               isBusy
-                ? "轉盤正在處理抽獎，請稍候完成。"
+                ? "轉盤正在處理揭曉，請稍候完成。"
                 : "轉盤資料仍在準備中，請稍候完成。"
             );
             return Promise.resolve(false);
           }
 
           var key = ticketKey(resolved.ticket);
-          if (
-            !workspace ||
-            !selectedType ||
-            preparedTicketKey !== key
-          ) {
+          if (!workspace || !selectedType || preparedTicketKey !== key) {
             safeShowToast("轉盤資料尚未完成準備，請重新選擇抽獎券。");
             return Promise.resolve(false);
           }
 
           selectedTicket = resolved.ticket;
           preparedPending = resolved.pending;
-          // Opening the Lottery dialog is now a local-only transition. All
-          // authoritative config loading, ticket validation, and Canvas work
-          // completed in prepareForOpen() before this point.
+          // Opening the Lottery dialog is local-only. Scheme B has already
+          // completed backend prize selection and persistence during preload.
           view.markPreparing(selectedTicket, selectedType.name || "準備轉盤");
           view.markReady(selectedTicket, selectedType, preparedPending);
           updateControls();
@@ -549,9 +544,8 @@
             activeTicketRefresh = promise;
           }
 
-          // Ticket lists remain stale-while-revalidate. If a user selects a
-          // ticket while this refresh is in flight, prepareForOpen() joins the
-          // same WorkspaceService request before the Lottery dialog is shown.
+          // Ticket lists remain stale-while-revalidate. In Scheme B the outer
+          // prepared facade turns this workspace read into local prepared state.
           return Promise.resolve(options.getCurrentCardSummary());
         }
 
@@ -590,30 +584,19 @@
           isBusy = true;
           view.setStatus(
             pendingBeforeDraw
-              ? "正在使用同一次請求安全重試，不會重複使用抽獎券…"
-              : "正在向後端確認本次抽獎結果…"
+              ? "正在重新播放同一個預抽結果…"
+              : "正在揭曉抽獎結果…"
           );
           updateControls();
 
           var drawPromise;
-          var drawStarted = false;
           try {
-            // DrawService / DemoProvider creates or reuses the persistent request ID
-            // synchronously before the network request is scheduled.
+            // DrawService still owns the persistent reveal request id. In
+            // production Scheme B its request adapter resolves from the local
+            // prepared result and does not contact GAS during this flow.
             drawPromise = performDraw();
-            drawStarted = true;
           } catch (error) {
             drawPromise = Promise.reject(error);
-          }
-
-          if (drawStarted) {
-            try {
-              // This animation has no prize input. It only fills the unavoidable
-              // server-authoritative round-trip with immediate visual feedback.
-              animator.startPendingSpin();
-            } catch (_animationError) {
-              // Presentation failure must never cancel or duplicate an in-flight draw.
-            }
           }
 
           Promise.resolve(drawPromise)
@@ -625,10 +608,10 @@
                 selectedTicket
               );
               if (result.selectedType.lottery.configVersion !== preparedConfigVersion) {
-                view.setStatus("獎項設定已更新，正在使用本次開獎的最新版本…");
+                view.setStatus("預抽獎項設定已更新，正在重新建立轉盤並揭曉…");
               }
               return animator
-                .settle(result.draw, result.selectedType.lottery)
+                .spinTo(result.draw, result.selectedType.lottery)
                 .then(function () {
                   return result;
                 });
@@ -684,8 +667,8 @@
               isPreparing
                 ? "轉盤正在準備中，完成前請勿關閉。"
                 : isBusy
-                  ? "抽獎正在處理中，請稍候完成。"
-                  : "抽獎請求尚未確認，請先安全重試完成本次抽獎。"
+                  ? "揭曉動畫正在播放中，請稍候完成。"
+                  : "揭曉結果尚未完成，請先安全重試同一結果。"
             );
             return false;
           }
@@ -717,8 +700,8 @@
               isPreparing
                 ? "轉盤正在準備中，完成前請勿關閉。"
                 : isBusy
-                  ? "抽獎正在處理中，請稍候完成。"
-                  : "抽獎請求尚未確認，請先安全重試完成本次抽獎。"
+                  ? "揭曉動畫正在播放中，請稍候完成。"
+                  : "揭曉結果尚未完成，請先安全重試同一結果。"
             );
           },
         });
