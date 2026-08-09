@@ -89,10 +89,20 @@ test("stale ticket recovery can update the host snapshot without an extra reques
   );
 });
 
-test("v2 composition root only publishes the existing public facade", () => {
+test("v2 composition root adds login-time prepared reveals around the existing controller", () => {
   assert.match(bootstrap, /registry\.get\(["']lottery\.dialog-controller["']\)/);
-  assert.match(bootstrap, /root\.MemberLotteryDialog\s*=\s*controllerFactory\.create/);
-  assert.doesNotMatch(bootstrap, /getLotteryConfig|drawLottery|sessionStorage/);
+  assert.match(bootstrap, /createPreparedFacade\(controllerFactory\)/);
+  assert.match(bootstrap, /sourceRequest\(\s*["']drawLottery["']/);
+  assert.match(
+    bootstrap,
+    /if \(action === ["']drawLottery["'] && !safeIsDemo\(\)\)[\s\S]*findPrepared/
+  );
+  assert.match(bootstrap, /persona-member-lottery-prepared:/);
+  assert.match(bootstrap, /sessionStorage/);
+  assert.match(
+    bootstrap,
+    /root\.MemberLotteryDialog\s*=\s*createPreparedFacade\(controllerFactory\)/
+  );
 });
 
 test("internal lottery modules register through PersonaModules without new globals", () => {
