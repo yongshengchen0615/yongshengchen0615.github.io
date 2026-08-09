@@ -24,6 +24,7 @@
   var sessionConfigResponse = null;
   var sessionConfigPromise = null;
   var sessionMemberId = "";
+  var sessionPrepared = false;
   var authenticatedPreloadObserver = null;
   var realFacade = null;
   var loadPromise = null;
@@ -251,7 +252,7 @@
 
     dialog.setAttribute("aria-busy", "true");
     status.textContent =
-      "正在建立轉盤畫面；抽獎資料已於登入時載入，此步驟不會再向後端取得設定。";
+      "正在確認登入時預先準備的抽獎結果並建立轉盤；進入轉盤後不會再呼叫後端。";
     status.dataset.tone = "loading";
     if (typeof dialog.querySelectorAll === "function") {
       dialog.querySelectorAll(".lottery-ticket-button").forEach(function (button) {
@@ -527,6 +528,7 @@
     sessionConfigResponse = null;
     sessionConfigPromise = null;
     sessionMemberId = memberId;
+    sessionPrepared = false;
 
     var startedAt = performanceNow();
     var promise = Promise.resolve()
@@ -551,7 +553,10 @@
         return getSessionConfigView();
       })
       .catch(function (error) {
-        if (sessionMemberId === memberId) sessionConfigResponse = null;
+        if (sessionMemberId === memberId) {
+          sessionConfigResponse = null;
+          sessionPrepared = false;
+        }
         emitMetric("lottery_session_preload", startedAt, "network-error");
         throw error;
       })
@@ -582,19 +587,31 @@
       return demoPromise;
     }
 
+    var memberId = currentMemberId();
+    if (sessionPrepared && memberId && sessionMemberId === memberId) {
+      return Promise.resolve(true);
+    }
+
     var runtimePromise = ensureLoaded();
     var configPromise = loadSessionConfig();
     var promise = Promise.all([runtimePromise, configPromise])
       .then(function (results) {
         var controller = results[0];
-        // Prime controller state from sessionRequest(); this does not reach GAS.
+        // Scheme B completes server-authoritative predraws inside this refresh.
+        // Only after it resolves is the visible ticket flow fully local-ready.
         return controller.refreshTickets({ force: true });
       })
       .then(
         function () {
+          if (currentMemberId() !== memberId) {
+            sessionPrepared = false;
+            return false;
+          }
+          sessionPrepared = true;
           return true;
         },
         function () {
+          sessionPrepared = false;
           return false;
         }
       )
@@ -703,22 +720,28 @@
       var dialog = documentValue.getElementById("member-ticket-dialog");
       var status = documentValue.getElementById("member-ticket-refresh-status");
       if (!dialog || !status || !isDialogOpen(dialog)) return;
-      dialog.setAttribute("aria-busy", "false");
-      status.textContent =
-        safeIsDemo() || getSessionConfigView()
-          ? "抽獎資料已於登入時載入，可直接選擇票券。"
-          : "登入時的抽獎資料尚未載入完成。";
-      status.dataset.tone =
-        safeIsDemo() || getSessionConfigView() ? "ready" : "warning";
+
+      var ready =
+        safeIsDemo() ||
+        (sessionPrepared &&
+          Boolean(sessionMemberId) &&
+          sessionMemberId === currentMemberId());
+      dialog.setAttribute("aria-busy", ready ? "false" : "true");
+      status.textContent = ready
+        ? "抽獎結果已於登入時準備完成，可直接選擇票券。"
+        : "正在完成登入預抽獎；完成前會保持票券畫面，不會在抽獎途中連線。";
+      status.dataset.tone = ready ? "ready" : "loading";
     }, 0);
   }
 
   function configure(options) {
     var sourceOptions = options && typeof options === "object" ? options : {};
-    rawRequest = typeof sourceOptions.request === "function" ? sourceOptions.request : null;
+    rawRequest =
+      typeof sourceOptions.request === "function" ? sourceOptions.request : null;
     sessionConfigResponse = null;
     sessionConfigPromise = null;
     sessionMemberId = "";
+    sessionPrepared = false;
     configuredOptions = Object.assign({}, sourceOptions, {
       request: sessionRequest,
     });
@@ -729,26 +752,34 @@
 
   function open(ticket) {
     var expectedOpenVersion = ++openVersion;
-    var preparationDialogShown = false;
     var demo = safeIsDemo();
+    var memberReady = demo || Boolean(currentMemberId());
+
+    // The host currently closes the ticket dialog immediately before calling
+    // this facade. Re-enter the preparing state synchronously, in the same JS
+    // turn, so the browser never paints an empty gap that looks like the LIFF
+    // page was closed.
+    var preparationDialogShown = memberReady ? showTicketPreparing() : false;
+
     var sessionReady = demo
-      ? Promise.resolve(true)
-      : getSessionConfigView()
+      ? ensureLoaded().then(function () {
+          return true;
+        })
+      : sessionPrepared && sessionMemberId === currentMemberId()
         ? Promise.resolve(true)
         : prewarmPromise
           ? prewarmPromise
-          : Promise.resolve(false);
+          : preloadSession();
 
-    return sessionReady
+    return Promise.resolve(sessionReady)
       .then(function (ready) {
-        if (!ready || (!demo && !getSessionConfigView())) {
+        if (!ready || (!demo && !sessionPrepared)) {
           throw createLoaderError(
             "LOTTERY_SESSION_NOT_READY",
-            "登入時的抽獎資料尚未載入完成，請重新整理後再試。"
+            "登入預抽獎尚未完成，請保持頁面開啟後再試。"
           );
         }
         if (expectedOpenVersion !== openVersion) return null;
-        preparationDialogShown = showTicketPreparing();
         return ensureLoaded();
       })
       .then(function (controller) {
@@ -787,14 +818,14 @@
       ? ensureLoaded().then(function () {
           return true;
         })
-      : getSessionConfigView()
+      : sessionPrepared && sessionMemberId === currentMemberId()
         ? Promise.resolve(true)
         : prewarmPromise
           ? prewarmPromise
           : preloadSession();
-    return sessionReady
+    return Promise.resolve(sessionReady)
       .then(function (ready) {
-        if (!ready || (!demo && !getSessionConfigView())) return false;
+        if (!ready || (!demo && !sessionPrepared)) return false;
         return ensureLoaded();
       })
       .then(function (controller) {
