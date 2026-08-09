@@ -89,20 +89,18 @@ test("stale ticket recovery can update the host snapshot without an extra reques
   );
 });
 
-test("v2 composition root adds login-time prepared reveals around the existing controller", () => {
+test("v2 composition root exposes the controller without predraw orchestration", () => {
   assert.match(bootstrap, /registry\.get\(["']lottery\.dialog-controller["']\)/);
-  assert.match(bootstrap, /createPreparedFacade\(controllerFactory\)/);
-  assert.match(bootstrap, /sourceRequest\(\s*["']drawLottery["']/);
+  assert.match(bootstrap, /controllerFactory\.create\(/);
   assert.match(
     bootstrap,
-    /if \(action === ["']drawLottery["'] && !safeIsDemo\(\)\)[\s\S]*findPrepared/
+    /root\.MemberLotteryDialog\s*=\s*controllerFactory\.create\(/
   );
-  assert.match(bootstrap, /persona-member-lottery-prepared:/);
-  assert.match(bootstrap, /sessionStorage/);
-  assert.match(
-    bootstrap,
-    /root\.MemberLotteryDialog\s*=\s*createPreparedFacade\(controllerFactory\)/
-  );
+  assert.doesNotMatch(bootstrap, /sourceRequest/);
+  assert.doesNotMatch(bootstrap, /["']drawLottery["']/);
+  assert.doesNotMatch(bootstrap, /persona-member-lottery-prepared:/);
+  assert.doesNotMatch(bootstrap, /sessionStorage/);
+  assert.doesNotMatch(bootstrap, /virtualCard|buildVirtualCard|preparedEntries/);
 });
 
 test("internal lottery modules register through PersonaModules without new globals", () => {
