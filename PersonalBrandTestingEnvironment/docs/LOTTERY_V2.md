@@ -1,52 +1,68 @@
 # 會員抽獎券與轉盤 V2 架構
 
-## 核心原則：登入預抽、前端揭曉
+## 核心原則：設定預載、點擊才正式抽獎
 
-正式會員抽獎採 **Prepared Draw + Local Reveal** 模型。
+正式會員抽獎採 **Config Preload + Click-time Server-authoritative Draw + Deterministic Reveal** 模型。
 
-真正具有交易性的工作在會員登入後、Lottery preload 階段完成：
+交易邊界只有一個：**使用者按下中央「開始抽獎」按鈕。**
 
-1. 取得 `getLotteryConfig` 工作區。
-2. 對目前可用抽獎券呼叫既有 server-authoritative `drawLottery`。
-3. GAS 重新驗證會員、ticket、authoritative config 與 request replay。
-4. GAS 決定 prize 並 append `LotteryDraws`。
-5. 前端保存本 session 揭曉需要的 compact prepared result。
-6. 只有整個 prepared session 完成後，抽獎券才進入可直接開啟狀態。
-7. 開券、點中央按鈕、轉盤動畫與 RESULT 都是 local-only，不再呼叫 GAS。
+登入與開券階段只做唯讀準備：
 
-因此「點我抽獎」的產品語意是 **揭曉已由後端正式完成的抽獎結果**，不是 click-time 才隨機開獎。
+1. 會員登入完成後預載 `getLotteryConfig`。
+2. 保留 authoritative ticket / lottery config session snapshot。
+3. 使用者選券時驗證該券仍存在於 `availableRewards`。
+4. 預先繪製 Canvas、建立 prize target angles。
+5. 開啟轉盤後中央按鈕才可操作。
+6. 按下中央按鈕時建立／沿用 persistent requestId。
+7. 同一時間開始轉盤加速，並正式呼叫 `drawLottery`。
+8. GAS 重新驗證會員、ticket、config 與 request replay，決定 prize 並 append `LotteryDraws`。
+9. 前端取得 authoritative draw 後，從目前速度連續進入 cruise / deceleration，精準停在 prize center。
+10. 完成動畫後才更新結果 UI；pending request 在成功完成後清除。
+
+因此：
+
+```text
+登入 ≠ 抽獎
+開券 ≠ 抽獎
+準備轉盤 ≠ 抽獎
+按下中央按鈕 = 正式抽獎 transaction boundary
+```
+
+## 為什麼不用登入預抽
+
+先前 Prepared Draw 模型會在 authenticated preload 階段逐張呼叫 `drawLottery`，再用 browser session cache 與 virtual card 把已經 server-side 使用的票券呈現成「尚未揭曉」。
+
+這會造成：
+
+- 使用者沒有按抽獎，server ledger 卻已經產生 draw。
+- 清除 sessionStorage、WebView 重建或跨裝置時，presentation state 與 ledger 可能分離。
+- 未揭曉 prize 提前存在瀏覽器。
+- 多張票券會增加登入 preload 的 GAS mutation 數量與 latency。
+- 客服與產品文案難以清楚說明「何時算正式使用票券」。
+
+V2 現在不保存 unrevealed prepared prize，也不建立 presentation-only virtual card。
 
 ## Readiness 狀態
-
-`getLotteryConfig` 已載入不代表抽獎 session 已可揭曉。
-
-正式狀態為：
 
 ```text
 AUTHENTICATED
   -> CONFIG_LOADING
-  -> PREDRAW_LOADING
-  -> PREPARED_READY
+  -> SESSION_CONFIG_READY
+  -> RUNTIME_READY
   -> TICKET_SELECTABLE
+  -> WHEEL_PREPARED
+  -> CLICK_TO_DRAW
+  -> DRAW_REQUEST_IN_FLIGHT
+  -> AUTHORITATIVE_RESULT
+  -> DECELERATING
+  -> RESULT
 ```
 
-`member-lottery-loader.js` 以獨立的 `sessionPrepared` 追蹤完整 prepared session。只有 `controller.refreshTickets()` 完成 Scheme-B predraw 後才設為 true。
+`member-lottery-loader.js` 負責 authenticated session config preload 與 lazy runtime load。
 
-這避免以下 race：
-
-```text
-config 已回來
-  -> UI 誤顯示可選券
-  -> predraw 尚未完成
-  -> 使用者點券
-  -> LOTTERY_SESSION_NOT_READY
-```
-
-未登入會員仍 fail-closed：不啟動 Lottery runtime，也不進行 Lottery I/O。
+`member-lottery-v2.js` 只是一個薄的 composition root，直接建立 `lottery.dialog-controller`，不得攔截或預執行 `drawLottery`。
 
 ## 公開 facade
-
-公開 API 維持不變：
 
 ```javascript
 window.MemberLotteryDialog.configure(options);
@@ -58,29 +74,35 @@ window.MemberLotteryDialog.canClose();
 window.MemberLotteryDialog.requestClose(options);
 ```
 
-`member-lottery-v2.js` 在既有 `lottery.dialog-controller` 外包一層 prepared-reveal orchestration，不新增 public global。
+loader 額外提供 lazy-load / preload facade，但載入正式 runtime 後仍由同一 controller 處理 ticket / draw state。
 
 ## 正式資料流
 
-### 1. 會員登入 / Lottery preload
+### 1. 會員登入 / config preload
 
 ```text
 會員登入成功
-  -> member-lottery-loader lazy-load Lottery runtime
+  -> member-lottery-loader
   -> loadSessionConfig()
-  -> prepared facade refreshTickets()
-  -> 讀 availableRewards
-  -> 對尚未 prepared 的 ticket：
-       -> 建立 requestId
-       -> sourceRequest("drawLottery")
-       -> GAS 驗證 LINE / member / ticket / config / replay
-       -> GAS 決定 prize
-       -> append LotteryDraws
-       -> 回 authoritative result
-       -> compact prepared result
-       -> sessionStorage cache
-  -> virtual card 保留尚未揭曉票券
-  -> sessionPrepared = true
+  -> rawRequest("getLotteryConfig")
+  -> 保存 member-scoped in-memory session snapshot
+  -> lazy-load Lottery runtime
+  -> controller.refreshTickets()
+       -> 透過 loader sessionRequest 讀本機 snapshot
+       -> 不呼叫 drawLottery
+  -> session ready
+```
+
+允許的 backend action：
+
+```text
+getLotteryConfig
+```
+
+禁止：
+
+```text
+drawLottery
 ```
 
 ### 2. 使用者點選抽獎券
@@ -88,283 +110,182 @@ window.MemberLotteryDialog.requestClose(options);
 ```text
 Ticket Dialog
   -> 使用者點 ticket
-  -> Ticket Dialog 立即維持 preparing surface
-  -> 若 authenticated preload 還在進行，join 同一個 preload Promise
-  -> prepared facade 確認該 ticket 有 prepared result
-  -> inner preparation-service 讀 local workspace adapter
-  -> 本機驗證 ticket
+  -> prepareForOpen(ticket)
+  -> preparation-service 取得 session config snapshot
+  -> 驗證 ticket 仍存在於 availableRewards
+  -> 找到 lottery type
   -> wheel-animator.prepare()
   -> Canvas / prize target angles 完成
-  -> 關閉 Ticket Dialog 一次
   -> 開啟 Lottery Dialog
   -> READY
 ```
 
-目標是避免使用者看到 Ticket Dialog 關閉後、Lottery Dialog 尚未開啟的空白畫面。
+這一段仍然是 read-only，不建立 pending draw request，也不消耗 ticket。
 
-### 3. 使用者點「點我抽獎」
+### 3. 使用者按中央按鈕
 
 ```text
 CLICK
-  -> controller 鎖定重複 click
-  -> draw-service 建立 / 沿用 reveal requestId
-  -> options.request("drawLottery")
-  -> prepared facade 攔截 action
-  -> 從 prepared cache 回 authoritative result
-  -> 不呼叫 sourceRequest / GAS
-  -> workspace-mapper 驗證 result
-  -> WheelAnimator 單一 deterministic reveal
-  -> 精準停在 prepared prize center
-  -> 更新 virtual card
-  -> 移除已揭曉 prepared ticket
+  -> controller lock duplicate click
+  -> DrawService.ensure(ticket)
+       -> 建立或沿用 member + LIFF scoped persistent requestId
+  -> emit persona:lottery-draw-start
+  -> WheelAnimator startPendingSpin()
+       -> acceleration
+       -> cruise while network is pending
+  -> request("drawLottery", ticket, requestId)
+  -> GAS authoritative validation
+  -> append/replay LotteryDraws
+  -> authoritative response
+  -> workspace-mapper validation
+  -> WheelAnimator.settle(draw, authoritativeLottery)
+       -> preserve current rotation/velocity
+       -> optional cruise distance
+       -> smooth deceleration
+       -> exact prize center
+  -> DrawService.complete()
+  -> host card / totalPoints update
   -> RESULT
 ```
 
-## 網路邊界
+## Request id 與 retry
 
-### 允許 GAS
-
-只有可見 Lottery UI 進入前的 authenticated preload：
+pending request 使用：
 
 ```text
-LOGIN / PRELOAD
-  -> getLotteryConfig
-  -> drawLottery(ticket A)
-  -> drawLottery(ticket B)
-  -> ...
+persona-member-lottery-round-request:<liff>:<member>
 ```
 
-### 禁止 GAS
-
-以下 production path 必須 local-only：
+保存：
 
 ```text
-OPEN TICKET
-PREPARING
-READY
-CLICK
-WHEEL ANIMATION
-RESULT
-RETURN TO TICKETS
+requestId
+cardRoundKey
+lotteryTypeId
 ```
 
-production `member-lottery-v2.js` 會攔截 inner controller 的 `getLotteryConfig` 與 `drawLottery`，回傳 prepared workspace/result。
+原則：
 
-## Prepared result cache
+- requestId 在中央 click 時才建立。
+- network timeout / reload / retry 必須沿用同 requestId。
+- GAS 以 request replay 確保相同 requestId 不重複產生 draw。
+- definitive no-draw error 才能清除 pending request。
+- authoritative draw 成功且 reveal 完成後才 `complete()`。
 
-prepared result 使用 member + LIFF scoped `sessionStorage`：
+sessionStorage 只保存 request recovery metadata，不保存未揭曉 prize。
 
-```text
-persona-member-lottery-prepared:<liff>:<member>
-```
+## WheelAnimator
 
-每筆保存：
+### 尚未取得結果
 
-```text
-ticket
-prepared draw
-lotteryType + authoritative lottery config
-totalPoints
-pendingRequestId
-```
-
-最多保存 50 筆，對齊既有 available reward response cap。
-
-## Virtual card
-
-GAS 在 preload 階段 append `LotteryDraws` 後，server-side ticket 已視為使用。
-
-為了讓尚未播放 reveal 的券仍出現在 UI，prepared facade 建立 presentation-only virtual card：
-
-- backend card 仍是 authoritative persistence state。
-- prepared cache 中尚未揭曉 ticket 暫時加入 `availableRewards`。
-- `availableDraws` 等於尚未揭曉 prepared ticket 數量。
-- reveal 完成後才從 virtual card / prepared cache 移除。
-
-virtual card 不會覆寫 GAS ledger。
-
-## 舊版 pending request 相容
-
-若 sessionStorage 有舊架構 pending request，登入 preload 使用 **原 requestId** 完成/replay `drawLottery`：
-
-- GAS 已完成時 replay 原結果。
-- GAS 未完成時以同 requestId 完成一次。
-- authoritative response 轉成 prepared result。
-- 後續 retry/reveal 只播放同一 prepared result。
-
-## WheelAnimator：單一 deterministic reveal
-
-方案 B 不再需要 server waiting spin。
-
-已移除正常流程中的：
-
-```text
-startPendingSpin()
-PENDING_DEGREES_PER_MS
-pendingFrame / pendingLastTime
-pending -> settle 雙 RAF handoff
-```
-
-目前一次 reveal 在第一個 frame 前就已知：
-
-```text
-prizeId
-target angle
-total rotation
-total duration
-```
-
-動畫參數：
-
-```text
-FULL_SPIN_TURNS   = 8
-ACCEL_DURATION    = 320 ms
-CRUISE_DURATION   = 760 ms
-DECEL_DURATION    = 2400 ms
-TOTAL             = 3480 ms
-```
-
-狀態：
+中央 click 後立刻開始：
 
 ```text
 REST
   -> ACCELERATING
-  -> CRUISING
-  -> DECELERATING
-  -> EXACT PRIZE CENTER
+  -> CRUISING / WAITING_FOR_SERVER
 ```
 
-速度 ramp 使用 smoothstep velocity：
+目前 pending target speed 約：
+
+```text
+1.2 degree / ms
+```
+
+加速使用 smoothstep velocity：
 
 ```text
 v(u) = 3u² - 2u³
 ```
 
-位置使用其積分，因此加速/巡航/減速交界維持速度連續，起點與終點速度為 0。
+### authoritative result 回來後
 
-完整距離為：
+不重設 transform，不從 0 重新開始。
+
+從當前：
 
 ```text
-8 * 360° + alignment
+rotation
+velocity
 ```
 
-peak velocity 會依實際 alignment 自動解出，使固定三段時間內精準抵達 target。
+計算：
 
-`settle()` 暫時保留為 `spinTo()` compatibility alias，避免一次破壞既有內部 caller；正常架構語意已是單次 reveal，不再有 pending spin。
+```text
+prize center alignment
+minimum extra turns
+deceleration distance
+required cruise distance
+```
 
-`prefers-reduced-motion` 不排程連續 RAF，直接對齊同一 prepared prize。
+然後：
+
+```text
+CURRENT CRUISE VELOCITY
+  -> optional cruise
+  -> smooth deceleration
+  -> EXACT PRIZE CENTER
+```
+
+減速曲線保持起始速度連續，終點速度為 0。
+
+`prefers-reduced-motion` 不執行持續 pending animation；authoritative result 回來後直接使用 reduced-motion reveal path。
+
+## 網路邊界
+
+### 允許 GAS
+
+```text
+LOGIN / SESSION PRELOAD
+  -> getLotteryConfig
+
+CENTRAL DRAW CLICK
+  -> drawLottery
+```
+
+### 不應呼叫 GAS
+
+```text
+OPEN TICKET DIALOG
+SELECT TICKET / PREPARE WHEEL
+OPEN LOTTERY DIALOG
+CANVAS PREPARE
+ANIMATION AFTER RESULT
+RESULT UI
+RETURN TO TICKETS
+```
+
+例外：pending draw 的 retry/replay 仍可使用同一 requestId 呼叫 `drawLottery`，由 GAS 回傳同一 authoritative result。
 
 ## 模組責任
 
 | 模組 | 責任 |
 | --- | --- |
-| `contracts.js` | Ticket、request ID、錯誤分類與 API contract |
-| `pending-request-store.js` | reveal request ID / reload recovery |
-| `workspace-service.js` | inner workspace cache；production request 由 local adapter 攔截 |
-| `preparation-service.js` | 本機 workspace / ticket 驗證 |
-| `draw-service.js` | 維持 reveal request/retry 介面；production request 由 prepared adapter 本機回覆 |
-| `workspace-mapper.js` | 驗證 workspace、lottery、card 與 prepared authoritative result |
-| `wheel-animator.js` | Canvas、target、單次 accelerate/cruise/decelerate reveal |
-| `dialog-view.js` | PREPARING / READY / ERROR / RESULT UI |
-| `dialog-controller.js` | PREPARING → READY → REVEALING → RESULT orchestration |
-| `member-lottery-v2.js` | Prepared Draw orchestration、session cache、virtual card、local request adapter |
-| `member-lottery-loader.js` | lazy runtime、session config、prepared readiness、Ticket→Lottery transition |
-| `gas/client/Code.gs` | authoritative validation、prize selection、LotteryDraws persistence、request replay |
+| `member-lottery-loader.js` | authenticated config preload、lazy runtime、session config adapter |
+| `member-lottery-v2.js` | 薄 composition root；不得 predraw |
+| `lottery/workspace-service.js` | config snapshot cache / stale control |
+| `lottery/preparation-service.js` | read-only ticket 與 lottery config 驗證 |
+| `lottery/pending-request-store.js` | click-time persistent requestId recovery |
+| `lottery/draw-service.js` | 唯一 production draw mutation owner；觸發 draw-start motion signal |
+| `lottery/workspace-mapper.js` | authoritative response normalization / validation |
+| `lottery/wheel-animator.js` | prepare、pending acceleration、continuous settle、exact target |
+| `lottery/dialog-view.js` | dialog state / controls / result presentation |
+| `lottery/dialog-controller.js` | orchestration、busy state、retry / close policy |
 
-## 後端安全邊界
+## 測試 contract
 
-方案 B **沒有把 prize selection 移到前端**。
-
-GAS 仍負責：
-
-- LINE ID Token 驗證。
-- member access 驗證。
-- server-side ticket eligibility。
-- `cardRoundKey` / `lotteryTypeId` 驗證。
-- authoritative LotteryPrizes config。
-- prize selection。
-- append-only `LotteryDraws`。
-- `(lineUserId, requestId)` idempotent replay。
-
-前端 prepared cache 不能建立有效 `LotteryDraws`，也不能修改已持久化的後端 prize。
-
-### Client integrity 取捨
-
-因 reveal 階段要求 0 server call，browser 在按中央按鈕前已持有 `prizeId`。
-
-因此 DevTools / breakpoint / sessionStorage 可提前查看，甚至竄改本地 prepared payload。這可能偽造 **本地顯示**，但不會重寫後端 `LotteryDraws`。
-
-任何實體獎品兌換、人工核銷或高價值權益，都不應只相信瀏覽器畫面或截圖，應以後端紀錄為準。
-
-## 尚未解決的架構項目
-
-### Cross-session recovery
-
-同 tab reload 可恢復 prepared result；整個 LIFF/browser session 結束後 `sessionStorage` 可能消失，但 backend draw 已完成。
-
-若需要跨裝置/跨 session 繼續未揭曉狀態，應增加 server-side prepared/revealed lifecycle。
-
-### 多券 preload 成本
-
-目前 available tickets 仍逐張 server-authoritative predraw，成本隨 ticket 數量線性增加。
-
-若大量 ticket 成為常態，應新增單一 `prepareLotterySession` GAS transaction，批次完成本次 session 的 prepared draws，而不是前端平行大量呼叫 `drawLottery`。
-
-### 同 session 新增 ticket
-
-若會員登入後又取得新的 reward ticket，下一階段應讓 prepared facade 做增量 refresh/predraw，而不是依賴整頁 reload。
-
-## 自動測試驗收
-
-至少覆蓋：
-
-1. unauthenticated path 不載入 Lottery runtime、不做 Lottery I/O。
-2. config ready 與 prepared ready 為不同狀態。
-3. authenticated predraw 完成後才可直接開 ticket。
-4. open 若遇到 in-flight preload，join 同一 Promise。
-5. Ticket→Lottery transition 不留下可見空白狀態。
-6. click-time production request 由 local adapter 回覆，不增加 raw GAS request。
-7. rapid duplicate click 只有一次 reveal request。
-8. prepared result 尚未 resolve 前 wheel 保持 stationary。
-9. reveal 第一 frame 從 rest 開始。
-10. acceleration / cruise / deceleration 都持續前進。
-11. final modulo angle 精準對齊 prepared prize center。
-12. configVersion 改變在 motion 前重繪，不產生可見 reset。
-13. reduced-motion 不排程連續 RAF且仍對齊同一 prize。
-14. active reveal 期間不可關閉 dialog。
-15. backend idempotency / LINE / ticket / GAS regression 維持通過。
-
-完整檢查：
-
-```bash
-find PersonalBrandTestingEnvironment -type f -name '*.js' -print0 \
-  | sort -z \
-  | xargs -0 -n1 node --check
-
-node --test PersonalBrandTestingEnvironment/tests/*.test.js
-```
-
-GitHub Actions：
+以下必須是 regression tests 的長期 contract：
 
 ```text
-.github/workflows/validate-personal-brand-lottery.yml
+refresh/preload does NOT call drawLottery
+prepareForOpen does NOT call drawLottery
+open does NOT call drawLottery
+central click calls drawLottery exactly once
+rapid duplicate clicks do not create another draw
+retry/reload reuses the same requestId
+authoritative response settles on the returned prize
+no unrevealed prize is cached by member-lottery-v2
+reduced-motion path still aligns the authoritative prize
 ```
 
-只做 validation，不自動部署或 merge。
-
-## 人工驗證
-
-正式合併前應在 iOS / Android LINE LIFF 驗證：
-
-1. 登入後觀察 Lottery preload。
-2. preload 尚未完成時點抽獎券，確認 Ticket Dialog 保持可見 preparing 狀態。
-3. 確認不再看到像整個 LIFF 被關閉的空白跳轉。
-4. 進入 Lottery READY 後記錄 Network request count。
-5. 點「點我抽獎」。
-6. 確認 wheel 從靜止自然加速、巡航、減速。
-7. 確認停在 prepared authoritative prize。
-8. 確認 READY → RESULT 沒有新的 GAS request。
-9. 快速連點只揭曉一次。
-10. reveal 中嘗試關閉，應被阻擋。
-11. 同 tab reload 測試 pending/prepared recovery。
-12. 確認 `LotteryDraws` 沒有因 reveal 再新增第二筆紀錄。
+CI 不應再把「登入預抽」視為正確規格。
