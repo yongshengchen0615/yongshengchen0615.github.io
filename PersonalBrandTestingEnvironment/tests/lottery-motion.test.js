@@ -52,18 +52,29 @@ function getFunctionContaining(source, marker) {
   return source.slice(lineStart, nextFunction === -1 ? source.length : nextFunction);
 }
 
-test("member lottery v2 uses one deterministic accelerate-cruise-decelerate reveal", () => {
+test("member lottery v2 accelerates while awaiting the authoritative result then settles continuously", () => {
   assert.match(animator, /FULL_SPIN_TURNS\s*=\s*8/);
   assert.match(animator, /ACCEL_DURATION_MS\s*=\s*320/);
   assert.match(animator, /CRUISE_DURATION_MS\s*=\s*760/);
   assert.match(animator, /DECEL_DURATION_MS\s*=\s*2400/);
+  assert.match(animator, /PENDING_ACCEL_DURATION_MS\s*=\s*320/);
+  assert.match(animator, /PENDING_DEGREES_PER_MS\s*=\s*1\.2/);
+  assert.match(animator, /function\s+smoothstep\s*\(/);
   assert.match(animator, /function\s+rampDistance\s*\(/);
   assert.match(animator, /function\s+decelDistance\s*\(/);
-  assert.match(animator, /peakVelocity\s*=\s*rotationDelta\s*\/\s*weightedDuration/);
-  assert.match(animator, /function\s+spinTo\s*\(/);
-  assert.match(animator, /function\s+settle\s*\([\s\S]*return spinTo\(/);
+  assert.match(animator, /function\s+startPendingSpin\s*\(/);
+  assert.match(animator, /pendingSpinVelocity\s*=\s*PENDING_DEGREES_PER_MS\s*\*\s*smoothstep\(progress\)/);
+  assert.match(animator, /function\s+settlePending\s*\(/);
+  assert.match(animator, /decelerationDistance\s*=\s*\n\s*0\.5\s*\*\s*velocity\s*\*\s*DECEL_DURATION_MS/);
+  assert.match(
+    animator,
+    /function\s+settle\s*\([\s\S]*pendingSpinActive[\s\S]*settlePending\(drawResult, lotteryValue\)[\s\S]*spinTo\(drawResult, lotteryValue\)/
+  );
+  assert.match(
+    animator,
+    /addEventListener\(["']persona:lottery-draw-start["'][\s\S]*startPendingSpin\(\)/
+  );
   assert.match(animator, /prefers-reduced-motion:\s*reduce/);
-  assert.doesNotMatch(animator, /startPendingSpin|PENDING_DEGREES_PER_MS|pendingFrame|pendingLastTime/);
   assert.doesNotMatch(animator, /startWaiting|waitingFrame|waitingLastTime/);
 });
 
@@ -99,18 +110,25 @@ test("pending reveal ids are created only by draw service and reused for retries
   assert.doesNotMatch(spin, /options\.request\(/);
 });
 
-test("central reveal click has no prize-agnostic waiting spin or backend-status copy", () => {
+test("central click starts motion at the authoritative request boundary and settles after the response", () => {
   const spin = getFunctionContaining(controller, /function\s+handleSpin\s*\(/);
+  const draw = getFunctionContaining(drawService, /function\s+draw\s*\(/);
   const drawIndex = spin.indexOf("drawPromise = performDraw()");
   const responseIndex = spin.indexOf(".then(function (response)");
   const settleIndex = spin.indexOf(".settle(result.draw, result.selectedType.lottery)");
+  const eventIndex = draw.indexOf("emitDrawStart()");
+  const requestIndex = draw.indexOf("return options.request(");
 
-  assert.ok(drawIndex >= 0, "draw service should create or reuse the reveal request id");
-  assert.ok(responseIndex > drawIndex, "prepared result should be normalized after draw service resolves");
-  assert.ok(settleIndex > responseIndex, "wheel motion should start only after the prepared result is known");
-  assert.doesNotMatch(spin, /startPendingSpin|getLotteryConfig|options\.request/);
-  assert.doesNotMatch(spin, /向後端確認/);
-  assert.match(spin, /正在揭曉抽獎結果/);
+  assert.ok(drawIndex >= 0, "draw service should create or reuse the persistent request id");
+  assert.ok(eventIndex >= 0, "draw service should signal motion at transaction start");
+  assert.ok(requestIndex > eventIndex, "motion signal must occur before the authoritative request waits");
+  assert.ok(responseIndex > drawIndex, "authoritative response should be normalized after draw resolves");
+  assert.ok(settleIndex > responseIndex, "targeted deceleration starts after the prize is known");
+  assert.match(draw, /persona:lottery-draw-start/);
+  assert.match(animator, /persona:lottery-draw-start[\s\S]*startPendingSpin/);
+  assert.match(animator, /正在確認抽獎結果/);
+  assert.match(animator, /正在揭曉抽獎結果/);
+  assert.doesNotMatch(spin, /getLotteryConfig|options\.request/);
 });
 
 test("only definitive no-draw failures release the persisted request", () => {
