@@ -124,7 +124,10 @@ test("central click starts motion at the authoritative request boundary and sett
   assert.ok(requestIndex > eventIndex, "motion signal must occur before the authoritative request waits");
   assert.ok(responseIndex > drawIndex, "authoritative response should be normalized after draw resolves");
   assert.ok(settleIndex > responseIndex, "targeted deceleration starts after the prize is known");
-  assert.match(draw, /persona:lottery-draw-start/);
+  assert.match(
+    drawService,
+    /function\s+emitDrawStart[\s\S]*persona:lottery-draw-start/
+  );
   assert.match(animator, /persona:lottery-draw-start[\s\S]*startPendingSpin/);
   assert.match(animator, /正在確認抽獎結果/);
   assert.match(animator, /正在揭曉抽獎結果/);
