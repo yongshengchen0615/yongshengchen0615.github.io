@@ -57,6 +57,7 @@ test("draw mutation and persistent request creation belong to draw-service", () 
     drawService,
     /options\.request\(\s*["']drawLottery["'][\s\S]*request\.requestId/
   );
+  assert.match(drawService, /persona:lottery-draw-start/);
   assert.match(drawService, /if\s*\(activePromise\)/);
   assert.match(drawService, /contracts\.isDefinitiveNoDrawError\(error\)/);
 });
@@ -82,18 +83,17 @@ test("dialog controller reaches READY from preparation and invokes DrawService o
   assert.doesNotMatch(spinBody, /getLotteryConfig|options\.request/);
 });
 
-test("V2 composition root pre-draws during login preload and keeps HTML on the lazy facade", () => {
+test("V2 composition root keeps preload read-only and HTML on the lazy facade", () => {
   assert.match(bootstrap, /registry\.get\(["']lottery\.dialog-controller["']\)/);
-  assert.match(bootstrap, /createPreparedFacade\(controllerFactory\)/);
-  assert.match(bootstrap, /sourceRequest\(\s*["']drawLottery["']/);
+  assert.match(bootstrap, /controllerFactory\.create\(/);
   assert.match(
     bootstrap,
-    /if \(action === ["']drawLottery["'] && !safeIsDemo\(\)\)/
+    /root\.MemberLotteryDialog\s*=\s*controllerFactory\.create\(/
   );
-  assert.match(
-    bootstrap,
-    /root\.MemberLotteryDialog\s*=\s*createPreparedFacade\(controllerFactory\)/
-  );
+  assert.doesNotMatch(bootstrap, /sourceRequest|preparedEntries|buildVirtualCard/);
+  assert.doesNotMatch(bootstrap, /["']drawLottery["']/);
+  assert.doesNotMatch(bootstrap, /sessionStorage/);
+
   assert.match(memberHtml, /src=["']member-lottery-loader\.js["']/);
   assert.doesNotMatch(memberHtml, /src=["']lottery\/draw-service\.js["']/);
   assert.match(loader, /"lottery\/draw-service\.js"/);
