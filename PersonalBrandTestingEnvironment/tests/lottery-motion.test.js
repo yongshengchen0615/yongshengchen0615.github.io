@@ -52,27 +52,22 @@ function getFunctionContaining(source, marker) {
   return source.slice(lineStart, nextFunction === -1 ? source.length : nextFunction);
 }
 
-test("member lottery v2 settles quickly with a continuous fast-to-slow curve", () => {
-  assert.match(animator, /INITIAL_DEGREES_PER_MS\s*=\s*1\.45/);
-  assert.match(animator, /FINAL_SPIN_TURNS\s*=\s*3/);
-  assert.match(animator, /MIN_DURATION_MS\s*=\s*2200/);
-  assert.match(animator, /MAX_DURATION_MS\s*=\s*3200/);
-  assert.match(
-    animator,
-    /\(3\s*\*\s*rotationDelta\)\s*\/\s*INITIAL_DEGREES_PER_MS/
-  );
-  assert.match(
-    animator,
-    /eased\s*=\s*1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*3\)/
-  );
-  assert.match(animator, /rotationDelta\s*\*\s*eased/);
+test("member lottery v2 uses one deterministic accelerate-cruise-decelerate reveal", () => {
+  assert.match(animator, /FULL_SPIN_TURNS\s*=\s*8/);
+  assert.match(animator, /ACCEL_DURATION_MS\s*=\s*320/);
+  assert.match(animator, /CRUISE_DURATION_MS\s*=\s*760/);
+  assert.match(animator, /DECEL_DURATION_MS\s*=\s*2400/);
+  assert.match(animator, /function\s+rampDistance\s*\(/);
+  assert.match(animator, /function\s+decelDistance\s*\(/);
+  assert.match(animator, /peakVelocity\s*=\s*rotationDelta\s*\/\s*weightedDuration/);
+  assert.match(animator, /function\s+spinTo\s*\(/);
+  assert.match(animator, /function\s+settle\s*\([\s\S]*return spinTo\(/);
   assert.match(animator, /prefers-reduced-motion:\s*reduce/);
-  assert.match(animator, /function\s+prepare\s*\(/);
-  assert.match(animator, /function\s+startPendingSpin\s*\(/);
+  assert.doesNotMatch(animator, /startPendingSpin|PENDING_DEGREES_PER_MS|pendingFrame|pendingLastTime/);
   assert.doesNotMatch(animator, /startWaiting|waitingFrame|waitingLastTime/);
 });
 
-test("pending draw ids are created only by draw service and reused for retries", () => {
+test("pending reveal ids are created only by draw service and reused for retries", () => {
   const ensurePending = getFunctionContaining(store, /function\s+ensure\s*\(/);
   const readPending = getFunctionContaining(store, /function\s+read\s*\(/);
   const prepare = getFunctionContaining(
@@ -104,22 +99,18 @@ test("pending draw ids are created only by draw service and reused for retries",
   assert.doesNotMatch(spin, /options\.request\(/);
 });
 
-test("central draw click starts prize-agnostic motion before awaiting the authoritative result", () => {
+test("central reveal click has no prize-agnostic waiting spin or backend-status copy", () => {
   const spin = getFunctionContaining(controller, /function\s+handleSpin\s*\(/);
   const drawIndex = spin.indexOf("drawPromise = performDraw()");
-  const pendingSpinIndex = spin.indexOf("animator.startPendingSpin()");
   const responseIndex = spin.indexOf(".then(function (response)");
+  const settleIndex = spin.indexOf(".settle(result.draw, result.selectedType.lottery)");
 
-  assert.ok(drawIndex >= 0, "draw service should be invoked synchronously so requestId exists first");
-  assert.ok(
-    pendingSpinIndex > drawIndex,
-    "pending motion must start after the persistent draw request is created"
-  );
-  assert.ok(
-    responseIndex > pendingSpinIndex,
-    "pending motion must begin before the authoritative response is handled"
-  );
-  assert.doesNotMatch(spin, /getLotteryConfig/);
+  assert.ok(drawIndex >= 0, "draw service should create or reuse the reveal request id");
+  assert.ok(responseIndex > drawIndex, "prepared result should be normalized after draw service resolves");
+  assert.ok(settleIndex > responseIndex, "wheel motion should start only after the prepared result is known");
+  assert.doesNotMatch(spin, /startPendingSpin|getLotteryConfig|options\.request/);
+  assert.doesNotMatch(spin, /向後端確認/);
+  assert.match(spin, /正在揭曉抽獎結果/);
 });
 
 test("only definitive no-draw failures release the persisted request", () => {
@@ -139,7 +130,7 @@ test("only definitive no-draw failures release the persisted request", () => {
   );
 });
 
-test("member lottery v2 cannot close while preparing, drawing, or awaiting retry", () => {
+test("member lottery v2 cannot close while preparing, revealing, or awaiting retry", () => {
   const canClose = getFunctionContaining(controller, /function\s+canClose\s*\(/);
   const requestClose = getFunctionContaining(
     controller,
@@ -159,6 +150,7 @@ test("member lottery v2 cannot close while preparing, drawing, or awaiting retry
     requestClose,
     /if\s*\(!canClose\(\)\)[\s\S]*return false/
   );
+  assert.match(requestClose, /揭曉動畫正在播放中/);
   assert.match(updateControls, /member-lottery-close-button/);
   assert.match(updateControls, /member-lottery-return-button/);
   assert.match(updateControls, /button\.disabled\s*=\s*state\.canClose\s*!==\s*true/);
