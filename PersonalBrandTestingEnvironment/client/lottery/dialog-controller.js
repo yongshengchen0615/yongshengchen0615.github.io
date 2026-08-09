@@ -611,7 +611,7 @@
                 view.setStatus("預抽獎項設定已更新，正在重新建立轉盤並揭曉…");
               }
               return animator
-                .spinTo(result.draw, result.selectedType.lottery)
+                .settle(result.draw, result.selectedType.lottery)
                 .then(function () {
                   return result;
                 });
