@@ -1,4 +1,4 @@
 [submodule "MemberTestingEnvironment"]
 	path = MemberTestingEnvironment
 	url = https://github.com/yongshengchen0615/MemberTestingEnvironment.git
-	branch = MemberTestingEnvironment
+	branch = main
