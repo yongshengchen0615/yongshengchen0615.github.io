@@ -1,0 +1,35 @@
+name: Cleanup Stamp Observer Sync Once
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cleanup-stamp-observer-sync-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.repository == 'yongshengchen0615/yongshengchen0615.github.io' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'cleanup/stamp-observer-sync-20260811'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete only temporary incident branches
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for branch in fix/sync-member-testing-observer-20260811 cleanup/stamp-observer-sync-20260811; do
+            encoded="${branch//\//%2F}"
+            status="$(curl -sS -o /tmp/delete.json -w '%{http_code}' -X DELETE \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/heads/${encoded}")"
+            if [[ "$status" != "204" && "$status" != "422" ]]; then
+              cat /tmp/delete.json
+              echo "::error::failed to delete ${branch}: HTTP ${status}"
+              exit 1
+            fi
+            echo "BRANCH_CLEANUP=${branch}:${status}"
+          done
