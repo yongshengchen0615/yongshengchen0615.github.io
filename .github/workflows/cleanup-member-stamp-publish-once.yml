@@ -1,0 +1,32 @@
+name: Cleanup Member Stamp Publish Once
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cleanup-member-stamp-publish-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.repository == 'yongshengchen0615/yongshengchen0615.github.io' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'cleanup/member-stamp-publish-20260811'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete only temporary publication branches
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/heads"
+          for branch in \
+            fix/publish-member-stamp-performance-20260811 \
+            cleanup/member-stamp-publish-20260811; do
+            curl -fsS -X DELETE \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "${api}/${branch}" || true
+          done
+          echo 'TEMP_MEMBER_STAMP_PUBLISH_BRANCHES_REMOVED=1'
