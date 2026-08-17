@@ -1,0 +1,211 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "hardening_20260817_persona_architecture",
+  "sourceEvidence": {
+    "kind": "source_collection",
+    "label": "PERSONA LIFF member platform source and contract tests",
+    "collectionSha256": "569429a7bbc36b4aa65966c7e94814467a34e2ffa5f53ae80ba6f5cccc4e225b",
+    "artifactCount": 14,
+    "targetRevision": "32e23b995679a046f25a783647d94de3acb811b2",
+    "sourceDrift": "none"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "Source evidence supports centralizing action contracts and decomposing frontend and GAS composition roots while preserving the existing dual-GAS authorization boundary."
+  },
+  "constraints": {
+    "profile": "balanced",
+    "changeHorizons": ["incremental", "medium_term", "foundational"],
+    "nonNegotiables": [
+      "Preserve separate member and administrator LINE audiences and GAS deployments.",
+      "Preserve request-id idempotency and fetch-first bridge-fallback behavior.",
+      "Do not migrate or delete persistent data without separate authorization.",
+      "Do not deploy external services as part of this design phase."
+    ],
+    "assumptions": [
+      "No measured production traffic, latency, memory, lock-contention, or row-count budget was supplied.",
+      "Existing public request and response contracts must remain backward compatible during migration.",
+      "The current Google Sheets datastore remains adequate unless measurements show otherwise."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "centralize-action-contracts",
+      "title": "Centralize action contracts while preserving dual-GAS isolation",
+      "summary": "Move payload ownership out of the shared transport, decompose page composition roots, and bind each backend action to one deployment-owned validator, policy, handler, and response contract.",
+      "diagnosis": "Action names and fields are manually synchronized across browser controllers, one shared transport whitelist, GAS parsers, validators, dispatch chains, and tests; the server currently fails closed, but ownership dispersion raises compatibility and future control-drift risk.",
+      "evidence": [
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E001",
+          "path": "ARCHITECTURE.md",
+          "claim": "The repository architecture document identifies member and admin front-controller coupling, transport/domain-field coupling, and single-file GAS deployments."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E002",
+          "path": "shared/gas-api.js",
+          "claim": "The shared transport owns a cross-domain EXTRA_FIELD_NAMES whitelist used by both fetch and bridge serialization."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E003",
+          "path": "client/script.js",
+          "claim": "The member front controller owns LIFF session, profile, point claims, scanner, history, UI, and request composition state."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E004",
+          "path": "admin/script.js",
+          "claim": "Three administrator pages share one state container and branch their boot and interaction behavior through ADMIN_PAGE."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E005",
+          "path": "gas/client/Code.gs",
+          "claim": "The member deployment repeats action ownership across a fail-fast allowlist, conditional dispatch, parsing, and action-specific validation."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E006",
+          "path": "gas/admin/Code.gs",
+          "claim": "The administrator deployment repeats action ownership across ADMIN_ACTIONS, conditional dispatch, parsing, and action-specific validation."
+        },
+        {
+          "claimType": "inferred",
+          "sourceKind": "source",
+          "path": "shared/gas-api.js",
+          "claim": "Because action-field ownership spans multiple manually synchronized layers, future changes have a larger compatibility and preventive-control drift surface than a deployment-owned command registry."
+        }
+      ],
+      "desiredInvariants": [
+        "Each deployment rejects unknown actions before configuration, LINE verification, or Spreadsheet access.",
+        "Each action binds input normalization, authorization policy, handler, idempotency policy, and response projection at one deployment-owned registry entry.",
+        "The shared browser transport understands only the request envelope and an already validated payload.",
+        "Member and administrator LINE audiences and privileged handlers remain isolated by deployment.",
+        "Mutating retries preserve the same request ID until a definitive outcome is known.",
+        "Spreadsheet schema, locks, reads, writes, and uniqueness checks are owned by repository modules."
+      ],
+      "proposalPath": "proposals/centralize-action-contracts.md",
+      "options": [
+        {
+          "optionId": "targeted-extraction",
+          "title": "Targeted extraction and stronger contract tests",
+          "kind": "baseline",
+          "summary": "Extract only high-change controllers and validators while retaining the shared field whitelist and conditional GAS dispatch.",
+          "diagramPaths": {
+            "before": "diagrams/centralize-action-contracts-before.mmd",
+            "after": "diagrams/centralize-action-contracts-targeted-extraction-after.mmd"
+          },
+          "evidenceCoverage": [
+            {"evidenceId": "E001", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Local extractions reduce selected coupling but do not change overall ownership."},
+            {"evidenceId": "E002", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The transport retains the shared domain field whitelist."},
+            {"evidenceId": "E003", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Only selected member use cases leave the front controller."},
+            {"evidenceId": "E004", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Page branches remain but can gain local helpers."},
+            {"evidenceId": "E005", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Tests cover manual member action synchronization without consolidating it."},
+            {"evidenceId": "E006", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Tests cover manual admin action synchronization without consolidating it."}
+          ],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Additional action-matrix tests detect drift earlier, but field and dispatch ownership remains dispersed.", "validationPlan": "Mutate each action inventory in a test fixture and require a deterministic contract mismatch failure."},
+            {"dimension": "performance", "direction": "neutral", "confidence": "medium", "basis": "source-derived", "assessment": "No network hop or datastore behavior changes; page initialization may improve only where code is conditionally extracted.", "validationPlan": "Compare transferred bytes, parse time, boot time, and request counts on the same demo pages."},
+            {"dimension": "memory", "direction": "neutral", "confidence": "medium", "basis": "source-derived", "assessment": "Small controller objects replace equivalent shared state without adding a runtime service.", "validationPlan": "Compare browser heap snapshots after member and each admin page reaches idle."},
+            {"dimension": "reliability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Selected state machines are isolated, while global lifecycle and manual contract drift remain.", "validationPlan": "Run retry, cancellation, navigation, and stale-request regression tests for each extracted controller."},
+            {"dimension": "operability", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "Deployment topology and health checks do not change.", "validationPlan": "Verify existing deployment instructions and health responses remain valid."},
+            {"dimension": "migration", "direction": "improves", "confidence": "high", "basis": "source-derived", "assessment": "Small facade-preserving changes are easy to stage and revert.", "validationPlan": "Require each extraction to pass the full suite before removing its legacy code path."}
+          ],
+          "residualRisks": ["Transport-level domain field ownership remains.", "Manual GAS action lists, validators, and dispatch can drift."],
+          "implementationReadiness": {
+            "affectedComponents": ["client/script.js", "admin/script.js", "tests"],
+            "workPackages": ["Add action inventory tests.", "Extract one high-change controller at a time behind the current facade."],
+            "acceptanceCriteria": ["Public actions and responses remain unchanged.", "Each extraction has state and retry regression coverage."],
+            "migrationNotes": ["Do not remove the legacy facade until the new controller is active on all entry pages."],
+            "rollback": "Revert the individual controller script and restore its legacy script tag or function block."
+          }
+        },
+        {
+          "optionId": "modular-dual-gas",
+          "title": "Modular dual-GAS applications",
+          "kind": "structural",
+          "summary": "Use page composition roots and action adapters in the browser, envelope-only transport, and a command registry plus repository modules in each independent GAS deployment.",
+          "diagramPaths": {
+            "before": "diagrams/centralize-action-contracts-before.mmd",
+            "after": "diagrams/centralize-action-contracts-modular-dual-gas-after.mmd"
+          },
+          "evidenceCoverage": [
+            {"evidenceId": "E001", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Implements the documented modular dependency direction while retaining dual deployment."},
+            {"evidenceId": "E002", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Moves domain fields from transport to action adapters."},
+            {"evidenceId": "E003", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Replaces the member front controller with bounded composition roots and use cases."},
+            {"evidenceId": "E004", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Gives each admin page its own state and controller composition."},
+            {"evidenceId": "E005", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Binds member validators, policies, handlers, and responses in one registry while preserving fail-fast rejection."},
+            {"evidenceId": "E006", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Binds admin validators, authorization, handlers, and responses in one registry while preserving fail-fast rejection."}
+          ],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "improves", "confidence": "high", "basis": "source-derived", "assessment": "Contract and control ownership becomes reviewable at each deployment boundary without merging member and admin authority.", "validationPlan": "Enumerate both registries and prove unknown and cross-role actions fail before config, LINE, or Sheets."},
+            {"dimension": "performance", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "No new network hop is introduced, and page-specific roots can avoid unrelated initialization; actual browser savings are unmeasured.", "validationPlan": "Compare transferred bytes, parse/evaluate time, boot duration, and backend requests for all demo entry pages."},
+            {"dimension": "memory", "direction": "neutral", "confidence": "medium", "basis": "source-derived", "assessment": "Registries and injected services add bounded objects while page roots can remove unrelated shared state.", "validationPlan": "Compare idle heap and retained DOM listeners per page before and after migration."},
+            {"dimension": "reliability", "direction": "improves", "confidence": "high", "basis": "source-derived", "assessment": "State, handler, repository, and retry responsibilities gain explicit owners and failure boundaries.", "validationPlan": "Run lifecycle, idempotency, bridge/fetch parity, stale-response, and lock-contention tests per action."},
+            {"dimension": "operability", "direction": "regresses", "confidence": "medium", "basis": "source-derived", "assessment": "Multi-file GAS source requires a reproducible deployment checklist or tooling to prevent partial copies.", "validationPlan": "Perform a dry-run build/deploy manifest check and verify both health versions before frontend cutover."},
+            {"dimension": "migration", "direction": "regresses", "confidence": "medium", "basis": "source-derived", "assessment": "Compatibility facades and ordered dual-GAS rollout are required, though no data schema migration is needed.", "validationPlan": "Stage one page and one read-only action first, rehearse rollback, then migrate mutations."}
+          ],
+          "residualRisks": ["Google Sheets still requires locks, rereads, and uniqueness checks for cross-row mutations.", "Browser contracts remain untrusted and cannot replace GAS validation.", "Manual Apps Script publishing can still produce source/deployment drift."],
+          "implementationReadiness": {
+            "affectedComponents": ["shared/gas-api.js", "client/script.js", "client domain modules", "admin/script.js", "admin page modules", "gas/client", "gas/admin", "tests", "README.md", "ARCHITECTURE.md"],
+            "workPackages": ["Freeze action inventory and compatibility facades.", "Introduce action adapters and envelope-only transport.", "Split admin and member composition roots.", "Introduce command registries and repository modules in each GAS deployment.", "Measure page boot and Sheet lock behavior.", "Update deployment and rollback documentation."],
+            "acceptanceCriteria": ["Public request and response behavior remains backward compatible.", "Unknown and cross-role actions fail before privileged work.", "No persistent schema or data changes occur.", "All relevant tests pass and both deployed health versions are explicitly verified after authorized deployment."],
+            "migrationNotes": ["Keep the legacy transport field adapter until every action adapter is active.", "Deploy administrator GAS, then member GAS, then frontend, with health/version checks between stages."],
+            "rollback": "Restore the previous frontend script tags or facade and select the prior immutable deployment version for each GAS; no data rollback is required because the schema is unchanged."
+          }
+        },
+        {
+          "optionId": "managed-api-ledger",
+          "title": "Managed APIs with a transactional ledger",
+          "kind": "foundational",
+          "summary": "Replace core GAS and Sheets transaction paths with separate managed member/admin policy services and a transactional datastore.",
+          "diagramPaths": {
+            "before": "diagrams/centralize-action-contracts-before.mmd",
+            "after": "diagrams/centralize-action-contracts-managed-api-ledger-after.mmd"
+          },
+          "evidenceCoverage": [
+            {"evidenceId": "E001", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Replaces large runtime boundaries but must preserve separate member/admin authority."},
+            {"evidenceId": "E002", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Managed API contracts replace the shared transport field whitelist."},
+            {"evidenceId": "E003", "effect": "addresses", "tacticalFixRequired": true, "rationale": "A new client adapter boundary still requires decomposed member state."},
+            {"evidenceId": "E004", "effect": "addresses", "tacticalFixRequired": true, "rationale": "A new client adapter boundary still requires page-specific admin roots."},
+            {"evidenceId": "E005", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The member command surface moves to a managed policy service."},
+            {"evidenceId": "E006", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The admin command surface moves to a separately authorized managed policy service."}
+          ],
+          "tradeoffs": [
+            {"dimension": "security", "direction": "unknown", "confidence": "medium", "basis": "hypothetical", "assessment": "Service identities, transactional constraints, and telemetry can strengthen controls, but new secrets, network, database, and operational surfaces appear.", "validationPlan": "Threat-model the selected platform, verify separate service identities and least-privilege database roles, and perform a scoped security review before cutover."},
+            {"dimension": "performance", "direction": "unknown", "confidence": "low", "basis": "hypothetical", "assessment": "Indexed transactional queries may outperform Sheet scans, while service cold starts and an additional platform can add latency.", "validationPlan": "Benchmark production-like row counts and concurrency for login, redemption, draw, and admin list p50/p95/p99 latency."},
+            {"dimension": "memory", "direction": "regresses", "confidence": "medium", "basis": "hypothetical", "assessment": "Service runtimes, database connections, buffers, and telemetry add resources beyond static pages and GAS execution.", "validationPlan": "Measure runtime memory, connection counts, and per-request allocation under representative load."},
+            {"dimension": "reliability", "direction": "unknown", "confidence": "medium", "basis": "hypothetical", "assessment": "Transactions improve mutation atomicity, but service, database, migration, and networking failure modes increase.", "validationPlan": "Run failover, retry, duplicate command, partial migration, and dependency outage tests."},
+            {"dimension": "operability", "direction": "regresses", "confidence": "high", "basis": "hypothetical", "assessment": "Monitoring, backups, patching, secrets rotation, incident response, and cost controls become required.", "validationPlan": "Complete an operational readiness review with ownership, alerts, backup restore, retention, and cost budgets."},
+            {"dimension": "migration", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Existing Sheets data and two deployed contracts require dual-write or freeze/backfill/reconcile/cutover/rollback planning.", "validationPlan": "Reconcile every entity and ledger total in a staging migration and rehearse rollback with the GAS compatibility path retained."}
+          ],
+          "residualRisks": ["Incorrectly merging member and admin policy services would increase blast radius.", "Data migration and dual-write reconciliation can corrupt reward balances if not exact.", "New platform secrets and telemetry create additional sensitive-data obligations."],
+          "implementationReadiness": {
+            "affectedComponents": ["client and admin adapters", "new member API", "new admin API", "new database schema", "migration tooling", "operations and deployment"],
+            "workPackages": ["Collect production capacity evidence.", "Select and threat-model a platform.", "Design separate service identities and transactional schema.", "Build migration reconciliation and compatibility paths.", "Rehearse cutover and rollback."],
+            "acceptanceCriteria": ["Measured capacity or consistency requirements justify migration.", "Separate member/admin authority is proven.", "Ledger reconciliation is exact.", "Backup restore and rollback are rehearsed."],
+            "migrationNotes": ["Do not remove GAS until post-cutover reconciliation and rollback windows close."],
+            "rollback": "Route LIFF clients back to the GAS compatibility endpoints and replay only reconciled commands; keep a defined reverse-sync path until the migration window closes."
+          }
+        }
+      ],
+      "selectedOptionId": "modular-dual-gas",
+      "recommendedOptionId": "modular-dual-gas",
+      "recommendation": "Choose modular dual-GAS applications under the current balanced compatibility constraints; choose targeted extraction for a much smaller change budget, or managed APIs only after measured Sheets and concurrency limits justify the migration."
+    }
+  ],
+  "openQuestions": [
+    "May a later implementation introduce a reproducible multi-file Apps Script deployment workflow such as clasp?",
+    "What are the production Sheet row counts, peak concurrent mutations, p95 login latency, and lock timeout rates?",
+    "Should the pre-existing lottery-center-button CSS contract failure be fixed separately before architecture implementation?"
+  ]
+}

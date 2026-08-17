@@ -57,22 +57,6 @@ var DEFAULT_POINT_CARD_SETTING_VERSION = "PCS-DEFAULT00001";
 var MIN_LOTTERY_PRIZES = 2;
 var MAX_LOTTERY_PRIZES = 12;
 var MAX_CAMPAIGN_LIFETIME_MS = 366 * 24 * 60 * 60 * 1000;
-var ADMIN_ACTIONS = [
-  "adminListMembers",
-  "adminSetMemberAccess",
-  "adminListPointTypes",
-  "adminListPointHistory",
-  "adminCreatePointType",
-  "adminDeletePointType",
-  "adminCreatePointCampaign",
-  "adminGetLotteryConfig",
-  "adminSavePointCardSetting",
-  "adminCreateLotteryType",
-  "adminDeleteLotteryType",
-  "adminSaveLotteryConfig",
-  "adminListLotteryDraws",
-];
-
 var LEGACY_MEMBER_HEADERS = [
   "member_id",
   "line_user_id",
@@ -506,66 +490,11 @@ function handleAdminRequest_(request) {
   // Keep this guard here as well as in validateRequestEnvelope_. It prevents a
   // direct/internal call with a member action from reading configuration,
   // contacting LINE, or opening either sheet.
-  if (ADMIN_ACTIONS.indexOf(request.action) === -1) {
-    throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
-  }
+  var command = getAdminCommand_(request && request.action);
 
   var config = getConfig_();
   var identity = verifyLineIdToken_(request.idToken, config.lineChannelId);
-
-  if (request.action === "adminListMembers") {
-    return adminListMembers_(identity, request, config);
-  }
-
-  if (request.action === "adminSetMemberAccess") {
-    return adminSetMemberAccess_(identity, request, config);
-  }
-
-  if (request.action === "adminListPointTypes") {
-    return adminListPointTypes_(identity, request, config);
-  }
-
-  if (request.action === "adminListPointHistory") {
-    return adminListPointHistory_(identity, request, config);
-  }
-
-  if (request.action === "adminCreatePointType") {
-    return adminCreatePointType_(identity, request, config);
-  }
-
-  if (request.action === "adminDeletePointType") {
-    return adminDeletePointType_(identity, request, config);
-  }
-
-  if (request.action === "adminCreatePointCampaign") {
-    return adminCreatePointCampaign_(identity, request, config);
-  }
-
-  if (request.action === "adminGetLotteryConfig") {
-    return adminGetLotteryConfig_(identity, request, config);
-  }
-
-  if (request.action === "adminSavePointCardSetting") {
-    return adminSavePointCardSetting_(identity, request, config);
-  }
-
-  if (request.action === "adminCreateLotteryType") {
-    return adminCreateLotteryType_(identity, request, config);
-  }
-
-  if (request.action === "adminDeleteLotteryType") {
-    return adminDeleteLotteryType_(identity, request, config);
-  }
-
-  if (request.action === "adminSaveLotteryConfig") {
-    return adminSaveLotteryConfig_(identity, request, config);
-  }
-
-  if (request.action === "adminListLotteryDraws") {
-    return adminListLotteryDraws_(identity, request, config);
-  }
-
-  throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
+  return command.handle(identity, request, config);
 }
 
 function verifyLineIdToken_(idToken, expectedChannelId) {
@@ -2872,12 +2801,10 @@ function parseRequest_(e) {
 }
 
 function validateRequestEnvelope_(request) {
+  var command = getAdminCommand_(request.action);
+
   if (!/^[a-zA-Z0-9-]{10,80}$/.test(request.requestId || "")) {
     throw appError_("INVALID_REQUEST_ID", "請求識別碼格式不正確。");
-  }
-
-  if (ADMIN_ACTIONS.indexOf(request.action) === -1) {
-    throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
   }
 
   if (
@@ -2892,79 +2819,7 @@ function validateRequestEnvelope_(request) {
     throw appError_("INVALID_BRIDGE", "安全回應通道格式不正確。");
   }
 
-  if (request.action === "adminListMembers") {
-    if (!isPositiveInteger_(request.page)) {
-      throw appError_("INVALID_PAGE", "頁碼格式不正確。");
-    }
-    if (!isPositiveInteger_(request.pageSize) || request.pageSize > MAX_ADMIN_PAGE_SIZE) {
-      throw appError_("INVALID_PAGE_SIZE", "每頁筆數必須介於 1 到 100。");
-    }
-  }
-
-  if (request.action === "adminSetMemberAccess") {
-    if (!/^MBR-[A-Z0-9]{10}$/.test(request.targetMemberId || "")) {
-      throw appError_("INVALID_MEMBER_ID", "會員識別碼格式不正確。");
-    }
-    if (request.accessStatus !== "approved" && request.accessStatus !== "denied") {
-      throw appError_("INVALID_ACCESS_STATUS", "會員權限狀態只能設為 approved 或 denied。");
-    }
-    if (
-      request.expectedAccessStatus !== "approved" &&
-      request.expectedAccessStatus !== "denied"
-    ) {
-      throw appError_("INVALID_ACCESS_VERSION", "會員權限版本狀態不正確。");
-    }
-    if (
-      request.expectedAccessUpdatedAt &&
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(request.expectedAccessUpdatedAt)
-    ) {
-      throw appError_("INVALID_ACCESS_VERSION", "會員權限版本格式不正確。");
-    }
-  }
-
-  if (request.action === "adminCreatePointType") {
-    normalizePointValue_(request.points);
-    normalizeExpiryMode_(request.expiryMode);
-    normalizeRedemptionMode_(request.redemptionMode);
-  }
-
-  if (request.action === "adminDeletePointType") {
-    normalizePointTypeId_(request.pointTypeId);
-  }
-
-  if (request.action === "adminCreatePointCampaign") {
-    normalizePointTypeId_(request.pointTypeId);
-  }
-
-  if (request.action === "adminSavePointCardSetting") {
-    var pointCardTarget = normalizePointCardTarget_(request.pointCardTarget);
-    normalizePointCardExpiry_(
-      request.pointCardExpiryMode,
-      request.pointCardExpiresOn,
-      true
-    );
-    normalizePointCardRewardRules_(
-      request.pointCardRewards,
-      request.pointCardMilestones,
-      pointCardTarget
-    );
-  }
-
-  if (request.action === "adminCreateLotteryType") {
-    normalizeLotteryTypeName_(request.lotteryTypeName);
-  }
-
-  if (request.action === "adminDeleteLotteryType") {
-    normalizeLotteryTypeId_(request.lotteryTypeId);
-  }
-
-  if (request.action === "adminSaveLotteryConfig") {
-    if (request.lotteryTypeId) normalizeLotteryTypeId_(request.lotteryTypeId);
-    if (!request.lotteryTypeId || request.lotteryTypeName) {
-      normalizeLotteryTypeName_(request.lotteryTypeName);
-    }
-    normalizeLotteryPrizes_(request.lotteryPrizes);
-  }
+  command.validate(request);
 }
 
 function normalizePointValue_(value) {

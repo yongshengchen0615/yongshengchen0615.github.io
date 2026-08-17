@@ -1,49 +1,37 @@
 (function () {
   "use strict";
 
-  var CONFIG_TIMEOUT_MS = 8000;
   var FETCH_TIMEOUT_MS = 12000;
   var BRIDGE_TIMEOUT_MS = 20000;
-  var EXTRA_FIELD_NAMES = [
-    "targetMemberId",
-    "accessStatus",
-    "expectedAccessStatus",
-    "expectedAccessUpdatedAt",
-    "page",
-    "pageSize",
-    "phone",
-    "birthday",
-    "claim",
-    "pointAmount",
-    "pointTypeId",
-    "expiresAt",
-    "expiryMode",
-    "redemptionMode",
-    "pointCardTarget",
-    "pointCardMilestones",
-    "pointCardRewards",
-    "pointCardExpiryMode",
-    "pointCardExpiresOn",
-    "lotteryTypeId",
-    "cardRoundKey",
-    "lotteryTypeName",
-    "lotteryPrizes",
+  var MAX_PAYLOAD_FIELDS = 32;
+  var PAYLOAD_FIELD_PATTERN = /^[a-z][a-zA-Z0-9]{0,63}$/;
+  var RESERVED_ENVELOPE_FIELDS = [
+    "action",
+    "idToken",
+    "requestId",
+    "requestSecret",
+    "callbackOrigin",
+    "context",
+    "transport",
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {
-    var configUrl = new URL(relativePath, document.baseURI).toString();
-    return fetchTextWithTimeout(
-      configUrl,
-      {
+    return window
+      .fetch(new URL(relativePath, document.baseURI).toString(), {
         method: "GET",
         headers: { Accept: "application/json" },
         cache: "no-cache",
         credentials: "same-origin",
-      },
-      CONFIG_TIMEOUT_MS,
-      "CONFIG_TIMEOUT",
-      "讀取設定檔逾時，請確認網路連線後再試。"
-    )
+      })
+      .then(function (response) {
+        if (!response.ok) {
+          throw createError(
+            "CONFIG_LOAD_ERROR",
+            "無法載入設定檔。請確認 config.json 已與頁面一起發布。"
+          );
+        }
+        return response.text();
+      })
       .then(function (text) {
         var config;
         try {
@@ -62,7 +50,6 @@
           }
         });
 
-        preconnectGasUrl(config.GAS_WEB_APP_URL);
         return Object.freeze(config);
       })
       .catch(function (error) {
@@ -72,82 +59,6 @@
           "無法讀取 config.json。請透過網站伺服器開啟頁面後再試。"
         );
       });
-  }
-
-  function preconnectGasUrl(value) {
-    if (!isValidGasUrl(value)) return;
-    if (!document || typeof document.createElement !== "function") return;
-
-    var parent = document.head || document.documentElement;
-    if (!parent || typeof parent.appendChild !== "function") return;
-
-    var origin = new URL(String(value).trim()).origin;
-    var selector = 'link[rel="preconnect"][href="' + origin + '"]';
-    if (
-      typeof document.querySelector === "function" &&
-      document.querySelector(selector)
-    ) {
-      return;
-    }
-
-    var link = document.createElement("link");
-    link.rel = "preconnect";
-    link.href = origin;
-    link.crossOrigin = "anonymous";
-    parent.appendChild(link);
-  }
-
-  function performanceNow() {
-    return window.performance && typeof window.performance.now === "function"
-      ? window.performance.now()
-      : Date.now();
-  }
-
-  function emitTransportMetric(startedAt, source) {
-    if (
-      typeof window.dispatchEvent !== "function" ||
-      typeof window.CustomEvent !== "function"
-    ) {
-      return;
-    }
-    try {
-      window.dispatchEvent(
-        new window.CustomEvent("persona:gas-performance", {
-          detail: Object.freeze({
-            phase: "gas_request",
-            durationMs: Math.max(
-              0,
-              Math.round((performanceNow() - startedAt) * 10) / 10
-            ),
-            source: source,
-          }),
-        })
-      );
-    } catch (_error) {
-      // Diagnostics must never affect request delivery.
-    }
-  }
-
-  function emitContractError(reason) {
-    if (
-      typeof window.dispatchEvent !== "function" ||
-      typeof window.CustomEvent !== "function"
-    ) {
-      return;
-    }
-    try {
-      window.dispatchEvent(
-        new window.CustomEvent("persona:api-contract-error", {
-          detail: Object.freeze({
-            code: "BACKEND_RESPONSE_MISMATCH",
-            reason: String(reason || "invalid_envelope").slice(0, 80),
-            source: "gas-transport",
-          }),
-        })
-      );
-    } catch (_error) {
-      // Contract diagnostics are best-effort and contain no response payload.
-    }
   }
 
   function sendRequest(options) {
@@ -161,57 +72,57 @@
         createError("INVALID_REQUEST_ID", "請求識別碼格式不正確。")
       );
     }
-    var action = String(options.action || "").trim();
-    if (!/^[a-z][a-zA-Z0-9]{1,63}$/.test(action)) {
-      return Promise.reject(createError("INVALID_ACTION", "請求動作格式不正確。"));
-    }
-
     var request = {
-      action: action,
+      action: String(options.action || ""),
       idToken: String(options.idToken || ""),
       requestId: requestId,
       callbackOrigin: getCallbackOrigin(),
-      context: normalizeContext(options.context),
+      context: options.context && typeof options.context === "object" ? options.context : {},
       transport: "fetch",
     };
-    var fields = options.fields && typeof options.fields === "object" ? options.fields : {};
-
-    EXTRA_FIELD_NAMES.forEach(function (name) {
-      if (Object.prototype.hasOwnProperty.call(fields, name)) {
-        request[name] = fields[name];
-      }
-    });
+    var payload = options.payload === undefined ? {} : options.payload;
+    var payloadNames = copyPayloadFields(request, payload);
 
     var gasUrl = String(options.gasUrl || "").trim();
-    if (!isValidGasUrl(gasUrl)) {
-      return Promise.reject(
-        createError("INVALID_GAS_URL", "GAS Web App 網址格式不正確，請使用正式 /exec 網址。")
-      );
+    return postWithFetch(gasUrl, request).catch(function (error) {
+      if (!shouldUseBridgeFallback(error)) throw error;
+      return postWithBridge(gasUrl, request, payloadNames);
+    });
+  }
+
+  function copyPayloadFields(request, payload) {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw createError("INVALID_PAYLOAD", "請求資料必須是物件。");
     }
 
-    var startedAt = performanceNow();
-    var transportSource = "fetch";
-    return postWithFetch(gasUrl, request).catch(function (error) {
-        if (!shouldUseBridgeFallback(error)) throw error;
-        transportSource = "bridge";
-        return postWithBridge(gasUrl, request);
-      })
-      .then(
-        function (result) {
-          emitTransportMetric(startedAt, transportSource);
-          return result;
-        },
-        function (error) {
-          emitTransportMetric(startedAt, transportSource + "-error");
-          throw error;
-        }
-      );
+    var names = Object.keys(payload);
+    if (names.length > MAX_PAYLOAD_FIELDS) {
+      throw createError("INVALID_PAYLOAD", "請求資料欄位數量超出限制。");
+    }
+
+    names.forEach(function (name) {
+      if (
+        !PAYLOAD_FIELD_PATTERN.test(name) ||
+        RESERVED_ENVELOPE_FIELDS.indexOf(name) !== -1
+      ) {
+        throw createError("INVALID_PAYLOAD_FIELD", "請求資料包含不允許的欄位。");
+      }
+      if (payload[name] !== undefined) request[name] = payload[name];
+    });
+
+    return names.filter(function (name) {
+      return payload[name] !== undefined;
+    });
   }
 
   function postWithFetch(gasUrl, request) {
-    return fetchTextWithTimeout(
-      gasUrl,
-      {
+    var controller = new AbortController();
+    var timeout = window.setTimeout(function () {
+      controller.abort();
+    }, FETCH_TIMEOUT_MS);
+
+    return window
+      .fetch(gasUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=UTF-8" },
         body: JSON.stringify(request),
@@ -219,58 +130,32 @@
         credentials: "omit",
         redirect: "follow",
         referrerPolicy: "no-referrer",
-      },
-      FETCH_TIMEOUT_MS,
-      "BACKEND_TIMEOUT",
-      "GAS 後台目前沒有回應。"
-    ).then(function (text) {
-      var result;
-      try {
-        result = JSON.parse(text);
-      } catch (_error) {
-        throw createError(
-          "BACKEND_RESPONSE_ERROR",
-          "GAS 回傳的不是 JSON。請確認 Web App 已設為任何人可存取並使用 /exec 網址。"
-        );
-      }
-      return validateResponseEnvelope(result, request.requestId);
-    });
+        signal: controller.signal,
+      })
+      .then(function (response) {
+        if (!response.ok) {
+          throw createError("BACKEND_HTTP_ERROR", "GAS 後台目前無法回應。");
+        }
+        return response.text();
+      })
+      .then(function (text) {
+        var result;
+        try {
+          result = JSON.parse(text);
+        } catch (_error) {
+          throw createError(
+            "BACKEND_RESPONSE_ERROR",
+            "GAS 回傳的不是 JSON。請確認 Web App 已設為任何人可存取並使用 /exec 網址。"
+          );
+        }
+        return validateResponseEnvelope(result, request.requestId);
+      })
+      .finally(function () {
+        window.clearTimeout(timeout);
+      });
   }
 
-  function fetchTextWithTimeout(url, fetchOptions, timeoutMs, timeoutCode, timeoutMessage) {
-    var controller =
-      typeof AbortController === "function" ? new AbortController() : null;
-    var options = Object.assign({}, fetchOptions || {});
-    if (controller) options.signal = controller.signal;
-
-    var timeout = 0;
-    var timeoutPromise = new Promise(function (_resolve, reject) {
-      timeout = window.setTimeout(function () {
-        if (controller) controller.abort();
-        reject(createError(timeoutCode, timeoutMessage));
-      }, timeoutMs);
-    });
-
-    var fetchPromise = window.fetch(url, options).then(function (response) {
-      if (!response || !response.ok) {
-        throw createError(
-          fetchOptions && fetchOptions.method === "GET"
-            ? "CONFIG_LOAD_ERROR"
-            : "BACKEND_HTTP_ERROR",
-          fetchOptions && fetchOptions.method === "GET"
-            ? "無法載入設定檔。請確認 config.json 已與頁面一起發布。"
-            : "GAS 後台目前無法回應。"
-        );
-      }
-      return response.text();
-    });
-
-    return Promise.race([fetchPromise, timeoutPromise]).finally(function () {
-      window.clearTimeout(timeout);
-    });
-  }
-
-  function postWithBridge(gasUrl, originalRequest) {
+  function postWithBridge(gasUrl, originalRequest, payloadNames) {
     return new Promise(function (resolve, reject) {
       var requestSecret = createRandomHex(24);
       var frameName = "gas_bridge_" + originalRequest.requestId.replace(/[^a-zA-Z0-9]/g, "");
@@ -296,14 +181,12 @@
       appendHiddenField(form, "callbackOrigin", originalRequest.callbackOrigin);
       appendHiddenField(form, "context", JSON.stringify(originalRequest.context || {}));
       appendHiddenField(form, "transport", "bridge");
-      EXTRA_FIELD_NAMES.forEach(function (name) {
+      payloadNames.forEach(function (name) {
         if (Object.prototype.hasOwnProperty.call(originalRequest, name)) {
           appendHiddenField(
             form,
             name,
-            name === "lotteryPrizes" || name === "pointCardRewards"
-              ? JSON.stringify(originalRequest[name])
-              : originalRequest[name]
+            serializeBridgePayloadValue(originalRequest[name])
           );
         }
       });
@@ -360,6 +243,11 @@
     });
   }
 
+  function serializeBridgePayloadValue(value) {
+    if (value && typeof value === "object") return JSON.stringify(value);
+    return value;
+  }
+
   function appendHiddenField(form, name, value) {
     var input = document.createElement("input");
     input.type = "hidden";
@@ -368,39 +256,9 @@
     form.appendChild(input);
   }
 
-  function normalizeContext(value) {
-    var source = value && typeof value === "object" ? value : {};
-    var context = {};
-    ["type", "viewType", "os", "language"].forEach(function (name) {
-      if (source[name] !== undefined && source[name] !== null) {
-        context[name] = String(source[name]).trim().slice(0, 40);
-      }
-    });
-    if (source.inClient !== undefined) context.inClient = Boolean(source.inClient);
-    return context;
-  }
-
   function validateResponseEnvelope(result, requestId) {
-    if (!result || typeof result !== "object" || Array.isArray(result)) {
-      emitContractError("response_not_object");
-      throw createError(
-        "BACKEND_RESPONSE_MISMATCH",
-        "GAS 回應不是可辨識的資料物件，請安全重試。"
-      );
-    }
-    if (result.requestId !== requestId) {
-      emitContractError("request_id_mismatch");
-      throw createError(
-        "BACKEND_RESPONSE_MISMATCH",
-        "無法確認 GAS 回應與本次請求相符，已保留原請求識別碼。"
-      );
-    }
-    if (typeof result.ok !== "boolean") {
-      emitContractError("missing_ok_flag");
-      throw createError(
-        "BACKEND_RESPONSE_MISMATCH",
-        "GAS 回應缺少處理狀態，請安全重試。"
-      );
+    if (!result || typeof result !== "object" || result.requestId !== requestId) {
+      throw createError("INVALID_RESPONSE", "無法確認 GAS 回應與本次請求相符。");
     }
     return result;
   }
@@ -408,10 +266,7 @@
   function shouldUseBridgeFallback(error) {
     return (
       error instanceof TypeError ||
-      (error &&
-        (error.name === "AbortError" ||
-          error.code === "FETCH_NETWORK_ERROR" ||
-          error.code === "BACKEND_TIMEOUT"))
+      (error && (error.name === "AbortError" || error.code === "FETCH_NETWORK_ERROR"))
     );
   }
 

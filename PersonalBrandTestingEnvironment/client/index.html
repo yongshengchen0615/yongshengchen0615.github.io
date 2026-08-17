@@ -21,8 +21,26 @@
     <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script defer src="../shared/gas-api.js"></script>
     <script defer src="../shared/liff-runtime.js"></script>
+<<<<<<< HEAD
     <script defer src="member-lottery-loader.js"></script>
+=======
+    <script defer src="../shared/lottery-wheel.js"></script>
+    <script defer src="../shared/module-registry.js"></script>
+    <script defer src="member-api.js"></script>
+    <script defer src="member-lottery.js"></script>
+    <script defer src="lottery/contracts.js"></script>
+    <script defer src="lottery/pending-request-store.js"></script>
+    <script defer src="lottery/preparation-service.js"></script>
+    <script defer src="lottery/wheel-draw-guard.js"></script>
+    <script defer src="lottery/workspace-mapper.js"></script>
+    <script defer src="lottery/wheel-animator.js"></script>
+    <script defer src="lottery/dialog-view.js"></script>
+    <script defer src="lottery/demo-provider.js"></script>
+    <script defer src="lottery/dialog-controller.js"></script>
+    <script defer src="member-lottery-v2.js"></script>
+>>>>>>> 個人品牌測試環境
     <script defer src="script.js"></script>
+    <script defer src="member-main.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳至主要內容</a>
@@ -108,7 +126,7 @@
             <span>01</span>
             <div>
               <strong>設定 GAS 後台</strong>
-              <p>部署 <code>gas/client/Code.gs</code>，並取得結尾為 <code>/exec</code> 的會員 GAS 網址。</p>
+              <p>將 <code>gas/client/Code.gs</code> 與 <code>gas/client/Commands.gs</code> 部署到同一個會員 GAS 專案，並取得結尾為 <code>/exec</code> 的網址。</p>
             </div>
           </li>
           <li>

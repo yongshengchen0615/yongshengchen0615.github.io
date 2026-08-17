@@ -1,0 +1,21 @@
+flowchart LR
+    memberLiff["Member LIFF with extracted local controllers"]
+    adminLiff["Admin LIFF with page conditionals"]
+    transport["Shared transport and domain field whitelist"]
+    memberGas["Member GAS with local guards"]
+    adminGas["Admin GAS with local guards"]
+    contractTests["Cross layer contract tests"]
+    lineApi["LINE ID token verification"]
+    sheets["Shared Google Spreadsheet"]
+
+    memberLiff -->|"action and fields"| transport
+    adminLiff -->|"action and fields"| transport
+    transport -->|"member envelope"| memberGas
+    transport -->|"admin envelope"| adminGas
+    contractTests -.->|"checks drift"| transport
+    contractTests -.->|"checks member actions"| memberGas
+    contractTests -.->|"checks admin actions"| adminGas
+    memberGas -->|"verify audience"| lineApi
+    adminGas -->|"verify audience and admin"| lineApi
+    memberGas -->|"ledger and profile access"| sheets
+    adminGas -->|"configuration and access"| sheets

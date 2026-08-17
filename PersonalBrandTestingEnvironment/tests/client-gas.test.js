@@ -4,10 +4,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const { readGasProjectSource } = require("./helpers/gas-project");
 
-const code = fs.readFileSync(
-  path.join(__dirname, "..", "gas", "client", "Code.gs"),
-  "utf8"
+const code = readGasProjectSource(
+  path.join(__dirname, "..", "gas", "client")
 );
 
 function createProperties(values = {}) {
@@ -213,7 +213,7 @@ function createGasContext(overrides = {}) {
   };
 
   vm.createContext(context);
-  vm.runInContext(code, context, { filename: "gas/client/Code.gs" });
+  vm.runInContext(code, context, { filename: "gas/client/*.gs" });
   return context;
 }
 
@@ -774,6 +774,8 @@ test("supported actions always verify against config, never a request-provided c
   gas.upsertMember_ = () => ({ data: { action: "upsert" } });
   gas.updateMemberProfile_ = () => ({ data: { action: "profile" } });
   gas.listPointHistory_ = () => ({ data: { action: "history" } });
+  gas.getLotteryConfig_ = () => ({ data: { action: "lottery-config" } });
+  gas.drawLottery_ = () => ({ data: { action: "draw" } });
   gas.previewPointCampaign_ = () => ({ data: { action: "preview" } });
   gas.redeemPointCampaign_ = () => ({ data: { action: "redeem" } });
   gas.deleteMember_ = () => ({ data: { action: "delete" } });
@@ -800,6 +802,17 @@ test("supported actions always verify against config, never a request-provided c
     idToken: "header.payload.signature",
     lineChannelId: "2010791619",
   });
+  const lotteryConfigResult = gas.handleMemberRequest_({
+    action: "getLotteryConfig",
+    idToken: "header.payload.signature",
+    lineChannelId: "2010791619",
+  });
+  const drawResult = gas.handleMemberRequest_({
+    action: "drawLottery",
+    idToken: "header.payload.signature",
+    lineChannelId: "2010791619",
+    lotteryTypeId: "LTY-DEFAULT001",
+  });
   const previewResult = gas.handleMemberRequest_({
     action: "previewPointCampaign",
     idToken: "header.payload.signature",
@@ -820,10 +833,14 @@ test("supported actions always verify against config, never a request-provided c
     "2010787602",
     "2010787602",
     "2010787602",
+    "2010787602",
+    "2010787602",
   ]);
   assert.equal(upsertResult.data.action, "upsert");
   assert.equal(profileResult.data.action, "profile");
   assert.equal(historyResult.data.action, "history");
+  assert.equal(lotteryConfigResult.data.action, "lottery-config");
+  assert.equal(drawResult.data.action, "draw");
   assert.equal(deleteResult.data.action, "delete");
   assert.equal(previewResult.data.action, "preview");
   assert.equal(redeemResult.data.action, "redeem");

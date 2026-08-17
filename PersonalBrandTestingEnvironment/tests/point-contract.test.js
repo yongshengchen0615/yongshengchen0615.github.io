@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const { readGasProjectSource } = require("./helpers/gas-project");
 
 function loadGas(relativePath) {
   const context = {
@@ -34,10 +35,11 @@ function loadGas(relativePath) {
     },
   };
   vm.createContext(context);
+  const absolutePath = path.join(__dirname, "..", relativePath);
   vm.runInContext(
-    fs.readFileSync(path.join(__dirname, "..", relativePath), "utf8"),
+    readGasProjectSource(path.dirname(absolutePath)),
     context,
-    { filename: relativePath }
+    { filename: path.join(path.dirname(relativePath), "*.gs") }
   );
   return context;
 }

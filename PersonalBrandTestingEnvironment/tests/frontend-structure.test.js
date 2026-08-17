@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const root = path.resolve(__dirname, "..");
+const root = path.join(__dirname, "..");
 const htmlFiles = [
   "index.html",
   "setup.html",
@@ -15,8 +15,15 @@ const htmlFiles = [
   "admin/lottery.html",
 ];
 
-function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), "utf8");
+function getTopLevelFunctionContaining(source, marker) {
+  const match = marker.exec(source);
+  assert.ok(match, `missing source marker ${marker}`);
+
+  const start = source.lastIndexOf("\n  function ", match.index);
+  assert.notEqual(start, -1, `marker ${marker} must be inside a top-level function`);
+
+  const end = source.indexOf("\n  function ", match.index + match[0].length);
+  return source.slice(start + 1, end === -1 ? source.length : end);
 }
 
 function escapeRegExp(value) {
@@ -33,32 +40,32 @@ function getOpeningTagById(source, id) {
   return match[0];
 }
 
-function getTopLevelFunctionContaining(source, marker) {
-  const match = marker.exec(source);
-  assert.ok(match, `missing source marker ${marker}`);
-  const start = source.lastIndexOf("\n  function ", match.index);
-  assert.notEqual(start, -1, `marker ${marker} must be inside a top-level function`);
-  const end = source.indexOf("\n  function ", match.index + match[0].length);
-  return source.slice(start + 1, end === -1 ? source.length : end);
+function getElementMarkupById(source, id) {
+  const escapedId = escapeRegExp(id);
+  const match = new RegExp(
+    `<([a-z][\\w:-]*)\\b[^>]*\\bid=(?:"${escapedId}"|'${escapedId}')[^>]*>`,
+    "i"
+  ).exec(source);
+  assert.ok(match, `missing element #${id}`);
+
+  const closingTag = `</${match[1]}>`;
+  const end = source.indexOf(closingTag, match.index + match[0].length);
+  assert.notEqual(end, -1, `element #${id} must have a closing tag`);
+  return source.slice(match.index, end + closingTag.length);
 }
 
-function getNestedFunctionContaining(source, marker, indentation = 8) {
-  const match = marker.exec(source);
-  assert.ok(match, `missing source marker ${marker}`);
-  const boundary = `\n${" ".repeat(indentation)}function `;
-  const start = source.lastIndexOf(boundary, match.index);
-  assert.notEqual(start, -1, `marker ${marker} must be inside a nested function`);
-  const end = source.indexOf(boundary, match.index + match[0].length);
-  return source.slice(start + 1, end === -1 ? source.length : end);
+function getCssRuleBody(source, selector) {
+  const match = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(source);
+  assert.ok(match, `missing CSS rule ${selector}`);
+  return match[1];
 }
 
-test("HTML documents reference only existing local assets", () => {
+test("split client and admin entry points reference existing local assets", () => {
   for (const relativePath of htmlFiles) {
     const absolutePath = path.join(root, relativePath);
     const html = fs.readFileSync(absolutePath, "utf8");
-    const references = [...html.matchAll(/(?:href|src)="([^"]+)"/g)].map(
-      (match) => match[1]
-    );
+    const references = [...html.matchAll(/(?:href|src)="([^"]+)"/g)].map((match) => match[1]);
+
     for (const reference of references) {
       if (/^(?:#|data:|https?:|mailto:|javascript:)/.test(reference)) continue;
       const pathname = reference.split(/[?#]/, 1)[0];
@@ -73,262 +80,940 @@ test("HTML documents reference only existing local assets", () => {
 
 test("HTML documents do not contain duplicate IDs", () => {
   for (const relativePath of htmlFiles) {
-    const html = read(relativePath);
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
     const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
     assert.equal(new Set(ids).size, ids.length, `${relativePath} contains duplicate IDs`);
   }
 });
 
-test("member page keeps startup scripts small and defers Lottery V2 internals", () => {
-  const html = read("client/index.html");
-  const loader = read("client/member-lottery-loader.js");
-  const startupScripts = [
-    "../shared/gas-api.js",
-    "../shared/liff-runtime.js",
-    "member-lottery-loader.js",
-    "script.js",
-  ];
-  let previous = -1;
-  for (const scriptPath of startupScripts) {
-    const index = html.indexOf(`src="${scriptPath}"`);
-    assert.notEqual(index, -1, `client/index.html must load ${scriptPath}`);
-    assert.equal(index > previous, true, `${scriptPath} is out of dependency order`);
-    previous = index;
-  }
-
-  for (const deferredPath of [
-    "../shared/module-registry.js",
-    "../shared/lottery-wheel.js",
-    "lottery/contracts.js",
-    "lottery/pending-request-store.js",
-    "lottery/workspace-service.js",
-    "lottery/preparation-service.js",
-    "lottery/draw-service.js",
-    "lottery/workspace-mapper.js",
-    "lottery/wheel-animator.js",
-    "lottery/dialog-view.js",
-    "lottery/demo-provider.js",
-    "lottery/dialog-controller.js",
-    "member-lottery-v2.js",
-  ]) {
-    assert.doesNotMatch(html, new RegExp(`src=["']${escapeRegExp(deferredPath)}["']`));
-    assert.match(loader, new RegExp(escapeRegExp(`"${deferredPath}"`)));
-  }
-  assert.doesNotMatch(html, /wheel-draw-guard\.js|member-lottery\.js/);
-});
-
-test("member home exposes accessible profile, points, history, ticket, and Lottery V2 dialogs", () => {
-  const html = read("client/index.html");
-  for (const id of [
-    "member-state",
-    "member-phone",
-    "member-birthday",
-    "member-point-card-current",
-    "member-point-card-target",
-    "member-point-card-progress-track",
-    "member-point-balance",
-    "scan-point-button",
-    "lottery-page-link",
-    "member-ticket-count",
-    "open-point-history-button",
-    "profile-dialog",
-    "point-scanner-dialog",
-    "member-ticket-dialog",
-    "member-lottery-dialog",
-    "point-history-dialog",
-  ]) {
-    assert.match(html, new RegExp(`id=["']${id}["']`));
-  }
-
-  assert.match(getOpeningTagById(html, "member-lottery-dialog"), /^<dialog\b/i);
-  assert.match(
-    getOpeningTagById(html, "member-lottery-loading-state"),
-    /role=["']status["'][^>]*aria-live=["']polite["']|aria-live=["']polite["'][^>]*role=["']status["']/i
-  );
-  assert.match(getOpeningTagById(html, "member-lottery-error-state"), /role=["']alert["']/i);
-  assert.match(getOpeningTagById(html, "member-lottery-result-state"), /aria-live=["']polite["']/i);
-  assert.match(getOpeningTagById(html, "member-lottery-spin-button"), /\bdisabled\b/i);
-});
-
-test("member profile update sends only editable phone and birthday fields", () => {
-  const html = read("client/index.html");
-  const script = read("client/script.js");
-  assert.match(getOpeningTagById(html, "profile-phone-input"), /type=["']tel["']/i);
-  assert.match(getOpeningTagById(html, "profile-birthday-input"), /type=["']date["']/i);
-  assert.match(getOpeningTagById(html, "profile-phone-input"), /\brequired\b/i);
-  assert.match(getOpeningTagById(html, "profile-birthday-input"), /\brequired\b/i);
-  const submit = getTopLevelFunctionContaining(script, /["']updateMemberProfile["']/);
-  assert.match(submit, /\bphone\s*:/);
-  assert.match(submit, /\bbirthday\s*:/);
-  assert.doesNotMatch(submit, /\b(?:status|adminStatus|lineUserId)\s*:/);
-});
-
-test("member point claim and history stay on the member host page", () => {
-  const html = read("client/index.html");
-  const script = read("client/script.js");
-  const legacy = read("client/lottery.html");
-  const redeem = getTopLevelFunctionContaining(script, /["']redeemPointCampaign["']/);
-  const history = getTopLevelFunctionContaining(script, /["']listPointHistory["']/);
-
-  assert.match(html, /id=["']claim-dialog["']/);
-  assert.match(html, /id=["']point-history-dialog["']/);
-  assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
-  assert.match(history, /sendGasRequest\(["']listPointHistory["']/);
-  assert.doesNotMatch(legacy, /point-history-dialog|scan-point-button|redeemPointCampaign/);
-});
-
-test("member ticket selection opens the in-place Lottery V2 dialog instead of navigating", () => {
-  const script = read("client/script.js");
-  const openTicket = getTopLevelFunctionContaining(
+test("admin separates member records, point issuance, and lottery into isolated pages", () => {
+  const memberHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const pointHtml = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const lotteryHtml = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const boot = getTopLevelFunctionContaining(
     script,
-    /function\s+openMemberLotteryTicket\s*\(/
+    /withLoginOnExternalBrowser\s*:\s*false/
   );
-  assert.match(
-    openTicket,
-    /closeDialog\(byId\(["']member-ticket-dialog["']\),\s*true\)[\s\S]*window\.MemberLotteryDialog\.open/
+  const routeSync = getTopLevelFunctionContaining(
+    script,
+    /var\s+demo\s*=\s*isDemoSession/
   );
-  assert.doesNotMatch(openTicket, /lottery\.html|location\.(?:assign|replace)/);
-});
-
-test("Lottery V2 preparation is read-only and central spin owns the draw transition", () => {
-  const preparation = read("client/lottery/preparation-service.js");
-  const drawService = read("client/lottery/draw-service.js");
-  const controller = read("client/lottery/dialog-controller.js");
-  const open = getNestedFunctionContaining(controller, /function\s+open\s*\(ticketValue\)/);
-  const prepareCurrent = getNestedFunctionContaining(
-    controller,
-    /function\s+prepareCurrent\s*\(/
-  );
-  const spin = getNestedFunctionContaining(controller, /function\s+handleSpin\s*\(/);
-
-  assert.match(open, /view\.markPreparing/);
-  assert.match(prepareCurrent, /preparationService\.prepare/);
-  assert.match(prepareCurrent, /animator\.prepare\(selectedType\.lottery\)/);
-  assert.doesNotMatch(preparation, /drawLottery|\.ensure\(/);
-  assert.match(drawService, /store\.ensure\(ticket\)/);
-  assert.match(drawService, /["']drawLottery["']/);
-  assert.match(controller, /drawService\.draw\(selectedTicket\)/);
-  assert.match(spin, /isBusy\s*=\s*true/);
-  assert.match(spin, /animator[\s\S]*\.settle/);
-  assert.doesNotMatch(spin, /getLotteryConfig|options\.request\(/);
-});
-
-test("legacy lottery deep link is compatibility-only and preserves query/hash while opening tickets", () => {
-  const html = read("client/lottery.html");
-  assert.match(html, /params\.set\(["']panel["'],\s*["']tickets["']\)/);
-  assert.match(html, /target\.search\s*=\s*params\.toString\(\)/);
-  assert.match(html, /target\.hash\s*=\s*window\.location\.hash/);
-  assert.match(html, /window\.location\.replace\(target\.toString\(\)\)/);
-  assert.match(html, /href=["']\.\/\?panel=tickets["']/);
-  assert.doesNotMatch(html, /lottery\.js|member-lottery\.js|lottery-spin-button/);
-  assert.equal(fs.existsSync(path.join(root, "client/lottery.js")), false);
-  assert.equal(fs.existsSync(path.join(root, "client/member-lottery.js")), false);
-  assert.equal(
-    fs.existsSync(path.join(root, "client/lottery/wheel-draw-guard.js")),
-    false
-  );
-});
-
-test("admin separates members, points, and lottery into isolated pages", () => {
-  const memberHtml = read("admin/index.html");
-  const pointHtml = read("admin/points.html");
-  const lotteryHtml = read("admin/lottery.html");
-  const script = read("admin/script.js");
 
   assert.match(memberHtml, /<body\b[^>]*data-admin-page=["']members["']/i);
   assert.match(pointHtml, /<body\b[^>]*data-admin-page=["']points["']/i);
   assert.match(lotteryHtml, /<body\b[^>]*data-admin-page=["']lottery["']/i);
+  assert.match(memberHtml, /href=["']\.\/["'][^>]*aria-current=["']page["']/i);
+  assert.match(pointHtml, /href=["']points\.html["'][^>]*aria-current=["']page["']/i);
+  assert.match(lotteryHtml, /href=["']lottery\.html["'][^>]*aria-current=["']page["']/i);
   for (const html of [memberHtml, pointHtml, lotteryHtml]) {
     assert.match(html, /href=["']\.\/["'][^>]*data-admin-route/i);
     assert.match(html, /href=["']points\.html["'][^>]*data-admin-route/i);
     assert.match(html, /href=["']lottery\.html["'][^>]*data-admin-route/i);
+    assert.match(html, />會員資料</);
+    assert.match(html, />點數管理</);
+    assert.match(html, />轉盤抽獎</);
   }
+
+  for (const id of ["point-workspace", "point-type-form", "point-campaign-form", "point-qr-dialog"]) {
+    assert.doesNotMatch(memberHtml, new RegExp(`id=["']${id}["']`));
+  }
+  for (const id of ["metric-all", "member-list", "filter-form", "deny-dialog"]) {
+    assert.doesNotMatch(pointHtml, new RegExp(`id=["']${id}["']`));
+    assert.doesNotMatch(lotteryHtml, new RegExp(`id=["']${id}["']`));
+  }
+
   assert.match(script, /requestedAdminPage\s*===\s*["']points["']/);
   assert.match(script, /requestedAdminPage\s*===\s*["']lottery["']/);
+  assert.match(boot, /ADMIN_PAGE\s*===\s*["']points["'][\s\S]{0,80}?fetchPointTypes\s*\(/);
+  assert.match(boot, /ADMIN_PAGE\s*===\s*["']lottery["'][\s\S]{0,80}?fetchLotteryConfig\s*\(/);
+  assert.match(boot, /fetchMembers\s*\(/);
+  assert.match(routeSync, /isDemoSession\s*\|\|\s*hasDemoQuery\s*\(\s*\)/);
+  assert.match(routeSync, /searchParams\.set\s*\(\s*["']demo["']\s*,\s*["']1["']\s*\)/);
 });
 
-test("admin point workspace exposes point rules, QR actions, and history", () => {
-  const html = read("admin/points.html");
-  const script = read("admin/script.js");
+test("client member profile does not display email or login metadata", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const memberState = /id="member-state"[\s\S]*?(?=<section[^>]+id="error-state")/.exec(html);
+
+  assert.ok(memberState, "client member state must exist");
+  for (const label of ["Email", "登入次數", "最後登入", "登入環境"]) {
+    assert.doesNotMatch(memberState[0], new RegExp(`>${label}<`));
+  }
   for (const id of [
-    "point-workspace",
-    "point-type-form",
-    "point-amount-input",
-    "point-campaign-form",
-    "point-expiry-input",
-    "point-qr-dialog",
-    "point-history-workspace",
+    "member-email",
+    "member-login-count",
+    "member-last-login",
+    "member-environment",
+  ]) {
+    assert.doesNotMatch(html, new RegExp(`id=["']${id}["']`));
+    assert.doesNotMatch(script, new RegExp(`byId\\(["']${id}["']\\)`));
+  }
+});
+
+test("client member profile displays editable phone and birthday details", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const memberState = /id="member-state"[\s\S]*?(?=<section[^>]+id="error-state")/.exec(html);
+  const memberPass =
+    /<article\b[^>]*class=["'][^"']*member-pass[^"']*["'][\s\S]*?<\/article>/.exec(
+      html
+    );
+  const renderMember = getTopLevelFunctionContaining(script, /function\s+renderMember\s*\(/);
+
+  assert.ok(memberState, "client member state must exist");
+  assert.ok(memberPass, "member contact details must live inside the member pass");
+  assert.match(memberPass[0], /<dt>\s*電話\s*<\/dt>[\s\S]*?<dd[^>]+id="member-phone"/);
+  assert.match(memberPass[0], /<dt>\s*生日\s*<\/dt>[\s\S]*?<dd[^>]+id="member-birthday"/);
+  assert.doesNotMatch(memberState[0], /class=["'][^"']*member-details/);
+  assert.match(
+    memberState[0],
+    /<\/article>\s*<div\b[^>]*class=["'][^"']*member-service-actions[^"']*["'][\s\S]*id=["']scan-point-button["'][\s\S]*id=["']lottery-page-link["']/
+  );
+  assert.match(memberState[0], /id="edit-profile-button"/);
+
+  assert.match(renderMember, /byId\(["']member-phone["']\)/);
+  assert.match(renderMember, /\bmember\.phone\b/);
+  assert.match(renderMember, /byId\(["']member-birthday["']\)/);
+  assert.match(renderMember, /\bmember\.birthday\b/);
+});
+
+test("client profile dialog submits phone and birthday through the profile update action", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
+  const dialog = /<dialog\b[^>]*id="profile-dialog"[\s\S]*?<\/dialog>/.exec(html);
+  const profileInputStyles =
+    /\.profile-field input\s*\{([\s\S]*?)\}/.exec(styles);
+  const mobileDateStyles =
+    /\.profile-field input\[type=["']date["']\]\s*\{([\s\S]*?)\}/.exec(styles);
+
+  assert.ok(dialog, "client profile edit dialog must exist");
+  assert.ok(profileInputStyles, "profile inputs must have a shared layout rule");
+  assert.ok(mobileDateStyles, "date input must have an iOS-safe layout rule");
+  assert.match(dialog[0], /<form\b[^>]*id="profile-form"/);
+  assert.match(dialog[0], /<input\b[^>]*id="profile-phone-input"[^>]*>/);
+  assert.match(
+    dialog[0],
+    /id="profile-phone-input"[^>]*type="tel"|type="tel"[^>]*id="profile-phone-input"/
+  );
+  assert.match(dialog[0], /<input\b[^>]*id="profile-birthday-input"[^>]*>/);
+  assert.match(
+    dialog[0],
+    /id="profile-birthday-input"[^>]*type="date"|type="date"[^>]*id="profile-birthday-input"/
+  );
+  assert.match(
+    dialog[0],
+    /<button\b[^>]*id="profile-save-button"[^>]*type="submit"|<button\b[^>]*type="submit"[^>]*id="profile-save-button"/
+  );
+  assert.match(profileInputStyles[1], /display\s*:\s*block/);
+  assert.match(profileInputStyles[1], /width\s*:\s*100%/);
+  assert.match(profileInputStyles[1], /min-width\s*:\s*0/);
+  assert.match(profileInputStyles[1], /max-width\s*:\s*100%/);
+  assert.match(profileInputStyles[1], /height\s*:\s*3\.5rem/);
+  assert.match(mobileDateStyles[1], /padding-inline\s*:\s*0/);
+  assert.match(mobileDateStyles[1], /text-align\s*:\s*left/);
+  assert.match(mobileDateStyles[1], /text-indent\s*:\s*0\.45rem/);
+
+  assert.match(
+    script,
+    /byId\(["']profile-form["']\)\.addEventListener\(["']submit["']/
+  );
+  const submitProfile = getTopLevelFunctionContaining(script, /["']updateMemberProfile["']/);
+  assert.match(submitProfile, /["']updateMemberProfile["']/);
+  assert.match(submitProfile, /\bphone\s*:/);
+  assert.match(submitProfile, /\bbirthday\s*:/);
+});
+
+test("incomplete members must finish phone and birthday before using member actions", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const phoneInput = getOpeningTagById(html, "profile-phone-input");
+  const birthdayInput = getOpeningTagById(html, "profile-birthday-input");
+  const sync = getTopLevelFunctionContaining(
+    script,
+    /sendGasRequest\(["']upsertMember["']/
+  );
+  const onboarding = getTopLevelFunctionContaining(
+    script,
+    /function\s+openProfileOnboarding\s*\(/
+  );
+  const mode = getTopLevelFunctionContaining(
+    script,
+    /function\s+setProfileDialogMode\s*\(/
+  );
+  const submit = getTopLevelFunctionContaining(
+    script,
+    /["']updateMemberProfile["']/
+  );
+  const close = getTopLevelFunctionContaining(
+    script,
+    /function\s+closeDialog\s*\(/
+  );
+  const editor = getTopLevelFunctionContaining(
+    script,
+    /function\s+openProfileEditor\s*\(/
+  );
+
+  assert.match(phoneInput, /\brequired(?:\s|>|=)/i);
+  assert.match(birthdayInput, /\brequired(?:\s|>|=)/i);
+  assert.match(
+    sync,
+    /!isMemberProfileComplete\(response\.data\.member\)[\s\S]*openProfileOnboarding\(\);[\s\S]*return;[\s\S]*redeemPendingPointCampaign\(\)/
+  );
+  assert.match(onboarding, /isProfileOnboardingRequired\s*=\s*true/);
+  assert.match(onboarding, /setProfileDialogMode\(["']onboarding["']\)/);
+  assert.match(mode, /profile-close-button["']\)\.hidden\s*=\s*onboarding/);
+  assert.match(mode, /profile-cancel-button["']\)\.hidden\s*=\s*onboarding/);
+  assert.match(close, /dataset\.mode\s*===\s*["']onboarding["'][\s\S]*!force/);
+  assert.match(
+    script,
+    /dialog\.id\s*===\s*["']profile-dialog["'][\s\S]*dialog\.dataset\.mode\s*===\s*["']onboarding["'][\s\S]*event\.preventDefault\(\)/
+  );
+  assert.match(submit, /assertCompleteMemberProfile\(profile\)/);
+  assert.match(
+    submit,
+    /isProfileOnboardingRequired\s*=\s*false[\s\S]*closeDialog\(byId\(["']profile-dialog["']\),\s*true\)[\s\S]*redeemPendingPointCampaign\(\)/
+  );
+  assert.match(editor, /setProfileDialogMode\(["']edit["']\)/);
+});
+
+test("member action adapter owns profile fields outside the shared transport", () => {
+  const adapter = fs.readFileSync(path.join(root, "client/member-api.js"), "utf8");
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+
+  assert.match(
+    adapter,
+    /updateMemberProfile:\s*Object\.freeze\(\[["']phone["'],\s*["']birthday["']\]\)/
+  );
+  assert.doesNotMatch(transport, /EXTRA_FIELD_NAMES/);
+});
+
+test("admin exposes an accessible point-type and QR campaign workspace", () => {
+  const html = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const workspace = getOpeningTagById(html, "point-workspace");
+  const pointTypeForm = getOpeningTagById(html, "point-type-form");
+  const pointAmountInput = getOpeningTagById(html, "point-amount-input");
+  const campaignForm = getOpeningTagById(html, "point-campaign-form");
+  const expiryInput = getOpeningTagById(html, "point-expiry-input");
+  const qrDialog = getOpeningTagById(html, "point-qr-dialog");
+  const qrOutput = getOpeningTagById(html, "point-qr-output");
+  const deleteDialog = getOpeningTagById(html, "delete-point-type-dialog");
+  const copyButton = getElementMarkupById(html, "copy-claim-link-button");
+  const downloadButton = getElementMarkupById(html, "download-qr-button");
+  const pointHistory = getOpeningTagById(html, "point-history-workspace");
+
+  assert.match(workspace, /aria-labelledby=(?:"[^"]+"|'[^']+')/);
+  assert.match(pointTypeForm, /<form\b/i);
+  assert.match(html, /<label\b[^>]*for=["']point-amount-input["']/i);
+  assert.match(pointAmountInput, /\btype=["']number["']/i);
+  assert.match(pointAmountInput, /\bname=["']pointAmount["']/i);
+  assert.match(pointAmountInput, /\bmin=["']1["']/i);
+  assert.match(pointAmountInput, /\bmax=["']9999["']/i);
+  assert.match(pointAmountInput, /\bstep=["']1["']/i);
+  assert.match(pointAmountInput, /\brequired(?:\s|>|=)/i);
+  for (const [id, name, value] of [
+    ["point-expiry-mode-limited", "expiryMode", "limited"],
+    ["point-expiry-mode-unlimited", "expiryMode", "unlimited"],
+    ["point-redemption-mode-once", "redemptionMode", "once_per_member"],
+    ["point-redemption-mode-repeatable", "redemptionMode", "repeatable"],
+    ["point-redemption-mode-single", "redemptionMode", "single_member"],
+  ]) {
+    const radio = getOpeningTagById(html, id);
+    assert.match(radio, /\btype=["']radio["']/i);
+    assert.match(radio, new RegExp(`\\bname=["']${name}["']`, "i"));
+    assert.match(radio, new RegExp(`\\bvalue=["']${value}["']`, "i"));
+  }
+  assert.match(getOpeningTagById(html, "point-type-list"), /aria-(?:busy|live)=/i);
+  assert.match(campaignForm, /<form\b/i);
+  assert.match(html, /<label\b[^>]*for=["']point-expiry-input["']/i);
+  assert.match(expiryInput, /\bname=["']expiresAt["']/i);
+  assert.match(
+    getOpeningTagById(html, "create-point-campaign-button"),
+    /\btype=["']submit["']/i
+  );
+
+  assert.match(qrDialog, /<dialog\b/i);
+  assert.match(qrDialog, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(qrDialog, /aria-describedby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(qrOutput, /\brole=["']img["']/i);
+  assert.match(qrOutput, /aria-(?:label|labelledby)=(?:"[^"]+"|'[^']+')/i);
+  assert.match(deleteDialog, /<dialog\b/i);
+  assert.match(deleteDialog, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(
+    getOpeningTagById(html, "confirm-delete-point-type-button"),
+    /\btype=["']button["']/i
+  );
+  assert.match(copyButton, /<button\b[^>]*\btype=["']button["']/i);
+  assert.match(copyButton, /複製/);
+  assert.match(downloadButton, /<button\b[^>]*\btype=["']button["']/i);
+  assert.match(downloadButton, /下載/);
+  assert.match(pointHistory, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
+  for (const id of [
+    "point-history-title",
+    "point-history-summary",
     "refresh-point-history-button",
+    "point-history-loading",
+    "admin-point-history-list",
+    "point-history-empty",
+    "point-history-error",
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
-  assert.match(script, /sendAdminRequest\(["']adminCreatePointType["']/);
-  assert.match(script, /sendAdminRequest\(["']adminCreatePointCampaign["']/);
-  assert.match(script, /sendAdminRequest\(["']adminListPointHistory["']/);
-  assert.match(script, /window\.PersonaQr/);
 });
 
-test("admin lottery workspace maps point-card rewards to configured lottery types", () => {
-  const html = read("admin/lottery.html");
-  const script = read("admin/script.js");
+test("admin lottery page maps individually added card nodes to one configured wheel", () => {
+  const html = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const validatePrizes = getTopLevelFunctionContaining(
+    script,
+    /function\s+validateLotterySubmission\s*\(/
+  );
+
   for (const id of [
     "point-card-setting-form",
     "point-card-target-input",
+    "point-card-expiry-unlimited",
+    "point-card-expiry-limited",
+    "point-card-expiry-date-field",
+    "point-card-expires-on-input",
+    "point-card-setting-expiry",
     "add-point-card-reward-button",
     "point-card-reward-list",
+    "point-card-reward-empty",
     "lottery-type-select",
+    "new-lottery-type-button",
+    "delete-lottery-type-button",
+    "lottery-empty-state",
+    "start-create-lottery-button",
     "lottery-editor",
+    "lottery-type-name-input",
+    "admin-lottery-wheel",
     "lottery-config-form",
     "lottery-prize-list",
     "lottery-probability-total",
-    "admin-lottery-wheel",
+    "add-lottery-prize-button",
+    "save-lottery-button",
     "lottery-history-list",
+    "lottery-history-loading",
+    "lottery-history-empty",
+    "lottery-history-error",
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
   assert.match(script, /sendAdminRequest\(["']adminGetLotteryConfig["']/);
   assert.match(script, /sendAdminRequest\(["']adminSavePointCardSetting["']/);
-  assert.match(script, /sendAdminRequest\(["']adminSaveLotteryConfig["']/);
-  assert.match(script, /sendAdminRequest\(["']adminListLotteryDraws["']/);
   assert.match(script, /pointCardRewards:\s*rewardRules/);
+  assert.match(script, /pointCardExpiryMode:\s*expiryMode/);
+  assert.match(script, /pointCardExpiresOn:\s*expiresOn/);
+  assert.match(script, /function\s+addPointCardRewardRule\s*\(/);
+  assert.match(script, /function\s+validatePointCardRewardRules\s*\(/);
+  assert.doesNotMatch(html, /id=["']point-card-milestones-input["']/);
+  assert.doesNotMatch(script, /sendAdminRequest\(["']adminCreateLotteryType["']/);
+  assert.match(script, /sendAdminRequest\(["']adminDeleteLotteryType["']/);
+  assert.match(script, /sendAdminRequest\(["']adminSaveLotteryConfig["']/);
+  assert.match(script, /lotteryTypeName:\s*lotteryTypeName/);
   assert.match(script, /lotteryPrizes:\s*submittedPrizes/);
+  assert.match(script, /sendAdminRequest\(["']adminListLotteryDraws["']/);
+  assert.match(script, /totalBasisPoints\s*!==\s*10000/);
+  assert.match(script, /colorInput\.type\s*=\s*["']color["']/);
+  assert.doesNotMatch(validatePrizes, /獎項名稱不可重複|labelKey|var\s+labels/);
 });
 
-test("generic GAS transport has explicit timeouts, request correlation, and a constrained bridge fallback", () => {
-  const transport = read("shared/gas-api.js");
-  const sendRequest = getTopLevelFunctionContaining(
-    transport,
-    /function\s+sendRequest\s*\(/
+test("member home opens a fullscreen ticket picker and an in-place lottery dialog", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const lotteryDialogScript = fs.readFileSync(
+    path.join(root, "client/member-lottery.js"),
+    "utf8"
   );
-  assert.match(transport, /CONFIG_TIMEOUT_MS\s*=\s*8000/);
-  assert.match(transport, /FETCH_TIMEOUT_MS\s*=\s*12000/);
-  assert.match(transport, /BRIDGE_TIMEOUT_MS\s*=\s*20000/);
-  assert.match(sendRequest, /postWithFetch\(gasUrl,\s*request\)\.catch/);
-  assert.match(sendRequest, /shouldUseBridgeFallback\(error\)/);
-  assert.match(transport, /validateResponseEnvelope/);
-  assert.match(transport, /requestSecret/);
-  assert.match(transport, /crypto\.getRandomValues/);
-  assert.doesNotMatch(transport, /\bprizeId\b|winningIndex|winningPrize/);
-});
+  const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
+  const ticketDialog = getOpeningTagById(html, "member-ticket-dialog");
+  const lotteryDialog = getOpeningTagById(html, "member-lottery-dialog");
+  const lotteryDialogDescription = getOpeningTagById(
+    html,
+    "member-lottery-dialog-description"
+  );
+  const loadingState = getOpeningTagById(html, "member-lottery-loading-state");
+  const errorState = getOpeningTagById(html, "member-lottery-error-state");
+  const wheelState = getOpeningTagById(html, "member-lottery-wheel-state");
+  const resultState = getOpeningTagById(html, "member-lottery-result-state");
+  const openTicket = getTopLevelFunctionContaining(
+    script,
+    /function\s+openMemberLotteryTicket\s*\(/
+  );
+  const configureDialog = getTopLevelFunctionContaining(
+    script,
+    /function\s+configureMemberLotteryDialog\s*\(/
+  );
+  const openLotteryDialog = getTopLevelFunctionContaining(
+    lotteryDialogScript,
+    /function\s+open\s*\(ticketValue\)/
+  );
+  const loadWorkspace = getTopLevelFunctionContaining(
+    lotteryDialogScript,
+    /function\s+loadWorkspace\s*\(/
+  );
+  const finishDraw = getTopLevelFunctionContaining(
+    lotteryDialogScript,
+    /function\s+finishDraw\s*\(/
+  );
+  const ticketDialogStyles = getCssRuleBody(
+    styles,
+    ".member-ticket-dialog[open]"
+  );
+  const ticketScrollStyles = getCssRuleBody(
+    styles,
+    ".member-ticket-dialog .member-panel-scroll"
+  );
+  const lotteryDialogStyles = getCssRuleBody(styles, ".member-lottery-dialog");
 
-test("member configuration and generic transport do not expose secrets", () => {
-  const config = JSON.parse(read("client/config.json"));
-  assert.equal(typeof config.BRAND_NAME, "string");
-  assert.equal(typeof config.LIFF_ID, "string");
-  assert.equal(typeof config.GAS_WEB_APP_URL, "string");
-  for (const key of Object.keys(config)) {
-    assert.doesNotMatch(key, /secret|password|private|token/i);
+  assert.match(ticketDialog, /^<dialog\b/i);
+  assert.match(lotteryDialog, /^<dialog\b/i);
+  assert.match(lotteryDialog, /\baria-labelledby=["']member-lottery-dialog-title["']/i);
+  assert.match(
+    lotteryDialog,
+    /\baria-describedby=["']member-lottery-dialog-description["']/i
+  );
+  assert.match(lotteryDialogDescription, /\bclass=["'][^"']*visually-hidden/i);
+  assert.doesNotMatch(lotteryDialogDescription, /\shidden(?:\s|=|>)/i);
+  assert.match(loadingState, /\brole=["']status["']/i);
+  assert.match(loadingState, /\baria-live=["']polite["']/i);
+  assert.doesNotMatch(loadingState, /\bhidden\b/i);
+  assert.match(errorState, /\brole=["']alert["']/i);
+  assert.match(errorState, /\bhidden\b/i);
+  assert.match(wheelState, /\baria-labelledby=["']member-lottery-name["']/i);
+  assert.match(wheelState, /\bhidden\b/i);
+  assert.match(resultState, /\brole=["']status["']/i);
+  assert.match(resultState, /\baria-live=["']polite["']/i);
+  assert.match(resultState, /\bhidden\b/i);
+  for (const id of [
+    "member-lottery-wheel",
+    "member-lottery-spin-button",
+    "member-lottery-close-button",
+    "member-lottery-return-button",
+    "member-lottery-retry-button",
+    "member-lottery-confirm-button",
+  ]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
   }
+  assert.match(html, /正在準備轉盤/);
+  assert.doesNotMatch(
+    getElementMarkupById(html, "member-lottery-dialog"),
+    /<iframe\b/i
+  );
+
+  assert.match(ticketDialogStyles, /\bwidth:\s*100%/);
+  assert.match(ticketDialogStyles, /\bheight:\s*100dvh/);
+  assert.match(ticketDialogStyles, /\bmax-width:\s*none/);
+  assert.match(ticketDialogStyles, /\bmax-height:\s*none/);
+  assert.match(ticketDialogStyles, /\bdisplay:\s*flex/);
+  assert.match(ticketDialogStyles, /\bflex-direction:\s*column/);
+  assert.match(ticketDialogStyles, /\bmargin:\s*0/);
+  assert.match(ticketScrollStyles, /\bmin-height:\s*0/);
+  assert.match(ticketScrollStyles, /\bflex:\s*1\s+1\s+auto/);
+  assert.match(ticketScrollStyles, /\bmax-height:\s*none/);
+
+  assert.match(
+    lotteryDialogStyles,
+    /\bwidth:\s*min\([^;]*,\s*\d+(?:\.\d+)?rem\)/
+  );
+  assert.match(lotteryDialogStyles, /\bmax-height:\s*min\(/);
+  assert.doesNotMatch(lotteryDialogStyles, /\bheight:\s*100dvh/);
+  assert.doesNotMatch(lotteryDialogStyles, /\bmax-width:\s*none/);
+
+  assert.match(
+    openTicket,
+    /closeDialog\(byId\(["']member-ticket-dialog["']\),\s*true\)[\s\S]*window\.MemberLotteryDialog\.open/
+  );
+  assert.doesNotMatch(
+    openTicket,
+    /(?:window\.)?location\.(?:assign|replace)|new\s+URL\s*\(\s*["']lottery\.html|lottery\.html/
+  );
+  assert.doesNotMatch(html, /<iframe\b/i);
+  assert.doesNotMatch(lotteryDialogScript, /lottery\.html|location\.(?:assign|replace)/);
+
+  assert.match(
+    openLotteryDialog,
+    /showDialog\(dialog\)[\s\S]*setDialogState\(["']member-lottery-loading-state["']\)[\s\S]*loadWorkspace\(thisLoad\)/
+  );
+  assert.match(loadWorkspace, /options\.request\(\s*["']getLotteryConfig["']/);
+  assert.match(
+    loadWorkspace,
+    /drawSelectedWheel\(\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
+  );
+  assert.match(
+    configureDialog,
+    /onCardUpdated:\s*function\s*\(card,\s*totalPoints\)[\s\S]*?updateMemberPointBalance\(totalPoints,\s*true\)[\s\S]*?renderMemberCardSummary\(card,\s*true\)/
+  );
+  assert.match(
+    configureDialog,
+    /getMemberId:\s*function\s*\(\)[\s\S]*?currentMember\.memberId/
+  );
+  assert.match(
+    finishDraw,
+    /animateToPrize\([^)]*\)\.then\([\s\S]*?clearPendingRequest\(\)[\s\S]*?safeCardUpdated\(cardStatus,\s*totalPoints\)[\s\S]*?setDialogState\(["']member-lottery-result-state["']\)/
+  );
 });
 
-test("LIFF application pages use mobile-safe viewport and reduced-motion support", () => {
+test("legacy client lottery deep link remains available and reveals a prepared draw from the wheel center", () => {
+  const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
+  const spinButton = getOpeningTagById(html, "lottery-spin-button");
+  const wheelCanvas = getOpeningTagById(html, "member-lottery-wheel");
+  const wheelRotor = getOpeningTagById(html, "member-lottery-rotor");
+
+  assert.match(spinButton, /<button\b/i);
+  assert.match(spinButton, /\btype=["']button["']/i);
+  assert.doesNotMatch(spinButton, /\bdisabled(?:\s|>|=)/i);
+assert.match(
+  script,
+  /var\s+buttonEnabled\s*=\s*canReveal\s*\|\|\s*canRetryPreparation[\s\S]*button\.disabled\s*=\s*!buttonEnabled/
+);
+  assert.match(wheelCanvas, /<canvas\b/i);
+  assert.match(wheelRotor, /id=["']member-lottery-rotor["']/i);
+  assert.match(html, /id=["']lottery-ticket-list["']/);
+  assert.match(html, /id=["']locked-ticket-list["']/);
+  assert.match(html, /id=["']lottery-result-dialog["']/);
+  assert.match(html, /data-member-route/);
+
+  assert.match(script, /function\s+prepareLotteryDraw\s*\(/);
+  assert.match(script, /function\s+revealPreparedDraw\s*\(/);
+  assert.match(script, /function\s+animateToPrize\s*\(/);
+  assert.match(script, /function\s+stopSpinAnimation\s*\(/);
+  assert.match(script, /function\s+preloadLotteryWheels\s*\(/);
+  assert.match(script, /function\s+openLotteryTicket\s*\(/);
+  assert.match(
+    script,
+    /prepareLotteryDraw[\s\S]*sendMemberRequest\(\s*["']drawLottery["'][\s\S]*lotteryTypeId[\s\S]*cardRoundKey/
+  );
+  assert.match(
+    script,
+    /handleDraw[\s\S]*preparedDrawData[\s\S]*revealPreparedDraw\(\s*preparedDrawData\s*\)/
+  );
+  assert.match(
+    script,
+    /preparedDrawData\s*=\s*prepared[\s\S]*isWheelPreparing\s*=\s*false/
+  );
+  assert.match(script, /FINAL_SPIN_TURNS\s*=\s*6/);
+  assert.match(script, /SPIN_DURATION_MS\s*=\s*4200/);
+  assert.match(script, /RESULT_HOLD_MS\s*=\s*450/);
+  assert.match(script, /WHEEL_PRELOAD_LIMIT\s*=\s*8/);
+  assert.match(
+    script,
+    /availableRewards[\s\S]*slice\(\s*0\s*,\s*WHEEL_PRELOAD_LIMIT\s*\)/
+  );
+  assert.doesNotMatch(
+    getTopLevelFunctionContaining(script, /function\s+handleDraw\s*\(/),
+    /sendMemberRequest\(\s*["']drawLottery["']/
+  );
+  assert.doesNotMatch(script, /Math\.random\(/);
+  assert.match(
+    styles,
+    /\.lottery-center-button\s*\{[^}]*position:\s*absolute[^}]*border-radius:\s*50%/s
+  );
+});
+
+test("admin creates point types and QR campaigns from backend-issued claim URLs", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const createType = getTopLevelFunctionContaining(script, /["']adminCreatePointType["']/);
+  const createCampaign = getTopLevelFunctionContaining(
+    script,
+    /["']adminCreatePointCampaign["']/
+  );
+
+  assert.match(
+    script,
+    /byId\(["']point-type-form["']\)\.addEventListener\(["']submit["']/
+  );
+  assert.match(createType, /["']adminCreatePointType["']/);
+  assert.match(createType, /\bpointAmount\s*:/);
+  assert.match(createType, /\bexpiryMode\s*:/);
+  assert.match(createType, /\bredemptionMode\s*:/);
+
+  assert.match(
+    script,
+    /byId\(["']point-campaign-form["']\)\.addEventListener\(["']submit["']/
+  );
+  assert.match(createCampaign, /["']adminCreatePointCampaign["']/);
+  assert.match(createCampaign, /\bpointTypeId\s*:/);
+  assert.match(createCampaign, /\bexpiresAt\s*:/);
+  assert.match(createCampaign, /\bresponse\.data\.claimUrl\b/);
+  assert.doesNotMatch(
+    createCampaign,
+    /\b(?:memberId|lineUserId|idToken|currentIdToken)\b/,
+    "the QR campaign handler must not build a claim from member or LINE identity data"
+  );
+  assert.doesNotMatch(
+    createCampaign,
+    /(?:new\s+URL|URLSearchParams)\s*\([^)]*(?:pointAmount|points|memberId|idToken)/i,
+    "the QR campaign handler must not construct a claim URL from local point or identity data"
+  );
+  assert.doesNotMatch(createCampaign, /https?:\/\/(?:api\.)?(?:qr|chart|quickchart)/i);
+});
+
+test("admin point rules drive conditional expiry, QR copy, and soft deletion", () => {
+  const html = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const syncRules = getTopLevelFunctionContaining(
+    script,
+    /expiryField\.hidden\s*=\s*isUnlimited/
+  );
+  const deleteType = getTopLevelFunctionContaining(
+    script,
+    /["']adminDeletePointType["']/
+  );
+  const qrDialog = getTopLevelFunctionContaining(
+    script,
+    /byId\(["']point-qr-rule["']\)\.textContent/
+  );
+
+  assert.match(html, /id=["']selected-point-rules["']/);
+  assert.match(html, /id=["']point-expiry-field["']/);
+  assert.match(html, /id=["']point-rule-notice["']/);
+  assert.match(html, /id=["']point-qr-rule["']/);
+  assert.match(syncRules, /expiryInput\.required\s*=\s*!isUnlimited/);
+  assert.match(syncRules, /isUnlimited\s*&&\s*isRepeatable/);
+  assert.match(syncRules, /反覆掃描領點/);
+  assert.match(syncRules, /isSingleMember/);
+  assert.match(syncRules, /只能由一位會員成功領取/);
+  assert.match(deleteType, /sendAdminRequest\(["']adminDeletePointType["']/);
+  assert.match(deleteType, /\bpointTypeId\s*:/);
+  assert.match(qrDialog, /無期限/);
+  assert.match(qrDialog, /每次重新掃描可再領一次/);
+  assert.match(qrDialog, /僅限一位會員領取/);
+});
+
+test("admin member and point pages load only their own data and preflight QR creation", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const fetchMembers = getTopLevelFunctionContaining(script, /["']adminListMembers["']/);
+  const fetchPointTypes = getTopLevelFunctionContaining(
+    script,
+    /["']adminListPointTypes["']/
+  );
+  const fetchPointHistory = getTopLevelFunctionContaining(
+    script,
+    /["']adminListPointHistory["']/
+  );
+  const createCampaign = getTopLevelFunctionContaining(
+    script,
+    /["']adminCreatePointCampaign["']/
+  );
+
+  assert.match(fetchMembers, /sendAdminRequest\(["']adminListMembers["']/);
+  assert.doesNotMatch(fetchMembers, /adminListPointTypes/);
+  assert.match(fetchPointTypes, /sendAdminRequest\(["']adminListPointTypes["']/);
+  assert.doesNotMatch(fetchPointTypes, /adminListMembers/);
+  assert.match(fetchPointHistory, /sendAdminRequest\(["']adminListPointHistory["']/);
+  assert.match(fetchPointHistory, /renderAdminPointHistory/);
+  assert.match(script, /refresh-point-history-button["']\)\.addEventListener/);
+
+  const qrPreflightAt = createCampaign.indexOf("window.PersonaQr");
+  const mutationAt = createCampaign.indexOf(
+    'sendAdminRequest("adminCreatePointCampaign"'
+  );
+  assert.equal(qrPreflightAt >= 0 && mutationAt > qrPreflightAt, true);
+  assert.match(createCampaign, /\bisPointMutationLoading\b/);
+});
+
+test("client member pass renders current-card progress and a live ticket badge", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const memberState = /id="member-state"[\s\S]*?(?=<section[^>]+id="error-state")/.exec(html);
+  const current = getOpeningTagById(html, "member-point-card-current");
+  const ticketCount = getOpeningTagById(html, "member-ticket-count");
+  const renderMember = getTopLevelFunctionContaining(script, /function\s+renderMember\s*\(/);
+  const renderCard = getTopLevelFunctionContaining(
+    script,
+    /function\s+renderMemberCardSummary\s*\(/
+  );
+
+  assert.ok(memberState, "client member state must exist");
+  assert.match(memberState[0], /id=["']member-point-card-current["']/);
+  assert.match(memberState[0], /id=["']member-point-card-target["']/);
+  assert.match(memberState[0], /id=["']member-point-card-expiry["']/);
+  assert.match(memberState[0], /id=["']member-point-card-progress-track["']/);
+  assert.match(current, /aria-live=["']polite["']/i);
+  assert.match(ticketCount, /aria-live=["']polite["']/i);
+  assert.match(ticketCount, /\bhidden\b/i);
+  assert.match(memberState[0], /id=["']member-point-balance["']/);
+  assert.match(renderMember, /byId\(["']member-point-balance["']\)/);
+  assert.match(renderMember, /\bmember\.pointBalance\b/);
+  assert.match(renderCard, /\bnormalized\.currentPoints\b/);
+  assert.match(renderCard, /\bnormalized\.targetPoints\b/);
+  assert.match(renderCard, /\bnormalized\.availableDraws\b/);
+  assert.match(renderCard, /\bnormalized\.expiryMode\b/);
+  assert.match(renderCard, /\bnormalized\.expiresOn\b/);
+  assert.match(renderCard, /ticketCount\.hidden\s*=\s*normalized\.availableDraws\s*===\s*0/);
+  assert.match(renderCard, /progress\.style\.width/);
+  assert.doesNotMatch(
+    memberState[0],
+    /id=["']member-point-card-current["'][^>]*>[^<]*<\/output>\s*\/\s*<output/i
+  );
+});
+
+test("client point history opens lazily from a member-page dialog with complete UI states", () => {
+  const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const history = getTopLevelFunctionContaining(
+    memberScript,
+    /["']listPointHistory["']/
+  );
+  const openHistory = getTopLevelFunctionContaining(
+    memberScript,
+    /function\s+openPointHistoryDialog\s*\(/
+  );
+
+  for (const id of [
+    "point-history-dialog",
+    "point-history-title",
+    "point-history-summary",
+    "point-history-list",
+    "point-history-loading",
+    "point-history-empty",
+    "point-history-error",
+    "refresh-point-history-button",
+  ]) {
+    assert.match(memberHtml, new RegExp(`id=["']${id}["']`));
+    assert.doesNotMatch(html, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(memberHtml, /id=["']open-point-history-button["']/);
+  assert.match(history, /sendGasRequest\(["']listPointHistory["']/);
+  assert.match(memberScript, /refresh-point-history-button["']\)\.addEventListener/);
+  assert.match(memberScript, /formatPointHistoryMode/);
+  assert.match(memberScript, /entryType\s*===\s*["']draw["']/);
+  assert.match(memberScript, /label\s*===\s*["']集點卡抽獎 · ["']\s*\+\s*prizeLabel/);
+  assert.match(memberScript, /entry\.entryType\s*===\s*["']draw["']\s*\?\s*["']不扣點["']/);
+  assert.match(openHistory, /!hasLoadedPointHistory\s*\|\|\s*isPointHistoryDirty/);
+  assert.doesNotMatch(script, /["']listPointHistory["']/);
+});
+
+test("primary pages use concise copy and responsive text safeguards", () => {
+  const clientHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const pointHtml = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const clientCss = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
+  const adminCss = fs.readFileSync(path.join(root, "admin/styles.css"), "utf8");
+
+  assert.doesNotMatch(clientHtml, /歡迎回來，/);
+  for (const phrase of [
+    "點數與 QR 管理",
+    "建立點數、期限與領取規則，再產生會員 QR 領取碼。",
+    "點數類型與 QR 領取碼",
+  ]) {
+    assert.doesNotMatch(pointHtml, new RegExp(escapeRegExp(phrase)));
+  }
+  for (const css of [clientCss, adminCss]) {
+    assert.match(css, /h1,[\s\S]*?text-wrap:\s*balance/);
+    assert.match(css, /p,[\s\S]*?overflow-wrap:\s*anywhere/);
+    assert.match(css, /p,[\s\S]*?text-wrap:\s*pretty/);
+    assert.match(css, /touch-action:\s*manipulation/);
+  }
+  assert.match(clientCss, /\.lottery-ticket-tabs\s+button\[aria-selected=["']true["']\]/);
+  assert.match(clientCss, /@media\s*\(max-width:\s*680px\)[\s\S]*?\.lottery-ticket-tabs\s+button/);
+  assert.match(adminCss, /@media\s*\(max-width:\s*560px\)[\s\S]*?\.workspace-nav\s*\{[\s\S]*?position:\s*sticky/);
+  assert.match(adminCss, /\.point-card-reward-row\s+label::before/);
+});
+
+test("client claim dialog exposes automatic progress, result, duplicate, and retry states", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const dialog = getOpeningTagById(html, "claim-dialog");
+  const successConfirmButton = getOpeningTagById(html, "claim-success-close-button");
+  const duplicateConfirmButton = getOpeningTagById(html, "claim-duplicate-close-button");
+  const retryButton = getOpeningTagById(html, "claim-retry-button");
+  const loadingState = getOpeningTagById(html, "claim-loading-state");
+  const successState = getOpeningTagById(html, "claim-success-state");
+  const duplicateState = getOpeningTagById(html, "claim-duplicate-state");
+  const errorState = getOpeningTagById(html, "claim-error-state");
+
+  assert.match(dialog, /<dialog\b/i);
+  assert.match(dialog, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(dialog, /aria-describedby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(successConfirmButton, /\btype=["']button["']/i);
+  assert.match(duplicateConfirmButton, /\btype=["']button["']/i);
+  assert.match(loadingState, /\brole=["']status["']/i);
+  assert.match(loadingState, /aria-live=["']polite["']/i);
+  assert.match(successState, /\brole=["']status["']/i);
+  assert.match(successState, /aria-live=["']polite["']/i);
+  assert.match(duplicateState, /\brole=["']status["']/i);
+  assert.match(duplicateState, /aria-live=["']polite["']/i);
+  for (const state of [
+    getElementMarkupById(html, "claim-success-state"),
+    getElementMarkupById(html, "claim-duplicate-state"),
+  ]) {
+    assert.match(state, /原本點數/);
+    assert.match(state, /獲得點數/);
+    assert.match(state, /目前點數/);
+  }
+  for (const id of [
+    "claim-success-before",
+    "claim-success-points",
+    "claim-success-balance",
+    "claim-duplicate-before",
+    "claim-duplicate-points",
+    "claim-duplicate-balance",
+  ]) {
+    assert.match(getOpeningTagById(html, id), /<(?:output|b)\b/i);
+  }
+  assert.match(errorState, /\brole=["']alert["']/i);
+  assert.match(retryButton, /\btype=["']button["']/i);
+  assert.doesNotMatch(html, /id=["']claim-(?:close|confirm)-button["']/);
+  assert.doesNotMatch(html, /id=["']claim-add-friend-button["']/);
+  assert.doesNotMatch(html, /id=["']claim-preview-state["']/);
+  assert.match(
+    script,
+    /dialog\.id === ["']claim-dialog["']\s*\|\|\s*dialog\.id === ["']point-scanner-dialog["']/
+  );
+  assert.match(
+    script,
+    /dialog\.id === ["']claim-dialog["'][\s\S]*event\.preventDefault\(\)/
+  );
+
+  const openDialog = getTopLevelFunctionContaining(
+    script,
+    /dialog\.removeAttribute\(["']hidden["']\)/
+  );
+  assert.match(openDialog, /typeof dialog\.showModal === ["']function["']/);
+  assert.match(openDialog, /catch \(_error\)[\s\S]*dialog\.setAttribute\(["']open["']/);
+});
+
+test("client captures a sanitized claim after LIFF init and redeems automatically", () => {
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const boot = getTopLevelFunctionContaining(script, /withLoginOnExternalBrowser\s*:\s*false/);
+  const captureClaim = getTopLevelFunctionContaining(script, /\.get\(["']claim["']\)/);
+  const captureName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(captureClaim);
+  const redeemClaim = getTopLevelFunctionContaining(script, /["']redeemPointCampaign["']/);
+  const sync = getTopLevelFunctionContaining(script, /redeemPendingPointCampaign\(\)/);
+
+  assert.ok(captureName, "claim capture must be a named top-level function");
+  assert.match(captureClaim, /(?:window\.)?sessionStorage\.setItem\s*\(/);
+  assert.match(captureClaim, /\.searchParams\.delete\(["']claim["']\)/);
+  assert.match(captureClaim, /(?:window\.)?history\.replaceState\s*\(/);
+
+  const initAt = boot.search(/(?:window\.)?liff\.init\s*\(/);
+  const initThenAt = boot.indexOf(".then", initAt);
+  const captureAt = boot.indexOf(captureName[1] + "(", initThenAt);
+  assert.equal(initAt >= 0 && initThenAt > initAt, true);
+  assert.equal(
+    captureAt > initThenAt,
+    true,
+    "claim query capture must run only after liff.init resolves"
+  );
+
+  assert.match(redeemClaim, /["']redeemPointCampaign["']/);
+  assert.match(redeemClaim, /\bclaim\s*:/);
+  assert.match(redeemClaim, /openDialog\(byId\(["']claim-dialog["']\)\)/);
+  assert.match(redeemClaim, /originalPointBalance/);
+  assert.match(redeemClaim, /claim-success-before/);
+  assert.match(redeemClaim, /claim-duplicate-before/);
+  assert.match(redeemClaim, /sendPointClaimMessage\(/);
+  assert.match(sync, /renderMember\(/);
+  assert.match(sync, /redeemPendingPointCampaign\(\)/);
+  assert.doesNotMatch(sync, /loadPointHistory\(\)/);
+  assert.match(redeemClaim, /isPointHistoryDirty\s*=\s*true/);
+  assert.match(script, /sendGasRequest\(["']listPointHistory["']/);
+  assert.doesNotMatch(script, /["']previewPointCampaign["']/);
+  assert.match(
+    script,
+    /byId\(["']claim-retry-button["']\)\.addEventListener\(["']click["'],\s*redeemPendingPointCampaign\s*\)/
+  );
+  assert.equal(
+    (script.match(/["']redeemPointCampaign["']/g) || []).length,
+    1,
+    "the member client should issue one direct redemption action"
+  );
+});
+
+test("new member creation sends a privacy-bounded official account message", () => {
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const sync = getTopLevelFunctionContaining(
+    script,
+    /sendGasRequest\(["']upsertMember["']/
+  );
+  const newMemberMessage = getTopLevelFunctionContaining(
+    script,
+    /["']新會員加入通知\\n我已完成會員註冊/
+  );
+  const officialAccountMessage = getTopLevelFunctionContaining(
+    script,
+    /window\.liff\.sendMessages\s*\(/
+  );
+
+  assert.match(sync, /var\s+wasCreated\s*=\s*Boolean\(response\.data\.created\)/);
+  assert.match(sync, /sendNewMemberJoinMessage\s*\(/);
+  assert.match(sync, /redeemPendingPointCampaign\s*\(/);
+  assert.equal(
+    sync.indexOf("sendNewMemberJoinMessage") <
+      sync.indexOf("redeemPendingPointCampaign"),
+    true,
+    "a first-time join message should be attempted before a pending point message"
+  );
+  assert.doesNotMatch(
+    sync,
+    /return\s+sendNewMemberJoinMessage/,
+    "official-account messaging must not block login or a pending point claim"
+  );
+  assert.match(newMemberMessage, /if\s*\(!wasCreated\s*\|\|\s*!member\)/);
+  assert.match(newMemberMessage, /member\.memberId/);
+  assert.match(newMemberMessage, /member\.displayName/);
+  assert.doesNotMatch(newMemberMessage, /member\.(?:phone|birthday|lineUserId)/);
+  assert.match(officialAccountMessage, /messageContext\.inClient/);
+  assert.match(officialAccountMessage, /messageContext\.isOneToOneChat/);
+  assert.match(officialAccountMessage, /reason:\s*["']unavailable["']/);
+  assert.match(officialAccountMessage, /catch\(function\s*\(\)\s*\{/);
+  assert.match(officialAccountMessage, /reason:\s*["']send_failed["']/);
+});
+
+test("action adapters own bounded point and lottery fields", () => {
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const memberAdapter = fs.readFileSync(path.join(root, "client/member-api.js"), "utf8");
+  const adminAdapter = fs.readFileSync(path.join(root, "admin/admin-api.js"), "utf8");
+
+  for (const field of ["claim", "lotteryTypeId", "cardRoundKey"]) {
+    assert.match(memberAdapter, new RegExp(`["']${field}["']`));
+  }
+  for (const field of [
+    "pointAmount",
+    "pointTypeId",
+    "expiresAt",
+    "expiryMode",
+    "redemptionMode",
+    "pointCardTarget",
+    "pointCardRewards",
+    "lotteryTypeId",
+    "lotteryTypeName",
+    "lotteryPrizes",
+  ]) {
+    assert.match(adminAdapter, new RegExp(`["']${field}["']`));
+  }
+  assert.match(transport, /var\s+MAX_PAYLOAD_FIELDS\s*=\s*32/);
+  assert.match(transport, /var\s+RESERVED_ENVELOPE_FIELDS\s*=\s*\[/);
+  assert.match(
+    transport,
+    /function\s+serializeBridgePayloadValue\s*\([^)]+\)\s*\{[\s\S]*?typeof value\s*===\s*["']object["'][\s\S]*?JSON\.stringify\(value\)/,
+    "the bridge transport must serialize structured action payload values as JSON"
+  );
+  assert.doesNotMatch(
+    memberAdapter + adminAdapter,
+    /["'](?:points|memberId|lineUserId)["']/,
+    "raw balances and member identity fields must not be accepted by browser action adapters"
+  );
+  assert.doesNotMatch(transport, /EXTRA_FIELD_NAMES/);
+});
+
+test("LIFF pages preconnect early and use keyboard-safe mobile viewport sizing", () => {
   for (const relativePath of [
     "client/index.html",
+    "client/lottery.html",
     "admin/index.html",
     "admin/points.html",
     "admin/lottery.html",
   ]) {
-    const html = read(relativePath);
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
     assert.match(
       html,
       /<meta\b[^>]*name=["']viewport["'][^>]*interactive-widget=resizes-content/i,
@@ -337,21 +1022,636 @@ test("LIFF application pages use mobile-safe viewport and reduced-motion support
     assert.match(
       html,
       /<link\b[^>]*rel=["']preconnect["'][^>]*href=["']https:\/\/static\.line-scdn\.net["']/i,
-      `${relativePath} must preconnect to LIFF SDK origin`
+      `${relativePath} must warm up the LIFF SDK origin`
     );
   }
-  const clientCss = read("client/styles.css");
-  assert.match(clientCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
-  assert.match(clientCss, /touch-action:\s*manipulation/);
 });
 
-test("member scanner falls back to an in-page camera and always exposes cancellation", () => {
-  const html = read("client/index.html");
-  const script = read("client/script.js");
-  assert.match(getOpeningTagById(html, "point-scanner-video"), /\bplaysinline\b/i);
-  assert.match(getOpeningTagById(html, "point-scanner-cancel-button"), /type=["']button["']/i);
+test("shared GAS transport keeps fetch primary and bridge as a compatibility fallback", () => {
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const sendRequest = getTopLevelFunctionContaining(
+    transport,
+    /function\s+sendRequest\s*\(/
+  );
+
+  assert.match(sendRequest, /postWithFetch\(gasUrl,\s*request\)\.catch/);
+  assert.match(sendRequest, /shouldUseBridgeFallback\(error\)/);
+  assert.match(sendRequest, /return postWithBridge\(gasUrl,\s*request,\s*payloadNames\)/);
+  assert.doesNotMatch(transport, /shouldUseBridgeFirst/);
+  assert.match(transport, /loadConfig[\s\S]*?cache:\s*["']no-cache["']/);
+});
+
+test("member home updates card progress immediately and keeps scanning local", () => {
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const lotteryScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const sync = getTopLevelFunctionContaining(
+    script,
+    /sendGasRequest\(["']upsertMember["']/
+  );
+  const redeemClaim = getTopLevelFunctionContaining(
+    script,
+    /["']redeemPointCampaign["']/
+  );
+  const nativeFallback = getTopLevelFunctionContaining(
+    script,
+    /function\s+isNativePointScannerUnavailableError\s*\(/
+  );
+  const embeddedScanner = getTopLevelFunctionContaining(
+    script,
+    /function\s+openEmbeddedPointScanner\s*\(/
+  );
+  const scanLoop = getTopLevelFunctionContaining(
+    script,
+    /function\s+scheduleEmbeddedPointScan\s*\(/
+  );
+  const renderSummary = getTopLevelFunctionContaining(
+    script,
+    /function\s+renderMemberCardSummary\s*\(/
+  );
+
+  assert.match(sync, /renderMemberCardSummary\(response\.data\.cardSummary,\s*false\)/);
+  assert.match(
+    redeemClaim,
+    /updateMemberPointBalance\(pointBalance,\s*true\);[\s\S]*renderMemberCardSummary\(response\.data\.cardSummary,\s*true\)/
+  );
+  assert.doesNotMatch(redeemClaim, /getLotteryConfig|loadLotteryWorkspace/);
+  assert.match(renderSummary, /normalized\.currentPoints\s*\/\s*normalized\.targetPoints/);
+  assert.match(renderSummary, /ticketCount\.hidden\s*=\s*normalized\.availableDraws\s*===\s*0/);
+  assert.doesNotMatch(script, /["']getLotteryConfig["']/);
+  assert.doesNotMatch(lotteryScript, /scanCodeV2|point-scanner-dialog|redeemPointCampaign/);
+  assert.match(nativeFallback, /subwindowopen is not allowed/);
+  assert.match(embeddedScanner, /width:\s*\{\s*ideal:\s*960\s*\}/);
+  assert.match(embeddedScanner, /height:\s*\{\s*ideal:\s*960\s*\}/);
+  assert.match(scanLoop, /\},\s*280\);/);
+  assert.match(scanLoop, /extractPointClaimFromQr\(scannedValue\)/);
+  assert.match(scanLoop, /這不是集點 QR Code/);
+});
+
+test("admin surfaces local errors and coalesces expensive renders", () => {
+  const html = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const savePointCard = getTopLevelFunctionContaining(
+    script,
+    /function\s+handleSavePointCardSetting\s*\(/
+  );
+  const deleteLottery = getTopLevelFunctionContaining(
+    script,
+    /function\s+handleDeleteLotteryType\s*\(/
+  );
+  const updateControls = getTopLevelFunctionContaining(
+    script,
+    /function\s+updateOperationControls\s*\(/
+  );
+  const memberRows = getTopLevelFunctionContaining(
+    script,
+    /function\s+renderMemberRows\s*\(/
+  );
+
+  assert.match(html, /id=["']point-card-setting-error["'][^>]*role=["']alert["']/);
+  assert.match(html, /id=["']delete-lottery-type-error["'][^>]*role=["']alert["']/);
+  assert.match(savePointCard, /showPointCardSettingError\(/);
+  assert.doesNotMatch(savePointCard, /showLotteryConfigError\(/);
+  assert.match(deleteLottery, /showDeleteLotteryTypeError\(/);
+  assert.match(script, /function\s+scheduleAdminLotteryWheel\s*\(/);
+  assert.match(script, /function\s+scheduleMemberRowsRender\s*\(/);
+  assert.match(memberRows, /createDocumentFragment\(\)/);
+  assert.match(memberRows, /replaceChildren\(fragment\)/);
+  assert.match(script, /image\.loading\s*=\s*["']lazy["']/);
+  assert.match(updateControls, /syncPointTypeControls\(\)/);
+  assert.doesNotMatch(updateControls, /renderPointTypes\(\)/);
+});
+
+test("member claim UI supports unlimited and repeatable campaigns with retry idempotency", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const lotteryHtml = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
+  const lotteryScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const normalizeCampaign = getTopLevelFunctionContaining(
+    script,
+    /var\s+validExpiry\s*=/
+  );
+  const redeem = getTopLevelFunctionContaining(
+    script,
+    /["']redeemPointCampaign["']/
+  );
+  const stableRequest = getTopLevelFunctionContaining(
+    script,
+    /var\s+stored\s*=\s*String\s*\(/
+  );
+
+  assert.match(html, /id=["']claim-success-note["']/);
+  assert.match(html, /id=["']claim-success-message-status["']/);
+  assert.match(html, /id=["']claim-duplicate-title["']/);
+  assert.match(html, /id=["']scan-point-button["']/);
+  assert.match(html, /掃描集點碼/);
+  assert.doesNotMatch(lotteryHtml, /id=["']scan-point-button["']/);
+  assert.match(normalizeCampaign, /expiryMode\s*===\s*["']unlimited["']/);
+  assert.match(normalizeCampaign, /redemptionMode\s*!==\s*["']repeatable["']/);
+  assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
+  assert.match(redeem, /sendPointClaimMessage\s*\(/);
+  assert.doesNotMatch(
+    redeem,
+    /return\s+sendPointClaimMessage/,
+    "official-account messaging must not keep the successful claim locked"
+  );
   assert.match(script, /scanCodeV2\s*\(/);
-  assert.match(script, /navigator\.mediaDevices\.getUserMedia/);
-  assert.match(script, /track\.stop\(\)/);
-  assert.match(script, /extractPointClaimFromQr/);
+  assert.match(script, /isApiAvailable\(["']scanCodeV2["']\)/);
+  assert.match(script, /SCAN_QR_UNAVAILABLE/);
+  assert.match(script, /extractPointClaimFromQr\s*\(/);
+  assert.match(script, /INVALID_POINT_QR/);
+  assert.match(script, /byId\(["']scan-point-button["']\)\.addEventListener/);
+  assert.match(script, /sendMessages\s*\(/);
+  assert.doesNotMatch(lotteryScript, /scanCodeV2|redeemPointCampaign|sendMessages/);
+  assert.doesNotMatch(script, /getFriendship\s*\(/);
+  assert.doesNotMatch(script, /OFFICIAL_ACCOUNT_FRIEND(?:SHIP_UNAVAILABLE|_NOT_FRIEND|_URL)/);
+  assert.match(redeem, /duplicateReason\s*===\s*["']request_replay["']/);
+  assert.match(redeem, /duplicateReason\s*===\s*["']campaign_redeemed["']/);
+  assert.match(redeem, /重新掃描同一張 QR Code/);
+  assert.match(stableRequest, /sessionStorage\.getItem\s*\(/);
+  assert.match(stableRequest, /sessionStorage\.setItem\s*\(/);
+  assert.match(transport, /options\.requestId/);
+  assert.match(transport, /createRequestId:\s*createRequestId/);
+});
+
+test("member point scanner falls back to an in-page camera and always stops media tracks", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const scannerDialog = getOpeningTagById(html, "point-scanner-dialog");
+  const scannerVideo = getOpeningTagById(html, "point-scanner-video");
+  const scannerCancel = getOpeningTagById(html, "point-scanner-cancel-button");
+  const openScanner = getTopLevelFunctionContaining(
+    script,
+    /function\s+openPointQrScanner\s*\(/
+  );
+  const embeddedScanner = getTopLevelFunctionContaining(
+    script,
+    /function\s+openEmbeddedPointScanner\s*\(/
+  );
+  const stopScanner = getTopLevelFunctionContaining(
+    script,
+    /function\s+stopEmbeddedPointScanner\s*\(/
+  );
+
+  assert.match(scannerDialog, /<dialog\b/i);
+  assert.match(scannerDialog, /aria-labelledby=["']point-scanner-title["']/i);
+  assert.match(scannerDialog, /aria-describedby=["']point-scanner-description["']/i);
+  assert.match(scannerVideo, /\bautoplay(?:\s|>|=)/i);
+  assert.match(scannerVideo, /\bmuted(?:\s|>|=)/i);
+  assert.match(scannerVideo, /\bplaysinline(?:\s|>|=)/i);
+  assert.match(scannerCancel, /\btype=["']button["']/i);
+  assert.match(openScanner, /scanCodeV2\s*\(/);
+  assert.match(openScanner, /openEmbeddedPointScanner\s*\(/);
+  assert.match(embeddedScanner, /BarcodeDetector/);
+  assert.match(embeddedScanner, /getUserMedia\s*\(/);
+  assert.match(embeddedScanner, /facingMode\s*:\s*\{\s*ideal\s*:\s*["']environment["']/);
+  assert.match(script, /detector\.detect\s*\(\s*video\s*\)/);
+  assert.match(stopScanner, /getTracks\s*\(\s*\)\.forEach/);
+  assert.match(stopScanner, /track\.stop\s*\(\s*\)/);
+  assert.match(script, /pagehide["']\s*,\s*stopPointScannerForPageExit/);
+  assert.match(script, /visibilitychange["']\s*,\s*handleVisibilityChange/);
+});
+
+test("admin loads a local QR encoder and frontend code never calls an external QR service", () => {
+  const adminHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const pointHtml = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const lotteryHtml = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
+  const clientHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const clientScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const qrScriptAt = pointHtml.indexOf('src="../shared/qr-code.js"');
+  const adminScriptAt = pointHtml.indexOf('src="script.js"');
+
+  assert.equal(
+    adminHtml.includes('src="../shared/qr-code.js"'),
+    false,
+    "member administration must not load the QR encoder"
+  );
+  assert.equal(
+    lotteryHtml.includes('src="../shared/qr-code.js"'),
+    false,
+    "lottery administration must not load the point-campaign QR encoder"
+  );
+  assert.notEqual(qrScriptAt, -1, "point administration must load the local shared QR encoder");
+  assert.equal(qrScriptAt < adminScriptAt, true, "the QR encoder must load before admin script.js");
+  assert.equal(
+    fs.existsSync(path.join(root, "shared/qr-code.js")),
+    true,
+    "the local QR encoder asset must exist"
+  );
+
+  for (const html of [adminHtml, pointHtml, lotteryHtml, clientHtml]) {
+    const externalScripts = [...html.matchAll(/<script\b[^>]*\bsrc=["'](https?:[^"']+)["']/gi)]
+      .map((match) => match[1])
+      .filter((source) => source !== "https://static.line-scdn.net/liff/edge/2/sdk.js");
+    assert.deepEqual(externalScripts, [], "QR generation must not add a third-party script");
+  }
+
+  const frontendSource = [
+    adminHtml,
+    pointHtml,
+    lotteryHtml,
+    clientHtml,
+    adminScript,
+    clientScript,
+  ].join("\n");
+  assert.doesNotMatch(
+    frontendSource,
+    /(?:api\.qrserver\.com|quickchart\.io|chart\.googleapis\.com|chart\.google\.com)/i,
+    "claim URLs must never be sent to an external QR image API"
+  );
+});
+
+test("LIFF entry points suppress referrers before loading the external SDK", () => {
+  for (const relativePath of [
+    "client/index.html",
+    "client/lottery.html",
+    "admin/index.html",
+    "admin/points.html",
+    "admin/lottery.html",
+  ]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    const referrerAt = html.search(
+      /<meta\b[^>]*name=["']referrer["'][^>]*content=["']no-referrer["'][^>]*>/i
+    );
+    const liffSdkAt = html.indexOf(
+      'src="https://static.line-scdn.net/liff/edge/2/sdk.js"'
+    );
+
+    assert.notEqual(referrerAt, -1, `${relativePath} must set no-referrer`);
+    assert.notEqual(liffSdkAt, -1, `${relativePath} must load the LIFF SDK`);
+    assert.equal(
+      referrerAt < liffSdkAt,
+      true,
+      `${relativePath} must suppress query referrers before external assets load`
+    );
+  }
+});
+
+test("member-facing client and admin contact search do not reference member email", () => {
+  const clientHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const clientScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const adminHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const renderRows = getTopLevelFunctionContaining(adminScript, /function\s+renderMemberRows\s*\(/);
+  const createRow = getTopLevelFunctionContaining(adminScript, /function\s+createMemberRow\s*\(/);
+  const normalizeMember = getTopLevelFunctionContaining(adminScript, /function\s+normalizeMember\s*\(/);
+
+  assert.doesNotMatch(clientHtml, /\bEmail\b/i);
+  assert.doesNotMatch(clientScript, /\bmember\.email\b/i);
+  assert.doesNotMatch(adminHtml, /placeholder="[^"]*Email[^"]*"/i);
+  assert.doesNotMatch(renderRows, /\bmember\.email\b/i);
+  assert.doesNotMatch(createRow, /\bmember\.email\b|Email/i);
+  assert.doesNotMatch(normalizeMember, /\bemail\s*:/i);
+});
+
+test("admin maps phone and birthday into member search and contact details", () => {
+  const html = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const renderRows = getTopLevelFunctionContaining(script, /function\s+renderMemberRows\s*\(/);
+  const createRow = getTopLevelFunctionContaining(script, /function\s+createMemberRow\s*\(/);
+  const normalizeMember = getTopLevelFunctionContaining(script, /function\s+normalizeMember\s*\(/);
+
+  assert.match(html, /id="search-input"[^>]*placeholder="[^"]*電話[^"]*"/);
+  assert.match(renderRows, /\bmember\.phone\b/);
+  assert.match(renderRows, /\bmember\.birthday\b/);
+  assert.match(createRow, /createCell\(["']聯絡資料["']\)/);
+  assert.match(createRow, /\bmember\.phone\b/);
+  assert.match(createRow, /\bmember\.birthday\b/);
+  assert.match(normalizeMember, /\bphone\s*:\s*[^,;\n]*\bvalue\.phone\b/);
+  assert.match(normalizeMember, /\bbirthday\s*:\s*[^,;\n]*\bvalue\.birthday\b/);
+});
+
+test("client and admin JSON configs expose only public frontend settings", () => {
+  const clientConfig = JSON.parse(fs.readFileSync(path.join(root, "client/config.json"), "utf8"));
+  const adminConfig = JSON.parse(fs.readFileSync(path.join(root, "admin/config.json"), "utf8"));
+
+  for (const config of [clientConfig, adminConfig]) {
+    assert.equal(typeof config.LIFF_ID, "string");
+    assert.equal(typeof config.GAS_WEB_APP_URL, "string");
+    assert.equal(typeof config.BRAND_NAME, "string");
+    assert.equal("admin_status" in config, false);
+    assert.equal("LINE_CHANNEL_ID" in config, false);
+  }
+
+  assert.equal(Number.isInteger(adminConfig.PAGE_SIZE), true);
+  assert.equal(adminConfig.PAGE_SIZE >= 1 && adminConfig.PAGE_SIZE <= 100, true);
+  assert.equal(clientConfig.LIFF_ID, "2010787602-kaiSm2eq");
+  assert.equal("OFFICIAL_ACCOUNT_FRIEND_URL" in clientConfig, false);
+  assert.equal(adminConfig.LIFF_ID, "2010791619-vhevCvvD");
+  assert.match(clientConfig.GAS_WEB_APP_URL, /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/);
+  assert.match(
+    adminConfig.GAS_WEB_APP_URL,
+    /^(?:YOUR_ADMIN_GAS_WEB_APP_URL|https:\/\/script\.google\.com\/macros\/s\/.+\/exec)$/
+  );
+  assert.notEqual(adminConfig.GAS_WEB_APP_URL, clientConfig.GAS_WEB_APP_URL);
+});
+
+test("admin access updates include both optimistic concurrency fields", () => {
+  const adapter = fs.readFileSync(path.join(root, "admin/admin-api.js"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+
+  assert.match(adapter, /"expectedAccessStatus"/);
+  assert.match(adapter, /"expectedAccessUpdatedAt"/);
+  assert.match(adminScript, /expectedAccessStatus:\s*member\.status/);
+  assert.match(adminScript, /expectedAccessUpdatedAt:\s*member\.accessUpdatedAt/);
+});
+
+test("member and administrator pages use explicit composition roots", () => {
+  const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const memberOrder = [
+    "../shared/module-registry.js",
+    "member-api.js",
+    "script.js",
+    "member-main.js",
+  ].map((source) => memberHtml.indexOf(`src="${source}"`));
+  assert.equal(memberOrder.every((index) => index !== -1), true);
+  assert.deepEqual(memberOrder.slice().sort((left, right) => left - right), memberOrder);
+  assert.match(memberScript, /PersonaModules\.get\(["']member\.api["']\)\.send\(/);
+  assert.match(adminScript, /PersonaModules\.get\(["']admin\.api["']\)\.send\(/);
+
+  const lotteryHtml = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
+  const lotteryScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const lotteryOrder = [
+    "../shared/module-registry.js",
+    "member-api.js",
+    "lottery.js",
+  ].map((source) => lotteryHtml.indexOf(`src="${source}"`));
+  assert.equal(lotteryOrder.every((index) => index !== -1), true);
+  assert.deepEqual(lotteryOrder.slice().sort((left, right) => left - right), lotteryOrder);
+  assert.match(
+    lotteryScript,
+    /PersonaModules\.get\(\s*["']member\.api["']\s*\)\.send\(/
+  );
+
+  for (const [relativePath, pageModule] of [
+    ["admin/index.html", "pages/members-page.js"],
+    ["admin/points.html", "pages/points-page.js"],
+    ["admin/lottery.html", "pages/lottery-page.js"],
+  ]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    const order = [
+      "../shared/module-registry.js",
+      "admin-api.js",
+      pageModule,
+      "script.js",
+      "admin-main.js",
+    ].map((source) => html.indexOf(`src="${source}"`));
+    assert.equal(order.every((index) => index !== -1), true);
+    assert.deepEqual(order.slice().sort((left, right) => left - right), order);
+    for (const otherPageModule of [
+      "pages/members-page.js",
+      "pages/points-page.js",
+      "pages/lottery-page.js",
+    ]) {
+      assert.equal(html.includes(`src="${otherPageModule}"`), otherPageModule === pageModule);
+    }
+  }
+});
+
+test("both applications load shared runtime modules before their own scripts", () => {
+  for (const [relativePath, scriptName] of [
+    ["client/index.html", "script.js"],
+    ["client/lottery.html", "lottery.js"],
+    ["admin/index.html", "script.js"],
+    ["admin/points.html", "script.js"],
+    ["admin/lottery.html", "script.js"],
+  ]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    const transportIndex = html.indexOf('../shared/gas-api.js');
+    const runtimeIndex = html.indexOf('../shared/liff-runtime.js');
+    const appIndex = html.indexOf(`src="${scriptName}"`);
+    assert.notEqual(transportIndex, -1);
+    assert.notEqual(runtimeIndex, -1);
+    assert.notEqual(appIndex, -1);
+    assert.equal(
+      transportIndex < appIndex && runtimeIndex < appIndex,
+      true,
+      `${relativePath} must load shared runtime modules first`
+    );
+  }
+
+  for (const [relativePath, scriptName] of [
+    ["client/index.html", "member-lottery.js"],
+    ["client/lottery.html", "lottery.js"],
+    ["admin/lottery.html", "script.js"],
+  ]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    const wheelIndex = html.indexOf('../shared/lottery-wheel.js');
+    const appIndex = html.indexOf(`src="${scriptName}"`);
+    assert.notEqual(wheelIndex, -1);
+    assert.equal(wheelIndex < appIndex, true, `${relativePath} must preload the wheel renderer`);
+  }
+
+  const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  assert.equal(
+    memberHtml.indexOf('src="member-lottery.js"') <
+      memberHtml.indexOf('src="script.js"'),
+    true,
+    "the member lottery controller must be available before the member app configures it"
+  );
+});
+
+test("member home uses an isolated lottery dialog controller instead of page navigation", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const lotteryDialogScript = fs.readFileSync(
+    path.join(root, "client/member-lottery.js"),
+    "utf8"
+  );
+  const openTicket = getTopLevelFunctionContaining(
+    script,
+    /function\s+openMemberLotteryTicket\s*\(/
+  );
+
+  assert.match(html, /id=["']member-lottery-dialog["']/);
+  assert.match(script, /window\.MemberLotteryDialog\.configure\s*\(/);
+  assert.match(lotteryDialogScript, /window\.MemberLotteryDialog\s*=\s*api/);
+  assert.match(openTicket, /window\.MemberLotteryDialog\.open\(normalizedTicket\)/);
+  assert.doesNotMatch(openTicket, /lottery\.html|location\.(?:assign|replace)/);
+  assert.doesNotMatch(html, /<iframe\b/i);
+});
+
+test("deployment guides document two independent GAS deployments and Sheet-based admin approval", () => {
+  for (const relativePath of ["README.md", "setup.html"]) {
+    const guide = fs.readFileSync(path.join(root, relativePath), "utf8");
+
+    assert.match(guide, /LINE_CHANNEL_ID/);
+    assert.match(guide, /2010787602/);
+    assert.match(guide, /2010791619/);
+    assert.match(guide, /gas\/client\/Code\.gs/);
+    assert.match(guide, /gas\/admin\/Code\.gs/);
+    assert.match(guide, /PointCardSettings/);
+    assert.match(guide, /LotteryTypes/);
+    assert.match(guide, /https:\/\/yongshengchen0615\.github\.io/);
+    assert.match(guide, /Admins/);
+    assert.match(guide, /pending/);
+    assert.match(guide, /approved/);
+    assert.doesNotMatch(guide, /CLIENT_LINE_CHANNEL_ID|ADMIN_LINE_CHANNEL_ID/);
+  }
+});
+
+test("admin UI distinguishes pending approval from forbidden access", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+
+  for (const relativePath of [
+    "admin/index.html",
+    "admin/points.html",
+    "admin/lottery.html",
+  ]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    assert.match(html, /id="pending-state"/);
+    assert.match(html, /id="pending-refresh-button"/);
+    assert.match(html, /id="pending-logout-button"/);
+    assert.match(html, /Admins/);
+  }
+  assert.match(script, /normalized\.code === "ADMIN_PENDING"/);
+  assert.match(script, /normalized\.code === "ADMIN_FORBIDDEN"/);
+  assert.match(script, /byId\("pending-refresh-button"\)\.addEventListener\("click", boot\)/);
+  assert.match(script, /byId\("pending-logout-button"\)\.addEventListener\("click", handleLogout\)/);
+});
+
+test("client renews an invalid external-browser token once and guards redirect loops", () => {
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const recovery = getTopLevelFunctionContaining(
+    script,
+    /INVALID_TOKEN_RECOVERY_PREFIX\s*\+/
+  );
+  const recoveryName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(recovery);
+
+  assert.ok(recoveryName, "token recovery must be implemented as a named function");
+  assert.match(script, /normalized\.code\s*===\s*["']INVALID_TOKEN["']/);
+
+  const recoveryCalls = script.match(
+    new RegExp(`\\b${recoveryName[1]}\\s*\\(`, "g")
+  );
+  assert.equal(
+    (recoveryCalls || []).length >= 2,
+    true,
+    "the INVALID_TOKEN error path must call the recovery function"
+  );
+
+  const getGuardAt = recovery.search(/(?:window\.)?sessionStorage\.getItem\s*\(/);
+  const setGuardAt = recovery.search(/(?:window\.)?sessionStorage\.setItem\s*\(/);
+  const inClientAt = recovery.search(/(?:window\.)?liff\.isInClient\s*\(\s*\)/);
+  const logoutAt = recovery.search(/(?:window\.)?liff\.logout\s*\(\s*\)/);
+  const loginAt = recovery.search(/(?:window\.)?liff\.login\s*\(/);
+
+  assert.equal(getGuardAt >= 0 && setGuardAt > getGuardAt, true);
+  assert.match(recovery.slice(getGuardAt, setGuardAt), /\b(?:if|return)\b/);
+  assert.equal(inClientAt >= 0 && inClientAt < logoutAt, true);
+  assert.equal(logoutAt >= 0 && loginAt > logoutAt, true);
+  assert.match(recovery.slice(loginAt), /redirectUri\s*:\s*getCleanPageUrl\s*\(\s*\)/);
+});
+
+test("client clears the invalid-token loop guard only after a successful member sync", () => {
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+
+  assert.match(script, /(?:window\.)?sessionStorage\.removeItem\s*\(/);
+  assert.match(
+    script,
+    /assertSuccessfulResponse\(response\);[\s\S]{0,400}?(?:sessionStorage\.removeItem\s*\(|clear[A-Za-z0-9_$]*(?:Token|Reauth)[A-Za-z0-9_$]*\s*\()/i
+  );
+});
+
+test("client does not start automatic login or token recovery inside the LIFF browser", () => {
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const boot = getTopLevelFunctionContaining(script, /withLoginOnExternalBrowser\s*:\s*false/);
+  const recovery = getTopLevelFunctionContaining(
+    script,
+    /INVALID_TOKEN_RECOVERY_PREFIX\s*\+/
+  );
+  const loginAt = recovery.search(/(?:window\.)?liff\.login\s*\(/);
+
+  assert.match(boot, /withLoginOnExternalBrowser\s*:\s*false/);
+  assert.match(
+    boot,
+    /if\s*\(\s*!window\.liff\.isLoggedIn\s*\(\s*\)\s*\)\s*\{[\s\S]{0,240}?setView\(["']login-state["']\);[\s\S]{0,80}?return;/
+  );
+  assert.doesNotMatch(boot, /(?:window\.)?liff\.login\s*\(/);
+  assert.match(
+    recovery.slice(0, loginAt),
+    /if\s*\([\s\S]{0,160}?isInClient\s*\(\s*\)[\s\S]{0,160}?\)\s*(?:\{[\s\S]{0,160}?\breturn\b|return\b)/
+  );
+});
+
+test("admin renews either invalid token error once and guards redirect loops", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const recovery = getTopLevelFunctionContaining(
+    script,
+    /(?:window\.)?sessionStorage\.getItem\s*\(/
+  );
+  const recoveryName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(recovery);
+
+  assert.ok(recoveryName, "admin token recovery must be implemented as a named function");
+  assert.match(script, /normalized\.code\s*===\s*["']INVALID_TOKEN["']/);
+  assert.match(script, /normalized\.code\s*===\s*["']INVALID_ID_TOKEN["']/);
+
+  const recoveryCalls = script.match(
+    new RegExp(`\\b${recoveryName[1]}\\s*\\(`, "g")
+  );
+  assert.equal(
+    (recoveryCalls || []).length >= 2,
+    true,
+    "the admin token error path must call the recovery function"
+  );
+
+  const getGuardAt = recovery.search(/(?:window\.)?sessionStorage\.getItem\s*\(/);
+  const setGuardAt = recovery.search(/(?:window\.)?sessionStorage\.setItem\s*\(/);
+  const inClientAt = recovery.search(/(?:window\.)?liff\.isInClient\s*\(\s*\)/);
+  const logoutAt = recovery.search(/(?:window\.)?liff\.logout\s*\(\s*\)/);
+  const loginAt = recovery.search(/(?:window\.)?liff\.login\s*\(/);
+
+  assert.equal(getGuardAt >= 0 && setGuardAt > getGuardAt, true);
+  assert.match(recovery.slice(getGuardAt, setGuardAt), /\b(?:if|return)\b/);
+  assert.equal(inClientAt >= 0 && inClientAt < logoutAt, true);
+  assert.equal(logoutAt >= 0 && loginAt > logoutAt, true);
+  assert.match(recovery.slice(loginAt), /redirectUri\s*:\s*getCleanPageUrl\s*\(\s*\)/);
+});
+
+test("admin clears the invalid-token loop guard after an authenticated admin response", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const fatalHandler = getTopLevelFunctionContaining(
+    script,
+    /normalized\.code\s*===\s*["']ADMIN_PENDING["']/
+  );
+
+  assert.match(script, /(?:window\.)?sessionStorage\.removeItem\s*\(/);
+  assert.match(
+    script,
+    /assertSuccessfulResponse\(response\);[\s\S]{0,400}?(?:sessionStorage\.removeItem\s*\(|clear[A-Za-z0-9_$]*(?:Token|Reauth)[A-Za-z0-9_$]*\s*\()/i
+  );
+  assert.match(
+    fatalHandler,
+    /normalized\.code\s*===\s*["']ADMIN_PENDING["']\s*\)\s*\{\s*clearInvalidTokenRecoveryGuard\s*\(\s*\)/
+  );
+  assert.match(
+    fatalHandler,
+    /normalized\.code\s*===\s*["']ADMIN_FORBIDDEN["']\s*\)\s*\{\s*clearInvalidTokenRecoveryGuard\s*\(\s*\)/
+  );
+});
+
+test("admin does not start automatic login or token recovery inside the LIFF browser", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const boot = getTopLevelFunctionContaining(script, /withLoginOnExternalBrowser\s*:\s*false/);
+  const recovery = getTopLevelFunctionContaining(
+    script,
+    /(?:window\.)?sessionStorage\.getItem\s*\(/
+  );
+  const loginAt = recovery.search(/(?:window\.)?liff\.login\s*\(/);
+
+  assert.match(boot, /withLoginOnExternalBrowser\s*:\s*false/);
+  assert.match(boot, /\.then\(function\s*\(\)\s*\{[\s\S]{0,120}?isLiffInitialized\s*=\s*true/);
+  assert.match(
+    boot,
+    /if\s*\(\s*!window\.liff\.isLoggedIn\s*\(\s*\)\s*\)\s*\{[\s\S]{0,240}?setView\(["']login-state["']\);[\s\S]{0,80}?return;/
+  );
+  assert.doesNotMatch(boot, /(?:window\.)?liff\.login\s*\(/);
+  assert.match(recovery.slice(0, loginAt), /!isLiffInitialized/);
+  assert.match(
+    recovery.slice(0, loginAt),
+    /if\s*\([\s\S]{0,160}?isInClient\s*\(\s*\)[\s\S]{0,160}?\)\s*(?:\{[\s\S]{0,160}?\breturn\b|return\b)/
+  );
 });

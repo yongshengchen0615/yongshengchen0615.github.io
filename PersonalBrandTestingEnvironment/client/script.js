@@ -2203,7 +2203,12 @@
   }
 
   function sendGasRequest(action, idToken, context, fields, requestId) {
-    return window.MemberApi.sendRequest({
+    if (!window.PersonaModules || !window.PersonaModules.has("member.api")) {
+      return Promise.reject(
+        createClientError("CLIENT_LIBRARY_ERROR", "無法載入會員操作合約，請重新整理頁面。")
+      );
+    }
+    return window.PersonaModules.get("member.api").send({
       gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
       action: action,
       idToken: idToken,
@@ -2844,9 +2849,6 @@
     document.addEventListener("visibilitychange", handleVisibilityChange);
   }
 
-  bindInteractions();
-  byId("current-year").textContent = String(new Date().getFullYear());
-
   function start() {
     if (startPromise) return startPromise;
 
@@ -2868,5 +2870,16 @@
     return promise;
   }
 
-  start();
+  if (!window.PersonaModules) {
+    throw new Error("PersonaModules must load before client/script.js.");
+  }
+  window.PersonaModules.define("member.app-controller", [], function () {
+    return Object.freeze({
+      bind: bindInteractions,
+      start: start,
+      setCurrentYear: function () {
+        byId("current-year").textContent = String(new Date().getFullYear());
+      },
+    });
+  });
 })();
