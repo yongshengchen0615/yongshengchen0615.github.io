@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101827">
+  <title>會員卡｜Membership System</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section id="boot" class="panel state-panel">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>正在載入會員卡</h1>
+      <p>正在確認 LINE 登入與會員資料。</p>
+    </section>
+
+    <section id="errorState" class="panel state-panel hidden" role="alert">
+      <span class="eyebrow danger-text">無法載入</span>
+      <h1>會員卡暫時無法使用</h1>
+      <p id="errorMessage">請稍後再試。</p>
+      <button id="retryButton" class="button button-primary" type="button">重新整理</button>
+    </section>
+
+    <section id="memberApp" class="hidden">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">MEMBERSHIP</span>
+          <h1>我的會員卡</h1>
+        </div>
+        <button id="refreshButton" class="icon-button" type="button" aria-label="重新整理">↻</button>
+      </header>
+
+      <article class="member-card" aria-label="會員卡">
+        <div class="card-glow card-glow-a"></div>
+        <div class="card-glow card-glow-b"></div>
+        <div class="card-header">
+          <div class="brand-mark">M</div>
+          <div class="card-brand">
+            <strong>MEMBER CARD</strong>
+            <span id="tierLabel">STANDARD</span>
+          </div>
+          <span id="statusBadge" class="status-badge">有效</span>
+        </div>
+
+        <div class="member-identity">
+          <img id="avatar" class="avatar" alt="LINE 個人圖片">
+          <div>
+            <p class="muted-on-card">會員姓名</p>
+            <h2 id="displayName">—</h2>
+          </div>
+        </div>
+
+        <div class="member-number">
+          <span>MEMBER NO.</span>
+          <strong id="memberNo">—</strong>
+        </div>
+
+        <div class="card-meta-grid">
+          <div>
+            <span>加入日期</span>
+            <strong id="joinedAt">—</strong>
+          </div>
+          <div>
+            <span>有效期限</span>
+            <strong id="expiresAt">永久</strong>
+          </div>
+        </div>
+      </article>
+
+      <section class="panel info-panel">
+        <div>
+          <span class="eyebrow">會員狀態</span>
+          <h3 id="statusTitle">會員資格有效</h3>
+          <p id="statusDescription">此會員卡目前可正常使用。</p>
+        </div>
+      </section>
+
+      <nav class="action-grid" aria-label="會員操作">
+        <a id="adminLink" class="action-card hidden" href="./admin.html">
+          <span class="action-icon">⚙</span>
+          <div><strong>管理端</strong><small>管理會員資料</small></div>
+        </a>
+        <button id="logoutButton" class="action-card" type="button">
+          <span class="action-icon">↗</span>
+          <div><strong>登出 LINE</strong><small>結束本次登入</small></div>
+        </button>
+      </nav>
+
+      <footer class="page-footer">會員資料由 LINE 身分驗證與會員系統管理。</footer>
+    </section>
+  </main>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="./config.js"></script>
+  <script src="./common.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

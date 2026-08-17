@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f4f6f9">
+  <title>會員管理｜Membership System</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="admin-body">
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <a class="back-link" href="./index.html">← 返回會員卡</a>
+        <span class="eyebrow">ADMIN</span>
+        <h1>會員管理</h1>
+        <p>搜尋會員、調整會員等級與會員資格狀態。</p>
+      </div>
+      <button id="adminRefreshButton" class="button button-secondary" type="button">重新整理</button>
+    </header>
+
+    <section id="adminBoot" class="panel state-panel">
+      <div class="spinner" aria-hidden="true"></div>
+      <h2>驗證管理權限</h2>
+      <p>管理權限會由伺服器端確認。</p>
+    </section>
+
+    <section id="adminError" class="panel state-panel hidden" role="alert">
+      <span class="eyebrow danger-text">ACCESS ERROR</span>
+      <h2>無法進入管理端</h2>
+      <p id="adminErrorMessage">請確認管理權限。</p>
+      <a class="button button-primary" href="./index.html">回會員卡</a>
+    </section>
+
+    <section id="adminApp" class="hidden">
+      <div class="metric-grid">
+        <article class="metric-card"><span>會員總數</span><strong id="metricTotal">0</strong></article>
+        <article class="metric-card"><span>有效會員</span><strong id="metricActive">0</strong></article>
+        <article class="metric-card"><span>停權 / 停用</span><strong id="metricInactive">0</strong></article>
+      </div>
+
+      <section class="panel admin-panel">
+        <div class="toolbar">
+          <label class="search-field">
+            <span>搜尋會員</span>
+            <input id="memberSearch" type="search" maxlength="80" placeholder="會員編號或名稱" autocomplete="off">
+          </label>
+          <div id="resultCount" class="result-count">0 筆</div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="member-table">
+            <thead>
+              <tr><th>會員</th><th>會員編號</th><th>等級</th><th>狀態</th><th>到期日</th><th></th></tr>
+            </thead>
+            <tbody id="memberTableBody"></tbody>
+          </table>
+        </div>
+        <div id="emptyState" class="empty-state hidden">找不到符合條件的會員。</div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="editDialog" class="edit-dialog">
+    <form id="editForm" method="dialog">
+      <div class="dialog-header">
+        <div><span class="eyebrow">EDIT MEMBER</span><h2 id="editMemberName">編輯會員</h2><p id="editMemberNo">—</p></div>
+        <button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button>
+      </div>
+      <input id="editLineUserId" type="hidden">
+      <input id="editExpectedUpdatedAt" type="hidden">
+      <div class="form-grid">
+        <label><span>會員等級</span><select id="editTier" required><option value="standard">Standard</option><option value="silver">Silver</option><option value="gold">Gold</option><option value="vip">VIP</option></select></label>
+        <label><span>會員狀態</span><select id="editStatus" required><option value="active">有效</option><option value="suspended">停權</option><option value="disabled">停用</option></select></label>
+        <label><span>有效期限</span><input id="editExpiresAt" type="date"></label>
+        <label class="full-span"><span>管理備註</span><textarea id="editNote" maxlength="500" rows="4" placeholder="僅管理端使用"></textarea></label>
+      </div>
+      <p id="editError" class="form-error hidden" role="alert"></p>
+      <div class="dialog-actions">
+        <button class="button button-secondary" value="cancel" type="submit">取消</button>
+        <button id="saveMemberButton" class="button button-primary" type="button">儲存變更</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="./config.js"></script>
+  <script src="./common.js"></script>
+  <script src="./admin.js"></script>
+</body>
+</html>
