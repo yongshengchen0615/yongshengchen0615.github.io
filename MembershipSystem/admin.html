@@ -18,41 +18,31 @@
       </div>
       <button id="adminRefreshButton" class="button button-secondary" type="button">重新整理</button>
     </header>
-
     <section id="adminBoot" class="panel state-panel">
       <div class="spinner" aria-hidden="true"></div>
       <h2>驗證管理權限</h2>
       <p>管理權限會由伺服器端確認。</p>
     </section>
-
     <section id="adminError" class="panel state-panel hidden" role="alert">
       <span class="eyebrow danger-text">ACCESS ERROR</span>
       <h2>無法進入管理端</h2>
       <p id="adminErrorMessage">請確認管理權限。</p>
       <a class="button button-primary" href="./index.html">回會員卡</a>
     </section>
-
     <section id="adminApp" class="hidden">
       <div class="metric-grid">
         <article class="metric-card"><span>會員總數</span><strong id="metricTotal">0</strong></article>
         <article class="metric-card"><span>有效會員</span><strong id="metricActive">0</strong></article>
         <article class="metric-card"><span>停權 / 停用</span><strong id="metricInactive">0</strong></article>
       </div>
-
       <section class="panel admin-panel">
         <div class="toolbar">
-          <label class="search-field">
-            <span>搜尋會員</span>
-            <input id="memberSearch" type="search" maxlength="80" placeholder="會員編號或名稱" autocomplete="off">
-          </label>
+          <label class="search-field"><span>搜尋會員</span><input id="memberSearch" type="search" maxlength="80" placeholder="會員編號或名稱" autocomplete="off"></label>
           <div id="resultCount" class="result-count">0 筆</div>
         </div>
-
         <div class="table-wrap">
           <table class="member-table">
-            <thead>
-              <tr><th>會員</th><th>會員編號</th><th>等級</th><th>狀態</th><th>到期日</th><th></th></tr>
-            </thead>
+            <thead><tr><th>會員</th><th>會員編號</th><th>等級</th><th>狀態</th><th>到期日</th><th></th></tr></thead>
             <tbody id="memberTableBody"></tbody>
           </table>
         </div>
@@ -60,14 +50,13 @@
       </section>
     </section>
   </main>
-
   <dialog id="editDialog" class="edit-dialog">
     <form id="editForm" method="dialog">
       <div class="dialog-header">
         <div><span class="eyebrow">EDIT MEMBER</span><h2 id="editMemberName">編輯會員</h2><p id="editMemberNo">—</p></div>
         <button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button>
       </div>
-      <input id="editLineUserId" type="hidden">
+      <input id="editTargetMemberNo" type="hidden">
       <input id="editExpectedUpdatedAt" type="hidden">
       <div class="form-grid">
         <label><span>會員等級</span><select id="editTier" required><option value="standard">Standard</option><option value="silver">Silver</option><option value="gold">Gold</option><option value="vip">VIP</option></select></label>
@@ -82,7 +71,6 @@
       </div>
     </form>
   </dialog>
-
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="./config.js"></script>
   <script src="./common.js"></script>
