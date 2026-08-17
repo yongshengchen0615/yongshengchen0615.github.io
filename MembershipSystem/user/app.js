@@ -37,6 +37,14 @@
     $('#errorState').classList.remove('hidden');
   }
 
+  function showLoggedOut() {
+    $('#boot').classList.add('hidden');
+    $('#memberApp').classList.add('hidden');
+    $('#errorMessage').textContent = '已登出。重新整理或重新開啟會員頁時會再次進行 LINE 登入。';
+    $('#retryButton').textContent = '重新登入';
+    $('#errorState').classList.remove('hidden');
+  }
+
   async function initialize() {
     try {
       const loggedIn = await Membership.ensureLiffLogin();
@@ -47,15 +55,15 @@
     }
   }
 
-  $('#refreshButton').addEventListener('click', async () => {
-    $('#refreshButton').disabled = true;
-    try { await loadMember(); } catch (error) { showError(error); }
-    finally { $('#refreshButton').disabled = false; }
-  });
+  $('#refreshButton').addEventListener('click', () => window.location.reload());
   $('#retryButton').addEventListener('click', () => window.location.reload());
   $('#logoutButton').addEventListener('click', () => {
+    if (liff.isInClient()) {
+      liff.closeWindow();
+      return;
+    }
     if (liff.isLoggedIn()) liff.logout();
-    window.location.href = './';
+    showLoggedOut();
   });
 
   initialize();
