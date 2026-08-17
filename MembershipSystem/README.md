@@ -16,15 +16,26 @@ MembershipSystem/
 │  ├─ styles.css           # 管理端樣式
 │  └─ app.js               # 管理端邏輯
 ├─ shared/
-│  ├─ config.js            # LIFF / GAS URL 設定
-│  └─ common.js            # LIFF 初始化與 API 共用邏輯
+│  ├─ config.json          # LIFF / GAS 公開設定
+│  └─ common.js            # 設定載入、LIFF 初始化與 API 共用邏輯
 ├─ gas/
 │  ├─ Code.gs
 │  └─ appsscript.json
 └─ README.md
 ```
 
-用戶端與管理端的 HTML / CSS / JS 已完全分開。`shared/` 只放兩邊必須共用的 LIFF 與 API transport 邏輯，避免 Authentication 程式碼重複後產生版本差異。
+用戶端與管理端的 HTML / CSS / JS 已完全分開。`shared/` 只放兩邊必須共用的公開設定與 LIFF / API transport 邏輯，避免 Authentication 程式碼重複後產生版本差異。
+
+## 前端設定 `shared/config.json`
+
+```json
+{
+  "LIFF_ID": "YOUR_LIFF_ID",
+  "GAS_WEB_APP_URL": "YOUR_GAS_WEB_APP_URL"
+}
+```
+
+`common.js` 會先以 `fetch()` 載入並驗證 `config.json`，再初始化 LIFF。`config.json` 會由 GitHub Pages 公開提供，因此只能放前端本來就能公開知道的設定，例如 LIFF ID 與 GAS Web App URL；**不得放 LINE Channel Secret、Access Token、API Secret、Password 或其他秘密。**
 
 ## URL
 
@@ -94,7 +105,7 @@ GAS 第一次使用時會自動建立工作表及必要欄位；既有工作表�
    - `LINE_CHANNEL_ID`
 4. Deploy Web App：Execute as `Me`，Who has access `Anyone`。
 5. LINE LIFF Scope 至少開啟 `openid`、`profile`。
-6. 編輯 `shared/config.js`：
+6. 編輯 `shared/config.json`：
    - `LIFF_ID`
    - `GAS_WEB_APP_URL`
 7. 第一次由用戶端登入，讓 GAS 自動建立會員資料。
@@ -102,6 +113,7 @@ GAS 第一次使用時會自動建立工作表及必要欄位；既有工作表�
 
 ## Security Notes
 
+- `shared/config.json` 是公開前端資源，禁止放任何 Secret / Token / Password。
 - 資料夾分離只負責前端組織與維護，**不是 Authorization Boundary**。
 - 管理端即使直接開啟 `admin/`，`admin.list` / `admin.update` 仍必須由 GAS 驗證有效 LINE ID Token 與 `canManageMembers`。
 - 前端不信任 `liff.getProfile()` 作為後端 Identity；只把原始 ID Token 傳給 GAS。
@@ -113,6 +125,7 @@ GAS 第一次使用時會自動建立工作表及必要欄位；既有工作表�
 
 ## 驗證情境
 
+- Config：`config.json` 無法讀取、JSON 無效或必要欄位缺失 → 前端顯示設定錯誤，不進入 LIFF / API 流程。
 - Root compatibility：`MembershipSystem/` → `user/`。
 - User navigation：用戶端取得 server-confirmed admin permission 後 → `admin/`。
 - Admin navigation：管理端可返回 `user/`。

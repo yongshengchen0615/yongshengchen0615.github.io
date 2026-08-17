@@ -1,26 +1,77 @@
 (function () {
   'use strict';
 
-  const config = window.MEMBERSHIP_CONFIG || {};
+  const currentScriptSrc = document.currentScript && document.currentScript.src;
+  const configUrl = currentScriptSrc
+    ? new URL('./config.json', currentScriptSrc).href
+    : new URL('../shared/config.json', window.location.href).href;
 
-  function assertConfigured() {
-    if (!config.LIFF_ID || config.LIFF_ID === 'YOUR_LIFF_ID') {
+  let config = null;
+  let configPromise = null;
+
+  function assertConfigured(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('會員系統設定格式不正確。');
+    }
+    if (!value.LIFF_ID || value.LIFF_ID === 'YOUR_LIFF_ID') {
       throw new Error('尚未設定 LIFF_ID。');
     }
-    if (!config.GAS_WEB_APP_URL || config.GAS_WEB_APP_URL === 'YOUR_GAS_WEB_APP_URL') {
+    if (!value.GAS_WEB_APP_URL || value.GAS_WEB_APP_URL === 'YOUR_GAS_WEB_APP_URL') {
       throw new Error('尚未設定 GAS_WEB_APP_URL。');
     }
     try {
-      const url = new URL(config.GAS_WEB_APP_URL);
+      const url = new URL(value.GAS_WEB_APP_URL);
       if (url.protocol !== 'https:' || !url.pathname.endsWith('/exec')) throw new Error();
     } catch (_) {
       throw new Error('GAS_WEB_APP_URL 必須是 Apps Script Web App 的 HTTPS /exec 網址。');
     }
   }
 
+  async function loadConfig() {
+    if (config) return config;
+    if (configPromise) return configPromise;
+
+    configPromise = (async function () {
+      let response;
+      try {
+        response = await fetch(configUrl, {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer'
+        });
+      } catch (_) {
+        throw new Error('無法載入會員系統設定檔。');
+      }
+
+      if (!response.ok) {
+        throw new Error('會員系統設定檔不存在或無法讀取。');
+      }
+
+      let parsed;
+      try { parsed = await response.json(); }
+      catch (_) { throw new Error('會員系統設定檔不是有效 JSON。'); }
+
+      assertConfigured(parsed);
+      config = Object.freeze({
+        LIFF_ID: String(parsed.LIFF_ID),
+        GAS_WEB_APP_URL: String(parsed.GAS_WEB_APP_URL)
+      });
+      return config;
+    })();
+
+    try {
+      return await configPromise;
+    } catch (error) {
+      configPromise = null;
+      throw error;
+    }
+  }
+
   async function ensureLiffLogin() {
-    assertConfigured();
-    await liff.init({ liffId: config.LIFF_ID });
+    const activeConfig = await loadConfig();
+    await liff.init({ liffId: activeConfig.LIFF_ID });
     if (!liff.isLoggedIn()) {
       liff.login({ redirectUri: window.location.href });
       return false;
@@ -32,6 +83,7 @@
   }
 
   async function callApi(action, payload) {
+    const activeConfig = await loadConfig();
     const idToken = liff.getIDToken();
     if (!idToken) throw new Error('LINE 登入已失效，請重新登入。');
 
@@ -42,7 +94,7 @@
 
     let response;
     try {
-      response = await fetch(config.GAS_WEB_APP_URL, {
+      response = await fetch(activeConfig.GAS_WEB_APP_URL, {
         method: 'POST',
         body: form,
         credentials: 'omit',
@@ -77,5 +129,5 @@
     return value == null ? '' : String(value);
   }
 
-  window.Membership = Object.freeze({ config, ensureLiffLogin, callApi, formatDate, escapeText });
+  window.Membership = Object.freeze({ loadConfig, ensureLiffLogin, callApi, formatDate, escapeText });
 })();
