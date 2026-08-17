@@ -17,7 +17,7 @@ MembershipSystem/
 │  └─ app.js               # 管理端邏輯
 ├─ shared/
 │  ├─ config.json          # LIFF / GAS 公開設定
-│  └─ common.js            # 設定載入、LIFF 初始化與 API 共用邏輯
+│  └─ common.js            # 設定載入、LIFF 初始化、強制重新登入與 API 共用邏輯
 ├─ gas/
 │  ├─ Code.gs
 │  └─ appsscript.json
@@ -37,6 +37,17 @@ MembershipSystem/
 
 `common.js` 會先以 `fetch()` 載入並驗證 `config.json`，再初始化 LIFF。`config.json` 會由 GitHub Pages 公開提供，因此只能放前端本來就能公開知道的設定，例如 LIFF ID 與 GAS Web App URL；**不得放 LINE Channel Secret、Access Token、API Secret、Password 或其他秘密。**
 
+## LIFF 重新登入政策
+
+每次完整開啟或重新整理 `user/` / `admin/` 都必須重新建立本次 LIFF 登入狀態。
+
+- 外部瀏覽器 / LINE 內建瀏覽器：初始化 LIFF 後，既有 LIFF session 會先 `liff.logout()`，再執行 `liff.login()`。
+- Login callback 使用一次性隨機 nonce，nonce 同時存在 query parameter 與當前 tab 的 `sessionStorage`；兩者一致才視為本次強制登入完成。
+- callback 成功後立即刪除 nonce，因此重新整理、再次開啟或切換到另一個前端頁面都會重新走登入流程。
+- 偽造 `__membership_reauth` query parameter 無法跳過登入，因為沒有相符的一次性 browser nonce。
+- LIFF Browser 不能手動呼叫 `liff.login()`；該環境會在每次頁面開啟時重新執行 `liff.init()`，由 LINE 自動完成登入並重新檢查 ID Token。
+- 此政策不保證 LINE 一定顯示帳密輸入畫面；若 LINE 平台本身可使用 SSO，登入畫面可能自動完成，但本系統不會沿用前一次頁面的 LIFF application session。
+
 ## URL
 
 - 相容入口：`https://yongshengchen0615.github.io/MembershipSystem/` → 自動導向用戶端。
@@ -49,11 +60,13 @@ MembershipSystem/
 
 ### 用戶端 `user/`
 - LINE LIFF 登入。
+- 每次重新開啟 / 重新整理都重新建立 LIFF 登入狀態。
 - 第一次登入自動建立會員資料與唯一會員編號。
 - 顯示會員姓名、頭像、會員編號、等級、會員狀態、加入日期與有效期限。
 - 只有 GAS 回傳已通過管理 Permission 的使用者才顯示管理端入口。
 
 ### 管理端 `admin/`
+- 每次重新開啟 / 重新整理都重新建立 LIFF 登入狀態。
 - 頁面可公開載入，但會員資料 API 必須通過 GAS server-side Authentication + Authorization。
 - 會員總數 / 有效 / 停權與停用統計。
 - 依會員編號或名稱搜尋。
@@ -114,6 +127,8 @@ GAS 第一次使用時會自動建立工作表及必要欄位；既有工作表�
 ## Security Notes
 
 - `shared/config.json` 是公開前端資源，禁止放任何 Secret / Token / Password。
+- 外部瀏覽器的強制重新登入 callback 使用 cryptographically random nonce + `sessionStorage` 比對，避免直接加 query parameter 跳過 re-auth flow。
+- nonce 只用於 browser login handshake，不是 Authentication Token，不會傳送給 GAS，也不會寫入 Log / Sheet。
 - 資料夾分離只負責前端組織與維護，**不是 Authorization Boundary**。
 - 管理端即使直接開啟 `admin/`，`admin.list` / `admin.update` 仍必須由 GAS 驗證有效 LINE ID Token 與 `canManageMembers`。
 - 前端不信任 `liff.getProfile()` 作為後端 Identity；只把原始 ID Token 傳給 GAS。
@@ -125,10 +140,14 @@ GAS 第一次使用時會自動建立工作表及必要欄位；既有工作表�
 
 ## 驗證情境
 
+- Forced login / external：已登入狀態開啟頁面 → logout → 新 nonce → `liff.login()` → callback nonce 驗證 → 才可呼叫 API。
+- Forced login / refresh：登入完成後重新整理 → 舊 nonce 已刪除 → 再次執行強制登入。
+- Forced login / forged callback：手動加入錯誤 `__membership_reauth` → 與 `sessionStorage` 不符 → 不接受 → 重新登入。
+- LIFF Browser：每次頁面開啟 → `liff.init()` → LINE 自動登入 → 必須取得有效 ID Token。
 - Config：`config.json` 無法讀取、JSON 無效或必要欄位缺失 → 前端顯示設定錯誤，不進入 LIFF / API 流程。
 - Root compatibility：`MembershipSystem/` → `user/`。
-- User navigation：用戶端取得 server-confirmed admin permission 後 → `admin/`。
-- Admin navigation：管理端可返回 `user/`。
+- User navigation：用戶端取得 server-confirmed admin permission 後 → `admin/`，新頁面再次執行登入政策。
+- Admin navigation：管理端返回 `user/`，新頁面再次執行登入政策。
 - Unauthenticated：無效 / 缺少 ID Token → GAS 拒絕。
 - Unauthorized：`canManageMembers != TRUE` → 管理 API 拒絕。
 - Privilege escalation：直接輸入 `admin/` URL、修改前端 JS 或偽造 tier → GAS 仍拒絕未授權管理 API。
