@@ -1,0 +1,17 @@
+flowchart LR
+    memberLiff["Member LIFF application"]
+    adminLiff["Admin LIFF application"]
+    memberApi["Managed member API and policy service"]
+    adminApi["Managed admin API and policy service"]
+    lineApi["LINE ID token verification"]
+    ledger["Transactional member reward database"]
+    audit["Operational audit and telemetry"]
+
+    memberLiff -->|"member command contract"| memberApi
+    adminLiff -->|"admin command contract"| adminApi
+    memberApi -->|"verify member audience"| lineApi
+    adminApi -->|"verify admin audience"| lineApi
+    memberApi -->|"transactional ledger access"| ledger
+    adminApi -->|"configuration and access"| ledger
+    memberApi -->|"bounded events"| audit
+    adminApi -->|"bounded events"| audit

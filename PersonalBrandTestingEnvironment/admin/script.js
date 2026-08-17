@@ -467,7 +467,12 @@
   }
 
   function sendAdminRequest(action, fields) {
-    return window.MemberApi.sendRequest({
+    if (!window.PersonaModules || !window.PersonaModules.has("admin.api")) {
+      return Promise.reject(
+        createError("CLIENT_LIBRARY_ERROR", "無法載入管理操作合約，請重新整理頁面。")
+      );
+    }
+    return window.PersonaModules.get("admin.api").send({
       gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
       action: action,
       idToken: currentIdToken,
@@ -3635,7 +3640,17 @@
     });
   }
 
-  bindInteractions();
-  byId("current-year").textContent = String(new Date().getFullYear());
-  start();
+  if (!window.PersonaModules) {
+    throw new Error("PersonaModules must load before admin/script.js.");
+  }
+  window.PersonaModules.define("admin.app-controller", [], function () {
+    return Object.freeze({
+      page: ADMIN_PAGE,
+      bind: bindInteractions,
+      start: start,
+      setCurrentYear: function () {
+        byId("current-year").textContent = String(new Date().getFullYear());
+      },
+    });
+  });
 })();

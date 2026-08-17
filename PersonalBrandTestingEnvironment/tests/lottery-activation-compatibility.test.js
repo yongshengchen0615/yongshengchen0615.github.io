@@ -13,6 +13,7 @@ const workflow = fs.readFileSync(
 const legacyBoundary = [
   '    <script defer src="../shared/lottery-wheel.js"></script>',
   '    <script defer src="../shared/module-registry.js"></script>',
+  '    <script defer src="member-api.js"></script>',
   '    <script defer src="member-lottery.js"></script>',
   '    <script defer src="lottery/contracts.js"></script>',
   '    <script defer src="lottery/pending-request-store.js"></script>',
@@ -22,11 +23,13 @@ const legacyBoundary = [
   '    <script defer src="lottery/preload-controller.js"></script>',
   '    <script defer src="member-lottery-preload.js"></script>',
   '    <script defer src="script.js"></script>',
+  '    <script defer src="member-main.js"></script>',
 ].join("\n");
 
 const v2Boundary = [
   '    <script defer src="../shared/lottery-wheel.js"></script>',
   '    <script defer src="../shared/module-registry.js"></script>',
+  '    <script defer src="member-api.js"></script>',
   '    <script defer src="member-lottery.js"></script>',
   '    <script defer src="lottery/contracts.js"></script>',
   '    <script defer src="lottery/pending-request-store.js"></script>',
@@ -39,6 +42,7 @@ const v2Boundary = [
   '    <script defer src="lottery/dialog-controller.js"></script>',
   '    <script defer src="member-lottery-v2.js"></script>',
   '    <script defer src="script.js"></script>',
+  '    <script defer src="member-main.js"></script>',
 ].join("\n");
 
 test("checked-in entry is either the operational legacy boundary or activated v2", () => {

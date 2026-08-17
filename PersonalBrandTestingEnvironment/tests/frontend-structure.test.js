@@ -279,13 +279,15 @@ test("incomplete members must finish phone and birthday before using member acti
   assert.match(editor, /setProfileDialogMode\(["']edit["']\)/);
 });
 
-test("shared GAS transport allowlists member phone and birthday fields", () => {
+test("member action adapter owns profile fields outside the shared transport", () => {
+  const adapter = fs.readFileSync(path.join(root, "client/member-api.js"), "utf8");
   const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
-  const extraFields = /var\s+EXTRA_FIELD_NAMES\s*=\s*\[([\s\S]*?)\];/.exec(transport);
 
-  assert.ok(extraFields, "shared transport extra-field allowlist must exist");
-  assert.match(extraFields[1], /["']phone["']/);
-  assert.match(extraFields[1], /["']birthday["']/);
+  assert.match(
+    adapter,
+    /updateMemberProfile:\s*Object\.freeze\(\[["']phone["'],\s*["']birthday["']\]\)/
+  );
+  assert.doesNotMatch(transport, /EXTRA_FIELD_NAMES/);
 });
 
 test("admin exposes an accessible point-type and QR campaign workspace", () => {
@@ -966,38 +968,41 @@ test("new member creation sends a privacy-bounded official account message", () 
   assert.match(officialAccountMessage, /reason:\s*["']send_failed["']/);
 });
 
-test("shared transport exposes only the bounded point and lottery fields", () => {
+test("action adapters own bounded point and lottery fields", () => {
   const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
-  const extraFields = /var\s+EXTRA_FIELD_NAMES\s*=\s*\[([\s\S]*?)\];/.exec(transport);
+  const memberAdapter = fs.readFileSync(path.join(root, "client/member-api.js"), "utf8");
+  const adminAdapter = fs.readFileSync(path.join(root, "admin/admin-api.js"), "utf8");
 
-  assert.ok(extraFields, "shared transport extra-field allowlist must exist");
+  for (const field of ["claim", "lotteryTypeId", "cardRoundKey"]) {
+    assert.match(memberAdapter, new RegExp(`["']${field}["']`));
+  }
   for (const field of [
-    "claim",
     "pointAmount",
     "pointTypeId",
     "expiresAt",
     "expiryMode",
     "redemptionMode",
     "pointCardTarget",
-    "pointCardMilestones",
     "pointCardRewards",
     "lotteryTypeId",
-    "cardRoundKey",
     "lotteryTypeName",
     "lotteryPrizes",
   ]) {
-    assert.match(extraFields[1], new RegExp(`["']${field}["']`));
+    assert.match(adminAdapter, new RegExp(`["']${field}["']`));
   }
+  assert.match(transport, /var\s+MAX_PAYLOAD_FIELDS\s*=\s*32/);
+  assert.match(transport, /var\s+RESERVED_ENVELOPE_FIELDS\s*=\s*\[/);
   assert.match(
     transport,
-    /name\s*===\s*["']lotteryPrizes["']\s*\|\|\s*name\s*===\s*["']pointCardRewards["'][\s\S]*?JSON\.stringify\(originalRequest\[name\]\)/,
-    "the bridge transport must serialize prize and point-card node arrays as JSON"
+    /function\s+serializeBridgePayloadValue\s*\([^)]+\)\s*\{[\s\S]*?typeof value\s*===\s*["']object["'][\s\S]*?JSON\.stringify\(value\)/,
+    "the bridge transport must serialize structured action payload values as JSON"
   );
   assert.doesNotMatch(
-    extraFields[1],
+    memberAdapter + adminAdapter,
     /["'](?:points|memberId|lineUserId)["']/,
-    "raw point balances and member identity fields must not cross the generic transport allowlist"
+    "raw balances and member identity fields must not be accepted by browser action adapters"
   );
+  assert.doesNotMatch(transport, /EXTRA_FIELD_NAMES/);
 });
 
 test("LIFF pages preconnect early and use keyboard-safe mobile viewport sizing", () => {
@@ -1031,7 +1036,7 @@ test("shared GAS transport keeps fetch primary and bridge as a compatibility fal
 
   assert.match(sendRequest, /postWithFetch\(gasUrl,\s*request\)\.catch/);
   assert.match(sendRequest, /shouldUseBridgeFallback\(error\)/);
-  assert.match(sendRequest, /return postWithBridge\(gasUrl,\s*request\)/);
+  assert.match(sendRequest, /return postWithBridge\(gasUrl,\s*request,\s*payloadNames\)/);
   assert.doesNotMatch(transport, /shouldUseBridgeFirst/);
   assert.match(transport, /loadConfig[\s\S]*?cache:\s*["']no-cache["']/);
 });
@@ -1343,13 +1348,67 @@ test("client and admin JSON configs expose only public frontend settings", () =>
 });
 
 test("admin access updates include both optimistic concurrency fields", () => {
-  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const adapter = fs.readFileSync(path.join(root, "admin/admin-api.js"), "utf8");
   const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
 
-  assert.match(transport, /"expectedAccessStatus"/);
-  assert.match(transport, /"expectedAccessUpdatedAt"/);
+  assert.match(adapter, /"expectedAccessStatus"/);
+  assert.match(adapter, /"expectedAccessUpdatedAt"/);
   assert.match(adminScript, /expectedAccessStatus:\s*member\.status/);
   assert.match(adminScript, /expectedAccessUpdatedAt:\s*member\.accessUpdatedAt/);
+});
+
+test("member and administrator pages use explicit composition roots", () => {
+  const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const memberOrder = [
+    "../shared/module-registry.js",
+    "member-api.js",
+    "script.js",
+    "member-main.js",
+  ].map((source) => memberHtml.indexOf(`src="${source}"`));
+  assert.equal(memberOrder.every((index) => index !== -1), true);
+  assert.deepEqual(memberOrder.slice().sort((left, right) => left - right), memberOrder);
+  assert.match(memberScript, /PersonaModules\.get\(["']member\.api["']\)\.send\(/);
+  assert.match(adminScript, /PersonaModules\.get\(["']admin\.api["']\)\.send\(/);
+
+  const lotteryHtml = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
+  const lotteryScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const lotteryOrder = [
+    "../shared/module-registry.js",
+    "member-api.js",
+    "lottery.js",
+  ].map((source) => lotteryHtml.indexOf(`src="${source}"`));
+  assert.equal(lotteryOrder.every((index) => index !== -1), true);
+  assert.deepEqual(lotteryOrder.slice().sort((left, right) => left - right), lotteryOrder);
+  assert.match(
+    lotteryScript,
+    /PersonaModules\.get\(\s*["']member\.api["']\s*\)\.send\(/
+  );
+
+  for (const [relativePath, pageModule] of [
+    ["admin/index.html", "pages/members-page.js"],
+    ["admin/points.html", "pages/points-page.js"],
+    ["admin/lottery.html", "pages/lottery-page.js"],
+  ]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    const order = [
+      "../shared/module-registry.js",
+      "admin-api.js",
+      pageModule,
+      "script.js",
+      "admin-main.js",
+    ].map((source) => html.indexOf(`src="${source}"`));
+    assert.equal(order.every((index) => index !== -1), true);
+    assert.deepEqual(order.slice().sort((left, right) => left - right), order);
+    for (const otherPageModule of [
+      "pages/members-page.js",
+      "pages/points-page.js",
+      "pages/lottery-page.js",
+    ]) {
+      assert.equal(html.includes(`src="${otherPageModule}"`), otherPageModule === pageModule);
+    }
+  }
 });
 
 test("both applications load shared runtime modules before their own scripts", () => {

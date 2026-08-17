@@ -4,9 +4,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const { readGasProjectSource } = require("./helpers/gas-project");
 
 const ROOT = path.resolve(__dirname, "..");
-const CODE = fs.readFileSync(path.join(ROOT, "gas/admin/Code.gs"), "utf8");
+const CODE = readGasProjectSource(path.join(ROOT, "gas/admin"));
 const ADMIN_CHANNEL_ID = "2010791619";
 const ADMIN_USER_ID = `U${"a".repeat(32)}`;
 const MEMBER_USER_ID = `U${"b".repeat(32)}`;
@@ -156,7 +157,7 @@ function createGasContext(options = {}) {
   };
 
   vm.createContext(context);
-  vm.runInContext(CODE, context, { filename: "gas/admin/Code.gs" });
+  vm.runInContext(CODE, context, { filename: "gas/admin/*.gs" });
   return context;
 }
 

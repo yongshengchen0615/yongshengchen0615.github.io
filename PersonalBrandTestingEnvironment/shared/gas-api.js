@@ -3,30 +3,16 @@
 
   var FETCH_TIMEOUT_MS = 12000;
   var BRIDGE_TIMEOUT_MS = 20000;
-  var EXTRA_FIELD_NAMES = [
-    "targetMemberId",
-    "accessStatus",
-    "expectedAccessStatus",
-    "expectedAccessUpdatedAt",
-    "page",
-    "pageSize",
-    "phone",
-    "birthday",
-    "claim",
-    "pointAmount",
-    "pointTypeId",
-    "expiresAt",
-    "expiryMode",
-    "redemptionMode",
-    "pointCardTarget",
-    "pointCardMilestones",
-    "pointCardRewards",
-    "pointCardExpiryMode",
-    "pointCardExpiresOn",
-    "lotteryTypeId",
-    "cardRoundKey",
-    "lotteryTypeName",
-    "lotteryPrizes",
+  var MAX_PAYLOAD_FIELDS = 32;
+  var PAYLOAD_FIELD_PATTERN = /^[a-z][a-zA-Z0-9]{0,63}$/;
+  var RESERVED_ENVELOPE_FIELDS = [
+    "action",
+    "idToken",
+    "requestId",
+    "requestSecret",
+    "callbackOrigin",
+    "context",
+    "transport",
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {
@@ -94,18 +80,38 @@
       context: options.context && typeof options.context === "object" ? options.context : {},
       transport: "fetch",
     };
-    var fields = options.fields && typeof options.fields === "object" ? options.fields : {};
-
-    EXTRA_FIELD_NAMES.forEach(function (name) {
-      if (Object.prototype.hasOwnProperty.call(fields, name)) {
-        request[name] = fields[name];
-      }
-    });
+    var payload = options.payload === undefined ? {} : options.payload;
+    var payloadNames = copyPayloadFields(request, payload);
 
     var gasUrl = String(options.gasUrl || "").trim();
     return postWithFetch(gasUrl, request).catch(function (error) {
       if (!shouldUseBridgeFallback(error)) throw error;
-      return postWithBridge(gasUrl, request);
+      return postWithBridge(gasUrl, request, payloadNames);
+    });
+  }
+
+  function copyPayloadFields(request, payload) {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw createError("INVALID_PAYLOAD", "請求資料必須是物件。");
+    }
+
+    var names = Object.keys(payload);
+    if (names.length > MAX_PAYLOAD_FIELDS) {
+      throw createError("INVALID_PAYLOAD", "請求資料欄位數量超出限制。");
+    }
+
+    names.forEach(function (name) {
+      if (
+        !PAYLOAD_FIELD_PATTERN.test(name) ||
+        RESERVED_ENVELOPE_FIELDS.indexOf(name) !== -1
+      ) {
+        throw createError("INVALID_PAYLOAD_FIELD", "請求資料包含不允許的欄位。");
+      }
+      if (payload[name] !== undefined) request[name] = payload[name];
+    });
+
+    return names.filter(function (name) {
+      return payload[name] !== undefined;
     });
   }
 
@@ -149,7 +155,7 @@
       });
   }
 
-  function postWithBridge(gasUrl, originalRequest) {
+  function postWithBridge(gasUrl, originalRequest, payloadNames) {
     return new Promise(function (resolve, reject) {
       var requestSecret = createRandomHex(24);
       var frameName = "gas_bridge_" + originalRequest.requestId.replace(/[^a-zA-Z0-9]/g, "");
@@ -175,14 +181,12 @@
       appendHiddenField(form, "callbackOrigin", originalRequest.callbackOrigin);
       appendHiddenField(form, "context", JSON.stringify(originalRequest.context || {}));
       appendHiddenField(form, "transport", "bridge");
-      EXTRA_FIELD_NAMES.forEach(function (name) {
+      payloadNames.forEach(function (name) {
         if (Object.prototype.hasOwnProperty.call(originalRequest, name)) {
           appendHiddenField(
             form,
             name,
-            name === "lotteryPrizes" || name === "pointCardRewards"
-              ? JSON.stringify(originalRequest[name])
-              : originalRequest[name]
+            serializeBridgePayloadValue(originalRequest[name])
           );
         }
       });
@@ -237,6 +241,11 @@
 
       form.submit();
     });
+  }
+
+  function serializeBridgePayloadValue(value) {
+    if (value && typeof value === "object") return JSON.stringify(value);
+    return value;
   }
 
   function appendHiddenField(form, name, value) {

@@ -31,6 +31,8 @@ PersonalBrandTestingEnvironment/
 ├── client/                    # 會員端 LIFF
 │   ├── index.html
 │   ├── lottery.html           # 舊抽獎連結的相容備援畫面
+│   ├── member-api.js          # 會員 action 與 payload contract
+│   ├── member-main.js         # 會員頁 composition root
 │   ├── member-lottery.js      # 會員首頁內的轉盤小視窗與安全重試
 │   ├── lottery.js
 │   ├── privacy.html
@@ -41,6 +43,9 @@ PersonalBrandTestingEnvironment/
 │   ├── index.html             # 會員資料與使用權限
 │   ├── points.html            # 點數建立、QR 發放與領取紀錄
 │   ├── lottery.html           # 集點卡規則、轉盤類型、獎項與抽獎紀錄
+│   ├── admin-api.js           # 管理 action 與 payload contract
+│   ├── admin-main.js          # 管理頁 composition root
+│   ├── pages/                 # 每份 HTML 唯一載入的 page module
 │   ├── styles.css
 │   ├── script.js
 │   └── config.json
@@ -48,13 +53,16 @@ PersonalBrandTestingEnvironment/
 │   ├── gas-api.js             # 兩端共用的跨網域傳輸
 │   ├── liff-runtime.js        # 兩端共用的 LIFF 環境與公開設定檢查
 │   ├── lottery-wheel.js       # 管理端與會員端共用的轉盤 Canvas 繪製
+│   ├── module-registry.js     # 顯式模組註冊與解析
 │   └── qr-code.js             # 管理端本機 QR SVG／PNG 產生器
 ├── gas/
 │   ├── client/                # 處理會員登入、個人資料、領點、抽獎與刪除資料
 │   │   ├── Code.gs
+│   │   ├── Commands.gs        # 會員 action 驗證與 dispatch registry
 │   │   └── appsscript.json
 │   └── admin/                 # 處理管理員授權、會員權限、點數 QR 與轉盤設定
 │       ├── Code.gs
+│       ├── Commands.gs        # 管理 action 驗證與 dispatch registry
 │       └── appsscript.json
 └── tests/
 ```
@@ -96,7 +104,7 @@ https://docs.google.com/spreadsheets/d/{這一段是 SPREADSHEET_ID}/edit
 ## 2. 建立並部署會員 GAS
 
 1. 建立第一個獨立 Apps Script 專案，例如命名為 `PERSONA Member API`。
-2. 將 [`gas/client/Code.gs`](gas/client/Code.gs) 貼入 `Code.gs`。
+2. 將 [`gas/client/Code.gs`](gas/client/Code.gs) 貼入 `Code.gs`，再新增 `Commands.gs` 並貼入 [`gas/client/Commands.gs`](gas/client/Commands.gs)。兩個 `.gs` 檔案缺一不可。
 3. 開啟資訊清單檔案後，以 [`gas/client/appsscript.json`](gas/client/appsscript.json) 取代內容。
 4. 在「專案設定 → 指令碼屬性」加入：
 
@@ -134,7 +142,7 @@ curl -L "會員_GAS_EXEC_URL?action=health"
 ## 3. 建立並部署管理 GAS
 
 1. 建立第二個、完全獨立的 Apps Script 專案，例如命名為 `PERSONA Admin API`。不要把管理程式貼進會員 GAS 專案。
-2. 將 [`gas/admin/Code.gs`](gas/admin/Code.gs) 貼入 `Code.gs`。
+2. 將 [`gas/admin/Code.gs`](gas/admin/Code.gs) 貼入 `Code.gs`，再新增 `Commands.gs` 並貼入 [`gas/admin/Commands.gs`](gas/admin/Commands.gs)。兩個 `.gs` 檔案缺一不可。
 3. 開啟資訊清單檔案後，以 [`gas/admin/appsscript.json`](gas/admin/appsscript.json) 取代內容。
 4. 在這個專案的「指令碼屬性」加入：
 
@@ -171,12 +179,14 @@ https://yongshengchen0615.github.io
 
 電話與生日會追加為 `Members.phone` 與 `Members.birthday`，原有 1–21 欄位置不會改變。點數功能使用 `PointTypes`、`PointCampaigns`、`PointRedemptions`；集點卡與轉盤功能使用 `PointCardSettings`、`LotteryTypes`、`LotteryPrizes`、`LotteryDraws`，都不會增加 `Members` 欄位。新版 `setup()` 會替舊點數資料補上期限／領取規則快照，並在 `PointCardSettings` 尾端追加 `reward_milestones`、`reward_lottery_type_ids`、`expiry_mode` 與 `expires_on`。舊集點卡會安全補成無期限；節點與轉盤欄逐項對應，記錄每個節點唯一可使用的轉盤。全新安裝的 `LotteryTypes` 只有欄位標題，不會自動建立轉盤；請先從管理端按「新增第一個轉盤」完成設定，再替預設 5 點節點選擇該轉盤並儲存集點卡。只有舊版已存在轉盤獎項時，升級程序才會建立「經典轉盤」、把舊獎項歸入該類型並將舊節點指派給它。舊集點卡規則的空白節點相容解讀為「只在滿點抽一次」；既有活動預設遷移為「有期限＋每位會員一次」。升級時請在維護時段連續完成：
 
-1. 同時將最新的會員 `Code.gs` 與管理 `Code.gs` 貼入各自專案。
+1. 同時將最新的會員 `Code.gs`、會員 `Commands.gs`、管理 `Code.gs` 與管理 `Commands.gs` 貼入各自專案。
 2. 先在管理 GAS、再在會員 GAS 各執行一次 `setup()`，確認 `Members` 為 23 欄、三張點數工作表已完成升級，並已建立 `PointCardSettings`、`LotteryTypes`、`LotteryPrizes`、`LotteryDraws`。
 3. 兩個 GAS 都建立新的正式部署版本。
 4. 最後再發布前端。
 
 不要只升級其中一套 GAS；舊版程式會把 23 欄工作表視為 schema mismatch。
+
+本次拆檔不改 action 名稱、HTTP payload、response envelope 或 Spreadsheet schema。若新版本部署後發生異常，可在 Apps Script「管理部署作業」把兩套 Web App 各自切回前一個版本；不需要回滾資料。
 
 ## 4. 設定兩個 LINE LIFF App
 
@@ -363,13 +373,23 @@ ALLOWED_ORIGINS=https://yongshengchen0615.github.io
 
 ```bash
 node --check shared/gas-api.js
+node --check shared/module-registry.js
 node --check shared/qr-code.js
+node --check client/member-api.js
+node --check client/member-main.js
 node --check client/script.js
+node --check admin/admin-api.js
+node --check admin/admin-main.js
+node --check admin/pages/members-page.js
+node --check admin/pages/points-page.js
+node --check admin/pages/lottery-page.js
 node --check admin/script.js
 python3 -m json.tool client/config.json
 python3 -m json.tool admin/config.json
 node --check < gas/client/Code.gs
+node --check < gas/client/Commands.gs
 node --check < gas/admin/Code.gs
+node --check < gas/admin/Commands.gs
 python3 -m json.tool gas/client/appsscript.json
 python3 -m json.tool gas/admin/appsscript.json
 node --test tests/*.test.js

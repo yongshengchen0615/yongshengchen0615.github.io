@@ -78,6 +78,8 @@ test("shared GAS requests try fetch before falling back to the bridge", async ()
   let messageListener = null;
   let fetchCalls = 0;
   let submittedForms = 0;
+  let fetchBody = null;
+  let submittedFields = null;
   const document = {
     baseURI: "https://example.test/client/",
     body: {
@@ -97,6 +99,7 @@ test("shared GAS requests try fetch before falling back to the bridge", async ()
           const fields = Object.fromEntries(
             this.children.map((child) => [child.name, child.value])
           );
+          submittedFields = fields;
           queueMicrotask(() => {
             messageListener({
               origin: "https://script.google.com",
@@ -121,8 +124,9 @@ test("shared GAS requests try fetch before falling back to the bridge", async ()
         return bytes;
       },
     },
-    fetch() {
+    fetch(_url, options) {
       fetchCalls += 1;
+      fetchBody = JSON.parse(options.body);
       return Promise.reject(new TypeError("CORS"));
     },
     setTimeout,
@@ -158,12 +162,68 @@ test("shared GAS requests try fetch before falling back to the bridge", async ()
     gasUrl: "https://script.google.com/macros/s/example/exec",
     action: "health",
     requestId: "req-1234567890",
+    payload: {
+      phone: "+886912345678",
+      lotteryPrizes: [{ label: "A", probability: 100 }],
+    },
   });
 
   assert.equal(result.ok, true);
   assert.equal(result.requestId, "req-1234567890");
   assert.equal(fetchCalls, 1);
   assert.equal(submittedForms, 1);
+  assert.equal(fetchBody.phone, "+886912345678");
+  assert.deepEqual(fetchBody.lotteryPrizes, [{ label: "A", probability: 100 }]);
+  assert.equal(Object.prototype.hasOwnProperty.call(fetchBody, "payload"), false);
+  assert.equal(submittedFields.phone, "+886912345678");
+  assert.equal(
+    submittedFields.lotteryPrizes,
+    JSON.stringify([{ label: "A", probability: 100 }])
+  );
+});
+
+test("shared GAS transport rejects payload fields that collide with its envelope", () => {
+  const document = { baseURI: "https://example.test/client/" };
+  const window = {
+    location: { origin: "https://example.test" },
+    crypto: { getRandomValues(bytes) { return bytes; } },
+  };
+  const context = vm.createContext({
+    AbortController,
+    Promise,
+    URL,
+    Uint8Array,
+    document,
+    window,
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8"),
+    context,
+    { filename: "shared/gas-api.js" }
+  );
+
+  assert.throws(
+    () =>
+      window.MemberApi.sendRequest({
+        gasUrl: "https://script.google.com/macros/s/example/exec",
+        action: "upsertMember",
+        requestId: "req-1234567890",
+        payload: { idToken: "replacement" },
+      }),
+    (error) => error.code === "INVALID_PAYLOAD_FIELD"
+  );
+  assert.throws(
+    () =>
+      window.MemberApi.sendRequest({
+        gasUrl: "https://script.google.com/macros/s/example/exec",
+        action: "upsertMember",
+        requestId: "req-1234567890",
+        payload: Object.fromEntries(
+          Array.from({ length: 33 }, (_unused, index) => [`field${index}`, index])
+        ),
+      }),
+    (error) => error.code === "INVALID_PAYLOAD"
+  );
 });
 
 test("shared LIFF runtime normalizes context and validates public configuration", () => {

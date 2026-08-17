@@ -1,0 +1,21 @@
+flowchart LR
+    memberLiff["Member page composition root and controllers"]
+    adminLiff["Page specific admin composition roots"]
+    memberContract["Member action contract adapter"]
+    adminContract["Admin action contract adapter"]
+    transport["Envelope only fetch and bridge transport"]
+    memberGas["Member GAS command registry and domain modules"]
+    adminGas["Admin GAS command registry and domain modules"]
+    lineApi["LINE ID token verification"]
+    sheets["Repository owned Google Spreadsheet"]
+
+    memberLiff -->|"typed intent"| memberContract
+    adminLiff -->|"typed intent"| adminContract
+    memberContract -->|"validated payload"| transport
+    adminContract -->|"validated payload"| transport
+    transport -->|"member envelope"| memberGas
+    transport -->|"admin envelope"| adminGas
+    memberGas -->|"verify member audience"| lineApi
+    adminGas -->|"verify admin audience"| lineApi
+    memberGas -->|"repository operations"| sheets
+    adminGas -->|"repository operations"| sheets

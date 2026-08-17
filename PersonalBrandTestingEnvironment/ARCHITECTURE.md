@@ -14,7 +14,7 @@
           ┌─────────┴─────────┐
           │                   │
     會員 GAS Web App     管理 GAS Web App
-    gas/client/Code.gs   gas/admin/Code.gs
+      gas/client/*.gs      gas/admin/*.gs
           │                   │
           └─────────┬─────────┘
                     │
@@ -81,13 +81,13 @@
 
 短期需要保留部分重複以控制改動範圍；長期應透過 action-specific contract test 確保一致，而不是繼續複製貼上。
 
-### 3.5 Transport 與 domain 欄位耦合
+### 3.5 Transport 與 domain 欄位耦合（已解決）
 
-`shared/gas-api.js` 同時負責網路傳輸與 `EXTRA_FIELD_NAMES` domain 欄位白名單。每新增一個後台欄位都要改 transport。後續應改為 action contract 驗證，再由 transport 傳送已驗證 payload。
+`shared/gas-api.js` 原本同時負責網路傳輸與 `EXTRA_FIELD_NAMES` domain 欄位白名單。現在會員與管理 action contract 分別由 `client/member-api.js`、`admin/admin-api.js` 擁有；transport 只處理已驗證 payload、封套保留欄位、欄位數量上限、fetch 與 bridge。既有 GAS 仍收到相同的扁平 top-level payload。
 
-### 3.6 GAS 仍是大型單檔
+### 3.6 GAS domain 實作仍集中
 
-兩套 `Code.gs` 都同時包含 HTTP dispatch、LINE 驗證、授權、schema migration、repository、點數、集點卡、轉盤與 utility。Apps Script 專案可包含多個 `.gs` 檔案，因此可在不改執行方式的前提下按責任拆分。
+兩套 GAS 的 action 驗證與 dispatch 已移到各自的 `Commands.gs` registry；`Code.gs` 仍集中 LINE 驗證、授權、schema migration、repository、點數、集點卡、轉盤與 utility。後續可沿用目前 registry 邊界逐步拆檔，不需要改 HTTP contract 或合併兩個部署。
 
 ## 4. 目標依賴方向
 
@@ -110,7 +110,7 @@ storage、transport、clock 等介面
 5. 對外 facade 保持小且穩定；內部模組不得各自污染 global namespace。
 6. 會員 GAS 與管理 GAS 的授權邊界不得合併。
 
-## 5. 本次已完成的第一階段重構
+## 5. 已完成的低耦合重構
 
 ### 5.1 顯式 module registry
 
@@ -170,6 +170,14 @@ storage、transport、clock 等介面
 - 暫時性網路錯誤：保留 pending request 與相同 request ID，安全重試。
 - 明確未開獎錯誤：清除 pending request 與 prepared response，重新同步卡片。
 - 模組初始化失敗：以 unavailable facade 明確拋出 `LOTTERY_BOOTSTRAP_ERROR`，不再靜默退回舊流程。
+
+### 5.6 Option 2：模組化雙 GAS
+
+- `client/member-api.js` 與 `admin/admin-api.js` 各自持有 action inventory 與每個 action 可送出的欄位；跨角色 action 或多餘欄位在瀏覽器端即拒絕。
+- `shared/gas-api.js` 成為 envelope-only transport，維持 fetch 優先、受驗證 iframe bridge fallback、同一 request ID 與既有扁平 wire format。
+- `client/member-main.js` 與 `admin/admin-main.js` 是顯式 composition root；三個管理頁各自只載入一個 `admin/pages/*-page.js`。
+- 會員與管理 GAS 各自使用獨立 `Commands.gs` registry。registry 在讀取設定、驗證 LINE token 或存取 Sheet 前拒絕未知與跨角色 action。
+- action、request/response envelope、Spreadsheet schema、Script Properties 與部署 URL 均未變更；這一階段不需要資料 migration。
 
 ## 6. Spreadsheet 資料所有權
 
@@ -233,7 +241,7 @@ lottery/demo-provider.js
 
 完成後，dialog controller 應直接呼叫 `prepare(ticket)` 與 `revealPrepared()`，移除 request interception compatibility layer。
 
-### Phase 4：按頁拆 `admin/script.js`
+### Phase 4：完成按頁拆 `admin/script.js`
 
 ```text
 admin/core/session-controller.js
@@ -244,9 +252,9 @@ admin/lottery/config-controller.js
 admin/lottery/history-controller.js
 ```
 
-每個 HTML 只載入自己的 page controller，共用 session、transport、error mapper 與 view utility。
+目前每個 HTML 已有唯一 page module 與 composition root；下一步把仍位於 `admin/script.js` 的各工作區 controller 移入上列模組，共用 session、transport、error mapper 與 view utility。
 
-### Phase 5：按 domain 拆兩套 GAS
+### Phase 5：繼續按 domain 拆兩套 GAS
 
 會員與管理專案各自拆成：
 
@@ -264,11 +272,11 @@ admin/lottery/history-controller.js
 99_Utilities.gs
 ```
 
-不得建立跨部署 runtime import。未導入 build pipeline 前，兩套 GAS 必須仍能各自完整部署。
+`Commands.gs` 已先拆出 action validator 與 dispatch。後續不得建立跨部署 runtime import；未導入 build pipeline 前，兩套 GAS 必須仍能各自完整部署。
 
-### Phase 6：API contract 化
+### Phase 6：擴充 API contract coverage
 
-以 action-specific validator 取代 transport-level domain field whitelist，並為以下 action 建立 request/response contract test：
+action-specific browser validator 與 GAS command registry 已取代 transport-level domain field whitelist，並以 action inventory contract test 防止兩端漂移。後續為以下 action 補齊更細的 response contract test：
 
 - `upsertMember`
 - `redeemPointCampaign`

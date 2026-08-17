@@ -1,0 +1,17 @@
+flowchart LR
+    memberLiff["Member LIFF and client script"]
+    adminLiff["Admin LIFF and shared admin script"]
+    transport["Shared transport and domain field whitelist"]
+    memberGas["Member GAS dispatch validation domain repositories"]
+    adminGas["Admin GAS dispatch authorization domain repositories"]
+    lineApi["LINE ID token verification"]
+    sheets["Shared Google Spreadsheet"]
+
+    memberLiff -->|"action and fields"| transport
+    adminLiff -->|"action and fields"| transport
+    transport -->|"member envelope"| memberGas
+    transport -->|"admin envelope"| adminGas
+    memberGas -->|"verify audience"| lineApi
+    adminGas -->|"verify audience and admin"| lineApi
+    memberGas -->|"ledger and profile access"| sheets
+    adminGas -->|"configuration and access"| sheets

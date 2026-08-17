@@ -281,7 +281,22 @@
     fields,
     requestId
   ) {
-    return window.MemberApi.sendRequest({
+    if (
+      !window.PersonaModules ||
+      !window.PersonaModules.has(
+        "member.api"
+      )
+    ) {
+      return Promise.reject(
+        createError(
+          "CLIENT_LIBRARY_ERROR",
+          "無法載入會員操作合約，請重新整理頁面。"
+        )
+      );
+    }
+    return window.PersonaModules.get(
+      "member.api"
+    ).send({
       gasUrl: String(
         CONFIG.GAS_WEB_APP_URL
       ).trim(),

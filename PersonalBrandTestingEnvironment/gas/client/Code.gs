@@ -438,55 +438,15 @@ function setup() {
 function handleMemberRequest_(request) {
   // Keep this guard here as well as in validateRequestEnvelope_ so direct
   // internal calls cannot make an admin request reach config or token checks.
-  assertSupportedAction_(request && request.action);
+  var command = getMemberCommand_(request && request.action);
 
   var config = getConfig_();
   var identity = verifyLineIdToken_(request.idToken, config.lineChannelId);
-
-  if (request.action === "upsertMember") {
-    return upsertMember_(identity, request, config);
-  }
-
-  if (request.action === "updateMemberProfile") {
-    return updateMemberProfile_(identity, request, config);
-  }
-
-  if (request.action === "listPointHistory") {
-    return listPointHistory_(identity, request, config);
-  }
-
-  if (request.action === "getLotteryConfig") {
-    return getLotteryConfig_(identity, request, config);
-  }
-
-  if (request.action === "drawLottery") {
-    return drawLottery_(identity, request, config);
-  }
-
-  if (request.action === "previewPointCampaign") {
-    return previewPointCampaign_(identity, request, config);
-  }
-
-  if (request.action === "redeemPointCampaign") {
-    return redeemPointCampaign_(identity, request, config);
-  }
-
-  return deleteMember_(identity, request, config);
+  return command.handle(identity, request, config);
 }
 
 function assertSupportedAction_(action) {
-  if (
-    action !== "upsertMember" &&
-    action !== "updateMemberProfile" &&
-    action !== "listPointHistory" &&
-    action !== "getLotteryConfig" &&
-    action !== "drawLottery" &&
-    action !== "previewPointCampaign" &&
-    action !== "redeemPointCampaign" &&
-    action !== "deleteMember"
-  ) {
-    throw appError_("UNSUPPORTED_ACTION", "此會員端後台不支援該操作。");
-  }
+  return getMemberCommand_(action);
 }
 
 function verifyLineIdToken_(idToken, expectedChannelId) {
@@ -3814,7 +3774,7 @@ function parseRequest_(e) {
 
 function validateRequestEnvelope_(request) {
   // Reject admin/unknown actions before inspecting their token or parameters.
-  assertSupportedAction_(request.action);
+  var command = getMemberCommand_(request.action);
 
   if (!/^[a-zA-Z0-9-]{10,80}$/.test(request.requestId || "")) {
     throw appError_("INVALID_REQUEST_ID", "請求識別碼格式不正確。");
@@ -3826,26 +3786,7 @@ function validateRequestEnvelope_(request) {
     throw appError_("INVALID_BRIDGE", "安全回應通道格式不正確。");
   }
 
-  if (request.action === "updateMemberProfile") {
-    var profile = normalizeRequiredMemberProfile_(
-      request.phone,
-      request.birthday
-    );
-    request.phone = profile.phone;
-    request.birthday = profile.birthday;
-  }
-  if (
-    request.action === "previewPointCampaign" ||
-    request.action === "redeemPointCampaign"
-  ) {
-    request.claim = normalizePointClaim_(request.claim);
-  }
-  if (request.action === "drawLottery") {
-    request.lotteryTypeId = normalizeLotteryTypeId_(request.lotteryTypeId);
-    request.cardRoundKey = normalizeOptionalCardRoundKey_(
-      request.cardRoundKey
-    );
-  }
+  command.validate(request);
 }
 
 function normalizeLotteryTypeId_(value) {
@@ -4199,6 +4140,5 @@ function toIsoString_(value) {
   var date = value instanceof Date ? value : new Date(value);
   return isNaN(date.getTime()) ? "" : date.toISOString();
 }
-
 
 
