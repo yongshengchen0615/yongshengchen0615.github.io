@@ -10,10 +10,10 @@
 
   async function loadMember() {
     const result = await Membership.callApi('member.me');
-    renderMember(result.member, result.isAdmin);
+    renderMember(result.member);
   }
 
-  function renderMember(member, isAdmin) {
+  function renderMember(member) {
     const copy = statusCopy[member.membershipStatus] || statusCopy.disabled;
     $('#displayName').textContent = Membership.escapeText(member.displayName) || 'LINE 會員';
     $('#memberNo').textContent = Membership.escapeText(member.memberNo);
@@ -24,7 +24,6 @@
     $('#statusTitle').textContent = copy.title;
     $('#statusDescription').textContent = copy.description;
     $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
-    $('#adminLink').classList.toggle('hidden', !isAdmin);
     $('#boot').classList.add('hidden');
     $('#errorState').classList.add('hidden');
     $('#memberApp').classList.remove('hidden');
@@ -34,14 +33,6 @@
     $('#boot').classList.add('hidden');
     $('#memberApp').classList.add('hidden');
     $('#errorMessage').textContent = error && error.message ? error.message : '請稍後再試。';
-    $('#errorState').classList.remove('hidden');
-  }
-
-  function showLoggedOut() {
-    $('#boot').classList.add('hidden');
-    $('#memberApp').classList.add('hidden');
-    $('#errorMessage').textContent = '已登出。重新整理或重新開啟會員頁時會再次進行 LINE 登入。';
-    $('#retryButton').textContent = '重新登入';
     $('#errorState').classList.remove('hidden');
   }
 
@@ -57,14 +48,6 @@
 
   $('#refreshButton').addEventListener('click', () => window.location.reload());
   $('#retryButton').addEventListener('click', () => window.location.reload());
-  $('#logoutButton').addEventListener('click', () => {
-    if (liff.isInClient()) {
-      liff.closeWindow();
-      return;
-    }
-    if (liff.isLoggedIn()) liff.logout();
-    showLoggedOut();
-  });
 
   initialize();
 })();
