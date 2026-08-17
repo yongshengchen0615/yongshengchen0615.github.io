@@ -63,7 +63,7 @@ MembershipSystem/
 - 每次重新開啟 / 重新整理都重新建立 LIFF 登入狀態。
 - 第一次登入自動建立會員資料與唯一會員編號。
 - 顯示會員姓名、頭像、會員編號、等級、會員狀態、加入日期與有效期限。
-- 只有 GAS 回傳已通過管理 Permission 的使用者才顯示管理端入口。
+- 用戶端不顯示管理端入口與登出按鈕；管理端使用獨立 `admin/` URL。
 
 ### 管理端 `admin/`
 - 每次重新開啟 / 重新整理都重新建立 LIFF 登入狀態。
@@ -129,7 +129,7 @@ GAS 第一次使用時會自動建立工作表及必要欄位；既有工作表�
 - `shared/config.json` 是公開前端資源，禁止放任何 Secret / Token / Password。
 - 外部瀏覽器的強制重新登入 callback 使用 cryptographically random nonce + `sessionStorage` 比對，避免直接加 query parameter 跳過 re-auth flow。
 - nonce 只用於 browser login handshake，不是 Authentication Token，不會傳送給 GAS，也不會寫入 Log / Sheet。
-- 資料夾分離只負責前端組織與維護，**不是 Authorization Boundary**。
+- 資料夾分離與隱藏管理端入口只負責前端組織與 UX，**不是 Authorization Boundary**。
 - 管理端即使直接開啟 `admin/`，`admin.list` / `admin.update` 仍必須由 GAS 驗證有效 LINE ID Token 與 `canManageMembers`。
 - 前端不信任 `liff.getProfile()` 作為後端 Identity；只把原始 ID Token 傳給 GAS。
 - `canManageMembers` 不存在於 `admin.update` payload 白名單，Client 無法 Mass Assignment 自我升權。
@@ -146,8 +146,8 @@ GAS 第一次使用時會自動建立工作表及必要欄位；既有工作表�
 - LIFF Browser：每次頁面開啟 → `liff.init()` → LINE 自動登入 → 必須取得有效 ID Token。
 - Config：`config.json` 無法讀取、JSON 無效或必要欄位缺失 → 前端顯示設定錯誤，不進入 LIFF / API 流程。
 - Root compatibility：`MembershipSystem/` → `user/`。
-- User navigation：用戶端取得 server-confirmed admin permission 後 → `admin/`，新頁面再次執行登入政策。
-- Admin navigation：管理端返回 `user/`，新頁面再次執行登入政策。
+- Admin entry：用戶端不提供管理端入口；直接開啟 `admin/` 仍需重新登入並通過 server-side Permission。
+- Admin navigation：管理端可返回 `user/`，新頁面再次執行登入政策。
 - Unauthenticated：無效 / 缺少 ID Token → GAS 拒絕。
 - Unauthorized：`canManageMembers != TRUE` → 管理 API 拒絕。
 - Privilege escalation：直接輸入 `admin/` URL、修改前端 JS 或偽造 tier → GAS 仍拒絕未授權管理 API。
