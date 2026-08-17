@@ -2,13 +2,13 @@
 
 const MEMBERS_SHEET = 'Members';
 const AUDIT_SHEET = 'AuditLogs';
-const MEMBER_HEADERS = ['lineUserId', 'memberNo', 'displayName', 'pictureUrl', 'tier', 'membershipStatus', 'joinedAt', 'expiresAt', 'note', 'createdAt', 'updatedAt'];
+const MEMBER_HEADERS = ['lineUserId', 'memberNo', 'displayName', 'pictureUrl', 'tier', 'membershipStatus', 'joinedAt', 'expiresAt', 'note', 'createdAt', 'updatedAt', 'canManageMembers'];
 const AUDIT_HEADERS = ['timestamp', 'actorLineUserId', 'actorRole', 'action', 'targetLineUserId', 'result', 'details'];
 const ALLOWED_TIERS = ['standard', 'silver', 'gold', 'vip'];
 const ALLOWED_MEMBERSHIP_STATUS = ['active', 'suspended', 'disabled'];
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.0.0' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.1.0' } });
 }
 
 function doPost(e) {
@@ -66,10 +66,11 @@ function memberMe_(context) {
           expiresAt: '',
           note: '',
           createdAt: now,
-          updatedAt: now
+          updatedAt: now,
+          canManageMembers: false
         };
         sheet.appendRow(memberToRow_(member));
-        audit_(context.identity.sub, context.isAdmin ? 'admin' : 'member', 'MEMBER_CREATED', context.identity.sub, 'success', { memberNo: member.memberNo });
+        audit_(context.identity.sub, 'member', 'MEMBER_CREATED', context.identity.sub, 'success', { memberNo: member.memberNo });
       }
     } finally { lock.releaseLock(); }
   } else {
@@ -83,7 +84,7 @@ function memberMe_(context) {
       sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).setValues([memberToRow_(member)]);
     }
   }
-  return { member: publicMember_(member, false), isAdmin: context.isAdmin };
+  return { member: publicMember_(member, false), isAdmin: hasManageMembersPermission_(member.canManageMembers) };
 }
 
 function adminList_(payload) {
@@ -166,8 +167,16 @@ function requireAdmin_(context) {
 }
 
 function isAdmin_(lineUserId) {
-  const raw = PropertiesService.getScriptProperties().getProperty('ADMIN_LINE_USER_IDS') || '';
-  return raw.split(',').map(function (value) { return value.trim(); }).filter(Boolean).indexOf(lineUserId) !== -1;
+  const sheet = getMembersSheet_();
+  const row = findMemberRow_(sheet, lineUserId);
+  if (!row) return false;
+  const member = rowToMember_(sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).getValues()[0]);
+  return hasManageMembersPermission_(member.canManageMembers);
+}
+
+function hasManageMembersPermission_(value) {
+  if (value === true) return true;
+  return String(value == null ? '' : value).trim().toLowerCase() === 'true';
 }
 
 function getSpreadsheet_() {
@@ -187,8 +196,34 @@ function ensureSheet_(spreadsheet, name, headers) {
     sheet.setFrozenRows(1);
     return sheet;
   }
-  const existing = sheet.getLastColumn() >= headers.length ? sheet.getRange(1, 1, 1, headers.length).getValues()[0] : [];
-  if (existing.join('|') !== headers.join('|')) fail_('SCHEMA_ERROR', name + ' 工作表欄位與程式版本不相容。');
+
+  if (sheet.getLastColumn() === 0) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+
+  headers.forEach(function (header, index) {
+    const column = index + 1;
+    const current = String(sheet.getRange(1, column).getValue() || '').trim();
+    if (current === header) return;
+
+    const lastColumn = sheet.getLastColumn();
+    const remaining = lastColumn >= column
+      ? sheet.getRange(1, column, 1, lastColumn - column + 1).getValues()[0].map(function (value) {
+          return String(value || '').trim();
+        })
+      : [];
+
+    if (remaining.indexOf(header) !== -1) {
+      fail_('SCHEMA_ERROR', name + ' 工作表的必要欄位順序不正確：' + header);
+    }
+
+    sheet.insertColumnBefore(column);
+    sheet.getRange(1, column).setValue(header);
+  });
+
+  sheet.setFrozenRows(1);
   return sheet;
 }
 
@@ -285,11 +320,13 @@ function memberToRow_(member) {
 
 function normalizeCell_(value) {
   if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'boolean') return value;
   const text = value == null ? '' : String(value);
   return /^'[=+@-]/.test(text) ? text.slice(1) : text;
 }
 
 function sheetSafe_(value) {
+  if (typeof value === 'boolean') return value;
   const text = value instanceof Date ? value.toISOString() : String(value);
   return /^[=+@-]/.test(text) ? "'" + text : text;
 }
