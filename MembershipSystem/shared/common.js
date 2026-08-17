@@ -12,9 +12,7 @@
     }
     try {
       const url = new URL(config.GAS_WEB_APP_URL);
-      if (url.protocol !== 'https:' || !url.pathname.endsWith('/exec')) {
-        throw new Error();
-      }
+      if (url.protocol !== 'https:' || !url.pathname.endsWith('/exec')) throw new Error();
     } catch (_) {
       throw new Error('GAS_WEB_APP_URL 必須是 Apps Script Web App 的 HTTPS /exec 網址。');
     }
@@ -58,11 +56,8 @@
 
     const text = await response.text();
     let data;
-    try {
-      data = JSON.parse(text);
-    } catch (_) {
-      throw new Error('會員服務回傳格式不正確。');
-    }
+    try { data = JSON.parse(text); }
+    catch (_) { throw new Error('會員服務回傳格式不正確。'); }
     if (!data.ok) {
       const error = new Error((data.error && data.error.message) || '會員服務發生錯誤。');
       error.code = data.error && data.error.code;

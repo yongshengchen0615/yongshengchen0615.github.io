@@ -55,7 +55,7 @@
   $('#retryButton').addEventListener('click', () => window.location.reload());
   $('#logoutButton').addEventListener('click', () => {
     if (liff.isLoggedIn()) liff.logout();
-    window.location.href = './index.html';
+    window.location.href = './';
   });
 
   initialize();
