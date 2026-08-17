@@ -5,6 +5,8 @@
   const configUrl = currentScriptSrc
     ? new URL('./config.json', currentScriptSrc).href
     : new URL('../shared/config.json', window.location.href).href;
+  const REAUTH_PARAM = '__membership_reauth';
+  const REAUTH_STORAGE_KEY = 'membership.reauth.nonce';
 
   let config = null;
   let configPromise = null;
@@ -69,15 +71,96 @@
     }
   }
 
+  function createNonce() {
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+      throw new Error('目前瀏覽器無法建立安全的重新登入狀態。');
+    }
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, function (byte) {
+      return byte.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  function readStoredNonce() {
+    try { return window.sessionStorage.getItem(REAUTH_STORAGE_KEY) || ''; }
+    catch (_) { throw new Error('目前瀏覽器無法保存重新登入狀態。'); }
+  }
+
+  function writeStoredNonce(nonce) {
+    try { window.sessionStorage.setItem(REAUTH_STORAGE_KEY, nonce); }
+    catch (_) { throw new Error('目前瀏覽器無法保存重新登入狀態。'); }
+  }
+
+  function clearStoredNonce() {
+    try { window.sessionStorage.removeItem(REAUTH_STORAGE_KEY); }
+    catch (_) { /* best effort only */ }
+  }
+
+  function readCallbackNonce() {
+    return new URL(window.location.href).searchParams.get(REAUTH_PARAM) || '';
+  }
+
+  function clearCallbackNonce() {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(REAUTH_PARAM)) return;
+    url.searchParams.delete(REAUTH_PARAM);
+    window.history.replaceState(null, '', url.href);
+  }
+
+  function buildReauthRedirectUri(nonce) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(REAUTH_PARAM, nonce);
+    return url.href;
+  }
+
+  function consumeValidReauthCallback() {
+    const receivedNonce = readCallbackNonce();
+    if (!receivedNonce) return false;
+
+    const expectedNonce = readStoredNonce();
+    if (!expectedNonce || receivedNonce !== expectedNonce) {
+      clearStoredNonce();
+      clearCallbackNonce();
+      return false;
+    }
+
+    clearStoredNonce();
+    clearCallbackNonce();
+    return true;
+  }
+
+  function beginForcedLogin() {
+    if (liff.isLoggedIn()) liff.logout();
+    clearStoredNonce();
+    clearCallbackNonce();
+
+    const nonce = createNonce();
+    writeStoredNonce(nonce);
+    liff.login({ redirectUri: buildReauthRedirectUri(nonce) });
+    return false;
+  }
+
   async function ensureLiffLogin() {
     const activeConfig = await loadConfig();
     await liff.init({ liffId: activeConfig.LIFF_ID });
-    if (!liff.isLoggedIn()) {
-      liff.login({ redirectUri: window.location.href });
-      return false;
+
+    // In the LIFF browser, LINE automatically performs the login process during liff.init().
+    // liff.login() must not be called there, so each page open relies on a fresh init + ID token check.
+    if (liff.isInClient()) {
+      clearStoredNonce();
+      clearCallbackNonce();
+      if (!liff.isLoggedIn() || !liff.getIDToken()) {
+        throw new Error('無法取得本次 LINE 登入狀態，請關閉後重新開啟。');
+      }
+      return true;
     }
-    if (!liff.getIDToken()) {
-      throw new Error('無法取得 LINE ID Token，請確認 LIFF 已啟用 openid scope。');
+
+    const completedForcedLogin = consumeValidReauthCallback();
+    if (!completedForcedLogin) return beginForcedLogin();
+
+    if (!liff.isLoggedIn() || !liff.getIDToken()) {
+      return beginForcedLogin();
     }
     return true;
   }
