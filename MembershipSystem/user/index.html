@@ -4,8 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#101827">
+  <meta name="referrer" content="no-referrer">
   <title>會員卡｜Membership System</title>
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./usage.css">
 </head>
 <body>
   <main class="shell">
@@ -67,6 +69,49 @@
           </div>
         </div>
       </article>
+
+      <section class="hours-grid" aria-label="時數資訊">
+        <article class="panel hours-card">
+          <span class="eyebrow">AVAILABLE HOURS</span>
+          <strong id="availableHours">0</strong>
+          <small>可用時數</small>
+        </article>
+        <article class="panel hours-card">
+          <span class="eyebrow">CONSUMED HOURS</span>
+          <strong id="consumedHours">0</strong>
+          <small>已消費時數</small>
+        </article>
+      </section>
+
+      <section class="panel scan-panel">
+        <div>
+          <span class="eyebrow">SCAN QR</span>
+          <h3>掃描時數核銷 QR Code</h3>
+          <p id="scanHint">使用相機掃描管理端發放的核銷 QR Code。</p>
+        </div>
+        <button id="scanQrButton" class="button button-secondary" type="button">掃描 QR Code</button>
+      </section>
+
+      <section id="redeemPanel" class="panel redeem-panel hidden" aria-live="polite">
+        <span class="eyebrow">HOURS REDEMPTION</span>
+        <div id="redeemLoading">
+          <h3>正在確認時數核銷券</h3>
+          <p>請稍候。</p>
+        </div>
+        <div id="redeemReady" class="hidden">
+          <h3>確認消費 <span id="redeemHours">—</span> 小時</h3>
+          <p id="redeemDescription">確認後會立即從你的可用時數扣除。</p>
+          <dl class="redeem-meta">
+            <div><dt>核銷券</dt><dd id="redeemVoucherId">—</dd></div>
+            <div><dt>到期時間</dt><dd id="redeemExpiresAt">—</dd></div>
+          </dl>
+          <button id="redeemButton" class="button button-primary redeem-button" type="button">確認消費</button>
+        </div>
+        <div id="redeemResult" class="hidden">
+          <h3 id="redeemResultTitle">核銷完成</h3>
+          <p id="redeemResultMessage"></p>
+        </div>
+      </section>
 
       <section class="panel info-panel">
         <div>
