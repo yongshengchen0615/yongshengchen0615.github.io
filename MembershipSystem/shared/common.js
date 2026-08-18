@@ -8,8 +8,11 @@
 
   const LOGIN_PENDING_KEY = 'membership.login.pending';
   const INIT_RECOVERY_KEY = 'membership.liff.recovery';
+  const AUTH_REFRESH_KEY = 'membership.liff.auth-refresh';
   const LOGIN_PENDING_TTL_MS = 10 * 60 * 1000;
   const INIT_RECOVERY_COOLDOWN_MS = 30 * 1000;
+  const AUTH_REFRESH_COOLDOWN_MS = 60 * 1000;
+  const ID_TOKEN_EXPIRY_SKEW_SECONDS = 60;
 
   let config = null;
   let configPromise = null;
@@ -207,15 +210,67 @@
     return true;
   }
 
+  function currentIdTokenExpiry() {
+    if (typeof liff.getDecodedIDToken !== 'function') return 0;
+    try {
+      const decoded = liff.getDecodedIDToken();
+      const exp = Number(decoded && decoded.exp);
+      return Number.isFinite(exp) ? exp : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function hasFreshIdToken() {
+    const exp = currentIdTokenExpiry();
+    if (!exp) return true; // GAS remains the final token-validity authority.
+    return exp > Math.floor(Date.now() / 1000) + ID_TOKEN_EXPIRY_SKEW_SECONDS;
+  }
+
+  function startExternalLogin(forceRefresh) {
+    if (liff.isInClient()) {
+      throw new Error('LINE 登入憑證已過期，請關閉此 LIFF 頁面後重新開啟。');
+    }
+    if (loginInFlight) return false;
+
+    if (forceRefresh) {
+      const lastRefresh = Number(readSessionValue(AUTH_REFRESH_KEY) || 0);
+      if (lastRefresh && Date.now() - lastRefresh < AUTH_REFRESH_COOLDOWN_MS) {
+        throw new Error('LINE 登入憑證仍為過期狀態，請關閉此分頁後重新開啟。');
+      }
+      writeSessionValue(AUTH_REFRESH_KEY, String(Date.now()));
+    }
+
+    loginInFlight = true;
+    writePendingLogin();
+    authenticatedIdToken = '';
+    const redirectUri = buildCanonicalAppUrl();
+
+    try {
+      if (forceRefresh && liff.isLoggedIn()) liff.logout();
+      liff.login({ redirectUri });
+      return false;
+    } catch (error) {
+      loginInFlight = false;
+      if (forceRefresh) removeSessionValue(AUTH_REFRESH_KEY);
+      throw error;
+    }
+  }
+
   function establishAuthenticatedContext() {
-    if (!liff.isLoggedIn()) return false;
+    if (!liff.isLoggedIn()) return 'signed-out';
     const idToken = liff.getIDToken();
     if (!idToken) {
       throw new Error('LINE 已登入但無法取得 ID Token，請確認 LIFF 已啟用 openid scope。');
     }
+    if (!hasFreshIdToken()) {
+      authenticatedIdToken = '';
+      return 'expired';
+    }
     authenticatedIdToken = idToken;
     loginInFlight = false;
-    return true;
+    removeSessionValue(AUTH_REFRESH_KEY);
+    return 'authenticated';
   }
 
   async function ensureLiffLogin() {
@@ -231,9 +286,8 @@
 
     removeSessionValue(INIT_RECOVERY_KEY);
 
-    // Capture the authenticated credential before normalizing the URL. Keep it
-    // only in this document's memory; GAS still verifies it with LINE per API call.
-    if (establishAuthenticatedContext()) {
+    const authState = establishAuthenticatedContext();
+    if (authState === 'authenticated') {
       // Pending navigation is intentionally cleared only after canonicalization,
       // so an external-browser callback can recover usage/redeem/request.
       canonicalizeAppUrl();
@@ -243,32 +297,30 @@
 
     canonicalizeAppUrl();
 
+    if (authState === 'expired') {
+      return startExternalLogin(true);
+    }
+
     // A LIFF Browser session should have been authenticated by liff.init().
     if (liff.isInClient()) {
       throw new Error('無法取得本次 LINE 登入狀態，請關閉後重新開啟。');
     }
 
-    if (loginInFlight) return false;
-    loginInFlight = true;
-    writePendingLogin();
-
-    try {
-      liff.login({ redirectUri: buildCanonicalAppUrl() });
-      return false;
-    } catch (error) {
-      loginInFlight = false;
-      throw error;
-    }
+    return startExternalLogin(false);
   }
 
   async function callApi(action, payload) {
     const activeConfig = await loadConfig();
-    const idToken = authenticatedIdToken;
-    if (!idToken) throw new Error('LINE 登入狀態尚未建立，請重新開啟此頁。');
+    if (!authenticatedIdToken) throw new Error('LINE 登入狀態尚未建立，請重新開啟此頁。');
+
+    if (!hasFreshIdToken()) {
+      startExternalLogin(true);
+      throw new Error('LINE 登入憑證已過期，正在重新登入。');
+    }
 
     const form = new URLSearchParams();
     form.set('action', action);
-    form.set('idToken', idToken);
+    form.set('idToken', authenticatedIdToken);
     form.set('payload', JSON.stringify(payload || {}));
 
     let response;
@@ -292,6 +344,9 @@
     if (!data.ok) {
       const error = new Error((data.error && data.error.message) || '會員服務發生錯誤。');
       error.code = data.error && data.error.code;
+      if (error.code === 'UNAUTHENTICATED' && !liff.isInClient()) {
+        startExternalLogin(true);
+      }
       throw error;
     }
     return data.data;
