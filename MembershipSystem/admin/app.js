@@ -8,11 +8,18 @@
   let currentQrVoucherId = '';
   let publicConfig = null;
   const statusLabel = { active: '有效', suspended: '停權', disabled: '停用' };
+  const tierLabel = { standard: '一般', silver: '銀級', gold: '金級', platinum: '白金', vip: '白金' };
   const voucherStatusLabel = { issued: '可使用', redeemed: '已記錄', cancelled: '已停止', expired: '已過期' };
   const scanModeLabel = { single: '單次掃描', repeatable: '可重複掃描' };
 
   function formatMinutes(value) {
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
+  }
+
+  function normalizeTierKey(value) {
+    const tier = String(value || '').trim().toLowerCase();
+    if (tier === 'vip') return 'platinum';
+    return Object.prototype.hasOwnProperty.call(tierLabel, tier) ? tier : 'standard';
   }
 
   function toLocalDateTimeInput(date) {
@@ -36,19 +43,68 @@
     $('#adminApp').classList.remove('hidden');
   }
 
+  async function loadTierSettings() {
+    const result = await Membership.callApi('admin.tier.get');
+    renderTierSettings(result.thresholds || {});
+  }
+
   async function loadVouchers() {
     const result = await Membership.callApi('admin.usage.list', { limit: 50 });
     renderVouchers(result.vouchers || []);
   }
 
   async function loadDashboard() {
-    await Promise.all([loadMembers(''), loadVouchers()]);
+    await Promise.all([loadMembers(''), loadTierSettings(), loadVouchers()]);
   }
 
   function renderMetrics(stats) {
     $('#metricTotal').textContent = Number(stats.total || 0);
     $('#metricActive').textContent = Number(stats.active || 0);
     $('#metricConsumedMinutes').textContent = formatMinutes(stats.consumedMinutes);
+  }
+
+  function renderTierSettings(thresholds) {
+    $('#tierStandardThreshold').value = '0';
+    $('#tierSilverThreshold').value = String(Number(thresholds.silver || 0));
+    $('#tierGoldThreshold').value = String(Number(thresholds.gold || 0));
+    $('#tierPlatinumThreshold').value = String(Number(thresholds.platinum || 0));
+  }
+
+  function readTierThresholdInput(selector, label) {
+    const value = Number($(selector).value);
+    if (!Number.isInteger(value) || value < 1 || value > 10000000) {
+      throw new Error(`${label}門檻必須是 1 到 10000000 的整數分鐘。`);
+    }
+    return value;
+  }
+
+  async function saveTierSettings() {
+    const button = $('#saveTierSettingsButton');
+    const message = $('#tierSettingsMessage');
+    button.disabled = true;
+    message.classList.add('hidden');
+    message.classList.remove('error');
+
+    try {
+      const silver = readTierThresholdInput('#tierSilverThreshold', '銀級');
+      const gold = readTierThresholdInput('#tierGoldThreshold', '金級');
+      const platinum = readTierThresholdInput('#tierPlatinumThreshold', '白金');
+      if (!(silver < gold && gold < platinum)) {
+        throw new Error('會員等級門檻必須依序為：銀級 < 金級 < 白金。');
+      }
+
+      const result = await Membership.callApi('admin.tier.update', { silver, gold, platinum });
+      renderTierSettings(result.thresholds || {});
+      await loadMembers($('#memberSearch').value.trim());
+      message.textContent = `門檻已更新，重新計算 ${formatMinutes(result.updatedMembers)} 位會員的等級。`;
+      message.classList.remove('hidden');
+    } catch (error) {
+      message.textContent = error && error.message ? error.message : '會員等級門檻更新失敗。';
+      message.classList.add('error');
+      message.classList.remove('hidden');
+    } finally {
+      button.disabled = false;
+    }
   }
 
   function renderTable(rows, total) {
@@ -68,7 +124,9 @@
       identity.append(name, joined); memberCell.append(img, identity); memberTd.append(memberCell);
 
       const numberTd = document.createElement('td'); numberTd.textContent = member.memberNo;
-      const tierTd = document.createElement('td'); tierTd.textContent = String(member.tier || '').toUpperCase();
+      const tierTd = document.createElement('td');
+      const tierKey = normalizeTierKey(member.tier);
+      const tier = document.createElement('span'); tier.className = `tier-badge tier-${tierKey}`; tier.textContent = tierLabel[tierKey]; tierTd.append(tier);
       const statusTd = document.createElement('td');
       const status = document.createElement('span'); status.className = `table-status ${member.membershipStatus === 'active' ? '' : member.membershipStatus}`.trim(); status.textContent = statusLabel[member.membershipStatus] || member.membershipStatus; statusTd.append(status);
       const consumedTd = document.createElement('td'); consumedTd.textContent = `${formatMinutes(member.consumedMinutes)} 分鐘`;
@@ -122,7 +180,7 @@
     $('#editMemberNo').textContent = member.memberNo;
     $('#editTargetMemberNo').value = member.memberNo;
     $('#editExpectedUpdatedAt').value = member.updatedAt;
-    $('#editTier').value = member.tier;
+    $('#editTier').value = tierLabel[normalizeTierKey(member.tier)];
     $('#editStatus').value = member.membershipStatus;
     $('#editConsumedMinutes').value = `${formatMinutes(member.consumedMinutes)} 分鐘`;
     $('#editExpiresAt').value = member.expiresAt ? String(member.expiresAt).slice(0, 10) : '';
@@ -137,7 +195,6 @@
       await Membership.callApi('admin.update', {
         targetMemberNo: $('#editTargetMemberNo').value,
         expectedUpdatedAt: $('#editExpectedUpdatedAt').value,
-        tier: $('#editTier').value,
         membershipStatus: $('#editStatus').value,
         expiresAt: $('#editExpiresAt').value,
         note: $('#editNote').value
@@ -235,8 +292,7 @@
   function readUsageForm() {
     const minutes = Number($('#usageMinutes').value);
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60000) throw new Error('消費分鐘必須是 1 到 60000 的整數。');
-    const expiryValue = $('#usageExpiresAt').value;
-    const expiryDate = new Date(expiryValue);
+    const expiryValue = $('#usageExpiresAt').value; const expiryDate = new Date(expiryValue);
     if (!expiryValue || Number.isNaN(expiryDate.getTime())) throw new Error('請設定有效的 QR Code 到期時間。');
     return {
       minutes,
@@ -329,6 +385,7 @@
   $('#memberSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadMembers($('#memberSearch').value.trim()).catch(showAdminError), 300); });
   $('#adminRefreshButton').addEventListener('click', () => loadDashboard().catch(showAdminError));
   $('#adminRetryButton').addEventListener('click', () => window.location.reload());
+  $('#saveTierSettingsButton').addEventListener('click', saveTierSettings);
   $('#usageRefreshButton').addEventListener('click', () => loadVouchers().catch(showAdminError));
   $('#newUsageQrButton').addEventListener('click', openUsageDialog);
   $('#saveMemberButton').addEventListener('click', saveMember);
