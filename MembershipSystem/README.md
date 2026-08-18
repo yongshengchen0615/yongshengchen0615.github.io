@@ -1,30 +1,30 @@
 # MembershipSystem — 會員卡 MVP
 
-GitHub Pages 前端 + Google Apps Script（GAS）後端的會員卡系統，包含一般會員端與管理端。
+GitHub Pages 前端 + Google Apps Script（GAS）後端的會員系統，包含一般會員端、管理端、會員時數與一次性 QR / URL 核銷。
 
 ## 資料夾結構
 
 ```text
 MembershipSystem/
-├─ index.html              # 舊入口相容導向 → user/
+├─ index.html
 ├─ user/
-│  ├─ index.html           # 用戶端頁面
-│  ├─ styles.css           # 用戶端樣式
-│  └─ app.js               # 用戶端邏輯
+│  ├─ index.html
+│  ├─ styles.css
+│  ├─ usage.css
+│  └─ app.js
 ├─ admin/
-│  ├─ index.html           # 管理端頁面
-│  ├─ styles.css           # 管理端樣式
-│  └─ app.js               # 管理端邏輯
+│  ├─ index.html
+│  ├─ styles.css
+│  ├─ usage.css
+│  └─ app.js
 ├─ shared/
-│  ├─ config.json          # LIFF / GAS 公開設定
-│  └─ common.js            # 設定載入、LIFF 初始化、強制重新登入與 API 共用邏輯
+│  ├─ config.json
+│  └─ common.js
 ├─ gas/
 │  ├─ Code.gs
 │  └─ appsscript.json
 └─ README.md
 ```
-
-用戶端與管理端的 HTML / CSS / JS 已完全分開。`shared/` 只放兩邊必須共用的公開設定與 LIFF / API transport 邏輯，避免 Authentication 程式碼重複後產生版本差異。
 
 ## 前端設定 `shared/config.json`
 
@@ -35,120 +35,227 @@ MembershipSystem/
 }
 ```
 
-`common.js` 會先以 `fetch()` 載入並驗證 `config.json`，再初始化 LIFF。`config.json` 會由 GitHub Pages 公開提供，因此只能放前端本來就能公開知道的設定，例如 LIFF ID 與 GAS Web App URL；**不得放 LINE Channel Secret、Access Token、API Secret、Password 或其他秘密。**
+`config.json` 是 GitHub Pages 公開資源，只能放前端公開設定。不得放 LINE Channel Secret、Access Token、API Secret、Password 或其他秘密。
 
 ## LIFF 重新登入政策
 
-每次完整開啟或重新整理 `user/` / `admin/` 都必須重新建立本次 LIFF 登入狀態。
+每次完整開啟或重新整理 `user/` / `admin/` 都重新建立本次 LIFF 登入狀態。
 
-- 外部瀏覽器 / LINE 內建瀏覽器：初始化 LIFF 後，既有 LIFF session 會先 `liff.logout()`，再執行 `liff.login()`。
-- Login callback 使用一次性隨機 nonce，nonce 同時存在 query parameter 與當前 tab 的 `sessionStorage`；兩者一致才視為本次強制登入完成。
-- callback 成功後立即刪除 nonce，因此重新整理、再次開啟或切換到另一個前端頁面都會重新走登入流程。
-- 偽造 `__membership_reauth` query parameter 無法跳過登入，因為沒有相符的一次性 browser nonce。
-- LIFF Browser 不能手動呼叫 `liff.login()`；該環境會在每次頁面開啟時重新執行 `liff.init()`，由 LINE 自動完成登入並重新檢查 ID Token。
-- 此政策不保證 LINE 一定顯示帳密輸入畫面；若 LINE 平台本身可使用 SSO，登入畫面可能自動完成，但本系統不會沿用前一次頁面的 LIFF application session。
+- 外部瀏覽器 / LINE 內建瀏覽器：既有 LIFF session 不直接放行，重新走 `liff.login()`。
+- Login callback 使用一次性 random nonce + `sessionStorage` 驗證。
+- LIFF Browser 由 `liff.init()` 自動完成登入並重新檢查 ID Token。
+- LINE 自身 SSO 可能自動完成登入，因此不保證每次都出現帳密輸入畫面。
 
-## URL
+## 消費時數 Domain
 
-- 相容入口：`https://yongshengchen0615.github.io/MembershipSystem/` → 自動導向用戶端。
-- 用戶端：`https://yongshengchen0615.github.io/MembershipSystem/user/`
-- 管理端：`https://yongshengchen0615.github.io/MembershipSystem/admin/`
+### Member hours
 
-既有 LIFF Endpoint 若仍設定為 `https://yongshengchen0615.github.io/MembershipSystem/` 可以保留；根目錄會固定導向 `user/`。
+會員時數以「分鐘」作為資料庫單位，UI 以小時顯示，避免浮點數扣除誤差。
 
-## 功能
+- `availableMinutes`：目前可用時數。
+- `consumedMinutes`：歷史成功核銷的累計時數。
+- 管理端輸入以 `0.25` 小時（15 分鐘）為最小單位。
+- `consumedMinutes` 不由管理端直接修改，只能由成功核銷累加。
 
-### 用戶端 `user/`
-- LINE LIFF 登入。
-- 每次重新開啟 / 重新整理都重新建立 LIFF 登入狀態。
-- 第一次登入自動建立會員資料與唯一會員編號。
-- 顯示會員姓名、頭像、會員編號、等級、會員狀態、加入日期與有效期限。
-- 用戶端不顯示管理端入口與登出按鈕；管理端使用獨立 `admin/` URL。
+### Usage Voucher
 
-### 管理端 `admin/`
-- 每次重新開啟 / 重新整理都重新建立 LIFF 登入狀態。
-- 頁面可公開載入，但會員資料 API 必須通過 GAS server-side Authentication + Authorization。
-- 會員總數 / 有效 / 停權與停用統計。
-- 依會員編號或名稱搜尋。
-- 修改會員等級、會員狀態、有效期限、管理備註。
-- 使用 `expectedUpdatedAt` 做樂觀鎖，降低多人同時修改造成覆寫的風險。
+管理端針對指定會員建立一次性核銷券：
 
-## Domain Model
+```text
+Admin
+→ 選擇會員
+→ 指定消費時數 / 到期時間
+→ GAS 產生隨機 token
+→ Sheet 只保存 SHA-256 token hash
+→ Admin 收到 raw token 一次
+→ 前端產生 QR Code + URL
+```
 
-- **Identity**：LINE `sub`，由 LINE ID Token 驗證取得。
-- **Authentication**：LIFF ID Token → GAS → LINE Verify ID Token API。
-- **Permission / Authorization**：`Members.canManageMembers` 是管理會員權限，由 GAS server-side 判斷。
-- **Membership**：memberNo、tier、membershipStatus、joinedAt、expiresAt。
-- **Profile**：displayName、pictureUrl。
-- **Audit Event**：會員建立與管理端會員修改事件。
+核銷券同時綁定 `targetLineUserId` 與 `targetMemberNo`。網址即使轉傳給其他 LINE 帳號，GAS 仍會拒絕。
 
-`tier` 只代表 Membership Level，不會授予管理 Permission。
+狀態：
+
+```text
+issued → processing → redeemed
+   └──────────────→ cancelled
+issued + 到期時間已過 → expired（讀取時計算）
+```
+
+`processing` 用於跨 Sheet 更新的 crash recovery。若執行中斷，重試會比對會員核銷前 / 後餘額；只有狀態可安全判定時才繼續，否則 fail closed，避免重複扣除。
+
+### Reserved hours
+
+尚未使用且未過期的核銷券會占用可發放額度：
+
+```text
+可再發放分鐘 = availableMinutes - outstanding voucher minutes
+```
+
+因此不能建立超過目前可發放額度的核銷券，也不能把會員可用時數調低到尚未核銷券的保留時數以下。核銷成功、取消或過期後保留額度釋放。
+
+## 用戶端 `user/`
+
+- LINE LIFF Authentication。
+- 顯示會員卡、可用時數、已消費時數。
+- 可使用 `liff.scanCodeV2()` 掃描管理端 QR Code。
+- 不支援 LIFF Scanner 的環境仍可直接開啟管理端發放網址。
+- `?redeem=<token>` 開啟後先呼叫 `usage.preview`，不會自動扣時數。
+- 使用者必須按「確認消費」後才呼叫 `usage.redeem`。
+
+Scanner 只接受：
+
+- 與目前會員頁相同 origin。
+- 同一個 `user/` path。
+- 合法 64 hex token。
+
+掃描到的任意外部 URL 不會自動導向，降低 QR phishing / open redirect 風險。
+
+## 管理端 `admin/`
+
+- Server-side 管理 Permission 驗證。
+- 搜尋會員、修改會員等級 / 狀態 / 有效期限 / 備註。
+- 調整會員 `availableMinutes`；`consumedMinutes` 唯讀。
+- 對指定會員建立一次性時數核銷券。
+- 設定消費時數、到期時間與備註。
+- 產生 QR Code 與可複製發放網址。
+- 查看最近核銷券與取消尚未使用的核銷券。
+
+QR Code 使用固定版本 `qrcode-generator@2.0.4` 在管理端瀏覽器產生，不使用第三方 QR image API，因此 URL 不會被送去遠端 QR image service。此第三方 JavaScript 目前從固定版本 CDN 載入；若要進一步降低前端供應鏈風險，可改為 vendored local asset。
+
+## API
+
+所有 POST API 都先執行：
+
+```text
+ID Token
+→ LINE Verify ID Token API
+→ Identity
+→ Role / Permission
+→ Business Rule
+```
+
+### Member
+
+#### `member.me`
+
+取得 / 建立會員並回傳公開會員資料與時數。
+
+#### `usage.preview`
+
+Request：
+
+```json
+{
+  "token": "64-char-random-token"
+}
+```
+
+檢查 token、target ownership、voucher state、expiry、Membership state 與 available hours；只 preview，不修改資料。
+
+#### `usage.redeem`
+
+Server-side flow：
+
+```text
+Authentication
+→ Voucher target ownership
+→ Voucher state / expiry
+→ Membership state
+→ Available hours
+→ Script Lock
+→ processing state
+→ Member balance update
+→ redeemed state
+→ Audit
+```
+
+同會員對已完成 voucher 重送 request 採 idempotent success，不再次扣除。
+
+### Admin
+
+- `admin.list`：會員列表與統計。
+- `admin.update`：可修改 `tier`、`membershipStatus`、`expiresAt`、`note`、`availableHours`；不可修改 `canManageMembers`、`consumedMinutes`、Identity 或 memberNo。
+- `admin.usage.create`：建立一次性核銷券；只有建立 response 回傳 raw token。
+- `admin.usage.list`：最近核銷券，不回傳 token hash / raw token / LINE user id。
+- `admin.usage.cancel`：取消尚未成功核銷的 voucher。
 
 ## Google Sheet Schema
 
-GAS 第一次使用時會自動建立工作表及必要欄位；既有工作表缺欄時也會自動補欄並保留資料。
+GAS 會自動建立缺少的 Sheet / 必要欄位。既有必要欄位若被重新排序則 fail closed。
 
 ### `Members`
 
-`lineUserId | memberNo | displayName | pictureUrl | tier | membershipStatus | joinedAt | expiresAt | note | createdAt | updatedAt | canManageMembers`
+```text
+lineUserId | memberNo | displayName | pictureUrl | tier | membershipStatus |
+joinedAt | expiresAt | note | createdAt | updatedAt | canManageMembers |
+availableMinutes | consumedMinutes
+```
 
-`canManageMembers`：
-- 新會員預設 `FALSE`。
-- 手動改成 `TRUE`：下一次 API request 即可使用管理 API。
-- 改回 `FALSE`：下一次 API request 即撤銷管理權限。
-- 此欄位不由前端 API 修改，只能由可信任的 Spreadsheet 編輯者管理。
+新欄位追加在既有 `canManageMembers` 後方；舊會員空白值視為 `0` 分鐘。
+
+### `UsageVouchers`
+
+```text
+voucherId | tokenHash | targetLineUserId | targetMemberNo | minutes | status |
+expiresAt | note | createdByLineUserId | createdAt | updatedAt | processingAt |
+redeemedByLineUserId | redeemedAt | cancelledByLineUserId | cancelledAt |
+balanceBeforeMinutes | balanceAfterMinutes | consumedBeforeMinutes |
+consumedAfterMinutes | auditRecordedAt
+```
+
+不保存 raw bearer token。
 
 ### `AuditLogs`
 
-`timestamp | actorLineUserId | actorRole | action | targetLineUserId | result | details`
+新增事件：
 
-### Schema 自動建立 / 補欄規則
+- `USAGE_VOUCHER_CREATED`
+- `USAGE_VOUCHER_CANCELLED`
+- `USAGE_REDEEMED`
 
-- Sheet 不存在：自動建立。
-- 必要欄位不存在：插入到預期位置。
-- 額外自訂欄位：保留。
-- 必要欄位被重新排序：回傳 schema error，避免寫錯欄。
-
-## 部署
-
-1. 建立 Google Spreadsheet。
-2. 建立 Standalone Apps Script，放入 `gas/Code.gs` 與 `gas/appsscript.json`。
-3. Script Properties 設定：
-   - `SPREADSHEET_ID`
-   - `LINE_CHANNEL_ID`
-4. Deploy Web App：Execute as `Me`，Who has access `Anyone`。
-5. LINE LIFF Scope 至少開啟 `openid`、`profile`。
-6. 編輯 `shared/config.json`：
-   - `LIFF_ID`
-   - `GAS_WEB_APP_URL`
-7. 第一次由用戶端登入，讓 GAS 自動建立會員資料。
-8. 若要授予管理權，在 `Members` 該會員列把 `canManageMembers` 設為 `TRUE`。
+Audit details 不包含 raw voucher token、LINE ID Token 或 Secret。
 
 ## Security Notes
 
-- `shared/config.json` 是公開前端資源，禁止放任何 Secret / Token / Password。
-- 外部瀏覽器的強制重新登入 callback 使用 cryptographically random nonce + `sessionStorage` 比對，避免直接加 query parameter 跳過 re-auth flow。
-- nonce 只用於 browser login handshake，不是 Authentication Token，不會傳送給 GAS，也不會寫入 Log / Sheet。
-- 資料夾分離與隱藏管理端入口只負責前端組織與 UX，**不是 Authorization Boundary**。
-- 管理端即使直接開啟 `admin/`，`admin.list` / `admin.update` 仍必須由 GAS 驗證有效 LINE ID Token 與 `canManageMembers`。
-- 前端不信任 `liff.getProfile()` 作為後端 Identity；只把原始 ID Token 傳給 GAS。
-- `canManageMembers` 不存在於 `admin.update` payload 白名單，Client 無法 Mass Assignment 自我升權。
-- 不儲存 LINE ID Token / access token / secret，也不寫入 Sheet 或 Log。
-- API 以會員編號操作，不把 LINE user ID 暴露給管理端瀏覽器。
-- Spreadsheet 編輯權本身是 Permission Administration 的信任邊界，只能分享給可信任管理者。
-- 手動修改 `canManageMembers` 目前不會自動寫入 `AuditLogs`；需要完整稽核時可加入 installable `onEdit` trigger。
+- QR / URL token 是 bearer capability，但同時綁定指定 LINE Identity。
+- Sheet 只保存 SHA-256 token hash；raw token 只在建立 response 與發放 QR / URL 中存在。
+- Voucher 單次使用、可到期、可撤銷。
+- `usage.redeem` 使用 Script Lock 防止並行 double-spend。
+- `processing` + before/after balance 支援中斷後安全恢復。
+- 管理端餘額修改沿用 `expectedUpdatedAt` optimistic lock；成功核銷也會更新 Member `updatedAt`。
+- 管理端 UI 不是 Authorization Boundary，`admin.*` 仍由 GAS `requireAdmin_()` server-side 強制授權。
+- Scanner 不會導向任意 URL。
+- User / Admin page 設置 `referrer=no-referrer`，降低 query token 經 Referer 外洩風險。
+- API 不回傳 token hash、LINE user id 或內部 processing 欄位。
+- Token / Secret / Password 不寫入 Audit / public error。
 
-## 驗證情境
+## 部署
 
-- Forced login / external：已登入狀態開啟頁面 → logout → 新 nonce → `liff.login()` → callback nonce 驗證 → 才可呼叫 API。
-- Forced login / refresh：登入完成後重新整理 → 舊 nonce 已刪除 → 再次執行強制登入。
-- Forced login / forged callback：手動加入錯誤 `__membership_reauth` → 與 `sessionStorage` 不符 → 不接受 → 重新登入。
-- LIFF Browser：每次頁面開啟 → `liff.init()` → LINE 自動登入 → 必須取得有效 ID Token。
-- Config：`config.json` 無法讀取、JSON 無效或必要欄位缺失 → 前端顯示設定錯誤，不進入 LIFF / API 流程。
-- Root compatibility：`MembershipSystem/` → `user/`。
-- Admin entry：用戶端不提供管理端入口；直接開啟 `admin/` 仍需重新登入並通過 server-side Permission。
-- Admin navigation：管理端可返回 `user/`，新頁面再次執行登入政策。
-- Unauthenticated：無效 / 缺少 ID Token → GAS 拒絕。
-- Unauthorized：`canManageMembers != TRUE` → 管理 API 拒絕。
-- Privilege escalation：直接輸入 `admin/` URL、修改前端 JS 或偽造 tier → GAS 仍拒絕未授權管理 API。
-- Concurrent admin update：`expectedUpdatedAt` 不一致 → `CONFLICT`。
+1. 更新 Apps Script `gas/Code.gs`。
+2. **重新部署 Apps Script Web App**；這次不是純前端修改。
+3. 保留 Script Properties：`SPREADSHEET_ID`、`LINE_CHANNEL_ID`。
+4. LINE LIFF Scope 至少開啟 `openid`、`profile`。
+5. 若要使用會員頁內建 QR Scanner，在 LINE Developers Console 的 LIFF 設定開啟 **Scan QR**。
+6. 部署 GitHub Pages 前端。
+7. 管理端先替會員設定「可用時數」。
+8. 點「發放核銷」建立 QR / URL。
+9. 用目標會員帳號掃描或開啟網址，確認 preview 後執行核銷。
+
+## Verification
+
+至少驗證：
+
+- Existing schema migration：追加 `availableMinutes` / `consumedMinutes` 且舊資料保留。
+- New member：兩個時數欄位預設 0。
+- Unauthenticated / Unauthorized：管理 API 正確拒絕。
+- Create voucher：超出可發放額度、過期時間、超過 30 天 → reject。
+- Forwarded URL：非 target LINE Identity → reject。
+- Preview：不扣時數。
+- Redeem：正確扣 `availableMinutes`、增加 `consumedMinutes`。
+- Duplicate / concurrent redeem：不可重複扣時數。
+- Crash recovery：`processing` + before/after state 可恢復或 fail closed。
+- Expired / cancelled voucher：不可 redeem。
+- Suspended / disabled / expired Membership：不可 redeem。
+- Admin stale update after redemption：`expectedUpdatedAt` → `CONFLICT`。
+- Scanner：只接受本系統會員 URL + valid token。
+- Scanner unsupported：改用發放網址，不影響 URL redemption。
