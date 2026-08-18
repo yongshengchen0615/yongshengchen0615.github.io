@@ -12,70 +12,35 @@
 <body class="admin-body">
   <main class="admin-shell">
     <header class="admin-header">
-      <div>
-        <span class="eyebrow">ADMIN</span>
-        <h1>會員管理</h1>
-        <p>管理會員資格、可用分鐘與通用核銷 QR Code。</p>
-      </div>
+      <div><span class="eyebrow">ADMIN</span><h1>會員管理</h1><p>管理會員資格、消費時間紀錄與發放 QR Code。</p></div>
       <button id="adminRefreshButton" class="button button-secondary" type="button">重新整理</button>
     </header>
 
-    <section id="adminBoot" class="panel state-panel">
-      <div class="spinner" aria-hidden="true"></div>
-      <h2>驗證管理權限</h2>
-      <p>管理權限會由伺服器端確認。</p>
-    </section>
-
-    <section id="adminError" class="panel state-panel hidden" role="alert">
-      <span class="eyebrow danger-text">ACCESS ERROR</span>
-      <h2>無法進入管理端</h2>
-      <p id="adminErrorMessage">請確認管理權限。</p>
-      <button id="adminRetryButton" class="button button-primary" type="button">重新整理</button>
-    </section>
+    <section id="adminBoot" class="panel state-panel"><div class="spinner" aria-hidden="true"></div><h2>驗證管理權限</h2><p>管理權限會由伺服器端確認。</p></section>
+    <section id="adminError" class="panel state-panel hidden" role="alert"><span class="eyebrow danger-text">ACCESS ERROR</span><h2>無法進入管理端</h2><p id="adminErrorMessage">請確認管理權限。</p><button id="adminRetryButton" class="button button-primary" type="button">重新整理</button></section>
 
     <section id="adminApp" class="hidden">
       <div class="metric-grid">
         <article class="metric-card"><span>會員總數</span><strong id="metricTotal">0</strong></article>
         <article class="metric-card"><span>有效會員</span><strong id="metricActive">0</strong></article>
-        <article class="metric-card"><span>可用分鐘</span><strong id="metricAvailableMinutes">0</strong></article>
-        <article class="metric-card"><span>已消費分鐘</span><strong id="metricConsumedMinutes">0</strong></article>
+        <article class="metric-card"><span>累計消費分鐘</span><strong id="metricConsumedMinutes">0</strong></article>
       </div>
 
       <section class="panel admin-panel">
         <div class="toolbar">
-          <label class="search-field">
-            <span>搜尋會員</span>
-            <input id="memberSearch" type="search" maxlength="80" placeholder="會員編號或名稱" autocomplete="off">
-          </label>
+          <label class="search-field"><span>搜尋會員</span><input id="memberSearch" type="search" maxlength="80" placeholder="會員編號或名稱" autocomplete="off"></label>
           <div id="resultCount" class="result-count">0 筆</div>
         </div>
-        <div class="table-wrap">
-          <table class="member-table">
-            <thead><tr><th>會員</th><th>會員編號</th><th>等級</th><th>狀態</th><th>可用分鐘</th><th>已消費分鐘</th><th>到期日</th><th></th></tr></thead>
-            <tbody id="memberTableBody"></tbody>
-          </table>
-        </div>
+        <div class="table-wrap"><table class="member-table"><thead><tr><th>會員</th><th>會員編號</th><th>等級</th><th>狀態</th><th>累計消費分鐘</th><th>到期日</th><th></th></tr></thead><tbody id="memberTableBody"></tbody></table></div>
         <div id="emptyState" class="empty-state hidden">找不到符合條件的會員。</div>
       </section>
 
       <section class="panel usage-panel">
         <div class="section-heading">
-          <div>
-            <span class="eyebrow">USAGE QR</span>
-            <h2>消費分鐘 QR Code</h2>
-            <p>QR Code 不指定會員；掃描者登入後由自己的可用分鐘扣除。</p>
-          </div>
-          <div class="section-actions">
-            <button id="newUsageQrButton" class="button button-primary" type="button">新增 QR Code</button>
-            <button id="usageRefreshButton" class="button button-secondary" type="button">更新 QR Code</button>
-          </div>
+          <div><span class="eyebrow">USAGE QR</span><h2>消費時間 QR Code</h2><p>掃描後只記錄消費分鐘，不扣除任何可用時數或餘額。</p></div>
+          <div class="section-actions"><button id="newUsageQrButton" class="button button-primary" type="button">新增 QR Code</button><button id="usageRefreshButton" class="button button-secondary" type="button">更新 QR Code</button></div>
         </div>
-        <div class="table-wrap">
-          <table class="voucher-table">
-            <thead><tr><th>QR Code</th><th>模式</th><th>分鐘</th><th>成功掃描</th><th>狀態</th><th>到期時間</th><th></th></tr></thead>
-            <tbody id="voucherTableBody"></tbody>
-          </table>
-        </div>
+        <div class="table-wrap"><table class="voucher-table"><thead><tr><th>QR Code</th><th>模式</th><th>分鐘</th><th>已記錄</th><th>狀態</th><th>到期時間</th><th></th></tr></thead><tbody id="voucherTableBody"></tbody></table></div>
         <div id="voucherEmptyState" class="empty-state hidden">尚未建立 QR Code。</div>
       </section>
     </section>
@@ -83,38 +48,23 @@
 
   <dialog id="editDialog" class="edit-dialog">
     <form id="editForm" method="dialog">
-      <div class="dialog-header">
-        <div><span class="eyebrow">EDIT MEMBER</span><h2 id="editMemberName">編輯會員</h2><p id="editMemberNo">—</p></div>
-        <button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button>
-      </div>
-      <input id="editTargetMemberNo" type="hidden">
-      <input id="editExpectedUpdatedAt" type="hidden">
+      <div class="dialog-header"><div><span class="eyebrow">EDIT MEMBER</span><h2 id="editMemberName">編輯會員</h2><p id="editMemberNo">—</p></div><button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button></div>
+      <input id="editTargetMemberNo" type="hidden"><input id="editExpectedUpdatedAt" type="hidden">
       <div class="form-grid">
         <label><span>會員等級</span><select id="editTier" required><option value="standard">Standard</option><option value="silver">Silver</option><option value="gold">Gold</option><option value="vip">VIP</option></select></label>
         <label><span>會員狀態</span><select id="editStatus" required><option value="active">有效</option><option value="suspended">停權</option><option value="disabled">停用</option></select></label>
-        <label><span>可用分鐘</span><input id="editAvailableMinutes" type="number" min="0" max="60000" step="1" inputmode="numeric" required></label>
-        <label><span>已消費分鐘</span><input id="editConsumedMinutes" type="text" readonly></label>
+        <label><span>累計消費分鐘</span><input id="editConsumedMinutes" type="text" readonly></label>
         <label><span>有效期限</span><input id="editExpiresAt" type="date"></label>
         <label class="full-span"><span>管理備註</span><textarea id="editNote" maxlength="500" rows="4" placeholder="僅管理端使用"></textarea></label>
       </div>
       <p id="editError" class="form-error hidden" role="alert"></p>
-      <div class="dialog-actions">
-        <button class="button button-secondary" value="cancel" type="submit">取消</button>
-        <button id="saveMemberButton" class="button button-primary" type="button">儲存變更</button>
-      </div>
+      <div class="dialog-actions"><button class="button button-secondary" value="cancel" type="submit">取消</button><button id="saveMemberButton" class="button button-primary" type="button">儲存變更</button></div>
     </form>
   </dialog>
 
   <dialog id="usageDialog" class="edit-dialog usage-dialog">
     <form id="usageForm" method="dialog">
-      <div class="dialog-header">
-        <div>
-          <span class="eyebrow">ISSUE USAGE QR</span>
-          <h2>新增消費分鐘 QR Code</h2>
-          <p>不指定會員，任何符合資格且分鐘足夠的已登入會員都可掃描。</p>
-        </div>
-        <button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button>
-      </div>
+      <div class="dialog-header"><div><span class="eyebrow">USAGE QR</span><h2 id="usageDialogTitle">新增消費時間 QR Code</h2><p id="usageDialogDescription">掃描後只會記錄會員本次消費時間。</p></div><button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button></div>
       <div id="usageCreateFields" class="form-grid">
         <label><span>消費分鐘</span><input id="usageMinutes" type="number" min="1" max="60000" step="1" value="60" inputmode="numeric" required></label>
         <label><span>掃描模式</span><select id="usageScanMode" required><option value="single">單次掃描</option><option value="repeatable">可重複掃描</option></select></label>
@@ -123,15 +73,17 @@
       </div>
 
       <div id="usageResult" class="usage-result hidden">
-        <div id="usageQrCode" class="qr-code" aria-label="消費分鐘 QR Code"></div>
+        <p id="usageResultMeta"></p>
+        <div id="usageQrCode" class="qr-code" aria-label="消費時間 QR Code"></div>
         <label class="url-field"><span>發放網址</span><textarea id="usageUrl" rows="3" readonly></textarea></label>
-        <p class="security-note">單次模式只允許一次成功核銷；可重複模式每次確認都會再次扣除掃描會員的分鐘。請依使用情境控制 QR Code 的分享範圍。</p>
+        <p class="security-note">此連結只作為消費時間記錄入口；會員身分仍由 LINE 登入驗證。單次模式只記錄一次，可重複模式可多次記錄。</p>
       </div>
 
       <p id="usageError" class="form-error hidden" role="alert"></p>
       <div class="dialog-actions">
         <button class="button button-secondary" value="cancel" type="submit">關閉</button>
-        <button id="copyUsageUrlButton" class="button button-secondary hidden" type="button">複製網址</button>
+        <button id="copyUsageUrlButton" class="button button-secondary hidden" type="button">複製發放連結</button>
+        <button id="downloadUsageQrButton" class="button button-secondary hidden" type="button">下載 QR Code</button>
         <button id="createUsageButton" class="button button-primary" type="button">建立 QR Code</button>
       </div>
     </form>
