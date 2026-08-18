@@ -10,12 +10,16 @@
   const MAX_QR_IMAGE_BYTES = 10 * 1024 * 1024;
   const MAX_QR_DECODE_DIMENSION = 1600;
   const CAMERA_DECODE_DIMENSION = 960;
+  const QR_DECODER_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
 
   let currentMember = null;
   let redeemToken = '';
   let cameraStream = null;
   let cameraFrameId = 0;
   let cameraScanning = false;
+  let qrWorker = null;
+  let qrRequestSequence = 0;
+  const pendingQrDecodes = new Map();
 
   function formatHours(minutes) {
     const value = Number(minutes || 0) / 60;
@@ -157,8 +161,65 @@
     $('#scannerStatus').classList.toggle('danger-text', Boolean(isError));
   }
 
-  function hasLocalQrDecoder() {
-    return typeof window.jsQR === 'function';
+  function canUseWorkerDecoder() {
+    return typeof window.Worker === 'function' && typeof window.Blob === 'function' &&
+      window.URL && typeof window.URL.createObjectURL === 'function';
+  }
+
+  function rejectPendingQrDecodes(error) {
+    pendingQrDecodes.forEach((pending) => pending.reject(error));
+    pendingQrDecodes.clear();
+  }
+
+  function stopQrWorker() {
+    if (qrWorker) {
+      qrWorker.terminate();
+      qrWorker = null;
+    }
+    rejectPendingQrDecodes(new Error('QR 解析已停止。'));
+  }
+
+  function getQrWorker() {
+    if (qrWorker) return qrWorker;
+    if (!canUseWorkerDecoder()) {
+      throw new Error('此瀏覽器無法啟動本機 QR 解析器。');
+    }
+
+    const workerSource = [
+      "'use strict';",
+      'self.importScripts(' + JSON.stringify(QR_DECODER_SCRIPT_URL) + ');',
+      'self.onmessage = function (event) {',
+      '  var message = event.data || {};',
+      '  try {',
+      "    var decoder = self.jsQR || (typeof jsQR === 'function' ? jsQR : null);",
+      "    if (!decoder) throw new Error('QR decoder unavailable');",
+      "    var pixels = new Uint8ClampedArray(message.pixels);",
+      "    var result = decoder(pixels, message.width, message.height, { inversionAttempts: 'attemptBoth' });",
+      "    self.postMessage({ id: message.id, data: result && result.data ? result.data : '' });",
+      '  } catch (error) {',
+      "    self.postMessage({ id: message.id, error: error && error.message ? error.message : 'QR decode failed' });",
+      '  }',
+      '};'
+    ].join('\n');
+
+    const workerUrl = window.URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+    qrWorker = new Worker(workerUrl);
+    window.URL.revokeObjectURL(workerUrl);
+    qrWorker.onmessage = function (event) {
+      const message = event.data || {};
+      const pending = pendingQrDecodes.get(message.id);
+      if (!pending) return;
+      pendingQrDecodes.delete(message.id);
+      if (message.error) pending.reject(new Error('QR 解析失敗。'));
+      else pending.resolve(message.data || '');
+    };
+    qrWorker.onerror = function () {
+      const error = new Error('QR 解析元件載入失敗，請改用 LINE 掃描器或直接開啟核銷網址。');
+      rejectPendingQrDecodes(error);
+      if (qrWorker) qrWorker.terminate();
+      qrWorker = null;
+    };
+    return qrWorker;
   }
 
   function hasBrowserCamera() {
@@ -196,13 +257,21 @@
   }
 
   function decodeCanvas(canvas) {
-    if (!hasLocalQrDecoder()) {
-      throw new Error('QR 解析元件未載入，請改用 LINE 掃描器或直接開啟核銷網址。');
-    }
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('目前瀏覽器無法讀取 QR 圖片。');
+    if (!context) return Promise.reject(new Error('目前瀏覽器無法讀取 QR 圖片。'));
     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    return window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+    const id = ++qrRequestSequence;
+    const worker = getQrWorker();
+
+    return new Promise((resolve, reject) => {
+      pendingQrDecodes.set(id, { resolve, reject });
+      worker.postMessage({
+        id: id,
+        width: imageData.width,
+        height: imageData.height,
+        pixels: imageData.data.buffer
+      }, [imageData.data.buffer]);
+    });
   }
 
   function drawSourceToCanvas(source, sourceWidth, sourceHeight, maxDimension) {
@@ -218,17 +287,18 @@
     return canvas;
   }
 
-  function scanCameraFrame() {
+  async function scanCameraFrame() {
     if (!cameraScanning || !cameraStream) return;
     const video = $('#scannerVideo');
 
     if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth && video.videoHeight) {
       try {
         const canvas = drawSourceToCanvas(video, video.videoWidth, video.videoHeight, CAMERA_DECODE_DIMENSION);
-        const result = decodeCanvas(canvas);
-        if (result && result.data) {
+        const decodedValue = await decodeCanvas(canvas);
+        if (!cameraScanning || !cameraStream) return;
+        if (decodedValue) {
           cameraScanning = false;
-          acceptScannedValue(result.data).catch((error) => {
+          acceptScannedValue(decodedValue).catch((error) => {
             setScannerStatus(error.message, true);
             cameraScanning = Boolean(cameraStream);
             if (cameraScanning) cameraFrameId = window.requestAnimationFrame(scanCameraFrame);
@@ -247,8 +317,8 @@
 
   async function startBrowserCamera() {
     stopBrowserCamera();
-    if (!hasLocalQrDecoder()) {
-      setScannerStatus('QR 解析元件未載入。可改用 LINE 掃描器或直接開啟核銷網址。', true);
+    if (!canUseWorkerDecoder()) {
+      setScannerStatus('此瀏覽器無法啟動 QR 解析器。可改用 LINE 掃描器或直接開啟核銷網址。', true);
       return;
     }
     if (!hasBrowserCamera()) {
@@ -302,9 +372,15 @@
 
   async function decodeQrImageFile(file) {
     if (!file) return;
-    if (!file.type || !file.type.startsWith('image/')) throw new Error('請選擇圖片檔案。');
-    if (file.size > MAX_QR_IMAGE_BYTES) throw new Error('QR 圖片不可超過 10 MB。');
-    if (!hasLocalQrDecoder()) throw new Error('QR 解析元件未載入，請改用 LINE 掃描器或直接開啟核銷網址。');
+    if (!file.type || !file.type.startsWith('image/')) {
+      throw new Error('請選擇圖片檔案。');
+    }
+    if (file.size > MAX_QR_IMAGE_BYTES) {
+      throw new Error('QR 圖片不可超過 10 MB。');
+    }
+    if (!canUseWorkerDecoder()) {
+      throw new Error('此瀏覽器無法啟動 QR 解析器，請改用 LINE 掃描器或直接開啟核銷網址。');
+    }
 
     let source;
     let shouldClose = false;
@@ -320,9 +396,9 @@
       const height = source.height || source.naturalHeight;
       if (!width || !height) throw new Error('無法取得圖片尺寸。');
       const canvas = drawSourceToCanvas(source, width, height, MAX_QR_DECODE_DIMENSION);
-      const result = decodeCanvas(canvas);
-      if (!result || !result.data) throw new Error('圖片中找不到可辨識的 QR Code。');
-      await acceptScannedValue(result.data);
+      const decodedValue = await decodeCanvas(canvas);
+      if (!decodedValue) throw new Error('圖片中找不到可辨識的 QR Code。');
+      await acceptScannedValue(decodedValue);
     } finally {
       if (shouldClose) source.close();
     }
@@ -400,7 +476,10 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) stopBrowserCamera();
   });
-  window.addEventListener('pagehide', stopBrowserCamera);
+  window.addEventListener('pagehide', () => {
+    stopBrowserCamera();
+    stopQrWorker();
+  });
 
   initialize();
 })();
