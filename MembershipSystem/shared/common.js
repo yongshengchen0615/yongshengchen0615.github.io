@@ -229,7 +229,11 @@
     canonicalizeAppUrl();
 
     // Standard LIFF flow: never force-logout a valid external-browser session.
-    if (liff.isLoggedIn() && liff.getIDToken()) {
+    if (liff.isLoggedIn()) {
+      const idToken = liff.getIDToken();
+      if (!idToken) {
+        throw new Error('LINE 已登入但無法取得 ID Token，請確認 LIFF scope 已啟用 openid。');
+      }
       loginInFlight = false;
       clearPendingLogin();
       return true;
