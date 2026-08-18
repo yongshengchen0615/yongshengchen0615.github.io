@@ -11,6 +11,7 @@
   let currentMember = null;
   let publicConfig = null;
   let scanInFlight = false;
+  let usageRecordInFlight = false;
 
   function formatMinutes(value) {
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -126,6 +127,7 @@
   }
 
   function showError(error) {
+    hideUsageLoading();
     $('#boot').classList.add('hidden');
     $('#memberApp').classList.add('hidden');
     $('#errorMessage').textContent = error && error.message ? error.message : '請稍後再試。';
@@ -133,21 +135,34 @@
   }
 
   function showUsageLoading() {
-    $('#usagePanel').classList.remove('hidden');
-    $('#usageLoading').classList.remove('hidden');
-    $('#usageResult').classList.add('hidden');
+    $('#usageErrorPanel').classList.add('hidden');
+    $('#usageLoadingOverlay').classList.remove('hidden');
+  }
+
+  function hideUsageLoading() {
+    $('#usageLoadingOverlay').classList.add('hidden');
   }
 
   function showUsageError(error) {
-    $('#usageLoading').classList.add('hidden');
-    $('#usageResult').classList.remove('hidden');
-    $('#usageResultTitle').textContent = '無法記錄';
-    $('#usageResultMessage').textContent = error && error.message ? error.message : '此 QR Code 目前無法使用。';
+    hideUsageLoading();
+    $('#usageErrorMessage').textContent = error && error.message ? error.message : '此 QR Code 目前無法使用。';
+    $('#usageErrorPanel').classList.remove('hidden');
+  }
+
+  function showUsageSuccess(result) {
+    const dialog = $('#usageSuccessDialog');
+    $('#usageSuccessTitle').textContent = result.alreadyRecorded ? '此筆時間已記錄' : '消費時間已加入';
+    $('#usageSuccessMessage').textContent =
+      `本次加入 ${formatMinutes(result.voucher.minutes)} 分鐘，累計消費 ${formatMinutes(result.member.consumedMinutes)} 分鐘。`;
+    if (!dialog.open) dialog.showModal();
+    $('#confirmUsageSuccessButton').focus();
   }
 
   async function recordUsageImmediately(accessOverride) {
     const access = accessOverride || readAccessFromUrl();
-    if (!access) return false;
+    if (!access || usageRecordInFlight) return false;
+
+    usageRecordInFlight = true;
     const requestId = ensureRequestId(access);
     showUsageLoading();
 
@@ -155,15 +170,16 @@
       const result = await Membership.callApi('usage.record', Object.assign({}, access, { requestId }));
       currentMember = result.member;
       renderMember(currentMember);
-      $('#usageLoading').classList.add('hidden');
-      $('#usageResult').classList.remove('hidden');
-      $('#usageResultTitle').textContent = result.alreadyRecorded ? '此筆時間已記錄' : '消費時間已加入';
-      $('#usageResultMessage').textContent = `本次加入 ${formatMinutes(result.voucher.minutes)} 分鐘，累計消費 ${formatMinutes(result.member.consumedMinutes)} 分鐘。`;
       clearUsageState();
+      hideUsageLoading();
+      showUsageSuccess(result);
       return true;
     } catch (error) {
       showUsageError(error);
       return false;
+    } finally {
+      usageRecordInFlight = false;
+      hideUsageLoading();
     }
   }
 
@@ -174,7 +190,7 @@
   }
 
   async function scanWithLineImmediately() {
-    if (scanInFlight) return;
+    if (scanInFlight || usageRecordInFlight) return;
     scanInFlight = true;
 
     const button = $('#scanQrButton');
@@ -210,10 +226,13 @@
       publicConfig = await Membership.loadConfig();
       const loggedIn = await Membership.ensureLiffLogin();
       if (!loggedIn) return;
+
+      const access = readAccessFromUrl();
+      if (access) showUsageLoading();
+
       await loadMember();
       $('#scanQrButton').disabled = false;
 
-      const access = readAccessFromUrl();
       if (access) await recordUsageImmediately(access);
     } catch (error) {
       showError(error);
@@ -223,6 +242,8 @@
   $('#refreshButton').addEventListener('click', () => window.location.reload());
   $('#retryButton').addEventListener('click', () => window.location.reload());
   $('#scanQrButton').addEventListener('click', () => scanWithLineImmediately().catch(showUsageError));
+  $('#dismissUsageErrorButton').addEventListener('click', () => $('#usageErrorPanel').classList.add('hidden'));
+  $('#confirmUsageSuccessButton').addEventListener('click', () => $('#usageSuccessDialog').close());
 
   initialize();
 })();

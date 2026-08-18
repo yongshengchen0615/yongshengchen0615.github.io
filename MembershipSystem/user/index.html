@@ -34,16 +34,33 @@
         <button id="scanQrButton" class="button button-secondary" type="button">掃描 QR Code</button>
       </section>
 
-      <section id="usagePanel" class="panel redeem-panel hidden" aria-live="polite">
-        <span class="eyebrow">USAGE TIME RECORD</span>
-        <div id="usageLoading"><h3>正在加入消費時間</h3><p>正在驗證 QR Code、會員狀態與記錄狀態。</p></div>
-        <div id="usageResult" class="hidden"><h3 id="usageResultTitle">消費時間已加入</h3><p id="usageResultMessage"></p></div>
+      <section id="usageErrorPanel" class="panel usage-error-panel hidden" role="alert">
+        <span class="eyebrow danger-text">USAGE TIME RECORD</span>
+        <h3>無法加入消費時間</h3>
+        <p id="usageErrorMessage">此 QR Code 目前無法使用。</p>
+        <button id="dismissUsageErrorButton" class="button button-secondary" type="button">關閉</button>
       </section>
 
       <section class="panel info-panel"><div><span class="eyebrow">會員狀態</span><h3 id="statusTitle">會員資格有效</h3><p id="statusDescription">此會員卡目前可正常使用。</p></div></section>
       <footer class="page-footer">會員資料由 LINE 身分驗證與會員系統管理。</footer>
     </section>
   </main>
+
+  <div id="usageLoadingOverlay" class="usage-loading-overlay hidden" role="status" aria-live="polite" aria-busy="true">
+    <div class="usage-loading-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <h2>正在加入消費時間</h2>
+      <p>正在驗證 QR Code、會員狀態與記錄狀態，請勿重複操作。</p>
+    </div>
+  </div>
+
+  <dialog id="usageSuccessDialog" class="usage-success-dialog" aria-labelledby="usageSuccessTitle" aria-describedby="usageSuccessMessage">
+    <div class="usage-success-icon" aria-hidden="true">✓</div>
+    <span class="eyebrow">USAGE TIME RECORDED</span>
+    <h2 id="usageSuccessTitle">消費時間已加入</h2>
+    <p id="usageSuccessMessage"></p>
+    <button id="confirmUsageSuccessButton" class="button button-primary" type="button">確認</button>
+  </dialog>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="../shared/common.js"></script>
