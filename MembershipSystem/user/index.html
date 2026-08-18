@@ -23,12 +23,9 @@
         <div class="member-identity"><img id="avatar" class="avatar" alt="LINE 個人圖片"><div><p class="muted-on-card">會員姓名</p><h2 id="displayName">—</h2></div></div>
         <div class="member-number"><span>MEMBER NO.</span><strong id="memberNo">—</strong></div>
         <div class="card-meta-grid"><div><span>加入日期</span><strong id="joinedAt">—</strong></div><div><span>有效期限</span><strong id="expiresAt">永久</strong></div></div>
+        <div class="card-consumed-summary"><span>累計消費分鐘</span><strong id="consumedMinutes">0</strong><small>分鐘</small></div>
         <div class="card-scan-action"><button id="scanQrButton" class="button card-scan-button" type="button" disabled>掃描 QR Code</button></div>
       </article>
-
-      <section class="hours-grid" aria-label="消費時間資訊">
-        <article class="panel hours-card"><span class="eyebrow">CONSUMED MINUTES</span><strong id="consumedMinutes">0</strong><small>累計消費分鐘</small></article>
-      </section>
 
       <section id="usageErrorPanel" class="panel usage-error-panel hidden" role="alert">
         <span class="eyebrow danger-text">USAGE TIME RECORD</span>
@@ -37,7 +34,6 @@
         <button id="dismissUsageErrorButton" class="button button-secondary" type="button">關閉</button>
       </section>
 
-      <section class="panel info-panel"><div><span class="eyebrow">會員狀態</span><h3 id="statusTitle">會員資格有效</h3><p id="statusDescription">此會員卡目前可正常使用。</p></div></section>
       <footer class="page-footer">會員資料由 LINE 身分驗證與會員系統管理。</footer>
     </section>
   </main>
