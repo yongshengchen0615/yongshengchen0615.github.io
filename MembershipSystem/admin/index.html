@@ -12,7 +12,7 @@
 <body class="admin-body">
   <main class="admin-shell">
     <header class="admin-header">
-      <div><span class="eyebrow">ADMIN</span><h1>會員管理</h1><p>管理會員資格、消費時間紀錄與發放 QR Code。</p></div>
+      <div><span class="eyebrow">ADMIN</span><h1>會員管理</h1><p>管理會員資格、會員等級、消費時間紀錄與發放 QR Code。</p></div>
       <button id="adminRefreshButton" class="button button-secondary" type="button">重新整理</button>
     </header>
 
@@ -25,6 +25,20 @@
         <article class="metric-card"><span>有效會員</span><strong id="metricActive">0</strong></article>
         <article class="metric-card"><span>累計消費分鐘</span><strong id="metricConsumedMinutes">0</strong></article>
       </div>
+
+      <section class="panel tier-settings-panel" aria-labelledby="tierSettingsTitle">
+        <div class="tier-settings-heading">
+          <div><span class="eyebrow">MEMBERSHIP TIER</span><h2 id="tierSettingsTitle">會員等級門檻</h2><p>會員等級依累計消費分鐘自動計算；一般會員固定從 0 分鐘開始。</p></div>
+          <button id="saveTierSettingsButton" class="button button-primary" type="button">儲存門檻</button>
+        </div>
+        <div class="tier-settings-grid">
+          <label><span>一般</span><input id="tierStandardThreshold" type="number" value="0" readonly><small>0 分鐘以上</small></label>
+          <label><span>銀級</span><input id="tierSilverThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>累計消費分鐘達此門檻</small></label>
+          <label><span>金級</span><input id="tierGoldThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>必須高於銀級</small></label>
+          <label><span>白金</span><input id="tierPlatinumThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>必須高於金級</small></label>
+        </div>
+        <p id="tierSettingsMessage" class="tier-settings-message hidden" role="status"></p>
+      </section>
 
       <section class="panel admin-panel">
         <div class="toolbar">
@@ -51,7 +65,7 @@
       <div class="dialog-header"><div><span class="eyebrow">EDIT MEMBER</span><h2 id="editMemberName">編輯會員</h2><p id="editMemberNo">—</p></div><button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button></div>
       <input id="editTargetMemberNo" type="hidden"><input id="editExpectedUpdatedAt" type="hidden">
       <div class="form-grid">
-        <label><span>會員等級</span><select id="editTier" required><option value="standard">Standard</option><option value="silver">Silver</option><option value="gold">Gold</option><option value="vip">VIP</option></select></label>
+        <label><span>會員等級（自動）</span><input id="editTier" type="text" readonly></label>
         <label><span>會員狀態</span><select id="editStatus" required><option value="active">有效</option><option value="suspended">停權</option><option value="disabled">停用</option></select></label>
         <label><span>累計消費分鐘</span><input id="editConsumedMinutes" type="text" readonly></label>
         <label><span>有效期限</span><input id="editExpiresAt" type="date"></label>
