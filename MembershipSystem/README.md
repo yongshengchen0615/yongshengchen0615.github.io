@@ -1,208 +1,97 @@
 # MembershipSystem — 會員卡 MVP
 
-GitHub Pages 前端 + Google Apps Script（GAS）後端的會員系統，包含一般會員端、管理端、會員分鐘餘額與 QR Code 核銷。
+GitHub Pages 前端 + Google Apps Script（GAS）後端的會員系統，包含會員卡、管理端、消費時間記錄與 QR Code 發放。
 
-## 資料夾結構
+## Domain
 
-```text
-MembershipSystem/
-├─ index.html
-├─ user/
-│  ├─ index.html
-│  ├─ styles.css
-│  ├─ usage.css
-│  └─ app.js
-├─ admin/
-│  ├─ index.html
-│  ├─ styles.css
-│  ├─ usage.css
-│  └─ app.js
-├─ shared/
-│  ├─ config.json
-│  └─ common.js
-├─ gas/
-│  ├─ Code.gs
-│  └─ appsscript.json
-└─ README.md
-```
+### 消費時間
 
-## 前端設定 `shared/config.json`
+`consumedMinutes` 只表示會員歷史累計消費時間。
 
-```json
-{
-  "LIFF_ID": "YOUR_LIFF_ID",
-  "GAS_WEB_APP_URL": "YOUR_GAS_WEB_APP_URL"
-}
-```
+- 新流程不使用可用時數 / 可用分鐘作為餘額。
+- 掃描 QR Code 不會扣除 `availableMinutes`。
+- 每次成功記錄只增加 `consumedMinutes`，並新增一筆 `UsageRecords`。
+- `availableMinutes` 欄位暫時保留於既有 `Members` Sheet，只為 backward compatibility；新 UI / 新 business rule 不使用它。
 
-`config.json` 是公開資源，只能放前端公開設定。不得放 LINE Channel Secret、Access Token、API Secret、Password 或其他秘密。
+### Usage QR Code
 
-## LIFF 登入
+管理端建立 QR Code 時設定：
 
-每次完整開啟或重新整理 `user/` / `admin/` 都重新建立本次 LIFF 登入狀態。
+- `minutes`：本次要記錄的消費分鐘。
+- `scanMode=single`：整張 QR 只允許一次成功記錄。
+- `scanMode=repeatable`：QR 可重複使用，每次新的確認新增一筆消費時間。
+- `expiresAt`：有效期限。
+- `note`：發放備註。
 
-- 外部瀏覽器 / LINE 內建瀏覽器：重新走 LIFF login flow。
-- Login callback 使用一次性 random nonce + `sessionStorage` 驗證。
-- LIFF Browser 由 `liff.init()` 自動完成登入並重新檢查 ID Token。
-- LINE SSO 可能自動完成登入，因此不保證每次都顯示帳密輸入畫面。
+QR 不指定會員。真正被記錄的人永遠是 GAS 驗證 LINE ID Token 後得到的當前會員。
 
-## 會員分鐘
+## QR 再次開啟 / 下載 / 複製
 
-會員餘額與所有核銷都以整數「分鐘」表示與儲存：
+管理端 QR 清單每一列都有「開啟」。
 
-- `availableMinutes`：目前可用分鐘。
-- `consumedMinutes`：成功核銷的累計分鐘。
-- 管理端以整數分鐘調整餘額。
-- `consumedMinutes` 不由管理端直接修改，只能由成功核銷累加。
+開啟後可：
 
-## 通用 Usage QR Code
+- 再次顯示 QR Code。
+- 下載 SVG QR Code。
+- 複製發放連結。
 
-新建立的 QR Code **不指定會員**。建立流程：
+新 QR 建立時會產生 64-hex `shareCode`，並保存於 `UsageVouchers`。`shareCode` 是發放識別碼，不是 Authentication / Authorization credential；會員身分與管理權限仍由 LINE ID Token + GAS server-side 驗證。
+
+舊 QR 的原始 bearer token 過去只存 SHA-256 hash，因此無法反推原 token。為了讓舊 QR 可以再次開啟：
+
+- 第一次執行 `admin.usage.open` 時，若 `shareCode` 尚不存在，GAS 會補產生新的 `shareCode`。
+- 舊 `tokenHash` 不會被覆寫，所以已經發出去的舊 URL 仍可繼續使用。
+- 新產生的 share URL 也可使用。
+
+## 使用者流程
 
 ```text
-Admin
-→ 輸入消費分鐘
-→ 選擇 single / repeatable
-→ 設定到期時間 / 備註
-→ GAS 產生隨機 token
-→ UsageVouchers 只保存 SHA-256 token hash
-→ Admin 只在 create response 取得 raw token
-→ 前端產生 QR Code + URL
-```
-
-掃描流程：
-
-```text
-Member LIFF Authentication
-→ 掃描 / 開啟 QR URL
+LINE Authentication
+→ 掃描 QR / 開啟發放連結
 → usage.preview
-→ Server 檢查 QR 狀態、Membership 狀態、分鐘餘額
-→ 使用者確認
-→ usage.redeem(token, requestId)
+→ Server 驗證 QR 狀態 + Membership 狀態
+→ 使用者按「確認記錄」
+→ usage.record
 → Script Lock
-→ UsageRedemptions processing record
-→ Member balance update
-→ Redemption redeemed
+→ UsageRecords processing
+→ Member.consumedMinutes 增加
+→ UsageRecords recorded
 → Audit
 ```
 
-### Scan mode
+沒有「餘額不足」「扣除可用時數」「核銷」商業規則。
 
-- `single`：整張 QR Code 只允許一次成功核銷。第一筆成功後 QR Code 失效。
-- `repeatable`：QR Code 可由不同已登入會員重複使用；每次新的確認都會再次扣除該掃描會員的分鐘，直到到期或管理員取消。
+為避免網路 retry 重複記錄，每次流程建立 random `requestId`：
 
-`repeatable` 是刻意允許重複消費的商業規則，不是權限。每次核銷仍必須通過 LINE Authentication、Membership 狀態與分鐘餘額檢查。
-
-### Idempotency / recovery
-
-每次會員開始一筆核銷會建立 cryptographically-random `requestId`：
-
-- 同一 `requestId` 重送只恢復 / 回傳同一筆核銷，不再次扣除。
-- 重新掃描 QR Code 會產生新的 `requestId`；`repeatable` 模式因此可建立新的合法核銷。
-- `UsageRedemptions` 在扣除會員分鐘前先寫入 `processing` 與 before/after balance snapshot。
-- 同一 QR Code 同時間只允許一筆未完成的 `processing` redemption；新掃描或取消前會先安全恢復前一筆。
-- 若 member balance 與 before/after snapshot 都不一致，系統 fail closed，回傳 `REDEMPTION_CONFLICT`，避免不確定狀態下重複扣除。
-
-## 舊版指定會員 Voucher 相容性
-
-既有資料中 `scanMode` 空白、且具有 `targetLineUserId` 的 Voucher 視為 legacy targeted voucher：
-
-- 仍只允許原指定 LINE Identity 使用。
-- 仍維持單次核銷與舊版 crash recovery。
-- 不會因 schema migration 自動變成通用 QR Code。
-- 舊版尚未核銷且未到期的 targeted voucher 仍會保留該會員分鐘，直到核銷、取消或過期。
-
-新建立的 QR Code 不再使用 `targetLineUserId` / `targetMemberNo`。
-
-## 用戶端 `user/`
-
-- LINE LIFF Authentication。
-- 顯示會員卡、可用分鐘、已消費分鐘。
-- QR Scanner 支援：
-  - Browser camera (`getUserMedia`)。
-  - 手機拍照 / 相簿或桌機 QR 圖片檔案。
-  - `liff.scanCodeV2()`（環境支援時）。
-  - 直接開啟管理端發放的 URL 作為 fallback。
-- QR 圖片在瀏覽器本機解析，不上傳圖片。
-- `?redeem=<token>` 只做 preview，不會自動扣分鐘。
-- 使用者必須按「確認消費」才呼叫 `usage.redeem`。
-
-Scanner 只接受：
-
-- 與目前會員頁相同 origin。
-- 同一個 `user/` path。
-- 合法 64 hex token。
-
-掃描到的任意外部 URL 不會自動導向。
-
-## 管理端 `admin/`
-
-- Server-side `canManageMembers` Permission 驗證。
-- 搜尋會員、修改會員等級 / 狀態 / 有效期限 / 備註。
-- 調整會員 `availableMinutes`；`consumedMinutes` 唯讀。
-- 建立不指定會員的消費分鐘 QR Code。
-- 設定 `single` / `repeatable`、分鐘、到期時間與備註。
-- 查看每個 QR Code 的成功核銷次數。
-- 可取消尚可繼續使用的 QR Code；已開始的 processing redemption 會先完成安全恢復，再停止後續使用。
-
-QR Code 使用固定版本 `qrcode-generator@2.0.4` 在管理端瀏覽器產生，不使用遠端 QR image API。
+- 相同 `requestId` 重送只回復同一筆記錄。
+- 新掃描會建立新的 `requestId`。
+- `single` 的全域一次限制由 GAS server-side enforcement。
 
 ## API
 
-所有 POST API 都先執行：
-
-```text
-ID Token
-→ LINE Verify ID Token API
-→ Identity
-→ Role / Permission（管理 API）
-→ Business Rule
-```
+所有 POST API 都先驗證 LINE ID Token。
 
 ### Member
 
-#### `member.me`
-
-取得 / 建立會員並回傳公開會員資料與分鐘餘額。
-
-#### `usage.preview`
-
-Request：
-
-```json
-{
-  "token": "64-char-random-token"
-}
-```
-
-只檢查，不修改資料。
-
-#### `usage.redeem`
-
-Request：
-
-```json
-{
-  "token": "64-char-random-token",
-  "requestId": "32-to-64-char-hex-idempotency-key"
-}
-```
-
-Server-side 檢查 QR state / expiry / mode、Authentication、Membership state、available minutes，再執行交易。
+- `member.me`
+- `usage.preview`
+- `usage.record`
+- `usage.redeem`：只做舊前端 compatibility alias，實際行為等同 `usage.record`，不再扣任何 balance。
 
 ### Admin
 
-- `admin.list`：會員列表與分鐘統計。
-- `admin.update`：可修改 `tier`、`membershipStatus`、`expiresAt`、`note`、`availableMinutes`；不可修改 `canManageMembers`、`consumedMinutes`、Identity 或 memberNo。
-- `admin.usage.create`：建立通用 QR Code；request 使用 `minutes`、`scanMode`、`expiresAt`、`note`。只有 create response 回傳 raw token。
-- `admin.usage.list`：最近 QR Code、模式、狀態與成功核銷次數，不回傳 raw token / token hash / LINE user id。
-- `admin.usage.cancel`：停止 QR Code 後續核銷。
+所有 `admin.*` 都先執行 `requireAdmin_()`。
+
+- `admin.list`
+- `admin.update`
+- `admin.usage.list`
+- `admin.usage.create`
+- `admin.usage.open`：取得 / 補建 shareCode，供管理端再次顯示、下載與複製 QR。
+- `admin.usage.cancel`
 
 ## Google Sheet Schema
 
-GAS 會建立缺少的 Sheet / 必要欄位。既有必要欄位若被重新排序則 fail closed。
-
-### `Members`
+### Members
 
 ```text
 lineUserId | memberNo | displayName | pictureUrl | tier | membershipStatus |
@@ -210,80 +99,64 @@ joinedAt | expiresAt | note | createdAt | updatedAt | canManageMembers |
 availableMinutes | consumedMinutes
 ```
 
-### `UsageVouchers`
+`availableMinutes` 為 legacy compatibility 欄位，新消費時間功能不使用。
+
+### UsageVouchers
+
+保留既有欄位並追加：
 
 ```text
-voucherId | tokenHash | targetLineUserId | targetMemberNo | minutes | status |
-expiresAt | note | createdByLineUserId | createdAt | updatedAt | processingAt |
-redeemedByLineUserId | redeemedAt | cancelledByLineUserId | cancelledAt |
-balanceBeforeMinutes | balanceAfterMinutes | consumedBeforeMinutes |
-consumedAfterMinutes | auditRecordedAt | scanMode
+scanMode | shareCode
 ```
 
-`scanMode` 為新增欄位。舊 target / balance 欄位保留是為 legacy targeted voucher 相容；新通用 QR 不再填 target 欄位。
+舊 `tokenHash` 保留以支援已發出的舊 URL。
 
-### `UsageRedemptions`
+### UsageRecords
 
 ```text
-redemptionId | requestId | voucherId | redeemerLineUserId | redeemerMemberNo |
-minutes | status | createdAt | updatedAt | balanceBeforeMinutes |
-balanceAfterMinutes | consumedBeforeMinutes | consumedAfterMinutes |
-redeemedAt | auditRecordedAt
+recordId | requestId | voucherId | memberLineUserId | memberNo | minutes |
+status | createdAt | updatedAt | consumedBeforeMinutes | consumedAfterMinutes |
+recordedAt | auditRecordedAt
 ```
 
-每次通用 QR 核銷一列。此 Sheet 是 server-side transaction/audit data，不透過 public API 回傳 LINE user id。
+每次成功消費時間記錄一列。
 
-### `AuditLogs`
+### Legacy UsageRedemptions
 
-重要事件：
-
-- `USAGE_VOUCHER_CREATED`
-- `USAGE_VOUCHER_CANCELLED`
-- `USAGE_REDEEMED`
-
-Audit details 不包含 raw voucher token、LINE ID Token 或 Secret。
+若既有 Spreadsheet 已由上一版建立 `UsageRedemptions`，本版不刪除也不重新解讀其歷史資料。新流程只寫入 `UsageRecords`。
 
 ## Security Notes
 
-- QR token 是 bearer capability；新通用 QR 刻意不綁定特定會員，但核銷者仍必須完成 LINE Authentication 且 Membership 可使用。
-- Sheet 只保存 QR token 的 SHA-256 hash；raw token 只在建立 response 與發放 QR / URL 中存在。
-- `single` 由 server-side Script Lock + redemption ledger 保證全域單次成功。
-- `repeatable` 每次合法新 request 都可再次核銷；同 requestId 重送為 idempotent。
-- 管理 API 仍由 GAS `requireAdmin_()` server-side 強制授權，前端 UI 不是 Authorization Boundary。
-- QR scanner 不會導向任意 URL。
-- User / Admin page 設置 `referrer=no-referrer`，降低 query token 經 Referer 外洩風險。
-- Token / Secret / Password 不寫入 Audit / public error。
-- `jsQR@1.4.0` 僅在 Web Worker 中載入，與 LIFF / ID Token / DOM 執行環境隔離；仍屬固定版本 runtime CDN dependency。
+- Authentication：LINE ID Token → LINE verify API → `sub`。
+- Authorization：所有管理 API → `requireAdmin_()` → `canManageMembers`。
+- QR / shareCode 不授予管理權，也不能指定另一個會員身分。
+- Scanner 仍只接受同 origin、相同 `user/` path、64-hex usage/redeem code。
+- `requestId` 只用於 idempotency，不是身分或權限憑證。
+- `UsageRecords` 的 LINE user id 不透過一般會員 API 回傳。
+- Audit 不寫入 LINE ID Token、Password、Secret。
+- User / Admin page 使用 `referrer=no-referrer`，降低 URL code 經 Referer 外洩。
 
-## Migration / 部署
+## Migration / Deployment
 
-這次包含 GAS 與 Schema 變更，**必須重新部署 Apps Script Web App**。
+這次包含 GAS 與 Schema 變更，必須重新部署 Apps Script Web App。
 
 1. 更新 `gas/Code.gs`。
-2. 重新部署 Apps Script Web App。
-3. 第一次執行時 GAS 會：
-   - 在既有 `UsageVouchers` 追加 `scanMode`。
-   - 建立新的 `UsageRedemptions` Sheet。
-4. 保留 Script Properties：`SPREADSHEET_ID`、`LINE_CHANNEL_ID`。
+2. 重新部署 GAS Web App。
+3. 第一次使用時 GAS 會在 `UsageVouchers` 追加 `shareCode`，並建立 `UsageRecords`。
+4. 既有 `UsageRedemptions` 不刪除。
 5. 部署 GitHub Pages 前端。
-6. 管理端建立新的 minute QR，分別驗證 single / repeatable。
-
-舊版前端與新版 generic create API 語意不相容；後端會拒絕仍傳 `targetMemberNo` / `hours` 的 create request，避免舊 UI 在新規則下誤發通用 QR。
+6. 驗證舊 QR URL 仍可用；管理端第一次「開啟」舊 QR 後可取得新的 share URL。
 
 ## Verification
 
 至少驗證：
 
-- Schema migration：既有 Voucher rows 保留，`scanMode` 追加，建立 `UsageRedemptions`。
-- Legacy targeted voucher：仍只允許原 target Identity。
-- Unauthenticated / Unauthorized：admin API 正確拒絕。
-- Create generic QR：不需要會員、分鐘必須為 1–60000 整數、mode 僅 single/repeatable、expiry 不超過 30 天。
-- Preview：不扣分鐘。
-- Single：兩個會員並行掃描只能一筆成功。
-- Repeatable：不同會員可各自成功；同一會員重新掃描也可再次成功。
-- Duplicate request：相同 requestId 不可重複扣分鐘。
-- Crash recovery：processing + before/after snapshot 可恢復，衝突時 fail closed。
-- Cancel during processing：先恢復已接受交易，再停止未來核銷。
-- Insufficient minutes：不可 redeem。
-- Suspended / disabled / expired Membership：不可 redeem。
-- Scanner：只接受本系統 user URL + valid token。
+- 掃描 / 記錄不讀取或扣除 `availableMinutes`。
+- 成功記錄只增加 `consumedMinutes`。
+- 相同 `requestId` 重送不重複增加分鐘。
+- `single` 只有第一筆可成功。
+- `repeatable` 可產生多筆 UsageRecords。
+- Unauthenticated / inactive Membership 不可記錄。
+- 非管理員不可 create/open/cancel QR。
+- 既有 QR 第一次 open 補建 shareCode，不覆寫舊 tokenHash。
+- 管理端可再次顯示 QR、下載 SVG、複製發放連結。
