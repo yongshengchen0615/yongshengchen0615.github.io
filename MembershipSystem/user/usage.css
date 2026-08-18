@@ -2,15 +2,24 @@
 .hours-card{padding:20px}
 .hours-card strong{display:block;font-size:34px;letter-spacing:-.04em}
 .hours-card small{display:block;margin-top:5px;color:var(--muted)}
-.scan-panel,.redeem-panel{margin-top:14px;padding:22px}
+.scan-panel,.scanner-panel,.redeem-panel{margin-top:14px;padding:22px}
 .scan-panel{display:flex;align-items:center;justify-content:space-between;gap:18px}
-.scan-panel h3,.redeem-panel h3{margin:2px 0 6px}
-.scan-panel p,.redeem-panel p{margin:0;color:var(--muted);line-height:1.6}
+.scan-panel h3,.scanner-panel h3,.redeem-panel h3{margin:2px 0 6px}
+.scan-panel p,.scanner-panel p,.redeem-panel p{margin:0;color:var(--muted);line-height:1.6}
 .button-secondary{background:#fff;border-color:var(--line);color:var(--text)}
+.scanner-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.scanner-preview{margin-top:16px;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#101827;aspect-ratio:4/3;display:grid;place-items:center}
+.scanner-preview video{display:block;width:100%;height:100%;object-fit:cover}
+.scanner-status{margin-top:14px!important}
+.scanner-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.scanner-actions .button{width:100%;min-height:48px}
+.file-button{position:relative;overflow:hidden}
+.file-button input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.scanner-fallback{margin-top:14px!important;font-size:12px}
 .redeem-meta{display:grid;gap:10px;margin:18px 0}
 .redeem-meta div{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
 .redeem-meta dt{color:var(--muted)}
 .redeem-meta dd{margin:0;text-align:right;font-weight:700}
 .redeem-button{width:100%;margin-top:6px}
 #redeemResult{padding:8px 0}
-@media(max-width:520px){.hours-grid{grid-template-columns:1fr 1fr}.hours-card{padding:16px}.hours-card strong{font-size:28px}.scan-panel{align-items:stretch;flex-direction:column}.scan-panel .button{width:100%}}
+@media(max-width:520px){.hours-grid{grid-template-columns:1fr 1fr}.hours-card{padding:16px}.hours-card strong{font-size:28px}.scan-panel{align-items:stretch;flex-direction:column}.scan-panel .button{width:100%}.scanner-actions{grid-template-columns:1fr}}
