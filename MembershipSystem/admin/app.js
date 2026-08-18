@@ -6,6 +6,7 @@
   let searchTimer = null;
   let currentQrSvg = '';
   let currentQrVoucherId = '';
+  let publicConfig = null;
   const statusLabel = { active: '有效', suspended: '停權', disabled: '停用' };
   const voucherStatusLabel = { issued: '可使用', redeemed: '已記錄', cancelled: '已停止', expired: '已過期' };
   const scanModeLabel = { single: '單次掃描', repeatable: '可重複掃描' };
@@ -161,8 +162,9 @@
   }
 
   function buildUsageUrl(shareCode) {
-    const url = new URL('../user/', window.location.href);
-    url.search = ''; url.hash = ''; url.searchParams.set('usage', shareCode);
+    if (!publicConfig || !publicConfig.LIFF_ID) throw new Error('LIFF 設定尚未載入，請重新整理後再試。');
+    const url = new URL(`https://liff.line.me/${encodeURIComponent(publicConfig.LIFF_ID)}/`);
+    url.searchParams.set('usage', shareCode);
     return url.href;
   }
 
@@ -243,8 +245,12 @@
   }
 
   async function initialize() {
-    try { const loggedIn = await Membership.ensureLiffLogin(); if (!loggedIn) return; await loadDashboard(); }
-    catch (error) { showAdminError(error); }
+    try {
+      publicConfig = await Membership.loadConfig();
+      const loggedIn = await Membership.ensureLiffLogin();
+      if (!loggedIn) return;
+      await loadDashboard();
+    } catch (error) { showAdminError(error); }
   }
 
   $('#memberSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadMembers($('#memberSearch').value.trim()).catch(showAdminError), 300); });
