@@ -3,15 +3,11 @@
 
   const $ = (selector) => document.querySelector(selector);
   let members = [];
+  let usageMemberChoices = [];
   let searchTimer = null;
+  let usageSearchTimer = null;
   const statusLabel = { active: '有效', suspended: '停權', disabled: '停用' };
-  const voucherStatusLabel = {
-    issued: '可使用',
-    processing: '處理中',
-    redeemed: '已核銷',
-    cancelled: '已取消',
-    expired: '已過期'
-  };
+  const voucherStatusLabel = { issued: '可使用', processing: '處理中', redeemed: '已核銷', cancelled: '已取消', expired: '已過期' };
 
   function formatHours(minutes) {
     const value = Number(minutes || 0) / 60;
@@ -24,17 +20,7 @@
 
   function toLocalDateTimeInput(date) {
     const pad = (value) => String(value).padStart(2, '0');
-    return [
-      date.getFullYear(),
-      '-',
-      pad(date.getMonth() + 1),
-      '-',
-      pad(date.getDate()),
-      'T',
-      pad(date.getHours()),
-      ':',
-      pad(date.getMinutes())
-    ].join('');
+    return [date.getFullYear(), '-', pad(date.getMonth() + 1), '-', pad(date.getDate()), 'T', pad(date.getHours()), ':', pad(date.getMinutes())].join('');
   }
 
   async function loadMembers(query) {
@@ -71,7 +57,6 @@
 
     rows.forEach((member) => {
       const tr = document.createElement('tr');
-
       const memberTd = document.createElement('td');
       const memberCell = document.createElement('div');
       memberCell.className = 'member-cell';
@@ -87,43 +72,26 @@
       memberCell.append(img, identity);
       memberTd.append(memberCell);
 
-      const numberTd = document.createElement('td');
-      numberTd.textContent = member.memberNo;
-
-      const tierTd = document.createElement('td');
-      tierTd.textContent = String(member.tier || '').toUpperCase();
-
+      const numberTd = document.createElement('td'); numberTd.textContent = member.memberNo;
+      const tierTd = document.createElement('td'); tierTd.textContent = String(member.tier || '').toUpperCase();
       const statusTd = document.createElement('td');
       const status = document.createElement('span');
       status.className = `table-status ${member.membershipStatus === 'active' ? '' : member.membershipStatus}`.trim();
       status.textContent = statusLabel[member.membershipStatus] || member.membershipStatus;
       statusTd.append(status);
-
-      const availableTd = document.createElement('td');
-      availableTd.textContent = `${formatHours(member.availableMinutes)} 小時`;
-
-      const consumedTd = document.createElement('td');
-      consumedTd.textContent = `${formatHours(member.consumedMinutes)} 小時`;
-
-      const expiryTd = document.createElement('td');
-      expiryTd.textContent = Membership.formatDate(member.expiresAt, '永久');
-
+      const availableTd = document.createElement('td'); availableTd.textContent = `${formatHours(member.availableMinutes)} 小時`;
+      const consumedTd = document.createElement('td'); consumedTd.textContent = `${formatHours(member.consumedMinutes)} 小時`;
+      const expiryTd = document.createElement('td'); expiryTd.textContent = Membership.formatDate(member.expiresAt, '永久');
       const actionTd = document.createElement('td');
-      const actionGroup = document.createElement('div');
-      actionGroup.className = 'row-actions';
+      const actionGroup = document.createElement('div'); actionGroup.className = 'row-actions';
 
       const edit = document.createElement('button');
-      edit.className = 'text-button';
-      edit.type = 'button';
-      edit.textContent = '編輯';
+      edit.className = 'text-button'; edit.type = 'button'; edit.textContent = '編輯';
       edit.addEventListener('click', () => openEdit(member));
-
       const issue = document.createElement('button');
-      issue.className = 'text-button';
-      issue.type = 'button';
-      issue.textContent = '發放核銷';
+      issue.className = 'text-button'; issue.type = 'button'; issue.textContent = '發放核銷';
       issue.disabled = member.membershipStatus !== 'active' || Number(member.availableMinutes || 0) <= 0;
-      issue.addEventListener('click', () => openUsageDialog(member));
+      issue.addEventListener('click', () => openUsageDialog(member).catch(showAdminError));
 
       actionGroup.append(edit, issue);
       actionTd.append(actionGroup);
@@ -139,34 +107,20 @@
 
     vouchers.forEach((voucher) => {
       const tr = document.createElement('tr');
-      const idTd = document.createElement('td');
-      idTd.textContent = voucher.voucherId;
-      const memberTd = document.createElement('td');
-      memberTd.textContent = voucher.targetMemberNo;
-      const hoursTd = document.createElement('td');
-      hoursTd.textContent = `${formatHours(voucher.minutes)} 小時`;
+      const idTd = document.createElement('td'); idTd.textContent = voucher.voucherId;
+      const memberTd = document.createElement('td'); memberTd.textContent = voucher.targetMemberNo;
+      const hoursTd = document.createElement('td'); hoursTd.textContent = `${formatHours(voucher.minutes)} 小時`;
       const statusTd = document.createElement('td');
-      const badge = document.createElement('span');
-      badge.className = `voucher-status ${voucher.status}`;
-      badge.textContent = voucherStatusLabel[voucher.status] || voucher.status;
-      statusTd.append(badge);
+      const badge = document.createElement('span'); badge.className = `voucher-status ${voucher.status}`; badge.textContent = voucherStatusLabel[voucher.status] || voucher.status; statusTd.append(badge);
       const expiryTd = document.createElement('td');
-      expiryTd.textContent = new Intl.DateTimeFormat('zh-TW', {
-        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-      }).format(new Date(voucher.expiresAt));
+      expiryTd.textContent = new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(voucher.expiresAt));
       const actionTd = document.createElement('td');
-
       if (voucher.status === 'issued') {
         const cancel = document.createElement('button');
-        cancel.className = 'text-button danger-action';
-        cancel.type = 'button';
-        cancel.textContent = '取消';
+        cancel.className = 'text-button danger-action'; cancel.type = 'button'; cancel.textContent = '取消';
         cancel.addEventListener('click', () => cancelVoucher(voucher.voucherId));
         actionTd.append(cancel);
-      } else {
-        actionTd.textContent = '—';
-      }
-
+      } else actionTd.textContent = '—';
       tr.append(idTd, memberTd, hoursTd, statusTd, expiryTd, actionTd);
       body.append(tr);
     });
@@ -191,7 +145,6 @@
     const button = $('#saveMemberButton');
     button.disabled = true;
     $('#editError').classList.add('hidden');
-
     try {
       await Membership.callApi('admin.update', {
         targetMemberNo: $('#editTargetMemberNo').value,
@@ -207,18 +160,57 @@
     } catch (error) {
       $('#editError').textContent = error.message;
       $('#editError').classList.remove('hidden');
-    } finally {
-      button.disabled = false;
-    }
+    } finally { button.disabled = false; }
   }
 
-  function openUsageDialog(member) {
-    $('#usageMemberName').textContent = member.displayName || 'LINE 會員';
-    $('#usageMemberNo').textContent = `${member.memberNo} · 可用 ${formatHours(member.availableMinutes)} 小時`;
-    $('#usageTargetMemberNo').value = member.memberNo;
+  function selectedUsageMember() {
+    const memberNo = $('#usageTargetMemberNo').value;
+    return usageMemberChoices.find((member) => member.memberNo === memberNo) || null;
+  }
+
+  function updateUsageMemberSummary() {
+    const member = selectedUsageMember();
+    if (!member) {
+      $('#usageMemberSummary').textContent = '請先選擇要發放的會員。';
+      return;
+    }
+    $('#usageMemberSummary').textContent = `${member.displayName || 'LINE 會員'} · ${member.memberNo} · 可用 ${formatHours(member.availableMinutes)} 小時`;
+  }
+
+  function populateUsageMemberSelect(rows, preferredMemberNo) {
+    usageMemberChoices = rows || [];
+    const select = $('#usageTargetMemberNo');
+    select.replaceChildren();
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = usageMemberChoices.length ? '請選擇會員' : '找不到會員';
+    select.append(placeholder);
+
+    usageMemberChoices.forEach((member) => {
+      const option = document.createElement('option');
+      option.value = member.memberNo;
+      option.textContent = `${member.memberNo} — ${member.displayName || 'LINE 會員'} — 可用 ${formatHours(member.availableMinutes)} 小時`;
+      option.disabled = member.membershipStatus !== 'active' || Number(member.availableMinutes || 0) <= 0;
+      select.append(option);
+    });
+
+    if (preferredMemberNo && usageMemberChoices.some((member) => member.memberNo === preferredMemberNo)) {
+      select.value = preferredMemberNo;
+    }
+    updateUsageMemberSummary();
+  }
+
+  async function searchUsageMembers(query, preferredMemberNo) {
+    const result = await Membership.callApi('admin.list', { query: query || '', page: 1, pageSize: 50 });
+    populateUsageMemberSelect(result.members || [], preferredMemberNo || '');
+  }
+
+  async function openUsageDialog(member) {
     $('#usageHours').value = '1';
     $('#usageExpiresAt').value = toLocalDateTimeInput(new Date(Date.now() + 24 * 60 * 60 * 1000));
     $('#usageNote').value = '';
+    $('#usageMemberSearch').value = member ? member.memberNo : '';
     $('#usageError').classList.add('hidden');
     $('#usageResult').classList.add('hidden');
     $('#copyUsageUrlButton').classList.add('hidden');
@@ -227,6 +219,13 @@
     $('#usageQrCode').replaceChildren();
     $('#usageUrl').value = '';
     $('#usageDialog').showModal();
+
+    try {
+      await searchUsageMembers(member ? member.memberNo : '', member ? member.memberNo : '');
+    } catch (error) {
+      $('#usageError').textContent = error.message;
+      $('#usageError').classList.remove('hidden');
+    }
   }
 
   function buildUsageUrl(token) {
@@ -238,12 +237,9 @@
   }
 
   function renderQrCode(url) {
-    if (typeof window.qrcode !== 'function') {
-      throw new Error('QR Code 元件載入失敗，請重新整理後再試。');
-    }
+    if (typeof window.qrcode !== 'function') throw new Error('QR Code 元件載入失敗，請重新整理後再試。');
     const qr = window.qrcode(0, 'M');
-    qr.addData(url);
-    qr.make();
+    qr.addData(url); qr.make();
     $('#usageQrCode').innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4, scalable: true });
   }
 
@@ -251,21 +247,19 @@
     const button = $('#createUsageButton');
     button.disabled = true;
     $('#usageError').classList.add('hidden');
-
     try {
+      const targetMemberNo = $('#usageTargetMemberNo').value;
+      if (!targetMemberNo) throw new Error('請先選擇要發放的會員。');
       const expiryValue = $('#usageExpiresAt').value;
       const expiryDate = new Date(expiryValue);
-      if (!expiryValue || Number.isNaN(expiryDate.getTime())) {
-        throw new Error('請設定有效的核銷券到期時間。');
-      }
+      if (!expiryValue || Number.isNaN(expiryDate.getTime())) throw new Error('請設定有效的核銷券到期時間。');
 
       const result = await Membership.callApi('admin.usage.create', {
-        targetMemberNo: $('#usageTargetMemberNo').value,
+        targetMemberNo,
         hours: $('#usageHours').value,
         expiresAt: expiryDate.toISOString(),
         note: $('#usageNote').value
       });
-
       const url = buildUsageUrl(result.token);
       $('#usageUrl').value = url;
       renderQrCode(url);
@@ -277,35 +271,27 @@
     } catch (error) {
       $('#usageError').textContent = error.message;
       $('#usageError').classList.remove('hidden');
-    } finally {
-      button.disabled = false;
-    }
+    } finally { button.disabled = false; }
   }
 
   async function copyUsageUrl() {
     const value = $('#usageUrl').value;
     if (!value) return;
-
     try {
       await navigator.clipboard.writeText(value);
       $('#copyUsageUrlButton').textContent = '已複製';
       window.setTimeout(() => { $('#copyUsageUrlButton').textContent = '複製網址'; }, 1500);
     } catch (_) {
-      $('#usageUrl').focus();
-      $('#usageUrl').select();
-      document.execCommand('copy');
+      $('#usageUrl').focus(); $('#usageUrl').select(); document.execCommand('copy');
     }
   }
 
   async function cancelVoucher(voucherId) {
     if (!window.confirm('確定要取消這張尚未使用的時數核銷券？')) return;
-
     try {
       await Membership.callApi('admin.usage.cancel', { voucherId });
       await Promise.all([loadVouchers(), loadMembers($('#memberSearch').value.trim())]);
-    } catch (error) {
-      showAdminError(error);
-    }
+    } catch (error) { showAdminError(error); }
   }
 
   function showAdminError(error) {
@@ -320,17 +306,27 @@
       const loggedIn = await Membership.ensureLiffLogin();
       if (!loggedIn) return;
       await loadDashboard();
-    } catch (error) {
-      showAdminError(error);
-    }
+    } catch (error) { showAdminError(error); }
   }
 
   $('#memberSearch').addEventListener('input', () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => loadMembers($('#memberSearch').value.trim()).catch(showAdminError), 300);
   });
+  $('#usageMemberSearch').addEventListener('input', () => {
+    clearTimeout(usageSearchTimer);
+    usageSearchTimer = setTimeout(() => {
+      searchUsageMembers($('#usageMemberSearch').value.trim()).catch((error) => {
+        $('#usageError').textContent = error.message;
+        $('#usageError').classList.remove('hidden');
+      });
+    }, 300);
+  });
+  $('#usageTargetMemberNo').addEventListener('change', updateUsageMemberSummary);
   $('#adminRefreshButton').addEventListener('click', () => loadDashboard().catch(showAdminError));
+  $('#adminRetryButton').addEventListener('click', () => window.location.reload());
   $('#usageRefreshButton').addEventListener('click', () => loadVouchers().catch(showAdminError));
+  $('#newUsageQrButton').addEventListener('click', () => openUsageDialog(null));
   $('#saveMemberButton').addEventListener('click', saveMember);
   $('#createUsageButton').addEventListener('click', createUsageVoucher);
   $('#copyUsageUrlButton').addEventListener('click', copyUsageUrl);
