@@ -33,6 +33,11 @@
     return new URL(window.location.href);
   }
 
+  function isTopLevelWindow() {
+    try { return window.top === window.self; }
+    catch (_) { return false; }
+  }
+
   function createRequestId() {
     if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
       throw new Error('目前瀏覽器無法建立安全的記錄要求，請更換瀏覽器後再試。');
@@ -257,6 +262,13 @@
   async function initialize() {
     const bootUsageState = captureBootUsageState();
     const recoverPendingAfterAuth = hasAuthCallbackOrRecoveryAtBoot();
+    const pendingAtBoot = readPendingUsageState();
+
+    if (!isTopLevelWindow() && (bootUsageState || (recoverPendingAfterAuth && pendingAtBoot))) {
+      clearPendingUsageState();
+      showError(new Error('請直接開啟發放連結，不要從其他網站的內嵌頁面執行。'));
+      return;
+    }
 
     try {
       const loggedIn = await Membership.ensureLiffLogin();
