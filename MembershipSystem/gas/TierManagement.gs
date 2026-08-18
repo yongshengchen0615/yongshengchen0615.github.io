@@ -153,14 +153,15 @@ function synchronizeAllMemberTiers_(thresholds) {
   const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, MEMBER_HEADERS.length);
   const values = range.getValues();
   let changed = 0;
-  const now = new Date().toISOString();
 
   values.forEach(function (row) {
     const member = rowToMember_(row);
     const tier = tierForConsumedMinutes_(member.consumedMinutes, thresholds);
     if (normalizeTier_(member.tier) === tier && String(row[4] || '').toLowerCase() === tier) return;
+    // tier is a derived cache. Do not bump Members.updatedAt for a pure tier
+    // recalculation, otherwise existing admin edit forms get a false conflict.
+    // ScriptLock serializes this bulk write with admin member mutations.
     row[4] = sheetSafe_(tier);
-    row[10] = sheetSafe_(now);
     changed += 1;
   });
 
