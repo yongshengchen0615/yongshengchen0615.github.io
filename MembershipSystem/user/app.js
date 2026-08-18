@@ -7,13 +7,9 @@
     suspended: { badge: '停權', title: '會員資格已停權', description: '此會員目前暫停使用，若有疑問請聯絡管理員。' },
     disabled: { badge: '停用', title: '會員資格已停用', description: '此會員卡目前不可使用，若有疑問請聯絡管理員。' }
   };
-  const USAGE_PENDING_KEY = 'membership.usage.pending';
-  const USAGE_PENDING_TTL_MS = 10 * 60 * 1000;
-  const LIFF_RECOVERY_KEY = 'membership.reauth.recovery';
 
   let currentMember = null;
-  let usageAccess = null;
-  let usageRequestId = '';
+  let scanInFlight = false;
 
   function formatMinutes(value) {
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -59,86 +55,21 @@
     return token ? { token } : null;
   }
 
-  function readPendingUsageState() {
-    let raw = '';
-    try { raw = window.sessionStorage.getItem(USAGE_PENDING_KEY) || ''; }
-    catch (_) { return null; }
-    if (!raw) return null;
-
-    try {
-      const pending = JSON.parse(raw);
-      if (!pending || pending.pathname !== window.location.pathname) return null;
-      const age = Date.now() - Number(pending.savedAt || 0);
-      if (!Number.isFinite(age) || age < 0 || age > USAGE_PENDING_TTL_MS) return null;
-      const code = validCode(pending.code);
-      const token = validCode(pending.token);
-      const access = code ? { code } : token ? { token } : null;
-      if (!access) return null;
-      return { access, requestId: validRequestId(pending.requestId) };
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function writePendingUsageState(access, requestId) {
-    const payload = {
-      pathname: window.location.pathname,
-      code: access && access.code ? validCode(access.code) : '',
-      token: access && access.token ? validCode(access.token) : '',
-      requestId: validRequestId(requestId),
-      savedAt: Date.now()
-    };
-    if (!payload.code && !payload.token) return;
-    try { window.sessionStorage.setItem(USAGE_PENDING_KEY, JSON.stringify(payload)); }
-    catch (_) { /* URL state remains the primary retry path when storage is unavailable. */ }
-  }
-
-  function clearPendingUsageState() {
-    try { window.sessionStorage.removeItem(USAGE_PENDING_KEY); }
-    catch (_) { /* best effort only */ }
-  }
-
-  function captureBootUsageState() {
+  function ensureRequestId(access) {
     const url = currentUrl();
-    const access = readAccessFromUrl(url);
-    if (!access) return null;
-    const state = { access, requestId: validRequestId(url.searchParams.get('request')) };
-    writePendingUsageState(state.access, state.requestId);
-    return state;
-  }
+    const directAccess = readAccessFromUrl(url);
+    const existingRequestId = accessKey(directAccess) === accessKey(access)
+      ? validRequestId(url.searchParams.get('request'))
+      : '';
+    const requestId = existingRequestId || createRequestId();
 
-  function hasAuthCallbackOrRecoveryAtBoot() {
-    const url = currentUrl();
-    const params = url.searchParams;
-    if (params.has('state') || params.has('code') || params.has('response') || params.has('error') ||
-        params.has('liffClientId') || params.has('liffRedirectUri')) return true;
-    try { return Boolean(window.sessionStorage.getItem(LIFF_RECOVERY_KEY)); }
-    catch (_) { return false; }
-  }
-
-  function persistUsageState(access, requestId) {
-    const url = currentUrl();
     url.searchParams.delete('usage');
     url.searchParams.delete('redeem');
     if (access.code) url.searchParams.set('usage', access.code);
     else url.searchParams.set('redeem', access.token);
     url.searchParams.set('request', requestId);
     window.history.replaceState(null, '', url.href);
-    writePendingUsageState(access, requestId);
-  }
-
-  function ensureRequestId(access, preferredRequestId) {
-    const directAccess = readAccessFromUrl();
-    const directRequestId = accessKey(directAccess) === accessKey(access)
-      ? validRequestId(currentUrl().searchParams.get('request'))
-      : '';
-    const pending = readPendingUsageState();
-    const pendingRequestId = pending && accessKey(pending.access) === accessKey(access)
-      ? pending.requestId
-      : '';
-    usageRequestId = validRequestId(preferredRequestId) || directRequestId || pendingRequestId || createRequestId();
-    persistUsageState(access, usageRequestId);
-    return usageRequestId;
+    return requestId;
   }
 
   function clearUsageState() {
@@ -147,7 +78,6 @@
     url.searchParams.delete('redeem');
     url.searchParams.delete('request');
     window.history.replaceState(null, '', url.href);
-    clearPendingUsageState();
   }
 
   function readAccessFromScannedValue(value) {
@@ -207,14 +137,14 @@
     $('#usageResultMessage').textContent = error && error.message ? error.message : '此 QR Code 目前無法使用。';
   }
 
-  async function recordUsageImmediately(accessOverride, preferredRequestId) {
-    usageAccess = accessOverride || readAccessFromUrl();
-    if (!usageAccess) return false;
-    ensureRequestId(usageAccess, preferredRequestId);
+  async function recordUsageImmediately(accessOverride) {
+    const access = accessOverride || readAccessFromUrl();
+    if (!access) return false;
+    const requestId = ensureRequestId(access);
     showUsageLoading();
 
     try {
-      const result = await Membership.callApi('usage.record', Object.assign({}, usageAccess, { requestId: usageRequestId }));
+      const result = await Membership.callApi('usage.record', Object.assign({}, access, { requestId }));
       currentMember = result.member;
       renderMember(currentMember);
       $('#usageLoading').classList.add('hidden');
@@ -222,8 +152,6 @@
       $('#usageResultTitle').textContent = result.alreadyRecorded ? '此筆時間已記錄' : '消費時間已加入';
       $('#usageResultMessage').textContent = `本次加入 ${formatMinutes(result.voucher.minutes)} 分鐘，累計消費 ${formatMinutes(result.member.consumedMinutes)} 分鐘。`;
       clearUsageState();
-      usageAccess = null;
-      usageRequestId = '';
       return true;
     } catch (error) {
       showUsageError(error);
@@ -232,41 +160,41 @@
   }
 
   function hasLiffScanner() {
-    return typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('scanCodeV2') && typeof liff.scanCodeV2 === 'function';
+    return typeof liff.isApiAvailable === 'function' &&
+      liff.isApiAvailable('scanCodeV2') &&
+      typeof liff.scanCodeV2 === 'function';
   }
 
   async function scanWithLineImmediately() {
+    if (scanInFlight) return;
+    scanInFlight = true;
+
     const button = $('#scanQrButton');
     button.disabled = true;
 
-    if (!hasLiffScanner()) {
-      $('#scanHint').textContent = '目前環境不支援 LINE QR 掃描器，請直接開啟管理端發放連結。';
-      button.disabled = false;
-      return;
-    }
-
-    $('#scanHint').textContent = '正在開啟 LINE QR 掃描器…';
     try {
+      if (!hasLiffScanner()) {
+        $('#scanHint').textContent = '目前環境不支援 LINE QR 掃描器，請直接開啟管理端發放連結。';
+        return;
+      }
+
+      $('#scanHint').textContent = '正在開啟 LINE QR 掃描器…';
       const result = await liff.scanCodeV2();
       const access = readAccessFromScannedValue(result && result.value);
       $('#scanHint').textContent = 'QR Code 已讀取，正在加入消費時間…';
-      const recorded = await recordUsageImmediately(access, '');
+      const recorded = await recordUsageImmediately(access);
       if (recorded) $('#scanHint').textContent = '消費時間已加入。';
     } catch (error) {
       $('#scanHint').textContent = error && error.message ? error.message : 'LINE QR 掃描器未能讀取 QR Code。';
     } finally {
+      scanInFlight = false;
       button.disabled = false;
     }
   }
 
   async function initialize() {
-    const bootUsageState = captureBootUsageState();
-    const recoverPendingAfterAuth = hasAuthCallbackOrRecoveryAtBoot();
-    const pendingAtBoot = readPendingUsageState();
-
-    if (!isTopLevelWindow() && (bootUsageState || (recoverPendingAfterAuth && pendingAtBoot))) {
-      clearPendingUsageState();
-      showError(new Error('請直接開啟發放連結，不要從其他網站的內嵌頁面執行。'));
+    if (!isTopLevelWindow()) {
+      showError(new Error('請直接開啟會員頁或發放連結，不要從其他網站的內嵌頁面執行。'));
       return;
     }
 
@@ -276,11 +204,8 @@
       await loadMember();
       $('#scanQrButton').disabled = false;
 
-      const pending = readPendingUsageState();
-      const automaticState = bootUsageState || (recoverPendingAfterAuth ? pending : null);
-      if (automaticState && automaticState.access) {
-        await recordUsageImmediately(automaticState.access, automaticState.requestId);
-      }
+      const access = readAccessFromUrl();
+      if (access) await recordUsageImmediately(access);
     } catch (error) {
       showError(error);
     }
