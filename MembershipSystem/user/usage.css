@@ -1,0 +1,16 @@
+.hours-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+.hours-card{padding:20px}
+.hours-card strong{display:block;font-size:34px;letter-spacing:-.04em}
+.hours-card small{display:block;margin-top:5px;color:var(--muted)}
+.scan-panel,.redeem-panel{margin-top:14px;padding:22px}
+.scan-panel{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.scan-panel h3,.redeem-panel h3{margin:2px 0 6px}
+.scan-panel p,.redeem-panel p{margin:0;color:var(--muted);line-height:1.6}
+.button-secondary{background:#fff;border-color:var(--line);color:var(--text)}
+.redeem-meta{display:grid;gap:10px;margin:18px 0}
+.redeem-meta div{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
+.redeem-meta dt{color:var(--muted)}
+.redeem-meta dd{margin:0;text-align:right;font-weight:700}
+.redeem-button{width:100%;margin-top:6px}
+#redeemResult{padding:8px 0}
+@media(max-width:520px){.hours-grid{grid-template-columns:1fr 1fr}.hours-card{padding:16px}.hours-card strong{font-size:28px}.scan-panel{align-items:stretch;flex-direction:column}.scan-panel .button{width:100%}}
