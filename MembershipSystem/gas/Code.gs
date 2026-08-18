@@ -35,7 +35,7 @@ const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const LINE_LOGIN_CHANNEL_ID = '2010787602';
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.4.1' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.5.0' } });
 }
 
 function doPost(e) {
@@ -73,6 +73,10 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-usage-create:' + context.identity.sub, 20, 60);
         return json_({ ok: true, data: adminUsageCreate_(context, payload) });
+      case 'admin.usage.update':
+        requireAdmin_(context);
+        rateLimit_('admin-usage-update:' + context.identity.sub, 20, 60);
+        return json_({ ok: true, data: adminUsageUpdate_(context, payload) });
       case 'admin.usage.open':
         requireAdmin_(context);
         rateLimit_('admin-usage-open:' + context.identity.sub, 30, 60);
@@ -81,6 +85,10 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-usage-cancel:' + context.identity.sub, 30, 60);
         return json_({ ok: true, data: adminUsageCancel_(context, payload) });
+      case 'admin.usage.delete':
+        requireAdmin_(context);
+        rateLimit_('admin-usage-delete:' + context.identity.sub, 20, 60);
+        return json_({ ok: true, data: adminUsageDelete_(context, payload) });
       default:
         fail_('INVALID_ACTION', '不支援的操作。');
     }
@@ -693,7 +701,8 @@ function publicUsageVoucher_(voucher, recordCount) {
     voucherId: voucher.voucherId, minutes: nonNegativeInt_(voucher.minutes),
     scanMode: voucherScanMode_(voucher), status: effectiveVoucherStatus_(voucher, count),
     recordCount: count, expiresAt: voucher.expiresAt, note: voucher.note, createdAt: voucher.createdAt,
-    cancelledAt: voucher.cancelledAt, legacyTargeted: isLegacyTargetedVoucher_(voucher), shareReady: Boolean(voucher.shareCode)
+    updatedAt: voucher.updatedAt, cancelledAt: voucher.cancelledAt,
+    legacyTargeted: isLegacyTargetedVoucher_(voucher), shareReady: Boolean(voucher.shareCode)
   };
   if (voucher.targetMemberNo) result.targetMemberNo = voucher.targetMemberNo;
   return result;
