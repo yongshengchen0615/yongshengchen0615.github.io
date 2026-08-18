@@ -80,6 +80,10 @@
     });
   }
 
+  function isVoucherEditable(voucher) {
+    return !voucher.legacyTargeted && voucher.status === 'issued' && Number(voucher.recordCount || 0) === 0;
+  }
+
   function renderVouchers(vouchers) {
     const body = $('#voucherTableBody');
     body.replaceChildren();
@@ -96,10 +100,17 @@
       const expiryTd = document.createElement('td'); expiryTd.textContent = formatDateTime(voucher.expiresAt);
       const actionTd = document.createElement('td');
       const group = document.createElement('div'); group.className = 'row-actions';
+
       const open = document.createElement('button'); open.className = 'text-button'; open.type = 'button'; open.textContent = '開啟'; open.addEventListener('click', () => openExistingUsage(voucher.voucherId)); group.append(open);
+
+      const edit = document.createElement('button'); edit.className = 'text-button'; edit.type = 'button'; edit.textContent = '修改'; edit.disabled = !isVoucherEditable(voucher); edit.title = edit.disabled ? '只有尚未使用且目前有效的 QR Code 可以修改' : '修改 QR Code'; edit.addEventListener('click', () => openUsageEdit(voucher)); group.append(edit);
+
       if (voucher.status === 'issued') {
         const cancel = document.createElement('button'); cancel.className = 'text-button danger-action'; cancel.type = 'button'; cancel.textContent = '停止'; cancel.addEventListener('click', () => cancelVoucher(voucher.voucherId)); group.append(cancel);
       }
+
+      const remove = document.createElement('button'); remove.className = 'text-button danger-action'; remove.type = 'button'; remove.textContent = '刪除'; remove.disabled = Number(voucher.recordCount || 0) > 0; remove.title = remove.disabled ? '已有消費紀錄，不能刪除' : '刪除這個 QR Code'; remove.addEventListener('click', () => deleteVoucher(voucher)); group.append(remove);
+
       actionTd.append(group);
       tr.append(idTd, modeTd, minutesTd, countTd, statusTd, expiryTd, actionTd);
       body.append(tr);
@@ -140,15 +151,25 @@
 
   function resetUsageDialog() {
     currentQrSvg = ''; currentQrVoucherId = '';
+    $('#usageVoucherId').value = '';
+    $('#usageExpectedUpdatedAt').value = '';
     $('#usageError').classList.add('hidden');
     $('#usageResult').classList.add('hidden');
     $('#copyUsageUrlButton').classList.add('hidden');
     $('#downloadUsageQrButton').classList.add('hidden');
     $('#createUsageButton').classList.add('hidden');
+    $('#updateUsageButton').classList.add('hidden');
     $('#usageCreateFields').classList.add('hidden');
     $('#usageQrCode').replaceChildren();
     $('#usageUrl').value = '';
     $('#usageResultMeta').textContent = '';
+  }
+
+  function setUsageFields(voucher) {
+    $('#usageMinutes').value = String(voucher.minutes || 60);
+    $('#usageScanMode').value = voucher.scanMode || 'single';
+    $('#usageExpiresAt').value = toLocalDateTimeInput(new Date(voucher.expiresAt));
+    $('#usageNote').value = voucher.note || '';
   }
 
   function openUsageDialog() {
@@ -158,6 +179,19 @@
     $('#usageMinutes').value = '60'; $('#usageScanMode').value = 'single';
     $('#usageExpiresAt').value = toLocalDateTimeInput(new Date(Date.now() + 24 * 60 * 60 * 1000)); $('#usageNote').value = '';
     $('#usageCreateFields').classList.remove('hidden'); $('#createUsageButton').classList.remove('hidden');
+    $('#usageDialog').showModal();
+  }
+
+  function openUsageEdit(voucher) {
+    if (!isVoucherEditable(voucher)) return;
+    resetUsageDialog();
+    $('#usageDialogTitle').textContent = '修改消費時間 QR Code';
+    $('#usageDialogDescription').textContent = '只有尚未產生消費紀錄且目前有效的 QR Code 可以修改。';
+    $('#usageVoucherId').value = voucher.voucherId;
+    $('#usageExpectedUpdatedAt').value = voucher.updatedAt || '';
+    setUsageFields(voucher);
+    $('#usageCreateFields').classList.remove('hidden');
+    $('#updateUsageButton').classList.remove('hidden');
     $('#usageDialog').showModal();
   }
 
@@ -181,7 +215,7 @@
     $('#usageUrl').value = url;
     $('#usageResultMeta').textContent = `${voucher.voucherId} · ${scanModeLabel[voucher.scanMode] || voucher.scanMode} · ${formatMinutes(voucher.minutes)} 分鐘 · 已記錄 ${formatMinutes(voucher.recordCount)} 次`;
     renderQrCode(url);
-    $('#usageCreateFields').classList.add('hidden'); $('#createUsageButton').classList.add('hidden');
+    $('#usageCreateFields').classList.add('hidden'); $('#createUsageButton').classList.add('hidden'); $('#updateUsageButton').classList.add('hidden');
     $('#usageResult').classList.remove('hidden'); $('#copyUsageUrlButton').classList.remove('hidden'); $('#downloadUsageQrButton').classList.remove('hidden');
   }
 
@@ -198,14 +232,39 @@
     }
   }
 
+  function readUsageForm() {
+    const minutes = Number($('#usageMinutes').value);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60000) throw new Error('消費分鐘必須是 1 到 60000 的整數。');
+    const expiryValue = $('#usageExpiresAt').value;
+    const expiryDate = new Date(expiryValue);
+    if (!expiryValue || Number.isNaN(expiryDate.getTime())) throw new Error('請設定有效的 QR Code 到期時間。');
+    return {
+      minutes,
+      scanMode: $('#usageScanMode').value,
+      expiresAt: expiryDate.toISOString(),
+      note: $('#usageNote').value
+    };
+  }
+
   async function createUsageVoucher() {
     const button = $('#createUsageButton'); button.disabled = true; $('#usageError').classList.add('hidden');
     try {
-      const minutes = Number($('#usageMinutes').value);
-      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60000) throw new Error('消費分鐘必須是 1 到 60000 的整數。');
-      const expiryValue = $('#usageExpiresAt').value; const expiryDate = new Date(expiryValue);
-      if (!expiryValue || Number.isNaN(expiryDate.getTime())) throw new Error('請設定有效的 QR Code 到期時間。');
-      const result = await Membership.callApi('admin.usage.create', { minutes, scanMode: $('#usageScanMode').value, expiresAt: expiryDate.toISOString(), note: $('#usageNote').value });
+      const result = await Membership.callApi('admin.usage.create', readUsageForm());
+      showUsageResult(result.voucher, result.shareCode);
+      await loadVouchers();
+    } catch (error) {
+      $('#usageError').textContent = error.message; $('#usageError').classList.remove('hidden');
+    } finally { button.disabled = false; }
+  }
+
+  async function updateUsageVoucher() {
+    const button = $('#updateUsageButton'); button.disabled = true; $('#usageError').classList.add('hidden');
+    try {
+      const payload = Object.assign(readUsageForm(), {
+        voucherId: $('#usageVoucherId').value,
+        expectedUpdatedAt: $('#usageExpectedUpdatedAt').value
+      });
+      const result = await Membership.callApi('admin.usage.update', payload);
       showUsageResult(result.voucher, result.shareCode);
       await loadVouchers();
     } catch (error) {
@@ -236,7 +295,21 @@
   async function cancelVoucher(voucherId) {
     if (!window.confirm('確定要停止這個 QR Code 的後續消費時間記錄？')) return;
     try { await Membership.callApi('admin.usage.cancel', { voucherId }); await loadVouchers(); }
-    catch (error) { showAdminError(error); }
+    catch (error) { window.alert(error.message || '停止 QR Code 失敗。'); }
+  }
+
+  async function deleteVoucher(voucher) {
+    if (!voucher || Number(voucher.recordCount || 0) > 0) return;
+    if (!window.confirm(`確定要刪除 ${voucher.voucherId}？刪除後原發放連結將永久失效。`)) return;
+    try {
+      await Membership.callApi('admin.usage.delete', {
+        voucherId: voucher.voucherId,
+        expectedUpdatedAt: voucher.updatedAt
+      });
+      await loadVouchers();
+    } catch (error) {
+      window.alert(error.message || '刪除 QR Code 失敗。');
+    }
   }
 
   function showAdminError(error) {
@@ -260,6 +333,7 @@
   $('#newUsageQrButton').addEventListener('click', openUsageDialog);
   $('#saveMemberButton').addEventListener('click', saveMember);
   $('#createUsageButton').addEventListener('click', createUsageVoucher);
+  $('#updateUsageButton').addEventListener('click', updateUsageVoucher);
   $('#copyUsageUrlButton').addEventListener('click', copyUsageUrl);
   $('#downloadUsageQrButton').addEventListener('click', downloadUsageQr);
 
