@@ -25,7 +25,7 @@ const USAGE_RECORD_HEADERS = [
   'recordedAt', 'auditRecordedAt'
 ];
 
-const ALLOWED_TIERS = ['standard', 'silver', 'gold', 'vip'];
+const ALLOWED_TIERS = ['standard', 'silver', 'gold', 'platinum'];
 const ALLOWED_MEMBERSHIP_STATUS = ['active', 'suspended', 'disabled'];
 const ALLOWED_SCAN_MODES = ['single', 'repeatable'];
 const MAX_USAGE_MINUTES = 60000;
@@ -35,7 +35,7 @@ const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const LINE_LOGIN_CHANNEL_ID = '2010787602';
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.5.0' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.6.0' } });
 }
 
 function doPost(e) {
@@ -65,6 +65,14 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-update:' + context.identity.sub, 20, 60);
         return json_({ ok: true, data: adminUpdate_(context, payload) });
+      case 'admin.tier.get':
+        requireAdmin_(context);
+        rateLimit_('admin-tier-get:' + context.identity.sub, 30, 60);
+        return json_({ ok: true, data: adminTierGet_(context) });
+      case 'admin.tier.update':
+        requireAdmin_(context);
+        rateLimit_('admin-tier-update:' + context.identity.sub, 10, 60);
+        return json_({ ok: true, data: adminTierUpdate_(context, payload) });
       case 'admin.usage.list':
         requireAdmin_(context);
         rateLimit_('admin-usage-list:' + context.identity.sub, 30, 60);
@@ -132,13 +140,16 @@ function memberMe_(context) {
     member = rowToMember_(sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).getValues()[0]);
     const displayName = cleanText_(context.identity.name || member.displayName || 'LINE 會員', 80, false);
     const pictureUrl = safePictureUrl_(context.identity.picture);
-    if (displayName !== member.displayName || pictureUrl !== member.pictureUrl) {
+    const tier = tierForConsumedMinutes_(member.consumedMinutes);
+    if (displayName !== member.displayName || pictureUrl !== member.pictureUrl || tier !== normalizeTier_(member.tier)) {
       member.displayName = displayName;
       member.pictureUrl = pictureUrl;
+      member.tier = tier;
       member.updatedAt = new Date().toISOString();
       sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).setValues([memberToRow_(member)]);
     }
   }
+  member.tier = tierForConsumedMinutes_(member.consumedMinutes);
   return { member: publicMember_(member, false), isAdmin: hasManageMembersPermission_(member.canManageMembers) };
 }
 
@@ -148,7 +159,12 @@ function adminList_(payload) {
   const page = clampInt_(payload.page, 1, 100000, 1);
   const pageSize = clampInt_(payload.pageSize, 1, 100, 50);
   const rows = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, MEMBER_HEADERS.length).getValues() : [];
-  const allMembers = rows.map(rowToMember_);
+  const thresholds = getTierThresholds_();
+  const allMembers = rows.map(function (row) {
+    const member = rowToMember_(row);
+    member.tier = tierForConsumedMinutes_(member.consumedMinutes, thresholds);
+    return member;
+  });
   const stats = allMembers.reduce(function (acc, member) {
     acc.total += 1;
     acc.consumedMinutes += member.consumedMinutes;
@@ -171,7 +187,6 @@ function adminList_(payload) {
 function adminUpdate_(context, payload) {
   const targetMemberNo = cleanText_(payload.targetMemberNo, 24, true);
   const expectedUpdatedAt = cleanText_(payload.expectedUpdatedAt, 40, true);
-  const tier = enumValue_(payload.tier, ALLOWED_TIERS, 'INVALID_TIER', '會員等級不正確。');
   const membershipStatus = enumValue_(payload.membershipStatus, ALLOWED_MEMBERSHIP_STATUS, 'INVALID_STATUS', '會員狀態不正確。');
   const expiresAt = validateDate_(payload.expiresAt || '');
   const note = cleanText_(payload.note || '', 500, false);
@@ -183,8 +198,9 @@ function adminUpdate_(context, payload) {
     if (!row) fail_('MEMBER_NOT_FOUND', '找不到指定會員。');
     const member = rowToMember_(sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).getValues()[0]);
     if (String(member.updatedAt) !== expectedUpdatedAt) fail_('CONFLICT', '會員資料已被其他操作更新，請重新整理後再試。');
+    const tier = tierForConsumedMinutes_(member.consumedMinutes);
     const changedFields = [];
-    if (member.tier !== tier) changedFields.push('tier');
+    if (normalizeTier_(member.tier) !== tier) changedFields.push('tier');
     if (member.membershipStatus !== membershipStatus) changedFields.push('membershipStatus');
     if (String(member.expiresAt || '').slice(0, 10) !== expiresAt) changedFields.push('expiresAt');
     if (member.note !== note) changedFields.push('note');
@@ -293,6 +309,7 @@ function usagePreview_(context, payload) {
   requireUsageVoucherUsable_(voucher, recordCount);
   const member = getMemberByLineUserId_(context.identity.sub);
   if (!member || !isMembershipUsable_(member)) fail_('MEMBERSHIP_INACTIVE', '目前會員狀態不可記錄消費時間。');
+  member.tier = tierForConsumedMinutes_(member.consumedMinutes);
   return { voucher: publicUsageVoucher_(voucher, recordCount), member: publicMember_(member, false) };
 }
 
@@ -349,6 +366,7 @@ function usageRecord_(context, payload) {
     const recordRow = recordsSheet.getLastRow();
 
     member.consumedMinutes = record.consumedAfterMinutes;
+    member.tier = tierForConsumedMinutes_(member.consumedMinutes);
     member.updatedAt = new Date().toISOString();
     membersSheet.getRange(memberRow, 1, 1, MEMBER_HEADERS.length).setValues([memberToRow_(member)]);
 
@@ -384,6 +402,7 @@ function recoverUsageRecord_(recordsSheet, recordRow, record, membersSheet, vouc
   if (record.status === 'processing') {
     if (member.consumedMinutes === record.consumedBeforeMinutes) {
       member.consumedMinutes = record.consumedAfterMinutes;
+      member.tier = tierForConsumedMinutes_(member.consumedMinutes);
       member.updatedAt = new Date().toISOString();
       membersSheet.getRange(memberRow, 1, 1, MEMBER_HEADERS.length).setValues([memberToRow_(member)]);
     } else if (member.consumedMinutes !== record.consumedAfterMinutes) {
@@ -397,6 +416,7 @@ function recoverUsageRecord_(recordsSheet, recordRow, record, membersSheet, vouc
   } else if (record.status !== 'recorded') {
     fail_('USAGE_RECORD_CONFLICT', '消費時間記錄狀態不正確。');
   }
+  member.tier = tierForConsumedMinutes_(member.consumedMinutes);
   ensureUsageRecordAudit_(recordsSheet, recordRow, record, voucher);
   return member;
 }
@@ -688,7 +708,7 @@ function parsePayload_(raw) {
 function publicMember_(member, includeAdminFields) {
   const result = {
     memberNo: member.memberNo, displayName: member.displayName, pictureUrl: member.pictureUrl,
-    tier: member.tier, membershipStatus: member.membershipStatus, joinedAt: member.joinedAt,
+    tier: normalizeTier_(member.tier), membershipStatus: member.membershipStatus, joinedAt: member.joinedAt,
     expiresAt: member.expiresAt, consumedMinutes: nonNegativeInt_(member.consumedMinutes), updatedAt: member.updatedAt,
     availableMinutes: nonNegativeInt_(member.availableMinutes)
   };
@@ -716,6 +736,7 @@ function publicUsageRecord_(record) {
 function rowToMember_(row) {
   const member = {};
   MEMBER_HEADERS.forEach(function (header, index) { member[header] = normalizeCell_(row[index]); });
+  member.tier = normalizeTier_(member.tier);
   member.availableMinutes = nonNegativeInt_(member.availableMinutes);
   member.consumedMinutes = nonNegativeInt_(member.consumedMinutes);
   return member;
