@@ -13,6 +13,7 @@
 
   let config = null;
   let configPromise = null;
+  let loginInFlight = false;
 
   function assertConfigured(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -74,17 +75,6 @@
     }
   }
 
-  function createNonce() {
-    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
-      throw new Error('目前瀏覽器無法建立安全的重新登入狀態。');
-    }
-    const bytes = new Uint8Array(24);
-    window.crypto.getRandomValues(bytes);
-    return Array.from(bytes, function (byte) {
-      return byte.toString(16).padStart(2, '0');
-    }).join('');
-  }
-
   function readSessionValue(key) {
     try { return window.sessionStorage.getItem(key) || ''; }
     catch (_) { throw new Error('目前瀏覽器無法保存重新登入狀態。'); }
@@ -115,25 +105,58 @@
     removeSessionValue(LOGIN_PENDING_KEY);
   }
 
-  function validRedeemToken(value) {
-    const token = String(value || '').trim();
-    return /^[a-f0-9]{64}$/i.test(token) ? token.toLowerCase() : '';
+  function validUsageCode(value) {
+    const code = String(value || '').trim();
+    return /^[a-f0-9]{64}$/i.test(code) ? code.toLowerCase() : '';
   }
 
-  function currentRedeemToken() {
-    const current = new URL(window.location.href);
-    const direct = validRedeemToken(current.searchParams.get('redeem'));
-    if (direct) return direct;
+  function validRequestId(value) {
+    const requestId = String(value || '').trim();
+    return /^[a-f0-9]{32,64}$/i.test(requestId) ? requestId.toLowerCase() : '';
+  }
+
+  function readNavigationState(url) {
+    const source = url || new URL(window.location.href);
+    const usage = validUsageCode(source.searchParams.get('usage'));
+    const redeem = usage ? '' : validUsageCode(source.searchParams.get('redeem'));
+    if (!usage && !redeem) return { usage: '', redeem: '', request: '' };
+    return {
+      usage,
+      redeem,
+      request: validRequestId(source.searchParams.get('request'))
+    };
+  }
+
+  function readPendingNavigationState() {
     const pending = readPendingLogin();
-    return pending ? validRedeemToken(pending.redeem) : '';
+    if (!pending) return { usage: '', redeem: '', request: '' };
+    const usage = validUsageCode(pending.usage);
+    const redeem = usage ? '' : validUsageCode(pending.redeem);
+    if (!usage && !redeem) return { usage: '', redeem: '', request: '' };
+    return { usage, redeem, request: validRequestId(pending.request) };
+  }
+
+  function currentNavigationState() {
+    const direct = readNavigationState();
+    if (direct.usage || direct.redeem) return direct;
+    return readPendingNavigationState();
+  }
+
+  function appendNavigationState(url, state) {
+    if (state.usage) url.searchParams.set('usage', state.usage);
+    else if (state.redeem) url.searchParams.set('redeem', state.redeem);
+    if ((state.usage || state.redeem) && state.request) url.searchParams.set('request', state.request);
+    return url;
+  }
+
+  function sameNavigationState(left, right) {
+    return left.usage === right.usage && left.redeem === right.redeem && left.request === right.request;
   }
 
   function buildCanonicalAppUrl() {
     const current = new URL(window.location.href);
     const clean = new URL(current.origin + current.pathname);
-    const redeem = currentRedeemToken();
-    if (redeem) clean.searchParams.set('redeem', redeem);
-    return clean.href;
+    return appendNavigationState(clean, currentNavigationState()).href;
   }
 
   function canonicalizeAppUrl() {
@@ -148,17 +171,18 @@
     const hasState = Boolean(params.get('state'));
     return {
       success: hasState && Boolean(params.get('code') || params.get('response')),
-      error: hasState && Boolean(params.get('error')),
       hasArtifacts: hasState || params.has('liffClientId') || params.has('liffRedirectUri')
     };
   }
 
   function writePendingLogin() {
     const current = new URL(buildCanonicalAppUrl());
+    const navigation = readNavigationState(current);
     const pending = {
-      nonce: createNonce(),
       pathname: current.pathname,
-      redeem: validRedeemToken(current.searchParams.get('redeem')),
+      usage: navigation.usage,
+      redeem: navigation.redeem,
+      request: navigation.request,
       startedAt: Date.now()
     };
     writeSessionValue(LOGIN_PENDING_KEY, JSON.stringify(pending));
@@ -174,20 +198,30 @@
     const age = Date.now() - Number(pending.startedAt || 0);
     if (!Number.isFinite(age) || age < 0 || age > LOGIN_PENDING_TTL_MS) return false;
     if (pending.pathname !== window.location.pathname) return false;
-    if (validRedeemToken(pending.redeem) !== validRedeemToken(
-      new URL(window.location.href).searchParams.get('redeem')
-    )) return false;
 
-    return true;
+    const expected = {
+      usage: validUsageCode(pending.usage),
+      redeem: validUsageCode(pending.usage) ? '' : validUsageCode(pending.redeem),
+      request: validRequestId(pending.request)
+    };
+    return sameNavigationState(expected, readNavigationState());
   }
 
   function beginForcedLogin() {
-    if (liff.isLoggedIn()) liff.logout();
-    clearPendingLogin();
-    canonicalizeAppUrl();
-    writePendingLogin();
-    liff.login({ redirectUri: buildCanonicalAppUrl() });
-    return false;
+    if (loginInFlight) return false;
+    loginInFlight = true;
+
+    try {
+      if (liff.isLoggedIn()) liff.logout();
+      clearPendingLogin();
+      canonicalizeAppUrl();
+      writePendingLogin();
+      liff.login({ redirectUri: buildCanonicalAppUrl() });
+      return false;
+    } catch (error) {
+      loginInFlight = false;
+      throw error;
+    }
   }
 
   function shouldRecoverInitFailure(error, oauthCallback) {
@@ -236,12 +270,10 @@
 
     clearInitRecoveryMarker();
 
-    // LINE may use liff.state / OAuth callback parameters during initialization.
-    // Only canonicalize the application URL after liff.init() has completed.
+    // LIFF restores liff.state and OAuth callback parameters during initialization.
+    // Only normalize application-owned parameters after liff.init() completes.
     canonicalizeAppUrl();
 
-    // In the LIFF browser, LINE automatically performs login during liff.init().
-    // liff.login() must not be called there.
     if (liff.isInClient()) {
       clearPendingLogin();
       if (!liff.isLoggedIn() || !liff.getIDToken()) {
@@ -253,6 +285,7 @@
     const completedForcedLogin = consumePendingLogin(oauthCallback);
     if (!completedForcedLogin) return beginForcedLogin();
 
+    loginInFlight = false;
     if (!liff.isLoggedIn() || !liff.getIDToken()) {
       return beginForcedLogin();
     }
