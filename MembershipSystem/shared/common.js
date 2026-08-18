@@ -5,8 +5,11 @@
   const configUrl = currentScriptSrc
     ? new URL('./config.json', currentScriptSrc).href
     : new URL('../shared/config.json', window.location.href).href;
-  const REAUTH_PARAM = '__membership_reauth';
-  const REAUTH_STORAGE_KEY = 'membership.reauth.nonce';
+
+  const LOGIN_PENDING_KEY = 'membership.reauth.pending';
+  const INIT_RECOVERY_KEY = 'membership.reauth.recovery';
+  const LOGIN_PENDING_TTL_MS = 10 * 60 * 1000;
+  const INIT_RECOVERY_COOLDOWN_MS = 30 * 1000;
 
   let config = null;
   let configPromise = null;
@@ -82,81 +85,171 @@
     }).join('');
   }
 
-  function readStoredNonce() {
-    try { return window.sessionStorage.getItem(REAUTH_STORAGE_KEY) || ''; }
+  function readSessionValue(key) {
+    try { return window.sessionStorage.getItem(key) || ''; }
     catch (_) { throw new Error('目前瀏覽器無法保存重新登入狀態。'); }
   }
 
-  function writeStoredNonce(nonce) {
-    try { window.sessionStorage.setItem(REAUTH_STORAGE_KEY, nonce); }
+  function writeSessionValue(key, value) {
+    try { window.sessionStorage.setItem(key, value); }
     catch (_) { throw new Error('目前瀏覽器無法保存重新登入狀態。'); }
   }
 
-  function clearStoredNonce() {
-    try { window.sessionStorage.removeItem(REAUTH_STORAGE_KEY); }
+  function removeSessionValue(key) {
+    try { window.sessionStorage.removeItem(key); }
     catch (_) { /* best effort only */ }
   }
 
-  function readCallbackNonce() {
-    return new URL(window.location.href).searchParams.get(REAUTH_PARAM) || '';
-  }
-
-  function clearCallbackNonce() {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has(REAUTH_PARAM)) return;
-    url.searchParams.delete(REAUTH_PARAM);
-    window.history.replaceState(null, '', url.href);
-  }
-
-  function buildReauthRedirectUri(nonce) {
-    const url = new URL(window.location.href);
-    url.searchParams.set(REAUTH_PARAM, nonce);
-    return url.href;
-  }
-
-  function consumeValidReauthCallback() {
-    const receivedNonce = readCallbackNonce();
-    if (!receivedNonce) return false;
-
-    const expectedNonce = readStoredNonce();
-    if (!expectedNonce || receivedNonce !== expectedNonce) {
-      clearStoredNonce();
-      clearCallbackNonce();
-      return false;
+  function readPendingLogin() {
+    const raw = readSessionValue(LOGIN_PENDING_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (_) {
+      return null;
     }
+  }
 
-    clearStoredNonce();
-    clearCallbackNonce();
+  function clearPendingLogin() {
+    removeSessionValue(LOGIN_PENDING_KEY);
+  }
+
+  function validRedeemToken(value) {
+    const token = String(value || '').trim();
+    return /^[a-f0-9]{64}$/i.test(token) ? token.toLowerCase() : '';
+  }
+
+  function currentRedeemToken() {
+    const current = new URL(window.location.href);
+    const direct = validRedeemToken(current.searchParams.get('redeem'));
+    if (direct) return direct;
+    const pending = readPendingLogin();
+    return pending ? validRedeemToken(pending.redeem) : '';
+  }
+
+  function buildCanonicalAppUrl() {
+    const current = new URL(window.location.href);
+    const clean = new URL(current.origin + current.pathname);
+    const redeem = currentRedeemToken();
+    if (redeem) clean.searchParams.set('redeem', redeem);
+    return clean.href;
+  }
+
+  function canonicalizeAppUrl() {
+    const cleanUrl = buildCanonicalAppUrl();
+    if (window.location.href !== cleanUrl) {
+      window.history.replaceState(null, '', cleanUrl);
+    }
+  }
+
+  function captureOAuthCallback() {
+    const params = new URL(window.location.href).searchParams;
+    const hasState = Boolean(params.get('state'));
+    return {
+      success: hasState && Boolean(params.get('code') || params.get('response')),
+      error: hasState && Boolean(params.get('error')),
+      hasArtifacts: hasState || params.has('liffClientId') || params.has('liffRedirectUri')
+    };
+  }
+
+  function writePendingLogin() {
+    const current = new URL(buildCanonicalAppUrl());
+    const pending = {
+      nonce: createNonce(),
+      pathname: current.pathname,
+      redeem: validRedeemToken(current.searchParams.get('redeem')),
+      startedAt: Date.now()
+    };
+    writeSessionValue(LOGIN_PENDING_KEY, JSON.stringify(pending));
+  }
+
+  function consumePendingLogin(oauthCallback) {
+    if (!oauthCallback || !oauthCallback.success) return false;
+
+    const pending = readPendingLogin();
+    clearPendingLogin();
+    if (!pending) return false;
+
+    const age = Date.now() - Number(pending.startedAt || 0);
+    if (!Number.isFinite(age) || age < 0 || age > LOGIN_PENDING_TTL_MS) return false;
+    if (pending.pathname !== window.location.pathname) return false;
+    if (validRedeemToken(pending.redeem) !== validRedeemToken(
+      new URL(window.location.href).searchParams.get('redeem')
+    )) return false;
+
     return true;
   }
 
   function beginForcedLogin() {
     if (liff.isLoggedIn()) liff.logout();
-    clearStoredNonce();
-    clearCallbackNonce();
-
-    const nonce = createNonce();
-    writeStoredNonce(nonce);
-    liff.login({ redirectUri: buildReauthRedirectUri(nonce) });
+    clearPendingLogin();
+    canonicalizeAppUrl();
+    writePendingLogin();
+    liff.login({ redirectUri: buildCanonicalAppUrl() });
     return false;
+  }
+
+  function shouldRecoverInitFailure(error, oauthCallback) {
+    if (!oauthCallback || !oauthCallback.hasArtifacts) return false;
+    const code = String(error && error.code || '').toLowerCase();
+    const message = String(error && error.message || '').toLowerCase();
+    return code === 'invalid_request' ||
+      message.indexOf('authorization code') !== -1 ||
+      (message.indexOf('invalid') !== -1 && message.indexOf('code') !== -1);
+  }
+
+  function recoverFromInitFailure(error, oauthCallback) {
+    if (!shouldRecoverInitFailure(error, oauthCallback)) return false;
+
+    let lastRecovery = 0;
+    try { lastRecovery = Number(window.sessionStorage.getItem(INIT_RECOVERY_KEY) || 0); }
+    catch (_) { lastRecovery = 0; }
+
+    if (lastRecovery && Date.now() - lastRecovery < INIT_RECOVERY_COOLDOWN_MS) {
+      throw new Error('LINE 登入 callback 已失效，請關閉此頁後重新開啟。');
+    }
+
+    try { window.sessionStorage.setItem(INIT_RECOVERY_KEY, String(Date.now())); }
+    catch (_) { /* best effort only */ }
+
+    clearPendingLogin();
+    window.location.replace(buildCanonicalAppUrl());
+    return true;
+  }
+
+  function clearInitRecoveryMarker() {
+    removeSessionValue(INIT_RECOVERY_KEY);
   }
 
   async function ensureLiffLogin() {
     const activeConfig = await loadConfig();
-    await liff.init({ liffId: activeConfig.LIFF_ID });
+    const oauthCallback = captureOAuthCallback();
 
-    // In the LIFF browser, LINE automatically performs the login process during liff.init().
-    // liff.login() must not be called there, so each page open relies on a fresh init + ID token check.
+    try {
+      await liff.init({ liffId: activeConfig.LIFF_ID });
+    } catch (error) {
+      if (recoverFromInitFailure(error, oauthCallback)) return false;
+      throw error;
+    }
+
+    clearInitRecoveryMarker();
+
+    // LINE may use liff.state / OAuth callback parameters during initialization.
+    // Only canonicalize the application URL after liff.init() has completed.
+    canonicalizeAppUrl();
+
+    // In the LIFF browser, LINE automatically performs login during liff.init().
+    // liff.login() must not be called there.
     if (liff.isInClient()) {
-      clearStoredNonce();
-      clearCallbackNonce();
+      clearPendingLogin();
       if (!liff.isLoggedIn() || !liff.getIDToken()) {
         throw new Error('無法取得本次 LINE 登入狀態，請關閉後重新開啟。');
       }
       return true;
     }
 
-    const completedForcedLogin = consumeValidReauthCallback();
+    const completedForcedLogin = consumePendingLogin(oauthCallback);
     if (!completedForcedLogin) return beginForcedLogin();
 
     if (!liff.isLoggedIn() || !liff.getIDToken()) {
