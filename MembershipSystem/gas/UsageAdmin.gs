@@ -81,6 +81,9 @@ function adminUsageDelete_(context, payload) {
     if (String(voucher.updatedAt) !== expectedUpdatedAt) {
       fail_('CONFLICT', 'QR Code 已被其他操作更新，請重新整理後再試。');
     }
+    if (isLegacyTargetedVoucher_(voucher)) {
+      fail_('LEGACY_VOUCHER_READ_ONLY', '舊版指定會員 QR Code 為保留歷史關聯不可刪除；如需停用請使用「停止」。');
+    }
 
     const recordsSheet = getUsageRecordsSheet_();
     if (findProcessingUsageRecordRowByVoucher_(recordsSheet, voucher.voucherId)) {
