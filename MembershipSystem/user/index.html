@@ -102,12 +102,12 @@
         <div class="scanner-actions">
           <button id="startCameraButton" class="button button-primary" type="button">使用相機掃描</button>
           <label class="button button-secondary file-button">
-            拍照 / 選擇 QR 圖片
-            <input id="qrImageInput" type="file" accept="image/*" capture="environment">
+            選擇 QR 圖片
+            <input id="qrImageInput" type="file" accept="image/*">
           </label>
           <button id="useLiffScannerButton" class="button button-secondary hidden" type="button">使用 LINE 掃描器</button>
         </div>
-        <p class="scanner-fallback">若裝置沒有相機或無法選擇圖片，仍可直接開啟管理端發放的核銷網址。</p>
+        <p class="scanner-fallback">手機可從相簿選圖；桌機可選擇 QR 圖檔。若裝置沒有相機或檔案選擇能力，仍可直接開啟管理端發放的核銷網址。</p>
       </section>
 
       <section id="redeemPanel" class="panel redeem-panel hidden" aria-live="polite">
