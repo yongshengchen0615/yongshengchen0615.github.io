@@ -6,7 +6,7 @@
     ? new URL('./config.json', currentScriptSrc).href
     : new URL('../shared/config.json', window.location.href).href;
 
-  const LOGIN_PENDING_KEY = 'membership.reauth.pending';
+  const LOGIN_PENDING_KEY = 'membership.login.pending';
   const INIT_RECOVERY_KEY = 'membership.reauth.recovery';
   const LOGIN_PENDING_TTL_MS = 10 * 60 * 1000;
   const INIT_RECOVERY_COOLDOWN_MS = 30 * 1000;
@@ -51,9 +51,7 @@
         throw new Error('無法載入會員系統設定檔。');
       }
 
-      if (!response.ok) {
-        throw new Error('會員系統設定檔不存在或無法讀取。');
-      }
+      if (!response.ok) throw new Error('會員系統設定檔不存在或無法讀取。');
 
       let parsed;
       try { parsed = await response.json(); }
@@ -77,32 +75,17 @@
 
   function readSessionValue(key) {
     try { return window.sessionStorage.getItem(key) || ''; }
-    catch (_) { throw new Error('目前瀏覽器無法保存重新登入狀態。'); }
+    catch (_) { return ''; }
   }
 
   function writeSessionValue(key, value) {
-    try { window.sessionStorage.setItem(key, value); }
-    catch (_) { throw new Error('目前瀏覽器無法保存重新登入狀態。'); }
+    try { window.sessionStorage.setItem(key, value); return true; }
+    catch (_) { return false; }
   }
 
   function removeSessionValue(key) {
     try { window.sessionStorage.removeItem(key); }
     catch (_) { /* best effort only */ }
-  }
-
-  function readPendingLogin() {
-    const raw = readSessionValue(LOGIN_PENDING_KEY);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? parsed : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function clearPendingLogin() {
-    removeSessionValue(LOGIN_PENDING_KEY);
   }
 
   function validUsageCode(value) {
@@ -127,6 +110,21 @@
     };
   }
 
+  function readPendingLogin() {
+    const raw = readSessionValue(LOGIN_PENDING_KEY);
+    if (!raw) return null;
+    try {
+      const pending = JSON.parse(raw);
+      if (!pending || typeof pending !== 'object') return null;
+      const age = Date.now() - Number(pending.startedAt || 0);
+      if (!Number.isFinite(age) || age < 0 || age > LOGIN_PENDING_TTL_MS) return null;
+      if (pending.pathname !== window.location.pathname) return null;
+      return pending;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function readPendingNavigationState() {
     const pending = readPendingLogin();
     if (!pending) return { usage: '', redeem: '', request: '' };
@@ -145,12 +143,10 @@
   function appendNavigationState(url, state) {
     if (state.usage) url.searchParams.set('usage', state.usage);
     else if (state.redeem) url.searchParams.set('redeem', state.redeem);
-    if ((state.usage || state.redeem) && state.request) url.searchParams.set('request', state.request);
+    if ((state.usage || state.redeem) && state.request) {
+      url.searchParams.set('request', state.request);
+    }
     return url;
-  }
-
-  function sameNavigationState(left, right) {
-    return left.usage === right.usage && left.redeem === right.redeem && left.request === right.request;
   }
 
   function buildCanonicalAppUrl() {
@@ -166,15 +162,6 @@
     }
   }
 
-  function captureOAuthCallback() {
-    const params = new URL(window.location.href).searchParams;
-    const hasState = Boolean(params.get('state'));
-    return {
-      success: hasState && Boolean(params.get('code') || params.get('response')),
-      hasArtifacts: hasState || params.has('liffClientId') || params.has('liffRedirectUri')
-    };
-  }
-
   function writePendingLogin() {
     const current = new URL(buildCanonicalAppUrl());
     const navigation = readNavigationState(current);
@@ -188,44 +175,21 @@
     writeSessionValue(LOGIN_PENDING_KEY, JSON.stringify(pending));
   }
 
-  function consumePendingLogin(oauthCallback) {
-    if (!oauthCallback || !oauthCallback.success) return false;
+  function clearPendingLogin() {
+    removeSessionValue(LOGIN_PENDING_KEY);
+  }
 
-    const pending = readPendingLogin();
-    clearPendingLogin();
-    if (!pending) return false;
-
-    const age = Date.now() - Number(pending.startedAt || 0);
-    if (!Number.isFinite(age) || age < 0 || age > LOGIN_PENDING_TTL_MS) return false;
-    if (pending.pathname !== window.location.pathname) return false;
-
-    const expected = {
-      usage: validUsageCode(pending.usage),
-      redeem: validUsageCode(pending.usage) ? '' : validUsageCode(pending.redeem),
-      request: validRequestId(pending.request)
+  function captureInitArtifacts() {
+    const params = new URL(window.location.href).searchParams;
+    return {
+      hasArtifacts: params.has('state') || params.has('code') || params.has('response') ||
+        params.has('error') || params.has('liff.state') || params.has('liffClientId') ||
+        params.has('liffRedirectUri')
     };
-    return sameNavigationState(expected, readNavigationState());
   }
 
-  function beginForcedLogin() {
-    if (loginInFlight) return false;
-    loginInFlight = true;
-
-    try {
-      if (liff.isLoggedIn()) liff.logout();
-      clearPendingLogin();
-      canonicalizeAppUrl();
-      writePendingLogin();
-      liff.login({ redirectUri: buildCanonicalAppUrl() });
-      return false;
-    } catch (error) {
-      loginInFlight = false;
-      throw error;
-    }
-  }
-
-  function shouldRecoverInitFailure(error, oauthCallback) {
-    if (!oauthCallback || !oauthCallback.hasArtifacts) return false;
+  function shouldRecoverInitFailure(error, initArtifacts) {
+    if (!initArtifacts || !initArtifacts.hasArtifacts) return false;
     const code = String(error && error.code || '').toLowerCase();
     const message = String(error && error.message || '').toLowerCase();
     return code === 'invalid_request' ||
@@ -233,63 +197,62 @@
       (message.indexOf('invalid') !== -1 && message.indexOf('code') !== -1);
   }
 
-  function recoverFromInitFailure(error, oauthCallback) {
-    if (!shouldRecoverInitFailure(error, oauthCallback)) return false;
+  function recoverFromInitFailure(error, initArtifacts) {
+    if (!shouldRecoverInitFailure(error, initArtifacts)) return false;
 
-    let lastRecovery = 0;
-    try { lastRecovery = Number(window.sessionStorage.getItem(INIT_RECOVERY_KEY) || 0); }
-    catch (_) { lastRecovery = 0; }
-
+    const lastRecovery = Number(readSessionValue(INIT_RECOVERY_KEY) || 0);
     if (lastRecovery && Date.now() - lastRecovery < INIT_RECOVERY_COOLDOWN_MS) {
-      throw new Error('LINE 登入 callback 已失效，請關閉此頁後重新開啟。');
+      throw new Error('LINE 登入 callback 已失效，請重新開啟會員頁。');
     }
 
-    try { window.sessionStorage.setItem(INIT_RECOVERY_KEY, String(Date.now())); }
-    catch (_) { /* best effort only */ }
-
+    writeSessionValue(INIT_RECOVERY_KEY, String(Date.now()));
     const cleanUrl = buildCanonicalAppUrl();
-    clearPendingLogin();
     window.location.replace(cleanUrl);
     return true;
   }
 
-  function clearInitRecoveryMarker() {
-    removeSessionValue(INIT_RECOVERY_KEY);
-  }
-
   async function ensureLiffLogin() {
     const activeConfig = await loadConfig();
-    const oauthCallback = captureOAuthCallback();
+    const initArtifacts = captureInitArtifacts();
 
     try {
       await liff.init({ liffId: activeConfig.LIFF_ID });
     } catch (error) {
-      if (recoverFromInitFailure(error, oauthCallback)) return false;
+      if (recoverFromInitFailure(error, initArtifacts)) return false;
       throw error;
     }
 
-    clearInitRecoveryMarker();
+    removeSessionValue(INIT_RECOVERY_KEY);
 
-    // LIFF restores liff.state and OAuth callback parameters during initialization.
-    // Only normalize application-owned parameters after liff.init() completes.
+    // LIFF restores additional path/query information during initialization.
+    // Only normalize the URL after liff.init() resolves.
     canonicalizeAppUrl();
 
-    if (liff.isInClient()) {
+    // Standard LIFF flow: never force-logout a valid external-browser session.
+    if (liff.isLoggedIn() && liff.getIDToken()) {
+      loginInFlight = false;
       clearPendingLogin();
-      if (!liff.isLoggedIn() || !liff.getIDToken()) {
-        throw new Error('無法取得本次 LINE 登入狀態，請關閉後重新開啟。');
-      }
       return true;
     }
 
-    const completedForcedLogin = consumePendingLogin(oauthCallback);
-    if (!completedForcedLogin) return beginForcedLogin();
-
-    loginInFlight = false;
-    if (!liff.isLoggedIn() || !liff.getIDToken()) {
-      return beginForcedLogin();
+    // LIFF Browser should already be authenticated by liff.init().
+    if (liff.isInClient()) {
+      throw new Error('無法取得本次 LINE 登入狀態，請關閉後重新開啟。');
     }
-    return true;
+
+    if (loginInFlight) return false;
+    loginInFlight = true;
+
+    // Preserve only validated application parameters across the external-browser login callback.
+    canonicalizeAppUrl();
+    writePendingLogin();
+    try {
+      liff.login({ redirectUri: buildCanonicalAppUrl() });
+      return false;
+    } catch (error) {
+      loginInFlight = false;
+      throw error;
+    }
   }
 
   async function callApi(action, payload) {
@@ -332,12 +295,20 @@
     if (!value) return fallback || '—';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-    return new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+    return new Intl.DateTimeFormat('zh-TW', {
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(date);
   }
 
   function escapeText(value) {
     return value == null ? '' : String(value);
   }
 
-  window.Membership = Object.freeze({ loadConfig, ensureLiffLogin, callApi, formatDate, escapeText });
+  window.Membership = Object.freeze({
+    loadConfig,
+    ensureLiffLogin,
+    callApi,
+    formatDate,
+    escapeText
+  });
 })();
