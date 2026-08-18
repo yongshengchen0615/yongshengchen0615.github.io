@@ -304,6 +304,14 @@ function adminUsageCancel_(context, payload) {
     const row = findUsageVoucherRowById_(sheet, voucherId);
     if (!row) fail_('VOUCHER_NOT_FOUND', '找不到指定核銷券。');
     const voucher = rowToUsageVoucher_(sheet.getRange(row, 1, 1, USAGE_VOUCHER_HEADERS.length).getValues()[0]);
+    if (!isLegacyTargetedVoucher_(voucher)) {
+      const redemptionsSheet = getUsageRedemptionsSheet_();
+      const pendingRow = findAnyProcessingRedemptionRow_(redemptionsSheet, voucher.voucherId);
+      if (pendingRow) {
+        const pending = rowToUsageRedemption_(redemptionsSheet.getRange(pendingRow, 1, 1, USAGE_REDEMPTION_HEADERS.length).getValues()[0]);
+        recoverRecordedProcessingRedemption_(sheet, row, voucher, redemptionsSheet, pendingRow, pending, getMembersSheet_());
+      }
+    }
     const redemptionCount = countVoucherRedemptions_(voucher.voucherId);
 
     if (isLegacyTargetedVoucher_(voucher)) {
@@ -388,14 +396,14 @@ function genericUsageRedeem_(context, payload, voucherRow, initialVoucher) {
     let voucher = rowToUsageVoucher_(vouchersSheet.getRange(voucherRow, 1, 1, USAGE_VOUCHER_HEADERS.length).getValues()[0]);
     if (voucher.tokenHash !== initialVoucher.tokenHash) fail_('INVALID_VOUCHER', '核銷網址無效或已失效。');
 
-    if (voucherScanMode_(voucher) === 'single') {
-      const anyPendingRow = findAnyProcessingRedemptionRow_(redemptionsSheet, voucher.voucherId);
-      if (anyPendingRow) {
-        const pending = rowToUsageRedemption_(redemptionsSheet.getRange(anyPendingRow, 1, 1, USAGE_REDEMPTION_HEADERS.length).getValues()[0]);
-        if (pending.requestId !== requestId || pending.redeemerLineUserId !== context.identity.sub) {
-          recoverRecordedProcessingRedemption_(vouchersSheet, voucherRow, voucher, redemptionsSheet, anyPendingRow, pending, membersSheet);
-          fail_('VOUCHER_USED', '此單次 QR Code 已使用。');
-        }
+    const anyPendingRow = findAnyProcessingRedemptionRow_(redemptionsSheet, voucher.voucherId);
+    if (anyPendingRow) {
+      const pending = rowToUsageRedemption_(redemptionsSheet.getRange(anyPendingRow, 1, 1, USAGE_REDEMPTION_HEADERS.length).getValues()[0]);
+      const sameRequest = pending.requestId === requestId && pending.redeemerLineUserId === context.identity.sub;
+      if (!sameRequest) {
+        recoverRecordedProcessingRedemption_(vouchersSheet, voucherRow, voucher, redemptionsSheet, anyPendingRow, pending, membersSheet);
+        if (voucherScanMode_(voucher) === 'single') fail_('VOUCHER_USED', '此單次 QR Code 已使用。');
+        voucher = rowToUsageVoucher_(vouchersSheet.getRange(voucherRow, 1, 1, USAGE_VOUCHER_HEADERS.length).getValues()[0]);
       }
     }
 
