@@ -7,6 +7,7 @@
     suspended: { badge: '停權', title: '會員資格已停權', description: '此會員目前暫停使用，若有疑問請聯絡管理員。' },
     disabled: { badge: '停用', title: '會員資格已停用', description: '此會員卡目前不可使用，若有疑問請聯絡管理員。' }
   };
+  const scanModeLabel = { single: '單次掃描', repeatable: '可重複掃描' };
   const MAX_QR_IMAGE_BYTES = 10 * 1024 * 1024;
   const MAX_QR_DECODE_DIMENSION = 1600;
   const CAMERA_DECODE_DIMENSION = 960;
@@ -14,6 +15,7 @@
 
   let currentMember = null;
   let redeemToken = '';
+  let redeemRequestId = '';
   let cameraStream = null;
   let cameraFrameId = 0;
   let cameraScanning = false;
@@ -21,9 +23,8 @@
   let qrRequestSequence = 0;
   const pendingQrDecodes = new Map();
 
-  function formatHours(minutes) {
-    const value = Number(minutes || 0) / 60;
-    return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 }).format(value);
+  function formatMinutes(value) {
+    return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
   }
 
   function formatDateTime(value) {
@@ -39,32 +40,66 @@
     return /^[a-f0-9]{64}$/i.test(token) ? token.toLowerCase() : '';
   }
 
+  function validateRequestId(value) {
+    const id = String(value || '').trim();
+    return /^[a-f0-9]{32,64}$/i.test(id) ? id.toLowerCase() : '';
+  }
+
+  function createRequestId() {
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+      throw new Error('目前瀏覽器無法建立安全的核銷要求，請更換瀏覽器後再試。');
+    }
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  function currentUrl() {
+    return new URL(window.location.href);
+  }
+
   function readRedeemToken() {
-    return validateRedeemToken(new URL(window.location.href).searchParams.get('redeem') || '');
+    return validateRedeemToken(currentUrl().searchParams.get('redeem') || '');
+  }
+
+  function readRequestId() {
+    return validateRequestId(currentUrl().searchParams.get('request') || '');
+  }
+
+  function persistRedeemState(token, requestId) {
+    const url = currentUrl();
+    url.searchParams.set('redeem', token);
+    url.searchParams.set('request', requestId);
+    window.history.replaceState(null, '', url.href);
+  }
+
+  function ensureRequestId(token) {
+    const urlToken = readRedeemToken();
+    const existing = urlToken === token ? readRequestId() : '';
+    redeemRequestId = existing || createRequestId();
+    persistRedeemState(token, redeemRequestId);
+    return redeemRequestId;
+  }
+
+  function clearRedeemStateFromUrl() {
+    const url = currentUrl();
+    url.searchParams.delete('redeem');
+    url.searchParams.delete('request');
+    window.history.replaceState(null, '', url.href);
   }
 
   function readTokenFromScannedValue(value) {
     let scannedUrl;
-    try {
-      scannedUrl = new URL(String(value || ''));
-    } catch (_) {
-      throw new Error('掃描內容不是有效的時數核銷網址。');
-    }
+    try { scannedUrl = new URL(String(value || '')); }
+    catch (_) { throw new Error('掃描內容不是有效的分鐘核銷網址。'); }
 
     const expectedUrl = new URL('./', window.location.href);
     if (scannedUrl.origin !== expectedUrl.origin || scannedUrl.pathname !== expectedUrl.pathname) {
-      throw new Error('此 QR Code 不是本會員系統的時數核銷網址。');
+      throw new Error('此 QR Code 不是本會員系統的分鐘核銷網址。');
     }
-
     const token = validateRedeemToken(scannedUrl.searchParams.get('redeem'));
     if (!token) throw new Error('此 QR Code 缺少有效的核銷 token。');
     return token;
-  }
-
-  function clearRedeemTokenFromUrl() {
-    const url = new URL(window.location.href);
-    url.searchParams.delete('redeem');
-    window.history.replaceState(null, '', url.href);
   }
 
   async function loadMember() {
@@ -81,8 +116,8 @@
     $('#statusBadge').textContent = copy.badge;
     $('#joinedAt').textContent = Membership.formatDate(member.joinedAt);
     $('#expiresAt').textContent = Membership.formatDate(member.expiresAt, '永久');
-    $('#availableHours').textContent = formatHours(member.availableMinutes);
-    $('#consumedHours').textContent = formatHours(member.consumedMinutes);
+    $('#availableMinutes').textContent = formatMinutes(member.availableMinutes);
+    $('#consumedMinutes').textContent = formatMinutes(member.consumedMinutes);
     $('#statusTitle').textContent = copy.title;
     $('#statusDescription').textContent = copy.description;
     $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
@@ -104,12 +139,13 @@
     $('#redeemReady').classList.add('hidden');
     $('#redeemResult').classList.remove('hidden');
     $('#redeemResultTitle').textContent = '無法核銷';
-    $('#redeemResultMessage').textContent = error && error.message ? error.message : '此核銷券目前無法使用。';
+    $('#redeemResultMessage').textContent = error && error.message ? error.message : '此 QR Code 目前無法使用。';
   }
 
   async function loadRedeemPreview(tokenOverride) {
     redeemToken = validateRedeemToken(tokenOverride) || readRedeemToken();
     if (!redeemToken) return;
+    ensureRequestId(redeemToken);
 
     $('#redeemPanel').classList.remove('hidden');
     $('#redeemLoading').classList.remove('hidden');
@@ -119,12 +155,16 @@
     try {
       const result = await Membership.callApi('usage.preview', { token: redeemToken });
       const voucher = result.voucher;
-      $('#redeemHours').textContent = formatHours(voucher.minutes);
+      $('#redeemMinutes').textContent = formatMinutes(voucher.minutes);
       $('#redeemVoucherId').textContent = voucher.voucherId;
+      $('#redeemMode').textContent = voucher.legacyTargeted ? '舊版單次掃描' : (scanModeLabel[voucher.scanMode] || voucher.scanMode);
       $('#redeemExpiresAt').textContent = formatDateTime(voucher.expiresAt);
+      const modeCopy = voucher.scanMode === 'repeatable'
+        ? '此 QR Code 可重複使用；每次確認都會再次扣除你的可用分鐘。'
+        : '此 QR Code 成功核銷一次後即失效。';
       $('#redeemDescription').textContent = voucher.note
-        ? `${voucher.note}。確認後會立即從你的可用時數扣除。`
-        : '確認後會立即從你的可用時數扣除。';
+        ? `${voucher.note}。${modeCopy}`
+        : modeCopy;
       $('#redeemLoading').classList.add('hidden');
       $('#redeemReady').classList.remove('hidden');
     } catch (error) {
@@ -133,12 +173,15 @@
   }
 
   async function redeemUsage() {
-    if (!redeemToken) return;
+    if (!redeemToken || !redeemRequestId) return;
     const button = $('#redeemButton');
     button.disabled = true;
 
     try {
-      const result = await Membership.callApi('usage.redeem', { token: redeemToken });
+      const result = await Membership.callApi('usage.redeem', {
+        token: redeemToken,
+        requestId: redeemRequestId
+      });
       currentMember = result.member;
       renderMember(currentMember);
       $('#redeemReady').classList.add('hidden');
@@ -146,9 +189,10 @@
       $('#redeemResult').classList.remove('hidden');
       $('#redeemResultTitle').textContent = result.alreadyRedeemed ? '此核銷已完成' : '核銷完成';
       $('#redeemResultMessage').textContent =
-        `已消費 ${formatHours(result.voucher.minutes)} 小時，剩餘 ${formatHours(result.member.availableMinutes)} 小時。`;
-      clearRedeemTokenFromUrl();
+        `已消費 ${formatMinutes(result.voucher.minutes)} 分鐘，剩餘 ${formatMinutes(result.member.availableMinutes)} 分鐘。`;
+      clearRedeemStateFromUrl();
       redeemToken = '';
+      redeemRequestId = '';
     } catch (error) {
       showRedeemError(error);
     } finally {
@@ -181,9 +225,7 @@
 
   function getQrWorker() {
     if (qrWorker) return qrWorker;
-    if (!canUseWorkerDecoder()) {
-      throw new Error('此瀏覽器無法啟動本機 QR 解析器。');
-    }
+    if (!canUseWorkerDecoder()) throw new Error('此瀏覽器無法啟動本機 QR 解析器。');
 
     const workerSource = [
       "'use strict';",
@@ -193,7 +235,7 @@
       '  try {',
       "    var decoder = self.jsQR || (typeof jsQR === 'function' ? jsQR : null);",
       "    if (!decoder) throw new Error('QR decoder unavailable');",
-      "    var pixels = new Uint8ClampedArray(message.pixels);",
+      '    var pixels = new Uint8ClampedArray(message.pixels);',
       "    var result = decoder(pixels, message.width, message.height, { inversionAttempts: 'attemptBoth' });",
       "    self.postMessage({ id: message.id, data: result && result.data ? result.data : '' });",
       '  } catch (error) {',
@@ -252,7 +294,7 @@
   async function acceptScannedValue(value) {
     const token = readTokenFromScannedValue(value);
     closeScannerPanel();
-    $('#scanHint').textContent = '已讀取核銷 QR Code，請確認下方時數。';
+    $('#scanHint').textContent = '已讀取核銷 QR Code，請確認下方分鐘。';
     await loadRedeemPreview(token);
   }
 
@@ -262,15 +304,9 @@
     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
     const id = ++qrRequestSequence;
     const worker = getQrWorker();
-
     return new Promise((resolve, reject) => {
       pendingQrDecodes.set(id, { resolve, reject });
-      worker.postMessage({
-        id: id,
-        width: imageData.width,
-        height: imageData.height,
-        pixels: imageData.data.buffer
-      }, [imageData.data.buffer]);
+      worker.postMessage({ id, width: imageData.width, height: imageData.height, pixels: imageData.data.buffer }, [imageData.data.buffer]);
     });
   }
 
@@ -290,7 +326,6 @@
   async function scanCameraFrame() {
     if (!cameraScanning || !cameraStream) return;
     const video = $('#scannerVideo');
-
     if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth && video.videoHeight) {
       try {
         const canvas = drawSourceToCanvas(video, video.videoWidth, video.videoHeight, CAMERA_DECODE_DIMENSION);
@@ -311,7 +346,6 @@
         return;
       }
     }
-
     cameraFrameId = window.requestAnimationFrame(scanCameraFrame);
   }
 
@@ -328,12 +362,8 @@
 
     $('#startCameraButton').disabled = true;
     setScannerStatus('正在要求相機權限…', false);
-
     try {
-      cameraStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: 'environment' } }
-      });
+      cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' } } });
       const video = $('#scannerVideo');
       video.srcObject = cameraStream;
       await video.play();
@@ -342,13 +372,8 @@
       cameraFrameId = window.requestAnimationFrame(scanCameraFrame);
     } catch (error) {
       stopBrowserCamera();
-      const permissionDenied = error && (error.name === 'NotAllowedError' || error.name === 'SecurityError');
-      setScannerStatus(
-        permissionDenied
-          ? '無法使用相機權限。請改用「選擇 QR 圖片」或直接開啟核銷網址。'
-          : '無法啟動此裝置的相機。請改用「選擇 QR 圖片」或直接開啟核銷網址。',
-        true
-      );
+      const denied = error && (error.name === 'NotAllowedError' || error.name === 'SecurityError');
+      setScannerStatus(denied ? '無法使用相機權限。請改用「選擇 QR 圖片」或直接開啟核銷網址。' : '無法啟動此裝置的相機。請改用「選擇 QR 圖片」或直接開啟核銷網址。', true);
     } finally {
       $('#startCameraButton').disabled = false;
     }
@@ -358,38 +383,24 @@
     return new Promise((resolve, reject) => {
       const objectUrl = URL.createObjectURL(file);
       const image = new Image();
-      image.onload = function () {
-        URL.revokeObjectURL(objectUrl);
-        resolve(image);
-      };
-      image.onerror = function () {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error('無法讀取選擇的圖片。'));
-      };
+      image.onload = function () { URL.revokeObjectURL(objectUrl); resolve(image); };
+      image.onerror = function () { URL.revokeObjectURL(objectUrl); reject(new Error('無法讀取選擇的圖片。')); };
       image.src = objectUrl;
     });
   }
 
   async function decodeQrImageFile(file) {
     if (!file) return;
-    if (!file.type || !file.type.startsWith('image/')) {
-      throw new Error('請選擇圖片檔案。');
-    }
-    if (file.size > MAX_QR_IMAGE_BYTES) {
-      throw new Error('QR 圖片不可超過 10 MB。');
-    }
-    if (!canUseWorkerDecoder()) {
-      throw new Error('此瀏覽器無法啟動 QR 解析器，請改用 LINE 掃描器或直接開啟核銷網址。');
-    }
+    if (!file.type || !file.type.startsWith('image/')) throw new Error('請選擇圖片檔案。');
+    if (file.size > MAX_QR_IMAGE_BYTES) throw new Error('QR 圖片不可超過 10 MB。');
+    if (!canUseWorkerDecoder()) throw new Error('此瀏覽器無法啟動 QR 解析器，請改用 LINE 掃描器或直接開啟核銷網址。');
 
     let source;
     let shouldClose = false;
     if (typeof window.createImageBitmap === 'function') {
       source = await window.createImageBitmap(file);
       shouldClose = typeof source.close === 'function';
-    } else {
-      source = await loadImageElement(file);
-    }
+    } else source = await loadImageElement(file);
 
     try {
       const width = source.width || source.naturalWidth;
@@ -410,14 +421,9 @@
     if (!file) return;
     stopBrowserCamera();
     setScannerStatus('正在解析 QR 圖片…', false);
-
-    try {
-      await decodeQrImageFile(file);
-    } catch (error) {
-      setScannerStatus(error.message || '無法解析 QR 圖片。', true);
-    } finally {
-      input.value = '';
-    }
+    try { await decodeQrImageFile(file); }
+    catch (error) { setScannerStatus(error.message || '無法解析 QR 圖片。', true); }
+    finally { input.value = ''; }
   }
 
   async function scanWithLiff() {
@@ -425,11 +431,9 @@
       setScannerStatus('此環境沒有提供 LINE QR 掃描器，請使用瀏覽器相機或選擇 QR 圖片。', true);
       return;
     }
-
     stopBrowserCamera();
     $('#useLiffScannerButton').disabled = true;
     setScannerStatus('正在開啟 LINE QR 掃描器…', false);
-
     try {
       const result = await liff.scanCodeV2();
       await acceptScannedValue(result && result.value);
@@ -460,9 +464,7 @@
       await loadMember();
       configureScanner();
       await loadRedeemPreview();
-    } catch (error) {
-      showError(error);
-    }
+    } catch (error) { showError(error); }
   }
 
   $('#refreshButton').addEventListener('click', () => window.location.reload());
@@ -473,13 +475,8 @@
   $('#startCameraButton').addEventListener('click', () => startBrowserCamera().catch((error) => setScannerStatus(error.message, true)));
   $('#qrImageInput').addEventListener('change', handleQrImageSelection);
   $('#useLiffScannerButton').addEventListener('click', scanWithLiff);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) stopBrowserCamera();
-  });
-  window.addEventListener('pagehide', () => {
-    stopBrowserCamera();
-    stopQrWorker();
-  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopBrowserCamera(); });
+  window.addEventListener('pagehide', () => { stopBrowserCamera(); stopQrWorker(); });
 
   initialize();
 })();
