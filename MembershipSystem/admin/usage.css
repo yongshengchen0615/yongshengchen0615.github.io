@@ -1,0 +1,26 @@
+.metric-grid{grid-template-columns:repeat(4,1fr)}
+.member-table{min-width:1040px}
+.row-actions{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.text-button:disabled{opacity:.35;cursor:not-allowed}
+.usage-panel{margin-top:14px;overflow:hidden}
+.section-heading{display:flex;align-items:end;justify-content:space-between;gap:18px;padding:20px;border-bottom:1px solid var(--line)}
+.section-heading h2{margin:0}
+.section-heading p{margin:7px 0 0;color:var(--muted);font-size:13px}
+.voucher-table{width:100%;border-collapse:collapse;min-width:760px}
+.voucher-table th,.voucher-table td{padding:14px 18px;border-bottom:1px solid #edf0f3;text-align:left;vertical-align:middle}
+.voucher-table th{color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:#fafbfc}
+.voucher-status{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f6;color:#475467}
+.voucher-status.issued{background:#ecfdf3;color:var(--success)}
+.voucher-status.processing{background:#eef4ff;color:#3538cd}
+.voucher-status.redeemed{background:#f2f4f7;color:#344054}
+.voucher-status.cancelled,.voucher-status.expired{background:#fef3f2;color:var(--danger)}
+.danger-action{color:var(--danger)}
+.usage-result{display:grid;gap:18px;margin-top:22px;padding-top:22px;border-top:1px solid var(--line)}
+.qr-code{display:grid;place-items:center;min-height:260px;padding:16px;border:1px solid var(--line);border-radius:18px;background:#fff}
+.qr-code svg{width:min(100%,320px);height:auto}
+.url-field{display:grid;gap:7px;color:#475467;font-size:13px}
+.url-field textarea{width:100%;border:1px solid #d0d5dd;border-radius:12px;background:#f8fafc;color:var(--text);padding:11px 12px;resize:none;word-break:break-all}
+.security-note{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+@media(max-width:900px){.metric-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.section-heading{align-items:stretch;flex-direction:column}}
+@media(max-width:520px){.metric-grid{grid-template-columns:1fr 1fr}}
