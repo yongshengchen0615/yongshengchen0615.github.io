@@ -33,18 +33,29 @@ const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 // Public LINE Login channel identifier for LIFF app 2010787602-WceTV9tT.
 // This is an expected token audience, not a secret.
 const LINE_LOGIN_CHANNEL_ID = '2010787602';
+const LINE_IDENTITY_CACHE_MAX_SECONDS = 300;
+const LINE_IDENTITY_EXPIRY_SKEW_SECONDS = 15;
+
+// These caches are reset at the beginning of every Web App request. They only
+// reuse Apps Script service objects / derived reads inside the current request.
+let requestSpreadsheet_ = null;
+let requestSheets_ = {};
+let requestUsageRecordCounts_ = null;
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.6.0' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.7.0' } });
 }
 
 function doPost(e) {
+  resetRequestCaches_();
   try {
     const action = cleanText_(e && e.parameter && e.parameter.action, 60, true);
     const idToken = cleanText_(e && e.parameter && e.parameter.idToken, 4096, true);
-    rateLimitByToken_(idToken);
-    const identity = verifyLineIdToken_(idToken);
-    const context = { identity: identity, isAdmin: isAdmin_(identity.sub) };
+    const tokenFingerprint = rateLimitByToken_(idToken);
+    const identity = verifyLineIdToken_(idToken, tokenFingerprint);
+    // Authorization is intentionally lazy. Member APIs do not need an extra
+    // Members Sheet lookup just to compute an admin flag they never use.
+    const context = { identity: identity, isAdmin: null };
     const payload = parsePayload_(e && e.parameter && e.parameter.payload);
 
     switch (action) {
@@ -57,6 +68,10 @@ function doPost(e) {
       case 'usage.redeem': // compatibility only: old frontend now records time and never deducts a balance.
         rateLimit_('usage-record:' + context.identity.sub, 10, 60);
         return json_({ ok: true, data: usageRecord_(context, payload) });
+      case 'admin.dashboard':
+        requireAdmin_(context);
+        rateLimit_('admin-dashboard:' + context.identity.sub, 30, 60);
+        return json_({ ok: true, data: adminDashboard_(payload) });
       case 'admin.list':
         requireAdmin_(context);
         rateLimit_('admin-list:' + context.identity.sub, 30, 60);
@@ -151,6 +166,24 @@ function memberMe_(context) {
   }
   member.tier = tierForConsumedMinutes_(member.consumedMinutes);
   return { member: publicMember_(member, false), isAdmin: hasManageMembersPermission_(member.canManageMembers) };
+}
+
+function adminDashboard_(payload) {
+  const memberResult = adminList_({
+    query: payload.query || '',
+    page: payload.page || 1,
+    pageSize: payload.pageSize || 100
+  });
+  const voucherResult = adminUsageList_({ limit: payload.voucherLimit || 50 });
+  return {
+    members: memberResult.members,
+    total: memberResult.total,
+    page: memberResult.page,
+    pageSize: memberResult.pageSize,
+    stats: memberResult.stats,
+    thresholds: getTierThresholds_(),
+    vouchers: voucherResult.vouchers
+  };
 }
 
 function adminList_(payload) {
@@ -374,6 +407,7 @@ function usageRecord_(context, payload) {
     record.recordedAt = new Date().toISOString();
     record.updatedAt = record.recordedAt;
     writeUsageRecord_(recordsSheet, recordRow, record);
+    invalidateUsageRecordCounts_();
     finalizeVoucherAfterRecord_(vouchersSheet, located.row, voucher, record);
     ensureUsageRecordAudit_(recordsSheet, recordRow, record, voucher);
 
@@ -412,6 +446,7 @@ function recoverUsageRecord_(recordsSheet, recordRow, record, membersSheet, vouc
     record.recordedAt = record.recordedAt || new Date().toISOString();
     record.updatedAt = new Date().toISOString();
     writeUsageRecord_(recordsSheet, recordRow, record);
+    invalidateUsageRecordCounts_();
     finalizeVoucherAfterRecord_(vouchersSheet, voucherRow, voucher, record);
   } else if (record.status !== 'recorded') {
     fail_('USAGE_RECORD_CONFLICT', '消費時間記錄狀態不正確。');
@@ -453,15 +488,18 @@ function readUsageAccess_(payload) {
 function findUsageVoucherByAccess_(access) {
   const sheet = getUsageVouchersSheet_();
   if (sheet.getLastRow() <= 1) return { row: 0, voucher: null };
-  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, USAGE_VOUCHER_HEADERS.length).getValues();
-  const tokenHash = access.token ? hashUsageCode_(access.token) : '';
-  for (let i = 0; i < rows.length; i += 1) {
-    const voucher = rowToUsageVoucher_(rows[i]);
-    if ((access.code && voucher.shareCode === access.code) || (tokenHash && voucher.tokenHash === tokenHash)) {
-      return { row: i + 2, voucher: voucher };
-    }
+
+  let row = 0;
+  if (access.code) {
+    row = findExactValueRow_(sheet, USAGE_VOUCHER_HEADERS.indexOf('shareCode') + 1, access.code);
+  } else if (access.token) {
+    row = findExactValueRow_(sheet, USAGE_VOUCHER_HEADERS.indexOf('tokenHash') + 1, hashUsageCode_(access.token));
   }
-  return { row: 0, voucher: null };
+  if (!row) return { row: 0, voucher: null };
+  return {
+    row: row,
+    voucher: rowToUsageVoucher_(sheet.getRange(row, 1, 1, USAGE_VOUCHER_HEADERS.length).getValues()[0])
+  };
 }
 
 function requireUsageVoucherUsable_(voucher, recordCount) {
@@ -492,17 +530,21 @@ function effectiveVoucherStatus_(voucher, recordCount) {
 }
 
 function usageRecordCounts_() {
+  if (requestUsageRecordCounts_) return requestUsageRecordCounts_;
   const sheet = getUsageRecordsSheet_();
   const counts = {};
-  if (sheet.getLastRow() <= 1) return counts;
-  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, USAGE_RECORD_HEADERS.length).getValues();
-  rows.map(rowToUsageRecord_).forEach(function (record) {
-    if (record.status !== 'recorded') return;
-    counts[record.voucherId] = (counts[record.voucherId] || 0) + 1;
-  });
-  return counts;
+  if (sheet.getLastRow() > 1) {
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, USAGE_RECORD_HEADERS.length).getValues();
+    rows.map(rowToUsageRecord_).forEach(function (record) {
+      if (record.status !== 'recorded') return;
+      counts[record.voucherId] = (counts[record.voucherId] || 0) + 1;
+    });
+  }
+  requestUsageRecordCounts_ = counts;
+  return requestUsageRecordCounts_;
 }
 
+function invalidateUsageRecordCounts_() { requestUsageRecordCounts_ = null; }
 function countUsageRecords_(voucherId) { return usageRecordCounts_()[voucherId] || 0; }
 
 function isMembershipUsable_(member) {
@@ -512,8 +554,14 @@ function isMembershipUsable_(member) {
   return String(member.expiresAt).slice(0, 10) >= today;
 }
 
-function verifyLineIdToken_(idToken) {
+function verifyLineIdToken_(idToken, tokenFingerprint) {
   const clientId = LINE_LOGIN_CHANNEL_ID;
+  const fingerprint = tokenFingerprint || tokenFingerprint_(idToken);
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'line-id:v1:' + fingerprint;
+  const cached = readCachedLineIdentity_(cache.get(cacheKey), clientId);
+  if (cached) return cached;
+
   const response = UrlFetchApp.fetch('https://api.line.me/oauth2/v2.1/verify', {
     method: 'post', contentType: 'application/x-www-form-urlencoded',
     payload: { id_token: idToken, client_id: clientId }, muteHttpExceptions: true
@@ -537,10 +585,49 @@ function verifyLineIdToken_(idToken) {
   if (!result || !result.sub || String(result.aud) !== clientId) {
     fail_('LINE_CHANNEL_MISMATCH', 'LINE Login Channel 設定不一致，請聯絡管理員。');
   }
-  return result;
+
+  const identity = sanitizedLineIdentity_(result);
+  cacheVerifiedLineIdentity_(cache, cacheKey, identity);
+  return identity;
 }
 
-function requireAdmin_(context) { if (!context.isAdmin) fail_('FORBIDDEN', '你沒有會員管理權限。'); }
+function sanitizedLineIdentity_(result) {
+  return {
+    sub: String(result.sub || ''),
+    aud: String(result.aud || ''),
+    exp: Number(result.exp || 0),
+    iat: Number(result.iat || 0),
+    name: cleanText_(result.name || '', 80, false),
+    picture: safePictureUrl_(result.picture || '')
+  };
+}
+
+function readCachedLineIdentity_(raw, clientId) {
+  if (!raw) return null;
+  try {
+    const identity = JSON.parse(raw);
+    const now = Math.floor(Date.now() / 1000);
+    if (!identity || !identity.sub || String(identity.aud) !== clientId) return null;
+    if (!Number.isFinite(Number(identity.exp)) || Number(identity.exp) <= now + LINE_IDENTITY_EXPIRY_SKEW_SECONDS) return null;
+    return identity;
+  } catch (_) {
+    return null;
+  }
+}
+
+function cacheVerifiedLineIdentity_(cache, cacheKey, identity) {
+  const now = Math.floor(Date.now() / 1000);
+  const remaining = Math.floor(Number(identity.exp) - now - LINE_IDENTITY_EXPIRY_SKEW_SECONDS);
+  const ttl = Math.min(LINE_IDENTITY_CACHE_MAX_SECONDS, remaining);
+  if (ttl < 1) return;
+  try { cache.put(cacheKey, JSON.stringify(identity), ttl); }
+  catch (_) { /* CacheService is an optimization only. */ }
+}
+
+function requireAdmin_(context) {
+  if (context.isAdmin == null) context.isAdmin = isAdmin_(context.identity.sub);
+  if (!context.isAdmin) fail_('FORBIDDEN', '你沒有會員管理權限。');
+}
 
 function isAdmin_(lineUserId) {
   const sheet = getMembersSheet_();
@@ -554,16 +641,34 @@ function hasManageMembersPermission_(value) {
   return String(value == null ? '' : value).trim().toLowerCase() === 'true';
 }
 
-function getSpreadsheet_() {
-  const id = cleanText_(PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'), 160, true);
-  try { return SpreadsheetApp.openById(id); }
-  catch (_) { fail_('CONFIG_ERROR', '會員資料庫尚未正確設定。'); }
+function resetRequestCaches_() {
+  requestSpreadsheet_ = null;
+  requestSheets_ = {};
+  requestUsageRecordCounts_ = null;
 }
 
-function getMembersSheet_() { return ensureSheet_(getSpreadsheet_(), MEMBERS_SHEET, MEMBER_HEADERS); }
-function getAuditSheet_() { return ensureSheet_(getSpreadsheet_(), AUDIT_SHEET, AUDIT_HEADERS); }
-function getUsageVouchersSheet_() { return ensureSheet_(getSpreadsheet_(), USAGE_VOUCHERS_SHEET, USAGE_VOUCHER_HEADERS); }
-function getUsageRecordsSheet_() { return ensureSheet_(getSpreadsheet_(), USAGE_RECORDS_SHEET, USAGE_RECORD_HEADERS); }
+function getSpreadsheet_() {
+  if (requestSpreadsheet_) return requestSpreadsheet_;
+  const id = cleanText_(PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'), 160, true);
+  try {
+    requestSpreadsheet_ = SpreadsheetApp.openById(id);
+    return requestSpreadsheet_;
+  } catch (_) {
+    fail_('CONFIG_ERROR', '會員資料庫尚未正確設定。');
+  }
+}
+
+function getCachedSheet_(name, headers) {
+  if (requestSheets_[name]) return requestSheets_[name];
+  const sheet = ensureSheet_(getSpreadsheet_(), name, headers);
+  requestSheets_[name] = sheet;
+  return sheet;
+}
+
+function getMembersSheet_() { return getCachedSheet_(MEMBERS_SHEET, MEMBER_HEADERS); }
+function getAuditSheet_() { return getCachedSheet_(AUDIT_SHEET, AUDIT_HEADERS); }
+function getUsageVouchersSheet_() { return getCachedSheet_(USAGE_VOUCHERS_SHEET, USAGE_VOUCHER_HEADERS); }
+function getUsageRecordsSheet_() { return getCachedSheet_(USAGE_RECORDS_SHEET, USAGE_RECORD_HEADERS); }
 
 function ensureSheet_(spreadsheet, name, headers) {
   let sheet = spreadsheet.getSheetByName(name);
@@ -573,52 +678,58 @@ function ensureSheet_(spreadsheet, name, headers) {
     sheet.setFrozenRows(1);
     return sheet;
   }
-  if (sheet.getLastColumn() === 0) {
+
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
     return sheet;
   }
+
+  // Common path: validate all expected headers with one batched read instead of
+  // one Spreadsheet service call per column.
+  const width = Math.max(lastColumn, headers.length);
+  const currentHeaders = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (value) {
+    return String(value || '').trim();
+  });
+  let exact = true;
+  for (let i = 0; i < headers.length; i += 1) {
+    if (currentHeaders[i] !== headers[i]) { exact = false; break; }
+  }
+  if (exact) return sheet;
+
+  // Migration path: preserve the existing compatibility behavior, but work
+  // from the already-fetched header array and only call Sheets when inserting.
   headers.forEach(function (header, index) {
+    if (currentHeaders[index] === header) return;
+    if (currentHeaders.indexOf(header, index + 1) !== -1) {
+      fail_('SCHEMA_ERROR', name + ' 工作表的必要欄位順序不正確：' + header);
+    }
     const column = index + 1;
-    const current = String(sheet.getRange(1, column).getValue() || '').trim();
-    if (current === header) return;
-    const lastColumn = sheet.getLastColumn();
-    const remaining = lastColumn >= column
-      ? sheet.getRange(1, column, 1, lastColumn - column + 1).getValues()[0].map(function (value) { return String(value || '').trim(); })
-      : [];
-    if (remaining.indexOf(header) !== -1) fail_('SCHEMA_ERROR', name + ' 工作表的必要欄位順序不正確：' + header);
     sheet.insertColumnBefore(column);
     sheet.getRange(1, column).setValue(header);
+    currentHeaders.splice(index, 0, header);
   });
   sheet.setFrozenRows(1);
   return sheet;
 }
 
-function findMemberRow_(sheet, lineUserId) {
+function findExactValueRow_(sheet, column, value) {
   if (sheet.getLastRow() <= 1) return 0;
-  const found = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).createTextFinder(lineUserId).matchEntireCell(true).findNext();
+  const found = sheet.getRange(2, column, sheet.getLastRow() - 1, 1)
+    .createTextFinder(value).matchEntireCell(true).findNext();
   return found ? found.getRow() : 0;
 }
-function findMemberRowByMemberNo_(sheet, memberNo) {
-  if (sheet.getLastRow() <= 1) return 0;
-  const found = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).createTextFinder(memberNo).matchEntireCell(true).findNext();
-  return found ? found.getRow() : 0;
-}
+
+function findMemberRow_(sheet, lineUserId) { return findExactValueRow_(sheet, 1, lineUserId); }
+function findMemberRowByMemberNo_(sheet, memberNo) { return findExactValueRow_(sheet, 2, memberNo); }
 function getMemberByLineUserId_(lineUserId) {
   const sheet = getMembersSheet_();
   const row = findMemberRow_(sheet, lineUserId);
   return row ? rowToMember_(sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).getValues()[0]) : null;
 }
-function findUsageVoucherRowById_(sheet, voucherId) {
-  if (sheet.getLastRow() <= 1) return 0;
-  const found = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).createTextFinder(voucherId).matchEntireCell(true).findNext();
-  return found ? found.getRow() : 0;
-}
-function findUsageRecordRowByRequestId_(sheet, requestId) {
-  if (sheet.getLastRow() <= 1) return 0;
-  const found = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).createTextFinder(requestId).matchEntireCell(true).findNext();
-  return found ? found.getRow() : 0;
-}
+function findUsageVoucherRowById_(sheet, voucherId) { return findExactValueRow_(sheet, 1, voucherId); }
+function findUsageRecordRowByRequestId_(sheet, requestId) { return findExactValueRow_(sheet, 2, requestId); }
 function findProcessingUsageRecordRowByVoucher_(sheet, voucherId) {
   if (sheet.getLastRow() <= 1) return 0;
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, USAGE_RECORD_HEADERS.length).getValues();
@@ -666,6 +777,7 @@ function hashUsageCode_(code) {
   const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, code, Utilities.Charset.UTF_8);
   return digest.map(function (byte) { return ('0' + ((byte + 256) % 256).toString(16)).slice(-2); }).join('');
 }
+function tokenFingerprint_(idToken) { return hashUsageCode_(idToken); }
 
 function audit_(actorLineUserId, actorRole, action, targetLineUserId, result, details) {
   try {
@@ -678,9 +790,9 @@ function audit_(actorLineUserId, actorRole, action, targetLineUserId, result, de
 }
 function rateLimitByToken_(idToken) {
   if (!idToken) fail_('UNAUTHENTICATED', '請先使用 LINE 登入。');
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken, Utilities.Charset.UTF_8);
-  const fingerprint = digest.slice(0, 12).map(function (byte) { return ('0' + ((byte + 256) % 256).toString(16)).slice(-2); }).join('');
-  rateLimit_('request:' + fingerprint, 60, 60);
+  const fingerprint = tokenFingerprint_(idToken);
+  rateLimit_('request:' + fingerprint.slice(0, 24), 60, 60);
+  return fingerprint;
 }
 function rateLimit_(key, maxRequests, ttlSeconds) {
   const cache = CacheService.getScriptCache();
