@@ -30,28 +30,14 @@
       </section>
 
       <section class="panel scan-panel">
-        <div><span class="eyebrow">SCAN QR</span><h3>掃描消費時間 QR Code</h3><p id="scanHint">掃描後會記錄本次消費分鐘，不會扣除任何時數餘額。</p></div>
+        <div><span class="eyebrow">SCAN QR</span><h3>掃描消費時間 QR Code</h3><p id="scanHint">點擊後會直接開啟 LINE QR 掃描器；掃描成功後立即加入消費時間。</p></div>
         <button id="scanQrButton" class="button button-secondary" type="button">掃描 QR Code</button>
-      </section>
-
-      <section id="scannerPanel" class="panel scanner-panel hidden" aria-live="polite">
-        <div class="scanner-heading"><div><span class="eyebrow">QR SCANNER</span><h3>讀取消費時間 QR Code</h3></div><button id="closeScannerButton" class="icon-button" type="button" aria-label="關閉掃描器">×</button></div>
-        <div class="scanner-preview"><video id="scannerVideo" autoplay muted playsinline aria-label="QR Code 相機預覽"></video><canvas id="scannerCanvas" class="hidden" aria-hidden="true"></canvas></div>
-        <p id="scannerStatus" class="scanner-status">選擇一種方式讀取 QR Code。</p>
-        <div class="scanner-actions"><button id="startCameraButton" class="button button-primary" type="button">使用相機掃描</button><label class="button button-secondary file-button">選擇 QR 圖片<input id="qrImageInput" type="file" accept="image/*"></label><button id="useLiffScannerButton" class="button button-secondary hidden" type="button">使用 LINE 掃描器</button></div>
-        <p class="scanner-fallback">手機可從相簿選圖；桌機可選擇 QR 圖檔。若裝置沒有相機或檔案選擇能力，仍可直接開啟管理端發放連結。</p>
       </section>
 
       <section id="usagePanel" class="panel redeem-panel hidden" aria-live="polite">
         <span class="eyebrow">USAGE TIME RECORD</span>
-        <div id="usageLoading"><h3>正在確認消費時間 QR Code</h3><p>請稍候。</p></div>
-        <div id="usageReady" class="hidden">
-          <h3>記錄消費 <span id="usageMinutes">—</span> 分鐘</h3>
-          <p id="usageDescription">確認後會加入你的消費時間紀錄，不會扣除任何餘額。</p>
-          <dl class="redeem-meta"><div><dt>QR Code</dt><dd id="usageVoucherId">—</dd></div><div><dt>掃描模式</dt><dd id="usageMode">—</dd></div><div><dt>到期時間</dt><dd id="usageExpiresAt">—</dd></div></dl>
-          <button id="recordUsageButton" class="button button-primary redeem-button" type="button">確認記錄</button>
-        </div>
-        <div id="usageResult" class="hidden"><h3 id="usageResultTitle">記錄完成</h3><p id="usageResultMessage"></p></div>
+        <div id="usageLoading"><h3>正在加入消費時間</h3><p>正在驗證 QR Code、會員狀態與記錄狀態。</p></div>
+        <div id="usageResult" class="hidden"><h3 id="usageResultTitle">消費時間已加入</h3><p id="usageResultMessage"></p></div>
       </section>
 
       <section class="panel info-panel"><div><span class="eyebrow">會員狀態</span><h3 id="statusTitle">會員資格有效</h3><p id="statusDescription">此會員卡目前可正常使用。</p></div></section>
