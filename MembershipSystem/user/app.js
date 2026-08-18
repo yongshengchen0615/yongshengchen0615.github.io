@@ -9,6 +9,7 @@
   };
 
   let currentMember = null;
+  let publicConfig = null;
   let scanInFlight = false;
 
   function formatMinutes(value) {
@@ -85,8 +86,15 @@
     try { scannedUrl = new URL(String(value || '')); }
     catch (_) { throw new Error('掃描內容不是有效的消費時間網址。'); }
 
-    const expected = new URL('./', window.location.href);
-    if (scannedUrl.origin !== expected.origin || scannedUrl.pathname !== expected.pathname) {
+    const expectedMemberUrl = new URL('./', window.location.href);
+    const isMemberUrl = scannedUrl.origin === expectedMemberUrl.origin &&
+      scannedUrl.pathname === expectedMemberUrl.pathname;
+    const expectedLiffPath = publicConfig && publicConfig.LIFF_ID
+      ? `/${encodeURIComponent(publicConfig.LIFF_ID)}/`
+      : '';
+    const isLiffUrl = scannedUrl.origin === 'https://liff.line.me' &&
+      scannedUrl.pathname === expectedLiffPath;
+    if (!isMemberUrl && !isLiffUrl) {
       throw new Error('此 QR Code 不是本會員系統的消費時間網址。');
     }
     const access = readAccessFromUrl(scannedUrl);
@@ -199,6 +207,7 @@
     }
 
     try {
+      publicConfig = await Membership.loadConfig();
       const loggedIn = await Membership.ensureLiffLogin();
       if (!loggedIn) return;
       await loadMember();
