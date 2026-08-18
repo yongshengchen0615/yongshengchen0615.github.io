@@ -1,6 +1,6 @@
 # MembershipSystem — 會員卡 MVP
 
-GitHub Pages 前端 + Google Apps Script（GAS）後端的會員系統，包含會員卡、管理端、消費時間記錄與 QR Code 發放。
+GitHub Pages 前端 + Google Apps Script（GAS）後端的會員系統，包含會員卡、管理端、會員等級、消費時間記錄與 QR Code 發放。
 
 ## Domain
 
@@ -12,6 +12,44 @@ GitHub Pages 前端 + Google Apps Script（GAS）後端的會員系統，包含�
 - 掃描 QR Code 或開啟發放連結不會扣除 `availableMinutes`。
 - 每次成功記錄只增加 `consumedMinutes`，並新增一筆 `UsageRecords`。
 - `availableMinutes` 欄位暫時保留於既有 `Members` Sheet，只為 backward compatibility；新 UI / 新 business rule 不使用它。
+
+### 會員等級
+
+會員等級是 **Membership Tier**，不是 Role / Permission，也不授予管理權限。
+
+目前四個等級：
+
+- `standard`：一般
+- `silver`：銀級
+- `gold`：金級
+- `platinum`：白金
+
+等級由 `consumedMinutes` 自動推導，管理端不能直接替單一會員手動指定 tier。一般會員固定從 0 分鐘開始；銀級、金級、白金門檻由管理端設定，且必須符合：
+
+```text
+0 < silver < gold < platinum
+```
+
+首次部署尚未設定 Script Properties 時，預設門檻為：
+
+```text
+一般      0 分鐘
+銀級    600 分鐘
+金級   1800 分鐘
+白金   3600 分鐘
+```
+
+門檻保存在 Apps Script Script Properties：
+
+```text
+MEMBERSHIP_TIER_SILVER_MINUTES
+MEMBERSHIP_TIER_GOLD_MINUTES
+MEMBERSHIP_TIER_PLATINUM_MINUTES
+```
+
+管理端更新門檻時，GAS 使用 ScriptLock 批次重新計算現有 `Members.tier`，並寫入 `MEMBERSHIP_TIER_THRESHOLDS_UPDATED` Audit。之後每次成功 `usage.record` / processing recovery 也會同步更新會員 tier。
+
+舊資料中的 `vip` 只做 backward-compatible migration mapping 到 `platinum`。
 
 ### Usage QR Code
 
@@ -44,13 +82,24 @@ QR 不指定會員。真正被記錄的人永遠是 GAS 驗證 LINE ID Token 後
 - 第一次執行 `admin.usage.open` 時，若 `shareCode` 尚不存在，GAS 會補產生新的 `shareCode`。
 - 舊 `tokenHash` 不會被覆寫，所以已經發出去的舊 URL 仍可繼續使用。
 - 新產生的 share URL 也可使用。
-- legacy targeted QR 為 read-only，不允許用新版「修改」改變其語意。
+- legacy targeted QR 為 read-only，不允許用新版「修改」或「刪除」破壞其歷史語意。
 
 ## 用戶端流程
 
+### 會員卡
+
+會員卡會顯示目前自動計算的會員等級，並套用不同卡面：
+
+- 一般：深色卡面
+- 銀級：銀灰卡面
+- 金級：金色卡面
+- 白金：冷色白金卡面
+
+卡面顏色只使用 server 回傳的 `member.tier`，前端不自行使用分鐘重新計算門檻。
+
 ### 掃描 QR Code
 
-「掃描 QR Code」現在是會員卡內的一個按鈕。會員按下後不顯示掃描類型選單，直接呼叫 LINE LIFF `liff.scanCodeV2()`：
+「掃描 QR Code」是會員卡內的一個按鈕。會員按下後不顯示掃描類型選單，直接呼叫 LINE LIFF `liff.scanCodeV2()`：
 
 ```text
 會員卡內按「掃描 QR Code」
@@ -61,6 +110,7 @@ QR 不指定會員。真正被記錄的人永遠是 GAS 驗證 LINE ID Token 後
 → Script Lock
 → UsageRecords processing
 → Member.consumedMinutes 增加
+→ 重新計算 Member.tier
 → UsageRecords recorded
 → Audit
 ```
@@ -112,7 +162,9 @@ LIFF Login callback 的 `usage` / `redeem` / `requestId` 恢復由 `shared/commo
 所有 `admin.*` 都先執行 `requireAdmin_()`。
 
 - `admin.list`
-- `admin.update`
+- `admin.update`：只修改會員狀態、有效期限與管理備註；tier 由 server 自動計算。
+- `admin.tier.get`：取得銀級 / 金級 / 白金門檻。
+- `admin.tier.update`：更新門檻並重新計算所有會員 tier。
 - `admin.usage.list`
 - `admin.usage.create`
 - `admin.usage.update`：只允許尚未有消費紀錄且目前有效的 QR。
@@ -130,6 +182,8 @@ joinedAt | expiresAt | note | createdAt | updatedAt | canManageMembers |
 availableMinutes | consumedMinutes
 ```
 
+`tier` 是依 `consumedMinutes` 與目前門檻計算出的 Membership Tier cache。`canManageMembers` 才是管理權限來源，兩者不可互相替代。
+
 `availableMinutes` 為 legacy compatibility 欄位，新消費時間功能不使用。
 
 ### UsageVouchers
@@ -140,7 +194,7 @@ availableMinutes | consumedMinutes
 ... | scanMode | shareCode
 ```
 
-GAS 1.5.0 的 QR CRUD **不新增欄位**。舊 `tokenHash` 保留以支援已發出的舊 URL。
+GAS 1.6.0 的會員等級功能不新增 Sheet 欄位。舊 `tokenHash` 保留以支援已發出的舊 URL。
 
 ### UsageRecords
 
@@ -160,6 +214,9 @@ recordedAt | auditRecordedAt
 
 - Authentication：LINE ID Token → LINE verify API → `sub`。
 - Authorization：所有管理 API → `requireAdmin_()` → `canManageMembers`。
+- Membership Tier：一般 / 銀級 / 金級 / 白金只表示會員層級，不授予任何 Admin Permission。
+- Tier threshold update 只能由 Admin server API 執行；前端不能自行指定另一個會員的 tier。
+- `admin.update` 不再接受 client tier 作為 authoritative input。
 - QR / shareCode 不授予管理權，也不能指定另一個會員身分。
 - Scanner 只接受目前會員頁或目前 LIFF ID 的發放 URL，且 usage/redeem 必須是 64-hex code。
 - `requestId` 只用於 idempotency，不是身分或權限憑證。
@@ -175,23 +232,37 @@ recordedAt | auditRecordedAt
 
 ## Migration / Deployment
 
-目前 GAS service version 為 **1.5.0**。
+目前 GAS service version 為 **1.6.0**。
 
-若 production 尚未部署 1.4.x，先完成既有 `shareCode` / `UsageRecords` migration。若已部署 1.4.1，本次 1.5.0 不新增 Sheet 欄位，但新增管理端 QR update/delete server actions，因此仍必須重新部署 GAS：
+若 production 已部署 1.5.0，本次 1.6.0 不新增 Sheet 欄位，但新增會員等級門檻 API 與 `TierManagement.gs`，因此仍必須重新部署 GAS：
 
 1. 更新 Apps Script 專案中的 `gas/Code.gs`。
-2. **新增 `gas/UsageAdmin.gs` 到同一個 Apps Script 專案。**
-3. 建立新的 Apps Script version，將既有 Web App deployment 指向 1.5.0 code。
-4. 保持原本 `/exec` URL，避免前端 config 變更。
-5. 部署 GitHub Pages 最新 `main`。
-6. 直接開啟 `/exec`，確認 `doGet()` 回傳 `version: "1.5.0"`。
+2. 確認既有 `gas/UsageAdmin.gs` 仍在 Apps Script 專案。
+3. **新增 `gas/TierManagement.gs` 到同一個 Apps Script 專案。**
+4. 建立新的 Apps Script version，將既有 Web App deployment 指向 1.6.0 code。
+5. 保持原本 `/exec` URL，避免前端 config 變更。
+6. 部署 GitHub Pages 最新 `main`。
+7. 直接開啟 `/exec`，確認 `doGet()` 回傳 `version: "1.6.0"`。
 
-只更新 GitHub Repository 不會讓既有 Apps Script Web App deployment 自動取得新的 `UsageAdmin.gs`。
+Script Properties 尚未設定會員等級門檻時會採用 600 / 1800 / 3600 的預設值；管理員第一次儲存門檻後會寫入正式設定並批次同步現有會員 tier。
+
+只更新 GitHub Repository 不會讓既有 Apps Script Web App deployment 自動取得新的 `TierManagement.gs` 或 `admin.tier.*` API。
 
 ## Verification
 
 至少驗證：
 
+- 管理端會員清單只顯示「一般 / 銀級 / 金級 / 白金」，不再顯示 Standard / VIP。
+- 會員編輯視窗的會員等級為唯讀，client 不可透過 `admin.update` 手動指定 tier。
+- 非管理員呼叫 `admin.tier.get` / `admin.tier.update` 必須被 `FORBIDDEN` 拒絕。
+- 門檻必須為正整數且符合 `silver < gold < platinum`。
+- 門檻更新後既有會員依目前 `consumedMinutes` 批次重新分級。
+- 599 / 600、1799 / 1800、3599 / 3600 等 boundary condition 依預設門檻分到正確 tier。
+- 成功新增消費時間跨越門檻時，同一個 `usage.record` response 應回傳升級後 tier。
+- processing UsageRecord recovery 跨越門檻時也必須同步 tier。
+- 白金會員仍不能取得 `canManageMembers` 或呼叫 Admin API，除非其 Members.canManageMembers 本身為 TRUE。
+- 用戶端一般 / 銀級 / 金級 / 白金會員卡呈現不同卡面顏色。
+- 會員卡顏色使用 server 回傳 tier，不在 client 重複計算門檻。
 - 會員卡內只有一個「掃描 QR Code」按鈕，不再有獨立 scanner panel。
 - 點按鈕直接進入 `liff.scanCodeV2()`，沒有掃描類型選單。
 - 掃描成功後直接執行 `usage.record`。
