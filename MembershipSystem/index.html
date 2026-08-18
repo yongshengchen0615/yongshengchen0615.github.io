@@ -3,13 +3,58 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=./user/">
+  <meta name="referrer" content="no-referrer">
   <title>Membership System</title>
-  <script>
-    window.location.replace('./user/' + window.location.search + window.location.hash);
-  </script>
 </head>
 <body>
-  <p>正在前往會員端。若未自動跳轉，請前往 <a href="./user/">會員卡</a>。</p>
+  <p id="status">正在開啟會員端…</p>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    (async function () {
+      'use strict';
+
+      function validCode(value) {
+        const code = String(value || '').trim();
+        return /^[a-f0-9]{64}$/i.test(code) ? code.toLowerCase() : '';
+      }
+
+      function validRequestId(value) {
+        const requestId = String(value || '').trim();
+        return /^[a-f0-9]{32,64}$/i.test(requestId) ? requestId.toLowerCase() : '';
+      }
+
+      try {
+        const response = await fetch('./shared/config.json', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer'
+        });
+        if (!response.ok) throw new Error('無法載入 LIFF 設定。');
+        const config = await response.json();
+        if (!config || !config.LIFF_ID) throw new Error('LIFF_ID 尚未設定。');
+
+        // The root path is the LIFF endpoint/primary redirect. LINE restores
+        // liff.state during init, so never change location before this resolves.
+        await liff.init({ liffId: String(config.LIFF_ID) });
+
+        const current = new URL(window.location.href);
+        const target = new URL('./user/', current);
+        const usage = validCode(current.searchParams.get('usage'));
+        const redeem = usage ? '' : validCode(current.searchParams.get('redeem'));
+        const requestId = validRequestId(current.searchParams.get('request'));
+        if (usage) target.searchParams.set('usage', usage);
+        else if (redeem) target.searchParams.set('redeem', redeem);
+        if ((usage || redeem) && requestId) target.searchParams.set('request', requestId);
+
+        window.location.replace(target.href);
+      } catch (error) {
+        document.getElementById('status').textContent =
+          error && error.message ? error.message : '會員端暫時無法開啟。';
+      }
+    })();
+  </script>
 </body>
 </html>
