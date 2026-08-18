@@ -440,12 +440,12 @@
     }
   }
 
-  async function openScannerPanel() {
+  function openScannerPanel() {
+    stopBrowserCamera();
     $('#scannerPanel').classList.remove('hidden');
     $('#useLiffScannerButton').classList.toggle('hidden', !hasLiffScanner());
     $('#scanHint').textContent = '可使用瀏覽器相機、QR 圖片或支援時的 LINE 掃描器。';
-    setScannerStatus('正在準備瀏覽器相機；若無法使用，可直接選擇 QR 圖片。', false);
-    await startBrowserCamera();
+    setScannerStatus('請選擇「使用相機掃描」或「選擇 QR 圖片」。', false);
   }
 
   function configureScanner() {
@@ -468,7 +468,7 @@
   $('#refreshButton').addEventListener('click', () => window.location.reload());
   $('#retryButton').addEventListener('click', () => window.location.reload());
   $('#redeemButton').addEventListener('click', redeemUsage);
-  $('#scanQrButton').addEventListener('click', () => openScannerPanel().catch((error) => setScannerStatus(error.message, true)));
+  $('#scanQrButton').addEventListener('click', openScannerPanel);
   $('#closeScannerButton').addEventListener('click', closeScannerPanel);
   $('#startCameraButton').addEventListener('click', () => startBrowserCamera().catch((error) => setScannerStatus(error.message, true)));
   $('#qrImageInput').addEventListener('change', handleQrImageSelection);
