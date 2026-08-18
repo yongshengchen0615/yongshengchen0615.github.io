@@ -196,24 +196,23 @@
 
     const button = $('#scanQrButton');
     button.disabled = true;
+    button.textContent = '正在開啟掃描器…';
 
     try {
       if (!hasLiffScanner()) {
-        $('#scanHint').textContent = '目前環境不支援 LINE QR 掃描器，請直接開啟管理端發放連結。';
-        return;
+        throw new Error('目前環境不支援 LINE QR 掃描器，請直接開啟管理端發放連結。');
       }
 
-      $('#scanHint').textContent = '正在開啟 LINE QR 掃描器…';
       const result = await liff.scanCodeV2();
       const access = readAccessFromScannedValue(result && result.value);
-      $('#scanHint').textContent = 'QR Code 已讀取，正在加入消費時間…';
-      const recorded = await recordUsageImmediately(access);
-      if (recorded) $('#scanHint').textContent = '消費時間已加入。';
+      button.textContent = '正在加入消費時間…';
+      await recordUsageImmediately(access);
     } catch (error) {
-      $('#scanHint').textContent = error && error.message ? error.message : 'LINE QR 掃描器未能讀取 QR Code。';
+      showUsageError(error);
     } finally {
       scanInFlight = false;
       button.disabled = false;
+      button.textContent = '掃描 QR Code';
     }
   }
 
