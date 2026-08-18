@@ -59,14 +59,8 @@
         </div>
 
         <div class="card-meta-grid">
-          <div>
-            <span>加入日期</span>
-            <strong id="joinedAt">—</strong>
-          </div>
-          <div>
-            <span>有效期限</span>
-            <strong id="expiresAt">永久</strong>
-          </div>
+          <div><span>加入日期</span><strong id="joinedAt">—</strong></div>
+          <div><span>有效期限</span><strong id="expiresAt">永久</strong></div>
         </div>
       </article>
 
@@ -87,17 +81,38 @@
         <div>
           <span class="eyebrow">SCAN QR</span>
           <h3>掃描時數核銷 QR Code</h3>
-          <p id="scanHint">使用相機掃描管理端發放的核銷 QR Code。</p>
+          <p id="scanHint">支援瀏覽器相機、拍照/選擇 QR 圖片；LINE 掃描器可用時也可使用。</p>
         </div>
         <button id="scanQrButton" class="button button-secondary" type="button">掃描 QR Code</button>
       </section>
 
+      <section id="scannerPanel" class="panel scanner-panel hidden" aria-live="polite">
+        <div class="scanner-heading">
+          <div>
+            <span class="eyebrow">QR SCANNER</span>
+            <h3>讀取核銷 QR Code</h3>
+          </div>
+          <button id="closeScannerButton" class="icon-button" type="button" aria-label="關閉掃描器">×</button>
+        </div>
+        <div class="scanner-preview">
+          <video id="scannerVideo" autoplay muted playsinline aria-label="QR Code 相機預覽"></video>
+          <canvas id="scannerCanvas" class="hidden" aria-hidden="true"></canvas>
+        </div>
+        <p id="scannerStatus" class="scanner-status">選擇一種方式讀取 QR Code。</p>
+        <div class="scanner-actions">
+          <button id="startCameraButton" class="button button-primary" type="button">使用相機掃描</button>
+          <label class="button button-secondary file-button">
+            拍照 / 選擇 QR 圖片
+            <input id="qrImageInput" type="file" accept="image/*" capture="environment">
+          </label>
+          <button id="useLiffScannerButton" class="button button-secondary hidden" type="button">使用 LINE 掃描器</button>
+        </div>
+        <p class="scanner-fallback">若裝置沒有相機或無法選擇圖片，仍可直接開啟管理端發放的核銷網址。</p>
+      </section>
+
       <section id="redeemPanel" class="panel redeem-panel hidden" aria-live="polite">
         <span class="eyebrow">HOURS REDEMPTION</span>
-        <div id="redeemLoading">
-          <h3>正在確認時數核銷券</h3>
-          <p>請稍候。</p>
-        </div>
+        <div id="redeemLoading"><h3>正在確認時數核銷券</h3><p>請稍候。</p></div>
         <div id="redeemReady" class="hidden">
           <h3>確認消費 <span id="redeemHours">—</span> 小時</h3>
           <p id="redeemDescription">確認後會立即從你的可用時數扣除。</p>
@@ -107,10 +122,7 @@
           </dl>
           <button id="redeemButton" class="button button-primary redeem-button" type="button">確認消費</button>
         </div>
-        <div id="redeemResult" class="hidden">
-          <h3 id="redeemResultTitle">核銷完成</h3>
-          <p id="redeemResultMessage"></p>
-        </div>
+        <div id="redeemResult" class="hidden"><h3 id="redeemResultTitle">核銷完成</h3><p id="redeemResultMessage"></p></div>
       </section>
 
       <section class="panel info-panel">
@@ -126,6 +138,7 @@
   </main>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" referrerpolicy="no-referrer"></script>
   <script src="../shared/common.js"></script>
   <script src="./app.js"></script>
 </body>
