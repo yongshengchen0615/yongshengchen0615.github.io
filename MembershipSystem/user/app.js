@@ -145,10 +145,14 @@
     }
   }
 
+  function scannerUnavailableMessage() {
+    return 'LIFF QR 掃描器目前不可用。請確認 LIFF 已開啟 Scan QR；LINE 內建 LIFF 視窗需為 Full，外部瀏覽器則需支援相機 / WebRTC。仍可使用手機相機或直接開啟核銷網址。';
+  }
+
   async function scanUsageQrCode() {
     const button = $('#scanQrButton');
     if (typeof liff.isApiAvailable !== 'function' || !liff.isApiAvailable('scanCodeV2')) {
-      $('#scanHint').textContent = '目前環境不支援 LIFF QR 掃描器，請改用手機相機開啟管理端發放的網址。';
+      $('#scanHint').textContent = scannerUnavailableMessage();
       return;
     }
 
@@ -173,7 +177,7 @@
     const available = typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('scanCodeV2');
     $('#scanQrButton').disabled = !available;
     if (!available) {
-      $('#scanHint').textContent = '目前環境不支援 LIFF QR 掃描器，仍可直接開啟管理端發放的核銷網址。';
+      $('#scanHint').textContent = scannerUnavailableMessage();
     }
   }
 
