@@ -11,6 +11,8 @@ const TIER_THRESHOLD_PROPERTY_KEYS = {
   gold: 'MEMBERSHIP_TIER_GOLD_MINUTES',
   platinum: 'MEMBERSHIP_TIER_PLATINUM_MINUTES'
 };
+const TIER_THRESHOLD_CACHE_KEY = 'membership-tier-thresholds:v1';
+const TIER_THRESHOLD_CACHE_SECONDS = 300;
 const MAX_TIER_THRESHOLD_MINUTES = 10000000;
 
 function adminTierGet_(context) {
@@ -29,6 +31,7 @@ function adminTierUpdate_(context, payload) {
       [TIER_THRESHOLD_PROPERTY_KEYS.gold]: String(thresholds.gold),
       [TIER_THRESHOLD_PROPERTY_KEYS.platinum]: String(thresholds.platinum)
     });
+    cacheTierThresholds_(thresholds);
 
     const updatedMembers = synchronizeAllMemberTiers_(thresholds);
     audit_(context.identity.sub, 'admin', 'MEMBERSHIP_TIER_THRESHOLDS_UPDATED', '', 'success', {
@@ -44,18 +47,60 @@ function adminTierUpdate_(context, payload) {
 }
 
 function getTierThresholds_() {
-  const props = PropertiesService.getScriptProperties();
+  const cache = CacheService.getScriptCache();
+  const cached = readCachedTierThresholds_(cache.get(TIER_THRESHOLD_CACHE_KEY));
+  if (cached) return cached;
+
+  // Read Script Properties once instead of issuing one service call per tier.
+  const values = PropertiesService.getScriptProperties().getProperties();
   const thresholds = {
     standard: 0,
-    silver: readTierThreshold_(props.getProperty(TIER_THRESHOLD_PROPERTY_KEYS.silver), DEFAULT_TIER_THRESHOLDS.silver),
-    gold: readTierThreshold_(props.getProperty(TIER_THRESHOLD_PROPERTY_KEYS.gold), DEFAULT_TIER_THRESHOLDS.gold),
-    platinum: readTierThreshold_(props.getProperty(TIER_THRESHOLD_PROPERTY_KEYS.platinum), DEFAULT_TIER_THRESHOLDS.platinum)
+    silver: readTierThreshold_(values[TIER_THRESHOLD_PROPERTY_KEYS.silver], DEFAULT_TIER_THRESHOLDS.silver),
+    gold: readTierThreshold_(values[TIER_THRESHOLD_PROPERTY_KEYS.gold], DEFAULT_TIER_THRESHOLDS.gold),
+    platinum: readTierThreshold_(values[TIER_THRESHOLD_PROPERTY_KEYS.platinum], DEFAULT_TIER_THRESHOLDS.platinum)
   };
 
-  if (!(thresholds.silver >= 1 && thresholds.silver < thresholds.gold && thresholds.gold < thresholds.platinum)) {
+  assertTierThresholdOrder_(thresholds);
+  cacheTierThresholds_(thresholds);
+  return thresholds;
+}
+
+function readCachedTierThresholds_(raw) {
+  if (!raw) return null;
+  try {
+    const thresholds = JSON.parse(raw);
+    assertTierThresholdOrder_(thresholds);
+    return {
+      standard: 0,
+      silver: Number(thresholds.silver),
+      gold: Number(thresholds.gold),
+      platinum: Number(thresholds.platinum)
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function cacheTierThresholds_(thresholds) {
+  try {
+    CacheService.getScriptCache().put(
+      TIER_THRESHOLD_CACHE_KEY,
+      JSON.stringify(thresholds),
+      TIER_THRESHOLD_CACHE_SECONDS
+    );
+  } catch (_) {
+    // CacheService is optional; Script Properties remain the source of truth.
+  }
+}
+
+function assertTierThresholdOrder_(thresholds) {
+  const silver = Number(thresholds && thresholds.silver);
+  const gold = Number(thresholds && thresholds.gold);
+  const platinum = Number(thresholds && thresholds.platinum);
+  if (!Number.isInteger(silver) || !Number.isInteger(gold) || !Number.isInteger(platinum) ||
+      silver < 1 || silver >= gold || gold >= platinum || platinum > MAX_TIER_THRESHOLD_MINUTES) {
     fail_('CONFIG_ERROR', '會員等級門檻設定不正確，請聯絡管理員。');
   }
-  return thresholds;
 }
 
 function readTierThreshold_(value, fallback) {
