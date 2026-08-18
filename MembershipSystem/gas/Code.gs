@@ -30,9 +30,12 @@ const ALLOWED_MEMBERSHIP_STATUS = ['active', 'suspended', 'disabled'];
 const ALLOWED_SCAN_MODES = ['single', 'repeatable'];
 const MAX_USAGE_MINUTES = 60000;
 const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+// Public LINE Login channel identifier for LIFF app 2010787602-WceTV9tT.
+// This is an expected token audience, not a secret.
+const LINE_LOGIN_CHANNEL_ID = '2010787602';
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.4.0' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.4.1' } });
 }
 
 function doPost(e) {
@@ -482,17 +485,31 @@ function isMembershipUsable_(member) {
 }
 
 function verifyLineIdToken_(idToken) {
-  const clientId = cleanText_(PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ID'), 40, true);
+  const clientId = LINE_LOGIN_CHANNEL_ID;
   const response = UrlFetchApp.fetch('https://api.line.me/oauth2/v2.1/verify', {
     method: 'post', contentType: 'application/x-www-form-urlencoded',
     payload: { id_token: idToken, client_id: clientId }, muteHttpExceptions: true
   });
-  if (response.getResponseCode() !== 200) fail_('UNAUTHENTICATED', 'LINE 登入已失效，請重新登入。');
-  let identity;
-  try { identity = JSON.parse(response.getContentText()); }
-  catch (_) { fail_('UNAUTHENTICATED', 'LINE 登入驗證失敗。'); }
-  if (!identity || !identity.sub || String(identity.aud) !== clientId) fail_('UNAUTHENTICATED', 'LINE 登入驗證失敗。');
-  return identity;
+
+  let result = {};
+  try { result = JSON.parse(response.getContentText() || '{}'); }
+  catch (_) { result = {}; }
+
+  if (response.getResponseCode() !== 200) {
+    const description = String(result.error_description || '');
+    if (description === 'Invalid IdToken Audience.') {
+      fail_('LINE_CHANNEL_MISMATCH', 'LINE Login Channel 設定不一致，請聯絡管理員。');
+    }
+    if (description === 'IdToken expired.') {
+      fail_('UNAUTHENTICATED', 'LINE 登入已過期，請重新開啟頁面登入。');
+    }
+    fail_('UNAUTHENTICATED', 'LINE 登入驗證失敗，請重新開啟頁面登入。');
+  }
+
+  if (!result || !result.sub || String(result.aud) !== clientId) {
+    fail_('LINE_CHANNEL_MISMATCH', 'LINE Login Channel 設定不一致，請聯絡管理員。');
+  }
+  return result;
 }
 
 function requireAdmin_(context) { if (!context.isAdmin) fail_('FORBIDDEN', '你沒有會員管理權限。'); }
