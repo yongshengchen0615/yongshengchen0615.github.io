@@ -3,6 +3,8 @@
 
   const $ = (selector) => document.querySelector(selector);
   const statusBadgeLabel = { active: '有效', suspended: '停權', disabled: '停用' };
+  const tierLabel = { standard: '一般', silver: '銀級', gold: '金級', platinum: '白金', vip: '白金' };
+  const tierClasses = ['tier-standard', 'tier-silver', 'tier-gold', 'tier-platinum'];
 
   let currentMember = null;
   let publicConfig = null;
@@ -11,6 +13,12 @@
 
   function formatMinutes(value) {
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
+  }
+
+  function normalizeTierKey(value) {
+    const tier = String(value || '').trim().toLowerCase();
+    if (tier === 'vip') return 'platinum';
+    return Object.prototype.hasOwnProperty.call(tierLabel, tier) ? tier : 'standard';
   }
 
   function validCode(value) {
@@ -106,9 +114,14 @@
   }
 
   function renderMember(member) {
+    const tierKey = normalizeTierKey(member.tier);
+    const memberCard = $('.member-card');
+    tierClasses.forEach((className) => memberCard.classList.remove(className));
+    memberCard.classList.add(`tier-${tierKey}`);
+
     $('#displayName').textContent = Membership.escapeText(member.displayName) || 'LINE 會員';
     $('#memberNo').textContent = Membership.escapeText(member.memberNo);
-    $('#tierLabel').textContent = Membership.escapeText(member.tier || 'standard').toUpperCase();
+    $('#tierLabel').textContent = tierLabel[tierKey];
     $('#statusBadge').textContent = statusBadgeLabel[member.membershipStatus] || '停用';
     $('#joinedAt').textContent = Membership.formatDate(member.joinedAt);
     $('#expiresAt').textContent = Membership.formatDate(member.expiresAt, '永久');
