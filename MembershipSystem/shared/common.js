@@ -215,7 +215,6 @@
     }
     authenticatedIdToken = idToken;
     loginInFlight = false;
-    clearPendingLogin();
     return true;
   }
 
@@ -235,7 +234,10 @@
     // Capture the authenticated credential before normalizing the URL. Keep it
     // only in this document's memory; GAS still verifies it with LINE per API call.
     if (establishAuthenticatedContext()) {
+      // Pending navigation is intentionally cleared only after canonicalization,
+      // so an external-browser callback can recover usage/redeem/request.
       canonicalizeAppUrl();
+      clearPendingLogin();
       return true;
     }
 
