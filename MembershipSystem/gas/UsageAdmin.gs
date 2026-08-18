@@ -100,6 +100,10 @@ function adminUsageDelete_(context, payload) {
       previousStatus: effectiveVoucherStatus_(voucher, 0)
     };
 
+    if (!audit_(context.identity.sub, 'admin', 'USAGE_QR_DELETE_REQUESTED', '', 'pending', auditDetails)) {
+      fail_('AUDIT_FAILED', '無法建立刪除稽核紀錄，QR Code 未刪除。');
+    }
+
     sheet.deleteRow(row);
     audit_(context.identity.sub, 'admin', 'USAGE_QR_DELETED', '', 'success', auditDetails);
     return { voucherId: voucherId, deleted: true };
