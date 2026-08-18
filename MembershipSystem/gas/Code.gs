@@ -253,6 +253,12 @@ function adminUsageCancel_(context, payload) {
     const row = findUsageVoucherRowById_(sheet, voucherId);
     if (!row) fail_('VOUCHER_NOT_FOUND', '找不到指定 QR Code。');
     const voucher = rowToUsageVoucher_(sheet.getRange(row, 1, 1, USAGE_VOUCHER_HEADERS.length).getValues()[0]);
+    const recordsSheet = getUsageRecordsSheet_();
+    const pendingRow = findProcessingUsageRecordRowByVoucher_(recordsSheet, voucher.voucherId);
+    if (pendingRow) {
+      const pending = rowToUsageRecord_(recordsSheet.getRange(pendingRow, 1, 1, USAGE_RECORD_HEADERS.length).getValues()[0]);
+      recoverUsageRecord_(recordsSheet, pendingRow, pending, getMembersSheet_(), sheet, row, voucher);
+    }
     if (voucher.status === 'cancelled') return { voucher: publicUsageVoucher_(voucher, countUsageRecords_(voucher.voucherId)) };
     if (voucherScanMode_(voucher) === 'single' && countUsageRecords_(voucher.voucherId) > 0) fail_('VOUCHER_USED', '此單次 QR Code 已完成一次消費時間記錄。');
     const now = new Date().toISOString();
@@ -293,13 +299,23 @@ function usageRecord_(context, payload) {
     const voucher = rowToUsageVoucher_(vouchersSheet.getRange(located.row, 1, 1, USAGE_VOUCHER_HEADERS.length).getValues()[0]);
     if (isLegacyTargetedVoucher_(voucher)) requireVoucherTarget_(voucher, context.identity.sub);
 
+    const pendingRow = findProcessingUsageRecordRowByVoucher_(recordsSheet, voucher.voucherId);
+    if (pendingRow) {
+      const pending = rowToUsageRecord_(recordsSheet.getRange(pendingRow, 1, 1, USAGE_RECORD_HEADERS.length).getValues()[0]);
+      const sameRequest = pending.requestId === requestId && pending.memberLineUserId === context.identity.sub;
+      if (!sameRequest) {
+        recoverUsageRecord_(recordsSheet, pendingRow, pending, membersSheet, vouchersSheet, located.row, voucher);
+        if (voucherScanMode_(voucher) === 'single') fail_('USAGE_QR_USED', '此單次 QR Code 已完成消費時間記錄。');
+      }
+    }
+
     const existingRow = findUsageRecordRowByRequestId_(recordsSheet, requestId);
     if (existingRow) {
       const existing = rowToUsageRecord_(recordsSheet.getRange(existingRow, 1, 1, USAGE_RECORD_HEADERS.length).getValues()[0]);
       if (existing.voucherId !== voucher.voucherId || existing.memberLineUserId !== context.identity.sub) {
         fail_('INVALID_USAGE_REQUEST', '消費時間記錄要求無效，請重新掃描 QR Code。');
       }
-      return recoverOrReturnUsageRecord_(recordsSheet, existingRow, existing, membersSheet, voucher);
+      return recoverOrReturnUsageRecord_(recordsSheet, existingRow, existing, membersSheet, vouchersSheet, located.row, voucher);
     }
 
     const recordCount = countUsageRecords_(voucher.voucherId);
@@ -341,7 +357,16 @@ function usageRecord_(context, payload) {
   } finally { lock.releaseLock(); }
 }
 
-function recoverOrReturnUsageRecord_(recordsSheet, recordRow, record, membersSheet, voucher) {
+function recoverOrReturnUsageRecord_(recordsSheet, recordRow, record, membersSheet, vouchersSheet, voucherRow, voucher) {
+  const member = recoverUsageRecord_(recordsSheet, recordRow, record, membersSheet, vouchersSheet, voucherRow, voucher);
+  return {
+    voucher: publicUsageVoucher_(voucher, countUsageRecords_(voucher.voucherId)),
+    member: publicMember_(member, false), record: publicUsageRecord_(record),
+    alreadyRecorded: true, recovered: true
+  };
+}
+
+function recoverUsageRecord_(recordsSheet, recordRow, record, membersSheet, vouchersSheet, voucherRow, voucher) {
   const memberRow = findMemberRow_(membersSheet, record.memberLineUserId);
   if (!memberRow) fail_('USAGE_RECORD_CONFLICT', '消費時間記錄的會員資料不存在，請聯絡管理員。');
   const member = rowToMember_(membersSheet.getRange(memberRow, 1, 1, MEMBER_HEADERS.length).getValues()[0]);
@@ -357,15 +382,12 @@ function recoverOrReturnUsageRecord_(recordsSheet, recordRow, record, membersShe
     record.recordedAt = record.recordedAt || new Date().toISOString();
     record.updatedAt = new Date().toISOString();
     writeUsageRecord_(recordsSheet, recordRow, record);
+    finalizeVoucherAfterRecord_(vouchersSheet, voucherRow, voucher, record);
   } else if (record.status !== 'recorded') {
     fail_('USAGE_RECORD_CONFLICT', '消費時間記錄狀態不正確。');
   }
   ensureUsageRecordAudit_(recordsSheet, recordRow, record, voucher);
-  return {
-    voucher: publicUsageVoucher_(voucher, countUsageRecords_(voucher.voucherId)),
-    member: publicMember_(member, false), record: publicUsageRecord_(record),
-    alreadyRecorded: true, recovered: true
-  };
+  return member;
 }
 
 function finalizeVoucherAfterRecord_(sheet, row, voucher, record) {
@@ -551,6 +573,15 @@ function findUsageRecordRowByRequestId_(sheet, requestId) {
   if (sheet.getLastRow() <= 1) return 0;
   const found = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).createTextFinder(requestId).matchEntireCell(true).findNext();
   return found ? found.getRow() : 0;
+}
+function findProcessingUsageRecordRowByVoucher_(sheet, voucherId) {
+  if (sheet.getLastRow() <= 1) return 0;
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, USAGE_RECORD_HEADERS.length).getValues();
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const record = rowToUsageRecord_(rows[i]);
+    if (record.voucherId === voucherId && record.status === 'processing') return i + 2;
+  }
+  return 0;
 }
 
 function nextMemberNo_(sheet) {
