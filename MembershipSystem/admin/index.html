@@ -37,7 +37,7 @@
 
       <section class="panel usage-panel">
         <div class="section-heading">
-          <div><span class="eyebrow">USAGE QR</span><h2>消費時間 QR Code</h2><p>掃描後只記錄消費分鐘，不扣除任何可用時數或餘額。</p></div>
+          <div><span class="eyebrow">USAGE QR</span><h2>消費時間 QR Code</h2><p>可新增、修改、停止或刪除 QR Code；掃描後只記錄消費分鐘，不扣除任何可用時數或餘額。</p></div>
           <div class="section-actions"><button id="newUsageQrButton" class="button button-primary" type="button">新增 QR Code</button><button id="usageRefreshButton" class="button button-secondary" type="button">更新 QR Code</button></div>
         </div>
         <div class="table-wrap"><table class="voucher-table"><thead><tr><th>QR Code</th><th>模式</th><th>分鐘</th><th>已記錄</th><th>狀態</th><th>到期時間</th><th></th></tr></thead><tbody id="voucherTableBody"></tbody></table></div>
@@ -65,6 +65,8 @@
   <dialog id="usageDialog" class="edit-dialog usage-dialog">
     <form id="usageForm" method="dialog">
       <div class="dialog-header"><div><span class="eyebrow">USAGE QR</span><h2 id="usageDialogTitle">新增消費時間 QR Code</h2><p id="usageDialogDescription">掃描後只會記錄會員本次消費時間。</p></div><button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button></div>
+      <input id="usageVoucherId" type="hidden">
+      <input id="usageExpectedUpdatedAt" type="hidden">
       <div id="usageCreateFields" class="form-grid">
         <label><span>消費分鐘</span><input id="usageMinutes" type="number" min="1" max="60000" step="1" value="60" inputmode="numeric" required></label>
         <label><span>掃描模式</span><select id="usageScanMode" required><option value="single">單次掃描</option><option value="repeatable">可重複掃描</option></select></label>
@@ -84,6 +86,7 @@
         <button class="button button-secondary" value="cancel" type="submit">關閉</button>
         <button id="copyUsageUrlButton" class="button button-secondary hidden" type="button">複製發放連結</button>
         <button id="downloadUsageQrButton" class="button button-secondary hidden" type="button">下載 QR Code</button>
+        <button id="updateUsageButton" class="button button-primary hidden" type="button">儲存修改</button>
         <button id="createUsageButton" class="button button-primary" type="button">建立 QR Code</button>
       </div>
     </form>
