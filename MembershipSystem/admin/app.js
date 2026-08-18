@@ -4,8 +4,10 @@
   const $ = (selector) => document.querySelector(selector);
   let members = [];
   let searchTimer = null;
+  let currentQrSvg = '';
+  let currentQrVoucherId = '';
   const statusLabel = { active: '有效', suspended: '停權', disabled: '停用' };
-  const voucherStatusLabel = { issued: '可使用', processing: '處理中', redeemed: '已核銷', cancelled: '已取消', expired: '已過期' };
+  const voucherStatusLabel = { issued: '可使用', redeemed: '已記錄', cancelled: '已停止', expired: '已過期' };
   const scanModeLabel = { single: '單次掃描', repeatable: '可重複掃描' };
 
   function formatMinutes(value) {
@@ -45,7 +47,6 @@
   function renderMetrics(stats) {
     $('#metricTotal').textContent = Number(stats.total || 0);
     $('#metricActive').textContent = Number(stats.active || 0);
-    $('#metricAvailableMinutes').textContent = formatMinutes(stats.availableMinutes);
     $('#metricConsumedMinutes').textContent = formatMinutes(stats.consumedMinutes);
   }
 
@@ -58,36 +59,22 @@
     rows.forEach((member) => {
       const tr = document.createElement('tr');
       const memberTd = document.createElement('td');
-      const memberCell = document.createElement('div');
-      memberCell.className = 'member-cell';
-      const img = document.createElement('img');
-      img.alt = '';
-      img.src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23eef2f6"/%3E%3C/svg%3E';
+      const memberCell = document.createElement('div'); memberCell.className = 'member-cell';
+      const img = document.createElement('img'); img.alt = ''; img.src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23eef2f6"/%3E%3C/svg%3E';
       const identity = document.createElement('div');
-      const name = document.createElement('strong');
-      name.textContent = member.displayName || 'LINE 會員';
-      const joined = document.createElement('small');
-      joined.textContent = `加入 ${Membership.formatDate(member.joinedAt)}`;
-      identity.append(name, joined);
-      memberCell.append(img, identity);
-      memberTd.append(memberCell);
+      const name = document.createElement('strong'); name.textContent = member.displayName || 'LINE 會員';
+      const joined = document.createElement('small'); joined.textContent = `加入 ${Membership.formatDate(member.joinedAt)}`;
+      identity.append(name, joined); memberCell.append(img, identity); memberTd.append(memberCell);
 
       const numberTd = document.createElement('td'); numberTd.textContent = member.memberNo;
       const tierTd = document.createElement('td'); tierTd.textContent = String(member.tier || '').toUpperCase();
       const statusTd = document.createElement('td');
-      const status = document.createElement('span');
-      status.className = `table-status ${member.membershipStatus === 'active' ? '' : member.membershipStatus}`.trim();
-      status.textContent = statusLabel[member.membershipStatus] || member.membershipStatus;
-      statusTd.append(status);
-      const availableTd = document.createElement('td'); availableTd.textContent = `${formatMinutes(member.availableMinutes)} 分鐘`;
+      const status = document.createElement('span'); status.className = `table-status ${member.membershipStatus === 'active' ? '' : member.membershipStatus}`.trim(); status.textContent = statusLabel[member.membershipStatus] || member.membershipStatus; statusTd.append(status);
       const consumedTd = document.createElement('td'); consumedTd.textContent = `${formatMinutes(member.consumedMinutes)} 分鐘`;
       const expiryTd = document.createElement('td'); expiryTd.textContent = Membership.formatDate(member.expiresAt, '永久');
       const actionTd = document.createElement('td');
-      const edit = document.createElement('button');
-      edit.className = 'text-button'; edit.type = 'button'; edit.textContent = '編輯';
-      edit.addEventListener('click', () => openEdit(member));
-      actionTd.append(edit);
-      tr.append(memberTd, numberTd, tierTd, statusTd, availableTd, consumedTd, expiryTd, actionTd);
+      const edit = document.createElement('button'); edit.className = 'text-button'; edit.type = 'button'; edit.textContent = '編輯'; edit.addEventListener('click', () => openEdit(member)); actionTd.append(edit);
+      tr.append(memberTd, numberTd, tierTd, statusTd, consumedTd, expiryTd, actionTd);
       body.append(tr);
     });
   }
@@ -100,23 +87,19 @@
     vouchers.forEach((voucher) => {
       const tr = document.createElement('tr');
       const idTd = document.createElement('td'); idTd.textContent = voucher.voucherId;
-      const modeTd = document.createElement('td');
-      modeTd.textContent = voucher.legacyTargeted ? '舊版指定會員' : (scanModeLabel[voucher.scanMode] || voucher.scanMode);
+      const modeTd = document.createElement('td'); modeTd.textContent = voucher.legacyTargeted ? '舊版指定會員' : (scanModeLabel[voucher.scanMode] || voucher.scanMode);
       const minutesTd = document.createElement('td'); minutesTd.textContent = `${formatMinutes(voucher.minutes)} 分鐘`;
-      const countTd = document.createElement('td'); countTd.textContent = `${formatMinutes(voucher.redemptionCount)} 次`;
+      const countTd = document.createElement('td'); countTd.textContent = `${formatMinutes(voucher.recordCount)} 次`;
       const statusTd = document.createElement('td');
-      const badge = document.createElement('span');
-      badge.className = `voucher-status ${voucher.status}`;
-      badge.textContent = voucherStatusLabel[voucher.status] || voucher.status;
-      statusTd.append(badge);
+      const badge = document.createElement('span'); badge.className = `voucher-status ${voucher.status}`; badge.textContent = voucherStatusLabel[voucher.status] || voucher.status; statusTd.append(badge);
       const expiryTd = document.createElement('td'); expiryTd.textContent = formatDateTime(voucher.expiresAt);
       const actionTd = document.createElement('td');
+      const group = document.createElement('div'); group.className = 'row-actions';
+      const open = document.createElement('button'); open.className = 'text-button'; open.type = 'button'; open.textContent = '開啟'; open.addEventListener('click', () => openExistingUsage(voucher.voucherId)); group.append(open);
       if (voucher.status === 'issued') {
-        const cancel = document.createElement('button');
-        cancel.className = 'text-button danger-action'; cancel.type = 'button'; cancel.textContent = '取消';
-        cancel.addEventListener('click', () => cancelVoucher(voucher.voucherId));
-        actionTd.append(cancel);
-      } else actionTd.textContent = '—';
+        const cancel = document.createElement('button'); cancel.className = 'text-button danger-action'; cancel.type = 'button'; cancel.textContent = '停止'; cancel.addEventListener('click', () => cancelVoucher(voucher.voucherId)); group.append(cancel);
+      }
+      actionTd.append(group);
       tr.append(idTd, modeTd, minutesTd, countTd, statusTd, expiryTd, actionTd);
       body.append(tr);
     });
@@ -129,7 +112,6 @@
     $('#editExpectedUpdatedAt').value = member.updatedAt;
     $('#editTier').value = member.tier;
     $('#editStatus').value = member.membershipStatus;
-    $('#editAvailableMinutes').value = String(Number(member.availableMinutes || 0));
     $('#editConsumedMinutes').value = `${formatMinutes(member.consumedMinutes)} 分鐘`;
     $('#editExpiresAt').value = member.expiresAt ? String(member.expiresAt).slice(0, 10) : '';
     $('#editNote').value = member.note || '';
@@ -138,127 +120,134 @@
   }
 
   async function saveMember() {
-    const button = $('#saveMemberButton');
-    button.disabled = true;
-    $('#editError').classList.add('hidden');
+    const button = $('#saveMemberButton'); button.disabled = true; $('#editError').classList.add('hidden');
     try {
       await Membership.callApi('admin.update', {
         targetMemberNo: $('#editTargetMemberNo').value,
         expectedUpdatedAt: $('#editExpectedUpdatedAt').value,
         tier: $('#editTier').value,
         membershipStatus: $('#editStatus').value,
-        availableMinutes: $('#editAvailableMinutes').value,
         expiresAt: $('#editExpiresAt').value,
         note: $('#editNote').value
       });
       $('#editDialog').close();
       await loadMembers($('#memberSearch').value.trim());
     } catch (error) {
-      $('#editError').textContent = error.message;
-      $('#editError').classList.remove('hidden');
+      $('#editError').textContent = error.message; $('#editError').classList.remove('hidden');
     } finally { button.disabled = false; }
   }
 
-  function openUsageDialog() {
-    $('#usageMinutes').value = '60';
-    $('#usageScanMode').value = 'single';
-    $('#usageExpiresAt').value = toLocalDateTimeInput(new Date(Date.now() + 24 * 60 * 60 * 1000));
-    $('#usageNote').value = '';
+  function resetUsageDialog() {
+    currentQrSvg = ''; currentQrVoucherId = '';
     $('#usageError').classList.add('hidden');
     $('#usageResult').classList.add('hidden');
     $('#copyUsageUrlButton').classList.add('hidden');
-    $('#createUsageButton').classList.remove('hidden');
-    $('#usageCreateFields').classList.remove('hidden');
+    $('#downloadUsageQrButton').classList.add('hidden');
+    $('#createUsageButton').classList.add('hidden');
+    $('#usageCreateFields').classList.add('hidden');
     $('#usageQrCode').replaceChildren();
     $('#usageUrl').value = '';
+    $('#usageResultMeta').textContent = '';
+  }
+
+  function openUsageDialog() {
+    resetUsageDialog();
+    $('#usageDialogTitle').textContent = '新增消費時間 QR Code';
+    $('#usageDialogDescription').textContent = '掃描後只會記錄會員本次消費時間。';
+    $('#usageMinutes').value = '60'; $('#usageScanMode').value = 'single';
+    $('#usageExpiresAt').value = toLocalDateTimeInput(new Date(Date.now() + 24 * 60 * 60 * 1000)); $('#usageNote').value = '';
+    $('#usageCreateFields').classList.remove('hidden'); $('#createUsageButton').classList.remove('hidden');
     $('#usageDialog').showModal();
   }
 
-  function buildUsageUrl(token) {
+  function buildUsageUrl(shareCode) {
     const url = new URL('../user/', window.location.href);
-    url.search = '';
-    url.hash = '';
-    url.searchParams.set('redeem', token);
+    url.search = ''; url.hash = ''; url.searchParams.set('usage', shareCode);
     return url.href;
   }
 
   function renderQrCode(url) {
     if (typeof window.qrcode !== 'function') throw new Error('QR Code 元件載入失敗，請重新整理後再試。');
-    const qr = window.qrcode(0, 'M');
-    qr.addData(url); qr.make();
-    $('#usageQrCode').innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4, scalable: true });
+    const qr = window.qrcode(0, 'M'); qr.addData(url); qr.make();
+    currentQrSvg = qr.createSvgTag({ cellSize: 5, margin: 4, scalable: true });
+    $('#usageQrCode').innerHTML = currentQrSvg;
+  }
+
+  function showUsageResult(voucher, shareCode) {
+    currentQrVoucherId = voucher.voucherId;
+    const url = buildUsageUrl(shareCode);
+    $('#usageUrl').value = url;
+    $('#usageResultMeta').textContent = `${voucher.voucherId} · ${scanModeLabel[voucher.scanMode] || voucher.scanMode} · ${formatMinutes(voucher.minutes)} 分鐘 · 已記錄 ${formatMinutes(voucher.recordCount)} 次`;
+    renderQrCode(url);
+    $('#usageCreateFields').classList.add('hidden'); $('#createUsageButton').classList.add('hidden');
+    $('#usageResult').classList.remove('hidden'); $('#copyUsageUrlButton').classList.remove('hidden'); $('#downloadUsageQrButton').classList.remove('hidden');
+  }
+
+  async function openExistingUsage(voucherId) {
+    resetUsageDialog();
+    $('#usageDialogTitle').textContent = 'QR Code 詳細';
+    $('#usageDialogDescription').textContent = '可再次顯示、下載 QR Code 或複製發放連結。';
+    $('#usageDialog').showModal();
+    try {
+      const result = await Membership.callApi('admin.usage.open', { voucherId });
+      showUsageResult(result.voucher, result.shareCode);
+    } catch (error) {
+      $('#usageError').textContent = error.message; $('#usageError').classList.remove('hidden');
+    }
   }
 
   async function createUsageVoucher() {
-    const button = $('#createUsageButton');
-    button.disabled = true;
-    $('#usageError').classList.add('hidden');
+    const button = $('#createUsageButton'); button.disabled = true; $('#usageError').classList.add('hidden');
     try {
       const minutes = Number($('#usageMinutes').value);
       if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60000) throw new Error('消費分鐘必須是 1 到 60000 的整數。');
-      const expiryValue = $('#usageExpiresAt').value;
-      const expiryDate = new Date(expiryValue);
+      const expiryValue = $('#usageExpiresAt').value; const expiryDate = new Date(expiryValue);
       if (!expiryValue || Number.isNaN(expiryDate.getTime())) throw new Error('請設定有效的 QR Code 到期時間。');
-
-      const result = await Membership.callApi('admin.usage.create', {
-        minutes,
-        scanMode: $('#usageScanMode').value,
-        expiresAt: expiryDate.toISOString(),
-        note: $('#usageNote').value
-      });
-      const url = buildUsageUrl(result.token);
-      $('#usageUrl').value = url;
-      renderQrCode(url);
-      $('#usageCreateFields').classList.add('hidden');
-      $('#usageResult').classList.remove('hidden');
-      $('#copyUsageUrlButton').classList.remove('hidden');
-      $('#createUsageButton').classList.add('hidden');
+      const result = await Membership.callApi('admin.usage.create', { minutes, scanMode: $('#usageScanMode').value, expiresAt: expiryDate.toISOString(), note: $('#usageNote').value });
+      showUsageResult(result.voucher, result.shareCode);
       await loadVouchers();
     } catch (error) {
-      $('#usageError').textContent = error.message;
-      $('#usageError').classList.remove('hidden');
+      $('#usageError').textContent = error.message; $('#usageError').classList.remove('hidden');
     } finally { button.disabled = false; }
   }
 
   async function copyUsageUrl() {
-    const value = $('#usageUrl').value;
-    if (!value) return;
+    const value = $('#usageUrl').value; if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
       $('#copyUsageUrlButton').textContent = '已複製';
-      window.setTimeout(() => { $('#copyUsageUrlButton').textContent = '複製網址'; }, 1500);
+      window.setTimeout(() => { $('#copyUsageUrlButton').textContent = '複製發放連結'; }, 1500);
     } catch (_) {
       $('#usageUrl').focus(); $('#usageUrl').select(); document.execCommand('copy');
     }
   }
 
+  function downloadUsageQr() {
+    if (!currentQrSvg || !currentQrVoucherId) return;
+    const blob = new Blob([currentQrSvg], { type: 'image/svg+xml;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl; link.download = `${currentQrVoucherId}.svg`; document.body.append(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
   async function cancelVoucher(voucherId) {
-    if (!window.confirm('確定要停止這個 QR Code 的後續核銷？')) return;
-    try {
-      await Membership.callApi('admin.usage.cancel', { voucherId });
-      await loadVouchers();
-    } catch (error) { showAdminError(error); }
+    if (!window.confirm('確定要停止這個 QR Code 的後續消費時間記錄？')) return;
+    try { await Membership.callApi('admin.usage.cancel', { voucherId }); await loadVouchers(); }
+    catch (error) { showAdminError(error); }
   }
 
   function showAdminError(error) {
-    $('#adminBoot').classList.add('hidden');
-    $('#adminApp').classList.add('hidden');
-    $('#adminErrorMessage').textContent = error && error.message ? error.message : '無法驗證管理權限。';
-    $('#adminError').classList.remove('hidden');
+    $('#adminBoot').classList.add('hidden'); $('#adminApp').classList.add('hidden');
+    $('#adminErrorMessage').textContent = error && error.message ? error.message : '無法驗證管理權限。'; $('#adminError').classList.remove('hidden');
   }
 
   async function initialize() {
-    try {
-      const loggedIn = await Membership.ensureLiffLogin();
-      if (!loggedIn) return;
-      await loadDashboard();
-    } catch (error) { showAdminError(error); }
+    try { const loggedIn = await Membership.ensureLiffLogin(); if (!loggedIn) return; await loadDashboard(); }
+    catch (error) { showAdminError(error); }
   }
 
-  $('#memberSearch').addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => loadMembers($('#memberSearch').value.trim()).catch(showAdminError), 300);
-  });
+  $('#memberSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadMembers($('#memberSearch').value.trim()).catch(showAdminError), 300); });
   $('#adminRefreshButton').addEventListener('click', () => loadDashboard().catch(showAdminError));
   $('#adminRetryButton').addEventListener('click', () => window.location.reload());
   $('#usageRefreshButton').addEventListener('click', () => loadVouchers().catch(showAdminError));
@@ -266,6 +255,7 @@
   $('#saveMemberButton').addEventListener('click', saveMember);
   $('#createUsageButton').addEventListener('click', createUsageVoucher);
   $('#copyUsageUrlButton').addEventListener('click', copyUsageUrl);
+  $('#downloadUsageQrButton').addEventListener('click', downloadUsageQr);
 
   initialize();
 })();
