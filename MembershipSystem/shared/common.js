@@ -7,13 +7,14 @@
     : new URL('../shared/config.json', window.location.href).href;
 
   const LOGIN_PENDING_KEY = 'membership.login.pending';
-  const INIT_RECOVERY_KEY = 'membership.reauth.recovery';
+  const INIT_RECOVERY_KEY = 'membership.liff.recovery';
   const LOGIN_PENDING_TTL_MS = 10 * 60 * 1000;
   const INIT_RECOVERY_COOLDOWN_MS = 30 * 1000;
 
   let config = null;
   let configPromise = null;
   let loginInFlight = false;
+  let authenticatedIdToken = '';
 
   function assertConfigured(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -136,8 +137,7 @@
 
   function currentNavigationState() {
     const direct = readNavigationState();
-    if (direct.usage || direct.redeem) return direct;
-    return readPendingNavigationState();
+    return direct.usage || direct.redeem ? direct : readPendingNavigationState();
   }
 
   function appendNavigationState(url, state) {
@@ -165,14 +165,13 @@
   function writePendingLogin() {
     const current = new URL(buildCanonicalAppUrl());
     const navigation = readNavigationState(current);
-    const pending = {
+    writeSessionValue(LOGIN_PENDING_KEY, JSON.stringify({
       pathname: current.pathname,
       usage: navigation.usage,
       redeem: navigation.redeem,
       request: navigation.request,
       startedAt: Date.now()
-    };
-    writeSessionValue(LOGIN_PENDING_KEY, JSON.stringify(pending));
+    }));
   }
 
   function clearPendingLogin() {
@@ -181,75 +180,76 @@
 
   function captureInitArtifacts() {
     const params = new URL(window.location.href).searchParams;
-    return {
-      hasArtifacts: params.has('state') || params.has('code') || params.has('response') ||
-        params.has('error') || params.has('liff.state') || params.has('liffClientId') ||
-        params.has('liffRedirectUri')
-    };
+    return params.has('state') || params.has('code') || params.has('response') ||
+      params.has('error') || params.has('liff.state') || params.has('liffClientId') ||
+      params.has('liffRedirectUri');
   }
 
-  function shouldRecoverInitFailure(error, initArtifacts) {
-    if (!initArtifacts || !initArtifacts.hasArtifacts) return false;
+  function shouldRecoverInitFailure(error, hadInitArtifacts) {
+    if (!hadInitArtifacts) return false;
     const code = String(error && error.code || '').toLowerCase();
     const message = String(error && error.message || '').toLowerCase();
     return code === 'invalid_request' ||
-      message.indexOf('authorization code') !== -1 ||
-      (message.indexOf('invalid') !== -1 && message.indexOf('code') !== -1);
+      message.includes('authorization code') ||
+      (message.includes('invalid') && message.includes('code'));
   }
 
-  function recoverFromInitFailure(error, initArtifacts) {
-    if (!shouldRecoverInitFailure(error, initArtifacts)) return false;
+  function recoverFromInitFailure(error, hadInitArtifacts) {
+    if (!shouldRecoverInitFailure(error, hadInitArtifacts)) return false;
 
     const lastRecovery = Number(readSessionValue(INIT_RECOVERY_KEY) || 0);
     if (lastRecovery && Date.now() - lastRecovery < INIT_RECOVERY_COOLDOWN_MS) {
-      throw new Error('LINE 登入 callback 已失效，請重新開啟會員頁。');
+      throw new Error('LINE 登入 callback 已失效，請重新開啟此頁。');
     }
 
     writeSessionValue(INIT_RECOVERY_KEY, String(Date.now()));
-    const cleanUrl = buildCanonicalAppUrl();
-    window.location.replace(cleanUrl);
+    window.location.replace(buildCanonicalAppUrl());
+    return true;
+  }
+
+  function establishAuthenticatedContext() {
+    if (!liff.isLoggedIn()) return false;
+    const idToken = liff.getIDToken();
+    if (!idToken) {
+      throw new Error('LINE 已登入但無法取得 ID Token，請確認 LIFF 已啟用 openid scope。');
+    }
+    authenticatedIdToken = idToken;
+    loginInFlight = false;
+    clearPendingLogin();
     return true;
   }
 
   async function ensureLiffLogin() {
     const activeConfig = await loadConfig();
-    const initArtifacts = captureInitArtifacts();
+    const hadInitArtifacts = captureInitArtifacts();
 
     try {
       await liff.init({ liffId: activeConfig.LIFF_ID });
     } catch (error) {
-      if (recoverFromInitFailure(error, initArtifacts)) return false;
+      if (recoverFromInitFailure(error, hadInitArtifacts)) return false;
       throw error;
     }
 
     removeSessionValue(INIT_RECOVERY_KEY);
 
-    // LIFF restores additional path/query information during initialization.
-    // Only normalize the URL after liff.init() resolves.
-    canonicalizeAppUrl();
-
-    // Standard LIFF flow: never force-logout a valid external-browser session.
-    if (liff.isLoggedIn()) {
-      const idToken = liff.getIDToken();
-      if (!idToken) {
-        throw new Error('LINE 已登入但無法取得 ID Token，請確認 LIFF scope 已啟用 openid。');
-      }
-      loginInFlight = false;
-      clearPendingLogin();
+    // Capture the authenticated credential before normalizing the URL. Keep it
+    // only in this document's memory; GAS still verifies it with LINE per API call.
+    if (establishAuthenticatedContext()) {
+      canonicalizeAppUrl();
       return true;
     }
 
-    // LIFF Browser should already be authenticated by liff.init().
+    canonicalizeAppUrl();
+
+    // A LIFF Browser session should have been authenticated by liff.init().
     if (liff.isInClient()) {
       throw new Error('無法取得本次 LINE 登入狀態，請關閉後重新開啟。');
     }
 
     if (loginInFlight) return false;
     loginInFlight = true;
-
-    // Preserve only validated application parameters across the external-browser login callback.
-    canonicalizeAppUrl();
     writePendingLogin();
+
     try {
       liff.login({ redirectUri: buildCanonicalAppUrl() });
       return false;
@@ -261,8 +261,8 @@
 
   async function callApi(action, payload) {
     const activeConfig = await loadConfig();
-    const idToken = liff.getIDToken();
-    if (!idToken) throw new Error('LINE 登入已失效，請重新登入。');
+    const idToken = authenticatedIdToken;
+    if (!idToken) throw new Error('LINE 登入狀態尚未建立，請重新開啟此頁。');
 
     const form = new URLSearchParams();
     form.set('action', action);
