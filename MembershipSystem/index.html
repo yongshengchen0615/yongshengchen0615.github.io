@@ -36,11 +36,19 @@
         const config = await response.json();
         if (!config || !config.LIFF_ID) throw new Error('LIFF_ID 尚未設定。');
 
-        // The root path is the LIFF endpoint/primary redirect. LINE restores
-        // liff.state during init, so never change location before this resolves.
         await liff.init({ liffId: String(config.LIFF_ID) });
 
         const current = new URL(window.location.href);
+
+        // LINE owns liff.state during the primary redirect. Never race the
+        // SDK's secondary redirect with an application redirect.
+        if (current.searchParams.has('liff.state')) {
+          document.getElementById('status').textContent = '正在完成 LINE 導向…';
+          return;
+        }
+
+        // Bare endpoint and legacy root share links finish here. Only carry
+        // validated application-owned parameters into the member page.
         const target = new URL('./user/', current);
         const usage = validCode(current.searchParams.get('usage'));
         const redeem = usage ? '' : validCode(current.searchParams.get('redeem'));
