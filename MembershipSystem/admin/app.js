@@ -64,10 +64,39 @@
     renderVouchers(vouchers);
   }
 
+  async function loadDashboardLegacy() {
+    const [memberResult, tierResult, voucherResult] = await Promise.all([
+      Membership.callApi('admin.list', { query: '', page: 1, pageSize: 100 }),
+      Membership.callApi('admin.tier.get'),
+      Membership.callApi('admin.usage.list', { limit: 50 })
+    ]);
+    members = memberResult.members || [];
+    memberTotal = Number(memberResult.total || 0);
+    vouchers = voucherResult.vouchers || [];
+    renderMetrics(memberResult.stats || {});
+    renderTable(members, memberTotal);
+    renderTierSettings(tierResult.thresholds || {});
+    renderVouchers(vouchers);
+    showAdminApp();
+  }
+
   async function loadDashboard() {
-    const result = await Membership.callApi('admin.dashboard', {
-      query: '', page: 1, pageSize: 100, voucherLimit: 50
-    });
+    let result;
+    try {
+      result = await Membership.callApi('admin.dashboard', {
+        query: '', page: 1, pageSize: 100, voucherLimit: 50
+      });
+    } catch (error) {
+      // Rollout compatibility: GitHub Pages may publish before the new GAS
+      // deployment. Only fall back when the old backend does not know the new
+      // read-only aggregate action; all other errors keep their real meaning.
+      if (error && error.code === 'INVALID_ACTION') {
+        await loadDashboardLegacy();
+        return;
+      }
+      throw error;
+    }
+
     members = result.members || [];
     memberTotal = Number(result.total || 0);
     vouchers = result.vouchers || [];
