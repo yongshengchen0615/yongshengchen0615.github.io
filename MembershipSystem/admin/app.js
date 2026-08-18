@@ -5,6 +5,7 @@
   let members = [];
   let memberTotal = 0;
   let vouchers = [];
+  let dashboardStats = { total: 0, active: 0, consumedMinutes: 0 };
   let searchTimer = null;
   let currentQrSvg = '';
   let currentQrVoucherId = '';
@@ -108,9 +109,10 @@
   }
 
   function renderMetrics(stats) {
-    $('#metricTotal').textContent = Number(stats.total || 0);
-    $('#metricActive').textContent = Number(stats.active || 0);
-    $('#metricConsumedMinutes').textContent = formatMinutes(stats.consumedMinutes);
+    dashboardStats = Object.assign({}, dashboardStats, stats || {});
+    $('#metricTotal').textContent = Number(dashboardStats.total || 0);
+    $('#metricActive').textContent = Number(dashboardStats.active || 0);
+    $('#metricConsumedMinutes').textContent = formatMinutes(dashboardStats.consumedMinutes);
   }
 
   function renderTierSettings(thresholds) {
@@ -267,7 +269,17 @@
       });
       const updated = result.member;
       const index = members.findIndex((member) => member.memberNo === updated.memberNo);
-      if (index !== -1) members[index] = updated;
+      if (index !== -1) {
+        const previous = members[index];
+        if (previous.membershipStatus !== updated.membershipStatus) {
+          let active = Number(dashboardStats.active || 0);
+          if (previous.membershipStatus === 'active') active = Math.max(0, active - 1);
+          if (updated.membershipStatus === 'active') active += 1;
+          dashboardStats.active = active;
+          renderMetrics(dashboardStats);
+        }
+        members[index] = updated;
+      }
       renderTable(members, memberTotal);
       $('#editDialog').close();
     } catch (error) {
