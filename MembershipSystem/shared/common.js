@@ -213,8 +213,9 @@
     try { window.sessionStorage.setItem(INIT_RECOVERY_KEY, String(Date.now())); }
     catch (_) { /* best effort only */ }
 
+    const cleanUrl = buildCanonicalAppUrl();
     clearPendingLogin();
-    window.location.replace(buildCanonicalAppUrl());
+    window.location.replace(cleanUrl);
     return true;
   }
 
