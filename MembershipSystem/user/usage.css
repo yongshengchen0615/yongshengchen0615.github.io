@@ -1,8 +1,8 @@
-.hours-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:20px}
-.hours-card{padding:20px}
-.hours-card strong{display:block;font-size:34px;letter-spacing:-.04em}
-.hours-card small{display:block;margin-top:5px;color:var(--muted)}
-.card-scan-action{position:relative;z-index:1;margin-top:20px}
+.card-consumed-summary{position:relative;z-index:1;display:flex;align-items:baseline;gap:8px;margin-top:20px;padding:16px 18px;border:1px solid rgba(255,255,255,.16);border-radius:16px;background:rgba(255,255,255,.08)}
+.card-consumed-summary span{margin-right:auto;color:#aeb8c8;font-size:11px;letter-spacing:.08em}
+.card-consumed-summary strong{font-size:30px;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.card-consumed-summary small{color:#c8d0dc;font-size:12px}
+.card-scan-action{position:relative;z-index:1;margin-top:14px}
 .card-scan-button{width:100%;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.28);color:#fff;backdrop-filter:blur(6px)}
 .card-scan-button:hover{background:rgba(255,255,255,.18)}
 .usage-error-panel{margin-top:14px;padding:22px}
@@ -21,4 +21,4 @@
 .usage-success-dialog p{margin:0;color:var(--muted);line-height:1.6}
 .usage-success-dialog .button{width:100%;margin-top:22px}
 .usage-success-icon{display:grid;place-items:center;width:52px;height:52px;margin:0 auto 16px;border-radius:50%;background:var(--primary);color:#fff;font-size:26px;font-weight:900}
-@media(max-width:520px){.hours-card{padding:16px}.hours-card strong{font-size:28px}.usage-loading-overlay{padding:18px}.usage-success-dialog{width:min(calc(100% - 28px),360px)}}
+@media(max-width:520px){.card-consumed-summary{padding:14px 15px}.card-consumed-summary strong{font-size:27px}.usage-loading-overlay{padding:18px}.usage-success-dialog{width:min(calc(100% - 28px),360px)}}
