@@ -156,6 +156,7 @@ recordedAt | auditRecordedAt
 - Scanner 仍只接受同 origin、相同 `user/` path、64-hex usage/redeem code。
 - `requestId` 只用於 idempotency，不是身分或權限憑證。
 - `sessionStorage` 只保存短期 QR 導覽 / requestId 狀態，不授予 Identity、Role 或 Permission。
+- 自動記錄連結只允許在 top-level page 執行；被第三方網站 iframe 內嵌時會拒絕，降低無互動 drive-by 記錄風險。
 - `UsageRecords` 的 LINE user id 不透過一般會員 API 回傳。
 - Audit 不寫入 LINE ID Token、Password、Secret。
 - User / Admin page 使用 `referrer=no-referrer`，降低 URL code 經 Referer 外洩。
@@ -180,7 +181,7 @@ recordedAt | auditRecordedAt
 
 - 點「掃描 QR Code」直接進入 `liff.scanCodeV2()`，沒有掃描類型選單。
 - 掃描成功後直接執行 `usage.record`，不需要第二次確認。
-- 點 `?usage=` 發放連結完成 LIFF Login 後自動記錄。
+- 點 `?usage=` 發放連結完成 LIFF Login 後自動記錄；iframe 內嵌不得觸發。
 - legacy `?redeem=` 仍可自動記錄。
 - LIFF callback / refresh 後仍保留同一筆 requestId，不因 retry 重複增加分鐘。
 - 掃描 / 記錄不讀取或扣除 `availableMinutes`。
