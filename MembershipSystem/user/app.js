@@ -152,8 +152,9 @@
   function showUsageSuccess(result) {
     const dialog = $('#usageSuccessDialog');
     $('#usageSuccessTitle').textContent = result.alreadyRecorded ? '此筆時間已記錄' : '消費時間已加入';
-    $('#usageSuccessMessage').textContent =
-      `本次加入 ${formatMinutes(result.voucher.minutes)} 分鐘，累計消費 ${formatMinutes(result.member.consumedMinutes)} 分鐘。`;
+    $('#usageSuccessMessage').textContent = result.alreadyRecorded
+      ? `此筆已記錄 ${formatMinutes(result.voucher.minutes)} 分鐘，累計消費 ${formatMinutes(result.member.consumedMinutes)} 分鐘。`
+      : `本次加入 ${formatMinutes(result.voucher.minutes)} 分鐘，累計消費 ${formatMinutes(result.member.consumedMinutes)} 分鐘。`;
     if (!dialog.open) dialog.showModal();
     $('#confirmUsageSuccessButton').focus();
   }
@@ -162,8 +163,8 @@
     const access = accessOverride || readAccessFromUrl();
     if (!access || usageRecordInFlight) return false;
 
-    usageRecordInFlight = true;
     const requestId = ensureRequestId(access);
+    usageRecordInFlight = true;
     showUsageLoading();
 
     try {
@@ -243,6 +244,7 @@
   $('#retryButton').addEventListener('click', () => window.location.reload());
   $('#scanQrButton').addEventListener('click', () => scanWithLineImmediately().catch(showUsageError));
   $('#dismissUsageErrorButton').addEventListener('click', () => $('#usageErrorPanel').classList.add('hidden'));
+  $('#usageSuccessDialog').addEventListener('cancel', (event) => event.preventDefault());
   $('#confirmUsageSuccessButton').addEventListener('click', () => $('#usageSuccessDialog').close());
 
   initialize();
