@@ -3,6 +3,8 @@
 
   const $ = (selector) => document.querySelector(selector);
   let members = [];
+  let memberTotal = 0;
+  let vouchers = [];
   let searchTimer = null;
   let currentQrSvg = '';
   let currentQrVoucherId = '';
@@ -22,6 +24,14 @@
     return Object.prototype.hasOwnProperty.call(tierLabel, tier) ? tier : 'standard';
   }
 
+  function tierForMinutes(value, thresholds) {
+    const minutes = Math.max(0, Math.floor(Number(value || 0)));
+    if (minutes >= Number(thresholds.platinum || Infinity)) return 'platinum';
+    if (minutes >= Number(thresholds.gold || Infinity)) return 'gold';
+    if (minutes >= Number(thresholds.silver || Infinity)) return 'silver';
+    return 'standard';
+  }
+
   function toLocalDateTimeInput(date) {
     const pad = (value) => String(value).padStart(2, '0');
     return [date.getFullYear(), '-', pad(date.getMonth() + 1), '-', pad(date.getDate()), 'T', pad(date.getHours()), ':', pad(date.getMinutes())].join('');
@@ -33,28 +43,39 @@
     return new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
   }
 
-  async function loadMembers(query) {
-    const result = await Membership.callApi('admin.list', { query: query || '', page: 1, pageSize: 100 });
-    members = result.members || [];
-    renderMetrics(result.stats || {});
-    renderTable(members, result.total || 0);
+  function showAdminApp() {
     $('#adminBoot').classList.add('hidden');
     $('#adminError').classList.add('hidden');
     $('#adminApp').classList.remove('hidden');
   }
 
-  async function loadTierSettings() {
-    const result = await Membership.callApi('admin.tier.get');
-    renderTierSettings(result.thresholds || {});
+  async function loadMembers(query) {
+    const result = await Membership.callApi('admin.list', { query: query || '', page: 1, pageSize: 100 });
+    members = result.members || [];
+    memberTotal = Number(result.total || 0);
+    renderMetrics(result.stats || {});
+    renderTable(members, memberTotal);
+    showAdminApp();
   }
 
   async function loadVouchers() {
     const result = await Membership.callApi('admin.usage.list', { limit: 50 });
-    renderVouchers(result.vouchers || []);
+    vouchers = result.vouchers || [];
+    renderVouchers(vouchers);
   }
 
   async function loadDashboard() {
-    await Promise.all([loadMembers(''), loadTierSettings(), loadVouchers()]);
+    const result = await Membership.callApi('admin.dashboard', {
+      query: '', page: 1, pageSize: 100, voucherLimit: 50
+    });
+    members = result.members || [];
+    memberTotal = Number(result.total || 0);
+    vouchers = result.vouchers || [];
+    renderMetrics(result.stats || {});
+    renderTable(members, memberTotal);
+    renderTierSettings(result.thresholds || {});
+    renderVouchers(vouchers);
+    showAdminApp();
   }
 
   function renderMetrics(stats) {
@@ -94,8 +115,12 @@
       }
 
       const result = await Membership.callApi('admin.tier.update', { silver, gold, platinum });
-      renderTierSettings(result.thresholds || {});
-      await loadMembers($('#memberSearch').value.trim());
+      const thresholds = result.thresholds || {};
+      renderTierSettings(thresholds);
+      members = members.map((member) => Object.assign({}, member, {
+        tier: tierForMinutes(member.consumedMinutes, thresholds)
+      }));
+      renderTable(members, memberTotal);
       message.textContent = `門檻已更新，重新計算 ${formatMinutes(result.updatedMembers)} 位會員的等級。`;
       message.classList.remove('hidden');
     } catch (error) {
@@ -142,12 +167,12 @@
     return !voucher.legacyTargeted && voucher.status === 'issued' && Number(voucher.recordCount || 0) === 0;
   }
 
-  function renderVouchers(vouchers) {
+  function renderVouchers(rows) {
     const body = $('#voucherTableBody');
     body.replaceChildren();
-    $('#voucherEmptyState').classList.toggle('hidden', vouchers.length !== 0);
+    $('#voucherEmptyState').classList.toggle('hidden', rows.length !== 0);
 
-    vouchers.forEach((voucher) => {
+    rows.forEach((voucher) => {
       const tr = document.createElement('tr');
       const idTd = document.createElement('td'); idTd.textContent = voucher.voucherId;
       const modeTd = document.createElement('td'); modeTd.textContent = voucher.legacyTargeted ? '舊版指定會員' : (scanModeLabel[voucher.scanMode] || voucher.scanMode);
@@ -167,12 +192,24 @@
         const cancel = document.createElement('button'); cancel.className = 'text-button danger-action'; cancel.type = 'button'; cancel.textContent = '停止'; cancel.addEventListener('click', () => cancelVoucher(voucher.voucherId)); group.append(cancel);
       }
 
-      const remove = document.createElement('button'); remove.className = 'text-button danger-action'; remove.type = 'button'; remove.textContent = '刪除'; remove.disabled = Number(voucher.recordCount || 0) > 0; remove.title = remove.disabled ? '已有消費紀錄，不能刪除' : '刪除這個 QR Code'; remove.addEventListener('click', () => deleteVoucher(voucher)); group.append(remove);
+      const remove = document.createElement('button'); remove.className = 'text-button danger-action'; remove.type = 'button'; remove.textContent = '刪除'; remove.disabled = Number(voucher.recordCount || 0) > 0 || voucher.legacyTargeted; remove.title = remove.disabled ? '已有消費紀錄或為舊版 QR，不能刪除' : '刪除這個 QR Code'; remove.addEventListener('click', () => deleteVoucher(voucher)); group.append(remove);
 
       actionTd.append(group);
       tr.append(idTd, modeTd, minutesTd, countTd, statusTd, expiryTd, actionTd);
       body.append(tr);
     });
+  }
+
+  function upsertVoucher(voucher) {
+    const index = vouchers.findIndex((item) => item.voucherId === voucher.voucherId);
+    if (index === -1) vouchers.unshift(voucher);
+    else vouchers[index] = voucher;
+    renderVouchers(vouchers);
+  }
+
+  function removeVoucher(voucherId) {
+    vouchers = vouchers.filter((voucher) => voucher.voucherId !== voucherId);
+    renderVouchers(vouchers);
   }
 
   function openEdit(member) {
@@ -192,15 +229,18 @@
   async function saveMember() {
     const button = $('#saveMemberButton'); button.disabled = true; $('#editError').classList.add('hidden');
     try {
-      await Membership.callApi('admin.update', {
+      const result = await Membership.callApi('admin.update', {
         targetMemberNo: $('#editTargetMemberNo').value,
         expectedUpdatedAt: $('#editExpectedUpdatedAt').value,
         membershipStatus: $('#editStatus').value,
         expiresAt: $('#editExpiresAt').value,
         note: $('#editNote').value
       });
+      const updated = result.member;
+      const index = members.findIndex((member) => member.memberNo === updated.memberNo);
+      if (index !== -1) members[index] = updated;
+      renderTable(members, memberTotal);
       $('#editDialog').close();
-      await loadMembers($('#memberSearch').value.trim());
     } catch (error) {
       $('#editError').textContent = error.message; $('#editError').classList.remove('hidden');
     } finally { button.disabled = false; }
@@ -283,6 +323,7 @@
     $('#usageDialog').showModal();
     try {
       const result = await Membership.callApi('admin.usage.open', { voucherId });
+      upsertVoucher(result.voucher);
       showUsageResult(result.voucher, result.shareCode);
     } catch (error) {
       $('#usageError').textContent = error.message; $('#usageError').classList.remove('hidden');
@@ -306,8 +347,8 @@
     const button = $('#createUsageButton'); button.disabled = true; $('#usageError').classList.add('hidden');
     try {
       const result = await Membership.callApi('admin.usage.create', readUsageForm());
+      upsertVoucher(result.voucher);
       showUsageResult(result.voucher, result.shareCode);
-      await loadVouchers();
     } catch (error) {
       $('#usageError').textContent = error.message; $('#usageError').classList.remove('hidden');
     } finally { button.disabled = false; }
@@ -321,8 +362,8 @@
         expectedUpdatedAt: $('#usageExpectedUpdatedAt').value
       });
       const result = await Membership.callApi('admin.usage.update', payload);
+      upsertVoucher(result.voucher);
       showUsageResult(result.voucher, result.shareCode);
-      await loadVouchers();
     } catch (error) {
       $('#usageError').textContent = error.message; $('#usageError').classList.remove('hidden');
     } finally { button.disabled = false; }
@@ -350,19 +391,21 @@
 
   async function cancelVoucher(voucherId) {
     if (!window.confirm('確定要停止這個 QR Code 的後續消費時間記錄？')) return;
-    try { await Membership.callApi('admin.usage.cancel', { voucherId }); await loadVouchers(); }
-    catch (error) { window.alert(error.message || '停止 QR Code 失敗。'); }
+    try {
+      const result = await Membership.callApi('admin.usage.cancel', { voucherId });
+      upsertVoucher(result.voucher);
+    } catch (error) { window.alert(error.message || '停止 QR Code 失敗。'); }
   }
 
   async function deleteVoucher(voucher) {
-    if (!voucher || Number(voucher.recordCount || 0) > 0) return;
+    if (!voucher || Number(voucher.recordCount || 0) > 0 || voucher.legacyTargeted) return;
     if (!window.confirm(`確定要刪除 ${voucher.voucherId}？刪除後原發放連結將永久失效。`)) return;
     try {
-      await Membership.callApi('admin.usage.delete', {
+      const result = await Membership.callApi('admin.usage.delete', {
         voucherId: voucher.voucherId,
         expectedUpdatedAt: voucher.updatedAt
       });
-      await loadVouchers();
+      removeVoucher(result.voucherId || voucher.voucherId);
     } catch (error) {
       window.alert(error.message || '刪除 QR Code 失敗。');
     }
