@@ -7,9 +7,12 @@
   const tierClasses = ['tier-standard', 'tier-silver', 'tier-gold', 'tier-platinum'];
 
   let currentMember = null;
+  let currentProfile = null;
+  let pendingUsageAccess = null;
   let publicConfig = null;
   let scanInFlight = false;
   let usageRecordInFlight = false;
+  let profileSaveInFlight = false;
 
   function formatMinutes(value) {
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -38,6 +41,12 @@
   function isTopLevelWindow() {
     try { return window.top === window.self; }
     catch (_) { return false; }
+  }
+
+  function todayDateValue() {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   }
 
   function createRequestId() {
@@ -84,6 +93,7 @@
     url.searchParams.delete('redeem');
     url.searchParams.delete('request');
     window.history.replaceState(null, '', url.href);
+    pendingUsageAccess = null;
   }
 
   function readAccessFromScannedValue(value) {
@@ -110,7 +120,8 @@
   async function loadMember() {
     const result = await Membership.callApi('member.me');
     currentMember = result.member;
-    renderMember(currentMember);
+    currentProfile = result.profile || null;
+    return result;
   }
 
   function renderMember(member) {
@@ -129,12 +140,87 @@
     $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
     $('#boot').classList.add('hidden');
     $('#errorState').classList.add('hidden');
+    $('#profileSetup').classList.add('hidden');
     $('#memberApp').classList.remove('hidden');
+  }
+
+  function fillProfileFields(phoneSelector, birthDateSelector, profile) {
+    $(phoneSelector).value = profile && profile.phone ? profile.phone : '';
+    $(birthDateSelector).value = profile && profile.birthDate ? profile.birthDate : '';
+    $(birthDateSelector).max = todayDateValue();
+  }
+
+  function showProfileSetup() {
+    hideUsageLoading();
+    $('#boot').classList.add('hidden');
+    $('#errorState').classList.add('hidden');
+    $('#memberApp').classList.add('hidden');
+    $('#profileSetupError').classList.add('hidden');
+    fillProfileFields('#profileSetupPhone', '#profileSetupBirthDate', currentProfile);
+    $('#profileSetup').classList.remove('hidden');
+    $('#profileSetupPhone').focus();
+  }
+
+  function openProfileDialog() {
+    if (!currentProfile) return;
+    $('#profileEditError').classList.add('hidden');
+    fillProfileFields('#profileEditPhone', '#profileEditBirthDate', currentProfile);
+    const dialog = $('#profileDialog');
+    if (!dialog.open) dialog.showModal();
+    $('#profileEditPhone').focus();
+  }
+
+  function readProfilePayload(phoneSelector, birthDateSelector) {
+    const phone = $(phoneSelector).value.trim();
+    const birthDate = $(birthDateSelector).value.trim();
+    if (!phone) throw new Error('請輸入電話。');
+    if (!birthDate) throw new Error('請選擇生日。');
+    if (birthDate > todayDateValue()) throw new Error('生日不可晚於今天。');
+    return {
+      phone,
+      birthDate,
+      expectedUpdatedAt: currentProfile && currentProfile.updatedAt ? currentProfile.updatedAt : ''
+    };
+  }
+
+  async function saveProfile(mode) {
+    if (profileSaveInFlight) return;
+    const isInitial = mode === 'initial';
+    const button = isInitial ? $('#saveInitialProfileButton') : $('#saveProfileButton');
+    const errorNode = isInitial ? $('#profileSetupError') : $('#profileEditError');
+    const phoneSelector = isInitial ? '#profileSetupPhone' : '#profileEditPhone';
+    const birthDateSelector = isInitial ? '#profileSetupBirthDate' : '#profileEditBirthDate';
+
+    profileSaveInFlight = true;
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = '儲存中…';
+    errorNode.classList.add('hidden');
+
+    try {
+      const result = await Membership.callApi('profile.update', readProfilePayload(phoneSelector, birthDateSelector));
+      currentProfile = result.profile;
+      if (isInitial) {
+        renderMember(currentMember);
+        $('#scanQrButton').disabled = false;
+        if (pendingUsageAccess) await recordUsageImmediately(pendingUsageAccess);
+      } else {
+        $('#profileDialog').close();
+      }
+    } catch (error) {
+      errorNode.textContent = error && error.message ? error.message : '會員資料儲存失敗。';
+      errorNode.classList.remove('hidden');
+    } finally {
+      profileSaveInFlight = false;
+      button.disabled = false;
+      button.textContent = originalText;
+    }
   }
 
   function showError(error) {
     hideUsageLoading();
     $('#boot').classList.add('hidden');
+    $('#profileSetup').classList.add('hidden');
     $('#memberApp').classList.add('hidden');
     $('#errorMessage').textContent = error && error.message ? error.message : '請稍後再試。';
     $('#errorState').classList.remove('hidden');
@@ -151,6 +237,11 @@
 
   function showUsageError(error) {
     hideUsageLoading();
+    if (error && error.code === 'PROFILE_REQUIRED') {
+      currentProfile = null;
+      showProfileSetup();
+      return;
+    }
     $('#usageErrorMessage').textContent = error && error.message ? error.message : '此 QR Code 目前無法使用。';
     $('#usageErrorPanel').classList.remove('hidden');
   }
@@ -168,6 +259,11 @@
   async function recordUsageImmediately(accessOverride) {
     const access = accessOverride || readAccessFromUrl();
     if (!access || usageRecordInFlight) return false;
+    if (!currentProfile) {
+      pendingUsageAccess = access;
+      showProfileSetup();
+      return false;
+    }
 
     const requestId = ensureRequestId(access);
     usageRecordInFlight = true;
@@ -197,7 +293,7 @@
   }
 
   async function scanWithLineImmediately() {
-    if (scanInFlight || usageRecordInFlight) return;
+    if (scanInFlight || usageRecordInFlight || !currentProfile) return;
     scanInFlight = true;
 
     const button = $('#scanQrButton');
@@ -233,13 +329,16 @@
       const loggedIn = await Membership.ensureLiffLogin();
       if (!loggedIn) return;
 
-      const access = readAccessFromUrl();
-      if (access) showUsageLoading();
+      pendingUsageAccess = readAccessFromUrl();
+      const result = await loadMember();
+      if (result.profileRequired || !currentProfile) {
+        showProfileSetup();
+        return;
+      }
 
-      await loadMember();
+      renderMember(currentMember);
       $('#scanQrButton').disabled = false;
-
-      if (access) await recordUsageImmediately(access);
+      if (pendingUsageAccess) await recordUsageImmediately(pendingUsageAccess);
     } catch (error) {
       showError(error);
     }
@@ -247,6 +346,16 @@
 
   $('#refreshButton').addEventListener('click', () => window.location.reload());
   $('#retryButton').addEventListener('click', () => window.location.reload());
+  $('#editProfileButton').addEventListener('click', openProfileDialog);
+  $('#profileSetupForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    saveProfile('initial');
+  });
+  $('#profileEditForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    saveProfile('edit');
+  });
+  $('#cancelProfileButton').addEventListener('click', () => $('#profileDialog').close());
   $('#scanQrButton').addEventListener('click', () => scanWithLineImmediately().catch(showUsageError));
   $('#dismissUsageErrorButton').addEventListener('click', () => $('#usageErrorPanel').classList.add('hidden'));
   $('#usageSuccessDialog').addEventListener('cancel', (event) => event.preventDefault());

@@ -8,14 +8,38 @@
   <title>會員卡｜Membership System</title>
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./usage.css">
+  <link rel="stylesheet" href="./profile.css">
 </head>
 <body>
   <main class="shell">
     <section id="boot" class="panel state-panel"><div class="spinner" aria-hidden="true"></div><h1>正在載入會員卡</h1><p>正在確認 LINE 登入與會員資料。</p></section>
     <section id="errorState" class="panel state-panel hidden" role="alert"><span class="eyebrow danger-text">無法載入</span><h1>會員卡暫時無法使用</h1><p id="errorMessage">請稍後再試。</p><button id="retryButton" class="button button-primary" type="button">重新整理</button></section>
 
+    <section id="profileSetup" class="panel profile-panel hidden" aria-labelledby="profileSetupTitle">
+      <span class="eyebrow">MEMBER PROFILE</span>
+      <h1 id="profileSetupTitle">完成會員資料</h1>
+      <p class="profile-intro">首次加入請填寫電話與生日。完成後才會啟用會員卡與消費時間功能。</p>
+      <form id="profileSetupForm" class="profile-form" novalidate>
+        <label class="field-label" for="profileSetupPhone">電話</label>
+        <input id="profileSetupPhone" class="field-input" type="tel" inputmode="tel" autocomplete="tel" maxlength="40" required placeholder="請輸入聯絡電話">
+
+        <label class="field-label" for="profileSetupBirthDate">生日</label>
+        <input id="profileSetupBirthDate" class="field-input" type="date" autocomplete="bday" required>
+
+        <p class="profile-privacy">電話與生日屬於會員 Profile 資料，不會作為 LINE 登入憑證或管理權限。</p>
+        <p id="profileSetupError" class="form-error hidden" role="alert"></p>
+        <button id="saveInitialProfileButton" class="button button-primary profile-submit" type="submit">完成加入</button>
+      </form>
+    </section>
+
     <section id="memberApp" class="hidden">
-      <header class="topbar"><div><span class="eyebrow">MEMBERSHIP</span><h1>我的會員卡</h1></div><button id="refreshButton" class="icon-button" type="button" aria-label="重新整理">↻</button></header>
+      <header class="topbar">
+        <div><span class="eyebrow">MEMBERSHIP</span><h1>我的會員卡</h1></div>
+        <div class="topbar-actions">
+          <button id="editProfileButton" class="profile-action-button" type="button">修改資料</button>
+          <button id="refreshButton" class="icon-button" type="button" aria-label="重新整理">↻</button>
+        </div>
+      </header>
 
       <article class="member-card tier-standard" aria-label="會員卡">
         <div class="card-glow card-glow-a"></div><div class="card-glow card-glow-b"></div>
@@ -37,6 +61,26 @@
       <footer class="page-footer">會員資料由 LINE 身分驗證與會員系統管理。</footer>
     </section>
   </main>
+
+  <dialog id="profileDialog" class="profile-dialog" aria-labelledby="profileDialogTitle">
+    <form id="profileEditForm" class="profile-form" novalidate>
+      <span class="eyebrow">MEMBER PROFILE</span>
+      <h2 id="profileDialogTitle">修改會員資料</h2>
+      <p class="profile-dialog-intro">更新電話或生日後，系統會立即使用最新資料。</p>
+
+      <label class="field-label" for="profileEditPhone">電話</label>
+      <input id="profileEditPhone" class="field-input" type="tel" inputmode="tel" autocomplete="tel" maxlength="40" required>
+
+      <label class="field-label" for="profileEditBirthDate">生日</label>
+      <input id="profileEditBirthDate" class="field-input" type="date" autocomplete="bday" required>
+
+      <p id="profileEditError" class="form-error hidden" role="alert"></p>
+      <div class="profile-dialog-actions">
+        <button id="cancelProfileButton" class="button button-secondary" type="button">取消</button>
+        <button id="saveProfileButton" class="button button-primary" type="submit">儲存</button>
+      </div>
+    </form>
+  </dialog>
 
   <div id="usageLoadingOverlay" class="usage-loading-overlay hidden" role="status" aria-live="polite" aria-busy="true">
     <div class="usage-loading-card">

@@ -43,7 +43,7 @@ let requestSheets_ = {};
 let requestUsageRecordCounts_ = null;
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.7.0' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.8.0' } });
 }
 
 function doPost(e) {
@@ -61,6 +61,9 @@ function doPost(e) {
     switch (action) {
       case 'member.me':
         return json_({ ok: true, data: memberMe_(context) });
+      case 'profile.update':
+        rateLimit_('profile-update:' + context.identity.sub, 10, 60);
+        return json_({ ok: true, data: profileUpdate_(context, payload) });
       case 'usage.preview':
         rateLimit_('usage-preview:' + context.identity.sub, 30, 60);
         return json_({ ok: true, data: usagePreview_(context, payload) });
@@ -165,7 +168,13 @@ function memberMe_(context) {
     }
   }
   member.tier = tierForConsumedMinutes_(member.consumedMinutes);
-  return { member: publicMember_(member, false), isAdmin: hasManageMembersPermission_(member.canManageMembers) };
+  const profile = getProfileByLineUserId_(context.identity.sub);
+  return {
+    member: publicMember_(member, false),
+    profile: publicProfile_(profile),
+    profileRequired: !isProfileComplete_(profile),
+    isAdmin: hasManageMembersPermission_(member.canManageMembers)
+  };
 }
 
 function adminDashboard_(payload) {
@@ -333,6 +342,7 @@ function adminUsageCancel_(context, payload) {
 }
 
 function usagePreview_(context, payload) {
+  requireProfileComplete_(context.identity.sub);
   const access = readUsageAccess_(payload);
   const located = findUsageVoucherByAccess_(access);
   if (!located.row) fail_('INVALID_USAGE_QR', '消費時間 QR Code 無效或已失效。');
@@ -347,6 +357,7 @@ function usagePreview_(context, payload) {
 }
 
 function usageRecord_(context, payload) {
+  requireProfileComplete_(context.identity.sub);
   const access = readUsageAccess_(payload);
   const requestId = cleanUsageRequestId_(payload.requestId);
   const located = findUsageVoucherByAccess_(access);
