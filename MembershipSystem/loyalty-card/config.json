@@ -1,5 +1,5 @@
 {
-  "apiProxyUrl": "PASTE_API_PROXY_URL_HERE",
+  "apiProxyUrl": "PASTE_CLOUDFLARE_WORKER_URL_HERE",
   "publicOrigin": "https://yongshengchen0615.github.io",
   "basePath": "/MembershipSystem/loyalty-card",
   "userLiffId": "2010787602-eIzRN9l6",
