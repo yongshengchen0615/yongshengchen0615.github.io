@@ -1,0 +1,2 @@
+This file exists only to trigger the initial GitHub Actions deployment for the Membership Point Card GAS project.
+It is not an Apps Script source file and contains no credential or runtime configuration.
