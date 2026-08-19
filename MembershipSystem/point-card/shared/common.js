@@ -30,11 +30,19 @@
   }
 
   async function ensureLiffLogin() {
+    authenticatedIdToken = '';
     const config = await loadConfig();
     if (!window.liff) throw new Error('LINE LIFF SDK 載入失敗。');
 
-    await liff.init({ liffId: config.LIFF_ID });
+    await liff.init({
+      liffId: config.LIFF_ID,
+      withLoginOnExternalBrowser: true
+    });
+
     if (!liff.isLoggedIn()) {
+      if (typeof liff.isInClient === 'function' && liff.isInClient()) {
+        throw new Error('LINE LIFF 登入狀態異常，請關閉頁面後從 LINE 重新開啟。');
+      }
       liff.login({ redirectUri: window.location.href });
       return false;
     }
@@ -110,6 +118,14 @@
     window.crypto.getRandomValues(bytes);
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
   }
+
+  window.addEventListener('pagehide', () => {
+    authenticatedIdToken = '';
+  });
+
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) window.location.reload();
+  });
 
   window.PointCard = Object.freeze({
     loadConfig,
