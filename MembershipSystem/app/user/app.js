@@ -5,6 +5,7 @@
   const statusBadgeLabel = { active: '有效', suspended: '停權', disabled: '停用' };
   const tierLabel = { standard: '一般', silver: '銀級', gold: '金級', platinum: '白金', vip: '白金' };
   const tierClasses = ['tier-standard', 'tier-silver', 'tier-gold', 'tier-platinum'];
+  const REQUIRED_PROFILE_BACKEND_VERSION = '1.8.0';
 
   let currentMember = null;
   let currentProfile = null;
@@ -47,6 +48,20 @@
     const now = new Date();
     const pad = (value) => String(value).padStart(2, '0');
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  function backendVersionMismatchError() {
+    const error = new Error(`會員服務尚未更新到 ${REQUIRED_PROFILE_BACKEND_VERSION}，請先重新部署 GAS Web App 後再試。`);
+    error.code = 'BACKEND_VERSION_MISMATCH';
+    return error;
+  }
+
+  function requireProfileCapability(result) {
+    if (!result ||
+        !Object.prototype.hasOwnProperty.call(result, 'profile') ||
+        !Object.prototype.hasOwnProperty.call(result, 'profileRequired')) {
+      throw backendVersionMismatchError();
+    }
   }
 
   function createRequestId() {
@@ -119,6 +134,7 @@
 
   async function loadMember() {
     const result = await Membership.callApi('member.me');
+    requireProfileCapability(result);
     currentMember = result.member;
     currentProfile = result.profile || null;
     return result;
@@ -208,7 +224,10 @@
         $('#profileDialog').close();
       }
     } catch (error) {
-      errorNode.textContent = error && error.message ? error.message : '會員資料儲存失敗。';
+      const visibleError = error && error.code === 'INVALID_ACTION'
+        ? backendVersionMismatchError()
+        : error;
+      errorNode.textContent = visibleError && visibleError.message ? visibleError.message : '會員資料儲存失敗。';
       errorNode.classList.remove('hidden');
     } finally {
       profileSaveInFlight = false;
