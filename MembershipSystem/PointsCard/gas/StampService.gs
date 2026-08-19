@@ -34,7 +34,7 @@ function stampRecord_(context, payload) {
         duplicate: true,
         stampCount: Number(recovered.stampCount || 0),
         unlockedRewards: [],
-        member: publicMember_(member, false),
+        member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId)),
         activity: listMemberActivity_(member.lineUserId, 20)
       };
     }
@@ -98,8 +98,8 @@ function stampRecord_(context, payload) {
     return {
       duplicate: false,
       stampCount: voucher.stampCount,
-      unlockedRewards: unlockedRewards,
-      member: publicMember_(member, false),
+      unlockedRewards: unlockedRewards.map(publicRewardTicket_),
+      member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId)),
       activity: listMemberActivity_(member.lineUserId, 20)
     };
   } finally { lock.releaseLock(); }

@@ -42,18 +42,21 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .workspace-section { margin-top: 22px; padding: 30px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 10px 35px rgba(23,63,53,.045); animation: rise-in .5s .05s ease both; }
 .voucher-section { animation-delay: .1s; }
+.reward-confirm-section { animation-delay: .07s; }
 .reward-node-settings { animation-delay: .03s; }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; margin-bottom: 26px; }
 .section-heading h2 { margin: 5px 0 6px; font: 500 1.7rem Georgia, "Noto Serif TC", serif; }
 .section-heading > div > p:last-child { margin: 0; color: var(--muted); font-size: .78rem; }
 .section-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .reward-node-editor { display: grid; gap: 10px; }
-.reward-node-editor-row { display: grid; grid-template-columns: 44px minmax(110px, .45fr) minmax(220px, 1fr) auto; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.reward-node-editor-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: start; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
 .reward-node-order { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--ink); background: rgba(216,232,164,.55); font: 700 .72rem Georgia, serif; }
+.reward-node-editor-fields { min-width: 0; display: grid; grid-template-columns: minmax(90px, .45fr) minmax(110px, .55fr) minmax(180px, 1fr); gap: 12px; }
 .reward-node-editor-row label { min-width: 0; display: grid; gap: 6px; color: var(--muted); font-size: .65rem; font-weight: 700; }
-.reward-node-editor-row input { min-width: 0; width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; outline: 0; color: var(--ink-deep); background: #f8f7f3; }
-.reward-node-editor-row input:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(23,63,53,.08); }
-.reward-node-editor-row input:disabled { color: var(--muted); cursor: not-allowed; }
+.reward-node-editor-row input, .reward-node-editor-row select, .reward-node-editor-row textarea { min-width: 0; width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; outline: 0; color: var(--ink-deep); background: #f8f7f3; resize: vertical; }
+.reward-node-editor-row input:focus, .reward-node-editor-row select:focus, .reward-node-editor-row textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(23,63,53,.08); }
+.reward-node-editor-row input:disabled, .reward-node-editor-row select:disabled, .reward-node-editor-row textarea:disabled { color: var(--muted); cursor: not-allowed; }
+.reward-node-prizes { grid-column: 1 / -1; }
 .remove-node-button { width: 38px; height: 38px; border: 1px solid rgba(170,61,50,.22); border-radius: 50%; color: var(--danger); background: transparent; cursor: pointer; }
 .remove-node-button:disabled { cursor: not-allowed; opacity: .3; }
 .settings-notice { margin-bottom: 15px; padding: 12px 14px; border-radius: 11px; color: var(--ink); background: rgba(216,232,164,.46); font-size: .72rem; line-height: 1.55; }
@@ -133,6 +136,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .section-actions { justify-content: flex-start; }
   .search-field { width: 100%; }
   .workspace-section { padding: 22px 16px; }
+  .reward-node-editor-fields { grid-template-columns: 90px 110px 1fr; }
   .data-table { min-width: 760px; }
 }
 
@@ -140,7 +144,9 @@ button { -webkit-tap-highlight-color: transparent; }
   .admin-header { display: block; }
   .admin-header > .button { width: 100%; margin-top: 22px; }
   .form-grid { grid-template-columns: 1fr; }
-  .reward-node-editor-row { grid-template-columns: 34px 84px 1fr auto; gap: 7px; }
+  .reward-node-editor-row { grid-template-columns: 34px 1fr auto; gap: 7px; }
+  .reward-node-editor-fields { grid-template-columns: 1fr 1fr; gap: 9px; }
+  .reward-node-editor-fields label:nth-child(3), .reward-node-prizes { grid-column: 1 / -1; }
   .full-span { grid-column: auto; }
   .admin-dialog form { padding: 22px 18px; }
   .dialog-actions .button { flex: 1 1 auto; }

@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '1.1.0',
+  version: '1.2.0',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -15,6 +15,7 @@ const POINTS_CARD_SHEETS = Object.freeze({
   members: 'Members',
   vouchers: 'StampVouchers',
   stampRecords: 'StampRecords',
+  rewardConfirmations: 'RewardConfirmations',
   rewardRecords: 'RewardRecords',
   audit: 'AuditLogs'
 });
@@ -34,10 +35,15 @@ const POINTS_CARD_HEADERS = Object.freeze({
     'note', 'status', 'totalBefore', 'totalAfter', 'createdAt', 'updatedAt', 'recordedAt',
     'auditRecordedAt'
   ],
+  RewardConfirmations: [
+    'confirmationId', 'shareCode', 'status', 'expiresAt', 'note', 'createdByLineUserId',
+    'createdAt', 'updatedAt', 'cancelledByLineUserId', 'cancelledAt'
+  ],
   RewardRecords: [
     'rewardRecordId', 'requestId', 'memberLineUserId', 'memberNo', 'rewardName',
     'rewardOrdinal', 'redeemedBefore', 'redeemedAfter', 'status', 'redeemedByLineUserId',
-    'note', 'createdAt', 'updatedAt', 'redeemedAt', 'auditRecordedAt'
+    'note', 'createdAt', 'updatedAt', 'redeemedAt', 'auditRecordedAt', 'rewardType',
+    'rewardNodeId', 'cycleNumber', 'lotteryResult', 'confirmationId'
   ],
   AuditLogs: [
     'timestamp', 'actorLineUserId', 'actorRole', 'action', 'targetLineUserId', 'result', 'details'
@@ -46,6 +52,7 @@ const POINTS_CARD_HEADERS = Object.freeze({
 
 const MEMBER_STATUS_VALUES = ['active', 'suspended', 'disabled'];
 const STAMP_SCAN_MODES = ['single', 'repeatable'];
+const REWARD_TYPES = ['coupon', 'lottery'];
 const MAX_STAMPS_PER_SCAN = 10;
 const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const LINE_IDENTITY_CACHE_MAX_SECONDS = 300;
@@ -61,9 +68,10 @@ function doGet() {
       service: POINTS_CARD_SERVICE.name,
       version: POINTS_CARD_SERVICE.version,
       capabilities: [
-        'member.me', 'stamp.record', 'admin.dashboard', 'admin.member.update',
+        'member.me', 'stamp.record', 'reward.claim', 'admin.dashboard', 'admin.member.update',
         'admin.reward.redeem', 'admin.reward-nodes.update', 'admin.stamp.create', 'admin.stamp.open',
-        'admin.stamp.cancel', 'admin.stamp.delete'
+        'admin.stamp.cancel', 'admin.stamp.delete', 'admin.reward-confirm.create',
+        'admin.reward-confirm.open', 'admin.reward-confirm.cancel', 'admin.reward-confirm.delete'
       ]
     }
   });
@@ -87,6 +95,9 @@ function doPost(e) {
       case 'stamp.record':
         rateLimit_('stamp-record:' + identity.sub, 12, 60);
         return json_({ ok: true, data: stampRecord_(context, payload) });
+      case 'reward.claim':
+        rateLimit_('reward-claim:' + identity.sub, 12, 60);
+        return json_({ ok: true, data: memberRewardClaim_(context, payload) });
       case 'admin.dashboard':
         requireAdmin_(context);
         rateLimit_('admin-dashboard:' + identity.sub, 30, 60);
@@ -119,6 +130,22 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-stamp-delete:' + identity.sub, 20, 60);
         return json_({ ok: true, data: adminStampDelete_(context, payload) });
+      case 'admin.reward-confirm.create':
+        requireAdmin_(context);
+        rateLimit_('admin-reward-confirm-create:' + identity.sub, 10, 60);
+        return json_({ ok: true, data: adminRewardConfirmationCreate_(context, payload) });
+      case 'admin.reward-confirm.open':
+        requireAdmin_(context);
+        rateLimit_('admin-reward-confirm-open:' + identity.sub, 30, 60);
+        return json_({ ok: true, data: adminRewardConfirmationOpen_(payload) });
+      case 'admin.reward-confirm.cancel':
+        requireAdmin_(context);
+        rateLimit_('admin-reward-confirm-cancel:' + identity.sub, 20, 60);
+        return json_({ ok: true, data: adminRewardConfirmationCancel_(context, payload) });
+      case 'admin.reward-confirm.delete':
+        requireAdmin_(context);
+        rateLimit_('admin-reward-confirm-delete:' + identity.sub, 20, 60);
+        return json_({ ok: true, data: adminRewardConfirmationDelete_(context, payload) });
       default:
         fail_('INVALID_ACTION', '不支援的操作。');
     }
@@ -177,7 +204,7 @@ function memberMe_(context) {
   }
 
   return {
-    member: publicMember_(member, false),
+    member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId)),
     activity: listMemberActivity_(member.lineUserId, 20)
   };
 }
@@ -203,9 +230,13 @@ function adminDashboard_(payload) {
 
   const settings = pointsCardSettings_();
   settings.rewardSettingsLocked = rewardSettingsLocked_();
+  const claimedByMember = claimedRewardOrdinalsByMember_();
   return {
-    members: filtered.slice(0, pageSize).map(function (member) { return publicMember_(member, true); }),
+    members: filtered.slice(0, pageSize).map(function (member) {
+      return publicMember_(member, true, claimedByMember[member.lineUserId] || []);
+    }),
     vouchers: adminStampList_(payload.voucherLimit || 50),
+    rewardConfirmations: adminRewardConfirmationList_(payload.confirmationLimit || 50),
     stats: stats,
     settings: settings
   };
@@ -237,7 +268,7 @@ function adminMemberUpdate_(context, payload) {
     audit_(context.identity.sub, 'admin', 'MEMBER_UPDATED', member.lineUserId, 'success', {
       memberNo: member.memberNo, fields: changedFields
     });
-    return { member: publicMember_(member, true) };
+    return { member: publicMember_(member, true, readClaimedRewardOrdinalsForMember_(member.lineUserId)) };
   } finally { lock.releaseLock(); }
 }
 
@@ -263,10 +294,10 @@ function listMemberActivity_(lineUserId, limit) {
   }).slice(0, clampInt_(limit, 1, 50, 20));
 }
 
-function publicMember_(value, includeAdminFields) {
+function publicMember_(value, includeAdminFields, claimedOrdinals) {
   const member = normalizeMember_(value);
   const settings = pointsCardSettings_();
-  const rewards = rewardProjection_(member, settings);
+  const rewards = rewardProjection_(member, settings, claimedOrdinals);
   const result = {
     memberNo: member.memberNo,
     displayName: member.displayName,
@@ -275,7 +306,8 @@ function publicMember_(value, includeAdminFields) {
     totalStamps: member.totalStamps,
     redeemedRewards: member.redeemedRewards,
     availableRewards: rewards.availableRewards,
-    availableRewardNodes: rewards.availableRewardNodes,
+    availableRewardNodes: rewards.availableRewardNodes.map(publicRewardTicket_),
+    upcomingRewardNodes: rewards.upcomingRewardNodes.map(publicRewardTicket_),
     stampsPerReward: settings.stampsPerReward,
     cardSize: settings.cardSize,
     visualStamps: rewards.visualStamps,
@@ -284,9 +316,10 @@ function publicMember_(value, includeAdminFields) {
     stampsUntilNextReward: rewards.stampsUntilNextReward,
     rewardName: rewards.nextAvailableReward ? rewards.nextAvailableReward.rewardName :
       (rewards.nextReward ? rewards.nextReward.rewardName : settings.rewardName),
-    rewardNodes: rewards.rewardNodes,
-    nextAvailableReward: rewards.nextAvailableReward,
-    nextReward: rewards.nextReward,
+    rewardNodesUpdatedAt: settings.rewardNodesUpdatedAt,
+    rewardNodes: rewards.rewardNodes.map(publicRewardTicket_),
+    nextAvailableReward: rewards.nextAvailableReward ? publicRewardTicket_(rewards.nextAvailableReward) : null,
+    nextReward: rewards.nextReward ? publicRewardTicket_(rewards.nextReward) : null,
     joinedAt: member.joinedAt,
     updatedAt: member.updatedAt
   };
@@ -335,6 +368,7 @@ function pointsCardSettings_() {
     cardSize: lastNode.stampsRequired,
     rewardName: lastNode.rewardName,
     rewardNodes: rewardNodes,
+    rewardTicketTypesSupported: true,
     rewardNodesUpdatedAt: properties.getProperty(POINTS_CARD_SERVICE.rewardNodesUpdatedAtProperty) || 'legacy'
   };
 }
@@ -349,7 +383,27 @@ function normalizeRewardNodes_(value, errorCode, errorMessage) {
     }
     const rewardName = String(node.rewardName == null ? '' : node.rewardName).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
     if (!rewardName || rewardName.length > 80) fail_(errorCode, errorMessage);
-    return { nodeId: 'node-' + stampsRequired, stampsRequired: stampsRequired, rewardName: rewardName };
+    const rewardType = node.rewardType == null || node.rewardType === '' ? 'coupon' : String(node.rewardType);
+    if (REWARD_TYPES.indexOf(rewardType) < 0) fail_(errorCode, errorMessage);
+    let lotteryPrizes = [];
+    if (rewardType === 'lottery') {
+      if (!Array.isArray(node.lotteryPrizes) || node.lotteryPrizes.length < 2 || node.lotteryPrizes.length > 8) {
+        fail_(errorCode, errorMessage);
+      }
+      lotteryPrizes = node.lotteryPrizes.map(function (prize) {
+        const name = String(prize == null ? '' : prize).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+        if (!name || name.length > 80) fail_(errorCode, errorMessage);
+        return name;
+      });
+      if (new Set(lotteryPrizes).size !== lotteryPrizes.length) fail_(errorCode, errorMessage);
+    }
+    return {
+      nodeId: 'node-' + stampsRequired,
+      stampsRequired: stampsRequired,
+      rewardName: rewardName,
+      rewardType: rewardType,
+      lotteryPrizes: lotteryPrizes
+    };
   }).sort(function (a, b) { return a.stampsRequired - b.stampsRequired; });
   for (let index = 1; index < nodes.length; index += 1) {
     if (nodes[index - 1].stampsRequired === nodes[index].stampsRequired) fail_(errorCode, errorMessage);
@@ -377,22 +431,77 @@ function rewardEntitlementByOrdinal_(ordinal, settings) {
     nodeId: node.nodeId,
     stampsRequired: node.stampsRequired,
     rewardName: node.rewardName,
+    rewardType: node.rewardType,
+    lotteryPrizes: node.lotteryPrizes.slice(),
     cycleNumber: cycleIndex + 1,
     absoluteStamps: cycleIndex * settings.cardSize + node.stampsRequired
   };
 }
 
-function rewardProjection_(member, settings) {
+function publicRewardTicket_(reward) {
+  return {
+    entitlementOrdinal: Number(reward.entitlementOrdinal || 0),
+    nodeId: String(reward.nodeId || ''),
+    stampsRequired: Number(reward.stampsRequired || 0),
+    rewardName: String(reward.rewardName || ''),
+    rewardType: REWARD_TYPES.indexOf(String(reward.rewardType)) >= 0 ? String(reward.rewardType) : 'coupon',
+    cycleNumber: Number(reward.cycleNumber || 1),
+    absoluteStamps: Number(reward.absoluteStamps || 0),
+    stampsUntilReward: Math.max(0, Number(reward.stampsUntilReward || 0)),
+    state: String(reward.state || '')
+  };
+}
+
+function normalizedClaimedOrdinals_(member, claimedOrdinals) {
+  const result = new Set();
+  (Array.isArray(claimedOrdinals) ? claimedOrdinals : []).forEach(function (ordinal) {
+    const value = Number(ordinal);
+    if (Number.isFinite(value) && Math.floor(value) === value && value > 0) result.add(value);
+  });
+  let legacyOrdinal = 1;
+  while (result.size < member.redeemedRewards) {
+    while (result.has(legacyOrdinal)) legacyOrdinal += 1;
+    result.add(legacyOrdinal);
+  }
+  return result;
+}
+
+function claimedRewardOrdinalsByMember_() {
+  const result = {};
+  readObjects_(getSheet_(POINTS_CARD_SHEETS.rewardRecords)).forEach(function (record) {
+    if (record.status !== 'recorded' && record.status !== 'processing') return;
+    const lineUserId = String(record.memberLineUserId || '');
+    const ordinal = Number(record.rewardOrdinal || 0);
+    if (!lineUserId || !Number.isFinite(ordinal) || Math.floor(ordinal) !== ordinal || ordinal < 1) return;
+    if (!result[lineUserId]) result[lineUserId] = [];
+    if (result[lineUserId].indexOf(ordinal) < 0) result[lineUserId].push(ordinal);
+  });
+  return result;
+}
+
+function readClaimedRewardOrdinalsForMember_(lineUserId) {
+  return claimedRewardOrdinalsByMember_()[String(lineUserId || '')] || [];
+}
+
+function rewardProjection_(member, settings, claimedOrdinals) {
   const totalStamps = member.totalStamps;
   const earnedRewards = earnedRewardCountForStamps_(totalStamps, settings);
-  const availableRewards = Math.max(0, earnedRewards - member.redeemedRewards);
+  const claimed = normalizedClaimedOrdinals_(member, claimedOrdinals);
   const availableRewardNodes = [];
-  const lastAvailableOrdinal = Math.min(earnedRewards, member.redeemedRewards + 20);
-  for (let ordinal = member.redeemedRewards + 1; ordinal <= lastAvailableOrdinal; ordinal += 1) {
-    availableRewardNodes.push(rewardEntitlementByOrdinal_(ordinal, settings));
+  for (let ordinal = 1; ordinal <= earnedRewards && availableRewardNodes.length < 20; ordinal += 1) {
+    if (!claimed.has(ordinal)) availableRewardNodes.push(rewardEntitlementByOrdinal_(ordinal, settings));
   }
+  const claimedEarnedCount = Array.from(claimed).filter(function (ordinal) { return ordinal <= earnedRewards; }).length;
+  const availableRewards = Math.max(0, earnedRewards - claimedEarnedCount);
 
   const nextReward = rewardEntitlementByOrdinal_(earnedRewards + 1, settings);
+  const upcomingRewardNodes = [];
+  for (let ordinal = earnedRewards + 1; ordinal <= earnedRewards + settings.rewardNodes.length; ordinal += 1) {
+    const upcoming = rewardEntitlementByOrdinal_(ordinal, settings);
+    upcoming.stampsUntilReward = Math.max(0, upcoming.absoluteStamps - totalStamps);
+    upcoming.state = 'pending';
+    upcomingRewardNodes.push(upcoming);
+  }
   const remainder = totalStamps % settings.cardSize;
   const completedCycles = Math.floor(totalStamps / settings.cardSize);
   const displayCycleIndex = totalStamps > 0 && remainder === 0 ? Math.max(0, completedCycles - 1) : completedCycles;
@@ -400,14 +509,16 @@ function rewardProjection_(member, settings) {
   const rewardNodes = settings.rewardNodes.map(function (node, index) {
     const entitlement = rewardEntitlementByOrdinal_(displayCycleIndex * settings.rewardNodes.length + index + 1, settings);
     let state = 'pending';
-    if (entitlement.entitlementOrdinal <= member.redeemedRewards) state = 'redeemed';
+    if (claimed.has(entitlement.entitlementOrdinal)) state = 'redeemed';
     else if (entitlement.absoluteStamps <= totalStamps) state = 'available';
     return {
       nodeId: node.nodeId,
       stampsRequired: node.stampsRequired,
       rewardName: node.rewardName,
+      rewardType: node.rewardType,
       entitlementOrdinal: entitlement.entitlementOrdinal,
       cycleNumber: entitlement.cycleNumber,
+      absoluteStamps: entitlement.absoluteStamps,
       state: state
     };
   });
@@ -415,6 +526,7 @@ function rewardProjection_(member, settings) {
     earnedRewards: earnedRewards,
     availableRewards: availableRewards,
     availableRewardNodes: availableRewardNodes,
+    upcomingRewardNodes: upcomingRewardNodes,
     nextAvailableReward: availableRewardNodes.length ? availableRewardNodes[0] : null,
     nextReward: nextReward,
     stampsUntilNextReward: Math.max(0, nextReward.absoluteStamps - totalStamps),
@@ -443,7 +555,10 @@ function rewardSettingsLocked_() {
 
 function adminRewardNodesUpdate_(context, payload) {
   const expectedUpdatedAt = cleanText_(payload.expectedUpdatedAt, 64, true);
-  const rewardNodes = normalizeRewardNodes_(payload.rewardNodes, 'INVALID_REWARD_NODES', '請設定 1 至 5 個不重複的獎勵節點；點數必須介於 1 到 20。');
+  if (!Array.isArray(payload.rewardNodes) || payload.rewardNodes.some(function (node) {
+    return !node || !Object.prototype.hasOwnProperty.call(node, 'rewardType');
+  })) fail_('CLIENT_UPGRADE_REQUIRED', '管理端版本過舊，請重新整理後再設定票券類型。');
+  const rewardNodes = normalizeRewardNodes_(payload.rewardNodes, 'INVALID_REWARD_NODES', '請設定 1 至 5 個有效節點；抽獎券必須包含 2 至 8 個獎項。');
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
   try {

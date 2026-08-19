@@ -5,20 +5,23 @@
   const statusLabels = { active: '有效', suspended: '停權', disabled: '停用' };
   const modeLabels = { single: '單次使用', repeatable: '可重複使用' };
   const voucherStatusLabels = { active: '有效', cancelled: '已停止', expired: '已過期', used: '已使用' };
+  const rewardTypeLabels = { coupon: '優惠券', lottery: '抽獎券' };
   const avatarFallback = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="72" height="72"%3E%3Crect width="72" height="72" rx="36" fill="%23dfe5df"/%3E%3Ccircle cx="36" cy="28" r="13" fill="%23173f35" fill-opacity=".3"/%3E%3Cpath d="M14 68c2-14 10-21 22-21s20 7 22 21" fill="%23173f35" fill-opacity=".3"/%3E%3C/svg%3E';
   let members = [];
   let vouchers = [];
   let rewardSettings = {
-    rewardNodes: [{ nodeId: 'node-10', stampsRequired: 10, rewardName: '本期集點獎勵' }],
+    rewardNodes: [{ nodeId: 'node-10', stampsRequired: 10, rewardName: '本期優惠券', rewardType: 'coupon', lotteryPrizes: [] }],
     cardSize: 10,
     rewardNodesUpdatedAt: 'legacy',
     rewardSettingsLocked: false
   };
+  let rewardConfirmations = [];
   let searchTimer = 0;
   let toastTimer = 0;
   let rewardRetry = null;
   let selectedRewardMember = null;
   let currentQrSvg = '';
+  let currentRewardConfirmationQrSvg = '';
   let dashboardRequestSequence = 0;
 
   function formatNumber(value) {
@@ -28,17 +31,24 @@
   function normalizeRewardSettings(value) {
     const source = value || {};
     const supported = Array.isArray(source.rewardNodes) && source.rewardNodes.length > 0;
+    const ticketTypesSupported = source.rewardTicketTypesSupported === true;
     const cardSize = Number(source.cardSize || source.stampsPerReward || 10);
     return Object.assign({}, source, {
-      rewardNodes: supported ? source.rewardNodes : [{
+      rewardNodes: (supported ? source.rewardNodes : [{
         nodeId: 'node-' + cardSize,
         stampsRequired: cardSize,
         rewardName: source.rewardName || '本期集點獎勵'
-      }],
+      }]).map(function (node) {
+        return Object.assign({}, node, {
+          rewardType: node.rewardType === 'lottery' ? 'lottery' : 'coupon',
+          lotteryPrizes: Array.isArray(node.lotteryPrizes) ? node.lotteryPrizes : []
+        });
+      }),
       cardSize: cardSize,
       rewardNodesUpdatedAt: source.rewardNodesUpdatedAt || 'legacy',
-      rewardSettingsLocked: supported ? Boolean(source.rewardSettingsLocked) : true,
-      rewardNodesSupported: supported
+      rewardSettingsLocked: supported && ticketTypesSupported ? Boolean(source.rewardSettingsLocked) : true,
+      rewardNodesSupported: supported,
+      rewardTicketTypesSupported: ticketTypesSupported
     });
   }
 
@@ -50,6 +60,7 @@
         entitlementOrdinal: Number(normalized.redeemedRewards || 0) + 1,
         stampsRequired: cardSize,
         rewardName: normalized.rewardName || '本期集點獎勵',
+        rewardType: 'coupon',
         cycleNumber: Math.max(1, Math.floor(Number(normalized.totalStamps || 0) / cardSize))
       };
     }
@@ -114,6 +125,8 @@
     const order = document.createElement('span');
     order.className = 'reward-node-order';
     order.textContent = String(index + 1).padStart(2, '0');
+    const fields = document.createElement('div');
+    fields.className = 'reward-node-editor-fields';
     const pointLabel = document.createElement('label');
     pointLabel.textContent = '點數節點';
     const pointInput = document.createElement('input');
@@ -126,8 +139,21 @@
     pointInput.value = String(node.stampsRequired || '');
     pointInput.disabled = locked;
     pointLabel.append(pointInput);
+    const typeLabel = document.createElement('label');
+    typeLabel.textContent = '票券類型';
+    const typeSelect = document.createElement('select');
+    typeSelect.className = 'reward-node-type';
+    [['coupon', '優惠券'], ['lottery', '抽獎券']].forEach(function (optionValue) {
+      const option = document.createElement('option');
+      option.value = optionValue[0];
+      option.textContent = optionValue[1];
+      typeSelect.append(option);
+    });
+    typeSelect.value = node.rewardType === 'lottery' ? 'lottery' : 'coupon';
+    typeSelect.disabled = locked;
+    typeLabel.append(typeSelect);
     const rewardLabel = document.createElement('label');
-    rewardLabel.textContent = '獎勵名稱';
+    rewardLabel.textContent = '票券名稱';
     const rewardInput = document.createElement('input');
     rewardInput.className = 'reward-node-name';
     rewardInput.type = 'text';
@@ -136,6 +162,24 @@
     rewardInput.value = node.rewardName || '';
     rewardInput.disabled = locked;
     rewardLabel.append(rewardInput);
+    const prizesLabel = document.createElement('label');
+    prizesLabel.className = 'reward-node-prizes';
+    prizesLabel.textContent = '抽獎獎項（每行一項）';
+    const prizesInput = document.createElement('textarea');
+    prizesInput.className = 'reward-node-lottery-prizes';
+    prizesInput.maxLength = 650;
+    prizesInput.rows = 2;
+    prizesInput.placeholder = '免費飲品一份\n50 元優惠券\n再接再厲';
+    prizesInput.value = (node.lotteryPrizes || []).join('\n');
+    prizesInput.disabled = locked;
+    prizesLabel.append(prizesInput);
+    function syncPrizeField() {
+      const isLottery = typeSelect.value === 'lottery';
+      prizesLabel.classList.toggle('hidden', !isLottery);
+      prizesInput.required = isLottery;
+    }
+    typeSelect.addEventListener('change', syncPrizeField);
+    syncPrizeField();
     const remove = document.createElement('button');
     remove.className = 'remove-node-button';
     remove.type = 'button';
@@ -146,7 +190,8 @@
       row.remove();
       renderRewardNodeOrders();
     });
-    row.append(order, pointLabel, rewardLabel, remove);
+    fields.append(pointLabel, typeLabel, rewardLabel, prizesLabel);
+    row.append(order, fields, remove);
     $('rewardNodeList').append(row);
   }
 
@@ -168,12 +213,12 @@
     $('saveRewardNodesButton').disabled = locked;
     $('rewardSettingsNotice').classList.remove('hidden');
     $('rewardSettingsNotice').classList.toggle('locked', locked);
-    if (!rewardSettings.rewardNodesSupported) {
-      $('rewardSettingsNotice').textContent = '目前 GAS 尚未支援多獎勵節點；請先部署 PointsCard 1.1.0 後再設定。';
+    if (!rewardSettings.rewardNodesSupported || !rewardSettings.rewardTicketTypesSupported) {
+      $('rewardSettingsNotice').textContent = '目前 GAS 尚未支援優惠券與抽獎券；請先完成 PointsCard 1.2.0 資料遷移與部署。';
     } else if (locked) {
       $('rewardSettingsNotice').textContent = '已有獎勵兌換紀錄，節點已鎖定，避免改變既有兌換順序。';
     } else {
-      $('rewardSettingsNotice').textContent = '節點會依點數自動排序；儲存後會套用到會員目前的累計點數。完成第一筆獎勵兌換後即鎖定。';
+      $('rewardSettingsNotice').textContent = '每個節點可設為優惠券或抽獎券；抽獎獎項採等機率。儲存後會套用目前累計點數，完成第一筆票券使用後即鎖定。';
     }
   }
 
@@ -184,16 +229,20 @@
     let nextPoint = 1;
     while (nextPoint <= 20 && values.has(nextPoint)) nextPoint += 1;
     if (nextPoint > 20) return;
-    appendRewardNodeEditor({ stampsRequired: nextPoint, rewardName: '' }, rows.length);
+    appendRewardNodeEditor({ stampsRequired: nextPoint, rewardName: '', rewardType: 'coupon', lotteryPrizes: [] }, rows.length);
     renderRewardNodeOrders();
     $('addRewardNodeButton').disabled = $('rewardNodeList').children.length >= 5;
   }
 
   function readRewardNodes() {
     const nodes = Array.from($('rewardNodeList').children).map(function (row) {
+      const rewardType = row.querySelector('.reward-node-type').value;
       return {
         stampsRequired: Number(row.querySelector('.reward-node-points').value),
-        rewardName: row.querySelector('.reward-node-name').value.trim()
+        rewardName: row.querySelector('.reward-node-name').value.trim(),
+        rewardType: rewardType,
+        lotteryPrizes: rewardType === 'lottery' ? row.querySelector('.reward-node-lottery-prizes').value
+          .split(/[\n,，]+/).map(function (value) { return value.trim(); }).filter(Boolean) : []
       };
     });
     if (!nodes.length || nodes.length > 5) throw new Error('請設定 1 至 5 個獎勵節點。');
@@ -201,6 +250,12 @@
     nodes.forEach(function (node) {
       if (!Number.isInteger(node.stampsRequired) || node.stampsRequired < 1 || node.stampsRequired > 20) throw new Error('節點點數必須是 1 到 20 的整數。');
       if (!node.rewardName) throw new Error('每個節點都必須填寫獎勵名稱。');
+      if (node.rewardType === 'lottery' && (node.lotteryPrizes.length < 2 || node.lotteryPrizes.length > 8)) {
+        throw new Error('每張抽獎券必須設定 2 至 8 個獎項。');
+      }
+      if (node.rewardType === 'lottery' && new Set(node.lotteryPrizes).size !== node.lotteryPrizes.length) {
+        throw new Error('同一張抽獎券不能設定重複獎項。');
+      }
       if (points.has(node.stampsRequired)) throw new Error('獎勵節點不能使用相同點數。');
       points.add(node.stampsRequired);
     });
@@ -310,6 +365,38 @@
     });
   }
 
+  function effectiveRewardConfirmationStatus(confirmation) {
+    if (confirmation.status !== 'active') return confirmation.status;
+    if (new Date(confirmation.expiresAt).getTime() <= Date.now()) return 'expired';
+    return 'active';
+  }
+
+  function renderRewardConfirmations() {
+    const body = $('rewardConfirmationTableBody');
+    body.replaceChildren();
+    $('rewardConfirmationEmptyState').classList.toggle('hidden', rewardConfirmations.length !== 0);
+    rewardConfirmations.forEach(function (confirmation) {
+      const row = document.createElement('tr');
+      const idTd = document.createElement('td'); idTd.textContent = confirmation.confirmationId;
+      const countTd = document.createElement('td'); countTd.textContent = formatNumber(confirmation.recordCount);
+      const statusTd = document.createElement('td');
+      const state = effectiveRewardConfirmationStatus(confirmation);
+      const status = document.createElement('span');
+      status.className = 'status-badge ' + state;
+      status.textContent = voucherStatusLabels[state] || state;
+      statusTd.append(status);
+      const expiryTd = document.createElement('td'); expiryTd.textContent = PointsCard.formatDateTime(confirmation.expiresAt, '—');
+      const actionsTd = document.createElement('td');
+      const actions = document.createElement('div'); actions.className = 'row-actions';
+      actions.append(createTextButton('開啟', '', function () { openRewardConfirmation(confirmation.confirmationId); }, state !== 'active'));
+      if (state === 'active') actions.append(createTextButton('停止', 'danger', function () { cancelRewardConfirmation(confirmation); }, false));
+      actions.append(createTextButton('刪除', 'danger', function () { deleteRewardConfirmation(confirmation); }, Number(confirmation.recordCount || 0) > 0));
+      actionsTd.append(actions);
+      row.append(idTd, countTd, statusTd, expiryTd, actionsTd);
+      body.append(row);
+    });
+  }
+
   async function loadDashboard(query) {
     const requestSequence = ++dashboardRequestSequence;
     const result = await PointsCard.callApi('admin.dashboard', { query: query || '', pageSize: 100, voucherLimit: 50 });
@@ -317,10 +404,12 @@
     rewardSettings = normalizeRewardSettings(result.settings || rewardSettings);
     members = (result.members || []).map(normalizeAdminMemberRewards);
     vouchers = result.vouchers || [];
+    rewardConfirmations = result.rewardConfirmations || [];
     renderMetrics(result.stats || {});
     renderRewardSettings();
     renderMembers();
     renderVouchers();
+    renderRewardConfirmations();
     $('bootState').classList.add('hidden');
     $('errorState').classList.add('hidden');
     $('adminApp').classList.remove('hidden');
@@ -371,7 +460,7 @@
     $('rewardDialogTitle').textContent = '兌換 ' + reward.rewardName;
     $('rewardMemberMeta').textContent = (member.displayName || 'LINE 會員') + ' · ' + member.memberNo + ' · 可兌換 ' + formatNumber(member.availableRewards) + ' 份';
     $('rewardPreviewName').textContent = reward.rewardName;
-    $('rewardNodeMeta').textContent = '第 ' + reward.cycleNumber + ' 張卡 · ' + reward.stampsRequired + ' 點節點';
+    $('rewardNodeMeta').textContent = (rewardTypeLabels[reward.rewardType] || '優惠券') + ' · ' + reward.stampsRequired + ' 點節點';
     $('rewardNote').value = '';
     openDialog($('rewardDialog'));
   }
@@ -541,6 +630,133 @@
     window.setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
   }
 
+  function resetRewardConfirmationDialog() {
+    clearFormError('rewardConfirmationFormError');
+    currentRewardConfirmationQrSvg = '';
+    $('rewardConfirmationDialogTitle').textContent = '新增店家確認 QR';
+    $('rewardConfirmationDialogDescription').textContent = '建立後由店員在現場展示，會員掃描後才能使用票券。';
+    $('rewardConfirmationExpiresAt').value = toLocalDateTimeInput(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    $('rewardConfirmationNote').value = '';
+    $('rewardConfirmationFields').classList.remove('hidden');
+    $('rewardConfirmationResult').classList.add('hidden');
+    $('copyRewardConfirmationButton').classList.add('hidden');
+    $('downloadRewardConfirmationButton').classList.add('hidden');
+    $('createRewardConfirmationButton').classList.remove('hidden');
+    $('rewardConfirmationQrCode').replaceChildren();
+  }
+
+  function openNewRewardConfirmation() {
+    resetRewardConfirmationDialog();
+    openDialog($('rewardConfirmationDialog'));
+  }
+
+  function readRewardConfirmationForm() {
+    const expiry = new Date($('rewardConfirmationExpiresAt').value);
+    if (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now()) throw new Error('到期時間必須晚於現在。');
+    return { expiresAt: expiry.toISOString(), note: $('rewardConfirmationNote').value.trim() };
+  }
+
+  async function buildRewardConfirmationUrl(shareCode) {
+    const config = await PointsCard.loadConfig();
+    const url = new URL('https://liff.line.me/' + encodeURIComponent(config.LIFF_ID) + '/');
+    url.searchParams.set('rewardConfirm', shareCode);
+    return url.href;
+  }
+
+  async function showRewardConfirmation(confirmation) {
+    if (typeof window.qrcode !== 'function') throw new Error('QR Code 元件載入失敗，請重新整理後再試。');
+    const url = await buildRewardConfirmationUrl(confirmation.shareCode);
+    const qr = window.qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    currentRewardConfirmationQrSvg = qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true });
+    $('rewardConfirmationQrCode').innerHTML = currentRewardConfirmationQrSvg;
+    $('rewardConfirmationUrl').value = url;
+    $('rewardConfirmationResultMeta').textContent = confirmation.confirmationId + ' · 到期 ' + PointsCard.formatDateTime(confirmation.expiresAt, '—');
+    $('rewardConfirmationFields').classList.add('hidden');
+    $('rewardConfirmationResult').classList.remove('hidden');
+    $('copyRewardConfirmationButton').classList.remove('hidden');
+    $('downloadRewardConfirmationButton').classList.remove('hidden');
+    $('createRewardConfirmationButton').classList.add('hidden');
+  }
+
+  async function createRewardConfirmation() {
+    clearFormError('rewardConfirmationFormError');
+    $('createRewardConfirmationButton').disabled = true;
+    try {
+      const result = await PointsCard.callApi('admin.reward-confirm.create', readRewardConfirmationForm());
+      rewardConfirmations.unshift(result.confirmation);
+      renderRewardConfirmations();
+      await showRewardConfirmation(result.confirmation);
+      $('rewardConfirmationDialogTitle').textContent = '店家確認 QR 已建立';
+      $('rewardConfirmationDialogDescription').textContent = '請只在門市現場展示，外流時立即停止。';
+    } catch (error) {
+      showFormError('rewardConfirmationFormError', error);
+    } finally {
+      $('createRewardConfirmationButton').disabled = false;
+    }
+  }
+
+  async function openRewardConfirmation(confirmationId) {
+    resetRewardConfirmationDialog();
+    $('rewardConfirmationDialogTitle').textContent = '開啟店家確認 QR';
+    openDialog($('rewardConfirmationDialog'));
+    try {
+      const result = await PointsCard.callApi('admin.reward-confirm.open', { confirmationId: confirmationId });
+      await showRewardConfirmation(result.confirmation);
+    } catch (error) {
+      showFormError('rewardConfirmationFormError', error);
+    }
+  }
+
+  async function cancelRewardConfirmation(confirmation) {
+    if (!window.confirm('停止後會員將無法使用這組 QR 確認票券，確定繼續？')) return;
+    try {
+      await PointsCard.callApi('admin.reward-confirm.cancel', {
+        confirmationId: confirmation.confirmationId,
+        expectedUpdatedAt: confirmation.updatedAt
+      });
+      await loadDashboard($('memberSearch').value.trim());
+      showToast('店家確認 QR 已停止。');
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function deleteRewardConfirmation(confirmation) {
+    if (!window.confirm('確定刪除這組尚未使用的店家確認 QR？')) return;
+    try {
+      await PointsCard.callApi('admin.reward-confirm.delete', {
+        confirmationId: confirmation.confirmationId,
+        expectedUpdatedAt: confirmation.updatedAt
+      });
+      rewardConfirmations = rewardConfirmations.filter(function (item) { return item.confirmationId !== confirmation.confirmationId; });
+      renderRewardConfirmations();
+      showToast('店家確認 QR 已刪除。');
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function copyRewardConfirmationUrl() {
+    const value = $('rewardConfirmationUrl').value;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast('確認連結已複製。');
+    } catch (_) {
+      $('rewardConfirmationUrl').focus();
+      $('rewardConfirmationUrl').select();
+      document.execCommand('copy');
+      showToast('確認連結已複製。');
+    }
+  }
+
+  function downloadRewardConfirmationQr() {
+    if (!currentRewardConfirmationQrSvg) return;
+    const blob = new Blob([currentRewardConfirmationQrSvg], { type: 'image/svg+xml;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'points-card-reward-confirmation-qr.svg';
+    link.click();
+    window.setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+  }
+
   function bindEvents() {
     $('retryButton').addEventListener('click', function () { window.location.reload(); });
     $('refreshButton').addEventListener('click', function () {
@@ -559,6 +775,10 @@
     $('createStampButton').addEventListener('click', createStamp);
     $('copyStampButton').addEventListener('click', copyStampUrl);
     $('downloadStampButton').addEventListener('click', downloadStampQr);
+    $('newRewardConfirmationButton').addEventListener('click', openNewRewardConfirmation);
+    $('createRewardConfirmationButton').addEventListener('click', createRewardConfirmation);
+    $('copyRewardConfirmationButton').addEventListener('click', copyRewardConfirmationUrl);
+    $('downloadRewardConfirmationButton').addEventListener('click', downloadRewardConfirmationQr);
   }
 
   async function init() {

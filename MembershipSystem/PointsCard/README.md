@@ -7,7 +7,8 @@
 ### 會員端
 
 - 使用 LINE LIFF 登入；GAS 以 LINE Verify ID Token API 驗證身分。
-- 顯示可配置的集點節點、每個節點獎勵、累計集點、待兌換獎勵與最近紀錄。
+- 顯示集點進度，以及下方「已獲得／未獲得」優惠券與抽獎券。
+- 已獲得票券可點開並掃描店家確認 QR；優惠券立即核銷，抽獎券顯示開獎動畫與伺服器端結果。
 - 透過 `liff.scanCodeV2()` 掃描店家 QR Code，或直接開啟店家發放連結。
 - 登入 callback、網路逾時與重試會保留同一個 `requestId`，避免重複集點。
 - LINE ID Token 只留在目前頁面的記憶體，不寫入 Local Storage、Session Storage、URL 或 Sheet。
@@ -17,8 +18,9 @@
 - 管理員權限由 `Members.canManagePoints` 控制，每個 `admin.*` request 都由 GAS 重新讀取驗證。
 - 檢視會員、累計集點、可兌換獎勵與會員狀態。
 - 停權或停用會員，不允許前端直接修改累計點數。
-- 設定 1–5 個獎勵節點，例如 3 點送小點心、6 點送折價券、10 點送飲品。
-- 依達成順序兌換不同節點獎勵，並留下備註與 Audit Log。
+- 設定 1–5 個獎勵節點，每個節點可選優惠券或抽獎券；抽獎券可設定 2–8 個等機率獎項。
+- 會員可選擇任一張已獲得票券使用，並留下票券節點、店家確認與 Audit Log。
+- 建立、開啟、停止或刪除店家票券確認 QR。
 - 建立單次或可重複使用的集點 QR Code，支援開啟、停止與刪除未使用 QR。
 
 ## 商業規則
@@ -26,12 +28,14 @@
 `totalStamps` 是不可回寫減少的歷史累計值；`redeemedRewards` 是已完成的兌換次數。最大節點是一張卡的長度，完成後會進入下一張卡並重複相同節點。
 
 ```text
-節點：3 點 → 小點心、6 點 → 50 元折價券、10 點 → 招牌飲品
+節點：3 點 → 小點心優惠券、6 點 → 幸運抽獎券、10 點 → 招牌飲品優惠券
 第 1 張：累計 3 / 6 / 10 點時依序取得三份獎勵
 第 2 張：累計 13 / 16 / 20 點時再次取得三份獎勵
 ```
 
-獎勵採 FIFO：管理端永遠兌換最早達成且尚未使用的節點，讓既有 `redeemedRewards` 與 `RewardRecords` 保持相容。節點修改會套用到目前累計點數；第一筆獎勵兌換後即鎖定設定，避免既有兌換被重新解讀。
+`RewardRecords.rewardOrdinal` 記錄實際使用的節點，因此會員可點選任一張已獲得且尚未使用的票券；`redeemedRewards` 繼續作為使用總數，維持既有資料相容。節點修改會套用到目前累計點數；第一筆票券確認後即鎖定設定，避免既有票券被重新解讀。
+
+抽獎結果只在 GAS 端產生，先寫入 `RewardRecords.lotteryResult` 再回傳前端播放動畫。同一個 `requestId` 重試時會恢復原結果，不會重新抽獎。各獎項採等機率且不可重複；這是一般促銷抽獎機制，不是具監管需求的公開彩券或高價值抽獎亂數系統。
 
 ## 目錄
 
@@ -49,6 +53,7 @@ PointsCard/
 │   ├── Storage.gs          Sheet schema、初始化、管理員設定、Audit
 │   ├── StampService.gs     QR 發放與 retry-safe 集點
 │   ├── RewardService.gs    retry-safe 獎勵兌換
+│   ├── RewardConfirmationService.gs  店家票券確認 QR
 │   └── appsscript.json
 └── tests/contracts.test.js
 ```
@@ -60,6 +65,7 @@ PointsCard/
 - `Members`
 - `StampVouchers`
 - `StampRecords`
+- `RewardConfirmations`
 - `RewardRecords`
 - `AuditLogs`
 
@@ -78,7 +84,7 @@ configurePointsCard('YOUR_LINE_LOGIN_CHANNEL_ID', '招牌飲品一份', 10);
 
 `LINE_LOGIN_CHANNEL_ID` 是公開的 LINE Login Channel ID，不是 Channel Secret。
 
-上述函式會建立相容的單一 10 點節點。部署 `1.1.0` 後，可直接在管理端「獎勵節點」區域新增不同點數與獎勵；既有單一節點設定會自動作為 fallback，不需要修改 Sheet 欄位或重建試算表。
+上述函式會建立相容的單一 10 點優惠券節點。升級至 `1.2.0` 時必須再次執行 `initializePointsCardStorage()`：它會新增 `RewardConfirmations`，並在既有 `RewardRecords` 尾端補上券種、節點、抽獎結果與確認 QR 欄位，不會刪除既有資料。完成後可在管理端設定不同點數、券種與抽獎獎項。
 
 ### 2. 部署 Web App
 
@@ -128,12 +134,21 @@ https://YOUR_GITHUB_PAGES_HOST/.../PointsCard/admin/
 - `repeatable`：可由不同會員重複集點，適合店員現場展示；分享連結外流也會增加濫用風險，因此必須由店員控管展示時機。
 - QR Code 的 `shareCode` 是集點憑證，不是會員 Authentication 或管理 Authorization。會員身分、狀態與管理權限仍由 GAS 判斷。
 
+## 店家票券確認 QR
+
+- 店家確認 QR 與集點 QR 使用不同資料表、參數與 API，不能互相替代。
+- 店員只在門市現場展示；拿到連結的人若同時擁有未使用票券，即可在有效期內完成確認。
+- QR 外流時應由管理端立即停止並建立新 QR；已有票券紀錄的 QR 只能停止，不能刪除。
+- 優惠券確認後立即使用；抽獎券確認後由 GAS 固定開獎結果，再由會員端播放揭曉動畫。
+
 ## 多節點設定限制
 
 - 每張卡可設定 1–5 個節點。
 - 節點必須是 1–20 的不重複整數。
 - 最大節點決定每張卡的點數長度。
-- 尚未兌換獎勵前，可以修改節點；新設定會依會員目前累計點數重新計算可兌換獎勵。
+- 節點類型必須是優惠券或抽獎券。
+- 抽獎券必須設定 2–8 個不重複獎項，各獎項等機率。
+- 尚未使用任何票券前，可以修改節點；新設定會依會員目前累計點數重新計算可用票券。
 - 產生第一筆 `RewardRecords` 後設定會鎖定；集點仍可繼續循環累積。
 
 ## 本機驗證

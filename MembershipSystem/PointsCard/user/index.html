@@ -57,17 +57,11 @@
           <div class="member-number"><span>NO.</span><strong id="memberNo">—</strong></div>
         </header>
 
-        <div id="rewardReady" class="reward-ready hidden" role="status">
-          <span class="reward-ready-icon" aria-hidden="true">✦</span>
-          <div><strong><span id="availableRewards">0</span> 份獎勵待兌換</strong><div id="availableRewardList" class="available-reward-list"></div></div>
-        </div>
-
         <div id="stampGrid" class="stamp-grid" aria-label="集點進度"></div>
-        <div id="rewardNodeMap" class="reward-node-map" aria-label="本張卡獎勵節點"></div>
 
         <div class="progress-summary">
           <div>
-            <span>第 <b id="displayCycleNumber">1</b> 張進度</span>
+            <span>目前進度</span>
             <strong><span id="visualStampCount">0</span> / <span id="stampsPerReward">10</span></strong>
           </div>
           <p id="progressMessage">再集 10 點即可獲得獎勵</p>
@@ -82,24 +76,22 @@
         </button>
       </article>
 
-      <section class="account-strip" aria-label="集點摘要">
-        <div><span>累計集點</span><strong id="totalStamps">0</strong></div>
-        <div class="strip-divider" aria-hidden="true"></div>
-        <div><span>已兌換</span><strong id="redeemedRewards">0</strong></div>
-        <div class="strip-divider" aria-hidden="true"></div>
-        <div><span>加入日期</span><strong id="joinedAt">—</strong></div>
-      </section>
-
-      <section class="activity-section" aria-labelledby="activityTitle">
+      <section class="ticket-wallet" aria-labelledby="ticketWalletTitle">
         <div class="section-heading">
-          <div><p class="eyebrow">RECENT ACTIVITY</p><h2 id="activityTitle">最近紀錄</h2></div>
-          <span id="activityCount" class="activity-count">0 筆</span>
+          <div><p class="eyebrow">MY REWARDS</p><h2 id="ticketWalletTitle">我的票券</h2></div>
+          <span id="earnedTicketCount" class="ticket-count">0 張可使用</span>
         </div>
-        <div id="activityList" class="activity-list"></div>
-        <div id="emptyActivity" class="empty-activity hidden">
-          <span aria-hidden="true">○</span>
-          <p>第一枚印章，等你來收集。</p>
-        </div>
+
+        <section class="ticket-group" aria-labelledby="earnedTicketsTitle">
+          <div class="ticket-group-heading"><h3 id="earnedTicketsTitle">已獲得</h3><span>點開票券並掃描店家 QR 使用</span></div>
+          <div id="earnedTicketList" class="earned-ticket-list"></div>
+          <div id="earnedTicketEmpty" class="ticket-empty"><span aria-hidden="true">◇</span><p>達成節點後，票券會出現在這裡。</p></div>
+        </section>
+
+        <section class="ticket-group upcoming-group" aria-labelledby="upcomingTicketsTitle">
+          <div class="ticket-group-heading"><h3 id="upcomingTicketsTitle">未獲得</h3><span>繼續集點即可解鎖</span></div>
+          <div id="upcomingTicketList" class="upcoming-ticket-list"></div>
+        </section>
       </section>
 
       <footer class="page-footer">
@@ -112,9 +104,9 @@
   <div id="processingOverlay" class="processing-overlay hidden" role="status" aria-live="polite" aria-busy="true">
     <div class="processing-dialog">
       <div class="loader-mark" aria-hidden="true"><span></span></div>
-      <p class="eyebrow">STAMPING</p>
-      <h2>正在蓋上新印章</h2>
-      <p>驗證 QR Code 與集點紀錄，請勿重複操作。</p>
+      <p id="processingEyebrow" class="eyebrow">STAMPING</p>
+      <h2 id="processingTitle">正在蓋上新印章</h2>
+      <p id="processingMessage">驗證 QR Code 與集點紀錄，請勿重複操作。</p>
     </div>
   </div>
 
@@ -132,6 +124,45 @@
     <h2 id="stampErrorTitle">這次沒有集到點</h2>
     <p id="stampErrorMessage">請確認 QR Code 後再試一次。</p>
     <button id="confirmStampErrorButton" class="button button-primary" type="button">知道了</button>
+  </dialog>
+
+  <dialog id="ticketDialog" class="ticket-dialog" aria-labelledby="ticketDialogTitle">
+    <button id="closeTicketButton" class="dialog-close" type="button" aria-label="關閉票券">×</button>
+    <div id="ticketDialogMark" class="ticket-dialog-mark" aria-hidden="true">%</div>
+    <p id="ticketDialogType" class="eyebrow">COUPON</p>
+    <h2 id="ticketDialogTitle">優惠券</h2>
+    <p id="ticketDialogMeta">達成節點後取得</p>
+    <div class="ticket-instruction"><strong>使用方式</strong><span>請在店員面前掃描店家票券確認 QR，確認後立即使用。</span></div>
+    <button id="scanRewardButton" class="button button-primary" type="button">掃描店家確認 QR</button>
+  </dialog>
+
+  <dialog id="couponResultDialog" class="feedback-dialog" aria-labelledby="couponResultTitle">
+    <div class="success-seal coupon-seal" aria-hidden="true"><span>✓</span></div>
+    <p class="eyebrow">COUPON CONFIRMED</p>
+    <h2 id="couponResultTitle">優惠已確認</h2>
+    <p id="couponResultMessage">請向店員出示此畫面。</p>
+    <button id="confirmCouponResultButton" class="button button-primary" type="button">完成</button>
+  </dialog>
+
+  <dialog id="lotteryDialog" class="lottery-dialog" aria-labelledby="lotteryTitle">
+    <div id="lotteryStage" class="lottery-stage drawing" aria-hidden="true">
+      <div class="lottery-ring lottery-ring-a"></div>
+      <div class="lottery-ring lottery-ring-b"></div>
+      <div class="lottery-core"><span id="lotterySymbol">✦</span></div>
+      <i class="confetti confetti-a"></i><i class="confetti confetti-b"></i><i class="confetti confetti-c"></i><i class="confetti confetti-d"></i>
+    </div>
+    <p class="eyebrow">LUCKY DRAW</p>
+    <h2 id="lotteryTitle">正在開獎</h2>
+    <p id="lotteryResultText" aria-live="polite">幸運結果即將揭曉…</p>
+    <button id="confirmLotteryButton" class="button button-primary" type="button" disabled>收下結果</button>
+  </dialog>
+
+  <dialog id="rewardErrorDialog" class="feedback-dialog" aria-labelledby="rewardErrorTitle">
+    <div class="state-icon" aria-hidden="true">!</div>
+    <p class="eyebrow danger-text">TICKET ERROR</p>
+    <h2 id="rewardErrorTitle">票券尚未確認</h2>
+    <p id="rewardErrorMessage">請確認店家 QR Code 後再試一次。</p>
+    <button id="confirmRewardErrorButton" class="button button-primary" type="button">知道了</button>
   </dialog>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>

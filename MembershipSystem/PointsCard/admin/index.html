@@ -52,6 +52,20 @@
         <p id="rewardSettingsMessage" class="settings-message hidden" role="status"></p>
       </section>
 
+      <section class="workspace-section reward-confirm-section" aria-labelledby="rewardConfirmationsTitle">
+        <div class="section-heading">
+          <div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationsTitle">店家票券確認 QR</h2><p>會員使用已獲得票券時，必須在店內掃描有效的確認 QR；優惠券會核銷，抽獎券會立即開獎。</p></div>
+          <button id="newRewardConfirmationButton" class="button button-primary" type="button">新增確認 QR</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table confirmation-table">
+            <thead><tr><th>QR Code</th><th>使用次數</th><th>狀態</th><th>到期時間</th><th><span class="sr-only">操作</span></th></tr></thead>
+            <tbody id="rewardConfirmationTableBody"></tbody>
+          </table>
+        </div>
+        <div id="rewardConfirmationEmptyState" class="empty-state hidden">尚未建立店家票券確認 QR。</div>
+      </section>
+
       <section class="workspace-section" aria-labelledby="membersTitle">
         <div class="section-heading">
           <div><p class="eyebrow">MEMBERS</p><h2 id="membersTitle">會員與獎勵</h2><p>點數餘額與可兌換數量皆由伺服器端計算。</p></div>
@@ -130,6 +144,29 @@
         <button id="copyStampButton" class="button button-secondary hidden" type="button">複製連結</button>
         <button id="downloadStampButton" class="button button-secondary hidden" type="button">下載 QR</button>
         <button id="createStampButton" class="button button-primary" type="button">建立 QR Code</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="rewardConfirmationDialog" class="admin-dialog stamp-dialog" aria-labelledby="rewardConfirmationDialogTitle">
+    <form method="dialog">
+      <header class="dialog-header"><div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationDialogTitle">新增店家確認 QR</h2><p id="rewardConfirmationDialogDescription">建立後由店員在現場展示，會員掃描後才能使用票券。</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
+      <div id="rewardConfirmationFields" class="form-grid">
+        <label><span>到期時間</span><input id="rewardConfirmationExpiresAt" type="datetime-local" required></label>
+        <label class="full-span"><span>確認備註</span><textarea id="rewardConfirmationNote" maxlength="200" rows="3" placeholder="例如：台北門市櫃台"></textarea></label>
+      </div>
+      <div id="rewardConfirmationResult" class="stamp-result hidden">
+        <div id="rewardConfirmationQrCode" class="qr-code" aria-label="店家票券確認 QR Code"></div>
+        <p id="rewardConfirmationResultMeta"></p>
+        <label class="field-label"><span>確認連結</span><textarea id="rewardConfirmationUrl" rows="3" readonly></textarea></label>
+        <p class="security-note">確認 QR 是店內票券核銷憑證；請勿公開張貼或轉傳，過期或外流時請立即停止。</p>
+      </div>
+      <p id="rewardConfirmationFormError" class="form-error hidden" role="alert"></p>
+      <footer class="dialog-actions">
+        <button class="button button-secondary" value="cancel" type="submit">關閉</button>
+        <button id="copyRewardConfirmationButton" class="button button-secondary hidden" type="button">複製連結</button>
+        <button id="downloadRewardConfirmationButton" class="button button-secondary hidden" type="button">下載 QR</button>
+        <button id="createRewardConfirmationButton" class="button button-primary" type="button">建立確認 QR</button>
       </footer>
     </form>
   </dialog>
