@@ -1,0 +1,213 @@
+name: Deploy MembershipSystem GAS
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "MembershipSystem/app/gas/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: membership-system-gas-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Validate and deploy GAS
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      GAS_SCRIPT_ID: ${{ secrets.MEMBERSHIP_GAS_SCRIPT_ID }}
+      CLASPRC_JSON: ${{ secrets.MEMBERSHIP_GAS_CLASPRC_JSON }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GAS_SCRIPT_ID:-}" ]; then
+            echo "::error::Missing GitHub Actions secret MEMBERSHIP_GAS_SCRIPT_ID."
+            exit 1
+          fi
+
+          if [ -z "${CLASPRC_JSON:-}" ]; then
+            echo "::error::Missing GitHub Actions secret MEMBERSHIP_GAS_CLASPRC_JSON."
+            exit 1
+          fi
+
+          if ! [[ "$GAS_SCRIPT_ID" =~ ^[A-Za-z0-9_-]{20,}$ ]]; then
+            echo "::error::MEMBERSHIP_GAS_SCRIPT_ID has an invalid format."
+            exit 1
+          fi
+
+      - name: Validate GAS source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          GAS_DIR="MembershipSystem/app/gas"
+          MANIFEST="$GAS_DIR/appsscript.json"
+
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$MANIFEST"
+
+          shopt -s nullglob
+          gas_files=("$GAS_DIR"/*.gs)
+          if [ "${#gas_files[@]}" -eq 0 ]; then
+            echo "::error::No .gs files found under $GAS_DIR."
+            exit 1
+          fi
+
+          for file in "${gas_files[@]}"; do
+            tmp="$RUNNER_TEMP/$(basename "$file").js"
+            cp "$file" "$tmp"
+            node --check "$tmp"
+          done
+
+          for forbidden in .clasp.json .clasprc.json client_secret.json credentials.json service-account.json; do
+            if [ -e "$GAS_DIR/$forbidden" ]; then
+              echo "::error::Credential/config file must not be committed under $GAS_DIR: $forbidden"
+              exit 1
+            fi
+          done
+
+      - name: Resolve current Web App deployment
+        id: deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deployment_id="$(node <<'NODE'
+          const fs = require('fs');
+          const path = 'MembershipSystem/app/shared/config.json';
+          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const raw = String(config.GAS_WEB_APP_URL || '');
+          let url;
+          try {
+            url = new URL(raw);
+          } catch (_) {
+            throw new Error('GAS_WEB_APP_URL is not a valid URL');
+          }
+          if (url.protocol !== 'https:' || url.hostname !== 'script.google.com') {
+            throw new Error('GAS_WEB_APP_URL must use https://script.google.com');
+          }
+          const match = url.pathname.match(/^\/macros\/s\/([^/]+)\/exec$/);
+          if (!match) {
+            throw new Error('GAS_WEB_APP_URL must point to a deployed /macros/s/<deploymentId>/exec URL');
+          }
+          process.stdout.write(match[1]);
+          NODE
+          )"
+
+          if [ -z "$deployment_id" ]; then
+            echo "::error::Unable to resolve GAS deployment ID from shared/config.json."
+            exit 1
+          fi
+
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned clasp
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false --ignore-scripts @google/clasp@3.3.0
+          ./node_modules/.bin/clasp --version
+
+      - name: Prepare clasp configuration
+        id: clasp
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          AUTH_FILE="$RUNNER_TEMP/.clasprc.json"
+          PROJECT_FILE="$RUNNER_TEMP/.clasp.json"
+
+          printf '%s' "$CLASPRC_JSON" > "$AUTH_FILE"
+          chmod 600 "$AUTH_FILE"
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$AUTH_FILE"
+
+          node - "$PROJECT_FILE" "$GAS_SCRIPT_ID" "$GITHUB_WORKSPACE/MembershipSystem/app/gas" <<'NODE'
+          const fs = require('fs');
+          const [file, scriptId, rootDir] = process.argv.slice(2);
+          fs.writeFileSync(file, JSON.stringify({ scriptId, rootDir }, null, 2));
+          NODE
+
+          echo "auth_file=$AUTH_FILE" >> "$GITHUB_OUTPUT"
+          echo "project_file=$PROJECT_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Verify target deployment belongs to configured script
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+          GAS_DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+
+          CLASP=(./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE")
+          deployments="$("${CLASP[@]}" list-deployments)"
+          printf '%s\n' "$deployments"
+
+          if ! grep -Fq -- "$GAS_DEPLOYMENT_ID" <<< "$deployments"; then
+            echo "::error::The deployment ID from MembershipSystem/app/shared/config.json does not belong to MEMBERSHIP_GAS_SCRIPT_ID. Refusing to push."
+            exit 1
+          fi
+
+      - name: Show files that will be pushed
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE" show-file-status
+
+      - name: Push GAS source
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE" push --force
+
+      - name: Update existing Web App deployment
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+          GAS_DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE" update-deployment "$GAS_DEPLOYMENT_ID" \
+            --description "GitHub main ${GITHUB_SHA}"
+
+      - name: Confirm deployment still exists
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+          GAS_DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          deployments="$(./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE" list-deployments)"
+          if ! grep -Fq -- "$GAS_DEPLOYMENT_ID" <<< "$deployments"; then
+            echo "::error::Deployment disappeared after update."
+            exit 1
+          fi
+          printf '%s\n' "$deployments" | grep -F -- "$GAS_DEPLOYMENT_ID"
