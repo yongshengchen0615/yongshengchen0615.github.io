@@ -1,5 +1,7 @@
 {
   "gasWebAppUrl": "PASTE_GAS_WEB_APP_URL_HERE",
   "publicOrigin": "https://yongshengchen0615.github.io",
-  "basePath": "/MembershipSystem/loyalty-card/html"
+  "basePath": "/MembershipSystem/loyalty-card",
+  "userLiffId": "PASTE_USER_LIFF_ID_HERE",
+  "adminLiffId": ""
 }
