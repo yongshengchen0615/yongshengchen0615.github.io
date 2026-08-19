@@ -65,14 +65,25 @@
         referrerPolicy: 'no-referrer'
       });
     } catch (_) {
-      throw new Error('無法連線到集點卡服務，請確認 GAS Web App 已部署。');
+      throw new Error('無法連線到集點卡服務，請確認 GAS Web App 已部署且允許公開存取。');
     }
 
+    const contentType = safeText(response.headers.get('content-type')).toLowerCase();
     const text = await response.text();
     let data;
-    try { data = JSON.parse(text); }
-    catch (_) { throw new Error('集點卡服務回傳格式不正確。'); }
+    try {
+      data = JSON.parse(text);
+    } catch (_) {
+      const looksLikeHtml = contentType.includes('text/html') || /^\s*(?:<!doctype\s+html|<html\b)/i.test(text);
+      if (looksLikeHtml) {
+        throw new Error('集點卡 GAS Web App 未回傳 API JSON；請確認部署類型為 Web app、執行身分為部署者，且存取權限允許未登入 Google 的使用者。');
+      }
+      throw new Error('集點卡服務回傳格式不正確。');
+    }
 
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('集點卡服務回傳格式不正確。');
+    }
     if (!data.ok) {
       const error = new Error(data.error && data.error.message ? data.error.message : '集點卡服務發生錯誤。');
       error.code = data.error && data.error.code;
