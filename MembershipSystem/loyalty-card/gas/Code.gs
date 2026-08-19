@@ -17,95 +17,82 @@ const APP = Object.freeze({
     AuditLogs: ['event_id', 'actor_user_id', 'action', 'target', 'result', 'metadata', 'created_at'],
     Settings: ['key', 'value', 'updated_at']
   },
-  lineAuthorizeUrl: 'https://access.line.me/oauth2/v2.1/authorize',
-  lineTokenUrl: 'https://api.line.me/oauth2/v2.1/token',
   lineVerifyUrl: 'https://api.line.me/oauth2/v2.1/verify',
-  oauthTtlSeconds: 600,
-  handoffTtlSeconds: 180,
   defaultSessionHours: 12,
   defaultRewardTarget: 10,
-  maxAdjustment: 100
+  maxAdjustment: 100,
+  maxApiRequestBytes: 20 * 1024
 });
 
-function doGet(e) {
-  const params = (e && e.parameter) || {};
-  if (params.route === 'oauth-callback') return handleOauthCallback_(params);
-  if (params.mode === 'bridge') return serveBridge_();
-  return HtmlService.createHtmlOutput(
-    '<!doctype html><html><head><meta charset="utf-8"><title>Loyalty Card API</title></head>' +
-    '<body><h1>Loyalty Card GAS backend</h1><p>Backend is running.</p></body></html>'
-  );
+function doGet() {
+  return jsonOutput_({ ok: false, error: 'POST only' });
 }
 
-function serveBridge_() {
-  const config = getConfig_();
-  const template = HtmlService.createTemplateFromFile('Bridge');
-  template.allowedOrigin = config.publicOrigin;
-  return template.evaluate()
-    .setTitle('Loyalty Bridge')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+function doPost(e) {
+  let requestId = '';
+  let method = '';
+  try {
+    const raw = String((e && e.postData && e.postData.contents) || '');
+    const declaredLength = Number((e && e.contentLength) || 0);
+    if (!raw || declaredLength > APP.maxApiRequestBytes || raw.length > APP.maxApiRequestBytes) {
+      throw new Error('Invalid API request');
+    }
+
+    const request = JSON.parse(raw);
+    requestId = cleanText_(request.requestId || '', 80);
+    method = String(request.method || '');
+
+    const expectedSecret = PropertiesService.getScriptProperties().getProperty('API_PROXY_SECRET') || '';
+    const suppliedSecret = String(request.proxySecret || '');
+    if (expectedSecret.length < 32) throw new Error('Missing Script Property: API_PROXY_SECRET');
+    if (!constantTimeEqual_(suppliedSecret, expectedSecret)) {
+      console.warn('Proxy authorization denied requestId=%s', requestId);
+      return jsonOutput_({ ok: false, error: 'Proxy authorization failed' });
+    }
+
+    const payload = request.payload && typeof request.payload === 'object' && !Array.isArray(request.payload)
+      ? request.payload
+      : {};
+    const result = dispatchApiMethod_(method, payload);
+    return jsonOutput_({ ok: true, result: result });
+  } catch (error) {
+    console.error('API request failed requestId=%s method=%s message=%s', requestId, method, String(error && error.message || error).slice(0, 180));
+    return jsonOutput_({ ok: false, error: publicErrorMessage_(error) });
+  }
 }
 
-function beginLineLogin(input) {
-  input = input || {};
-  const config = getConfig_();
-  const returnPage = input.returnPage === 'admin' ? 'admin' : 'user';
-  const handoffHash = String(input.handoffHash || '');
-  if (!/^[A-Za-z0-9_-]{43}$/.test(handoffHash)) throw new Error('Invalid login handoff');
+function dispatchApiMethod_(method, payload) {
+  switch (method) {
+    case 'health': return apiHealth_();
+    case 'loginWithLiff': return loginWithLiff(payload);
+    case 'getMyCard': return getMyCard(payload);
+    case 'logoutSession': return logoutSession(payload);
+    case 'adminBootstrap': return adminBootstrap(payload);
+    case 'adminSearchMembers': return adminSearchMembers(payload);
+    case 'adminGetMember': return adminGetMember(payload);
+    case 'adminAdjustPoints': return adminAdjustPoints(payload);
+    default: throw new Error('Unsupported API method');
+  }
+}
 
-  const state = randomUrlSafe_(32);
-  const nonce = randomUrlSafe_(32);
-  const verifier = randomUrlSafe_(64);
-  const challenge = sha256Base64Url_(verifier);
-  CacheService.getScriptCache().put('oauth:' + state, JSON.stringify({
-    nonce,
-    verifier,
-    handoffHash,
-    returnPage,
-    createdAt: Date.now()
-  }), APP.oauthTtlSeconds);
-
-  const callbackUrl = getCallbackUrl_(config);
+function apiHealth_() {
   return {
-    flowId: state,
-    authUrl: APP.lineAuthorizeUrl + '?' + formEncode_({
-      response_type: 'code',
-      client_id: config.lineChannelId,
-      redirect_uri: callbackUrl,
-      state,
-      scope: 'profile openid',
-      nonce,
-      code_challenge: challenge,
-      code_challenge_method: 'S256'
-    })
+    service: 'membership-loyalty-gas',
+    version: '3',
+    storageConfigured: Boolean(PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'))
   };
 }
 
-function completeLogin(input) {
-  input = input || {};
-  const flowId = String(input.flowId || '');
-  const handoffSecret = String(input.handoffSecret || '');
-  if (!/^[A-Za-z0-9_-]{30,100}$/.test(flowId) || !/^[A-Za-z0-9_-]{43}$/.test(handoffSecret)) {
-    throw new Error('登入交接資訊無效');
-  }
+function jsonOutput_(value) {
+  return ContentService.createTextOutput(JSON.stringify(value))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
-  const cache = CacheService.getScriptCache();
-  const raw = cache.get('handoff:' + flowId);
-  if (!raw) throw new Error('登入交接已過期，請重新登入');
-  const record = JSON.parse(raw);
-  if (!constantTimeEqual_(sha256Base64Url_(handoffSecret), record.handoffHash)) {
-    logAudit_('', 'LOGIN_HANDOFF_FAILED', 'flow:' + flowId.slice(0, 8), 'DENIED', {});
-    throw new Error('登入交接驗證失敗');
-  }
-
-  cache.remove('handoff:' + flowId);
-  const session = createSession_(record.userId);
-  logAudit_(record.userId, 'LOGIN_SUCCESS', 'user:' + record.userId, 'SUCCESS', { via: 'LINE' });
-  return {
-    sessionToken: session.token,
-    expiresAt: session.expiresAt,
-    returnPage: record.returnPage
-  };
+function publicErrorMessage_(error) {
+  const message = String(error && error.message || error || 'Server error').replace(/[\r\n]/g, ' ').slice(0, 180);
+  if (/^Missing Script Property:/.test(message)) return '後端尚未完成必要設定';
+  if (/Existing sheet schema mismatch/.test(message)) return '資料表結構不相容，請由管理者檢查';
+  return message || 'Server error';
 }
 
 function getMyCard(input) {
@@ -236,8 +223,8 @@ function adminAdjustPoints(input) {
     appendObject_(getSheet_(APP.sheets.transactions), {
       transaction_id: 'tx_' + compactUuid_(),
       user_id: targetUserId,
-      delta,
-      type,
+      delta: delta,
+      type: type,
       reason: safeCellText_(normalizedReason),
       idempotency_key: idempotencyKey,
       actor_user_id: admin.userId,
@@ -246,7 +233,7 @@ function adminAdjustPoints(input) {
     });
 
     logAudit_(admin.userId, 'POINTS_' + type, 'user:' + targetUserId, 'SUCCESS', {
-      delta,
+      delta: delta,
       balanceAfter: next,
       reason: normalizedReason.slice(0, 80)
     });
@@ -258,60 +245,6 @@ function adminAdjustPoints(input) {
     throw error;
   } finally {
     lock.releaseLock();
-  }
-}
-
-function handleOauthCallback_(params) {
-  const config = getConfig_();
-  const state = String(params.state || '');
-  const cache = CacheService.getScriptCache();
-
-  if (params.error) {
-    let returnPage = 'user';
-    const errorFlow = state ? cache.get('oauth:' + state) : '';
-    if (errorFlow) {
-      try { returnPage = JSON.parse(errorFlow).returnPage === 'admin' ? 'admin' : 'user'; } catch (_) {}
-      cache.remove('oauth:' + state);
-    }
-    return redirectToPublic_(config, returnPage, { auth_error: 'line_denied' });
-  }
-  if (!state || !params.code) return redirectToPublic_(config, 'user', { auth_error: 'invalid_callback' });
-
-  const raw = cache.get('oauth:' + state);
-  if (!raw) return redirectToPublic_(config, 'user', { auth_error: 'expired_state' });
-  cache.remove('oauth:' + state);
-
-  try {
-    const oauth = JSON.parse(raw);
-    const tokenResponse = fetchJsonForm_(APP.lineTokenUrl, {
-      grant_type: 'authorization_code',
-      code: String(params.code),
-      redirect_uri: getCallbackUrl_(config),
-      client_id: config.lineChannelId,
-      client_secret: config.lineChannelSecret,
-      code_verifier: oauth.verifier
-    });
-    if (!tokenResponse.id_token) throw new Error('LINE did not return an ID token');
-
-    const profile = fetchJsonForm_(APP.lineVerifyUrl, {
-      id_token: tokenResponse.id_token,
-      client_id: config.lineChannelId,
-      nonce: oauth.nonce
-    });
-    if (!profile.sub || String(profile.aud) !== config.lineChannelId) throw new Error('LINE identity verification failed');
-
-    const user = upsertUserFromLine_(profile);
-    cache.put('handoff:' + state, JSON.stringify({
-      userId: user.userId,
-      handoffHash: oauth.handoffHash,
-      returnPage: oauth.returnPage
-    }), APP.handoffTtlSeconds);
-    return redirectToPublic_(config, oauth.returnPage, { auth: 'complete', flow: state });
-  } catch (error) {
-    logAudit_('', 'LOGIN_FAILED', 'flow:' + state.slice(0, 8), 'FAILED', {
-      message: String(error.message || error).slice(0, 120)
-    });
-    return redirectToPublic_(config, 'user', { auth_error: 'login_failed' });
   }
 }
 
@@ -351,14 +284,14 @@ function upsertUserFromLine_(profile) {
       created_at: isoNow_(),
       updated_at: isoNow_()
     });
-    return { userId };
+    return { userId: userId };
   } finally {
     lock.releaseLock();
   }
 }
 
 function createSession_(userId) {
-  const token = randomUrlSafe_(48);
+  const token = randomUrlSafe_(64);
   const hash = sha256Hex_(token);
   const hours = Number(getSetting_('session_hours', String(APP.defaultSessionHours)));
   const expires = new Date(Date.now() + hours * 3600 * 1000).toISOString();
@@ -370,7 +303,7 @@ function createSession_(userId) {
     created_at: isoNow_(),
     last_seen_at: isoNow_()
   });
-  return { token, expiresAt: expires };
+  return { token: token, expiresAt: expires };
 }
 
 function requireSession_(token) {
@@ -394,7 +327,7 @@ function requireSession_(token) {
     const user = findByField_(getSheet_(APP.sheets.users), 'user_id', userId);
     if (!user || String(user.status) !== 'ACTIVE') throw new Error('帳號目前無法使用');
     if (seenIndex >= 0) sheet.getRange(i + 1, seenIndex + 1).setValue(isoNow_());
-    return { userId, user };
+    return { userId: userId, user: user };
   }
   throw new Error('未登入或工作階段已失效');
 }
@@ -415,7 +348,7 @@ function requireAdmin_(token) {
   }
   return {
     userId: session.userId,
-    lineUserId,
+    lineUserId: lineUserId,
     displayName: String(user.display_name || '管理員'),
     role: String(record.role).toLowerCase()
   };
@@ -449,7 +382,7 @@ function getMemberBundle_(userId, includeAdminContext) {
       balance: Number(account.balance || 0),
       status: String(account.status)
     },
-    transactions,
+    transactions: transactions,
     settings: getPublicSettings_()
   };
 }
@@ -485,48 +418,14 @@ function fetchJsonForm_(url, payload) {
 }
 
 function getConfig_() {
-  const props = PropertiesService.getScriptProperties();
-  const config = {
-    lineChannelId: props.getProperty('LINE_CHANNEL_ID') || '',
-    lineChannelSecret: props.getProperty('LINE_CHANNEL_SECRET') || '',
-    publicOrigin: props.getProperty('PUBLIC_ORIGIN') || '',
-    publicBaseUrl: props.getProperty('PUBLIC_BASE_URL') || '',
-    webAppUrl: props.getProperty('WEB_APP_URL') || ''
-  };
-  Object.keys(config).forEach((key) => {
-    if (!config[key]) throw new Error('Missing Script Property: ' + key);
-  });
-  if (!/^https:\/\//.test(config.publicOrigin) || !/^https:\/\//.test(config.publicBaseUrl) || !/^https:\/\/script\.google\.com\/macros\/s\//.test(config.webAppUrl)) {
-    throw new Error('Invalid deployment URL configuration');
-  }
-  const normalizedOrigin = config.publicOrigin.replace(/\/$/, '');
-  if (config.publicBaseUrl !== normalizedOrigin && !config.publicBaseUrl.startsWith(normalizedOrigin + '/')) {
-    throw new Error('PUBLIC_BASE_URL origin mismatch');
-  }
-  return config;
-}
-
-function getCallbackUrl_(config) {
-  return config.webAppUrl + (config.webAppUrl.includes('?') ? '&' : '?') + 'route=oauth-callback';
-}
-
-function redirectToPublic_(config, page, params) {
-  const base = page === 'admin'
-    ? config.publicBaseUrl.replace(/\/$/, '') + '/admin/'
-    : config.publicBaseUrl.replace(/\/$/, '') + '/';
-  const query = formEncode_(params || {});
-  const target = base + (query ? '?' + query : '');
-  const safeTarget = JSON.stringify(target).replace(/</g, '\\u003c');
-  return HtmlService.createHtmlOutput(
-    '<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">' +
-    '<title>Returning…</title></head><body><p>登入處理完成，正在返回…</p>' +
-    '<script>window.top.location.replace(' + safeTarget + ');<\/script></body></html>'
-  );
+  const lineChannelId = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ID') || '';
+  if (!lineChannelId) throw new Error('Missing Script Property: LINE_CHANNEL_ID');
+  return { lineChannelId: lineChannelId };
 }
 
 function getSpreadsheet_() {
   const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  if (!id) throw new Error('Missing Script Property: SPREADSHEET_ID. Run setupLoyaltyCard_ first.');
+  if (!id) throw new Error('Loyalty storage is not initialized');
   return SpreadsheetApp.openById(id);
 }
 
@@ -562,7 +461,7 @@ function findByFieldWithRow_(sheet, field, value) {
     if (String(values[i][index]) === String(value)) {
       const object = {};
       headers.forEach((header, col) => { object[header] = values[i][col]; });
-      return { row: i + 1, object };
+      return { row: i + 1, object: object };
     }
   }
   return null;
@@ -625,43 +524,10 @@ function logAudit_(actorUserId, action, target, result, metadata) {
   }
 }
 
-function setupLoyaltyCard_() {
-  const props = PropertiesService.getScriptProperties();
-  let spreadsheetId = props.getProperty('SPREADSHEET_ID');
-  let spreadsheet;
-  if (spreadsheetId) {
-    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  } else {
-    spreadsheet = SpreadsheetApp.create('MembershipSystem Loyalty Card DB');
-    spreadsheetId = spreadsheet.getId();
-    props.setProperty('SPREADSHEET_ID', spreadsheetId);
-  }
-
-  Object.keys(APP.headers).forEach((sheetName) => {
-    let sheet = spreadsheet.getSheetByName(sheetName);
-    if (!sheet) sheet = spreadsheet.insertSheet(sheetName);
-    const headers = APP.headers[sheetName];
-    const current = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-    if (current.every((v) => v === '')) {
-      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sheet.setFrozenRows(1);
-    } else if (headers.some((header, index) => String(current[index] || '') !== header)) {
-      throw new Error('Existing sheet schema mismatch: ' + sheetName);
-    }
-  });
-
-  const defaultSheet = spreadsheet.getSheetByName('Sheet1');
-  if (defaultSheet && spreadsheet.getSheets().length > 1) spreadsheet.deleteSheet(defaultSheet);
-  seedSetting_('stamps_per_reward', String(APP.defaultRewardTarget));
-  seedSetting_('session_hours', String(APP.defaultSessionHours));
-  seedSetting_('max_balance', '9999');
-  return { spreadsheetId, spreadsheetUrl: spreadsheet.getUrl() };
-}
-
 function seedSetting_(key, value) {
   const sheet = getSheet_(APP.sheets.settings);
   if (!findByField_(sheet, 'key', key)) {
-    appendObject_(sheet, { key, value, updated_at: isoNow_() });
+    appendObject_(sheet, { key: key, value: value, updated_at: isoNow_() });
   }
 }
 
@@ -680,10 +546,10 @@ function compactUuid_() {
   return Utilities.getUuid().replace(/-/g, '');
 }
 
-function randomUrlSafe_(bytes) {
-  let text = '';
-  while (text.length < bytes * 2) text += compactUuid_();
-  return sha256Base64Url_(text + Date.now() + Math.random()).slice(0, Math.max(43, bytes));
+function randomUrlSafe_(length) {
+  const seed1 = Utilities.getUuid() + ':' + Utilities.getUuid() + ':' + Date.now();
+  const seed2 = Utilities.getUuid() + ':' + Utilities.getUuid() + ':' + new Date().toISOString();
+  return (sha256Base64Url_(seed1) + sha256Base64Url_(seed2)).slice(0, Math.max(43, Number(length || 43)));
 }
 
 function sha256Base64Url_(value) {
