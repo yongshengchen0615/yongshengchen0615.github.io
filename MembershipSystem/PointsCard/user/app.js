@@ -16,6 +16,32 @@
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
   }
 
+  function normalizeRewardContract(member) {
+    const normalized = Object.assign({}, member);
+    const cardSize = Number(normalized.cardSize || normalized.stampsPerReward || 10);
+    if (!Array.isArray(normalized.rewardNodes) || !normalized.rewardNodes.length) {
+      normalized.rewardNodes = [{
+        nodeId: 'node-' + cardSize,
+        stampsRequired: cardSize,
+        rewardName: normalized.rewardName || '本期集點獎勵',
+        state: Number(normalized.availableRewards || 0) > 0 ? 'available' : 'pending'
+      }];
+    }
+    if (!Array.isArray(normalized.availableRewardNodes)) {
+      normalized.availableRewardNodes = Number(normalized.availableRewards || 0) > 0 ? [{
+        entitlementOrdinal: Number(normalized.redeemedRewards || 0) + 1,
+        stampsRequired: cardSize,
+        rewardName: normalized.rewardName || '本期集點獎勵',
+        cycleNumber: Math.max(1, Math.floor(Number(normalized.totalStamps || 0) / cardSize))
+      }] : [];
+    }
+    normalized.nextAvailableReward = normalized.nextAvailableReward || normalized.availableRewardNodes[0] || null;
+    normalized.stampsUntilNextReward = normalized.stampsUntilNextReward == null ? Number(normalized.stampsUntilReward || 0) : Number(normalized.stampsUntilNextReward);
+    normalized.cardSize = cardSize;
+    normalized.displayCycleNumber = normalized.displayCycleNumber || Math.max(1, Math.ceil(Number(normalized.totalStamps || 0) / cardSize));
+    return normalized;
+  }
+
   function showFatalError(error) {
     $('bootState').classList.add('hidden');
     $('memberApp').classList.add('hidden');
@@ -23,14 +49,16 @@
     $('errorState').classList.remove('hidden');
   }
 
-  function createStamp(index, active, justAdded) {
+  function createStamp(index, active, justAdded, rewardNode) {
     const stamp = document.createElement('div');
-    stamp.className = 'stamp' + (active ? ' active' : '') + (justAdded ? ' just-added' : '');
-    stamp.setAttribute('aria-label', '第 ' + (index + 1) + ' 格' + (active ? '，已集點' : '，尚未集點'));
+    stamp.className = 'stamp' + (active ? ' active' : '') + (justAdded ? ' just-added' : '') +
+      (rewardNode ? ' reward-node ' + rewardNode.state : '');
+    stamp.setAttribute('aria-label', '第 ' + (index + 1) + ' 格' + (active ? '，已集點' : '，尚未集點') +
+      (rewardNode ? '，獎勵：' + rewardNode.rewardName : ''));
     if (active) {
       const symbol = document.createElement('span');
       symbol.className = 'stamp-symbol';
-      symbol.textContent = 'P';
+      symbol.textContent = rewardNode ? '✦' : 'P';
       stamp.append(symbol);
     }
     const number = document.createElement('span');
@@ -41,18 +69,56 @@
   }
 
   function renderStampGrid(member, animateLatest) {
-    const total = Number(member.stampsPerReward || 10);
+    const total = Number(member.cardSize || member.stampsPerReward || 10);
     const filled = Number(member.visualStamps || 0);
+    const rewardNodes = Array.isArray(member.rewardNodes) ? member.rewardNodes : [];
     const grid = $('stampGrid');
     grid.replaceChildren();
     for (let index = 0; index < total; index += 1) {
-      grid.append(createStamp(index, index < filled, Boolean(animateLatest && index === filled - 1)));
+      const rewardNode = rewardNodes.find(function (node) { return Number(node.stampsRequired) === index + 1; }) || null;
+      grid.append(createStamp(index, index < filled, Boolean(animateLatest && index === filled - 1), rewardNode));
     }
     $('visualStampCount').textContent = formatNumber(filled);
     $('stampsPerReward').textContent = formatNumber(total);
+    $('displayCycleNumber').textContent = formatNumber(member.displayCycleNumber || 1);
+  }
+
+  function renderRewardNodes(member) {
+    const target = $('rewardNodeMap');
+    target.replaceChildren();
+    (member.rewardNodes || []).forEach(function (node) {
+      const row = document.createElement('div');
+      row.className = 'reward-node-item ' + node.state;
+      const point = document.createElement('span');
+      point.className = 'node-point';
+      point.textContent = node.stampsRequired + ' 點';
+      const name = document.createElement('strong');
+      name.textContent = node.rewardName;
+      const state = document.createElement('span');
+      state.className = 'reward-node-state';
+      state.textContent = node.state === 'redeemed' ? '已兌換' : (node.state === 'available' ? '可兌換' : '未達成');
+      row.append(point, name, state);
+      target.append(row);
+    });
+  }
+
+  function renderAvailableRewards(member) {
+    const target = $('availableRewardList');
+    target.replaceChildren();
+    (member.availableRewardNodes || []).slice(0, 3).forEach(function (reward) {
+      const item = document.createElement('span');
+      item.textContent = '第 ' + reward.cycleNumber + ' 張 · ' + reward.stampsRequired + ' 點 — ' + reward.rewardName;
+      target.append(item);
+    });
+    if (Number(member.availableRewards || 0) > 3) {
+      const more = document.createElement('span');
+      more.textContent = '另有 ' + formatNumber(member.availableRewards - 3) + ' 份獎勵';
+      target.append(more);
+    }
   }
 
   function renderMember(member, animateLatest) {
+    member = normalizeRewardContract(member);
     currentMember = member;
     $('displayName').textContent = member.displayName || '會員';
     $('avatar').src = member.pictureUrl || avatarFallback;
@@ -62,8 +128,8 @@
     $('redeemedRewards').textContent = formatNumber(member.redeemedRewards);
     $('joinedAt').textContent = PointsCard.formatDate(member.joinedAt, '—');
     $('availableRewards').textContent = formatNumber(member.availableRewards);
-    $('rewardReadyName').textContent = member.rewardName || '本期集點獎勵';
     $('rewardReady').classList.toggle('hidden', Number(member.availableRewards || 0) < 1);
+    renderAvailableRewards(member);
 
     const active = member.membershipStatus === 'active';
     $('scanStampButton').disabled = !active || stampRequestInFlight;
@@ -71,11 +137,13 @@
       ? '今天也來收集一枚好心情。'
       : '這張集點卡目前暫停使用，請洽店家確認。';
 
-    const remaining = Number(member.stampsUntilReward || 0);
+    const nextReward = member.nextReward;
     $('progressMessage').textContent = Number(member.availableRewards || 0) > 0
-      ? '已集滿，請向店員出示此畫面兌換 ' + (member.rewardName || '獎勵')
-      : '再集 ' + formatNumber(remaining) + ' 點即可獲得 ' + (member.rewardName || '獎勵');
+      ? '已有 ' + formatNumber(member.availableRewards) + ' 份獎勵待兌換'
+      : (nextReward ? '再集 ' + formatNumber(member.stampsUntilNextReward) + ' 點獲得 ' + nextReward.rewardName :
+        '再集 ' + formatNumber(member.stampsUntilNextReward) + ' 點獲得 ' + (member.rewardName || '本期獎勵'));
     renderStampGrid(member, animateLatest);
+    renderRewardNodes(member);
   }
 
   function activityLabel(item) {
@@ -145,11 +213,13 @@
       if (fromNavigation) PointsCard.clearNavigationState();
       renderMember(result.member, !result.duplicate);
       renderActivity(result.activity);
+      $('successSealCount').textContent = '+' + formatNumber(result.stampCount);
+      const unlockedNames = (result.unlockedRewards || []).map(function (reward) { return reward.rewardName; });
       $('successMessage').textContent = result.duplicate
         ? '這次請求先前已完成，集點卡已同步為最新狀態。'
-        : '已加入 ' + formatNumber(result.stampCount) + ' 點；' + (result.member.availableRewards > 0
-          ? '你有獎勵可以兌換。'
-          : '距離下一份獎勵還差 ' + formatNumber(result.member.stampsUntilReward) + ' 點。');
+        : '已加入 ' + formatNumber(result.stampCount) + ' 點；' + (unlockedNames.length
+          ? '新獲得：' + unlockedNames.join('、') + '。'
+          : '距離下一份獎勵還差 ' + formatNumber(currentMember.stampsUntilNextReward) + ' 點。');
       openDialog($('successDialog'));
     } catch (error) {
       if (fromNavigation && terminalStampErrors.has(error.code)) PointsCard.clearNavigationState();

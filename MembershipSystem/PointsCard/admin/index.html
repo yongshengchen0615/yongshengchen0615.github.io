@@ -42,6 +42,16 @@
         <article><span>已兌換獎勵</span><strong id="metricRewards">0</strong><small id="rewardNameMetric">本期獎勵</small></article>
       </section>
 
+      <section class="workspace-section reward-node-settings" aria-labelledby="rewardNodesTitle">
+        <div class="section-heading">
+          <div><p class="eyebrow">REWARD NODES</p><h2 id="rewardNodesTitle">獎勵節點</h2><p>設定每張卡在不同點數要發放的獎勵；最大節點就是一張卡的長度。</p></div>
+          <div class="section-actions"><button id="addRewardNodeButton" class="button button-secondary" type="button">新增節點</button><button id="saveRewardNodesButton" class="button button-primary" type="button">儲存節點</button></div>
+        </div>
+        <div id="rewardSettingsNotice" class="settings-notice hidden" role="status"></div>
+        <div id="rewardNodeList" class="reward-node-editor"></div>
+        <p id="rewardSettingsMessage" class="settings-message hidden" role="status"></p>
+      </section>
+
       <section class="workspace-section" aria-labelledby="membersTitle">
         <div class="section-heading">
           <div><p class="eyebrow">MEMBERS</p><h2 id="membersTitle">會員與獎勵</h2><p>點數餘額與可兌換數量皆由伺服器端計算。</p></div>
@@ -92,6 +102,7 @@
     <form method="dialog">
       <header class="dialog-header"><div><p class="eyebrow">REWARD REDEMPTION</p><h2 id="rewardDialogTitle">兌換會員獎勵</h2><p id="rewardMemberMeta">—</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
       <div class="reward-preview"><span aria-hidden="true">✦</span><div><strong id="rewardPreviewName">本期集點獎勵</strong><p>將使用一份可兌換獎勵，完成後無法由前端撤銷。</p></div></div>
+      <p id="rewardNodeMeta" class="reward-node-meta">—</p>
       <label class="field-label"><span>兌換備註</span><textarea id="rewardNote" maxlength="200" rows="3" placeholder="例如：門市現場兌換"></textarea></label>
       <p id="rewardFormError" class="form-error hidden" role="alert"></p>
       <footer class="dialog-actions"><button class="button button-secondary" value="cancel" type="submit">取消</button><button id="confirmRewardButton" class="button button-accent" type="button">確認兌換</button></footer>

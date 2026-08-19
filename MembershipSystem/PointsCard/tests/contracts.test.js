@@ -48,13 +48,20 @@ test('CSP pages keep executable JavaScript in external files', () => {
   }
 });
 
-test('member reward projection keeps cumulative stamps and redeemed rewards separate', () => {
-  const source = read('gas/Code.gs') + '\n;globalThis.__pointsCardTest = { publicMember_, clampInt_ };';
+test('multi-node reward projection repeats each card and preserves FIFO redemption', () => {
+  let rewardNodesJson = JSON.stringify([
+    { stampsRequired: 3, rewardName: '小點心' },
+    { stampsRequired: 6, rewardName: '折價券' },
+    { stampsRequired: 10, rewardName: '招牌飲品' }
+  ]);
+  const source = read('gas/Code.gs') + '\n;globalThis.__pointsCardTest = { publicMember_, pointsCardSettings_, normalizeRewardNodes_, rewardEntitlementsBetweenTotals_ };';
   const context = {
     PropertiesService: {
       getScriptProperties() {
         return {
           getProperty(key) {
+            if (key === 'POINTS_CARD_REWARD_NODES_JSON') return rewardNodesJson;
+            if (key === 'POINTS_CARD_REWARD_NODES_UPDATED_AT') return 'v1';
             if (key === 'POINTS_CARD_STAMPS_PER_REWARD') return '10';
             if (key === 'POINTS_CARD_REWARD_NAME') return '測試獎勵';
             return '';
@@ -82,19 +89,36 @@ test('member reward projection keeps cumulative stamps and redeemed rewards sepa
     updatedAt: '2026-01-01T00:00:00.000Z'
   }, false);
 
-  assert.deepEqual(
-    [project(0, 0).availableRewards, project(0, 0).visualStamps, project(0, 0).stampsUntilReward],
-    [0, 0, 10]
-  );
-  assert.deepEqual(
-    [project(10, 0).availableRewards, project(10, 0).visualStamps, project(10, 0).stampsUntilReward],
-    [1, 10, 0]
-  );
-  assert.deepEqual(
-    [project(15, 1).availableRewards, project(15, 1).visualStamps, project(15, 1).stampsUntilReward],
-    [0, 5, 5]
-  );
-  assert.equal(project(20, 0).availableRewards, 2);
+  const empty = project(0, 0);
+  assert.deepEqual([empty.availableRewards, empty.visualStamps, empty.stampsUntilNextReward], [0, 0, 3]);
+  assert.equal(empty.nextReward.rewardName, '小點心');
+
+  const firstNode = project(3, 0);
+  assert.equal(firstNode.nextAvailableReward.rewardName, '小點心');
+  assert.equal(firstNode.nextReward.rewardName, '折價券');
+  assert.equal(firstNode.availableRewards, 1);
+
+  const mixed = project(7, 1);
+  assert.deepEqual([mixed.availableRewards, mixed.visualStamps, mixed.stampsUntilNextReward], [1, 7, 3]);
+  assert.equal(mixed.nextAvailableReward.rewardName, '折價券');
+  assert.deepEqual(Array.from(mixed.rewardNodes, (node) => node.state), ['redeemed', 'available', 'pending']);
+
+  assert.deepEqual([project(10, 0).availableRewards, project(10, 0).visualStamps], [3, 10]);
+  const secondCycle = project(13, 3);
+  assert.equal(secondCycle.displayCycleNumber, 2);
+  assert.equal(secondCycle.nextAvailableReward.rewardName, '小點心');
+  assert.equal(secondCycle.nextAvailableReward.cycleNumber, 2);
+
+  const settings = context.__pointsCardTest.pointsCardSettings_();
+  const unlocked = context.__pointsCardTest.rewardEntitlementsBetweenTotals_(2, 7, settings);
+  assert.deepEqual(Array.from(unlocked, (reward) => reward.rewardName), ['小點心', '折價券']);
+
+  rewardNodesJson = '';
+  assert.equal(project(20, 0).availableRewards, 2, 'legacy single-node settings remain compatible');
+  assert.throws(() => context.__pointsCardTest.normalizeRewardNodes_([
+    { stampsRequired: 3, rewardName: 'A' },
+    { stampsRequired: 3, rewardName: 'B' }
+  ], 'INVALID', 'invalid'));
 });
 
 test('mutation contracts include idempotency, processing recovery, and server authorization', () => {
@@ -108,6 +132,8 @@ test('mutation contracts include idempotency, processing recovery, and server au
   assert.match(stamps, /recoverStampRecord_/);
   assert.match(rewards, /status: 'processing'/);
   assert.match(rewards, /recoverRewardRecord_/);
+  assert.match(code, /admin\.reward-nodes\.update/);
+  assert.match(code, /rewardSettingsLocked_/);
   assert.match(read('gas/Storage.gs'), /AUDIT_UNAVAILABLE|audit_/);
 });
 

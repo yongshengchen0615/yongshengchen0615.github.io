@@ -33,6 +33,7 @@ function stampRecord_(context, payload) {
       return {
         duplicate: true,
         stampCount: Number(recovered.stampCount || 0),
+        unlockedRewards: [],
         member: publicMember_(member, false),
         activity: listMemberActivity_(member.lineUserId, 20)
       };
@@ -56,6 +57,7 @@ function stampRecord_(context, payload) {
     const totalBefore = member.totalStamps;
     if (totalBefore > 100000000 - voucher.stampCount) fail_('STAMP_LIMIT_REACHED', '此會員的累計集點已達系統上限。');
     const totalAfter = totalBefore + voucher.stampCount;
+    const unlockedRewards = rewardEntitlementsBetweenTotals_(totalBefore, totalAfter, pointsCardSettings_());
     const record = {
       recordId: 'SR-' + randomHex_(10).toUpperCase(),
       requestId: requestId,
@@ -96,6 +98,7 @@ function stampRecord_(context, payload) {
     return {
       duplicate: false,
       stampCount: voucher.stampCount,
+      unlockedRewards: unlockedRewards,
       member: publicMember_(member, false),
       activity: listMemberActivity_(member.lineUserId, 20)
     };

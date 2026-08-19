@@ -27,6 +27,12 @@ function initializePointsCardStorage() {
     if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNameProperty)) {
       properties.setProperty(POINTS_CARD_SERVICE.rewardNameProperty, '招牌飲品一份');
     }
+    if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNodesProperty)) {
+      const defaultSettings = pointsCardSettings_();
+      const now = new Date().toISOString();
+      properties.setProperty(POINTS_CARD_SERVICE.rewardNodesProperty, JSON.stringify(defaultSettings.rewardNodes));
+      properties.setProperty(POINTS_CARD_SERVICE.rewardNodesUpdatedAtProperty, now);
+    }
 
     if (created) {
       const defaultSheet = spreadsheet.getSheetByName('工作表1') || spreadsheet.getSheetByName('Sheet1');
@@ -70,10 +76,17 @@ function configurePointsCard(lineLoginChannelId, rewardName, stampsPerReward) {
   if (!/^\d{6,20}$/.test(channelId)) fail_('INVALID_INPUT', 'LINE Login Channel ID 格式不正確。');
   const safeRewardName = cleanText_(rewardName, 80, true);
   const target = strictInt_(stampsPerReward, 2, 20, 'INVALID_INPUT', '每張集點卡必須設定為 2 到 20 點。');
+  if (rewardSettingsLocked_()) fail_('REWARD_SETTINGS_LOCKED', '已有獎勵兌換紀錄，不能再修改集點門檻。');
   const properties = PropertiesService.getScriptProperties();
+  const rewardNodes = normalizeRewardNodes_([
+    { stampsRequired: target, rewardName: safeRewardName }
+  ], 'INVALID_REWARD_NODES', '獎勵節點設定不正確。');
+  const now = new Date().toISOString();
   properties.setProperty(POINTS_CARD_SERVICE.lineChannelProperty, channelId);
   properties.setProperty(POINTS_CARD_SERVICE.rewardNameProperty, safeRewardName);
   properties.setProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty, String(target));
+  properties.setProperty(POINTS_CARD_SERVICE.rewardNodesProperty, JSON.stringify(rewardNodes));
+  properties.setProperty(POINTS_CARD_SERVICE.rewardNodesUpdatedAtProperty, now);
   return pointsCardSettings_();
 }
 

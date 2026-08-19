@@ -8,7 +8,12 @@
   const avatarFallback = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="72" height="72"%3E%3Crect width="72" height="72" rx="36" fill="%23dfe5df"/%3E%3Ccircle cx="36" cy="28" r="13" fill="%23173f35" fill-opacity=".3"/%3E%3Cpath d="M14 68c2-14 10-21 22-21s20 7 22 21" fill="%23173f35" fill-opacity=".3"/%3E%3C/svg%3E';
   let members = [];
   let vouchers = [];
-  let rewardName = '本期集點獎勵';
+  let rewardSettings = {
+    rewardNodes: [{ nodeId: 'node-10', stampsRequired: 10, rewardName: '本期集點獎勵' }],
+    cardSize: 10,
+    rewardNodesUpdatedAt: 'legacy',
+    rewardSettingsLocked: false
+  };
   let searchTimer = 0;
   let toastTimer = 0;
   let rewardRetry = null;
@@ -18,6 +23,37 @@
 
   function formatNumber(value) {
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
+  }
+
+  function normalizeRewardSettings(value) {
+    const source = value || {};
+    const supported = Array.isArray(source.rewardNodes) && source.rewardNodes.length > 0;
+    const cardSize = Number(source.cardSize || source.stampsPerReward || 10);
+    return Object.assign({}, source, {
+      rewardNodes: supported ? source.rewardNodes : [{
+        nodeId: 'node-' + cardSize,
+        stampsRequired: cardSize,
+        rewardName: source.rewardName || '本期集點獎勵'
+      }],
+      cardSize: cardSize,
+      rewardNodesUpdatedAt: source.rewardNodesUpdatedAt || 'legacy',
+      rewardSettingsLocked: supported ? Boolean(source.rewardSettingsLocked) : true,
+      rewardNodesSupported: supported
+    });
+  }
+
+  function normalizeAdminMemberRewards(member) {
+    const normalized = Object.assign({}, member);
+    if (!normalized.nextAvailableReward && Number(normalized.availableRewards || 0) > 0) {
+      const cardSize = Number(normalized.cardSize || normalized.stampsPerReward || rewardSettings.cardSize || 10);
+      normalized.nextAvailableReward = {
+        entitlementOrdinal: Number(normalized.redeemedRewards || 0) + 1,
+        stampsRequired: cardSize,
+        rewardName: normalized.rewardName || '本期集點獎勵',
+        cycleNumber: Math.max(1, Math.floor(Number(normalized.totalStamps || 0) / cardSize))
+      };
+    }
+    return normalized;
   }
 
   function showFatalError(error) {
@@ -68,7 +104,127 @@
     $('metricActive').textContent = formatNumber(stats.activeMembers) + ' 位有效會員';
     $('metricStamps').textContent = formatNumber(stats.totalStamps);
     $('metricRewards').textContent = formatNumber(stats.redeemedRewards);
-    $('rewardNameMetric').textContent = rewardName;
+    $('rewardNameMetric').textContent = rewardSettings.rewardNodes.length + ' 個節點 · 滿卡 ' + rewardSettings.cardSize + ' 點';
+  }
+
+  function appendRewardNodeEditor(node, index) {
+    const locked = Boolean(rewardSettings.rewardSettingsLocked);
+    const row = document.createElement('div');
+    row.className = 'reward-node-editor-row';
+    const order = document.createElement('span');
+    order.className = 'reward-node-order';
+    order.textContent = String(index + 1).padStart(2, '0');
+    const pointLabel = document.createElement('label');
+    pointLabel.textContent = '點數節點';
+    const pointInput = document.createElement('input');
+    pointInput.className = 'reward-node-points';
+    pointInput.type = 'number';
+    pointInput.min = '1';
+    pointInput.max = '20';
+    pointInput.step = '1';
+    pointInput.inputMode = 'numeric';
+    pointInput.value = String(node.stampsRequired || '');
+    pointInput.disabled = locked;
+    pointLabel.append(pointInput);
+    const rewardLabel = document.createElement('label');
+    rewardLabel.textContent = '獎勵名稱';
+    const rewardInput = document.createElement('input');
+    rewardInput.className = 'reward-node-name';
+    rewardInput.type = 'text';
+    rewardInput.maxLength = 80;
+    rewardInput.placeholder = '例如：小點心一份';
+    rewardInput.value = node.rewardName || '';
+    rewardInput.disabled = locked;
+    rewardLabel.append(rewardInput);
+    const remove = document.createElement('button');
+    remove.className = 'remove-node-button';
+    remove.type = 'button';
+    remove.setAttribute('aria-label', '移除此獎勵節點');
+    remove.textContent = '×';
+    remove.disabled = locked || $('rewardNodeList').children.length < 1;
+    remove.addEventListener('click', function () {
+      row.remove();
+      renderRewardNodeOrders();
+    });
+    row.append(order, pointLabel, rewardLabel, remove);
+    $('rewardNodeList').append(row);
+  }
+
+  function renderRewardNodeOrders() {
+    const rows = Array.from($('rewardNodeList').children);
+    rows.forEach(function (row, index) {
+      row.querySelector('.reward-node-order').textContent = String(index + 1).padStart(2, '0');
+      row.querySelector('.remove-node-button').disabled = Boolean(rewardSettings.rewardSettingsLocked) || rows.length === 1;
+    });
+    $('addRewardNodeButton').disabled = Boolean(rewardSettings.rewardSettingsLocked) || rows.length >= 5;
+  }
+
+  function renderRewardSettings() {
+    const locked = Boolean(rewardSettings.rewardSettingsLocked);
+    $('rewardNodeList').replaceChildren();
+    (rewardSettings.rewardNodes || []).forEach(appendRewardNodeEditor);
+    renderRewardNodeOrders();
+    $('addRewardNodeButton').disabled = locked || rewardSettings.rewardNodes.length >= 5;
+    $('saveRewardNodesButton').disabled = locked;
+    $('rewardSettingsNotice').classList.remove('hidden');
+    $('rewardSettingsNotice').classList.toggle('locked', locked);
+    if (!rewardSettings.rewardNodesSupported) {
+      $('rewardSettingsNotice').textContent = '目前 GAS 尚未支援多獎勵節點；請先部署 PointsCard 1.1.0 後再設定。';
+    } else if (locked) {
+      $('rewardSettingsNotice').textContent = '已有獎勵兌換紀錄，節點已鎖定，避免改變既有兌換順序。';
+    } else {
+      $('rewardSettingsNotice').textContent = '節點會依點數自動排序；儲存後會套用到會員目前的累計點數。完成第一筆獎勵兌換後即鎖定。';
+    }
+  }
+
+  function addRewardNode() {
+    const rows = $('rewardNodeList').children;
+    if (rows.length >= 5) return;
+    const values = new Set(Array.from(rows).map(function (row) { return Number(row.querySelector('.reward-node-points').value || 0); }));
+    let nextPoint = 1;
+    while (nextPoint <= 20 && values.has(nextPoint)) nextPoint += 1;
+    if (nextPoint > 20) return;
+    appendRewardNodeEditor({ stampsRequired: nextPoint, rewardName: '' }, rows.length);
+    renderRewardNodeOrders();
+    $('addRewardNodeButton').disabled = $('rewardNodeList').children.length >= 5;
+  }
+
+  function readRewardNodes() {
+    const nodes = Array.from($('rewardNodeList').children).map(function (row) {
+      return {
+        stampsRequired: Number(row.querySelector('.reward-node-points').value),
+        rewardName: row.querySelector('.reward-node-name').value.trim()
+      };
+    });
+    if (!nodes.length || nodes.length > 5) throw new Error('請設定 1 至 5 個獎勵節點。');
+    const points = new Set();
+    nodes.forEach(function (node) {
+      if (!Number.isInteger(node.stampsRequired) || node.stampsRequired < 1 || node.stampsRequired > 20) throw new Error('節點點數必須是 1 到 20 的整數。');
+      if (!node.rewardName) throw new Error('每個節點都必須填寫獎勵名稱。');
+      if (points.has(node.stampsRequired)) throw new Error('獎勵節點不能使用相同點數。');
+      points.add(node.stampsRequired);
+    });
+    return nodes;
+  }
+
+  async function saveRewardNodes() {
+    $('rewardSettingsMessage').classList.add('hidden');
+    $('saveRewardNodesButton').disabled = true;
+    try {
+      const result = await PointsCard.callApi('admin.reward-nodes.update', {
+        expectedUpdatedAt: rewardSettings.rewardNodesUpdatedAt,
+        rewardNodes: readRewardNodes()
+      });
+      rewardSettings = result.settings;
+      await loadDashboard($('memberSearch').value.trim());
+      $('rewardSettingsMessage').textContent = '獎勵節點已更新。';
+      $('rewardSettingsMessage').className = 'settings-message';
+      showToast('獎勵節點已更新。');
+    } catch (error) {
+      $('rewardSettingsMessage').textContent = error.message;
+      $('rewardSettingsMessage').className = 'settings-message error';
+      $('saveRewardNodesButton').disabled = Boolean(rewardSettings.rewardSettingsLocked);
+    }
   }
 
   function renderMembers() {
@@ -158,10 +314,11 @@
     const requestSequence = ++dashboardRequestSequence;
     const result = await PointsCard.callApi('admin.dashboard', { query: query || '', pageSize: 100, voucherLimit: 50 });
     if (requestSequence !== dashboardRequestSequence) return;
-    members = result.members || [];
+    rewardSettings = normalizeRewardSettings(result.settings || rewardSettings);
+    members = (result.members || []).map(normalizeAdminMemberRewards);
     vouchers = result.vouchers || [];
-    rewardName = result.settings && result.settings.rewardName || rewardName;
     renderMetrics(result.stats || {});
+    renderRewardSettings();
     renderMembers();
     renderVouchers();
     $('bootState').classList.add('hidden');
@@ -205,18 +362,22 @@
   }
 
   function openReward(member) {
-    if (!selectedRewardMember || selectedRewardMember.memberNo !== member.memberNo) rewardRetry = null;
+    const reward = member.nextAvailableReward;
+    if (!reward) return;
+    if (!selectedRewardMember || selectedRewardMember.memberNo !== member.memberNo ||
+      !selectedRewardMember.nextAvailableReward || selectedRewardMember.nextAvailableReward.entitlementOrdinal !== reward.entitlementOrdinal) rewardRetry = null;
     selectedRewardMember = member;
     clearFormError('rewardFormError');
-    $('rewardDialogTitle').textContent = '兌換 ' + rewardName;
+    $('rewardDialogTitle').textContent = '兌換 ' + reward.rewardName;
     $('rewardMemberMeta').textContent = (member.displayName || 'LINE 會員') + ' · ' + member.memberNo + ' · 可兌換 ' + formatNumber(member.availableRewards) + ' 份';
-    $('rewardPreviewName').textContent = rewardName;
+    $('rewardPreviewName').textContent = reward.rewardName;
+    $('rewardNodeMeta').textContent = '第 ' + reward.cycleNumber + ' 張卡 · ' + reward.stampsRequired + ' 點節點';
     $('rewardNote').value = '';
     openDialog($('rewardDialog'));
   }
 
-  function rewardRequestId(memberNo, note) {
-    const fingerprint = memberNo + '|' + note;
+  function rewardRequestId(memberNo, rewardOrdinal, note) {
+    const fingerprint = memberNo + '|' + rewardOrdinal + '|' + note;
     if (rewardRetry && rewardRetry.fingerprint === fingerprint) return rewardRetry.requestId;
     rewardRetry = { fingerprint: fingerprint, requestId: PointsCard.randomHex(16) };
     return rewardRetry.requestId;
@@ -226,13 +387,16 @@
     if (!selectedRewardMember) return;
     clearFormError('rewardFormError');
     const note = $('rewardNote').value.trim() || '門市現場兌換';
+    const reward = selectedRewardMember.nextAvailableReward;
     $('confirmRewardButton').disabled = true;
     try {
       const result = await PointsCard.callApi('admin.reward.redeem', {
         targetMemberNo: selectedRewardMember.memberNo,
         expectedUpdatedAt: selectedRewardMember.updatedAt,
+        expectedRewardOrdinal: reward.entitlementOrdinal,
+        expectedRewardNodesUpdatedAt: rewardSettings.rewardNodesUpdatedAt,
         note: note,
-        requestId: rewardRequestId(selectedRewardMember.memberNo, note)
+        requestId: rewardRequestId(selectedRewardMember.memberNo, reward.entitlementOrdinal, note)
       });
       rewardRetry = null;
       selectedRewardMember = null;
@@ -388,6 +552,8 @@
       searchTimer = window.setTimeout(function () { loadDashboard($('memberSearch').value.trim()).catch(showFatalError); }, 300);
     });
     $('saveMemberButton').addEventListener('click', saveMember);
+    $('addRewardNodeButton').addEventListener('click', addRewardNode);
+    $('saveRewardNodesButton').addEventListener('click', saveRewardNodes);
     $('confirmRewardButton').addEventListener('click', redeemReward);
     $('newStampButton').addEventListener('click', openNewStamp);
     $('createStampButton').addEventListener('click', createStamp);

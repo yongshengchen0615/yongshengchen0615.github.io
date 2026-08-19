@@ -42,9 +42,24 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .workspace-section { margin-top: 22px; padding: 30px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 10px 35px rgba(23,63,53,.045); animation: rise-in .5s .05s ease both; }
 .voucher-section { animation-delay: .1s; }
+.reward-node-settings { animation-delay: .03s; }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; margin-bottom: 26px; }
 .section-heading h2 { margin: 5px 0 6px; font: 500 1.7rem Georgia, "Noto Serif TC", serif; }
 .section-heading > div > p:last-child { margin: 0; color: var(--muted); font-size: .78rem; }
+.section-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.reward-node-editor { display: grid; gap: 10px; }
+.reward-node-editor-row { display: grid; grid-template-columns: 44px minmax(110px, .45fr) minmax(220px, 1fr) auto; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.reward-node-order { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--ink); background: rgba(216,232,164,.55); font: 700 .72rem Georgia, serif; }
+.reward-node-editor-row label { min-width: 0; display: grid; gap: 6px; color: var(--muted); font-size: .65rem; font-weight: 700; }
+.reward-node-editor-row input { min-width: 0; width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; outline: 0; color: var(--ink-deep); background: #f8f7f3; }
+.reward-node-editor-row input:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(23,63,53,.08); }
+.reward-node-editor-row input:disabled { color: var(--muted); cursor: not-allowed; }
+.remove-node-button { width: 38px; height: 38px; border: 1px solid rgba(170,61,50,.22); border-radius: 50%; color: var(--danger); background: transparent; cursor: pointer; }
+.remove-node-button:disabled { cursor: not-allowed; opacity: .3; }
+.settings-notice { margin-bottom: 15px; padding: 12px 14px; border-radius: 11px; color: var(--ink); background: rgba(216,232,164,.46); font-size: .72rem; line-height: 1.55; }
+.settings-notice.locked { color: var(--danger); background: rgba(231,111,81,.1); }
+.settings-message { margin: 14px 0 0; color: var(--ink); font-size: .72rem; }
+.settings-message.error { color: var(--danger); }
 .search-field { width: min(100%, 310px); display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 0 15px; border: 1px solid var(--line); border-radius: 13px; background: #f8f7f3; }
 .search-field input { width: 100%; height: 43px; border: 0; outline: 0; color: var(--ink-deep); background: transparent; }
 .search-field > span:last-child { color: var(--muted); font-size: 1.1rem; }
@@ -96,6 +111,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .reward-preview > span { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: #fff; background: var(--ink); }
 .reward-preview strong { font-family: Georgia, "Noto Serif TC", serif; font-size: 1.1rem; }
 .reward-preview p { margin: 5px 0 0; color: var(--muted); font-size: .7rem; line-height: 1.5; }
+.reward-node-meta { margin: -8px 0 18px; color: var(--muted); font-size: .7rem; }
 .stamp-result { text-align: center; }
 .qr-code { width: 236px; max-width: 100%; margin: 0 auto 14px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: #fff; }
 .qr-code svg { display: block; width: 100%; height: auto; }
@@ -114,6 +130,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .wordmark { margin-bottom: 22px; }
   .metric-row { grid-template-columns: 1fr; }
   .section-heading { align-items: stretch; flex-direction: column; }
+  .section-actions { justify-content: flex-start; }
   .search-field { width: 100%; }
   .workspace-section { padding: 22px 16px; }
   .data-table { min-width: 760px; }
@@ -123,6 +140,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .admin-header { display: block; }
   .admin-header > .button { width: 100%; margin-top: 22px; }
   .form-grid { grid-template-columns: 1fr; }
+  .reward-node-editor-row { grid-template-columns: 34px 84px 1fr auto; gap: 7px; }
   .full-span { grid-column: auto; }
   .admin-dialog form { padding: 22px 18px; }
   .dialog-actions .button { flex: 1 1 auto; }

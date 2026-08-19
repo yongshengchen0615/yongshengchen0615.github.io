@@ -5,6 +5,9 @@ function adminRewardRedeem_(context, payload) {
   const expectedUpdatedAt = cleanText_(payload.expectedUpdatedAt, 40, true);
   const requestId = cleanText_(payload.requestId, 64, true).toLowerCase();
   const note = cleanText_(payload.note || '門市現場兌換', 200, false);
+  const expectedRewardOrdinal = payload.expectedRewardOrdinal == null || payload.expectedRewardOrdinal === '' ? 0 :
+    strictInt_(payload.expectedRewardOrdinal, 1, 100000000, 'INVALID_REWARD', '兌換的獎勵節點不正確。');
+  const expectedRewardNodesUpdatedAt = cleanText_(payload.expectedRewardNodesUpdatedAt || '', 64, false);
   if (!/^[a-f0-9]{32,64}$/.test(requestId)) fail_('INVALID_REQUEST_ID', '兌換請求識別碼格式不正確。');
 
   const memberSheet = getSheet_(POINTS_CARD_SHEETS.members);
@@ -31,9 +34,18 @@ function adminRewardRedeem_(context, payload) {
     if (member.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', '會員資料已更新，請重新整理後再兌換。');
     if (member.membershipStatus !== 'active') fail_('MEMBER_INACTIVE', '此會員目前無法兌換獎勵。');
     const settings = pointsCardSettings_();
-    const earnedRewards = Math.floor(member.totalStamps / settings.stampsPerReward);
-    const availableRewards = Math.max(0, earnedRewards - member.redeemedRewards);
-    if (availableRewards < 1) fail_('NO_REWARD_AVAILABLE', '此會員目前沒有可兌換的獎勵。');
+    if (!expectedRewardOrdinal && settings.rewardNodes.length > 1) {
+      fail_('CLIENT_UPGRADE_REQUIRED', '管理端版本過舊，請重新整理後再兌換多節點獎勵。');
+    }
+    if (expectedRewardNodesUpdatedAt && settings.rewardNodesUpdatedAt !== expectedRewardNodesUpdatedAt) {
+      fail_('CONFLICT', '獎勵節點已更新，請重新整理後再兌換。');
+    }
+    const projection = rewardProjection_(member, settings);
+    const reward = projection.nextAvailableReward;
+    if (!reward) fail_('NO_REWARD_AVAILABLE', '此會員目前沒有可兌換的獎勵。');
+    if (expectedRewardOrdinal && reward.entitlementOrdinal !== expectedRewardOrdinal) {
+      fail_('CONFLICT', '可兌換獎勵已更新，請重新整理後再試。');
+    }
 
     const now = new Date().toISOString();
     const redeemedBefore = member.redeemedRewards;
@@ -43,8 +55,8 @@ function adminRewardRedeem_(context, payload) {
       requestId: requestId,
       memberLineUserId: member.lineUserId,
       memberNo: member.memberNo,
-      rewardName: settings.rewardName,
-      rewardOrdinal: redeemedAfter,
+      rewardName: reward.rewardName,
+      rewardOrdinal: reward.entitlementOrdinal,
       redeemedBefore: redeemedBefore,
       redeemedAfter: redeemedAfter,
       status: 'processing',
@@ -67,14 +79,16 @@ function adminRewardRedeem_(context, payload) {
     record.redeemedAt = now;
     if (!audit_(context.identity.sub, 'admin', 'REWARD_REDEEMED', member.lineUserId, 'success', {
       memberNo: member.memberNo,
-      rewardName: settings.rewardName,
-      rewardOrdinal: redeemedAfter,
+      rewardName: reward.rewardName,
+      rewardOrdinal: reward.entitlementOrdinal,
+      rewardNodeId: reward.nodeId,
+      cycleNumber: reward.cycleNumber,
       requestId: requestId
     })) fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入；再次嘗試會恢復同一筆兌換。');
     record.auditRecordedAt = now;
     writeObjectRow_(rewardSheet, recordMatch.row, record);
 
-    return { duplicate: false, member: publicMember_(member, true) };
+    return { duplicate: false, claimedReward: reward, member: publicMember_(member, true) };
   } finally { lock.releaseLock(); }
 }
 

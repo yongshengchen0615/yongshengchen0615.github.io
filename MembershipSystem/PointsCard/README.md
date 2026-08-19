@@ -7,7 +7,7 @@
 ### 會員端
 
 - 使用 LINE LIFF 登入；GAS 以 LINE Verify ID Token API 驗證身分。
-- 顯示 10 格集點進度、累計集點、待兌換獎勵與最近紀錄。
+- 顯示可配置的集點節點、每個節點獎勵、累計集點、待兌換獎勵與最近紀錄。
 - 透過 `liff.scanCodeV2()` 掃描店家 QR Code，或直接開啟店家發放連結。
 - 登入 callback、網路逾時與重試會保留同一個 `requestId`，避免重複集點。
 - LINE ID Token 只留在目前頁面的記憶體，不寫入 Local Storage、Session Storage、URL 或 Sheet。
@@ -17,19 +17,21 @@
 - 管理員權限由 `Members.canManagePoints` 控制，每個 `admin.*` request 都由 GAS 重新讀取驗證。
 - 檢視會員、累計集點、可兌換獎勵與會員狀態。
 - 停權或停用會員，不允許前端直接修改累計點數。
-- 兌換一份獎勵並留下備註與 Audit Log。
+- 設定 1–5 個獎勵節點，例如 3 點送小點心、6 點送折價券、10 點送飲品。
+- 依達成順序兌換不同節點獎勵，並留下備註與 Audit Log。
 - 建立單次或可重複使用的集點 QR Code，支援開啟、停止與刪除未使用 QR。
 
 ## 商業規則
 
-`totalStamps` 是不可回寫減少的歷史累計值；`redeemedRewards` 是已完成的兌換次數。可兌換數量只由 GAS 計算：
+`totalStamps` 是不可回寫減少的歷史累計值；`redeemedRewards` 是已完成的兌換次數。最大節點是一張卡的長度，完成後會進入下一張卡並重複相同節點。
 
 ```text
-earnedRewards    = floor(totalStamps / stampsPerReward)
-availableRewards = max(0, earnedRewards - redeemedRewards)
+節點：3 點 → 小點心、6 點 → 50 元折價券、10 點 → 招牌飲品
+第 1 張：累計 3 / 6 / 10 點時依序取得三份獎勵
+第 2 張：累計 13 / 16 / 20 點時再次取得三份獎勵
 ```
 
-預設每 10 點可兌換「招牌飲品一份」。可在首次上線前透過 `configurePointsCard()` 調整為 2–20 點與其他獎勵名稱。正式產生集點或兌換資料後，不應直接修改門檻，否則既有會員的可兌換數量會依新門檻重新計算。
+獎勵採 FIFO：管理端永遠兌換最早達成且尚未使用的節點，讓既有 `redeemedRewards` 與 `RewardRecords` 保持相容。節點修改會套用到目前累計點數；第一筆獎勵兌換後即鎖定設定，避免既有兌換被重新解讀。
 
 ## 目錄
 
@@ -75,6 +77,8 @@ configurePointsCard('YOUR_LINE_LOGIN_CHANNEL_ID', '招牌飲品一份', 10);
 ```
 
 `LINE_LOGIN_CHANNEL_ID` 是公開的 LINE Login Channel ID，不是 Channel Secret。
+
+上述函式會建立相容的單一 10 點節點。部署 `1.1.0` 後，可直接在管理端「獎勵節點」區域新增不同點數與獎勵；既有單一節點設定會自動作為 fallback，不需要修改 Sheet 欄位或重建試算表。
 
 ### 2. 部署 Web App
 
@@ -123,6 +127,14 @@ https://YOUR_GITHUB_PAGES_HOST/.../PointsCard/admin/
 - `single`：整組 QR Code 只允許一次成功集點，適合單次發放。
 - `repeatable`：可由不同會員重複集點，適合店員現場展示；分享連結外流也會增加濫用風險，因此必須由店員控管展示時機。
 - QR Code 的 `shareCode` 是集點憑證，不是會員 Authentication 或管理 Authorization。會員身分、狀態與管理權限仍由 GAS 判斷。
+
+## 多節點設定限制
+
+- 每張卡可設定 1–5 個節點。
+- 節點必須是 1–20 的不重複整數。
+- 最大節點決定每張卡的點數長度。
+- 尚未兌換獎勵前，可以修改節點；新設定會依會員目前累計點數重新計算可兌換獎勵。
+- 產生第一筆 `RewardRecords` 後設定會鎖定；集點仍可繼續循環累積。
 
 ## 本機驗證
 
