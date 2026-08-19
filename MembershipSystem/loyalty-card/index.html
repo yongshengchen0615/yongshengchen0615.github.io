@@ -9,12 +9,7 @@
 <body>
   <p>正在前往會員集點卡…</p>
   <script>
-    (() => {
-      const target = new URL('./user/', window.location.href);
-      target.search = window.location.search;
-      target.hash = window.location.hash;
-      window.location.replace(target.href);
-    })();
+    window.location.replace(new URL('./user/', window.location.href).href);
   </script>
 </body>
 </html>
