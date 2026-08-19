@@ -1,5 +1,0 @@
-window.LOYALTY_CONFIG = Object.freeze({
-  gasWebAppUrl: 'PASTE_GAS_WEB_APP_URL_HERE',
-  publicOrigin: 'https://yongshengchen0615.github.io',
-  basePath: '/MembershipSystem/loyalty-card'
-});
