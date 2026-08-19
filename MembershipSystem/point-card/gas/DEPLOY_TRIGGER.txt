@@ -1,2 +1,3 @@
-This file exists only to trigger the initial GitHub Actions deployment for the Membership Point Card GAS project.
+This file exists only to trigger GitHub Actions deployment for the Membership Point Card GAS project.
 It is not an Apps Script source file and contains no credential or runtime configuration.
+Last deployment verification trigger: 2026-08-19T16:37:00+08:00
