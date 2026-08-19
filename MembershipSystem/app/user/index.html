@@ -62,12 +62,15 @@
         <div class="card-scan-action"><button id="scanQrButton" class="button card-scan-button" type="button" disabled>掃描 QR Code</button></div>
       </article>
 
-      <section id="usageErrorPanel" class="panel usage-error-panel hidden" role="alert">
-        <span class="eyebrow danger-text">USAGE TIME RECORD</span>
-        <h3>無法加入消費時間</h3>
-        <p id="usageErrorMessage">此 QR Code 目前無法使用。</p>
-        <button id="dismissUsageErrorButton" class="button button-secondary" type="button">關閉</button>
-      </section>
+      <div id="usageErrorPanel" class="usage-error-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="usageErrorTitle" aria-describedby="usageErrorMessage">
+        <div class="usage-error-dialog-card">
+          <div class="usage-error-icon" aria-hidden="true">!</div>
+          <span class="eyebrow danger-text">USAGE TIME RECORD</span>
+          <h2 id="usageErrorTitle">無法加入消費時間</h2>
+          <p id="usageErrorMessage">此 QR Code 目前無法使用。</p>
+          <button id="dismissUsageErrorButton" class="button button-primary" type="button">確認</button>
+        </div>
+      </div>
 
       <footer class="page-footer">會員資料由 LINE 身分驗證與會員系統管理。</footer>
     </section>
