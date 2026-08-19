@@ -1,7 +1,7 @@
 {
-  "gasWebAppUrl": "PASTE_GAS_WEB_APP_URL_HERE",
+  "gasWebAppUrl": "https://script.google.com/macros/s/AKfycbwJmeziO0AynTQQeOeppEc-o7N5vw5zlXbBkFq6buJxJUaN3jCW-IXV9YZvMUOGlMF4/exec",
   "publicOrigin": "https://yongshengchen0615.github.io",
   "basePath": "/MembershipSystem/loyalty-card",
-  "userLiffId": "PASTE_USER_LIFF_ID_HERE",
-  "adminLiffId": ""
+  "userLiffId": "2010787602-eIzRN9l6",
+  "adminLiffId": "2010787602-fkKU5flW"
 }
