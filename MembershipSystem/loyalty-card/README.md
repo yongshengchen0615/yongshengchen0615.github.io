@@ -1,136 +1,169 @@
 # Loyalty Card / 集點卡
 
-一套放在 `MembershipSystem/loyalty-card/` 的獨立集點卡模組：GitHub Pages 提供用戶端與管理端 UI，Google Apps Script (GAS) 提供 LINE Login、Session、Authorization、Google Sheets 資料層與點數交易。
+全新集點卡模組，所有原始碼都放在 `MembershipSystem/loyalty-card/`，但依技術類型分開管理。GitHub Pages 發布 HTML/CSS/JS；`gas/` 內原始碼另外部署到 Google Apps Script Web App。
 
-## 架構
+## 目錄結構
 
-- User UI: `/MembershipSystem/loyalty-card/`
-- Admin UI: `/MembershipSystem/loyalty-card/admin/`
-- Frontend: HTML + CSS + vanilla JavaScript
-- Backend: Google Apps Script Web App
-- Identity: LINE Login v2.1 + OpenID Connect + PKCE
-- Data: Google Sheets
-- Browser ↔ GAS: 隱藏 iframe bridge + `postMessage` + `google.script.run`
+```text
+MembershipSystem/loyalty-card/
+├─ config.json
+├─ README.md
+├─ html/
+│  ├─ index.html
+│  └─ admin/
+│     └─ index.html
+├─ css/
+│  └─ styles.css
+├─ js/
+│  ├─ bootstrap.js
+│  └─ app.js
+└─ gas/
+   ├─ Code.gs
+   ├─ Bridge.html
+   └─ appsscript.json
+```
 
-前端**不包含** LINE Channel Secret。GAS bridge 僅接受 `PUBLIC_ORIGIN` 的訊息，且所有管理 API 仍會在 server-side 重新驗證 Session、Admin role、會員狀態與 Business Rule。
+- 用戶端：`/MembershipSystem/loyalty-card/html/`
+- 管理端：`/MembershipSystem/loyalty-card/html/admin/`
+- `config.json`：只放可公開的前端設定
+- `gas/`：GAS 原始碼，需另外部署到 Apps Script
+
+## 系統架構
+
+- Frontend：HTML + CSS + Vanilla JavaScript
+- Backend：Google Apps Script Web App
+- Identity：LINE Login v2.1 + OpenID Connect + PKCE
+- Data：Google Sheets
+- Browser ↔ GAS：隱藏 iframe bridge + `postMessage` + `google.script.run`
+
+前端不包含 LINE Channel Secret。Channel Secret 只能存在 GAS Script Properties。
 
 ## Domain / Sheets
 
-`setupLoyaltyCard_()` 會建立：
+執行 `setupLoyaltyCard_()` 後建立：
 
-- `Users`: LINE identity 對應與 Account Status
-- `LoyaltyAccounts`: 卡號、點數餘額、集點卡狀態
-- `Transactions`: append-only 點數交易與 idempotency key
-- `Sessions`: 只保存 session token 的 SHA-256 hash、到期與撤銷時間
-- `Admins`: LINE User ID、role (`admin` / `staff`) 與 active
-- `AuditLogs`: 登入、管理權限、點數異動等稽核事件
-- `Settings`: `stamps_per_reward`、`session_hours`、`max_balance`
+- `Users`：LINE Identity、顯示名稱、Account Status
+- `LoyaltyAccounts`：卡號、點數餘額、集點卡狀態
+- `Transactions`：append-only 點數交易、idempotency key
+- `Sessions`：Session token SHA-256 hash、到期與撤銷
+- `Admins`：LINE User ID、Role、Active
+- `AuditLogs`：登入、權限與點數異動稽核
+- `Settings`：兌換門檻、Session 時效、最大點數
 
-Role / Account Status / Loyalty Account 狀態分離，管理權限不由點數或會員等級決定。
+Role、Account Status、Loyalty Account 狀態分離；會員點數或 Membership 不等於 Admin Permission。
 
-## 1. 建立 Apps Script 專案
+## 1. 部署 GAS
 
-將 `gas/Code.gs`、`gas/Bridge.html`、`gas/appsscript.json` 放入一個 standalone Apps Script project。
+將 `gas/Code.gs`、`gas/Bridge.html`、`gas/appsscript.json` 複製到 standalone Google Apps Script project。
 
-先在 Apps Script editor 執行：
+先執行：
 
 ```text
 setupLoyaltyCard_()
 ```
 
-它會建立 Google Spreadsheet，並把 `SPREADSHEET_ID` 存到 Script Properties。
+系統會建立 Google Spreadsheet，並把 `SPREADSHEET_ID` 寫入 Script Properties。
 
-## 2. 設定 Script Properties
+## 2. GAS Script Properties
 
-在 Apps Script → Project Settings → Script Properties 設定：
+設定：
 
 ```text
 LINE_CHANNEL_ID=<LINE Login channel ID>
 LINE_CHANNEL_SECRET=<LINE Login channel secret>
 PUBLIC_ORIGIN=https://yongshengchen0615.github.io
-PUBLIC_BASE_URL=https://yongshengchen0615.github.io/MembershipSystem/loyalty-card
-WEB_APP_URL=<部署後的 https://script.google.com/macros/s/.../exec>
-SPREADSHEET_ID=<setupLoyaltyCard_ 建立；通常不需手動填>
+PUBLIC_BASE_URL=https://yongshengchen0615.github.io/MembershipSystem/loyalty-card/html
+WEB_APP_URL=https://script.google.com/macros/s/<DEPLOYMENT_ID>/exec
+SPREADSHEET_ID=<setupLoyaltyCard_ 建立>
 ```
 
-Secret 不要寫進 `config.js`、GitHub、URL、console log 或 AuditLogs。
+`LINE_CHANNEL_SECRET`、Session Token、LINE Access Token、ID Token 不得放入 GitHub、`config.json`、URL、前端 Log 或 AuditLogs。
 
-## 3. 部署 GAS Web App
+## 3. 前端 config.json
 
-Deploy → New deployment → Web app：
+GAS Web App 部署完成後，修改根目錄 `config.json`：
 
-- Execute as: **Me**
-- Who has access: 依你的 Google Workspace / Apps Script 可用選項，需讓實際 LINE 使用者可開啟 Web App
-
-部署後取得 `/exec` URL，寫入 `WEB_APP_URL` Script Property，也把同一 URL 填進 `config.js`：
-
-```js
-window.LOYALTY_CONFIG = Object.freeze({
-  gasWebAppUrl: 'https://script.google.com/macros/s/DEPLOYMENT_ID/exec',
-  publicOrigin: 'https://yongshengchen0615.github.io',
-  basePath: '/MembershipSystem/loyalty-card'
-});
+```json
+{
+  "gasWebAppUrl": "https://script.google.com/macros/s/DEPLOYMENT_ID/exec",
+  "publicOrigin": "https://yongshengchen0615.github.io",
+  "basePath": "/MembershipSystem/loyalty-card/html"
+}
 ```
+
+`js/bootstrap.js` 會先讀取 `config.json`，成功後才載入 `js/app.js`。
 
 ## 4. LINE Login Console
 
-建立/使用 LINE Login channel，Web app callback URL 設為：
+Callback URL：
 
 ```text
 https://script.google.com/macros/s/DEPLOYMENT_ID/exec?route=oauth-callback
 ```
 
-Scope 使用 `profile openid`。程式會產生每次登入專用的 `state`、`nonce`、PKCE `code_verifier` / `code_challenge`；callback 只在 GAS server 端用 Channel Secret 換 token，並使用 LINE Verify ID token endpoint 驗證 `client_id` 與 `nonce`。
+Scope：
 
-## 5. 建立第一位管理員
+```text
+profile openid
+```
+
+登入流程使用：
+
+- Authorization Code
+- `state`
+- `nonce`
+- PKCE `S256`
+- LINE ID Token verification
+- 瀏覽器 handoff secret
+
+## 5. 第一位管理員
 
 1. 先從用戶端使用 LINE 登入一次。
-2. 到 Spreadsheet → `Users` 找到你的 `line_user_id`。
-3. 在 `Admins` 新增一列，例如：
+2. 到 `Users` Sheet 找自己的 `line_user_id`。
+3. 在 `Admins` 新增：
 
 ```text
 line_user_id | role  | active | created_at
 Uxxxxxxxx... | admin | TRUE   | 2026-08-19T00:00:00.000Z
 ```
 
-管理端每一次搜尋、讀取會員、集點、扣點、兌換都會重新做 server-side admin authorization；前端按鈕是否顯示不構成安全邊界。
+管理端每個操作都會在 GAS server-side 執行 `requireAdmin_()`，不信任前端傳入的 Role。
 
 ## 點數規則
 
-- Admin/Staff 可以 `+1`、`+5`、`-1`，也可兌換固定門檻。
-- 預設每 10 點可兌換一次；可在 `Settings.stamps_per_reward` 修改。
-- 扣點不允許負餘額。
-- 單次人工增減預設最大 100 點。
-- 每次 mutation 都需要 `idempotencyKey`，重複請求不會再次異動點數。
-- 點數異動使用 `LockService` 串行化，降低 concurrent update 造成 lost update 的風險。
+- Admin/Staff 可 `+1`、`+5`、`-1`、兌換獎勵。
+- 預設每 10 點兌換一次。
+- 不允許負餘額。
+- 單次人工增減最大 100 點。
+- Mutation 必須帶 `idempotencyKey`。
+- 點數更新使用 `LockService`，避免 concurrent lost update。
+- 所有成功/失敗點數操作寫入 AuditLogs。
 
-## Security notes
+## Security Review
 
-- Authentication: LINE Login v2.1 / Authorization Code + PKCE / state / nonce / ID token verification.
-- Session: 隨機 bearer token 只保留在目前頁面的 JavaScript 記憶體；伺服器只存 SHA-256 hash，預設 12 小時，可撤銷。重新整理頁面需重新登入，避免同一 GitHub Pages origin 下其他路徑讀取持久 session。
-- Authorization: Server-side `requireAdmin_()`；不信任前端傳入 role。
-- IDOR: 管理端 target `userId` 只是 resource selector，實際操作前仍檢查 session、role、User status、LoyaltyAccount status。
-- Concurrency: 點數 mutation 使用 Script Lock。
-- Replay: OAuth nonce + PKCE；mutation idempotency key；login handoff 還需要瀏覽器 sessionStorage 中的第二個 secret。
-- Formula Injection: 外部字串寫入 Sheets 前處理 `= + - @` 開頭。
-- Secrets: Channel Secret 只放 Script Properties。
-- Audit: 不記錄 password、session token、LINE access token、ID token 或 Channel Secret。
+- Authentication：LINE Login + PKCE + state + nonce + ID Token verification。
+- Authorization：所有 Admin API server-side 驗證 Session + Role + User Status + Loyalty Account Status。
+- IDOR：`userId` 只用來指定 Target Resource，不代表已授權。
+- Session：Browser 只在當前頁面記憶體保存 bearer session；GAS 只存 SHA-256 hash，可到期與撤銷。
+- Replay：OAuth nonce/PKCE、login handoff secret、mutation idempotency key。
+- Injection：寫入 Sheets 的外部字串防 Spreadsheet Formula Injection。
+- Audit：不記錄 Secret、完整 Token 或 Credential。
 
 ## 驗證清單
 
-1. 未登入打開用戶端 → 只顯示 LINE Login。
-2. LINE 拒絕授權 → 回到用戶端且不建立 session。
-3. 正常登入 → 建立 User + LoyaltyAccount，初始 0 點。
-4. 一般會員開 `/admin/` → server 回覆未授權。
-5. Admin 搜尋會員 → 可看到卡號與餘額。
-6. Admin `+1` → 餘額 +1，Transactions/AuditLogs 各新增紀錄。
-7. 相同 idempotency key 重送 → 餘額不重複增加。
-8. 餘額 0 執行 `-1` → 拒絕且餘額不變。
-9. 餘額低於兌換門檻 → 兌換失敗。
-10. Session 過期或 revoked → 用戶與管理 API 都拒絕。
-11. `Users.status` 改成非 `ACTIVE` → 既有 session 也無法繼續使用。
-12. 同時發出兩個點數更新 → 最終 balance 與兩筆 transaction 一致，不應 lost update。
+1. 未登入用戶端只顯示 LINE Login。
+2. LINE 拒絕授權不建立 Session。
+3. 首次登入建立 User + LoyaltyAccount，初始 0 點。
+4. 一般會員進管理端會被 server-side 拒絕。
+5. Admin 可搜尋會員並讀取點數。
+6. `+1` 後 Balance、Transactions、AuditLogs 一致。
+7. 相同 idempotency key 重送不重複加點。
+8. 0 點執行 `-1` 會被拒絕。
+9. 點數低於門檻不能兌換。
+10. Session expired/revoked 後所有 protected API 拒絕。
+11. User status 非 `ACTIVE` 後既有 Session 也不能操作。
+12. 並發點數更新不應發生 lost update。
 
-## 部署後仍需人工完成
+## 尚需人工設定
 
-這個 repository 不包含你的 LINE Channel ID、Channel Secret、GAS deployment ID，也無法代替 LINE Developers Console / Apps Script 的帳號授權步驟。因此程式碼可提交，但實際登入在完成上述設定前不會啟用。
+Repository 不包含你的 LINE Channel ID、Channel Secret、GAS Deployment ID，也不能代替 LINE Developers Console 與 Apps Script 的帳號授權。因此程式碼完成後，仍需依上面步驟部署 GAS 並更新 `config.json` 才能實際登入。
