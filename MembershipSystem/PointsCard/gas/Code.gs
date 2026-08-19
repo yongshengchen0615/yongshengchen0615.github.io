@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '1.2.0',
+  version: '1.2.1',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -53,6 +53,7 @@ const POINTS_CARD_HEADERS = Object.freeze({
 const MEMBER_STATUS_VALUES = ['active', 'suspended', 'disabled'];
 const STAMP_SCAN_MODES = ['single', 'repeatable'];
 const REWARD_TYPES = ['coupon', 'lottery'];
+const LOTTERY_WEIGHT_BASIS_POINTS = 10000;
 const MAX_STAMPS_PER_SCAN = 10;
 const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const LINE_IDENTITY_CACHE_MAX_SECONDS = 300;
@@ -369,8 +370,41 @@ function pointsCardSettings_() {
     rewardName: lastNode.rewardName,
     rewardNodes: rewardNodes,
     rewardTicketTypesSupported: true,
+    rewardLotteryWeightsSupported: true,
     rewardNodesUpdatedAt: properties.getProperty(POINTS_CARD_SERVICE.rewardNodesUpdatedAtProperty) || 'legacy'
   };
+}
+
+function normalizeLotteryPrizes_(value, errorCode, errorMessage) {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 8) fail_(errorCode, errorMessage);
+  const isLegacyList = value.every(function (prize) { return typeof prize === 'string'; });
+  const equalWeightBasis = Math.floor(LOTTERY_WEIGHT_BASIS_POINTS / value.length);
+  const prizes = value.map(function (prize, index) {
+    const source = isLegacyList ? { name: prize } : prize;
+    if (!source || Object.prototype.toString.call(source) !== '[object Object]') fail_(errorCode, errorMessage);
+    const name = String(source.name == null ? '' : source.name).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+    if (!name || name.length > 80) fail_(errorCode, errorMessage);
+    let weightBasis;
+    if (isLegacyList) {
+      weightBasis = index === value.length - 1
+        ? LOTTERY_WEIGHT_BASIS_POINTS - (equalWeightBasis * index)
+        : equalWeightBasis;
+    } else {
+      if (source.weight == null || source.weight === '') fail_(errorCode, errorMessage);
+      const weight = Number(source.weight);
+      weightBasis = Math.round(weight * 100);
+      if (!Number.isFinite(weight) || weight < 0 || weight > 100 || Math.abs((weight * 100) - weightBasis) > 0.000001) {
+        fail_(errorCode, errorMessage);
+      }
+    }
+    return { name: name, weight: weightBasis / 100 };
+  });
+  if (new Set(prizes.map(function (prize) { return prize.name; })).size !== prizes.length) fail_(errorCode, errorMessage);
+  const totalWeightBasis = prizes.reduce(function (total, prize) {
+    return total + Math.round(prize.weight * 100);
+  }, 0);
+  if (totalWeightBasis !== LOTTERY_WEIGHT_BASIS_POINTS) fail_(errorCode, errorMessage);
+  return prizes;
 }
 
 function normalizeRewardNodes_(value, errorCode, errorMessage) {
@@ -387,15 +421,7 @@ function normalizeRewardNodes_(value, errorCode, errorMessage) {
     if (REWARD_TYPES.indexOf(rewardType) < 0) fail_(errorCode, errorMessage);
     let lotteryPrizes = [];
     if (rewardType === 'lottery') {
-      if (!Array.isArray(node.lotteryPrizes) || node.lotteryPrizes.length < 2 || node.lotteryPrizes.length > 8) {
-        fail_(errorCode, errorMessage);
-      }
-      lotteryPrizes = node.lotteryPrizes.map(function (prize) {
-        const name = String(prize == null ? '' : prize).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-        if (!name || name.length > 80) fail_(errorCode, errorMessage);
-        return name;
-      });
-      if (new Set(lotteryPrizes).size !== lotteryPrizes.length) fail_(errorCode, errorMessage);
+      lotteryPrizes = normalizeLotteryPrizes_(node.lotteryPrizes, errorCode, errorMessage);
     }
     return {
       nodeId: 'node-' + stampsRequired,
@@ -432,7 +458,9 @@ function rewardEntitlementByOrdinal_(ordinal, settings) {
     stampsRequired: node.stampsRequired,
     rewardName: node.rewardName,
     rewardType: node.rewardType,
-    lotteryPrizes: node.lotteryPrizes.slice(),
+    lotteryPrizes: node.lotteryPrizes.map(function (prize) {
+      return { name: prize.name, weight: prize.weight };
+    }),
     cycleNumber: cycleIndex + 1,
     absoluteStamps: cycleIndex * settings.cardSize + node.stampsRequired
   };
@@ -558,7 +586,12 @@ function adminRewardNodesUpdate_(context, payload) {
   if (!Array.isArray(payload.rewardNodes) || payload.rewardNodes.some(function (node) {
     return !node || !Object.prototype.hasOwnProperty.call(node, 'rewardType');
   })) fail_('CLIENT_UPGRADE_REQUIRED', '管理端版本過舊，請重新整理後再設定票券類型。');
-  const rewardNodes = normalizeRewardNodes_(payload.rewardNodes, 'INVALID_REWARD_NODES', '請設定 1 至 5 個有效節點；抽獎券必須包含 2 至 8 個獎項。');
+  if (payload.rewardNodes.some(function (node) {
+    return node.rewardType === 'lottery' && (!Array.isArray(node.lotteryPrizes) || node.lotteryPrizes.some(function (prize) {
+      return !prize || Object.prototype.toString.call(prize) !== '[object Object]' || !Object.prototype.hasOwnProperty.call(prize, 'weight');
+    }));
+  })) fail_('CLIENT_UPGRADE_REQUIRED', '管理端版本過舊，請重新整理後再設定抽獎權重。');
+  const rewardNodes = normalizeRewardNodes_(payload.rewardNodes, 'INVALID_REWARD_NODES', '請設定 1 至 5 個有效節點；抽獎券需有 2 至 8 個不重複獎項，權重可為 0%，合計必須為 100%。');
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
   try {

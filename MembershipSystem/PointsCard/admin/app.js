@@ -28,10 +28,36 @@
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
   }
 
+  function lotteryWeightBasis(value) {
+    if (value == null || String(value).trim() === '') return null;
+    const weight = Number(value);
+    const basis = Math.round(weight * 100);
+    if (!Number.isFinite(weight) || weight < 0 || weight > 100 || Math.abs((weight * 100) - basis) > 0.000001) return null;
+    return basis;
+  }
+
+  function normalizeLotteryPrizesForEditor(value) {
+    if (!Array.isArray(value)) return [];
+    if (value.every(function (prize) { return typeof prize === 'string'; })) {
+      const equalBasis = value.length ? Math.floor(10000 / value.length) : 0;
+      return value.map(function (name, index) {
+        const basis = index === value.length - 1 ? 10000 - (equalBasis * index) : equalBasis;
+        return { name: name, weight: basis / 100 };
+      });
+    }
+    return value.map(function (prize) {
+      return {
+        name: prize && prize.name != null ? String(prize.name) : '',
+        weight: prize && prize.weight != null ? Number(prize.weight) : 0
+      };
+    });
+  }
+
   function normalizeRewardSettings(value) {
     const source = value || {};
     const supported = Array.isArray(source.rewardNodes) && source.rewardNodes.length > 0;
     const ticketTypesSupported = source.rewardTicketTypesSupported === true;
+    const lotteryWeightsSupported = source.rewardLotteryWeightsSupported === true;
     const cardSize = Number(source.cardSize || source.stampsPerReward || 10);
     return Object.assign({}, source, {
       rewardNodes: (supported ? source.rewardNodes : [{
@@ -41,14 +67,15 @@
       }]).map(function (node) {
         return Object.assign({}, node, {
           rewardType: node.rewardType === 'lottery' ? 'lottery' : 'coupon',
-          lotteryPrizes: Array.isArray(node.lotteryPrizes) ? node.lotteryPrizes : []
+          lotteryPrizes: normalizeLotteryPrizesForEditor(node.lotteryPrizes)
         });
       }),
       cardSize: cardSize,
       rewardNodesUpdatedAt: source.rewardNodesUpdatedAt || 'legacy',
-      rewardSettingsLocked: supported && ticketTypesSupported ? Boolean(source.rewardSettingsLocked) : true,
+      rewardSettingsLocked: supported && ticketTypesSupported && lotteryWeightsSupported ? Boolean(source.rewardSettingsLocked) : true,
       rewardNodesSupported: supported,
-      rewardTicketTypesSupported: ticketTypesSupported
+      rewardTicketTypesSupported: ticketTypesSupported,
+      rewardLotteryWeightsSupported: lotteryWeightsSupported
     });
   }
 
@@ -118,6 +145,73 @@
     $('rewardNameMetric').textContent = rewardSettings.rewardNodes.length + ' 個節點 · 滿卡 ' + rewardSettings.cardSize + ' 點';
   }
 
+  function syncLotteryPrizeControls(prizesField) {
+    const rows = Array.from(prizesField.querySelectorAll('.lottery-prize-row'));
+    const bases = rows.map(function (row) {
+      return lotteryWeightBasis(row.querySelector('.lottery-prize-weight').value);
+    });
+    const hasInvalidWeight = bases.some(function (basis) { return basis == null; });
+    const totalBasis = bases.reduce(function (total, basis) { return total + (basis == null ? 0 : basis); }, 0);
+    const total = prizesField.querySelector('.lottery-prize-total');
+    if (hasInvalidWeight) total.textContent = '請檢查中獎率';
+    else if (totalBasis === 10000) total.textContent = '✓ 已分配 100%';
+    else if (totalBasis < 10000) total.textContent = '尚需分配 ' + String((10000 - totalBasis) / 100) + '%';
+    else total.textContent = '超出 ' + String((totalBasis - 10000) / 100) + '%';
+    total.classList.toggle('valid', !hasInvalidWeight && totalBasis === 10000);
+    total.classList.toggle('invalid', hasInvalidWeight || totalBasis !== 10000);
+    total.setAttribute('aria-label', total.textContent);
+    rows.forEach(function (row, index) {
+      row.querySelector('.lottery-prize-order').textContent = String(index + 1);
+      row.querySelector('.remove-prize-button').disabled = Boolean(rewardSettings.rewardSettingsLocked) || rows.length <= 2;
+    });
+    prizesField.querySelector('.add-prize-button').disabled = Boolean(rewardSettings.rewardSettingsLocked) || rows.length >= 8;
+  }
+
+  function appendLotteryPrizeRow(prizesField, prize) {
+    const locked = Boolean(rewardSettings.rewardSettingsLocked);
+    const list = prizesField.querySelector('.lottery-prize-list');
+    const prizeRow = document.createElement('div');
+    prizeRow.className = 'lottery-prize-row';
+    const prizeOrder = document.createElement('span');
+    prizeOrder.className = 'lottery-prize-order';
+    const nameInput = document.createElement('input');
+    nameInput.className = 'lottery-prize-name';
+    nameInput.type = 'text';
+    nameInput.maxLength = 80;
+    nameInput.placeholder = '獎項名稱';
+    nameInput.setAttribute('aria-label', '抽獎獎項名稱');
+    nameInput.value = prize && prize.name ? prize.name : '';
+    nameInput.disabled = locked;
+    const weightField = document.createElement('div');
+    weightField.className = 'lottery-prize-weight-field';
+    const weightInput = document.createElement('input');
+    weightInput.className = 'lottery-prize-weight';
+    weightInput.type = 'number';
+    weightInput.min = '0';
+    weightInput.max = '100';
+    weightInput.step = '0.01';
+    weightInput.inputMode = 'decimal';
+    weightInput.setAttribute('aria-label', '中獎率百分比');
+    weightInput.value = String(prize && prize.weight != null ? prize.weight : 0);
+    weightInput.disabled = locked;
+    const percent = document.createElement('span');
+    percent.textContent = '%';
+    weightField.append(weightInput, percent);
+    const remove = document.createElement('button');
+    remove.className = 'remove-prize-button';
+    remove.type = 'button';
+    remove.setAttribute('aria-label', '移除此抽獎獎項');
+    remove.textContent = '×';
+    remove.disabled = locked;
+    remove.addEventListener('click', function () {
+      prizeRow.remove();
+      syncLotteryPrizeControls(prizesField);
+    });
+    weightInput.addEventListener('input', function () { syncLotteryPrizeControls(prizesField); });
+    prizeRow.append(prizeOrder, nameInput, weightField, remove);
+    list.append(prizeRow);
+  }
+
   function appendRewardNodeEditor(node, index) {
     const locked = Boolean(rewardSettings.rewardSettingsLocked);
     const row = document.createElement('div');
@@ -162,21 +256,64 @@
     rewardInput.value = node.rewardName || '';
     rewardInput.disabled = locked;
     rewardLabel.append(rewardInput);
-    const prizesLabel = document.createElement('label');
-    prizesLabel.className = 'reward-node-prizes';
-    prizesLabel.textContent = '抽獎獎項（每行一項）';
-    const prizesInput = document.createElement('textarea');
-    prizesInput.className = 'reward-node-lottery-prizes';
-    prizesInput.maxLength = 650;
-    prizesInput.rows = 2;
-    prizesInput.placeholder = '免費飲品一份\n50 元優惠券\n再接再厲';
-    prizesInput.value = (node.lotteryPrizes || []).join('\n');
-    prizesInput.disabled = locked;
-    prizesLabel.append(prizesInput);
+    const prizesField = document.createElement('div');
+    prizesField.className = 'reward-node-prizes';
+    const prizesHeader = document.createElement('div');
+    prizesHeader.className = 'lottery-prize-header';
+    const prizesIntro = document.createElement('div');
+    prizesIntro.className = 'lottery-prize-intro';
+    const prizesTitle = document.createElement('span');
+    prizesTitle.textContent = '設定開獎結果';
+    const prizesHint = document.createElement('small');
+    prizesHint.textContent = '每列是一個結果；0% 會保留獎項但不會抽中。';
+    prizesIntro.append(prizesTitle, prizesHint);
+    const prizesActions = document.createElement('div');
+    prizesActions.className = 'lottery-prize-header-actions';
+    const distributePrizes = document.createElement('button');
+    distributePrizes.className = 'distribute-prize-button';
+    distributePrizes.type = 'button';
+    distributePrizes.textContent = '平均分配';
+    distributePrizes.disabled = locked;
+    const prizesTotal = document.createElement('strong');
+    prizesTotal.className = 'lottery-prize-total';
+    prizesTotal.setAttribute('role', 'status');
+    prizesTotal.setAttribute('aria-live', 'polite');
+    prizesActions.append(distributePrizes, prizesTotal);
+    prizesHeader.append(prizesIntro, prizesActions);
+    const prizesColumns = document.createElement('div');
+    prizesColumns.className = 'lottery-prize-columns';
+    prizesColumns.innerHTML = '<span></span><span>獎項結果</span><span>中獎率</span><span></span>';
+    const prizesList = document.createElement('div');
+    prizesList.className = 'lottery-prize-list';
+    const addPrize = document.createElement('button');
+    addPrize.className = 'add-prize-button';
+    addPrize.type = 'button';
+    addPrize.textContent = '＋ 新增獎項';
+    addPrize.addEventListener('click', function () {
+      if (prizesList.children.length >= 8) return;
+      appendLotteryPrizeRow(prizesField, { name: '', weight: 0 });
+      syncLotteryPrizeControls(prizesField);
+    });
+    distributePrizes.addEventListener('click', function () {
+      const rows = Array.from(prizesList.children);
+      if (!rows.length) return;
+      const equalBasis = Math.floor(10000 / rows.length);
+      rows.forEach(function (prizeRow, prizeIndex) {
+        const basis = prizeIndex === rows.length - 1 ? 10000 - (equalBasis * prizeIndex) : equalBasis;
+        prizeRow.querySelector('.lottery-prize-weight').value = String(basis / 100);
+      });
+      syncLotteryPrizeControls(prizesField);
+    });
+    prizesField.append(prizesHeader, prizesColumns, prizesList, addPrize);
+    (node.lotteryPrizes || []).forEach(function (prize) { appendLotteryPrizeRow(prizesField, prize); });
     function syncPrizeField() {
       const isLottery = typeSelect.value === 'lottery';
-      prizesLabel.classList.toggle('hidden', !isLottery);
-      prizesInput.required = isLottery;
+      prizesField.classList.toggle('hidden', !isLottery);
+      if (isLottery && prizesList.children.length === 0) {
+        appendLotteryPrizeRow(prizesField, { name: '', weight: 50 });
+        appendLotteryPrizeRow(prizesField, { name: '', weight: 50 });
+      }
+      syncLotteryPrizeControls(prizesField);
     }
     typeSelect.addEventListener('change', syncPrizeField);
     syncPrizeField();
@@ -190,7 +327,7 @@
       row.remove();
       renderRewardNodeOrders();
     });
-    fields.append(pointLabel, typeLabel, rewardLabel, prizesLabel);
+    fields.append(pointLabel, typeLabel, rewardLabel, prizesField);
     row.append(order, fields, remove);
     $('rewardNodeList').append(row);
   }
@@ -213,12 +350,12 @@
     $('saveRewardNodesButton').disabled = locked;
     $('rewardSettingsNotice').classList.remove('hidden');
     $('rewardSettingsNotice').classList.toggle('locked', locked);
-    if (!rewardSettings.rewardNodesSupported || !rewardSettings.rewardTicketTypesSupported) {
-      $('rewardSettingsNotice').textContent = '目前 GAS 尚未支援優惠券與抽獎券；請先完成 PointsCard 1.2.0 資料遷移與部署。';
+    if (!rewardSettings.rewardNodesSupported || !rewardSettings.rewardTicketTypesSupported || !rewardSettings.rewardLotteryWeightsSupported) {
+      $('rewardSettingsNotice').textContent = '目前 GAS 尚未支援抽獎權重；請先完成 PointsCard 1.2.1 部署。';
     } else if (locked) {
       $('rewardSettingsNotice').textContent = '已有獎勵兌換紀錄，節點已鎖定，避免改變既有兌換順序。';
     } else {
-      $('rewardSettingsNotice').textContent = '每個節點可設為優惠券或抽獎券；抽獎獎項採等機率。儲存後會套用目前累計點數，完成第一筆票券使用後即鎖定。';
+      $('rewardSettingsNotice').textContent = '每個獎項的中獎率可設為 0% 至 100%，同一張抽獎券合計必須為 100%。儲存後會套用目前累計點數，完成第一筆票券使用後即鎖定。';
     }
   }
 
@@ -237,12 +374,19 @@
   function readRewardNodes() {
     const nodes = Array.from($('rewardNodeList').children).map(function (row) {
       const rewardType = row.querySelector('.reward-node-type').value;
+      const lotteryPrizes = rewardType === 'lottery' ? Array.from(row.querySelectorAll('.lottery-prize-row')).map(function (prizeRow) {
+        const weightBasis = lotteryWeightBasis(prizeRow.querySelector('.lottery-prize-weight').value);
+        return {
+          name: prizeRow.querySelector('.lottery-prize-name').value.trim(),
+          weight: weightBasis == null ? null : weightBasis / 100,
+          weightBasis: weightBasis
+        };
+      }) : [];
       return {
         stampsRequired: Number(row.querySelector('.reward-node-points').value),
         rewardName: row.querySelector('.reward-node-name').value.trim(),
         rewardType: rewardType,
-        lotteryPrizes: rewardType === 'lottery' ? row.querySelector('.reward-node-lottery-prizes').value
-          .split(/[\n,，]+/).map(function (value) { return value.trim(); }).filter(Boolean) : []
+        lotteryPrizes: lotteryPrizes
       };
     });
     if (!nodes.length || nodes.length > 5) throw new Error('請設定 1 至 5 個獎勵節點。');
@@ -253,9 +397,19 @@
       if (node.rewardType === 'lottery' && (node.lotteryPrizes.length < 2 || node.lotteryPrizes.length > 8)) {
         throw new Error('每張抽獎券必須設定 2 至 8 個獎項。');
       }
-      if (node.rewardType === 'lottery' && new Set(node.lotteryPrizes).size !== node.lotteryPrizes.length) {
+      if (node.rewardType === 'lottery' && node.lotteryPrizes.some(function (prize) { return !prize.name; })) {
+        throw new Error('每個抽獎獎項都必須填寫名稱。');
+      }
+      if (node.rewardType === 'lottery' && node.lotteryPrizes.some(function (prize) { return prize.weightBasis == null; })) {
+        throw new Error('中獎率必須是 0% 至 100%，最多兩位小數。');
+      }
+      if (node.rewardType === 'lottery' && new Set(node.lotteryPrizes.map(function (prize) { return prize.name; })).size !== node.lotteryPrizes.length) {
         throw new Error('同一張抽獎券不能設定重複獎項。');
       }
+      if (node.rewardType === 'lottery' && node.lotteryPrizes.reduce(function (total, prize) { return total + prize.weightBasis; }, 0) !== 10000) {
+        throw new Error('同一張抽獎券的中獎率合計必須為 100%。');
+      }
+      node.lotteryPrizes = node.lotteryPrizes.map(function (prize) { return { name: prize.name, weight: prize.weight }; });
       if (points.has(node.stampsRequired)) throw new Error('獎勵節點不能使用相同點數。');
       points.add(node.stampsRequired);
     });

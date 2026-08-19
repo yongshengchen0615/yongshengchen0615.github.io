@@ -127,12 +127,35 @@ function lotteryResultForReward_(reward) {
   if (!Array.isArray(reward.lotteryPrizes) || reward.lotteryPrizes.length < 2) {
     fail_('CONFIGURATION_ERROR', '抽獎券尚未設定完整獎項。');
   }
-  const outcomeCount = reward.lotteryPrizes.length;
+  const weightedPrizes = reward.lotteryPrizes.map(function (prize) {
+    if (!prize || Object.prototype.toString.call(prize) !== '[object Object]') {
+      fail_('CONFIGURATION_ERROR', '抽獎券獎項權重設定不正確。');
+    }
+    const name = String(prize.name || '').trim();
+    const weight = Number(prize.weight);
+    const weightBasis = Math.round(weight * 100);
+    if (!name || !Number.isFinite(weight) || weight < 0 || weight > 100 || Math.abs((weight * 100) - weightBasis) > 0.000001) {
+      fail_('CONFIGURATION_ERROR', '抽獎券獎項權重設定不正確。');
+    }
+    return { name: name, weightBasis: weightBasis };
+  });
+  const totalWeightBasis = weightedPrizes.reduce(function (total, prize) {
+    return total + prize.weightBasis;
+  }, 0);
+  if (totalWeightBasis !== LOTTERY_WEIGHT_BASIS_POINTS) {
+    fail_('CONFIGURATION_ERROR', '抽獎券獎項權重合計必須為 100%。');
+  }
   const sampleSpace = 0x100000000;
-  const unbiasedLimit = sampleSpace - (sampleSpace % outcomeCount);
+  const unbiasedLimit = sampleSpace - (sampleSpace % LOTTERY_WEIGHT_BASIS_POINTS);
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const randomValue = parseInt(randomHex_(4), 16);
-    if (randomValue < unbiasedLimit) return reward.lotteryPrizes[randomValue % outcomeCount];
+    if (randomValue >= unbiasedLimit) continue;
+    const winningBasis = randomValue % LOTTERY_WEIGHT_BASIS_POINTS;
+    let cumulativeBasis = 0;
+    for (let index = 0; index < weightedPrizes.length; index += 1) {
+      cumulativeBasis += weightedPrizes[index].weightBasis;
+      if (winningBasis < cumulativeBasis) return weightedPrizes[index].name;
+    }
   }
   fail_('INTERNAL_ERROR', '暫時無法完成抽獎，請使用同一張票券再試一次。');
 }

@@ -56,7 +56,27 @@ button { -webkit-tap-highlight-color: transparent; }
 .reward-node-editor-row input, .reward-node-editor-row select, .reward-node-editor-row textarea { min-width: 0; width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; outline: 0; color: var(--ink-deep); background: #f8f7f3; resize: vertical; }
 .reward-node-editor-row input:focus, .reward-node-editor-row select:focus, .reward-node-editor-row textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(23,63,53,.08); }
 .reward-node-editor-row input:disabled, .reward-node-editor-row select:disabled, .reward-node-editor-row textarea:disabled { color: var(--muted); cursor: not-allowed; }
-.reward-node-prizes { grid-column: 1 / -1; }
+.reward-node-prizes { grid-column: 1 / -1; padding: 15px; border: 1px solid rgba(23,63,53,.13); border-radius: 14px; background: rgba(248,247,243,.78); }
+.lottery-prize-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+.lottery-prize-intro { display: grid; gap: 3px; }
+.lottery-prize-intro > span { color: var(--ink-deep); font-size: .72rem; font-weight: 760; }
+.lottery-prize-intro > small { color: var(--muted); font-size: .62rem; font-weight: 500; line-height: 1.45; }
+.lottery-prize-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+.lottery-prize-total { min-width: 112px; color: var(--danger); font-size: .67rem; text-align: right; white-space: nowrap; }
+.lottery-prize-total.valid { color: var(--ink); }
+.lottery-prize-columns, .lottery-prize-row { display: grid; grid-template-columns: 25px minmax(120px, 1fr) minmax(105px, .32fr) 34px; align-items: center; gap: 8px; }
+.lottery-prize-columns { margin-bottom: 5px; color: var(--muted); font-size: .58rem; font-weight: 700; }
+.lottery-prize-list { display: grid; gap: 7px; }
+.lottery-prize-order { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); background: rgba(23,63,53,.08); font-size: .59rem; font-weight: 760; }
+.lottery-prize-weight-field { position: relative; }
+.lottery-prize-weight-field input { padding-right: 27px; }
+.lottery-prize-weight-field > span { position: absolute; top: 50%; right: 11px; transform: translateY(-50%); color: var(--muted); font-size: .66rem; pointer-events: none; }
+.add-prize-button, .distribute-prize-button { border: 0; color: var(--ink); background: transparent; font-size: .64rem; font-weight: 750; cursor: pointer; }
+.add-prize-button { margin: 11px 0 0 33px; padding: 4px 0; }
+.distribute-prize-button { padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.add-prize-button:disabled, .distribute-prize-button:disabled { cursor: not-allowed; opacity: .35; }
+.remove-prize-button { width: 30px; height: 30px; border: 0; border-radius: 50%; color: var(--danger); background: rgba(231,111,81,.09); font-size: 1rem; line-height: 1; cursor: pointer; }
+.remove-prize-button:disabled { cursor: not-allowed; opacity: .28; }
 .remove-node-button { width: 38px; height: 38px; border: 1px solid rgba(170,61,50,.22); border-radius: 50%; color: var(--danger); background: transparent; cursor: pointer; }
 .remove-node-button:disabled { cursor: not-allowed; opacity: .3; }
 .settings-notice { margin-bottom: 15px; padding: 12px 14px; border-radius: 11px; color: var(--ink); background: rgba(216,232,164,.46); font-size: .72rem; line-height: 1.55; }
@@ -147,6 +167,15 @@ button { -webkit-tap-highlight-color: transparent; }
   .reward-node-editor-row { grid-template-columns: 34px 1fr auto; gap: 7px; }
   .reward-node-editor-fields { grid-template-columns: 1fr 1fr; gap: 9px; }
   .reward-node-editor-fields label:nth-child(3), .reward-node-prizes { grid-column: 1 / -1; }
+  .reward-node-prizes { padding: 12px 10px; }
+  .lottery-prize-header { align-items: stretch; flex-direction: column; gap: 9px; }
+  .lottery-prize-header-actions { justify-content: space-between; }
+  .lottery-prize-total { min-width: 0; }
+  .lottery-prize-columns, .lottery-prize-row { grid-template-columns: 22px minmax(0, 1fr) 82px 30px; gap: 5px; }
+  .lottery-prize-row input { padding: 8px; }
+  .lottery-prize-weight-field input { padding-right: 23px; }
+  .lottery-prize-weight-field > span { right: 8px; }
+  .add-prize-button { margin-left: 27px; }
   .full-span { grid-column: auto; }
   .admin-dialog form { padding: 22px 18px; }
   .dialog-actions .button { flex: 1 1 auto; }

@@ -72,7 +72,7 @@ test('frontend HTML keeps tags structurally balanced', () => {
 test('multi-node ticket projection repeats each card and supports coupon and lottery tickets', () => {
   let rewardNodesJson = JSON.stringify([
     { stampsRequired: 3, rewardName: '小點心優惠券', rewardType: 'coupon' },
-    { stampsRequired: 6, rewardName: '幸運抽獎券', rewardType: 'lottery', lotteryPrizes: ['免費飲品', '再接再厲'] },
+    { stampsRequired: 6, rewardName: '幸運抽獎券', rewardType: 'lottery', lotteryPrizes: [{ name: '免費飲品', weight: 25 }, { name: '再接再厲', weight: 75 }] },
     { stampsRequired: 10, rewardName: '招牌飲品優惠券', rewardType: 'coupon' }
   ]);
   const source = read('gas/Code.gs') + '\n;globalThis.__pointsCardTest = { publicMember_, pointsCardSettings_, normalizeRewardNodes_, rewardEntitlementsBetweenTotals_ };';
@@ -147,8 +147,19 @@ test('multi-node ticket projection repeats each card and supports coupon and lot
     { stampsRequired: 3, rewardName: 'B' }
   ], 'INVALID', 'invalid'));
   assert.throws(() => context.__pointsCardTest.normalizeRewardNodes_([
-    { stampsRequired: 5, rewardName: '抽獎券', rewardType: 'lottery', lotteryPrizes: ['只有一項'] }
+    { stampsRequired: 5, rewardName: '抽獎券', rewardType: 'lottery', lotteryPrizes: [{ name: '只有一項', weight: 100 }] }
   ], 'INVALID', 'invalid'));
+  assert.throws(() => context.__pointsCardTest.normalizeRewardNodes_([
+    { stampsRequired: 5, rewardName: '抽獎券', rewardType: 'lottery', lotteryPrizes: [{ name: 'A', weight: 49.99 }, { name: 'B', weight: 50 }] }
+  ], 'INVALID', 'invalid'), 'lottery weights must total exactly 100%');
+  const zeroWeight = context.__pointsCardTest.normalizeRewardNodes_([
+    { stampsRequired: 5, rewardName: '抽獎券', rewardType: 'lottery', lotteryPrizes: [{ name: '未中獎', weight: 100 }, { name: '大獎', weight: 0 }] }
+  ], 'INVALID', 'invalid');
+  assert.deepEqual(Array.from(zeroWeight[0].lotteryPrizes, (prize) => prize.weight), [100, 0]);
+  const legacyLottery = context.__pointsCardTest.normalizeRewardNodes_([
+    { stampsRequired: 5, rewardName: '舊抽獎券', rewardType: 'lottery', lotteryPrizes: ['A', 'B', 'C'] }
+  ], 'INVALID', 'invalid');
+  assert.equal(Array.from(legacyLottery[0].lotteryPrizes, (prize) => prize.weight).reduce((total, weight) => total + weight, 0), 100);
 });
 
 test('member ticket UI removes account history and exposes earned and upcoming ticket flows', () => {
@@ -164,21 +175,41 @@ test('member ticket UI removes account history and exposes earned and upcoming t
   assert.match(script, /rewardConfirm/);
 });
 
-test('lottery outcome selection is server-side and returns one configured prize', () => {
-  const source = read('gas/RewardService.gs') + '\n;globalThis.__rewardTest = { lotteryResultForReward_ };';
+test('weighted lottery selection is server-side, respects boundaries, and skips 0% prizes', () => {
+  const source = 'const LOTTERY_WEIGHT_BASIS_POINTS = 10000;\n' + read('gas/RewardService.gs') + '\n;globalThis.__rewardTest = { lotteryResultForReward_ };';
+  let randomValue = '00000000';
   const context = {
     parseInt,
     Array,
-    randomHex_: () => '00000000',
+    randomHex_: () => randomValue,
     fail_: (code, message) => { throw Object.assign(new Error(message), { code }); }
   };
   vm.createContext(context);
   vm.runInContext(source, context);
-  const result = context.__rewardTest.lotteryResultForReward_({
+  const zeroWeightResult = context.__rewardTest.lotteryResultForReward_({
     rewardType: 'lottery',
-    lotteryPrizes: ['免費飲品', '再接再厲']
+    lotteryPrizes: [{ name: '不會抽中', weight: 0 }, { name: '保證抽中', weight: 100 }]
   });
-  assert.equal(result, '免費飲品');
+  assert.equal(zeroWeightResult, '保證抽中');
+
+  const prizes = [{ name: '25% 獎項', weight: 25 }, { name: '75% 獎項', weight: 75 }];
+  randomValue = '000009c3';
+  assert.equal(context.__rewardTest.lotteryResultForReward_({ rewardType: 'lottery', lotteryPrizes: prizes }), '25% 獎項');
+  randomValue = '000009c4';
+  assert.equal(context.__rewardTest.lotteryResultForReward_({ rewardType: 'lottery', lotteryPrizes: prizes }), '75% 獎項');
+  assert.throws(() => context.__rewardTest.lotteryResultForReward_({
+    rewardType: 'lottery',
+    lotteryPrizes: [{ name: 'A', weight: 60 }, { name: 'B', weight: 39.99 }]
+  }), /100%/);
+});
+
+test('admin lottery editor exposes prize rows, live allocation feedback, and equal distribution', () => {
+  const script = read('admin/app.js');
+  assert.match(script, /lottery-prize-row/);
+  assert.match(script, /distribute-prize-button/);
+  assert.match(script, /尚需分配/);
+  assert.match(script, /0% 會保留獎項但不會抽中/);
+  assert.match(script, /total \+ prize\.weightBasis/);
 });
 
 test('mutation contracts include idempotency, processing recovery, and server authorization', () => {
