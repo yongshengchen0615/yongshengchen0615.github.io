@@ -1,71 +1,53 @@
 (() => {
   'use strict';
 
-  const HANDOFF_KEY = 'loyalty.user.handoff.secret';
   const $ = (id) => document.getElementById(id);
 
-  class GasBridge {
-    constructor(url) {
-      this.url = url;
-      this.iframe = null;
-      this.pending = new Map();
-      this.counter = 0;
-      this.ready = false;
-      this.readyPromise = new Promise((resolve, reject) => {
-        this.resolveReady = resolve;
-        this.rejectReady = reject;
-      });
+  class ApiClient {
+    constructor(baseUrl) {
+      this.baseUrl = String(baseUrl || '').replace(/\/$/, '');
     }
 
-    mount() {
-      const iframe = document.createElement('iframe');
-      iframe.src = `${this.url}${this.url.includes('?') ? '&' : '?'}mode=bridge`;
-      iframe.hidden = true;
-      iframe.setAttribute('aria-hidden', 'true');
-      iframe.tabIndex = -1;
-      document.body.appendChild(iframe);
-      this.iframe = iframe;
-
-      window.addEventListener('message', (event) => {
-        if (!this.iframe || event.source !== this.iframe.contentWindow) return;
-        const message = event.data || {};
-        if (message.type === 'loyalty-bridge-ready') {
-          this.ready = true;
-          this.resolveReady();
-          return;
-        }
-        if (message.type !== 'loyalty-rpc-result' || !message.id) return;
-        const pending = this.pending.get(message.id);
-        if (!pending) return;
-        clearTimeout(pending.timer);
-        this.pending.delete(message.id);
-        if (message.ok) pending.resolve(message.result);
-        else pending.reject(new Error(message.error || '伺服器發生錯誤'));
-      });
-
-      setTimeout(() => {
-        if (!this.ready) this.rejectReady(new Error('無法連線 GAS 後端'));
-      }, 12000);
-      return this.readyPromise;
+    async health() {
+      return this.request(`${this.baseUrl}/health`, { method: 'GET' });
     }
 
     async call(method, payload = {}) {
-      await this.readyPromise;
-      const id = `rpc_${Date.now()}_${++this.counter}`;
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          this.pending.delete(id);
-          reject(new Error('伺服器回應逾時'));
-        }, 20000);
-        this.pending.set(id, { resolve, reject, timer });
-        this.iframe.contentWindow.postMessage({ type: 'loyalty-rpc', id, method, payload }, '*');
+      return this.request(`${this.baseUrl}/rpc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method, payload })
       });
+    }
+
+    async request(url, options) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      try {
+        const response = await fetch(url, {
+          ...options,
+          cache: 'no-store',
+          credentials: 'omit',
+          signal: controller.signal
+        });
+        let data = {};
+        try { data = await response.json(); } catch (_) {}
+        if (!response.ok || data.ok !== true) {
+          throw new Error(String(data.error || `API request failed (${response.status})`));
+        }
+        return data.result;
+      } catch (error) {
+        if (error?.name === 'AbortError') throw new Error('API 回應逾時');
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
     }
   }
 
   const state = {
     cfg: null,
-    bridge: null,
+    api: null,
     sessionToken: '',
     rewardTarget: 10,
     liffReady: false
@@ -93,67 +75,36 @@
     }[ch]));
   }
 
-  function randomBase64Url(bytes = 32) {
-    const data = new Uint8Array(bytes);
-    crypto.getRandomValues(data);
-    let binary = '';
-    data.forEach((value) => { binary += String.fromCharCode(value); });
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-  }
-
-  async function sha256Base64Url(value) {
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-    let binary = '';
-    new Uint8Array(digest).forEach((v) => { binary += String.fromCharCode(v); });
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-  }
-
   async function loadConfig() {
     const response = await fetch('../config.json', { cache: 'no-store', credentials: 'same-origin' });
     if (!response.ok) throw new Error('無法載入 config.json');
     const cfg = await response.json();
-    if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(String(cfg.gasWebAppUrl || '')) ||
-        String(cfg.gasWebAppUrl).includes('PASTE_')) {
-      throw new Error('尚未設定 GAS Web App URL');
+    const apiUrl = String(cfg.apiProxyUrl || '');
+    if (!/^https:\/\//.test(apiUrl) || apiUrl.includes('PASTE_')) {
+      throw new Error('尚未設定 API Proxy URL');
+    }
+    const liffId = String(cfg.userLiffId || '');
+    if (liffId.length < 8 || liffId.includes('PASTE_')) {
+      throw new Error('尚未設定 User LIFF ID');
     }
     return Object.freeze(cfg);
   }
 
-  function hasUserLiff() {
-    const id = String(state.cfg?.userLiffId || '');
-    return id.length >= 8 && !id.includes('PASTE_');
-  }
-
-  async function completeWebLoginFromUrl() {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('auth') !== 'complete') return false;
-    const flowId = params.get('flow') || '';
-    const secret = sessionStorage.getItem(HANDOFF_KEY) || '';
-    history.replaceState({}, document.title, window.location.pathname);
-    if (!flowId || !secret) throw new Error('登入交接資訊遺失，請重新登入');
-    const result = await state.bridge.call('completeLogin', { flowId, handoffSecret: secret });
-    sessionStorage.removeItem(HANDOFF_KEY);
-    state.sessionToken = result.sessionToken;
-    return true;
+  async function initLiff() {
+    if (!window.liff) throw new Error('LIFF SDK 載入失敗');
+    await window.liff.init({ liffId: state.cfg.userLiffId });
+    state.liffReady = true;
   }
 
   async function exchangeLiffIdentity() {
     if (!state.liffReady || !window.liff?.isLoggedIn()) return false;
     const idToken = window.liff.getIDToken();
     if (!idToken) throw new Error('LIFF 未取得 OpenID ID Token，請確認 LIFF scope 包含 openid');
-    const result = await state.bridge.call('loginWithLiff', {
+    const result = await state.api.call('loginWithLiff', {
       idToken,
       returnPage: 'user'
     });
     state.sessionToken = result.sessionToken;
-    return true;
-  }
-
-  async function initLiff() {
-    if (!hasUserLiff()) return false;
-    if (!window.liff) throw new Error('LIFF SDK 載入失敗');
-    await window.liff.init({ liffId: state.cfg.userLiffId });
-    state.liffReady = true;
     return true;
   }
 
@@ -162,24 +113,15 @@
     const button = $('loginBtn');
     setBusy(button, true);
     try {
-      if (hasUserLiff()) {
-        if (!state.liffReady) await initLiff();
-        if (!window.liff.isLoggedIn()) {
-          window.liff.login({ redirectUri: `${window.location.origin}${window.location.pathname}` });
-          return;
-        }
-        await exchangeLiffIdentity();
-        await loadUser();
+      if (!state.liffReady) await initLiff();
+      if (!window.liff.isLoggedIn()) {
+        window.liff.login({ redirectUri: `${window.location.origin}${window.location.pathname}` });
         return;
       }
-
-      const secret = randomBase64Url(32);
-      const handoffHash = await sha256Base64Url(secret);
-      sessionStorage.setItem(HANDOFF_KEY, secret);
-      const result = await state.bridge.call('beginLineLogin', { returnPage: 'user', handoffHash });
-      window.location.assign(result.authUrl);
+      await exchangeLiffIdentity();
+      await loadUser();
     } catch (error) {
-      sessionStorage.removeItem(HANDOFF_KEY);
+      state.sessionToken = '';
       showNotice(error.message, 'error');
       setBusy(button, false);
     }
@@ -224,7 +166,7 @@
   }
 
   async function loadUser() {
-    const data = await state.bridge.call('getMyCard', { sessionToken: state.sessionToken });
+    const data = await state.api.call('getMyCard', { sessionToken: state.sessionToken });
     renderUser(data);
   }
 
@@ -232,13 +174,12 @@
     const token = state.sessionToken;
     state.sessionToken = '';
     try {
-      if (token) await state.bridge.call('logoutSession', { sessionToken: token });
+      if (token) await state.api.call('logoutSession', { sessionToken: token });
     } catch (_) {}
 
     if (state.liffReady && window.liff?.isLoggedIn() && !window.liff.isInClient()) {
       window.liff.logout();
     }
-    sessionStorage.removeItem(HANDOFF_KEY);
     $('memberArea').classList.add('hidden');
     $('loggedOut').classList.remove('hidden');
     showNotice(window.liff?.isInClient?.()
@@ -256,28 +197,15 @@
     bindEvents();
     try {
       state.cfg = await loadConfig();
-      state.bridge = new GasBridge(state.cfg.gasWebAppUrl);
-      await state.bridge.mount();
-
-      const params = new URLSearchParams(window.location.search);
-      if (params.has('auth_error')) {
-        showNotice('LINE 登入未完成，請重新嘗試。', 'error');
-        history.replaceState({}, document.title, window.location.pathname);
-      }
-
-      if (await completeWebLoginFromUrl()) {
+      state.api = new ApiClient(state.cfg.apiProxyUrl);
+      await state.api.health();
+      await initLiff();
+      if (window.liff.isLoggedIn()) {
+        await exchangeLiffIdentity();
         await loadUser();
-        return;
-      }
-
-      if (hasUserLiff()) {
-        await initLiff();
-        if (window.liff.isLoggedIn()) {
-          await exchangeLiffIdentity();
-          await loadUser();
-        }
       }
     } catch (error) {
+      state.sessionToken = '';
       $('configNotice').textContent = error.message;
       $('configNotice').classList.remove('hidden');
       showNotice(error.message, 'error');
