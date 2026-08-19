@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#173f35">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+  <title>我的集點卡｜Points Card</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section id="bootState" class="state-view" aria-live="polite">
+      <div class="loader-mark" aria-hidden="true"><span></span></div>
+      <p class="eyebrow">POINTS CARD</p>
+      <h1>正在整理你的集點卡</h1>
+      <p>確認 LINE 登入與最新集點紀錄。</p>
+    </section>
+
+    <section id="errorState" class="state-view hidden" role="alert">
+      <div class="state-icon" aria-hidden="true">!</div>
+      <p class="eyebrow danger-text">CONNECTION ERROR</p>
+      <h1>暫時無法載入集點卡</h1>
+      <p id="errorMessage">請稍後再試。</p>
+      <button id="retryButton" class="button button-primary" type="button">重新整理</button>
+    </section>
+
+    <section id="memberApp" class="hidden">
+      <header class="topbar">
+        <a class="wordmark" href="./" aria-label="Points Card 首頁">
+          <span class="wordmark-dot"></span>
+          <span>POINTS CARD</span>
+        </a>
+        <button id="refreshButton" class="icon-button" type="button" aria-label="重新整理集點卡">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
+        </button>
+      </header>
+
+      <section class="member-intro" aria-labelledby="memberGreeting">
+        <div class="member-copy">
+          <p class="eyebrow">WELCOME BACK</p>
+          <h1 id="memberGreeting">嗨，<span id="displayName">會員</span></h1>
+          <p id="memberStatusText">今天也來收集一枚好心情。</p>
+        </div>
+        <img id="avatar" class="avatar" alt="LINE 個人圖片" referrerpolicy="no-referrer">
+      </section>
+
+      <article id="stampCard" class="stamp-card" aria-labelledby="cardTitle">
+        <div class="card-orbit card-orbit-a" aria-hidden="true"></div>
+        <div class="card-orbit card-orbit-b" aria-hidden="true"></div>
+        <header class="card-heading">
+          <div>
+            <p class="card-kicker">YOUR DAILY RITUAL</p>
+            <h2 id="cardTitle">慢慢集，剛剛好。</h2>
+          </div>
+          <div class="member-number"><span>NO.</span><strong id="memberNo">—</strong></div>
+        </header>
+
+        <div id="rewardReady" class="reward-ready hidden" role="status">
+          <span class="reward-ready-icon" aria-hidden="true">✦</span>
+          <div><strong><span id="availableRewards">0</span> 份獎勵待兌換</strong><span id="rewardReadyName">招牌飲品一份</span></div>
+        </div>
+
+        <div id="stampGrid" class="stamp-grid" aria-label="集點進度"></div>
+
+        <div class="progress-summary">
+          <div>
+            <span>本張進度</span>
+            <strong><span id="visualStampCount">0</span> / <span id="stampsPerReward">10</span></strong>
+          </div>
+          <p id="progressMessage">再集 10 點即可獲得獎勵</p>
+        </div>
+
+        <button id="scanStampButton" class="scan-button" type="button" disabled>
+          <span class="scan-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M8 8h2v2H8zM14 8h2v2h-2zM8 14h2v2H8zM14 14h2v2h-2z"/></svg>
+          </span>
+          <span>掃描店家集點 QR Code</span>
+          <span class="scan-arrow" aria-hidden="true">↗</span>
+        </button>
+      </article>
+
+      <section class="account-strip" aria-label="集點摘要">
+        <div><span>累計集點</span><strong id="totalStamps">0</strong></div>
+        <div class="strip-divider" aria-hidden="true"></div>
+        <div><span>已兌換</span><strong id="redeemedRewards">0</strong></div>
+        <div class="strip-divider" aria-hidden="true"></div>
+        <div><span>加入日期</span><strong id="joinedAt">—</strong></div>
+      </section>
+
+      <section class="activity-section" aria-labelledby="activityTitle">
+        <div class="section-heading">
+          <div><p class="eyebrow">RECENT ACTIVITY</p><h2 id="activityTitle">最近紀錄</h2></div>
+          <span id="activityCount" class="activity-count">0 筆</span>
+        </div>
+        <div id="activityList" class="activity-list"></div>
+        <div id="emptyActivity" class="empty-activity hidden">
+          <span aria-hidden="true">○</span>
+          <p>第一枚印章，等你來收集。</p>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        <span class="wordmark-dot"></span>
+        <span>集點與兌換結果以店家系統紀錄為準</span>
+      </footer>
+    </section>
+  </main>
+
+  <div id="processingOverlay" class="processing-overlay hidden" role="status" aria-live="polite" aria-busy="true">
+    <div class="processing-dialog">
+      <div class="loader-mark" aria-hidden="true"><span></span></div>
+      <p class="eyebrow">STAMPING</p>
+      <h2>正在蓋上新印章</h2>
+      <p>驗證 QR Code 與集點紀錄，請勿重複操作。</p>
+    </div>
+  </div>
+
+  <dialog id="successDialog" class="feedback-dialog" aria-labelledby="successTitle">
+    <div class="success-seal" aria-hidden="true"><span>+1</span></div>
+    <p class="eyebrow">STAMP COLLECTED</p>
+    <h2 id="successTitle">集點成功</h2>
+    <p id="successMessage">新的印章已放進集點卡。</p>
+    <button id="confirmSuccessButton" class="button button-primary" type="button">收下印章</button>
+  </dialog>
+
+  <dialog id="stampErrorDialog" class="feedback-dialog" aria-labelledby="stampErrorTitle">
+    <div class="state-icon" aria-hidden="true">!</div>
+    <p class="eyebrow danger-text">STAMP ERROR</p>
+    <h2 id="stampErrorTitle">這次沒有集到點</h2>
+    <p id="stampErrorMessage">請確認 QR Code 後再試一次。</p>
+    <button id="confirmStampErrorButton" class="button button-primary" type="button">知道了</button>
+  </dialog>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="../shared/common.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
