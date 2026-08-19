@@ -23,8 +23,18 @@
         <label class="field-label" for="profileSetupPhone">電話</label>
         <input id="profileSetupPhone" class="field-input" type="tel" inputmode="tel" autocomplete="tel" maxlength="40" required placeholder="請輸入聯絡電話">
 
-        <label class="field-label" for="profileSetupBirthDate">生日</label>
-        <input id="profileSetupBirthDate" class="field-input" type="date" autocomplete="bday" required>
+        <span class="field-label" id="profileSetupBirthLabel">生日</span>
+        <div class="birthdate-fields" role="group" aria-labelledby="profileSetupBirthLabel">
+          <input id="profileSetupBirthYear" class="field-input" type="text" inputmode="numeric" autocomplete="bday-year" maxlength="4" aria-label="出生年" placeholder="年">
+          <select id="profileSetupBirthMonth" class="field-input" autocomplete="bday-month" aria-label="出生月">
+            <option value="">月</option>
+            <option value="01">1 月</option><option value="02">2 月</option><option value="03">3 月</option><option value="04">4 月</option>
+            <option value="05">5 月</option><option value="06">6 月</option><option value="07">7 月</option><option value="08">8 月</option>
+            <option value="09">9 月</option><option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option>
+          </select>
+          <select id="profileSetupBirthDay" class="field-input" autocomplete="bday-day" aria-label="出生日"><option value="">日</option></select>
+        </div>
+        <input id="profileSetupBirthDate" type="hidden">
 
         <p class="profile-privacy">電話與生日屬於會員 Profile 資料，不會作為 LINE 登入憑證或管理權限。</p>
         <p id="profileSetupError" class="form-error hidden" role="alert"></p>
@@ -47,6 +57,7 @@
         <div class="member-identity"><img id="avatar" class="avatar" alt="LINE 個人圖片"><div><p class="muted-on-card">會員姓名</p><h2 id="displayName">—</h2></div></div>
         <div class="member-number"><span>MEMBER NO.</span><strong id="memberNo">—</strong></div>
         <div class="card-meta-grid"><div><span>加入日期</span><strong id="joinedAt">—</strong></div><div><span>有效期限</span><strong id="expiresAt">永久</strong></div></div>
+        <div class="card-profile-grid"><div><span>電話</span><strong id="profilePhone">—</strong></div><div><span>生日</span><strong id="profileBirthDate">—</strong></div></div>
         <div class="card-consumed-summary"><span>累計消費時間</span><strong id="consumedMinutes">0</strong><small>分鐘</small></div>
         <div class="card-scan-action"><button id="scanQrButton" class="button card-scan-button" type="button" disabled>掃描 QR Code</button></div>
       </article>
@@ -71,8 +82,18 @@
       <label class="field-label" for="profileEditPhone">電話</label>
       <input id="profileEditPhone" class="field-input" type="tel" inputmode="tel" autocomplete="tel" maxlength="40" required>
 
-      <label class="field-label" for="profileEditBirthDate">生日</label>
-      <input id="profileEditBirthDate" class="field-input" type="date" autocomplete="bday" required>
+      <span class="field-label" id="profileEditBirthLabel">生日</span>
+      <div class="birthdate-fields" role="group" aria-labelledby="profileEditBirthLabel">
+        <input id="profileEditBirthYear" class="field-input" type="text" inputmode="numeric" autocomplete="bday-year" maxlength="4" aria-label="出生年" placeholder="年">
+        <select id="profileEditBirthMonth" class="field-input" autocomplete="bday-month" aria-label="出生月">
+          <option value="">月</option>
+          <option value="01">1 月</option><option value="02">2 月</option><option value="03">3 月</option><option value="04">4 月</option>
+          <option value="05">5 月</option><option value="06">6 月</option><option value="07">7 月</option><option value="08">8 月</option>
+          <option value="09">9 月</option><option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option>
+        </select>
+        <select id="profileEditBirthDay" class="field-input" autocomplete="bday-day" aria-label="出生日"><option value="">日</option></select>
+      </div>
+      <input id="profileEditBirthDate" type="hidden">
 
       <p id="profileEditError" class="form-error hidden" role="alert"></p>
       <div class="profile-dialog-actions">

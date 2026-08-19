@@ -132,12 +132,91 @@
     return access;
   }
 
+  function maskPhone(value) {
+    const phone = String(value || '').trim();
+    if (!phone) return '—';
+    if (phone.length <= 7) return phone;
+    const prefixLength = phone.charAt(0) === '+' ? Math.min(5, phone.length - 3) : Math.min(4, phone.length - 3);
+    const maskedLength = Math.max(3, phone.length - prefixLength - 3);
+    return `${phone.slice(0, prefixLength)}${'•'.repeat(maskedLength)}${phone.slice(-3)}`;
+  }
+
+  function formatBirthDate(value) {
+    const text = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text.replace(/-/g, '/') : '—';
+  }
+
+  function daysInMonth(year, month) {
+    const y = Number(year);
+    const m = Number(month);
+    if (!Number.isInteger(y) || y < 1 || !Number.isInteger(m) || m < 1 || m > 12) return 0;
+    if (m === 2) {
+      const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+      return leap ? 29 : 28;
+    }
+    return [4, 6, 9, 11].includes(m) ? 30 : 31;
+  }
+
+  function rebuildBirthDayOptions(prefix, preferredDay) {
+    const year = $(`#${prefix}BirthYear`).value.trim();
+    const month = $(`#${prefix}BirthMonth`).value;
+    const daySelect = $(`#${prefix}BirthDay`);
+    const wanted = String(preferredDay || daySelect.value || '');
+    const count = /^\d{4}$/.test(year) ? daysInMonth(Number(year), Number(month)) : 0;
+
+    daySelect.replaceChildren(new Option('日', ''));
+    for (let day = 1; day <= count; day += 1) {
+      const value = String(day).padStart(2, '0');
+      daySelect.add(new Option(`${day} 日`, value));
+    }
+    daySelect.value = wanted && Number(wanted) <= count ? wanted : '';
+  }
+
+  function syncBirthDateHidden(prefix) {
+    const year = $(`#${prefix}BirthYear`).value.trim();
+    const month = $(`#${prefix}BirthMonth`).value;
+    const day = $(`#${prefix}BirthDay`).value;
+    const hidden = $(`#${prefix}BirthDate`);
+    hidden.value = /^\d{4}$/.test(year) && month && day ? `${year}-${month}-${day}` : '';
+  }
+
+  function setBirthDateControls(prefix, birthDate) {
+    const match = String(birthDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    $(`#${prefix}BirthYear`).value = match ? match[1] : '';
+    $(`#${prefix}BirthMonth`).value = match ? match[2] : '';
+    rebuildBirthDayOptions(prefix, match ? match[3] : '');
+    $(`#${prefix}BirthDay`).value = match ? match[3] : '';
+    syncBirthDateHidden(prefix);
+  }
+
+  function bindBirthDateControls(prefix) {
+    const year = $(`#${prefix}BirthYear`);
+    const month = $(`#${prefix}BirthMonth`);
+    const day = $(`#${prefix}BirthDay`);
+
+    year.addEventListener('input', () => {
+      year.value = year.value.replace(/\D/g, '').slice(0, 4);
+      rebuildBirthDayOptions(prefix, day.value);
+      syncBirthDateHidden(prefix);
+    });
+    month.addEventListener('change', () => {
+      rebuildBirthDayOptions(prefix, day.value);
+      syncBirthDateHidden(prefix);
+    });
+    day.addEventListener('change', () => syncBirthDateHidden(prefix));
+  }
+
   async function loadMember() {
     const result = await Membership.callApi('member.me');
     requireProfileCapability(result);
     currentMember = result.member;
     currentProfile = result.profile || null;
     return result;
+  }
+
+  function renderProfileOnCard(profile) {
+    $('#profilePhone').textContent = profile ? maskPhone(profile.phone) : '—';
+    $('#profileBirthDate').textContent = profile ? formatBirthDate(profile.birthDate) : '—';
   }
 
   function renderMember(member) {
@@ -153,6 +232,7 @@
     $('#joinedAt').textContent = Membership.formatDate(member.joinedAt);
     $('#expiresAt').textContent = Membership.formatDate(member.expiresAt, '永久');
     $('#consumedMinutes').textContent = formatMinutes(member.consumedMinutes);
+    renderProfileOnCard(currentProfile);
     $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
     $('#boot').classList.add('hidden');
     $('#errorState').classList.add('hidden');
@@ -160,10 +240,9 @@
     $('#memberApp').classList.remove('hidden');
   }
 
-  function fillProfileFields(phoneSelector, birthDateSelector, profile) {
-    $(phoneSelector).value = profile && profile.phone ? profile.phone : '';
-    $(birthDateSelector).value = profile && profile.birthDate ? profile.birthDate : '';
-    $(birthDateSelector).max = todayDateValue();
+  function fillProfileFields(prefix, profile) {
+    $(`#${prefix}Phone`).value = profile && profile.phone ? profile.phone : '';
+    setBirthDateControls(prefix, profile && profile.birthDate ? profile.birthDate : '');
   }
 
   function showProfileSetup() {
@@ -172,7 +251,7 @@
     $('#errorState').classList.add('hidden');
     $('#memberApp').classList.add('hidden');
     $('#profileSetupError').classList.add('hidden');
-    fillProfileFields('#profileSetupPhone', '#profileSetupBirthDate', currentProfile);
+    fillProfileFields('profileSetup', currentProfile);
     $('#profileSetup').classList.remove('hidden');
     $('#profileSetupPhone').focus();
   }
@@ -180,18 +259,27 @@
   function openProfileDialog() {
     if (!currentProfile) return;
     $('#profileEditError').classList.add('hidden');
-    fillProfileFields('#profileEditPhone', '#profileEditBirthDate', currentProfile);
+    fillProfileFields('profileEdit', currentProfile);
     const dialog = $('#profileDialog');
     if (!dialog.open) dialog.showModal();
     $('#profileEditPhone').focus();
   }
 
-  function readProfilePayload(phoneSelector, birthDateSelector) {
-    const phone = $(phoneSelector).value.trim();
-    const birthDate = $(birthDateSelector).value.trim();
+  function readProfilePayload(prefix) {
+    const phone = $(`#${prefix}Phone`).value.trim();
+    const year = $(`#${prefix}BirthYear`).value.trim();
+    const month = $(`#${prefix}BirthMonth`).value;
+    const day = $(`#${prefix}BirthDay`).value;
     if (!phone) throw new Error('請輸入電話。');
-    if (!birthDate) throw new Error('請選擇生日。');
+    if (!/^\d{4}$/.test(year) || Number(year) < 1 || !month || !day) throw new Error('請完整選擇生日的年、月、日。');
+
+    const birthDate = `${year}-${month}-${day}`;
+    if (day > String(daysInMonth(Number(year), Number(month))).padStart(2, '0')) {
+      throw new Error('生日不是有效日期。');
+    }
     if (birthDate > todayDateValue()) throw new Error('生日不可晚於今天。');
+    $(`#${prefix}BirthDate`).value = birthDate;
+
     return {
       phone,
       birthDate,
@@ -202,10 +290,9 @@
   async function saveProfile(mode) {
     if (profileSaveInFlight) return;
     const isInitial = mode === 'initial';
+    const prefix = isInitial ? 'profileSetup' : 'profileEdit';
     const button = isInitial ? $('#saveInitialProfileButton') : $('#saveProfileButton');
     const errorNode = isInitial ? $('#profileSetupError') : $('#profileEditError');
-    const phoneSelector = isInitial ? '#profileSetupPhone' : '#profileEditPhone';
-    const birthDateSelector = isInitial ? '#profileSetupBirthDate' : '#profileEditBirthDate';
 
     profileSaveInFlight = true;
     button.disabled = true;
@@ -214,8 +301,9 @@
     errorNode.classList.add('hidden');
 
     try {
-      const result = await Membership.callApi('profile.update', readProfilePayload(phoneSelector, birthDateSelector));
+      const result = await Membership.callApi('profile.update', readProfilePayload(prefix));
       currentProfile = result.profile;
+      renderProfileOnCard(currentProfile);
       if (isInitial) {
         renderMember(currentMember);
         $('#scanQrButton').disabled = false;
@@ -362,6 +450,9 @@
       showError(error);
     }
   }
+
+  bindBirthDateControls('profileSetup');
+  bindBirthDateControls('profileEdit');
 
   $('#refreshButton').addEventListener('click', () => window.location.reload());
   $('#retryButton').addEventListener('click', () => window.location.reload());
