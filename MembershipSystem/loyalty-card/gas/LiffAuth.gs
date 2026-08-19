@@ -24,6 +24,10 @@ function loginWithLiff(input) {
     throw new Error('LIFF 身分驗證失敗');
   }
 
+  // Storage is created lazily only after LINE has verified the identity.
+  // This avoids creating database resources from unauthenticated requests.
+  ensureLoyaltyStorage_();
+
   if (returnPage === 'admin' && !isActiveAdminLineUser_(String(profile.sub))) {
     logAudit_('', 'ADMIN_LIFF_LOGIN', 'admin-console', 'DENIED', {
       lineUserFingerprint: sha256Hex_(String(profile.sub)).slice(0, 16)
@@ -31,6 +35,8 @@ function loginWithLiff(input) {
     throw new Error('未授權使用管理端');
   }
 
+  // Persist only server-verified LINE claims. Never trust a client-supplied
+  // user id, display name, picture URL, role, or account status.
   const user = upsertUserFromLine_(profile);
   const session = createSession_(user.userId);
 
