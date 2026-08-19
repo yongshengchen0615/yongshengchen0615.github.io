@@ -32,7 +32,7 @@ function profileUpdate_(context, payload) {
         createdAt: now,
         updatedAt: now
       };
-      sheet.appendRow(profileToRow_(profile));
+      writeProfile_(sheet, sheet.getLastRow() + 1, profile);
       audit_(context.identity.sub, 'member', 'PROFILE_CREATED', context.identity.sub, 'success', {
         fields: ['phone', 'birthDate']
       });
@@ -54,7 +54,7 @@ function profileUpdate_(context, payload) {
     profile.phone = phone;
     profile.birthDate = birthDate;
     profile.updatedAt = now;
-    sheet.getRange(row, 1, 1, PROFILE_HEADERS.length).setValues([profileToRow_(profile)]);
+    writeProfile_(sheet, row, profile);
     audit_(context.identity.sub, 'member', 'PROFILE_UPDATED', context.identity.sub, 'success', {
       fields: changedFields
     });
@@ -104,6 +104,15 @@ function profileToRow_(profile) {
   return PROFILE_HEADERS.map(function (header) {
     return sheetSafe_(profile[header] == null ? '' : profile[header]);
   });
+}
+
+function writeProfile_(sheet, row, profile) {
+  const phoneColumn = PROFILE_HEADERS.indexOf('phone') + 1;
+  // Phone numbers are identifiers/contact strings, not numeric values. Force
+  // the phone cell to plain text before writing so Google Sheets cannot turn
+  // 0912345678 into 912345678 by dropping the leading zero.
+  sheet.getRange(row, phoneColumn).setNumberFormat('@');
+  sheet.getRange(row, 1, 1, PROFILE_HEADERS.length).setValues([profileToRow_(profile)]);
 }
 
 function validateProfilePhone_(value) {
