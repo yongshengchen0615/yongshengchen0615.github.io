@@ -44,6 +44,40 @@
     return Array.from(data, (value) => value.toString(16).padStart(2, '0')).join('');
   }
 
+  function monotonicNow() {
+    return window.performance && typeof window.performance.now === 'function' ? window.performance.now() : Date.now();
+  }
+
+  function safeErrorContext(context) {
+    const source = context || {};
+    const result = {};
+    ['source', 'action', 'traceId'].forEach(function (key) {
+      if (source[key]) result[key] = String(source[key]).slice(0, 120);
+    });
+    if (Number.isFinite(Number(source.durationMs))) result.durationMs = Math.round(Number(source.durationMs));
+    return result;
+  }
+
+  function reportError(error, context) {
+    const safeContext = safeErrorContext(context);
+    try {
+      if (window.Sentry && typeof window.Sentry.captureException === 'function') {
+        window.Sentry.captureException(error instanceof Error ? error : new Error(String(error || 'Unknown error')), {
+          tags: {
+            feature: 'points-card',
+            source: safeContext.source || 'frontend',
+            action: safeContext.action || 'unknown'
+          },
+          extra: safeContext
+        });
+        return;
+      }
+    } catch (_) {}
+    try {
+      console.error('PointsCard error', safeContext, error && error.message ? error.message : String(error || 'Unknown error'));
+    } catch (_) {}
+  }
+
   async function loadConfig() {
     if (configPromise) return configPromise;
     configPromise = (async function () {
@@ -65,6 +99,7 @@
       return Object.freeze({ LIFF_ID: liffId, GAS_WEB_APP_URL: gasUrl });
     })().catch(function (error) {
       configPromise = null;
+      reportError(error, { source: 'config', action: 'loadConfig' });
       throw error;
     });
     return configPromise;
@@ -206,6 +241,7 @@
       await liff.init({ liffId: activeConfig.LIFF_ID });
     } catch (error) {
       if (recoverFromInitFailure(error, hadInitArtifacts)) return false;
+      reportError(error, { source: 'liff', action: 'init' });
       throw error;
     }
 
@@ -235,8 +271,10 @@
       throw new Error('LINE 登入憑證已過期，正在重新登入。');
     }
 
+    const safeAction = String(action || '');
+    const startedAt = monotonicNow();
     const form = new URLSearchParams();
-    form.set('action', String(action || ''));
+    form.set('action', safeAction);
     form.set('idToken', authenticatedIdToken);
     form.set('payload', JSON.stringify(payload || {}));
     const controller = new AbortController();
@@ -253,10 +291,13 @@
         signal: controller.signal
       });
     } catch (error) {
-      if (error && error.name === 'AbortError') {
-        throw new Error('集點服務回應逾時；再次嘗試會沿用相同請求，不會重複集點。');
-      }
-      throw new Error('無法連線到集點服務，請確認 GAS Web App 已正確部署。');
+      const publicError = error && error.name === 'AbortError'
+        ? new Error('集點服務回應逾時；再次嘗試會沿用相同請求，不會重複集點。')
+        : new Error('無法連線到集點服務，請確認 GAS Web App 已正確部署。');
+      reportError(publicError, {
+        source: 'api-network', action: safeAction, durationMs: monotonicNow() - startedAt
+      });
+      throw publicError;
     } finally {
       window.clearTimeout(timeout);
     }
@@ -264,10 +305,19 @@
     const text = await response.text();
     let data;
     try { data = JSON.parse(text); }
-    catch (_) { throw new Error('集點服務回傳格式不正確。'); }
+    catch (_) {
+      const error = new Error('集點服務回傳格式不正確。');
+      reportError(error, { source: 'api-response', action: safeAction, durationMs: monotonicNow() - startedAt });
+      throw error;
+    }
+    const traceId = String(data && data.meta && data.meta.traceId || '').slice(0, 64);
     if (!data.ok) {
       const error = new Error(data.error && data.error.message || '集點服務發生錯誤。');
       error.code = data.error && data.error.code;
+      error.traceId = traceId;
+      reportError(error, {
+        source: 'api', action: safeAction, traceId: traceId, durationMs: monotonicNow() - startedAt
+      });
       if (error.code === 'UNAUTHENTICATED' && !liff.isInClient()) startExternalLogin(true);
       throw error;
     }
@@ -294,6 +344,7 @@
     loadConfig: loadConfig,
     ensureLiffLogin: ensureLiffLogin,
     callApi: callApi,
+    reportError: reportError,
     getNavigationState: getNavigationState,
     clearNavigationState: clearNavigationState,
     validStampCode: validStampCode,
