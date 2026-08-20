@@ -24,7 +24,7 @@
     <section id="bootState" class="state-panel" aria-live="polite">
       <div class="spinner" aria-hidden="true"></div>
       <h2>正在驗證管理權限</h2>
-      <p>所有管理權限都會由伺服器端重新確認。</p>
+      <p>先載入總覽；會員、QR 與票券資料會在切換分頁時按需載入。</p>
     </section>
 
     <section id="errorState" class="state-panel hidden" role="alert">
@@ -94,7 +94,7 @@
 
       <section id="admin-panel-stamp-qr" class="admin-tab-panel workspace-section voucher-section" role="tabpanel" aria-labelledby="admin-tab-stamp-qr" tabindex="0" data-admin-panel="stamp-qr" hidden>
         <div class="section-heading">
-          <div><p class="eyebrow">STAMP QR</p><h2 id="vouchersTitle">集點 QR Code</h2><p>單次 QR 僅能成功使用一次；可重複 QR 適合由店員現場控管。</p></div>
+          <div><p class="eyebrow">STAMP QR</p><h2 id="vouchersTitle">集點 QR Code</h2><p>建議使用「每位會員一次」；單次 QR 適合單筆交易，可重複 QR 僅適合店員嚴格控管的特殊流程。</p></div>
           <button id="newStampButton" class="button button-primary" type="button">新增集點 QR</button>
         </div>
         <div class="table-wrap">
@@ -137,10 +137,10 @@
 
   <dialog id="stampDialog" class="admin-dialog stamp-dialog" aria-labelledby="stampDialogTitle">
     <form id="stampForm" method="dialog">
-      <header class="dialog-header"><div><p class="eyebrow">STAMP QR</p><h2 id="stampDialogTitle">新增集點 QR Code</h2><p id="stampDialogDescription">建立後交由會員使用 LINE 掃描。</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
+      <header class="dialog-header"><div><p class="eyebrow">STAMP QR</p><h2 id="stampDialogTitle">新增集點 QR Code</h2><p id="stampDialogDescription">預設每位會員只能使用一次。</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
       <div id="stampFields" class="form-grid">
         <label><span>集點數量</span><input id="stampCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric" required></label>
-        <label><span>使用模式</span><select id="stampMode" required><option value="single">單次使用</option><option value="repeatable">可重複使用</option></select></label>
+        <label><span>使用模式</span><select id="stampMode" required><option value="per-member" selected>每位會員一次（建議）</option><option value="single">整組單次使用</option><option value="repeatable">不限會員重複使用</option></select></label>
         <label><span>到期時間</span><input id="stampExpiresAt" type="datetime-local" required></label>
         <label class="full-span"><span>發放備註</span><textarea id="stampNote" maxlength="200" rows="3" placeholder="例如：本次消費集點"></textarea></label>
       </div>
@@ -148,7 +148,7 @@
         <div id="stampQrCode" class="qr-code" aria-label="集點 QR Code"></div>
         <p id="stampResultMeta"></p>
         <label class="field-label"><span>集點連結</span><textarea id="stampUrl" rows="3" readonly></textarea></label>
-        <p class="security-note">QR Code 只提供集點憑證；會員身分與狀態仍由 LINE ID Token 與 GAS 驗證。</p>
+        <p class="security-note">QR Code 只提供集點憑證；會員身分與狀態仍由 LINE ID Token 與 GAS 驗證。若使用不限重複模式，連結外流可能造成濫用。</p>
       </div>
       <p id="stampFormError" class="form-error hidden" role="alert"></p>
       <footer class="dialog-actions">
