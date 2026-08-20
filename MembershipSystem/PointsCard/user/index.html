@@ -120,16 +120,20 @@
 
   <dialog id="ticketDialog" class="ticket-dialog" aria-labelledby="ticketDialogTitle">
     <button id="closeTicketButton" class="dialog-close" type="button" aria-label="關閉票券">×</button>
-    <div id="ticketDialogMark" class="ticket-dialog-mark" aria-hidden="true">%</div>
-    <p id="ticketDialogType" class="eyebrow">COUPON</p>
-    <h2 id="ticketDialogTitle">優惠券</h2>
-    <p id="ticketDialogMeta">達成節點後取得</p>
-    <div id="ticketPrizePanel" class="ticket-prize-panel hidden">
-      <strong>抽獎獎項</strong>
-      <ul id="ticketPrizeList"></ul>
+    <div class="ticket-dialog-content" data-dialog-scroll>
+      <div id="ticketDialogMark" class="ticket-dialog-mark" aria-hidden="true">%</div>
+      <p id="ticketDialogType" class="eyebrow">COUPON</p>
+      <h2 id="ticketDialogTitle">優惠券</h2>
+      <p id="ticketDialogMeta">達成節點後取得</p>
+      <div id="ticketPrizePanel" class="ticket-prize-panel hidden">
+        <strong>抽獎獎項</strong>
+        <ul id="ticketPrizeList"></ul>
+      </div>
+      <div class="ticket-instruction"><strong>使用方式</strong><span>請在店員面前掃描店家票券確認 QR，確認後立即使用。</span></div>
     </div>
-    <div class="ticket-instruction"><strong>使用方式</strong><span>請在店員面前掃描店家票券確認 QR，確認後立即使用。</span></div>
-    <button id="scanRewardButton" class="button button-primary" type="button">掃描店家確認 QR</button>
+    <div class="ticket-dialog-actions">
+      <button id="scanRewardButton" class="button button-primary" type="button">掃描店家確認 QR</button>
+    </div>
   </dialog>
 
   <dialog id="couponResultDialog" class="feedback-dialog" aria-labelledby="couponResultTitle">

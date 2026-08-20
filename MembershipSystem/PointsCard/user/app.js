@@ -19,6 +19,7 @@
   let rewardClaimRetry = null;
   let lotteryInterval = 0;
   let lotteryTimeout = 0;
+  const dialogPageScrollPositions = new WeakMap();
 
   const avatarFallback = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"%3E%3Crect width="96" height="96" rx="48" fill="%23dfe6df"/%3E%3Ccircle cx="48" cy="38" r="17" fill="%23173f35" fill-opacity=".35"/%3E%3Cpath d="M19 88c3-18 14-27 29-27s26 9 29 27" fill="%23173f35" fill-opacity=".35"/%3E%3C/svg%3E';
 
@@ -231,13 +232,31 @@
 
   function openDialog(dialog) {
     if (dialog.open) return;
+    const position = {
+      left: window.pageXOffset || window.scrollX || 0,
+      top: window.pageYOffset || window.scrollY || 0
+    };
+    dialogPageScrollPositions.set(dialog, position);
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
+    window.requestAnimationFrame(function () {
+      dialog.scrollTop = 0;
+      const scrollArea = dialog.querySelector('[data-dialog-scroll]');
+      if (scrollArea) scrollArea.scrollTop = 0;
+      window.scrollTo(position.left, position.top);
+    });
   }
 
   function closeDialog(dialog) {
+    const position = dialogPageScrollPositions.get(dialog);
     if (typeof dialog.close === 'function') dialog.close();
     else dialog.removeAttribute('open');
+    if (position) {
+      window.requestAnimationFrame(function () {
+        window.scrollTo(position.left, position.top);
+        dialogPageScrollPositions.delete(dialog);
+      });
+    }
   }
 
   function openTicket(ticket) {

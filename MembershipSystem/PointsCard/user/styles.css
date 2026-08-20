@@ -124,7 +124,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(231,111,81,.35);
 .processing-dialog .loader-mark { margin: 0 auto 22px; }
 .processing-dialog h2 { margin: 8px 0; font: 500 1.8rem Georgia, "Noto Serif TC", serif; }
 .processing-dialog > p:last-child { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.65; }
-.feedback-dialog, .ticket-dialog, .lottery-dialog { width: min(calc(100% - 32px),410px); max-height: calc(100svh - 24px); max-height: calc(100dvh - 24px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 38px 30px 30px; border: 0; border-radius: 28px; color: var(--ink-deep); background: var(--paper-warm); box-shadow: var(--shadow); text-align: center; }
+.feedback-dialog, .ticket-dialog, .lottery-dialog { position: fixed; inset: 0; width: min(calc(100% - 32px),410px); max-height: calc(100svh - 24px); max-height: calc(100dvh - 24px); margin: auto; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 38px 30px 30px; border: 0; border-radius: 28px; color: var(--ink-deep); background: var(--paper-warm); box-shadow: var(--shadow); text-align: center; }
 .feedback-dialog::backdrop, .ticket-dialog::backdrop, .lottery-dialog::backdrop { background: rgba(11,30,26,.76); backdrop-filter: blur(8px); }
 .feedback-dialog[open], .ticket-dialog[open], .lottery-dialog[open] { animation: dialog-in .28s ease both; }
 .feedback-dialog h2, .ticket-dialog h2, .lottery-dialog h2 { margin: 8px 0; font: 500 2rem Georgia, "Noto Serif TC", serif; }
@@ -134,7 +134,10 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(231,111,81,.35);
 .success-seal span { font: 700 1.55rem Georgia, serif; }
 .coupon-seal { border-color: var(--ink); background: var(--ink); box-shadow: inset 0 0 0 7px var(--paper-warm), 0 0 0 1px var(--ink); }
 .dialog-close { position: absolute; top: 14px; right: 14px; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: rgba(255,250,240,.92); font-size: 1.3rem; cursor: pointer; }
-.ticket-dialog { position: relative; }
+.ticket-dialog { overflow: hidden; padding: 0; }
+.ticket-dialog[open] { display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.ticket-dialog-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 38px 30px 8px; }
+.ticket-dialog-actions { position: relative; z-index: 2; padding: 14px 30px max(30px, env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(255,250,240,.78), var(--paper-warm) 28%); box-shadow: 0 -12px 24px rgba(23,63,53,.05); }
 .ticket-dialog-mark { width: 90px; height: 90px; display: grid; place-items: center; margin: 0 auto 22px; border-radius: 50%; color: #fff; background: var(--ink); font: 700 2.4rem Georgia, serif; box-shadow: 0 0 0 11px rgba(216,232,164,.45); }
 .ticket-dialog.lottery .ticket-dialog-mark { background: var(--accent); box-shadow: 0 0 0 11px rgba(231,111,81,.15); }
 .ticket-instruction { display: grid; gap: 6px; margin: 0 0 22px; padding: 15px; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); text-align: left; }
@@ -206,6 +209,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(231,111,81,.35);
   .upcoming-ticket { grid-template-columns: auto minmax(0,1fr); align-items: start; }
   .upcoming-remaining { grid-column: 2; white-space: normal; }
   .feedback-dialog, .ticket-dialog, .lottery-dialog { width: calc(100% - 20px); padding: 32px 20px 22px; border-radius: 24px; }
+  .ticket-dialog { padding: 0; }
+  .ticket-dialog-content { padding: 32px 20px 6px; }
+  .ticket-dialog-actions { padding: 12px 20px max(22px, env(safe-area-inset-bottom)); }
   .feedback-dialog h2, .ticket-dialog h2, .lottery-dialog h2 { font-size: 1.7rem; }
   .ticket-dialog-mark { width: 76px; height: 76px; margin-bottom: 18px; font-size: 2rem; }
   .ticket-prize-panel { padding: 13px; }
@@ -227,6 +233,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(231,111,81,.35);
 
 @media (max-height: 650px) {
   .feedback-dialog, .ticket-dialog, .lottery-dialog { padding-top: 24px; padding-bottom: 20px; }
+  .ticket-dialog { padding: 0; }
+  .ticket-dialog-content { padding-top: 24px; }
+  .ticket-dialog-actions { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
   .success-seal { width: 68px; height: 68px; margin-bottom: 15px; }
   .ticket-dialog-mark { width: 68px; height: 68px; margin-bottom: 15px; font-size: 1.8rem; }
   .lottery-stage { width: 128px; height: 128px; margin-bottom: 14px; }

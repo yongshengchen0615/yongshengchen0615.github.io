@@ -213,6 +213,19 @@ test('responsive UI contracts cover safe areas, compact heights, touch targets, 
   assert.match(adminScript, /prefers-reduced-motion: reduce/);
 });
 
+test('member ticket dialog stays viewport anchored and keeps the QR scan action visible', () => {
+  const html = read('user/index.html');
+  const css = read('user/styles.css');
+  const script = read('user/app.js');
+  assert.match(html, /class="ticket-dialog-content" data-dialog-scroll/);
+  assert.match(html, /class="ticket-dialog-actions">\s*<button id="scanRewardButton"/);
+  assert.match(css, /\.feedback-dialog, \.ticket-dialog, \.lottery-dialog \{[^}]*position: fixed;[^}]*inset: 0;/);
+  assert.match(css, /\.ticket-dialog\[open\] \{ display: grid; grid-template-rows: minmax\(0, 1fr\) auto; \}/);
+  assert.match(css, /\.ticket-dialog-content \{[^}]*overflow-y: auto;/);
+  assert.match(script, /dialogPageScrollPositions/);
+  assert.match(script, /window\.scrollTo\(position\.left, position\.top\)/);
+});
+
 test('weighted lottery selection is server-side, respects boundaries, and skips 0% prizes', () => {
   const source = 'const LOTTERY_WEIGHT_BASIS_POINTS = 10000;\n' + read('gas/RewardService.gs') + '\n;globalThis.__rewardTest = { lotteryResultForReward_ };';
   let randomValue = '00000000';
