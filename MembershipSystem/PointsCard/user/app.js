@@ -276,6 +276,9 @@
       const option = document.createElement('option');
       option.value = card.cardId;
       option.textContent = card.name + (card.status === 'expired' ? '（已過期）' : '');
+      option.dataset.cardName = card.name;
+      option.dataset.status = card.status;
+      option.dataset.totalStamps = String(card.totalStamps || 0);
       select.append(option);
     });
     select.value = member.selectedCardId || member.card.cardId || '';
@@ -327,8 +330,14 @@
     if (!cardId || stampRequestInFlight || rewardClaimInFlight) return;
     PointsCard.setSelectedCardId(cardId);
     $('memberCardSelect').disabled = true;
+    $('cardWorkspace').classList.add('is-switching');
+    $('cardWorkspace').setAttribute('aria-busy', 'true');
     try { await loadMember(); }
-    finally { $('memberCardSelect').disabled = false; }
+    finally {
+      $('memberCardSelect').disabled = false;
+      $('cardWorkspace').classList.remove('is-switching');
+      $('cardWorkspace').setAttribute('aria-busy', 'false');
+    }
   }
 
   function openDialog(dialog) {

@@ -1,17 +1,22 @@
-.card-switcher { margin: 2px 0 22px; }
+.card-switcher { min-width: 0; margin: 2px 0 22px; animation: rise-in .55s .03s ease both; }
 .card-select-fallback { display: none !important; }
-.member-card-gallery-heading { margin: 0 4px 12px; }
-.member-card-gallery-heading h2 { margin: 5px 0 0; font: 500 1.45rem Georgia, "Noto Serif TC", serif; }
-.member-card-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.member-card-option { min-width: 0; min-height: 138px; display: grid; align-content: space-between; gap: 14px; padding: 18px; border: 1px solid rgba(23,63,53,.12); border-radius: 24px; color: #fffaf0; background: #173f35; box-shadow: 0 14px 34px rgba(24,54,45,.12); text-align: left; cursor: pointer; }
-.member-card-option.selected { outline: 3px solid rgba(231,111,81,.34); outline-offset: 2px; }
-.member-card-option.expired { opacity: .72; }
-.member-card-option:disabled { cursor: not-allowed; opacity: .5; }
-.member-card-option-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.member-card-option-top small { color: #d8e8a4; font-size: .58rem; font-weight: 850; letter-spacing: .15em; }
-.member-card-option-badge { padding: 5px 8px; border-radius: 999px; color: #173f35; background: #fffaf0; font-size: .58rem; font-weight: 800; }
-.member-card-option > strong { min-width: 0; font: 500 1.25rem Georgia, "Noto Serif TC", serif; line-height: 1.35; }
-.member-card-option-hint { color: rgba(255,250,240,.68); font-size: .68rem; line-height: 1.5; }
+.member-card-gallery-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 0 4px 10px; }
+.member-card-gallery-heading h2 { margin: 4px 0 0; font: 500 1.05rem Georgia, "Noto Serif TC", serif; }
+.member-card-gallery-heading > span { color: var(--muted); font-size: .66rem; text-align: right; }
+.member-card-tabs { display: flex; gap: 7px; max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; padding: 3px 4px 8px; border-bottom: 1px solid var(--line); scrollbar-width: none; scroll-snap-type: x proximity; }
+.member-card-tabs::-webkit-scrollbar { display: none; }
+.member-card-tab { flex: 0 0 auto; min-width: 116px; max-width: 220px; min-height: 48px; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 9px; padding: 7px 12px; border: 0; border-bottom: 3px solid transparent; border-radius: 12px 12px 3px 3px; color: var(--muted); background: transparent; text-align: left; cursor: pointer; scroll-snap-align: start; transition: color .18s ease, background .18s ease, border-color .18s ease, transform .18s ease; }
+.member-card-tab.selected { color: var(--ink-deep); border-bottom-color: var(--accent); background: rgba(255,255,255,.58); }
+.member-card-tab.expired:not(.selected) { opacity: .68; }
+.member-card-tab:disabled { cursor: wait; opacity: .48; }
+.member-card-tab-status { width: 8px; height: 8px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 4px rgba(216,232,164,.28); }
+.member-card-tab.expired .member-card-tab-status { background: var(--muted); box-shadow: 0 0 0 4px rgba(109,117,111,.12); }
+.member-card-tab-copy { min-width: 0; display: grid; gap: 2px; }
+.member-card-tab-copy strong, .member-card-tab-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-card-tab-copy strong { font-size: .77rem; }
+.member-card-tab-copy small { color: inherit; font-size: .61rem; }
+.card-workspace { transition: opacity .18s ease, transform .18s ease; }
+.card-workspace.is-switching { opacity: .52; transform: translateY(3px); pointer-events: none; }
 .card-description { margin: 8px 0 0; color: rgba(255,250,240,.72); font-size: .78rem; line-height: 1.6; }
 .stamp-grid-large { display: block; }
 .stamp-progress-summary { display: grid; gap: 12px; margin: 36px 0 22px; }
@@ -27,6 +32,15 @@
 .stamp-milestone span { text-align: right; font-size: .72rem; }
 
 @media (max-width: 480px) {
-  .member-card-list { grid-template-columns: 1fr; }
-  .member-card-option { min-height: 124px; border-radius: 21px; }
+  .member-card-gallery-heading > span { display: none; }
+  .member-card-tabs { margin-inline: -4px; }
+  .member-card-tab { min-width: 108px; max-width: 170px; padding-inline: 10px; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .member-card-tab:hover:not(:disabled):not(.selected) { color: var(--ink); background: rgba(255,255,255,.36); transform: translateY(-1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .member-card-tab { scroll-behavior: auto; }
 }

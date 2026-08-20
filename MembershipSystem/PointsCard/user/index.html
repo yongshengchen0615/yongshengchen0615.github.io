@@ -44,51 +44,58 @@
         <img id="avatar" class="avatar" alt="LINE 個人圖片" referrerpolicy="no-referrer">
       </section>
 
-      <section id="cardSwitcher" class="card-switcher hidden" aria-labelledby="cardSwitcherLabel">
-        <label><span id="cardSwitcherLabel">選擇集點卡</span><select id="memberCardSelect"></select></label>
-      </section>
-
-      <section id="noCardState" class="ticket-empty hidden" role="status" aria-live="polite">
-        <span aria-hidden="true">◇</span>
-        <p><strong>目前沒有可用集點卡</strong></p>
-        <p id="noCardMessage">店家目前沒有開放中的集點卡。</p>
-      </section>
-
-      <article id="stampCard" class="stamp-card" aria-labelledby="cardTitle">
-        <div class="card-orbit card-orbit-a" aria-hidden="true"></div>
-        <div class="card-orbit card-orbit-b" aria-hidden="true"></div>
-        <header class="card-heading">
-          <div>
-            <p class="card-kicker">YOUR POINTS CARD</p>
-            <h2 id="cardTitle">集點卡</h2>
-            <p id="cardDescription" class="card-description hidden"></p>
-          </div>
-          <div class="member-number"><span>NO.</span><strong id="memberNo">—</strong></div>
-        </header>
-
-        <div id="stampGrid" class="stamp-grid" aria-label="集點進度"></div>
-
-        <button id="scanStampButton" class="scan-button" type="button" disabled>
-          <span class="scan-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M8 8h2v2H8zM14 8h2v2h-2zM8 14h2v2H8zM14 14h2v2h-2z"/></svg></span>
-          <span>掃描店家集點 QR Code</span><span class="scan-arrow" aria-hidden="true">↗</span>
-        </button>
-      </article>
-
-      <section class="ticket-wallet" aria-labelledby="ticketWalletTitle">
-        <div class="section-heading">
-          <div><p class="eyebrow">MY REWARDS</p><h2 id="ticketWalletTitle">我的票券</h2></div>
-          <span id="earnedTicketCount" class="ticket-count">0 張可使用</span>
+      <section id="cardSwitcher" class="card-switcher hidden" aria-labelledby="memberCardGalleryTitle">
+        <div class="member-card-gallery-heading">
+          <div><p class="eyebrow">MY POINTS CARDS</p><h2 id="memberCardGalleryTitle">切換集點卡</h2></div>
+          <span>選擇後顯示該卡進度與票券</span>
         </div>
-        <section class="ticket-group" aria-labelledby="earnedTicketsTitle">
-          <div class="ticket-group-heading"><h3 id="earnedTicketsTitle">已獲得</h3><span>點開票券並掃描店家 QR 使用</span></div>
-          <div id="earnedTicketList" class="earned-ticket-list"></div>
-          <div id="earnedTicketEmpty" class="ticket-empty"><span aria-hidden="true">◇</span><p>達成節點後，票券會出現在這裡。</p></div>
-        </section>
-        <section id="upcomingTicketGroup" class="ticket-group upcoming-group" aria-labelledby="upcomingTicketsTitle">
-          <div class="ticket-group-heading"><h3 id="upcomingTicketsTitle">未獲得</h3><span>繼續集點即可解鎖</span></div>
-          <div id="upcomingTicketList" class="upcoming-ticket-list"></div>
-        </section>
+        <label class="card-select-fallback"><span>選擇集點卡</span><select id="memberCardSelect"></select></label>
+        <div id="memberCardTabs" class="member-card-tabs" role="tablist" aria-label="集點卡分頁"></div>
       </section>
+
+      <div id="cardWorkspace" class="card-workspace" role="tabpanel" aria-label="目前集點卡的進度與票券" aria-live="polite" aria-busy="false">
+        <section id="noCardState" class="ticket-empty hidden" role="status">
+          <span aria-hidden="true">◇</span>
+          <p><strong>目前沒有可用集點卡</strong></p>
+          <p id="noCardMessage">店家目前沒有開放中的集點卡。</p>
+        </section>
+
+        <article id="stampCard" class="stamp-card" aria-labelledby="cardTitle">
+          <div class="card-orbit card-orbit-a" aria-hidden="true"></div>
+          <div class="card-orbit card-orbit-b" aria-hidden="true"></div>
+          <header class="card-heading">
+            <div>
+              <p class="card-kicker">YOUR POINTS CARD</p>
+              <h2 id="cardTitle">集點卡</h2>
+              <p id="cardDescription" class="card-description hidden"></p>
+            </div>
+            <div class="member-number"><span>NO.</span><strong id="memberNo">—</strong></div>
+          </header>
+
+          <div id="stampGrid" class="stamp-grid" aria-label="集點進度"></div>
+
+          <button id="scanStampButton" class="scan-button" type="button" disabled>
+            <span class="scan-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M8 8h2v2H8zM14 8h2v2h-2zM8 14h2v2H8zM14 14h2v2h-2z"/></svg></span>
+            <span>掃描店家集點 QR Code</span><span class="scan-arrow" aria-hidden="true">↗</span>
+          </button>
+        </article>
+
+        <section class="ticket-wallet" aria-labelledby="ticketWalletTitle">
+          <div class="section-heading">
+            <div><p class="eyebrow">MY REWARDS</p><h2 id="ticketWalletTitle">這張卡的票券</h2></div>
+            <span id="earnedTicketCount" class="ticket-count">0 張可使用</span>
+          </div>
+          <section class="ticket-group" aria-labelledby="earnedTicketsTitle">
+            <div class="ticket-group-heading"><h3 id="earnedTicketsTitle">已獲得</h3><span>點開票券並掃描店家 QR 使用</span></div>
+            <div id="earnedTicketList" class="earned-ticket-list"></div>
+            <div id="earnedTicketEmpty" class="ticket-empty"><span aria-hidden="true">◇</span><p>這張卡達成節點後，票券會出現在這裡。</p></div>
+          </section>
+          <section id="upcomingTicketGroup" class="ticket-group upcoming-group" aria-labelledby="upcomingTicketsTitle">
+            <div class="ticket-group-heading"><h3 id="upcomingTicketsTitle">未獲得</h3><span>繼續集這張卡即可解鎖</span></div>
+            <div id="upcomingTicketList" class="upcoming-ticket-list"></div>
+          </section>
+        </section>
+      </div>
 
       <footer class="page-footer"><span class="wordmark-dot"></span><span>集點與兌換結果以店家系統紀錄為準</span></footer>
     </section>

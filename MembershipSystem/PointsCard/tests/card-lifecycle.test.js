@@ -117,28 +117,44 @@ test('admin UI integrates reward nodes into each card and exposes only one prima
   assert.doesNotThrow(() => new vm.Script(script));
 });
 
-test('member UI renders one visible card entry for every configured card instead of a dropdown-only selector', () => {
+test('member UI uses accessible in-page tabs to show each card progress and related tickets', () => {
   const html = read('user/index.html');
   const script = read('user/app.js');
   const gallery = read('user/card-gallery.js');
   const galleryCss = read('user/card-gallery.css');
   const ids = htmlIds(html);
-  for (const id of ['cardSwitcher', 'memberCardSelect', 'cardTitle', 'cardDescription', 'noCardState']) assert.ok(ids.has(id));
+  for (const id of ['cardSwitcher', 'memberCardSelect', 'memberCardTabs', 'cardWorkspace', 'cardTitle', 'cardDescription', 'noCardState']) assert.ok(ids.has(id));
   const missing = Array.from(new Set(jsElementIds(script))).filter((id) => !ids.has(id));
   assert.deepEqual(missing, []);
   assert.match(html, /card-gallery\.css/);
   assert.match(html, /card-gallery\.js/);
+  assert.match(html, /id="memberCardTabs"[^>]+role="tablist"/);
+  assert.match(html, /id="cardWorkspace"[^>]+role="tabpanel"/);
+  assert.match(html, />這張卡的票券</);
   assert.match(gallery, /Array\.from\(select\.options\)/);
-  assert.match(gallery, /member-card-option/);
+  assert.match(gallery, /member-card-tab/);
+  assert.match(gallery, /setAttribute\('role', 'tab'\)/);
+  assert.match(gallery, /setAttribute\('aria-selected'/);
+  assert.match(gallery, /ArrowLeft/);
+  assert.match(gallery, /ArrowRight/);
+  assert.match(gallery, /event\.key === 'Home'/);
+  assert.match(gallery, /event\.key === 'End'/);
+  assert.match(gallery, /keyboardFocusCardId/);
+  assert.match(gallery, /prefersReducedMotion \? 'auto' : 'smooth'/);
   assert.match(gallery, /function setSwitcherHidden/);
   assert.match(gallery, /switcher\.classList\.contains\('hidden'\) === hidden/);
   assert.doesNotMatch(gallery, /switcherObserver|observe\(switcher/);
   assert.match(gallery, /select\.dispatchEvent\(new Event\('change'/);
-  assert.match(galleryCss, /\.member-card-list/);
+  assert.match(galleryCss, /\.member-card-tabs/);
+  assert.match(galleryCss, /overflow-x: auto/);
+  assert.match(galleryCss, /\.member-card-tab\.selected/);
+  assert.doesNotMatch(galleryCss, /grid-template-columns: repeat\(auto-fit/);
   assert.match(galleryCss, /\.card-select-fallback \{ display: none !important; \}/);
   assert.match(script, /MAX_GRID_STAMPS = 60/);
   assert.match(script, /renderLargeCardProgress/);
   assert.match(script, /PointsCard\.setSelectedCardId\(cardId\)/);
+  assert.match(script, /option\.dataset\.totalStamps/);
+  assert.match(script, /cardWorkspace.*aria-busy/);
   assert.match(html, /目前沒有可用集點卡/);
   assert.doesNotThrow(() => new vm.Script(gallery));
 });
