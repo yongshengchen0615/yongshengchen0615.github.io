@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '1.3.0',
+  version: '1.4.0',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -75,6 +75,7 @@ function doGet() {
         'member.me', 'stamp.record', 'reward.claim', 'admin.dashboard', 'admin.summary',
         'admin.members.search', 'admin.stamps.list', 'admin.reward-confirmations.list',
         'admin.member.update', 'admin.reward.redeem', 'admin.reward-nodes.update',
+        'admin.card.update', 'admin.card.delete',
         'admin.stamp.create', 'admin.stamp.open', 'admin.stamp.cancel', 'admin.stamp.delete',
         'admin.reward-confirm.create', 'admin.reward-confirm.open', 'admin.reward-confirm.cancel',
         'admin.reward-confirm.delete'
@@ -140,6 +141,14 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-reward-nodes-update:' + identity.sub, 10, 60);
         return json_({ ok: true, data: adminRewardNodesUpdate_(context, payload) });
+      case 'admin.card.update':
+        requireAdmin_(context);
+        rateLimit_('admin-card-update:' + identity.sub, 10, 60);
+        return json_({ ok: true, data: adminCardUpdate_(context, payload) });
+      case 'admin.card.delete':
+        requireAdmin_(context);
+        rateLimit_('admin-card-delete:' + identity.sub, 10, 60);
+        return json_({ ok: true, data: adminCardDelete_(context, payload) });
       case 'admin.stamp.create':
         requireAdmin_(context);
         rateLimit_('admin-stamp-create:' + identity.sub, 20, 60);
@@ -339,6 +348,7 @@ function publicMember_(value, includeAdminFields, claimedOrdinals, settingsOverr
     upcomingRewardNodes: rewards.upcomingRewardNodes.map(publicRewardTicket_),
     stampsPerReward: settings.stampsPerReward,
     cardSize: settings.cardSize,
+    card: settings.card,
     visualStamps: rewards.visualStamps,
     displayCycleNumber: rewards.displayCycleNumber,
     stampsUntilReward: rewards.availableRewards > 0 ? 0 : rewards.stampsUntilNextReward,
@@ -399,6 +409,8 @@ function pointsCardSettings_() {
     rewardNodes: rewardNodes,
     rewardTicketTypesSupported: true,
     rewardLotteryWeightsSupported: true,
+    cardLifecycleSupported: true,
+    card: publicPointsCardLifecycle_(),
     rewardNodesUpdatedAt: properties.getProperty(POINTS_CARD_SERVICE.rewardNodesUpdatedAtProperty) || 'legacy'
   };
 }
