@@ -72,9 +72,11 @@ function adminCardUpdate_(context, payload) {
       fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，集點卡設定未更新。');
     }
     const properties = PropertiesService.getScriptProperties();
-    properties.setProperty(POINTS_CARD_CARD_PROPERTIES.status, 'active');
-    properties.setProperty(POINTS_CARD_CARD_PROPERTIES.expiresAt, expiresAt);
-    properties.setProperty(POINTS_CARD_CARD_PROPERTIES.updatedAt, now);
+    const next = {};
+    next[POINTS_CARD_CARD_PROPERTIES.status] = 'active';
+    next[POINTS_CARD_CARD_PROPERTIES.expiresAt] = expiresAt;
+    next[POINTS_CARD_CARD_PROPERTIES.updatedAt] = now;
+    properties.setProperties(next, false);
     audit_(context.identity.sub, 'admin', 'POINTS_CARD_UPDATED', '', 'success', {
       status: 'active',
       expiresAt: expiresAt || 'unlimited'
@@ -104,8 +106,10 @@ function adminCardDelete_(context, payload) {
       fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，集點卡未刪除。');
     }
     const properties = PropertiesService.getScriptProperties();
-    properties.setProperty(POINTS_CARD_CARD_PROPERTIES.status, 'deleted');
-    properties.setProperty(POINTS_CARD_CARD_PROPERTIES.updatedAt, now);
+    const next = {};
+    next[POINTS_CARD_CARD_PROPERTIES.status] = 'deleted';
+    next[POINTS_CARD_CARD_PROPERTIES.updatedAt] = now;
+    properties.setProperties(next, false);
     audit_(context.identity.sub, 'admin', 'POINTS_CARD_DELETED', '', 'success', {
       preservedMemberHistory: true,
       preservedRewards: true
