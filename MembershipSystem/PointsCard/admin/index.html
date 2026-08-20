@@ -94,7 +94,7 @@
 
       <section id="admin-panel-stamp-qr" class="admin-tab-panel workspace-section voucher-section" role="tabpanel" aria-labelledby="admin-tab-stamp-qr" tabindex="0" data-admin-panel="stamp-qr" hidden>
         <div class="section-heading">
-          <div><p class="eyebrow">STAMP QR</p><h2 id="vouchersTitle">集點 QR Code</h2><p>建議使用「每位會員一次」；單次 QR 適合單筆交易，可重複 QR 僅適合店員嚴格控管的特殊流程。</p></div>
+          <div><p class="eyebrow">STAMP QR</p><h2 id="vouchersTitle">集點 QR Code</h2><p>建議使用「每位會員一次」；可設定到期時間或無期限。已有集點紀錄的 QR 刪除後會保留歷史紀錄。</p></div>
           <button id="newStampButton" class="button button-primary" type="button">新增集點 QR</button>
         </div>
         <div class="table-wrap">
@@ -141,14 +141,15 @@
       <div id="stampFields" class="form-grid">
         <label><span>集點數量</span><input id="stampCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric" required></label>
         <label><span>使用模式</span><select id="stampMode" required><option value="per-member" selected>每位會員一次（建議）</option><option value="single">整組單次使用</option><option value="repeatable">不限會員重複使用</option></select></label>
-        <label><span>到期時間</span><input id="stampExpiresAt" type="datetime-local" required></label>
+        <label><span>期限設定</span><select id="stampExpiryMode" required><option value="limited" selected>有期限</option><option value="unlimited">無期限</option></select></label>
+        <label id="stampExpiryField"><span>到期時間</span><input id="stampExpiresAt" type="datetime-local" required></label>
         <label class="full-span"><span>發放備註</span><textarea id="stampNote" maxlength="200" rows="3" placeholder="例如：本次消費集點"></textarea></label>
       </div>
-      <div id="stampResult" class="stamp-result hidden">
+      <div id="stampResult" class="stamp-result hidden" aria-live="polite">
         <div id="stampQrCode" class="qr-code" aria-label="集點 QR Code"></div>
         <p id="stampResultMeta"></p>
-        <label class="field-label"><span>集點連結</span><textarea id="stampUrl" rows="3" readonly></textarea></label>
-        <p class="security-note">QR Code 只提供集點憑證；會員身分與狀態仍由 LINE ID Token 與 GAS 驗證。若使用不限重複模式，連結外流可能造成濫用。</p>
+        <label id="stampUrlField" class="field-label"><span>集點連結</span><textarea id="stampUrl" rows="3" readonly></textarea></label>
+        <p class="security-note">QR Code 只提供集點憑證；會員身分與狀態仍由 LINE ID Token 與 GAS 驗證。無期限或不限重複模式的 QR 外流風險較高，不再使用時請立即停止或刪除。</p>
       </div>
       <p id="stampFormError" class="form-error hidden" role="alert"></p>
       <footer class="dialog-actions">
