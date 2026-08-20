@@ -8,6 +8,11 @@
   const AUTH_REFRESH_COOLDOWN_MS = 60 * 1000;
   const ID_TOKEN_EXPIRY_SKEW_SECONDS = 30;
   const API_TIMEOUT_MS = 25000;
+  const nativeFetch = window.fetch.bind(window);
+  const NativeURLSearchParams = window.URLSearchParams;
+  const NativeAbortController = window.AbortController;
+  const cryptoClient = window.crypto;
+  const liffClient = window.liff;
 
   let configPromise = null;
   let authenticatedIdToken = '';
@@ -40,7 +45,7 @@
 
   function randomHex(bytes) {
     const data = new Uint8Array(bytes || 16);
-    window.crypto.getRandomValues(data);
+    cryptoClient.getRandomValues(data);
     return Array.from(data, (value) => value.toString(16).padStart(2, '0')).join('');
   }
 
@@ -92,7 +97,7 @@
   async function loadConfig() {
     if (configPromise) return configPromise;
     configPromise = (async function () {
-      const response = await fetch(new URL('../shared/config.json', window.location.href), {
+      const response = await nativeFetch(new URL('../shared/config.json', window.location.href), {
         method: 'GET',
         credentials: 'same-origin',
         cache: 'no-store',
@@ -206,9 +211,9 @@
   }
 
   function currentIdTokenExpiry() {
-    if (typeof liff.getDecodedIDToken !== 'function') return 0;
+    if (!liffClient || typeof liffClient.getDecodedIDToken !== 'function') return 0;
     try {
-      const decoded = liff.getDecodedIDToken();
+      const decoded = liffClient.getDecodedIDToken();
       const exp = Number(decoded && decoded.exp);
       return Number.isFinite(exp) ? exp : 0;
     } catch (_) { return 0; }
@@ -220,7 +225,8 @@
   }
 
   function startExternalLogin(forceRefresh) {
-    if (liff.isInClient()) {
+    if (!liffClient) throw new Error('LINE LIFF SDK 尚未完成載入。');
+    if (liffClient.isInClient()) {
       throw new Error('LINE 登入憑證已過期，請關閉此 LIFF 頁面後重新開啟。');
     }
     if (loginInFlight) return false;
@@ -235,8 +241,8 @@
     writePendingLogin();
     authenticatedIdToken = '';
     try {
-      if (forceRefresh && liff.isLoggedIn()) liff.logout();
-      liff.login({ redirectUri: buildCanonicalAppUrl() });
+      if (forceRefresh && liffClient.isLoggedIn()) liffClient.logout();
+      liffClient.login({ redirectUri: buildCanonicalAppUrl() });
       return false;
     } catch (error) {
       loginInFlight = false;
@@ -246,10 +252,11 @@
   }
 
   async function ensureLiffLogin() {
+    if (!liffClient) throw new Error('LINE LIFF SDK 尚未完成載入。');
     const activeConfig = await loadConfig();
     const hadInitArtifacts = captureInitArtifacts();
     try {
-      await liff.init({ liffId: activeConfig.LIFF_ID });
+      await liffClient.init({ liffId: activeConfig.LIFF_ID });
     } catch (error) {
       if (recoverFromInitFailure(error, hadInitArtifacts)) return false;
       reportError(error, { source: 'liff', action: 'init' });
@@ -257,8 +264,8 @@
     }
 
     removeSessionValue(INIT_RECOVERY_KEY);
-    if (liff.isLoggedIn()) {
-      const idToken = liff.getIDToken();
+    if (liffClient.isLoggedIn()) {
+      const idToken = liffClient.getIDToken();
       if (!idToken) throw new Error('LINE 已登入但無法取得 ID Token，請確認 LIFF 已啟用 openid scope。');
       if (!hasFreshIdToken()) return startExternalLogin(true);
       authenticatedIdToken = idToken;
@@ -270,7 +277,7 @@
     }
 
     canonicalizeAppUrl();
-    if (liff.isInClient()) throw new Error('無法取得本次 LINE 登入狀態，請關閉後重新開啟。');
+    if (liffClient.isInClient()) throw new Error('無法取得本次 LINE 登入狀態，請關閉後重新開啟。');
     return startExternalLogin(false);
   }
 
@@ -284,15 +291,15 @@
 
     const safeAction = String(action || '');
     const startedAt = monotonicNow();
-    const form = new URLSearchParams();
+    const form = new NativeURLSearchParams();
     form.set('action', safeAction);
     form.set('idToken', authenticatedIdToken);
     form.set('payload', JSON.stringify(payload || {}));
-    const controller = new AbortController();
+    const controller = new NativeAbortController();
     const timeout = window.setTimeout(function () { controller.abort(); }, API_TIMEOUT_MS);
     let response;
     try {
-      response = await fetch(activeConfig.GAS_WEB_APP_URL, {
+      response = await nativeFetch(activeConfig.GAS_WEB_APP_URL, {
         method: 'POST',
         body: form,
         credentials: 'omit',
@@ -329,7 +336,7 @@
       reportError(error, {
         source: 'api', action: safeAction, traceId: traceId, durationMs: monotonicNow() - startedAt
       });
-      if (error.code === 'UNAUTHENTICATED' && !liff.isInClient()) startExternalLogin(true);
+      if (error.code === 'UNAUTHENTICATED' && liffClient && !liffClient.isInClient()) startExternalLogin(true);
       throw error;
     }
     return data.data;
@@ -351,7 +358,7 @@
     }).format(date);
   }
 
-  window.PointsCard = Object.freeze({
+  const api = Object.freeze({
     loadConfig: loadConfig,
     ensureLiffLogin: ensureLiffLogin,
     callApi: callApi,
@@ -364,4 +371,15 @@
     formatDate: formatDate,
     formatDateTime: formatDateTime
   });
+
+  try {
+    Object.defineProperty(window, 'PointsCard', {
+      value: api,
+      writable: false,
+      configurable: false,
+      enumerable: true
+    });
+  } catch (_) {
+    window.PointsCard = api;
+  }
 })();
