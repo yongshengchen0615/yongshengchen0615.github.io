@@ -54,6 +54,31 @@ function assertPointsCardAvailable_(message) {
   }
 }
 
+function cancelActiveStampVouchersForCardLifecycle_(actorLineUserId, now) {
+  const sheet = getSheet_(POINTS_CARD_SHEETS.vouchers);
+  const voucherIds = readObjects_(sheet).map(normalizeVoucher_).filter(function (voucher) {
+    return voucher.status === 'active';
+  }).map(function (voucher) {
+    return voucher.voucherId;
+  });
+  let cancelledCount = 0;
+
+  voucherIds.forEach(function (voucherId) {
+    const match = findByFieldWithRow_(sheet, 'voucherId', voucherId);
+    if (!match) return;
+    const voucher = normalizeVoucher_(match.object);
+    if (voucher.status !== 'active') return;
+    voucher.status = 'cancelled';
+    voucher.cancelledByLineUserId = actorLineUserId;
+    voucher.cancelledAt = voucher.cancelledAt || now;
+    voucher.updatedAt = now;
+    writeObjectRow_(sheet, match.row, voucher);
+    cancelledCount += 1;
+  });
+
+  return cancelledCount;
+}
+
 function adminCardUpdate_(context, payload) {
   const expectedUpdatedAt = cleanText_(payload.expectedUpdatedAt || 'legacy', 64, true);
   const expiresAt = validPointsCardExpiry_(payload.expiresAt || '');
@@ -71,6 +96,12 @@ function adminCardUpdate_(context, payload) {
     })) {
       fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，集點卡設定未更新。');
     }
+
+    let revokedStampQrCount = 0;
+    if (current.storedStatus === 'deleted') {
+      revokedStampQrCount = cancelActiveStampVouchersForCardLifecycle_(context.identity.sub, now);
+    }
+
     const properties = PropertiesService.getScriptProperties();
     const next = {};
     next[POINTS_CARD_CARD_PROPERTIES.status] = 'active';
@@ -79,7 +110,8 @@ function adminCardUpdate_(context, payload) {
     properties.setProperties(next, false);
     audit_(context.identity.sub, 'admin', 'POINTS_CARD_UPDATED', '', 'success', {
       status: 'active',
-      expiresAt: expiresAt || 'unlimited'
+      expiresAt: expiresAt || 'unlimited',
+      revokedStampQrCount: revokedStampQrCount
     });
     return { card: publicPointsCardLifecycle_() };
   } finally {
@@ -105,16 +137,20 @@ function adminCardDelete_(context, payload) {
     })) {
       fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，集點卡未刪除。');
     }
+
     const properties = PropertiesService.getScriptProperties();
     const next = {};
     next[POINTS_CARD_CARD_PROPERTIES.status] = 'deleted';
     next[POINTS_CARD_CARD_PROPERTIES.updatedAt] = now;
     properties.setProperties(next, false);
+
+    const revokedStampQrCount = cancelActiveStampVouchersForCardLifecycle_(context.identity.sub, now);
     audit_(context.identity.sub, 'admin', 'POINTS_CARD_DELETED', '', 'success', {
       preservedMemberHistory: true,
-      preservedRewards: true
+      preservedRewards: true,
+      revokedStampQrCount: revokedStampQrCount
     });
-    return { card: publicPointsCardLifecycle_() };
+    return { card: publicPointsCardLifecycle_(), revokedStampQrCount: revokedStampQrCount };
   } finally {
     lock.releaseLock();
   }
