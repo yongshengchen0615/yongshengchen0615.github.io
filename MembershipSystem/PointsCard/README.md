@@ -1,6 +1,8 @@
 # PointsCard — LINE LIFF 集點卡
 
-`PointsCard` 參考 `app` 的 GitHub Pages + LIFF + Google Apps Script + Google Sheets 架構，獨立提供一套可部署的集點卡系統。
+`PointsCard` 採用 GitHub Pages + LINE LIFF + Google Apps Script + Google Sheets 架構，提供可獨立部署的會員集點、票券與抽獎系統。
+
+目前程式版本：`1.3.0`。
 
 ## 功能
 
@@ -12,16 +14,19 @@
 - 透過 `liff.scanCodeV2()` 掃描店家 QR Code，或直接開啟店家發放連結。
 - 登入 callback、網路逾時與重試會保留同一個 `requestId`，避免重複集點。
 - LINE ID Token 只留在目前頁面的記憶體，不寫入 Local Storage、Session Storage、URL 或 Sheet。
+- `member.me` 只取得目前畫面需要的會員與票券狀態，不再讀取已移除的歷史活動清單。
 
 ### 管理端
 
 - 管理員權限由 `Members.canManagePoints` 控制，每個 `admin.*` request 都由 GAS 重新讀取驗證。
+- 管理首頁先載入摘要與獎勵設定；會員、集點 QR、票券確認等資料在切換分頁時按需載入。
+- 會員搜尋只呼叫 `admin.members.search`，不再重新載入完整 dashboard。
 - 檢視會員、累計集點、可兌換獎勵與會員狀態。
 - 停權或停用會員，不允許前端直接修改累計點數。
 - 設定 1–5 個獎勵節點，每個節點可選優惠券或抽獎券；抽獎券可設定 2–8 個獎項與各自中獎率。
 - 會員可選擇任一張已獲得票券使用，並留下票券節點、店家確認與 Audit Log。
 - 建立、開啟、停止或刪除店家票券確認 QR。
-- 建立單次或可重複使用的集點 QR Code，支援開啟、停止與刪除未使用 QR。
+- 建立 `single`、`per-member` 或 `repeatable` 集點 QR Code；新版管理端預設使用較安全的 `per-member`。
 
 ## 商業規則
 
@@ -35,27 +40,29 @@
 
 `RewardRecords.rewardOrdinal` 記錄實際使用的節點，因此會員可點選任一張已獲得且尚未使用的票券；`redeemedRewards` 繼續作為使用總數，維持既有資料相容。節點修改會套用到目前累計點數；第一筆票券確認後即鎖定設定，避免既有票券被重新解讀。
 
-抽獎結果只在 GAS 端依設定權重產生，先寫入 `RewardRecords.lotteryResult` 再回傳前端播放動畫。同一個 `requestId` 重試時會恢復原結果，不會重新抽獎。每個獎項可設定 `0%` 至 `100%`（最多兩位小數），同一張抽獎券必須精確合計 `100%`；`0%` 獎項會保留在設定中但不會被抽中。這是一般促銷抽獎機制，不是具監管需求的公開彩券或高價值抽獎亂數系統。
+抽獎結果只在 GAS 端依設定權重產生，先寫入 `RewardRecords.lotteryResult` 再回傳前端播放動畫。同一個 `requestId` 重試時會恢復原結果，不會重新抽獎。每個獎項可設定 `0%` 至 `100%`（最多兩位小數），同一張抽獎券必須精確合計 `100%`；`0%` 獎項會保留在設定中但不會被抽中。
 
 ## 目錄
 
 ```text
 PointsCard/
-├── index.html              LIFF Endpoint 導向頁
+├── index.html
 ├── redirect.js
 ├── shared/
-│   ├── common.js           LIFF、登入 callback、API transport、request recovery
-│   └── config.json         LIFF ID 與 GAS Web App URL
-├── user/                   會員集點卡
-├── admin/                  管理端
+│   ├── common.js           LIFF、API transport、trace / Sentry bridge
+│   └── config.json
+├── user/
+├── admin/
 ├── gas/
-│   ├── Code.gs             API router、LINE 驗證、會員與管理查詢
-│   ├── Storage.gs          Sheet schema、初始化、管理員設定、Audit
-│   ├── StampService.gs     QR 發放與 retry-safe 集點
+│   ├── Code.gs             API router、LINE 驗證、管理查詢、trace logging
+│   ├── Storage.gs          Sheet schema、request-scoped read cache、Audit
+│   ├── StampService.gs     QR 發放、retry-safe 集點、per-member replay guard
 │   ├── RewardService.gs    retry-safe 獎勵兌換
-│   ├── RewardConfirmationService.gs  店家票券確認 QR
+│   ├── RewardConfirmationService.gs
 │   └── appsscript.json
-└── tests/contracts.test.js
+└── tests/
+    ├── contracts.test.js
+    └── optimization.test.js
 ```
 
 ## Sheet 資料
@@ -71,11 +78,99 @@ PointsCard/
 
 集點與兌換 mutation 都先寫入 `processing` 紀錄，再更新會員累計，最後改為 `recorded`。同一個 `requestId` 重送時會恢復或回傳同一筆結果。若中斷狀態與會員累計無法安全對應，API 會回 `RECOVERY_REQUIRED`，不會猜測或重複加點。
 
+`1.3.0` 另外在單次 GAS request 內快取完整 Sheet read；`appendObject_`、`writeObjectRow_` 與 `deleteObjectRow_` 都會立即清除對應快取，避免同一 request 重複 `getValues()` 又不犧牲 mutation 後的一致性。
+
+## 集點 QR Code 模式
+
+### `single`
+
+整組 QR Code 只允許一次成功集點。適合每筆交易建立一次性 QR；任何會員成功使用後，其他會員都不能再使用。
+
+### `per-member`（新版預設）
+
+同一張 QR 可提供多位會員使用，但**同一會員只能成功使用一次**。這個限制在 GAS 的 ScriptLock 交易內，以 `voucherId + memberLineUserId` 的已完成紀錄重新判斷，不依賴前端狀態。
+
+適合活動、批次發放或「每會員限領一次」的情境。
+
+### `repeatable`
+
+可由同一或不同會員重複集點。保留此模式是為了相容既有門市流程，但拿到連結的有效會員可重複建立新 `requestId` 使用，因此只應用於店員現場嚴格控管的特殊情境。
+
+若不確定要選哪個模式，優先使用 `per-member`；若每筆消費都必須獨立核准，優先使用 `single` 並為每筆交易產生新 QR。
+
+## 管理端 API 拆分
+
+為降低 Google Sheets 全表讀取與管理搜尋成本，`1.3.0` 新增：
+
+```text
+admin.summary
+admin.members.search
+admin.stamps.list
+admin.reward-confirmations.list
+```
+
+舊的 `admin.dashboard` 仍保留作為相容 API，但新版 `admin/app.js` 不再依賴它。
+
+新版載入流程：
+
+```text
+登入
+→ admin.summary
+→ 總覽可操作
+
+切換會員分頁
+→ admin.members.search
+
+切換集點 QR
+→ admin.stamps.list
+
+切換票券確認
+→ admin.reward-confirmations.list
+```
+
+會員搜尋 debounce 後只查會員，不再重抓 QR、票券確認與統計資料。
+
+## Observability / Sentry
+
+每個 GAS `doPost` request 都建立短期 `traceId`，並在 JSON response 中回傳：
+
+```json
+{
+  "meta": {
+    "traceId": "..."
+  }
+}
+```
+
+GAS 會輸出結構化 log：
+
+```text
+points_card_api
+- traceId
+- action
+- ok
+- durationMs
+- errorCode（失敗時）
+```
+
+未預期例外另外輸出 `points_card_unhandled_error` 與截短後的 stack。這些 log 不記錄 `idToken`、mutation payload、QR share code 或 request URL query。
+
+`shared/common.js` 提供安全的 `PointsCard.reportError()`。若頁面已由部署環境初始化 `window.Sentry`，錯誤會使用 `Sentry.captureException()` 上報，附帶的 context 僅允許：
+
+```text
+source
+API action
+traceId
+durationMs
+```
+
+Repository 不硬編碼 Sentry DSN、Auth Token 或其他 secret。Sentry Auth Token 僅供管理端 API 查詢／維運工具使用，不應放進 GitHub Pages。
+
 ## 部署設定
 
-### 1. 建立 GAS 專案
+### 1. 建立或更新 GAS 專案
 
-將 `gas/` 內所有檔案同步到同一個 Apps Script Project，然後在 Script Editor 依序執行：
+將 `gas/` 內所有檔案同步到同一個 Apps Script Project，然後執行：
 
 ```javascript
 initializePointsCardStorage();
@@ -84,11 +179,15 @@ configurePointsCard('YOUR_LINE_LOGIN_CHANNEL_ID', '招牌飲品一份', 10);
 
 `LINE_LOGIN_CHANNEL_ID` 是公開的 LINE Login Channel ID，不是 Channel Secret。
 
-上述函式會建立相容的單一 10 點優惠券節點。從 `1.1.x` 升級至 `1.2.x` 時必須再次執行 `initializePointsCardStorage()`：它會新增 `RewardConfirmations`，並在既有 `RewardRecords` 尾端補上券種、節點、抽獎結果與確認 QR 欄位，不會刪除既有資料。`1.2.1` 的抽獎權重不增加試算表欄位；既有字串型抽獎獎項會由新版 GAS 讀取為總和 `100%` 的等分權重。
+從舊版升級至 `1.3.0` 時仍建議再次執行：
+
+```javascript
+initializePointsCardStorage();
+```
+
+`1.3.0` 沒有新增 Sheet 欄位；`per-member` 沿用既有 `scanMode` 欄位，因此不需要資料搬移。
 
 ### 2. 部署 Web App
-
-建立或更新 Web App deployment：
 
 ```text
 Execute as: Me
@@ -97,14 +196,7 @@ Who has access: Anyone
 
 GAS Web App 必須允許未登入 Google 的 LIFF 使用者連線；實際會員驗證仍由 LINE ID Token server-side verification 完成。
 
-把 `/exec` URL 寫入 `shared/config.json`：
-
-```json
-{
-  "LIFF_ID": "1234567890-AbCdEfGh",
-  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/DEPLOYMENT_ID/exec"
-}
-```
+把 `/exec` URL 寫入 `shared/config.json`。
 
 ### 3. 設定 LIFF
 
@@ -114,25 +206,13 @@ GAS Web App 必須允許未登入 Google 的 LIFF 使用者連線；實際會員
 
 ### 4. 指定第一位管理員
 
-先用該 LINE 帳號開啟會員端，讓 `Members` 建立會員 row。接著從 `Members.lineUserId` 取得該帳號的 LINE User ID，在 Script Editor 執行：
+先用該 LINE 帳號開啟會員端，再於 Script Editor 執行：
 
 ```javascript
 setPointsCardAdmin('Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', true);
 ```
 
 需要撤銷時改傳 `false`。不要把實際 LINE User ID 貼到公開 Issue、文件或程式碼。
-
-管理端網址為：
-
-```text
-https://YOUR_GITHUB_PAGES_HOST/.../PointsCard/admin/
-```
-
-## QR Code 模式
-
-- `single`：整組 QR Code 只允許一次成功集點，適合單次發放。
-- `repeatable`：可由不同會員重複集點，適合店員現場展示；分享連結外流也會增加濫用風險，因此必須由店員控管展示時機。
-- QR Code 的 `shareCode` 是集點憑證，不是會員 Authentication 或管理 Authorization。會員身分、狀態與管理權限仍由 GAS 判斷。
 
 ## 店家票券確認 QR
 
@@ -148,9 +228,9 @@ https://YOUR_GITHUB_PAGES_HOST/.../PointsCard/admin/
 - 最大節點決定每張卡的點數長度。
 - 節點類型必須是優惠券或抽獎券。
 - 抽獎券必須設定 2–8 個不重複獎項；各獎項中獎率可為 `0%` 至 `100%`、最多兩位小數，合計必須精確為 `100%`。
-- 會員端會在已取得與未取得的抽獎券上列出中獎率大於 `0%` 的可能獎項，但不公開各獎項權重。
-- 尚未使用任何票券前，可以修改節點；新設定會依會員目前累計點數重新計算可用票券。
-- 產生第一筆 `RewardRecords` 後設定會鎖定；集點仍可繼續循環累積。
+- 會員端會列出中獎率大於 `0%` 的可能獎項，但不公開各獎項權重。
+- 尚未使用任何票券前，可以修改節點。
+- 產生第一筆 `RewardRecords` 後設定鎖定。
 
 ## 本機驗證
 
@@ -162,4 +242,12 @@ node --check PointsCard/admin/app.js
 node --test PointsCard/tests/*.test.js
 ```
 
-本機測試通過只代表 repository source 的語法與契約一致；GAS `/exec` 與 LIFF 實機掃碼仍須在部署後另行驗證。
+`optimization.test.js` 另外驗證：
+
+- `member.me` 不再讀取未使用的 activity。
+- 管理端使用拆分查詢 API。
+- `per-member` 防止同會員重放、同時保留 `single/repeatable` 相容性。
+- request-scoped Sheet cache 寫入後會失效。
+- trace / Sentry bridge 不把 ID Token 或 mutation payload 放進 observability context。
+
+本機測試通過只代表 repository source 的語法與契約一致；GAS `/exec`、LINE Verify 與 LIFF 實機掃碼仍須在部署後另行驗證。
