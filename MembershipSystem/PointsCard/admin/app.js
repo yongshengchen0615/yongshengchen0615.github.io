@@ -4,7 +4,7 @@
   const $ = function (id) { return document.getElementById(id); };
   const statusLabels = { active: '有效', suspended: '停權', disabled: '停用' };
   const modeLabels = { single: '單次使用', 'per-member': '每位會員一次', repeatable: '可重複使用' };
-  const voucherStatusLabels = { active: '有效', cancelled: '已停止', expired: '已過期', used: '已使用' };
+  const voucherStatusLabels = { active: '有效', cancelled: '已停止', expired: '已過期', used: '已使用', deleted: '已刪除' };
   const rewardTypeLabels = { coupon: '優惠券', lottery: '抽獎券' };
   const avatarFallback = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72"%3E%3Crect width="72" height="72" rx="36" fill="%23dfe5df"/%3E%3Ccircle cx="36" cy="28" r="13" fill="%23173f35" fill-opacity=".3"/%3E%3Cpath d="M14 68c2-14 10-21 22-21s20 7 22 21" fill="%23173f35" fill-opacity=".3"/%3E%3C/svg%3E';
   const adminTabNames = ['overview', 'reward-nodes', 'reward-confirmations', 'members', 'stamp-qr'];
@@ -612,7 +612,7 @@
   function effectiveVoucherStatus(voucher) {
     if (voucher.status !== 'active') return voucher.status;
     if (voucher.scanMode === 'single' && Number(voucher.recordCount || 0) > 0) return 'used';
-    if (new Date(voucher.expiresAt).getTime() <= Date.now()) return 'expired';
+    if (voucher.expiresAt && new Date(voucher.expiresAt).getTime() <= Date.now()) return 'expired';
     return 'active';
   }
 
@@ -629,12 +629,12 @@
       const statusTd = document.createElement('td');
       const state = effectiveVoucherStatus(voucher);
       const status = document.createElement('span'); status.className = 'status-badge ' + state; status.textContent = voucherStatusLabels[state] || state; statusTd.append(status);
-      const expiryTd = document.createElement('td'); expiryTd.textContent = PointsCard.formatDateTime(voucher.expiresAt, '—');
+      const expiryTd = document.createElement('td'); expiryTd.textContent = voucher.expiresAt ? PointsCard.formatDateTime(voucher.expiresAt, '—') : '無期限';
       const actionsTd = document.createElement('td');
       const actions = document.createElement('div'); actions.className = 'row-actions';
-      actions.append(createTextButton('開啟', '', function () { openVoucher(voucher.voucherId); }, state === 'cancelled'));
+      actions.append(createTextButton('開啟', '', function () { openVoucher(voucher.voucherId); }, state === 'cancelled' || state === 'deleted'));
       if (state === 'active') actions.append(createTextButton('停止', 'danger', function () { cancelVoucher(voucher); }, false));
-      actions.append(createTextButton('刪除', 'danger', function () { deleteVoucher(voucher); }, Number(voucher.recordCount || 0) > 0));
+      actions.append(createTextButton('刪除', 'danger', function () { deleteVoucher(voucher); }, false));
       actionsTd.append(actions);
       setTableCellLabels(
         [idTd, stampsTd, modeTd, countTd, statusTd, expiryTd, actionsTd],
@@ -772,21 +772,35 @@
     return new Date(value.getTime() - offset).toISOString().slice(0, 16);
   }
 
+  function syncStampExpiryMode() {
+    const limited = $('stampExpiryMode').value === 'limited';
+    $('stampExpiryField').classList.toggle('hidden', !limited);
+    $('stampExpiresAt').required = limited;
+    if (limited && !$('stampExpiresAt').value) {
+      $('stampExpiresAt').value = toLocalDateTimeInput(Date.now() + 24 * 60 * 60 * 1000);
+    }
+  }
+
   function resetStampDialog() {
     clearFormError('stampFormError');
     currentQrSvg = '';
     $('stampDialogTitle').textContent = '新增集點 QR Code';
-    $('stampDialogDescription').textContent = '預設每位會員只能使用一次；需要特殊門市流程時再改用其他模式。';
+    $('stampDialogDescription').textContent = '預設每位會員只能使用一次；可選擇設定到期時間或無期限。';
     $('stampCount').value = '1';
     $('stampMode').value = 'per-member';
+    $('stampExpiryMode').value = 'limited';
     $('stampExpiresAt').value = toLocalDateTimeInput(Date.now() + 24 * 60 * 60 * 1000);
     $('stampNote').value = '';
+    syncStampExpiryMode();
     $('stampFields').classList.remove('hidden');
     $('stampResult').classList.add('hidden');
+    $('stampUrlField').classList.remove('hidden');
     $('copyStampButton').classList.add('hidden');
     $('downloadStampButton').classList.add('hidden');
     $('createStampButton').classList.remove('hidden');
     $('stampQrCode').replaceChildren();
+    $('stampResultMeta').textContent = '';
+    $('stampUrl').value = '';
   }
 
   function openNewStamp() {
@@ -797,6 +811,9 @@
   function readStampForm() {
     const stampCount = Number($('stampCount').value);
     if (!Number.isInteger(stampCount) || stampCount < 1 || stampCount > 10) throw new Error('集點數量必須是 1 到 10 的整數。');
+    if ($('stampExpiryMode').value === 'unlimited') {
+      return { stampCount: stampCount, scanMode: $('stampMode').value, expiresAt: '', note: $('stampNote').value };
+    }
     const expiry = new Date($('stampExpiresAt').value);
     if (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now()) throw new Error('到期時間必須晚於現在。');
     return { stampCount: stampCount, scanMode: $('stampMode').value, expiresAt: expiry.toISOString(), note: $('stampNote').value };
@@ -809,6 +826,23 @@
     return url.href;
   }
 
+  function showStampLoadingState() {
+    currentQrSvg = '';
+    $('stampFields').classList.add('hidden');
+    $('stampResult').classList.remove('hidden');
+    $('stampUrlField').classList.add('hidden');
+    $('copyStampButton').classList.add('hidden');
+    $('downloadStampButton').classList.add('hidden');
+    $('createStampButton').classList.add('hidden');
+    $('stampQrCode').replaceChildren();
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    $('stampQrCode').append(spinner);
+    $('stampResultMeta').textContent = '正在載入 QR Code…';
+    $('stampUrl').value = '';
+  }
+
   async function showVoucher(voucher) {
     if (typeof window.qrcode !== 'function') throw new Error('QR Code 元件載入失敗，請重新整理後再試。');
     const url = await buildStampUrl(voucher.shareCode);
@@ -818,9 +852,11 @@
     currentQrSvg = qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true });
     $('stampQrCode').innerHTML = currentQrSvg;
     $('stampUrl').value = url;
-    $('stampResultMeta').textContent = voucher.voucherId + ' · +' + formatNumber(voucher.stampCount) + ' 點 · ' + (modeLabels[voucher.scanMode] || voucher.scanMode);
+    const expiryLabel = voucher.expiresAt ? '到期 ' + PointsCard.formatDateTime(voucher.expiresAt, '—') : '無期限';
+    $('stampResultMeta').textContent = voucher.voucherId + ' · +' + formatNumber(voucher.stampCount) + ' 點 · ' + (modeLabels[voucher.scanMode] || voucher.scanMode) + ' · ' + expiryLabel;
     $('stampFields').classList.add('hidden');
     $('stampResult').classList.remove('hidden');
+    $('stampUrlField').classList.remove('hidden');
     $('copyStampButton').classList.remove('hidden');
     $('downloadStampButton').classList.remove('hidden');
     $('createStampButton').classList.add('hidden');
@@ -848,11 +884,15 @@
   async function openVoucher(voucherId) {
     resetStampDialog();
     $('stampDialogTitle').textContent = '開啟集點 QR Code';
+    $('stampDialogDescription').textContent = '正在讀取 QR Code 資料，完成後會自動顯示。';
+    showStampLoadingState();
     openDialog($('stampDialog'));
     try {
       const result = await PointsCard.callApi('admin.stamp.open', { voucherId: voucherId });
       await showVoucher(result.voucher);
+      $('stampDialogDescription').textContent = 'QR Code 已載入，可下載或複製連結。';
     } catch (error) {
+      $('stampResult').classList.add('hidden');
       showFormError('stampFormError', error);
     }
   }
@@ -867,12 +907,16 @@
   }
 
   async function deleteVoucher(voucher) {
-    if (!window.confirm('確定刪除這組尚未使用的 QR Code？')) return;
+    const hasHistory = Number(voucher.recordCount || 0) > 0;
+    const message = hasHistory
+      ? '這組 QR Code 已有集點紀錄。刪除後會立即停止並從清單移除，但歷史集點與稽核紀錄會保留。確定刪除？'
+      : '確定刪除這組集點 QR Code？';
+    if (!window.confirm(message)) return;
     try {
       await PointsCard.callApi('admin.stamp.delete', { voucherId: voucher.voucherId, expectedUpdatedAt: voucher.updatedAt });
       vouchers = vouchers.filter(function (item) { return item.voucherId !== voucher.voucherId; });
       renderVouchers();
-      showToast('QR Code 已刪除。');
+      showToast(hasHistory ? 'QR Code 已刪除，歷史集點紀錄已保留。' : 'QR Code 已刪除。');
     } catch (error) { showToast(error.message); }
   }
 
@@ -1026,6 +1070,7 @@
     $('saveRewardNodesButton').addEventListener('click', saveRewardNodes);
     $('confirmRewardButton').addEventListener('click', redeemReward);
     $('newStampButton').addEventListener('click', openNewStamp);
+    $('stampExpiryMode').addEventListener('change', syncStampExpiryMode);
     $('createStampButton').addEventListener('click', createStamp);
     $('copyStampButton').addEventListener('click', function () { copyText($('stampUrl').value, 'stampUrl', '集點連結已複製。'); });
     $('downloadStampButton').addEventListener('click', function () { downloadSvg(currentQrSvg, 'points-card-stamp-qr.svg'); });
