@@ -34,15 +34,30 @@ test('multi-card storage uses independent card, progress, QR, stamp, and reward 
 test('multi-card APIs require server-side admin authorization and route all mutations', () => {
   const code = read('gas/Code.gs');
   for (const action of [
-    'admin.cards.list', 'admin.card.create', 'admin.card.update', 'admin.card.delete',
+    'admin.cards.list', 'admin.card.create', 'admin.card.update', 'admin.card.save', 'admin.card.delete',
     'admin.reward-nodes.update', 'admin.stamp.create', 'admin.stamp.delete'
   ]) {
     assert.match(code, new RegExp("case '" + action.replace(/[.]/g, '\\.') + "':\\s*requireAdmin_\\(context\\)"));
   }
-  assert.match(code, /version:\s*'2\.0\.0'/);
+  assert.match(code, /version:\s*'2\.1\.0'/);
+  assert.match(code, /adminCardSaveMultiCard_\(context, payload\)/);
   assert.match(code, /memberMeMultiCard_\(context, payload\)/);
   assert.match(code, /stampRecordMultiCard_\(context, payload\)/);
   assert.match(code, /memberRewardClaimMultiCard_\(context, payload\)/);
+});
+
+test('unified card save validates concurrency and writes metadata plus reward nodes once under one lock', () => {
+  const source = read('gas/MultiCardCardEditorService.gs');
+  assert.match(source, /function adminCardSaveMultiCard_/);
+  assert.match(source, /validMultiCardId_\(payload\.cardId, true\)/);
+  assert.match(source, /expectedUpdatedAt/);
+  assert.match(source, /LockService\.getScriptLock\(\)/);
+  assert.match(source, /match\.card\.updatedAt !== expectedUpdatedAt/);
+  assert.match(source, /rewardSettingsLockedForCard_\(cardId\)/);
+  assert.match(source, /CARD_SAVE_REQUESTED/);
+  assert.match(source, /CARD_SAVED/);
+  assert.equal((source.match(/writeMultiCardObjectRow_\(/g) || []).length, 1);
+  assert.doesNotMatch(source, /adminRewardNodesUpdateMultiCard_/);
 });
 
 test('deleting a card permanently removes only rows belonging to that card', () => {
@@ -82,33 +97,48 @@ test('reward node thresholds are no longer limited to 20 points', () => {
   assert.doesNotMatch(code, /stampsRequired > 20/);
 });
 
-test('admin UI manages card selection, name, description, expiry, create, update, and permanent delete', () => {
+test('admin UI integrates reward nodes into each card and exposes only one primary save action', () => {
   const script = read('admin/card-lifecycle.js');
+  const css = read('admin/card-lifecycle.css');
   assert.match(script, /cardSelect/);
   assert.match(script, /cardName/);
   assert.match(script, /cardDescription/);
+  assert.match(script, /cardRewardEditor/);
+  assert.match(script, /cardRewardNodeList/);
   assert.match(script, /admin\.cards\.list/);
   assert.match(script, /admin\.card\.create/);
-  assert.match(script, /admin\.card\.update/);
-  assert.match(script, /admin\.card\.delete/);
+  assert.match(script, /admin\.card\.save/);
+  assert.doesNotMatch(script, /admin\.reward-nodes\.update/);
+  assert.match(script, /rewardNodes:\s*readRewardNodesForMultiCard\(\)/);
+  assert.match(script, /儲存集點卡與獎勵設定/);
   assert.match(script, /所有會員點數、集點紀錄、集點 QR/);
-  assert.match(script, /PointsCard\.setSelectedCardId/);
+  assert.match(css, /#admin-tab-reward-nodes/);
+  assert.match(css, /#admin-panel-reward-nodes/);
   assert.doesNotThrow(() => new vm.Script(script));
 });
 
-test('member UI can switch cards and large cards use summarized progress instead of thousands of stamp nodes', () => {
+test('member UI renders one visible card entry for every configured card instead of a dropdown-only selector', () => {
   const html = read('user/index.html');
   const script = read('user/app.js');
+  const gallery = read('user/card-gallery.js');
+  const galleryCss = read('user/card-gallery.css');
   const ids = htmlIds(html);
   for (const id of ['cardSwitcher', 'memberCardSelect', 'cardTitle', 'cardDescription', 'noCardState']) assert.ok(ids.has(id));
   const missing = Array.from(new Set(jsElementIds(script))).filter((id) => !ids.has(id));
   assert.deepEqual(missing, []);
+  assert.match(html, /card-gallery\.css/);
+  assert.match(html, /card-gallery\.js/);
+  assert.match(gallery, /Array\.from\(select\.options\)/);
+  assert.match(gallery, /member-card-option/);
+  assert.match(gallery, /switcher\.classList\.remove\('hidden'\)/);
+  assert.match(gallery, /select\.dispatchEvent\(new Event\('change'/);
+  assert.match(galleryCss, /\.member-card-list/);
+  assert.match(galleryCss, /\.card-select-fallback \{ display: none !important; \}/);
   assert.match(script, /MAX_GRID_STAMPS = 60/);
   assert.match(script, /renderLargeCardProgress/);
-  assert.match(script, /if \(total > MAX_GRID_STAMPS\)/);
   assert.match(script, /PointsCard\.setSelectedCardId\(cardId\)/);
   assert.match(html, /目前沒有可用集點卡/);
-  assert.doesNotThrow(() => new vm.Script(script));
+  assert.doesNotThrow(() => new vm.Script(gallery));
 });
 
 test('shared transport injects only a validated selected card id into API payloads', () => {
