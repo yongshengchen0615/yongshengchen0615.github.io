@@ -25,10 +25,16 @@ test('migrated multi-card requests skip the redundant full schema initialization
   const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__multiCardOptimizationTest = { ensureMultiCardStorage_ };';
   let spreadsheetReads = 0;
   let lockReads = 0;
+  const stored = {
+    POINTS_CARD_SPREADSHEET_ID: 'SPREADSHEET-1',
+    POINTS_CARD_MULTI_CARD_MIGRATED_AT: '2026-08-20T00:00:00.000Z',
+    POINTS_CARD_MULTI_CARD_SPREADSHEET_ID: 'SPREADSHEET-1'
+  };
   const context = {
+    POINTS_CARD_SERVICE: { spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
     PropertiesService: {
       getScriptProperties: () => ({
-        getProperty: (key) => key === 'POINTS_CARD_MULTI_CARD_MIGRATED_AT' ? '2026-08-20T00:00:00.000Z' : ''
+        getProperty: (key) => stored[key] || ''
       })
     },
     getSpreadsheet_: () => { spreadsheetReads += 1; throw new Error('migrated requests must not initialize every sheet'); },
@@ -44,13 +50,17 @@ test('migrated multi-card requests skip the redundant full schema initialization
 
 test('an unmigrated deployment still validates every multi-card sheet before migration', () => {
   const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__multiCardMigrationTest = { ensureMultiCardStorage_ };';
-  const stored = {};
+  const stored = { POINTS_CARD_SPREADSHEET_ID: 'SPREADSHEET-1' };
   let lockReleased = false;
+  let baseInitializations = 0;
   const context = {
+    POINTS_CARD_SERVICE: { spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
+    ensurePointsCardBaseStorage_: () => { baseInitializations += 1; },
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (key) => stored[key] || '',
-        setProperty: (key, value) => { stored[key] = value; }
+        setProperty: (key, value) => { stored[key] = value; },
+        deleteProperty: (key) => { delete stored[key]; }
       })
     },
     LockService: {
@@ -59,7 +69,10 @@ test('an unmigrated deployment still validates every multi-card sheet before mig
         releaseLock: () => { lockReleased = true; }
       })
     },
-    getSpreadsheet_: () => ({})
+    getSpreadsheet_: () => ({
+      getId: () => 'SPREADSHEET-1',
+      getSheetByName: () => null
+    })
   };
   vm.createContext(context);
   vm.runInContext(source, context);
@@ -73,7 +86,166 @@ test('an unmigrated deployment still validates every multi-card sheet before mig
     'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards', 'MemberCardProgress'
   ]);
   assert.equal(migrations, 1);
+  assert.equal(baseInitializations, 1);
   assert.match(stored.POINTS_CARD_MULTI_CARD_MIGRATED_AT, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(stored.POINTS_CARD_MULTI_CARD_SPREADSHEET_ID, 'SPREADSHEET-1');
+  assert.equal(lockReleased, true);
+});
+
+test('switching spreadsheets initializes and migrates a missing multi-card schema once', () => {
+  const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__multiCardMigrationTest = { ensureMultiCardStorage_ };';
+  const stored = {
+    POINTS_CARD_SPREADSHEET_ID: 'SPREADSHEET-NEW',
+    POINTS_CARD_MULTI_CARD_MIGRATED_AT: '2026-08-20T00:00:00.000Z',
+    POINTS_CARD_MULTI_CARD_SPREADSHEET_ID: 'SPREADSHEET-OLD'
+  };
+  let lockReleased = false;
+  const context = {
+    POINTS_CARD_SERVICE: { spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
+    ensurePointsCardBaseStorage_: () => {},
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (key) => stored[key] || '',
+        setProperty: (key, value) => { stored[key] = value; },
+        deleteProperty: (key) => { delete stored[key]; }
+      })
+    },
+    LockService: {
+      getScriptLock: () => ({
+        tryLock: () => true,
+        releaseLock: () => { lockReleased = true; }
+      })
+    },
+    getSpreadsheet_: () => ({
+      getId: () => 'SPREADSHEET-NEW',
+      getSheetByName: () => null
+    })
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+  const initializedSheets = [];
+  let migrations = 0;
+  context.ensureMultiCardSheetSchema_ = (_spreadsheet, name) => { initializedSheets.push(name); };
+  context.migrateLegacyPointsCard_ = () => { migrations += 1; };
+
+  context.__multiCardMigrationTest.ensureMultiCardStorage_();
+  assert.deepEqual(initializedSheets.sort(), [
+    'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards', 'MemberCardProgress'
+  ]);
+  assert.equal(migrations, 1);
+  assert.equal(stored.POINTS_CARD_MULTI_CARD_SPREADSHEET_ID, 'SPREADSHEET-NEW');
+  assert.equal(lockReleased, true);
+});
+
+test('an interrupted spreadsheet migration retries before marking the new spreadsheet ready', () => {
+  const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__multiCardMigrationTest = { ensureMultiCardStorage_ };';
+  const stored = {
+    POINTS_CARD_SPREADSHEET_ID: 'SPREADSHEET-NEW',
+    POINTS_CARD_MULTI_CARD_MIGRATED_AT: '2026-08-20T00:00:00.000Z',
+    POINTS_CARD_MULTI_CARD_SPREADSHEET_ID: 'SPREADSHEET-OLD',
+    POINTS_CARD_MULTI_CARD_MIGRATION_TARGET_ID: 'SPREADSHEET-NEW'
+  };
+  const context = {
+    POINTS_CARD_SERVICE: { spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
+    ensurePointsCardBaseStorage_: () => {},
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (key) => stored[key] || '',
+        setProperty: (key, value) => { stored[key] = value; },
+        deleteProperty: (key) => { delete stored[key]; }
+      })
+    },
+    LockService: {
+      getScriptLock: () => ({ tryLock: () => true, releaseLock() {} })
+    },
+    getSpreadsheet_: () => ({
+      getId: () => 'SPREADSHEET-NEW',
+      getSheetByName: (name) => ({ name })
+    })
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+  let migrations = 0;
+  context.ensureMultiCardSheetSchema_ = () => {};
+  context.migrateLegacyPointsCard_ = () => { migrations += 1; };
+
+  context.__multiCardMigrationTest.ensureMultiCardStorage_();
+  assert.equal(migrations, 1);
+  assert.equal(stored.POINTS_CARD_MULTI_CARD_SPREADSHEET_ID, 'SPREADSHEET-NEW');
+  assert.equal(stored.POINTS_CARD_MULTI_CARD_MIGRATION_TARGET_ID, undefined);
+});
+
+test('an existing legacy migration marker is bound without rerunning destructive migration', () => {
+  const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__multiCardMigrationTest = { ensureMultiCardStorage_ };';
+  const stored = {
+    POINTS_CARD_SPREADSHEET_ID: 'SPREADSHEET-1',
+    POINTS_CARD_MULTI_CARD_MIGRATED_AT: '2026-08-20T00:00:00.000Z'
+  };
+  const context = {
+    POINTS_CARD_SERVICE: { spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
+    ensurePointsCardBaseStorage_: () => {},
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (key) => stored[key] || '',
+        setProperty: (key, value) => { stored[key] = value; },
+        deleteProperty: (key) => { delete stored[key]; }
+      })
+    },
+    LockService: {
+      getScriptLock: () => ({ tryLock: () => true, releaseLock() {} })
+    },
+    getSpreadsheet_: () => ({
+      getId: () => 'SPREADSHEET-1',
+      getSheetByName: (name) => ({ name })
+    })
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+  let migrations = 0;
+  context.ensureMultiCardSheetSchema_ = () => {};
+  context.migrateLegacyPointsCard_ = () => { migrations += 1; };
+
+  context.__multiCardMigrationTest.ensureMultiCardStorage_();
+  assert.equal(migrations, 0);
+  assert.equal(stored.POINTS_CARD_MULTI_CARD_SPREADSHEET_ID, 'SPREADSHEET-1');
+});
+
+test('a partially missing migrated schema fails closed with the missing sheet names', () => {
+  const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__multiCardMigrationTest = { ensureMultiCardStorage_ };';
+  const stored = {
+    POINTS_CARD_SPREADSHEET_ID: 'SPREADSHEET-1',
+    POINTS_CARD_MULTI_CARD_MIGRATED_AT: '2026-08-20T00:00:00.000Z'
+  };
+  let lockReleased = false;
+  const context = {
+    POINTS_CARD_SERVICE: { spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
+    ensurePointsCardBaseStorage_: () => {},
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (key) => stored[key] || '',
+        setProperty: (key, value) => { stored[key] = value; },
+        deleteProperty: (key) => { delete stored[key]; }
+      })
+    },
+    LockService: {
+      getScriptLock: () => ({
+        tryLock: () => true,
+        releaseLock: () => { lockReleased = true; }
+      })
+    },
+    getSpreadsheet_: () => ({
+      getId: () => 'SPREADSHEET-1',
+      getSheetByName: (name) => name === 'Cards' ? { name } : null
+    }),
+    fail_: (code, message) => { throw Object.assign(new Error(message), { code }); }
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+
+  assert.throws(
+    () => context.__multiCardMigrationTest.ensureMultiCardStorage_(),
+    (error) => error && error.code === 'SCHEMA_MISMATCH' && /MemberCardProgress/.test(error.message)
+  );
   assert.equal(lockReleased, true);
 });
 

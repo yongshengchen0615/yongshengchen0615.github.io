@@ -7,38 +7,69 @@ function initializePointsCardStorage() {
   if (!lock.tryLock(10000)) fail_('BUSY', '資料初始化進行中，請稍後再試。');
   try {
     const properties = PropertiesService.getScriptProperties();
-    let spreadsheetId = properties.getProperty(POINTS_CARD_SERVICE.spreadsheetProperty) || '';
-    let spreadsheet;
-    let created = false;
-    if (spreadsheetId) {
-      try { spreadsheet = SpreadsheetApp.openById(spreadsheetId); }
-      catch (_) { fail_('CONFIGURATION_ERROR', '設定的試算表無法存取。'); }
-    } else {
-      spreadsheet = SpreadsheetApp.create('PointsCard Data');
-      spreadsheetId = spreadsheet.getId();
-      properties.setProperty(POINTS_CARD_SERVICE.spreadsheetProperty, spreadsheetId);
-      created = true;
-    }
+    const resolved = resolvePointsCardSpreadsheet_(properties, true);
+    const spreadsheet = resolved.spreadsheet;
+    const spreadsheetId = resolved.spreadsheetId;
 
-    Object.keys(POINTS_CARD_HEADERS).forEach(function (sheetName) {
-      ensureSheetSchema_(spreadsheet, sheetName, POINTS_CARD_HEADERS[sheetName]);
-    });
-    if (!properties.getProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty)) properties.setProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty, '10');
-    if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNameProperty)) properties.setProperty(POINTS_CARD_SERVICE.rewardNameProperty, '招牌飲品一份');
-    if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNodesProperty)) {
-      const defaultSettings = pointsCardSettings_();
-      const now = new Date().toISOString();
-      properties.setProperty(POINTS_CARD_SERVICE.rewardNodesProperty, JSON.stringify(defaultSettings.rewardNodes));
-      properties.setProperty(POINTS_CARD_SERVICE.rewardNodesUpdatedAtProperty, now);
-    }
+    resetRequestCaches_();
+    requestSpreadsheet_ = spreadsheet;
+    requestMultiCardSheets_ = {};
+    requestMultiCardObjects_ = {};
+    ensurePointsCardBaseStorage_(spreadsheet, properties);
+    ensureMultiCardStorageForSpreadsheet_(spreadsheet, properties);
 
-    if (created) {
+    if (resolved.created) {
       const defaultSheet = spreadsheet.getSheetByName('工作表1') || spreadsheet.getSheetByName('Sheet1');
       if (defaultSheet && defaultSheet.getLastRow() === 0 && spreadsheet.getSheets().length > 1) spreadsheet.deleteSheet(defaultSheet);
     }
-    resetRequestCaches_();
-    return { spreadsheetId: spreadsheetId, sheets: Object.keys(POINTS_CARD_HEADERS), settings: pointsCardSettings_() };
+    return {
+      spreadsheetId: spreadsheetId,
+      binding: resolved.binding,
+      sheets: Object.keys(POINTS_CARD_HEADERS).concat(Object.keys(MULTI_CARD_HEADERS)),
+      settings: pointsCardSettings_()
+    };
   } finally { lock.releaseLock(); }
+}
+
+function resolvePointsCardSpreadsheet_(properties, preferActiveSpreadsheet) {
+  let spreadsheet = null;
+  if (preferActiveSpreadsheet && typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
+    try { spreadsheet = SpreadsheetApp.getActiveSpreadsheet(); }
+    catch (_) { spreadsheet = null; }
+  }
+  if (spreadsheet) {
+    const activeSpreadsheetId = String(spreadsheet.getId() || '').trim();
+    if (!activeSpreadsheetId) fail_('CONFIGURATION_ERROR', '目前試算表缺少可用的識別碼。');
+    properties.setProperty(POINTS_CARD_SERVICE.spreadsheetProperty, activeSpreadsheetId);
+    return { spreadsheet: spreadsheet, spreadsheetId: activeSpreadsheetId, binding: 'active', created: false };
+  }
+
+  const configuredSpreadsheetId = String(properties.getProperty(POINTS_CARD_SERVICE.spreadsheetProperty) || '').trim();
+  if (configuredSpreadsheetId) {
+    try { spreadsheet = SpreadsheetApp.openById(configuredSpreadsheetId); }
+    catch (_) { fail_('CONFIGURATION_ERROR', '設定的試算表無法存取。'); }
+    return { spreadsheet: spreadsheet, spreadsheetId: configuredSpreadsheetId, binding: 'configured', created: false };
+  }
+
+  spreadsheet = SpreadsheetApp.create('PointsCard Data');
+  const createdSpreadsheetId = String(spreadsheet.getId() || '').trim();
+  if (!createdSpreadsheetId) fail_('CONFIGURATION_ERROR', '無法建立集點卡試算表。');
+  properties.setProperty(POINTS_CARD_SERVICE.spreadsheetProperty, createdSpreadsheetId);
+  return { spreadsheet: spreadsheet, spreadsheetId: createdSpreadsheetId, binding: 'created', created: true };
+}
+
+function ensurePointsCardBaseStorage_(spreadsheet, properties) {
+  Object.keys(POINTS_CARD_HEADERS).forEach(function (sheetName) {
+    ensureSheetSchema_(spreadsheet, sheetName, POINTS_CARD_HEADERS[sheetName]);
+  });
+  if (!properties.getProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty)) properties.setProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty, '10');
+  if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNameProperty)) properties.setProperty(POINTS_CARD_SERVICE.rewardNameProperty, '招牌飲品一份');
+  if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNodesProperty)) {
+    const defaultSettings = pointsCardSettings_();
+    const now = new Date().toISOString();
+    properties.setProperty(POINTS_CARD_SERVICE.rewardNodesProperty, JSON.stringify(defaultSettings.rewardNodes));
+    properties.setProperty(POINTS_CARD_SERVICE.rewardNodesUpdatedAtProperty, now);
+  }
 }
 
 function setPointsCardAdmin(lineUserId, enabled) {
@@ -86,10 +117,10 @@ function resetRequestCaches_() {
 
 function getSpreadsheet_() {
   if (requestSpreadsheet_) return requestSpreadsheet_;
-  const spreadsheetId = PropertiesService.getScriptProperties().getProperty(POINTS_CARD_SERVICE.spreadsheetProperty) || '';
-  if (!spreadsheetId) fail_('CONFIGURATION_ERROR', '集點卡資料尚未初始化。');
-  try { requestSpreadsheet_ = SpreadsheetApp.openById(spreadsheetId); }
-  catch (_) { fail_('CONFIGURATION_ERROR', '集點卡試算表無法存取。'); }
+  const properties = PropertiesService.getScriptProperties();
+  const spreadsheetId = String(properties.getProperty(POINTS_CARD_SERVICE.spreadsheetProperty) || '').trim();
+  const resolved = resolvePointsCardSpreadsheet_(properties, !spreadsheetId);
+  requestSpreadsheet_ = resolved.spreadsheet;
   return requestSpreadsheet_;
 }
 

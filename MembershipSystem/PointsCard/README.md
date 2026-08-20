@@ -226,6 +226,7 @@ PointsCard/
 └── tests/
     ├── contracts.test.js
     ├── optimization.test.js
+    ├── storage-binding.test.js
     ├── recovery.test.js
     ├── supply-chain.test.js
     ├── stamp-lifecycle.test.js
@@ -235,7 +236,13 @@ PointsCard/
 
 ## Sheet 資料
 
-執行 `initializePointsCardStorage()` 後會建立：
+GAS 會依下列順序選擇並綁定資料試算表：
+
+1. 從 Google Spreadsheet 內執行時，優先綁定目前開啟的 Spreadsheet。
+2. 沒有目前 Spreadsheet 時，沿用 Script Property `POINTS_CARD_SPREADSHEET_ID`。
+3. 兩者都沒有時，自動建立 `PointsCard Data` 並保存其 Spreadsheet ID。
+
+執行 `initializePointsCardStorage()` 或第一次呼叫多集點卡 API 時，會自動建立完整資料表：
 
 - `Members`
 - `StampVouchers`
@@ -243,8 +250,13 @@ PointsCard/
 - `RewardConfirmations`
 - `RewardRecords`
 - `AuditLogs`
+- `Cards`
+- `MemberCardProgress`
+- `CardStampVouchers`
+- `CardStampRecords`
+- `CardRewardRecords`
 
-`1.4.0` 沒有新增 Sheet 欄位。卡片期限與刪除狀態存在 Script Properties，因此不需要 Sheet migration。
+多集點卡遷移狀態會綁定 `POINTS_CARD_SPREADSHEET_ID`。若之後切換到另一份 Spreadsheet，下一次 API 請求會為新資料表建立必要工作表並執行一次相容遷移；若已遷移的資料表只缺少部分工作表，系統會停止寫入並列出缺少名稱，避免以空白工作表覆蓋可能需要從備份還原的資料。
 
 ## Observability / Sentry
 
@@ -279,7 +291,7 @@ durationMs
 
 `1.4.0` 新增 `CardService.gs`；若只更新 `Code.gs` 而沒有一起部署 `CardService.gs`，API 會因缺少卡片生命週期函式而失敗。
 
-既有專案仍可執行：
+若 Apps Script 是從目標 Google Spreadsheet 的「擴充功能 → Apps Script」開啟，執行下列函式就會綁定目前這份 Spreadsheet，並一次建立所有必要工作表：
 
 ```javascript
 initializePointsCardStorage();
@@ -288,7 +300,7 @@ configurePointsCard('YOUR_LINE_LOGIN_CHANNEL_ID', '招牌飲品一份', 10);
 
 `LINE_LOGIN_CHANNEL_ID` 是公開的 LINE Login Channel ID，不是 Channel Secret。
 
-從舊版升級到 `1.4.0` 不需要新增 Sheet 欄位；重新執行 `initializePointsCardStorage()` 可確認既有 Sheet schema，但卡片 lifecycle 不依賴新的 Sheet 欄位。
+如果 Web App 第一次執行時尚未設定 Spreadsheet，也會自動綁定可用的目前 Spreadsheet；沒有目前 Spreadsheet 時則建立新的 `PointsCard Data`。重新執行 `initializePointsCardStorage()` 可切換並綁定目前 Spreadsheet，回傳值中的 `binding` 會顯示 `active`、`configured` 或 `created`。
 
 ### 2. 部署 GAS Web App
 

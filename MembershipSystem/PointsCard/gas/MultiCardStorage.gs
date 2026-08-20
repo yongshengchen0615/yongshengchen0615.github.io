@@ -2,6 +2,8 @@
 
 const MULTI_CARD = Object.freeze({
   migrationProperty: 'POINTS_CARD_MULTI_CARD_MIGRATED_AT',
+  migrationSpreadsheetProperty: 'POINTS_CARD_MULTI_CARD_SPREADSHEET_ID',
+  migrationTargetSpreadsheetProperty: 'POINTS_CARD_MULTI_CARD_MIGRATION_TARGET_ID',
   legacyCardId: 'CARD-LEGACY',
   maxCardStamps: 10000,
   maxCards: 100,
@@ -48,21 +50,62 @@ let requestMultiCardObjects_ = {};
 
 function ensureMultiCardStorage_() {
   const properties = PropertiesService.getScriptProperties();
-  if (properties.getProperty(MULTI_CARD.migrationProperty)) return;
+  const configuredSpreadsheetId = String(properties.getProperty(POINTS_CARD_SERVICE.spreadsheetProperty) || '').trim();
+  if (multiCardMigrationMatchesSpreadsheet_(properties, configuredSpreadsheetId)) return;
 
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) fail_('BUSY', '多集點卡資料升級進行中，請稍後再試。');
   try {
-    if (properties.getProperty(MULTI_CARD.migrationProperty)) return;
+    const lockedSpreadsheetId = String(properties.getProperty(POINTS_CARD_SERVICE.spreadsheetProperty) || '').trim();
+    if (multiCardMigrationMatchesSpreadsheet_(properties, lockedSpreadsheetId)) return;
+
     const spreadsheet = getSpreadsheet_();
-    Object.keys(MULTI_CARD_HEADERS).forEach(function (sheetName) {
-      ensureMultiCardSheetSchema_(spreadsheet, sheetName, MULTI_CARD_HEADERS[sheetName]);
-    });
-    migrateLegacyPointsCard_();
-    properties.setProperty(MULTI_CARD.migrationProperty, new Date().toISOString());
+    ensurePointsCardBaseStorage_(spreadsheet, properties);
+    ensureMultiCardStorageForSpreadsheet_(spreadsheet, properties);
   } finally {
     lock.releaseLock();
   }
+}
+
+function ensureMultiCardStorageForSpreadsheet_(spreadsheet, properties) {
+  const actualSpreadsheetId = String(spreadsheet.getId() || '').trim();
+  if (!actualSpreadsheetId) fail_('CONFIGURATION_ERROR', '目前試算表缺少可用的識別碼。');
+  properties.setProperty(POINTS_CARD_SERVICE.spreadsheetProperty, actualSpreadsheetId);
+
+  const migrationAt = String(properties.getProperty(MULTI_CARD.migrationProperty) || '');
+  const migrationTargetSpreadsheetId = String(properties.getProperty(MULTI_CARD.migrationTargetSpreadsheetProperty) || '');
+  const sheetNames = Object.keys(MULTI_CARD_HEADERS);
+  const presentSheetNames = sheetNames.filter(function (sheetName) {
+    return Boolean(spreadsheet.getSheetByName(sheetName));
+  });
+  const missingSheetNames = sheetNames.filter(function (sheetName) {
+    return presentSheetNames.indexOf(sheetName) < 0;
+  });
+
+  const migrationRetry = Boolean(actualSpreadsheetId && migrationTargetSpreadsheetId === actualSpreadsheetId);
+  if (migrationAt && !migrationRetry && presentSheetNames.length > 0 && missingSheetNames.length > 0) {
+    fail_(
+      'SCHEMA_MISMATCH',
+      '多集點卡資料工作表不完整，缺少：' + missingSheetNames.join('、') + '。為避免覆蓋既有資料，請先從備份還原。'
+    );
+  }
+
+  const shouldMigrate = !migrationAt || presentSheetNames.length === 0 || migrationRetry;
+  if (shouldMigrate) properties.setProperty(MULTI_CARD.migrationTargetSpreadsheetProperty, actualSpreadsheetId);
+
+  sheetNames.forEach(function (sheetName) {
+    ensureMultiCardSheetSchema_(spreadsheet, sheetName, MULTI_CARD_HEADERS[sheetName]);
+  });
+
+  if (shouldMigrate) migrateLegacyPointsCard_();
+  properties.setProperty(MULTI_CARD.migrationProperty, new Date().toISOString());
+  properties.setProperty(MULTI_CARD.migrationSpreadsheetProperty, actualSpreadsheetId);
+  properties.deleteProperty(MULTI_CARD.migrationTargetSpreadsheetProperty);
+}
+
+function multiCardMigrationMatchesSpreadsheet_(properties, spreadsheetId) {
+  if (!spreadsheetId || !properties.getProperty(MULTI_CARD.migrationProperty)) return false;
+  return String(properties.getProperty(MULTI_CARD.migrationSpreadsheetProperty) || '') === spreadsheetId;
 }
 
 function ensureMultiCardSheetSchema_(spreadsheet, sheetName, expectedHeaders) {
@@ -92,7 +135,7 @@ function getMultiCardSheet_(sheetName) {
   const expected = MULTI_CARD_HEADERS[sheetName];
   if (!expected) fail_('SCHEMA_MISMATCH', '不支援的多集點卡資料工作表。');
   const sheet = getSpreadsheet_().getSheetByName(sheetName);
-  if (!sheet) fail_('SCHEMA_MISMATCH', '缺少必要的多集點卡資料工作表。');
+  if (!sheet) fail_('SCHEMA_MISMATCH', '缺少多集點卡資料工作表：' + sheetName + '。請先確認資料表切換或備份還原狀態。');
   if (sheet.getLastColumn() !== expected.length) fail_('SCHEMA_MISMATCH', sheetName + ' 欄位數不正確。');
   const headers = sheet.getRange(1, 1, 1, expected.length).getValues()[0].map(String);
   expected.forEach(function (header, index) {
