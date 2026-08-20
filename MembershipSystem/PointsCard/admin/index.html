@@ -8,6 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
   <title>集點卡管理｜Points Card</title>
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./card-lifecycle.css">
 </head>
 <body>
   <main class="admin-shell">
@@ -51,6 +52,27 @@
           <article><span>會員總數</span><strong id="metricMembers">0</strong><small id="metricActive">0 位有效會員</small></article>
           <article><span>累計集點</span><strong id="metricStamps">0</strong><small>所有會員累計</small></article>
           <article><span>已兌換獎勵</span><strong id="metricRewards">0</strong><small id="rewardNameMetric">本期獎勵</small></article>
+        </section>
+
+        <section class="workspace-section card-lifecycle-section" aria-labelledby="cardSettingsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">CARD LIFECYCLE</p>
+              <h2 id="cardSettingsTitle">集點卡期限與狀態</h2>
+              <p>可設定指定到期時間或無期限。刪除後會員端不再顯示集點卡，但既有點數、票券與稽核紀錄會保留。</p>
+            </div>
+            <span id="cardStatusBadge" class="status-badge">有效</span>
+          </div>
+          <div id="cardSettingsNotice" class="settings-notice" role="status">正在讀取集點卡設定。</div>
+          <div class="form-grid card-lifecycle-form">
+            <label><span>期限設定</span><select id="cardExpiryMode" required><option value="limited">有期限</option><option value="unlimited" selected>無期限</option></select></label>
+            <label id="cardExpiryField" class="hidden"><span>到期時間</span><input id="cardExpiresAt" type="datetime-local"></label>
+          </div>
+          <div class="section-actions card-lifecycle-actions">
+            <button id="saveCardSettingsButton" class="button button-primary" type="button">儲存集點卡設定</button>
+            <button id="deleteCardButton" class="button button-secondary card-delete-button" type="button">刪除集點卡</button>
+          </div>
+          <p id="cardSettingsMessage" class="settings-message hidden" role="status"></p>
         </section>
       </section>
 
