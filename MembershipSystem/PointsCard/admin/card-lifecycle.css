@@ -1,13 +1,16 @@
 .card-lifecycle-section { margin-top: 22px; }
-.card-lifecycle-form { max-width: 760px; margin-bottom: 18px; }
-.card-lifecycle-actions { justify-content: flex-start; }
+.card-lifecycle-form { max-width: 900px; margin-bottom: 18px; }
+.card-lifecycle-form textarea { resize: vertical; min-height: 88px; }
+.card-lifecycle-actions { justify-content: flex-start; flex-wrap: wrap; }
 .card-delete-button { color: var(--danger); border-color: rgba(170,61,50,.24); }
 #cardStatusBadge.expired,
 #cardStatusBadge.deleted { color: var(--danger); background: rgba(231,111,81,.12); }
 #cardStatusBadge.expired::before,
 #cardStatusBadge.deleted::before { background: var(--danger); }
+#cardSelect { min-width: 220px; }
 @media (max-width: 700px) {
   .card-lifecycle-section { margin-top: 16px; }
   .card-lifecycle-actions { display: grid; grid-template-columns: 1fr; }
   .card-lifecycle-actions .button { width: 100%; }
+  #cardSelect { min-width: 0; width: 100%; }
 }
