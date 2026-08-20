@@ -213,7 +213,7 @@ function doPost(e) {
   }
 }
 
-function memberMe_(context) {
+function memberMe_(context, skipProjection) {
   const sheet = getSheet_(POINTS_CARD_SHEETS.members);
   let match = findByFieldWithRow_(sheet, 'lineUserId', context.identity.sub);
   if (!match) {
@@ -236,7 +236,7 @@ function memberMe_(context) {
         }
         appendObject_(sheet, member);
         audit_(context.identity.sub, 'member', 'MEMBER_CREATED', context.identity.sub, 'success', { memberNo: member.memberNo });
-        return { member: publicMember_(member, false) };
+        return { member: skipProjection ? normalizeMember_(member) : publicMember_(member, false) };
       }
     } finally { lock.releaseLock(); }
   }
@@ -257,6 +257,7 @@ function memberMe_(context) {
       writeObjectRow_(sheet, fresh.row, member);
     } finally { lock.releaseLock(); }
   }
+  if (skipProjection) return { member: normalizeMember_(member) };
   return { member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(context.identity.sub)) };
 }
 

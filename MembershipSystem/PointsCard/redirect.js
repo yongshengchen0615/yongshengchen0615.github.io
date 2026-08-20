@@ -17,7 +17,7 @@
     const response = await fetch('./shared/config.json', {
       method: 'GET',
       credentials: 'same-origin',
-      cache: 'no-store',
+      cache: 'default',
       redirect: 'error',
       referrerPolicy: 'no-referrer'
     });

@@ -18,6 +18,7 @@
   let configPromise = null;
   let authenticatedIdToken = '';
   let loginInFlight = false;
+  let apiPreconnectOrigin = '';
 
   function readSessionValue(key) {
     try { return window.sessionStorage.getItem(key) || ''; }
@@ -113,13 +114,24 @@
     catch (_) {}
   }
 
+  function preconnectApi(gasUrl) {
+    const origin = new URL(gasUrl).origin;
+    if (!origin || origin === window.location.origin || origin === apiPreconnectOrigin) return;
+    const link = document.createElement('link');
+    link.rel = 'preconnect';
+    link.href = origin;
+    link.crossOrigin = 'anonymous';
+    document.head.append(link);
+    apiPreconnectOrigin = origin;
+  }
+
   async function loadConfig() {
     if (configPromise) return configPromise;
     configPromise = (async function () {
       const response = await nativeFetch(new URL('../shared/config.json', window.location.href), {
         method: 'GET',
         credentials: 'same-origin',
-        cache: 'no-store',
+        cache: 'default',
         redirect: 'error',
         referrerPolicy: 'no-referrer'
       });
@@ -129,6 +141,7 @@
       const gasUrl = String(config && config.GAS_WEB_APP_URL || '').trim();
       if (!liffId || liffId === 'YOUR_LIFF_ID') throw new Error('LIFF_ID 尚未設定。');
       if (!/^https:\/\//i.test(gasUrl) || gasUrl === 'YOUR_GAS_WEB_APP_EXEC_URL') throw new Error('GAS Web App URL 尚未設定。');
+      preconnectApi(gasUrl);
       return Object.freeze({ LIFF_ID: liffId, GAS_WEB_APP_URL: gasUrl });
     })().catch(function (error) {
       configPromise = null;

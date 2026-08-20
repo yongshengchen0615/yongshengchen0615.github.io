@@ -47,11 +47,6 @@ let requestMultiCardSheets_ = {};
 let requestMultiCardObjects_ = {};
 
 function ensureMultiCardStorage_() {
-  const spreadsheet = getSpreadsheet_();
-  Object.keys(MULTI_CARD_HEADERS).forEach(function (sheetName) {
-    ensureMultiCardSheetSchema_(spreadsheet, sheetName, MULTI_CARD_HEADERS[sheetName]);
-  });
-
   const properties = PropertiesService.getScriptProperties();
   if (properties.getProperty(MULTI_CARD.migrationProperty)) return;
 
@@ -59,6 +54,10 @@ function ensureMultiCardStorage_() {
   if (!lock.tryLock(10000)) fail_('BUSY', '多集點卡資料升級進行中，請稍後再試。');
   try {
     if (properties.getProperty(MULTI_CARD.migrationProperty)) return;
+    const spreadsheet = getSpreadsheet_();
+    Object.keys(MULTI_CARD_HEADERS).forEach(function (sheetName) {
+      ensureMultiCardSheetSchema_(spreadsheet, sheetName, MULTI_CARD_HEADERS[sheetName]);
+    });
     migrateLegacyPointsCard_();
     properties.setProperty(MULTI_CARD.migrationProperty, new Date().toISOString());
   } finally {
@@ -694,10 +693,8 @@ function publicMultiCardMember_(member, payload, includeAdminFields) {
 
 function memberMeMultiCard_(context, payload) {
   ensureMultiCardStorage_();
-  memberMe_(context);
-  const match = findByFieldWithRow_(getSheet_(POINTS_CARD_SHEETS.members), 'lineUserId', context.identity.sub);
-  if (!match) fail_('MEMBER_NOT_FOUND', '找不到會員資料。');
-  return { member: publicMultiCardMember_(normalizeMember_(match.object), payload || {}, false) };
+  const synchronizedMember = memberMe_(context, true).member;
+  return { member: publicMultiCardMember_(synchronizedMember, payload || {}, false) };
 }
 
 function adminCardsListMultiCard_() {

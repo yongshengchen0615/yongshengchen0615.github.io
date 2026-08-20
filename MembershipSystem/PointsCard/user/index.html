@@ -7,8 +7,14 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
   <title>我的集點卡｜Points Card</title>
+  <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
+  <link rel="preload" href="../shared/config.json" as="fetch" crossorigin>
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./card-gallery.css">
+  <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script defer src="../shared/common.js"></script>
+  <script defer src="./app.js"></script>
+  <script defer src="./card-gallery.js"></script>
 </head>
 <body>
   <main class="app-shell">
@@ -135,10 +141,5 @@
   <dialog id="rewardErrorDialog" class="feedback-dialog" aria-labelledby="rewardErrorTitle">
     <div class="state-icon" aria-hidden="true">!</div><p class="eyebrow danger-text">TICKET ERROR</p><h2 id="rewardErrorTitle">票券尚未確認</h2><p id="rewardErrorMessage">請確認店家 QR Code 後再試一次。</p><button id="confirmRewardErrorButton" class="button button-primary" type="button">知道了</button>
   </dialog>
-
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="../shared/common.js"></script>
-  <script src="./app.js"></script>
-  <script src="./card-gallery.js"></script>
 </body>
 </html>

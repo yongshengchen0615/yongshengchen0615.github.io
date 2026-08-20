@@ -21,6 +21,89 @@ test('member API no longer performs unused activity full-table scans', () => {
   assert.doesNotMatch(stamps, /activity:\s*listMemberActivity_/);
 });
 
+test('migrated multi-card requests skip the redundant full schema initialization pass', () => {
+  const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__multiCardOptimizationTest = { ensureMultiCardStorage_ };';
+  let spreadsheetReads = 0;
+  let lockReads = 0;
+  const context = {
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (key) => key === 'POINTS_CARD_MULTI_CARD_MIGRATED_AT' ? '2026-08-20T00:00:00.000Z' : ''
+      })
+    },
+    getSpreadsheet_: () => { spreadsheetReads += 1; throw new Error('migrated requests must not initialize every sheet'); },
+    LockService: { getScriptLock: () => { lockReads += 1; throw new Error('migrated requests must not acquire the migration lock'); } }
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+
+  context.__multiCardOptimizationTest.ensureMultiCardStorage_();
+  assert.equal(spreadsheetReads, 0);
+  assert.equal(lockReads, 0);
+});
+
+test('an unmigrated deployment still validates every multi-card sheet before migration', () => {
+  const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__multiCardMigrationTest = { ensureMultiCardStorage_ };';
+  const stored = {};
+  let lockReleased = false;
+  const context = {
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (key) => stored[key] || '',
+        setProperty: (key, value) => { stored[key] = value; }
+      })
+    },
+    LockService: {
+      getScriptLock: () => ({
+        tryLock: () => true,
+        releaseLock: () => { lockReleased = true; }
+      })
+    },
+    getSpreadsheet_: () => ({})
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+  const validatedSheets = [];
+  let migrations = 0;
+  context.ensureMultiCardSheetSchema_ = (_spreadsheet, name) => { validatedSheets.push(name); };
+  context.migrateLegacyPointsCard_ = () => { migrations += 1; };
+
+  context.__multiCardMigrationTest.ensureMultiCardStorage_();
+  assert.deepEqual(validatedSheets.sort(), [
+    'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards', 'MemberCardProgress'
+  ]);
+  assert.equal(migrations, 1);
+  assert.match(stored.POINTS_CARD_MULTI_CARD_MIGRATED_AT, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(lockReleased, true);
+});
+
+test('multi-card member boot reuses the synchronized member without building a discarded legacy projection', () => {
+  const code = read('gas/Code.gs');
+  const multiCard = read('gas/MultiCardStorage.gs');
+  assert.match(code, /function memberMe_\(context, skipProjection\)/);
+  assert.match(code, /if \(skipProjection\) return \{ member: normalizeMember_\(member\) \};/);
+  assert.match(multiCard, /const synchronizedMember = memberMe_\(context, true\)\.member;/);
+  const memberBoot = multiCard.match(/function memberMeMultiCard_\([\s\S]*?\n\}/)[0];
+  assert.doesNotMatch(memberBoot, /findByFieldWithRow_/);
+});
+
+test('member boot overlaps critical downloads and allows the public config response to be reused', () => {
+  const entry = read('index.html');
+  const member = read('user/index.html');
+  const redirect = read('redirect.js');
+  const common = read('shared/common.js');
+
+  assert.match(entry, /rel="preconnect" href="https:\/\/static\.line-scdn\.net"/);
+  assert.match(entry, /rel="preload" href="\.\/shared\/config\.json" as="fetch"/);
+  assert.match(entry, /<script defer src="https:\/\/static\.line-scdn\.net\/liff\/edge\/2\/sdk\.js"><\/script>/);
+  assert.match(member, /rel="preload" href="\.\.\/shared\/config\.json" as="fetch"/);
+  assert.match(member, /<script defer src="\.\.\/shared\/common\.js"><\/script>/);
+  assert.match(member, /<script defer src="\.\/app\.js"><\/script>/);
+  assert.doesNotMatch(redirect, /cache:\s*'no-store'/);
+  assert.doesNotMatch(common, /new URL\('\.\.\/shared\/config\.json'[\s\S]{0,220}cache:\s*'no-store'/);
+  assert.match(common, /function preconnectApi\(gasUrl\)/);
+});
+
 test('admin data is split into independently authorized query routes', () => {
   const code = read('gas/Code.gs');
   const admin = read('admin/app.js');
