@@ -4,7 +4,7 @@
   const $ = function (id) { return document.getElementById(id); };
   const terminalStampErrors = new Set([
     'INVALID_STAMP_CODE', 'VOUCHER_NOT_FOUND', 'VOUCHER_USED', 'VOUCHER_EXPIRED',
-    'VOUCHER_INACTIVE', 'MEMBER_INACTIVE'
+    'VOUCHER_INACTIVE', 'MEMBER_INACTIVE', 'CARD_UNAVAILABLE'
   ]);
   const terminalRewardErrors = new Set([
     'INVALID_REWARD_CONFIRMATION_CODE', 'REWARD_CONFIRMATION_NOT_FOUND',
@@ -62,6 +62,16 @@
   function normalizeRewardContract(member) {
     const normalized = Object.assign({}, member);
     const cardSize = Number(normalized.cardSize || normalized.stampsPerReward || 10);
+    const cardSource = normalized.card && typeof normalized.card === 'object' ? normalized.card : {};
+    const cardStatus = ['active', 'expired', 'deleted'].indexOf(String(cardSource.status || '')) >= 0
+      ? String(cardSource.status)
+      : 'active';
+    normalized.card = {
+      status: cardStatus,
+      available: cardSource.available === undefined ? cardStatus === 'active' : Boolean(cardSource.available),
+      expiresAt: String(cardSource.expiresAt || ''),
+      updatedAt: String(cardSource.updatedAt || 'legacy') || 'legacy'
+    };
     if (!Array.isArray(normalized.rewardNodes) || !normalized.rewardNodes.length) {
       normalized.rewardNodes = [{
         nodeId: 'node-' + cardSize,
@@ -190,14 +200,15 @@
     return row;
   }
 
-  function renderTickets(member) {
+  function renderTickets(member, cardAvailable) {
     const earned = member.availableRewardNodes || [];
-    const upcoming = member.upcomingRewardNodes || [];
+    const upcoming = cardAvailable ? (member.upcomingRewardNodes || []) : [];
     $('earnedTicketCount').textContent = formatNumber(earned.length) + ' 張可使用';
     $('earnedTicketEmpty').classList.toggle('hidden', earned.length !== 0);
     const earnedList = $('earnedTicketList');
     earnedList.replaceChildren();
     earned.forEach(function (ticket) { earnedList.append(createEarnedTicket(ticket)); });
+    $('upcomingTicketGroup').classList.toggle('hidden', !cardAvailable);
     const upcomingList = $('upcomingTicketList');
     upcomingList.replaceChildren();
     upcoming.slice(0, 5).forEach(function (ticket) { upcomingList.append(createUpcomingTicket(ticket)); });
@@ -212,13 +223,24 @@
     $('memberNo').textContent = member.memberNo || '—';
 
     const active = member.membershipStatus === 'active';
-    $('scanStampButton').disabled = !active || stampRequestInFlight;
-    $('memberStatusText').textContent = active
-      ? '今天也來收集一枚好心情。'
-      : '這張集點卡目前暫停使用，請洽店家確認。';
+    const cardAvailable = member.card.available === true;
+    $('stampCard').classList.toggle('hidden', !cardAvailable);
+    $('noCardState').classList.toggle('hidden', cardAvailable);
+    $('scanStampButton').disabled = !active || !cardAvailable || stampRequestInFlight;
 
-    renderStampGrid(member, animateLatest);
-    renderTickets(member);
+    if (!cardAvailable) {
+      $('memberStatusText').textContent = '目前沒有可用集點卡。';
+      $('noCardMessage').textContent = member.card.status === 'expired'
+        ? '目前的集點卡已到期；已獲得票券仍可繼續使用。'
+        : '店家目前沒有開放中的集點卡；已獲得票券仍可繼續使用。';
+    } else {
+      $('memberStatusText').textContent = active
+        ? '今天也來收集一枚好心情。'
+        : '這張集點卡目前暫停使用，請洽店家確認。';
+      renderStampGrid(member, animateLatest);
+    }
+
+    renderTickets(member, cardAvailable);
   }
 
   async function loadMember() {
@@ -298,12 +320,17 @@
       openDialog($('successDialog'));
     } catch (error) {
       if (fromNavigation && terminalStampErrors.has(error.code)) PointsCard.clearNavigationState();
+      if (error && error.code === 'CARD_UNAVAILABLE') {
+        try { await loadMember(); }
+        catch (_) {}
+        return;
+      }
       $('stampErrorMessage').textContent = error && error.message ? error.message : '請確認 QR Code 後再試一次。';
       openDialog($('stampErrorDialog'));
     } finally {
       stampRequestInFlight = false;
       hideProcessing();
-      $('scanStampButton').disabled = !currentMember || currentMember.membershipStatus !== 'active';
+      $('scanStampButton').disabled = !currentMember || currentMember.membershipStatus !== 'active' || !currentMember.card.available;
     }
   }
 
@@ -327,6 +354,7 @@
   }
 
   async function scanStampCode() {
+    if (!currentMember || !currentMember.card.available) throw new Error('目前沒有可用集點卡。');
     const stampCode = await scanAppUrl('stamp', '這不是本店發行的集點 QR Code。');
     await recordStamp(stampCode, PointsCard.randomHex(16), false);
   }
@@ -440,6 +468,10 @@
     if (!authenticated) return;
     await loadMember();
     const navigation = PointsCard.getNavigationState();
+    if (navigation.stamp && currentMember && !currentMember.card.available) {
+      PointsCard.clearNavigationState();
+      return;
+    }
     if (navigation.stamp) {
       const requestId = navigation.request || PointsCard.randomHex(16);
       if (!navigation.request) {
