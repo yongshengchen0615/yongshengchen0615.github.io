@@ -9,9 +9,10 @@
   const terminalRewardErrors = new Set([
     'INVALID_REWARD_CONFIRMATION_CODE', 'REWARD_CONFIRMATION_NOT_FOUND',
     'REWARD_CONFIRMATION_INACTIVE', 'REWARD_CONFIRMATION_EXPIRED',
-    'REWARD_NOT_AVAILABLE', 'MEMBER_INACTIVE', 'CONFLICT'
+    'REWARD_NOT_AVAILABLE', 'CARD_NOT_FOUND', 'MEMBER_INACTIVE', 'CONFLICT'
   ]);
   const rewardTypeLabels = { coupon: '優惠券', lottery: '抽獎券' };
+  const MAX_GRID_STAMPS = 60;
   let currentMember = null;
   let selectedTicket = null;
   let stampRequestInFlight = false;
@@ -29,6 +30,7 @@
 
   function normalizeTicket(ticket, fallbackType) {
     return Object.assign({}, ticket, {
+      cardId: String(ticket && ticket.cardId || ''),
       rewardType: ticket && ticket.rewardType === 'lottery' ? 'lottery' : (fallbackType || 'coupon'),
       lotteryPrizes: lotteryPrizeNames(ticket)
     });
@@ -59,19 +61,39 @@
     container.append(summary);
   }
 
+  function normalizeCardSummary(card) {
+    const source = card && typeof card === 'object' ? card : {};
+    const status = source.status === 'expired' ? 'expired' : (source.status === 'deleted' ? 'deleted' : 'active');
+    return {
+      cardId: String(source.cardId || ''),
+      name: String(source.name || '集點卡'),
+      description: String(source.description || ''),
+      status: status,
+      available: source.available === undefined ? status === 'active' : Boolean(source.available),
+      expiresAt: String(source.expiresAt || ''),
+      cardSize: Number(source.cardSize || 10),
+      totalStamps: Number(source.totalStamps || 0),
+      redeemedRewards: Number(source.redeemedRewards || 0),
+      updatedAt: String(source.updatedAt || '')
+    };
+  }
+
   function normalizeRewardContract(member) {
     const normalized = Object.assign({}, member);
     const cardSize = Number(normalized.cardSize || normalized.stampsPerReward || 10);
+    normalized.cards = Array.isArray(normalized.cards) ? normalized.cards.map(normalizeCardSummary) : [];
     const cardSource = normalized.card && typeof normalized.card === 'object' ? normalized.card : {};
-    const cardStatus = ['active', 'expired', 'deleted'].indexOf(String(cardSource.status || '')) >= 0
-      ? String(cardSource.status)
-      : 'active';
+    const cardStatus = ['active', 'expired', 'deleted'].indexOf(String(cardSource.status || '')) >= 0 ? String(cardSource.status) : 'active';
     normalized.card = {
+      cardId: String(cardSource.cardId || normalized.cardId || normalized.selectedCardId || ''),
+      name: String(cardSource.name || normalized.name || '集點卡'),
+      description: String(cardSource.description || normalized.description || ''),
       status: cardStatus,
       available: cardSource.available === undefined ? cardStatus === 'active' : Boolean(cardSource.available),
       expiresAt: String(cardSource.expiresAt || ''),
       updatedAt: String(cardSource.updatedAt || 'legacy') || 'legacy'
     };
+    normalized.selectedCardId = String(normalized.selectedCardId || normalized.card.cardId || '');
     if (!Array.isArray(normalized.rewardNodes) || !normalized.rewardNodes.length) {
       normalized.rewardNodes = [{
         nodeId: 'node-' + cardSize,
@@ -87,7 +109,8 @@
         entitlementOrdinal: Number(normalized.redeemedRewards || 0) + 1,
         stampsRequired: cardSize,
         rewardName: normalized.rewardName || '本期優惠券',
-        rewardType: 'coupon'
+        rewardType: 'coupon',
+        cardId: normalized.card.cardId
       }] : [];
     }
     normalized.availableRewardNodes = normalized.availableRewardNodes.map(function (ticket) { return normalizeTicket(ticket, 'coupon'); });
@@ -114,15 +137,11 @@
     const rewardMode = mode === 'reward';
     $('processingEyebrow').textContent = rewardMode ? 'VERIFYING TICKET' : 'STAMPING';
     $('processingTitle').textContent = rewardMode ? '正在確認店家與票券' : '正在蓋上新印章';
-    $('processingMessage').textContent = rewardMode
-      ? '確認成功後票券會立即使用，請勿重複操作。'
-      : '驗證 QR Code 與集點紀錄，請勿重複操作。';
+    $('processingMessage').textContent = rewardMode ? '確認成功後票券會立即使用，請勿重複操作。' : '驗證 QR Code 與集點紀錄，請勿重複操作。';
     $('processingOverlay').classList.remove('hidden');
   }
 
-  function hideProcessing() {
-    $('processingOverlay').classList.add('hidden');
-  }
+  function hideProcessing() { $('processingOverlay').classList.add('hidden'); }
 
   function createStamp(index, active, justAdded, rewardNode) {
     const stamp = document.createElement('div');
@@ -143,12 +162,48 @@
     return stamp;
   }
 
+  function renderLargeCardProgress(member, grid, total, filled, rewardNodes) {
+    grid.classList.add('stamp-grid-large');
+    const summary = document.createElement('div');
+    summary.className = 'stamp-progress-summary';
+    const copy = document.createElement('div');
+    const label = document.createElement('span');
+    label.textContent = '本輪集點進度';
+    const value = document.createElement('strong');
+    value.textContent = formatNumber(filled) + ' / ' + formatNumber(total) + ' 點';
+    copy.append(label, value);
+    const progress = document.createElement('progress');
+    progress.max = Math.max(1, total);
+    progress.value = Math.max(0, Math.min(total, filled));
+    progress.setAttribute('aria-label', '本輪已集 ' + filled + ' 點，共 ' + total + ' 點');
+    summary.append(copy, progress);
+
+    const milestones = document.createElement('div');
+    milestones.className = 'stamp-milestones';
+    rewardNodes.forEach(function (node) {
+      const item = document.createElement('div');
+      item.className = 'stamp-milestone ' + (node.state || 'pending');
+      const point = document.createElement('strong');
+      point.textContent = formatNumber(node.stampsRequired) + ' 點';
+      const reward = document.createElement('span');
+      reward.textContent = node.rewardName;
+      item.append(point, reward);
+      milestones.append(item);
+    });
+    grid.append(summary, milestones);
+  }
+
   function renderStampGrid(member, animateLatest) {
     const total = Number(member.cardSize || member.stampsPerReward || 10);
     const filled = Number(member.visualStamps || 0);
     const rewardNodes = Array.isArray(member.rewardNodes) ? member.rewardNodes : [];
     const grid = $('stampGrid');
     grid.replaceChildren();
+    grid.classList.toggle('stamp-grid-large', total > MAX_GRID_STAMPS);
+    if (total > MAX_GRID_STAMPS) {
+      renderLargeCardProgress(member, grid, total, filled, rewardNodes);
+      return;
+    }
     for (let index = 0; index < total; index += 1) {
       const rewardNode = rewardNodes.find(function (node) { return Number(node.stampsRequired) === index + 1; }) || null;
       grid.append(createStamp(index, index < filled, Boolean(animateLatest && index === filled - 1), rewardNode));
@@ -169,7 +224,7 @@
     const name = document.createElement('strong');
     name.textContent = ticket.rewardName;
     const meta = document.createElement('span');
-    meta.textContent = ticket.stampsRequired + ' 點節點';
+    meta.textContent = formatNumber(ticket.stampsRequired) + ' 點節點';
     copy.append(type, name, meta);
     appendLotteryPrizeSummary(copy, ticket);
     const action = document.createElement('span');
@@ -214,6 +269,20 @@
     upcoming.slice(0, 5).forEach(function (ticket) { upcomingList.append(createUpcomingTicket(ticket)); });
   }
 
+  function renderCardSelector(member) {
+    const select = $('memberCardSelect');
+    select.replaceChildren();
+    (member.cards || []).forEach(function (card) {
+      const option = document.createElement('option');
+      option.value = card.cardId;
+      option.textContent = card.name + (card.status === 'expired' ? '（已過期）' : '');
+      select.append(option);
+    });
+    select.value = member.selectedCardId || member.card.cardId || '';
+    $('cardSwitcher').classList.toggle('hidden', (member.cards || []).length < 2);
+    select.disabled = stampRequestInFlight || rewardClaimInFlight;
+  }
+
   function renderMember(member, animateLatest) {
     member = normalizeRewardContract(member);
     currentMember = member;
@@ -221,25 +290,27 @@
     $('avatar').src = member.pictureUrl || avatarFallback;
     $('avatar').onerror = function () { $('avatar').src = avatarFallback; };
     $('memberNo').textContent = member.memberNo || '—';
+    renderCardSelector(member);
 
     const active = member.membershipStatus === 'active';
     const cardAvailable = member.card.available === true;
     $('stampCard').classList.toggle('hidden', !cardAvailable);
     $('noCardState').classList.toggle('hidden', cardAvailable);
     $('scanStampButton').disabled = !active || !cardAvailable || stampRequestInFlight;
+    $('cardTitle').textContent = member.card.name || '集點卡';
+    $('cardDescription').textContent = member.card.description || '';
+    $('cardDescription').classList.toggle('hidden', !member.card.description);
 
     if (!cardAvailable) {
       $('memberStatusText').textContent = '目前沒有可用集點卡。';
+      const hasAlternative = (member.cards || []).some(function (card) { return card.available; });
       $('noCardMessage').textContent = member.card.status === 'expired'
-        ? '目前的集點卡已到期；已獲得票券仍可繼續使用。'
-        : '店家目前沒有開放中的集點卡；已獲得票券仍可繼續使用。';
+        ? (hasAlternative ? '這張集點卡已到期，請切換其他可用集點卡。' : '目前的集點卡已到期。')
+        : '店家目前沒有開放中的集點卡。';
     } else {
-      $('memberStatusText').textContent = active
-        ? '今天也來收集一枚好心情。'
-        : '這張集點卡目前暫停使用，請洽店家確認。';
+      $('memberStatusText').textContent = active ? '今天也來收集一枚好心情。' : '這張集點卡目前暫停使用，請洽店家確認。';
       renderStampGrid(member, animateLatest);
     }
-
     renderTickets(member, cardAvailable);
   }
 
@@ -252,12 +323,17 @@
     return result;
   }
 
+  async function switchCard(cardId) {
+    if (!cardId || stampRequestInFlight || rewardClaimInFlight) return;
+    PointsCard.setSelectedCardId(cardId);
+    $('memberCardSelect').disabled = true;
+    try { await loadMember(); }
+    finally { $('memberCardSelect').disabled = false; }
+  }
+
   function openDialog(dialog) {
     if (dialog.open) return;
-    const position = {
-      left: window.pageXOffset || window.scrollX || 0,
-      top: window.pageYOffset || window.scrollY || 0
-    };
+    const position = { left: window.pageXOffset || window.scrollX || 0, top: window.pageYOffset || window.scrollY || 0 };
     dialogPageScrollPositions.set(dialog, position);
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
@@ -287,7 +363,7 @@
     $('ticketDialogMark').textContent = ticket.rewardType === 'lottery' ? '?' : '%';
     $('ticketDialogType').textContent = ticket.rewardType === 'lottery' ? 'LUCKY DRAW TICKET' : 'COUPON';
     $('ticketDialogTitle').textContent = ticket.rewardName;
-    $('ticketDialogMeta').textContent = ticket.stampsRequired + ' 點節點已解鎖';
+    $('ticketDialogMeta').textContent = formatNumber(ticket.stampsRequired) + ' 點節點已解鎖';
     const prizeNames = lotteryPrizeNames(ticket);
     const prizeList = $('ticketPrizeList');
     prizeList.replaceChildren();
@@ -305,6 +381,7 @@
     if (stampRequestInFlight) return;
     stampRequestInFlight = true;
     $('scanStampButton').disabled = true;
+    $('memberCardSelect').disabled = true;
     showProcessing('stamp');
     try {
       const result = await PointsCard.callApi('stamp.record', { stampCode: stampCode, requestId: requestId });
@@ -314,15 +391,12 @@
       const unlockedNames = (result.unlockedRewards || []).map(function (reward) { return reward.rewardName; });
       $('successMessage').textContent = result.duplicate
         ? '這次請求先前已完成，集點卡已同步為最新狀態。'
-        : '已加入 ' + formatNumber(result.stampCount) + ' 點；' + (unlockedNames.length
-          ? '新獲得：' + unlockedNames.join('、') + '。'
-          : '距離下一張票券還差 ' + formatNumber(currentMember.stampsUntilNextReward) + ' 點。');
+        : '已加入 ' + formatNumber(result.stampCount) + ' 點；' + (unlockedNames.length ? '新獲得：' + unlockedNames.join('、') + '。' : '距離下一張票券還差 ' + formatNumber(currentMember.stampsUntilNextReward) + ' 點。');
       openDialog($('successDialog'));
     } catch (error) {
       if (fromNavigation && terminalStampErrors.has(error.code)) PointsCard.clearNavigationState();
       if (error && error.code === 'CARD_UNAVAILABLE') {
-        try { await loadMember(); }
-        catch (_) {}
+        try { await loadMember(); } catch (_) {}
         return;
       }
       $('stampErrorMessage').textContent = error && error.message ? error.message : '請確認 QR Code 後再試一次。';
@@ -330,14 +404,13 @@
     } finally {
       stampRequestInFlight = false;
       hideProcessing();
+      $('memberCardSelect').disabled = false;
       $('scanStampButton').disabled = !currentMember || currentMember.membershipStatus !== 'active' || !currentMember.card.available;
     }
   }
 
   async function scanAppUrl(queryName, errorMessage) {
-    if (!window.liff || typeof liff.scanCodeV2 !== 'function') {
-      throw new Error('目前環境不支援相機掃描，請使用支援掃碼的 LINE LIFF 開啟。');
-    }
+    if (!window.liff || typeof liff.scanCodeV2 !== 'function') throw new Error('目前環境不支援相機掃描，請使用支援掃碼的 LINE LIFF 開啟。');
     const result = await liff.scanCodeV2();
     const raw = String(result && result.value || '').trim();
     let scannedUrl;
@@ -360,7 +433,7 @@
   }
 
   function rewardRequestId(ticket, confirmationCode) {
-    const fingerprint = ticket.entitlementOrdinal + '|' + confirmationCode;
+    const fingerprint = (ticket.cardId || currentMember.selectedCardId || '') + '|' + ticket.entitlementOrdinal + '|' + confirmationCode;
     if (rewardClaimRetry && rewardClaimRetry.fingerprint === fingerprint) return rewardClaimRetry.requestId;
     rewardClaimRetry = { fingerprint: fingerprint, requestId: PointsCard.randomHex(16) };
     return rewardClaimRetry.requestId;
@@ -377,10 +450,7 @@
     openDialog($('lotteryDialog'));
     const phrases = ['正在搖出你的好運…', '票券確認完成…', '最後一圈…'];
     let phraseIndex = 0;
-    lotteryInterval = window.setInterval(function () {
-      $('lotteryResultText').textContent = phrases[phraseIndex % phrases.length];
-      phraseIndex += 1;
-    }, 520);
+    lotteryInterval = window.setInterval(function () { $('lotteryResultText').textContent = phrases[phraseIndex++ % phrases.length]; }, 520);
     const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     lotteryTimeout = window.setTimeout(function () {
       window.clearInterval(lotteryInterval);
@@ -397,9 +467,11 @@
     const ticket = selectedTicket;
     rewardClaimInFlight = true;
     $('scanRewardButton').disabled = true;
+    $('memberCardSelect').disabled = true;
     showProcessing('reward');
     try {
       const result = await PointsCard.callApi('reward.claim', {
+        cardId: ticket.cardId || currentMember.selectedCardId || currentMember.card.cardId,
         confirmationCode: confirmationCode,
         expectedRewardOrdinal: ticket.entitlementOrdinal,
         expectedRewardNodesUpdatedAt: currentMember.rewardNodesUpdatedAt || '',
@@ -409,9 +481,8 @@
       selectedTicket = null;
       renderMember(result.member, false);
       closeDialog($('ticketDialog'));
-      if (result.claimedReward.rewardType === 'lottery') {
-        playLotteryAnimation(result.claimedReward);
-      } else {
+      if (result.claimedReward.rewardType === 'lottery') playLotteryAnimation(result.claimedReward);
+      else {
         $('couponResultTitle').textContent = result.claimedReward.rewardName || '優惠已確認';
         $('couponResultMessage').textContent = '票券已完成核銷，請向店員出示此畫面。';
         openDialog($('couponResultDialog'));
@@ -423,6 +494,7 @@
     } finally {
       rewardClaimInFlight = false;
       hideProcessing();
+      $('memberCardSelect').disabled = false;
       $('scanRewardButton').disabled = false;
     }
   }
@@ -444,11 +516,11 @@
       $('refreshButton').disabled = true;
       loadMember().catch(showFatalError).finally(function () { $('refreshButton').disabled = false; });
     });
+    $('memberCardSelect').addEventListener('change', function () {
+      switchCard($('memberCardSelect').value).catch(showFatalError);
+    });
     $('scanStampButton').addEventListener('click', function () {
-      scanStampCode().catch(function (error) {
-        $('stampErrorMessage').textContent = error.message;
-        openDialog($('stampErrorDialog'));
-      });
+      scanStampCode().catch(function (error) { $('stampErrorMessage').textContent = error.message; openDialog($('stampErrorDialog')); });
     });
     $('scanRewardButton').addEventListener('click', scanRewardConfirmation);
     $('closeTicketButton').addEventListener('click', function () { closeDialog($('ticketDialog')); });
@@ -457,9 +529,7 @@
     $('confirmRewardErrorButton').addEventListener('click', function () { closeDialog($('rewardErrorDialog')); });
     $('confirmCouponResultButton').addEventListener('click', function () { closeDialog($('couponResultDialog')); });
     $('confirmLotteryButton').addEventListener('click', function () { closeDialog($('lotteryDialog')); });
-    $('lotteryDialog').addEventListener('cancel', function (event) {
-      if ($('confirmLotteryButton').disabled) event.preventDefault();
-    });
+    $('lotteryDialog').addEventListener('cancel', function (event) { if ($('confirmLotteryButton').disabled) event.preventDefault(); });
   }
 
   async function init() {
@@ -468,7 +538,7 @@
     if (!authenticated) return;
     await loadMember();
     const navigation = PointsCard.getNavigationState();
-    if (navigation.stamp && currentMember && !currentMember.card.available) {
+    if (navigation.stamp && currentMember && !currentMember.cards.length) {
       PointsCard.clearNavigationState();
       return;
     }
