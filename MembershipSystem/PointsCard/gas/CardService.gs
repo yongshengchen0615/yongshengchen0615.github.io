@@ -56,27 +56,33 @@ function assertPointsCardAvailable_(message) {
 
 function cancelActiveStampVouchersForCardLifecycle_(actorLineUserId, now) {
   const sheet = getSheet_(POINTS_CARD_SHEETS.vouchers);
-  const voucherIds = readObjects_(sheet).map(normalizeVoucher_).filter(function (voucher) {
-    return voucher.status === 'active';
-  }).map(function (voucher) {
-    return voucher.voucherId;
-  });
-  let cancelledCount = 0;
+  const headers = POINTS_CARD_HEADERS[POINTS_CARD_SHEETS.vouchers];
+  const statusColumn = headers.indexOf('status') + 1;
+  const cancelledByColumn = headers.indexOf('cancelledByLineUserId') + 1;
+  const cancelledAtColumn = headers.indexOf('cancelledAt') + 1;
+  const updatedAtColumn = headers.indexOf('updatedAt') + 1;
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
 
-  voucherIds.forEach(function (voucherId) {
-    const match = findByFieldWithRow_(sheet, 'voucherId', voucherId);
-    if (!match) return;
-    const voucher = normalizeVoucher_(match.object);
-    if (voucher.status !== 'active') return;
-    voucher.status = 'cancelled';
-    voucher.cancelledByLineUserId = actorLineUserId;
-    voucher.cancelledAt = voucher.cancelledAt || now;
-    voucher.updatedAt = now;
-    writeObjectRow_(sheet, match.row, voucher);
-    cancelledCount += 1;
+  const statusValues = sheet.getRange(2, statusColumn, lastRow - 1, 1).getValues();
+  const activeRows = [];
+  statusValues.forEach(function (row, index) {
+    if (String(row[0] || '') === 'active') activeRows.push(index + 2);
   });
+  if (!activeRows.length) return 0;
 
-  return cancelledCount;
+  function rangesForColumn_(column) {
+    return activeRows.map(function (row) {
+      return sheet.getRange(row, column).getA1Notation();
+    });
+  }
+
+  sheet.getRangeList(rangesForColumn_(statusColumn)).setValue('cancelled');
+  sheet.getRangeList(rangesForColumn_(cancelledByColumn)).setValue(actorLineUserId);
+  sheet.getRangeList(rangesForColumn_(cancelledAtColumn)).setValue(now);
+  sheet.getRangeList(rangesForColumn_(updatedAtColumn)).setValue(now);
+  invalidateSheetObjects_(sheet);
+  return activeRows.length;
 }
 
 function adminCardUpdate_(context, payload) {
