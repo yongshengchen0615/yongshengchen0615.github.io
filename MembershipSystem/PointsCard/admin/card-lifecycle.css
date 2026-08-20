@@ -8,9 +8,22 @@
 #cardStatusBadge.expired::before,
 #cardStatusBadge.deleted::before { background: var(--danger); }
 #cardSelect { min-width: 220px; }
+
+/* PointsCard 2.1: reward nodes are edited inside the selected card form. */
+#admin-tab-reward-nodes,
+#admin-panel-reward-nodes { display: none !important; }
+.integrated-reward-editor { margin: 26px 0 22px; padding-top: 24px; border-top: 1px solid var(--line); }
+.integrated-reward-heading { align-items: flex-start; }
+.integrated-reward-heading h3 { margin: 5px 0 6px; font: 500 1.55rem Georgia, "Noto Serif TC", serif; }
+.integrated-reward-heading p:last-child { max-width: 720px; margin: 0; color: var(--muted); line-height: 1.6; }
+#cardRewardSettingsNotice { margin-bottom: 16px; }
+#cardRewardNodeList { margin-top: 12px; }
+
 @media (max-width: 700px) {
   .card-lifecycle-section { margin-top: 16px; }
   .card-lifecycle-actions { display: grid; grid-template-columns: 1fr; }
   .card-lifecycle-actions .button { width: 100%; }
   #cardSelect { min-width: 0; width: 100%; }
+  .integrated-reward-heading { display: grid; gap: 14px; }
+  .integrated-reward-heading .button { width: 100%; }
 }
