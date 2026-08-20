@@ -53,7 +53,7 @@ test('deleting a card permanently removes only rows belonging to that card', () 
   assert.match(deletion, /deleteMultiCardRowsWhere_\(getMultiCardSheet_\(MULTI_CARD_SHEETS\.vouchers\)/);
   assert.match(deletion, /deleteMultiCardRowsWhere_\(getMultiCardSheet_\(MULTI_CARD_SHEETS\.progress\)/);
   assert.match(deletion, /deleteMultiCardObjectRow_\(getMultiCardSheet_\(MULTI_CARD_SHEETS\.cards\), match\.row\)/);
-  assert.match(deletion, /row\.cardId === cardId/g);
+  assert.match(deletion, /String\(row\.cardId \|\| ''\) === cardId/g);
   assert.doesNotMatch(deletion, /status\s*=\s*'deleted'/);
   assert.doesNotMatch(deletion, /reactivat|重新啟用/);
 });
