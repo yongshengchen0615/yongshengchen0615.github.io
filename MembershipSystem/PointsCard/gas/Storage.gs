@@ -23,12 +23,8 @@ function initializePointsCardStorage() {
     Object.keys(POINTS_CARD_HEADERS).forEach(function (sheetName) {
       ensureSheetSchema_(spreadsheet, sheetName, POINTS_CARD_HEADERS[sheetName]);
     });
-    if (!properties.getProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty)) {
-      properties.setProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty, '10');
-    }
-    if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNameProperty)) {
-      properties.setProperty(POINTS_CARD_SERVICE.rewardNameProperty, '招牌飲品一份');
-    }
+    if (!properties.getProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty)) properties.setProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty, '10');
+    if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNameProperty)) properties.setProperty(POINTS_CARD_SERVICE.rewardNameProperty, '招牌飲品一份');
     if (!properties.getProperty(POINTS_CARD_SERVICE.rewardNodesProperty)) {
       const defaultSettings = pointsCardSettings_();
       const now = new Date().toISOString();
@@ -38,16 +34,10 @@ function initializePointsCardStorage() {
 
     if (created) {
       const defaultSheet = spreadsheet.getSheetByName('工作表1') || spreadsheet.getSheetByName('Sheet1');
-      if (defaultSheet && defaultSheet.getLastRow() === 0 && spreadsheet.getSheets().length > 1) {
-        spreadsheet.deleteSheet(defaultSheet);
-      }
+      if (defaultSheet && defaultSheet.getLastRow() === 0 && spreadsheet.getSheets().length > 1) spreadsheet.deleteSheet(defaultSheet);
     }
     resetRequestCaches_();
-    return {
-      spreadsheetId: spreadsheetId,
-      sheets: Object.keys(POINTS_CARD_HEADERS),
-      settings: pointsCardSettings_()
-    };
+    return { spreadsheetId: spreadsheetId, sheets: Object.keys(POINTS_CARD_HEADERS), settings: pointsCardSettings_() };
   } finally { lock.releaseLock(); }
 }
 
@@ -62,13 +52,11 @@ function setPointsCardAdmin(lineUserId, enabled) {
     const member = normalizeMember_(match.object);
     member.canManagePoints = Boolean(enabled);
     member.updatedAt = new Date().toISOString();
-    if (!audit_('script-editor', 'system', enabled ? 'ADMIN_GRANT_REQUESTED' : 'ADMIN_REVOKE_REQUESTED', targetLineUserId, 'pending', {
-      memberNo: member.memberNo
-    })) fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，管理權限未變更。');
+    if (!audit_('script-editor', 'system', enabled ? 'ADMIN_GRANT_REQUESTED' : 'ADMIN_REVOKE_REQUESTED', targetLineUserId, 'pending', { memberNo: member.memberNo })) {
+      fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，管理權限未變更。');
+    }
     writeObjectRow_(sheet, match.row, member);
-    audit_('script-editor', 'system', enabled ? 'ADMIN_GRANTED' : 'ADMIN_REVOKED', targetLineUserId, 'success', {
-      memberNo: member.memberNo
-    });
+    audit_('script-editor', 'system', enabled ? 'ADMIN_GRANTED' : 'ADMIN_REVOKED', targetLineUserId, 'success', { memberNo: member.memberNo });
     return { memberNo: member.memberNo, canManagePoints: member.canManagePoints };
   } finally { lock.releaseLock(); }
 }
@@ -77,12 +65,10 @@ function configurePointsCard(lineLoginChannelId, rewardName, stampsPerReward) {
   const channelId = cleanText_(lineLoginChannelId, 40, true);
   if (!/^\d{6,20}$/.test(channelId)) fail_('INVALID_INPUT', 'LINE Login Channel ID 格式不正確。');
   const safeRewardName = cleanText_(rewardName, 80, true);
-  const target = strictInt_(stampsPerReward, 2, 20, 'INVALID_INPUT', '每張集點卡必須設定為 2 到 20 點。');
+  const target = strictInt_(stampsPerReward, 2, MAX_CARD_STAMPS, 'INVALID_INPUT', '每張集點卡必須設定為 2 到 10,000 點。');
   if (rewardSettingsLocked_()) fail_('REWARD_SETTINGS_LOCKED', '已有獎勵兌換紀錄，不能再修改集點門檻。');
   const properties = PropertiesService.getScriptProperties();
-  const rewardNodes = normalizeRewardNodes_([
-    { stampsRequired: target, rewardName: safeRewardName }
-  ], 'INVALID_REWARD_NODES', '獎勵節點設定不正確。');
+  const rewardNodes = normalizeRewardNodes_([{ stampsRequired: target, rewardName: safeRewardName }], 'INVALID_REWARD_NODES', '獎勵節點設定不正確。');
   const now = new Date().toISOString();
   properties.setProperty(POINTS_CARD_SERVICE.lineChannelProperty, channelId);
   properties.setProperty(POINTS_CARD_SERVICE.rewardNameProperty, safeRewardName);
@@ -150,9 +136,7 @@ function validateSheetSchema_(sheet, expectedHeaders) {
 
 function readObjects_(sheet) {
   const sheetName = sheet.getName();
-  if (Object.prototype.hasOwnProperty.call(requestObjectsBySheet_, sheetName)) {
-    return requestObjectsBySheet_[sheetName];
-  }
+  if (Object.prototype.hasOwnProperty.call(requestObjectsBySheet_, sheetName)) return requestObjectsBySheet_[sheetName];
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
     requestObjectsBySheet_[sheetName] = [];
@@ -160,9 +144,8 @@ function readObjects_(sheet) {
   }
   const headers = POINTS_CARD_HEADERS[sheetName];
   const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  requestObjectsBySheet_[sheetName] = values.filter(function (row) {
-    return row.some(function (value) { return value !== ''; });
-  }).map(function (row) { return rowToObject_(headers, row); });
+  requestObjectsBySheet_[sheetName] = values.filter(function (row) { return row.some(function (value) { return value !== ''; }); })
+    .map(function (row) { return rowToObject_(headers, row); });
   return requestObjectsBySheet_[sheetName];
 }
 
@@ -177,8 +160,7 @@ function findByFieldWithRow_(sheet, field, value) {
   if (columnIndex < 0) fail_('SCHEMA_MISMATCH', '缺少必要欄位。');
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return null;
-  const match = sheet.getRange(2, columnIndex + 1, lastRow - 1, 1)
-    .createTextFinder(String(value)).matchEntireCell(true).useRegularExpression(false).findNext();
+  const match = sheet.getRange(2, columnIndex + 1, lastRow - 1, 1).createTextFinder(String(value)).matchEntireCell(true).useRegularExpression(false).findNext();
   if (!match) return null;
   const rowNumber = match.getRow();
   const row = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
