@@ -1,5 +1,7 @@
 'use strict';
 
+let requestObjectsBySheet_ = {};
+
 function initializePointsCardStorage() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) fail_('BUSY', '資料初始化進行中，請稍後再試。');
@@ -93,6 +95,7 @@ function configurePointsCard(lineLoginChannelId, rewardName, stampsPerReward) {
 function resetRequestCaches_() {
   requestSpreadsheet_ = null;
   requestSheets_ = {};
+  requestObjectsBySheet_ = {};
 }
 
 function getSpreadsheet_() {
@@ -146,13 +149,26 @@ function validateSheetSchema_(sheet, expectedHeaders) {
 }
 
 function readObjects_(sheet) {
+  const sheetName = sheet.getName();
+  if (Object.prototype.hasOwnProperty.call(requestObjectsBySheet_, sheetName)) {
+    return requestObjectsBySheet_[sheetName];
+  }
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  const headers = POINTS_CARD_HEADERS[sheet.getName()];
+  if (lastRow < 2) {
+    requestObjectsBySheet_[sheetName] = [];
+    return requestObjectsBySheet_[sheetName];
+  }
+  const headers = POINTS_CARD_HEADERS[sheetName];
   const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  return values.filter(function (row) {
+  requestObjectsBySheet_[sheetName] = values.filter(function (row) {
     return row.some(function (value) { return value !== ''; });
   }).map(function (row) { return rowToObject_(headers, row); });
+  return requestObjectsBySheet_[sheetName];
+}
+
+function invalidateSheetObjects_(sheet) {
+  if (!sheet || typeof sheet.getName !== 'function') return;
+  delete requestObjectsBySheet_[sheet.getName()];
 }
 
 function findByFieldWithRow_(sheet, field, value) {
@@ -185,11 +201,18 @@ function objectToRow_(headers, object) {
 function appendObject_(sheet, object) {
   const headers = POINTS_CARD_HEADERS[sheet.getName()];
   sheet.appendRow(objectToRow_(headers, object));
+  invalidateSheetObjects_(sheet);
 }
 
 function writeObjectRow_(sheet, rowNumber, object) {
   const headers = POINTS_CARD_HEADERS[sheet.getName()];
   sheet.getRange(rowNumber, 1, 1, headers.length).setValues([objectToRow_(headers, object)]);
+  invalidateSheetObjects_(sheet);
+}
+
+function deleteObjectRow_(sheet, rowNumber) {
+  sheet.deleteRow(rowNumber);
+  invalidateSheetObjects_(sheet);
 }
 
 function safeCellText_(value) {
