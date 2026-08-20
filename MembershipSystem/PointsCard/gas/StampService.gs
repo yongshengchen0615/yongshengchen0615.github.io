@@ -100,7 +100,7 @@ function stampRecord_(context, payload) {
 
 function validateVoucherForStamp_(voucher) {
   if (voucher.status !== 'active') fail_('VOUCHER_INACTIVE', '這組集點 QR Code 已停止使用。');
-  if (!voucher.expiresAt || new Date(voucher.expiresAt).getTime() <= Date.now()) fail_('VOUCHER_EXPIRED', '這組集點 QR Code 已過期。');
+  if (voucher.expiresAt && new Date(voucher.expiresAt).getTime() <= Date.now()) fail_('VOUCHER_EXPIRED', '這組集點 QR Code 已過期。');
 }
 
 function assertVoucherUsageAllowed_(voucher, records, memberLineUserId) {
@@ -178,7 +178,9 @@ function adminStampList_(limit) {
     if (record.status === 'recorded') counts[record.voucherId] = (counts[record.voucherId] || 0) + 1;
     return counts;
   }, {});
-  return readObjects_(getSheet_(POINTS_CARD_SHEETS.vouchers)).map(normalizeVoucher_).sort(function (a, b) {
+  return readObjects_(getSheet_(POINTS_CARD_SHEETS.vouchers)).map(normalizeVoucher_).filter(function (voucher) {
+    return voucher.status !== 'deleted';
+  }).sort(function (a, b) {
     return String(b.createdAt).localeCompare(String(a.createdAt));
   }).slice(0, maxRows).map(function (voucher) {
     return publicVoucher_(voucher, recordCounts[voucher.voucherId] || 0, false);
@@ -188,7 +190,8 @@ function adminStampList_(limit) {
 function adminStampCreate_(context, payload) {
   const stampCount = strictInt_(payload.stampCount, 1, MAX_STAMPS_PER_SCAN, 'INVALID_STAMP_COUNT', '集點數量必須是 1 到 10 的整數。');
   const scanMode = enumValue_(payload.scanMode, STAMP_SCAN_MODES, 'INVALID_SCAN_MODE', 'QR Code 使用模式不正確。');
-  const expiresAt = validIsoFuture_(payload.expiresAt);
+  const rawExpiresAt = cleanText_(payload.expiresAt || '', 40, false);
+  const expiresAt = rawExpiresAt ? validIsoFuture_(rawExpiresAt) : '';
   const note = cleanText_(payload.note || '', 200, false);
   const sheet = getSheet_(POINTS_CARD_SHEETS.vouchers);
   const lock = LockService.getScriptLock();
@@ -217,11 +220,11 @@ function adminStampCreate_(context, payload) {
       cancelledAt: ''
     };
     if (!audit_(context.identity.sub, 'admin', 'STAMP_QR_CREATE_REQUESTED', '', 'pending', {
-      voucherId: voucher.voucherId, stampCount: stampCount, scanMode: scanMode, expiresAt: expiresAt
+      voucherId: voucher.voucherId, stampCount: stampCount, scanMode: scanMode, expiresAt: expiresAt || 'unlimited'
     })) fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，QR Code 尚未建立。');
     appendObject_(sheet, voucher);
     audit_(context.identity.sub, 'admin', 'STAMP_QR_CREATED', '', 'success', {
-      voucherId: voucher.voucherId, stampCount: stampCount, scanMode: scanMode, expiresAt: expiresAt
+      voucherId: voucher.voucherId, stampCount: stampCount, scanMode: scanMode, expiresAt: expiresAt || 'unlimited'
     });
     return { voucher: publicVoucher_(voucher, 0, true) };
   } finally { lock.releaseLock(); }
@@ -232,7 +235,7 @@ function adminStampOpen_(payload) {
   const voucherMatch = findByFieldWithRow_(getSheet_(POINTS_CARD_SHEETS.vouchers), 'voucherId', voucherId);
   if (!voucherMatch) fail_('VOUCHER_NOT_FOUND', '找不到指定 QR Code。');
   const voucher = normalizeVoucher_(voucherMatch.object);
-  if (voucher.status === 'cancelled') fail_('VOUCHER_INACTIVE', '已停止的 QR Code 不再提供發放連結。');
+  if (voucher.status === 'cancelled' || voucher.status === 'deleted') fail_('VOUCHER_INACTIVE', '已停止或刪除的 QR Code 不再提供發放連結。');
   const recordCount = countVoucherRecords_(voucherId);
   return { voucher: publicVoucher_(voucher, recordCount, true) };
 }
@@ -274,16 +277,31 @@ function adminStampDelete_(context, payload) {
     if (!match) fail_('VOUCHER_NOT_FOUND', '找不到指定 QR Code。');
     const voucher = normalizeVoucher_(match.object);
     if (voucher.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', 'QR Code 已被更新，請重新整理後再試。');
+    if (voucher.status === 'deleted') fail_('VOUCHER_NOT_FOUND', '找不到指定 QR Code。');
     const hasRecords = readObjects_(getSheet_(POINTS_CARD_SHEETS.stampRecords)).some(function (record) {
       return record.voucherId === voucherId;
     });
-    if (hasRecords) fail_('VOUCHER_HAS_RECORDS', '已有集點紀錄的 QR Code 只能停止，不能刪除。');
-    if (!audit_(context.identity.sub, 'admin', 'STAMP_QR_DELETE_REQUESTED', '', 'pending', { voucherId: voucherId })) {
+    if (!audit_(context.identity.sub, 'admin', 'STAMP_QR_DELETE_REQUESTED', '', 'pending', {
+      voucherId: voucherId,
+      preserveHistory: hasRecords
+    })) {
       fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，QR Code 未刪除。');
     }
-    deleteObjectRow_(sheet, match.row);
-    audit_(context.identity.sub, 'admin', 'STAMP_QR_DELETED', '', 'success', { voucherId: voucherId });
-    return { voucherId: voucherId };
+    if (hasRecords) {
+      const now = new Date().toISOString();
+      voucher.status = 'deleted';
+      voucher.cancelledByLineUserId = context.identity.sub;
+      voucher.cancelledAt = voucher.cancelledAt || now;
+      voucher.updatedAt = now;
+      writeObjectRow_(sheet, match.row, voucher);
+    } else {
+      deleteObjectRow_(sheet, match.row);
+    }
+    audit_(context.identity.sub, 'admin', 'STAMP_QR_DELETED', '', 'success', {
+      voucherId: voucherId,
+      preserveHistory: hasRecords
+    });
+    return { voucherId: voucherId, preservedHistory: hasRecords };
   } finally { lock.releaseLock(); }
 }
 
