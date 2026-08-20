@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '1.4.0',
+  version: '2.0.0',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -54,6 +54,7 @@ const MEMBER_STATUS_VALUES = ['active', 'suspended', 'disabled'];
 const STAMP_SCAN_MODES = ['single', 'per-member', 'repeatable'];
 const REWARD_TYPES = ['coupon', 'lottery'];
 const LOTTERY_WEIGHT_BASIS_POINTS = 10000;
+const MAX_CARD_STAMPS = 10000;
 const MAX_STAMPS_PER_SCAN = 10;
 const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const LINE_IDENTITY_CACHE_MAX_SECONDS = 300;
@@ -75,7 +76,7 @@ function doGet() {
         'member.me', 'stamp.record', 'reward.claim', 'admin.dashboard', 'admin.summary',
         'admin.members.search', 'admin.stamps.list', 'admin.reward-confirmations.list',
         'admin.member.update', 'admin.reward.redeem', 'admin.reward-nodes.update',
-        'admin.card.update', 'admin.card.delete',
+        'admin.cards.list', 'admin.card.create', 'admin.card.update', 'admin.card.delete',
         'admin.stamp.create', 'admin.stamp.open', 'admin.stamp.cancel', 'admin.stamp.delete',
         'admin.reward-confirm.create', 'admin.reward-confirm.open', 'admin.reward-confirm.cancel',
         'admin.reward-confirm.delete'
@@ -86,6 +87,8 @@ function doGet() {
 
 function doPost(e) {
   resetRequestCaches_();
+  requestMultiCardSheets_ = {};
+  requestMultiCardObjects_ = {};
   currentTraceId_ = randomHex_(8);
   currentAction_ = '';
   currentRequestStartedAt_ = Date.now();
@@ -102,69 +105,77 @@ function doPost(e) {
     switch (action) {
       case 'member.me':
         rateLimit_('member-me:' + identity.sub, 30, 60);
-        return json_({ ok: true, data: memberMe_(context) });
+        return json_({ ok: true, data: memberMeMultiCard_(context, payload) });
       case 'stamp.record':
         rateLimit_('stamp-record:' + identity.sub, 12, 60);
-        return json_({ ok: true, data: stampRecord_(context, payload) });
+        return json_({ ok: true, data: stampRecordMultiCard_(context, payload) });
       case 'reward.claim':
         rateLimit_('reward-claim:' + identity.sub, 12, 60);
-        return json_({ ok: true, data: memberRewardClaim_(context, payload) });
+        return json_({ ok: true, data: memberRewardClaimMultiCard_(context, payload) });
       case 'admin.dashboard':
         requireAdmin_(context);
         rateLimit_('admin-dashboard:' + identity.sub, 30, 60);
-        return json_({ ok: true, data: adminDashboard_(payload) });
+        return json_({ ok: true, data: adminDashboardMultiCard_(payload) });
       case 'admin.summary':
         requireAdmin_(context);
         rateLimit_('admin-summary:' + identity.sub, 45, 60);
-        return json_({ ok: true, data: adminSummary_() });
+        return json_({ ok: true, data: adminSummaryMultiCard_(payload) });
+      case 'admin.cards.list':
+        requireAdmin_(context);
+        rateLimit_('admin-cards-list:' + identity.sub, 45, 60);
+        return json_({ ok: true, data: adminCardsListMultiCard_() });
       case 'admin.members.search':
         requireAdmin_(context);
         rateLimit_('admin-members-search:' + identity.sub, 45, 60);
-        return json_({ ok: true, data: adminMembersSearch_(payload) });
+        return json_({ ok: true, data: adminMembersSearchMultiCard_(payload) });
       case 'admin.stamps.list':
         requireAdmin_(context);
         rateLimit_('admin-stamps-list:' + identity.sub, 45, 60);
-        return json_({ ok: true, data: { vouchers: adminStampList_(payload.limit || 50) } });
+        return json_({ ok: true, data: adminStampListMultiCard_(payload) });
       case 'admin.reward-confirmations.list':
         requireAdmin_(context);
         rateLimit_('admin-reward-confirmations-list:' + identity.sub, 45, 60);
-        return json_({ ok: true, data: { rewardConfirmations: adminRewardConfirmationList_(payload.limit || 50) } });
+        return json_({ ok: true, data: { rewardConfirmations: adminRewardConfirmationListMultiCard_(payload.limit || 50) } });
       case 'admin.member.update':
         requireAdmin_(context);
         rateLimit_('admin-member-update:' + identity.sub, 20, 60);
-        return json_({ ok: true, data: adminMemberUpdate_(context, payload) });
+        return json_({ ok: true, data: adminMemberUpdateMultiCard_(context, payload) });
       case 'admin.reward.redeem':
         requireAdmin_(context);
         rateLimit_('admin-reward-redeem:' + identity.sub, 20, 60);
-        return json_({ ok: true, data: adminRewardRedeem_(context, payload) });
+        return json_({ ok: true, data: adminRewardRedeemMultiCard_(context, payload) });
       case 'admin.reward-nodes.update':
         requireAdmin_(context);
         rateLimit_('admin-reward-nodes-update:' + identity.sub, 10, 60);
-        return json_({ ok: true, data: adminRewardNodesUpdate_(context, payload) });
+        return json_({ ok: true, data: adminRewardNodesUpdateMultiCard_(context, payload) });
+      case 'admin.card.create':
+        requireAdmin_(context);
+        rateLimit_('admin-card-create:' + identity.sub, 10, 60);
+        return json_({ ok: true, data: adminCardCreateMultiCard_(context, payload) });
       case 'admin.card.update':
         requireAdmin_(context);
         rateLimit_('admin-card-update:' + identity.sub, 10, 60);
-        return json_({ ok: true, data: adminCardUpdate_(context, payload) });
+        return json_({ ok: true, data: adminCardUpdateMultiCard_(context, payload) });
       case 'admin.card.delete':
         requireAdmin_(context);
         rateLimit_('admin-card-delete:' + identity.sub, 10, 60);
-        return json_({ ok: true, data: adminCardDelete_(context, payload) });
+        return json_({ ok: true, data: adminCardDeleteMultiCard_(context, payload) });
       case 'admin.stamp.create':
         requireAdmin_(context);
         rateLimit_('admin-stamp-create:' + identity.sub, 20, 60);
-        return json_({ ok: true, data: adminStampCreate_(context, payload) });
+        return json_({ ok: true, data: adminStampCreateMultiCard_(context, payload) });
       case 'admin.stamp.open':
         requireAdmin_(context);
         rateLimit_('admin-stamp-open:' + identity.sub, 30, 60);
-        return json_({ ok: true, data: adminStampOpen_(payload) });
+        return json_({ ok: true, data: adminStampOpenMultiCard_(payload) });
       case 'admin.stamp.cancel':
         requireAdmin_(context);
         rateLimit_('admin-stamp-cancel:' + identity.sub, 20, 60);
-        return json_({ ok: true, data: adminStampCancel_(context, payload) });
+        return json_({ ok: true, data: adminStampCancelMultiCard_(context, payload) });
       case 'admin.stamp.delete':
         requireAdmin_(context);
         rateLimit_('admin-stamp-delete:' + identity.sub, 20, 60);
-        return json_({ ok: true, data: adminStampDelete_(context, payload) });
+        return json_({ ok: true, data: adminStampDeleteMultiCard_(context, payload) });
       case 'admin.reward-confirm.create':
         requireAdmin_(context);
         rateLimit_('admin-reward-confirm-create:' + identity.sub, 10, 60);
@@ -172,7 +183,7 @@ function doPost(e) {
       case 'admin.reward-confirm.open':
         requireAdmin_(context);
         rateLimit_('admin-reward-confirm-open:' + identity.sub, 30, 60);
-        return json_({ ok: true, data: adminRewardConfirmationOpen_(payload) });
+        return json_({ ok: true, data: adminRewardConfirmationOpenMultiCard_(payload) });
       case 'admin.reward-confirm.cancel':
         requireAdmin_(context);
         rateLimit_('admin-reward-confirm-cancel:' + identity.sub, 20, 60);
@@ -180,7 +191,7 @@ function doPost(e) {
       case 'admin.reward-confirm.delete':
         requireAdmin_(context);
         rateLimit_('admin-reward-confirm-delete:' + identity.sub, 20, 60);
-        return json_({ ok: true, data: adminRewardConfirmationDelete_(context, payload) });
+        return json_({ ok: true, data: adminRewardConfirmationDeleteMultiCard_(context, payload) });
       default:
         fail_('INVALID_ACTION', '不支援的操作。');
     }
@@ -242,64 +253,7 @@ function memberMe_(context) {
       writeObjectRow_(sheet, fresh.row, member);
     } finally { lock.releaseLock(); }
   }
-
-  return {
-    member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId))
-  };
-}
-
-function adminDashboard_(payload) {
-  const summary = adminSummary_();
-  const memberPage = adminMembersSearch_(payload);
-  return {
-    members: memberPage.members,
-    pagination: memberPage.pagination,
-    vouchers: adminStampList_(payload.voucherLimit || 50),
-    rewardConfirmations: adminRewardConfirmationList_(payload.confirmationLimit || 50),
-    stats: summary.stats,
-    settings: summary.settings
-  };
-}
-
-function adminSummary_() {
-  const allMembers = readObjects_(getSheet_(POINTS_CARD_SHEETS.members)).map(normalizeMember_);
-  const stats = allMembers.reduce(function (result, member) {
-    result.totalMembers += 1;
-    result.totalStamps += member.totalStamps;
-    result.redeemedRewards += member.redeemedRewards;
-    if (member.membershipStatus === 'active') result.activeMembers += 1;
-    return result;
-  }, { totalMembers: 0, activeMembers: 0, totalStamps: 0, redeemedRewards: 0 });
-  const settings = pointsCardSettings_();
-  settings.rewardSettingsLocked = rewardSettingsLocked_();
-  return { stats: stats, settings: settings };
-}
-
-function adminMembersSearch_(payload) {
-  const query = cleanText_(payload.query || '', 80, false).toLowerCase();
-  const page = clampInt_(payload.page, 1, 1000000, 1);
-  const pageSize = clampInt_(payload.pageSize, 1, 100, 100);
-  const allMembers = readObjects_(getSheet_(POINTS_CARD_SHEETS.members)).map(normalizeMember_);
-  const filtered = query ? allMembers.filter(function (member) {
-    return member.memberNo.toLowerCase().indexOf(query) !== -1 ||
-      member.displayName.toLowerCase().indexOf(query) !== -1;
-  }) : allMembers;
-  filtered.sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
-  const start = (page - 1) * pageSize;
-  const settings = pointsCardSettings_();
-  const claimedByMember = claimedRewardOrdinalsByMember_();
-  const members = filtered.slice(start, start + pageSize).map(function (member) {
-    return publicMember_(member, true, claimedByMember[member.lineUserId] || [], settings);
-  });
-  return {
-    members: members,
-    pagination: {
-      page: page,
-      pageSize: pageSize,
-      total: filtered.length,
-      hasMore: start + members.length < filtered.length
-    }
-  };
+  return { member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(context.identity.sub)) };
 }
 
 function adminMemberUpdate_(context, payload) {
@@ -385,7 +339,7 @@ function normalizeMember_(value) {
 
 function pointsCardSettings_() {
   const properties = PropertiesService.getScriptProperties();
-  const legacyStamps = clampInt_(properties.getProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty), 2, 20, 10);
+  const legacyStamps = clampInt_(properties.getProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty), 2, MAX_CARD_STAMPS, 10);
   const legacyRewardName = cleanText_(properties.getProperty(POINTS_CARD_SERVICE.rewardNameProperty) || '招牌飲品一份', 80, false);
   const rawNodes = properties.getProperty(POINTS_CARD_SERVICE.rewardNodesProperty) || '';
   let rewardNodes;
@@ -397,9 +351,7 @@ function pointsCardSettings_() {
       fail_('CONFIGURATION_ERROR', '獎勵節點設定格式不正確。');
     }
   } else {
-    rewardNodes = normalizeRewardNodes_([
-      { stampsRequired: legacyStamps, rewardName: legacyRewardName }
-    ], 'CONFIGURATION_ERROR', '獎勵節點設定格式不正確。');
+    rewardNodes = normalizeRewardNodes_([{ stampsRequired: legacyStamps, rewardName: legacyRewardName }], 'CONFIGURATION_ERROR', '獎勵節點設定格式不正確。');
   }
   const lastNode = rewardNodes[rewardNodes.length - 1];
   return {
@@ -426,23 +378,17 @@ function normalizeLotteryPrizes_(value, errorCode, errorMessage) {
     if (!name || name.length > 80) fail_(errorCode, errorMessage);
     let weightBasis;
     if (isLegacyList) {
-      weightBasis = index === value.length - 1
-        ? LOTTERY_WEIGHT_BASIS_POINTS - (equalWeightBasis * index)
-        : equalWeightBasis;
+      weightBasis = index === value.length - 1 ? LOTTERY_WEIGHT_BASIS_POINTS - (equalWeightBasis * index) : equalWeightBasis;
     } else {
       if (source.weight == null || source.weight === '') fail_(errorCode, errorMessage);
       const weight = Number(source.weight);
       weightBasis = Math.round(weight * 100);
-      if (!Number.isFinite(weight) || weight < 0 || weight > 100 || Math.abs((weight * 100) - weightBasis) > 0.000001) {
-        fail_(errorCode, errorMessage);
-      }
+      if (!Number.isFinite(weight) || weight < 0 || weight > 100 || Math.abs((weight * 100) - weightBasis) > 0.000001) fail_(errorCode, errorMessage);
     }
     return { name: name, weight: weightBasis / 100 };
   });
   if (new Set(prizes.map(function (prize) { return prize.name; })).size !== prizes.length) fail_(errorCode, errorMessage);
-  const totalWeightBasis = prizes.reduce(function (total, prize) {
-    return total + Math.round(prize.weight * 100);
-  }, 0);
+  const totalWeightBasis = prizes.reduce(function (total, prize) { return total + Math.round(prize.weight * 100); }, 0);
   if (totalWeightBasis !== LOTTERY_WEIGHT_BASIS_POINTS) fail_(errorCode, errorMessage);
   return prizes;
 }
@@ -452,17 +398,14 @@ function normalizeRewardNodes_(value, errorCode, errorMessage) {
   const nodes = value.map(function (node) {
     if (!node || Object.prototype.toString.call(node) !== '[object Object]') fail_(errorCode, errorMessage);
     const stampsRequired = Number(node.stampsRequired);
-    if (!Number.isFinite(stampsRequired) || Math.floor(stampsRequired) !== stampsRequired || stampsRequired < 1 || stampsRequired > 20) {
+    if (!Number.isFinite(stampsRequired) || Math.floor(stampsRequired) !== stampsRequired || stampsRequired < 1 || stampsRequired > MAX_CARD_STAMPS) {
       fail_(errorCode, errorMessage);
     }
     const rewardName = String(node.rewardName == null ? '' : node.rewardName).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
     if (!rewardName || rewardName.length > 80) fail_(errorCode, errorMessage);
     const rewardType = node.rewardType == null || node.rewardType === '' ? 'coupon' : String(node.rewardType);
     if (REWARD_TYPES.indexOf(rewardType) < 0) fail_(errorCode, errorMessage);
-    let lotteryPrizes = [];
-    if (rewardType === 'lottery') {
-      lotteryPrizes = normalizeLotteryPrizes_(node.lotteryPrizes, errorCode, errorMessage);
-    }
+    const lotteryPrizes = rewardType === 'lottery' ? normalizeLotteryPrizes_(node.lotteryPrizes, errorCode, errorMessage) : [];
     return {
       nodeId: 'node-' + stampsRequired,
       stampsRequired: stampsRequired,
@@ -481,9 +424,7 @@ function earnedRewardCountForStamps_(totalStamps, settings) {
   const cardSize = settings.cardSize;
   const fullCycles = Math.floor(totalStamps / cardSize);
   const remainder = totalStamps % cardSize;
-  const partialRewards = settings.rewardNodes.filter(function (node) {
-    return node.stampsRequired <= remainder;
-  }).length;
+  const partialRewards = settings.rewardNodes.filter(function (node) { return node.stampsRequired <= remainder; }).length;
   return fullCycles * settings.rewardNodes.length + partialRewards;
 }
 
@@ -498,9 +439,7 @@ function rewardEntitlementByOrdinal_(ordinal, settings) {
     stampsRequired: node.stampsRequired,
     rewardName: node.rewardName,
     rewardType: node.rewardType,
-    lotteryPrizes: node.lotteryPrizes.map(function (prize) {
-      return { name: prize.name, weight: prize.weight };
-    }),
+    lotteryPrizes: node.lotteryPrizes.map(function (prize) { return { name: prize.name, weight: prize.weight }; }),
     cycleNumber: cycleIndex + 1,
     absoluteStamps: cycleIndex * settings.cardSize + node.stampsRequired
   };
@@ -508,9 +447,7 @@ function rewardEntitlementByOrdinal_(ordinal, settings) {
 
 function publicRewardTicket_(reward) {
   const lotteryPrizes = reward.rewardType === 'lottery' && Array.isArray(reward.lotteryPrizes)
-    ? reward.lotteryPrizes.map(function (prize) {
-      return String(prize.name || '');
-    }).filter(Boolean)
+    ? reward.lotteryPrizes.map(function (prize) { return String(prize.name || ''); }).filter(Boolean)
     : [];
   return {
     entitlementOrdinal: Number(reward.entitlementOrdinal || 0),
@@ -533,7 +470,7 @@ function normalizedClaimedOrdinals_(member, claimedOrdinals) {
     if (Number.isFinite(value) && Math.floor(value) === value && value > 0) result.add(value);
   });
   let legacyOrdinal = 1;
-  while (result.size < member.redeemedRewards) {
+  while (result.size < Number(member.redeemedRewards || 0)) {
     while (result.has(legacyOrdinal)) legacyOrdinal += 1;
     result.add(legacyOrdinal);
   }
@@ -558,7 +495,7 @@ function readClaimedRewardOrdinalsForMember_(lineUserId) {
 }
 
 function rewardProjection_(member, settings, claimedOrdinals) {
-  const totalStamps = member.totalStamps;
+  const totalStamps = Number(member.totalStamps || 0);
   const earnedRewards = earnedRewardCountForStamps_(totalStamps, settings);
   const claimed = normalizedClaimedOrdinals_(member, claimedOrdinals);
   const availableRewardNodes = [];
@@ -567,7 +504,6 @@ function rewardProjection_(member, settings, claimedOrdinals) {
   }
   const claimedEarnedCount = Array.from(claimed).filter(function (ordinal) { return ordinal <= earnedRewards; }).length;
   const availableRewards = Math.max(0, earnedRewards - claimedEarnedCount);
-
   const nextReward = rewardEntitlementByOrdinal_(earnedRewards + 1, settings);
   const upcomingRewardNodes = [];
   for (let ordinal = earnedRewards + 1; ordinal <= earnedRewards + settings.rewardNodes.length; ordinal += 1) {
@@ -590,6 +526,7 @@ function rewardProjection_(member, settings, claimedOrdinals) {
       stampsRequired: node.stampsRequired,
       rewardName: node.rewardName,
       rewardType: node.rewardType,
+      lotteryPrizes: node.lotteryPrizes,
       entitlementOrdinal: entitlement.entitlementOrdinal,
       cycleNumber: entitlement.cycleNumber,
       absoluteStamps: entitlement.absoluteStamps,
@@ -614,9 +551,7 @@ function rewardEntitlementsBetweenTotals_(totalBefore, totalAfter, settings) {
   const beforeCount = earnedRewardCountForStamps_(totalBefore, settings);
   const afterCount = earnedRewardCountForStamps_(totalAfter, settings);
   const unlocked = [];
-  for (let ordinal = beforeCount + 1; ordinal <= afterCount; ordinal += 1) {
-    unlocked.push(rewardEntitlementByOrdinal_(ordinal, settings));
-  }
+  for (let ordinal = beforeCount + 1; ordinal <= afterCount; ordinal += 1) unlocked.push(rewardEntitlementByOrdinal_(ordinal, settings));
   return unlocked;
 }
 
@@ -625,40 +560,6 @@ function rewardSettingsLocked_() {
   return readObjects_(getSheet_(POINTS_CARD_SHEETS.members)).some(function (member) {
     return storedNonNegativeInt_(member.redeemedRewards, 100000000) > 0;
   });
-}
-
-function adminRewardNodesUpdate_(context, payload) {
-  const expectedUpdatedAt = cleanText_(payload.expectedUpdatedAt, 64, true);
-  if (!Array.isArray(payload.rewardNodes) || payload.rewardNodes.some(function (node) {
-    return !node || !Object.prototype.hasOwnProperty.call(node, 'rewardType');
-  })) fail_('CLIENT_UPGRADE_REQUIRED', '管理端版本過舊，請重新整理後再設定票券類型。');
-  if (payload.rewardNodes.some(function (node) {
-    return node.rewardType === 'lottery' && (!Array.isArray(node.lotteryPrizes) || node.lotteryPrizes.some(function (prize) {
-      return !prize || Object.prototype.toString.call(prize) !== '[object Object]' || !Object.prototype.hasOwnProperty.call(prize, 'weight');
-    }));
-  })) fail_('CLIENT_UPGRADE_REQUIRED', '管理端版本過舊，請重新整理後再設定抽獎權重。');
-  const rewardNodes = normalizeRewardNodes_(payload.rewardNodes, 'INVALID_REWARD_NODES', '請設定 1 至 5 個有效節點；抽獎券需有 2 至 8 個不重複獎項，權重可為 0%，合計必須為 100%。');
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
-  try {
-    const current = pointsCardSettings_();
-    if (current.rewardNodesUpdatedAt !== expectedUpdatedAt) fail_('CONFLICT', '獎勵節點已被更新，請重新整理後再試。');
-    if (rewardSettingsLocked_()) fail_('REWARD_SETTINGS_LOCKED', '已有獎勵兌換紀錄，為保留歷史語意不能再修改節點。');
-    const now = new Date().toISOString();
-    if (!audit_(context.identity.sub, 'admin', 'REWARD_NODES_UPDATE_REQUESTED', '', 'pending', { rewardNodes: rewardNodes })) {
-      fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，獎勵節點未更新。');
-    }
-    const properties = PropertiesService.getScriptProperties();
-    properties.setProperty(POINTS_CARD_SERVICE.rewardNodesProperty, JSON.stringify(rewardNodes));
-    properties.setProperty(POINTS_CARD_SERVICE.rewardNodesUpdatedAtProperty, now);
-    const lastNode = rewardNodes[rewardNodes.length - 1];
-    properties.setProperty(POINTS_CARD_SERVICE.stampsPerRewardProperty, String(lastNode.stampsRequired));
-    properties.setProperty(POINTS_CARD_SERVICE.rewardNameProperty, lastNode.rewardName);
-    audit_(context.identity.sub, 'admin', 'REWARD_NODES_UPDATED', '', 'success', { rewardNodes: rewardNodes });
-    const settings = pointsCardSettings_();
-    settings.rewardSettingsLocked = false;
-    return { settings: settings };
-  } finally { lock.releaseLock(); }
 }
 
 function requireAdmin_(context) {
