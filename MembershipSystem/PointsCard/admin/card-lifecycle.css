@@ -1,5 +1,5 @@
 .card-lifecycle-section { margin-top: 22px; }
-.card-lifecycle-form { max-width: 900px; margin-bottom: 18px; }
+.card-lifecycle-form { max-width: 940px; margin-bottom: 18px; }
 .card-lifecycle-form textarea { resize: vertical; min-height: 88px; }
 .card-lifecycle-actions { justify-content: flex-start; flex-wrap: wrap; }
 .card-delete-button { color: var(--danger); border-color: rgba(170,61,50,.24); }
@@ -12,10 +12,10 @@
 /* PointsCard 2.1: reward nodes are edited inside the selected card form. */
 #admin-tab-reward-nodes,
 #admin-panel-reward-nodes { display: none !important; }
-.integrated-reward-editor { margin: 26px 0 22px; padding-top: 24px; border-top: 1px solid var(--line); }
+.integrated-reward-editor { margin: 30px 0 22px; padding-top: 28px; border-top: 1px solid var(--line); }
 .integrated-reward-heading { align-items: flex-start; }
-.integrated-reward-heading h3 { margin: 5px 0 6px; font: 500 1.55rem Georgia, "Noto Serif TC", serif; }
-.integrated-reward-heading p:last-child { max-width: 720px; margin: 0; color: var(--muted); line-height: 1.6; }
+.integrated-reward-heading h3 { margin: 5px 0 6px; font: 600 1.6rem/1.22 var(--font-display); }
+.integrated-reward-heading p:last-child { max-width: 720px; margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.65; }
 #cardRewardSettingsNotice { margin-bottom: 16px; }
 #cardRewardNodeList { margin-top: 12px; }
 

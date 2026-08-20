@@ -213,6 +213,27 @@ test('responsive UI contracts cover safe areas, compact heights, touch targets, 
   assert.match(adminScript, /prefers-reduced-motion: reduce/);
 });
 
+test('visual system keeps typography readable and adapts member and admin workspaces across devices', () => {
+  const userCss = read('user/styles.css');
+  const galleryCss = read('user/card-gallery.css');
+  const adminCss = read('admin/styles.css');
+  const lifecycleCss = read('admin/card-lifecycle.css');
+
+  assert.match(userCss, /--font-sans:[^;]*"PingFang TC"[^;]*"Noto Sans TC"/);
+  assert.match(userCss, /--font-display:[^;]*"Songti TC"[^;]*"Noto Serif TC"/);
+  assert.match(userCss, /@media \(min-width: 900px\)[^{]*\{[^}]*\.app-shell/);
+  assert.match(userCss, /\.card-workspace \{ display: grid; grid-template-columns: minmax\(0, 1\.16fr\) minmax\(320px, \.84fr\)/);
+  assert.match(userCss, /@media \(max-width: 480px\)[\s\S]*max-height: calc\(100dvh - max\(12px, env\(safe-area-inset-top\)\)\)/);
+  assert.match(galleryCss, /@media \(min-width: 900px\)/);
+
+  assert.match(adminCss, /--font-sans:[^;]*"PingFang TC"[^;]*"Noto Sans TC"/);
+  assert.match(adminCss, /\.reward-node-editor-row input[^\{]*\{[^}]*min-height: 48px;[^}]*font-size: 1rem;/);
+  assert.match(adminCss, /\.form-grid input[^\{]*\{[^}]*min-height: 48px;[^}]*font-size: 1rem;/);
+  assert.match(adminCss, /@media \(min-width: 1180px\)/);
+  assert.match(adminCss, /@media \(max-width: 760px\) and \(orientation: landscape\)/);
+  assert.match(lifecycleCss, /font: 600 1\.6rem\/1\.22 var\(--font-display\)/);
+});
+
 test('member ticket dialog stays viewport anchored and keeps the QR scan action visible', () => {
   const html = read('user/index.html');
   const css = read('user/styles.css');
