@@ -156,5 +156,5 @@ test('admin UI can set limited or unlimited card lifetime and delete or reactiva
   assert.match(script, /admin\.card\.delete/);
   assert.match(script, /expectedUpdatedAt:\s*card\.updatedAt/);
   assert.match(script, /重新啟用集點卡/);
-  assert.match(script, /newStampButton\.disabled = !card\.available/);
+  assert.match(script, /newStampButton\.disabled = loading \|\| \(supported && !card\.available\)/);
 });
