@@ -58,11 +58,22 @@
     return result;
   }
 
+  function sanitizeErrorMessage(error) {
+    return String(error && error.message ? error.message : error || 'Unknown error')
+      .replace(/https?:\/\/[^\s)]+/gi, '[url]')
+      .replace(/\bU[a-f0-9]{32}\b/gi, '[line-user-id]')
+      .replace(/\b[a-f0-9]{32,64}\b/gi, '[hex-token]')
+      .replace(/[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}/g, '[jwt]')
+      .slice(0, 500);
+  }
+
   function reportError(error, context) {
     const safeContext = safeErrorContext(context);
+    const safeError = new Error(sanitizeErrorMessage(error));
+    safeError.name = error && error.name ? String(error.name).slice(0, 80) : 'Error';
     try {
       if (window.Sentry && typeof window.Sentry.captureException === 'function') {
-        window.Sentry.captureException(error instanceof Error ? error : new Error(String(error || 'Unknown error')), {
+        window.Sentry.captureException(safeError, {
           tags: {
             feature: 'points-card',
             source: safeContext.source || 'frontend',
@@ -74,7 +85,7 @@
       }
     } catch (_) {}
     try {
-      console.error('PointsCard error', safeContext, error && error.message ? error.message : String(error || 'Unknown error'));
+      console.error('PointsCard error', safeContext, safeError.message);
     } catch (_) {}
   }
 
