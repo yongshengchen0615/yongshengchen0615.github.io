@@ -113,7 +113,7 @@ function assertVoucherUsageAllowed_(voucher, records, memberLineUserId) {
   if (voucher.scanMode === 'per-member' && recorded.some(function (record) {
     return record.memberLineUserId === memberLineUserId;
   })) {
-    fail_('VOUCHER_MEMBER_USED', '這組集點 QR Code 此會員已使用過。');
+    fail_('VOUCHER_USED', '這組集點 QR Code 此會員已使用過。');
   }
 }
 
