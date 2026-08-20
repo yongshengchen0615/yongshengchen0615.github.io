@@ -34,8 +34,7 @@ function stampRecord_(context, payload) {
         duplicate: true,
         stampCount: Number(recovered.stampCount || 0),
         unlockedRewards: [],
-        member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId)),
-        activity: listMemberActivity_(member.lineUserId, 20)
+        member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId))
       };
     }
 
@@ -44,12 +43,7 @@ function stampRecord_(context, payload) {
     const voucher = normalizeVoucher_(voucherMatch.object);
     validateVoucherForStamp_(voucher);
     recoverProcessingStampRecordsForVoucher_(voucher.voucherId);
-    if (voucher.scanMode === 'single') {
-      const used = readObjects_(recordSheet).some(function (record) {
-        return record.voucherId === voucher.voucherId && record.status === 'recorded';
-      });
-      if (used) fail_('VOUCHER_USED', '這組單次集點 QR Code 已經使用過。');
-    }
+    assertVoucherUsageAllowed_(voucher, readObjects_(recordSheet), context.identity.sub);
 
     memberMatch = findByFieldWithRow_(memberSheet, 'lineUserId', context.identity.sub);
     member = normalizeMember_(memberMatch.object);
@@ -99,8 +93,7 @@ function stampRecord_(context, payload) {
       duplicate: false,
       stampCount: voucher.stampCount,
       unlockedRewards: unlockedRewards.map(publicRewardTicket_),
-      member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId)),
-      activity: listMemberActivity_(member.lineUserId, 20)
+      member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId))
     };
   } finally { lock.releaseLock(); }
 }
@@ -108,6 +101,20 @@ function stampRecord_(context, payload) {
 function validateVoucherForStamp_(voucher) {
   if (voucher.status !== 'active') fail_('VOUCHER_INACTIVE', '這組集點 QR Code 已停止使用。');
   if (!voucher.expiresAt || new Date(voucher.expiresAt).getTime() <= Date.now()) fail_('VOUCHER_EXPIRED', '這組集點 QR Code 已過期。');
+}
+
+function assertVoucherUsageAllowed_(voucher, records, memberLineUserId) {
+  const recorded = (Array.isArray(records) ? records : []).filter(function (record) {
+    return record.voucherId === voucher.voucherId && record.status === 'recorded';
+  });
+  if (voucher.scanMode === 'single' && recorded.length) {
+    fail_('VOUCHER_USED', '這組單次集點 QR Code 已經使用過。');
+  }
+  if (voucher.scanMode === 'per-member' && recorded.some(function (record) {
+    return record.memberLineUserId === memberLineUserId;
+  })) {
+    fail_('VOUCHER_MEMBER_USED', '這組集點 QR Code 此會員已使用過。');
+  }
 }
 
 function recoverProcessingStampRecordsForMember_(lineUserId) {
@@ -274,7 +281,7 @@ function adminStampDelete_(context, payload) {
     if (!audit_(context.identity.sub, 'admin', 'STAMP_QR_DELETE_REQUESTED', '', 'pending', { voucherId: voucherId })) {
       fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，QR Code 未刪除。');
     }
-    sheet.deleteRow(match.row);
+    deleteObjectRow_(sheet, match.row);
     audit_(context.identity.sub, 'admin', 'STAMP_QR_DELETED', '', 'success', { voucherId: voucherId });
     return { voucherId: voucherId };
   } finally { lock.releaseLock(); }
