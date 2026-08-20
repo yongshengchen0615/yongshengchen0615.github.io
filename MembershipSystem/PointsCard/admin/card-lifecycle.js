@@ -58,18 +58,20 @@
     $('cardExpiresAt').value = card.expiresAt ? toLocalDateTimeInput(card.expiresAt) : '';
     syncExpiryMode();
 
-    $('cardExpiryMode').disabled = !supported;
-    $('cardExpiresAt').disabled = !supported;
-    $('saveCardSettingsButton').disabled = !supported;
-    $('deleteCardButton').disabled = !supported || card.status === 'deleted';
+    $('cardExpiryMode').disabled = !supported || loading;
+    $('cardExpiresAt').disabled = !supported || loading;
+    $('saveCardSettingsButton').disabled = !supported || loading;
+    $('deleteCardButton').disabled = !supported || loading || card.status === 'deleted';
     $('saveCardSettingsButton').textContent = card.available ? '儲存集點卡設定' : '重新啟用集點卡';
 
     const newStampButton = $('newStampButton');
-    if (newStampButton && supported) newStampButton.disabled = !card.available;
+    if (newStampButton) newStampButton.disabled = loading || (supported && !card.available);
 
     const notice = $('cardSettingsNotice');
     notice.classList.toggle('locked', supported && !card.available);
-    if (!supported) {
+    if (loading) {
+      notice.textContent = '正在讀取集點卡設定。';
+    } else if (!supported) {
       notice.textContent = '目前 GAS 尚未支援集點卡期限與刪除；請先部署 PointsCard 1.4.0。';
     } else if (card.status === 'deleted') {
       notice.textContent = '集點卡已刪除。會員端會顯示「目前沒有可用集點卡」；既有點數與已獲得票券仍保留。儲存設定可重新啟用。';
@@ -85,12 +87,13 @@
   async function loadCardSettings() {
     if (loading) return;
     loading = true;
+    render();
     try {
       const result = await PointsCard.callApi('admin.summary');
       normalizeCard(result.settings || {});
-      render();
     } finally {
       loading = false;
+      render();
     }
   }
 
