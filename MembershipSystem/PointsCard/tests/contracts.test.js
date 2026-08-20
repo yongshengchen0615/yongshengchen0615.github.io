@@ -158,7 +158,7 @@ test('multi-node ticket projection repeats each card and supports coupon and lot
   ], 'INVALID', 'invalid');
   assert.deepEqual(Array.from(zeroWeight[0].lotteryPrizes, (prize) => prize.weight), [100, 0]);
   rewardNodesJson = JSON.stringify(zeroWeight);
-  assert.deepEqual(Array.from(project(0, 0).nextReward.lotteryPrizes), ['未中獎'], '0% prizes are not presented as possible outcomes');
+  assert.deepEqual(Array.from(project(0, 0).nextReward.lotteryPrizes), ['未中獎', '大獎'], '0% prizes remain visible in the member prize list');
   const legacyLottery = context.__pointsCardTest.normalizeRewardNodes_([
     { stampsRequired: 5, rewardName: '舊抽獎券', rewardType: 'lottery', lotteryPrizes: ['A', 'B', 'C'] }
   ], 'INVALID', 'invalid');
@@ -177,7 +177,7 @@ test('member ticket UI removes account history and exposes earned and upcoming t
   assert.match(script, /reward\.claim/);
   assert.match(script, /playLotteryAnimation/);
   assert.match(script, /rewardConfirm/);
-  assert.match(script, /有機會獲得/);
+  assert.match(script, /抽獎獎項/);
   assert.match(script, /lotteryPrizeNames/);
 });
 

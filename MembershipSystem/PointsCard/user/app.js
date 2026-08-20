@@ -37,7 +37,7 @@
     if (!ticket || ticket.rewardType !== 'lottery' || !Array.isArray(ticket.lotteryPrizes)) return [];
     const names = ticket.lotteryPrizes.map(function (prize) {
       if (typeof prize === 'string') return prize.trim();
-      if (!prize || (prize.weight != null && Number(prize.weight) <= 0)) return '';
+      if (!prize) return '';
       return String(prize.name || '').trim();
     }).filter(Boolean).slice(0, 8);
     return names.filter(function (name, index) { return names.indexOf(name) === index; });
@@ -50,7 +50,7 @@
     summary.className = 'lottery-prize-summary';
     const label = document.createElement('span');
     label.className = 'lottery-prize-label';
-    label.textContent = '有機會獲得';
+    label.textContent = '抽獎獎項';
     const values = document.createElement('span');
     values.className = 'lottery-prize-values';
     values.textContent = prizes.join('、');

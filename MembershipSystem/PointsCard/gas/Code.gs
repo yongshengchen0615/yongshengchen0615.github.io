@@ -496,9 +496,7 @@ function rewardEntitlementByOrdinal_(ordinal, settings) {
 
 function publicRewardTicket_(reward) {
   const lotteryPrizes = reward.rewardType === 'lottery' && Array.isArray(reward.lotteryPrizes)
-    ? reward.lotteryPrizes.filter(function (prize) {
-      return prize && Number(prize.weight) > 0;
-    }).map(function (prize) {
+    ? reward.lotteryPrizes.map(function (prize) {
       return String(prize.name || '');
     }).filter(Boolean)
     : [];
