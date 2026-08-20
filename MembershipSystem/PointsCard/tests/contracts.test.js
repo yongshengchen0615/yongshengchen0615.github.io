@@ -75,7 +75,7 @@ test('multi-node ticket projection repeats each card and supports coupon and lot
     { stampsRequired: 6, rewardName: '幸運抽獎券', rewardType: 'lottery', lotteryPrizes: [{ name: '免費飲品', weight: 25 }, { name: '再接再厲', weight: 75 }] },
     { stampsRequired: 10, rewardName: '招牌飲品優惠券', rewardType: 'coupon' }
   ]);
-  const source = read('gas/Code.gs') + '\n;globalThis.__pointsCardTest = { publicMember_, pointsCardSettings_, normalizeRewardNodes_, rewardEntitlementsBetweenTotals_ };';
+  const source = read('gas/CardService.gs') + '\n' + read('gas/Code.gs') + '\n;globalThis.__pointsCardTest = { publicMember_, pointsCardSettings_, normalizeRewardNodes_, rewardEntitlementsBetweenTotals_ };';
   const context = {
     PropertiesService: {
       getScriptProperties() {
