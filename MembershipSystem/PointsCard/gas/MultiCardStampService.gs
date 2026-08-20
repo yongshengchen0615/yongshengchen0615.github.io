@@ -48,7 +48,7 @@ function stampRecordMultiCard_(context, payload) {
     if (!cardMatch) fail_('CARD_UNAVAILABLE', '這組 QR Code 所屬的集點卡已不存在。');
     if (!cardMatch.card.available) fail_('CARD_UNAVAILABLE', '這張集點卡目前不可集點。');
     validateMultiCardVoucherForStamp_(voucher);
-    recoverProcessingCardStampRecordsForVoucher_(voucher.voucherId);
+    recoverProcessingCardStampRecordsForVoucher_(voucher.cardId, voucher.voucherId);
     assertMultiCardVoucherUsageAllowed_(voucher, readMultiCardObjects_(recordSheet), member.lineUserId);
 
     const progressMatch = ensureMemberCardProgress_(cardMatch.card, member);
@@ -144,10 +144,10 @@ function recoverProcessingCardStampRecordsForMember_(lineUserId) {
   });
 }
 
-function recoverProcessingCardStampRecordsForVoucher_(voucherId) {
+function recoverProcessingCardStampRecordsForVoucher_(cardId, voucherId) {
   const sheet = getMultiCardSheet_(MULTI_CARD_SHEETS.stampRecords);
   readMultiCardObjects_(sheet).forEach(function (record) {
-    if (record.voucherId === voucherId && record.status === 'processing') {
+    if (record.cardId === cardId && record.voucherId === voucherId && record.status === 'processing') {
       const match = findMultiCardByFieldWithRow_(sheet, 'requestId', record.requestId);
       if (match) recoverCardStampRecord_(match);
     }
@@ -241,10 +241,26 @@ function publicMultiCardVoucher_(voucher, recordCount, includeShareCode) {
   return result;
 }
 
+function assertMultiCardVoucherBelongsToCard_(voucher, cardId) {
+  if (String(voucher && voucher.cardId || '') !== String(cardId || '')) {
+    fail_('VOUCHER_CARD_MISMATCH', '這組 QR Code 不屬於目前選取的集點卡。');
+  }
+}
+
+function newMultiCardVoucherId_(sheet) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const voucherId = 'SQ-' + Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyMMdd') + '-' + randomHex_(4).toUpperCase();
+    if (!findMultiCardByFieldWithRow_(sheet, 'voucherId', voucherId)) return voucherId;
+  }
+  fail_('INTERNAL_ERROR', '無法產生唯一的 QR Code 識別碼。');
+}
+
 function adminStampListMultiCard_(payload) {
   ensureMultiCardStorage_();
-  const selected = selectedAdminMultiCard_(payload || {});
-  if (!selected) return { vouchers: [] };
+  const cardId = validMultiCardId_(payload && payload.cardId, true);
+  const cardMatch = findMultiCard_(cardId);
+  if (!cardMatch) fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
+  const selected = cardMatch.card;
   const maxRows = clampInt_(payload && payload.limit, 1, 100, 50);
   const recordCounts = readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.stampRecords)).reduce(function (counts, record) {
     if (record.cardId === selected.cardId && record.status === 'recorded') counts[record.voucherId] = (counts[record.voucherId] || 0) + 1;
@@ -286,7 +302,7 @@ function adminStampCreateMultiCard_(context, payload) {
     }
     if (!shareCode) fail_('INTERNAL_ERROR', '無法產生 QR Code 識別碼。');
     const voucher = {
-      voucherId: 'SQ-' + Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyMMdd') + '-' + randomHex_(4).toUpperCase(),
+      voucherId: newMultiCardVoucherId_(sheet),
       cardId: cardId,
       shareCode: shareCode,
       stampCount: stampCount,
@@ -320,16 +336,19 @@ function adminStampCreateMultiCard_(context, payload) {
 
 function adminStampOpenMultiCard_(payload) {
   ensureMultiCardStorage_();
+  const cardId = validMultiCardId_(payload.cardId, true);
   const voucherId = cleanText_(payload.voucherId, 40, true);
   const match = findMultiCardByFieldWithRow_(getMultiCardSheet_(MULTI_CARD_SHEETS.vouchers), 'voucherId', voucherId);
   if (!match) fail_('VOUCHER_NOT_FOUND', '找不到指定 QR Code。');
   const voucher = normalizeMultiCardVoucher_(match.object);
+  assertMultiCardVoucherBelongsToCard_(voucher, cardId);
   if (voucher.status === 'cancelled' || voucher.status === 'deleted') fail_('VOUCHER_INACTIVE', '已停止或刪除的 QR Code 不再提供發放連結。');
-  return { voucher: publicMultiCardVoucher_(voucher, countMultiCardVoucherRecords_(voucherId), true) };
+  return { voucher: publicMultiCardVoucher_(voucher, countMultiCardVoucherRecords_(cardId, voucherId), true) };
 }
 
 function adminStampCancelMultiCard_(context, payload) {
   ensureMultiCardStorage_();
+  const cardId = validMultiCardId_(payload.cardId, true);
   const voucherId = cleanText_(payload.voucherId, 40, true);
   const expectedUpdatedAt = cleanText_(payload.expectedUpdatedAt, 40, true);
   const sheet = getMultiCardSheet_(MULTI_CARD_SHEETS.vouchers);
@@ -339,6 +358,7 @@ function adminStampCancelMultiCard_(context, payload) {
     const match = findMultiCardByFieldWithRow_(sheet, 'voucherId', voucherId);
     if (!match) fail_('VOUCHER_NOT_FOUND', '找不到指定 QR Code。');
     const voucher = normalizeMultiCardVoucher_(match.object);
+    assertMultiCardVoucherBelongsToCard_(voucher, cardId);
     if (voucher.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', 'QR Code 已被更新，請重新整理後再試。');
     if (voucher.status !== 'active') fail_('VOUCHER_INACTIVE', '這組 QR Code 已停止使用。');
     const now = new Date().toISOString();
@@ -351,7 +371,7 @@ function adminStampCancelMultiCard_(context, payload) {
     }
     writeMultiCardObjectRow_(sheet, match.row, voucher);
     audit_(context.identity.sub, 'admin', 'CARD_STAMP_QR_CANCELLED', '', 'success', { cardId: voucher.cardId, voucherId: voucherId });
-    return { voucher: publicMultiCardVoucher_(voucher, countMultiCardVoucherRecords_(voucherId), false) };
+    return { voucher: publicMultiCardVoucher_(voucher, countMultiCardVoucherRecords_(cardId, voucherId), false) };
   } finally {
     lock.releaseLock();
   }
@@ -359,6 +379,7 @@ function adminStampCancelMultiCard_(context, payload) {
 
 function adminStampDeleteMultiCard_(context, payload) {
   ensureMultiCardStorage_();
+  const cardId = validMultiCardId_(payload.cardId, true);
   const voucherId = cleanText_(payload.voucherId, 40, true);
   const expectedUpdatedAt = cleanText_(payload.expectedUpdatedAt, 40, true);
   const sheet = getMultiCardSheet_(MULTI_CARD_SHEETS.vouchers);
@@ -368,10 +389,11 @@ function adminStampDeleteMultiCard_(context, payload) {
     const match = findMultiCardByFieldWithRow_(sheet, 'voucherId', voucherId);
     if (!match) fail_('VOUCHER_NOT_FOUND', '找不到指定 QR Code。');
     const voucher = normalizeMultiCardVoucher_(match.object);
+    assertMultiCardVoucherBelongsToCard_(voucher, cardId);
     if (voucher.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', 'QR Code 已被更新，請重新整理後再試。');
     if (voucher.status === 'deleted') fail_('VOUCHER_NOT_FOUND', '找不到指定 QR Code。');
     const hasRecords = readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.stampRecords)).some(function (record) {
-      return record.voucherId === voucherId;
+      return record.cardId === cardId && record.voucherId === voucherId;
     });
     if (!audit_(context.identity.sub, 'admin', 'CARD_STAMP_QR_DELETE_REQUESTED', '', 'pending', {
       cardId: voucher.cardId,
@@ -399,8 +421,8 @@ function adminStampDeleteMultiCard_(context, payload) {
   }
 }
 
-function countMultiCardVoucherRecords_(voucherId) {
+function countMultiCardVoucherRecords_(cardId, voucherId) {
   return readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.stampRecords)).filter(function (record) {
-    return record.voucherId === voucherId && record.status === 'recorded';
+    return record.cardId === cardId && record.voucherId === voucherId && record.status === 'recorded';
   }).length;
 }

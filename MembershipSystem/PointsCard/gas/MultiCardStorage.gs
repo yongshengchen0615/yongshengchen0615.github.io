@@ -492,6 +492,20 @@ function allMultiCards_() {
     .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
 }
 
+function multiCardNameKey_(value) {
+  let name = cleanText_(value, MULTI_CARD.maxNameLength, true);
+  if (typeof name.normalize === 'function') name = name.normalize('NFKC');
+  return name.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function assertMultiCardNameAvailable_(name, excludedCardId) {
+  const nameKey = multiCardNameKey_(name);
+  const duplicate = allMultiCards_().some(function (card) {
+    return card.cardId !== String(excludedCardId || '') && multiCardNameKey_(card.name) === nameKey;
+  });
+  if (duplicate) fail_('CARD_NAME_DUPLICATE', '集點卡名稱不可重複。');
+}
+
 function requestedMultiCardId_(payload) {
   return validMultiCardId_(payload && payload.cardId || '', false);
 }
@@ -714,6 +728,7 @@ function adminCardCreateMultiCard_(context, payload) {
   if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
   try {
     if (allMultiCards_().length >= MULTI_CARD.maxCards) fail_('CARD_LIMIT_REACHED', '集點卡數量已達系統上限 100 張。');
+    assertMultiCardNameAvailable_(name, '');
     const now = new Date().toISOString();
     const card = {
       cardId: newMultiCardId_(),
@@ -757,6 +772,7 @@ function adminCardUpdateMultiCard_(context, payload) {
     const match = findMultiCard_(cardId);
     if (!match) fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
     if (match.card.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', '集點卡已被更新，請重新整理後再試。');
+    assertMultiCardNameAvailable_(name, cardId);
     const next = Object.assign({}, match.card, {
       name: name,
       description: description,

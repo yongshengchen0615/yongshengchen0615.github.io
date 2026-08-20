@@ -56,7 +56,7 @@
     const descriptionLabel = createFieldLabel('集點卡說明', description);
     descriptionLabel.className = 'full-span';
     form.prepend(descriptionLabel);
-    form.prepend(createFieldLabel('集點卡名稱', name));
+    form.prepend(createFieldLabel('集點卡名稱（不可重複）', name));
     form.prepend(createFieldLabel('管理集點卡', selector));
 
     const actions = document.querySelector('.card-lifecycle-actions');
@@ -548,11 +548,26 @@
     return expiry.toISOString();
   }
 
+  function cardNameKey(value) {
+    let name = String(value || '').trim();
+    if (typeof name.normalize === 'function') name = name.normalize('NFKC');
+    return name.replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  function hasDuplicateCardName(name) {
+    const nameKey = cardNameKey(name);
+    const excludedCardId = creating ? '' : String(selectedCard && selectedCard.cardId || '');
+    return cards.some(function (card) {
+      return card.cardId !== excludedCardId && cardNameKey(card.name) === nameKey;
+    });
+  }
+
   function readCardForm() {
     const name = $('cardName').value.trim();
     const description = $('cardDescription').value.trim();
     if (!name) throw new Error('請輸入集點卡名稱。');
     if (name.length > 80) throw new Error('集點卡名稱最多 80 個字。');
+    if (hasDuplicateCardName(name)) throw new Error('集點卡名稱不可重複。');
     if (description.length > 500) throw new Error('集點卡說明最多 500 個字。');
     return {
       name: name,

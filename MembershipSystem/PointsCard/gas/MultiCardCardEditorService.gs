@@ -25,6 +25,7 @@ function adminCardSaveMultiCard_(context, payload) {
     if (match.card.updatedAt !== expectedUpdatedAt) {
       fail_('CONFLICT', '集點卡已被更新，請重新整理後再試。');
     }
+    assertMultiCardNameAvailable_(name, cardId);
 
     const rewardNodesChanged = !sameMultiCardRewardNodes_(match.card.rewardNodes, rewardNodes);
     if (rewardNodesChanged && rewardSettingsLockedForCard_(cardId)) {

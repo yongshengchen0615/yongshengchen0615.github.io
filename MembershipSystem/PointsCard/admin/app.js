@@ -632,7 +632,7 @@
       const expiryTd = document.createElement('td'); expiryTd.textContent = voucher.expiresAt ? PointsCard.formatDateTime(voucher.expiresAt, '—') : '無期限';
       const actionsTd = document.createElement('td');
       const actions = document.createElement('div'); actions.className = 'row-actions';
-      actions.append(createTextButton('開啟', '', function () { openVoucher(voucher.voucherId); }, state === 'cancelled' || state === 'deleted'));
+      actions.append(createTextButton('開啟', '', function () { openVoucher(voucher); }, state === 'cancelled' || state === 'deleted'));
       if (state === 'active') actions.append(createTextButton('停止', 'danger', function () { cancelVoucher(voucher); }, false));
       actions.append(createTextButton('刪除', 'danger', function () { deleteVoucher(voucher); }, false));
       actionsTd.append(actions);
@@ -881,14 +881,14 @@
     }
   }
 
-  async function openVoucher(voucherId) {
+  async function openVoucher(voucher) {
     resetStampDialog();
     $('stampDialogTitle').textContent = '開啟集點 QR Code';
     $('stampDialogDescription').textContent = '正在讀取 QR Code 資料，完成後會自動顯示。';
     showStampLoadingState();
     openDialog($('stampDialog'));
     try {
-      const result = await PointsCard.callApi('admin.stamp.open', { voucherId: voucherId });
+      const result = await PointsCard.callApi('admin.stamp.open', { cardId: voucher.cardId, voucherId: voucher.voucherId });
       await showVoucher(result.voucher);
       $('stampDialogDescription').textContent = 'QR Code 已載入，可下載或複製連結。';
     } catch (error) {
@@ -900,7 +900,7 @@
   async function cancelVoucher(voucher) {
     if (!window.confirm('停止後這組 QR Code 將不能再集點，確定繼續？')) return;
     try {
-      await PointsCard.callApi('admin.stamp.cancel', { voucherId: voucher.voucherId, expectedUpdatedAt: voucher.updatedAt });
+      await PointsCard.callApi('admin.stamp.cancel', { cardId: voucher.cardId, voucherId: voucher.voucherId, expectedUpdatedAt: voucher.updatedAt });
       await loadVouchers();
       showToast('QR Code 已停止。');
     } catch (error) { showToast(error.message); }
@@ -913,7 +913,7 @@
       : '確定刪除這組集點 QR Code？';
     if (!window.confirm(message)) return;
     try {
-      await PointsCard.callApi('admin.stamp.delete', { voucherId: voucher.voucherId, expectedUpdatedAt: voucher.updatedAt });
+      await PointsCard.callApi('admin.stamp.delete', { cardId: voucher.cardId, voucherId: voucher.voucherId, expectedUpdatedAt: voucher.updatedAt });
       vouchers = vouchers.filter(function (item) { return item.voucherId !== voucher.voucherId; });
       renderVouchers();
       showToast(hasHistory ? 'QR Code 已刪除，歷史集點紀錄已保留。' : 'QR Code 已刪除。');

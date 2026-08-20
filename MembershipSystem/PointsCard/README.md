@@ -41,12 +41,14 @@
 
 - 管理員權限由 `Members.canManagePoints` 控制，每個 `admin.*` request 都由 GAS 重新驗證。
 - 管理首頁可設定集點卡期限、改為無期限、刪除或重新啟用集點卡。
+- 集點卡名稱不可重複；伺服器會忽略全形／半形、英文字母大小寫與連續空白差異後判定名稱是否相同。
 - 刪除集點卡不會刪除會員歷史資料；舊的 active 集點 QR 會被永久停止。
 - 集點卡不可用時，管理端禁止建立新的集點 QR；GAS 也會再次檢查，不依賴前端按鈕狀態。
 - 檢視會員、累計集點、可兌換獎勵與會員狀態。
 - 設定 1–5 個獎勵節點，每個節點可選優惠券或抽獎券；抽獎券可設定 2–8 個獎項與各自中獎率。
 - 建立、開啟、停止或刪除店家票券確認 QR。
 - 建立 `single`、`per-member` 或 `repeatable` 集點 QR；預設建議 `per-member`。
+- 每組集點 QR 永久綁定單一 `cardId`；開啟、停止、刪除與集點紀錄都必須匹配同一張集點卡，不可跨卡共用。
 - 集點 QR 本身也可設定到期時間或無期限；此設定與整張集點卡的生命週期是兩層獨立限制，兩者都必須有效才能集點。
 
 ## 集點卡生命週期
@@ -189,6 +191,8 @@ admin.reward-confirm.open
 admin.reward-confirm.cancel
 admin.reward-confirm.delete
 ```
+
+`admin.stamps.list`、`admin.stamp.create`、`admin.stamp.open`、`admin.stamp.cancel` 與 `admin.stamp.delete` 都必須帶入 `cardId`；其中開啟、停止與刪除還必須帶入同卡的 `voucherId`，伺服器會拒絕跨卡組合。
 
 所有 `admin.*` mutation 都由伺服器端 `requireAdmin_()` 驗證，不依賴前端隱藏功能。
 
