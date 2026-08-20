@@ -54,7 +54,7 @@ test('per-member stamp mode rejects a second recorded use by the same member', (
   ];
   assert.throws(
     () => context.__stampTest.assertVoucherUsageAllowed_(voucher, records, 'U1'),
-    (error) => error && error.code === 'VOUCHER_MEMBER_USED'
+    (error) => error && error.code === 'VOUCHER_USED'
   );
   assert.doesNotThrow(() => context.__stampTest.assertVoucherUsageAllowed_(voucher, records, 'U3'));
 });
