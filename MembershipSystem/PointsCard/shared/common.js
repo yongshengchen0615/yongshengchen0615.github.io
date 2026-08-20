@@ -4,6 +4,7 @@
   const LOGIN_PENDING_KEY = 'points-card.login.pending';
   const INIT_RECOVERY_KEY = 'points-card.liff.recovery';
   const AUTH_REFRESH_KEY = 'points-card.liff.auth-refresh';
+  const SELECTED_CARD_KEY = 'points-card.selected-card';
   const INIT_RECOVERY_COOLDOWN_MS = 60 * 1000;
   const AUTH_REFRESH_COOLDOWN_MS = 60 * 1000;
   const ID_TOKEN_EXPIRY_SKEW_SECONDS = 30;
@@ -41,6 +42,25 @@
   function validRequestId(value) {
     const requestId = String(value || '').trim();
     return /^[a-f0-9]{32,64}$/i.test(requestId) ? requestId.toLowerCase() : '';
+  }
+
+  function validCardId(value) {
+    const cardId = String(value || '').trim().toUpperCase();
+    return /^CARD-[A-Z0-9-]{2,58}$/.test(cardId) ? cardId : '';
+  }
+
+  function getSelectedCardId() {
+    const cardId = validCardId(readSessionValue(SELECTED_CARD_KEY));
+    if (!cardId) removeSessionValue(SELECTED_CARD_KEY);
+    return cardId;
+  }
+
+  function setSelectedCardId(value) {
+    const cardId = validCardId(value);
+    if (value && !cardId) throw new Error('集點卡識別碼格式不正確。');
+    if (cardId) writeSessionValue(SELECTED_CARD_KEY, cardId);
+    else removeSessionValue(SELECTED_CARD_KEY);
+    return cardId;
   }
 
   function randomHex(bytes) {
@@ -89,9 +109,8 @@
         return;
       }
     } catch (_) {}
-    try {
-      console.error('PointsCard error', safeContext, safeError.message);
-    } catch (_) {}
+    try { console.error('PointsCard error', safeContext, safeError.message); }
+    catch (_) {}
   }
 
   async function loadConfig() {
@@ -109,9 +128,7 @@
       const liffId = String(config && config.LIFF_ID || '').trim();
       const gasUrl = String(config && config.GAS_WEB_APP_URL || '').trim();
       if (!liffId || liffId === 'YOUR_LIFF_ID') throw new Error('LIFF_ID 尚未設定。');
-      if (!/^https:\/\//i.test(gasUrl) || gasUrl === 'YOUR_GAS_WEB_APP_EXEC_URL') {
-        throw new Error('GAS Web App URL 尚未設定。');
-      }
+      if (!/^https:\/\//i.test(gasUrl) || gasUrl === 'YOUR_GAS_WEB_APP_EXEC_URL') throw new Error('GAS Web App URL 尚未設定。');
       return Object.freeze({ LIFF_ID: liffId, GAS_WEB_APP_URL: gasUrl });
     })().catch(function (error) {
       configPromise = null;
@@ -124,10 +141,7 @@
   function readNavigationState(url) {
     const source = url || new URL(window.location.href);
     const stamp = validStampCode(source.searchParams.get('stamp'));
-    return {
-      stamp: stamp,
-      request: stamp ? validRequestId(source.searchParams.get('request')) : ''
-    };
+    return { stamp: stamp, request: stamp ? validRequestId(source.searchParams.get('request')) : '' };
   }
 
   function readPendingNavigationState() {
@@ -226,9 +240,7 @@
 
   function startExternalLogin(forceRefresh) {
     if (!liffClient) throw new Error('LINE LIFF SDK 尚未完成載入。');
-    if (liffClient.isInClient()) {
-      throw new Error('LINE 登入憑證已過期，請關閉此 LIFF 頁面後重新開啟。');
-    }
+    if (liffClient.isInClient()) throw new Error('LINE 登入憑證已過期，請關閉此 LIFF 頁面後重新開啟。');
     if (loginInFlight) return false;
     if (forceRefresh) {
       const lastRefresh = Number(readSessionValue(AUTH_REFRESH_KEY) || 0);
@@ -281,6 +293,15 @@
     return startExternalLogin(false);
   }
 
+  function rememberSelectedCardFromResponse(data) {
+    try {
+      const memberCardId = data && data.member && data.member.selectedCardId;
+      const settingsCardId = data && data.settings && data.settings.card && data.settings.card.cardId;
+      const cardId = validCardId(memberCardId || settingsCardId || '');
+      if (cardId) setSelectedCardId(cardId);
+    } catch (_) {}
+  }
+
   async function callApi(action, payload) {
     const activeConfig = await loadConfig();
     if (!authenticatedIdToken) throw new Error('LINE 登入狀態尚未建立，請重新開啟此頁。');
@@ -291,10 +312,13 @@
 
     const safeAction = String(action || '');
     const startedAt = monotonicNow();
+    const requestPayload = Object.assign({}, payload || {});
+    const selectedCardId = getSelectedCardId();
+    if (selectedCardId && !requestPayload.cardId) requestPayload.cardId = selectedCardId;
     const form = new NativeURLSearchParams();
     form.set('action', safeAction);
     form.set('idToken', authenticatedIdToken);
-    form.set('payload', JSON.stringify(payload || {}));
+    form.set('payload', JSON.stringify(requestPayload));
     const controller = new NativeAbortController();
     const timeout = window.setTimeout(function () { controller.abort(); }, API_TIMEOUT_MS);
     let response;
@@ -312,9 +336,7 @@
       const publicError = error && error.name === 'AbortError'
         ? new Error('集點服務回應逾時；再次嘗試會沿用相同請求，不會重複集點。')
         : new Error('無法連線到集點服務，請確認 GAS Web App 已正確部署。');
-      reportError(publicError, {
-        source: 'api-network', action: safeAction, durationMs: monotonicNow() - startedAt
-      });
+      reportError(publicError, { source: 'api-network', action: safeAction, durationMs: monotonicNow() - startedAt });
       throw publicError;
     } finally {
       window.clearTimeout(timeout);
@@ -333,12 +355,11 @@
       const error = new Error(data.error && data.error.message || '集點服務發生錯誤。');
       error.code = data.error && data.error.code;
       error.traceId = traceId;
-      reportError(error, {
-        source: 'api', action: safeAction, traceId: traceId, durationMs: monotonicNow() - startedAt
-      });
+      reportError(error, { source: 'api', action: safeAction, traceId: traceId, durationMs: monotonicNow() - startedAt });
       if (error.code === 'UNAUTHENTICATED' && liffClient && !liffClient.isInClient()) startExternalLogin(true);
       throw error;
     }
+    rememberSelectedCardFromResponse(data.data);
     return data.data;
   }
 
@@ -367,6 +388,8 @@
     clearNavigationState: clearNavigationState,
     validStampCode: validStampCode,
     validRequestId: validRequestId,
+    getSelectedCardId: getSelectedCardId,
+    setSelectedCardId: setSelectedCardId,
     randomHex: randomHex,
     formatDate: formatDate,
     formatDateTime: formatDateTime
