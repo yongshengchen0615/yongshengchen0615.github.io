@@ -38,6 +38,8 @@ function stampRecord_(context, payload) {
       };
     }
 
+    assertPointsCardAvailable_('目前沒有可用集點卡。');
+
     const voucherMatch = findByFieldWithRow_(voucherSheet, 'shareCode', stampCode);
     if (!voucherMatch) fail_('VOUCHER_NOT_FOUND', '找不到這組集點 QR Code。');
     const voucher = normalizeVoucher_(voucherMatch.object);
@@ -197,6 +199,7 @@ function adminStampCreate_(context, payload) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
   try {
+    assertPointsCardAvailable_('目前沒有可用集點卡，請先在總覽設定中啟用集點卡。');
     const now = new Date().toISOString();
     let shareCode;
     for (let attempt = 0; attempt < 8; attempt += 1) {
