@@ -1,0 +1,32 @@
+.card-switcher { margin: 2px 0 22px; }
+.card-select-fallback { display: none !important; }
+.member-card-gallery-heading { margin: 0 4px 12px; }
+.member-card-gallery-heading h2 { margin: 5px 0 0; font: 500 1.45rem Georgia, "Noto Serif TC", serif; }
+.member-card-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.member-card-option { min-width: 0; min-height: 138px; display: grid; align-content: space-between; gap: 14px; padding: 18px; border: 1px solid rgba(23,63,53,.12); border-radius: 24px; color: #fffaf0; background: #173f35; box-shadow: 0 14px 34px rgba(24,54,45,.12); text-align: left; cursor: pointer; }
+.member-card-option.selected { outline: 3px solid rgba(231,111,81,.34); outline-offset: 2px; }
+.member-card-option.expired { opacity: .72; }
+.member-card-option:disabled { cursor: not-allowed; opacity: .5; }
+.member-card-option-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.member-card-option-top small { color: #d8e8a4; font-size: .58rem; font-weight: 850; letter-spacing: .15em; }
+.member-card-option-badge { padding: 5px 8px; border-radius: 999px; color: #173f35; background: #fffaf0; font-size: .58rem; font-weight: 800; }
+.member-card-option > strong { min-width: 0; font: 500 1.25rem Georgia, "Noto Serif TC", serif; line-height: 1.35; }
+.member-card-option-hint { color: rgba(255,250,240,.68); font-size: .68rem; line-height: 1.5; }
+.card-description { margin: 8px 0 0; color: rgba(255,250,240,.72); font-size: .78rem; line-height: 1.6; }
+.stamp-grid-large { display: block; }
+.stamp-progress-summary { display: grid; gap: 12px; margin: 36px 0 22px; }
+.stamp-progress-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.stamp-progress-summary span { color: rgba(255,250,240,.66); font-size: .72rem; }
+.stamp-progress-summary strong { font-size: 1rem; }
+.stamp-progress-summary progress { width: 100%; height: 12px; accent-color: #e76f51; }
+.stamp-milestones { display: grid; gap: 8px; margin-bottom: 24px; }
+.stamp-milestone { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 13px; color: rgba(255,250,240,.72); }
+.stamp-milestone.available { border-color: rgba(216,232,164,.65); color: #fffaf0; }
+.stamp-milestone.redeemed { opacity: .62; }
+.stamp-milestone strong { color: #d8e8a4; font-size: .75rem; }
+.stamp-milestone span { text-align: right; font-size: .72rem; }
+
+@media (max-width: 480px) {
+  .member-card-list { grid-template-columns: 1fr; }
+  .member-card-option { min-height: 124px; border-radius: 21px; }
+}
