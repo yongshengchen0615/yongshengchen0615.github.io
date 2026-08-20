@@ -21,7 +21,6 @@
   const list = document.createElement('div');
   list.id = 'memberCardList';
   list.className = 'member-card-list';
-  list.setAttribute('role', 'list');
   switcher.setAttribute('aria-labelledby', title.id);
   switcher.append(heading, list);
 
@@ -60,7 +59,6 @@
         button.type = 'button';
         button.className = 'member-card-option ' + status + (selected ? ' selected' : '');
         button.dataset.cardId = option.value;
-        button.setAttribute('role', 'listitem');
         button.setAttribute('aria-pressed', selected ? 'true' : 'false');
         button.disabled = select.disabled;
 
