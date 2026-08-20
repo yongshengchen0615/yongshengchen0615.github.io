@@ -106,7 +106,7 @@ function adminRewardConfirmationDelete_(context, payload) {
     if (!audit_(context.identity.sub, 'admin', 'REWARD_CONFIRM_QR_DELETE_REQUESTED', '', 'pending', {
       confirmationId: confirmationId
     })) fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，票券確認 QR Code 未刪除。');
-    sheet.deleteRow(match.row);
+    deleteObjectRow_(sheet, match.row);
     audit_(context.identity.sub, 'admin', 'REWARD_CONFIRM_QR_DELETED', '', 'success', { confirmationId: confirmationId });
     return { confirmationId: confirmationId };
   } finally { lock.releaseLock(); }
