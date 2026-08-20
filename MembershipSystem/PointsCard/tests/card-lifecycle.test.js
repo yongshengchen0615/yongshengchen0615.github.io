@@ -130,7 +130,9 @@ test('member UI renders one visible card entry for every configured card instead
   assert.match(html, /card-gallery\.js/);
   assert.match(gallery, /Array\.from\(select\.options\)/);
   assert.match(gallery, /member-card-option/);
-  assert.match(gallery, /switcher\.classList\.remove\('hidden'\)/);
+  assert.match(gallery, /function setSwitcherHidden/);
+  assert.match(gallery, /switcher\.classList\.contains\('hidden'\) === hidden/);
+  assert.doesNotMatch(gallery, /switcherObserver|observe\(switcher/);
   assert.match(gallery, /select\.dispatchEvent\(new Event\('change'/);
   assert.match(galleryCss, /\.member-card-list/);
   assert.match(galleryCss, /\.card-select-fallback \{ display: none !important; \}/);

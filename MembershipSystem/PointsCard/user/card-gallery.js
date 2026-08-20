@@ -40,6 +40,11 @@
     select.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  function setSwitcherHidden(hidden) {
+    if (switcher.classList.contains('hidden') === hidden) return;
+    switcher.classList.toggle('hidden', hidden);
+  }
+
   function render() {
     if (rendering) return;
     rendering = true;
@@ -47,11 +52,11 @@
       const options = Array.from(select.options).filter(function (option) { return Boolean(option.value); });
       list.replaceChildren();
       if (!options.length) {
-        switcher.classList.add('hidden');
+        setSwitcherHidden(true);
         return;
       }
 
-      switcher.classList.remove('hidden');
+      setSwitcherHidden(false);
       options.forEach(function (option) {
         const selected = option.value === select.value;
         const status = cardStatusFromLabel(option.textContent);
@@ -88,9 +93,5 @@
   select.addEventListener('change', function () { window.setTimeout(render, 0); });
   const selectObserver = new MutationObserver(render);
   selectObserver.observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
-  const switcherObserver = new MutationObserver(function () {
-    if (!rendering && select.options.length > 0) render();
-  });
-  switcherObserver.observe(switcher, { attributes: true, attributeFilter: ['class'] });
   render();
 })();
