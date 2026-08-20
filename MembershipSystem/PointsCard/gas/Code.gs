@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '1.2.1',
+  version: '1.3.0',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -51,7 +51,7 @@ const POINTS_CARD_HEADERS = Object.freeze({
 });
 
 const MEMBER_STATUS_VALUES = ['active', 'suspended', 'disabled'];
-const STAMP_SCAN_MODES = ['single', 'repeatable'];
+const STAMP_SCAN_MODES = ['single', 'per-member', 'repeatable'];
 const REWARD_TYPES = ['coupon', 'lottery'];
 const LOTTERY_WEIGHT_BASIS_POINTS = 10000;
 const MAX_STAMPS_PER_SCAN = 10;
@@ -61,6 +61,9 @@ const LINE_IDENTITY_EXPIRY_SKEW_SECONDS = 15;
 
 let requestSpreadsheet_ = null;
 let requestSheets_ = {};
+let currentTraceId_ = '';
+let currentAction_ = '';
+let currentRequestStartedAt_ = 0;
 
 function doGet() {
   return json_({
@@ -69,10 +72,12 @@ function doGet() {
       service: POINTS_CARD_SERVICE.name,
       version: POINTS_CARD_SERVICE.version,
       capabilities: [
-        'member.me', 'stamp.record', 'reward.claim', 'admin.dashboard', 'admin.member.update',
-        'admin.reward.redeem', 'admin.reward-nodes.update', 'admin.stamp.create', 'admin.stamp.open',
-        'admin.stamp.cancel', 'admin.stamp.delete', 'admin.reward-confirm.create',
-        'admin.reward-confirm.open', 'admin.reward-confirm.cancel', 'admin.reward-confirm.delete'
+        'member.me', 'stamp.record', 'reward.claim', 'admin.dashboard', 'admin.summary',
+        'admin.members.search', 'admin.stamps.list', 'admin.reward-confirmations.list',
+        'admin.member.update', 'admin.reward.redeem', 'admin.reward-nodes.update',
+        'admin.stamp.create', 'admin.stamp.open', 'admin.stamp.cancel', 'admin.stamp.delete',
+        'admin.reward-confirm.create', 'admin.reward-confirm.open', 'admin.reward-confirm.cancel',
+        'admin.reward-confirm.delete'
       ]
     }
   });
@@ -80,8 +85,12 @@ function doGet() {
 
 function doPost(e) {
   resetRequestCaches_();
+  currentTraceId_ = randomHex_(8);
+  currentAction_ = '';
+  currentRequestStartedAt_ = Date.now();
   try {
     const action = cleanText_(e && e.parameter && e.parameter.action, 80, true);
+    currentAction_ = action;
     const idToken = cleanText_(e && e.parameter && e.parameter.idToken, 4096, true);
     const tokenFingerprint = sha256Hex_(idToken);
     rateLimit_('token:' + tokenFingerprint, 90, 60);
@@ -103,6 +112,22 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-dashboard:' + identity.sub, 30, 60);
         return json_({ ok: true, data: adminDashboard_(payload) });
+      case 'admin.summary':
+        requireAdmin_(context);
+        rateLimit_('admin-summary:' + identity.sub, 45, 60);
+        return json_({ ok: true, data: adminSummary_() });
+      case 'admin.members.search':
+        requireAdmin_(context);
+        rateLimit_('admin-members-search:' + identity.sub, 45, 60);
+        return json_({ ok: true, data: adminMembersSearch_(payload) });
+      case 'admin.stamps.list':
+        requireAdmin_(context);
+        rateLimit_('admin-stamps-list:' + identity.sub, 45, 60);
+        return json_({ ok: true, data: { vouchers: adminStampList_(payload.limit || 50) } });
+      case 'admin.reward-confirmations.list':
+        requireAdmin_(context);
+        rateLimit_('admin-reward-confirmations-list:' + identity.sub, 45, 60);
+        return json_({ ok: true, data: { rewardConfirmations: adminRewardConfirmationList_(payload.limit || 50) } });
       case 'admin.member.update':
         requireAdmin_(context);
         rateLimit_('admin-member-update:' + identity.sub, 20, 60);
@@ -152,7 +177,12 @@ function doPost(e) {
     }
   } catch (error) {
     if (!error || !error.publicCode) {
-      console.error('Unhandled PointsCard API error');
+      console.error(JSON.stringify({
+        event: 'points_card_unhandled_error',
+        traceId: currentTraceId_,
+        action: currentAction_ || 'unknown',
+        stack: String(error && error.stack || error || '').slice(0, 4000)
+      }));
       return json_({ ok: false, error: { code: 'INTERNAL_ERROR', message: '集點服務暫時無法處理此要求。' } });
     }
     return json_({ ok: false, error: { code: error.publicCode, message: error.publicMessage } });
@@ -182,7 +212,7 @@ function memberMe_(context) {
         }
         appendObject_(sheet, member);
         audit_(context.identity.sub, 'member', 'MEMBER_CREATED', context.identity.sub, 'success', { memberNo: member.memberNo });
-        return { member: publicMember_(member, false), activity: [] };
+        return { member: publicMember_(member, false) };
       }
     } finally { lock.releaseLock(); }
   }
@@ -205,22 +235,25 @@ function memberMe_(context) {
   }
 
   return {
-    member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId)),
-    activity: listMemberActivity_(member.lineUserId, 20)
+    member: publicMember_(member, false, readClaimedRewardOrdinalsForMember_(member.lineUserId))
   };
 }
 
 function adminDashboard_(payload) {
-  const memberSheet = getSheet_(POINTS_CARD_SHEETS.members);
-  const query = cleanText_(payload.query || '', 80, false).toLowerCase();
-  const pageSize = clampInt_(payload.pageSize, 1, 100, 100);
-  const allMembers = readObjects_(memberSheet).map(normalizeMember_);
-  const filtered = query ? allMembers.filter(function (member) {
-    return member.memberNo.toLowerCase().indexOf(query) !== -1 ||
-      member.displayName.toLowerCase().indexOf(query) !== -1;
-  }) : allMembers;
-  filtered.sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+  const summary = adminSummary_();
+  const memberPage = adminMembersSearch_(payload);
+  return {
+    members: memberPage.members,
+    pagination: memberPage.pagination,
+    vouchers: adminStampList_(payload.voucherLimit || 50),
+    rewardConfirmations: adminRewardConfirmationList_(payload.confirmationLimit || 50),
+    stats: summary.stats,
+    settings: summary.settings
+  };
+}
 
+function adminSummary_() {
+  const allMembers = readObjects_(getSheet_(POINTS_CARD_SHEETS.members)).map(normalizeMember_);
   const stats = allMembers.reduce(function (result, member) {
     result.totalMembers += 1;
     result.totalStamps += member.totalStamps;
@@ -228,18 +261,35 @@ function adminDashboard_(payload) {
     if (member.membershipStatus === 'active') result.activeMembers += 1;
     return result;
   }, { totalMembers: 0, activeMembers: 0, totalStamps: 0, redeemedRewards: 0 });
-
   const settings = pointsCardSettings_();
   settings.rewardSettingsLocked = rewardSettingsLocked_();
+  return { stats: stats, settings: settings };
+}
+
+function adminMembersSearch_(payload) {
+  const query = cleanText_(payload.query || '', 80, false).toLowerCase();
+  const page = clampInt_(payload.page, 1, 1000000, 1);
+  const pageSize = clampInt_(payload.pageSize, 1, 100, 100);
+  const allMembers = readObjects_(getSheet_(POINTS_CARD_SHEETS.members)).map(normalizeMember_);
+  const filtered = query ? allMembers.filter(function (member) {
+    return member.memberNo.toLowerCase().indexOf(query) !== -1 ||
+      member.displayName.toLowerCase().indexOf(query) !== -1;
+  }) : allMembers;
+  filtered.sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+  const start = (page - 1) * pageSize;
+  const settings = pointsCardSettings_();
   const claimedByMember = claimedRewardOrdinalsByMember_();
+  const members = filtered.slice(start, start + pageSize).map(function (member) {
+    return publicMember_(member, true, claimedByMember[member.lineUserId] || [], settings);
+  });
   return {
-    members: filtered.slice(0, pageSize).map(function (member) {
-      return publicMember_(member, true, claimedByMember[member.lineUserId] || []);
-    }),
-    vouchers: adminStampList_(payload.voucherLimit || 50),
-    rewardConfirmations: adminRewardConfirmationList_(payload.confirmationLimit || 50),
-    stats: stats,
-    settings: settings
+    members: members,
+    pagination: {
+      page: page,
+      pageSize: pageSize,
+      total: filtered.length,
+      hasMore: start + members.length < filtered.length
+    }
   };
 }
 
@@ -273,31 +323,9 @@ function adminMemberUpdate_(context, payload) {
   } finally { lock.releaseLock(); }
 }
 
-function listMemberActivity_(lineUserId, limit) {
-  const stampRows = readObjects_(getSheet_(POINTS_CARD_SHEETS.stampRecords)).filter(function (record) {
-    return record.memberLineUserId === lineUserId && record.status === 'recorded';
-  }).map(function (record) {
-    return {
-      type: 'stamp', stampCount: Number(record.stampCount || 0), note: String(record.note || ''),
-      createdAt: String(record.recordedAt || record.createdAt || '')
-    };
-  });
-  const rewardRows = readObjects_(getSheet_(POINTS_CARD_SHEETS.rewardRecords)).filter(function (record) {
-    return record.memberLineUserId === lineUserId && record.status === 'recorded';
-  }).map(function (record) {
-    return {
-      type: 'reward', rewardName: String(record.rewardName || ''), note: String(record.note || ''),
-      createdAt: String(record.redeemedAt || record.createdAt || '')
-    };
-  });
-  return stampRows.concat(rewardRows).sort(function (a, b) {
-    return String(b.createdAt).localeCompare(String(a.createdAt));
-  }).slice(0, clampInt_(limit, 1, 50, 20));
-}
-
-function publicMember_(value, includeAdminFields, claimedOrdinals) {
+function publicMember_(value, includeAdminFields, claimedOrdinals, settingsOverride) {
   const member = normalizeMember_(value);
-  const settings = pointsCardSettings_();
+  const settings = settingsOverride || pointsCardSettings_();
   const rewards = rewardProjection_(member, settings, claimedOrdinals);
   const result = {
     memberNo: member.memberNo,
@@ -687,12 +715,18 @@ function validateVerifiedIdentity_(identity, channelId) {
 function rateLimit_(key, limit, windowSeconds) {
   const cache = CacheService.getScriptCache();
   const cacheKey = 'pc-rate-' + sha256Hex_(key).slice(0, 40);
+  const lock = LockService.getScriptLock();
+  let locked = false;
   try {
+    locked = lock.tryLock(750);
+    if (!locked) fail_('BUSY', '系統忙碌中，請稍後再試。');
     const count = Number(cache.get(cacheKey) || 0);
     if (count >= limit) fail_('RATE_LIMITED', '操作過於頻繁，請稍後再試。');
     cache.put(cacheKey, String(count + 1), windowSeconds);
   } catch (error) {
     if (error && error.publicCode) throw error;
+  } finally {
+    if (locked) lock.releaseLock();
   }
 }
 
@@ -775,6 +809,25 @@ function fail_(code, message) {
   throw error;
 }
 
+function logApiResponse_(value) {
+  if (!currentTraceId_) return;
+  const payload = {
+    event: 'points_card_api',
+    traceId: currentTraceId_,
+    action: currentAction_ || 'unknown',
+    ok: Boolean(value && value.ok),
+    durationMs: Math.max(0, Date.now() - Number(currentRequestStartedAt_ || Date.now()))
+  };
+  if (!payload.ok && value && value.error) payload.errorCode = String(value.error.code || 'UNKNOWN').slice(0, 80);
+  const line = JSON.stringify(payload);
+  if (payload.ok) console.info(line);
+  else console.warn(line);
+}
+
 function json_(value) {
+  if (currentTraceId_ && value && Object.prototype.toString.call(value) === '[object Object]') {
+    value.meta = Object.assign({}, value.meta || {}, { traceId: currentTraceId_ });
+    logApiResponse_(value);
+  }
   return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
 }
