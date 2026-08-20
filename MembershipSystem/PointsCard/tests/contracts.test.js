@@ -195,6 +195,24 @@ test('admin functions use accessible in-page tabs without additional HTML pages'
   assert.match(script, /ArrowRight/);
 });
 
+test('responsive UI contracts cover safe areas, compact heights, touch targets, and mobile admin rows', () => {
+  const userCss = read('user/styles.css');
+  const adminCss = read('admin/styles.css');
+  const adminScript = read('admin/app.js');
+  assert.match(userCss, /env\(safe-area-inset-bottom\)/);
+  assert.match(userCss, /@media \(max-height: 650px\)/);
+  assert.match(userCss, /max-height: calc\(100dvh - 24px\)/);
+  assert.doesNotMatch(userCss, /body\s*\{[^}]*min-width:\s*320px/);
+  assert.match(adminCss, /@media \(max-width: 900px\)/);
+  assert.match(adminCss, /content: attr\(data-label\)/);
+  assert.match(adminCss, /min-height: 44px/);
+  assert.match(adminCss, /env\(safe-area-inset-bottom\)/);
+  assert.doesNotMatch(adminCss, /\.data-table\s*\{\s*min-width:\s*760px/);
+  assert.match(adminScript, /function setTableCellLabels/);
+  assert.match(adminScript, /scrollIntoView/);
+  assert.match(adminScript, /prefers-reduced-motion: reduce/);
+});
+
 test('weighted lottery selection is server-side, respects boundaries, and skips 0% prizes', () => {
   const source = 'const LOTTERY_WEIGHT_BASIS_POINTS = 10000;\n' + read('gas/RewardService.gs') + '\n;globalThis.__rewardTest = { lotteryResultForReward_ };';
   let randomValue = '00000000';

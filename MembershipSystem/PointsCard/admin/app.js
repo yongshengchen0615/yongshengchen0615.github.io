@@ -139,15 +139,24 @@
   function selectAdminTab(tabName, focusTab) {
     const nextTab = adminTabNames.indexOf(tabName) >= 0 ? tabName : 'overview';
     activeAdminTab = nextTab;
+    let selectedTab = null;
     document.querySelectorAll('[data-admin-tab]').forEach(function (tab) {
       const selected = tab.dataset.adminTab === nextTab;
       tab.setAttribute('aria-selected', String(selected));
       tab.tabIndex = selected ? 0 : -1;
-      if (selected && focusTab) tab.focus();
+      if (selected) selectedTab = tab;
     });
     document.querySelectorAll('[data-admin-panel]').forEach(function (panel) {
       panel.hidden = panel.dataset.adminPanel !== nextTab;
     });
+    if (selectedTab && focusTab) {
+      selectedTab.focus();
+      if (typeof selectedTab.scrollIntoView === 'function') {
+        const reduceMotion = typeof window.matchMedia === 'function'
+          && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        selectedTab.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }
     if (authenticated) {
       loadAdminTab(nextTab, false).catch(function (error) {
         reportError(error, { source: 'admin-tab', action: nextTab });
@@ -184,6 +193,12 @@
     button.disabled = Boolean(disabled);
     button.addEventListener('click', handler);
     return button;
+  }
+
+  function setTableCellLabels(cells, labels) {
+    cells.forEach(function (cell, index) {
+      cell.dataset.label = labels[index] || '';
+    });
   }
 
   function renderMetrics(stats) {
@@ -585,6 +600,10 @@
         createTextButton('管理', '', function () { openMember(member); }, false)
       );
       actionsTd.append(actions);
+      setTableCellLabels(
+        [memberTd, statusTd, totalTd, rewardsTd, joinedTd, actionsTd],
+        ['會員', '狀態', '累計集點', '可兌換', '加入日期', '操作']
+      );
       row.append(memberTd, statusTd, totalTd, rewardsTd, joinedTd, actionsTd);
       body.append(row);
     });
@@ -617,6 +636,10 @@
       if (state === 'active') actions.append(createTextButton('停止', 'danger', function () { cancelVoucher(voucher); }, false));
       actions.append(createTextButton('刪除', 'danger', function () { deleteVoucher(voucher); }, Number(voucher.recordCount || 0) > 0));
       actionsTd.append(actions);
+      setTableCellLabels(
+        [idTd, stampsTd, modeTd, countTd, statusTd, expiryTd, actionsTd],
+        ['QR Code', '點數', '模式', '使用次數', '狀態', '到期時間', '操作']
+      );
       row.append(idTd, stampsTd, modeTd, countTd, statusTd, expiryTd, actionsTd);
       body.append(row);
     });
@@ -649,6 +672,10 @@
       if (state === 'active') actions.append(createTextButton('停止', 'danger', function () { cancelRewardConfirmation(confirmation); }, false));
       actions.append(createTextButton('刪除', 'danger', function () { deleteRewardConfirmation(confirmation); }, Number(confirmation.recordCount || 0) > 0));
       actionsTd.append(actions);
+      setTableCellLabels(
+        [idTd, countTd, statusTd, expiryTd, actionsTd],
+        ['QR Code', '使用次數', '狀態', '到期時間', '操作']
+      );
       row.append(idTd, countTd, statusTd, expiryTd, actionsTd);
       body.append(row);
     });
