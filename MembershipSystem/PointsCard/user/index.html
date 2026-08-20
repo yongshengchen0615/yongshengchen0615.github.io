@@ -46,6 +46,12 @@
         <img id="avatar" class="avatar" alt="LINE 個人圖片" referrerpolicy="no-referrer">
       </section>
 
+      <section id="noCardState" class="ticket-empty hidden" role="status" aria-live="polite">
+        <span aria-hidden="true">◇</span>
+        <p><strong>目前沒有可用集點卡</strong></p>
+        <p id="noCardMessage">店家目前沒有開放中的集點卡。</p>
+      </section>
+
       <article id="stampCard" class="stamp-card" aria-labelledby="cardTitle">
         <div class="card-orbit card-orbit-a" aria-hidden="true"></div>
         <div class="card-orbit card-orbit-b" aria-hidden="true"></div>
@@ -80,7 +86,7 @@
           <div id="earnedTicketEmpty" class="ticket-empty"><span aria-hidden="true">◇</span><p>達成節點後，票券會出現在這裡。</p></div>
         </section>
 
-        <section class="ticket-group upcoming-group" aria-labelledby="upcomingTicketsTitle">
+        <section id="upcomingTicketGroup" class="ticket-group upcoming-group" aria-labelledby="upcomingTicketsTitle">
           <div class="ticket-group-heading"><h3 id="upcomingTicketsTitle">未獲得</h3><span>繼續集點即可解鎖</span></div>
           <div id="upcomingTicketList" class="upcoming-ticket-list"></div>
         </section>
