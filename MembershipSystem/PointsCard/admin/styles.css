@@ -33,17 +33,22 @@ button { -webkit-tap-highlight-color: transparent; }
 .button-secondary { color: var(--ink); border-color: var(--line); background: rgba(255,255,255,.55); }
 .button-accent { color: #fff; background: var(--accent); }
 
-.metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; overflow: hidden; margin-bottom: 22px; border: 1px solid var(--line); border-radius: 22px; background: var(--line); animation: rise-in .45s ease both; }
+.admin-tabs { margin-bottom: 22px; overflow-x: auto; scrollbar-width: thin; }
+.admin-tabs [role="tablist"] { min-width: max-content; display: flex; gap: 4px; padding: 5px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.45); }
+.admin-tab { min-height: 42px; padding: 0 17px; border: 0; border-radius: 11px; color: var(--muted); background: transparent; font-size: .74rem; font-weight: 760; cursor: pointer; transition: color .18s ease, background .18s ease, box-shadow .18s ease; }
+.admin-tab:hover { color: var(--ink); background: rgba(255,255,255,.75); }
+.admin-tab[aria-selected="true"] { color: #fff; background: var(--ink); box-shadow: 0 8px 18px rgba(23,63,53,.16); }
+.admin-tab:focus-visible { outline: 3px solid rgba(231,111,81,.28); outline-offset: 2px; }
+.admin-tab-panel { animation: rise-in .28s ease both; }
+
+.metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: var(--line); }
 .metric-row article { padding: 24px 26px; background: var(--surface); }
 .metric-row span, .metric-row strong, .metric-row small { display: block; }
 .metric-row span { color: var(--muted); font-size: .72rem; }
 .metric-row strong { margin: 8px 0 5px; font: 500 2.2rem Georgia, serif; }
 .metric-row small { color: var(--muted); font-size: .67rem; }
 
-.workspace-section { margin-top: 22px; padding: 30px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 10px 35px rgba(23,63,53,.045); animation: rise-in .5s .05s ease both; }
-.voucher-section { animation-delay: .1s; }
-.reward-confirm-section { animation-delay: .07s; }
-.reward-node-settings { animation-delay: .03s; }
+.workspace-section { padding: 30px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 10px 35px rgba(23,63,53,.045); }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; margin-bottom: 26px; }
 .section-heading h2 { margin: 5px 0 6px; font: 500 1.7rem Georgia, "Noto Serif TC", serif; }
 .section-heading > div > p:last-child { margin: 0; color: var(--muted); font-size: .78rem; }
@@ -151,6 +156,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .admin-shell { width: min(100% - 24px, 1240px); padding-top: 28px; }
   .admin-header { align-items: flex-start; margin-bottom: 30px; }
   .wordmark { margin-bottom: 22px; }
+  .admin-tabs { margin-inline: -12px; padding-inline: 12px; }
   .metric-row { grid-template-columns: 1fr; }
   .section-heading { align-items: stretch; flex-direction: column; }
   .section-actions { justify-content: flex-start; }

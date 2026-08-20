@@ -63,12 +63,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .stamp.reward-node.active.lottery { color: #fff; border-color: var(--accent-soft); background: var(--accent); }
 .stamp.reward-node.redeemed { color: rgba(255,255,255,.7); border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.11); box-shadow: none; }
 
-.progress-summary { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.14); }
-.progress-summary div span, .progress-summary div strong { display: block; }
-.progress-summary div span { margin-bottom: 4px; color: rgba(255,255,255,.5); font-size: .67rem; }
-.progress-summary div strong { font-size: 1rem; letter-spacing: .06em; }
-.progress-summary p { max-width: 210px; margin: 0; color: rgba(255,255,255,.68); font-size: .76rem; line-height: 1.55; text-align: right; }
-.scan-button { width: 100%; min-height: 58px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; margin-top: 24px; padding: 10px 12px; border: 0; border-radius: 18px; color: var(--ink-deep); background: #fff9ee; font-weight: 780; cursor: pointer; transition: transform .2s ease, box-shadow .2s ease; }
+.scan-button { width: 100%; min-height: 58px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; margin-top: 4px; padding: 10px 12px; border: 0; border-radius: 18px; color: var(--ink-deep); background: #fff9ee; font-weight: 780; cursor: pointer; transition: transform .2s ease, box-shadow .2s ease; }
 .scan-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,.18); }
 .scan-button:disabled { cursor: not-allowed; opacity: .48; }
 .scan-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; color: #fff; background: var(--accent); }
@@ -97,6 +92,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .ticket-copy small { color: var(--muted); font-size: .61rem; font-weight: 820; letter-spacing: .11em; }
 .ticket-copy strong { margin: 5px 0; overflow: hidden; font: 500 1.12rem Georgia, "Noto Serif TC", serif; text-overflow: ellipsis; white-space: nowrap; }
 .ticket-copy > span { color: var(--muted); font-size: .68rem; }
+.lottery-prize-summary { display: grid !important; gap: 2px; margin-top: 8px; white-space: normal; }
+.lottery-prize-label { color: var(--accent); font-size: .6rem; font-weight: 820; letter-spacing: .08em; }
+.lottery-prize-values { color: var(--ink-deep); font-size: .72rem; line-height: 1.55; }
 .ticket-action { padding-left: 17px; border-left: 1px dashed var(--line); color: var(--ink); font-size: .7rem; font-weight: 800; white-space: nowrap; }
 .reward-ticket.lottery .ticket-action { color: var(--accent); }
 .ticket-empty { padding: 31px 10px; color: var(--muted); text-align: center; }
@@ -143,6 +141,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .ticket-instruction { display: grid; gap: 6px; margin: 0 0 22px; padding: 15px; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); text-align: left; }
 .ticket-instruction strong { font-size: .7rem; }
 .ticket-instruction span { color: var(--muted); font-size: .72rem; line-height: 1.55; }
+.ticket-prize-panel { margin: 0 0 18px; padding: 15px; border-radius: 14px; background: rgba(231,111,81,.09); text-align: left; }
+.ticket-prize-panel strong { color: var(--accent); font-size: .7rem; }
+.ticket-prize-panel ul { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
+.ticket-prize-panel li { padding: 6px 9px; border: 1px solid rgba(231,111,81,.2); border-radius: 99px; color: var(--ink-deep); background: rgba(255,255,255,.55); font-size: .7rem; }
 
 .lottery-dialog { overflow: hidden; background: #fff7ed; }
 .lottery-stage { position: relative; width: 180px; height: 180px; display: grid; place-items: center; margin: -8px auto 24px; }
@@ -185,7 +187,6 @@ button { -webkit-tap-highlight-color: transparent; }
   .card-heading { display: block; }
   .member-number { margin-top: 14px; text-align: left; }
   .stamp-grid { gap: 9px; margin-block: 30px 26px; }
-  .progress-summary { align-items: flex-start; }
   .ticket-wallet { padding-inline: 2px; }
   .ticket-group-heading { display: block; }
   .ticket-group-heading span { display: block; margin-top: 4px; }

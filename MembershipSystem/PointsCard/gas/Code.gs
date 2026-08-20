@@ -467,6 +467,13 @@ function rewardEntitlementByOrdinal_(ordinal, settings) {
 }
 
 function publicRewardTicket_(reward) {
+  const lotteryPrizes = reward.rewardType === 'lottery' && Array.isArray(reward.lotteryPrizes)
+    ? reward.lotteryPrizes.filter(function (prize) {
+      return prize && Number(prize.weight) > 0;
+    }).map(function (prize) {
+      return String(prize.name || '');
+    }).filter(Boolean)
+    : [];
   return {
     entitlementOrdinal: Number(reward.entitlementOrdinal || 0),
     nodeId: String(reward.nodeId || ''),
@@ -476,7 +483,8 @@ function publicRewardTicket_(reward) {
     cycleNumber: Number(reward.cycleNumber || 1),
     absoluteStamps: Number(reward.absoluteStamps || 0),
     stampsUntilReward: Math.max(0, Number(reward.stampsUntilReward || 0)),
-    state: String(reward.state || '')
+    state: String(reward.state || ''),
+    lotteryPrizes: lotteryPrizes
   };
 }
 

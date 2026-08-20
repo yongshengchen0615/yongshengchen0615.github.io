@@ -115,6 +115,7 @@ test('multi-node ticket projection repeats each card and supports coupon and lot
   assert.equal(empty.nextReward.rewardName, '小點心優惠券');
   assert.equal(empty.nextReward.rewardType, 'coupon');
   assert.equal(empty.upcomingRewardNodes[1].rewardType, 'lottery');
+  assert.deepEqual(Array.from(empty.upcomingRewardNodes[1].lotteryPrizes), ['免費飲品', '再接再厲']);
 
   const firstNode = project(3, 0);
   assert.equal(firstNode.nextAvailableReward.rewardName, '小點心優惠券');
@@ -156,6 +157,8 @@ test('multi-node ticket projection repeats each card and supports coupon and lot
     { stampsRequired: 5, rewardName: '抽獎券', rewardType: 'lottery', lotteryPrizes: [{ name: '未中獎', weight: 100 }, { name: '大獎', weight: 0 }] }
   ], 'INVALID', 'invalid');
   assert.deepEqual(Array.from(zeroWeight[0].lotteryPrizes, (prize) => prize.weight), [100, 0]);
+  rewardNodesJson = JSON.stringify(zeroWeight);
+  assert.deepEqual(Array.from(project(0, 0).nextReward.lotteryPrizes), ['未中獎'], '0% prizes are not presented as possible outcomes');
   const legacyLottery = context.__pointsCardTest.normalizeRewardNodes_([
     { stampsRequired: 5, rewardName: '舊抽獎券', rewardType: 'lottery', lotteryPrizes: ['A', 'B', 'C'] }
   ], 'INVALID', 'invalid');
@@ -167,12 +170,29 @@ test('member ticket UI removes account history and exposes earned and upcoming t
   const script = read('user/app.js');
   assert.doesNotMatch(html, /id="displayCycleNumber"|id="totalStamps"|id="redeemedRewards"|id="joinedAt"|id="activityList"/);
   assert.doesNotMatch(html, />最近紀錄</);
+  assert.doesNotMatch(html, /目前進度|id="visualStampCount"|id="stampsPerReward"|id="progressMessage"/);
   assert.match(html, /id="earnedTicketList"/);
   assert.match(html, /id="upcomingTicketList"/);
   assert.match(html, /id="lotteryStage"/);
   assert.match(script, /reward\.claim/);
   assert.match(script, /playLotteryAnimation/);
   assert.match(script, /rewardConfirm/);
+  assert.match(script, /有機會獲得/);
+  assert.match(script, /lotteryPrizeNames/);
+});
+
+test('admin functions use accessible in-page tabs without additional HTML pages', () => {
+  const html = read('admin/index.html');
+  const script = read('admin/app.js');
+  const tabs = Array.from(html.matchAll(/data-admin-tab="([^"]+)"/g), (match) => match[1]);
+  const panels = Array.from(html.matchAll(/data-admin-panel="([^"]+)"/g), (match) => match[1]);
+  assert.deepEqual(tabs, ['overview', 'reward-nodes', 'reward-confirmations', 'members', 'stamp-qr']);
+  assert.deepEqual(panels, tabs);
+  assert.equal((html.match(/role="tab"/g) || []).length, tabs.length);
+  assert.equal((html.match(/role="tabpanel"/g) || []).length, panels.length);
+  assert.match(script, /function selectAdminTab/);
+  assert.match(script, /ArrowLeft/);
+  assert.match(script, /ArrowRight/);
 });
 
 test('weighted lottery selection is server-side, respects boundaries, and skips 0% prizes', () => {

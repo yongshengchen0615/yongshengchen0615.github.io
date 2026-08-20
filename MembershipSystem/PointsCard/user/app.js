@@ -28,8 +28,34 @@
 
   function normalizeTicket(ticket, fallbackType) {
     return Object.assign({}, ticket, {
-      rewardType: ticket && ticket.rewardType === 'lottery' ? 'lottery' : (fallbackType || 'coupon')
+      rewardType: ticket && ticket.rewardType === 'lottery' ? 'lottery' : (fallbackType || 'coupon'),
+      lotteryPrizes: lotteryPrizeNames(ticket)
     });
+  }
+
+  function lotteryPrizeNames(ticket) {
+    if (!ticket || ticket.rewardType !== 'lottery' || !Array.isArray(ticket.lotteryPrizes)) return [];
+    const names = ticket.lotteryPrizes.map(function (prize) {
+      if (typeof prize === 'string') return prize.trim();
+      if (!prize || (prize.weight != null && Number(prize.weight) <= 0)) return '';
+      return String(prize.name || '').trim();
+    }).filter(Boolean).slice(0, 8);
+    return names.filter(function (name, index) { return names.indexOf(name) === index; });
+  }
+
+  function appendLotteryPrizeSummary(container, ticket) {
+    const prizes = lotteryPrizeNames(ticket);
+    if (!prizes.length) return;
+    const summary = document.createElement('span');
+    summary.className = 'lottery-prize-summary';
+    const label = document.createElement('span');
+    label.className = 'lottery-prize-label';
+    label.textContent = '有機會獲得';
+    const values = document.createElement('span');
+    values.className = 'lottery-prize-values';
+    values.textContent = prizes.join('、');
+    summary.append(label, values);
+    container.append(summary);
   }
 
   function normalizeRewardContract(member) {
@@ -116,8 +142,6 @@
       const rewardNode = rewardNodes.find(function (node) { return Number(node.stampsRequired) === index + 1; }) || null;
       grid.append(createStamp(index, index < filled, Boolean(animateLatest && index === filled - 1), rewardNode));
     }
-    $('visualStampCount').textContent = formatNumber(filled);
-    $('stampsPerReward').textContent = formatNumber(total);
   }
 
   function createEarnedTicket(ticket) {
@@ -136,6 +160,7 @@
     const meta = document.createElement('span');
     meta.textContent = ticket.stampsRequired + ' 點節點';
     copy.append(type, name, meta);
+    appendLotteryPrizeSummary(copy, ticket);
     const action = document.createElement('span');
     action.className = 'ticket-action';
     action.textContent = '開啟 ↗';
@@ -156,6 +181,7 @@
     const name = document.createElement('strong');
     name.textContent = ticket.rewardName;
     copy.append(type, name);
+    appendLotteryPrizeSummary(copy, ticket);
     const remaining = document.createElement('span');
     remaining.className = 'upcoming-remaining';
     remaining.textContent = '再 ' + formatNumber(ticket.stampsUntilReward || 0) + ' 點';
@@ -190,11 +216,6 @@
       ? '今天也來收集一枚好心情。'
       : '這張集點卡目前暫停使用，請洽店家確認。';
 
-    const nextReward = member.nextReward;
-    $('progressMessage').textContent = Number(member.availableRewards || 0) > 0
-      ? '已獲得的票券已放在下方'
-      : (nextReward ? '再集 ' + formatNumber(member.stampsUntilNextReward) + ' 點獲得' + rewardTypeLabels[nextReward.rewardType] :
-        '繼續集點即可獲得票券');
     renderStampGrid(member, animateLatest);
     renderTickets(member);
   }
@@ -226,6 +247,15 @@
     $('ticketDialogType').textContent = ticket.rewardType === 'lottery' ? 'LUCKY DRAW TICKET' : 'COUPON';
     $('ticketDialogTitle').textContent = ticket.rewardName;
     $('ticketDialogMeta').textContent = ticket.stampsRequired + ' 點節點已解鎖';
+    const prizeNames = lotteryPrizeNames(ticket);
+    const prizeList = $('ticketPrizeList');
+    prizeList.replaceChildren();
+    prizeNames.forEach(function (name) {
+      const item = document.createElement('li');
+      item.textContent = name;
+      prizeList.append(item);
+    });
+    $('ticketPrizePanel').classList.toggle('hidden', prizeNames.length === 0);
     $('scanRewardButton').disabled = rewardClaimInFlight;
     openDialog($('ticketDialog'));
   }

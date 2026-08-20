@@ -23,6 +23,8 @@
   let currentQrSvg = '';
   let currentRewardConfirmationQrSvg = '';
   let dashboardRequestSequence = 0;
+  const adminTabNames = ['overview', 'reward-nodes', 'reward-confirmations', 'members', 'stamp-qr'];
+  let activeAdminTab = 'overview';
 
   function formatNumber(value) {
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -117,6 +119,32 @@
   function clearFormError(id) {
     $(id).textContent = '';
     $(id).classList.add('hidden');
+  }
+
+  function selectAdminTab(tabName, focusTab) {
+    const nextTab = adminTabNames.indexOf(tabName) >= 0 ? tabName : 'overview';
+    activeAdminTab = nextTab;
+    document.querySelectorAll('[data-admin-tab]').forEach(function (tab) {
+      const selected = tab.dataset.adminTab === nextTab;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected && focusTab) tab.focus();
+    });
+    document.querySelectorAll('[data-admin-panel]').forEach(function (panel) {
+      panel.hidden = panel.dataset.adminPanel !== nextTab;
+    });
+  }
+
+  function handleAdminTabKeydown(event) {
+    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].indexOf(event.key) < 0) return;
+    event.preventDefault();
+    const currentIndex = Math.max(0, adminTabNames.indexOf(activeAdminTab));
+    let nextIndex = currentIndex;
+    if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = adminTabNames.length - 1;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + adminTabNames.length) % adminTabNames.length;
+    else nextIndex = (currentIndex + 1) % adminTabNames.length;
+    selectAdminTab(adminTabNames[nextIndex], true);
   }
 
   function openDialog(dialog) {
@@ -933,6 +961,11 @@
     $('createRewardConfirmationButton').addEventListener('click', createRewardConfirmation);
     $('copyRewardConfirmationButton').addEventListener('click', copyRewardConfirmationUrl);
     $('downloadRewardConfirmationButton').addEventListener('click', downloadRewardConfirmationQr);
+    document.querySelectorAll('[data-admin-tab]').forEach(function (tab) {
+      tab.addEventListener('click', function () { selectAdminTab(tab.dataset.adminTab, false); });
+      tab.addEventListener('keydown', handleAdminTabKeydown);
+    });
+    selectAdminTab(activeAdminTab, false);
   }
 
   async function init() {

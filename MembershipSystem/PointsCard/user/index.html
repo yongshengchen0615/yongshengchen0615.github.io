@@ -59,14 +59,6 @@
 
         <div id="stampGrid" class="stamp-grid" aria-label="集點進度"></div>
 
-        <div class="progress-summary">
-          <div>
-            <span>目前進度</span>
-            <strong><span id="visualStampCount">0</span> / <span id="stampsPerReward">10</span></strong>
-          </div>
-          <p id="progressMessage">再集 10 點即可獲得獎勵</p>
-        </div>
-
         <button id="scanStampButton" class="scan-button" type="button" disabled>
           <span class="scan-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M8 8h2v2H8zM14 8h2v2h-2zM8 14h2v2H8zM14 14h2v2h-2z"/></svg>
@@ -132,6 +124,10 @@
     <p id="ticketDialogType" class="eyebrow">COUPON</p>
     <h2 id="ticketDialogTitle">優惠券</h2>
     <p id="ticketDialogMeta">達成節點後取得</p>
+    <div id="ticketPrizePanel" class="ticket-prize-panel hidden">
+      <strong>有機會獲得</strong>
+      <ul id="ticketPrizeList"></ul>
+    </div>
     <div class="ticket-instruction"><strong>使用方式</strong><span>請在店員面前掃描店家票券確認 QR，確認後立即使用。</span></div>
     <button id="scanRewardButton" class="button button-primary" type="button">掃描店家確認 QR</button>
   </dialog>

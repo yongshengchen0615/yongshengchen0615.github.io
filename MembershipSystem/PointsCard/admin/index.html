@@ -36,13 +36,25 @@
     </section>
 
     <section id="adminApp" class="hidden">
-      <section class="metric-row" aria-label="集點卡摘要">
-        <article><span>會員總數</span><strong id="metricMembers">0</strong><small id="metricActive">0 位有效會員</small></article>
-        <article><span>累計集點</span><strong id="metricStamps">0</strong><small>所有會員累計</small></article>
-        <article><span>已兌換獎勵</span><strong id="metricRewards">0</strong><small id="rewardNameMetric">本期獎勵</small></article>
+      <nav class="admin-tabs" aria-label="管理功能分頁">
+        <div role="tablist" aria-label="管理功能">
+          <button id="admin-tab-overview" class="admin-tab" type="button" role="tab" aria-selected="true" aria-controls="admin-panel-overview" data-admin-tab="overview">總覽</button>
+          <button id="admin-tab-reward-nodes" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-reward-nodes" tabindex="-1" data-admin-tab="reward-nodes">獎勵節點</button>
+          <button id="admin-tab-reward-confirmations" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-reward-confirmations" tabindex="-1" data-admin-tab="reward-confirmations">票券確認</button>
+          <button id="admin-tab-members" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-members" tabindex="-1" data-admin-tab="members">會員與獎勵</button>
+          <button id="admin-tab-stamp-qr" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-stamp-qr" tabindex="-1" data-admin-tab="stamp-qr">集點 QR</button>
+        </div>
+      </nav>
+
+      <section id="admin-panel-overview" class="admin-tab-panel" role="tabpanel" aria-labelledby="admin-tab-overview" tabindex="0" data-admin-panel="overview">
+        <section class="metric-row" aria-label="集點卡摘要">
+          <article><span>會員總數</span><strong id="metricMembers">0</strong><small id="metricActive">0 位有效會員</small></article>
+          <article><span>累計集點</span><strong id="metricStamps">0</strong><small>所有會員累計</small></article>
+          <article><span>已兌換獎勵</span><strong id="metricRewards">0</strong><small id="rewardNameMetric">本期獎勵</small></article>
+        </section>
       </section>
 
-      <section class="workspace-section reward-node-settings" aria-labelledby="rewardNodesTitle">
+      <section id="admin-panel-reward-nodes" class="admin-tab-panel workspace-section reward-node-settings" role="tabpanel" aria-labelledby="admin-tab-reward-nodes" tabindex="0" data-admin-panel="reward-nodes" hidden>
         <div class="section-heading">
           <div><p class="eyebrow">REWARD NODES</p><h2 id="rewardNodesTitle">獎勵節點</h2><p>設定每張卡在不同點數要發放的獎勵；最大節點就是一張卡的長度。</p></div>
           <div class="section-actions"><button id="addRewardNodeButton" class="button button-secondary" type="button">新增節點</button><button id="saveRewardNodesButton" class="button button-primary" type="button">儲存節點</button></div>
@@ -52,7 +64,7 @@
         <p id="rewardSettingsMessage" class="settings-message hidden" role="status"></p>
       </section>
 
-      <section class="workspace-section reward-confirm-section" aria-labelledby="rewardConfirmationsTitle">
+      <section id="admin-panel-reward-confirmations" class="admin-tab-panel workspace-section reward-confirm-section" role="tabpanel" aria-labelledby="admin-tab-reward-confirmations" tabindex="0" data-admin-panel="reward-confirmations" hidden>
         <div class="section-heading">
           <div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationsTitle">店家票券確認 QR</h2><p>會員使用已獲得票券時，必須在店內掃描有效的確認 QR；優惠券會核銷，抽獎券會立即開獎。</p></div>
           <button id="newRewardConfirmationButton" class="button button-primary" type="button">新增確認 QR</button>
@@ -66,7 +78,7 @@
         <div id="rewardConfirmationEmptyState" class="empty-state hidden">尚未建立店家票券確認 QR。</div>
       </section>
 
-      <section class="workspace-section" aria-labelledby="membersTitle">
+      <section id="admin-panel-members" class="admin-tab-panel workspace-section" role="tabpanel" aria-labelledby="admin-tab-members" tabindex="0" data-admin-panel="members" hidden>
         <div class="section-heading">
           <div><p class="eyebrow">MEMBERS</p><h2 id="membersTitle">會員與獎勵</h2><p>點數餘額與可兌換數量皆由伺服器端計算。</p></div>
           <label class="search-field"><span class="sr-only">搜尋會員</span><input id="memberSearch" type="search" maxlength="80" placeholder="搜尋姓名或會員編號" autocomplete="off"><span aria-hidden="true">⌕</span></label>
@@ -80,7 +92,7 @@
         <div id="memberEmptyState" class="empty-state hidden">找不到符合條件的會員。</div>
       </section>
 
-      <section class="workspace-section voucher-section" aria-labelledby="vouchersTitle">
+      <section id="admin-panel-stamp-qr" class="admin-tab-panel workspace-section voucher-section" role="tabpanel" aria-labelledby="admin-tab-stamp-qr" tabindex="0" data-admin-panel="stamp-qr" hidden>
         <div class="section-heading">
           <div><p class="eyebrow">STAMP QR</p><h2 id="vouchersTitle">集點 QR Code</h2><p>單次 QR 僅能成功使用一次；可重複 QR 適合由店員現場控管。</p></div>
           <button id="newStampButton" class="button button-primary" type="button">新增集點 QR</button>
