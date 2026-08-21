@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '2.1.0',
+  version: '2.1.1',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -73,7 +73,7 @@ function doGet() {
       service: POINTS_CARD_SERVICE.name,
       version: POINTS_CARD_SERVICE.version,
       capabilities: [
-        'member.me', 'stamp.record', 'reward.claim', 'admin.dashboard', 'admin.summary',
+        'member.me', 'stamp.record', 'reward.prepare', 'reward.claim', 'admin.dashboard', 'admin.summary',
         'admin.members.search', 'admin.stamps.list', 'admin.reward-confirmations.list',
         'admin.member.update', 'admin.reward.redeem', 'admin.reward-nodes.update',
         'admin.cards.list', 'admin.card.create', 'admin.card.update', 'admin.card.save', 'admin.card.delete',
@@ -112,6 +112,9 @@ function doPost(e) {
       case 'reward.claim':
         rateLimit_('reward-claim:' + identity.sub, 12, 60);
         return json_({ ok: true, data: memberRewardClaimMultiCard_(context, payload) });
+      case 'reward.prepare':
+        rateLimit_('reward-prepare:' + identity.sub, 20, 60);
+        return json_({ ok: true, data: memberRewardPrepareMultiCard_(context, payload) });
       case 'admin.dashboard':
         requireAdmin_(context);
         rateLimit_('admin-dashboard:' + identity.sub, 30, 60);

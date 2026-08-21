@@ -198,20 +198,92 @@ test('lottery reveal has drawing, settling, and celebration phases with reduced-
   assert.match(script, /revealLotteryResult\(claimedReward\)/);
 });
 
-test('member reward confirmation paints loading before the API call and waits for an explicit draw action', () => {
+test('member reward confirmation prepares without consuming the lottery ticket and claims only after draw starts', () => {
   const html = read('user/index.html');
   const script = read('user/app.js');
-  const claimStart = script.indexOf('async function claimSelectedReward');
-  const claimEnd = script.indexOf('async function scanRewardConfirmation', claimStart);
-  const claimFlow = script.slice(claimStart, claimEnd);
+  const prepareStart = script.indexOf('async function prepareSelectedLottery');
+  const prepareEnd = script.indexOf('async function claimSelectedCoupon', prepareStart);
+  const prepareFlow = script.slice(prepareStart, prepareEnd);
+  const drawStart = script.indexOf('async function claimPreparedLottery');
+  const drawEnd = script.indexOf('function handleLotteryAction', drawStart);
+  const drawFlow = script.slice(drawStart, drawEnd);
   assert.match(html, /id="confirmLotteryButton"[^>]*>開始抽獎</);
+  assert.match(html, /id="closeLotteryButton"[^>]*>稍後再抽</);
   assert.match(script, /function prepareLotteryDraw/);
   assert.match(script, /function handleLotteryAction/);
   assert.match(script, /lotteryDialogPhase === 'ready'/);
-  assert.match(claimFlow, /showProcessing\('reward'\)/);
-  assert.ok(claimFlow.indexOf('await waitForInterfacePaint()') < claimFlow.indexOf("PointsCard.callApi('reward.claim'"));
-  assert.match(claimFlow, /prepareLotteryDraw\(result\.claimedReward\)/);
-  assert.doesNotMatch(claimFlow, /playLotteryAnimation\(result\.claimedReward\)/);
+  assert.match(prepareFlow, /showProcessing\('reward'\)/);
+  assert.ok(prepareFlow.indexOf('await waitForInterfacePaint()') < prepareFlow.indexOf("PointsCard.callApi('reward.prepare'"));
+  assert.doesNotMatch(prepareFlow, /reward\.claim|renderMember|selectedTicket = null/);
+  assert.match(drawFlow, /callRewardClaim\(pending\.ticket, pending\.confirmationCode\)/);
+  assert.match(drawFlow, /renderMember\(result\.member, false\)/);
+  assert.match(drawFlow, /playLotteryAnimation\(result\.claimedReward\)/);
+  assert.doesNotMatch(script.slice(script.indexOf('function resetLotteryDialogState'), script.indexOf('function rewardClaimPayload')), /selectedTicket = null/);
+  assert.match(script, /closeLotteryButton[^\n]+lotteryDialogPhase === 'ready'[^\n]+closeDialog/);
+  assert.match(script, /lotteryDialogPhase !== 'ready' && lotteryDialogPhase !== 'revealed'/);
+});
+
+test('reward.prepare validates lottery eligibility without writing a claim record', () => {
+  const code = read('gas/Code.gs');
+  const rewards = read('gas/MultiCardRewardService.gs');
+  const prepareStart = rewards.indexOf('function memberRewardPrepareMultiCard_');
+  const prepareEnd = rewards.indexOf('function memberRewardClaimMultiCard_', prepareStart);
+  const prepareFlow = rewards.slice(prepareStart, prepareEnd);
+  assert.match(code, /'reward\.prepare'/);
+  assert.match(code, /case 'reward\.prepare':[\s\S]*memberRewardPrepareMultiCard_\(context, payload\)/);
+  assert.match(prepareFlow, /validateRewardConfirmationForClaim_/);
+  assert.match(prepareFlow, /availableMultiCardRewardForClaim_/);
+  assert.match(prepareFlow, /reward\.rewardType !== 'lottery'/);
+  assert.match(prepareFlow, /return \{ prepared: true \}/);
+  assert.doesNotMatch(prepareFlow, /recordMultiCardRewardClaim_|appendMultiCardObject_|writeMultiCardObjectRow_|LockService/);
+});
+
+test('reward.prepare returns readiness while the lottery entitlement remains unredeemed', () => {
+  const card = {
+    cardId: 'CARD-LOTTERY',
+    rewardNodesUpdatedAt: 'reward-v1',
+    rewardNodes: [{ nodeId: 'node-1', rewardName: '抽獎券', rewardType: 'lottery', stampsRequired: 5 }]
+  };
+  const progress = { totalStamps: 5, redeemedRewards: 0 };
+  const context = {
+    Array, Date, Math, Number, Object, String, console,
+    POINTS_CARD_SHEETS: { members: 'Members', rewardConfirmations: 'RewardConfirmations' },
+    ensureMultiCardStorage_: () => {},
+    validMultiCardId_: (value) => String(value),
+    cleanText_: (value) => String(value || ''),
+    strictInt_: (value) => Number(value),
+    fail_: (code, message) => {
+      const error = new Error(message);
+      error.publicCode = code;
+      throw error;
+    },
+    findMultiCard_: () => ({ card }),
+    getSheet_: (name) => name,
+    findByFieldWithRow_: (sheet) => sheet === 'RewardConfirmations'
+      ? { object: { confirmationId: 'RC-1', shareCode: 'a'.repeat(64), status: 'active', expiresAt: '2099-01-01T00:00:00.000Z' } }
+      : { object: { lineUserId: 'U1', memberNo: 'PC-1', membershipStatus: 'active' } },
+    normalizeMember_: (member) => member,
+    multiCardSettingsForProjection_: () => ({ rewardNodesUpdatedAt: 'reward-v1' }),
+    findMemberCardProgress_: () => ({ progress })
+  };
+  vm.createContext(context);
+  vm.runInContext(read('gas/RewardConfirmationService.gs') + '\n' + read('gas/MultiCardRewardService.gs') + '\n;globalThis.__prepare = memberRewardPrepareMultiCard_;', context);
+  context.availableMultiCardRewardForClaim_ = () => ({
+    entitlementOrdinal: 1,
+    nodeId: 'node-1',
+    rewardName: '抽獎券',
+    rewardType: 'lottery',
+    cycleNumber: 1
+  });
+
+  const result = context.__prepare({ identity: { sub: 'U1' } }, {
+    cardId: card.cardId,
+    confirmationCode: 'a'.repeat(64),
+    expectedRewardOrdinal: 1,
+    expectedRewardNodesUpdatedAt: 'reward-v1'
+  });
+  assert.equal(result.prepared, true);
+  assert.equal(progress.redeemedRewards, 0);
 });
 
 test('existing reward confirmation QR opens with loading state and exposes no share link UI', () => {

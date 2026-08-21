@@ -219,6 +219,7 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .confetti-l { --confetti-x: -106px; --confetti-y: -36px; --confetti-turn: -280deg; --confetti-delay: .07s; }
 .lottery-stage.revealed .confetti { animation: lottery-confetti-burst .9s var(--confetti-delay) cubic-bezier(.12,.72,.2,1) both; }
 .lottery-dialog #lotteryResultText { min-height: 1.75em; color: var(--ink-deep); font: 600 1.28rem/1.4 var(--font-display); }
+.lottery-dialog #closeLotteryButton { margin-bottom: 10px; }
 .lottery-dialog #confirmLotteryButton { transition: opacity .24s ease, transform .24s ease, box-shadow .24s ease; }
 .lottery-dialog #confirmLotteryButton:not(:disabled) { box-shadow: 0 12px 24px rgba(15,44,38,.17); }
 .lottery-stage.ready ~ #confirmLotteryButton { background: var(--accent); animation: lottery-ready-cta 1.8s ease-in-out infinite alternate; }

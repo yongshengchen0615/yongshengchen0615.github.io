@@ -2,7 +2,12 @@
 
 `PointsCard` 採用 GitHub Pages + LINE LIFF + Google Apps Script + Google Sheets 架構，提供會員集點、優惠券、抽獎券、店家確認 QR 與管理端功能。
 
-目前程式版本：`2.1.0`。
+目前程式版本：`2.1.1`。
+
+## 2.1.1 重點
+
+- 抽獎券掃描店家確認 QR 後先以 `reward.prepare` 驗證票券，loading 完成才顯示抽獎準備畫面。
+- 會員點擊「開始抽獎」時才透過 `reward.claim` 核銷並由 GAS 固定開獎結果；在準備畫面選擇「稍後再抽」不會消耗票券。
 
 ## 2.1.0 重點
 
@@ -168,6 +173,7 @@ LINE ID Token 驗證
 ```text
 member.me
 stamp.record
+reward.prepare
 reward.claim
 ```
 
@@ -291,6 +297,8 @@ durationMs
 **必須把 `gas/` 內所有檔案同步到同一個 Apps Script Project。**
 
 `1.4.0` 新增 `CardService.gs`；若只更新 `Code.gs` 而沒有一起部署 `CardService.gs`，API 會因缺少卡片生命週期函式而失敗。
+
+`2.1.1` 新增 `reward.prepare`；部署時應先更新 GAS，再發布會員端，避免新版前端連到尚未支援準備流程的舊 `/exec`。
 
 若 Apps Script 是從目標 Google Spreadsheet 的「擴充功能 → Apps Script」開啟，執行下列函式就會綁定目前這份 Spreadsheet，並一次建立所有必要工作表：
 

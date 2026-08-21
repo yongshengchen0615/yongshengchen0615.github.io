@@ -63,6 +63,37 @@ function adminRewardRedeemMultiCard_(context, payload) {
   }
 }
 
+function memberRewardPrepareMultiCard_(context, payload) {
+  ensureMultiCardStorage_();
+  const cardId = validMultiCardId_(payload.cardId, true);
+  const confirmationCode = cleanText_(payload.confirmationCode, 64, true).toLowerCase();
+  const expectedRewardOrdinal = strictInt_(payload.expectedRewardOrdinal, 1, 100000000, 'INVALID_REWARD', '要使用的票券不正確。');
+  const expectedRewardNodesUpdatedAt = cleanText_(payload.expectedRewardNodesUpdatedAt || '', 64, false);
+  if (!/^[a-f0-9]{64}$/.test(confirmationCode)) fail_('INVALID_REWARD_CONFIRMATION_CODE', '店家票券確認 QR Code 格式不正確。');
+
+  const cardMatch = findMultiCard_(cardId);
+  if (!cardMatch) fail_('CARD_NOT_FOUND', '這張票券所屬的集點卡已不存在。');
+  const confirmationMatch = findByFieldWithRow_(getSheet_(POINTS_CARD_SHEETS.rewardConfirmations), 'shareCode', confirmationCode);
+  if (!confirmationMatch) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到這組店家票券確認 QR Code。');
+  validateRewardConfirmationForClaim_(normalizeRewardConfirmation_(confirmationMatch.object));
+
+  const memberMatch = findByFieldWithRow_(getSheet_(POINTS_CARD_SHEETS.members), 'lineUserId', context.identity.sub);
+  if (!memberMatch) fail_('MEMBER_NOT_FOUND', '請先開啟集點卡完成會員建立。');
+  const member = normalizeMember_(memberMatch.object);
+  if (member.membershipStatus !== 'active') fail_('MEMBER_INACTIVE', '會員目前無法使用票券，請洽店家確認。');
+  const settings = multiCardSettingsForProjection_(cardMatch.card);
+  if (expectedRewardNodesUpdatedAt && settings.rewardNodesUpdatedAt !== expectedRewardNodesUpdatedAt) {
+    fail_('CONFLICT', '票券設定已更新，請重新整理後再試。');
+  }
+  const progressMatch = findMemberCardProgress_(cardId, member.lineUserId);
+  const progress = progressMatch ? progressMatch.progress : { totalStamps: 0, redeemedRewards: 0 };
+  const reward = availableMultiCardRewardForClaim_(progress, cardMatch.card, member.lineUserId, expectedRewardOrdinal);
+  if (!reward) fail_('REWARD_NOT_AVAILABLE', '這張票券尚未取得或已經使用。');
+  if (reward.rewardType !== 'lottery') fail_('INVALID_REWARD', '這張票券不是抽獎券。');
+
+  return { prepared: true };
+}
+
 function memberRewardClaimMultiCard_(context, payload) {
   ensureMultiCardStorage_();
   const cardId = validMultiCardId_(payload.cardId, true);
