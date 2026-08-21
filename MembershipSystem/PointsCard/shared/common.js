@@ -2,11 +2,13 @@
   'use strict';
 
   const LOGIN_PENDING_KEY = 'points-card.login.pending';
+  const FRESH_LOGIN_PENDING_KEY = 'points-card.liff.fresh-login.pending';
   const INIT_RECOVERY_KEY = 'points-card.liff.recovery';
   const AUTH_REFRESH_KEY = 'points-card.liff.auth-refresh';
   const SELECTED_CARD_KEY = 'points-card.selected-card';
   const INIT_RECOVERY_COOLDOWN_MS = 60 * 1000;
   const AUTH_REFRESH_COOLDOWN_MS = 60 * 1000;
+  const FRESH_LOGIN_PENDING_MAX_MS = 5 * 60 * 1000;
   const ID_TOKEN_EXPIRY_SKEW_SECONDS = 30;
   const API_TIMEOUT_MS = 25000;
   const nativeFetch = window.fetch.bind(window);
@@ -211,6 +213,38 @@
     }));
   }
 
+  function currentLoginSurface() {
+    return new URL(window.location.href).pathname;
+  }
+
+  function writeFreshLoginPending() {
+    const serialized = JSON.stringify({
+      surface: currentLoginSurface(),
+      startedAt: Date.now()
+    });
+    writeSessionValue(FRESH_LOGIN_PENDING_KEY, serialized);
+    if (readSessionValue(FRESH_LOGIN_PENDING_KEY) !== serialized) {
+      throw new Error('瀏覽器無法安全保存重新登入狀態，請允許網站暫存資料後再試。');
+    }
+  }
+
+  function isFreshLoginCallback(hadInitArtifacts) {
+    if (!hadInitArtifacts) return false;
+    const raw = readSessionValue(FRESH_LOGIN_PENDING_KEY);
+    if (!raw) return false;
+    try {
+      const pending = JSON.parse(raw);
+      const age = Date.now() - Number(pending && pending.startedAt || 0);
+      const matches = pending && pending.surface === currentLoginSurface() &&
+        age >= 0 && age <= FRESH_LOGIN_PENDING_MAX_MS;
+      if (!matches) removeSessionValue(FRESH_LOGIN_PENDING_KEY);
+      return Boolean(matches);
+    } catch (_) {
+      removeSessionValue(FRESH_LOGIN_PENDING_KEY);
+      return false;
+    }
+  }
+
   function captureInitArtifacts() {
     const params = new URL(window.location.href).searchParams;
     return params.has('state') || params.has('code') || params.has('response') ||
@@ -263,14 +297,16 @@
       writeSessionValue(AUTH_REFRESH_KEY, String(Date.now()));
     }
     loginInFlight = true;
-    writePendingLogin();
     authenticatedIdToken = '';
     try {
+      writePendingLogin();
+      writeFreshLoginPending();
       if (forceRefresh && liffClient.isLoggedIn()) liffClient.logout();
       liffClient.login({ redirectUri: buildCanonicalAppUrl() });
       return false;
     } catch (error) {
       loginInFlight = false;
+      removeSessionValue(FRESH_LOGIN_PENDING_KEY);
       if (forceRefresh) removeSessionValue(AUTH_REFRESH_KEY);
       throw error;
     }
@@ -290,12 +326,15 @@
 
     removeSessionValue(INIT_RECOVERY_KEY);
     if (liffClient.isLoggedIn()) {
+      const freshLoginCallback = isFreshLoginCallback(hadInitArtifacts);
+      if (!liffClient.isInClient() && !freshLoginCallback) return startExternalLogin(true);
       const idToken = liffClient.getIDToken();
       if (!idToken) throw new Error('LINE 已登入但無法取得 ID Token，請確認 LIFF 已啟用 openid scope。');
       if (!hasFreshIdToken()) return startExternalLogin(true);
       authenticatedIdToken = idToken;
       loginInFlight = false;
       removeSessionValue(AUTH_REFRESH_KEY);
+      removeSessionValue(FRESH_LOGIN_PENDING_KEY);
       canonicalizeAppUrl();
       removeSessionValue(LOGIN_PENDING_KEY);
       return true;

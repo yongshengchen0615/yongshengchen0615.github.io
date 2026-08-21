@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '2.1.1',
+  version: '2.1.2',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',

@@ -2,7 +2,13 @@
 
 `PointsCard` 採用 GitHub Pages + LINE LIFF + Google Apps Script + Google Sheets 架構，提供會員集點、優惠券、抽獎券、店家確認 QR 與管理端功能。
 
-目前程式版本：`2.1.1`。
+目前程式版本：`2.1.2`。
+
+## 2.1.2 重點
+
+- 會員端與管理端每次重新進入時都重新建立 LIFF 驗證；外部瀏覽器與 LINE in-app browser 會先登出再登入。
+- LINE 官方不允許在 LIFF browser 內手動呼叫 `liff.login()`，因此該環境由每次頁面載入的 `liff.init()` 自動完成本次登入並取得 ID Token。
+- 登入 redirect 使用短效且綁定會員／管理頁面路徑的一次性標記，避免 callback 形成無限登入循環；標記不保存 ID Token。
 
 ## 2.1.1 重點
 
