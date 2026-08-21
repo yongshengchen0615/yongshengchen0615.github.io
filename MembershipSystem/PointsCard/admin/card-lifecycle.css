@@ -14,8 +14,8 @@
 #admin-panel-reward-nodes { display: none !important; }
 .integrated-reward-editor { margin: 30px 0 22px; padding-top: 28px; border-top: 1px solid var(--line); }
 .integrated-reward-heading { align-items: flex-start; }
-.integrated-reward-heading h3 { margin: 5px 0 6px; font: 600 1.6rem/1.22 var(--font-display); }
-.integrated-reward-heading p:last-child { max-width: 720px; margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.65; }
+.integrated-reward-heading h3 { margin: 6px 0 8px; font: 730 1.6rem/1.16 var(--font-display); letter-spacing: -.03em; }
+.integrated-reward-heading p:last-child { max-width: 720px; margin: 0; color: var(--muted); font-size: .875rem; line-height: 1.68; }
 #cardRewardSettingsNotice { margin-bottom: 16px; }
 #cardRewardNodeList { margin-top: 12px; }
 

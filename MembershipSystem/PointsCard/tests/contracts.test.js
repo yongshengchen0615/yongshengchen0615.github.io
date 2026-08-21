@@ -340,7 +340,9 @@ test('visual system keeps typography readable and adapts member and admin worksp
   const lifecycleCss = read('admin/card-lifecycle.css');
 
   assert.match(userCss, /--font-sans:[^;]*"PingFang TC"[^;]*"Noto Sans TC"/);
-  assert.match(userCss, /--font-display:[^;]*"Songti TC"[^;]*"Noto Serif TC"/);
+  assert.match(userCss, /--font-display:[^;]*"Avenir Next"[^;]*"SF Pro Display"[^;]*"Noto Sans TC"/);
+  assert.match(userCss, /--font-mono:[^;]*"SFMono-Regular"[^;]*ui-monospace/);
+  assert.match(userCss, /font-feature-settings: "kern" 1, "liga" 1, "palt" 1/);
   assert.match(userCss, /@media \(min-width: 900px\)[^{]*\{[^}]*\.app-shell/);
   assert.match(userCss, /\.card-workspace \{ display: grid; grid-template-columns: minmax\(0, 1\.16fr\) minmax\(320px, \.84fr\)/);
   assert.match(userCss, /@media \(max-width: 480px\)[\s\S]*max-height: calc\(100dvh - max\(12px, env\(safe-area-inset-top\)\)\)/);
@@ -351,7 +353,9 @@ test('visual system keeps typography readable and adapts member and admin worksp
   assert.match(adminCss, /\.form-grid input[^\{]*\{[^}]*min-height: 48px;[^}]*font-size: 1rem;/);
   assert.match(adminCss, /@media \(min-width: 1180px\)/);
   assert.match(adminCss, /@media \(max-width: 760px\) and \(orientation: landscape\)/);
-  assert.match(lifecycleCss, /font: 600 1\.6rem\/1\.22 var\(--font-display\)/);
+  assert.match(adminCss, /--font-display:[^;]*"Avenir Next"[^;]*"SF Pro Display"[^;]*"Noto Sans TC"/);
+  assert.match(adminCss, /--font-mono:[^;]*"SFMono-Regular"[^;]*ui-monospace/);
+  assert.match(lifecycleCss, /font: 730 1\.6rem\/1\.16 var\(--font-display\)/);
 });
 
 test('member ticket dialog stays viewport anchored and keeps the QR scan action visible', () => {
