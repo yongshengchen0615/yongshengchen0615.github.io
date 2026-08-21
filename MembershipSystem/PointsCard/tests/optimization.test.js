@@ -265,10 +265,10 @@ test('member boot overlaps critical downloads and allows the public config respo
   const redirect = read('redirect.js');
   const common = read('shared/common.js');
 
-  assert.match(entry, /rel="preconnect" href="https:\/\/static\.line-scdn\.net"/);
   assert.match(entry, /rel="preload" href="\.\/shared\/config\.json" as="fetch"/);
-  assert.match(entry, /<script defer src="https:\/\/static\.line-scdn\.net\/liff\/edge\/2\/sdk\.js"><\/script>/);
+  assert.match(entry, /<script defer src="\.\/vendor\/liff-client\.js"><\/script>/);
   assert.match(member, /rel="preload" href="\.\.\/shared\/config\.json" as="fetch"/);
+  assert.match(member, /<script defer src="\.\.\/vendor\/liff-client\.js"><\/script>/);
   assert.match(member, /<script defer src="\.\.\/shared\/common\.js"><\/script>/);
   assert.match(member, /<script defer src="\.\/app\.js"><\/script>/);
   assert.doesNotMatch(redirect, /cache:\s*'no-store'/);
@@ -309,7 +309,7 @@ test('read-only transport deduplicates concurrent calls and retries one transien
     AbortController,
     URL,
     crypto: { getRandomValues: (array) => array.fill(7) },
-    liff: {
+    PointsCardLiff: {
       init: async () => {},
       isLoggedIn: () => true,
       isInClient: () => false,

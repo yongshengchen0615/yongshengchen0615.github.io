@@ -2,7 +2,14 @@
 
 `PointsCard` 採用 GitHub Pages + LINE LIFF + Google Apps Script + Google Sheets 架構，提供會員集點、優惠券、抽獎券、店家確認 QR 與管理端功能。
 
-目前程式版本：`2.2.0`。
+目前用戶端版本：`2.2.1`；本次未變更的 GAS API 版本維持 `2.2.0`。
+
+## 2.2.1 重點
+
+- LIFF 改用固定 `@line/liff 2.29.2` 的 pluggable bundle，只包含登入、ID Token 與 `scanCodeV2` 所需模組。
+- 不再直接載入會使用動態 JavaScript 的完整 CDN SDK；建置時將 `scanCodeV2` 子視窗的 `iframe.eval()` 改為等價的 DOM form 建立流程，本地 bundle 不含 `eval()` 或 `new Function()`，因此不需要在 CSP 加入 `'unsafe-eval'`。
+- 會員頁的 `frame-src` 與 `form-action` 只開放 `https://liff-subwindow.line.me`，供電腦瀏覽器的 LINE 掃碼子視窗使用。
+- LIFF bundle 從完整 CDN SDK 約 126 KB 降至約 84 KB，並以 lockfile 固定直接與遞迴相依版本。
 
 ## 2.2.0 重點
 
@@ -227,11 +234,18 @@ admin.reward-confirm.delete
 
 ```text
 PointsCard/
+├── package.json
+├── package-lock.json
 ├── index.html
 ├── redirect.js
+├── scripts/
+│   └── build-liff.mjs
 ├── shared/
 │   ├── common.js
-│   └── config.json
+│   ├── config.json
+│   └── liff-client.entry.js
+├── vendor/
+│   └── liff-client.js
 ├── user/
 │   ├── index.html
 │   ├── app.js
@@ -364,6 +378,8 @@ setPointsCardAdmin('Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', true);
 ## 本機驗證
 
 ```bash
+npm --prefix PointsCard ci
+npm --prefix PointsCard run build:liff
 node --check PointsCard/redirect.js
 node --check PointsCard/shared/common.js
 node --check PointsCard/user/app.js

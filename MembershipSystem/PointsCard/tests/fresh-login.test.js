@@ -58,7 +58,7 @@ function createLoginHarness(options) {
     head: { append() {} }
   };
   const window = {
-    liff,
+    PointsCardLiff: liff,
     location,
     history: {
       replaceState(_state, _title, value) { currentHref = new URL(value, currentHref).href; }

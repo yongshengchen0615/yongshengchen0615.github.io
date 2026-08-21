@@ -1,0 +1,14 @@
+{
+  "name": "points-card-client",
+  "version": "2.2.1",
+  "private": true,
+  "scripts": {
+    "build:liff": "node scripts/build-liff.mjs"
+  },
+  "dependencies": {
+    "@line/liff": "2.29.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9"
+  }
+}

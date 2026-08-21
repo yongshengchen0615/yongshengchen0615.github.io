@@ -452,8 +452,9 @@
   }
 
   async function scanAppUrl(queryName, errorMessage) {
-    if (!window.liff || typeof liff.scanCodeV2 !== 'function') throw new Error('目前環境不支援相機掃描，請使用支援掃碼的 LINE LIFF 開啟。');
-    const result = await liff.scanCodeV2();
+    const liffClient = window.PointsCardLiff;
+    if (!liffClient || typeof liffClient.scanCodeV2 !== 'function') throw new Error('目前環境不支援相機掃描，請使用支援掃碼的 LINE LIFF 開啟。');
+    const result = await liffClient.scanCodeV2();
     const raw = String(result && result.value || '').trim();
     let scannedUrl;
     try { scannedUrl = new URL(raw); }

@@ -21,7 +21,7 @@
   const NativeURLSearchParams = window.URLSearchParams;
   const NativeAbortController = window.AbortController;
   const cryptoClient = window.crypto;
-  const liffClient = window.liff;
+  const liffClient = window.PointsCardLiff;
 
   let configPromise = null;
   let authenticatedIdToken = '';

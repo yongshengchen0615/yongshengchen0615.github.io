@@ -2,6 +2,7 @@
   'use strict';
 
   const status = document.getElementById('status');
+  const liffClient = window.PointsCardLiff;
 
   function validStampCode(value) {
     const code = String(value || '').trim();
@@ -14,6 +15,7 @@
   }
 
   try {
+    if (!liffClient) throw new Error('LINE LIFF SDK 尚未完成載入。');
     const response = await fetch('./shared/config.json', {
       method: 'GET',
       credentials: 'same-origin',
@@ -28,7 +30,7 @@
       throw new Error('USER_LIFF_ID 尚未設定。');
     }
 
-    await liff.init({ liffId: userLiffId });
+    await liffClient.init({ liffId: userLiffId });
     const current = new URL(window.location.href);
     if (current.searchParams.has('liff.state')) {
       status.textContent = '正在完成 LINE 導向…';
