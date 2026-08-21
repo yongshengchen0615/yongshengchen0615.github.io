@@ -2,11 +2,18 @@
 
 `PointsCard` 採用 GitHub Pages + LINE LIFF + Google Apps Script + Google Sheets 架構，提供會員集點、優惠券、抽獎券、店家確認 QR 與管理端功能。
 
-目前程式版本：`2.1.2`。
+目前程式版本：`2.1.3`。
+
+## 2.1.3 重點
+
+- 修正從 LINE 內直接開啟管理端時，已登入狀態被強制登出後卡在登入導向、導致管理端無法開啟的問題。
+- 會員端與管理端每次載入仍會重新執行 `liff.init()`、取得當次 ID Token，且 GAS 會在每個 API request 重新驗證；已有有效 LINE 登入時不再重複登出。
+- 未登入時才執行 `liff.login()`；外部瀏覽器憑證過期時，依 LINE 建議先登出並重新載入，再進入登入流程。
+- 用戶端與管理端分別使用 `USER_LIFF_ID`、`ADMIN_LIFF_ID`；管理端產生的會員集點／票券 QR 一律使用 `USER_LIFF_ID`。
 
 ## 2.1.2 重點
 
-- 會員端與管理端每次重新進入時都重新建立 LIFF 驗證；外部瀏覽器與 LINE in-app browser 會先登出再登入。
+- 會員端與管理端每次重新進入時都重新建立 LIFF 驗證；此版曾在外部瀏覽器與 LINE in-app browser 強制先登出再登入，已由 2.1.3 修正。
 - LINE 官方不允許在 LIFF browser 內手動呼叫 `liff.login()`，因此該環境由每次頁面載入的 `liff.init()` 自動完成本次登入並取得 ID Token。
 - 登入 redirect 使用短效且綁定會員／管理頁面路徑的一次性標記，避免 callback 形成無限登入循環；標記不保存 ID Token。
 
@@ -330,7 +337,10 @@ GAS Web App 必須允許 LIFF 使用者連線；真正會員驗證仍由 LINE ID
 
 ### 3. 設定 LIFF
 
-- Endpoint URL 指向部署後的 `PointsCard/` 根目錄。
+- 在 `shared/config.json` 分別設定 `USER_LIFF_ID` 與 `ADMIN_LIFF_ID`；舊版 `LIFF_ID` 僅作為用戶端設定的相容 fallback。
+- 用戶端 LIFF Endpoint URL 指向部署後的 `PointsCard/user/`（或 `PointsCard/user/index.html`）。
+- 管理端 LIFF Endpoint URL 指向部署後的 `PointsCard/admin/`（或 `PointsCard/admin/index.html`）。
+- 在 LINE 中分別使用 `https://liff.line.me/{USER_LIFF_ID}` 與 `https://liff.line.me/{ADMIN_LIFF_ID}` 開啟兩端，不要把管理端路徑接在用戶端 LIFF URL 後方。
 - Scope 至少包含 `openid` 與 `profile`。
 - 相機掃碼需要支援 `liff.scanCodeV2()` 的 LINE LIFF 環境。
 

@@ -436,7 +436,7 @@
     try { scannedUrl = new URL(raw); }
     catch (_) { throw new Error(errorMessage); }
     const config = await PointsCard.loadConfig();
-    const expectedLiffPath = '/' + encodeURIComponent(config.LIFF_ID) + '/';
+    const expectedLiffPath = '/' + encodeURIComponent(config.USER_LIFF_ID) + '/';
     const currentRoot = new URL('../', window.location.href);
     const isLiffUrl = scannedUrl.origin === 'https://liff.line.me' && scannedUrl.pathname === expectedLiffPath;
     const isCurrentAppUrl = scannedUrl.origin === currentRoot.origin && scannedUrl.pathname.indexOf(currentRoot.pathname) === 0;

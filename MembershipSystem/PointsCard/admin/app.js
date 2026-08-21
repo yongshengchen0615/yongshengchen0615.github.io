@@ -827,7 +827,7 @@
 
   async function buildStampUrl(shareCode) {
     const config = await PointsCard.loadConfig();
-    const url = new URL('https://liff.line.me/' + encodeURIComponent(config.LIFF_ID) + '/');
+    const url = new URL('https://liff.line.me/' + encodeURIComponent(config.USER_LIFF_ID) + '/');
     url.searchParams.set('stamp', shareCode);
     return url.href;
   }
@@ -977,7 +977,7 @@
 
   async function buildRewardConfirmationQrPayload(shareCode) {
     const config = await PointsCard.loadConfig();
-    const url = new URL('https://liff.line.me/' + encodeURIComponent(config.LIFF_ID) + '/');
+    const url = new URL('https://liff.line.me/' + encodeURIComponent(config.USER_LIFF_ID) + '/');
     url.searchParams.set('rewardConfirm', shareCode);
     return url.href;
   }

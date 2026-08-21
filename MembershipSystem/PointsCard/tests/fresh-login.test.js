@@ -8,6 +8,10 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const commonSource = fs.readFileSync(path.join(root, 'shared/common.js'), 'utf8');
+const redirectSource = fs.readFileSync(path.join(root, 'redirect.js'), 'utf8');
+const userSource = fs.readFileSync(path.join(root, 'user/app.js'), 'utf8');
+const adminSource = fs.readFileSync(path.join(root, 'admin/app.js'), 'utf8');
+const publicConfig = JSON.parse(fs.readFileSync(path.join(root, 'shared/config.json'), 'utf8'));
 
 function createStore(seed) {
   const values = new Map(seed ? Array.from(seed.entries()) : []);
@@ -24,19 +28,24 @@ function createStore(seed) {
 function createLoginHarness(options) {
   let currentHref = options.href;
   const store = options.store || createStore();
-  const calls = { init: 0, login: 0, logout: 0, getIdToken: 0 };
+  const calls = { init: 0, login: 0, logout: 0, getIdToken: 0, locationReplace: 0 };
   const location = {
     get href() { return currentHref; },
     set href(value) { currentHref = new URL(value, currentHref).href; },
     get origin() { return new URL(currentHref).origin; },
-    replace(value) { currentHref = new URL(value, currentHref).href; }
+    replace(value) {
+      calls.locationReplace += 1;
+      currentHref = new URL(value, currentHref).href;
+    }
   };
   const liff = {
-    async init() { calls.init += 1; },
+    async init(config) { calls.init += 1; calls.liffId = config.liffId; },
     isInClient: () => Boolean(options.inClient),
     isLoggedIn: () => options.loggedIn !== false,
     getIDToken() { calls.getIdToken += 1; return 'fresh-id-token'; },
-    getDecodedIDToken: () => ({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+    getDecodedIDToken: () => ({
+      exp: Math.floor(Date.now() / 1000) + (options.tokenExpirySeconds == null ? 3600 : options.tokenExpirySeconds)
+    }),
     logout() { calls.logout += 1; },
     login(config) { calls.login += 1; calls.redirectUri = config.redirectUri; }
   };
@@ -58,10 +67,12 @@ function createLoginHarness(options) {
     fetch: async () => ({
       ok: true,
       async json() {
-        return {
+        return Object.assign({
+          USER_LIFF_ID: '1234567890-user',
+          ADMIN_LIFF_ID: '1234567890-admin',
           LIFF_ID: '1234567890-test',
           GAS_WEB_APP_URL: 'https://script.google.com/macros/s/test/exec'
-        };
+        }, options.config || {});
       }
     }),
     URLSearchParams,
@@ -95,53 +106,36 @@ function createLoginHarness(options) {
   return { window, store, calls, href: () => currentHref };
 }
 
-test('member and admin external entries force a new LINE login', async () => {
-  for (const surface of ['user', 'admin']) {
+test('member and admin initialize their own LIFF app and reuse a valid LINE session', async () => {
+  for (const surface of [
+    { path: 'user', liffId: '1234567890-user' },
+    { path: 'admin', liffId: '1234567890-admin' }
+  ]) {
     const harness = createLoginHarness({
-      href: `https://example.com/PointsCard/${surface}/`,
+      href: `https://example.com/PointsCard/${surface.path}/`,
       inClient: false,
       loggedIn: true
     });
-    assert.equal(await harness.window.PointsCard.ensureLiffLogin(), false);
+    assert.equal(await harness.window.PointsCard.ensureLiffLogin(), true);
     assert.equal(harness.calls.init, 1);
-    assert.equal(harness.calls.logout, 1);
-    assert.equal(harness.calls.login, 1);
-    assert.equal(harness.calls.getIdToken, 0);
-    const pending = JSON.parse(harness.store.values.get('points-card.liff.fresh-login.pending'));
-    assert.equal(pending.surface, `/PointsCard/${surface}/`);
+    assert.equal(harness.calls.liffId, surface.liffId);
+    assert.equal(harness.calls.logout, 0);
+    assert.equal(harness.calls.login, 0);
+    assert.equal(harness.calls.getIdToken, 1);
   }
 });
 
-test('fresh external login callback is accepted once without a redirect loop', async () => {
-  const first = createLoginHarness({
-    href: 'https://example.com/PointsCard/user/',
+test('logged-out external admin entry starts LINE Login with the admin callback URL', async () => {
+  const harness = createLoginHarness({
+    href: 'https://example.com/PointsCard/admin/',
     inClient: false,
-    loggedIn: true
+    loggedIn: false
   });
-  assert.equal(await first.window.PointsCard.ensureLiffLogin(), false);
-
-  const callback = createLoginHarness({
-    href: 'https://example.com/PointsCard/user/?code=callback-code&state=callback-state',
-    inClient: false,
-    loggedIn: true,
-    store: first.store
-  });
-  assert.equal(await callback.window.PointsCard.ensureLiffLogin(), true);
-  assert.equal(callback.calls.logout, 0);
-  assert.equal(callback.calls.login, 0);
-  assert.equal(callback.calls.getIdToken, 1);
-  assert.equal(callback.store.values.has('points-card.liff.fresh-login.pending'), false);
-  assert.equal(callback.href(), 'https://example.com/PointsCard/user/');
-
-  const reentry = createLoginHarness({
-    href: 'https://example.com/PointsCard/user/',
-    inClient: false,
-    loggedIn: true,
-    store: callback.store
-  });
-  assert.equal(await reentry.window.PointsCard.ensureLiffLogin(), false);
-  assert.equal(reentry.calls.logout, 1);
-  assert.equal(reentry.calls.login, 1);
+  assert.equal(await harness.window.PointsCard.ensureLiffLogin(), false);
+  assert.equal(harness.calls.liffId, '1234567890-admin');
+  assert.equal(harness.calls.logout, 0);
+  assert.equal(harness.calls.login, 1);
+  assert.equal(harness.calls.redirectUri, 'https://example.com/PointsCard/admin/');
 });
 
 test('LIFF browser uses its mandatory automatic login on every initialization', async () => {
@@ -155,40 +149,36 @@ test('LIFF browser uses its mandatory automatic login on every initialization', 
   assert.equal(harness.calls.logout, 0);
   assert.equal(harness.calls.login, 0);
   assert.equal(harness.calls.getIdToken, 1);
+  assert.equal(harness.calls.liffId, '1234567890-user');
 });
 
-test('a member callback marker cannot bypass the admin fresh login', async () => {
-  const store = createStore();
-  store.values.set('points-card.liff.fresh-login.pending', JSON.stringify({
-    surface: '/PointsCard/user/',
-    startedAt: Date.now()
-  }));
+test('external login callback is accepted after successful LIFF initialization without storage coupling', async () => {
   const harness = createLoginHarness({
     href: 'https://example.com/PointsCard/admin/?code=callback-code&state=callback-state',
     inClient: false,
-    loggedIn: true,
-    store
+    loggedIn: true
   });
-  assert.equal(await harness.window.PointsCard.ensureLiffLogin(), false);
-  assert.equal(harness.calls.logout, 1);
-  assert.equal(harness.calls.login, 1);
-  const replacement = JSON.parse(store.values.get('points-card.liff.fresh-login.pending'));
-  assert.equal(replacement.surface, '/PointsCard/admin/');
+  assert.equal(await harness.window.PointsCard.ensureLiffLogin(), true);
+  assert.equal(harness.calls.logout, 0);
+  assert.equal(harness.calls.login, 0);
+  assert.equal(harness.href(), 'https://example.com/PointsCard/admin/');
 });
 
-test('login callback marker stores only route and time, never credentials', async () => {
+test('expired external token logs out and reloads before starting another login', async () => {
   const harness = createLoginHarness({
     href: 'https://example.com/PointsCard/admin/',
     inClient: false,
-    loggedIn: true
+    loggedIn: true,
+    tokenExpirySeconds: 0
   });
-  await harness.window.PointsCard.ensureLiffLogin();
-  const serialized = harness.store.values.get('points-card.liff.fresh-login.pending');
-  assert.doesNotMatch(serialized, /fresh-id-token|idToken|accessToken/i);
-  assert.deepEqual(Object.keys(JSON.parse(serialized)).sort(), ['startedAt', 'surface']);
+  assert.equal(await harness.window.PointsCard.ensureLiffLogin(), false);
+  assert.equal(harness.calls.logout, 1);
+  assert.equal(harness.calls.login, 0);
+  assert.equal(harness.calls.locationReplace, 1);
+  assert.equal(harness.href(), 'https://example.com/PointsCard/admin/');
 });
 
-test('fresh login fails closed instead of looping when session storage is unavailable', async () => {
+test('valid current login works even when session storage is unavailable', async () => {
   const blockedStore = {
     values: new Map(),
     api: {
@@ -203,10 +193,42 @@ test('fresh login fails closed instead of looping when session storage is unavai
     loggedIn: true,
     store: blockedStore
   });
-  await assert.rejects(
-    harness.window.PointsCard.ensureLiffLogin(),
-    /無法安全保存重新登入狀態/
-  );
+  assert.equal(await harness.window.PointsCard.ensureLiffLogin(), true);
   assert.equal(harness.calls.logout, 0);
   assert.equal(harness.calls.login, 0);
+});
+
+test('admin requires its own configured LIFF ID instead of falling back to the user ID', async () => {
+  const harness = createLoginHarness({
+    href: 'https://example.com/PointsCard/admin/',
+    inClient: true,
+    loggedIn: true,
+    config: { ADMIN_LIFF_ID: 'YOUR_ADMIN_LIFF_ID' }
+  });
+  await assert.rejects(
+    harness.window.PointsCard.ensureLiffLogin(),
+    /ADMIN_LIFF_ID 尚未設定/
+  );
+  assert.equal(harness.calls.init, 0);
+});
+
+test('legacy LIFF_ID remains a user-only compatibility fallback', async () => {
+  const harness = createLoginHarness({
+    href: 'https://example.com/PointsCard/user/',
+    inClient: true,
+    loggedIn: true,
+    config: { USER_LIFF_ID: '', LIFF_ID: '1234567890-legacy-user' }
+  });
+  assert.equal(await harness.window.PointsCard.ensureLiffLogin(), true);
+  assert.equal(harness.calls.liffId, '1234567890-legacy-user');
+});
+
+test('public config and generated member links keep user and admin LIFF IDs separated', () => {
+  assert.match(publicConfig.USER_LIFF_ID, /^\d+-[A-Za-z0-9_-]+$/);
+  assert.match(publicConfig.ADMIN_LIFF_ID, /^\d+-[A-Za-z0-9_-]+$/);
+  assert.notEqual(publicConfig.USER_LIFF_ID, publicConfig.ADMIN_LIFF_ID);
+  assert.match(redirectSource, /config\.USER_LIFF_ID \|\| config\.LIFF_ID/);
+  assert.match(userSource, /config\.USER_LIFF_ID/);
+  assert.equal((adminSource.match(/config\.USER_LIFF_ID/g) || []).length, 2);
+  assert.doesNotMatch(adminSource, /encodeURIComponent\(config\.LIFF_ID\)/);
 });

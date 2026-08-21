@@ -23,11 +23,12 @@
     });
     if (!response.ok) throw new Error('無法載入 LIFF 設定。');
     const config = await response.json();
-    if (!config || !config.LIFF_ID || config.LIFF_ID === 'YOUR_LIFF_ID') {
-      throw new Error('LIFF_ID 尚未設定。');
+    const userLiffId = String(config && (config.USER_LIFF_ID || config.LIFF_ID) || '').trim();
+    if (!userLiffId || /^YOUR_[A-Z0-9_]+$/i.test(userLiffId)) {
+      throw new Error('USER_LIFF_ID 尚未設定。');
     }
 
-    await liff.init({ liffId: String(config.LIFF_ID) });
+    await liff.init({ liffId: userLiffId });
     const current = new URL(window.location.href);
     if (current.searchParams.has('liff.state')) {
       status.textContent = '正在完成 LINE 導向…';

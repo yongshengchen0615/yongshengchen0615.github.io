@@ -2,13 +2,11 @@
   'use strict';
 
   const LOGIN_PENDING_KEY = 'points-card.login.pending';
-  const FRESH_LOGIN_PENDING_KEY = 'points-card.liff.fresh-login.pending';
   const INIT_RECOVERY_KEY = 'points-card.liff.recovery';
   const AUTH_REFRESH_KEY = 'points-card.liff.auth-refresh';
   const SELECTED_CARD_KEY = 'points-card.selected-card';
   const INIT_RECOVERY_COOLDOWN_MS = 60 * 1000;
   const AUTH_REFRESH_COOLDOWN_MS = 60 * 1000;
-  const FRESH_LOGIN_PENDING_MAX_MS = 5 * 60 * 1000;
   const ID_TOKEN_EXPIRY_SKEW_SECONDS = 30;
   const API_TIMEOUT_MS = 25000;
   const nativeFetch = window.fetch.bind(window);
@@ -127,6 +125,15 @@
     apiPreconnectOrigin = origin;
   }
 
+  function isAdminSurface() {
+    return /(?:^|\/)admin(?:\/index\.html)?\/?$/i.test(new URL(window.location.href).pathname);
+  }
+
+  function configuredLiffId(value) {
+    const liffId = String(value || '').trim();
+    return liffId && !/^YOUR_[A-Z0-9_]+$/i.test(liffId) ? liffId : '';
+  }
+
   async function loadConfig() {
     if (configPromise) return configPromise;
     configPromise = (async function () {
@@ -139,12 +146,21 @@
       });
       if (!response.ok) throw new Error('無法載入集點卡設定。');
       const config = await response.json();
-      const liffId = String(config && config.LIFF_ID || '').trim();
+      const legacyLiffId = configuredLiffId(config && config.LIFF_ID);
+      const userLiffId = configuredLiffId(config && config.USER_LIFF_ID) || legacyLiffId;
+      const adminLiffId = configuredLiffId(config && config.ADMIN_LIFF_ID);
+      const liffId = isAdminSurface() ? adminLiffId : userLiffId;
       const gasUrl = String(config && config.GAS_WEB_APP_URL || '').trim();
-      if (!liffId || liffId === 'YOUR_LIFF_ID') throw new Error('LIFF_ID 尚未設定。');
+      if (!userLiffId) throw new Error('USER_LIFF_ID 尚未設定。');
+      if (isAdminSurface() && !adminLiffId) throw new Error('ADMIN_LIFF_ID 尚未設定。');
       if (!/^https:\/\//i.test(gasUrl) || gasUrl === 'YOUR_GAS_WEB_APP_EXEC_URL') throw new Error('GAS Web App URL 尚未設定。');
       preconnectApi(gasUrl);
-      return Object.freeze({ LIFF_ID: liffId, GAS_WEB_APP_URL: gasUrl });
+      return Object.freeze({
+        LIFF_ID: liffId,
+        USER_LIFF_ID: userLiffId,
+        ADMIN_LIFF_ID: adminLiffId,
+        GAS_WEB_APP_URL: gasUrl
+      });
     })().catch(function (error) {
       configPromise = null;
       reportError(error, { source: 'config', action: 'loadConfig' });
@@ -213,38 +229,6 @@
     }));
   }
 
-  function currentLoginSurface() {
-    return new URL(window.location.href).pathname;
-  }
-
-  function writeFreshLoginPending() {
-    const serialized = JSON.stringify({
-      surface: currentLoginSurface(),
-      startedAt: Date.now()
-    });
-    writeSessionValue(FRESH_LOGIN_PENDING_KEY, serialized);
-    if (readSessionValue(FRESH_LOGIN_PENDING_KEY) !== serialized) {
-      throw new Error('瀏覽器無法安全保存重新登入狀態，請允許網站暫存資料後再試。');
-    }
-  }
-
-  function isFreshLoginCallback(hadInitArtifacts) {
-    if (!hadInitArtifacts) return false;
-    const raw = readSessionValue(FRESH_LOGIN_PENDING_KEY);
-    if (!raw) return false;
-    try {
-      const pending = JSON.parse(raw);
-      const age = Date.now() - Number(pending && pending.startedAt || 0);
-      const matches = pending && pending.surface === currentLoginSurface() &&
-        age >= 0 && age <= FRESH_LOGIN_PENDING_MAX_MS;
-      if (!matches) removeSessionValue(FRESH_LOGIN_PENDING_KEY);
-      return Boolean(matches);
-    } catch (_) {
-      removeSessionValue(FRESH_LOGIN_PENDING_KEY);
-      return false;
-    }
-  }
-
   function captureInitArtifacts() {
     const params = new URL(window.location.href).searchParams;
     return params.has('state') || params.has('code') || params.has('response') ||
@@ -300,13 +284,15 @@
     authenticatedIdToken = '';
     try {
       writePendingLogin();
-      writeFreshLoginPending();
-      if (forceRefresh && liffClient.isLoggedIn()) liffClient.logout();
+      if (forceRefresh && liffClient.isLoggedIn()) {
+        liffClient.logout();
+        window.location.replace(buildCanonicalAppUrl());
+        return false;
+      }
       liffClient.login({ redirectUri: buildCanonicalAppUrl() });
       return false;
     } catch (error) {
       loginInFlight = false;
-      removeSessionValue(FRESH_LOGIN_PENDING_KEY);
       if (forceRefresh) removeSessionValue(AUTH_REFRESH_KEY);
       throw error;
     }
@@ -326,15 +312,12 @@
 
     removeSessionValue(INIT_RECOVERY_KEY);
     if (liffClient.isLoggedIn()) {
-      const freshLoginCallback = isFreshLoginCallback(hadInitArtifacts);
-      if (!liffClient.isInClient() && !freshLoginCallback) return startExternalLogin(true);
       const idToken = liffClient.getIDToken();
       if (!idToken) throw new Error('LINE 已登入但無法取得 ID Token，請確認 LIFF 已啟用 openid scope。');
       if (!hasFreshIdToken()) return startExternalLogin(true);
       authenticatedIdToken = idToken;
       loginInFlight = false;
       removeSessionValue(AUTH_REFRESH_KEY);
-      removeSessionValue(FRESH_LOGIN_PENDING_KEY);
       canonicalizeAppUrl();
       removeSessionValue(LOGIN_PENDING_KEY);
       return true;
