@@ -9,6 +9,14 @@
   const AUTH_REFRESH_COOLDOWN_MS = 60 * 1000;
   const ID_TOKEN_EXPIRY_SKEW_SECONDS = 30;
   const API_TIMEOUT_MS = 25000;
+  const READ_API_TIMEOUT_MS = 12000;
+  const READ_API_MAX_ATTEMPTS = 2;
+  const READ_API_RETRY_DELAY_MS = 320;
+  const READ_ONLY_ACTIONS = new Set([
+    'member.me', 'reward.prepare', 'admin.summary', 'admin.cards.list',
+    'admin.members.search', 'admin.stamps.list', 'admin.reward-confirmations.list',
+    'admin.stamp.open', 'admin.reward-confirm.open'
+  ]);
   const nativeFetch = window.fetch.bind(window);
   const NativeURLSearchParams = window.URLSearchParams;
   const NativeAbortController = window.AbortController;
@@ -19,6 +27,7 @@
   let authenticatedIdToken = '';
   let loginInFlight = false;
   let apiPreconnectOrigin = '';
+  const readRequestPromises = new Map();
 
   function readSessionValue(key) {
     try { return window.sessionStorage.getItem(key) || ''; }
@@ -337,44 +346,63 @@
     } catch (_) {}
   }
 
-  async function callApi(action, payload) {
-    const activeConfig = await loadConfig();
-    if (!authenticatedIdToken) throw new Error('LINE 登入狀態尚未建立，請重新開啟此頁。');
-    if (!hasFreshIdToken()) {
-      startExternalLogin(true);
-      throw new Error('LINE 登入憑證已過期，正在重新登入。');
-    }
+  function wait(milliseconds) {
+    return new Promise(function (resolve) { window.setTimeout(resolve, milliseconds); });
+  }
 
-    const safeAction = String(action || '');
+  async function fetchApiResponse(activeConfig, form, readOnly) {
+    const attempts = readOnly ? READ_API_MAX_ATTEMPTS : 1;
+    let lastError = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const controller = new NativeAbortController();
+      const timeout = window.setTimeout(function () { controller.abort(); }, readOnly ? READ_API_TIMEOUT_MS : API_TIMEOUT_MS);
+      try {
+        const response = await nativeFetch(activeConfig.GAS_WEB_APP_URL, {
+          method: 'POST',
+          body: form,
+          credentials: 'omit',
+          redirect: 'follow',
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          signal: controller.signal
+        });
+        if (readOnly && attempt < attempts && [502, 503, 504].indexOf(response.status) >= 0) {
+          await wait(READ_API_RETRY_DELAY_MS * attempt);
+          continue;
+        }
+        return response;
+      } catch (error) {
+        lastError = error;
+        if (!readOnly || attempt >= attempts) throw error;
+        await wait(READ_API_RETRY_DELAY_MS * attempt);
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+    throw lastError || new Error('無法連線到集點服務。');
+  }
+
+  async function executeApiCall(activeConfig, safeAction, requestPayload, readOnly) {
     const startedAt = monotonicNow();
-    const requestPayload = Object.assign({}, payload || {});
-    const selectedCardId = getSelectedCardId();
-    if (selectedCardId && !requestPayload.cardId) requestPayload.cardId = selectedCardId;
     const form = new NativeURLSearchParams();
     form.set('action', safeAction);
     form.set('idToken', authenticatedIdToken);
     form.set('payload', JSON.stringify(requestPayload));
-    const controller = new NativeAbortController();
-    const timeout = window.setTimeout(function () { controller.abort(); }, API_TIMEOUT_MS);
     let response;
     try {
-      response = await nativeFetch(activeConfig.GAS_WEB_APP_URL, {
-        method: 'POST',
-        body: form,
-        credentials: 'omit',
-        redirect: 'follow',
-        cache: 'no-store',
-        referrerPolicy: 'no-referrer',
-        signal: controller.signal
-      });
+      response = await fetchApiResponse(activeConfig, form, readOnly);
     } catch (error) {
       const publicError = error && error.name === 'AbortError'
         ? new Error('集點服務回應逾時；再次嘗試會沿用相同請求，不會重複集點。')
-        : new Error('無法連線到集點服務，請確認 GAS Web App 已正確部署。');
+        : new Error('無法連線到集點服務，請確認網路後再試。');
       reportError(publicError, { source: 'api-network', action: safeAction, durationMs: monotonicNow() - startedAt });
       throw publicError;
-    } finally {
-      window.clearTimeout(timeout);
+    }
+
+    if (!response.ok) {
+      const error = new Error('集點服務暫時無法處理此要求，請稍後再試。');
+      reportError(error, { source: 'api-http', action: safeAction, durationMs: monotonicNow() - startedAt });
+      throw error;
     }
 
     const text = await response.text();
@@ -396,6 +424,29 @@
     }
     rememberSelectedCardFromResponse(data.data);
     return data.data;
+  }
+
+  async function callApi(action, payload) {
+    const activeConfig = await loadConfig();
+    if (!authenticatedIdToken) throw new Error('LINE 登入狀態尚未建立，請重新開啟此頁。');
+    if (!hasFreshIdToken()) {
+      startExternalLogin(true);
+      throw new Error('LINE 登入憑證已過期，正在重新登入。');
+    }
+
+    const safeAction = String(action || '');
+    const requestPayload = Object.assign({}, payload || {});
+    const selectedCardId = getSelectedCardId();
+    if (selectedCardId && !requestPayload.cardId) requestPayload.cardId = selectedCardId;
+    const readOnly = READ_ONLY_ACTIONS.has(safeAction);
+    if (!readOnly) return executeApiCall(activeConfig, safeAction, requestPayload, false);
+
+    const requestKey = safeAction + '\n' + JSON.stringify(requestPayload);
+    if (readRequestPromises.has(requestKey)) return readRequestPromises.get(requestKey);
+    const request = executeApiCall(activeConfig, safeAction, requestPayload, true);
+    readRequestPromises.set(requestKey, request);
+    try { return await request; }
+    finally { readRequestPromises.delete(requestKey); }
   }
 
   function formatDate(value, fallback) {

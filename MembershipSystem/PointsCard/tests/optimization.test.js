@@ -276,6 +276,149 @@ test('member boot overlaps critical downloads and allows the public config respo
   assert.match(common, /function preconnectApi\(gasUrl\)/);
 });
 
+test('read-only transport deduplicates concurrent calls and retries one transient failure without retrying mutations', async () => {
+  const common = read('shared/common.js');
+  const storage = new Map();
+  let apiCalls = 0;
+  let failNextApiCall = true;
+  const nativeSetTimeout = setTimeout;
+  const window = {
+    fetch: async (url) => {
+      if (String(url).includes('config.json')) {
+        return {
+          ok: true,
+          json: async () => ({
+            USER_LIFF_ID: '123-user',
+            ADMIN_LIFF_ID: '123-admin',
+            GAS_WEB_APP_URL: 'https://script.google.com/macros/s/test/exec'
+          })
+        };
+      }
+      apiCalls += 1;
+      if (failNextApiCall) {
+        failNextApiCall = false;
+        throw new TypeError('temporary network failure');
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true, data: { member: { selectedCardId: '' } } })
+      };
+    },
+    URLSearchParams,
+    AbortController,
+    URL,
+    crypto: { getRandomValues: (array) => array.fill(7) },
+    liff: {
+      init: async () => {},
+      isLoggedIn: () => true,
+      isInClient: () => false,
+      getIDToken: () => 'header.payload.signature',
+      getDecodedIDToken: () => ({ exp: Math.floor(Date.now() / 1000) + 3600 })
+    },
+    sessionStorage: {
+      getItem: (key) => storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: (key) => storage.delete(key)
+    },
+    location: {
+      href: 'https://example.test/PointsCard/user/',
+      origin: 'https://example.test',
+      replace() {}
+    },
+    history: { replaceState() {} },
+    performance: { now: () => Date.now() },
+    setTimeout(callback, delay) {
+      if (delay < 1000) return nativeSetTimeout(callback, 0);
+      return 1;
+    },
+    clearTimeout() {},
+    document: {
+      createElement: () => ({}),
+      head: { append() {} }
+    },
+    console
+  };
+  const context = { window, document: window.document, URL, URLSearchParams, AbortController, Uint8Array, Intl, Date, Map, Set, Object, String, Number, JSON, Array, Error, TypeError, console };
+  vm.createContext(context);
+  vm.runInContext(common, context);
+
+  assert.equal(await window.PointsCard.ensureLiffLogin(), true);
+  await Promise.all([
+    window.PointsCard.callApi('member.me'),
+    window.PointsCard.callApi('member.me')
+  ]);
+  assert.equal(apiCalls, 2, 'one shared read request should make one failed attempt and one retry');
+
+  failNextApiCall = true;
+  await assert.rejects(() => window.PointsCard.callApi('stamp.record', {
+    stampCode: 'a'.repeat(64), requestId: 'b'.repeat(32)
+  }), /無法連線/);
+  assert.equal(apiCalls, 3, 'a mutation must not be retried automatically');
+});
+
+test('member projection uses bounded exact lookups and invalidates lookup snapshots after writes', () => {
+  const source = read('gas/MultiCardStorage.gs') + '\n;globalThis.__lookupTest = { readMultiCardObjectsByField_, invalidateMultiCardSheet_ };';
+  let finderReads = 0;
+  let rowReads = 0;
+  const rows = {
+    10: ['P-1', 'CARD-A', 'U1', 'PC-1', 4, 0, 'created', 'updated'],
+    20: ['P-2', 'CARD-B', 'U1', 'PC-1', 8, 1, 'created', 'updated']
+  };
+  const sheet = {
+    getName: () => 'MemberCardProgress',
+    getLastRow: () => 1000,
+    getRange(row, column, rowCount, columnCount) {
+      if (row === 2 && column === 3 && rowCount === 999 && columnCount === 1) {
+        return {
+          createTextFinder: () => ({
+            matchEntireCell() { return this; },
+            useRegularExpression() { return this; },
+            findAll() {
+              finderReads += 1;
+              return [{ getRow: () => 10 }, { getRow: () => 20 }];
+            }
+          })
+        };
+      }
+      return { getValues: () => { rowReads += 1; return [rows[row]]; } };
+    }
+  };
+  const context = { Array, Date, JSON, Math, Number, Object, String, console };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+
+  const first = context.__lookupTest.readMultiCardObjectsByField_(sheet, 'memberLineUserId', 'U1');
+  const second = context.__lookupTest.readMultiCardObjectsByField_(sheet, 'memberLineUserId', 'U1');
+  assert.equal(first.length, 2);
+  assert.equal(second.length, 2);
+  assert.equal(finderReads, 1, 'the second lookup should use the request-scoped exact-match cache');
+  assert.equal(rowReads, 2, 'only matching rows should be materialized');
+
+  context.__lookupTest.invalidateMultiCardSheet_(sheet);
+  context.__lookupTest.readMultiCardObjectsByField_(sheet, 'memberLineUserId', 'U1');
+  assert.equal(finderReads, 2, 'a write invalidation must clear exact-match snapshots');
+});
+
+test('member and admin refresh flows preserve rendered data and card management stays in-page', () => {
+  const memberHtml = read('user/index.html');
+  const memberScript = read('user/app.js');
+  const adminHtml = read('admin/index.html');
+  const adminScript = read('admin/app.js');
+  const lifecycle = read('admin/card-lifecycle.js');
+
+  assert.match(memberHtml, /id="syncStatus"[^>]+role="status"/);
+  assert.match(memberScript, /更新失敗，保留上次資料/);
+  assert.match(memberScript, /PointsCard\.setSelectedCardId\(previousCardId\)/);
+  assert.match(adminHtml, /id="adminSyncStatus"[^>]+role="status"/);
+  assert.match(adminScript, /function refreshAdminContext/);
+  assert.match(adminScript, /points-card:admin-card-changed/);
+  assert.match(lifecycle, /notifyAdminCardChanged\('selection'\)/);
+  assert.match(lifecycle, /notifyAdminCardChanged\('saved'\)/);
+  assert.match(lifecycle, /notifyAdminCardChanged\('deleted'\)/);
+  assert.doesNotMatch(lifecycle, /window\.location\.reload\(\)/);
+});
+
 test('admin data is split into independently authorized query routes', () => {
   const code = read('gas/Code.gs');
   const admin = read('admin/app.js');

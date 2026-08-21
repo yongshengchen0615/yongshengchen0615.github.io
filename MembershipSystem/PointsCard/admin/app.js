@@ -124,6 +124,25 @@
     $('errorState').classList.remove('hidden');
   }
 
+  function adminSyncedLabel() {
+    return '已同步 ' + new Intl.DateTimeFormat('zh-TW', {
+      hour: '2-digit', minute: '2-digit', hour12: false
+    }).format(new Date());
+  }
+
+  function setAdminSyncState(state, message) {
+    const status = $('adminSyncStatus');
+    status.dataset.state = state;
+    status.textContent = message;
+  }
+
+  function setPanelLoading(tabName, loading) {
+    const panel = document.querySelector('[data-admin-panel="' + tabName + '"]');
+    if (!panel) return;
+    panel.classList.toggle('is-loading', loading);
+    panel.setAttribute('aria-busy', String(loading));
+  }
+
   function showToast(message) {
     window.clearTimeout(toastTimer);
     $('toast').textContent = message;
@@ -258,20 +277,46 @@
   }
 
   async function loadAdminTab(tabName, force) {
-    if (tabName === 'overview' || tabName === 'reward-nodes') {
-      if (force || !loaded.summary) await loadSummary();
-      return;
+    const needsLoad = (tabName === 'overview' || tabName === 'reward-nodes') ? (force || !loaded.summary)
+      : tabName === 'members' ? (force || !loaded.members)
+        : tabName === 'stamp-qr' ? (force || !loaded.vouchers)
+          : tabName === 'reward-confirmations' ? (force || !loaded.rewardConfirmations) : false;
+    if (!needsLoad) return;
+    setPanelLoading(tabName, true);
+    setAdminSyncState('loading', '正在載入資料');
+    try {
+      if (tabName === 'overview' || tabName === 'reward-nodes') await loadSummary();
+      else if (tabName === 'members') await loadMembers($('memberSearch').value.trim());
+      else if (tabName === 'stamp-qr') await loadVouchers();
+      else if (tabName === 'reward-confirmations') await loadRewardConfirmations();
+      setAdminSyncState('synced', adminSyncedLabel());
+    } catch (error) {
+      setAdminSyncState('error', '載入失敗，保留上次資料');
+      throw error;
+    } finally {
+      setPanelLoading(tabName, false);
     }
-    if (tabName === 'members') {
-      if (force || !loaded.members) await loadMembers($('memberSearch').value.trim());
-      return;
-    }
-    if (tabName === 'stamp-qr') {
-      if (force || !loaded.vouchers) await loadVouchers();
-      return;
-    }
-    if (tabName === 'reward-confirmations') {
-      if (force || !loaded.rewardConfirmations) await loadRewardConfirmations();
+  }
+
+  async function refreshAdminContext() {
+    loaded.summary = false;
+    loaded.members = false;
+    loaded.vouchers = false;
+    loaded.rewardConfirmations = false;
+    setAdminSyncState('loading', '正在更新資料');
+    setPanelLoading(activeAdminTab, true);
+    try {
+      const requests = [loadSummary()];
+      if (activeAdminTab !== 'overview' && activeAdminTab !== 'reward-nodes') {
+        requests.push(loadAdminTab(activeAdminTab, true));
+      }
+      await Promise.all(requests);
+      setAdminSyncState('synced', adminSyncedLabel());
+    } catch (error) {
+      setAdminSyncState('error', '更新失敗，保留上次資料');
+      throw error;
+    } finally {
+      setPanelLoading(activeAdminTab, false);
     }
   }
 
@@ -1080,9 +1125,16 @@
     $('retryButton').addEventListener('click', function () { window.location.reload(); });
     $('refreshButton').addEventListener('click', function () {
       $('refreshButton').disabled = true;
-      Promise.all([loadSummary(), loadAdminTab(activeAdminTab, true)])
-        .catch(showFatalError)
+      refreshAdminContext()
+        .catch(function (error) { showToast(error.message || '更新失敗，已保留目前資料。'); })
         .finally(function () { $('refreshButton').disabled = false; });
+    });
+    document.addEventListener('points-card:admin-card-changed', function () {
+      if (!authenticated) return;
+      refreshAdminContext().catch(function (error) {
+        reportError(error, { source: 'admin-card', action: 'change-context' });
+        showToast(error.message || '集點卡資料更新失敗。');
+      });
     });
     $('memberSearch').addEventListener('input', function () {
       window.clearTimeout(searchTimer);
@@ -1114,10 +1166,12 @@
 
   async function init() {
     bindEvents();
+    setAdminSyncState('loading', '正在驗證權限');
     const loggedIn = await PointsCard.ensureLiffLogin();
     if (!loggedIn) return;
     authenticated = true;
     await loadSummary();
+    setAdminSyncState('synced', adminSyncedLabel());
   }
 
   init().catch(showFatalError);

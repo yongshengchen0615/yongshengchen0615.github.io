@@ -15,6 +15,7 @@ function initializePointsCardStorage() {
     requestSpreadsheet_ = spreadsheet;
     requestMultiCardSheets_ = {};
     requestMultiCardObjects_ = {};
+    requestMultiCardLookupObjects_ = {};
     ensurePointsCardBaseStorage_(spreadsheet, properties);
     ensureMultiCardStorageForSpreadsheet_(spreadsheet, properties);
 

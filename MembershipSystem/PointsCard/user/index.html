@@ -36,9 +36,12 @@
     <section id="memberApp" class="hidden">
       <header class="topbar">
         <a class="wordmark" href="./" aria-label="Points Card 首頁"><span class="wordmark-dot"></span><span>POINTS CARD</span></a>
-        <button id="refreshButton" class="icon-button" type="button" aria-label="重新整理集點卡">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
-        </button>
+        <div class="topbar-actions">
+          <span id="syncStatus" class="sync-status" data-state="synced" role="status" aria-live="polite">剛剛同步</span>
+          <button id="refreshButton" class="icon-button" type="button" aria-label="重新整理集點卡">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
+          </button>
+        </div>
       </header>
 
       <section class="member-intro" aria-labelledby="memberGreeting">

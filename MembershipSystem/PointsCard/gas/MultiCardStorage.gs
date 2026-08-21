@@ -47,6 +47,7 @@ const MULTI_CARD_HEADERS = Object.freeze({
 
 let requestMultiCardSheets_ = {};
 let requestMultiCardObjects_ = {};
+let requestMultiCardLookupObjects_ = {};
 
 function ensureMultiCardStorage_() {
   const properties = PropertiesService.getScriptProperties();
@@ -147,7 +148,17 @@ function getMultiCardSheet_(sheetName) {
 
 function invalidateMultiCardSheet_(sheet) {
   if (!sheet || typeof sheet.getName !== 'function') return;
-  delete requestMultiCardObjects_[sheet.getName()];
+  const sheetName = sheet.getName();
+  delete requestMultiCardObjects_[sheetName];
+  Object.keys(requestMultiCardLookupObjects_).forEach(function (key) {
+    if (key.indexOf(sheetName + '\n') === 0) delete requestMultiCardLookupObjects_[key];
+  });
+}
+
+function multiCardRowToObject_(headers, row) {
+  const object = {};
+  headers.forEach(function (header, index) { object[header] = row[index]; });
+  return object;
 }
 
 function readMultiCardObjects_(sheet) {
@@ -162,12 +173,52 @@ function readMultiCardObjects_(sheet) {
   const rows = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
   requestMultiCardObjects_[sheetName] = rows.filter(function (row) {
     return row.some(function (value) { return value !== ''; });
-  }).map(function (row) {
-    const object = {};
-    headers.forEach(function (header, index) { object[header] = row[index]; });
-    return object;
-  });
+  }).map(function (row) { return multiCardRowToObject_(headers, row); });
   return requestMultiCardObjects_[sheetName];
+}
+
+function readMultiCardObjectsByField_(sheet, field, value) {
+  const sheetName = sheet.getName();
+  const headers = MULTI_CARD_HEADERS[sheetName];
+  const columnIndex = headers.indexOf(field);
+  if (columnIndex < 0) fail_('SCHEMA_MISMATCH', '缺少必要欄位。');
+  const expected = String(value || '');
+  if (Object.prototype.hasOwnProperty.call(requestMultiCardObjects_, sheetName)) {
+    return requestMultiCardObjects_[sheetName].filter(function (object) {
+      return String(object[field] || '') === expected;
+    });
+  }
+
+  const cacheKey = sheetName + '\n' + field + '\n' + expected;
+  if (Object.prototype.hasOwnProperty.call(requestMultiCardLookupObjects_, cacheKey)) {
+    return requestMultiCardLookupObjects_[cacheKey];
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    requestMultiCardLookupObjects_[cacheKey] = [];
+    return requestMultiCardLookupObjects_[cacheKey];
+  }
+
+  const searchRange = sheet.getRange(2, columnIndex + 1, lastRow - 1, 1);
+  if (!searchRange || typeof searchRange.createTextFinder !== 'function') {
+    return readMultiCardObjects_(sheet).filter(function (object) {
+      return String(object[field] || '') === expected;
+    });
+  }
+  const matches = searchRange.createTextFinder(expected)
+    .matchEntireCell(true).useRegularExpression(false).findAll();
+  if (matches.length > 20) {
+    return readMultiCardObjects_(sheet).filter(function (object) {
+      return String(object[field] || '') === expected;
+    });
+  }
+  const rowNumbers = matches.map(function (match) { return match.getRow(); })
+    .filter(function (rowNumber, index, values) { return values.indexOf(rowNumber) === index; });
+  requestMultiCardLookupObjects_[cacheKey] = rowNumbers.map(function (rowNumber) {
+    const row = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+    return multiCardRowToObject_(headers, row);
+  });
+  return requestMultiCardLookupObjects_[cacheKey];
 }
 
 function multiCardObjectToRow_(sheetName, object) {
@@ -563,7 +614,7 @@ function selectedAdminMultiCard_(payload) {
   return cards.find(function (card) { return card.available; }) || cards[0] || null;
 }
 
-function selectedMemberMultiCard_(payload, memberLineUserId) {
+function selectedMemberMultiCard_(payload, memberLineUserId, progressMap) {
   const cards = allMultiCards_();
   const requested = requestedMultiCardId_(payload);
   if (requested) {
@@ -572,13 +623,17 @@ function selectedMemberMultiCard_(payload, memberLineUserId) {
   }
   const active = cards.find(function (card) { return card.available; });
   if (active) return active;
-  const progressIds = progressMapForMember_(memberLineUserId);
+  const progressIds = progressMap || progressMapForMember_(memberLineUserId, true);
   return cards.find(function (card) { return Boolean(progressIds[card.cardId]); }) || cards[0] || null;
 }
 
-function progressMapForMember_(lineUserId) {
+function progressMapForMember_(lineUserId, preferSelectiveRead) {
   const map = {};
-  readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.progress)).forEach(function (row) {
+  const sheet = getMultiCardSheet_(MULTI_CARD_SHEETS.progress);
+  const rows = preferSelectiveRead
+    ? readMultiCardObjectsByField_(sheet, 'memberLineUserId', lineUserId)
+    : readMultiCardObjects_(sheet);
+  rows.forEach(function (row) {
     if (String(row.memberLineUserId || '') !== String(lineUserId || '')) return;
     const progress = normalizeMemberCardProgress_(row);
     map[progress.cardId] = progress;
@@ -626,9 +681,13 @@ function ensureMemberCardProgress_(card, member) {
   return { row: match.row, progress: normalizeMemberCardProgress_(match.object) };
 }
 
-function claimedOrdinalsForCardMember_(cardId, lineUserId) {
+function claimedOrdinalsForCardMember_(cardId, lineUserId, preferSelectiveRead) {
   const ordinals = [];
-  readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords)).forEach(function (record) {
+  const sheet = getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords);
+  const records = preferSelectiveRead
+    ? readMultiCardObjectsByField_(sheet, 'memberLineUserId', lineUserId)
+    : readMultiCardObjects_(sheet);
+  records.forEach(function (record) {
     if (String(record.cardId || '') !== cardId || String(record.memberLineUserId || '') !== lineUserId) return;
     if (record.status !== 'recorded' && record.status !== 'processing') return;
     const ordinal = Number(record.rewardOrdinal || 0);
@@ -648,8 +707,8 @@ function multiCardSettingsForProjection_(card) {
   };
 }
 
-function publicMemberCardProjection_(card, member, progressOverride) {
-  const progressMatch = progressOverride ? null : findMemberCardProgress_(card.cardId, member.lineUserId);
+function publicMemberCardProjection_(card, member, progressOverride, preferSelectiveRead) {
+  const progressMatch = progressOverride === undefined ? findMemberCardProgress_(card.cardId, member.lineUserId) : null;
   const progress = progressOverride || (progressMatch ? progressMatch.progress : {
     totalStamps: 0,
     redeemedRewards: 0,
@@ -658,7 +717,11 @@ function publicMemberCardProjection_(card, member, progressOverride) {
   });
   const settings = multiCardSettingsForProjection_(card);
   const projectionMember = { totalStamps: progress.totalStamps, redeemedRewards: progress.redeemedRewards };
-  const rewards = rewardProjection_(projectionMember, settings, claimedOrdinalsForCardMember_(card.cardId, member.lineUserId));
+  const rewards = rewardProjection_(
+    projectionMember,
+    settings,
+    claimedOrdinalsForCardMember_(card.cardId, member.lineUserId, preferSelectiveRead)
+  );
   const cardPublic = publicMultiCard_(card);
   return {
     cardId: card.cardId,
@@ -701,9 +764,10 @@ function publicMemberCardProjection_(card, member, progressOverride) {
 }
 
 function publicMultiCardMember_(member, payload, includeAdminFields) {
+  const preferSelectiveRead = !includeAdminFields;
   const allCards = allMultiCards_();
-  const progressMap = progressMapForMember_(member.lineUserId);
-  const selectedCard = selectedMemberMultiCard_(payload, member.lineUserId);
+  const progressMap = progressMapForMember_(member.lineUserId, preferSelectiveRead);
+  const selectedCard = selectedMemberMultiCard_(payload, member.lineUserId, progressMap);
   const summaries = allCards.map(function (card) {
     const progress = progressMap[card.cardId];
     const summary = publicMultiCard_(card);
@@ -745,7 +809,12 @@ function publicMultiCardMember_(member, payload, includeAdminFields) {
     });
   }
 
-  return Object.assign(base, publicMemberCardProjection_(selectedCard, member, progressMap[selectedCard.cardId] || null));
+  return Object.assign(base, publicMemberCardProjection_(
+    selectedCard,
+    member,
+    progressMap[selectedCard.cardId] || null,
+    preferSelectiveRead
+  ));
 }
 
 function memberMeMultiCard_(context, payload) {

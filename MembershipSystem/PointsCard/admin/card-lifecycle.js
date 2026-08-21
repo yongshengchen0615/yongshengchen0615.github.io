@@ -27,6 +27,12 @@
     target.className = 'settings-message' + (isError ? ' error' : '') + (message ? '' : ' hidden');
   }
 
+  function notifyAdminCardChanged(reason) {
+    document.dispatchEvent(new CustomEvent('points-card:admin-card-changed', {
+      detail: { cardId: selectedCard ? selectedCard.cardId : '', reason: reason }
+    }));
+  }
+
   function createFieldLabel(labelText, control) {
     const label = document.createElement('label');
     const text = document.createElement('span');
@@ -73,8 +79,13 @@
     selector.addEventListener('change', function () {
       const cardId = selector.value;
       if (!cardId) return;
+      selectedCard = cards.find(function (card) { return card.cardId === cardId; }) || selectedCard;
+      creating = false;
+      editorKey = '';
       PointsCard.setSelectedCardId(cardId);
-      window.location.reload();
+      setMessage('', false);
+      render();
+      notifyAdminCardChanged('selection');
     });
   }
 
@@ -585,18 +596,27 @@
       let result;
       if (creating) {
         result = await PointsCard.callApi('admin.card.create', form);
-        PointsCard.setSelectedCardId(result.card.cardId);
-        setMessage('新集點卡與獎勵節點已建立。', false);
       } else {
         if (!selectedCard) throw new Error('請先選擇集點卡。');
         result = await PointsCard.callApi('admin.card.save', Object.assign({}, form, {
           cardId: selectedCard.cardId,
           expectedUpdatedAt: selectedCard.updatedAt
         }));
-        PointsCard.setSelectedCardId(result.card.cardId);
-        setMessage('集點卡與獎勵設定已一次儲存。', false);
       }
-      window.location.reload();
+      const savedCard = normalizeCard(Object.assign({}, result.card, {
+        rewardNodes: form.rewardNodes,
+        rewardSettingsLocked: selectedCard ? selectedCard.rewardSettingsLocked : false
+      }));
+      const savedIndex = cards.findIndex(function (card) { return card.cardId === savedCard.cardId; });
+      if (savedIndex >= 0) cards[savedIndex] = savedCard;
+      else cards.push(savedCard);
+      selectedCard = savedCard;
+      creating = false;
+      editorKey = '';
+      PointsCard.setSelectedCardId(savedCard.cardId);
+      render();
+      setMessage(savedIndex >= 0 ? '集點卡與獎勵設定已儲存。' : '新集點卡與獎勵節點已建立。', false);
+      notifyAdminCardChanged('saved');
     } catch (error) {
       setMessage(error && error.message ? error.message : '集點卡設定儲存失敗。', true);
       render();
@@ -617,8 +637,13 @@
         cardId: selectedCard.cardId,
         expectedUpdatedAt: selectedCard.updatedAt
       });
-      PointsCard.setSelectedCardId('');
-      window.location.reload();
+      cards = cards.filter(function (card) { return card.cardId !== selectedCard.cardId; });
+      creating = false;
+      editorKey = '';
+      selectCardFromList();
+      render();
+      setMessage('集點卡已永久刪除。', false);
+      notifyAdminCardChanged('deleted');
     } catch (error) {
       setMessage(error && error.message ? error.message : '集點卡刪除失敗。', true);
       render();

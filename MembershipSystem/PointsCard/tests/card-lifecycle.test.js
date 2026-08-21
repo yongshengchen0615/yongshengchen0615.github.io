@@ -39,7 +39,7 @@ test('multi-card APIs require server-side admin authorization and route all muta
   ]) {
     assert.match(code, new RegExp("case '" + action.replace(/[.]/g, '\\.') + "':\\s*requireAdmin_\\(context\\)"));
   }
-  assert.match(code, /version:\s*'2\.1\.3'/);
+  assert.match(code, /version:\s*'2\.2\.0'/);
   assert.match(code, /adminCardSaveMultiCard_\(context, payload\)/);
   assert.match(code, /memberMeMultiCard_\(context, payload\)/);
   assert.match(code, /stampRecordMultiCard_\(context, payload\)/);
@@ -111,6 +111,7 @@ test('admin UI integrates reward nodes into each card and exposes only one prima
   assert.match(script, /admin\.card\.save/);
   assert.doesNotMatch(script, /admin\.reward-nodes\.update/);
   assert.match(script, /rewardNodes:\s*readRewardNodesForMultiCard\(\)/);
+  assert.match(script, /rewardNodes:\s*form\.rewardNodes/);
   assert.match(script, /儲存集點卡與獎勵設定/);
   assert.match(script, /所有會員點數、集點紀錄、集點 QR/);
   assert.match(css, /#admin-tab-reward-nodes/);

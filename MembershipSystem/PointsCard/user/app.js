@@ -137,6 +137,19 @@
     $('errorState').classList.remove('hidden');
   }
 
+  function setSyncState(state, message) {
+    const status = $('syncStatus');
+    status.dataset.state = state;
+    status.textContent = message;
+    $('refreshButton').classList.toggle('is-loading', state === 'loading');
+  }
+
+  function syncedLabel() {
+    return '已同步 ' + new Intl.DateTimeFormat('zh-TW', {
+      hour: '2-digit', minute: '2-digit', hour12: false
+    }).format(new Date());
+  }
+
   function showProcessing(mode) {
     const rewardMode = mode === 'reward';
     $('processingEyebrow').textContent = rewardMode ? 'VERIFYING TICKET' : 'STAMPING';
@@ -328,26 +341,36 @@
   }
 
   async function loadMember() {
+    setSyncState('loading', currentMember ? '正在更新' : '正在同步');
     const result = await PointsCard.callApi('member.me');
     renderMember(result.member, false);
     $('bootState').classList.add('hidden');
     $('errorState').classList.add('hidden');
     $('memberApp').classList.remove('hidden');
+    setSyncState('synced', syncedLabel());
     return result;
   }
 
   async function switchCard(cardId) {
     if (!cardId || stampRequestInFlight || rewardClaimInFlight) return;
+    const previousCardId = currentMember && (currentMember.selectedCardId || (currentMember.card && currentMember.card.cardId)) || '';
     PointsCard.setSelectedCardId(cardId);
     $('memberCardSelect').disabled = true;
     $('cardWorkspace').classList.add('is-switching');
     $('cardWorkspace').setAttribute('aria-busy', 'true');
     try { await loadMember(); }
+    catch (error) {
+      PointsCard.setSelectedCardId(previousCardId);
+      if (currentMember) renderMember(currentMember, false);
+      setSyncState('error', '切換失敗，保留上次資料');
+      return false;
+    }
     finally {
       $('memberCardSelect').disabled = false;
       $('cardWorkspace').classList.remove('is-switching');
       $('cardWorkspace').setAttribute('aria-busy', 'false');
     }
+    return true;
   }
 
   function openDialog(dialog) {
@@ -683,10 +706,13 @@
     $('retryButton').addEventListener('click', function () { window.location.reload(); });
     $('refreshButton').addEventListener('click', function () {
       $('refreshButton').disabled = true;
-      loadMember().catch(showFatalError).finally(function () { $('refreshButton').disabled = false; });
+      loadMember().catch(function (error) {
+        if (!currentMember) showFatalError(error);
+        else setSyncState('error', '更新失敗，保留上次資料');
+      }).finally(function () { $('refreshButton').disabled = false; });
     });
     $('memberCardSelect').addEventListener('change', function () {
-      switchCard($('memberCardSelect').value).catch(showFatalError);
+      switchCard($('memberCardSelect').value);
     });
     $('scanStampButton').addEventListener('click', function () {
       scanStampCode().catch(function (error) { $('stampErrorMessage').textContent = error.message; openDialog($('stampErrorDialog')); });

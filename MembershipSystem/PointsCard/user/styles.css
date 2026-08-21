@@ -30,10 +30,17 @@ button:active:not(:disabled) { transform: translateY(1px); }
 
 .app-shell { width: min(100%, 760px); min-height: 100svh; margin: 0 auto; padding: env(safe-area-inset-top) max(20px, env(safe-area-inset-right)) calc(34px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
 .topbar { min-height: 76px; display: flex; align-items: center; justify-content: space-between; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
 .wordmark { min-height: 44px; display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-size: .72rem; font-weight: 850; letter-spacing: .17em; }
 .wordmark-dot { width: 11px; height: 11px; display: inline-block; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px rgba(var(--accent-rgb),.13); }
 .icon-button { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: rgba(255,255,255,.48); cursor: pointer; transition: transform .18s ease, background .18s ease; }
 .icon-button svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.icon-button.is-loading svg { animation: sync-spin .8s linear infinite; }
+.sync-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: .72rem; font-weight: 720; white-space: nowrap; }
+.sync-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #639150; box-shadow: 0 0 0 4px rgba(99,145,80,.1); }
+.sync-status[data-state="loading"]::before { background: var(--accent); animation: sync-pulse .8s ease-in-out infinite alternate; }
+.sync-status[data-state="error"] { color: var(--danger); }
+.sync-status[data-state="error"]::before { background: var(--danger); box-shadow: 0 0 0 4px rgba(174,63,50,.1); }
 .eyebrow { margin: 0; color: var(--ink); font-size: .72rem; font-weight: 850; letter-spacing: .16em; line-height: 1.45; }
 .danger-text { color: var(--danger); }
 
@@ -232,6 +239,8 @@ button:active:not(:disabled) { transform: translateY(1px); }
 @keyframes stamp-in { 0% { opacity: 0; transform: scale(1.7) rotate(16deg); } 70% { opacity: 1; transform: scale(.9) rotate(-10deg); } 100% { transform: scale(1) rotate(-7deg); } }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+@keyframes sync-pulse { to { opacity: .42; transform: scale(.82); } }
 @keyframes lottery-spin { to { transform: rotate(360deg); } }
 @keyframes lottery-spin-reverse { to { transform: rotate(-360deg); } }
 @keyframes lottery-ready-spin { to { transform: rotate(360deg); } }
@@ -280,6 +289,7 @@ button:active:not(:disabled) { transform: translateY(1px); }
 @media (max-width: 480px) {
   .app-shell { padding-right: max(14px, env(safe-area-inset-right)); padding-left: max(14px, env(safe-area-inset-left)); }
   .topbar { min-height: 66px; }
+  .sync-status { max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
   .member-intro { gap: 14px; padding: 20px 4px 22px; }
   .member-copy > p:last-child { font-size: .82rem; line-height: 1.5; }
   .avatar { width: 56px; height: 56px; }

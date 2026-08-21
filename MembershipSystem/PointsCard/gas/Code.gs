@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '2.1.3',
+  version: '2.2.0',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -89,6 +89,7 @@ function doPost(e) {
   resetRequestCaches_();
   requestMultiCardSheets_ = {};
   requestMultiCardObjects_ = {};
+  requestMultiCardLookupObjects_ = {};
   currentTraceId_ = randomHex_(8);
   currentAction_ = '';
   currentRequestStartedAt_ = Date.now();
