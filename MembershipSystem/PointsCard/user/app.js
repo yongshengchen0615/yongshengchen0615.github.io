@@ -18,8 +18,10 @@
   let stampRequestInFlight = false;
   let rewardClaimInFlight = false;
   let rewardClaimRetry = null;
-  let lotteryInterval = 0;
-  let lotteryTimeout = 0;
+  let lotteryPhraseInterval = 0;
+  let lotterySymbolInterval = 0;
+  let lotterySettleTimeout = 0;
+  let lotteryRevealTimeout = 0;
   const dialogPageScrollPositions = new WeakMap();
 
   const avatarFallback = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"%3E%3Crect width="96" height="96" rx="48" fill="%23dfe6df"/%3E%3Ccircle cx="48" cy="38" r="17" fill="%23173f35" fill-opacity=".35"/%3E%3Cpath d="M19 88c3-18 14-27 29-27s26 9 29 27" fill="%23173f35" fill-opacity=".35"/%3E%3C/svg%3E';
@@ -448,27 +450,60 @@
     return rewardClaimRetry.requestId;
   }
 
+  function clearLotteryAnimationTimers() {
+    window.clearInterval(lotteryPhraseInterval);
+    window.clearInterval(lotterySymbolInterval);
+    window.clearTimeout(lotterySettleTimeout);
+    window.clearTimeout(lotteryRevealTimeout);
+    lotteryPhraseInterval = 0;
+    lotterySymbolInterval = 0;
+    lotterySettleTimeout = 0;
+    lotteryRevealTimeout = 0;
+  }
+
+  function revealLotteryResult(claimedReward) {
+    clearLotteryAnimationTimers();
+    $('lotteryStage').className = 'lottery-stage revealed';
+    $('lotterySymbol').textContent = '★';
+    $('lotteryTitle').textContent = '你的開獎結果';
+    $('lotteryResultText').textContent = claimedReward.lotteryResult || '請洽店員確認結果';
+    $('confirmLotteryButton').disabled = false;
+  }
+
   function playLotteryAnimation(claimedReward) {
-    window.clearInterval(lotteryInterval);
-    window.clearTimeout(lotteryTimeout);
-    $('lotteryStage').className = 'lottery-stage drawing';
+    clearLotteryAnimationTimers();
+    const lotteryStage = $('lotteryStage');
+    lotteryStage.className = 'lottery-stage drawing';
     $('lotterySymbol').textContent = '✦';
     $('lotteryTitle').textContent = '正在開獎';
-    $('lotteryResultText').textContent = '幸運結果即將揭曉…';
+    $('lotteryResultText').textContent = '幸運轉盤啟動…';
     $('confirmLotteryButton').disabled = true;
     openDialog($('lotteryDialog'));
-    const phrases = ['正在搖出你的好運…', '票券確認完成…', '最後一圈…'];
-    let phraseIndex = 0;
-    lotteryInterval = window.setInterval(function () { $('lotteryResultText').textContent = phrases[phraseIndex++ % phrases.length]; }, 520);
     const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    lotteryTimeout = window.setTimeout(function () {
-      window.clearInterval(lotteryInterval);
-      $('lotteryStage').className = 'lottery-stage revealed';
-      $('lotterySymbol').textContent = '★';
-      $('lotteryTitle').textContent = '開獎結果';
-      $('lotteryResultText').textContent = claimedReward.lotteryResult || '請洽店員確認結果';
-      $('confirmLotteryButton').disabled = false;
-    }, reducedMotion ? 120 : 2600);
+    if (reducedMotion) {
+      lotteryRevealTimeout = window.setTimeout(function () { revealLotteryResult(claimedReward); }, 80);
+      return;
+    }
+
+    const phrases = ['獎項正在飛快轉動…', '好運慢慢靠近…', '再轉最後一圈…'];
+    const symbols = ['✦', '◆', '●', '✶', '◇', '★'];
+    let phraseIndex = 0;
+    let symbolIndex = 0;
+    lotteryPhraseInterval = window.setInterval(function () {
+      $('lotteryResultText').textContent = phrases[phraseIndex++ % phrases.length];
+    }, 560);
+    lotterySymbolInterval = window.setInterval(function () {
+      $('lotterySymbol').textContent = symbols[symbolIndex++ % symbols.length];
+    }, 120);
+    lotterySettleTimeout = window.setTimeout(function () {
+      window.clearInterval(lotteryPhraseInterval);
+      window.clearInterval(lotterySymbolInterval);
+      lotteryStage.className = 'lottery-stage settling';
+      $('lotterySymbol').textContent = '✦';
+      $('lotteryTitle').textContent = '就快揭曉';
+      $('lotteryResultText').textContent = '好運正在停下來…';
+    }, 1720);
+    lotteryRevealTimeout = window.setTimeout(function () { revealLotteryResult(claimedReward); }, 2380);
   }
 
   async function claimSelectedReward(confirmationCode) {
@@ -539,6 +574,7 @@
     $('confirmCouponResultButton').addEventListener('click', function () { closeDialog($('couponResultDialog')); });
     $('confirmLotteryButton').addEventListener('click', function () { closeDialog($('lotteryDialog')); });
     $('lotteryDialog').addEventListener('cancel', function (event) { if ($('confirmLotteryButton').disabled) event.preventDefault(); });
+    $('lotteryDialog').addEventListener('close', clearLotteryAnimationTimers);
   }
 
   async function init() {

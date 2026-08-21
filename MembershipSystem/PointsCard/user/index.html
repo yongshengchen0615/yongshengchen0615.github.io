@@ -134,7 +134,22 @@
   </dialog>
 
   <dialog id="lotteryDialog" class="lottery-dialog" aria-labelledby="lotteryTitle">
-    <div id="lotteryStage" class="lottery-stage drawing" aria-hidden="true"><div class="lottery-ring lottery-ring-a"></div><div class="lottery-ring lottery-ring-b"></div><div class="lottery-core"><span id="lotterySymbol">✦</span></div><i class="confetti confetti-a"></i><i class="confetti confetti-b"></i><i class="confetti confetti-c"></i><i class="confetti confetti-d"></i></div>
+    <div id="lotteryStage" class="lottery-stage drawing" aria-hidden="true">
+      <div class="lottery-halo"></div>
+      <div class="lottery-rays"></div>
+      <div class="lottery-ring lottery-ring-a"></div>
+      <div class="lottery-ring lottery-ring-b"></div>
+      <div class="lottery-orbit-dots"><i></i><i></i><i></i><i></i></div>
+      <div class="lottery-core"><span id="lotterySymbol">✦</span></div>
+      <div class="lottery-confetti" aria-hidden="true">
+        <i class="confetti confetti-a"></i><i class="confetti confetti-b"></i>
+        <i class="confetti confetti-c"></i><i class="confetti confetti-d"></i>
+        <i class="confetti confetti-e"></i><i class="confetti confetti-f"></i>
+        <i class="confetti confetti-g"></i><i class="confetti confetti-h"></i>
+        <i class="confetti confetti-i"></i><i class="confetti confetti-j"></i>
+        <i class="confetti confetti-k"></i><i class="confetti confetti-l"></i>
+      </div>
+    </div>
     <p class="eyebrow">LUCKY DRAW</p><h2 id="lotteryTitle">正在開獎</h2><p id="lotteryResultText" aria-live="polite">幸運結果即將揭曉…</p><button id="confirmLotteryButton" class="button button-primary" type="button" disabled>收下結果</button>
   </dialog>
 

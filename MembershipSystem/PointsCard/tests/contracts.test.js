@@ -181,6 +181,23 @@ test('member ticket UI removes account history and exposes earned and upcoming t
   assert.match(script, /lotteryPrizeNames/);
 });
 
+test('lottery reveal has drawing, settling, and celebration phases with reduced-motion support', () => {
+  const html = read('user/index.html');
+  const css = read('user/styles.css');
+  const script = read('user/app.js');
+  assert.match(html, /class="lottery-halo"/);
+  assert.match(html, /class="lottery-rays"/);
+  assert.ok((html.match(/class="confetti confetti-/g) || []).length >= 10);
+  assert.match(css, /\.lottery-stage\.drawing/);
+  assert.match(css, /\.lottery-stage\.settling/);
+  assert.match(css, /\.lottery-stage\.revealed/);
+  assert.match(css, /@keyframes lottery-confetti-burst/);
+  assert.match(script, /lotterySymbolInterval/);
+  assert.match(script, /className = 'lottery-stage settling'/);
+  assert.match(script, /prefers-reduced-motion: reduce/);
+  assert.match(script, /revealLotteryResult\(claimedReward\)/);
+});
+
 test('admin functions use accessible in-page tabs without additional HTML pages', () => {
   const html = read('admin/index.html');
   const script = read('admin/app.js');
