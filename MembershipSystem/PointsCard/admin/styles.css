@@ -149,6 +149,7 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .stamp-result { text-align: center; }
 .qr-code { width: 236px; max-width: 100%; margin: 0 auto 14px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: #fff; }
 .qr-code svg { display: block; width: 100%; height: auto; }
+.qr-code > .spinner { margin: clamp(42px, 10dvh, 72px) auto; }
 .stamp-result > p { margin: 0 0 18px; color: var(--muted); font-size: .72rem; }
 .security-note { margin: 12px 0 0 !important; color: var(--muted); font-size: .72rem !important; line-height: 1.6; text-align: left; }
 .toast { position: fixed; z-index: 100; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: max-content; max-width: calc(100% - max(32px, env(safe-area-inset-left) + env(safe-area-inset-right))); padding: 13px 18px; border-radius: 13px; color: #fff; background: var(--ink-deep); box-shadow: var(--shadow); font-size: .76rem; text-align: center; animation: toast-in .22s ease both; }

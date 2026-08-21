@@ -198,6 +198,37 @@ test('lottery reveal has drawing, settling, and celebration phases with reduced-
   assert.match(script, /revealLotteryResult\(claimedReward\)/);
 });
 
+test('member reward confirmation paints loading before the API call and waits for an explicit draw action', () => {
+  const html = read('user/index.html');
+  const script = read('user/app.js');
+  const claimStart = script.indexOf('async function claimSelectedReward');
+  const claimEnd = script.indexOf('async function scanRewardConfirmation', claimStart);
+  const claimFlow = script.slice(claimStart, claimEnd);
+  assert.match(html, /id="confirmLotteryButton"[^>]*>開始抽獎</);
+  assert.match(script, /function prepareLotteryDraw/);
+  assert.match(script, /function handleLotteryAction/);
+  assert.match(script, /lotteryDialogPhase === 'ready'/);
+  assert.match(claimFlow, /showProcessing\('reward'\)/);
+  assert.ok(claimFlow.indexOf('await waitForInterfacePaint()') < claimFlow.indexOf("PointsCard.callApi('reward.claim'"));
+  assert.match(claimFlow, /prepareLotteryDraw\(result\.claimedReward\)/);
+  assert.doesNotMatch(claimFlow, /playLotteryAnimation\(result\.claimedReward\)/);
+});
+
+test('existing reward confirmation QR opens with loading state and exposes no share link UI', () => {
+  const html = read('admin/index.html');
+  const script = read('admin/app.js');
+  const openStart = script.indexOf('async function openRewardConfirmation');
+  const openEnd = script.indexOf('async function cancelRewardConfirmation', openStart);
+  const openFlow = script.slice(openStart, openEnd);
+  assert.doesNotMatch(html, /id="rewardConfirmationUrl"|id="copyRewardConfirmationButton"|>確認連結</);
+  assert.doesNotMatch(script, /rewardConfirmationUrl|copyRewardConfirmationButton/);
+  assert.match(script, /function showRewardConfirmationLoadingState/);
+  assert.match(script, /正在載入店家確認 QR/);
+  assert.match(script, /正在載入票券確認 QR/);
+  assert.match(script, /buildRewardConfirmationQrPayload/);
+  assert.ok(openFlow.indexOf('await waitForInterfacePaint()') < openFlow.indexOf("PointsCard.callApi('admin.reward-confirm.open'"));
+});
+
 test('admin functions use accessible in-page tabs without additional HTML pages', () => {
   const html = read('admin/index.html');
   const script = read('admin/app.js');

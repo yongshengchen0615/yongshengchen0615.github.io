@@ -44,6 +44,12 @@
     }
   }
 
+  function waitForInterfacePaint() {
+    return new Promise(function (resolve) {
+      window.requestAnimationFrame(function () { window.setTimeout(resolve, 0); });
+    });
+  }
+
   function lotteryWeightBasis(value) {
     if (value == null || String(value).trim() === '') return null;
     const weight = Number(value);
@@ -951,10 +957,11 @@
     $('rewardConfirmationNote').value = '';
     $('rewardConfirmationFields').classList.remove('hidden');
     $('rewardConfirmationResult').classList.add('hidden');
-    $('copyRewardConfirmationButton').classList.add('hidden');
+    $('rewardConfirmationResult').setAttribute('aria-busy', 'false');
     $('downloadRewardConfirmationButton').classList.add('hidden');
     $('createRewardConfirmationButton').classList.remove('hidden');
     $('rewardConfirmationQrCode').replaceChildren();
+    $('rewardConfirmationResultMeta').textContent = '';
   }
 
   function openNewRewardConfirmation() {
@@ -968,26 +975,40 @@
     return { expiresAt: expiry.toISOString(), note: $('rewardConfirmationNote').value.trim() };
   }
 
-  async function buildRewardConfirmationUrl(shareCode) {
+  async function buildRewardConfirmationQrPayload(shareCode) {
     const config = await PointsCard.loadConfig();
     const url = new URL('https://liff.line.me/' + encodeURIComponent(config.LIFF_ID) + '/');
     url.searchParams.set('rewardConfirm', shareCode);
     return url.href;
   }
 
+  function showRewardConfirmationLoadingState() {
+    currentRewardConfirmationQrSvg = '';
+    $('rewardConfirmationFields').classList.add('hidden');
+    $('rewardConfirmationResult').classList.remove('hidden');
+    $('rewardConfirmationResult').setAttribute('aria-busy', 'true');
+    $('downloadRewardConfirmationButton').classList.add('hidden');
+    $('createRewardConfirmationButton').classList.add('hidden');
+    $('rewardConfirmationQrCode').replaceChildren();
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    $('rewardConfirmationQrCode').append(spinner);
+    $('rewardConfirmationResultMeta').textContent = '正在載入票券確認 QR…';
+  }
+
   async function showRewardConfirmation(confirmation) {
     if (typeof window.qrcode !== 'function') throw new Error('QR Code 元件載入失敗，請重新整理後再試。');
-    const url = await buildRewardConfirmationUrl(confirmation.shareCode);
+    const qrPayload = await buildRewardConfirmationQrPayload(confirmation.shareCode);
     const qr = window.qrcode(0, 'M');
-    qr.addData(url);
+    qr.addData(qrPayload);
     qr.make();
     currentRewardConfirmationQrSvg = qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true });
     $('rewardConfirmationQrCode').innerHTML = currentRewardConfirmationQrSvg;
-    $('rewardConfirmationUrl').value = url;
     $('rewardConfirmationResultMeta').textContent = confirmation.confirmationId + ' · 到期 ' + PointsCard.formatDateTime(confirmation.expiresAt, '—');
     $('rewardConfirmationFields').classList.add('hidden');
     $('rewardConfirmationResult').classList.remove('hidden');
-    $('copyRewardConfirmationButton').classList.remove('hidden');
+    $('rewardConfirmationResult').setAttribute('aria-busy', 'false');
     $('downloadRewardConfirmationButton').classList.remove('hidden');
     $('createRewardConfirmationButton').classList.add('hidden');
   }
@@ -1013,12 +1034,19 @@
 
   async function openRewardConfirmation(confirmationId) {
     resetRewardConfirmationDialog();
-    $('rewardConfirmationDialogTitle').textContent = '開啟店家確認 QR';
+    $('rewardConfirmationDialogTitle').textContent = '正在載入店家確認 QR';
+    $('rewardConfirmationDialogDescription').textContent = '正在讀取既有票券確認 QR，完成後會自動顯示。';
+    showRewardConfirmationLoadingState();
     openDialog($('rewardConfirmationDialog'));
     try {
+      await waitForInterfacePaint();
       const result = await PointsCard.callApi('admin.reward-confirm.open', { confirmationId: confirmationId });
       await showRewardConfirmation(result.confirmation);
+      $('rewardConfirmationDialogTitle').textContent = '店家票券確認 QR';
+      $('rewardConfirmationDialogDescription').textContent = 'QR 已載入，可直接在門市展示或下載。';
     } catch (error) {
+      $('rewardConfirmationResult').classList.add('hidden');
+      $('rewardConfirmationResult').setAttribute('aria-busy', 'false');
       showFormError('rewardConfirmationFormError', error);
     }
   }
@@ -1076,7 +1104,6 @@
     $('downloadStampButton').addEventListener('click', function () { downloadSvg(currentQrSvg, 'points-card-stamp-qr.svg'); });
     $('newRewardConfirmationButton').addEventListener('click', openNewRewardConfirmation);
     $('createRewardConfirmationButton').addEventListener('click', createRewardConfirmation);
-    $('copyRewardConfirmationButton').addEventListener('click', function () { copyText($('rewardConfirmationUrl').value, 'rewardConfirmationUrl', '確認連結已複製。'); });
     $('downloadRewardConfirmationButton').addEventListener('click', function () { downloadSvg(currentRewardConfirmationQrSvg, 'points-card-reward-confirmation-qr.svg'); });
     document.querySelectorAll('[data-admin-tab]').forEach(function (tab) {
       tab.addEventListener('click', function () { selectAdminTab(tab.dataset.adminTab, false); });

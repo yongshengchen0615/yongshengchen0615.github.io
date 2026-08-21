@@ -22,6 +22,8 @@
   let lotterySymbolInterval = 0;
   let lotterySettleTimeout = 0;
   let lotteryRevealTimeout = 0;
+  let pendingLotteryReward = null;
+  let lotteryDialogPhase = 'closed';
   const dialogPageScrollPositions = new WeakMap();
 
   const avatarFallback = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"%3E%3Crect width="96" height="96" rx="48" fill="%23dfe6df"/%3E%3Ccircle cx="48" cy="38" r="17" fill="%23173f35" fill-opacity=".35"/%3E%3Cpath d="M19 88c3-18 14-27 29-27s26 9 29 27" fill="%23173f35" fill-opacity=".35"/%3E%3C/svg%3E';
@@ -138,12 +140,18 @@
   function showProcessing(mode) {
     const rewardMode = mode === 'reward';
     $('processingEyebrow').textContent = rewardMode ? 'VERIFYING TICKET' : 'STAMPING';
-    $('processingTitle').textContent = rewardMode ? '正在確認店家與票券' : '正在蓋上新印章';
-    $('processingMessage').textContent = rewardMode ? '確認成功後票券會立即使用，請勿重複操作。' : '驗證 QR Code 與集點紀錄，請勿重複操作。';
+    $('processingTitle').textContent = rewardMode ? '正在確認票券' : '正在蓋上新印章';
+    $('processingMessage').textContent = rewardMode ? '店家 QR 已讀取，正在安全確認票券，請勿重複操作。' : '驗證 QR Code 與集點紀錄，請勿重複操作。';
     $('processingOverlay').classList.remove('hidden');
   }
 
   function hideProcessing() { $('processingOverlay').classList.add('hidden'); }
+
+  function waitForInterfacePaint() {
+    return new Promise(function (resolve) {
+      window.requestAnimationFrame(function () { window.setTimeout(resolve, 0); });
+    });
+  }
 
   function createStamp(index, active, justAdded, rewardNode) {
     const stamp = document.createElement('div');
@@ -463,20 +471,37 @@
 
   function revealLotteryResult(claimedReward) {
     clearLotteryAnimationTimers();
+    lotteryDialogPhase = 'revealed';
     $('lotteryStage').className = 'lottery-stage revealed';
     $('lotterySymbol').textContent = '★';
     $('lotteryTitle').textContent = '你的開獎結果';
     $('lotteryResultText').textContent = claimedReward.lotteryResult || '請洽店員確認結果';
+    $('confirmLotteryButton').textContent = '收下結果';
     $('confirmLotteryButton').disabled = false;
+  }
+
+  function prepareLotteryDraw(claimedReward) {
+    clearLotteryAnimationTimers();
+    pendingLotteryReward = claimedReward;
+    lotteryDialogPhase = 'ready';
+    $('lotteryStage').className = 'lottery-stage ready';
+    $('lotterySymbol').textContent = '?';
+    $('lotteryTitle').textContent = '票券確認完成';
+    $('lotteryResultText').textContent = '準備好後，點擊下方按鈕開始抽獎。';
+    $('confirmLotteryButton').textContent = '開始抽獎';
+    $('confirmLotteryButton').disabled = false;
+    openDialog($('lotteryDialog'));
   }
 
   function playLotteryAnimation(claimedReward) {
     clearLotteryAnimationTimers();
+    lotteryDialogPhase = 'drawing';
     const lotteryStage = $('lotteryStage');
     lotteryStage.className = 'lottery-stage drawing';
     $('lotterySymbol').textContent = '✦';
     $('lotteryTitle').textContent = '正在開獎';
     $('lotteryResultText').textContent = '幸運轉盤啟動…';
+    $('confirmLotteryButton').textContent = '抽獎進行中';
     $('confirmLotteryButton').disabled = true;
     openDialog($('lotteryDialog'));
     const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -506,6 +531,20 @@
     lotteryRevealTimeout = window.setTimeout(function () { revealLotteryResult(claimedReward); }, 2380);
   }
 
+  function handleLotteryAction() {
+    if (lotteryDialogPhase === 'ready' && pendingLotteryReward) {
+      playLotteryAnimation(pendingLotteryReward);
+      return;
+    }
+    if (lotteryDialogPhase === 'revealed') closeDialog($('lotteryDialog'));
+  }
+
+  function resetLotteryDialogState() {
+    clearLotteryAnimationTimers();
+    pendingLotteryReward = null;
+    lotteryDialogPhase = 'closed';
+  }
+
   async function claimSelectedReward(confirmationCode) {
     if (!selectedTicket || rewardClaimInFlight) return;
     const ticket = selectedTicket;
@@ -514,6 +553,7 @@
     $('memberCardSelect').disabled = true;
     showProcessing('reward');
     try {
+      await waitForInterfacePaint();
       const result = await PointsCard.callApi('reward.claim', {
         cardId: ticket.cardId || currentMember.selectedCardId || currentMember.card.cardId,
         confirmationCode: confirmationCode,
@@ -525,7 +565,7 @@
       selectedTicket = null;
       renderMember(result.member, false);
       closeDialog($('ticketDialog'));
-      if (result.claimedReward.rewardType === 'lottery') playLotteryAnimation(result.claimedReward);
+      if (result.claimedReward.rewardType === 'lottery') prepareLotteryDraw(result.claimedReward);
       else {
         $('couponResultTitle').textContent = result.claimedReward.rewardName || '優惠已確認';
         $('couponResultMessage').textContent = '票券已完成核銷，請向店員出示此畫面。';
@@ -572,9 +612,9 @@
     $('confirmStampErrorButton').addEventListener('click', function () { closeDialog($('stampErrorDialog')); });
     $('confirmRewardErrorButton').addEventListener('click', function () { closeDialog($('rewardErrorDialog')); });
     $('confirmCouponResultButton').addEventListener('click', function () { closeDialog($('couponResultDialog')); });
-    $('confirmLotteryButton').addEventListener('click', function () { closeDialog($('lotteryDialog')); });
-    $('lotteryDialog').addEventListener('cancel', function (event) { if ($('confirmLotteryButton').disabled) event.preventDefault(); });
-    $('lotteryDialog').addEventListener('close', clearLotteryAnimationTimers);
+    $('confirmLotteryButton').addEventListener('click', handleLotteryAction);
+    $('lotteryDialog').addEventListener('cancel', function (event) { if (lotteryDialogPhase !== 'revealed') event.preventDefault(); });
+    $('lotteryDialog').addEventListener('close', resetLotteryDialogState);
   }
 
   async function init() {

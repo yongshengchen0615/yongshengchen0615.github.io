@@ -178,6 +178,11 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .lottery-core::before { content: ""; position: absolute; inset: 8px; border: 1px dashed rgba(255,255,255,.48); border-radius: 50%; }
 .lottery-core::after { content: ""; position: absolute; top: -20%; left: -68%; width: 46%; height: 145%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.62), transparent); transform: rotate(22deg); }
 .lottery-core span { position: relative; z-index: 1; font: 700 2.35rem Georgia, serif; text-shadow: 0 4px 12px rgba(83,29,18,.3); }
+.lottery-stage.ready .lottery-ring-a { animation: lottery-ready-spin 8s linear infinite; }
+.lottery-stage.ready .lottery-ring-b { animation: lottery-ready-spin 11s linear infinite reverse; }
+.lottery-stage.ready .lottery-orbit-dots { animation: lottery-ready-spin 14s linear infinite; }
+.lottery-stage.ready .lottery-halo { animation: lottery-halo-pulse 1.8s ease-in-out infinite alternate; }
+.lottery-stage.ready .lottery-core { animation: lottery-ready-float 1.8s ease-in-out infinite alternate; }
 .lottery-stage.drawing .lottery-rays { animation: lottery-rays-turn 7s linear infinite; }
 .lottery-stage.drawing .lottery-ring-a { animation: lottery-spin 1.08s linear infinite; }
 .lottery-stage.drawing .lottery-ring-b { animation: lottery-spin-reverse .78s linear infinite; }
@@ -216,6 +221,7 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .lottery-dialog #lotteryResultText { min-height: 1.75em; color: var(--ink-deep); font: 600 1.28rem/1.4 var(--font-display); }
 .lottery-dialog #confirmLotteryButton { transition: opacity .24s ease, transform .24s ease, box-shadow .24s ease; }
 .lottery-dialog #confirmLotteryButton:not(:disabled) { box-shadow: 0 12px 24px rgba(15,44,38,.17); }
+.lottery-stage.ready ~ #confirmLotteryButton { background: var(--accent); animation: lottery-ready-cta 1.8s ease-in-out infinite alternate; }
 .lottery-stage.revealed ~ #lotteryTitle, .lottery-stage.revealed ~ #lotteryResultText, .lottery-stage.revealed ~ #confirmLotteryButton { animation: lottery-copy-rise .46s ease both; }
 .lottery-stage.revealed ~ #lotteryResultText { animation-delay: .07s; }
 .lottery-stage.revealed ~ #confirmLotteryButton { animation-delay: .14s; }
@@ -227,6 +233,9 @@ button:active:not(:disabled) { transform: translateY(1px); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes lottery-spin { to { transform: rotate(360deg); } }
 @keyframes lottery-spin-reverse { to { transform: rotate(-360deg); } }
+@keyframes lottery-ready-spin { to { transform: rotate(360deg); } }
+@keyframes lottery-ready-float { to { transform: translateY(-5px) scale(1.025); filter: brightness(1.04); } }
+@keyframes lottery-ready-cta { to { box-shadow: 0 15px 28px rgba(var(--accent-rgb),.3); transform: translateY(-1px); } }
 @keyframes lottery-rays-turn { to { transform: rotate(360deg); } }
 @keyframes lottery-halo-pulse { to { opacity: .74; transform: scale(1.2); } }
 @keyframes lottery-roll { 0% { transform: scale(.96) rotate(-4deg); } 100% { transform: scale(1.07) rotate(5deg); filter: brightness(1.08); } }
