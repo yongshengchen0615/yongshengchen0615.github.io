@@ -74,9 +74,10 @@ function doGet() {
       service: POINTS_CARD_SERVICE.name,
       version: POINTS_CARD_SERVICE.version,
       capabilities: [
-        'member.me', 'stamp.record', 'reward.prepare', 'reward.claim', 'admin.dashboard', 'admin.summary',
+        'member.me', 'member.point-notifications.list', 'member.point-notification.read',
+        'stamp.record', 'reward.prepare', 'reward.claim', 'admin.dashboard', 'admin.summary',
         'admin.members.search', 'admin.stamps.list', 'admin.reward-confirmations.list',
-        'admin.member.update', 'admin.reward.redeem', 'admin.reward-nodes.update',
+        'admin.member.update', 'admin.points.grant', 'admin.reward.redeem', 'admin.reward-nodes.update',
         'admin.cards.list', 'admin.card.create', 'admin.card.update', 'admin.card.save', 'admin.card.delete',
         'admin.stamp.create', 'admin.stamp.open', 'admin.stamp.cancel', 'admin.stamp.delete',
         'admin.reward-confirm.create', 'admin.reward-confirm.open', 'admin.reward-confirm.cancel',
@@ -108,6 +109,12 @@ function doPost(e) {
       case 'member.me':
         rateLimit_('member-me:' + identity.sub, 30, 60);
         return json_({ ok: true, data: memberMeMultiCard_(context, payload) });
+      case 'member.point-notifications.list':
+        rateLimit_('member-point-notifications-list:' + identity.sub, 30, 60);
+        return json_({ ok: true, data: memberPointNotificationsList_(context, payload) });
+      case 'member.point-notification.read':
+        rateLimit_('member-point-notification-read:' + identity.sub, 30, 60);
+        return json_({ ok: true, data: memberPointNotificationRead_(context, payload) });
       case 'stamp.record':
         rateLimit_('stamp-record:' + identity.sub, 12, 60);
         return json_({ ok: true, data: stampRecordMultiCard_(context, payload) });
@@ -145,6 +152,10 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-member-update:' + identity.sub, 20, 60);
         return json_({ ok: true, data: adminMemberUpdateMultiCard_(context, payload) });
+      case 'admin.points.grant':
+        requireAdmin_(context);
+        rateLimit_('admin-points-grant:' + identity.sub, 20, 60);
+        return json_({ ok: true, data: adminPointGrantMultiCard_(context, payload) });
       case 'admin.reward.redeem':
         requireAdmin_(context);
         rateLimit_('admin-reward-redeem:' + identity.sub, 20, 60);
