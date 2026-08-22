@@ -33,7 +33,7 @@
     const close = document.createElement('button');
     close.className = 'close-button';
     close.value = 'cancel';
-    close.type = 'submit';
+    close.type = 'button';
     close.setAttribute('aria-label', '關閉');
     close.textContent = '×';
     header.append(copy, close);
@@ -89,7 +89,7 @@
     const cancel = document.createElement('button');
     cancel.className = 'button button-secondary';
     cancel.value = 'cancel';
-    cancel.type = 'submit';
+    cancel.type = 'button';
     cancel.textContent = '取消';
     const submit = document.createElement('button');
     submit.id = 'submitPointGrantButton';
@@ -101,6 +101,8 @@
     form.append(header, grid, hint, error, footer);
     dialog.append(form);
     document.body.append(dialog);
+    close.addEventListener('click', function () { dialog.close('cancel'); });
+    cancel.addEventListener('click', function () { dialog.close('cancel'); });
     submit.addEventListener('click', submitPointGrant);
     dialog.addEventListener('close', function () {
       currentTarget = null;
