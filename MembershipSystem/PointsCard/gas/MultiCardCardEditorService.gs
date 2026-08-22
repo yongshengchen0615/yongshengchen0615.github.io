@@ -30,7 +30,7 @@ function adminCardSaveMultiCard_(context, payload) {
 
     const rewardNodesChanged = !sameMultiCardRewardNodes_(match.card.rewardNodes, rewardNodes);
     if (rewardNodesChanged && rewardSettingsLockedForCard_(cardId)) {
-      fail_('REWARD_SETTINGS_LOCKED', '這張集點卡已有票券使用紀錄，不能再修改獎勵節點。');
+      fail_('REWARD_SETTINGS_LOCKED', '這張集點卡已有會員取得票券或已有票券使用紀錄，為保留既有權益不能再修改獎勵節點。');
     }
 
     const now = new Date().toISOString();
