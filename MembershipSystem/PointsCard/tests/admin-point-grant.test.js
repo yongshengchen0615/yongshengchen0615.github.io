@@ -31,7 +31,7 @@ test('manual point grant is an authenticated admin-only server mutation', () => 
 test('grant service validates member, card, amount, reason and idempotency identity', () => {
   const source = read('gas/AdminPointGrantService.gs');
   const storage = read('gas/AdminPointGrantStorage.gs');
-  assert.match(source, /strictInt_\(payload\.stampCount, 1, POINTS_CARD_ADMIN_GRANTS\.maxGrantPoints/);
+  assert.match(source, /strictInt_\([\s\S]*payload\.stampCount,[\s\S]*POINTS_CARD_ADMIN_GRANTS\.maxGrantPoints/);
   assert.match(storage, /maxGrantPoints: 100/);
   assert.match(source, /cleanText_\(payload\.reason, 200, true\)/);
   assert.match(source, /\^\[a-f0-9\]\{32,64\}\$/);
@@ -69,39 +69,49 @@ test('grant transaction records intent before progress mutation and success audi
   assert.match(source, /recoverAdminPointGrant_\(existing\)/);
 });
 
-test('member notification APIs are identity-scoped and prevent IDOR', () => {
+test('member notification APIs are isolated, identity-scoped and prevent IDOR', () => {
   const code = read('gas/Code.gs');
-  const source = read('gas/AdminPointGrantService.gs');
+  const grant = read('gas/AdminPointGrantService.gs');
+  const notifications = read('gas/MemberPointNotificationService.gs');
   assert.match(extractCase(code, 'member.point-notifications.list'), /memberPointNotificationsList_\(context, payload\)/);
   assert.match(extractCase(code, 'member.point-notification.read'), /memberPointNotificationRead_\(context, payload\)/);
-  assert.match(source, /notification\.memberLineUserId === context\.identity\.sub/);
-  assert.match(source, /notification\.status === 'unread'/);
-  assert.match(source, /notification\.memberLineUserId !== context\.identity\.sub\) fail_\('FORBIDDEN'/);
-  assert.match(source, /notification\.status = 'read'/);
+  assert.doesNotMatch(grant, /function memberPointNotificationsList_/);
+  assert.doesNotMatch(grant, /function memberPointNotificationRead_/);
+  assert.match(notifications, /notification\.memberLineUserId === context\.identity\.sub/);
+  assert.match(notifications, /notification\.status === 'unread'/);
+  assert.match(notifications, /notification\.memberLineUserId !== context\.identity\.sub/);
+  assert.match(notifications, /fail_\('FORBIDDEN'/);
+  assert.match(notifications, /notification\.status = 'read'/);
 });
 
-test('official-account transport is centralized and business services do not access the token directly', () => {
-  const source = read('gas/AdminPointGrantService.gs');
+test('official-account push is isolated behind messaging infrastructure', () => {
+  const grant = read('gas/AdminPointGrantService.gs');
+  const notifications = read('gas/MemberPointNotificationService.gs');
+  const push = read('gas/AdminPointGrantPushService.gs');
   const messaging = read('gas/LineMessagingService.gs');
-  assert.match(source, /createLineMessagingClient_\(\)/);
-  assert.match(source, /lineMessaging\.sendTextPush/);
-  assert.doesNotMatch(source, /LINE_MESSAGING_CHANNEL_ACCESS_TOKEN/);
-  assert.doesNotMatch(source, /UrlFetchApp\.fetch/);
-  assert.doesNotMatch(source, /Authorization:\s*'Bearer/);
+
+  assert.match(push, /createLineMessagingClient_\(\)/);
+  assert.match(push, /sendTextPush/);
+  assert.doesNotMatch(grant, /LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|UrlFetchApp\.fetch|Authorization:\s*'Bearer/);
+  assert.doesNotMatch(notifications, /LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|UrlFetchApp\.fetch|Authorization:\s*'Bearer/);
+  assert.doesNotMatch(push, /LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|UrlFetchApp\.fetch|Authorization:\s*'Bearer/);
   assert.match(messaging, /channelAccessTokenProperty: 'LINE_MESSAGING_CHANNEL_ACCESS_TOKEN'/);
   assert.match(messaging, /https:\/\/api\.line\.me\/v2\/bot\/message\/push/);
   assert.match(messaging, /Authorization: 'Bearer ' \+ channelAccessToken/);
   assert.match(messaging, /'X-Line-Retry-Key': retryKey/);
-  assert.doesNotMatch(source, /pushErrorCode\s*=\s*channelAccessToken/);
-  assert.doesNotMatch(source, /audit_\([^\n]*channelAccessToken/);
+  assert.doesNotMatch(push, /pushErrorCode\s*=\s*channelAccessToken/);
+  assert.doesNotMatch(push, /audit_\([^\n]*channelAccessToken/);
 });
 
 test('push failure is a side effect and does not roll back the completed point transaction', () => {
   const source = read('gas/AdminPointGrantService.gs');
+  const push = read('gas/AdminPointGrantPushService.gs');
   const transactionEnd = source.indexOf('} finally {\n    lock.releaseLock();\n  }\n\n  const push = attemptAdminPointGrantPush_');
   assert.ok(transactionEnd >= 0, 'push must occur only after transaction lock is released');
   assert.match(source.slice(transactionEnd), /attemptAdminPointGrantPush_\(result\.grantId\)/);
   assert.match(source.slice(transactionEnd), /result\.pushStatus = push\.status/);
+  assert.doesNotMatch(push, /totalStamps\s*=/);
+  assert.match(push, /pointGrantPushStatus_\(push\)/);
 });
 
 test('member and admin browser surfaces load local feature modules and use API actions', () => {
@@ -128,12 +138,13 @@ test('point grant messages contain only the business notification payload', () =
     JSON,
     Math,
     console,
-    sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-    Utilities: { formatDate: () => '260822' }
+    sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
   };
   vm.createContext(context);
   vm.runInContext(
-    read('gas/LineMessagingService.gs') + '\n' + read('gas/AdminPointGrantService.gs') +
+    read('gas/LineMessagingService.gs') + '\n' +
+      read('gas/AdminPointGrantPushService.gs') + '\n' +
+      read('gas/MemberPointNotificationService.gs') +
       '\n;globalThis.__test = { pointGrantPushMessage_, pointGrantNotificationMessage_, pointGrantRetryKey_ };',
     context
   );
@@ -143,5 +154,6 @@ test('point grant messages contain only the business notification payload', () =
   assert.match(message, /活動補發/);
   assert.match(message, /12 點/);
   assert.doesNotMatch(message, /Bearer|LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|requestId|lineUserId/);
+  assert.match(context.__test.pointGrantNotificationMessage_('夏季卡', 5, '活動補發'), /活動補發/);
   assert.match(context.__test.pointGrantRetryKey_('PG-TEST'), /^[a-f0-9-]{36}$/);
 });
