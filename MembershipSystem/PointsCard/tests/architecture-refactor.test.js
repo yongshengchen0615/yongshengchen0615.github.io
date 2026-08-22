@@ -21,18 +21,23 @@ test('read-only transport policy includes safe reads but never mutation actions'
   assert.doesNotMatch(policy, /'reward\.claim'/);
 });
 
-test('frontend observability filters expected business errors while retaining system failures', () => {
+test('frontend observability filters expected business errors while retaining security and system failures', () => {
   const source = read('shared/common.js');
-  assert.match(source, /const EXPECTED_API_ERROR_CODES = new Set/);
-  assert.match(source, /'UNAUTHENTICATED'/);
-  assert.match(source, /'FORBIDDEN'/);
-  assert.match(source, /'RATE_LIMITED'/);
+  const setMatch = source.match(/const EXPECTED_API_ERROR_CODES = new Set\(\[([\s\S]*?)\]\);/);
+  assert.ok(setMatch, 'EXPECTED_API_ERROR_CODES declaration missing');
+  const expected = setMatch[1];
+  assert.match(expected, /'REQUEST_CONFLICT'/);
+  assert.match(expected, /'CARD_UNAVAILABLE'/);
+  assert.match(expected, /'REWARD_EXPIRED'/);
+  assert.doesNotMatch(expected, /'UNAUTHENTICATED'/);
+  assert.doesNotMatch(expected, /'FORBIDDEN'/);
+  assert.doesNotMatch(expected, /'RATE_LIMITED'/);
+  assert.doesNotMatch(expected, /'INTERNAL_ERROR'/);
+  assert.doesNotMatch(expected, /'DATA_INTEGRITY_ERROR'/);
   assert.match(source, /value\.indexOf\('INVALID_'\) === 0/);
   assert.match(source, /\/_NOT_FOUND\$\/\.test\(value\)/);
   assert.match(source, /if \(shouldReportApiError\(error\.code\)\)/);
   assert.match(source, /error_code: safeContext\.code \|\| 'unknown'/);
-  assert.doesNotMatch(source, /EXPECTED_API_ERROR_CODES[^;]*INTERNAL_ERROR/);
-  assert.doesNotMatch(source, /EXPECTED_API_ERROR_CODES[^;]*DATA_INTEGRITY_ERROR/);
 });
 
 test('error reporting keeps the existing PII and credential sanitizers', () => {
