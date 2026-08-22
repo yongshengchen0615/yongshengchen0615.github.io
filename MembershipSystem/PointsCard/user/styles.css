@@ -91,6 +91,7 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .scan-icon svg { width: 22px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
 .scan-arrow { padding-right: 7px; color: var(--accent); font-size: 1.1rem; }
 
+.card-validity { margin: 0 0 14px; color: var(--muted); font-family: var(--font-mono); font-size: var(--type-caption); line-height: 1.5; }
 .ticket-wallet { padding: 44px 4px 0; animation: rise-in .65s .13s ease both; }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
 .section-heading h2 { margin: 6px 0 0; font: 740 clamp(1.7rem,4vw,2.05rem)/1.15 var(--font-display); letter-spacing: -.035em; }
@@ -105,6 +106,7 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .reward-ticket::before { top: -9px; }
 .reward-ticket::after { bottom: -9px; }
 .reward-ticket.lottery { border-left-color: var(--accent); background: #fff7ee; }
+.reward-ticket:disabled { cursor: not-allowed; opacity: .58; filter: grayscale(.22); }
 .ticket-mark { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--ink); font: 750 1.4rem/1 var(--font-display); }
 .reward-ticket.lottery .ticket-mark { background: var(--accent); }
 .ticket-copy { min-width: 0; display: block; }

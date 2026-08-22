@@ -4,6 +4,8 @@ const MULTI_CARD = Object.freeze({
   migrationProperty: 'POINTS_CARD_MULTI_CARD_MIGRATED_AT',
   migrationSpreadsheetProperty: 'POINTS_CARD_MULTI_CARD_SPREADSHEET_ID',
   migrationTargetSpreadsheetProperty: 'POINTS_CARD_MULTI_CARD_MIGRATION_TARGET_ID',
+  schemaVersionProperty: 'POINTS_CARD_MULTI_CARD_SCHEMA_VERSION',
+  schemaVersion: '3',
   legacyCardId: 'CARD-LEGACY',
   maxCardStamps: 10000,
   maxCards: 100,
@@ -16,7 +18,8 @@ const MULTI_CARD_SHEETS = Object.freeze({
   progress: 'MemberCardProgress',
   vouchers: 'CardStampVouchers',
   stampRecords: 'CardStampRecords',
-  rewardRecords: 'CardRewardRecords'
+  rewardRecords: 'CardRewardRecords',
+  notifications: 'CardRewardNotifications'
 });
 
 const MULTI_CARD_HEADERS = Object.freeze({
@@ -42,6 +45,11 @@ const MULTI_CARD_HEADERS = Object.freeze({
     'rewardOrdinal', 'redeemedBefore', 'redeemedAfter', 'status', 'redeemedByLineUserId',
     'note', 'createdAt', 'updatedAt', 'redeemedAt', 'auditRecordedAt', 'rewardType',
     'rewardNodeId', 'cycleNumber', 'lotteryResult', 'confirmationId'
+  ],
+  CardRewardNotifications: [
+    'notificationId', 'cardId', 'memberLineUserId', 'memberNo', 'rewardOrdinal',
+    'reminderAt', 'retryKey', 'status', 'attemptCount', 'sentAt', 'lastAttemptAt',
+    'lastErrorCode', 'createdAt', 'updatedAt'
   ]
 });
 
@@ -82,12 +90,16 @@ function ensureMultiCardStorageForSpreadsheet_(spreadsheet, properties) {
   const missingSheetNames = sheetNames.filter(function (sheetName) {
     return presentSheetNames.indexOf(sheetName) < 0;
   });
+  const additiveSheetNames = [MULTI_CARD_SHEETS.notifications];
+  const missingCriticalSheetNames = missingSheetNames.filter(function (sheetName) {
+    return additiveSheetNames.indexOf(sheetName) < 0;
+  });
 
   const migrationRetry = Boolean(actualSpreadsheetId && migrationTargetSpreadsheetId === actualSpreadsheetId);
-  if (migrationAt && !migrationRetry && presentSheetNames.length > 0 && missingSheetNames.length > 0) {
+  if (migrationAt && !migrationRetry && presentSheetNames.length > 0 && missingCriticalSheetNames.length > 0) {
     fail_(
       'SCHEMA_MISMATCH',
-      '多集點卡資料工作表不完整，缺少：' + missingSheetNames.join('、') + '。為避免覆蓋既有資料，請先從備份還原。'
+      '多集點卡資料工作表不完整，缺少：' + missingCriticalSheetNames.join('、') + '。為避免覆蓋既有資料，請先從備份還原。'
     );
   }
 
@@ -101,12 +113,14 @@ function ensureMultiCardStorageForSpreadsheet_(spreadsheet, properties) {
   if (shouldMigrate) migrateLegacyPointsCard_();
   properties.setProperty(MULTI_CARD.migrationProperty, new Date().toISOString());
   properties.setProperty(MULTI_CARD.migrationSpreadsheetProperty, actualSpreadsheetId);
+  properties.setProperty(MULTI_CARD.schemaVersionProperty, MULTI_CARD.schemaVersion);
   properties.deleteProperty(MULTI_CARD.migrationTargetSpreadsheetProperty);
 }
 
 function multiCardMigrationMatchesSpreadsheet_(properties, spreadsheetId) {
   if (!spreadsheetId || !properties.getProperty(MULTI_CARD.migrationProperty)) return false;
-  return String(properties.getProperty(MULTI_CARD.migrationSpreadsheetProperty) || '') === spreadsheetId;
+  return String(properties.getProperty(MULTI_CARD.migrationSpreadsheetProperty) || '') === spreadsheetId &&
+    String(properties.getProperty(MULTI_CARD.schemaVersionProperty) || '') === MULTI_CARD.schemaVersion;
 }
 
 function ensureMultiCardSheetSchema_(spreadsheet, sheetName, expectedHeaders) {
@@ -449,10 +463,10 @@ function normalizeMultiCard_(value) {
     fail_('DATA_INTEGRITY_ERROR', '集點卡節點資料異常。');
   }
   const storedStatus = String(value.status || 'active');
-  if (storedStatus !== 'active') fail_('DATA_INTEGRITY_ERROR', '集點卡狀態資料異常。');
+  if (storedStatus !== 'active' && storedStatus !== 'deleted') fail_('DATA_INTEGRITY_ERROR', '集點卡狀態資料異常。');
   const expiresAt = String(value.expiresAt || '');
-  let status = 'active';
-  if (expiresAt) {
+  let status = storedStatus;
+  if (storedStatus === 'active' && expiresAt) {
     const expiresTime = new Date(expiresAt).getTime();
     if (!Number.isFinite(expiresTime) || expiresTime <= Date.now()) status = 'expired';
   }
@@ -477,7 +491,7 @@ function multiCardStorageObject_(card) {
     cardId: card.cardId,
     name: card.name,
     description: card.description,
-    status: 'active',
+    status: card.storedStatus === 'deleted' || card.status === 'deleted' ? 'deleted' : 'active',
     expiresAt: card.expiresAt || '',
     rewardNodesJson: JSON.stringify(card.rewardNodes),
     rewardNodesUpdatedAt: card.rewardNodesUpdatedAt,
@@ -506,7 +520,7 @@ function multiCardAdminSummaries_() {
   const lockedIds = new Set(readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords)).filter(function (record) {
     return record.status === 'processing' || record.status === 'recorded';
   }).map(function (record) { return String(record.cardId || ''); }));
-  return allMultiCards_().map(function (card) {
+  return allMultiCards_().filter(function (card) { return card.storedStatus !== 'deleted'; }).map(function (card) {
     const result = publicMultiCard_(card);
     result.rewardNodes = card.rewardNodes;
     result.rewardSettingsLocked = lockedIds.has(card.cardId);
@@ -605,7 +619,7 @@ function requestedMultiCardId_(payload) {
 }
 
 function selectedAdminMultiCard_(payload) {
-  const cards = allMultiCards_();
+  const cards = allMultiCards_().filter(function (card) { return card.storedStatus !== 'deleted'; });
   const requested = requestedMultiCardId_(payload);
   if (requested) {
     const match = cards.find(function (card) { return card.cardId === requested; });
@@ -615,7 +629,10 @@ function selectedAdminMultiCard_(payload) {
 }
 
 function selectedMemberMultiCard_(payload, memberLineUserId, progressMap) {
-  const cards = allMultiCards_();
+  const progressIds = progressMap || progressMapForMember_(memberLineUserId, true);
+  const cards = allMultiCards_().filter(function (card) {
+    return card.storedStatus !== 'deleted' || Boolean(progressIds[card.cardId]);
+  });
   const requested = requestedMultiCardId_(payload);
   if (requested) {
     const requestedCard = cards.find(function (card) { return card.cardId === requested; });
@@ -623,7 +640,6 @@ function selectedMemberMultiCard_(payload, memberLineUserId, progressMap) {
   }
   const active = cards.find(function (card) { return card.available; });
   if (active) return active;
-  const progressIds = progressMap || progressMapForMember_(memberLineUserId, true);
   return cards.find(function (card) { return Boolean(progressIds[card.cardId]); }) || cards[0] || null;
 }
 
@@ -722,6 +738,13 @@ function publicMemberCardProjection_(card, member, progressOverride, preferSelec
     settings,
     claimedOrdinalsForCardMember_(card.cardId, member.lineUserId, preferSelectiveRead)
   );
+  const stampRecords = multiCardStampRecordsForMemberCard_(member.lineUserId, card.cardId, preferSelectiveRead);
+  const earnedTickets = rewards.availableRewardNodes.map(function (reward) {
+    return multiCardRewardTicketState_(reward, progress, member, stampRecords);
+  });
+  const usableTickets = earnedTickets.filter(function (ticket) { return ticket.usable; });
+  const expiredVisibleTicketCount = earnedTickets.length - usableTickets.length;
+  const availableRewards = Math.max(0, rewards.availableRewards - expiredVisibleTicketCount);
   const cardPublic = publicMultiCard_(card);
   return {
     cardId: card.cardId,
@@ -733,8 +756,8 @@ function publicMemberCardProjection_(card, member, progressOverride, preferSelec
     expiresAt: card.expiresAt,
     totalStamps: progress.totalStamps,
     redeemedRewards: progress.redeemedRewards,
-    availableRewards: rewards.availableRewards,
-    availableRewardNodes: rewards.availableRewardNodes.map(function (ticket) {
+    availableRewards: availableRewards,
+    availableRewardNodes: earnedTickets.map(function (ticket) {
       const publicTicket = publicRewardTicket_(ticket);
       publicTicket.cardId = card.cardId;
       return publicTicket;
@@ -748,16 +771,19 @@ function publicMemberCardProjection_(card, member, progressOverride, preferSelec
     cardSize: settings.cardSize,
     visualStamps: rewards.visualStamps,
     displayCycleNumber: rewards.displayCycleNumber,
-    stampsUntilReward: rewards.availableRewards > 0 ? 0 : rewards.stampsUntilNextReward,
+    stampsUntilReward: availableRewards > 0 ? 0 : rewards.stampsUntilNextReward,
     stampsUntilNextReward: rewards.stampsUntilNextReward,
     rewardName: rewards.nextAvailableReward ? rewards.nextAvailableReward.rewardName : (rewards.nextReward ? rewards.nextReward.rewardName : settings.rewardName),
     rewardNodesUpdatedAt: settings.rewardNodesUpdatedAt,
     rewardNodes: rewards.rewardNodes.map(function (ticket) {
+      if (ticket.state === 'available') {
+        ticket = multiCardRewardTicketState_(ticket, progress, member, stampRecords);
+      }
       const publicTicket = publicRewardTicket_(ticket);
       publicTicket.cardId = card.cardId;
       return publicTicket;
     }),
-    nextAvailableReward: rewards.nextAvailableReward ? Object.assign(publicRewardTicket_(rewards.nextAvailableReward), { cardId: card.cardId }) : null,
+    nextAvailableReward: usableTickets.length ? Object.assign(publicRewardTicket_(usableTickets[0]), { cardId: card.cardId }) : null,
     nextReward: rewards.nextReward ? Object.assign(publicRewardTicket_(rewards.nextReward), { cardId: card.cardId }) : null,
     progressUpdatedAt: progress.updatedAt || ''
   };
@@ -765,8 +791,10 @@ function publicMemberCardProjection_(card, member, progressOverride, preferSelec
 
 function publicMultiCardMember_(member, payload, includeAdminFields) {
   const preferSelectiveRead = !includeAdminFields;
-  const allCards = allMultiCards_();
   const progressMap = progressMapForMember_(member.lineUserId, preferSelectiveRead);
+  const allCards = allMultiCards_().filter(function (card) {
+    return card.storedStatus !== 'deleted' || Boolean(progressMap[card.cardId]);
+  });
   const selectedCard = selectedMemberMultiCard_(payload, member.lineUserId, progressMap);
   const summaries = allCards.map(function (card) {
     const progress = progressMap[card.cardId];
@@ -839,7 +867,8 @@ function adminCardCreateMultiCard_(context, payload) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
   try {
-    if (allMultiCards_().length >= MULTI_CARD.maxCards) fail_('CARD_LIMIT_REACHED', '集點卡數量已達系統上限 100 張。');
+    const managedCardCount = allMultiCards_().filter(function (card) { return card.storedStatus !== 'deleted'; }).length;
+    if (managedCardCount >= MULTI_CARD.maxCards) fail_('CARD_LIMIT_REACHED', '集點卡數量已達系統上限 100 張。');
     assertMultiCardNameAvailable_(name, '');
     const now = new Date().toISOString();
     const card = {
@@ -883,6 +912,7 @@ function adminCardUpdateMultiCard_(context, payload) {
   try {
     const match = findMultiCard_(cardId);
     if (!match) fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
+    if (match.card.storedStatus === 'deleted') fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
     if (match.card.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', '集點卡已被更新，請重新整理後再試。');
     assertMultiCardNameAvailable_(name, cardId);
     const next = Object.assign({}, match.card, {
@@ -903,6 +933,25 @@ function adminCardUpdateMultiCard_(context, payload) {
   }
 }
 
+function cancelActiveMultiCardStampVouchersForCard_(cardId, actorLineUserId, now) {
+  const sheet = getMultiCardSheet_(MULTI_CARD_SHEETS.vouchers);
+  let cancelledCount = 0;
+  readMultiCardObjects_(sheet).forEach(function (row) {
+    if (String(row.cardId || '') !== cardId || String(row.status || '') !== 'active') return;
+    const match = findMultiCardByFieldWithRow_(sheet, 'voucherId', row.voucherId);
+    if (!match) return;
+    const voucher = normalizeMultiCardVoucher_(match.object);
+    if (voucher.cardId !== cardId || voucher.status !== 'active') return;
+    voucher.status = 'cancelled';
+    voucher.cancelledByLineUserId = actorLineUserId;
+    voucher.cancelledAt = now;
+    voucher.updatedAt = now;
+    writeMultiCardObjectRow_(sheet, match.row, voucher);
+    cancelledCount += 1;
+  });
+  return cancelledCount;
+}
+
 function adminCardDeleteMultiCard_(context, payload) {
   ensureMultiCardStorage_();
   const cardId = validMultiCardId_(payload.cardId, true);
@@ -912,6 +961,7 @@ function adminCardDeleteMultiCard_(context, payload) {
   try {
     const match = findMultiCard_(cardId);
     if (!match) fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
+    if (match.card.storedStatus === 'deleted') fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
     if (match.card.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', '集點卡已被更新，請重新整理後再試。');
 
     const counts = {
@@ -923,23 +973,33 @@ function adminCardDeleteMultiCard_(context, payload) {
     if (!audit_(context.identity.sub, 'admin', 'CARD_DELETE_REQUESTED', '', 'pending', {
       cardId: cardId,
       name: match.card.name,
-      deleteCounts: counts
+      preservedCounts: counts
     })) fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，集點卡未刪除。');
 
-    deleteMultiCardRowsWhere_(getMultiCardSheet_(MULTI_CARD_SHEETS.stampRecords), function (row) { return String(row.cardId || '') === cardId; });
-    deleteMultiCardRowsWhere_(getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords), function (row) { return String(row.cardId || '') === cardId; });
-    deleteMultiCardRowsWhere_(getMultiCardSheet_(MULTI_CARD_SHEETS.vouchers), function (row) { return String(row.cardId || '') === cardId; });
-    deleteMultiCardRowsWhere_(getMultiCardSheet_(MULTI_CARD_SHEETS.progress), function (row) { return String(row.cardId || '') === cardId; });
-    deleteMultiCardObjectRow_(getMultiCardSheet_(MULTI_CARD_SHEETS.cards), match.row);
+    const now = new Date().toISOString();
+    const revokedStampQrCount = cancelActiveMultiCardStampVouchersForCard_(cardId, context.identity.sub, now);
+    const archivedCard = Object.assign({}, match.card, {
+      storedStatus: 'deleted',
+      status: 'deleted',
+      available: false,
+      updatedAt: now
+    });
+    writeMultiCardObjectRow_(getMultiCardSheet_(MULTI_CARD_SHEETS.cards), match.row, multiCardStorageObject_(archivedCard));
 
     audit_(context.identity.sub, 'admin', 'CARD_DELETED', '', 'success', {
       cardId: cardId,
-      deletedProgressRows: counts.progress,
-      deletedVoucherRows: counts.vouchers,
-      deletedStampRecordRows: counts.stampRecords,
-      deletedRewardRecordRows: counts.rewardRecords
+      preservedMemberHistory: true,
+      preservedUnusedRewards: true,
+      preservedCounts: counts,
+      revokedStampQrCount: revokedStampQrCount
     });
-    return { cardId: cardId, deleted: counts };
+    return {
+      cardId: cardId,
+      archived: true,
+      deleted: { progress: 0, vouchers: 0, stampRecords: 0, rewardRecords: 0 },
+      preserved: counts,
+      revokedStampQrCount: revokedStampQrCount
+    };
   } finally {
     lock.releaseLock();
   }
@@ -961,6 +1021,7 @@ function adminRewardNodesUpdateMultiCard_(context, payload) {
   try {
     const match = findMultiCard_(cardId);
     if (!match) fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
+    if (match.card.storedStatus === 'deleted') fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
     if (match.card.rewardNodesUpdatedAt !== expectedUpdatedAt) fail_('CONFLICT', '獎勵節點已被更新，請重新整理後再試。');
     if (rewardSettingsLockedForCard_(cardId)) fail_('REWARD_SETTINGS_LOCKED', '這張集點卡已有票券使用紀錄，為保留兌換語意不能再修改節點。');
     const now = new Date().toISOString();
@@ -990,7 +1051,7 @@ function adminSummaryMultiCard_(payload) {
     activeMembers: allMembers.filter(function (member) { return member.membershipStatus === 'active'; }).length,
     totalStamps: progress.reduce(function (total, item) { return total + item.totalStamps; }, 0),
     redeemedRewards: progress.reduce(function (total, item) { return total + item.redeemedRewards; }, 0),
-    totalCards: allMultiCards_().length
+    totalCards: allMultiCards_().filter(function (card) { return card.storedStatus !== 'deleted'; }).length
   };
   const selected = selectedAdminMultiCard_(payload || {});
   return { stats: stats, settings: selected ? multiCardSettings_(selected) : emptyMultiCardSettings_() };

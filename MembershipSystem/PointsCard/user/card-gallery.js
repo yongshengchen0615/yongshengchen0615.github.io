@@ -42,7 +42,7 @@
       setSwitcherHidden(false);
       options.forEach(function (option, index) {
         const selected = option.value === select.value;
-        const status = option.dataset.status === 'expired' ? 'expired' : 'active';
+        const status = option.dataset.status === 'expired' ? 'expired' : (option.dataset.status === 'deleted' ? 'deleted' : 'active');
         const button = document.createElement('button');
         button.type = 'button';
         button.id = 'memberCardTab' + index;
@@ -60,9 +60,11 @@
         const copy = document.createElement('span');
         copy.className = 'member-card-tab-copy';
         const name = document.createElement('strong');
-        name.textContent = String(option.dataset.cardName || option.textContent || '集點卡').replace(/（已過期）$/, '').trim();
+        name.textContent = String(option.dataset.cardName || option.textContent || '集點卡')
+          .replace(/（已過期）$/, '').replace(/（已刪除，票券保留）$/, '').trim();
         const meta = document.createElement('small');
-        meta.textContent = status === 'expired' ? '已過期 · ' + pointLabel(option.dataset.totalStamps) : pointLabel(option.dataset.totalStamps);
+        meta.textContent = status === 'expired' ? '已過期 · ' + pointLabel(option.dataset.totalStamps) :
+          (status === 'deleted' ? '已刪除 · 票券保留' : pointLabel(option.dataset.totalStamps));
         copy.append(name, meta);
         button.append(statusDot, copy);
         button.addEventListener('click', function () { chooseCard(option.value); });

@@ -28,7 +28,8 @@ test('migrated multi-card requests skip the redundant full schema initialization
   const stored = {
     POINTS_CARD_SPREADSHEET_ID: 'SPREADSHEET-1',
     POINTS_CARD_MULTI_CARD_MIGRATED_AT: '2026-08-20T00:00:00.000Z',
-    POINTS_CARD_MULTI_CARD_SPREADSHEET_ID: 'SPREADSHEET-1'
+    POINTS_CARD_MULTI_CARD_SPREADSHEET_ID: 'SPREADSHEET-1',
+    POINTS_CARD_MULTI_CARD_SCHEMA_VERSION: '3'
   };
   const context = {
     POINTS_CARD_SERVICE: { spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
@@ -83,7 +84,7 @@ test('an unmigrated deployment still validates every multi-card sheet before mig
 
   context.__multiCardMigrationTest.ensureMultiCardStorage_();
   assert.deepEqual(validatedSheets.sort(), [
-    'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards', 'MemberCardProgress'
+    'CardRewardNotifications', 'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards', 'MemberCardProgress'
   ]);
   assert.equal(migrations, 1);
   assert.equal(baseInitializations, 1);
@@ -130,7 +131,7 @@ test('switching spreadsheets initializes and migrates a missing multi-card schem
 
   context.__multiCardMigrationTest.ensureMultiCardStorage_();
   assert.deepEqual(initializedSheets.sort(), [
-    'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards', 'MemberCardProgress'
+    'CardRewardNotifications', 'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards', 'MemberCardProgress'
   ]);
   assert.equal(migrations, 1);
   assert.equal(stored.POINTS_CARD_MULTI_CARD_SPREADSHEET_ID, 'SPREADSHEET-NEW');

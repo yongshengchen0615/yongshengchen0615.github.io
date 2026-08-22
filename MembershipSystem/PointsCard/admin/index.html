@@ -62,7 +62,7 @@
             <div>
               <p class="eyebrow">MULTI-CARD MANAGEMENT</p>
               <h2 id="cardSettingsTitle">集點卡管理</h2>
-              <p>可新增多張不同集點卡，分別設定名稱、說明與期限。刪除集點卡會永久刪除該卡的會員點數、集點紀錄、集點 QR 與票券使用紀錄，無法復原。</p>
+              <p>可新增多張不同集點卡，分別設定名稱、說明與期限。刪除會封存集點卡並停止新的集點；會員尚未使用的票券與歷史紀錄會保留。</p>
             </div>
             <span id="cardStatusBadge" class="status-badge">有效</span>
           </div>
@@ -81,7 +81,7 @@
 
       <section id="admin-panel-reward-nodes" class="admin-tab-panel workspace-section reward-node-settings" role="tabpanel" aria-labelledby="admin-tab-reward-nodes" tabindex="0" data-admin-panel="reward-nodes" hidden>
         <div class="section-heading">
-          <div><p class="eyebrow">REWARD NODES</p><h2 id="rewardNodesTitle">獎勵節點</h2><p>設定目前選取的集點卡在不同點數發放的獎勵；最大節點就是卡片長度，節點最高 10,000 點。</p></div>
+          <div><p class="eyebrow">REWARD NODES</p><h2 id="rewardNodesTitle">獎勵節點</h2><p>設定目前選取的集點卡在不同點數發放的獎勵、票券有效天數與未使用提醒；最大節點就是卡片長度，節點最高 10,000 點。</p></div>
           <div class="section-actions"><button id="addRewardNodeButton" class="button button-secondary" type="button">新增節點</button><button id="saveRewardNodesButton" class="button button-primary" type="button">儲存節點</button></div>
         </div>
         <div id="rewardSettingsNotice" class="settings-notice hidden" role="status"></div>

@@ -382,6 +382,32 @@
     name.disabled = locked;
     const nameLabel = createFieldLabel('票券名稱', name);
 
+    const ticketTerms = document.createElement('div');
+    ticketTerms.className = 'reward-node-ticket-terms';
+    const validity = document.createElement('input');
+    validity.className = 'reward-node-validity-days';
+    validity.type = 'number';
+    validity.min = '0';
+    validity.max = '3650';
+    validity.step = '1';
+    validity.inputMode = 'numeric';
+    validity.value = String(Number(node.ticketValidityDays || 0));
+    validity.disabled = locked;
+    const validityLabel = createFieldLabel('取得後有效天數（0＝無期限）', validity);
+    const reminder = document.createElement('input');
+    reminder.className = 'reward-node-reminder-days';
+    reminder.type = 'number';
+    reminder.min = '0';
+    reminder.max = '3650';
+    reminder.step = '1';
+    reminder.inputMode = 'numeric';
+    reminder.value = String(Number(node.unusedReminderDays || 0));
+    reminder.disabled = locked;
+    const reminderLabel = createFieldLabel('未使用幾天後提醒（0＝不提醒）', reminder);
+    const termHint = document.createElement('p');
+    termHint.textContent = '提醒天數必須早於到期天數；無期限票券也可以設定提醒。';
+    ticketTerms.append(validityLabel, reminderLabel, termHint);
+
     const prizes = createPrizesEditor(node, locked);
     prizes.classList.toggle('hidden', type.value !== 'lottery');
     type.addEventListener('change', function () {
@@ -405,7 +431,7 @@
       syncRewardNodeOrders(locked);
     });
 
-    fields.append(pointLabel, typeLabel, nameLabel, prizes);
+    fields.append(pointLabel, typeLabel, nameLabel, ticketTerms, prizes);
     row.append(order, fields, remove);
     list.append(row);
   }
@@ -467,7 +493,25 @@
       if (points.has(stampsRequired)) throw new Error('獎勵節點不能使用相同點數。');
       points.add(stampsRequired);
       if (!rewardName) throw new Error('每個節點都必須填寫獎勵名稱。');
-      const node = { stampsRequired: stampsRequired, rewardName: rewardName, rewardType: rewardType, lotteryPrizes: [] };
+      const ticketValidityDays = Number(row.querySelector('.reward-node-validity-days').value);
+      const unusedReminderDays = Number(row.querySelector('.reward-node-reminder-days').value);
+      if (!Number.isInteger(ticketValidityDays) || ticketValidityDays < 0 || ticketValidityDays > 3650) {
+        throw new Error('票券有效天數必須是 0 到 3,650 的整數。');
+      }
+      if (!Number.isInteger(unusedReminderDays) || unusedReminderDays < 0 || unusedReminderDays > 3650) {
+        throw new Error('未使用提醒天數必須是 0 到 3,650 的整數。');
+      }
+      if (ticketValidityDays > 0 && unusedReminderDays >= ticketValidityDays) {
+        throw new Error('未使用提醒必須早於票券到期日。');
+      }
+      const node = {
+        stampsRequired: stampsRequired,
+        rewardName: rewardName,
+        rewardType: rewardType,
+        lotteryPrizes: [],
+        ticketValidityDays: ticketValidityDays,
+        unusedReminderDays: unusedReminderDays
+      };
       if (rewardType === 'lottery') {
         const prizes = Array.from(row.querySelectorAll('.lottery-prize-row')).map(function (prizeRow) {
           const name = prizeRow.querySelector('.lottery-prize-name').value.trim();
@@ -626,8 +670,8 @@
   async function deleteCard() {
     if (!selectedCard) return;
     const confirmed = window.confirm(
-      '確定永久刪除「' + selectedCard.name + '」？\n\n' +
-      '此操作會刪除這張卡所有會員點數、集點紀錄、集點 QR 與這張卡的票券使用紀錄，無法復原。其他集點卡不受影響。'
+      '確定刪除「' + selectedCard.name + '」？\n\n' +
+      '刪除後會停止新的集點並撤銷仍有效的集點 QR；會員點數、歷史紀錄與尚未使用的票券會保留。'
     );
     if (!confirmed) return;
     setMessage('', false);
@@ -642,7 +686,7 @@
       editorKey = '';
       selectCardFromList();
       render();
-      setMessage('集點卡已永久刪除。', false);
+      setMessage('集點卡已刪除；會員未使用票券與歷史紀錄已保留。', false);
       notifyAdminCardChanged('deleted');
     } catch (error) {
       setMessage(error && error.message ? error.message : '集點卡刪除失敗。', true);

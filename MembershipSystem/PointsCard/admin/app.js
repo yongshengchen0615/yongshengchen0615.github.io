@@ -89,7 +89,9 @@
       }]).map(function (node) {
         return Object.assign({}, node, {
           rewardType: node.rewardType === 'lottery' ? 'lottery' : 'coupon',
-          lotteryPrizes: normalizeLotteryPrizesForEditor(node.lotteryPrizes)
+          lotteryPrizes: normalizeLotteryPrizesForEditor(node.lotteryPrizes),
+          ticketValidityDays: Number(node.ticketValidityDays || 0),
+          unusedReminderDays: Number(node.unusedReminderDays || 0)
         });
       }),
       cardSize: cardSize,
@@ -431,6 +433,31 @@
     rewardInput.value = node.rewardName || '';
     rewardInput.disabled = locked;
     rewardLabel.append(rewardInput);
+    const ticketTerms = document.createElement('div');
+    ticketTerms.className = 'reward-node-ticket-terms';
+    const validityInput = document.createElement('input');
+    validityInput.className = 'reward-node-validity-days';
+    validityInput.type = 'number';
+    validityInput.min = '0';
+    validityInput.max = '3650';
+    validityInput.step = '1';
+    validityInput.value = String(Number(node.ticketValidityDays || 0));
+    validityInput.disabled = locked;
+    const validityLabel = document.createElement('label');
+    validityLabel.textContent = '取得後有效天數（0＝無期限）';
+    validityLabel.append(validityInput);
+    const reminderInput = document.createElement('input');
+    reminderInput.className = 'reward-node-reminder-days';
+    reminderInput.type = 'number';
+    reminderInput.min = '0';
+    reminderInput.max = '3650';
+    reminderInput.step = '1';
+    reminderInput.value = String(Number(node.unusedReminderDays || 0));
+    reminderInput.disabled = locked;
+    const reminderLabel = document.createElement('label');
+    reminderLabel.textContent = '未使用幾天後提醒（0＝不提醒）';
+    reminderLabel.append(reminderInput);
+    ticketTerms.append(validityLabel, reminderLabel);
     const prizesField = document.createElement('div');
     prizesField.className = 'reward-node-prizes';
     const prizesHeader = document.createElement('div');
@@ -506,7 +533,7 @@
       row.remove();
       renderRewardNodeOrders();
     });
-    fields.append(pointLabel, typeLabel, rewardLabel, prizesField);
+    fields.append(pointLabel, typeLabel, rewardLabel, ticketTerms, prizesField);
     row.append(order, fields, remove);
     $('rewardNodeList').append(row);
   }
@@ -564,7 +591,9 @@
         stampsRequired: Number(row.querySelector('.reward-node-points').value),
         rewardName: row.querySelector('.reward-node-name').value.trim(),
         rewardType: rewardType,
-        lotteryPrizes: lotteryPrizes
+        lotteryPrizes: lotteryPrizes,
+        ticketValidityDays: Number(row.querySelector('.reward-node-validity-days').value),
+        unusedReminderDays: Number(row.querySelector('.reward-node-reminder-days').value)
       };
     });
     if (!nodes.length || nodes.length > 5) throw new Error('請設定 1 至 5 個獎勵節點。');
@@ -572,6 +601,9 @@
     nodes.forEach(function (node) {
       if (!Number.isInteger(node.stampsRequired) || node.stampsRequired < 1 || node.stampsRequired > 20) throw new Error('節點點數必須是 1 到 20 的整數。');
       if (!node.rewardName) throw new Error('每個節點都必須填寫獎勵名稱。');
+      if (!Number.isInteger(node.ticketValidityDays) || node.ticketValidityDays < 0 || node.ticketValidityDays > 3650) throw new Error('票券有效天數必須是 0 到 3,650 的整數。');
+      if (!Number.isInteger(node.unusedReminderDays) || node.unusedReminderDays < 0 || node.unusedReminderDays > 3650) throw new Error('未使用提醒天數必須是 0 到 3,650 的整數。');
+      if (node.ticketValidityDays > 0 && node.unusedReminderDays >= node.ticketValidityDays) throw new Error('未使用提醒必須早於票券到期日。');
       if (node.rewardType === 'lottery' && (node.lotteryPrizes.length < 2 || node.lotteryPrizes.length > 8)) throw new Error('每張抽獎券必須設定 2 至 8 個獎項。');
       if (node.rewardType === 'lottery' && node.lotteryPrizes.some(function (prize) { return !prize.name; })) throw new Error('每個抽獎獎項都必須填寫名稱。');
       if (node.rewardType === 'lottery' && node.lotteryPrizes.some(function (prize) { return prize.weightBasis == null; })) throw new Error('中獎率必須是 0% 至 100%，最多兩位小數。');

@@ -108,7 +108,7 @@ test('public initialization binds the active spreadsheet and creates every base 
     'AuditLogs', 'Members', 'RewardConfirmations', 'RewardRecords', 'StampRecords', 'StampVouchers'
   ]);
   assert.deepEqual(Array.from(result.sheets).sort(), [
-    'AuditLogs', 'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards',
+    'AuditLogs', 'CardRewardNotifications', 'CardRewardRecords', 'CardStampRecords', 'CardStampVouchers', 'Cards',
     'MemberCardProgress', 'Members', 'RewardConfirmations', 'RewardRecords', 'StampRecords', 'StampVouchers'
   ]);
   assert.equal(result.spreadsheetId, 'SPREADSHEET-ACTIVE');

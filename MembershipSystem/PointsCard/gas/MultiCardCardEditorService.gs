@@ -22,6 +22,7 @@ function adminCardSaveMultiCard_(context, payload) {
   try {
     const match = findMultiCard_(cardId);
     if (!match) fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
+    if (match.card.storedStatus === 'deleted') fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
     if (match.card.updatedAt !== expectedUpdatedAt) {
       fail_('CONFLICT', '集點卡已被更新，請重新整理後再試。');
     }

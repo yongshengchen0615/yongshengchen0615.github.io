@@ -83,6 +83,8 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .reward-node-editor-row input:focus, .reward-node-editor-row select:focus, .reward-node-editor-row textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(23,63,53,.08); }
 .reward-node-editor-row input:disabled, .reward-node-editor-row select:disabled, .reward-node-editor-row textarea:disabled { color: var(--muted); cursor: not-allowed; }
 .reward-node-prizes { grid-column: 1 / -1; padding: 15px; border: 1px solid rgba(23,63,53,.13); border-radius: 14px; background: rgba(248,247,243,.78); }
+.reward-node-ticket-terms { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; border: 1px solid rgba(23,63,53,.13); border-radius: 14px; background: rgba(216,232,164,.18); }
+.reward-node-ticket-terms > p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: var(--type-caption); line-height: 1.55; }
 .lottery-prize-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
 .lottery-prize-intro { display: grid; gap: 3px; }
 .lottery-prize-intro > span { color: var(--ink-deep); font-size: var(--type-small); font-weight: 720; letter-spacing: -.005em; }
@@ -233,6 +235,8 @@ button:active:not(:disabled) { transform: translateY(1px); }
   .reward-node-editor-fields { grid-column: 1 / -1; }
   .reward-node-editor-fields { grid-template-columns: 1fr 1fr; gap: 9px; }
   .reward-node-editor-fields label:nth-child(3), .reward-node-prizes { grid-column: 1 / -1; }
+  .reward-node-ticket-terms { grid-template-columns: 1fr; }
+  .reward-node-ticket-terms > p { grid-column: 1; }
   .reward-node-prizes { padding: 12px 10px; }
   .lottery-prize-header { align-items: stretch; flex-direction: column; gap: 9px; }
   .lottery-prize-header-actions { justify-content: space-between; }

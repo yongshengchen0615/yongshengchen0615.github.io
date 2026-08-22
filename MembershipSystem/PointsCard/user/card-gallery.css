@@ -7,10 +7,10 @@
 .member-card-tabs::-webkit-scrollbar { display: none; }
 .member-card-tab { flex: 0 0 auto; min-width: 116px; max-width: 220px; min-height: 48px; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 9px; padding: 7px 12px; border: 0; border-bottom: 3px solid transparent; border-radius: 12px 12px 3px 3px; color: var(--muted); background: transparent; text-align: left; cursor: pointer; scroll-snap-align: start; transition: color .18s ease, background .18s ease, border-color .18s ease, transform .18s ease; }
 .member-card-tab.selected { color: var(--ink-deep); border-bottom-color: var(--accent); background: rgba(255,255,255,.58); }
-.member-card-tab.expired:not(.selected) { opacity: .68; }
+.member-card-tab.expired:not(.selected), .member-card-tab.deleted:not(.selected) { opacity: .68; }
 .member-card-tab:disabled { cursor: wait; opacity: .48; }
 .member-card-tab-status { width: 8px; height: 8px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 4px rgba(216,232,164,.28); }
-.member-card-tab.expired .member-card-tab-status { background: var(--muted); box-shadow: 0 0 0 4px rgba(109,117,111,.12); }
+.member-card-tab.expired .member-card-tab-status, .member-card-tab.deleted .member-card-tab-status { background: var(--muted); box-shadow: 0 0 0 4px rgba(109,117,111,.12); }
 .member-card-tab-copy { min-width: 0; display: grid; gap: 2px; }
 .member-card-tab-copy strong, .member-card-tab-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-card-tab-copy strong { font-family: var(--font-display); font-size: .84rem; font-weight: 700; letter-spacing: -.012em; line-height: 1.35; }

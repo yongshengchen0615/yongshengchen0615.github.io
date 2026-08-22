@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '2.2.0',
+  version: '2.3.0',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -55,6 +55,7 @@ const STAMP_SCAN_MODES = ['single', 'per-member', 'repeatable'];
 const REWARD_TYPES = ['coupon', 'lottery'];
 const LOTTERY_WEIGHT_BASIS_POINTS = 10000;
 const MAX_CARD_STAMPS = 10000;
+const MAX_TICKET_TERM_DAYS = 3650;
 const MAX_STAMPS_PER_SCAN = 10;
 const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const LINE_IDENTITY_CACHE_MAX_SECONDS = 300;
@@ -414,13 +415,24 @@ function normalizeRewardNodes_(value, errorCode, errorMessage) {
     if (!rewardName || rewardName.length > 80) fail_(errorCode, errorMessage);
     const rewardType = node.rewardType == null || node.rewardType === '' ? 'coupon' : String(node.rewardType);
     if (REWARD_TYPES.indexOf(rewardType) < 0) fail_(errorCode, errorMessage);
+    const ticketValidityDays = node.ticketValidityDays == null || node.ticketValidityDays === '' ? 0 : Number(node.ticketValidityDays);
+    const unusedReminderDays = node.unusedReminderDays == null || node.unusedReminderDays === '' ? 0 : Number(node.unusedReminderDays);
+    if (!Number.isFinite(ticketValidityDays) || Math.floor(ticketValidityDays) !== ticketValidityDays ||
+      ticketValidityDays < 0 || ticketValidityDays > MAX_TICKET_TERM_DAYS) fail_(errorCode, errorMessage);
+    if (!Number.isFinite(unusedReminderDays) || Math.floor(unusedReminderDays) !== unusedReminderDays ||
+      unusedReminderDays < 0 || unusedReminderDays > MAX_TICKET_TERM_DAYS) fail_(errorCode, errorMessage);
+    if (ticketValidityDays > 0 && unusedReminderDays >= ticketValidityDays) {
+      fail_(errorCode, '未使用提醒必須早於票券到期日。');
+    }
     const lotteryPrizes = rewardType === 'lottery' ? normalizeLotteryPrizes_(node.lotteryPrizes, errorCode, errorMessage) : [];
     return {
       nodeId: 'node-' + stampsRequired,
       stampsRequired: stampsRequired,
       rewardName: rewardName,
       rewardType: rewardType,
-      lotteryPrizes: lotteryPrizes
+      lotteryPrizes: lotteryPrizes,
+      ticketValidityDays: ticketValidityDays,
+      unusedReminderDays: unusedReminderDays
     };
   }).sort(function (a, b) { return a.stampsRequired - b.stampsRequired; });
   for (let index = 1; index < nodes.length; index += 1) {
@@ -449,6 +461,8 @@ function rewardEntitlementByOrdinal_(ordinal, settings) {
     rewardName: node.rewardName,
     rewardType: node.rewardType,
     lotteryPrizes: node.lotteryPrizes.map(function (prize) { return { name: prize.name, weight: prize.weight }; }),
+    ticketValidityDays: node.ticketValidityDays || 0,
+    unusedReminderDays: node.unusedReminderDays || 0,
     cycleNumber: cycleIndex + 1,
     absoluteStamps: cycleIndex * settings.cardSize + node.stampsRequired
   };
@@ -468,7 +482,13 @@ function publicRewardTicket_(reward) {
     absoluteStamps: Number(reward.absoluteStamps || 0),
     stampsUntilReward: Math.max(0, Number(reward.stampsUntilReward || 0)),
     state: String(reward.state || ''),
-    lotteryPrizes: lotteryPrizes
+    lotteryPrizes: lotteryPrizes,
+    ticketValidityDays: Number(reward.ticketValidityDays || 0),
+    unusedReminderDays: Number(reward.unusedReminderDays || 0),
+    earnedAt: String(reward.earnedAt || ''),
+    expiresAt: String(reward.expiresAt || ''),
+    expired: Boolean(reward.expired),
+    usable: reward.usable === undefined ? !reward.expired : Boolean(reward.usable)
   };
 }
 
@@ -536,6 +556,8 @@ function rewardProjection_(member, settings, claimedOrdinals) {
       rewardName: node.rewardName,
       rewardType: node.rewardType,
       lotteryPrizes: node.lotteryPrizes,
+      ticketValidityDays: node.ticketValidityDays || 0,
+      unusedReminderDays: node.unusedReminderDays || 0,
       entitlementOrdinal: entitlement.entitlementOrdinal,
       cycleNumber: entitlement.cycleNumber,
       absoluteStamps: entitlement.absoluteStamps,

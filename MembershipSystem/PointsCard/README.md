@@ -2,7 +2,15 @@
 
 `PointsCard` 採用 GitHub Pages + LINE LIFF + Google Apps Script + Google Sheets 架構，提供會員集點、優惠券、抽獎券、店家確認 QR 與管理端功能。
 
-目前用戶端版本：`2.2.1`；本次未變更的 GAS API 版本維持 `2.2.0`。
+目前用戶端與 GAS API 版本：`2.3.0`。
+
+## 2.3.0 重點
+
+- 每個優惠券／抽獎券節點可設定「取得後有效天數」；`0` 代表無期限。會員端會顯示票券使用期限，已到期票券保留顯示但不能核銷。
+- 每個票券節點可設定「取得後幾天仍未使用就提醒」；`0` 代表不提醒。提醒排程透過 LINE Messaging API 官方帳號推播，並以 `X-Line-Retry-Key` 與 `CardRewardNotifications` 避免暫時性失敗造成重複訊息。
+- 會員端固定顯示目前集點卡期限；沒有設定到期時間時明確顯示「無期限」。
+- 多卡刪除改為封存：停止新集點並撤銷該卡仍有效的集點 QR，但保留卡片定義、會員進度、交易紀錄與未使用票券。管理端不再列出封存卡，會員仍可在原卡分頁使用尚未到期票券。
+- 舊獎勵節點沒有票券期限／提醒欄位時，自動視為「無期限、不提醒」；既有多卡資料表會只新增 `CardRewardNotifications`，不重跑舊交易資料遷移。
 
 ## 2.2.1 重點
 
@@ -64,6 +72,7 @@
 - 以同頁小分頁切換多張集點卡，顯示所選卡片的集點進度與獎勵節點。
 - 集點卡不存在、已刪除或已過期時顯示「目前沒有可用集點卡」。
 - 顯示已獲得與未獲得的優惠券／抽獎券；卡片不可用時仍保留已獲得票券。
+- 顯示集點卡期限與每張已取得票券的使用期限；無期限會明確標示。
 - 已獲得票券可掃描店家確認 QR 使用；掃描後先顯示票券確認中的 loading，優惠券完成核銷，抽獎券則由 GAS 固定開獎結果。
 - 抽獎券確認完成後由會員點擊「開始抽獎」，再以旋轉、減速、揭曉三段式動效呈現；偏好減少動態的裝置使用快速、低動態版本。
 - 使用 `liff.scanCodeV2()` 掃描店家集點 QR，或直接開啟店家發放連結。
@@ -79,6 +88,7 @@
 - 集點卡不可用時，管理端禁止建立新的集點 QR；GAS 也會再次檢查，不依賴前端按鈕狀態。
 - 檢視會員、累計集點、可兌換獎勵與會員狀態。
 - 設定 1–5 個獎勵節點，每個節點可選優惠券或抽獎券；抽獎券可設定 2–8 個獎項與各自中獎率。
+- 每個獎勵節點可分別設定票券有效天數與未使用提醒天數；提醒必須早於到期日。
 - 建立、開啟、停止或刪除店家票券確認 QR；開啟既有 QR 時會先顯示 loading，確認 QR 只提供展示與下載，不顯示分享連結。
 - 建立 `single`、`per-member` 或 `repeatable` 集點 QR；預設建議 `per-member`。
 - 每組集點 QR 永久綁定單一 `cardId`；開啟、停止、刪除與集點紀錄都必須匹配同一張集點卡，不可跨卡共用。
@@ -158,6 +168,21 @@ updatedAt = legacy
 `RewardRecords.rewardOrdinal` 記錄實際使用的節點，會員可以使用任一張已獲得且尚未使用的票券。
 
 抽獎結果只在 GAS 端依設定權重產生，先寫入 `RewardRecords.lotteryResult` 再回傳前端。同一個 `requestId` retry 時會恢復原結果，不會重新抽獎。
+
+## 票券期限與未使用提醒
+
+票券期限以會員實際跨過獎勵節點的集點紀錄時間為起點，而不是集點卡建立時間。獎勵節點欄位：
+
+```text
+ticketValidityDays = 0       → 無期限
+ticketValidityDays = 30      → 取得後 30 天到期
+unusedReminderDays = 0       → 不推播提醒
+unusedReminderDays = 7       → 取得後 7 天仍未使用時提醒一次
+```
+
+兩個欄位都只接受 `0`–`3650` 的整數；有期限時，`unusedReminderDays` 必須小於 `ticketValidityDays`。舊資料缺少欄位時預設為 `0`，保持無期限且不主動推播。
+
+提醒排程只掃描尚未核銷、尚未到期且已達提醒時間的票券。每張票券用 `cardId + memberLineUserId + rewardOrdinal` 產生固定通知 ID 與 LINE retry key；HTTP `200` 或相同 retry key 的 `409` 都記錄為已接受，避免連線逾時、重新設定提醒天數或重跑排程後重複推播。
 
 ## 集點交易與刪卡競態
 
@@ -263,6 +288,7 @@ PointsCard/
 │   ├── StampService.gs
 │   ├── RewardService.gs
 │   ├── RewardConfirmationService.gs
+│   ├── TicketNotificationService.gs
 │   └── appsscript.json
 └── tests/
     ├── contracts.test.js
@@ -272,7 +298,8 @@ PointsCard/
     ├── supply-chain.test.js
     ├── stamp-lifecycle.test.js
     ├── card-lifecycle.test.js
-    └── card-delete-revocation.test.js
+    ├── card-delete-revocation.test.js
+    └── ticket-expiry-reminder.test.js
 ```
 
 ## Sheet 資料
@@ -296,6 +323,7 @@ GAS 會依下列順序選擇並綁定資料試算表：
 - `CardStampVouchers`
 - `CardStampRecords`
 - `CardRewardRecords`
+- `CardRewardNotifications`
 
 多集點卡遷移狀態會綁定 `POINTS_CARD_SPREADSHEET_ID`。若之後切換到另一份 Spreadsheet，下一次 API 請求會為新資料表建立必要工作表並執行一次相容遷移；若已遷移的資料表只缺少部分工作表，系統會停止寫入並列出缺少名稱，避免以空白工作表覆蓋可能需要從備份還原的資料。
 
@@ -334,6 +362,8 @@ durationMs
 
 `2.1.1` 新增 `reward.prepare`；部署時應先更新 GAS，再發布會員端，避免新版前端連到尚未支援準備流程的舊 `/exec`。
 
+`2.3.0` 新增 `TicketNotificationService.gs` 與 `CardRewardNotifications`；同步新檔後，第一次 API request 或手動執行 `initializePointsCardStorage()` 會以非破壞方式新增提醒紀錄工作表。
+
 若 Apps Script 是從目標 Google Spreadsheet 的「擴充功能 → Apps Script」開啟，執行下列函式就會綁定目前這份 Spreadsheet，並一次建立所有必要工作表：
 
 ```javascript
@@ -344,6 +374,24 @@ configurePointsCard('YOUR_LINE_LOGIN_CHANNEL_ID', '招牌飲品一份', 10);
 `LINE_LOGIN_CHANNEL_ID` 是公開的 LINE Login Channel ID，不是 Channel Secret。
 
 如果 Web App 第一次執行時尚未設定 Spreadsheet，也會自動綁定可用的目前 Spreadsheet；沒有目前 Spreadsheet 時則建立新的 `PointsCard Data`。重新執行 `initializePointsCardStorage()` 可切換並綁定目前 Spreadsheet，回傳值中的 `binding` 會顯示 `active`、`configured` 或 `created`。
+
+### 1.1 設定 LINE 官方帳號票券提醒
+
+在 Apps Script「專案設定 → 指令碼屬性」新增：
+
+```text
+LINE_MESSAGING_CHANNEL_ACCESS_TOKEN = Messaging API channel access token
+```
+
+Token 是機密資料，不可寫入 repository、Sheet、瀏覽器設定或 log。LINE Login channel 與 Messaging API channel 必須位於同一個 LINE Provider，兩邊取得的會員 User ID 才能對應；會員也必須加入官方帳號好友（或符合 LINE push 的其他接收條件）。
+
+同步並授權新版 `appsscript.json` 後，在 Script Editor 手動執行一次：
+
+```javascript
+installPointsCardTicketReminderTrigger();
+```
+
+這會建立每小時執行一次的 `runPointsCardTicketReminderSweep` time-driven trigger。可先手動執行 sweep 檢查回傳的 `configured / attempted / sent / retryable / failed` 數字；回傳內容不包含 Token 或 LINE User ID。LINE 對已封鎖／未加好友等部分情況仍可能回 `200`，因此 `sent` 代表 LINE Platform 已接受請求，不保證裝置端實際顯示。
 
 ### 2. 部署 GAS Web App
 
@@ -397,6 +445,8 @@ node --test PointsCard/tests/*.test.js
 - 會員端精確顯示「目前沒有可用集點卡」。
 - 已獲得票券在卡片不可用時仍保留。
 
-`card-delete-revocation.test.js` 驗證刪卡會撤銷舊 active 集點 QR，並避免重新啟用卡片時舊 QR 復活。
+`card-delete-revocation.test.js` 驗證刪卡會封存卡片、撤銷 active 集點 QR，且不刪除會員進度、交易與票券資料。
+
+`ticket-expiry-reminder.test.js` 驗證舊票券設定相容、取得時間與到期時間計算、到期拒絕核銷、LINE retry key、提醒 Secret 邊界及排程設定。
 
 Repository 測試只代表 source 語法與契約；GAS `/exec`、LINE Verify、Script Properties 與 LIFF 實機掃碼仍須在部署後做整合驗證。

@@ -9,7 +9,7 @@
   const terminalRewardErrors = new Set([
     'INVALID_REWARD_CONFIRMATION_CODE', 'REWARD_CONFIRMATION_NOT_FOUND',
     'REWARD_CONFIRMATION_INACTIVE', 'REWARD_CONFIRMATION_EXPIRED',
-    'REWARD_NOT_AVAILABLE', 'CARD_NOT_FOUND', 'MEMBER_INACTIVE', 'CONFLICT'
+    'REWARD_NOT_AVAILABLE', 'REWARD_EXPIRED', 'CARD_NOT_FOUND', 'MEMBER_INACTIVE', 'CONFLICT'
   ]);
   const rewardTypeLabels = { coupon: '優惠券', lottery: '抽獎券' };
   const MAX_GRID_STAMPS = 60;
@@ -36,8 +36,18 @@
     return Object.assign({}, ticket, {
       cardId: String(ticket && ticket.cardId || ''),
       rewardType: ticket && ticket.rewardType === 'lottery' ? 'lottery' : (fallbackType || 'coupon'),
-      lotteryPrizes: lotteryPrizeNames(ticket)
+      lotteryPrizes: lotteryPrizeNames(ticket),
+      ticketValidityDays: Number(ticket && ticket.ticketValidityDays || 0),
+      unusedReminderDays: Number(ticket && ticket.unusedReminderDays || 0),
+      earnedAt: String(ticket && ticket.earnedAt || ''),
+      expiresAt: String(ticket && ticket.expiresAt || ''),
+      expired: Boolean(ticket && ticket.expired),
+      usable: ticket && ticket.usable === undefined ? !Boolean(ticket.expired) : Boolean(ticket && ticket.usable)
     });
+  }
+
+  function expiryLabel(expiresAt) {
+    return expiresAt ? PointsCard.formatDateTime(expiresAt, '—') : '無期限';
   }
 
   function lotteryPrizeNames(ticket) {
@@ -247,13 +257,14 @@
     const name = document.createElement('strong');
     name.textContent = ticket.rewardName;
     const meta = document.createElement('span');
-    meta.textContent = formatNumber(ticket.stampsRequired) + ' 點節點';
+    meta.textContent = '使用期限：' + expiryLabel(ticket.expiresAt);
     copy.append(type, name, meta);
     appendLotteryPrizeSummary(copy, ticket);
     const action = document.createElement('span');
     action.className = 'ticket-action';
-    action.textContent = '開啟 ↗';
+    action.textContent = ticket.expired ? '已到期' : '開啟 ↗';
     button.append(mark, copy, action);
+    button.disabled = ticket.expired || !ticket.usable;
     button.addEventListener('click', function () { openTicket(ticket); });
     return button;
   }
@@ -280,8 +291,9 @@
 
   function renderTickets(member, cardAvailable) {
     const earned = member.availableRewardNodes || [];
+    const usable = earned.filter(function (ticket) { return ticket.usable && !ticket.expired; });
     const upcoming = cardAvailable ? (member.upcomingRewardNodes || []) : [];
-    $('earnedTicketCount').textContent = formatNumber(earned.length) + ' 張可使用';
+    $('earnedTicketCount').textContent = formatNumber(usable.length) + ' 張可使用';
     $('earnedTicketEmpty').classList.toggle('hidden', earned.length !== 0);
     const earnedList = $('earnedTicketList');
     earnedList.replaceChildren();
@@ -298,7 +310,7 @@
     (member.cards || []).forEach(function (card) {
       const option = document.createElement('option');
       option.value = card.cardId;
-      option.textContent = card.name + (card.status === 'expired' ? '（已過期）' : '');
+      option.textContent = card.name + (card.status === 'expired' ? '（已過期）' : (card.status === 'deleted' ? '（已刪除，票券保留）' : ''));
       option.dataset.cardName = card.name;
       option.dataset.status = card.status;
       option.dataset.totalStamps = String(card.totalStamps || 0);
@@ -326,13 +338,16 @@
     $('cardTitle').textContent = member.card.name || '集點卡';
     $('cardDescription').textContent = member.card.description || '';
     $('cardDescription').classList.toggle('hidden', !member.card.description);
+    $('cardValidityText').textContent = '集點卡期限：' + expiryLabel(member.card.expiresAt);
 
     if (!cardAvailable) {
       $('memberStatusText').textContent = '目前沒有可用集點卡。';
       const hasAlternative = (member.cards || []).some(function (card) { return card.available; });
       $('noCardMessage').textContent = member.card.status === 'expired'
         ? (hasAlternative ? '這張集點卡已到期，請切換其他可用集點卡。' : '目前的集點卡已到期。')
-        : '店家目前沒有開放中的集點卡。';
+        : (member.card.status === 'deleted'
+          ? '這張集點卡已停止集點；下方尚未到期的票券仍可使用。'
+          : '店家目前沒有開放中的集點卡。');
     } else {
       $('memberStatusText').textContent = active ? '今天也來收集一枚好心情。' : '這張集點卡目前暫停使用，請洽店家確認。';
       renderStampGrid(member, animateLatest);
@@ -405,7 +420,7 @@
     $('ticketDialogMark').textContent = ticket.rewardType === 'lottery' ? '?' : '%';
     $('ticketDialogType').textContent = ticket.rewardType === 'lottery' ? 'LUCKY DRAW TICKET' : 'COUPON';
     $('ticketDialogTitle').textContent = ticket.rewardName;
-    $('ticketDialogMeta').textContent = formatNumber(ticket.stampsRequired) + ' 點節點已解鎖';
+    $('ticketDialogMeta').textContent = formatNumber(ticket.stampsRequired) + ' 點節點已解鎖 · 使用期限：' + expiryLabel(ticket.expiresAt);
     const prizeNames = lotteryPrizeNames(ticket);
     const prizeList = $('ticketPrizeList');
     prizeList.replaceChildren();
@@ -415,7 +430,8 @@
       prizeList.append(item);
     });
     $('ticketPrizePanel').classList.toggle('hidden', prizeNames.length === 0);
-    $('scanRewardButton').disabled = rewardClaimInFlight;
+    $('scanRewardButton').textContent = ticket.expired ? '票券已到期' : '掃描店家確認 QR';
+    $('scanRewardButton').disabled = ticket.expired || !ticket.usable || rewardClaimInFlight;
     openDialog($('ticketDialog'));
   }
 

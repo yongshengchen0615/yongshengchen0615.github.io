@@ -163,10 +163,22 @@ function availableMultiCardRewardForClaim_(progress, card, lineUserId, expectedR
   const projectionMember = { totalStamps: progress.totalStamps, redeemedRewards: progress.redeemedRewards };
   const claimedOrdinals = claimedOrdinalsForCardMember_(card.cardId, lineUserId);
   const projection = rewardProjection_(projectionMember, settings, claimedOrdinals);
-  if (!expectedRewardOrdinal) return projection.nextAvailableReward;
-  const claimed = normalizedClaimedOrdinals_(projectionMember, claimedOrdinals);
-  if (expectedRewardOrdinal > projection.earnedRewards || claimed.has(expectedRewardOrdinal)) return null;
-  return rewardEntitlementByOrdinal_(expectedRewardOrdinal, settings);
+  let reward;
+  if (!expectedRewardOrdinal) reward = projection.nextAvailableReward;
+  else {
+    const claimed = normalizedClaimedOrdinals_(projectionMember, claimedOrdinals);
+    if (expectedRewardOrdinal > projection.earnedRewards || claimed.has(expectedRewardOrdinal)) return null;
+    reward = rewardEntitlementByOrdinal_(expectedRewardOrdinal, settings);
+  }
+  if (!reward) return null;
+  const ticket = multiCardRewardTicketState_(
+    reward,
+    progress,
+    { joinedAt: progress.createdAt || progress.updatedAt || '' },
+    multiCardStampRecordsForMemberCard_(lineUserId, card.cardId, true)
+  );
+  if (ticket.expired) fail_('REWARD_EXPIRED', '這張票券已過期。');
+  return ticket;
 }
 
 function recordMultiCardRewardClaim_(rewardSheet, progressMatch, member, card, reward, options) {

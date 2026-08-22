@@ -39,7 +39,7 @@ test('multi-card APIs require server-side admin authorization and route all muta
   ]) {
     assert.match(code, new RegExp("case '" + action.replace(/[.]/g, '\\.') + "':\\s*requireAdmin_\\(context\\)"));
   }
-  assert.match(code, /version:\s*'2\.2\.0'/);
+  assert.match(code, /version:\s*'2\.3\.0'/);
   assert.match(code, /adminCardSaveMultiCard_\(context, payload\)/);
   assert.match(code, /memberMeMultiCard_\(context, payload\)/);
   assert.match(code, /stampRecordMultiCard_\(context, payload\)/);
@@ -61,16 +61,15 @@ test('unified card save validates concurrency and writes metadata plus reward no
   assert.doesNotMatch(source, /adminRewardNodesUpdateMultiCard_/);
 });
 
-test('deleting a card permanently removes only rows belonging to that card', () => {
+test('deleting a card archives it while preserving card-owned member and ticket rows', () => {
   const storage = read('gas/MultiCardStorage.gs');
   const deletion = storage.slice(storage.indexOf('function adminCardDeleteMultiCard_'));
-  assert.match(deletion, /deleteMultiCardRowsWhere_\(getMultiCardSheet_\(MULTI_CARD_SHEETS\.stampRecords\)/);
-  assert.match(deletion, /deleteMultiCardRowsWhere_\(getMultiCardSheet_\(MULTI_CARD_SHEETS\.rewardRecords\)/);
-  assert.match(deletion, /deleteMultiCardRowsWhere_\(getMultiCardSheet_\(MULTI_CARD_SHEETS\.vouchers\)/);
-  assert.match(deletion, /deleteMultiCardRowsWhere_\(getMultiCardSheet_\(MULTI_CARD_SHEETS\.progress\)/);
-  assert.match(deletion, /deleteMultiCardObjectRow_\(getMultiCardSheet_\(MULTI_CARD_SHEETS\.cards\), match\.row\)/);
-  assert.match(deletion, /String\(row\.cardId \|\| ''\) === cardId/g);
-  assert.doesNotMatch(deletion, /status\s*=\s*'deleted'/);
+  assert.match(deletion, /cancelActiveMultiCardStampVouchersForCard_/);
+  assert.match(deletion, /storedStatus:\s*'deleted'/);
+  assert.match(deletion, /preservedMemberHistory:\s*true/);
+  assert.match(deletion, /preservedUnusedRewards:\s*true/);
+  assert.doesNotMatch(deletion, /deleteMultiCardRowsWhere_/);
+  assert.doesNotMatch(deletion, /deleteMultiCardObjectRow_/);
   assert.doesNotMatch(deletion, /reactivat|重新啟用/);
 });
 
@@ -113,7 +112,7 @@ test('admin UI integrates reward nodes into each card and exposes only one prima
   assert.match(script, /rewardNodes:\s*readRewardNodesForMultiCard\(\)/);
   assert.match(script, /rewardNodes:\s*form\.rewardNodes/);
   assert.match(script, /儲存集點卡與獎勵設定/);
-  assert.match(script, /所有會員點數、集點紀錄、集點 QR/);
+  assert.match(script, /會員點數、歷史紀錄與尚未使用的票券會保留/);
   assert.match(css, /#admin-tab-reward-nodes/);
   assert.match(css, /#admin-panel-reward-nodes/);
   assert.doesNotThrow(() => new vm.Script(script));
