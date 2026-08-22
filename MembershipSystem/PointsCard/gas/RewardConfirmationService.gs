@@ -1,5 +1,18 @@
 'use strict';
 
+const REWARD_CONFIRMATION_MAX_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
+function validRewardConfirmationExpiry_(value) {
+  const text = cleanText_(value, 40, true);
+  const now = Date.now();
+  const time = new Date(text).getTime();
+  if (!Number.isFinite(time) || time <= now) fail_('INVALID_EXPIRY', '店家票券確認 QR Code 到期時間必須晚於現在。');
+  if (time - now > REWARD_CONFIRMATION_MAX_LIFETIME_MS) {
+    fail_('INVALID_EXPIRY', '店家票券確認 QR Code 最長只能設定 7 天。');
+  }
+  return new Date(time).toISOString();
+}
+
 function adminRewardConfirmationList_(limit) {
   const maxRows = clampInt_(limit, 1, 100, 50);
   const recordCounts = readObjects_(getSheet_(POINTS_CARD_SHEETS.rewardRecords)).reduce(function (counts, record) {
@@ -17,7 +30,7 @@ function adminRewardConfirmationList_(limit) {
 }
 
 function adminRewardConfirmationCreate_(context, payload) {
-  const expiresAt = validIsoFuture_(payload.expiresAt);
+  const expiresAt = validRewardConfirmationExpiry_(payload.expiresAt);
   const note = cleanText_(payload.note || '門市票券確認', 200, false);
   const sheet = getSheet_(POINTS_CARD_SHEETS.rewardConfirmations);
   const lock = LockService.getScriptLock();
