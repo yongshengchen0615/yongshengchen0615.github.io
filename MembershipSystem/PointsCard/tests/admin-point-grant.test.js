@@ -30,8 +30,9 @@ test('manual point grant is an authenticated admin-only server mutation', () => 
 
 test('grant service validates member, card, amount, reason and idempotency identity', () => {
   const source = read('gas/AdminPointGrantService.gs');
+  const storage = read('gas/AdminPointGrantStorage.gs');
   assert.match(source, /strictInt_\(payload\.stampCount, 1, POINTS_CARD_ADMIN_GRANTS\.maxGrantPoints/);
-  assert.match(source, /maxGrantPoints: 100/);
+  assert.match(storage, /maxGrantPoints: 100/);
   assert.match(source, /cleanText_\(payload\.reason, 200, true\)/);
   assert.match(source, /\^\[a-f0-9\]\{32,64\}\$/);
   assert.match(source, /member\.membershipStatus !== 'active'/);
@@ -41,6 +42,15 @@ test('grant service validates member, card, amount, reason and idempotency ident
   assert.match(source, /existingGrant\.stampCount !== stampCount/);
   assert.match(source, /existingGrant\.reason !== reason/);
   assert.match(source, /fail_\('REQUEST_CONFLICT'/);
+});
+
+test('grant storage stays schema-exact and spreadsheet-formula safe', () => {
+  const storage = read('gas/AdminPointGrantStorage.gs');
+  assert.match(storage, /CardPointGrants:/);
+  assert.match(storage, /MemberPointNotifications:/);
+  assert.match(storage, /lastColumn !== expected\.length/);
+  assert.match(storage, /headers\[index\] !== header/);
+  assert.match(storage, /typeof value === 'string' \? safeCellText_\(value\) : value/);
 });
 
 test('grant transaction records intent before progress mutation and success audit after mutation', () => {
@@ -70,14 +80,18 @@ test('member notification APIs are identity-scoped and prevent IDOR', () => {
   assert.match(source, /notification\.status = 'read'/);
 });
 
-test('official-account push uses the existing secret property and deterministic retry key without exposing the token', () => {
+test('official-account transport is centralized and business services do not access the token directly', () => {
   const source = read('gas/AdminPointGrantService.gs');
-  assert.match(source, /channelAccessTokenProperty: 'LINE_MESSAGING_CHANNEL_ACCESS_TOKEN'/);
-  assert.match(source, /https:\/\/api\.line\.me\/v2\/bot\/message\/push/);
-  assert.match(source, /Authorization: 'Bearer ' \+ channelAccessToken/);
-  assert.match(source, /'X-Line-Retry-Key': retryKey/);
-  assert.match(source, /responseCode === 200 \|\| responseCode === 409/);
-  assert.match(source, /responseCode === 429 \|\| responseCode >= 500/);
+  const messaging = read('gas/LineMessagingService.gs');
+  assert.match(source, /createLineMessagingClient_\(\)/);
+  assert.match(source, /lineMessaging\.sendTextPush/);
+  assert.doesNotMatch(source, /LINE_MESSAGING_CHANNEL_ACCESS_TOKEN/);
+  assert.doesNotMatch(source, /UrlFetchApp\.fetch/);
+  assert.doesNotMatch(source, /Authorization:\s*'Bearer/);
+  assert.match(messaging, /channelAccessTokenProperty: 'LINE_MESSAGING_CHANNEL_ACCESS_TOKEN'/);
+  assert.match(messaging, /https:\/\/api\.line\.me\/v2\/bot\/message\/push/);
+  assert.match(messaging, /Authorization: 'Bearer ' \+ channelAccessToken/);
+  assert.match(messaging, /'X-Line-Retry-Key': retryKey/);
   assert.doesNotMatch(source, /pushErrorCode\s*=\s*channelAccessToken/);
   assert.doesNotMatch(source, /audit_\([^\n]*channelAccessToken/);
 });
@@ -114,13 +128,13 @@ test('point grant messages contain only the business notification payload', () =
     JSON,
     Math,
     console,
-    storedNonNegativeInt_: (value) => Number(value || 0),
     sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     Utilities: { formatDate: () => '260822' }
   };
   vm.createContext(context);
   vm.runInContext(
-    read('gas/AdminPointGrantService.gs') + '\n;globalThis.__test = { pointGrantPushMessage_, pointGrantNotificationMessage_, pointGrantRetryKey_ };',
+    read('gas/LineMessagingService.gs') + '\n' + read('gas/AdminPointGrantService.gs') +
+      '\n;globalThis.__test = { pointGrantPushMessage_, pointGrantNotificationMessage_, pointGrantRetryKey_ };',
     context
   );
   const message = context.__test.pointGrantPushMessage_({ stampCount: 5, reason: '活動補發', totalAfter: 12 }, '夏季卡');
