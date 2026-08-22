@@ -528,7 +528,7 @@ function rewardProjection_(member, settings, claimedOrdinals) {
   const earnedRewards = earnedRewardCountForStamps_(totalStamps, settings);
   const claimed = normalizedClaimedOrdinals_(member, claimedOrdinals);
   const availableRewardNodes = [];
-  for (let ordinal = 1; ordinal <= earnedRewards && availableRewardNodes.length < 20; ordinal += 1) {
+  for (let ordinal = 1; ordinal <= earnedRewards; ordinal += 1) {
     if (!claimed.has(ordinal)) availableRewardNodes.push(rewardEntitlementByOrdinal_(ordinal, settings));
   }
   const claimedEarnedCount = Array.from(claimed).filter(function (ordinal) { return ordinal <= earnedRewards; }).length;
