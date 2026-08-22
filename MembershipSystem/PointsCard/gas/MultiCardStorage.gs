@@ -517,10 +517,21 @@ function publicMultiCard_(card) {
 }
 
 function multiCardAdminSummaries_() {
+  const cards = allMultiCards_().filter(function (card) { return card.storedStatus !== 'deleted'; });
   const lockedIds = new Set(readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords)).filter(function (record) {
     return record.status === 'processing' || record.status === 'recorded';
   }).map(function (record) { return String(record.cardId || ''); }));
-  return allMultiCards_().filter(function (card) { return card.storedStatus !== 'deleted'; }).map(function (card) {
+  const minimumRewardByCard = {};
+  cards.forEach(function (card) {
+    minimumRewardByCard[card.cardId] = card.rewardNodes[0].stampsRequired;
+  });
+  readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.progress)).forEach(function (row) {
+    const cardId = String(row.cardId || '');
+    if (!Object.prototype.hasOwnProperty.call(minimumRewardByCard, cardId)) return;
+    const totalStamps = storedNonNegativeInt_(row.totalStamps, 100000000);
+    if (totalStamps >= minimumRewardByCard[cardId]) lockedIds.add(cardId);
+  });
+  return cards.map(function (card) {
     const result = publicMultiCard_(card);
     result.rewardNodes = card.rewardNodes;
     result.rewardSettingsLocked = lockedIds.has(card.cardId);
@@ -1006,6 +1017,14 @@ function adminCardDeleteMultiCard_(context, payload) {
 }
 
 function rewardSettingsLockedForCard_(cardId) {
+  const cardMatch = findMultiCard_(cardId);
+  if (!cardMatch || !Array.isArray(cardMatch.card.rewardNodes) || !cardMatch.card.rewardNodes.length) return true;
+  const firstRewardThreshold = Number(cardMatch.card.rewardNodes[0].stampsRequired || 0);
+  const earnedRewardExists = readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.progress)).some(function (row) {
+    if (String(row.cardId || '') !== cardId) return false;
+    return storedNonNegativeInt_(row.totalStamps, 100000000) >= firstRewardThreshold;
+  });
+  if (earnedRewardExists) return true;
   return readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords)).some(function (record) {
     return String(record.cardId || '') === cardId && (record.status === 'processing' || record.status === 'recorded');
   });
@@ -1023,7 +1042,7 @@ function adminRewardNodesUpdateMultiCard_(context, payload) {
     if (!match) fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
     if (match.card.storedStatus === 'deleted') fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
     if (match.card.rewardNodesUpdatedAt !== expectedUpdatedAt) fail_('CONFLICT', '獎勵節點已被更新，請重新整理後再試。');
-    if (rewardSettingsLockedForCard_(cardId)) fail_('REWARD_SETTINGS_LOCKED', '這張集點卡已有票券使用紀錄，為保留兌換語意不能再修改節點。');
+    if (rewardSettingsLockedForCard_(cardId)) fail_('REWARD_SETTINGS_LOCKED', '這張集點卡已有會員取得票券或已有票券使用紀錄，為保留既有權益不能再修改節點。');
     const now = new Date().toISOString();
     if (!audit_(context.identity.sub, 'admin', 'CARD_REWARD_NODES_UPDATE_REQUESTED', '', 'pending', {
       cardId: cardId,
