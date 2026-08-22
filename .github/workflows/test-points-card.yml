@@ -13,6 +13,7 @@ on:
     paths:
       - 'MembershipSystem/PointsCard/**'
       - '.github/workflows/test-points-card.yml'
+      - '.github/workflows/deploy-membership-points-card-gas.yml'
 
 permissions:
   contents: read
@@ -31,11 +32,21 @@ jobs:
           node-version: '22'
 
       - name: Check JavaScript syntax
+        shell: bash
         run: |
+          set -euo pipefail
           node --check MembershipSystem/PointsCard/redirect.js
           node --check MembershipSystem/PointsCard/shared/common.js
           node --check MembershipSystem/PointsCard/user/app.js
+          node --check MembershipSystem/PointsCard/user/card-gallery.js
           node --check MembershipSystem/PointsCard/admin/app.js
+          node --check MembershipSystem/PointsCard/admin/card-lifecycle.js
+          node --check MembershipSystem/PointsCard/vendor/qrcode-generator-2.0.4.js
+          for file in MembershipSystem/PointsCard/gas/*.gs; do
+            tmp="$RUNNER_TEMP/$(basename "$file").js"
+            cp "$file" "$tmp"
+            node --check "$tmp"
+          done
 
       - name: Run PointsCard tests
         run: node --test MembershipSystem/PointsCard/tests/*.test.js
