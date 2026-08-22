@@ -7,7 +7,8 @@ function initializePointsCardStorage() {
   if (!lock.tryLock(10000)) fail_('BUSY', '資料初始化進行中，請稍後再試。');
   try {
     const properties = PropertiesService.getScriptProperties();
-    const resolved = resolvePointsCardSpreadsheet_(properties, true);
+    const configuredSpreadsheetId = String(properties.getProperty(POINTS_CARD_SERVICE.spreadsheetProperty) || '').trim();
+    const resolved = resolvePointsCardSpreadsheet_(properties, !configuredSpreadsheetId);
     const spreadsheet = resolved.spreadsheet;
     const spreadsheetId = resolved.spreadsheetId;
 
