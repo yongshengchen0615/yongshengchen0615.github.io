@@ -52,6 +52,16 @@
     dialog.addEventListener('cancel', function (event) { event.preventDefault(); });
   }
 
+  function canPresentNotices() {
+    const app = $('memberApp');
+    if (!app || app.classList.contains('hidden')) return false;
+    const navigation = PointsCard.getNavigationState();
+    if (navigation && navigation.stamp) return false;
+    const processing = $('processingOverlay');
+    if (processing && !processing.classList.contains('hidden')) return false;
+    return !document.querySelector('dialog[open]:not(#pointGrantNoticeDialog)');
+  }
+
   function showNextNotice() {
     if (!notices.length) {
       currentNotice = null;
@@ -59,6 +69,7 @@
       if (dialog && dialog.open) dialog.close();
       return;
     }
+    if (!canPresentNotices()) return;
     currentNotice = notices[0];
     $('pointGrantNoticeCount').textContent = '+' + String(Number(currentNotice.stampCount || 0));
     $('pointGrantNoticeTitle').textContent = currentNotice.title || '你獲得點數';
@@ -96,9 +107,10 @@
   }
 
   async function loadNoticesOnce() {
-    if (loaded || loading) return;
-    const app = $('memberApp');
-    if (!app || app.classList.contains('hidden')) return;
+    if (loaded || loading || !canPresentNotices()) {
+      if (loaded) showNextNotice();
+      return;
+    }
     loading = true;
     try {
       const result = await PointsCard.callApi('member.point-notifications.list', { limit: 10 });
@@ -114,13 +126,22 @@
     }
   }
 
+  function retryPresentation() {
+    if (loaded) showNextNotice();
+    else loadNoticesOnce();
+  }
+
   function init() {
     createDialog();
     const app = $('memberApp');
     if (!app) return;
-    loadNoticesOnce();
-    observer = new MutationObserver(function () { loadNoticesOnce(); });
-    observer.observe(app, { attributes: true, attributeFilter: ['class'] });
+    retryPresentation();
+    observer = new MutationObserver(retryPresentation);
+    observer.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'open']
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
