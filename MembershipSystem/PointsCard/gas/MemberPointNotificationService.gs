@@ -74,7 +74,8 @@ function memberPointNotificationsList_(context, payload) {
     context.identity.sub
   ).map(normalizeMemberPointNotification_)
     .filter(function (notification) {
-      return notification.type === 'point-grant' && notification.status === 'unread';
+      return notification.memberLineUserId === context.identity.sub &&
+        notification.type === 'point-grant' && notification.status === 'unread';
     })
     .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); })
     .slice(0, limit)
