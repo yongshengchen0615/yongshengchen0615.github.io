@@ -68,12 +68,13 @@ function memberPointNotificationsList_(context, payload) {
     POINTS_CARD_ADMIN_GRANTS.maxUnreadNotifications,
     POINTS_CARD_ADMIN_GRANTS.maxUnreadNotifications
   );
-  const notifications = readAdminPointGrantObjects_(POINTS_CARD_ADMIN_GRANTS.notificationsSheet)
-    .map(normalizeMemberPointNotification_)
+  const notifications = readAdminPointGrantObjectsByField_(
+    POINTS_CARD_ADMIN_GRANTS.notificationsSheet,
+    'memberLineUserId',
+    context.identity.sub
+  ).map(normalizeMemberPointNotification_)
     .filter(function (notification) {
-      return notification.memberLineUserId === context.identity.sub &&
-        notification.type === 'point-grant' &&
-        notification.status === 'unread';
+      return notification.type === 'point-grant' && notification.status === 'unread';
     })
     .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); })
     .slice(0, limit)
