@@ -100,6 +100,100 @@ function shouldAttemptTicketReminder_(notification, nowMs) {
   return age >= POINTS_CARD_TICKET_REMINDERS.retryDelayMs;
 }
 
+function ticketReminderRewardClaimedFresh_(cardId, lineUserId, rewardOrdinal) {
+  const sheet = getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords);
+  const headers = MULTI_CARD_HEADERS[MULTI_CARD_SHEETS.rewardRecords];
+  const memberColumnIndex = headers.indexOf('memberLineUserId');
+  const lastRow = sheet.getLastRow();
+  if (memberColumnIndex < 0 || lastRow < 2) return false;
+  const matches = sheet.getRange(2, memberColumnIndex + 1, lastRow - 1, 1)
+    .createTextFinder(String(lineUserId || '')).matchEntireCell(true).useRegularExpression(false).findAll();
+  return matches.some(function (match) {
+    const row = sheet.getRange(match.getRow(), 1, 1, headers.length).getValues()[0];
+    const record = multiCardRowToObject_(headers, row);
+    return String(record.cardId || '') === String(cardId || '') &&
+      Number(record.rewardOrdinal || 0) === Number(rewardOrdinal || 0) &&
+      (record.status === 'recorded' || record.status === 'processing');
+  });
+}
+
+function claimTicketReminderAttempt_(notificationSheet, candidate, nowMs) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return null;
+  try {
+    const memberMatch = findByFieldWithRow_(
+      getSheet_(POINTS_CARD_SHEETS.members),
+      'lineUserId',
+      candidate.memberLineUserId
+    );
+    if (!memberMatch || normalizeMember_(memberMatch.object).membershipStatus !== 'active') return null;
+    if (ticketReminderRewardClaimedFresh_(candidate.cardId, candidate.memberLineUserId, candidate.rewardOrdinal)) {
+      return null;
+    }
+
+    const attemptTimeMs = Number(nowMs == null ? Date.now() : nowMs);
+    const attemptAt = new Date(attemptTimeMs).toISOString();
+    let match = findMultiCardByFieldWithRow_(notificationSheet, 'notificationId', candidate.notificationId);
+    let notification = match ? normalizeMultiCardRewardNotification_(match.object) : null;
+    if (!shouldAttemptTicketReminder_(notification, attemptTimeMs)) return null;
+
+    if (!notification) {
+      notification = {
+        notificationId: candidate.notificationId,
+        cardId: candidate.cardId,
+        memberLineUserId: candidate.memberLineUserId,
+        memberNo: candidate.memberNo,
+        rewardOrdinal: candidate.rewardOrdinal,
+        reminderAt: candidate.reminderAt,
+        retryKey: candidate.retryKey,
+        status: 'processing',
+        attemptCount: 0,
+        sentAt: '',
+        lastAttemptAt: '',
+        lastErrorCode: '',
+        createdAt: attemptAt,
+        updatedAt: attemptAt
+      };
+      appendMultiCardObject_(notificationSheet, notification);
+      match = findMultiCardByFieldWithRow_(notificationSheet, 'notificationId', candidate.notificationId);
+      if (!match) return null;
+    }
+
+    notification.retryKey = notification.retryKey || candidate.retryKey;
+    notification.attemptCount += 1;
+    notification.status = 'processing';
+    notification.lastAttemptAt = attemptAt;
+    notification.updatedAt = attemptAt;
+    writeMultiCardObjectRow_(notificationSheet, match.row, notification);
+    return {
+      notification: normalizeMultiCardRewardNotification_(notification),
+      attemptAt: attemptAt
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function finalizeTicketReminderAttempt_(notificationSheet, notificationId, attemptAt, push, completedAt) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return false;
+  try {
+    const match = findMultiCardByFieldWithRow_(notificationSheet, 'notificationId', notificationId);
+    if (!match) return false;
+    const notification = normalizeMultiCardRewardNotification_(match.object);
+    if (notification.status !== 'processing' || notification.lastAttemptAt !== attemptAt) return false;
+
+    notification.status = push.accepted ? 'sent' : (push.retryable ? 'retry' : 'failed');
+    notification.sentAt = push.accepted ? completedAt : '';
+    notification.lastErrorCode = push.errorCode || '';
+    notification.updatedAt = completedAt;
+    writeMultiCardObjectRow_(notificationSheet, match.row, notification);
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function runPointsCardTicketReminderSweep() {
   ensureMultiCardStorage_();
   const lineMessaging = createLineMessagingClient_();
@@ -107,111 +201,78 @@ function runPointsCardTicketReminderSweep() {
     return { configured: false, scannedEntitlements: 0, attempted: 0, sent: 0, retryable: 0, failed: 0 };
   }
 
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) return { configured: true, busy: true, scannedEntitlements: 0, attempted: 0, sent: 0, retryable: 0, failed: 0 };
-  try {
-    const nowMs = Date.now();
-    const now = new Date(nowMs).toISOString();
-    const cardsById = {};
-    allMultiCards_().forEach(function (card) { cardsById[card.cardId] = card; });
-    const membersByLineUserId = {};
-    readObjects_(getSheet_(POINTS_CARD_SHEETS.members)).map(normalizeMember_).forEach(function (member) {
-      membersByLineUserId[member.lineUserId] = member;
-    });
-    const claimed = {};
-    readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords)).forEach(function (record) {
-      if (record.status !== 'recorded' && record.status !== 'processing') return;
-      claimed[String(record.cardId || '') + '|' + String(record.memberLineUserId || '') + '|' + String(record.rewardOrdinal || '')] = true;
-    });
-    const stampRecords = {};
-    readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.stampRecords)).map(normalizeCardStampRecord_).forEach(function (record) {
-      const key = record.cardId + '|' + record.memberLineUserId;
-      if (!stampRecords[key]) stampRecords[key] = [];
-      stampRecords[key].push(record);
-    });
-    const notificationSheet = getMultiCardSheet_(MULTI_CARD_SHEETS.notifications);
-    const notifications = {};
-    readMultiCardObjects_(notificationSheet).forEach(function (row) {
-      const notification = normalizeMultiCardRewardNotification_(row);
-      notifications[notification.notificationId] = notification;
-    });
+  const nowMs = Date.now();
+  const cardsById = {};
+  allMultiCards_().forEach(function (card) { cardsById[card.cardId] = card; });
+  const membersByLineUserId = {};
+  readObjects_(getSheet_(POINTS_CARD_SHEETS.members)).map(normalizeMember_).forEach(function (member) {
+    membersByLineUserId[member.lineUserId] = member;
+  });
+  const claimed = {};
+  readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.rewardRecords)).forEach(function (record) {
+    if (record.status !== 'recorded' && record.status !== 'processing') return;
+    claimed[String(record.cardId || '') + '|' + String(record.memberLineUserId || '') + '|' + String(record.rewardOrdinal || '')] = true;
+  });
+  const stampRecords = {};
+  readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.stampRecords)).map(normalizeCardStampRecord_).forEach(function (record) {
+    const key = record.cardId + '|' + record.memberLineUserId;
+    if (!stampRecords[key]) stampRecords[key] = [];
+    stampRecords[key].push(record);
+  });
+  const notificationSheet = getMultiCardSheet_(MULTI_CARD_SHEETS.notifications);
 
-    const result = { configured: true, scannedEntitlements: 0, attempted: 0, sent: 0, retryable: 0, failed: 0 };
-    const progressRows = readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.progress)).map(normalizeMemberCardProgress_);
-    for (let progressIndex = 0; progressIndex < progressRows.length &&
+  const result = { configured: true, scannedEntitlements: 0, attempted: 0, sent: 0, retryable: 0, failed: 0 };
+  const progressRows = readMultiCardObjects_(getMultiCardSheet_(MULTI_CARD_SHEETS.progress)).map(normalizeMemberCardProgress_);
+  for (let progressIndex = 0; progressIndex < progressRows.length &&
+    result.scannedEntitlements < POINTS_CARD_TICKET_REMINDERS.maxEntitlementsPerRun &&
+    result.attempted < POINTS_CARD_TICKET_REMINDERS.maxPushesPerRun; progressIndex += 1) {
+    const progress = progressRows[progressIndex];
+    const card = cardsById[progress.cardId];
+    const member = membersByLineUserId[progress.memberLineUserId];
+    if (!card || !member || member.membershipStatus !== 'active') continue;
+    const settings = multiCardSettingsForProjection_(card);
+    const earnedRewards = earnedRewardCountForStamps_(progress.totalStamps, settings);
+    const memberStampRecords = stampRecords[card.cardId + '|' + member.lineUserId] || [];
+    for (let ordinal = 1; ordinal <= earnedRewards &&
       result.scannedEntitlements < POINTS_CARD_TICKET_REMINDERS.maxEntitlementsPerRun &&
-      result.attempted < POINTS_CARD_TICKET_REMINDERS.maxPushesPerRun; progressIndex += 1) {
-      const progress = progressRows[progressIndex];
-      const card = cardsById[progress.cardId];
-      const member = membersByLineUserId[progress.memberLineUserId];
-      if (!card || !member || member.membershipStatus !== 'active') continue;
-      const settings = multiCardSettingsForProjection_(card);
-      const earnedRewards = earnedRewardCountForStamps_(progress.totalStamps, settings);
-      const memberStampRecords = stampRecords[card.cardId + '|' + member.lineUserId] || [];
-      for (let ordinal = 1; ordinal <= earnedRewards &&
-        result.scannedEntitlements < POINTS_CARD_TICKET_REMINDERS.maxEntitlementsPerRun &&
-        result.attempted < POINTS_CARD_TICKET_REMINDERS.maxPushesPerRun; ordinal += 1) {
-        result.scannedEntitlements += 1;
-        if (claimed[card.cardId + '|' + member.lineUserId + '|' + ordinal]) continue;
-        const reward = rewardEntitlementByOrdinal_(ordinal, settings);
-        if (!reward.unusedReminderDays) continue;
-        const ticket = multiCardRewardTicketState_(reward, progress, member, memberStampRecords, nowMs);
-        if (ticket.expired || !ticket.reminderAt || new Date(ticket.reminderAt).getTime() > nowMs) continue;
-        const notificationId = ticketReminderNotificationId_(card.cardId, member.lineUserId, ordinal);
-        let notification = notifications[notificationId] || null;
-        if (!shouldAttemptTicketReminder_(notification, nowMs)) continue;
-        const retryKey = notification ? notification.retryKey : ticketReminderRetryKey_(notificationId);
-        if (!notification) {
-          notification = {
-            notificationId: notificationId,
-            cardId: card.cardId,
-            memberLineUserId: member.lineUserId,
-            memberNo: member.memberNo,
-            rewardOrdinal: ordinal,
-            reminderAt: ticket.reminderAt,
-            retryKey: retryKey,
-            status: 'processing',
-            attemptCount: 0,
-            sentAt: '',
-            lastAttemptAt: '',
-            lastErrorCode: '',
-            createdAt: now,
-            updatedAt: now
-          };
-          appendMultiCardObject_(notificationSheet, notification);
-        }
-        notification.attemptCount += 1;
-        notification.status = 'processing';
-        notification.lastAttemptAt = now;
-        notification.updatedAt = now;
-        const matchBeforePush = findMultiCardByFieldWithRow_(notificationSheet, 'notificationId', notificationId);
-        if (!matchBeforePush) continue;
-        writeMultiCardObjectRow_(notificationSheet, matchBeforePush.row, notification);
+      result.attempted < POINTS_CARD_TICKET_REMINDERS.maxPushesPerRun; ordinal += 1) {
+      result.scannedEntitlements += 1;
+      if (claimed[card.cardId + '|' + member.lineUserId + '|' + ordinal]) continue;
+      const reward = rewardEntitlementByOrdinal_(ordinal, settings);
+      if (!reward.unusedReminderDays) continue;
+      const ticket = multiCardRewardTicketState_(reward, progress, member, memberStampRecords, nowMs);
+      if (ticket.expired || !ticket.reminderAt || new Date(ticket.reminderAt).getTime() > nowMs) continue;
 
-        result.attempted += 1;
-        const push = lineMessaging.sendTextPush(member.lineUserId, retryKey, ticketReminderMessage_(card, ticket));
-        notification.status = push.accepted ? 'sent' : (push.retryable ? 'retry' : 'failed');
-        notification.sentAt = push.accepted ? now : '';
-        notification.lastErrorCode = push.errorCode;
-        notification.updatedAt = now;
-        const matchAfterPush = findMultiCardByFieldWithRow_(notificationSheet, 'notificationId', notificationId);
-        if (matchAfterPush) writeMultiCardObjectRow_(notificationSheet, matchAfterPush.row, notification);
-        notifications[notificationId] = notification;
-        if (push.accepted) result.sent += 1;
-        else if (push.retryable) result.retryable += 1;
-        else result.failed += 1;
-        audit_('system', 'system', 'TICKET_UNUSED_REMINDER', '', push.accepted ? 'success' : 'failed', {
-          notificationId: notificationId,
-          cardId: card.cardId,
-          rewardOrdinal: ordinal,
-          errorCode: push.errorCode || ''
-        });
-      }
+      const notificationId = ticketReminderNotificationId_(card.cardId, member.lineUserId, ordinal);
+      const retryKey = ticketReminderRetryKey_(notificationId);
+      const claim = claimTicketReminderAttempt_(notificationSheet, {
+        notificationId: notificationId,
+        cardId: card.cardId,
+        memberLineUserId: member.lineUserId,
+        memberNo: member.memberNo,
+        rewardOrdinal: ordinal,
+        reminderAt: ticket.reminderAt,
+        retryKey: retryKey
+      }, nowMs);
+      if (!claim) continue;
+
+      result.attempted += 1;
+      const push = lineMessaging.sendTextPush(member.lineUserId, claim.notification.retryKey, ticketReminderMessage_(card, ticket));
+      const completedAt = new Date().toISOString();
+      finalizeTicketReminderAttempt_(notificationSheet, notificationId, claim.attemptAt, push, completedAt);
+
+      if (push.accepted) result.sent += 1;
+      else if (push.retryable) result.retryable += 1;
+      else result.failed += 1;
+      audit_('system', 'system', 'TICKET_UNUSED_REMINDER', '', push.accepted ? 'success' : 'failed', {
+        notificationId: notificationId,
+        cardId: card.cardId,
+        rewardOrdinal: ordinal,
+        errorCode: push.errorCode || ''
+      });
     }
-    return result;
-  } finally {
-    lock.releaseLock();
   }
+  return result;
 }
 
 function installPointsCardTicketReminderTrigger() {
