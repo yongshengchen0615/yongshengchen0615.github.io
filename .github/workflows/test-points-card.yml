@@ -39,8 +39,10 @@ jobs:
           node --check MembershipSystem/PointsCard/shared/common.js
           node --check MembershipSystem/PointsCard/user/app.js
           node --check MembershipSystem/PointsCard/user/card-gallery.js
+          node --check MembershipSystem/PointsCard/user/point-notifications.js
           node --check MembershipSystem/PointsCard/admin/app.js
           node --check MembershipSystem/PointsCard/admin/card-lifecycle.js
+          node --check MembershipSystem/PointsCard/admin/point-grant.js
           node --check MembershipSystem/PointsCard/vendor/qrcode-generator-2.0.4.js
           for file in MembershipSystem/PointsCard/gas/*.gs; do
             tmp="$RUNNER_TEMP/$(basename "$file").js"
