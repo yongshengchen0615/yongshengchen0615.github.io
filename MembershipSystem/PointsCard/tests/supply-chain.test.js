@@ -11,17 +11,23 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-test('admin captures trusted transport before loading the third-party QR generator', () => {
+test('admin executes only repository-local application and QR scripts', () => {
   const html = read('admin/index.html');
+  const qrBundle = read('vendor/qrcode-generator-2.0.4.js');
   const liffIndex = html.indexOf('<script src="../vendor/liff-client.js"></script>');
   const commonIndex = html.indexOf('<script src="../shared/common.js"></script>');
-  const qrIndex = html.indexOf('qrcode-generator@2.0.4/dist/qrcode.js');
+  const qrIndex = html.indexOf('<script src="../vendor/qrcode-generator-2.0.4.js"></script>');
   const appIndex = html.indexOf('<script src="./app.js"></script>');
 
   assert.ok(liffIndex >= 0, 'the local LIFF bundle must be loaded');
   assert.ok(commonIndex > liffIndex, 'trusted transport must capture the local LIFF client');
-  assert.ok(qrIndex > commonIndex, 'QR generator must load after trusted transport is captured');
-  assert.ok(appIndex > qrIndex, 'admin app must start after QR generator is available');
+  assert.ok(qrIndex > commonIndex, 'vendored QR generator must load after trusted transport is captured');
+  assert.ok(appIndex > qrIndex, 'admin app must start after the local QR generator is available');
+  assert.doesNotMatch(html, /cdn\.jsdelivr\.net|qrcode-generator@2\.0\.4\/dist\/qrcode\.js/);
+  assert.doesNotMatch(html, /script-src[^";]*https:\/\/cdn\.jsdelivr\.net/);
+  assert.match(qrBundle, /QR Code Generator for JavaScript/);
+  assert.match(qrBundle, /Copyright \(c\) 2009 Kazuhiko Arase/);
+  assert.doesNotMatch(qrBundle, /\beval\s*\(|new\s+Function\s*\(/);
 });
 
 test('shared transport captures sensitive browser primitives and freezes its public API', () => {
