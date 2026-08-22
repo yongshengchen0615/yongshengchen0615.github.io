@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 
@@ -28,6 +29,22 @@ test('admin executes only repository-local application and QR scripts', () => {
   assert.match(qrBundle, /QR Code Generator for JavaScript/);
   assert.match(qrBundle, /Copyright \(c\) 2009 Kazuhiko Arase/);
   assert.doesNotMatch(qrBundle, /\beval\s*\(|new\s+Function\s*\(/);
+});
+
+test('vendored QR generator can render the admin QR payload without network code', () => {
+  const context = { console };
+  vm.createContext(context);
+  vm.runInContext(read('vendor/qrcode-generator-2.0.4.js'), context);
+
+  assert.equal(typeof context.qrcode, 'function');
+  const qr = context.qrcode(0, 'M');
+  qr.addData('https://example.test/PointsCard/?stamp=' + 'a'.repeat(64), 'Byte');
+  qr.make();
+  const svg = qr.createSvgTag({ cellSize: 2, margin: 4, scalable: true, title: 'PointsCard QR' });
+  assert.ok(qr.getModuleCount() > 0);
+  assert.match(svg, /^<svg/);
+  assert.match(svg, /<path d=/);
+  assert.doesNotMatch(read('vendor/qrcode-generator-2.0.4.js'), /fetch\s*\(|XMLHttpRequest|WebSocket/);
 });
 
 test('shared transport captures sensitive browser primitives and freezes its public API', () => {
