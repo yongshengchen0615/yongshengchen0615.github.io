@@ -83,21 +83,31 @@ test('earned ticket state is based on the stamp record that crossed its node', (
 test('LINE reminder push always uses a stable retry key and accepts duplicate acknowledgement', () => {
   let request = null;
   const context = {
+    PropertiesService: {
+      getScriptProperties: () => ({ getProperty: () => 'secret-token' })
+    },
     UrlFetchApp: {
       fetch: (url, options) => {
         request = { url, options };
         return { getResponseCode: () => 409 };
       }
-    }
+    },
+    Object,
+    String,
+    Number,
+    Boolean,
+    JSON
   };
   vm.createContext(context);
-  vm.runInContext(read('gas/TicketNotificationService.gs') +
-    '\n;globalThis.__reminderPush = { ticketReminderNotificationId_, ticketReminderRetryKey_, sendTicketReminderPush_ };', context);
+  vm.runInContext(read('gas/LineMessagingService.gs') + '\n' + read('gas/TicketNotificationService.gs') +
+    '\n;globalThis.__reminderPush = { ticketReminderNotificationId_, ticketReminderRetryKey_, createLineMessagingClient_ };', context);
   context.sha256Hex_ = () => '123e4567e89b12d3a456426614174000123e4567e89b12d3a456426614174000';
   const notificationId = context.__reminderPush.ticketReminderNotificationId_('CARD-ONE', 'U123', 1);
   const retryKey = context.__reminderPush.ticketReminderRetryKey_('RN-1');
-  const result = context.__reminderPush.sendTicketReminderPush_('secret-token', 'U123', retryKey, '提醒內容');
+  const client = context.__reminderPush.createLineMessagingClient_();
+  const result = client.sendTextPush('U123', retryKey, '提醒內容');
 
+  assert.equal(client.configured, true);
   assert.match(retryKey, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.match(notificationId, /^RN-[0-9A-F]{32}$/);
   assert.equal(request.url, 'https://api.line.me/v2/bot/message/push');
@@ -115,6 +125,7 @@ test('ticket terms, card validity, archived ticket access, and reminder trigger 
   const storage = read('gas/MultiCardStorage.gs');
   const rewards = read('gas/MultiCardRewardService.gs');
   const reminders = read('gas/TicketNotificationService.gs');
+  const messaging = read('gas/LineMessagingService.gs');
   const member = read('user/app.js');
   const memberHtml = read('user/index.html');
   const admin = read('admin/card-lifecycle.js');
@@ -125,9 +136,12 @@ test('ticket terms, card validity, archived ticket access, and reminder trigger 
   assert.match(storage, /preservedUnusedRewards:\s*true/);
   assert.match(storage, /multiCardRewardTicketState_/);
   assert.match(rewards, /REWARD_EXPIRED/);
-  assert.match(reminders, /LINE_MESSAGING_CHANNEL_ACCESS_TOKEN/);
+  assert.match(reminders, /createLineMessagingClient_/);
+  assert.match(reminders, /lineMessaging\.sendTextPush/);
+  assert.doesNotMatch(reminders, /LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|UrlFetchApp\.fetch|Authorization:\s*'Bearer/);
+  assert.match(messaging, /LINE_MESSAGING_CHANNEL_ACCESS_TOKEN/);
+  assert.match(messaging, /X-Line-Retry-Key/);
   assert.match(reminders, /runPointsCardTicketReminderSweep/);
-  assert.match(reminders, /X-Line-Retry-Key/);
   assert.doesNotMatch(read('gas/Code.gs'), /case '.*reminder/i);
   assert.match(admin, /reward-node-validity-days/);
   assert.match(admin, /reward-node-reminder-days/);
