@@ -13,10 +13,12 @@ GitHub Pages
         │ LINE ID Token + action + payload
         ▼
 Google Apps Script Web App
-  ├─ Code.gs                    API entrypoint, authentication, authorization, rate limits
-  ├─ *Service.gs                Domain/business rules
-  ├─ *Storage.gs                Google Sheets persistence and schema contracts
-  └─ LineMessagingService.gs    LINE Messaging API infrastructure boundary
+  ├─ Code.gs                           API entrypoint, authentication, authorization, rate limits
+  ├─ *Service.gs                       Domain/business rules
+  ├─ *Storage.gs                       Google Sheets persistence and schema contracts
+  ├─ MemberPointNotificationService.gs Member notification ownership/read-state rules
+  ├─ AdminPointGrantPushService.gs     Point-grant LINE side-effect orchestration
+  └─ LineMessagingService.gs           LINE Messaging API infrastructure boundary
         │
         ├─ Google Sheets
         └─ LINE Messaging API
@@ -58,10 +60,12 @@ It should route actions to domain services rather than contain new feature persi
 
 Domain services own validation, state transitions, idempotency, authorization/ownership rules, audit semantics, and side-effect ordering.
 
-Examples:
+The manual point-grant feature is deliberately decomposed by responsibility:
 
-- `AdminPointGrantService.gs`: manual point-grant transaction, recovery, member notification state, LINE push orchestration.
-- `TicketNotificationService.gs`: unused-ticket reminder eligibility, retry schedule, notification state, audit result.
+- `AdminPointGrantService.gs`: point-grant validation, idempotency, recovery, progress mutation, transaction ordering, and audit semantics.
+- `MemberPointNotificationService.gs`: deterministic point-grant notification creation, member-scoped listing, acknowledgement, and IDOR prevention.
+- `AdminPointGrantPushService.gs`: post-transaction LINE push orchestration and persistence of push result state.
+- `TicketNotificationService.gs`: unused-ticket reminder eligibility, retry schedule, notification state, and audit result.
 
 Domain services should call infrastructure abstractions instead of constructing external HTTP requests directly.
 
@@ -91,20 +95,24 @@ It does not own business message content, recipient eligibility, point transacti
 ```text
 Verified LINE identity
   → requireAdmin_
-  → validate member/card/amount/reason/requestId
-  → ScriptLock
-  → write pending audit intent
-  → append processing grant record
-  → mutate MemberCardProgress
-  → create deterministic member notification
-  → write success audit
-  → finalize grant record
-  → release ScriptLock
-  → LINE push side effect
-  → persist push result
+  → AdminPointGrantService
+      → validate member/card/amount/reason/requestId
+      → ScriptLock
+      → write pending audit intent
+      → append processing grant record
+      → mutate MemberCardProgress
+      → MemberPointNotificationService creates deterministic notification
+      → write success audit
+      → finalize grant record
+      → release ScriptLock
+  → AdminPointGrantPushService
+      → LineMessagingService
+      → persist push result
 ```
 
 The LINE push is deliberately outside the point transaction. A push failure must not roll back or duplicate an already completed point grant.
+
+The member notification service is separate from the admin grant transaction so member-scoped read/acknowledgement authorization can evolve without mixing it with privileged point mutation code.
 
 ## Observability
 
@@ -126,3 +134,4 @@ Every architecture change should preserve these invariants:
 6. Member-scoped reads/writes enforce ownership and prevent IDOR.
 7. Existing Sheet schemas are not changed without migration and rollback analysis.
 8. New GAS files are syntax-checked and all `tests/*.test.js` run in CI.
+9. Privileged point mutation, member notification ownership, and external LINE side effects remain separate responsibilities.
