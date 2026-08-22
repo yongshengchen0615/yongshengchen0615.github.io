@@ -13,9 +13,14 @@
   const READ_API_MAX_ATTEMPTS = 2;
   const READ_API_RETRY_DELAY_MS = 320;
   const READ_ONLY_ACTIONS = new Set([
-    'member.me', 'reward.prepare', 'admin.summary', 'admin.cards.list',
+    'member.me', 'member.point-notifications.list', 'reward.prepare',
+    'admin.dashboard', 'admin.summary', 'admin.cards.list',
     'admin.members.search', 'admin.stamps.list', 'admin.reward-confirmations.list',
     'admin.stamp.open', 'admin.reward-confirm.open'
+  ]);
+  const EXPECTED_API_ERROR_CODES = new Set([
+    'REQUEST_CONFLICT', 'MEMBER_INACTIVE', 'CARD_UNAVAILABLE',
+    'REWARD_EXPIRED', 'REWARD_NOT_AVAILABLE', 'STAMP_LIMIT_REACHED'
   ]);
   const nativeFetch = window.fetch.bind(window);
   const NativeURLSearchParams = window.URLSearchParams;
@@ -89,6 +94,7 @@
     ['source', 'action', 'traceId'].forEach(function (key) {
       if (source[key]) result[key] = String(source[key]).slice(0, 120);
     });
+    if (source.code) result.code = String(source.code).slice(0, 120);
     if (Number.isFinite(Number(source.durationMs))) result.durationMs = Math.round(Number(source.durationMs));
     return result;
   }
@@ -102,6 +108,14 @@
       .slice(0, 500);
   }
 
+  function shouldReportApiError(code) {
+    const value = String(code || '').trim().toUpperCase();
+    if (!value) return true;
+    if (EXPECTED_API_ERROR_CODES.has(value)) return false;
+    if (value.indexOf('INVALID_') === 0 || /_NOT_FOUND$/.test(value)) return false;
+    return true;
+  }
+
   function reportError(error, context) {
     const safeContext = safeErrorContext(context);
     const safeError = new Error(sanitizeErrorMessage(error));
@@ -112,7 +126,8 @@
           tags: {
             feature: 'points-card',
             source: safeContext.source || 'frontend',
-            action: safeContext.action || 'unknown'
+            action: safeContext.action || 'unknown',
+            error_code: safeContext.code || 'unknown'
           },
           extra: safeContext
         });
@@ -418,7 +433,12 @@
       const error = new Error(data.error && data.error.message || '集點服務發生錯誤。');
       error.code = data.error && data.error.code;
       error.traceId = traceId;
-      reportError(error, { source: 'api', action: safeAction, traceId: traceId, durationMs: monotonicNow() - startedAt });
+      if (shouldReportApiError(error.code)) {
+        reportError(error, {
+          source: 'api', action: safeAction, traceId: traceId, code: error.code,
+          durationMs: monotonicNow() - startedAt
+        });
+      }
       if (error.code === 'UNAUTHENTICATED' && liffClient && !liffClient.isInClient()) startExternalLogin(true);
       throw error;
     }

@@ -1,7 +1,6 @@
 'use strict';
 
 const POINTS_CARD_TICKET_REMINDERS = Object.freeze({
-  channelAccessTokenProperty: 'LINE_MESSAGING_CHANNEL_ACCESS_TOKEN',
   handlerFunction: 'runPointsCardTicketReminderSweep',
   maxPushesPerRun: 50,
   maxEntitlementsPerRun: 2000,
@@ -78,9 +77,7 @@ function ticketReminderNotificationId_(cardId, lineUserId, rewardOrdinal) {
 }
 
 function ticketReminderRetryKey_(notificationId) {
-  const value = sha256Hex_(notificationId);
-  return value.slice(0, 8) + '-' + value.slice(8, 12) + '-4' + value.slice(13, 16) +
-    '-a' + value.slice(17, 20) + '-' + value.slice(20, 32);
+  return lineMessagingRetryKey_(notificationId);
 }
 
 function ticketReminderMessage_(card, reward) {
@@ -90,32 +87,6 @@ function ticketReminderMessage_(card, reward) {
     : '無期限';
   return '提醒你，「' + card.name + '」的' + typeLabel + '「' + reward.rewardName +
     '」尚未使用。\n使用期限：' + expiryLabel + '\n請回到集點卡查看票券。';
-}
-
-function sendTicketReminderPush_(channelAccessToken, lineUserId, retryKey, message) {
-  try {
-    const response = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: {
-        Authorization: 'Bearer ' + channelAccessToken,
-        'X-Line-Retry-Key': retryKey
-      },
-      payload: JSON.stringify({
-        to: lineUserId,
-        messages: [{ type: 'text', text: message }]
-      }),
-      muteHttpExceptions: true
-    });
-    const responseCode = Number(response.getResponseCode());
-    return {
-      accepted: responseCode === 200 || responseCode === 409,
-      retryable: responseCode === 429 || responseCode >= 500,
-      errorCode: responseCode === 200 || responseCode === 409 ? '' : 'HTTP_' + responseCode
-    };
-  } catch (error) {
-    return { accepted: false, retryable: true, errorCode: 'NETWORK_ERROR' };
-  }
 }
 
 function shouldAttemptTicketReminder_(notification, nowMs) {
@@ -131,9 +102,8 @@ function shouldAttemptTicketReminder_(notification, nowMs) {
 
 function runPointsCardTicketReminderSweep() {
   ensureMultiCardStorage_();
-  const channelAccessToken = String(PropertiesService.getScriptProperties()
-    .getProperty(POINTS_CARD_TICKET_REMINDERS.channelAccessTokenProperty) || '').trim();
-  if (!channelAccessToken) {
+  const lineMessaging = createLineMessagingClient_();
+  if (!lineMessaging.configured) {
     return { configured: false, scannedEntitlements: 0, attempted: 0, sent: 0, retryable: 0, failed: 0 };
   }
 
@@ -219,7 +189,7 @@ function runPointsCardTicketReminderSweep() {
         writeMultiCardObjectRow_(notificationSheet, matchBeforePush.row, notification);
 
         result.attempted += 1;
-        const push = sendTicketReminderPush_(channelAccessToken, member.lineUserId, retryKey, ticketReminderMessage_(card, ticket));
+        const push = lineMessaging.sendTextPush(member.lineUserId, retryKey, ticketReminderMessage_(card, ticket));
         notification.status = push.accepted ? 'sent' : (push.retryable ? 'retry' : 'failed');
         notification.sentAt = push.accepted ? now : '';
         notification.lastErrorCode = push.errorCode;
