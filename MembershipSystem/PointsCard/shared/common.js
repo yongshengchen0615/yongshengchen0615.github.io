@@ -19,9 +19,8 @@
     'admin.stamp.open', 'admin.reward-confirm.open'
   ]);
   const EXPECTED_API_ERROR_CODES = new Set([
-    'UNAUTHENTICATED', 'FORBIDDEN', 'RATE_LIMITED', 'REQUEST_CONFLICT',
-    'MEMBER_INACTIVE', 'CARD_UNAVAILABLE', 'REWARD_EXPIRED', 'REWARD_NOT_AVAILABLE',
-    'STAMP_LIMIT_REACHED'
+    'REQUEST_CONFLICT', 'MEMBER_INACTIVE', 'CARD_UNAVAILABLE',
+    'REWARD_EXPIRED', 'REWARD_NOT_AVAILABLE', 'STAMP_LIMIT_REACHED'
   ]);
   const nativeFetch = window.fetch.bind(window);
   const NativeURLSearchParams = window.URLSearchParams;
@@ -92,9 +91,10 @@
   function safeErrorContext(context) {
     const source = context || {};
     const result = {};
-    ['source', 'action', 'traceId', 'code'].forEach(function (key) {
+    ['source', 'action', 'traceId'].forEach(function (key) {
       if (source[key]) result[key] = String(source[key]).slice(0, 120);
     });
+    if (source.code) result.code = String(source.code).slice(0, 120);
     if (Number.isFinite(Number(source.durationMs))) result.durationMs = Math.round(Number(source.durationMs));
     return result;
   }
