@@ -71,6 +71,28 @@ function readAdminPointGrantObjects_(sheetName) {
   }).map(function (row) { return adminPointGrantRowToObject_(sheetName, row); });
 }
 
+function readAdminPointGrantObjectsByField_(sheetName, field, value) {
+  const sheet = getAdminPointGrantSheet_(sheetName);
+  const headers = POINTS_CARD_ADMIN_GRANT_HEADERS[sheetName];
+  const columnIndex = headers.indexOf(field);
+  if (columnIndex < 0) fail_('SCHEMA_MISMATCH', '缺少必要欄位。');
+  const expected = String(value || '');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const matches = sheet.getRange(2, columnIndex + 1, lastRow - 1, 1)
+    .createTextFinder(expected).matchEntireCell(true).useRegularExpression(false).findAll();
+  if (matches.length > 20) {
+    return readAdminPointGrantObjects_(sheetName).filter(function (object) {
+      return String(object[field] || '') === expected;
+    });
+  }
+  return matches.map(function (match) {
+    const row = sheet.getRange(match.getRow(), 1, 1, headers.length).getValues()[0];
+    return adminPointGrantRowToObject_(sheetName, row);
+  });
+}
+
 function findAdminPointGrantByFieldWithRow_(sheetName, field, value) {
   const sheet = getAdminPointGrantSheet_(sheetName);
   const headers = POINTS_CARD_ADMIN_GRANT_HEADERS[sheetName];
