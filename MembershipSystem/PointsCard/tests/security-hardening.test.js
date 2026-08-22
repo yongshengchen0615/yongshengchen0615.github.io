@@ -69,6 +69,38 @@ test('missing card data fails closed for reward settings mutations', () => {
   assert.equal(context.__hardening.rewardSettingsLockedForCard_('CARD-MISSING'), true);
 });
 
+test('reward projection exposes all earned unclaimed tickets beyond twenty', () => {
+  const context = { Array, Date, JSON, Math, Number, Object, Set, String, console };
+  vm.createContext(context);
+  vm.runInContext(
+    read('gas/Code.gs') + '\n;globalThis.__hardening = { rewardProjection_ };',
+    context
+  );
+
+  const settings = {
+    cardSize: 1,
+    rewardNodes: [{
+      nodeId: 'node-1',
+      stampsRequired: 1,
+      rewardName: '測試票券',
+      rewardType: 'coupon',
+      lotteryPrizes: [],
+      ticketValidityDays: 0,
+      unusedReminderDays: 0
+    }]
+  };
+  const projection = context.__hardening.rewardProjection_(
+    { totalStamps: 25, redeemedRewards: 0 },
+    settings,
+    []
+  );
+
+  assert.equal(projection.availableRewards, 25);
+  assert.equal(projection.availableRewardNodes.length, 25);
+  assert.equal(projection.availableRewardNodes[0].entitlementOrdinal, 1);
+  assert.equal(projection.availableRewardNodes[24].entitlementOrdinal, 25);
+});
+
 test('reward confirmation QR lifetime is independently capped at seven days', () => {
   const context = {
     Array, Date, JSON, Math, Number, Object, String, console,
@@ -94,6 +126,56 @@ test('reward confirmation QR lifetime is independently capped at seven days', ()
     () => context.__hardening.validRewardConfirmationExpiry_(eightDays),
     (error) => error && error.publicCode === 'INVALID_EXPIRY' && /7 天/.test(error.message)
   );
+});
+
+test('storage initialization preserves an existing configured production spreadsheet binding', () => {
+  const stored = { POINTS_CARD_SPREADSHEET_ID: 'SPREADSHEET-PROD' };
+  const properties = {
+    getProperty: (key) => stored[key] || '',
+    setProperty: (key, value) => { stored[key] = String(value); }
+  };
+  const configuredSpreadsheet = { getId: () => 'SPREADSHEET-PROD' };
+  let activeSpreadsheetReads = 0;
+  let openedId = '';
+  const context = {
+    Array, Date, JSON, Math, Number, Object, String, console,
+    POINTS_CARD_SERVICE: { spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
+    POINTS_CARD_HEADERS: { Members: [] },
+    MULTI_CARD_HEADERS: { Cards: [] },
+    requestSpreadsheet_: null,
+    requestSheets_: {},
+    requestMultiCardSheets_: {},
+    requestMultiCardObjects_: {},
+    requestMultiCardLookupObjects_: {},
+    PropertiesService: { getScriptProperties: () => properties },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => {
+        activeSpreadsheetReads += 1;
+        return { getId: () => 'SPREADSHEET-WRONG-ACTIVE' };
+      },
+      openById: (id) => {
+        openedId = id;
+        return configuredSpreadsheet;
+      },
+      create: () => { throw new Error('configured storage must never create a replacement spreadsheet'); }
+    },
+    LockService: {
+      getScriptLock: () => ({ tryLock: () => true, releaseLock() {} })
+    },
+    fail_: publicError
+  };
+  vm.createContext(context);
+  vm.runInContext(read('gas/Storage.gs') + '\n;globalThis.__hardening = { initializePointsCardStorage };', context);
+  context.ensurePointsCardBaseStorage_ = () => {};
+  context.ensureMultiCardStorageForSpreadsheet_ = () => {};
+  context.pointsCardSettings_ = () => ({});
+
+  const result = context.__hardening.initializePointsCardStorage();
+  assert.equal(result.binding, 'configured');
+  assert.equal(result.spreadsheetId, 'SPREADSHEET-PROD');
+  assert.equal(openedId, 'SPREADSHEET-PROD');
+  assert.equal(activeSpreadsheetReads, 0);
+  assert.equal(stored.POINTS_CARD_SPREADSHEET_ID, 'SPREADSHEET-PROD');
 });
 
 test('PointsCard has a dedicated production GAS deployment contract', () => {
