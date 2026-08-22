@@ -1,0 +1,224 @@
+name: Deploy Membership PointsCard GAS
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "MembershipSystem/PointsCard/gas/**"
+      - "MembershipSystem/PointsCard/shared/config.json"
+      - ".github/workflows/deploy-membership-points-card-gas.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: membership-points-card-gas-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Validate and deploy PointsCard GAS
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Resolve deployment configuration
+        id: preflight
+        shell: bash
+        env:
+          GAS_SCRIPT_ID: ${{ secrets.MEMBERSHIP_POINTS_CARD_GAS_SCRIPT_ID }}
+          CLASPRC_JSON: ${{ secrets.MEMBERSHIP_GAS_CLASPRC_JSON }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          deployment_id="$(node <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('MembershipSystem/PointsCard/shared/config.json', 'utf8'));
+          const raw = String(config.GAS_WEB_APP_URL || '').trim();
+          if (!raw) process.exit(0);
+          const url = new URL(raw);
+          if (url.protocol !== 'https:' || url.hostname !== 'script.google.com') {
+            throw new Error('GAS_WEB_APP_URL must use https://script.google.com');
+          }
+          const match = url.pathname.match(/^\/macros\/s\/([^/]+)\/exec$/);
+          if (!match) throw new Error('GAS_WEB_APP_URL must be /macros/s/<deploymentId>/exec');
+          process.stdout.write(match[1]);
+          NODE
+          )"
+
+          missing=()
+          [ -n "${GAS_SCRIPT_ID:-}" ] || missing+=("MEMBERSHIP_POINTS_CARD_GAS_SCRIPT_ID")
+          [ -n "${CLASPRC_JSON:-}" ] || missing+=("MEMBERSHIP_GAS_CLASPRC_JSON")
+          [ -n "${deployment_id:-}" ] || missing+=("MembershipSystem/PointsCard/shared/config.json GAS_WEB_APP_URL")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'PointsCard GAS auto deploy is not configured: %s\n' "${missing[*]}"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::Complete the one-time PointsCard GAS deployment configuration before manual deploy."
+              exit 1
+            fi
+            echo "::notice::Skipping automatic deployment until PointsCard GAS configuration is complete."
+            exit 0
+          fi
+
+          if ! [[ "$GAS_SCRIPT_ID" =~ ^[A-Za-z0-9_-]{20,}$ ]]; then
+            echo "::error::MEMBERSHIP_POINTS_CARD_GAS_SCRIPT_ID has an invalid format."
+            exit 1
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+      - name: Validate GAS source
+        if: steps.preflight.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          GAS_DIR="MembershipSystem/PointsCard/gas"
+          node - "$GAS_DIR/appsscript.json" <<'NODE'
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (!manifest.webapp || manifest.webapp.access !== 'ANYONE_ANONYMOUS') {
+            throw new Error('appsscript.json webapp.access must be ANYONE_ANONYMOUS');
+          }
+          if (manifest.webapp.executeAs !== 'USER_DEPLOYING') {
+            throw new Error('appsscript.json webapp.executeAs must be USER_DEPLOYING');
+          }
+          NODE
+          shopt -s nullglob
+          gas_files=("$GAS_DIR"/*.gs)
+          [ "${#gas_files[@]}" -gt 0 ] || { echo "::error::No .gs files found."; exit 1; }
+          for file in "${gas_files[@]}"; do
+            tmp="$RUNNER_TEMP/$(basename "$file").js"
+            cp "$file" "$tmp"
+            node --check "$tmp"
+          done
+          for forbidden in .clasp.json .clasprc.json client_secret.json credentials.json service-account.json; do
+            if [ -e "$GAS_DIR/$forbidden" ]; then
+              echo "::error::Credential/config file must not be committed under $GAS_DIR: $forbidden"
+              exit 1
+            fi
+          done
+
+      - name: Install pinned clasp
+        if: steps.preflight.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false --ignore-scripts @google/clasp@3.3.0
+          ./node_modules/.bin/clasp --version
+
+      - name: Prepare clasp configuration
+        if: steps.preflight.outputs.configured == 'true'
+        id: clasp
+        shell: bash
+        env:
+          GAS_SCRIPT_ID: ${{ secrets.MEMBERSHIP_POINTS_CARD_GAS_SCRIPT_ID }}
+          CLASPRC_JSON: ${{ secrets.MEMBERSHIP_GAS_CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          AUTH_FILE="$RUNNER_TEMP/.points-card-clasprc.json"
+          PROJECT_FILE="$RUNNER_TEMP/.points-card-clasp.json"
+          printf '%s' "$CLASPRC_JSON" > "$AUTH_FILE"
+          chmod 600 "$AUTH_FILE"
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$AUTH_FILE"
+          node - "$PROJECT_FILE" "$GAS_SCRIPT_ID" "$GITHUB_WORKSPACE/MembershipSystem/PointsCard/gas" <<'NODE'
+          const fs = require('fs');
+          const [file, scriptId, rootDir] = process.argv.slice(2);
+          fs.writeFileSync(file, JSON.stringify({ scriptId, rootDir }, null, 2));
+          NODE
+          echo "auth_file=$AUTH_FILE" >> "$GITHUB_OUTPUT"
+          echo "project_file=$PROJECT_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployment belongs to PointsCard script
+        if: steps.preflight.outputs.configured == 'true'
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+          GAS_DEPLOYMENT_ID: ${{ steps.preflight.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          CLASP=(./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE")
+          deployments="$("${CLASP[@]}" list-deployments)"
+          if ! grep -Fq -- "$GAS_DEPLOYMENT_ID" <<< "$deployments"; then
+            echo "::error::Configured PointsCard deployment does not belong to MEMBERSHIP_POINTS_CARD_GAS_SCRIPT_ID. Refusing to push."
+            exit 1
+          fi
+
+      - name: Push PointsCard GAS source
+        if: steps.preflight.outputs.configured == 'true'
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE" show-file-status
+          ./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE" push --force
+
+      - name: Update existing PointsCard Web App deployment
+        if: steps.preflight.outputs.configured == 'true'
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+          GAS_DEPLOYMENT_ID: ${{ steps.preflight.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE" update-deployment "$GAS_DEPLOYMENT_ID" \
+            --description "PointsCard GitHub main ${GITHUB_SHA}"
+
+      - name: Confirm deployment
+        if: steps.preflight.outputs.configured == 'true'
+        shell: bash
+        env:
+          AUTH_FILE: ${{ steps.clasp.outputs.auth_file }}
+          PROJECT_FILE: ${{ steps.clasp.outputs.project_file }}
+          GAS_DEPLOYMENT_ID: ${{ steps.preflight.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          deployments="$(./node_modules/.bin/clasp -A "$AUTH_FILE" -P "$PROJECT_FILE" list-deployments)"
+          grep -F -- "$GAS_DEPLOYMENT_ID" <<< "$deployments"
+
+      - name: Smoke test public PointsCard Web App
+        if: steps.preflight.outputs.configured == 'true'
+        shell: bash
+        env:
+          GAS_DEPLOYMENT_ID: ${{ steps.preflight.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          smoke_file="$RUNNER_TEMP/points-card-smoke-response.txt"
+          gas_url="https://script.google.com/macros/s/${GAS_DEPLOYMENT_ID}/exec"
+          curl --fail --silent --show-error --location --max-time 30 --retry 2 --retry-delay 2 \
+            "$gas_url" -o "$smoke_file"
+          node - "$smoke_file" <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync(process.argv[2], 'utf8');
+          let data;
+          try {
+            data = JSON.parse(raw);
+          } catch (_) {
+            throw new Error('PointsCard Web App did not return JSON. Verify Web App access allows anonymous users and the deployment has a WEB_APP entry point.');
+          }
+          if (!data || data.ok !== true || data.data?.service !== 'PointsCard') {
+            throw new Error('PointsCard Web App smoke test returned unexpected service identity.');
+          }
+          if (data.data?.version !== '2.3.0') {
+            throw new Error(`PointsCard Web App version mismatch: ${data.data?.version || 'missing'}`);
+          }
+          NODE
