@@ -2,8 +2,9 @@
 
 const CALENDAR_SERVICE = Object.freeze({
   name: 'CalendarSystem',
-  version: '1.0.0',
-  adminTokenProperty: 'CALENDAR_ADMIN_TOKEN'
+  version: '1.1.0',
+  adminTokenProperty: 'CALENDAR_ADMIN_TOKEN',
+  lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID'
 });
 
 const CALENDAR_TYPES = ['holiday', 'activity'];
@@ -11,6 +12,9 @@ const CALENDAR_STATUSES = ['draft', 'published', 'archived'];
 const MAX_TITLE_LENGTH = 80;
 const MAX_DESCRIPTION_LENGTH = 2000;
 const MAX_ADMIN_TOKEN_LENGTH = 512;
+const MAX_ID_TOKEN_LENGTH = 4096;
+const LINE_IDENTITY_CACHE_MAX_SECONDS = 300;
+const LINE_IDENTITY_EXPIRY_SKEW_SECONDS = 15;
 
 function doGet() {
   return json_({
@@ -19,6 +23,7 @@ function doGet() {
       service: CALENDAR_SERVICE.name,
       version: CALENDAR_SERVICE.version,
       capabilities: [
+        'member.me',
         'calendar.month',
         'calendar.day',
         'admin.events.list',
@@ -36,13 +41,23 @@ function doPost(e) {
     const payload = request.payload || {};
 
     switch (action) {
-      case 'calendar.month':
-        rateLimit_('public-month', 240, 60);
-        return json_({ ok: true, data: publicMonth_(payload) });
+      case 'member.me': {
+        const identity = requireLineIdentity_(request.idToken);
+        rateLimit_('member-me:' + identity.sub, 30, 60);
+        return json_({ ok: true, data: memberMe_(identity) });
+      }
 
-      case 'calendar.day':
-        rateLimit_('public-day', 300, 60);
+      case 'calendar.month': {
+        const identity = requireLineIdentity_(request.idToken);
+        rateLimit_('calendar-month:' + identity.sub, 60, 60);
+        return json_({ ok: true, data: publicMonth_(payload) });
+      }
+
+      case 'calendar.day': {
+        const identity = requireLineIdentity_(request.idToken);
+        rateLimit_('calendar-day:' + identity.sub, 90, 60);
         return json_({ ok: true, data: publicDay_(payload) });
+      }
 
       case 'admin.events.list':
         requireAdmin_(request.adminToken);
@@ -78,6 +93,15 @@ function doPost(e) {
       error: { code: error.publicCode, message: error.publicMessage }
     });
   }
+}
+
+function memberMe_(identity) {
+  return {
+    profile: {
+      displayName: cleanText_(identity && identity.name || 'LINE 會員', 80, false) || 'LINE 會員',
+      pictureUrl: safePictureUrl_(identity && identity.picture)
+    }
+  };
 }
 
 function publicMonth_(payload) {
@@ -276,6 +300,89 @@ function audit_(actor, action, eventId, result, details) {
   }
 }
 
+function requireLineIdentity_(idToken) {
+  const supplied = cleanText_(idToken, MAX_ID_TOKEN_LENGTH, true);
+  if (supplied.length < 20) fail_('UNAUTHENTICATED', 'LINE 登入憑證無效。');
+  const fingerprint = sha256Hex_(supplied);
+  rateLimit_('line-token:' + fingerprint.slice(0, 32), 90, 60);
+  return verifyLineIdToken_(supplied, fingerprint);
+}
+
+function verifyLineIdToken_(idToken, fingerprint) {
+  const channelId = String(
+    PropertiesService.getScriptProperties().getProperty(CALENDAR_SERVICE.lineChannelProperty) || ''
+  ).trim();
+  if (!/^\d{6,20}$/.test(channelId)) {
+    fail_('CONFIGURATION_ERROR', 'LINE Login Channel ID 尚未正確設定。');
+  }
+
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'calendar-line-' + fingerprint.slice(0, 40);
+  try {
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      const identity = JSON.parse(cached);
+      validateVerifiedIdentity_(identity, channelId);
+      return identity;
+    }
+  } catch (_) {}
+
+  let response;
+  try {
+    response = UrlFetchApp.fetch('https://api.line.me/oauth2/v2.1/verify', {
+      method: 'post',
+      payload: { id_token: idToken, client_id: channelId },
+      muteHttpExceptions: true
+    });
+  } catch (_) {
+    fail_('AUTH_SERVICE_UNAVAILABLE', 'LINE 身分驗證服務暫時無法使用。');
+  }
+
+  if (response.getResponseCode() !== 200) {
+    fail_('UNAUTHENTICATED', 'LINE 登入憑證已失效，請重新登入。');
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(response.getContentText());
+  } catch (_) {
+    fail_('AUTH_SERVICE_UNAVAILABLE', 'LINE 身分驗證服務回應不正確。');
+  }
+
+  const identity = {
+    sub: cleanText_(parsed.sub, 80, true),
+    aud: String(parsed.aud || ''),
+    exp: Number(parsed.exp || 0),
+    iat: Number(parsed.iat || 0),
+    name: cleanText_(parsed.name || 'LINE 會員', 80, false),
+    picture: safePictureUrl_(parsed.picture)
+  };
+  validateVerifiedIdentity_(identity, channelId);
+
+  const ttl = Math.min(
+    LINE_IDENTITY_CACHE_MAX_SECONDS,
+    Math.max(1, identity.exp - Math.floor(Date.now() / 1000) - LINE_IDENTITY_EXPIRY_SKEW_SECONDS)
+  );
+  try {
+    cache.put(cacheKey, JSON.stringify(identity), ttl);
+  } catch (_) {}
+  return identity;
+}
+
+function validateVerifiedIdentity_(identity, channelId) {
+  if (!identity || !identity.sub || String(identity.aud) !== String(channelId)) {
+    fail_('UNAUTHENTICATED', 'LINE 登入憑證無效。');
+  }
+  if (!Number(identity.exp) || Number(identity.exp) <= Math.floor(Date.now() / 1000) + LINE_IDENTITY_EXPIRY_SKEW_SECONDS) {
+    fail_('UNAUTHENTICATED', 'LINE 登入憑證已過期，請重新登入。');
+  }
+}
+
+function safePictureUrl_(value) {
+  const url = String(value || '').trim();
+  return /^https:\/\//i.test(url) && url.length <= 1000 ? url : '';
+}
+
 function requireAdmin_(token) {
   const configured = String(
     PropertiesService.getScriptProperties().getProperty(CALENDAR_SERVICE.adminTokenProperty) || ''
@@ -300,6 +407,10 @@ function parseRequest_(e) {
   let payload = {};
   const rawPayload = String(params.payload || '').trim();
 
+  if (rawPayload.length > 32768) {
+    fail_('INVALID_PAYLOAD', 'payload 內容過大。');
+  }
+
   if (rawPayload) {
     try {
       payload = JSON.parse(rawPayload);
@@ -315,6 +426,7 @@ function parseRequest_(e) {
   return {
     action: params.action || '',
     payload: payload,
+    idToken: params.idToken || '',
     adminToken: params.adminToken || ''
   };
 }
@@ -377,7 +489,9 @@ function integerInRange_(value, min, max, field) {
 }
 
 function cleanText_(value, maxLength, required) {
-  const text = String(value == null ? '' : value).trim();
+  const text = String(value == null ? '' : value)
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim();
   if (required && !text) fail_('REQUIRED_FIELD', '缺少必要欄位。');
   if (text.length > maxLength) fail_('FIELD_TOO_LONG', '欄位內容過長。');
   return text;
