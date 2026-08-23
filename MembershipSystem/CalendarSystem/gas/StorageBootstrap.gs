@@ -3,6 +3,7 @@
 const CALENDAR_STORAGE = Object.freeze({
   spreadsheetProperty: 'CALENDAR_SPREADSHEET_ID',
   eventsSheet: 'CalendarEvents',
+  adminPermissionsSheet: 'AdminPermissions',
   auditSheet: 'AuditLogs'
 });
 
@@ -10,6 +11,9 @@ const CALENDAR_HEADERS = Object.freeze({
   CalendarEvents: [
     'eventId', 'date', 'type', 'title', 'description', 'status',
     'createdAt', 'updatedAt'
+  ],
+  AdminPermissions: [
+    'lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'
   ],
   AuditLogs: [
     'timestamp', 'actor', 'action', 'eventId', 'result', 'details'
@@ -65,10 +69,14 @@ function ensureSheet_(spreadsheet, name, headers) {
     sheet.setFrozenRows(1);
     sheet.autoResizeColumns(1, headers.length);
 
-    // Prevent Google Sheets from coercing ISO dates or identifiers into other value types.
-    const textColumns = name === CALENDAR_STORAGE.eventsSheet
-      ? ['eventId', 'date', 'type', 'status']
-      : ['eventId', 'actor', 'action', 'result'];
+    // Prevent Google Sheets from coercing identifiers, dates or permission values.
+    let textColumns = ['eventId', 'actor', 'action', 'result'];
+    if (name === CALENDAR_STORAGE.eventsSheet) {
+      textColumns = ['eventId', 'date', 'type', 'status'];
+    } else if (name === CALENDAR_STORAGE.adminPermissionsSheet) {
+      textColumns = ['lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'];
+    }
+
     textColumns.forEach(header => {
       const index = headers.indexOf(header);
       if (index >= 0 && sheet.getMaxRows() > 1) {
