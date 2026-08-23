@@ -41,9 +41,9 @@ test('multi-card APIs require server-side admin authorization and route all muta
   }
   assert.match(code, /version:\s*'2\.3\.0'/);
   assert.match(code, /adminCardSaveMultiCard_\(context, payload\)/);
-  assert.match(code, /memberMeMultiCard_\(context, payload\)/);
+  assert.match(code, /memberMeVisibleMultiCard_\(context, payload\)/);
   assert.match(code, /stampRecordMultiCard_\(context, payload\)/);
-  assert.match(code, /memberRewardClaimMultiCard_\(context, payload\)/);
+  assert.match(code, /memberRewardClaimVisibleMultiCard_\(context, payload\)/);
   assert.match(code, /memberRewardPrepareMultiCard_\(context, payload\)/);
 });
 
