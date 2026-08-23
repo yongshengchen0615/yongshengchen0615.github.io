@@ -1,6 +1,7 @@
 'use strict';
 
 const CALENDAR_STORAGE_PROPERTY_ = 'CALENDAR_SYSTEM_V2_SPREADSHEET_ID';
+const CALENDAR_DATA_REVISION_PROPERTY_ = 'CALENDAR_SYSTEM_V2_DATA_REVISION';
 const CALENDAR_SHEET_SCHEMAS_ = Object.freeze({
   Users: Object.freeze([
     'line_user_id', 'display_name', 'status', 'last_login_at', 'created_at', 'updated_at'
@@ -112,7 +113,7 @@ function migrateLegacyCalendarItemsSchema_(sheet, sheetName, headers, lastColumn
 }
 
 function getDataSheet_(sheetName) {
-  const spreadsheet = ensureCalendarStorage_();
+  const spreadsheet = getCalendarSpreadsheet_();
   const sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) throw new ApiError(500, 'SCHEMA_MISSING', '缺少資料表：' + sheetName);
   return sheet;
@@ -140,16 +141,18 @@ function findRecordWithRow_(sheetName, keyField, keyValue) {
 
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return null;
-  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
   const expected = String(keyValue || '');
+  const match = sheet
+    .getRange(2, keyIndex + 1, lastRow - 1, 1)
+    .createTextFinder(expected)
+    .matchEntireCell(true)
+    .matchCase(true)
+    .findNext();
 
-  for (let index = 0; index < values.length; index += 1) {
-    const record = rowToRecord_(headers, values[index]);
-    if (String(record[keyField] || '') === expected) {
-      return { rowNumber: index + 2, record: record };
-    }
-  }
-  return null;
+  if (!match) return null;
+  const rowNumber = match.getRow();
+  const row = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+  return { rowNumber: rowNumber, record: rowToRecord_(headers, row) };
 }
 
 function appendRecord_(sheetName, record) {
@@ -179,6 +182,16 @@ function updateRecordAtRow_(sheetName, rowNumber, record) {
 
 function appendAuditRecord_(record) {
   appendRecord_('AuditLogs', record);
+}
+
+function getCalendarDataRevision_() {
+  return String(PropertiesService.getScriptProperties().getProperty(CALENDAR_DATA_REVISION_PROPERTY_) || '0');
+}
+
+function bumpCalendarDataRevision_() {
+  const revision = Date.now().toString(36) + '-' + Utilities.getUuid().substring(0, 8);
+  PropertiesService.getScriptProperties().setProperty(CALENDAR_DATA_REVISION_PROPERTY_, revision);
+  return revision;
 }
 
 function recordToRow_(headers, record) {
