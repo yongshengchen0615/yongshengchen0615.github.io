@@ -1,483 +1,462 @@
-'use strict';
+(() => {
+  'use strict';
 
-const FRESH_LOGIN_PARAM = 'calendar_reauth';
+  const state = {
+    config: null,
+    accessToken: '',
+    profile: null,
+    role: '',
+    items: [],
+    saving: false
+  };
 
-const state = {
-  config: null,
-  idToken: '',
-  profile: null,
-  cursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-  events: [],
-  eventsByDate: new Map()
-};
+  const els = {};
 
-const els = {};
-
-document.addEventListener('DOMContentLoaded', init);
-
-async function init() {
-  bindElements();
-  bindActions();
-  showBoot('正在確認管理端 LINE 身分…');
-
-  try {
-    state.config = await loadConfig();
-    validateConfig(state.config);
-    const loggedIn = await ensureAdminLiffLogin();
-    if (!loggedIn) return;
-    await checkAuthorization();
-  } catch (error) {
-    showError(error && error.message ? error.message : '管理端 LINE 登入失敗。');
-  }
-}
-
-function bindElements() {
-  [
-    'adminIdentity','refreshPermissionBtn','bootPanel','bootMessage','permissionPanel','errorPanel','errorMessage','workspace',
-    'prevBtn','nextBtn','todayBtn','reloadBtn','monthTitle','calendarGrid',
-    'eventForm','eventId','eventDate','eventType','eventStatus','eventTitle',
-    'eventDescription','saveBtn','formMessage','resetBtn','editorTitle',
-    'adminEventList','eventCount'
-  ].forEach(id => { els[id] = document.getElementById(id); });
-}
-
-function bindActions() {
-  els.refreshPermissionBtn.addEventListener('click', checkAuthorization);
-  els.prevBtn.addEventListener('click', () => changeMonth(-1));
-  els.nextBtn.addEventListener('click', () => changeMonth(1));
-  els.todayBtn.addEventListener('click', async () => {
-    const now = new Date();
-    state.cursor = new Date(now.getFullYear(), now.getMonth(), 1);
-    await loadMonth();
+  window.addEventListener('DOMContentLoaded', () => {
+    bindElements();
+    bindEvents();
+    setDefaultDates();
+    boot();
   });
-  els.reloadBtn.addEventListener('click', loadMonth);
-  els.resetBtn.addEventListener('click', resetForm);
-  els.eventForm.addEventListener('submit', saveEvent);
-}
 
-async function loadConfig() {
-  const response = await fetch('../config.json', {
-    cache: 'no-store',
-    credentials: 'same-origin',
-    redirect: 'error',
-    referrerPolicy: 'no-referrer'
-  });
-  if (!response.ok) throw new Error('無法讀取 config.json。');
-  return response.json();
-}
-
-function validateConfig(config) {
-  const apiUrl = String(config && config.apiUrl || '').trim();
-  const adminLiffId = String(config && config.adminLiffId || '').trim();
-  if (!/^https:\/\/.+/i.test(apiUrl)) throw new Error('尚未設定 GAS API URL。');
-  if (!adminLiffId || /^YOUR_[A-Z0-9_]+$/i.test(adminLiffId)) {
-    throw new Error('尚未設定管理端 LIFF ID。');
-  }
-}
-
-async function ensureAdminLiffLogin() {
-  if (!window.liff || typeof window.liff.init !== 'function') {
-    throw new Error('LINE LIFF SDK 載入失敗。');
+  function bindElements() {
+    [
+      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox',
+      'pendingUserId', 'retryButton', 'adminView', 'displayName', 'logoutButton',
+      'itemForm', 'itemId', 'expectedUpdatedAt', 'formTitle', 'cancelEditButton',
+      'type', 'status', 'title', 'startDate', 'endDate', 'allDay', 'startTimeLabel',
+      'endTimeLabel', 'startTime', 'endTime', 'location', 'description', 'formMessage',
+      'saveButton', 'filterStatus', 'refreshButton', 'itemsList'
+    ].forEach((id) => { els[id] = document.getElementById(id); });
   }
 
-  await window.liff.init({ liffId: state.config.adminLiffId });
-
-  // LIFF Browser authenticates automatically during liff.init().
-  // External browsers are forced through a fresh LINE Login on every page entry.
-  if (!window.liff.isInClient()) {
-    const freshReturn = new URL(window.location.href).searchParams.get(FRESH_LOGIN_PARAM) === '1';
-    if (!freshReturn) {
-      const redirectUri = freshLoginUrl();
-      if (window.liff.isLoggedIn()) {
-        window.liff.logout();
-        window.location.replace(redirectUri);
-        return false;
+  function bindEvents() {
+    els.retryButton.addEventListener('click', () => window.location.reload());
+    els.logoutButton.addEventListener('click', () => {
+      try {
+        if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
+      } finally {
+        window.location.reload();
       }
-      window.liff.login({ redirectUri });
-      return false;
+    });
+    els.allDay.addEventListener('change', updateTimeVisibility);
+    els.itemForm.addEventListener('submit', handleSubmit);
+    els.cancelEditButton.addEventListener('click', resetForm);
+    els.filterStatus.addEventListener('change', renderItems);
+    els.refreshButton.addEventListener('click', refreshItems);
+  }
+
+  async function boot() {
+    setView('loading');
+    try {
+      state.config = await loadConfig();
+      await initializeLiff();
+      state.accessToken = window.liff.getAccessToken() || '';
+      if (!state.accessToken) throw clientError('AUTH_REQUIRED', '無法取得 LINE access token，請重新登入。');
+
+      const result = await api('admin.bootstrap');
+      state.profile = result.profile || null;
+      state.role = result.role || '';
+      state.items = Array.isArray(result.items) ? result.items : [];
+      els.displayName.textContent = state.profile && state.profile.displayName ? state.profile.displayName : '管理員';
+      setView('admin');
+      renderItems();
+    } catch (error) {
+      handleBootError(error);
+    } finally {
+      els.app.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  async function loadConfig() {
+    const response = await fetch('../config.json', { cache: 'no-store' });
+    if (!response.ok) throw clientError('CONFIG_ERROR', '讀取 config.json 失敗。');
+    const config = await response.json();
+    validatePublicConfig(config);
+    return config;
+  }
+
+  function validatePublicConfig(config) {
+    const gasUrl = String(config && config.gasWebAppUrl || '').trim();
+    const liffId = String(config && config.adminLiffId || '').trim();
+    if (!gasUrl || gasUrl.includes('REPLACE_WITH_') || !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
+      throw clientError('CONFIG_ERROR', '尚未正確設定 GAS Web App URL。');
+    }
+    if (!liffId || liffId.includes('REPLACE_WITH_')) {
+      throw clientError('CONFIG_ERROR', '尚未設定 Admin LIFF ID。');
+    }
+  }
+
+  async function initializeLiff() {
+    if (!window.liff) throw clientError('LIFF_SDK_ERROR', 'LIFF SDK 載入失敗，請確認網路後重試。');
+    try {
+      await window.liff.init({ liffId: state.config.adminLiffId });
+    } catch (error) {
+      throw clientError('LIFF_INIT_ERROR', 'Admin LIFF 初始化失敗，請檢查 LIFF ID 與 Endpoint URL。');
     }
 
     if (!window.liff.isLoggedIn()) {
-      window.liff.login({ redirectUri: freshLoginUrl() });
-      return false;
+      window.liff.login({ redirectUri: cleanRedirectUri() });
+      await new Promise(() => {});
     }
-  } else if (!window.liff.isLoggedIn()) {
-    throw new Error('無法取得管理端 LINE 登入狀態，請關閉頁面後重新開啟。');
   }
 
-  const idToken = window.liff.getIDToken();
-  if (!idToken) {
-    throw new Error('無法取得管理端 LINE ID Token，請確認管理端 LIFF 已啟用 openid scope。');
+  async function api(action, payload = {}) {
+    const body = {
+      action,
+      clientType: 'admin',
+      accessToken: state.accessToken,
+      ...payload
+    };
+
+    let response;
+    try {
+      response = await fetch(state.config.gasWebAppUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        cache: 'no-store',
+        redirect: 'follow',
+        body: JSON.stringify(body)
+      });
+    } catch (error) {
+      throw clientError('NETWORK_ERROR', '無法連線 GAS 後端，請檢查 Web App 部署與網路。');
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw clientError('API_RESPONSE_ERROR', 'GAS 回傳格式錯誤，請確認部署的是最新版本。');
+    }
+
+    if (!data || data.ok !== true) {
+      const error = clientError(data && data.error && data.error.code || 'API_ERROR', data && data.error && data.error.message || '後端拒絕此請求。');
+      error.status = Number(data && data.status || 0);
+      error.details = data && data.error && data.error.details || null;
+      throw error;
+    }
+
+    return data.data || {};
   }
 
-  state.idToken = idToken;
-  canonicalizeUrl();
-  return true;
-}
-
-function canonicalUrl() {
-  const url = new URL(window.location.href);
-  url.search = '';
-  url.hash = '';
-  return url.href;
-}
-
-function freshLoginUrl() {
-  const url = new URL(canonicalUrl());
-  url.searchParams.set(FRESH_LOGIN_PARAM, '1');
-  return url.href;
-}
-
-function canonicalizeUrl() {
-  const cleanUrl = canonicalUrl();
-  if (window.location.href !== cleanUrl) window.history.replaceState(null, '', cleanUrl);
-}
-
-async function checkAuthorization() {
-  if (!state.idToken) return showError('管理端 LINE 登入狀態已失效，請重新整理。');
-  els.refreshPermissionBtn.disabled = true;
-  showBoot('正在讀取 AdminPermissions 權限…');
-
-  try {
-    const data = await apiRequest('admin.session', {});
-    state.profile = data.profile || null;
-    renderIdentity();
-
-    const authorization = data.authorization || {};
-    if (authorization.canManageCalendar === true && authorization.status === 'active') {
-      showWorkspace();
-      await loadMonth();
+  function handleBootError(error) {
+    if (error && error.code === 'ADMIN_PENDING') {
+      els.pendingUserId.textContent = String(error.details && error.details.lineUserId || '請查看 Admins 資料表');
+      els.pendingBox.classList.remove('hidden');
+      showError('此 LINE 帳號尚未授權', 'GAS 已記錄這次管理端登入，但目前不允許進入管理功能。');
       return;
     }
 
-    showPermissionRequired();
-  } catch (error) {
-    showError(error && error.message ? error.message : '無法確認管理權限。');
-  } finally {
-    els.refreshPermissionBtn.disabled = false;
-  }
-}
-
-function renderIdentity() {
-  const profile = state.profile || {};
-  els.adminIdentity.textContent = profile.displayName || 'LINE 管理員';
-  els.adminIdentity.hidden = false;
-}
-
-async function changeMonth(delta) {
-  state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth() + delta, 1);
-  await loadMonth();
-}
-
-async function loadMonth() {
-  renderMonthHeading();
-  setFormMessage('讀取中…');
-  try {
-    const data = await apiRequest('admin.events.list', {
-      year: state.cursor.getFullYear(),
-      month: state.cursor.getMonth() + 1
-    });
-    state.events = Array.isArray(data.events) ? data.events : [];
-    state.eventsByDate = groupByDate(state.events);
-    renderCalendar();
-    renderAdminEventList();
-    setFormMessage('');
-  } catch (error) {
-    if (isPermissionError(error)) {
-      showPermissionRequired();
+    if (error && error.code === 'ADMIN_FORBIDDEN') {
+      showError('沒有管理端權限', '此 LINE 帳號未啟用管理權限。請檢查 Admins 的 role 與 status。');
       return;
     }
-    if (isLineAuthError(error)) {
-      state.idToken = '';
-      showError(error.message || '管理端 LINE 登入已失效。');
+
+    if (error && error.code === 'CONFIG_ERROR') {
+      showError('系統尚未完成設定', error.message);
       return;
     }
-    state.events = [];
-    state.eventsByDate = new Map();
-    renderCalendar();
-    renderAdminEventList();
-    setFormMessage(error && error.message ? error.message : '讀取失敗。', true);
-  }
-}
 
-async function saveEvent(event) {
-  event.preventDefault();
-  els.saveBtn.disabled = true;
-  setFormMessage('儲存中…');
-
-  const payload = {
-    eventId: els.eventId.value.trim(),
-    date: els.eventDate.value,
-    type: els.eventType.value,
-    status: els.eventStatus.value,
-    title: els.eventTitle.value.trim(),
-    description: els.eventDescription.value.trim()
-  };
-
-  try {
-    const result = await apiRequest('admin.event.save', payload);
-    setFormMessage(result.created ? '已新增日期設定。' : '已更新日期設定。', false, true);
-    state.cursor = monthCursorFromDate(result.event.date);
-    resetForm(false);
-    await loadMonth();
-  } catch (error) {
-    if (isPermissionError(error)) return showPermissionRequired();
-    if (isLineAuthError(error)) {
-      state.idToken = '';
-      return showError(error.message || '管理端 LINE 登入已失效。');
+    const authCodes = new Set(['AUTH_REQUIRED', 'AUTH_INVALID', 'AUTH_EXPIRED', 'AUTH_CHANNEL_MISMATCH']);
+    if (authCodes.has(error && error.code)) {
+      try {
+        if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
+      } catch (_) {}
+      showError('LINE 登入已失效', 'LINE 身分驗證未通過。請重新整理後重新登入。');
+      return;
     }
-    setFormMessage(error && error.message ? error.message : '儲存失敗。', true);
-  } finally {
-    els.saveBtn.disabled = false;
+
+    showError('暫時無法進入管理端', error && error.message ? error.message : '請稍後重新整理。');
   }
-}
 
-async function archiveEvent(eventId) {
-  const target = state.events.find(item => item.eventId === eventId);
-  if (!target) return;
-  if (!confirm(`確定要封存「${target.title}」？封存後用戶端將不再顯示。`)) return;
+  function setView(view) {
+    els.loadingView.classList.toggle('hidden', view !== 'loading');
+    els.errorView.classList.toggle('hidden', view !== 'error');
+    els.adminView.classList.toggle('hidden', view !== 'admin');
+  }
 
-  try {
-    await apiRequest('admin.event.delete', { eventId });
-    if (els.eventId.value === eventId) resetForm();
-    await loadMonth();
-    setFormMessage('已封存日期設定。', false, true);
-  } catch (error) {
-    if (isPermissionError(error)) return showPermissionRequired();
-    if (isLineAuthError(error)) {
-      state.idToken = '';
-      return showError(error.message || '管理端 LINE 登入已失效。');
+  function showError(title, message) {
+    els.errorTitle.textContent = title;
+    els.errorMessage.textContent = message;
+    setView('error');
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (state.saving) return;
+    clearFormMessage();
+
+    const item = readForm();
+    const validationMessage = validateForm(item);
+    if (validationMessage) {
+      showFormMessage(validationMessage);
+      return;
     }
-    setFormMessage(error && error.message ? error.message : '封存失敗。', true);
-  }
-}
 
-async function apiRequest(action, payload) {
-  if (!state.idToken) {
-    const error = new Error('管理端 LINE 登入狀態已失效。');
-    error.code = 'UNAUTHENTICATED';
-    throw error;
-  }
+    state.saving = true;
+    els.saveButton.disabled = true;
+    els.saveButton.textContent = '儲存中…';
 
-  const body = new URLSearchParams();
-  body.set('action', action);
-  body.set('idToken', state.idToken);
-  body.set('payload', JSON.stringify(payload || {}));
-
-  const response = await fetch(state.config.apiUrl, {
-    method: 'POST',
-    body,
-    redirect: 'follow',
-    referrerPolicy: 'no-referrer'
-  });
-  if (!response.ok) throw new Error(`服務連線失敗 (${response.status})`);
-
-  const result = await response.json();
-  if (!result.ok) {
-    const error = new Error(result.error && result.error.message || '服務暫時無法使用。');
-    error.code = result.error && result.error.code || '';
-    throw error;
-  }
-  return result.data || {};
-}
-
-function renderMonthHeading() {
-  els.monthTitle.textContent = `${state.cursor.getFullYear()} 年 ${state.cursor.getMonth() + 1} 月`;
-}
-
-function renderCalendar() {
-  renderMonthHeading();
-  els.calendarGrid.textContent = '';
-
-  const year = state.cursor.getFullYear();
-  const month = state.cursor.getMonth();
-  const first = new Date(year, month, 1);
-  const start = new Date(year, month, 1 - first.getDay());
-  const todayKey = toDateKey(new Date());
-
-  for (let i = 0; i < 42; i += 1) {
-    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-    const dateKey = toDateKey(date);
-    const dayEvents = state.eventsByDate.get(dateKey) || [];
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'day-cell';
-    if (date.getMonth() !== month) button.classList.add('outside');
-    if (dateKey === todayKey) button.classList.add('today');
-    button.addEventListener('click', async () => {
-      if (date.getMonth() !== month) {
-        state.cursor = new Date(date.getFullYear(), date.getMonth(), 1);
-        await loadMonth();
+    try {
+      if (item.itemId) {
+        await api('admin.calendar.update', {
+          item,
+          expectedUpdatedAt: els.expectedUpdatedAt.value
+        });
+      } else {
+        await api('admin.calendar.create', { item });
       }
+      await refreshItems();
       resetForm();
-      els.eventDate.value = dateKey;
-      els.eventTitle.focus();
-    });
-
-    const number = document.createElement('span');
-    number.className = 'day-number';
-    number.textContent = String(date.getDate());
-    button.appendChild(number);
-
-    const wrap = document.createElement('span');
-    wrap.className = 'day-markers';
-    dayEvents.slice(0, 3).forEach(item => {
-      const marker = document.createElement('span');
-      marker.className = `marker ${item.type} ${item.status === 'draft' ? 'draft' : ''}`;
-      marker.textContent = item.title;
-      wrap.appendChild(marker);
-    });
-    button.appendChild(wrap);
-    els.calendarGrid.appendChild(button);
-  }
-}
-
-function renderAdminEventList() {
-  els.adminEventList.textContent = '';
-  els.eventCount.textContent = String(state.events.length);
-
-  if (!state.events.length) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.textContent = '本月尚未建立休假或活動。';
-    els.adminEventList.appendChild(empty);
-    return;
-  }
-
-  state.events
-    .slice()
-    .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, 'zh-Hant'))
-    .forEach(item => {
-      const article = document.createElement('article');
-      article.className = 'admin-event';
-
-      const top = document.createElement('div');
-      top.className = 'admin-event-top';
-      const text = document.createElement('div');
-      const title = document.createElement('h4');
-      title.textContent = `${formatShortDate(item.date)} · ${item.title}`;
-      const description = document.createElement('p');
-      description.textContent = item.description || '無說明';
-      text.append(title, description);
-
-      const pillWrap = document.createElement('div');
-      const pill = document.createElement('span');
-      pill.className = `pill ${item.type}`;
-      pill.textContent = item.type === 'holiday' ? '休假' : '活動';
-      pillWrap.appendChild(pill);
-      if (item.status === 'draft') {
-        const draft = document.createElement('span');
-        draft.className = 'pill draft';
-        draft.textContent = '草稿';
-        draft.style.marginLeft = '5px';
-        pillWrap.appendChild(draft);
+    } catch (error) {
+      if (error && error.code === 'CONFLICT') {
+        showFormMessage('這筆資料已被其他管理者更新。已重新載入清單，請重新編輯。');
+        await refreshItems();
+      } else {
+        showFormMessage(error && error.message ? error.message : '儲存失敗。');
       }
-      top.append(text, pillWrap);
+    } finally {
+      state.saving = false;
+      els.saveButton.disabled = false;
+      els.saveButton.textContent = els.itemId.value ? '儲存變更' : '新增';
+    }
+  }
 
-      const actions = document.createElement('div');
-      actions.className = 'admin-event-actions';
-      const edit = document.createElement('button');
-      edit.type = 'button';
-      edit.className = 'button button-ghost';
-      edit.textContent = '編輯';
-      edit.addEventListener('click', () => editEvent(item));
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'button button-danger';
-      del.textContent = '封存';
-      del.addEventListener('click', () => archiveEvent(item.eventId));
-      actions.append(edit, del);
+  function readForm() {
+    return {
+      itemId: els.itemId.value.trim(),
+      type: els.type.value,
+      status: els.status.value,
+      title: els.title.value.trim(),
+      startDate: els.startDate.value,
+      endDate: els.endDate.value,
+      allDay: els.allDay.checked,
+      startTime: els.allDay.checked ? '' : els.startTime.value,
+      endTime: els.allDay.checked ? '' : els.endTime.value,
+      location: els.location.value.trim(),
+      description: els.description.value.trim()
+    };
+  }
 
-      article.append(top, actions);
-      els.adminEventList.appendChild(article);
-    });
-}
+  function validateForm(item) {
+    if (!item.title) return '請輸入標題。';
+    if (!item.startDate || !item.endDate) return '請選擇開始與結束日期。';
+    if (item.endDate < item.startDate) return '結束日期不得早於開始日期。';
+    if (!item.allDay && (!item.startTime || !item.endTime)) return '非全天項目需要開始與結束時間。';
+    if (!item.allDay && item.startDate === item.endDate && item.endTime <= item.startTime) return '同一天的結束時間必須晚於開始時間。';
+    return '';
+  }
 
-function editEvent(item) {
-  els.eventId.value = item.eventId;
-  els.eventDate.value = item.date;
-  els.eventType.value = item.type;
-  els.eventStatus.value = item.status;
-  els.eventTitle.value = item.title;
-  els.eventDescription.value = item.description || '';
-  els.editorTitle.textContent = '編輯日期設定';
-  els.eventTitle.focus();
-}
+  async function refreshItems() {
+    els.refreshButton.disabled = true;
+    try {
+      const result = await api('admin.calendar.list');
+      state.items = Array.isArray(result.items) ? result.items : [];
+      renderItems();
+    } catch (error) {
+      showFormMessage(error && error.message ? error.message : '重新載入失敗。');
+    } finally {
+      els.refreshButton.disabled = false;
+    }
+  }
 
-function resetForm(clearMessage = true) {
-  els.eventForm.reset();
-  els.eventId.value = '';
-  els.eventStatus.value = 'published';
-  els.editorTitle.textContent = '新增日期設定';
-  if (clearMessage) setFormMessage('');
-}
+  function renderItems() {
+    const filter = els.filterStatus.value;
+    const items = state.items
+      .filter((item) => filter === 'all' || item.status === filter)
+      .sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hant'));
 
-function groupByDate(events) {
-  const map = new Map();
-  events.forEach(item => {
-    if (!map.has(item.date)) map.set(item.date, []);
-    map.get(item.date).push(item);
-  });
-  return map;
-}
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = '目前沒有符合條件的日曆項目。';
+      els.itemsList.replaceChildren(empty);
+      return;
+    }
 
-function toDateKey(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
+    const fragment = document.createDocumentFragment();
+    items.forEach((item) => fragment.appendChild(buildItemCard(item)));
+    els.itemsList.replaceChildren(fragment);
+  }
 
-function monthCursorFromDate(value) {
-  const [year, month] = value.split('-').map(Number);
-  return new Date(year, month - 1, 1);
-}
+  function buildItemCard(item) {
+    const card = document.createElement('article');
+    card.className = 'item-card';
 
-function formatShortDate(value) {
-  const [, month, day] = value.split('-');
-  return `${Number(month)}/${Number(day)}`;
-}
+    const accent = document.createElement('div');
+    accent.className = `item-accent ${safeType(item.type)}`;
 
-function setFormMessage(message, isError = false, isSuccess = false) {
-  els.formMessage.textContent = message;
-  els.formMessage.className = `message${isError ? ' error' : isSuccess ? ' success' : ''}`;
-}
+    const body = document.createElement('div');
+    body.className = 'item-body';
 
-function showBoot(message) {
-  els.bootMessage.textContent = message || '正在確認管理端 LINE 身分…';
-  els.bootPanel.classList.remove('is-hidden');
-  els.permissionPanel.classList.add('is-hidden');
-  els.errorPanel.classList.add('is-hidden');
-  els.workspace.classList.add('is-hidden');
-}
+    const titleRow = document.createElement('div');
+    titleRow.className = 'item-title-row';
 
-function showPermissionRequired() {
-  els.bootPanel.classList.add('is-hidden');
-  els.errorPanel.classList.add('is-hidden');
-  els.workspace.classList.add('is-hidden');
-  els.permissionPanel.classList.remove('is-hidden');
-}
+    const title = document.createElement('h3');
+    title.className = 'item-title';
+    title.textContent = item.title;
 
-function showWorkspace() {
-  els.bootPanel.classList.add('is-hidden');
-  els.permissionPanel.classList.add('is-hidden');
-  els.errorPanel.classList.add('is-hidden');
-  els.workspace.classList.remove('is-hidden');
-}
+    const typeChip = document.createElement('span');
+    typeChip.className = 'type-chip';
+    typeChip.textContent = typeLabel(item.type);
 
-function showError(message) {
-  els.errorMessage.textContent = String(message || '請稍後再試。');
-  els.bootPanel.classList.add('is-hidden');
-  els.permissionPanel.classList.add('is-hidden');
-  els.workspace.classList.add('is-hidden');
-  els.errorPanel.classList.remove('is-hidden');
-}
+    const statusChip = document.createElement('span');
+    statusChip.className = `status-chip ${safeStatus(item.status)}`;
+    statusChip.textContent = statusLabel(item.status);
 
-function isPermissionError(error) {
-  return error && (error.code === 'FORBIDDEN' || error.code === 'DATA_INTEGRITY_ERROR');
-}
+    titleRow.append(title, typeChip, statusChip);
+    body.appendChild(titleRow);
 
-function isLineAuthError(error) {
-  return error && (error.code === 'UNAUTHENTICATED' || error.code === 'AUTH_SERVICE_UNAVAILABLE');
-}
+    const meta = document.createElement('p');
+    meta.className = 'item-meta';
+    const dateRange = item.startDate === item.endDate ? item.startDate : `${item.startDate} → ${item.endDate}`;
+    const time = item.allDay ? '全天' : `${item.startTime || ''}${item.endTime ? `–${item.endTime}` : ''}`;
+    meta.textContent = [dateRange, time, item.location].filter(Boolean).join(' · ');
+    body.appendChild(meta);
+
+    if (item.description) {
+      const description = document.createElement('p');
+      description.className = 'item-description';
+      description.textContent = item.description;
+      body.appendChild(description);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'item-actions';
+
+    if (item.status !== 'archived') {
+      const editButton = document.createElement('button');
+      editButton.type = 'button';
+      editButton.className = 'button ghost';
+      editButton.textContent = '編輯';
+      editButton.addEventListener('click', () => beginEdit(item));
+
+      const archiveButton = document.createElement('button');
+      archiveButton.type = 'button';
+      archiveButton.className = 'button danger';
+      archiveButton.textContent = '封存';
+      archiveButton.addEventListener('click', () => archiveItem(item));
+      actions.append(editButton, archiveButton);
+    }
+
+    card.append(accent, body, actions);
+    return card;
+  }
+
+  function beginEdit(item) {
+    els.itemId.value = item.itemId;
+    els.expectedUpdatedAt.value = item.updatedAt || '';
+    els.type.value = item.type;
+    els.status.value = item.status === 'draft' ? 'draft' : 'published';
+    els.title.value = item.title || '';
+    els.startDate.value = item.startDate || '';
+    els.endDate.value = item.endDate || '';
+    els.allDay.checked = Boolean(item.allDay);
+    els.startTime.value = item.startTime || '';
+    els.endTime.value = item.endTime || '';
+    els.location.value = item.location || '';
+    els.description.value = item.description || '';
+    els.formTitle.textContent = '編輯日曆項目';
+    els.saveButton.textContent = '儲存變更';
+    els.cancelEditButton.classList.remove('hidden');
+    updateTimeVisibility();
+    clearFormMessage();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function archiveItem(item) {
+    if (!window.confirm(`確定要封存「${item.title}」嗎？封存後用戶端不會顯示。`)) return;
+    try {
+      await api('admin.calendar.archive', {
+        itemId: item.itemId,
+        expectedUpdatedAt: item.updatedAt || ''
+      });
+      if (els.itemId.value === item.itemId) resetForm();
+      await refreshItems();
+    } catch (error) {
+      if (error && error.code === 'CONFLICT') {
+        showFormMessage('這筆資料已被其他管理者更新，請重新確認後再操作。');
+        await refreshItems();
+      } else {
+        showFormMessage(error && error.message ? error.message : '封存失敗。');
+      }
+    }
+  }
+
+  function resetForm() {
+    els.itemForm.reset();
+    els.itemId.value = '';
+    els.expectedUpdatedAt.value = '';
+    els.status.value = 'published';
+    els.type.value = 'holiday';
+    els.allDay.checked = true;
+    setDefaultDates();
+    updateTimeVisibility();
+    els.formTitle.textContent = '新增日曆項目';
+    els.saveButton.textContent = '新增';
+    els.cancelEditButton.classList.add('hidden');
+    clearFormMessage();
+  }
+
+  function setDefaultDates() {
+    const today = dateKey(new Date());
+    if (els.startDate && !els.startDate.value) els.startDate.value = today;
+    if (els.endDate && !els.endDate.value) els.endDate.value = today;
+  }
+
+  function updateTimeVisibility() {
+    const hidden = els.allDay.checked;
+    els.startTimeLabel.classList.toggle('hidden', hidden);
+    els.endTimeLabel.classList.toggle('hidden', hidden);
+    if (hidden) {
+      els.startTime.value = '';
+      els.endTime.value = '';
+    }
+  }
+
+  function showFormMessage(message) {
+    els.formMessage.textContent = message;
+    els.formMessage.classList.remove('hidden');
+  }
+
+  function clearFormMessage() {
+    els.formMessage.textContent = '';
+    els.formMessage.classList.add('hidden');
+  }
+
+  function safeType(type) {
+    return ['holiday', 'event', 'notice'].includes(type) ? type : 'notice';
+  }
+
+  function safeStatus(status) {
+    return ['published', 'draft', 'archived'].includes(status) ? status : 'draft';
+  }
+
+  function typeLabel(type) {
+    return ({ holiday: '休假日', event: '活動', notice: '公告' })[type] || '公告';
+  }
+
+  function statusLabel(status) {
+    return ({ published: '已發布', draft: '草稿', archived: '已封存' })[status] || '草稿';
+  }
+
+  function cleanRedirectUri() {
+    const url = new URL(window.location.href);
+    url.hash = '';
+    ['code', 'state', 'liffClientId', 'liffRedirectUri'].forEach((name) => url.searchParams.delete(name));
+    return url.toString();
+  }
+
+  function clientError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
+
+  function dateKey(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+})();

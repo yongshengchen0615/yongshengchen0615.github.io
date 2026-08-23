@@ -2,93 +2,69 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f7f4ee">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; frame-src https://liff-subwindow.line.me; object-src 'none'; base-uri 'none'; upgrade-insecure-requests">
-  <title>營業日曆</title>
+  <title>日曆｜用戶端</title>
   <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./auth.css">
-  <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script defer src="./app.js"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="./app.js" defer></script>
 </head>
 <body>
-  <main class="app-shell">
-    <section id="bootState" class="state-view" aria-live="polite">
-      <div class="loader" aria-hidden="true"></div>
-      <p class="eyebrow">LINE LOGIN</p>
-      <h1>正在確認 LINE 登入</h1>
-      <p class="subtitle">登入完成後會載入最新營業日曆。</p>
+  <div id="app" class="app-shell" aria-busy="true">
+    <section id="loadingView" class="state-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>正在驗證 LINE 登入</h1>
+      <p>完成身分驗證後才會載入日曆資料。</p>
     </section>
 
-    <section id="errorState" class="state-view" role="alert" hidden>
-      <div class="state-icon" aria-hidden="true">!</div>
-      <p class="eyebrow error-text">LOGIN ERROR</p>
-      <h1>暫時無法開啟日曆</h1>
-      <p id="errorMessage" class="subtitle">請稍後再試。</p>
-      <button id="retryBtn" class="button button-secondary" type="button">重新整理</button>
+    <section id="errorView" class="state-card hidden" role="alert">
+      <div class="state-icon">!</div>
+      <h1 id="errorTitle">無法載入</h1>
+      <p id="errorMessage"></p>
+      <button id="retryButton" class="button primary" type="button">重新整理</button>
     </section>
 
-    <div id="calendarApp" hidden>
-      <header class="hero">
+    <main id="calendarView" class="hidden">
+      <header class="topbar">
         <div>
-          <p class="eyebrow">CALENDAR</p>
-          <h1 id="appTitle">營業日曆</h1>
-          <p class="subtitle">查看休假日、活動日與當日說明。</p>
+          <p class="eyebrow">CalendarSystem</p>
+          <h1>日曆</h1>
         </div>
-        <div class="hero-actions">
-          <div class="member-chip" aria-label="LINE 登入會員">
-            <img id="memberAvatar" class="member-avatar" alt="" referrerpolicy="no-referrer" hidden>
-            <span id="memberName">LINE 會員</span>
+        <div class="profile">
+          <div class="profile-copy">
+            <span id="displayName">LINE 使用者</span>
+            <button id="logoutButton" class="link-button" type="button">登出</button>
           </div>
-          <button id="todayBtn" class="button button-secondary" type="button">回到今天</button>
         </div>
       </header>
 
-      <section class="calendar-card" aria-labelledby="monthTitle">
+      <section class="calendar-card" aria-label="月曆">
         <div class="calendar-toolbar">
-          <button id="prevBtn" class="icon-button" type="button" aria-label="上一個月">‹</button>
+          <button id="prevMonth" class="icon-button" type="button" aria-label="上個月">‹</button>
           <div class="month-heading">
-            <h2 id="monthTitle"></h2>
-            <p id="loadStatus" class="load-status" aria-live="polite"></p>
+            <strong id="monthTitle"></strong>
+            <button id="todayButton" class="link-button" type="button">今天</button>
           </div>
-          <button id="nextBtn" class="icon-button" type="button" aria-label="下一個月">›</button>
-        </div>
-
-        <div class="legend" aria-label="日曆標示">
-          <span><i class="legend-dot holiday"></i>休假日</span>
-          <span><i class="legend-dot activity"></i>活動日</span>
+          <button id="nextMonth" class="icon-button" type="button" aria-label="下個月">›</button>
         </div>
 
         <div class="weekday-row" aria-hidden="true">
           <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
         </div>
-        <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="月曆"></div>
+        <div id="calendarGrid" class="calendar-grid"></div>
       </section>
 
-      <section class="upcoming-card">
+      <section class="agenda-card">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">THIS MONTH</p>
-            <h2>本月重點</h2>
+            <p class="eyebrow">Selected day</p>
+            <h2 id="selectedDateTitle">今日行程</h2>
           </div>
+          <span id="selectedCount" class="badge">0</span>
         </div>
-        <div id="eventList" class="event-list"></div>
+        <div id="agendaList" class="agenda-list"></div>
       </section>
-    </div>
-  </main>
-
-  <dialog id="dayDialog" class="day-dialog">
-    <form method="dialog" class="dialog-shell">
-      <div class="dialog-header">
-        <div>
-          <p class="eyebrow">DAY DETAILS</p>
-          <h2 id="dialogDate"></h2>
-        </div>
-        <button class="icon-button close-button" type="submit" aria-label="關閉">×</button>
-      </div>
-      <div id="dialogEvents" class="dialog-events"></div>
-    </form>
-  </dialog>
+    </main>
+  </div>
 </body>
 </html>

@@ -1,210 +1,209 @@
 'use strict';
 
-const CALENDAR_STORAGE = Object.freeze({
-  spreadsheetProperty: 'CALENDAR_SPREADSHEET_ID',
-  eventsSheet: 'CalendarEvents',
-  identitiesSheet: 'LineIdentities',
-  adminPermissionsSheet: 'AdminPermissions',
-  auditSheet: 'AuditLogs'
+const CALENDAR_STORAGE_PROPERTY_ = 'CALENDAR_SYSTEM_V2_SPREADSHEET_ID';
+const CALENDAR_SHEET_SCHEMAS_ = Object.freeze({
+  Users: Object.freeze([
+    'line_user_id', 'display_name', 'status', 'last_login_at', 'created_at', 'updated_at'
+  ]),
+  Admins: Object.freeze([
+    'line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at'
+  ]),
+  CalendarItems: Object.freeze([
+    'item_id', 'type', 'title', 'start_date', 'end_date', 'all_day', 'start_time', 'end_time',
+    'description', 'location', 'status', 'created_by', 'created_at', 'updated_by', 'updated_at'
+  ]),
+  AuditLogs: Object.freeze([
+    'audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id',
+    'result', 'detail', 'created_at'
+  ])
 });
 
-const CALENDAR_HEADERS = Object.freeze({
-  CalendarEvents: [
-    'eventId', 'date', 'type', 'title', 'description', 'status',
-    'createdAt', 'updatedAt'
-  ],
-  LineIdentities: [
-    'lineUserId', 'surface', 'displayName', 'pictureUrl',
-    'firstSeenAt', 'lastLoginAt', 'loginCount'
-  ],
-  AdminPermissions: [
-    'lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'
-  ],
-  AuditLogs: [
-    'timestamp', 'actor', 'action', 'eventId', 'result', 'details'
-  ]
-});
+let CALENDAR_SPREADSHEET_CACHE_ = null;
 
-/**
- * One-time bootstrap entrypoint for the Apps Script editor.
- * If CALENDAR_SPREADSHEET_ID is already configured, this function validates
- * and prepares that exact spreadsheet. It creates a new spreadsheet only
- * when no binding exists yet.
- */
-function setupCalendarStorage() {
-  const properties = PropertiesService.getScriptProperties();
-  const existingId = String(properties.getProperty(CALENDAR_STORAGE.spreadsheetProperty) || '').trim();
-  let spreadsheet;
-  let created = false;
-
-  if (existingId) {
-    spreadsheet = openCalendarSpreadsheet_(existingId);
-  } else {
-    spreadsheet = SpreadsheetApp.create('MembershipSystem Calendar Data');
-    properties.setProperty(CALENDAR_STORAGE.spreadsheetProperty, spreadsheet.getId());
-    created = true;
-  }
-
-  ensureCalendarSheets_(spreadsheet);
-  SpreadsheetApp.flush();
-
+function setupCalendarSystem() {
+  const spreadsheet = ensureCalendarStorage_();
   return {
-    created: created,
     spreadsheetId: spreadsheet.getId(),
     spreadsheetUrl: spreadsheet.getUrl(),
-    sheets: Object.keys(CALENDAR_HEADERS)
+    sheets: Object.keys(CALENDAR_SHEET_SCHEMAS_)
   };
 }
 
-/**
- * Runtime storage resolver used by API requests.
- * Never silently switches databases. Missing/invalid configuration fails
- * closed so membership, permission and audit data cannot be written elsewhere.
- */
 function ensureCalendarStorage_() {
-  const properties = PropertiesService.getScriptProperties();
-  const existingId = String(properties.getProperty(CALENDAR_STORAGE.spreadsheetProperty) || '').trim();
-
-  if (!existingId) {
-    storageFail_(
-      'CONFIGURATION_ERROR',
-      '日曆資料庫尚未設定。',
-      'CALENDAR_SPREADSHEET_ID is missing.'
-    );
-  }
-
-  const spreadsheet = openCalendarSpreadsheet_(existingId);
-  ensureCalendarSheets_(spreadsheet);
+  const spreadsheet = getCalendarSpreadsheet_();
+  Object.keys(CALENDAR_SHEET_SCHEMAS_).forEach(function(sheetName) {
+    ensureSheetSchema_(spreadsheet, sheetName, CALENDAR_SHEET_SCHEMAS_[sheetName]);
+  });
   return spreadsheet;
 }
 
-function openCalendarSpreadsheet_(spreadsheetId) {
-  try {
-    return SpreadsheetApp.openById(spreadsheetId);
-  } catch (error) {
-    storageFail_(
-      'CONFIGURATION_ERROR',
-      '日曆資料庫設定無效或目前無法存取。',
-      'Unable to open CALENDAR_SPREADSHEET_ID: ' + String(error && error.message || error || '')
-    );
-  }
-}
+function getCalendarSpreadsheet_() {
+  if (CALENDAR_SPREADSHEET_CACHE_) return CALENDAR_SPREADSHEET_CACHE_;
 
-function ensureCalendarSheets_(spreadsheet) {
-  Object.keys(CALENDAR_HEADERS).forEach(name => {
-    ensureSheet_(spreadsheet, name, CALENDAR_HEADERS[name]);
-  });
-}
-
-/**
- * Manual diagnostic entrypoint. Run from the Apps Script editor.
- * It does not expose tokens or LINE user IDs. The temporary probe sheet is
- * deleted before returning.
- */
-function diagnoseCalendarStorage() {
   const properties = PropertiesService.getScriptProperties();
-  const configuredId = String(properties.getProperty(CALENDAR_STORAGE.spreadsheetProperty) || '').trim();
-  const spreadsheet = ensureCalendarStorage_();
-  const sheets = {};
+  const spreadsheetId = String(properties.getProperty(CALENDAR_STORAGE_PROPERTY_) || '').trim();
 
-  Object.keys(CALENDAR_HEADERS).forEach(name => {
-    const sheet = spreadsheet.getSheetByName(name);
-    sheets[name] = {
-      exists: !!sheet,
-      dataRows: sheet ? Math.max(0, sheet.getLastRow() - 1) : null,
-      lastColumn: sheet ? sheet.getLastColumn() : null
-    };
-  });
+  if (spreadsheetId) {
+    try {
+      CALENDAR_SPREADSHEET_CACHE_ = SpreadsheetApp.openById(spreadsheetId);
+      return CALENDAR_SPREADSHEET_CACHE_;
+    } catch (error) {
+      throw new ApiError(503, 'STORAGE_UNAVAILABLE', '設定的 CalendarSystem Spreadsheet 無法開啟。');
+    }
+  }
 
-  let probeSheet = null;
-  let writeProbe = false;
-  const probeName = '__calendar_write_probe_' + Date.now();
   try {
-    probeSheet = spreadsheet.insertSheet(probeName);
-    probeSheet.getRange('A1').setValue('calendar-storage-write-ok');
-    SpreadsheetApp.flush();
-    writeProbe = probeSheet.getRange('A1').getDisplayValue() === 'calendar-storage-write-ok';
-  } finally {
-    if (probeSheet) {
-      try {
-        spreadsheet.deleteSheet(probeSheet);
-      } catch (error) {
-        console.error(JSON.stringify({
-          event: 'calendar_storage_probe_cleanup_failed',
-          message: String(error && error.message || error || '').slice(0, 300)
-        }));
-      }
-    }
+    CALENDAR_SPREADSHEET_CACHE_ = SpreadsheetApp.create('CalendarSystem V2 Data');
+    properties.setProperty(CALENDAR_STORAGE_PROPERTY_, CALENDAR_SPREADSHEET_CACHE_.getId());
+    return CALENDAR_SPREADSHEET_CACHE_;
+  } catch (error) {
+    throw new ApiError(503, 'STORAGE_UNAVAILABLE', '無法建立 CalendarSystem Spreadsheet。');
   }
-
-  return {
-    configured: !!configuredId,
-    spreadsheetId: spreadsheet.getId(),
-    spreadsheetUrl: spreadsheet.getUrl(),
-    writeProbe: writeProbe,
-    sheets: sheets
-  };
 }
 
-function storageFail_(code, publicMessage, internalMessage) {
-  console.error(JSON.stringify({
-    event: 'calendar_storage_error',
-    code: String(code || 'STORAGE_ERROR'),
-    message: String(internalMessage || '').slice(0, 500)
-  }));
+function ensureSheetSchema_(spreadsheet, sheetName, headers) {
+  let sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(sheetName);
 
-  if (typeof fail_ === 'function') {
-    fail_(code, publicMessage);
-  }
+  const lastRow = sheet.getLastRow();
+  const lastColumn = sheet.getLastColumn();
 
-  const error = new Error(publicMessage);
-  error.publicCode = code;
-  error.publicMessage = publicMessage;
-  throw error;
-}
-
-function ensureSheet_(spreadsheet, name, headers) {
-  let sheet = spreadsheet.getSheetByName(name);
-  if (!sheet) sheet = spreadsheet.insertSheet(name);
-
-  if (sheet.getMaxColumns() < headers.length) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
-  }
-
-  const current = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
-  const mismatch = headers.some((header, index) => current[index] !== header);
-  if (mismatch) {
-    if (sheet.getLastRow() > 1) {
-      storageFail_(
-        'DATA_INTEGRITY_ERROR',
-        '日曆資料表欄位結構不相容。',
-        'Existing sheet "' + name + '" has incompatible headers.'
-      );
-    }
+  if (lastRow === 0 || lastColumn === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
-    sheet.autoResizeColumns(1, headers.length);
-
-    // Prevent Google Sheets from coercing identifiers, dates or permission values.
-    let textColumns = ['eventId', 'actor', 'action', 'result'];
-    if (name === CALENDAR_STORAGE.eventsSheet) {
-      textColumns = ['eventId', 'date', 'type', 'status'];
-    } else if (name === CALENDAR_STORAGE.identitiesSheet) {
-      textColumns = [
-        'lineUserId', 'surface', 'displayName', 'pictureUrl',
-        'firstSeenAt', 'lastLoginAt', 'loginCount'
-      ];
-    } else if (name === CALENDAR_STORAGE.adminPermissionsSheet) {
-      textColumns = ['lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'];
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+    if (sheet.getMaxRows() > 1) {
+      sheet.getRange(2, 1, sheet.getMaxRows() - 1, headers.length).setNumberFormat('@');
     }
-
-    textColumns.forEach(header => {
-      const index = headers.indexOf(header);
-      if (index >= 0 && sheet.getMaxRows() > 1) {
-        sheet.getRange(2, index + 1, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
-      }
-    });
+    return;
   }
 
+  if (lastColumn !== headers.length) {
+    throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 資料表欄位數量與 V2 schema 不一致。');
+  }
+
+  const actualHeaders = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
+  const matches = headers.every(function(header, index) {
+    return String(actualHeaders[index] || '') === header;
+  });
+  if (!matches) {
+    throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 資料表欄位與 V2 schema 不一致。');
+  }
+}
+
+function getDataSheet_(sheetName) {
+  const spreadsheet = ensureCalendarStorage_();
+  const sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) throw new ApiError(500, 'SCHEMA_MISSING', '缺少資料表：' + sheetName);
   return sheet;
+}
+
+function readRecords_(sheetName) {
+  const sheet = getDataSheet_(sheetName);
+  const headers = CALENDAR_SHEET_SCHEMAS_[sheetName];
+  if (!headers) throw new ApiError(500, 'SCHEMA_MISSING', '未知資料表：' + sheetName);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  return values.map(function(row) {
+    return rowToRecord_(headers, row);
+  });
+}
+
+function findRecordWithRow_(sheetName, keyField, keyValue) {
+  const sheet = getDataSheet_(sheetName);
+  const headers = CALENDAR_SHEET_SCHEMAS_[sheetName];
+  if (!headers) throw new ApiError(500, 'SCHEMA_MISSING', '未知資料表：' + sheetName);
+  const keyIndex = headers.indexOf(keyField);
+  if (keyIndex === -1) throw new ApiError(500, 'SCHEMA_MISSING', '未知欄位：' + keyField);
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const expected = String(keyValue || '');
+
+  for (let index = 0; index < values.length; index += 1) {
+    const record = rowToRecord_(headers, values[index]);
+    if (String(record[keyField] || '') === expected) {
+      return { rowNumber: index + 2, record: record };
+    }
+  }
+  return null;
+}
+
+function appendRecord_(sheetName, record) {
+  const sheet = getDataSheet_(sheetName);
+  const headers = CALENDAR_SHEET_SCHEMAS_[sheetName];
+  if (!headers) throw new ApiError(500, 'SCHEMA_MISSING', '未知資料表：' + sheetName);
+
+  const rowNumber = Math.max(sheet.getLastRow() + 1, 2);
+  const range = sheet.getRange(rowNumber, 1, 1, headers.length);
+  range.setNumberFormat('@');
+  range.setValues([recordToRow_(headers, record)]);
+  return rowNumber;
+}
+
+function updateRecordAtRow_(sheetName, rowNumber, record) {
+  const sheet = getDataSheet_(sheetName);
+  const headers = CALENDAR_SHEET_SCHEMAS_[sheetName];
+  if (!headers) throw new ApiError(500, 'SCHEMA_MISSING', '未知資料表：' + sheetName);
+  if (!Number.isInteger(rowNumber) || rowNumber < 2 || rowNumber > sheet.getLastRow()) {
+    throw new ApiError(500, 'INVALID_ROW', '資料列位置不合法。');
+  }
+
+  const range = sheet.getRange(rowNumber, 1, 1, headers.length);
+  range.setNumberFormat('@');
+  range.setValues([recordToRow_(headers, record)]);
+}
+
+function appendAuditRecord_(record) {
+  appendRecord_('AuditLogs', record);
+}
+
+function recordToRow_(headers, record) {
+  return headers.map(function(header) {
+    return escapeSheetValue_(record && record[header] !== undefined ? record[header] : '');
+  });
+}
+
+function rowToRecord_(headers, row) {
+  const record = {};
+  headers.forEach(function(header, index) {
+    record[header] = decodeSheetValue_(row[index]);
+  });
+  return record;
+}
+
+function escapeSheetValue_(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  if (/^[=+\-@]/.test(text)) return "'" + text;
+  return text;
+}
+
+function decodeSheetValue_(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  if (/^'[=+\-@]/.test(text)) return text.substring(1);
+  return text;
+}
+
+function withDataLock_(callback) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (error) {
+    throw new ApiError(503, 'DATA_BUSY', '資料正在更新，請稍後再試。');
+  }
+
+  try {
+    return callback();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function nowIso_() {
+  return new Date().toISOString();
 }

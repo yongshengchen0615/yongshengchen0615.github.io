@@ -1,285 +1,169 @@
-# MembershipSystem CalendarSystem
+# CalendarSystem V2
 
-獨立的「營業日曆」模組。用戶端與管理端使用不同 LIFF App；用戶端只讀取已發布休假日、活動日與當日說明，管理端只負責日曆資料管理且不提供「查看用戶端」入口。
+以 GitHub Pages + LIFF + Google Apps Script + Google Sheets 實作的日曆系統。
 
-## Authentication / Authorization
-
-### 用戶端
+## 架構
 
 ```text
-User
-→ User LIFF App
-→ LINE Authentication
-→ liff.getIDToken()
-→ GAS
-→ LINE Verify ID Token API
-→ validate USER_LINE_LOGIN_CHANNEL_ID / aud / exp
-→ record LineIdentities(surface=user)
-→ calendar read
+MembershipSystem/CalendarSystem/
+├── index.html
+├── config.json
+├── user/
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+├── admin/
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+├── gas/
+│   ├── Code.gs
+│   ├── Auth.gs
+│   ├── CalendarService.gs
+│   ├── StorageBootstrap.gs
+│   └── appsscript.json
+└── tests/
+    ├── architecture.test.js
+    ├── security.test.js
+    └── gas-manifest.test.js
 ```
 
-### 管理端
+## 身分與權限模型
 
-```text
-Admin
-→ Admin LIFF App
-→ LINE Authentication
-→ liff.getIDToken()
-→ GAS verifies ADMIN_LINE_LOGIN_CHANNEL_ID / aud / exp
-→ record LineIdentities(surface=admin)
-→ lookup AdminPermissions by verified LINE sub
-→ status=active AND canManageCalendar=TRUE
-→ admin action
-```
+- **Authentication**：LIFF 取得 LINE access token，GAS 每次 API request 都呼叫 LINE Verify API 驗證 token，並確認 token 的 `client_id` 與對應 LINE Login Channel ID 一致。
+- **Identity**：GAS 再以同一 access token 呼叫 LINE Profile API 取得可信任的 `userId` / `displayName`。
+- **Authorization**：管理端只相信 Google Sheet `Admins` 資料表，不接受前端傳入的 role / admin flag。
+- **User LIFF 與 Admin LIFF 分離**：`config.json` 分別設定 `userLiffId` 與 `adminLiffId`。
+- **Session**：本系統不另外發永久 session/token；每次 request 都使用目前 LIFF access token。
 
-管理端**沒有額外的管理密碼、管理 token 或管理憑證輸入框**。
+## 資料表
 
-- Admin LIFF 負責 Authentication：確認「你是誰」。
-- `AdminPermissions.canManageCalendar` 負責 Authorization：確認「你能不能管理日曆」。
-- 管理權限一定由 GAS server-side 查表判斷，前端 UI 不是安全邊界。
-- User / Admin ID Token 都只存在 JavaScript runtime memory，不寫入 `localStorage`、`sessionStorage` 或 URL。
+第一次執行 `setupCalendarSystem()`，或第一次 Web App request 時，GAS 會建立新的 V2 Spreadsheet 並寫入 Script Property `CALENDAR_SYSTEM_V2_SPREADSHEET_ID`。
 
-### 每次進入都重新驗證
+### Users
 
-User 與 Admin 每次重新進入各自頁面，都必須重新取得 LIFF 登入狀態並把 ID Token 送到 GAS 做 server-side LINE Verify。
+`line_user_id, display_name, status, last_login_at, created_at, updated_at`
 
-執行環境差異：
+### Admins
 
-- **LIFF Browser**：LINE 官方機制是在 `liff.init()` 時自動完成登入，不能再呼叫 `liff.login()` 強制顯示另一個登入畫面；但 GAS 仍會在每次頁面進入時重新驗證 ID Token。
-- **外部瀏覽器 / 非 LIFF Browser**：本專案每次進入頁面會清除現有 LIFF 登入狀態，再重新走 `liff.login()`。
+`line_user_id, display_name, role, status, first_seen_at, updated_at`
 
-因此「每次進入都必須 Authentication」是 server-side 安全邊界；是否看到 LINE 登入畫面取決於 LINE 執行環境。
+管理端第一次登入如果尚未授權，系統會自動新增：
 
-> 建議 User LIFF 與 Admin LIFF 位於不同 LINE Login Channel，分別設定 `USER_LINE_LOGIN_CHANNEL_ID` 與 `ADMIN_LINE_LOGIN_CHANNEL_ID`。這樣 User LIFF Token 無法通過 Admin channel 驗證。
+- `role = none`
+- `status = pending`
 
-## LineIdentities
+並回傳 403。管理者只需在 Google Sheet 手動把該列修改為：
 
-User 或 Admin 每次成功完成 LINE 驗證後，GAS 都會建立或更新 `LineIdentities`。
+- `role = admin`
+- `status = active`
 
-唯一識別邏輯為：
+再次整理管理端頁面即可進入。
 
-```text
-lineUserId + surface
-```
+### CalendarItems
 
-欄位：
+`item_id, type, title, start_date, end_date, all_day, start_time, end_time, description, location, status, created_by, created_at, updated_by, updated_at`
 
-| 欄位 | 用途 |
-|---|---|
-| lineUserId | LINE Verify API 驗證後的 `sub` |
-| surface | `user` / `admin` |
-| displayName | 驗證後 LINE 顯示名稱 |
-| pictureUrl | 驗證後 LINE 頭像 URL |
-| firstSeenAt | 第一次成功登入時間 |
-| lastLoginAt | 最近一次成功登入時間 |
-| loginCount | 成功登入次數 |
-
-第一次成功登入會建立 `loginCount=1`；後續每次成功登入更新 `lastLoginAt` 並遞增 `loginCount`。
-
-相同 `lineUserId + surface` 如果出現重複資料，GAS 會以 `DATA_INTEGRITY_ERROR` fail closed，不任意挑選資料列。
-
-## AdminPermissions
-
-第一次用 Admin LIFF 登入時，如果 `AdminPermissions` 找不到該 LINE `sub`，GAS 會自動新增一筆：
-
-| 欄位 | 預設值 / 用途 |
-|---|---|
-| lineUserId | LINE Verify API 驗證後的 `sub`，不可自行猜測 |
-| displayName | 驗證後的 LINE 顯示名稱 |
-| canManageCalendar | `FALSE`，預設拒絕管理權限 |
-| status | `active` |
-| note | 手動備註 |
-| firstSeenAt | 第一次進入 Admin LIFF 的時間 |
-
-要授權管理員時，直接在 Google Sheet 手動修改：
-
-```text
-canManageCalendar = TRUE
-status = active
-```
-
-要停權時可使用任一方式：
-
-```text
-canManageCalendar = FALSE
-```
-
-或：
-
-```text
-status = disabled
-```
-
-修改後管理端按「重新檢查權限」即可重新向 GAS 查詢。
-
-### 安全規則
-
-- 新帳號一律建立為 `canManageCalendar=FALSE`，採 fail-closed。
-- 相同 `lineUserId` 若出現兩筆以上，GAS 以 `DATA_INTEGRITY_ERROR` 拒絕授權，不任選其中一筆。
-- `displayName` 只作顯示，不參與授權。
-- `lineUserId` 只接受 LINE server-side Verify 後取得的 `sub`。
-- 每一個 `admin.events.list`、`admin.event.save`、`admin.event.delete` 都重新查 `AdminPermissions`，不是只在前端登入時檢查一次。
-
-## Storage
-
-`setupCalendarStorage()` 或第一次需要 Storage 的 API 呼叫會 ensure 以下工作表存在：
-
-- `CalendarEvents`
-- `LineIdentities`
-- `AdminPermissions`
-- `AuditLogs`
-
-### CalendarEvents
-
-| 欄位 | 用途 |
-|---|---|
-| eventId | 事件唯一 ID |
-| date | `YYYY-MM-DD` |
-| type | `holiday` / `activity` |
-| title | 標題 |
-| description | 當日說明 |
-| status | `draft` / `published` / `archived` |
-| createdAt | 建立時間 |
-| updatedAt | 更新時間 |
-
-### AdminPermissions
-
-| 欄位 | 用途 |
-|---|---|
-| lineUserId | Admin LINE identity |
-| displayName | 顯示名稱 |
-| canManageCalendar | 日曆管理 Permission |
-| status | `active` / `disabled` |
-| note | 管理備註 |
-| firstSeenAt | 首次登入時間 |
+- type：`holiday | event | notice`
+- status：`draft | published | archived`
+- archived 為 soft delete，避免直接破壞歷史資料。
 
 ### AuditLogs
 
-- User / Admin 成功登入會記錄 `LOGIN_SUCCESS`。
-- 首次建立 LINE 身分會記錄 `LINE_IDENTITY_CREATED`。
-- 管理端建立、更新、封存事件時，Audit actor 使用通過 Admin LIFF 驗證的 LINE `sub`。
-- 不記錄 LINE ID Token、Access Token、Secret。
+`audit_id, actor_line_user_id, actor_role, action, target_type, target_id, result, detail, created_at`
 
-> 因為權限是直接手動修改 Google Sheet，Google Sheet 內的權限欄位變更不會由 CalendarSystem API 產生 Audit Event；如果需要完整的「誰改了誰的權限」稽核，後續應改成受保護的權限管理 API，而不是直接編輯 Sheet。
+不記錄 LINE access token、secret 或 credential。
 
-## 部署
+## GAS 設定
 
-### config.json
+### 1. 建立 Apps Script
 
-```json
-{
-  "apiUrl": "https://script.google.com/macros/s/.../exec",
-  "liffId": "USER_LIFF_ID",
-  "adminLiffId": "ADMIN_LIFF_ID",
-  "appName": "營業日曆"
-}
-```
+把 `gas/` 內的 `.gs` 與 `appsscript.json` 複製到同一個 Apps Script 專案。
 
-User LIFF Endpoint：
+### 2. 設定 Script Properties
 
-```text
-https://<github-pages-host>/MembershipSystem/CalendarSystem/user/
-```
+在 Apps Script → Project Settings → Script Properties 設定：
 
-Admin LIFF Endpoint：
+- `CALENDAR_USER_LINE_CHANNEL_ID`：User LIFF 所屬 LINE Login Channel ID
+- `CALENDAR_ADMIN_LINE_CHANNEL_ID`：Admin LIFF 所屬 LINE Login Channel ID
+
+建議 User/Admin LINE Login Channel 建立在同一個 LINE Provider 下。
+
+`CALENDAR_SYSTEM_V2_SPREADSHEET_ID` 不需要手動填；系統可自動建立。如果要使用既有全新 Spreadsheet，也可以自行填入。
+
+### 3. 初始化資料表
+
+在 Apps Script 編輯器執行：
 
 ```text
-https://<github-pages-host>/MembershipSystem/CalendarSystem/admin/
+setupCalendarSystem()
 ```
 
-兩個 LIFF 都至少需要 `openid` scope；需要顯示名稱與頭像時建議同時啟用 `profile`。
+它只會建立/確認 V2 所需工作表，不會讀取或遷移舊 CalendarSystem 的資料。
 
-### GAS Script Properties
+### 4. Deploy Web App
+
+Deploy → New deployment → Web app：
+
+- Execute as：Me
+- Who has access：Anyone
+
+Web App 必須公開可呼叫，真正的存取控制由 GAS 內的 LINE token 驗證與 `Admins` authorization 執行。
+
+### 5. 設定前端 config.json
+
+填入：
+
+- `gasWebAppUrl`
+- `userLiffId`
+- `adminLiffId`
+
+`config.json` 只能放 public configuration，不得放 Channel Secret、access token 或其他 secret。
+
+### 6. LIFF Endpoint URL
+
+User LIFF：
 
 ```text
-CALENDAR_SPREADSHEET_ID=<Calendar Spreadsheet ID>
-USER_LINE_LOGIN_CHANNEL_ID=<User LIFF 所屬 LINE Login Channel ID>
-ADMIN_LINE_LOGIN_CHANNEL_ID=<Admin LIFF 所屬 LINE Login Channel ID>
+https://yongshengchen0615.github.io/MembershipSystem/CalendarSystem/user/
 ```
 
-為相容前一版，用戶端若未設定 `USER_LINE_LOGIN_CHANNEL_ID`，暫時會 fallback 到舊的 `LINE_LOGIN_CHANNEL_ID`。新部署應使用 `USER_LINE_LOGIN_CHANNEL_ID`。
-
-不再需要：
+Admin LIFF：
 
 ```text
-CALENDAR_ADMIN_TOKEN
+https://yongshengchen0615.github.io/MembershipSystem/CalendarSystem/admin/
 ```
 
-### appsscript.json
+## API actions
 
-使用 `UrlFetchApp` 呼叫 LINE Verify API，因此至少需要：
+所有 POST request 使用 `text/plain` JSON，以避免不必要的 CORS preflight；所有受保護 action 都需要 `accessToken`。
 
-```text
-https://www.googleapis.com/auth/spreadsheets
-https://www.googleapis.com/auth/script.external_request
+- `user.bootstrap`
+- `user.calendar.list`
+- `admin.bootstrap`
+- `admin.calendar.list`
+- `admin.calendar.create`
+- `admin.calendar.update`
+- `admin.calendar.archive`
+
+管理端 update/archive 會帶 `expectedUpdatedAt` 做 optimistic concurrency control，避免兩個管理者互相覆蓋變更。
+
+## 安全邊界
+
+- 不信任 client 傳入的 LINE user id / display name / role。
+- GAS 不接受 client 傳入的 admin boolean。
+- LINE access token 不寫入 Sheet、log、URL 或 response。
+- Admin 權限只在 server-side 判斷。
+- 寫入採 Script Lock，降低併發更新造成資料破壞的風險。
+- 管理操作保留 AuditLogs。
+- API 做 request size、欄位長度、日期格式、enum 與 rate limit 驗證。
+
+## 測試
+
+Repository clone 後可執行：
+
+```bash
+node --test MembershipSystem/CalendarSystem/tests/*.test.js
 ```
 
-修改 OAuth scopes 後，需要重新授權 Apps Script，再建立新的 Web App deployment version。
-
-### GAS Web App
-
-- Execute as: Me
-- Who has access: Anyone
-- 將 `/exec` URL 寫入 `config.json.apiUrl`
-
-## API
-
-所有動作使用 `POST application/x-www-form-urlencoded`。
-
-### User
-
-欄位：
-
-- `action`
-- `payload`
-- `idToken`
-
-Actions：
-
-- `member.me`：驗證 LINE 身分並建立/更新 `LineIdentities(surface=user)`
-- `calendar.month`
-- `calendar.day`
-
-### Admin
-
-欄位：
-
-- `action`
-- `payload`
-- `idToken`
-
-Actions：
-
-- `admin.session`：驗證 LINE 身分、建立/更新 `LineIdentities(surface=admin)`、建立/讀取自己的 `AdminPermissions` 狀態；不代表已授權
-- `admin.events.list`
-- `admin.event.save`
-- `admin.event.delete`
-
-後三個管理 API 必須同時滿足：
-
-```text
-Valid Admin LIFF Identity
-AND
-AdminPermissions.status = active
-AND
-AdminPermissions.canManageCalendar = TRUE
-```
-
-## Verification Checklist
-
-- User URL 使用 User LIFF ID。
-- Admin URL 使用 Admin LIFF ID。
-- 每次重新進入 User/Admin 頁面都重新執行 LINE Authentication flow。
-- 外部瀏覽器不沿用既有 LIFF login session 直接進入功能頁。
-- LIFF Browser 每次進入都由 `liff.init()` 自動取得登入身分，再由 GAS 驗證 ID Token。
-- User 第一次成功登入會建立 `LineIdentities(surface=user)`。
-- Admin 第一次成功登入會建立 `LineIdentities(surface=admin)`。
-- Admin 第一次成功登入會自動建立 `AdminPermissions`，權限預設 `FALSE`。
-- 每次成功登入更新 `lastLoginAt` 與 `loginCount`。
-- `FALSE` 或 `disabled` 不得讀取、建立、修改或封存事件。
-- 手動改為 `TRUE + active` 後才能操作管理 API。
-- 同一 identity / permission 出現重複資料必須 fail closed。
-- 管理端不存在管理密碼 / token 輸入。
-- 管理端沒有「查看用戶端」入口。
-- 草稿不會出現在用戶端。
-- 封存後用戶端不再顯示。
+這些測試主要驗證架構與安全不變量；GAS Web App、LINE Login 與 Google Sheet 的實際整合仍需部署後做 integration verification。

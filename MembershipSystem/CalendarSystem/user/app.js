@@ -1,396 +1,352 @@
-'use strict';
+(() => {
+  'use strict';
 
-const FRESH_LOGIN_PARAM = 'calendar_reauth';
+  const state = {
+    config: null,
+    accessToken: '',
+    profile: null,
+    items: [],
+    viewMonth: startOfMonth(new Date()),
+    selectedDate: dateKey(new Date())
+  };
 
-const state = {
-  config: null,
-  idToken: '',
-  profile: null,
-  cursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-  events: [],
-  eventsByDate: new Map()
-};
+  const els = {};
 
-const els = {};
-
-document.addEventListener('DOMContentLoaded', init);
-
-async function init() {
-  bindElements();
-  bindActions();
-  showBoot();
-
-  try {
-    state.config = await loadConfig();
-    validateConfig(state.config);
-    els.appTitle.textContent = state.config.appName || '營業日曆';
-
-    const loggedIn = await ensureLiffLogin();
-    if (!loggedIn) return;
-
-    const me = await apiRequest('member.me', {});
-    state.profile = me.profile || null;
-    renderProfile();
-    showCalendarApp();
-    await loadMonth();
-  } catch (error) {
-    showError(error && error.message ? error.message : '載入失敗。');
-  }
-}
-
-function bindElements() {
-  [
-    'bootState','errorState','errorMessage','retryBtn','calendarApp','appTitle',
-    'memberAvatar','memberName','todayBtn','prevBtn','nextBtn','monthTitle',
-    'loadStatus','calendarGrid','eventList','dayDialog','dialogDate','dialogEvents'
-  ].forEach(id => { els[id] = document.getElementById(id); });
-}
-
-function bindActions() {
-  els.retryBtn.addEventListener('click', () => window.location.reload());
-  els.prevBtn.addEventListener('click', () => changeMonth(-1));
-  els.nextBtn.addEventListener('click', () => changeMonth(1));
-  els.todayBtn.addEventListener('click', async () => {
-    const now = new Date();
-    state.cursor = new Date(now.getFullYear(), now.getMonth(), 1);
-    await loadMonth();
+  window.addEventListener('DOMContentLoaded', () => {
+    bindElements();
+    bindEvents();
+    boot();
   });
-}
 
-async function loadConfig() {
-  const response = await fetch('../config.json', {
-    cache: 'no-store',
-    credentials: 'same-origin',
-    redirect: 'error',
-    referrerPolicy: 'no-referrer'
-  });
-  if (!response.ok) throw new Error('無法讀取 config.json。');
-  return response.json();
-}
-
-function validateConfig(config) {
-  const apiUrl = String(config && config.apiUrl || '').trim();
-  const liffId = String(config && config.liffId || '').trim();
-  if (!/^https:\/\/.+/i.test(apiUrl)) throw new Error('尚未設定 GAS API URL。');
-  if (!liffId || /^YOUR_[A-Z0-9_]+$/i.test(liffId)) throw new Error('尚未設定 Calendar LIFF ID。');
-}
-
-async function ensureLiffLogin() {
-  if (!window.liff || typeof window.liff.init !== 'function') {
-    throw new Error('LINE LIFF SDK 載入失敗。');
+  function bindElements() {
+    [
+      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton',
+      'calendarView', 'displayName', 'logoutButton', 'prevMonth', 'nextMonth',
+      'todayButton', 'monthTitle', 'calendarGrid', 'selectedDateTitle',
+      'selectedCount', 'agendaList'
+    ].forEach((id) => { els[id] = document.getElementById(id); });
   }
 
-  await window.liff.init({ liffId: state.config.liffId });
-
-  // LIFF Browser authenticates automatically during liff.init().
-  // External browsers are forced through a fresh LINE Login on every page entry.
-  if (!window.liff.isInClient()) {
-    const freshReturn = new URL(window.location.href).searchParams.get(FRESH_LOGIN_PARAM) === '1';
-    if (!freshReturn) {
-      const redirectUri = freshLoginUrl();
-      if (window.liff.isLoggedIn()) {
-        window.liff.logout();
-        window.location.replace(redirectUri);
-        return false;
+  function bindEvents() {
+    els.retryButton.addEventListener('click', () => window.location.reload());
+    els.logoutButton.addEventListener('click', () => {
+      try {
+        if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
+      } finally {
+        window.location.reload();
       }
-      window.liff.login({ redirectUri });
-      return false;
+    });
+
+    els.prevMonth.addEventListener('click', () => {
+      state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() - 1, 1);
+      renderCalendar();
+    });
+
+    els.nextMonth.addEventListener('click', () => {
+      state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() + 1, 1);
+      renderCalendar();
+    });
+
+    els.todayButton.addEventListener('click', () => {
+      const today = new Date();
+      state.viewMonth = startOfMonth(today);
+      state.selectedDate = dateKey(today);
+      renderCalendar();
+      renderAgenda();
+    });
+  }
+
+  async function boot() {
+    setView('loading');
+    try {
+      state.config = await loadConfig();
+      await initializeLiff();
+      state.accessToken = window.liff.getAccessToken() || '';
+      if (!state.accessToken) throw clientError('LINE_AUTH_ERROR', '無法取得 LINE access token，請重新登入。');
+
+      const result = await api('user.bootstrap');
+      state.profile = result.profile;
+      state.items = Array.isArray(result.items) ? result.items : [];
+
+      els.displayName.textContent = state.profile && state.profile.displayName
+        ? state.profile.displayName
+        : 'LINE 使用者';
+
+      setView('calendar');
+      renderCalendar();
+      renderAgenda();
+    } catch (error) {
+      handleBootError(error);
+    } finally {
+      els.app.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  async function loadConfig() {
+    const response = await fetch('../config.json', { cache: 'no-store' });
+    if (!response.ok) throw clientError('CONFIG_ERROR', '讀取 config.json 失敗。');
+    const config = await response.json();
+
+    validatePublicConfig(config, 'userLiffId');
+    return config;
+  }
+
+  function validatePublicConfig(config, liffKey) {
+    const gasUrl = String(config && config.gasWebAppUrl || '').trim();
+    const liffId = String(config && config[liffKey] || '').trim();
+
+    if (!gasUrl || gasUrl.includes('REPLACE_WITH_') || !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
+      throw clientError('CONFIG_ERROR', '尚未正確設定 GAS Web App URL。');
+    }
+    if (!liffId || liffId.includes('REPLACE_WITH_')) {
+      throw clientError('CONFIG_ERROR', '尚未設定 User LIFF ID。');
+    }
+  }
+
+  async function initializeLiff() {
+    if (!window.liff) throw clientError('LIFF_SDK_ERROR', 'LIFF SDK 載入失敗，請確認網路後重試。');
+
+    try {
+      await window.liff.init({ liffId: state.config.userLiffId });
+    } catch (error) {
+      throw clientError('LIFF_INIT_ERROR', 'User LIFF 初始化失敗，請檢查 LIFF ID 與 Endpoint URL。');
     }
 
     if (!window.liff.isLoggedIn()) {
-      window.liff.login({ redirectUri: freshLoginUrl() });
-      return false;
+      window.liff.login({ redirectUri: cleanRedirectUri() });
+      await new Promise(() => {});
     }
-  } else if (!window.liff.isLoggedIn()) {
-    throw new Error('無法取得 LINE 登入狀態，請關閉頁面後重新開啟。');
   }
 
-  const idToken = window.liff.getIDToken();
-  if (!idToken) {
-    throw new Error('無法取得 LINE ID Token，請確認 LIFF 已啟用 openid scope。');
-  }
+  async function api(action, payload = {}) {
+    const body = {
+      action,
+      clientType: 'user',
+      accessToken: state.accessToken,
+      ...payload
+    };
 
-  state.idToken = idToken;
-  canonicalizeUrl();
-  return true;
-}
-
-function canonicalUrl() {
-  const url = new URL(window.location.href);
-  url.search = '';
-  url.hash = '';
-  return url.href;
-}
-
-function freshLoginUrl() {
-  const url = new URL(canonicalUrl());
-  url.searchParams.set(FRESH_LOGIN_PARAM, '1');
-  return url.href;
-}
-
-function canonicalizeUrl() {
-  const cleanUrl = canonicalUrl();
-  if (window.location.href !== cleanUrl) {
-    window.history.replaceState(null, '', cleanUrl);
-  }
-}
-
-function renderProfile() {
-  const profile = state.profile || {};
-  els.memberName.textContent = profile.displayName || 'LINE 會員';
-  const pictureUrl = String(profile.pictureUrl || '');
-  if (/^https:\/\//i.test(pictureUrl)) {
-    els.memberAvatar.src = pictureUrl;
-    els.memberAvatar.alt = `${profile.displayName || 'LINE 會員'} 的 LINE 頭像`;
-    els.memberAvatar.hidden = false;
-  } else {
-    els.memberAvatar.removeAttribute('src');
-    els.memberAvatar.hidden = true;
-  }
-}
-
-async function changeMonth(delta) {
-  state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth() + delta, 1);
-  await loadMonth();
-}
-
-async function loadMonth() {
-  setStatus('載入中…');
-  renderMonthHeading();
-  try {
-    const data = await apiRequest('calendar.month', {
-      year: state.cursor.getFullYear(),
-      month: state.cursor.getMonth() + 1
-    });
-    state.events = Array.isArray(data.events) ? data.events : [];
-    state.eventsByDate = groupByDate(state.events);
-    renderCalendar();
-    renderEventList();
-    setStatus('');
-  } catch (error) {
-    state.events = [];
-    state.eventsByDate = new Map();
-    renderCalendar();
-    renderEventList();
-    setStatus(error && error.message ? error.message : '無法載入日曆。', true);
-  }
-}
-
-async function apiRequest(action, payload) {
-  if (!state.idToken) throw new Error('LINE 登入狀態已失效，請重新整理。');
-
-  const body = new URLSearchParams();
-  body.set('action', action);
-  body.set('idToken', state.idToken);
-  body.set('payload', JSON.stringify(payload || {}));
-
-  const response = await fetch(state.config.apiUrl, {
-    method: 'POST',
-    body,
-    redirect: 'follow',
-    referrerPolicy: 'no-referrer'
-  });
-  if (!response.ok) throw new Error(`服務連線失敗 (${response.status})`);
-
-  const result = await response.json();
-  if (!result.ok) {
-    const code = String(result.error && result.error.code || '');
-    if (code === 'UNAUTHENTICATED') {
-      state.idToken = '';
-      throw new Error('LINE 登入憑證已失效，請重新整理後再試。');
+    let response;
+    try {
+      response = await fetch(state.config.gasWebAppUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        cache: 'no-store',
+        redirect: 'follow',
+        body: JSON.stringify(body)
+      });
+    } catch (error) {
+      throw clientError('NETWORK_ERROR', '無法連線 GAS 後端，請檢查 Web App 部署與網路。');
     }
-    throw new Error(result.error && result.error.message || '服務暫時無法使用。');
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw clientError('API_RESPONSE_ERROR', 'GAS 回傳格式錯誤，請確認部署的是最新版本。');
+    }
+
+    if (!data || data.ok !== true) {
+      const error = clientError(data && data.error && data.error.code || 'API_ERROR', data && data.error && data.error.message || '後端拒絕此請求。');
+      error.status = Number(data && data.status || 0);
+      error.details = data && data.error && data.error.details || null;
+      throw error;
+    }
+
+    return data.data || {};
   }
-  return result.data || {};
-}
 
-function groupByDate(events) {
-  const map = new Map();
-  events.forEach(event => {
-    if (!map.has(event.date)) map.set(event.date, []);
-    map.get(event.date).push(event);
-  });
-  return map;
-}
+  function handleBootError(error) {
+    const authCodes = new Set(['AUTH_REQUIRED', 'AUTH_INVALID', 'AUTH_EXPIRED', 'AUTH_CHANNEL_MISMATCH']);
+    if (authCodes.has(error && error.code)) {
+      try {
+        if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
+      } catch (_) {}
+      showError('LINE 登入已失效', 'LINE 身分驗證未通過。請按重新整理後重新登入。');
+      return;
+    }
 
-function renderMonthHeading() {
-  els.monthTitle.textContent = `${state.cursor.getFullYear()} 年 ${state.cursor.getMonth() + 1} 月`;
-}
+    if (error && error.code === 'CONFIG_ERROR') {
+      showError('系統尚未完成設定', error.message);
+      return;
+    }
 
-function renderCalendar() {
-  renderMonthHeading();
-  els.calendarGrid.textContent = '';
+    showError('暫時無法載入日曆', error && error.message ? error.message : '請稍後重新整理。');
+  }
 
-  const year = state.cursor.getFullYear();
-  const month = state.cursor.getMonth();
-  const first = new Date(year, month, 1);
-  const start = new Date(year, month, 1 - first.getDay());
-  const todayKey = toDateKey(new Date());
+  function setView(view) {
+    els.loadingView.classList.toggle('hidden', view !== 'loading');
+    els.errorView.classList.toggle('hidden', view !== 'error');
+    els.calendarView.classList.toggle('hidden', view !== 'calendar');
+  }
 
-  for (let i = 0; i < 42; i += 1) {
-    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-    const dateKey = toDateKey(date);
-    const dayEvents = state.eventsByDate.get(dateKey) || [];
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'day-cell';
-    button.setAttribute('role', 'gridcell');
-    button.setAttribute('aria-label', buildDayLabel(date, dayEvents));
-    const isOutside = date.getMonth() !== month;
-    if (isOutside) button.classList.add('outside');
-    if (dateKey === todayKey) button.classList.add('today');
-    button.addEventListener('click', async () => {
-      if (isOutside) {
-        state.cursor = new Date(date.getFullYear(), date.getMonth(), 1);
-        await loadMonth();
+  function showError(title, message) {
+    els.errorTitle.textContent = title;
+    els.errorMessage.textContent = message;
+    setView('error');
+  }
+
+  function renderCalendar() {
+    const year = state.viewMonth.getFullYear();
+    const month = state.viewMonth.getMonth();
+    els.monthTitle.textContent = new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: 'long' }).format(state.viewMonth);
+
+    const first = new Date(year, month, 1);
+    const gridStart = new Date(year, month, 1 - first.getDay());
+    const todayKey = dateKey(new Date());
+    const fragment = document.createDocumentFragment();
+
+    for (let i = 0; i < 42; i += 1) {
+      const date = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+      const key = dateKey(date);
+      const dayItems = itemsForDate(key);
+
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'day-cell';
+      cell.setAttribute('aria-label', formatDate(date));
+      if (date.getMonth() !== month) cell.classList.add('outside');
+      if (key === todayKey) cell.classList.add('today');
+      if (key === state.selectedDate) cell.classList.add('selected');
+
+      const number = document.createElement('span');
+      number.className = 'day-number';
+      number.textContent = String(date.getDate());
+      cell.appendChild(number);
+
+      if (dayItems.length) {
+        const items = document.createElement('span');
+        items.className = 'day-items';
+        dayItems.slice(0, 2).forEach((item) => {
+          const chip = document.createElement('span');
+          chip.className = `day-item ${safeType(item.type)}`;
+          chip.textContent = item.title;
+          items.appendChild(chip);
+        });
+        if (dayItems.length > 2) {
+          const more = document.createElement('span');
+          more.className = 'more-count';
+          more.textContent = `+${dayItems.length - 2}`;
+          items.appendChild(more);
+        }
+        cell.appendChild(items);
       }
-      openDay(dateKey);
-    });
 
-    const number = document.createElement('span');
-    number.className = 'day-number';
-    number.textContent = String(date.getDate());
-    button.appendChild(number);
-
-    const markerWrap = document.createElement('span');
-    markerWrap.className = 'day-markers';
-    dayEvents.slice(0, 2).forEach(event => {
-      const marker = document.createElement('span');
-      marker.className = `day-marker ${event.type}`;
-      marker.textContent = event.title;
-      markerWrap.appendChild(marker);
-    });
-    if (dayEvents.length > 2) {
-      const more = document.createElement('span');
-      more.className = 'more-marker';
-      more.textContent = `另有 ${dayEvents.length - 2} 項`;
-      markerWrap.appendChild(more);
-    }
-    button.appendChild(markerWrap);
-    els.calendarGrid.appendChild(button);
-  }
-}
-
-function renderEventList() {
-  els.eventList.textContent = '';
-  if (!state.events.length) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.textContent = '本月目前沒有已發布的休假或活動。';
-    els.eventList.appendChild(empty);
-    return;
-  }
-
-  state.events
-    .slice()
-    .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, 'zh-Hant'))
-    .forEach(event => {
-      const row = document.createElement('article');
-      row.className = 'event-row';
-      row.addEventListener('click', () => openDay(event.date));
-      row.tabIndex = 0;
-      row.addEventListener('keydown', eventKey => {
-        if (eventKey.key === 'Enter' || eventKey.key === ' ') openDay(event.date);
+      cell.addEventListener('click', () => {
+        state.selectedDate = key;
+        state.viewMonth = startOfMonth(date);
+        renderCalendar();
+        renderAgenda();
       });
 
-      const date = document.createElement('div');
-      date.className = 'event-date';
-      date.textContent = formatShortDate(event.date);
+      fragment.appendChild(cell);
+    }
+
+    els.calendarGrid.replaceChildren(fragment);
+  }
+
+  function renderAgenda() {
+    const date = parseDateKey(state.selectedDate);
+    const items = itemsForDate(state.selectedDate);
+    els.selectedDateTitle.textContent = `${formatDate(date)} 行程`;
+    els.selectedCount.textContent = String(items.length);
+
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = '這一天目前沒有公告行程。';
+      els.agendaList.replaceChildren(empty);
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    items.forEach((item) => {
+      const row = document.createElement('article');
+      row.className = 'agenda-item';
+
+      const marker = document.createElement('span');
+      marker.className = `agenda-marker ${safeType(item.type)}`;
 
       const content = document.createElement('div');
       const title = document.createElement('h3');
-      const pill = document.createElement('span');
-      pill.className = `type-pill ${event.type}`;
-      pill.textContent = event.type === 'holiday' ? '休假' : '活動';
-      title.appendChild(pill);
-      title.appendChild(document.createTextNode(event.title));
-      const desc = document.createElement('p');
-      desc.textContent = event.description || '點選日期查看說明。';
-      content.append(title, desc);
-      row.append(date, content);
-      els.eventList.appendChild(row);
-    });
-}
+      title.className = 'agenda-title';
+      title.textContent = item.title;
+      content.appendChild(title);
 
-function openDay(dateKey) {
-  const events = state.eventsByDate.get(dateKey) || [];
-  els.dialogDate.textContent = formatLongDate(dateKey);
-  els.dialogEvents.textContent = '';
+      const metaParts = [typeLabel(item.type)];
+      if (!item.allDay && item.startTime) {
+        metaParts.push(item.endTime ? `${item.startTime}–${item.endTime}` : item.startTime);
+      } else {
+        metaParts.push('全天');
+      }
+      if (item.location) metaParts.push(item.location);
 
-  if (!events.length) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.textContent = '當日沒有休假或活動說明。';
-    els.dialogEvents.appendChild(empty);
-  } else {
-    events.forEach(event => {
-      const article = document.createElement('article');
-      article.className = 'dialog-event';
-      const pill = document.createElement('span');
-      pill.className = `type-pill ${event.type}`;
-      pill.textContent = event.type === 'holiday' ? '休假日' : '活動日';
-      const title = document.createElement('h3');
-      title.textContent = event.title;
-      const desc = document.createElement('p');
-      desc.textContent = event.description || '無其他說明。';
-      article.append(pill, title, desc);
-      els.dialogEvents.appendChild(article);
+      const meta = document.createElement('p');
+      meta.className = 'agenda-meta';
+      meta.textContent = metaParts.join(' · ');
+      content.appendChild(meta);
+
+      if (item.description) {
+        const description = document.createElement('p');
+        description.className = 'agenda-description';
+        description.textContent = item.description;
+        content.appendChild(description);
+      }
+
+      row.append(marker, content);
+      fragment.appendChild(row);
     });
+
+    els.agendaList.replaceChildren(fragment);
   }
 
-  if (typeof els.dayDialog.showModal === 'function') els.dayDialog.showModal();
-  else els.dayDialog.setAttribute('open', '');
-}
+  function itemsForDate(key) {
+    return state.items
+      .filter((item) => item && item.status === 'published' && item.startDate <= key && item.endDate >= key)
+      .sort((a, b) => {
+        if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+        return String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hant');
+      });
+  }
 
-function buildDayLabel(date, events) {
-  const base = `${date.getFullYear()}年${date.getMonth()+1}月${date.getDate()}日`;
-  return events.length ? `${base}，${events.length} 項日曆資訊` : `${base}，無日曆資訊`;
-}
+  function safeType(type) {
+    return ['holiday', 'event', 'notice'].includes(type) ? type : 'notice';
+  }
 
-function toDateKey(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
+  function typeLabel(type) {
+    return ({ holiday: '休假日', event: '活動', notice: '公告' })[type] || '公告';
+  }
 
-function parseDateKey(value) {
-  const [y, m, d] = value.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
+  function cleanRedirectUri() {
+    const url = new URL(window.location.href);
+    url.hash = '';
+    ['code', 'state', 'liffClientId', 'liffRedirectUri'].forEach((name) => url.searchParams.delete(name));
+    return url.toString();
+  }
 
-function formatShortDate(value) {
-  const d = parseDateKey(value);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-}
+  function clientError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
 
-function formatLongDate(value) {
-  const d = parseDateKey(value);
-  return new Intl.DateTimeFormat('zh-TW', {
-    year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
-  }).format(d);
-}
+  function startOfMonth(date) {
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
 
-function setStatus(message, isError = false) {
-  els.loadStatus.textContent = message;
-  els.loadStatus.style.color = isError ? '#9d362c' : '';
-}
+  function dateKey(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
 
-function showBoot() {
-  els.bootState.hidden = false;
-  els.errorState.hidden = true;
-  els.calendarApp.hidden = true;
-}
+  function parseDateKey(key) {
+    const [y, m, d] = String(key).split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
 
-function showCalendarApp() {
-  els.bootState.hidden = true;
-  els.errorState.hidden = true;
-  els.calendarApp.hidden = false;
-}
-
-function showError(message) {
-  els.bootState.hidden = true;
-  els.calendarApp.hidden = true;
-  els.errorMessage.textContent = String(message || '請稍後再試。');
-  els.errorState.hidden = false;
-}
+  function formatDate(date) {
+    return new Intl.DateTimeFormat('zh-TW', { month: 'long', day: 'numeric', weekday: 'short' }).format(date);
+  }
+})();

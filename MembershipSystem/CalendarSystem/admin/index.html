@@ -2,123 +2,143 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#171713">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; frame-src https://liff-subwindow.line.me; object-src 'none'; base-uri 'none'; upgrade-insecure-requests">
-  <title>營業日曆管理</title>
+  <title>日曆｜管理端</title>
   <link rel="stylesheet" href="./styles.css">
-  <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script defer src="./app.js"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="./app.js" defer></script>
 </head>
 <body>
-  <main class="admin-shell">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">CALENDAR ADMIN</p>
-        <h1>營業日曆管理</h1>
+  <div id="app" class="app-shell" aria-busy="true">
+    <section id="loadingView" class="state-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>正在驗證管理員身分</h1>
+      <p>管理端會同時驗證 LINE 身分與 GAS 端 Admins 權限。</p>
+    </section>
+
+    <section id="errorView" class="state-card hidden" role="alert">
+      <div class="state-icon">!</div>
+      <h1 id="errorTitle">無法進入管理端</h1>
+      <p id="errorMessage"></p>
+      <div id="pendingBox" class="pending-box hidden">
+        <strong>待授權 LINE User ID</strong>
+        <code id="pendingUserId"></code>
+        <p>請到 GAS 建立的 Spreadsheet → <b>Admins</b>，把此列的 <b>role</b> 改為 <b>admin</b>，<b>status</b> 改為 <b>active</b>，再重新整理。</p>
       </div>
-      <div class="topbar-actions">
-        <span id="adminIdentity" class="identity-chip" hidden>LINE 管理員</span>
-        <button id="refreshPermissionBtn" class="button button-ghost" type="button">重新檢查權限</button>
-      </div>
-    </header>
-
-    <section id="bootPanel" class="panel state-panel" aria-live="polite">
-      <p class="eyebrow">LINE LOGIN</p>
-      <h2>正在確認管理端 LINE 身分</h2>
-      <p id="bootMessage">登入完成後會讀取資料表中的管理權限。</p>
+      <button id="retryButton" class="button primary" type="button">重新整理</button>
     </section>
 
-    <section id="permissionPanel" class="panel state-panel is-hidden" role="status">
-      <p class="eyebrow">PERMISSION REQUIRED</p>
-      <h2>此 LINE 帳號尚未開啟日曆管理權限</h2>
-      <p>系統已在 <code>AdminPermissions</code> 建立此帳號。請在 Google Sheet 將 <code>canManageCalendar</code> 改成 <code>TRUE</code>，並確認 <code>status</code> 為 <code>active</code>。</p>
-      <p class="message">修改完成後，按右上角「重新檢查權限」。</p>
-    </section>
+    <main id="adminView" class="hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CalendarSystem Admin</p>
+          <h1>日曆管理</h1>
+        </div>
+        <div class="profile-copy">
+          <span id="displayName">管理員</span>
+          <button id="logoutButton" class="link-button" type="button">登出</button>
+        </div>
+      </header>
 
-    <section id="errorPanel" class="panel state-panel is-hidden" role="alert">
-      <p class="eyebrow">ACCESS ERROR</p>
-      <h2>暫時無法進入管理端</h2>
-      <p id="errorMessage">請稍後再試。</p>
-    </section>
-
-    <div id="workspace" class="workspace is-hidden">
-      <section class="panel calendar-panel">
-        <div class="calendar-toolbar">
-          <button id="prevBtn" class="icon-button" type="button" aria-label="上一個月">‹</button>
+      <section class="panel editor-panel">
+        <div class="panel-heading">
           <div>
-            <p class="eyebrow">MONTH</p>
-            <h2 id="monthTitle"></h2>
+            <p class="eyebrow">Editor</p>
+            <h2 id="formTitle">新增日曆項目</h2>
           </div>
-          <button id="nextBtn" class="icon-button" type="button" aria-label="下一個月">›</button>
+          <button id="cancelEditButton" class="button ghost hidden" type="button">取消編輯</button>
         </div>
-        <div class="toolbar-actions">
-          <button id="todayBtn" class="button button-ghost" type="button">今天</button>
-          <button id="reloadBtn" class="button button-ghost" type="button">重新整理</button>
-        </div>
-        <div class="weekday-row" aria-hidden="true">
-          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
-        </div>
-        <div id="calendarGrid" class="calendar-grid"></div>
+
+        <form id="itemForm" novalidate>
+          <input id="itemId" type="hidden">
+          <input id="expectedUpdatedAt" type="hidden">
+
+          <div class="form-grid">
+            <label>
+              <span>類型</span>
+              <select id="type" required>
+                <option value="holiday">休假日</option>
+                <option value="event">活動</option>
+                <option value="notice">公告</option>
+              </select>
+            </label>
+
+            <label>
+              <span>狀態</span>
+              <select id="status" required>
+                <option value="published">已發布</option>
+                <option value="draft">草稿</option>
+              </select>
+            </label>
+
+            <label class="span-2">
+              <span>標題</span>
+              <input id="title" type="text" maxlength="80" autocomplete="off" required placeholder="例如：中秋節休假">
+            </label>
+
+            <label>
+              <span>開始日期</span>
+              <input id="startDate" type="date" required>
+            </label>
+
+            <label>
+              <span>結束日期</span>
+              <input id="endDate" type="date" required>
+            </label>
+
+            <label class="check-label span-2">
+              <input id="allDay" type="checkbox" checked>
+              <span>全天</span>
+            </label>
+
+            <label id="startTimeLabel" class="hidden">
+              <span>開始時間</span>
+              <input id="startTime" type="time">
+            </label>
+
+            <label id="endTimeLabel" class="hidden">
+              <span>結束時間</span>
+              <input id="endTime" type="time">
+            </label>
+
+            <label class="span-2">
+              <span>地點</span>
+              <input id="location" type="text" maxlength="120" autocomplete="off" placeholder="選填">
+            </label>
+
+            <label class="span-2">
+              <span>說明</span>
+              <textarea id="description" rows="4" maxlength="1000" placeholder="選填"></textarea>
+            </label>
+          </div>
+
+          <div id="formMessage" class="form-message hidden" role="alert"></div>
+          <div class="form-actions">
+            <button id="saveButton" class="button primary" type="submit">新增</button>
+          </div>
+        </form>
       </section>
 
-      <aside class="panel editor-panel">
-        <div class="editor-heading">
+      <section class="panel list-panel">
+        <div class="panel-heading list-heading">
           <div>
-            <p class="eyebrow">EVENT EDITOR</p>
-            <h2 id="editorTitle">新增日期設定</h2>
+            <p class="eyebrow">Calendar items</p>
+            <h2>日曆項目</h2>
           </div>
-          <button id="resetBtn" class="button button-ghost" type="button">清空</button>
-        </div>
-
-        <form id="eventForm">
-          <input id="eventId" type="hidden">
-
-          <label>
-            日期
-            <input id="eventDate" type="date" required>
-          </label>
-
-          <label>
-            類型
-            <select id="eventType" required>
-              <option value="holiday">休假日</option>
-              <option value="activity">活動日</option>
-            </select>
-          </label>
-
-          <label>
-            發布狀態
-            <select id="eventStatus" required>
+          <div class="filters">
+            <select id="filterStatus" aria-label="依狀態篩選">
+              <option value="all">全部狀態</option>
               <option value="published">已發布</option>
               <option value="draft">草稿</option>
+              <option value="archived">已封存</option>
             </select>
-          </label>
-
-          <label>
-            標題
-            <input id="eventTitle" type="text" maxlength="80" required placeholder="例如：中秋節公休">
-          </label>
-
-          <label>
-            當日說明
-            <textarea id="eventDescription" rows="6" maxlength="2000" placeholder="例如：今日店休，隔日恢復正常營業。"></textarea>
-          </label>
-
-          <button id="saveBtn" class="button button-primary button-block" type="submit">儲存</button>
-          <p id="formMessage" class="message" aria-live="polite"></p>
-        </form>
-
-        <div class="event-list-section">
-          <div class="editor-heading">
-            <h3>本月設定</h3>
-            <span id="eventCount" class="count-badge">0</span>
+            <button id="refreshButton" class="button ghost" type="button">重新載入</button>
           </div>
-          <div id="adminEventList" class="admin-event-list"></div>
         </div>
-      </aside>
-    </div>
-  </main>
+        <div id="itemsList" class="items-list"></div>
+      </section>
+    </main>
+  </div>
 </body>
 </html>
