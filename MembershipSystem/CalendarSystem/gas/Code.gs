@@ -2,7 +2,7 @@
 
 const CALENDAR_SERVICE = Object.freeze({
   name: 'CalendarSystem',
-  version: '1.3.0',
+  version: '1.4.0',
   userLineChannelProperty: 'USER_LINE_LOGIN_CHANNEL_ID',
   legacyUserLineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   adminLineChannelProperty: 'ADMIN_LINE_LOGIN_CHANNEL_ID'
@@ -109,10 +109,12 @@ function doPost(e) {
 }
 
 function memberMe_(identity) {
+  recordIdentityLogin_(identity, 'user');
   return { profile: identityProfile_(identity) };
 }
 
 function adminSession_(identity) {
+  recordIdentityLogin_(identity, 'admin');
   const permission = ensureAdminPermissionRecord_(identity);
   return {
     profile: identityProfile_(identity),
@@ -308,6 +310,10 @@ function eventsSheet_() {
   return ensureCalendarStorage_().getSheetByName(CALENDAR_STORAGE.eventsSheet);
 }
 
+function identitiesSheet_() {
+  return ensureCalendarStorage_().getSheetByName(CALENDAR_STORAGE.identitiesSheet);
+}
+
 function adminPermissionsSheet_() {
   return ensureCalendarStorage_().getSheetByName(CALENDAR_STORAGE.adminPermissionsSheet);
 }
@@ -332,6 +338,67 @@ function audit_(actor, action, eventId, result, details) {
 
 function adminActor_(identity) {
   return cleanText_(identity && identity.sub || 'admin', 80, false) || 'admin';
+}
+
+function recordIdentityLogin_(identity, surface) {
+  const authSurface = surface === 'admin' ? 'admin' : 'user';
+  const lineUserId = cleanText_(identity && identity.sub, 80, true);
+  const displayName = cleanText_(identity && identity.name || 'LINE 會員', 80, false) || 'LINE 會員';
+  const pictureUrl = safePictureUrl_(identity && identity.picture);
+  const now = new Date().toISOString();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(3000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
+
+  try {
+    const sheet = identitiesSheet_();
+    const rows = sheetObjects_(sheet);
+    const matches = [];
+    rows.forEach((row, index) => {
+      if (
+        cleanText_(row.lineUserId, 80, false) === lineUserId &&
+        cleanText_(row.surface, 20, false) === authSurface
+      ) {
+        matches.push({ row: row, rowNumber: index + 2 });
+      }
+    });
+
+    if (matches.length > 1) {
+      fail_('DATA_INTEGRITY_ERROR', 'LINE 身分資料存在重複紀錄，請先修正資料表。');
+    }
+
+    if (!matches.length) {
+      const created = {
+        lineUserId: lineUserId,
+        surface: authSurface,
+        displayName: displayName,
+        pictureUrl: pictureUrl,
+        firstSeenAt: now,
+        lastLoginAt: now,
+        loginCount: '1'
+      };
+      appendObject_(sheet, created);
+      audit_(lineUserId, 'LINE_IDENTITY_CREATED', '', 'success', { surface: authSurface });
+      audit_(lineUserId, 'LOGIN_SUCCESS', '', 'success', { surface: authSurface });
+      return created;
+    }
+
+    const existing = matches[0].row;
+    const count = Math.max(0, parseInt(String(existing.loginCount || '0'), 10) || 0) + 1;
+    const updated = {
+      lineUserId: lineUserId,
+      surface: authSurface,
+      displayName: displayName,
+      pictureUrl: pictureUrl,
+      firstSeenAt: cleanText_(existing.firstSeenAt, 64, false) || now,
+      lastLoginAt: now,
+      loginCount: String(count)
+    };
+    writeObjectAtRow_(sheet, matches[0].rowNumber, updated);
+    audit_(lineUserId, 'LOGIN_SUCCESS', '', 'success', { surface: authSurface });
+    return updated;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function ensureAdminPermissionRecord_(identity) {
