@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f7f4ee">
+  <title>營業日曆</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">CALENDAR</p>
+        <h1 id="appTitle">營業日曆</h1>
+        <p class="subtitle">查看休假日、活動日與當日說明。</p>
+      </div>
+      <button id="todayBtn" class="button button-secondary" type="button">回到今天</button>
+    </header>
+
+    <section class="calendar-card" aria-labelledby="monthTitle">
+      <div class="calendar-toolbar">
+        <button id="prevBtn" class="icon-button" type="button" aria-label="上一個月">‹</button>
+        <div class="month-heading">
+          <h2 id="monthTitle"></h2>
+          <p id="loadStatus" class="load-status" aria-live="polite"></p>
+        </div>
+        <button id="nextBtn" class="icon-button" type="button" aria-label="下一個月">›</button>
+      </div>
+
+      <div class="legend" aria-label="日曆標示">
+        <span><i class="legend-dot holiday"></i>休假日</span>
+        <span><i class="legend-dot activity"></i>活動日</span>
+      </div>
+
+      <div class="weekday-row" aria-hidden="true">
+        <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+      </div>
+      <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="月曆"></div>
+    </section>
+
+    <section class="upcoming-card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">THIS MONTH</p>
+          <h2>本月重點</h2>
+        </div>
+      </div>
+      <div id="eventList" class="event-list"></div>
+    </section>
+  </main>
+
+  <dialog id="dayDialog" class="day-dialog">
+    <form method="dialog" class="dialog-shell">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">DAY DETAILS</p>
+          <h2 id="dialogDate"></h2>
+        </div>
+        <button class="icon-button close-button" type="submit" aria-label="關閉">×</button>
+      </div>
+      <div id="dialogEvents" class="dialog-events"></div>
+    </form>
+  </dialog>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
