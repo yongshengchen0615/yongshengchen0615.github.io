@@ -7,6 +7,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; background: linear-gradient(180deg, #f7fbf8 0, #f4f7fb 260px); }
+body.modal-open { overflow: hidden; }
 button { font: inherit; }
 .hidden { display: none !important; }
 
@@ -26,12 +27,12 @@ button { font: inherit; }
 .profile-copy span { font-weight: 700; }
 .link-button { appearance: none; border: 0; padding: 0; color: #14783d; background: transparent; cursor: pointer; font-weight: 700; }
 
-.calendar-card, .agenda-card { background: rgba(255,255,255,.96); border: 1px solid #e4ebe6; border-radius: 22px; box-shadow: 0 14px 38px rgba(29, 45, 36, .07); }
-.calendar-card { padding: 16px; }
+.calendar-card { background: rgba(255,255,255,.96); border: 1px solid #e4ebe6; border-radius: 22px; box-shadow: 0 14px 38px rgba(29, 45, 36, .07); padding: 16px; }
 .calendar-toolbar { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 10px; margin-bottom: 14px; }
 .month-heading { text-align: center; display: grid; justify-items: center; gap: 3px; }
 .month-heading strong { font-size: 20px; }
 .icon-button { width: 42px; height: 42px; border: 1px solid #e0e8e2; border-radius: 12px; background: #fff; color: #27332b; cursor: pointer; font-size: 28px; line-height: 1; }
+.icon-button.compact { width: 36px; height: 36px; border-radius: 10px; font-size: 24px; }
 .icon-button:active { transform: translateY(1px); }
 
 .weekday-row, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
@@ -45,22 +46,18 @@ button { font: inherit; }
 .day-cell.today .day-number { background: #06c755; color: #fff; }
 .day-items { margin-top: 5px; display: grid; gap: 3px; }
 .day-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 6px; padding: 3px 5px; font-size: 10px; font-weight: 700; }
-.day-item.holiday { background: #fff0f0; color: #ae3333; }
-.day-item.event { background: #edf7ff; color: #1e6594; }
-.day-item.notice { background: #fff8e6; color: #8d6719; }
 .more-count { font-size: 10px; color: #737e77; padding-left: 3px; }
 
-.agenda-card { margin-top: 16px; padding: 18px; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.section-heading h2 { margin: 3px 0 0; font-size: 20px; }
+.modal { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(17, 24, 39, .48); backdrop-filter: blur(3px); }
+.modal-card { width: min(100%, 620px); max-height: min(78vh, 720px); overflow: auto; background: #fff; border: 1px solid #e2e8e4; border-radius: 20px; box-shadow: 0 24px 80px rgba(15, 23, 42, .24); padding: 18px; }
+.modal-header { position: sticky; top: -18px; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: -18px -18px 8px; padding: 18px; background: rgba(255,255,255,.97); border-bottom: 1px solid #eef1ef; }
+.modal-header h2 { margin: 3px 0 0; font-size: 20px; }
+.modal-header-actions { display: flex; align-items: center; gap: 10px; }
 .badge { min-width: 30px; height: 30px; display: grid; place-items: center; border-radius: 999px; background: #edf4ef; color: #2f5d3d; font-weight: 800; font-size: 13px; }
 .agenda-list { display: grid; gap: 10px; }
 .agenda-item { display: grid; grid-template-columns: 6px 1fr; gap: 12px; padding: 13px 0; border-top: 1px solid #edf0ee; }
 .agenda-item:first-child { border-top: 0; }
 .agenda-marker { border-radius: 999px; }
-.agenda-marker.holiday { background: #d95656; }
-.agenda-marker.event { background: #3182b8; }
-.agenda-marker.notice { background: #d6a22d; }
 .agenda-title { margin: 0; font-size: 16px; }
 .agenda-meta, .agenda-description { margin: 5px 0 0; color: #707b73; line-height: 1.55; font-size: 13px; }
 .empty-state { padding: 26px 8px; text-align: center; color: #7a857d; }
@@ -73,4 +70,7 @@ button { font: inherit; }
   .day-cell { min-height: 70px; padding: 5px; }
   .day-item { padding: 2px 3px; font-size: 9px; }
   .profile-copy span { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal { padding: 10px; align-items: center; }
+  .modal-card { max-height: 82vh; border-radius: 16px; padding: 15px; }
+  .modal-header { top: -15px; margin: -15px -15px 8px; padding: 15px; }
 }
