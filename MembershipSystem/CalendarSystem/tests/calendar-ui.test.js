@@ -27,6 +27,21 @@ test('admin calendar supports date click, modal editing, and color rendering wit
   assert.doesNotMatch(app, /insertAdjacentHTML/);
 });
 
+test('user Selected day is a modal instead of a persistent card', () => {
+  const html = read('user/index.html');
+  const app = read('user/app.js');
+  assert.match(html, /id="selectedDayModal"/);
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /aria-modal="true"/);
+  assert.match(html, /id="closeSelectedDayButton"/);
+  assert.doesNotMatch(html, /class="agenda-card"/);
+  assert.match(app, /openSelectedDayModal/);
+  assert.match(app, /closeSelectedDayModal/);
+  assert.match(app, /event\.key === 'Escape'/);
+  assert.doesNotMatch(app, /\.innerHTML\s*=/);
+  assert.doesNotMatch(app, /insertAdjacentHTML/);
+});
+
 test('calendar color is server validated and returned by the API', () => {
   const service = read('gas/CalendarService.gs');
   assert.match(service, /COLOR_PATTERN_\s*=\s*\/\^#\[0-9A-Fa-f\]\{6\}\$\//);
