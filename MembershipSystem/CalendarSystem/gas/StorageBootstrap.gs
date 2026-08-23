@@ -3,6 +3,7 @@
 const CALENDAR_STORAGE = Object.freeze({
   spreadsheetProperty: 'CALENDAR_SPREADSHEET_ID',
   eventsSheet: 'CalendarEvents',
+  identitiesSheet: 'LineIdentities',
   adminPermissionsSheet: 'AdminPermissions',
   auditSheet: 'AuditLogs'
 });
@@ -11,6 +12,10 @@ const CALENDAR_HEADERS = Object.freeze({
   CalendarEvents: [
     'eventId', 'date', 'type', 'title', 'description', 'status',
     'createdAt', 'updatedAt'
+  ],
+  LineIdentities: [
+    'lineUserId', 'surface', 'displayName', 'pictureUrl', 'status',
+    'firstSeenAt', 'lastLoginAt', 'loginCount'
   ],
   AdminPermissions: [
     'lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'
@@ -73,6 +78,11 @@ function ensureSheet_(spreadsheet, name, headers) {
     let textColumns = ['eventId', 'actor', 'action', 'result'];
     if (name === CALENDAR_STORAGE.eventsSheet) {
       textColumns = ['eventId', 'date', 'type', 'status'];
+    } else if (name === CALENDAR_STORAGE.identitiesSheet) {
+      textColumns = [
+        'lineUserId', 'surface', 'displayName', 'pictureUrl', 'status',
+        'firstSeenAt', 'lastLoginAt', 'loginCount'
+      ];
     } else if (name === CALENDAR_STORAGE.adminPermissionsSheet) {
       textColumns = ['lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'];
     }
