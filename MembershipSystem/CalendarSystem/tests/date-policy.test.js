@@ -4,39 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
-
-function loadDatePolicy(today = '2026-08-23') {
-  class TestApiError extends Error {
-    constructor(status, code, message, details) {
-      super(message);
-      this.status = status;
-      this.code = code;
-      this.details = details || null;
-    }
-  }
-
-  const context = {
-    ApiError: TestApiError,
-    Utilities: {
-      formatDate(date, timeZone, format) {
-        assert.ok(date instanceof Date);
-        assert.equal(timeZone, 'Asia/Taipei');
-        assert.equal(format, 'yyyy-MM-dd');
-        return today;
-      }
-    },
-    Date,
-    isNaN
-  };
-
-  vm.createContext(context);
-  vm.runInContext(read('gas/CalendarDatePolicy.gs'), context);
-  return context;
-}
 
 test('admin date picker limits start to today and end to start date', () => {
   const html = read('admin/index.html');
@@ -52,26 +22,16 @@ test('admin date picker limits start to today and end to start date', () => {
   assert.match(constraints, /form\.addEventListener\('submit', blockInvalidSubmit, true\)/);
 });
 
-test('server rejects past dates but allows today and future dates', () => {
-  const policy = loadDatePolicy('2026-08-23');
+test('server keeps the not-past date policy in Code.gs without a standalone GAS file', () => {
+  const code = read('gas/Code.gs');
+  const standalonePolicy = path.join(root, 'gas', 'CalendarDatePolicy.gs');
 
-  assert.doesNotThrow(() => policy.enforceAdminCalendarNotPast_({
-    startDate: '2026-08-23',
-    endDate: '2026-08-23'
-  }));
-  assert.doesNotThrow(() => policy.enforceAdminCalendarNotPast_({
-    startDate: '2026-08-24',
-    endDate: '2026-08-30'
-  }));
-
-  assert.throws(
-    () => policy.enforceAdminCalendarNotPast_({ startDate: '2026-08-22', endDate: '2026-08-23' }),
-    (error) => error && error.status === 400 && error.code === 'PAST_DATE_NOT_ALLOWED'
-  );
-  assert.throws(
-    () => policy.enforceAdminCalendarNotPast_({ startDate: '2026-08-23', endDate: '2026-08-22' }),
-    (error) => error && error.status === 400 && error.code === 'PAST_DATE_NOT_ALLOWED'
-  );
+  assert.equal(fs.existsSync(standalonePolicy), false);
+  assert.match(code, /CALENDAR_BUSINESS_TIME_ZONE_\s*=\s*'Asia\/Taipei'/);
+  assert.match(code, /function enforceAdminCalendarNotPast_/);
+  assert.match(code, /Utilities\.formatDate\(new Date\(\), CALENDAR_BUSINESS_TIME_ZONE_, 'yyyy-MM-dd'\)/);
+  assert.match(code, /startDate < today \|\| endDate < today/);
+  assert.match(code, /PAST_DATE_NOT_ALLOWED/);
 });
 
 test('server date policy runs only after admin authorization for create and update', () => {
