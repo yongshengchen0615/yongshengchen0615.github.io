@@ -1,6 +1,6 @@
 {
-  "apiUrl": "",
-  "liffId": "YOUR_CALENDAR_USER_LIFF_ID",
-  "adminLiffId": "YOUR_CALENDAR_ADMIN_LIFF_ID",
+  "apiUrl": "https://script.google.com/macros/s/AKfycbzBj8qJKedu2dTLYZppqp4FpycoB8jpJ6-MoKEOzDafxCYzA_mE2bbHQYaw9OUT0oA0/exec",
+  "liffId": "2010787602-PoHZ5Szv",
+  "adminLiffId": "2010787602-ItakIYQ4",
   "appName": "營業日曆"
 }
