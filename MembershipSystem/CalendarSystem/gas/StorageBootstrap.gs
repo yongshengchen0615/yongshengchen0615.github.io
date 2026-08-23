@@ -10,7 +10,7 @@ const CALENDAR_SHEET_SCHEMAS_ = Object.freeze({
   ]),
   CalendarItems: Object.freeze([
     'item_id', 'type', 'title', 'start_date', 'end_date', 'all_day', 'start_time', 'end_time',
-    'description', 'location', 'status', 'created_by', 'created_at', 'updated_by', 'updated_at'
+    'description', 'location', 'status', 'created_by', 'created_at', 'updated_by', 'updated_at', 'color'
   ]),
   AuditLogs: Object.freeze([
     'audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id',
@@ -79,6 +79,7 @@ function ensureSheetSchema_(spreadsheet, sheetName, headers) {
   }
 
   if (lastColumn !== headers.length) {
+    if (migrateLegacyCalendarItemsSchema_(sheet, sheetName, headers, lastColumn)) return;
     throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 資料表欄位數量與 V2 schema 不一致。');
   }
 
@@ -89,6 +90,25 @@ function ensureSheetSchema_(spreadsheet, sheetName, headers) {
   if (!matches) {
     throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 資料表欄位與 V2 schema 不一致。');
   }
+}
+
+function migrateLegacyCalendarItemsSchema_(sheet, sheetName, headers, lastColumn) {
+  if (sheetName !== 'CalendarItems' || lastColumn !== headers.length - 1 || headers[headers.length - 1] !== 'color') {
+    return false;
+  }
+
+  const legacyHeaders = headers.slice(0, -1);
+  const actualHeaders = sheet.getRange(1, 1, 1, legacyHeaders.length).getDisplayValues()[0];
+  const legacyMatches = legacyHeaders.every(function(header, index) {
+    return String(actualHeaders[index] || '') === header;
+  });
+  if (!legacyMatches) return false;
+
+  sheet.getRange(1, headers.length).setValue('color').setFontWeight('bold');
+  if (sheet.getMaxRows() > 1) {
+    sheet.getRange(2, headers.length, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
+  }
+  return true;
 }
 
 function getDataSheet_(sheetName) {

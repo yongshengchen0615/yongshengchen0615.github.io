@@ -41,13 +41,51 @@
         </div>
       </header>
 
-      <section class="panel editor-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">Editor</p>
-            <h2 id="formTitle">新增日曆項目</h2>
+      <section class="calendar-card" aria-label="管理日曆">
+        <div class="calendar-toolbar">
+          <button id="prevMonth" class="icon-button" type="button" aria-label="上一個月">‹</button>
+          <div class="month-heading">
+            <strong id="monthTitle"></strong>
+            <button id="todayButton" class="link-button" type="button">回到今天</button>
           </div>
-          <button id="cancelEditButton" class="button ghost hidden" type="button">取消編輯</button>
+          <button id="nextMonth" class="icon-button" type="button" aria-label="下一個月">›</button>
+        </div>
+
+        <div class="calendar-actions">
+          <p>點擊日期即可新增或管理當日事項。</p>
+          <button id="refreshButton" class="button ghost" type="button">重新載入</button>
+        </div>
+
+        <div class="weekday-row" aria-hidden="true">
+          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="dayModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Day editor</p>
+          <h2 id="modalTitle">日期事項</h2>
+        </div>
+        <button id="closeModalButton" class="icon-button compact" type="button" aria-label="關閉">×</button>
+      </div>
+
+      <section class="day-items-section">
+        <div class="section-heading">
+          <h3>這一天的事項</h3>
+          <span id="dayItemCount" class="badge">0</span>
+        </div>
+        <div id="dayItemsList" class="day-items-list"></div>
+      </section>
+
+      <section class="editor-section">
+        <div class="section-heading editor-heading">
+          <h3 id="formTitle">新增事項</h3>
+          <button id="cancelEditButton" class="link-button hidden" type="button">取消編輯</button>
         </div>
 
         <form id="itemForm" novalidate>
@@ -59,7 +97,7 @@
               <span>類型</span>
               <select id="type" required>
                 <option value="holiday">休假日</option>
-                <option value="event">活動</option>
+                <option value="event" selected>活動</option>
                 <option value="notice">公告</option>
               </select>
             </label>
@@ -74,7 +112,7 @@
 
             <label class="span-2">
               <span>標題</span>
-              <input id="title" type="text" maxlength="80" autocomplete="off" required placeholder="例如：中秋節休假">
+              <input id="title" type="text" maxlength="80" autocomplete="off" required placeholder="例如：會員日活動">
             </label>
 
             <label>
@@ -85,6 +123,21 @@
             <label>
               <span>結束日期</span>
               <input id="endDate" type="date" required>
+            </label>
+
+            <label class="color-field span-2">
+              <span>顏色</span>
+              <div class="color-control">
+                <input id="color" type="color" value="#3182B8" aria-label="事項顏色">
+                <div class="color-presets" aria-label="常用顏色">
+                  <button class="color-swatch" type="button" data-color="#D95656" style="--swatch:#D95656" aria-label="紅色"></button>
+                  <button class="color-swatch" type="button" data-color="#3182B8" style="--swatch:#3182B8" aria-label="藍色"></button>
+                  <button class="color-swatch" type="button" data-color="#D3A12F" style="--swatch:#D3A12F" aria-label="黃色"></button>
+                  <button class="color-swatch" type="button" data-color="#06A948" style="--swatch:#06A948" aria-label="綠色"></button>
+                  <button class="color-swatch" type="button" data-color="#8B5CF6" style="--swatch:#8B5CF6" aria-label="紫色"></button>
+                  <button class="color-swatch" type="button" data-color="#EC4899" style="--swatch:#EC4899" aria-label="粉色"></button>
+                </div>
+              </div>
             </label>
 
             <label class="check-label span-2">
@@ -115,30 +168,12 @@
 
           <div id="formMessage" class="form-message hidden" role="alert"></div>
           <div class="form-actions">
-            <button id="saveButton" class="button primary" type="submit">新增</button>
+            <button id="archiveButton" class="button danger hidden" type="button">封存</button>
+            <button id="saveButton" class="button primary" type="submit">新增事項</button>
           </div>
         </form>
       </section>
-
-      <section class="panel list-panel">
-        <div class="panel-heading list-heading">
-          <div>
-            <p class="eyebrow">Calendar items</p>
-            <h2>日曆項目</h2>
-          </div>
-          <div class="filters">
-            <select id="filterStatus" aria-label="依狀態篩選">
-              <option value="all">全部狀態</option>
-              <option value="published">已發布</option>
-              <option value="draft">草稿</option>
-              <option value="archived">已封存</option>
-            </select>
-            <button id="refreshButton" class="button ghost" type="button">重新載入</button>
-          </div>
-        </div>
-        <div id="itemsList" class="items-list"></div>
-      </section>
-    </main>
+    </div>
   </div>
 </body>
 </html>

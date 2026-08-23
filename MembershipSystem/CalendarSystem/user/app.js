@@ -1,6 +1,7 @@
 (() => {
   'use strict';
 
+  const DEFAULT_COLORS = Object.freeze({ holiday: '#D95656', event: '#3182B8', notice: '#D3A12F' });
   const state = {
     config: null,
     idToken: '',
@@ -221,8 +222,9 @@
         items.className = 'day-items';
         dayItems.slice(0, 2).forEach((item) => {
           const chip = document.createElement('span');
-          chip.className = `day-item ${safeType(item.type)}`;
+          chip.className = 'day-item';
           chip.textContent = item.title;
+          applyItemColor(chip, item.color, item.type, true);
           items.appendChild(chip);
         });
         if (dayItems.length > 2) {
@@ -267,7 +269,8 @@
       row.className = 'agenda-item';
 
       const marker = document.createElement('span');
-      marker.className = `agenda-marker ${safeType(item.type)}`;
+      marker.className = 'agenda-marker';
+      marker.style.backgroundColor = safeColor(item.color, item.type);
 
       const content = document.createElement('div');
       const title = document.createElement('h3');
@@ -311,8 +314,23 @@
       });
   }
 
-  function safeType(type) {
-    return ['holiday', 'event', 'notice'].includes(type) ? type : 'notice';
+  function safeColor(value, type) {
+    const normalized = String(value || '').trim().toUpperCase();
+    return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : (DEFAULT_COLORS[type] || DEFAULT_COLORS.notice);
+  }
+
+  function applyItemColor(element, value, type, includeTextColor) {
+    const color = safeColor(value, type);
+    element.style.backgroundColor = color;
+    if (includeTextColor) element.style.color = readableTextColor(color);
+  }
+
+  function readableTextColor(color) {
+    const hex = safeColor(color, 'notice').substring(1);
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    return ((r * 299 + g * 587 + b * 114) / 1000) >= 155 ? '#172019' : '#FFFFFF';
   }
 
   function typeLabel(type) {
