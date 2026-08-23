@@ -1,0 +1,93 @@
+:root {
+  font-family: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  color: #eeeeea;
+  background: #171713;
+  --surface: #22221d;
+  --surface-2: #2d2d27;
+  --line: #3b3b34;
+  --muted: #aaa99e;
+  --accent: #e9d8aa;
+  --holiday: #e78f83;
+  --activity: #87c7ad;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: linear-gradient(155deg, #191914, #11110f 72%); }
+button, input, select, textarea { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+.admin-shell { width: min(1280px, calc(100% - 32px)); margin: 0 auto; padding: 30px 0 70px; }
+.topbar, .topbar-actions, .calendar-toolbar, .toolbar-actions, .editor-heading, .auth-form { display: flex; align-items: center; gap: 12px; }
+.topbar { justify-content: space-between; margin-bottom: 20px; }
+.topbar h1 { margin: 0; letter-spacing: -.04em; }
+.topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+.eyebrow { margin: 0 0 5px; color: #8f8f85; font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+.panel { border: 1px solid var(--line); background: rgba(34,34,29,.94); border-radius: 22px; box-shadow: 0 20px 70px rgba(0,0,0,.18); }
+.auth-panel { padding: 22px; display: grid; grid-template-columns: 1fr minmax(300px, 520px); gap: 24px; align-items: center; }
+.auth-panel h2, .auth-panel p { margin: 0; }
+.auth-panel p { margin-top: 6px; color: var(--muted); }
+.auth-form input { flex: 1; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(340px, .65fr); gap: 18px; }
+.is-hidden { display: none !important; }
+.calendar-panel, .editor-panel { padding: 20px; }
+.calendar-toolbar { justify-content: space-between; }
+.calendar-toolbar h2, .editor-heading h2, .editor-heading h3 { margin: 0; }
+.toolbar-actions { justify-content: flex-end; margin: 12px 0; }
+.button, .icon-button { border: 0; cursor: pointer; text-decoration: none; transition: transform .15s ease, opacity .15s ease; }
+.button:hover, .icon-button:hover { transform: translateY(-1px); }
+.button:focus-visible, .icon-button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .day-cell:focus-visible { outline: 3px solid rgba(233,216,170,.28); outline-offset: 2px; }
+.button { padding: 10px 14px; border-radius: 12px; font-weight: 800; }
+.button-primary { background: var(--accent); color: #211f18; }
+.button-ghost { background: #303029; color: #e8e6dd; }
+.button-danger { background: #5a2e2b; color: #ffd9d4; }
+.button-block { width: 100%; margin-top: 4px; }
+.icon-button { width: 40px; height: 40px; border-radius: 12px; background: #303029; color: #efeee8; font-size: 25px; }
+.weekday-row, .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.weekday-row { color: #8d8d84; text-align: center; font-size: 11px; font-weight: 800; padding: 5px 0 8px; }
+.calendar-grid { min-height: 610px; }
+.day-cell { min-height: 90px; padding: 8px; border: 1px solid #363630; border-radius: 13px; background: #282823; color: #eae9e3; text-align: left; cursor: pointer; }
+.day-cell:hover { border-color: #5a594f; }
+.day-cell.outside { opacity: .34; }
+.day-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.day-number { font-size: 12px; font-weight: 900; }
+.day-markers { display: grid; gap: 4px; margin-top: 7px; }
+.marker { padding: 4px 5px; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 800; }
+.marker.holiday { background: rgba(231,143,131,.16); color: var(--holiday); }
+.marker.activity { background: rgba(135,199,173,.15); color: var(--activity); }
+.marker.draft { opacity: .56; border: 1px dashed currentColor; }
+.editor-heading { justify-content: space-between; }
+form { display: grid; gap: 12px; margin-top: 18px; }
+label { display: grid; gap: 6px; color: #c8c7be; font-size: 12px; font-weight: 700; }
+input, select, textarea { width: 100%; border: 1px solid #44443c; border-radius: 11px; background: #191916; color: #f0efe8; padding: 11px 12px; }
+textarea { resize: vertical; line-height: 1.5; }
+.message { min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; }
+.message.error { color: #f2a099; }
+.message.success { color: #9cd5bb; }
+.event-list-section { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 17px; }
+.count-badge { min-width: 28px; padding: 4px 8px; border-radius: 999px; background: #34342e; color: #d4d2c8; text-align: center; font-size: 12px; }
+.admin-event-list { display: grid; gap: 8px; margin-top: 12px; max-height: 420px; overflow: auto; }
+.admin-event { border: 1px solid #3d3d36; background: #292924; border-radius: 12px; padding: 11px; }
+.admin-event-top { display: flex; justify-content: space-between; gap: 10px; }
+.admin-event h4 { margin: 0 0 4px; font-size: 14px; }
+.admin-event p { margin: 0; color: #a8a79d; font-size: 12px; white-space: pre-wrap; }
+.admin-event-actions { display: flex; gap: 6px; margin-top: 9px; }
+.admin-event-actions .button { padding: 7px 9px; font-size: 11px; }
+.pill { padding: 3px 7px; border-radius: 999px; font-size: 10px; font-weight: 900; }
+.pill.holiday { background: rgba(231,143,131,.16); color: var(--holiday); }
+.pill.activity { background: rgba(135,199,173,.15); color: var(--activity); }
+.pill.draft { background: #3a3931; color: #c9c6b7; }
+.empty-state { padding: 20px; text-align: center; color: var(--muted); border: 1px dashed #44443c; border-radius: 12px; }
+
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: 1fr; }
+  .calendar-grid { min-height: 520px; }
+  .auth-panel { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .admin-shell { width: min(100% - 18px, 1280px); padding-top: 18px; }
+  .topbar { align-items: flex-start; gap: 18px; }
+  .topbar-actions { flex-direction: column; align-items: stretch; }
+  .calendar-panel, .editor-panel { padding: 13px; }
+  .calendar-grid { gap: 3px; min-height: 460px; }
+  .day-cell { min-height: 68px; padding: 5px; border-radius: 9px; }
+  .marker { font-size: 8px; padding: 3px; }
+  .auth-form { align-items: stretch; flex-direction: column; }
+}

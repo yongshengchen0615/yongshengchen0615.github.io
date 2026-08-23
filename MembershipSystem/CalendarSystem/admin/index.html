@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#171713">
+  <title>營業日曆管理</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">CALENDAR ADMIN</p>
+        <h1>營業日曆管理</h1>
+      </div>
+      <div class="topbar-actions">
+        <a class="button button-ghost" href="../user/">查看用戶端</a>
+        <button id="logoutBtn" class="button button-ghost" type="button">清除管理憑證</button>
+      </div>
+    </header>
+
+    <section id="authPanel" class="panel auth-panel">
+      <div>
+        <h2>管理端驗證</h2>
+        <p>管理憑證只暫存在這個瀏覽器分頁，不會寫進 GitHub 或 URL。</p>
+      </div>
+      <div class="auth-form">
+        <input id="adminTokenInput" type="password" autocomplete="off" placeholder="輸入管理憑證">
+        <button id="loginBtn" class="button button-primary" type="button">進入管理端</button>
+      </div>
+      <p id="authMessage" class="message" aria-live="polite"></p>
+    </section>
+
+    <div id="workspace" class="workspace is-hidden">
+      <section class="panel calendar-panel">
+        <div class="calendar-toolbar">
+          <button id="prevBtn" class="icon-button" type="button" aria-label="上一個月">‹</button>
+          <div>
+            <p class="eyebrow">MONTH</p>
+            <h2 id="monthTitle"></h2>
+          </div>
+          <button id="nextBtn" class="icon-button" type="button" aria-label="下一個月">›</button>
+        </div>
+        <div class="toolbar-actions">
+          <button id="todayBtn" class="button button-ghost" type="button">今天</button>
+          <button id="reloadBtn" class="button button-ghost" type="button">重新整理</button>
+        </div>
+        <div class="weekday-row" aria-hidden="true">
+          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+
+      <aside class="panel editor-panel">
+        <div class="editor-heading">
+          <div>
+            <p class="eyebrow">EVENT EDITOR</p>
+            <h2 id="editorTitle">新增日期設定</h2>
+          </div>
+          <button id="resetBtn" class="button button-ghost" type="button">清空</button>
+        </div>
+
+        <form id="eventForm">
+          <input id="eventId" type="hidden">
+
+          <label>
+            日期
+            <input id="eventDate" type="date" required>
+          </label>
+
+          <label>
+            類型
+            <select id="eventType" required>
+              <option value="holiday">休假日</option>
+              <option value="activity">活動日</option>
+            </select>
+          </label>
+
+          <label>
+            發布狀態
+            <select id="eventStatus" required>
+              <option value="published">已發布</option>
+              <option value="draft">草稿</option>
+            </select>
+          </label>
+
+          <label>
+            標題
+            <input id="eventTitle" type="text" maxlength="80" required placeholder="例如：中秋節公休">
+          </label>
+
+          <label>
+            當日說明
+            <textarea id="eventDescription" rows="6" maxlength="2000" placeholder="例如：今日店休，隔日恢復正常營業。"></textarea>
+          </label>
+
+          <button id="saveBtn" class="button button-primary button-block" type="submit">儲存</button>
+          <p id="formMessage" class="message" aria-live="polite"></p>
+        </form>
+
+        <div class="event-list-section">
+          <div class="editor-heading">
+            <h3>本月設定</h3>
+            <span id="eventCount" class="count-badge">0</span>
+          </div>
+          <div id="adminEventList" class="admin-event-list"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
