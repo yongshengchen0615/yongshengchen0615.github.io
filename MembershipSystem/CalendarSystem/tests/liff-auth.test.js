@@ -17,6 +17,14 @@ test('config defines different LIFF settings for user and admin surfaces', () =>
   assert.notEqual(config.liffId, config.adminLiffId);
 });
 
+test('Apps Script manifest grants UrlFetch external request scope for LINE verification', () => {
+  const manifest = JSON.parse(read('gas/appsscript.json'));
+  const scopes = Array.isArray(manifest.oauthScopes) ? manifest.oauthScopes : [];
+
+  assert.ok(scopes.includes('https://www.googleapis.com/auth/spreadsheets'));
+  assert.ok(scopes.includes('https://www.googleapis.com/auth/script.external_request'));
+});
+
 test('user surface initializes the user LIFF and sends raw ID token to GAS', () => {
   const html = read('user/index.html');
   const app = read('user/app.js');
