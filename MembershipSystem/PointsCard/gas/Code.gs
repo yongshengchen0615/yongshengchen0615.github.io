@@ -108,7 +108,7 @@ function doPost(e) {
     switch (action) {
       case 'member.me':
         rateLimit_('member-me:' + identity.sub, 30, 60);
-        return json_({ ok: true, data: memberMeMultiCard_(context, payload) });
+        return json_({ ok: true, data: memberMeVisibleMultiCard_(context, payload) });
       case 'member.point-notifications.list':
         rateLimit_('member-point-notifications-list:' + identity.sub, 30, 60);
         return json_({ ok: true, data: memberPointNotificationsList_(context, payload) });
@@ -120,7 +120,7 @@ function doPost(e) {
         return json_({ ok: true, data: stampRecordMultiCard_(context, payload) });
       case 'reward.claim':
         rateLimit_('reward-claim:' + identity.sub, 12, 60);
-        return json_({ ok: true, data: memberRewardClaimMultiCard_(context, payload) });
+        return json_({ ok: true, data: memberRewardClaimVisibleMultiCard_(context, payload) });
       case 'reward.prepare':
         rateLimit_('reward-prepare:' + identity.sub, 20, 60);
         return json_({ ok: true, data: memberRewardPrepareMultiCard_(context, payload) });
