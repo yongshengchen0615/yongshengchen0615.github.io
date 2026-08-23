@@ -281,12 +281,13 @@ function requireAdmin_(token) {
     PropertiesService.getScriptProperties().getProperty(CALENDAR_SERVICE.adminTokenProperty) || ''
   );
 
-  if (!configured) {
-    fail_('ADMIN_NOT_CONFIGURED', '管理端尚未設定伺服器憑證。');
+  if (!configured || configured.length < 32) {
+    fail_('ADMIN_NOT_CONFIGURED', '管理端伺服器憑證尚未設定，或長度不足 32 個字元。');
   }
 
   const supplied = cleanText_(token, MAX_ADMIN_TOKEN_LENGTH, true);
-  rateLimit_('admin-auth', 120, 60);
+  const suppliedFingerprint = sha256Hex_(supplied).slice(0, 24);
+  rateLimit_('admin-auth-token:' + suppliedFingerprint, 12, 60);
 
   if (!constantTimeEqualHex_(sha256Hex_(configured), sha256Hex_(supplied))) {
     rateLimit_('admin-auth-failure', 30, 60);

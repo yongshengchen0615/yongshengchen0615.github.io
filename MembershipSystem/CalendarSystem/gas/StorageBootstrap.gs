@@ -64,18 +64,18 @@ function ensureSheet_(spreadsheet, name, headers) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
     sheet.autoResizeColumns(1, headers.length);
-  }
 
-  // Prevent Google Sheets from coercing ISO dates or identifiers into other value types.
-  const textColumns = name === CALENDAR_STORAGE.eventsSheet
-    ? ['eventId', 'date', 'type', 'status']
-    : ['eventId', 'actor', 'action', 'result'];
-  textColumns.forEach(header => {
-    const index = headers.indexOf(header);
-    if (index >= 0 && sheet.getMaxRows() > 1) {
-      sheet.getRange(2, index + 1, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
-    }
-  });
+    // Prevent Google Sheets from coercing ISO dates or identifiers into other value types.
+    const textColumns = name === CALENDAR_STORAGE.eventsSheet
+      ? ['eventId', 'date', 'type', 'status']
+      : ['eventId', 'actor', 'action', 'result'];
+    textColumns.forEach(header => {
+      const index = headers.indexOf(header);
+      if (index >= 0 && sheet.getMaxRows() > 1) {
+        sheet.getRange(2, index + 1, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
+      }
+    });
+  }
 
   return sheet;
 }

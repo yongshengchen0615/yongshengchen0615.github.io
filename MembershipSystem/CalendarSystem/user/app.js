@@ -122,9 +122,16 @@ function renderCalendar() {
     button.className = 'day-cell';
     button.setAttribute('role', 'gridcell');
     button.setAttribute('aria-label', buildDayLabel(date, dayEvents));
-    if (date.getMonth() !== month) button.classList.add('outside');
+    const isOutside = date.getMonth() !== month;
+    if (isOutside) button.classList.add('outside');
     if (dateKey === todayKey) button.classList.add('today');
-    button.addEventListener('click', () => openDay(dateKey));
+    button.addEventListener('click', async () => {
+      if (isOutside) {
+        state.cursor = new Date(date.getFullYear(), date.getMonth(), 1);
+        await loadMonth();
+      }
+      openDay(dateKey);
+    });
 
     const number = document.createElement('span');
     number.className = 'day-number';
