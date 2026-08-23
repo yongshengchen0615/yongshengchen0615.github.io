@@ -14,7 +14,7 @@ const CALENDAR_HEADERS = Object.freeze({
     'createdAt', 'updatedAt'
   ],
   LineIdentities: [
-    'lineUserId', 'surface', 'displayName', 'pictureUrl', 'status',
+    'lineUserId', 'surface', 'displayName', 'pictureUrl',
     'firstSeenAt', 'lastLoginAt', 'loginCount'
   ],
   AdminPermissions: [
@@ -80,7 +80,7 @@ function ensureSheet_(spreadsheet, name, headers) {
       textColumns = ['eventId', 'date', 'type', 'status'];
     } else if (name === CALENDAR_STORAGE.identitiesSheet) {
       textColumns = [
-        'lineUserId', 'surface', 'displayName', 'pictureUrl', 'status',
+        'lineUserId', 'surface', 'displayName', 'pictureUrl',
         'firstSeenAt', 'lastLoginAt', 'loginCount'
       ];
     } else if (name === CALENDAR_STORAGE.adminPermissionsSheet) {
