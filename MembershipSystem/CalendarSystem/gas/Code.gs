@@ -2,8 +2,7 @@
 
 const CALENDAR_SERVICE = Object.freeze({
   name: 'CalendarSystem',
-  version: '1.2.0',
-  adminTokenProperty: 'CALENDAR_ADMIN_TOKEN',
+  version: '1.3.0',
   userLineChannelProperty: 'USER_LINE_LOGIN_CHANNEL_ID',
   legacyUserLineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   adminLineChannelProperty: 'ADMIN_LINE_LOGIN_CHANNEL_ID'
@@ -13,7 +12,6 @@ const CALENDAR_TYPES = ['holiday', 'activity'];
 const CALENDAR_STATUSES = ['draft', 'published', 'archived'];
 const MAX_TITLE_LENGTH = 80;
 const MAX_DESCRIPTION_LENGTH = 2000;
-const MAX_ADMIN_TOKEN_LENGTH = 512;
 const MAX_ID_TOKEN_LENGTH = 4096;
 const LINE_IDENTITY_CACHE_MAX_SECONDS = 300;
 const LINE_IDENTITY_EXPIRY_SKEW_SECONDS = 15;
@@ -28,6 +26,7 @@ function doGet() {
         'member.me',
         'calendar.month',
         'calendar.day',
+        'admin.session',
         'admin.events.list',
         'admin.event.save',
         'admin.event.delete'
@@ -61,23 +60,29 @@ function doPost(e) {
         return json_({ ok: true, data: publicDay_(payload) });
       }
 
+      case 'admin.session': {
+        const identity = requireLineIdentity_(request.idToken, 'admin');
+        rateLimit_('admin-session:' + identity.sub, 30, 60);
+        return json_({ ok: true, data: adminSession_(identity) });
+      }
+
       case 'admin.events.list': {
         const identity = requireLineIdentity_(request.idToken, 'admin');
-        requireAdmin_(request.adminToken);
+        requireCalendarAdmin_(identity);
         rateLimit_('admin-list:' + identity.sub, 120, 60);
         return json_({ ok: true, data: adminEventsList_(payload) });
       }
 
       case 'admin.event.save': {
         const identity = requireLineIdentity_(request.idToken, 'admin');
-        requireAdmin_(request.adminToken);
+        requireCalendarAdmin_(identity);
         rateLimit_('admin-save:' + identity.sub, 40, 60);
         return json_({ ok: true, data: adminEventSave_(payload, identity) });
       }
 
       case 'admin.event.delete': {
         const identity = requireLineIdentity_(request.idToken, 'admin');
-        requireAdmin_(request.adminToken);
+        requireCalendarAdmin_(identity);
         rateLimit_('admin-delete:' + identity.sub, 30, 60);
         return json_({ ok: true, data: adminEventDelete_(payload, identity) });
       }
@@ -104,11 +109,24 @@ function doPost(e) {
 }
 
 function memberMe_(identity) {
+  return { profile: identityProfile_(identity) };
+}
+
+function adminSession_(identity) {
+  const permission = ensureAdminPermissionRecord_(identity);
   return {
-    profile: {
-      displayName: cleanText_(identity && identity.name || 'LINE 會員', 80, false) || 'LINE 會員',
-      pictureUrl: safePictureUrl_(identity && identity.picture)
+    profile: identityProfile_(identity),
+    authorization: {
+      canManageCalendar: permission.canManageCalendar,
+      status: permission.status
     }
+  };
+}
+
+function identityProfile_(identity) {
+  return {
+    displayName: cleanText_(identity && identity.name || 'LINE 會員', 80, false) || 'LINE 會員',
+    pictureUrl: safePictureUrl_(identity && identity.picture)
   };
 }
 
@@ -290,6 +308,10 @@ function eventsSheet_() {
   return ensureCalendarStorage_().getSheetByName(CALENDAR_STORAGE.eventsSheet);
 }
 
+function adminPermissionsSheet_() {
+  return ensureCalendarStorage_().getSheetByName(CALENDAR_STORAGE.adminPermissionsSheet);
+}
+
 function audit_(actor, action, eventId, result, details) {
   try {
     const sheet = ensureCalendarStorage_().getSheetByName(CALENDAR_STORAGE.auditSheet);
@@ -310,6 +332,66 @@ function audit_(actor, action, eventId, result, details) {
 
 function adminActor_(identity) {
   return cleanText_(identity && identity.sub || 'admin', 80, false) || 'admin';
+}
+
+function ensureAdminPermissionRecord_(identity) {
+  const lineUserId = cleanText_(identity && identity.sub, 80, true);
+  let existing = findAdminPermission_(lineUserId);
+  if (existing) return existing;
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(3000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
+  try {
+    existing = findAdminPermission_(lineUserId);
+    if (existing) return existing;
+
+    const created = {
+      lineUserId: lineUserId,
+      displayName: cleanText_(identity && identity.name || 'LINE 管理員', 80, false) || 'LINE 管理員',
+      canManageCalendar: 'FALSE',
+      status: 'active',
+      note: '',
+      firstSeenAt: new Date().toISOString()
+    };
+    appendObject_(adminPermissionsSheet_(), created);
+    audit_(lineUserId, 'ADMIN_PERMISSION_DISCOVERED', '', 'success', {
+      canManageCalendar: false,
+      status: 'active'
+    });
+    return normalizeAdminPermission_(created);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function findAdminPermission_(lineUserId) {
+  const matches = sheetObjects_(adminPermissionsSheet_())
+    .filter(row => cleanText_(row.lineUserId, 80, false) === lineUserId);
+
+  if (matches.length > 1) {
+    fail_('DATA_INTEGRITY_ERROR', '管理權限資料存在重複 LINE 使用者，請先修正資料表。');
+  }
+  return matches.length ? normalizeAdminPermission_(matches[0]) : null;
+}
+
+function normalizeAdminPermission_(row) {
+  const rawStatus = cleanText_(row.status, 20, false).toLowerCase();
+  return {
+    lineUserId: cleanText_(row.lineUserId, 80, false),
+    displayName: cleanText_(row.displayName, 80, false),
+    canManageCalendar: isTrue_(row.canManageCalendar),
+    status: rawStatus === 'active' ? 'active' : 'disabled',
+    note: cleanText_(row.note, 500, false),
+    firstSeenAt: cleanText_(row.firstSeenAt, 64, false)
+  };
+}
+
+function requireCalendarAdmin_(identity) {
+  const permission = ensureAdminPermissionRecord_(identity);
+  if (permission.status !== 'active' || !permission.canManageCalendar) {
+    fail_('FORBIDDEN', '此 LINE 帳號尚未取得日曆管理權限。');
+  }
+  return permission;
 }
 
 function requireLineIdentity_(idToken, surface) {
@@ -414,23 +496,8 @@ function safePictureUrl_(value) {
   return /^https:\/\//i.test(url) && url.length <= 1000 ? url : '';
 }
 
-function requireAdmin_(token) {
-  const configured = String(
-    PropertiesService.getScriptProperties().getProperty(CALENDAR_SERVICE.adminTokenProperty) || ''
-  );
-
-  if (!configured || configured.length < 32) {
-    fail_('ADMIN_NOT_CONFIGURED', '管理端伺服器憑證尚未設定，或長度不足 32 個字元。');
-  }
-
-  const supplied = cleanText_(token, MAX_ADMIN_TOKEN_LENGTH, true);
-  const suppliedFingerprint = sha256Hex_(supplied).slice(0, 24);
-  rateLimit_('admin-auth-token:' + suppliedFingerprint, 12, 60);
-
-  if (!constantTimeEqualHex_(sha256Hex_(configured), sha256Hex_(supplied))) {
-    rateLimit_('admin-auth-failure', 30, 60);
-    fail_('UNAUTHORIZED', '管理憑證不正確。');
-  }
+function isTrue_(value) {
+  return value === true || String(value == null ? '' : value).trim().toLowerCase() === 'true' || Number(value) === 1;
 }
 
 function parseRequest_(e) {
@@ -457,8 +524,7 @@ function parseRequest_(e) {
   return {
     action: params.action || '',
     payload: payload,
-    idToken: params.idToken || '',
-    adminToken: params.adminToken || ''
+    idToken: params.idToken || ''
   };
 }
 
@@ -534,18 +600,6 @@ function sha256Hex_(value) {
     String(value || ''),
     Utilities.Charset.UTF_8
   ).map(byte => ('0' + ((byte + 256) % 256).toString(16)).slice(-2)).join('');
-}
-
-function constantTimeEqualHex_(a, b) {
-  const left = String(a || '');
-  const right = String(b || '');
-  let diff = left.length ^ right.length;
-  const length = Math.max(left.length, right.length);
-  for (let i = 0; i < length; i += 1) {
-    diff |= (left.charCodeAt(i % Math.max(left.length, 1)) || 0) ^
-      (right.charCodeAt(i % Math.max(right.length, 1)) || 0);
-  }
-  return diff === 0;
 }
 
 function rateLimit_(key, limit, windowSeconds) {
