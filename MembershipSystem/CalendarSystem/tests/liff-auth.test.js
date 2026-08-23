@@ -96,15 +96,30 @@ test('runtime storage binding fails closed and cannot silently create a differen
   assert.match(storage, /writeProbe/);
 });
 
-test('successful user and admin sessions automatically persist login identity data', () => {
+test('successful user and admin sessions persist and verify login identity data', () => {
   const gas = read('gas/Code.gs');
 
+  assert.match(gas, /version: '1\.5\.0'/);
   assert.match(gas, /function memberMe_\(identity\) \{\s*recordIdentityLogin_\(identity, 'user'\);/);
   assert.match(gas, /function adminSession_\(identity\) \{\s*recordIdentityLogin_\(identity, 'admin'\);/);
   assert.match(gas, /function recordIdentityLogin_\(identity, surface\)/);
   assert.match(gas, /lastLoginAt: now/);
   assert.match(gas, /loginCount: '1'/);
+  assert.match(gas, /verifyIdentityPersistence_\(sheet, lineUserId, authSurface, now\)/);
+  assert.match(gas, /function verifyIdentityPersistence_/);
+  assert.match(gas, /STORAGE_WRITE_FAILED/);
   assert.match(gas, /LOGIN_SUCCESS/);
+});
+
+test('sheet writes flush and surface structured storage failures without logging credentials', () => {
+  const gas = read('gas/Code.gs');
+
+  assert.match(gas, /function appendObject_\(sheet, object\)/);
+  assert.match(gas, /function writeObjectAtRow_\(sheet, rowNumber, object\)/);
+  assert.match(gas, /SpreadsheetApp\.flush\(\)/);
+  assert.match(gas, /calendar_sheet_append_failed/);
+  assert.match(gas, /calendar_sheet_update_failed/);
+  assert.doesNotMatch(gas, /console\.(?:log|info|warn|error)[^\n]*idToken/i);
 });
 
 test('new admin identities are fail-closed until the sheet permission is manually enabled', () => {
