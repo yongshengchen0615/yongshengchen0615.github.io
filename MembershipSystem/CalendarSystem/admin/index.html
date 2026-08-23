@@ -19,21 +19,28 @@
         <h1>營業日曆管理</h1>
       </div>
       <div class="topbar-actions">
-        <button id="logoutBtn" class="button button-ghost" type="button">清除管理憑證</button>
+        <span id="adminIdentity" class="identity-chip" hidden>LINE 管理員</span>
+        <button id="refreshPermissionBtn" class="button button-ghost" type="button">重新檢查權限</button>
       </div>
     </header>
 
-    <section id="authPanel" class="panel auth-panel">
-      <div>
-        <h2>管理端驗證</h2>
-        <p>先使用管理端專用 LIFF 驗證 LINE 身分，再輸入管理憑證。管理憑證只暫存在這個瀏覽器分頁，不會寫進 GitHub 或 URL。</p>
-        <p id="lineAuthStatus" class="message" aria-live="polite">正在確認管理端 LINE 登入…</p>
-      </div>
-      <div class="auth-form">
-        <input id="adminTokenInput" type="password" autocomplete="off" placeholder="輸入管理憑證" disabled>
-        <button id="loginBtn" class="button button-primary" type="button" disabled>進入管理端</button>
-      </div>
-      <p id="authMessage" class="message" aria-live="polite"></p>
+    <section id="bootPanel" class="panel state-panel" aria-live="polite">
+      <p class="eyebrow">LINE LOGIN</p>
+      <h2>正在確認管理端 LINE 身分</h2>
+      <p id="bootMessage">登入完成後會讀取資料表中的管理權限。</p>
+    </section>
+
+    <section id="permissionPanel" class="panel state-panel is-hidden" role="status">
+      <p class="eyebrow">PERMISSION REQUIRED</p>
+      <h2>此 LINE 帳號尚未開啟日曆管理權限</h2>
+      <p>系統已在 <code>AdminPermissions</code> 建立此帳號。請在 Google Sheet 將 <code>canManageCalendar</code> 改成 <code>TRUE</code>，並確認 <code>status</code> 為 <code>active</code>。</p>
+      <p class="message">修改完成後，按右上角「重新檢查權限」。</p>
+    </section>
+
+    <section id="errorPanel" class="panel state-panel is-hidden" role="alert">
+      <p class="eyebrow">ACCESS ERROR</p>
+      <h2>暫時無法進入管理端</h2>
+      <p id="errorMessage">請稍後再試。</p>
     </section>
 
     <div id="workspace" class="workspace is-hidden">
