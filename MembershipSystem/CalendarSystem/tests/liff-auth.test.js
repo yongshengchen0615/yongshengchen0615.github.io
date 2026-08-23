@@ -26,15 +26,7 @@ test('user surface initializes the user LIFF and sends raw ID token to GAS', () 
   assert.match(app, /body\.set\('idToken', state\.idToken\)/);
 });
 
-test('user ID token is kept in memory instead of browser storage or URL', () => {
-  const app = read('user/app.js');
-
-  assert.doesNotMatch(app, /localStorage/);
-  assert.doesNotMatch(app, /sessionStorage/);
-  assert.doesNotMatch(app, /searchParams\.set\([^\n]*idToken/i);
-});
-
-test('admin surface uses a dedicated LIFF ID and sends both authentication factors', () => {
+test('admin surface uses a dedicated LIFF ID without a separate admin credential', () => {
   const html = read('admin/index.html');
   const app = read('admin/app.js');
 
@@ -42,20 +34,41 @@ test('admin surface uses a dedicated LIFF ID and sends both authentication facto
   assert.match(app, /liff\.init\(\{ liffId: state\.config\.adminLiffId \}\)/);
   assert.match(app, /liff\.getIDToken\(\)/);
   assert.match(app, /body\.set\('idToken', state\.idToken\)/);
-  assert.match(app, /body\.set\('adminToken', state\.token\)/);
+  assert.doesNotMatch(app, /adminToken/);
+  assert.doesNotMatch(app, /calendarAdminToken/);
+  assert.doesNotMatch(html, /管理憑證|password/i);
   assert.doesNotMatch(html, /查看用戶端/);
   assert.doesNotMatch(html, /\.\.\/user\//);
 });
 
-test('admin LINE ID token is not persisted in browser storage', () => {
-  const app = read('admin/app.js');
+test('LIFF ID tokens are not persisted in browser storage or URL', () => {
+  const userApp = read('user/app.js');
+  const adminApp = read('admin/app.js');
 
-  assert.doesNotMatch(app, /localStorage/);
-  assert.doesNotMatch(app, /sessionStorage\.setItem\([^\n]*idToken/i);
-  assert.match(app, /sessionStorage\.setItem\('calendarAdminToken', token\)/);
+  assert.doesNotMatch(userApp, /localStorage|sessionStorage/);
+  assert.doesNotMatch(adminApp, /localStorage|sessionStorage/);
+  assert.doesNotMatch(userApp, /searchParams\.set\([^\n]*idToken/i);
+  assert.doesNotMatch(adminApp, /searchParams\.set\([^\n]*idToken/i);
 });
 
-test('GAS verifies user and admin LIFF tokens against separate channel settings', () => {
+test('storage creates an AdminPermissions sheet with an explicit permission field', () => {
+  const storage = read('gas/StorageBootstrap.gs');
+
+  assert.match(storage, /adminPermissionsSheet: 'AdminPermissions'/);
+  assert.match(storage, /'lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'/);
+});
+
+test('new admin identities are fail-closed until the sheet permission is manually enabled', () => {
+  const gas = read('gas/Code.gs');
+
+  assert.match(gas, /canManageCalendar: 'FALSE'/);
+  assert.match(gas, /status: 'active'/);
+  assert.match(gas, /function requireCalendarAdmin_\(identity\)/);
+  assert.match(gas, /permission\.status !== 'active' \|\| !permission\.canManageCalendar/);
+  assert.match(gas, /fail_\('FORBIDDEN'/);
+});
+
+test('GAS verifies separate LIFF channels and checks sheet authorization on every admin action', () => {
   const gas = read('gas/Code.gs');
 
   assert.match(gas, /userLineChannelProperty: 'USER_LINE_LOGIN_CHANNEL_ID'/);
@@ -63,16 +76,20 @@ test('GAS verifies user and admin LIFF tokens against separate channel settings'
   assert.match(gas, /https:\/\/api\.line\.me\/oauth2\/v2\.1\/verify/);
   assert.match(gas, /payload: \{ id_token: idToken, client_id: channelId \}/);
   assert.match(gas, /String\(identity\.aud\) !== String\(channelId\)/);
-  assert.match(gas, /case 'calendar\.month': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'user'\);/);
-  assert.match(gas, /case 'calendar\.day': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'user'\);/);
-  assert.match(gas, /case 'admin\.events\.list': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'admin'\);\s*requireAdmin_\(request\.adminToken\);/);
-  assert.match(gas, /case 'admin\.event\.save': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'admin'\);\s*requireAdmin_\(request\.adminToken\);/);
-  assert.match(gas, /case 'admin\.event\.delete': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'admin'\);\s*requireAdmin_\(request\.adminToken\);/);
+  assert.match(gas, /case 'admin\.session': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'admin'\);/);
+  assert.match(gas, /case 'admin\.events\.list': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'admin'\);\s*requireCalendarAdmin_\(identity\);/);
+  assert.match(gas, /case 'admin\.event\.save': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'admin'\);\s*requireCalendarAdmin_\(identity\);/);
+  assert.match(gas, /case 'admin\.event\.delete': \{\s*const identity = requireLineIdentity_\(request\.idToken, 'admin'\);\s*requireCalendarAdmin_\(identity\);/);
+  assert.doesNotMatch(gas, /CALENDAR_ADMIN_TOKEN|adminTokenProperty|request\.adminToken/);
 });
 
-test('remote event text is rendered without innerHTML', () => {
+test('duplicate permission rows fail closed and remote event text avoids innerHTML', () => {
+  const gas = read('gas/Code.gs');
   const userApp = read('user/app.js');
   const adminApp = read('admin/app.js');
+
+  assert.match(gas, /matches\.length > 1/);
+  assert.match(gas, /DATA_INTEGRITY_ERROR/);
   assert.doesNotMatch(userApp, /innerHTML/);
   assert.doesNotMatch(adminApp, /innerHTML/);
   assert.match(userApp, /textContent/);
