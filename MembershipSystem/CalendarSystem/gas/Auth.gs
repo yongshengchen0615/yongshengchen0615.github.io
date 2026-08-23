@@ -26,8 +26,11 @@ function authenticateLine_(idToken, clientType) {
   const verifyResponse = fetchLineVerification_(idToken, expectedChannelId);
   const verifyCode = verifyResponse.getResponseCode();
   const verifyData = parseLineJson_(verifyResponse);
-  if (verifyCode !== 200 || !verifyData) {
-    throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token 驗證失敗。');
+  if (verifyCode !== 200) {
+    throwLineVerificationError_(verifyData, expectedChannelId);
+  }
+  if (!verifyData) {
+    throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token 驗證回應格式不合法。');
   }
 
   const expiresAt = Number(verifyData.exp || 0) * 1000;
@@ -35,7 +38,9 @@ function authenticateLine_(idToken, clientType) {
     throw new ApiError(401, 'AUTH_EXPIRED', 'LINE ID token 已過期。');
   }
   if (String(verifyData.aud || '') !== expectedChannelId) {
-    throw new ApiError(401, 'AUTH_CHANNEL_MISMATCH', 'LINE token 不屬於此 LIFF Channel。');
+    throw new ApiError(401, 'AUTH_CHANNEL_MISMATCH', 'LINE token 的 Channel ID 與 GAS 設定不一致。', {
+      expectedChannelId: expectedChannelId
+    });
   }
   if (String(verifyData.iss || '') !== LINE_ID_TOKEN_ISSUER_) {
     throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token issuer 不合法。');
@@ -54,6 +59,24 @@ function authenticateLine_(idToken, clientType) {
   };
   cacheVerifiedLineIdentity_(cacheKey, identity, expiresAt);
   return Object.freeze(identity);
+}
+
+function throwLineVerificationError_(verifyData, expectedChannelId) {
+  const description = String(verifyData && verifyData.error_description || '').trim();
+
+  if (description === 'Invalid IdToken Audience.') {
+    throw new ApiError(401, 'AUTH_CHANNEL_MISMATCH', 'LINE token 的 Channel ID 與 GAS 設定不一致。', {
+      expectedChannelId: expectedChannelId
+    });
+  }
+  if (description === 'IdToken expired.') {
+    throw new ApiError(401, 'AUTH_EXPIRED', 'LINE ID token 已過期。');
+  }
+  if (description === 'Invalid IdToken Issuer.') {
+    throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token issuer 不合法。');
+  }
+
+  throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token 驗證失敗。');
 }
 
 function fetchLineVerification_(idToken, expectedChannelId) {
