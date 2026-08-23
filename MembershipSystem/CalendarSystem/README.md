@@ -9,11 +9,12 @@
 ```text
 User
 → User LIFF App
-→ LINE Login
+→ LINE Authentication
 → liff.getIDToken()
 → GAS
 → LINE Verify ID Token API
 → validate USER_LINE_LOGIN_CHANNEL_ID / aud / exp
+→ record LineIdentities(surface=user)
 → calendar read
 ```
 
@@ -22,9 +23,10 @@ User
 ```text
 Admin
 → Admin LIFF App
-→ LINE Login
+→ LINE Authentication
 → liff.getIDToken()
 → GAS verifies ADMIN_LINE_LOGIN_CHANNEL_ID / aud / exp
+→ record LineIdentities(surface=admin)
 → lookup AdminPermissions by verified LINE sub
 → status=active AND canManageCalendar=TRUE
 → admin action
@@ -35,9 +37,46 @@ Admin
 - Admin LIFF 負責 Authentication：確認「你是誰」。
 - `AdminPermissions.canManageCalendar` 負責 Authorization：確認「你能不能管理日曆」。
 - 管理權限一定由 GAS server-side 查表判斷，前端 UI 不是安全邊界。
-- Admin ID Token 只存在 JavaScript runtime memory，不寫入 `localStorage`、`sessionStorage` 或 URL。
+- User / Admin ID Token 都只存在 JavaScript runtime memory，不寫入 `localStorage`、`sessionStorage` 或 URL。
+
+### 每次進入都重新驗證
+
+User 與 Admin 每次重新進入各自頁面，都必須重新取得 LIFF 登入狀態並把 ID Token 送到 GAS 做 server-side LINE Verify。
+
+執行環境差異：
+
+- **LIFF Browser**：LINE 官方機制是在 `liff.init()` 時自動完成登入，不能再呼叫 `liff.login()` 強制顯示另一個登入畫面；但 GAS 仍會在每次頁面進入時重新驗證 ID Token。
+- **外部瀏覽器 / 非 LIFF Browser**：本專案每次進入頁面會清除現有 LIFF 登入狀態，再重新走 `liff.login()`。
+
+因此「每次進入都必須 Authentication」是 server-side 安全邊界；是否看到 LINE 登入畫面取決於 LINE 執行環境。
 
 > 建議 User LIFF 與 Admin LIFF 位於不同 LINE Login Channel，分別設定 `USER_LINE_LOGIN_CHANNEL_ID` 與 `ADMIN_LINE_LOGIN_CHANNEL_ID`。這樣 User LIFF Token 無法通過 Admin channel 驗證。
+
+## LineIdentities
+
+User 或 Admin 每次成功完成 LINE 驗證後，GAS 都會建立或更新 `LineIdentities`。
+
+唯一識別邏輯為：
+
+```text
+lineUserId + surface
+```
+
+欄位：
+
+| 欄位 | 用途 |
+|---|---|
+| lineUserId | LINE Verify API 驗證後的 `sub` |
+| surface | `user` / `admin` |
+| displayName | 驗證後 LINE 顯示名稱 |
+| pictureUrl | 驗證後 LINE 頭像 URL |
+| firstSeenAt | 第一次成功登入時間 |
+| lastLoginAt | 最近一次成功登入時間 |
+| loginCount | 成功登入次數 |
+
+第一次成功登入會建立 `loginCount=1`；後續每次成功登入更新 `lastLoginAt` 並遞增 `loginCount`。
+
+相同 `lineUserId + surface` 如果出現重複資料，GAS 會以 `DATA_INTEGRITY_ERROR` fail closed，不任意挑選資料列。
 
 ## AdminPermissions
 
@@ -83,9 +122,10 @@ status = disabled
 
 ## Storage
 
-第一次 API 呼叫會自動建立 Google Spreadsheet：
+`setupCalendarStorage()` 或第一次需要 Storage 的 API 呼叫會 ensure 以下工作表存在：
 
 - `CalendarEvents`
+- `LineIdentities`
 - `AdminPermissions`
 - `AuditLogs`
 
@@ -115,7 +155,10 @@ status = disabled
 
 ### AuditLogs
 
-管理端建立、更新、封存事件時，Audit actor 使用通過 Admin LIFF 驗證的 LINE `sub`。不記錄 LINE ID Token。
+- User / Admin 成功登入會記錄 `LOGIN_SUCCESS`。
+- 首次建立 LINE 身分會記錄 `LINE_IDENTITY_CREATED`。
+- 管理端建立、更新、封存事件時，Audit actor 使用通過 Admin LIFF 驗證的 LINE `sub`。
+- 不記錄 LINE ID Token、Access Token、Secret。
 
 > 因為權限是直接手動修改 Google Sheet，Google Sheet 內的權限欄位變更不會由 CalendarSystem API 產生 Audit Event；如果需要完整的「誰改了誰的權限」稽核，後續應改成受保護的權限管理 API，而不是直接編輯 Sheet。
 
@@ -149,6 +192,7 @@ https://<github-pages-host>/MembershipSystem/CalendarSystem/admin/
 ### GAS Script Properties
 
 ```text
+CALENDAR_SPREADSHEET_ID=<Calendar Spreadsheet ID>
 USER_LINE_LOGIN_CHANNEL_ID=<User LIFF 所屬 LINE Login Channel ID>
 ADMIN_LINE_LOGIN_CHANNEL_ID=<Admin LIFF 所屬 LINE Login Channel ID>
 ```
@@ -160,6 +204,17 @@ ADMIN_LINE_LOGIN_CHANNEL_ID=<Admin LIFF 所屬 LINE Login Channel ID>
 ```text
 CALENDAR_ADMIN_TOKEN
 ```
+
+### appsscript.json
+
+使用 `UrlFetchApp` 呼叫 LINE Verify API，因此至少需要：
+
+```text
+https://www.googleapis.com/auth/spreadsheets
+https://www.googleapis.com/auth/script.external_request
+```
+
+修改 OAuth scopes 後，需要重新授權 Apps Script，再建立新的 Web App deployment version。
 
 ### GAS Web App
 
@@ -181,7 +236,7 @@ CALENDAR_ADMIN_TOKEN
 
 Actions：
 
-- `member.me`
+- `member.me`：驗證 LINE 身分並建立/更新 `LineIdentities(surface=user)`
 - `calendar.month`
 - `calendar.day`
 
@@ -195,7 +250,7 @@ Actions：
 
 Actions：
 
-- `admin.session`：建立/讀取自己的 `AdminPermissions` 狀態，不代表已授權
+- `admin.session`：驗證 LINE 身分、建立/更新 `LineIdentities(surface=admin)`、建立/讀取自己的 `AdminPermissions` 狀態；不代表已授權
 - `admin.events.list`
 - `admin.event.save`
 - `admin.event.delete`
@@ -214,11 +269,16 @@ AdminPermissions.canManageCalendar = TRUE
 
 - User URL 使用 User LIFF ID。
 - Admin URL 使用 Admin LIFF ID。
-- 未登入 Admin LIFF 不得取得管理資料。
-- Admin 第一次登入會自動建立 `AdminPermissions`，權限預設 `FALSE`。
+- 每次重新進入 User/Admin 頁面都重新執行 LINE Authentication flow。
+- 外部瀏覽器不沿用既有 LIFF login session 直接進入功能頁。
+- LIFF Browser 每次進入都由 `liff.init()` 自動取得登入身分，再由 GAS 驗證 ID Token。
+- User 第一次成功登入會建立 `LineIdentities(surface=user)`。
+- Admin 第一次成功登入會建立 `LineIdentities(surface=admin)`。
+- Admin 第一次成功登入會自動建立 `AdminPermissions`，權限預設 `FALSE`。
+- 每次成功登入更新 `lastLoginAt` 與 `loginCount`。
 - `FALSE` 或 `disabled` 不得讀取、建立、修改或封存事件。
 - 手動改為 `TRUE + active` 後才能操作管理 API。
-- 同一 `lineUserId` 重複資料必須 fail closed。
+- 同一 identity / permission 出現重複資料必須 fail closed。
 - 管理端不存在管理密碼 / token 輸入。
 - 管理端沒有「查看用戶端」入口。
 - 草稿不會出現在用戶端。
