@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <title>日曆｜管理端</title>
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=20260823-perf-ux-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="./app.js" defer></script>
+  <script src="./app.js?v=20260823-perf-ux-1" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -53,7 +53,10 @@
 
         <div class="calendar-actions">
           <p>點擊日期即可新增或管理當日事項。</p>
-          <button id="refreshButton" class="button ghost" type="button">重新載入</button>
+          <div class="sync-actions">
+            <span id="syncStatus" class="sync-status" aria-live="polite">準備同步資料</span>
+            <button id="refreshButton" class="button ghost compact-button" type="button">同步資料</button>
+          </div>
         </div>
 
         <div class="weekday-row" aria-hidden="true">
