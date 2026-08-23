@@ -4,6 +4,12 @@ const CALENDAR_TYPES_ = Object.freeze(['holiday', 'event', 'notice']);
 const CALENDAR_VISIBLE_STATUSES_ = Object.freeze(['draft', 'published']);
 const DATE_KEY_PATTERN_ = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN_ = /^([01]\d|2[0-3]):[0-5]\d$/;
+const COLOR_PATTERN_ = /^#[0-9A-Fa-f]{6}$/;
+const DEFAULT_CALENDAR_COLORS_ = Object.freeze({
+  holiday: '#D95656',
+  event: '#3182B8',
+  notice: '#D3A12F'
+});
 
 function handleUserBootstrap_(identity) {
   authorizeUserAccount_(identity, true);
@@ -62,7 +68,8 @@ function handleAdminCalendarCreate_(identity, admin, rawItem) {
     created_by: identity.lineUserId,
     created_at: now,
     updated_by: identity.lineUserId,
-    updated_at: now
+    updated_at: now,
+    color: item.color
   };
 
   withDataLock_(function() {
@@ -114,7 +121,8 @@ function handleAdminCalendarUpdate_(identity, admin, rawItem, expectedUpdatedAt)
       created_by: match.record.created_by,
       created_at: match.record.created_at,
       updated_by: identity.lineUserId,
-      updated_at: now
+      updated_at: now,
+      color: item.color
     };
 
     updateRecordAtRow_('CalendarItems', match.rowNumber, updatedRecord);
@@ -281,6 +289,13 @@ function validateCalendarItem_(rawItem, requireId) {
     }
   }
 
+  let color = requireText_(rawItem.color, 'color', 7, false);
+  if (!color) color = defaultCalendarColor_(type);
+  if (!COLOR_PATTERN_.test(color)) {
+    throw new ApiError(400, 'INVALID_COLOR', 'color 必須使用 #RRGGBB 格式。');
+  }
+  color = color.toUpperCase();
+
   return {
     itemId: itemId,
     type: type,
@@ -288,6 +303,7 @@ function validateCalendarItem_(rawItem, requireId) {
     title: title,
     startDate: startDate,
     endDate: endDate,
+    color: color,
     allDay: allDay,
     startTime: startTime,
     endTime: endTime,
@@ -338,12 +354,16 @@ function publicProfile_(identity) {
 }
 
 function calendarRecordToApi_(record) {
+  const type = String(record.type || '');
+  const storedColor = String(record.color || '').trim();
+  const color = COLOR_PATTERN_.test(storedColor) ? storedColor.toUpperCase() : defaultCalendarColor_(type);
   return {
     itemId: String(record.item_id || ''),
-    type: String(record.type || ''),
+    type: type,
     title: String(record.title || ''),
     startDate: String(record.start_date || ''),
     endDate: String(record.end_date || ''),
+    color: color,
     allDay: String(record.all_day || '').toLowerCase() === 'true',
     startTime: String(record.start_time || ''),
     endTime: String(record.end_time || ''),
@@ -353,4 +373,8 @@ function calendarRecordToApi_(record) {
     createdAt: String(record.created_at || ''),
     updatedAt: String(record.updated_at || '')
   };
+}
+
+function defaultCalendarColor_(type) {
+  return DEFAULT_CALENDAR_COLORS_[type] || DEFAULT_CALENDAR_COLORS_.notice;
 }
