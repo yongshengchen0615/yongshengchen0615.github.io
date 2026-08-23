@@ -6,10 +6,12 @@
   <meta name="referrer" content="no-referrer">
   <title>日曆｜管理端</title>
   <link rel="stylesheet" href="./styles.css?v=20260823-perf-ux-1">
+  <link rel="stylesheet" href="./user-access.css?v=20260823-user-access-1">
   <link rel="stylesheet" href="../shared/profile.css?v=20260823-avatar-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="./app.js?v=20260823-perf-ux-1" defer></script>
   <script src="./date-constraints.js?v=20260823-date-policy-1" defer></script>
+  <script src="./user-access.js?v=20260823-user-access-1" defer></script>
   <script src="../shared/line-profile.js?v=20260823-avatar-1" defer></script>
 </head>
 <body>
@@ -72,6 +74,20 @@
           <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
         </div>
         <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+
+      <section id="userAccessCard" class="user-access-card" aria-labelledby="userAccessTitle">
+        <div class="user-access-header">
+          <div>
+            <p class="eyebrow">User access</p>
+            <h2 id="userAccessTitle">用戶使用權限</h2>
+          </div>
+          <div class="user-access-actions">
+            <span id="userAccessStatus" class="user-access-status" aria-live="polite">準備載入</span>
+            <button id="userAccessRefresh" class="button ghost compact-button" type="button">重新整理</button>
+          </div>
+        </div>
+        <div id="userAccessList" class="user-access-list"></div>
       </section>
     </main>
   </div>
