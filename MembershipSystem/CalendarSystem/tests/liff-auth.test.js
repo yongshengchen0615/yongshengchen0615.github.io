@@ -33,8 +33,8 @@ test('GAS verifies LINE ID token before returning calendar data', () => {
   assert.match(gas, /payload: \{ id_token: idToken, client_id: channelId \}/);
   assert.match(gas, /String\(identity\.aud\) !== String\(channelId\)/);
   assert.match(gas, /identity\.exp/);
-  assert.match(gas, /case 'calendar\.month': \{[\s\S]*?requireLineIdentity_\(request\.idToken\)/);
-  assert.match(gas, /case 'calendar\.day': \{[\s\S]*?requireLineIdentity_\(request\.idToken\)/);
+  assert.match(gas, /case 'calendar\.month': \{\s*const identity = requireLineIdentity_\(request\.idToken\);/);
+  assert.match(gas, /case 'calendar\.day': \{\s*const identity = requireLineIdentity_\(request\.idToken\);/);
 });
 
 test('admin remains independent from LIFF and has no user-view shortcut', () => {
