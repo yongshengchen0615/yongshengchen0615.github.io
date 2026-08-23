@@ -2,6 +2,8 @@
 
 const state = {
   config: null,
+  idToken: '',
+  profile: null,
   cursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   events: [],
   eventsByDate: new Map()
@@ -14,24 +16,36 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
   bindElements();
   bindActions();
+  showBoot();
+
   try {
     state.config = await loadConfig();
+    validateConfig(state.config);
     els.appTitle.textContent = state.config.appName || '營業日曆';
-    if (!state.config.apiUrl) throw new Error('尚未設定 GAS API URL。');
+
+    const loggedIn = await ensureLiffLogin();
+    if (!loggedIn) return;
+
+    const me = await apiRequest('member.me', {});
+    state.profile = me.profile || null;
+    renderProfile();
+    showCalendarApp();
     await loadMonth();
   } catch (error) {
-    setStatus(error.message || '載入失敗。', true);
-    renderCalendar();
-    renderEventList();
+    showError(error && error.message ? error.message : '載入失敗。');
   }
 }
 
 function bindElements() {
-  ['appTitle','todayBtn','prevBtn','nextBtn','monthTitle','loadStatus','calendarGrid','eventList','dayDialog','dialogDate','dialogEvents']
-    .forEach(id => { els[id] = document.getElementById(id); });
+  [
+    'bootState','errorState','errorMessage','retryBtn','calendarApp','appTitle',
+    'memberAvatar','memberName','todayBtn','prevBtn','nextBtn','monthTitle',
+    'loadStatus','calendarGrid','eventList','dayDialog','dialogDate','dialogEvents'
+  ].forEach(id => { els[id] = document.getElementById(id); });
 }
 
 function bindActions() {
+  els.retryBtn.addEventListener('click', () => window.location.reload());
   els.prevBtn.addEventListener('click', () => changeMonth(-1));
   els.nextBtn.addEventListener('click', () => changeMonth(1));
   els.todayBtn.addEventListener('click', async () => {
@@ -42,9 +56,74 @@ function bindActions() {
 }
 
 async function loadConfig() {
-  const response = await fetch('../config.json', { cache: 'no-store' });
+  const response = await fetch('../config.json', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+    redirect: 'error',
+    referrerPolicy: 'no-referrer'
+  });
   if (!response.ok) throw new Error('無法讀取 config.json。');
   return response.json();
+}
+
+function validateConfig(config) {
+  const apiUrl = String(config && config.apiUrl || '').trim();
+  const liffId = String(config && config.liffId || '').trim();
+  if (!/^https:\/\/.+/i.test(apiUrl)) throw new Error('尚未設定 GAS API URL。');
+  if (!liffId || /^YOUR_[A-Z0-9_]+$/i.test(liffId)) throw new Error('尚未設定 Calendar LIFF ID。');
+}
+
+async function ensureLiffLogin() {
+  if (!window.liff || typeof window.liff.init !== 'function') {
+    throw new Error('LINE LIFF SDK 載入失敗。');
+  }
+
+  await window.liff.init({ liffId: state.config.liffId });
+
+  if (!window.liff.isLoggedIn()) {
+    if (window.liff.isInClient()) {
+      throw new Error('無法取得 LINE 登入狀態，請關閉頁面後重新開啟。');
+    }
+    window.liff.login({ redirectUri: canonicalUrl() });
+    return false;
+  }
+
+  const idToken = window.liff.getIDToken();
+  if (!idToken) {
+    throw new Error('無法取得 LINE ID Token，請確認 LIFF 已啟用 openid scope。');
+  }
+
+  state.idToken = idToken;
+  canonicalizeUrl();
+  return true;
+}
+
+function canonicalUrl() {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  return url.href;
+}
+
+function canonicalizeUrl() {
+  const cleanUrl = canonicalUrl();
+  if (window.location.href !== cleanUrl) {
+    window.history.replaceState(null, '', cleanUrl);
+  }
+}
+
+function renderProfile() {
+  const profile = state.profile || {};
+  els.memberName.textContent = profile.displayName || 'LINE 會員';
+  const pictureUrl = String(profile.pictureUrl || '');
+  if (/^https:\/\//i.test(pictureUrl)) {
+    els.memberAvatar.src = pictureUrl;
+    els.memberAvatar.alt = `${profile.displayName || 'LINE 會員'} 的 LINE 頭像`;
+    els.memberAvatar.hidden = false;
+  } else {
+    els.memberAvatar.removeAttribute('src');
+    els.memberAvatar.hidden = true;
+  }
 }
 
 async function changeMonth(delta) {
@@ -70,23 +149,35 @@ async function loadMonth() {
     state.eventsByDate = new Map();
     renderCalendar();
     renderEventList();
-    setStatus(error.message || '無法載入日曆。', true);
+    setStatus(error && error.message ? error.message : '無法載入日曆。', true);
   }
 }
 
 async function apiRequest(action, payload) {
+  if (!state.idToken) throw new Error('LINE 登入狀態已失效，請重新整理。');
+
   const body = new URLSearchParams();
   body.set('action', action);
+  body.set('idToken', state.idToken);
   body.set('payload', JSON.stringify(payload || {}));
 
   const response = await fetch(state.config.apiUrl, {
     method: 'POST',
     body,
-    redirect: 'follow'
+    redirect: 'follow',
+    referrerPolicy: 'no-referrer'
   });
   if (!response.ok) throw new Error(`服務連線失敗 (${response.status})`);
+
   const result = await response.json();
-  if (!result.ok) throw new Error(result.error?.message || '服務暫時無法使用。');
+  if (!result.ok) {
+    const code = String(result.error && result.error.code || '');
+    if (code === 'UNAUTHENTICATED') {
+      state.idToken = '';
+      throw new Error('LINE 登入憑證已失效，請重新整理後再試。');
+    }
+    throw new Error(result.error && result.error.message || '服務暫時無法使用。');
+  }
   return result.data || {};
 }
 
@@ -175,8 +266,8 @@ function renderEventList() {
       row.className = 'event-row';
       row.addEventListener('click', () => openDay(event.date));
       row.tabIndex = 0;
-      row.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') openDay(event.date);
+      row.addEventListener('keydown', eventKey => {
+        if (eventKey.key === 'Enter' || eventKey.key === ' ') openDay(event.date);
       });
 
       const date = document.createElement('div');
@@ -260,4 +351,23 @@ function formatLongDate(value) {
 function setStatus(message, isError = false) {
   els.loadStatus.textContent = message;
   els.loadStatus.style.color = isError ? '#9d362c' : '';
+}
+
+function showBoot() {
+  els.bootState.hidden = false;
+  els.errorState.hidden = true;
+  els.calendarApp.hidden = true;
+}
+
+function showCalendarApp() {
+  els.bootState.hidden = true;
+  els.errorState.hidden = true;
+  els.calendarApp.hidden = false;
+}
+
+function showError(message) {
+  els.bootState.hidden = true;
+  els.calendarApp.hidden = true;
+  els.errorMessage.textContent = String(message || '請稍後再試。');
+  els.errorState.hidden = false;
 }
