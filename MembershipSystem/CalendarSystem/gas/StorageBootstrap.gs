@@ -2,6 +2,7 @@
 
 const CALENDAR_STORAGE_PROPERTY_ = 'CALENDAR_SYSTEM_V2_SPREADSHEET_ID';
 const CALENDAR_DATA_REVISION_PROPERTY_ = 'CALENDAR_SYSTEM_V2_DATA_REVISION';
+const CALENDAR_LINE_VERIFY_PREFLIGHT_URL_ = 'https://api.line.me/oauth2/v2.1/verify';
 const CALENDAR_SHEET_SCHEMAS_ = Object.freeze({
   Users: Object.freeze([
     'line_user_id', 'display_name', 'status', 'last_login_at', 'created_at', 'updated_at'
@@ -22,12 +23,44 @@ const CALENDAR_SHEET_SCHEMAS_ = Object.freeze({
 let CALENDAR_SPREADSHEET_CACHE_ = null;
 
 function setupCalendarSystem() {
+  // Running setupCalendarSystem() manually from the Apps Script editor intentionally
+  // touches UrlFetchApp so Google requests the external_request OAuth scope during
+  // the same authorization flow used to create/access the Spreadsheet.
+  const authorization = authorizeCalendarSetupRuntime_();
   const spreadsheet = ensureCalendarStorage_();
   return {
     spreadsheetId: spreadsheet.getId(),
     spreadsheetUrl: spreadsheet.getUrl(),
-    sheets: Object.keys(CALENDAR_SHEET_SCHEMAS_)
+    sheets: Object.keys(CALENDAR_SHEET_SCHEMAS_),
+    urlFetchAuthorized: authorization.urlFetchAuthorized,
+    lineVerifyPreflightStatus: authorization.lineVerifyPreflightStatus
   };
+}
+
+function authorizeCalendarSetupRuntime_() {
+  try {
+    const response = UrlFetchApp.fetch(CALENDAR_LINE_VERIFY_PREFLIGHT_URL_, {
+      method: 'post',
+      contentType: 'application/x-www-form-urlencoded',
+      payload: {
+        id_token: 'calendar-system-permission-check',
+        client_id: 'calendar-system-permission-check'
+      },
+      muteHttpExceptions: true,
+      followRedirects: true
+    });
+
+    return Object.freeze({
+      urlFetchAuthorized: true,
+      lineVerifyPreflightStatus: response.getResponseCode()
+    });
+  } catch (error) {
+    throw new ApiError(
+      503,
+      'URL_FETCH_AUTHORIZATION_REQUIRED',
+      'CalendarSystem 初始化需要 UrlFetchApp 外部請求權限。請從 Apps Script 編輯器重新執行 setupCalendarSystem() 並完成 Google 授權。'
+    );
+  }
 }
 
 function ensureCalendarStorage_() {
