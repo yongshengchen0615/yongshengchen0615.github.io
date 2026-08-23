@@ -1,6 +1,6 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.1.0';
+const CALENDAR_API_VERSION_ = '2.1.1';
 const MAX_REQUEST_BYTES_ = 20000;
 const RATE_LIMIT_READ_PER_MINUTE_ = 90;
 const RATE_LIMIT_WRITE_PER_MINUTE_ = 30;
@@ -68,11 +68,13 @@ function doPost(e) {
       }
       case 'admin.calendar.create': {
         const admin = authorizeAdmin_(identity);
+        enforceAdminCalendarNotPast_(request.item);
         data = handleAdminCalendarCreate_(identity, admin, request.item);
         break;
       }
       case 'admin.calendar.update': {
         const admin = authorizeAdmin_(identity);
+        enforceAdminCalendarNotPast_(request.item);
         data = handleAdminCalendarUpdate_(identity, admin, request.item, request.expectedUpdatedAt);
         break;
       }
