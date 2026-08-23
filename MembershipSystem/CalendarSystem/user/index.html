@@ -53,18 +53,23 @@
         </div>
         <div id="calendarGrid" class="calendar-grid"></div>
       </section>
-
-      <section class="agenda-card">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Selected day</p>
-            <h2 id="selectedDateTitle">今日行程</h2>
-          </div>
-          <span id="selectedCount" class="badge">0</span>
-        </div>
-        <div id="agendaList" class="agenda-list"></div>
-      </section>
     </main>
+  </div>
+
+  <div id="selectedDayModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="selectedDateTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Selected day</p>
+          <h2 id="selectedDateTitle">今日行程</h2>
+        </div>
+        <div class="modal-header-actions">
+          <span id="selectedCount" class="badge">0</span>
+          <button id="closeSelectedDayButton" class="icon-button compact" type="button" aria-label="關閉當日行程">×</button>
+        </div>
+      </div>
+      <div id="agendaList" class="agenda-list"></div>
+    </div>
   </div>
 </body>
 </html>
