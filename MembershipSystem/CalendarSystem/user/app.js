@@ -23,8 +23,8 @@
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton',
       'calendarView', 'displayName', 'logoutButton', 'prevMonth', 'nextMonth',
-      'todayButton', 'monthTitle', 'calendarGrid', 'selectedDateTitle',
-      'selectedCount', 'agendaList'
+      'todayButton', 'monthTitle', 'calendarGrid', 'selectedDayModal', 'closeSelectedDayButton',
+      'selectedDateTitle', 'selectedCount', 'agendaList'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
 
@@ -53,7 +53,16 @@
       state.viewMonth = startOfMonth(today);
       state.selectedDate = dateKey(today);
       renderCalendar();
-      renderAgenda();
+    });
+
+    els.closeSelectedDayButton.addEventListener('click', closeSelectedDayModal);
+    els.selectedDayModal.addEventListener('click', (event) => {
+      if (event.target === els.selectedDayModal) closeSelectedDayModal();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !els.selectedDayModal.classList.contains('hidden')) {
+        closeSelectedDayModal();
+      }
     });
   }
 
@@ -77,7 +86,6 @@
 
       setView('calendar');
       renderCalendar();
-      renderAgenda();
     } catch (error) {
       handleBootError(error);
     } finally {
@@ -207,7 +215,8 @@
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = 'day-cell';
-      cell.setAttribute('aria-label', formatDate(date));
+      cell.dataset.date = key;
+      cell.setAttribute('aria-label', `${formatDate(date)}，${dayItems.length} 個行程`);
       if (date.getMonth() !== month) cell.classList.add('outside');
       if (key === todayKey) cell.classList.add('today');
       if (key === state.selectedDate) cell.classList.add('selected');
@@ -236,17 +245,28 @@
         cell.appendChild(items);
       }
 
-      cell.addEventListener('click', () => {
-        state.selectedDate = key;
-        state.viewMonth = startOfMonth(date);
-        renderCalendar();
-        renderAgenda();
-      });
-
+      cell.addEventListener('click', () => openSelectedDayModal(key, date));
       fragment.appendChild(cell);
     }
 
     els.calendarGrid.replaceChildren(fragment);
+  }
+
+  function openSelectedDayModal(key, date) {
+    state.selectedDate = key;
+    state.viewMonth = startOfMonth(date);
+    renderCalendar();
+    renderAgenda();
+    els.selectedDayModal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    window.setTimeout(() => els.closeSelectedDayButton.focus(), 0);
+  }
+
+  function closeSelectedDayModal() {
+    els.selectedDayModal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
+    const trigger = document.querySelector(`.day-cell[data-date="${state.selectedDate}"]`);
+    if (trigger) trigger.focus();
   }
 
   function renderAgenda() {
