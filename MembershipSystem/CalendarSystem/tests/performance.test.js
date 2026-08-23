@@ -20,6 +20,15 @@ test('GAS validates storage once at the request boundary instead of from every s
   assert.doesNotMatch(service, /ensureCalendarStorage_\(\)/);
 });
 
+test('setup triggers the UrlFetch external-request authorization before creating storage', () => {
+  const storage = read('gas/StorageBootstrap.gs');
+
+  assert.match(storage, /function setupCalendarSystem\(\)[\s\S]*authorizeCalendarSetupRuntime_\(\)[\s\S]*ensureCalendarStorage_\(\)/);
+  assert.match(storage, /function authorizeCalendarSetupRuntime_[\s\S]*UrlFetchApp\.fetch/);
+  assert.match(storage, /calendar-system-permission-check/);
+  assert.match(storage, /URL_FETCH_AUTHORIZATION_REQUIRED/);
+});
+
 test('LINE verification uses a bounded digest-keyed cache and retries transient failures only', () => {
   const auth = read('gas/Auth.gs');
 
