@@ -83,6 +83,19 @@ test('storage creates identity, admin permission, calendar and audit sheets', ()
   assert.match(storage, /'lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'/);
 });
 
+test('runtime storage binding fails closed and cannot silently create a different database', () => {
+  const storage = read('gas/StorageBootstrap.gs');
+  const runtimeStart = storage.indexOf('function ensureCalendarStorage_()');
+  const runtimeEnd = storage.indexOf('function openCalendarSpreadsheet_', runtimeStart);
+  const runtime = storage.slice(runtimeStart, runtimeEnd);
+
+  assert.match(runtime, /CALENDAR_SPREADSHEET_ID is missing/);
+  assert.match(runtime, /openCalendarSpreadsheet_\(existingId\)/);
+  assert.doesNotMatch(runtime, /SpreadsheetApp\.create/);
+  assert.match(storage, /function diagnoseCalendarStorage\(\)/);
+  assert.match(storage, /writeProbe/);
+});
+
 test('successful user and admin sessions automatically persist login identity data', () => {
   const gas = read('gas/Code.gs');
 
