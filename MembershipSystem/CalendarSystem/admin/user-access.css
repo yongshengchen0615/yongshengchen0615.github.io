@@ -1,0 +1,21 @@
+.user-access-card { margin-top: 16px; background: rgba(255,255,255,.97); border: 1px solid #e2e8e4; border-radius: 22px; box-shadow: 0 16px 42px rgba(30,45,36,.06); padding: 18px; }
+.user-access-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.user-access-header h2 { margin: 2px 0 0; font-size: 20px; }
+.user-access-actions { display: flex; align-items: center; gap: 10px; }
+.user-access-status { color: #68766c; font-size: 12px; }
+.user-access-status.error { color: #b42318; }
+.user-access-list { display: grid; gap: 8px; }
+.user-access-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid #e7ece9; border-radius: 12px; background: #fff; }
+.user-access-identity { min-width: 0; display: grid; gap: 4px; }
+.user-access-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.user-access-identity span { color: #748078; font-size: 11px; overflow-wrap: anywhere; }
+.user-access-controls { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.user-access-select { min-width: 92px; border: 1px solid #dce5df; border-radius: 10px; background: #fff; padding: 8px 10px; color: #25342a; font: inherit; }
+.user-access-empty { padding: 20px 8px; text-align: center; color: #78847c; }
+
+@media (max-width: 640px) {
+  .user-access-header, .user-access-row { align-items: stretch; flex-direction: column; }
+  .user-access-actions { justify-content: space-between; }
+  .user-access-controls { width: 100%; }
+  .user-access-select { flex: 1; }
+}

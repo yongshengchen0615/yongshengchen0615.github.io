@@ -1,14 +1,16 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.1.1';
+const CALENDAR_API_VERSION_ = '2.2.0';
 const CALENDAR_BUSINESS_TIME_ZONE_ = 'Asia/Taipei';
+const USER_ACCESS_STATUSES_ = Object.freeze(['active', 'disabled']);
 const MAX_REQUEST_BYTES_ = 20000;
 const RATE_LIMIT_READ_PER_MINUTE_ = 90;
 const RATE_LIMIT_WRITE_PER_MINUTE_ = 30;
 const WRITE_ACTIONS_ = Object.freeze([
   'admin.calendar.create',
   'admin.calendar.update',
-  'admin.calendar.archive'
+  'admin.calendar.archive',
+  'admin.users.updateStatus'
 ]);
 
 class ApiError extends Error {
@@ -82,6 +84,22 @@ function doPost(e) {
       case 'admin.calendar.archive': {
         const admin = authorizeAdmin_(identity);
         data = handleAdminCalendarArchive_(identity, admin, request.itemId, request.expectedUpdatedAt);
+        break;
+      }
+      case 'admin.users.list': {
+        const admin = authorizeAdmin_(identity);
+        data = handleAdminUsersList_(identity, admin);
+        break;
+      }
+      case 'admin.users.updateStatus': {
+        const admin = authorizeAdmin_(identity);
+        data = handleAdminUserStatusUpdate_(
+          identity,
+          admin,
+          request.lineUserId,
+          request.status,
+          request.expectedUpdatedAt
+        );
         break;
       }
       default:
@@ -195,6 +213,86 @@ function isValidDateKeyForPolicy_(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(value + 'T00:00:00Z');
   return !isNaN(parsed.getTime()) && parsed.toISOString().substring(0, 10) === value;
+}
+
+function handleAdminUsersList_() {
+  const users = readRecords_('Users')
+    .map(publicAdminUserAccess_)
+    .sort(function(a, b) {
+      return String(b.lastLoginAt || '').localeCompare(String(a.lastLoginAt || '')) ||
+        String(a.displayName || '').localeCompare(String(b.displayName || ''), 'zh-Hant');
+    });
+  return { users: users };
+}
+
+function handleAdminUserStatusUpdate_(identity, admin, rawLineUserId, rawStatus, rawExpectedUpdatedAt) {
+  const lineUserId = requireAdminUserAccessText_(rawLineUserId, 'lineUserId', 80, true);
+  const status = requireAdminUserAccessText_(rawStatus, 'status', 20, true).toLowerCase();
+  const expectedUpdatedAt = requireAdminUserAccessText_(rawExpectedUpdatedAt, 'expectedUpdatedAt', 40, true);
+
+  if (USER_ACCESS_STATUSES_.indexOf(status) === -1) {
+    throw new ApiError(400, 'INVALID_USER_STATUS', '用戶使用權限狀態不合法。');
+  }
+
+  let updatedRecord;
+  withDataLock_(function() {
+    const match = findRecordWithRow_('Users', 'line_user_id', lineUserId);
+    if (!match) throw new ApiError(404, 'USER_NOT_FOUND', '找不到指定用戶。');
+
+    if (String(match.record.updated_at || '') !== expectedUpdatedAt) {
+      throw new ApiError(409, 'CONFLICT', '用戶權限已被其他管理員更新。');
+    }
+
+    const previousStatus = String(match.record.status || '').trim().toLowerCase();
+    if (previousStatus === status) {
+      updatedRecord = match.record;
+      return;
+    }
+
+    const now = nowIso_();
+    updatedRecord = Object.assign({}, match.record, {
+      status: status,
+      updated_at: now
+    });
+    updateRecordAtRow_('Users', match.rowNumber, updatedRecord);
+
+    appendAuditRecord_({
+      audit_id: Utilities.getUuid(),
+      actor_line_user_id: identity.lineUserId,
+      actor_role: admin.role,
+      action: 'USER_ACCOUNT_STATUS_CHANGED',
+      target_type: 'user_account',
+      target_id: lineUserId,
+      result: 'success',
+      detail: 'status=' + (previousStatus || 'unknown') + '->' + status,
+      created_at: now
+    });
+  });
+
+  return { user: publicAdminUserAccess_(updatedRecord) };
+}
+
+function publicAdminUserAccess_(record) {
+  const status = String(record && record.status || '').trim().toLowerCase();
+  return {
+    lineUserId: String(record && record.line_user_id || ''),
+    displayName: String(record && record.display_name || ''),
+    status: USER_ACCESS_STATUSES_.indexOf(status) !== -1 ? status : 'disabled',
+    lastLoginAt: String(record && record.last_login_at || ''),
+    createdAt: String(record && record.created_at || ''),
+    updatedAt: String(record && record.updated_at || '')
+  };
+}
+
+function requireAdminUserAccessText_(value, fieldName, maxLength, required) {
+  if (value === null || value === undefined || typeof value !== 'string') {
+    if (required) throw new ApiError(400, 'VALIDATION_ERROR', fieldName + ' 為必填字串。');
+    return '';
+  }
+  const text = value.trim();
+  if (required && !text) throw new ApiError(400, 'VALIDATION_ERROR', fieldName + ' 為必填。');
+  if (text.length > maxLength) throw new ApiError(400, 'VALIDATION_ERROR', fieldName + ' 超過長度限制。');
+  return text;
 }
 
 function errorResponse_(error) {
