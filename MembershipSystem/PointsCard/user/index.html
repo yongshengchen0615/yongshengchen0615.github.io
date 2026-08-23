@@ -9,11 +9,13 @@
   <title>我的集點卡｜Points Card</title>
   <link rel="preload" href="../shared/config.json" as="fetch" crossorigin>
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./ticket-tabs.css">
   <link rel="stylesheet" href="./card-gallery.css">
   <script defer src="../vendor/liff-client.js"></script>
   <script defer src="../shared/common.js"></script>
   <script defer src="./app.js"></script>
   <script defer src="./card-gallery.js"></script>
+  <script defer src="./ticket-tabs.js"></script>
   <script defer src="./point-notifications.js"></script>
 </head>
 <body>
@@ -95,13 +97,17 @@
             <div><p class="eyebrow">MY REWARDS</p><h2 id="ticketWalletTitle">這張卡的票券</h2></div>
             <span id="earnedTicketCount" class="ticket-count">0 張可使用</span>
           </div>
-          <section class="ticket-group" aria-labelledby="earnedTicketsTitle">
-            <div class="ticket-group-heading"><h3 id="earnedTicketsTitle">已獲得</h3><span>點開票券並掃描店家 QR 使用</span></div>
+          <div class="ticket-subtabs" role="tablist" aria-label="票券分類">
+            <button id="earnedTicketsTab" class="ticket-subtab" type="button" role="tab" aria-selected="true" aria-controls="earnedTicketGroup" data-ticket-tab>已獲得</button>
+            <button id="upcomingTicketsTab" class="ticket-subtab" type="button" role="tab" aria-selected="false" aria-controls="upcomingTicketGroup" data-ticket-tab>未獲得</button>
+          </div>
+          <section id="earnedTicketGroup" class="ticket-group ticket-tab-panel" role="tabpanel" aria-labelledby="earnedTicketsTab">
+            <p class="ticket-tab-help">點開票券並掃描店家 QR 使用</p>
             <div id="earnedTicketList" class="earned-ticket-list"></div>
             <div id="earnedTicketEmpty" class="ticket-empty"><span aria-hidden="true">◇</span><p>這張卡達成節點後，票券會出現在這裡。</p></div>
           </section>
-          <section id="upcomingTicketGroup" class="ticket-group upcoming-group" aria-labelledby="upcomingTicketsTitle">
-            <div class="ticket-group-heading"><h3 id="upcomingTicketsTitle">未獲得</h3><span>繼續集這張卡即可解鎖</span></div>
+          <section id="upcomingTicketGroup" class="ticket-group upcoming-group ticket-tab-panel" role="tabpanel" aria-labelledby="upcomingTicketsTab" hidden>
+            <p class="ticket-tab-help">繼續集這張卡即可解鎖</p>
             <div id="upcomingTicketList" class="upcoming-ticket-list"></div>
           </section>
         </section>
