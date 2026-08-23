@@ -50,6 +50,9 @@ test('user and admin headers show LINE avatars while logout controls are not vis
     assert.match(html, /shared\/line-profile\.js/);
     assert.match(html, /id="logoutButton"[^>]*hidden/);
   });
+
+  const profile = read('shared/line-profile.js');
+  assert.match(profile, /logoutButton\.remove\(\)/);
 });
 
 test('LINE avatar loader accepts HTTPS images only and does not persist profile data', () => {
