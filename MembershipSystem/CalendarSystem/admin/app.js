@@ -2,6 +2,7 @@
 
 const state = {
   config: null,
+  idToken: '',
   token: sessionStorage.getItem('calendarAdminToken') || '',
   cursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   events: [],
@@ -15,20 +16,31 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
   bindElements();
   bindActions();
-  state.config = await loadConfig().catch(error => {
-    showAuthMessage(error.message || '讀取設定失敗。', true);
-    return { apiUrl: '' };
-  });
 
-  if (state.token && state.config.apiUrl) {
-    els.adminTokenInput.value = state.token;
-    await authenticate();
+  try {
+    state.config = await loadConfig();
+    validateConfig(state.config);
+
+    const loggedIn = await ensureAdminLiffLogin();
+    if (!loggedIn) return;
+
+    showLineAuthMessage('管理端 LINE 身分已登入。');
+    els.adminTokenInput.disabled = false;
+    els.loginBtn.disabled = false;
+
+    if (state.token) {
+      els.adminTokenInput.value = state.token;
+      await authenticate();
+    }
+  } catch (error) {
+    showLineAuthMessage(error && error.message ? error.message : '管理端 LINE 登入失敗。', true);
+    showAuthMessage('請先完成管理端 LINE 登入。', true);
   }
 }
 
 function bindElements() {
   [
-    'authPanel','adminTokenInput','loginBtn','logoutBtn','authMessage','workspace',
+    'authPanel','lineAuthStatus','adminTokenInput','loginBtn','logoutBtn','authMessage','workspace',
     'prevBtn','nextBtn','todayBtn','reloadBtn','monthTitle','calendarGrid',
     'eventForm','eventId','eventDate','eventType','eventStatus','eventTitle',
     'eventDescription','saveBtn','formMessage','resetBtn','editorTitle',
@@ -38,8 +50,8 @@ function bindElements() {
 
 function bindActions() {
   els.loginBtn.addEventListener('click', authenticate);
-  els.adminTokenInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') authenticate();
+  els.adminTokenInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter') authenticate();
   });
   els.logoutBtn.addEventListener('click', logout);
   els.prevBtn.addEventListener('click', () => changeMonth(-1));
@@ -55,15 +67,69 @@ function bindActions() {
 }
 
 async function loadConfig() {
-  const response = await fetch('../config.json', { cache: 'no-store' });
+  const response = await fetch('../config.json', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+    redirect: 'error',
+    referrerPolicy: 'no-referrer'
+  });
   if (!response.ok) throw new Error('無法讀取 config.json。');
   return response.json();
 }
 
+function validateConfig(config) {
+  const apiUrl = String(config && config.apiUrl || '').trim();
+  const adminLiffId = String(config && config.adminLiffId || '').trim();
+  if (!/^https:\/\/.+/i.test(apiUrl)) throw new Error('尚未設定 GAS API URL。');
+  if (!adminLiffId || /^YOUR_[A-Z0-9_]+$/i.test(adminLiffId)) {
+    throw new Error('尚未設定管理端 LIFF ID。');
+  }
+}
+
+async function ensureAdminLiffLogin() {
+  if (!window.liff || typeof window.liff.init !== 'function') {
+    throw new Error('LINE LIFF SDK 載入失敗。');
+  }
+
+  await window.liff.init({ liffId: state.config.adminLiffId });
+
+  if (!window.liff.isLoggedIn()) {
+    if (window.liff.isInClient()) {
+      throw new Error('無法取得管理端 LINE 登入狀態，請關閉頁面後重新開啟。');
+    }
+    window.liff.login({ redirectUri: canonicalUrl() });
+    return false;
+  }
+
+  const idToken = window.liff.getIDToken();
+  if (!idToken) {
+    throw new Error('無法取得管理端 LINE ID Token，請確認管理端 LIFF 已啟用 openid scope。');
+  }
+
+  state.idToken = idToken;
+  canonicalizeUrl();
+  return true;
+}
+
+function canonicalUrl() {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  return url.href;
+}
+
+function canonicalizeUrl() {
+  const cleanUrl = canonicalUrl();
+  if (window.location.href !== cleanUrl) {
+    window.history.replaceState(null, '', cleanUrl);
+  }
+}
+
 async function authenticate() {
   const token = els.adminTokenInput.value.trim();
+  if (!state.idToken) return showAuthMessage('管理端 LINE 登入尚未完成。', true);
   if (!token) return showAuthMessage('請輸入管理憑證。', true);
-  if (!state.config?.apiUrl) return showAuthMessage('尚未設定 GAS API URL。', true);
+  if (!state.config || !state.config.apiUrl) return showAuthMessage('尚未設定 GAS API URL。', true);
 
   state.token = token;
   els.loginBtn.disabled = true;
@@ -81,9 +147,9 @@ async function authenticate() {
   } catch (error) {
     sessionStorage.removeItem('calendarAdminToken');
     state.token = '';
-    showAuthMessage(error.message || '管理端驗證失敗。', true);
+    handleAuthFailure(error);
   } finally {
-    els.loginBtn.disabled = false;
+    els.loginBtn.disabled = !state.idToken;
   }
 }
 
@@ -94,7 +160,23 @@ function logout() {
   els.workspace.classList.add('is-hidden');
   els.authPanel.classList.remove('is-hidden');
   resetForm();
-  showAuthMessage('已清除本分頁的管理憑證。');
+  showAuthMessage('已清除本分頁的管理憑證；管理端 LINE 登入仍維持。');
+}
+
+function handleAuthFailure(error) {
+  const message = error && error.message ? error.message : '管理端驗證失敗。';
+  if (isLineAuthError(error)) {
+    state.idToken = '';
+    els.adminTokenInput.disabled = true;
+    els.loginBtn.disabled = true;
+    els.workspace.classList.add('is-hidden');
+    els.authPanel.classList.remove('is-hidden');
+    showLineAuthMessage(message, true);
+    showAuthMessage('管理端 LINE 身分驗證已失效，請重新整理後再登入。', true);
+    return;
+  }
+  logout();
+  showAuthMessage(message, true);
 }
 
 async function changeMonth(delta) {
@@ -117,15 +199,14 @@ async function loadMonth() {
     setFormMessage('');
   } catch (error) {
     if (isAuthError(error)) {
-      logout();
-      showAuthMessage(error.message || '管理憑證已失效。', true);
+      handleAuthFailure(error);
       return;
     }
     state.events = [];
     state.eventsByDate = new Map();
     renderCalendar();
     renderAdminEventList();
-    setFormMessage(error.message || '讀取失敗。', true);
+    setFormMessage(error && error.message ? error.message : '讀取失敗。', true);
   }
 }
 
@@ -150,10 +231,10 @@ async function saveEvent(event) {
     await loadMonth();
   } catch (error) {
     if (isAuthError(error)) {
-      logout();
-      return showAuthMessage(error.message || '管理憑證已失效。', true);
+      handleAuthFailure(error);
+      return;
     }
-    setFormMessage(error.message || '儲存失敗。', true);
+    setFormMessage(error && error.message ? error.message : '儲存失敗。', true);
   } finally {
     els.saveBtn.disabled = false;
   }
@@ -171,29 +252,37 @@ async function archiveEvent(eventId) {
     setFormMessage('已封存日期設定。', false, true);
   } catch (error) {
     if (isAuthError(error)) {
-      logout();
-      return showAuthMessage(error.message || '管理憑證已失效。', true);
+      handleAuthFailure(error);
+      return;
     }
-    setFormMessage(error.message || '封存失敗。', true);
+    setFormMessage(error && error.message ? error.message : '封存失敗。', true);
   }
 }
 
 async function apiRequest(action, payload, admin) {
+  if (!state.idToken) {
+    const error = new Error('管理端 LINE 登入狀態已失效。');
+    error.code = 'UNAUTHENTICATED';
+    throw error;
+  }
+
   const body = new URLSearchParams();
   body.set('action', action);
+  body.set('idToken', state.idToken);
   body.set('payload', JSON.stringify(payload || {}));
   if (admin) body.set('adminToken', state.token);
 
   const response = await fetch(state.config.apiUrl, {
     method: 'POST',
     body,
-    redirect: 'follow'
+    redirect: 'follow',
+    referrerPolicy: 'no-referrer'
   });
   if (!response.ok) throw new Error(`服務連線失敗 (${response.status})`);
   const result = await response.json();
   if (!result.ok) {
-    const error = new Error(result.error?.message || '服務暫時無法使用。');
-    error.code = result.error?.code || '';
+    const error = new Error(result.error && result.error.message || '服務暫時無法使用。');
+    error.code = result.error && result.error.code || '';
     throw error;
   }
   return result.data || {};
@@ -357,6 +446,11 @@ function formatShortDate(value) {
   return `${Number(month)}/${Number(day)}`;
 }
 
+function showLineAuthMessage(message, isError = false) {
+  els.lineAuthStatus.textContent = message;
+  els.lineAuthStatus.className = `message${isError ? ' error' : ' success'}`;
+}
+
 function showAuthMessage(message, isError = false) {
   els.authMessage.textContent = message;
   els.authMessage.className = `message${isError ? ' error' : ''}`;
@@ -367,6 +461,14 @@ function setFormMessage(message, isError = false, isSuccess = false) {
   els.formMessage.className = `message${isError ? ' error' : isSuccess ? ' success' : ''}`;
 }
 
+function isLineAuthError(error) {
+  return Boolean(error && (error.code === 'UNAUTHENTICATED' || error.code === 'AUTH_SERVICE_UNAVAILABLE' || error.code === 'CONFIGURATION_ERROR'));
+}
+
 function isAuthError(error) {
-  return error && (error.code === 'UNAUTHORIZED' || error.code === 'ADMIN_NOT_CONFIGURED');
+  return Boolean(error && (
+    isLineAuthError(error) ||
+    error.code === 'UNAUTHORIZED' ||
+    error.code === 'ADMIN_NOT_CONFIGURED'
+  ));
 }
