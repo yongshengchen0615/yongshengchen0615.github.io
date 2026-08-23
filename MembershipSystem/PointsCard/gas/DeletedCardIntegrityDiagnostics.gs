@@ -7,14 +7,16 @@ const DELETED_CARD_DIAGNOSTICS = Object.freeze({
 /**
  * Read-only diagnostic for deleted-card reward retention incidents.
  *
- * This function is intentionally not exposed through doPost(). It is meant for
- * trusted Apps Script operators investigating whether a card was archived by
- * the current retention flow or removed by an older destructive-delete flow.
+ * This function is intentionally not exposed through doPost(). It must remain
+ * useful even when the multi-card schema is incomplete, because schema damage
+ * is one of the incidents this diagnostic is expected to explain.
  */
 function diagnosePointsCardDeletedCardRetention(cardId) {
-  ensureMultiCardStorage_();
   const normalizedCardId = validMultiCardId_(cardId, true);
-  const cardMatch = findMultiCard_(normalizedCardId);
+  const missingMultiCardSheets = deletedCardDiagnosticMissingMultiCardSheets_();
+  const cardsSheetName = MULTI_CARD_SHEETS.cards || '';
+  const cardsAvailable = !cardsSheetName || missingMultiCardSheets.indexOf(cardsSheetName) < 0;
+  const cardMatch = cardsAvailable ? findMultiCard_(normalizedCardId) : null;
   const retainedRows = {
     progress: deletedCardDiagnosticCount_(MULTI_CARD_SHEETS.progress, normalizedCardId),
     vouchers: deletedCardDiagnosticCount_(MULTI_CARD_SHEETS.vouchers, normalizedCardId),
@@ -24,10 +26,19 @@ function diagnosePointsCardDeletedCardRetention(cardId) {
   };
   const deletionAudit = deletedCardDiagnosticAudit_(normalizedCardId);
   const card = cardMatch ? cardMatch.card : null;
-  const classification = deletedCardDiagnosticClassification_(card, retainedRows, deletionAudit);
+  const classification = deletedCardDiagnosticClassification_(
+    card,
+    retainedRows,
+    deletionAudit,
+    missingMultiCardSheets
+  );
 
   return {
     cardId: normalizedCardId,
+    schemaHealth: {
+      complete: missingMultiCardSheets.length === 0,
+      missingMultiCardSheets: missingMultiCardSheets
+    },
     card: card ? {
       exists: true,
       storedStatus: card.storedStatus,
@@ -45,12 +56,47 @@ function diagnosePointsCardDeletedCardRetention(cardId) {
     deletionAudit: deletionAudit,
     classification: classification,
     recoverableFromCurrentRows: Boolean(
-      card && card.storedStatus === 'deleted' && retainedRows.progress > 0
+      missingMultiCardSheets.length === 0 &&
+      card && card.storedStatus === 'deleted' && Number(retainedRows.progress || 0) > 0
     )
   };
 }
 
+function deletedCardDiagnosticMissingMultiCardSheets_() {
+  if (typeof getSpreadsheet_ !== 'function') return [];
+  let spreadsheet;
+  try { spreadsheet = getSpreadsheet_(); }
+  catch (_) { return ['__storage_unavailable__']; }
+  if (!spreadsheet || typeof spreadsheet.getSheetByName !== 'function') return ['__storage_unavailable__'];
+
+  const names = [
+    MULTI_CARD_SHEETS.cards,
+    MULTI_CARD_SHEETS.progress,
+    MULTI_CARD_SHEETS.vouchers,
+    MULTI_CARD_SHEETS.stampRecords,
+    MULTI_CARD_SHEETS.rewardRecords,
+    MULTI_CARD_SHEETS.notifications
+  ].filter(Boolean).filter(function (value, index, values) {
+    return values.indexOf(value) === index;
+  });
+
+  return names.filter(function (sheetName) {
+    return !spreadsheet.getSheetByName(sheetName);
+  });
+}
+
+function deletedCardDiagnosticSheetAvailable_(sheetName) {
+  if (!sheetName || typeof getSpreadsheet_ !== 'function') return true;
+  try {
+    const spreadsheet = getSpreadsheet_();
+    return Boolean(spreadsheet && spreadsheet.getSheetByName(sheetName));
+  } catch (_) {
+    return false;
+  }
+}
+
 function deletedCardDiagnosticCount_(sheetName, cardId) {
+  if (!deletedCardDiagnosticSheetAvailable_(sheetName)) return null;
   const sheet = getMultiCardSheet_(sheetName);
   return readMultiCardObjectsByField_(sheet, 'cardId', cardId).filter(function (row) {
     return String(row.cardId || '') === cardId;
@@ -58,7 +104,12 @@ function deletedCardDiagnosticCount_(sheetName, cardId) {
 }
 
 function deletedCardDiagnosticAudit_(cardId) {
-  const sheet = getSheet_(POINTS_CARD_SHEETS.audit);
+  const auditSheetName = POINTS_CARD_SHEETS.audit;
+  if (typeof getSpreadsheet_ === 'function' && !deletedCardDiagnosticSheetAvailable_(auditSheetName)) {
+    return deletedCardDiagnosticAuditSummary_([], false);
+  }
+
+  const sheet = getSheet_(auditSheetName);
   const headers = POINTS_CARD_HEADERS.AuditLogs;
   const actionColumn = headers.indexOf('action');
   const resultColumn = headers.indexOf('result');
@@ -69,7 +120,7 @@ function deletedCardDiagnosticAudit_(cardId) {
   }
 
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return deletedCardDiagnosticAuditSummary_([]);
+  if (lastRow < 2) return deletedCardDiagnosticAuditSummary_([], true);
 
   const detailsRange = sheet.getRange(2, detailsColumn + 1, lastRow - 1, 1);
   const matches = detailsRange.createTextFinder(cardId)
@@ -91,7 +142,7 @@ function deletedCardDiagnosticAudit_(cardId) {
     };
   }).filter(Boolean);
 
-  return deletedCardDiagnosticAuditSummary_(events);
+  return deletedCardDiagnosticAuditSummary_(events, true);
 }
 
 function deletedCardDiagnosticDetails_(raw) {
@@ -115,20 +166,23 @@ function deletedCardDiagnosticMode_(details) {
   return 'unknown';
 }
 
-function deletedCardDiagnosticAuditSummary_(events) {
+function deletedCardDiagnosticAuditSummary_(events, available) {
   const destructiveEvidence = events.some(function (event) { return event.mode === 'destructive-delete'; });
   const archiveEvidence = events.some(function (event) { return event.mode === 'archive-preserve'; });
   return {
+    available: available !== false,
     events: events,
     destructiveEvidence: destructiveEvidence,
     archiveEvidence: archiveEvidence
   };
 }
 
-function deletedCardDiagnosticClassification_(card, retainedRows, deletionAudit) {
+function deletedCardDiagnosticClassification_(card, retainedRows, deletionAudit, missingMultiCardSheets) {
+  if (missingMultiCardSheets && missingMultiCardSheets.length) return 'storage-schema-incomplete';
   if (card && card.storedStatus !== 'deleted') return 'card-not-deleted';
   if (card && card.storedStatus === 'deleted') {
-    if (retainedRows.progress > 0 || retainedRows.rewardRecords > 0 || retainedRows.stampRecords > 0) {
+    if (Number(retainedRows.progress || 0) > 0 || Number(retainedRows.rewardRecords || 0) > 0 ||
+        Number(retainedRows.stampRecords || 0) > 0) {
       return 'archived-retention-present';
     }
     return deletionAudit.archiveEvidence ? 'archived-retention-empty' : 'deleted-card-no-retained-member-rows';
