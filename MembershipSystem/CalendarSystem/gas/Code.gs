@@ -2,9 +2,11 @@
 
 const CALENDAR_SERVICE = Object.freeze({
   name: 'CalendarSystem',
-  version: '1.1.0',
+  version: '1.2.0',
   adminTokenProperty: 'CALENDAR_ADMIN_TOKEN',
-  lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID'
+  userLineChannelProperty: 'USER_LINE_LOGIN_CHANNEL_ID',
+  legacyUserLineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
+  adminLineChannelProperty: 'ADMIN_LINE_LOGIN_CHANNEL_ID'
 });
 
 const CALENDAR_TYPES = ['holiday', 'activity'];
@@ -42,37 +44,43 @@ function doPost(e) {
 
     switch (action) {
       case 'member.me': {
-        const identity = requireLineIdentity_(request.idToken);
+        const identity = requireLineIdentity_(request.idToken, 'user');
         rateLimit_('member-me:' + identity.sub, 30, 60);
         return json_({ ok: true, data: memberMe_(identity) });
       }
 
       case 'calendar.month': {
-        const identity = requireLineIdentity_(request.idToken);
+        const identity = requireLineIdentity_(request.idToken, 'user');
         rateLimit_('calendar-month:' + identity.sub, 60, 60);
         return json_({ ok: true, data: publicMonth_(payload) });
       }
 
       case 'calendar.day': {
-        const identity = requireLineIdentity_(request.idToken);
+        const identity = requireLineIdentity_(request.idToken, 'user');
         rateLimit_('calendar-day:' + identity.sub, 90, 60);
         return json_({ ok: true, data: publicDay_(payload) });
       }
 
-      case 'admin.events.list':
+      case 'admin.events.list': {
+        const identity = requireLineIdentity_(request.idToken, 'admin');
         requireAdmin_(request.adminToken);
-        rateLimit_('admin-list', 120, 60);
+        rateLimit_('admin-list:' + identity.sub, 120, 60);
         return json_({ ok: true, data: adminEventsList_(payload) });
+      }
 
-      case 'admin.event.save':
+      case 'admin.event.save': {
+        const identity = requireLineIdentity_(request.idToken, 'admin');
         requireAdmin_(request.adminToken);
-        rateLimit_('admin-save', 40, 60);
-        return json_({ ok: true, data: adminEventSave_(payload) });
+        rateLimit_('admin-save:' + identity.sub, 40, 60);
+        return json_({ ok: true, data: adminEventSave_(payload, identity) });
+      }
 
-      case 'admin.event.delete':
+      case 'admin.event.delete': {
+        const identity = requireLineIdentity_(request.idToken, 'admin');
         requireAdmin_(request.adminToken);
-        rateLimit_('admin-delete', 30, 60);
-        return json_({ ok: true, data: adminEventDelete_(payload) });
+        rateLimit_('admin-delete:' + identity.sub, 30, 60);
+        return json_({ ok: true, data: adminEventDelete_(payload, identity) });
+      }
 
       default:
         fail_('INVALID_ACTION', '不支援的操作。');
@@ -139,7 +147,7 @@ function adminEventsList_(payload) {
   return { year: year, month: month, events: events };
 }
 
-function adminEventSave_(payload) {
+function adminEventSave_(payload, actorIdentity) {
   const event = validateEventInput_(payload);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
@@ -169,7 +177,7 @@ function adminEventSave_(payload) {
         updatedAt: now
       };
       writeObjectAtRow_(sheet, existingIndex + 2, updated);
-      audit_('admin', 'EVENT_UPDATED', updated.eventId, 'success', {
+      audit_(adminActor_(actorIdentity), 'EVENT_UPDATED', updated.eventId, 'success', {
         date: updated.date, type: updated.type, status: updated.status
       });
       return { created: false, event: updated };
@@ -186,7 +194,7 @@ function adminEventSave_(payload) {
       updatedAt: now
     };
     appendObject_(sheet, created);
-    audit_('admin', 'EVENT_CREATED', created.eventId, 'success', {
+    audit_(adminActor_(actorIdentity), 'EVENT_CREATED', created.eventId, 'success', {
       date: created.date, type: created.type, status: created.status
     });
     return { created: true, event: created };
@@ -195,7 +203,7 @@ function adminEventSave_(payload) {
   }
 }
 
-function adminEventDelete_(payload) {
+function adminEventDelete_(payload, actorIdentity) {
   const eventId = cleanText_(payload.eventId, 80, true);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
@@ -212,7 +220,7 @@ function adminEventDelete_(payload) {
       updatedAt: new Date().toISOString()
     });
     writeObjectAtRow_(sheet, index + 2, archived);
-    audit_('admin', 'EVENT_ARCHIVED', eventId, 'success', {
+    audit_(adminActor_(actorIdentity), 'EVENT_ARCHIVED', eventId, 'success', {
       date: archived.date, type: archived.type
     });
     return { eventId: eventId, archived: true };
@@ -300,24 +308,47 @@ function audit_(actor, action, eventId, result, details) {
   }
 }
 
-function requireLineIdentity_(idToken) {
+function adminActor_(identity) {
+  return cleanText_(identity && identity.sub || 'admin', 80, false) || 'admin';
+}
+
+function requireLineIdentity_(idToken, surface) {
+  const authSurface = surface === 'admin' ? 'admin' : 'user';
   const supplied = cleanText_(idToken, MAX_ID_TOKEN_LENGTH, true);
   if (supplied.length < 20) fail_('UNAUTHENTICATED', 'LINE 登入憑證無效。');
   const fingerprint = sha256Hex_(supplied);
-  rateLimit_('line-token:' + fingerprint.slice(0, 32), 90, 60);
-  return verifyLineIdToken_(supplied, fingerprint);
+  rateLimit_('line-token:' + authSurface + ':' + fingerprint.slice(0, 32), 90, 60);
+  return verifyLineIdToken_(supplied, fingerprint, authSurface);
 }
 
-function verifyLineIdToken_(idToken, fingerprint) {
-  const channelId = String(
-    PropertiesService.getScriptProperties().getProperty(CALENDAR_SERVICE.lineChannelProperty) || ''
-  ).trim();
-  if (!/^\d{6,20}$/.test(channelId)) {
-    fail_('CONFIGURATION_ERROR', 'LINE Login Channel ID 尚未正確設定。');
+function lineChannelIdForSurface_(surface) {
+  const properties = PropertiesService.getScriptProperties();
+  let channelId = '';
+
+  if (surface === 'admin') {
+    channelId = String(properties.getProperty(CALENDAR_SERVICE.adminLineChannelProperty) || '').trim();
+  } else {
+    channelId = String(properties.getProperty(CALENDAR_SERVICE.userLineChannelProperty) || '').trim();
+    if (!channelId) {
+      channelId = String(properties.getProperty(CALENDAR_SERVICE.legacyUserLineChannelProperty) || '').trim();
+    }
   }
 
+  if (!/^\d{6,20}$/.test(channelId)) {
+    fail_(
+      'CONFIGURATION_ERROR',
+      surface === 'admin'
+        ? '管理端 LINE Login Channel ID 尚未正確設定。'
+        : '用戶端 LINE Login Channel ID 尚未正確設定。'
+    );
+  }
+  return channelId;
+}
+
+function verifyLineIdToken_(idToken, fingerprint, surface) {
+  const channelId = lineChannelIdForSurface_(surface);
   const cache = CacheService.getScriptCache();
-  const cacheKey = 'calendar-line-' + fingerprint.slice(0, 40);
+  const cacheKey = 'calendar-line-' + surface + '-' + fingerprint.slice(0, 40);
   try {
     const cached = cache.get(cacheKey);
     if (cached) {
