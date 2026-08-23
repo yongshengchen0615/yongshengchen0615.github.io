@@ -8,9 +8,13 @@
     profile: null,
     role: '',
     items: [],
+    visibleDayIndex: new Map(),
     viewMonth: startOfMonth(new Date()),
     selectedDate: dateKey(new Date()),
-    saving: false
+    saving: false,
+    refreshing: false,
+    lastSyncedAt: 0,
+    lastTrigger: null
   };
 
   const els = {};
@@ -25,7 +29,7 @@
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox',
       'pendingUserId', 'retryButton', 'adminView', 'displayName', 'logoutButton',
-      'prevMonth', 'nextMonth', 'todayButton', 'monthTitle', 'refreshButton', 'calendarGrid',
+      'prevMonth', 'nextMonth', 'todayButton', 'monthTitle', 'refreshButton', 'syncStatus', 'calendarGrid',
       'dayModal', 'closeModalButton', 'modalTitle', 'dayItemCount', 'dayItemsList',
       'itemForm', 'itemId', 'expectedUpdatedAt', 'formTitle', 'cancelEditButton', 'archiveButton',
       'type', 'status', 'title', 'startDate', 'endDate', 'color', 'allDay', 'startTimeLabel',
@@ -68,13 +72,19 @@
     });
 
     els.allDay.addEventListener('change', updateTimeVisibility);
-    els.type.addEventListener('change', () => {
-      if (!els.itemId.value) els.color.value = defaultColor(els.type.value);
+    els.startDate.addEventListener('change', () => {
+      if (els.startDate.value && (!els.endDate.value || els.endDate.value < els.startDate.value)) {
+        els.endDate.value = els.startDate.value;
+      }
     });
+    els.type.addEventListener('change', () => {
+      if (!els.itemId.value) setColorValue(defaultColor(els.type.value));
+    });
+    els.color.addEventListener('input', updateColorPresetState);
     document.querySelectorAll('.color-swatch').forEach((button) => {
+      button.setAttribute('aria-pressed', 'false');
       button.addEventListener('click', () => {
-        const color = safeColor(button.dataset.color, els.type.value);
-        els.color.value = color;
+        setColorValue(safeColor(button.dataset.color, els.type.value));
       });
     });
     els.itemForm.addEventListener('submit', handleSubmit);
@@ -96,9 +106,11 @@
       state.profile = result.profile || null;
       state.role = result.role || '';
       state.items = Array.isArray(result.items) ? result.items : [];
+      state.lastSyncedAt = Date.now();
       els.displayName.textContent = state.profile && state.profile.displayName ? state.profile.displayName : '管理員';
       setView('admin');
       renderCalendar();
+      setSyncStatus('已同步');
     } catch (error) {
       handleBootError(error);
     } finally {
@@ -225,18 +237,21 @@
     const gridStart = new Date(year, month, 1 - first.getDay());
     const todayKey = dateKey(new Date());
     const fragment = document.createDocumentFragment();
+    state.visibleDayIndex = buildVisibleDayIndex(gridStart, 42);
 
     for (let i = 0; i < 42; i += 1) {
       const date = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
       const key = dateKey(date);
-      const dayItems = itemsForDate(key);
+      const dayItems = state.visibleDayIndex.get(key) || [];
 
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = 'day-cell';
+      cell.dataset.date = key;
       cell.setAttribute('aria-label', `${formatDate(date)}，${dayItems.length} 個事項`);
       if (date.getMonth() !== month) cell.classList.add('outside');
       if (key === todayKey) cell.classList.add('today');
+      if (key === state.selectedDate) cell.classList.add('selected');
 
       const number = document.createElement('span');
       number.className = 'day-number';
@@ -262,19 +277,46 @@
         cell.appendChild(container);
       }
 
-      cell.addEventListener('click', () => openDayModal(key));
+      cell.addEventListener('click', () => openDayModal(key, cell));
       fragment.appendChild(cell);
     }
 
     els.calendarGrid.replaceChildren(fragment);
   }
 
-  function openDayModal(key) {
+  function buildVisibleDayIndex(gridStart, dayCount) {
+    const index = new Map();
+    const rangeStart = dateKey(gridStart);
+    const rangeEndDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + dayCount - 1);
+    const rangeEnd = dateKey(rangeEndDate);
+
+    state.items.forEach((item) => {
+      if (!item || item.status === 'archived' || item.endDate < rangeStart || item.startDate > rangeEnd) return;
+      const firstKey = item.startDate < rangeStart ? rangeStart : item.startDate;
+      const lastKey = item.endDate > rangeEnd ? rangeEnd : item.endDate;
+      let cursor = parseDateKey(firstKey);
+      const last = parseDateKey(lastKey);
+
+      while (cursor <= last) {
+        const key = dateKey(cursor);
+        if (!index.has(key)) index.set(key, []);
+        index.get(key).push(item);
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+      }
+    });
+
+    index.forEach((items) => sortCalendarItems(items));
+    return index;
+  }
+
+  function openDayModal(key, trigger) {
     state.selectedDate = key;
+    state.lastTrigger = trigger || null;
     const date = parseDateKey(key);
     els.modalTitle.textContent = `${formatDate(date)} 事項`;
     resetFormForDate(key);
     renderDayItems();
+    renderCalendar();
     els.dayModal.classList.remove('hidden');
     document.body.classList.add('modal-open');
     window.setTimeout(() => els.title.focus(), 0);
@@ -284,6 +326,8 @@
     els.dayModal.classList.add('hidden');
     document.body.classList.remove('modal-open');
     clearFormMessage();
+    const trigger = document.querySelector(`.day-cell[data-date="${state.selectedDate}"]`) || state.lastTrigger;
+    if (trigger && typeof trigger.focus === 'function') trigger.focus();
   }
 
   function renderDayItems() {
@@ -335,12 +379,15 @@
   }
 
   function itemsForDate(key) {
-    return state.items
-      .filter((item) => item && item.status !== 'archived' && item.startDate <= key && item.endDate >= key)
-      .sort((a, b) => {
-        if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
-        return String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hant');
-      });
+    if (state.visibleDayIndex.has(key)) return state.visibleDayIndex.get(key).slice();
+    return sortCalendarItems(state.items.filter((item) => item && item.status !== 'archived' && item.startDate <= key && item.endDate >= key));
+  }
+
+  function sortCalendarItems(items) {
+    return items.sort((a, b) => {
+      if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+      return String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hant');
+    });
   }
 
   async function handleSubmit(event) {
@@ -355,19 +402,19 @@
       return;
     }
 
-    state.saving = true;
-    els.saveButton.disabled = true;
-    els.saveButton.textContent = '儲存中…';
+    setSavingState(true);
 
     try {
-      if (item.itemId) {
-        await api('admin.calendar.update', { item, expectedUpdatedAt: els.expectedUpdatedAt.value });
-      } else {
-        await api('admin.calendar.create', { item });
-      }
-      await refreshItems(false);
+      const result = item.itemId
+        ? await api('admin.calendar.update', { item, expectedUpdatedAt: els.expectedUpdatedAt.value })
+        : await api('admin.calendar.create', { item });
+
+      applyServerItem(result.item);
+      state.lastSyncedAt = Date.now();
+      renderCalendar();
       resetFormForDate(state.selectedDate);
       renderDayItems();
+      setSyncStatus(item.itemId ? '變更已儲存' : '事項已新增');
     } catch (error) {
       if (error && error.code === 'CONFLICT') {
         showFormMessage('這筆資料已被其他管理者更新。已重新載入，請重新編輯。');
@@ -377,10 +424,23 @@
         showFormMessage(error && error.message ? error.message : '儲存失敗。');
       }
     } finally {
-      state.saving = false;
-      els.saveButton.disabled = false;
-      els.saveButton.textContent = els.itemId.value ? '儲存變更' : '新增事項';
+      setSavingState(false);
     }
+  }
+
+  function setSavingState(saving) {
+    state.saving = saving;
+    els.saveButton.disabled = saving;
+    els.archiveButton.disabled = saving;
+    els.cancelEditButton.disabled = saving;
+    els.saveButton.textContent = saving ? '儲存中…' : (els.itemId.value ? '儲存變更' : '新增事項');
+  }
+
+  function applyServerItem(item) {
+    if (!item || !item.itemId) return;
+    const index = state.items.findIndex((entry) => entry && entry.itemId === item.itemId);
+    if (index === -1) state.items.push(item);
+    else state.items[index] = item;
   }
 
   function readForm() {
@@ -418,7 +478,7 @@
     els.title.value = item.title || '';
     els.startDate.value = item.startDate || state.selectedDate;
     els.endDate.value = item.endDate || state.selectedDate;
-    els.color.value = safeColor(item.color, item.type);
+    setColorValue(safeColor(item.color, item.type));
     els.allDay.checked = Boolean(item.allDay);
     els.startTime.value = item.startTime || '';
     els.endTime.value = item.endTime || '';
@@ -434,20 +494,25 @@
   }
 
   async function archiveEditingItem() {
+    if (state.saving) return;
     const itemId = els.itemId.value.trim();
     if (!itemId) return;
     const item = state.items.find((entry) => entry.itemId === itemId);
     if (!item) return;
     if (!window.confirm(`確定要封存「${item.title}」嗎？封存後用戶端不會顯示。`)) return;
 
+    setSavingState(true);
     try {
-      await api('admin.calendar.archive', {
+      const result = await api('admin.calendar.archive', {
         itemId: item.itemId,
         expectedUpdatedAt: els.expectedUpdatedAt.value
       });
-      await refreshItems(false);
+      applyServerItem(result.item);
+      state.lastSyncedAt = Date.now();
+      renderCalendar();
       resetFormForDate(state.selectedDate);
       renderDayItems();
+      setSyncStatus('事項已封存');
     } catch (error) {
       if (error && error.code === 'CONFLICT') {
         showFormMessage('這筆資料已被其他管理者更新，請重新確認後再操作。');
@@ -456,24 +521,38 @@
       } else {
         showFormMessage(error && error.message ? error.message : '封存失敗。');
       }
+    } finally {
+      setSavingState(false);
     }
   }
 
   async function refreshItems(showButtonState = true) {
-    if (showButtonState) els.refreshButton.disabled = true;
+    if (state.refreshing) return;
+    state.refreshing = true;
+    if (showButtonState) {
+      els.refreshButton.disabled = true;
+      els.refreshButton.textContent = '同步中…';
+    }
+    setSyncStatus('同步中…');
+
     try {
       const result = await api('admin.calendar.list');
       state.items = Array.isArray(result.items) ? result.items : [];
+      state.lastSyncedAt = Date.now();
       renderCalendar();
       if (!els.dayModal.classList.contains('hidden')) renderDayItems();
+      setSyncStatus('已同步');
     } catch (error) {
+      setSyncStatus('同步失敗', true);
       if (!els.dayModal.classList.contains('hidden')) {
         showFormMessage(error && error.message ? error.message : '重新載入失敗。');
-      } else {
-        window.alert(error && error.message ? error.message : '重新載入失敗。');
       }
     } finally {
-      if (showButtonState) els.refreshButton.disabled = false;
+      state.refreshing = false;
+      if (showButtonState) {
+        els.refreshButton.disabled = false;
+        els.refreshButton.textContent = '同步資料';
+      }
     }
   }
 
@@ -485,7 +564,7 @@
     els.status.value = 'published';
     els.startDate.value = key;
     els.endDate.value = key;
-    els.color.value = defaultColor('event');
+    setColorValue(defaultColor('event'));
     els.allDay.checked = true;
     els.startTime.value = '';
     els.endTime.value = '';
@@ -501,6 +580,27 @@
     const hidden = els.allDay.checked;
     els.startTimeLabel.classList.toggle('hidden', hidden);
     els.endTimeLabel.classList.toggle('hidden', hidden);
+  }
+
+  function setColorValue(value) {
+    els.color.value = safeColor(value, els.type.value);
+    updateColorPresetState();
+  }
+
+  function updateColorPresetState() {
+    const current = safeColor(els.color.value, els.type.value);
+    document.querySelectorAll('.color-swatch').forEach((button) => {
+      button.setAttribute('aria-pressed', String(safeColor(button.dataset.color, els.type.value) === current));
+    });
+  }
+
+  function setSyncStatus(message, isError = false) {
+    if (!els.syncStatus) return;
+    const suffix = state.lastSyncedAt && !isError && message !== '同步中…'
+      ? ` · ${new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit' }).format(new Date(state.lastSyncedAt))}`
+      : '';
+    els.syncStatus.textContent = message + suffix;
+    els.syncStatus.classList.toggle('error', isError);
   }
 
   function showFormMessage(message) {
