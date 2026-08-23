@@ -2,31 +2,32 @@
 
 /**
  * Trusted Apps Script editor diagnostic for the storage binding used by PointsCard.
- * This function is intentionally not routed through doGet()/doPost().
+ * This function is intentionally not routed through doGet()/doPost() and must
+ * not create a spreadsheet or change Script Properties while inspecting state.
  */
 function inspectPointsCardStorageBinding() {
   const properties = PropertiesService.getScriptProperties();
   const configuredSpreadsheetId = String(
     properties.getProperty(POINTS_CARD_SERVICE.spreadsheetProperty) || ''
   ).trim();
+  const resolved = pointsCardStorageReadOnlyBinding_(configuredSpreadsheetId);
 
-  let spreadsheet;
-  try {
-    spreadsheet = getSpreadsheet_();
-  } catch (error) {
+  if (!resolved.spreadsheet) {
     return {
       serviceVersion: POINTS_CARD_SERVICE.version,
       configuredSpreadsheetId: configuredSpreadsheetId,
       actualSpreadsheetId: '',
       spreadsheetName: '',
+      binding: resolved.binding,
       bindingMatchesConfigured: false,
       storageAvailable: false,
-      errorCode: String(error && (error.publicCode || error.code) || 'STORAGE_UNAVAILABLE').slice(0, 80),
+      errorCode: resolved.errorCode,
       migration: pointsCardStorageMigrationDiagnostic_(properties),
       schema: null
     };
   }
 
+  const spreadsheet = resolved.spreadsheet;
   const actualSpreadsheetId = String(spreadsheet.getId() || '').trim();
   const spreadsheetName = typeof spreadsheet.getName === 'function'
     ? String(spreadsheet.getName() || '').slice(0, 160)
@@ -37,13 +38,55 @@ function inspectPointsCardStorageBinding() {
     configuredSpreadsheetId: configuredSpreadsheetId,
     actualSpreadsheetId: actualSpreadsheetId,
     spreadsheetName: spreadsheetName,
+    binding: resolved.binding,
     bindingMatchesConfigured: Boolean(
-      actualSpreadsheetId && (!configuredSpreadsheetId || configuredSpreadsheetId === actualSpreadsheetId)
+      configuredSpreadsheetId && actualSpreadsheetId === configuredSpreadsheetId
     ),
     storageAvailable: true,
     errorCode: '',
     migration: pointsCardStorageMigrationDiagnostic_(properties),
     schema: pointsCardStorageSchemaHealth_(spreadsheet)
+  };
+}
+
+function pointsCardStorageReadOnlyBinding_(configuredSpreadsheetId) {
+  const configured = String(configuredSpreadsheetId || '').trim();
+  if (configured) {
+    try {
+      return {
+        spreadsheet: SpreadsheetApp.openById(configured),
+        binding: 'configured',
+        errorCode: ''
+      };
+    } catch (_) {
+      return {
+        spreadsheet: null,
+        binding: 'configured',
+        errorCode: 'CONFIGURED_STORAGE_UNAVAILABLE'
+      };
+    }
+  }
+
+  let active = null;
+  try {
+    if (typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
+      active = SpreadsheetApp.getActiveSpreadsheet();
+    }
+  } catch (_) {
+    active = null;
+  }
+  if (active) {
+    return {
+      spreadsheet: active,
+      binding: 'active-unconfigured',
+      errorCode: ''
+    };
+  }
+
+  return {
+    spreadsheet: null,
+    binding: 'unconfigured',
+    errorCode: 'STORAGE_UNCONFIGURED'
   };
 }
 
