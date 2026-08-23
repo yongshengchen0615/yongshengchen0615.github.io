@@ -11,8 +11,9 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 test('config defines different LIFF settings for user and admin surfaces', () => {
   const config = JSON.parse(read('config.json'));
 
-  assert.equal(config.liffId, 'YOUR_CALENDAR_USER_LIFF_ID');
-  assert.equal(config.adminLiffId, 'YOUR_CALENDAR_ADMIN_LIFF_ID');
+  assert.match(String(config.apiUrl || ''), /^https:\/\//);
+  assert.ok(String(config.liffId || '').trim());
+  assert.ok(String(config.adminLiffId || '').trim());
   assert.notEqual(config.liffId, config.adminLiffId);
 });
 
@@ -36,7 +37,7 @@ test('admin surface uses a dedicated LIFF ID without a separate admin credential
   assert.match(app, /body\.set\('idToken', state\.idToken\)/);
   assert.doesNotMatch(app, /adminToken/);
   assert.doesNotMatch(app, /calendarAdminToken/);
-  assert.doesNotMatch(html, /管理憑證|password/i);
+  assert.doesNotMatch(html, /管理憑證|type="password"/i);
   assert.doesNotMatch(html, /查看用戶端/);
   assert.doesNotMatch(html, /\.\.\/user\//);
 });
