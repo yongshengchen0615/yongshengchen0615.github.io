@@ -1,6 +1,6 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.0.0';
+const CALENDAR_API_VERSION_ = '2.1.0';
 const MAX_REQUEST_BYTES_ = 20000;
 const RATE_LIMIT_READ_PER_MINUTE_ = 90;
 const RATE_LIMIT_WRITE_PER_MINUTE_ = 30;
@@ -43,6 +43,10 @@ function doPost(e) {
 
     enforceRateLimit_(request.idToken, action);
     const identity = authenticateLine_(request.idToken, clientType);
+
+    // Validate/open storage once per API execution. Storage helpers below this boundary
+    // use the already validated spreadsheet instead of rechecking every sheet repeatedly.
+    ensureCalendarStorage_();
 
     let data;
     switch (action) {
