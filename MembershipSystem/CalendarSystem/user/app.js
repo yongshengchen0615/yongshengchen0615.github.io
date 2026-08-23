@@ -2,13 +2,17 @@
   'use strict';
 
   const DEFAULT_COLORS = Object.freeze({ holiday: '#D95656', event: '#3182B8', notice: '#D3A12F' });
+  const AUTO_REFRESH_STALE_MS = 60000;
   const state = {
     config: null,
     idToken: '',
     profile: null,
     items: [],
+    visibleDayIndex: new Map(),
     viewMonth: startOfMonth(new Date()),
-    selectedDate: dateKey(new Date())
+    selectedDate: dateKey(new Date()),
+    refreshing: false,
+    lastSyncedAt: 0
   };
 
   const els = {};
@@ -23,8 +27,8 @@
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton',
       'calendarView', 'displayName', 'logoutButton', 'prevMonth', 'nextMonth',
-      'todayButton', 'monthTitle', 'calendarGrid', 'selectedDayModal', 'closeSelectedDayButton',
-      'selectedDateTitle', 'selectedCount', 'agendaList'
+      'todayButton', 'monthTitle', 'refreshButton', 'syncStatus', 'calendarGrid',
+      'selectedDayModal', 'closeSelectedDayButton', 'selectedDateTitle', 'selectedCount', 'agendaList'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
 
@@ -55,6 +59,12 @@
       renderCalendar();
     });
 
+    els.refreshButton.addEventListener('click', () => refreshItems(true));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || !state.lastSyncedAt) return;
+      if (Date.now() - state.lastSyncedAt >= AUTO_REFRESH_STALE_MS) refreshItems(false);
+    });
+
     els.closeSelectedDayButton.addEventListener('click', closeSelectedDayModal);
     els.selectedDayModal.addEventListener('click', (event) => {
       if (event.target === els.selectedDayModal) closeSelectedDayModal();
@@ -79,6 +89,7 @@
       const result = await api('user.bootstrap');
       state.profile = result.profile;
       state.items = Array.isArray(result.items) ? result.items : [];
+      state.lastSyncedAt = Date.now();
 
       els.displayName.textContent = state.profile && state.profile.displayName
         ? state.profile.displayName
@@ -86,6 +97,7 @@
 
       setView('calendar');
       renderCalendar();
+      setSyncStatus('已同步');
     } catch (error) {
       handleBootError(error);
     } finally {
@@ -206,17 +218,19 @@
     const gridStart = new Date(year, month, 1 - first.getDay());
     const todayKey = dateKey(new Date());
     const fragment = document.createDocumentFragment();
+    state.visibleDayIndex = buildVisibleDayIndex(gridStart, 42);
 
     for (let i = 0; i < 42; i += 1) {
       const date = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
       const key = dateKey(date);
-      const dayItems = itemsForDate(key);
+      const dayItems = state.visibleDayIndex.get(key) || [];
 
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = 'day-cell';
       cell.dataset.date = key;
       cell.setAttribute('aria-label', `${formatDate(date)}，${dayItems.length} 個行程`);
+      cell.setAttribute('aria-pressed', String(key === state.selectedDate));
       if (date.getMonth() !== month) cell.classList.add('outside');
       if (key === todayKey) cell.classList.add('today');
       if (key === state.selectedDate) cell.classList.add('selected');
@@ -250,6 +264,31 @@
     }
 
     els.calendarGrid.replaceChildren(fragment);
+  }
+
+  function buildVisibleDayIndex(gridStart, dayCount) {
+    const index = new Map();
+    const rangeStart = dateKey(gridStart);
+    const rangeEndDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + dayCount - 1);
+    const rangeEnd = dateKey(rangeEndDate);
+
+    state.items.forEach((item) => {
+      if (!item || item.status !== 'published' || item.endDate < rangeStart || item.startDate > rangeEnd) return;
+      const firstKey = item.startDate < rangeStart ? rangeStart : item.startDate;
+      const lastKey = item.endDate > rangeEnd ? rangeEnd : item.endDate;
+      let cursor = parseDateKey(firstKey);
+      const last = parseDateKey(lastKey);
+
+      while (cursor <= last) {
+        const key = dateKey(cursor);
+        if (!index.has(key)) index.set(key, []);
+        index.get(key).push(item);
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+      }
+    });
+
+    index.forEach((items) => sortCalendarItems(items));
+    return index;
   }
 
   function openSelectedDayModal(key, date) {
@@ -326,12 +365,59 @@
   }
 
   function itemsForDate(key) {
-    return state.items
-      .filter((item) => item && item.status === 'published' && item.startDate <= key && item.endDate >= key)
-      .sort((a, b) => {
-        if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
-        return String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hant');
-      });
+    if (state.visibleDayIndex.has(key)) return state.visibleDayIndex.get(key).slice();
+    return sortCalendarItems(state.items.filter((item) => item && item.status === 'published' && item.startDate <= key && item.endDate >= key));
+  }
+
+  function sortCalendarItems(items) {
+    return items.sort((a, b) => {
+      if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+      return String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hant');
+    });
+  }
+
+  async function refreshItems(showButtonState) {
+    if (state.refreshing || !state.idToken) return;
+    state.refreshing = true;
+    if (showButtonState) {
+      els.refreshButton.disabled = true;
+      els.refreshButton.textContent = '更新中…';
+    }
+    setSyncStatus('更新中…');
+
+    try {
+      const result = await api('user.calendar.list');
+      state.items = Array.isArray(result.items) ? result.items : [];
+      state.lastSyncedAt = Date.now();
+      renderCalendar();
+      if (!els.selectedDayModal.classList.contains('hidden')) renderAgenda();
+      setSyncStatus('已同步');
+    } catch (error) {
+      const authCodes = new Set(['AUTH_REQUIRED', 'AUTH_INVALID', 'AUTH_EXPIRED', 'AUTH_CHANNEL_MISMATCH']);
+      if (authCodes.has(error && error.code)) {
+        try {
+          if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
+        } catch (_) {}
+        showError('LINE 登入已失效', '請重新整理後重新登入。');
+      } else {
+        setSyncStatus('更新失敗，仍顯示上次資料', true);
+      }
+    } finally {
+      state.refreshing = false;
+      if (showButtonState) {
+        els.refreshButton.disabled = false;
+        els.refreshButton.textContent = '更新';
+      }
+    }
+  }
+
+  function setSyncStatus(message, isError = false) {
+    if (!els.syncStatus) return;
+    const suffix = state.lastSyncedAt && !isError && message !== '更新中…'
+      ? ` · ${new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit' }).format(new Date(state.lastSyncedAt))}`
+      : '';
+    els.syncStatus.textContent = message + suffix;
+    els.syncStatus.classList.toggle('error', isError);
   }
 
   function safeColor(value, type) {
