@@ -50,6 +50,19 @@ test('admin surface uses a dedicated LIFF ID without a separate admin credential
   assert.doesNotMatch(html, /\.\.\/user\//);
 });
 
+test('external browsers force a fresh LIFF login on every user and admin page entry', () => {
+  const userApp = read('user/app.js');
+  const adminApp = read('admin/app.js');
+
+  [userApp, adminApp].forEach(app => {
+    assert.match(app, /FRESH_LOGIN_PARAM = 'calendar_reauth'/);
+    assert.match(app, /!window\.liff\.isInClient\(\)/);
+    assert.match(app, /window\.liff\.logout\(\)/);
+    assert.match(app, /window\.liff\.login\(\{ redirectUri/);
+    assert.match(app, /freshLoginUrl\(\)/);
+  });
+});
+
 test('LIFF ID tokens are not persisted in browser storage or URL', () => {
   const userApp = read('user/app.js');
   const adminApp = read('admin/app.js');
@@ -60,11 +73,25 @@ test('LIFF ID tokens are not persisted in browser storage or URL', () => {
   assert.doesNotMatch(adminApp, /searchParams\.set\([^\n]*idToken/i);
 });
 
-test('storage creates an AdminPermissions sheet with an explicit permission field', () => {
+test('storage creates identity, admin permission, calendar and audit sheets', () => {
   const storage = read('gas/StorageBootstrap.gs');
 
+  assert.match(storage, /identitiesSheet: 'LineIdentities'/);
+  assert.match(storage, /'lineUserId', 'surface', 'displayName', 'pictureUrl'/);
+  assert.match(storage, /'firstSeenAt', 'lastLoginAt', 'loginCount'/);
   assert.match(storage, /adminPermissionsSheet: 'AdminPermissions'/);
   assert.match(storage, /'lineUserId', 'displayName', 'canManageCalendar', 'status', 'note', 'firstSeenAt'/);
+});
+
+test('successful user and admin sessions automatically persist login identity data', () => {
+  const gas = read('gas/Code.gs');
+
+  assert.match(gas, /function memberMe_\(identity\) \{\s*recordIdentityLogin_\(identity, 'user'\);/);
+  assert.match(gas, /function adminSession_\(identity\) \{\s*recordIdentityLogin_\(identity, 'admin'\);/);
+  assert.match(gas, /function recordIdentityLogin_\(identity, surface\)/);
+  assert.match(gas, /lastLoginAt: now/);
+  assert.match(gas, /loginCount: '1'/);
+  assert.match(gas, /LOGIN_SUCCESS/);
 });
 
 test('new admin identities are fail-closed until the sheet permission is manually enabled', () => {
@@ -92,12 +119,13 @@ test('GAS verifies separate LIFF channels and checks sheet authorization on ever
   assert.doesNotMatch(gas, /CALENDAR_ADMIN_TOKEN|adminTokenProperty|request\.adminToken/);
 });
 
-test('duplicate permission rows fail closed and remote event text avoids innerHTML', () => {
+test('duplicate identity or permission rows fail closed and remote event text avoids innerHTML', () => {
   const gas = read('gas/Code.gs');
   const userApp = read('user/app.js');
   const adminApp = read('admin/app.js');
 
-  assert.match(gas, /matches\.length > 1/);
+  assert.match(gas, /LINE 身分資料存在重複紀錄/);
+  assert.match(gas, /管理權限資料存在重複 LINE 使用者/);
   assert.match(gas, /DATA_INTEGRITY_ERROR/);
   assert.doesNotMatch(userApp, /innerHTML/);
   assert.doesNotMatch(adminApp, /innerHTML/);
