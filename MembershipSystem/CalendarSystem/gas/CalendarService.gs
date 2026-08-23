@@ -10,6 +10,9 @@ const DEFAULT_CALENDAR_COLORS_ = Object.freeze({
   event: '#3182B8',
   notice: '#D3A12F'
 });
+const CALENDAR_LIST_CACHE_SECONDS_ = 30;
+const CALENDAR_LIST_CACHE_MAX_BYTES_ = 80000;
+const CALENDAR_LIST_CACHE_PREFIX_ = 'calendar-list:v2:';
 
 function handleUserBootstrap_(identity) {
   authorizeUserAccount_(identity, true);
@@ -74,6 +77,7 @@ function handleAdminCalendarCreate_(identity, admin, rawItem) {
 
   withDataLock_(function() {
     appendRecord_('CalendarItems', record);
+    bumpCalendarDataRevision_();
     appendAuditRecord_({
       audit_id: Utilities.getUuid(),
       actor_line_user_id: identity.lineUserId,
@@ -126,6 +130,7 @@ function handleAdminCalendarUpdate_(identity, admin, rawItem, expectedUpdatedAt)
     };
 
     updateRecordAtRow_('CalendarItems', match.rowNumber, updatedRecord);
+    bumpCalendarDataRevision_();
     appendAuditRecord_({
       audit_id: Utilities.getUuid(),
       actor_line_user_id: identity.lineUserId,
@@ -166,6 +171,7 @@ function handleAdminCalendarArchive_(identity, admin, itemId, expectedUpdatedAt)
       updated_at: now
     });
     updateRecordAtRow_('CalendarItems', match.rowNumber, archivedRecord);
+    bumpCalendarDataRevision_();
     appendAuditRecord_({
       audit_id: Utilities.getUuid(),
       actor_line_user_id: identity.lineUserId,
@@ -184,7 +190,6 @@ function handleAdminCalendarArchive_(identity, admin, itemId, expectedUpdatedAt)
 
 function authorizeUserAccount_(identity, touchLogin) {
   return withDataLock_(function() {
-    ensureCalendarStorage_();
     const now = nowIso_();
     const match = findRecordWithRow_('Users', 'line_user_id', identity.lineUserId);
 
@@ -224,8 +229,12 @@ function authorizeUserAccount_(identity, touchLogin) {
 }
 
 function listCalendarItems_(includeAllStatuses) {
-  ensureCalendarStorage_();
-  return readRecords_('CalendarItems')
+  const revision = getCalendarDataRevision_();
+  const cacheKey = CALENDAR_LIST_CACHE_PREFIX_ + (includeAllStatuses ? 'admin:' : 'public:') + revision;
+  const cached = readCalendarListCache_(cacheKey);
+  if (cached) return cached;
+
+  const items = readRecords_('CalendarItems')
     .filter(function(record) {
       return includeAllStatuses || String(record.status || '') === 'published';
     })
@@ -235,6 +244,30 @@ function listCalendarItems_(includeAllStatuses) {
         String(a.startTime || '').localeCompare(String(b.startTime || '')) ||
         String(a.title || '').localeCompare(String(b.title || ''));
     });
+
+  writeCalendarListCache_(cacheKey, items);
+  return items;
+}
+
+function readCalendarListCache_(cacheKey) {
+  try {
+    const raw = CacheService.getScriptCache().get(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeCalendarListCache_(cacheKey, items) {
+  try {
+    const serialized = JSON.stringify(items);
+    if (Utilities.newBlob(serialized).getBytes().length > CALENDAR_LIST_CACHE_MAX_BYTES_) return;
+    CacheService.getScriptCache().put(cacheKey, serialized, CALENDAR_LIST_CACHE_SECONDS_);
+  } catch (error) {
+    // Cache is best-effort; fall back to the Sheet on the next read.
+  }
 }
 
 function validateCalendarItem_(rawItem, requireId) {
