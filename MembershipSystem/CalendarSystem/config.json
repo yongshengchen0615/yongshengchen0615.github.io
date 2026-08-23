@@ -1,5 +1,6 @@
 {
   "apiUrl": "",
-  "liffId": "YOUR_CALENDAR_LIFF_ID",
+  "liffId": "YOUR_CALENDAR_USER_LIFF_ID",
+  "adminLiffId": "YOUR_CALENDAR_ADMIN_LIFF_ID",
   "appName": "營業日曆"
 }
