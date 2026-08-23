@@ -55,13 +55,21 @@ test('storage binding diagnostic reports configured/actual drift and a missing p
     PropertiesService: {
       getScriptProperties: () => ({ getProperty: (key) => properties[key] || '' })
     },
-    getSpreadsheet_: () => spreadsheet
+    SpreadsheetApp: {
+      openById: (id) => {
+        assert.equal(id, 'SPREADSHEET-CONFIGURED');
+        return spreadsheet;
+      },
+      getActiveSpreadsheet: () => { throw new Error('configured binding must not inspect active spreadsheet'); },
+      create: () => { throw new Error('diagnostic must never create a spreadsheet'); }
+    }
   };
   vm.createContext(context);
   vm.runInContext(source + '\n;globalThis.__inspectStorage = inspectPointsCardStorageBinding;', context);
 
   const result = context.__inspectStorage();
   assert.equal(result.storageAvailable, true);
+  assert.equal(result.binding, 'configured');
   assert.equal(result.configuredSpreadsheetId, 'SPREADSHEET-CONFIGURED');
   assert.equal(result.actualSpreadsheetId, 'SPREADSHEET-ACTUAL');
   assert.equal(result.bindingMatchesConfigured, false);
@@ -69,7 +77,52 @@ test('storage binding diagnostic reports configured/actual drift and a missing p
   assert.deepEqual(Array.from(result.schema.multiCard.missingSheets), ['MemberCardProgress']);
   assert.equal(result.schema.multiCard.invalidSheets.length, 0);
 
-  assert.doesNotMatch(source, /setProperty\s*\(|appendRow\s*\(|setValues\s*\(|deleteSheet\s*\(/);
+  assert.doesNotMatch(source, /setProperty\s*\(|appendRow\s*\(|setValues\s*\(|deleteSheet\s*\(|SpreadsheetApp\.create\s*\(/);
+});
+
+test('storage binding diagnostic can inspect an unconfigured active sheet without binding or creating storage', () => {
+  const source = read('gas/StorageBindingDiagnostics.gs');
+  const baseHeaders = { AuditLogs: ['timestamp'] };
+  const multiHeaders = { Cards: ['cardId'] };
+  const sheets = {
+    AuditLogs: schemaSheet(baseHeaders.AuditLogs),
+    Cards: schemaSheet(multiHeaders.Cards)
+  };
+  const spreadsheet = {
+    getId: () => 'SPREADSHEET-ACTIVE',
+    getName: () => 'Active Sheet',
+    getSheetByName: (name) => sheets[name] || null
+  };
+  const context = {
+    POINTS_CARD_SERVICE: { version: '2.3.0', spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID' },
+    POINTS_CARD_HEADERS: baseHeaders,
+    MULTI_CARD_HEADERS: multiHeaders,
+    MULTI_CARD: {
+      migrationProperty: 'MIGRATED_AT',
+      migrationSpreadsheetProperty: 'MIGRATED_SHEET',
+      migrationTargetSpreadsheetProperty: 'MIGRATION_TARGET',
+      schemaVersionProperty: 'SCHEMA_VERSION',
+      schemaVersion: '3'
+    },
+    PropertiesService: {
+      getScriptProperties: () => ({ getProperty: () => '' })
+    },
+    SpreadsheetApp: {
+      openById: () => { throw new Error('unconfigured diagnostic must not open an arbitrary id'); },
+      getActiveSpreadsheet: () => spreadsheet,
+      create: () => { throw new Error('diagnostic must never create a spreadsheet'); }
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(source + '\n;globalThis.__inspectStorage = inspectPointsCardStorageBinding;', context);
+
+  const result = context.__inspectStorage();
+  assert.equal(result.storageAvailable, true);
+  assert.equal(result.binding, 'active-unconfigured');
+  assert.equal(result.configuredSpreadsheetId, '');
+  assert.equal(result.actualSpreadsheetId, 'SPREADSHEET-ACTIVE');
+  assert.equal(result.bindingMatchesConfigured, false);
+  assert.equal(result.schema.healthy, true);
 });
 
 test('deleted-card diagnostic returns storage-schema-incomplete instead of throwing when MemberCardProgress is missing', () => {
