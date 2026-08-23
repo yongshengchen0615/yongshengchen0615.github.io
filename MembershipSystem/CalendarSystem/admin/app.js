@@ -3,7 +3,7 @@
 
   const state = {
     config: null,
-    accessToken: '',
+    idToken: '',
     profile: null,
     role: '',
     items: [],
@@ -51,8 +51,10 @@
     try {
       state.config = await loadConfig();
       await initializeLiff();
-      state.accessToken = window.liff.getAccessToken() || '';
-      if (!state.accessToken) throw clientError('AUTH_REQUIRED', '無法取得 LINE access token，請重新登入。');
+      state.idToken = window.liff.getIDToken() || '';
+      if (!state.idToken) {
+        throw clientError('AUTH_REQUIRED', '無法取得 LINE ID token。請確認 Admin LIFF 已啟用 openid scope。');
+      }
 
       const result = await api('admin.bootstrap');
       state.profile = result.profile || null;
@@ -105,7 +107,7 @@
     const body = {
       action,
       clientType: 'admin',
-      accessToken: state.accessToken,
+      idToken: state.idToken,
       ...payload
     };
 

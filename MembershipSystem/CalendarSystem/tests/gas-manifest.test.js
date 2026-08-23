@@ -15,10 +15,9 @@ test('GAS manifest has only required external request and spreadsheet scopes', (
   ]);
 });
 
-test('GAS URL fetch whitelist is restricted to LINE Verify and Profile APIs', () => {
+test('GAS URL fetch whitelist is restricted to LINE ID Token Verify API', () => {
   assert.deepEqual(manifest.urlFetchWhitelist, [
-    'https://api.line.me/oauth2/v2.1/verify',
-    'https://api.line.me/v2/profile'
+    'https://api.line.me/oauth2/v2.1/verify'
   ]);
   assert.equal(manifest.urlFetchWhitelist.some((value) => String(value).includes('*')), false);
 });

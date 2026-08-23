@@ -3,7 +3,7 @@
 
   const state = {
     config: null,
-    accessToken: '',
+    idToken: '',
     profile: null,
     items: [],
     viewMonth: startOfMonth(new Date()),
@@ -61,8 +61,10 @@
     try {
       state.config = await loadConfig();
       await initializeLiff();
-      state.accessToken = window.liff.getAccessToken() || '';
-      if (!state.accessToken) throw clientError('LINE_AUTH_ERROR', '無法取得 LINE access token，請重新登入。');
+      state.idToken = window.liff.getIDToken() || '';
+      if (!state.idToken) {
+        throw clientError('LINE_AUTH_ERROR', '無法取得 LINE ID token。請確認 User LIFF 已啟用 openid scope。');
+      }
 
       const result = await api('user.bootstrap');
       state.profile = result.profile;
@@ -122,7 +124,7 @@
     const body = {
       action,
       clientType: 'user',
-      accessToken: state.accessToken,
+      idToken: state.idToken,
       ...payload
     };
 

@@ -8,13 +8,26 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('GAS verifies LINE access tokens server-side and binds them to the expected channel', () => {
+test('GAS verifies LINE ID tokens server-side via POST and binds them to the expected channel', () => {
   const auth = read('gas/Auth.gs');
   assert.match(auth, /oauth2\/v2\.1\/verify/);
-  assert.match(auth, /client_id/);
+  assert.match(auth, /method:\s*'post'/);
+  assert.match(auth, /application\/x-www-form-urlencoded/);
+  assert.match(auth, /id_token:\s*idToken/);
+  assert.match(auth, /client_id:\s*expectedChannelId/);
+  assert.match(auth, /verifyData\.aud/);
+  assert.match(auth, /verifyData\.exp/);
+  assert.match(auth, /verifyData\.iss/);
+  assert.match(auth, /verifyData\.sub/);
   assert.match(auth, /CALENDAR_USER_LINE_CHANNEL_ID/);
   assert.match(auth, /CALENDAR_ADMIN_LINE_CHANNEL_ID/);
-  assert.match(auth, /api\.line\.me\/v2\/profile/);
+  assert.doesNotMatch(auth, /\?access_token=/);
+});
+
+test('frontend uses LIFF ID tokens instead of access-token verification', () => {
+  const clients = read('user/app.js') + '\n' + read('admin/app.js');
+  assert.match(clients, /getIDToken\(\)/);
+  assert.doesNotMatch(clients, /getAccessToken\(\)/);
 });
 
 test('admin authorization is server-side and backed by the Admins sheet', () => {
@@ -47,15 +60,15 @@ test('spreadsheet text is protected against formula injection', () => {
   assert.match(storage, /\^\[=\+\\-@\]/);
 });
 
-test('access tokens are not explicitly logged or persisted', () => {
-  const files = [
+test('ID tokens are not explicitly logged or persisted', () => {
+  const gas = [
     read('gas/Code.gs'),
     read('gas/Auth.gs'),
     read('gas/CalendarService.gs'),
     read('gas/StorageBootstrap.gs')
   ].join('\n');
 
-  assert.doesNotMatch(files, /console\.(log|info|warn|error)\([^\n]*accessToken/i);
-  assert.doesNotMatch(files, /appendRecord_\([^\n]*accessToken/i);
-  assert.doesNotMatch(files, /access_token[^\n]*console/i);
+  assert.doesNotMatch(gas, /console\.(log|info|warn|error)\([^\n]*idToken/i);
+  assert.doesNotMatch(gas, /appendRecord_\([^\n]*idToken/i);
+  assert.doesNotMatch(gas, /id_token[^\n]*console/i);
 });

@@ -41,8 +41,8 @@ function doPost(e) {
       throw new ApiError(400, 'CLIENT_TYPE_MISMATCH', 'Client type 與 API action 不一致。');
     }
 
-    enforceRateLimit_(request.accessToken, action);
-    const identity = authenticateLine_(request.accessToken, clientType);
+    enforceRateLimit_(request.idToken, action);
+    const identity = authenticateLine_(request.idToken, clientType);
 
     let data;
     switch (action) {
@@ -109,13 +109,13 @@ function parseRequest_(e) {
   }
 
   request.action = String(request.action || '').trim();
-  request.accessToken = typeof request.accessToken === 'string' ? request.accessToken.trim() : '';
+  request.idToken = typeof request.idToken === 'string' ? request.idToken.trim() : '';
   request.clientType = typeof request.clientType === 'string' ? request.clientType.trim() : '';
 
   if (!request.action || request.action.length > 80) {
     throw new ApiError(400, 'INVALID_ACTION', 'API action 不合法。');
   }
-  if (!request.accessToken) {
+  if (!request.idToken) {
     throw new ApiError(401, 'AUTH_REQUIRED', '需要 LINE 登入。');
   }
   return request;
@@ -127,12 +127,12 @@ function clientTypeForAction_(action) {
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }
 
-function enforceRateLimit_(accessToken, action) {
-  if (!accessToken) return;
+function enforceRateLimit_(credential, action) {
+  if (!credential) return;
 
   const digest = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
-    accessToken,
+    credential,
     Utilities.Charset.UTF_8
   ).map(function(byte) {
     const value = byte < 0 ? byte + 256 : byte;

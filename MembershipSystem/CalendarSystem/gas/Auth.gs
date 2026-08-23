@@ -1,13 +1,13 @@
 'use strict';
 
-const LINE_VERIFY_URL_ = 'https://api.line.me/oauth2/v2.1/verify';
-const LINE_PROFILE_URL_ = 'https://api.line.me/v2/profile';
+const LINE_ID_TOKEN_VERIFY_URL_ = 'https://api.line.me/oauth2/v2.1/verify';
+const LINE_ID_TOKEN_ISSUER_ = 'https://access.line.me';
 const USER_CHANNEL_PROPERTY_ = 'CALENDAR_USER_LINE_CHANNEL_ID';
 const ADMIN_CHANNEL_PROPERTY_ = 'CALENDAR_ADMIN_LINE_CHANNEL_ID';
 
-function authenticateLine_(accessToken, clientType) {
-  if (typeof accessToken !== 'string' || accessToken.length < 20 || accessToken.length > 4096) {
-    throw new ApiError(401, 'AUTH_INVALID', 'LINE access token 不合法。');
+function authenticateLine_(idToken, clientType) {
+  if (typeof idToken !== 'string' || idToken.length < 20 || idToken.length > 8192) {
+    throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token 不合法。');
   }
 
   const propertyName = clientType === 'admin' ? ADMIN_CHANNEL_PROPERTY_ : USER_CHANNEL_PROPERTY_;
@@ -18,14 +18,16 @@ function authenticateLine_(accessToken, clientType) {
 
   let verifyResponse;
   try {
-    verifyResponse = UrlFetchApp.fetch(
-      LINE_VERIFY_URL_ + '?access_token=' + encodeURIComponent(accessToken),
-      {
-        method: 'get',
-        muteHttpExceptions: true,
-        followRedirects: true
-      }
-    );
+    verifyResponse = UrlFetchApp.fetch(LINE_ID_TOKEN_VERIFY_URL_, {
+      method: 'post',
+      contentType: 'application/x-www-form-urlencoded',
+      payload: {
+        id_token: idToken,
+        client_id: expectedChannelId
+      },
+      muteHttpExceptions: true,
+      followRedirects: true
+    });
   } catch (error) {
     throw new ApiError(503, 'LINE_UNAVAILABLE', 'LINE 身分驗證服務暫時無法使用。');
   }
@@ -33,35 +35,22 @@ function authenticateLine_(accessToken, clientType) {
   const verifyCode = verifyResponse.getResponseCode();
   const verifyData = parseLineJson_(verifyResponse);
   if (verifyCode !== 200 || !verifyData) {
-    throw new ApiError(401, 'AUTH_INVALID', 'LINE access token 驗證失敗。');
+    throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token 驗證失敗。');
   }
-  if (Number(verifyData.expires_in || 0) <= 0) {
-    throw new ApiError(401, 'AUTH_EXPIRED', 'LINE access token 已過期。');
+
+  const expiresAt = Number(verifyData.exp || 0) * 1000;
+  if (!expiresAt || expiresAt <= Date.now()) {
+    throw new ApiError(401, 'AUTH_EXPIRED', 'LINE ID token 已過期。');
   }
-  if (String(verifyData.client_id || '') !== expectedChannelId) {
+  if (String(verifyData.aud || '') !== expectedChannelId) {
     throw new ApiError(401, 'AUTH_CHANNEL_MISMATCH', 'LINE token 不屬於此 LIFF Channel。');
   }
-
-  let profileResponse;
-  try {
-    profileResponse = UrlFetchApp.fetch(LINE_PROFILE_URL_, {
-      method: 'get',
-      headers: { Authorization: 'Bearer ' + accessToken },
-      muteHttpExceptions: true,
-      followRedirects: true
-    });
-  } catch (error) {
-    throw new ApiError(503, 'LINE_UNAVAILABLE', 'LINE Profile 服務暫時無法使用。');
+  if (String(verifyData.iss || '') !== LINE_ID_TOKEN_ISSUER_) {
+    throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token issuer 不合法。');
   }
 
-  const profileCode = profileResponse.getResponseCode();
-  const profileData = parseLineJson_(profileResponse);
-  if (profileCode !== 200 || !profileData || !profileData.userId) {
-    throw new ApiError(401, 'AUTH_INVALID', '無法取得可信任的 LINE 身分。');
-  }
-
-  const lineUserId = String(profileData.userId || '').trim();
-  const displayName = String(profileData.displayName || '').trim().substring(0, 100);
+  const lineUserId = String(verifyData.sub || '').trim();
+  const displayName = String(verifyData.name || '').trim().substring(0, 100);
   if (!lineUserId || lineUserId.length > 80) {
     throw new ApiError(401, 'AUTH_INVALID', 'LINE 使用者識別碼不合法。');
   }
