@@ -8,9 +8,9 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>日曆｜用戶端</title>
-  <link rel="stylesheet" href="./styles.css?v=20260823-selected-day-modal-2">
+  <link rel="stylesheet" href="./styles.css?v=20260823-perf-ux-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="./app.js?v=20260823-selected-day-modal-2" defer></script>
+  <script src="./app.js?v=20260823-perf-ux-1" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -49,6 +49,11 @@
             <button id="todayButton" class="link-button" type="button">今天</button>
           </div>
           <button id="nextMonth" class="icon-button" type="button" aria-label="下個月">›</button>
+        </div>
+
+        <div class="calendar-statusbar">
+          <span id="syncStatus" class="sync-status" aria-live="polite">準備同步資料</span>
+          <button id="refreshButton" class="button ghost compact-button" type="button">更新</button>
         </div>
 
         <div class="weekday-row" aria-hidden="true">
