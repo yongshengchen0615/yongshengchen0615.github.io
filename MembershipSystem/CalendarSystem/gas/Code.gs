@@ -2,7 +2,7 @@
 
 const CALENDAR_SERVICE = Object.freeze({
   name: 'CalendarSystem',
-  version: '1.4.0',
+  version: '1.5.0',
   userLineChannelProperty: 'USER_LINE_LOGIN_CHANNEL_ID',
   legacyUserLineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   adminLineChannelProperty: 'ADMIN_LINE_LOGIN_CHANNEL_ID'
@@ -377,6 +377,7 @@ function recordIdentityLogin_(identity, surface) {
         loginCount: '1'
       };
       appendObject_(sheet, created);
+      verifyIdentityPersistence_(sheet, lineUserId, authSurface, now);
       audit_(lineUserId, 'LINE_IDENTITY_CREATED', '', 'success', { surface: authSurface });
       audit_(lineUserId, 'LOGIN_SUCCESS', '', 'success', { surface: authSurface });
       return created;
@@ -394,10 +395,26 @@ function recordIdentityLogin_(identity, surface) {
       loginCount: String(count)
     };
     writeObjectAtRow_(sheet, matches[0].rowNumber, updated);
+    verifyIdentityPersistence_(sheet, lineUserId, authSurface, now);
     audit_(lineUserId, 'LOGIN_SUCCESS', '', 'success', { surface: authSurface });
     return updated;
   } finally {
     lock.releaseLock();
+  }
+}
+
+function verifyIdentityPersistence_(sheet, lineUserId, surface, expectedLastLoginAt) {
+  SpreadsheetApp.flush();
+  const matches = sheetObjects_(sheet).filter(row =>
+    cleanText_(row.lineUserId, 80, false) === lineUserId &&
+    cleanText_(row.surface, 20, false) === surface
+  );
+
+  if (
+    matches.length !== 1 ||
+    cleanText_(matches[0].lastLoginAt, 64, false) !== expectedLastLoginAt
+  ) {
+    fail_('STORAGE_WRITE_FAILED', 'LINE 登入資料寫入失敗，請稍後再試。');
   }
 }
 
@@ -597,31 +614,67 @@ function parseRequest_(e) {
 
 function sheetObjects_(sheet) {
   const lastRow = sheet.getLastRow();
-  const lastColumn = sheet.getLastColumn();
-  if (lastRow < 2 || lastColumn < 1) return [];
+  const headers = sheetHeaders_(sheet);
+  if (lastRow < 2) return [];
 
-  const values = sheet.getRange(1, 1, lastRow, lastColumn).getDisplayValues();
-  const headers = values[0];
+  const values = sheet.getRange(1, 1, lastRow, headers.length).getDisplayValues();
   return values.slice(1)
     .filter(row => row.some(value => String(value).trim() !== ''))
     .map(row => {
       const object = {};
       headers.forEach((header, index) => {
-        if (header) object[header] = row[index] == null ? '' : row[index];
+        object[header] = row[index] == null ? '' : row[index];
       });
       return object;
     });
 }
 
+function sheetHeaders_(sheet) {
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn < 1) fail_('DATA_INTEGRITY_ERROR', '資料表缺少欄位標題。');
+
+  const row = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+  let end = row.length;
+  while (end > 0 && !String(row[end - 1] || '').trim()) end -= 1;
+  const headers = row.slice(0, end).map(value => String(value || '').trim());
+
+  if (!headers.length || headers.some(header => !header)) {
+    fail_('DATA_INTEGRITY_ERROR', '資料表欄位標題不完整。');
+  }
+  return headers;
+}
+
 function appendObject_(sheet, object) {
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
-  sheet.appendRow(headers.map(header => object[header] == null ? '' : object[header]));
+  try {
+    const headers = sheetHeaders_(sheet);
+    sheet.appendRow(headers.map(header => object[header] == null ? '' : object[header]));
+    SpreadsheetApp.flush();
+  } catch (error) {
+    if (error && error.publicCode) throw error;
+    console.error(JSON.stringify({
+      event: 'calendar_sheet_append_failed',
+      sheet: String(sheet && sheet.getName ? sheet.getName() : '').slice(0, 80),
+      message: String(error && error.message || error || '').slice(0, 500)
+    }));
+    fail_('STORAGE_WRITE_FAILED', '資料暫時無法儲存，請稍後再試。');
+  }
 }
 
 function writeObjectAtRow_(sheet, rowNumber, object) {
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
-  sheet.getRange(rowNumber, 1, 1, headers.length)
-    .setValues([headers.map(header => object[header] == null ? '' : object[header])]);
+  try {
+    const headers = sheetHeaders_(sheet);
+    sheet.getRange(rowNumber, 1, 1, headers.length)
+      .setValues([headers.map(header => object[header] == null ? '' : object[header])]);
+    SpreadsheetApp.flush();
+  } catch (error) {
+    if (error && error.publicCode) throw error;
+    console.error(JSON.stringify({
+      event: 'calendar_sheet_update_failed',
+      sheet: String(sheet && sheet.getName ? sheet.getName() : '').slice(0, 80),
+      message: String(error && error.message || error || '').slice(0, 500)
+    }));
+    fail_('STORAGE_WRITE_FAILED', '資料暫時無法儲存，請稍後再試。');
+  }
 }
 
 function validDate_(value) {
