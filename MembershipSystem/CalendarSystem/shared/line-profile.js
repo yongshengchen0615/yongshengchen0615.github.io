@@ -5,12 +5,6 @@
   const MAX_READY_CHECKS = 40;
 
   window.addEventListener('DOMContentLoaded', () => {
-    // app.js is loaded before this shared script, so its DOMContentLoaded handler
-    // binds first. Keep the hidden compatibility node through that binding, then
-    // remove the user-facing logout control without affecting auth-recovery logic.
-    const logoutButton = document.getElementById('logoutButton');
-    if (logoutButton) logoutButton.remove();
-
     const avatar = document.getElementById('profileAvatar');
     const fallback = document.getElementById('profileAvatarFallback');
     if (!avatar || !fallback) return;
