@@ -9,8 +9,10 @@
   <meta http-equiv="Expires" content="0">
   <title>日曆｜用戶端</title>
   <link rel="stylesheet" href="./styles.css?v=20260823-perf-ux-1">
+  <link rel="stylesheet" href="../shared/profile.css?v=20260823-avatar-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="./app.js?v=20260823-perf-ux-1" defer></script>
+  <script src="../shared/line-profile.js?v=20260823-avatar-1" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -34,9 +36,13 @@
           <h1>日曆</h1>
         </div>
         <div class="profile">
+          <div class="profile-avatar-frame" aria-hidden="true">
+            <img id="profileAvatar" class="profile-avatar-image" alt="" referrerpolicy="no-referrer" decoding="async" hidden>
+            <span id="profileAvatarFallback" class="profile-avatar-fallback">人</span>
+          </div>
           <div class="profile-copy">
             <span id="displayName">LINE 使用者</span>
-            <button id="logoutButton" class="link-button" type="button">登出</button>
+            <button id="logoutButton" class="link-button" type="button" hidden>登出</button>
           </div>
         </div>
       </header>

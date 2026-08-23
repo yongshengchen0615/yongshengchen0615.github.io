@@ -42,6 +42,26 @@ test('user Selected day is a modal instead of a persistent card', () => {
   assert.doesNotMatch(app, /insertAdjacentHTML/);
 });
 
+test('user and admin headers show LINE avatars while logout controls are not visible', () => {
+  ['user/index.html', 'admin/index.html'].forEach((relativePath) => {
+    const html = read(relativePath);
+    assert.match(html, /id="profileAvatar"/);
+    assert.match(html, /id="profileAvatarFallback"/);
+    assert.match(html, /shared\/line-profile\.js/);
+    assert.match(html, /id="logoutButton"[^>]*hidden/);
+  });
+});
+
+test('LINE avatar loader accepts HTTPS images only and does not persist profile data', () => {
+  const profile = read('shared/line-profile.js');
+  assert.match(profile, /window\.liff\.getProfile\(\)/);
+  assert.match(profile, /new URL\(value\)/);
+  assert.match(profile, /url\.protocol === 'https:'/);
+  assert.doesNotMatch(profile, /localStorage/);
+  assert.doesNotMatch(profile, /sessionStorage/);
+  assert.doesNotMatch(profile, /console\./);
+});
+
 test('calendar color is server validated and returned by the API', () => {
   const service = read('gas/CalendarService.gs');
   assert.match(service, /COLOR_PATTERN_\s*=\s*\/\^#\[0-9A-Fa-f\]\{6\}\$\//);
