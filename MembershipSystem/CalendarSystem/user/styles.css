@@ -9,6 +9,7 @@
 body { margin: 0; min-height: 100vh; background: linear-gradient(180deg, #f7fbf8 0, #f4f7fb 260px); }
 body.modal-open { overflow: hidden; }
 button { font: inherit; }
+button:focus-visible { outline: 3px solid rgba(6,199,85,.28); outline-offset: 2px; }
 .hidden { display: none !important; }
 
 .app-shell { width: min(100%, 980px); margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom)); }
@@ -28,20 +29,23 @@ button { font: inherit; }
 .link-button { appearance: none; border: 0; padding: 0; color: #14783d; background: transparent; cursor: pointer; font-weight: 700; }
 
 .calendar-card { background: rgba(255,255,255,.96); border: 1px solid #e4ebe6; border-radius: 22px; box-shadow: 0 14px 38px rgba(29, 45, 36, .07); padding: 16px; }
-.calendar-toolbar { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 10px; margin-bottom: 14px; }
+.calendar-toolbar { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 10px; margin-bottom: 10px; }
 .month-heading { text-align: center; display: grid; justify-items: center; gap: 3px; }
 .month-heading strong { font-size: 20px; }
 .icon-button { width: 42px; height: 42px; border: 1px solid #e0e8e2; border-radius: 12px; background: #fff; color: #27332b; cursor: pointer; font-size: 28px; line-height: 1; }
 .icon-button.compact { width: 36px; height: 36px; border-radius: 10px; font-size: 24px; }
 .icon-button:active { transform: translateY(1px); }
+.calendar-statusbar { min-height: 34px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-bottom: 10px; }
+.sync-status { color: #6c786f; font-size: 12px; }
+.sync-status.error { color: #b42318; }
 
 .weekday-row, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .weekday-row { padding: 0 2px 8px; color: #7a857d; font-size: 12px; text-align: center; font-weight: 700; }
 .calendar-grid { gap: 5px; }
-.day-cell { min-height: 86px; border: 1px solid transparent; border-radius: 13px; padding: 7px; background: #f9fbfa; cursor: pointer; overflow: hidden; }
-.day-cell:hover { border-color: #cfe2d4; }
+.day-cell { min-height: 86px; border: 1px solid transparent; border-radius: 13px; padding: 7px; background: #f9fbfa; cursor: pointer; overflow: hidden; transition: border-color .16s ease, background-color .16s ease, transform .16s ease; }
+.day-cell:hover { border-color: #cfe2d4; transform: translateY(-1px); }
 .day-cell.outside { opacity: .38; }
-.day-cell.selected { border-color: #06c755; background: #f1fbf5; }
+.day-cell.selected { border-color: #06c755; background: #f1fbf5; box-shadow: inset 0 0 0 1px rgba(6,199,85,.1); }
 .day-number { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; font-size: 13px; font-weight: 800; }
 .day-cell.today .day-number { background: #06c755; color: #fff; }
 .day-items { margin-top: 5px; display: grid; gap: 3px; }
@@ -63,14 +67,23 @@ button { font: inherit; }
 .empty-state { padding: 26px 8px; text-align: center; color: #7a857d; }
 .button { border: 0; border-radius: 12px; padding: 12px 18px; cursor: pointer; font-weight: 800; }
 .button.primary { background: #06c755; color: #fff; }
+.button.ghost { border: 1px solid #dde5df; background: #fff; color: #33453a; }
+.button:disabled { opacity: .55; cursor: wait; }
+.compact-button { padding: 8px 12px; font-size: 12px; }
 
 @media (max-width: 640px) {
   .app-shell { padding-left: 10px; padding-right: 10px; }
   .calendar-card { padding: 10px; border-radius: 18px; }
+  .calendar-statusbar { justify-content: space-between; }
   .day-cell { min-height: 70px; padding: 5px; }
   .day-item { padding: 2px 3px; font-size: 9px; }
   .profile-copy span { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .modal { padding: 10px; align-items: center; }
   .modal-card { max-height: 82vh; border-radius: 16px; padding: 15px; }
   .modal-header { top: -15px; margin: -15px -15px 8px; padding: 15px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .day-cell:hover { transform: none; }
 }
