@@ -1,5 +1,7 @@
 'use strict';
 
+const FRESH_LOGIN_PARAM = 'calendar_reauth';
+
 const state = {
   config: null,
   idToken: '',
@@ -80,12 +82,27 @@ async function ensureAdminLiffLogin() {
 
   await window.liff.init({ liffId: state.config.adminLiffId });
 
-  if (!window.liff.isLoggedIn()) {
-    if (window.liff.isInClient()) {
-      throw new Error('無法取得管理端 LINE 登入狀態，請關閉頁面後重新開啟。');
+  // LIFF Browser authenticates automatically during liff.init().
+  // External browsers are forced through a fresh LINE Login on every page entry.
+  if (!window.liff.isInClient()) {
+    const freshReturn = new URL(window.location.href).searchParams.get(FRESH_LOGIN_PARAM) === '1';
+    if (!freshReturn) {
+      const redirectUri = freshLoginUrl();
+      if (window.liff.isLoggedIn()) {
+        window.liff.logout();
+        window.location.replace(redirectUri);
+        return false;
+      }
+      window.liff.login({ redirectUri });
+      return false;
     }
-    window.liff.login({ redirectUri: canonicalUrl() });
-    return false;
+
+    if (!window.liff.isLoggedIn()) {
+      window.liff.login({ redirectUri: freshLoginUrl() });
+      return false;
+    }
+  } else if (!window.liff.isLoggedIn()) {
+    throw new Error('無法取得管理端 LINE 登入狀態，請關閉頁面後重新開啟。');
   }
 
   const idToken = window.liff.getIDToken();
@@ -102,6 +119,12 @@ function canonicalUrl() {
   const url = new URL(window.location.href);
   url.search = '';
   url.hash = '';
+  return url.href;
+}
+
+function freshLoginUrl() {
+  const url = new URL(canonicalUrl());
+  url.searchParams.set(FRESH_LOGIN_PARAM, '1');
   return url.href;
 }
 
