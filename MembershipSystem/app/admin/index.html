@@ -20,42 +20,85 @@
     <section id="adminError" class="panel state-panel hidden" role="alert"><span class="eyebrow danger-text">ACCESS ERROR</span><h2>無法進入管理端</h2><p id="adminErrorMessage">請確認管理權限。</p><button id="adminRetryButton" class="button button-primary" type="button">重新整理</button></section>
 
     <section id="adminApp" class="hidden">
-      <div class="metric-grid">
-        <article class="metric-card"><span>會員總數</span><strong id="metricTotal">0</strong></article>
-        <article class="metric-card"><span>有效會員</span><strong id="metricActive">0</strong></article>
-        <article class="metric-card"><span>累計消費分鐘</span><strong id="metricConsumedMinutes">0</strong></article>
-      </div>
+      <nav class="admin-subnav" aria-label="會員管理功能">
+        <button class="admin-nav-button is-active" type="button" data-admin-page="overview" aria-current="page">總覽</button>
+        <button class="admin-nav-button" type="button" data-admin-page="members">會員列表</button>
+        <button class="admin-nav-button" type="button" data-admin-page="tiers">等級設定</button>
+        <button class="admin-nav-button" type="button" data-admin-page="usage">QR Code</button>
+      </nav>
 
-      <section class="panel tier-settings-panel" aria-labelledby="tierSettingsTitle">
-        <div class="tier-settings-heading">
-          <div><span class="eyebrow">MEMBERSHIP TIER</span><h2 id="tierSettingsTitle">會員等級門檻</h2><p>會員等級依累計消費分鐘自動計算；一般會員固定從 0 分鐘開始。</p></div>
-          <button id="saveTierSettingsButton" class="button button-primary" type="button">儲存門檻</button>
+      <section id="adminPageOverview" class="admin-page" data-admin-page-panel="overview" aria-labelledby="overviewPageTitle">
+        <div class="page-heading">
+          <div><span class="eyebrow">OVERVIEW</span><h2 id="overviewPageTitle">管理總覽</h2><p>先查看會員概況，再進入各個管理功能。</p></div>
         </div>
-        <div class="tier-settings-grid">
-          <label><span>一般</span><input id="tierStandardThreshold" type="number" value="0" readonly><small>0 分鐘以上</small></label>
-          <label><span>銀級</span><input id="tierSilverThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>累計消費分鐘達此門檻</small></label>
-          <label><span>金級</span><input id="tierGoldThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>必須高於銀級</small></label>
-          <label><span>白金</span><input id="tierPlatinumThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>必須高於金級</small></label>
+
+        <div class="metric-grid">
+          <article class="metric-card"><span>會員總數</span><strong id="metricTotal">0</strong></article>
+          <article class="metric-card"><span>有效會員</span><strong id="metricActive">0</strong></article>
+          <article class="metric-card"><span>累計消費分鐘</span><strong id="metricConsumedMinutes">0</strong></article>
         </div>
-        <p id="tierSettingsMessage" class="tier-settings-message hidden" role="status"></p>
+
+        <div class="overview-grid">
+          <button class="overview-link-card" type="button" data-admin-page-target="members">
+            <span class="eyebrow">MEMBERS</span><strong>會員列表</strong><small>搜尋會員、查看會員狀態並編輯會員資料。</small><span class="overview-link-action">進入會員列表 →</span>
+          </button>
+          <button class="overview-link-card" type="button" data-admin-page-target="tiers">
+            <span class="eyebrow">MEMBERSHIP TIER</span><strong>等級設定</strong><small>設定銀級、金級與白金會員的累計服務時間門檻。</small><span class="overview-link-action">進入等級設定 →</span>
+          </button>
+          <button class="overview-link-card" type="button" data-admin-page-target="usage">
+            <span class="eyebrow">USAGE QR</span><strong>消費時間 QR Code</strong><small>新增、修改、停止、刪除與重新開啟 QR Code。</small><span class="overview-link-action">進入 QR Code 管理 →</span>
+          </button>
+        </div>
       </section>
 
-      <section class="panel admin-panel">
-        <div class="toolbar">
-          <label class="search-field"><span>搜尋會員</span><input id="memberSearch" type="search" maxlength="80" placeholder="會員編號或名稱" autocomplete="off"></label>
-          <div id="resultCount" class="result-count">0 筆</div>
+      <section id="adminPageMembers" class="admin-page hidden" data-admin-page-panel="members" aria-labelledby="membersPageTitle">
+        <div class="page-heading">
+          <div><span class="eyebrow">MEMBERS</span><h2 id="membersPageTitle">會員列表</h2><p>搜尋會員並管理會員資格、狀態、有效期限與管理備註。</p></div>
         </div>
-        <div class="table-wrap"><table class="member-table"><thead><tr><th>會員</th><th>會員編號</th><th>等級</th><th>狀態</th><th>累計消費分鐘</th><th>到期日</th><th></th></tr></thead><tbody id="memberTableBody"></tbody></table></div>
-        <div id="emptyState" class="empty-state hidden">找不到符合條件的會員。</div>
+
+        <section class="panel admin-panel">
+          <div class="toolbar">
+            <label class="search-field"><span>搜尋會員</span><input id="memberSearch" type="search" maxlength="80" placeholder="會員編號或名稱" autocomplete="off"></label>
+            <div id="resultCount" class="result-count">0 筆</div>
+          </div>
+          <div class="table-wrap"><table class="member-table"><thead><tr><th>會員</th><th>會員編號</th><th>等級</th><th>狀態</th><th>累計消費分鐘</th><th>到期日</th><th></th></tr></thead><tbody id="memberTableBody"></tbody></table></div>
+          <div id="emptyState" class="empty-state hidden">找不到符合條件的會員。</div>
+        </section>
       </section>
 
-      <section class="panel usage-panel">
-        <div class="section-heading">
-          <div><span class="eyebrow">USAGE QR</span><h2>消費時間 QR Code</h2><p>可新增、修改、停止或刪除 QR Code；掃描後只記錄消費分鐘，不扣除任何可用時數或餘額。</p></div>
-          <div class="section-actions"><button id="newUsageQrButton" class="button button-primary" type="button">新增 QR Code</button><button id="usageRefreshButton" class="button button-secondary" type="button">更新 QR Code</button></div>
+      <section id="adminPageTiers" class="admin-page hidden" data-admin-page-panel="tiers" aria-labelledby="tierSettingsTitle">
+        <div class="page-heading">
+          <div><span class="eyebrow">MEMBERSHIP TIER</span><h2>等級設定</h2><p>會員等級依累計服務分鐘自動計算，權限仍由伺服器端 Role / Permission 控制。</p></div>
         </div>
-        <div class="table-wrap"><table class="voucher-table"><thead><tr><th>QR Code</th><th>模式</th><th>分鐘</th><th>已記錄</th><th>狀態</th><th>期限</th><th></th></tr></thead><tbody id="voucherTableBody"></tbody></table></div>
-        <div id="voucherEmptyState" class="empty-state hidden">尚未建立 QR Code。</div>
+
+        <section class="panel tier-settings-panel" aria-labelledby="tierSettingsTitle">
+          <div class="tier-settings-heading">
+            <div><span class="eyebrow">TIER THRESHOLDS</span><h2 id="tierSettingsTitle">會員等級門檻</h2><p>一般會員固定從 0 分鐘開始；門檻變更後會重新計算會員等級。</p></div>
+            <button id="saveTierSettingsButton" class="button button-primary" type="button">儲存門檻</button>
+          </div>
+          <div class="tier-settings-grid">
+            <label><span>一般</span><input id="tierStandardThreshold" type="number" value="0" readonly><small>0 分鐘以上</small></label>
+            <label><span>銀級</span><input id="tierSilverThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>累計服務分鐘達此門檻</small></label>
+            <label><span>金級</span><input id="tierGoldThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>必須高於銀級</small></label>
+            <label><span>白金</span><input id="tierPlatinumThreshold" type="number" min="1" max="10000000" step="1" inputmode="numeric" required><small>必須高於金級</small></label>
+          </div>
+          <p id="tierSettingsMessage" class="tier-settings-message hidden" role="status"></p>
+        </section>
+      </section>
+
+      <section id="adminPageUsage" class="admin-page hidden" data-admin-page-panel="usage" aria-labelledby="usagePageTitle">
+        <div class="page-heading">
+          <div><span class="eyebrow">USAGE QR</span><h2 id="usagePageTitle">消費時間 QR Code</h2><p>集中管理消費時間 QR Code，不與會員列表或等級設定混在同一頁。</p></div>
+        </div>
+
+        <section class="panel usage-panel">
+          <div class="section-heading">
+            <div><span class="eyebrow">QR CODE MANAGEMENT</span><h2>QR Code 管理</h2><p>可新增、修改、停止或刪除 QR Code；掃描後只記錄消費分鐘，不扣除任何可用時數或餘額。</p></div>
+            <div class="section-actions"><button id="newUsageQrButton" class="button button-primary" type="button">新增 QR Code</button><button id="usageRefreshButton" class="button button-secondary" type="button">更新 QR Code</button></div>
+          </div>
+          <div class="table-wrap"><table class="voucher-table"><thead><tr><th>QR Code</th><th>模式</th><th>分鐘</th><th>已記錄</th><th>狀態</th><th>期限</th><th></th></tr></thead><tbody id="voucherTableBody"></tbody></table></div>
+          <div id="voucherEmptyState" class="empty-state hidden">尚未建立 QR Code。</div>
+        </section>
       </section>
     </section>
   </main>
