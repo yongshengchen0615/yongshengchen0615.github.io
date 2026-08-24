@@ -71,6 +71,7 @@ function adminPointGrantMultiCard_(context, payload) {
   }
 
   let result;
+  let grantForPush = null;
   let rewardNotificationForPush = null;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(8000)) fail_('BUSY', '發點服務忙碌中，請稍後再試。');
@@ -107,6 +108,7 @@ function adminPointGrantMultiCard_(context, payload) {
       }
 
       const recovered = recoverAdminPointGrant_(existing);
+      grantForPush = recovered;
       const refreshedMatch = findByFieldWithRow_(
         getSheet_(POINTS_CARD_SHEETS.members),
         'lineUserId',
@@ -200,6 +202,7 @@ function adminPointGrantMultiCard_(context, payload) {
       );
       if (!grantMatch) fail_('RECOVERY_REQUIRED', '人工發點紀錄遺失，請人工確認。');
       writeAdminPointGrantObjectRow_(POINTS_CARD_ADMIN_GRANTS.grantsSheet, grantMatch.row, grant);
+      grantForPush = grant;
 
       result = {
         duplicate: false,
@@ -213,7 +216,7 @@ function adminPointGrantMultiCard_(context, payload) {
     lock.releaseLock();
   }
 
-  const push = attemptAdminPointGrantPush_(result.grantId, rewardNotificationForPush);
+  const push = attemptAdminPointGrantPush_(result.grantId, grantForPush, rewardNotificationForPush);
   result.pushStatus = push.status;
   result.pushErrorCode = push.errorCode;
   return result;
