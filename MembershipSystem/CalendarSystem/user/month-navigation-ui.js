@@ -6,6 +6,7 @@
   const SWIPE_HORIZONTAL_DOMINANCE = 1.2;
   const WHEEL_TRIGGER_DISTANCE = 48;
   const WHEEL_COOLDOWN_MS = 420;
+  const NAVIGATION_LOCK_MS = 280;
   const ANIMATION_CLEANUP_MS = 340;
   const ENTER_NEXT_CLASS = 'month-page-enter-next';
   const ENTER_PREV_CLASS = 'month-page-enter-prev';
@@ -20,6 +21,7 @@
   let wheelAccumulator = 0;
   let wheelResetTimer = 0;
   let wheelLockedUntil = 0;
+  let navigationLockedUntil = 0;
   let animationCleanupTimer = 0;
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -31,11 +33,11 @@
 
     if (!calendarGrid || !monthTitle || !prevMonthButton || !nextMonthButton || !selectedDayModal) return;
 
-    prevMonthButton.addEventListener('click', () => setPendingDirection('prev'), true);
-    nextMonthButton.addEventListener('click', () => setPendingDirection('next'), true);
+    prevMonthButton.addEventListener('click', (event) => captureButtonNavigation(event, 'prev'), true);
+    nextMonthButton.addEventListener('click', (event) => captureButtonNavigation(event, 'next'), true);
 
     calendarGrid.addEventListener('touchstart', captureTouchStart, { capture: true, passive: true });
-    calendarGrid.addEventListener('touchend', captureTouchEnd, { capture: true, passive: true });
+    calendarGrid.addEventListener('touchend', captureTouchEnd, { capture: true, passive: false });
     calendarGrid.addEventListener('touchcancel', resetTouchGesture, { capture: true, passive: true });
     calendarGrid.addEventListener('wheel', handleCalendarWheel, { passive: false });
 
@@ -46,6 +48,18 @@
     });
     monthObserver.observe(monthTitle, { childList: true, characterData: true, subtree: true });
   });
+
+  function captureButtonNavigation(event, direction) {
+    const now = Date.now();
+    if (now < navigationLockedUntil) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+
+    navigationLockedUntil = now + NAVIGATION_LOCK_MS;
+    setPendingDirection(direction);
+  }
 
   function captureTouchStart(event) {
     if (isSelectedDayModalOpen() || event.touches.length !== 1) {
@@ -77,6 +91,14 @@
     if (absX < SWIPE_MIN_DISTANCE_PX) return;
     if (absX <= absY * SWIPE_HORIZONTAL_DOMINANCE) return;
 
+    const now = Date.now();
+    if (now < navigationLockedUntil) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+
+    navigationLockedUntil = now + NAVIGATION_LOCK_MS;
     setPendingDirection(deltaX < 0 ? 'next' : 'prev');
   }
 
@@ -92,7 +114,8 @@
 
     event.preventDefault();
 
-    if (Date.now() < wheelLockedUntil) return;
+    const now = Date.now();
+    if (now < wheelLockedUntil || now < navigationLockedUntil) return;
 
     wheelAccumulator += delta;
     window.clearTimeout(wheelResetTimer);
@@ -104,7 +127,7 @@
 
     const direction = wheelAccumulator > 0 ? 'next' : 'prev';
     wheelAccumulator = 0;
-    wheelLockedUntil = Date.now() + WHEEL_COOLDOWN_MS;
+    wheelLockedUntil = now + WHEEL_COOLDOWN_MS;
     setPendingDirection(direction);
 
     if (direction === 'next') nextMonthButton.click();
@@ -125,7 +148,6 @@
 
   function playMonthEnterAnimation(direction) {
     const className = direction === 'prev' ? ENTER_PREV_CLASS : ENTER_NEXT_CLASS;
-    const oppositeClass = direction === 'prev' ? ENTER_NEXT_CLASS : ENTER_PREV_CLASS;
 
     window.clearTimeout(animationCleanupTimer);
     calendarGrid.classList.remove(ENTER_NEXT_CLASS, ENTER_PREV_CLASS);
@@ -135,7 +157,6 @@
     void calendarGrid.offsetWidth;
 
     calendarGrid.classList.add(className);
-    monthTitle.classList.remove(oppositeClass);
     monthTitle.classList.add(className);
 
     animationCleanupTimer = window.setTimeout(() => {
