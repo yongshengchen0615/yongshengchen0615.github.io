@@ -15,6 +15,7 @@ function read(relativePath) {
 function makeHarness(options) {
   const source = read('shared/perf-ux.js');
   let networkCalls = 0;
+  let resolveSummary = null;
   const appended = new Map();
   const listeners = {};
   const document = {
@@ -40,19 +41,28 @@ function makeHarness(options) {
     dispatchEvent() {}
   };
 
+  function summaryResponse() {
+    return new Response(JSON.stringify({
+      ok: true,
+      data: {
+        settings: {
+          cards: [{ cardId: 'CARD-TEST-01', name: '測試卡', status: 'active' }]
+        }
+      }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
   const nativeFetch = async (_input, fetchOptions) => {
     networkCalls += 1;
     const action = String(fetchOptions && fetchOptions.body && fetchOptions.body.get('action') || '');
     if (options && options.failSummary && action === 'admin.summary') throw new TypeError('summary unavailable');
     if (action === 'admin.summary') {
-      return new Response(JSON.stringify({
-        ok: true,
-        data: {
-          settings: {
-            cards: [{ cardId: 'CARD-TEST-01', name: '測試卡', status: 'active' }]
-          }
-        }
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (options && options.deferSummary) {
+        return new Promise((resolve) => {
+          resolveSummary = () => resolve(summaryResponse());
+        });
+      }
+      return summaryResponse();
     }
     if (action === 'admin.cards.list') {
       return new Response(JSON.stringify({
@@ -100,6 +110,10 @@ function makeHarness(options) {
     window,
     listeners,
     appended,
+    resolveSummary() {
+      assert.equal(typeof resolveSummary, 'function');
+      resolveSummary();
+    },
     getNetworkCalls: () => networkCalls
   };
 }
@@ -135,6 +149,19 @@ test('a mutation invalidates the admin card snapshot', async () => {
   const cardsResponse = await harness.window.fetch(gasUrl, apiOptions('admin.cards.list'));
   const body = await cardsResponse.json();
 
+  assert.equal(harness.getNetworkCalls(), 3);
+  assert.equal(body.data.cards[0].cardId, 'CARD-NETWORK-01');
+});
+
+test('an older summary cannot repopulate the snapshot after a concurrent mutation', async () => {
+  const harness = makeHarness({ deferSummary: true });
+  const summary = harness.window.fetch(gasUrl, apiOptions('admin.summary'));
+  await harness.window.fetch(gasUrl, apiOptions('admin.card.update'));
+  harness.resolveSummary();
+  await summary;
+
+  const cardsResponse = await harness.window.fetch(gasUrl, apiOptions('admin.cards.list'));
+  const body = await cardsResponse.json();
   assert.equal(harness.getNetworkCalls(), 3);
   assert.equal(body.data.cards[0].cardId, 'CARD-NETWORK-01');
 });
