@@ -19,20 +19,20 @@
       <span class="eyebrow">MEMBER PROFILE</span>
       <h1 id="profileSetupTitle">完成會員資料</h1>
       <p class="profile-intro">首次加入請填寫電話與生日。完成後才會啟用會員卡與消費時間功能。</p>
-      <form id="profileSetupForm" class="profile-form" novalidate>
+      <form id="profileSetupForm" class="profile-form">
         <label class="field-label" for="profileSetupPhone">電話</label>
         <input id="profileSetupPhone" class="field-input" type="tel" inputmode="tel" autocomplete="tel" maxlength="40" required placeholder="請輸入聯絡電話">
 
         <span class="field-label" id="profileSetupBirthLabel">生日</span>
         <div class="birthdate-fields" role="group" aria-labelledby="profileSetupBirthLabel">
-          <input id="profileSetupBirthYear" class="field-input" type="text" inputmode="numeric" autocomplete="bday-year" maxlength="4" aria-label="出生年" placeholder="年">
-          <select id="profileSetupBirthMonth" class="field-input" autocomplete="bday-month" aria-label="出生月">
+          <input id="profileSetupBirthYear" class="field-input" type="text" inputmode="numeric" autocomplete="bday-year" maxlength="4" aria-label="出生年" placeholder="年" required>
+          <select id="profileSetupBirthMonth" class="field-input" autocomplete="bday-month" aria-label="出生月" required>
             <option value="">月</option>
             <option value="01">1 月</option><option value="02">2 月</option><option value="03">3 月</option><option value="04">4 月</option>
             <option value="05">5 月</option><option value="06">6 月</option><option value="07">7 月</option><option value="08">8 月</option>
             <option value="09">9 月</option><option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option>
           </select>
-          <select id="profileSetupBirthDay" class="field-input" autocomplete="bday-day" aria-label="出生日"><option value="">日</option></select>
+          <select id="profileSetupBirthDay" class="field-input" autocomplete="bday-day" aria-label="出生日" required><option value="">日</option></select>
         </div>
         <input id="profileSetupBirthDate" type="hidden">
 
@@ -77,7 +77,7 @@
   </main>
 
   <dialog id="profileDialog" class="profile-dialog" aria-labelledby="profileDialogTitle">
-    <form id="profileEditForm" class="profile-form" novalidate>
+    <form id="profileEditForm" class="profile-form">
       <span class="eyebrow">MEMBER PROFILE</span>
       <h2 id="profileDialogTitle">修改會員資料</h2>
       <p class="profile-dialog-intro">更新電話或生日後，系統會立即使用最新資料。</p>
@@ -87,14 +87,14 @@
 
       <span class="field-label" id="profileEditBirthLabel">生日</span>
       <div class="birthdate-fields" role="group" aria-labelledby="profileEditBirthLabel">
-        <input id="profileEditBirthYear" class="field-input" type="text" inputmode="numeric" autocomplete="bday-year" maxlength="4" aria-label="出生年" placeholder="年">
-        <select id="profileEditBirthMonth" class="field-input" autocomplete="bday-month" aria-label="出生月">
+        <input id="profileEditBirthYear" class="field-input" type="text" inputmode="numeric" autocomplete="bday-year" maxlength="4" aria-label="出生年" placeholder="年" required>
+        <select id="profileEditBirthMonth" class="field-input" autocomplete="bday-month" aria-label="出生月" required>
           <option value="">月</option>
           <option value="01">1 月</option><option value="02">2 月</option><option value="03">3 月</option><option value="04">4 月</option>
           <option value="05">5 月</option><option value="06">6 月</option><option value="07">7 月</option><option value="08">8 月</option>
           <option value="09">9 月</option><option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option>
         </select>
-        <select id="profileEditBirthDay" class="field-input" autocomplete="bday-day" aria-label="出生日"><option value="">日</option></select>
+        <select id="profileEditBirthDay" class="field-input" autocomplete="bday-day" aria-label="出生日" required><option value="">日</option></select>
       </div>
       <input id="profileEditBirthDate" type="hidden">
 
