@@ -29,8 +29,8 @@ function pointGrantNotificationMessage_(rewards) {
   return '新獲得：' + pointGrantRewardSummary_(rewards) + '。';
 }
 
-function ensurePointGrantNotification_(grant, card) {
-  const unlockedRewards = pointGrantUnlockedRewards_(grant, card);
+function ensurePointGrantNotification_(grant, card, precomputedRewards) {
+  const unlockedRewards = Array.isArray(precomputedRewards) ? precomputedRewards : pointGrantUnlockedRewards_(grant, card);
   if (!unlockedRewards.length) return null;
 
   const notificationId = pointGrantNotificationId_(grant.grantId);
