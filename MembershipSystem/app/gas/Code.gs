@@ -42,7 +42,7 @@ let requestSheets_ = {};
 let requestUsageRecordCounts_ = null;
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.8.0' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.9.0' } });
 }
 
 function doPost(e) {
@@ -60,6 +60,9 @@ function doPost(e) {
     switch (action) {
       case 'member.me':
         return json_({ ok: true, data: memberMe_(context) });
+      case 'member.minutes.grants.list':
+        rateLimit_('member-minute-grants:' + context.identity.sub, 20, 60);
+        return json_({ ok: true, data: memberMinuteGrantsList_(context, payload) });
       case 'profile.update':
         rateLimit_('profile-update:' + context.identity.sub, 10, 60);
         return json_({ ok: true, data: profileUpdate_(context, payload) });
@@ -82,6 +85,18 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-update:' + context.identity.sub, 20, 60);
         return json_({ ok: true, data: adminUpdate_(context, payload) });
+      case 'admin.minutes.grant':
+        requireAdmin_(context);
+        rateLimit_('admin-minute-grant:' + context.identity.sub, 10, 60);
+        return json_({ ok: true, data: adminMinuteGrant_(context, payload) });
+      case 'admin.minutes.grants.list':
+        requireAdmin_(context);
+        rateLimit_('admin-minute-grants-list:' + context.identity.sub, 30, 60);
+        return json_({ ok: true, data: adminMinuteGrantsList_(payload) });
+      case 'admin.minutes.push.retry':
+        requireAdmin_(context);
+        rateLimit_('admin-minute-push-retry:' + context.identity.sub, 10, 60);
+        return json_({ ok: true, data: adminMinuteGrantRetryPush_(context, payload) });
       case 'admin.tier.get':
         requireAdmin_(context);
         rateLimit_('admin-tier-get:' + context.identity.sub, 30, 60);
