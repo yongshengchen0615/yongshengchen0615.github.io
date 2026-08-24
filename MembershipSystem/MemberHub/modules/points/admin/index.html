@@ -92,7 +92,7 @@
 
       <section id="admin-panel-reward-confirmations" class="admin-tab-panel workspace-section reward-confirm-section" role="tabpanel" aria-labelledby="admin-tab-reward-confirmations" tabindex="0" data-admin-panel="reward-confirmations" hidden>
         <div class="section-heading">
-          <div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationsTitle">店家票券確認 QR</h2><p>會員使用已獲得票券時，必須在店內掃描有效的確認 QR；優惠券會核銷，抽獎券會立即開獎。</p></div>
+          <div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationsTitle">店家票券確認 QR</h2><p>每筆交易建立一組 15 分鐘內有效的單次 QR；首次掃描會綁定會員、集點卡與票券，完成後立即失效。</p></div>
           <button id="newRewardConfirmationButton" class="button button-primary" type="button">新增確認 QR</button>
         </div>
         <div class="table-wrap">
@@ -182,7 +182,7 @@
 
   <dialog id="rewardConfirmationDialog" class="admin-dialog stamp-dialog" aria-labelledby="rewardConfirmationDialogTitle">
     <form method="dialog">
-      <header class="dialog-header"><div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationDialogTitle">新增店家確認 QR</h2><p id="rewardConfirmationDialogDescription">建立後由店員在現場展示，會員掃描後才能使用票券。</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
+      <header class="dialog-header"><div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationDialogTitle">新增店家確認 QR</h2><p id="rewardConfirmationDialogDescription">建立單次確認 QR，由店員在交易現場展示；掃描後會綁定該會員票券。</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
       <div id="rewardConfirmationFields" class="form-grid">
         <label><span>到期時間</span><input id="rewardConfirmationExpiresAt" type="datetime-local" required></label>
         <label class="full-span"><span>確認備註</span><textarea id="rewardConfirmationNote" maxlength="200" rows="3" placeholder="例如：台北門市櫃台"></textarea></label>

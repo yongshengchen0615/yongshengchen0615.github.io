@@ -200,6 +200,26 @@ function findByFieldWithRow_(sheet, field, value) {
   return { row: rowNumber, object: rowToObject_(headers, row) };
 }
 
+function readObjectsByField_(sheet, field, value) {
+  const headers = POINTS_CARD_HEADERS[sheet.getName()];
+  const columnIndex = headers.indexOf(field);
+  if (columnIndex < 0) fail_('SCHEMA_MISMATCH', '缺少必要欄位。');
+  const expected = String(value || '');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  const matches = sheet.getRange(2, columnIndex + 1, lastRow - 1, 1)
+    .createTextFinder(expected).matchEntireCell(true).useRegularExpression(false).findAll();
+  if (matches.length > 20) {
+    return readObjects_(sheet).filter(function (object) {
+      return String(object[field] || '') === expected;
+    });
+  }
+  return matches.map(function (match) {
+    const row = sheet.getRange(match.getRow(), 1, 1, headers.length).getValues()[0];
+    return rowToObject_(headers, row);
+  });
+}
+
 function rowToObject_(headers, row) {
   const object = {};
   headers.forEach(function (header, index) { object[header] = row[index]; });

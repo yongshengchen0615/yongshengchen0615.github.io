@@ -72,6 +72,12 @@ function memberRewardClaim_(context, payload) {
     const confirmationMatch = findByFieldWithRow_(confirmationSheet, 'shareCode', confirmationCode);
     if (!confirmationMatch) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到這組店家票券確認 QR Code。');
     const confirmation = normalizeRewardConfirmation_(confirmationMatch.object);
+    const binding = {
+      memberLineUserId: context.identity.sub,
+      cardId: 'legacy',
+      rewardOrdinal: expectedRewardOrdinal,
+      requestId: requestId
+    };
     const existing = findByFieldWithRow_(rewardSheet, 'requestId', requestId);
     if (existing) {
       const record = existing.object;
@@ -83,11 +89,12 @@ function memberRewardClaim_(context, payload) {
       recoverRewardRecord_(existing);
       const recovered = findByFieldWithRow_(rewardSheet, 'requestId', requestId).object;
       if (recovered.status !== 'recorded') fail_('RECOVERY_REQUIRED', '先前票券確認尚待人工確認。');
+      consumeRewardConfirmationForClaim_(confirmationSheet, confirmationMatch.row, confirmation, binding, true);
       const memberMatch = findByFieldWithRow_(memberSheet, 'lineUserId', context.identity.sub);
       return rewardClaimResponse_(memberMatch.object, recovered, true, false);
     }
 
-    validateRewardConfirmationForClaim_(confirmation);
+    validateRewardConfirmationForClaim_(confirmation, binding);
     const initialMemberMatch = findByFieldWithRow_(memberSheet, 'lineUserId', context.identity.sub);
     if (!initialMemberMatch) fail_('MEMBER_NOT_FOUND', '請先開啟集點卡完成會員建立。');
     recoverProcessingRewardRecordsForMember_(initialMemberMatch.object.memberNo);
@@ -102,6 +109,7 @@ function memberRewardClaim_(context, payload) {
     const reward = availableRewardForClaim_(member, settings, claimedOrdinals, expectedRewardOrdinal);
     if (!reward) fail_('REWARD_NOT_AVAILABLE', '這張票券尚未取得或已經使用。');
 
+    reserveRewardConfirmationForClaim_(confirmationSheet, confirmationMatch.row, confirmation, binding);
     const record = recordRewardClaim_(memberSheet, rewardSheet, memberMatch, member, reward, {
       requestId: requestId,
       actorLineUserId: member.lineUserId,
@@ -109,6 +117,7 @@ function memberRewardClaim_(context, payload) {
       note: confirmation.note || '門市票券確認',
       confirmationId: confirmation.confirmationId
     });
+    consumeRewardConfirmationForClaim_(confirmationSheet, confirmationMatch.row, confirmation, binding);
     return rewardClaimResponse_(member, record, false, false);
   } finally { lock.releaseLock(); }
 }

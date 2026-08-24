@@ -101,7 +101,7 @@ test('reward projection exposes all earned unclaimed tickets beyond twenty', () 
   assert.equal(projection.availableRewardNodes[24].entitlementOrdinal, 25);
 });
 
-test('reward confirmation QR lifetime is independently capped at seven days', () => {
+test('reward confirmation QR lifetime is capped at fifteen minutes', () => {
   const context = {
     Array, Date, JSON, Math, Number, Object, String, console,
     cleanText_: (value, maxLength, required) => {
@@ -118,13 +118,13 @@ test('reward confirmation QR lifetime is independently capped at seven days', ()
     context
   );
 
-  const sixDays = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString();
-  assert.equal(context.__hardening.validRewardConfirmationExpiry_(sixDays), sixDays);
+  const tenMinutes = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  assert.equal(context.__hardening.validRewardConfirmationExpiry_(tenMinutes), tenMinutes);
 
-  const eightDays = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+  const sixteenMinutes = new Date(Date.now() + 16 * 60 * 1000).toISOString();
   assert.throws(
-    () => context.__hardening.validRewardConfirmationExpiry_(eightDays),
-    (error) => error && error.publicCode === 'INVALID_EXPIRY' && /7 天/.test(error.message)
+    () => context.__hardening.validRewardConfirmationExpiry_(sixteenMinutes),
+    (error) => error && error.publicCode === 'INVALID_EXPIRY' && /15 分鐘/.test(error.message)
   );
 });
 

@@ -4,7 +4,7 @@
   const $ = function (id) { return document.getElementById(id); };
   const statusLabels = { active: '有效', suspended: '停權', disabled: '停用' };
   const modeLabels = { single: '單次使用', 'per-member': '每位會員一次', repeatable: '可重複使用' };
-  const voucherStatusLabels = { active: '有效', cancelled: '已停止', expired: '已過期', used: '已使用', deleted: '已刪除' };
+  const voucherStatusLabels = { active: '有效', reserved: '交易保留中', consumed: '已使用', cancelled: '已停止', expired: '已過期', used: '已使用', deleted: '已刪除' };
   const rewardTypeLabels = { coupon: '優惠券', lottery: '抽獎券' };
   const avatarFallback = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72"%3E%3Crect width="72" height="72" rx="36" fill="%23dfe5df"/%3E%3Ccircle cx="36" cy="28" r="13" fill="%23173f35" fill-opacity=".3"/%3E%3Cpath d="M14 68c2-14 10-21 22-21s20 7 22 21" fill="%23173f35" fill-opacity=".3"/%3E%3C/svg%3E';
   const adminTabNames = ['overview', 'reward-nodes', 'reward-confirmations', 'members', 'stamp-qr'];
@@ -752,8 +752,8 @@
       const actionsTd = document.createElement('td');
       const actions = document.createElement('div'); actions.className = 'row-actions';
       actions.append(createTextButton('開啟', '', function () { openRewardConfirmation(confirmation.confirmationId); }, state !== 'active'));
-      if (state === 'active') actions.append(createTextButton('停止', 'danger', function () { cancelRewardConfirmation(confirmation); }, false));
-      actions.append(createTextButton('刪除', 'danger', function () { deleteRewardConfirmation(confirmation); }, Number(confirmation.recordCount || 0) > 0));
+      if (state === 'active' || state === 'reserved') actions.append(createTextButton('停止', 'danger', function () { cancelRewardConfirmation(confirmation); }, false));
+      actions.append(createTextButton('刪除', 'danger', function () { deleteRewardConfirmation(confirmation); }, state === 'reserved' || Number(confirmation.recordCount || 0) > 0));
       actionsTd.append(actions);
       setTableCellLabels(
         [idTd, countTd, statusTd, expiryTd, actionsTd],
@@ -1029,8 +1029,8 @@
     clearFormError('rewardConfirmationFormError');
     currentRewardConfirmationQrSvg = '';
     $('rewardConfirmationDialogTitle').textContent = '新增店家確認 QR';
-    $('rewardConfirmationDialogDescription').textContent = '建立後由店員在現場展示，會員掃描後才能使用票券。';
-    $('rewardConfirmationExpiresAt').value = toLocalDateTimeInput(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    $('rewardConfirmationDialogDescription').textContent = '建立單次確認 QR，由店員在交易現場展示；掃描後會綁定該會員票券。';
+    $('rewardConfirmationExpiresAt').value = toLocalDateTimeInput(Date.now() + 10 * 60 * 1000);
     $('rewardConfirmationNote').value = '';
     $('rewardConfirmationFields').classList.remove('hidden');
     $('rewardConfirmationResult').classList.add('hidden');
@@ -1101,7 +1101,7 @@
       }
       await showRewardConfirmation(result.confirmation);
       $('rewardConfirmationDialogTitle').textContent = '店家確認 QR 已建立';
-      $('rewardConfirmationDialogDescription').textContent = '請只在門市現場展示，外流時立即停止。';
+      $('rewardConfirmationDialogDescription').textContent = '此 QR 最多 15 分鐘有效，首次交易會綁定會員、集點卡、票券與請求，完成後立即失效。';
     } catch (error) {
       showFormError('rewardConfirmationFormError', error);
     } finally {

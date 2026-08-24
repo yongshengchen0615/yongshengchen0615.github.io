@@ -234,8 +234,10 @@ test('reward.prepare validates lottery eligibility without writing a claim recor
   assert.match(prepareFlow, /validateRewardConfirmationForClaim_/);
   assert.match(prepareFlow, /availableMultiCardRewardForClaim_/);
   assert.match(prepareFlow, /reward\.rewardType !== 'lottery'/);
+  assert.match(prepareFlow, /reserveRewardConfirmationForClaim_/);
+  assert.match(prepareFlow, /LockService\.getScriptLock/);
   assert.match(prepareFlow, /return \{ prepared: true \}/);
-  assert.doesNotMatch(prepareFlow, /recordMultiCardRewardClaim_|appendMultiCardObject_|writeMultiCardObjectRow_|LockService/);
+  assert.doesNotMatch(prepareFlow, /recordMultiCardRewardClaim_|appendMultiCardObject_|writeMultiCardObjectRow_/);
 });
 
 test('reward.prepare returns readiness while the lottery entitlement remains unredeemed', () => {
@@ -245,6 +247,7 @@ test('reward.prepare returns readiness while the lottery entitlement remains unr
     rewardNodes: [{ nodeId: 'node-1', rewardName: '抽獎券', rewardType: 'lottery', stampsRequired: 5 }]
   };
   const progress = { totalStamps: 5, redeemedRewards: 0 };
+  let reservedConfirmation = null;
   const context = {
     Array, Date, Math, Number, Object, String, console,
     POINTS_CARD_SHEETS: { members: 'Members', rewardConfirmations: 'RewardConfirmations' },
@@ -260,11 +263,14 @@ test('reward.prepare returns readiness while the lottery entitlement remains unr
     findMultiCard_: () => ({ card }),
     getSheet_: (name) => name,
     findByFieldWithRow_: (sheet) => sheet === 'RewardConfirmations'
-      ? { object: { confirmationId: 'RC-1', shareCode: 'a'.repeat(64), status: 'active', expiresAt: '2099-01-01T00:00:00.000Z' } }
-      : { object: { lineUserId: 'U1', memberNo: 'PC-1', membershipStatus: 'active' } },
+      ? { row: 2, object: { confirmationId: 'RC-1', shareCode: 'a'.repeat(64), status: 'active', expiresAt: '2099-01-01T00:00:00.000Z' } }
+      : { row: 2, object: { lineUserId: 'U1', memberNo: 'PC-1', membershipStatus: 'active' } },
     normalizeMember_: (member) => member,
     multiCardSettingsForProjection_: () => ({ rewardNodesUpdatedAt: 'reward-v1' }),
-    findMemberCardProgress_: () => ({ progress })
+    findMemberCardProgress_: () => ({ progress }),
+    readObjectsByField_: () => [],
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
+    writeObjectRow_: (sheet, row, confirmation) => { reservedConfirmation = { ...confirmation }; }
   };
   vm.createContext(context);
   vm.runInContext(read('gas/RewardConfirmationService.gs') + '\n' + read('gas/MultiCardRewardService.gs') + '\n;globalThis.__prepare = memberRewardPrepareMultiCard_;', context);
@@ -279,11 +285,15 @@ test('reward.prepare returns readiness while the lottery entitlement remains unr
   const result = context.__prepare({ identity: { sub: 'U1' } }, {
     cardId: card.cardId,
     confirmationCode: 'a'.repeat(64),
+    requestId: 'b'.repeat(32),
     expectedRewardOrdinal: 1,
     expectedRewardNodesUpdatedAt: 'reward-v1'
   });
   assert.equal(result.prepared, true);
   assert.equal(progress.redeemedRewards, 0);
+  assert.equal(reservedConfirmation.status, 'reserved');
+  assert.equal(reservedConfirmation.reservedByLineUserId, 'U1');
+  assert.equal(reservedConfirmation.reservedRequestId, 'b'.repeat(32));
 });
 
 test('existing reward confirmation QR opens with loading state and exposes no share link UI', () => {

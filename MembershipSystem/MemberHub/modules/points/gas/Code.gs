@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '2.3.0',
+  version: '2.3.1',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -37,7 +37,9 @@ const POINTS_CARD_HEADERS = Object.freeze({
   ],
   RewardConfirmations: [
     'confirmationId', 'shareCode', 'status', 'expiresAt', 'note', 'createdByLineUserId',
-    'createdAt', 'updatedAt', 'cancelledByLineUserId', 'cancelledAt'
+    'createdAt', 'updatedAt', 'cancelledByLineUserId', 'cancelledAt',
+    'reservedByLineUserId', 'reservedCardId', 'reservedRewardOrdinal', 'reservedRequestId',
+    'reservedAt', 'consumedAt'
   ],
   RewardRecords: [
     'rewardRecordId', 'requestId', 'memberLineUserId', 'memberNo', 'rewardName',

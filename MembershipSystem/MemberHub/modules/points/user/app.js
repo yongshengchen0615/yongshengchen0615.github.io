@@ -658,11 +658,13 @@
     showProcessing('reward');
     try {
       await waitForInterfacePaint();
+      const requestId = rewardRequestId(ticket, confirmationCode);
       const result = await PointsCard.callApi('reward.prepare', {
         cardId: ticket.cardId || currentMember.selectedCardId || currentMember.card.cardId,
         confirmationCode: confirmationCode,
         expectedRewardOrdinal: ticket.entitlementOrdinal,
-        expectedRewardNodesUpdatedAt: currentMember.rewardNodesUpdatedAt || ''
+        expectedRewardNodesUpdatedAt: currentMember.rewardNodesUpdatedAt || '',
+        requestId: requestId
       });
       if (!result || result.prepared !== true) throw new Error('抽獎準備回應不完整，請再試一次。');
       closeDialog($('ticketDialog'));

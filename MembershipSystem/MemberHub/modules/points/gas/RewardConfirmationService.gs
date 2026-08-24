@@ -1,6 +1,6 @@
 'use strict';
 
-const REWARD_CONFIRMATION_MAX_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const REWARD_CONFIRMATION_MAX_LIFETIME_MS = 15 * 60 * 1000;
 
 function validRewardConfirmationExpiry_(value) {
   const text = cleanText_(value, 40, true);
@@ -8,7 +8,7 @@ function validRewardConfirmationExpiry_(value) {
   const time = new Date(text).getTime();
   if (!Number.isFinite(time) || time <= now) fail_('INVALID_EXPIRY', '店家票券確認 QR Code 到期時間必須晚於現在。');
   if (time - now > REWARD_CONFIRMATION_MAX_LIFETIME_MS) {
-    fail_('INVALID_EXPIRY', '店家票券確認 QR Code 最長只能設定 7 天。');
+    fail_('INVALID_EXPIRY', '店家票券確認 QR Code 最長只能設定 15 分鐘。');
   }
   return new Date(time).toISOString();
 }
@@ -54,7 +54,13 @@ function adminRewardConfirmationCreate_(context, payload) {
       createdAt: now,
       updatedAt: now,
       cancelledByLineUserId: '',
-      cancelledAt: ''
+      cancelledAt: '',
+      reservedByLineUserId: '',
+      reservedCardId: '',
+      reservedRewardOrdinal: 0,
+      reservedRequestId: '',
+      reservedAt: '',
+      consumedAt: ''
     };
     if (!audit_(context.identity.sub, 'admin', 'REWARD_CONFIRM_QR_CREATE_REQUESTED', '', 'pending', {
       confirmationId: confirmation.confirmationId, expiresAt: expiresAt
@@ -87,7 +93,7 @@ function adminRewardConfirmationCancel_(context, payload) {
     if (!match) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到指定的票券確認 QR Code。');
     const confirmation = normalizeRewardConfirmation_(match.object);
     if (confirmation.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', '票券確認 QR Code 已更新，請重新整理後再試。');
-    if (confirmation.status !== 'active') fail_('REWARD_CONFIRMATION_INACTIVE', '這組票券確認 QR Code 已停止使用。');
+    if (['active', 'reserved'].indexOf(confirmation.status) < 0) fail_('REWARD_CONFIRMATION_INACTIVE', '這組票券確認 QR Code 已停止使用。');
     const now = new Date().toISOString();
     confirmation.status = 'cancelled';
     confirmation.updatedAt = now;
@@ -113,6 +119,9 @@ function adminRewardConfirmationDelete_(context, payload) {
     if (!match) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到指定的票券確認 QR Code。');
     const confirmation = normalizeRewardConfirmation_(match.object);
     if (confirmation.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', '票券確認 QR Code 已更新，請重新整理後再試。');
+    if (confirmation.status === 'reserved') {
+      fail_('REWARD_CONFIRMATION_RESERVED', '已由會員交易保留的確認 QR Code 只能停止，不能刪除。');
+    }
     if (hasRewardConfirmationRecords_(confirmationId)) {
       fail_('REWARD_CONFIRMATION_HAS_RECORDS', '已有票券領取紀錄的 QR Code 只能停止，不能刪除。');
     }
@@ -136,7 +145,13 @@ function normalizeRewardConfirmation_(value) {
     createdAt: String(value.createdAt || ''),
     updatedAt: String(value.updatedAt || ''),
     cancelledByLineUserId: String(value.cancelledByLineUserId || ''),
-    cancelledAt: String(value.cancelledAt || '')
+    cancelledAt: String(value.cancelledAt || ''),
+    reservedByLineUserId: String(value.reservedByLineUserId || ''),
+    reservedCardId: String(value.reservedCardId || ''),
+    reservedRewardOrdinal: Number(value.reservedRewardOrdinal || 0),
+    reservedRequestId: String(value.reservedRequestId || ''),
+    reservedAt: String(value.reservedAt || ''),
+    consumedAt: String(value.consumedAt || '')
   };
 }
 
@@ -166,9 +181,86 @@ function hasRewardConfirmationRecords_(confirmationId) {
   });
 }
 
-function validateRewardConfirmationForClaim_(confirmation) {
-  if (confirmation.status !== 'active') fail_('REWARD_CONFIRMATION_INACTIVE', '這組店家確認 QR Code 已停止使用。');
+function rewardConfirmationBindingMatches_(confirmation, binding) {
+  return Boolean(binding) && confirmation.reservedByLineUserId === binding.memberLineUserId &&
+    confirmation.reservedCardId === binding.cardId &&
+    Number(confirmation.reservedRewardOrdinal || 0) === Number(binding.rewardOrdinal || 0) &&
+    confirmation.reservedRequestId === binding.requestId;
+}
+
+function assertRewardEntitlementReservationAvailable_(sheet, confirmation, binding) {
+  const now = Date.now();
+  const conflict = readObjectsByField_(sheet, 'reservedByLineUserId', binding.memberLineUserId)
+    .map(normalizeRewardConfirmation_)
+    .some(function (other) {
+      return other.confirmationId !== confirmation.confirmationId &&
+        other.status === 'reserved' &&
+        new Date(other.expiresAt).getTime() > now &&
+        other.reservedCardId === binding.cardId &&
+        Number(other.reservedRewardOrdinal || 0) === Number(binding.rewardOrdinal || 0);
+    });
+  if (conflict) {
+    fail_('REWARD_CONFIRMATION_OUTSTANDING', '這張票券已有一筆確認交易進行中，請先完成或等待該交易到期。');
+  }
+}
+
+function validateRewardConfirmationForClaim_(confirmation, binding) {
   if (!confirmation.expiresAt || new Date(confirmation.expiresAt).getTime() <= Date.now()) {
     fail_('REWARD_CONFIRMATION_EXPIRED', '這組店家確認 QR Code 已過期。');
   }
+  if (confirmation.status === 'active') return;
+  if (confirmation.status === 'reserved') {
+    if (rewardConfirmationBindingMatches_(confirmation, binding)) return;
+    fail_('REWARD_CONFIRMATION_RESERVED', '這組店家確認 QR Code 已由另一筆票券交易保留。');
+  }
+  if (confirmation.status === 'consumed') fail_('REWARD_CONFIRMATION_USED', '這組店家確認 QR Code 已使用。');
+  fail_('REWARD_CONFIRMATION_INACTIVE', '這組店家確認 QR Code 已停止使用。');
+}
+
+function reserveRewardConfirmationForClaim_(sheet, row, confirmation, binding) {
+  if (confirmation.status === 'consumed' && rewardConfirmationBindingMatches_(confirmation, binding)) return confirmation;
+  validateRewardConfirmationForClaim_(confirmation, binding);
+  if (confirmation.status === 'reserved') return confirmation;
+  const now = new Date().toISOString();
+  confirmation.status = 'reserved';
+  confirmation.reservedByLineUserId = binding.memberLineUserId;
+  confirmation.reservedCardId = binding.cardId;
+  confirmation.reservedRewardOrdinal = binding.rewardOrdinal;
+  confirmation.reservedRequestId = binding.requestId;
+  confirmation.reservedAt = now;
+  confirmation.updatedAt = now;
+  writeObjectRow_(sheet, row, confirmation);
+  return confirmation;
+}
+
+function consumeRewardConfirmationForClaim_(sheet, row, confirmation, binding, allowRecordedRecovery) {
+  if (confirmation.status === 'consumed') {
+    if (!rewardConfirmationBindingMatches_(confirmation, binding)) {
+      fail_('REWARD_CONFIRMATION_USED', '這組店家確認 QR Code 已使用。');
+    }
+    return confirmation;
+  }
+  if (allowRecordedRecovery) {
+    if (confirmation.status === 'reserved' && !rewardConfirmationBindingMatches_(confirmation, binding)) {
+      fail_('REWARD_CONFIRMATION_RESERVED', '這組店家確認 QR Code 已由另一筆票券交易保留。');
+    }
+    if (confirmation.status === 'active') {
+      confirmation.reservedByLineUserId = binding.memberLineUserId;
+      confirmation.reservedCardId = binding.cardId;
+      confirmation.reservedRewardOrdinal = binding.rewardOrdinal;
+      confirmation.reservedRequestId = binding.requestId;
+      confirmation.reservedAt = new Date().toISOString();
+    } else if (confirmation.status !== 'reserved') {
+      fail_('REWARD_CONFIRMATION_INACTIVE', '這組店家確認 QR Code 已停止使用。');
+    }
+  } else {
+    validateRewardConfirmationForClaim_(confirmation, binding);
+    if (confirmation.status !== 'reserved') fail_('REWARD_CONFIRMATION_NOT_RESERVED', '票券確認交易尚未完成保留。');
+  }
+  const now = new Date().toISOString();
+  confirmation.status = 'consumed';
+  confirmation.consumedAt = now;
+  confirmation.updatedAt = now;
+  writeObjectRow_(sheet, row, confirmation);
+  return confirmation;
 }

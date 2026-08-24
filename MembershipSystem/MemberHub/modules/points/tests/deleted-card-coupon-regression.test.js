@@ -151,6 +151,8 @@ test('earned coupon survives card archive, reloads on the deleted card, and rema
   };
   context.normalizeRewardConfirmation_ = (value) => value;
   context.validateRewardConfirmationForClaim_ = () => {};
+  context.reserveRewardConfirmationForClaim_ = (sheet, row, value) => value;
+  context.consumeRewardConfirmationForClaim_ = (sheet, row, value) => value;
   context.normalizeMember_ = (value) => value;
   context.recoverProcessingMultiCardRewardRecordsForMember_ = () => {};
   context.multiCardSettingsForProjection_ = () => ({ rewardNodesUpdatedAt: 'v1', rewardNodes: state.card.rewardNodes });

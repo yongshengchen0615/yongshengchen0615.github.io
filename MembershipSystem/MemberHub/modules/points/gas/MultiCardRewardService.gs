@@ -67,31 +67,49 @@ function memberRewardPrepareMultiCard_(context, payload) {
   ensureMultiCardStorage_();
   const cardId = validMultiCardId_(payload.cardId, true);
   const confirmationCode = cleanText_(payload.confirmationCode, 64, true).toLowerCase();
+  const requestId = cleanText_(payload.requestId, 64, true).toLowerCase();
   const expectedRewardOrdinal = strictInt_(payload.expectedRewardOrdinal, 1, 100000000, 'INVALID_REWARD', '要使用的票券不正確。');
   const expectedRewardNodesUpdatedAt = cleanText_(payload.expectedRewardNodesUpdatedAt || '', 64, false);
   if (!/^[a-f0-9]{64}$/.test(confirmationCode)) fail_('INVALID_REWARD_CONFIRMATION_CODE', '店家票券確認 QR Code 格式不正確。');
+  if (!/^[a-f0-9]{32,64}$/.test(requestId)) fail_('INVALID_REQUEST_ID', '票券使用請求識別碼格式不正確。');
 
-  const cardMatch = findMultiCard_(cardId);
-  if (!cardMatch) fail_('CARD_NOT_FOUND', '這張票券所屬的集點卡已不存在。');
-  const confirmationMatch = findByFieldWithRow_(getSheet_(POINTS_CARD_SHEETS.rewardConfirmations), 'shareCode', confirmationCode);
-  if (!confirmationMatch) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到這組店家票券確認 QR Code。');
-  validateRewardConfirmationForClaim_(normalizeRewardConfirmation_(confirmationMatch.object));
+  const confirmationSheet = getSheet_(POINTS_CARD_SHEETS.rewardConfirmations);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(8000)) fail_('BUSY', '票券確認服務忙碌中，請稍後再試。');
+  try {
+    const cardMatch = findMultiCard_(cardId);
+    if (!cardMatch) fail_('CARD_NOT_FOUND', '這張票券所屬的集點卡已不存在。');
+    const confirmationMatch = findByFieldWithRow_(confirmationSheet, 'shareCode', confirmationCode);
+    if (!confirmationMatch) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到這組店家票券確認 QR Code。');
+    const confirmation = normalizeRewardConfirmation_(confirmationMatch.object);
+    const binding = {
+      memberLineUserId: context.identity.sub,
+      cardId: cardId,
+      rewardOrdinal: expectedRewardOrdinal,
+      requestId: requestId
+    };
+    validateRewardConfirmationForClaim_(confirmation, binding);
 
-  const memberMatch = findByFieldWithRow_(getSheet_(POINTS_CARD_SHEETS.members), 'lineUserId', context.identity.sub);
-  if (!memberMatch) fail_('MEMBER_NOT_FOUND', '請先開啟集點卡完成會員建立。');
-  const member = normalizeMember_(memberMatch.object);
-  if (member.membershipStatus !== 'active') fail_('MEMBER_INACTIVE', '會員目前無法使用票券，請洽店家確認。');
-  const settings = multiCardSettingsForProjection_(cardMatch.card);
-  if (expectedRewardNodesUpdatedAt && settings.rewardNodesUpdatedAt !== expectedRewardNodesUpdatedAt) {
-    fail_('CONFLICT', '票券設定已更新，請重新整理後再試。');
+    const memberMatch = findByFieldWithRow_(getSheet_(POINTS_CARD_SHEETS.members), 'lineUserId', context.identity.sub);
+    if (!memberMatch) fail_('MEMBER_NOT_FOUND', '請先開啟集點卡完成會員建立。');
+    const member = normalizeMember_(memberMatch.object);
+    if (member.membershipStatus !== 'active') fail_('MEMBER_INACTIVE', '會員目前無法使用票券，請洽店家確認。');
+    const settings = multiCardSettingsForProjection_(cardMatch.card);
+    if (expectedRewardNodesUpdatedAt && settings.rewardNodesUpdatedAt !== expectedRewardNodesUpdatedAt) {
+      fail_('CONFLICT', '票券設定已更新，請重新整理後再試。');
+    }
+    const progressMatch = findMemberCardProgress_(cardId, member.lineUserId);
+    const progress = progressMatch ? progressMatch.progress : { totalStamps: 0, redeemedRewards: 0 };
+    const reward = availableMultiCardRewardForClaim_(progress, cardMatch.card, member.lineUserId, expectedRewardOrdinal);
+    if (!reward) fail_('REWARD_NOT_AVAILABLE', '這張票券尚未取得或已經使用。');
+    if (reward.rewardType !== 'lottery') fail_('INVALID_REWARD', '這張票券不是抽獎券。');
+
+    assertRewardEntitlementReservationAvailable_(confirmationSheet, confirmation, binding);
+    reserveRewardConfirmationForClaim_(confirmationSheet, confirmationMatch.row, confirmation, binding);
+    return { prepared: true };
+  } finally {
+    lock.releaseLock();
   }
-  const progressMatch = findMemberCardProgress_(cardId, member.lineUserId);
-  const progress = progressMatch ? progressMatch.progress : { totalStamps: 0, redeemedRewards: 0 };
-  const reward = availableMultiCardRewardForClaim_(progress, cardMatch.card, member.lineUserId, expectedRewardOrdinal);
-  if (!reward) fail_('REWARD_NOT_AVAILABLE', '這張票券尚未取得或已經使用。');
-  if (reward.rewardType !== 'lottery') fail_('INVALID_REWARD', '這張票券不是抽獎券。');
-
-  return { prepared: true };
 }
 
 function memberRewardClaimMultiCard_(context, payload) {
@@ -115,6 +133,12 @@ function memberRewardClaimMultiCard_(context, payload) {
     const confirmationMatch = findByFieldWithRow_(confirmationSheet, 'shareCode', confirmationCode);
     if (!confirmationMatch) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到這組店家票券確認 QR Code。');
     const confirmation = normalizeRewardConfirmation_(confirmationMatch.object);
+    const binding = {
+      memberLineUserId: context.identity.sub,
+      cardId: cardId,
+      rewardOrdinal: expectedRewardOrdinal,
+      requestId: requestId
+    };
 
     const existing = findMultiCardByFieldWithRow_(rewardSheet, 'requestId', requestId);
     if (existing) {
@@ -126,11 +150,12 @@ function memberRewardClaimMultiCard_(context, payload) {
       recoverMultiCardRewardRecord_(existing);
       const recovered = normalizeMultiCardRewardRecord_(findMultiCardByFieldWithRow_(rewardSheet, 'requestId', requestId).object);
       if (recovered.status !== 'recorded') fail_('RECOVERY_REQUIRED', '先前票券確認尚待人工確認。');
+      consumeRewardConfirmationForClaim_(confirmationSheet, confirmationMatch.row, confirmation, binding, true);
       const memberMatch = findByFieldWithRow_(memberSheet, 'lineUserId', context.identity.sub);
       return multiCardRewardClaimResponse_(memberMatch.object, recovered, true, false);
     }
 
-    validateRewardConfirmationForClaim_(confirmation);
+    validateRewardConfirmationForClaim_(confirmation, binding);
     const initialMemberMatch = findByFieldWithRow_(memberSheet, 'lineUserId', context.identity.sub);
     if (!initialMemberMatch) fail_('MEMBER_NOT_FOUND', '請先開啟集點卡完成會員建立。');
     recoverProcessingMultiCardRewardRecordsForMember_(initialMemberMatch.object.memberNo, cardId);
@@ -145,6 +170,7 @@ function memberRewardClaimMultiCard_(context, payload) {
     const reward = availableMultiCardRewardForClaim_(progressMatch.progress, cardMatch.card, member.lineUserId, expectedRewardOrdinal);
     if (!reward) fail_('REWARD_NOT_AVAILABLE', '這張票券尚未取得或已經使用。');
 
+    reserveRewardConfirmationForClaim_(confirmationSheet, confirmationMatch.row, confirmation, binding);
     const record = recordMultiCardRewardClaim_(rewardSheet, progressMatch, member, cardMatch.card, reward, {
       requestId: requestId,
       actorLineUserId: member.lineUserId,
@@ -152,6 +178,7 @@ function memberRewardClaimMultiCard_(context, payload) {
       note: confirmation.note || '門市票券確認',
       confirmationId: confirmation.confirmationId
     });
+    consumeRewardConfirmationForClaim_(confirmationSheet, confirmationMatch.row, confirmation, binding);
     return multiCardRewardClaimResponse_(member, record, false, false);
   } finally {
     lock.releaseLock();
@@ -388,6 +415,9 @@ function adminRewardConfirmationDeleteMultiCard_(context, payload) {
     if (!match) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到指定的票券確認 QR Code。');
     const confirmation = normalizeRewardConfirmation_(match.object);
     if (confirmation.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', '票券確認 QR Code 已更新，請重新整理後再試。');
+    if (confirmation.status === 'reserved') {
+      fail_('REWARD_CONFIRMATION_RESERVED', '已由會員交易保留的確認 QR Code 只能停止，不能刪除。');
+    }
     if (hasRewardConfirmationRecordsMultiCard_(confirmationId)) {
       fail_('REWARD_CONFIRMATION_HAS_RECORDS', '已有票券領取紀錄的 QR Code 只能停止，不能刪除。');
     }
