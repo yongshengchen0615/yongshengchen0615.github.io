@@ -179,7 +179,7 @@ test('storage initialization preserves an existing configured production spreads
 });
 
 test('PointsCard has a dedicated production GAS deployment contract', () => {
-  const workflowPath = path.resolve(root, '..', '..', '.github', 'workflows', 'deploy-membership-points-card-gas.yml');
+  const workflowPath = path.resolve(root, '..', '..', '..', '..', '.github', 'workflows', 'deploy-membership-points-card-gas.yml');
   const workflow = fs.readFileSync(workflowPath, 'utf8');
 
   assert.match(workflow, /MembershipSystem\/PointsCard\/gas\/\*\*/);
