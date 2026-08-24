@@ -88,7 +88,7 @@ function isProfileComplete_(profile) {
 function publicProfile_(profile) {
   if (!profile) return null;
   return {
-    phone: profile.phone,
+    phone: normalizeProfilePhoneValue_(profile.phone),
     birthDate: profile.birthDate,
     updatedAt: profile.updatedAt
   };
@@ -97,12 +97,24 @@ function publicProfile_(profile) {
 function rowToProfile_(row) {
   const profile = {};
   PROFILE_HEADERS.forEach(function (header, index) { profile[header] = normalizeCell_(row[index]); });
+  // Google Sheets may return legacy phone cells as Number when they were saved
+  // before the column was forced to plain text. The API contract must remain a
+  // string even though a leading zero already lost by Sheets cannot be inferred.
+  profile.phone = normalizeProfilePhoneValue_(profile.phone);
   return profile;
+}
+
+function normalizeProfilePhoneValue_(value) {
+  if (value == null || value === '') return '';
+  return String(value).trim();
 }
 
 function profileToRow_(profile) {
   return PROFILE_HEADERS.map(function (header) {
-    return sheetSafe_(profile[header] == null ? '' : profile[header]);
+    const value = header === 'phone'
+      ? normalizeProfilePhoneValue_(profile[header])
+      : profile[header];
+    return sheetSafe_(value == null ? '' : value);
   });
 }
 
@@ -113,6 +125,28 @@ function writeProfile_(sheet, row, profile) {
   // 0912345678 into 912345678 by dropping the leading zero.
   sheet.getRange(row, phoneColumn).setNumberFormat('@');
   sheet.getRange(row, 1, 1, PROFILE_HEADERS.length).setValues([profileToRow_(profile)]);
+}
+
+function inspectAndFormatLegacyProfilePhones_() {
+  const sheet = getProfilesSheet_();
+  const phoneColumn = PROFILE_HEADERS.indexOf('phone') + 1;
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { formattedRows: 0, legacyNumericRows: [] };
+
+  const phoneRange = sheet.getRange(2, phoneColumn, lastRow - 1, 1);
+  const values = phoneRange.getValues();
+  const legacyNumericRows = [];
+  values.forEach(function (row, index) {
+    if (typeof row[0] === 'number' && Number.isFinite(row[0])) {
+      legacyNumericRows.push(index + 2);
+    }
+  });
+
+  // Formatting prevents future text-like phone values from being reinterpreted
+  // as numbers. It intentionally does not invent a missing leading zero for
+  // legacy numeric rows because the correct country/area prefix is unknowable.
+  phoneRange.setNumberFormat('@');
+  return { formattedRows: lastRow - 1, legacyNumericRows: legacyNumericRows };
 }
 
 function validateProfilePhone_(value) {
