@@ -29,7 +29,6 @@ const ALLOWED_TIERS = ['standard', 'silver', 'gold', 'platinum'];
 const ALLOWED_MEMBERSHIP_STATUS = ['active', 'suspended', 'disabled'];
 const ALLOWED_SCAN_MODES = ['single', 'repeatable'];
 const MAX_USAGE_MINUTES = 60000;
-const MAX_VOUCHER_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 // Public LINE Login channel identifier for LIFF app 2010787602-WceTV9tT.
 // This is an expected token audience, not a secret.
 const LINE_LOGIN_CHANNEL_ID = '2010787602';
@@ -535,7 +534,10 @@ function voucherScanMode_(voucher) {
 
 function effectiveVoucherStatus_(voucher, recordCount) {
   if (voucher.status === 'cancelled') return 'cancelled';
-  if (Date.parse(voucher.expiresAt) <= Date.now()) return 'expired';
+  if (voucher.expiresAt) {
+    const expiresAt = Date.parse(voucher.expiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return 'expired';
+  }
   if (voucherScanMode_(voucher) === 'single' && (recordCount > 0 || voucher.status === 'redeemed')) return 'redeemed';
   return 'issued';
 }
@@ -915,12 +917,12 @@ function validateDate_(value) {
   return text;
 }
 function validateVoucherExpiry_(value) {
+  if (value == null || String(value).trim() === '') return '';
   const text = cleanText_(value, 40, true);
   const timestamp = Date.parse(text);
   if (!Number.isFinite(timestamp)) fail_('INVALID_EXPIRY', 'QR Code 到期時間格式不正確。');
   const now = Date.now();
   if (timestamp <= now) fail_('INVALID_EXPIRY', 'QR Code 到期時間必須晚於現在。');
-  if (timestamp - now > MAX_VOUCHER_LIFETIME_MS) fail_('INVALID_EXPIRY', 'QR Code 有效期限最多 30 天。');
   return new Date(timestamp).toISOString();
 }
 function validateMinutes_(value, allowZero) {
