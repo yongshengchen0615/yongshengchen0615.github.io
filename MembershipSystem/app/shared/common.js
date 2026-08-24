@@ -19,12 +19,31 @@
   let loginInFlight = false;
   let authenticatedIdToken = '';
 
+  function isAdminSurface() {
+    const pathname = new URL(window.location.href).pathname.replace(/\/+$/, '');
+    return /\/admin(?:\/index\.html)?$/i.test(pathname);
+  }
+
+  function configuredLiffId(value) {
+    const liffId = String(value || '').trim();
+    if (!liffId || /^YOUR_[A-Z0-9_]+$/i.test(liffId)) return '';
+    return liffId;
+  }
+
   function assertConfigured(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       throw new Error('會員系統設定格式不正確。');
     }
-    if (!value.LIFF_ID || value.LIFF_ID === 'YOUR_LIFF_ID') {
-      throw new Error('尚未設定 LIFF_ID。');
+
+    const legacyLiffId = configuredLiffId(value.LIFF_ID);
+    const userLiffId = configuredLiffId(value.USER_LIFF_ID) || legacyLiffId;
+    const adminLiffId = configuredLiffId(value.ADMIN_LIFF_ID);
+
+    if (!userLiffId) {
+      throw new Error('尚未設定 USER_LIFF_ID。');
+    }
+    if (isAdminSurface() && !adminLiffId) {
+      throw new Error('尚未設定 ADMIN_LIFF_ID。');
     }
     if (!value.GAS_WEB_APP_URL || value.GAS_WEB_APP_URL === 'YOUR_GAS_WEB_APP_URL') {
       throw new Error('尚未設定 GAS_WEB_APP_URL。');
@@ -35,6 +54,12 @@
     } catch (_) {
       throw new Error('GAS_WEB_APP_URL 必須是 Apps Script Web App 的 HTTPS /exec 網址。');
     }
+
+    return {
+      userLiffId,
+      adminLiffId,
+      gasWebAppUrl: String(value.GAS_WEB_APP_URL)
+    };
   }
 
   async function loadConfig() {
@@ -61,10 +86,14 @@
       try { parsed = await response.json(); }
       catch (_) { throw new Error('會員系統設定檔不是有效 JSON。'); }
 
-      assertConfigured(parsed);
+      const resolved = assertConfigured(parsed);
       config = Object.freeze({
-        LIFF_ID: String(parsed.LIFF_ID),
-        GAS_WEB_APP_URL: String(parsed.GAS_WEB_APP_URL)
+        // LIFF_ID remains the member LIFF alias for old share-link code.
+        LIFF_ID: resolved.userLiffId,
+        USER_LIFF_ID: resolved.userLiffId,
+        ADMIN_LIFF_ID: resolved.adminLiffId,
+        ACTIVE_LIFF_ID: isAdminSurface() ? resolved.adminLiffId : resolved.userLiffId,
+        GAS_WEB_APP_URL: resolved.gasWebAppUrl
       });
       return config;
     })();
@@ -278,7 +307,7 @@
     const hadInitArtifacts = captureInitArtifacts();
 
     try {
-      await liff.init({ liffId: activeConfig.LIFF_ID });
+      await liff.init({ liffId: activeConfig.ACTIVE_LIFF_ID });
     } catch (error) {
       if (recoverFromInitFailure(error, hadInitArtifacts)) return false;
       throw error;
