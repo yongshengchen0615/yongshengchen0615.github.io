@@ -37,6 +37,7 @@ jobs:
           set -euo pipefail
           node --check MembershipSystem/PointsCard/redirect.js
           node --check MembershipSystem/PointsCard/shared/common.js
+          node --check MembershipSystem/PointsCard/shared/perf-ux.js
           node --check MembershipSystem/PointsCard/user/app.js
           node --check MembershipSystem/PointsCard/user/card-gallery.js
           node --check MembershipSystem/PointsCard/user/point-notifications.js
