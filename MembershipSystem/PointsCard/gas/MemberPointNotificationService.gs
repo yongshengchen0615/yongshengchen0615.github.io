@@ -25,8 +25,8 @@ function pointGrantNotificationTitle_(rewards) {
   return '你獲得 ' + rewards.length + ' 張新票券';
 }
 
-function pointGrantNotificationMessage_(reason, rewards) {
-  return '本次發放已解鎖：' + pointGrantRewardSummary_(rewards) + '。\n發放原因：' + reason;
+function pointGrantNotificationMessage_(rewards) {
+  return '新獲得：' + pointGrantRewardSummary_(rewards) + '。';
 }
 
 function ensurePointGrantNotification_(grant, card) {
@@ -51,7 +51,7 @@ function ensurePointGrantNotification_(grant, card) {
     cardName: cardName,
     type: 'point-grant-reward',
     title: pointGrantNotificationTitle_(unlockedRewards),
-    message: pointGrantNotificationMessage_(grant.reason, unlockedRewards),
+    message: pointGrantNotificationMessage_(unlockedRewards),
     stampCount: grant.stampCount,
     totalAfter: grant.totalAfter,
     relatedId: grant.grantId,
