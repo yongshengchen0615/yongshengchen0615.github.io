@@ -4,14 +4,21 @@ function pointGrantRetryKey_(grantId) {
   return lineMessagingRetryKey_('point-grant|' + grantId);
 }
 
-function pointGrantPushMessage_(grant, card) {
-  const cardName = String(card && card.name || '集點卡');
-  const unlockedRewards = pointGrantUnlockedRewards_(grant, card);
-  const rewardMessage = unlockedRewards.length
-    ? '\n新獲得：' + pointGrantRewardSummary_(unlockedRewards) + '。'
-    : '';
+function pointGrantRewardPushMessage_(grantId) {
+  const match = findAdminPointGrantByFieldWithRow_(
+    POINTS_CARD_ADMIN_GRANTS.notificationsSheet,
+    'notificationId',
+    pointGrantNotificationId_(grantId)
+  );
+  if (!match) return '';
+  const notification = normalizeMemberPointNotification_(match.object);
+  if (notification.type !== 'point-grant-reward') return '';
+  return notification.message;
+}
+
+function pointGrantPushMessage_(grant, cardName, rewardMessage) {
   return '你已獲得「' + cardName + '」' + grant.stampCount + ' 點。\n發放原因：' + grant.reason +
-    '\n目前點數：' + grant.totalAfter + ' 點。' + rewardMessage;
+    '\n目前點數：' + grant.totalAfter + ' 點。' + (rewardMessage ? '\n' + rewardMessage : '');
 }
 
 function pointGrantPushStatus_(push) {
@@ -33,12 +40,13 @@ function attemptAdminPointGrantPush_(grantId) {
   if (grant.pushStatus === 'sent') return { status: 'sent', errorCode: '' };
 
   const cardMatch = findMultiCard_(grant.cardId);
-  const card = cardMatch ? cardMatch.card : null;
+  const cardName = cardMatch ? cardMatch.card.name : '集點卡';
+  const rewardMessage = pointGrantRewardPushMessage_(grant.grantId);
   const now = new Date().toISOString();
   const push = createLineMessagingClient_().sendTextPush(
     grant.memberLineUserId,
     pointGrantRetryKey_(grant.grantId),
-    pointGrantPushMessage_(grant, card)
+    pointGrantPushMessage_(grant, cardName, rewardMessage)
   );
 
   const lock = LockService.getScriptLock();
