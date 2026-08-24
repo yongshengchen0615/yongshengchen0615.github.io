@@ -6,7 +6,7 @@ function pointGrantRetryKey_(grantId) {
 
 function pointGrantPushMessage_(grant, cardName) {
   return '你已獲得「' + cardName + '」' + grant.stampCount + ' 點。\n原因：' + grant.reason +
-    '\n目前累計：' + grant.totalAfter + ' 點。\n請開啟集點卡查看最新進度。';
+    '\n目前點數：' + grant.totalAfter + ' 點。';
 }
 
 function pointGrantPushStatus_(push) {
