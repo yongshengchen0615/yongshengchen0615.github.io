@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>日曆｜用戶端</title>
+  <link rel="stylesheet" href="./styles.css?v=20260824-page-animation-1">
+  <link rel="stylesheet" href="../shared/profile.css?v=20260823-avatar-1">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="./app.js?v=20260824-mobile-swipe-1" defer></script>
+  <script src="./month-navigation-ui.js?v=20260824-page-animation-1" defer></script>
+  <script src="./account-status-ui.js?v=20260823-user-access-1" defer></script>
+  <script src="../shared/line-profile.js?v=20260823-avatar-1" defer></script>
+</head>
+<body>
+  <div id="app" class="app-shell" aria-busy="true">
+    <section id="loadingView" class="state-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>正在驗證 LINE 登入</h1>
+      <p>完成身分驗證後才會載入日曆資料。</p>
+    </section>
+
+    <section id="errorView" class="state-card hidden" role="alert">
+      <div class="state-icon">!</div>
+      <h1 id="errorTitle">無法載入</h1>
+      <p id="errorMessage"></p>
+      <button id="retryButton" class="button primary" type="button">重新整理</button>
+    </section>
+
+    <main id="calendarView" class="hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CalendarSystem</p>
+          <h1>日曆</h1>
+        </div>
+        <div class="profile">
+          <div class="profile-avatar-frame" aria-hidden="true">
+            <img id="profileAvatar" class="profile-avatar-image" alt="" referrerpolicy="no-referrer" decoding="async" hidden>
+            <span id="profileAvatarFallback" class="profile-avatar-fallback">人</span>
+          </div>
+          <div class="profile-copy">
+            <span id="displayName">LINE 使用者</span>
+            <button id="logoutButton" class="link-button" type="button" hidden>登出</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="calendar-card" aria-label="月曆">
+        <div class="calendar-toolbar">
+          <button id="prevMonth" class="icon-button" type="button" aria-label="上個月">‹</button>
+          <div class="month-heading">
+            <strong id="monthTitle"></strong>
+            <button id="todayButton" class="link-button" type="button">今天</button>
+          </div>
+          <button id="nextMonth" class="icon-button" type="button" aria-label="下個月">›</button>
+        </div>
+
+        <div class="calendar-statusbar">
+          <span id="syncStatus" class="sync-status" aria-live="polite">準備同步資料</span>
+          <button id="refreshButton" class="button ghost compact-button" type="button">更新</button>
+        </div>
+
+        <div class="weekday-row" aria-hidden="true">
+          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="selectedDayModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="selectedDateTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Selected day</p>
+          <h2 id="selectedDateTitle">今日行程</h2>
+        </div>
+        <div class="modal-header-actions">
+          <span id="selectedCount" class="badge">0</span>
+          <button id="closeSelectedDayButton" class="icon-button compact" type="button" aria-label="關閉當日行程">×</button>
+        </div>
+      </div>
+      <div id="agendaList" class="agenda-list"></div>
+    </div>
+  </div>
+</body>
+</html>

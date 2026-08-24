@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f1eee7">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+  <title>集點卡管理｜Points Card</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./card-lifecycle.css">
+  <link rel="stylesheet" href="../shared/perf-ux.css">
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <a class="wordmark" href="../user/"><span class="wordmark-dot"></span><span>POINTS CARD</span></a>
+        <p class="eyebrow">ADMIN CONSOLE</p>
+        <h1>集點卡管理</h1>
+        <p>管理多張集點卡、會員狀態、集點 QR Code 與獎勵兌換。</p>
+      </div>
+      <div class="admin-header-actions">
+        <span id="adminSyncStatus" class="admin-sync-status" data-state="synced" role="status" aria-live="polite">尚未同步</span>
+        <button id="refreshButton" class="button button-secondary" type="button">重新整理</button>
+      </div>
+    </header>
+
+    <section id="bootState" class="state-panel" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <h2>正在驗證管理權限</h2>
+      <p>先載入總覽；會員、QR 與票券資料會在切換分頁時按需載入。</p>
+    </section>
+
+    <section id="errorState" class="state-panel hidden" role="alert">
+      <span class="state-icon" aria-hidden="true">!</span>
+      <p class="eyebrow danger-text">ACCESS ERROR</p>
+      <h2>無法開啟管理端</h2>
+      <p id="errorMessage">請確認管理權限後再試。</p>
+      <button id="retryButton" class="button button-primary" type="button">重新整理</button>
+    </section>
+
+    <section id="adminApp" class="hidden">
+      <nav class="admin-tabs" aria-label="管理功能分頁">
+        <div role="tablist" aria-label="管理功能">
+          <button id="admin-tab-overview" class="admin-tab" type="button" role="tab" aria-selected="true" aria-controls="admin-panel-overview" data-admin-tab="overview">總覽</button>
+          <button id="admin-tab-reward-nodes" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-reward-nodes" tabindex="-1" data-admin-tab="reward-nodes">獎勵節點</button>
+          <button id="admin-tab-reward-confirmations" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-reward-confirmations" tabindex="-1" data-admin-tab="reward-confirmations">票券確認</button>
+          <button id="admin-tab-members" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-members" tabindex="-1" data-admin-tab="members">會員與獎勵</button>
+          <button id="admin-tab-stamp-qr" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-stamp-qr" tabindex="-1" data-admin-tab="stamp-qr">集點 QR</button>
+        </div>
+      </nav>
+
+      <section id="admin-panel-overview" class="admin-tab-panel" role="tabpanel" aria-labelledby="admin-tab-overview" tabindex="0" data-admin-panel="overview">
+        <section class="metric-row" aria-label="集點卡摘要">
+          <article><span>會員總數</span><strong id="metricMembers">0</strong><small id="metricActive">0 位有效會員</small></article>
+          <article><span>累計集點</span><strong id="metricStamps">0</strong><small>所有集點卡累計</small></article>
+          <article><span>已兌換獎勵</span><strong id="metricRewards">0</strong><small id="rewardNameMetric">目前集點卡</small></article>
+        </section>
+
+        <section class="workspace-section card-lifecycle-section" aria-labelledby="cardSettingsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">MULTI-CARD MANAGEMENT</p>
+              <h2 id="cardSettingsTitle">集點卡管理</h2>
+              <p>可新增多張不同集點卡，分別設定名稱、說明與期限。刪除會封存集點卡並停止新的集點；會員尚未使用的票券與歷史紀錄會保留。</p>
+            </div>
+            <span id="cardStatusBadge" class="status-badge">有效</span>
+          </div>
+          <div id="cardSettingsNotice" class="settings-notice" role="status">正在讀取集點卡設定。</div>
+          <div class="form-grid card-lifecycle-form">
+            <label><span>期限設定</span><select id="cardExpiryMode" required><option value="limited">有期限</option><option value="unlimited" selected>無期限</option></select></label>
+            <label id="cardExpiryField" class="hidden"><span>到期時間</span><input id="cardExpiresAt" type="datetime-local"></label>
+          </div>
+          <div class="section-actions card-lifecycle-actions">
+            <button id="saveCardSettingsButton" class="button button-primary" type="button">儲存集點卡設定</button>
+            <button id="deleteCardButton" class="button button-secondary card-delete-button" type="button">刪除集點卡</button>
+          </div>
+          <p id="cardSettingsMessage" class="settings-message hidden" role="status"></p>
+        </section>
+      </section>
+
+      <section id="admin-panel-reward-nodes" class="admin-tab-panel workspace-section reward-node-settings" role="tabpanel" aria-labelledby="admin-tab-reward-nodes" tabindex="0" data-admin-panel="reward-nodes" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">REWARD NODES</p><h2 id="rewardNodesTitle">獎勵節點</h2><p>設定目前選取的集點卡在不同點數發放的獎勵、票券有效天數與未使用提醒；最大節點就是卡片長度，節點最高 10,000 點。</p></div>
+          <div class="section-actions"><button id="addRewardNodeButton" class="button button-secondary" type="button">新增節點</button><button id="saveRewardNodesButton" class="button button-primary" type="button">儲存節點</button></div>
+        </div>
+        <div id="rewardSettingsNotice" class="settings-notice hidden" role="status"></div>
+        <div id="rewardNodeList" class="reward-node-editor"></div>
+        <p id="rewardSettingsMessage" class="settings-message hidden" role="status"></p>
+      </section>
+
+      <section id="admin-panel-reward-confirmations" class="admin-tab-panel workspace-section reward-confirm-section" role="tabpanel" aria-labelledby="admin-tab-reward-confirmations" tabindex="0" data-admin-panel="reward-confirmations" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationsTitle">店家票券確認 QR</h2><p>會員使用已獲得票券時，必須在店內掃描有效的確認 QR；優惠券會核銷，抽獎券會立即開獎。</p></div>
+          <button id="newRewardConfirmationButton" class="button button-primary" type="button">新增確認 QR</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table confirmation-table">
+            <thead><tr><th>QR Code</th><th>使用次數</th><th>狀態</th><th>到期時間</th><th><span class="sr-only">操作</span></th></tr></thead>
+            <tbody id="rewardConfirmationTableBody"></tbody>
+          </table>
+        </div>
+        <div id="rewardConfirmationEmptyState" class="empty-state hidden">尚未建立店家票券確認 QR。</div>
+      </section>
+
+      <section id="admin-panel-members" class="admin-tab-panel workspace-section" role="tabpanel" aria-labelledby="admin-tab-members" tabindex="0" data-admin-panel="members" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">MEMBERS</p><h2 id="membersTitle">會員與獎勵</h2><p>點數餘額與可兌換數量皆依目前選取的集點卡由伺服器端計算。</p></div>
+          <label class="search-field"><span class="sr-only">搜尋會員</span><input id="memberSearch" type="search" maxlength="80" placeholder="搜尋姓名或會員編號" autocomplete="off"><span aria-hidden="true">⌕</span></label>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table member-table">
+            <thead><tr><th>會員</th><th>狀態</th><th>此卡集點</th><th>可兌換</th><th>加入日期</th><th><span class="sr-only">操作</span></th></tr></thead>
+            <tbody id="memberTableBody"></tbody>
+          </table>
+        </div>
+        <div id="memberEmptyState" class="empty-state hidden">找不到符合條件的會員。</div>
+      </section>
+
+      <section id="admin-panel-stamp-qr" class="admin-tab-panel workspace-section voucher-section" role="tabpanel" aria-labelledby="admin-tab-stamp-qr" tabindex="0" data-admin-panel="stamp-qr" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">STAMP QR</p><h2 id="vouchersTitle">集點 QR Code</h2><p>QR Code 只屬於目前選取的集點卡。建議使用「每位會員一次」；可設定到期時間或無期限。</p></div>
+          <button id="newStampButton" class="button button-primary" type="button">新增集點 QR</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table voucher-table">
+            <thead><tr><th>QR Code</th><th>點數</th><th>模式</th><th>使用次數</th><th>狀態</th><th>到期時間</th><th><span class="sr-only">操作</span></th></tr></thead>
+            <tbody id="voucherTableBody"></tbody>
+          </table>
+        </div>
+        <div id="voucherEmptyState" class="empty-state hidden">此集點卡尚未建立集點 QR Code。</div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="memberDialog" class="admin-dialog" aria-labelledby="memberDialogTitle">
+    <form id="memberForm" method="dialog">
+      <header class="dialog-header"><div><p class="eyebrow">MEMBER SETTINGS</p><h2 id="memberDialogTitle">管理會員</h2><p id="memberDialogNumber">—</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
+      <input id="memberTargetNo" type="hidden"><input id="memberExpectedUpdatedAt" type="hidden">
+      <div class="form-grid">
+        <label><span>會員狀態</span><select id="memberStatus" required><option value="active">有效</option><option value="suspended">停權</option><option value="disabled">停用</option></select></label>
+        <label><span>此卡累計集點</span><input id="memberTotalStamps" type="text" readonly></label>
+        <label><span>可兌換獎勵</span><input id="memberAvailableRewards" type="text" readonly></label>
+        <label class="full-span"><span>管理備註</span><textarea id="memberNote" maxlength="500" rows="4" placeholder="僅管理端可見"></textarea></label>
+      </div>
+      <p id="memberFormError" class="form-error hidden" role="alert"></p>
+      <footer class="dialog-actions"><button class="button button-secondary" value="cancel" type="submit">取消</button><button id="saveMemberButton" class="button button-primary" type="button">儲存</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="rewardDialog" class="admin-dialog reward-dialog" aria-labelledby="rewardDialogTitle">
+    <form method="dialog">
+      <header class="dialog-header"><div><p class="eyebrow">REWARD REDEMPTION</p><h2 id="rewardDialogTitle">兌換會員獎勵</h2><p id="rewardMemberMeta">—</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
+      <div class="reward-preview"><span aria-hidden="true">✦</span><div><strong id="rewardPreviewName">本期集點獎勵</strong><p>將使用一份可兌換獎勵，完成後無法由前端撤銷。</p></div></div>
+      <p id="rewardNodeMeta" class="reward-node-meta">—</p>
+      <label class="field-label"><span>兌換備註</span><textarea id="rewardNote" maxlength="200" rows="3" placeholder="例如：門市現場兌換"></textarea></label>
+      <p id="rewardFormError" class="form-error hidden" role="alert"></p>
+      <footer class="dialog-actions"><button class="button button-secondary" value="cancel" type="submit">取消</button><button id="confirmRewardButton" class="button button-accent" type="button">確認兌換</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="stampDialog" class="admin-dialog stamp-dialog" aria-labelledby="stampDialogTitle">
+    <form id="stampForm" method="dialog">
+      <header class="dialog-header"><div><p class="eyebrow">STAMP QR</p><h2 id="stampDialogTitle">新增集點 QR Code</h2><p id="stampDialogDescription">預設每位會員只能使用一次。</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
+      <div id="stampFields" class="form-grid">
+        <label><span>集點數量</span><input id="stampCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric" required></label>
+        <label><span>使用模式</span><select id="stampMode" required><option value="per-member" selected>每位會員一次（建議）</option><option value="single">整組單次使用</option><option value="repeatable">不限會員重複使用</option></select></label>
+        <label><span>期限設定</span><select id="stampExpiryMode" required><option value="limited" selected>有期限</option><option value="unlimited">無期限</option></select></label>
+        <label id="stampExpiryField"><span>到期時間</span><input id="stampExpiresAt" type="datetime-local" required></label>
+        <label class="full-span"><span>發放備註</span><textarea id="stampNote" maxlength="200" rows="3" placeholder="例如：本次消費集點"></textarea></label>
+      </div>
+      <div id="stampResult" class="stamp-result hidden" aria-live="polite">
+        <div id="stampQrCode" class="qr-code" aria-label="集點 QR Code"></div><p id="stampResultMeta"></p>
+        <label id="stampUrlField" class="field-label"><span>集點連結</span><textarea id="stampUrl" rows="3" readonly></textarea></label>
+        <p class="security-note">QR Code 只提供集點憑證；會員身分與狀態仍由 LINE ID Token 與 GAS 驗證。無期限或不限重複模式的 QR 外流風險較高，不再使用時請立即停止或刪除。</p>
+      </div>
+      <p id="stampFormError" class="form-error hidden" role="alert"></p>
+      <footer class="dialog-actions"><button class="button button-secondary" value="cancel" type="submit">關閉</button><button id="copyStampButton" class="button button-secondary hidden" type="button">複製連結</button><button id="downloadStampButton" class="button button-secondary hidden" type="button">下載 QR</button><button id="createStampButton" class="button button-primary" type="button">建立 QR Code</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="rewardConfirmationDialog" class="admin-dialog stamp-dialog" aria-labelledby="rewardConfirmationDialogTitle">
+    <form method="dialog">
+      <header class="dialog-header"><div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationDialogTitle">新增店家確認 QR</h2><p id="rewardConfirmationDialogDescription">建立後由店員在現場展示，會員掃描後才能使用票券。</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
+      <div id="rewardConfirmationFields" class="form-grid">
+        <label><span>到期時間</span><input id="rewardConfirmationExpiresAt" type="datetime-local" required></label>
+        <label class="full-span"><span>確認備註</span><textarea id="rewardConfirmationNote" maxlength="200" rows="3" placeholder="例如：台北門市櫃台"></textarea></label>
+      </div>
+      <div id="rewardConfirmationResult" class="stamp-result hidden" aria-live="polite" aria-busy="false">
+        <div id="rewardConfirmationQrCode" class="qr-code" aria-label="店家票券確認 QR Code"></div><p id="rewardConfirmationResultMeta"></p>
+        <p class="security-note">確認 QR 是店內票券核銷憑證；請勿公開張貼或轉傳，過期或外流時請立即停止。</p>
+      </div>
+      <p id="rewardConfirmationFormError" class="form-error hidden" role="alert"></p>
+      <footer class="dialog-actions"><button class="button button-secondary" value="cancel" type="submit">關閉</button><button id="downloadRewardConfirmationButton" class="button button-secondary hidden" type="button">下載 QR</button><button id="createRewardConfirmationButton" class="button button-primary" type="button">建立確認 QR</button></footer>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="../vendor/liff-client.js"></script>
+  <script src="../shared/perf-ux.js"></script>
+  <script src="../shared/common.js"></script>
+  <script src="../vendor/qrcode-generator-2.0.4.js"></script>
+  <script src="./app.js"></script>
+  <script src="./card-lifecycle.js"></script>
+  <script src="./point-grant.js"></script>
+</body>
+</html>

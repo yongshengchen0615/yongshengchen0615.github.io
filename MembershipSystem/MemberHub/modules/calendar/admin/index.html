@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>日曆｜管理端</title>
+  <link rel="stylesheet" href="./styles.css?v=20260823-perf-ux-1">
+  <link rel="stylesheet" href="./user-access.css?v=20260823-user-access-1">
+  <link rel="stylesheet" href="../shared/profile.css?v=20260823-avatar-1">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="./app.js?v=20260823-perf-ux-1" defer></script>
+  <script src="./date-constraints.js?v=20260823-date-policy-1" defer></script>
+  <script src="./user-access.js?v=20260823-user-access-1" defer></script>
+  <script src="../shared/line-profile.js?v=20260823-avatar-1" defer></script>
+</head>
+<body>
+  <div id="app" class="app-shell" aria-busy="true">
+    <section id="loadingView" class="state-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>正在驗證管理員身分</h1>
+      <p>管理端會同時驗證 LINE 身分與 GAS 端 Admins 權限。</p>
+    </section>
+
+    <section id="errorView" class="state-card hidden" role="alert">
+      <div class="state-icon">!</div>
+      <h1 id="errorTitle">無法進入管理端</h1>
+      <p id="errorMessage"></p>
+      <div id="pendingBox" class="pending-box hidden">
+        <strong>待授權 LINE User ID</strong>
+        <code id="pendingUserId"></code>
+        <p>請到 GAS 建立的 Spreadsheet → <b>Admins</b>，把此列的 <b>role</b> 改為 <b>admin</b>，<b>status</b> 改為 <b>active</b>，再重新整理。</p>
+      </div>
+      <button id="retryButton" class="button primary" type="button">重新整理</button>
+    </section>
+
+    <main id="adminView" class="hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CalendarSystem Admin</p>
+          <h1>日曆管理</h1>
+        </div>
+        <div class="profile">
+          <div class="profile-avatar-frame" aria-hidden="true">
+            <img id="profileAvatar" class="profile-avatar-image" alt="" referrerpolicy="no-referrer" decoding="async" hidden>
+            <span id="profileAvatarFallback" class="profile-avatar-fallback">人</span>
+          </div>
+          <div class="profile-copy">
+            <span id="displayName">管理員</span>
+            <button id="logoutButton" class="link-button" type="button" hidden>登出</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="calendar-card" aria-label="管理日曆">
+        <div class="calendar-toolbar">
+          <button id="prevMonth" class="icon-button" type="button" aria-label="上一個月">‹</button>
+          <div class="month-heading">
+            <strong id="monthTitle"></strong>
+            <button id="todayButton" class="link-button" type="button">回到今天</button>
+          </div>
+          <button id="nextMonth" class="icon-button" type="button" aria-label="下一個月">›</button>
+        </div>
+
+        <div class="calendar-actions">
+          <p>點擊日期即可新增或管理當日事項。</p>
+          <div class="sync-actions">
+            <span id="syncStatus" class="sync-status" aria-live="polite">準備同步資料</span>
+            <button id="refreshButton" class="button ghost compact-button" type="button">同步資料</button>
+          </div>
+        </div>
+
+        <div class="weekday-row" aria-hidden="true">
+          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+
+      <section id="userAccessCard" class="user-access-card" aria-labelledby="userAccessTitle">
+        <div class="user-access-header">
+          <div>
+            <p class="eyebrow">User access</p>
+            <h2 id="userAccessTitle">用戶使用權限</h2>
+          </div>
+          <div class="user-access-actions">
+            <span id="userAccessStatus" class="user-access-status" aria-live="polite">準備載入</span>
+            <button id="userAccessRefresh" class="button ghost compact-button" type="button">重新整理</button>
+          </div>
+        </div>
+        <div id="userAccessList" class="user-access-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="dayModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Day editor</p>
+          <h2 id="modalTitle">日期事項</h2>
+        </div>
+        <button id="closeModalButton" class="icon-button compact" type="button" aria-label="關閉">×</button>
+      </div>
+
+      <section class="day-items-section">
+        <div class="section-heading">
+          <h3>這一天的事項</h3>
+          <span id="dayItemCount" class="badge">0</span>
+        </div>
+        <div id="dayItemsList" class="day-items-list"></div>
+      </section>
+
+      <section class="editor-section">
+        <div class="section-heading editor-heading">
+          <h3 id="formTitle">新增事項</h3>
+          <button id="cancelEditButton" class="link-button hidden" type="button">取消編輯</button>
+        </div>
+
+        <form id="itemForm" novalidate>
+          <input id="itemId" type="hidden">
+          <input id="expectedUpdatedAt" type="hidden">
+
+          <div class="form-grid">
+            <label>
+              <span>類型</span>
+              <select id="type" required>
+                <option value="holiday">休假日</option>
+                <option value="event" selected>活動</option>
+                <option value="notice">公告</option>
+              </select>
+            </label>
+
+            <label>
+              <span>狀態</span>
+              <select id="status" required>
+                <option value="published">已發布</option>
+                <option value="draft">草稿</option>
+              </select>
+            </label>
+
+            <label class="span-2">
+              <span>標題</span>
+              <input id="title" type="text" maxlength="80" autocomplete="off" required placeholder="例如：會員日活動">
+            </label>
+
+            <label>
+              <span>開始日期</span>
+              <input id="startDate" type="date" required>
+            </label>
+
+            <label>
+              <span>結束日期</span>
+              <input id="endDate" type="date" required>
+            </label>
+
+            <label class="color-field span-2">
+              <span>顏色</span>
+              <div class="color-control">
+                <input id="color" type="color" value="#3182B8" aria-label="事項顏色">
+                <div class="color-presets" aria-label="常用顏色">
+                  <button class="color-swatch" type="button" data-color="#D95656" style="--swatch:#D95656" aria-label="紅色"></button>
+                  <button class="color-swatch" type="button" data-color="#3182B8" style="--swatch:#3182B8" aria-label="藍色"></button>
+                  <button class="color-swatch" type="button" data-color="#D3A12F" style="--swatch:#D3A12F" aria-label="黃色"></button>
+                  <button class="color-swatch" type="button" data-color="#06A948" style="--swatch:#06A948" aria-label="綠色"></button>
+                  <button class="color-swatch" type="button" data-color="#8B5CF6" style="--swatch:#8B5CF6" aria-label="紫色"></button>
+                  <button class="color-swatch" type="button" data-color="#EC4899" style="--swatch:#EC4899" aria-label="粉色"></button>
+                </div>
+              </div>
+            </label>
+
+            <label class="check-label span-2">
+              <input id="allDay" type="checkbox" checked>
+              <span>全天</span>
+            </label>
+
+            <label id="startTimeLabel" class="hidden">
+              <span>開始時間</span>
+              <input id="startTime" type="time">
+            </label>
+
+            <label id="endTimeLabel" class="hidden">
+              <span>結束時間</span>
+              <input id="endTime" type="time">
+            </label>
+
+            <label class="span-2">
+              <span>地點</span>
+              <input id="location" type="text" maxlength="120" autocomplete="off" placeholder="選填">
+            </label>
+
+            <label class="span-2">
+              <span>說明</span>
+              <textarea id="description" rows="4" maxlength="1000" placeholder="選填"></textarea>
+            </label>
+          </div>
+
+          <div id="formMessage" class="form-message hidden" role="alert"></div>
+          <div class="form-actions">
+            <button id="archiveButton" class="button danger hidden" type="button">封存</button>
+            <button id="saveButton" class="button primary" type="submit">新增事項</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

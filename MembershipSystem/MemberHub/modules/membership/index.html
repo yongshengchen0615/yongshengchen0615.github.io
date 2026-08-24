@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Membership System</title>
+</head>
+<body>
+  <p id="status">正在開啟會員端…</p>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    (async function () {
+      'use strict';
+
+      function validCode(value) {
+        const code = String(value || '').trim();
+        return /^[a-f0-9]{64}$/i.test(code) ? code.toLowerCase() : '';
+      }
+
+      function validRequestId(value) {
+        const requestId = String(value || '').trim();
+        return /^[a-f0-9]{32,64}$/i.test(requestId) ? requestId.toLowerCase() : '';
+      }
+
+      try {
+        const response = await fetch('./shared/config.json', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer'
+        });
+        if (!response.ok) throw new Error('無法載入 LIFF 設定。');
+        const config = await response.json();
+        const userLiffId = String(config && (config.USER_LIFF_ID || config.LIFF_ID) || '').trim();
+        if (!userLiffId || /^YOUR_[A-Z0-9_]+$/i.test(userLiffId)) {
+          throw new Error('USER_LIFF_ID 尚未設定。');
+        }
+
+        await liff.init({ liffId: userLiffId });
+
+        const current = new URL(window.location.href);
+
+        // LINE owns liff.state during the primary redirect. Never race the
+        // SDK's secondary redirect with an application redirect.
+        if (current.searchParams.has('liff.state')) {
+          document.getElementById('status').textContent = '正在完成 LINE 導向…';
+          return;
+        }
+
+        // Bare endpoint and legacy root share links finish here. Only carry
+        // validated application-owned parameters into the member page.
+        const target = new URL('./user/', current);
+        const usage = validCode(current.searchParams.get('usage'));
+        const redeem = usage ? '' : validCode(current.searchParams.get('redeem'));
+        const requestId = validRequestId(current.searchParams.get('request'));
+        if (usage) target.searchParams.set('usage', usage);
+        else if (redeem) target.searchParams.set('redeem', redeem);
+        if ((usage || redeem) && requestId) target.searchParams.set('request', requestId);
+
+        window.location.replace(target.href);
+      } catch (error) {
+        document.getElementById('status').textContent =
+          error && error.message ? error.message : '會員端暫時無法開啟。';
+      }
+    })();
+  </script>
+</body>
+</html>

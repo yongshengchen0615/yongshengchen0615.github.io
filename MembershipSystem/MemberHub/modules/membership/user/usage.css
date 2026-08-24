@@ -1,0 +1,26 @@
+.card-consumed-summary{position:relative;z-index:1;display:flex;align-items:baseline;gap:8px;margin-top:20px;padding:16px 18px;border:1px solid rgba(255,255,255,.16);border-radius:16px;background:rgba(255,255,255,.08)}
+.card-consumed-summary span{margin-right:auto;color:#aeb8c8;font-size:11px;letter-spacing:.08em}
+.card-consumed-summary strong{font-size:30px;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.card-consumed-summary small{color:#c8d0dc;font-size:12px}
+.card-scan-action{position:relative;z-index:1;margin-top:14px}
+.card-scan-button{width:100%;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.28);color:#fff;backdrop-filter:blur(6px)}
+.card-scan-button:hover{background:rgba(255,255,255,.18)}
+.usage-error-overlay{position:fixed;inset:0;z-index:1001;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.46);backdrop-filter:blur(4px)}
+.usage-error-dialog-card{width:min(100%,360px);padding:28px;border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--text);box-shadow:0 24px 70px rgba(15,23,42,.24);text-align:center}
+.usage-error-dialog-card h2{margin:2px 0 8px}
+.usage-error-dialog-card p{margin:0;color:var(--muted);line-height:1.6}
+.usage-error-dialog-card .button{width:100%;margin-top:22px}
+.usage-error-icon{display:grid;place-items:center;width:52px;height:52px;margin:0 auto 16px;border-radius:50%;background:var(--danger);color:#fff;font-size:26px;font-weight:900}
+.button-secondary{background:#fff;border-color:var(--line);color:var(--text)}
+.usage-loading-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:rgba(238,242,247,.92);backdrop-filter:blur(8px)}
+.usage-loading-card{width:min(100%,360px);display:grid;justify-items:center;gap:8px;padding:30px 26px;text-align:center;background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)}
+.usage-loading-card .spinner{margin:0 0 8px}
+.usage-loading-card h2,.usage-loading-card p{margin:0}
+.usage-loading-card p{color:var(--muted);line-height:1.6}
+.usage-success-dialog{width:min(calc(100% - 40px),360px);padding:28px;border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--text);box-shadow:0 24px 70px rgba(15,23,42,.24);text-align:center}
+.usage-success-dialog::backdrop{background:rgba(15,23,42,.46);backdrop-filter:blur(4px)}
+.usage-success-dialog h2{margin:2px 0 8px}
+.usage-success-dialog p{margin:0;color:var(--muted);line-height:1.6}
+.usage-success-dialog .button{width:100%;margin-top:22px}
+.usage-success-icon{display:grid;place-items:center;width:52px;height:52px;margin:0 auto 16px;border-radius:50%;background:var(--primary);color:#fff;font-size:26px;font-weight:900}
+@media(max-width:520px){.card-consumed-summary{padding:14px 15px}.card-consumed-summary strong{font-size:27px}.usage-error-overlay,.usage-loading-overlay{padding:18px}.usage-error-dialog-card{width:min(calc(100% - 4px),360px)}.usage-success-dialog{width:min(calc(100% - 28px),360px)}}
