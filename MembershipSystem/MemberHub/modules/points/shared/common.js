@@ -293,6 +293,15 @@
     return !exp || exp > Math.floor(Date.now() / 1000) + ID_TOKEN_EXPIRY_SKEW_SECONDS;
   }
 
+  function clearPersistedLiffIdToken(liffId) {
+    const id = String(liffId || '').trim();
+    if (!id) return;
+    try { window.localStorage.removeItem('LIFF_STORE:' + id + ':IDToken'); }
+    catch (_) { /* Storage can be unavailable; the in-memory token remains usable. */ }
+    try { window.sessionStorage.removeItem('LIFF_STORE:' + id + ':IDToken'); }
+    catch (_) { /* LIFF in-client uses sessionStorage; either store can be unavailable. */ }
+  }
+
   function startExternalLogin(forceRefresh) {
     if (!liffClient) throw new Error('LINE LIFF SDK 尚未完成載入。');
     if (liffClient.isInClient()) throw new Error('LINE 登入憑證已過期，請關閉此 LIFF 頁面後重新開啟。');
@@ -340,6 +349,7 @@
       if (!idToken) throw new Error('LINE 已登入但無法取得 ID Token，請確認 LIFF 已啟用 openid scope。');
       if (!hasFreshIdToken()) return startExternalLogin(true);
       authenticatedIdToken = idToken;
+      clearPersistedLiffIdToken(activeConfig.LIFF_ID);
       loginInFlight = false;
       removeSessionValue(AUTH_REFRESH_KEY);
       canonicalizeAppUrl();

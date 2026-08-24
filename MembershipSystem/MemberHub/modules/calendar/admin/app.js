@@ -21,6 +21,13 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     bindElements();
+    if (window.top !== window.self) {
+      els.errorTitle.textContent = '管理端無法在內嵌視窗中開啟';
+      els.errorMessage.textContent = '請直接開啟管理中心，以避免介面遭到第三方頁面覆蓋。';
+      setView('error');
+      els.app.setAttribute('aria-busy', 'false');
+      return;
+    }
     bindEvents();
     boot();
   });
@@ -101,6 +108,7 @@
       if (!state.idToken) {
         throw clientError('AUTH_REQUIRED', '無法取得 LINE ID token。請確認 Admin LIFF 已啟用 openid scope。');
       }
+      clearPersistedLiffIdToken(state.config.adminLiffId);
 
       const result = await api('admin.bootstrap');
       state.profile = result.profile || null;
@@ -153,10 +161,10 @@
 
   async function api(action, payload = {}) {
     const body = {
+      ...payload,
       action,
       clientType: 'admin',
-      idToken: state.idToken,
-      ...payload
+      idToken: state.idToken
     };
 
     let response;
@@ -188,6 +196,24 @@
 
     return data.data || {};
   }
+
+  const USER_ACCESS_ACTIONS = new Set(['admin.users.list', 'admin.users.updateStatus']);
+  Object.defineProperty(window, 'CalendarAdminUserAccessApi', {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value(action, payload = {}) {
+      if (!USER_ACCESS_ACTIONS.has(action)) {
+        return Promise.reject(clientError('INVALID_ACTION', '此管理功能不允許呼叫指定操作。'));
+      }
+      if (action === 'admin.users.list') return api(action);
+      return api(action, {
+        lineUserId: payload.lineUserId,
+        status: payload.status,
+        expectedUpdatedAt: payload.expectedUpdatedAt
+      });
+    }
+  });
 
   function handleBootError(error) {
     if (error && error.code === 'ADMIN_PENDING') {
@@ -649,6 +675,15 @@
     url.hash = '';
     ['code', 'state', 'liffClientId', 'liffRedirectUri'].forEach((name) => url.searchParams.delete(name));
     return url.toString();
+  }
+
+  function clearPersistedLiffIdToken(liffId) {
+    const id = String(liffId || '').trim();
+    if (!id) return;
+    try { window.localStorage.removeItem(`LIFF_STORE:${id}:IDToken`); }
+    catch (_) { /* Storage can be unavailable; the in-memory token remains usable. */ }
+    try { window.sessionStorage.removeItem(`LIFF_STORE:${id}:IDToken`); }
+    catch (_) { /* LIFF in-client uses sessionStorage; either store can be unavailable. */ }
   }
 
   function clientError(code, message) {

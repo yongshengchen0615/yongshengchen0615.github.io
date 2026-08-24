@@ -3,7 +3,7 @@
 
   const READY_RETRY_MS = 250;
   const READY_MAX_ATTEMPTS = 60;
-  const state = { config: null, idToken: '', users: [], loading: false };
+  const state = { users: [], loading: false };
 
   window.addEventListener('DOMContentLoaded', () => {
     const root = document.getElementById('userAccessCard');
@@ -17,16 +17,8 @@
 
     async function waitForAdminReady(attempt) {
       const adminView = document.getElementById('adminView');
-      let loggedIn = false;
-      try {
-        loggedIn = Boolean(window.liff && window.liff.isLoggedIn && window.liff.isLoggedIn());
-      } catch (_) {}
-
-      if (adminView && !adminView.classList.contains('hidden') && loggedIn) {
+      if (adminView && !adminView.classList.contains('hidden') && typeof window.CalendarAdminUserAccessApi === 'function') {
         try {
-          state.config = await loadConfig();
-          state.idToken = window.liff.getIDToken() || '';
-          if (!state.idToken) throw new Error('無法取得 LINE ID token。');
           await loadUsers(false);
         } catch (error) {
           setStatus(error && error.message ? error.message : '無法載入用戶使用權限。', true);
@@ -37,17 +29,6 @@
       if (attempt < READY_MAX_ATTEMPTS) {
         window.setTimeout(() => waitForAdminReady(attempt + 1), READY_RETRY_MS);
       }
-    }
-
-    async function loadConfig() {
-      const response = await fetch('../config.json', { cache: 'no-store' });
-      if (!response.ok) throw new Error('讀取 config.json 失敗。');
-      const config = await response.json();
-      const gasUrl = String(config && config.gasWebAppUrl || '').trim();
-      if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
-        throw new Error('GAS Web App URL 設定不合法。');
-      }
-      return config;
     }
 
     async function loadUsers(showLoading) {
@@ -149,26 +130,10 @@
     }
 
     async function api(action, payload = {}) {
-      const response = await fetch(state.config.gasWebAppUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        cache: 'no-store',
-        redirect: 'follow',
-        body: JSON.stringify({ action, clientType: 'admin', idToken: state.idToken, ...payload })
-      });
-
-      let data;
-      try {
-        data = await response.json();
-      } catch (_) {
-        throw new Error('GAS 回傳格式錯誤。');
+      if (typeof window.CalendarAdminUserAccessApi !== 'function') {
+        throw new Error('管理端驗證狀態尚未就緒。');
       }
-      if (!data || data.ok !== true) {
-        const error = new Error(data && data.error && data.error.message || '後端拒絕此請求。');
-        error.code = data && data.error && data.error.code || 'API_ERROR';
-        throw error;
-      }
-      return data.data || {};
+      return window.CalendarAdminUserAccessApi(action, payload);
     }
 
     function setStatus(message, isError) {

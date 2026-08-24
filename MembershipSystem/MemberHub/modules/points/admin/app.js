@@ -1197,6 +1197,9 @@
   }
 
   async function init() {
+    if (window.top !== window.self) {
+      throw new Error('管理端不允許在內嵌視窗中執行，請直接開啟管理中心。');
+    }
     bindEvents();
     setAdminSyncState('loading', '正在驗證權限');
     const loggedIn = await PointsCard.ensureLiffLogin();

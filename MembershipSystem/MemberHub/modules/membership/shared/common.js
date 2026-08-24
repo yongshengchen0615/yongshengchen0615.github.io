@@ -256,6 +256,15 @@
     return exp > Math.floor(Date.now() / 1000) + ID_TOKEN_EXPIRY_SKEW_SECONDS;
   }
 
+  function clearPersistedLiffIdToken(liffId) {
+    const id = String(liffId || '').trim();
+    if (!id) return;
+    try { window.localStorage.removeItem('LIFF_STORE:' + id + ':IDToken'); }
+    catch (_) { /* Storage can be unavailable; the in-memory token remains usable. */ }
+    try { window.sessionStorage.removeItem('LIFF_STORE:' + id + ':IDToken'); }
+    catch (_) { /* LIFF in-client uses sessionStorage; either store can be unavailable. */ }
+  }
+
   function startExternalLogin(forceRefresh) {
     if (liff.isInClient()) {
       throw new Error('LINE 登入憑證已過期，請關閉此 LIFF 頁面後重新開啟。');
@@ -297,6 +306,7 @@
       return 'expired';
     }
     authenticatedIdToken = idToken;
+    clearPersistedLiffIdToken(config && config.ACTIVE_LIFF_ID);
     loginInFlight = false;
     removeSessionValue(AUTH_REFRESH_KEY);
     return 'authenticated';

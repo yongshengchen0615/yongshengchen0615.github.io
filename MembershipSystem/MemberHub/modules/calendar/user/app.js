@@ -141,6 +141,7 @@
       if (!state.idToken) {
         throw clientError('LINE_AUTH_ERROR', '無法取得 LINE ID token。請確認 User LIFF 已啟用 openid scope。');
       }
+      clearPersistedLiffIdToken(state.config.userLiffId);
 
       const result = await api('user.bootstrap');
       state.profile = result.profile;
@@ -508,6 +509,15 @@
     url.hash = '';
     ['code', 'state', 'liffClientId', 'liffRedirectUri'].forEach((name) => url.searchParams.delete(name));
     return url.toString();
+  }
+
+  function clearPersistedLiffIdToken(liffId) {
+    const id = String(liffId || '').trim();
+    if (!id) return;
+    try { window.localStorage.removeItem(`LIFF_STORE:${id}:IDToken`); }
+    catch (_) { /* Storage can be unavailable; the in-memory token remains usable. */ }
+    try { window.sessionStorage.removeItem(`LIFF_STORE:${id}:IDToken`); }
+    catch (_) { /* LIFF in-client uses sessionStorage; either store can be unavailable. */ }
   }
 
   function clientError(code, message) {

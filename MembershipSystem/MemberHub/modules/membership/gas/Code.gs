@@ -374,14 +374,17 @@ function usageRecord_(context, payload) {
   requireProfileComplete_(context.identity.sub);
   const access = readUsageAccess_(payload);
   const requestId = cleanUsageRequestId_(payload.requestId);
-  const located = findUsageVoucherByAccess_(access);
-  if (!located.row) fail_('INVALID_USAGE_QR', '消費時間 QR Code 無效或已失效。');
   const vouchersSheet = getUsageVouchersSheet_();
   const recordsSheet = getUsageRecordsSheet_();
   const membersSheet = getMembersSheet_();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) fail_('BUSY', '系統忙碌中，請稍後再試。');
   try {
+    // Resolve the bearer code only after acquiring the same lock used by
+    // deletion. A pre-lock numeric row can become stale when deleteRow()
+    // shifts subsequent vouchers upward.
+    const located = findUsageVoucherByAccess_(access);
+    if (!located.row) fail_('INVALID_USAGE_QR', '消費時間 QR Code 無效或已失效。');
     const voucher = rowToUsageVoucher_(vouchersSheet.getRange(located.row, 1, 1, USAGE_VOUCHER_HEADERS.length).getValues()[0]);
     if (isLegacyTargetedVoucher_(voucher)) requireVoucherTarget_(voucher, context.identity.sub);
 

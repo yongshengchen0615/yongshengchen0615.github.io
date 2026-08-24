@@ -48,9 +48,21 @@ test('admin UI offers only pass or disable and does not render untrusted HTML', 
   assert.match(ui, /\['disabled', '停用'\]/);
   assert.match(ui, /admin\.users\.list/);
   assert.match(ui, /admin\.users\.updateStatus/);
+  assert.match(ui, /CalendarAdminUserAccessApi/);
+  assert.doesNotMatch(ui, /getIDToken/);
+  assert.doesNotMatch(ui, /gasWebAppUrl/);
   assert.doesNotMatch(ui, /\.innerHTML\s*=/);
   assert.doesNotMatch(ui, /insertAdjacentHTML/);
   assert.doesNotMatch(ui, /console\./);
+});
+
+test('calendar admin keeps the raw token private while exposing only an allowlisted user-access capability', () => {
+  const app = read('admin/app.js');
+  assert.match(app, /USER_ACCESS_ACTIONS\s*=\s*new Set\(\['admin\.users\.list', 'admin\.users\.updateStatus'\]\)/);
+  assert.match(app, /Object\.defineProperty\(window, 'CalendarAdminUserAccessApi'/);
+  assert.match(app, /if \(!USER_ACCESS_ACTIONS\.has\(action\)\)/);
+  assert.match(app, /idToken:\s*state\.idToken/);
+  assert.match(app, /sessionStorage\.removeItem\(/);
 });
 
 test('disabled user receives a dedicated disabled-account message', () => {
