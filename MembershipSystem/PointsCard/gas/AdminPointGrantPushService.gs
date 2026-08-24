@@ -4,15 +4,17 @@ function pointGrantRetryKey_(grantId) {
   return lineMessagingRetryKey_('point-grant|' + grantId);
 }
 
-function pointGrantRewardPushMessage_(grantId) {
+function pointGrantRewardPushMessage_(grant) {
   const match = findAdminPointGrantByFieldWithRow_(
     POINTS_CARD_ADMIN_GRANTS.notificationsSheet,
     'notificationId',
-    pointGrantNotificationId_(grantId)
+    pointGrantNotificationId_(grant.grantId)
   );
   if (!match) return '';
   const notification = normalizeMemberPointNotification_(match.object);
-  if (notification.type !== 'point-grant-reward') return '';
+  if (notification.type !== 'point-grant-reward' ||
+    notification.memberLineUserId !== grant.memberLineUserId ||
+    notification.relatedId !== grant.grantId || notification.cardId !== grant.cardId) return '';
   return notification.message;
 }
 
@@ -41,7 +43,7 @@ function attemptAdminPointGrantPush_(grantId) {
 
   const cardMatch = findMultiCard_(grant.cardId);
   const cardName = cardMatch ? cardMatch.card.name : '集點卡';
-  const rewardMessage = pointGrantRewardPushMessage_(grant.grantId);
+  const rewardMessage = pointGrantRewardPushMessage_(grant);
   const now = new Date().toISOString();
   const push = createLineMessagingClient_().sendTextPush(
     grant.memberLineUserId,
