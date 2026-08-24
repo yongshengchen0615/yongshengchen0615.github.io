@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./usage.css">
   <link rel="stylesheet" href="./profile.css">
+  <link rel="stylesheet" href="./minute-grants.css">
 </head>
 <body>
   <main class="shell">
@@ -62,6 +63,16 @@
         <div id="tierProgressPanel" class="card-tier-progress"><span>會員升級進度</span><strong id="tierProgressText">正在計算下一級門檻…</strong><small id="tierProgressDetail"></small></div>
         <div class="card-scan-action"><button id="scanQrButton" class="button card-scan-button" type="button" disabled>掃描 QR Code</button></div>
       </article>
+
+      <section class="panel minute-grant-history-panel" aria-labelledby="minuteGrantHistoryTitle">
+        <div class="member-grant-heading">
+          <div><span class="eyebrow">MINUTE GRANTS</span><h2 id="minuteGrantHistoryTitle">分鐘發放紀錄</h2><p>查看管理端直接發放的累計消費分鐘、發放原因與發放後會員等級。</p></div>
+          <button id="loadMinuteGrantHistoryButton" class="button button-secondary" type="button">查看發放紀錄</button>
+        </div>
+        <p id="minuteGrantHistoryMessage" class="member-grant-message hidden" role="status"></p>
+        <div id="minuteGrantHistoryList" class="member-grant-list"></div>
+        <div id="minuteGrantHistoryEmpty" class="member-grant-empty hidden">目前沒有人工分鐘發放紀錄。</div>
+      </section>
 
       <div id="usageErrorPanel" class="usage-error-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="usageErrorTitle" aria-describedby="usageErrorMessage">
         <div class="usage-error-dialog-card">
@@ -126,5 +137,6 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="../shared/common.js"></script>
   <script src="./app.js"></script>
+  <script src="./minute-grants.js"></script>
 </body>
 </html>
