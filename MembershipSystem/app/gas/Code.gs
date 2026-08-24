@@ -830,6 +830,26 @@ function parsePayload_(raw) {
   }
 }
 
+function memberTierProgress_(member) {
+  const thresholds = getTierThresholds_();
+  const currentMinutes = nonNegativeInt_(member && member.consumedMinutes);
+  const currentTier = normalizeTier_(member && member.tier);
+  const nextTierByCurrentTier = {
+    standard: 'silver',
+    silver: 'gold',
+    gold: 'platinum'
+  };
+  const nextTier = nextTierByCurrentTier[currentTier] || '';
+  const nextThresholdMinutes = nextTier ? nonNegativeInt_(thresholds[nextTier]) : 0;
+  return {
+    currentTier: currentTier,
+    currentMinutes: currentMinutes,
+    nextTier: nextTier,
+    nextThresholdMinutes: nextThresholdMinutes,
+    remainingMinutes: nextTier ? Math.max(0, nextThresholdMinutes - currentMinutes) : 0
+  };
+}
+
 function publicMember_(member, includeAdminFields) {
   const result = {
     memberNo: member.memberNo, displayName: member.displayName, pictureUrl: member.pictureUrl,
@@ -837,6 +857,7 @@ function publicMember_(member, includeAdminFields) {
     expiresAt: member.expiresAt, consumedMinutes: nonNegativeInt_(member.consumedMinutes), updatedAt: member.updatedAt,
     availableMinutes: nonNegativeInt_(member.availableMinutes)
   };
+  if (!includeAdminFields) result.tierProgress = memberTierProgress_(member);
   if (includeAdminFields) result.note = member.note;
   return result;
 }
