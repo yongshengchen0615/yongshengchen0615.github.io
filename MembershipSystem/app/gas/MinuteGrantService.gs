@@ -24,13 +24,13 @@ function newMinuteGrantId_() {
 function minuteGrantToRow_(grant) {
   return MINUTE_GRANT_HEADERS.map(function (header) {
     const value = grant && Object.prototype.hasOwnProperty.call(grant, header) ? grant[header] : '';
-    return value == null ? '' : value;
+    return sheetSafe_(value == null ? '' : value);
   });
 }
 
 function rowToMinuteGrant_(row) {
   const result = {};
-  MINUTE_GRANT_HEADERS.forEach(function (header, index) { result[header] = row[index]; });
+  MINUTE_GRANT_HEADERS.forEach(function (header, index) { result[header] = normalizeCell_(row[index]); });
   result.minutes = nonNegativeInt_(result.minutes);
   result.consumedBeforeMinutes = nonNegativeInt_(result.consumedBeforeMinutes);
   result.consumedAfterMinutes = nonNegativeInt_(result.consumedAfterMinutes);
@@ -48,7 +48,7 @@ function findMinuteGrantByFieldWithRow_(field, value) {
   const rows = sheet.getRange(2, 1, lastRow - 1, MINUTE_GRANT_HEADERS.length).getValues();
   const expected = String(value || '');
   for (let i = rows.length - 1; i >= 0; i -= 1) {
-    if (String(rows[i][index] || '') === expected) {
+    if (String(normalizeCell_(rows[i][index]) || '') === expected) {
       return { row: i + 2, grant: rowToMinuteGrant_(rows[i]) };
     }
   }
@@ -160,9 +160,6 @@ function adminMinuteGrant_(context, payload) {
     const memberRow = findMemberRowByMemberNo_(memberSheet, input.targetMemberNo);
     if (!memberRow) fail_('MEMBER_NOT_FOUND', '找不到指定會員。');
     let member = rowToMember_(memberSheet.getRange(memberRow, 1, 1, MEMBER_HEADERS.length).getValues()[0]);
-    if (member.membershipStatus !== 'active') {
-      fail_('MEMBER_INACTIVE', '只能對有效會員發放累計消費分鐘。');
-    }
 
     const existing = findMinuteGrantByFieldWithRow_('requestId', input.requestId);
     if (existing) {
@@ -175,6 +172,9 @@ function adminMinuteGrant_(context, payload) {
       duplicate = true;
       updatedMember = member;
     } else {
+      if (!isMembershipUsable_(member)) {
+        fail_('MEMBER_INACTIVE', '只能對目前有效且未過期的會員發放累計消費分鐘。');
+      }
       if (member.consumedMinutes > 100000000 - input.minutes) {
         fail_('MINUTE_LIMIT_REACHED', '此會員累計消費分鐘已達系統上限。');
       }
