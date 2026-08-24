@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
 const adminScript = fs.readFileSync(path.resolve(__dirname, '../admin/minute-grants.js'), 'utf8');
+const adminHtml = fs.readFileSync(path.resolve(__dirname, '../admin/index.html'), 'utf8');
 const code = fs.readFileSync(path.resolve(__dirname, '../gas/Code.gs'), 'utf8');
 
 test('manual minute grant form is moved into the selected member dialog', () => {
@@ -16,6 +17,13 @@ test('manual minute grant form is moved into the selected member dialog', () => 
   assert.match(adminScript, /\$\('#editTargetMemberNo'\)\.value\.trim\(\)/);
   assert.match(adminScript, /MutationObserver[\s\S]*selectMemberFromOpenDialog/);
   assert.doesNotMatch(adminScript, /admin\.list[\s\S]*minuteGrantMemberSearch/);
+});
+
+test('member dialog can close without satisfying minute grant required fields', () => {
+  assert.match(adminHtml, /<textarea id="minuteGrantReason"[^>]*\brequired\b/);
+  assert.match(adminHtml, /<button class="icon-button" value="cancel" type="submit" formnovalidate aria-label="關閉">×<\/button>/);
+  assert.match(adminHtml, /<button class="button button-secondary" value="cancel" type="submit" formnovalidate>取消<\/button>/);
+  assert.match(adminScript, /if \(!reason\) \{[\s\S]*請輸入發放原因/);
 });
 
 test('grant result keeps the open member dialog concurrency token and totals current', () => {
