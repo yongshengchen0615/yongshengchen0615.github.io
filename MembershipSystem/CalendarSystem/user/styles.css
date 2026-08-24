@@ -41,7 +41,7 @@ button:focus-visible { outline: 3px solid rgba(6,199,85,.28); outline-offset: 2p
 
 .weekday-row, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .weekday-row { padding: 0 2px 8px; color: #7a857d; font-size: 12px; text-align: center; font-weight: 700; }
-.calendar-grid { gap: 5px; }
+.calendar-grid { gap: 5px; touch-action: pan-y; overscroll-behavior-x: contain; }
 .day-cell { min-height: 86px; border: 1px solid transparent; border-radius: 13px; padding: 7px; background: #f9fbfa; cursor: pointer; overflow: hidden; transition: border-color .16s ease, background-color .16s ease, transform .16s ease; }
 .day-cell:hover { border-color: #cfe2d4; transform: translateY(-1px); }
 .day-cell.outside { opacity: .38; }
