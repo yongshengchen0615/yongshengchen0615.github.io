@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const PAGE_NAMES = ['overview', 'members', 'tiers', 'usage'];
+  const PAGE_NAMES = ['overview', 'members', 'grants', 'tiers', 'usage'];
 
   function normalizePage(value) {
     const page = String(value || '').trim().toLowerCase();
