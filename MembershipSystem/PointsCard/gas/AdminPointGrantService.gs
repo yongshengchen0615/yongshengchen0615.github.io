@@ -6,11 +6,7 @@ function newAdminPointGrantId_() {
 
 function recoverAdminPointGrant_(grantMatch) {
   const grant = normalizeAdminPointGrant_(grantMatch.object);
-  if (grant.status === 'recorded') {
-    const recordedCard = findMultiCard_(grant.cardId);
-    ensurePointGrantNotification_(grant, recordedCard ? recordedCard.card : null);
-    return grant;
-  }
+  if (grant.status === 'recorded') return grant;
   if (grant.status !== 'processing') {
     fail_('RECOVERY_REQUIRED', '人工發點紀錄狀態不正確，請聯絡管理員。');
   }
