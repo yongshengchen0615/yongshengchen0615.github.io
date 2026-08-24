@@ -70,23 +70,50 @@ test('grant transaction records intent before progress mutation and success audi
   assert.match(source, /if \(grant\.status === 'recorded'\) return grant/);
 });
 
-test('new ticket entitlement is computed from the same before/after totals and carried directly into the first LINE push', () => {
+test('new ticket entitlement and grant snapshot are carried directly into the first LINE push', () => {
   const source = read('gas/AdminPointGrantService.gs');
   const notifications = read('gas/MemberPointNotificationService.gs');
   const push = read('gas/AdminPointGrantPushService.gs');
   const rewardCalculation = source.indexOf('rewardEntitlementsBetweenTotals_(totalBefore, totalAfter, settings)');
   const progressWrite = source.indexOf('progress.totalStamps = totalAfter');
   const notification = source.indexOf('rewardNotificationForPush = ensurePointGrantNotification_(grant, cardMatch.card, unlockedRewards)');
-  const pushAttempt = source.indexOf('attemptAdminPointGrantPush_(result.grantId, rewardNotificationForPush)');
+  const snapshot = source.indexOf('grantForPush = grant', notification);
+  const pushAttempt = source.indexOf('attemptAdminPointGrantPush_(result.grantId, grantForPush, rewardNotificationForPush)');
 
   assert.ok(rewardCalculation >= 0 && rewardCalculation < progressWrite,
     'new rewards must be determined from the transaction before mutating progress');
-  assert.ok(progressWrite < notification && notification < pushAttempt,
-    'the exact unlocked rewards must be persisted and forwarded to push');
+  assert.ok(progressWrite < notification && notification < snapshot && snapshot < pushAttempt,
+    'the exact grant and unlocked rewards must be forwarded to first push');
   assert.match(notifications, /Array\.isArray\(precomputedRewards\) \? precomputedRewards : pointGrantUnlockedRewards_/);
-  assert.match(push, /pointGrantRewardPushMessage_\(grant, rewardNotification\)/);
-  assert.match(push, /const directMessage = pointGrantRewardPushMessageFromNotification_\(grant, notificationOverride\)/);
-  assert.match(push, /if \(directMessage\) return directMessage/);
+  assert.match(push, /pointGrantPushGrantSnapshot_\(persistedGrant, grantOverride\)/);
+  assert.match(push, /pointGrantRewardPushMessage_\(messageGrant, rewardNotification\)/);
+  assert.match(push, /pointGrantPushMessage_\(messageGrant, rewardMessage\)/);
+});
+
+test('15-point full card plus 5 admin points unlocks the next-cycle 5-point coupon', () => {
+  const context = { Object, String, Number, Date, JSON, Math, Set, Map, console };
+  vm.createContext(context);
+  vm.runInContext(
+    read('gas/Code.gs') +
+      '\n;globalThis.__rewardTest = { rewardEntitlementsBetweenTotals_ };',
+    context
+  );
+  const settings = {
+    cardSize: 15,
+    rewardNodes: [
+      { nodeId: 'R5', stampsRequired: 5, rewardName: '5點優惠券', rewardType: 'coupon', lotteryPrizes: [], ticketValidityDays: 0, unusedReminderDays: 0 },
+      { nodeId: 'R10', stampsRequired: 10, rewardName: '10點優惠券', rewardType: 'coupon', lotteryPrizes: [], ticketValidityDays: 0, unusedReminderDays: 0 },
+      { nodeId: 'R15', stampsRequired: 15, rewardName: '15點優惠券', rewardType: 'coupon', lotteryPrizes: [], ticketValidityDays: 0, unusedReminderDays: 0 }
+    ]
+  };
+
+  const unlocked = context.__rewardTest.rewardEntitlementsBetweenTotals_(15, 20, settings);
+  assert.equal(unlocked.length, 1);
+  assert.equal(unlocked[0].nodeId, 'R5');
+  assert.equal(unlocked[0].rewardName, '5點優惠券');
+  assert.equal(unlocked[0].rewardType, 'coupon');
+  assert.equal(unlocked[0].cycleNumber, 2);
+  assert.equal(unlocked[0].absoluteStamps, 20);
 });
 
 test('plain point grants create no reward detail while newly unlocked tickets are persisted for LINE push', () => {
@@ -137,20 +164,25 @@ test('push failure is a side effect and does not roll back the completed point t
   const push = read('gas/AdminPointGrantPushService.gs');
   const transactionEnd = source.indexOf('} finally {\n    lock.releaseLock();\n  }\n\n  const push = attemptAdminPointGrantPush_');
   assert.ok(transactionEnd >= 0, 'push must occur only after transaction lock is released');
-  assert.match(source.slice(transactionEnd), /attemptAdminPointGrantPush_\(result\.grantId, rewardNotificationForPush\)/);
+  assert.match(source.slice(transactionEnd), /attemptAdminPointGrantPush_\(result\.grantId, grantForPush, rewardNotificationForPush\)/);
   assert.match(source.slice(transactionEnd), /result\.pushStatus = push\.status/);
   assert.doesNotMatch(push, /totalStamps\s*=/);
   assert.match(push, /pointGrantPushStatus_\(push\)/);
 });
 
-test('direct and persisted reward details are both bound to the same grant owner/card before push', () => {
+test('direct grant/reward details are bound to the persisted grant owner and transaction before push', () => {
   const push = read('gas/AdminPointGrantPushService.gs');
-  assert.match(push, /pointGrantNotificationId_\(grant\.grantId\)/);
+  assert.match(push, /direct\.grantId !== persistedGrant\.grantId/);
+  assert.match(push, /direct\.memberLineUserId !== persistedGrant\.memberLineUserId/);
+  assert.match(push, /direct\.memberNo !== persistedGrant\.memberNo/);
+  assert.match(push, /direct\.cardId !== persistedGrant\.cardId/);
+  assert.match(push, /direct\.stampCount !== persistedGrant\.stampCount/);
+  assert.match(push, /direct\.totalBefore !== persistedGrant\.totalBefore/);
+  assert.match(push, /direct\.totalAfter !== persistedGrant\.totalAfter/);
   assert.match(push, /notification\.type !== 'point-grant-reward'/);
   assert.match(push, /notification\.memberLineUserId !== grant\.memberLineUserId/);
   assert.match(push, /notification\.relatedId !== grant\.grantId/);
   assert.match(push, /notification\.cardId !== grant\.cardId/);
-  assert.match(push, /return notification\.message/);
   assert.doesNotMatch(push, /pointGrantUnlockedRewards_\(/);
 });
 
@@ -169,7 +201,7 @@ test('opening PointsCard never consumes or displays point-grant notifications', 
   assert.match(user, /LINE push only/);
 });
 
-test('point grant push contains only amount, reason and optional newly earned ticket details', () => {
+test('point grant push preserves reason and optional ticket details for the 15-to-20 boundary', () => {
   const context = {
     Object,
     String,
@@ -178,41 +210,36 @@ test('point grant push contains only amount, reason and optional newly earned ti
     JSON,
     Math,
     console,
-    POINTS_CARD_ADMIN_GRANTS: { maxGrantPoints: 100 },
     storedNonNegativeInt_: (value) => Number(value || 0),
     sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
   };
   vm.createContext(context);
   vm.runInContext(
     read('gas/LineMessagingService.gs') + '\n' +
+      read('gas/AdminPointGrantStorage.gs') + '\n' +
       read('gas/MemberPointNotificationService.gs') + '\n' +
       read('gas/AdminPointGrantPushService.gs') +
-      '\n;globalThis.__test = { pointGrantPushMessage_, pointGrantNotificationMessage_, pointGrantNotificationTitle_, pointGrantRetryKey_, pointGrantRewardPushMessageFromNotification_ };',
+      '\n;globalThis.__test = { pointGrantPushMessage_, pointGrantNotificationMessage_, pointGrantNotificationTitle_, pointGrantRetryKey_, pointGrantRewardPushMessageFromNotification_, pointGrantPushGrantSnapshot_ };',
     context
   );
 
-  const reward = [{ rewardName: '免費咖啡', rewardType: 'coupon' }];
+  const reward = [{ rewardName: '5點優惠券', rewardType: 'coupon' }];
   const rewardMessage = context.__test.pointGrantNotificationMessage_(reward);
-  const message = context.__test.pointGrantPushMessage_(
-    { stampCount: 5, reason: '活動補發' },
-    rewardMessage
-  );
-  assert.equal(message, '發放點數：5 點\n發放原因：活動補發\n新獲得：優惠券「免費咖啡」。');
-  assert.doesNotMatch(message, /目前點數|目前累計|夏季卡/);
+  const persistedGrant = {
+    grantId: 'PG-TEST', requestId: 'a'.repeat(32), cardId: 'CARD-1', memberLineUserId: 'U-1', memberNo: 'PC-1',
+    stampCount: 5, reason: '', status: 'recorded', totalBefore: 15, totalAfter: 20,
+    grantedByLineUserId: 'ADMIN-1', pushStatus: 'pending'
+  };
+  const directGrant = { ...persistedGrant, reason: '滿點後加碼' };
+  const messageGrant = context.__test.pointGrantPushGrantSnapshot_(persistedGrant, directGrant);
+  assert.ok(messageGrant);
+  assert.equal(messageGrant.reason, '滿點後加碼');
+
+  const message = context.__test.pointGrantPushMessage_(messageGrant, rewardMessage);
+  assert.equal(message, '發放點數：5 點\n發放原因：滿點後加碼\n新獲得：優惠券「5點優惠券」。');
+  assert.doesNotMatch(message, /目前點數|目前累計/);
   assert.doesNotMatch(message, /Bearer|LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|requestId|lineUserId/);
 
-  const plainMessage = context.__test.pointGrantPushMessage_(
-    { stampCount: 5, reason: '活動補發' },
-    ''
-  );
-  assert.equal(plainMessage, '發放點數：5 點\n發放原因：活動補發');
-  assert.doesNotMatch(plainMessage, /新獲得/);
-  assert.match(rewardMessage, /^新獲得：/);
-  assert.doesNotMatch(rewardMessage, /活動補發|目前點數/);
-  assert.match(context.__test.pointGrantNotificationTitle_(reward), /免費咖啡/);
-  assert.match(context.__test.pointGrantRetryKey_('PG-TEST'), /^[a-f0-9-]{36}$/);
-
-  const grant = { grantId: 'PG-TEST', cardId: 'CARD-1', memberLineUserId: 'U-1' };
   const notification = {
     type: 'point-grant-reward',
     memberLineUserId: 'U-1',
@@ -220,7 +247,8 @@ test('point grant push contains only amount, reason and optional newly earned ti
     cardId: 'CARD-1',
     message: rewardMessage
   };
-  assert.equal(context.__test.pointGrantRewardPushMessageFromNotification_(grant, notification), rewardMessage);
-  assert.equal(context.__test.pointGrantRewardPushMessageFromNotification_(grant, { ...notification, memberLineUserId: 'U-2' }), '');
-  assert.equal(context.__test.pointGrantRewardPushMessageFromNotification_(grant, { ...notification, cardId: 'CARD-2' }), '');
+  assert.equal(context.__test.pointGrantRewardPushMessageFromNotification_(messageGrant, notification), rewardMessage);
+  assert.equal(context.__test.pointGrantRewardPushMessageFromNotification_(messageGrant, { ...notification, memberLineUserId: 'U-2' }), '');
+  assert.equal(context.__test.pointGrantPushGrantSnapshot_(persistedGrant, { ...directGrant, cardId: 'CARD-2' }), null);
+  assert.match(context.__test.pointGrantRetryKey_('PG-TEST'), /^[a-f0-9-]{36}$/);
 });
