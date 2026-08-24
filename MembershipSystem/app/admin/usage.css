@@ -1,8 +1,8 @@
-.metric-grid{grid-template-columns:repeat(4,1fr)}
+.metric-grid{grid-template-columns:repeat(3,1fr)}
 .member-table{min-width:1040px}
 .row-actions{display:flex;align-items:center;gap:4px;white-space:nowrap}
 .text-button:disabled{opacity:.35;cursor:not-allowed}
-.usage-panel{margin-top:14px;overflow:hidden}
+.usage-panel{margin-top:0;overflow:hidden}
 .section-heading{display:flex;align-items:end;justify-content:space-between;gap:18px;padding:20px;border-bottom:1px solid var(--line)}
 .section-heading h2{margin:0}
 .section-heading p{margin:7px 0 0;color:var(--muted);font-size:13px}
@@ -24,4 +24,4 @@
 .security-note{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
 @media(max-width:900px){.metric-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.section-heading{align-items:stretch;flex-direction:column}.section-actions{display:grid;grid-template-columns:1fr 1fr}.section-actions .button{width:100%}}
-@media(max-width:520px){.metric-grid{grid-template-columns:1fr 1fr}.section-actions{grid-template-columns:1fr}}
+@media(max-width:520px){.metric-grid{grid-template-columns:1fr}.section-actions{grid-template-columns:1fr}}
