@@ -71,6 +71,7 @@ function adminPointGrantMultiCard_(context, payload) {
   }
 
   let result;
+  let rewardNotificationForPush = null;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(8000)) fail_('BUSY', '發點服務忙碌中，請稍後再試。');
   try {
@@ -128,6 +129,8 @@ function adminPointGrantMultiCard_(context, payload) {
       }
 
       const totalAfter = totalBefore + stampCount;
+      const settings = multiCardSettingsForProjection_(cardMatch.card);
+      const unlockedRewards = rewardEntitlementsBetweenTotals_(totalBefore, totalAfter, settings);
       const now = new Date().toISOString();
       const grant = {
         grantId: newAdminPointGrantId_(),
@@ -174,7 +177,7 @@ function adminPointGrantMultiCard_(context, payload) {
       grant.status = 'recorded';
       grant.grantedAt = now;
       grant.updatedAt = now;
-      ensurePointGrantNotification_(grant, cardMatch.card);
+      rewardNotificationForPush = ensurePointGrantNotification_(grant, cardMatch.card, unlockedRewards);
 
       if (!audit_(context.identity.sub, 'admin', 'CARD_POINTS_GRANTED', member.lineUserId, 'success', {
         grantId: grant.grantId,
@@ -210,7 +213,7 @@ function adminPointGrantMultiCard_(context, payload) {
     lock.releaseLock();
   }
 
-  const push = attemptAdminPointGrantPush_(result.grantId);
+  const push = attemptAdminPointGrantPush_(result.grantId, rewardNotificationForPush);
   result.pushStatus = push.status;
   result.pushErrorCode = push.errorCode;
   return result;
