@@ -170,13 +170,17 @@ function publicRewardConfirmation_(confirmation, recordCount, includeShareCode) 
 }
 
 function countRewardConfirmationRecords_(confirmationId) {
-  return readObjects_(getSheet_(POINTS_CARD_SHEETS.rewardRecords)).filter(function (record) {
+  return readObjectsByField_(
+    getSheet_(POINTS_CARD_SHEETS.rewardRecords), 'confirmationId', confirmationId
+  ).filter(function (record) {
     return record.confirmationId === confirmationId && record.status === 'recorded';
   }).length;
 }
 
 function hasRewardConfirmationRecords_(confirmationId) {
-  return readObjects_(getSheet_(POINTS_CARD_SHEETS.rewardRecords)).some(function (record) {
+  return readObjectsByField_(
+    getSheet_(POINTS_CARD_SHEETS.rewardRecords), 'confirmationId', confirmationId
+  ).some(function (record) {
     return record.confirmationId === confirmationId;
   });
 }

@@ -164,3 +164,37 @@ test('client and schema carry the transaction binding while admin defaults to te
   assert.match(admin, /Date\.now\(\) \+ 10 \* 60 \* 1000/);
   assert.doesNotMatch(admin, /7 \* 24 \* 60 \* 60 \* 1000/);
 });
+
+test('confirmation record checks use exact field lookup without a full-table read', () => {
+  const source = read('gas/RewardConfirmationService.gs');
+  const calls = [];
+  const rows = [
+    { confirmationId: 'RC-TARGET', status: 'recorded' },
+    { confirmationId: 'RC-TARGET', status: 'cancelled' }
+  ];
+  const context = {
+    Array, Date, JSON, Math, Number, Object, String, console,
+    POINTS_CARD_SHEETS: { rewardRecords: 'CardRewardRecords' },
+    getSheet_: (name) => ({ name }),
+    readObjectsByField_: (sheet, field, value) => {
+      calls.push({ sheet: sheet.name, field, value });
+      return rows;
+    },
+    readObjects_: () => { throw new Error('must not scan the complete reward record table'); },
+    cleanText_: (value) => String(value == null ? '' : value).trim(),
+    fail_: publicError
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    source + '\n;globalThis.__recordLookup = {' +
+      'countRewardConfirmationRecords_, hasRewardConfirmationRecords_ };',
+    context
+  );
+
+  assert.equal(context.__recordLookup.countRewardConfirmationRecords_('RC-TARGET'), 1);
+  assert.equal(context.__recordLookup.hasRewardConfirmationRecords_('RC-TARGET'), true);
+  assert.deepEqual(calls, [
+    { sheet: 'CardRewardRecords', field: 'confirmationId', value: 'RC-TARGET' },
+    { sheet: 'CardRewardRecords', field: 'confirmationId', value: 'RC-TARGET' }
+  ]);
+});
