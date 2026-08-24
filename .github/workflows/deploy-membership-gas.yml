@@ -63,7 +63,17 @@ jobs:
           GAS_DIR="MembershipSystem/app/gas"
           MANIFEST="$GAS_DIR/appsscript.json"
 
-          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$MANIFEST"
+          node - "$MANIFEST" <<'NODE'
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const webapp = manifest.webapp || {};
+          if (webapp.access !== 'ANYONE_ANONYMOUS') {
+            throw new Error('appsscript.json webapp.access must be ANYONE_ANONYMOUS for the LINE-authenticated public API endpoint');
+          }
+          if (webapp.executeAs !== 'USER_DEPLOYING') {
+            throw new Error('appsscript.json webapp.executeAs must be USER_DEPLOYING so anonymous callers never become the Spreadsheet authorization principal');
+          }
+          NODE
 
           shopt -s nullglob
           gas_files=("$GAS_DIR"/*.gs)
@@ -213,3 +223,43 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$deployments" | grep -F -- "$GAS_DEPLOYMENT_ID"
+
+      - name: Verify public Web App health
+        shell: bash
+        env:
+          GAS_DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+
+          url="https://script.google.com/macros/s/${GAS_DEPLOYMENT_ID}/exec"
+          response_file="$RUNNER_TEMP/membership-gas-health.json"
+          success=false
+
+          for attempt in 1 2 3 4 5; do
+            http_code="$(curl --location --silent --show-error \
+              --connect-timeout 10 --max-time 30 \
+              --output "$response_file" --write-out '%{http_code}' \
+              "$url" || true)"
+
+            if [ "$http_code" = "200" ] && node - "$response_file" <<'NODE'
+          const fs = require('fs');
+          try {
+            const payload = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+            if (payload && payload.ok === true && payload.data && payload.data.service === 'MembershipSystem') {
+              process.exit(0);
+            }
+          } catch (_) {}
+          process.exit(1);
+          NODE
+            then
+              success=true
+              break
+            fi
+
+            sleep 3
+          done
+
+          if [ "$success" != "true" ]; then
+            echo "::error::MembershipSystem GAS Web App is not publicly reachable as JSON. Verify the deployment access is Anyone, including anonymous, and execute-as is the deploying user."
+            exit 1
+          fi
