@@ -12,28 +12,24 @@ test('member notification module stays syntactically valid', () => {
   assert.doesNotThrow(() => new vm.Script(source));
 });
 
-test('member notification presentation never observes the whole document body', () => {
-  assert.doesNotMatch(source, /\.observe\(document\.body/);
-  assert.doesNotMatch(source, /subtree:\s*true/);
-  assert.match(source, /surfaceObserver\.observe\(app, \{ attributes: true, attributeFilter: \['class'\] \}\)/);
-  assert.match(source, /surfaceObserver\.observe\(processing, \{ attributes: true, attributeFilter: \['class'\] \}\)/);
+test('member notification presentation remains intentionally inert', () => {
+  assert.match(source, /LINE push only/);
+  assert.match(source, /intentionally inert/);
+  assert.doesNotMatch(source, /MutationObserver|\.observe\(/);
+  assert.doesNotMatch(source, /querySelector|querySelectorAll|getElementById/);
 });
 
-test('member notification retries are coalesced and driven by narrow UI lifecycle signals', () => {
-  assert.match(source, /presentationRetryScheduled/);
-  assert.match(source, /window\.setTimeout\(function \(\) \{[\s\S]*retryPresentation\(\)/);
-  assert.match(source, /querySelectorAll\('dialog'\)[\s\S]*addEventListener\('close', scheduleRetryPresentation\)/);
+test('opening PointsCard does not poll or consume point-grant notifications', () => {
+  assert.doesNotMatch(source, /PointsCard\.callApi/);
+  assert.doesNotMatch(source, /member\.point-notifications\.list/);
+  assert.doesNotMatch(source, /member\.point-notification\.read/);
 });
 
-test('showing the same unread notification is idempotent', () => {
-  assert.match(source, /dialog && dialog\.open && currentNotice && currentNotice\.notificationId === nextNotice\.notificationId/);
+test('notification module cannot create duplicate browser dialogs or retry loops', () => {
+  assert.doesNotMatch(source, /showModal|HTMLDialogElement|currentNotice/);
+  assert.doesNotMatch(source, /setTimeout|setInterval|presentationRetryScheduled/);
 });
 
-test('notification API calls have a client-side escape hatch if response body consumption stalls', () => {
-  assert.match(source, /NOTICE_API_TIMEOUT_MS = 32000/);
-  assert.match(source, /Promise\.race\(\[[\s\S]*request,[\s\S]*timeoutPromise/);
-  assert.match(source, /withNoticeApiTimeout\(PointsCard\.callApi\('member\.point-notifications\.list'/);
-  assert.match(source, /withNoticeApiTimeout\(PointsCard\.callApi\('member\.point-notification\.read'/);
-  assert.match(source, /CLIENT_TIMEOUT/);
-  assert.match(source, /通知服務回應逾時/);
+test('notification module does not add an independent client timeout path', () => {
+  assert.doesNotMatch(source, /NOTICE_API_TIMEOUT_MS|Promise\.race|CLIENT_TIMEOUT/);
 });
