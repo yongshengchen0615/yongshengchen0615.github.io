@@ -98,7 +98,7 @@ test('member UI contains upgrade progress and JavaScript renders dynamic remaini
   const script = fs.readFileSync(path.resolve(__dirname, '../user/app.js'), 'utf8');
   assert.match(html, /id="tierProgressPanel"/);
   assert.match(html, /id="tierProgressText"/);
-  assert.match(script, /再服務 \$\{formatMinutes\(remainingMinutes\)\} 分鐘升級/);
+  assert.match(script, /再預約服務 \$\{formatMinutes\(remainingMinutes\)\} 分鐘升級/);
   assert.match(script, /已達最高會員等級/);
   assert.doesNotThrow(() => new vm.Script(script));
 });
