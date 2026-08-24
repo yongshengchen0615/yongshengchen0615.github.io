@@ -1,0 +1,47 @@
+name: Test MembershipSystem App
+
+on:
+  pull_request:
+    paths:
+      - "MembershipSystem/app/**"
+      - ".github/workflows/test-membership-app.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "MembershipSystem/app/**"
+      - ".github/workflows/test-membership-app.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Check JavaScript and GAS syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check MembershipSystem/app/admin/app.js
+          node --check MembershipSystem/app/user/app.js
+          node --check MembershipSystem/app/shared/common.js
+          for file in MembershipSystem/app/gas/*.gs; do
+            tmp="$RUNNER_TEMP/$(basename "$file").js"
+            cp "$file" "$tmp"
+            node --check "$tmp"
+          done
+
+      - name: Run MembershipSystem tests
+        run: node --test MembershipSystem/app/tests/*.test.js
