@@ -79,15 +79,16 @@ test('point grant LINE delivery always asks the member to open the card and keep
   vm.createContext(context);
   vm.runInContext(
     read('gas/AdminPointGrantPushService.gs') +
-      '\n;globalThis.__pushTest = { pointGrantPushDeliveryMessage_ };',
+      '\n;globalThis.__pushTest = { pointGrantPushMessage_, pointGrantPushDeliveryMessage_ };',
     context
   );
 
   const grant = { stampCount: 5, reason: '滿點後加碼' };
-  const message = context.__pushTest.pointGrantPushDeliveryMessage_(
+  const baseMessage = context.__pushTest.pointGrantPushMessage_(
     grant,
     '新獲得：優惠券「5點優惠券」。'
   );
+  const message = context.__pushTest.pointGrantPushDeliveryMessage_(baseMessage);
 
   assert.equal(
     message,
@@ -101,13 +102,14 @@ test('point grant LINE delivery includes the progress CTA even when no ticket is
   vm.createContext(context);
   vm.runInContext(
     read('gas/AdminPointGrantPushService.gs') +
-      '\n;globalThis.__pushTest = { pointGrantPushDeliveryMessage_ };',
+      '\n;globalThis.__pushTest = { pointGrantPushMessage_, pointGrantPushDeliveryMessage_ };',
     context
   );
 
-  const message = context.__pushTest.pointGrantPushDeliveryMessage_(
+  const baseMessage = context.__pushTest.pointGrantPushMessage_(
     { stampCount: 2, reason: '活動贈點' },
     ''
   );
+  const message = context.__pushTest.pointGrantPushDeliveryMessage_(baseMessage);
   assert.equal(message, '發放點數：2 點\n發放原因：活動贈點\n請開啟集點卡確認集點進度。');
 });
