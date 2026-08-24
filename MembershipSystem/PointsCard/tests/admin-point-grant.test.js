@@ -59,14 +59,23 @@ test('grant transaction records intent before progress mutation and success audi
   const append = source.indexOf('appendAdminPointGrantObject_(POINTS_CARD_ADMIN_GRANTS.grantsSheet, grant)');
   const progressWrite = source.indexOf('progress.totalStamps = totalAfter');
   const success = source.indexOf("'CARD_POINTS_GRANTED'", progressWrite);
-  const notification = source.indexOf('ensurePointGrantNotification_(grant, cardMatch.card.name)', progressWrite);
+  const notification = source.indexOf('ensurePointGrantNotification_(grant, cardMatch.card)', progressWrite);
   assert.ok(requested >= 0 && requested < append, 'pending audit must precede transaction record');
   assert.ok(append < progressWrite, 'processing record must exist before changing points');
-  assert.ok(progressWrite < notification, 'notification is created after point state is updated');
-  assert.ok(notification < success, 'success audit follows point/notification mutation');
+  assert.ok(progressWrite < notification, 'reward notification decision happens after point state is updated');
+  assert.ok(notification < success, 'success audit follows point/reward-notification mutation');
   assert.match(source, /status: 'processing'/);
   assert.match(source, /grant\.status = 'recorded'/);
   assert.match(source, /recoverAdminPointGrant_\(existing\)/);
+});
+
+test('plain point grants do not create member popups while newly unlocked tickets do', () => {
+  const notifications = read('gas/MemberPointNotificationService.gs');
+  assert.match(notifications, /rewardEntitlementsBetweenTotals_\(grant\.totalBefore, grant\.totalAfter, settings\)/);
+  assert.match(notifications, /if \(!unlockedRewards\.length\) return null/);
+  assert.match(notifications, /type: 'point-grant-reward'/);
+  assert.match(notifications, /notification\.type === 'point-grant-reward'/);
+  assert.match(notifications, /pointGrantRewardSummary_\(rewards\)/);
 });
 
 test('member notification APIs are isolated, identity-scoped and prevent IDOR', () => {
@@ -126,10 +135,12 @@ test('member and admin browser surfaces load local feature modules and use API a
   assert.doesNotMatch(admin, /totalStamps\s*[+\-]?=/);
   assert.match(user, /PointsCard\.callApi\('member\.point-notifications\.list'/);
   assert.match(user, /PointsCard\.callApi\('member\.point-notification\.read'/);
+  assert.match(user, /目前點數：/);
+  assert.doesNotMatch(user, /目前累計/);
   assert.match(user, /dialog\.addEventListener\('cancel',[\s\S]*preventDefault/);
 });
 
-test('point grant messages contain only the business notification payload', () => {
+test('point grant messages show reason/current points and add ticket details only when unlocked', () => {
   const context = {
     Object,
     String,
@@ -138,22 +149,43 @@ test('point grant messages contain only the business notification payload', () =
     JSON,
     Math,
     console,
-    sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    multiCardSettingsForProjection_: (card) => card && card.settings || {},
+    rewardEntitlementsBetweenTotals_: (totalBefore, totalAfter) => {
+      if (Number(totalBefore) < 10 && Number(totalAfter) >= 10) {
+        return [{ rewardName: '免費咖啡', rewardType: 'coupon' }];
+      }
+      return [];
+    }
   };
   vm.createContext(context);
   vm.runInContext(
     read('gas/LineMessagingService.gs') + '\n' +
-      read('gas/AdminPointGrantPushService.gs') + '\n' +
-      read('gas/MemberPointNotificationService.gs') +
-      '\n;globalThis.__test = { pointGrantPushMessage_, pointGrantNotificationMessage_, pointGrantRetryKey_ };',
+      read('gas/MemberPointNotificationService.gs') + '\n' +
+      read('gas/AdminPointGrantPushService.gs') +
+      '\n;globalThis.__test = { pointGrantPushMessage_, pointGrantNotificationMessage_, pointGrantNotificationTitle_, pointGrantRetryKey_ };',
     context
   );
-  const message = context.__test.pointGrantPushMessage_({ stampCount: 5, reason: '活動補發', totalAfter: 12 }, '夏季卡');
+
+  const reward = [{ rewardName: '免費咖啡', rewardType: 'coupon' }];
+  const message = context.__test.pointGrantPushMessage_(
+    { stampCount: 5, reason: '活動補發', totalBefore: 7, totalAfter: 12 },
+    { name: '夏季卡', settings: {} }
+  );
   assert.match(message, /夏季卡/);
   assert.match(message, /5 點/);
-  assert.match(message, /活動補發/);
-  assert.match(message, /12 點/);
+  assert.match(message, /發放原因：活動補發/);
+  assert.match(message, /目前點數：12 點/);
+  assert.match(message, /優惠券「免費咖啡」/);
+  assert.doesNotMatch(message, /目前累計/);
   assert.doesNotMatch(message, /Bearer|LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|requestId|lineUserId/);
-  assert.match(context.__test.pointGrantNotificationMessage_('夏季卡', 5, '活動補發'), /活動補發/);
+
+  const plainMessage = context.__test.pointGrantPushMessage_(
+    { stampCount: 5, reason: '活動補發', totalBefore: 1, totalAfter: 6 },
+    { name: '夏季卡', settings: {} }
+  );
+  assert.doesNotMatch(plainMessage, /新獲得/);
+  assert.match(context.__test.pointGrantNotificationMessage_('活動補發', reward), /免費咖啡/);
+  assert.match(context.__test.pointGrantNotificationTitle_(reward), /免費咖啡/);
   assert.match(context.__test.pointGrantRetryKey_('PG-TEST'), /^[a-f0-9-]{36}$/);
 });
