@@ -3,6 +3,10 @@
 
   const DEFAULT_COLORS = Object.freeze({ holiday: '#D95656', event: '#3182B8', notice: '#D3A12F' });
   const AUTO_REFRESH_STALE_MS = 60000;
+  const SWIPE_MIN_DISTANCE_PX = 48;
+  const SWIPE_MAX_DURATION_MS = 700;
+  const SWIPE_HORIZONTAL_DOMINANCE = 1.2;
+  const SWIPE_CLICK_SUPPRESS_MS = 500;
   const state = {
     config: null,
     idToken: '',
@@ -16,6 +20,8 @@
   };
 
   const els = {};
+  let calendarSwipe = null;
+  let suppressCalendarClickUntil = 0;
 
   window.addEventListener('DOMContentLoaded', () => {
     bindElements();
@@ -42,15 +48,8 @@
       }
     });
 
-    els.prevMonth.addEventListener('click', () => {
-      state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() - 1, 1);
-      renderCalendar();
-    });
-
-    els.nextMonth.addEventListener('click', () => {
-      state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() + 1, 1);
-      renderCalendar();
-    });
+    els.prevMonth.addEventListener('click', () => changeMonth(-1));
+    els.nextMonth.addEventListener('click', () => changeMonth(1));
 
     els.todayButton.addEventListener('click', () => {
       const today = new Date();
@@ -58,6 +57,25 @@
       state.selectedDate = dateKey(today);
       renderCalendar();
     });
+
+    els.calendarGrid.addEventListener('click', (event) => {
+      if (Date.now() < suppressCalendarClickUntil) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      const target = event.target instanceof Element ? event.target : null;
+      const cell = target ? target.closest('.day-cell') : null;
+      if (!cell || !els.calendarGrid.contains(cell)) return;
+
+      const key = String(cell.dataset.date || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
+      openSelectedDayModal(key, parseDateKey(key));
+    });
+    els.calendarGrid.addEventListener('touchstart', beginCalendarSwipe, { passive: true });
+    els.calendarGrid.addEventListener('touchend', endCalendarSwipe, { passive: true });
+    els.calendarGrid.addEventListener('touchcancel', resetCalendarSwipe, { passive: true });
 
     els.refreshButton.addEventListener('click', () => refreshItems(true));
     document.addEventListener('visibilitychange', () => {
@@ -74,6 +92,44 @@
         closeSelectedDayModal();
       }
     });
+  }
+
+  function beginCalendarSwipe(event) {
+    if (!els.selectedDayModal.classList.contains('hidden') || event.touches.length !== 1) {
+      resetCalendarSwipe();
+      return;
+    }
+
+    const touch = event.touches[0];
+    calendarSwipe = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      startedAt: Date.now()
+    };
+  }
+
+  function endCalendarSwipe(event) {
+    const gesture = calendarSwipe;
+    resetCalendarSwipe();
+    if (!gesture || !els.selectedDayModal.classList.contains('hidden') || event.changedTouches.length !== 1) return;
+
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - gesture.startX;
+    const deltaY = touch.clientY - gesture.startY;
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
+    const duration = Date.now() - gesture.startedAt;
+
+    if (duration > SWIPE_MAX_DURATION_MS) return;
+    if (absX < SWIPE_MIN_DISTANCE_PX) return;
+    if (absX <= absY * SWIPE_HORIZONTAL_DOMINANCE) return;
+
+    suppressCalendarClickUntil = Date.now() + SWIPE_CLICK_SUPPRESS_MS;
+    changeMonth(deltaX < 0 ? 1 : -1);
+  }
+
+  function resetCalendarSwipe() {
+    calendarSwipe = null;
   }
 
   async function boot() {
@@ -209,6 +265,11 @@
     setView('error');
   }
 
+  function changeMonth(offset) {
+    state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() + offset, 1);
+    renderCalendar();
+  }
+
   function renderCalendar() {
     const year = state.viewMonth.getFullYear();
     const month = state.viewMonth.getMonth();
@@ -259,7 +320,6 @@
         cell.appendChild(items);
       }
 
-      cell.addEventListener('click', () => openSelectedDayModal(key, date));
       fragment.appendChild(cell);
     }
 
