@@ -42,6 +42,25 @@ test('user Selected day is a modal instead of a persistent card', () => {
   assert.doesNotMatch(app, /insertAdjacentHTML/);
 });
 
+test('user calendar supports mobile horizontal swipe while preserving vertical scrolling', () => {
+  const app = read('user/app.js');
+  const css = read('user/styles.css');
+
+  assert.match(app, /SWIPE_MIN_DISTANCE_PX/);
+  assert.match(app, /SWIPE_MAX_DURATION_MS/);
+  assert.match(app, /SWIPE_HORIZONTAL_DOMINANCE/);
+  assert.match(app, /calendarGrid\.addEventListener\('touchstart'/);
+  assert.match(app, /calendarGrid\.addEventListener\('touchend'/);
+  assert.match(app, /calendarGrid\.addEventListener\('touchcancel'/);
+  assert.match(app, /changeMonth\(deltaX < 0 \? 1 : -1\)/);
+  assert.match(app, /suppressCalendarClickUntil/);
+  assert.match(app, /selectedDayModal\.classList\.contains\('hidden'\)/);
+  assert.match(app, /calendarGrid\.addEventListener\('click'/);
+  assert.doesNotMatch(app, /cell\.addEventListener\('click'/);
+  assert.match(css, /\.calendar-grid\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.doesNotMatch(css, /touch-action:\s*none/);
+});
+
 test('user and admin headers show LINE avatars while logout controls are not visible', () => {
   ['user/index.html', 'admin/index.html'].forEach((relativePath) => {
     const html = read(relativePath);
