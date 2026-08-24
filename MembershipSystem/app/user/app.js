@@ -132,13 +132,9 @@
     return access;
   }
 
-  function maskPhone(value) {
+  function formatPhone(value) {
     const phone = String(value || '').trim();
-    if (!phone) return '—';
-    if (phone.length <= 7) return phone;
-    const prefixLength = phone.charAt(0) === '+' ? Math.min(5, phone.length - 3) : Math.min(4, phone.length - 3);
-    const maskedLength = Math.max(3, phone.length - prefixLength - 3);
-    return `${phone.slice(0, prefixLength)}${'•'.repeat(maskedLength)}${phone.slice(-3)}`;
+    return phone || '—';
   }
 
   function normalizeBirthDateValue(value) {
@@ -237,7 +233,7 @@
   }
 
   function renderProfileOnCard(profile) {
-    $('#profilePhone').textContent = profile ? maskPhone(profile.phone) : '—';
+    $('#profilePhone').textContent = profile ? formatPhone(profile.phone) : '—';
     $('#profileBirthDate').textContent = profile ? formatBirthDate(profile.birthDate) : '—';
   }
 
@@ -255,7 +251,7 @@
     $('#expiresAt').textContent = Membership.formatDate(member.expiresAt, '永久');
     $('#consumedMinutes').textContent = formatMinutes(member.consumedMinutes);
     renderProfileOnCard(currentProfile);
-    $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
+    $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
     $('#boot').classList.add('hidden');
     $('#errorState').classList.add('hidden');
     $('#profileSetup').classList.add('hidden');
