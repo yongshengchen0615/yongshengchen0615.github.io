@@ -59,18 +59,18 @@
     seal.setAttribute('aria-hidden', 'true');
     const sealCount = document.createElement('span');
     sealCount.id = 'pointGrantNoticeCount';
-    sealCount.textContent = '+1';
+    sealCount.textContent = '券';
     seal.append(sealCount);
 
     const eyebrow = document.createElement('p');
     eyebrow.className = 'eyebrow';
-    eyebrow.textContent = 'POINTS RECEIVED';
+    eyebrow.textContent = 'NEW TICKET';
     const title = document.createElement('h2');
     title.id = 'pointGrantNoticeTitle';
-    title.textContent = '你獲得點數';
+    title.textContent = '你獲得新票券';
     const message = document.createElement('p');
     message.id = 'pointGrantNoticeMessage';
-    message.textContent = '店家已發放點數到你的集點卡。';
+    message.textContent = '你有新的票券可以使用。';
     const total = document.createElement('p');
     total.id = 'pointGrantNoticeTotal';
     total.className = 'settings-notice';
@@ -114,9 +114,9 @@
     if (dialog && dialog.open && currentNotice && currentNotice.notificationId === nextNotice.notificationId) return;
 
     currentNotice = nextNotice;
-    $('pointGrantNoticeCount').textContent = '+' + String(Number(currentNotice.stampCount || 0));
-    $('pointGrantNoticeTitle').textContent = currentNotice.title || '你獲得點數';
-    $('pointGrantNoticeMessage').textContent = currentNotice.message || '店家已發放點數到你的集點卡。';
+    $('pointGrantNoticeCount').textContent = '券';
+    $('pointGrantNoticeTitle').textContent = currentNotice.title || '你獲得新票券';
+    $('pointGrantNoticeMessage').textContent = currentNotice.message || '你有新的票券可以使用。';
     $('pointGrantNoticeTotal').textContent = '目前點數：' + String(Number(currentNotice.totalAfter || 0)) + ' 點。';
     $('pointGrantNoticeError').textContent = '';
     $('pointGrantNoticeError').classList.add('hidden');
