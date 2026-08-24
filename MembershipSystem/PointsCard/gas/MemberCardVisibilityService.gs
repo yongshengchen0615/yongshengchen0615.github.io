@@ -10,6 +10,23 @@
  * This is presentation/business projection only. Reward entitlement and claim
  * authorization remain enforced by MultiCardRewardService.gs.
  */
+function memberVisibleCycleProjection_(projection) {
+  if (!projection || !projection.card || !projection.card.available) return projection;
+  const cardSize = Number(projection.cardSize || 0);
+  const totalStamps = Number(projection.totalStamps || 0);
+  if (!Number.isFinite(cardSize) || cardSize <= 0 || !Number.isFinite(totalStamps) || totalStamps <= 0) return projection;
+  if (totalStamps % cardSize !== 0) return projection;
+
+  const next = Object.assign({}, projection, {
+    visualStamps: 0,
+    displayCycleNumber: Math.floor(totalStamps / cardSize) + 1
+  });
+  next.rewardNodes = Array.isArray(projection.rewardNodes) ? projection.rewardNodes.map(function (node) {
+    return Object.assign({}, node, { state: 'pending' });
+  }) : [];
+  return next;
+}
+
 function publicMemberWithVisibleDeletedCards_(memberValue, payload) {
   const member = normalizeMember_(memberValue);
   const preferSelectiveRead = true;
@@ -75,12 +92,13 @@ function publicMemberWithVisibleDeletedCards_(memberValue, payload) {
     });
   }
 
-  return Object.assign(base, deletedCardProjections[selectedCard.cardId] || publicMemberCardProjection_(
+  const selectedProjection = deletedCardProjections[selectedCard.cardId] || publicMemberCardProjection_(
     selectedCard,
     member,
     progressMap[selectedCard.cardId] || null,
     preferSelectiveRead
-  ));
+  );
+  return Object.assign(base, memberVisibleCycleProjection_(selectedProjection));
 }
 
 function memberMeVisibleMultiCard_(context, payload) {
