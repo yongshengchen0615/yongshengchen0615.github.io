@@ -1,13 +1,51 @@
 (function () {
   'use strict';
 
+  const NOTICE_API_TIMEOUT_MS = 32000;
   let notices = [];
   let currentNotice = null;
   let loaded = false;
   let loading = false;
-  let observer = null;
+  let surfaceObserver = null;
+  let presentationRetryScheduled = false;
 
   function $(id) { return document.getElementById(id); }
+
+  function scheduleRetryPresentation() {
+    if (presentationRetryScheduled) return;
+    presentationRetryScheduled = true;
+    window.setTimeout(function () {
+      presentationRetryScheduled = false;
+      retryPresentation();
+    }, 0);
+  }
+
+  function withNoticeApiTimeout(request) {
+    let timeout = 0;
+    const timeoutPromise = new Promise(function (_, reject) {
+      timeout = window.setTimeout(function () {
+        const error = new Error('通知服務回應逾時，請稍後再試。');
+        error.code = 'CLIENT_TIMEOUT';
+        reject(error);
+      }, NOTICE_API_TIMEOUT_MS);
+    });
+    return Promise.race([
+      request,
+      timeoutPromise
+    ]).finally(function () { window.clearTimeout(timeout); });
+  }
+
+  function openNoticeDialog(dialog) {
+    if (!dialog || dialog.open) return;
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  }
+
+  function closeNoticeDialog(dialog) {
+    if (!dialog || !dialog.open) return;
+    if (typeof dialog.close === 'function') dialog.close();
+    else dialog.removeAttribute('open');
+  }
 
   function createDialog() {
     if ($('pointGrantNoticeDialog')) return;
@@ -50,6 +88,7 @@
     dialog.append(seal, eyebrow, title, message, total, error, button);
     document.body.append(dialog);
     dialog.addEventListener('cancel', function (event) { event.preventDefault(); });
+    dialog.addEventListener('close', scheduleRetryPresentation);
   }
 
   function canPresentNotices() {
@@ -65,12 +104,16 @@
   function showNextNotice() {
     if (!notices.length) {
       currentNotice = null;
-      const dialog = $('pointGrantNoticeDialog');
-      if (dialog && dialog.open) dialog.close();
+      closeNoticeDialog($('pointGrantNoticeDialog'));
       return;
     }
     if (!canPresentNotices()) return;
-    currentNotice = notices[0];
+
+    const nextNotice = notices[0];
+    const dialog = $('pointGrantNoticeDialog');
+    if (dialog && dialog.open && currentNotice && currentNotice.notificationId === nextNotice.notificationId) return;
+
+    currentNotice = nextNotice;
     $('pointGrantNoticeCount').textContent = '+' + String(Number(currentNotice.stampCount || 0));
     $('pointGrantNoticeTitle').textContent = currentNotice.title || '你獲得點數';
     $('pointGrantNoticeMessage').textContent = currentNotice.message || '店家已發放點數到你的集點卡。';
@@ -78,8 +121,7 @@
     $('pointGrantNoticeError').textContent = '';
     $('pointGrantNoticeError').classList.add('hidden');
     $('confirmPointGrantNoticeButton').disabled = false;
-    const dialog = $('pointGrantNoticeDialog');
-    if (!dialog.open) dialog.showModal();
+    openNoticeDialog(dialog);
   }
 
   async function acknowledgeCurrentNotice() {
@@ -90,10 +132,11 @@
     error.textContent = '';
     error.classList.add('hidden');
     try {
-      await PointsCard.callApi('member.point-notification.read', {
+      await withNoticeApiTimeout(PointsCard.callApi('member.point-notification.read', {
         notificationId: currentNotice.notificationId
-      });
+      }));
       notices.shift();
+      currentNotice = null;
       showNextNotice();
     } catch (readError) {
       if (window.PointsCard && typeof PointsCard.reportError === 'function') {
@@ -113,7 +156,7 @@
     }
     loading = true;
     try {
-      const result = await PointsCard.callApi('member.point-notifications.list', { limit: 10 });
+      const result = await withNoticeApiTimeout(PointsCard.callApi('member.point-notifications.list', { limit: 10 }));
       notices = Array.isArray(result.notifications) ? result.notifications : [];
       loaded = true;
       showNextNotice();
@@ -131,17 +174,24 @@
     else loadNoticesOnce();
   }
 
+  function bindPresentationSignals(app) {
+    document.querySelectorAll('dialog').forEach(function (dialog) {
+      if (dialog.id !== 'pointGrantNoticeDialog') dialog.addEventListener('close', scheduleRetryPresentation);
+    });
+
+    if (typeof MutationObserver !== 'function') return;
+    surfaceObserver = new MutationObserver(scheduleRetryPresentation);
+    surfaceObserver.observe(app, { attributes: true, attributeFilter: ['class'] });
+    const processing = $('processingOverlay');
+    if (processing) surfaceObserver.observe(processing, { attributes: true, attributeFilter: ['class'] });
+  }
+
   function init() {
     createDialog();
     const app = $('memberApp');
     if (!app) return;
-    retryPresentation();
-    observer = new MutationObserver(retryPresentation);
-    observer.observe(document.body, {
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class', 'open']
-    });
+    bindPresentationSignals(app);
+    scheduleRetryPresentation();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
