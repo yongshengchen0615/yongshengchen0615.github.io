@@ -5,7 +5,6 @@
   const tierLabel = { standard: '一般', silver: '銀級', gold: '金級', platinum: '白金', vip: '白金' };
   const statusLabel = { active: '有效', suspended: '停權', disabled: '停用' };
   const pushLabel = { sent: '已推播', failed: '推播失敗', not_configured: '未設定推播', pending: '等待推播' };
-  let searchTimer = null;
   let selectedMember = null;
   let pendingRequestId = '';
   let pendingRequestFingerprint = '';
@@ -34,8 +33,60 @@
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
   }
 
-  function showMessage(message, isError) {
+  function normalizeTierFromLabel(value) {
+    const label = String(value || '').trim();
+    const match = Object.keys(tierLabel).find((key) => tierLabel[key] === label);
+    return match === 'vip' ? 'platinum' : (match || 'standard');
+  }
+
+  function parseDisplayedMinutes(value) {
+    const digits = String(value || '').replace(/[^0-9]/g, '');
+    return digits ? Number(digits) : 0;
+  }
+
+  function memberFromEditDialog() {
+    const memberNo = $('#editTargetMemberNo').value.trim();
+    if (!memberNo) return null;
+    return {
+      memberNo,
+      displayName: $('#editMemberName').textContent.trim() || 'LINE 會員',
+      tier: normalizeTierFromLabel($('#editTier').value),
+      membershipStatus: $('#editStatus').value,
+      consumedMinutes: parseDisplayedMinutes($('#editConsumedMinutes').value),
+      expiresAt: $('#editExpiresAt').value || '',
+      updatedAt: $('#editExpectedUpdatedAt').value || ''
+    };
+  }
+
+  function isMemberEligibleForGrant(member) {
+    if (!member || member.membershipStatus !== 'active') return false;
+    if (!member.expiresAt) return true;
+    const expiresAt = new Date(`${String(member.expiresAt).slice(0, 10)}T23:59:59+08:00`);
+    return !Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() >= Date.now();
+  }
+
+  function showGrantMessage(message, isError) {
     const node = $('#minuteGrantMessage');
+    node.textContent = message || '';
+    node.classList.toggle('error', Boolean(isError));
+    node.classList.toggle('hidden', !message);
+  }
+
+  function ensureHistoryMessage() {
+    let node = $('#minuteGrantHistoryMessage');
+    if (node) return node;
+    node = document.createElement('p');
+    node.id = 'minuteGrantHistoryMessage';
+    node.className = 'minute-grant-message hidden';
+    node.setAttribute('role', 'status');
+    const heading = document.querySelector('.minute-grant-history-heading');
+    if (heading) heading.insertAdjacentElement('afterend', node);
+    return node;
+  }
+
+  function showHistoryMessage(message, isError) {
+    const node = ensureHistoryMessage();
+    if (!node) return;
     node.textContent = message || '';
     node.classList.toggle('error', Boolean(isError));
     node.classList.toggle('hidden', !message);
@@ -48,13 +99,32 @@
     return error && error.message ? error.message : '分鐘發放操作失敗。';
   }
 
-  function setSelectedMember(member) {
+  function resetGrantRequestState() {
+    pendingRequestId = '';
+    pendingRequestFingerprint = '';
+  }
+
+  function setSelectedMember(member, options) {
+    const settings = Object.assign({ resetForm: false, preserveMessage: false }, options || {});
+    const previousMemberNo = selectedMember && selectedMember.memberNo;
     selectedMember = member || null;
     $('#minuteGrantTargetMemberNo').value = selectedMember ? selectedMember.memberNo : '';
+
+    if (!selectedMember || previousMemberNo !== selectedMember.memberNo) {
+      resetGrantRequestState();
+    }
+
+    if (settings.resetForm) {
+      $('#minuteGrantMinutes').value = '60';
+      $('#minuteGrantReason').value = '';
+      if (!settings.preserveMessage) showGrantMessage('', false);
+    }
+
     const card = $('#minuteGrantSelectedMember');
     if (!selectedMember) {
       card.classList.add('hidden');
       card.replaceChildren();
+      $('#minuteGrantSubmitButton').disabled = true;
       return;
     }
 
@@ -64,54 +134,78 @@
     meta.textContent = `${selectedMember.memberNo}｜${tierLabel[selectedMember.tier] || '一般'}｜累計 ${formatMinutes(selectedMember.consumedMinutes)} 分鐘｜${statusLabel[selectedMember.membershipStatus] || selectedMember.membershipStatus}`;
     card.replaceChildren(name, meta);
     card.classList.remove('hidden');
+
+    const eligible = isMemberEligibleForGrant(selectedMember);
+    $('#minuteGrantSubmitButton').disabled = !eligible;
+    if (!eligible && !settings.preserveMessage) {
+      showGrantMessage('此會員目前不是有效可用狀態，無法發放累計消費分鐘。', true);
+    }
   }
 
-  function renderMemberSearchResults(rows) {
-    const container = $('#minuteGrantMemberResults');
-    container.replaceChildren();
-    if (!rows.length) {
-      const empty = document.createElement('div');
-      empty.className = 'grant-search-empty';
-      empty.textContent = '找不到符合條件的會員。';
-      container.append(empty);
-      return;
-    }
-
-    rows.forEach((member) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'grant-member-option';
-      const name = document.createElement('strong');
-      name.textContent = member.displayName || 'LINE 會員';
-      const meta = document.createElement('span');
-      meta.textContent = `${member.memberNo}｜${tierLabel[member.tier] || '一般'}｜累計 ${formatMinutes(member.consumedMinutes)} 分鐘｜${statusLabel[member.membershipStatus] || member.membershipStatus}`;
-      button.append(name, meta);
-      if (member.membershipStatus !== 'active') {
-        button.disabled = true;
-        button.title = '只能對有效會員發放累計消費分鐘';
-      } else {
-        button.addEventListener('click', () => {
-          setSelectedMember(member);
-          container.replaceChildren();
-          $('#minuteGrantMemberSearch').value = `${member.displayName || 'LINE 會員'} (${member.memberNo})`;
-        });
-      }
-      container.append(button);
-    });
+  function syncGrantResultToEditDialog(member) {
+    if (!member || $('#editTargetMemberNo').value !== member.memberNo) return;
+    $('#editExpectedUpdatedAt').value = member.updatedAt || $('#editExpectedUpdatedAt').value;
+    $('#editTier').value = tierLabel[member.tier] || tierLabel.standard;
+    $('#editConsumedMinutes').value = `${formatMinutes(member.consumedMinutes)} 分鐘`;
+    $('#editStatus').value = member.membershipStatus;
+    $('#editExpiresAt').value = member.expiresAt ? String(member.expiresAt).slice(0, 10) : '';
   }
 
-  async function searchMembers() {
-    const query = $('#minuteGrantMemberSearch').value.trim();
-    if (!query) {
-      $('#minuteGrantMemberResults').replaceChildren();
-      setSelectedMember(null);
-      return;
+  function selectMemberFromOpenDialog() {
+    const dialog = $('#editDialog');
+    if (!dialog || !dialog.open) return;
+    const member = memberFromEditDialog();
+    if (!member) return;
+    setSelectedMember(member, { resetForm: true });
+  }
+
+  function prepareMemberDialogGrantUi() {
+    const panel = document.querySelector('.minute-grant-form-panel');
+    const editForm = $('#editForm');
+    const editError = $('#editError');
+    if (!panel || !editForm || !editError) return;
+
+    panel.classList.add('member-minute-grant-panel');
+    const title = $('#minuteGrantFormTitle');
+    if (title) title.textContent = '發放累計消費分鐘';
+    const description = panel.querySelector(':scope > p');
+    if (description) {
+      description.textContent = '發放對象固定為目前開啟的會員；只能對有效且未過期的會員發放。發放原因會保存於系統、顯示在會員端，並寫入 LINE 推播訊息。';
     }
-    try {
-      const result = await Membership.callApi('admin.list', { query, page: 1, pageSize: 10 });
-      renderMemberSearchResults(result.members || []);
-    } catch (error) {
-      showMessage(backendErrorMessage(error), true);
+
+    const searchInput = $('#minuteGrantMemberSearch');
+    const searchField = searchInput ? searchInput.closest('label') : null;
+    if (searchField) searchField.classList.add('hidden');
+    const searchResults = $('#minuteGrantMemberResults');
+    if (searchResults) searchResults.classList.add('hidden');
+
+    editForm.insertBefore(panel, editError);
+
+    const grantGrid = document.querySelector('.minute-grant-grid');
+    if (grantGrid) grantGrid.classList.add('minute-grant-history-only');
+
+    const navButton = document.querySelector('[data-admin-page="grants"]');
+    if (navButton) navButton.textContent = '發放紀錄';
+
+    const pageTitle = $('#minuteGrantPageTitle');
+    if (pageTitle) pageTitle.textContent = '分鐘發放紀錄';
+    const pageHeadingText = pageTitle && pageTitle.parentElement ? pageTitle.parentElement.querySelector('p') : null;
+    if (pageHeadingText) pageHeadingText.textContent = '分鐘發放請先到會員列表點選會員；此頁保留最近發放紀錄與 LINE 推播補送。';
+
+    const overviewCard = document.querySelector('[data-admin-page-target="grants"]');
+    if (overviewCard) {
+      const strong = overviewCard.querySelector('strong');
+      const small = overviewCard.querySelector('small');
+      const action = overviewCard.querySelector('.overview-link-action');
+      if (strong) strong.textContent = '分鐘發放紀錄';
+      if (small) small.textContent = '查看最近發放紀錄、等級變化與 LINE 推播結果；實際發放請從會員列表進入。';
+      if (action) action.textContent = '查看發放紀錄 →';
+    }
+
+    const membersHeading = $('#membersPageTitle');
+    const membersDescription = membersHeading && membersHeading.parentElement ? membersHeading.parentElement.querySelector('p') : null;
+    if (membersDescription) {
+      membersDescription.textContent = '搜尋會員；點選「編輯」開啟小視窗，可管理會員資料並發放累計消費分鐘。';
     }
   }
 
@@ -161,12 +255,13 @@
     if (!adminReady) return;
     const button = $('#minuteGrantRefreshButton');
     if (button) button.disabled = true;
+    showHistoryMessage('', false);
     try {
       const result = await Membership.callApi('admin.minutes.grants.list', { limit: 50 });
       renderGrantRows(result.grants || []);
       grantsLoaded = true;
     } catch (error) {
-      showMessage(backendErrorMessage(error), true);
+      showHistoryMessage(backendErrorMessage(error), true);
     } finally {
       if (button) button.disabled = false;
     }
@@ -176,11 +271,11 @@
     button.disabled = true;
     try {
       const result = await Membership.callApi('admin.minutes.push.retry', { grantId });
-      if (result.pushStatus === 'sent') showMessage('LINE 官方帳號推播已成功補送。', false);
-      else showMessage(`推播仍未成功：${result.pushErrorCode || result.pushStatus}`, true);
+      if (result.pushStatus === 'sent') showHistoryMessage('LINE 官方帳號推播已成功補送。', false);
+      else showHistoryMessage(`推播仍未成功：${result.pushErrorCode || result.pushStatus}`, true);
       await loadGrants();
     } catch (error) {
-      showMessage(backendErrorMessage(error), true);
+      showHistoryMessage(backendErrorMessage(error), true);
     } finally {
       button.disabled = false;
     }
@@ -191,16 +286,21 @@
     const memberNo = $('#minuteGrantTargetMemberNo').value;
     const minutes = Number($('#minuteGrantMinutes').value);
     const reason = $('#minuteGrantReason').value.trim();
-    if (!selectedMember || !memberNo) {
-      showMessage('請先搜尋並選擇要發放的會員。', true);
+
+    if (!selectedMember || !memberNo || selectedMember.memberNo !== memberNo) {
+      showGrantMessage('請先從會員列表開啟要發放的會員。', true);
+      return;
+    }
+    if (!isMemberEligibleForGrant(selectedMember)) {
+      showGrantMessage('此會員目前不是有效可用狀態，無法發放累計消費分鐘。', true);
       return;
     }
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60000) {
-      showMessage('發放分鐘必須是 1 到 60000 的整數。', true);
+      showGrantMessage('發放分鐘必須是 1 到 60000 的整數。', true);
       return;
     }
     if (!reason) {
-      showMessage('請輸入發放原因；此原因會顯示於會員端與 LINE 推播。', true);
+      showGrantMessage('請輸入發放原因；此原因會顯示於會員端與 LINE 推播。', true);
       return;
     }
 
@@ -211,7 +311,7 @@
     }
 
     button.disabled = true;
-    showMessage('', false);
+    showGrantMessage('', false);
     try {
       const result = await Membership.callApi('admin.minutes.grant', {
         targetMemberNo: memberNo,
@@ -221,27 +321,29 @@
       });
       const grant = result.grant;
       if (result.pushStatus === 'sent') {
-        showMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，並完成 LINE 官方帳號推播。`, false);
+        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，並完成 LINE 官方帳號推播。`, false);
       } else if (result.pushStatus === 'not_configured') {
-        showMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，但尚未設定 LINE Messaging Channel Access Token；可設定後於下方重試推播。`, true);
+        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，但尚未設定 LINE Messaging Channel Access Token；可到「發放紀錄」補送推播。`, true);
       } else {
-        showMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，但 LINE 推播失敗（${result.pushErrorCode || result.pushStatus}）；可於下方重試。`, true);
+        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，但 LINE 推播失敗（${result.pushErrorCode || result.pushStatus}）；可到「發放紀錄」重試。`, true);
       }
-      pendingRequestId = '';
-      pendingRequestFingerprint = '';
+
+      resetGrantRequestState();
       $('#minuteGrantMinutes').value = '60';
       $('#minuteGrantReason').value = '';
-      selectedMember = Object.assign({}, selectedMember, {
-        consumedMinutes: result.member.consumedMinutes,
-        tier: result.member.tier,
-        updatedAt: result.member.updatedAt
-      });
-      setSelectedMember(selectedMember);
-      await loadGrants();
+      setSelectedMember(result.member, { preserveMessage: true });
+      syncGrantResultToEditDialog(result.member);
+      grantsLoaded = false;
+
+      // Refresh through the existing admin dashboard path so the private member
+      // list state in app.js is replaced with the server-authoritative values.
+      const refreshButton = $('#adminRefreshButton');
+      if (refreshButton) refreshButton.click();
+      if (window.location.hash === '#grants') await loadGrants();
     } catch (error) {
-      showMessage(backendErrorMessage(error), true);
+      showGrantMessage(backendErrorMessage(error), true);
     } finally {
-      button.disabled = false;
+      button.disabled = !isMemberEligibleForGrant(selectedMember);
     }
   }
 
@@ -251,11 +353,25 @@
     if (window.location.hash === '#grants') loadGrants();
   }
 
-  $('#minuteGrantMemberSearch').addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    if (selectedMember) setSelectedMember(null);
-    searchTimer = window.setTimeout(searchMembers, 300);
+  prepareMemberDialogGrantUi();
+  ensureHistoryMessage();
+
+  const editDialog = $('#editDialog');
+  const editDialogObserver = new MutationObserver(() => {
+    if (editDialog.open) selectMemberFromOpenDialog();
   });
+  editDialogObserver.observe(editDialog, { attributes: true, attributeFilter: ['open'] });
+  editDialog.addEventListener('close', () => {
+    selectedMember = null;
+    $('#minuteGrantTargetMemberNo').value = '';
+    $('#minuteGrantSelectedMember').classList.add('hidden');
+    $('#minuteGrantSelectedMember').replaceChildren();
+    $('#minuteGrantMinutes').value = '60';
+    $('#minuteGrantReason').value = '';
+    showGrantMessage('', false);
+    resetGrantRequestState();
+  });
+
   $('#minuteGrantSubmitButton').addEventListener('click', submitGrant);
   $('#minuteGrantRefreshButton').addEventListener('click', loadGrants);
   window.addEventListener('hashchange', () => {
