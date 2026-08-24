@@ -261,7 +261,7 @@
     const nextTier = normalizeTierKey(progress.nextTier);
     const remainingMinutes = Math.max(0, Number(progress.remainingMinutes || 0));
     const nextThresholdMinutes = Math.max(0, Number(progress.nextThresholdMinutes || 0));
-    text.textContent = `再消費服務 ${formatMinutes(remainingMinutes)} 分鐘升級${tierLabel[nextTier]}`;
+    text.textContent = `再預約服務 ${formatMinutes(remainingMinutes)} 分鐘升級${tierLabel[nextTier]}`;
     detail.textContent = `目前 ${formatMinutes(currentMinutes)} / ${formatMinutes(nextThresholdMinutes)} 分鐘`;
   }
 
