@@ -178,8 +178,9 @@ test('point grant push contains only amount, reason and optional newly earned ti
     JSON,
     Math,
     console,
-    sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-    normalizeMemberPointNotification_: (value) => value
+    POINTS_CARD_ADMIN_GRANTS: { maxGrantPoints: 100 },
+    storedNonNegativeInt_: (value) => Number(value || 0),
+    sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
   };
   vm.createContext(context);
   vm.runInContext(
