@@ -61,6 +61,29 @@ test('user calendar supports mobile horizontal swipe while preserving vertical s
   assert.doesNotMatch(css, /touch-action:\s*none/);
 });
 
+test('user calendar animates month navigation and supports desktop mouse-wheel paging', () => {
+  const html = read('user/index.html');
+  const navigation = read('user/month-navigation-ui.js');
+  const css = read('user/styles.css');
+
+  assert.match(html, /month-navigation-ui\.js/);
+  assert.match(navigation, /calendarGrid\.addEventListener\('wheel'/);
+  assert.match(navigation, /event\.preventDefault\(\)/);
+  assert.match(navigation, /WHEEL_TRIGGER_DISTANCE/);
+  assert.match(navigation, /WHEEL_COOLDOWN_MS/);
+  assert.match(navigation, /nextMonthButton\.click\(\)/);
+  assert.match(navigation, /prevMonthButton\.click\(\)/);
+  assert.match(navigation, /MutationObserver/);
+  assert.match(navigation, /month-page-enter-next/);
+  assert.match(navigation, /month-page-enter-prev/);
+  assert.match(navigation, /isSelectedDayModalOpen/);
+  assert.doesNotMatch(navigation, /\.innerHTML\s*=/);
+  assert.doesNotMatch(navigation, /insertAdjacentHTML/);
+  assert.match(css, /@keyframes\s+calendar-page-enter-next/);
+  assert.match(css, /@keyframes\s+calendar-page-enter-prev/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+});
+
 test('user and admin headers show LINE avatars while logout controls are not visible', () => {
   ['user/index.html', 'admin/index.html'].forEach((relativePath) => {
     const html = read(relativePath);
@@ -100,6 +123,6 @@ test('CalendarItems schema migration is append-only for the color column', () =>
 test('user client treats stored color as untrusted and validates it before applying style', () => {
   const app = read('user/app.js');
   assert.match(app, /safeColor/);
-  assert.match(app, /\^#\[0-9A-F\]\{6\}\$/);
+  assert.match(app, /\^#\[0-9A-F\]\{6\}$/);
   assert.doesNotMatch(app, /style\.cssText/);
 });
