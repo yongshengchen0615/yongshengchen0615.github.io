@@ -82,7 +82,7 @@ test('normalizes legacy numeric phone cells to the API string contract without i
   assert.equal(api.publicProfile_(profile).phone, '912345678');
 });
 
-test('forces the phone cell to plain text before writing the profile row', () => {
+test('forces the phone and birth date cells to plain text before writing the profile row', () => {
   const { api } = loadProfileModule();
   const calls = [];
   const sheet = {
@@ -109,8 +109,10 @@ test('forces the phone cell to plain text before writing the profile row', () =>
   });
 
   assert.deepEqual(calls[0], ['format', [2, 2], '@']);
-  assert.equal(calls[1][0], 'values');
-  assert.equal(calls[1][2][0][1], '0912345678');
+  assert.deepEqual(calls[1], ['format', [2, 3], '@']);
+  assert.equal(calls[2][0], 'values');
+  assert.equal(calls[2][2][0][1], '0912345678');
+  assert.equal(calls[2][2][0][2], '1990-01-02');
 });
 
 test('legacy storage inspection formats the phone column and only reports numeric rows', () => {

@@ -19,6 +19,12 @@ function formatDateInTimeZone(date, timeZone) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+function publicError(code, message) {
+  const error = new Error(message);
+  error.publicCode = code;
+  return error;
+}
+
 function loadProfileModule() {
   const source = fs.readFileSync(path.resolve(__dirname, '../gas/ProfileManagement.gs'), 'utf8');
   const context = {
@@ -40,14 +46,12 @@ function loadProfileModule() {
     sheetSafe_(value) { return value == null ? '' : String(value); },
     cleanText_(value, maxLength, required) {
       const text = value == null ? '' : String(value).trim();
-      if (required && !text) this.fail_('INVALID_INPUT', '缺少必要欄位。');
-      if (text.length > maxLength) this.fail_('INVALID_INPUT', '輸入內容超過允許長度。');
+      if (required && !text) throw publicError('INVALID_INPUT', '缺少必要欄位。');
+      if (text.length > maxLength) throw publicError('INVALID_INPUT', '輸入內容超過允許長度。');
       return text;
     },
     fail_(code, message) {
-      const error = new Error(message);
-      error.publicCode = code;
-      throw error;
+      throw publicError(code, message);
     },
     Utilities: {
       formatDate(date, timeZone) { return formatDateInTimeZone(date, timeZone); }
