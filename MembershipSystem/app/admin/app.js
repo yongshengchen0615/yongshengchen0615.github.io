@@ -39,9 +39,21 @@
   }
 
   function formatDateTime(value) {
+    if (!value) return '永久';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '—';
     return new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
+  }
+
+  function syncUsageExpiryMode() {
+    const mode = $('#usageExpiryMode').value;
+    const expiryInput = $('#usageExpiresAt');
+    const timed = mode === 'timed';
+    expiryInput.disabled = !timed;
+    expiryInput.required = timed;
+    if (timed && !expiryInput.value) {
+      expiryInput.value = toLocalDateTimeInput(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    }
   }
 
   function showAdminApp() {
@@ -306,8 +318,11 @@
   function setUsageFields(voucher) {
     $('#usageMinutes').value = String(voucher.minutes || 60);
     $('#usageScanMode').value = voucher.scanMode || 'single';
-    $('#usageExpiresAt').value = toLocalDateTimeInput(new Date(voucher.expiresAt));
+    const timed = Boolean(voucher.expiresAt);
+    $('#usageExpiryMode').value = timed ? 'timed' : 'permanent';
+    $('#usageExpiresAt').value = timed ? toLocalDateTimeInput(new Date(voucher.expiresAt)) : '';
     $('#usageNote').value = voucher.note || '';
+    syncUsageExpiryMode();
   }
 
   function openUsageDialog() {
@@ -315,7 +330,9 @@
     $('#usageDialogTitle').textContent = '新增消費時間 QR Code';
     $('#usageDialogDescription').textContent = '掃描後只會記錄會員本次消費時間。';
     $('#usageMinutes').value = '60'; $('#usageScanMode').value = 'single';
+    $('#usageExpiryMode').value = 'timed';
     $('#usageExpiresAt').value = toLocalDateTimeInput(new Date(Date.now() + 24 * 60 * 60 * 1000)); $('#usageNote').value = '';
+    syncUsageExpiryMode();
     $('#usageCreateFields').classList.remove('hidden'); $('#createUsageButton').classList.remove('hidden');
     $('#usageDialog').showModal();
   }
@@ -350,8 +367,9 @@
   function showUsageResult(voucher, shareCode) {
     currentQrVoucherId = voucher.voucherId;
     const url = buildUsageUrl(shareCode);
+    const expiryLabel = voucher.expiresAt ? `到期 ${formatDateTime(voucher.expiresAt)}` : '無期限';
     $('#usageUrl').value = url;
-    $('#usageResultMeta').textContent = `${voucher.voucherId} · ${scanModeLabel[voucher.scanMode] || voucher.scanMode} · ${formatMinutes(voucher.minutes)} 分鐘 · 已記錄 ${formatMinutes(voucher.recordCount)} 次`;
+    $('#usageResultMeta').textContent = `${voucher.voucherId} · ${scanModeLabel[voucher.scanMode] || voucher.scanMode} · ${formatMinutes(voucher.minutes)} 分鐘 · ${expiryLabel} · 已記錄 ${formatMinutes(voucher.recordCount)} 次`;
     renderQrCode(url);
     $('#usageCreateFields').classList.add('hidden'); $('#createUsageButton').classList.add('hidden'); $('#updateUsageButton').classList.add('hidden');
     $('#usageResult').classList.remove('hidden'); $('#copyUsageUrlButton').classList.remove('hidden'); $('#downloadUsageQrButton').classList.remove('hidden');
@@ -374,12 +392,23 @@
   function readUsageForm() {
     const minutes = Number($('#usageMinutes').value);
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60000) throw new Error('消費分鐘必須是 1 到 60000 的整數。');
-    const expiryValue = $('#usageExpiresAt').value; const expiryDate = new Date(expiryValue);
-    if (!expiryValue || Number.isNaN(expiryDate.getTime())) throw new Error('請設定有效的 QR Code 到期時間。');
+
+    const expiryMode = $('#usageExpiryMode').value;
+    let expiresAt = '';
+    if (expiryMode === 'timed') {
+      const expiryValue = $('#usageExpiresAt').value;
+      const expiryDate = new Date(expiryValue);
+      if (!expiryValue || Number.isNaN(expiryDate.getTime())) throw new Error('請設定有效的 QR Code 到期時間。');
+      if (expiryDate.getTime() <= Date.now()) throw new Error('QR Code 到期時間必須晚於現在。');
+      expiresAt = expiryDate.toISOString();
+    } else if (expiryMode !== 'permanent') {
+      throw new Error('請選擇有效的 QR Code 期限設定。');
+    }
+
     return {
       minutes,
       scanMode: $('#usageScanMode').value,
-      expiresAt: expiryDate.toISOString(),
+      expiresAt,
       note: $('#usageNote').value
     };
   }
@@ -477,6 +506,7 @@
   $('#updateUsageButton').addEventListener('click', updateUsageVoucher);
   $('#copyUsageUrlButton').addEventListener('click', copyUsageUrl);
   $('#downloadUsageQrButton').addEventListener('click', downloadUsageQr);
+  $('#usageExpiryMode').addEventListener('change', syncUsageExpiryMode);
 
   initialize();
 })();
