@@ -33,6 +33,8 @@
 
 Access gate 未設定、回應格式錯誤或網路失敗時，Points 與 Calendar 的會員 API 會 fail closed。管理 API 不經此 gate，仍由各模組獨立的 server-side admin permission 決定；Membership Tier 永遠不授予管理權。
 
+服務密鑰不會出現在網路請求中。Points 與 Calendar 以密鑰對服務名稱、60 秒時效、隨機 nonce 與 LINE user ID 產生 HMAC-SHA256；Membership 驗證簽章並以 CacheService 拒絕 nonce 重播。輪替密鑰時必須同步更新三個 Apps Script 專案。
+
 Membership 查無該 LINE 使用者、會員已停權／停用或會籍已到期時，會員 API 同樣 fail closed。新使用者必須先開啟會員資料模組完成會員建立，再使用 Points 或 Calendar。
 
 後續若將三套 GAS 合併成單一 deployment，必須先完成資料表對照、Action namespace、權限模型、migration 與 rollback 驗證，不能直接把三份 `Code.gs` 貼入同一個 Apps Script 專案。

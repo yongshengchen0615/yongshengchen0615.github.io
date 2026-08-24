@@ -29,6 +29,8 @@ module GAS -> authenticated server-to-server gate -> Membership GAS -> canonical
 
 Membership `membershipStatus`、到期日與會員資料存在性是跨模組會員可用狀態的權威來源。查無會員、停權／停用或到期都 fail closed。Points 與 Calendar 只對會員 action 執行 access gate；管理 action 不使用會員等級或會員狀態推導權限，避免停權同步與管理授權互相耦合。
 
+Access gate 使用 HMAC-SHA256 簽署 `serviceId + timestamp + nonce + lineUserId`；Membership 只接受 `points`／`calendar`、60 秒內的請求，並以短期 nonce cache 阻擋重播。共享密鑰只存在 Script Properties，不直接傳輸。
+
 ## 收斂順序
 
 1. 固定完整功能快照與統一入口。

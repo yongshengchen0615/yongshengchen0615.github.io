@@ -42,7 +42,7 @@ let requestSheets_ = {};
 let requestUsageRecordCounts_ = null;
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.0' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.1' } });
 }
 
 function doPost(e) {
@@ -147,14 +147,28 @@ function doPost(e) {
 function internalMemberAccessCheck_(parameters) {
   const properties = PropertiesService.getScriptProperties();
   const expectedSecret = cleanText_(properties.getProperty('MEMBERHUB_ACCESS_GATE_SECRET'), 256, false);
-  const suppliedSecret = cleanText_(parameters && parameters.serviceToken, 256, false);
   if (expectedSecret.length < 32) fail_('CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
-  if (!constantTimeTextEquals_(tokenFingerprint_(suppliedSecret), tokenFingerprint_(expectedSecret))) {
+
+  const serviceId = cleanText_(parameters && parameters.serviceId, 20, false).toLowerCase();
+  const timestampText = cleanText_(parameters && parameters.timestamp, 20, false);
+  const nonce = cleanText_(parameters && parameters.nonce, 64, false).toLowerCase();
+  const suppliedSignature = cleanText_(parameters && parameters.signature, 64, false).toLowerCase();
+  if (['points', 'calendar'].indexOf(serviceId) < 0 || !/^\d{10}$/.test(timestampText) ||
+      !/^[a-f0-9]{32}$/.test(nonce) || !/^[a-f0-9]{64}$/.test(suppliedSignature)) {
     fail_('FORBIDDEN', '跨模組會員權限驗證失敗。');
   }
 
   const lineUserId = cleanText_(parameters && parameters.lineUserId, 80, true);
-  rateLimit_('member-access-gate:' + lineUserId, 120, 60);
+  const timestamp = Number(timestampText);
+  if (!Number.isSafeInteger(timestamp) || Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 60) {
+    fail_('FORBIDDEN', '跨模組會員權限驗證失敗。');
+  }
+  const expectedSignature = memberAccessGateSignature_(expectedSecret, serviceId, timestampText, nonce, lineUserId);
+  if (!constantTimeTextEquals_(suppliedSignature, expectedSignature)) {
+    fail_('FORBIDDEN', '跨模組會員權限驗證失敗。');
+  }
+  consumeMemberAccessNonce_(serviceId, nonce);
+  rateLimit_('member-access-gate:' + serviceId + ':' + lineUserId, 120, 60);
   const sheet = getMembersSheet_();
   const row = findMemberRow_(sheet, lineUserId);
   if (!row) return { allowed: false, membershipStatus: 'unregistered' };
@@ -165,6 +179,27 @@ function internalMemberAccessCheck_(parameters) {
     allowed: allowed,
     membershipStatus: allowed ? 'active' : 'inactive'
   };
+}
+
+function memberAccessGateSignature_(secret, serviceId, timestamp, nonce, lineUserId) {
+  const message = [serviceId, timestamp, nonce, lineUserId].join('\n');
+  const digest = Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8);
+  return digest.map(function (byte) {
+    return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
+  }).join('');
+}
+
+function consumeMemberAccessNonce_(serviceId, nonce) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'member-access-nonce:' + serviceId + ':' + nonce;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) fail_('BUSY', '跨模組會員權限服務忙碌中，請稍後再試。');
+  try {
+    if (cache.get(cacheKey)) fail_('MEMBER_ACCESS_REPLAYED', '跨模組會員權限請求已使用。');
+    cache.put(cacheKey, '1', 120);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function constantTimeTextEquals_(left, right) {

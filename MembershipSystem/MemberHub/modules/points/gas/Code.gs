@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '2.3.2',
+  version: '2.3.3',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -244,6 +244,9 @@ function requireMemberHubAccess_(lineUserId) {
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint) || serviceToken.length < 32) {
     fail_('MEMBERSHIP_ACCESS_CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
   }
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = randomHex_(16);
+  const signature = memberAccessGateSignature_(serviceToken, 'points', timestamp, nonce, lineUserId);
 
   let response;
   try {
@@ -251,7 +254,10 @@ function requireMemberHubAccess_(lineUserId) {
       method: 'post',
       payload: {
         action: 'internal.member-access.check',
-        serviceToken: serviceToken,
+        serviceId: 'points',
+        timestamp: timestamp,
+        nonce: nonce,
+        signature: signature,
         lineUserId: lineUserId
       },
       followRedirects: true,
@@ -273,6 +279,14 @@ function requireMemberHubAccess_(lineUserId) {
     }
     fail_('MEMBERSHIP_INACTIVE', '會員資格目前無法使用此服務，請洽管理員。');
   }
+}
+
+function memberAccessGateSignature_(secret, serviceId, timestamp, nonce, lineUserId) {
+  const message = [serviceId, timestamp, nonce, lineUserId].join('\n');
+  const digest = Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8);
+  return digest.map(function (byte) {
+    return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
+  }).join('');
 }
 
 function memberMe_(context, skipProjection) {

@@ -1,6 +1,6 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.3.0';
+const CALENDAR_API_VERSION_ = '2.3.1';
 const CALENDAR_BUSINESS_TIME_ZONE_ = 'Asia/Taipei';
 const USER_ACCESS_STATUSES_ = Object.freeze(['active', 'disabled']);
 const MAX_REQUEST_BYTES_ = 20000;
@@ -120,6 +120,9 @@ function requireMemberHubAccess_(lineUserId) {
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint) || serviceToken.length < 32) {
     throw new ApiError(500, 'MEMBERSHIP_ACCESS_CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
   }
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = Utilities.getUuid().replace(/-/g, '').toLowerCase();
+  const signature = memberAccessGateSignature_(serviceToken, 'calendar', timestamp, nonce, lineUserId);
 
   let response;
   try {
@@ -127,7 +130,10 @@ function requireMemberHubAccess_(lineUserId) {
       method: 'post',
       payload: {
         action: 'internal.member-access.check',
-        serviceToken: serviceToken,
+        serviceId: 'calendar',
+        timestamp: timestamp,
+        nonce: nonce,
+        signature: signature,
         lineUserId: String(lineUserId || '')
       },
       followRedirects: true,
@@ -149,6 +155,14 @@ function requireMemberHubAccess_(lineUserId) {
     }
     throw new ApiError(403, 'MEMBERSHIP_INACTIVE', '會員資格目前無法使用此服務，請洽管理員。');
   }
+}
+
+function memberAccessGateSignature_(secret, serviceId, timestamp, nonce, lineUserId) {
+  const message = [serviceId, timestamp, nonce, String(lineUserId || '')].join('\n');
+  const digest = Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8);
+  return digest.map(function (byte) {
+    return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
+  }).join('');
 }
 
 function parseRequest_(e) {
