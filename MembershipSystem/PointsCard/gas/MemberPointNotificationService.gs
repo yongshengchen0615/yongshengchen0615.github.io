@@ -4,11 +4,35 @@ function pointGrantNotificationId_(grantId) {
   return 'PN-' + sha256Hex_(grantId).slice(0, 32).toUpperCase();
 }
 
-function pointGrantNotificationMessage_(cardName, stampCount, reason) {
-  return '店家已在「' + cardName + '」發放 ' + stampCount + ' 點給你。\n原因：' + reason;
+function pointGrantUnlockedRewards_(grant, card) {
+  if (!card) return [];
+  const settings = multiCardSettingsForProjection_(card);
+  return rewardEntitlementsBetweenTotals_(grant.totalBefore, grant.totalAfter, settings);
 }
 
-function ensurePointGrantNotification_(grant, cardName) {
+function pointGrantRewardLabel_(reward) {
+  const typeLabel = reward && reward.rewardType === 'lottery' ? '抽獎券' : '優惠券';
+  return typeLabel + '「' + String(reward && reward.rewardName || '未命名票券') + '」';
+}
+
+function pointGrantRewardSummary_(rewards) {
+  return (rewards || []).map(pointGrantRewardLabel_).join('、');
+}
+
+function pointGrantNotificationTitle_(rewards) {
+  if (!rewards || !rewards.length) return '';
+  if (rewards.length === 1) return '你獲得' + pointGrantRewardLabel_(rewards[0]);
+  return '你獲得 ' + rewards.length + ' 張新票券';
+}
+
+function pointGrantNotificationMessage_(reason, rewards) {
+  return '本次發放已解鎖：' + pointGrantRewardSummary_(rewards) + '。\n發放原因：' + reason;
+}
+
+function ensurePointGrantNotification_(grant, card) {
+  const unlockedRewards = pointGrantUnlockedRewards_(grant, card);
+  if (!unlockedRewards.length) return null;
+
   const notificationId = pointGrantNotificationId_(grant.grantId);
   const existing = findAdminPointGrantByFieldWithRow_(
     POINTS_CARD_ADMIN_GRANTS.notificationsSheet,
@@ -17,6 +41,7 @@ function ensurePointGrantNotification_(grant, cardName) {
   );
   if (existing) return normalizeMemberPointNotification_(existing.object);
 
+  const cardName = String(card && card.name || '集點卡');
   const now = grant.grantedAt || grant.updatedAt || new Date().toISOString();
   const notification = {
     notificationId: notificationId,
@@ -24,9 +49,9 @@ function ensurePointGrantNotification_(grant, cardName) {
     memberNo: grant.memberNo,
     cardId: grant.cardId,
     cardName: cardName,
-    type: 'point-grant',
-    title: '你獲得 ' + grant.stampCount + ' 點',
-    message: pointGrantNotificationMessage_(cardName, grant.stampCount, grant.reason),
+    type: 'point-grant-reward',
+    title: pointGrantNotificationTitle_(unlockedRewards),
+    message: pointGrantNotificationMessage_(grant.reason, unlockedRewards),
     stampCount: grant.stampCount,
     totalAfter: grant.totalAfter,
     relatedId: grant.grantId,
@@ -75,7 +100,7 @@ function memberPointNotificationsList_(context, payload) {
   ).map(normalizeMemberPointNotification_)
     .filter(function (notification) {
       return notification.memberLineUserId === context.identity.sub &&
-        notification.type === 'point-grant' && notification.status === 'unread';
+        notification.type === 'point-grant-reward' && notification.status === 'unread';
     })
     .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); })
     .slice(0, limit)
