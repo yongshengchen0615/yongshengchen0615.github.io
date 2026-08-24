@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '2.3.1',
+  version: '2.3.2',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -106,6 +106,7 @@ function doPost(e) {
     const identity = verifyLineIdToken_(idToken, tokenFingerprint);
     const context = { identity: identity, adminMember: null };
     const payload = parsePayload_(e && e.parameter && e.parameter.payload);
+    if (isPointsMemberAction_(action)) requireMemberHubAccess_(identity.sub);
 
     switch (action) {
       case 'member.me':
@@ -228,6 +229,49 @@ function doPost(e) {
       return json_({ ok: false, error: { code: 'INTERNAL_ERROR', message: '集點服務暫時無法處理此要求。' } });
     }
     return json_({ ok: false, error: { code: error.publicCode, message: error.publicMessage } });
+  }
+}
+
+function isPointsMemberAction_(action) {
+  return action.indexOf('member.') === 0 || action === 'stamp.record' ||
+    action === 'reward.claim' || action === 'reward.prepare';
+}
+
+function requireMemberHubAccess_(lineUserId) {
+  const properties = PropertiesService.getScriptProperties();
+  const endpoint = cleanText_(properties.getProperty('MEMBERHUB_ACCESS_GATE_URL'), 300, false);
+  const serviceToken = cleanText_(properties.getProperty('MEMBERHUB_ACCESS_GATE_SECRET'), 256, false);
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint) || serviceToken.length < 32) {
+    fail_('MEMBERSHIP_ACCESS_CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
+  }
+
+  let response;
+  try {
+    response = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      payload: {
+        action: 'internal.member-access.check',
+        serviceToken: serviceToken,
+        lineUserId: lineUserId
+      },
+      followRedirects: true,
+      muteHttpExceptions: true
+    });
+  } catch (_) {
+    fail_('MEMBERSHIP_ACCESS_UNAVAILABLE', '暫時無法確認會員使用權限，請稍後再試。');
+  }
+
+  let result = null;
+  try { result = JSON.parse(response.getContentText() || '{}'); }
+  catch (_) { result = null; }
+  if (response.getResponseCode() !== 200 || !result || result.ok !== true || !result.data || typeof result.data.allowed !== 'boolean') {
+    fail_('MEMBERSHIP_ACCESS_UNAVAILABLE', '暫時無法確認會員使用權限，請稍後再試。');
+  }
+  if (!result.data.allowed) {
+    if (result.data.membershipStatus === 'unregistered') {
+      fail_('MEMBERSHIP_REGISTRATION_REQUIRED', '請先在會員中心完成會員建立。');
+    }
+    fail_('MEMBERSHIP_INACTIVE', '會員資格目前無法使用此服務，請洽管理員。');
   }
 }
 

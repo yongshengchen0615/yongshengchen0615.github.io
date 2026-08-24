@@ -42,13 +42,16 @@ let requestSheets_ = {};
 let requestUsageRecordCounts_ = null;
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.9.0' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.0' } });
 }
 
 function doPost(e) {
   resetRequestCaches_();
   try {
     const action = cleanText_(e && e.parameter && e.parameter.action, 60, true);
+    if (action === 'internal.member-access.check') {
+      return json_({ ok: true, data: internalMemberAccessCheck_(e && e.parameter) });
+    }
     const idToken = cleanText_(e && e.parameter && e.parameter.idToken, 4096, true);
     const tokenFingerprint = rateLimitByToken_(idToken);
     const identity = verifyLineIdToken_(idToken, tokenFingerprint);
@@ -139,6 +142,41 @@ function doPost(e) {
     }
     return json_({ ok: false, error: { code: error.publicCode, message: error.publicMessage } });
   }
+}
+
+function internalMemberAccessCheck_(parameters) {
+  const properties = PropertiesService.getScriptProperties();
+  const expectedSecret = cleanText_(properties.getProperty('MEMBERHUB_ACCESS_GATE_SECRET'), 256, false);
+  const suppliedSecret = cleanText_(parameters && parameters.serviceToken, 256, false);
+  if (expectedSecret.length < 32) fail_('CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
+  if (!constantTimeTextEquals_(tokenFingerprint_(suppliedSecret), tokenFingerprint_(expectedSecret))) {
+    fail_('FORBIDDEN', '跨模組會員權限驗證失敗。');
+  }
+
+  const lineUserId = cleanText_(parameters && parameters.lineUserId, 80, true);
+  rateLimit_('member-access-gate:' + lineUserId, 120, 60);
+  const sheet = getMembersSheet_();
+  const row = findMemberRow_(sheet, lineUserId);
+  if (!row) return { allowed: false, membershipStatus: 'unregistered' };
+
+  const member = rowToMember_(sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).getValues()[0]);
+  const allowed = isMembershipUsable_(member);
+  return {
+    allowed: allowed,
+    membershipStatus: allowed ? 'active' : 'inactive'
+  };
+}
+
+function constantTimeTextEquals_(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  let mismatch = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= (a.charCodeAt(index % (a.length || 1)) || 0) ^
+      (b.charCodeAt(index % (b.length || 1)) || 0);
+  }
+  return mismatch === 0;
 }
 
 function memberMe_(context) {

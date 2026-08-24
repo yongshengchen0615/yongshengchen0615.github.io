@@ -23,13 +23,22 @@
 
 ## 部署
 
-此基線沒有 GAS 程式變更，也不需要資料表 migration。三個模組沿用各自既有 `config.json` / `shared/config.json` 與 GAS Web App deployment。
+三個模組沿用各自的 GAS Web App 與資料表。Membership GAS 是跨模組會員可用狀態的權威來源；Points 與 Calendar 只在 LINE 身分驗證成功後，以 server-to-server access gate 查詢停權狀態。
+
+部署時必須：
+
+1. 在 Membership、Points、Calendar 三個 Apps Script 專案設定相同且至少 32 字元的 `MEMBERHUB_ACCESS_GATE_SECRET`。
+2. 在 Points 與 Calendar 設定 `MEMBERHUB_ACCESS_GATE_URL`，值為 Membership GAS 的 `/exec` URL。
+3. 依序重新部署 Membership、Points、Calendar GAS；Calendar `appsscript.json` 的 URL fetch allowlist 必須與 Membership deployment URL 一致。
+
+Access gate 未設定、回應格式錯誤或網路失敗時，Points 與 Calendar 的會員 API 會 fail closed。管理 API 不經此 gate，仍由各模組獨立的 server-side admin permission 決定；Membership Tier 永遠不授予管理權。
+
+Membership 查無該 LINE 使用者、會員已停權／停用或會籍已到期時，會員 API 同樣 fail closed。新使用者必須先開啟會員資料模組完成會員建立，再使用 Points 或 Calendar。
 
 後續若將三套 GAS 合併成單一 deployment，必須先完成資料表對照、Action namespace、權限模型、migration 與 rollback 驗證，不能直接把三份 `Code.gs` 貼入同一個 Apps Script 專案。
 
 ## 驗證
 
 ```bash
-node --test MembershipSystem/MemberHub/tests/*.test.js
+node --test $(find MembershipSystem/MemberHub -path '*/tests/*.test.js' -print | sort)
 ```
-

@@ -1,6 +1,6 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.2.0';
+const CALENDAR_API_VERSION_ = '2.3.0';
 const CALENDAR_BUSINESS_TIME_ZONE_ = 'Asia/Taipei';
 const USER_ACCESS_STATUSES_ = Object.freeze(['active', 'disabled']);
 const MAX_REQUEST_BYTES_ = 20000;
@@ -46,6 +46,7 @@ function doPost(e) {
 
     enforceRateLimit_(request.idToken, action);
     const identity = authenticateLine_(request.idToken, clientType);
+    if (clientType === 'user') requireMemberHubAccess_(identity.lineUserId);
 
     // Validate/open storage once per API execution. Storage helpers below this boundary
     // use the already validated spreadsheet instead of rechecking every sheet repeatedly.
@@ -109,6 +110,44 @@ function doPost(e) {
     return jsonResponse_({ ok: true, status: 200, data: data || {} });
   } catch (error) {
     return errorResponse_(error);
+  }
+}
+
+function requireMemberHubAccess_(lineUserId) {
+  const properties = PropertiesService.getScriptProperties();
+  const endpoint = String(properties.getProperty('MEMBERHUB_ACCESS_GATE_URL') || '').trim();
+  const serviceToken = String(properties.getProperty('MEMBERHUB_ACCESS_GATE_SECRET') || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint) || serviceToken.length < 32) {
+    throw new ApiError(500, 'MEMBERSHIP_ACCESS_CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
+  }
+
+  let response;
+  try {
+    response = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      payload: {
+        action: 'internal.member-access.check',
+        serviceToken: serviceToken,
+        lineUserId: String(lineUserId || '')
+      },
+      followRedirects: true,
+      muteHttpExceptions: true
+    });
+  } catch (_) {
+    throw new ApiError(503, 'MEMBERSHIP_ACCESS_UNAVAILABLE', '暫時無法確認會員使用權限，請稍後再試。');
+  }
+
+  let result = null;
+  try { result = JSON.parse(response.getContentText() || '{}'); }
+  catch (_) { result = null; }
+  if (response.getResponseCode() !== 200 || !result || result.ok !== true || !result.data || typeof result.data.allowed !== 'boolean') {
+    throw new ApiError(503, 'MEMBERSHIP_ACCESS_UNAVAILABLE', '暫時無法確認會員使用權限，請稍後再試。');
+  }
+  if (!result.data.allowed) {
+    if (result.data.membershipStatus === 'unregistered') {
+      throw new ApiError(403, 'MEMBERSHIP_REGISTRATION_REQUIRED', '請先在會員中心完成會員建立。');
+    }
+    throw new ApiError(403, 'MEMBERSHIP_INACTIVE', '會員資格目前無法使用此服務，請洽管理員。');
   }
 }
 

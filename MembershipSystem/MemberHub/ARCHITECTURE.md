@@ -10,6 +10,9 @@ MemberHub user/admin shell
 
 Each module
 Browser -> LIFF ID Token -> module GAS -> LINE verify -> server authorization -> Google Sheets
+
+Points/Calendar member action
+module GAS -> authenticated server-to-server gate -> Membership GAS -> canonical membership status
 ```
 
 這個階段優先保證功能完整與可回退。三個模組的後端保持獨立，避免 GAS global function 衝突、Sheet schema 誤合併，以及管理權限來源混用。
@@ -24,6 +27,8 @@ Browser -> LIFF ID Token -> module GAS -> LINE verify -> server authorization ->
 
 三種管理權限在目前資料模型中不是同一欄位。整合 UI 不得把任一權限推論為其他權限，也不得把 Membership Tier 當成 Admin Permission。
 
+Membership `membershipStatus`、到期日與會員資料存在性是跨模組會員可用狀態的權威來源。查無會員、停權／停用或到期都 fail closed。Points 與 Calendar 只對會員 action 執行 access gate；管理 action 不使用會員等級或會員狀態推導權限，避免停權同步與管理授權互相耦合。
+
 ## 收斂順序
 
 1. 固定完整功能快照與統一入口。
@@ -35,7 +40,7 @@ Browser -> LIFF ID Token -> module GAS -> LINE verify -> server authorization ->
 
 ## 已知風險
 
-- 三個模組目前可能使用不同 Spreadsheet 與 GAS URL，會員資料可能重複。
+- 三個模組仍使用不同 Spreadsheet 與 GAS URL；Membership 狀態已集中查詢，其餘會員資料仍可能重複。
 - 單一入口不等於單一登入；在 LIFF Channel 尚未統一前，各模組仍各自初始化 LIFF。
 - 三套管理權限來源不同，必須維持 server-side fail-closed，不能只在入口隱藏按鈕。
-
+- Membership access gate 會讓 Points 與 Calendar 會員 API 依賴 Membership GAS 可用性；故障時刻意 fail closed。
