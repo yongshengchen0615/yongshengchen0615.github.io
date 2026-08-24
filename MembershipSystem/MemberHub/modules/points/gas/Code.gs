@@ -2,7 +2,7 @@
 
 const POINTS_CARD_SERVICE = Object.freeze({
   name: 'PointsCard',
-  version: '2.3.3',
+  version: '2.3.4',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
@@ -240,7 +240,7 @@ function isPointsMemberAction_(action) {
 function requireMemberHubAccess_(lineUserId) {
   const properties = PropertiesService.getScriptProperties();
   const endpoint = cleanText_(properties.getProperty('MEMBERHUB_ACCESS_GATE_URL'), 300, false);
-  const serviceToken = cleanText_(properties.getProperty('MEMBERHUB_ACCESS_GATE_SECRET'), 256, false);
+  const serviceToken = cleanText_(properties.getProperty('MEMBERHUB_POINTS_ACCESS_GATE_SECRET'), 256, false);
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint) || serviceToken.length < 32) {
     fail_('MEMBERSHIP_ACCESS_CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
   }

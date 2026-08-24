@@ -1,6 +1,6 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.3.1';
+const CALENDAR_API_VERSION_ = '2.3.2';
 const CALENDAR_BUSINESS_TIME_ZONE_ = 'Asia/Taipei';
 const USER_ACCESS_STATUSES_ = Object.freeze(['active', 'disabled']);
 const MAX_REQUEST_BYTES_ = 20000;
@@ -116,7 +116,7 @@ function doPost(e) {
 function requireMemberHubAccess_(lineUserId) {
   const properties = PropertiesService.getScriptProperties();
   const endpoint = String(properties.getProperty('MEMBERHUB_ACCESS_GATE_URL') || '').trim();
-  const serviceToken = String(properties.getProperty('MEMBERHUB_ACCESS_GATE_SECRET') || '').trim();
+  const serviceToken = String(properties.getProperty('MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET') || '').trim();
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint) || serviceToken.length < 32) {
     throw new ApiError(500, 'MEMBERSHIP_ACCESS_CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
   }

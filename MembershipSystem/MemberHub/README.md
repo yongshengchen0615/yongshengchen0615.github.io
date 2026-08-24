@@ -27,13 +27,16 @@
 
 部署時必須：
 
-1. 在 Membership、Points、Calendar 三個 Apps Script 專案設定相同且至少 32 字元的 `MEMBERHUB_ACCESS_GATE_SECRET`。
-2. 在 Points 與 Calendar 設定 `MEMBERHUB_ACCESS_GATE_URL`，值為 Membership GAS 的 `/exec` URL。
-3. 依序重新部署 Membership、Points、Calendar GAS；Calendar `appsscript.json` 的 URL fetch allowlist 必須與 Membership deployment URL 一致。
+1. 產生兩組不同且至少 32 字元的服務密鑰：`MEMBERHUB_POINTS_ACCESS_GATE_SECRET` 與 `MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET`。
+2. Membership 專案設定兩組密鑰；Points 只設定 Points 密鑰，Calendar 只設定 Calendar 密鑰。不得在兩個呼叫端共用或交叉設定密鑰。
+3. 在 Points 與 Calendar 設定 `MEMBERHUB_ACCESS_GATE_URL`，值為 Membership GAS 的 `/exec` URL。
+4. 依序重新部署 Membership、Points、Calendar GAS；Calendar `appsscript.json` 的 URL fetch allowlist 必須與 Membership deployment URL 一致。
+
+此設定由舊的單一密鑰切換為兩組密鑰，三個 deployment 無法原子更新。首次切換應安排維護時段，先完成全部 Script Properties，再連續部署三個服務；版本不一致期間會員 API 會 fail closed，管理 API 不受 access gate 影響。確認三個新版本正常後，刪除舊的 `MEMBERHUB_ACCESS_GATE_SECRET`。
 
 Access gate 未設定、回應格式錯誤或網路失敗時，Points 與 Calendar 的會員 API 會 fail closed。管理 API 不經此 gate，仍由各模組獨立的 server-side admin permission 決定；Membership Tier 永遠不授予管理權。
 
-服務密鑰不會出現在網路請求中。Points 與 Calendar 以密鑰對服務名稱、60 秒時效、隨機 nonce 與 LINE user ID 產生 HMAC-SHA256；Membership 驗證簽章並以 CacheService 拒絕 nonce 重播。輪替密鑰時必須同步更新三個 Apps Script 專案。
+服務密鑰不會出現在網路請求中。Points 與 Calendar 各自以專屬密鑰對服務名稱、60 秒時效、隨機 nonce 與 LINE user ID 產生 HMAC-SHA256；Membership 依服務選取密鑰、驗證簽章並以 CacheService 拒絕 nonce 重播。輪替時只需同步更新 Membership 與對應服務的 Apps Script 專案。
 
 Membership 查無該 LINE 使用者、會員已停權／停用或會籍已到期時，會員 API 同樣 fail closed。新使用者必須先開啟會員資料模組完成會員建立，再使用 Points 或 Calendar。
 

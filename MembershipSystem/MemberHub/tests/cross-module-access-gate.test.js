@@ -58,13 +58,20 @@ class TestDate extends Date {
 
 test('membership access gate authenticates the service and ignores membership tier', () => {
   const source = read('modules/membership/gas/Code.gs');
-  const secret = 's'.repeat(32);
+  const serviceSecrets = { points: 'p'.repeat(32), calendar: 'c'.repeat(32) };
+  const requestedSecretProperties = new Set();
   const usedNonces = new Set();
   let storedMember = { membershipStatus: 'suspended', tier: 'platinum', expiresAt: '' };
   const context = {
     Date: TestDate, Math, Number, String,
     MEMBER_HEADERS: ['member'],
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => secret }) },
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (key) => {
+        requestedSecretProperties.add(key);
+        return key === 'MEMBERHUB_POINTS_ACCESS_GATE_SECRET'
+          ? serviceSecrets.points : serviceSecrets.calendar;
+      }
+    }) },
     cleanText_: (value, max, required) => {
       const text = String(value == null ? '' : value).trim().slice(0, max);
       if (required && !text) publicError('INVALID_INPUT', 'required');
@@ -106,7 +113,10 @@ test('membership access gate authenticates the service and ignores membership ti
     const nonce = options.nonce || (++nonceSequence).toString(16).padStart(32, '0');
     return {
       serviceId, timestamp, nonce, lineUserId,
-      signature: hmacHex([serviceId, timestamp, nonce, lineUserId].join('\n'), options.secret || secret)
+      signature: hmacHex(
+        [serviceId, timestamp, nonce, lineUserId].join('\n'),
+        options.secret || serviceSecrets[serviceId]
+      )
     };
   };
 
@@ -122,6 +132,21 @@ test('membership access gate authenticates the service and ignores membership ti
   assert.throws(
     () => context.check(signedRequest('U-ONE', { secret: 'x'.repeat(32) })),
     (error) => error && error.publicCode === 'FORBIDDEN'
+  );
+  assert.throws(
+    () => context.check(signedRequest('U-ONE', {
+      serviceId: 'calendar',
+      secret: serviceSecrets.points
+    })),
+    (error) => error && error.publicCode === 'FORBIDDEN'
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(context.check(signedRequest('U-CALENDAR', { serviceId: 'calendar' })))),
+    { allowed: false, membershipStatus: 'inactive' }
+  );
+  assert.deepEqual(
+    Array.from(requestedSecretProperties).sort(),
+    ['MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET', 'MEMBERHUB_POINTS_ACCESS_GATE_SECRET']
   );
   assert.throws(
     () => context.check(signedRequest('U-ONE', { timestamp: Math.floor(TestDate.now() / 1000) - 61 })),
@@ -234,7 +259,9 @@ test('points and calendar gate member actions only after LINE authentication', (
   const manifest = JSON.parse(read('modules/calendar/gas/appsscript.json'));
 
   assert.ok(membership.indexOf("action === 'internal.member-access.check'") < membership.indexOf('const idToken ='));
-  assert.match(membership, /MEMBERHUB_ACCESS_GATE_SECRET/);
+  assert.match(membership, /MEMBERHUB_POINTS_ACCESS_GATE_SECRET/);
+  assert.match(membership, /MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET/);
+  assert.doesNotMatch(membership, /getProperty\('MEMBERHUB_ACCESS_GATE_SECRET'\)/);
   assert.match(membership, /constantTimeTextEquals_/);
   assert.match(membership, /computeHmacSha256Signature/);
   assert.match(membership, /MEMBER_ACCESS_REPLAYED/);
@@ -247,11 +274,15 @@ test('points and calendar gate member actions only after LINE authentication', (
   assert.match(points, /MEMBERSHIP_ACCESS_UNAVAILABLE/);
   assert.match(points, /MEMBERSHIP_INACTIVE/);
   assert.match(points, /memberAccessGateSignature_\(serviceToken, 'points'/);
+  assert.match(points, /getProperty\('MEMBERHUB_POINTS_ACCESS_GATE_SECRET'\)/);
+  assert.doesNotMatch(points, /getProperty\('MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET'\)/);
   assert.doesNotMatch(functionSource(points, 'requireMemberHubAccess_'), /serviceToken:\s*serviceToken/);
 
   assert.ok(calendar.indexOf('authenticateLine_') < calendar.indexOf("if (clientType === 'user') requireMemberHubAccess_"));
   assert.doesNotMatch(functionSource(calendar, 'requireMemberHubAccess_'), /authorizeAdmin_|role|tier/);
   assert.match(calendar, /memberAccessGateSignature_\(serviceToken, 'calendar'/);
+  assert.match(calendar, /getProperty\('MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET'\)/);
+  assert.doesNotMatch(calendar, /getProperty\('MEMBERHUB_POINTS_ACCESS_GATE_SECRET'\)/);
   assert.doesNotMatch(functionSource(calendar, 'requireMemberHubAccess_'), /serviceToken:\s*serviceToken/);
   assert.ok(manifest.urlFetchWhitelist.some((url) => /script\.google\.com\/macros\/s\/.+\/exec$/.test(url)));
 });
@@ -269,9 +300,16 @@ test('points and calendar access checks fail closed on denial and malformed resp
     const source = read(relative);
     for (const scenario of cases) {
       let sentPayload = null;
+      const requestedProperties = [];
+      const expectedSecretProperty = relative.includes('/points/')
+        ? 'MEMBERHUB_POINTS_ACCESS_GATE_SECRET'
+        : 'MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET';
       const context = {
         Date, JSON, String,
-        PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => key.endsWith('_URL') ? endpoint : secret }) },
+        PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => {
+          requestedProperties.push(key);
+          return key.endsWith('_URL') ? endpoint : secret;
+        } }) },
         UrlFetchApp: { fetch: (url, options) => {
           sentPayload = options.payload;
           return { getResponseCode: () => 200, getContentText: () => JSON.stringify(scenario.body) };
@@ -294,6 +332,7 @@ test('points and calendar access checks fail closed on denial and malformed resp
       );
       assert.equal(sentPayload.serviceToken, undefined);
       assert.equal(JSON.stringify(sentPayload).includes(secret), false);
+      assert.deepEqual(requestedProperties, ['MEMBERHUB_ACCESS_GATE_URL', expectedSecretProperty]);
       assert.match(sentPayload.signature, /^[a-f0-9]{64}$/);
       assert.match(sentPayload.nonce, /^[a-f0-9]{32}$/);
       assert.match(sentPayload.timestamp, /^\d{10}$/);

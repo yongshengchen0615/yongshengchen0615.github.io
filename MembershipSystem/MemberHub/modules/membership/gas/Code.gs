@@ -42,7 +42,7 @@ let requestSheets_ = {};
 let requestUsageRecordCounts_ = null;
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.1' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.2' } });
 }
 
 function doPost(e) {
@@ -146,9 +146,6 @@ function doPost(e) {
 
 function internalMemberAccessCheck_(parameters) {
   const properties = PropertiesService.getScriptProperties();
-  const expectedSecret = cleanText_(properties.getProperty('MEMBERHUB_ACCESS_GATE_SECRET'), 256, false);
-  if (expectedSecret.length < 32) fail_('CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
-
   const serviceId = cleanText_(parameters && parameters.serviceId, 20, false).toLowerCase();
   const timestampText = cleanText_(parameters && parameters.timestamp, 20, false);
   const nonce = cleanText_(parameters && parameters.nonce, 64, false).toLowerCase();
@@ -157,6 +154,12 @@ function internalMemberAccessCheck_(parameters) {
       !/^[a-f0-9]{32}$/.test(nonce) || !/^[a-f0-9]{64}$/.test(suppliedSignature)) {
     fail_('FORBIDDEN', '跨模組會員權限驗證失敗。');
   }
+
+  const secretProperty = serviceId === 'points'
+    ? 'MEMBERHUB_POINTS_ACCESS_GATE_SECRET'
+    : 'MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET';
+  const expectedSecret = cleanText_(properties.getProperty(secretProperty), 256, false);
+  if (expectedSecret.length < 32) fail_('CONFIG_ERROR', '跨模組會員權限服務尚未正確設定。');
 
   const lineUserId = cleanText_(parameters && parameters.lineUserId, 80, true);
   const timestamp = Number(timestampText);
