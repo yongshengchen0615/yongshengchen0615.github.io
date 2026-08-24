@@ -4,18 +4,26 @@ function pointGrantRetryKey_(grantId) {
   return lineMessagingRetryKey_('point-grant|' + grantId);
 }
 
-function pointGrantRewardPushMessage_(grant) {
+function pointGrantRewardPushMessageFromNotification_(grant, notificationValue) {
+  if (!notificationValue) return '';
+  const notification = normalizeMemberPointNotification_(notificationValue);
+  if (notification.type !== 'point-grant-reward' ||
+    notification.memberLineUserId !== grant.memberLineUserId ||
+    notification.relatedId !== grant.grantId || notification.cardId !== grant.cardId) return '';
+  return notification.message;
+}
+
+function pointGrantRewardPushMessage_(grant, notificationOverride) {
+  const directMessage = pointGrantRewardPushMessageFromNotification_(grant, notificationOverride);
+  if (directMessage) return directMessage;
+
   const match = findAdminPointGrantByFieldWithRow_(
     POINTS_CARD_ADMIN_GRANTS.notificationsSheet,
     'notificationId',
     pointGrantNotificationId_(grant.grantId)
   );
   if (!match) return '';
-  const notification = normalizeMemberPointNotification_(match.object);
-  if (notification.type !== 'point-grant-reward' ||
-    notification.memberLineUserId !== grant.memberLineUserId ||
-    notification.relatedId !== grant.grantId || notification.cardId !== grant.cardId) return '';
-  return notification.message;
+  return pointGrantRewardPushMessageFromNotification_(grant, match.object);
 }
 
 function pointGrantPushMessage_(grant, rewardMessage) {
@@ -29,7 +37,7 @@ function pointGrantPushStatus_(push) {
   return push.retryable ? 'retry' : 'failed';
 }
 
-function attemptAdminPointGrantPush_(grantId) {
+function attemptAdminPointGrantPush_(grantId, rewardNotification) {
   ensureAdminPointGrantStorage_();
   const initial = findAdminPointGrantByFieldWithRow_(
     POINTS_CARD_ADMIN_GRANTS.grantsSheet,
@@ -41,7 +49,7 @@ function attemptAdminPointGrantPush_(grantId) {
   const grant = normalizeAdminPointGrant_(initial.object);
   if (grant.pushStatus === 'sent') return { status: 'sent', errorCode: '' };
 
-  const rewardMessage = pointGrantRewardPushMessage_(grant);
+  const rewardMessage = pointGrantRewardPushMessage_(grant, rewardNotification);
   const now = new Date().toISOString();
   const push = createLineMessagingClient_().sendTextPush(
     grant.memberLineUserId,
