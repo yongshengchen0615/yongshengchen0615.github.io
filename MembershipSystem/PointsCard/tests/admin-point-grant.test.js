@@ -67,6 +67,7 @@ test('grant transaction records intent before progress mutation and success audi
   assert.match(source, /status: 'processing'/);
   assert.match(source, /grant\.status = 'recorded'/);
   assert.match(source, /recoverAdminPointGrant_\(existing\)/);
+  assert.match(source, /if \(grant\.status === 'recorded'\) return grant/);
 });
 
 test('plain point grants do not create member popups while newly unlocked tickets do', () => {
@@ -76,6 +77,7 @@ test('plain point grants do not create member popups while newly unlocked ticket
   assert.match(notifications, /type: 'point-grant-reward'/);
   assert.match(notifications, /notification\.type === 'point-grant-reward'/);
   assert.match(notifications, /pointGrantRewardSummary_\(rewards\)/);
+  assert.match(notifications, /return '新獲得：'/);
 });
 
 test('member notification APIs are isolated, identity-scoped and prevent IDOR', () => {
@@ -123,6 +125,14 @@ test('push failure is a side effect and does not roll back the completed point t
   assert.match(push, /pointGrantPushStatus_\(push\)/);
 });
 
+test('push retries reuse persisted reward details instead of recalculating historical entitlements', () => {
+  const push = read('gas/AdminPointGrantPushService.gs');
+  assert.match(push, /pointGrantNotificationId_\(grantId\)/);
+  assert.match(push, /notification\.type !== 'point-grant-reward'/);
+  assert.match(push, /return notification\.message/);
+  assert.doesNotMatch(push, /pointGrantUnlockedRewards_\(/);
+});
+
 test('member and admin browser surfaces load local feature modules and use API actions', () => {
   const adminHtml = read('admin/index.html');
   const userHtml = read('user/index.html');
@@ -140,7 +150,7 @@ test('member and admin browser surfaces load local feature modules and use API a
   assert.match(user, /dialog\.addEventListener\('cancel',[\s\S]*preventDefault/);
 });
 
-test('point grant messages show reason/current points and add ticket details only when unlocked', () => {
+test('point grant messages show reason/current points and append persisted ticket details when present', () => {
   const context = {
     Object,
     String,
@@ -149,14 +159,7 @@ test('point grant messages show reason/current points and add ticket details onl
     JSON,
     Math,
     console,
-    sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-    multiCardSettingsForProjection_: (card) => card && card.settings || {},
-    rewardEntitlementsBetweenTotals_: (totalBefore, totalAfter) => {
-      if (Number(totalBefore) < 10 && Number(totalAfter) >= 10) {
-        return [{ rewardName: '免費咖啡', rewardType: 'coupon' }];
-      }
-      return [];
-    }
+    sha256Hex_: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
   };
   vm.createContext(context);
   vm.runInContext(
@@ -168,9 +171,11 @@ test('point grant messages show reason/current points and add ticket details onl
   );
 
   const reward = [{ rewardName: '免費咖啡', rewardType: 'coupon' }];
+  const rewardMessage = context.__test.pointGrantNotificationMessage_(reward);
   const message = context.__test.pointGrantPushMessage_(
-    { stampCount: 5, reason: '活動補發', totalBefore: 7, totalAfter: 12 },
-    { name: '夏季卡', settings: {} }
+    { stampCount: 5, reason: '活動補發', totalAfter: 12 },
+    '夏季卡',
+    rewardMessage
   );
   assert.match(message, /夏季卡/);
   assert.match(message, /5 點/);
@@ -181,11 +186,13 @@ test('point grant messages show reason/current points and add ticket details onl
   assert.doesNotMatch(message, /Bearer|LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|requestId|lineUserId/);
 
   const plainMessage = context.__test.pointGrantPushMessage_(
-    { stampCount: 5, reason: '活動補發', totalBefore: 1, totalAfter: 6 },
-    { name: '夏季卡', settings: {} }
+    { stampCount: 5, reason: '活動補發', totalAfter: 6 },
+    '夏季卡',
+    ''
   );
   assert.doesNotMatch(plainMessage, /新獲得/);
-  assert.match(context.__test.pointGrantNotificationMessage_('活動補發', reward), /免費咖啡/);
+  assert.match(rewardMessage, /^新獲得：/);
+  assert.doesNotMatch(rewardMessage, /活動補發|目前點數/);
   assert.match(context.__test.pointGrantNotificationTitle_(reward), /免費咖啡/);
   assert.match(context.__test.pointGrantRetryKey_('PG-TEST'), /^[a-f0-9-]{36}$/);
 });
