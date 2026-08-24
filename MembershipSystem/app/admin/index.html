@@ -78,7 +78,7 @@
 
   <dialog id="usageDialog" class="edit-dialog usage-dialog">
     <form id="usageForm" method="dialog">
-      <div class="dialog-header"><div><span class="eyebrow">USAGE QR</span><h2 id="usageDialogTitle">新增消費時間 QR Code</h2><p id="usageDialogDescription">掃描後只會記錄會員本次消費時間。</p></div><button class="icon-button" value="cancel" type="submit" aria-label="關閉">×</button></div>
+      <div class="dialog-header"><div><span class="eyebrow">USAGE QR</span><h2 id="usageDialogTitle">新增消費時間 QR Code</h2><p id="usageDialogDescription">掃描後只會記錄會員本次消費時間。</p></div><button id="usageDialogCloseButton" class="icon-button" type="button" aria-label="關閉">×</button></div>
       <input id="usageVoucherId" type="hidden">
       <input id="usageExpectedUpdatedAt" type="hidden">
       <div id="usageCreateFields" class="form-grid">
@@ -98,7 +98,7 @@
 
       <p id="usageError" class="form-error hidden" role="alert"></p>
       <div class="dialog-actions">
-        <button class="button button-secondary" value="cancel" type="submit">關閉</button>
+        <button id="usageDialogFooterCloseButton" class="button button-secondary" type="button">關閉</button>
         <button id="copyUsageUrlButton" class="button button-secondary hidden" type="button">複製發放連結</button>
         <button id="downloadUsageQrButton" class="button button-secondary hidden" type="button">下載 QR Code</button>
         <button id="updateUsageButton" class="button button-primary hidden" type="button">儲存修改</button>
