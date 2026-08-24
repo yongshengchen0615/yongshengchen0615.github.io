@@ -70,17 +70,16 @@ test('grant transaction records intent before progress mutation and success audi
   assert.match(source, /if \(grant\.status === 'recorded'\) return grant/);
 });
 
-test('plain point grants do not create member popups while newly unlocked tickets do', () => {
+test('plain point grants create no reward detail while newly unlocked tickets are persisted for LINE push', () => {
   const notifications = read('gas/MemberPointNotificationService.gs');
   assert.match(notifications, /rewardEntitlementsBetweenTotals_\(grant\.totalBefore, grant\.totalAfter, settings\)/);
   assert.match(notifications, /if \(!unlockedRewards\.length\) return null/);
   assert.match(notifications, /type: 'point-grant-reward'/);
-  assert.match(notifications, /notification\.type === 'point-grant-reward'/);
   assert.match(notifications, /pointGrantRewardSummary_\(rewards\)/);
   assert.match(notifications, /return '新獲得：'/);
 });
 
-test('member notification APIs are isolated, identity-scoped and prevent IDOR', () => {
+test('member notification APIs remain identity-scoped and prevent IDOR even though the browser no longer consumes them', () => {
   const code = read('gas/Code.gs');
   const grant = read('gas/AdminPointGrantService.gs');
   const notifications = read('gas/MemberPointNotificationService.gs');
@@ -136,7 +135,7 @@ test('push retries reuse persisted reward details and bind them to the same gran
   assert.doesNotMatch(push, /pointGrantUnlockedRewards_\(/);
 });
 
-test('member and admin browser surfaces load local feature modules and use API actions', () => {
+test('opening PointsCard never consumes or displays point-grant notifications', () => {
   const adminHtml = read('admin/index.html');
   const userHtml = read('user/index.html');
   const admin = read('admin/point-grant.js');
@@ -146,16 +145,12 @@ test('member and admin browser surfaces load local feature modules and use API a
   assert.match(admin, /PointsCard\.callApi\('admin\.points\.grant'/);
   assert.match(admin, /PointsCard\.randomHex\(16\)/);
   assert.doesNotMatch(admin, /totalStamps\s*[+\-]?=/);
-  assert.match(user, /PointsCard\.callApi\('member\.point-notifications\.list'/);
-  assert.match(user, /PointsCard\.callApi\('member\.point-notification\.read'/);
-  assert.match(user, /目前點數：/);
-  assert.doesNotMatch(user, /目前累計/);
-  assert.match(user, /NEW TICKET/);
-  assert.match(user, /pointGrantNoticeCount'\)\.textContent = '券'/);
-  assert.match(user, /dialog\.addEventListener\('cancel',[\s\S]*preventDefault/);
+  assert.doesNotMatch(user, /member\.point-notifications\.list|member\.point-notification\.read/);
+  assert.doesNotMatch(user, /showModal|createElement\('dialog'\)|pointGrantNoticeDialog/);
+  assert.match(user, /LINE push only/);
 });
 
-test('point grant messages show reason/current points and append persisted ticket details when present', () => {
+test('point grant push contains only amount, reason and optional newly earned ticket details', () => {
   const context = {
     Object,
     String,
@@ -178,23 +173,18 @@ test('point grant messages show reason/current points and append persisted ticke
   const reward = [{ rewardName: '免費咖啡', rewardType: 'coupon' }];
   const rewardMessage = context.__test.pointGrantNotificationMessage_(reward);
   const message = context.__test.pointGrantPushMessage_(
-    { stampCount: 5, reason: '活動補發', totalAfter: 12 },
-    '夏季卡',
+    { stampCount: 5, reason: '活動補發' },
     rewardMessage
   );
-  assert.match(message, /夏季卡/);
-  assert.match(message, /5 點/);
-  assert.match(message, /發放原因：活動補發/);
-  assert.match(message, /目前點數：12 點/);
-  assert.match(message, /優惠券「免費咖啡」/);
-  assert.doesNotMatch(message, /目前累計/);
+  assert.equal(message, '發放點數：5 點\n發放原因：活動補發\n新獲得：優惠券「免費咖啡」。');
+  assert.doesNotMatch(message, /目前點數|目前累計|夏季卡/);
   assert.doesNotMatch(message, /Bearer|LINE_MESSAGING_CHANNEL_ACCESS_TOKEN|requestId|lineUserId/);
 
   const plainMessage = context.__test.pointGrantPushMessage_(
-    { stampCount: 5, reason: '活動補發', totalAfter: 6 },
-    '夏季卡',
+    { stampCount: 5, reason: '活動補發' },
     ''
   );
+  assert.equal(plainMessage, '發放點數：5 點\n發放原因：活動補發');
   assert.doesNotMatch(plainMessage, /新獲得/);
   assert.match(rewardMessage, /^新獲得：/);
   assert.doesNotMatch(rewardMessage, /活動補發|目前點數/);
