@@ -8,11 +8,12 @@
   <title>會員管理｜Membership System</title>
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./usage.css">
+  <link rel="stylesheet" href="./minute-grants.css">
 </head>
 <body class="admin-body">
   <main class="admin-shell">
     <header class="admin-header">
-      <div><span class="eyebrow">ADMIN</span><h1>會員管理</h1><p>管理會員資格、會員等級、消費時間紀錄與發放 QR Code。</p></div>
+      <div><span class="eyebrow">ADMIN</span><h1>會員管理</h1><p>管理會員資格、會員等級、累計消費分鐘、消費時間紀錄與發放 QR Code。</p></div>
       <button id="adminRefreshButton" class="button button-secondary" type="button">重新整理</button>
     </header>
 
@@ -23,6 +24,7 @@
       <nav class="admin-subnav" aria-label="會員管理功能">
         <button class="admin-nav-button is-active" type="button" data-admin-page="overview" aria-current="page">總覽</button>
         <button class="admin-nav-button" type="button" data-admin-page="members">會員列表</button>
+        <button class="admin-nav-button" type="button" data-admin-page="grants">分鐘發放</button>
         <button class="admin-nav-button" type="button" data-admin-page="tiers">等級設定</button>
         <button class="admin-nav-button" type="button" data-admin-page="usage">QR Code</button>
       </nav>
@@ -41,6 +43,9 @@
         <div class="overview-grid">
           <button class="overview-link-card" type="button" data-admin-page-target="members">
             <span class="eyebrow">MEMBERS</span><strong>會員列表</strong><small>搜尋會員、查看會員狀態並編輯會員資料。</small><span class="overview-link-action">進入會員列表 →</span>
+          </button>
+          <button class="overview-link-card" type="button" data-admin-page-target="grants">
+            <span class="eyebrow">MINUTE GRANT</span><strong>累計消費分鐘發放</strong><small>選擇會員、輸入分鐘與原因，並透過 LINE 官方帳號通知會員。</small><span class="overview-link-action">進入分鐘發放 →</span>
           </button>
           <button class="overview-link-card" type="button" data-admin-page-target="tiers">
             <span class="eyebrow">MEMBERSHIP TIER</span><strong>等級設定</strong><small>設定銀級、金級與白金會員的累計服務時間門檻。</small><span class="overview-link-action">進入等級設定 →</span>
@@ -64,6 +69,39 @@
           <div class="table-wrap"><table class="member-table"><thead><tr><th>會員</th><th>會員編號</th><th>等級</th><th>狀態</th><th>累計消費分鐘</th><th>到期日</th><th></th></tr></thead><tbody id="memberTableBody"></tbody></table></div>
           <div id="emptyState" class="empty-state hidden">找不到符合條件的會員。</div>
         </section>
+      </section>
+
+      <section id="adminPageGrants" class="admin-page hidden" data-admin-page-panel="grants" aria-labelledby="minuteGrantPageTitle">
+        <div class="page-heading">
+          <div><span class="eyebrow">MINUTE GRANT</span><h2 id="minuteGrantPageTitle">累計消費分鐘發放</h2><p>由管理員直接增加會員累計消費分鐘，系統會自動重算會員等級、保存發放原因與稽核紀錄，並嘗試透過 LINE 官方帳號推播。</p></div>
+        </div>
+
+        <div class="minute-grant-grid">
+          <section class="panel minute-grant-form-panel" aria-labelledby="minuteGrantFormTitle">
+            <h3 id="minuteGrantFormTitle">發放分鐘</h3>
+            <p>只能對目前有效的會員發放。發放原因會同時保存於系統、顯示在會員端，並寫入 LINE 推播訊息。</p>
+            <div class="minute-grant-form">
+              <label class="grant-field"><span>搜尋會員</span><input id="minuteGrantMemberSearch" type="search" maxlength="80" placeholder="輸入會員編號或名稱" autocomplete="off"></label>
+              <div id="minuteGrantMemberResults" class="grant-member-results"></div>
+              <input id="minuteGrantTargetMemberNo" type="hidden">
+              <div id="minuteGrantSelectedMember" class="grant-selected-member hidden" aria-live="polite"></div>
+              <label class="grant-field"><span>發放累計消費分鐘</span><input id="minuteGrantMinutes" type="number" min="1" max="60000" step="1" value="60" inputmode="numeric" required></label>
+              <label class="grant-field"><span>發放原因</span><textarea id="minuteGrantReason" maxlength="200" rows="4" required placeholder="例如：補登 2026/08/24 預約服務 120 分鐘"></textarea></label>
+              <p id="minuteGrantMessage" class="minute-grant-message hidden" role="status"></p>
+              <p class="grant-security-note">發放動作會由 Server-side 再次驗證管理權限。LINE Channel Access Token 僅從 GAS Script Properties 讀取，不會傳到瀏覽器。</p>
+              <button id="minuteGrantSubmitButton" class="button button-primary" type="button">確認發放並推播</button>
+            </div>
+          </section>
+
+          <section class="panel minute-grant-history-panel" aria-labelledby="minuteGrantHistoryTitle">
+            <div class="minute-grant-history-heading">
+              <div><h3 id="minuteGrantHistoryTitle">最近發放紀錄</h3><p>可確認發放原因、發放後總分鐘、等級變化與 LINE 推播結果。</p></div>
+              <button id="minuteGrantRefreshButton" class="button button-secondary" type="button">更新紀錄</button>
+            </div>
+            <div class="table-wrap"><table class="minute-grant-table"><thead><tr><th>時間</th><th>會員</th><th>發放分鐘</th><th>原因</th><th>發放後累計</th><th>等級</th><th>LINE 推播</th></tr></thead><tbody id="minuteGrantTableBody"></tbody></table></div>
+            <div id="minuteGrantEmptyState" class="empty-state hidden">尚未有人工分鐘發放紀錄。</div>
+          </section>
+        </div>
       </section>
 
       <section id="adminPageTiers" class="admin-page hidden" data-admin-page-panel="tiers" aria-labelledby="tierSettingsTitle">
@@ -155,5 +193,6 @@
   <script src="../shared/common.js"></script>
   <script src="./subpages.js"></script>
   <script src="./app.js"></script>
+  <script src="./minute-grants.js"></script>
 </body>
 </html>
