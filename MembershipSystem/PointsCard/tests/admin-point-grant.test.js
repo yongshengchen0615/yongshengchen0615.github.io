@@ -125,10 +125,13 @@ test('push failure is a side effect and does not roll back the completed point t
   assert.match(push, /pointGrantPushStatus_\(push\)/);
 });
 
-test('push retries reuse persisted reward details instead of recalculating historical entitlements', () => {
+test('push retries reuse persisted reward details and bind them to the same grant owner', () => {
   const push = read('gas/AdminPointGrantPushService.gs');
-  assert.match(push, /pointGrantNotificationId_\(grantId\)/);
+  assert.match(push, /pointGrantNotificationId_\(grant\.grantId\)/);
   assert.match(push, /notification\.type !== 'point-grant-reward'/);
+  assert.match(push, /notification\.memberLineUserId !== grant\.memberLineUserId/);
+  assert.match(push, /notification\.relatedId !== grant\.grantId/);
+  assert.match(push, /notification\.cardId !== grant\.cardId/);
   assert.match(push, /return notification\.message/);
   assert.doesNotMatch(push, /pointGrantUnlockedRewards_\(/);
 });
@@ -147,6 +150,8 @@ test('member and admin browser surfaces load local feature modules and use API a
   assert.match(user, /PointsCard\.callApi\('member\.point-notification\.read'/);
   assert.match(user, /目前點數：/);
   assert.doesNotMatch(user, /目前累計/);
+  assert.match(user, /NEW TICKET/);
+  assert.match(user, /pointGrantNoticeCount'\)\.textContent = '券'/);
   assert.match(user, /dialog\.addEventListener\('cancel',[\s\S]*preventDefault/);
 });
 
