@@ -14,6 +14,7 @@
   const NativeURLSearchParams = window.URLSearchParams;
 
   let adminCardsSnapshot = null;
+  let adminCardsSnapshotEpoch = 0;
   let adminSummaryInFlight = null;
   let networkStatusTimer = 0;
 
@@ -40,28 +41,29 @@
   }
 
   function clearAdminCardsSnapshot() {
+    adminCardsSnapshotEpoch += 1;
     adminCardsSnapshot = null;
   }
 
-  function saveAdminCardsSnapshot(cards) {
-    if (!Array.isArray(cards)) return;
+  function saveAdminCardsSnapshot(cards, expectedEpoch) {
+    if (!Array.isArray(cards) || expectedEpoch !== adminCardsSnapshotEpoch) return;
     adminCardsSnapshot = {
       savedAt: Date.now(),
       cards: cards.slice()
     };
   }
 
-  async function captureAdminCards(action, response) {
+  async function captureAdminCards(action, response, expectedEpoch) {
     if (!response || typeof response.clone !== 'function') return;
     try {
       const data = await response.clone().json();
       if (!data || data.ok !== true || !data.data) return;
       if (action === 'admin.cards.list') {
-        saveAdminCardsSnapshot(data.data.cards);
+        saveAdminCardsSnapshot(data.data.cards, expectedEpoch);
         return;
       }
       if (action === 'admin.summary' || action === 'admin.dashboard') {
-        saveAdminCardsSnapshot(data.data.settings && data.data.settings.cards);
+        saveAdminCardsSnapshot(data.data.settings && data.data.settings.cards, expectedEpoch);
       }
     } catch (_) {}
   }
@@ -81,8 +83,9 @@
   }
 
   function fetchAndCapture(input, options, action) {
+    const requestEpoch = adminCardsSnapshotEpoch;
     return nativeFetch(input, options).then(async function (response) {
-      await captureAdminCards(action, response);
+      await captureAdminCards(action, response, requestEpoch);
       return response;
     });
   }
