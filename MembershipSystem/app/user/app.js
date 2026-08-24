@@ -237,6 +237,34 @@
     $('#profileBirthDate').textContent = profile ? formatBirthDate(profile.birthDate) : '—';
   }
 
+  function renderTierProgress(member) {
+    const panel = $('#tierProgressPanel');
+    const text = $('#tierProgressText');
+    const detail = $('#tierProgressDetail');
+    const progress = member && member.tierProgress;
+    panel.classList.remove('is-max');
+
+    if (!progress || typeof progress !== 'object') {
+      text.textContent = '升級門檻暫時無法取得';
+      detail.textContent = '重新整理後仍無法顯示時，請確認 GAS 已更新。';
+      return;
+    }
+
+    const currentMinutes = Math.max(0, Number(progress.currentMinutes || member.consumedMinutes || 0));
+    if (!progress.nextTier) {
+      panel.classList.add('is-max');
+      text.textContent = '已達最高會員等級';
+      detail.textContent = `目前累計服務 ${formatMinutes(currentMinutes)} 分鐘`;
+      return;
+    }
+
+    const nextTier = normalizeTierKey(progress.nextTier);
+    const remainingMinutes = Math.max(0, Number(progress.remainingMinutes || 0));
+    const nextThresholdMinutes = Math.max(0, Number(progress.nextThresholdMinutes || 0));
+    text.textContent = `再服務 ${formatMinutes(remainingMinutes)} 分鐘升級${tierLabel[nextTier]}`;
+    detail.textContent = `目前 ${formatMinutes(currentMinutes)} / ${formatMinutes(nextThresholdMinutes)} 分鐘`;
+  }
+
   function renderMember(member) {
     const tierKey = normalizeTierKey(member.tier);
     const memberCard = $('.member-card');
@@ -251,6 +279,7 @@
     $('#expiresAt').textContent = Membership.formatDate(member.expiresAt, '永久');
     $('#consumedMinutes').textContent = formatMinutes(member.consumedMinutes);
     renderProfileOnCard(currentProfile);
+    renderTierProgress(member);
     $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
     $('#boot').classList.add('hidden');
     $('#errorState').classList.add('hidden');
