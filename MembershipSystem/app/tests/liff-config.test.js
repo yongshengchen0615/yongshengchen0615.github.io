@@ -26,6 +26,7 @@ async function loadConfigFor(pageUrl, config) {
   };
   const context = {
     console,
+    URL,
     window,
     document: {
       currentScript: { src: 'https://example.com/MembershipSystem/app/shared/common.js' }
