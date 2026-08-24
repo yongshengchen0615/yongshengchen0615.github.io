@@ -8,7 +8,7 @@ function recoverAdminPointGrant_(grantMatch) {
   const grant = normalizeAdminPointGrant_(grantMatch.object);
   if (grant.status === 'recorded') {
     const recordedCard = findMultiCard_(grant.cardId);
-    ensurePointGrantNotification_(grant, recordedCard ? recordedCard.card.name : '集點卡');
+    ensurePointGrantNotification_(grant, recordedCard ? recordedCard.card : null);
     return grant;
   }
   if (grant.status !== 'processing') {
@@ -33,7 +33,7 @@ function recoverAdminPointGrant_(grantMatch) {
   grant.status = 'recorded';
   grant.grantedAt = grant.grantedAt || now;
   grant.updatedAt = now;
-  ensurePointGrantNotification_(grant, cardMatch.card.name);
+  ensurePointGrantNotification_(grant, cardMatch.card);
 
   if (!grant.auditRecordedAt) {
     if (!audit_(grant.grantedByLineUserId, 'admin', 'CARD_POINTS_GRANTED', grant.memberLineUserId, 'success', {
@@ -178,7 +178,7 @@ function adminPointGrantMultiCard_(context, payload) {
       grant.status = 'recorded';
       grant.grantedAt = now;
       grant.updatedAt = now;
-      ensurePointGrantNotification_(grant, cardMatch.card.name);
+      ensurePointGrantNotification_(grant, cardMatch.card);
 
       if (!audit_(context.identity.sub, 'admin', 'CARD_POINTS_GRANTED', member.lineUserId, 'success', {
         grantId: grant.grantId,
