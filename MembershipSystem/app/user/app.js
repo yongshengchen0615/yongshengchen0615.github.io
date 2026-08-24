@@ -251,7 +251,7 @@
     $('#expiresAt').textContent = Membership.formatDate(member.expiresAt, '永久');
     $('#consumedMinutes').textContent = formatMinutes(member.consumedMinutes);
     renderProfileOnCard(currentProfile);
-    $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
+    $('#avatar').src = member.pictureUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="100%25" height="100%25" fill="%23374451"/%3E%3C/svg%3E';
     $('#boot').classList.add('hidden');
     $('#errorState').classList.add('hidden');
     $('#profileSetup').classList.add('hidden');
