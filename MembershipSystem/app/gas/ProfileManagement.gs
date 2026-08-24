@@ -4,6 +4,7 @@ const PROFILES_SHEET = 'Profiles';
 const PROFILE_HEADERS = ['lineUserId', 'phone', 'birthDate', 'createdAt', 'updatedAt'];
 const MIN_PROFILE_PHONE_DIGITS = 8;
 const MAX_PROFILE_PHONE_DIGITS = 15;
+const PROFILE_TIME_ZONE = 'Asia/Taipei';
 
 function profileUpdate_(context, payload) {
   const phone = validateProfilePhone_(payload.phone);
@@ -82,21 +83,25 @@ function requireProfileComplete_(lineUserId) {
 }
 
 function isProfileComplete_(profile) {
-  return Boolean(profile && profile.phone && profile.birthDate);
+  return Boolean(profile && profile.phone && normalizeProfileBirthDateValue_(profile.birthDate));
 }
 
 function publicProfile_(profile) {
   if (!profile) return null;
   return {
     phone: normalizeProfilePhoneValue_(profile.phone),
-    birthDate: profile.birthDate,
+    birthDate: normalizeProfileBirthDateValue_(profile.birthDate),
     updatedAt: profile.updatedAt
   };
 }
 
 function rowToProfile_(row) {
   const profile = {};
-  PROFILE_HEADERS.forEach(function (header, index) { profile[header] = normalizeCell_(row[index]); });
+  PROFILE_HEADERS.forEach(function (header, index) {
+    profile[header] = header === 'birthDate'
+      ? normalizeProfileBirthDateValue_(row[index])
+      : normalizeCell_(row[index]);
+  });
   // Google Sheets may return legacy phone cells as Number when they were saved
   // before the column was forced to plain text. The API contract must remain a
   // string even though a leading zero already lost by Sheets cannot be inferred.
@@ -109,21 +114,48 @@ function normalizeProfilePhoneValue_(value) {
   return String(value).trim();
 }
 
+function normalizeProfileBirthDateValue_(value) {
+  if (value == null || value === '') return '';
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return '';
+    return Utilities.formatDate(value, PROFILE_TIME_ZONE, 'yyyy-MM-dd');
+  }
+
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+  // Backward compatibility for rows previously normalized by normalizeCell_(),
+  // which converted a Sheets Date into a full ISO timestamp. Convert the instant
+  // back in the membership system timezone instead of slicing UTC and risking a
+  // one-day birthday shift.
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const date = new Date(text);
+    if (!Number.isNaN(date.getTime())) {
+      return Utilities.formatDate(date, PROFILE_TIME_ZONE, 'yyyy-MM-dd');
+    }
+  }
+
+  return '';
+}
+
 function profileToRow_(profile) {
   return PROFILE_HEADERS.map(function (header) {
-    const value = header === 'phone'
-      ? normalizeProfilePhoneValue_(profile[header])
-      : profile[header];
+    let value = profile[header];
+    if (header === 'phone') value = normalizeProfilePhoneValue_(value);
+    if (header === 'birthDate') value = normalizeProfileBirthDateValue_(value);
     return sheetSafe_(value == null ? '' : value);
   });
 }
 
 function writeProfile_(sheet, row, profile) {
   const phoneColumn = PROFILE_HEADERS.indexOf('phone') + 1;
-  // Phone numbers are identifiers/contact strings, not numeric values. Force
-  // the phone cell to plain text before writing so Google Sheets cannot turn
-  // 0912345678 into 912345678 by dropping the leading zero.
+  const birthDateColumn = PROFILE_HEADERS.indexOf('birthDate') + 1;
+  // Phone and birth date are profile identifiers/values, not numeric or date
+  // calculations. Force both cells to plain text so Sheets cannot drop a phone
+  // leading zero or convert YYYY-MM-DD into a Date object on the next read.
   sheet.getRange(row, phoneColumn).setNumberFormat('@');
+  sheet.getRange(row, birthDateColumn).setNumberFormat('@');
   sheet.getRange(row, 1, 1, PROFILE_HEADERS.length).setValues([profileToRow_(profile)]);
 }
 
@@ -170,7 +202,7 @@ function validateProfileBirthDate_(value) {
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text) {
     fail_('INVALID_BIRTH_DATE', '生日不是有效日期。');
   }
-  const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
+  const today = Utilities.formatDate(new Date(), PROFILE_TIME_ZONE, 'yyyy-MM-dd');
   if (text > today) fail_('INVALID_BIRTH_DATE', '生日不可晚於今天。');
   return text;
 }
