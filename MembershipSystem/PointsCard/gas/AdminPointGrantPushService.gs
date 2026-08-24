@@ -44,6 +44,10 @@ function pointGrantPushMessage_(grant, rewardMessage) {
     (rewardMessage ? '\n' + rewardMessage : '');
 }
 
+function pointGrantPushDeliveryMessage_(grant, rewardMessage) {
+  return pointGrantPushMessage_(grant, rewardMessage) + '\n請開啟集點卡確認集點進度。';
+}
+
 function pointGrantPushStatus_(push) {
   if (push.accepted) return 'sent';
   if (push.errorCode === 'NOT_CONFIGURED') return 'not-configured';
@@ -68,7 +72,7 @@ function attemptAdminPointGrantPush_(grantId, grantOverride, rewardNotification)
   const push = createLineMessagingClient_().sendTextPush(
     persistedGrant.memberLineUserId,
     pointGrantRetryKey_(persistedGrant.grantId),
-    pointGrantPushMessage_(messageGrant, rewardMessage)
+    pointGrantPushDeliveryMessage_(messageGrant, rewardMessage)
   );
 
   const lock = LockService.getScriptLock();
