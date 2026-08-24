@@ -117,7 +117,7 @@
     $('pointGrantNoticeCount').textContent = '+' + String(Number(currentNotice.stampCount || 0));
     $('pointGrantNoticeTitle').textContent = currentNotice.title || '你獲得點數';
     $('pointGrantNoticeMessage').textContent = currentNotice.message || '店家已發放點數到你的集點卡。';
-    $('pointGrantNoticeTotal').textContent = '「' + (currentNotice.cardName || '集點卡') + '」目前累計 ' + String(Number(currentNotice.totalAfter || 0)) + ' 點。';
+    $('pointGrantNoticeTotal').textContent = '目前點數：' + String(Number(currentNotice.totalAfter || 0)) + ' 點。';
     $('pointGrantNoticeError').textContent = '';
     $('pointGrantNoticeError').classList.add('hidden');
     $('confirmPointGrantNoticeButton').disabled = false;
