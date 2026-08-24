@@ -141,9 +141,30 @@
     return `${phone.slice(0, prefixLength)}${'•'.repeat(maskedLength)}${phone.slice(-3)}`;
   }
 
-  function formatBirthDate(value) {
+  function normalizeBirthDateValue(value) {
     const text = String(value || '').trim();
-    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text.replace(/-/g, '/') : '—';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(text)) return '';
+
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return '';
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(date).reduce((result, part) => {
+      if (part.type === 'year' || part.type === 'month' || part.type === 'day') result[part.type] = part.value;
+      return result;
+    }, {});
+    return parts.year && parts.month && parts.day
+      ? `${parts.year}-${parts.month}-${parts.day}`
+      : '';
+  }
+
+  function formatBirthDate(value) {
+    const text = normalizeBirthDateValue(value);
+    return text ? text.replace(/-/g, '/') : '—';
   }
 
   function daysInMonth(year, month) {
@@ -181,7 +202,8 @@
   }
 
   function setBirthDateControls(prefix, birthDate) {
-    const match = String(birthDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const normalizedBirthDate = normalizeBirthDateValue(birthDate);
+    const match = normalizedBirthDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     $(`#${prefix}BirthYear`).value = match ? match[1] : '';
     $(`#${prefix}BirthMonth`).value = match ? match[2] : '';
     rebuildBirthDayOptions(prefix, match ? match[3] : '');
