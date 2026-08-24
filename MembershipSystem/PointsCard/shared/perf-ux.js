@@ -10,13 +10,25 @@
   ]);
   const nativeFetch = window.fetch.bind(window);
   const NativeResponse = window.Response;
+  const NativeURL = window.URL;
   const NativeURLSearchParams = window.URLSearchParams;
 
   let adminCardsSnapshot = null;
   let adminSummaryInFlight = null;
   let networkStatusTimer = 0;
 
-  function requestAction(options) {
+  function isPointsCardGasRequest(input) {
+    try {
+      const raw = typeof input === 'string' ? input : (input && input.url);
+      const url = new NativeURL(String(raw || ''), window.location.href);
+      return url.protocol === 'https:' && url.hostname === 'script.google.com' && /\/macros\/s\/[^/]+\/exec\/?$/.test(url.pathname);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function requestAction(input, options) {
+    if (!isPointsCardGasRequest(input)) return '';
     if (!options || String(options.method || 'GET').toUpperCase() !== 'POST') return '';
     const body = options.body;
     if (!body || !(body instanceof NativeURLSearchParams)) return '';
@@ -68,8 +80,15 @@
     });
   }
 
+  function fetchAndCapture(input, options, action) {
+    return nativeFetch(input, options).then(async function (response) {
+      await captureAdminCards(action, response);
+      return response;
+    });
+  }
+
   window.fetch = function (input, options) {
-    const action = requestAction(options);
+    const action = requestAction(input, options);
     if (!action) return nativeFetch(input, options);
 
     if (!NON_MUTATING_ACTIONS.has(action)) clearAdminCardsSnapshot();
@@ -81,33 +100,23 @@
         return adminSummaryInFlight.then(function () {
           const summaryCards = syntheticCardsResponse();
           if (summaryCards) return summaryCards;
-          return nativeFetch(input, options).then(async function (response) {
-            await captureAdminCards(action, response);
-            return response;
-          });
+          return fetchAndCapture(input, options, action);
         });
       }
+      return fetchAndCapture(input, options, action);
     }
 
     if (action === 'admin.summary') {
-      const request = nativeFetch(input, options).then(async function (response) {
-        await captureAdminCards(action, response);
-        return response;
+      const request = fetchAndCapture(input, options, action);
+      const gate = request.then(function () { return true; }, function () { return false; });
+      adminSummaryInFlight = gate;
+      gate.finally(function () {
+        if (adminSummaryInFlight === gate) adminSummaryInFlight = null;
       });
-      adminSummaryInFlight = request.finally(function () {
-        if (adminSummaryInFlight === trackedRequest) adminSummaryInFlight = null;
-      });
-      const trackedRequest = adminSummaryInFlight;
-      return trackedRequest;
+      return request;
     }
 
-    if (action === 'admin.dashboard' || action === 'admin.cards.list') {
-      return nativeFetch(input, options).then(async function (response) {
-        await captureAdminCards(action, response);
-        return response;
-      });
-    }
-
+    if (action === 'admin.dashboard') return fetchAndCapture(input, options, action);
     return nativeFetch(input, options);
   };
 
