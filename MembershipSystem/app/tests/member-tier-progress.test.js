@@ -93,12 +93,13 @@ test('member-facing public payload contains progress but admin list payload stay
   assert.equal(Object.prototype.hasOwnProperty.call(adminPayload, 'tierProgress'), false);
 });
 
-test('member UI contains upgrade progress and JavaScript renders dynamic remaining minutes', () => {
+test('member UI shows current tier, current minutes, next threshold, and remaining minutes', () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../user/index.html'), 'utf8');
   const script = fs.readFileSync(path.resolve(__dirname, '../user/app.js'), 'utf8');
   assert.match(html, /id="tierProgressPanel"/);
   assert.match(html, /id="tierProgressText"/);
-  assert.match(script, /再預約服務 \$\{formatMinutes\(remainingMinutes\)\} 分鐘升級/);
-  assert.match(script, /已達最高會員等級/);
+  assert.match(script, /目前\$\{tierLabel\[currentTier\]\}會員｜累計服務 \$\{formatMinutes\(currentMinutes\)\} 分鐘/);
+  assert.match(script, /達到 \$\{formatMinutes\(nextThresholdMinutes\)\} 分鐘晉升\$\{tierLabel\[nextTier\]\}｜再預約服務 \$\{formatMinutes\(remainingMinutes\)\} 分鐘/);
+  assert.match(script, /目前\$\{tierLabel\[currentTier\]\}會員｜已達最高會員等級/);
   assert.doesNotThrow(() => new vm.Script(script));
 });

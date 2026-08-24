@@ -250,19 +250,20 @@
       return;
     }
 
+    const currentTier = normalizeTierKey(progress.currentTier || member.tier);
     const currentMinutes = Math.max(0, Number(progress.currentMinutes || member.consumedMinutes || 0));
     if (!progress.nextTier) {
       panel.classList.add('is-max');
-      text.textContent = '已達最高會員等級';
-      detail.textContent = `目前累計服務 ${formatMinutes(currentMinutes)} 分鐘`;
+      text.textContent = `目前${tierLabel[currentTier]}會員｜已達最高會員等級`;
+      detail.textContent = `累計服務 ${formatMinutes(currentMinutes)} 分鐘`;
       return;
     }
 
     const nextTier = normalizeTierKey(progress.nextTier);
     const remainingMinutes = Math.max(0, Number(progress.remainingMinutes || 0));
     const nextThresholdMinutes = Math.max(0, Number(progress.nextThresholdMinutes || 0));
-    text.textContent = `再預約服務 ${formatMinutes(remainingMinutes)} 分鐘升級${tierLabel[nextTier]}`;
-    detail.textContent = `目前 ${formatMinutes(currentMinutes)} / ${formatMinutes(nextThresholdMinutes)} 分鐘`;
+    text.textContent = `目前${tierLabel[currentTier]}會員｜累計服務 ${formatMinutes(currentMinutes)} 分鐘`;
+    detail.textContent = `達到 ${formatMinutes(nextThresholdMinutes)} 分鐘晉升${tierLabel[nextTier]}｜再預約服務 ${formatMinutes(remainingMinutes)} 分鐘`;
   }
 
   function renderMember(member) {
