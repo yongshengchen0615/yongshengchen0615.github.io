@@ -26,6 +26,19 @@ function pointGrantRewardPushMessage_(grant, notificationOverride) {
   return pointGrantRewardPushMessageFromNotification_(grant, match.object);
 }
 
+function pointGrantPushGrantSnapshot_(persistedGrant, grantOverride) {
+  if (!grantOverride) return null;
+  const direct = normalizeAdminPointGrant_(grantOverride);
+  if (direct.grantId !== persistedGrant.grantId ||
+    direct.memberLineUserId !== persistedGrant.memberLineUserId ||
+    direct.memberNo !== persistedGrant.memberNo ||
+    direct.cardId !== persistedGrant.cardId ||
+    direct.stampCount !== persistedGrant.stampCount ||
+    direct.totalBefore !== persistedGrant.totalBefore ||
+    direct.totalAfter !== persistedGrant.totalAfter) return null;
+  return direct;
+}
+
 function pointGrantPushMessage_(grant, rewardMessage) {
   return '發放點數：' + grant.stampCount + ' 點\n發放原因：' + grant.reason +
     (rewardMessage ? '\n' + rewardMessage : '');
@@ -37,7 +50,7 @@ function pointGrantPushStatus_(push) {
   return push.retryable ? 'retry' : 'failed';
 }
 
-function attemptAdminPointGrantPush_(grantId, rewardNotification) {
+function attemptAdminPointGrantPush_(grantId, grantOverride, rewardNotification) {
   ensureAdminPointGrantStorage_();
   const initial = findAdminPointGrantByFieldWithRow_(
     POINTS_CARD_ADMIN_GRANTS.grantsSheet,
@@ -46,15 +59,16 @@ function attemptAdminPointGrantPush_(grantId, rewardNotification) {
   );
   if (!initial) return { status: 'failed', errorCode: 'GRANT_NOT_FOUND' };
 
-  const grant = normalizeAdminPointGrant_(initial.object);
-  if (grant.pushStatus === 'sent') return { status: 'sent', errorCode: '' };
+  const persistedGrant = normalizeAdminPointGrant_(initial.object);
+  if (persistedGrant.pushStatus === 'sent') return { status: 'sent', errorCode: '' };
 
-  const rewardMessage = pointGrantRewardPushMessage_(grant, rewardNotification);
+  const messageGrant = pointGrantPushGrantSnapshot_(persistedGrant, grantOverride) || persistedGrant;
+  const rewardMessage = pointGrantRewardPushMessage_(messageGrant, rewardNotification);
   const now = new Date().toISOString();
   const push = createLineMessagingClient_().sendTextPush(
-    grant.memberLineUserId,
-    pointGrantRetryKey_(grant.grantId),
-    pointGrantPushMessage_(grant, rewardMessage)
+    persistedGrant.memberLineUserId,
+    pointGrantRetryKey_(persistedGrant.grantId),
+    pointGrantPushMessage_(messageGrant, rewardMessage)
   );
 
   const lock = LockService.getScriptLock();
