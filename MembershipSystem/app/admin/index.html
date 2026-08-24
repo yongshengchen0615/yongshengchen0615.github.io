@@ -54,7 +54,7 @@
           <div><span class="eyebrow">USAGE QR</span><h2>消費時間 QR Code</h2><p>可新增、修改、停止或刪除 QR Code；掃描後只記錄消費分鐘，不扣除任何可用時數或餘額。</p></div>
           <div class="section-actions"><button id="newUsageQrButton" class="button button-primary" type="button">新增 QR Code</button><button id="usageRefreshButton" class="button button-secondary" type="button">更新 QR Code</button></div>
         </div>
-        <div class="table-wrap"><table class="voucher-table"><thead><tr><th>QR Code</th><th>模式</th><th>分鐘</th><th>已記錄</th><th>狀態</th><th>到期時間</th><th></th></tr></thead><tbody id="voucherTableBody"></tbody></table></div>
+        <div class="table-wrap"><table class="voucher-table"><thead><tr><th>QR Code</th><th>模式</th><th>分鐘</th><th>已記錄</th><th>狀態</th><th>期限</th><th></th></tr></thead><tbody id="voucherTableBody"></tbody></table></div>
         <div id="voucherEmptyState" class="empty-state hidden">尚未建立 QR Code。</div>
       </section>
     </section>
@@ -84,6 +84,7 @@
       <div id="usageCreateFields" class="form-grid">
         <label><span>消費分鐘</span><input id="usageMinutes" type="number" min="1" max="60000" step="1" value="60" inputmode="numeric" required></label>
         <label><span>掃描模式</span><select id="usageScanMode" required><option value="single">單次掃描</option><option value="repeatable">可重複掃描</option></select></label>
+        <label><span>期限設定</span><select id="usageExpiryMode" required><option value="timed">指定期限</option><option value="permanent">無期限</option></select></label>
         <label><span>到期時間</span><input id="usageExpiresAt" type="datetime-local" required></label>
         <label class="full-span"><span>發放備註</span><textarea id="usageNote" maxlength="200" rows="3" placeholder="例如：場地使用 30 分鐘"></textarea></label>
       </div>
@@ -92,7 +93,7 @@
         <p id="usageResultMeta"></p>
         <div id="usageQrCode" class="qr-code" aria-label="消費時間 QR Code"></div>
         <label class="url-field"><span>發放網址</span><textarea id="usageUrl" rows="3" readonly></textarea></label>
-        <p class="security-note">此連結只作為消費時間記錄入口；會員身分仍由 LINE 登入驗證。單次模式只記錄一次，可重複模式可多次記錄。</p>
+        <p class="security-note">此連結只作為消費時間記錄入口；會員身分仍由 LINE 登入驗證。單次模式只記錄一次，可重複模式可多次記錄。無期限 QR Code 在管理員停止前會持續有效，請妥善保管發放連結。</p>
       </div>
 
       <p id="usageError" class="form-error hidden" role="alert"></p>
