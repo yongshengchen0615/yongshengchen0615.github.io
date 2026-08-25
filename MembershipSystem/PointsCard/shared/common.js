@@ -4,9 +4,11 @@
   const LOGIN_PENDING_KEY = 'points-card.login.pending';
   const INIT_RECOVERY_KEY = 'points-card.liff.recovery';
   const AUTH_REFRESH_KEY = 'points-card.liff.auth-refresh';
+  const CONFIG_HANDOFF_KEY = 'points-card.config.handoff';
   const SELECTED_CARD_KEY = 'points-card.selected-card';
   const INIT_RECOVERY_COOLDOWN_MS = 60 * 1000;
   const AUTH_REFRESH_COOLDOWN_MS = 60 * 1000;
+  const CONFIG_HANDOFF_MAX_AGE_MS = 90 * 1000;
   const ID_TOKEN_EXPIRY_SKEW_SECONDS = 30;
   const API_TIMEOUT_MS = 25000;
   const READ_API_TIMEOUT_MS = 12000;
@@ -31,7 +33,7 @@
   let configPromise = null;
   let authenticatedIdToken = '';
   let loginInFlight = false;
-  let apiPreconnectOrigin = '';
+  const apiPreconnectOrigins = new Set();
   const readRequestPromises = new Map();
 
   function readSessionValue(key) {
@@ -138,15 +140,54 @@
     catch (_) {}
   }
 
-  function preconnectApi(gasUrl) {
-    const origin = new URL(gasUrl).origin;
-    if (!origin || origin === window.location.origin || origin === apiPreconnectOrigin) return;
+  function preconnectOrigin(origin) {
+    if (!origin || origin === window.location.origin || apiPreconnectOrigins.has(origin)) return;
     const link = document.createElement('link');
     link.rel = 'preconnect';
     link.href = origin;
     link.crossOrigin = 'anonymous';
     document.head.append(link);
-    apiPreconnectOrigin = origin;
+    apiPreconnectOrigins.add(origin);
+  }
+
+  function preconnectApi(gasUrl) {
+    const endpoint = new URL(gasUrl);
+    preconnectOrigin(endpoint.origin);
+    if (endpoint.protocol === 'https:' && endpoint.hostname === 'script.google.com' &&
+      /^\/macros\/s\/[^/]+\/exec\/?$/.test(endpoint.pathname)) {
+      // Apps Script POSTs follow to this host; prepare both TLS connections while LIFF initializes.
+      preconnectOrigin('https://script.googleusercontent.com');
+    }
+  }
+
+  function takeConfigHandoff() {
+    const raw = readSessionValue(CONFIG_HANDOFF_KEY);
+    removeSessionValue(CONFIG_HANDOFF_KEY);
+    if (!raw) return null;
+    try {
+      const handoff = JSON.parse(raw);
+      const loadedAt = Number(handoff && handoff.loadedAt);
+      if (!Number.isFinite(loadedAt) || Date.now() - loadedAt < 0 || Date.now() - loadedAt > CONFIG_HANDOFF_MAX_AGE_MS) return null;
+      return handoff && handoff.config && typeof handoff.config === 'object' ? handoff.config : null;
+    } catch (_) { return null; }
+  }
+
+  function normalizeConfig(config) {
+    const legacyLiffId = configuredLiffId(config && config.LIFF_ID);
+    const userLiffId = configuredLiffId(config && config.USER_LIFF_ID) || legacyLiffId;
+    const adminLiffId = configuredLiffId(config && config.ADMIN_LIFF_ID);
+    const liffId = isAdminSurface() ? adminLiffId : userLiffId;
+    const gasUrl = String(config && config.GAS_WEB_APP_URL || '').trim();
+    if (!userLiffId) throw new Error('USER_LIFF_ID 尚未設定。');
+    if (isAdminSurface() && !adminLiffId) throw new Error('ADMIN_LIFF_ID 尚未設定。');
+    if (!/^https:\/\//i.test(gasUrl) || gasUrl === 'YOUR_GAS_WEB_APP_EXEC_URL') throw new Error('GAS Web App URL 尚未設定。');
+    preconnectApi(gasUrl);
+    return Object.freeze({
+      LIFF_ID: liffId,
+      USER_LIFF_ID: userLiffId,
+      ADMIN_LIFF_ID: adminLiffId,
+      GAS_WEB_APP_URL: gasUrl
+    });
   }
 
   function isAdminSurface() {
@@ -161,6 +202,8 @@
   async function loadConfig() {
     if (configPromise) return configPromise;
     configPromise = (async function () {
+      const handoff = takeConfigHandoff();
+      if (handoff) return normalizeConfig(handoff);
       const response = await nativeFetch(new URL('../shared/config.json', window.location.href), {
         method: 'GET',
         credentials: 'same-origin',
@@ -169,22 +212,7 @@
         referrerPolicy: 'no-referrer'
       });
       if (!response.ok) throw new Error('無法載入集點卡設定。');
-      const config = await response.json();
-      const legacyLiffId = configuredLiffId(config && config.LIFF_ID);
-      const userLiffId = configuredLiffId(config && config.USER_LIFF_ID) || legacyLiffId;
-      const adminLiffId = configuredLiffId(config && config.ADMIN_LIFF_ID);
-      const liffId = isAdminSurface() ? adminLiffId : userLiffId;
-      const gasUrl = String(config && config.GAS_WEB_APP_URL || '').trim();
-      if (!userLiffId) throw new Error('USER_LIFF_ID 尚未設定。');
-      if (isAdminSurface() && !adminLiffId) throw new Error('ADMIN_LIFF_ID 尚未設定。');
-      if (!/^https:\/\//i.test(gasUrl) || gasUrl === 'YOUR_GAS_WEB_APP_EXEC_URL') throw new Error('GAS Web App URL 尚未設定。');
-      preconnectApi(gasUrl);
-      return Object.freeze({
-        LIFF_ID: liffId,
-        USER_LIFF_ID: userLiffId,
-        ADMIN_LIFF_ID: adminLiffId,
-        GAS_WEB_APP_URL: gasUrl
-      });
+      return normalizeConfig(await response.json());
     })().catch(function (error) {
       configPromise = null;
       reportError(error, { source: 'config', action: 'loadConfig' });

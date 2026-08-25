@@ -275,6 +275,61 @@ test('member boot overlaps critical downloads and allows the public config respo
   assert.doesNotMatch(redirect, /cache:\s*'no-store'/);
   assert.doesNotMatch(common, /new URL\('\.\.\/shared\/config\.json'[\s\S]{0,220}cache:\s*'no-store'/);
   assert.match(common, /function preconnectApi\(gasUrl\)/);
+  assert.match(redirect, /points-card\.config\.handoff/);
+  assert.match(common, /function takeConfigHandoff\(\)/);
+  assert.match(common, /https:\/\/script\.googleusercontent\.com/);
+});
+
+test('a fresh LIFF redirect config handoff skips the duplicate config request and warms both Apps Script origins', async () => {
+  const common = read('shared/common.js');
+  const storage = new Map();
+  storage.set('points-card.config.handoff', JSON.stringify({
+    loadedAt: Date.now(),
+    config: {
+      USER_LIFF_ID: '123-user',
+      ADMIN_LIFF_ID: '123-admin',
+      GAS_WEB_APP_URL: 'https://script.google.com/macros/s/test/exec'
+    }
+  }));
+  let configFetches = 0;
+  const preconnects = [];
+  const window = {
+    fetch: async () => { configFetches += 1; throw new Error('the handoff should satisfy the first load'); },
+    URLSearchParams,
+    AbortController,
+    URL,
+    crypto: { getRandomValues: (array) => array.fill(7) },
+    PointsCardLiff: {
+      init: async () => {},
+      isLoggedIn: () => true,
+      isInClient: () => false,
+      getIDToken: () => 'header.payload.signature',
+      getDecodedIDToken: () => ({ exp: Math.floor(Date.now() / 1000) + 3600 })
+    },
+    sessionStorage: {
+      getItem: (key) => storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: (key) => storage.delete(key)
+    },
+    location: { href: 'https://example.test/PointsCard/user/', origin: 'https://example.test', replace() {} },
+    history: { replaceState() {} },
+    performance: { now: () => Date.now() },
+    setTimeout,
+    clearTimeout() {},
+    document: {
+      createElement: () => ({}),
+      head: { append(link) { preconnects.push(link.href); } }
+    },
+    console
+  };
+  const context = { window, document: window.document, URL, URLSearchParams, AbortController, Uint8Array, Intl, Date, Map, Set, Object, String, Number, JSON, Array, Error, TypeError, console };
+  vm.createContext(context);
+  vm.runInContext(common, context);
+
+  assert.equal(await window.PointsCard.ensureLiffLogin(), true);
+  assert.equal(configFetches, 0);
+  assert.equal(storage.has('points-card.config.handoff'), false, 'handoff must be single-use');
+  assert.deepEqual(preconnects.sort(), ['https://script.google.com', 'https://script.googleusercontent.com']);
 });
 
 test('read-only transport deduplicates concurrent calls and retries one transient failure without retrying mutations', async () => {
