@@ -42,7 +42,7 @@ let requestSheets_ = {};
 let requestUsageRecordCounts_ = null;
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.2' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.3' } });
 }
 
 function doPost(e) {
