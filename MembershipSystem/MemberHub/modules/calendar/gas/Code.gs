@@ -1,6 +1,6 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.3.3';
+const CALENDAR_API_VERSION_ = '2.3.4';
 const CALENDAR_BUSINESS_TIME_ZONE_ = 'Asia/Taipei';
 const USER_ACCESS_STATUSES_ = Object.freeze(['active', 'disabled']);
 const MAX_REQUEST_BYTES_ = 20000;

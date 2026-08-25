@@ -27,3 +27,56 @@ function inspectCalendarDeployment() {
     missing: Object.freeze(missing)
   });
 }
+
+/** Signed live probe for the Membership access gate. Never sends the raw service secret. */
+function probeCalendarMembershipGate() {
+  const properties = PropertiesService.getScriptProperties();
+  const endpoint = String(properties.getProperty('MEMBERHUB_ACCESS_GATE_URL') || '').trim();
+  const secret = String(properties.getProperty('MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET') || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint) || secret.length < 32) {
+    return calendarDeploymentProbeResult_('configuration-error');
+  }
+
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = Utilities.getUuid().replace(/-/g, '').toLowerCase();
+  const lineUserId = 'memberhub-deployment-probe-calendar';
+  const signature = memberAccessGateSignature_(secret, 'calendar', timestamp, nonce, lineUserId);
+  let response;
+  try {
+    response = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      payload: {
+        action: 'internal.member-access.check',
+        serviceId: 'calendar',
+        timestamp: timestamp,
+        nonce: nonce,
+        signature: signature,
+        lineUserId: lineUserId
+      },
+      followRedirects: true,
+      muteHttpExceptions: true
+    });
+  } catch (_) {
+    return calendarDeploymentProbeResult_('unavailable');
+  }
+
+  let result = null;
+  try { result = JSON.parse(response.getContentText() || '{}'); }
+  catch (_) { result = null; }
+  if (response.getResponseCode() !== 200 || !result) {
+    return calendarDeploymentProbeResult_('invalid-response');
+  }
+  if (result.ok !== true || !result.data || typeof result.data.allowed !== 'boolean') {
+    return calendarDeploymentProbeResult_('rejected');
+  }
+  return calendarDeploymentProbeResult_('ready');
+}
+
+function calendarDeploymentProbeResult_(status) {
+  return Object.freeze({
+    service: 'calendar',
+    version: CALENDAR_API_VERSION_,
+    reachable: status === 'ready',
+    status: status
+  });
+}

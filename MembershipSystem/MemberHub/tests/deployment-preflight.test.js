@@ -45,7 +45,7 @@ test('deployment diagnostics report readiness without returning secret values', 
       MEMBERHUB_POINTS_ACCESS_GATE_SECRET: pointsSecret,
       LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: 'messaging-token'
     },
-    { POINTS_CARD_SERVICE: { version: '2.3.7' } }
+    { POINTS_CARD_SERVICE: { version: '2.3.8' } }
   );
   const calendar = runDiagnostic(
     'modules/calendar/gas/DeploymentDiagnostics.gs', 'inspectCalendarDeployment',
@@ -56,7 +56,7 @@ test('deployment diagnostics report readiness without returning secret values', 
       MEMBERHUB_ACCESS_GATE_URL: 'https://script.google.com/macros/s/MEMBERSHIP_DEPLOYMENT/exec',
       MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET: calendarSecret
     },
-    { CALENDAR_API_VERSION_: '2.3.3' }
+    { CALENDAR_API_VERSION_: '2.3.4' }
   );
 
   for (const diagnostic of [membership, points, calendar]) {
@@ -85,7 +85,7 @@ test('deployment diagnostics fail closed for shared, crossed, or incomplete conf
   const points = runDiagnostic(
     'modules/points/gas/DeploymentDiagnostics.gs', 'inspectPointsDeployment',
     { MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET: sharedSecret },
-    { POINTS_CARD_SERVICE: { version: '2.3.7' } }
+    { POINTS_CARD_SERVICE: { version: '2.3.8' } }
   ).result;
   assert.equal(points.ready, false);
   assert.ok(points.missing.includes('crossServiceSecretAbsent'));
@@ -98,11 +98,94 @@ test('deployment diagnostics fail closed for shared, crossed, or incomplete conf
       CALENDAR_ADMIN_LINE_CHANNEL_ID: '2010787603',
       MEMBERHUB_POINTS_ACCESS_GATE_SECRET: sharedSecret
     },
-    { CALENDAR_API_VERSION_: '2.3.3' }
+    { CALENDAR_API_VERSION_: '2.3.4' }
   ).result;
   assert.equal(calendar.ready, false);
   assert.ok(calendar.missing.includes('lineChannelsSeparated'));
   assert.ok(calendar.missing.includes('crossServiceSecretAbsent'));
+});
+
+test('signed deployment probes verify each caller without sending raw secrets', () => {
+  const endpoint = 'https://script.google.com/macros/s/MEMBERSHIP_DEPLOYMENT/exec';
+  const requests = [];
+  function response(code, body) {
+    return { getResponseCode: () => code, getContentText: () => JSON.stringify(body) };
+  }
+  function probe(relative, functionName, propertyName, serviceId, globals) {
+    const secret = serviceId.charAt(0).repeat(32);
+    const values = { MEMBERHUB_ACCESS_GATE_URL: endpoint, [propertyName]: secret };
+    const context = Object.assign({
+      Date, JSON, Math, Object, String,
+      PropertiesService: { getScriptProperties: () => ({ getProperty: (name) => values[name] || '' }) },
+      UrlFetchApp: { fetch(url, options) {
+        requests.push({ url, options, secret });
+        return response(200, { ok: true, data: { allowed: false, membershipStatus: 'unregistered' } });
+      } },
+      memberAccessGateSignature_: (key, signedServiceId) => {
+        assert.equal(key, secret);
+        assert.equal(signedServiceId, serviceId);
+        return 'a'.repeat(64);
+      }
+    }, globals);
+    vm.createContext(context);
+    vm.runInContext(read(relative) + '\n;globalThis.__probe = ' + functionName + ';', context);
+    return { result: JSON.parse(JSON.stringify(context.__probe())), secret };
+  }
+
+  const points = probe(
+    'modules/points/gas/DeploymentDiagnostics.gs', 'probePointsMembershipGate',
+    'MEMBERHUB_POINTS_ACCESS_GATE_SECRET', 'points',
+    { POINTS_CARD_SERVICE: { version: '2.3.8' }, randomHex_: () => '1'.repeat(32) }
+  );
+  const calendar = probe(
+    'modules/calendar/gas/DeploymentDiagnostics.gs', 'probeCalendarMembershipGate',
+    'MEMBERHUB_CALENDAR_ACCESS_GATE_SECRET', 'calendar',
+    { CALENDAR_API_VERSION_: '2.3.4', Utilities: { getUuid: () => '2'.repeat(32) } }
+  );
+
+  assert.equal(points.result.status, 'ready');
+  assert.equal(calendar.result.status, 'ready');
+  for (const request of requests) {
+    assert.equal(request.url, endpoint);
+    assert.equal(request.options.payload.action, 'internal.member-access.check');
+    assert.equal(request.options.payload.signature, 'a'.repeat(64));
+    assert.equal(request.options.payload.serviceId, request.options.payload.lineUserId.split('-').pop());
+    assert.doesNotMatch(JSON.stringify(request.options), new RegExp(request.secret));
+  }
+});
+
+test('deployment probes distinguish configuration, network, rejection, and invalid responses', () => {
+  function run(fetchBehavior, values) {
+    const context = {
+      Date, JSON, Math, Object, String,
+      POINTS_CARD_SERVICE: { version: '2.3.8' },
+      PropertiesService: { getScriptProperties: () => ({ getProperty: (name) => values[name] || '' }) },
+      randomHex_: () => '1'.repeat(32),
+      memberAccessGateSignature_: () => 'a'.repeat(64),
+      UrlFetchApp: { fetch: fetchBehavior }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+      read('modules/points/gas/DeploymentDiagnostics.gs') +
+        '\n;globalThis.__probe = probePointsMembershipGate;',
+      context
+    );
+    return JSON.parse(JSON.stringify(context.__probe()));
+  }
+  const configured = {
+    MEMBERHUB_ACCESS_GATE_URL: 'https://script.google.com/macros/s/MEMBERSHIP_DEPLOYMENT/exec',
+    MEMBERHUB_POINTS_ACCESS_GATE_SECRET: 'p'.repeat(32)
+  };
+  assert.equal(run(() => { throw new Error('network'); }, {}).status, 'configuration-error');
+  assert.equal(run(() => { throw new Error('network'); }, configured).status, 'unavailable');
+  assert.equal(run(() => ({
+    getResponseCode: () => 500,
+    getContentText: () => '{}'
+  }), configured).status, 'invalid-response');
+  assert.equal(run(() => ({
+    getResponseCode: () => 200,
+    getContentText: () => JSON.stringify({ ok: false, error: { code: 'FORBIDDEN' } })
+  }), configured).status, 'rejected');
 });
 
 test('checked-in frontend configuration keeps user and admin LIFF separated', () => {
