@@ -66,10 +66,40 @@ function probeCalendarMembershipGate() {
   if (response.getResponseCode() !== 200 || !result) {
     return calendarDeploymentProbeResult_('invalid-response');
   }
-  if (result.ok !== true || !result.data || typeof result.data.allowed !== 'boolean') {
+  if (result.ok !== true || !result.data || result.data.allowed !== false ||
+      result.data.membershipStatus !== 'unregistered') {
     return calendarDeploymentProbeResult_('rejected');
   }
+  const expectedProof = memberAccessGateProbeResponseSignature_(
+    secret, 'calendar', timestamp, nonce, lineUserId, false, 'unregistered'
+  );
+  if (!deploymentProbeSignatureEquals_(result.data.probeSignature, expectedProof)) {
+    return calendarDeploymentProbeResult_('unverified-response');
+  }
   return calendarDeploymentProbeResult_('ready');
+}
+
+function memberAccessGateProbeResponseSignature_(secret, serviceId, timestamp, nonce, lineUserId, allowed, status) {
+  const message = [
+    'memberhub-access-gate-probe-response-v1', serviceId, timestamp, nonce,
+    lineUserId, String(allowed), status
+  ].join('\n');
+  const digest = Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8);
+  return digest.map(function (byte) {
+    return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
+  }).join('');
+}
+
+function deploymentProbeSignatureEquals_(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  let mismatch = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= (a.charCodeAt(index % (a.length || 1)) || 0) ^
+      (b.charCodeAt(index % (b.length || 1)) || 0);
+  }
+  return mismatch === 0;
 }
 
 function calendarDeploymentProbeResult_(status) {

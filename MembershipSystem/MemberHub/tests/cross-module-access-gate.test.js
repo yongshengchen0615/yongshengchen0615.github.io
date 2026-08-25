@@ -97,6 +97,7 @@ test('membership access gate authenticates the service and ignores membership ti
   vm.runInContext(
     functionSource(source, 'constantTimeTextEquals_') + '\n' +
       functionSource(source, 'memberAccessGateSignature_') + '\n' +
+      functionSource(source, 'memberAccessGateProbeResponseSignature_') + '\n' +
       functionSource(source, 'consumeMemberAccessNonce_') + '\n' +
       functionSource(source, 'isMembershipUsable_') + '\n' +
       functionSource(source, 'internalMemberAccessCheck_') +
@@ -208,6 +209,18 @@ test('membership access gate authenticates the service and ignores membership ti
     JSON.parse(JSON.stringify(context.check(signedRequest('U-NEW')))),
     { allowed: false, membershipStatus: 'unregistered' }
   );
+  const probeRequest = signedRequest('memberhub-deployment-probe-points');
+  const probeResult = JSON.parse(JSON.stringify(context.check(probeRequest)));
+  assert.equal(probeResult.allowed, false);
+  assert.equal(probeResult.membershipStatus, 'unregistered');
+  assert.equal(
+    probeResult.probeSignature,
+    hmacHex([
+      'memberhub-access-gate-probe-response-v1', probeRequest.serviceId,
+      probeRequest.timestamp, probeRequest.nonce, probeRequest.lineUserId,
+      'false', 'unregistered'
+    ].join('\n'), serviceSecrets.points)
+  );
 
   storedMember = { membershipStatus: 'active', tier: 'platinum', expiresAt: '2026-08-24' };
   assert.deepEqual(
@@ -247,6 +260,38 @@ test('all access-gate HMAC helpers match an independent known vector', () => {
     assert.equal(
       context.sign(vector.secret, vector.serviceId, vector.timestamp, vector.nonce, vector.lineUserId),
       expected,
+      relative
+    );
+  }
+
+  const responseMessage = [
+    'memberhub-access-gate-probe-response-v1', vector.serviceId, vector.timestamp,
+    vector.nonce, vector.lineUserId, 'false', 'unregistered'
+  ].join('\n');
+  const expectedResponse = hmacHex(responseMessage, vector.secret);
+  for (const relative of [
+    'modules/membership/gas/Code.gs',
+    'modules/points/gas/DeploymentDiagnostics.gs',
+    'modules/calendar/gas/DeploymentDiagnostics.gs'
+  ]) {
+    const context = {
+      Utilities: {
+        Charset: { UTF_8: 'UTF_8' },
+        computeHmacSha256Signature: (value, key) => hmacBytes(value, key)
+      }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+      functionSource(read(relative), 'memberAccessGateProbeResponseSignature_') +
+        '\n;globalThis.signResponse = memberAccessGateProbeResponseSignature_;',
+      context
+    );
+    assert.equal(
+      context.signResponse(
+        vector.secret, vector.serviceId, vector.timestamp, vector.nonce,
+        vector.lineUserId, false, 'unregistered'
+      ),
+      expectedResponse,
       relative
     );
   }

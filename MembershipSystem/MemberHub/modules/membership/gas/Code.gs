@@ -42,7 +42,7 @@ let requestSheets_ = {};
 let requestUsageRecordCounts_ = null;
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.3' } });
+  return json_({ ok: true, data: { service: 'MembershipSystem', version: '1.10.4' } });
 }
 
 function doPost(e) {
@@ -174,18 +174,36 @@ function internalMemberAccessCheck_(parameters) {
   rateLimit_('member-access-gate:' + serviceId + ':' + lineUserId, 120, 60);
   const sheet = getMembersSheet_();
   const row = findMemberRow_(sheet, lineUserId);
-  if (!row) return { allowed: false, membershipStatus: 'unregistered' };
-
-  const member = rowToMember_(sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).getValues()[0]);
-  const allowed = isMembershipUsable_(member);
-  return {
-    allowed: allowed,
-    membershipStatus: allowed ? 'active' : 'inactive'
-  };
+  let result;
+  if (!row) {
+    result = { allowed: false, membershipStatus: 'unregistered' };
+  } else {
+    const member = rowToMember_(sheet.getRange(row, 1, 1, MEMBER_HEADERS.length).getValues()[0]);
+    const allowed = isMembershipUsable_(member);
+    result = { allowed: allowed, membershipStatus: allowed ? 'active' : 'inactive' };
+  }
+  if (lineUserId === 'memberhub-deployment-probe-' + serviceId) {
+    result.probeSignature = memberAccessGateProbeResponseSignature_(
+      expectedSecret, serviceId, timestampText, nonce, lineUserId,
+      result.allowed, result.membershipStatus
+    );
+  }
+  return result;
 }
 
 function memberAccessGateSignature_(secret, serviceId, timestamp, nonce, lineUserId) {
   const message = [serviceId, timestamp, nonce, lineUserId].join('\n');
+  const digest = Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8);
+  return digest.map(function (byte) {
+    return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
+  }).join('');
+}
+
+function memberAccessGateProbeResponseSignature_(secret, serviceId, timestamp, nonce, lineUserId, allowed, status) {
+  const message = [
+    'memberhub-access-gate-probe-response-v1', serviceId, timestamp, nonce,
+    lineUserId, String(allowed), status
+  ].join('\n');
   const digest = Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8);
   return digest.map(function (byte) {
     return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);

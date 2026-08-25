@@ -20,7 +20,7 @@ function membershipDeploymentResult_(checks) {
   const missing = Object.keys(checks).filter(function (name) { return !checks[name]; });
   return Object.freeze({
     service: 'membership',
-    version: '1.10.3',
+    version: '1.10.4',
     ready: missing.length === 0,
     checks: Object.freeze(checks),
     missing: Object.freeze(missing)
