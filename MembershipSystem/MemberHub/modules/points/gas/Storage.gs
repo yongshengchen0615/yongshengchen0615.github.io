@@ -209,15 +209,29 @@ function readObjectsByField_(sheet, field, value) {
   if (lastRow < 2) return [];
   const matches = sheet.getRange(2, columnIndex + 1, lastRow - 1, 1)
     .createTextFinder(expected).matchEntireCell(true).useRegularExpression(false).findAll();
-  if (matches.length > 20) {
-    return readObjects_(sheet).filter(function (object) {
-      return String(object[field] || '') === expected;
-    });
-  }
-  return matches.map(function (match) {
-    const row = sheet.getRange(match.getRow(), 1, 1, headers.length).getValues()[0];
-    return rowToObject_(headers, row);
+  const rowNumbers = matches.map(function (match) { return match.getRow(); })
+    .sort(function (left, right) { return left - right; });
+  const windows = [];
+  rowNumbers.forEach(function (rowNumber) {
+    const current = windows.length ? windows[windows.length - 1] : null;
+    if (!current || rowNumber - current.end > 8 || rowNumber - current.start >= 64) {
+      windows.push({ start: rowNumber, end: rowNumber });
+    } else {
+      current.end = rowNumber;
+    }
   });
+
+  const result = [];
+  windows.forEach(function (window) {
+    const values = sheet.getRange(
+      window.start, 1, window.end - window.start + 1, headers.length
+    ).getValues();
+    values.forEach(function (row) {
+      const object = rowToObject_(headers, row);
+      if (String(object[field] || '') === expected) result.push(object);
+    });
+  });
+  return result;
 }
 
 function rowToObject_(headers, row) {

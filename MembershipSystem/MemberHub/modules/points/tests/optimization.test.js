@@ -401,6 +401,54 @@ test('member projection uses bounded exact lookups and invalidates lookup snapsh
   assert.equal(finderReads, 2, 'a write invalidation must clear exact-match snapshots');
 });
 
+test('base exact lookup batches more than twenty matching rows without a full-table fallback', () => {
+  const source = read('gas/Storage.gs') +
+    '\n;globalThis.__baseLookupTest = { readObjectsByField_ };';
+  const matchingRows = Array.from({ length: 25 }, (_, index) => 10 + index);
+  let dataReads = 0;
+  let fullTableReads = 0;
+  const sheet = {
+    getName: () => 'RewardRecords',
+    getLastRow: () => 3000,
+    getRange(row, column, rowCount, columnCount) {
+      if (row === 2 && column === 2 && rowCount === 2999 && columnCount === 1) {
+        return {
+          createTextFinder: () => ({
+            matchEntireCell() { return this; },
+            useRegularExpression() { return this; },
+            findAll: () => matchingRows.map((rowNumber) => ({ getRow: () => rowNumber }))
+          })
+        };
+      }
+      if (row === 2 && column === 1 && rowCount === 2999) {
+        fullTableReads += 1;
+        return { getValues: () => [] };
+      }
+      dataReads += 1;
+      return {
+        getValues: () => Array.from({ length: rowCount }, (_, offset) => [
+          'RR-' + (row + offset), 'RC-TARGET', 'recorded'
+        ])
+      };
+    }
+  };
+  const context = {
+    Array, Date, JSON, Math, Number, Object, String, console,
+    POINTS_CARD_HEADERS: {
+      RewardRecords: ['rewardRecordId', 'confirmationId', 'status']
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+
+  const result = context.__baseLookupTest.readObjectsByField_(
+    sheet, 'confirmationId', 'RC-TARGET'
+  );
+  assert.equal(result.length, 25);
+  assert.equal(dataReads, 1, 'contiguous matching rows should be materialized in one bounded window');
+  assert.equal(fullTableReads, 0, 'large exact lookups must not load the complete sheet');
+});
+
 test('member and admin refresh flows preserve rendered data and card management stays in-page', () => {
   const memberHtml = read('user/index.html');
   const memberScript = read('user/app.js');
