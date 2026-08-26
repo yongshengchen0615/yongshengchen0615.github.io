@@ -61,6 +61,7 @@ function handleAdminCalendarBulkUpdate_(identity, admin, rawUpdates) {
   withDataLock_(function() {
     const table = readCalendarItemTable_();
     const byId = indexCalendarItemTable_(table.records);
+    const rowUpdates = [];
 
     updatedRecords = updates.map(function(entry) {
       const match = byId[entry.item.itemId];
@@ -90,11 +91,11 @@ function handleAdminCalendarBulkUpdate_(identity, admin, rawUpdates) {
         updated_at: now,
         color: entry.item.color
       };
-      table.values[match.index] = recordToRow_(CALENDAR_SHEET_SCHEMAS_.CalendarItems, updated);
+      rowUpdates.push({ rowNumber: match.rowNumber, record: updated });
       return updated;
     });
 
-    writeCalendarItemTable_(table);
+    writeCalendarRowsBatch_(table.sheet, rowUpdates);
     appendRecordsBatch_('AuditLogs', updatedRecords.map(function(record) {
       return calendarBulkAuditRecord_(identity, admin, 'CALENDAR_ITEM_UPDATE', record.item_id, 'type=' + record.type + ';status=' + record.status, now);
     }));
@@ -125,6 +126,7 @@ function handleAdminCalendarBulkArchive_(identity, admin, rawItems) {
   withDataLock_(function() {
     const table = readCalendarItemTable_();
     const byId = indexCalendarItemTable_(table.records);
+    const rowUpdates = [];
 
     archivedRecords = requests.map(function(entry) {
       const match = byId[entry.itemId];
@@ -139,13 +141,13 @@ function handleAdminCalendarBulkArchive_(identity, admin, rawItems) {
         updated_by: identity.lineUserId,
         updated_at: now
       });
-      table.values[match.index] = recordToRow_(CALENDAR_SHEET_SCHEMAS_.CalendarItems, archived);
+      rowUpdates.push({ rowNumber: match.rowNumber, record: archived });
       changedRecords.push(archived);
       return archived;
     });
 
     if (changedRecords.length) {
-      writeCalendarItemTable_(table);
+      writeCalendarRowsBatch_(table.sheet, rowUpdates);
       appendRecordsBatch_('AuditLogs', changedRecords.map(function(record) {
         return calendarBulkAuditRecord_(identity, admin, 'CALENDAR_ITEM_ARCHIVE', record.item_id, 'Soft archived calendar item via bulk action', now);
       }));
@@ -183,11 +185,10 @@ function readCalendarItemTable_() {
   const sheet = getDataSheet_('CalendarItems');
   const headers = CALENDAR_SHEET_SCHEMAS_.CalendarItems;
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { sheet: sheet, values: [], records: [] };
+  if (lastRow < 2) return { sheet: sheet, records: [] };
   const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
   return {
     sheet: sheet,
-    values: values,
     records: values.map(function(row) { return rowToRecord_(headers, row); })
   };
 }
@@ -196,17 +197,34 @@ function indexCalendarItemTable_(records) {
   const byId = {};
   records.forEach(function(record, index) {
     const itemId = String(record.item_id || '');
-    if (itemId) byId[itemId] = { index: index, record: record };
+    if (itemId) byId[itemId] = { rowNumber: index + 2, record: record };
   });
   return byId;
 }
 
-function writeCalendarItemTable_(table) {
-  if (!table.values.length) return;
+function writeCalendarRowsBatch_(sheet, rowUpdates) {
+  if (!rowUpdates || !rowUpdates.length) return;
   const headers = CALENDAR_SHEET_SCHEMAS_.CalendarItems;
-  const range = table.sheet.getRange(2, 1, table.values.length, headers.length);
-  range.setNumberFormat('@');
-  range.setValues(table.values);
+  const sorted = rowUpdates.slice().sort(function(a, b) { return a.rowNumber - b.rowNumber; });
+  let group = [];
+
+  function flushGroup_() {
+    if (!group.length) return;
+    const range = sheet.getRange(group[0].rowNumber, 1, group.length, headers.length);
+    range.setNumberFormat('@');
+    range.setValues(group.map(function(entry) { return recordToRow_(headers, entry.record); }));
+    group = [];
+  }
+
+  sorted.forEach(function(entry) {
+    if (!group.length || entry.rowNumber === group[group.length - 1].rowNumber + 1) {
+      group.push(entry);
+      return;
+    }
+    flushGroup_();
+    group.push(entry);
+  });
+  flushGroup_();
 }
 
 function appendRecordsBatch_(sheetName, records) {
