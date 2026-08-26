@@ -1,15 +1,18 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.2.0';
+const CALENDAR_API_VERSION_ = '2.3.0';
 const CALENDAR_BUSINESS_TIME_ZONE_ = 'Asia/Taipei';
 const USER_ACCESS_STATUSES_ = Object.freeze(['active', 'disabled']);
-const MAX_REQUEST_BYTES_ = 20000;
+const MAX_REQUEST_BYTES_ = 40000;
 const RATE_LIMIT_READ_PER_MINUTE_ = 90;
 const RATE_LIMIT_WRITE_PER_MINUTE_ = 30;
 const WRITE_ACTIONS_ = Object.freeze([
   'admin.calendar.create',
   'admin.calendar.update',
   'admin.calendar.archive',
+  'admin.calendar.bulkCreate',
+  'admin.calendar.bulkUpdate',
+  'admin.calendar.bulkArchive',
   'admin.users.updateStatus'
 ]);
 
@@ -44,7 +47,7 @@ function doPost(e) {
       throw new ApiError(400, 'CLIENT_TYPE_MISMATCH', 'Client type 與 API action 不一致。');
     }
 
-    enforceRateLimit_(request.idToken, action);
+    enforceRateLimit_(request.idToken, action, request);
     const identity = authenticateLine_(request.idToken, clientType);
 
     // Validate/open storage once per API execution. Storage helpers below this boundary
@@ -84,6 +87,21 @@ function doPost(e) {
       case 'admin.calendar.archive': {
         const admin = authorizeAdmin_(identity);
         data = handleAdminCalendarArchive_(identity, admin, request.itemId, request.expectedUpdatedAt);
+        break;
+      }
+      case 'admin.calendar.bulkCreate': {
+        const admin = authorizeAdmin_(identity);
+        data = handleAdminCalendarBulkCreate_(identity, admin, request.items);
+        break;
+      }
+      case 'admin.calendar.bulkUpdate': {
+        const admin = authorizeAdmin_(identity);
+        data = handleAdminCalendarBulkUpdate_(identity, admin, request.updates);
+        break;
+      }
+      case 'admin.calendar.bulkArchive': {
+        const admin = authorizeAdmin_(identity);
+        data = handleAdminCalendarBulkArchive_(identity, admin, request.items);
         break;
       }
       case 'admin.users.list': {
@@ -152,7 +170,7 @@ function clientTypeForAction_(action) {
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }
 
-function enforceRateLimit_(credential, action) {
+function enforceRateLimit_(credential, action, request) {
   if (!credential) return;
 
   const digest = Utilities.computeDigest(
@@ -167,6 +185,7 @@ function enforceRateLimit_(credential, action) {
   const minuteBucket = Math.floor(Date.now() / 60000);
   const isWrite = WRITE_ACTIONS_.indexOf(action) !== -1;
   const limit = isWrite ? RATE_LIMIT_WRITE_PER_MINUTE_ : RATE_LIMIT_READ_PER_MINUTE_;
+  const cost = requestRateLimitCost_(action, request);
   const cacheKey = 'rl:' + digest.substring(0, 32) + ':' + minuteBucket + ':' + (isWrite ? 'w' : 'r');
   const cache = CacheService.getScriptCache();
   const lock = LockService.getScriptLock();
@@ -179,13 +198,24 @@ function enforceRateLimit_(credential, action) {
 
   try {
     const current = Number(cache.get(cacheKey) || '0');
-    if (current >= limit) {
+    if (current + cost > limit) {
       throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。');
     }
-    cache.put(cacheKey, String(current + 1), 120);
+    cache.put(cacheKey, String(current + cost), 120);
   } finally {
     lock.releaseLock();
   }
+}
+
+function requestRateLimitCost_(action, request) {
+  let batch = null;
+  if (action === 'admin.calendar.bulkCreate' || action === 'admin.calendar.bulkArchive') {
+    batch = request && request.items;
+  } else if (action === 'admin.calendar.bulkUpdate') {
+    batch = request && request.updates;
+  }
+  if (!Array.isArray(batch)) return 1;
+  return Math.max(1, Math.min(batch.length, RATE_LIMIT_WRITE_PER_MINUTE_));
 }
 
 function enforceAdminCalendarNotPast_(rawItem) {
