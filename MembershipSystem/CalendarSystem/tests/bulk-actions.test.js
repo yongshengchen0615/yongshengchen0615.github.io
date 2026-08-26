@@ -48,7 +48,9 @@ test('bulk service validates count, versions, duplicates, past dates, and uses s
   assert.match(service, /CONFLICT/);
   assert.match(service, /status:\s*'archived'/);
   assert.match(service, /withDataLock_/);
-  assert.match(service, /recordToRow_/);
+  assert.match(service, /writeCalendarRowsBatch_/);
+  assert.match(service, /rowNumber:\s*index \+ 2/);
+  assert.doesNotMatch(service, /table\.values/);
   assert.doesNotMatch(service, /deleteRow|deleteRows|clearContent/);
 });
 
