@@ -93,25 +93,31 @@
     if (!bulkModal) return;
 
     const label = String(button.textContent || '').trim();
+    const count = selectedBulkCount();
+    if (!count) return;
+
     if (label.includes('套用批量修改')) {
-      const count = selectedBulkCount();
-      if (!count) return;
-      showLoading({
+      showBulkLoadingAfterAction(button, {
         stage: 'bulk-write',
         title: `正在修改 ${count} 筆事項`,
         message: '正在套用共同修改，完成後會自動同步最新內容。',
         countLabel: `${count} 筆`
       });
     } else if (label.includes('批量移除')) {
-      const count = selectedBulkCount();
-      if (!count) return;
-      showLoading({
+      showBulkLoadingAfterAction(button, {
         stage: 'bulk-write',
         title: `正在移除 ${count} 筆事項`,
         message: '正在封存選取事項，完成後會自動同步最新內容。',
         countLabel: `${count} 筆`
       });
     }
+  }
+
+  function showBulkLoadingAfterAction(button, options) {
+    window.setTimeout(() => {
+      if (!button.isConnected || !button.disabled || state.active) return;
+      showLoading(options);
+    }, 0);
   }
 
   function selectedBulkCount() {
