@@ -1,0 +1,189 @@
+.bulk-create-ux-form {
+  display: grid;
+  gap: 18px;
+}
+
+.bulk-create-step {
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.bulk-create-step-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.bulk-create-step-header h3 {
+  margin: 0 0 4px;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.bulk-create-step-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.bulk-create-step-number {
+  display: inline-grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  background: #eaf4fb;
+  color: #246b95;
+  font-weight: 800;
+}
+
+.bulk-date-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.bulk-date-builder > label {
+  display: grid;
+  gap: 7px;
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.bulk-date-builder input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.bulk-date-builder input:focus {
+  outline: 3px solid rgba(49, 130, 184, 0.16);
+  border-color: #3182b8;
+}
+
+.bulk-date-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / 3;
+}
+
+.bulk-date-builder > .button.primary {
+  grid-column: 3;
+  grid-row: 1;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.bulk-date-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.bulk-date-list-header strong {
+  color: #0f172a;
+}
+
+.bulk-date-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bulk-date-empty {
+  padding: 18px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  color: #64748b;
+  text-align: center;
+  background: #f8fafc;
+}
+
+.bulk-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.bulk-date-row-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.bulk-date-row-copy strong {
+  color: #0f172a;
+}
+
+.bulk-date-row-copy small {
+  color: #64748b;
+}
+
+.bulk-create-summary {
+  margin: 0 0 14px;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.bulk-create-submit {
+  width: 100%;
+  min-height: 48px;
+  font-weight: 750;
+}
+
+.bulk-create-all-day {
+  justify-self: start;
+}
+
+@media (max-width: 720px) {
+  .bulk-create-step {
+    padding: 15px;
+  }
+
+  .bulk-date-builder {
+    grid-template-columns: 1fr;
+  }
+
+  .bulk-date-builder > .button.primary,
+  .bulk-date-quick-actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .bulk-date-builder > .button.primary {
+    width: 100%;
+  }
+
+  .bulk-date-list-header,
+  .bulk-date-row {
+    align-items: stretch;
+  }
+
+  .bulk-date-row {
+    flex-direction: column;
+  }
+
+  .bulk-date-row .button {
+    width: 100%;
+  }
+}
