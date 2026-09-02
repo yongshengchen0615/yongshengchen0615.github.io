@@ -1,6 +1,6 @@
 # MembershipSystem GAS 自動部署
 
-`MembershipSystem/app/gas/**` 已由 GitHub Actions workflow：
+`MembershipSystem/app/gas/**` 與 GAS 使用的 `MembershipSystem/app/shared/config.json` 已由 GitHub Actions workflow：
 
 ```text
 .github/workflows/deploy-membership-gas.yml
@@ -16,11 +16,13 @@
 push 到 main
 且
 MembershipSystem/app/gas/** 有變更
+或
+MembershipSystem/app/shared/config.json 有變更
 ```
 
 也可以從 GitHub Actions 手動執行 `Deploy MembershipSystem GAS` 做首次驗證或重新部署。
 
-前端 `user/`、`admin/`、`shared/` 的一般修改不會觸發 GAS deploy。
+前端 `user/`、`admin/` 的一般修改不會觸發 GAS deploy；`shared/config.json` 是部署設定例外，變更後會觸發部署。
 
 ## Source of Truth
 
@@ -33,6 +35,8 @@ MembershipSystem/app/gas/
 是 MembershipSystem GAS 的唯一正式 source of truth。
 
 `clasp push` 會以 Repository 內容更新 Apps Script project。因此不要在 Apps Script Web Editor 留下未同步回 GitHub 的正式修改；下一次自動部署可能覆蓋它們。
+
+部署前 workflow 會從 `app/shared/config.json` 的 `POINTS_CARD_GAS_WEB_APP_URL` 產生暫時的 GAS 設定檔。此 URL 是公開 Web App URL，不是密鑰；PointsCard 共用密鑰仍只可放在兩端 GAS 的 Script Properties。
 
 ## 一次性設定
 

@@ -11,6 +11,10 @@ function read(relativePath) {
   return fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
 }
 
+function readRepository(relativePath) {
+  return fs.readFileSync(path.resolve(__dirname, '../../..', relativePath), 'utf8');
+}
+
 test('minute grants persist the point conversion and synchronise it before the member push', () => {
   const minuteGrant = read('gas/MinuteGrantService.gs');
   const bridge = read('gas/PointsCardMinuteGrantService.gs');
@@ -28,6 +32,21 @@ test('minute grants persist the point conversion and synchronise it before the m
   assert.match(bridge, /cardId: grant\.pointsCardId/);
   assert.match(bridge, /integration\.minutes\.cards\.list/);
   assert.match(bridge, /muteHttpExceptions: true/);
+  assert.doesNotMatch(bridge, /webAppUrlProperty/);
+  assert.doesNotMatch(read('shared/config.json'), /POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET/);
+});
+
+test('PointsCard endpoint comes from app config and is generated into the GAS deployment bundle', () => {
+  const config = JSON.parse(read('shared/config.json'));
+  const bridge = read('gas/PointsCardMinuteGrantService.gs');
+  const workflow = readRepository('.github/workflows/deploy-membership-gas.yml');
+
+  assert.match(config.POINTS_CARD_GAS_WEB_APP_URL, /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/);
+  assert.match(bridge, /POINTS_CARD_MINUTE_GRANT_WEB_APP_URL/);
+  assert.match(workflow, /MembershipSystem\/app\/shared\/config\.json/);
+  assert.match(workflow, /Generate GAS integration configuration/);
+  assert.match(workflow, /POINTS_CARD_GAS_WEB_APP_URL/);
+  assert.match(workflow, /PointsCardIntegrationConfig\.gs/);
   assert.doesNotMatch(read('shared/config.json'), /POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET/);
 });
 

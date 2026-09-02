@@ -5,7 +5,6 @@
 // narrowly scoped, idempotent request instead of exposing either deployment's
 // credentials to the browser.
 const MINUTE_GRANT_POINTS_SYNC = Object.freeze({
-  webAppUrlProperty: 'POINTS_CARD_MINUTE_GRANT_WEB_APP_URL',
   integrationSecretProperty: 'POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET',
   action: 'integration.minutes.grant-points',
   cardsAction: 'integration.minutes.cards.list',
@@ -40,7 +39,9 @@ function minuteGrantPointResponseText_(value, maxLength) {
 
 function minuteGrantPointsSyncConfig_() {
   const properties = PropertiesService.getScriptProperties();
-  const webAppUrl = String(properties.getProperty(MINUTE_GRANT_POINTS_SYNC.webAppUrlProperty) || '').trim();
+  const webAppUrl = typeof POINTS_CARD_MINUTE_GRANT_WEB_APP_URL === 'string'
+    ? POINTS_CARD_MINUTE_GRANT_WEB_APP_URL.trim()
+    : '';
   const secret = String(properties.getProperty(MINUTE_GRANT_POINTS_SYNC.integrationSecretProperty) || '').trim();
   if (!webAppUrl || secret.length < 32) {
     return { ok: false, status: 'not_configured', errorCode: 'POINTS_CARD_NOT_CONFIGURED' };

@@ -18,11 +18,16 @@ GitHub Pages 前端 + Google Apps Script（GAS）後端的會員系統，包含�
 
 首次同步成功時，會員會收到同一則分鐘 LINE 推播，內容包含同步點數與本次跨過的票券節點；不另送第二則相同交易的 PointsCard 推播。
 
-啟用前，必須在兩個 Apps Script 專案設定下列 Script Properties（機密值不可寫入 `config.json`、Sheet 或 repository）：
+PointsCard 的 `/exec` URL 設定在公開的 `app/shared/config.json`：
+
+```json
+"POINTS_CARD_GAS_WEB_APP_URL": "https://script.google.com/macros/s/<PointsCard deploymentId>/exec"
+```
+
+部署 workflow 會驗證此 URL，並在推送 app GAS 前產生對應的 GAS 設定檔；瀏覽器不會使用它來直接加點。共用密鑰仍必須只放在兩個 Apps Script 專案的 Script Properties：
 
 ```text
 # MembershipSystem app GAS
-POINTS_CARD_MINUTE_GRANT_WEB_APP_URL = PointsCard 的 /exec URL
 POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET = 與 PointsCard 相同的高熵隨機字串
 
 # PointsCard GAS

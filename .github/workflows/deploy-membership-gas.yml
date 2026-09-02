@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "MembershipSystem/app/gas/**"
+      - "MembershipSystem/app/shared/config.json"
   workflow_dispatch:
 
 permissions:
@@ -31,6 +32,35 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
+
+      - name: Generate GAS integration configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node - <<'NODE'
+          const fs = require('fs');
+          const configPath = 'MembershipSystem/app/shared/config.json';
+          const outputPath = 'MembershipSystem/app/gas/PointsCardIntegrationConfig.gs';
+          const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          const raw = String(config.POINTS_CARD_GAS_WEB_APP_URL || '');
+          let url;
+          try {
+            url = new URL(raw);
+          } catch (_) {
+            throw new Error('POINTS_CARD_GAS_WEB_APP_URL is not a valid URL');
+          }
+          if (url.protocol !== 'https:' || url.hostname !== 'script.google.com' ||
+              !/^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url.pathname) || url.search || url.hash) {
+            throw new Error('POINTS_CARD_GAS_WEB_APP_URL must point to https://script.google.com/macros/s/<deploymentId>/exec');
+          }
+          fs.writeFileSync(outputPath, [
+            "'use strict';",
+            '// Generated from app/shared/config.json during deployment. Do not commit secrets here.',
+            'const POINTS_CARD_MINUTE_GRANT_WEB_APP_URL = ' + JSON.stringify(url.toString()) + ';',
+            ''
+          ].join('\n'));
+          NODE
 
       - name: Validate deployment secrets
         shell: bash
