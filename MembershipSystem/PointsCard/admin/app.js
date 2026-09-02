@@ -730,7 +730,7 @@
 
   function effectiveRewardConfirmationStatus(confirmation) {
     if (confirmation.status !== 'active') return confirmation.status;
-    if (new Date(confirmation.expiresAt).getTime() <= Date.now()) return 'expired';
+    if (confirmation.expiresAt && new Date(confirmation.expiresAt).getTime() <= Date.now()) return 'expired';
     return 'active';
   }
 
@@ -748,7 +748,7 @@
       status.className = 'status-badge ' + state;
       status.textContent = voucherStatusLabels[state] || state;
       statusTd.append(status);
-      const expiryTd = document.createElement('td'); expiryTd.textContent = PointsCard.formatDateTime(confirmation.expiresAt, '—');
+      const expiryTd = document.createElement('td'); expiryTd.textContent = confirmation.expiresAt ? PointsCard.formatDateTime(confirmation.expiresAt, '—') : '無期限';
       const actionsTd = document.createElement('td');
       const actions = document.createElement('div'); actions.className = 'row-actions';
       actions.append(createTextButton('開啟', '', function () { openRewardConfirmation(confirmation.confirmationId); }, state !== 'active'));
@@ -1029,9 +1029,11 @@
     clearFormError('rewardConfirmationFormError');
     currentRewardConfirmationQrSvg = '';
     $('rewardConfirmationDialogTitle').textContent = '新增店家確認 QR';
-    $('rewardConfirmationDialogDescription').textContent = '建立後由店員在現場展示，會員掃描後才能使用票券。';
+    $('rewardConfirmationDialogDescription').textContent = '建立後由店員在現場展示，會員掃描後才能使用票券；可設定有期限或無期限。';
+    $('rewardConfirmationExpiryMode').value = 'limited';
     $('rewardConfirmationExpiresAt').value = toLocalDateTimeInput(Date.now() + 7 * 24 * 60 * 60 * 1000);
     $('rewardConfirmationNote').value = '';
+    syncRewardConfirmationExpiryMode();
     $('rewardConfirmationFields').classList.remove('hidden');
     $('rewardConfirmationResult').classList.add('hidden');
     $('rewardConfirmationResult').setAttribute('aria-busy', 'false');
@@ -1046,7 +1048,19 @@
     openDialog($('rewardConfirmationDialog'));
   }
 
+  function syncRewardConfirmationExpiryMode() {
+    const limited = $('rewardConfirmationExpiryMode').value === 'limited';
+    $('rewardConfirmationExpiryField').classList.toggle('hidden', !limited);
+    $('rewardConfirmationExpiresAt').required = limited;
+    if (limited && !$('rewardConfirmationExpiresAt').value) {
+      $('rewardConfirmationExpiresAt').value = toLocalDateTimeInput(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    }
+  }
+
   function readRewardConfirmationForm() {
+    if ($('rewardConfirmationExpiryMode').value === 'unlimited') {
+      return { expiresAt: '', note: $('rewardConfirmationNote').value.trim() };
+    }
     const expiry = new Date($('rewardConfirmationExpiresAt').value);
     if (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now()) throw new Error('到期時間必須晚於現在。');
     return { expiresAt: expiry.toISOString(), note: $('rewardConfirmationNote').value.trim() };
@@ -1082,7 +1096,7 @@
     qr.make();
     currentRewardConfirmationQrSvg = qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true });
     $('rewardConfirmationQrCode').innerHTML = currentRewardConfirmationQrSvg;
-    $('rewardConfirmationResultMeta').textContent = confirmation.confirmationId + ' · 到期 ' + PointsCard.formatDateTime(confirmation.expiresAt, '—');
+    $('rewardConfirmationResultMeta').textContent = confirmation.confirmationId + ' · ' + (confirmation.expiresAt ? '到期 ' + PointsCard.formatDateTime(confirmation.expiresAt, '—') : '無期限');
     $('rewardConfirmationFields').classList.add('hidden');
     $('rewardConfirmationResult').classList.remove('hidden');
     $('rewardConfirmationResult').setAttribute('aria-busy', 'false');
@@ -1187,6 +1201,7 @@
     $('copyStampButton').addEventListener('click', function () { copyText($('stampUrl').value, 'stampUrl', '集點連結已複製。'); });
     $('downloadStampButton').addEventListener('click', function () { downloadSvg(currentQrSvg, 'points-card-stamp-qr.svg'); });
     $('newRewardConfirmationButton').addEventListener('click', openNewRewardConfirmation);
+    $('rewardConfirmationExpiryMode').addEventListener('change', syncRewardConfirmationExpiryMode);
     $('createRewardConfirmationButton').addEventListener('click', createRewardConfirmation);
     $('downloadRewardConfirmationButton').addEventListener('click', function () { downloadSvg(currentRewardConfirmationQrSvg, 'points-card-reward-confirmation-qr.svg'); });
     document.querySelectorAll('[data-admin-tab]').forEach(function (tab) {

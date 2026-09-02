@@ -3,7 +3,8 @@
 const REWARD_CONFIRMATION_MAX_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
 function validRewardConfirmationExpiry_(value) {
-  const text = cleanText_(value, 40, true);
+  const text = cleanText_(value, 40, false);
+  if (!text) return '';
   const now = Date.now();
   const time = new Date(text).getTime();
   if (!Number.isFinite(time) || time <= now) fail_('INVALID_EXPIRY', '店家票券確認 QR Code 到期時間必須晚於現在。');
@@ -168,7 +169,7 @@ function hasRewardConfirmationRecords_(confirmationId) {
 
 function validateRewardConfirmationForClaim_(confirmation) {
   if (confirmation.status !== 'active') fail_('REWARD_CONFIRMATION_INACTIVE', '這組店家確認 QR Code 已停止使用。');
-  if (!confirmation.expiresAt || new Date(confirmation.expiresAt).getTime() <= Date.now()) {
+  if (confirmation.expiresAt && new Date(confirmation.expiresAt).getTime() <= Date.now()) {
     fail_('REWARD_CONFIRMATION_EXPIRED', '這組店家確認 QR Code 已過期。');
   }
 }

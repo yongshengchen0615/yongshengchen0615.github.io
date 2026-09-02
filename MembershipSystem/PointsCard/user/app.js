@@ -75,6 +75,53 @@
     container.append(summary);
   }
 
+  function ticketIdentity(ticket) {
+    const nodeId = String(ticket && (ticket.nodeId || ticket.rewardNodeId) || '');
+    const fallbackIdentity = [
+      String(ticket && ticket.rewardType || 'coupon'),
+      String(ticket && ticket.rewardName || ''),
+      lotteryPrizeNames(ticket).join('\u001f')
+    ].join('\u001f');
+    return [
+      String(ticket && ticket.cardId || ''),
+      nodeId ? 'node:' + nodeId : 'legacy:' + fallbackIdentity,
+      ticket && ticket.expired ? 'expired' : 'current',
+      ticket && ticket.usable ? 'usable' : 'unusable'
+    ].join('\u001e');
+  }
+
+  function ticketExpiryTime(ticket) {
+    if (!ticket || !ticket.expiresAt) return Number.POSITIVE_INFINITY;
+    const time = new Date(ticket.expiresAt).getTime();
+    return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+  }
+
+  function shouldPreferGroupedTicket(candidate, current) {
+    const candidateExpiry = ticketExpiryTime(candidate);
+    const currentExpiry = ticketExpiryTime(current);
+    if (candidateExpiry !== currentExpiry) return candidateExpiry < currentExpiry;
+    return Number(candidate && candidate.entitlementOrdinal || 0) < Number(current && current.entitlementOrdinal || 0);
+  }
+
+  function groupEarnedTickets(tickets) {
+    const groups = [];
+    const groupIndexes = new Map();
+    (Array.isArray(tickets) ? tickets : []).forEach(function (ticket) {
+      const key = ticketIdentity(ticket);
+      const existingIndex = groupIndexes.get(key);
+      if (existingIndex === undefined) {
+        groups.push(Object.assign({}, ticket, { ticketCount: 1 }));
+        groupIndexes.set(key, groups.length - 1);
+        return;
+      }
+      const group = groups[existingIndex];
+      const count = Number(group.ticketCount || 0) + 1;
+      if (shouldPreferGroupedTicket(ticket, group)) Object.assign(group, ticket);
+      group.ticketCount = count;
+    });
+    return groups;
+  }
+
   function normalizeCardSummary(card) {
     const source = card && typeof card === 'object' ? card : {};
     const status = source.status === 'expired' ? 'expired' : (source.status === 'deleted' ? 'deleted' : 'active');
@@ -264,6 +311,13 @@
     action.className = 'ticket-action';
     action.textContent = ticket.expired ? '已到期' : '開啟 ↗';
     button.append(mark, copy, action);
+    if (Number(ticket.ticketCount || 1) > 1) {
+      const quantity = document.createElement('span');
+      quantity.className = 'ticket-quantity';
+      quantity.textContent = formatNumber(ticket.ticketCount) + ' 張';
+      button.classList.add('has-quantity');
+      button.append(quantity);
+    }
     button.disabled = ticket.expired || !ticket.usable;
     button.addEventListener('click', function () { openTicket(ticket); });
     return button;
@@ -292,12 +346,13 @@
   function renderTickets(member, cardAvailable) {
     const earned = member.availableRewardNodes || [];
     const usable = earned.filter(function (ticket) { return ticket.usable && !ticket.expired; });
+    const earnedGroups = groupEarnedTickets(earned);
     const upcoming = cardAvailable ? (member.upcomingRewardNodes || []) : [];
     $('earnedTicketCount').textContent = formatNumber(usable.length) + ' 張可使用';
     $('earnedTicketEmpty').classList.toggle('hidden', earned.length !== 0);
     const earnedList = $('earnedTicketList');
     earnedList.replaceChildren();
-    earned.forEach(function (ticket) { earnedList.append(createEarnedTicket(ticket)); });
+    earnedGroups.forEach(function (ticket) { earnedList.append(createEarnedTicket(ticket)); });
     $('upcomingTicketGroup').classList.toggle('hidden', !cardAvailable);
     const upcomingList = $('upcomingTicketList');
     upcomingList.replaceChildren();
@@ -420,7 +475,9 @@
     $('ticketDialogMark').textContent = ticket.rewardType === 'lottery' ? '?' : '%';
     $('ticketDialogType').textContent = ticket.rewardType === 'lottery' ? 'LUCKY DRAW TICKET' : 'COUPON';
     $('ticketDialogTitle').textContent = ticket.rewardName;
-    $('ticketDialogMeta').textContent = formatNumber(ticket.stampsRequired) + ' 點節點已解鎖 · 使用期限：' + expiryLabel(ticket.expiresAt);
+    const ticketCount = Number(ticket.ticketCount || 1);
+    const groupedTicketNote = ticketCount > 1 ? ' · 共 ' + formatNumber(ticketCount) + ' 張，優先使用較早到期票券' : '';
+    $('ticketDialogMeta').textContent = formatNumber(ticket.stampsRequired) + ' 點節點已解鎖 · 使用期限：' + expiryLabel(ticket.expiresAt) + groupedTicketNote;
     const prizeNames = lotteryPrizeNames(ticket);
     const prizeList = $('ticketPrizeList');
     prizeList.replaceChildren();

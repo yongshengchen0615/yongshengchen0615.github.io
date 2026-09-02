@@ -184,7 +184,8 @@
     <form method="dialog">
       <header class="dialog-header"><div><p class="eyebrow">REWARD CONFIRMATION</p><h2 id="rewardConfirmationDialogTitle">新增店家確認 QR</h2><p id="rewardConfirmationDialogDescription">建立後由店員在現場展示，會員掃描後才能使用票券。</p></div><button class="close-button" value="cancel" type="submit" aria-label="關閉">×</button></header>
       <div id="rewardConfirmationFields" class="form-grid">
-        <label><span>到期時間</span><input id="rewardConfirmationExpiresAt" type="datetime-local" required></label>
+        <label><span>期限設定</span><select id="rewardConfirmationExpiryMode" required><option value="limited" selected>有期限</option><option value="unlimited">無期限</option></select></label>
+        <label id="rewardConfirmationExpiryField"><span>到期時間</span><input id="rewardConfirmationExpiresAt" type="datetime-local" required></label>
         <label class="full-span"><span>確認備註</span><textarea id="rewardConfirmationNote" maxlength="200" rows="3" placeholder="例如：台北門市櫃台"></textarea></label>
       </div>
       <div id="rewardConfirmationResult" class="stamp-result hidden" aria-live="polite" aria-busy="false">

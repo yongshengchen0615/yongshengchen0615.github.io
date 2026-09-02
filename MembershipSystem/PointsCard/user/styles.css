@@ -119,6 +119,8 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .lottery-prize-values { color: var(--ink-deep); font-size: .76rem; line-height: 1.55; }
 .ticket-action { padding-left: 17px; border-left: 1px dashed var(--line); color: var(--ink); font-size: var(--type-caption); font-weight: 720; letter-spacing: .02em; white-space: nowrap; }
 .reward-ticket.lottery .ticket-action { color: var(--accent); }
+.ticket-quantity { position: absolute; right: 14px; bottom: 12px; min-width: 28px; padding: 2px 7px; border-radius: 999px; color: var(--ink-deep); background: rgba(216,232,164,.9); font-size: .7rem; font-weight: 800; line-height: 1.35; text-align: center; }
+.reward-ticket.lottery .ticket-quantity { color: #6b3c15; background: rgba(255,212,133,.92); }
 .ticket-empty { padding: 31px 10px; color: var(--muted); text-align: center; }
 .ticket-empty span { display: block; margin-bottom: 8px; color: var(--accent); font-size: 1.8rem; }
 .ticket-empty p { margin: 0; font-size: var(--type-small); line-height: 1.65; }
@@ -316,6 +318,7 @@ button:active:not(:disabled) { transform: translateY(1px); }
   .reward-ticket { grid-template-columns: auto 1fr; min-height: 100px; padding: 16px; }
   .reward-ticket::before, .reward-ticket::after { right: 28px; }
   .ticket-action { grid-column: 2; padding: 7px 0 0; border: 0; }
+  .reward-ticket.has-quantity .ticket-action { padding-right: 48px; }
   .upcoming-ticket { grid-template-columns: auto minmax(0,1fr); align-items: start; }
   .upcoming-remaining { grid-column: 2; white-space: normal; }
   .feedback-dialog, .ticket-dialog, .lottery-dialog { width: 100%; max-width: none; max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); margin: auto 0 0; padding: 32px 20px 22px; border-radius: 28px 28px 0 0; }
