@@ -26,6 +26,48 @@ function loadPointCardService() {
   return { context, normalize: context.normalizePointCardRewards_, TestApiError };
 }
 
+function loadTicketService() {
+  class TestApiError extends Error {
+    constructor(status, code, message, details) {
+      super(message);
+      this.status = status;
+      this.code = code;
+      this.details = details || null;
+    }
+  }
+  const rows = {
+    PointCardTickets: [{ ticket_id: 'TK-1', line_user_id: 'U-1', card_id: 'PC-1', reward_id: 'PR-1', reward_key: 'PC-1:10', threshold_stamps: '10', ticket_type: 'coupon', ticket_title: '咖啡券', ticket_description: '', lottery_prizes_json: '[]', status: 'available', failed_attempts: '0', earned_at: '2026-09-02T00:00:00.000Z', used_at: '', result_json: '', created_at: '2026-09-02T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z' }],
+    PointCardTicketChallenges: []
+  };
+  let uuid = 0;
+  let digestSeed = 0;
+  const context = {
+    ApiError: TestApiError,
+    Utilities: {
+      getUuid: () => `00000000-0000-0000-0000-0000000000${String(uuid++).padStart(2, '0')}`,
+      computeDigest: () => Array.from({ length: 32 }, (_, index) => (digestSeed++ + index) % 256),
+      DigestAlgorithm: { SHA_256: 'SHA_256' },
+      Charset: { UTF_8: 'UTF_8' }
+    },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => key.endsWith('PC-1:10') ? '10' : '' }) },
+    MEMBERSHIP_SHEET_SCHEMAS_: { PointCardTicketChallenges: ['challenge_id', 'ticket_id', 'line_user_id', 'options_json', 'status', 'attempt_count', 'expires_at', 'created_at', 'used_at'] },
+    withDataLock_: (callback) => callback(),
+    nowIso_: () => '2026-09-02T00:00:00.000Z',
+    digest_: () => 'challenge-fingerprint',
+    readRecords_: (sheetName) => rows[sheetName] || [],
+    findRecordWithRow_: (sheetName, keyField, keyValue) => {
+      const index = (rows[sheetName] || []).findIndex((record) => String(record[keyField] || '') === String(keyValue || ''));
+      return index < 0 ? null : { rowNumber: index + 2, record: rows[sheetName][index] };
+    },
+    appendRecord_: (sheetName, record) => { rows[sheetName].push(record); return rows[sheetName].length + 1; },
+    updateRecordAtRow_: (sheetName, rowNumber, record) => { rows[sheetName][rowNumber - 2] = record; },
+    appendAuditRecord_: () => {}
+  };
+  vm.createContext(context);
+  vm.runInContext(read('gas/PointCardService.gs'), context, { filename: 'gas/PointCardService.gs' });
+  return { context, rows, TestApiError };
+}
+
 test('PointCard rewards are stored as milestone rows with safe types and sorted thresholds', () => {
   const { context, normalize } = loadPointCardService();
   const rewards = normalize([
@@ -39,8 +81,10 @@ test('PointCard rewards are stored as milestone rows with safe types and sorted 
   assert.equal(rewards[1].reward_type, 'lottery');
   assert.equal(rewards[1].prizes[0].win_rate, '0');
   assert.equal(rewards[1].prizes[1].win_rate, '100');
-  const clientReward = context.pointCardRewardForClient_(rewards[1]);
-  assert.deepEqual(JSON.parse(JSON.stringify(clientReward.prizes.map((prize) => ({ prizeTitle: prize.prizeTitle, winRate: prize.winRate })))), [
+  const memberReward = context.pointCardRewardForClient_(rewards[1]);
+  assert.equal(memberReward.prizes[0].winRate, undefined);
+  const adminReward = context.pointCardRewardForClient_(rewards[1], true);
+  assert.deepEqual(JSON.parse(JSON.stringify(adminReward.prizes.map((prize) => ({ prizeTitle: prize.prizeTitle, winRate: prize.winRate })))), [
     { prizeTitle: '頭獎咖啡機', winRate: 0 },
     { prizeTitle: '二獎咖啡券', winRate: 100 }
   ]);
@@ -70,8 +114,53 @@ test('legacy cards still expose their original final reward as a coupon node', (
     rewardTitle: '免費咖啡',
     rewardDescription: '',
     lotteryWinRate: 0,
-    prizes: []
+    prizes: [],
+    usageCodeConfigured: false
   });
+});
+
+test('tickets keep a reward snapshot and never expose the usage code in the client ticket', () => {
+  const { context } = loadPointCardService();
+  context.PropertiesService = { getScriptProperties: () => ({ getProperty: (key) => key.endsWith('PC-1:10') ? '10' : '' }) };
+  const memberCard = context.pointCardForClient_({ card_id: 'PC-1', target_stamps: '10', reward_title: '咖啡券' }, undefined, false);
+  const adminCard = context.pointCardForClient_({ card_id: 'PC-1', target_stamps: '10', reward_title: '咖啡券' }, undefined, true);
+  assert.equal(memberCard.rewards[0].usageCode, undefined);
+  assert.equal(adminCard.rewards[0].usageCode, '10');
+  const ticket = context.ticketRecordFromReward_('U-1', 'PC-1', {
+    rewardId: 'PR-1', thresholdStamps: 10, rewardType: 'lottery', rewardTitle: '抽獎券', rewardDescription: '到店使用',
+    prizes: [{ prizeId: 'P-0', prizeTitle: '不會抽中', prizeDescription: '', winRate: 0 }, { prizeId: 'P-1', prizeTitle: '咖啡券', prizeDescription: '', winRate: 100 }]
+  }, 'PC-1:10', '2026-09-02T00:00:00.000Z');
+  assert.equal(ticket.reward_key, 'PC-1:10');
+  assert.equal(ticket.status, 'available');
+  assert.doesNotMatch(JSON.stringify(ticket), /usage.?code|password/i);
+  const clientTicket = context.ticketForClient_(ticket);
+  assert.equal(clientTicket.prizes[0].winRate, undefined);
+  assert.equal(clientTicket.prizes[1].prizeTitle, '咖啡券');
+});
+
+test('lottery drawing skips 0% prizes and returns the server-side result shape', () => {
+  const { context } = loadPointCardService();
+  context.generateTicketRandomBasisPoint_ = () => 0;
+  const result = context.drawTicketPrize_({ lottery_prizes_json: JSON.stringify([
+    { prize_id: 'P-0', prize_title: '0% 獎項', prize_description: '', win_rate: '0' },
+    { prize_id: 'P-1', prize_title: '必中獎項', prize_description: '恭喜', win_rate: '100' }
+  ]) });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { prizeId: 'P-1', prizeTitle: '必中獎項', prizeDescription: '恭喜' });
+});
+
+test('ticket challenge returns five decoys plus the configured code and redeems only once', () => {
+  const { context, rows, TestApiError } = loadTicketService();
+  const identity = { lineUserId: 'U-1' };
+  const challenge = context.handleTicketChallenge_(identity, { ticketId: 'TK-1' });
+  assert.equal(challenge.options.length, 6);
+  assert.equal(new Set(challenge.options).size, 6);
+  assert.equal(challenge.options.includes('10'), true);
+  assert.equal(JSON.parse(rows.PointCardTicketChallenges[0].options_json).hashes.length, 6);
+  assert.doesNotMatch(rows.PointCardTicketChallenges[0].options_json, /10/);
+  const redeemed = context.handleTicketRedeem_(identity, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' });
+  assert.equal(redeemed.redeemed, true);
+  assert.equal(rows.PointCardTickets[0].status, 'used');
+  assert.throws(() => context.handleTicketRedeem_(identity, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' }), (error) => error instanceof TestApiError && error.code === 'TICKET_ALREADY_USED');
 });
 
 test('admin and member surfaces expose milestone reward controls and progress', () => {
@@ -95,5 +184,16 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.match(pointsHtml, /id="milestoneList"/);
   assert.match(pointsApp, /renderMilestones/);
   assert.match(pointsApp, /prize-opportunities/);
-  assert.match(pointsApp, /winRate/);
+  assert.match(pointsApp, /data-use-ticket/);
+  assert.doesNotMatch(pointsApp, /prizeRate/);
+  assert.doesNotMatch(pointsApp, /winRate/);
+  assert.match(pointsApp, /lottery-reveal/);
+  assert.match(adminApp, /data-generate-usage-code/);
+  assert.match(adminApp, /admin\.pointcards\.usage-code\.generate/);
+  assert.match(adminApp, /admin\.pointcards\.remove/);
+  assert.match(pointsHtml, /id="ticketChoices"/);
+  assert.match(storage, /PointCardTickets:/);
+  assert.match(storage, /PointCardTicketChallenges:/);
+  assert.match(read('gas/PointCardService.gs'), /POINT_CARD_TICKET_OPTION_COUNT_ = 6/);
+  assert.match(read('gas/PointCardService.gs'), /POINT_CARD_TICKET_CODE_LENGTH_ = 2/);
 });

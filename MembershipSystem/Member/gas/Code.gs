@@ -4,6 +4,10 @@ const MEMBERSHIP_API_VERSION_ = '1.0.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'admin.member.update',
   'admin.pointcards.save',
+  'admin.pointcards.usage-code.generate',
+  'admin.pointcards.remove',
+  'user.pointcard.ticket.challenge',
+  'user.pointcard.ticket.redeem',
   'admin.stamps.add'
 ]);
 const MEMBERSHIP_MAX_REQUEST_BYTES_ = 40000;
@@ -49,7 +53,7 @@ function doPost(e) {
       }
       case 'admin.pointcards.list': {
         authorizeAdmin_(identity);
-        data = { cards: readPointCards_() };
+        data = { cards: readPointCards_(true) };
         break;
       }
       case 'admin.member.update': {
@@ -62,6 +66,22 @@ function doPost(e) {
         data = handlePointCardSave_(identity, admin, request);
         break;
       }
+      case 'admin.pointcards.usage-code.generate': {
+        const admin = authorizeAdmin_(identity);
+        data = handleTicketUsageCodeGenerate_(identity, admin, request);
+        break;
+      }
+      case 'admin.pointcards.remove': {
+        const admin = authorizeAdmin_(identity);
+        data = handlePointCardRemove_(identity, admin, request);
+        break;
+      }
+      case 'user.pointcard.ticket.challenge':
+        data = handleTicketChallenge_(identity, request);
+        break;
+      case 'user.pointcard.ticket.redeem':
+        data = handleTicketRedeem_(identity, request);
+        break;
       case 'admin.stamps.add': {
         const admin = authorizeAdmin_(identity);
         data = handleStampAdd_(identity, admin, request);
@@ -110,7 +130,7 @@ function parseRequest_(e) {
 
 function clientTypeForAction_(action) {
   if (action === 'user.member.bootstrap') return 'member';
-  if (action === 'user.pointcard.bootstrap') return 'points';
+  if (action === 'user.pointcard.bootstrap' || action.indexOf('user.pointcard.ticket.') === 0) return 'points';
   if (action.indexOf('admin.') === 0) return 'admin';
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }

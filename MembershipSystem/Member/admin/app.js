@@ -5,7 +5,7 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton', 'membersTab', 'cardsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'syncStatus', 'refreshButton', 'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardTargetStamps', 'cardRewardTitle', 'cardStatus', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'saveCardButton', 'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton', 'stampModal', 'closeStampModal', 'stampForm', 'stampMemberId', 'stampMemberName', 'stampCardId', 'stampAmount', 'stampNote', 'stampFormMessage', 'cancelStampButton', 'saveStampButton'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton', 'membersTab', 'cardsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'syncStatus', 'refreshButton', 'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardTargetStamps', 'cardRewardTitle', 'cardStatus', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'removeCardButton', 'saveCardButton', 'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton', 'stampModal', 'closeStampModal', 'stampForm', 'stampMemberId', 'stampMemberName', 'stampCardId', 'stampAmount', 'stampNote', 'stampFormMessage', 'cancelStampButton', 'saveStampButton'].forEach((id) => { els[id] = document.getElementById(id); });
     bindEvents();
     boot();
   });
@@ -29,15 +29,18 @@
       const addPrize = target && target.closest('[data-add-prize]');
       const removePrize = target && target.closest('[data-remove-prize]');
       const balancePrizes = target && target.closest('[data-balance-prizes]');
+      const generateUsageCode = target && target.closest('[data-generate-usage-code]');
       if (removeReward) { removeReward.closest('[data-reward-row]').remove(); updateRewardEditorHint(); return; }
       if (addPrize) { const row = addPrize.closest('[data-reward-row]'); renderLotteryPrizes(row, [...collectPrizes(row), defaultPrize(0)]); updateRewardEditorHint(); return; }
       if (balancePrizes) { averagePrizeRates(balancePrizes.closest('[data-reward-row]')); updateRewardEditorHint(); return; }
       if (removePrize) { const row = removePrize.closest('[data-reward-row]'); removePrize.closest('[data-prize-row]').remove(); updatePrizeTotal(row); updateRewardEditorHint(); }
+      if (generateUsageCode) generateTicketUsageCode(generateUsageCode);
     });
     els.cardTargetStamps.addEventListener('input', updateRewardEditorHint);
     els.cardAccent.addEventListener('input', updateAccentValue);
     els.cardForm.addEventListener('submit', saveCard);
     els.resetCardButton.addEventListener('click', resetCardForm);
+    els.removeCardButton.addEventListener('click', removeCard);
     els.memberForm.addEventListener('submit', saveMember);
     els.cancelMemberButton.addEventListener('click', closeMemberModal);
     els.closeMemberModal.addEventListener('click', closeMemberModal);
@@ -120,10 +123,10 @@
   }
 
   function loadCardForm(cardId) {
-    const card = state.cards.find((item) => item.cardId === cardId); if (!card) return; state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardTargetStamps.value = String(card.targetStamps || 10); els.cardRewardTitle.value = String(card.rewardTitle || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [legacyRewardFromCard(card)]); els.editorKicker.textContent = 'Edit reward card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(card.status); renderCardList();
+    const card = state.cards.find((item) => item.cardId === cardId); if (!card) return; state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardTargetStamps.value = String(card.targetStamps || 10); els.cardRewardTitle.value = String(card.rewardTitle || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [legacyRewardFromCard(card)], card.cardId); els.editorKicker.textContent = 'Edit reward card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(card.status); els.removeCardButton.disabled = card.status === 'archived'; els.removeCardButton.textContent = card.status === 'archived' ? '已移除集點卡' : '移除集點卡'; renderCardList();
   }
 
-  function resetCardForm() { state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardTargetStamps.value = '10'; els.cardStatus.value = 'draft'; els.cardAccent.value = '#e47845'; els.cardRewardTitle.value = ''; updateAccentValue(); renderRewardRows([defaultReward(10)]); els.editorKicker.textContent = 'Create reward card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus('draft'); hideMessage(els.cardFormMessage); renderCardList(); }
+  function resetCardForm() { state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardTargetStamps.value = '10'; els.cardStatus.value = 'draft'; els.cardAccent.value = '#e47845'; els.cardRewardTitle.value = ''; updateAccentValue(); renderRewardRows([defaultReward(10)], ''); els.editorKicker.textContent = 'Create reward card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus('draft'); els.removeCardButton.disabled = true; els.removeCardButton.textContent = '先儲存後才能移除'; hideMessage(els.cardFormMessage); renderCardList(); }
 
   async function saveCard(event) {
     event.preventDefault(); hideMessage(els.cardFormMessage); const title = String(els.cardTitle.value || '').trim(); const targetStamps = Number(els.cardTargetStamps.value); const rewards = collectRewards(); const validationMessage = validateRewardEditor(title, targetStamps, rewards); if (validationMessage) { showMessage(els.cardFormMessage, validationMessage); return; }
@@ -131,19 +134,44 @@
     setSaving(els.saveCardButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title, description: String(els.cardDescription.value || '').trim(), targetStamps, rewardTitle, rewards, status: els.cardStatus.value, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value }); const saved = result.card; state.cards = saved ? replaceById(state.cards, saved, 'cardId') : state.cards; state.selectedCardId = saved && saved.cardId || ''; renderAll(); if (saved) loadCardForm(saved.cardId); showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true); } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
   }
 
+  async function generateTicketUsageCode(button) {
+    const cardId = String(els.cardId.value || '').trim();
+    const row = button.closest('[data-reward-row]');
+    const thresholdStamps = Number(row && row.querySelector('[data-field="thresholdStamps"]')?.value);
+    if (!cardId) { showMessage(els.cardFormMessage, '請先儲存集點卡，再設定票券使用密碼。'); return; }
+    if (!Number.isInteger(thresholdStamps) || thresholdStamps < 1) { showMessage(els.cardFormMessage, '請先設定正確的節點點數。'); return; }
+    const status = row.querySelector('[data-usage-code-status]');
+    button.disabled = true; button.dataset.originalText = button.textContent; button.textContent = '產生中…';
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.usage-code.generate', { cardId, thresholdStamps });
+      if (status) { status.textContent = `店員核銷密碼：${String(result.usageCode || '')}（請交給店員）`; status.classList.add('set'); }
+      button.textContent = '重新產生';
+      showMessage(els.cardFormMessage, '已產生新的票券使用密碼；舊密碼立即失效。', true);
+    } catch (error) { handleActionError(error, els.cardFormMessage); button.textContent = button.dataset.originalText || '一鍵產生密碼'; } finally { button.disabled = false; }
+  }
+
+  async function removeCard() {
+    const cardId = String(els.cardId.value || '').trim();
+    if (!cardId || els.removeCardButton.disabled) return;
+    if (!window.confirm('移除後不再接受新的集點；會員已取得的票券仍保留。確定要移除嗎？')) return;
+    const originalText = els.removeCardButton.textContent; els.removeCardButton.disabled = true; els.removeCardButton.textContent = '移除中…';
+    try { await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.remove', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value }); await refreshData(false); resetCardForm(); showMessage(els.cardFormMessage, '集點卡已移除；歷史資料仍保留。', true); } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (els.cardId.value === cardId) { els.removeCardButton.disabled = false; els.removeCardButton.textContent = originalText; } }
+  }
+
   function defaultReward(thresholdStamps) { return { thresholdStamps, rewardType: 'coupon', rewardTitle: '', rewardDescription: '', prizes: [] }; }
   function defaultPrize() { return { prizeTitle: '', prizeDescription: '', winRate: 100 }; }
   function legacyRewardFromCard(card) { return { thresholdStamps: Number(card.targetStamps || 10), rewardType: 'coupon', rewardTitle: String(card.rewardTitle || ''), rewardDescription: '', prizes: [] }; }
-  function renderRewardRows(rewards) { els.rewardRows.replaceChildren(...rewards.map((reward, index) => createRewardRow(reward, index))); updateRewardEditorHint(); }
-  function createRewardRow(reward, index) {
+  function renderRewardRows(rewards, cardId) { els.rewardRows.replaceChildren(...rewards.map((reward, index) => createRewardRow(reward, index, cardId))); updateRewardEditorHint(); }
+  function createRewardRow(reward, index, cardId) {
     const row = document.createElement('article'); row.className = 'reward-row-editor'; row.dataset.rewardRow = 'true';
     const heading = document.createElement('div'); heading.className = 'reward-row-heading'; const label = document.createElement('strong'); label.textContent = `節點 ${index + 1}`; const summary = document.createElement('span'); summary.className = 'reward-row-summary'; summary.dataset.rewardSummary = 'true'; const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button remove-reward'; remove.dataset.removeReward = 'true'; remove.setAttribute('aria-label', `刪除節點 ${index + 1}`); remove.textContent = '刪除'; heading.append(label, summary, remove);
     const grid = document.createElement('div'); grid.className = 'reward-row-grid';
     grid.append(fieldLabel('達到點數', 'number', reward.thresholdStamps, { field: 'thresholdStamps', min: '1', max: '100', step: '1', suffix: '點' }), fieldLabel('獎勵類型', 'select', reward.rewardType, { field: 'rewardType', options: [['coupon', '優惠券'], ['lottery', '抽獎券']] }));
     grid.append(fieldLabel('獎勵名稱', 'text', reward.rewardTitle, { field: 'rewardTitle', maxlength: '100', placeholder: '例如：免費兌換中杯咖啡' }), fieldLabel('獎勵說明（選填）', 'text', reward.rewardDescription, { field: 'rewardDescription', maxlength: '240', placeholder: '例如：限平日使用' }));
+    const usageControls = document.createElement('div'); usageControls.className = 'usage-code-controls'; const usageCopy = document.createElement('div'); const usageLabel = document.createElement('strong'); usageLabel.textContent = '店員核銷密碼'; const usageStatus = document.createElement('span'); usageStatus.dataset.usageCodeStatus = 'true'; usageStatus.textContent = reward.usageCode ? `目前密碼：${reward.usageCode}` : reward.usageCodeConfigured ? '已設定（可重新產生）' : cardId ? '尚未設定' : '先儲存卡片後設定'; usageCopy.append(usageLabel, usageStatus); const generateUsage = document.createElement('button'); generateUsage.type = 'button'; generateUsage.className = 'small-button'; generateUsage.dataset.generateUsageCode = 'true'; generateUsage.textContent = reward.usageCodeConfigured ? '重新產生' : '一鍵產生密碼'; generateUsage.disabled = !cardId; usageControls.append(usageCopy, generateUsage);
     const lotteryEditor = document.createElement('section'); lotteryEditor.className = `lottery-prize-editor${reward.rewardType === 'lottery' ? '' : ' hidden'}`; lotteryEditor.dataset.lotteryPrizes = 'true';
     const prizeHeading = document.createElement('div'); prizeHeading.className = 'prize-heading'; const prizeLabel = document.createElement('strong'); prizeLabel.textContent = '這張抽獎券可能抽到什麼？'; const totalLabel = document.createElement('span'); totalLabel.dataset.prizeTotal = 'true'; const prizeActions = document.createElement('div'); prizeActions.className = 'prize-actions'; const balancePrizes = document.createElement('button'); balancePrizes.type = 'button'; balancePrizes.className = 'text-button'; balancePrizes.dataset.balancePrizes = 'true'; balancePrizes.textContent = '平均分配'; const addPrize = document.createElement('button'); addPrize.type = 'button'; addPrize.className = 'text-button'; addPrize.dataset.addPrize = 'true'; addPrize.textContent = '＋ 新增獎項'; prizeActions.append(balancePrizes, addPrize); prizeHeading.append(prizeLabel, totalLabel, prizeActions);
-    const prizeRows = document.createElement('div'); prizeRows.className = 'prize-rows'; prizeRows.dataset.prizeRows = 'true'; lotteryEditor.append(prizeHeading, prizeRows); row.append(heading, grid, lotteryEditor); renderLotteryPrizes(row, Array.isArray(reward.prizes) && reward.prizes.length ? reward.prizes : [defaultPrize()]); return row;
+    const prizeRows = document.createElement('div'); prizeRows.className = 'prize-rows'; prizeRows.dataset.prizeRows = 'true'; lotteryEditor.append(prizeHeading, prizeRows); row.append(heading, grid, usageControls, lotteryEditor); renderLotteryPrizes(row, Array.isArray(reward.prizes) && reward.prizes.length ? reward.prizes : [defaultPrize()]); return row;
   }
   function fieldLabel(labelText, type, value, options) {
     const label = document.createElement('label'); label.className = options.hidden ? 'hidden' : ''; label.dataset.fieldLabel = options.field;
@@ -154,7 +182,7 @@
   }
   function renderLotteryPrizes(row, prizes) { const prizeRows = row.querySelector('[data-prize-rows]'); prizeRows.replaceChildren(...prizes.map((prize, index) => createPrizeRow(prize, index))); updatePrizeTotal(row); updateRewardRowSummary(row); }
   function createPrizeRow(prize, index) { const row = document.createElement('div'); row.className = 'prize-row'; row.dataset.prizeRow = 'true'; row.append(fieldLabel(`獎項 ${index + 1} 名稱`, 'text', prize.prizeTitle, { field: 'prizeTitle', maxlength: '100', placeholder: '例如：免費蛋糕' }), fieldLabel('中獎機率', 'number', prize.winRate, { field: 'winRate', min: '0', max: '100', step: '0.01', suffix: '%' })); const description = fieldLabel('獎項說明（選填）', 'text', prize.prizeDescription, { field: 'prizeDescription', maxlength: '240', placeholder: '例如：可兌換任一蛋糕' }); description.classList.add('prize-description-field'); row.append(description); const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button remove-prize'; remove.dataset.removePrize = 'true'; remove.setAttribute('aria-label', `刪除獎項 ${index + 1}`); remove.textContent = '刪除'; row.append(remove); return row; }
-  function addRewardRow() { const rewards = collectRewards(); rewards.push(defaultReward(Number(els.cardTargetStamps.value) || 10)); renderRewardRows(rewards); const rows = els.rewardRows.querySelectorAll('[data-reward-row]'); const lastInput = rows[rows.length - 1] && rows[rows.length - 1].querySelector('[data-field="rewardTitle"]'); if (lastInput) lastInput.focus(); }
+  function addRewardRow() { const rewards = collectRewards(); rewards.push(defaultReward(Number(els.cardTargetStamps.value) || 10)); renderRewardRows(rewards, els.cardId.value); const rows = els.rewardRows.querySelectorAll('[data-reward-row]'); const lastInput = rows[rows.length - 1] && rows[rows.length - 1].querySelector('[data-field="rewardTitle"]'); if (lastInput) lastInput.focus(); }
   function collectPrizes(row) { return Array.from(row.querySelectorAll('[data-prize-row]')).map((prizeRow) => ({ prizeTitle: String(prizeRow.querySelector('[data-field="prizeTitle"]')?.value || '').trim(), prizeDescription: String(prizeRow.querySelector('[data-field="prizeDescription"]')?.value || '').trim(), winRate: Number(prizeRow.querySelector('[data-field="winRate"]')?.value) })); }
   function collectRewards() { return Array.from(els.rewardRows.querySelectorAll('[data-reward-row]')).map((row) => ({ thresholdStamps: Number(row.querySelector('[data-field="thresholdStamps"]')?.value), rewardType: String(row.querySelector('[data-field="rewardType"]')?.value || 'coupon'), rewardTitle: String(row.querySelector('[data-field="rewardTitle"]')?.value || '').trim(), rewardDescription: String(row.querySelector('[data-field="rewardDescription"]')?.value || '').trim(), prizes: collectPrizes(row) })); }
   function handleRewardRowsInput(event) { const row = event.target.closest('[data-reward-row]'); if (!row) return; if (event.target.dataset.field === 'rewardType') { const prizeEditor = row.querySelector('[data-lottery-prizes]'); const lottery = event.target.value === 'lottery'; prizeEditor.classList.toggle('hidden', !lottery); if (lottery && !row.querySelectorAll('[data-prize-row]').length) renderLotteryPrizes(row, [defaultPrize()]); } updatePrizeTotal(row); updateRewardRowSummary(row); updateRewardEditorHint(); }

@@ -4,22 +4,31 @@ const POINT_CARD_REWARD_TYPES_ = Object.freeze(['coupon', 'lottery']);
 const POINT_CARD_MAX_REWARDS_ = 30;
 const POINT_CARD_MAX_LOTTERY_PRIZES_ = 30;
 const POINT_CARD_RATE_BASIS_POINTS_ = 10000;
+const POINT_CARD_TICKET_CHALLENGE_TTL_MS_ = 2 * 60 * 1000;
+const POINT_CARD_TICKET_MAX_FAILED_ATTEMPTS_ = 3;
+const POINT_CARD_TICKET_OPTION_COUNT_ = 6;
+const POINT_CARD_TICKET_CODE_LENGTH_ = 2;
+const POINT_CARD_TICKET_USAGE_CODE_PROPERTY_PREFIX_ = 'MEMBERSHIP_TICKET_USAGE_CODE:';
+const POINT_CARD_TICKET_STATUS_AVAILABLE_ = 'available';
+const POINT_CARD_TICKET_STATUS_USED_ = 'used';
+const POINT_CARD_TICKET_STATUS_LOCKED_ = 'locked';
 
 function handlePointCardBootstrap_(identity) {
   const member = ensureMember_(identity);
-  return { profile: { displayName: String(member.display_name || identity.displayName) }, cards: visiblePointCardsForMember_(identity.lineUserId) };
+  ensurePointCardTicketsForMember_(identity.lineUserId);
+  return { profile: { displayName: String(member.display_name || identity.displayName) }, cards: visiblePointCardsForMember_(identity.lineUserId), tickets: visibleTicketsForMember_(identity.lineUserId) };
 }
 
-function readPointCards_() {
+function readPointCards_(includeTicketCodes) {
   const rewardsByCard = pointCardRewardsByCard_();
-  return readRecords_('PointCards').map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || []); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return readRecords_('PointCards').map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || [], includeTicketCodes); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
 
-function pointCardForClient_(card, configuredRewards) {
+function pointCardForClient_(card, configuredRewards, includeTicketCodes) {
   const cardId = String(card.card_id || '');
   const rewards = Array.isArray(configuredRewards) && configuredRewards.length
-    ? configuredRewards.map(pointCardRewardForClient_).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
-    : legacyPointCardReward_(card);
+    ? configuredRewards.map(function(reward) { return pointCardRewardForClient_(reward, includeTicketCodes); }).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
+    : legacyPointCardReward_(card, includeTicketCodes);
   const finalReward = rewards.length ? rewards[rewards.length - 1] : null;
   return { cardId, title: String(card.title || ''), description: String(card.description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || (finalReward && finalReward.rewardTitle) || ''), rewards, status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
 }
@@ -48,8 +57,10 @@ function pointCardLotteryPrizesByReward_() {
   return grouped;
 }
 
-function pointCardRewardForClient_(reward) {
-  return {
+function pointCardRewardForClient_(reward, includeAdminDetails) {
+  const usageKey = ticketUsageKey_(String(reward.card_id || reward.cardId || ''), Number(reward.threshold_stamps || reward.thresholdStamps || 0));
+  const usageCode = includeAdminDetails ? ticketUsageCodeForTicket_({ reward_key: usageKey }) : '';
+  const clientReward = {
     rewardId: String(reward.reward_id || reward.rewardId || ''),
     cardId: String(reward.card_id || reward.cardId || ''),
     thresholdStamps: Number(reward.threshold_stamps || reward.thresholdStamps || 0),
@@ -57,29 +68,78 @@ function pointCardRewardForClient_(reward) {
     rewardTitle: String(reward.reward_title || reward.rewardTitle || ''),
     rewardDescription: String(reward.reward_description || reward.rewardDescription || ''),
     lotteryWinRate: Number(reward.lottery_win_rate || reward.lotteryWinRate || 0),
-    prizes: Array.isArray(reward.prizes || reward.lotteryPrizes) ? (reward.prizes || reward.lotteryPrizes).map(pointCardLotteryPrizeForClient_) : []
+    prizes: Array.isArray(reward.prizes || reward.lotteryPrizes) ? (reward.prizes || reward.lotteryPrizes).map(function(prize) { return pointCardLotteryPrizeForClient_(prize, includeAdminDetails); }) : [],
+    usageCodeConfigured: ticketUsageCodeConfigured_(String(reward.card_id || reward.cardId || ''), Number(reward.threshold_stamps || reward.thresholdStamps || 0))
   };
+  if (includeAdminDetails && isValidTicketUsageCode_(usageCode)) clientReward.usageCode = usageCode;
+  return clientReward;
 }
 
-function pointCardLotteryPrizeForClient_(prize) {
-  return { prizeId: String(prize.prize_id || prize.prizeId || ''), rewardId: String(prize.reward_id || prize.rewardId || ''), prizeTitle: String(prize.prize_title || prize.prizeTitle || ''), prizeDescription: String(prize.prize_description || prize.prizeDescription || ''), winRate: Number(prize.win_rate || prize.winRate || 0) };
+function pointCardLotteryPrizeForClient_(prize, includeWinRate) {
+  const clientPrize = { prizeId: String(prize.prize_id || prize.prizeId || ''), rewardId: String(prize.reward_id || prize.rewardId || ''), prizeTitle: String(prize.prize_title || prize.prizeTitle || ''), prizeDescription: String(prize.prize_description || prize.prizeDescription || '') };
+  if (includeWinRate) clientPrize.winRate = Number(prize.win_rate || prize.winRate || 0);
+  return clientPrize;
 }
 
-function legacyPointCardReward_(card) {
+function legacyPointCardReward_(card, includeTicketCode) {
   const title = String(card.reward_title || '').trim();
   if (!title) return [];
-  return [{ rewardId: 'legacy:' + String(card.card_id || ''), cardId: String(card.card_id || ''), thresholdStamps: Number(card.target_stamps || 0), rewardType: 'coupon', rewardTitle: title, rewardDescription: '', lotteryWinRate: 0, prizes: [] }];
+  const usageKey = ticketUsageKey_(String(card.card_id || ''), Number(card.target_stamps || 0));
+  const usageCode = includeTicketCode ? ticketUsageCodeForTicket_({ reward_key: usageKey }) : '';
+  const reward = { rewardId: 'legacy:' + String(card.card_id || ''), cardId: String(card.card_id || ''), thresholdStamps: Number(card.target_stamps || 0), rewardType: 'coupon', rewardTitle: title, rewardDescription: '', lotteryWinRate: 0, prizes: [], usageCodeConfigured: ticketUsageCodeConfigured_(String(card.card_id || ''), Number(card.target_stamps || 0)) };
+  if (includeTicketCode && isValidTicketUsageCode_(usageCode)) reward.usageCode = usageCode;
+  return [reward];
 }
 
 function visiblePointCardsForMember_(lineUserId) {
   const balances = readRecords_('PointBalances').filter(function(balance) { return String(balance.line_user_id || '') === lineUserId; });
   const balanceMap = {}; balances.forEach(function(balance) { balanceMap[String(balance.card_id || '')] = { stamps: Number(balance.stamps || 0), updatedAt: String(balance.updated_at || '') }; });
-  return readPointCards_().filter(function(card) { return card.status === 'active'; }).map(function(card) { const balance = balanceMap[card.cardId] || { stamps: 0, updatedAt: card.updatedAt }; return Object.assign({}, card, { stamps: Math.max(0, balance.stamps), updatedAt: balance.updatedAt || card.updatedAt }); });
+  const ticketCardIds = {}; readRecords_('PointCardTickets').forEach(function(ticket) { if (String(ticket.line_user_id || '') === lineUserId) ticketCardIds[String(ticket.card_id || '')] = true; });
+  return readPointCards_().filter(function(card) { return card.status === 'active' || ticketCardIds[card.cardId]; }).map(function(card) { const balance = balanceMap[card.cardId] || { stamps: 0, updatedAt: card.updatedAt }; return Object.assign({}, card, { stamps: Math.max(0, balance.stamps), updatedAt: balance.updatedAt || card.updatedAt }); });
+}
+
+function handleTicketUsageCodeGenerate_(identity, admin, request) {
+  const cardId = String(request.cardId || '').trim();
+  const thresholdStamps = Number(request.thresholdStamps);
+  if (!cardId || cardId.length > 80 || !Number.isInteger(thresholdStamps) || thresholdStamps < 1 || thresholdStamps > 100) throw new ApiError(400, 'INVALID_TICKET_CODE', '集點卡與節點點數不合法。');
+  return withDataLock_(function() {
+    const cardMatch = findRecordWithRow_('PointCards', 'card_id', cardId);
+    if (!cardMatch) throw new ApiError(404, 'CARD_NOT_FOUND', '找不到集點卡。');
+    const configured = pointCardRewardsByCard_()[cardId] || [];
+    const rewards = configured.length ? configured : legacyPointCardReward_(cardMatch.record);
+    const reward = rewards.find(function(item) { return Number(item.threshold_stamps || item.thresholdStamps || 0) === thresholdStamps; });
+    if (!reward) throw new ApiError(404, 'REWARD_NOT_FOUND', '找不到這個節點獎勵，請先儲存集點卡。');
+    const usageKey = ticketUsageKey_(cardId, thresholdStamps);
+    const code = generateTicketUsageCode_();
+    PropertiesService.getScriptProperties().setProperty(ticketUsageCodePropertyKey_(usageKey), code);
+    const now = nowIso_();
+    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_TICKET_CODE_GENERATE', target_type: 'point_card_reward', target_id: usageKey, result: 'success', detail: 'Ticket usage code regenerated', created_at: now });
+    return { cardId, thresholdStamps, usageCode: code, generatedAt: now };
+  });
+}
+
+function handlePointCardRemove_(identity, admin, request) {
+  const cardId = String(request.cardId || '').trim();
+  const expected = String(request.expectedUpdatedAt || '').trim();
+  if (!cardId || cardId.length > 80) throw new ApiError(400, 'INVALID_CARD', '集點卡識別碼不合法。');
+  return withDataLock_(function() {
+    const match = findRecordWithRow_('PointCards', 'card_id', cardId);
+    if (!match) throw new ApiError(404, 'CARD_NOT_FOUND', '找不到集點卡。');
+    if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '集點卡已被更新，請重新整理。');
+    const card = match.record;
+    const now = nowIso_();
+    card.status = 'archived';
+    card.updated_by = identity.lineUserId;
+    card.updated_at = now;
+    updateRecordAtRow_('PointCards', match.rowNumber, card);
+    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_ARCHIVE', target_type: 'point_card', target_id: cardId, result: 'success', detail: 'Point card archived; history retained', created_at: now });
+    return { card: pointCardForClient_(card, pointCardRewardsByCard_()[cardId] || [], true) };
+  });
 }
 
 function handleAdminBootstrap_(identity, admin) {
   const members = readMembers_();
-  const cards = readPointCards_();
+  const cards = readPointCards_(true);
   const entries = readRecords_('PointEntries');
   const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
   return { profile: { displayName: identity.displayName }, role: admin.role, members, cards, stats: { memberCount: members.length, activeMemberCount: members.filter(function(member) { return member.status === 'active'; }).length, activeCardCount: cards.filter(function(card) { return card.status === 'active'; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
@@ -116,7 +176,7 @@ function handlePointCardSave_(identity, admin, request) {
     if (rowNumber) updateRecordAtRow_('PointCards', rowNumber, card); else appendRecord_('PointCards', card);
     if (hasRewards) replacePointCardRewards_(card.card_id, rewards, now);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_SAVE', target_type: 'point_card', target_id: card.card_id, result: 'success', detail: 'Point card saved', created_at: now });
-    return { card: pointCardForClient_(card, hasRewards ? rewards : existingRewards) };
+    return { card: pointCardForClient_(card, hasRewards ? rewards : existingRewards, true) };
   });
 }
 
@@ -214,6 +274,7 @@ function handleStampAdd_(identity, admin, request) {
     const card = findRecordWithRow_('PointCards', 'card_id', cardId); if (!card || String(card.record.status) !== 'active') throw new ApiError(400, 'CARD_NOT_ACTIVE', '只能為啟用中的集點卡增加點數。');
     const balanceMatch = findBalance_(lineUserId, cardId); const now = nowIso_(); const current = balanceMatch ? Number(balanceMatch.record.stamps || 0) : 0; const nextBalance = current + amount; const balance = { line_user_id: lineUserId, card_id: cardId, stamps: String(nextBalance), updated_at: now };
     if (balanceMatch) updateRecordAtRow_('PointBalances', balanceMatch.rowNumber, balance); else appendRecord_('PointBalances', balance);
+    issuePointCardTicketsForBalance_(lineUserId, card.record, current, nextBalance, now);
     appendRecord_('PointEntries', { entry_id: 'PE-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, card_id: cardId, amount: String(amount), note, created_by: identity.lineUserId, created_at: now });
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'STAMP_ADD', target_type: 'point_balance', target_id: lineUserId + ':' + cardId, result: 'success', detail: 'Added ' + amount + ' stamp(s)', created_at: now });
     return { lineUserId, cardId, stamps: nextBalance, updatedAt: now };
@@ -227,4 +288,245 @@ function findBalance_(lineUserId, cardId) {
 function formatEntryDate_(value) {
   const date = new Date(String(value || ''));
   return Number.isNaN(date.getTime()) ? '' : Utilities.formatDate(date, 'Asia/Taipei', 'yyyy-MM-dd');
+}
+
+function ticketUsageKey_(cardId, thresholdStamps) {
+  return String(cardId || '').trim() + ':' + String(Number(thresholdStamps));
+}
+
+function ticketUsageCodePropertyKey_(usageKey) {
+  return POINT_CARD_TICKET_USAGE_CODE_PROPERTY_PREFIX_ + String(usageKey || '');
+}
+
+function ticketUsageCodeConfigured_(cardId, thresholdStamps) {
+  try {
+    if (!cardId || !Number.isInteger(Number(thresholdStamps)) || typeof PropertiesService === 'undefined') return false;
+    return isValidTicketUsageCode_(String(PropertiesService.getScriptProperties().getProperty(ticketUsageCodePropertyKey_(ticketUsageKey_(cardId, thresholdStamps))) || '').trim());
+  } catch (_) {
+    return false;
+  }
+}
+
+function generateTicketUsageCode_() {
+  const seed = Utilities.getUuid() + ':' + new Date().getTime() + ':' + Math.random();
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, seed, Utilities.Charset.UTF_8);
+  let digits = '';
+  bytes.forEach(function(byte) { const normalized = byte < 0 ? byte + 256 : byte; digits += String(normalized % 10); });
+  return digits.substring(0, POINT_CARD_TICKET_CODE_LENGTH_);
+}
+
+function isValidTicketUsageCode_(value) {
+  return new RegExp('^\\d{' + POINT_CARD_TICKET_CODE_LENGTH_ + '}$').test(String(value || '').trim());
+}
+
+function generateTicketRandomBasisPoint_() {
+  const seed = Utilities.getUuid() + ':' + new Date().getTime() + ':' + Math.random();
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, seed, Utilities.Charset.UTF_8);
+  let value = 0;
+  bytes.slice(0, 4).forEach(function(byte) { const normalized = byte < 0 ? byte + 256 : byte; value = (value * 256 + normalized) % POINT_CARD_RATE_BASIS_POINTS_; });
+  return value;
+}
+
+function ticketUsageCodeForTicket_(ticket) {
+  const usageKey = String(ticket && ticket.reward_key || '').trim();
+  if (!usageKey || typeof PropertiesService === 'undefined') return '';
+  return String(PropertiesService.getScriptProperties().getProperty(ticketUsageCodePropertyKey_(usageKey)) || '').trim();
+}
+
+function issuePointCardTicketsForBalance_(lineUserId, card, currentBalance, nextBalance, now) {
+  const cardId = String(card.card_id || '').trim();
+  if (!cardId) return;
+  const configured = pointCardRewardsByCard_()[cardId] || [];
+  const rewards = configured.length ? configured : legacyPointCardReward_(card);
+  const existingKeys = {};
+  readRecords_('PointCardTickets').forEach(function(ticket) {
+    if (String(ticket.line_user_id || '') === String(lineUserId) && String(ticket.card_id || '') === cardId) existingKeys[String(ticket.reward_key || '')] = true;
+  });
+  rewards.forEach(function(reward) {
+    const threshold = Number(reward.threshold_stamps || reward.thresholdStamps || 0);
+    const usageKey = ticketUsageKey_(cardId, threshold);
+    if (!Number.isInteger(threshold) || threshold < 1 || threshold > Number(nextBalance) || existingKeys[usageKey]) return;
+    appendRecord_('PointCardTickets', ticketRecordFromReward_(lineUserId, cardId, reward, usageKey, now));
+    existingKeys[usageKey] = true;
+  });
+}
+
+function ensurePointCardTicketsForMember_(lineUserId) {
+  return withDataLock_(function() {
+    const balances = readRecords_('PointBalances').filter(function(balance) { return String(balance.line_user_id || '') === String(lineUserId); });
+    const balanceMap = {};
+    balances.forEach(function(balance) { balanceMap[String(balance.card_id || '')] = Number(balance.stamps || 0); });
+    readRecords_('PointCards').filter(function(card) { return String(card.status || '') === 'active'; }).forEach(function(card) {
+      const stamps = balanceMap[String(card.card_id || '')] || 0;
+      issuePointCardTicketsForBalance_(lineUserId, card, 0, stamps, nowIso_());
+    });
+  });
+}
+
+function ticketRecordFromReward_(lineUserId, cardId, reward, usageKey, now) {
+  const prizes = Array.isArray(reward.prizes || reward.lotteryPrizes) ? (reward.prizes || reward.lotteryPrizes).map(function(prize) {
+    return { prize_id: String(prize.prize_id || prize.prizeId || ''), reward_id: String(prize.reward_id || prize.rewardId || ''), prize_title: String(prize.prize_title || prize.prizeTitle || ''), prize_description: String(prize.prize_description || prize.prizeDescription || ''), win_rate: String(prize.win_rate !== undefined ? prize.win_rate : prize.winRate || 0) };
+  }) : [];
+  return {
+    ticket_id: 'TK-' + Utilities.getUuid().replace(/-/g, '').substring(0, 16).toUpperCase(),
+    line_user_id: String(lineUserId),
+    card_id: String(cardId),
+    reward_id: String(reward.reward_id || reward.rewardId || ''),
+    reward_key: String(usageKey),
+    threshold_stamps: String(Number(reward.threshold_stamps || reward.thresholdStamps || 0)),
+    ticket_type: String(reward.reward_type || reward.rewardType || 'coupon').toLowerCase() === 'lottery' ? 'lottery' : 'coupon',
+    ticket_title: String(reward.reward_title || reward.rewardTitle || ''),
+    ticket_description: String(reward.reward_description || reward.rewardDescription || ''),
+    lottery_prizes_json: JSON.stringify(prizes),
+    status: POINT_CARD_TICKET_STATUS_AVAILABLE_,
+    failed_attempts: '0',
+    earned_at: now,
+    used_at: '',
+    result_json: '',
+    created_at: now,
+    updated_at: now
+  };
+}
+
+function visibleTicketsForMember_(lineUserId) {
+  return readRecords_('PointCardTickets').filter(function(ticket) { return String(ticket.line_user_id || '') === String(lineUserId); }).map(ticketForClient_).sort(function(a, b) { return String(b.earnedAt).localeCompare(String(a.earnedAt)); });
+}
+
+function ticketForClient_(ticket) {
+  const prizes = parseJsonArray_(ticket.lottery_prizes_json).map(function(prize) { return pointCardLotteryPrizeForClient_(prize, false); });
+  let result = null;
+  try { result = ticket.result_json ? ticketResultForClient_(JSON.parse(String(ticket.result_json))) : null; } catch (_) { result = null; }
+  return {
+    ticketId: String(ticket.ticket_id || ''),
+    lineUserId: String(ticket.line_user_id || ''),
+    cardId: String(ticket.card_id || ''),
+    rewardId: String(ticket.reward_id || ''),
+    thresholdStamps: Number(ticket.threshold_stamps || 0),
+    ticketType: String(ticket.ticket_type || 'coupon'),
+    ticketTitle: String(ticket.ticket_title || ''),
+    ticketDescription: String(ticket.ticket_description || ''),
+    prizes,
+    status: String(ticket.status || POINT_CARD_TICKET_STATUS_AVAILABLE_),
+    failedAttempts: Number(ticket.failed_attempts || 0),
+    earnedAt: String(ticket.earned_at || ''),
+    usedAt: String(ticket.used_at || ''),
+    result
+  };
+}
+
+function ticketResultForClient_(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+  return { prizeId: String(result.prizeId || result.prize_id || ''), prizeTitle: String(result.prizeTitle || result.prize_title || ''), prizeDescription: String(result.prizeDescription || result.prize_description || '') };
+}
+
+function parseJsonArray_(value) {
+  try { const parsed = JSON.parse(String(value || '[]')); return Array.isArray(parsed) ? parsed : []; } catch (_) { return []; }
+}
+
+function handleTicketChallenge_(identity, request) {
+  const ticketId = String(request.ticketId || '').trim();
+  if (!ticketId || ticketId.length > 80) throw new ApiError(400, 'INVALID_TICKET', '票券識別碼不合法。');
+  return withDataLock_(function() {
+    const ticketMatch = findRecordWithRow_('PointCardTickets', 'ticket_id', ticketId);
+    if (!ticketMatch || String(ticketMatch.record.line_user_id || '') !== String(identity.lineUserId)) throw new ApiError(404, 'TICKET_NOT_FOUND', '找不到這張票券。');
+    const ticket = ticketMatch.record;
+    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_) throw new ApiError(409, 'TICKET_ALREADY_USED', '這張票券已使用。', { usedAt: String(ticket.used_at || '') });
+    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_LOCKED_) throw new ApiError(423, 'TICKET_LOCKED', '這張票券因重試次數過多，暫時無法使用。');
+    const usageCode = ticketUsageCodeForTicket_(ticket);
+    if (!isValidTicketUsageCode_(usageCode)) throw new ApiError(409, 'TICKET_CODE_NOT_SET', '店家尚未設定這張票券的使用密碼，請洽店員。');
+    const now = nowIso_();
+    invalidateActiveTicketChallenges_(ticketId);
+    const options = [usageCode];
+    while (options.length < POINT_CARD_TICKET_OPTION_COUNT_) {
+      const decoy = generateTicketUsageCode_();
+      if (options.indexOf(decoy) < 0) options.push(decoy);
+    }
+    shuffleTicketOptions_(options);
+    const challengeId = 'TC-' + Utilities.getUuid().replace(/-/g, '').substring(0, 16).toUpperCase();
+    const expiresAt = new Date(Date.now() + POINT_CARD_TICKET_CHALLENGE_TTL_MS_).toISOString();
+    appendRecord_('PointCardTicketChallenges', { challenge_id: challengeId, ticket_id: ticketId, line_user_id: identity.lineUserId, options_json: JSON.stringify({ count: options.length, hashes: options.map(function(option) { return digest_(challengeId + ':' + option); }) }), status: 'active', attempt_count: '0', expires_at: expiresAt, created_at: now, used_at: '' });
+    return { challengeId, options, expiresAt, ticket: ticketForClient_(ticket) };
+  });
+}
+
+function invalidateActiveTicketChallenges_(ticketId) {
+  readRecords_('PointCardTicketChallenges').forEach(function(challenge, index) {
+    if (String(challenge.ticket_id || '') !== String(ticketId) || String(challenge.status || '') !== 'active') return;
+    challenge.status = 'replaced';
+    updateRecordAtRow_('PointCardTicketChallenges', index + 2, challenge);
+  });
+}
+
+function shuffleTicketOptions_(options) {
+  for (let index = options.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const value = options[index]; options[index] = options[swapIndex]; options[swapIndex] = value;
+  }
+}
+
+function handleTicketRedeem_(identity, request) {
+  const ticketId = String(request.ticketId || '').trim();
+  const challengeId = String(request.challengeId || '').trim();
+  const selectedCode = String(request.selectedCode || '').trim();
+  if (!ticketId || ticketId.length > 80 || !challengeId || challengeId.length > 80 || !isValidTicketUsageCode_(selectedCode)) throw new ApiError(400, 'INVALID_TICKET_REDEEM', '票券驗證資料不合法。');
+  return withDataLock_(function() {
+    const ticketMatch = findRecordWithRow_('PointCardTickets', 'ticket_id', ticketId);
+    const challengeMatch = findRecordWithRow_('PointCardTicketChallenges', 'challenge_id', challengeId);
+    if (!ticketMatch || !challengeMatch || String(ticketMatch.record.line_user_id || '') !== String(identity.lineUserId) || String(challengeMatch.record.line_user_id || '') !== String(identity.lineUserId) || String(challengeMatch.record.ticket_id || '') !== ticketId) throw new ApiError(404, 'TICKET_CHALLENGE_NOT_FOUND', '找不到這組票券驗證。');
+    const ticket = ticketMatch.record;
+    const challenge = challengeMatch.record;
+    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_) throw new ApiError(409, 'TICKET_ALREADY_USED', '這張票券已使用。', { usedAt: String(ticket.used_at || '') });
+    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_LOCKED_) throw new ApiError(423, 'TICKET_LOCKED', '這張票券因重試次數過多，暫時無法使用。');
+    if (String(challenge.status || '') !== 'active') throw new ApiError(409, 'TICKET_CHALLENGE_EXPIRED', '這組號碼已失效，請重新取得。');
+    if (!Date.parse(String(challenge.expires_at || '')) || Date.parse(String(challenge.expires_at)) <= Date.now()) { challenge.status = 'expired'; updateRecordAtRow_('PointCardTicketChallenges', challengeMatch.rowNumber, challenge); throw new ApiError(409, 'TICKET_CHALLENGE_EXPIRED', '這組號碼已逾時，請重新取得。'); }
+    const usageCode = ticketUsageCodeForTicket_(ticket);
+    let challengeOptions = {};
+    try { challengeOptions = JSON.parse(String(challenge.options_json || '{}')); } catch (_) { challengeOptions = {}; }
+    const selectedHash = digest_(challengeId + ':' + selectedCode);
+    if (!Array.isArray(challengeOptions.hashes) || challengeOptions.hashes.indexOf(selectedHash) < 0 || selectedCode !== usageCode) {
+      const failedAttempts = Number(ticket.failed_attempts || 0) + 1;
+      const now = nowIso_();
+      ticket.failed_attempts = String(failedAttempts);
+      ticket.updated_at = now;
+      challenge.attempt_count = String(Number(challenge.attempt_count || 0) + 1);
+      challenge.status = 'failed';
+      updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket);
+      updateRecordAtRow_('PointCardTicketChallenges', challengeMatch.rowNumber, challenge);
+      const locked = failedAttempts >= POINT_CARD_TICKET_MAX_FAILED_ATTEMPTS_;
+      if (locked) { ticket.status = POINT_CARD_TICKET_STATUS_LOCKED_; updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket); }
+      throw new ApiError(400, 'TICKET_CODE_INCORRECT', locked ? '號碼錯誤次數過多，這張票券已鎖定。' : '號碼不正確，請重新取得一組號碼。', { remainingAttempts: Math.max(0, POINT_CARD_TICKET_MAX_FAILED_ATTEMPTS_ - failedAttempts), ticketStatus: locked ? POINT_CARD_TICKET_STATUS_LOCKED_ : POINT_CARD_TICKET_STATUS_AVAILABLE_ });
+    }
+    const now = nowIso_();
+    const result = String(ticket.ticket_type || '') === 'lottery' ? drawTicketPrize_(ticket) : null;
+    ticket.status = POINT_CARD_TICKET_STATUS_USED_;
+    ticket.used_at = now;
+    ticket.result_json = result ? JSON.stringify(result) : '';
+    ticket.updated_at = now;
+    challenge.status = 'used';
+    challenge.attempt_count = String(Number(challenge.attempt_count || 0));
+    challenge.used_at = now;
+    updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket);
+    updateRecordAtRow_('PointCardTicketChallenges', challengeMatch.rowNumber, challenge);
+    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: 'member', action: 'POINT_CARD_TICKET_REDEEM', target_type: 'point_card_ticket', target_id: ticketId, result: 'success', detail: result ? 'Lottery ticket redeemed and prize drawn' : 'Coupon ticket redeemed', created_at: now });
+    return { redeemed: true, ticket: ticketForClient_(ticket) };
+  });
+}
+
+function drawTicketPrize_(ticket) {
+  const prizes = parseJsonArray_(ticket.lottery_prizes_json);
+  let cursor = 0;
+  let lastPositive = null;
+  const roll = generateTicketRandomBasisPoint_();
+  for (let index = 0; index < prizes.length; index += 1) {
+    const prize = prizes[index];
+    const basisPoints = Math.max(0, Math.round(Number(prize.win_rate || prize.winRate || 0) * 100));
+    if (basisPoints > 0) lastPositive = prize;
+    cursor += basisPoints;
+    if (basisPoints > 0 && roll < cursor) return ticketPrizeResult_(prize);
+  }
+  return lastPositive ? ticketPrizeResult_(lastPositive) : null;
+}
+
+function ticketPrizeResult_(prize) {
+  return { prizeId: String(prize.prize_id || prize.prizeId || ''), prizeTitle: String(prize.prize_title || prize.prizeTitle || ''), prizeDescription: String(prize.prize_description || prize.prizeDescription || '') };
 }

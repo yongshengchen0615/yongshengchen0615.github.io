@@ -7,6 +7,8 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   PointCards: Object.freeze(['card_id', 'title', 'description', 'target_stamps', 'reward_title', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at']),
   PointCardRewards: Object.freeze(['reward_id', 'card_id', 'threshold_stamps', 'reward_type', 'reward_title', 'reward_description', 'lottery_win_rate', 'created_at', 'updated_at']),
   PointCardLotteryPrizes: Object.freeze(['prize_id', 'reward_id', 'prize_title', 'prize_description', 'win_rate', 'created_at', 'updated_at']),
+  PointCardTickets: Object.freeze(['ticket_id', 'line_user_id', 'card_id', 'reward_id', 'reward_key', 'threshold_stamps', 'ticket_type', 'ticket_title', 'ticket_description', 'lottery_prizes_json', 'status', 'failed_attempts', 'earned_at', 'used_at', 'result_json', 'created_at', 'updated_at']),
+  PointCardTicketChallenges: Object.freeze(['challenge_id', 'ticket_id', 'line_user_id', 'options_json', 'status', 'attempt_count', 'expires_at', 'created_at', 'used_at']),
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
   PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at']),
   AuditLogs: Object.freeze(['audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id', 'result', 'detail', 'created_at'])

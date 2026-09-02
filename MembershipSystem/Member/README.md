@@ -59,6 +59,8 @@ GAS 會建立並維護以下 schema：
 - `PointCards`：集點卡設定、完成點數、相容用的最後回饋文字、公開狀態與識別色。
 - `PointCardRewards`：每張集點卡的節點獎勵；包含達標點數、優惠券/抽獎券類型與獎勵說明，並保留舊版 `lottery_win_rate` 欄位供相容。
 - `PointCardLotteryPrizes`：抽獎券節點的多個獎項與各自中獎率；允許單一獎項為 0%，同一抽獎券的獎項機率總和必須為 100%。
+- `PointCardTickets`：會員達成節點後產生的優惠券/抽獎券；保存票券狀態、抽獎結果與核銷歷史。
+- `PointCardTicketChallenges`：短效的票券核銷選號挑戰；只保存選項與狀態，不保存 Script Properties 裡的票券密碼。
 - `PointBalances`：每位會員在每張卡的目前餘額。
 - `PointEntries`：每次補登點數的不可變流水紀錄。
 - `AuditLogs`：管理端會員/卡片/集點操作紀錄。
@@ -74,9 +76,15 @@ GAS 會建立並維護以下 schema：
 - `admin.pointcards.list`
 - `admin.member.update`
 - `admin.pointcards.save`
+- `admin.pointcards.usage-code.generate`
+- `admin.pointcards.remove`（封存集點卡，保留歷史資料）
 - `admin.stamps.add`
+- `user.pointcard.ticket.challenge`
+- `user.pointcard.ticket.redeem`
 
 `admin.pointcards.save` 的 `card.rewards` 是節點陣列。每個節點的 `thresholdStamps` 必須是唯一且不超過 `targetStamps` 的整數；`rewardType` 可為 `coupon` 或 `lottery`。抽獎券節點的 `prizes` 可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。
+
+管理端可在每個節點按「一鍵產生密碼」，GAS 會產生兩位數票券使用密碼並只放在 Script Properties；用戶端使用票券時會取得 5 組干擾號碼加上 1 組正確號碼，共 6 個選項。店員點選正確號碼後，後端才會以一次性、限時挑戰完成核銷；錯誤達 3 次會鎖定票券。抽獎券核銷成功後由後端依設定機率開獎，會員端播放開獎動畫且只顯示獎項名稱，不顯示機率。
 
 前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 
