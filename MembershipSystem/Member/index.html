@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>會員中心</title>
+  <style>
+    :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif; color: #17352e; background: #f6f1e8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f6f1e8; }
+    main { width: min(100%, 560px); }
+    .kicker { margin: 0 0 12px; color: #df6b4d; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(32px, 8vw, 58px); letter-spacing: -.06em; line-height: .95; }
+    p { color: #6c7c74; line-height: 1.7; }
+    .intro { margin-bottom: 28px; }
+    .links { display: grid; gap: 12px; }
+    a { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 22px; color: #17352e; text-decoration: none; background: #fffdf8; border: 1px solid rgba(23,53,46,.12); border-radius: 18px; box-shadow: 0 14px 35px rgba(50, 64, 54, .07); transition: transform .2s ease, border-color .2s ease; }
+    a:hover { transform: translateY(-2px); border-color: #df6b4d; }
+    a strong { display: block; font-size: 17px; }
+    a span { display: block; margin-top: 4px; color: #75847d; font-size: 13px; }
+    .arrow { color: #df6b4d; font-size: 24px; }
+    @media (prefers-reduced-motion: reduce) { a { transition: none; } a:hover { transform: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="kicker">Lumen Club / Member Hub</p>
+    <div class="intro">
+      <h1>你的會員<br>從這裡開始。</h1>
+      <p>使用 LINE 登入後，查看專屬會員卡與目前的集點進度。</p>
+    </div>
+    <nav class="links" aria-label="會員中心入口">
+      <a href="./member/">
+        <div><strong>會員卡</strong><span>會員身份、等級與專屬權益</span></div><span class="arrow" aria-hidden="true">↗</span>
+      </a>
+      <a href="./points/">
+        <div><strong>集點卡</strong><span>查看所有卡片與兌換進度</span></div><span class="arrow" aria-hidden="true">↗</span>
+      </a>
+      <a href="./admin/">
+        <div><strong>管理端</strong><span>管理會員、集點卡與點數</span></div><span class="arrow" aria-hidden="true">↗</span>
+      </a>
+    </nav>
+  </main>
+</body>
+</html>

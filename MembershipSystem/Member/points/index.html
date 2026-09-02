@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
+  <title>集點卡｜Lumen Club</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="../shared/common.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div id="app" class="app-shell" aria-busy="true">
+    <section id="loadingView" class="state-view">
+      <div class="loader-mark" aria-hidden="true">✦</div>
+      <p class="kicker">Rewards in progress</p>
+      <h1>正在整理你的集點卡</h1>
+      <p>先確認 LINE 身份，接著就能繼續累積你的下一個回饋。</p>
+    </section>
+
+    <section id="errorView" class="state-view hidden" role="alert">
+      <div class="error-mark" aria-hidden="true">!</div>
+      <p class="kicker">Unable to continue</p>
+      <h1 id="errorTitle">集點卡暫時無法載入</h1>
+      <p id="errorMessage"></p>
+      <button id="retryButton" class="button button-dark" type="button">重新整理</button>
+    </section>
+
+    <main id="pointsView" class="hidden">
+      <header class="topbar">
+        <div>
+          <p class="kicker">Lumen Club / Rewards</p>
+          <h1>集點卡</h1>
+        </div>
+        <div class="account-menu"><span id="displayName">LINE 使用者</span><button id="logoutButton" class="text-button" type="button">登出</button></div>
+      </header>
+
+      <section class="workspace-intro">
+        <div><p class="kicker">Your progress</p><h2>每一點，都離回饋更近。</h2></div>
+        <button id="refreshButton" class="refresh-button" type="button"><span aria-hidden="true">↻</span> 更新</button>
+      </section>
+
+      <div id="cardTabs" class="card-tabs" role="tablist" aria-label="選擇集點卡"></div>
+      <section id="emptyView" class="empty-panel hidden"><span class="empty-icon" aria-hidden="true">○</span><h2>目前還沒有可用的集點卡</h2><p>店家開通新的活動後，會在這裡看見。</p></section>
+
+      <section id="activeCardView" class="active-card" aria-live="polite">
+        <div class="card-ornament" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div class="active-card-header"><div><p class="label">Current reward</p><h2 id="activeCardTitle">集點卡</h2><p id="activeCardDescription" class="description"></p></div><div id="activeCardStatus" class="card-status">進行中</div></div>
+        <div class="progress-section">
+          <div class="progress-numbers"><strong id="progressCount">0</strong><span>/ <b id="targetCount">10</b> 點</span></div>
+          <div class="progress-track" role="progressbar" aria-label="集點進度" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"><span id="progressBar"></span></div>
+          <div class="progress-foot"><span id="progressMessage">開始累積你的第一點</span><span id="remainingMessage">還差 10 點</span></div>
+        </div>
+        <div class="reward-row"><span class="reward-icon" aria-hidden="true">✦</span><div><p class="label">完成後可兌換</p><strong id="rewardTitle">專屬回饋</strong></div><span id="updatedAt" class="updated-at">—</span></div>
+      </section>
+
+      <section class="points-note"><span class="note-mark" aria-hidden="true">i</span><p>集點由店家於消費後登錄，若進度與實際消費不符，請直接向店員出示此畫面協助確認。</p></section>
+    </main>
+  </div>
+</body>
+</html>

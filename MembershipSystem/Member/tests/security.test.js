@@ -1,0 +1,67 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
+
+test('GAS verifies LINE ID tokens server-side against the surface channel', () => {
+  const auth = read('gas/Auth.gs');
+  assert.match(auth, /oauth2\/v2\.1\/verify/);
+  assert.match(auth, /method:\s*'post'/);
+  assert.match(auth, /application\/x-www-form-urlencoded/);
+  assert.match(auth, /id_token:\s*idToken/);
+  assert.match(auth, /client_id:\s*expectedChannelId/);
+  assert.match(auth, /verifyData\.aud/);
+  assert.match(auth, /verifyData\.exp/);
+  assert.match(auth, /verifyData\.iss/);
+  assert.match(auth, /verifyData\.sub/);
+  assert.match(auth, /MEMBERSHIP_USER_LINE_CHANNEL_ID/);
+  assert.match(auth, /MEMBERSHIP_ADMIN_LINE_CHANNEL_ID/);
+});
+
+test('browser clients use ID tokens and do not persist credentials', () => {
+  const clients = [read('shared/common.js'), read('member/app.js'), read('points/app.js'), read('admin/app.js')].join('\n');
+  assert.match(clients, /getIDToken\(\)/);
+  assert.doesNotMatch(clients, /getAccessToken\(\)/);
+  assert.doesNotMatch(clients, /localStorage|sessionStorage/);
+});
+
+test('admin authorization is server-side and pending accounts are non-privileged', () => {
+  const auth = read('gas/Auth.gs');
+  const code = read('gas/Code.gs');
+  assert.match(auth, /findRecordWithRow_\('Admins'/);
+  assert.match(auth, /role: 'none'/);
+  assert.match(auth, /status: 'pending'/);
+  assert.match(auth, /ADMIN_PENDING/);
+  assert.match(auth, /status !== 'active'/);
+  assert.match(auth, /role !== 'admin'/);
+  assert.doesNotMatch(code, /request\.(role|isAdmin|admin)/);
+});
+
+test('spreadsheet writes protect formulas and point entries are append-only', () => {
+  const storage = read('gas/Storage.gs');
+  const pointService = read('gas/PointCardService.gs');
+  assert.match(storage, /escapeSheetValue_/);
+  assert.match(storage, /\^\[=\+\\-@\]/);
+  assert.match(pointService, /appendRecord_\('PointEntries'/);
+  assert.match(pointService, /PointBalances/);
+  assert.match(pointService, /withDataLock_/);
+});
+
+test('CSP allows the LIFF subwindow without unsafe-eval', () => {
+  const html = [read('member/index.html'), read('points/index.html'), read('admin/index.html')].join('\n');
+  assert.match(html, /frame-src https:\/\/liff-subwindow\.line\.me/);
+  assert.match(html, /form-action https:\/\/liff-subwindow\.line\.me/);
+  assert.doesNotMatch(html, /unsafe-eval/);
+});
+
+test('ID tokens are not explicitly written to logs or Sheets', () => {
+  const gas = ['gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs'].map(read).join('\n');
+  assert.doesNotMatch(gas, /console\.(log|info|warn|error)\([^\n]*idToken/i);
+  assert.doesNotMatch(gas, /appendRecord_\([^\n]*idToken/i);
+  assert.doesNotMatch(gas, /id_token[^\n]*console/i);
+});
