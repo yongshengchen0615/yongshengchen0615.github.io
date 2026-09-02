@@ -1,16 +1,54 @@
 'use strict';
 
+const POINT_CARD_REWARD_TYPES_ = Object.freeze(['coupon', 'lottery']);
+const POINT_CARD_MAX_REWARDS_ = 30;
+
 function handlePointCardBootstrap_(identity) {
   const member = ensureMember_(identity);
   return { profile: { displayName: String(member.display_name || identity.displayName) }, cards: visiblePointCardsForMember_(identity.lineUserId) };
 }
 
 function readPointCards_() {
-  return readRecords_('PointCards').map(pointCardForClient_).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  const rewardsByCard = pointCardRewardsByCard_();
+  return readRecords_('PointCards').map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || []); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
 
-function pointCardForClient_(card) {
-  return { cardId: String(card.card_id || ''), title: String(card.title || ''), description: String(card.description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || ''), status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
+function pointCardForClient_(card, configuredRewards) {
+  const cardId = String(card.card_id || '');
+  const rewards = Array.isArray(configuredRewards) && configuredRewards.length
+    ? configuredRewards.map(pointCardRewardForClient_).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
+    : legacyPointCardReward_(card);
+  const finalReward = rewards.length ? rewards[rewards.length - 1] : null;
+  return { cardId, title: String(card.title || ''), description: String(card.description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || (finalReward && finalReward.rewardTitle) || ''), rewards, status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
+}
+
+function pointCardRewardsByCard_() {
+  const grouped = {};
+  readRecords_('PointCardRewards').forEach(function(record) {
+    const cardId = String(record.card_id || '').trim();
+    if (!cardId) return;
+    if (!grouped[cardId]) grouped[cardId] = [];
+    grouped[cardId].push(record);
+  });
+  return grouped;
+}
+
+function pointCardRewardForClient_(reward) {
+  return {
+    rewardId: String(reward.reward_id || reward.rewardId || ''),
+    cardId: String(reward.card_id || reward.cardId || ''),
+    thresholdStamps: Number(reward.threshold_stamps || reward.thresholdStamps || 0),
+    rewardType: POINT_CARD_REWARD_TYPES_.indexOf(String(reward.reward_type || reward.rewardType || '').toLowerCase()) >= 0 ? String(reward.reward_type || reward.rewardType).toLowerCase() : 'coupon',
+    rewardTitle: String(reward.reward_title || reward.rewardTitle || ''),
+    rewardDescription: String(reward.reward_description || reward.rewardDescription || ''),
+    lotteryWinRate: Number(reward.lottery_win_rate || reward.lotteryWinRate || 0)
+  };
+}
+
+function legacyPointCardReward_(card) {
+  const title = String(card.reward_title || '').trim();
+  if (!title) return [];
+  return [{ rewardId: 'legacy:' + String(card.card_id || ''), cardId: String(card.card_id || ''), thresholdStamps: Number(card.target_stamps || 0), rewardType: 'coupon', rewardTitle: title, rewardDescription: '', lotteryWinRate: 0 }];
 }
 
 function visiblePointCardsForMember_(lineUserId) {
@@ -37,8 +75,10 @@ function handlePointCardSave_(identity, admin, request) {
   const status = String(input.status || '').trim().toLowerCase();
   const accent = String(input.accent || '').trim();
   const expected = String(request.expectedUpdatedAt || '').trim();
-  if (!title || title.length > 80 || description.length > 240 || !rewardTitle || rewardTitle.length > 100) throw new ApiError(400, 'INVALID_CARD', '集點卡名稱、說明或回饋內容不合法。');
+  const hasRewards = Object.prototype.hasOwnProperty.call(input, 'rewards');
+  if (!title || title.length > 80 || description.length > 240 || (!hasRewards && (!rewardTitle || rewardTitle.length > 100))) throw new ApiError(400, 'INVALID_CARD', '集點卡名稱、說明或回饋內容不合法。');
   if (!Number.isInteger(targetStamps) || targetStamps < 1 || targetStamps > 100) throw new ApiError(400, 'INVALID_CARD', '完成點數必須是 1–100 的整數。');
+  const rewards = hasRewards ? normalizePointCardRewards_(input.rewards, targetStamps) : null;
   if (['active', 'draft', 'archived'].indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(accent)) throw new ApiError(400, 'INVALID_CARD', '集點卡狀態或識別色不合法。');
 
   return withDataLock_(function() {
@@ -50,11 +90,59 @@ function handlePointCardSave_(identity, admin, request) {
       if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '集點卡已被更新，請重新整理。');
       card = match.record; rowNumber = match.rowNumber;
     } else { card = { card_id: 'PC-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), created_by: identity.lineUserId, created_at: now }; }
-    card.title = title; card.description = description; card.target_stamps = String(targetStamps); card.reward_title = rewardTitle; card.status = status; card.accent = accent.toUpperCase(); card.updated_by = identity.lineUserId; card.updated_at = now;
+    const existingRewards = hasRewards ? [] : pointCardRewardsByCard_()[card.card_id] || [];
+    if (!hasRewards && existingRewards.some(function(existingReward) { return Number(existingReward.threshold_stamps || 0) > targetStamps; })) throw new ApiError(400, 'INVALID_CARD_REWARDS', '完成點數不可低於既有節點點數，請一併更新節點設定。');
+    card.title = title; card.description = description; card.target_stamps = String(targetStamps); card.reward_title = hasRewards ? rewards[rewards.length - 1].reward_title : rewardTitle; card.status = status; card.accent = accent.toUpperCase(); card.updated_by = identity.lineUserId; card.updated_at = now;
     if (rowNumber) updateRecordAtRow_('PointCards', rowNumber, card); else appendRecord_('PointCards', card);
+    if (hasRewards) replacePointCardRewards_(card.card_id, rewards, now);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_SAVE', target_type: 'point_card', target_id: card.card_id, result: 'success', detail: 'Point card saved', created_at: now });
-    return { card: pointCardForClient_(card) };
+    return { card: pointCardForClient_(card, hasRewards ? rewards : existingRewards) };
   });
+}
+
+function normalizePointCardRewards_(rawRewards, targetStamps) {
+  if (!Array.isArray(rawRewards) || rawRewards.length < 1 || rawRewards.length > POINT_CARD_MAX_REWARDS_) throw new ApiError(400, 'INVALID_CARD_REWARDS', '至少要設定 1 個節點，最多 30 個節點。');
+  const seenThresholds = {};
+  const normalized = rawRewards.map(function(rawReward) {
+    if (!rawReward || typeof rawReward !== 'object' || Array.isArray(rawReward)) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點獎勵格式不合法。');
+    const thresholdStamps = Number(rawReward.thresholdStamps);
+    const rewardType = String(rawReward.rewardType || '').trim().toLowerCase();
+    const rewardTitle = String(rawReward.rewardTitle || '').trim();
+    const rewardDescription = String(rawReward.rewardDescription || '').trim();
+    if (!Number.isInteger(thresholdStamps) || thresholdStamps < 1 || thresholdStamps > targetStamps || seenThresholds[thresholdStamps]) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點點數必須是互不重複、且不超過完成點數的整數。');
+    if (POINT_CARD_REWARD_TYPES_.indexOf(rewardType) < 0 || !rewardTitle || rewardTitle.length > 100 || rewardDescription.length > 240) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點獎勵名稱、說明或類型不合法。');
+    seenThresholds[thresholdStamps] = true;
+    let lotteryWinRate = 0;
+    if (rewardType === 'lottery') {
+      const lotteryWinRateText = rawReward.lotteryWinRate === null || rawReward.lotteryWinRate === undefined ? '' : String(rawReward.lotteryWinRate).trim();
+      if (!lotteryWinRateText) throw new ApiError(400, 'INVALID_CARD_REWARDS', '抽獎券必須設定中獎率。');
+      lotteryWinRate = Number(lotteryWinRateText);
+      if (!Number.isFinite(lotteryWinRate) || lotteryWinRate < 0 || lotteryWinRate > 100) throw new ApiError(400, 'INVALID_CARD_REWARDS', '抽獎券中獎率必須介於 0–100%。');
+      lotteryWinRate = Math.round(lotteryWinRate * 100) / 100;
+    }
+    return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), reward_type: rewardType, reward_title: rewardTitle, reward_description: rewardDescription, lottery_win_rate: String(lotteryWinRate), created_at: '', updated_at: '' };
+  }).sort(function(a, b) { return Number(a.threshold_stamps) - Number(b.threshold_stamps); });
+  return normalized;
+}
+
+function replacePointCardRewards_(cardId, rewards, now) {
+  const sheet = getDataSheet_('PointCardRewards');
+  const headers = MEMBERSHIP_SHEET_SCHEMAS_.PointCardRewards;
+  const matches = [];
+  if (sheet.getLastRow() >= 2) {
+    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+    values.forEach(function(row, index) {
+      const record = rowToRecord_(headers, row);
+      if (String(record.card_id || '') === String(cardId)) matches.push({ rowNumber: index + 2, record });
+    });
+  }
+  rewards.forEach(function(reward, index) {
+    reward.card_id = String(cardId);
+    reward.created_at = now;
+    reward.updated_at = now;
+    if (matches[index]) updateRecordAtRow_('PointCardRewards', matches[index].rowNumber, reward); else appendRecord_('PointCardRewards', reward);
+  });
+  for (let index = matches.length - 1; index >= rewards.length; index -= 1) sheet.deleteRow(matches[index].rowNumber);
 }
 
 function handleStampAdd_(identity, admin, request) {

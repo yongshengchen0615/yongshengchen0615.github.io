@@ -16,7 +16,7 @@ test('Member module has independent user surfaces and one shared admin surface',
     'member/index.html', 'member/styles.css', 'member/app.js',
     'points/index.html', 'points/styles.css', 'points/app.js',
     'admin/index.html', 'admin/styles.css', 'admin/app.js',
-    'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/appsscript.json'
+    'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/appsscript.json', 'tests/pointcard-rewards.test.js'
   ].forEach((file) => assert.equal(exists(file), true, `missing ${file}`));
 });
 

@@ -19,6 +19,9 @@ test('GAS verifies LINE ID tokens server-side against the surface channel', () =
   assert.match(auth, /verifyData\.exp/);
   assert.match(auth, /verifyData\.iss/);
   assert.match(auth, /verifyData\.sub/);
+  assert.match(auth, /AUTH_CHANNEL_MISMATCH/);
+  assert.match(auth, /IdToken expired\./);
+  assert.match(auth, /Invalid IdToken\./);
   assert.match(auth, /MEMBERSHIP_MEMBER_LINE_CHANNEL_ID/);
   assert.match(auth, /MEMBERSHIP_POINTS_LINE_CHANNEL_ID/);
   assert.match(auth, /MEMBERSHIP_ADMIN_LINE_CHANNEL_ID/);

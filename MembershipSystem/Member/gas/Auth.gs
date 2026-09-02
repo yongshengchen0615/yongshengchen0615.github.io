@@ -26,7 +26,9 @@ function authenticateLine_(idToken, clientType) {
 
   let verifyData;
   try { verifyData = JSON.parse(response.getContentText() || '{}'); } catch (_) { verifyData = null; }
-  if (response.getResponseCode() !== 200 || !verifyData) throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token 驗證失敗。');
+  if (response.getResponseCode() !== 200 || !verifyData) {
+    throwLineVerificationError_(response.getResponseCode(), verifyData);
+  }
   if (String(verifyData.aud || '') !== expectedChannelId) throw new ApiError(401, 'AUTH_CHANNEL_MISMATCH', 'LINE token 的 Channel ID 與 GAS 設定不一致。');
   if (String(verifyData.iss || '') !== MEMBERSHIP_LINE_ISSUER_) throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token issuer 不合法。');
   if (!Number(verifyData.exp) || Number(verifyData.exp) * 1000 <= Date.now()) throw new ApiError(401, 'AUTH_EXPIRED', 'LINE ID token 已過期。');
@@ -39,6 +41,23 @@ function authenticateLine_(idToken, clientType) {
     try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(Object.assign({}, identity, { expiresAt: Number(verifyData.exp) * 1000 })), ttl); } catch (_) {}
   }
   return identity;
+}
+
+function throwLineVerificationError_(responseCode, verifyData) {
+  const description = String(verifyData && verifyData.error_description || '').trim();
+  if (description === 'Invalid IdToken Audience.') {
+    throw new ApiError(401, 'AUTH_CHANNEL_MISMATCH', 'LINE ID token 與目前 LIFF 的 Channel ID 不一致。請確認 GAS 使用的是 Channel ID，不是完整 LIFF ID。');
+  }
+  if (description === 'IdToken expired.') {
+    throw new ApiError(401, 'AUTH_EXPIRED', 'LINE ID token 已過期，請重新開啟 LIFF。');
+  }
+  if (description === 'Invalid IdToken Issuer.') {
+    throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token issuer 不合法。');
+  }
+  if (description === 'Invalid IdToken.') {
+    throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token 格式或簽章不合法，請重新開啟 LIFF。');
+  }
+  throw new ApiError(responseCode >= 500 ? 503 : 401, responseCode >= 500 ? 'LINE_UNAVAILABLE' : 'AUTH_INVALID', 'LINE ID token 驗證失敗。');
 }
 
 function fetchLineVerification_(idToken, expectedChannelId) {

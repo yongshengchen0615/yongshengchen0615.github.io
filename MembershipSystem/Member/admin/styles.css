@@ -19,3 +19,22 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
 @media (max-width: 480px) { .topbar h1 { font-size: 38px; }.account-menu { max-width: 100px; text-align: right; }.surface-nav { gap: 20px; }.panel-heading h2 { font-size: 26px; }.modal { padding: 10px; align-items: end; }.modal-card { width: 100%; border-radius: 18px 18px 0 0; padding: 19px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 .form-message.success { color: #28734e; background: #eaf7ed; }
+.reward-editor { margin-top: 3px; padding: 17px; background: #f7faf7; border: 1px solid var(--line); border-radius: 13px; }
+.section-heading { display: flex; align-items: start; justify-content: space-between; gap: 14px; margin-bottom: 15px; }
+.section-heading h4 { margin: 5px 0 4px; color: var(--ink); font-size: 18px; letter-spacing: -.05em; }
+.section-heading p:not(.kicker) { max-width: 440px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.reward-rows { display: grid; gap: 10px; }
+.reward-row-editor { padding: 13px; background: var(--paper); border: 1px solid var(--line); border-radius: 11px; }
+.reward-row-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
+.reward-row-heading strong { color: var(--ink); font-size: 12px; }
+.remove-reward { font-size: 11px; }
+.reward-row-grid { display: grid; grid-template-columns: minmax(90px, .6fr) minmax(120px, .8fr) 1.25fr 1.25fr; gap: 10px; }
+.reward-row-grid label { min-width: 0; }
+.reward-row-grid input, .reward-row-grid select { padding: 9px 10px; font-size: 12px; }
+.field-suffix { position: relative; display: block; margin-top: -31px; margin-right: 10px; color: var(--muted); font-size: 11px; text-align: right; pointer-events: none; }
+.editor-hint { margin: 11px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.editor-hint.warning { color: #b42318; }
+.legacy-reward-field { display: none; }
+@media (max-width: 900px) { .reward-row-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 760px) { .section-heading { align-items: stretch; flex-direction: column; }.section-heading .button { align-self: flex-start; }.reward-row-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 480px) { .reward-editor { padding: 13px; }.reward-row-grid { grid-template-columns: 1fr; } }

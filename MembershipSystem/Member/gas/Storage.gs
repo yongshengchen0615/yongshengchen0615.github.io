@@ -5,6 +5,7 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at']),
   Admins: Object.freeze(['line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at']),
   PointCards: Object.freeze(['card_id', 'title', 'description', 'target_stamps', 'reward_title', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at']),
+  PointCardRewards: Object.freeze(['reward_id', 'card_id', 'threshold_stamps', 'reward_type', 'reward_title', 'reward_description', 'lottery_win_rate', 'created_at', 'updated_at']),
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
   PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at']),
   AuditLogs: Object.freeze(['audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id', 'result', 'detail', 'created_at'])

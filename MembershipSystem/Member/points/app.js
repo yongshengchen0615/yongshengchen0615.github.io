@@ -5,7 +5,7 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'targetCount', 'progressBar', 'progressMessage', 'remainingMessage', 'rewardTitle', 'updatedAt'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'targetCount', 'progressBar', 'progressMessage', 'remainingMessage', 'rewardTitle', 'updatedAt', 'milestonesPanel', 'milestoneList', 'milestonesSummary'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.refreshButton.addEventListener('click', () => loadCards(true).catch(() => { els.refreshButton.textContent = '更新失敗'; window.setTimeout(() => { els.refreshButton.innerHTML = '<span aria-hidden="true">↻</span> 更新'; }, 1200); }));
@@ -67,6 +67,7 @@
     els.cardTabs.classList.toggle('hidden', !hasCards);
     els.emptyView.classList.toggle('hidden', hasCards);
     els.activeCardView.classList.toggle('hidden', !hasCards);
+    els.milestonesPanel.classList.toggle('hidden', !hasCards);
     if (hasCards) renderActiveCard(state.cards.find((card) => card.cardId === state.selectedCardId) || state.cards[0]);
   }
 
@@ -87,7 +88,20 @@
     els.remainingMessage.textContent = complete ? '可以向店家兌換' : `還差 ${target - stamps} 點`;
     els.rewardTitle.textContent = String(card.rewardTitle || '專屬回饋');
     els.updatedAt.textContent = card.updatedAt ? `更新於 ${window.MemberSystem.formatDateTime(card.updatedAt)}` : '尚未更新';
+    renderMilestones(card, stamps);
   }
+
+  function renderMilestones(card, stamps) {
+    const rewards = Array.isArray(card.rewards) ? card.rewards.slice().sort((a, b) => Number(a.thresholdStamps || 0) - Number(b.thresholdStamps || 0)) : [];
+    els.milestonesSummary.textContent = rewards.length ? `${rewards.length} 個回饋節點` : '尚未設定節點';
+    els.milestoneList.replaceChildren(...rewards.map((reward) => {
+      const item = document.createElement('article'); item.className = `milestone-item${stamps >= Number(reward.thresholdStamps || 0) ? ' reached' : ''}`;
+      const marker = document.createElement('span'); marker.className = 'milestone-marker'; marker.textContent = stamps >= Number(reward.thresholdStamps || 0) ? '✓' : String(reward.thresholdStamps || '—');
+      const copy = document.createElement('div'); const title = document.createElement('strong'); title.textContent = String(reward.rewardTitle || '節點回饋'); const meta = document.createElement('small'); meta.textContent = `${rewardTypeLabel(reward.rewardType)} · ${stamps >= Number(reward.thresholdStamps || 0) ? '已達成' : `還差 ${Math.max(0, Number(reward.thresholdStamps || 0) - stamps)} 點`}`; copy.append(title, meta); if (reward.rewardDescription) { const description = document.createElement('p'); description.textContent = String(reward.rewardDescription); copy.append(description); } if (String(reward.rewardType) === 'lottery') { const rate = document.createElement('span'); rate.className = 'milestone-rate'; rate.textContent = `中獎率 ${formatRate(reward.lotteryWinRate)}%`; item.append(marker, copy, rate); } else item.append(marker, copy); return item;
+    }));
+  }
+  function rewardTypeLabel(type) { return type === 'lottery' ? '抽獎券' : '優惠券'; }
+  function formatRate(value) { const rate = Number(value); return Number.isFinite(rate) ? String(Number(rate.toFixed(2))) : '0'; }
 
   function setView(view) {
     els.loadingView.classList.toggle('hidden', view !== 'loading');
