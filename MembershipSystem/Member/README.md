@@ -57,7 +57,8 @@ GAS 會建立並維護以下 schema：
 - `Members`：會員身份、會員編號、等級、狀態與登入時間。
 - `Admins`：管理端授權。第一次登入只會建立 `role=none`、`status=pending`，手動改成 `admin` / `active` 後才能進入。
 - `PointCards`：集點卡設定、完成點數、相容用的最後回饋文字、公開狀態與識別色。
-- `PointCardRewards`：每張集點卡的節點獎勵；包含達標點數、優惠券/抽獎券類型、獎勵說明與抽獎券中獎率（0–100%）。
+- `PointCardRewards`：每張集點卡的節點獎勵；包含達標點數、優惠券/抽獎券類型與獎勵說明，並保留舊版 `lottery_win_rate` 欄位供相容。
+- `PointCardLotteryPrizes`：抽獎券節點的多個獎項與各自中獎率；允許單一獎項為 0%，同一抽獎券的獎項機率總和必須為 100%。
 - `PointBalances`：每位會員在每張卡的目前餘額。
 - `PointEntries`：每次補登點數的不可變流水紀錄。
 - `AuditLogs`：管理端會員/卡片/集點操作紀錄。
@@ -75,7 +76,7 @@ GAS 會建立並維護以下 schema：
 - `admin.pointcards.save`
 - `admin.stamps.add`
 
-`admin.pointcards.save` 的 `card.rewards` 是節點陣列。每個節點的 `thresholdStamps` 必須是唯一且不超過 `targetStamps` 的整數；`rewardType` 可為 `coupon` 或 `lottery`，後者必須提供 0–100 的 `lotteryWinRate`。
+`admin.pointcards.save` 的 `card.rewards` 是節點陣列。每個節點的 `thresholdStamps` 必須是唯一且不超過 `targetStamps` 的整數；`rewardType` 可為 `coupon` 或 `lottery`。抽獎券節點的 `prizes` 可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。
 
 前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 

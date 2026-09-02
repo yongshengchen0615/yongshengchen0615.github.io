@@ -51,4 +51,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(228, 120, 69, .4
 .milestone-item > div { min-width: 0; flex: 1; }
 .milestone-item strong, .milestone-item small, .milestone-item p { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .milestone-item strong { color: var(--ink); font-size: 13px; }.milestone-item small { margin-top: 3px; color: var(--muted); font-size: 10px; }.milestone-item p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }.milestone-rate { flex: 0 0 auto; color: var(--orange); font-size: 10px; font-weight: 850; }
+.prize-opportunities { display: grid; gap: 3px; margin: 6px 0 0; padding: 0; list-style: none; }.prize-opportunity { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; }.prize-opportunity span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.prize-opportunity span:last-child { flex: 0 0 auto; color: var(--orange); font-weight: 850; }
+.prize-opportunity-label { margin: 8px 0 0 !important; color: var(--ink) !important; font-size: 10px !important; font-weight: 850; }
 @media (max-width: 620px) { .milestones-panel { padding: 18px; }.milestone-item { align-items: start; }.milestone-rate { margin-top: 9px; } }

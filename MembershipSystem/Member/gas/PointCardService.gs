@@ -2,6 +2,8 @@
 
 const POINT_CARD_REWARD_TYPES_ = Object.freeze(['coupon', 'lottery']);
 const POINT_CARD_MAX_REWARDS_ = 30;
+const POINT_CARD_MAX_LOTTERY_PRIZES_ = 30;
+const POINT_CARD_RATE_BASIS_POINTS_ = 10000;
 
 function handlePointCardBootstrap_(identity) {
   const member = ensureMember_(identity);
@@ -24,11 +26,24 @@ function pointCardForClient_(card, configuredRewards) {
 
 function pointCardRewardsByCard_() {
   const grouped = {};
+  const prizesByReward = pointCardLotteryPrizesByReward_();
   readRecords_('PointCardRewards').forEach(function(record) {
     const cardId = String(record.card_id || '').trim();
     if (!cardId) return;
     if (!grouped[cardId]) grouped[cardId] = [];
+    record.prizes = prizesByReward[String(record.reward_id || '')] || [];
     grouped[cardId].push(record);
+  });
+  return grouped;
+}
+
+function pointCardLotteryPrizesByReward_() {
+  const grouped = {};
+  readRecords_('PointCardLotteryPrizes').forEach(function(record) {
+    const rewardId = String(record.reward_id || '').trim();
+    if (!rewardId) return;
+    if (!grouped[rewardId]) grouped[rewardId] = [];
+    grouped[rewardId].push(record);
   });
   return grouped;
 }
@@ -41,14 +56,19 @@ function pointCardRewardForClient_(reward) {
     rewardType: POINT_CARD_REWARD_TYPES_.indexOf(String(reward.reward_type || reward.rewardType || '').toLowerCase()) >= 0 ? String(reward.reward_type || reward.rewardType).toLowerCase() : 'coupon',
     rewardTitle: String(reward.reward_title || reward.rewardTitle || ''),
     rewardDescription: String(reward.reward_description || reward.rewardDescription || ''),
-    lotteryWinRate: Number(reward.lottery_win_rate || reward.lotteryWinRate || 0)
+    lotteryWinRate: Number(reward.lottery_win_rate || reward.lotteryWinRate || 0),
+    prizes: Array.isArray(reward.prizes || reward.lotteryPrizes) ? (reward.prizes || reward.lotteryPrizes).map(pointCardLotteryPrizeForClient_) : []
   };
+}
+
+function pointCardLotteryPrizeForClient_(prize) {
+  return { prizeId: String(prize.prize_id || prize.prizeId || ''), rewardId: String(prize.reward_id || prize.rewardId || ''), prizeTitle: String(prize.prize_title || prize.prizeTitle || ''), prizeDescription: String(prize.prize_description || prize.prizeDescription || ''), winRate: Number(prize.win_rate || prize.winRate || 0) };
 }
 
 function legacyPointCardReward_(card) {
   const title = String(card.reward_title || '').trim();
   if (!title) return [];
-  return [{ rewardId: 'legacy:' + String(card.card_id || ''), cardId: String(card.card_id || ''), thresholdStamps: Number(card.target_stamps || 0), rewardType: 'coupon', rewardTitle: title, rewardDescription: '', lotteryWinRate: 0 }];
+  return [{ rewardId: 'legacy:' + String(card.card_id || ''), cardId: String(card.card_id || ''), thresholdStamps: Number(card.target_stamps || 0), rewardType: 'coupon', rewardTitle: title, rewardDescription: '', lotteryWinRate: 0, prizes: [] }];
 }
 
 function visiblePointCardsForMember_(lineUserId) {
@@ -113,16 +133,32 @@ function normalizePointCardRewards_(rawRewards, targetStamps) {
     if (POINT_CARD_REWARD_TYPES_.indexOf(rewardType) < 0 || !rewardTitle || rewardTitle.length > 100 || rewardDescription.length > 240) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點獎勵名稱、說明或類型不合法。');
     seenThresholds[thresholdStamps] = true;
     let lotteryWinRate = 0;
+    let prizes = [];
     if (rewardType === 'lottery') {
-      const lotteryWinRateText = rawReward.lotteryWinRate === null || rawReward.lotteryWinRate === undefined ? '' : String(rawReward.lotteryWinRate).trim();
-      if (!lotteryWinRateText) throw new ApiError(400, 'INVALID_CARD_REWARDS', '抽獎券必須設定中獎率。');
-      lotteryWinRate = Number(lotteryWinRateText);
-      if (!Number.isFinite(lotteryWinRate) || lotteryWinRate < 0 || lotteryWinRate > 100) throw new ApiError(400, 'INVALID_CARD_REWARDS', '抽獎券中獎率必須介於 0–100%。');
-      lotteryWinRate = Math.round(lotteryWinRate * 100) / 100;
+      prizes = normalizePointCardLotteryPrizes_(rawReward.prizes);
     }
-    return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), reward_type: rewardType, reward_title: rewardTitle, reward_description: rewardDescription, lottery_win_rate: String(lotteryWinRate), created_at: '', updated_at: '' };
+    return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), reward_type: rewardType, reward_title: rewardTitle, reward_description: rewardDescription, lottery_win_rate: String(lotteryWinRate), prizes, created_at: '', updated_at: '' };
   }).sort(function(a, b) { return Number(a.threshold_stamps) - Number(b.threshold_stamps); });
   return normalized;
+}
+
+function normalizePointCardLotteryPrizes_(rawPrizes) {
+  if (!Array.isArray(rawPrizes) || rawPrizes.length < 1 || rawPrizes.length > POINT_CARD_MAX_LOTTERY_PRIZES_) throw new ApiError(400, 'INVALID_CARD_REWARDS', '抽獎券至少要設定 1 個獎項，最多 30 個獎項。');
+  let totalBasisPoints = 0;
+  const prizes = rawPrizes.map(function(rawPrize) {
+    if (!rawPrize || typeof rawPrize !== 'object' || Array.isArray(rawPrize)) throw new ApiError(400, 'INVALID_CARD_REWARDS', '抽獎獎項格式不合法。');
+    const prizeTitle = String(rawPrize.prizeTitle || '').trim();
+    const prizeDescription = String(rawPrize.prizeDescription || '').trim();
+    const winRateText = rawPrize.winRate === null || rawPrize.winRate === undefined ? '' : String(rawPrize.winRate).trim();
+    if (!prizeTitle || prizeTitle.length > 100 || prizeDescription.length > 240 || !winRateText) throw new ApiError(400, 'INVALID_CARD_REWARDS', '抽獎獎項名稱、說明與機率都必須合法。');
+    const winRate = Number(winRateText);
+    if (!Number.isFinite(winRate) || winRate < 0 || winRate > 100) throw new ApiError(400, 'INVALID_CARD_REWARDS', '每個獎項機率必須介於 0–100%。');
+    const basisPoints = Math.round(winRate * 100);
+    totalBasisPoints += basisPoints;
+    return { prize_id: 'LP-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), reward_id: '', prize_title: prizeTitle, prize_description: prizeDescription, win_rate: String(basisPoints / 100), created_at: '', updated_at: '' };
+  });
+  if (totalBasisPoints !== POINT_CARD_RATE_BASIS_POINTS_) throw new ApiError(400, 'INVALID_CARD_REWARDS', '同一張抽獎券的獎項機率合計必須正好是 100%。');
+  return prizes;
 }
 
 function replacePointCardRewards_(cardId, rewards, now) {
@@ -137,12 +173,36 @@ function replacePointCardRewards_(cardId, rewards, now) {
     });
   }
   rewards.forEach(function(reward, index) {
+    const oldRewardId = matches[index] && String(matches[index].record.reward_id || '');
     reward.card_id = String(cardId);
     reward.created_at = now;
     reward.updated_at = now;
     if (matches[index]) updateRecordAtRow_('PointCardRewards', matches[index].rowNumber, reward); else appendRecord_('PointCardRewards', reward);
+    if (oldRewardId && oldRewardId !== reward.reward_id) replacePointCardLotteryPrizes_(oldRewardId, [], now);
+    replacePointCardLotteryPrizes_(reward.reward_id, reward.prizes || [], now);
   });
-  for (let index = matches.length - 1; index >= rewards.length; index -= 1) sheet.deleteRow(matches[index].rowNumber);
+  for (let index = matches.length - 1; index >= rewards.length; index -= 1) { replacePointCardLotteryPrizes_(String(matches[index].record.reward_id || ''), [], now); sheet.deleteRow(matches[index].rowNumber); }
+}
+
+function replacePointCardLotteryPrizes_(rewardId, prizes, now) {
+  if (!rewardId) return;
+  const sheet = getDataSheet_('PointCardLotteryPrizes');
+  const headers = MEMBERSHIP_SHEET_SCHEMAS_.PointCardLotteryPrizes;
+  const matches = [];
+  if (sheet.getLastRow() >= 2) {
+    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+    values.forEach(function(row, index) {
+      const record = rowToRecord_(headers, row);
+      if (String(record.reward_id || '') === String(rewardId)) matches.push({ rowNumber: index + 2, record });
+    });
+  }
+  prizes.forEach(function(prize, index) {
+    prize.reward_id = String(rewardId);
+    prize.created_at = now;
+    prize.updated_at = now;
+    if (matches[index]) updateRecordAtRow_('PointCardLotteryPrizes', matches[index].rowNumber, prize); else appendRecord_('PointCardLotteryPrizes', prize);
+  });
+  for (let index = matches.length - 1; index >= prizes.length; index -= 1) sheet.deleteRow(matches[index].rowNumber);
 }
 
 function handleStampAdd_(identity, admin, request) {
