@@ -27,6 +27,7 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
 .reward-row-editor { padding: 13px; background: var(--paper); border: 1px solid var(--line); border-radius: 11px; }
 .reward-row-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
 .reward-row-heading strong { color: var(--ink); font-size: 12px; }
+.reward-row-summary { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .remove-reward { font-size: 11px; }
 .reward-row-grid { display: grid; grid-template-columns: minmax(90px, .6fr) minmax(120px, .8fr) 1.25fr 1.25fr; gap: 10px; }
 .reward-row-grid label { min-width: 0; }
@@ -36,7 +37,7 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
 .editor-hint.warning { color: #b42318; }
 .legacy-reward-field { display: none; }
 .lottery-prize-editor { grid-column: 1 / -1; margin-top: 2px; padding: 13px; background: #fffaf1; border: 1px solid #f0dfbf; border-radius: 10px; }
-.prize-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }.prize-heading strong { color: var(--ink); font-size: 11px; }.prize-heading span { color: var(--muted); font-size: 10px; }.prize-heading span.warning { color: #b42318; }.prize-heading .text-button { margin-left: auto; font-size: 10px; }
+.prize-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }.prize-heading strong { color: var(--ink); font-size: 11px; }.prize-heading > span { color: var(--muted); font-size: 10px; }.prize-heading > span.warning { color: #b42318; }.prize-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }.prize-actions .text-button { font-size: 10px; }
 .prize-rows { display: grid; gap: 8px; }.prize-row { display: grid; grid-template-columns: minmax(130px, 1.25fr) minmax(90px, .6fr) minmax(150px, 1.4fr) auto; align-items: end; gap: 8px; padding: 9px; background: var(--paper); border: 1px solid #f0e7d5; border-radius: 9px; }.prize-row label { min-width: 0; }.prize-row input { padding: 8px 9px; font-size: 11px; }.prize-description-field { grid-column: auto; }.remove-prize { padding-bottom: 8px; font-size: 10px; }
 @media (max-width: 900px) { .reward-row-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 760px) { .section-heading { align-items: stretch; flex-direction: column; }.section-heading .button { align-self: flex-start; }.reward-row-grid { grid-template-columns: 1fr 1fr; } }

@@ -89,6 +89,8 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.match(adminApp, /rewardType/);
   assert.match(adminApp, /prizeTitle/);
   assert.match(adminApp, /data-add-prize/);
+  assert.match(adminApp, /平均分配/);
+  assert.match(adminApp, /updateRewardRowSummary/);
   assert.match(adminApp, /card\.rewards/);
   assert.match(pointsHtml, /id="milestoneList"/);
   assert.match(pointsApp, /renderMilestones/);
