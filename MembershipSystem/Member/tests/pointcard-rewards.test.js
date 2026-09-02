@@ -198,6 +198,24 @@ test('ticket redemption rejects insufficient balance without changing the ticket
   assert.equal(rows.PointEntries.length, 0);
 });
 
+test('redeeming a node reissues its ticket while the remaining balance still covers consumption', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCards[0].target_stamps = '5';
+  rows.PointCards[0].reward_title = '咖啡券';
+  rows.PointCardTickets[0].threshold_stamps = '5';
+  rows.PointCardTickets[0].reward_key = 'PC-1:5';
+  rows.PointCardTickets[0].consume_stamps = '5';
+  rows.PointBalances[0].stamps = '13';
+  const challenge = context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
+  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' });
+  assert.equal(redeemed.balance.stamps, 8);
+  assert.equal(redeemed.nextTickets.length, 1);
+  assert.equal(redeemed.nextTickets[0].thresholdStamps, 5);
+  assert.equal(rows.PointCardTickets.length, 2);
+  assert.equal(rows.PointCardTickets[1].status, 'available');
+  assert.equal(context.visibleTicketsForMember_('U-1').length, 1);
+});
+
 test('earned tickets can redeem when balance covers consumption without retaining the threshold balance', () => {
   const { context, rows } = loadTicketService();
   rows.PointCardTickets[0].consume_stamps = '3';
@@ -223,18 +241,23 @@ test('expired cards reject ticket challenges even when an unused ticket remains'
   assert.throws(() => context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'CARD_EXPIRED');
 });
 
-test('consumable tickets are not duplicated on reload and reissue after a new threshold crossing', () => {
+test('consumable tickets are reissued once while the balance covers consumption', () => {
   const { context, rows } = loadTicketService();
   rows.PointCards[0].target_stamps = '5';
   rows.PointCards[0].reward_title = '咖啡券';
   rows.PointCardTickets[0].threshold_stamps = '5';
   rows.PointCardTickets[0].reward_key = 'PC-1:5';
+  rows.PointCardTickets[0].consume_stamps = '5';
   rows.PointCardTickets[0].status = 'used';
   context.issuePointCardTicketsForBalance_('U-1', rows.PointCards[0], 10, 10, '2026-09-02T00:00:00.000Z');
-  assert.equal(rows.PointCardTickets.length, 1);
-  context.issuePointCardTicketsForBalance_('U-1', rows.PointCards[0], 4, 5, '2026-09-02T00:00:00.000Z');
+  assert.equal(rows.PointCardTickets.length, 2);
+  context.issuePointCardTicketsForBalance_('U-1', rows.PointCards[0], 10, 10, '2026-09-02T00:00:00.000Z');
   assert.equal(rows.PointCardTickets.length, 2);
   assert.equal(rows.PointCardTickets[1].status, 'available');
+  rows.PointCardTickets[1].status = 'used';
+  context.issuePointCardTicketsForBalance_('U-1', rows.PointCards[0], 4, 5, '2026-09-02T00:00:00.000Z');
+  assert.equal(rows.PointCardTickets.length, 3);
+  assert.equal(rows.PointCardTickets[2].status, 'available');
 });
 
 test('admin and member surfaces expose milestone reward controls and progress', () => {
@@ -242,6 +265,7 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   const adminApp = read('admin/app.js');
   const pointsHtml = read('points/index.html');
   const pointsApp = read('points/app.js');
+  const pointsStyles = read('points/styles.css');
   const storage = read('gas/Storage.gs');
   assert.match(storage, /PointCardRewards:/);
   assert.match(storage, /PointCardLotteryPrizes:/);
@@ -258,6 +282,7 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.match(pointsHtml, /id="milestoneList"/);
   assert.match(pointsApp, /renderMilestones/);
   assert.match(pointsApp, /prize-opportunities/);
+  assert.doesNotMatch(pointsStyles, /prize-opportunity span:last-child \{ display: none; \}/);
   assert.match(pointsApp, /data-use-ticket/);
   assert.doesNotMatch(pointsApp, /prizeRate/);
   assert.doesNotMatch(pointsApp, /winRate/);
@@ -277,7 +302,14 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.match(adminApp, /consumeStamps/);
   assert.match(adminHtml, /cardExpiryMode/);
   assert.match(pointsApp, /使用消耗/);
+  assert.match(pointsApp, /點數不足/);
+  assert.match(pointsApp, /已取得票券 · 還差/);
+  assert.doesNotMatch(pointsHtml, /targetCount|progressBar/);
+  assert.doesNotMatch(adminHtml, /完成需要/);
+  assert.match(pointsHtml, /兌換票券節點/);
+  assert.match(adminHtml, /持續累積/);
   assert.match(pointsApp, /state\.tickets = state\.tickets\.filter/);
+  assert.match(pointsApp, /result\.nextTickets/);
   assert.match(storage, /consume_stamps/);
   assert.match(storage, /expires_on/);
 });

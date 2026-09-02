@@ -56,7 +56,7 @@ GAS 會建立並維護以下 schema：
 
 - `Members`：會員身份、會員編號、等級、狀態與登入時間。
 - `Admins`：管理端授權。第一次登入只會建立 `role=none`、`status=pending`，手動改成 `admin` / `active` 後才能進入。
-- `PointCards`：集點卡設定、完成點數、相容用的最後回饋文字、公開狀態、識別色與使用期限。
+- `PointCards`：集點卡設定、相容用的最後回饋文字、公開狀態、識別色與使用期限；集點卡採持續累積的兌換制，不再以卡片完成點數作為上限。
 - `PointCardRewards`：每張集點卡的節點獎勵；包含需要集到的點數、兌換消耗點數、優惠券/抽獎券類型與獎勵說明，並保留舊版 `lottery_win_rate` 欄位供相容。
 - `PointCardLotteryPrizes`：抽獎券節點的多個獎項與各自中獎率；允許單一獎項為 0%，同一抽獎券的獎項機率總和必須為 100%。
 - `PointCardTickets`：會員達成節點後產生的優惠券/抽獎券；保存票券狀態、兌換消耗點數、抽獎結果與核銷歷史。
@@ -82,7 +82,7 @@ GAS 會建立並維護以下 schema：
 - `user.pointcard.ticket.challenge`
 - `user.pointcard.ticket.redeem`
 
-`admin.pointcards.save` 的 `card.rewards` 是節點陣列。每個節點的 `thresholdStamps`（需要集到的點數）必須是唯一且不超過 `targetStamps` 的整數，`consumeStamps`（兌換消耗點數）必須為 1 點以上且不可超過 `thresholdStamps`；`rewardType` 可為 `coupon` 或 `lottery`。抽獎券節點的 `prizes` 可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。
+`admin.pointcards.save` 的 `card.rewards` 是兌換票券節點陣列。每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數；集點卡會持續累積，不存在會員端顯示的點數上限。`consumeStamps`（兌換消耗點數）必須為 1 點以上且不可超過 `thresholdStamps`；`rewardType` 可為 `coupon` 或 `lottery`。抽獎券節點的 `prizes` 可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。舊版呼叫若未提供 `card.rewards`，仍沿用 `targetStamps` 相容處理。
 
 管理端每張集點卡只需按一次「一鍵產生票券密碼」，GAS 會產生該卡共用的兩位數密碼並只放在 Script Properties；用戶端使用票券時會取得 5 組干擾號碼加上 1 組正確號碼，共 6 個選項。店員點選正確號碼後，後端才會以一次性、限時挑戰完成核銷；錯誤達 3 次會鎖定票券。票券達成節點後，實際使用只要目前點數足夠支付該節點的 `consumeStamps`，不要求目前餘額仍達到原本的 `thresholdStamps`；核銷成功會依獎勵的 `consumeStamps` 扣除會員點數並寫入負數流水紀錄。抽獎券再由後端依設定機率開獎，會員端播放開獎動畫且只顯示獎項名稱，不顯示機率。已使用票券不再回傳給會員端，後端歷史紀錄仍保留。
 

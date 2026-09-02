@@ -38,7 +38,7 @@
       </header>
 
       <section class="workspace-intro">
-        <div><p class="kicker">Your progress</p><h2>每一點，都離回饋更近。</h2></div>
+        <div><p class="kicker">Ticket rewards</p><h2>持續集點，兌換喜歡的票券。</h2></div>
         <button id="refreshButton" class="refresh-button" type="button"><span aria-hidden="true">↻</span> 更新</button>
       </section>
 
@@ -49,14 +49,13 @@
         <div class="card-ornament" aria-hidden="true"><span></span><span></span><span></span></div>
         <div class="active-card-header"><div><p class="label">Current reward</p><h2 id="activeCardTitle">集點卡</h2><p id="activeCardDescription" class="description"></p></div><div id="activeCardStatus" class="card-status">進行中</div></div>
         <div class="progress-section">
-          <div class="progress-numbers"><strong id="progressCount">0</strong><span>/ <b id="targetCount">10</b> 點</span></div>
-          <div class="progress-track" role="progressbar" aria-label="集點進度" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"><span id="progressBar"></span></div>
-          <div class="progress-foot"><span id="progressMessage">開始累積你的第一點</span><span id="remainingMessage">還差 10 點</span></div>
+          <div class="progress-numbers"><strong id="progressCount">0</strong><span>點</span></div>
+          <div class="progress-foot"><span id="progressMessage">持續累積，達到節點即可取得兌換票券</span><span id="remainingMessage">查看下方兌換節點</span></div>
         </div>
-        <div class="reward-row"><span class="reward-icon" aria-hidden="true">✦</span><div><p class="label">完成後可兌換</p><strong id="rewardTitle">專屬回饋</strong></div><div class="reward-meta"><span id="cardExpiry" class="updated-at">使用期限：無期限</span><span id="updatedAt" class="updated-at">—</span></div></div>
+        <div class="reward-row"><span class="reward-icon" aria-hidden="true">✦</span><div><p class="label">兌換票券節點</p><strong id="rewardTitle">查看下方節點</strong></div><div class="reward-meta"><span id="cardExpiry" class="updated-at">使用期限：無期限</span><span id="updatedAt" class="updated-at">—</span></div></div>
       </section>
 
-      <section id="milestonesPanel" class="milestones-panel" aria-labelledby="milestonesTitle"><div class="milestones-heading"><div><p class="label dark-label">Reward path</p><h2 id="milestonesTitle">集點節點</h2></div><span id="milestonesSummary" class="milestones-summary"></span></div><div id="milestoneList" class="milestone-list"></div></section>
+      <section id="milestonesPanel" class="milestones-panel" aria-labelledby="milestonesTitle"><div class="milestones-heading"><div><p class="label dark-label">Ticket path</p><h2 id="milestonesTitle">兌換票券節點</h2></div><span id="milestonesSummary" class="milestones-summary"></span></div><div id="milestoneList" class="milestone-list"></div></section>
 
       <section class="points-note"><span class="note-mark" aria-hidden="true">i</span><p>集點由店家於消費後登錄，若進度與實際消費不符，請直接向店員出示此畫面協助確認。</p></section>
     </main>
