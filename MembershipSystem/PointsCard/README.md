@@ -402,6 +402,18 @@ installPointsCardTicketReminderTrigger();
 
 這會建立每小時執行一次的 `runPointsCardTicketReminderSweep` time-driven trigger。可先手動執行 sweep 檢查回傳的 `configured / attempted / sent / retryable / failed` 數字；回傳內容不包含 Token 或 LINE User ID。LINE 對已封鎖／未加好友等部分情況仍可能回 `200`，因此 `sent` 代表 LINE Platform 已接受請求，不保證裝置端實際顯示。
 
+### 1.2 接收 MembershipSystem 的服務分鐘同步集點
+
+若要在 `app` 管理端發放服務分鐘時同步發點，請在 PointsCard 的 Apps Script「專案設定 → 指令碼屬性」設定：
+
+```text
+POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET = 與 MembershipSystem app 相同的高熵隨機字串
+```
+
+管理員會在 MembershipSystem app 的服務分鐘發放視窗直接選擇本次的有效集點卡，不需要在 GAS 設定 `CARD-ID`。PointsCard 只將目前可發放的卡片清單提供給已簽章的 app GAS；所選卡片 ID 會被納入完整 HMAC payload、保存於 app 的分鐘交易，並在重試時維持不變。卡片若在發放前已過期、封存或刪除，PointsCard 會拒絕同步，讓 app 紀錄保留失敗狀態供管理員確認。端點不接受瀏覽器傳來的管理權限或 LINE token，而是驗證 app GAS 對完整 payload 產生的 HMAC、10 分鐘時效與固定 request ID。相同分鐘發放重送只會恢復同一筆 PointsCard 加點紀錄，不會重複加點。
+
+首次同步到尚未開過 PointsCard 的 LINE 帳號時，系統會建立一筆 active 會員資料，再將點數寫入管理員選擇的卡片。首次同步成功的整合來源點數通知會交給 app 的分鐘推播統一發送，避免同一筆交易收到兩則通知。
+
 ### 2. 部署 GAS Web App
 
 ```text

@@ -51,11 +51,12 @@ function recoverAdminPointGrant_(grantMatch) {
   return grant;
 }
 
-function adminPointGrantMultiCard_(context, payload) {
+function adminPointGrantMultiCard_(context, payload, internalOptions) {
   ensureMultiCardStorage_();
   ensureAdminPointGrantStorage_();
 
-  const targetMemberNo = cleanText_(payload.targetMemberNo, 30, true);
+  const integration = internalOptions && internalOptions.source === 'minute-grant' ? internalOptions : null;
+  const targetMemberNo = cleanText_(payload.targetMemberNo || '', 30, !integration);
   const cardId = validMultiCardId_(payload.cardId, true);
   const stampCount = strictInt_(
     payload.stampCount,
@@ -73,17 +74,19 @@ function adminPointGrantMultiCard_(context, payload) {
   let result;
   let grantForPush = null;
   let rewardNotificationForPush = null;
+  let cardName = '';
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(8000)) fail_('BUSY', '發點服務忙碌中，請稍後再試。');
   try {
-    const memberMatch = findByFieldWithRow_(
-      getSheet_(POINTS_CARD_SHEETS.members),
-      'memberNo',
-      targetMemberNo
-    );
-    if (!memberMatch) fail_('MEMBER_NOT_FOUND', '找不到指定會員。');
+    const memberSheet = getSheet_(POINTS_CARD_SHEETS.members);
+    let memberMatch = integration
+      ? findByFieldWithRow_(memberSheet, 'lineUserId', integration.targetMemberLineUserId)
+      : findByFieldWithRow_(memberSheet, 'memberNo', targetMemberNo);
+    if (!memberMatch && !integration) fail_('MEMBER_NOT_FOUND', '找不到指定會員。');
 
-    const member = normalizeMember_(memberMatch.object);
+    const member = memberMatch
+      ? normalizeMember_(memberMatch.object)
+      : ensureMinuteGrantIntegrationMember_(integration, memberSheet);
     if (member.membershipStatus !== 'active') {
       fail_('MEMBER_INACTIVE', '只能對有效會員發放點數。');
     }
@@ -91,6 +94,7 @@ function adminPointGrantMultiCard_(context, payload) {
     const cardMatch = findMultiCard_(cardId);
     if (!cardMatch) fail_('CARD_NOT_FOUND', '找不到指定集點卡。');
     if (!cardMatch.card.available) fail_('CARD_UNAVAILABLE', '只能對目前有效的集點卡發放點數。');
+    cardName = cardMatch.card.name;
 
     const existing = findAdminPointGrantByFieldWithRow_(
       POINTS_CARD_ADMIN_GRANTS.grantsSheet,
@@ -108,6 +112,12 @@ function adminPointGrantMultiCard_(context, payload) {
       }
 
       const recovered = recoverAdminPointGrant_(existing);
+      if (integration && recovered.pushStatus === 'pending') {
+        recovered.pushStatus = 'delegated';
+        recovered.pushErrorCode = '';
+        recovered.updatedAt = new Date().toISOString();
+        writeAdminPointGrantObjectRow_(POINTS_CARD_ADMIN_GRANTS.grantsSheet, existing.row, recovered);
+      }
       grantForPush = recovered;
       const refreshedMatch = findByFieldWithRow_(
         getSheet_(POINTS_CARD_SHEETS.members),
@@ -146,7 +156,7 @@ function adminPointGrantMultiCard_(context, payload) {
         totalBefore: totalBefore,
         totalAfter: totalAfter,
         grantedByLineUserId: context.identity.sub,
-        pushStatus: 'pending',
+        pushStatus: integration ? 'delegated' : 'pending',
         pushErrorCode: '',
         pushAttemptedAt: '',
         pushSentAt: '',
@@ -219,5 +229,10 @@ function adminPointGrantMultiCard_(context, payload) {
   const push = attemptAdminPointGrantPush_(result.grantId, grantForPush, rewardNotificationForPush);
   result.pushStatus = push.status;
   result.pushErrorCode = push.errorCode;
+  if (integration) {
+    result.cardId = cardId;
+    result.cardName = cardName;
+    result.rewardMessage = pointGrantRewardPushMessage_(grantForPush, rewardNotificationForPush);
+  }
   return result;
 }

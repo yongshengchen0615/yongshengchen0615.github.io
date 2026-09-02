@@ -65,6 +65,7 @@ function attemptAdminPointGrantPush_(grantId, grantOverride, rewardNotification)
 
   const persistedGrant = normalizeAdminPointGrant_(initial.object);
   if (persistedGrant.pushStatus === 'sent') return { status: 'sent', errorCode: '' };
+  if (persistedGrant.pushStatus === 'delegated') return { status: 'delegated', errorCode: '' };
 
   const messageGrant = pointGrantPushGrantSnapshot_(persistedGrant, grantOverride) || persistedGrant;
   const rewardMessage = pointGrantRewardPushMessage_(messageGrant, rewardNotification);

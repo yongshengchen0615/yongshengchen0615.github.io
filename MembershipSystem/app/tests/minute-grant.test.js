@@ -59,21 +59,34 @@ function loadMinuteGrantHelpers() {
   return context.__minuteGrantExports;
 }
 
-test('manual minute grant input requires member, integer minutes, reason, and idempotency key', () => {
+test('manual minute grant input requires member, integer minutes, target card, reason, and idempotency key', () => {
   const api = loadMinuteGrantHelpers();
   const input = api.readMinuteGrantInput_({
     targetMemberNo: 'M2026000001',
     minutes: 120,
+    pointsPerServiceMinutes: 60,
+    pointsCardId: 'CARD-REWARD',
     reason: '補登預約服務',
     requestId: 'a'.repeat(32)
   });
   assert.equal(input.targetMemberNo, 'M2026000001');
   assert.equal(input.minutes, 120);
+  assert.equal(input.pointsPerServiceMinutes, 60);
+  assert.equal(input.pointsGranted, 2);
+  assert.equal(input.pointsCardId, 'CARD-REWARD');
   assert.equal(input.reason, '補登預約服務');
   assert.equal(input.requestId, 'a'.repeat(32));
-  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 0, reason: 'x', requestId: 'a'.repeat(32) }), /1 到 60000/);
-  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 60, reason: '', requestId: 'a'.repeat(32) }), /缺少必要欄位/);
-  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 60, reason: 'x', requestId: 'bad' }), /識別碼/);
+  const legacyInput = api.readMinuteGrantInput_({
+    targetMemberNo: 'M2026000001', minutes: 120, pointsCardId: 'CARD-REWARD', reason: '舊版發放介面', requestId: 'b'.repeat(32)
+  });
+  assert.equal(legacyInput.pointsPerServiceMinutes, 60);
+  assert.equal(legacyInput.pointsGranted, 2);
+  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 60, pointsPerServiceMinutes: 60, reason: 'x', requestId: 'a'.repeat(32) }), /選擇要同步發放的集點卡/);
+  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 0, pointsPerServiceMinutes: 60, reason: 'x', requestId: 'a'.repeat(32) }), /1 到 60000/);
+  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 60, pointsPerServiceMinutes: 60, reason: '', requestId: 'a'.repeat(32) }), /缺少必要欄位/);
+  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 60, pointsPerServiceMinutes: 60, reason: 'x', requestId: 'bad' }), /識別碼/);
+  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 59, pointsPerServiceMinutes: 60, reason: 'x', requestId: 'a'.repeat(32) }), /同步發放 1 到 100 點/);
+  assert.throws(() => api.readMinuteGrantInput_({ targetMemberNo: 'M1', minutes: 101, pointsPerServiceMinutes: 1, reason: 'x', requestId: 'a'.repeat(32) }), /同步發放 1 到 100 點/);
 });
 
 test('minute grant rows neutralize spreadsheet formulas in the admin-entered reason', () => {
@@ -121,6 +134,8 @@ test('API routing keeps manual grants behind server-side admin authorization and
   assert.match(code, /case 'admin\.minutes\.grant':\s*requireAdmin_\(context\);/s);
   assert.match(code, /case 'admin\.minutes\.grants\.list':\s*requireAdmin_\(context\);/s);
   assert.match(code, /case 'admin\.minutes\.push\.retry':\s*requireAdmin_\(context\);/s);
+  assert.match(code, /case 'admin\.minutes\.points\.retry':\s*requireAdmin_\(context\);/s);
+  assert.match(code, /case 'admin\.minutes\.points\.cards\.list':\s*requireAdmin_\(context\);/s);
   assert.match(code, /case 'member\.minutes\.grants\.list':/);
   assert.match(service, /grant\.memberLineUserId === context\.identity\.sub/);
   assert.match(service, /findMinuteGrantByFieldWithRow_\('requestId', input\.requestId\)/);
@@ -147,10 +162,16 @@ test('admin and member frontends expose grant reason and history without mixing 
   assert.match(adminHtml, /data-admin-page="grants"/);
   assert.match(adminHtml, /data-admin-page-panel="grants"/);
   assert.match(adminHtml, /id="minuteGrantReason"[^>]*required/);
-  assert.match(adminHtml, /原因會同時保存於系統、顯示在會員端/);
+  assert.match(adminHtml, /id="minuteGrantPointsPerServiceMinutes"/);
+  assert.match(adminHtml, /id="minuteGrantPointsCard"[^>]*required/);
+  assert.match(adminHtml, /id="minuteGrantPointsPreview"/);
   assert.match(subpages, /'grants'/);
   assert.match(adminScript, /admin\.minutes\.grant/);
   assert.match(adminScript, /admin\.minutes\.push\.retry/);
+  assert.match(adminScript, /admin\.minutes\.points\.retry/);
+  assert.match(adminScript, /admin\.minutes\.points\.cards\.list/);
+  assert.match(adminScript, /function loadPointCards\(\)/);
+  assert.match(adminScript, /function updatePointsPreview\(\)/);
   assert.match(userHtml, /id="minuteGrantHistoryTitle"/);
   assert.match(userScript, /member\.minutes\.grants\.list/);
   assert.match(userScript, /發放原因：/);

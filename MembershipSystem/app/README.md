@@ -4,6 +4,33 @@ GitHub Pages 前端 + Google Apps Script（GAS）後端的會員系統，包含�
 
 ## Domain
 
+### 管理端服務分鐘同步集點
+
+管理員從會員編輯視窗發放服務分鐘時，必須同時設定本次的「每幾分鐘服務換 1 點」。後端使用無條件捨去計算：
+
+```text
+同步點數 = floor(本次服務分鐘 / 每點服務分鐘)
+```
+
+每筆發放必須換算出 `1`–`100` 點；不足 1 點或超過 100 點會在寫入前拒絕。換算率與點數會隨 `MinuteGrants` 紀錄保存，之後重送同一個 request 不會因為修改畫面數值而改算。為了讓短暫仍在快取中的舊管理端安全銜接，沒有送出換算欄位的舊請求會暫以 `60 分鐘 = 1 點` 處理；新版介面一律明確送出管理員設定的值。
+
+`app` 與 `PointsCard` 是不同的 GAS / Spreadsheet，兩邊只以 LINE user ID 對應會員。管理員在 `app` 的發放視窗直接選擇本次要入點的有效集點卡；卡片清單與加點都由 app GAS 以伺服器端 HMAC 向 PointsCard 取得，瀏覽器不會接觸整合密鑰。分鐘交易完成後，`app` 會將集點寫到所選卡片；首度未開過 PointsCard 的會員會建立最小必要的 PointsCard 會員資料。跨兩個 GAS 不存在資料庫交易，因此若 PointsCard 暫時不可用，分鐘仍會保留且該筆紀錄標記同步失敗，管理員可在「發放紀錄」按「重試集點」。兩邊使用同一筆衍生 request ID，重試不會重複加點，也一律寫入原先選擇的卡片。
+
+首次同步成功時，會員會收到同一則分鐘 LINE 推播，內容包含同步點數與本次跨過的票券節點；不另送第二則相同交易的 PointsCard 推播。
+
+啟用前，必須在兩個 Apps Script 專案設定下列 Script Properties（機密值不可寫入 `config.json`、Sheet 或 repository）：
+
+```text
+# MembershipSystem app GAS
+POINTS_CARD_MINUTE_GRANT_WEB_APP_URL = PointsCard 的 /exec URL
+POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET = 與 PointsCard 相同的高熵隨機字串
+
+# PointsCard GAS
+POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET = 與 app 相同的高熵隨機字串
+```
+
+先部署 PointsCard GAS，再設定兩端 properties，最後部署 app GAS 與前端。未完成設定時，app 仍會安全完成服務分鐘發放，但同步集點會標示為 `not_configured`，供管理員補齊設定後重試。
+
 ### 消費時間
 
 `consumedMinutes` 只表示會員歷史累計消費時間。

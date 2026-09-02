@@ -5,11 +5,16 @@
   const tierLabel = { standard: '一般', silver: '銀級', gold: '金級', platinum: '白金', vip: '白金' };
   const statusLabel = { active: '有效', suspended: '停權', disabled: '停用' };
   const pushLabel = { sent: '已推播', failed: '推播失敗', not_configured: '未設定推播', pending: '等待推播' };
+  const pointGrantLabel = {
+    recorded: '已入點', pending: '等待同步', failed: '同步失敗',
+    not_configured: '尚未設定', not_requested: '未要求同步'
+  };
   let selectedMember = null;
   let pendingRequestId = '';
   let pendingRequestFingerprint = '';
   let adminReady = false;
   let grantsLoaded = false;
+  let pointCardsLoading = null;
 
   function formatMinutes(value) {
     return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -104,6 +109,99 @@
     pendingRequestFingerprint = '';
   }
 
+  function selectedPointsCardId() {
+    const select = $('#minuteGrantPointsCard');
+    return select && !select.disabled ? String(select.value || '').trim() : '';
+  }
+
+  function syncGrantSubmitAvailability() {
+    const button = $('#minuteGrantSubmitButton');
+    if (button) button.disabled = !isMemberEligibleForGrant(selectedMember) || !selectedPointsCardId();
+  }
+
+  function resetPointCardSelection() {
+    const select = $('#minuteGrantPointsCard');
+    if (!select) return;
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = '請先開啟會員資料';
+    select.replaceChildren(option);
+    select.disabled = true;
+  }
+
+  function renderPointCardOptions(cards) {
+    const select = $('#minuteGrantPointsCard');
+    if (!select) return;
+    const previousValue = String(select.value || '').trim();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = cards.length ? '請選擇集點卡' : '目前沒有可發放的有效集點卡';
+    select.replaceChildren(placeholder);
+    cards.forEach((card) => {
+      const option = document.createElement('option');
+      option.value = card.cardId;
+      option.textContent = card.name;
+      select.append(option);
+    });
+    select.disabled = cards.length === 0;
+    if (previousValue && cards.some((card) => card.cardId === previousValue)) select.value = previousValue;
+    updatePointsPreview();
+    syncGrantSubmitAvailability();
+  }
+
+  async function loadPointCards() {
+    if (pointCardsLoading) return pointCardsLoading;
+    const select = $('#minuteGrantPointsCard');
+    if (!select) return [];
+    const loadingOption = document.createElement('option');
+    loadingOption.value = '';
+    loadingOption.textContent = '正在讀取可發放集點卡…';
+    select.replaceChildren(loadingOption);
+    select.disabled = true;
+    updatePointsPreview();
+    syncGrantSubmitAvailability();
+    pointCardsLoading = Membership.callApi('admin.minutes.points.cards.list', {})
+      .then((result) => {
+        const cards = Array.isArray(result.cards) ? result.cards : [];
+        renderPointCardOptions(cards);
+        return cards;
+      })
+      .catch((error) => {
+        resetPointCardSelection();
+        updatePointsPreview();
+        syncGrantSubmitAvailability();
+        showGrantMessage(backendErrorMessage(error), true);
+        return [];
+      })
+      .finally(() => { pointCardsLoading = null; });
+    return pointCardsLoading;
+  }
+
+  function updatePointsPreview() {
+    const preview = $('#minuteGrantPointsPreview');
+    if (!preview) return;
+    const minutes = Number($('#minuteGrantMinutes').value);
+    const pointsPerServiceMinutes = Number($('#minuteGrantPointsPerServiceMinutes').value);
+    const points = Number.isInteger(minutes) && Number.isInteger(pointsPerServiceMinutes) && pointsPerServiceMinutes > 0
+      ? Math.floor(minutes / pointsPerServiceMinutes)
+      : 0;
+    const pointsCardId = selectedPointsCardId();
+    const select = $('#minuteGrantPointsCard');
+    const cardName = pointsCardId && select && select.selectedOptions[0]
+      ? select.selectedOptions[0].textContent.trim()
+      : '';
+    preview.classList.toggle('error', points < 1 || points > 100 || !pointsCardId);
+    if (points < 1) {
+      preview.textContent = '本次服務分鐘不足換算 1 點；請調整服務分鐘或每點服務時間。';
+    } else if (points > 100) {
+      preview.textContent = '本次會換算 ' + formatMinutes(points) + ' 點，超過單次最多 100 點；請調整換算規則。';
+    } else if (!pointsCardId) {
+      preview.textContent = '請選擇要同步發放的集點卡。';
+    } else {
+      preview.textContent = '本次將同步發放 ' + formatMinutes(points) + ' 點到「' + cardName + '」。';
+    }
+  }
+
   function setSelectedMember(member, options) {
     const settings = Object.assign({ resetForm: false, preserveMessage: false }, options || {});
     const previousMemberNo = selectedMember && selectedMember.memberNo;
@@ -116,7 +214,9 @@
 
     if (settings.resetForm) {
       $('#minuteGrantMinutes').value = '60';
+      $('#minuteGrantPointsPerServiceMinutes').value = '60';
       $('#minuteGrantReason').value = '';
+      updatePointsPreview();
       if (!settings.preserveMessage) showGrantMessage('', false);
     }
 
@@ -136,7 +236,7 @@
     card.classList.remove('hidden');
 
     const eligible = isMemberEligibleForGrant(selectedMember);
-    $('#minuteGrantSubmitButton').disabled = !eligible;
+    syncGrantSubmitAvailability();
     if (!eligible && !settings.preserveMessage) {
       showGrantMessage('此會員目前不是有效可用狀態，無法發放累計消費分鐘。', true);
     }
@@ -157,6 +257,7 @@
     const member = memberFromEditDialog();
     if (!member) return;
     setSelectedMember(member, { resetForm: true });
+    loadPointCards();
   }
 
   function prepareMemberDialogGrantUi() {
@@ -167,10 +268,10 @@
 
     panel.classList.add('member-minute-grant-panel');
     const title = $('#minuteGrantFormTitle');
-    if (title) title.textContent = '發放累計消費分鐘';
+    if (title) title.textContent = '發放服務分鐘與同步集點';
     const description = panel.querySelector(':scope > p');
     if (description) {
-      description.textContent = '發放對象固定為目前開啟的會員；只能對有效且未過期的會員發放。發放原因會保存於系統、顯示在會員端，並寫入 LINE 推播訊息。';
+      description.textContent = '發放對象固定為目前開啟的會員；只能對有效且未過期的會員發放。請設定本次每幾分鐘服務換 1 點與目標集點卡；換算規則、卡片、發放原因與稽核都會保留。';
     }
 
     const searchInput = $('#minuteGrantMemberSearch');
@@ -188,24 +289,24 @@
     if (navButton) navButton.textContent = '發放紀錄';
 
     const pageTitle = $('#minuteGrantPageTitle');
-    if (pageTitle) pageTitle.textContent = '分鐘發放紀錄';
+    if (pageTitle) pageTitle.textContent = '分鐘與集點發放紀錄';
     const pageHeadingText = pageTitle && pageTitle.parentElement ? pageTitle.parentElement.querySelector('p') : null;
-    if (pageHeadingText) pageHeadingText.textContent = '分鐘發放請先到會員列表點選會員；此頁保留最近發放紀錄與 LINE 推播補送。';
+    if (pageHeadingText) pageHeadingText.textContent = '分鐘與集點發放請先到會員列表點選會員；此頁保留最近紀錄、集點同步重試與 LINE 推播補送。';
 
     const overviewCard = document.querySelector('[data-admin-page-target="grants"]');
     if (overviewCard) {
       const strong = overviewCard.querySelector('strong');
       const small = overviewCard.querySelector('small');
       const action = overviewCard.querySelector('.overview-link-action');
-      if (strong) strong.textContent = '分鐘發放紀錄';
-      if (small) small.textContent = '查看最近發放紀錄、等級變化與 LINE 推播結果；實際發放請從會員列表進入。';
+      if (strong) strong.textContent = '分鐘與集點發放紀錄';
+      if (small) small.textContent = '查看分鐘與同步集點紀錄、等級變化與 LINE 推播結果；實際發放請從會員列表進入。';
       if (action) action.textContent = '查看發放紀錄 →';
     }
 
     const membersHeading = $('#membersPageTitle');
     const membersDescription = membersHeading && membersHeading.parentElement ? membersHeading.parentElement.querySelector('p') : null;
     if (membersDescription) {
-      membersDescription.textContent = '搜尋會員；點選「編輯」開啟小視窗，可管理會員資料並發放累計消費分鐘。';
+      membersDescription.textContent = '搜尋會員；點選「編輯」開啟小視窗，可管理會員資料、發放累計消費分鐘並同步集點。';
     }
   }
 
@@ -230,6 +331,32 @@
     }
   }
 
+  function renderPointGrantStatus(grant, cell) {
+    const status = grant.pointGrantStatus || 'not_requested';
+    const badge = document.createElement('span');
+    badge.className = `grant-push-status ${status}`;
+    badge.textContent = pointGrantLabel[status] || status;
+    cell.append(badge);
+    if (grant.pointsGranted > 0) {
+      const detail = document.createElement('small');
+      detail.textContent = `${formatMinutes(grant.pointsGranted)} 點｜每 ${formatMinutes(grant.pointsPerServiceMinutes)} 分鐘 1 點${grant.pointsCardName ? `｜${grant.pointsCardName}` : ''}`;
+      cell.append(detail);
+    }
+    if (grant.pointGrantErrorCode) {
+      const error = document.createElement('small');
+      error.textContent = grant.pointGrantErrorCode;
+      cell.append(error);
+    }
+    if (grant.pointsGranted > 0 && status !== 'recorded') {
+      const retry = document.createElement('button');
+      retry.className = 'text-button';
+      retry.type = 'button';
+      retry.textContent = '重試集點';
+      retry.addEventListener('click', () => retryPoints(grant.grantId, retry));
+      cell.append(retry);
+    }
+  }
+
   function renderGrantRows(grants) {
     const body = $('#minuteGrantTableBody');
     body.replaceChildren();
@@ -239,6 +366,7 @@
       const time = document.createElement('td'); time.textContent = formatDateTime(grant.grantedAt);
       const member = document.createElement('td'); member.textContent = `${grant.memberDisplayName || 'LINE 會員'} (${grant.memberNo})`;
       const minutes = document.createElement('td'); minutes.textContent = `${formatMinutes(grant.minutes)} 分鐘`;
+      const points = document.createElement('td'); points.className = 'grant-push-cell'; renderPointGrantStatus(grant, points);
       const reason = document.createElement('td'); reason.textContent = grant.reason || '—';
       const total = document.createElement('td'); total.textContent = `${formatMinutes(grant.consumedAfterMinutes)} 分鐘`;
       const tier = document.createElement('td');
@@ -246,7 +374,7 @@
         ? (tierLabel[grant.tierAfter] || grant.tierAfter)
         : `${tierLabel[grant.tierBefore] || grant.tierBefore} → ${tierLabel[grant.tierAfter] || grant.tierAfter}`;
       const push = document.createElement('td'); push.className = 'grant-push-cell'; renderPushStatus(grant, push);
-      tr.append(time, member, minutes, reason, total, tier, push);
+      tr.append(time, member, minutes, points, reason, total, tier, push);
       body.append(tr);
     });
   }
@@ -281,10 +409,29 @@
     }
   }
 
+  async function retryPoints(grantId, button) {
+    button.disabled = true;
+    try {
+      const result = await Membership.callApi('admin.minutes.points.retry', { grantId });
+      if (result.pointGrantStatus === 'recorded') {
+        showHistoryMessage(`已同步發放 ${formatMinutes(result.grant.pointsGranted)} 點到 ${result.grant.pointsCardName || '集點卡'}。`, false);
+      } else {
+        showHistoryMessage(`集點同步仍未成功：${result.pointGrantErrorCode || result.pointGrantStatus}`, true);
+      }
+      await loadGrants();
+    } catch (error) {
+      showHistoryMessage(backendErrorMessage(error), true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async function submitGrant() {
     const button = $('#minuteGrantSubmitButton');
     const memberNo = $('#minuteGrantTargetMemberNo').value;
     const minutes = Number($('#minuteGrantMinutes').value);
+    const pointsPerServiceMinutes = Number($('#minuteGrantPointsPerServiceMinutes').value);
+    const pointsCardId = selectedPointsCardId();
     const reason = $('#minuteGrantReason').value.trim();
 
     if (!selectedMember || !memberNo || selectedMember.memberNo !== memberNo) {
@@ -299,12 +446,25 @@
       showGrantMessage('發放分鐘必須是 1 到 60000 的整數。', true);
       return;
     }
+    if (!Number.isInteger(pointsPerServiceMinutes) || pointsPerServiceMinutes < 1 || pointsPerServiceMinutes > 60000) {
+      showGrantMessage('每點服務時間必須是 1 到 60000 的整數。', true);
+      return;
+    }
+    const pointsGranted = Math.floor(minutes / pointsPerServiceMinutes);
+    if (pointsGranted < 1 || pointsGranted > 100) {
+      showGrantMessage('依目前換算，本次必須同步發放 1 到 100 點；請調整服務分鐘或每點服務時間。', true);
+      return;
+    }
+    if (!pointsCardId) {
+      showGrantMessage('請選擇要同步發放的集點卡。', true);
+      return;
+    }
     if (!reason) {
       showGrantMessage('請輸入發放原因；此原因會顯示於會員端與 LINE 推播。', true);
       return;
     }
 
-    const fingerprint = `${memberNo}\n${minutes}\n${reason}`;
+    const fingerprint = `${memberNo}\n${minutes}\n${pointsPerServiceMinutes}\n${pointsCardId}\n${reason}`;
     if (!pendingRequestId || pendingRequestFingerprint !== fingerprint) {
       pendingRequestId = createRequestId();
       pendingRequestFingerprint = fingerprint;
@@ -316,21 +476,28 @@
       const result = await Membership.callApi('admin.minutes.grant', {
         targetMemberNo: memberNo,
         minutes,
+        pointsPerServiceMinutes,
+        pointsCardId,
         reason,
         requestId: pendingRequestId
       });
       const grant = result.grant;
+      const pointMessage = grant.pointGrantStatus === 'recorded'
+        ? `，已同步發放 ${formatMinutes(grant.pointsGranted)} 點到 ${grant.pointsCardName || '集點卡'}`
+        : `；分鐘已發放，但集點卡尚未同步（${grant.pointGrantErrorCode || grant.pointGrantStatus}），可到「發放紀錄」重試集點`;
       if (result.pushStatus === 'sent') {
-        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，並完成 LINE 官方帳號推播。`, false);
+        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘${pointMessage}，並完成 LINE 官方帳號推播。`, grant.pointGrantStatus !== 'recorded');
       } else if (result.pushStatus === 'not_configured') {
-        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，但尚未設定 LINE Messaging Channel Access Token；可到「發放紀錄」補送推播。`, true);
+        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘${pointMessage}，但尚未設定 LINE Messaging Channel Access Token；可到「發放紀錄」補送推播。`, true);
       } else {
-        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘，但 LINE 推播失敗（${result.pushErrorCode || result.pushStatus}）；可到「發放紀錄」重試。`, true);
+        showGrantMessage(`已發放 ${formatMinutes(grant.minutes)} 分鐘${pointMessage}，但 LINE 推播失敗（${result.pushErrorCode || result.pushStatus}）；可到「發放紀錄」重試。`, true);
       }
 
       resetGrantRequestState();
       $('#minuteGrantMinutes').value = '60';
+      $('#minuteGrantPointsPerServiceMinutes').value = '60';
       $('#minuteGrantReason').value = '';
+      updatePointsPreview();
       setSelectedMember(result.member, { preserveMessage: true });
       syncGrantResultToEditDialog(result.member);
       grantsLoaded = false;
@@ -343,7 +510,7 @@
     } catch (error) {
       showGrantMessage(backendErrorMessage(error), true);
     } finally {
-      button.disabled = !isMemberEligibleForGrant(selectedMember);
+      syncGrantSubmitAvailability();
     }
   }
 
@@ -367,13 +534,24 @@
     $('#minuteGrantSelectedMember').classList.add('hidden');
     $('#minuteGrantSelectedMember').replaceChildren();
     $('#minuteGrantMinutes').value = '60';
+    $('#minuteGrantPointsPerServiceMinutes').value = '60';
     $('#minuteGrantReason').value = '';
+    resetPointCardSelection();
+    updatePointsPreview();
     showGrantMessage('', false);
     resetGrantRequestState();
   });
 
   $('#minuteGrantSubmitButton').addEventListener('click', submitGrant);
   $('#minuteGrantRefreshButton').addEventListener('click', loadGrants);
+  $('#minuteGrantMinutes').addEventListener('input', updatePointsPreview);
+  $('#minuteGrantPointsPerServiceMinutes').addEventListener('input', updatePointsPreview);
+  $('#minuteGrantPointsCard').addEventListener('change', () => {
+    resetGrantRequestState();
+    updatePointsPreview();
+    syncGrantSubmitAvailability();
+  });
+  updatePointsPreview();
   window.addEventListener('hashchange', () => {
     if (window.location.hash === '#grants' && adminReady && !grantsLoaded) loadGrants();
   });

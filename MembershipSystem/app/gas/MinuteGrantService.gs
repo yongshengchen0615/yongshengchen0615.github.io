@@ -5,9 +5,14 @@ const MINUTE_GRANT_HEADERS = [
   'grantId', 'requestId', 'memberLineUserId', 'memberNo', 'memberDisplayName', 'minutes', 'reason',
   'status', 'consumedBeforeMinutes', 'consumedAfterMinutes', 'tierBefore', 'tierAfter',
   'grantedByLineUserId', 'pushStatus', 'pushErrorCode', 'pushAttemptedAt', 'pushSentAt',
-  'createdAt', 'updatedAt', 'grantedAt', 'auditRecordedAt'
+  'createdAt', 'updatedAt', 'grantedAt', 'auditRecordedAt',
+  'pointsPerServiceMinutes', 'pointsGranted', 'pointsCardId', 'pointsCardName', 'pointGrantId',
+  'pointGrantStatus', 'pointGrantErrorCode', 'pointGrantAttemptedAt', 'pointsGrantedAt',
+  'pointRewardMessage'
 ];
 const MAX_ADMIN_MINUTE_GRANT = 60000;
+const MAX_ADMIN_MINUTE_GRANT_POINTS = 100;
+const DEFAULT_ADMIN_MINUTE_GRANT_POINTS_PER_SERVICE_MINUTES = 60;
 const MINUTE_GRANT_PUSH_LABELS = Object.freeze({
   standard: '一般', silver: '銀級', gold: '金級', platinum: '白金', vip: '白金'
 });
@@ -34,6 +39,8 @@ function rowToMinuteGrant_(row) {
   result.minutes = nonNegativeInt_(result.minutes);
   result.consumedBeforeMinutes = nonNegativeInt_(result.consumedBeforeMinutes);
   result.consumedAfterMinutes = nonNegativeInt_(result.consumedAfterMinutes);
+  result.pointsPerServiceMinutes = nonNegativeInt_(result.pointsPerServiceMinutes);
+  result.pointsGranted = nonNegativeInt_(result.pointsGranted);
   result.tierBefore = normalizeTier_(result.tierBefore);
   result.tierAfter = normalizeTier_(result.tierAfter);
   return result;
@@ -67,11 +74,37 @@ function readMinuteGrantInput_(payload) {
     fail_('INVALID_MINUTES', '人工發放分鐘必須是 1 到 ' + MAX_ADMIN_MINUTE_GRANT + ' 的整數。');
   }
   const reason = cleanText_(payload && payload.reason, 200, true);
+  const hasPointsPerServiceMinutes = Boolean(payload) && Object.prototype.hasOwnProperty.call(payload, 'pointsPerServiceMinutes');
+  const pointsPerServiceMinutes = Number(hasPointsPerServiceMinutes
+    ? payload.pointsPerServiceMinutes
+    : DEFAULT_ADMIN_MINUTE_GRANT_POINTS_PER_SERVICE_MINUTES);
+  if (!Number.isInteger(pointsPerServiceMinutes) || pointsPerServiceMinutes < 1 || pointsPerServiceMinutes > MAX_ADMIN_MINUTE_GRANT) {
+    fail_('INVALID_POINTS_RATE', '每點服務時間必須是 1 到 ' + MAX_ADMIN_MINUTE_GRANT + ' 分鐘的整數。');
+  }
+  const pointsGranted = Math.floor(minutes / pointsPerServiceMinutes);
+  if (pointsGranted < 1 || pointsGranted > MAX_ADMIN_MINUTE_GRANT_POINTS) {
+    fail_(
+      'INVALID_POINTS_RATE',
+      '依目前換算，本次必須同步發放 1 到 ' + MAX_ADMIN_MINUTE_GRANT_POINTS + ' 點；請調整服務分鐘或每點服務時間。'
+    );
+  }
   const requestId = cleanText_(payload && payload.requestId, 64, true).toLowerCase();
   if (!/^[a-f0-9]{32,64}$/.test(requestId)) {
     fail_('INVALID_REQUEST_ID', '發放請求識別碼格式不正確。');
   }
-  return { targetMemberNo: targetMemberNo, minutes: minutes, reason: reason, requestId: requestId };
+  const pointsCardId = cleanText_(payload && payload.pointsCardId, 64, false).toUpperCase();
+  if (!/^CARD-[A-Z0-9-]{2,58}$/.test(pointsCardId)) {
+    fail_('INVALID_POINTS_CARD', '請選擇要同步發放的集點卡。');
+  }
+  return {
+    targetMemberNo: targetMemberNo,
+    minutes: minutes,
+    reason: reason,
+    pointsPerServiceMinutes: pointsPerServiceMinutes,
+    pointsGranted: pointsGranted,
+    pointsCardId: pointsCardId,
+    requestId: requestId
+  };
 }
 
 function recoverMinuteGrant_(match, memberSheet, memberRow) {
@@ -131,6 +164,12 @@ function publicAdminMinuteGrant_(grant) {
     pushErrorCode: grant.pushErrorCode || '',
     pushAttemptedAt: grant.pushAttemptedAt || '',
     pushSentAt: grant.pushSentAt || '',
+    pointsPerServiceMinutes: grant.pointsPerServiceMinutes,
+    pointsGranted: grant.pointsGranted,
+    pointsCardName: grant.pointsCardName || '',
+    pointGrantStatus: grant.pointGrantStatus || 'not_requested',
+    pointGrantErrorCode: grant.pointGrantErrorCode || '',
+    pointGrantedAt: grant.pointsGrantedAt || '',
     grantedAt: grant.grantedAt || grant.createdAt,
     createdAt: grant.createdAt
   };
@@ -164,7 +203,10 @@ function adminMinuteGrant_(context, payload) {
     const existing = findMinuteGrantByFieldWithRow_('requestId', input.requestId);
     if (existing) {
       const existingGrant = existing.grant;
-      if (existingGrant.memberNo !== member.memberNo || existingGrant.minutes !== input.minutes || existingGrant.reason !== input.reason) {
+      const hasPointGrantSettings = existingGrant.pointsPerServiceMinutes > 0 || existingGrant.pointsGranted > 0;
+      if (existingGrant.memberNo !== member.memberNo || existingGrant.minutes !== input.minutes || existingGrant.reason !== input.reason ||
+        (hasPointGrantSettings && (existingGrant.pointsPerServiceMinutes !== input.pointsPerServiceMinutes ||
+          existingGrant.pointsGranted !== input.pointsGranted || existingGrant.pointsCardId !== input.pointsCardId))) {
         fail_('REQUEST_CONFLICT', '此請求識別碼已用於其他分鐘發放操作。');
       }
       grant = recoverMinuteGrant_(existing, memberSheet, memberRow);
@@ -205,7 +247,17 @@ function adminMinuteGrant_(context, payload) {
         createdAt: now,
         updatedAt: now,
         grantedAt: '',
-        auditRecordedAt: ''
+        auditRecordedAt: '',
+        pointsPerServiceMinutes: input.pointsPerServiceMinutes,
+        pointsGranted: input.pointsGranted,
+        pointsCardId: input.pointsCardId,
+        pointsCardName: '',
+        pointGrantId: '',
+        pointGrantStatus: 'pending',
+        pointGrantErrorCode: '',
+        pointGrantAttemptedAt: '',
+        pointsGrantedAt: '',
+        pointRewardMessage: ''
       };
 
       if (!audit_(context.identity.sub, 'admin', 'MEMBER_MINUTES_GRANT_REQUESTED', member.lineUserId, 'pending', {
@@ -251,6 +303,7 @@ function adminMinuteGrant_(context, payload) {
     lock.releaseLock();
   }
 
+  const pointGrant = attemptMinuteGrantPointsSync_(grant.grantId);
   const push = attemptMinuteGrantPush_(grant.grantId);
   const refreshed = findMinuteGrantByFieldWithRow_('grantId', grant.grantId);
   const outputGrant = refreshed ? refreshed.grant : grant;
@@ -259,7 +312,9 @@ function adminMinuteGrant_(context, payload) {
     grant: publicAdminMinuteGrant_(outputGrant),
     member: publicMember_(updatedMember, true),
     pushStatus: push.status,
-    pushErrorCode: push.errorCode
+    pushErrorCode: push.errorCode,
+    pointGrantStatus: pointGrant.status,
+    pointGrantErrorCode: pointGrant.errorCode
   };
 }
 
@@ -267,13 +322,18 @@ function minuteGrantPushMessage_(grant) {
   const beforeTier = MINUTE_GRANT_PUSH_LABELS[normalizeTier_(grant.tierBefore)] || '一般';
   const afterTier = MINUTE_GRANT_PUSH_LABELS[normalizeTier_(grant.tierAfter)] || '一般';
   const tierLine = beforeTier === afterTier ? afterTier : beforeTier + ' → ' + afterTier;
-  return [
+  const message = [
     '【會員累計消費分鐘發放】',
     '本次發放：' + grant.minutes + ' 分鐘',
     '發放原因：' + grant.reason,
     '累計消費：' + grant.consumedAfterMinutes + ' 分鐘',
     '會員等級：' + tierLine
-  ].join('\n');
+  ];
+  if (grant.pointGrantStatus === 'recorded' && grant.pointsGranted > 0) {
+    message.push('同步集點：' + grant.pointsGranted + ' 點' + (grant.pointsCardName ? '（' + grant.pointsCardName + '）' : ''));
+    if (grant.pointRewardMessage) message.push(grant.pointRewardMessage);
+  }
+  return message.join('\n');
 }
 
 function attemptMinuteGrantPush_(grantId) {
@@ -325,6 +385,18 @@ function adminMinuteGrantRetryPush_(context, payload) {
   const push = attemptMinuteGrantPush_(grantId);
   const match = findMinuteGrantByFieldWithRow_('grantId', grantId);
   return { grant: publicAdminMinuteGrant_(match.grant), pushStatus: push.status, pushErrorCode: push.errorCode };
+}
+
+function adminMinuteGrantRetryPoints_(context, payload) {
+  const grantId = cleanText_(payload && payload.grantId, 40, true);
+  const pointGrant = attemptMinuteGrantPointsSync_(grantId);
+  const match = findMinuteGrantByFieldWithRow_('grantId', grantId);
+  if (!match) fail_('GRANT_NOT_FOUND', '找不到指定分鐘發放紀錄。');
+  return {
+    grant: publicAdminMinuteGrant_(match.grant),
+    pointGrantStatus: pointGrant.status,
+    pointGrantErrorCode: pointGrant.errorCode
+  };
 }
 
 function adminMinuteGrantsList_(payload) {

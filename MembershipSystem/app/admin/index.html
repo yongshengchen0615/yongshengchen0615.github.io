@@ -73,7 +73,7 @@
 
       <section id="adminPageGrants" class="admin-page hidden" data-admin-page-panel="grants" aria-labelledby="minuteGrantPageTitle">
         <div class="page-heading">
-          <div><span class="eyebrow">MINUTE GRANT</span><h2 id="minuteGrantPageTitle">累計消費分鐘發放</h2><p>由管理員直接增加會員累計消費分鐘，系統會自動重算會員等級、保存發放原因與稽核紀錄，並嘗試透過 LINE 官方帳號推播。</p></div>
+          <div><span class="eyebrow">MINUTE & POINT GRANT</span><h2 id="minuteGrantPageTitle">累計消費分鐘與集點發放</h2><p>由管理員直接增加會員累計消費分鐘，並依本次設定的服務時間換算同步發放集點；系統會保存換算規則、稽核紀錄並嘗試透過 LINE 官方帳號推播。</p></div>
         </div>
 
         <div class="minute-grant-grid">
@@ -86,19 +86,22 @@
               <input id="minuteGrantTargetMemberNo" type="hidden">
               <div id="minuteGrantSelectedMember" class="grant-selected-member hidden" aria-live="polite"></div>
               <label class="grant-field"><span>發放累計消費分鐘</span><input id="minuteGrantMinutes" type="number" min="1" max="60000" step="1" value="60" inputmode="numeric" required></label>
+              <label class="grant-field"><span>每幾分鐘服務換 1 點</span><input id="minuteGrantPointsPerServiceMinutes" type="number" min="1" max="60000" step="1" value="60" inputmode="numeric" required></label>
+              <label class="grant-field"><span>發放到哪張集點卡</span><select id="minuteGrantPointsCard" required disabled><option value="">請先開啟會員資料</option></select></label>
+              <p id="minuteGrantPointsPreview" class="grant-points-preview" role="status">請選擇要同步發放的集點卡。</p>
               <label class="grant-field"><span>發放原因</span><textarea id="minuteGrantReason" maxlength="200" rows="4" required placeholder="例如：補登 2026/08/24 預約服務 120 分鐘"></textarea></label>
               <p id="minuteGrantMessage" class="minute-grant-message hidden" role="status"></p>
-              <p class="grant-security-note">發放動作會由 Server-side 再次驗證管理權限。LINE Channel Access Token 僅從 GAS Script Properties 讀取，不會傳到瀏覽器。</p>
-              <button id="minuteGrantSubmitButton" class="button button-primary" type="button">確認發放並推播</button>
+              <p class="grant-security-note">發放動作會由 Server-side 再次驗證管理權限。LINE Channel Access Token 與集點整合密鑰只從 GAS Script Properties 讀取，不會傳到瀏覽器。</p>
+              <button id="minuteGrantSubmitButton" class="button button-primary" type="button">確認同步發放並推播</button>
             </div>
           </section>
 
           <section class="panel minute-grant-history-panel" aria-labelledby="minuteGrantHistoryTitle">
             <div class="minute-grant-history-heading">
-              <div><h3 id="minuteGrantHistoryTitle">最近發放紀錄</h3><p>可確認發放原因、發放後總分鐘、等級變化與 LINE 推播結果。</p></div>
+              <div><h3 id="minuteGrantHistoryTitle">最近發放紀錄</h3><p>可確認發放原因、換算點數、發放後總分鐘、等級變化與 LINE 推播結果。</p></div>
               <button id="minuteGrantRefreshButton" class="button button-secondary" type="button">更新紀錄</button>
             </div>
-            <div class="table-wrap"><table class="minute-grant-table"><thead><tr><th>時間</th><th>會員</th><th>發放分鐘</th><th>原因</th><th>發放後累計</th><th>等級</th><th>LINE 推播</th></tr></thead><tbody id="minuteGrantTableBody"></tbody></table></div>
+            <div class="table-wrap"><table class="minute-grant-table"><thead><tr><th>時間</th><th>會員</th><th>發放分鐘</th><th>同步集點</th><th>原因</th><th>發放後累計</th><th>等級</th><th>LINE 推播</th></tr></thead><tbody id="minuteGrantTableBody"></tbody></table></div>
             <div id="minuteGrantEmptyState" class="empty-state hidden">尚未有人工分鐘發放紀錄。</div>
           </section>
         </div>

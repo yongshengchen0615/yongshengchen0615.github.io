@@ -5,6 +5,7 @@ const POINTS_CARD_SERVICE = Object.freeze({
   version: '2.3.2',
   spreadsheetProperty: 'POINTS_CARD_SPREADSHEET_ID',
   lineChannelProperty: 'LINE_LOGIN_CHANNEL_ID',
+  minuteGrantIntegrationSecretProperty: 'POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET',
   stampsPerRewardProperty: 'POINTS_CARD_STAMPS_PER_REWARD',
   rewardNameProperty: 'POINTS_CARD_REWARD_NAME',
   rewardNodesProperty: 'POINTS_CARD_REWARD_NODES_JSON',
@@ -98,6 +99,12 @@ function doPost(e) {
   try {
     const action = cleanText_(e && e.parameter && e.parameter.action, 80, true);
     currentAction_ = action;
+    if (action === 'integration.minutes.grant-points') {
+      return json_({ ok: true, data: minuteGrantPointsIntegration_(e) });
+    }
+    if (action === 'integration.minutes.cards.list') {
+      return json_({ ok: true, data: minuteGrantCardsListIntegration_(e) });
+    }
     const idToken = cleanText_(e && e.parameter && e.parameter.idToken, 4096, true);
     const tokenFingerprint = sha256Hex_(idToken);
     rateLimit_('token:' + tokenFingerprint, 90, 60);

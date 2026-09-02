@@ -97,6 +97,14 @@ function doPost(e) {
         requireAdmin_(context);
         rateLimit_('admin-minute-push-retry:' + context.identity.sub, 10, 60);
         return json_({ ok: true, data: adminMinuteGrantRetryPush_(context, payload) });
+      case 'admin.minutes.points.retry':
+        requireAdmin_(context);
+        rateLimit_('admin-minute-points-retry:' + context.identity.sub, 10, 60);
+        return json_({ ok: true, data: adminMinuteGrantRetryPoints_(context, payload) });
+      case 'admin.minutes.points.cards.list':
+        requireAdmin_(context);
+        rateLimit_('admin-minute-points-cards-list:' + context.identity.sub, 30, 60);
+        return json_({ ok: true, data: adminMinuteGrantPointCardsList_() });
       case 'admin.tier.get':
         requireAdmin_(context);
         rateLimit_('admin-tier-get:' + context.identity.sub, 30, 60);
