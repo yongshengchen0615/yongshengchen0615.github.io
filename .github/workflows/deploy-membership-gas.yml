@@ -118,6 +118,18 @@ jobs:
             node --check "$tmp"
           done
 
+          # Apps Script loads every .gs file into one global scope. Individual
+          # parsing cannot detect a duplicate top-level const in two tabs, so
+          # parse the complete deployment bundle before clasp push.
+          combined="$RUNNER_TEMP/membership-gas-combined.js"
+          : > "$combined"
+          for file in "${gas_files[@]}"; do
+            printf '\n// Source: %s\n' "$file" >> "$combined"
+            cat "$file" >> "$combined"
+            printf '\n' >> "$combined"
+          done
+          node --check "$combined"
+
           for forbidden in .clasp.json .clasprc.json client_secret.json credentials.json service-account.json; do
             if [ -e "$GAS_DIR/$forbidden" ]; then
               echo "::error::Credential/config file must not be committed under $GAS_DIR: $forbidden"

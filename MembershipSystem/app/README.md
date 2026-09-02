@@ -360,9 +360,10 @@ recordedAt | auditRecordedAt
 2. 更新 Apps Script 專案中的 `gas/TierManagement.gs`。
 3. 確認既有 `gas/UsageAdmin.gs` 仍在 Apps Script 專案。
 4. 建立新的 Apps Script version，將既有 Web App deployment 指向 1.7.0 code。
-5. 保持原本 `/exec` URL，避免前端 config 變更。
-6. 部署 GitHub Pages 最新 `main`。
-7. 直接開啟 `/exec`，確認 `doGet()` 回傳 `version: "1.7.0"`。
+5. 確認 Web App 為 `Execute as: Me`、`Who has access: Anyone`；否則 GitHub Pages 的跨網域 API 請求會被 Google 登入頁攔截並顯示 CORS 錯誤。
+6. 保持原本 `/exec` URL，避免前端 config 變更。
+7. 部署 GitHub Pages 最新 `main`。
+8. 直接開啟 `/exec`，確認 `doGet()` 回傳 `version: "1.7.0"`。
 
 Script Properties 尚未設定會員等級門檻時會採用 600 / 1800 / 3600 的預設值；管理員第一次儲存門檻後會寫入正式設定並批次同步現有會員 tier。
 

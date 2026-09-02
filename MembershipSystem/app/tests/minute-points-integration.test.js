@@ -50,6 +50,22 @@ test('PointsCard endpoint comes from app config and is generated into the GAS de
   assert.doesNotMatch(read('shared/config.json'), /POINTS_CARD_MINUTE_GRANT_INTEGRATION_SECRET/);
 });
 
+test('Membership GAS deployment bundle has no duplicate top-level declarations', () => {
+  const gasDirectory = path.resolve(__dirname, '../gas');
+  const sources = fs.readdirSync(gasDirectory)
+    .filter((file) => file.endsWith('.gs'))
+    .sort()
+    .map((file) => `// Source: ${file}\n${fs.readFileSync(path.join(gasDirectory, file), 'utf8')}`);
+
+  // The deployment workflow generates this public, non-secret configuration
+  // file immediately before pushing the complete GAS source tree.
+  sources.push("// Source: PointsCardIntegrationConfig.gs\n'use strict';\nconst POINTS_CARD_MINUTE_GRANT_WEB_APP_URL = 'https://script.google.com/macros/s/placeholder/exec';");
+
+  assert.doesNotThrow(() => new vm.Script(sources.join('\n\n'), {
+    filename: 'membership-gas-deployment-bundle.gs'
+  }));
+});
+
 test('a failed cross-system delivery remains retryable through an admin-only route', () => {
   const code = read('gas/Code.gs');
   const minuteGrant = read('gas/MinuteGrantService.gs');

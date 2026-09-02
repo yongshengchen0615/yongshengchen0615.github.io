@@ -120,6 +120,28 @@ https://script.google.com/macros/s/<deploymentId>/exec
 
 若不相符，workflow 會 fail closed，不執行 `clasp push`。
 
+## Web App 公開存取與 CORS
+
+`app` 前端從 GitHub Pages 呼叫 `GAS_WEB_APP_URL`，因此既有的 Web App deployment 必須使用：
+
+```text
+Execute as: Me
+Who has access: Anyone
+```
+
+請在 Apps Script 開啟：
+
+```text
+Deploy
+→ Manage deployments
+→ 選擇目前 /exec URL 對應的 Web App
+→ Edit
+```
+
+確認上述兩項設定後按 `Deploy`。請編輯既有 deployment，不要新增 deployment，這樣才會維持 `app/shared/config.json` 使用的 `/exec` URL。
+
+若 Web App 設為 `Only myself` 或 `Anyone with Google account`，Google 的登入頁會在 API 回應前攔截跨網域請求，瀏覽器會顯示 CORS 缺少 `Access-Control-Allow-Origin`。這不是前端可用 `no-cors` 修正的問題；若帳號沒有 `Anyone` 選項，需由 Google Workspace 管理員允許公開 Web App deployment。
+
 ## Workflow 安全邊界
 
 Workflow 採以下限制：
