@@ -109,7 +109,8 @@ function parseRequest_(e) {
 }
 
 function clientTypeForAction_(action) {
-  if (action.indexOf('user.') === 0) return 'user';
+  if (action === 'user.member.bootstrap') return 'member';
+  if (action === 'user.pointcard.bootstrap') return 'points';
   if (action.indexOf('admin.') === 0) return 'admin';
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }

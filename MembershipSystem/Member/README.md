@@ -20,17 +20,23 @@ Member/
 
 1. 建立一個 Apps Script 專案，把 `gas/` 內的 `.gs` 與 `appsscript.json` 放在同一個專案。
 2. 在 Apps Script → Project Settings → Script properties 設定：
-   - `MEMBERSHIP_USER_LINE_CHANNEL_ID`：User LIFF 所屬 LINE Login Channel ID
+   - `MEMBERSHIP_MEMBER_LINE_CHANNEL_ID`：會員卡 LIFF 所屬 LINE Login Channel ID
+   - `MEMBERSHIP_POINTS_LINE_CHANNEL_ID`：集點卡 LIFF 所屬 LINE Login Channel ID
    - `MEMBERSHIP_ADMIN_LINE_CHANNEL_ID`：Admin LIFF 所屬 LINE Login Channel ID
    - `MEMBERSHIP_SYSTEM_SPREADSHEET_ID`：選填；不填時會依序使用目前綁定的 Spreadsheet，或建立 `Lumen Club Membership Data`
 3. 執行 `setupMembershipSystem()` 完成授權與資料表建立。
 4. Deploy → New deployment → Web app：Execute as 選自己、Who has access 選 Anyone。
-5. 將部署後 `/exec` URL、User LIFF ID、Admin LIFF ID 填入 `config.json`。
+5. 將部署後 `/exec` URL、Member LIFF ID、Points LIFF ID、Admin LIFF ID 填入 `config.json`；Member 與 Points 必須是不同的 LIFF app。
 
-User LIFF Endpoint URL：
+Member LIFF Endpoint URL：
 
 ```text
 https://<your-pages-host>/MembershipSystem/Member/member/
+```
+
+Points LIFF Endpoint URL：
+
+```text
 https://<your-pages-host>/MembershipSystem/Member/points/
 ```
 
@@ -40,7 +46,7 @@ Admin LIFF Endpoint URL：
 https://<your-pages-host>/MembershipSystem/Member/admin/
 ```
 
-User 與 Admin 建議使用不同 LIFF/LINE Login Channel。LIFF 至少需要 `openid` scope，讓前端取得 `liff.getIDToken()`；GAS 會再向 LINE Verify API 驗證 token、`aud`、`iss`、`exp` 與 `sub`。
+Member、Points 與 Admin 使用不同 LIFF/LINE Login Channel。三者至少需要 `openid` scope，讓前端取得 `liff.getIDToken()`；GAS 會依照 request action 將 token 綁定到對應 Channel，再驗證 `aud`、`iss`、`exp` 與 `sub`。
 
 ## Google Sheets 資料表
 
@@ -57,8 +63,8 @@ GAS 會建立並維護以下 schema：
 
 ## API actions
 
-- `user.member.bootstrap`
-- `user.pointcard.bootstrap`
+- `user.member.bootstrap`（Member LIFF）
+- `user.pointcard.bootstrap`（Points LIFF）
 - `admin.bootstrap`
 - `admin.members.list`
 - `admin.pointcards.list`

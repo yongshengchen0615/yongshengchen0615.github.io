@@ -22,7 +22,7 @@
     setView('loading');
     try {
       state.config = await window.MemberSystem.loadConfig();
-      state.idToken = await window.MemberSystem.signIn(state.config, 'user');
+      state.idToken = await window.MemberSystem.signIn(state.config, 'points');
       await loadCards(false);
       setView('points');
     } catch (error) {
@@ -35,7 +35,7 @@
   async function loadCards(showBusy) {
     if (showBusy) els.refreshButton.disabled = true;
     try {
-      const result = await window.MemberSystem.request(state.config, 'user', state.idToken, 'user.pointcard.bootstrap');
+      const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.bootstrap');
       state.displayName = String(result.profile && result.profile.displayName || 'LINE 使用者');
       state.cards = Array.isArray(result.cards) ? result.cards : [];
       if (!state.cards.some((card) => card.cardId === state.selectedCardId)) state.selectedCardId = state.cards[0] ? state.cards[0].cardId : '';

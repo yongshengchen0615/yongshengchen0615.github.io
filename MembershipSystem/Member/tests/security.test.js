@@ -19,13 +19,16 @@ test('GAS verifies LINE ID tokens server-side against the surface channel', () =
   assert.match(auth, /verifyData\.exp/);
   assert.match(auth, /verifyData\.iss/);
   assert.match(auth, /verifyData\.sub/);
-  assert.match(auth, /MEMBERSHIP_USER_LINE_CHANNEL_ID/);
+  assert.match(auth, /MEMBERSHIP_MEMBER_LINE_CHANNEL_ID/);
+  assert.match(auth, /MEMBERSHIP_POINTS_LINE_CHANNEL_ID/);
   assert.match(auth, /MEMBERSHIP_ADMIN_LINE_CHANNEL_ID/);
 });
 
 test('browser clients use ID tokens and do not persist credentials', () => {
   const clients = [read('shared/common.js'), read('member/app.js'), read('points/app.js'), read('admin/app.js')].join('\n');
   assert.match(clients, /getIDToken\(\)/);
+  assert.match(clients, /signIn\(state\.config, 'member'\)/);
+  assert.match(clients, /signIn\(state\.config, 'points'\)/);
   assert.doesNotMatch(clients, /getAccessToken\(\)/);
   assert.doesNotMatch(clients, /localStorage|sessionStorage/);
 });

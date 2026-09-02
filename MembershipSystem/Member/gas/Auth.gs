@@ -2,14 +2,19 @@
 
 const MEMBERSHIP_LINE_VERIFY_URL_ = 'https://api.line.me/oauth2/v2.1/verify';
 const MEMBERSHIP_LINE_ISSUER_ = 'https://access.line.me';
-const MEMBERSHIP_USER_CHANNEL_PROPERTY_ = 'MEMBERSHIP_USER_LINE_CHANNEL_ID';
+const MEMBERSHIP_MEMBER_CHANNEL_PROPERTY_ = 'MEMBERSHIP_MEMBER_LINE_CHANNEL_ID';
+const MEMBERSHIP_POINTS_CHANNEL_PROPERTY_ = 'MEMBERSHIP_POINTS_LINE_CHANNEL_ID';
 const MEMBERSHIP_ADMIN_CHANNEL_PROPERTY_ = 'MEMBERSHIP_ADMIN_LINE_CHANNEL_ID';
 const MEMBERSHIP_VERIFY_CACHE_SECONDS_ = 300;
 const MEMBERSHIP_VERIFY_RETRY_DELAY_MS_ = 180;
 
 function authenticateLine_(idToken, clientType) {
   if (typeof idToken !== 'string' || idToken.length < 20 || idToken.length > 8192) throw new ApiError(401, 'AUTH_INVALID', 'LINE ID token 不合法。');
-  const property = clientType === 'admin' ? MEMBERSHIP_ADMIN_CHANNEL_PROPERTY_ : MEMBERSHIP_USER_CHANNEL_PROPERTY_;
+  const property = clientType === 'admin'
+    ? MEMBERSHIP_ADMIN_CHANNEL_PROPERTY_
+    : clientType === 'points'
+      ? MEMBERSHIP_POINTS_CHANNEL_PROPERTY_
+      : MEMBERSHIP_MEMBER_CHANNEL_PROPERTY_;
   const expectedChannelId = String(PropertiesService.getScriptProperties().getProperty(property) || '').trim();
   if (!expectedChannelId) throw new ApiError(503, 'CONFIG_MISSING', 'GAS 尚未設定對應的 LINE Channel ID。');
 

@@ -23,9 +23,12 @@ test('Member module has independent user surfaces and one shared admin surface',
 test('public config contains separate LIFF ids and no secret-shaped key', () => {
   const config = JSON.parse(read('config.json'));
   assert.equal(typeof config.gasWebAppUrl, 'string');
-  assert.equal(typeof config.userLiffId, 'string');
+  assert.equal(typeof config.memberLiffId, 'string');
+  assert.equal(typeof config.pointsLiffId, 'string');
   assert.equal(typeof config.adminLiffId, 'string');
-  assert.notEqual(config.userLiffId, config.adminLiffId);
+  assert.notEqual(config.memberLiffId, config.pointsLiffId);
+  assert.notEqual(config.memberLiffId, config.adminLiffId);
+  assert.notEqual(config.pointsLiffId, config.adminLiffId);
   assert.equal(Object.keys(config).some((key) => /secret|token|password/i.test(key)), false);
 });
 

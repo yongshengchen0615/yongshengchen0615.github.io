@@ -29,14 +29,18 @@
 
   function validateConfig(config, surface) {
     const gasUrl = String(config && config.gasWebAppUrl || '').trim();
-    const key = surface === 'admin' ? 'adminLiffId' : 'userLiffId';
+    const keys = { member: 'memberLiffId', points: 'pointsLiffId', admin: 'adminLiffId' };
+    const key = keys[surface];
     const liffId = String(config && config[key] || '').trim();
 
     if (!GAS_URL_PATTERN.test(gasUrl)) {
       throw clientError('CONFIG_ERROR', '尚未正確設定 GAS Web App URL。');
     }
-    if (!liffId || liffId.includes('REPLACE_WITH_')) {
-      throw clientError('CONFIG_ERROR', `尚未設定 ${surface === 'admin' ? 'Admin' : 'User'} LIFF ID。`);
+    if (!key || !liffId || liffId.includes('REPLACE_WITH_')) {
+      throw clientError('CONFIG_ERROR', `尚未設定 ${surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : 'Member'} LIFF ID。`);
+    }
+    if (config.memberLiffId === config.pointsLiffId) {
+      throw clientError('CONFIG_ERROR', 'Member LIFF 與 Points LIFF 必須使用不同的 LIFF ID。');
     }
   }
 
@@ -44,11 +48,12 @@
     validateConfig(config, surface);
     if (!window.liff) throw clientError('LIFF_SDK_ERROR', 'LIFF SDK 載入失敗，請確認網路後重試。');
 
-    const liffId = surface === 'admin' ? config.adminLiffId : config.userLiffId;
+    const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : config.memberLiffId;
     try {
       await window.liff.init({ liffId });
     } catch (_) {
-      throw clientError('LIFF_INIT_ERROR', `${surface === 'admin' ? 'Admin' : 'User'} LIFF 初始化失敗，請檢查 LIFF ID 與 Endpoint URL。`);
+      const label = surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : 'Member';
+      throw clientError('LIFF_INIT_ERROR', `${label} LIFF 初始化失敗，請檢查 LIFF ID 與 Endpoint URL。`);
     }
 
     if (!window.liff.isLoggedIn()) {

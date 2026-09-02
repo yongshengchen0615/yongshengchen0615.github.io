@@ -15,8 +15,8 @@
     setView('loading');
     try {
       state.config = await window.MemberSystem.loadConfig();
-      state.idToken = await window.MemberSystem.signIn(state.config, 'user');
-      const result = await window.MemberSystem.request(state.config, 'user', state.idToken, 'user.member.bootstrap');
+      state.idToken = await window.MemberSystem.signIn(state.config, 'member');
+      const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
       state.profile = result.profile || {};
       renderProfile(state.profile);
       setView('member');
