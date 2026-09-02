@@ -172,9 +172,7 @@ function handlePointCardSave_(identity, admin, request) {
   const expected = String(request.expectedUpdatedAt || '').trim();
   const hasRewards = Object.prototype.hasOwnProperty.call(input, 'rewards');
   if (!title || title.length > 80 || description.length > 240 || (!hasRewards && (!rewardTitle || rewardTitle.length > 100))) throw new ApiError(400, 'INVALID_CARD', '集點卡名稱、說明或回饋內容不合法。');
-  if (!hasRewards && (!Number.isInteger(legacyTargetStamps) || legacyTargetStamps < 1 || legacyTargetStamps > POINT_CARD_MAX_THRESHOLD_STAMPS_)) throw new ApiError(400, 'INVALID_CARD', '舊版集點卡完成點數必須是 1–100 的整數。');
   const rewards = hasRewards ? normalizePointCardRewards_(input.rewards, POINT_CARD_MAX_THRESHOLD_STAMPS_) : null;
-  const targetStamps = hasRewards ? Math.max.apply(null, rewards.map(function(reward) { return Number(reward.threshold_stamps); })) : legacyTargetStamps;
   if (['active', 'draft', 'archived'].indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(accent) || ['unlimited', 'date'].indexOf(expiryMode) < 0 || (expiryMode === 'date' && !isValidDateOnly_(expiresOn))) throw new ApiError(400, 'INVALID_CARD', '集點卡狀態、識別色或使用期限不合法。');
 
   return withDataLock_(function() {
@@ -187,6 +185,14 @@ function handlePointCardSave_(identity, admin, request) {
       card = match.record; rowNumber = match.rowNumber;
     } else { card = { card_id: 'PC-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), created_by: identity.lineUserId, created_at: now }; }
     const existingRewards = hasRewards ? [] : pointCardRewardsByCard_()[card.card_id] || [];
+    const storedTargetStamps = Number(card.target_stamps);
+    const targetStamps = hasRewards
+      ? Math.max.apply(null, rewards.map(function(reward) { return Number(reward.threshold_stamps); }))
+      : Number.isInteger(legacyTargetStamps) && legacyTargetStamps >= 1 && legacyTargetStamps <= POINT_CARD_MAX_THRESHOLD_STAMPS_
+        ? legacyTargetStamps
+        : existingRewards.length
+          ? Math.max.apply(null, existingRewards.map(function(reward) { return Number(reward.threshold_stamps || 0); }))
+          : Number.isInteger(storedTargetStamps) && storedTargetStamps >= 1 && storedTargetStamps <= POINT_CARD_MAX_THRESHOLD_STAMPS_ ? storedTargetStamps : 10;
     if (!hasRewards && existingRewards.some(function(existingReward) { return Number(existingReward.threshold_stamps || 0) > targetStamps; })) throw new ApiError(400, 'INVALID_CARD_REWARDS', '舊版集點卡完成點數不可低於既有節點點數，請一併更新節點設定。');
     card.title = title; card.description = description; card.target_stamps = String(targetStamps); card.reward_title = hasRewards ? rewards[rewards.length - 1].reward_title : rewardTitle; card.status = status; card.accent = accent.toUpperCase(); card.expiry_mode = expiryMode; card.expires_on = expiryMode === 'date' ? expiresOn : ''; card.updated_by = identity.lineUserId; card.updated_at = now;
     if (rowNumber) updateRecordAtRow_('PointCards', rowNumber, card); else appendRecord_('PointCards', card);

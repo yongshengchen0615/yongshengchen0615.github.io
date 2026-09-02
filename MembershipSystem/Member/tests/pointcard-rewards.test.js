@@ -310,6 +310,8 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.match(adminHtml, /持續累積/);
   assert.match(pointsApp, /state\.tickets = state\.tickets\.filter/);
   assert.match(pointsApp, /result\.nextTickets/);
+  assert.match(read('gas/PointCardService.gs'), /storedTargetStamps/);
+  assert.doesNotMatch(read('gas/PointCardService.gs'), /舊版集點卡完成點數必須是/);
   assert.match(storage, /consume_stamps/);
   assert.match(storage, /expires_on/);
 });
