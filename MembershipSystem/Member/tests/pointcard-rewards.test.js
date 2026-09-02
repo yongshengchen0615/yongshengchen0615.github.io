@@ -87,6 +87,7 @@ test('PointCard rewards are stored as milestone rows with safe types and sorted 
   assert.equal(rewards[1].prizes[0].win_rate, '0');
   assert.equal(rewards[1].prizes[1].win_rate, '100');
   const memberReward = context.pointCardRewardForClient_(rewards[1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(memberReward.prizes.map((prize) => prize.prizeTitle))), ['頭獎咖啡機', '二獎咖啡券']);
   assert.equal(memberReward.prizes[0].winRate, undefined);
   const adminReward = context.pointCardRewardForClient_(rewards[1], true);
   assert.deepEqual(JSON.parse(JSON.stringify(adminReward.prizes.map((prize) => ({ prizeTitle: prize.prizeTitle, winRate: prize.winRate })))), [
@@ -197,6 +198,17 @@ test('ticket redemption rejects insufficient balance without changing the ticket
   assert.equal(rows.PointEntries.length, 0);
 });
 
+test('earned tickets can redeem when balance covers consumption without retaining the threshold balance', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCardTickets[0].consume_stamps = '3';
+  rows.PointBalances[0].stamps = '3';
+  const challenge = context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
+  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' });
+  assert.equal(redeemed.redeemed, true);
+  assert.equal(rows.PointBalances[0].stamps, '0');
+  assert.equal(rows.PointEntries[0].amount, '-3');
+});
+
 test('removed cards and their tickets are hidden from the member response', () => {
   const { context, rows } = loadTicketService();
   assert.equal(context.visibleTicketsForMember_('U-1').length, 1);
@@ -251,8 +263,11 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.doesNotMatch(pointsApp, /winRate/);
   assert.match(pointsApp, /lottery-reveal/);
   assert.match(adminHtml, /id="generateTicketUsageCodeButton"/);
+  assert.match(adminHtml, /沒有重新產生.*目前密碼/);
   assert.match(adminApp, /generateTicketUsageCodeButton/);
   assert.match(adminApp, /admin\.pointcards\.usage-code\.generate/);
+  assert.match(adminApp, /未重新產生前不變/);
+  assert.doesNotMatch(adminApp, /data-generate-usage-code/);
   assert.match(adminApp, /admin\.pointcards\.remove/);
   assert.match(pointsHtml, /id="ticketChoices"/);
   assert.match(storage, /PointCardTickets:/);
