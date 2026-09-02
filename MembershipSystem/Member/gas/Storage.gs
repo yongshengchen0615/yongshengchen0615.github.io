@@ -4,10 +4,10 @@ const MEMBERSHIP_STORAGE_PROPERTY_ = 'MEMBERSHIP_SYSTEM_SPREADSHEET_ID';
 const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at']),
   Admins: Object.freeze(['line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at']),
-  PointCards: Object.freeze(['card_id', 'title', 'description', 'target_stamps', 'reward_title', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at']),
-  PointCardRewards: Object.freeze(['reward_id', 'card_id', 'threshold_stamps', 'reward_type', 'reward_title', 'reward_description', 'lottery_win_rate', 'created_at', 'updated_at']),
+  PointCards: Object.freeze(['card_id', 'title', 'description', 'target_stamps', 'reward_title', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at', 'expiry_mode', 'expires_on']),
+  PointCardRewards: Object.freeze(['reward_id', 'card_id', 'threshold_stamps', 'reward_type', 'reward_title', 'reward_description', 'lottery_win_rate', 'created_at', 'updated_at', 'consume_stamps']),
   PointCardLotteryPrizes: Object.freeze(['prize_id', 'reward_id', 'prize_title', 'prize_description', 'win_rate', 'created_at', 'updated_at']),
-  PointCardTickets: Object.freeze(['ticket_id', 'line_user_id', 'card_id', 'reward_id', 'reward_key', 'threshold_stamps', 'ticket_type', 'ticket_title', 'ticket_description', 'lottery_prizes_json', 'status', 'failed_attempts', 'earned_at', 'used_at', 'result_json', 'created_at', 'updated_at']),
+  PointCardTickets: Object.freeze(['ticket_id', 'line_user_id', 'card_id', 'reward_id', 'reward_key', 'threshold_stamps', 'ticket_type', 'ticket_title', 'ticket_description', 'lottery_prizes_json', 'status', 'failed_attempts', 'earned_at', 'used_at', 'result_json', 'created_at', 'updated_at', 'consume_stamps']),
   PointCardTicketChallenges: Object.freeze(['challenge_id', 'ticket_id', 'line_user_id', 'options_json', 'status', 'attempt_count', 'expires_at', 'created_at', 'used_at']),
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
   PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at']),
@@ -39,9 +39,17 @@ function ensureSheetSchema_(spreadsheet, sheetName, headers) {
   if (sheet.getLastRow() === 0 || sheet.getLastColumn() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]); sheet.setFrozenRows(1); sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold'); return;
   }
-  if (sheet.getLastColumn() !== headers.length) throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 欄位數量與系統 schema 不一致。');
-  const actual = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
-  if (!headers.every(function(header, index) { return String(actual[index] || '') === header; })) throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 欄位與系統 schema 不一致。');
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn > headers.length) throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 欄位數量與系統 schema 不一致。');
+  const actual = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+  if (lastColumn < headers.length) {
+    if (!headers.slice(0, lastColumn).every(function(header, index) { return String(actual[index] || '') === header; })) throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 欄位與系統 schema 不一致。');
+    const addedHeaders = headers.slice(lastColumn);
+    sheet.getRange(1, lastColumn + 1, 1, addedHeaders.length).setValues([addedHeaders]);
+    sheet.getRange(1, lastColumn + 1, 1, addedHeaders.length).setNumberFormat('@');
+  }
+  const finalActual = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
+  if (!headers.every(function(header, index) { return String(finalActual[index] || '') === header; })) throw new ApiError(500, 'SCHEMA_MISMATCH', sheetName + ' 欄位與系統 schema 不一致。');
 }
 
 function getDataSheet_(sheetName) { const sheet = resolveMembershipSpreadsheet_().getSheetByName(sheetName); if (!sheet) throw new ApiError(500, 'SCHEMA_MISSING', '缺少資料表：' + sheetName); return sheet; }

@@ -19,7 +19,7 @@ function loadPointCardService() {
   }
   const context = {
     ApiError: TestApiError,
-    Utilities: { getUuid: () => '00000000-0000-0000-0000-000000000000' }
+    Utilities: { getUuid: () => '00000000-0000-0000-0000-000000000000', formatDate: () => '2026-09-02' }
   };
   vm.createContext(context);
   vm.runInContext(read('gas/PointCardService.gs'), context, { filename: 'gas/PointCardService.gs' });
@@ -36,7 +36,10 @@ function loadTicketService() {
     }
   }
   const rows = {
-    PointCardTickets: [{ ticket_id: 'TK-1', line_user_id: 'U-1', card_id: 'PC-1', reward_id: 'PR-1', reward_key: 'PC-1:10', threshold_stamps: '10', ticket_type: 'coupon', ticket_title: '咖啡券', ticket_description: '', lottery_prizes_json: '[]', status: 'available', failed_attempts: '0', earned_at: '2026-09-02T00:00:00.000Z', used_at: '', result_json: '', created_at: '2026-09-02T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z' }],
+    PointCards: [{ card_id: 'PC-1', status: 'active', expiry_mode: 'unlimited', expires_on: '' }],
+    PointCardTickets: [{ ticket_id: 'TK-1', line_user_id: 'U-1', card_id: 'PC-1', reward_id: 'PR-1', reward_key: 'PC-1:10', threshold_stamps: '10', ticket_type: 'coupon', ticket_title: '咖啡券', ticket_description: '', lottery_prizes_json: '[]', status: 'available', failed_attempts: '0', earned_at: '2026-09-02T00:00:00.000Z', used_at: '', result_json: '', created_at: '2026-09-02T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z', consume_stamps: '10' }],
+    PointBalances: [{ line_user_id: 'U-1', card_id: 'PC-1', stamps: '10', updated_at: '2026-09-02T00:00:00.000Z' }],
+    PointEntries: [],
     PointCardTicketChallenges: []
   };
   let uuid = 0;
@@ -46,10 +49,11 @@ function loadTicketService() {
     Utilities: {
       getUuid: () => `00000000-0000-0000-0000-0000000000${String(uuid++).padStart(2, '0')}`,
       computeDigest: () => Array.from({ length: 32 }, (_, index) => (digestSeed++ + index) % 256),
+      formatDate: () => '2026-09-02',
       DigestAlgorithm: { SHA_256: 'SHA_256' },
       Charset: { UTF_8: 'UTF_8' }
     },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => key.endsWith('PC-1:10') ? '10' : '' }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => key.endsWith('PC-1') ? '10' : '' }) },
     MEMBERSHIP_SHEET_SCHEMAS_: { PointCardTicketChallenges: ['challenge_id', 'ticket_id', 'line_user_id', 'options_json', 'status', 'attempt_count', 'expires_at', 'created_at', 'used_at'] },
     withDataLock_: (callback) => callback(),
     nowIso_: () => '2026-09-02T00:00:00.000Z',
@@ -77,6 +81,7 @@ test('PointCard rewards are stored as milestone rows with safe types and sorted 
 
   assert.deepEqual(rewards.map((reward) => Number(reward.threshold_stamps)), [5, 20]);
   assert.equal(rewards[0].reward_type, 'coupon');
+  assert.equal(rewards[0].consume_stamps, '5');
   assert.equal(rewards[0].lottery_win_rate, '0');
   assert.equal(rewards[1].reward_type, 'lottery');
   assert.equal(rewards[1].prizes[0].win_rate, '0');
@@ -92,7 +97,8 @@ test('PointCard rewards are stored as milestone rows with safe types and sorted 
 
 test('PointCard reward validation accepts 0% and rejects duplicate or out-of-range nodes', () => {
   const { normalize, TestApiError } = loadPointCardService();
-  assert.doesNotThrow(() => normalize([{ thresholdStamps: 5, rewardType: 'lottery', rewardTitle: '抽獎券', prizes: [{ prizeTitle: '0% 獎項', winRate: 0 }, { prizeTitle: '一般獎項', winRate: 100 }] }], 20));
+  assert.doesNotThrow(() => normalize([{ thresholdStamps: 5, consumeStamps: 3, rewardType: 'lottery', rewardTitle: '抽獎券', prizes: [{ prizeTitle: '0% 獎項', winRate: 0 }, { prizeTitle: '一般獎項', winRate: 100 }] }], 20));
+  assert.throws(() => normalize([{ thresholdStamps: 5, consumeStamps: 6, rewardType: 'coupon', rewardTitle: '超額消耗' }], 20), (error) => error instanceof TestApiError && error.code === 'INVALID_CARD_REWARDS');
   assert.throws(() => normalize([
     { thresholdStamps: 5, rewardType: 'coupon', rewardTitle: 'A' },
     { thresholdStamps: 5, rewardType: 'lottery', rewardTitle: 'B', prizes: [{ prizeTitle: 'B 獎項', winRate: 100 }] }
@@ -115,23 +121,38 @@ test('legacy cards still expose their original final reward as a coupon node', (
     rewardDescription: '',
     lotteryWinRate: 0,
     prizes: [],
-    usageCodeConfigured: false
+    consumeStamps: 20
   });
+});
+
+test('point cards expose an explicit expiry state and keep unlimited cards active', () => {
+  const { context } = loadPointCardService();
+  const expired = context.pointCardForClient_({ card_id: 'PC-EXPIRED', target_stamps: '10', reward_title: '已到期', status: 'active', expiry_mode: 'date', expires_on: '2026-09-01' });
+  const active = context.pointCardForClient_({ card_id: 'PC-ACTIVE', target_stamps: '10', reward_title: '無期限', status: 'active', expiry_mode: 'unlimited', expires_on: '' });
+  assert.equal(expired.expiryMode, 'date');
+  assert.equal(expired.expiresOn, '2026-09-01');
+  assert.equal(expired.expired, true);
+  assert.equal(active.expiryMode, 'unlimited');
+  assert.equal(active.expiresOn, '');
+  assert.equal(active.expired, false);
 });
 
 test('tickets keep a reward snapshot and never expose the usage code in the client ticket', () => {
   const { context } = loadPointCardService();
-  context.PropertiesService = { getScriptProperties: () => ({ getProperty: (key) => key.endsWith('PC-1:10') ? '10' : '' }) };
+  context.PropertiesService = { getScriptProperties: () => ({ getProperty: (key) => key.endsWith('PC-1') ? '10' : '' }) };
   const memberCard = context.pointCardForClient_({ card_id: 'PC-1', target_stamps: '10', reward_title: '咖啡券' }, undefined, false);
   const adminCard = context.pointCardForClient_({ card_id: 'PC-1', target_stamps: '10', reward_title: '咖啡券' }, undefined, true);
+  assert.equal(memberCard.usageCode, undefined);
+  assert.equal(adminCard.usageCode, '10');
   assert.equal(memberCard.rewards[0].usageCode, undefined);
-  assert.equal(adminCard.rewards[0].usageCode, '10');
+  assert.equal(adminCard.rewards[0].usageCode, undefined);
   const ticket = context.ticketRecordFromReward_('U-1', 'PC-1', {
-    rewardId: 'PR-1', thresholdStamps: 10, rewardType: 'lottery', rewardTitle: '抽獎券', rewardDescription: '到店使用',
+    rewardId: 'PR-1', thresholdStamps: 10, consumeStamps: 3, rewardType: 'lottery', rewardTitle: '抽獎券', rewardDescription: '到店使用',
     prizes: [{ prizeId: 'P-0', prizeTitle: '不會抽中', prizeDescription: '', winRate: 0 }, { prizeId: 'P-1', prizeTitle: '咖啡券', prizeDescription: '', winRate: 100 }]
   }, 'PC-1:10', '2026-09-02T00:00:00.000Z');
   assert.equal(ticket.reward_key, 'PC-1:10');
   assert.equal(ticket.status, 'available');
+  assert.equal(ticket.consume_stamps, '3');
   assert.doesNotMatch(JSON.stringify(ticket), /usage.?code|password/i);
   const clientTicket = context.ticketForClient_(ticket);
   assert.equal(clientTicket.prizes[0].winRate, undefined);
@@ -160,7 +181,48 @@ test('ticket challenge returns five decoys plus the configured code and redeems 
   const redeemed = context.handleTicketRedeem_(identity, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' });
   assert.equal(redeemed.redeemed, true);
   assert.equal(rows.PointCardTickets[0].status, 'used');
+  assert.equal(rows.PointBalances[0].stamps, '0');
+  assert.equal(rows.PointEntries[0].amount, '-10');
+  assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
   assert.throws(() => context.handleTicketRedeem_(identity, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' }), (error) => error instanceof TestApiError && error.code === 'TICKET_ALREADY_USED');
+});
+
+test('ticket redemption rejects insufficient balance without changing the ticket or balance', () => {
+  const { context, rows, TestApiError } = loadTicketService();
+  rows.PointBalances[0].stamps = '4';
+  const challenge = context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
+  assert.throws(() => context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' }), (error) => error instanceof TestApiError && error.code === 'INSUFFICIENT_STAMPS');
+  assert.equal(rows.PointCardTickets[0].status, 'available');
+  assert.equal(rows.PointBalances[0].stamps, '4');
+  assert.equal(rows.PointEntries.length, 0);
+});
+
+test('removed cards and their tickets are hidden from the member response', () => {
+  const { context, rows } = loadTicketService();
+  assert.equal(context.visibleTicketsForMember_('U-1').length, 1);
+  rows.PointCards[0].status = 'archived';
+  assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
+});
+
+test('expired cards reject ticket challenges even when an unused ticket remains', () => {
+  const { context, rows, TestApiError } = loadTicketService();
+  rows.PointCards[0].expiry_mode = 'date';
+  rows.PointCards[0].expires_on = '2026-09-01';
+  assert.throws(() => context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'CARD_EXPIRED');
+});
+
+test('consumable tickets are not duplicated on reload and reissue after a new threshold crossing', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCards[0].target_stamps = '5';
+  rows.PointCards[0].reward_title = '咖啡券';
+  rows.PointCardTickets[0].threshold_stamps = '5';
+  rows.PointCardTickets[0].reward_key = 'PC-1:5';
+  rows.PointCardTickets[0].status = 'used';
+  context.issuePointCardTicketsForBalance_('U-1', rows.PointCards[0], 10, 10, '2026-09-02T00:00:00.000Z');
+  assert.equal(rows.PointCardTickets.length, 1);
+  context.issuePointCardTicketsForBalance_('U-1', rows.PointCards[0], 4, 5, '2026-09-02T00:00:00.000Z');
+  assert.equal(rows.PointCardTickets.length, 2);
+  assert.equal(rows.PointCardTickets[1].status, 'available');
 });
 
 test('admin and member surfaces expose milestone reward controls and progress', () => {
@@ -188,7 +250,8 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.doesNotMatch(pointsApp, /prizeRate/);
   assert.doesNotMatch(pointsApp, /winRate/);
   assert.match(pointsApp, /lottery-reveal/);
-  assert.match(adminApp, /data-generate-usage-code/);
+  assert.match(adminHtml, /id="generateTicketUsageCodeButton"/);
+  assert.match(adminApp, /generateTicketUsageCodeButton/);
   assert.match(adminApp, /admin\.pointcards\.usage-code\.generate/);
   assert.match(adminApp, /admin\.pointcards\.remove/);
   assert.match(pointsHtml, /id="ticketChoices"/);
@@ -196,4 +259,10 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.match(storage, /PointCardTicketChallenges:/);
   assert.match(read('gas/PointCardService.gs'), /POINT_CARD_TICKET_OPTION_COUNT_ = 6/);
   assert.match(read('gas/PointCardService.gs'), /POINT_CARD_TICKET_CODE_LENGTH_ = 2/);
+  assert.match(adminApp, /consumeStamps/);
+  assert.match(adminHtml, /cardExpiryMode/);
+  assert.match(pointsApp, /使用消耗/);
+  assert.match(pointsApp, /state\.tickets = state\.tickets\.filter/);
+  assert.match(storage, /consume_stamps/);
+  assert.match(storage, /expires_on/);
 });

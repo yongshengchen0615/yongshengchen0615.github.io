@@ -56,10 +56,10 @@ GAS 會建立並維護以下 schema：
 
 - `Members`：會員身份、會員編號、等級、狀態與登入時間。
 - `Admins`：管理端授權。第一次登入只會建立 `role=none`、`status=pending`，手動改成 `admin` / `active` 後才能進入。
-- `PointCards`：集點卡設定、完成點數、相容用的最後回饋文字、公開狀態與識別色。
-- `PointCardRewards`：每張集點卡的節點獎勵；包含達標點數、優惠券/抽獎券類型與獎勵說明，並保留舊版 `lottery_win_rate` 欄位供相容。
+- `PointCards`：集點卡設定、完成點數、相容用的最後回饋文字、公開狀態、識別色與使用期限。
+- `PointCardRewards`：每張集點卡的節點獎勵；包含需要集到的點數、兌換消耗點數、優惠券/抽獎券類型與獎勵說明，並保留舊版 `lottery_win_rate` 欄位供相容。
 - `PointCardLotteryPrizes`：抽獎券節點的多個獎項與各自中獎率；允許單一獎項為 0%，同一抽獎券的獎項機率總和必須為 100%。
-- `PointCardTickets`：會員達成節點後產生的優惠券/抽獎券；保存票券狀態、抽獎結果與核銷歷史。
+- `PointCardTickets`：會員達成節點後產生的優惠券/抽獎券；保存票券狀態、兌換消耗點數、抽獎結果與核銷歷史。
 - `PointCardTicketChallenges`：短效的票券核銷選號挑戰；只保存選項與狀態，不保存 Script Properties 裡的票券密碼。
 - `PointBalances`：每位會員在每張卡的目前餘額。
 - `PointEntries`：每次補登點數的不可變流水紀錄。
@@ -82,9 +82,11 @@ GAS 會建立並維護以下 schema：
 - `user.pointcard.ticket.challenge`
 - `user.pointcard.ticket.redeem`
 
-`admin.pointcards.save` 的 `card.rewards` 是節點陣列。每個節點的 `thresholdStamps` 必須是唯一且不超過 `targetStamps` 的整數；`rewardType` 可為 `coupon` 或 `lottery`。抽獎券節點的 `prizes` 可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。
+`admin.pointcards.save` 的 `card.rewards` 是節點陣列。每個節點的 `thresholdStamps`（需要集到的點數）必須是唯一且不超過 `targetStamps` 的整數，`consumeStamps`（兌換消耗點數）必須為 1 點以上且不可超過 `thresholdStamps`；`rewardType` 可為 `coupon` 或 `lottery`。抽獎券節點的 `prizes` 可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。
 
-管理端可在每個節點按「一鍵產生密碼」，GAS 會產生兩位數票券使用密碼並只放在 Script Properties；用戶端使用票券時會取得 5 組干擾號碼加上 1 組正確號碼，共 6 個選項。店員點選正確號碼後，後端才會以一次性、限時挑戰完成核銷；錯誤達 3 次會鎖定票券。抽獎券核銷成功後由後端依設定機率開獎，會員端播放開獎動畫且只顯示獎項名稱，不顯示機率。
+管理端每張集點卡只需按一次「一鍵產生票券密碼」，GAS 會產生該卡共用的兩位數密碼並只放在 Script Properties；用戶端使用票券時會取得 5 組干擾號碼加上 1 組正確號碼，共 6 個選項。店員點選正確號碼後，後端才會以一次性、限時挑戰完成核銷；錯誤達 3 次會鎖定票券。核銷成功會依獎勵的 `consumeStamps` 扣除會員點數並寫入負數流水紀錄；抽獎券再由後端依設定機率開獎，會員端播放開獎動畫且只顯示獎項名稱，不顯示機率。已使用票券不再回傳給會員端，後端歷史紀錄仍保留。
+
+集點卡的 `expiryMode` 可設為 `unlimited` 或 `date`；使用 `date` 時需提供 `expiresOn`（`YYYY-MM-DD`）。到期後停止新增點數與票券核銷；管理端移除集點卡會封存卡片，會員端與會員票券畫面同步隱藏，資料仍保留供稽核。
 
 前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 
