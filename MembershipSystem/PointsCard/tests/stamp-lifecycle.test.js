@@ -94,6 +94,22 @@ test('used stamp QR deletion preserves history while removing deleted QR from ad
   assert.match(stamps, /deleteObjectRow_\(sheet, match\.row\)/);
 });
 
+test('used reward confirmation QR can be deleted while preserving its ticket and audit history', () => {
+  const confirmations = read('gas/RewardConfirmationService.gs');
+  const multiCardRewards = read('gas/MultiCardRewardService.gs');
+  const admin = read('admin/app.js');
+
+  for (const source of [confirmations, multiCardRewards]) {
+    assert.match(source, /confirmation\.status = 'deleted'/);
+    assert.match(source, /preserveHistory: hasRecords/);
+    assert.doesNotMatch(source, /REWARD_CONFIRMATION_HAS_RECORDS/);
+    assert.match(source, /confirmation\.status !== 'deleted'/);
+  }
+  assert.match(admin, /deleteRewardConfirmation\(confirmation\); \}, false/);
+  assert.match(admin, /已有使用紀錄時會保留歷史資料/);
+  assert.match(admin, /result\.preservedHistory/);
+});
+
 test('admin expiry controls and QR loading state are wired without syntax errors', () => {
   const html = read('admin/index.html');
   const script = read('admin/app.js');

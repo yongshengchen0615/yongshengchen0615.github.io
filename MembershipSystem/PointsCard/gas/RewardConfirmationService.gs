@@ -22,7 +22,9 @@ function adminRewardConfirmationList_(limit) {
     }
     return counts;
   }, {});
-  return readObjects_(getSheet_(POINTS_CARD_SHEETS.rewardConfirmations)).map(normalizeRewardConfirmation_)
+  return readObjects_(getSheet_(POINTS_CARD_SHEETS.rewardConfirmations)).map(normalizeRewardConfirmation_).filter(function (confirmation) {
+    return confirmation.status !== 'deleted';
+  })
     .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); })
     .slice(0, maxRows)
     .map(function (confirmation) {
@@ -114,15 +116,27 @@ function adminRewardConfirmationDelete_(context, payload) {
     if (!match) fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到指定的票券確認 QR Code。');
     const confirmation = normalizeRewardConfirmation_(match.object);
     if (confirmation.updatedAt !== expectedUpdatedAt) fail_('CONFLICT', '票券確認 QR Code 已更新，請重新整理後再試。');
-    if (hasRewardConfirmationRecords_(confirmationId)) {
-      fail_('REWARD_CONFIRMATION_HAS_RECORDS', '已有票券領取紀錄的 QR Code 只能停止，不能刪除。');
-    }
+    if (confirmation.status === 'deleted') fail_('REWARD_CONFIRMATION_NOT_FOUND', '找不到指定的票券確認 QR Code。');
+    const hasRecords = hasRewardConfirmationRecords_(confirmationId);
     if (!audit_(context.identity.sub, 'admin', 'REWARD_CONFIRM_QR_DELETE_REQUESTED', '', 'pending', {
-      confirmationId: confirmationId
+      confirmationId: confirmationId,
+      preserveHistory: hasRecords
     })) fail_('AUDIT_UNAVAILABLE', '稽核紀錄暫時無法寫入，票券確認 QR Code 未刪除。');
-    deleteObjectRow_(sheet, match.row);
-    audit_(context.identity.sub, 'admin', 'REWARD_CONFIRM_QR_DELETED', '', 'success', { confirmationId: confirmationId });
-    return { confirmationId: confirmationId };
+    if (hasRecords) {
+      const now = new Date().toISOString();
+      confirmation.status = 'deleted';
+      confirmation.cancelledByLineUserId = context.identity.sub;
+      confirmation.cancelledAt = confirmation.cancelledAt || now;
+      confirmation.updatedAt = now;
+      writeObjectRow_(sheet, match.row, confirmation);
+    } else {
+      deleteObjectRow_(sheet, match.row);
+    }
+    audit_(context.identity.sub, 'admin', 'REWARD_CONFIRM_QR_DELETED', '', {
+      confirmationId: confirmationId,
+      preserveHistory: hasRecords
+    });
+    return { confirmationId: confirmationId, preservedHistory: hasRecords };
   } finally { lock.releaseLock(); }
 }
 

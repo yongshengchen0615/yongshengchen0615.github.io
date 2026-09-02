@@ -753,7 +753,7 @@
       const actions = document.createElement('div'); actions.className = 'row-actions';
       actions.append(createTextButton('開啟', '', function () { openRewardConfirmation(confirmation.confirmationId); }, state !== 'active'));
       if (state === 'active') actions.append(createTextButton('停止', 'danger', function () { cancelRewardConfirmation(confirmation); }, false));
-      actions.append(createTextButton('刪除', 'danger', function () { deleteRewardConfirmation(confirmation); }, Number(confirmation.recordCount || 0) > 0));
+      actions.append(createTextButton('刪除', 'danger', function () { deleteRewardConfirmation(confirmation); }, false));
       actionsTd.append(actions);
       setTableCellLabels(
         [idTd, countTd, statusTd, expiryTd, actionsTd],
@@ -1155,15 +1155,15 @@
   }
 
   async function deleteRewardConfirmation(confirmation) {
-    if (!window.confirm('確定刪除這組尚未使用的店家確認 QR？')) return;
+    if (!window.confirm('確定刪除這組店家確認 QR？已有使用紀錄時會保留歷史資料。')) return;
     try {
-      await PointsCard.callApi('admin.reward-confirm.delete', {
+      const result = await PointsCard.callApi('admin.reward-confirm.delete', {
         confirmationId: confirmation.confirmationId,
         expectedUpdatedAt: confirmation.updatedAt
       });
       rewardConfirmations = rewardConfirmations.filter(function (item) { return item.confirmationId !== confirmation.confirmationId; });
       renderRewardConfirmations();
-      showToast('店家確認 QR 已刪除。');
+      showToast(result.preservedHistory ? '店家確認 QR 已刪除，使用紀錄已保留。' : '店家確認 QR 已刪除。');
     } catch (error) { showToast(error.message); }
   }
 

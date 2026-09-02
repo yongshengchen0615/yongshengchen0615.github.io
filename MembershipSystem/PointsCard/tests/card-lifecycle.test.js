@@ -39,7 +39,7 @@ test('multi-card APIs require server-side admin authorization and route all muta
   ]) {
     assert.match(code, new RegExp("case '" + action.replace(/[.]/g, '\\.') + "':\\s*requireAdmin_\\(context\\)"));
   }
-  assert.match(code, /version:\s*'2\.3\.1'/);
+  assert.match(code, /version:\s*'2\.3\.2'/);
   assert.match(code, /adminCardSaveMultiCard_\(context, payload\)/);
   assert.match(code, /memberMeVisibleMultiCard_\(context, payload\)/);
   assert.match(code, /stampRecordMultiCard_\(context, payload\)/);
