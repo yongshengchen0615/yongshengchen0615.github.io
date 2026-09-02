@@ -2,6 +2,7 @@
   'use strict';
 
   const GAS_URL_PATTERN = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+  const FRESH_LOGIN_QUERY = 'member_system_reauth';
 
   function clientError(code, message) {
     const error = new Error(message);
@@ -56,14 +57,43 @@
       throw clientError('LIFF_INIT_ERROR', `${label} LIFF 初始化失敗，請檢查 LIFF ID 與 Endpoint URL。`);
     }
 
-    if (!window.liff.isLoggedIn()) {
-      window.liff.login({ redirectUri: window.location.href });
-      await new Promise(() => {});
+    const inLiffClient = typeof window.liff.isInClient === 'function' && window.liff.isInClient();
+    if (inLiffClient) {
+      if (!window.liff.isLoggedIn()) {
+        throw clientError('AUTH_REQUIRED', 'LINE LIFF 尚未完成登入，請重新開啟此 LIFF。');
+      }
+    } else {
+      const returnedFromLogin = consumeFreshLoginQuery(surface);
+      if (!returnedFromLogin) {
+        if (window.liff.isLoggedIn()) {
+          try { window.liff.logout(); } catch (_) {}
+        }
+        redirectToFreshLogin(surface);
+        await new Promise(() => {});
+      }
+      if (!window.liff.isLoggedIn()) {
+        redirectToFreshLogin(surface);
+        await new Promise(() => {});
+      }
     }
 
     const idToken = window.liff.getIDToken() || '';
     if (!idToken) throw clientError('AUTH_REQUIRED', '無法取得 LINE ID token，請確認 LIFF 已啟用 openid scope。');
     return idToken;
+  }
+
+  function redirectToFreshLogin(surface) {
+    const redirectUrl = new URL(window.location.href);
+    redirectUrl.searchParams.set(FRESH_LOGIN_QUERY, surface);
+    window.liff.login({ redirectUri: redirectUrl.toString() });
+  }
+
+  function consumeFreshLoginQuery(surface) {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.get(FRESH_LOGIN_QUERY) !== surface) return false;
+    currentUrl.searchParams.delete(FRESH_LOGIN_QUERY);
+    window.history.replaceState({}, document.title, currentUrl.pathname + currentUrl.search + currentUrl.hash);
+    return true;
   }
 
   async function request(config, clientType, idToken, action, payload = {}) {

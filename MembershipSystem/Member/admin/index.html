@@ -13,7 +13,7 @@
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
-    <section id="loadingView" class="state-view"><div class="loader-mark" aria-hidden="true">L</div><p class="kicker">Lumen Club / Admin</p><h1>正在驗證管理權限</h1><p>管理端會同時確認 LINE 身份與 GAS 端的 Admins 權限。</p></section>
+    <section id="loadingView" class="state-view"><div class="loader-mark" aria-hidden="true">L</div><p class="kicker">Lumen Club / Admin</p><h1>正在驗證管理權限</h1><p>每次開啟都會重新確認 LINE 身份與 GAS 端的 Admins 權限。</p></section>
     <section id="errorView" class="state-view hidden" role="alert"><div class="error-mark" aria-hidden="true">!</div><p class="kicker">Access check</p><h1 id="errorTitle">無法進入管理端</h1><p id="errorMessage"></p><div id="pendingBox" class="pending-box hidden"><strong>待授權 LINE User ID</strong><code id="pendingUserId"></code><p>請到 GAS 建立的 Spreadsheet → <b>Admins</b>，將這筆資料的 <b>role</b> 設為 <b>admin</b>、<b>status</b> 設為 <b>active</b>，再重新整理。</p></div><button id="retryButton" class="button button-dark" type="button">重新整理</button></section>
 
     <main id="adminView" class="hidden">

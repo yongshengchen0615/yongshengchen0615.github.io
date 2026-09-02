@@ -30,6 +30,9 @@ test('browser clients use ID tokens and do not persist credentials', () => {
   assert.match(clients, /signIn\(state\.config, 'member'\)/);
   assert.match(clients, /signIn\(state\.config, 'points'\)/);
   assert.doesNotMatch(clients, /getAccessToken\(\)/);
+  assert.match(clients, /member_system_reauth/);
+  assert.match(clients, /isInClient\(\)/);
+  assert.match(clients, /window\.liff\.logout\(\)/);
   assert.doesNotMatch(clients, /localStorage|sessionStorage/);
 });
 
