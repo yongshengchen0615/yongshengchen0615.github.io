@@ -4,9 +4,7 @@ const MEMBERSHIP_API_VERSION_ = '1.0.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'admin.member.update',
   'admin.pointcards.save',
-  'admin.pointcards.usage-code.generate',
   'admin.pointcards.remove',
-  'user.pointcard.ticket.challenge',
   'user.pointcard.ticket.redeem',
   'admin.stamps.add'
 ]);
@@ -66,19 +64,11 @@ function doPost(e) {
         data = handlePointCardSave_(identity, admin, request);
         break;
       }
-      case 'admin.pointcards.usage-code.generate': {
-        const admin = authorizeAdmin_(identity);
-        data = handleTicketUsageCodeGenerate_(identity, admin, request);
-        break;
-      }
       case 'admin.pointcards.remove': {
         const admin = authorizeAdmin_(identity);
         data = handlePointCardRemove_(identity, admin, request);
         break;
       }
-      case 'user.pointcard.ticket.challenge':
-        data = handleTicketChallenge_(identity, request);
-        break;
       case 'user.pointcard.ticket.redeem':
         data = handleTicketRedeem_(identity, request);
         break;

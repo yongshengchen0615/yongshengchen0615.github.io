@@ -5,7 +5,7 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton', 'membersTab', 'cardsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'syncStatus', 'refreshButton', 'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardTargetStamps', 'cardRewardTitle', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'ticketUsageCodeStatus', 'generateTicketUsageCodeButton', 'cardFormMessage', 'resetCardButton', 'removeCardButton', 'saveCardButton', 'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton', 'stampModal', 'closeStampModal', 'stampForm', 'stampMemberId', 'stampMemberName', 'stampCardId', 'stampAmount', 'stampNote', 'stampFormMessage', 'cancelStampButton', 'saveStampButton'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton', 'membersTab', 'cardsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'syncStatus', 'refreshButton', 'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardTargetStamps', 'cardRewardTitle', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'removeCardButton', 'saveCardButton', 'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton', 'stampModal', 'closeStampModal', 'stampForm', 'stampMemberId', 'stampMemberName', 'stampCardId', 'stampAmount', 'stampNote', 'stampFormMessage', 'cancelStampButton', 'saveStampButton'].forEach((id) => { els[id] = document.getElementById(id); });
     bindEvents();
     boot();
   });
@@ -37,7 +37,6 @@
     els.cardExpiryMode.addEventListener('change', updateCardExpiryUI);
     els.cardAccent.addEventListener('input', updateAccentValue);
     els.cardForm.addEventListener('submit', saveCard);
-    els.generateTicketUsageCodeButton.addEventListener('click', generateTicketUsageCode);
     els.resetCardButton.addEventListener('click', resetCardForm);
     els.removeCardButton.addEventListener('click', removeCard);
     els.memberForm.addEventListener('submit', saveMember);
@@ -122,29 +121,15 @@
   }
 
   function loadCardForm(cardId) {
-    const card = state.cards.find((item) => item.cardId === cardId); if (!card) return; state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardTargetStamps.value = String(card.targetStamps || 10); els.cardRewardTitle.value = String(card.rewardTitle || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [legacyRewardFromCard(card)]); updateTicketUsageCodeUI(card); els.editorKicker.textContent = 'Edit reward card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(card.status); els.removeCardButton.disabled = card.status === 'archived'; els.removeCardButton.textContent = card.status === 'archived' ? '已移除集點卡' : '移除集點卡'; renderCardList();
+    const card = state.cards.find((item) => item.cardId === cardId); if (!card) return; state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardTargetStamps.value = String(card.targetStamps || 10); els.cardRewardTitle.value = String(card.rewardTitle || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [legacyRewardFromCard(card)]); els.editorKicker.textContent = 'Edit reward card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(card.status); els.removeCardButton.disabled = card.status === 'archived'; els.removeCardButton.textContent = card.status === 'archived' ? '已移除集點卡' : '移除集點卡'; renderCardList();
   }
 
-  function resetCardForm() { state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = 'draft'; els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; updateCardExpiryUI(); els.cardAccent.value = '#e47845'; els.cardRewardTitle.value = ''; updateAccentValue(); renderRewardRows([defaultReward(5)]); updateTicketUsageCodeUI(null); els.editorKicker.textContent = 'Create reward card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus('draft'); els.removeCardButton.disabled = true; els.removeCardButton.textContent = '先儲存後才能移除'; hideMessage(els.cardFormMessage); renderCardList(); }
+  function resetCardForm() { state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = 'draft'; els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; updateCardExpiryUI(); els.cardAccent.value = '#e47845'; els.cardRewardTitle.value = ''; updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create reward card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus('draft'); els.removeCardButton.disabled = true; els.removeCardButton.textContent = '先儲存後才能移除'; hideMessage(els.cardFormMessage); renderCardList(); }
 
   async function saveCard(event) {
     event.preventDefault(); hideMessage(els.cardFormMessage); const title = String(els.cardTitle.value || '').trim(); const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim(); const validationMessage = validateRewardEditor(title, rewards) || validateCardExpiry(expiryMode, expiresOn); if (validationMessage) { showMessage(els.cardFormMessage, validationMessage); return; }
     const rewardTitle = rewards[rewards.length - 1].rewardTitle;
     setSaving(els.saveCardButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title, description: String(els.cardDescription.value || '').trim(), rewardTitle, rewards, status: els.cardStatus.value, expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value }); const saved = result.card; state.cards = saved ? replaceById(state.cards, saved, 'cardId') : state.cards; state.selectedCardId = saved && saved.cardId || ''; renderAll(); if (saved) loadCardForm(saved.cardId); showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true); } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
-  }
-
-  async function generateTicketUsageCode() {
-    const cardId = String(els.cardId.value || '').trim();
-    const button = els.generateTicketUsageCodeButton;
-    if (!cardId) { showMessage(els.cardFormMessage, '請先儲存集點卡，再設定票券使用密碼。'); return; }
-    button.disabled = true; button.dataset.originalText = button.textContent; button.textContent = '產生中…';
-    try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.usage-code.generate', { cardId });
-      const card = state.cards.find((item) => item.cardId === cardId);
-      if (card) { card.usageCode = String(result.usageCode || ''); card.usageCodeConfigured = true; updateTicketUsageCodeUI(card); }
-      button.textContent = '重新產生';
-      showMessage(els.cardFormMessage, '已產生新的票券使用密碼；舊密碼立即失效。', true);
-    } catch (error) { handleActionError(error, els.cardFormMessage); button.textContent = button.dataset.originalText || '一鍵產生密碼'; } finally { button.disabled = false; }
   }
 
   async function removeCard() {
@@ -158,7 +143,6 @@
   function defaultReward(thresholdStamps) { return { thresholdStamps, consumeStamps: thresholdStamps, rewardType: 'coupon', rewardTitle: '', rewardDescription: '', prizes: [] }; }
   function defaultPrize() { return { prizeTitle: '', prizeDescription: '', winRate: 100 }; }
   function legacyRewardFromCard(card) { const thresholdStamps = Number(card.targetStamps || 10); return { thresholdStamps, consumeStamps: thresholdStamps, rewardType: 'coupon', rewardTitle: String(card.rewardTitle || ''), rewardDescription: '', prizes: [] }; }
-  function updateTicketUsageCodeUI(card) { const configured = Boolean(card && card.usageCodeConfigured); els.ticketUsageCodeStatus.textContent = card && card.usageCode ? `目前密碼：${card.usageCode}（未重新產生前不變）` : configured ? '已設定，請重新整理取得目前密碼' : card ? '尚未設定' : '先儲存卡片後設定'; els.ticketUsageCodeStatus.classList.toggle('set', Boolean(card && card.usageCode)); els.generateTicketUsageCodeButton.disabled = !card || card.status === 'archived'; els.generateTicketUsageCodeButton.textContent = configured ? '重新產生密碼' : '一鍵產生票券密碼'; }
   function updateCardExpiryUI() { const limited = String(els.cardExpiryMode.value || 'unlimited') === 'date'; els.cardExpiresOnField.classList.toggle('hidden', !limited); els.cardExpiresOn.required = limited; }
   function validateCardExpiry(mode, expiresOn) { if (mode === 'unlimited') return ''; if (mode !== 'date' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) return '請選擇有效的集點卡到期日。'; const parts = expiresOn.split('-').map(Number); const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])); return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2] ? '' : '請選擇有效的集點卡到期日。'; }
   function renderRewardRows(rewards) { els.rewardRows.replaceChildren(...rewards.map((reward, index) => createRewardRow(reward, index))); updateRewardEditorHint(); }

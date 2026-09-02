@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', displayName: '', cards: [], tickets: [], selectedCardId: '', activeChallenge: null };
+  const state = { config: null, idToken: '', displayName: '', cards: [], tickets: [], selectedCardId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -106,16 +106,47 @@
       const item = document.createElement('article'); item.className = `milestone-item${earned ? ' reached' : ''}`;
       const marker = document.createElement('span'); marker.className = 'milestone-marker'; marker.textContent = earned ? '✓' : String(reward.thresholdStamps || '—');
       const copy = document.createElement('div'); const title = document.createElement('strong'); title.textContent = String(reward.rewardTitle || '節點回饋'); const meta = document.createElement('small'); meta.textContent = `${rewardTypeLabel(reward.rewardType)} · 需集 ${threshold} 點 · 使用消耗 ${consume} 點 · ${availability}`; copy.append(title, meta); if (reward.rewardDescription) { const description = document.createElement('p'); description.textContent = String(reward.rewardDescription); copy.append(description); } if (String(reward.rewardType) === 'lottery') { const prizeLabel = document.createElement('p'); prizeLabel.className = 'prize-opportunity-label'; prizeLabel.textContent = '可獲得的獎項'; copy.append(prizeLabel); const prizeList = document.createElement('ul'); prizeList.className = 'prize-opportunities'; prizeList.setAttribute('aria-label', '可獲得的獎項'); (Array.isArray(reward.prizes) ? reward.prizes : []).forEach((prize) => { const prizeItem = document.createElement('li'); prizeItem.className = 'prize-opportunity'; const prizeName = document.createElement('span'); prizeName.textContent = String(prize.prizeTitle || '未命名獎項'); prizeItem.append(prizeName); prizeList.append(prizeItem); }); if (prizeList.children.length) copy.append(prizeList); }
-      const action = document.createElement('div'); action.className = 'milestone-action'; if (card.expired) { const expired = document.createElement('span'); expired.className = 'ticket-used'; expired.textContent = '已過期'; action.append(expired); } else if (ticket) { if (ticket.status === 'locked') { const locked = document.createElement('span'); locked.className = 'ticket-used'; locked.textContent = '已鎖定'; action.append(locked); } else if (shortage) { const insufficient = document.createElement('span'); insufficient.className = 'ticket-used'; insufficient.textContent = `點數不足 · 還差 ${shortage} 點`; action.append(insufficient); } else { const useButton = document.createElement('button'); useButton.type = 'button'; useButton.className = 'small-ticket-button'; useButton.dataset.useTicket = ticket.ticketId; useButton.textContent = '使用這張券'; action.append(useButton); } } item.append(marker, copy, action); return item;
+      const action = document.createElement('div'); action.className = 'milestone-action'; if (card.expired) { const expired = document.createElement('span'); expired.className = 'ticket-used'; expired.textContent = '已過期'; action.append(expired); } else if (ticket) { if (shortage) { const insufficient = document.createElement('span'); insufficient.className = 'ticket-used'; insufficient.textContent = `點數不足 · 還差 ${shortage} 點`; action.append(insufficient); } else { const useButton = document.createElement('button'); useButton.type = 'button'; useButton.className = 'small-ticket-button'; useButton.dataset.useTicket = ticket.ticketId; useButton.textContent = '使用這張券'; action.append(useButton); } } item.append(marker, copy, action); return item;
     }));
   }
   function rewardTypeLabel(type) { return type === 'lottery' ? '抽獎券' : '優惠券'; }
 
-  function openTicketModal(ticketId) { const ticket = state.tickets.find((item) => item.ticketId === ticketId); if (!ticket || ticket.status !== 'available') return; els.ticketModal.classList.remove('hidden'); els.ticketModalTicketName.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'}｜${ticket.ticketTitle || '節點回饋'}`; hideTicketMessage(); startTicketChallenge(ticketId); }
-  function closeTicketModal() { els.ticketModal.classList.add('hidden'); state.activeChallenge = null; els.ticketChoices.replaceChildren(); hideTicketMessage(); }
-  async function startTicketChallenge(ticketId, retryMessage) { const ticket = state.tickets.find((item) => item.ticketId === ticketId); if (!ticket) return; state.activeChallenge = null; els.ticketModalHint.textContent = retryMessage || `本次兌換會消耗 ${Number(ticket.consumeStamps || ticket.thresholdStamps || 0)} 點。請將畫面交給店員，店員點選正確號碼。`; const loading = document.createElement('button'); loading.type = 'button'; loading.className = 'ticket-choice loading'; loading.disabled = true; loading.textContent = '正在準備號碼…'; els.ticketChoices.replaceChildren(loading); try { const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.challenge', { ticketId }); state.activeChallenge = { ticketId, challengeId: result.challengeId }; els.ticketChoices.replaceChildren(...(Array.isArray(result.options) ? result.options : []).map((option) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'ticket-choice'; button.dataset.ticketCode = String(option); button.textContent = String(option); button.addEventListener('click', handleTicketChoice); return button; })); } catch (error) { showTicketMessage(error && error.message || '暫時無法準備票券，請稍後再試。'); els.ticketChoices.replaceChildren(); } }
-  async function handleTicketChoice(event) { const button = event.currentTarget; const challenge = state.activeChallenge; if (!challenge) return; Array.from(els.ticketChoices.querySelectorAll('button')).forEach((item) => { item.disabled = true; }); els.ticketModalHint.textContent = '正在確認號碼…'; try { const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.redeem', { ticketId: challenge.ticketId, challengeId: challenge.challengeId, selectedCode: button.dataset.ticketCode }); const redeemed = result.ticket; state.tickets = state.tickets.filter((ticket) => ticket.ticketId !== challenge.ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (result.balance) updateCardBalance(result.balance); renderCards(); await showRedeemedTicket(redeemed); } catch (error) { const details = error && error.details || {}; if (error && error.code === 'TICKET_CODE_INCORRECT' && details.ticketStatus !== 'locked') { await startTicketChallenge(challenge.ticketId, `號碼不正確，請再選一次（剩餘 ${Number(details.remainingAttempts || 0)} 次）。`); } else { if (details.ticketStatus === 'locked') { state.tickets = state.tickets.map((ticket) => ticket.ticketId === challenge.ticketId ? { ...ticket, status: 'locked' } : ticket); renderCards(); } showTicketMessage(error && error.message || '票券核銷失敗，請稍後再試。'); } } }
-  async function showRedeemedTicket(ticket) { state.activeChallenge = null; if (ticket.ticketType === 'lottery') { els.ticketModalHint.textContent = '開獎中，請稍候…'; const reveal = document.createElement('div'); reveal.className = 'lottery-reveal'; reveal.textContent = '✦ 抽獎中 ✦'; els.ticketChoices.replaceChildren(reveal); await new Promise((resolve) => window.setTimeout(resolve, 1350)); const result = ticket.result; els.ticketModalHint.textContent = '開獎完成'; const resultBox = document.createElement('div'); resultBox.className = 'lottery-result'; const label = document.createElement('span'); label.textContent = '恭喜你抽中'; const title = document.createElement('strong'); title.textContent = result && result.prizeTitle || '本次抽獎結果已記錄'; resultBox.append(label, title); if (result && result.prizeDescription) { const description = document.createElement('p'); description.textContent = result.prizeDescription; resultBox.append(description); } els.ticketChoices.replaceChildren(resultBox); } else { els.ticketModalHint.textContent = '核銷完成'; const resultBox = document.createElement('div'); resultBox.className = 'ticket-success'; resultBox.textContent = '優惠券已成功使用，請向店員兌換。'; els.ticketChoices.replaceChildren(resultBox); } showTicketMessage('這張票券已完成核銷。', true); }
+  function openTicketModal(ticketId) {
+    const ticket = state.tickets.find((item) => item.ticketId === ticketId);
+    if (!ticket || ticket.status === 'used') return;
+    els.ticketModal.classList.remove('hidden');
+    els.ticketModalTicketName.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'}｜${ticket.ticketTitle || '節點回饋'}`;
+    els.ticketModalHint.textContent = '確認後會立即使用這張票券。';
+    hideTicketMessage();
+    redeemTicket(ticketId);
+  }
+  function closeTicketModal() {
+    els.ticketModal.classList.add('hidden');
+    els.ticketChoices.replaceChildren();
+    hideTicketMessage();
+  }
+  async function redeemTicket(ticketId) {
+    const ticket = state.tickets.find((item) => item.ticketId === ticketId);
+    if (!ticket) return;
+    els.ticketModalHint.textContent = '正在使用票券…';
+    const loading = document.createElement('div');
+    loading.className = 'ticket-choice loading';
+    loading.textContent = '正在確認票券…';
+    els.ticketChoices.replaceChildren(loading);
+    try {
+      const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.redeem', { ticketId });
+      const redeemed = result.ticket;
+      state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId);
+      if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets);
+      if (result.balance) updateCardBalance(result.balance);
+      renderCards();
+      await showRedeemedTicket(redeemed);
+    } catch (error) {
+      els.ticketChoices.replaceChildren();
+      showTicketMessage(error && error.message || '票券使用失敗，請稍後再試。');
+    }
+  }
+  async function showRedeemedTicket(ticket) { if (ticket.ticketType === 'lottery') { els.ticketModalHint.textContent = '開獎中，請稍候…'; const reveal = document.createElement('div'); reveal.className = 'lottery-reveal'; reveal.textContent = '✦ 抽獎中 ✦'; els.ticketChoices.replaceChildren(reveal); await new Promise((resolve) => window.setTimeout(resolve, 1350)); const result = ticket.result; els.ticketModalHint.textContent = '開獎完成'; const resultBox = document.createElement('div'); resultBox.className = 'lottery-result'; const label = document.createElement('span'); label.textContent = '恭喜你抽中'; const title = document.createElement('strong'); title.textContent = result && result.prizeTitle || '本次抽獎結果已記錄'; resultBox.append(label, title); if (result && result.prizeDescription) { const description = document.createElement('p'); description.textContent = result.prizeDescription; resultBox.append(description); } els.ticketChoices.replaceChildren(resultBox); } else { els.ticketModalHint.textContent = '核銷完成'; const resultBox = document.createElement('div'); resultBox.className = 'ticket-success'; resultBox.textContent = '優惠券已成功使用，請向店員兌換。'; els.ticketChoices.replaceChildren(resultBox); } showTicketMessage('這張票券已完成核銷。', true); }
   function updateCardBalance(balance) { const cardId = String(balance.cardId || ''); const stamps = Number(balance.stamps || 0); state.cards = state.cards.map((card) => card.cardId === cardId ? { ...card, stamps: Math.max(0, stamps), updatedAt: String(balance.updatedAt || card.updatedAt || '') } : card); }
   function showTicketMessage(message, success) { els.ticketModalMessage.textContent = message; els.ticketModalMessage.classList.toggle('success', Boolean(success)); els.ticketModalMessage.classList.remove('hidden'); }
   function hideTicketMessage() { els.ticketModalMessage.textContent = ''; els.ticketModalMessage.classList.add('hidden'); els.ticketModalMessage.classList.remove('success'); }

@@ -5,14 +5,8 @@ const POINT_CARD_MAX_REWARDS_ = 30;
 const POINT_CARD_MAX_THRESHOLD_STAMPS_ = 100;
 const POINT_CARD_MAX_LOTTERY_PRIZES_ = 30;
 const POINT_CARD_RATE_BASIS_POINTS_ = 10000;
-const POINT_CARD_TICKET_CHALLENGE_TTL_MS_ = 2 * 60 * 1000;
-const POINT_CARD_TICKET_MAX_FAILED_ATTEMPTS_ = 3;
-const POINT_CARD_TICKET_OPTION_COUNT_ = 6;
-const POINT_CARD_TICKET_CODE_LENGTH_ = 2;
-const POINT_CARD_TICKET_USAGE_CODE_PROPERTY_PREFIX_ = 'MEMBERSHIP_TICKET_USAGE_CODE:';
 const POINT_CARD_TICKET_STATUS_AVAILABLE_ = 'available';
 const POINT_CARD_TICKET_STATUS_USED_ = 'used';
-const POINT_CARD_TICKET_STATUS_LOCKED_ = 'locked';
 
 function handlePointCardBootstrap_(identity) {
   const member = ensureMember_(identity);
@@ -20,20 +14,18 @@ function handlePointCardBootstrap_(identity) {
   return { profile: { displayName: String(member.display_name || identity.displayName) }, cards: visiblePointCardsForMember_(identity.lineUserId), tickets: visibleTicketsForMember_(identity.lineUserId) };
 }
 
-function readPointCards_(includeTicketCodes) {
+function readPointCards_(includeAdminDetails) {
   const rewardsByCard = pointCardRewardsByCard_();
-  return readRecords_('PointCards').map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || [], includeTicketCodes); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return readRecords_('PointCards').map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || [], includeAdminDetails); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
 
-function pointCardForClient_(card, configuredRewards, includeTicketCodes) {
+function pointCardForClient_(card, configuredRewards, includeAdminDetails) {
   const cardId = String(card.card_id || '');
   const rewards = Array.isArray(configuredRewards) && configuredRewards.length
-    ? configuredRewards.map(function(reward) { return pointCardRewardForClient_(reward, includeTicketCodes); }).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
-    : legacyPointCardReward_(card, includeTicketCodes);
+    ? configuredRewards.map(function(reward) { return pointCardRewardForClient_(reward, includeAdminDetails); }).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
+    : legacyPointCardReward_(card);
   const finalReward = rewards.length ? rewards[rewards.length - 1] : null;
-  const usageCode = includeTicketCodes ? ticketUsageCodeForCard_(cardId) : '';
   const clientCard = { cardId, title: String(card.title || ''), description: String(card.description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || (finalReward && finalReward.rewardTitle) || ''), rewards, expiryMode: pointCardExpiryMode_(card), expiresOn: pointCardExpiresOn_(card), expired: pointCardIsExpired_(card), status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
-  if (includeTicketCodes) { clientCard.usageCodeConfigured = isValidTicketUsageCode_(usageCode); if (clientCard.usageCodeConfigured) clientCard.usageCode = usageCode; }
   return clientCard;
 }
 
@@ -83,7 +75,7 @@ function pointCardLotteryPrizeForClient_(prize, includeWinRate) {
   return clientPrize;
 }
 
-function legacyPointCardReward_(card, includeTicketCode) {
+function legacyPointCardReward_(card) {
   const title = String(card.reward_title || '').trim();
   if (!title) return [];
   return [{ rewardId: 'legacy:' + String(card.card_id || ''), cardId: String(card.card_id || ''), thresholdStamps: Number(card.target_stamps || 0), consumeStamps: Number(card.target_stamps || 0), rewardType: 'coupon', rewardTitle: title, rewardDescription: '', lotteryWinRate: 0, prizes: [] }];
@@ -115,20 +107,6 @@ function isValidDateOnly_(value) {
   const parts = text.split('-').map(Number);
   const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
   return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2];
-}
-
-function handleTicketUsageCodeGenerate_(identity, admin, request) {
-  const cardId = String(request.cardId || '').trim();
-  if (!cardId || cardId.length > 80) throw new ApiError(400, 'INVALID_TICKET_CODE', '集點卡識別碼不合法。');
-  return withDataLock_(function() {
-    const cardMatch = findRecordWithRow_('PointCards', 'card_id', cardId);
-    if (!cardMatch) throw new ApiError(404, 'CARD_NOT_FOUND', '找不到集點卡。');
-    const code = generateTicketUsageCode_();
-    PropertiesService.getScriptProperties().setProperty(ticketUsageCodePropertyKey_(cardId), code);
-    const now = nowIso_();
-    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_TICKET_CODE_GENERATE', target_type: 'point_card', target_id: cardId, result: 'success', detail: 'Point card ticket usage code regenerated', created_at: now });
-    return { cardId, usageCode: code, generatedAt: now };
-  });
 }
 
 function handlePointCardRemove_(identity, admin, request) {
@@ -327,51 +305,12 @@ function ticketRewardKey_(cardId, thresholdStamps) {
   return String(cardId || '').trim() + ':' + String(Number(thresholdStamps));
 }
 
-function ticketUsageCodePropertyKey_(cardId) {
-  return POINT_CARD_TICKET_USAGE_CODE_PROPERTY_PREFIX_ + String(cardId || '').trim();
-}
-
-function ticketUsageCodeForCard_(cardId) {
-  try {
-    if (!cardId || typeof PropertiesService === 'undefined') return '';
-    return String(PropertiesService.getScriptProperties().getProperty(ticketUsageCodePropertyKey_(cardId)) || '').trim();
-  } catch (_) {
-    return '';
-  }
-}
-
-function ticketUsageCodeConfigured_(cardId) {
-  return isValidTicketUsageCode_(ticketUsageCodeForCard_(cardId));
-}
-
-function generateTicketUsageCode_() {
-  const seed = Utilities.getUuid() + ':' + new Date().getTime() + ':' + Math.random();
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, seed, Utilities.Charset.UTF_8);
-  let digits = '';
-  bytes.forEach(function(byte) { const normalized = byte < 0 ? byte + 256 : byte; digits += String(normalized % 10); });
-  return digits.substring(0, POINT_CARD_TICKET_CODE_LENGTH_);
-}
-
-function isValidTicketUsageCode_(value) {
-  return new RegExp('^\\d{' + POINT_CARD_TICKET_CODE_LENGTH_ + '}$').test(String(value || '').trim());
-}
-
 function generateTicketRandomBasisPoint_() {
   const seed = Utilities.getUuid() + ':' + new Date().getTime() + ':' + Math.random();
   const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, seed, Utilities.Charset.UTF_8);
   let value = 0;
   bytes.slice(0, 4).forEach(function(byte) { const normalized = byte < 0 ? byte + 256 : byte; value = (value * 256 + normalized) % POINT_CARD_RATE_BASIS_POINTS_; });
   return value;
-}
-
-function ticketUsageCodeForTicket_(ticket) {
-  const cardId = String(ticket && ticket.card_id || '').trim();
-  const cardCode = ticketUsageCodeForCard_(cardId);
-  if (isValidTicketUsageCode_(cardCode)) return cardCode;
-  // Fallback for tickets issued before the card-wide password migration.
-  const legacyUsageKey = String(ticket && ticket.reward_key || '').trim();
-  if (!legacyUsageKey || typeof PropertiesService === 'undefined') return '';
-  try { return String(PropertiesService.getScriptProperties().getProperty(POINT_CARD_TICKET_USAGE_CODE_PROPERTY_PREFIX_ + legacyUsageKey) || '').trim(); } catch (_) { return ''; }
 }
 
 function issuePointCardTicketsForBalance_(lineUserId, card, currentBalance, nextBalance, now) {
@@ -434,7 +373,6 @@ function ticketRecordFromReward_(lineUserId, cardId, reward, usageKey, now) {
     ticket_description: String(reward.reward_description || reward.rewardDescription || ''),
     lottery_prizes_json: JSON.stringify(prizes),
     status: POINT_CARD_TICKET_STATUS_AVAILABLE_,
-    failed_attempts: '0',
     earned_at: now,
     used_at: '',
     result_json: '',
@@ -465,7 +403,6 @@ function ticketForClient_(ticket) {
     ticketDescription: String(ticket.ticket_description || ''),
     prizes,
     status: String(ticket.status || POINT_CARD_TICKET_STATUS_AVAILABLE_),
-    failedAttempts: Number(ticket.failed_attempts || 0),
     earnedAt: String(ticket.earned_at || ''),
     usedAt: String(ticket.used_at || ''),
     result
@@ -488,81 +425,15 @@ function assertTicketCardUsable_(ticket) {
   return cardMatch.record;
 }
 
-function handleTicketChallenge_(identity, request) {
+function handleTicketRedeem_(identity, request) {
   const ticketId = String(request.ticketId || '').trim();
-  if (!ticketId || ticketId.length > 80) throw new ApiError(400, 'INVALID_TICKET', '票券識別碼不合法。');
+  if (!ticketId || ticketId.length > 80) throw new ApiError(400, 'INVALID_TICKET_REDEEM', '票券識別碼不合法。');
   return withDataLock_(function() {
     const ticketMatch = findRecordWithRow_('PointCardTickets', 'ticket_id', ticketId);
     if (!ticketMatch || String(ticketMatch.record.line_user_id || '') !== String(identity.lineUserId)) throw new ApiError(404, 'TICKET_NOT_FOUND', '找不到這張票券。');
     const ticket = ticketMatch.record;
     const card = assertTicketCardUsable_(ticket);
     if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_) throw new ApiError(409, 'TICKET_ALREADY_USED', '這張票券已使用。', { usedAt: String(ticket.used_at || '') });
-    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_LOCKED_) throw new ApiError(423, 'TICKET_LOCKED', '這張票券因重試次數過多，暫時無法使用。');
-    const usageCode = ticketUsageCodeForTicket_(ticket);
-    if (!isValidTicketUsageCode_(usageCode)) throw new ApiError(409, 'TICKET_CODE_NOT_SET', '店家尚未設定這張票券的使用密碼，請洽店員。');
-    const now = nowIso_();
-    invalidateActiveTicketChallenges_(ticketId);
-    const options = [usageCode];
-    while (options.length < POINT_CARD_TICKET_OPTION_COUNT_) {
-      const decoy = generateTicketUsageCode_();
-      if (options.indexOf(decoy) < 0) options.push(decoy);
-    }
-    shuffleTicketOptions_(options);
-    const challengeId = 'TC-' + Utilities.getUuid().replace(/-/g, '').substring(0, 16).toUpperCase();
-    const expiresAt = new Date(Date.now() + POINT_CARD_TICKET_CHALLENGE_TTL_MS_).toISOString();
-    appendRecord_('PointCardTicketChallenges', { challenge_id: challengeId, ticket_id: ticketId, line_user_id: identity.lineUserId, options_json: JSON.stringify({ count: options.length, hashes: options.map(function(option) { return digest_(challengeId + ':' + option); }) }), status: 'active', attempt_count: '0', expires_at: expiresAt, created_at: now, used_at: '' });
-    return { challengeId, options, expiresAt, ticket: ticketForClient_(ticket) };
-  });
-}
-
-function invalidateActiveTicketChallenges_(ticketId) {
-  readRecords_('PointCardTicketChallenges').forEach(function(challenge, index) {
-    if (String(challenge.ticket_id || '') !== String(ticketId) || String(challenge.status || '') !== 'active') return;
-    challenge.status = 'replaced';
-    updateRecordAtRow_('PointCardTicketChallenges', index + 2, challenge);
-  });
-}
-
-function shuffleTicketOptions_(options) {
-  for (let index = options.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    const value = options[index]; options[index] = options[swapIndex]; options[swapIndex] = value;
-  }
-}
-
-function handleTicketRedeem_(identity, request) {
-  const ticketId = String(request.ticketId || '').trim();
-  const challengeId = String(request.challengeId || '').trim();
-  const selectedCode = String(request.selectedCode || '').trim();
-  if (!ticketId || ticketId.length > 80 || !challengeId || challengeId.length > 80 || !isValidTicketUsageCode_(selectedCode)) throw new ApiError(400, 'INVALID_TICKET_REDEEM', '票券驗證資料不合法。');
-  return withDataLock_(function() {
-    const ticketMatch = findRecordWithRow_('PointCardTickets', 'ticket_id', ticketId);
-    const challengeMatch = findRecordWithRow_('PointCardTicketChallenges', 'challenge_id', challengeId);
-    if (!ticketMatch || !challengeMatch || String(ticketMatch.record.line_user_id || '') !== String(identity.lineUserId) || String(challengeMatch.record.line_user_id || '') !== String(identity.lineUserId) || String(challengeMatch.record.ticket_id || '') !== ticketId) throw new ApiError(404, 'TICKET_CHALLENGE_NOT_FOUND', '找不到這組票券驗證。');
-    const ticket = ticketMatch.record;
-    const challenge = challengeMatch.record;
-    const card = assertTicketCardUsable_(ticket);
-    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_) throw new ApiError(409, 'TICKET_ALREADY_USED', '這張票券已使用。', { usedAt: String(ticket.used_at || '') });
-    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_LOCKED_) throw new ApiError(423, 'TICKET_LOCKED', '這張票券因重試次數過多，暫時無法使用。');
-    if (String(challenge.status || '') !== 'active') throw new ApiError(409, 'TICKET_CHALLENGE_EXPIRED', '這組號碼已失效，請重新取得。');
-    if (!Date.parse(String(challenge.expires_at || '')) || Date.parse(String(challenge.expires_at)) <= Date.now()) { challenge.status = 'expired'; updateRecordAtRow_('PointCardTicketChallenges', challengeMatch.rowNumber, challenge); throw new ApiError(409, 'TICKET_CHALLENGE_EXPIRED', '這組號碼已逾時，請重新取得。'); }
-    const usageCode = ticketUsageCodeForTicket_(ticket);
-    let challengeOptions = {};
-    try { challengeOptions = JSON.parse(String(challenge.options_json || '{}')); } catch (_) { challengeOptions = {}; }
-    const selectedHash = digest_(challengeId + ':' + selectedCode);
-    if (!Array.isArray(challengeOptions.hashes) || challengeOptions.hashes.indexOf(selectedHash) < 0 || selectedCode !== usageCode) {
-      const failedAttempts = Number(ticket.failed_attempts || 0) + 1;
-      const now = nowIso_();
-      ticket.failed_attempts = String(failedAttempts);
-      ticket.updated_at = now;
-      challenge.attempt_count = String(Number(challenge.attempt_count || 0) + 1);
-      challenge.status = 'failed';
-      updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket);
-      updateRecordAtRow_('PointCardTicketChallenges', challengeMatch.rowNumber, challenge);
-      const locked = failedAttempts >= POINT_CARD_TICKET_MAX_FAILED_ATTEMPTS_;
-      if (locked) { ticket.status = POINT_CARD_TICKET_STATUS_LOCKED_; updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket); }
-      throw new ApiError(400, 'TICKET_CODE_INCORRECT', locked ? '號碼錯誤次數過多，這張票券已鎖定。' : '號碼不正確，請重新取得一組號碼。', { remainingAttempts: Math.max(0, POINT_CARD_TICKET_MAX_FAILED_ATTEMPTS_ - failedAttempts), ticketStatus: locked ? POINT_CARD_TICKET_STATUS_LOCKED_ : POINT_CARD_TICKET_STATUS_AVAILABLE_ });
-    }
     const now = nowIso_();
     const consumeStamps = rewardConsumeStamps_(ticket, Number(ticket.threshold_stamps || 0));
     const balanceMatch = findBalance_(identity.lineUserId, String(ticket.card_id || ''));
@@ -577,11 +448,7 @@ function handleTicketRedeem_(identity, request) {
     ticket.used_at = now;
     ticket.result_json = result ? JSON.stringify(result) : '';
     ticket.updated_at = now;
-    challenge.status = 'used';
-    challenge.attempt_count = String(Number(challenge.attempt_count || 0));
-    challenge.used_at = now;
     updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket);
-    updateRecordAtRow_('PointCardTicketChallenges', challengeMatch.rowNumber, challenge);
     const nextTickets = issuePointCardTicketsForBalance_(identity.lineUserId, card, currentBalance, nextBalance, now).map(ticketForClient_);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: 'member', action: 'POINT_CARD_TICKET_REDEEM', target_type: 'point_card_ticket', target_id: ticketId, result: 'success', detail: result ? 'Lottery ticket redeemed and prize drawn' : 'Coupon ticket redeemed', created_at: now });
     return { redeemed: true, ticket: ticketForClient_(ticket), nextTickets, balance: { cardId: String(ticket.card_id || ''), stamps: nextBalance, updatedAt: now } };

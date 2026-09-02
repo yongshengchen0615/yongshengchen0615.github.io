@@ -138,13 +138,12 @@ test('point cards expose an explicit expiry state and keep unlimited cards activ
   assert.equal(active.expired, false);
 });
 
-test('tickets keep a reward snapshot and never expose the usage code in the client ticket', () => {
+test('tickets keep a reward snapshot without any usage password data', () => {
   const { context } = loadPointCardService();
-  context.PropertiesService = { getScriptProperties: () => ({ getProperty: (key) => key.endsWith('PC-1') ? '10' : '' }) };
   const memberCard = context.pointCardForClient_({ card_id: 'PC-1', target_stamps: '10', reward_title: '咖啡券' }, undefined, false);
   const adminCard = context.pointCardForClient_({ card_id: 'PC-1', target_stamps: '10', reward_title: '咖啡券' }, undefined, true);
   assert.equal(memberCard.usageCode, undefined);
-  assert.equal(adminCard.usageCode, '10');
+  assert.equal(adminCard.usageCode, undefined);
   assert.equal(memberCard.rewards[0].usageCode, undefined);
   assert.equal(adminCard.rewards[0].usageCode, undefined);
   const ticket = context.ticketRecordFromReward_('U-1', 'PC-1', {
@@ -170,29 +169,38 @@ test('lottery drawing skips 0% prizes and returns the server-side result shape',
   assert.deepEqual(JSON.parse(JSON.stringify(result)), { prizeId: 'P-1', prizeTitle: '必中獎項', prizeDescription: '恭喜' });
 });
 
-test('ticket challenge returns five decoys plus the configured code and redeems only once', () => {
+test('tickets redeem directly and only once', () => {
   const { context, rows, TestApiError } = loadTicketService();
   const identity = { lineUserId: 'U-1' };
-  const challenge = context.handleTicketChallenge_(identity, { ticketId: 'TK-1' });
-  assert.equal(challenge.options.length, 6);
-  assert.equal(new Set(challenge.options).size, 6);
-  assert.equal(challenge.options.includes('10'), true);
-  assert.equal(JSON.parse(rows.PointCardTicketChallenges[0].options_json).hashes.length, 6);
-  assert.doesNotMatch(rows.PointCardTicketChallenges[0].options_json, /10/);
-  const redeemed = context.handleTicketRedeem_(identity, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' });
+  const redeemed = context.handleTicketRedeem_(identity, { ticketId: 'TK-1' });
   assert.equal(redeemed.redeemed, true);
   assert.equal(rows.PointCardTickets[0].status, 'used');
   assert.equal(rows.PointBalances[0].stamps, '0');
   assert.equal(rows.PointEntries[0].amount, '-10');
   assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
-  assert.throws(() => context.handleTicketRedeem_(identity, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' }), (error) => error instanceof TestApiError && error.code === 'TICKET_ALREADY_USED');
+  assert.throws(() => context.handleTicketRedeem_(identity, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'TICKET_ALREADY_USED');
+});
+
+test('direct ticket redemption still enforces ticket ownership', () => {
+  const { context, rows, TestApiError } = loadTicketService();
+  assert.throws(() => context.handleTicketRedeem_({ lineUserId: 'U-2' }, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'TICKET_NOT_FOUND');
+  assert.equal(rows.PointCardTickets[0].status, 'available');
+  assert.equal(rows.PointBalances[0].stamps, '10');
+  assert.equal(rows.PointEntries.length, 0);
+});
+
+test('legacy locked tickets can use the password-free redemption flow', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCardTickets[0].status = 'locked';
+  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
+  assert.equal(redeemed.redeemed, true);
+  assert.equal(rows.PointCardTickets[0].status, 'used');
 });
 
 test('ticket redemption rejects insufficient balance without changing the ticket or balance', () => {
   const { context, rows, TestApiError } = loadTicketService();
   rows.PointBalances[0].stamps = '4';
-  const challenge = context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
-  assert.throws(() => context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' }), (error) => error instanceof TestApiError && error.code === 'INSUFFICIENT_STAMPS');
+  assert.throws(() => context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'INSUFFICIENT_STAMPS');
   assert.equal(rows.PointCardTickets[0].status, 'available');
   assert.equal(rows.PointBalances[0].stamps, '4');
   assert.equal(rows.PointEntries.length, 0);
@@ -206,8 +214,7 @@ test('redeeming a node reissues its ticket while the remaining balance still cov
   rows.PointCardTickets[0].reward_key = 'PC-1:5';
   rows.PointCardTickets[0].consume_stamps = '5';
   rows.PointBalances[0].stamps = '13';
-  const challenge = context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
-  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' });
+  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
   assert.equal(redeemed.balance.stamps, 8);
   assert.equal(redeemed.nextTickets.length, 1);
   assert.equal(redeemed.nextTickets[0].thresholdStamps, 5);
@@ -220,8 +227,7 @@ test('earned tickets can redeem when balance covers consumption without retainin
   const { context, rows } = loadTicketService();
   rows.PointCardTickets[0].consume_stamps = '3';
   rows.PointBalances[0].stamps = '3';
-  const challenge = context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
-  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1', challengeId: challenge.challengeId, selectedCode: '10' });
+  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
   assert.equal(redeemed.redeemed, true);
   assert.equal(rows.PointBalances[0].stamps, '0');
   assert.equal(rows.PointEntries[0].amount, '-3');
@@ -234,11 +240,11 @@ test('removed cards and their tickets are hidden from the member response', () =
   assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
 });
 
-test('expired cards reject ticket challenges even when an unused ticket remains', () => {
+test('expired cards reject direct ticket redemption even when an unused ticket remains', () => {
   const { context, rows, TestApiError } = loadTicketService();
   rows.PointCards[0].expiry_mode = 'date';
   rows.PointCards[0].expires_on = '2026-09-01';
-  assert.throws(() => context.handleTicketChallenge_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'CARD_EXPIRED');
+  assert.throws(() => context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'CARD_EXPIRED');
 });
 
 test('consumable tickets are reissued once while the balance covers consumption', () => {
@@ -287,18 +293,17 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   assert.doesNotMatch(pointsApp, /prizeRate/);
   assert.doesNotMatch(pointsApp, /winRate/);
   assert.match(pointsApp, /lottery-reveal/);
-  assert.match(adminHtml, /id="generateTicketUsageCodeButton"/);
-  assert.match(adminHtml, /沒有重新產生.*目前密碼/);
-  assert.match(adminApp, /generateTicketUsageCodeButton/);
-  assert.match(adminApp, /admin\.pointcards\.usage-code\.generate/);
-  assert.match(adminApp, /未重新產生前不變/);
+  assert.doesNotMatch(adminHtml, /ticket-code-settings|generateTicketUsageCodeButton|票券使用密碼/);
+  assert.doesNotMatch(adminApp, /generateTicketUsageCode|usage-code\.generate|updateTicketUsageCodeUI/);
   assert.doesNotMatch(adminApp, /data-generate-usage-code/);
   assert.match(adminApp, /admin\.pointcards\.remove/);
   assert.match(pointsHtml, /id="ticketChoices"/);
   assert.match(storage, /PointCardTickets:/);
-  assert.match(storage, /PointCardTicketChallenges:/);
-  assert.match(read('gas/PointCardService.gs'), /POINT_CARD_TICKET_OPTION_COUNT_ = 6/);
-  assert.match(read('gas/PointCardService.gs'), /POINT_CARD_TICKET_CODE_LENGTH_ = 2/);
+  assert.match(pointsHtml, /確認後會立即使用/);
+  assert.match(pointsApp, /redeemTicket/);
+  assert.doesNotMatch(pointsApp, /handleTicketChoice|startTicketChallenge|selectedCode|challengeId|ticket\.challenge/);
+  assert.doesNotMatch(read('gas/PointCardService.gs'), /ticketUsageCode|handleTicketChallenge_|selectedCode|POINT_CARD_TICKET_OPTION_COUNT_|POINT_CARD_TICKET_CODE_LENGTH_/);
+  assert.doesNotMatch(read('gas/Code.gs'), /usage-code\.generate|ticket\.challenge/);
   assert.match(adminApp, /consumeStamps/);
   assert.match(adminHtml, /cardExpiryMode/);
   assert.match(pointsApp, /使用消耗/);
