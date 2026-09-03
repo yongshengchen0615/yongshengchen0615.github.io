@@ -5,14 +5,19 @@
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
   const READ_RESPONSE_ATTEMPTS = 2;
   const READ_RETRY_DELAY_MS = 400;
+  const REQUEST_TIMEOUT_MS = 15000;
   const WRITE_ACTIONS = Object.freeze([
+    'user.member.profile.save',
     'admin.member.update',
+    'admin.member-tiers.save',
     'admin.pointcards.save',
     'admin.pointcards.archive',
     'admin.pointcards.delete',
     'admin.pointcards.remove',
     'admin.tickets.save',
     'admin.stamps.add',
+    'admin.service_minutes.add',
+    'admin.member-grants.add',
     'user.pointcard.ticket.redeem'
   ]);
 
@@ -108,6 +113,17 @@
     return true;
   }
 
+  async function fetchWithTimeout(url, options) {
+    if (typeof AbortController === 'undefined') return fetch(url, options);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
   async function request(config, clientType, idToken, action, payload = {}) {
     const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
     const attempts = isWrite ? 1 : READ_RESPONSE_ATTEMPTS;
@@ -115,7 +131,7 @@
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       let response;
       try {
-        response = await fetch(config.gasWebAppUrl, {
+        response = await fetchWithTimeout(config.gasWebAppUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           cache: 'no-store',
