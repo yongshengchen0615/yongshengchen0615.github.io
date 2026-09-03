@@ -36,6 +36,7 @@ function loadTicketService() {
     }
   }
   const rows = {
+    Members: [{ line_user_id: 'U-1', status: 'active' }],
     PointCards: [{ card_id: 'PC-1', status: 'active', expiry_mode: 'unlimited', expires_on: '' }],
     PointCardTickets: [{ ticket_id: 'TK-1', line_user_id: 'U-1', card_id: 'PC-1', reward_id: 'PR-1', reward_key: 'PC-1:10', threshold_stamps: '10', ticket_type: 'coupon', ticket_title: '咖啡券', ticket_description: '', lottery_prizes_json: '[]', status: 'available', failed_attempts: '0', earned_at: '2026-09-02T00:00:00.000Z', used_at: '', result_json: '', created_at: '2026-09-02T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z', consume_stamps: '10' }],
     PointBalances: [{ line_user_id: 'U-1', card_id: 'PC-1', stamps: '10', updated_at: '2026-09-02T00:00:00.000Z' }],
@@ -258,6 +259,22 @@ test('earned tickets can redeem when balance covers consumption without retainin
   assert.equal(rows.PointEntries[0].amount, '-3');
 });
 
+test('replaying the same stamp request does not add points twice', () => {
+  const { context, rows, TestApiError } = loadTicketService();
+  context.issuePointCardTicketsForBalance_ = () => [];
+  const identity = { lineUserId: 'ADMIN-1' };
+  const admin = { role: 'admin' };
+  const request = { lineUserId: 'U-1', cardId: 'PC-1', amount: 2, note: '到店補登', requestId: 'stamp-request-0001' };
+  const first = context.handleStampAdd_(identity, admin, request);
+  const replay = context.handleStampAdd_(identity, admin, request);
+  assert.equal(first.stamps, 12);
+  assert.equal(replay.stamps, 12);
+  assert.equal(rows.PointBalances[0].stamps, '12');
+  assert.equal(rows.PointEntries.length, 1);
+  assert.equal(rows.PointEntries[0].request_id, 'stamp-request-0001');
+  assert.throws(() => context.handleStampAdd_(identity, admin, Object.assign({}, request, { amount: 3 })), (error) => error instanceof TestApiError && error.code === 'REQUEST_REUSE_MISMATCH');
+});
+
 test('removed cards and their tickets are hidden from the member response', () => {
   const { context, rows } = loadTicketService();
   assert.equal(context.visibleTicketsForMember_('U-1').length, 1);
@@ -320,9 +337,13 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(pointsHtml, /id="ticketList"/);
   assert.match(pointsHtml, /id="ticketModalUsageInstructions"/);
   assert.match(pointsHtml, /id="confirmTicketUseButton"/);
+  assert.match(pointsHtml, /票券總覽/);
   assert.doesNotMatch(pointsHtml, /id="milestoneList"/);
   assert.doesNotMatch(pointsApp, /renderMilestones/);
   assert.doesNotMatch(pointsApp, /已取得票券 · 還差/);
+  assert.doesNotMatch(pointsApp, /目前有 .* 張可使用票券/);
+  assert.match(pointsApp, /ticketOffersForCard/);
+  assert.match(pointsApp, /即可解鎖/);
   assert.match(pointsStyles, /member-ticket-list/);
   assert.match(pointsApp, /data-use-ticket/);
   assert.doesNotMatch(pointsApp, /prizeRate/);
@@ -348,4 +369,11 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.doesNotMatch(read('gas/PointCardService.gs'), /舊版集點卡完成點數必須是/);
   assert.match(storage, /consume_stamps/);
   assert.match(storage, /expires_on/);
+  assert.match(storage, /request_id/);
+  assert.match(adminApp, /refreshAfterSuccessfulWrite/);
+  assert.match(adminApp, /requestId: state\.stampRequestId/);
+  assert.match(adminApp, /API_RESPONSE_UNCERTAIN/);
+  assert.match(read('shared/common.js'), /API_RESPONSE_UNCERTAIN/);
+  assert.doesNotMatch(read('shared/common.js'), /確認 GAS 部署的是最新版本/);
+  assert.match(pointsApp, /請重新整理確認，請勿再次使用/);
 });

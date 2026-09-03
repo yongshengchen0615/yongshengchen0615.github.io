@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.1.0';
+const MEMBERSHIP_API_VERSION_ = '1.1.1';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'admin.member.update',
   'admin.pointcards.save',

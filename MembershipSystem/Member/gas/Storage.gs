@@ -11,7 +11,7 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   PointCardTickets: Object.freeze(['ticket_id', 'line_user_id', 'card_id', 'reward_id', 'reward_key', 'threshold_stamps', 'ticket_type', 'ticket_title', 'ticket_description', 'lottery_prizes_json', 'status', 'failed_attempts', 'earned_at', 'used_at', 'result_json', 'created_at', 'updated_at', 'consume_stamps', 'ticket_template_id', 'usage_method', 'usage_instructions']),
   PointCardTicketChallenges: Object.freeze(['challenge_id', 'ticket_id', 'line_user_id', 'options_json', 'status', 'attempt_count', 'expires_at', 'created_at', 'used_at']),
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
-  PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at']),
+  PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at', 'request_id']),
   AuditLogs: Object.freeze(['audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id', 'result', 'detail', 'created_at'])
 });
 let MEMBERSHIP_SPREADSHEET_CACHE_ = null;

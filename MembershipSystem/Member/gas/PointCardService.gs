@@ -381,9 +381,17 @@ function replacePointCardLotteryPrizes_(rewardId, prizes, now) {
 }
 
 function handleStampAdd_(identity, admin, request) {
-  const lineUserId = String(request.lineUserId || '').trim(); const cardId = String(request.cardId || '').trim(); const amount = Number(request.amount); const note = String(request.note || '').trim();
+  const lineUserId = String(request.lineUserId || '').trim(); const cardId = String(request.cardId || '').trim(); const amount = Number(request.amount); const note = String(request.note || '').trim(); const requestId = String(request.requestId || '').trim();
   if (!lineUserId || lineUserId.length > 80 || !cardId || cardId.length > 80 || !Number.isInteger(amount) || amount < 1 || amount > 100 || note.length > 160) throw new ApiError(400, 'INVALID_STAMP', '會員、集點卡、點數或備註不合法。');
+  if (requestId && !/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) throw new ApiError(400, 'INVALID_REQUEST_ID', '發點請求識別碼不合法。');
   return withDataLock_(function() {
+    const prior = requestId ? findRecordWithRow_('PointEntries', 'request_id', requestId) : null;
+    if (prior) {
+      const entry = prior.record;
+      if (String(entry.line_user_id || '') !== lineUserId || String(entry.card_id || '') !== cardId || Number(entry.amount || 0) !== amount || String(entry.note || '') !== note || String(entry.created_by || '') !== String(identity.lineUserId || '')) throw new ApiError(409, 'REQUEST_REUSE_MISMATCH', '這個發點請求已用於不同資料，請重新開啟發點視窗。');
+      const currentBalance = findBalance_(lineUserId, cardId);
+      return { lineUserId, cardId, stamps: currentBalance ? Number(currentBalance.record.stamps || 0) : 0, updatedAt: String(currentBalance && currentBalance.record.updated_at || entry.created_at || '') };
+    }
     const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
     if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法補登點數。');
     const card = findRecordWithRow_('PointCards', 'card_id', cardId); if (!card || String(card.record.status) !== 'active') throw new ApiError(400, 'CARD_NOT_ACTIVE', '只能為啟用中的集點卡增加點數。');
@@ -391,7 +399,7 @@ function handleStampAdd_(identity, admin, request) {
     const balanceMatch = findBalance_(lineUserId, cardId); const now = nowIso_(); const current = balanceMatch ? Number(balanceMatch.record.stamps || 0) : 0; const nextBalance = current + amount; const balance = { line_user_id: lineUserId, card_id: cardId, stamps: String(nextBalance), updated_at: now };
     if (balanceMatch) updateRecordAtRow_('PointBalances', balanceMatch.rowNumber, balance); else appendRecord_('PointBalances', balance);
     issuePointCardTicketsForBalance_(lineUserId, card.record, current, nextBalance, now);
-    appendRecord_('PointEntries', { entry_id: 'PE-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, card_id: cardId, amount: String(amount), note, created_by: identity.lineUserId, created_at: now });
+    appendRecord_('PointEntries', { entry_id: 'PE-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, card_id: cardId, amount: String(amount), note, created_by: identity.lineUserId, created_at: now, request_id: requestId });
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'STAMP_ADD', target_type: 'point_balance', target_id: lineUserId + ':' + cardId, result: 'success', detail: 'Added ' + amount + ' stamp(s)', created_at: now });
     return { lineUserId, cardId, stamps: nextBalance, updatedAt: now };
   });

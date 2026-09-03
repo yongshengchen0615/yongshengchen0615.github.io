@@ -63,7 +63,7 @@ GAS 會建立並維護以下 schema：
 - `PointCardTickets`：會員達成節點後產生的優惠券/抽獎券快照；保存當下的票券說明、使用方式、使用說明、兌換消耗點數、抽獎結果與核銷歷史。
 - `PointCardTicketChallenges`：舊版票券選號挑戰的歷史資料表；新流程不再寫入。
 - `PointBalances`：每位會員在每張卡的目前餘額。
-- `PointEntries`：每次補登點數的不可變流水紀錄。
+- `PointEntries`：每次補登點數的不可變流水紀錄，以及用來避免同一發點操作重複寫入的 request ID。
 - `AuditLogs`：管理端會員/卡片/集點操作紀錄。
 
 所有 Sheet 寫入會將以 `=`, `+`, `-`, `@` 開頭的文字轉成純文字，避免公式注入；管理端更新會以 `expectedUpdatedAt` 做 optimistic concurrency control。
@@ -86,11 +86,11 @@ GAS 會建立並維護以下 schema：
 
 升級後，既有集點節點與已發出的票券都會保留。若要讓既有節點使用新的統一票券說明，先在「票券」建立並啟用票券，再回到該集點卡為節點選擇它。
 
-會員取得票券後，會先在「我的票券」閱讀票券說明、使用方式與使用說明，再由本人按下「確認使用這張票券」才會核銷。後端仍檢查票券所屬會員、集點卡狀態/期限、目前餘額與一次性使用狀態。核銷成功會依 `consumeStamps` 扣除點數並寫入負數流水紀錄；抽獎券由後端開獎，會員端播放動畫且只顯示獎項名稱，不顯示機率。已使用票券不再回傳給會員端，後端歷史紀錄仍保留。
+會員端的「票券總覽」會顯示該集點卡設定的所有票券，即使尚未達標也會顯示解鎖所需點數。已取得且點數足夠的票券，會先顯示票券說明、使用方式與使用說明，再由本人按下「確認使用這張票券」才會核銷。後端仍檢查票券所屬會員、集點卡狀態/期限、目前餘額與一次性使用狀態。核銷成功會依 `consumeStamps` 扣除點數並寫入負數流水紀錄；抽獎券由後端開獎，會員端播放動畫且只顯示獎項名稱，不顯示機率。已使用票券不再回傳給會員端，後端歷史紀錄仍保留。
 
 集點卡的 `expiryMode` 可設為 `unlimited` 或 `date`；使用 `date` 時需提供 `expiresOn`（`YYYY-MM-DD`）。到期後停止新增點數與票券核銷；管理端移除集點卡會封存卡片，會員端與會員票券畫面同步隱藏，資料仍保留供稽核。
 
-前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
+前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。管理端在寫入成功後若僅畫面同步失敗，會明確提示「資料已更新」並要求重新整理，而不誤報寫入失敗；發點操作會攜帶單次 request ID，重送同一操作不會重複加點。ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 
 ## 本地驗證
 

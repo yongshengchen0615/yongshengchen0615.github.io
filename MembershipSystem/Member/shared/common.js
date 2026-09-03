@@ -3,6 +3,14 @@
 
   const GAS_URL_PATTERN = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
+  const WRITE_ACTIONS = Object.freeze([
+    'admin.member.update',
+    'admin.pointcards.save',
+    'admin.pointcards.remove',
+    'admin.tickets.save',
+    'admin.stamps.add',
+    'user.pointcard.ticket.redeem'
+  ]);
 
   function clientError(code, message) {
     const error = new Error(message);
@@ -107,14 +115,26 @@
         body: JSON.stringify({ action, clientType, idToken, ...payload })
       });
     } catch (_) {
-      throw clientError('NETWORK_ERROR', '目前無法連線資料服務，請檢查網路後重試。');
+      const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
+      throw clientError(
+        isWrite ? 'API_RESPONSE_UNCERTAIN' : 'NETWORK_ERROR',
+        isWrite
+          ? '無法確認這次操作是否已送達；資料可能已更新，請先重新整理確認，請勿重複送出。'
+          : '目前無法連線資料服務，請檢查網路後重試。'
+      );
     }
 
     let data;
     try {
-      data = await response.json();
+      data = JSON.parse(await response.text());
     } catch (_) {
-      throw clientError('API_RESPONSE_ERROR', '資料服務回傳格式錯誤，請確認 GAS 部署的是最新版本。');
+      const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
+      throw clientError(
+        isWrite ? 'API_RESPONSE_UNCERTAIN' : 'API_RESPONSE_ERROR',
+        isWrite
+          ? '無法確認這次操作的回應；資料可能已更新，請先重新整理確認，請勿重複送出。'
+          : '資料服務回應異常，請重新整理後再試。'
+      );
     }
 
     if (!data || data.ok !== true) {

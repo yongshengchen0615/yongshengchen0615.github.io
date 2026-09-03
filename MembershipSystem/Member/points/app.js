@@ -57,33 +57,58 @@
 
   function renderActiveCard(card) {
     const stamps = Math.max(0, Number(card.stamps || 0));
-    const availableTicketCount = state.tickets.filter((ticket) => ticket.cardId === card.cardId).length;
+    const ticketOfferCount = ticketOffersForCard(card).length;
     els.activeCardView.style.setProperty('--card-accent', safeAccent(card.accent));
     els.activeCardTitle.textContent = String(card.title || '集點卡');
     els.activeCardDescription.textContent = String(card.description || '每次消費後由店家為你累積點數。');
     els.activeCardStatus.textContent = card.expired ? '已超過期限' : card.status === 'archived' ? '已停止集點' : '進行中';
     els.progressCount.textContent = String(stamps);
     els.progressMessage.textContent = card.expired ? '這張集點卡已超過使用期限' : card.status === 'archived' ? '這張卡已停止集點' : '點數會持續累積，達標後系統會將票券放進下方。';
-    els.remainingMessage.textContent = availableTicketCount ? `目前有 ${availableTicketCount} 張可使用票券` : '尚無可使用票券';
-    els.rewardTitle.textContent = '可使用票券';
+    els.remainingMessage.textContent = ticketOfferCount ? `已設定 ${ticketOfferCount} 種兌換票券` : '尚未設定兌換票券';
+    els.rewardTitle.textContent = '票券總覽';
     els.cardExpiry.textContent = card.expiryMode === 'date' && card.expiresOn ? `${card.expired ? '已於' : '使用期限至'} ${card.expiresOn}` : '使用期限：無期限';
     els.updatedAt.textContent = card.updatedAt ? `更新於 ${window.MemberSystem.formatDateTime(card.updatedAt)}` : '尚未更新';
   }
 
   function renderTickets(card) {
-    const tickets = state.tickets.filter((ticket) => ticket.cardId === card.cardId && ticket.status !== 'used');
-    els.ticketSummary.textContent = tickets.length ? `共 ${tickets.length} 張，請先查看使用說明再決定是否使用。` : '票券會在符合集點節點時出現在這裡。';
-    els.ticketEmpty.classList.toggle('hidden', tickets.length !== 0);
-    els.ticketList.replaceChildren(...tickets.map((ticket) => createTicketCard(ticket)));
+    const offers = ticketOffersForCard(card);
+    els.ticketSummary.textContent = offers.length ? `共 ${offers.length} 種票券；持續集點即可解鎖，點數足夠即可使用。` : '店家尚未為這張集點卡設定兌換票券。';
+    els.ticketEmpty.classList.toggle('hidden', offers.length !== 0);
+    els.ticketList.replaceChildren(...offers.map((offer) => createTicketCard(offer)));
   }
 
-  function createTicketCard(ticket) {
-    const item = document.createElement('article'); item.className = 'member-ticket';
-    const type = document.createElement('span'); type.className = 'member-ticket-type'; type.textContent = ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券';
-    const title = document.createElement('h3'); title.textContent = String(ticket.ticketTitle || '票券');
-    const description = document.createElement('p'); description.textContent = String(ticket.ticketDescription || '請查看票券使用說明。');
-    const method = document.createElement('p'); method.className = 'member-ticket-method'; method.textContent = `使用方式：${ticket.usageMethod || '請向店員出示本券'}`;
-    const footer = document.createElement('div'); footer.className = 'member-ticket-footer'; const cost = document.createElement('span'); cost.textContent = `使用會扣除 ${Number(ticket.consumeStamps || 0)} 點`; const button = document.createElement('button'); button.type = 'button'; button.className = 'small-ticket-button'; button.dataset.useTicket = ticket.ticketId; button.textContent = '查看並使用'; footer.append(cost, button);
+  function ticketOffersForCard(card) {
+    const stamps = Math.max(0, Number(card.stamps || 0));
+    const rewards = Array.isArray(card.rewards) ? card.rewards.slice().sort((a, b) => Number(a.thresholdStamps || 0) - Number(b.thresholdStamps || 0)) : [];
+    const tickets = state.tickets.filter((ticket) => ticket.cardId === card.cardId && ticket.status !== 'used');
+    return rewards.map((reward) => {
+      const thresholdStamps = Math.max(1, Number(reward.thresholdStamps || 0));
+      const ticket = tickets.find((item) => Number(item.thresholdStamps || 0) === thresholdStamps) || null;
+      const consumeStamps = Math.max(1, Number(ticket ? ticket.consumeStamps : reward.consumeStamps || thresholdStamps));
+      const canUse = Boolean(ticket) && !card.expired && card.status === 'active' && stamps >= consumeStamps;
+      return {
+        ticket,
+        thresholdStamps,
+        consumeStamps,
+        ticketType: String(ticket ? ticket.ticketType : reward.rewardType || 'coupon'),
+        ticketTitle: String(ticket ? ticket.ticketTitle : reward.rewardTitle || '票券'),
+        ticketDescription: String(ticket ? ticket.ticketDescription : reward.rewardDescription || '達標後即可查看並使用這張票券。'),
+        usageMethod: String(ticket ? ticket.usageMethod : reward.usageMethod || '達標後請向店員出示本券'),
+        canUse,
+        unlockShortage: Math.max(0, thresholdStamps - stamps),
+        useShortage: Math.max(0, consumeStamps - stamps)
+      };
+    });
+  }
+
+  function createTicketCard(offer) {
+    const item = document.createElement('article'); item.className = `member-ticket${offer.canUse ? ' is-ready' : ' locked'}`;
+    const type = document.createElement('span'); type.className = 'member-ticket-type'; type.textContent = offer.ticketType === 'lottery' ? '抽獎券' : '優惠券';
+    const title = document.createElement('h3'); title.textContent = offer.ticketTitle;
+    const description = document.createElement('p'); description.textContent = offer.ticketDescription;
+    const method = document.createElement('p'); method.className = 'member-ticket-method'; method.textContent = `使用方式：${offer.usageMethod}`;
+    const footer = document.createElement('div'); footer.className = 'member-ticket-footer'; const status = document.createElement('span'); status.className = 'ticket-state';
+    if (offer.canUse) { status.textContent = `使用會扣除 ${offer.consumeStamps} 點`; const button = document.createElement('button'); button.type = 'button'; button.className = 'small-ticket-button'; button.dataset.useTicket = offer.ticket.ticketId; button.textContent = '查看並使用'; footer.append(status, button); } else { status.textContent = offer.unlockShortage ? `再集 ${offer.unlockShortage} 點即可解鎖` : offer.useShortage ? `再集 ${offer.useShortage} 點即可使用` : '目前無法使用'; footer.append(status); }
     item.append(type, title, description, method, footer); return item;
   }
 
@@ -106,7 +131,12 @@
     try {
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.redeem', { ticketId });
       const redeemed = result.ticket; state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (result.balance) updateCardBalance(result.balance); renderCards(); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
-    } catch (error) { showTicketMessage(error && error.message || '票券使用失敗，請稍後再試。'); els.confirmTicketUseButton.disabled = false; els.confirmTicketUseButton.textContent = '重新確認使用'; } finally { state.redeeming = false; }
+    } catch (error) {
+      const responseUncertain = error && error.code === 'API_RESPONSE_UNCERTAIN';
+      showTicketMessage(responseUncertain ? '無法確認票券是否已使用；請重新整理確認，請勿再次使用。' : error && error.message || '票券使用失敗，請稍後再試。');
+      els.confirmTicketUseButton.disabled = responseUncertain;
+      els.confirmTicketUseButton.textContent = responseUncertain ? '請重新整理確認' : '重新確認使用';
+    } finally { state.redeeming = false; }
   }
 
   async function showRedeemedTicket(ticket) {

@@ -50,3 +50,27 @@ test('all browser JavaScript and GAS files parse as JavaScript', () => {
   const files = ['shared/common.js', 'member/app.js', 'points/app.js', 'admin/app.js', 'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs'];
   files.forEach((file) => assert.doesNotThrow(() => new vm.Script(read(file), { filename: file }), file));
 });
+
+test('transport distinguishes an uncertain write outcome from a failed read response', async () => {
+  const context = {
+    window: {},
+    fetch: async () => ({ text: async () => '<html>temporary response</html>' })
+  };
+  vm.createContext(context);
+  vm.runInContext(read('shared/common.js'), context, { filename: 'shared/common.js' });
+  const request = context.window.MemberSystem.request;
+  await assert.rejects(
+    () => request({ gasWebAppUrl: 'https://example.invalid' }, 'admin', 'id-token', 'admin.stamps.add'),
+    (error) => error && error.code === 'API_RESPONSE_UNCERTAIN'
+  );
+  await assert.rejects(
+    () => request({ gasWebAppUrl: 'https://example.invalid' }, 'admin', 'id-token', 'admin.bootstrap'),
+    (error) => error && error.code === 'API_RESPONSE_ERROR'
+  );
+
+  context.fetch = async () => { throw new Error('network interrupted'); };
+  await assert.rejects(
+    () => request({ gasWebAppUrl: 'https://example.invalid' }, 'admin', 'id-token', 'admin.stamps.add'),
+    (error) => error && error.code === 'API_RESPONSE_UNCERTAIN'
+  );
+});

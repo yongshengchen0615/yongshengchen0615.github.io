@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', members: [], cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '' };
+  const state = { config: null, idToken: '', members: [], cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', stampRequestId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -164,8 +164,32 @@
     els.rewardEditorHint.textContent = duplicate ? '有節點使用相同點數，請調整後再儲存。' : invalidConsume ? '兌換消耗點數必須至少 1 點，且不可超過需要集到的點數。' : missingTicket ? '每個節點都要選擇一張已啟用票券。' : `${rewards.length} 個兌換節點 · 票券內容請統一在「票券」頁管理。`; els.rewardEditorHint.classList.toggle('warning', duplicate || invalidConsume || missingTicket);
   }
   function validateRewardEditor(title, rewards) { if (!title || title.length > 80) return '請填寫卡片名稱（最多 80 字）。'; if (!rewards.length || rewards.length > 30) return '請至少設定 1 個兌換節點，最多 30 個節點。'; const thresholds = new Set(); for (const reward of rewards) { if (!Number.isInteger(reward.thresholdStamps) || reward.thresholdStamps < 1 || reward.thresholdStamps > 100) return '需要集到的點數必須是 1–100 的整數。'; if (thresholds.has(reward.thresholdStamps)) return '每個點數只能設定一個節點。'; thresholds.add(reward.thresholdStamps); if (!Number.isInteger(reward.consumeStamps) || reward.consumeStamps < 1 || reward.consumeStamps > reward.thresholdStamps) return '兌換消耗點數必須至少 1 點，且不可超過需要集到的點數。'; if (!reward.ticketTemplateId) return '請為每個節點選擇一張票券。'; } return ''; }
-  async function saveCard(event) { event.preventDefault(); hideMessage(els.cardFormMessage); const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim(); const validationMessage = validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardExpiry(expiryMode, expiresOn); if (validationMessage) return showMessage(els.cardFormMessage, validationMessage); setSaving(els.saveCardButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), description: String(els.cardDescription.value || '').trim(), rewardTitle: '', rewards, status: els.cardStatus.value, expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value }); await refreshData(false); if (result.card) loadCardForm(result.card.cardId); showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true); } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); } }
-  async function removeCard() { const cardId = String(els.cardId.value || '').trim(); if (!cardId || els.removeCardButton.disabled) return; if (!window.confirm('移除後不再接受新的集點；會員端會同步隱藏這張卡與相關票券，歷史資料仍保留。確定要移除嗎？')) return; const originalText = els.removeCardButton.textContent; els.removeCardButton.disabled = true; els.removeCardButton.textContent = '移除中…'; try { await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.remove', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value }); await refreshData(false); resetCardForm(); showMessage(els.cardFormMessage, '集點卡已移除；歷史資料仍保留。', true); } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (els.cardId.value === cardId) { els.removeCardButton.disabled = false; els.removeCardButton.textContent = originalText; } } }
+  async function saveCard(event) {
+    event.preventDefault(); hideMessage(els.cardFormMessage);
+    const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim();
+    const validationMessage = validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardExpiry(expiryMode, expiresOn);
+    if (validationMessage) return showMessage(els.cardFormMessage, validationMessage);
+    setSaving(els.saveCardButton, true);
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), description: String(els.cardDescription.value || '').trim(), rewardTitle: '', rewards, status: els.cardStatus.value, expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      if (result.card) { state.cards = replaceById(state.cards, result.card, 'cardId'); loadCardForm(result.card.cardId); }
+      if (await refreshAfterSuccessfulWrite('集點卡已儲存', els.cardFormMessage)) showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true);
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
+  }
+
+  async function removeCard() {
+    const cardId = String(els.cardId.value || '').trim();
+    if (!cardId || els.removeCardButton.disabled) return;
+    if (!window.confirm('移除後不再接受新的集點；會員端會同步隱藏這張卡與相關票券，歷史資料仍保留。確定要移除嗎？')) return;
+    const originalText = els.removeCardButton.textContent;
+    els.removeCardButton.disabled = true; els.removeCardButton.textContent = '移除中…';
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.remove', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      if (result.card) state.cards = replaceById(state.cards, result.card, 'cardId');
+      state.selectedCardId = ''; resetCardForm();
+      if (await refreshAfterSuccessfulWrite('集點卡已移除，歷史資料仍保留', els.cardFormMessage)) showMessage(els.cardFormMessage, '集點卡已移除；歷史資料仍保留。', true);
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (els.cardId.value === cardId) { els.removeCardButton.disabled = false; els.removeCardButton.textContent = originalText; } }
+  }
 
   function renderTicketList() {
     els.ticketResultCount.textContent = String(state.tickets.length); els.ticketEmptyState.classList.toggle('hidden', state.tickets.length !== 0);
@@ -180,15 +204,36 @@
   function updateTicketPrizeTotal() { const total = Math.round(collectTicketPrizes().reduce((sum, prize) => sum + (Number.isFinite(prize.winRate) ? prize.winRate : 0), 0) * 100); els.ticketPrizeTotal.textContent = `機率合計 ${formatRate(total / 100)}%${total === 10000 ? ' ✓' : '／還差 ' + formatRate((10000 - total) / 100) + '%'}`; els.ticketPrizeTotal.classList.toggle('warning', total !== 10000); }
   function balanceTicketPrizes() { const rows = Array.from(els.ticketPrizeRows.querySelectorAll('[data-ticket-prize-row]')); if (!rows.length) return; const base = Math.floor(10000 / rows.length); const remainder = 10000 - base * rows.length; rows.forEach((row, index) => { row.querySelector('[data-field="ticketPrizeRate"]').value = String((base + (index < remainder ? 1 : 0)) / 100); }); updateTicketPrizeTotal(); }
   function validateTicket(ticket) { if (!ticket.title || ticket.title.length > 100) return '請填寫票券名稱（最多 100 字）。'; if (!ticket.description || ticket.description.length > 240) return '請填寫票券說明（最多 240 字）。'; if (!ticket.usageMethod || ticket.usageMethod.length > 120) return '請填寫使用方式（最多 120 字）。'; if (!ticket.usageInstructions || ticket.usageInstructions.length > 500) return '請填寫使用說明（最多 500 字）。'; if (ticket.ticketType !== 'lottery') return ''; if (!ticket.prizes.length || ticket.prizes.length > 30) return '抽獎券至少要設定 1 個獎項，最多 30 個獎項。'; let total = 0; for (const prize of ticket.prizes) { if (!prize.prizeTitle || prize.prizeTitle.length > 100) return '每個抽獎獎項都需要填寫名稱。'; if (prize.prizeDescription.length > 240) return '獎項說明最多 240 字。'; if (!Number.isFinite(prize.winRate) || prize.winRate < 0 || prize.winRate > 100) return '每個獎項機率必須介於 0–100%。'; total += Math.round(prize.winRate * 100); } return total === 10000 ? '' : '同一張抽獎券的獎項機率合計必須正好是 100%。'; }
-  async function saveTicket(event) { event.preventDefault(); hideMessage(els.ticketFormMessage); const ticket = { ticketTemplateId: els.ticketTemplateId.value, title: String(els.ticketTitle.value || '').trim(), ticketType: els.ticketType.value, description: String(els.ticketDescription.value || '').trim(), usageMethod: String(els.ticketUsageMethod.value || '').trim(), usageInstructions: String(els.ticketUsageInstructions.value || '').trim(), status: els.ticketStatus.value, prizes: els.ticketType.value === 'lottery' ? collectTicketPrizes() : [] }; const validationMessage = validateTicket(ticket); if (validationMessage) return showMessage(els.ticketFormMessage, validationMessage); setSaving(els.saveTicketButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.tickets.save', { ticket, expectedUpdatedAt: els.ticketExpectedUpdatedAt.value }); await refreshData(false); if (result.ticket) loadTicketForm(result.ticket.ticketTemplateId); showMessage(els.ticketFormMessage, '票券已儲存；集點卡節點現在可以選擇它。', true); } catch (error) { handleActionError(error, els.ticketFormMessage); } finally { setSaving(els.saveTicketButton, false); } }
+  async function saveTicket(event) {
+    event.preventDefault(); hideMessage(els.ticketFormMessage);
+    const ticket = { ticketTemplateId: els.ticketTemplateId.value, title: String(els.ticketTitle.value || '').trim(), ticketType: els.ticketType.value, description: String(els.ticketDescription.value || '').trim(), usageMethod: String(els.ticketUsageMethod.value || '').trim(), usageInstructions: String(els.ticketUsageInstructions.value || '').trim(), status: els.ticketStatus.value, prizes: els.ticketType.value === 'lottery' ? collectTicketPrizes() : [] };
+    const validationMessage = validateTicket(ticket);
+    if (validationMessage) return showMessage(els.ticketFormMessage, validationMessage);
+    setSaving(els.saveTicketButton, true);
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.tickets.save', { ticket, expectedUpdatedAt: els.ticketExpectedUpdatedAt.value });
+      if (result.ticket) { state.tickets = replaceById(state.tickets, result.ticket, 'ticketTemplateId'); loadTicketForm(result.ticket.ticketTemplateId); }
+      if (await refreshAfterSuccessfulWrite('票券已儲存', els.ticketFormMessage)) showMessage(els.ticketFormMessage, '票券已儲存；集點卡節點現在可以選擇它。', true);
+    } catch (error) { handleActionError(error, els.ticketFormMessage); } finally { setSaving(els.saveTicketButton, false); }
+  }
   function formatRate(value) { const rate = Number(value); return Number.isFinite(rate) ? String(Number(rate.toFixed(2))) : '0'; }
 
   function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.value = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberTier.focus(); }
   function closeMemberModal() { els.memberModal.classList.add('hidden'); }
   async function saveMember(event) { event.preventDefault(); hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, tier: String(els.memberTier.value || '').trim() || '一般會員', status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
-  function openStampModal(member) { els.stampMemberId.value = String(member.lineUserId); els.stampMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.stampCardId.replaceChildren(...state.cards.filter((card) => card.status === 'active' && !card.expired).map((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); return option; })); els.stampAmount.value = '1'; els.stampNote.value = ''; hideMessage(els.stampFormMessage); els.stampModal.classList.remove('hidden'); els.stampCardId.focus(); }
-  function closeStampModal() { els.stampModal.classList.add('hidden'); }
-  async function saveStamp(event) { event.preventDefault(); hideMessage(els.stampFormMessage); const amount = Number(els.stampAmount.value); if (!els.stampCardId.value || !Number.isInteger(amount) || amount < 1 || amount > 100) return showMessage(els.stampFormMessage, '請選擇啟用中的集點卡，並輸入 1–100 的整數點數。'); setSaving(els.saveStampButton, true); try { await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.stamps.add', { lineUserId: els.stampMemberId.value, cardId: els.stampCardId.value, amount, note: String(els.stampNote.value || '').trim() }); await refreshData(false); closeStampModal(); } catch (error) { handleActionError(error, els.stampFormMessage); } finally { setSaving(els.saveStampButton, false); } }
+  function openStampModal(member) { state.stampRequestId = createRequestId(); els.stampMemberId.value = String(member.lineUserId); els.stampMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.stampCardId.replaceChildren(...state.cards.filter((card) => card.status === 'active' && !card.expired).map((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); return option; })); els.stampAmount.value = '1'; els.stampNote.value = ''; hideMessage(els.stampFormMessage); els.stampModal.classList.remove('hidden'); els.stampCardId.focus(); }
+  function closeStampModal() { state.stampRequestId = ''; els.stampModal.classList.add('hidden'); }
+  async function saveStamp(event) {
+    event.preventDefault(); hideMessage(els.stampFormMessage);
+    const amount = Number(els.stampAmount.value);
+    if (!els.stampCardId.value || !Number.isInteger(amount) || amount < 1 || amount > 100) return showMessage(els.stampFormMessage, '請選擇啟用中的集點卡，並輸入 1–100 的整數點數。');
+    setSaving(els.saveStampButton, true);
+    try {
+      await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.stamps.add', { lineUserId: els.stampMemberId.value, cardId: els.stampCardId.value, amount, note: String(els.stampNote.value || '').trim(), requestId: state.stampRequestId || (state.stampRequestId = createRequestId()) });
+      closeStampModal();
+      if (await refreshAfterSuccessfulWrite('點數已發放', null)) setSyncStatus(`已發放 ${amount} 點 · 已同步`, false);
+    } catch (error) { handleActionError(error, els.stampFormMessage); } finally { setSaving(els.saveStampButton, false); }
+  }
 
   function switchPanel(panel) { state.activePanel = panel; ['members', 'cards', 'tickets'].forEach((name) => { const selected = name === panel; els[`${name}Tab`].setAttribute('aria-selected', String(selected)); els[`${name}Panel`].classList.toggle('hidden', !selected); }); }
   function updateAccentValue() { els.accentValue.textContent = safeAccent(els.cardAccent.value).toUpperCase(); }
@@ -196,10 +241,20 @@
   function statusLabel(status) { return ({ active: '啟用中', draft: '草稿', archived: '已封存', disabled: '已停用' })[status] || '未設定'; }
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
   function replaceById(items, next, key) { return items.some((item) => item[key] === next[key]) ? items.map((item) => item[key] === next[key] ? next : item) : [next, ...items]; }
+  function createRequestId() { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); return `request-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`; }
   function setSaving(button, saving) { button.disabled = saving; if (saving) { button.dataset.originalText = button.textContent; button.textContent = '儲存中…'; } else button.textContent = button.dataset.originalText || button.textContent; }
   function showMessage(element, message, success) { element.textContent = message; element.classList.toggle('success', Boolean(success)); element.classList.remove('hidden'); }
   function hideMessage(element) { element.textContent = ''; element.classList.add('hidden'); element.classList.remove('success'); }
-  function handleActionError(error, element) { showMessage(element, error && error.code === 'CONFLICT' ? '資料已被另一位管理者更新，請重新整理後再儲存。' : error && error.message || '操作失敗，請稍後再試。'); }
+  function setSyncStatus(message, error) { els.syncStatus.textContent = message; els.syncStatus.classList.toggle('error', Boolean(error)); }
+  async function refreshAfterSuccessfulWrite(successMessage, messageElement) {
+    try { await refreshData(false); return true; } catch (_) {
+      const message = `${successMessage}；資料已完成更新，但畫面同步失敗，請重新整理確認。`;
+      if (messageElement) showMessage(messageElement, message, true);
+      setSyncStatus('資料已更新，但畫面同步失敗，請重新整理確認。', true);
+      return false;
+    }
+  }
+  function handleActionError(error, element) { showMessage(element, error && error.code === 'API_RESPONSE_UNCERTAIN' ? '無法確認這次操作的回應；資料可能已更新，請先重新整理確認，請勿重複送出。' : error && error.code === 'CONFLICT' ? '資料已被另一位管理者更新，請重新整理後再儲存。' : error && error.message || '操作失敗，請稍後再試。'); }
   function handleBootError(error) { if (error && error.code === 'ADMIN_PENDING') { els.pendingUserId.textContent = String(error.details && error.details.lineUserId || '請查看 Admins 資料表'); els.pendingBox.classList.remove('hidden'); showError('此 LINE 帳號尚未授權', 'GAS 已記錄這次管理端登入，但目前不允許進入管理功能。'); return; } if (error && error.code === 'ADMIN_FORBIDDEN') { showError('沒有管理端權限', '此 LINE 帳號未啟用管理權限，請檢查 Admins 的 role 與 status。'); return; } showError(error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '暫時無法進入管理端', error && error.message || '請稍後重新整理。'); }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.adminView.classList.toggle('hidden', view !== 'admin'); }
   function showError(title, message) { els.errorTitle.textContent = title; els.errorMessage.textContent = message; setView('error'); }
