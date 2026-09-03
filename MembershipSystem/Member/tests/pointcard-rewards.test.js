@@ -465,7 +465,11 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(storage, /expires_on/);
   assert.match(storage, /request_id/);
   assert.match(adminApp, /refreshAfterSuccessfulWrite/);
-  assert.match(adminApp, /requestId: state\.stampRequestId/);
+  assert.match(adminHtml, /id="grantModal"/);
+  assert.match(adminHtml, /id="grantStampsEnabled"/);
+  assert.match(adminHtml, /id="grantServiceTimeEnabled"/);
+  assert.match(adminApp, /requestId: state\.grantRequestId/);
+  assert.match(adminApp, /admin\.member-grants\.add/);
   assert.match(adminApp, /API_RESPONSE_UNCERTAIN/);
   assert.match(read('shared/common.js'), /API_RESPONSE_UNCERTAIN/);
   assert.doesNotMatch(read('shared/common.js'), /確認 GAS 部署的是最新版本/);

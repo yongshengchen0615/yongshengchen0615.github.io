@@ -85,6 +85,7 @@ GAS 會建立並維護以下 schema：
 - `admin.tickets.save`
 - `admin.stamps.add`
 - `admin.service_minutes.add`
+- `admin.member-grants.add`（管理端合併發放；可一次寫入集點、服務時間或兩者）
 - `user.pointcard.ticket.redeem`
 
 `admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，`consumeStamps`（兌換消耗點數）必須為 1 點以上且不可超過 `thresholdStamps`，並以 `ticketTemplateId` 選擇票券庫中的票券。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
@@ -95,7 +96,7 @@ GAS 會建立並維護以下 schema：
 
 集點卡的 `expiryMode` 可設為 `unlimited` 或 `date`；使用 `date` 時需提供 `expiresOn`（`YYYY-MM-DD`）。到期後停止新增點數與票券核銷。管理端的「封存集點卡」會讓會員端與會員票券畫面同步隱藏，但所有資料仍保留；「永久刪除」需經兩次確認，會移除卡片、節點、節點獎項、會員票券、餘額、點數流水、舊挑戰資料與對應稽核紀錄。共用票券庫不會因刪除單一集點卡而移除。
 
-會員第一次開啟會員卡必須填寫生日與電話；這些個資只保存在 `Members`，並只回傳給已驗證的本人會員卡顯示，管理端名冊不會取得生日或電話。管理端可為啟用中的會員登錄 1–1440 分鐘的服務時間，所有表面都會以分鐘顯示累積服務時間。服務時間登錄與發點同樣攜帶單次 request ID，重送同一操作不會重複寫入。
+會員第一次開啟會員卡必須填寫生日與電話；這些個資只保存在 `Members`，並只回傳給已驗證的本人會員卡顯示，管理端名冊不會取得生日或電話。管理端的「發放」視窗可勾選集點、服務時間或兩者並同時提交；發點需要選擇啟用中的集點卡與 1–100 點，服務時間可登錄 1–1440 分鐘，所有表面都會以分鐘顯示累積服務時間。合併發放與原本個別發放同樣攜帶單次 request ID，重送同一操作不會重複寫入。
 
 前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。讀取資料若遇到暫時性網路或非 JSON 回應，會等待後自動再試一次；寫入操作不會自動重送，以免重複異動。管理端在寫入成功後若僅畫面同步失敗，會明確提示「資料已更新」並要求重新整理，而不誤報寫入失敗；ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 

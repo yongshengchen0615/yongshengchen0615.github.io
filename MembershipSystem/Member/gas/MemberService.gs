@@ -138,22 +138,45 @@ function handleMemberUpdate_(identity, admin, request) {
 }
 
 function handleServiceMinutesAdd_(identity, admin, request) {
+  const serviceTime = normalizeServiceMinutesAddRequest_(request);
+  return withDataLock_(function() { return addServiceMinutesLocked_(identity, admin, serviceTime); });
+}
+
+function normalizeServiceMinutesAddRequest_(request) {
   const lineUserId = String(request.lineUserId || '').trim(); const minutes = Number(request.minutes); const note = String(request.note || '').trim(); const requestId = String(request.requestId || '').trim();
   if (!lineUserId || lineUserId.length > 80 || !Number.isInteger(minutes) || minutes < 1 || minutes > MEMBERSHIP_SERVICE_MINUTES_MAX_GRANT_ || note.length > 160) throw new ApiError(400, 'INVALID_SERVICE_TIME', '會員、服務時間或備註不合法。');
   if (requestId && !/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) throw new ApiError(400, 'INVALID_REQUEST_ID', '服務時間請求識別碼不合法。');
-  return withDataLock_(function() {
-    const prior = requestId ? findRecordWithRow_('ServiceTimeEntries', 'request_id', requestId) : null;
-    if (prior) {
-      const entry = prior.record;
-      if (String(entry.line_user_id || '') !== lineUserId || Number(entry.minutes || 0) !== minutes || String(entry.note || '') !== note || String(entry.created_by || '') !== String(identity.lineUserId || '')) throw new ApiError(409, 'REQUEST_REUSE_MISMATCH', '這個服務時間請求已用於不同資料，請重新開啟登錄視窗。');
-      const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
-      return { member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
-    }
+  return { lineUserId, minutes, note, requestId };
+}
+
+function addServiceMinutesLocked_(identity, admin, serviceTime) {
+  const lineUserId = serviceTime.lineUserId; const minutes = serviceTime.minutes; const note = serviceTime.note; const requestId = serviceTime.requestId;
+  const prior = requestId ? findRecordWithRow_('ServiceTimeEntries', 'request_id', requestId) : null;
+  if (prior) {
+    const entry = prior.record;
+    if (String(entry.line_user_id || '') !== lineUserId || Number(entry.minutes || 0) !== minutes || String(entry.note || '') !== note || String(entry.created_by || '') !== String(identity.lineUserId || '')) throw new ApiError(409, 'REQUEST_REUSE_MISMATCH', '這個服務時間請求已用於不同資料，請重新開啟登錄視窗。');
     const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
-    if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法登錄服務時間。');
-    const now = nowIso_();
-    appendRecord_('ServiceTimeEntries', { entry_id: 'ST-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, minutes: String(minutes), note, created_by: identity.lineUserId, created_at: now, request_id: requestId });
-    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'SERVICE_TIME_ADD', target_type: 'service_time', target_id: lineUserId, result: 'success', detail: 'Added ' + minutes + ' service minute(s)', created_at: now });
     return { member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
+  }
+  const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
+  if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法登錄服務時間。');
+  const now = nowIso_();
+  appendRecord_('ServiceTimeEntries', { entry_id: 'ST-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, minutes: String(minutes), note, created_by: identity.lineUserId, created_at: now, request_id: requestId });
+  appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'SERVICE_TIME_ADD', target_type: 'service_time', target_id: lineUserId, result: 'success', detail: 'Added ' + minutes + ' service minute(s)', created_at: now });
+  return { member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
+}
+
+function handleMemberGrantAdd_(identity, admin, request) {
+  const lineUserId = String(request.lineUserId || '').trim(); const requestId = String(request.requestId || '').trim(); const note = String(request.note || '').trim();
+  const pointsInput = request.points && !Array.isArray(request.points) && typeof request.points === 'object' ? request.points : null;
+  const serviceTimeInput = request.serviceTime && !Array.isArray(request.serviceTime) && typeof request.serviceTime === 'object' ? request.serviceTime : null;
+  if (!lineUserId || lineUserId.length > 80 || !requestId || !/^[A-Za-z0-9_-]{16,88}$/.test(requestId) || note.length > 160 || (!pointsInput && !serviceTimeInput)) throw new ApiError(400, 'INVALID_MEMBER_GRANT', '發放內容或請求識別碼不合法。');
+  const stamp = pointsInput ? normalizeStampAddRequest_({ lineUserId, cardId: pointsInput.cardId, amount: pointsInput.amount, note, requestId: requestId + '_points' }) : null;
+  const serviceTime = serviceTimeInput ? normalizeServiceMinutesAddRequest_({ lineUserId, minutes: serviceTimeInput.minutes, note, requestId: requestId + '_service' }) : null;
+  return withDataLock_(function() {
+    const stampResult = stamp ? addStampLocked_(identity, admin, stamp) : null;
+    const serviceTimeResult = serviceTime ? addServiceMinutesLocked_(identity, admin, serviceTime) : null;
+    const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
+    return { member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)), stamps: stampResult, serviceTime: serviceTimeResult ? { minutes: serviceTime.minutes } : null };
   });
 }

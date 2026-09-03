@@ -53,6 +53,7 @@ test('admin authorization is server-side and pending accounts are non-privileged
 
 test('spreadsheet writes protect formulas and point entries are append-only', () => {
   const storage = read('gas/Storage.gs');
+  const code = read('gas/Code.gs');
   const pointService = read('gas/PointCardService.gs');
   const memberService = read('gas/MemberService.gs');
   assert.match(storage, /escapeSheetValue_/);
@@ -65,6 +66,11 @@ test('spreadsheet writes protect formulas and point entries are append-only', ()
   assert.match(memberService, /normalizeBirthday_/);
   assert.match(memberService, /normalizePhone_/);
   assert.match(memberService, /REQUEST_REUSE_MISMATCH/);
+  assert.match(code, /case 'admin\.member-grants\.add':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleMemberGrantAdd_/);
+  assert.match(memberService, /function handleMemberGrantAdd_/);
+  assert.match(memberService, /requestId \+ '_points'/);
+  assert.match(memberService, /requestId \+ '_service'/);
+  assert.match(pointService, /function addStampLocked_/);
 });
 
 test('CSP allows the LIFF subwindow without unsafe-eval', () => {

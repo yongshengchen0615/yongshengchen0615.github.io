@@ -67,8 +67,11 @@ test('member card collects first-visit contact details and displays accumulated 
   assert.match(memberHtml, /serviceMinutesTotal/);
   assert.match(memberApp, /user\.member\.profile\.save/);
   assert.doesNotMatch(memberApp, /小時/);
-  assert.match(adminHtml, /serviceTimeModal/);
-  assert.match(adminApp, /admin\.service_minutes\.add/);
+  assert.match(adminHtml, /grantModal/);
+  assert.match(adminHtml, /grantStampsEnabled/);
+  assert.match(adminHtml, /grantServiceTimeEnabled/);
+  assert.match(adminApp, /admin\.member-grants\.add/);
+  assert.doesNotMatch(adminApp, /admin\.stamps\.add|admin\.service_minutes\.add/);
   assert.doesNotMatch(adminApp, /小時/);
 });
 

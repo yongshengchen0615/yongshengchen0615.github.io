@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', stampRequestId: '', serviceTimeRequestId: '' };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', grantRequestId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -12,8 +12,7 @@
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
-      'stampModal', 'closeStampModal', 'stampForm', 'stampMemberId', 'stampMemberName', 'stampCardId', 'stampAmount', 'stampNote', 'stampFormMessage', 'cancelStampButton', 'saveStampButton',
-      'serviceTimeModal', 'closeServiceTimeModal', 'serviceTimeForm', 'serviceTimeMemberId', 'serviceTimeMemberName', 'serviceTimeMinutes', 'serviceTimeNote', 'serviceTimeFormMessage', 'cancelServiceTimeButton', 'saveServiceTimeButton'
+      'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     bindEvents();
     boot();
@@ -55,15 +54,13 @@
     els.cancelMemberButton.addEventListener('click', closeMemberModal);
     els.closeMemberModal.addEventListener('click', closeMemberModal);
     els.memberModal.addEventListener('click', (event) => { if (event.target === els.memberModal) closeMemberModal(); });
-    els.stampForm.addEventListener('submit', saveStamp);
-    els.cancelStampButton.addEventListener('click', closeStampModal);
-    els.closeStampModal.addEventListener('click', closeStampModal);
-    els.stampModal.addEventListener('click', (event) => { if (event.target === els.stampModal) closeStampModal(); });
-    els.serviceTimeForm.addEventListener('submit', saveServiceTime);
-    els.cancelServiceTimeButton.addEventListener('click', closeServiceTimeModal);
-    els.closeServiceTimeModal.addEventListener('click', closeServiceTimeModal);
-    els.serviceTimeModal.addEventListener('click', (event) => { if (event.target === els.serviceTimeModal) closeServiceTimeModal(); });
-    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeStampModal(); closeServiceTimeModal(); });
+    els.grantForm.addEventListener('submit', saveGrant);
+    els.cancelGrantButton.addEventListener('click', closeGrantModal);
+    els.closeGrantModal.addEventListener('click', closeGrantModal);
+    els.grantModal.addEventListener('click', (event) => { if (event.target === els.grantModal) closeGrantModal(); });
+    els.grantStampsEnabled.addEventListener('change', updateGrantOptions);
+    els.grantServiceTimeEnabled.addEventListener('change', updateGrantOptions);
+    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); });
   }
 
   async function boot() {
@@ -114,7 +111,7 @@
       const statusCell = document.createElement('td'); const status = document.createElement('span'); status.className = `status-pill${member.status === 'active' ? '' : ' disabled'}`; status.textContent = member.status === 'active' ? '啟用中' : '已停用'; statusCell.append(status);
       const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
       const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
-      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('編輯', 'edit-member', member.lineUserId), actionButton('＋ 集點', 'add-stamp', member.lineUserId, true), actionButton('＋ 服務時間', 'add-service-time', member.lineUserId)); actionsCell.append(actions);
+      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('編輯', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true)); actionsCell.append(actions);
       row.append(memberCell, tierCell, statusCell, serviceTimeCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
@@ -166,7 +163,7 @@
   }
 
   function actionButton(label, action, value, accent) { const button = document.createElement('button'); button.type = 'button'; button.className = `small-button${accent ? ' accent' : ''}`; button.dataset.action = action; button.dataset.value = String(value || ''); button.textContent = label; return button; }
-  function handleMemberTableClick(event) { const button = event.target instanceof Element ? event.target.closest('[data-action]') : null; if (!button) return; const member = state.members.find((item) => item.lineUserId === button.dataset.value); if (!member) return; if (button.dataset.action === 'edit-member') openMemberModal(member); if (button.dataset.action === 'add-stamp') openStampModal(member); if (button.dataset.action === 'add-service-time') openServiceTimeModal(member); }
+  function handleMemberTableClick(event) { const button = event.target instanceof Element ? event.target.closest('[data-action]') : null; if (!button) return; const member = state.members.find((item) => item.lineUserId === button.dataset.value); if (!member) return; if (button.dataset.action === 'edit-member') openMemberModal(member); if (button.dataset.action === 'add-grant') openGrantModal(member); }
 
   function renderCardList() {
     els.cardResultCount.textContent = String(state.cards.length); els.cardEmptyState.classList.toggle('hidden', state.cards.length !== 0);
@@ -287,33 +284,35 @@
   function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.value = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberTier.focus(); }
   function closeMemberModal() { els.memberModal.classList.add('hidden'); }
   async function saveMember(event) { event.preventDefault(); hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, tier: String(els.memberTier.value || '').trim() || '一般會員', status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
-  function openStampModal(member) { state.stampRequestId = createRequestId(); els.stampMemberId.value = String(member.lineUserId); els.stampMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.stampCardId.replaceChildren(...state.cards.filter((card) => card.status === 'active' && !card.expired).map((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); return option; })); els.stampAmount.value = '1'; els.stampNote.value = ''; hideMessage(els.stampFormMessage); els.stampModal.classList.remove('hidden'); els.stampCardId.focus(); }
-  function closeStampModal() { state.stampRequestId = ''; els.stampModal.classList.add('hidden'); }
-  async function saveStamp(event) {
-    event.preventDefault(); hideMessage(els.stampFormMessage);
-    const amount = Number(els.stampAmount.value);
-    if (!els.stampCardId.value || !Number.isInteger(amount) || amount < 1 || amount > 100) return showMessage(els.stampFormMessage, '請選擇啟用中的集點卡，並輸入 1–100 的整數點數。');
-    setSaving(els.saveStampButton, true);
-    try {
-      await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.stamps.add', { lineUserId: els.stampMemberId.value, cardId: els.stampCardId.value, amount, note: String(els.stampNote.value || '').trim(), requestId: state.stampRequestId || (state.stampRequestId = createRequestId()) });
-      closeStampModal();
-      if (await refreshAfterSuccessfulWrite('點數已發放', null)) setSyncStatus(`已發放 ${amount} 點 · 已同步`, false);
-    } catch (error) { handleActionError(error, els.stampFormMessage); } finally { setSaving(els.saveStampButton, false); }
+  function openGrantModal(member) { const activeCards = state.cards.filter((card) => card.status === 'active' && !card.expired); state.grantRequestId = createRequestId(); els.grantMemberId.value = String(member.lineUserId); els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`; els.grantCardId.replaceChildren(...activeCards.map((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); return option; })); els.grantStampsEnabled.checked = activeCards.length > 0; els.grantStampsEnabled.disabled = activeCards.length === 0; els.grantServiceTimeEnabled.checked = activeCards.length === 0; els.grantStampAmount.value = '1'; els.grantServiceTimeMinutes.value = '30'; els.grantNote.value = ''; updateGrantOptions(); hideMessage(els.grantFormMessage); els.grantModal.classList.remove('hidden'); (activeCards.length ? els.grantCardId : els.grantServiceTimeMinutes).focus(); }
+  function closeGrantModal() { state.grantRequestId = ''; els.grantModal.classList.add('hidden'); }
+  function updateGrantOptions() {
+    const addStamps = els.grantStampsEnabled.checked;
+    const addServiceTime = els.grantServiceTimeEnabled.checked;
+    els.grantStampsFields.classList.toggle('hidden', !addStamps);
+    els.grantCardId.disabled = !addStamps;
+    els.grantStampAmount.disabled = !addStamps;
+    els.grantServiceTimeFields.classList.toggle('hidden', !addServiceTime);
+    els.grantServiceTimeMinutes.disabled = !addServiceTime;
   }
-
-  function openServiceTimeModal(member) { state.serviceTimeRequestId = createRequestId(); els.serviceTimeMemberId.value = String(member.lineUserId); els.serviceTimeMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 目前 ${formatServiceMinutes(member.serviceMinutesTotal)}`; els.serviceTimeMinutes.value = '30'; els.serviceTimeNote.value = ''; hideMessage(els.serviceTimeFormMessage); els.serviceTimeModal.classList.remove('hidden'); els.serviceTimeMinutes.focus(); }
-  function closeServiceTimeModal() { state.serviceTimeRequestId = ''; els.serviceTimeModal.classList.add('hidden'); }
-  async function saveServiceTime(event) {
-    event.preventDefault(); hideMessage(els.serviceTimeFormMessage);
-    const minutes = Number(els.serviceTimeMinutes.value);
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) return showMessage(els.serviceTimeFormMessage, '請輸入 1–1440 的整數分鐘數。');
-    setSaving(els.saveServiceTimeButton, true);
+  async function saveGrant(event) {
+    event.preventDefault(); hideMessage(els.grantFormMessage);
+    const addStamps = els.grantStampsEnabled.checked; const addServiceTime = els.grantServiceTimeEnabled.checked;
+    const stampAmount = Number(els.grantStampAmount.value); const serviceTimeMinutes = Number(els.grantServiceTimeMinutes.value);
+    if (!addStamps && !addServiceTime) return showMessage(els.grantFormMessage, '請至少勾選「發放集點」或「發放消費服務時間」。');
+    if (addStamps && (!els.grantCardId.value || !Number.isInteger(stampAmount) || stampAmount < 1 || stampAmount > 100)) return showMessage(els.grantFormMessage, '請選擇啟用中的集點卡，並輸入 1–100 的整數點數。');
+    if (addServiceTime && (!Number.isInteger(serviceTimeMinutes) || serviceTimeMinutes < 1 || serviceTimeMinutes > 1440)) return showMessage(els.grantFormMessage, '請輸入 1–1440 的整數分鐘數。');
+    const note = String(els.grantNote.value || '').trim(); const payload = { lineUserId: els.grantMemberId.value, requestId: state.grantRequestId || (state.grantRequestId = createRequestId()), note };
+    if (addStamps) payload.points = { cardId: els.grantCardId.value, amount: stampAmount };
+    if (addServiceTime) payload.serviceTime = { minutes: serviceTimeMinutes };
+    setSaving(els.saveGrantButton, true);
     try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.service_minutes.add', { lineUserId: els.serviceTimeMemberId.value, minutes, note: String(els.serviceTimeNote.value || '').trim(), requestId: state.serviceTimeRequestId || (state.serviceTimeRequestId = createRequestId()) });
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-grants.add', payload);
       if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId');
-      closeServiceTimeModal();
-      if (await refreshAfterSuccessfulWrite('服務時間已登錄', null)) setSyncStatus(`已登錄 ${formatServiceMinutes(minutes)} · 已同步`, false);
-    } catch (error) { handleActionError(error, els.serviceTimeFormMessage); } finally { setSaving(els.saveServiceTimeButton, false); }
+      closeGrantModal();
+      const details = [addStamps ? `${stampAmount} 點` : '', addServiceTime ? formatServiceMinutes(serviceTimeMinutes) : ''].filter(Boolean).join('、');
+      if (await refreshAfterSuccessfulWrite('發放資料已更新', null)) setSyncStatus(`已發放 ${details} · 已同步`, false);
+    } catch (error) { handleActionError(error, els.grantFormMessage); } finally { setSaving(els.saveGrantButton, false); }
   }
 
   function switchPanel(panel) { state.activePanel = panel; ['members', 'cards', 'tickets'].forEach((name) => { const selected = name === panel; els[`${name}Tab`].setAttribute('aria-selected', String(selected)); els[`${name}Panel`].classList.toggle('hidden', !selected); }); }

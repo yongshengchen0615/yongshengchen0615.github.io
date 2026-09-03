@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.3.0';
+const MEMBERSHIP_API_VERSION_ = '1.4.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
@@ -11,7 +11,8 @@ const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'admin.tickets.save',
   'user.pointcard.ticket.redeem',
   'admin.stamps.add',
-  'admin.service_minutes.add'
+  'admin.service_minutes.add',
+  'admin.member-grants.add'
 ]);
 const MEMBERSHIP_MAX_REQUEST_BYTES_ = 40000;
 const MEMBERSHIP_READ_LIMIT_ = 90;
@@ -99,6 +100,11 @@ function doPost(e) {
       case 'admin.service_minutes.add': {
         const admin = authorizeAdmin_(identity);
         data = handleServiceMinutesAdd_(identity, admin, request);
+        break;
+      }
+      case 'admin.member-grants.add': {
+        const admin = authorizeAdmin_(identity);
+        data = handleMemberGrantAdd_(identity, admin, request);
         break;
       }
       default:
