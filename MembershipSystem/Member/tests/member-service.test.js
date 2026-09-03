@@ -38,6 +38,7 @@ function loadMemberService() {
     nowIso_: () => '2026-09-03T00:00:00.000Z',
     withDataLock_: (callback) => callback(),
     readRecords_: (sheetName) => rows[sheetName] || [],
+    readRecordFields_: (sheetName, fieldNames) => (rows[sheetName] || []).map((record) => fieldNames.reduce((result, field) => { result[field] = record[field]; return result; }, {})),
     findRecordWithRow_: (sheetName, keyField, keyValue) => {
       const index = (rows[sheetName] || []).findIndex((record) => String(record[keyField] || '') === String(keyValue || ''));
       return index < 0 ? null : { rowNumber: index + 2, record: rows[sheetName][index] };
