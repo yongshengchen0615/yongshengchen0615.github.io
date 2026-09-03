@@ -60,12 +60,16 @@ test('member card collects first-visit contact details and displays accumulated 
   const memberApp = read('member/app.js');
   const adminHtml = read('admin/index.html');
   const adminApp = read('admin/app.js');
+  assert.match(memberHtml, /profileBirthday/);
+  assert.match(memberHtml, /profilePhone/);
   assert.match(memberHtml, /memberBirthday/);
   assert.match(memberHtml, /memberPhone/);
   assert.match(memberHtml, /serviceMinutesTotal/);
   assert.match(memberApp, /user\.member\.profile\.save/);
+  assert.doesNotMatch(memberApp, /小時/);
   assert.match(adminHtml, /serviceTimeModal/);
   assert.match(adminApp, /admin\.service_minutes\.add/);
+  assert.doesNotMatch(adminApp, /小時/);
 });
 
 test('all browser JavaScript and GAS files parse as JavaScript', () => {

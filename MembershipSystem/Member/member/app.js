@@ -5,7 +5,7 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'memberBirthday', 'memberPhone', 'profileFormMessage', 'saveProfileButton', 'memberView', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'serviceMinutesTotal'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profilePhone', 'profileFormMessage', 'saveProfileButton', 'memberView', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'serviceMinutesTotal'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.profileForm.addEventListener('submit', saveProfile);
@@ -41,6 +41,8 @@
     els.memberTier.textContent = String(profile.tier || '一般會員');
     els.memberCode.textContent = String(profile.memberCode || '尚未建立');
     els.joinedAt.textContent = window.MemberSystem.formatDate(profile.joinedAt);
+    els.memberBirthday.textContent = String(profile.birthday || '未填寫');
+    els.memberPhone.textContent = String(profile.phone || '未填寫');
     els.serviceMinutesTotal.textContent = formatServiceMinutes(profile.serviceMinutesTotal);
     els.memberStatus.textContent = isActive ? '使用中' : '暫停';
     els.memberStatus.parentElement.classList.toggle('inactive', !isActive);
@@ -49,8 +51,8 @@
   async function saveProfile(event) {
     event.preventDefault();
     hideMessage();
-    const birthday = String(els.memberBirthday.value || '').trim();
-    const phone = String(els.memberPhone.value || '').trim();
+    const birthday = String(els.profileBirthday.value || '').trim();
+    const phone = String(els.profilePhone.value || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showMessage('請填寫正確的生日。');
     if (!/^\+?\d{8,15}$/.test(phone.replace(/[()\s-]/g, ''))) return showMessage('請填寫正確的電話。');
     setSaving(true);
@@ -68,9 +70,7 @@
 
   function formatServiceMinutes(value) {
     const minutes = Math.max(0, Math.floor(Number(value) || 0));
-    const hours = Math.floor(minutes / 60); const remainder = minutes % 60;
-    if (!hours) return `${remainder} 分鐘`;
-    return remainder ? `${hours} 小時 ${remainder} 分鐘` : `${hours} 小時`;
+    return `${minutes} 分鐘`;
   }
 
   function setSaving(saving) { els.saveProfileButton.disabled = saving; els.saveProfileButton.textContent = saving ? '儲存中…' : '儲存並開啟會員卡'; }

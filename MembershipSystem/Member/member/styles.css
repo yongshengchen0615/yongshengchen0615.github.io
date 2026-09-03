@@ -49,7 +49,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(223, 107, 77, .4
 .pass-stamp { width: 76px; height: 76px; display: grid; place-items: center; border: 1px solid rgba(253, 247, 237, .35); border-radius: 50%; color: #f3c9ab; transform: rotate(9deg); }
 .pass-stamp span { font-size: 10px; font-weight: 900; letter-spacing: .18em; }
 .pass-stamp b { position: absolute; font-size: 9px; transform: translateY(18px); }
-.pass-footer { display: grid; grid-template-columns: auto auto auto 1fr; align-items: end; gap: 24px; padding-top: 18px; border-top: 1px solid rgba(253, 247, 237, .2); }
+.pass-footer { display: grid; grid-template-columns: auto auto auto auto auto 1fr; align-items: end; gap: 18px; padding-top: 18px; border-top: 1px solid rgba(253, 247, 237, .2); }
 .pass-footer strong { display: block; font-size: 13px; letter-spacing: .08em; }
 .barcode { justify-self: end; display: flex; align-items: end; gap: 3px; height: 30px; opacity: .72; }
 .barcode i { display: block; width: 2px; height: 25px; background: #fdf7ed; }

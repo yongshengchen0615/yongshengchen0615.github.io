@@ -81,9 +81,13 @@ test('ID tokens are not explicitly written to logs or Sheets', () => {
   assert.doesNotMatch(gas, /id_token[^\n]*console/i);
 });
 
-test('member birth date and phone are never sent in the client profile', () => {
+test('birth date and phone are sent only to the authenticated member profile, never the admin list', () => {
   const memberService = read('gas/MemberService.gs');
   const profileBody = memberService.match(/function memberForClient_\(member\) \{([\s\S]*?)\n\}/);
+  const adminBody = memberService.match(/function adminMemberForClient_\(member, serviceMinutesTotal\) \{([\s\S]*?)\n\}/);
   assert.ok(profileBody);
-  assert.doesNotMatch(profileBody[1], /birthday|phone/);
+  assert.ok(adminBody);
+  assert.match(profileBody[1], /birthday/);
+  assert.match(profileBody[1], /phone/);
+  assert.doesNotMatch(adminBody[1], /birthday|phone/);
 });

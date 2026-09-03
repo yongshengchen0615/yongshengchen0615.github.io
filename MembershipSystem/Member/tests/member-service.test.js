@@ -38,15 +38,17 @@ function loadMemberService() {
   return { context, rows, audit, TestApiError };
 }
 
-test('first-visit profile requires a real birthday and normalized phone without returning either field', () => {
+test('first-visit profile requires a real birthday and normalized phone for the member card only', () => {
   const { context, rows, audit, TestApiError } = loadMemberService();
   const identity = { lineUserId: 'U-1', displayName: '測試會員' };
   const result = context.handleMemberProfileSave_(identity, { birthday: '1990-02-28', phone: '0912-345-678' });
   assert.equal(rows.Members[0].birthday, '1990-02-28');
   assert.equal(rows.Members[0].phone, '0912345678');
   assert.equal(result.profile.profileComplete, true);
-  assert.equal(result.profile.birthday, undefined);
-  assert.equal(result.profile.phone, undefined);
+  assert.equal(result.profile.birthday, '1990-02-28');
+  assert.equal(result.profile.phone, '0912345678');
+  assert.equal(context.adminMemberForClient_(rows.Members[0], 0).birthday, undefined);
+  assert.equal(context.adminMemberForClient_(rows.Members[0], 0).phone, undefined);
   assert.equal(audit[0].action, 'MEMBER_PROFILE_SAVE');
   assert.throws(() => context.handleMemberProfileSave_(identity, { birthday: '2026-02-30', phone: '0912345678' }), (error) => error instanceof TestApiError && error.code === 'INVALID_MEMBER_PROFILE');
   assert.throws(() => context.handleMemberProfileSave_(identity, { birthday: '1990-02-28', phone: 'bad-phone' }), (error) => error instanceof TestApiError && error.code === 'INVALID_MEMBER_PROFILE');

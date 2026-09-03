@@ -32,7 +32,7 @@ function generateMemberCode_() { return 'LM-' + Utilities.getUuid().replace(/-/g
 function newMemberRecord_(identity, now) { return { line_user_id: identity.lineUserId, display_name: identity.displayName, member_code: generateMemberCode_(), tier: '一般會員', status: 'active', joined_at: now, last_login_at: now, created_at: now, updated_at: now, birthday: '', phone: '' }; }
 
 function memberForClient_(member) {
-  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: String(member.tier || '一般會員'), status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal: serviceMinutesTotalForMember_(member.line_user_id), benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
+  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: String(member.tier || '一般會員'), status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal: serviceMinutesTotalForMember_(member.line_user_id), benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
 }
 
 function readMembers_() {

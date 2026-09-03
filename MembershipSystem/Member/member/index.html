@@ -34,8 +34,8 @@
       <h1 id="profileSetupTitle">完成會員資料</h1>
       <p>請填寫生日與電話後，才能開啟會員卡。</p>
       <form id="profileForm" class="profile-form" novalidate>
-        <label>生日<input id="memberBirthday" type="date" autocomplete="bday" required></label>
-        <label>電話<input id="memberPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required></label>
+        <label>生日<input id="profileBirthday" type="date" autocomplete="bday" required></label>
+        <label>電話<input id="profilePhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required></label>
         <div id="profileFormMessage" class="form-message hidden" role="alert"></div>
         <button id="saveProfileButton" class="button button-dark" type="submit">儲存並開啟會員卡</button>
       </form>
@@ -67,6 +67,8 @@
         <div class="pass-footer">
           <div><span class="label">Member ID</span><strong id="memberCode">—</strong></div>
           <div><span class="label">Joined</span><strong id="joinedAt">—</strong></div>
+          <div><span class="label">生日</span><strong id="memberBirthday">—</strong></div>
+          <div><span class="label">電話</span><strong id="memberPhone">—</strong></div>
           <div class="service-total"><span class="label">累積消費服務時間</span><strong id="serviceMinutesTotal">0 分鐘</strong></div>
           <div class="barcode" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         </div>

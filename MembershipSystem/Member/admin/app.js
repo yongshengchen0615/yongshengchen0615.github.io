@@ -323,7 +323,7 @@
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
   function replaceById(items, next, key) { return items.some((item) => item[key] === next[key]) ? items.map((item) => item[key] === next[key] ? next : item) : [next, ...items]; }
   function createRequestId() { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); return `request-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`; }
-  function formatServiceMinutes(value) { const minutes = Math.max(0, Math.floor(Number(value) || 0)); const hours = Math.floor(minutes / 60); const remainder = minutes % 60; if (!hours) return `${remainder} 分鐘`; return remainder ? `${hours} 小時 ${remainder} 分鐘` : `${hours} 小時`; }
+  function formatServiceMinutes(value) { return `${Math.max(0, Math.floor(Number(value) || 0))} 分鐘`; }
   function setSaving(button, saving) { button.disabled = saving; if (saving) { button.dataset.originalText = button.textContent; button.textContent = '儲存中…'; } else button.textContent = button.dataset.originalText || button.textContent; }
   function showMessage(element, message, success) { element.textContent = message; element.classList.toggle('success', Boolean(success)); element.classList.remove('hidden'); }
   function hideMessage(element) { element.textContent = ''; element.classList.add('hidden'); element.classList.remove('success'); }
