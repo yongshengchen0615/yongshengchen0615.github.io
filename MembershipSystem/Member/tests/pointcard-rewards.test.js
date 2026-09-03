@@ -444,8 +444,12 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(read('gas/PointCardService.gs'), /handlePointCardDelete_/);
   assert.match(storage, /PointCardTickets:/);
   assert.match(pointsHtml, /確認使用這張票券/);
+  assert.match(pointsHtml, /id="ticketModalProcessing"/);
   assert.match(pointsApp, /confirmTicketUseButton\.addEventListener/);
   assert.match(pointsApp, /redeemTicket/);
+  assert.match(pointsApp, /setTicketProcessing\(true\)/);
+  assert.match(pointsApp, /setTicketProcessing\(false\)/);
+  assert.match(pointsStyles, /ticket-processing-spinner/);
   assert.doesNotMatch(pointsApp, /handleTicketChoice|startTicketChallenge|selectedCode|challengeId|ticket\.challenge/);
   assert.doesNotMatch(read('gas/PointCardService.gs'), /ticketUsageCode|handleTicketChallenge_|selectedCode|POINT_CARD_TICKET_OPTION_COUNT_|POINT_CARD_TICKET_CODE_LENGTH_/);
   assert.doesNotMatch(read('gas/Code.gs'), /usage-code\.generate|ticket\.challenge/);
