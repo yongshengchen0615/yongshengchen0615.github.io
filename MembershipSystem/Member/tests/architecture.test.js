@@ -97,3 +97,31 @@ test('transport distinguishes an uncertain write outcome from a failed read resp
     (error) => error && error.code === 'API_RESPONSE_UNCERTAIN'
   );
 });
+
+test('storage schema checks are cached and point-card bootstrap has a snapshot read path', () => {
+  const storage = read('gas/Storage.gs');
+  const pointService = read('gas/PointCardService.gs');
+  assert.match(storage, /MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_/);
+  assert.match(storage, /membershipSchemaCacheKey_/);
+  assert.match(storage, /schemaCache\.get\(schemaCacheKey\) === 'ready'/);
+  assert.match(pointService, /function readPointCardSnapshot_\(\)/);
+  assert.match(pointService, /ensurePointCardTicketsForMember_\(identity\.lineUserId, pointCardSnapshot\)/);
+  assert.match(pointService, /visiblePointCardsForMember_\(identity\.lineUserId, snapshot\)/);
+});
+
+test('storage schema cache skips repeated schema checks for the same spreadsheet and schema', () => {
+  const entries = new Map();
+  const context = {
+    CacheService: { getScriptCache: () => ({ get: (key) => entries.get(key) || null, put: (key, value) => entries.set(key, value) }) },
+    Utilities: { computeDigest: () => Array.from({ length: 8 }, (_, index) => index), DigestAlgorithm: { SHA_256: 'SHA_256' }, Charset: { UTF_8: 'UTF_8' } }
+  };
+  vm.createContext(context);
+  vm.runInContext(read('gas/Storage.gs'), context, { filename: 'gas/Storage.gs' });
+  let schemaChecks = 0;
+  context.resolveMembershipSpreadsheet_ = () => ({ getId: () => 'sheet-1' });
+  context.ensureSheetSchema_ = () => { schemaChecks += 1; };
+  context.ensureMembershipStorage_();
+  context.ensureMembershipStorage_();
+  assert.ok(schemaChecks > 0);
+  assert.equal(schemaChecks, 11);
+});

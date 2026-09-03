@@ -188,6 +188,7 @@ test('tickets keep a reward snapshot without any usage password data', () => {
   assert.equal(ticket.consume_stamps, '3');
   assert.doesNotMatch(JSON.stringify(ticket), /usage.?code|password/i);
   const clientTicket = context.ticketForClient_(ticket);
+  assert.deepEqual(JSON.parse(JSON.stringify(clientTicket.prizes.map((prize) => prize.prizeTitle))), ['不會抽中', '咖啡券']);
   assert.equal(clientTicket.prizes[0].winRate, undefined);
   assert.equal(clientTicket.prizes[1].prizeTitle, '咖啡券');
 });
@@ -212,6 +213,42 @@ test('tickets redeem directly and only once', () => {
   assert.equal(rows.PointEntries[0].amount, '-10');
   assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
   assert.throws(() => context.handleTicketRedeem_(identity, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'TICKET_ALREADY_USED');
+});
+
+test('point-card bootstrap uses one coherent snapshot instead of repeated full-sheet reads', () => {
+  const { context, rows } = loadTicketService();
+  const calls = {};
+  const readRecords = context.readRecords_;
+  context.readRecords_ = (sheetName) => { calls[sheetName] = (calls[sheetName] || 0) + 1; return readRecords(sheetName); };
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  const response = context.handlePointCardBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
+  assert.equal(response.profile.displayName, '測試會員');
+  assert.equal(response.cards.length, 1);
+  assert.equal(response.tickets.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), {
+    PointCards: 1,
+    PointCardRewards: 1,
+    PointCardLotteryPrizes: 1,
+    PointCardTicketTemplates: 1,
+    PointBalances: 1,
+    PointCardTickets: 1
+  });
+  assert.equal(rows.PointCardTickets.length, 1);
+});
+
+test('point-card bootstrap returns tickets reissued from its snapshot', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCards[0].target_stamps = '10';
+  rows.PointCards[0].reward_title = '咖啡券';
+  rows.PointCardTickets[0].status = 'used';
+  const readRecords = context.readRecords_;
+  context.readRecords_ = (sheetName) => readRecords(sheetName).map((record) => ({ ...record }));
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  const response = context.handlePointCardBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
+  assert.equal(rows.PointCardTickets.length, 2);
+  assert.equal(rows.PointCardTickets[1].status, 'available');
+  assert.equal(response.tickets.length, 1);
+  assert.equal(response.tickets[0].ticketId, rows.PointCardTickets[1].ticket_id);
 });
 
 test('direct ticket redemption still enforces ticket ownership', () => {
@@ -390,7 +427,11 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(pointsApp, /即可解鎖/);
   assert.match(pointsStyles, /member-ticket-list/);
   assert.match(pointsApp, /data-use-ticket/);
+  assert.match(pointsApp, /createLotteryPrizeOpportunities/);
+  assert.match(pointsApp, /有機會獲得/);
+  assert.match(pointsApp, /prize-opportunities/);
   assert.doesNotMatch(pointsApp, /prizeRate/);
+  assert.doesNotMatch(pointsApp, /winRate/);
   assert.match(pointsApp, /lottery-reveal/);
   assert.doesNotMatch(adminHtml, /ticket-code-settings|generateTicketUsageCodeButton|票券使用密碼/);
   assert.doesNotMatch(adminApp, /generateTicketUsageCode|usage-code\.generate|updateTicketUsageCodeUI/);

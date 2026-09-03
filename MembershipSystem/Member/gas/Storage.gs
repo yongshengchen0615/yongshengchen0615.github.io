@@ -1,6 +1,7 @@
 'use strict';
 
 const MEMBERSHIP_STORAGE_PROPERTY_ = 'MEMBERSHIP_SYSTEM_SPREADSHEET_ID';
+const MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at']),
   Admins: Object.freeze(['line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at']),
@@ -18,8 +19,29 @@ let MEMBERSHIP_SPREADSHEET_CACHE_ = null;
 
 function ensureMembershipStorage_() {
   const spreadsheet = resolveMembershipSpreadsheet_();
+  const schemaCache = membershipSchemaCache_();
+  const schemaCacheKey = membershipSchemaCacheKey_(spreadsheet.getId());
+  if (schemaCache && schemaCache.get(schemaCacheKey) === 'ready') return spreadsheet;
   Object.keys(MEMBERSHIP_SHEET_SCHEMAS_).forEach(function(sheetName) { ensureSheetSchema_(spreadsheet, sheetName, MEMBERSHIP_SHEET_SCHEMAS_[sheetName]); });
+  if (schemaCache) {
+    try { schemaCache.put(schemaCacheKey, 'ready', MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_); } catch (_) {}
+  }
   return spreadsheet;
+}
+
+function membershipSchemaCache_() {
+  try { return CacheService.getScriptCache(); } catch (_) { return null; }
+}
+
+function membershipSchemaCacheKey_(spreadsheetId) {
+  const signature = Object.keys(MEMBERSHIP_SHEET_SCHEMAS_).map(function(sheetName) {
+    return sheetName + ':' + MEMBERSHIP_SHEET_SCHEMAS_[sheetName].join(',');
+  }).join('|');
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, signature, Utilities.Charset.UTF_8).map(function(byte) {
+    const normalized = byte < 0 ? byte + 256 : byte;
+    return ('0' + normalized.toString(16)).slice(-2);
+  }).join('').substring(0, 16);
+  return 'membership:schema:' + String(spreadsheetId || '') + ':' + digest;
 }
 
 function resolveMembershipSpreadsheet_() {
