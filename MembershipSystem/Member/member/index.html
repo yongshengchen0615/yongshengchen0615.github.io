@@ -17,7 +17,7 @@
       <div class="loader-mark" aria-hidden="true">L</div>
       <p class="kicker">Member pass</p>
       <h1>正在準備你的會員卡</h1>
-      <p>每次開啟都會重新確認 LINE 身份，很快就能看見你的會員專屬資訊。</p>
+      <p>每次開啟都會重新確認 LINE 身份，很快就能看見你的會員卡資料。</p>
     </section>
 
     <section id="errorView" class="state-view hidden" role="alert">
@@ -26,6 +26,19 @@
       <h1 id="errorTitle">會員卡暫時無法載入</h1>
       <p id="errorMessage"></p>
       <button id="retryButton" class="button button-dark" type="button">重新整理</button>
+    </section>
+
+    <section id="profileSetupView" class="state-view hidden" aria-labelledby="profileSetupTitle">
+      <div class="loader-mark" aria-hidden="true">1</div>
+      <p class="kicker">First visit</p>
+      <h1 id="profileSetupTitle">完成會員資料</h1>
+      <p>請填寫生日與電話後，才能開啟會員卡。</p>
+      <form id="profileForm" class="profile-form" novalidate>
+        <label>生日<input id="memberBirthday" type="date" autocomplete="bday" required></label>
+        <label>電話<input id="memberPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required></label>
+        <div id="profileFormMessage" class="form-message hidden" role="alert"></div>
+        <button id="saveProfileButton" class="button button-dark" type="submit">儲存並開啟會員卡</button>
+      </form>
     </section>
 
     <main id="memberView" class="hidden">
@@ -54,17 +67,11 @@
         <div class="pass-footer">
           <div><span class="label">Member ID</span><strong id="memberCode">—</strong></div>
           <div><span class="label">Joined</span><strong id="joinedAt">—</strong></div>
+          <div class="service-total"><span class="label">累積消費服務時間</span><strong id="serviceMinutesTotal">0 分鐘</strong></div>
           <div class="barcode" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         </div>
       </section>
 
-      <section class="member-details" aria-label="會員權益">
-        <div class="section-heading"><div><p class="kicker">Your membership</p><h2>會員專屬內容</h2></div><span id="syncedAt" class="sync-label">剛剛同步</span></div>
-        <div class="details-grid">
-          <div class="benefits-panel"><p class="label">Member benefits</p><h3>現在可享有</h3><ul id="benefitList"></ul></div>
-          <div class="status-panel"><p class="label">Account status</p><strong id="statusTitle">會員狀態良好</strong><p id="statusMessage">你的會員資格目前正常，可以使用所有已開通的權益。</p><div class="status-line"><span></span><b id="statusLineText">Active member</b></div></div>
-        </div>
-      </section>
     </main>
   </div>
 </body>

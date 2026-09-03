@@ -5,9 +5,10 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'memberView', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'benefitList', 'statusTitle', 'statusMessage', 'statusLineText', 'syncedAt'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'memberBirthday', 'memberPhone', 'profileFormMessage', 'saveProfileButton', 'memberView', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'serviceMinutesTotal'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
+    els.profileForm.addEventListener('submit', saveProfile);
     boot();
   });
 
@@ -18,6 +19,7 @@
       state.idToken = await window.MemberSystem.signIn(state.config, 'member');
       const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
       state.profile = result.profile || {};
+      if (!state.profile.profileComplete) return setView('profileSetup');
       renderProfile(state.profile);
       setView('member');
     } catch (error) {
@@ -39,26 +41,46 @@
     els.memberTier.textContent = String(profile.tier || '一般會員');
     els.memberCode.textContent = String(profile.memberCode || '尚未建立');
     els.joinedAt.textContent = window.MemberSystem.formatDate(profile.joinedAt);
+    els.serviceMinutesTotal.textContent = formatServiceMinutes(profile.serviceMinutesTotal);
     els.memberStatus.textContent = isActive ? '使用中' : '暫停';
     els.memberStatus.parentElement.classList.toggle('inactive', !isActive);
-    els.statusTitle.textContent = isActive ? '會員狀態良好' : '會員資格暫停';
-    els.statusMessage.textContent = isActive ? '你的會員資格目前正常，可以使用所有已開通的權益。' : '目前無法使用部分會員權益，請聯絡店家確認帳戶狀態。';
-    els.statusLineText.textContent = isActive ? 'Active member' : 'Membership paused';
-
-    const benefits = Array.isArray(profile.benefits) && profile.benefits.length
-      ? profile.benefits
-      : ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'];
-    els.benefitList.replaceChildren(...benefits.slice(0, 6).map((benefit) => {
-      const item = document.createElement('li');
-      item.textContent = String(benefit);
-      return item;
-    }));
-    els.syncedAt.textContent = `剛剛同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
   }
+
+  async function saveProfile(event) {
+    event.preventDefault();
+    hideMessage();
+    const birthday = String(els.memberBirthday.value || '').trim();
+    const phone = String(els.memberPhone.value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showMessage('請填寫正確的生日。');
+    if (!/^\+?\d{8,15}$/.test(phone.replace(/[()\s-]/g, ''))) return showMessage('請填寫正確的電話。');
+    setSaving(true);
+    try {
+      const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.profile.save', { birthday, phone });
+      state.profile = result.profile || {};
+      renderProfile(state.profile);
+      setView('member');
+    } catch (error) {
+      showMessage(error && error.message || '資料暫時無法儲存，請稍後再試。');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function formatServiceMinutes(value) {
+    const minutes = Math.max(0, Math.floor(Number(value) || 0));
+    const hours = Math.floor(minutes / 60); const remainder = minutes % 60;
+    if (!hours) return `${remainder} 分鐘`;
+    return remainder ? `${hours} 小時 ${remainder} 分鐘` : `${hours} 小時`;
+  }
+
+  function setSaving(saving) { els.saveProfileButton.disabled = saving; els.saveProfileButton.textContent = saving ? '儲存中…' : '儲存並開啟會員卡'; }
+  function showMessage(message) { els.profileFormMessage.textContent = message; els.profileFormMessage.classList.remove('hidden'); }
+  function hideMessage() { els.profileFormMessage.textContent = ''; els.profileFormMessage.classList.add('hidden'); }
 
   function setView(view) {
     els.loadingView.classList.toggle('hidden', view !== 'loading');
     els.errorView.classList.toggle('hidden', view !== 'error');
+    els.profileSetupView.classList.toggle('hidden', view !== 'profileSetup');
     els.memberView.classList.toggle('hidden', view !== 'member');
   }
 

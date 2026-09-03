@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', stampRequestId: '' };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', stampRequestId: '', serviceTimeRequestId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -12,7 +12,8 @@
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
-      'stampModal', 'closeStampModal', 'stampForm', 'stampMemberId', 'stampMemberName', 'stampCardId', 'stampAmount', 'stampNote', 'stampFormMessage', 'cancelStampButton', 'saveStampButton'
+      'stampModal', 'closeStampModal', 'stampForm', 'stampMemberId', 'stampMemberName', 'stampCardId', 'stampAmount', 'stampNote', 'stampFormMessage', 'cancelStampButton', 'saveStampButton',
+      'serviceTimeModal', 'closeServiceTimeModal', 'serviceTimeForm', 'serviceTimeMemberId', 'serviceTimeMemberName', 'serviceTimeMinutes', 'serviceTimeNote', 'serviceTimeFormMessage', 'cancelServiceTimeButton', 'saveServiceTimeButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     bindEvents();
     boot();
@@ -58,7 +59,11 @@
     els.cancelStampButton.addEventListener('click', closeStampModal);
     els.closeStampModal.addEventListener('click', closeStampModal);
     els.stampModal.addEventListener('click', (event) => { if (event.target === els.stampModal) closeStampModal(); });
-    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeStampModal(); });
+    els.serviceTimeForm.addEventListener('submit', saveServiceTime);
+    els.cancelServiceTimeButton.addEventListener('click', closeServiceTimeModal);
+    els.closeServiceTimeModal.addEventListener('click', closeServiceTimeModal);
+    els.serviceTimeModal.addEventListener('click', (event) => { if (event.target === els.serviceTimeModal) closeServiceTimeModal(); });
+    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeStampModal(); closeServiceTimeModal(); });
   }
 
   async function boot() {
@@ -107,9 +112,10 @@
       const memberCell = document.createElement('td'); memberCell.append(createMemberIdentity(member));
       const tierCell = document.createElement('td'); const tier = document.createElement('span'); tier.className = 'tier-text'; tier.textContent = String(member.tier || '一般會員'); tierCell.append(tier);
       const statusCell = document.createElement('td'); const status = document.createElement('span'); status.className = `status-pill${member.status === 'active' ? '' : ' disabled'}`; status.textContent = member.status === 'active' ? '啟用中' : '已停用'; statusCell.append(status);
+      const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
       const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
-      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('編輯', 'edit-member', member.lineUserId), actionButton('＋ 集點', 'add-stamp', member.lineUserId, true)); actionsCell.append(actions);
-      row.append(memberCell, tierCell, statusCell, dateCell, actionsCell); return row;
+      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('編輯', 'edit-member', member.lineUserId), actionButton('＋ 集點', 'add-stamp', member.lineUserId, true), actionButton('＋ 服務時間', 'add-service-time', member.lineUserId)); actionsCell.append(actions);
+      row.append(memberCell, tierCell, statusCell, serviceTimeCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
     renderMemberPagination();
@@ -160,7 +166,7 @@
   }
 
   function actionButton(label, action, value, accent) { const button = document.createElement('button'); button.type = 'button'; button.className = `small-button${accent ? ' accent' : ''}`; button.dataset.action = action; button.dataset.value = String(value || ''); button.textContent = label; return button; }
-  function handleMemberTableClick(event) { const button = event.target instanceof Element ? event.target.closest('[data-action]') : null; if (!button) return; const member = state.members.find((item) => item.lineUserId === button.dataset.value); if (!member) return; if (button.dataset.action === 'edit-member') openMemberModal(member); if (button.dataset.action === 'add-stamp') openStampModal(member); }
+  function handleMemberTableClick(event) { const button = event.target instanceof Element ? event.target.closest('[data-action]') : null; if (!button) return; const member = state.members.find((item) => item.lineUserId === button.dataset.value); if (!member) return; if (button.dataset.action === 'edit-member') openMemberModal(member); if (button.dataset.action === 'add-stamp') openStampModal(member); if (button.dataset.action === 'add-service-time') openServiceTimeModal(member); }
 
   function renderCardList() {
     els.cardResultCount.textContent = String(state.cards.length); els.cardEmptyState.classList.toggle('hidden', state.cards.length !== 0);
@@ -295,6 +301,21 @@
     } catch (error) { handleActionError(error, els.stampFormMessage); } finally { setSaving(els.saveStampButton, false); }
   }
 
+  function openServiceTimeModal(member) { state.serviceTimeRequestId = createRequestId(); els.serviceTimeMemberId.value = String(member.lineUserId); els.serviceTimeMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 目前 ${formatServiceMinutes(member.serviceMinutesTotal)}`; els.serviceTimeMinutes.value = '30'; els.serviceTimeNote.value = ''; hideMessage(els.serviceTimeFormMessage); els.serviceTimeModal.classList.remove('hidden'); els.serviceTimeMinutes.focus(); }
+  function closeServiceTimeModal() { state.serviceTimeRequestId = ''; els.serviceTimeModal.classList.add('hidden'); }
+  async function saveServiceTime(event) {
+    event.preventDefault(); hideMessage(els.serviceTimeFormMessage);
+    const minutes = Number(els.serviceTimeMinutes.value);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) return showMessage(els.serviceTimeFormMessage, '請輸入 1–1440 的整數分鐘數。');
+    setSaving(els.saveServiceTimeButton, true);
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.service_minutes.add', { lineUserId: els.serviceTimeMemberId.value, minutes, note: String(els.serviceTimeNote.value || '').trim(), requestId: state.serviceTimeRequestId || (state.serviceTimeRequestId = createRequestId()) });
+      if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId');
+      closeServiceTimeModal();
+      if (await refreshAfterSuccessfulWrite('服務時間已登錄', null)) setSyncStatus(`已登錄 ${formatServiceMinutes(minutes)} · 已同步`, false);
+    } catch (error) { handleActionError(error, els.serviceTimeFormMessage); } finally { setSaving(els.saveServiceTimeButton, false); }
+  }
+
   function switchPanel(panel) { state.activePanel = panel; ['members', 'cards', 'tickets'].forEach((name) => { const selected = name === panel; els[`${name}Tab`].setAttribute('aria-selected', String(selected)); els[`${name}Panel`].classList.toggle('hidden', !selected); }); }
   function updateAccentValue() { els.accentValue.textContent = safeAccent(els.cardAccent.value).toUpperCase(); }
   function updateEditorStatus(element, status) { element.textContent = statusLabel(status); element.className = `editor-status ${status}`; }
@@ -302,6 +323,7 @@
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
   function replaceById(items, next, key) { return items.some((item) => item[key] === next[key]) ? items.map((item) => item[key] === next[key] ? next : item) : [next, ...items]; }
   function createRequestId() { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); return `request-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`; }
+  function formatServiceMinutes(value) { const minutes = Math.max(0, Math.floor(Number(value) || 0)); const hours = Math.floor(minutes / 60); const remainder = minutes % 60; if (!hours) return `${remainder} 分鐘`; return remainder ? `${hours} 小時 ${remainder} 分鐘` : `${hours} 小時`; }
   function setSaving(button, saving) { button.disabled = saving; if (saving) { button.dataset.originalText = button.textContent; button.textContent = '儲存中…'; } else button.textContent = button.dataset.originalText || button.textContent; }
   function showMessage(element, message, success) { element.textContent = message; element.classList.toggle('success', Boolean(success)); element.classList.remove('hidden'); }
   function hideMessage(element) { element.textContent = ''; element.classList.add('hidden'); element.classList.remove('success'); }

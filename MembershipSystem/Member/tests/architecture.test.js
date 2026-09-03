@@ -46,9 +46,36 @@ test('user clients expose separate entry points while admin uses one app', () =>
   assert.match(adminHtml, /cardsPanel/);
 });
 
+test('member card omits the removed member-exclusive content section', () => {
+  const memberHtml = read('member/index.html');
+  const memberApp = read('member/app.js');
+  const memberStyles = read('member/styles.css');
+  assert.doesNotMatch(memberHtml, /會員專屬內容|會員權益|benefitList|statusTitle|statusMessage|statusLineText|syncedAt/);
+  assert.doesNotMatch(memberApp, /benefitList|statusTitle|statusMessage|statusLineText|syncedAt/);
+  assert.doesNotMatch(memberStyles, /member-details|benefits-panel|status-panel/);
+});
+
+test('member card collects first-visit contact details and displays accumulated service time', () => {
+  const memberHtml = read('member/index.html');
+  const memberApp = read('member/app.js');
+  const adminHtml = read('admin/index.html');
+  const adminApp = read('admin/app.js');
+  assert.match(memberHtml, /memberBirthday/);
+  assert.match(memberHtml, /memberPhone/);
+  assert.match(memberHtml, /serviceMinutesTotal/);
+  assert.match(memberApp, /user\.member\.profile\.save/);
+  assert.match(adminHtml, /serviceTimeModal/);
+  assert.match(adminApp, /admin\.service_minutes\.add/);
+});
+
 test('all browser JavaScript and GAS files parse as JavaScript', () => {
   const files = ['shared/common.js', 'member/app.js', 'points/app.js', 'admin/app.js', 'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs'];
   files.forEach((file) => assert.doesNotThrow(() => new vm.Script(read(file), { filename: file }), file));
+});
+
+test('combined GAS deployment bundle has no duplicate declarations', () => {
+  const files = ['gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs'];
+  assert.doesNotThrow(() => new vm.Script(files.map(read).join('\n'), { filename: 'membership-gas-combined.js' }));
 });
 
 test('transport distinguishes an uncertain write outcome from a failed read response', async () => {
@@ -123,5 +150,5 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
   context.ensureMembershipStorage_();
   context.ensureMembershipStorage_();
   assert.ok(schemaChecks > 0);
-  assert.equal(schemaChecks, 11);
+  assert.equal(schemaChecks, 12);
 });

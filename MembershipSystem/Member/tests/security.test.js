@@ -54,11 +54,17 @@ test('admin authorization is server-side and pending accounts are non-privileged
 test('spreadsheet writes protect formulas and point entries are append-only', () => {
   const storage = read('gas/Storage.gs');
   const pointService = read('gas/PointCardService.gs');
+  const memberService = read('gas/MemberService.gs');
   assert.match(storage, /escapeSheetValue_/);
   assert.match(storage, /\^\[=\+\\-@\]/);
   assert.match(pointService, /appendRecord_\('PointEntries'/);
   assert.match(pointService, /PointBalances/);
   assert.match(pointService, /withDataLock_/);
+  assert.match(storage, /ServiceTimeEntries/);
+  assert.match(memberService, /appendRecord_\('ServiceTimeEntries'/);
+  assert.match(memberService, /normalizeBirthday_/);
+  assert.match(memberService, /normalizePhone_/);
+  assert.match(memberService, /REQUEST_REUSE_MISMATCH/);
 });
 
 test('CSP allows the LIFF subwindow without unsafe-eval', () => {
@@ -73,4 +79,11 @@ test('ID tokens are not explicitly written to logs or Sheets', () => {
   assert.doesNotMatch(gas, /console\.(log|info|warn|error)\([^\n]*idToken/i);
   assert.doesNotMatch(gas, /appendRecord_\([^\n]*idToken/i);
   assert.doesNotMatch(gas, /id_token[^\n]*console/i);
+});
+
+test('member birth date and phone are never sent in the client profile', () => {
+  const memberService = read('gas/MemberService.gs');
+  const profileBody = memberService.match(/function memberForClient_\(member\) \{([\s\S]*?)\n\}/);
+  assert.ok(profileBody);
+  assert.doesNotMatch(profileBody[1], /birthday|phone/);
 });

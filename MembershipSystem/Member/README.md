@@ -54,7 +54,7 @@ Member、Points 與 Admin 使用不同 LIFF/LINE Login Channel。三者至少需
 
 GAS 會建立並維護以下 schema：
 
-- `Members`：會員身份、會員編號、等級、狀態與登入時間。
+- `Members`：會員身份、會員編號、等級、狀態、登入時間，以及首次登入填寫的生日與電話。
 - `Admins`：管理端授權。第一次登入只會建立 `role=none`、`status=pending`，手動改成 `admin` / `active` 後才能進入。
 - `PointCards`：集點卡設定、相容用的最後回饋文字、公開狀態、識別色與使用期限；集點卡採持續累積的兌換制，不再以卡片完成點數作為上限。封存會保留這些資料；永久刪除則會移除它與相依紀錄。
 - `PointCardTicketTemplates`：管理端票券庫；統一管理票券名稱、類型、票券說明、使用方式、使用說明與抽獎獎項。
@@ -64,6 +64,7 @@ GAS 會建立並維護以下 schema：
 - `PointCardTicketChallenges`：舊版票券選號挑戰的歷史資料表；新流程不再寫入。
 - `PointBalances`：每位會員在每張卡的目前餘額。
 - `PointEntries`：每次補登點數的不可變流水紀錄，以及用來避免同一發點操作重複寫入的 request ID。
+- `ServiceTimeEntries`：管理端登錄的消費服務時間不可變流水；每筆帶有管理員、備註與 request ID，會員卡顯示其累積分鐘數。
 - `AuditLogs`：管理端會員/卡片/集點操作紀錄。
 
 所有 Sheet 寫入會將以 `=`, `+`, `-`, `@` 開頭的文字轉成純文字，避免公式注入；管理端更新會以 `expectedUpdatedAt` 做 optimistic concurrency control。
@@ -71,6 +72,7 @@ GAS 會建立並維護以下 schema：
 ## API actions
 
 - `user.member.bootstrap`（Member LIFF）
+- `user.member.profile.save`（Member LIFF；首次填寫生日與電話）
 - `user.pointcard.bootstrap`（Points LIFF）
 - `admin.bootstrap`
 - `admin.members.list`（支援 `memberPage`、`memberPageSize`、`memberQuery`；每頁最多 100 筆）
@@ -82,6 +84,7 @@ GAS 會建立並維護以下 schema：
 - `admin.pointcards.remove`（舊版相容別名，等同封存）
 - `admin.tickets.save`
 - `admin.stamps.add`
+- `admin.service_minutes.add`
 - `user.pointcard.ticket.redeem`
 
 `admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，`consumeStamps`（兌換消耗點數）必須為 1 點以上且不可超過 `thresholdStamps`，並以 `ticketTemplateId` 選擇票券庫中的票券。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
@@ -92,7 +95,9 @@ GAS 會建立並維護以下 schema：
 
 集點卡的 `expiryMode` 可設為 `unlimited` 或 `date`；使用 `date` 時需提供 `expiresOn`（`YYYY-MM-DD`）。到期後停止新增點數與票券核銷。管理端的「封存集點卡」會讓會員端與會員票券畫面同步隱藏，但所有資料仍保留；「永久刪除」需經兩次確認，會移除卡片、節點、節點獎項、會員票券、餘額、點數流水、舊挑戰資料與對應稽核紀錄。共用票券庫不會因刪除單一集點卡而移除。
 
-前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。讀取資料若遇到暫時性網路或非 JSON 回應，會等待後自動再試一次；寫入操作不會自動重送，以免重複異動。管理端在寫入成功後若僅畫面同步失敗，會明確提示「資料已更新」並要求重新整理，而不誤報寫入失敗；發點操作會攜帶單次 request ID，重送同一操作不會重複加點。ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
+會員第一次開啟會員卡必須填寫生日與電話；這些個資只保存在 `Members`，會員卡與管理端名冊只取得完成狀態，不回傳生日或電話。管理端可為啟用中的會員登錄 1–1440 分鐘的服務時間，會員卡會顯示所有有效流水的累積服務時間。服務時間登錄與發點同樣攜帶單次 request ID，重送同一操作不會重複寫入。
+
+前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。讀取資料若遇到暫時性網路或非 JSON 回應，會等待後自動再試一次；寫入操作不會自動重送，以免重複異動。管理端在寫入成功後若僅畫面同步失敗，會明確提示「資料已更新」並要求重新整理，而不誤報寫入失敗；ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 
 為避免首頁同步隨資料量增加而重複掃描相同 Sheet，Points bootstrap 會在資料鎖定期間讀取一次卡片、獎勵、票券範本、餘額與已發票券的快照，並建立會員／集點卡索引後完成票券補發與回應。管理端會員名冊只傳送目前頁面的資料，避免大量會員同時傳輸與渲染。所有 API 的 schema 驗證也會依 Spreadsheet 與 schema 指紋快取 120 秒；schema 變更會自動使用新指紋重新驗證。
 
