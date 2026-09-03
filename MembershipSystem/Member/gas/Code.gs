@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.5.0';
+const MEMBERSHIP_API_VERSION_ = '1.6.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
@@ -168,12 +168,23 @@ function enforceRateLimit_(principal, action) {
   const isWrite = MEMBERSHIP_WRITE_ACTIONS_.indexOf(action) !== -1;
   const limit = isWrite ? MEMBERSHIP_WRITE_LIMIT_ : MEMBERSHIP_READ_LIMIT_;
   const key = 'membership:rl:' + digest.substring(0, 32) + ':' + bucket + ':' + (isWrite ? 'w' : 'r');
+  const cache = CacheService.getScriptCache();
+
+  // Read traffic uses a best-effort cache counter so unrelated users do not
+  // serialize on one global ScriptLock. Writes keep the exact locked counter.
+  if (!isWrite) {
+    const current = Number(cache.get(key) || '0');
+    if (current + 1 > limit) throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。');
+    cache.put(key, String(current + 1), 120);
+    return;
+  }
+
   const lock = LockService.getScriptLock();
   try { lock.waitLock(1000); } catch (_) { throw new ApiError(429, 'RATE_LIMIT_BUSY', '請求過於密集，請稍後再試。'); }
   try {
-    const current = Number(CacheService.getScriptCache().get(key) || '0');
+    const current = Number(cache.get(key) || '0');
     if (current + 1 > limit) throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。');
-    CacheService.getScriptCache().put(key, String(current + 1), 120);
+    cache.put(key, String(current + 1), 120);
   } finally { lock.releaseLock(); }
 }
 
