@@ -5,6 +5,9 @@ const MEMBERSHIP_ADMIN_MEMBER_MAX_PAGE_SIZE_ = 100;
 const MEMBERSHIP_ADMIN_MEMBER_QUERY_MAX_LENGTH_ = 80;
 const MEMBERSHIP_SERVICE_MINUTES_MAX_GRANT_ = 1440;
 const MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ = 10000000;
+const MEMBERSHIP_LAST_LOGIN_TOUCH_INTERVAL_MS_ = 5 * 60 * 1000;
+const MEMBERSHIP_TIER_SETTINGS_CACHE_SECONDS_ = 120;
+const MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_ = 'membership:tier-settings:v1';
 const MEMBERSHIP_TIER_DEFINITIONS_ = Object.freeze([
   Object.freeze({ tierKey: 'general', label: '一般會員', defaultRequiredServiceMinutes: 0 }),
   Object.freeze({ tierKey: 'silver', label: '銀級會員', defaultRequiredServiceMinutes: 600 }),
@@ -17,7 +20,17 @@ function handleMemberBootstrap_(identity) {
   return { profile: memberForClient_(member) };
 }
 
+function memberNeedsLoginTouch_(member, identity, nowMs) {
+  if (String(member && member.display_name || '') !== String(identity && identity.displayName || '')) return true;
+  const lastLoginMs = new Date(String(member && member.last_login_at || '')).getTime();
+  return !Number.isFinite(lastLoginMs) || nowMs - lastLoginMs >= MEMBERSHIP_LAST_LOGIN_TOUCH_INTERVAL_MS_;
+}
+
 function ensureMember_(identity) {
+  const initialMatch = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
+  const nowMs = Date.now();
+  if (initialMatch && !memberNeedsLoginTouch_(initialMatch.record, identity, nowMs)) return initialMatch.record;
+
   return withDataLock_(function() {
     const now = nowIso_();
     const match = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
@@ -27,6 +40,7 @@ function ensureMember_(identity) {
       return member;
     }
     const member = match.record;
+    if (!memberNeedsLoginTouch_(member, identity, Date.now())) return member;
     member.display_name = identity.displayName;
     member.last_login_at = now;
     member.updated_at = now;
@@ -56,24 +70,41 @@ function adminMemberForClient_(member, serviceMinutesTotal, tierSettings) {
   return { lineUserId: String(member.line_user_id || ''), displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tier.label, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), updatedAt: String(member.updated_at || ''), serviceMinutesTotal: normalizedServiceMinutesTotal };
 }
 
+function membershipTierSettingsCache_() {
+  try { return typeof CacheService !== 'undefined' ? CacheService.getScriptCache() : null; } catch (_) { return null; }
+}
+
+function clearMembershipTierSettingsCache_() {
+  const cache = membershipTierSettingsCache_();
+  if (!cache) return;
+  try { cache.remove(MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_); } catch (_) {}
+}
+
 function ensureMembershipTierSettings_() {
   if (readRecords_('MembershipTierSettings').length) {
-    readMembershipTierSettings_();
+    readMembershipTierSettings_(true);
     return;
   }
   withDataLock_(function() {
-    if (readRecords_('MembershipTierSettings').length) {
-      readMembershipTierSettings_();
-      return;
-    }
+    if (readRecords_('MembershipTierSettings').length) return;
     const now = nowIso_();
     MEMBERSHIP_TIER_DEFINITIONS_.forEach(function(definition) {
       appendRecord_('MembershipTierSettings', { tier_key: definition.tierKey, tier_label: definition.label, required_service_minutes: String(definition.defaultRequiredServiceMinutes), updated_by: 'system', updated_at: now });
     });
+    clearMembershipTierSettingsCache_();
   });
+  readMembershipTierSettings_(true);
 }
 
-function readMembershipTierSettings_() {
+function readMembershipTierSettings_(forceFresh) {
+  const cache = membershipTierSettingsCache_();
+  if (!forceFresh && cache) {
+    try {
+      const cached = JSON.parse(cache.get(MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_) || 'null');
+      if (Array.isArray(cached) && cached.length === MEMBERSHIP_TIER_DEFINITIONS_.length) return cached;
+    } catch (_) {}
+  }
+
   const recordsByKey = {};
   readRecords_('MembershipTierSettings').forEach(function(record) {
     const tierKey = String(record.tier_key || '').trim();
@@ -82,7 +113,7 @@ function readMembershipTierSettings_() {
   });
   if (Object.keys(recordsByKey).length !== MEMBERSHIP_TIER_DEFINITIONS_.length) throw new ApiError(500, 'TIER_SETTINGS_INVALID', '會員等級設定資料不完整。');
   let previousRequiredServiceMinutes = -1;
-  return MEMBERSHIP_TIER_DEFINITIONS_.map(function(definition, index) {
+  const settings = MEMBERSHIP_TIER_DEFINITIONS_.map(function(definition, index) {
     const record = recordsByKey[definition.tierKey];
     const storedRequiredServiceMinutes = String(record.required_service_minutes || '').trim();
     const requiredServiceMinutes = Number(storedRequiredServiceMinutes);
@@ -91,6 +122,10 @@ function readMembershipTierSettings_() {
     previousRequiredServiceMinutes = requiredServiceMinutes;
     return { tierKey: definition.tierKey, label: definition.label, requiredServiceMinutes, updatedAt: String(record.updated_at || '') };
   });
+  if (cache) {
+    try { cache.put(MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_, JSON.stringify(settings), MEMBERSHIP_TIER_SETTINGS_CACHE_SECONDS_); } catch (_) {}
+  }
+  return settings;
 }
 
 function membershipTierForServiceMinutes_(serviceMinutesTotal, tierSettings) {
@@ -102,7 +137,7 @@ function membershipTierForServiceMinutes_(serviceMinutesTotal, tierSettings) {
 function memberProfileComplete_(member) { return Boolean(String(member.birthday || '').trim() && String(member.phone || '').trim()); }
 
 function serviceMinutesTotalsByMember_() {
-  return readRecords_('ServiceTimeEntries').reduce(function(totals, entry) {
+  return readRecordFields_('ServiceTimeEntries', ['line_user_id', 'minutes']).reduce(function(totals, entry) {
     const lineUserId = String(entry.line_user_id || '').trim();
     const minutes = Number(entry.minutes || 0);
     if (lineUserId && Number.isInteger(minutes) && minutes > 0) totals[lineUserId] = (totals[lineUserId] || 0) + minutes;
@@ -132,19 +167,20 @@ function normalizePhone_(value) {
 function handleMemberProfileSave_(identity, request) {
   const birthday = normalizeBirthday_(request.birthday);
   const phone = normalizePhone_(request.phone);
-  return withDataLock_(function() {
+  const member = withDataLock_(function() {
     const now = nowIso_();
     const match = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
-    const member = match ? match.record : newMemberRecord_(identity, now);
-    member.display_name = identity.displayName;
-    member.birthday = birthday;
-    member.phone = phone;
-    member.last_login_at = now;
-    member.updated_at = now;
-    if (match) updateRecordAtRow_('Members', match.rowNumber, member); else appendRecord_('Members', member);
+    const record = match ? match.record : newMemberRecord_(identity, now);
+    record.display_name = identity.displayName;
+    record.birthday = birthday;
+    record.phone = phone;
+    record.last_login_at = now;
+    record.updated_at = now;
+    if (match) updateRecordAtRow_('Members', match.rowNumber, record); else appendRecord_('Members', record);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: 'member', action: 'MEMBER_PROFILE_SAVE', target_type: 'member', target_id: identity.lineUserId, result: 'success', detail: 'Member profile contact details saved', created_at: now });
-    return { profile: memberForClient_(member) };
+    return record;
   });
+  return { profile: memberForClient_(member) };
 }
 
 function normalizeAdminMemberPageRequest_(request) {
@@ -182,13 +218,14 @@ function handleMemberUpdate_(identity, admin, request) {
   const expected = String(request.expectedUpdatedAt || '').trim();
   if (!lineUserId || lineUserId.length > 80) throw new ApiError(400, 'INVALID_MEMBER', '會員識別碼不合法。');
   if (['active', 'disabled'].indexOf(status) < 0) throw new ApiError(400, 'INVALID_MEMBER', '會員狀態不合法。');
-  return withDataLock_(function() {
+  const member = withDataLock_(function() {
     const match = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!match) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
     if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '會員資料已被更新，請重新整理。');
-    const member = match.record; member.status = status; member.updated_at = nowIso_(); updateRecordAtRow_('Members', match.rowNumber, member);
+    const record = match.record; record.status = status; record.updated_at = nowIso_(); updateRecordAtRow_('Members', match.rowNumber, record);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'MEMBER_UPDATE', target_type: 'member', target_id: lineUserId, result: 'success', detail: 'Member status updated', created_at: nowIso_() });
-    return { member: adminMemberForClient_(member, serviceMinutesTotalForMember_(lineUserId)) };
+    return record;
   });
+  return { member: adminMemberForClient_(member, serviceMinutesTotalForMember_(lineUserId)) };
 }
 
 function normalizeMembershipTierSettingsRequest_(request) {
@@ -214,8 +251,8 @@ function normalizeMembershipTierSettingsRequest_(request) {
 
 function handleMembershipTierSettingsSave_(identity, admin, request) {
   const tierSettings = normalizeMembershipTierSettingsRequest_(request);
-  return withDataLock_(function() {
-    const currentSettings = readMembershipTierSettings_();
+  withDataLock_(function() {
+    const currentSettings = readMembershipTierSettings_(true);
     const currentByKey = currentSettings.reduce(function(byKey, setting) { byKey[setting.tierKey] = setting; return byKey; }, {});
     tierSettings.forEach(function(setting) {
       if (setting.expectedUpdatedAt && currentByKey[setting.tierKey].updatedAt !== setting.expectedUpdatedAt) throw new ApiError(409, 'CONFLICT', '會員等級門檻已被更新，請重新整理。');
@@ -230,9 +267,10 @@ function handleMembershipTierSettingsSave_(identity, admin, request) {
       record.updated_at = now;
       updateRecordAtRow_('MembershipTierSettings', match.rowNumber, record);
     });
+    clearMembershipTierSettingsCache_();
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'MEMBER_TIER_SETTINGS_SAVE', target_type: 'membership_tiers', target_id: 'all', result: 'success', detail: 'Membership tier thresholds updated', created_at: now });
-    return { tierSettings: readMembershipTierSettings_() };
   });
+  return { tierSettings: readMembershipTierSettings_(true) };
 }
 
 function handleServiceMinutesAdd_(identity, admin, request) {
@@ -274,7 +312,11 @@ function handleMemberGrantAdd_(identity, admin, request) {
   return withDataLock_(function() {
     const stampResult = stamp ? addStampLocked_(identity, admin, stamp) : null;
     const serviceTimeResult = serviceTime ? addServiceMinutesLocked_(identity, admin, serviceTime) : null;
-    const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
-    return { member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)), stamps: stampResult, serviceTime: serviceTimeResult ? { minutes: serviceTime.minutes } : null };
+    let memberResult = serviceTimeResult && serviceTimeResult.member ? serviceTimeResult.member : null;
+    if (!memberResult) {
+      const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
+      memberResult = adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId));
+    }
+    return { member: memberResult, stamps: stampResult, serviceTime: serviceTimeResult ? { minutes: serviceTime.minutes } : null };
   });
 }
