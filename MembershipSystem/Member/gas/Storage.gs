@@ -23,15 +23,15 @@ function ensureMembershipStorage_() {
   const spreadsheet = resolveMembershipSpreadsheet_();
   const schemaCache = membershipSchemaCache_();
   const schemaCacheKey = membershipSchemaCacheKey_(spreadsheet.getId());
-  if (schemaCache && schemaCache.get(schemaCacheKey) === 'ready') {
-    ensureMembershipTierSettings_();
-    return spreadsheet;
-  }
-  Object.keys(MEMBERSHIP_SHEET_SCHEMAS_).forEach(function(sheetName) { ensureSheetSchema_(spreadsheet, sheetName, MEMBERSHIP_SHEET_SCHEMAS_[sheetName]); });
+  if (schemaCache && schemaCache.get(schemaCacheKey) === 'ready') return spreadsheet;
+
+  Object.keys(MEMBERSHIP_SHEET_SCHEMAS_).forEach(function(sheetName) {
+    ensureSheetSchema_(spreadsheet, sheetName, MEMBERSHIP_SHEET_SCHEMAS_[sheetName]);
+  });
+  ensureMembershipTierSettings_();
   if (schemaCache) {
     try { schemaCache.put(schemaCacheKey, 'ready', MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_); } catch (_) {}
   }
-  ensureMembershipTierSettings_();
   return spreadsheet;
 }
 
@@ -86,6 +86,28 @@ function getDataSheet_(sheetName) { const sheet = resolveMembershipSpreadsheet_(
 function readRecords_(sheetName) {
   const sheet = getDataSheet_(sheetName); const headers = MEMBERSHIP_SHEET_SCHEMAS_[sheetName]; const lastRow = sheet.getLastRow(); if (lastRow < 2) return [];
   return sheet.getRange(2, 1, lastRow - 1, headers.length).getValues().map(function(row) { return rowToRecord_(headers, row); });
+}
+
+function readRecordFields_(sheetName, fieldNames) {
+  const fields = Array.isArray(fieldNames) ? fieldNames.map(function(field) { return String(field || ''); }) : [];
+  if (!fields.length) return [];
+  const sheet = getDataSheet_(sheetName);
+  const headers = MEMBERSHIP_SHEET_SCHEMAS_[sheetName];
+  const indexes = fields.map(function(field) {
+    const index = headers.indexOf(field);
+    if (index < 0) throw new ApiError(500, 'SCHEMA_MISSING', '未知欄位：' + field);
+    return index;
+  });
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  const firstIndex = Math.min.apply(null, indexes);
+  const lastIndex = Math.max.apply(null, indexes);
+  const values = sheet.getRange(2, firstIndex + 1, lastRow - 1, lastIndex - firstIndex + 1).getValues();
+  return values.map(function(row) {
+    const record = {};
+    fields.forEach(function(field, fieldIndex) { record[field] = decodeSheetValue_(row[indexes[fieldIndex] - firstIndex]); });
+    return record;
+  });
 }
 
 function findRecordWithRow_(sheetName, keyField, keyValue) {
