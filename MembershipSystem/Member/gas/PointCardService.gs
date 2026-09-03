@@ -5,6 +5,7 @@ const POINT_CARD_MAX_REWARDS_ = 30;
 const POINT_CARD_MAX_THRESHOLD_STAMPS_ = 100;
 const POINT_CARD_MAX_LOTTERY_PRIZES_ = 30;
 const POINT_CARD_RATE_BASIS_POINTS_ = 10000;
+const POINT_CARD_TICKET_TEMPLATE_STATUSES_ = Object.freeze(['active', 'draft', 'archived']);
 const POINT_CARD_TICKET_STATUS_AVAILABLE_ = 'available';
 const POINT_CARD_TICKET_STATUS_USED_ = 'used';
 
@@ -16,13 +17,14 @@ function handlePointCardBootstrap_(identity) {
 
 function readPointCards_(includeAdminDetails) {
   const rewardsByCard = pointCardRewardsByCard_();
-  return readRecords_('PointCards').map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || [], includeAdminDetails); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  const ticketTemplatesById = pointCardTicketTemplatesById_();
+  return readRecords_('PointCards').map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || [], includeAdminDetails, ticketTemplatesById); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
 
-function pointCardForClient_(card, configuredRewards, includeAdminDetails) {
+function pointCardForClient_(card, configuredRewards, includeAdminDetails, ticketTemplatesById) {
   const cardId = String(card.card_id || '');
   const rewards = Array.isArray(configuredRewards) && configuredRewards.length
-    ? configuredRewards.map(function(reward) { return pointCardRewardForClient_(reward, includeAdminDetails); }).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
+    ? configuredRewards.map(function(reward) { return pointCardRewardForClient_(reward, includeAdminDetails, ticketTemplatesById); }).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
     : legacyPointCardReward_(card);
   const finalReward = rewards.length ? rewards[rewards.length - 1] : null;
   const clientCard = { cardId, title: String(card.title || ''), description: String(card.description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || (finalReward && finalReward.rewardTitle) || ''), rewards, expiryMode: pointCardExpiryMode_(card), expiresOn: pointCardExpiresOn_(card), expired: pointCardIsExpired_(card), status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
@@ -53,11 +55,63 @@ function pointCardLotteryPrizesByReward_() {
   return grouped;
 }
 
-function pointCardRewardForClient_(reward, includeAdminDetails) {
+function pointCardTicketTemplatesById_() {
+  const grouped = {};
+  readRecords_('PointCardTicketTemplates').forEach(function(template) {
+    const templateId = String(template.ticket_template_id || '').trim();
+    if (templateId) grouped[templateId] = template;
+  });
+  return grouped;
+}
+
+function readPointCardTicketTemplates_(includeAdminDetails) {
+  return readRecords_('PointCardTicketTemplates').map(function(template) {
+    return pointCardTicketTemplateForClient_(template, includeAdminDetails);
+  }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+}
+
+function pointCardTicketTemplateForClient_(template, includeAdminDetails) {
+  const ticketType = String(template.ticket_type || 'coupon').toLowerCase() === 'lottery' ? 'lottery' : 'coupon';
+  const clientTemplate = {
+    ticketTemplateId: String(template.ticket_template_id || ''),
+    title: String(template.title || ''),
+    ticketType,
+    description: String(template.description || ''),
+    usageMethod: String(template.usage_method || ''),
+    usageInstructions: String(template.usage_instructions || ''),
+    status: POINT_CARD_TICKET_TEMPLATE_STATUSES_.indexOf(String(template.status || 'draft')) >= 0 ? String(template.status || 'draft') : 'draft',
+    createdAt: String(template.created_at || ''),
+    updatedAt: String(template.updated_at || ''),
+    prizes: parseJsonArray_(template.lottery_prizes_json).map(function(prize) { return pointCardLotteryPrizeForClient_(prize, includeAdminDetails); })
+  };
+  return clientTemplate;
+}
+
+function pointCardRewardForClient_(reward, includeAdminDetails, ticketTemplatesById) {
   const thresholdStamps = Number(reward.threshold_stamps || reward.thresholdStamps || 0);
+  const ticketTemplateId = String(reward.ticket_template_id || reward.ticketTemplateId || '').trim();
+  const template = ticketTemplateId && ticketTemplatesById ? ticketTemplatesById[ticketTemplateId] : null;
+  if (template) {
+    const clientTemplate = pointCardTicketTemplateForClient_(template, includeAdminDetails);
+    return {
+      rewardId: String(reward.reward_id || reward.rewardId || ''),
+      cardId: String(reward.card_id || reward.cardId || ''),
+      ticketTemplateId,
+      thresholdStamps,
+      consumeStamps: rewardConsumeStamps_(reward, thresholdStamps),
+      rewardType: clientTemplate.ticketType,
+      rewardTitle: clientTemplate.title,
+      rewardDescription: clientTemplate.description,
+      usageMethod: clientTemplate.usageMethod,
+      usageInstructions: clientTemplate.usageInstructions,
+      lotteryWinRate: 0,
+      prizes: clientTemplate.prizes
+    };
+  }
   const clientReward = {
     rewardId: String(reward.reward_id || reward.rewardId || ''),
     cardId: String(reward.card_id || reward.cardId || ''),
+    ticketTemplateId,
     thresholdStamps,
     consumeStamps: rewardConsumeStamps_(reward, thresholdStamps),
     rewardType: POINT_CARD_REWARD_TYPES_.indexOf(String(reward.reward_type || reward.rewardType || '').toLowerCase()) >= 0 ? String(reward.reward_type || reward.rewardType).toLowerCase() : 'coupon',
@@ -131,9 +185,10 @@ function handlePointCardRemove_(identity, admin, request) {
 function handleAdminBootstrap_(identity, admin) {
   const members = readMembers_();
   const cards = readPointCards_(true);
+  const tickets = readPointCardTicketTemplates_(true);
   const entries = readRecords_('PointEntries');
   const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
-  return { profile: { displayName: identity.displayName }, role: admin.role, members, cards, stats: { memberCount: members.length, activeMemberCount: members.filter(function(member) { return member.status === 'active'; }).length, activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
+  return { profile: { displayName: identity.displayName }, role: admin.role, members, cards, tickets, stats: { memberCount: members.length, activeMemberCount: members.filter(function(member) { return member.status === 'active'; }).length, activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
 }
 
 function handlePointCardSave_(identity, admin, request) {
@@ -150,7 +205,8 @@ function handlePointCardSave_(identity, admin, request) {
   const expected = String(request.expectedUpdatedAt || '').trim();
   const hasRewards = Object.prototype.hasOwnProperty.call(input, 'rewards');
   if (!title || title.length > 80 || description.length > 240 || (!hasRewards && (!rewardTitle || rewardTitle.length > 100))) throw new ApiError(400, 'INVALID_CARD', '集點卡名稱、說明或回饋內容不合法。');
-  const rewards = hasRewards ? normalizePointCardRewards_(input.rewards, POINT_CARD_MAX_THRESHOLD_STAMPS_) : null;
+  const ticketTemplatesById = pointCardTicketTemplatesById_();
+  const rewards = hasRewards ? normalizePointCardRewards_(input.rewards, POINT_CARD_MAX_THRESHOLD_STAMPS_, ticketTemplatesById) : null;
   if (['active', 'draft', 'archived'].indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(accent) || ['unlimited', 'date'].indexOf(expiryMode) < 0 || (expiryMode === 'date' && !isValidDateOnly_(expiresOn))) throw new ApiError(400, 'INVALID_CARD', '集點卡狀態、識別色或使用期限不合法。');
 
   return withDataLock_(function() {
@@ -176,11 +232,53 @@ function handlePointCardSave_(identity, admin, request) {
     if (rowNumber) updateRecordAtRow_('PointCards', rowNumber, card); else appendRecord_('PointCards', card);
     if (hasRewards) replacePointCardRewards_(card.card_id, rewards, now);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_SAVE', target_type: 'point_card', target_id: card.card_id, result: 'success', detail: 'Point card saved', created_at: now });
-    return { card: pointCardForClient_(card, hasRewards ? rewards : existingRewards, true) };
+    return { card: pointCardForClient_(card, hasRewards ? rewards : existingRewards, true, ticketTemplatesById) };
   });
 }
 
-function normalizePointCardRewards_(rawRewards, maxThresholdStamps) {
+function handleTicketTemplateSave_(identity, admin, request) {
+  const input = request.ticket && typeof request.ticket === 'object' && !Array.isArray(request.ticket) ? request.ticket : {};
+  const ticketTemplateId = String(input.ticketTemplateId || '').trim();
+  const title = String(input.title || '').trim();
+  const ticketType = String(input.ticketType || '').trim().toLowerCase();
+  const description = String(input.description || '').trim();
+  const usageMethod = String(input.usageMethod || '').trim();
+  const usageInstructions = String(input.usageInstructions || '').trim();
+  const status = String(input.status || '').trim().toLowerCase();
+  const expected = String(request.expectedUpdatedAt || '').trim();
+  if (!title || title.length > 100 || POINT_CARD_REWARD_TYPES_.indexOf(ticketType) < 0 || description.length > 240 || !usageMethod || usageMethod.length > 120 || !usageInstructions || usageInstructions.length > 500 || POINT_CARD_TICKET_TEMPLATE_STATUSES_.indexOf(status) < 0) {
+    throw new ApiError(400, 'INVALID_TICKET_TEMPLATE', '票券名稱、類型、說明、使用方式、使用說明或狀態不合法。');
+  }
+  const prizes = ticketType === 'lottery' ? normalizePointCardLotteryPrizes_(input.prizes) : [];
+  return withDataLock_(function() {
+    const now = nowIso_();
+    let template;
+    let rowNumber = 0;
+    if (ticketTemplateId) {
+      const match = findRecordWithRow_('PointCardTicketTemplates', 'ticket_template_id', ticketTemplateId);
+      if (!match) throw new ApiError(404, 'TICKET_TEMPLATE_NOT_FOUND', '找不到票券。');
+      if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '票券已被更新，請重新整理。');
+      template = match.record;
+      rowNumber = match.rowNumber;
+    } else {
+      template = { ticket_template_id: 'PT-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), created_by: identity.lineUserId, created_at: now };
+    }
+    template.title = title;
+    template.ticket_type = ticketType;
+    template.description = description;
+    template.usage_method = usageMethod;
+    template.usage_instructions = usageInstructions;
+    template.lottery_prizes_json = JSON.stringify(prizes);
+    template.status = status;
+    template.updated_by = identity.lineUserId;
+    template.updated_at = now;
+    if (rowNumber) updateRecordAtRow_('PointCardTicketTemplates', rowNumber, template); else appendRecord_('PointCardTicketTemplates', template);
+    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_TICKET_TEMPLATE_SAVE', target_type: 'point_card_ticket_template', target_id: template.ticket_template_id, result: 'success', detail: 'Ticket template saved', created_at: now });
+    return { ticket: pointCardTicketTemplateForClient_(template, true) };
+  });
+}
+
+function normalizePointCardRewards_(rawRewards, maxThresholdStamps, ticketTemplatesById) {
   if (!Array.isArray(rawRewards) || rawRewards.length < 1 || rawRewards.length > POINT_CARD_MAX_REWARDS_) throw new ApiError(400, 'INVALID_CARD_REWARDS', '至少要設定 1 個節點，最多 30 個節點。');
   const maximum = maxThresholdStamps === undefined ? POINT_CARD_MAX_THRESHOLD_STAMPS_ : Number(maxThresholdStamps);
   const seenThresholds = {};
@@ -188,19 +286,26 @@ function normalizePointCardRewards_(rawRewards, maxThresholdStamps) {
     if (!rawReward || typeof rawReward !== 'object' || Array.isArray(rawReward)) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點獎勵格式不合法。');
     const thresholdStamps = Number(rawReward.thresholdStamps);
     const consumeStamps = rawReward.consumeStamps === undefined || rawReward.consumeStamps === null || String(rawReward.consumeStamps).trim() === '' ? thresholdStamps : Number(rawReward.consumeStamps);
+    const ticketTemplateId = String(rawReward.ticketTemplateId || '').trim();
+    const ticketTemplate = ticketTemplateId && ticketTemplatesById ? ticketTemplatesById[ticketTemplateId] : null;
     const rewardType = String(rawReward.rewardType || '').trim().toLowerCase();
     const rewardTitle = String(rawReward.rewardTitle || '').trim();
     const rewardDescription = String(rawReward.rewardDescription || '').trim();
     if (!Number.isInteger(thresholdStamps) || thresholdStamps < 1 || thresholdStamps > maximum || seenThresholds[thresholdStamps]) throw new ApiError(400, 'INVALID_CARD_REWARDS', '需要集到的點數必須是互不重複、且介於 1–' + maximum + ' 點。');
     if (!Number.isInteger(consumeStamps) || consumeStamps < 1 || consumeStamps > thresholdStamps) throw new ApiError(400, 'INVALID_CARD_REWARDS', '每個獎勵的消耗點數必須是 1 點以上，且不可超過需要集到的點數。');
-    if (POINT_CARD_REWARD_TYPES_.indexOf(rewardType) < 0 || !rewardTitle || rewardTitle.length > 100 || rewardDescription.length > 240) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點獎勵名稱、說明或類型不合法。');
+    if (ticketTemplateId && (!ticketTemplate || String(ticketTemplate.status || '') !== 'active')) throw new ApiError(400, 'INVALID_CARD_REWARDS', '請選擇一張啟用中的票券。');
+    if (!ticketTemplate && (POINT_CARD_REWARD_TYPES_.indexOf(rewardType) < 0 || !rewardTitle || rewardTitle.length > 100 || rewardDescription.length > 240)) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點獎勵名稱、說明或類型不合法。');
     seenThresholds[thresholdStamps] = true;
     let lotteryWinRate = 0;
     let prizes = [];
+    if (ticketTemplate) {
+      const templateType = String(ticketTemplate.ticket_type || '').toLowerCase() === 'lottery' ? 'lottery' : 'coupon';
+      return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), ticket_template_id: ticketTemplateId, reward_type: templateType, reward_title: String(ticketTemplate.title || ''), reward_description: String(ticketTemplate.description || ''), lottery_win_rate: String(lotteryWinRate), prizes: [], created_at: '', updated_at: '', consume_stamps: String(consumeStamps) };
+    }
     if (rewardType === 'lottery') {
       prizes = normalizePointCardLotteryPrizes_(rawReward.prizes);
     }
-    return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), reward_type: rewardType, reward_title: rewardTitle, reward_description: rewardDescription, lottery_win_rate: String(lotteryWinRate), prizes, created_at: '', updated_at: '', consume_stamps: String(consumeStamps) };
+    return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), ticket_template_id: '', reward_type: rewardType, reward_title: rewardTitle, reward_description: rewardDescription, lottery_win_rate: String(lotteryWinRate), prizes, created_at: '', updated_at: '', consume_stamps: String(consumeStamps) };
   }).sort(function(a, b) { return Number(a.threshold_stamps) - Number(b.threshold_stamps); });
   return normalized;
 }
@@ -318,7 +423,15 @@ function issuePointCardTicketsForBalance_(lineUserId, card, currentBalance, next
   const issuedTickets = [];
   if (!cardId) return issuedTickets;
   const configured = pointCardRewardsByCard_()[cardId] || [];
-  const rewards = configured.length ? configured : legacyPointCardReward_(card);
+  const ticketTemplatesById = pointCardTicketTemplatesById_();
+  const rewards = configured.length
+    ? configured.map(function(reward) {
+      const ticketTemplateId = String(reward.ticket_template_id || '').trim();
+      const template = ticketTemplateId ? ticketTemplatesById[ticketTemplateId] : null;
+      if (template && String(template.status || '') !== 'active') return null;
+      return pointCardRewardForClient_(reward, true, ticketTemplatesById);
+    }).filter(function(reward) { return Boolean(reward); })
+    : legacyPointCardReward_(card);
   const existingByKey = {};
   readRecords_('PointCardTickets').forEach(function(ticket) {
     if (String(ticket.line_user_id || '') !== String(lineUserId) || String(ticket.card_id || '') !== cardId) return;
@@ -365,12 +478,15 @@ function ticketRecordFromReward_(lineUserId, cardId, reward, usageKey, now) {
     line_user_id: String(lineUserId),
     card_id: String(cardId),
     reward_id: String(reward.reward_id || reward.rewardId || ''),
+    ticket_template_id: String(reward.ticket_template_id || reward.ticketTemplateId || ''),
     reward_key: String(usageKey),
     threshold_stamps: String(thresholdStamps),
     consume_stamps: String(rewardConsumeStamps_(reward, thresholdStamps)),
     ticket_type: String(reward.reward_type || reward.rewardType || 'coupon').toLowerCase() === 'lottery' ? 'lottery' : 'coupon',
     ticket_title: String(reward.reward_title || reward.rewardTitle || ''),
     ticket_description: String(reward.reward_description || reward.rewardDescription || ''),
+    usage_method: String(reward.usage_method || reward.usageMethod || ''),
+    usage_instructions: String(reward.usage_instructions || reward.usageInstructions || ''),
     lottery_prizes_json: JSON.stringify(prizes),
     status: POINT_CARD_TICKET_STATUS_AVAILABLE_,
     earned_at: now,
@@ -401,6 +517,9 @@ function ticketForClient_(ticket) {
     ticketType: String(ticket.ticket_type || 'coupon'),
     ticketTitle: String(ticket.ticket_title || ''),
     ticketDescription: String(ticket.ticket_description || ''),
+    ticketTemplateId: String(ticket.ticket_template_id || ''),
+    usageMethod: String(ticket.usage_method || ''),
+    usageInstructions: String(ticket.usage_instructions || ''),
     prizes,
     status: String(ticket.status || POINT_CARD_TICKET_STATUS_AVAILABLE_),
     earnedAt: String(ticket.earned_at || ''),

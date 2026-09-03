@@ -44,3 +44,4 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
 @media (max-width: 760px) { .prize-row { grid-template-columns: 1fr 1fr; }.prize-description-field { grid-column: 1 / -1; }.remove-prize { justify-self: start; } }
 @media (max-width: 480px) { .reward-editor { padding: 13px; }.reward-row-grid, .prize-row { grid-template-columns: 1fr; }.prize-description-field { grid-column: auto; } }
 .button-danger { color: #a33f35; background: #fff0ec; border: 1px solid #f1c9c0; }.button-danger:disabled { color: #9b9891; background: #f4f5f2; border-color: var(--line); cursor: not-allowed; }
+.ticket-workspace .card-list-item strong::before { content: '✦'; display: inline-block; margin-right: 7px; color: var(--coral); }.ticket-workspace .card-list-item small { padding-left: 17px; }.ticket-workspace .lottery-prize-editor { margin-top: 2px; }

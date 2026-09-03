@@ -109,6 +109,31 @@ test('PointCard reward validation accepts 0% and rejects duplicate or out-of-ran
   assert.throws(() => normalize([{ thresholdStamps: 10, rewardType: 'lottery', rewardTitle: '總和錯誤', prizes: [{ prizeTitle: '獎項 A', winRate: 40 }, { prizeTitle: '獎項 B', winRate: 40 }] }], 20), (error) => error instanceof TestApiError && error.code === 'INVALID_CARD_REWARDS');
 });
 
+test('point card nodes can select a managed ticket template without duplicating its UI configuration', () => {
+  const { context, normalize } = loadPointCardService();
+  const templates = {
+    'PT-COFFEE': {
+      ticket_template_id: 'PT-COFFEE', title: '免費咖啡', ticket_type: 'coupon', description: '可兌換中杯咖啡', usage_method: '結帳前出示本券', usage_instructions: '確認使用後請向店員出示完成畫面。', lottery_prizes_json: '[]', status: 'active'
+    }
+  };
+  const reward = normalize([{ thresholdStamps: 5, consumeStamps: 3, ticketTemplateId: 'PT-COFFEE' }], 20, templates)[0];
+  assert.equal(reward.ticket_template_id, 'PT-COFFEE');
+  assert.equal(reward.reward_title, '免費咖啡');
+  const clientReward = context.pointCardRewardForClient_(reward, false, templates);
+  assert.equal(clientReward.ticketTemplateId, 'PT-COFFEE');
+  assert.equal(clientReward.usageMethod, '結帳前出示本券');
+  assert.equal(clientReward.usageInstructions, '確認使用後請向店員出示完成畫面。');
+});
+
+test('archiving a managed ticket stops new issuance without removing already earned tickets', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCardTickets[0].status = 'used';
+  context.pointCardRewardsByCard_ = () => ({ 'PC-1': [{ reward_id: 'PR-1', card_id: 'PC-1', threshold_stamps: '5', consume_stamps: '5', ticket_template_id: 'PT-ARCHIVED' }] });
+  context.pointCardTicketTemplatesById_ = () => ({ 'PT-ARCHIVED': { ticket_template_id: 'PT-ARCHIVED', status: 'archived', ticket_type: 'coupon', title: '停止發放的票券' } });
+  context.issuePointCardTicketsForBalance_('U-1', rows.PointCards[0], 4, 5, '2026-09-02T00:00:00.000Z');
+  assert.equal(rows.PointCardTickets.length, 1);
+});
+
 test('legacy cards still expose their original final reward as a coupon node', () => {
   const { context } = loadPointCardService();
   const card = context.pointCardForClient_({ card_id: 'PC-OLD', target_stamps: '20', reward_title: '免費咖啡', status: 'active' });
@@ -266,7 +291,7 @@ test('consumable tickets are reissued once while the balance covers consumption'
   assert.equal(rows.PointCardTickets[2].status, 'available');
 });
 
-test('admin and member surfaces expose milestone reward controls and progress', () => {
+test('admin ticket library and member ticket confirmation flow are present', () => {
   const adminHtml = read('admin/index.html');
   const adminApp = read('admin/app.js');
   const pointsHtml = read('points/index.html');
@@ -274,45 +299,49 @@ test('admin and member surfaces expose milestone reward controls and progress', 
   const pointsStyles = read('points/styles.css');
   const storage = read('gas/Storage.gs');
   assert.match(storage, /PointCardRewards:/);
+  assert.match(storage, /PointCardTicketTemplates:/);
   assert.match(storage, /PointCardLotteryPrizes:/);
+  assert.match(storage, /ticket_template_id/);
+  assert.match(storage, /usage_method/);
+  assert.match(storage, /usage_instructions/);
   assert.match(storage, /threshold_stamps/);
   assert.match(storage, /win_rate/);
   assert.match(adminHtml, /id="rewardRows"/);
   assert.match(adminHtml, /id="addRewardButton"/);
-  assert.match(adminApp, /rewardType/);
-  assert.match(adminApp, /prizeTitle/);
-  assert.match(adminApp, /data-add-prize/);
-  assert.match(adminApp, /平均分配/);
-  assert.match(adminApp, /updateRewardRowSummary/);
-  assert.match(adminApp, /card\.rewards/);
-  assert.match(pointsHtml, /id="milestoneList"/);
-  assert.match(pointsApp, /renderMilestones/);
-  assert.match(pointsApp, /prize-opportunities/);
-  assert.doesNotMatch(pointsStyles, /prize-opportunity span:last-child \{ display: none; \}/);
+  assert.match(adminHtml, /id="ticketsTab"/);
+  assert.match(adminHtml, /id="ticketsPanel"/);
+  assert.match(adminHtml, /id="ticketUsageMethod"/);
+  assert.match(adminHtml, /id="ticketUsageInstructions"/);
+  assert.match(adminApp, /ticketTemplateId/);
+  assert.match(adminApp, /admin\.tickets\.save/);
+  assert.match(adminHtml, /平均分配/);
+  assert.match(adminApp, /選擇票券/);
+  assert.doesNotMatch(adminHtml, /獎勵類型/);
+  assert.match(pointsHtml, /id="ticketList"/);
+  assert.match(pointsHtml, /id="ticketModalUsageInstructions"/);
+  assert.match(pointsHtml, /id="confirmTicketUseButton"/);
+  assert.doesNotMatch(pointsHtml, /id="milestoneList"/);
+  assert.doesNotMatch(pointsApp, /renderMilestones/);
+  assert.doesNotMatch(pointsApp, /已取得票券 · 還差/);
+  assert.match(pointsStyles, /member-ticket-list/);
   assert.match(pointsApp, /data-use-ticket/);
   assert.doesNotMatch(pointsApp, /prizeRate/);
-  assert.doesNotMatch(pointsApp, /winRate/);
   assert.match(pointsApp, /lottery-reveal/);
   assert.doesNotMatch(adminHtml, /ticket-code-settings|generateTicketUsageCodeButton|票券使用密碼/);
   assert.doesNotMatch(adminApp, /generateTicketUsageCode|usage-code\.generate|updateTicketUsageCodeUI/);
   assert.doesNotMatch(adminApp, /data-generate-usage-code/);
   assert.match(adminApp, /admin\.pointcards\.remove/);
-  assert.match(pointsHtml, /id="ticketChoices"/);
   assert.match(storage, /PointCardTickets:/);
-  assert.match(pointsHtml, /確認後會立即使用/);
+  assert.match(pointsHtml, /確認使用這張票券/);
+  assert.match(pointsApp, /confirmTicketUseButton\.addEventListener/);
   assert.match(pointsApp, /redeemTicket/);
   assert.doesNotMatch(pointsApp, /handleTicketChoice|startTicketChallenge|selectedCode|challengeId|ticket\.challenge/);
   assert.doesNotMatch(read('gas/PointCardService.gs'), /ticketUsageCode|handleTicketChallenge_|selectedCode|POINT_CARD_TICKET_OPTION_COUNT_|POINT_CARD_TICKET_CODE_LENGTH_/);
   assert.doesNotMatch(read('gas/Code.gs'), /usage-code\.generate|ticket\.challenge/);
   assert.match(adminApp, /consumeStamps/);
   assert.match(adminHtml, /cardExpiryMode/);
-  assert.match(pointsApp, /使用消耗/);
-  assert.match(pointsApp, /點數不足/);
-  assert.match(pointsApp, /已取得票券 · 還差/);
   assert.doesNotMatch(pointsHtml, /targetCount|progressBar/);
   assert.doesNotMatch(adminHtml, /完成需要/);
-  assert.match(pointsHtml, /兌換票券節點/);
-  assert.match(adminHtml, /持續累積/);
   assert.match(pointsApp, /state\.tickets = state\.tickets\.filter/);
   assert.match(pointsApp, /result\.nextTickets/);
   assert.match(read('gas/PointCardService.gs'), /storedTargetStamps/);

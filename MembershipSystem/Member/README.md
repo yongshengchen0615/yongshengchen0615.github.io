@@ -57,9 +57,10 @@ GAS 會建立並維護以下 schema：
 - `Members`：會員身份、會員編號、等級、狀態與登入時間。
 - `Admins`：管理端授權。第一次登入只會建立 `role=none`、`status=pending`，手動改成 `admin` / `active` 後才能進入。
 - `PointCards`：集點卡設定、相容用的最後回饋文字、公開狀態、識別色與使用期限；集點卡採持續累積的兌換制，不再以卡片完成點數作為上限。
-- `PointCardRewards`：每張集點卡的節點獎勵；包含需要集到的點數、兌換消耗點數、優惠券/抽獎券類型與獎勵說明，並保留舊版 `lottery_win_rate` 欄位供相容。
-- `PointCardLotteryPrizes`：抽獎券節點的多個獎項與各自中獎率；允許單一獎項為 0%，同一抽獎券的獎項機率總和必須為 100%。
-- `PointCardTickets`：會員達成節點後產生的優惠券/抽獎券；保存票券狀態、兌換消耗點數、抽獎結果與核銷歷史。
+- `PointCardTicketTemplates`：管理端票券庫；統一管理票券名稱、類型、票券說明、使用方式、使用說明與抽獎獎項。
+- `PointCardRewards`：每張集點卡的節點設定；只保存需要集到的點數、兌換消耗點數與選取的票券 ID。既有直接設定的舊節點仍可讀取。
+- `PointCardLotteryPrizes`：舊版抽獎券節點的獎項資料，保留相容與歷史讀取；新抽獎券的獎項設定儲存在票券庫。
+- `PointCardTickets`：會員達成節點後產生的優惠券/抽獎券快照；保存當下的票券說明、使用方式、使用說明、兌換消耗點數、抽獎結果與核銷歷史。
 - `PointCardTicketChallenges`：舊版票券選號挑戰的歷史資料表；新流程不再寫入。
 - `PointBalances`：每位會員在每張卡的目前餘額。
 - `PointEntries`：每次補登點數的不可變流水紀錄。
@@ -77,12 +78,15 @@ GAS 會建立並維護以下 schema：
 - `admin.member.update`
 - `admin.pointcards.save`
 - `admin.pointcards.remove`（封存集點卡，保留歷史資料）
+- `admin.tickets.save`
 - `admin.stamps.add`
 - `user.pointcard.ticket.redeem`
 
-`admin.pointcards.save` 的 `card.rewards` 是兌換票券節點陣列。每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數；集點卡會持續累積，不存在會員端顯示的點數上限。`consumeStamps`（兌換消耗點數）必須為 1 點以上且不可超過 `thresholdStamps`；`rewardType` 可為 `coupon` 或 `lottery`。抽獎券節點的 `prizes` 可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。舊版呼叫若未提供 `card.rewards`，仍沿用 `targetStamps` 相容處理。
+`admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，`consumeStamps`（兌換消耗點數）必須為 1 點以上且不可超過 `thresholdStamps`，並以 `ticketTemplateId` 選擇票券庫中的票券。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
 
-會員取得票券後，點擊「使用這張券」即可直接核銷；後端仍檢查票券所屬會員、集點卡狀態/期限、目前餘額與一次性使用狀態。核銷成功會依 `consumeStamps` 扣除點數並寫入負數流水紀錄；抽獎券由後端開獎，會員端播放動畫且只顯示獎項名稱，不顯示機率。已使用票券不再回傳給會員端，後端歷史紀錄仍保留。
+升級後，既有集點節點與已發出的票券都會保留。若要讓既有節點使用新的統一票券說明，先在「票券」建立並啟用票券，再回到該集點卡為節點選擇它。
+
+會員取得票券後，會先在「我的票券」閱讀票券說明、使用方式與使用說明，再由本人按下「確認使用這張票券」才會核銷。後端仍檢查票券所屬會員、集點卡狀態/期限、目前餘額與一次性使用狀態。核銷成功會依 `consumeStamps` 扣除點數並寫入負數流水紀錄；抽獎券由後端開獎，會員端播放動畫且只顯示獎項名稱，不顯示機率。已使用票券不再回傳給會員端，後端歷史紀錄仍保留。
 
 集點卡的 `expiryMode` 可設為 `unlimited` 或 `date`；使用 `date` 時需提供 `expiresOn`（`YYYY-MM-DD`）。到期後停止新增點數與票券核銷；管理端移除集點卡會封存卡片，會員端與會員票券畫面同步隱藏，資料仍保留供稽核。
 
