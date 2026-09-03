@@ -92,21 +92,35 @@ function readIdentityCache_(cacheKey, clientType) {
   } catch (_) { return null; }
 }
 
+function assertAuthorizedAdminRecord_(admin, identity) {
+  const role = String(admin && admin.role || '').trim().toLowerCase();
+  const status = String(admin && admin.status || '').trim().toLowerCase();
+  if (status === 'pending') throw new ApiError(403, 'ADMIN_PENDING', '此 LINE 帳號尚未完成管理權限授權。', { lineUserId: identity.lineUserId });
+  if (status !== 'active' || role !== 'admin') throw new ApiError(403, 'ADMIN_FORBIDDEN', '此 LINE 帳號沒有管理端權限。');
+  return Object.freeze({ role: 'admin', status: 'active' });
+}
+
 function authorizeAdmin_(identity) {
+  const match = findRecordWithRow_('Admins', 'line_user_id', identity.lineUserId);
+  if (match) {
+    const authorized = assertAuthorizedAdminRecord_(match.record, identity);
+    if (String(match.record.display_name || '') === identity.displayName) return authorized;
+  }
+
   return withDataLock_(function() {
     const now = nowIso_();
-    const match = findRecordWithRow_('Admins', 'line_user_id', identity.lineUserId);
-    if (!match) {
+    const lockedMatch = findRecordWithRow_('Admins', 'line_user_id', identity.lineUserId);
+    if (!lockedMatch) {
       appendRecord_('Admins', { line_user_id: identity.lineUserId, display_name: identity.displayName, role: 'none', status: 'pending', first_seen_at: now, updated_at: now });
       appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: 'none', action: 'ADMIN_ACCESS_PENDING', target_type: 'admin_access', target_id: identity.lineUserId, result: 'denied', detail: 'First admin login recorded as pending', created_at: now });
       throw new ApiError(403, 'ADMIN_PENDING', '此 LINE 帳號尚未完成管理權限授權。', { lineUserId: identity.lineUserId });
     }
-    const admin = match.record;
-    const role = String(admin.role || '').trim().toLowerCase();
-    const status = String(admin.status || '').trim().toLowerCase();
-    if (status === 'pending') throw new ApiError(403, 'ADMIN_PENDING', '此 LINE 帳號尚未完成管理權限授權。', { lineUserId: identity.lineUserId });
-    if (status !== 'active' || role !== 'admin') throw new ApiError(403, 'ADMIN_FORBIDDEN', '此 LINE 帳號沒有管理端權限。');
-    if (String(admin.display_name || '') !== identity.displayName) { admin.display_name = identity.displayName; admin.updated_at = now; updateRecordAtRow_('Admins', match.rowNumber, admin); }
-    return Object.freeze({ role: 'admin', status: 'active' });
+    const authorized = assertAuthorizedAdminRecord_(lockedMatch.record, identity);
+    if (String(lockedMatch.record.display_name || '') !== identity.displayName) {
+      lockedMatch.record.display_name = identity.displayName;
+      lockedMatch.record.updated_at = now;
+      updateRecordAtRow_('Admins', lockedMatch.rowNumber, lockedMatch.record);
+    }
+    return authorized;
   });
 }
