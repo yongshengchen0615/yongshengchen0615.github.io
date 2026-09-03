@@ -54,7 +54,7 @@ Member、Points 與 Admin 使用不同 LIFF/LINE Login Channel。三者至少需
 
 GAS 會建立並維護以下 schema：
 
-- `Members`：會員身份、會員編號、等級、狀態、登入時間，以及首次登入填寫的生日與電話。
+- `Members`：會員身份、會員編號、狀態、登入時間，以及首次登入填寫的生日與電話；舊有的 `tier` 欄位僅供相容，會員顯示等級一律由累積消費服務時間計算。
 - `Admins`：管理端授權。第一次登入只會建立 `role=none`、`status=pending`，手動改成 `admin` / `active` 後才能進入。
 - `PointCards`：集點卡設定、相容用的最後回饋文字、公開狀態、識別色與使用期限；集點卡採持續累積的兌換制，不再以卡片完成點數作為上限。封存會保留這些資料；永久刪除則會移除它與相依紀錄。
 - `PointCardTicketTemplates`：管理端票券庫；統一管理票券名稱、類型、票券說明、使用方式、使用說明與抽獎獎項。
@@ -65,6 +65,7 @@ GAS 會建立並維護以下 schema：
 - `PointBalances`：每位會員在每張卡的目前餘額。
 - `PointEntries`：每次補登點數的不可變流水紀錄，以及用來避免同一發點操作重複寫入的 request ID。
 - `ServiceTimeEntries`：管理端登錄的消費服務時間不可變流水；每筆帶有管理員、備註與 request ID，會員卡顯示其累積分鐘數。
+- `MembershipTierSettings`：四個固定會員等級（一般、銀級、金級、白金）的升級門檻；一般會員固定從 0 分鐘開始，其餘三個門檻必須依序遞增。
 - `AuditLogs`：管理端會員/卡片/集點操作紀錄。
 
 所有 Sheet 寫入會將以 `=`, `+`, `-`, `@` 開頭的文字轉成純文字，避免公式注入；管理端更新會以 `expectedUpdatedAt` 做 optimistic concurrency control。
@@ -78,6 +79,7 @@ GAS 會建立並維護以下 schema：
 - `admin.members.list`（支援 `memberPage`、`memberPageSize`、`memberQuery`；每頁最多 100 筆）
 - `admin.pointcards.list`
 - `admin.member.update`
+- `admin.member-tiers.save`
 - `admin.pointcards.save`
 - `admin.pointcards.archive`（封存集點卡，保留歷史資料）
 - `admin.pointcards.delete`（永久刪除集點卡與相依資料）
@@ -96,7 +98,7 @@ GAS 會建立並維護以下 schema：
 
 集點卡的 `expiryMode` 可設為 `unlimited` 或 `date`；使用 `date` 時需提供 `expiresOn`（`YYYY-MM-DD`）。到期後停止新增點數與票券核銷。管理端的「封存集點卡」會讓會員端與會員票券畫面同步隱藏，但所有資料仍保留；「永久刪除」需經兩次確認，會移除卡片、節點、節點獎項、會員票券、餘額、點數流水、舊挑戰資料與對應稽核紀錄。共用票券庫不會因刪除單一集點卡而移除。
 
-會員第一次開啟會員卡必須填寫生日與電話；這些個資只保存在 `Members`，並只回傳給已驗證的本人會員卡顯示，管理端名冊不會取得生日或電話。管理端的「發放」視窗可勾選集點、服務時間或兩者並同時提交；發點需要選擇啟用中的集點卡與 1–100 點，服務時間可登錄 1–1440 分鐘，所有表面都會以分鐘顯示累積服務時間。合併發放與原本個別發放同樣攜帶單次 request ID，重送同一操作不會重複寫入。
+會員第一次開啟會員卡必須填寫生日與電話；這些個資只保存在 `Members`，並只回傳給已驗證的本人會員卡顯示，管理端名冊不會取得生日或電話。會員等級不再由管理端逐一設定：系統會將 `ServiceTimeEntries` 的分鐘數加總，依 `MembershipTierSettings` 自動套用一般、銀級、金級或白金會員。初始門檻是一般 0、銀級 600、金級 1800、白金 3600 分鐘，管理端可調整銀級、金級與白金的門檻；四個等級會立即依新門檻重新計算。管理端的「發放」視窗可勾選集點、服務時間或兩者並同時提交；發點需要選擇啟用中的集點卡與 1–100 點，服務時間可登錄 1–1440 分鐘，所有表面都會以分鐘顯示累積服務時間。合併發放與原本個別發放同樣攜帶單次 request ID，重送同一操作不會重複寫入。
 
 前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。讀取資料若遇到暫時性網路或非 JSON 回應，會等待後自動再試一次；寫入操作不會自動重送，以免重複異動。管理端在寫入成功後若僅畫面同步失敗，會明確提示「資料已更新」並要求重新整理，而不誤報寫入失敗；ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 

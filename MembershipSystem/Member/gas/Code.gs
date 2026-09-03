@@ -1,9 +1,10 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.4.0';
+const MEMBERSHIP_API_VERSION_ = '1.5.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
+  'admin.member-tiers.save',
   'admin.pointcards.save',
   'admin.pointcards.archive',
   'admin.pointcards.delete',
@@ -66,6 +67,11 @@ function doPost(e) {
       case 'admin.member.update': {
         const admin = authorizeAdmin_(identity);
         data = handleMemberUpdate_(identity, admin, request);
+        break;
+      }
+      case 'admin.member-tiers.save': {
+        const admin = authorizeAdmin_(identity);
+        data = handleMembershipTierSettingsSave_(identity, admin, request);
         break;
       }
       case 'admin.pointcards.save': {

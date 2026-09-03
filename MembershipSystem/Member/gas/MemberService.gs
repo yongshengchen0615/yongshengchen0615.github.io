@@ -4,6 +4,13 @@ const MEMBERSHIP_ADMIN_MEMBER_PAGE_SIZE_ = 100;
 const MEMBERSHIP_ADMIN_MEMBER_MAX_PAGE_SIZE_ = 100;
 const MEMBERSHIP_ADMIN_MEMBER_QUERY_MAX_LENGTH_ = 80;
 const MEMBERSHIP_SERVICE_MINUTES_MAX_GRANT_ = 1440;
+const MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ = 10000000;
+const MEMBERSHIP_TIER_DEFINITIONS_ = Object.freeze([
+  Object.freeze({ tierKey: 'general', label: '一般會員', defaultRequiredServiceMinutes: 0 }),
+  Object.freeze({ tierKey: 'silver', label: '銀級會員', defaultRequiredServiceMinutes: 600 }),
+  Object.freeze({ tierKey: 'gold', label: '金級會員', defaultRequiredServiceMinutes: 1800 }),
+  Object.freeze({ tierKey: 'platinum', label: '白金會員', defaultRequiredServiceMinutes: 3600 })
+]);
 
 function handleMemberBootstrap_(identity) {
   const member = ensureMember_(identity);
@@ -32,16 +39,64 @@ function generateMemberCode_() { return 'LM-' + Utilities.getUuid().replace(/-/g
 function newMemberRecord_(identity, now) { return { line_user_id: identity.lineUserId, display_name: identity.displayName, member_code: generateMemberCode_(), tier: '一般會員', status: 'active', joined_at: now, last_login_at: now, created_at: now, updated_at: now, birthday: '', phone: '' }; }
 
 function memberForClient_(member) {
-  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: String(member.tier || '一般會員'), status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal: serviceMinutesTotalForMember_(member.line_user_id), benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
+  const serviceMinutesTotal = serviceMinutesTotalForMember_(member.line_user_id);
+  const tier = membershipTierForServiceMinutes_(serviceMinutesTotal);
+  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tier.label, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal, benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
 }
 
 function readMembers_() {
   const totalsByMember = serviceMinutesTotalsByMember_();
-  return readRecords_('Members').map(function(member) { return adminMemberForClient_(member, totalsByMember[String(member.line_user_id || '')] || 0); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  const tierSettings = readMembershipTierSettings_();
+  return readRecords_('Members').map(function(member) { return adminMemberForClient_(member, totalsByMember[String(member.line_user_id || '')] || 0, tierSettings); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
 
-function adminMemberForClient_(member, serviceMinutesTotal) {
-  return { lineUserId: String(member.line_user_id || ''), displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: String(member.tier || '一般會員'), status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), updatedAt: String(member.updated_at || ''), serviceMinutesTotal: Math.max(0, Number(serviceMinutesTotal || 0)) };
+function adminMemberForClient_(member, serviceMinutesTotal, tierSettings) {
+  const normalizedServiceMinutesTotal = Math.max(0, Number(serviceMinutesTotal || 0));
+  const tier = membershipTierForServiceMinutes_(normalizedServiceMinutesTotal, tierSettings);
+  return { lineUserId: String(member.line_user_id || ''), displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tier.label, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), updatedAt: String(member.updated_at || ''), serviceMinutesTotal: normalizedServiceMinutesTotal };
+}
+
+function ensureMembershipTierSettings_() {
+  if (readRecords_('MembershipTierSettings').length) {
+    readMembershipTierSettings_();
+    return;
+  }
+  withDataLock_(function() {
+    if (readRecords_('MembershipTierSettings').length) {
+      readMembershipTierSettings_();
+      return;
+    }
+    const now = nowIso_();
+    MEMBERSHIP_TIER_DEFINITIONS_.forEach(function(definition) {
+      appendRecord_('MembershipTierSettings', { tier_key: definition.tierKey, tier_label: definition.label, required_service_minutes: String(definition.defaultRequiredServiceMinutes), updated_by: 'system', updated_at: now });
+    });
+  });
+}
+
+function readMembershipTierSettings_() {
+  const recordsByKey = {};
+  readRecords_('MembershipTierSettings').forEach(function(record) {
+    const tierKey = String(record.tier_key || '').trim();
+    if (!MEMBERSHIP_TIER_DEFINITIONS_.some(function(definition) { return definition.tierKey === tierKey; }) || recordsByKey[tierKey]) throw new ApiError(500, 'TIER_SETTINGS_INVALID', '會員等級設定資料不完整。');
+    recordsByKey[tierKey] = record;
+  });
+  if (Object.keys(recordsByKey).length !== MEMBERSHIP_TIER_DEFINITIONS_.length) throw new ApiError(500, 'TIER_SETTINGS_INVALID', '會員等級設定資料不完整。');
+  let previousRequiredServiceMinutes = -1;
+  return MEMBERSHIP_TIER_DEFINITIONS_.map(function(definition, index) {
+    const record = recordsByKey[definition.tierKey];
+    const storedRequiredServiceMinutes = String(record.required_service_minutes || '').trim();
+    const requiredServiceMinutes = Number(storedRequiredServiceMinutes);
+    const validMinimum = index === 0 ? requiredServiceMinutes === 0 : requiredServiceMinutes > previousRequiredServiceMinutes;
+    if (!/^(0|[1-9]\d*)$/.test(storedRequiredServiceMinutes) || !Number.isInteger(requiredServiceMinutes) || requiredServiceMinutes < 0 || requiredServiceMinutes > MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ || !validMinimum) throw new ApiError(500, 'TIER_SETTINGS_INVALID', '會員等級門檻資料不合法。');
+    previousRequiredServiceMinutes = requiredServiceMinutes;
+    return { tierKey: definition.tierKey, label: definition.label, requiredServiceMinutes, updatedAt: String(record.updated_at || '') };
+  });
+}
+
+function membershipTierForServiceMinutes_(serviceMinutesTotal, tierSettings) {
+  const minutes = Math.max(0, Math.floor(Number(serviceMinutesTotal) || 0));
+  const settings = tierSettings || readMembershipTierSettings_();
+  return settings.reduce(function(currentTier, tier) { return minutes >= tier.requiredServiceMinutes ? tier : currentTier; }, settings[0]);
 }
 
 function memberProfileComplete_(member) { return Boolean(String(member.birthday || '').trim() && String(member.phone || '').trim()); }
@@ -123,17 +178,60 @@ function readMembersPage_(request) {
 
 function handleMemberUpdate_(identity, admin, request) {
   const lineUserId = String(request.lineUserId || '').trim();
-  const tier = String(request.tier || '').trim();
   const status = String(request.status || '').trim().toLowerCase();
   const expected = String(request.expectedUpdatedAt || '').trim();
   if (!lineUserId || lineUserId.length > 80) throw new ApiError(400, 'INVALID_MEMBER', '會員識別碼不合法。');
-  if (!tier || tier.length > 40 || ['active', 'disabled'].indexOf(status) < 0) throw new ApiError(400, 'INVALID_MEMBER', '會員等級或狀態不合法。');
+  if (['active', 'disabled'].indexOf(status) < 0) throw new ApiError(400, 'INVALID_MEMBER', '會員狀態不合法。');
   return withDataLock_(function() {
     const match = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!match) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
     if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '會員資料已被更新，請重新整理。');
-    const member = match.record; member.tier = tier; member.status = status; member.updated_at = nowIso_(); updateRecordAtRow_('Members', match.rowNumber, member);
-    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'MEMBER_UPDATE', target_type: 'member', target_id: lineUserId, result: 'success', detail: 'Member tier/status updated', created_at: nowIso_() });
+    const member = match.record; member.status = status; member.updated_at = nowIso_(); updateRecordAtRow_('Members', match.rowNumber, member);
+    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'MEMBER_UPDATE', target_type: 'member', target_id: lineUserId, result: 'success', detail: 'Member status updated', created_at: nowIso_() });
     return { member: adminMemberForClient_(member, serviceMinutesTotalForMember_(lineUserId)) };
+  });
+}
+
+function normalizeMembershipTierSettingsRequest_(request) {
+  const input = Array.isArray(request.tierSettings) ? request.tierSettings : [];
+  if (input.length !== MEMBERSHIP_TIER_DEFINITIONS_.length) throw new ApiError(400, 'INVALID_TIER_SETTINGS', '請完整設定四種會員等級門檻。');
+  const inputByKey = {};
+  input.forEach(function(setting) {
+    const tierKey = String(setting && setting.tierKey || '').trim();
+    if (!tierKey || inputByKey[tierKey]) throw new ApiError(400, 'INVALID_TIER_SETTINGS', '會員等級設定重複或不合法。');
+    inputByKey[tierKey] = setting;
+  });
+  let previousRequiredServiceMinutes = -1;
+  return MEMBERSHIP_TIER_DEFINITIONS_.map(function(definition, index) {
+    const setting = inputByKey[definition.tierKey];
+    const requiredServiceMinutes = Number(setting && setting.requiredServiceMinutes);
+    const expectedUpdatedAt = String(setting && setting.expectedUpdatedAt || '').trim();
+    const validMinimum = index === 0 ? requiredServiceMinutes === 0 : requiredServiceMinutes > previousRequiredServiceMinutes;
+    if (!setting || !Number.isInteger(requiredServiceMinutes) || requiredServiceMinutes < 0 || requiredServiceMinutes > MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ || !validMinimum || expectedUpdatedAt.length > 80) throw new ApiError(400, 'INVALID_TIER_SETTINGS', '會員等級門檻必須由一般會員 0 分鐘開始，並依序遞增。');
+    previousRequiredServiceMinutes = requiredServiceMinutes;
+    return { tierKey: definition.tierKey, requiredServiceMinutes, expectedUpdatedAt };
+  });
+}
+
+function handleMembershipTierSettingsSave_(identity, admin, request) {
+  const tierSettings = normalizeMembershipTierSettingsRequest_(request);
+  return withDataLock_(function() {
+    const currentSettings = readMembershipTierSettings_();
+    const currentByKey = currentSettings.reduce(function(byKey, setting) { byKey[setting.tierKey] = setting; return byKey; }, {});
+    tierSettings.forEach(function(setting) {
+      if (setting.expectedUpdatedAt && currentByKey[setting.tierKey].updatedAt !== setting.expectedUpdatedAt) throw new ApiError(409, 'CONFLICT', '會員等級門檻已被更新，請重新整理。');
+    });
+    const now = nowIso_();
+    tierSettings.forEach(function(setting) {
+      const match = findRecordWithRow_('MembershipTierSettings', 'tier_key', setting.tierKey);
+      if (!match) throw new ApiError(500, 'TIER_SETTINGS_INVALID', '會員等級設定資料不完整。');
+      const record = match.record;
+      record.required_service_minutes = String(setting.requiredServiceMinutes);
+      record.updated_by = identity.lineUserId;
+      record.updated_at = now;
+      updateRecordAtRow_('MembershipTierSettings', match.rowNumber, record);
+    });
+    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'MEMBER_TIER_SETTINGS_SAVE', target_type: 'membership_tiers', target_id: 'all', result: 'success', detail: 'Membership tier thresholds updated', created_at: now });
+    return { tierSettings: readMembershipTierSettings_() };
   });
 }
 

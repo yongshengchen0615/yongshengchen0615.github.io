@@ -62,11 +62,15 @@ test('spreadsheet writes protect formulas and point entries are append-only', ()
   assert.match(pointService, /PointBalances/);
   assert.match(pointService, /withDataLock_/);
   assert.match(storage, /ServiceTimeEntries/);
+  assert.match(storage, /MembershipTierSettings/);
   assert.match(memberService, /appendRecord_\('ServiceTimeEntries'/);
+  assert.match(memberService, /function membershipTierForServiceMinutes_/);
+  assert.match(memberService, /function handleMembershipTierSettingsSave_/);
   assert.match(memberService, /normalizeBirthday_/);
   assert.match(memberService, /normalizePhone_/);
   assert.match(memberService, /REQUEST_REUSE_MISMATCH/);
   assert.match(code, /case 'admin\.member-grants\.add':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleMemberGrantAdd_/);
+  assert.match(code, /case 'admin\.member-tiers\.save':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleMembershipTierSettingsSave_/);
   assert.match(memberService, /function handleMemberGrantAdd_/);
   assert.match(memberService, /requestId \+ '_points'/);
   assert.match(memberService, /requestId \+ '_service'/);
@@ -90,7 +94,7 @@ test('ID tokens are not explicitly written to logs or Sheets', () => {
 test('birth date and phone are sent only to the authenticated member profile, never the admin list', () => {
   const memberService = read('gas/MemberService.gs');
   const profileBody = memberService.match(/function memberForClient_\(member\) \{([\s\S]*?)\n\}/);
-  const adminBody = memberService.match(/function adminMemberForClient_\(member, serviceMinutesTotal\) \{([\s\S]*?)\n\}/);
+  const adminBody = memberService.match(/function adminMemberForClient_\(member, serviceMinutesTotal, tierSettings\) \{([\s\S]*?)\n\}/);
   assert.ok(profileBody);
   assert.ok(adminBody);
   assert.match(profileBody[1], /birthday/);

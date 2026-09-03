@@ -1,13 +1,14 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', grantRequestId: '', grantSuccessTimer: null };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', grantRequestId: '', grantSuccessTimer: null };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton',
       'membersTab', 'cardsTab', 'ticketsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'ticketsPanel', 'syncStatus', 'refreshButton',
+      'tierSettingsForm', 'tierGeneralMinutes', 'tierSilverMinutes', 'tierGoldMinutes', 'tierPlatinumMinutes', 'tierSettingsFormMessage', 'saveTierSettingsButton',
       'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
@@ -29,6 +30,7 @@
     els.memberPrevPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page - 1, state.memberPage.query));
     els.memberNextPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page + 1, state.memberPage.query));
     els.memberTableBody.addEventListener('click', handleMemberTableClick);
+    els.tierSettingsForm.addEventListener('submit', saveTierSettings);
     els.newCardButton.addEventListener('click', resetCardForm);
     els.cardListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-card-id]') : null; if (button) loadCardForm(button.dataset.cardId); });
     els.addRewardButton.addEventListener('click', addRewardRow);
@@ -79,6 +81,7 @@
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', memberPagePayload(state.memberPage.page, state.memberPage.query));
       state.members = Array.isArray(result.members) ? result.members : [];
       applyMemberPage(result.memberPage, state.memberPage);
+      state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : [];
       state.cards = Array.isArray(result.cards) ? result.cards : [];
       state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
       state.stats = result.stats || {};
@@ -95,7 +98,7 @@
     els.activeMemberCount.textContent = String(state.stats.activeMemberCount ?? state.members.filter((member) => member.status === 'active').length);
     els.activeCardCount.textContent = String(state.stats.activeCardCount ?? state.cards.filter((card) => card.status === 'active').length);
     els.todayEntryCount.textContent = String(state.stats.todayEntryCount ?? 0);
-    renderMembers(); renderCardList(); renderTicketList();
+    renderMembers(); renderTierSettings(); renderCardList(); renderTicketList();
     if (state.selectedCardId && state.cards.some((card) => card.cardId === state.selectedCardId)) loadCardForm(state.selectedCardId); else if (!els.cardId.value) resetCardForm();
     if (state.selectedTicketId && state.tickets.some((ticket) => ticket.ticketTemplateId === state.selectedTicketId)) loadTicketForm(state.selectedTicketId); else if (!els.ticketTemplateId.value) resetTicketForm();
   }
@@ -111,7 +114,7 @@
       const statusCell = document.createElement('td'); const status = document.createElement('span'); status.className = `status-pill${member.status === 'active' ? '' : ' disabled'}`; status.textContent = member.status === 'active' ? '啟用中' : '已停用'; statusCell.append(status);
       const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
       const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
-      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('編輯', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true)); actionsCell.append(actions);
+      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true)); actionsCell.append(actions);
       row.append(memberCell, tierCell, statusCell, serviceTimeCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
@@ -132,6 +135,33 @@
     els.memberPrevPageButton.disabled = page.page <= 1;
     els.memberNextPageButton.disabled = page.page >= page.totalPages;
     els.memberPageStatus.textContent = `第 ${page.page} / ${page.totalPages} 頁`;
+  }
+  function renderTierSettings() {
+    const inputsByKey = { general: els.tierGeneralMinutes, silver: els.tierSilverMinutes, gold: els.tierGoldMinutes, platinum: els.tierPlatinumMinutes };
+    state.tierSettings.forEach((setting) => {
+      const input = inputsByKey[setting && setting.tierKey];
+      if (!input) return;
+      input.value = String(Math.max(0, Math.floor(Number(setting.requiredServiceMinutes) || 0)));
+      input.dataset.updatedAt = String(setting.updatedAt || '');
+    });
+  }
+  function collectTierSettings() {
+    return [
+      ['general', els.tierGeneralMinutes], ['silver', els.tierSilverMinutes], ['gold', els.tierGoldMinutes], ['platinum', els.tierPlatinumMinutes]
+    ].map(([tierKey, input]) => ({ tierKey, requiredServiceMinutes: Number(input.value), expectedUpdatedAt: String(input.dataset.updatedAt || '') }));
+  }
+  async function saveTierSettings(event) {
+    event.preventDefault(); hideMessage(els.tierSettingsFormMessage);
+    const tierSettings = collectTierSettings();
+    const invalid = tierSettings.some((setting, index) => !Number.isInteger(setting.requiredServiceMinutes) || setting.requiredServiceMinutes < 0 || setting.requiredServiceMinutes > 10000000 || (index === 0 ? setting.requiredServiceMinutes !== 0 : setting.requiredServiceMinutes <= tierSettings[index - 1].requiredServiceMinutes));
+    if (invalid) return showMessage(els.tierSettingsFormMessage, '門檻必須由一般會員 0 分鐘開始，銀級、金級與白金會員需依序遞增。');
+    setSaving(els.saveTierSettingsButton, true);
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-tiers.save', { tierSettings });
+      state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : state.tierSettings;
+      renderTierSettings();
+      if (await refreshAfterSuccessfulWrite('會員等級門檻已儲存', els.tierSettingsFormMessage)) showMessage(els.tierSettingsFormMessage, '會員等級門檻已儲存，名冊已依累積服務時間重新計算。', true);
+    } catch (error) { handleActionError(error, els.tierSettingsFormMessage); } finally { setSaving(els.saveTierSettingsButton, false); }
   }
   function scheduleMemberSearch() {
     if (state.memberSearchTimer) window.clearTimeout(state.memberSearchTimer);
@@ -281,9 +311,9 @@
   }
   function formatRate(value) { const rate = Number(value); return Number.isFinite(rate) ? String(Number(rate.toFixed(2))) : '0'; }
 
-  function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.value = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberTier.focus(); }
+  function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.textContent = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberStatus.focus(); }
   function closeMemberModal() { els.memberModal.classList.add('hidden'); }
-  async function saveMember(event) { event.preventDefault(); hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, tier: String(els.memberTier.value || '').trim() || '一般會員', status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
+  async function saveMember(event) { event.preventDefault(); hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
   function openGrantModal(member) { const activeCards = state.cards.filter((card) => card.status === 'active' && !card.expired); state.grantRequestId = createRequestId(); els.grantMemberId.value = String(member.lineUserId); els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`; els.grantCardId.replaceChildren(...activeCards.map((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); return option; })); els.grantStampsEnabled.checked = activeCards.length > 0; els.grantStampsEnabled.disabled = activeCards.length === 0; els.grantServiceTimeEnabled.checked = activeCards.length === 0; els.grantStampAmount.value = '1'; els.grantServiceTimeMinutes.value = '30'; els.grantNote.value = ''; updateGrantOptions(); hideMessage(els.grantFormMessage); els.grantModal.classList.remove('hidden'); (activeCards.length ? els.grantCardId : els.grantServiceTimeMinutes).focus(); }
   function closeGrantModal() { state.grantRequestId = ''; els.grantModal.classList.add('hidden'); }
   function updateGrantOptions() {

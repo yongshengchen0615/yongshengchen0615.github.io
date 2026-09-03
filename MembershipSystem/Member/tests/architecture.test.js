@@ -78,6 +78,24 @@ test('member card collects first-visit contact details and displays accumulated 
   assert.doesNotMatch(adminApp, /小時/);
 });
 
+test('admin derives fixed membership tiers from service-time thresholds instead of editing members individually', () => {
+  const adminHtml = read('admin/index.html');
+  const adminApp = read('admin/app.js');
+  const memberService = read('gas/MemberService.gs');
+  const code = read('gas/Code.gs');
+  assert.match(adminHtml, /tierSettingsForm/);
+  assert.match(adminHtml, /tierGeneralMinutes/);
+  assert.match(adminHtml, /tierSilverMinutes/);
+  assert.match(adminHtml, /tierGoldMinutes/);
+  assert.match(adminHtml, /tierPlatinumMinutes/);
+  assert.doesNotMatch(adminHtml, /<input id="memberTier"/);
+  assert.match(adminApp, /admin\.member-tiers\.save/);
+  assert.doesNotMatch(adminApp, /tier:\s*String\(els\.memberTier/);
+  assert.match(code, /'admin\.member-tiers\.save'/);
+  assert.match(memberService, /function membershipTierForServiceMinutes_/);
+  assert.match(memberService, /function handleMembershipTierSettingsSave_/);
+});
+
 test('all browser JavaScript and GAS files parse as JavaScript', () => {
   const files = ['shared/common.js', 'member/app.js', 'points/app.js', 'admin/app.js', 'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs'];
   files.forEach((file) => assert.doesNotThrow(() => new vm.Script(read(file), { filename: file }), file));
@@ -157,8 +175,9 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
   let schemaChecks = 0;
   context.resolveMembershipSpreadsheet_ = () => ({ getId: () => 'sheet-1' });
   context.ensureSheetSchema_ = () => { schemaChecks += 1; };
+  context.ensureMembershipTierSettings_ = () => {};
   context.ensureMembershipStorage_();
   context.ensureMembershipStorage_();
   assert.ok(schemaChecks > 0);
-  assert.equal(schemaChecks, 12);
+  assert.equal(schemaChecks, 13);
 });

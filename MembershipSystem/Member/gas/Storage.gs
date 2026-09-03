@@ -14,6 +14,7 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
   PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at', 'request_id']),
   ServiceTimeEntries: Object.freeze(['entry_id', 'line_user_id', 'minutes', 'note', 'created_by', 'created_at', 'request_id']),
+  MembershipTierSettings: Object.freeze(['tier_key', 'tier_label', 'required_service_minutes', 'updated_by', 'updated_at']),
   AuditLogs: Object.freeze(['audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id', 'result', 'detail', 'created_at'])
 });
 let MEMBERSHIP_SPREADSHEET_CACHE_ = null;
@@ -22,11 +23,15 @@ function ensureMembershipStorage_() {
   const spreadsheet = resolveMembershipSpreadsheet_();
   const schemaCache = membershipSchemaCache_();
   const schemaCacheKey = membershipSchemaCacheKey_(spreadsheet.getId());
-  if (schemaCache && schemaCache.get(schemaCacheKey) === 'ready') return spreadsheet;
+  if (schemaCache && schemaCache.get(schemaCacheKey) === 'ready') {
+    ensureMembershipTierSettings_();
+    return spreadsheet;
+  }
   Object.keys(MEMBERSHIP_SHEET_SCHEMAS_).forEach(function(sheetName) { ensureSheetSchema_(spreadsheet, sheetName, MEMBERSHIP_SHEET_SCHEMAS_[sheetName]); });
   if (schemaCache) {
     try { schemaCache.put(schemaCacheKey, 'ready', MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_); } catch (_) {}
   }
+  ensureMembershipTierSettings_();
   return spreadsheet;
 }
 
