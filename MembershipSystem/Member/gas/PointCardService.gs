@@ -11,11 +11,14 @@ const POINT_CARD_TICKET_STATUS_USED_ = 'used';
 
 function handlePointCardBootstrap_(identity) {
   const member = ensureMember_(identity);
-  const snapshot = withDataLock_(function() {
-    const pointCardSnapshot = readPointCardSnapshot_();
-    ensurePointCardTicketsForMember_(identity.lineUserId, pointCardSnapshot);
-    return pointCardSnapshot;
-  });
+  let snapshot = readPointCardSnapshot_();
+  if (pointCardTicketIssuanceRequired_(identity.lineUserId, snapshot)) {
+    snapshot = withDataLock_(function() {
+      const lockedSnapshot = readPointCardSnapshot_();
+      ensurePointCardTicketsForMember_(identity.lineUserId, lockedSnapshot);
+      return lockedSnapshot;
+    });
+  }
   return { profile: { displayName: String(member.display_name || identity.displayName) }, cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot) };
 }
 
@@ -91,6 +94,39 @@ function appendTicketToPointCardSnapshot_(snapshot, ticket) {
   snapshot.ticketsByMember[lineUserId].push(ticket);
   if (!snapshot.ticketsByMemberCard[memberCardKey]) snapshot.ticketsByMemberCard[memberCardKey] = [];
   snapshot.ticketsByMemberCard[memberCardKey].push(ticket);
+}
+
+function pointCardTicketIssuanceRequired_(lineUserId, snapshot) {
+  if (!snapshot) return false;
+  const cards = Array.isArray(snapshot.cards) ? snapshot.cards : [];
+  const balancesByMemberCard = snapshot.balancesByMemberCard || {};
+  const rewardsByCard = snapshot.rewardsByCard || {};
+  const templatesById = snapshot.ticketTemplatesById || {};
+  const ticketsByMemberCard = snapshot.ticketsByMemberCard || {};
+
+  return cards.some(function(card) {
+    if (String(card.status || '') !== 'active' || pointCardIsExpired_(card)) return false;
+    const cardId = String(card.card_id || '').trim();
+    if (!cardId) return false;
+    const balance = balancesByMemberCard[pointCardMemberCardKey_(lineUserId, cardId)] || {};
+    const availableStamps = Number(balance.stamps || 0);
+    const configuredRewards = rewardsByCard[cardId] || [];
+    const rewards = configuredRewards.length ? configuredRewards : legacyPointCardReward_(card);
+    const existingTickets = ticketsByMemberCard[pointCardMemberCardKey_(lineUserId, cardId)] || [];
+
+    return rewards.some(function(reward) {
+      const ticketTemplateId = String(reward.ticket_template_id || '').trim();
+      const template = ticketTemplateId ? templatesById[ticketTemplateId] : null;
+      if (template && String(template.status || '') !== 'active') return false;
+      const threshold = Number(reward.threshold_stamps || reward.thresholdStamps || 0);
+      const consumeStamps = rewardConsumeStamps_(reward, threshold);
+      if (!Number.isInteger(threshold) || threshold < 1 || !Number.isInteger(consumeStamps) || consumeStamps < 1 || availableStamps < threshold) return false;
+      const rewardKey = ticketRewardKey_(cardId, threshold);
+      return !existingTickets.some(function(ticket) {
+        return String(ticket.reward_key || '') === rewardKey && String(ticket.status || '') !== POINT_CARD_TICKET_STATUS_USED_;
+      });
+    });
+  });
 }
 
 function readPointCards_(includeAdminDetails, snapshot) {

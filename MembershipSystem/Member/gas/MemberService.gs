@@ -8,6 +8,7 @@ const MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ = 10000000;
 const MEMBERSHIP_LAST_LOGIN_TOUCH_INTERVAL_MS_ = 5 * 60 * 1000;
 const MEMBERSHIP_TIER_SETTINGS_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_ = 'membership:tier-settings:v1';
+const MEMBERSHIP_SERVICE_MINUTES_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_TIER_DEFINITIONS_ = Object.freeze([
   Object.freeze({ tierKey: 'general', label: '一般會員', defaultRequiredServiceMinutes: 0 }),
   Object.freeze({ tierKey: 'silver', label: '銀級會員', defaultRequiredServiceMinutes: 600 }),
@@ -145,7 +146,34 @@ function serviceMinutesTotalsByMember_() {
   }, {});
 }
 
-function serviceMinutesTotalForMember_(lineUserId) { return Number(serviceMinutesTotalsByMember_()[String(lineUserId || '').trim()] || 0); }
+function serviceMinutesTotalCacheKey_(lineUserId) {
+  return 'membership:service-minutes:' + digest_(String(lineUserId || '').trim()).substring(0, 32);
+}
+
+function clearServiceMinutesTotalCache_(lineUserId) {
+  const normalizedLineUserId = String(lineUserId || '').trim();
+  const cache = membershipTierSettingsCache_();
+  if (!normalizedLineUserId || !cache) return;
+  try { cache.remove(serviceMinutesTotalCacheKey_(normalizedLineUserId)); } catch (_) {}
+}
+
+function serviceMinutesTotalForMember_(lineUserId) {
+  const normalizedLineUserId = String(lineUserId || '').trim();
+  if (!normalizedLineUserId) return 0;
+  const cache = membershipTierSettingsCache_();
+  const cacheKey = cache ? serviceMinutesTotalCacheKey_(normalizedLineUserId) : '';
+  if (cache) {
+    try {
+      const cached = String(cache.get(cacheKey) || '');
+      if (/^\d+$/.test(cached)) return Number(cached);
+    } catch (_) {}
+  }
+  const total = Number(serviceMinutesTotalsByMember_()[normalizedLineUserId] || 0);
+  if (cache) {
+    try { cache.put(cacheKey, String(total), MEMBERSHIP_SERVICE_MINUTES_CACHE_SECONDS_); } catch (_) {}
+  }
+  return total;
+}
 
 function normalizeBirthday_(value) {
   const birthday = String(value || '').trim();
@@ -298,6 +326,7 @@ function addServiceMinutesLocked_(identity, admin, serviceTime) {
   if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法登錄服務時間。');
   const now = nowIso_();
   appendRecord_('ServiceTimeEntries', { entry_id: 'ST-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, minutes: String(minutes), note, created_by: identity.lineUserId, created_at: now, request_id: requestId });
+  clearServiceMinutesTotalCache_(lineUserId);
   appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'SERVICE_TIME_ADD', target_type: 'service_time', target_id: lineUserId, result: 'success', detail: 'Added ' + minutes + ' service minute(s)', created_at: now });
   return { member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
 }

@@ -160,7 +160,9 @@ test('storage schema checks are cached and point-card bootstrap has a snapshot r
   assert.match(storage, /membershipSchemaCacheKey_/);
   assert.match(storage, /schemaCache\.get\(schemaCacheKey\) === 'ready'/);
   assert.match(pointService, /function readPointCardSnapshot_\(\)/);
-  assert.match(pointService, /ensurePointCardTicketsForMember_\(identity\.lineUserId, pointCardSnapshot\)/);
+  assert.match(pointService, /function pointCardTicketIssuanceRequired_\(lineUserId, snapshot\)/);
+  assert.match(pointService, /const lockedSnapshot = readPointCardSnapshot_\(\)/);
+  assert.match(pointService, /ensurePointCardTicketsForMember_\(identity\.lineUserId, lockedSnapshot\)/);
   assert.match(pointService, /visiblePointCardsForMember_\(identity\.lineUserId, snapshot\)/);
 });
 

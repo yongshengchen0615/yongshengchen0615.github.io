@@ -43,6 +43,41 @@ function loadRateLimiter() {
   return { context, counters: () => ({ lockWaits, lockReleases }) };
 }
 
+function loadPointCardBootstrap() {
+  let lockWaits = 0;
+  let lockReleases = 0;
+  const context = {
+    withDataLock_: (callback) => {
+      lockWaits += 1;
+      try { return callback(); } finally { lockReleases += 1; }
+    },
+    Utilities: { formatDate: () => '2026-09-03' }
+  };
+  vm.createContext(context);
+  vm.runInContext(read('gas/PointCardService.gs'), context, { filename: 'gas/PointCardService.gs' });
+  return { context, counters: () => ({ lockWaits, lockReleases }) };
+}
+
+function loadServiceMinutesCache() {
+  const entries = new Map();
+  let reads = 0;
+  const context = {
+    CacheService: { getScriptCache: () => ({
+      get: (key) => entries.get(key) || null,
+      put: (key, value) => { entries.set(key, String(value)); },
+      remove: (key) => { entries.delete(key); }
+    }) },
+    digest_: (value) => `digest-${value}`,
+    readRecordFields_: () => {
+      reads += 1;
+      return [{ line_user_id: 'U-1', minutes: '30' }, { line_user_id: 'U-1', minutes: '45' }];
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(read('gas/MemberService.gs'), context, { filename: 'gas/MemberService.gs' });
+  return { context, reads: () => reads };
+}
+
 test('synthetic 5,000 authenticated read requests do not acquire the global rate-limit lock', () => {
   const { context, counters } = loadRateLimiter();
   for (let index = 0; index < 5000; index += 1) {
@@ -64,6 +99,36 @@ test('write rate limiting stays exact and lock-backed', () => {
   );
   assert.equal(counters().lockWaits, 31);
   assert.equal(counters().lockReleases, 31);
+});
+
+test('synthetic 5,000 point-card bootstrap reads do not acquire the data lock when no ticket is due', () => {
+  const { context, counters } = loadPointCardBootstrap();
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  context.readPointCardSnapshot_ = () => ({ id: 'read-only' });
+  context.pointCardTicketIssuanceRequired_ = () => false;
+  context.visiblePointCardsForMember_ = () => [];
+  context.visibleTicketsForMember_ = () => [];
+
+  for (let index = 0; index < 5000; index += 1) {
+    context.handlePointCardBootstrap_({ lineUserId: `USER-${index}`, displayName: '測試會員' });
+  }
+  assert.deepEqual(counters(), { lockWaits: 0, lockReleases: 0 });
+});
+
+test('point-card bootstrap re-reads inside the lock before issuing a due ticket', () => {
+  const { context, counters } = loadPointCardBootstrap();
+  let snapshotReads = 0;
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  context.readPointCardSnapshot_ = () => ({ id: ++snapshotReads });
+  context.pointCardTicketIssuanceRequired_ = (lineUserId, snapshot) => snapshot.id === 1;
+  context.ensurePointCardTicketsForMember_ = () => {};
+  context.visiblePointCardsForMember_ = (lineUserId, snapshot) => [snapshot.id];
+  context.visibleTicketsForMember_ = () => [];
+
+  const response = context.handlePointCardBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
+  assert.equal(snapshotReads, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(response.cards)), [2]);
+  assert.deepEqual(counters(), { lockWaits: 1, lockReleases: 1 });
 });
 
 test('all browser write actions are single-attempt when the response is uncertain', async () => {
@@ -108,6 +173,18 @@ test('member hot path throttles login writes and uses narrow service-time reads'
   assert.match(source, /MEMBERSHIP_LAST_LOGIN_TOUCH_INTERVAL_MS_/);
   assert.match(source, /if \(initialMatch && !memberNeedsLoginTouch_/);
   assert.match(source, /readRecordFields_\('ServiceTimeEntries', \['line_user_id', 'minutes'\]\)/);
+  assert.match(source, /MEMBERSHIP_SERVICE_MINUTES_CACHE_SECONDS_/);
+  assert.match(source, /clearServiceMinutesTotalCache_\(lineUserId\)/);
+});
+
+test('member service-time totals are cached per member and invalidated on a write', () => {
+  const { context, reads } = loadServiceMinutesCache();
+  assert.equal(context.serviceMinutesTotalForMember_('U-1'), 75);
+  assert.equal(context.serviceMinutesTotalForMember_('U-1'), 75);
+  assert.equal(reads(), 1);
+  context.clearServiceMinutesTotalCache_('U-1');
+  assert.equal(context.serviceMinutesTotalForMember_('U-1'), 75);
+  assert.equal(reads(), 2);
 });
 
 test('schema cache hit skips repeated tier initialization', () => {
