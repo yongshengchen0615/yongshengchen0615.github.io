@@ -406,8 +406,11 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(storage, /win_rate/);
   assert.match(adminHtml, /id="rewardRows"/);
   assert.match(adminHtml, /id="addRewardButton"/);
-  assert.match(adminHtml, /id="ticketsTab"/);
-  assert.match(adminHtml, /id="ticketsPanel"/);
+  assert.match(adminHtml, /id="cardSettingsTab"/);
+  assert.match(adminHtml, /id="ticketSettingsTab"/);
+  assert.match(adminHtml, /id="ticketSettingsPanel"/);
+  assert.doesNotMatch(adminHtml, /id="ticketsTab"/);
+  assert.match(adminApp, /switchCardWorkspace\('tickets'\)/);
   assert.match(adminHtml, /id="ticketUsageMethod"/);
   assert.match(adminHtml, /id="ticketUsageInstructions"/);
   assert.match(adminApp, /ticketTemplateId/);
