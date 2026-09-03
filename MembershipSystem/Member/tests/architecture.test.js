@@ -70,7 +70,10 @@ test('member card collects first-visit contact details and displays accumulated 
   assert.match(adminHtml, /grantModal/);
   assert.match(adminHtml, /grantStampsEnabled/);
   assert.match(adminHtml, /grantServiceTimeEnabled/);
+  assert.match(adminHtml, /grantSuccessNotice/);
   assert.match(adminApp, /admin\.member-grants\.add/);
+  assert.match(adminApp, /showGrantSuccess\(details\)/);
+  assert.match(adminApp, /發放完成/);
   assert.doesNotMatch(adminApp, /admin\.stamps\.add|admin\.service_minutes\.add/);
   assert.doesNotMatch(adminApp, /小時/);
 });

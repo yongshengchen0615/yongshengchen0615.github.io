@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', grantRequestId: '' };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', grantRequestId: '', grantSuccessTimer: null };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -12,7 +12,7 @@
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
-      'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton'
+      'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     bindEvents();
     boot();
@@ -309,9 +309,9 @@
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-grants.add', payload);
       if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId');
-      closeGrantModal();
       const details = [addStamps ? `${stampAmount} 點` : '', addServiceTime ? formatServiceMinutes(serviceTimeMinutes) : ''].filter(Boolean).join('、');
-      if (await refreshAfterSuccessfulWrite('發放資料已更新', null)) setSyncStatus(`已發放 ${details} · 已同步`, false);
+      closeGrantModal(); showGrantSuccess(details);
+      if (await refreshAfterSuccessfulWrite('發放完成', null)) setSyncStatus(`發放完成：${details} · 已同步`, false);
     } catch (error) { handleActionError(error, els.grantFormMessage); } finally { setSaving(els.saveGrantButton, false); }
   }
 
@@ -323,6 +323,12 @@
   function replaceById(items, next, key) { return items.some((item) => item[key] === next[key]) ? items.map((item) => item[key] === next[key] ? next : item) : [next, ...items]; }
   function createRequestId() { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); return `request-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`; }
   function formatServiceMinutes(value) { return `${Math.max(0, Math.floor(Number(value) || 0))} 分鐘`; }
+  function showGrantSuccess(details) {
+    els.grantSuccessNotice.textContent = details ? `發放完成：${details}` : '發放完成';
+    els.grantSuccessNotice.classList.remove('hidden');
+    if (state.grantSuccessTimer) window.clearTimeout(state.grantSuccessTimer);
+    state.grantSuccessTimer = window.setTimeout(() => { els.grantSuccessNotice.classList.add('hidden'); state.grantSuccessTimer = null; }, 3600);
+  }
   function setSaving(button, saving) { button.disabled = saving; if (saving) { button.dataset.originalText = button.textContent; button.textContent = '儲存中…'; } else button.textContent = button.dataset.originalText || button.textContent; }
   function showMessage(element, message, success) { element.textContent = message; element.classList.toggle('success', Boolean(success)); element.classList.remove('hidden'); }
   function hideMessage(element) { element.textContent = ''; element.classList.add('hidden'); element.classList.remove('success'); }
