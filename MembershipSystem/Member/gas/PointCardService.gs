@@ -119,8 +119,7 @@ function pointCardTicketIssuanceRequired_(lineUserId, snapshot) {
       const template = ticketTemplateId ? templatesById[ticketTemplateId] : null;
       if (template && String(template.status || '') !== 'active') return false;
       const threshold = Number(reward.threshold_stamps || reward.thresholdStamps || 0);
-      const consumeStamps = rewardConsumeStamps_(reward, threshold);
-      if (!Number.isInteger(threshold) || threshold < 1 || !Number.isInteger(consumeStamps) || consumeStamps < 1 || availableStamps < threshold) return false;
+      if (!Number.isInteger(threshold) || threshold < 1 || availableStamps < threshold) return false;
       const rewardKey = ticketRewardKey_(cardId, threshold);
       return !existingTickets.some(function(ticket) {
         return String(ticket.reward_key || '') === rewardKey && String(ticket.status || '') !== POINT_CARD_TICKET_STATUS_USED_;
@@ -452,14 +451,12 @@ function normalizePointCardRewards_(rawRewards, maxThresholdStamps, ticketTempla
   const normalized = rawRewards.map(function(rawReward) {
     if (!rawReward || typeof rawReward !== 'object' || Array.isArray(rawReward)) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點獎勵格式不合法。');
     const thresholdStamps = Number(rawReward.thresholdStamps);
-    const consumeStamps = rawReward.consumeStamps === undefined || rawReward.consumeStamps === null || String(rawReward.consumeStamps).trim() === '' ? thresholdStamps : Number(rawReward.consumeStamps);
     const ticketTemplateId = String(rawReward.ticketTemplateId || '').trim();
     const ticketTemplate = ticketTemplateId && ticketTemplatesById ? ticketTemplatesById[ticketTemplateId] : null;
     const rewardType = String(rawReward.rewardType || '').trim().toLowerCase();
     const rewardTitle = String(rawReward.rewardTitle || '').trim();
     const rewardDescription = String(rawReward.rewardDescription || '').trim();
     if (!Number.isInteger(thresholdStamps) || thresholdStamps < 1 || thresholdStamps > maximum || seenThresholds[thresholdStamps]) throw new ApiError(400, 'INVALID_CARD_REWARDS', '需要集到的點數必須是互不重複、且介於 1–' + maximum + ' 點。');
-    if (!Number.isInteger(consumeStamps) || consumeStamps < 1 || consumeStamps > thresholdStamps) throw new ApiError(400, 'INVALID_CARD_REWARDS', '每個獎勵的消耗點數必須是 1 點以上，且不可超過需要集到的點數。');
     if (ticketTemplateId && (!ticketTemplate || String(ticketTemplate.status || '') !== 'active')) throw new ApiError(400, 'INVALID_CARD_REWARDS', '請選擇一張啟用中的票券。');
     if (!ticketTemplate && (POINT_CARD_REWARD_TYPES_.indexOf(rewardType) < 0 || !rewardTitle || rewardTitle.length > 100 || rewardDescription.length > 240)) throw new ApiError(400, 'INVALID_CARD_REWARDS', '節點獎勵名稱、說明或類型不合法。');
     seenThresholds[thresholdStamps] = true;
@@ -467,21 +464,19 @@ function normalizePointCardRewards_(rawRewards, maxThresholdStamps, ticketTempla
     let prizes = [];
     if (ticketTemplate) {
       const templateType = String(ticketTemplate.ticket_type || '').toLowerCase() === 'lottery' ? 'lottery' : 'coupon';
-      return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), ticket_template_id: ticketTemplateId, reward_type: templateType, reward_title: String(ticketTemplate.title || ''), reward_description: String(ticketTemplate.description || ''), lottery_win_rate: String(lotteryWinRate), prizes: [], created_at: '', updated_at: '', consume_stamps: String(consumeStamps) };
+      return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), ticket_template_id: ticketTemplateId, reward_type: templateType, reward_title: String(ticketTemplate.title || ''), reward_description: String(ticketTemplate.description || ''), lottery_win_rate: String(lotteryWinRate), prizes: [], created_at: '', updated_at: '', consume_stamps: String(thresholdStamps) };
     }
     if (rewardType === 'lottery') {
       prizes = normalizePointCardLotteryPrizes_(rawReward.prizes);
     }
-    return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), ticket_template_id: '', reward_type: rewardType, reward_title: rewardTitle, reward_description: rewardDescription, lottery_win_rate: String(lotteryWinRate), prizes, created_at: '', updated_at: '', consume_stamps: String(consumeStamps) };
+    return { reward_id: 'PR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), card_id: '', threshold_stamps: String(thresholdStamps), ticket_template_id: '', reward_type: rewardType, reward_title: rewardTitle, reward_description: rewardDescription, lottery_win_rate: String(lotteryWinRate), prizes, created_at: '', updated_at: '', consume_stamps: String(thresholdStamps) };
   }).sort(function(a, b) { return Number(a.threshold_stamps) - Number(b.threshold_stamps); });
   return normalized;
 }
 
 function rewardConsumeStamps_(reward, thresholdOverride) {
   const thresholdStamps = Number(thresholdOverride !== undefined ? thresholdOverride : reward && (reward.threshold_stamps !== undefined ? reward.threshold_stamps : reward.thresholdStamps));
-  const rawConsume = reward && (reward.consume_stamps !== undefined ? reward.consume_stamps : reward.consumeStamps);
-  const consumeStamps = rawConsume === undefined || rawConsume === null || String(rawConsume).trim() === '' ? thresholdStamps : Number(rawConsume);
-  return Number.isInteger(consumeStamps) && consumeStamps >= 1 && consumeStamps <= thresholdStamps ? consumeStamps : thresholdStamps;
+  return Number.isInteger(thresholdStamps) && thresholdStamps >= 1 ? thresholdStamps : 0;
 }
 
 function normalizePointCardLotteryPrizes_(rawPrizes) {
@@ -623,12 +618,11 @@ function issuePointCardTicketsForBalance_(lineUserId, card, currentBalance, next
   });
   rewards.forEach(function(reward) {
     const threshold = Number(reward.threshold_stamps || reward.thresholdStamps || 0);
-    const consumeStamps = rewardConsumeStamps_(reward, threshold);
     const rewardKey = ticketRewardKey_(cardId, threshold);
     const existingTickets = existingByKey[rewardKey] || [];
     const hasOpenTicket = existingTickets.some(function(ticket) { return String(ticket.status || '') !== POINT_CARD_TICKET_STATUS_USED_; });
     const eligibleForIssuance = Number(nextBalance) >= threshold;
-    if (!Number.isInteger(threshold) || threshold < 1 || !Number.isInteger(consumeStamps) || consumeStamps < 1 || hasOpenTicket || !eligibleForIssuance) return;
+    if (!Number.isInteger(threshold) || threshold < 1 || hasOpenTicket || !eligibleForIssuance) return;
     const ticket = ticketRecordFromReward_(lineUserId, cardId, reward, rewardKey, now);
     appendRecord_('PointCardTickets', ticket);
     appendTicketToPointCardSnapshot_(snapshot, ticket);

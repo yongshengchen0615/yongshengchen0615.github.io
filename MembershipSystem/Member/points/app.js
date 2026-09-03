@@ -84,21 +84,18 @@
     return rewards.map((reward) => {
       const thresholdStamps = Math.max(1, Number(reward.thresholdStamps || 0));
       const ticket = tickets.find((item) => Number(item.thresholdStamps || 0) === thresholdStamps) || null;
-      const consumeStamps = Math.max(1, Number(ticket ? ticket.consumeStamps : reward.consumeStamps || thresholdStamps));
-      const canUse = Boolean(ticket) && !card.expired && card.status === 'active' && stamps >= consumeStamps;
+      const canUse = Boolean(ticket) && !card.expired && card.status === 'active' && stamps >= thresholdStamps;
       const prizeSource = ticket ? ticket.prizes : reward.prizes;
       return {
         ticket,
         thresholdStamps,
-        consumeStamps,
         ticketType: String(ticket ? ticket.ticketType : reward.rewardType || 'coupon'),
         ticketTitle: String(ticket ? ticket.ticketTitle : reward.rewardTitle || '票券'),
         ticketDescription: String(ticket ? ticket.ticketDescription : reward.rewardDescription || '達標後即可查看並使用這張票券。'),
         usageMethod: String(ticket ? ticket.usageMethod : reward.usageMethod || '達標後請向店員出示本券'),
         prizes: Array.isArray(prizeSource) ? prizeSource : [],
         canUse,
-        unlockShortage: Math.max(0, thresholdStamps - stamps),
-        useShortage: Math.max(0, consumeStamps - stamps)
+        unlockShortage: Math.max(0, thresholdStamps - stamps)
       };
     });
   }
@@ -110,7 +107,7 @@
     const description = document.createElement('p'); description.textContent = offer.ticketDescription;
     const method = document.createElement('p'); method.className = 'member-ticket-method'; method.textContent = `使用方式：${offer.usageMethod}`;
     const footer = document.createElement('div'); footer.className = 'member-ticket-footer'; const status = document.createElement('span'); status.className = 'ticket-state';
-    if (offer.canUse) { status.textContent = `使用會扣除 ${offer.consumeStamps} 點`; const button = document.createElement('button'); button.type = 'button'; button.className = 'small-ticket-button'; button.dataset.useTicket = offer.ticket.ticketId; button.textContent = '查看並使用'; footer.append(status, button); } else { status.textContent = offer.unlockShortage ? `再集 ${offer.unlockShortage} 點即可解鎖` : offer.useShortage ? `再集 ${offer.useShortage} 點即可使用` : '目前無法使用'; footer.append(status); }
+    if (offer.canUse) { status.textContent = `集滿 ${offer.thresholdStamps} 點可使用`; const button = document.createElement('button'); button.type = 'button'; button.className = 'small-ticket-button'; button.dataset.useTicket = offer.ticket.ticketId; button.textContent = '查看並使用'; footer.append(status, button); } else { status.textContent = offer.unlockShortage ? `再集 ${offer.unlockShortage} 點即可解鎖` : '目前無法使用'; footer.append(status); }
     const prizeOpportunities = createLotteryPrizeOpportunities(offer);
     item.append(type, title, description, method); if (prizeOpportunities) item.append(prizeOpportunities); item.append(footer); return item;
   }
@@ -133,7 +130,7 @@
     els.ticketModalDescription.textContent = String(ticket.ticketDescription || '此票券尚未提供額外說明。');
     els.ticketModalUsageMethod.textContent = `使用方式：${ticket.usageMethod || '請向店員出示本券'}`;
     els.ticketModalUsageInstructions.textContent = String(ticket.usageInstructions || '確認使用後，系統會扣除對應點數並將票券標記為已使用。');
-    els.ticketModalCost.textContent = `確認使用會扣除 ${Number(ticket.consumeStamps || 0)} 點，使用後無法復原。`;
+    els.ticketModalCost.textContent = `確認使用會扣除 ${Number(ticket.thresholdStamps || 0)} 點，使用後無法復原。`;
     els.confirmTicketUseButton.disabled = false; els.confirmTicketUseButton.textContent = '確認使用這張票券'; els.confirmTicketUseButton.classList.remove('hidden'); els.ticketModalResult.replaceChildren(); setTicketProcessing(false); hideTicketMessage(); els.ticketModal.classList.remove('hidden'); els.confirmTicketUseButton.focus();
   }
 

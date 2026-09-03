@@ -104,10 +104,11 @@ test('PointCard rewards are stored as milestone rows with safe types and sorted 
   ]);
 });
 
-test('PointCard reward validation accepts 0% and rejects duplicate or out-of-range nodes', () => {
+test('PointCard reward validation uses the threshold as the only redemption cost', () => {
   const { normalize, TestApiError } = loadPointCardService();
-  assert.doesNotThrow(() => normalize([{ thresholdStamps: 5, consumeStamps: 3, rewardType: 'lottery', rewardTitle: '抽獎券', prizes: [{ prizeTitle: '0% 獎項', winRate: 0 }, { prizeTitle: '一般獎項', winRate: 100 }] }], 20));
-  assert.throws(() => normalize([{ thresholdStamps: 5, consumeStamps: 6, rewardType: 'coupon', rewardTitle: '超額消耗' }], 20), (error) => error instanceof TestApiError && error.code === 'INVALID_CARD_REWARDS');
+  const normalized = normalize([{ thresholdStamps: 5, consumeStamps: 3, rewardType: 'lottery', rewardTitle: '抽獎券', prizes: [{ prizeTitle: '0% 獎項', winRate: 0 }, { prizeTitle: '一般獎項', winRate: 100 }] }], 20);
+  assert.equal(normalized[0].consume_stamps, '5');
+  assert.doesNotThrow(() => normalize([{ thresholdStamps: 5, consumeStamps: 6, rewardType: 'coupon', rewardTitle: '過時的消耗設定' }], 20));
   assert.throws(() => normalize([
     { thresholdStamps: 5, rewardType: 'coupon', rewardTitle: 'A' },
     { thresholdStamps: 5, rewardType: 'lottery', rewardTitle: 'B', prizes: [{ prizeTitle: 'B 獎項', winRate: 100 }] }
@@ -127,6 +128,7 @@ test('point card nodes can select a managed ticket template without duplicating 
   const reward = normalize([{ thresholdStamps: 5, consumeStamps: 3, ticketTemplateId: 'PT-COFFEE' }], 20, templates)[0];
   assert.equal(reward.ticket_template_id, 'PT-COFFEE');
   assert.equal(reward.reward_title, '免費咖啡');
+  assert.equal(reward.consume_stamps, '5');
   const clientReward = context.pointCardRewardForClient_(reward, false, templates);
   assert.equal(clientReward.ticketTemplateId, 'PT-COFFEE');
   assert.equal(clientReward.usageMethod, '結帳前出示本券');
@@ -185,7 +187,7 @@ test('tickets keep a reward snapshot without any usage password data', () => {
   }, 'PC-1:10', '2026-09-02T00:00:00.000Z');
   assert.equal(ticket.reward_key, 'PC-1:10');
   assert.equal(ticket.status, 'available');
-  assert.equal(ticket.consume_stamps, '3');
+  assert.equal(ticket.consume_stamps, '10');
   assert.doesNotMatch(JSON.stringify(ticket), /usage.?code|password/i);
   const clientTicket = context.ticketForClient_(ticket);
   assert.deepEqual(JSON.parse(JSON.stringify(clientTicket.prizes.map((prize) => prize.prizeTitle))), ['不會抽中', '咖啡券']);
@@ -293,14 +295,13 @@ test('redeeming a node reissues its ticket while the remaining balance still cov
   assert.equal(context.visibleTicketsForMember_('U-1').length, 1);
 });
 
-test('earned tickets can redeem when balance covers consumption without retaining the threshold balance', () => {
+test('earned tickets always require their threshold even when legacy consumption data is lower', () => {
   const { context, rows } = loadTicketService();
   rows.PointCardTickets[0].consume_stamps = '3';
   rows.PointBalances[0].stamps = '3';
-  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
-  assert.equal(redeemed.redeemed, true);
-  assert.equal(rows.PointBalances[0].stamps, '0');
-  assert.equal(rows.PointEntries[0].amount, '-3');
+  assert.throws(() => context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' }), (error) => error && error.code === 'INSUFFICIENT_STAMPS');
+  assert.equal(rows.PointBalances[0].stamps, '3');
+  assert.equal(rows.PointEntries.length, 0);
 });
 
 test('replaying the same stamp request does not add points twice', () => {
@@ -456,7 +457,8 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.doesNotMatch(pointsApp, /handleTicketChoice|startTicketChallenge|selectedCode|challengeId|ticket\.challenge/);
   assert.doesNotMatch(read('gas/PointCardService.gs'), /ticketUsageCode|handleTicketChallenge_|selectedCode|POINT_CARD_TICKET_OPTION_COUNT_|POINT_CARD_TICKET_CODE_LENGTH_/);
   assert.doesNotMatch(read('gas/Code.gs'), /usage-code\.generate|ticket\.challenge/);
-  assert.match(adminApp, /consumeStamps/);
+  assert.doesNotMatch(adminApp, /consumeStamps/);
+  assert.doesNotMatch(adminHtml, /兌換消耗|消耗點數|扣除幾點/);
   assert.match(adminHtml, /cardExpiryMode/);
   assert.doesNotMatch(pointsHtml, /targetCount|progressBar/);
   assert.doesNotMatch(adminHtml, /完成需要/);
