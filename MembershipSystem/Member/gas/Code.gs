@@ -30,8 +30,8 @@ function doPost(e) {
     if (request.clientType && request.clientType !== clientType) {
       throw new ApiError(400, 'CLIENT_TYPE_MISMATCH', 'Client type 與 API action 不一致。');
     }
-    enforceRateLimit_(request.idToken, request.action);
     const identity = authenticateLine_(request.idToken, clientType);
+    enforceRateLimit_(identity.lineUserId, request.action);
     ensureMembershipStorage_();
 
     let data;
@@ -44,12 +44,12 @@ function doPost(e) {
         break;
       case 'admin.bootstrap': {
         const admin = authorizeAdmin_(identity);
-        data = handleAdminBootstrap_(identity, admin);
+        data = handleAdminBootstrap_(identity, admin, request);
         break;
       }
       case 'admin.members.list': {
         authorizeAdmin_(identity);
-        data = { members: readMembers_() };
+        data = readMembersPage_(request);
         break;
       }
       case 'admin.pointcards.list': {
@@ -139,9 +139,9 @@ function clientTypeForAction_(action) {
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }
 
-function enforceRateLimit_(credential, action) {
-  if (!credential) return;
-  const digest = digest_(credential);
+function enforceRateLimit_(principal, action) {
+  if (!principal) return;
+  const digest = digest_(principal);
   const bucket = Math.floor(Date.now() / 60000);
   const isWrite = MEMBERSHIP_WRITE_ACTIONS_.indexOf(action) !== -1;
   const limit = isWrite ? MEMBERSHIP_WRITE_LIMIT_ : MEMBERSHIP_READ_LIMIT_;

@@ -1,14 +1,14 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', members: [], cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', stampRequestId: '' };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, cards: [], tickets: [], stats: {}, activePanel: 'members', selectedCardId: '', selectedTicketId: '', stampRequestId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton',
       'membersTab', 'cardsTab', 'ticketsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'ticketsPanel', 'syncStatus', 'refreshButton',
-      'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState',
+      'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
@@ -25,7 +25,9 @@
     els.cardsTab.addEventListener('click', () => switchPanel('cards'));
     els.ticketsTab.addEventListener('click', () => switchPanel('tickets'));
     els.refreshButton.addEventListener('click', () => refreshData(true).catch((error) => { els.syncStatus.textContent = error && error.message || '同步失敗，請稍後再試。'; els.syncStatus.classList.add('error'); }));
-    els.memberSearch.addEventListener('input', renderMembers);
+    els.memberSearch.addEventListener('input', scheduleMemberSearch);
+    els.memberPrevPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page - 1, state.memberPage.query));
+    els.memberNextPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page + 1, state.memberPage.query));
     els.memberTableBody.addEventListener('click', handleMemberTableClick);
     els.newCardButton.addEventListener('click', resetCardForm);
     els.cardListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-card-id]') : null; if (button) loadCardForm(button.dataset.cardId); });
@@ -72,8 +74,9 @@
   async function refreshData(showBusy) {
     if (showBusy) { els.refreshButton.disabled = true; els.syncStatus.textContent = '同步中…'; }
     try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap');
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', memberPagePayload(state.memberPage.page, state.memberPage.query));
       state.members = Array.isArray(result.members) ? result.members : [];
+      applyMemberPage(result.memberPage, state.memberPage);
       state.cards = Array.isArray(result.cards) ? result.cards : [];
       state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
       state.stats = result.stats || {};
@@ -96,9 +99,9 @@
   }
 
   function renderMembers() {
-    const query = String(els.memberSearch.value || '').trim().toLowerCase();
-    const members = state.members.filter((member) => !query || `${member.displayName} ${member.memberCode}`.toLowerCase().includes(query));
-    els.memberResultCount.textContent = `${members.length} 位會員`;
+    const members = state.members;
+    const page = state.memberPage;
+    els.memberResultCount.textContent = `共 ${page.total} 位會員`;
     els.memberTableBody.replaceChildren(...members.map((member) => {
       const row = document.createElement('tr');
       const memberCell = document.createElement('td'); memberCell.append(createMemberIdentity(member));
@@ -109,6 +112,47 @@
       row.append(memberCell, tierCell, statusCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
+    renderMemberPagination();
+  }
+
+  function memberPagePayload(page, query) { return { memberPage: Math.max(1, Number(page) || 1), memberPageSize: state.memberPage.pageSize || 100, memberQuery: String(query || '').trim() }; }
+  function applyMemberPage(value, fallback) {
+    const source = value && typeof value === 'object' ? value : fallback || {};
+    const pageSize = Math.max(1, Number(source.pageSize) || 100);
+    const total = Math.max(0, Number(source.total) || 0);
+    const totalPages = Math.max(1, Number(source.totalPages) || Math.ceil(total / pageSize) || 1);
+    state.memberPage = { page: Math.min(Math.max(1, Number(source.page) || 1), totalPages), pageSize, total, totalPages, query: String(source.query || '').trim() };
+  }
+  function renderMemberPagination() {
+    const page = state.memberPage;
+    els.memberPagination.classList.toggle('hidden', page.totalPages <= 1);
+    els.memberPrevPageButton.disabled = page.page <= 1;
+    els.memberNextPageButton.disabled = page.page >= page.totalPages;
+    els.memberPageStatus.textContent = `第 ${page.page} / ${page.totalPages} 頁`;
+  }
+  function scheduleMemberSearch() {
+    if (state.memberSearchTimer) window.clearTimeout(state.memberSearchTimer);
+    const query = String(els.memberSearch.value || '').trim().toLowerCase();
+    if (query === state.memberPage.query) return;
+    state.memberSearchTimer = window.setTimeout(() => {
+      state.memberSearchTimer = null;
+      loadMembersPage(1, query).catch((error) => { setSyncStatus(error && error.message || '搜尋會員失敗，請稍後再試。', true); });
+    }, 250);
+  }
+  async function loadMembersPage(page, query) {
+    const requestVersion = ++state.memberRequestVersion;
+    els.memberPrevPageButton.disabled = true;
+    els.memberNextPageButton.disabled = true;
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.members.list', memberPagePayload(page, query));
+      if (requestVersion !== state.memberRequestVersion) return;
+      state.members = Array.isArray(result.members) ? result.members : [];
+      applyMemberPage(result.memberPage, state.memberPage);
+      renderMembers();
+    } catch (error) {
+      if (requestVersion === state.memberRequestVersion) renderMemberPagination();
+      throw error;
+    }
   }
 
   function createMemberIdentity(member) {

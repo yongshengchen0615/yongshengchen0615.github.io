@@ -47,12 +47,12 @@ function membershipSchemaCacheKey_(spreadsheetId) {
 function resolveMembershipSpreadsheet_() {
   if (MEMBERSHIP_SPREADSHEET_CACHE_) return MEMBERSHIP_SPREADSHEET_CACHE_;
   const properties = PropertiesService.getScriptProperties();
-  const active = SpreadsheetApp.getActiveSpreadsheet();
-  if (active) { MEMBERSHIP_SPREADSHEET_CACHE_ = active; properties.setProperty(MEMBERSHIP_STORAGE_PROPERTY_, active.getId()); return active; }
   const configuredId = String(properties.getProperty(MEMBERSHIP_STORAGE_PROPERTY_) || '').trim();
   if (configuredId) {
     try { MEMBERSHIP_SPREADSHEET_CACHE_ = SpreadsheetApp.openById(configuredId); return MEMBERSHIP_SPREADSHEET_CACHE_; } catch (_) { throw new ApiError(503, 'STORAGE_UNAVAILABLE', '設定的 Membership Spreadsheet 無法開啟。'); }
   }
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) { MEMBERSHIP_SPREADSHEET_CACHE_ = active; properties.setProperty(MEMBERSHIP_STORAGE_PROPERTY_, active.getId()); return active; }
   try { MEMBERSHIP_SPREADSHEET_CACHE_ = SpreadsheetApp.create('Lumen Club Membership Data'); properties.setProperty(MEMBERSHIP_STORAGE_PROPERTY_, MEMBERSHIP_SPREADSHEET_CACHE_.getId()); return MEMBERSHIP_SPREADSHEET_CACHE_; } catch (_) { throw new ApiError(503, 'STORAGE_UNAVAILABLE', '無法建立 Membership Spreadsheet。'); }
 }
 

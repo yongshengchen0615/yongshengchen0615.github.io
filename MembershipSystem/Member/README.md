@@ -23,7 +23,7 @@ Member/
    - `MEMBERSHIP_MEMBER_LINE_CHANNEL_ID`：會員卡 LIFF 所屬 LINE Login Channel ID，例如 `2010787602`
    - `MEMBERSHIP_POINTS_LINE_CHANNEL_ID`：集點卡 LIFF 所屬 LINE Login Channel ID，例如 `2010787602`
    - `MEMBERSHIP_ADMIN_LINE_CHANNEL_ID`：Admin LIFF 所屬 LINE Login Channel ID
-   - `MEMBERSHIP_SYSTEM_SPREADSHEET_ID`：選填；不填時會依序使用目前綁定的 Spreadsheet，或建立 `Lumen Club Membership Data`
+   - `MEMBERSHIP_SYSTEM_SPREADSHEET_ID`：選填；設定後固定使用此 Spreadsheet，不設定時才會使用目前綁定的 Spreadsheet，或建立 `Lumen Club Membership Data`
 3. 執行 `setupMembershipSystem()` 完成授權與資料表建立。
 4. Deploy → New deployment → Web app：Execute as 選自己、Who has access 選 Anyone。
 5. 將部署後 `/exec` URL、Member LIFF ID、Points LIFF ID、Admin LIFF ID 填入 `config.json`；Member 與 Points 必須是不同的 LIFF app。
@@ -73,7 +73,7 @@ GAS 會建立並維護以下 schema：
 - `user.member.bootstrap`（Member LIFF）
 - `user.pointcard.bootstrap`（Points LIFF）
 - `admin.bootstrap`
-- `admin.members.list`
+- `admin.members.list`（支援 `memberPage`、`memberPageSize`、`memberQuery`；每頁最多 100 筆）
 - `admin.pointcards.list`
 - `admin.member.update`
 - `admin.pointcards.save`
@@ -86,7 +86,7 @@ GAS 會建立並維護以下 schema：
 
 `admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，`consumeStamps`（兌換消耗點數）必須為 1 點以上且不可超過 `thresholdStamps`，並以 `ticketTemplateId` 選擇票券庫中的票券。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
 
-升級後，既有集點節點與已發出的票券都會保留。若要讓既有節點使用新的統一票券說明，先在「票券」建立並啟用票券，再回到該集點卡為節點選擇它。
+升級後，既有集點節點與已發出的票券都會保留。新增或調整節點後，已達門檻、且尚無未使用票券的會員會在下次集點卡同步時補發一次；已發出的票券仍維持原本的內容快照。若要讓既有節點使用新的統一票券說明，先在「票券」建立並啟用票券，再回到該集點卡為節點選擇它。
 
 會員端的「票券總覽」會顯示該集點卡設定的所有票券，即使尚未達標也會顯示解鎖所需點數。抽獎券會列出「有機會獲得」的所有獎項（包含設定為 0% 的獎項），但不會顯示任何機率。已取得且點數足夠的票券，會先顯示票券說明、使用方式與使用說明，再由本人按下「確認使用這張票券」才會核銷。後端仍檢查票券所屬會員、集點卡狀態/期限、目前餘額與一次性使用狀態。核銷成功會依 `consumeStamps` 扣除點數並寫入負數流水紀錄；抽獎券由後端開獎，會員端播放動畫且只顯示獎項名稱，不顯示機率。已使用票券不再回傳給會員端，後端歷史紀錄仍保留。
 
@@ -94,7 +94,7 @@ GAS 會建立並維護以下 schema：
 
 前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。讀取資料若遇到暫時性網路或非 JSON 回應，會等待後自動再試一次；寫入操作不會自動重送，以免重複異動。管理端在寫入成功後若僅畫面同步失敗，會明確提示「資料已更新」並要求重新整理，而不誤報寫入失敗；發點操作會攜帶單次 request ID，重送同一操作不會重複加點。ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 
-為避免首頁同步隨資料量增加而重複掃描相同 Sheet，Points bootstrap 會在資料鎖定期間讀取一次卡片、獎勵、票券範本、餘額與已發票券的快照，並以同一份快照完成票券補發與回應。所有 API 的 schema 驗證也會依 Spreadsheet 與 schema 指紋快取 120 秒；schema 變更會自動使用新指紋重新驗證。
+為避免首頁同步隨資料量增加而重複掃描相同 Sheet，Points bootstrap 會在資料鎖定期間讀取一次卡片、獎勵、票券範本、餘額與已發票券的快照，並建立會員／集點卡索引後完成票券補發與回應。管理端會員名冊只傳送目前頁面的資料，避免大量會員同時傳輸與渲染。所有 API 的 schema 驗證也會依 Spreadsheet 與 schema 指紋快取 120 秒；schema 變更會自動使用新指紋重新驗證。
 
 ## 本地驗證
 

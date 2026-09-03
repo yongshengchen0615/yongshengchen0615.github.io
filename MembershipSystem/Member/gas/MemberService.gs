@@ -1,5 +1,9 @@
 'use strict';
 
+const MEMBERSHIP_ADMIN_MEMBER_PAGE_SIZE_ = 100;
+const MEMBERSHIP_ADMIN_MEMBER_MAX_PAGE_SIZE_ = 100;
+const MEMBERSHIP_ADMIN_MEMBER_QUERY_MAX_LENGTH_ = 80;
+
 function handleMemberBootstrap_(identity) {
   const member = ensureMember_(identity);
   return { profile: memberForClient_(member) };
@@ -31,6 +35,35 @@ function memberForClient_(member) {
 
 function readMembers_() {
   return readRecords_('Members').map(function(member) { return { lineUserId: String(member.line_user_id || ''), displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: String(member.tier || '一般會員'), status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), updatedAt: String(member.updated_at || '') }; }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+}
+
+function normalizeAdminMemberPageRequest_(request) {
+  const input = request && typeof request === 'object' ? request : {};
+  const requestedPage = Math.floor(Number(input.memberPage));
+  const requestedPageSize = Math.floor(Number(input.memberPageSize));
+  const query = String(input.memberQuery || '').trim().toLowerCase();
+  return {
+    page: Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    pageSize: Number.isInteger(requestedPageSize) && requestedPageSize > 0 ? Math.min(requestedPageSize, MEMBERSHIP_ADMIN_MEMBER_MAX_PAGE_SIZE_) : MEMBERSHIP_ADMIN_MEMBER_PAGE_SIZE_,
+    query: query.substring(0, MEMBERSHIP_ADMIN_MEMBER_QUERY_MAX_LENGTH_)
+  };
+}
+
+function readMembersPage_(request) {
+  const pageRequest = normalizeAdminMemberPageRequest_(request);
+  const allMembers = readMembers_();
+  const query = pageRequest.query;
+  const matchingMembers = query ? allMembers.filter(function(member) {
+    return [member.displayName, member.memberCode, member.tier].join(' ').toLowerCase().indexOf(query) >= 0;
+  }) : allMembers;
+  const totalPages = Math.max(1, Math.ceil(matchingMembers.length / pageRequest.pageSize));
+  const page = Math.min(pageRequest.page, totalPages);
+  const start = (page - 1) * pageRequest.pageSize;
+  return {
+    members: matchingMembers.slice(start, start + pageRequest.pageSize),
+    memberPage: { page, pageSize: pageRequest.pageSize, total: matchingMembers.length, totalPages, query },
+    stats: { memberCount: allMembers.length, activeMemberCount: allMembers.filter(function(member) { return member.status === 'active'; }).length }
+  };
 }
 
 function handleMemberUpdate_(identity, admin, request) {

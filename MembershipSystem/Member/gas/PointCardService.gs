@@ -31,7 +31,66 @@ function readPointCardSnapshot_() {
   snapshot.prizesByReward = pointCardLotteryPrizesByReward_(snapshot.lotteryPrizes);
   snapshot.rewardsByCard = pointCardRewardsByCard_(snapshot.rewards, snapshot.prizesByReward);
   snapshot.ticketTemplatesById = pointCardTicketTemplatesById_(snapshot.ticketTemplates);
+  snapshot.balancesByMemberCard = pointCardBalancesByMemberCard_(snapshot.balances);
+  snapshot.ticketsByMember = pointCardRecordsByMember_(snapshot.tickets);
+  snapshot.ticketsByMemberCard = pointCardRecordsByMemberCard_(snapshot.tickets);
   return snapshot;
+}
+
+function pointCardMemberCardKey_(lineUserId, cardId) {
+  return String(lineUserId || '').trim() + '\u0000' + String(cardId || '').trim();
+}
+
+function pointCardBalancesByMemberCard_(records) {
+  const grouped = {};
+  (Array.isArray(records) ? records : []).forEach(function(record) {
+    const key = pointCardMemberCardKey_(record.line_user_id, record.card_id);
+    if (key !== '\u0000') grouped[key] = record;
+  });
+  return grouped;
+}
+
+function pointCardRecordsByMember_(records) {
+  const grouped = {};
+  (Array.isArray(records) ? records : []).forEach(function(record) {
+    const lineUserId = String(record.line_user_id || '').trim();
+    if (!lineUserId) return;
+    if (!grouped[lineUserId]) grouped[lineUserId] = [];
+    grouped[lineUserId].push(record);
+  });
+  return grouped;
+}
+
+function pointCardRecordsByMemberCard_(records) {
+  const grouped = {};
+  (Array.isArray(records) ? records : []).forEach(function(record) {
+    const key = pointCardMemberCardKey_(record.line_user_id, record.card_id);
+    if (key === '\u0000') return;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(record);
+  });
+  return grouped;
+}
+
+function pointCardTicketsForMember_(lineUserId, snapshot) {
+  if (snapshot && snapshot.ticketsByMember) return snapshot.ticketsByMember[String(lineUserId || '').trim()] || [];
+  return readRecords_('PointCardTickets').filter(function(ticket) { return String(ticket.line_user_id || '') === String(lineUserId || ''); });
+}
+
+function pointCardTicketsForMemberCard_(lineUserId, cardId, snapshot) {
+  if (snapshot && snapshot.ticketsByMemberCard) return snapshot.ticketsByMemberCard[pointCardMemberCardKey_(lineUserId, cardId)] || [];
+  return pointCardTicketsForMember_(lineUserId).filter(function(ticket) { return String(ticket.card_id || '') === String(cardId || ''); });
+}
+
+function appendTicketToPointCardSnapshot_(snapshot, ticket) {
+  if (!snapshot) return;
+  snapshot.tickets.push(ticket);
+  const lineUserId = String(ticket.line_user_id || '').trim();
+  const memberCardKey = pointCardMemberCardKey_(lineUserId, ticket.card_id);
+  if (!snapshot.ticketsByMember[lineUserId]) snapshot.ticketsByMember[lineUserId] = [];
+  snapshot.ticketsByMember[lineUserId].push(ticket);
+  if (!snapshot.ticketsByMemberCard[memberCardKey]) snapshot.ticketsByMemberCard[memberCardKey] = [];
+  snapshot.ticketsByMemberCard[memberCardKey].push(ticket);
 }
 
 function readPointCards_(includeAdminDetails, snapshot) {
@@ -160,9 +219,15 @@ function legacyPointCardReward_(card) {
 }
 
 function visiblePointCardsForMember_(lineUserId, snapshot) {
-  const balances = (snapshot ? snapshot.balances : readRecords_('PointBalances')).filter(function(balance) { return String(balance.line_user_id || '') === lineUserId; });
-  const balanceMap = {}; balances.forEach(function(balance) { balanceMap[String(balance.card_id || '')] = { stamps: Number(balance.stamps || 0), updatedAt: String(balance.updated_at || '') }; });
-  return readPointCards_(false, snapshot).filter(function(card) { return card.status === 'active'; }).map(function(card) { const balance = balanceMap[card.cardId] || { stamps: 0, updatedAt: card.updatedAt }; return Object.assign({}, card, { stamps: Math.max(0, balance.stamps), updatedAt: balance.updatedAt || card.updatedAt }); });
+  const balanceMap = snapshot && snapshot.balancesByMemberCard
+    ? snapshot.balancesByMemberCard
+    : pointCardBalancesByMemberCard_(readRecords_('PointBalances'));
+  return readPointCards_(false, snapshot).filter(function(card) {
+    return card.status === 'active';
+  }).map(function(card) {
+    const balance = balanceMap[pointCardMemberCardKey_(lineUserId, card.cardId)] || {};
+    return Object.assign({}, card, { stamps: Math.max(0, Number(balance.stamps || 0)), updatedAt: String(balance.updated_at || '') || card.updatedAt });
+  });
 }
 
 function pointCardExpiryMode_(card) {
@@ -247,13 +312,13 @@ function handlePointCardRemove_(identity, admin, request) {
   return handlePointCardArchive_(identity, admin, request);
 }
 
-function handleAdminBootstrap_(identity, admin) {
-  const members = readMembers_();
+function handleAdminBootstrap_(identity, admin, request) {
+  const memberResult = readMembersPage_(request);
   const cards = readPointCards_(true);
   const tickets = readPointCardTicketTemplates_(true);
   const entries = readRecords_('PointEntries');
   const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
-  return { profile: { displayName: identity.displayName }, role: admin.role, members, cards, tickets, stats: { memberCount: members.length, activeMemberCount: members.filter(function(member) { return member.status === 'active'; }).length, activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
+  return { profile: { displayName: identity.displayName }, role: admin.role, members: memberResult.members, memberPage: memberResult.memberPage, cards, tickets, stats: { memberCount: memberResult.stats.memberCount, activeMemberCount: memberResult.stats.activeMemberCount, activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
 }
 
 function handlePointCardSave_(identity, admin, request) {
@@ -506,9 +571,7 @@ function issuePointCardTicketsForBalance_(lineUserId, card, currentBalance, next
     }).filter(function(reward) { return Boolean(reward); })
     : legacyPointCardReward_(card);
   const existingByKey = {};
-  const tickets = snapshot ? snapshot.tickets : readRecords_('PointCardTickets');
-  tickets.forEach(function(ticket) {
-    if (String(ticket.line_user_id || '') !== String(lineUserId) || String(ticket.card_id || '') !== cardId) return;
+  pointCardTicketsForMemberCard_(lineUserId, cardId, snapshot).forEach(function(ticket) {
     const rewardKey = String(ticket.reward_key || '');
     if (!existingByKey[rewardKey]) existingByKey[rewardKey] = [];
     existingByKey[rewardKey].push(ticket);
@@ -519,12 +582,11 @@ function issuePointCardTicketsForBalance_(lineUserId, card, currentBalance, next
     const rewardKey = ticketRewardKey_(cardId, threshold);
     const existingTickets = existingByKey[rewardKey] || [];
     const hasOpenTicket = existingTickets.some(function(ticket) { return String(ticket.status || '') !== POINT_CARD_TICKET_STATUS_USED_; });
-    const crossedThreshold = Number(currentBalance) < threshold && Number(nextBalance) >= threshold;
-    const canReissueAfterEarned = existingTickets.length > 0 && Number(nextBalance) >= consumeStamps;
-    if (!Number.isInteger(threshold) || threshold < 1 || !Number.isInteger(consumeStamps) || consumeStamps < 1 || hasOpenTicket || !(crossedThreshold || canReissueAfterEarned)) return;
+    const eligibleForIssuance = Number(nextBalance) >= threshold;
+    if (!Number.isInteger(threshold) || threshold < 1 || !Number.isInteger(consumeStamps) || consumeStamps < 1 || hasOpenTicket || !eligibleForIssuance) return;
     const ticket = ticketRecordFromReward_(lineUserId, cardId, reward, rewardKey, now);
     appendRecord_('PointCardTickets', ticket);
-    if (snapshot) snapshot.tickets.push(ticket);
+    appendTicketToPointCardSnapshot_(snapshot, ticket);
     issuedTickets.push(ticket);
     existingByKey[rewardKey] = existingTickets.concat([{}]);
   });
@@ -533,13 +595,14 @@ function issuePointCardTicketsForBalance_(lineUserId, card, currentBalance, next
 
 function ensurePointCardTicketsForMember_(lineUserId, snapshot) {
   const ensureTickets = function() {
-    const balances = (snapshot ? snapshot.balances : readRecords_('PointBalances')).filter(function(balance) { return String(balance.line_user_id || '') === String(lineUserId); });
-    const balanceMap = {};
-    balances.forEach(function(balance) { balanceMap[String(balance.card_id || '')] = Number(balance.stamps || 0); });
+    const balanceMap = snapshot && snapshot.balancesByMemberCard
+      ? snapshot.balancesByMemberCard
+      : pointCardBalancesByMemberCard_(readRecords_('PointBalances'));
     const cards = snapshot ? snapshot.cards : readRecords_('PointCards');
     const now = nowIso_();
     cards.filter(function(card) { return String(card.status || '') === 'active' && !pointCardIsExpired_(card); }).forEach(function(card) {
-      const stamps = balanceMap[String(card.card_id || '')] || 0;
+      const balance = balanceMap[pointCardMemberCardKey_(lineUserId, card.card_id)] || {};
+      const stamps = Number(balance.stamps || 0);
       issuePointCardTicketsForBalance_(lineUserId, card, stamps, stamps, now, snapshot);
     });
   };
@@ -578,7 +641,7 @@ function ticketRecordFromReward_(lineUserId, cardId, reward, usageKey, now) {
 function visibleTicketsForMember_(lineUserId, snapshot) {
   const activeCardIds = {};
   (snapshot ? snapshot.cards : readRecords_('PointCards')).forEach(function(card) { if (String(card.status || '') === 'active' && !pointCardIsExpired_(card)) activeCardIds[String(card.card_id || '')] = true; });
-  return (snapshot ? snapshot.tickets : readRecords_('PointCardTickets')).filter(function(ticket) { return String(ticket.line_user_id || '') === String(lineUserId) && activeCardIds[String(ticket.card_id || '')] && String(ticket.status || '') !== POINT_CARD_TICKET_STATUS_USED_; }).map(ticketForClient_).sort(function(a, b) { return String(b.earnedAt).localeCompare(String(a.earnedAt)); });
+  return pointCardTicketsForMember_(lineUserId, snapshot).filter(function(ticket) { return activeCardIds[String(ticket.card_id || '')] && String(ticket.status || '') !== POINT_CARD_TICKET_STATUS_USED_; }).map(ticketForClient_).sort(function(a, b) { return String(b.earnedAt).localeCompare(String(a.earnedAt)); });
 }
 
 function ticketForClient_(ticket) {

@@ -24,9 +24,10 @@
 
       <section id="membersPanel" class="panel" role="tabpanel" aria-labelledby="membersTab">
         <div class="panel-heading"><div><p class="kicker">Member directory</p><h2>會員名冊</h2><p>管理會員等級與使用狀態，也可以直接為會員補登集點。</p></div><div class="heading-actions"><span id="syncStatus" class="sync-status">尚未同步</span><button id="refreshButton" class="button button-outline" type="button">更新資料</button></div></div>
-        <div class="toolbar"><label class="search-box"><span aria-hidden="true">⌕</span><input id="memberSearch" type="search" placeholder="搜尋姓名或會員編號" autocomplete="off"></label><span id="memberResultCount" class="result-count">0 位會員</span></div>
+        <div class="toolbar"><label class="search-box"><span aria-hidden="true">⌕</span><input id="memberSearch" type="search" placeholder="搜尋姓名、會員編號或等級" autocomplete="off"></label><span id="memberResultCount" class="result-count">0 位會員</span></div>
         <div class="table-wrap"><table><thead><tr><th>會員</th><th>等級</th><th>狀態</th><th>加入日期</th><th class="align-right">操作</th></tr></thead><tbody id="memberTableBody"></tbody></table></div>
         <div id="memberEmptyState" class="empty-state hidden"><span aria-hidden="true">○</span><h3>還沒有符合條件的會員</h3><p>調整搜尋文字，或等待第一位會員使用 LINE 登入。</p></div>
+        <nav id="memberPagination" class="member-pagination hidden" aria-label="會員名冊頁碼"><button id="memberPrevPageButton" class="button button-outline" type="button">上一頁</button><span id="memberPageStatus" aria-live="polite">第 1 / 1 頁</span><button id="memberNextPageButton" class="button button-outline" type="button">下一頁</button></nav>
       </section>
 
       <section id="cardsPanel" class="panel hidden" role="tabpanel" aria-labelledby="cardsTab">
