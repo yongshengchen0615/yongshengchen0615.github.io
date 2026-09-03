@@ -41,7 +41,10 @@ function loadTicketService() {
     PointCardTickets: [{ ticket_id: 'TK-1', line_user_id: 'U-1', card_id: 'PC-1', reward_id: 'PR-1', reward_key: 'PC-1:10', threshold_stamps: '10', ticket_type: 'coupon', ticket_title: '咖啡券', ticket_description: '', lottery_prizes_json: '[]', status: 'available', failed_attempts: '0', earned_at: '2026-09-02T00:00:00.000Z', used_at: '', result_json: '', created_at: '2026-09-02T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z', consume_stamps: '10' }],
     PointBalances: [{ line_user_id: 'U-1', card_id: 'PC-1', stamps: '10', updated_at: '2026-09-02T00:00:00.000Z' }],
     PointEntries: [],
-    PointCardTicketChallenges: []
+    PointCardTicketChallenges: [],
+    PointCardRewards: [],
+    PointCardLotteryPrizes: [],
+    AuditLogs: []
   };
   let uuid = 0;
   let digestSeed = 0;
@@ -66,6 +69,10 @@ function loadTicketService() {
     },
     appendRecord_: (sheetName, record) => { rows[sheetName].push(record); return rows[sheetName].length + 1; },
     updateRecordAtRow_: (sheetName, rowNumber, record) => { rows[sheetName][rowNumber - 2] = record; },
+    deleteRecordsWhere_: (sheetName, predicate) => {
+      const records = rows[sheetName] || []; const retained = records.filter((record) => !predicate(record)); const deleted = records.length - retained.length;
+      rows[sheetName] = retained; return deleted;
+    },
     appendAuditRecord_: () => {}
   };
   vm.createContext(context);
@@ -275,6 +282,43 @@ test('replaying the same stamp request does not add points twice', () => {
   assert.throws(() => context.handleStampAdd_(identity, admin, Object.assign({}, request, { amount: 3 })), (error) => error instanceof TestApiError && error.code === 'REQUEST_REUSE_MISMATCH');
 });
 
+test('archiving a point card preserves its data while hiding it from members', () => {
+  const { context, rows } = loadTicketService();
+  const archived = context.handlePointCardArchive_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { cardId: 'PC-1' });
+  assert.equal(archived.card.status, 'archived');
+  assert.equal(rows.PointCards.length, 1);
+  assert.equal(rows.PointCardTickets.length, 1);
+  assert.equal(rows.PointBalances.length, 1);
+  assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
+});
+
+test('deleting a point card permanently removes its dependent records but not shared ticket templates', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCardRewards.push({ reward_id: 'PR-1', card_id: 'PC-1' });
+  rows.PointCardLotteryPrizes.push({ prize_id: 'PP-1', reward_id: 'PR-1' });
+  rows.PointCardTicketChallenges.push({ challenge_id: 'CH-1', ticket_id: 'TK-1' });
+  rows.PointEntries.push({ entry_id: 'PE-1', card_id: 'PC-1' });
+  rows.AuditLogs.push(
+    { target_type: 'point_card', target_id: 'PC-1' },
+    { target_type: 'point_card_ticket', target_id: 'TK-1' },
+    { target_type: 'point_balance', target_id: 'U-1:PC-1' },
+    { target_type: 'point_card', target_id: 'PC-OTHER' }
+  );
+  rows.PointCardTicketTemplates = [{ ticket_template_id: 'PT-SHARED', title: '共用票券' }];
+  const deleted = context.handlePointCardDelete_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { cardId: 'PC-1' });
+  assert.equal(deleted.deleted, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(deleted.counts)), { ticketChallenges: 1, lotteryPrizes: 1, rewards: 1, tickets: 1, balances: 1, entries: 1, auditLogs: 3, cards: 1 });
+  assert.equal(rows.PointCards.length, 0);
+  assert.equal(rows.PointCardRewards.length, 0);
+  assert.equal(rows.PointCardLotteryPrizes.length, 0);
+  assert.equal(rows.PointCardTickets.length, 0);
+  assert.equal(rows.PointBalances.length, 0);
+  assert.equal(rows.PointEntries.length, 0);
+  assert.equal(rows.PointCardTicketChallenges.length, 0);
+  assert.equal(rows.AuditLogs.length, 1);
+  assert.equal(rows.PointCardTicketTemplates.length, 1);
+});
+
 test('removed cards and their tickets are hidden from the member response', () => {
   const { context, rows } = loadTicketService();
   assert.equal(context.visibleTicketsForMember_('U-1').length, 1);
@@ -351,7 +395,12 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.doesNotMatch(adminHtml, /ticket-code-settings|generateTicketUsageCodeButton|票券使用密碼/);
   assert.doesNotMatch(adminApp, /generateTicketUsageCode|usage-code\.generate|updateTicketUsageCodeUI/);
   assert.doesNotMatch(adminApp, /data-generate-usage-code/);
-  assert.match(adminApp, /admin\.pointcards\.remove/);
+  assert.match(adminHtml, /id="archiveCardButton"/);
+  assert.match(adminHtml, /id="deleteCardButton"/);
+  assert.match(adminApp, /admin\.pointcards\.archive/);
+  assert.match(adminApp, /admin\.pointcards\.delete/);
+  assert.match(read('gas/Code.gs'), /admin\.pointcards\.remove/);
+  assert.match(read('gas/PointCardService.gs'), /handlePointCardDelete_/);
   assert.match(storage, /PointCardTickets:/);
   assert.match(pointsHtml, /確認使用這張票券/);
   assert.match(pointsApp, /confirmTicketUseButton\.addEventListener/);

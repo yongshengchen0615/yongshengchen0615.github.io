@@ -76,6 +76,22 @@ function updateRecordAtRow_(sheetName, rowNumber, record) {
   const sheet = getDataSheet_(sheetName); const headers = MEMBERSHIP_SHEET_SCHEMAS_[sheetName]; if (rowNumber < 2 || rowNumber > sheet.getLastRow()) throw new ApiError(500, 'INVALID_ROW', '資料列位置不合法。'); const range = sheet.getRange(rowNumber, 1, 1, headers.length); range.setNumberFormat('@'); range.setValues([recordToRow_(headers, record)]);
 }
 
+function deleteRecordsWhere_(sheetName, predicate) {
+  const sheet = getDataSheet_(sheetName); const headers = MEMBERSHIP_SHEET_SCHEMAS_[sheetName]; const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  const rows = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const rowNumbers = [];
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (predicate(rowToRecord_(headers, rows[index]))) rowNumbers.push(index + 2);
+  }
+  for (let index = 0; index < rowNumbers.length;) {
+    const end = rowNumbers[index]; let start = end; index += 1;
+    while (index < rowNumbers.length && rowNumbers[index] === start - 1) { start = rowNumbers[index]; index += 1; }
+    sheet.deleteRows(start, end - start + 1);
+  }
+  return rowNumbers.length;
+}
+
 function recordToRow_(headers, record) { return headers.map(function(header) { return escapeSheetValue_(record && record[header] !== undefined ? record[header] : ''); }); }
 function rowToRecord_(headers, row) { const record = {}; headers.forEach(function(header, index) { record[header] = decodeSheetValue_(row[index]); }); return record; }
 function escapeSheetValue_(value) { if (value === null || value === undefined) return ''; const text = String(value); return /^[=+\-@]/.test(text) ? "'" + text : text; }

@@ -163,7 +163,7 @@ function isValidDateOnly_(value) {
   return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2];
 }
 
-function handlePointCardRemove_(identity, admin, request) {
+function handlePointCardArchive_(identity, admin, request) {
   const cardId = String(request.cardId || '').trim();
   const expected = String(request.expectedUpdatedAt || '').trim();
   if (!cardId || cardId.length > 80) throw new ApiError(400, 'INVALID_CARD', '集點卡識別碼不合法。');
@@ -180,6 +180,47 @@ function handlePointCardRemove_(identity, admin, request) {
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_ARCHIVE', target_type: 'point_card', target_id: cardId, result: 'success', detail: 'Point card archived; history retained', created_at: now });
     return { card: pointCardForClient_(card, pointCardRewardsByCard_()[cardId] || [], true) };
   });
+}
+
+function handlePointCardDelete_(identity, admin, request) {
+  const cardId = String(request.cardId || '').trim();
+  const expected = String(request.expectedUpdatedAt || '').trim();
+  if (!cardId || cardId.length > 80) throw new ApiError(400, 'INVALID_CARD', '集點卡識別碼不合法。');
+  return withDataLock_(function() {
+    const match = findRecordWithRow_('PointCards', 'card_id', cardId);
+    if (!match) throw new ApiError(404, 'CARD_NOT_FOUND', '找不到集點卡。');
+    if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '集點卡已被更新，請重新整理。');
+
+    const rewardIds = {};
+    readRecords_('PointCardRewards').forEach(function(reward) {
+      if (String(reward.card_id || '') === cardId) rewardIds[String(reward.reward_id || '')] = true;
+    });
+    const ticketIds = {};
+    readRecords_('PointCardTickets').forEach(function(ticket) {
+      if (String(ticket.card_id || '') === cardId) ticketIds[String(ticket.ticket_id || '')] = true;
+    });
+
+    const deleted = {
+      ticketChallenges: deleteRecordsWhere_('PointCardTicketChallenges', function(challenge) { return Boolean(ticketIds[String(challenge.ticket_id || '')]); }),
+      lotteryPrizes: deleteRecordsWhere_('PointCardLotteryPrizes', function(prize) { return Boolean(rewardIds[String(prize.reward_id || '')]); }),
+      rewards: deleteRecordsWhere_('PointCardRewards', function(reward) { return String(reward.card_id || '') === cardId; }),
+      tickets: deleteRecordsWhere_('PointCardTickets', function(ticket) { return String(ticket.card_id || '') === cardId; }),
+      balances: deleteRecordsWhere_('PointBalances', function(balance) { return String(balance.card_id || '') === cardId; }),
+      entries: deleteRecordsWhere_('PointEntries', function(entry) { return String(entry.card_id || '') === cardId; })
+    };
+    deleted.auditLogs = deleteRecordsWhere_('AuditLogs', function(audit) {
+      const targetType = String(audit.target_type || ''); const targetId = String(audit.target_id || '');
+      return (targetType === 'point_card' && targetId === cardId)
+        || (targetType === 'point_card_ticket' && Boolean(ticketIds[targetId]))
+        || (targetType === 'point_balance' && targetId.endsWith(':' + cardId));
+    });
+    deleted.cards = deleteRecordsWhere_('PointCards', function(card) { return String(card.card_id || '') === cardId; });
+    return { deleted: true, cardId, counts: deleted };
+  });
+}
+
+function handlePointCardRemove_(identity, admin, request) {
+  return handlePointCardArchive_(identity, admin, request);
 }
 
 function handleAdminBootstrap_(identity, admin) {

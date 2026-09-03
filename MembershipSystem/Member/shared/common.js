@@ -3,9 +3,13 @@
 
   const GAS_URL_PATTERN = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
+  const READ_RESPONSE_ATTEMPTS = 2;
+  const READ_RETRY_DELAY_MS = 400;
   const WRITE_ACTIONS = Object.freeze([
     'admin.member.update',
     'admin.pointcards.save',
+    'admin.pointcards.archive',
+    'admin.pointcards.delete',
     'admin.pointcards.remove',
     'admin.tickets.save',
     'admin.stamps.add',
@@ -105,48 +109,74 @@
   }
 
   async function request(config, clientType, idToken, action, payload = {}) {
-    let response;
-    try {
-      response = await fetch(config.gasWebAppUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        cache: 'no-store',
-        redirect: 'follow',
-        body: JSON.stringify({ action, clientType, idToken, ...payload })
-      });
-    } catch (_) {
-      const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
-      throw clientError(
-        isWrite ? 'API_RESPONSE_UNCERTAIN' : 'NETWORK_ERROR',
-        isWrite
-          ? '無法確認這次操作是否已送達；資料可能已更新，請先重新整理確認，請勿重複送出。'
-          : '目前無法連線資料服務，請檢查網路後重試。'
-      );
-    }
+    const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
+    const attempts = isWrite ? 1 : READ_RESPONSE_ATTEMPTS;
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      let response;
+      try {
+        response = await fetch(config.gasWebAppUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          cache: 'no-store',
+          redirect: 'follow',
+          body: JSON.stringify({ action, clientType, idToken, ...payload })
+        });
+      } catch (_) {
+        lastError = clientError(
+          isWrite ? 'API_RESPONSE_UNCERTAIN' : 'NETWORK_ERROR',
+          isWrite
+            ? '無法確認這次操作是否已送達；資料可能已更新，請先重新整理確認，請勿重複送出。'
+            : '目前無法連線資料服務，請檢查網路後重試。'
+        );
+      }
 
-    let data;
-    try {
-      data = JSON.parse(await response.text());
-    } catch (_) {
-      const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
-      throw clientError(
-        isWrite ? 'API_RESPONSE_UNCERTAIN' : 'API_RESPONSE_ERROR',
-        isWrite
-          ? '無法確認這次操作的回應；資料可能已更新，請先重新整理確認，請勿重複送出。'
-          : '資料服務回應異常，請重新整理後再試。'
-      );
-    }
+      if (!lastError) {
+        let data;
+        try {
+          data = JSON.parse(await response.text());
+        } catch (_) {
+          lastError = clientError(
+            isWrite ? 'API_RESPONSE_UNCERTAIN' : 'API_RESPONSE_ERROR',
+            isWrite
+              ? '無法確認這次操作的回應；資料可能已更新，請先重新整理確認，請勿重複送出。'
+              : '資料服務暫時未正常回應，已自動重試仍失敗，請稍後重新整理。'
+          );
+          lastError.status = Number(response && response.status || 0);
+        }
 
-    if (!data || data.ok !== true) {
-      const error = clientError(
-        data && data.error && data.error.code || 'API_ERROR',
-        data && data.error && data.error.message || '資料服務拒絕此請求。'
-      );
-      error.status = Number(data && data.status || response.status || 0);
-      error.details = data && data.error && data.error.details || null;
-      throw error;
+        if (!lastError) {
+          if (!data || data.ok !== true) {
+            const error = clientError(
+              data && data.error && data.error.code || 'API_ERROR',
+              data && data.error && data.error.message || '資料服務拒絕此請求。'
+            );
+            error.status = Number(data && data.status || response.status || 0);
+            error.details = data && data.error && data.error.details || null;
+            throw error;
+          }
+          return data.data || {};
+        }
+      }
+
+      if (isWrite || attempt === attempts - 1) throw lastError;
+      await waitForReadRetry(attempt);
+      lastError = null;
     }
-    return data.data || {};
+    throw lastError || clientError('API_RESPONSE_ERROR', '資料服務暫時未正常回應，請稍後重新整理。');
+  }
+
+  function waitForReadRetry(attempt) {
+    return new Promise((resolve) => {
+      const delay = READ_RETRY_DELAY_MS * (attempt + 1);
+      if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+        window.setTimeout(resolve, delay);
+      } else if (typeof setTimeout === 'function') {
+        setTimeout(resolve, delay);
+      } else {
+        resolve();
+      }
+    });
   }
 
   function logout() {

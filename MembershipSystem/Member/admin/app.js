@@ -9,7 +9,7 @@
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton',
       'membersTab', 'cardsTab', 'ticketsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'ticketsPanel', 'syncStatus', 'refreshButton',
       'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState',
-      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'removeCardButton', 'saveCardButton',
+      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
       'stampModal', 'closeStampModal', 'stampForm', 'stampMemberId', 'stampMemberName', 'stampCardId', 'stampAmount', 'stampNote', 'stampFormMessage', 'cancelStampButton', 'saveStampButton'
@@ -37,7 +37,8 @@
     els.cardAccent.addEventListener('input', updateAccentValue);
     els.cardForm.addEventListener('submit', saveCard);
     els.resetCardButton.addEventListener('click', resetCardForm);
-    els.removeCardButton.addEventListener('click', removeCard);
+    els.archiveCardButton.addEventListener('click', archiveCard);
+    els.deleteCardButton.addEventListener('click', deleteCard);
     els.newTicketButton.addEventListener('click', resetTicketForm);
     els.ticketListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-ticket-template-id]') : null; if (button) loadTicketForm(button.dataset.ticketTemplateId); });
     els.ticketType.addEventListener('change', updateTicketTypeUI);
@@ -129,11 +130,11 @@
 
   function loadCardForm(cardId) {
     const card = state.cards.find((item) => item.cardId === cardId); if (!card) return;
-    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.removeCardButton.disabled = card.status === 'archived'; els.removeCardButton.textContent = card.status === 'archived' ? '已移除集點卡' : '移除集點卡'; hideMessage(els.cardFormMessage); renderCardList();
+    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.archiveCardButton.disabled = card.status === 'archived'; els.archiveCardButton.textContent = card.status === 'archived' ? '已封存集點卡' : '封存集點卡'; els.deleteCardButton.disabled = false; hideMessage(els.cardFormMessage); renderCardList();
   }
 
   function resetCardForm() {
-    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = 'draft'; els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, 'draft'); els.removeCardButton.disabled = true; els.removeCardButton.textContent = '先儲存後才能移除'; hideMessage(els.cardFormMessage); renderCardList();
+    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = 'draft'; els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, 'draft'); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
   }
 
   function defaultReward(thresholdStamps) { return { thresholdStamps, consumeStamps: thresholdStamps, ticketTemplateId: '' }; }
@@ -177,18 +178,33 @@
     } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
   }
 
-  async function removeCard() {
+  async function archiveCard() {
     const cardId = String(els.cardId.value || '').trim();
-    if (!cardId || els.removeCardButton.disabled) return;
-    if (!window.confirm('移除後不再接受新的集點；會員端會同步隱藏這張卡與相關票券，歷史資料仍保留。確定要移除嗎？')) return;
-    const originalText = els.removeCardButton.textContent;
-    els.removeCardButton.disabled = true; els.removeCardButton.textContent = '移除中…';
+    if (!cardId || els.archiveCardButton.disabled) return;
+    if (!window.confirm('封存後不再接受新的集點；會員端會同步隱藏這張卡與相關票券，但所有資料與歷史紀錄都會保留。確定要封存嗎？')) return;
+    const originalText = els.archiveCardButton.textContent;
+    els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '封存中…';
     try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.remove', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.archive', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       if (result.card) state.cards = replaceById(state.cards, result.card, 'cardId');
-      state.selectedCardId = ''; resetCardForm();
-      if (await refreshAfterSuccessfulWrite('集點卡已移除，歷史資料仍保留', els.cardFormMessage)) showMessage(els.cardFormMessage, '集點卡已移除；歷史資料仍保留。', true);
-    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (els.cardId.value === cardId) { els.removeCardButton.disabled = false; els.removeCardButton.textContent = originalText; } }
+      if (result.card) loadCardForm(result.card.cardId);
+      if (await refreshAfterSuccessfulWrite('集點卡已封存，所有資料仍保留', els.cardFormMessage)) showMessage(els.cardFormMessage, '集點卡已封存；會員端不再顯示，資料與歷史紀錄仍保留。', true);
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (els.cardId.value === cardId && els.cardStatus.value !== 'archived') { els.archiveCardButton.disabled = false; els.archiveCardButton.textContent = originalText; } }
+  }
+
+  async function deleteCard() {
+    const cardId = String(els.cardId.value || '').trim();
+    const cardTitle = String(els.cardTitle.value || '這張集點卡').trim();
+    if (!cardId || els.deleteCardButton.disabled) return;
+    if (!window.confirm(`永久刪除「${cardTitle}」後，集點卡、節點、票券、餘額、點數流水與相關歷史都會移除，無法復原。要繼續嗎？`)) return;
+    if (!window.confirm('最後確認：這是永久刪除，不是封存。確定要刪除嗎？')) return;
+    const originalText = els.deleteCardButton.textContent;
+    els.deleteCardButton.disabled = true; els.deleteCardButton.textContent = '刪除中…';
+    try {
+      await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.delete', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      state.cards = state.cards.filter((card) => card.cardId !== cardId); state.selectedCardId = ''; resetCardForm();
+      if (await refreshAfterSuccessfulWrite('集點卡已永久刪除', els.cardFormMessage)) showMessage(els.cardFormMessage, '集點卡與所有相關資料已永久刪除。', true);
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (els.cardId.value === cardId) { els.deleteCardButton.disabled = false; els.deleteCardButton.textContent = originalText; } }
   }
 
   function renderTicketList() {

@@ -68,6 +68,29 @@ test('transport distinguishes an uncertain write outcome from a failed read resp
     (error) => error && error.code === 'API_RESPONSE_ERROR'
   );
 
+  let readAttempts = 0;
+  context.fetch = async () => {
+    readAttempts += 1;
+    return readAttempts === 1
+      ? { status: 502, text: async () => '<html>temporary response</html>' }
+      : { status: 200, text: async () => JSON.stringify({ ok: true, data: { members: [] } }) };
+  };
+  await assert.doesNotReject(
+    () => request({ gasWebAppUrl: 'https://example.invalid' }, 'admin', 'id-token', 'admin.bootstrap')
+  );
+  assert.equal(readAttempts, 2, 'read requests retry once after a non-JSON response');
+
+  let writeAttempts = 0;
+  context.fetch = async () => {
+    writeAttempts += 1;
+    return { status: 502, text: async () => '<html>temporary response</html>' };
+  };
+  await assert.rejects(
+    () => request({ gasWebAppUrl: 'https://example.invalid' }, 'admin', 'id-token', 'admin.stamps.add'),
+    (error) => error && error.code === 'API_RESPONSE_UNCERTAIN'
+  );
+  assert.equal(writeAttempts, 1, 'write requests must not retry after an uncertain response');
+
   context.fetch = async () => { throw new Error('network interrupted'); };
   await assert.rejects(
     () => request({ gasWebAppUrl: 'https://example.invalid' }, 'admin', 'id-token', 'admin.stamps.add'),
