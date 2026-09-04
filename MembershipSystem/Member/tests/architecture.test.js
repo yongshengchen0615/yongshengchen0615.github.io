@@ -70,6 +70,7 @@ test('member card collects first-visit contact details and displays accumulated 
   const memberApp = read('member/app.js');
   const adminHtml = read('admin/index.html');
   const adminApp = read('admin/app.js');
+  const adminStyles = read('admin/styles.css');
   assert.match(memberHtml, /profileBirthday/);
   assert.match(memberHtml, /profilePhone/);
   assert.match(memberHtml, /memberBirthday/);
@@ -81,9 +82,17 @@ test('member card collects first-visit contact details and displays accumulated 
   assert.match(adminHtml, /grantStampsEnabled/);
   assert.match(adminHtml, /grantServiceTimeEnabled/);
   assert.match(adminHtml, /grantSuccessNotice/);
+  assert.match(adminHtml, /class="operation-notice hidden"/);
+  assert.match(adminHtml, /aria-atomic="true"/);
   assert.match(adminApp, /admin\.member-grants\.add/);
   assert.match(adminApp, /showGrantSuccess\(details\)/);
   assert.match(adminApp, /發放完成/);
+  assert.match(adminApp, /function showOperationProgress\(message\)/);
+  assert.match(adminApp, /function showOperationSuccess\(message\)/);
+  assert.match(adminApp, /showOperationSuccess\(successMessage\)/);
+  ['正在儲存會員等級門檻', '正在儲存集點卡', '正在封存集點卡', '正在永久刪除集點卡', '正在儲存票券', '正在儲存活動票券', '正在刪除活動票券', '正在儲存會員狀態', '正在發放集點與服務時間'].forEach((message) => assert.match(adminApp, new RegExp(message)));
+  assert.match(adminStyles, /\.operation-notice\.is-processing::before/);
+  assert.match(adminStyles, /@keyframes operation-spin/);
   assert.doesNotMatch(adminApp, /admin\.stamps\.add|admin\.service_minutes\.add/);
   assert.doesNotMatch(adminApp, /小時/);
 });
@@ -223,7 +232,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-date-range-mobile-20260905/);
+  assert.match(adminHtml, /styles\.css\?v=admin-save-feedback-20260905/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);

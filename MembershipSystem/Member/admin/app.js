@@ -184,7 +184,7 @@
     const tierSettings = collectTierSettings();
     const invalid = tierSettings.some((setting, index) => !Number.isInteger(setting.requiredServiceMinutes) || setting.requiredServiceMinutes < 0 || setting.requiredServiceMinutes > 10000000 || (index === 0 ? setting.requiredServiceMinutes !== 0 : setting.requiredServiceMinutes <= tierSettings[index - 1].requiredServiceMinutes));
     if (invalid) return showMessage(els.tierSettingsFormMessage, '門檻必須由一般會員 0 分鐘開始，銀級、金級與白金會員需依序遞增。');
-    setSaving(els.saveTierSettingsButton, true);
+    setSaving(els.saveTierSettingsButton, true, '正在儲存會員等級門檻…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-tiers.save', { tierSettings });
       state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : state.tierSettings;
@@ -372,7 +372,7 @@
     const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim();
     const validationMessage = validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardExpiry(expiryMode, expiresOn);
     if (validationMessage) return showMessage(els.cardFormMessage, validationMessage);
-    setSaving(els.saveCardButton, true);
+    setSaving(els.saveCardButton, true, '正在儲存集點卡…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), description: String(els.cardDescription.value || '').trim(), rewardTitle: '', rewards, status: els.cardStatus.value, expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       if (result.card) { state.cards = replaceById(state.cards, result.card, 'cardId'); loadCardForm(result.card.cardId); }
@@ -386,7 +386,7 @@
     if (!cardId || els.archiveCardButton.disabled) return;
     if (!window.confirm('封存後不再接受新的集點；會員端會同步隱藏這張卡與相關票券，但所有資料與歷史紀錄都會保留。確定要封存嗎？')) return;
     const originalText = els.archiveCardButton.textContent;
-    els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '封存中…';
+    els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '封存中…'; showOperationProgress('正在封存集點卡…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.archive', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       if (result.card) state.cards = replaceById(state.cards, result.card, 'cardId');
@@ -403,7 +403,7 @@
     if (!window.confirm(`永久刪除「${cardTitle}」後，集點卡、節點、票券、餘額、點數流水與相關歷史都會移除，無法復原。要繼續嗎？`)) return;
     if (!window.confirm('最後確認：這是永久刪除，不是封存。確定要刪除嗎？')) return;
     const originalText = els.deleteCardButton.textContent;
-    els.deleteCardButton.disabled = true; els.deleteCardButton.textContent = '刪除中…';
+    els.deleteCardButton.disabled = true; els.deleteCardButton.textContent = '刪除中…'; showOperationProgress('正在永久刪除集點卡…');
     try {
       await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.delete', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       state.cards = state.cards.filter((card) => card.cardId !== cardId); state.selectedCardId = ''; resetCardForm();
@@ -429,7 +429,7 @@
     const ticket = { ticketTemplateId: els.ticketTemplateId.value, title: String(els.ticketTitle.value || '').trim(), ticketType: els.ticketType.value, description: String(els.ticketDescription.value || '').trim(), usageMethod: String(els.ticketUsageMethod.value || '').trim(), usageInstructions: String(els.ticketUsageInstructions.value || '').trim(), status: els.ticketStatus.value, prizes: els.ticketType.value === 'lottery' ? collectTicketPrizes() : [] };
     const validationMessage = validateTicket(ticket);
     if (validationMessage) return showMessage(els.ticketFormMessage, validationMessage);
-    setSaving(els.saveTicketButton, true);
+    setSaving(els.saveTicketButton, true, '正在儲存票券…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.tickets.save', { ticket, expectedUpdatedAt: els.ticketExpectedUpdatedAt.value });
       if (result.ticket) { state.tickets = replaceById(state.tickets, result.ticket, 'ticketTemplateId'); loadTicketForm(result.ticket.ticketTemplateId); }
@@ -492,7 +492,7 @@
     event.preventDefault(); if (requireRefreshBeforeWrite(els.eventTicketFormMessage)) return; hideMessage(els.eventTicketFormMessage);
     const ticket = { eventTicketId: els.eventTicketId.value, title: String(els.eventTicketTitle.value || '').trim(), ticketType: els.eventTicketType.value, description: String(els.eventTicketDescription.value || '').trim(), usageMethod: String(els.eventTicketUsageMethod.value || '').trim(), usageInstructions: String(els.eventTicketUsageInstructions.value || '').trim(), status: els.eventTicketStatus.value, startsOn: String(els.eventTicketStartsOn.value || '').trim(), endsOn: String(els.eventTicketEndsOn.value || '').trim(), quota: Number(els.eventTicketQuota.value), allowedTierKeys: collectEventTicketAllowedTiers(), accent: safeAccent(els.eventTicketAccent.value), prizes: els.eventTicketType.value === 'lottery' ? collectEventTicketPrizes() : [] };
     const validationMessage = validateEventTicket(ticket); if (validationMessage) return showMessage(els.eventTicketFormMessage, validationMessage);
-    setSaving(els.saveEventTicketButton, true);
+    setSaving(els.saveEventTicketButton, true, '正在儲存活動票券…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.event-tickets.save', { eventTicket: ticket, expectedUpdatedAt: els.eventTicketExpectedUpdatedAt.value });
       if (result.eventTicket) { state.eventTickets = replaceById(state.eventTickets, result.eventTicket, 'eventTicketId'); loadEventTicketForm(result.eventTicket.eventTicketId); }
@@ -505,7 +505,7 @@
     if (!eventTicketId || els.deleteEventTicketButton.disabled) return;
     if (!window.confirm(`刪除「${title}」後，會員端將無法再領取或使用；已領取的票券快照與稽核紀錄會保留。確定要刪除嗎？`)) return;
     const originalText = els.deleteEventTicketButton.textContent;
-    els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.textContent = '刪除中…';
+    els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.textContent = '刪除中…'; showOperationProgress('正在刪除活動票券…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.event-tickets.delete', { eventTicketId, expectedUpdatedAt: els.eventTicketExpectedUpdatedAt.value });
       state.eventTickets = state.eventTickets.filter((ticket) => ticket.eventTicketId !== eventTicketId); state.selectedEventTicketId = ''; resetEventTicketForm();
@@ -517,7 +517,7 @@
 
   function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.textContent = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberStatus.focus(); }
   function closeMemberModal() { els.memberModal.classList.add('hidden'); }
-  async function saveMember(event) { event.preventDefault(); if (requireRefreshBeforeWrite(els.memberFormMessage)) return; hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
+  async function saveMember(event) { event.preventDefault(); if (requireRefreshBeforeWrite(els.memberFormMessage)) return; hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true, '正在儲存會員狀態…'); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); showOperationSuccess('會員狀態已儲存'); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
   function openGrantModal(member) { const activeCards = state.cards.filter((card) => card.status === 'active' && !card.expired); state.grantRequestId = createRequestId(); els.grantMemberId.value = String(member.lineUserId); els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`; els.grantCardId.replaceChildren(...activeCards.map((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); return option; })); els.grantStampsEnabled.checked = activeCards.length > 0; els.grantStampsEnabled.disabled = activeCards.length === 0; els.grantServiceTimeEnabled.checked = activeCards.length === 0; els.grantStampAmount.value = '1'; els.grantServiceTimeMinutes.value = '30'; els.grantNote.value = ''; updateGrantOptions(); hideMessage(els.grantFormMessage); els.grantModal.classList.remove('hidden'); (activeCards.length ? els.grantCardId : els.grantServiceTimeMinutes).focus(); }
   function closeGrantModal() { state.grantRequestId = ''; els.grantModal.classList.add('hidden'); }
   function updateGrantOptions() {
@@ -539,13 +539,13 @@
     const note = String(els.grantNote.value || '').trim(); const payload = { lineUserId: els.grantMemberId.value, requestId: state.grantRequestId || (state.grantRequestId = createRequestId()), note };
     if (addStamps) payload.points = { cardId: els.grantCardId.value, amount: stampAmount };
     if (addServiceTime) payload.serviceTime = { minutes: serviceTimeMinutes };
-    setSaving(els.saveGrantButton, true);
+    setSaving(els.saveGrantButton, true, '正在發放集點與服務時間…', '發放中…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-grants.add', payload);
       if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId');
       const details = [addStamps ? `${stampAmount} 點` : '', addServiceTime ? formatServiceMinutes(serviceTimeMinutes) : ''].filter(Boolean).join('、');
       closeGrantModal(); showGrantSuccess(details);
-      if (await refreshAfterSuccessfulWrite('發放完成', null)) setSyncStatus(`發放完成：${details} · 已同步`, false);
+      if (await refreshAfterSuccessfulWrite('發放完成', null, false)) setSyncStatus(`發放完成：${details} · 已同步`, false);
     } catch (error) { handleActionError(error, els.grantFormMessage); } finally { setSaving(els.saveGrantButton, false); }
   }
 
@@ -558,13 +558,21 @@
   function replaceById(items, next, key) { return items.some((item) => item[key] === next[key]) ? items.map((item) => item[key] === next[key] ? next : item) : [next, ...items]; }
   function createRequestId() { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); return `request-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`; }
   function formatServiceMinutes(value) { return `${Math.max(0, Math.floor(Number(value) || 0))} 分鐘`; }
-  function showGrantSuccess(details) {
-    els.grantSuccessNotice.textContent = details ? `發放完成：${details}` : '發放完成';
-    els.grantSuccessNotice.classList.remove('hidden');
+  function showOperationNotice(message, tone, duration) {
+    const notice = els.grantSuccessNotice;
+    if (!notice) return;
     if (state.grantSuccessTimer) window.clearTimeout(state.grantSuccessTimer);
-    state.grantSuccessTimer = window.setTimeout(() => { els.grantSuccessNotice.classList.add('hidden'); state.grantSuccessTimer = null; }, 3600);
+    notice.textContent = message;
+    notice.classList.remove('hidden', 'is-processing', 'is-success', 'is-warning', 'is-error');
+    notice.classList.add(`is-${tone}`);
+    const hideAfter = duration === undefined ? (tone === 'processing' ? 0 : 3600) : duration;
+    if (hideAfter > 0) state.grantSuccessTimer = window.setTimeout(() => { notice.classList.add('hidden'); state.grantSuccessTimer = null; }, hideAfter);
+    else state.grantSuccessTimer = null;
   }
-  function setSaving(button, saving) { button.disabled = saving || state.writeConfirmationRequired; if (saving) { button.dataset.originalText = button.textContent; button.textContent = '儲存中…'; } else button.textContent = state.writeConfirmationRequired ? '請重新整理確認' : button.dataset.originalText || button.textContent; }
+  function showOperationProgress(message) { showOperationNotice(message, 'processing', 0); }
+  function showOperationSuccess(message) { showOperationNotice(message, 'success'); }
+  function showGrantSuccess(details) { showOperationSuccess(details ? `發放完成：${details}` : '發放完成'); }
+  function setSaving(button, saving, progressMessage, busyLabel) { button.disabled = saving || state.writeConfirmationRequired; if (saving) { button.dataset.originalText = button.textContent; button.textContent = busyLabel || '儲存中…'; showOperationProgress(progressMessage || '正在儲存…'); } else button.textContent = state.writeConfirmationRequired ? '請重新整理確認' : button.dataset.originalText || button.textContent; }
   function showMessage(element, message, success) { element.textContent = message; element.classList.toggle('success', Boolean(success)); element.classList.remove('hidden'); }
   function hideMessage(element) { element.textContent = ''; element.classList.add('hidden'); element.classList.remove('success'); const action = element.nextElementSibling; if (action && action.matches('[data-uncertain-write-refresh]')) action.remove(); }
   function showUncertainWriteMessage(element) {
@@ -576,15 +584,17 @@
   function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.deleteEventTicketButton, els.saveMemberButton, els.saveGrantButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; }
   function requireRefreshBeforeWrite(element) { if (!state.writeConfirmationRequired) return false; showUncertainWriteMessage(element); return true; }
   function setSyncStatus(message, error) { els.syncStatus.textContent = message; els.syncStatus.classList.toggle('error', Boolean(error)); }
-  async function refreshAfterSuccessfulWrite(successMessage, messageElement) {
+  async function refreshAfterSuccessfulWrite(successMessage, messageElement, showSuccessNotice = true) {
+    if (showSuccessNotice) showOperationSuccess(successMessage);
     try { await refreshData(false); return true; } catch (_) {
       const message = `${successMessage}；資料已完成更新，但畫面同步失敗，請重新整理確認。`;
+      showOperationNotice(message, 'warning', 5200);
       if (messageElement) showMessage(messageElement, message, true);
       setSyncStatus('資料已更新，但畫面同步失敗，請重新整理確認。', true);
       return false;
     }
   }
-  function handleActionError(error, element) { if (error && error.code === 'API_RESPONSE_UNCERTAIN') { state.writeConfirmationRequired = true; lockAdminWrites(); showUncertainWriteMessage(element); setSyncStatus('寫入結果尚未確認；請重新整理確認後再操作。', true); return; } showMessage(element, error && error.code === 'CONFLICT' ? '資料已被另一位管理者更新，請重新整理後再儲存。' : error && error.message || '操作失敗，請稍後再試。'); }
+  function handleActionError(error, element) { if (error && error.code === 'API_RESPONSE_UNCERTAIN') { state.writeConfirmationRequired = true; lockAdminWrites(); showOperationNotice('無法確認這次操作是否完成，請重新整理確認。', 'warning', 0); showUncertainWriteMessage(element); setSyncStatus('寫入結果尚未確認；請重新整理確認後再操作。', true); return; } showOperationNotice(error && error.code === 'CONFLICT' ? '資料已被其他管理者更新，請重新整理後再試。' : '操作未完成，請查看表單提示。', 'error', 4600); showMessage(element, error && error.code === 'CONFLICT' ? '資料已被另一位管理者更新，請重新整理後再儲存。' : error && error.message || '操作失敗，請稍後再試。'); }
   function handleBootError(error) { if (error && error.code === 'ADMIN_PENDING') { els.pendingUserId.textContent = String(error.details && error.details.lineUserId || '請查看 Admins 資料表'); els.pendingBox.classList.remove('hidden'); showError('此 LINE 帳號尚未授權', 'GAS 已記錄這次管理端登入，但目前不允許進入管理功能。'); return; } if (error && error.code === 'ADMIN_FORBIDDEN') { showError('沒有管理端權限', '此 LINE 帳號未啟用管理權限，請檢查 Admins 的 role 與 status。'); return; } showError(error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '暫時無法進入管理端', error && error.message || '請稍後重新整理。'); }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.adminView.classList.toggle('hidden', view !== 'admin'); }
   function showError(title, message) { els.errorTitle.textContent = title; els.errorMessage.textContent = message; setView('error'); }
