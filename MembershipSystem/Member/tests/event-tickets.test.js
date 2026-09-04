@@ -106,6 +106,27 @@ test('each event ticket save persists its own allowed membership tiers', () => {
   assert.equal(context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'gold').some((offer) => offer.ticket.eventTicketId === goldTicket.eventTicketId), true);
 });
 
+test('only missing legacy tier settings default to all membership tiers', () => {
+  const { context, rows } = loadEventTicketService();
+  assert.deepEqual(Array.from(context.eventTicketAllowedTierKeys_(rows.EventTickets[0])), ['general', 'silver', 'gold', 'platinum']);
+
+  rows.EventTickets[0].allowed_tier_keys = 'not-json';
+  assert.deepEqual(Array.from(context.eventTicketAllowedTierKeys_(rows.EventTickets[0])), []);
+  assert.equal(context.eventTicketAllowsTier_(rows.EventTickets[0], 'gold'), false);
+});
+
+test('legacy update requests retain an existing ticket tier restriction', () => {
+  const { context, rows } = loadEventTicketService();
+  rows.EventTickets[0].allowed_tier_keys = JSON.stringify(['gold', 'platinum']);
+  const result = context.handleEventTicketSave_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
+    expectedUpdatedAt: '2026-09-03T00:00:00.000Z',
+    eventTicket: { eventTicketId: 'ET-1', title: '週年禮更新', ticketType: 'coupon', description: '會員限定禮物', usageMethod: '出示本券', usageInstructions: '限活動期間使用', status: 'active', startsOn: '', endsOn: '', quota: 1, accent: '#df6b4d', prizes: [] }
+  });
+
+  assert.deepEqual(Array.from(result.eventTicket.allowedTierKeys), ['gold', 'platinum']);
+  assert.equal(rows.EventTickets[0].allowed_tier_keys, '["gold","platinum"]');
+});
+
 test('used event tickets move to member history and retain their snapshot after definition removal', () => {
   const { context, rows } = loadEventTicketService();
   const claim = context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' });
@@ -177,7 +198,8 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(adminHtml, /id="deleteEventTicketButton"/);
   assert.match(adminApp, /admin\.event-tickets\.save/);
   assert.match(adminApp, /admin\.event-tickets\.delete/);
-  assert.match(adminApp, /new FormData\(els\.eventTicketForm\)/);
+  assert.match(adminApp, /#eventTicketAllowedTiers input\[name="eventTicketAllowedTierKey"\]:checked/);
+  assert.doesNotMatch(adminApp, /new FormData\(els\.eventTicketForm\)/);
   assert.match(adminApp, /insertBefore\(eventTicketTierAccess/);
   assert.match(adminApp, /updateEventTicketTierSummary/);
   assert.match(eventApp, /tierEligible/);

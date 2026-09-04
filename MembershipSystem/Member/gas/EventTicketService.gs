@@ -216,7 +216,6 @@ function handleEventTicketSave_(identity, admin, request) {
   const startsOn = eventTicketNormalizeDate_(input.startsOn, '活動開始日');
   const endsOn = eventTicketNormalizeDate_(input.endsOn, '活動結束日');
   const quota = eventTicketNormalizeQuota_(input.quota);
-  const allowedTierKeys = normalizeEventTicketAllowedTierKeys_(input.allowedTierKeys);
   const accent = String(input.accent || '').trim();
   const expected = String(request.expectedUpdatedAt || '').trim();
   if (!title || title.length > 100 || EVENT_TICKET_TYPES_.indexOf(ticketType) < 0 || !description || description.length > 240 || !usageMethod || usageMethod.length > 120 || !usageInstructions || usageInstructions.length > 500 || EVENT_TICKET_STATUSES_.indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(accent) || (startsOn && endsOn && startsOn > endsOn)) {
@@ -236,6 +235,12 @@ function handleEventTicketSave_(identity, admin, request) {
       rowNumber = match.rowNumber;
     } else {
       ticket = { event_ticket_id: 'ET-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), created_by: identity.lineUserId, created_at: now };
+    }
+    let allowedTierKeys;
+    if (input.allowedTierKeys === undefined || input.allowedTierKeys === null) {
+      allowedTierKeys = rowNumber ? normalizeEventTicketAllowedTierKeys_(eventTicketAllowedTierKeys_(ticket)) : eventTicketAllTierKeys_();
+    } else {
+      allowedTierKeys = normalizeEventTicketAllowedTierKeys_(input.allowedTierKeys);
     }
     ticket.title = title;
     ticket.ticket_type = ticketType;
