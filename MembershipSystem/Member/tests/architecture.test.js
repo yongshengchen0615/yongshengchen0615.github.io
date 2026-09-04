@@ -218,3 +218,15 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
   assert.ok(schemaChecks > 0);
   assert.equal(schemaChecks, 15);
 });
+
+
+test('admin mobile layout contains LINE WebView overflow guards', () => {
+  const adminHtml = read('admin/index.html');
+  const adminStyles = read('admin/styles.css');
+  assert.match(adminHtml, /styles\.css\?v=admin-line-overflow-20260905/);
+  assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
+  assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
+  assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
+  assert.match(adminStyles, /\.surface-nav \{ max-width: 100%; overflow-x: auto;/);
+  assert.doesNotMatch(adminStyles, /\.card-list > div:last-child \{ display: flex; overflow-x: auto;/);
+});
