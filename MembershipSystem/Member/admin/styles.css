@@ -142,3 +142,37 @@ input, select, textarea, button { min-width: 0; max-width: 100%; }
   .editor-actions, .modal-actions { width: 100%; }
   .editor-actions .button, .modal-actions .button { flex-basis: calc(50% - 5px); }
 }
+
+/* Mobile turns the member directory into labelled rows instead of a clipped wide table. */
+#displayName, .member-cell, .member-cell strong, .member-cell small, .identity-line { max-width: 100%; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .surface-tab, .card-settings-tab, .button, .small-button { min-height: 44px; }
+  .surface-tab { padding: 0 10px 12px; }
+  .card-settings-tab { display: inline-flex; align-items: center; justify-content: center; }
+  .table-wrap { overflow: visible; border-top: 0; }
+  .table-wrap table { min-width: 0; }
+  .table-wrap thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .table-wrap tbody { display: grid; gap: 12px; }
+  .table-wrap tr { display: block; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+  .table-wrap td { display: grid; grid-template-columns: minmax(92px, .78fr) minmax(0, 1.22fr); align-items: center; gap: 12px; padding: 8px 0; border: 0; text-align: right; }
+  .table-wrap td::before { color: var(--muted); content: attr(data-mobile-label); font-size: 10px; font-weight: 850; letter-spacing: .06em; text-align: left; }
+  .table-wrap td:nth-child(1)::before { content: '會員'; }
+  .table-wrap td:nth-child(2)::before { content: '等級'; }
+  .table-wrap td:nth-child(3)::before { content: '狀態'; }
+  .table-wrap td:nth-child(4)::before { content: '累積服務時間'; }
+  .table-wrap td:nth-child(5)::before { content: '加入日期'; }
+  .table-wrap td:nth-child(6)::before { content: '操作'; }
+  .table-wrap td:first-child { align-items: start; }
+  .table-wrap td:first-child .member-cell, .table-wrap .row-actions { justify-content: flex-end; }
+  .table-wrap .member-cell { min-width: 0; text-align: left; }
+  .table-wrap .row-actions { flex-wrap: wrap; }
+  .member-pagination { justify-content: space-between; }
+  .member-pagination .button { flex: 1 1 0; min-width: 0; }
+}
+
+@media (max-width: 380px) {
+  .table-wrap tr { padding: 11px; }
+  .table-wrap td { grid-template-columns: 84px minmax(0, 1fr); gap: 8px; }
+  .table-wrap .small-button { flex: 1 1 0; }
+}
