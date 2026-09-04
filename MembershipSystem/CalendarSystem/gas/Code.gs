@@ -1,6 +1,6 @@
 'use strict';
 
-const CALENDAR_API_VERSION_ = '2.3.0';
+const CALENDAR_API_VERSION_ = '2.4.0';
 const CALENDAR_BUSINESS_TIME_ZONE_ = 'Asia/Taipei';
 const USER_ACCESS_STATUSES_ = Object.freeze(['active', 'disabled']);
 const MAX_REQUEST_BYTES_ = 40000;
@@ -57,19 +57,19 @@ function doPost(e) {
     let data;
     switch (action) {
       case 'user.bootstrap':
-        data = handleUserBootstrap_(identity);
+        data = handleUserBootstrap_(identity, request);
         break;
       case 'user.calendar.list':
-        data = handleUserCalendarList_(identity);
+        data = handleUserCalendarList_(identity, request);
         break;
       case 'admin.bootstrap': {
         const admin = authorizeAdmin_(identity);
-        data = handleAdminBootstrap_(identity, admin);
+        data = handleAdminBootstrap_(identity, admin, request);
         break;
       }
       case 'admin.calendar.list': {
         const admin = authorizeAdmin_(identity);
-        data = handleAdminCalendarList_(identity, admin);
+        data = handleAdminCalendarList_(request);
         break;
       }
       case 'admin.calendar.create': {
@@ -183,6 +183,7 @@ function enforceRateLimit_(credential, action, request) {
   }).join('');
 
   const minuteBucket = Math.floor(Date.now() / 60000);
+  const retryAfterSeconds = Math.max(1, 60 - Math.floor((Date.now() % 60000) / 1000));
   const isWrite = WRITE_ACTIONS_.indexOf(action) !== -1;
   const limit = isWrite ? RATE_LIMIT_WRITE_PER_MINUTE_ : RATE_LIMIT_READ_PER_MINUTE_;
   const cost = requestRateLimitCost_(action, request);
@@ -193,13 +194,13 @@ function enforceRateLimit_(credential, action, request) {
   try {
     lock.waitLock(1000);
   } catch (error) {
-    throw new ApiError(429, 'RATE_LIMIT_BUSY', '請求過於密集，請稍後再試。');
+    throw new ApiError(429, 'RATE_LIMIT_BUSY', '請求過於密集，請稍後再試。', { retryAfterSeconds: 1 });
   }
 
   try {
     const current = Number(cache.get(cacheKey) || '0');
     if (current + cost > limit) {
-      throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。');
+      throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。', { retryAfterSeconds: retryAfterSeconds });
     }
     cache.put(cacheKey, String(current + cost), 120);
   } finally {

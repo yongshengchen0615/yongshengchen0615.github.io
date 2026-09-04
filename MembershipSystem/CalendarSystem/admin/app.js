@@ -47,14 +47,8 @@
       }
     });
 
-    els.prevMonth.addEventListener('click', () => {
-      state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() - 1, 1);
-      renderCalendar();
-    });
-    els.nextMonth.addEventListener('click', () => {
-      state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() + 1, 1);
-      renderCalendar();
-    });
+    els.prevMonth.addEventListener('click', () => changeMonth(-1));
+    els.nextMonth.addEventListener('click', () => changeMonth(1));
     els.todayButton.addEventListener('click', () => {
       const today = new Date();
       state.viewMonth = startOfMonth(today);
@@ -102,7 +96,7 @@
         throw clientError('AUTH_REQUIRED', '無法取得 LINE ID token。請確認 Admin LIFF 已啟用 openid scope。');
       }
 
-      const result = await api('admin.bootstrap');
+      const result = await api('admin.bootstrap', visibleCalendarRange());
       state.profile = result.profile || null;
       state.role = result.role || '';
       state.items = Array.isArray(result.items) ? result.items : [];
@@ -180,9 +174,11 @@
     }
 
     if (!data || data.ok !== true) {
-      const error = clientError(data && data.error && data.error.code || 'API_ERROR', data && data.error && data.error.message || '後端拒絕此請求。');
+      const code = data && data.error && data.error.code || 'API_ERROR';
+      const details = data && data.error && data.error.details || null;
+      const error = clientError(code, rateLimitMessage(code, data && data.error && data.error.message || '後端拒絕此請求。', details));
       error.status = Number(data && data.status || 0);
-      error.details = data && data.error && data.error.details || null;
+      error.details = details;
       throw error;
     }
 
@@ -226,6 +222,25 @@
     els.errorTitle.textContent = title;
     els.errorMessage.textContent = message;
     setView('error');
+  }
+
+  function changeMonth(offset) {
+    state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() + offset, 1);
+    renderCalendar();
+    refreshItems(false);
+  }
+
+  function visibleCalendarRange() {
+    const year = state.viewMonth.getFullYear();
+    const month = state.viewMonth.getMonth();
+    const first = new Date(year, month, 1);
+    const gridStart = new Date(year, month, 1 - first.getDay());
+    const gridEnd = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + 41);
+    return { rangeStart: dateKey(gridStart), rangeEnd: dateKey(gridEnd) };
+  }
+
+  function calendarRangeKey(range) {
+    return range.rangeStart + ':' + range.rangeEnd;
   }
 
   function renderCalendar() {
@@ -290,8 +305,12 @@
     const rangeEndDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + dayCount - 1);
     const rangeEnd = dateKey(rangeEndDate);
 
-    state.items.forEach((item) => {
-      if (!item || item.status === 'archived' || item.endDate < rangeStart || item.startDate > rangeEnd) return;
+    const visibleItems = state.items.filter((item) => {
+      return item && item.status !== 'archived' && item.endDate >= rangeStart && item.startDate <= rangeEnd;
+    });
+    sortCalendarItems(visibleItems);
+
+    visibleItems.forEach((item) => {
       const firstKey = item.startDate < rangeStart ? rangeStart : item.startDate;
       const lastKey = item.endDate > rangeEnd ? rangeEnd : item.endDate;
       let cursor = parseDateKey(firstKey);
@@ -305,7 +324,6 @@
       }
     });
 
-    index.forEach((items) => sortCalendarItems(items));
     return index;
   }
 
@@ -528,6 +546,8 @@
 
   async function refreshItems(showButtonState = true) {
     if (state.refreshing) return;
+    const requestedRange = visibleCalendarRange();
+    const requestedRangeKey = calendarRangeKey(requestedRange);
     state.refreshing = true;
     if (showButtonState) {
       els.refreshButton.disabled = true;
@@ -536,7 +556,8 @@
     setSyncStatus('同步中…');
 
     try {
-      const result = await api('admin.calendar.list');
+      const result = await api('admin.calendar.list', requestedRange);
+      if (requestedRangeKey !== calendarRangeKey(visibleCalendarRange())) return;
       state.items = Array.isArray(result.items) ? result.items : [];
       state.lastSyncedAt = Date.now();
       renderCalendar();
@@ -552,6 +573,9 @@
       if (showButtonState) {
         els.refreshButton.disabled = false;
         els.refreshButton.textContent = '同步資料';
+      }
+      if (requestedRangeKey !== calendarRangeKey(visibleCalendarRange()) && state.idToken) {
+        refreshItems(false);
       }
     }
   }
@@ -655,6 +679,14 @@
     const error = new Error(message);
     error.code = code;
     return error;
+  }
+
+  function rateLimitMessage(code, message, details) {
+    if (code !== 'RATE_LIMITED' && code !== 'RATE_LIMIT_BUSY') return message;
+    const retryAfterSeconds = Number(details && details.retryAfterSeconds);
+    return Number.isInteger(retryAfterSeconds) && retryAfterSeconds > 0
+      ? `${message} 約 ${retryAfterSeconds} 秒後可再試。`
+      : message;
   }
 
   function startOfMonth(date) {

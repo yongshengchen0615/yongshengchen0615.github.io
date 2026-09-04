@@ -142,7 +142,7 @@
         throw clientError('LINE_AUTH_ERROR', '無法取得 LINE ID token。請確認 User LIFF 已啟用 openid scope。');
       }
 
-      const result = await api('user.bootstrap');
+      const result = await api('user.bootstrap', visibleCalendarRange());
       state.profile = result.profile;
       state.items = Array.isArray(result.items) ? result.items : [];
       state.lastSyncedAt = Date.now();
@@ -226,9 +226,11 @@
     }
 
     if (!data || data.ok !== true) {
-      const error = clientError(data && data.error && data.error.code || 'API_ERROR', data && data.error && data.error.message || '後端拒絕此請求。');
+      const code = data && data.error && data.error.code || 'API_ERROR';
+      const details = data && data.error && data.error.details || null;
+      const error = clientError(code, rateLimitMessage(code, data && data.error && data.error.message || '後端拒絕此請求。', details));
       error.status = Number(data && data.status || 0);
-      error.details = data && data.error && data.error.details || null;
+      error.details = details;
       throw error;
     }
 
@@ -268,6 +270,20 @@
   function changeMonth(offset) {
     state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() + offset, 1);
     renderCalendar();
+    refreshItems(false);
+  }
+
+  function visibleCalendarRange() {
+    const year = state.viewMonth.getFullYear();
+    const month = state.viewMonth.getMonth();
+    const first = new Date(year, month, 1);
+    const gridStart = new Date(year, month, 1 - first.getDay());
+    const gridEnd = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + 41);
+    return { rangeStart: dateKey(gridStart), rangeEnd: dateKey(gridEnd) };
+  }
+
+  function calendarRangeKey(range) {
+    return range.rangeStart + ':' + range.rangeEnd;
   }
 
   function renderCalendar() {
@@ -332,8 +348,12 @@
     const rangeEndDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + dayCount - 1);
     const rangeEnd = dateKey(rangeEndDate);
 
-    state.items.forEach((item) => {
-      if (!item || item.status !== 'published' || item.endDate < rangeStart || item.startDate > rangeEnd) return;
+    const visibleItems = state.items.filter((item) => {
+      return item && item.status === 'published' && item.endDate >= rangeStart && item.startDate <= rangeEnd;
+    });
+    sortCalendarItems(visibleItems);
+
+    visibleItems.forEach((item) => {
       const firstKey = item.startDate < rangeStart ? rangeStart : item.startDate;
       const lastKey = item.endDate > rangeEnd ? rangeEnd : item.endDate;
       let cursor = parseDateKey(firstKey);
@@ -347,7 +367,6 @@
       }
     });
 
-    index.forEach((items) => sortCalendarItems(items));
     return index;
   }
 
@@ -438,6 +457,9 @@
 
   async function refreshItems(showButtonState) {
     if (state.refreshing || !state.idToken) return;
+    const requestedRange = visibleCalendarRange();
+    const requestedRangeKey = calendarRangeKey(requestedRange);
+    let canRefreshLatestRange = true;
     state.refreshing = true;
     if (showButtonState) {
       els.refreshButton.disabled = true;
@@ -446,7 +468,8 @@
     setSyncStatus('更新中…');
 
     try {
-      const result = await api('user.calendar.list');
+      const result = await api('user.calendar.list', requestedRange);
+      if (requestedRangeKey !== calendarRangeKey(visibleCalendarRange())) return;
       state.items = Array.isArray(result.items) ? result.items : [];
       state.lastSyncedAt = Date.now();
       renderCalendar();
@@ -455,6 +478,7 @@
     } catch (error) {
       const authCodes = new Set(['AUTH_REQUIRED', 'AUTH_INVALID', 'AUTH_EXPIRED', 'AUTH_CHANNEL_MISMATCH']);
       if (authCodes.has(error && error.code)) {
+        canRefreshLatestRange = false;
         try {
           if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
         } catch (_) {}
@@ -467,6 +491,9 @@
       if (showButtonState) {
         els.refreshButton.disabled = false;
         els.refreshButton.textContent = '更新';
+      }
+      if (canRefreshLatestRange && requestedRangeKey !== calendarRangeKey(visibleCalendarRange()) && state.idToken) {
+        refreshItems(false);
       }
     }
   }
@@ -514,6 +541,14 @@
     const error = new Error(message);
     error.code = code;
     return error;
+  }
+
+  function rateLimitMessage(code, message, details) {
+    if (code !== 'RATE_LIMITED' && code !== 'RATE_LIMIT_BUSY') return message;
+    const retryAfterSeconds = Number(details && details.retryAfterSeconds);
+    return Number.isInteger(retryAfterSeconds) && retryAfterSeconds > 0
+      ? `${message} 約 ${retryAfterSeconds} 秒後可再試。`
+      : message;
   }
 
   function startOfMonth(date) {

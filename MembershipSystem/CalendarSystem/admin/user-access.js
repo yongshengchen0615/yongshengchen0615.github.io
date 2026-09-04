@@ -164,8 +164,11 @@
         throw new Error('GAS 回傳格式錯誤。');
       }
       if (!data || data.ok !== true) {
-        const error = new Error(data && data.error && data.error.message || '後端拒絕此請求。');
-        error.code = data && data.error && data.error.code || 'API_ERROR';
+        const code = data && data.error && data.error.code || 'API_ERROR';
+        const details = data && data.error && data.error.details || null;
+        const error = new Error(rateLimitMessage(code, data && data.error && data.error.message || '後端拒絕此請求。', details));
+        error.code = code;
+        error.details = details;
         throw error;
       }
       return data.data || {};
@@ -174,6 +177,14 @@
     function setStatus(message, isError) {
       status.textContent = message;
       status.classList.toggle('error', Boolean(isError));
+    }
+
+    function rateLimitMessage(code, message, details) {
+      if (code !== 'RATE_LIMITED' && code !== 'RATE_LIMIT_BUSY') return message;
+      const retryAfterSeconds = Number(details && details.retryAfterSeconds);
+      return Number.isInteger(retryAfterSeconds) && retryAfterSeconds > 0
+        ? `${message} 約 ${retryAfterSeconds} 秒後可再試。`
+        : message;
     }
   });
 

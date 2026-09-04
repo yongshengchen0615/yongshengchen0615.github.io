@@ -123,6 +123,6 @@ test('CalendarItems schema migration is append-only for the color column', () =>
 test('user client treats stored color as untrusted and validates it before applying style', () => {
   const app = read('user/app.js');
   assert.match(app, /safeColor/);
-  assert.match(app, /\^#\[0-9A-F\]\{6\}$/);
+  assert.match(app, /\^#\[0-9A-F\]\{6\}\$/);
   assert.doesNotMatch(app, /style\.cssText/);
 });

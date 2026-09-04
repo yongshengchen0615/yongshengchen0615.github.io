@@ -91,11 +91,11 @@ User LIFF 與 Admin LIFF 都需要啟用：
 
 - 每個 API request 在通過 LINE authentication 後只做一次 Spreadsheet schema validation，內部 storage helper 不再重複檢查四張 Sheet。
 - Users/Admins/CalendarItems 的 key lookup 使用單一 key column 的 `TextFinder`，避免為找一筆資料就把整張 Sheet 的所有欄位載入記憶體。
-- Calendar list 使用 30 秒 Script Cache，cache key 綁定 `CALENDAR_SYSTEM_V2_DATA_REVISION`。任何 API create/update/archive 都會先更新 revision，因此 API 寫入後的新 request 不會命中舊 revision cache。
-- Cache 超過安全大小時會自動略過，回退到 Google Sheet，不影響正確性。
+- 主日曆只查詢目前 42 個可視日期；Calendar list 使用 30 秒 Script Cache，cache key 綁定 `CALENDAR_SYSTEM_V2_DATA_REVISION`、角色與日期範圍。任何 API create/update/archive 都會先更新 revision，因此 API 寫入後的新 request 不會命中舊 revision cache。
+- Cache 超過安全大小時會自動略過，回退到 Google Sheet，不影響正確性；管理端批量選取與未更新的舊客戶端可省略範圍，以維持完整清單相容性。
 - 管理端 create/update/archive 成功後直接套用 GAS 回傳的 authoritative item，不再緊接著呼叫一次完整 `admin.calendar.list`。
 - User 端提供手動更新；頁面回到前景時只有資料超過 60 秒才自動呼叫 `user.calendar.list`，避免每次 focus 都產生 request。
-- Calendar UI 會先為目前 42 個可視日期建立一次 day index，不再每個日期格都對完整 items 重複 filter/sort。
+- Calendar UI 會先篩出目前 42 個可視日期的事項並排序一次，再建立 day index，避免跨日期事項在每一天重複排序。
 
 注意：若直接手動修改 `CalendarItems` Sheet（不是透過 API），revision 不會立刻改變，因此最長可能需要等目前 30 秒 list cache 到期才會反映。透過管理端 API 的變更不受此限制。
 
@@ -163,6 +163,8 @@ https://yongshengchen0615.github.io/MembershipSystem/CalendarSystem/admin/
 
 所有 POST request 使用 `text/plain` JSON，以避免不必要的 CORS preflight；所有受保護 action 都需要 `idToken`。
 
+`user.bootstrap`、`user.calendar.list`、`admin.bootstrap` 與 `admin.calendar.list` 可選擇傳入 `rangeStart` 與 `rangeEnd`（`YYYY-MM-DD`，最多連續 42 天）取得重疊事項。兩者都省略時會維持完整清單回應，以相容既有客戶端與管理端批量選取。
+
 - `user.bootstrap`
 - `user.calendar.list`
 - `admin.bootstrap`
@@ -172,6 +174,8 @@ https://yongshengchen0615.github.io/MembershipSystem/CalendarSystem/admin/
 - `admin.calendar.archive`
 
 管理端 update/archive 會帶 `expectedUpdatedAt` 做 optimistic concurrency control，避免兩個管理者互相覆蓋變更。
+
+Rate limit 回應會附帶 `error.details.retryAfterSeconds`，前端會顯示下一次可重試的時間。批量操作依筆數計算寫入成本；一筆 20 項的批次會使用 20/30 的每分鐘寫入額度。
 
 ## 安全邊界
 

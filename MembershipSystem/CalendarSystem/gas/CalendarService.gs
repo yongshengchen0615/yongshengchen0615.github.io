@@ -13,21 +13,25 @@ const DEFAULT_CALENDAR_COLORS_ = Object.freeze({
 const CALENDAR_LIST_CACHE_SECONDS_ = 30;
 const CALENDAR_LIST_CACHE_MAX_BYTES_ = 80000;
 const CALENDAR_LIST_CACHE_PREFIX_ = 'calendar-list:v2:';
+const CALENDAR_LIST_MAX_RANGE_DAYS_ = 42;
 
-function handleUserBootstrap_(identity) {
+function handleUserBootstrap_(identity, request) {
+  const range = calendarListRangeFromRequest_(request);
   authorizeUserAccount_(identity, true);
   return {
     profile: publicProfile_(identity),
-    items: listCalendarItems_(false)
+    items: listCalendarItems_(false, range)
   };
 }
 
-function handleUserCalendarList_(identity) {
+function handleUserCalendarList_(identity, request) {
+  const range = calendarListRangeFromRequest_(request);
   authorizeUserAccount_(identity, false);
-  return { items: listCalendarItems_(false) };
+  return { items: listCalendarItems_(false, range) };
 }
 
-function handleAdminBootstrap_(identity, admin) {
+function handleAdminBootstrap_(identity, admin, request) {
+  const range = calendarListRangeFromRequest_(request);
   withDataLock_(function() {
     appendAuditRecord_({
       audit_id: Utilities.getUuid(),
@@ -45,12 +49,12 @@ function handleAdminBootstrap_(identity, admin) {
   return {
     profile: publicProfile_(identity),
     role: admin.role,
-    items: listCalendarItems_(true)
+    items: listCalendarItems_(true, range)
   };
 }
 
-function handleAdminCalendarList_() {
-  return { items: listCalendarItems_(true) };
+function handleAdminCalendarList_(request) {
+  return { items: listCalendarItems_(true, calendarListRangeFromRequest_(request)) };
 }
 
 function handleAdminCalendarCreate_(identity, admin, rawItem) {
@@ -228,15 +232,47 @@ function authorizeUserAccount_(identity, touchLogin) {
   });
 }
 
-function listCalendarItems_(includeAllStatuses) {
+function calendarListRangeFromRequest_(request) {
+  const rawStart = request && request.rangeStart;
+  const rawEnd = request && request.rangeEnd;
+  const hasStart = rawStart !== null && rawStart !== undefined && String(rawStart).trim() !== '';
+  const hasEnd = rawEnd !== null && rawEnd !== undefined && String(rawEnd).trim() !== '';
+
+  // Omitted ranges retain the legacy complete-list response for older clients and
+  // the admin bulk-selection flow. New calendar clients always send a 42-day range.
+  if (!hasStart && !hasEnd) return null;
+  if (!hasStart || !hasEnd) {
+    throw new ApiError(400, 'INVALID_LIST_RANGE', '日曆查詢必須同時提供 rangeStart 與 rangeEnd。');
+  }
+
+  const startDate = requireText_(rawStart, 'rangeStart', 10, true);
+  const endDate = requireText_(rawEnd, 'rangeEnd', 10, true);
+  validateDateKey_(startDate, 'rangeStart');
+  validateDateKey_(endDate, 'rangeEnd');
+  if (endDate < startDate) {
+    throw new ApiError(400, 'INVALID_LIST_RANGE', 'rangeEnd 不得早於 rangeStart。');
+  }
+
+  const spanDays = Math.floor((Date.parse(endDate + 'T00:00:00Z') - Date.parse(startDate + 'T00:00:00Z')) / 86400000) + 1;
+  if (spanDays > CALENDAR_LIST_MAX_RANGE_DAYS_) {
+    throw new ApiError(400, 'LIST_RANGE_TOO_LARGE', '日曆查詢最多 ' + CALENDAR_LIST_MAX_RANGE_DAYS_ + ' 天。');
+  }
+
+  return Object.freeze({ startDate: startDate, endDate: endDate });
+}
+
+function listCalendarItems_(includeAllStatuses, range) {
   const revision = getCalendarDataRevision_();
-  const cacheKey = CALENDAR_LIST_CACHE_PREFIX_ + (includeAllStatuses ? 'admin:' : 'public:') + revision;
+  const rangeKey = range ? range.startDate + ':' + range.endDate : 'all';
+  const cacheKey = CALENDAR_LIST_CACHE_PREFIX_ + (includeAllStatuses ? 'admin:' : 'public:') + revision + ':' + rangeKey;
   const cached = readCalendarListCache_(cacheKey);
   if (cached) return cached;
 
   const items = readRecords_('CalendarItems')
     .filter(function(record) {
-      return includeAllStatuses || String(record.status || '') === 'published';
+      if (!includeAllStatuses && String(record.status || '') !== 'published') return false;
+      if (!range) return true;
+      return String(record.end_date || '') >= range.startDate && String(record.start_date || '') <= range.endDate;
     })
     .map(calendarRecordToApi_)
     .sort(function(a, b) {

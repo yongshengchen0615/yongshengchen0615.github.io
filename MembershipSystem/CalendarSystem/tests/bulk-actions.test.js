@@ -36,6 +36,10 @@ test('bulk API routes are admin-authorized write actions with weighted rate limi
   assert.match(code, /authorizeAdmin_\(identity\)/);
   assert.match(code, /requestRateLimitCost_/);
   assert.match(code, /current \+ cost > limit/);
+  assert.match(code, /retryAfterSeconds/);
+  assert.match(code, /RATE_LIMIT_BUSY[\s\S]*retryAfterSeconds/);
+  assert.match(read('admin/bulk-actions.js'), /rateLimitMessage/);
+  assert.match(read('admin/bulk-create-ux.js'), /rateLimitMessage/);
 });
 
 test('bulk service validates count, versions, duplicates, past dates, and uses soft archive', () => {

@@ -49,6 +49,10 @@ test('calendar list cache is revision-aware and writes advance the revision', ()
   assert.match(service, /readCalendarListCache_/);
   assert.match(service, /writeCalendarListCache_/);
   assert.match(service, /bumpCalendarDataRevision_\(\)/);
+  assert.match(service, /CALENDAR_LIST_MAX_RANGE_DAYS_\s*=\s*42/);
+  assert.match(service, /function calendarListRangeFromRequest_/);
+  assert.match(service, /record\.end_date[^\n]*range\.startDate/);
+  assert.match(service, /record\.start_date[^\n]*range\.endDate/);
   assert.match(storage, /CALENDAR_DATA_REVISION_PROPERTY_/);
   assert.match(storage, /function bumpCalendarDataRevision_/);
 });
@@ -61,11 +65,35 @@ test('key lookups use a single key-column TextFinder instead of loading every re
   assert.match(storage, /matchCase\(true\)/);
 });
 
-test('admin write success applies the returned server item locally and calendar rendering builds a visible-day index', () => {
+test('calendar clients request only their 42-day visible range and sort it once before indexing', () => {
+  const code = read('gas/Code.gs');
+  const service = read('gas/CalendarService.gs');
+
+  assert.match(code, /handleUserBootstrap_\(identity, request\)/);
+  assert.match(code, /handleUserCalendarList_\(identity, request\)/);
+  assert.match(code, /handleAdminBootstrap_\(identity, admin, request\)/);
+  assert.match(code, /handleAdminCalendarList_\(request\)/);
+  assert.match(service, /range\.startDate \+ ':' \+ range\.endDate/);
+
+  ['user/app.js', 'admin/app.js'].forEach((relativePath) => {
+    const app = read(relativePath);
+    const build = app.match(/function buildVisibleDayIndex\([\s\S]*?\n  \}/);
+    assert.ok(build, relativePath + ' should define buildVisibleDayIndex');
+    assert.match(app, /visibleCalendarRange/);
+    assert.match(build[0], /const visibleItems = state\.items\.filter/);
+    assert.match(build[0], /sortCalendarItems\(visibleItems\)/);
+    assert.doesNotMatch(build[0], /index\.forEach/);
+  });
+  assert.match(read('user/app.js'), /api\('user\.bootstrap', visibleCalendarRange\(\)\)/);
+  assert.match(read('user/app.js'), /api\('user\.calendar\.list', requestedRange\)/);
+  assert.match(read('admin/app.js'), /api\('admin\.bootstrap', visibleCalendarRange\(\)\)/);
+  assert.match(read('admin/app.js'), /api\('admin\.calendar\.list', requestedRange\)/);
+});
+
+test('admin write success applies the returned server item locally', () => {
   const app = read('admin/app.js');
 
   assert.match(app, /applyServerItem\(result\.item\)/);
-  assert.match(app, /buildVisibleDayIndex/);
   assert.match(app, /state\.visibleDayIndex\.get\(key\)/);
   assert.match(app, /CONFLICT[\s\S]*refreshItems\(false\)/);
 });
@@ -76,6 +104,7 @@ test('user refresh is stale-gated and preserves the last calendar on transient r
   assert.match(app, /AUTO_REFRESH_STALE_MS\s*=\s*60000/);
   assert.match(app, /visibilitychange/);
   assert.match(app, /user\.calendar\.list/);
+  assert.match(app, /requestedRangeKey !== calendarRangeKey\(visibleCalendarRange\(\)\)/);
   assert.match(app, /更新失敗，仍顯示上次資料/);
   assert.match(app, /buildVisibleDayIndex/);
 });
