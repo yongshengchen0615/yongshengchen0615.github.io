@@ -290,8 +290,17 @@
     els.eventTicketDateRangeMessage.textContent = `截至 ${formatAdminDateValue(endsOn, true)}，未設定開始日。`;
   }
   function handleAdminDateControlClick(event) {
-    const button = event.target instanceof Element ? event.target.closest('[data-date-target], [data-event-range-days], [data-event-range-action]') : null;
+    const button = event.target instanceof Element ? event.target.closest('[data-open-date-picker], [data-date-target], [data-event-range-days], [data-event-range-action]') : null;
     if (!button) return;
+    const pickerTargetId = String(button.dataset.openDatePicker || '');
+    if (pickerTargetId) {
+      const input = document.getElementById(pickerTargetId); if (!(input instanceof HTMLInputElement)) return;
+      event.preventDefault();
+      try { if (typeof input.showPicker === 'function') { input.showPicker(); return; } } catch (_) {}
+      input.focus({ preventScroll: true });
+      input.click();
+      return;
+    }
     const targetId = String(button.dataset.dateTarget || '');
     if (targetId) {
       const input = document.getElementById(targetId); if (!(input instanceof HTMLInputElement)) return;

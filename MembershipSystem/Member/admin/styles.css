@@ -78,4 +78,32 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
 .date-range-presets > span { margin-right: 2px; color: var(--muted); font-size: 10px; font-weight: 850; }
 .date-range-message { margin: -2px 0 0; color: #607168; font-size: 10px; line-height: 1.55; }
 .date-range-message.warning { color: #a33f35; font-weight: 800; }
-@media (max-width: 480px) { .date-control-heading, .date-range-heading { align-items: stretch; flex-direction: column; }.date-control-heading span, .date-control-summary { text-align: left; }.date-range-summary { max-width: none; align-self: flex-start; }.date-chip { min-height: 34px; padding-inline: 11px; } }
+.date-input-shell { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
+.date-picker-button { min-width: 112px; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid #cfded3; border-radius: 9px; color: var(--ink); background: #f3f8f4; cursor: pointer; font-size: 11px; font-weight: 850; touch-action: manipulation; }
+.date-picker-button:hover { border-color: #b9cdbf; background: #edf5ef; }
+.date-picker-button span:first-child { color: var(--green); font-size: 14px; }
+@media (max-width: 760px) {
+  .date-range-control { gap: 12px; padding: 13px; border-radius: 14px; }
+  .date-range-heading { gap: 9px; }
+  .date-range-heading p:not(.kicker) { display: none; }
+  .date-range-summary { width: 100%; max-width: none; min-height: 40px; display: flex; align-items: center; justify-content: center; padding: 8px 11px; border-radius: 10px; font-size: 12px; }
+  .date-control { gap: 10px; padding: 12px; border-radius: 13px; }
+  .date-control-heading { align-items: start; }
+  .date-control-heading label { font-size: 13px; }
+  .date-control-heading span { max-width: 52%; font-size: 10px; line-height: 1.45; }
+  .date-control-summary { font-size: 11px; }
+  .date-input-shell { grid-template-columns: minmax(0, 1fr) 104px; gap: 8px; }
+  .date-control input[type="date"] { min-height: 54px; padding: 12px 13px; font-size: 16px; border-radius: 11px; touch-action: manipulation; }
+  .date-picker-button { min-width: 0; min-height: 54px; padding: 0 10px; border-radius: 11px; font-size: 12px; }
+  .date-quick-actions, .date-range-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .date-range-presets > span { grid-column: 1 / -1; margin: 0 0 -1px; font-size: 11px; }
+  .date-chip { width: 100%; min-height: 44px; padding: 9px 8px; border-radius: 11px; font-size: 12px; line-height: 1.2; touch-action: manipulation; }
+  .date-range-message { margin: 0; padding: 9px 10px; border-radius: 9px; background: rgba(255,255,255,.72); font-size: 11px; }
+}
+@media (max-width: 480px) {
+  .date-control-heading, .date-range-heading { align-items: stretch; flex-direction: column; }
+  .date-control-heading span { max-width: none; text-align: left; }
+  .date-control-summary { text-align: left; }
+  .date-input-shell { grid-template-columns: 1fr; }
+  .date-picker-button { width: 100%; }
+}

@@ -408,6 +408,8 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(adminHtml, /id="rewardRows"/);
   assert.match(adminHtml, /id="cardExpiresOnSummary"/);
   assert.match(adminHtml, /data-date-target="cardExpiresOn"/);
+  assert.match(adminHtml, /data-open-date-picker="cardExpiresOn"/);
+  assert.match(adminApp, /input\.showPicker/);
   assert.match(adminApp, /updateCardExpiryDateUI/);
   assert.match(adminApp, /formatAdminDateCompact/);
   assert.match(adminHtml, /id="addRewardButton"/);

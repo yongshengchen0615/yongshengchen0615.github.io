@@ -190,7 +190,7 @@ test('event ticket browser and admin contracts are present', () => {
   const storage = read('gas/Storage.gs');
   const code = read('gas/Code.gs');
   assert.match(eventHtml, /static\.line-scdn\.net\/liff/);
-  assert.match(adminHtml, /app\.js\?v=admin-date-controls-20260904/);
+  assert.match(adminHtml, /app\.js\?v=admin-date-mobile-20260905/);
   assert.match(eventHtml, /id="ticketModalAction"/);
   assert.match(eventHtml, /id="memberTier"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
@@ -212,6 +212,9 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(adminHtml, /id="eventTicketDateRangeSummary"/);
   assert.match(adminHtml, /id="eventTicketDateRangeMessage"/);
   assert.match(adminHtml, /data-event-range-days="30"/);
+  assert.match(adminHtml, /data-open-date-picker="eventTicketStartsOn"/);
+  assert.match(adminHtml, /data-open-date-picker="eventTicketEndsOn"/);
+  assert.match(adminApp, /showPicker/);
   assert.match(adminApp, /updateEventTicketDateRangeUI/);
   assert.match(adminApp, /todayAdminIsoDate/);
   assert.match(adminHtml, /id="eventTicketAllowedTiers"/);
