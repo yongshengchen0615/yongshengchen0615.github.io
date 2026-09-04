@@ -232,7 +232,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-date-line-safe-20260905/);
+  assert.match(adminHtml, /styles\.css\?v=admin-date-controls-20260905/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -245,12 +245,15 @@ test('admin mobile layout contains LINE WebView overflow guards', () => {
   assert.match(adminStyles, /@media \(max-width: 560px\) \{/);
   assert.match(adminStyles, /Native date controls retain a minimum visual width in embedded WebViews/);
   assert.match(adminStyles, /@media \(max-width: 900px\) \{/);
-  assert.match(adminStyles, /\.date-input-shell \{ grid-template-columns: minmax\(0, 1fr\); width: 100%; \}/);
-  assert.match(adminStyles, /\.date-input-shell input\[type="date"\] \{ inline-size: 100%; min-inline-size: 0; max-inline-size: 100%; \}/);
+  assert.match(adminStyles, /\.date-input-shell \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(adminStyles, /\.date-picker-button \{ width: 100%; max-width: 100%; min-width: 0;/);
+  assert.match(adminStyles, /\.date-input-shell input\[type="date"\] \{ display: block; box-sizing: border-box; inline-size: 100%; min-inline-size: 0; max-inline-size: 100%; \}/);
+  assert.match(adminStyles, /::-webkit-datetime-edit-fields-wrapper/);
   assert.ok(
     adminStyles.indexOf('@media (max-width: 900px) {\n  .date-settings-grid')
       > adminStyles.indexOf('@media (max-width: 760px) {\n  .date-range-control'),
-    'the LINE-safe single-column override must follow the narrow date layout'
+    'the LINE-safe parent layout must follow the narrow date layout'
   );
+  assert.doesNotMatch(adminStyles, /grid-template-columns: minmax\(0, 1fr\) 104px/);
   assert.doesNotMatch(adminStyles, /\.card-list > div:last-child \{ display: flex; overflow-x: auto;/);
 });
