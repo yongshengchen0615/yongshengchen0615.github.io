@@ -6,7 +6,7 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     [
-      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'eventView', 'displayName', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketList',
+      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'eventView', 'displayName', 'memberTier', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketList',
       'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
@@ -38,6 +38,7 @@
       state.offers = Array.isArray(result.offers) ? result.offers : [];
       state.usedTickets = Array.isArray(result.usedTickets) ? result.usedTickets : [];
       els.displayName.textContent = String(result.profile && result.profile.displayName || 'LINE 使用者');
+      els.memberTier.textContent = `目前會員等級：${String(result.profile && result.profile.tier || '未設定')}`;
       renderOffers();
     } catch (error) { if (!showBusy) throw error; showError(error); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
   }
@@ -45,11 +46,12 @@
   function renderOffers() {
     const hasOffers = state.offers.length > 0;
     const hasUsedTickets = state.usedTickets.length > 0;
+    const ineligibleOfferCount = state.offers.filter((offer) => !eventTicketTierEligible(offer)).length;
     els.eventList.replaceChildren(...state.offers.map(createOfferCard));
     els.usedTicketList.replaceChildren(...state.usedTickets.map(createOfferCard));
     els.emptyView.classList.toggle('hidden', hasOffers);
     els.usedTicketHistory.classList.toggle('hidden', !hasUsedTickets);
-    els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${hasUsedTickets ? ` · ${state.usedTickets.length} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有適用目前等級的活動 · ${state.usedTickets.length} 筆已使用紀錄` : '目前沒有適用目前等級的活動';
+    els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${ineligibleOfferCount ? ` · ${ineligibleOfferCount} 張尚未達適用等級` : ''}${hasUsedTickets ? ` · ${state.usedTickets.length} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有開放中的活動 · ${state.usedTickets.length} 筆已使用紀錄` : '目前沒有開放中的活動';
   }
 
   function createOfferCard(offer) {

@@ -71,21 +71,26 @@ test('event ticket claim is owned, one-per-member, quota-limited, and snapshots 
   assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-2' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_SOLD_OUT');
 });
 
-test('event tickets are returned only to their allowed tiers and reject direct ineligible claims', () => {
+test('event tickets stay visible to every member while tier eligibility blocks claim and redemption', () => {
   const { context, rows, TestApiError } = loadEventTicketService();
   rows.EventTickets[0].allowed_tier_keys = JSON.stringify(['gold', 'platinum']);
   rows.EventTickets.push({ ...rows.EventTickets[0], event_ticket_id: 'ET-2', title: '銀級限定禮', allowed_tier_keys: JSON.stringify(['silver']) });
   const generalOffers = context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'general');
-  assert.equal(generalOffers.length, 0);
+  assert.equal(generalOffers.length, 2);
+  assert.equal(generalOffers.every((offer) => offer.tierEligible === false && offer.canClaim === false && offer.canUse === false), true);
   assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
 
-  const goldOffer = context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'gold')[0];
+  const goldOffer = context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'gold').find((offer) => offer.ticket.eventTicketId === 'ET-1');
   assert.equal(goldOffer.tierEligible, true);
   assert.equal(goldOffer.canClaim, true);
   assert.deepEqual(Array.from(goldOffer.ticket.allowedTierLabels), ['金級會員', '白金會員']);
   const claim = context.handleEventTicketClaim_({ lineUserId: 'U-2' }, { eventTicketId: 'ET-1' });
   assert.equal(claim.claimed, true);
   context.serviceMinutesTotalForMember_ = () => 0;
+  const downgradedOffer = context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'general').find((offer) => offer.ticket.eventTicketId === 'ET-1');
+  assert.equal(downgradedOffer.tierEligible, false);
+  assert.equal(downgradedOffer.canUse, false);
+  assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-2' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
   assert.throws(() => context.handleEventTicketRedeem_({ lineUserId: 'U-2' }, { claimId: claim.ticket.claimId }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
 });
 
@@ -102,7 +107,9 @@ test('each event ticket save persists its own allowed membership tiers', () => {
   assert.equal(rows.EventTickets.find((ticket) => ticket.title === '銀級限定').allowed_tier_keys, '["silver"]');
   assert.equal(rows.EventTickets.find((ticket) => ticket.title === '金級限定').allowed_tier_keys, '["gold","platinum"]');
   assert.equal(context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'silver').some((offer) => offer.ticket.eventTicketId === silverTicket.eventTicketId), true);
-  assert.equal(context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'gold').some((offer) => offer.ticket.eventTicketId === silverTicket.eventTicketId), false);
+  const silverTicketForGold = context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'gold').find((offer) => offer.ticket.eventTicketId === silverTicket.eventTicketId);
+  assert.equal(silverTicketForGold.tierEligible, false);
+  assert.equal(silverTicketForGold.canClaim, false);
   assert.equal(context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'gold').some((offer) => offer.ticket.eventTicketId === goldTicket.eventTicketId), true);
 });
 
@@ -184,6 +191,7 @@ test('event ticket browser and admin contracts are present', () => {
   const code = read('gas/Code.gs');
   assert.match(eventHtml, /static\.line-scdn\.net\/liff/);
   assert.match(eventHtml, /id="ticketModalAction"/);
+  assert.match(eventHtml, /id="memberTier"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
   assert.match(eventApp, /user\.event\.ticket\.claim/);
@@ -203,6 +211,7 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(adminApp, /insertBefore\(eventTicketTierAccess/);
   assert.match(adminApp, /updateEventTicketTierSummary/);
   assert.match(eventApp, /tierEligible/);
+  assert.match(eventApp, /els\.memberTier\.textContent/);
   assert.match(eventApp, /目前會員等級無法領取或使用/);
   assert.match(storage, /EventTickets:/);
   assert.match(storage, /allowed_tier_keys/);

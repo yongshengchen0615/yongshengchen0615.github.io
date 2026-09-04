@@ -57,7 +57,9 @@ function readEventTickets_(includeAdminDetails, snapshot) {
 function visibleEventTicketOffersForMember_(lineUserId, snapshot, memberTierKey) {
   const source = snapshot || readEventTicketSnapshot_();
   return source.tickets.filter(function(ticket) {
-    return String(ticket.status || '') === 'active' && eventTicketAllowsTier_(ticket, memberTierKey || 'general');
+    // All active offers remain visible so members can see the applicable tiers.
+    // Eligibility is still computed here and enforced again by claim/redeem.
+    return String(ticket.status || '') === 'active';
   }).map(function(ticket) {
     const eventTicketId = String(ticket.event_ticket_id || '');
     const claims = source.claimsByTicket[eventTicketId] || [];
@@ -66,13 +68,14 @@ function visibleEventTicketOffersForMember_(lineUserId, snapshot, memberTierKey)
     const state = eventTicketAvailability_(ticket);
     const quota = eventTicketQuota_(ticket);
     const soldOut = quota > 0 && claims.length >= quota && !claim;
+    const tierEligible = eventTicketAllowsTier_(ticket, memberTierKey || 'general');
     return {
       ticket: eventTicketForClient_(ticket, false, claims.length),
       claim: claim ? eventTicketClaimForClient_(claim) : null,
       availability: state,
-      tierEligible: true,
-      canClaim: state === 'open' && !claim && !soldOut,
-      canUse: state === 'open' && Boolean(claim) && String(claim.status || '') === EVENT_TICKET_STATUS_AVAILABLE_,
+      tierEligible,
+      canClaim: tierEligible && state === 'open' && !claim && !soldOut,
+      canUse: tierEligible && state === 'open' && Boolean(claim) && String(claim.status || '') === EVENT_TICKET_STATUS_AVAILABLE_,
       soldOut
     };
   }).filter(function(offer) {
@@ -288,10 +291,10 @@ function handleEventTicketClaim_(identity, request) {
     const member = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
     if (!member || String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法領取活動票券。');
     assertEventTicketOpen_(ticket);
+    assertEventTicketAllowsTier_(ticket, eventTicketMemberTier_(identity.lineUserId).tierKey);
     const claims = readRecords_('EventTicketClaims');
     const existing = claims.find(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId && String(claim.line_user_id || '') === String(identity.lineUserId); });
     if (existing) return { claimed: false, alreadyClaimed: true, ticket: eventTicketClaimForClient_(existing) };
-    assertEventTicketAllowsTier_(ticket, eventTicketMemberTier_(identity.lineUserId).tierKey);
     const quota = eventTicketQuota_(ticket);
     const claimedCount = claims.filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId; }).length;
     if (quota > 0 && claimedCount >= quota) throw new ApiError(409, 'EVENT_TICKET_SOLD_OUT', '這張活動票券已達發放上限。');
