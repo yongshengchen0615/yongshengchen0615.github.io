@@ -194,10 +194,12 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(eventHtml, /id="ticketModalAction"/);
   assert.match(eventHtml, /id="memberTier"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
-  assert.match(eventHtml, /app\.js\?v=event-used-time-20260904/);
+  assert.match(eventHtml, /app\.js\?v=event-history-open-20260904/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
   assert.match(eventApp, /user\.event\.ticket\.claim/);
   assert.match(eventApp, /user\.event\.ticket\.redeem/);
+  assert.match(eventApp, /\[els\.eventList, els\.usedTicketList\]\.forEach/);
+  assert.match(eventApp, /handleOfferListClick/);
   assert.match(eventApp, /timeZone: 'Asia\/Taipei'/);
   assert.match(eventApp, /new Intl\.DateTimeFormat\('zh-Hant-TW'/);
   assert.doesNotMatch(eventApp, /timestamp\.replace/);
