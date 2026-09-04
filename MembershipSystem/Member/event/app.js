@@ -12,7 +12,7 @@
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.refreshButton.addEventListener('click', () => loadOffers(true));
-    els.eventList.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-event-ticket-id]') : null; if (button) openTicketModal(button.dataset.eventTicketId); });
+    [els.eventList, els.usedTicketList].forEach((list) => { list.addEventListener('click', handleOfferListClick); });
     els.closeTicketModal.addEventListener('click', closeTicketModal);
     els.ticketModal.addEventListener('click', (event) => { if (event.target === els.ticketModal && !state.processing) closeTicketModal(); });
     els.ticketModalAction.addEventListener('click', handleTicketAction);
@@ -20,6 +20,8 @@
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !state.processing) closeTicketModal(); });
     boot();
   });
+
+  function handleOfferListClick(event) { const button = event.target instanceof Element ? event.target.closest('[data-event-ticket-id]') : null; if (button) openTicketModal(button.dataset.eventTicketId); }
 
   async function boot() {
     setView('loading');
