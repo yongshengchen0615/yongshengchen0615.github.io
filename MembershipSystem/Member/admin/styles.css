@@ -84,13 +84,14 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
 .date-picker-button span:first-child { color: var(--green); font-size: 14px; }
 @media (max-width: 760px) {
   .date-range-control { gap: 12px; padding: 13px; border-radius: 14px; }
-  .date-range-heading { gap: 9px; }
+  .date-range-heading { align-items: stretch; flex-direction: column; gap: 9px; }
   .date-range-heading p:not(.kicker) { display: none; }
-  .date-range-summary { width: 100%; max-width: none; min-height: 40px; display: flex; align-items: center; justify-content: center; padding: 8px 11px; border-radius: 10px; font-size: 12px; }
+  .date-range-summary { flex: none; width: 100%; max-width: none; min-height: 40px; display: flex; align-items: center; justify-content: center; padding: 8px 11px; border-radius: 10px; font-size: 12px; }
   .date-control { gap: 10px; padding: 12px; border-radius: 13px; }
   .date-control-heading { align-items: start; }
+  .date-control-heading > * { min-width: 0; }
   .date-control-heading label { font-size: 13px; }
-  .date-control-heading span { max-width: 52%; font-size: 10px; line-height: 1.45; }
+  .date-control-heading span { max-width: 52%; overflow-wrap: anywhere; font-size: 10px; line-height: 1.45; }
   .date-control-summary { font-size: 11px; }
   .date-input-shell { grid-template-columns: minmax(0, 1fr) 104px; gap: 8px; }
   .date-control input[type="date"] { min-height: 54px; padding: 12px 13px; font-size: 16px; border-radius: 11px; touch-action: manipulation; }
@@ -100,7 +101,7 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
   .date-chip { width: 100%; min-height: 44px; padding: 9px 8px; border-radius: 11px; font-size: 12px; line-height: 1.2; touch-action: manipulation; }
   .date-range-message { margin: 0; padding: 9px 10px; border-radius: 9px; background: rgba(255,255,255,.72); font-size: 11px; }
 }
-@media (max-width: 480px) {
+@media (max-width: 560px) {
   .date-control-heading, .date-range-heading { align-items: stretch; flex-direction: column; }
   .date-control-heading span { max-width: none; text-align: left; }
   .date-control-summary { text-align: left; }
