@@ -57,7 +57,7 @@ function readEventTickets_(includeAdminDetails, snapshot) {
 function visibleEventTicketOffersForMember_(lineUserId, snapshot, memberTierKey) {
   const source = snapshot || readEventTicketSnapshot_();
   return source.tickets.filter(function(ticket) {
-    return String(ticket.status || '') === 'active';
+    return String(ticket.status || '') === 'active' && eventTicketAllowsTier_(ticket, memberTierKey || 'general');
   }).map(function(ticket) {
     const eventTicketId = String(ticket.event_ticket_id || '');
     const claims = source.claimsByTicket[eventTicketId] || [];
@@ -66,14 +66,13 @@ function visibleEventTicketOffersForMember_(lineUserId, snapshot, memberTierKey)
     const state = eventTicketAvailability_(ticket);
     const quota = eventTicketQuota_(ticket);
     const soldOut = quota > 0 && claims.length >= quota && !claim;
-    const tierEligible = eventTicketAllowsTier_(ticket, memberTierKey || 'general');
     return {
       ticket: eventTicketForClient_(ticket, false, claims.length),
       claim: claim ? eventTicketClaimForClient_(claim) : null,
       availability: state,
-      tierEligible,
-      canClaim: state === 'open' && tierEligible && !claim && !soldOut,
-      canUse: state === 'open' && tierEligible && Boolean(claim) && String(claim.status || '') === EVENT_TICKET_STATUS_AVAILABLE_,
+      tierEligible: true,
+      canClaim: state === 'open' && !claim && !soldOut,
+      canUse: state === 'open' && Boolean(claim) && String(claim.status || '') === EVENT_TICKET_STATUS_AVAILABLE_,
       soldOut
     };
   }).filter(function(offer) {

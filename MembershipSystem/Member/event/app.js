@@ -49,8 +49,7 @@
     els.usedTicketList.replaceChildren(...state.usedTickets.map(createOfferCard));
     els.emptyView.classList.toggle('hidden', hasOffers);
     els.usedTicketHistory.classList.toggle('hidden', !hasUsedTickets);
-    const tierLockedCount = state.offers.filter((offer) => !eventTicketTierEligible(offer)).length;
-    els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${tierLockedCount ? ` · ${tierLockedCount} 張不適用目前等級` : ''}${hasUsedTickets ? ` · ${state.usedTickets.length} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有開放中的活動 · ${state.usedTickets.length} 筆已使用紀錄` : '目前沒有開放中的活動';
+    els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${hasUsedTickets ? ` · ${state.usedTickets.length} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有適用目前等級的活動 · ${state.usedTickets.length} 筆已使用紀錄` : '目前沒有適用目前等級的活動';
   }
 
   function createOfferCard(offer) {

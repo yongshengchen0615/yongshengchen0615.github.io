@@ -23,7 +23,7 @@ function loadEventTicketService() {
   const context = {
     ApiError: TestApiError,
     Utilities: {
-      getUuid: () => `00000000-0000-0000-0000-0000000000${String(uuid++).padStart(2, '0')}`,
+      getUuid: () => `${String(uuid++).padStart(8, '0')}-0000-0000-0000-000000000000`,
       formatDate: () => '2026-09-04'
     },
     withDataLock_: (callback) => callback(),
@@ -71,25 +71,39 @@ test('event ticket claim is owned, one-per-member, quota-limited, and snapshots 
   assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-2' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_SOLD_OUT');
 });
 
-test('event tickets remain visible to every member but enforce their allowed tiers', () => {
+test('event tickets are returned only to their allowed tiers and reject direct ineligible claims', () => {
   const { context, rows, TestApiError } = loadEventTicketService();
   rows.EventTickets[0].allowed_tier_keys = JSON.stringify(['gold', 'platinum']);
   rows.EventTickets.push({ ...rows.EventTickets[0], event_ticket_id: 'ET-2', title: '銀級限定禮', allowed_tier_keys: JSON.stringify(['silver']) });
-  const generalOffer = context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'general')[0];
-  assert.equal(generalOffer.tierEligible, false);
-  assert.equal(generalOffer.canClaim, false);
-  assert.deepEqual(Array.from(generalOffer.ticket.allowedTierLabels), ['金級會員', '白金會員']);
-  const secondOffer = context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'general').find((offer) => offer.ticket.eventTicketId === 'ET-2');
-  assert.deepEqual(Array.from(secondOffer.ticket.allowedTierLabels), ['銀級會員']);
+  const generalOffers = context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'general');
+  assert.equal(generalOffers.length, 0);
   assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
 
   const goldOffer = context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'gold')[0];
   assert.equal(goldOffer.tierEligible, true);
   assert.equal(goldOffer.canClaim, true);
+  assert.deepEqual(Array.from(goldOffer.ticket.allowedTierLabels), ['金級會員', '白金會員']);
   const claim = context.handleEventTicketClaim_({ lineUserId: 'U-2' }, { eventTicketId: 'ET-1' });
   assert.equal(claim.claimed, true);
   context.serviceMinutesTotalForMember_ = () => 0;
   assert.throws(() => context.handleEventTicketRedeem_({ lineUserId: 'U-2' }, { claimId: claim.ticket.claimId }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
+});
+
+test('each event ticket save persists its own allowed membership tiers', () => {
+  const { context, rows } = loadEventTicketService();
+  const save = (title, allowedTierKeys) => context.handleEventTicketSave_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
+    eventTicket: { title, ticketType: 'coupon', description: '會員限定禮物', usageMethod: '出示本券', usageInstructions: '限活動期間使用', status: 'active', startsOn: '', endsOn: '', quota: 0, allowedTierKeys, accent: '#df6b4d', prizes: [] }
+  }).eventTicket;
+
+  const silverTicket = save('銀級限定', ['silver']);
+  const goldTicket = save('金級限定', ['gold', 'platinum']);
+  assert.deepEqual(Array.from(silverTicket.allowedTierKeys), ['silver']);
+  assert.deepEqual(Array.from(goldTicket.allowedTierKeys), ['gold', 'platinum']);
+  assert.equal(rows.EventTickets.find((ticket) => ticket.title === '銀級限定').allowed_tier_keys, '["silver"]');
+  assert.equal(rows.EventTickets.find((ticket) => ticket.title === '金級限定').allowed_tier_keys, '["gold","platinum"]');
+  assert.equal(context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'silver').some((offer) => offer.ticket.eventTicketId === silverTicket.eventTicketId), true);
+  assert.equal(context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'gold').some((offer) => offer.ticket.eventTicketId === silverTicket.eventTicketId), false);
+  assert.equal(context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'gold').some((offer) => offer.ticket.eventTicketId === goldTicket.eventTicketId), true);
 });
 
 test('used event tickets move to member history and retain their snapshot after definition removal', () => {
@@ -159,9 +173,11 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(adminHtml, /id="eventTicketForm"/);
   assert.match(adminHtml, /id="eventTicketAllowedTiers"/);
   assert.match(adminHtml, /id="eventTicketTierSummary"/);
+  assert.match(adminHtml, /form="eventTicketForm" name="eventTicketAllowedTierKey"/);
   assert.match(adminHtml, /id="deleteEventTicketButton"/);
   assert.match(adminApp, /admin\.event-tickets\.save/);
   assert.match(adminApp, /admin\.event-tickets\.delete/);
+  assert.match(adminApp, /new FormData\(els\.eventTicketForm\)/);
   assert.match(adminApp, /insertBefore\(eventTicketTierAccess/);
   assert.match(adminApp, /updateEventTicketTierSummary/);
   assert.match(eventApp, /tierEligible/);
