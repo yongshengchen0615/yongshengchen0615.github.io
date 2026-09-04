@@ -14,15 +14,21 @@ function handleEventTicketBootstrap_(identity) {
   const tier = eventTicketMemberTier_(member.line_user_id);
   return {
     profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey },
-    offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey)
+    offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey),
+    usedTickets: usedEventTicketHistoryForMember_(identity.lineUserId, snapshot)
   };
 }
 
 function readEventTicketSnapshot_() {
   const tickets = readRecords_('EventTickets');
   const claims = readRecords_('EventTicketClaims');
+  const ticketsById = {};
   const claimsByTicket = {};
   const claimsByMemberTicket = {};
+  tickets.forEach(function(ticket) {
+    const eventTicketId = String(ticket.event_ticket_id || '').trim();
+    if (eventTicketId) ticketsById[eventTicketId] = ticket;
+  });
   claims.forEach(function(claim) {
     const eventTicketId = String(claim.event_ticket_id || '').trim();
     const lineUserId = String(claim.line_user_id || '').trim();
@@ -33,7 +39,7 @@ function readEventTicketSnapshot_() {
     if (lineUserId && !claimsByMemberTicket[key]) claimsByMemberTicket[key] = [];
     if (lineUserId) claimsByMemberTicket[key].push(claim);
   });
-  return { tickets, claims, claimsByTicket, claimsByMemberTicket };
+  return { tickets, ticketsById, claims, claimsByTicket, claimsByMemberTicket };
 }
 
 function eventTicketMemberTicketKey_(lineUserId, eventTicketId) {
@@ -70,10 +76,37 @@ function visibleEventTicketOffersForMember_(lineUserId, snapshot, memberTierKey)
       canUse: state === 'open' && tierEligible && Boolean(claim) && String(claim.status || '') === EVENT_TICKET_STATUS_AVAILABLE_,
       soldOut
     };
+  }).filter(function(offer) {
+    return !offer.claim || String(offer.claim.status || '') !== EVENT_TICKET_STATUS_USED_;
   }).sort(function(a, b) {
     const aDate = String(a.ticket.startsOn || a.ticket.updatedAt || '');
     const bDate = String(b.ticket.startsOn || b.ticket.updatedAt || '');
     return aDate.localeCompare(bDate);
+  });
+}
+
+function usedEventTicketHistoryForMember_(lineUserId, snapshot) {
+  const source = snapshot || readEventTicketSnapshot_();
+  const memberId = String(lineUserId || '').trim();
+  return source.claims.filter(function(claim) {
+    return String(claim.line_user_id || '').trim() === memberId && String(claim.status || '') === EVENT_TICKET_STATUS_USED_;
+  }).map(function(claim) {
+    const eventTicketId = String(claim.event_ticket_id || '').trim();
+    const ticket = source.ticketsById[eventTicketId] || null;
+    const claimCount = (source.claimsByTicket[eventTicketId] || []).length;
+    return {
+      ticket: eventTicketClaimTicketForClient_(claim, ticket, claimCount),
+      claim: eventTicketClaimForClient_(claim),
+      availability: EVENT_TICKET_STATUS_USED_,
+      tierEligible: true,
+      canClaim: false,
+      canUse: false,
+      soldOut: false,
+      history: true,
+      definitionRemoved: !ticket
+    };
+  }).sort(function(a, b) {
+    return String(b.claim.usedAt || b.claim.claimedAt || '').localeCompare(String(a.claim.usedAt || a.claim.claimedAt || ''));
   });
 }
 
@@ -119,6 +152,36 @@ function eventTicketClaimForClient_(claim) {
     usedAt: String(claim.used_at || ''),
     result: eventTicketResultForClient_(claim.result_json)
   };
+}
+
+function eventTicketClaimTicketForClient_(claim, ticket, claimCount) {
+  const clientTicket = ticket ? eventTicketForClient_(ticket, false, claimCount) : {
+    eventTicketId: String(claim.event_ticket_id || ''),
+    title: '',
+    ticketType: 'coupon',
+    description: '',
+    usageMethod: '',
+    usageInstructions: '',
+    status: 'archived',
+    startsOn: '',
+    endsOn: '',
+    availability: EVENT_TICKET_STATUS_USED_,
+    quota: 0,
+    quotaRemaining: null,
+    allowedTierKeys: [],
+    allowedTierLabels: [],
+    accent: '#e47845',
+    createdAt: String(claim.created_at || ''),
+    updatedAt: String(claim.updated_at || ''),
+    prizes: []
+  };
+  clientTicket.title = String(claim.ticket_title || clientTicket.title || '活動票券');
+  clientTicket.ticketType = String(claim.ticket_type || clientTicket.ticketType || 'coupon').toLowerCase() === 'lottery' ? 'lottery' : 'coupon';
+  clientTicket.description = String(claim.ticket_description || clientTicket.description || '');
+  clientTicket.usageMethod = String(claim.usage_method || clientTicket.usageMethod || '');
+  clientTicket.usageInstructions = String(claim.usage_instructions || clientTicket.usageInstructions || '');
+  clientTicket.prizes = eventTicketPrizesForClient_(eventTicketParseArray_(claim.lottery_prizes_json), false);
+  return clientTicket;
 }
 
 function eventTicketPrizesForClient_(prizes, includeWinRate) {

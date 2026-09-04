@@ -22,6 +22,13 @@
   });
 
   function bindEvents() {
+    const eventTicketTierAccess = document.getElementById('eventTicketAllowedTiers');
+    const eventTicketTitleField = els.eventTicketTitle.closest('label');
+    if (eventTicketTierAccess && eventTicketTitleField) {
+      els.eventTicketForm.insertBefore(eventTicketTierAccess, eventTicketTitleField);
+      eventTicketTierAccess.addEventListener('change', updateEventTicketTierSummary);
+      updateEventTicketTierSummary();
+    }
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.membersTab.addEventListener('click', () => switchPanel('members'));
@@ -371,8 +378,9 @@
     state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = 'draft'; els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, 'draft'); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
   }
 
-  function collectEventTicketAllowedTiers() { return Array.from(document.querySelectorAll('input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.value || '').trim()).filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)); }
-  function setEventTicketAllowedTiers(tierKeys) { const allowed = Array.isArray(tierKeys) && tierKeys.length ? tierKeys : EVENT_TICKET_TIER_KEYS; document.querySelectorAll('input[name="eventTicketAllowedTierKey"]').forEach((input) => { input.checked = allowed.includes(input.value); }); }
+  function collectEventTicketAllowedTiers() { return Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.value || '').trim()).filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)); }
+  function setEventTicketAllowedTiers(tierKeys) { const allowed = Array.isArray(tierKeys) && tierKeys.length ? tierKeys : EVENT_TICKET_TIER_KEYS; document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]').forEach((input) => { input.checked = allowed.includes(input.value); }); updateEventTicketTierSummary(); }
+  function updateEventTicketTierSummary() { const summary = document.getElementById('eventTicketTierSummary'); if (!summary) return; const selected = Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.parentElement && input.parentElement.textContent || '').trim()).filter(Boolean); summary.textContent = selected.length === EVENT_TICKET_TIER_KEYS.length ? '已選擇：所有會員等級' : selected.length ? `已選擇：${selected.join('、')}` : '尚未選擇可使用的會員等級'; }
   function updateEventTicketTypeUI() { const lottery = els.eventTicketType.value === 'lottery'; els.eventTicketPrizeEditor.classList.toggle('hidden', !lottery); if (lottery && !els.eventTicketPrizeRows.children.length) renderEventTicketPrizeRows([defaultPrize()]); }
   function renderEventTicketPrizeRows(prizes) { els.eventTicketPrizeRows.replaceChildren(...prizes.map((prize, index) => { const row = document.createElement('div'); row.className = 'prize-row'; row.dataset.eventTicketPrizeRow = 'true'; row.append(fieldLabel(`獎項 ${index + 1} 名稱`, 'text', prize.prizeTitle, { field: 'eventTicketPrizeTitle', maxlength: '100', placeholder: '例如：免費蛋糕' }), fieldLabel('中獎機率', 'number', prize.winRate, { field: 'eventTicketPrizeRate', min: '0', max: '100', step: '0.01', suffix: '%' })); const description = fieldLabel('獎項說明（選填）', 'text', prize.prizeDescription, { field: 'eventTicketPrizeDescription', maxlength: '240', placeholder: '例如：可兌換任一蛋糕' }); description.classList.add('prize-description-field'); const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button remove-prize'; remove.dataset.removeEventTicketPrize = 'true'; remove.textContent = '刪除'; row.append(description, remove); return row; })); updateEventTicketPrizeTotal(); }
   function collectEventTicketPrizes() { return Array.from(els.eventTicketPrizeRows.querySelectorAll('[data-event-ticket-prize-row]')).map((row) => ({ prizeTitle: String(row.querySelector('[data-field="eventTicketPrizeTitle"]')?.value || '').trim(), prizeDescription: String(row.querySelector('[data-field="eventTicketPrizeDescription"]')?.value || '').trim(), winRate: Number(row.querySelector('[data-field="eventTicketPrizeRate"]')?.value) })); }

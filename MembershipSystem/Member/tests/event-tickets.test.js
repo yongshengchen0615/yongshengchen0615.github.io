@@ -74,10 +74,13 @@ test('event ticket claim is owned, one-per-member, quota-limited, and snapshots 
 test('event tickets remain visible to every member but enforce their allowed tiers', () => {
   const { context, rows, TestApiError } = loadEventTicketService();
   rows.EventTickets[0].allowed_tier_keys = JSON.stringify(['gold', 'platinum']);
+  rows.EventTickets.push({ ...rows.EventTickets[0], event_ticket_id: 'ET-2', title: '銀級限定禮', allowed_tier_keys: JSON.stringify(['silver']) });
   const generalOffer = context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'general')[0];
   assert.equal(generalOffer.tierEligible, false);
   assert.equal(generalOffer.canClaim, false);
   assert.deepEqual(Array.from(generalOffer.ticket.allowedTierLabels), ['金級會員', '白金會員']);
+  const secondOffer = context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'general').find((offer) => offer.ticket.eventTicketId === 'ET-2');
+  assert.deepEqual(Array.from(secondOffer.ticket.allowedTierLabels), ['銀級會員']);
   assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
 
   const goldOffer = context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'gold')[0];
@@ -87,6 +90,26 @@ test('event tickets remain visible to every member but enforce their allowed tie
   assert.equal(claim.claimed, true);
   context.serviceMinutesTotalForMember_ = () => 0;
   assert.throws(() => context.handleEventTicketRedeem_({ lineUserId: 'U-2' }, { claimId: claim.ticket.claimId }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
+});
+
+test('used event tickets move to member history and retain their snapshot after definition removal', () => {
+  const { context, rows } = loadEventTicketService();
+  const claim = context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' });
+  context.handleEventTicketRedeem_({ lineUserId: 'U-1' }, { claimId: claim.ticket.claimId });
+
+  const beforeDelete = context.readEventTicketSnapshot_();
+  assert.equal(context.visibleEventTicketOffersForMember_('U-1', beforeDelete, 'general').length, 0);
+  const beforeDeleteHistory = context.usedEventTicketHistoryForMember_('U-1', beforeDelete);
+  assert.equal(beforeDeleteHistory.length, 1);
+  assert.equal(beforeDeleteHistory[0].ticket.title, '週年禮');
+  assert.equal(beforeDeleteHistory[0].claim.status, 'used');
+
+  context.handleEventTicketDelete_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { eventTicketId: 'ET-1', expectedUpdatedAt: '2026-09-03T00:00:00.000Z' });
+  const afterDeleteHistory = context.usedEventTicketHistoryForMember_('U-1', context.readEventTicketSnapshot_());
+  assert.equal(afterDeleteHistory.length, 1);
+  assert.equal(afterDeleteHistory[0].ticket.title, '週年禮');
+  assert.equal(afterDeleteHistory[0].definitionRemoved, true);
+  assert.equal(rows.EventTicketClaims[0].status, 'used');
 });
 
 test('event ticket redemption checks ownership, expiry, and one-time use without point deductions', () => {
@@ -121,10 +144,12 @@ test('event ticket browser and admin contracts are present', () => {
   const eventApp = read('event/app.js');
   const adminHtml = read('admin/index.html');
   const adminApp = read('admin/app.js');
+  const eventService = read('gas/EventTicketService.gs');
   const storage = read('gas/Storage.gs');
   const code = read('gas/Code.gs');
   assert.match(eventHtml, /static\.line-scdn\.net\/liff/);
   assert.match(eventHtml, /id="ticketModalAction"/);
+  assert.match(eventHtml, /id="usedTicketHistory"/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
   assert.match(eventApp, /user\.event\.ticket\.claim/);
   assert.match(eventApp, /user\.event\.ticket\.redeem/);
@@ -133,14 +158,19 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(adminHtml, /id="eventsPanel"/);
   assert.match(adminHtml, /id="eventTicketForm"/);
   assert.match(adminHtml, /id="eventTicketAllowedTiers"/);
+  assert.match(adminHtml, /id="eventTicketTierSummary"/);
   assert.match(adminHtml, /id="deleteEventTicketButton"/);
   assert.match(adminApp, /admin\.event-tickets\.save/);
   assert.match(adminApp, /admin\.event-tickets\.delete/);
+  assert.match(adminApp, /insertBefore\(eventTicketTierAccess/);
+  assert.match(adminApp, /updateEventTicketTierSummary/);
   assert.match(eventApp, /tierEligible/);
   assert.match(eventApp, /目前會員等級無法領取或使用/);
   assert.match(storage, /EventTickets:/);
   assert.match(storage, /allowed_tier_keys/);
   assert.match(storage, /EventTicketClaims:/);
+  assert.match(eventApp, /usedTickets/);
+  assert.match(eventService, /usedEventTicketHistoryForMember_/);
   assert.match(code, /user\.event\.bootstrap/);
   assert.match(code, /user\.event\.ticket\.claim/);
   assert.match(code, /user\.event\.ticket\.redeem/);
