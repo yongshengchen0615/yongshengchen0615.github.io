@@ -1,13 +1,13 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', cards: [], tickets: [], activeCardId: '', pendingTicketId: '', redeeming: false };
+  const state = { config: null, idToken: '', cards: [], tickets: [], activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
-      'ticketModal', 'closeTicketModal', 'ticketModalTicketName', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalCost', 'ticketModalProcessing', 'confirmTicketUseButton', 'ticketModalResult', 'ticketModalMessage'
+      'ticketModal', 'closeTicketModal', 'ticketModalTicketName', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalCost', 'ticketModalProcessing', 'confirmTicketUseButton', 'refreshTicketButton', 'ticketModalResult', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
@@ -17,6 +17,7 @@
     els.closeTicketModal.addEventListener('click', closeTicketModal);
     els.ticketModal.addEventListener('click', (event) => { if (event.target === els.ticketModal && !state.redeeming) closeTicketModal(); });
     els.confirmTicketUseButton.addEventListener('click', () => { if (state.pendingTicketId) redeemTicket(state.pendingTicketId); });
+    els.refreshTicketButton.addEventListener('click', () => window.location.reload());
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !state.redeeming) closeTicketModal(); });
     boot();
   });
@@ -131,13 +132,16 @@
     els.ticketModalUsageMethod.textContent = `使用方式：${ticket.usageMethod || '請向店員出示本券'}`;
     els.ticketModalUsageInstructions.textContent = String(ticket.usageInstructions || '確認使用後，系統會扣除對應點數並將票券標記為已使用。');
     els.ticketModalCost.textContent = `確認使用會扣除 ${Number(ticket.thresholdStamps || 0)} 點，使用後無法復原。`;
-    els.confirmTicketUseButton.disabled = false; els.confirmTicketUseButton.textContent = '確認使用這張票券'; els.confirmTicketUseButton.classList.remove('hidden'); els.ticketModalResult.replaceChildren(); setTicketProcessing(false); hideTicketMessage(); els.ticketModal.classList.remove('hidden'); els.confirmTicketUseButton.focus();
+    const needsConfirmation = ticketId === state.uncertainTicketId;
+    els.confirmTicketUseButton.disabled = needsConfirmation; els.confirmTicketUseButton.textContent = needsConfirmation ? '請重新整理確認' : '確認使用這張票券'; els.confirmTicketUseButton.classList.remove('hidden'); els.refreshTicketButton.classList.toggle('hidden', !needsConfirmation); els.ticketModalResult.replaceChildren(); setTicketProcessing(false);
+    if (needsConfirmation) showTicketMessage('無法確認票券是否已使用。請先重新整理確認；在確認前請勿再次使用。'); else hideTicketMessage();
+    els.ticketModal.classList.remove('hidden'); (needsConfirmation ? els.refreshTicketButton : els.confirmTicketUseButton).focus();
   }
 
   function closeTicketModal() { if (state.redeeming) return; state.pendingTicketId = ''; els.ticketModal.classList.add('hidden'); els.ticketModalResult.replaceChildren(); setTicketProcessing(false); hideTicketMessage(); }
 
   async function redeemTicket(ticketId) {
-    const ticket = state.tickets.find((item) => item.ticketId === ticketId); if (!ticket || state.redeeming) return;
+    const ticket = state.tickets.find((item) => item.ticketId === ticketId); if (!ticket || state.redeeming || ticketId === state.uncertainTicketId) return;
     state.redeeming = true; els.confirmTicketUseButton.disabled = true; els.confirmTicketUseButton.textContent = '使用中…'; els.ticketModalCost.textContent = '正在確認票券與可用點數…'; setTicketProcessing(true);
     try {
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.redeem', { ticketId });
@@ -145,9 +149,11 @@
     } catch (error) {
       setTicketProcessing(false);
       const responseUncertain = error && error.code === 'API_RESPONSE_UNCERTAIN';
-      showTicketMessage(responseUncertain ? '無法確認票券是否已使用；請重新整理確認，請勿再次使用。' : error && error.message || '票券使用失敗，請稍後再試。');
+      if (responseUncertain) state.uncertainTicketId = ticketId;
+      showTicketMessage(responseUncertain ? '無法確認票券是否已使用。請先重新整理確認；在確認前請勿再次使用。' : error && error.message || '票券使用失敗，請稍後再試。');
       els.confirmTicketUseButton.disabled = responseUncertain;
       els.confirmTicketUseButton.textContent = responseUncertain ? '請重新整理確認' : '重新確認使用';
+      els.refreshTicketButton.classList.toggle('hidden', !responseUncertain);
     } finally { setTicketProcessing(false); state.redeeming = false; }
   }
 

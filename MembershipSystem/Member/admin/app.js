@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', grantRequestId: '', grantSuccessTimer: null };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', grantRequestId: '', grantSuccessTimer: null, writeConfirmationRequired: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -28,7 +28,7 @@
     els.eventsTab.addEventListener('click', () => switchPanel('events'));
     els.cardSettingsTab.addEventListener('click', () => switchCardWorkspace('cards'));
     els.ticketSettingsTab.addEventListener('click', () => switchCardWorkspace('tickets'));
-    els.refreshButton.addEventListener('click', () => refreshData(true).catch((error) => { els.syncStatus.textContent = error && error.message || '同步失敗，請稍後再試。'; els.syncStatus.classList.add('error'); }));
+    els.refreshButton.addEventListener('click', () => { if (state.writeConfirmationRequired) return window.location.reload(); return refreshData(true).catch((error) => { els.syncStatus.textContent = error && error.message || '同步失敗，請稍後再試。'; els.syncStatus.classList.add('error'); }); });
     els.memberSearch.addEventListener('input', scheduleMemberSearch);
     els.memberPrevPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page - 1, state.memberPage.query));
     els.memberNextPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page + 1, state.memberPage.query));
@@ -167,7 +167,7 @@
     ].map(([tierKey, input]) => ({ tierKey, requiredServiceMinutes: Number(input.value), expectedUpdatedAt: String(input.dataset.updatedAt || '') }));
   }
   async function saveTierSettings(event) {
-    event.preventDefault(); hideMessage(els.tierSettingsFormMessage);
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.tierSettingsFormMessage)) return; hideMessage(els.tierSettingsFormMessage);
     const tierSettings = collectTierSettings();
     const invalid = tierSettings.some((setting, index) => !Number.isInteger(setting.requiredServiceMinutes) || setting.requiredServiceMinutes < 0 || setting.requiredServiceMinutes > 10000000 || (index === 0 ? setting.requiredServiceMinutes !== 0 : setting.requiredServiceMinutes <= tierSettings[index - 1].requiredServiceMinutes));
     if (invalid) return showMessage(els.tierSettingsFormMessage, '門檻必須由一般會員 0 分鐘開始，銀級、金級與白金會員需依序遞增。');
@@ -259,7 +259,7 @@
   }
   function validateRewardEditor(title, rewards) { if (!title || title.length > 80) return '請填寫卡片名稱（最多 80 字）。'; if (!rewards.length || rewards.length > 30) return '請至少設定 1 個兌換節點，最多 30 個節點。'; const thresholds = new Set(); for (const reward of rewards) { if (!Number.isInteger(reward.thresholdStamps) || reward.thresholdStamps < 1 || reward.thresholdStamps > 100) return '需要集到的點數必須是 1–100 的整數。'; if (thresholds.has(reward.thresholdStamps)) return '每個點數只能設定一個節點。'; thresholds.add(reward.thresholdStamps); if (!reward.ticketTemplateId) return '請為每個節點選擇一張票券。'; } return ''; }
   async function saveCard(event) {
-    event.preventDefault(); hideMessage(els.cardFormMessage);
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.cardFormMessage)) return; hideMessage(els.cardFormMessage);
     const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim();
     const validationMessage = validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardExpiry(expiryMode, expiresOn);
     if (validationMessage) return showMessage(els.cardFormMessage, validationMessage);
@@ -272,6 +272,7 @@
   }
 
   async function archiveCard() {
+    if (requireRefreshBeforeWrite(els.cardFormMessage)) return;
     const cardId = String(els.cardId.value || '').trim();
     if (!cardId || els.archiveCardButton.disabled) return;
     if (!window.confirm('封存後不再接受新的集點；會員端會同步隱藏這張卡與相關票券，但所有資料與歷史紀錄都會保留。確定要封存嗎？')) return;
@@ -282,10 +283,11 @@
       if (result.card) state.cards = replaceById(state.cards, result.card, 'cardId');
       if (result.card) loadCardForm(result.card.cardId);
       if (await refreshAfterSuccessfulWrite('集點卡已封存，所有資料仍保留', els.cardFormMessage)) showMessage(els.cardFormMessage, '集點卡已封存；會員端不再顯示，資料與歷史紀錄仍保留。', true);
-    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (els.cardId.value === cardId && els.cardStatus.value !== 'archived') { els.archiveCardButton.disabled = false; els.archiveCardButton.textContent = originalText; } }
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (!state.writeConfirmationRequired && els.cardId.value === cardId && els.cardStatus.value !== 'archived') { els.archiveCardButton.disabled = false; els.archiveCardButton.textContent = originalText; } }
   }
 
   async function deleteCard() {
+    if (requireRefreshBeforeWrite(els.cardFormMessage)) return;
     const cardId = String(els.cardId.value || '').trim();
     const cardTitle = String(els.cardTitle.value || '這張集點卡').trim();
     if (!cardId || els.deleteCardButton.disabled) return;
@@ -297,7 +299,7 @@
       await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.delete', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       state.cards = state.cards.filter((card) => card.cardId !== cardId); state.selectedCardId = ''; resetCardForm();
       if (await refreshAfterSuccessfulWrite('集點卡已永久刪除', els.cardFormMessage)) showMessage(els.cardFormMessage, '集點卡與所有相關資料已永久刪除。', true);
-    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (els.cardId.value === cardId) { els.deleteCardButton.disabled = false; els.deleteCardButton.textContent = originalText; } }
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (!state.writeConfirmationRequired && els.cardId.value === cardId) { els.deleteCardButton.disabled = false; els.deleteCardButton.textContent = originalText; } }
   }
 
   function renderTicketList() {
@@ -314,7 +316,7 @@
   function balanceTicketPrizes() { const rows = Array.from(els.ticketPrizeRows.querySelectorAll('[data-ticket-prize-row]')); if (!rows.length) return; const base = Math.floor(10000 / rows.length); const remainder = 10000 - base * rows.length; rows.forEach((row, index) => { row.querySelector('[data-field="ticketPrizeRate"]').value = String((base + (index < remainder ? 1 : 0)) / 100); }); updateTicketPrizeTotal(); }
   function validateTicket(ticket) { if (!ticket.title || ticket.title.length > 100) return '請填寫票券名稱（最多 100 字）。'; if (!ticket.description || ticket.description.length > 240) return '請填寫票券說明（最多 240 字）。'; if (!ticket.usageMethod || ticket.usageMethod.length > 120) return '請填寫使用方式（最多 120 字）。'; if (!ticket.usageInstructions || ticket.usageInstructions.length > 500) return '請填寫使用說明（最多 500 字）。'; if (ticket.ticketType !== 'lottery') return ''; if (!ticket.prizes.length || ticket.prizes.length > 30) return '抽獎券至少要設定 1 個獎項，最多 30 個獎項。'; let total = 0; for (const prize of ticket.prizes) { if (!prize.prizeTitle || prize.prizeTitle.length > 100) return '每個抽獎獎項都需要填寫名稱。'; if (prize.prizeDescription.length > 240) return '獎項說明最多 240 字。'; if (!Number.isFinite(prize.winRate) || prize.winRate < 0 || prize.winRate > 100) return '每個獎項機率必須介於 0–100%。'; total += Math.round(prize.winRate * 100); } return total === 10000 ? '' : '同一張抽獎券的獎項機率合計必須正好是 100%。'; }
   async function saveTicket(event) {
-    event.preventDefault(); hideMessage(els.ticketFormMessage);
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.ticketFormMessage)) return; hideMessage(els.ticketFormMessage);
     const ticket = { ticketTemplateId: els.ticketTemplateId.value, title: String(els.ticketTitle.value || '').trim(), ticketType: els.ticketType.value, description: String(els.ticketDescription.value || '').trim(), usageMethod: String(els.ticketUsageMethod.value || '').trim(), usageInstructions: String(els.ticketUsageInstructions.value || '').trim(), status: els.ticketStatus.value, prizes: els.ticketType.value === 'lottery' ? collectTicketPrizes() : [] };
     const validationMessage = validateTicket(ticket);
     if (validationMessage) return showMessage(els.ticketFormMessage, validationMessage);
@@ -372,7 +374,7 @@
   function validateEventTicketDates(startsOn, endsOn) { const dateMessage = (value, label) => !value || /^\d{4}-\d{2}-\d{2}$/.test(value) && (() => { const parts = value.split('-').map(Number); const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])); return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2]; })() ? '' : `請選擇有效的${label}。`; return dateMessage(startsOn, '活動開始日') || dateMessage(endsOn, '活動結束日') || (startsOn && endsOn && startsOn > endsOn ? '活動結束日不可早於開始日。' : ''); }
   function validateEventTicket(ticket) { if (!ticket.title || ticket.title.length > 100) return '請填寫活動票券名稱（最多 100 字）。'; if (!ticket.description || ticket.description.length > 240) return '請填寫票券說明（最多 240 字）。'; if (!ticket.usageMethod || ticket.usageMethod.length > 120) return '請填寫使用方式（最多 120 字）。'; if (!ticket.usageInstructions || ticket.usageInstructions.length > 500) return '請填寫使用說明（最多 500 字）。'; if (!Number.isInteger(ticket.quota) || ticket.quota < 0 || ticket.quota > 1000000) return '總發放上限必須是 0–1,000,000 的整數。'; const dateMessage = validateEventTicketDates(ticket.startsOn, ticket.endsOn); if (dateMessage) return dateMessage; if (ticket.ticketType !== 'lottery') return ''; if (!ticket.prizes.length || ticket.prizes.length > 30) return '抽獎券至少要設定 1 個獎項，最多 30 個獎項。'; let total = 0; for (const prize of ticket.prizes) { if (!prize.prizeTitle || prize.prizeTitle.length > 100) return '每個抽獎獎項都需要填寫名稱。'; if (prize.prizeDescription.length > 240) return '獎項說明最多 240 字。'; if (!Number.isFinite(prize.winRate) || prize.winRate < 0 || prize.winRate > 100) return '每個獎項機率必須介於 0–100%。'; total += Math.round(prize.winRate * 100); } return total === 10000 ? '' : '同一張抽獎券的獎項機率合計必須正好是 100%。'; }
   async function saveEventTicket(event) {
-    event.preventDefault(); hideMessage(els.eventTicketFormMessage);
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.eventTicketFormMessage)) return; hideMessage(els.eventTicketFormMessage);
     const ticket = { eventTicketId: els.eventTicketId.value, title: String(els.eventTicketTitle.value || '').trim(), ticketType: els.eventTicketType.value, description: String(els.eventTicketDescription.value || '').trim(), usageMethod: String(els.eventTicketUsageMethod.value || '').trim(), usageInstructions: String(els.eventTicketUsageInstructions.value || '').trim(), status: els.eventTicketStatus.value, startsOn: String(els.eventTicketStartsOn.value || '').trim(), endsOn: String(els.eventTicketEndsOn.value || '').trim(), quota: Number(els.eventTicketQuota.value), accent: safeAccent(els.eventTicketAccent.value), prizes: els.eventTicketType.value === 'lottery' ? collectEventTicketPrizes() : [] };
     const validationMessage = validateEventTicket(ticket); if (validationMessage) return showMessage(els.eventTicketFormMessage, validationMessage);
     setSaving(els.saveEventTicketButton, true);
@@ -386,7 +388,7 @@
 
   function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.textContent = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberStatus.focus(); }
   function closeMemberModal() { els.memberModal.classList.add('hidden'); }
-  async function saveMember(event) { event.preventDefault(); hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
+  async function saveMember(event) { event.preventDefault(); if (requireRefreshBeforeWrite(els.memberFormMessage)) return; hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
   function openGrantModal(member) { const activeCards = state.cards.filter((card) => card.status === 'active' && !card.expired); state.grantRequestId = createRequestId(); els.grantMemberId.value = String(member.lineUserId); els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`; els.grantCardId.replaceChildren(...activeCards.map((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); return option; })); els.grantStampsEnabled.checked = activeCards.length > 0; els.grantStampsEnabled.disabled = activeCards.length === 0; els.grantServiceTimeEnabled.checked = activeCards.length === 0; els.grantStampAmount.value = '1'; els.grantServiceTimeMinutes.value = '30'; els.grantNote.value = ''; updateGrantOptions(); hideMessage(els.grantFormMessage); els.grantModal.classList.remove('hidden'); (activeCards.length ? els.grantCardId : els.grantServiceTimeMinutes).focus(); }
   function closeGrantModal() { state.grantRequestId = ''; els.grantModal.classList.add('hidden'); }
   function updateGrantOptions() {
@@ -399,7 +401,7 @@
     els.grantServiceTimeMinutes.disabled = !addServiceTime;
   }
   async function saveGrant(event) {
-    event.preventDefault(); hideMessage(els.grantFormMessage);
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.grantFormMessage)) return; hideMessage(els.grantFormMessage);
     const addStamps = els.grantStampsEnabled.checked; const addServiceTime = els.grantServiceTimeEnabled.checked;
     const stampAmount = Number(els.grantStampAmount.value); const serviceTimeMinutes = Number(els.grantServiceTimeMinutes.value);
     if (!addStamps && !addServiceTime) return showMessage(els.grantFormMessage, '請至少勾選「發放集點」或「發放消費服務時間」。');
@@ -433,9 +435,17 @@
     if (state.grantSuccessTimer) window.clearTimeout(state.grantSuccessTimer);
     state.grantSuccessTimer = window.setTimeout(() => { els.grantSuccessNotice.classList.add('hidden'); state.grantSuccessTimer = null; }, 3600);
   }
-  function setSaving(button, saving) { button.disabled = saving; if (saving) { button.dataset.originalText = button.textContent; button.textContent = '儲存中…'; } else button.textContent = button.dataset.originalText || button.textContent; }
+  function setSaving(button, saving) { button.disabled = saving || state.writeConfirmationRequired; if (saving) { button.dataset.originalText = button.textContent; button.textContent = '儲存中…'; } else button.textContent = state.writeConfirmationRequired ? '請重新整理確認' : button.dataset.originalText || button.textContent; }
   function showMessage(element, message, success) { element.textContent = message; element.classList.toggle('success', Boolean(success)); element.classList.remove('hidden'); }
-  function hideMessage(element) { element.textContent = ''; element.classList.add('hidden'); element.classList.remove('success'); }
+  function hideMessage(element) { element.textContent = ''; element.classList.add('hidden'); element.classList.remove('success'); const action = element.nextElementSibling; if (action && action.matches('[data-uncertain-write-refresh]')) action.remove(); }
+  function showUncertainWriteMessage(element) {
+    hideMessage(element);
+    showMessage(element, '無法確認這次操作是否完成。資料可能已更新；請先重新整理確認，請勿重複送出。');
+    const refreshButton = document.createElement('button'); refreshButton.type = 'button'; refreshButton.className = 'button button-outline uncertain-write-refresh'; refreshButton.dataset.uncertainWriteRefresh = 'true'; refreshButton.textContent = '重新整理確認'; refreshButton.addEventListener('click', () => window.location.reload());
+    element.insertAdjacentElement('afterend', refreshButton);
+  }
+  function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.saveMemberButton, els.saveGrantButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; }
+  function requireRefreshBeforeWrite(element) { if (!state.writeConfirmationRequired) return false; showUncertainWriteMessage(element); return true; }
   function setSyncStatus(message, error) { els.syncStatus.textContent = message; els.syncStatus.classList.toggle('error', Boolean(error)); }
   async function refreshAfterSuccessfulWrite(successMessage, messageElement) {
     try { await refreshData(false); return true; } catch (_) {
@@ -445,7 +455,7 @@
       return false;
     }
   }
-  function handleActionError(error, element) { showMessage(element, error && error.code === 'API_RESPONSE_UNCERTAIN' ? '無法確認這次操作的回應；資料可能已更新，請先重新整理確認，請勿重複送出。' : error && error.code === 'CONFLICT' ? '資料已被另一位管理者更新，請重新整理後再儲存。' : error && error.message || '操作失敗，請稍後再試。'); }
+  function handleActionError(error, element) { if (error && error.code === 'API_RESPONSE_UNCERTAIN') { state.writeConfirmationRequired = true; lockAdminWrites(); showUncertainWriteMessage(element); setSyncStatus('寫入結果尚未確認；請重新整理確認後再操作。', true); return; } showMessage(element, error && error.code === 'CONFLICT' ? '資料已被另一位管理者更新，請重新整理後再儲存。' : error && error.message || '操作失敗，請稍後再試。'); }
   function handleBootError(error) { if (error && error.code === 'ADMIN_PENDING') { els.pendingUserId.textContent = String(error.details && error.details.lineUserId || '請查看 Admins 資料表'); els.pendingBox.classList.remove('hidden'); showError('此 LINE 帳號尚未授權', 'GAS 已記錄這次管理端登入，但目前不允許進入管理功能。'); return; } if (error && error.code === 'ADMIN_FORBIDDEN') { showError('沒有管理端權限', '此 LINE 帳號未啟用管理權限，請檢查 Admins 的 role 與 status。'); return; } showError(error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '暫時無法進入管理端', error && error.message || '請稍後重新整理。'); }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.adminView.classList.toggle('hidden', view !== 'admin'); }
   function showError(title, message) { els.errorTitle.textContent = title; els.errorMessage.textContent = message; setView('error'); }

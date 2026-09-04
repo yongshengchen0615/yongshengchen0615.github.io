@@ -478,5 +478,6 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(adminApp, /API_RESPONSE_UNCERTAIN/);
   assert.match(read('shared/common.js'), /API_RESPONSE_UNCERTAIN/);
   assert.doesNotMatch(read('shared/common.js'), /確認 GAS 部署的是最新版本/);
-  assert.match(pointsApp, /請重新整理確認，請勿再次使用/);
+  assert.match(pointsApp, /uncertainTicketId/);
+  assert.match(pointsHtml, /id="refreshTicketButton"/);
 });

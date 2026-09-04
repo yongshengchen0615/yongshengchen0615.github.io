@@ -1,13 +1,13 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', offers: [], pendingEventTicketId: '', processing: false, actionLocked: false };
+  const state = { config: null, idToken: '', offers: [], pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'eventView', 'displayName', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView',
-      'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'ticketModalMessage'
+      'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
@@ -16,6 +16,7 @@
     els.closeTicketModal.addEventListener('click', closeTicketModal);
     els.ticketModal.addEventListener('click', (event) => { if (event.target === els.ticketModal && !state.processing) closeTicketModal(); });
     els.ticketModalAction.addEventListener('click', handleTicketAction);
+    els.refreshTicketButton.addEventListener('click', () => window.location.reload());
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !state.processing) closeTicketModal(); });
     boot();
   });
@@ -61,15 +62,16 @@
 
   function openTicketModal(eventTicketId) {
     const offer = findOffer(eventTicketId); if (!offer) return;
-    state.pendingEventTicketId = eventTicketId; state.processing = false; state.actionLocked = false;
-    renderTicketModal(offer); hideMessage(); setProcessing(false); els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); els.ticketModal.classList.remove('hidden'); els.ticketModalAction.focus();
+    state.pendingEventTicketId = eventTicketId; state.processing = false; state.actionLocked = eventTicketId === state.uncertainEventTicketId;
+    renderTicketModal(offer); if (state.actionLocked) showMessage('無法確認這次操作是否完成。請先重新整理確認；在確認前請勿再次送出。'); else hideMessage(); setProcessing(false); els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); els.ticketModal.classList.remove('hidden'); (state.actionLocked ? els.refreshTicketButton : els.ticketModalAction).focus();
   }
 
   function renderTicketModal(offer) {
     const ticket = offer.ticket || {}; const claim = offer.claim;
     els.ticketModalType.textContent = ticket.ticketType === 'lottery' ? '活動抽獎券' : '活動優惠券'; els.ticketModalTitle.textContent = String(ticket.title || '活動票券'); els.ticketModalDate.textContent = eventDates(ticket); els.ticketModalDescription.textContent = String(claim ? claim.ticketDescription : ticket.description || '查看活動內容與使用說明。'); els.ticketModalUsageMethod.textContent = `使用方式：${String(claim ? claim.usageMethod : ticket.usageMethod || '請依活動現場指示使用')}`; els.ticketModalUsageInstructions.textContent = String(claim ? claim.usageInstructions : ticket.usageInstructions || '領取後請在活動期間出示本券。');
     const prizes = claim ? claim.prizes : ticket.prizes; renderPrizes(ticket.ticketType, prizes);
-    els.ticketModalStatus.textContent = modalStatusText(offer); els.ticketModalAction.textContent = claim ? offer.canUse ? '確認使用這張票券' : '這張票券已使用' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !((claim && offer.canUse) || (!claim && offer.canClaim)); els.ticketModalAction.classList.toggle('hidden', Boolean(claim && !offer.canUse));
+    const canAct = !state.actionLocked && ((claim && offer.canUse) || (!claim && offer.canClaim));
+    els.ticketModalStatus.textContent = modalStatusText(offer); els.ticketModalAction.textContent = state.actionLocked ? '請重新整理確認' : claim ? offer.canUse ? '確認使用這張票券' : '這張票券已使用' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !canAct; els.ticketModalAction.classList.toggle('hidden', Boolean(claim && !offer.canUse) && !state.actionLocked); els.refreshTicketButton.classList.toggle('hidden', !state.actionLocked);
   }
 
   function renderPrizes(ticketType, prizes) {
@@ -111,7 +113,7 @@
   function setProcessing(processing) { els.ticketModalProcessing.classList.toggle('hidden', !processing); els.ticketModal.setAttribute('aria-busy', String(Boolean(processing))); }
   function showMessage(message, success) { els.ticketModalMessage.textContent = message; els.ticketModalMessage.classList.toggle('success', Boolean(success)); els.ticketModalMessage.classList.remove('hidden'); }
   function hideMessage() { els.ticketModalMessage.textContent = ''; els.ticketModalMessage.classList.add('hidden'); els.ticketModalMessage.classList.remove('success'); }
-  function handleTicketError(error, fallback) { const uncertain = error && error.code === 'API_RESPONSE_UNCERTAIN'; showMessage(uncertain ? '無法確認這次操作是否完成；請重新整理確認，請勿再次送出。' : error && error.message || fallback, false); state.actionLocked = uncertain; els.ticketModalAction.disabled = true; }
+  function handleTicketError(error, fallback) { const uncertain = error && error.code === 'API_RESPONSE_UNCERTAIN'; if (uncertain) state.uncertainEventTicketId = state.pendingEventTicketId; showMessage(uncertain ? '無法確認這次操作是否完成。請先重新整理確認；在確認前請勿再次送出。' : error && error.message || fallback, false); state.actionLocked = uncertain; els.ticketModalAction.disabled = true; els.refreshTicketButton.classList.toggle('hidden', !uncertain); }
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#d86e50'; }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.eventView.classList.toggle('hidden', view !== 'event'); }
   function showError(error) { els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '活動票券暫時無法載入'; els.errorMessage.textContent = error && error.message ? error.message : '請稍後重新整理再試。'; setView('error'); }

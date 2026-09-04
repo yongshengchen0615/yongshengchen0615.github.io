@@ -1,12 +1,13 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', profile: null };
+  const state = { config: null, idToken: '', profile: null, profileSaveLocked: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profilePhone', 'profileFormMessage', 'saveProfileButton', 'memberView', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'serviceMinutesTotal'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profilePhone', 'profileFormMessage', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'serviceMinutesTotal'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
+    els.refreshProfileButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.profileForm.addEventListener('submit', saveProfile);
     boot();
@@ -50,6 +51,7 @@
 
   async function saveProfile(event) {
     event.preventDefault();
+    if (state.profileSaveLocked) return showUncertainSaveMessage();
     hideMessage();
     const birthday = String(els.profileBirthday.value || '').trim();
     const phone = String(els.profilePhone.value || '').trim();
@@ -62,7 +64,12 @@
       renderProfile(state.profile);
       setView('member');
     } catch (error) {
-      showMessage(error && error.message || '資料暫時無法儲存，請稍後再試。');
+      if (error && error.code === 'API_RESPONSE_UNCERTAIN') {
+        state.profileSaveLocked = true;
+        showUncertainSaveMessage();
+      } else {
+        showMessage(error && error.message || '資料暫時無法儲存，請稍後再試。');
+      }
     } finally {
       setSaving(false);
     }
@@ -73,9 +80,10 @@
     return `${minutes} 分鐘`;
   }
 
-  function setSaving(saving) { els.saveProfileButton.disabled = saving; els.saveProfileButton.textContent = saving ? '儲存中…' : '儲存並開啟會員卡'; }
+  function setSaving(saving) { els.saveProfileButton.disabled = saving || state.profileSaveLocked; els.saveProfileButton.textContent = saving ? '儲存中…' : state.profileSaveLocked ? '請重新整理確認' : '儲存並開啟會員卡'; }
+  function showUncertainSaveMessage() { showMessage('無法確認資料是否已儲存。請先重新整理確認；在確認前請勿再次送出。'); els.refreshProfileButton.classList.remove('hidden'); els.saveProfileButton.disabled = true; els.saveProfileButton.textContent = '請重新整理確認'; }
   function showMessage(message) { els.profileFormMessage.textContent = message; els.profileFormMessage.classList.remove('hidden'); }
-  function hideMessage() { els.profileFormMessage.textContent = ''; els.profileFormMessage.classList.add('hidden'); }
+  function hideMessage() { els.profileFormMessage.textContent = ''; els.profileFormMessage.classList.add('hidden'); if (!state.profileSaveLocked) els.refreshProfileButton.classList.add('hidden'); }
 
   function setView(view) {
     els.loadingView.classList.toggle('hidden', view !== 'loading');

@@ -163,6 +163,31 @@ test('transport distinguishes an uncertain write outcome from a failed read resp
   );
 });
 
+test('uncertain writes lock the affected UI and expose a reload confirmation path', () => {
+  const memberHtml = read('member/index.html');
+  const memberApp = read('member/app.js');
+  const pointsHtml = read('points/index.html');
+  const pointsApp = read('points/app.js');
+  const eventHtml = read('event/index.html');
+  const eventApp = read('event/app.js');
+  const adminApp = read('admin/app.js');
+
+  assert.match(memberHtml, /id="refreshProfileButton"/);
+  assert.match(memberApp, /profileSaveLocked/);
+  assert.match(memberApp, /showUncertainSaveMessage/);
+  assert.match(pointsHtml, /id="refreshTicketButton"/);
+  assert.match(pointsApp, /uncertainTicketId/);
+  assert.match(pointsApp, /ticketId === state\.uncertainTicketId/);
+  assert.match(eventHtml, /id="refreshTicketButton"/);
+  assert.match(eventApp, /uncertainEventTicketId/);
+  assert.match(eventApp, /const canAct = !state\.actionLocked/);
+  assert.match(adminApp, /writeConfirmationRequired/);
+  assert.match(adminApp, /function requireRefreshBeforeWrite/);
+  assert.match(adminApp, /function lockAdminWrites/);
+  assert.match(adminApp, /重新整理確認/);
+  [memberApp, pointsApp, eventApp, adminApp].forEach((source) => assert.match(source, /window\.location\.reload\(\)/));
+});
+
 test('storage schema checks are cached and point-card bootstrap has a snapshot read path', () => {
   const storage = read('gas/Storage.gs');
   const pointService = read('gas/PointCardService.gs');
