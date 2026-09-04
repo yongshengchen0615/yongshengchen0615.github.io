@@ -11,9 +11,9 @@
       'membersTab', 'cardsTab', 'eventsTab', 'cardSettingsTab', 'ticketSettingsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'activeEventTicketCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'eventsPanel', 'cardSettingsPanel', 'ticketSettingsPanel', 'syncStatus', 'refreshButton',
       'tierSettingsForm', 'tierGeneralMinutes', 'tierSilverMinutes', 'tierGoldMinutes', 'tierPlatinumMinutes', 'tierSettingsFormMessage', 'saveTierSettingsButton',
       'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
-      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
+      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
-      'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
+      'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
       'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -49,6 +49,7 @@
     els.rewardRows.addEventListener('change', updateRewardEditorHint);
     els.rewardRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-reward]') : null; if (button) { button.closest('[data-reward-row]')?.remove(); updateRewardEditorHint(); } });
     els.cardExpiryMode.addEventListener('change', updateCardExpiryUI);
+    els.cardExpiresOn.addEventListener('change', updateCardExpiryDateUI);
     els.cardAccent.addEventListener('input', updateAccentValue);
     els.cardForm.addEventListener('submit', saveCard);
     els.resetCardButton.addEventListener('click', resetCardForm);
@@ -70,6 +71,8 @@
     els.eventTicketPrizeRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-event-ticket-prize]') : null; if (button) { button.closest('[data-event-ticket-prize-row]')?.remove(); updateEventTicketPrizeTotal(); } });
     els.addEventTicketPrizeButton.addEventListener('click', () => { renderEventTicketPrizeRows([...collectEventTicketPrizes(), defaultPrize(0)]); });
     els.balanceEventTicketPrizesButton.addEventListener('click', balanceEventTicketPrizes);
+    els.eventTicketStartsOn.addEventListener('change', updateEventTicketDateRangeUI);
+    els.eventTicketEndsOn.addEventListener('change', updateEventTicketDateRangeUI);
     els.eventTicketAccent.addEventListener('input', updateEventTicketAccentValue);
     els.eventTicketForm.addEventListener('submit', saveEventTicket);
     els.resetEventTicketButton.addEventListener('click', resetEventTicketForm);
@@ -84,6 +87,7 @@
     els.grantModal.addEventListener('click', (event) => { if (event.target === els.grantModal) closeGrantModal(); });
     els.grantStampsEnabled.addEventListener('change', updateGrantOptions);
     els.grantServiceTimeEnabled.addEventListener('change', updateGrantOptions);
+    document.addEventListener('click', handleAdminDateControlClick);
     document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); });
   }
 
@@ -220,12 +224,99 @@
   function actionButton(label, action, value, accent) { const button = document.createElement('button'); button.type = 'button'; button.className = `small-button${accent ? ' accent' : ''}`; button.dataset.action = action; button.dataset.value = String(value || ''); button.textContent = label; return button; }
   function handleMemberTableClick(event) { const button = event.target instanceof Element ? event.target.closest('[data-action]') : null; if (!button) return; const member = state.members.find((item) => item.lineUserId === button.dataset.value); if (!member) return; if (button.dataset.action === 'edit-member') openMemberModal(member); if (button.dataset.action === 'add-grant') openGrantModal(member); }
 
+
+  function parseAdminIsoDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
+    if (!match) return null;
+    const year = Number(match[1]); const month = Number(match[2]); const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : null;
+  }
+  function toAdminIsoDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    const year = date.getUTCFullYear(); const month = String(date.getUTCMonth() + 1).padStart(2, '0'); const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  function todayAdminIsoDate() {
+    const values = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).forEach((part) => { if (part.type !== 'literal') values[part.type] = part.value; });
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+  function addAdminDays(value, amount) {
+    const date = parseAdminIsoDate(value); const days = Number(amount);
+    if (!date || !Number.isFinite(days)) return '';
+    date.setUTCDate(date.getUTCDate() + Math.trunc(days));
+    return toAdminIsoDate(date);
+  }
+  function formatAdminDateValue(value, includeWeekday) {
+    const date = parseAdminIsoDate(value); if (!date) return '';
+    const options = { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' };
+    if (includeWeekday) options.weekday = 'short';
+    return new Intl.DateTimeFormat('zh-Hant-TW', options).format(date);
+  }
+  function formatAdminDateCompact(value) {
+    const date = parseAdminIsoDate(value); if (!date) return String(value || '');
+    return new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  }
+  function setAdminDateInput(input, value) {
+    if (!(input instanceof HTMLInputElement)) return;
+    input.value = String(value || '');
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  function updateCardExpiryDateUI() {
+    if (!els.cardExpiresOnSummary) return;
+    const limited = els.cardExpiryMode.value === 'date'; const value = String(els.cardExpiresOn.value || '').trim(); const parsed = value ? parseAdminIsoDate(value) : null;
+    els.cardExpiresOnSummary.textContent = limited ? (parsed ? formatAdminDateValue(value, true) : '請選擇到期日') : '無期限';
+    els.cardExpiresOnField.classList.toggle('invalid', limited && Boolean(value) && !parsed);
+  }
+  function updateEventTicketDateRangeUI() {
+    if (!els.eventTicketDateRangeSummary || !els.eventTicketDateRangeMessage) return;
+    const startsOn = String(els.eventTicketStartsOn.value || '').trim(); const endsOn = String(els.eventTicketEndsOn.value || '').trim();
+    const startDate = startsOn ? parseAdminIsoDate(startsOn) : null; const endDate = endsOn ? parseAdminIsoDate(endsOn) : null; const validationMessage = validateEventTicketDates(startsOn, endsOn);
+    const startControl = els.eventTicketStartsOn.closest('.date-control'); const endControl = els.eventTicketEndsOn.closest('.date-control');
+    if (startControl) startControl.classList.toggle('invalid', Boolean(startsOn) && !startDate || Boolean(startDate && endDate && startDate > endDate));
+    if (endControl) endControl.classList.toggle('invalid', Boolean(endsOn) && !endDate || Boolean(startDate && endDate && startDate > endDate));
+    els.eventTicketDateRangeMessage.classList.toggle('warning', Boolean(validationMessage));
+    if (validationMessage) { els.eventTicketDateRangeSummary.textContent = '日期需要調整'; els.eventTicketDateRangeMessage.textContent = validationMessage; return; }
+    if (!startsOn && !endsOn) { els.eventTicketDateRangeSummary.textContent = '不限制日期'; els.eventTicketDateRangeMessage.textContent = '未設定期間限制，票券會依公開狀態與其他條件判定是否可用。'; return; }
+    if (startDate && endDate) {
+      const days = Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+      els.eventTicketDateRangeSummary.textContent = `${formatAdminDateCompact(startsOn)} → ${formatAdminDateCompact(endsOn)}`;
+      els.eventTicketDateRangeMessage.textContent = `${formatAdminDateValue(startsOn, true)} 至 ${formatAdminDateValue(endsOn, true)}，共 ${days} 天。`;
+      return;
+    }
+    if (startDate) { els.eventTicketDateRangeSummary.textContent = `自 ${formatAdminDateCompact(startsOn)} 起`; els.eventTicketDateRangeMessage.textContent = `從 ${formatAdminDateValue(startsOn, true)} 起生效，未設定結束日。`; return; }
+    els.eventTicketDateRangeSummary.textContent = `至 ${formatAdminDateCompact(endsOn)}`;
+    els.eventTicketDateRangeMessage.textContent = `截至 ${formatAdminDateValue(endsOn, true)}，未設定開始日。`;
+  }
+  function handleAdminDateControlClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-date-target], [data-event-range-days], [data-event-range-action]') : null;
+    if (!button) return;
+    const targetId = String(button.dataset.dateTarget || '');
+    if (targetId) {
+      const input = document.getElementById(targetId); if (!(input instanceof HTMLInputElement)) return;
+      const action = String(button.dataset.dateAction || ''); const today = todayAdminIsoDate(); let nextValue = '';
+      if (action === 'clear') nextValue = '';
+      else if (action === 'end-of-year') nextValue = `${today.slice(0, 4)}-12-31`;
+      else if (button.dataset.dateOffset !== undefined) nextValue = addAdminDays(today, Number(button.dataset.dateOffset));
+      else return;
+      event.preventDefault(); setAdminDateInput(input, nextValue); return;
+    }
+    if (button.dataset.eventRangeAction === 'clear') {
+      event.preventDefault(); els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; updateEventTicketDateRangeUI(); return;
+    }
+    if (button.dataset.eventRangeDays !== undefined) {
+      const days = Number(button.dataset.eventRangeDays); if (!Number.isInteger(days) || days < 1) return;
+      event.preventDefault(); const startsOn = todayAdminIsoDate(); els.eventTicketStartsOn.value = startsOn; els.eventTicketEndsOn.value = addAdminDays(startsOn, days - 1); updateEventTicketDateRangeUI();
+    }
+  }
+
   function renderCardList() {
     els.cardResultCount.textContent = String(state.cards.length); els.cardEmptyState.classList.toggle('hidden', state.cards.length !== 0);
     els.cardListItems.replaceChildren(...state.cards.map((card) => {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.cardId = String(card.cardId); button.setAttribute('aria-selected', String(card.cardId) === state.selectedCardId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(card.accent));
       const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(card.title || '未命名集點卡')));
-      const meta = document.createElement('small'); const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${card.expiresOn}` : '無期限'; meta.textContent = `${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
+      const meta = document.createElement('small'); const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${formatAdminDateCompact(card.expiresOn)}` : '無期限'; meta.textContent = `${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
       button.append(title, meta); return button;
     }));
   }
@@ -240,7 +331,7 @@
   }
 
   function defaultReward(thresholdStamps) { return { thresholdStamps, ticketTemplateId: '' }; }
-  function updateCardExpiryUI() { const limited = els.cardExpiryMode.value === 'date'; els.cardExpiresOnField.classList.toggle('hidden', !limited); els.cardExpiresOn.required = limited; }
+  function updateCardExpiryUI() { const limited = els.cardExpiryMode.value === 'date'; els.cardExpiresOnField.classList.toggle('hidden', !limited); els.cardExpiresOn.required = limited; updateCardExpiryDateUI(); }
   function validateCardExpiry(mode, expiresOn) { if (mode === 'unlimited') return ''; if (mode !== 'date' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) return '請選擇有效的集點卡到期日。'; const parts = expiresOn.split('-').map(Number); const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])); return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2] ? '' : '請選擇有效的集點卡到期日。'; }
 
   function activeTicketOptions(currentTicketTemplateId) {
@@ -345,7 +436,7 @@
       const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.eventTicketId = String(ticket.eventTicketId); button.setAttribute('aria-selected', String(ticket.eventTicketId) === state.selectedEventTicketId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(ticket.accent));
       const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(ticket.title || '未命名活動票券')));
       const limit = Number(ticket.quota || 0) > 0 ? `${Number(ticket.claimedCount || 0)} / ${Number(ticket.quota)} 張` : `${Number(ticket.claimedCount || 0)} 張已領取`;
-      const dates = ticket.startsOn || ticket.endsOn ? `${ticket.startsOn || '即日起'}–${ticket.endsOn || '不限期'}` : '不限期';
+      const dates = ticket.startsOn || ticket.endsOn ? `${ticket.startsOn ? formatAdminDateCompact(ticket.startsOn) : '即日起'}–${ticket.endsOn ? formatAdminDateCompact(ticket.endsOn) : '不限期'}` : '不限期';
       const allowedTiers = Array.isArray(ticket.allowedTierLabels) && ticket.allowedTierLabels.length ? ticket.allowedTierLabels.join('、') : '全部等級';
       const meta = document.createElement('small'); meta.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'} · ${allowedTiers} · ${dates} · ${limit} · ${statusLabel(ticket.status)}`;
       button.append(title, meta); return button;
@@ -370,12 +461,12 @@
     setEventTicketAllowedTiers(ticket.allowedTierKeys);
     els.deleteEventTicketButton.disabled = false; els.deleteEventTicketButton.textContent = '刪除目前票券';
     renderEventTicketPrizeRows(ticket.prizes && ticket.prizes.length ? ticket.prizes : [defaultPrize()]);
-    updateEventTicketTypeUI(); updateEventTicketAccentValue();
+    updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI();
     els.eventTicketEditorKicker.textContent = 'Edit event ticket'; els.eventTicketEditorTitle.textContent = String(ticket.title || '編輯活動票券'); updateEditorStatus(els.eventTicketEditorStatus, ticket.status); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
   }
 
   function resetEventTicketForm() {
-    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = 'draft'; els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, 'draft'); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
+    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = 'draft'; els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, 'draft'); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
   }
 
   function collectEventTicketAllowedTiers() { return Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.value || '').trim()).filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)); }

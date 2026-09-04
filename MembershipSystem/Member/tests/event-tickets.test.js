@@ -190,7 +190,7 @@ test('event ticket browser and admin contracts are present', () => {
   const storage = read('gas/Storage.gs');
   const code = read('gas/Code.gs');
   assert.match(eventHtml, /static\.line-scdn\.net\/liff/);
-  assert.match(adminHtml, /app\.js\?v=event-tier-save-20260904/);
+  assert.match(adminHtml, /app\.js\?v=admin-date-controls-20260904/);
   assert.match(eventHtml, /id="ticketModalAction"/);
   assert.match(eventHtml, /id="memberTier"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
@@ -209,6 +209,11 @@ test('event ticket browser and admin contracts are present', () => {
   assert.doesNotMatch(eventApp, /innerHTML/);
   assert.match(adminHtml, /id="eventsPanel"/);
   assert.match(adminHtml, /id="eventTicketForm"/);
+  assert.match(adminHtml, /id="eventTicketDateRangeSummary"/);
+  assert.match(adminHtml, /id="eventTicketDateRangeMessage"/);
+  assert.match(adminHtml, /data-event-range-days="30"/);
+  assert.match(adminApp, /updateEventTicketDateRangeUI/);
+  assert.match(adminApp, /todayAdminIsoDate/);
   assert.match(adminHtml, /id="eventTicketAllowedTiers"/);
   assert.match(adminHtml, /id="eventTicketTierSummary"/);
   assert.match(adminHtml, /form="eventTicketForm" name="eventTicketAllowedTierKey"/);

@@ -406,6 +406,10 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(storage, /threshold_stamps/);
   assert.match(storage, /win_rate/);
   assert.match(adminHtml, /id="rewardRows"/);
+  assert.match(adminHtml, /id="cardExpiresOnSummary"/);
+  assert.match(adminHtml, /data-date-target="cardExpiresOn"/);
+  assert.match(adminApp, /updateCardExpiryDateUI/);
+  assert.match(adminApp, /formatAdminDateCompact/);
   assert.match(adminHtml, /id="addRewardButton"/);
   assert.match(adminHtml, /id="cardSettingsTab"/);
   assert.match(adminHtml, /id="ticketSettingsTab"/);
