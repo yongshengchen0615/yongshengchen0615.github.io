@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.7.0';
+const MEMBERSHIP_API_VERSION_ = '1.8.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
@@ -12,6 +12,7 @@ const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'admin.tickets.save',
   'user.pointcard.ticket.redeem',
   'admin.event-tickets.save',
+  'admin.event-tickets.delete',
   'user.event.ticket.claim',
   'user.event.ticket.redeem',
   'admin.stamps.add',
@@ -113,6 +114,11 @@ function doPost(e) {
       case 'admin.event-tickets.save': {
         const admin = authorizeAdmin_(identity);
         data = handleEventTicketSave_(identity, admin, request);
+        break;
+      }
+      case 'admin.event-tickets.delete': {
+        const admin = authorizeAdmin_(identity);
+        data = handleEventTicketDelete_(identity, admin, request);
         break;
       }
       case 'admin.stamps.add': {

@@ -11,9 +11,10 @@ const EVENT_TICKET_STATUS_USED_ = 'used';
 function handleEventTicketBootstrap_(identity) {
   const member = ensureMember_(identity);
   const snapshot = readEventTicketSnapshot_();
+  const tier = eventTicketMemberTier_(member.line_user_id);
   return {
-    profile: { displayName: String(member.display_name || identity.displayName) },
-    offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot)
+    profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey },
+    offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey)
   };
 }
 
@@ -47,7 +48,7 @@ function readEventTickets_(includeAdminDetails, snapshot) {
   }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
 
-function visibleEventTicketOffersForMember_(lineUserId, snapshot) {
+function visibleEventTicketOffersForMember_(lineUserId, snapshot, memberTierKey) {
   const source = snapshot || readEventTicketSnapshot_();
   return source.tickets.filter(function(ticket) {
     return String(ticket.status || '') === 'active';
@@ -59,12 +60,14 @@ function visibleEventTicketOffersForMember_(lineUserId, snapshot) {
     const state = eventTicketAvailability_(ticket);
     const quota = eventTicketQuota_(ticket);
     const soldOut = quota > 0 && claims.length >= quota && !claim;
+    const tierEligible = eventTicketAllowsTier_(ticket, memberTierKey || 'general');
     return {
       ticket: eventTicketForClient_(ticket, false, claims.length),
       claim: claim ? eventTicketClaimForClient_(claim) : null,
       availability: state,
-      canClaim: state === 'open' && !claim && !soldOut,
-      canUse: state === 'open' && Boolean(claim) && String(claim.status || '') === EVENT_TICKET_STATUS_AVAILABLE_,
+      tierEligible,
+      canClaim: state === 'open' && tierEligible && !claim && !soldOut,
+      canUse: state === 'open' && tierEligible && Boolean(claim) && String(claim.status || '') === EVENT_TICKET_STATUS_AVAILABLE_,
       soldOut
     };
   }).sort(function(a, b) {
@@ -76,6 +79,7 @@ function visibleEventTicketOffersForMember_(lineUserId, snapshot) {
 
 function eventTicketForClient_(ticket, includeAdminDetails, claimCount) {
   const quota = eventTicketQuota_(ticket);
+  const allowedTierKeys = eventTicketAllowedTierKeys_(ticket);
   const clientTicket = {
     eventTicketId: String(ticket.event_ticket_id || ''),
     title: String(ticket.title || ''),
@@ -89,6 +93,8 @@ function eventTicketForClient_(ticket, includeAdminDetails, claimCount) {
     availability: eventTicketAvailability_(ticket),
     quota,
     quotaRemaining: quota > 0 ? Math.max(0, quota - Number(claimCount || 0)) : null,
+    allowedTierKeys,
+    allowedTierLabels: eventTicketTierLabels_(allowedTierKeys),
     accent: /^#[0-9a-f]{6}$/i.test(String(ticket.accent || '')) ? String(ticket.accent) : '#e47845',
     createdAt: String(ticket.created_at || ''),
     updatedAt: String(ticket.updated_at || ''),
@@ -148,6 +154,7 @@ function handleEventTicketSave_(identity, admin, request) {
   const startsOn = eventTicketNormalizeDate_(input.startsOn, '活動開始日');
   const endsOn = eventTicketNormalizeDate_(input.endsOn, '活動結束日');
   const quota = eventTicketNormalizeQuota_(input.quota);
+  const allowedTierKeys = normalizeEventTicketAllowedTierKeys_(input.allowedTierKeys);
   const accent = String(input.accent || '').trim();
   const expected = String(request.expectedUpdatedAt || '').trim();
   if (!title || title.length > 100 || EVENT_TICKET_TYPES_.indexOf(ticketType) < 0 || !description || description.length > 240 || !usageMethod || usageMethod.length > 120 || !usageInstructions || usageInstructions.length > 500 || EVENT_TICKET_STATUSES_.indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(accent) || (startsOn && endsOn && startsOn > endsOn)) {
@@ -178,6 +185,7 @@ function handleEventTicketSave_(identity, admin, request) {
     ticket.starts_on = startsOn;
     ticket.ends_on = endsOn;
     ticket.quota = String(quota);
+    ticket.allowed_tier_keys = JSON.stringify(allowedTierKeys);
     ticket.accent = accent.toUpperCase();
     ticket.updated_by = identity.lineUserId;
     ticket.updated_at = now;
@@ -185,6 +193,21 @@ function handleEventTicketSave_(identity, admin, request) {
     const claims = readRecords_('EventTicketClaims').filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId || String(claim.event_ticket_id || '') === ticket.event_ticket_id; });
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'EVENT_TICKET_SAVE', target_type: 'event_ticket', target_id: ticket.event_ticket_id, result: 'success', detail: 'Event ticket saved; existing claim snapshots retained', created_at: now });
     return { eventTicket: eventTicketForClient_(ticket, true, claims.length) };
+  });
+}
+
+function handleEventTicketDelete_(identity, admin, request) {
+  const eventTicketId = String(request.eventTicketId || '').trim();
+  const expected = String(request.expectedUpdatedAt || '').trim();
+  if (!eventTicketId || eventTicketId.length > 80 || expected.length > 80) throw new ApiError(400, 'INVALID_EVENT_TICKET_DELETE', '活動票券識別碼不合法。');
+  return withDataLock_(function() {
+    const match = findRecordWithRow_('EventTickets', 'event_ticket_id', eventTicketId);
+    if (!match) throw new ApiError(404, 'EVENT_TICKET_NOT_FOUND', '找不到活動票券。');
+    if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '活動票券已被更新，請重新整理。');
+    const preservedClaimCount = readRecords_('EventTicketClaims').filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId; }).length;
+    const deleted = deleteRecordsWhere_('EventTickets', function(ticket) { return String(ticket.event_ticket_id || '') === eventTicketId; });
+    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'EVENT_TICKET_DELETE', target_type: 'event_ticket', target_id: eventTicketId, result: 'success', detail: 'Event ticket deleted; ' + String(preservedClaimCount) + ' claim snapshots retained', created_at: nowIso_() });
+    return { deleted: Boolean(deleted), eventTicketId, preservedClaimCount };
   });
 }
 
@@ -201,6 +224,7 @@ function handleEventTicketClaim_(identity, request) {
     const claims = readRecords_('EventTicketClaims');
     const existing = claims.find(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId && String(claim.line_user_id || '') === String(identity.lineUserId); });
     if (existing) return { claimed: false, alreadyClaimed: true, ticket: eventTicketClaimForClient_(existing) };
+    assertEventTicketAllowsTier_(ticket, eventTicketMemberTier_(identity.lineUserId).tierKey);
     const quota = eventTicketQuota_(ticket);
     const claimedCount = claims.filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId; }).length;
     if (quota > 0 && claimedCount >= quota) throw new ApiError(409, 'EVENT_TICKET_SOLD_OUT', '這張活動票券已達發放上限。');
@@ -222,7 +246,10 @@ function handleEventTicketRedeem_(identity, request) {
     if (String(claim.status || '') === EVENT_TICKET_STATUS_USED_) throw new ApiError(409, 'EVENT_TICKET_ALREADY_USED', '這張活動票券已使用。', { usedAt: String(claim.used_at || '') });
     const ticketMatch = findRecordWithRow_('EventTickets', 'event_ticket_id', String(claim.event_ticket_id || ''));
     if (!ticketMatch) throw new ApiError(410, 'EVENT_TICKET_REMOVED', '這張活動票券已移除，無法使用。');
+    const member = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
+    if (!member || String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法使用活動票券。');
     assertEventTicketOpen_(ticketMatch.record);
+    assertEventTicketAllowsTier_(ticketMatch.record, eventTicketMemberTier_(identity.lineUserId).tierKey);
     const now = nowIso_();
     const result = String(claim.ticket_type || '') === 'lottery' ? drawEventTicketPrize_(claim) : null;
     claim.status = EVENT_TICKET_STATUS_USED_;
@@ -260,6 +287,56 @@ function assertEventTicketOpen_(ticket) {
   const availability = eventTicketAvailability_(ticket);
   if (availability === 'scheduled') throw new ApiError(409, 'EVENT_TICKET_NOT_STARTED', '這張活動票券尚未開始。');
   if (availability === 'ended') throw new ApiError(410, 'EVENT_TICKET_ENDED', '這張活動票券活動已結束。');
+}
+
+function eventTicketTierDefinitions_() {
+  if (typeof MEMBERSHIP_TIER_DEFINITIONS_ !== 'undefined' && Array.isArray(MEMBERSHIP_TIER_DEFINITIONS_)) return MEMBERSHIP_TIER_DEFINITIONS_;
+  return [
+    { tierKey: 'general', label: '一般會員' },
+    { tierKey: 'silver', label: '銀級會員' },
+    { tierKey: 'gold', label: '金級會員' },
+    { tierKey: 'platinum', label: '白金會員' }
+  ];
+}
+
+function eventTicketAllTierKeys_() { return eventTicketTierDefinitions_().map(function(tier) { return tier.tierKey; }); }
+
+function eventTicketTierLabels_(tierKeys) {
+  const allowed = Array.isArray(tierKeys) ? tierKeys : [];
+  return eventTicketTierDefinitions_().filter(function(tier) { return allowed.indexOf(tier.tierKey) >= 0; }).map(function(tier) { return tier.label; });
+}
+
+function normalizeEventTicketAllowedTierKeys_(value) {
+  if (value === undefined || value === null) return eventTicketAllTierKeys_();
+  if (!Array.isArray(value)) throw new ApiError(400, 'INVALID_EVENT_TICKET', '活動票券適用會員等級不合法。');
+  const requested = {};
+  value.forEach(function(item) {
+    const tierKey = String(item || '').trim();
+    if (tierKey) requested[tierKey] = true;
+  });
+  const allowedTierKeys = eventTicketAllTierKeys_().filter(function(tierKey) { return Boolean(requested[tierKey]); });
+  if (!allowedTierKeys.length || Object.keys(requested).length !== allowedTierKeys.length) throw new ApiError(400, 'INVALID_EVENT_TICKET', '請至少選擇一個有效的可使用會員等級。');
+  return allowedTierKeys;
+}
+
+function eventTicketAllowedTierKeys_(ticket) {
+  const raw = String(ticket && ticket.allowed_tier_keys || '').trim();
+  if (!raw) return eventTicketAllTierKeys_();
+  const parsed = eventTicketParseArray_(raw);
+  const requested = {};
+  parsed.forEach(function(item) { const tierKey = String(item || '').trim(); if (tierKey) requested[tierKey] = true; });
+  return eventTicketAllTierKeys_().filter(function(tierKey) { return Boolean(requested[tierKey]); });
+}
+
+function eventTicketMemberTier_(lineUserId) {
+  if (typeof serviceMinutesTotalForMember_ !== 'function' || typeof membershipTierForServiceMinutes_ !== 'function') return eventTicketTierDefinitions_()[0];
+  return membershipTierForServiceMinutes_(serviceMinutesTotalForMember_(lineUserId));
+}
+
+function eventTicketAllowsTier_(ticket, tierKey) { return eventTicketAllowedTierKeys_(ticket).indexOf(String(tierKey || '').trim()) >= 0; }
+
+function assertEventTicketAllowsTier_(ticket, tierKey) {
+  if (!eventTicketAllowsTier_(ticket, tierKey)) throw new ApiError(403, 'EVENT_TICKET_TIER_INELIGIBLE', '目前會員等級無法領取或使用這張活動票券。', { allowedTierKeys: eventTicketAllowedTierKeys_(ticket) });
 }
 
 function eventTicketAvailability_(ticket) {

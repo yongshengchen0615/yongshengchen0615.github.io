@@ -153,6 +153,7 @@ test('all browser write actions are single-attempt when the response is uncertai
     'admin.pointcards.remove',
     'admin.tickets.save',
     'admin.event-tickets.save',
+    'admin.event-tickets.delete',
     'admin.stamps.add',
     'admin.service_minutes.add',
     'admin.member-grants.add',

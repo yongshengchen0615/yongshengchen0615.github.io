@@ -45,18 +45,19 @@
     const hasOffers = state.offers.length > 0;
     els.eventList.replaceChildren(...state.offers.map(createOfferCard));
     els.emptyView.classList.toggle('hidden', hasOffers);
-    els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用` : '目前沒有開放中的活動';
+    const tierLockedCount = state.offers.filter((offer) => !eventTicketTierEligible(offer)).length;
+    els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${tierLockedCount ? ` · ${tierLockedCount} 張不適用目前等級` : ''}` : '目前沒有開放中的活動';
   }
 
   function createOfferCard(offer) {
     const ticket = offer.ticket || {};
-    const stateLabel = availabilityLabel(offer.availability);
+    const eligible = eventTicketTierEligible(offer); const stateLabel = eligible ? availabilityLabel(offer.availability) : '等級不適用';
     const item = document.createElement('article'); item.className = 'event-ticket'; item.style.setProperty('--ticket-accent', safeAccent(ticket.accent));
-    const head = document.createElement('div'); head.className = 'event-ticket-head'; const type = document.createElement('span'); type.className = 'event-ticket-type'; type.textContent = ticket.ticketType === 'lottery' ? '活動抽獎券' : '活動優惠券'; const stateBadge = document.createElement('span'); stateBadge.className = `event-ticket-state ${offer.availability}`; stateBadge.textContent = stateLabel; head.append(type, stateBadge);
+    const head = document.createElement('div'); head.className = 'event-ticket-head'; const type = document.createElement('span'); type.className = 'event-ticket-type'; type.textContent = ticket.ticketType === 'lottery' ? '活動抽獎券' : '活動優惠券'; const stateBadge = document.createElement('span'); stateBadge.className = `event-ticket-state ${eligible ? offer.availability : 'tier-locked'}`; stateBadge.textContent = stateLabel; head.append(type, stateBadge);
     const title = document.createElement('h3'); title.textContent = String(ticket.title || '活動票券');
     const description = document.createElement('p'); description.className = 'event-ticket-description'; description.textContent = String(ticket.description || '查看活動內容與使用說明。');
-    const meta = document.createElement('div'); meta.className = 'event-ticket-meta'; const date = document.createElement('span'); const dateLabel = document.createElement('strong'); dateLabel.textContent = '活動期間'; date.append(dateLabel, document.createTextNode(`　${eventDates(ticket)}`)); const quota = document.createElement('span'); const quotaLabel = document.createElement('strong'); quotaLabel.textContent = '領取方式'; quota.append(quotaLabel, document.createTextNode('　每位會員限領 1 張')); meta.append(date, quota);
-    const action = document.createElement('div'); action.className = 'event-ticket-action'; const hint = document.createElement('small'); hint.textContent = offer.claim ? claimLabel(offer.claim.status) : offer.soldOut ? '名額已滿' : offer.availability === 'scheduled' ? '活動開始後即可領取' : offer.availability === 'ended' ? '活動已結束' : '點開查看完整說明'; const button = document.createElement('button'); button.type = 'button'; button.className = `ticket-button${offer.canClaim || offer.canUse ? ' accent' : ''}`; button.dataset.eventTicketId = String(ticket.eventTicketId || ''); button.textContent = offer.claim ? offer.canUse ? '查看並使用' : '已使用' : offer.canClaim ? '領取票券' : '查看詳情'; button.disabled = Boolean(offer.claim && !offer.canUse); action.append(hint, button);
+    const meta = document.createElement('div'); meta.className = 'event-ticket-meta'; const date = document.createElement('span'); const dateLabel = document.createElement('strong'); dateLabel.textContent = '活動期間'; date.append(dateLabel, document.createTextNode(`　${eventDates(ticket)}`)); const quota = document.createElement('span'); const quotaLabel = document.createElement('strong'); quotaLabel.textContent = '領取方式'; quota.append(quotaLabel, document.createTextNode('　每位會員限領 1 張')); const tiers = document.createElement('span'); const tierLabel = document.createElement('strong'); tierLabel.textContent = '適用等級'; tiers.append(tierLabel, document.createTextNode(`　${eventTicketAllowedTiers(ticket)}`)); meta.append(date, quota, tiers);
+    const action = document.createElement('div'); action.className = 'event-ticket-action'; const hint = document.createElement('small'); hint.textContent = !eligible ? '目前會員等級無法領取或使用' : offer.claim ? claimLabel(offer.claim.status) : offer.soldOut ? '名額已滿' : offer.availability === 'scheduled' ? '活動開始後即可領取' : offer.availability === 'ended' ? '活動已結束' : '點開查看完整說明'; const button = document.createElement('button'); button.type = 'button'; button.className = `ticket-button${offer.canClaim || offer.canUse ? ' accent' : ''}`; button.dataset.eventTicketId = String(ticket.eventTicketId || ''); button.textContent = !eligible ? '查看詳情' : offer.claim ? offer.canUse ? '查看並使用' : '已使用' : offer.canClaim ? '領取票券' : '查看詳情'; button.disabled = Boolean(offer.claim && !offer.canUse && eligible); action.append(hint, button);
     item.append(head, title, description, meta, action); return item;
   }
 
@@ -70,8 +71,8 @@
     const ticket = offer.ticket || {}; const claim = offer.claim;
     els.ticketModalType.textContent = ticket.ticketType === 'lottery' ? '活動抽獎券' : '活動優惠券'; els.ticketModalTitle.textContent = String(ticket.title || '活動票券'); els.ticketModalDate.textContent = eventDates(ticket); els.ticketModalDescription.textContent = String(claim ? claim.ticketDescription : ticket.description || '查看活動內容與使用說明。'); els.ticketModalUsageMethod.textContent = `使用方式：${String(claim ? claim.usageMethod : ticket.usageMethod || '請依活動現場指示使用')}`; els.ticketModalUsageInstructions.textContent = String(claim ? claim.usageInstructions : ticket.usageInstructions || '領取後請在活動期間出示本券。');
     const prizes = claim ? claim.prizes : ticket.prizes; renderPrizes(ticket.ticketType, prizes);
-    const canAct = !state.actionLocked && ((claim && offer.canUse) || (!claim && offer.canClaim));
-    els.ticketModalStatus.textContent = modalStatusText(offer); els.ticketModalAction.textContent = state.actionLocked ? '請重新整理確認' : claim ? offer.canUse ? '確認使用這張票券' : '這張票券已使用' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !canAct; els.ticketModalAction.classList.toggle('hidden', Boolean(claim && !offer.canUse) && !state.actionLocked); els.refreshTicketButton.classList.toggle('hidden', !state.actionLocked);
+    const eligible = eventTicketTierEligible(offer); const canAct = !state.actionLocked && eligible && ((claim && offer.canUse) || (!claim && offer.canClaim));
+    els.ticketModalStatus.textContent = modalStatusText(offer); els.ticketModalAction.textContent = state.actionLocked ? '請重新整理確認' : !eligible ? '目前等級無法使用' : claim ? offer.canUse ? '確認使用這張票券' : '這張票券已使用' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !canAct; els.ticketModalAction.classList.toggle('hidden', Boolean(claim && !offer.canUse && eligible) && !state.actionLocked); els.refreshTicketButton.classList.toggle('hidden', !state.actionLocked);
   }
 
   function renderPrizes(ticketType, prizes) {
@@ -83,6 +84,7 @@
 
   async function handleTicketAction() {
     const offer = findOffer(state.pendingEventTicketId); if (!offer || state.processing || state.actionLocked) return;
+    if (!eventTicketTierEligible(offer)) return;
     if (offer.claim) return redeemTicket(offer);
     return claimTicket(offer);
   }
@@ -104,10 +106,12 @@
   }
 
   function showRedeemedResult(claim) { els.ticketModalAction.classList.add('hidden'); els.ticketModalResult.classList.remove('hidden'); els.ticketModalResult.textContent = claim.ticketType === 'lottery' && claim.result ? `抽獎完成：${claim.result.prizeTitle || '結果已記錄'}${claim.result.prizeDescription ? `｜${claim.result.prizeDescription}` : ''}` : '這張活動票券已成功使用，請向現場工作人員兌換。'; showMessage('票券已完成核銷。', true); }
-  function updateOfferClaim(eventTicketId, claim) { state.offers = state.offers.map((offer) => offer.ticket && offer.ticket.eventTicketId === eventTicketId ? { ...offer, claim, canClaim: false, canUse: claim.status === 'available', soldOut: false } : offer); }
+  function updateOfferClaim(eventTicketId, claim) { state.offers = state.offers.map((offer) => offer.ticket && offer.ticket.eventTicketId === eventTicketId ? { ...offer, claim, canClaim: false, canUse: eventTicketTierEligible(offer) && claim.status === 'available', soldOut: false } : offer); }
   function findOffer(eventTicketId) { return state.offers.find((offer) => offer.ticket && offer.ticket.eventTicketId === eventTicketId) || null; }
-  function modalStatusText(offer) { if (offer.claim) return offer.canUse ? '你已領取這張票券；確認使用後，票券會立即完成核銷。' : '這張票券已使用。'; if (offer.soldOut) return '這張活動票券已達發放上限。'; if (offer.availability === 'scheduled') return '活動尚未開始，開始後即可領取。'; if (offer.availability === 'ended') return '活動已結束，這張票券目前無法領取。'; return '領取後票券會綁定你的 LINE 會員，且每位會員限領一次。'; }
+  function modalStatusText(offer) { if (!eventTicketTierEligible(offer)) return `這張票券只適用於${eventTicketAllowedTiers(offer.ticket)}；目前會員等級無法領取或使用。`; if (offer.claim) return offer.canUse ? '你已領取這張票券；確認使用後，票券會立即完成核銷。' : '這張票券已使用。'; if (offer.soldOut) return '這張活動票券已達發放上限。'; if (offer.availability === 'scheduled') return '活動尚未開始，開始後即可領取。'; if (offer.availability === 'ended') return '活動已結束，這張票券目前無法領取。'; return '領取後票券會綁定你的 LINE 會員，且每位會員限領一次。'; }
   function claimLabel(status) { return status === 'used' ? '已使用' : '已領取，可使用'; }
+  function eventTicketTierEligible(offer) { return offer && offer.tierEligible !== false; }
+  function eventTicketAllowedTiers(ticket) { const labels = ticket && ticket.allowedTierLabels; return Array.isArray(labels) && labels.length ? labels.join('、') : '全部會員等級'; }
   function availabilityLabel(value) { return ({ open: '進行中', scheduled: '即將開始', ended: '已結束' })[value] || '活動票券'; }
   function eventDates(ticket) { const starts = ticket.startsOn || '即日起'; const ends = ticket.endsOn || '不限期'; return `${starts} — ${ends}`; }
   function setProcessing(processing) { els.ticketModalProcessing.classList.toggle('hidden', !processing); els.ticketModal.setAttribute('aria-busy', String(Boolean(processing))); }

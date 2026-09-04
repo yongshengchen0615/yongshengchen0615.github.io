@@ -35,7 +35,10 @@ function loadEventTicketService() {
     },
     appendRecord_: (sheetName, record) => { rows[sheetName].push(record); },
     updateRecordAtRow_: (sheetName, rowNumber, record) => { rows[sheetName][rowNumber - 2] = record; },
-    appendAuditRecord_: (record) => { rows.AuditLogs.push(record); }
+    deleteRecordsWhere_: (sheetName, predicate) => { const before = rows[sheetName].length; rows[sheetName] = rows[sheetName].filter((record) => !predicate(record)); return before - rows[sheetName].length; },
+    appendAuditRecord_: (record) => { rows.AuditLogs.push(record); },
+    serviceMinutesTotalForMember_: (lineUserId) => lineUserId === 'U-2' ? 1800 : 0,
+    membershipTierForServiceMinutes_: (minutes) => Number(minutes) >= 1800 ? { tierKey: 'gold', label: '金級會員' } : { tierKey: 'general', label: '一般會員' }
   };
   vm.createContext(context);
   vm.runInContext(read('gas/EventTicketService.gs'), context, { filename: 'gas/EventTicketService.gs' });
@@ -68,6 +71,24 @@ test('event ticket claim is owned, one-per-member, quota-limited, and snapshots 
   assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-2' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_SOLD_OUT');
 });
 
+test('event tickets remain visible to every member but enforce their allowed tiers', () => {
+  const { context, rows, TestApiError } = loadEventTicketService();
+  rows.EventTickets[0].allowed_tier_keys = JSON.stringify(['gold', 'platinum']);
+  const generalOffer = context.visibleEventTicketOffersForMember_('U-1', context.readEventTicketSnapshot_(), 'general')[0];
+  assert.equal(generalOffer.tierEligible, false);
+  assert.equal(generalOffer.canClaim, false);
+  assert.deepEqual(Array.from(generalOffer.ticket.allowedTierLabels), ['金級會員', '白金會員']);
+  assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
+
+  const goldOffer = context.visibleEventTicketOffersForMember_('U-2', context.readEventTicketSnapshot_(), 'gold')[0];
+  assert.equal(goldOffer.tierEligible, true);
+  assert.equal(goldOffer.canClaim, true);
+  const claim = context.handleEventTicketClaim_({ lineUserId: 'U-2' }, { eventTicketId: 'ET-1' });
+  assert.equal(claim.claimed, true);
+  context.serviceMinutesTotalForMember_ = () => 0;
+  assert.throws(() => context.handleEventTicketRedeem_({ lineUserId: 'U-2' }, { claimId: claim.ticket.claimId }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_TIER_INELIGIBLE');
+});
+
 test('event ticket redemption checks ownership, expiry, and one-time use without point deductions', () => {
   const { context, rows, TestApiError } = loadEventTicketService();
   const claim = context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' });
@@ -81,6 +102,18 @@ test('event ticket redemption checks ownership, expiry, and one-time use without
   const expiredClaim = { ...rows.EventTicketClaims[0], claim_id: 'EC-EXPIRED', status: 'available', used_at: '' };
   rows.EventTicketClaims.push(expiredClaim);
   assert.throws(() => context.handleEventTicketRedeem_({ lineUserId: 'U-1' }, { claimId: 'EC-EXPIRED' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_ENDED');
+});
+
+test('deleting an event ticket removes its definition but retains claim and audit history', () => {
+  const { context, rows, TestApiError } = loadEventTicketService();
+  const claim = context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' });
+  const result = context.handleEventTicketDelete_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { eventTicketId: 'ET-1', expectedUpdatedAt: '2026-09-03T00:00:00.000Z' });
+  assert.equal(result.deleted, true);
+  assert.equal(result.preservedClaimCount, 1);
+  assert.equal(rows.EventTickets.length, 0);
+  assert.equal(rows.EventTicketClaims.length, 1);
+  assert.equal(rows.AuditLogs.at(-1).action, 'EVENT_TICKET_DELETE');
+  assert.throws(() => context.handleEventTicketRedeem_({ lineUserId: 'U-1' }, { claimId: claim.ticket.claimId }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_REMOVED');
 });
 
 test('event ticket browser and admin contracts are present', () => {
@@ -99,11 +132,18 @@ test('event ticket browser and admin contracts are present', () => {
   assert.doesNotMatch(eventApp, /innerHTML/);
   assert.match(adminHtml, /id="eventsPanel"/);
   assert.match(adminHtml, /id="eventTicketForm"/);
+  assert.match(adminHtml, /id="eventTicketAllowedTiers"/);
+  assert.match(adminHtml, /id="deleteEventTicketButton"/);
   assert.match(adminApp, /admin\.event-tickets\.save/);
+  assert.match(adminApp, /admin\.event-tickets\.delete/);
+  assert.match(eventApp, /tierEligible/);
+  assert.match(eventApp, /目前會員等級無法領取或使用/);
   assert.match(storage, /EventTickets:/);
+  assert.match(storage, /allowed_tier_keys/);
   assert.match(storage, /EventTicketClaims:/);
   assert.match(code, /user\.event\.bootstrap/);
   assert.match(code, /user\.event\.ticket\.claim/);
   assert.match(code, /user\.event\.ticket\.redeem/);
   assert.match(code, /admin\.event-tickets\.save/);
+  assert.match(code, /admin\.event-tickets\.delete/);
 });
