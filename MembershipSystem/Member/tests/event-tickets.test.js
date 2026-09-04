@@ -200,7 +200,7 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(eventApp, /user\.event\.ticket\.redeem/);
   assert.match(eventApp, /timeZone: 'Asia\/Taipei'/);
   assert.match(eventApp, /new Intl\.DateTimeFormat\('zh-Hant-TW'/);
-  assert.doesNotMatch(eventApp, /replace\(\/\\\.\\d\{3\}Z\$\//);
+  assert.doesNotMatch(eventApp, /timestamp\.replace/);
   assert.match(eventApp, /setProcessing\(true\)/);
   assert.doesNotMatch(eventApp, /innerHTML/);
   assert.match(adminHtml, /id="eventsPanel"/);
