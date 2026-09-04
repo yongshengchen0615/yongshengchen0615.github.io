@@ -89,6 +89,10 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
 .date-picker-button { min-width: 112px; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid #cfded3; border-radius: 9px; color: var(--ink); background: #f3f8f4; cursor: pointer; font-size: 11px; font-weight: 850; touch-action: manipulation; }
 .date-picker-button:hover { border-color: #b9cdbf; background: #edf5ef; }
 .date-picker-button span:first-child { color: var(--green); font-size: 14px; }
+/* Native date controls retain a minimum visual width in embedded WebViews. */
+.date-settings-grid, .date-range-control .form-grid, .date-input-shell { min-width: 0; max-width: 100%; }
+.date-input-shell > *, .date-input-shell input[type="date"] { min-width: 0; max-width: 100%; }
+.date-input-shell input[type="date"] { inline-size: 100%; min-inline-size: 0; max-inline-size: 100%; }
 @media (max-width: 760px) {
   .date-range-control { gap: 12px; padding: 13px; border-radius: 14px; }
   .date-range-heading { align-items: stretch; flex-direction: column; gap: 9px; }
@@ -114,6 +118,16 @@ form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d6
   .date-control-summary { text-align: left; }
   .date-input-shell { grid-template-columns: 1fr; }
   .date-picker-button { width: 100%; }
+}
+@media (max-width: 900px) {
+  .date-settings-grid, .date-range-control .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .date-range-heading, .date-control-heading { align-items: stretch; flex-direction: column; }
+  .date-range-summary { flex: none; width: 100%; max-width: none; }
+  .date-control-heading span, .date-control-summary { max-width: none; text-align: left; }
+  .date-input-shell { grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .date-picker-button { width: 100%; max-width: 100%; }
+  .date-quick-actions, .date-range-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .date-range-presets > span { grid-column: 1 / -1; }
 }
 
 
