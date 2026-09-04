@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.6.0';
+const MEMBERSHIP_API_VERSION_ = '1.7.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
@@ -11,6 +11,9 @@ const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'admin.pointcards.remove',
   'admin.tickets.save',
   'user.pointcard.ticket.redeem',
+  'admin.event-tickets.save',
+  'user.event.ticket.claim',
+  'user.event.ticket.redeem',
   'admin.stamps.add',
   'admin.service_minutes.add',
   'admin.member-grants.add'
@@ -98,6 +101,20 @@ function doPost(e) {
       case 'user.pointcard.ticket.redeem':
         data = handleTicketRedeem_(identity, request);
         break;
+      case 'user.event.bootstrap':
+        data = handleEventTicketBootstrap_(identity);
+        break;
+      case 'user.event.ticket.claim':
+        data = handleEventTicketClaim_(identity, request);
+        break;
+      case 'user.event.ticket.redeem':
+        data = handleEventTicketRedeem_(identity, request);
+        break;
+      case 'admin.event-tickets.save': {
+        const admin = authorizeAdmin_(identity);
+        data = handleEventTicketSave_(identity, admin, request);
+        break;
+      }
       case 'admin.stamps.add': {
         const admin = authorizeAdmin_(identity);
         data = handleStampAdd_(identity, admin, request);
@@ -157,6 +174,7 @@ function parseRequest_(e) {
 function clientTypeForAction_(action) {
   if (action === 'user.member.bootstrap' || action === 'user.member.profile.save') return 'member';
   if (action === 'user.pointcard.bootstrap' || action.indexOf('user.pointcard.ticket.') === 0) return 'points';
+  if (action === 'user.event.bootstrap' || action.indexOf('user.event.ticket.') === 0) return 'event';
   if (action.indexOf('admin.') === 0) return 'admin';
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }

@@ -352,9 +352,10 @@ function handleAdminBootstrap_(identity, admin, request) {
   const tierSettings = readMembershipTierSettings_();
   const cards = readPointCards_(true);
   const tickets = readPointCardTicketTemplates_(true);
+  const eventTickets = readEventTickets_(true);
   const entries = readRecords_('PointEntries');
   const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
-  return { profile: { displayName: identity.displayName }, role: admin.role, members: memberResult.members, memberPage: memberResult.memberPage, tierSettings, cards, tickets, stats: { memberCount: memberResult.stats.memberCount, activeMemberCount: memberResult.stats.activeMemberCount, activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
+  return { profile: { displayName: identity.displayName }, role: admin.role, members: memberResult.members, memberPage: memberResult.memberPage, tierSettings, cards, tickets, eventTickets, stats: { memberCount: memberResult.stats.memberCount, activeMemberCount: memberResult.stats.activeMemberCount, activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length, activeEventTicketCount: eventTickets.filter(function(ticket) { return ticket.status === 'active' && ticket.availability === 'open'; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
 }
 
 function handlePointCardSave_(identity, admin, request) {

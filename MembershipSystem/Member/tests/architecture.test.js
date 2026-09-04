@@ -15,8 +15,9 @@ test('Member module has independent user surfaces and one shared admin surface',
     'index.html', 'config.json', 'README.md', 'shared/common.js',
     'member/index.html', 'member/styles.css', 'member/app.js',
     'points/index.html', 'points/styles.css', 'points/app.js',
+    'event/index.html', 'event/styles.css', 'event/app.js',
     'admin/index.html', 'admin/styles.css', 'admin/app.js',
-    'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/appsscript.json', 'tests/pointcard-rewards.test.js'
+    'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/EventTicketService.gs', 'gas/appsscript.json', 'tests/pointcard-rewards.test.js', 'tests/event-tickets.test.js'
   ].forEach((file) => assert.equal(exists(file), true, `missing ${file}`));
 });
 
@@ -26,9 +27,13 @@ test('public config contains separate LIFF ids and no secret-shaped key', () => 
   assert.equal(typeof config.memberLiffId, 'string');
   assert.equal(typeof config.pointsLiffId, 'string');
   assert.equal(typeof config.adminLiffId, 'string');
+  assert.equal(typeof config.eventLiffId, 'string');
   assert.notEqual(config.memberLiffId, config.pointsLiffId);
   assert.notEqual(config.memberLiffId, config.adminLiffId);
   assert.notEqual(config.pointsLiffId, config.adminLiffId);
+  assert.notEqual(config.eventLiffId, config.memberLiffId);
+  assert.notEqual(config.eventLiffId, config.pointsLiffId);
+  assert.notEqual(config.eventLiffId, config.adminLiffId);
   assert.equal(Object.keys(config).some((key) => /secret|token|password/i.test(key)), false);
 });
 
@@ -40,6 +45,11 @@ test('user clients expose separate entry points while admin uses one app', () =>
   assert.match(memberHtml, /\.\/app\.js/);
   assert.match(pointsHtml, /\.\/styles\.css/);
   assert.match(pointsHtml, /\.\/app\.js/);
+  const eventHtml = read('event/index.html');
+  const eventApp = read('event/app.js');
+  assert.match(eventHtml, /\.\/styles\.css/);
+  assert.match(eventHtml, /\.\/app\.js/);
+  assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
   assert.match(adminHtml, /membersPanel/);
@@ -97,12 +107,12 @@ test('admin derives fixed membership tiers from service-time thresholds instead 
 });
 
 test('all browser JavaScript and GAS files parse as JavaScript', () => {
-  const files = ['shared/common.js', 'member/app.js', 'points/app.js', 'admin/app.js', 'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs'];
+  const files = ['shared/common.js', 'member/app.js', 'points/app.js', 'event/app.js', 'admin/app.js', 'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/EventTicketService.gs'];
   files.forEach((file) => assert.doesNotThrow(() => new vm.Script(read(file), { filename: file }), file));
 });
 
 test('combined GAS deployment bundle has no duplicate declarations', () => {
-  const files = ['gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs'];
+  const files = ['gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/EventTicketService.gs'];
   assert.doesNotThrow(() => new vm.Script(files.map(read).join('\n'), { filename: 'membership-gas-combined.js' }));
 });
 
@@ -181,5 +191,5 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
   context.ensureMembershipStorage_();
   context.ensureMembershipStorage_();
   assert.ok(schemaChecks > 0);
-  assert.equal(schemaChecks, 13);
+  assert.equal(schemaChecks, 15);
 });

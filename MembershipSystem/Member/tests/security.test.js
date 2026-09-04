@@ -25,13 +25,15 @@ test('GAS verifies LINE ID tokens server-side against the surface channel', () =
   assert.match(auth, /MEMBERSHIP_MEMBER_LINE_CHANNEL_ID/);
   assert.match(auth, /MEMBERSHIP_POINTS_LINE_CHANNEL_ID/);
   assert.match(auth, /MEMBERSHIP_ADMIN_LINE_CHANNEL_ID/);
+  assert.match(auth, /MEMBERSHIP_EVENT_LINE_CHANNEL_ID/);
 });
 
 test('browser clients use ID tokens and do not persist credentials', () => {
-  const clients = [read('shared/common.js'), read('member/app.js'), read('points/app.js'), read('admin/app.js')].join('\n');
+  const clients = [read('shared/common.js'), read('member/app.js'), read('points/app.js'), read('event/app.js'), read('admin/app.js')].join('\n');
   assert.match(clients, /getIDToken\(\)/);
   assert.match(clients, /signIn\(state\.config, 'member'\)/);
   assert.match(clients, /signIn\(state\.config, 'points'\)/);
+  assert.match(clients, /signIn\(state\.config, 'event'\)/);
   assert.doesNotMatch(clients, /getAccessToken\(\)/);
   assert.match(clients, /member_system_reauth/);
   assert.match(clients, /isInClient\(\)/);
@@ -78,14 +80,14 @@ test('spreadsheet writes protect formulas and point entries are append-only', ()
 });
 
 test('CSP allows the LIFF subwindow without unsafe-eval', () => {
-  const html = [read('member/index.html'), read('points/index.html'), read('admin/index.html')].join('\n');
+  const html = [read('member/index.html'), read('points/index.html'), read('event/index.html'), read('admin/index.html')].join('\n');
   assert.match(html, /frame-src https:\/\/liff-subwindow\.line\.me/);
   assert.match(html, /form-action https:\/\/liff-subwindow\.line\.me/);
   assert.doesNotMatch(html, /unsafe-eval/);
 });
 
 test('ID tokens are not explicitly written to logs or Sheets', () => {
-  const gas = ['gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs'].map(read).join('\n');
+  const gas = ['gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/EventTicketService.gs'].map(read).join('\n');
   assert.doesNotMatch(gas, /console\.(log|info|warn|error)\([^\n]*idToken/i);
   assert.doesNotMatch(gas, /appendRecord_\([^\n]*idToken/i);
   assert.doesNotMatch(gas, /id_token[^\n]*console/i);

@@ -1,6 +1,6 @@
 # Member System
 
-獨立的會員卡與集點卡 LIFF 用戶端，以及共用一個 HTML/CSS/JS 的管理端。資料由 Google Apps Script Web App 寫入 Google Sheets。
+獨立的會員卡、集點卡與活動票券 LIFF 用戶端，以及共用一個 HTML/CSS/JS 的管理端。資料由 Google Apps Script Web App 寫入 Google Sheets。
 
 ## 目錄
 
@@ -10,7 +10,8 @@ Member/
 ├── config.json                # 僅放公開設定
 ├── member/                    # 會員卡用戶端（獨立 HTML/CSS/JS）
 ├── points/                    # 集點卡用戶端（獨立 HTML/CSS/JS）
-├── admin/                     # 會員卡與集點卡共用管理端（單一 HTML/CSS/JS）
+├── event/                     # 活動票券用戶端（獨立 HTML/CSS/JS）
+├── admin/                     # 會員卡、集點卡與活動票券共用管理端（單一 HTML/CSS/JS）
 ├── shared/common.js           # 共用 LIFF 初始化、API transport、格式化工具
 ├── gas/                       # Apps Script Web App
 └── tests/                     # 本地結構與安全契約測試
@@ -23,10 +24,11 @@ Member/
    - `MEMBERSHIP_MEMBER_LINE_CHANNEL_ID`：會員卡 LIFF 所屬 LINE Login Channel ID，例如 `2010787602`
    - `MEMBERSHIP_POINTS_LINE_CHANNEL_ID`：集點卡 LIFF 所屬 LINE Login Channel ID，例如 `2010787602`
    - `MEMBERSHIP_ADMIN_LINE_CHANNEL_ID`：Admin LIFF 所屬 LINE Login Channel ID
+   - `MEMBERSHIP_EVENT_LINE_CHANNEL_ID`：活動票券 LIFF 所屬 LINE Login Channel ID
    - `MEMBERSHIP_SYSTEM_SPREADSHEET_ID`：選填；設定後固定使用此 Spreadsheet，不設定時才會使用目前綁定的 Spreadsheet，或建立 `Lumen Club Membership Data`
 3. 執行 `setupMembershipSystem()` 完成授權與資料表建立。
 4. Deploy → New deployment → Web app：Execute as 選自己、Who has access 選 Anyone。
-5. 將部署後 `/exec` URL、Member LIFF ID、Points LIFF ID、Admin LIFF ID 填入 `config.json`；Member 與 Points 必須是不同的 LIFF app。
+5. 將部署後 `/exec` URL、Member LIFF ID、Points LIFF ID、Event LIFF ID、Admin LIFF ID 填入 `config.json`；四個 LIFF 必須是不同的 LIFF app。
 
 Member LIFF Endpoint URL：
 
@@ -46,7 +48,13 @@ Admin LIFF Endpoint URL：
 https://<your-pages-host>/MembershipSystem/Member/admin/
 ```
 
-Member、Points 與 Admin 使用不同 LIFF/LINE Login Channel。三者至少需要 `openid` scope，讓前端取得 `liff.getIDToken()`；在 LINE 內建 LIFF browser 中，每次由 `liff.init()` 自動確認登入，在外部瀏覽器中每次開啟都會先清除既有 LIFF session，再重新 `liff.login()`。登入回跳只使用一次性的 URL flow marker，不保存 ID token。GAS 會依照 request action 將 token 綁定到對應 Channel，再驗證 `aud`、`iss`、`exp` 與 `sub`。
+Event LIFF Endpoint URL：
+
+```text
+https://<your-pages-host>/MembershipSystem/Member/event/
+```
+
+Member、Points、Event 與 Admin 使用不同 LIFF；各 surface 的 LIFF 可依 LINE 設定使用相同或不同 Channel，但 GAS Script Property 必須填入該 LIFF 所屬的 Channel ID。四者至少需要 `openid` scope，讓前端取得 `liff.getIDToken()`；在 LINE 內建 LIFF browser 中，每次由 `liff.init()` 自動確認登入，在外部瀏覽器中每次開啟都會先清除既有 LIFF session，再重新 `liff.login()`。登入回跳只使用一次性的 URL flow marker，不保存 ID token。GAS 會依照 request action 將 token 綁定到對應 Channel，再驗證 `aud`、`iss`、`exp` 與 `sub`。
 
 注意：LIFF ID 格式通常是 `ChannelID-識別碼`。GAS Script Property 要填前面的純數字 Channel ID，不要填完整的 LIFF ID；兩個不同 LIFF 如果屬於同一個 Channel，Member 與 Points 的 Channel Property 可以填相同數字。
 
@@ -62,6 +70,8 @@ GAS 會建立並維護以下 schema：
 - `PointCardLotteryPrizes`：舊版抽獎券節點的獎項資料，保留相容與歷史讀取；新抽獎券的獎項設定儲存在票券庫。
 - `PointCardTickets`：會員達成節點後產生的優惠券/抽獎券快照；保存當下的票券說明、使用方式、使用說明、達標點數、抽獎結果與核銷歷史。兌換扣點一律依達標點數計算。
 - `PointCardTicketChallenges`：舊版票券選號挑戰的歷史資料表；新流程不再寫入。
+- `EventTickets`：活動票券設定；保存名稱、類型、說明、使用方式、活動期間、發放上限、狀態與抽獎獎項。
+- `EventTicketClaims`：會員領取的活動票券快照；每位會員每張活動票券限領一次，保留使用結果與歷史紀錄。
 - `PointBalances`：每位會員在每張卡的目前餘額。
 - `PointEntries`：每次補登點數的不可變流水紀錄，以及用來避免同一發點操作重複寫入的 request ID。
 - `ServiceTimeEntries`：管理端登錄的消費服務時間不可變流水；每筆帶有管理員、備註與 request ID，會員卡顯示其累積分鐘數。
@@ -89,8 +99,14 @@ GAS 會建立並維護以下 schema：
 - `admin.service_minutes.add`
 - `admin.member-grants.add`（管理端合併發放；可一次寫入集點、服務時間或兩者）
 - `user.pointcard.ticket.redeem`
+- `user.event.bootstrap`（Event LIFF）
+- `user.event.ticket.claim`（Event LIFF；每位會員每張限領一次）
+- `user.event.ticket.redeem`（Event LIFF；本人直接使用）
+- `admin.event-tickets.save`
 
 `admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，並以 `ticketTemplateId` 選擇票券庫中的票券；兌換時會自動扣除相同的 `thresholdStamps` 點數。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
+
+`admin.event-tickets.save` 沿用集點卡票券的名稱、類型、說明、使用方式、使用說明與抽獎獎項設定，另外可設定活動起訖日與總發放上限（0 代表不限量）。Event LIFF 只顯示啟用中的活動；會員先領取票券，再由本人確認使用。票券內容在領取時建立快照，之後管理端修改設定不會改寫已領取的票券。
 
 升級後，既有集點節點與已發出的票券都會保留。新增或調整節點後，已達門檻、且尚無未使用票券的會員會在下次集點卡同步時補發一次；已發出的票券仍維持原本的票券內容快照，但扣點一律依其達標點數計算。若要讓既有節點使用新的統一票券說明，先在「票券」建立並啟用票券，再回到該集點卡為節點選擇它。
 

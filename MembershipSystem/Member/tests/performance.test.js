@@ -152,16 +152,19 @@ test('all browser write actions are single-attempt when the response is uncertai
     'admin.pointcards.delete',
     'admin.pointcards.remove',
     'admin.tickets.save',
+    'admin.event-tickets.save',
     'admin.stamps.add',
     'admin.service_minutes.add',
     'admin.member-grants.add',
-    'user.pointcard.ticket.redeem'
+    'user.pointcard.ticket.redeem',
+    'user.event.ticket.claim',
+    'user.event.ticket.redeem'
   ];
 
   for (const action of writeActions) {
     const before = attempts;
     await assert.rejects(
-      () => request({ gasWebAppUrl: 'https://example.invalid' }, action.startsWith('admin.') ? 'admin' : action.startsWith('user.pointcard.') ? 'points' : 'member', 'id-token', action),
+      () => request({ gasWebAppUrl: 'https://example.invalid' }, action.startsWith('admin.') ? 'admin' : action.startsWith('user.pointcard.') ? 'points' : action.startsWith('user.event.') ? 'event' : 'member', 'id-token', action),
       (error) => error && error.code === 'API_RESPONSE_UNCERTAIN'
     );
     assert.equal(attempts - before, 1, `${action} must never auto-retry after an uncertain response`);

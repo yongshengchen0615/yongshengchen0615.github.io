@@ -5,6 +5,7 @@ const MEMBERSHIP_LINE_ISSUER_ = 'https://access.line.me';
 const MEMBERSHIP_MEMBER_CHANNEL_PROPERTY_ = 'MEMBERSHIP_MEMBER_LINE_CHANNEL_ID';
 const MEMBERSHIP_POINTS_CHANNEL_PROPERTY_ = 'MEMBERSHIP_POINTS_LINE_CHANNEL_ID';
 const MEMBERSHIP_ADMIN_CHANNEL_PROPERTY_ = 'MEMBERSHIP_ADMIN_LINE_CHANNEL_ID';
+const MEMBERSHIP_EVENT_CHANNEL_PROPERTY_ = 'MEMBERSHIP_EVENT_LINE_CHANNEL_ID';
 const MEMBERSHIP_VERIFY_CACHE_SECONDS_ = 300;
 const MEMBERSHIP_VERIFY_RETRY_DELAY_MS_ = 180;
 
@@ -14,7 +15,9 @@ function authenticateLine_(idToken, clientType) {
     ? MEMBERSHIP_ADMIN_CHANNEL_PROPERTY_
     : clientType === 'points'
       ? MEMBERSHIP_POINTS_CHANNEL_PROPERTY_
-      : MEMBERSHIP_MEMBER_CHANNEL_PROPERTY_;
+      : clientType === 'event'
+        ? MEMBERSHIP_EVENT_CHANNEL_PROPERTY_
+        : MEMBERSHIP_MEMBER_CHANNEL_PROPERTY_;
   const expectedChannelId = String(PropertiesService.getScriptProperties().getProperty(property) || '').trim();
   if (!expectedChannelId) throw new ApiError(503, 'CONFIG_MISSING', 'GAS 尚未設定對應的 LINE Channel ID。');
 
