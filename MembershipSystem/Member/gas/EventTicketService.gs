@@ -11,9 +11,10 @@ const EVENT_TICKET_STATUS_USED_ = 'used';
 function handleEventTicketBootstrap_(identity) {
   const member = ensureMember_(identity);
   const snapshot = readEventTicketSnapshot_();
-  const tier = eventTicketMemberTier_(member.line_user_id);
+  const serviceMinutesTotal = eventTicketServiceMinutesTotal_(member.line_user_id);
+  const tier = eventTicketMemberTier_(member.line_user_id, serviceMinutesTotal);
   return {
-    profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey },
+    profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey, serviceMinutesTotal, tierProgress: eventTicketTierProgress_(serviceMinutesTotal, tier) },
     offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey),
     usedTickets: usedEventTicketHistoryForMember_(identity.lineUserId, snapshot)
   };
@@ -398,9 +399,20 @@ function eventTicketAllowedTierKeys_(ticket) {
   return eventTicketAllTierKeys_().filter(function(tierKey) { return Boolean(requested[tierKey]); });
 }
 
-function eventTicketMemberTier_(lineUserId) {
+function eventTicketServiceMinutesTotal_(lineUserId) {
+  return typeof serviceMinutesTotalForMember_ === 'function' ? Math.max(0, Math.floor(Number(serviceMinutesTotalForMember_(lineUserId)) || 0)) : 0;
+}
+
+function eventTicketMemberTier_(lineUserId, serviceMinutesTotal) {
   if (typeof serviceMinutesTotalForMember_ !== 'function' || typeof membershipTierForServiceMinutes_ !== 'function') return eventTicketTierDefinitions_()[0];
-  return membershipTierForServiceMinutes_(serviceMinutesTotalForMember_(lineUserId));
+  const normalizedServiceMinutesTotal = serviceMinutesTotal === undefined ? eventTicketServiceMinutesTotal_(lineUserId) : serviceMinutesTotal;
+  return membershipTierForServiceMinutes_(normalizedServiceMinutesTotal);
+}
+
+function eventTicketTierProgress_(serviceMinutesTotal, tier) {
+  if (typeof membershipTierProgressForServiceMinutes_ === 'function') return membershipTierProgressForServiceMinutes_(serviceMinutesTotal);
+  const currentTier = tier || eventTicketTierDefinitions_()[0];
+  return { serviceMinutesTotal: Math.max(0, Math.floor(Number(serviceMinutesTotal) || 0)), currentTierKey: currentTier.tierKey, currentTierLabel: currentTier.label, currentRequiredServiceMinutes: 0, nextTierKey: '', nextTierLabel: '', nextRequiredServiceMinutes: null, remainingServiceMinutes: 0, isHighestTier: false };
 }
 
 function eventTicketAllowsTier_(ticket, tierKey) { return eventTicketAllowedTierKeys_(ticket).indexOf(String(tierKey || '').trim()) >= 0; }

@@ -55,8 +55,8 @@ function newMemberRecord_(identity, now) { return { line_user_id: identity.lineU
 
 function memberForClient_(member) {
   const serviceMinutesTotal = serviceMinutesTotalForMember_(member.line_user_id);
-  const tier = membershipTierForServiceMinutes_(serviceMinutesTotal);
-  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tier.label, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal, benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
+  const tierProgress = membershipTierProgressForServiceMinutes_(serviceMinutesTotal);
+  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tierProgress.currentTierLabel, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal, tierProgress, benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
 }
 
 function readMembers_() {
@@ -133,6 +133,25 @@ function membershipTierForServiceMinutes_(serviceMinutesTotal, tierSettings) {
   const minutes = Math.max(0, Math.floor(Number(serviceMinutesTotal) || 0));
   const settings = tierSettings || readMembershipTierSettings_();
   return settings.reduce(function(currentTier, tier) { return minutes >= tier.requiredServiceMinutes ? tier : currentTier; }, settings[0]);
+}
+
+function membershipTierProgressForServiceMinutes_(serviceMinutesTotal, tierSettings) {
+  const normalizedServiceMinutesTotal = Math.max(0, Math.floor(Number(serviceMinutesTotal) || 0));
+  const settings = tierSettings || readMembershipTierSettings_();
+  const currentTier = membershipTierForServiceMinutes_(normalizedServiceMinutesTotal, settings);
+  const currentTierIndex = settings.findIndex(function(tier) { return tier.tierKey === currentTier.tierKey; });
+  const nextTier = currentTierIndex >= 0 ? settings[currentTierIndex + 1] : null;
+  return {
+    serviceMinutesTotal: normalizedServiceMinutesTotal,
+    currentTierKey: currentTier.tierKey,
+    currentTierLabel: currentTier.label,
+    currentRequiredServiceMinutes: currentTier.requiredServiceMinutes,
+    nextTierKey: nextTier ? nextTier.tierKey : '',
+    nextTierLabel: nextTier ? nextTier.label : '',
+    nextRequiredServiceMinutes: nextTier ? nextTier.requiredServiceMinutes : null,
+    remainingServiceMinutes: nextTier ? Math.max(0, nextTier.requiredServiceMinutes - normalizedServiceMinutesTotal) : 0,
+    isHighestTier: !nextTier
+  };
 }
 
 function memberProfileComplete_(member) { return Boolean(String(member.birthday || '').trim() && String(member.phone || '').trim()); }

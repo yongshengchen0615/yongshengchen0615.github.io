@@ -37,8 +37,12 @@ function loadEventTicketService() {
     updateRecordAtRow_: (sheetName, rowNumber, record) => { rows[sheetName][rowNumber - 2] = record; },
     deleteRecordsWhere_: (sheetName, predicate) => { const before = rows[sheetName].length; rows[sheetName] = rows[sheetName].filter((record) => !predicate(record)); return before - rows[sheetName].length; },
     appendAuditRecord_: (record) => { rows.AuditLogs.push(record); },
+    ensureMember_: (identity) => rows.Members.find((member) => member.line_user_id === identity.lineUserId),
     serviceMinutesTotalForMember_: (lineUserId) => lineUserId === 'U-2' ? 1800 : 0,
-    membershipTierForServiceMinutes_: (minutes) => Number(minutes) >= 1800 ? { tierKey: 'gold', label: '金級會員' } : { tierKey: 'general', label: '一般會員' }
+    membershipTierForServiceMinutes_: (minutes) => Number(minutes) >= 1800 ? { tierKey: 'gold', label: '金級會員', requiredServiceMinutes: 1800 } : { tierKey: 'general', label: '一般會員', requiredServiceMinutes: 0 },
+    membershipTierProgressForServiceMinutes_: (minutes) => Number(minutes) >= 1800
+      ? { serviceMinutesTotal: 1800, currentTierKey: 'gold', currentTierLabel: '金級會員', currentRequiredServiceMinutes: 1800, nextTierKey: 'platinum', nextTierLabel: '白金會員', nextRequiredServiceMinutes: 3600, remainingServiceMinutes: 1800, isHighestTier: false }
+      : { serviceMinutesTotal: 0, currentTierKey: 'general', currentTierLabel: '一般會員', currentRequiredServiceMinutes: 0, nextTierKey: 'silver', nextTierLabel: '銀級會員', nextRequiredServiceMinutes: 600, remainingServiceMinutes: 600, isHighestTier: false }
   };
   vm.createContext(context);
   vm.runInContext(read('gas/EventTicketService.gs'), context, { filename: 'gas/EventTicketService.gs' });
@@ -69,6 +73,20 @@ test('event ticket claim is owned, one-per-member, quota-limited, and snapshots 
   assert.equal(replay.alreadyClaimed, true);
   assert.equal(rows.EventTicketClaims.length, 1);
   assert.throws(() => context.handleEventTicketClaim_({ lineUserId: 'U-2' }, { eventTicketId: 'ET-1' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_SOLD_OUT');
+});
+
+test('event ticket bootstrap exposes the member tier and the remaining time to the next tier', () => {
+  const { context } = loadEventTicketService();
+  const general = context.handleEventTicketBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
+  assert.equal(general.profile.tier, '一般會員');
+  assert.equal(general.profile.serviceMinutesTotal, 0);
+  assert.equal(general.profile.tierProgress.nextTierLabel, '銀級會員');
+  assert.equal(general.profile.tierProgress.remainingServiceMinutes, 600);
+
+  const gold = context.handleEventTicketBootstrap_({ lineUserId: 'U-2', displayName: '另一位會員' });
+  assert.equal(gold.profile.tier, '金級會員');
+  assert.equal(gold.profile.tierProgress.nextTierLabel, '白金會員');
+  assert.equal(gold.profile.tierProgress.remainingServiceMinutes, 1800);
 });
 
 test('event tickets stay visible to every member while tier eligibility blocks claim and redemption', () => {
@@ -194,7 +212,7 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(eventHtml, /id="ticketModalAction"/);
   assert.match(eventHtml, /id="memberTier"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
-  assert.match(eventHtml, /app\.js\?v=event-history-direct-click-20260904/);
+  assert.match(eventHtml, /app\.js\?v=event-tier-progress-20260905/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
   assert.match(eventApp, /user\.event\.ticket\.claim/);
   assert.match(eventApp, /user\.event\.ticket\.redeem/);
@@ -229,6 +247,11 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(adminApp, /updateEventTicketTierSummary/);
   assert.match(eventApp, /tierEligible/);
   assert.match(eventApp, /els\.memberTier\.textContent/);
+  assert.match(eventHtml, /id="tierProgressMessage"/);
+  assert.match(eventHtml, /id="serviceMinutesTotal"/);
+  assert.match(eventApp, /function renderMembershipProgress/);
+  assert.match(eventApp, /tierProgress/);
+  assert.match(eventService, /eventTicketTierProgress_/);
   assert.match(eventApp, /目前會員等級無法領取或使用/);
   assert.match(storage, /EventTickets:/);
   assert.match(storage, /allowed_tier_keys/);

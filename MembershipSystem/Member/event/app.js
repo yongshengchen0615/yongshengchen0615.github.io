@@ -1,12 +1,12 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', offers: [], usedTickets: [], pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '' };
+  const state = { config: null, idToken: '', profile: null, offers: [], usedTickets: [], pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
     [
-      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'eventView', 'displayName', 'memberTier', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketList',
+      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'eventView', 'displayName', 'memberTier', 'tierProgressMessage', 'serviceMinutesTotal', 'nextTierThreshold', 'tierProgressTrack', 'tierProgressBar', 'tierProgressDetail', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketList',
       'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
@@ -36,8 +36,9 @@
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap');
       state.offers = Array.isArray(result.offers) ? result.offers : [];
       state.usedTickets = Array.isArray(result.usedTickets) ? result.usedTickets : [];
-      els.displayName.textContent = String(result.profile && result.profile.displayName || 'LINE 使用者');
-      els.memberTier.textContent = `目前會員等級：${String(result.profile && result.profile.tier || '未設定')}`;
+      state.profile = result.profile || {};
+      els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
+      renderMembershipProgress(state.profile);
       renderOffers();
     } catch (error) { if (!showBusy) throw error; showError(error); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
   }
@@ -51,6 +52,43 @@
     els.emptyView.classList.toggle('hidden', hasOffers);
     els.usedTicketHistory.classList.toggle('hidden', !hasUsedTickets);
     els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${ineligibleOfferCount ? ` · ${ineligibleOfferCount} 張尚未達適用等級` : ''}${hasUsedTickets ? ` · ${state.usedTickets.length} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有開放中的活動 · ${state.usedTickets.length} 筆已使用紀錄` : '目前沒有開放中的活動';
+  }
+
+  function formatServiceMinutes(value) { return `${Math.max(0, Math.floor(Number(value) || 0))} 分鐘`; }
+
+  function tierProgressForProfile(profile) {
+    const raw = profile && profile.tierProgress || {};
+    const serviceMinutesTotal = Math.max(0, Math.floor(Number(raw.serviceMinutesTotal === undefined ? profile && profile.serviceMinutesTotal : raw.serviceMinutesTotal) || 0));
+    const currentRequiredServiceMinutes = Math.max(0, Math.floor(Number(raw.currentRequiredServiceMinutes) || 0));
+    const nextRequiredServiceMinutes = Math.floor(Number(raw.nextRequiredServiceMinutes));
+    const nextTierLabel = String(raw.nextTierLabel || '').trim();
+    const hasNextTier = Boolean(nextTierLabel && Number.isInteger(nextRequiredServiceMinutes) && nextRequiredServiceMinutes > currentRequiredServiceMinutes);
+    const remainingServiceMinutes = hasNextTier ? Math.max(0, Math.floor(Number(raw.remainingServiceMinutes))) : 0;
+    const percent = hasNextTier ? Math.min(100, Math.max(0, (serviceMinutesTotal - currentRequiredServiceMinutes) / (nextRequiredServiceMinutes - currentRequiredServiceMinutes) * 100)) : raw.isHighestTier ? 100 : 0;
+    return { serviceMinutesTotal, nextTierLabel, nextRequiredServiceMinutes, remainingServiceMinutes, hasNextTier, isHighestTier: Boolean(raw.isHighestTier), percent };
+  }
+
+  function renderMembershipProgress(profile) {
+    const progress = tierProgressForProfile(profile);
+    els.memberTier.textContent = `目前會員資格：${String(profile && profile.tier || '未設定')}`;
+    els.serviceMinutesTotal.textContent = `累積 ${formatServiceMinutes(progress.serviceMinutesTotal)}`;
+    if (progress.hasNextTier) {
+      els.tierProgressMessage.textContent = `距離 ${progress.nextTierLabel} 還需要 ${formatServiceMinutes(progress.remainingServiceMinutes)}`;
+      els.nextTierThreshold.textContent = `下一階段門檻 ${formatServiceMinutes(progress.nextRequiredServiceMinutes)}`;
+      els.tierProgressDetail.textContent = `再累積 ${formatServiceMinutes(progress.remainingServiceMinutes)}，即可晉級 ${progress.nextTierLabel}。`;
+    } else if (progress.isHighestTier) {
+      els.tierProgressMessage.textContent = '已達最高會員資格';
+      els.nextTierThreshold.textContent = '目前沒有下一個階段';
+      els.tierProgressDetail.textContent = '感謝你持續累積服務時間，已享有目前最高會員資格。';
+    } else {
+      els.tierProgressMessage.textContent = '下一階段資格資訊載入中';
+      els.nextTierThreshold.textContent = '請稍後重新整理確認';
+      els.tierProgressDetail.textContent = '目前已累積的服務時間已顯示，下一階段門檻將在資料同步後提供。';
+    }
+    const roundedPercent = Math.round(progress.percent);
+    els.tierProgressBar.style.width = `${roundedPercent}%`;
+    els.tierProgressTrack.setAttribute('aria-valuenow', String(roundedPercent));
+    els.tierProgressTrack.setAttribute('aria-valuetext', progress.hasNextTier ? `距離 ${progress.nextTierLabel} 還需要 ${formatServiceMinutes(progress.remainingServiceMinutes)}` : els.tierProgressMessage.textContent);
   }
 
   function createOfferCard(offer) {

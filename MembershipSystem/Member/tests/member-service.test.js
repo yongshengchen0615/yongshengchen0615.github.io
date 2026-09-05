@@ -90,13 +90,28 @@ test('member tiers are derived from accumulated service time and fixed threshold
   const member = rows.Members[0];
   member.tier = '白金會員';
   assert.equal(context.memberForClient_(member).tier, '一般會員');
+  assert.deepEqual(JSON.parse(JSON.stringify(context.memberForClient_(member).tierProgress)), {
+    serviceMinutesTotal: 0,
+    currentTierKey: 'general',
+    currentTierLabel: '一般會員',
+    currentRequiredServiceMinutes: 0,
+    nextTierKey: 'silver',
+    nextTierLabel: '銀級會員',
+    nextRequiredServiceMinutes: 600,
+    remainingServiceMinutes: 600,
+    isHighestTier: false
+  });
 
   rows.ServiceTimeEntries.push({ line_user_id: 'U-1', minutes: '600' });
   assert.equal(context.adminMemberForClient_(member, 600).tier, '銀級會員');
+  assert.equal(context.memberForClient_(member).tierProgress.remainingServiceMinutes, 1200);
+  assert.equal(context.memberForClient_(member).tierProgress.nextTierLabel, '金級會員');
   rows.ServiceTimeEntries.push({ line_user_id: 'U-1', minutes: '1200' });
   assert.equal(context.memberForClient_(member).tier, '金級會員');
   rows.ServiceTimeEntries.push({ line_user_id: 'U-1', minutes: '1800' });
   assert.equal(context.memberForClient_(member).tier, '白金會員');
+  assert.equal(context.memberForClient_(member).tierProgress.isHighestTier, true);
+  assert.equal(context.memberForClient_(member).tierProgress.nextTierLabel, '');
 
   const result = context.handleMembershipTierSettingsSave_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
     tierSettings: [

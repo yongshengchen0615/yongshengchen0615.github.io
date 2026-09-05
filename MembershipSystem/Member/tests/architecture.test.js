@@ -76,7 +76,11 @@ test('member card collects first-visit contact details and displays accumulated 
   assert.match(memberHtml, /memberBirthday/);
   assert.match(memberHtml, /memberPhone/);
   assert.match(memberHtml, /serviceMinutesTotal/);
+  assert.match(memberHtml, /tierProgressMessage/);
+  assert.match(memberHtml, /profileDetailsTitle/);
   assert.match(memberApp, /user\.member\.profile\.save/);
+  assert.match(memberApp, /function renderTierProgress/);
+  assert.match(memberApp, /tierProgress/);
   assert.doesNotMatch(memberApp, /小時/);
   assert.match(adminHtml, /grantModal/);
   assert.match(adminHtml, /grantStampsEnabled/);
@@ -112,6 +116,7 @@ test('admin derives fixed membership tiers from service-time thresholds instead 
   assert.doesNotMatch(adminApp, /tier:\s*String\(els\.memberTier/);
   assert.match(code, /'admin\.member-tiers\.save'/);
   assert.match(memberService, /function membershipTierForServiceMinutes_/);
+  assert.match(memberService, /function membershipTierProgressForServiceMinutes_/);
   assert.match(memberService, /function handleMembershipTierSettingsSave_/);
 });
 

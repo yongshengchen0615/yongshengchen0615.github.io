@@ -65,14 +65,23 @@
           </div>
           <div class="pass-stamp" aria-hidden="true"><span>MC</span><b>✦</b></div>
         </div>
-        <div class="pass-footer">
-          <div><span class="label">Member ID</span><strong id="memberCode">—</strong></div>
-          <div><span class="label">Joined</span><strong id="joinedAt">—</strong></div>
-          <div><span class="label">生日</span><strong id="memberBirthday">—</strong></div>
-          <div><span class="label">電話</span><strong id="memberPhone">—</strong></div>
-          <div class="service-total"><span class="label">累積消費服務時間</span><strong id="serviceMinutesTotal">0 分鐘</strong></div>
-          <div class="barcode" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        </div>
+      </section>
+
+      <section class="tier-progress" aria-labelledby="tierProgressTitle">
+        <div class="tier-progress-heading"><p class="kicker">Membership progress</p><h2 id="tierProgressTitle">下一階段會員資格</h2><p id="tierProgressMessage" class="tier-progress-message">正在計算升等進度</p></div>
+        <div class="tier-progress-summary"><span id="serviceMinutesTotal">累積 0 分鐘</span><span id="nextTierThreshold">下一階段資料載入中</span></div>
+        <div id="tierProgressTrack" class="tier-progress-track" role="progressbar" aria-label="會員資格升等進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="tierProgressBar"></span></div>
+        <p id="tierProgressDetail" class="tier-progress-detail"></p>
+      </section>
+
+      <section class="profile-details" aria-labelledby="profileDetailsTitle">
+        <div><p class="kicker">Personal profile</p><h2 id="profileDetailsTitle">個人資料</h2><p>會員識別與聯絡資料集中在這裡，方便確認。</p></div>
+        <dl class="profile-detail-list">
+          <div><dt>會員編號</dt><dd id="memberCode">—</dd></div>
+          <div><dt>加入日期</dt><dd id="joinedAt">—</dd></div>
+          <div><dt>生日</dt><dd id="memberBirthday">—</dd></div>
+          <div><dt>電話</dt><dd id="memberPhone">—</dd></div>
+        </dl>
       </section>
 
     </main>
