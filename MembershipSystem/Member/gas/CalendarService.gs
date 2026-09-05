@@ -2,7 +2,7 @@
 
 const CALENDAR_ITEM_TYPES_ = Object.freeze(['holiday', 'event']);
 const CALENDAR_ITEM_STATUSES_ = Object.freeze(['active', 'draft', 'archived']);
-const CALENDAR_ITEM_MAX_VISIBLE_RANGE_DAYS_ = 62;
+const CALENDAR_ITEM_MAX_VISIBLE_RANGE_DAYS_ = 93;
 const CALENDAR_ITEM_MAX_DURATION_DAYS_ = 366;
 const CALENDAR_ITEM_BATCH_MAX_OPERATIONS_ = 20;
 

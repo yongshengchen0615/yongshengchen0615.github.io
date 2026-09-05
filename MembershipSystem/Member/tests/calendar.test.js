@@ -51,15 +51,17 @@ function loadCalendarService() {
   return { context, rows, TestApiError };
 }
 
-test('member calendar returns only active items overlapping its bounded month view', () => {
+test('member calendar returns only active items for a bounded three-month view', () => {
   const { context, TestApiError } = loadCalendarService();
-  const result = context.handleCalendarBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { rangeStart: '2026-09-20', rangeEnd: '2026-10-31' });
+  const result = context.handleCalendarBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { rangeStart: '2026-08-01', rangeEnd: '2026-10-31' });
   assert.equal(result.profile.displayName, '測試會員');
+  assert.equal(result.rangeStart, '2026-08-01');
+  assert.equal(result.rangeEnd, '2026-10-31');
   assert.equal(result.items.length, 1);
   assert.equal(result.items[0].calendarItemId, 'CI-1');
   assert.equal(result.items[0].updatedAt, undefined);
   assert.throws(
-    () => context.handleCalendarBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { rangeStart: '2026-09-01', rangeEnd: '2026-12-01' }),
+    () => context.handleCalendarBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { rangeStart: '2026-08-01', rangeEnd: '2026-11-30' }),
     (error) => error instanceof TestApiError && error.code === 'INVALID_CALENDAR_RANGE'
   );
 });
@@ -141,9 +143,18 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarApp, /signIn\(state\.config, 'calendar'\)/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(calendarApp, /rangeStart/);
+  assert.match(calendarApp, /initialCalendarDataRange/);
+  assert.match(calendarApp, /isLoadedCalendarMonth/);
+  assert.match(calendarApp, /handleCalendarTouchStart/);
+  assert.match(calendarApp, /handleCalendarWheel/);
+  assert.match(calendarApp, /suppressCalendarDayClickUntil/);
+  assert.match(calendarHtml, /id="calendarRangeNotice"/);
   assert.match(calendarHtml, /id="calendarDetailModal"/);
-  assert.match(calendarApp, /openCalendarItemDetail/);
-  assert.match(calendarApp, /data-calendar-item-id/);
+  assert.match(calendarHtml, /id="calendarDetailItems"/);
+  assert.doesNotMatch(calendarHtml, /id="calendarDetailType"/);
+  assert.match(calendarApp, /openCalendarDateDetails/);
+  assert.match(calendarApp, /data-calendar-date/);
+  assert.match(calendarApp, /state\.items\.filter\(\(item\) => itemOnDate\(item, isoDate\)\)/);
   assert.doesNotMatch(calendarApp, /innerHTML/);
   assert.match(adminHtml, /id="calendarPanel"/);
   assert.match(adminHtml, /id="calendarItemForm"/);

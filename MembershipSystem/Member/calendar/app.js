@@ -1,17 +1,21 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', items: [], visibleMonth: firstOfMonth(taipeiToday()), detailTrigger: null };
+  const initialMonth = firstOfMonth(taipeiToday());
+  const state = { config: null, idToken: '', items: [], initialMonth: initialMonth, visibleMonth: initialMonth, detailTrigger: null, lastWheelNavigationAt: 0, touchStart: null, suppressCalendarDayClickUntil: 0 };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'calendarView', 'displayName', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailType', 'calendarDetailAccent', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailDescription'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'calendarView', 'displayName', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.previousMonthButton.addEventListener('click', () => changeMonth(-1));
     els.nextMonthButton.addEventListener('click', () => changeMonth(1));
-    els.todayButton.addEventListener('click', () => { state.visibleMonth = firstOfMonth(taipeiToday()); loadCalendar(true); });
-    els.calendarGrid.addEventListener('click', handleCalendarItemClick);
+    els.todayButton.addEventListener('click', showInitialMonth);
+    els.calendarGrid.addEventListener('click', handleCalendarDayClick);
+    els.calendarGrid.addEventListener('touchstart', handleCalendarTouchStart, { passive: true });
+    els.calendarGrid.addEventListener('touchend', handleCalendarTouchEnd, { passive: true });
+    els.calendarGrid.addEventListener('wheel', handleCalendarWheel, { passive: false });
     els.closeCalendarDetailButton.addEventListener('click', closeCalendarItemDetail);
     els.calendarDetailModal.addEventListener('click', (event) => { if (event.target === els.calendarDetailModal) closeCalendarItemDetail(); });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeCalendarItemDetail(); });
@@ -23,7 +27,7 @@
     try {
       state.config = await window.MemberSystem.loadConfig();
       state.idToken = await window.MemberSystem.signIn(state.config, 'calendar');
-      await loadCalendar(false);
+      await loadCalendar();
       setView('calendar');
     } catch (error) {
       showError(error);
@@ -32,43 +36,47 @@
     }
   }
 
-  async function changeMonth(offset) {
-    state.visibleMonth = addMonths(state.visibleMonth, offset);
-    await loadCalendar(true);
+  function changeMonth(offset) {
+    const nextMonth = addMonths(state.visibleMonth, offset);
+    if (!isLoadedCalendarMonth(nextMonth)) {
+      showCalendarRangeNotice();
+      return;
+    }
+    closeCalendarItemDetail(false);
+    state.visibleMonth = nextMonth;
+    clearCalendarRangeNotice();
+    renderCalendar();
   }
 
-  async function loadCalendar(showBusy) {
+  function showInitialMonth() {
     closeCalendarItemDetail(false);
-    if (showBusy) {
-      els.previousMonthButton.disabled = true;
-      els.nextMonthButton.disabled = true;
-      els.calendarSummary.textContent = '同步中…';
-    }
+    state.visibleMonth = state.initialMonth;
+    clearCalendarRangeNotice();
+    renderCalendar();
+  }
+
+  async function loadCalendar() {
+    const range = initialCalendarDataRange(state.initialMonth);
     try {
-      const range = visibleRangeForMonth(state.visibleMonth);
       const result = await window.MemberSystem.request(state.config, 'calendar', state.idToken, 'user.calendar.bootstrap', { rangeStart: range.start, rangeEnd: range.end });
       state.items = Array.isArray(result.items) ? result.items : [];
       els.displayName.textContent = String(result.profile && result.profile.displayName || 'LINE 使用者');
       renderCalendar();
     } catch (error) {
-      if (!showBusy) throw error;
-      showError(error);
-    } finally {
-      if (showBusy) {
-        els.previousMonthButton.disabled = false;
-        els.nextMonthButton.disabled = false;
-      }
+      throw error;
     }
   }
 
   function renderCalendar() {
-    const range = visibleRangeForMonth(state.visibleMonth);
-    els.monthTitle.textContent = new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: 'long' }).format(state.visibleMonth);
-    els.calendarGrid.replaceChildren(...weekdayHeaders(), ...calendarDays(range));
-    const holidayCount = state.items.filter((item) => item.itemType === 'holiday').length;
-    const eventCount = state.items.filter((item) => item.itemType === 'event').length;
-    els.calendarSummary.textContent = state.items.length ? String(state.items.length) + ' 個日期 · ' + String(holidayCount) + ' 個休假日 · ' + String(eventCount) + ' 個活動' : '這段期間尚未設定日期';
-    els.emptyView.classList.toggle('hidden', state.items.length !== 0);
+    const visibleRange = visibleRangeForMonth(state.visibleMonth);
+    const monthRange = calendarMonthRange(state.visibleMonth);
+    const visibleItems = state.items.filter((item) => calendarItemOverlapsRange(item, monthRange.start, monthRange.end));
+    const holidayCount = visibleItems.filter((item) => item.itemType === 'holiday').length;
+    const eventCount = visibleItems.filter((item) => item.itemType === 'event').length;
+    els.monthTitle.textContent = calendarMonthLabel(state.visibleMonth);
+    els.calendarGrid.replaceChildren(...weekdayHeaders(), ...calendarDays(visibleRange));
+    els.calendarSummary.textContent = visibleItems.length ? String(visibleItems.length) + ' 個日期 · ' + String(holidayCount) + ' 個休假日 · ' + String(eventCount) + ' 個活動' : '這個月尚未設定日期';
+    els.emptyView.classList.toggle('hidden', visibleItems.length !== 0);
   }
 
   function weekdayHeaders() {
@@ -87,13 +95,20 @@
     const today = taipeiToday();
     while (current && end && current <= end) {
       const isoDate = toIsoDate(current);
-      const cell = document.createElement('article');
+      const entries = state.items.filter((item) => itemOnDate(item, isoDate));
+      const cell = document.createElement(entries.length ? 'button' : 'article');
       cell.className = 'calendar-day' + (current.getUTCMonth() !== state.visibleMonth.getUTCMonth() ? ' outside' : '') + (isoDate === today ? ' today' : '');
+      if (entries.length) {
+        cell.type = 'button';
+        cell.classList.add('has-entries');
+        cell.dataset.calendarDate = isoDate;
+        cell.setAttribute('aria-haspopup', 'dialog');
+        cell.setAttribute('aria-label', `查看${calendarDateLabel(isoDate)}的 ${entries.length} 項日期說明`);
+      }
       const number = document.createElement('span');
       number.className = 'day-number';
       number.textContent = String(current.getUTCDate());
       cell.append(number);
-      const entries = state.items.filter((item) => itemOnDate(item, isoDate));
       entries.forEach((item) => cell.append(createCalendarItem(item)));
       result.push(cell);
       current.setUTCDate(current.getUTCDate() + 1);
@@ -102,12 +117,8 @@
   }
 
   function createCalendarItem(item) {
-    const entry = document.createElement('button');
-    entry.type = 'button';
+    const entry = document.createElement('span');
     entry.className = 'calendar-item ' + (item.itemType === 'holiday' ? 'holiday' : 'event');
-    entry.dataset.calendarItemId = String(item.calendarItemId || '');
-    entry.setAttribute('aria-haspopup', 'dialog');
-    entry.setAttribute('aria-label', `查看${String(item.title || (item.itemType === 'holiday' ? '休假日' : '活動'))}的日期說明`);
     entry.style.setProperty('--item-accent', safeAccent(item.accent));
     const marker = document.createElement('i');
     marker.setAttribute('aria-hidden', 'true');
@@ -117,24 +128,61 @@
     return entry;
   }
 
-  function handleCalendarItemClick(event) {
-    const trigger = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null;
+  function handleCalendarDayClick(event) {
+    if (Date.now() < state.suppressCalendarDayClickUntil) return;
+    const trigger = event.target instanceof Element ? event.target.closest('[data-calendar-date]') : null;
     if (!trigger) return;
-    const item = state.items.find((value) => String(value.calendarItemId || '') === String(trigger.dataset.calendarItemId || ''));
-    if (item) openCalendarItemDetail(item, trigger);
+    const isoDate = String(trigger.dataset.calendarDate || '');
+    if (parseIsoDate(isoDate)) openCalendarDateDetails(isoDate, trigger);
   }
 
-  function openCalendarItemDetail(item, trigger) {
+  function handleCalendarTouchStart(event) {
+    const touch = event.touches && event.touches.length === 1 ? event.touches[0] : null;
+    state.touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+
+  function handleCalendarTouchEnd(event) {
+    const start = state.touchStart;
+    const touch = event.changedTouches && event.changedTouches.length === 1 ? event.changedTouches[0] : null;
+    state.touchStart = null;
+    if (!start || !touch) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+    state.suppressCalendarDayClickUntil = Date.now() + 500;
+    changeMonth(deltaX < 0 ? 1 : -1);
+  }
+
+  function handleCalendarWheel(event) {
+    if (!event.deltaY) return;
+    event.preventDefault();
+    const now = Date.now();
+    if (now - state.lastWheelNavigationAt < 450) return;
+    state.lastWheelNavigationAt = now;
+    changeMonth(event.deltaY > 0 ? 1 : -1);
+  }
+
+  function openCalendarDateDetails(isoDate, trigger) {
+    const items = state.items.filter((item) => itemOnDate(item, isoDate));
+    if (!items.length) return;
     state.detailTrigger = trigger instanceof HTMLElement ? trigger : null;
-    const isHoliday = item.itemType === 'holiday';
-    els.calendarDetailType.textContent = isHoliday ? '休假日' : '活動';
-    els.calendarDetailType.className = 'calendar-detail-type ' + (isHoliday ? 'holiday' : 'event');
-    els.calendarDetailAccent.style.background = safeAccent(item.accent);
-    els.calendarDetailTitle.textContent = String(item.title || (isHoliday ? '休假日' : '活動'));
-    els.calendarDetailDate.textContent = calendarItemDateRange(item.startsOn, item.endsOn);
-    els.calendarDetailDescription.textContent = String(item.description || '尚未提供其他說明。');
+    els.calendarDetailTitle.textContent = calendarDateLabel(isoDate);
+    els.calendarDetailDate.textContent = `${items.length} 項相關日期說明`;
+    els.calendarDetailItems.replaceChildren(...items.map(createCalendarDetailItem));
     els.calendarDetailModal.classList.remove('hidden');
     els.closeCalendarDetailButton.focus();
+  }
+
+  function createCalendarDetailItem(item) {
+    const detail = document.createElement('section');
+    detail.className = 'calendar-detail-item';
+    detail.style.setProperty('--item-accent', safeAccent(item.accent));
+    const title = document.createElement('h3');
+    title.textContent = String(item.title || (item.itemType === 'holiday' ? '休假日' : '活動'));
+    const description = document.createElement('p');
+    description.textContent = String(item.description || '尚未提供其他說明。');
+    detail.append(title, description);
+    return detail;
   }
 
   function closeCalendarItemDetail(restoreFocus = true) {
@@ -145,18 +193,21 @@
     if (restoreFocus && trigger && document.contains(trigger)) trigger.focus();
   }
 
-  function calendarItemDateRange(startsOn, endsOn) {
-    const start = parseIsoDate(startsOn);
-    const end = parseIsoDate(endsOn || startsOn);
-    const format = (date) => new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }).format(date);
-    if (!start || !end) return '日期未設定';
-    return startsOn === (endsOn || startsOn) ? format(start) : `${format(start)} 至 ${format(end)}`;
+  function calendarDateLabel(isoDate) {
+    const date = parseIsoDate(isoDate);
+    return date ? new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }).format(date) : '日期說明';
   }
 
   function itemOnDate(item, date) {
     const startsOn = String(item && item.startsOn || '');
     const endsOn = String(item && item.endsOn || startsOn);
     return Boolean(startsOn && endsOn && startsOn <= date && endsOn >= date);
+  }
+
+  function calendarItemOverlapsRange(item, start, end) {
+    const startsOn = String(item && item.startsOn || '');
+    const endsOn = String(item && item.endsOn || startsOn);
+    return Boolean(startsOn && endsOn && startsOn <= end && endsOn >= start);
   }
 
   function visibleRangeForMonth(month) {
@@ -166,6 +217,39 @@
     const end = new Date(start);
     end.setUTCDate(end.getUTCDate() + 41);
     return { start: toIsoDate(start), end: toIsoDate(end) };
+  }
+
+  function calendarMonthRange(month) {
+    const start = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1));
+    const end = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0));
+    return { start: toIsoDate(start), end: toIsoDate(end) };
+  }
+
+  function initialCalendarDataRange(month) {
+    const previousMonth = addMonths(month, -1);
+    const nextMonth = addMonths(month, 1);
+    return { start: calendarMonthRange(previousMonth).start, end: calendarMonthRange(nextMonth).end };
+  }
+
+  function isLoadedCalendarMonth(month) {
+    const distance = (month.getUTCFullYear() - state.initialMonth.getUTCFullYear()) * 12 + month.getUTCMonth() - state.initialMonth.getUTCMonth();
+    return distance >= -1 && distance <= 1;
+  }
+
+  function showCalendarRangeNotice() {
+    const first = calendarMonthLabel(addMonths(state.initialMonth, -1));
+    const last = calendarMonthLabel(addMonths(state.initialMonth, 1));
+    els.calendarRangeNotice.textContent = `目前僅載入 ${first} 至 ${last} 的資料；請回到這三個月份查看。`;
+    els.calendarRangeNotice.classList.remove('hidden');
+  }
+
+  function clearCalendarRangeNotice() {
+    els.calendarRangeNotice.textContent = '';
+    els.calendarRangeNotice.classList.add('hidden');
+  }
+
+  function calendarMonthLabel(month) {
+    return new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: 'long' }).format(month);
   }
 
   function taipeiToday() {
