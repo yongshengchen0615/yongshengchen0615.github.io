@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.8.4';
+const MEMBERSHIP_API_VERSION_ = '1.9.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
@@ -13,6 +13,8 @@ const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.pointcard.ticket.redeem',
   'admin.event-tickets.save',
   'admin.event-tickets.delete',
+  'admin.calendar-items.save',
+  'admin.calendar-items.delete',
   'user.event.ticket.claim',
   'user.event.ticket.redeem',
   'admin.stamps.add',
@@ -52,6 +54,9 @@ function doPost(e) {
         break;
       case 'user.pointcard.bootstrap':
         data = handlePointCardBootstrap_(identity);
+        break;
+      case 'user.calendar.bootstrap':
+        data = handleCalendarBootstrap_(identity, request);
         break;
       case 'admin.bootstrap': {
         const admin = authorizeAdmin_(identity);
@@ -121,6 +126,16 @@ function doPost(e) {
         data = handleEventTicketDelete_(identity, admin, request);
         break;
       }
+      case 'admin.calendar-items.save': {
+        const admin = authorizeAdmin_(identity);
+        data = handleCalendarItemSave_(identity, admin, request);
+        break;
+      }
+      case 'admin.calendar-items.delete': {
+        const admin = authorizeAdmin_(identity);
+        data = handleCalendarItemDelete_(identity, admin, request);
+        break;
+      }
       case 'admin.stamps.add': {
         const admin = authorizeAdmin_(identity);
         data = handleStampAdd_(identity, admin, request);
@@ -181,6 +196,7 @@ function clientTypeForAction_(action) {
   if (action === 'user.member.bootstrap' || action === 'user.member.profile.save') return 'member';
   if (action === 'user.pointcard.bootstrap' || action.indexOf('user.pointcard.ticket.') === 0) return 'points';
   if (action === 'user.event.bootstrap' || action.indexOf('user.event.ticket.') === 0) return 'event';
+  if (action === 'user.calendar.bootstrap') return 'calendar';
   if (action.indexOf('admin.') === 0) return 'admin';
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }

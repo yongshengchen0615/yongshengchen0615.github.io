@@ -17,6 +17,14 @@ Member/
 └── tests/                     # 本地結構與安全契約測試
 ```
 
+## 日曆功能
+
+日曆沿用同一個管理端，但會員端是獨立的 calendar HTML、CSS 與 JavaScript。管理員可新增、修改或刪除兩種類型的日期：休假日與活動；每筆可設定單日或最長 366 天的跨日區間、說明、識別色與公開狀態。只有啟用中的日期會顯示在會員日曆，且用戶端一次只讀取目前月曆六週範圍。
+
+日曆用戶端需要自己的 Calendar LIFF。部署前需在 config.json 的 calendarLiffId 填入該 LIFF ID，並在 GAS Script properties 設定 MEMBERSHIP_CALENDAR_LINE_CHANNEL_ID 為其所屬的純數字 LINE Channel ID。Calendar LIFF Endpoint URL 為 https://<your-pages-host>/MembershipSystem/Member/calendar/。
+
+第一次執行 setupMembershipSystem() 或部署更新後，系統會建立 CalendarItems 資料表。欄位包含日期項目 ID、名稱、類型、說明、起訖日、狀態、識別色與建立／更新稽核欄位。相關 API action 為 user.calendar.bootstrap、admin.calendar-items.save 與 admin.calendar-items.delete；後兩者僅限已授權的管理員。
+
 ## 初始化 GAS
 
 1. 建立一個 Apps Script 專案，把 `gas/` 內的 `.gs` 與 `appsscript.json` 放在同一個專案。

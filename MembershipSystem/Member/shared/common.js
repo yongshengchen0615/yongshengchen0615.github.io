@@ -17,6 +17,8 @@
     'admin.tickets.save',
     'admin.event-tickets.save',
     'admin.event-tickets.delete',
+    'admin.calendar-items.save',
+    'admin.calendar-items.delete',
     'admin.stamps.add',
     'admin.service_minutes.add',
     'admin.member-grants.add',
@@ -51,7 +53,7 @@
 
   function validateConfig(config, surface) {
     const gasUrl = String(config && config.gasWebAppUrl || '').trim();
-    const keys = { member: 'memberLiffId', points: 'pointsLiffId', admin: 'adminLiffId', event: 'eventLiffId' };
+    const keys = { member: 'memberLiffId', points: 'pointsLiffId', admin: 'adminLiffId', event: 'eventLiffId', calendar: 'calendarLiffId' };
     const key = keys[surface];
     const liffId = String(config && config[key] || '').trim();
 
@@ -59,21 +61,21 @@
       throw clientError('CONFIG_ERROR', '尚未正確設定 GAS Web App URL。');
     }
     if (!key || !liffId || liffId.includes('REPLACE_WITH_')) {
-      throw clientError('CONFIG_ERROR', `尚未設定 ${surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : 'Member'} LIFF ID。`);
+      throw clientError('CONFIG_ERROR', `尚未設定 ${surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : surface === 'calendar' ? 'Calendar' : 'Member'} LIFF ID。`);
     }
     const configuredLiffIds = Object.keys(keys).map((name) => String(config && config[keys[name]] || '').trim()).filter(Boolean);
-    if (new Set(configuredLiffIds).size !== configuredLiffIds.length) throw clientError('CONFIG_ERROR', '會員、集點卡、活動票券與管理端必須使用不同的 LIFF ID。');
+    if (new Set(configuredLiffIds).size !== configuredLiffIds.length) throw clientError('CONFIG_ERROR', '會員、集點卡、活動票券、日曆與管理端必須使用不同的 LIFF ID。');
   }
 
   async function signIn(config, surface) {
     validateConfig(config, surface);
     if (!window.liff) throw clientError('LIFF_SDK_ERROR', 'LIFF SDK 載入失敗，請確認網路後重試。');
 
-    const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : surface === 'event' ? config.eventLiffId : config.memberLiffId;
+    const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : surface === 'event' ? config.eventLiffId : surface === 'calendar' ? config.calendarLiffId : config.memberLiffId;
     try {
       await window.liff.init({ liffId });
     } catch (_) {
-      const label = surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : 'Member';
+      const label = surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : surface === 'calendar' ? 'Calendar' : 'Member';
       throw clientError('LIFF_INIT_ERROR', `${label} LIFF 初始化失敗，請檢查 LIFF ID 與 Endpoint URL。`);
     }
 

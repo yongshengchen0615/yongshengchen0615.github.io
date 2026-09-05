@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
+  <title>活動日曆｜Lumen Club</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="../shared/common.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div id="app" class="app-shell" aria-busy="true">
+    <section id="loadingView" class="state-view"><div class="loader-mark" aria-hidden="true">◒</div><p class="kicker">Lumen Club / Calendar</p><h1>正在準備活動日曆</h1><p>每次開啟都會重新確認 LINE 身份，請稍候。</p></section>
+    <section id="errorView" class="state-view hidden" role="alert"><div class="error-mark" aria-hidden="true">!</div><p class="kicker">Calendar access</p><h1 id="errorTitle">活動日曆暫時無法載入</h1><p id="errorMessage"></p><button id="retryButton" class="button button-dark" type="button">重新整理</button></section>
+    <main id="calendarView" class="hidden">
+      <header class="topbar"><div><p class="kicker">Lumen Club / Member calendar</p><h1>活動日曆</h1><p>休假日與會員活動，都在這個月曆裡。</p></div><div class="account-menu"><span id="displayName">LINE 使用者</span><button id="logoutButton" class="text-button" type="button">登出</button></div></header>
+      <section class="calendar-toolbar" aria-label="月曆操作"><button id="previousMonthButton" class="month-button" type="button" aria-label="上一個月">‹</button><div><p id="monthTitle" class="month-title"></p><p id="calendarSummary" class="calendar-summary" aria-live="polite">正在同步日期</p></div><button id="nextMonthButton" class="month-button" type="button" aria-label="下一個月">›</button></section>
+      <section class="calendar-legend" aria-label="日曆圖例"><span><i class="holiday-dot" aria-hidden="true"></i>休假日</span><span><i class="event-dot" aria-hidden="true"></i>活動</span><button id="todayButton" class="text-button" type="button">回到本月</button></section>
+      <section id="calendarGrid" class="calendar-grid" aria-label="活動日曆" aria-live="polite"></section>
+      <section id="emptyView" class="empty-view hidden"><span aria-hidden="true">○</span><h2>這段期間還沒有日期</h2><p>新的休假日或活動日期，會顯示在這裡。</p></section>
+      <p class="privacy-note"><span aria-hidden="true">i</span> 日曆只顯示啟用中的休假日與活動日期，不會顯示會員個人資料。</p>
+    </main>
+  </div>
+</body>
+</html>

@@ -16,7 +16,7 @@ function signedBytes(value) {
 
 test('manual new-environment reset clears every data table and restores only default tier settings', () => {
   const cache = new Map();
-  const sheetNames = ['Members', 'Admins', 'PointCards', 'PointCardRewards', 'PointCardLotteryPrizes', 'PointCardTicketTemplates', 'PointCardTickets', 'PointCardTicketChallenges', 'EventTickets', 'EventTicketClaims', 'PointBalances', 'PointEntries', 'ServiceTimeEntries', 'MembershipTierSettings', 'AuditLogs'];
+  const sheetNames = ['Members', 'Admins', 'PointCards', 'PointCardRewards', 'PointCardLotteryPrizes', 'PointCardTicketTemplates', 'PointCardTickets', 'PointCardTicketChallenges', 'EventTickets', 'EventTicketClaims', 'CalendarItems', 'PointBalances', 'PointEntries', 'ServiceTimeEntries', 'MembershipTierSettings', 'AuditLogs'];
   const rows = Object.fromEntries(sheetNames.map((sheetName) => [sheetName, [{ id: `${sheetName}-1` }, { id: `${sheetName}-2` }] ]));
   const sheets = Object.fromEntries(sheetNames.map((sheetName) => [sheetName, {
     getLastRow: () => rows[sheetName].length + 1,

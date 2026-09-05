@@ -15,6 +15,7 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   PointCardTicketChallenges: Object.freeze(['challenge_id', 'ticket_id', 'line_user_id', 'options_json', 'status', 'attempt_count', 'expires_at', 'created_at', 'used_at']),
   EventTickets: Object.freeze(['event_ticket_id', 'title', 'ticket_type', 'description', 'usage_method', 'usage_instructions', 'lottery_prizes_json', 'status', 'starts_on', 'ends_on', 'quota', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at', 'allowed_tier_keys']),
   EventTicketClaims: Object.freeze(['claim_id', 'event_ticket_id', 'line_user_id', 'ticket_type', 'ticket_title', 'ticket_description', 'usage_method', 'usage_instructions', 'lottery_prizes_json', 'status', 'claimed_at', 'used_at', 'result_json', 'created_at', 'updated_at']),
+  CalendarItems: Object.freeze(['calendar_item_id', 'title', 'item_type', 'description', 'starts_on', 'ends_on', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at']),
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
   PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at', 'request_id']),
   ServiceTimeEntries: Object.freeze(['entry_id', 'line_user_id', 'minutes', 'note', 'created_by', 'created_at', 'request_id']),

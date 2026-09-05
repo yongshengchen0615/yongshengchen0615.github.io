@@ -2,18 +2,19 @@
   'use strict';
 
   const EVENT_TICKET_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', grantRequestId: '', grantSuccessTimer: null, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], calendarItems: [], stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, writeConfirmationRequired: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton',
-      'membersTab', 'cardsTab', 'eventsTab', 'cardSettingsTab', 'ticketSettingsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'activeEventTicketCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'eventsPanel', 'cardSettingsPanel', 'ticketSettingsPanel', 'syncStatus', 'refreshButton',
+      'membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'cardSettingsTab', 'ticketSettingsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'activeEventTicketCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'cardSettingsPanel', 'ticketSettingsPanel', 'syncStatus', 'refreshButton',
       'tierSettingsForm', 'tierGeneralMinutes', 'tierSilverMinutes', 'tierGoldMinutes', 'tierPlatinumMinutes', 'tierSettingsFormMessage', 'saveTierSettingsButton',
       'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
+      'newCalendarItemButton', 'calendarItemResultCount', 'calendarItemListItems', 'calendarItemEmptyState', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
       'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -34,6 +35,7 @@
     els.membersTab.addEventListener('click', () => switchPanel('members'));
     els.cardsTab.addEventListener('click', () => switchPanel('cards'));
     els.eventsTab.addEventListener('click', () => switchPanel('events'));
+    els.calendarTab.addEventListener('click', () => switchPanel('calendar'));
     els.cardSettingsTab.addEventListener('click', () => switchCardWorkspace('cards'));
     els.ticketSettingsTab.addEventListener('click', () => switchCardWorkspace('tickets'));
     els.refreshButton.addEventListener('click', () => { if (state.writeConfirmationRequired) return window.location.reload(); return refreshData(true).catch((error) => { els.syncStatus.textContent = error && error.message || '同步失敗，請稍後再試。'; els.syncStatus.classList.add('error'); }); });
@@ -77,6 +79,12 @@
     els.eventTicketForm.addEventListener('submit', saveEventTicket);
     els.resetEventTicketButton.addEventListener('click', resetEventTicketForm);
     els.deleteEventTicketButton.addEventListener('click', deleteEventTicket);
+    els.newCalendarItemButton.addEventListener('click', resetCalendarItemForm);
+    els.calendarItemListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null; if (button) loadCalendarItemForm(button.dataset.calendarItemId); });
+    els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
+    els.calendarItemForm.addEventListener('submit', saveCalendarItem);
+    els.resetCalendarItemButton.addEventListener('click', resetCalendarItemForm);
+    els.deleteCalendarItemButton.addEventListener('click', deleteCalendarItem);
     els.memberForm.addEventListener('submit', saveMember);
     els.cancelMemberButton.addEventListener('click', closeMemberModal);
     els.closeMemberModal.addEventListener('click', closeMemberModal);
@@ -111,6 +119,7 @@
       state.cards = Array.isArray(result.cards) ? result.cards : [];
       state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
       state.eventTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
+      state.calendarItems = Array.isArray(result.calendarItems) ? result.calendarItems : [];
       state.stats = result.stats || {};
       els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
       els.roleLabel.textContent = String(result.role || 'Admin');
@@ -126,10 +135,11 @@
     els.activeCardCount.textContent = String(state.stats.activeCardCount ?? state.cards.filter((card) => card.status === 'active').length);
     els.todayEntryCount.textContent = String(state.stats.todayEntryCount ?? 0);
     els.activeEventTicketCount.textContent = String(state.stats.activeEventTicketCount ?? state.eventTickets.filter((ticket) => ticket.status === 'active' && ticket.availability === 'open').length);
-    renderMembers(); renderTierSettings(); renderCardList(); renderTicketList(); renderEventTicketList();
+    renderMembers(); renderTierSettings(); renderCardList(); renderTicketList(); renderEventTicketList(); renderCalendarItemList();
     if (state.selectedCardId && state.cards.some((card) => card.cardId === state.selectedCardId)) loadCardForm(state.selectedCardId); else if (!els.cardId.value) resetCardForm();
     if (state.selectedTicketId && state.tickets.some((ticket) => ticket.ticketTemplateId === state.selectedTicketId)) loadTicketForm(state.selectedTicketId); else if (!els.ticketTemplateId.value) resetTicketForm();
     if (state.selectedEventTicketId && state.eventTickets.some((ticket) => ticket.eventTicketId === state.selectedEventTicketId)) loadEventTicketForm(state.selectedEventTicketId); else if (!els.eventTicketId.value) resetEventTicketForm();
+    if (state.selectedCalendarItemId && state.calendarItems.some((item) => item.calendarItemId === state.selectedCalendarItemId)) loadCalendarItemForm(state.selectedCalendarItemId); else if (!els.calendarItemId.value) resetCalendarItemForm();
   }
 
   function renderMembers() {
@@ -515,6 +525,83 @@
   }
   function updateEventTicketAccentValue() { els.eventTicketAccentValue.textContent = safeAccent(els.eventTicketAccent.value).toUpperCase(); }
 
+  function renderCalendarItemList() {
+    els.calendarItemResultCount.textContent = String(state.calendarItems.length);
+    els.calendarItemEmptyState.classList.toggle('hidden', state.calendarItems.length !== 0);
+    els.calendarItemListItems.replaceChildren(...state.calendarItems.map((item) => {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.calendarItemId = String(item.calendarItemId); button.setAttribute('aria-selected', String(item.calendarItemId) === state.selectedCalendarItemId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(item.accent));
+      const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(item.title || '未命名日期')));
+      const end = String(item.endsOn || '') === String(item.startsOn || '') ? '' : '–' + formatAdminDateCompact(item.endsOn);
+      const meta = document.createElement('small'); meta.textContent = (item.itemType === 'holiday' ? '休假日' : '活動') + ' · ' + formatAdminDateCompact(item.startsOn) + end + ' · ' + statusLabel(item.status);
+      button.append(title, meta); return button;
+    }));
+  }
+
+  function loadCalendarItemForm(calendarItemId) {
+    const item = state.calendarItems.find((value) => value.calendarItemId === calendarItemId); if (!item) return;
+    state.selectedCalendarItemId = calendarItemId;
+    els.calendarItemId.value = String(item.calendarItemId || '');
+    els.calendarItemExpectedUpdatedAt.value = String(item.updatedAt || '');
+    els.calendarItemTitle.value = String(item.title || '');
+    els.calendarItemType.value = item.itemType === 'holiday' ? 'holiday' : 'event';
+    els.calendarItemDescription.value = String(item.description || '');
+    els.calendarItemStatus.value = String(item.status || 'draft');
+    els.calendarItemStartsOn.value = String(item.startsOn || '');
+    els.calendarItemEndsOn.value = String(item.endsOn || '') === String(item.startsOn || '') ? '' : String(item.endsOn || '');
+    els.calendarItemAccent.value = safeAccent(item.accent || '#df6b4d');
+    els.deleteCalendarItemButton.disabled = false; els.deleteCalendarItemButton.textContent = '刪除目前項目';
+    updateCalendarItemAccentValue(); hideMessage(els.calendarItemFormMessage);
+    els.calendarItemEditorKicker.textContent = 'Edit calendar item'; els.calendarItemEditorTitle.textContent = String(item.title || '編輯日曆項目'); updateEditorStatus(els.calendarItemEditorStatus, item.status); renderCalendarItemList();
+  }
+
+  function resetCalendarItemForm() {
+    state.selectedCalendarItemId = ''; els.calendarItemForm.reset();
+    els.calendarItemId.value = ''; els.calendarItemExpectedUpdatedAt.value = ''; els.calendarItemType.value = 'holiday'; els.calendarItemStatus.value = 'draft'; els.calendarItemStartsOn.value = todayAdminIsoDate(); els.calendarItemEndsOn.value = ''; els.calendarItemAccent.value = '#df6b4d';
+    els.deleteCalendarItemButton.disabled = true; els.deleteCalendarItemButton.textContent = '先儲存後才能刪除';
+    els.calendarItemEditorKicker.textContent = 'Create calendar item'; els.calendarItemEditorTitle.textContent = '新增日曆項目'; updateEditorStatus(els.calendarItemEditorStatus, 'draft'); updateCalendarItemAccentValue(); hideMessage(els.calendarItemFormMessage); renderCalendarItemList();
+  }
+
+  function validateCalendarItem(item) {
+    if (!item.title || item.title.length > 100) return '請填寫日曆項目名稱（最多 100 字）。';
+    if (!['holiday', 'event'].includes(item.itemType)) return '日曆項目類型不合法。';
+    if (item.description.length > 500) return '日曆項目說明最多 500 字。';
+    if (!parseAdminIsoDate(item.startsOn)) return '請選擇有效的開始日。';
+    if (item.endsOn && !parseAdminIsoDate(item.endsOn)) return '請選擇有效的結束日。';
+    if (item.endsOn && item.endsOn < item.startsOn) return '結束日不可早於開始日。';
+    if (item.endsOn && (parseAdminIsoDate(item.endsOn).getTime() - parseAdminIsoDate(item.startsOn).getTime()) / 86400000 + 1 > 366) return '單一日曆項目最長可設定 366 天。';
+    if (!['active', 'draft', 'archived'].includes(item.status)) return '公開狀態不合法。';
+    if (!/^#[0-9a-f]{6}$/i.test(item.accent)) return '識別色不合法。';
+    return '';
+  }
+
+  async function saveCalendarItem(event) {
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.calendarItemFormMessage)) return; hideMessage(els.calendarItemFormMessage);
+    const item = { calendarItemId: String(els.calendarItemId.value || '').trim(), title: String(els.calendarItemTitle.value || '').trim(), itemType: els.calendarItemType.value, description: String(els.calendarItemDescription.value || '').trim(), status: els.calendarItemStatus.value, startsOn: String(els.calendarItemStartsOn.value || '').trim(), endsOn: String(els.calendarItemEndsOn.value || '').trim(), accent: safeAccent(els.calendarItemAccent.value) };
+    const validationMessage = validateCalendarItem(item); if (validationMessage) return showMessage(els.calendarItemFormMessage, validationMessage);
+    setSaving(els.saveCalendarItemButton, true, '正在儲存日曆項目…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.calendar-items.save', { calendarItem: item, expectedUpdatedAt: els.calendarItemExpectedUpdatedAt.value });
+      if (result.calendarItem) { state.calendarItems = replaceById(state.calendarItems, result.calendarItem, 'calendarItemId'); loadCalendarItemForm(result.calendarItem.calendarItemId); }
+      if (await refreshAfterSuccessfulWrite('日曆項目已儲存', els.calendarItemFormMessage)) showMessage(els.calendarItemFormMessage, '日曆項目已儲存；啟用後會顯示在會員日曆。', true);
+    } catch (error) { handleActionError(error, els.calendarItemFormMessage); } finally { setSaving(els.saveCalendarItemButton, false); }
+  }
+
+  async function deleteCalendarItem() {
+    if (requireRefreshBeforeWrite(els.calendarItemFormMessage)) return;
+    const calendarItemId = String(els.calendarItemId.value || '').trim(); const title = String(els.calendarItemTitle.value || '這個日曆項目').trim();
+    if (!calendarItemId || els.deleteCalendarItemButton.disabled) return;
+    if (!window.confirm('確定要刪除「' + title + '」嗎？這項日期將立即不再顯示於會員日曆。')) return;
+    const originalText = els.deleteCalendarItemButton.textContent;
+    els.deleteCalendarItemButton.disabled = true; els.deleteCalendarItemButton.textContent = '刪除中…'; showOperationProgress('正在刪除日曆項目…');
+    try {
+      await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.calendar-items.delete', { calendarItemId: calendarItemId, expectedUpdatedAt: els.calendarItemExpectedUpdatedAt.value });
+      state.calendarItems = state.calendarItems.filter((item) => item.calendarItemId !== calendarItemId); state.selectedCalendarItemId = ''; resetCalendarItemForm();
+      if (await refreshAfterSuccessfulWrite('日曆項目已刪除', els.calendarItemFormMessage)) showMessage(els.calendarItemFormMessage, '日曆項目已刪除。', true);
+    } catch (error) { handleActionError(error, els.calendarItemFormMessage); } finally { if (!state.writeConfirmationRequired && els.calendarItemId.value === calendarItemId) { els.deleteCalendarItemButton.disabled = false; els.deleteCalendarItemButton.textContent = originalText; } }
+  }
+
+  function updateCalendarItemAccentValue() { els.calendarItemAccentValue.textContent = safeAccent(els.calendarItemAccent.value).toUpperCase(); }
+
   function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.textContent = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberStatus.focus(); }
   function closeMemberModal() { els.memberModal.classList.add('hidden'); }
   async function saveMember(event) { event.preventDefault(); if (requireRefreshBeforeWrite(els.memberFormMessage)) return; hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true, '正在儲存會員狀態…'); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); showOperationSuccess('會員狀態已儲存'); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
@@ -549,7 +636,7 @@
     } catch (error) { handleActionError(error, els.grantFormMessage); } finally { setSaving(els.saveGrantButton, false); }
   }
 
-  function switchPanel(panel) { state.activePanel = panel; ['members', 'cards', 'events'].forEach((name) => { const selected = name === panel; els[`${name}Tab`].setAttribute('aria-selected', String(selected)); els[`${name}Panel`].classList.toggle('hidden', !selected); }); }
+  function switchPanel(panel) { state.activePanel = panel; ['members', 'cards', 'events', 'calendar'].forEach((name) => { const selected = name === panel; els[name + 'Tab'].setAttribute('aria-selected', String(selected)); els[name + 'Panel'].classList.toggle('hidden', !selected); }); }
   function switchCardWorkspace(workspace) { state.activeCardWorkspace = workspace; const workspaces = [['cards', 'cardSettingsTab', 'cardSettingsPanel'], ['tickets', 'ticketSettingsTab', 'ticketSettingsPanel']]; workspaces.forEach(([name, tabId, panelId]) => { const selected = name === workspace; els[tabId].setAttribute('aria-selected', String(selected)); els[panelId].classList.toggle('hidden', !selected); }); }
   function updateAccentValue() { els.accentValue.textContent = safeAccent(els.cardAccent.value).toUpperCase(); }
   function updateEditorStatus(element, status) { element.textContent = statusLabel(status); element.className = `editor-status ${status}`; }
