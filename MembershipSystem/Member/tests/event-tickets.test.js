@@ -210,7 +210,7 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(eventHtml, /static\.line-scdn\.net\/liff/);
   assert.match(adminHtml, /app\.js\?v=admin-date-mobile-20260905/);
   assert.match(eventHtml, /id="ticketModalAction"/);
-  assert.match(eventHtml, /id="memberTier"/);
+  assert.match(eventHtml, /id="membershipProgress"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
   assert.match(eventHtml, /app\.js\?v=event-tier-progress-20260905/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
@@ -246,11 +246,11 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(adminApp, /insertBefore\(eventTicketTierAccess/);
   assert.match(adminApp, /updateEventTicketTierSummary/);
   assert.match(eventApp, /tierEligible/);
-  assert.match(eventApp, /els\.memberTier\.textContent/);
-  assert.match(eventHtml, /id="tierProgressMessage"/);
-  assert.match(eventHtml, /id="serviceMinutesTotal"/);
-  assert.match(eventApp, /function renderMembershipProgress/);
-  assert.match(eventApp, /tierProgress/);
+  assert.match(eventHtml, /data-membership-current-tier/);
+  assert.match(eventHtml, /data-membership-summary/);
+  assert.match(eventHtml, /membership-progress\.js/);
+  assert.match(eventApp, /MembershipProgress\.render\(els\.membershipProgress, state\.profile\)/);
+  assert.doesNotMatch(eventApp, /function renderMembershipProgress/);
   assert.match(eventService, /eventTicketTierProgress_/);
   assert.match(eventApp, /目前會員等級無法領取或使用/);
   assert.match(storage, /EventTickets:/);

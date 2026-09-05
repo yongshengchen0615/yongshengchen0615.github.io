@@ -431,10 +431,12 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(pointsHtml, /id="ticketModalUsageInstructions"/);
   assert.match(pointsHtml, /id="confirmTicketUseButton"/);
   assert.match(pointsHtml, /id="membershipProgressTitle"/);
-  assert.match(pointsHtml, /id="pointsMemberTier"/);
+  assert.match(pointsHtml, /id="membershipProgress"/);
+  assert.match(pointsHtml, /data-membership-current-tier/);
+  assert.match(pointsHtml, /membership-progress\.js/);
   assert.match(pointsHtml, /集點卡票券總覽/);
-  assert.match(pointsApp, /function renderMembershipProgress/);
-  assert.match(pointsApp, /tierProgress/);
+  assert.match(pointsApp, /MembershipProgress\.render\(els\.membershipProgress, state\.profile\)/);
+  assert.doesNotMatch(pointsApp, /function renderMembershipProgress/);
   assert.doesNotMatch(pointsHtml, /id="milestoneList"/);
   assert.doesNotMatch(pointsApp, /renderMilestones/);
   assert.doesNotMatch(pointsApp, /已取得票券 · 還差/);

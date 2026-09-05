@@ -2,11 +2,11 @@
   'use strict';
 
   const initialMonth = firstOfMonth(taipeiToday());
-  const state = { config: null, idToken: '', items: [], initialMonth: initialMonth, visibleMonth: initialMonth, detailTrigger: null, lastWheelNavigationAt: 0, touchStart: null, suppressCalendarDayClickUntil: 0 };
+  const state = { config: null, idToken: '', profile: null, items: [], initialMonth: initialMonth, visibleMonth: initialMonth, detailTrigger: null, lastWheelNavigationAt: 0, touchStart: null, suppressCalendarDayClickUntil: 0 };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'calendarView', 'displayName', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.previousMonthButton.addEventListener('click', () => changeMonth(-1));
@@ -59,8 +59,10 @@
     const range = initialCalendarDataRange(state.initialMonth);
     try {
       const result = await window.MemberSystem.request(state.config, 'calendar', state.idToken, 'user.calendar.bootstrap', { rangeStart: range.start, rangeEnd: range.end });
+      state.profile = result.profile && typeof result.profile === 'object' ? result.profile : {};
       state.items = Array.isArray(result.items) ? result.items : [];
-      els.displayName.textContent = String(result.profile && result.profile.displayName || 'LINE 使用者');
+      els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
+      window.MembershipProgress.render(els.membershipProgress, state.profile);
       renderCalendar();
     } catch (error) {
       throw error;

@@ -10,10 +10,19 @@ function handleCalendarBootstrap_(identity, request) {
   const member = ensureMember_(identity);
   const range = calendarRangeFromRequest_(request);
   return {
-    profile: { displayName: String(member.display_name || identity.displayName || 'LINE 使用者') },
+    profile: calendarMemberProfileForClient_(member, identity),
     rangeStart: range.start,
     rangeEnd: range.end,
     items: readCalendarItemsForRange_(range.start, range.end)
+  };
+}
+
+function calendarMemberProfileForClient_(member, identity) {
+  const profile = memberForClient_(member);
+  return {
+    displayName: String(profile.displayName || identity.displayName || 'LINE 使用者'),
+    tier: String(profile.tier || '一般會員'),
+    tierProgress: profile.tierProgress && typeof profile.tierProgress === 'object' ? profile.tierProgress : {}
   };
 }
 

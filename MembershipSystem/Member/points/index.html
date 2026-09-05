@@ -7,8 +7,10 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>集點卡｜Lumen Club</title>
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="../shared/membership-progress.css?v=membership-progress-20260905">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="../shared/common.js" defer></script>
+  <script src="../shared/membership-progress.js?v=membership-progress-20260905" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
@@ -42,11 +44,11 @@
         <button id="refreshButton" class="refresh-button" type="button"><span aria-hidden="true">↻</span> 更新</button>
       </section>
 
-      <section class="membership-progress" aria-labelledby="membershipProgressTitle" aria-live="polite">
-        <div class="membership-progress-heading"><p class="kicker">Membership progress</p><h2 id="membershipProgressTitle">會員資格進度</h2><p id="pointsMemberTier" class="membership-tier">目前會員資格：一般會員</p></div>
-        <div class="membership-progress-summary"><span id="pointsServiceMinutesTotal">累積 0 分鐘</span><span id="pointsNextTierThreshold">下一階段資料載入中</span></div>
-        <div id="pointsTierProgressTrack" class="membership-progress-track" role="progressbar" aria-label="會員資格升等進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="pointsTierProgressBar"></span></div>
-        <p id="pointsTierProgressMessage" class="membership-progress-message">正在計算升等進度</p>
+      <section id="membershipProgress" class="membership-progress" aria-labelledby="membershipProgressTitle" aria-live="polite">
+        <div><p class="membership-progress-kicker">Membership progress</p><h2 id="membershipProgressTitle">會員階級</h2><p data-membership-current-tier class="membership-progress-current">目前會員階級：載入中</p></div>
+        <p data-membership-summary class="membership-progress-summary">累積 0 分鐘・下一階段資料載入中</p>
+        <p data-membership-remaining class="membership-progress-remaining">正在計算升等進度</p>
+        <div data-membership-progress-track class="membership-progress-track" role="progressbar" aria-label="會員階級進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-membership-progress-bar></span></div>
       </section>
 
       <div id="cardTabs" class="card-tabs" role="tablist" aria-label="選擇集點卡"></div>

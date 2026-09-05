@@ -32,6 +32,7 @@ function loadCalendarService() {
     withDataLock_: (callback) => callback(),
     rotateMembershipDataCacheEpoch_: () => {},
     ensureMember_: (identity) => rows.Members.find((member) => member.line_user_id === identity.lineUserId),
+    memberForClient_: (member) => ({ displayName: String(member.display_name || 'LINE 使用者'), tier: '銀級會員', tierProgress: { serviceMinutesTotal: 900, currentRequiredServiceMinutes: 600, nextTierLabel: '金級會員', nextRequiredServiceMinutes: 1800, remainingServiceMinutes: 900, isHighestTier: false } }),
     readRecords_: (sheetName) => rows[sheetName] || [],
     findRecordWithRow_: (sheetName, keyField, keyValue) => {
       const index = (rows[sheetName] || []).findIndex((record) => String(record[keyField] || '') === String(keyValue || ''));
@@ -55,6 +56,10 @@ test('member calendar returns only active items for a bounded three-month view',
   const { context, TestApiError } = loadCalendarService();
   const result = context.handleCalendarBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { rangeStart: '2026-08-01', rangeEnd: '2026-10-31' });
   assert.equal(result.profile.displayName, '測試會員');
+  assert.equal(result.profile.tier, '銀級會員');
+  assert.equal(result.profile.tierProgress.nextTierLabel, '金級會員');
+  assert.equal(result.profile.birthday, undefined);
+  assert.equal(result.profile.phone, undefined);
   assert.equal(result.rangeStart, '2026-08-01');
   assert.equal(result.rangeEnd, '2026-10-31');
   assert.equal(result.items.length, 1);
@@ -151,6 +156,10 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarHtml, /id="calendarRangeNotice"/);
   assert.match(calendarHtml, /id="calendarDetailModal"/);
   assert.match(calendarHtml, /id="calendarDetailItems"/);
+  assert.match(calendarHtml, /id="membershipProgress"/);
+  assert.match(calendarHtml, /membership-progress\.js/);
+  assert.match(calendarHtml, /data-membership-current-tier/);
+  assert.match(calendarApp, /MembershipProgress\.render\(els\.membershipProgress, state\.profile\)/);
   assert.doesNotMatch(calendarHtml, /id="calendarDetailType"/);
   assert.match(calendarApp, /openCalendarDateDetails/);
   assert.match(calendarApp, /data-calendar-date/);

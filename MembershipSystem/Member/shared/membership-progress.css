@@ -1,0 +1,9 @@
+.membership-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 13px 24px; margin: 18px 0; padding: 22px; overflow: hidden; color: #17352e; border: 1px solid rgba(223, 107, 77, .28); border-radius: 20px; background: linear-gradient(135deg, #fff8ed, #fffdf8); box-shadow: 0 14px 32px rgba(23, 53, 46, .07); }
+.membership-progress-kicker { margin: 0; color: #b65b42; font-size: 10px; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
+.membership-progress h2 { margin: 6px 0 8px; color: inherit; font-size: clamp(23px, 4vw, 30px); letter-spacing: -.07em; line-height: 1.05; }
+.membership-progress-current { margin: 0; color: #995330; font-size: 15px; font-weight: 900; line-height: 1.45; }
+.membership-progress-summary { align-self: end; margin: 0; color: #4e665f; font-size: 12px; font-weight: 800; line-height: 1.6; text-align: right; }
+.membership-progress-remaining { grid-column: 1 / -1; margin: -2px 0 -5px; color: #995330; font-size: 15px; font-weight: 900; line-height: 1.45; }
+.membership-progress-track { grid-column: 1 / -1; height: 11px; overflow: hidden; border-radius: 999px; background: #ecdcd1; }
+.membership-progress-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #df6b4d, #f1ad79); transition: width .45s ease; }
+@media (max-width: 620px) { .membership-progress { grid-template-columns: 1fr; gap: 11px; padding: 19px; }.membership-progress-summary { text-align: left; }.membership-progress-remaining { margin-top: -2px; } }
