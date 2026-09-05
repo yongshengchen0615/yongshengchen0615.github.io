@@ -88,6 +88,48 @@ test('calendar item settings normalize one-day entries, enforce conflicts, and a
   assert.equal(rows.AuditLogs.at(-1).action, 'CALENDAR_ITEM_DELETE');
 });
 
+test('calendar batch mutations validate every operation before writes and preserve individual display colors', () => {
+  const { context, rows, TestApiError } = loadCalendarService();
+  const beforeRejectedBatch = rows.CalendarItems.map((item) => ({ ...item }));
+  const beforeRejectedAuditCount = rows.AuditLogs.length;
+  assert.throws(
+    () => context.handleCalendarItemBatch_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
+      calendarItemOperations: [
+        { operation: 'save', calendarItem: { title: '不應寫入', itemType: 'event', description: '', startsOn: '2026-10-01', endsOn: '', status: 'active', accent: '#278258' } },
+        { operation: 'delete', calendarItemId: 'CI-1', expectedUpdatedAt: 'outdated' }
+      ]
+    }),
+    (error) => error instanceof TestApiError && error.code === 'CONFLICT'
+  );
+  assert.deepEqual(rows.CalendarItems, beforeRejectedBatch);
+  assert.equal(rows.AuditLogs.length, beforeRejectedAuditCount);
+
+  assert.throws(
+    () => context.handleCalendarItemBatch_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
+      calendarItemOperations: [
+        { operation: 'save', calendarItem: { calendarItemId: 'CI-1', title: '缺少版本', itemType: 'holiday', description: '', startsOn: '2026-09-25', endsOn: '', status: 'active', accent: '#DF6B4D' } }
+      ]
+    }),
+    (error) => error instanceof TestApiError && error.code === 'INVALID_CALENDAR_BATCH'
+  );
+
+  const result = context.handleCalendarItemBatch_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
+    calendarItemOperations: [
+      { operation: 'save', expectedUpdatedAt: '2026-09-01T00:00:00.000Z', calendarItem: { calendarItemId: 'CI-1', title: '店休調整', itemType: 'holiday', description: '調整後說明', startsOn: '2026-09-25', endsOn: '', status: 'active', accent: '#123ABC' } },
+      { operation: 'save', calendarItem: { title: '會員限定日', itemType: 'event', description: '可查看完整活動說明', startsOn: '2026-10-10', endsOn: '2026-10-11', status: 'active', accent: '#278258' } },
+      { operation: 'delete', calendarItemId: 'CI-2', expectedUpdatedAt: '2026-09-01T00:00:00.000Z' }
+    ]
+  });
+  assert.equal(result.operationCount, 3);
+  assert.equal(result.savedCalendarItems.length, 2);
+  assert.equal(Array.from(result.deletedCalendarItemIds).join(','), 'CI-2');
+  assert.equal(rows.CalendarItems.some((item) => item.calendar_item_id === 'CI-2'), false);
+  assert.equal(rows.CalendarItems.find((item) => item.calendar_item_id === 'CI-1').accent, '#123ABC');
+  assert.equal(result.savedCalendarItems.find((item) => item.title === '會員限定日').accent, '#278258');
+  assert.equal(rows.AuditLogs.filter((entry) => entry.action === 'CALENDAR_ITEM_BATCH_SAVE').length, 2);
+  assert.equal(rows.AuditLogs.filter((entry) => entry.action === 'CALENDAR_ITEM_BATCH_DELETE').length, 1);
+});
+
 test('calendar client and admin form keep read-only user display and server-admin write boundaries', () => {
   const calendarHtml = read('calendar/index.html');
   const calendarApp = read('calendar/app.js');
@@ -99,12 +141,18 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarApp, /signIn\(state\.config, 'calendar'\)/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(calendarApp, /rangeStart/);
+  assert.match(calendarHtml, /id="calendarDetailModal"/);
+  assert.match(calendarApp, /openCalendarItemDetail/);
+  assert.match(calendarApp, /data-calendar-item-id/);
   assert.doesNotMatch(calendarApp, /innerHTML/);
   assert.match(adminHtml, /id="calendarPanel"/);
   assert.match(adminHtml, /id="calendarItemForm"/);
+  assert.match(adminHtml, /id="calendarBatchRows"/);
   assert.match(adminApp, /admin\.calendar-items\.save/);
   assert.match(adminApp, /admin\.calendar-items\.delete/);
+  assert.match(adminApp, /admin\.calendar-items\.batch/);
   assert.match(code, /case 'admin\.calendar-items\.save':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemSave_/);
   assert.match(code, /case 'admin\.calendar-items\.delete':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemDelete_/);
+  assert.match(code, /case 'admin\.calendar-items\.batch':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemBatch_/);
   assert.match(auth, /MEMBERSHIP_CALENDAR_LINE_CHANNEL_ID/);
 });

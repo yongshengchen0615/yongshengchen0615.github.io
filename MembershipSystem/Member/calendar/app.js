@@ -1,16 +1,20 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', items: [], visibleMonth: firstOfMonth(taipeiToday()) };
+  const state = { config: null, idToken: '', items: [], visibleMonth: firstOfMonth(taipeiToday()), detailTrigger: null };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'calendarView', 'displayName', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarGrid', 'emptyView'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'calendarView', 'displayName', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailType', 'calendarDetailAccent', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailDescription'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.previousMonthButton.addEventListener('click', () => changeMonth(-1));
     els.nextMonthButton.addEventListener('click', () => changeMonth(1));
     els.todayButton.addEventListener('click', () => { state.visibleMonth = firstOfMonth(taipeiToday()); loadCalendar(true); });
+    els.calendarGrid.addEventListener('click', handleCalendarItemClick);
+    els.closeCalendarDetailButton.addEventListener('click', closeCalendarItemDetail);
+    els.calendarDetailModal.addEventListener('click', (event) => { if (event.target === els.calendarDetailModal) closeCalendarItemDetail(); });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeCalendarItemDetail(); });
     boot();
   });
 
@@ -34,6 +38,7 @@
   }
 
   async function loadCalendar(showBusy) {
+    closeCalendarItemDetail(false);
     if (showBusy) {
       els.previousMonthButton.disabled = true;
       els.nextMonthButton.disabled = true;
@@ -97,16 +102,55 @@
   }
 
   function createCalendarItem(item) {
-    const entry = document.createElement('div');
+    const entry = document.createElement('button');
+    entry.type = 'button';
     entry.className = 'calendar-item ' + (item.itemType === 'holiday' ? 'holiday' : 'event');
+    entry.dataset.calendarItemId = String(item.calendarItemId || '');
+    entry.setAttribute('aria-haspopup', 'dialog');
+    entry.setAttribute('aria-label', `查看${String(item.title || (item.itemType === 'holiday' ? '休假日' : '活動'))}的日期說明`);
     entry.style.setProperty('--item-accent', safeAccent(item.accent));
-    entry.title = String(item.description || item.title || '');
     const marker = document.createElement('i');
     marker.setAttribute('aria-hidden', 'true');
     const title = document.createElement('span');
     title.textContent = String(item.title || (item.itemType === 'holiday' ? '休假日' : '活動'));
     entry.append(marker, title);
     return entry;
+  }
+
+  function handleCalendarItemClick(event) {
+    const trigger = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null;
+    if (!trigger) return;
+    const item = state.items.find((value) => String(value.calendarItemId || '') === String(trigger.dataset.calendarItemId || ''));
+    if (item) openCalendarItemDetail(item, trigger);
+  }
+
+  function openCalendarItemDetail(item, trigger) {
+    state.detailTrigger = trigger instanceof HTMLElement ? trigger : null;
+    const isHoliday = item.itemType === 'holiday';
+    els.calendarDetailType.textContent = isHoliday ? '休假日' : '活動';
+    els.calendarDetailType.className = 'calendar-detail-type ' + (isHoliday ? 'holiday' : 'event');
+    els.calendarDetailAccent.style.background = safeAccent(item.accent);
+    els.calendarDetailTitle.textContent = String(item.title || (isHoliday ? '休假日' : '活動'));
+    els.calendarDetailDate.textContent = calendarItemDateRange(item.startsOn, item.endsOn);
+    els.calendarDetailDescription.textContent = String(item.description || '尚未提供其他說明。');
+    els.calendarDetailModal.classList.remove('hidden');
+    els.closeCalendarDetailButton.focus();
+  }
+
+  function closeCalendarItemDetail(restoreFocus = true) {
+    if (!els.calendarDetailModal || els.calendarDetailModal.classList.contains('hidden')) return;
+    els.calendarDetailModal.classList.add('hidden');
+    const trigger = state.detailTrigger;
+    state.detailTrigger = null;
+    if (restoreFocus && trigger && document.contains(trigger)) trigger.focus();
+  }
+
+  function calendarItemDateRange(startsOn, endsOn) {
+    const start = parseIsoDate(startsOn);
+    const end = parseIsoDate(endsOn || startsOn);
+    const format = (date) => new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }).format(date);
+    if (!start || !end) return '日期未設定';
+    return startsOn === (endsOn || startsOn) ? format(start) : `${format(start)} 至 ${format(end)}`;
   }
 
   function itemOnDate(item, date) {

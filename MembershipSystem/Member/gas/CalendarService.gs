@@ -4,6 +4,7 @@ const CALENDAR_ITEM_TYPES_ = Object.freeze(['holiday', 'event']);
 const CALENDAR_ITEM_STATUSES_ = Object.freeze(['active', 'draft', 'archived']);
 const CALENDAR_ITEM_MAX_VISIBLE_RANGE_DAYS_ = 62;
 const CALENDAR_ITEM_MAX_DURATION_DAYS_ = 366;
+const CALENDAR_ITEM_BATCH_MAX_OPERATIONS_ = 20;
 
 function handleCalendarBootstrap_(identity, request) {
   const member = ensureMember_(identity);
@@ -49,19 +50,9 @@ function calendarItemForClient_(item, includeAdminDetails) {
 }
 
 function handleCalendarItemSave_(identity, admin, request) {
-  const input = request.calendarItem && typeof request.calendarItem === 'object' && !Array.isArray(request.calendarItem) ? request.calendarItem : {};
-  const calendarItemId = String(input.calendarItemId || '').trim();
-  const title = String(input.title || '').trim();
-  const itemType = String(input.itemType || '').trim().toLowerCase();
-  const description = String(input.description || '').trim();
-  const startsOn = calendarNormalizeDate_(input.startsOn, '開始日');
-  const endsOn = calendarNormalizeDate_(input.endsOn || input.startsOn, '結束日');
-  const status = String(input.status || '').trim().toLowerCase();
-  const accent = calendarItemAccent_(input.accent);
+  const input = calendarItemInputFromRequest_(request.calendarItem);
+  const calendarItemId = input.calendarItemId;
   const expected = String(request.expectedUpdatedAt || '').trim();
-  if (!title || title.length > 100 || CALENDAR_ITEM_TYPES_.indexOf(itemType) < 0 || description.length > 500 || !startsOn || !endsOn || startsOn > endsOn || !calendarRangeWithinLimit_(startsOn, endsOn, CALENDAR_ITEM_MAX_DURATION_DAYS_) || CALENDAR_ITEM_STATUSES_.indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(String(input.accent || '').trim())) {
-    throw new ApiError(400, 'INVALID_CALENDAR_ITEM', '日曆項目的名稱、類型、日期、說明或狀態不合法。');
-  }
 
   return withDataLock_(function() {
     const now = nowIso_();
@@ -74,21 +65,60 @@ function handleCalendarItemSave_(identity, admin, request) {
       item = match.record;
       rowNumber = match.rowNumber;
     } else {
-      item = { calendar_item_id: 'CI-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), created_by: identity.lineUserId, created_at: now };
+      item = { calendar_item_id: calendarNewItemId_(), created_by: identity.lineUserId, created_at: now };
     }
-    item.title = title;
-    item.item_type = itemType;
-    item.description = description;
-    item.starts_on = startsOn;
-    item.ends_on = endsOn;
-    item.status = status;
-    item.accent = accent;
+    calendarApplyItemInput_(item, input, identity.lineUserId, now);
     item.updated_by = identity.lineUserId;
     item.updated_at = now;
     if (rowNumber) updateRecordAtRow_('CalendarItems', rowNumber, item); else appendRecord_('CalendarItems', item);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'CALENDAR_ITEM_SAVE', target_type: 'calendar_item', target_id: item.calendar_item_id, result: 'success', detail: 'Calendar item saved', created_at: now });
     rotateMembershipDataCacheEpoch_();
     return { calendarItem: calendarItemForClient_(item, true) };
+  });
+}
+
+function handleCalendarItemBatch_(identity, admin, request) {
+  const operations = calendarBatchOperationsFromRequest_(request);
+  return withDataLock_(function() {
+    const prepared = operations.map(function(operation) {
+      if (operation.operation === 'save' && !operation.calendarItem.calendarItemId) return { operation: operation, match: null };
+      const calendarItemId = operation.operation === 'save' ? operation.calendarItem.calendarItemId : operation.calendarItemId;
+      const match = findRecordWithRow_('CalendarItems', 'calendar_item_id', calendarItemId);
+      if (!match) throw new ApiError(404, 'CALENDAR_ITEM_NOT_FOUND', '找不到日曆項目。');
+      if (operation.expectedUpdatedAt && String(match.record.updated_at || '') !== operation.expectedUpdatedAt) {
+        throw new ApiError(409, 'CONFLICT', '日曆項目已被更新，請重新整理。');
+      }
+      return { operation: operation, match: match };
+    });
+    const now = nowIso_();
+    const savedCalendarItems = [];
+    const deletedCalendarItemIds = [];
+
+    prepared.forEach(function(entry) {
+      if (entry.operation.operation !== 'save') return;
+      const item = entry.match ? entry.match.record : {
+        calendar_item_id: calendarNewItemId_(),
+        created_by: identity.lineUserId,
+        created_at: now
+      };
+      calendarApplyItemInput_(item, entry.operation.calendarItem, identity.lineUserId, now);
+      if (entry.match) updateRecordAtRow_('CalendarItems', entry.match.rowNumber, item); else appendRecord_('CalendarItems', item);
+      savedCalendarItems.push(calendarItemForClient_(item, true));
+      appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'CALENDAR_ITEM_BATCH_SAVE', target_type: 'calendar_item', target_id: item.calendar_item_id, result: 'success', detail: 'Calendar batch item saved', created_at: now });
+    });
+
+    const deleteIds = prepared.filter(function(entry) { return entry.operation.operation === 'delete'; }).map(function(entry) { return entry.operation.calendarItemId; });
+    if (deleteIds.length) {
+      const deleteIdSet = Object.create(null);
+      deleteIds.forEach(function(calendarItemId) { deleteIdSet[calendarItemId] = true; });
+      deleteRecordsWhere_('CalendarItems', function(item) { return Boolean(deleteIdSet[String(item.calendar_item_id || '')]); });
+      deleteIds.forEach(function(calendarItemId) {
+        deletedCalendarItemIds.push(calendarItemId);
+        appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'CALENDAR_ITEM_BATCH_DELETE', target_type: 'calendar_item', target_id: calendarItemId, result: 'success', detail: 'Calendar batch item deleted', created_at: now });
+      });
+    }
+    rotateMembershipDataCacheEpoch_();
+    return { savedCalendarItems: savedCalendarItems, deletedCalendarItemIds: deletedCalendarItemIds, operationCount: operations.length };
   });
 }
 
@@ -105,6 +135,72 @@ function handleCalendarItemDelete_(identity, admin, request) {
     rotateMembershipDataCacheEpoch_();
     return { deleted: Boolean(deleted), calendarItemId: calendarItemId };
   });
+}
+
+function calendarItemInputFromRequest_(value) {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const input = {
+    calendarItemId: String(raw.calendarItemId || '').trim(),
+    title: String(raw.title || '').trim(),
+    itemType: String(raw.itemType || '').trim().toLowerCase(),
+    description: String(raw.description || '').trim(),
+    startsOn: calendarNormalizeDate_(raw.startsOn, '開始日'),
+    endsOn: calendarNormalizeDate_(raw.endsOn || raw.startsOn, '結束日'),
+    status: String(raw.status || '').trim().toLowerCase(),
+    accent: calendarItemAccent_(raw.accent)
+  };
+  if (input.calendarItemId.length > 80 || !input.title || input.title.length > 100 || CALENDAR_ITEM_TYPES_.indexOf(input.itemType) < 0 || input.description.length > 500 || !input.startsOn || !input.endsOn || input.startsOn > input.endsOn || !calendarRangeWithinLimit_(input.startsOn, input.endsOn, CALENDAR_ITEM_MAX_DURATION_DAYS_) || CALENDAR_ITEM_STATUSES_.indexOf(input.status) < 0 || !/^#[0-9a-f]{6}$/i.test(String(raw.accent || '').trim())) {
+    throw new ApiError(400, 'INVALID_CALENDAR_ITEM', '日曆項目的名稱、類型、日期、說明或狀態不合法。');
+  }
+  return input;
+}
+
+function calendarBatchOperationsFromRequest_(request) {
+  const rawOperations = request && request.calendarItemOperations;
+  if (!Array.isArray(rawOperations) || !rawOperations.length || rawOperations.length > CALENDAR_ITEM_BATCH_MAX_OPERATIONS_) {
+    throw new ApiError(400, 'INVALID_CALENDAR_BATCH', '每次批次處理需要 1–' + CALENDAR_ITEM_BATCH_MAX_OPERATIONS_ + ' 個日曆項目。');
+  }
+  const existingIds = Object.create(null);
+  return rawOperations.map(function(rawOperation) {
+    const value = rawOperation && typeof rawOperation === 'object' && !Array.isArray(rawOperation) ? rawOperation : {};
+    const operation = String(value.operation || '').trim().toLowerCase();
+    const expectedUpdatedAt = String(value.expectedUpdatedAt || '').trim();
+    if (expectedUpdatedAt.length > 80) throw new ApiError(400, 'INVALID_CALENDAR_BATCH', '日曆項目的版本資料不合法。');
+    if (operation === 'save') {
+      const calendarItem = calendarItemInputFromRequest_(value.calendarItem);
+      if (calendarItem.calendarItemId) {
+        if (!expectedUpdatedAt) throw new ApiError(400, 'INVALID_CALENDAR_BATCH', '批次修改需要日曆項目的版本資料。');
+        if (existingIds[calendarItem.calendarItemId]) throw new ApiError(400, 'DUPLICATE_CALENDAR_ITEM_OPERATION', '同一個日曆項目不能在同一批次重複處理。');
+        existingIds[calendarItem.calendarItemId] = true;
+      }
+      return { operation: operation, calendarItem: calendarItem, expectedUpdatedAt: expectedUpdatedAt };
+    }
+    if (operation === 'delete') {
+      const calendarItemId = String(value.calendarItemId || '').trim();
+      if (!calendarItemId || calendarItemId.length > 80) throw new ApiError(400, 'INVALID_CALENDAR_BATCH', '日曆項目識別碼不合法。');
+      if (!expectedUpdatedAt) throw new ApiError(400, 'INVALID_CALENDAR_BATCH', '批次刪除需要日曆項目的版本資料。');
+      if (existingIds[calendarItemId]) throw new ApiError(400, 'DUPLICATE_CALENDAR_ITEM_OPERATION', '同一個日曆項目不能在同一批次重複處理。');
+      existingIds[calendarItemId] = true;
+      return { operation: operation, calendarItemId: calendarItemId, expectedUpdatedAt: expectedUpdatedAt };
+    }
+    throw new ApiError(400, 'INVALID_CALENDAR_BATCH', '批次日曆操作不合法。');
+  });
+}
+
+function calendarApplyItemInput_(item, input, lineUserId, now) {
+  item.title = input.title;
+  item.item_type = input.itemType;
+  item.description = input.description;
+  item.starts_on = input.startsOn;
+  item.ends_on = input.endsOn;
+  item.status = input.status;
+  item.accent = input.accent;
+  item.updated_by = lineUserId;
+  item.updated_at = now;
+}
+
+function calendarNewItemId_() {
+  return 'CI-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase();
 }
 
 function calendarRangeFromRequest_(request) {

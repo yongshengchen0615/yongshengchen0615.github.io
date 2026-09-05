@@ -2,7 +2,7 @@
   'use strict';
 
   const EVENT_TICKET_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], calendarItems: [], stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], calendarItems: [], selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, writeConfirmationRequired: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -14,7 +14,7 @@
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
-      'newCalendarItemButton', 'calendarItemResultCount', 'calendarItemListItems', 'calendarItemEmptyState', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton',
+      'newCalendarItemButton', 'calendarItemResultCount', 'calendarItemListItems', 'calendarItemEmptyState', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
       'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -81,10 +81,17 @@
     els.deleteEventTicketButton.addEventListener('click', deleteEventTicket);
     els.newCalendarItemButton.addEventListener('click', resetCalendarItemForm);
     els.calendarItemListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null; if (button) loadCalendarItemForm(button.dataset.calendarItemId); });
+    els.calendarItemListItems.addEventListener('change', handleCalendarItemSelectionChange);
     els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
     els.calendarItemForm.addEventListener('submit', saveCalendarItem);
     els.resetCalendarItemButton.addEventListener('click', resetCalendarItemForm);
     els.deleteCalendarItemButton.addEventListener('click', deleteCalendarItem);
+    els.addCalendarBatchItemButton.addEventListener('click', addCalendarBatchItem);
+    els.queueSelectedCalendarItemsButton.addEventListener('click', queueSelectedCalendarItems);
+    els.deleteSelectedCalendarItemsButton.addEventListener('click', deleteSelectedCalendarItems);
+    els.calendarBatchRows.addEventListener('click', handleCalendarBatchRowClick);
+    els.clearCalendarBatchButton.addEventListener('click', clearCalendarBatch);
+    els.saveCalendarBatchButton.addEventListener('click', saveCalendarBatch);
     els.memberForm.addEventListener('submit', saveMember);
     els.cancelMemberButton.addEventListener('click', closeMemberModal);
     els.closeMemberModal.addEventListener('click', closeMemberModal);
@@ -120,6 +127,8 @@
       state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
       state.eventTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
       state.calendarItems = Array.isArray(result.calendarItems) ? result.calendarItems : [];
+      const calendarIds = new Set(state.calendarItems.map((item) => String(item.calendarItemId || '')));
+      state.selectedCalendarItemIds = new Set(Array.from(state.selectedCalendarItemIds).filter((calendarItemId) => calendarIds.has(calendarItemId)));
       state.stats = result.stats || {};
       els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
       els.roleLabel.textContent = String(result.role || 'Admin');
@@ -529,12 +538,196 @@
     els.calendarItemResultCount.textContent = String(state.calendarItems.length);
     els.calendarItemEmptyState.classList.toggle('hidden', state.calendarItems.length !== 0);
     els.calendarItemListItems.replaceChildren(...state.calendarItems.map((item) => {
+      const row = document.createElement('div'); row.className = 'calendar-list-row';
+      const selectLabel = document.createElement('label'); selectLabel.className = 'calendar-item-selector';
+      const select = document.createElement('input'); select.type = 'checkbox'; select.dataset.calendarItemSelect = String(item.calendarItemId || ''); select.checked = state.selectedCalendarItemIds.has(String(item.calendarItemId || ''));
+      select.setAttribute('aria-label', `選取${String(item.title || '日曆項目')}進行批次處理`);
+      selectLabel.append(select);
       const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.calendarItemId = String(item.calendarItemId); button.setAttribute('aria-selected', String(item.calendarItemId) === state.selectedCalendarItemId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(item.accent));
       const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(item.title || '未命名日期')));
       const end = String(item.endsOn || '') === String(item.startsOn || '') ? '' : '–' + formatAdminDateCompact(item.endsOn);
       const meta = document.createElement('small'); meta.textContent = (item.itemType === 'holiday' ? '休假日' : '活動') + ' · ' + formatAdminDateCompact(item.startsOn) + end + ' · ' + statusLabel(item.status);
-      button.append(title, meta); return button;
+      button.append(title, meta); row.append(selectLabel, button); return row;
     }));
+    renderCalendarBatchControls();
+  }
+
+  function handleCalendarItemSelectionChange(event) {
+    const input = event.target instanceof HTMLInputElement ? event.target : null;
+    if (!input || !input.dataset.calendarItemSelect) return;
+    const calendarItemId = String(input.dataset.calendarItemSelect || '');
+    if (input.checked) state.selectedCalendarItemIds.add(calendarItemId); else state.selectedCalendarItemIds.delete(calendarItemId);
+    renderCalendarBatchControls();
+  }
+
+  function selectedCalendarItems() {
+    return state.calendarItems.filter((item) => state.selectedCalendarItemIds.has(String(item.calendarItemId || '')));
+  }
+
+  function calendarBatchItemFromCalendarItem(item) {
+    return {
+      key: 'calendar-batch-' + String(state.calendarBatchNextKey++),
+      calendarItem: {
+        calendarItemId: String(item && item.calendarItemId || ''),
+        title: String(item && item.title || ''),
+        itemType: item && item.itemType === 'holiday' ? 'holiday' : 'event',
+        description: String(item && item.description || ''),
+        status: String(item && item.status || 'draft'),
+        startsOn: String(item && item.startsOn || todayAdminIsoDate()),
+        endsOn: String(item && item.endsOn || ''),
+        accent: safeAccent(item && item.accent || '#df6b4d')
+      },
+      expectedUpdatedAt: String(item && item.updatedAt || '')
+    };
+  }
+
+  function synchronizeCalendarBatchItemsFromDom() {
+    if (!els.calendarBatchRows.children.length) return;
+    state.calendarBatchItems = Array.from(els.calendarBatchRows.querySelectorAll('[data-calendar-batch-row]')).map((row) => ({
+      key: String(row.dataset.calendarBatchRow || ''),
+      calendarItem: {
+        calendarItemId: String(row.dataset.calendarItemId || ''),
+        title: String(row.querySelector('[data-calendar-batch-field="title"]')?.value || '').trim(),
+        itemType: String(row.querySelector('[data-calendar-batch-field="itemType"]')?.value || ''),
+        description: String(row.querySelector('[data-calendar-batch-field="description"]')?.value || '').trim(),
+        status: String(row.querySelector('[data-calendar-batch-field="status"]')?.value || ''),
+        startsOn: String(row.querySelector('[data-calendar-batch-field="startsOn"]')?.value || '').trim(),
+        endsOn: String(row.querySelector('[data-calendar-batch-field="endsOn"]')?.value || '').trim(),
+        accent: safeAccent(row.querySelector('[data-calendar-batch-field="accent"]')?.value || '')
+      },
+      expectedUpdatedAt: String(row.dataset.expectedUpdatedAt || '')
+    }));
+  }
+
+  function addCalendarBatchItem() {
+    synchronizeCalendarBatchItemsFromDom();
+    if (state.calendarBatchItems.length >= 20) return showMessage(els.calendarBatchMessage, '每次最多可批次處理 20 筆日曆項目。');
+    state.calendarBatchItems.push(calendarBatchItemFromCalendarItem(null));
+    hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+    els.calendarBatchRows.querySelector('[data-calendar-batch-row]:last-child [data-calendar-batch-field="title"]')?.focus();
+  }
+
+  function queueSelectedCalendarItems() {
+    synchronizeCalendarBatchItemsFromDom();
+    const queuedIds = new Set(state.calendarBatchItems.map((entry) => String(entry.calendarItem.calendarItemId || '')).filter(Boolean));
+    const selected = selectedCalendarItems().filter((item) => !queuedIds.has(String(item.calendarItemId || '')));
+    if (!selected.length) return showMessage(els.calendarBatchMessage, state.selectedCalendarItemIds.size ? '選取的項目都已加入批次。' : '請先勾選要批次修改的日曆項目。');
+    if (state.calendarBatchItems.length + selected.length > 20) return showMessage(els.calendarBatchMessage, '批次處理最多 20 筆；請減少選取項目後再加入。');
+    selected.forEach((item) => state.calendarBatchItems.push(calendarBatchItemFromCalendarItem(item)));
+    hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+  }
+
+  function createCalendarBatchField(labelText, field, type, value, options) {
+    const label = document.createElement('label'); label.className = 'calendar-batch-field';
+    if (field === 'description') label.classList.add('calendar-batch-description-field');
+    if (field === 'accent') label.classList.add('calendar-batch-accent-field');
+    const caption = document.createElement('span'); caption.textContent = labelText; label.append(caption);
+    let control;
+    if (type === 'select') {
+      control = document.createElement('select');
+      (options || []).forEach(([optionValue, optionLabel]) => { const option = document.createElement('option'); option.value = optionValue; option.textContent = optionLabel; control.append(option); });
+      control.value = String(value || '');
+    } else if (type === 'textarea') {
+      control = document.createElement('textarea'); control.rows = 3; control.maxLength = 500; control.value = String(value || '');
+    } else {
+      control = document.createElement('input'); control.type = type; control.value = String(value || '');
+      if (type === 'text') { control.maxLength = 100; control.required = true; }
+      if (type === 'date') control.required = field === 'startsOn';
+    }
+    control.dataset.calendarBatchField = field;
+    label.append(control);
+    return label;
+  }
+
+  function renderCalendarBatchRows() {
+    els.calendarBatchRows.replaceChildren(...state.calendarBatchItems.map((entry, index) => {
+      const item = entry.calendarItem;
+      const row = document.createElement('article'); row.className = 'calendar-batch-row'; row.dataset.calendarBatchRow = entry.key; row.dataset.calendarItemId = String(item.calendarItemId || ''); row.dataset.expectedUpdatedAt = String(entry.expectedUpdatedAt || '');
+      const heading = document.createElement('div'); heading.className = 'calendar-batch-row-heading';
+      const title = document.createElement('strong'); title.textContent = item.calendarItemId ? `修改項目 ${index + 1}` : `新增項目 ${index + 1}`;
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button'; remove.dataset.removeCalendarBatchRow = entry.key; remove.textContent = '移除'; heading.append(title, remove);
+      const fields = document.createElement('div'); fields.className = 'calendar-batch-fields';
+      fields.append(
+        createCalendarBatchField('名稱', 'title', 'text', item.title),
+        createCalendarBatchField('類型', 'itemType', 'select', item.itemType, [['holiday', '休假日'], ['event', '活動']]),
+        createCalendarBatchField('公開狀態', 'status', 'select', item.status, [['active', '啟用中'], ['draft', '草稿'], ['archived', '已封存']]),
+        createCalendarBatchField('開始日', 'startsOn', 'date', item.startsOn),
+        createCalendarBatchField('結束日（選填）', 'endsOn', 'date', item.endsOn),
+        createCalendarBatchField('識別色', 'accent', 'color', safeAccent(item.accent)),
+        createCalendarBatchField('說明（選填）', 'description', 'textarea', item.description)
+      );
+      row.append(heading, fields); return row;
+    }));
+    renderCalendarBatchControls();
+  }
+
+  function renderCalendarBatchControls() {
+    const selectedCount = state.selectedCalendarItemIds.size;
+    const batchCount = state.calendarBatchItems.length;
+    els.queueSelectedCalendarItemsButton.disabled = !selectedCount || state.writeConfirmationRequired;
+    els.deleteSelectedCalendarItemsButton.disabled = !selectedCount || state.writeConfirmationRequired;
+    els.addCalendarBatchItemButton.disabled = batchCount >= 20 || state.writeConfirmationRequired;
+    els.clearCalendarBatchButton.disabled = !batchCount || state.writeConfirmationRequired;
+    els.saveCalendarBatchButton.disabled = !batchCount || state.writeConfirmationRequired;
+    els.calendarBatchSummary.textContent = batchCount ? `待儲存 ${batchCount} 筆${selectedCount ? `；另選取 ${selectedCount} 筆可批次刪除或加入修改` : ''}。` : selectedCount ? `已選取 ${selectedCount} 筆，可加入批次修改或批次刪除。` : '尚未加入批次項目。';
+  }
+
+  function handleCalendarBatchRowClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-remove-calendar-batch-row]') : null;
+    if (!button) return;
+    synchronizeCalendarBatchItemsFromDom();
+    state.calendarBatchItems = state.calendarBatchItems.filter((entry) => entry.key !== button.dataset.removeCalendarBatchRow);
+    hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+  }
+
+  function clearCalendarBatch() {
+    state.calendarBatchItems = [];
+    hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+  }
+
+  function calendarBatchOperationsFromForm() {
+    synchronizeCalendarBatchItemsFromDom();
+    const operations = state.calendarBatchItems.map((entry) => ({ operation: 'save', calendarItem: entry.calendarItem, expectedUpdatedAt: entry.expectedUpdatedAt }));
+    for (let index = 0; index < operations.length; index += 1) {
+      const validationMessage = validateCalendarItem(operations[index].calendarItem);
+      if (validationMessage) return { operations: [], error: `第 ${index + 1} 筆：${validationMessage}` };
+    }
+    return { operations: operations, error: '' };
+  }
+
+  async function saveCalendarBatch() {
+    if (requireRefreshBeforeWrite(els.calendarBatchMessage)) return;
+    hideMessage(els.calendarBatchMessage);
+    const payload = calendarBatchOperationsFromForm();
+    if (payload.error) return showMessage(els.calendarBatchMessage, payload.error);
+    if (!payload.operations.length) return;
+    setSaving(els.saveCalendarBatchButton, true, '正在批次儲存日曆項目…', '批次儲存中…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.calendar-items.batch', { calendarItemOperations: payload.operations });
+      (Array.isArray(result.savedCalendarItems) ? result.savedCalendarItems : []).forEach((item) => { state.calendarItems = replaceById(state.calendarItems, item, 'calendarItemId'); });
+      state.calendarBatchItems = [];
+      if (await refreshAfterSuccessfulWrite(`已批次儲存 ${payload.operations.length} 筆日曆項目`, els.calendarBatchMessage)) showMessage(els.calendarBatchMessage, `已批次儲存 ${payload.operations.length} 筆日曆項目；啟用後會顯示在會員日曆。`, true);
+    } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { setSaving(els.saveCalendarBatchButton, false); renderCalendarBatchRows(); }
+  }
+
+  async function deleteSelectedCalendarItems() {
+    if (requireRefreshBeforeWrite(els.calendarBatchMessage)) return;
+    const selected = selectedCalendarItems();
+    if (!selected.length) return;
+    if (!window.confirm(`確定要批次刪除 ${selected.length} 筆日曆項目嗎？刪除後會立即不再顯示於會員日曆。`)) return;
+    hideMessage(els.calendarBatchMessage);
+    const operations = selected.map((item) => ({ operation: 'delete', calendarItemId: String(item.calendarItemId || ''), expectedUpdatedAt: String(item.updatedAt || '') }));
+    const originalText = els.deleteSelectedCalendarItemsButton.textContent;
+    els.deleteSelectedCalendarItemsButton.disabled = true; els.deleteSelectedCalendarItemsButton.textContent = '批次刪除中…'; showOperationProgress('正在批次刪除日曆項目…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.calendar-items.batch', { calendarItemOperations: operations });
+      const deletedIds = new Set(Array.isArray(result.deletedCalendarItemIds) ? result.deletedCalendarItemIds.map(String) : operations.map((operation) => operation.calendarItemId));
+      state.calendarItems = state.calendarItems.filter((item) => !deletedIds.has(String(item.calendarItemId || '')));
+      state.selectedCalendarItemIds = new Set();
+      state.calendarBatchItems = state.calendarBatchItems.filter((entry) => !deletedIds.has(String(entry.calendarItem.calendarItemId || '')));
+      if (state.selectedCalendarItemId && deletedIds.has(state.selectedCalendarItemId)) resetCalendarItemForm();
+      if (await refreshAfterSuccessfulWrite(`已批次刪除 ${operations.length} 筆日曆項目`, els.calendarBatchMessage)) showMessage(els.calendarBatchMessage, `已批次刪除 ${operations.length} 筆日曆項目。`, true);
+    } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { if (!state.writeConfirmationRequired) els.deleteSelectedCalendarItemsButton.textContent = originalText; renderCalendarBatchRows(); renderCalendarItemList(); }
   }
 
   function loadCalendarItemForm(calendarItemId) {
@@ -668,7 +861,7 @@
     const refreshButton = document.createElement('button'); refreshButton.type = 'button'; refreshButton.className = 'button button-outline uncertain-write-refresh'; refreshButton.dataset.uncertainWriteRefresh = 'true'; refreshButton.textContent = '重新整理確認'; refreshButton.addEventListener('click', () => window.location.reload());
     element.insertAdjacentElement('afterend', refreshButton);
   }
-  function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.deleteEventTicketButton, els.saveMemberButton, els.saveGrantButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; }
+  function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.deleteEventTicketButton, els.saveCalendarItemButton, els.deleteCalendarItemButton, els.addCalendarBatchItemButton, els.queueSelectedCalendarItemsButton, els.deleteSelectedCalendarItemsButton, els.clearCalendarBatchButton, els.saveCalendarBatchButton, els.saveMemberButton, els.saveGrantButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; }
   function requireRefreshBeforeWrite(element) { if (!state.writeConfirmationRequired) return false; showUncertainWriteMessage(element); return true; }
   function setSyncStatus(message, error) { els.syncStatus.textContent = message; els.syncStatus.classList.toggle('error', Boolean(error)); }
   async function refreshAfterSuccessfulWrite(successMessage, messageElement, showSuccessNotice = true) {

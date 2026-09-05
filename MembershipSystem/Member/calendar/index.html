@@ -6,10 +6,10 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>活動日曆｜Lumen Club</title>
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=calendar-20260906">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="../shared/common.js?v=calendar-20260905" defer></script>
-  <script src="./app.js?v=calendar-20260905" defer></script>
+  <script src="./app.js?v=calendar-20260906" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -23,6 +23,15 @@
       <section id="emptyView" class="empty-view hidden"><span aria-hidden="true">○</span><h2>這段期間還沒有日期</h2><p>新的休假日或活動日期，會顯示在這裡。</p></section>
       <p class="privacy-note"><span aria-hidden="true">i</span> 日曆只顯示啟用中的休假日與活動日期，不會顯示會員個人資料。</p>
     </main>
+    <div id="calendarDetailModal" class="calendar-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="calendarDetailTitle" aria-describedby="calendarDetailDescription">
+      <section class="calendar-detail-card">
+        <div class="calendar-detail-topline"><span id="calendarDetailType" class="calendar-detail-type">活動</span><button id="closeCalendarDetailButton" class="calendar-detail-close" type="button" aria-label="關閉日期說明">×</button></div>
+        <div id="calendarDetailAccent" class="calendar-detail-accent" aria-hidden="true"></div>
+        <h2 id="calendarDetailTitle">日期說明</h2>
+        <p id="calendarDetailDate" class="calendar-detail-date"></p>
+        <p id="calendarDetailDescription" class="calendar-detail-description"></p>
+      </section>
+    </div>
   </div>
 </body>
 </html>

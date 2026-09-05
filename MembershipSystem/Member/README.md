@@ -19,11 +19,11 @@ Member/
 
 ## 日曆功能
 
-日曆沿用同一個管理端，但會員端是獨立的 calendar HTML、CSS 與 JavaScript。管理員可新增、修改或刪除兩種類型的日期：休假日與活動；每筆可設定單日或最長 366 天的跨日區間、說明、識別色與公開狀態。只有啟用中的日期會顯示在會員日曆，且用戶端一次只讀取目前月曆六週範圍。
+日曆沿用同一個管理端，但會員端是獨立的 calendar HTML、CSS 與 JavaScript。管理員可新增、修改或刪除兩種類型的日期：休假日與活動；每筆可設定單日或最長 366 天的跨日區間、說明、識別色與公開狀態。管理端可一次新增或修改最多 20 筆，亦可勾選多筆既有日期後批次刪除；伺服器會先驗證整批資料與版本，再開始寫入。只有啟用中的日期會顯示在會員日曆，且用戶端一次只讀取目前月曆六週範圍。會員可點擊日期項目開啟小視窗，查看日期、類型與說明。
 
 日曆用戶端需要自己的 Calendar LIFF。部署前需在 config.json 的 calendarLiffId 填入該 LIFF ID，並在 GAS Script properties 設定 MEMBERSHIP_CALENDAR_LINE_CHANNEL_ID 為其所屬的純數字 LINE Channel ID。Calendar LIFF Endpoint URL 為 https://<your-pages-host>/MembershipSystem/Member/calendar/。
 
-第一次執行 setupMembershipSystem() 或部署更新後，系統會建立 CalendarItems 資料表。欄位包含日期項目 ID、名稱、類型、說明、起訖日、狀態、識別色與建立／更新稽核欄位。相關 API action 為 user.calendar.bootstrap、admin.calendar-items.save 與 admin.calendar-items.delete；後兩者僅限已授權的管理員。
+第一次執行 setupMembershipSystem() 或部署更新後，系統會建立 CalendarItems 資料表。欄位包含日期項目 ID、名稱、類型、說明、起訖日、狀態、識別色與建立／更新稽核欄位。相關 API action 為 user.calendar.bootstrap、admin.calendar-items.save、admin.calendar-items.delete 與 admin.calendar-items.batch；所有管理端寫入 action 僅限已授權的管理員。
 
 ## 初始化 GAS
 
@@ -116,6 +116,7 @@ GAS 會建立並維護以下 schema：
 - `user.event.ticket.redeem`（Event LIFF；本人直接使用）
 - `admin.event-tickets.save`
 - `admin.event-tickets.delete`（刪除活動票券設定；保留已領取的票券快照與稽核紀錄）
+- `admin.calendar-items.batch`（一次新增／修改／刪除最多 20 筆日曆項目）
 
 `admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，並以 `ticketTemplateId` 選擇票券庫中的票券；兌換時會自動扣除相同的 `thresholdStamps` 點數。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
 

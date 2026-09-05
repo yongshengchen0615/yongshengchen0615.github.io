@@ -15,6 +15,7 @@ const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'admin.event-tickets.delete',
   'admin.calendar-items.save',
   'admin.calendar-items.delete',
+  'admin.calendar-items.batch',
   'user.event.ticket.claim',
   'user.event.ticket.redeem',
   'admin.stamps.add',
@@ -41,7 +42,7 @@ function doPost(e) {
       throw new ApiError(400, 'CLIENT_TYPE_MISMATCH', 'Client type 與 API action 不一致。');
     }
     const identity = authenticateLine_(request.idToken, clientType);
-    enforceRateLimit_(identity.lineUserId, request.action);
+    enforceRateLimit_(identity.lineUserId, request.action, request);
     ensureMembershipStorage_();
 
     let data;
@@ -136,6 +137,11 @@ function doPost(e) {
         data = handleCalendarItemDelete_(identity, admin, request);
         break;
       }
+      case 'admin.calendar-items.batch': {
+        const admin = authorizeAdmin_(identity);
+        data = handleCalendarItemBatch_(identity, admin, request);
+        break;
+      }
       case 'admin.stamps.add': {
         const admin = authorizeAdmin_(identity);
         data = handleStampAdd_(identity, admin, request);
@@ -201,12 +207,15 @@ function clientTypeForAction_(action) {
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }
 
-function enforceRateLimit_(principal, action) {
+function enforceRateLimit_(principal, action, request) {
   if (!principal) return;
   const digest = digest_(principal);
   const bucket = Math.floor(Date.now() / 60000);
   const isWrite = MEMBERSHIP_WRITE_ACTIONS_.indexOf(action) !== -1;
   const limit = isWrite ? MEMBERSHIP_WRITE_LIMIT_ : MEMBERSHIP_READ_LIMIT_;
+  const cost = isWrite && action === 'admin.calendar-items.batch'
+    ? Math.max(1, Math.min(20, Array.isArray(request && request.calendarItemOperations) ? request.calendarItemOperations.length : 1))
+    : 1;
   const key = 'membership:rl:' + digest.substring(0, 32) + ':' + bucket + ':' + (isWrite ? 'w' : 'r');
   const cache = CacheService.getScriptCache();
 
@@ -214,8 +223,8 @@ function enforceRateLimit_(principal, action) {
   // serialize on one global ScriptLock. Writes keep the exact locked counter.
   if (!isWrite) {
     const current = Number(cache.get(key) || '0');
-    if (current + 1 > limit) throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。');
-    cache.put(key, String(current + 1), 120);
+    if (current + cost > limit) throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。');
+    cache.put(key, String(current + cost), 120);
     return;
   }
 
@@ -223,8 +232,8 @@ function enforceRateLimit_(principal, action) {
   try { lock.waitLock(1000); } catch (_) { throw new ApiError(429, 'RATE_LIMIT_BUSY', '請求過於密集，請稍後再試。'); }
   try {
     const current = Number(cache.get(key) || '0');
-    if (current + 1 > limit) throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。');
-    cache.put(key, String(current + 1), 120);
+    if (current + cost > limit) throw new ApiError(429, 'RATE_LIMITED', '請求過於密集，請稍後再試。');
+    cache.put(key, String(current + cost), 120);
   } finally { lock.releaseLock(); }
 }
 
