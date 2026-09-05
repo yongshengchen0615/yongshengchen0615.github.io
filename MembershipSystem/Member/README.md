@@ -56,6 +56,10 @@ https://<your-pages-host>/MembershipSystem/Member/event/
 
 Member、Points、Event 與 Admin 使用不同 LIFF；各 surface 的 LIFF 可依 LINE 設定使用相同或不同 Channel，但 GAS Script Property 必須填入該 LIFF 所屬的 Channel ID。四者至少需要 `openid` scope，讓前端取得 `liff.getIDToken()`；在 LINE 內建 LIFF browser 中，每次由 `liff.init()` 自動確認登入，在外部瀏覽器中每次開啟都會先清除既有 LIFF session，再重新 `liff.login()`。登入回跳只使用一次性的 URL flow marker，不保存 ID token。GAS 會依照 request action 將 token 綁定到對應 Channel，再驗證 `aud`、`iss`、`exp` 與 `sub`。
 
+## 建立新環境前清除資料
+
+在 Apps Script 編輯器手動執行 `resetMembershipSystemDataForNewEnvironment()`，可清除所有系統資料表的資料列，包含會員、管理員、集點卡、票券、流水與稽核紀錄。此操作不可復原；不會刪除 Spreadsheet、欄位標題、欄位設定、Script Properties 或 LIFF 設定，也不會開放為 Web API。執行後會只重建一般 0、銀級 600、金級 1800、白金 3600 分鐘的預設會員等級門檻，方便直接建立新的測試或正式環境。
+
 注意：LIFF ID 格式通常是 `ChannelID-識別碼`。GAS Script Property 要填前面的純數字 Channel ID，不要填完整的 LIFF ID；兩個不同 LIFF 如果屬於同一個 Channel，Member 與 Points 的 Channel Property 可以填相同數字。
 
 ## Google Sheets 資料表

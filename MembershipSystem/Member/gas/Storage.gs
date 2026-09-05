@@ -2,6 +2,8 @@
 
 const MEMBERSHIP_STORAGE_PROPERTY_ = 'MEMBERSHIP_SYSTEM_SPREADSHEET_ID';
 const MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_ = 120;
+const MEMBERSHIP_DATA_CACHE_EPOCH_KEY_ = 'membership:data-epoch:v1';
+const MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_ = 21600;
 const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at', 'birthday', 'phone']),
   Admins: Object.freeze(['line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at']),
@@ -39,6 +41,18 @@ function ensureMembershipStorage_() {
 
 function membershipSchemaCache_() {
   try { return CacheService.getScriptCache(); } catch (_) { return null; }
+}
+
+function membershipDataCacheEpoch_() {
+  const cache = membershipSchemaCache_();
+  if (!cache) return 'default';
+  try { return String(cache.get(MEMBERSHIP_DATA_CACHE_EPOCH_KEY_) || 'default'); } catch (_) { return 'default'; }
+}
+
+function rotateMembershipDataCacheEpoch_() {
+  const cache = membershipSchemaCache_();
+  if (!cache) return;
+  try { cache.put(MEMBERSHIP_DATA_CACHE_EPOCH_KEY_, Utilities.getUuid(), MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_); } catch (_) {}
 }
 
 function membershipSchemaCacheKey_(spreadsheetId) {
@@ -142,6 +156,35 @@ function deleteRecordsWhere_(sheetName, predicate) {
     sheet.deleteRows(start, end - start + 1);
   }
   return rowNumbers.length;
+}
+
+function resetMembershipSystemDataForNewEnvironment() {
+  const spreadsheet = ensureMembershipStorage_();
+  const clearedRowsBySheet = withDataLock_(function() {
+    const cleared = {};
+    Object.keys(MEMBERSHIP_SHEET_SCHEMAS_).forEach(function(sheetName) {
+      const sheet = spreadsheet.getSheetByName(sheetName);
+      if (!sheet) throw new ApiError(500, 'SCHEMA_MISSING', '缺少資料表：' + sheetName);
+      const rowCount = Math.max(0, sheet.getLastRow() - 1);
+      if (rowCount) sheet.deleteRows(2, rowCount);
+      cleared[sheetName] = rowCount;
+    });
+
+    // Keep the required system baseline while leaving all member and operational records empty.
+    const now = nowIso_();
+    MEMBERSHIP_TIER_DEFINITIONS_.forEach(function(definition) {
+      appendRecord_('MembershipTierSettings', { tier_key: definition.tierKey, tier_label: definition.label, required_service_minutes: String(definition.defaultRequiredServiceMinutes), updated_by: 'system', updated_at: now });
+    });
+    return cleared;
+  });
+
+  const cache = membershipSchemaCache_();
+  if (cache) {
+    try { cache.remove(membershipSchemaCacheKey_(spreadsheet.getId())); } catch (_) {}
+  }
+  clearMembershipTierSettingsCache_();
+  rotateMembershipDataCacheEpoch_();
+  return { reset: true, spreadsheetId: spreadsheet.getId(), clearedRowsBySheet, restoredMembershipTierSettings: MEMBERSHIP_TIER_DEFINITIONS_.length };
 }
 
 function recordToRow_(headers, record) { return headers.map(function(header) { return escapeSheetValue_(record && record[header] !== undefined ? record[header] : ''); }); }

@@ -204,10 +204,15 @@ test('uncertain writes lock the affected UI and expose a reload confirmation pat
 
 test('storage schema checks are cached and point-card bootstrap has a snapshot read path', () => {
   const storage = read('gas/Storage.gs');
+  const code = read('gas/Code.gs');
   const pointService = read('gas/PointCardService.gs');
   assert.match(storage, /MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_/);
   assert.match(storage, /membershipSchemaCacheKey_/);
   assert.match(storage, /schemaCache\.get\(schemaCacheKey\) === 'ready'/);
+  assert.match(storage, /function resetMembershipSystemDataForNewEnvironment\(\)/);
+  assert.match(storage, /sheet\.deleteRows\(2, rowCount\)/);
+  assert.match(storage, /rotateMembershipDataCacheEpoch_\(\)/);
+  assert.doesNotMatch(code, /case 'admin\.membership\.reset'|case 'user\.membership\.reset'/);
   assert.match(pointService, /function readPointCardSnapshot_\(\)/);
   assert.match(pointService, /function pointCardTicketIssuanceRequired_\(lineUserId, snapshot\)/);
   assert.match(pointService, /const lockedSnapshot = readPointCardSnapshot_\(\)/);

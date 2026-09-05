@@ -166,7 +166,8 @@ function serviceMinutesTotalsByMember_() {
 }
 
 function serviceMinutesTotalCacheKey_(lineUserId) {
-  return 'membership:service-minutes:' + digest_(String(lineUserId || '').trim()).substring(0, 32);
+  const dataEpoch = typeof membershipDataCacheEpoch_ === 'function' ? membershipDataCacheEpoch_() : 'default';
+  return 'membership:service-minutes:' + dataEpoch + ':' + digest_(String(lineUserId || '').trim()).substring(0, 32);
 }
 
 function clearServiceMinutesTotalCache_(lineUserId) {
