@@ -59,7 +59,8 @@ test('user clients expose separate entry points while admin uses one app', () =>
   assert.match(eventHtml, /\.\/app\.js/);
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
-  assert.match(calendarHtml, /\.\/app\.js/);
+  assert.match(calendarHtml, /\.\.\/shared\/common\.js\?v=calendar-\d{8}/);
+  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
