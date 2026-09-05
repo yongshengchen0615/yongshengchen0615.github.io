@@ -1,12 +1,12 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', cards: [], tickets: [], activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '' };
+  const state = { config: null, idToken: '', profile: null, cards: [], tickets: [], activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
     [
-      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
+      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'pointsMemberTier', 'pointsServiceMinutesTotal', 'pointsNextTierThreshold', 'pointsTierProgressTrack', 'pointsTierProgressBar', 'pointsTierProgressMessage', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
       'ticketModal', 'closeTicketModal', 'ticketModalTicketName', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalCost', 'ticketModalProcessing', 'confirmTicketUseButton', 'refreshTicketButton', 'ticketModalResult', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
@@ -36,10 +36,12 @@
     if (showBusy) { els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
     try {
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.bootstrap');
+      state.profile = result.profile && typeof result.profile === 'object' ? result.profile : {};
       state.cards = Array.isArray(result.cards) ? result.cards : [];
       state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
-      els.displayName.textContent = String(result.profile && result.profile.displayName || 'LINE 使用者');
+      els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
       if (!state.cards.some((card) => card.cardId === state.activeCardId)) state.activeCardId = state.cards[0] ? state.cards[0].cardId : '';
+      renderMembershipProgress(state.profile);
       renderCards();
     } catch (error) { if (!showBusy) throw error; showError(error); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
   }
@@ -66,9 +68,45 @@
     els.progressCount.textContent = String(stamps);
     els.progressMessage.textContent = card.expired ? '這張集點卡已超過使用期限' : card.status === 'archived' ? '這張卡已停止集點' : '點數會持續累積，達標後系統會將票券放進下方。';
     els.remainingMessage.textContent = ticketOfferCount ? `已設定 ${ticketOfferCount} 種兌換票券` : '尚未設定兌換票券';
-    els.rewardTitle.textContent = '票券總覽';
+    els.rewardTitle.textContent = '集點卡票券總覽';
     els.cardExpiry.textContent = card.expiryMode === 'date' && card.expiresOn ? `${card.expired ? '已於' : '使用期限至'} ${card.expiresOn}` : '使用期限：無期限';
     els.updatedAt.textContent = card.updatedAt ? `更新於 ${window.MemberSystem.formatDateTime(card.updatedAt)}` : '尚未更新';
+  }
+
+  function formatServiceMinutes(value) {
+    return `${Math.max(0, Math.floor(Number(value) || 0))} 分鐘`;
+  }
+
+  function membershipProgressForProfile(profile) {
+    const raw = profile && profile.tierProgress || {};
+    const serviceMinutesTotal = Math.max(0, Math.floor(Number(raw.serviceMinutesTotal || 0)));
+    const currentRequiredServiceMinutes = Math.max(0, Math.floor(Number(raw.currentRequiredServiceMinutes || 0)));
+    const nextRequiredServiceMinutes = Math.floor(Number(raw.nextRequiredServiceMinutes));
+    const nextTierLabel = String(raw.nextTierLabel || '').trim();
+    const hasNextTier = Boolean(nextTierLabel && Number.isInteger(nextRequiredServiceMinutes) && nextRequiredServiceMinutes > currentRequiredServiceMinutes);
+    const remainingServiceMinutes = hasNextTier ? Math.max(0, Math.floor(Number(raw.remainingServiceMinutes))) : 0;
+    const percent = hasNextTier ? Math.min(100, Math.max(0, (serviceMinutesTotal - currentRequiredServiceMinutes) / (nextRequiredServiceMinutes - currentRequiredServiceMinutes) * 100)) : raw.isHighestTier ? 100 : 0;
+    return { serviceMinutesTotal, nextTierLabel, nextRequiredServiceMinutes, remainingServiceMinutes, hasNextTier, isHighestTier: Boolean(raw.isHighestTier), percent };
+  }
+
+  function renderMembershipProgress(profile) {
+    const progress = membershipProgressForProfile(profile);
+    els.pointsMemberTier.textContent = `目前會員資格：${String(profile && profile.tier || '一般會員')}`;
+    els.pointsServiceMinutesTotal.textContent = `累積 ${formatServiceMinutes(progress.serviceMinutesTotal)}`;
+    if (progress.hasNextTier) {
+      els.pointsNextTierThreshold.textContent = `下一階段門檻 ${formatServiceMinutes(progress.nextRequiredServiceMinutes)}`;
+      els.pointsTierProgressMessage.textContent = `距離 ${progress.nextTierLabel} 還需要 ${formatServiceMinutes(progress.remainingServiceMinutes)}`;
+    } else if (progress.isHighestTier) {
+      els.pointsNextTierThreshold.textContent = '目前沒有下一個階段';
+      els.pointsTierProgressMessage.textContent = '已達最高會員資格';
+    } else {
+      els.pointsNextTierThreshold.textContent = '請稍後重新整理確認';
+      els.pointsTierProgressMessage.textContent = '下一階段資格資訊載入中';
+    }
+    const roundedPercent = Math.round(progress.percent);
+    els.pointsTierProgressBar.style.width = `${roundedPercent}%`;
+    els.pointsTierProgressTrack.setAttribute('aria-valuenow', String(roundedPercent));
+    els.pointsTierProgressTrack.setAttribute('aria-valuetext', progress.hasNextTier ? `距離 ${progress.nextTierLabel} 還需要 ${formatServiceMinutes(progress.remainingServiceMinutes)}` : els.pointsTierProgressMessage.textContent);
   }
 
   function renderTickets(card) {

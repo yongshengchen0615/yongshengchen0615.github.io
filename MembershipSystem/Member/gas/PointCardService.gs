@@ -19,7 +19,16 @@ function handlePointCardBootstrap_(identity) {
       return lockedSnapshot;
     });
   }
-  return { profile: { displayName: String(member.display_name || identity.displayName) }, cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot) };
+  return { profile: pointCardMembershipProfileForClient_(member, identity), cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot) };
+}
+
+function pointCardMembershipProfileForClient_(member, identity) {
+  const profile = memberForClient_(member);
+  return {
+    displayName: String(profile.displayName || identity.displayName || 'LINE 使用者'),
+    tier: String(profile.tier || '一般會員'),
+    tierProgress: profile.tierProgress || {}
+  };
 }
 
 function readPointCardSnapshot_() {

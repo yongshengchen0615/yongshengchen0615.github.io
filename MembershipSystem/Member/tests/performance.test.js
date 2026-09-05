@@ -104,6 +104,7 @@ test('write rate limiting stays exact and lock-backed', () => {
 test('synthetic 5,000 point-card bootstrap reads do not acquire the data lock when no ticket is due', () => {
   const { context, counters } = loadPointCardBootstrap();
   context.ensureMember_ = () => ({ display_name: '測試會員' });
+  context.memberForClient_ = () => ({ displayName: '測試會員', tier: '一般會員', tierProgress: {} });
   context.readPointCardSnapshot_ = () => ({ id: 'read-only' });
   context.pointCardTicketIssuanceRequired_ = () => false;
   context.visiblePointCardsForMember_ = () => [];
@@ -119,6 +120,7 @@ test('point-card bootstrap re-reads inside the lock before issuing a due ticket'
   const { context, counters } = loadPointCardBootstrap();
   let snapshotReads = 0;
   context.ensureMember_ = () => ({ display_name: '測試會員' });
+  context.memberForClient_ = () => ({ displayName: '測試會員', tier: '一般會員', tierProgress: {} });
   context.readPointCardSnapshot_ = () => ({ id: ++snapshotReads });
   context.pointCardTicketIssuanceRequired_ = (lineUserId, snapshot) => snapshot.id === 1;
   context.ensurePointCardTicketsForMember_ = () => {};
