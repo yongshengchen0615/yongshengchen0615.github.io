@@ -122,7 +122,7 @@
     const entry = document.createElement('span');
     entry.className = 'calendar-item ' + (item.itemType === 'holiday' ? 'holiday' : 'event');
     if (item.itemType === 'event' && item.tierEligible === false) entry.classList.add('tier-ineligible');
-    entry.style.setProperty('--item-accent', safeAccent(item.accent));
+    applyCalendarItemAccent(entry, item.accent);
     const marker = document.createElement('i');
     marker.setAttribute('aria-hidden', 'true');
     const title = document.createElement('span');
@@ -306,6 +306,19 @@
 
   function safeAccent(value) {
     return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#df6b4d';
+  }
+
+  function applyCalendarItemAccent(element, value) {
+    const accent = safeAccent(value);
+    element.style.setProperty('--item-accent', accent);
+    element.style.setProperty('--item-foreground', accentForeground(accent));
+  }
+
+  function accentForeground(value) {
+    const hex = safeAccent(value).slice(1);
+    const channels = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+    const luminance = channels.reduce((sum, channel, index) => sum + (channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)) * [0.2126, 0.7152, 0.0722][index], 0);
+    return luminance > 0.179 ? '#000000' : '#ffffff';
   }
 
   function setView(view) {

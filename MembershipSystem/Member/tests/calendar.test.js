@@ -182,9 +182,22 @@ test('calendar batch mutations validate every operation before writes and preser
   assert.equal(rows.AuditLogs.filter((entry) => entry.action === 'CALENDAR_ITEM_BATCH_DELETE').length, 1);
 });
 
+test('calendar client uses each valid accent as the item background with a readable foreground', () => {
+  const calendarApp = read('calendar/app.js');
+  const helperSource = calendarApp.match(/  function safeAccent\(value\) \{[\s\S]*?\n  function setView/)[0].replace(/\n  function setView$/, '');
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(helperSource, context, { filename: 'calendar/app.js' });
+  assert.equal(context.safeAccent('#123ABC'), '#123ABC');
+  assert.equal(context.safeAccent('invalid'), '#df6b4d');
+  assert.equal(context.accentForeground('#FFFFFF'), '#000000');
+  assert.equal(context.accentForeground('#123ABC'), '#ffffff');
+});
+
 test('calendar client and admin form keep read-only user display and server-admin write boundaries', () => {
   const calendarHtml = read('calendar/index.html');
   const calendarApp = read('calendar/app.js');
+  const calendarStyles = read('calendar/styles.css');
   const adminHtml = read('admin/index.html');
   const adminApp = read('admin/app.js');
   const code = read('gas/Code.gs');
@@ -215,6 +228,13 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarApp, /openCalendarDateDetails/);
   assert.match(calendarApp, /data-calendar-date/);
   assert.match(calendarApp, /state\.items\.filter\(\(item\) => itemOnDate\(item, isoDate\)\)/);
+  assert.match(calendarApp, /applyCalendarItemAccent\(entry, item\.accent\)/);
+  assert.match(calendarApp, /--item-foreground/);
+  assert.match(calendarApp, /accentForeground/);
+  assert.match(calendarStyles, /\.calendar-item \{[^}]*color: var\(--item-foreground[^}]*background: var\(--item-accent/);
+  assert.doesNotMatch(calendarStyles, /\.calendar-item\.holiday \{[^}]*background:/);
+  assert.doesNotMatch(calendarStyles, /\.calendar-item\.event \{[^}]*background:/);
+  assert.match(calendarHtml, /calendar-20260908-item-accent-background/);
   assert.doesNotMatch(calendarApp, /innerHTML/);
   assert.match(adminHtml, /id="calendarPanel"/);
   assert.match(adminHtml, /id="calendarItemForm"/);

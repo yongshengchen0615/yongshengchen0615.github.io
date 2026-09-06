@@ -34,11 +34,9 @@ button { font: inherit; }
 .day-number { width: 24px; height: 24px; display: grid; place-items: center; color: #17352e; border-radius: 50%; font-size: 12px; font-weight: 900; }
 .outside .day-number { color: #9ba59e; }
 .today .day-number { color: #fffdf8; background: #df6b4d; }
-.calendar-item { min-width: 0; display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 5px; color: #53675e; border-left: 2px solid var(--item-accent, #df6b4d); border-radius: 3px; background: #f5f7f2; font-size: 10px; font-weight: 800; line-height: 1.25; text-align: left; }
-.calendar-item.holiday { color: #954b3d; background: #fff1ec; }
-.calendar-item.event { color: #276c4d; background: #edf8ef; }
-.calendar-item.event.tier-ineligible { color: #806d52; background: #fff8e8; border-left-style: dashed; }
-.calendar-item i { width: 5px; height: 5px; color: var(--item-accent, #df6b4d); }
+.calendar-item { min-width: 0; display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 5px; color: var(--item-foreground, #000000); border-left: 2px solid currentColor; border-radius: 3px; background: var(--item-accent, #df6b4d); font-size: 10px; font-weight: 800; line-height: 1.25; text-align: left; }
+.calendar-item.event.tier-ineligible { border-left-style: dashed; }
+.calendar-item i { width: 5px; height: 5px; color: currentColor; }
 .calendar-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty-view { margin-top: 22px; padding: 46px 20px; color: #6d7b73; text-align: center; border: 1px dashed #cad7cc; border-radius: 17px; }
 .empty-view > span { color: #df6b4d; font-size: 32px; }
