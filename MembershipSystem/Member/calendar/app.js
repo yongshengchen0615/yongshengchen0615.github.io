@@ -191,6 +191,17 @@
       const labels = Array.isArray(item.allowedTierLabels) && item.allowedTierLabels.length ? item.allowedTierLabels.join('、') : '未設定';
       tierAccess.textContent = item.tierEligible === false ? `可參加階級：${labels}。目前會員階級尚無法參加。` : `可參加階級：${labels}。`;
       detail.append(tierAccess);
+      const linkUrl = String(item.linkUrl || '').trim();
+      const linkLabel = String(item.linkLabel || '').trim();
+      if (item.tierEligible !== false && linkLabel && isSafeCalendarLink(linkUrl)) {
+        const link = document.createElement('a');
+        link.className = 'calendar-detail-link';
+        link.href = linkUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = linkLabel;
+        detail.append(link);
+      }
     }
     return detail;
   }
@@ -212,6 +223,11 @@
     const startsOn = String(item && item.startsOn || '');
     const endsOn = String(item && item.endsOn || startsOn);
     return Boolean(startsOn && endsOn && startsOn <= date && endsOn >= date);
+  }
+
+  function isSafeCalendarLink(value) {
+    const url = String(value || '').trim();
+    return /^https:\/\/[^\s<>"']+$/i.test(url) && /^https:\/\/[^\/?#@]+(?:[\/?#]|$)/i.test(url);
   }
 
   function calendarItemOverlapsRange(item, start, end) {

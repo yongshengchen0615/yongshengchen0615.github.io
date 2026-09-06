@@ -48,6 +48,7 @@ function readCalendarItemsForRange_(rangeStart, rangeEnd, memberTierKey) {
 function calendarItemForClient_(item, includeAdminDetails, memberTierKey) {
   const itemType = String(item.item_type || '') === 'holiday' ? 'holiday' : 'event';
   const allowedTierKeys = itemType === 'event' ? calendarItemAllowedTierKeys_(item) : [];
+  const link = itemType === 'event' ? calendarItemLink_(item) : { label: '', url: '' };
   const clientItem = {
     calendarItemId: String(item.calendar_item_id || ''),
     title: String(item.title || ''),
@@ -58,7 +59,9 @@ function calendarItemForClient_(item, includeAdminDetails, memberTierKey) {
     status: String(item.status || 'draft'),
     accent: calendarItemAccent_(item.accent),
     allowedTierKeys: allowedTierKeys,
-    allowedTierLabels: calendarItemTierLabels_(allowedTierKeys)
+    allowedTierLabels: calendarItemTierLabels_(allowedTierKeys),
+    linkLabel: link.label,
+    linkUrl: link.url
   };
   if (!includeAdminDetails && itemType === 'event') clientItem.tierEligible = allowedTierKeys.indexOf(memberTierKey) >= 0;
   if (includeAdminDetails) {
@@ -167,7 +170,8 @@ function calendarItemInputFromRequest_(value) {
     endsOn: calendarNormalizeDate_(raw.endsOn || raw.startsOn, '結束日'),
     status: String(raw.status || '').trim().toLowerCase(),
     accent: calendarItemAccent_(raw.accent),
-    allowedTierKeys: Object.prototype.hasOwnProperty.call(raw, 'allowedTierKeys') ? raw.allowedTierKeys : undefined
+    allowedTierKeys: Object.prototype.hasOwnProperty.call(raw, 'allowedTierKeys') ? raw.allowedTierKeys : undefined,
+    link: Object.prototype.hasOwnProperty.call(raw, 'linkLabel') || Object.prototype.hasOwnProperty.call(raw, 'linkUrl') ? { label: raw.linkLabel, url: raw.linkUrl } : undefined
   };
   if (input.calendarItemId.length > 80 || !input.title || input.title.length > 100 || CALENDAR_ITEM_TYPES_.indexOf(input.itemType) < 0 || input.description.length > 500 || !input.startsOn || !input.endsOn || input.startsOn > input.endsOn || !calendarRangeWithinLimit_(input.startsOn, input.endsOn, CALENDAR_ITEM_MAX_DURATION_DAYS_) || CALENDAR_ITEM_STATUSES_.indexOf(input.status) < 0 || !/^#[0-9a-f]{6}$/i.test(String(raw.accent || '').trim())) {
     throw new ApiError(400, 'INVALID_CALENDAR_ITEM', '日曆項目的名稱、類型、日期、說明或狀態不合法。');
@@ -216,6 +220,9 @@ function calendarApplyItemInput_(item, input, lineUserId, now) {
   item.status = input.status;
   item.accent = input.accent;
   item.allowed_tier_keys = JSON.stringify(calendarItemAllowedTierKeysForSave_(input, item));
+  const link = calendarItemLinkForSave_(input, item);
+  item.link_label = link.label;
+  item.link_url = link.url;
   item.updated_by = lineUserId;
   item.updated_at = now;
 }
@@ -263,6 +270,29 @@ function calendarItemAllowedTierKeysForSave_(input, existingItem) {
     return existingItem && String(existingItem.item_type || '') === 'event' ? calendarItemAllowedTierKeys_(existingItem) : calendarItemAllTierKeys_();
   }
   return normalizeCalendarItemAllowedTierKeys_(input.allowedTierKeys);
+}
+
+function calendarItemLink_(item) {
+  const label = String(item && item.link_label || '').trim();
+  const url = String(item && item.link_url || '').trim();
+  return label && label.length <= 80 && url && url.length <= 2048 && calendarItemIsSafeHttpsUrl_(url) ? { label: label, url: url } : { label: '', url: '' };
+}
+
+function calendarItemLinkForSave_(input, existingItem) {
+  if (input.itemType !== 'event') return { label: '', url: '' };
+  if (input.link === undefined) return calendarItemLink_(existingItem);
+  const label = String(input.link.label || '').trim();
+  const url = String(input.link.url || '').trim();
+  if (!label && !url) return { label: '', url: '' };
+  if (!label || !url || label.length > 80 || url.length > 2048 || !calendarItemIsSafeHttpsUrl_(url)) {
+    throw new ApiError(400, 'INVALID_CALENDAR_ITEM', '活動連結名稱與 HTTPS 網址不合法。');
+  }
+  return { label: label, url: url };
+}
+
+function calendarItemIsSafeHttpsUrl_(value) {
+  const url = String(value || '').trim();
+  return /^https:\/\/[^\s<>"']+$/i.test(url) && /^https:\/\/[^\/?#@]+(?:[\/?#]|$)/i.test(url);
 }
 
 function calendarMemberTierKey_(profile) {
