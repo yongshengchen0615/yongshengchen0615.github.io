@@ -2,6 +2,8 @@
   'use strict';
 
   const EVENT_TICKET_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
+  const CALENDAR_ITEM_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
+  const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], calendarItems: [], selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, writeConfirmationRequired: false };
   const els = {};
 
@@ -30,6 +32,7 @@
       eventTicketTierAccess.addEventListener('change', updateEventTicketTierSummary);
       updateEventTicketTierSummary();
     }
+    ensureCalendarItemTierAccess();
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.membersTab.addEventListener('click', () => switchPanel('members'));
@@ -83,6 +86,7 @@
     els.calendarItemListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null; if (button) loadCalendarItemForm(button.dataset.calendarItemId); });
     els.calendarItemListItems.addEventListener('change', handleCalendarItemSelectionChange);
     els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
+    els.calendarItemForm.addEventListener('change', handleCalendarItemFormChange);
     els.calendarItemForm.addEventListener('submit', saveCalendarItem);
     els.resetCalendarItemButton.addEventListener('click', resetCalendarItemForm);
     els.deleteCalendarItemButton.addEventListener('click', deleteCalendarItem);
@@ -90,6 +94,7 @@
     els.queueSelectedCalendarItemsButton.addEventListener('click', queueSelectedCalendarItems);
     els.deleteSelectedCalendarItemsButton.addEventListener('click', deleteSelectedCalendarItems);
     els.calendarBatchRows.addEventListener('click', handleCalendarBatchRowClick);
+    els.calendarBatchRows.addEventListener('change', handleCalendarBatchRowChange);
     els.clearCalendarBatchButton.addEventListener('click', clearCalendarBatch);
     els.saveCalendarBatchButton.addEventListener('click', saveCalendarBatch);
     els.memberForm.addEventListener('submit', saveMember);
@@ -546,7 +551,8 @@
       const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.calendarItemId = String(item.calendarItemId); button.setAttribute('aria-selected', String(item.calendarItemId) === state.selectedCalendarItemId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(item.accent));
       const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(item.title || '未命名日期')));
       const end = String(item.endsOn || '') === String(item.startsOn || '') ? '' : '–' + formatAdminDateCompact(item.endsOn);
-      const meta = document.createElement('small'); meta.textContent = (item.itemType === 'holiday' ? '休假日' : '活動') + ' · ' + formatAdminDateCompact(item.startsOn) + end + ' · ' + statusLabel(item.status);
+      const tierSummary = item.itemType === 'event' ? ' · ' + calendarItemTierSummaryText(item.allowedTierKeys) : '';
+      const meta = document.createElement('small'); meta.textContent = (item.itemType === 'holiday' ? '休假日' : '活動') + tierSummary + ' · ' + formatAdminDateCompact(item.startsOn) + end + ' · ' + statusLabel(item.status);
       button.append(title, meta); row.append(selectLabel, button); return row;
     }));
     renderCalendarBatchControls();
@@ -575,7 +581,8 @@
         status: String(item && item.status || 'draft'),
         startsOn: String(item && item.startsOn || todayAdminIsoDate()),
         endsOn: String(item && item.endsOn || ''),
-        accent: safeAccent(item && item.accent || '#df6b4d')
+        accent: safeAccent(item && item.accent || '#df6b4d'),
+        allowedTierKeys: item && item.itemType === 'event' ? normalizeCalendarItemTierKeys(item.allowedTierKeys, CALENDAR_ITEM_TIER_KEYS) : []
       },
       expectedUpdatedAt: String(item && item.updatedAt || '')
     };
@@ -593,7 +600,8 @@
         status: String(row.querySelector('[data-calendar-batch-field="status"]')?.value || ''),
         startsOn: String(row.querySelector('[data-calendar-batch-field="startsOn"]')?.value || '').trim(),
         endsOn: String(row.querySelector('[data-calendar-batch-field="endsOn"]')?.value || '').trim(),
-        accent: safeAccent(row.querySelector('[data-calendar-batch-field="accent"]')?.value || '')
+        accent: safeAccent(row.querySelector('[data-calendar-batch-field="accent"]')?.value || ''),
+        allowedTierKeys: calendarTierKeysFromAccess(row.querySelector('[data-calendar-tier-access]'))
       },
       expectedUpdatedAt: String(row.dataset.expectedUpdatedAt || '')
     }));
@@ -639,6 +647,89 @@
     return label;
   }
 
+  function createCalendarTierAccess() {
+    const access = document.createElement('fieldset'); access.className = 'event-ticket-tier-access'; access.dataset.calendarTierAccess = 'true';
+    const legend = document.createElement('legend'); legend.textContent = '這個活動的參加會員階級';
+    const description = document.createElement('p'); description.textContent = '只在類型為「活動」時套用。每筆活動各自儲存設定，未符合階級的會員仍可看到活動與資格提示。';
+    const options = document.createElement('div'); options.className = 'event-ticket-tier-options';
+    CALENDAR_ITEM_TIER_KEYS.forEach((tierKey) => {
+      const label = document.createElement('label'); const input = document.createElement('input'); input.type = 'checkbox'; input.value = tierKey; input.checked = true; input.dataset.calendarAllowedTierKey = 'true';
+      label.append(input, document.createTextNode(CALENDAR_ITEM_TIER_LABELS[tierKey])); options.append(label);
+    });
+    const summary = document.createElement('output'); summary.className = 'event-ticket-tier-summary'; summary.dataset.calendarTierSummary = 'true'; summary.setAttribute('aria-live', 'polite');
+    access.append(legend, description, options, summary);
+    return access;
+  }
+
+  function ensureCalendarItemTierAccess() {
+    let access = document.getElementById('calendarItemAllowedTiers');
+    if (!access) {
+      access = createCalendarTierAccess(); access.id = 'calendarItemAllowedTiers';
+      const titleField = els.calendarItemTitle.closest('label');
+      if (titleField) els.calendarItemForm.insertBefore(access, titleField);
+    }
+    updateCalendarItemTierSummary();
+    updateCalendarItemTypeUI();
+    return access;
+  }
+
+  function normalizeCalendarItemTierKeys(tierKeys, fallback) {
+    if (!Array.isArray(tierKeys)) return Array.isArray(fallback) ? fallback.slice() : [];
+    return CALENDAR_ITEM_TIER_KEYS.filter((tierKey) => tierKeys.includes(tierKey));
+  }
+
+  function calendarTierKeysFromAccess(access) {
+    if (!access) return [];
+    return Array.from(access.querySelectorAll('input[data-calendar-allowed-tier-key]:checked')).map((input) => String(input.value || '')).filter((tierKey) => CALENDAR_ITEM_TIER_KEYS.includes(tierKey));
+  }
+
+  function setCalendarTierAccess(access, tierKeys) {
+    if (!access) return;
+    const allowed = normalizeCalendarItemTierKeys(tierKeys, CALENDAR_ITEM_TIER_KEYS);
+    access.querySelectorAll('input[data-calendar-allowed-tier-key]').forEach((input) => { input.checked = allowed.includes(input.value); });
+    updateCalendarTierAccessSummary(access);
+  }
+
+  function calendarItemTierSummaryText(tierKeys) {
+    const labels = normalizeCalendarItemTierKeys(tierKeys, CALENDAR_ITEM_TIER_KEYS).map((tierKey) => CALENDAR_ITEM_TIER_LABELS[tierKey]);
+    return labels.length === CALENDAR_ITEM_TIER_KEYS.length ? '所有會員等級' : labels.length ? labels.join('、') : '尚未設定參加階級';
+  }
+
+  function updateCalendarTierAccessSummary(access) {
+    const summary = access && access.querySelector('[data-calendar-tier-summary]');
+    if (summary) summary.textContent = '已選擇：' + calendarItemTierSummaryText(calendarTierKeysFromAccess(access));
+  }
+
+  function collectCalendarItemAllowedTiers() { return calendarTierKeysFromAccess(document.getElementById('calendarItemAllowedTiers')); }
+
+  function setCalendarItemAllowedTiers(tierKeys) { setCalendarTierAccess(document.getElementById('calendarItemAllowedTiers'), tierKeys); }
+
+  function updateCalendarItemTierSummary() { updateCalendarTierAccessSummary(document.getElementById('calendarItemAllowedTiers')); }
+
+  function updateCalendarItemTypeUI() {
+    const access = document.getElementById('calendarItemAllowedTiers');
+    if (!access) return;
+    const isEvent = els.calendarItemType.value === 'event';
+    access.classList.toggle('hidden', !isEvent);
+    access.querySelectorAll('input[data-calendar-allowed-tier-key]').forEach((input) => { input.disabled = !isEvent; });
+  }
+
+  function handleCalendarItemFormChange(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    if (target === els.calendarItemType) updateCalendarItemTypeUI();
+    if (target.matches('input[data-calendar-allowed-tier-key]')) updateCalendarItemTierSummary();
+  }
+
+  function updateCalendarBatchTierAccess(row) {
+    const access = row && row.querySelector('[data-calendar-tier-access]');
+    if (!access) return;
+    const isEvent = row.querySelector('[data-calendar-batch-field="itemType"]')?.value === 'event';
+    access.classList.toggle('hidden', !isEvent);
+    access.querySelectorAll('input[data-calendar-allowed-tier-key]').forEach((input) => { input.disabled = !isEvent; });
+    updateCalendarTierAccessSummary(access);
+  }
+
   function renderCalendarBatchRows() {
     els.calendarBatchRows.replaceChildren(...state.calendarBatchItems.map((entry, index) => {
       const item = entry.calendarItem;
@@ -656,7 +747,9 @@
         createCalendarBatchField('識別色', 'accent', 'color', safeAccent(item.accent)),
         createCalendarBatchField('說明（選填）', 'description', 'textarea', item.description)
       );
-      row.append(heading, fields); return row;
+      const tierAccess = createCalendarTierAccess();
+      setCalendarTierAccess(tierAccess, item.allowedTierKeys);
+      row.append(heading, fields, tierAccess); updateCalendarBatchTierAccess(row); return row;
     }));
     renderCalendarBatchControls();
   }
@@ -678,6 +771,14 @@
     synchronizeCalendarBatchItemsFromDom();
     state.calendarBatchItems = state.calendarBatchItems.filter((entry) => entry.key !== button.dataset.removeCalendarBatchRow);
     hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+  }
+
+  function handleCalendarBatchRowChange(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const row = target && target.closest('[data-calendar-batch-row]');
+    if (!row) return;
+    if (target.matches('[data-calendar-batch-field="itemType"]')) updateCalendarBatchTierAccess(row);
+    if (target.matches('input[data-calendar-allowed-tier-key]')) updateCalendarTierAccessSummary(row.querySelector('[data-calendar-tier-access]'));
   }
 
   function clearCalendarBatch() {
@@ -742,21 +843,23 @@
     els.calendarItemStartsOn.value = String(item.startsOn || '');
     els.calendarItemEndsOn.value = String(item.endsOn || '') === String(item.startsOn || '') ? '' : String(item.endsOn || '');
     els.calendarItemAccent.value = safeAccent(item.accent || '#df6b4d');
+    setCalendarItemAllowedTiers(item.allowedTierKeys);
     els.deleteCalendarItemButton.disabled = false; els.deleteCalendarItemButton.textContent = '刪除目前項目';
-    updateCalendarItemAccentValue(); hideMessage(els.calendarItemFormMessage);
+    updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage);
     els.calendarItemEditorKicker.textContent = 'Edit calendar item'; els.calendarItemEditorTitle.textContent = String(item.title || '編輯日曆項目'); updateEditorStatus(els.calendarItemEditorStatus, item.status); renderCalendarItemList();
   }
 
   function resetCalendarItemForm() {
     state.selectedCalendarItemId = ''; els.calendarItemForm.reset();
-    els.calendarItemId.value = ''; els.calendarItemExpectedUpdatedAt.value = ''; els.calendarItemType.value = 'holiday'; els.calendarItemStatus.value = 'draft'; els.calendarItemStartsOn.value = todayAdminIsoDate(); els.calendarItemEndsOn.value = ''; els.calendarItemAccent.value = '#df6b4d';
+    els.calendarItemId.value = ''; els.calendarItemExpectedUpdatedAt.value = ''; els.calendarItemType.value = 'holiday'; els.calendarItemStatus.value = 'draft'; els.calendarItemStartsOn.value = todayAdminIsoDate(); els.calendarItemEndsOn.value = ''; els.calendarItemAccent.value = '#df6b4d'; setCalendarItemAllowedTiers(CALENDAR_ITEM_TIER_KEYS);
     els.deleteCalendarItemButton.disabled = true; els.deleteCalendarItemButton.textContent = '先儲存後才能刪除';
-    els.calendarItemEditorKicker.textContent = 'Create calendar item'; els.calendarItemEditorTitle.textContent = '新增日曆項目'; updateEditorStatus(els.calendarItemEditorStatus, 'draft'); updateCalendarItemAccentValue(); hideMessage(els.calendarItemFormMessage); renderCalendarItemList();
+    els.calendarItemEditorKicker.textContent = 'Create calendar item'; els.calendarItemEditorTitle.textContent = '新增日曆項目'; updateEditorStatus(els.calendarItemEditorStatus, 'draft'); updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage); renderCalendarItemList();
   }
 
   function validateCalendarItem(item) {
     if (!item.title || item.title.length > 100) return '請填寫日曆項目名稱（最多 100 字）。';
     if (!['holiday', 'event'].includes(item.itemType)) return '日曆項目類型不合法。';
+    if (item.itemType === 'event' && !normalizeCalendarItemTierKeys(item.allowedTierKeys).length) return '請至少選擇一個可參加活動的會員階級。';
     if (item.description.length > 500) return '日曆項目說明最多 500 字。';
     if (!parseAdminIsoDate(item.startsOn)) return '請選擇有效的開始日。';
     if (item.endsOn && !parseAdminIsoDate(item.endsOn)) return '請選擇有效的結束日。';
@@ -769,7 +872,7 @@
 
   async function saveCalendarItem(event) {
     event.preventDefault(); if (requireRefreshBeforeWrite(els.calendarItemFormMessage)) return; hideMessage(els.calendarItemFormMessage);
-    const item = { calendarItemId: String(els.calendarItemId.value || '').trim(), title: String(els.calendarItemTitle.value || '').trim(), itemType: els.calendarItemType.value, description: String(els.calendarItemDescription.value || '').trim(), status: els.calendarItemStatus.value, startsOn: String(els.calendarItemStartsOn.value || '').trim(), endsOn: String(els.calendarItemEndsOn.value || '').trim(), accent: safeAccent(els.calendarItemAccent.value) };
+    const item = { calendarItemId: String(els.calendarItemId.value || '').trim(), title: String(els.calendarItemTitle.value || '').trim(), itemType: els.calendarItemType.value, description: String(els.calendarItemDescription.value || '').trim(), status: els.calendarItemStatus.value, startsOn: String(els.calendarItemStartsOn.value || '').trim(), endsOn: String(els.calendarItemEndsOn.value || '').trim(), allowedTierKeys: els.calendarItemType.value === 'event' ? collectCalendarItemAllowedTiers() : [], accent: safeAccent(els.calendarItemAccent.value) };
     const validationMessage = validateCalendarItem(item); if (validationMessage) return showMessage(els.calendarItemFormMessage, validationMessage);
     setSaving(els.saveCalendarItemButton, true, '正在儲存日曆項目…');
     try {

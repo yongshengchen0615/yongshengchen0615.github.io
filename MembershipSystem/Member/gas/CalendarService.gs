@@ -9,11 +9,12 @@ const CALENDAR_ITEM_BATCH_MAX_OPERATIONS_ = 20;
 function handleCalendarBootstrap_(identity, request) {
   const member = ensureMember_(identity);
   const range = calendarRangeFromRequest_(request);
+  const profile = calendarMemberProfileForClient_(member, identity);
   return {
-    profile: calendarMemberProfileForClient_(member, identity),
+    profile: profile,
     rangeStart: range.start,
     rangeEnd: range.end,
-    items: readCalendarItemsForRange_(range.start, range.end)
+    items: readCalendarItemsForRange_(range.start, range.end, calendarMemberTierKey_(profile))
   };
 }
 
@@ -34,23 +35,32 @@ function readCalendarItems_(includeAdminDetails) {
   });
 }
 
-function readCalendarItemsForRange_(rangeStart, rangeEnd) {
-  return readCalendarItems_(false).filter(function(item) {
+function readCalendarItemsForRange_(rangeStart, rangeEnd, memberTierKey) {
+  return readRecords_('CalendarItems').map(function(item) {
+    return calendarItemForClient_(item, false, memberTierKey);
+  }).filter(function(item) {
     return item.status === 'active' && calendarItemOverlapsRange_(item, rangeStart, rangeEnd);
+  }).sort(function(left, right) {
+    return String(left.startsOn).localeCompare(String(right.startsOn)) || String(left.title).localeCompare(String(right.title));
   });
 }
 
-function calendarItemForClient_(item, includeAdminDetails) {
+function calendarItemForClient_(item, includeAdminDetails, memberTierKey) {
+  const itemType = String(item.item_type || '') === 'holiday' ? 'holiday' : 'event';
+  const allowedTierKeys = itemType === 'event' ? calendarItemAllowedTierKeys_(item) : [];
   const clientItem = {
     calendarItemId: String(item.calendar_item_id || ''),
     title: String(item.title || ''),
-    itemType: String(item.item_type || '') === 'holiday' ? 'holiday' : 'event',
+    itemType: itemType,
     description: String(item.description || ''),
     startsOn: String(item.starts_on || ''),
     endsOn: String(item.ends_on || ''),
     status: String(item.status || 'draft'),
-    accent: calendarItemAccent_(item.accent)
+    accent: calendarItemAccent_(item.accent),
+    allowedTierKeys: allowedTierKeys,
+    allowedTierLabels: calendarItemTierLabels_(allowedTierKeys)
   };
+  if (!includeAdminDetails && itemType === 'event') clientItem.tierEligible = allowedTierKeys.indexOf(memberTierKey) >= 0;
   if (includeAdminDetails) {
     clientItem.createdAt = String(item.created_at || '');
     clientItem.updatedAt = String(item.updated_at || '');
@@ -156,7 +166,8 @@ function calendarItemInputFromRequest_(value) {
     startsOn: calendarNormalizeDate_(raw.startsOn, '開始日'),
     endsOn: calendarNormalizeDate_(raw.endsOn || raw.startsOn, '結束日'),
     status: String(raw.status || '').trim().toLowerCase(),
-    accent: calendarItemAccent_(raw.accent)
+    accent: calendarItemAccent_(raw.accent),
+    allowedTierKeys: Object.prototype.hasOwnProperty.call(raw, 'allowedTierKeys') ? raw.allowedTierKeys : undefined
   };
   if (input.calendarItemId.length > 80 || !input.title || input.title.length > 100 || CALENDAR_ITEM_TYPES_.indexOf(input.itemType) < 0 || input.description.length > 500 || !input.startsOn || !input.endsOn || input.startsOn > input.endsOn || !calendarRangeWithinLimit_(input.startsOn, input.endsOn, CALENDAR_ITEM_MAX_DURATION_DAYS_) || CALENDAR_ITEM_STATUSES_.indexOf(input.status) < 0 || !/^#[0-9a-f]{6}$/i.test(String(raw.accent || '').trim())) {
     throw new ApiError(400, 'INVALID_CALENDAR_ITEM', '日曆項目的名稱、類型、日期、說明或狀態不合法。');
@@ -204,8 +215,59 @@ function calendarApplyItemInput_(item, input, lineUserId, now) {
   item.ends_on = input.endsOn;
   item.status = input.status;
   item.accent = input.accent;
+  item.allowed_tier_keys = JSON.stringify(calendarItemAllowedTierKeysForSave_(input, item));
   item.updated_by = lineUserId;
   item.updated_at = now;
+}
+
+function calendarItemTierDefinitions_() {
+  if (typeof MEMBERSHIP_TIER_DEFINITIONS_ !== 'undefined' && Array.isArray(MEMBERSHIP_TIER_DEFINITIONS_)) return MEMBERSHIP_TIER_DEFINITIONS_;
+  return [
+    { tierKey: 'general', label: '一般會員' },
+    { tierKey: 'silver', label: '銀級會員' },
+    { tierKey: 'gold', label: '金級會員' },
+    { tierKey: 'platinum', label: '白金會員' }
+  ];
+}
+
+function calendarItemAllTierKeys_() { return calendarItemTierDefinitions_().map(function(tier) { return tier.tierKey; }); }
+
+function calendarItemTierLabels_(tierKeys) {
+  const allowed = Array.isArray(tierKeys) ? tierKeys : [];
+  return calendarItemTierDefinitions_().filter(function(tier) { return allowed.indexOf(tier.tierKey) >= 0; }).map(function(tier) { return tier.label; });
+}
+
+function normalizeCalendarItemAllowedTierKeys_(value) {
+  if (!Array.isArray(value)) throw new ApiError(400, 'INVALID_CALENDAR_ITEM', '活動適用會員等級不合法。');
+  const requested = {};
+  value.forEach(function(item) { const tierKey = String(item || '').trim(); if (tierKey) requested[tierKey] = true; });
+  const allowedTierKeys = calendarItemAllTierKeys_().filter(function(tierKey) { return Boolean(requested[tierKey]); });
+  if (!allowedTierKeys.length || Object.keys(requested).length !== allowedTierKeys.length) throw new ApiError(400, 'INVALID_CALENDAR_ITEM', '請至少選擇一個有效的活動適用會員等級。');
+  return allowedTierKeys;
+}
+
+function calendarItemAllowedTierKeys_(item) {
+  const raw = String(item && item.allowed_tier_keys || '').trim();
+  if (!raw) return calendarItemAllTierKeys_();
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch (_) { return []; }
+  if (!Array.isArray(parsed)) return [];
+  const requested = {};
+  parsed.forEach(function(value) { const tierKey = String(value || '').trim(); if (tierKey) requested[tierKey] = true; });
+  return calendarItemAllTierKeys_().filter(function(tierKey) { return Boolean(requested[tierKey]); });
+}
+
+function calendarItemAllowedTierKeysForSave_(input, existingItem) {
+  if (input.itemType !== 'event') return [];
+  if (input.allowedTierKeys === undefined) {
+    return existingItem && String(existingItem.item_type || '') === 'event' ? calendarItemAllowedTierKeys_(existingItem) : calendarItemAllTierKeys_();
+  }
+  return normalizeCalendarItemAllowedTierKeys_(input.allowedTierKeys);
+}
+
+function calendarMemberTierKey_(profile) {
+  const tierKey = String(profile && profile.tierProgress && profile.tierProgress.currentTierKey || '').trim();
+  return calendarItemAllTierKeys_().indexOf(tierKey) >= 0 ? tierKey : 'general';
 }
 
 function calendarNewItemId_() {

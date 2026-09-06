@@ -121,6 +121,7 @@
   function createCalendarItem(item) {
     const entry = document.createElement('span');
     entry.className = 'calendar-item ' + (item.itemType === 'holiday' ? 'holiday' : 'event');
+    if (item.itemType === 'event' && item.tierEligible === false) entry.classList.add('tier-ineligible');
     entry.style.setProperty('--item-accent', safeAccent(item.accent));
     const marker = document.createElement('i');
     marker.setAttribute('aria-hidden', 'true');
@@ -184,6 +185,13 @@
     const description = document.createElement('p');
     description.textContent = String(item.description || '尚未提供其他說明。');
     detail.append(title, description);
+    if (item.itemType === 'event') {
+      const tierAccess = document.createElement('p');
+      tierAccess.className = 'calendar-detail-tier-access' + (item.tierEligible === false ? ' ineligible' : '');
+      const labels = Array.isArray(item.allowedTierLabels) && item.allowedTierLabels.length ? item.allowedTierLabels.join('、') : '未設定';
+      tierAccess.textContent = item.tierEligible === false ? `可參加階級：${labels}。目前會員階級尚無法參加。` : `可參加階級：${labels}。`;
+      detail.append(tierAccess);
+    }
     return detail;
   }
 

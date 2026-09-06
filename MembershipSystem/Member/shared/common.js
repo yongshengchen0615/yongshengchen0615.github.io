@@ -19,6 +19,7 @@
     'admin.event-tickets.delete',
     'admin.calendar-items.save',
     'admin.calendar-items.delete',
+    'admin.calendar-items.batch',
     'admin.stamps.add',
     'admin.service_minutes.add',
     'admin.member-grants.add',
