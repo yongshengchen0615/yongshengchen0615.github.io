@@ -206,3 +206,33 @@ input, select, textarea, button { min-width: 0; max-width: 100%; }
   .table-wrap td { grid-template-columns: 84px minmax(0, 1fr); gap: 8px; }
   .table-wrap .small-button { flex: 1 1 0; }
 }
+
+/* Admin-provided labels, notes, and member names should never create a page-width overflow. */
+body { line-height: 1.5; }
+button, input, select, textarea { line-height: 1.35; }
+.stats-row > div, .panel-heading > *, .toolbar > *, .card-list-item, .editor-heading > *, .reward-row-heading > *, .prize-heading > *, .calendar-batch-row-heading > *, .event-ticket-tier-options label { min-width: 0; }
+#displayName, .state-view p, .panel-heading p, .form-message, .sync-status, .result-count, .stat-label, .stats-row small, .list-heading, .card-list-item strong, .card-list-item small, .reward-row-summary, .editor-hint, .event-ticket-note, .field-help, .calendar-batch-editor p, .calendar-batch-row-heading strong, .calendar-event-link-fields p, .event-ticket-tier-access p, .operation-notice { overflow-wrap: anywhere; }
+.state-view h1 { line-height: 1.15; }
+.panel-heading h2, .workspace-heading h3, .editor-heading h3, .modal-heading h2 { line-height: 1.12; }
+
+@media (max-width: 760px) {
+  .card-list-item strong, .card-list-item small, .reward-row-summary { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+  .card-list-item small { line-height: 1.45; }
+  label, .calendar-batch-field { font-size: 12px; }
+  .field-help, .editor-hint, .event-ticket-note, .calendar-batch-editor .section-heading p:not(.kicker), .calendar-event-link-fields p:not(.kicker), .event-ticket-tier-access p { font-size: 11px; line-height: 1.6; }
+}
+
+@media (max-width: 540px) {
+  .topbar { flex-direction: column; gap: 9px; }
+  .account-menu { justify-items: start; max-width: none; text-align: left; }
+  .stats-row > div:last-child { grid-column: 1 / -1; }
+  .tier-settings-actions { justify-content: stretch; }
+  .tier-settings-actions .button { width: 100%; }
+}
+
+@media (max-width: 360px) {
+  .app-shell { padding-right: 10px; padding-left: 10px; }
+  .panel { padding-right: 12px; padding-left: 12px; }
+  .editor-actions .button, .modal-actions .button, .heading-actions .button { flex-basis: 100%; }
+  .table-wrap td { grid-template-columns: 76px minmax(0, 1fr); }
+}

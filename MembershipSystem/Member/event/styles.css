@@ -31,3 +31,25 @@ button:focus-visible { outline: 3px solid rgba(216, 110, 80, .34); outline-offse
 @media (max-width: 420px) { .ticket-modal { padding: 10px; align-items: end; }.ticket-modal-card { width: 100%; max-height: 92vh; padding: 21px; border-radius: 20px 20px 0 0; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 .event-ticket-state.tier-locked { color: #98513d; background: #fbe5d5; }
+
+/* Preserve ticket names, eligibility notices, and action labels at every LIFF width. */
+html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+body { line-height: 1.5; }
+button { line-height: 1.35; }
+.app-shell, .state-view, .topbar > *, .event-intro > *, .event-ticket-head > *, .event-ticket-action > *, .ticket-modal-topline > *, .ticket-modal-card { min-width: 0; max-width: 100%; }
+#displayName, #eventSummary, .state-view p, .event-intro p, .event-ticket h3, .event-ticket-description, .event-ticket-meta, .event-ticket-action small, .history-heading p, .privacy-note, .ticket-modal h2, .ticket-date, .ticket-description, .instructions p, .ticket-status-message, .modal-message, .ticket-result { overflow-wrap: anywhere; }
+.event-ticket h3, .ticket-modal h2 { line-height: 1.12; }
+
+@media (max-width: 650px) {
+  .topbar { flex-direction: column; gap: 9px; }
+  .account-menu { justify-items: start; max-width: none; text-align: left; }
+  .event-ticket-head { align-items: stretch; flex-wrap: wrap; }
+}
+
+@media (max-width: 420px) {
+  .app-shell { padding-right: 12px; padding-left: 12px; }
+  .event-ticket { min-height: 0; padding: 19px; border-radius: 18px; }
+  .event-ticket-action { align-items: stretch; flex-direction: column; }
+  .event-ticket-action small { order: 2; }
+  .ticket-button { width: 100%; min-height: 44px; }
+}

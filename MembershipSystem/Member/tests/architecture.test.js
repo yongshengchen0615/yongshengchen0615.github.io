@@ -257,7 +257,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-date-controls-20260905/);
+  assert.match(adminHtml, /styles\.css\?v=admin-ui-layout-20260906/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -281,4 +281,32 @@ test('admin mobile layout contains LINE WebView overflow guards', () => {
   );
   assert.doesNotMatch(adminStyles, /grid-template-columns: minmax\(0, 1fr\) 104px/);
   assert.doesNotMatch(adminStyles, /\.card-list > div:last-child \{ display: flex; overflow-x: auto;/);
+});
+
+test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
+  const surfaces = [
+    ['member', 'member-ui-layout-20260906'],
+    ['points', 'points-ui-layout-20260906'],
+    ['event', 'event-ui-layout-20260906'],
+    ['calendar', 'calendar-ui-layout-20260906'],
+    ['admin', 'admin-ui-layout-20260906']
+  ];
+
+  surfaces.forEach(([surface, version]) => {
+    const html = read(`${surface}/index.html`);
+    const styles = read(`${surface}/styles.css`);
+    assert.match(html, new RegExp(`styles\\.css\\?v=${version}`));
+    assert.match(styles, /overflow-wrap: anywhere/);
+    assert.match(styles, /max-width: 100%/);
+  });
+
+  ['member', 'points', 'event', 'calendar'].forEach((surface) => {
+    assert.match(read(`${surface}/index.html`), /membership-progress\.css\?v=membership-progress-ui-layout-20260906/);
+  });
+  assert.match(read('shared/membership-progress.css'), /Shared membership copy is server-derived/);
+  assert.match(read('member/styles.css'), /@media \(max-width: 420px\)/);
+  assert.match(read('points/styles.css'), /\.milestone-item strong, \.milestone-item small, \.milestone-item p/);
+  assert.match(read('event/styles.css'), /\.event-ticket-action \{ align-items: stretch; flex-direction: column; \}/);
+  assert.match(read('calendar/styles.css'), /@media \(max-width: 380px\)/);
+  assert.match(read('admin/styles.css'), /@media \(max-width: 360px\)/);
 });

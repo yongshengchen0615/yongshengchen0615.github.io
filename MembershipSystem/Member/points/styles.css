@@ -64,3 +64,28 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(228, 120, 69, .4
 .ticket-modal-description { margin: 17px 0 0; color: var(--ink); font-size: 14px; font-weight: 750; line-height: 1.6; }.ticket-instructions { display: grid; gap: 7px; margin: 15px 0; padding: 14px; background: #f6f0e8; border-radius: 13px; }.ticket-instructions strong { color: var(--ink); font-size: 12px; }.ticket-instructions p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }.ticket-processing { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 14px; padding: 12px; border-radius: 13px; color: #995330; background: #fff6e6; font-size: 12px; font-weight: 850; }.ticket-processing-spinner { width: 18px; height: 18px; flex: 0 0 auto; border: 2px solid rgba(228, 120, 69, .24); border-top-color: var(--orange); border-radius: 50%; animation: ticket-processing-spin .75s linear infinite; }.ticket-modal-result { margin-top: 14px; }.ticket-confirm-button { width: 100%; margin-top: 17px; border: 0; border-radius: 12px; padding: 13px 16px; color: var(--paper); background: var(--orange); cursor: pointer; font-size: 13px; font-weight: 900; }.ticket-confirm-button:disabled { cursor: wait; opacity: .6; }.ticket-refresh-button { color: var(--ink); background: transparent; border: 1px solid rgba(40, 32, 22, .18); }
 @keyframes ticket-processing-spin { to { transform: rotate(360deg); } }
 @media (max-width: 620px) { .tickets-panel { padding: 18px; }.tickets-heading { align-items: start; flex-direction: column; }.tickets-summary { max-width: none; text-align: left; }.member-ticket-list { grid-template-columns: 1fr; } }
+
+/* Text supplied by card and ticket settings must remain readable on narrow LIFF views. */
+html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+body { line-height: 1.5; }
+button { line-height: 1.35; }
+.app-shell, .state-view, .topbar > *, .workspace-intro > *, .active-card-header > *, .reward-row > *, .milestones-heading > *, .tickets-heading > *, .member-ticket-footer > * { min-width: 0; max-width: 100%; }
+#displayName, #activeCardTitle, #activeCardDescription, #rewardTitle, #progressMessage, #remainingMessage, .state-view p, .description, .points-note p, .tickets-summary, .member-ticket h3, .member-ticket p, .ticket-modal-name, .ticket-modal-description, .ticket-modal-message { overflow-wrap: anywhere; }
+.state-view h1, .workspace-intro h2, .active-card h2, .ticket-modal-heading h2 { line-height: 1.12; }
+.reward-meta { min-width: 0; }
+
+@media (max-width: 620px) {
+  .topbar { flex-direction: column; gap: 9px; }
+  .account-menu { justify-items: start; max-width: none; text-align: left; }
+  .milestone-item strong, .milestone-item small, .milestone-item p, .prize-opportunity span { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+  .member-ticket-footer { align-items: start; flex-wrap: wrap; }
+}
+
+@media (max-width: 420px) {
+  .app-shell { padding-right: 12px; padding-left: 12px; }
+  .active-card, .milestones-panel, .tickets-panel { border-radius: 18px; }
+  .reward-row { align-items: start; flex-wrap: wrap; }
+  .reward-meta { width: 100%; justify-items: start; margin-left: 43px; }
+  .card-tab { min-width: 132px; }
+  .ticket-modal-heading { gap: 10px; }
+}
