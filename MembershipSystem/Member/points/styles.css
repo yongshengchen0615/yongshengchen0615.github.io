@@ -89,3 +89,23 @@ button { line-height: 1.35; }
   .card-tab { min-width: 132px; }
   .ticket-modal-heading { gap: 10px; }
 }
+
+
+/* Ticket redemption history keeps one business event per use so members do not see
+   the point ledger and the ticket result as two separate charges. */
+.ticket-history-panel { margin-top: 22px; padding: 24px; border-radius: 28px; background: rgba(255,255,255,.72); }
+.ticket-history-list { display: grid; gap: 14px; margin-top: 16px; }
+.ticket-history-item { display: grid; gap: 14px; padding: 18px; border: 1px solid rgba(46,38,30,.12); border-radius: 20px; background: rgba(255,255,255,.78); max-width: 100%; overflow-wrap: anywhere; }
+.ticket-history-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.ticket-history-heading h3 { margin: 5px 0 0; font-size: 1.06rem; }
+.ticket-history-heading time { flex: 0 0 auto; font-size: .82rem; opacity: .68; text-align: right; }
+.ticket-history-details { display: grid; gap: 7px; }
+.ticket-history-details p { margin: 0; }
+.ticket-history-points { font-weight: 800; }
+.ticket-history-result { font-weight: 700; }
+.ticket-history-reference { opacity: .62; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .ticket-history-panel { padding: 18px; border-radius: 22px; }
+  .ticket-history-heading { flex-direction: column; gap: 8px; }
+  .ticket-history-heading time { text-align: left; }
+}

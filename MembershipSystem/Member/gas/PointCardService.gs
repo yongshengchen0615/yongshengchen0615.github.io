@@ -19,7 +19,7 @@ function handlePointCardBootstrap_(identity) {
       return lockedSnapshot;
     });
   }
-  return { profile: pointCardMembershipProfileForClient_(member, identity), cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot) };
+  return { profile: pointCardMembershipProfileForClient_(member, identity), cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot), history: pointCardActivityHistoryForMember_(identity.lineUserId, snapshot) };
 }
 
 function pointCardMembershipProfileForClient_(member, identity) {
@@ -82,6 +82,60 @@ function pointCardRecordsByMemberCard_(records) {
     grouped[key].push(record);
   });
   return grouped;
+}
+
+
+function pointCardTicketActivityForClient_(ticket, entry, cardsById) {
+  const ticketId = String(ticket.ticket_id || '');
+  const ticketType = String(ticket.ticket_type || '').toLowerCase() === 'lottery' ? 'lottery' : 'coupon';
+  const cardId = String(ticket.card_id || '');
+  const card = cardsById && cardsById[cardId] ? cardsById[cardId] : null;
+  let result = null;
+  try { result = ticket.result_json ? ticketResultForClient_(JSON.parse(String(ticket.result_json))) : null; } catch (_) { result = null; }
+  const storedPointsSpent = Number(ticket.points_spent);
+  const entryAmount = Number(entry && entry.amount);
+  const fallbackAmount = Number(ticket.threshold_stamps || ticket.consume_stamps || 0);
+  const pointsSpent = Number.isFinite(storedPointsSpent) && storedPointsSpent > 0
+    ? storedPointsSpent
+    : Number.isFinite(entryAmount) && entryAmount < 0
+      ? Math.abs(entryAmount)
+      : Math.max(0, fallbackAmount);
+  return {
+    activityId: 'ticket:' + ticketId,
+    activityType: ticketType === 'lottery' ? 'lottery_ticket_redeem' : 'coupon_ticket_redeem',
+    ticketId,
+    cardId,
+    cardTitle: String(card && card.title || ''),
+    ticketType,
+    ticketTitle: String(ticket.ticket_title || '票券'),
+    pointsSpent,
+    result,
+    occurredAt: String(ticket.used_at || entry && entry.created_at || ''),
+    referenceId: ticketId
+  };
+}
+
+function pointCardActivityHistoryForMember_(lineUserId, snapshot) {
+  const memberId = String(lineUserId || '').trim();
+  const cards = snapshot
+    ? (Array.isArray(snapshot.cards) ? snapshot.cards : [])
+    : (typeof readRecords_ === 'function' ? readRecords_('PointCards') : []);
+  const tickets = snapshot
+    ? snapshot.ticketsByMember
+      ? (snapshot.ticketsByMember[memberId] || [])
+      : Array.isArray(snapshot.tickets)
+        ? snapshot.tickets.filter(function(ticket) { return String(ticket.line_user_id || '') === memberId; })
+        : []
+    : pointCardTicketsForMember_(memberId);
+  const cardsById = {};
+  cards.forEach(function(card) { const cardId = String(card.card_id || ''); if (cardId) cardsById[cardId] = card; });
+  return tickets.filter(function(ticket) {
+    return String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_;
+  }).map(function(ticket) {
+    return pointCardTicketActivityForClient_(ticket, null, cardsById);
+  }).sort(function(a, b) {
+    return String(b.occurredAt || '').localeCompare(String(a.occurredAt || ''));
+  });
 }
 
 function pointCardTicketsForMember_(lineUserId, snapshot) {
@@ -752,16 +806,20 @@ function handleTicketRedeem_(identity, request) {
     const nextBalance = currentBalance - consumeStamps;
     const balance = { line_user_id: identity.lineUserId, card_id: String(ticket.card_id || ''), stamps: String(nextBalance), updated_at: now };
     updateRecordAtRow_('PointBalances', balanceMatch.rowNumber, balance);
-    appendRecord_('PointEntries', { entry_id: 'PE-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: identity.lineUserId, card_id: String(ticket.card_id || ''), amount: String(-consumeStamps), note: '票券兌換：' + String(ticket.ticket_title || ''), created_by: identity.lineUserId, created_at: now });
+    const pointEntry = { entry_id: 'PE-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: identity.lineUserId, card_id: String(ticket.card_id || ''), amount: String(-consumeStamps), note: '票券兌換：' + String(ticket.ticket_title || ''), created_by: identity.lineUserId, created_at: now, request_id: '', entry_type: 'ticket_redeem', reference_type: 'point_card_ticket', reference_id: ticketId };
+    appendRecord_('PointEntries', pointEntry);
     const result = String(ticket.ticket_type || '') === 'lottery' ? drawTicketPrize_(ticket) : null;
     ticket.status = POINT_CARD_TICKET_STATUS_USED_;
     ticket.used_at = now;
     ticket.result_json = result ? JSON.stringify(result) : '';
+    ticket.points_spent = String(consumeStamps);
+    ticket.redeem_entry_id = String(pointEntry.entry_id || '');
     ticket.updated_at = now;
     updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket);
     const nextTickets = issuePointCardTicketsForBalance_(identity.lineUserId, card, currentBalance, nextBalance, now).map(ticketForClient_);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: 'member', action: 'POINT_CARD_TICKET_REDEEM', target_type: 'point_card_ticket', target_id: ticketId, result: 'success', detail: result ? 'Lottery ticket redeemed and prize drawn' : 'Coupon ticket redeemed', created_at: now });
-    return { redeemed: true, ticket: ticketForClient_(ticket), nextTickets, balance: { cardId: String(ticket.card_id || ''), stamps: nextBalance, updatedAt: now } };
+    const activity = pointCardTicketActivityForClient_(ticket, pointEntry, (function() { const map = {}; map[String(card.card_id || '')] = card; return map; })());
+    return { redeemed: true, ticket: ticketForClient_(ticket), activity, nextTickets, balance: { cardId: String(ticket.card_id || ''), stamps: nextBalance, updatedAt: now } };
   });
 }
 

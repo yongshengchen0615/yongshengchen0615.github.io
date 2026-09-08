@@ -227,6 +227,9 @@ test('storage schema checks are cached and point-card bootstrap has a snapshot r
   assert.match(storage, /function resetMembershipSystemDataForNewEnvironment\(\)/);
   assert.match(storage, /sheet\.deleteRows\(2, rowCount\)/);
   assert.match(storage, /rotateMembershipDataCacheEpoch_\(\)/);
+  assert.match(storage, /entry_type/);
+  assert.match(storage, /reference_type/);
+  assert.match(storage, /reference_id/);
   assert.doesNotMatch(code, /case 'admin\.membership\.reset'|case 'user\.membership\.reset'/);
   assert.match(pointService, /function readPointCardSnapshot_\(\)/);
   assert.match(pointService, /function pointCardTicketIssuanceRequired_\(lineUserId, snapshot\)/);
@@ -286,7 +289,7 @@ test('admin mobile layout contains LINE WebView overflow guards', () => {
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
     ['member', 'member-ui-layout-20260906'],
-    ['points', 'points-ui-layout-20260906'],
+    ['points', 'points-ticket-history-20260908'],
     ['event', 'event-ui-layout-20260906'],
     ['calendar', 'calendar-ui-layout-20260906'],
     ['admin', 'admin-ui-layout-20260906']
