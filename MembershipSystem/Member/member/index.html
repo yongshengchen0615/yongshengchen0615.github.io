@@ -37,13 +37,15 @@
       <p>請填寫生日與電話完成加入會員，之後即可使用會員卡、集點卡、活動票券與日曆。</p>
       <form id="profileForm" class="profile-form" novalidate>
         <div class="profile-field">
-          <label for="profileBirthday">生日</label>
+          <label for="profileBirthdayPickerButton">生日</label>
           <span class="date-input-shell">
-            <span id="profileBirthdayDisplay" class="date-input-display" aria-hidden="true">請選擇生日</span>
-            <span class="date-input-icon" aria-hidden="true">▣</span>
-            <input id="profileBirthday" type="date" autocomplete="bday" aria-describedby="profileBirthdayHint" required>
+            <button id="profileBirthdayPickerButton" class="date-picker-trigger" type="button" aria-haspopup="dialog" aria-controls="profileBirthdayPickerModal" aria-describedby="profileBirthdayHint">
+              <span id="profileBirthdayDisplay" class="date-input-display">請選擇生日</span>
+              <span class="date-input-icon" aria-hidden="true">▣</span>
+            </button>
+            <input id="profileBirthday" type="date" autocomplete="bday" aria-describedby="profileBirthdayHint" tabindex="-1" aria-hidden="true" required>
           </span>
-          <small id="profileBirthdayHint" class="profile-field-help">點擊欄位選擇生日</small>
+          <small id="profileBirthdayHint" class="profile-field-help">點擊欄位後，在同一個視窗選擇年月日</small>
         </div>
         <div class="profile-field">
           <label for="profilePhone">電話</label>
@@ -53,6 +55,28 @@
         <button id="saveProfileButton" class="button button-dark" type="submit">加入會員並開啟會員卡</button>
         <button id="refreshProfileButton" class="button button-refresh hidden" type="button">重新整理確認</button>
       </form>
+      <div id="profileBirthdayPickerModal" class="profile-date-modal hidden" role="dialog" aria-modal="true" aria-labelledby="profileBirthdayPickerTitle">
+        <div class="profile-date-modal-card">
+          <div class="date-picker-heading">
+            <div>
+              <p class="kicker">Birthday</p>
+              <h2 id="profileBirthdayPickerTitle">選擇生日</h2>
+            </div>
+            <button id="closeProfileBirthdayPicker" class="date-picker-close" type="button" aria-label="關閉生日選擇視窗">×</button>
+          </div>
+          <p class="date-picker-description">請在這個視窗一次選擇完整的年份、月份與日期。</p>
+          <div class="date-picker-fields">
+            <label for="profileBirthdayYear">年份<select id="profileBirthdayYear"></select></label>
+            <label for="profileBirthdayMonth">月份<select id="profileBirthdayMonth"></select></label>
+            <label for="profileBirthdayDay">日期<select id="profileBirthdayDay"></select></label>
+          </div>
+          <p id="profileBirthdayPickerMessage" class="date-picker-message" role="status" aria-live="polite">請選擇完整的年月日。</p>
+          <div class="date-picker-actions">
+            <button id="cancelProfileBirthdayPicker" class="button button-refresh" type="button">取消</button>
+            <button id="confirmProfileBirthdayPicker" class="button button-dark" type="button" disabled>✓ 完成</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <main id="memberView" class="hidden">

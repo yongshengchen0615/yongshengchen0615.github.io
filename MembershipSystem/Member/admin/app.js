@@ -5,7 +5,7 @@
   const CALENDAR_ITEM_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], calendarItems: [], selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -29,6 +29,7 @@
     prepareGrantPointEditor();
     prepareCardSortControls();
     prepareEditorModals();
+    els.cardSortSaveButton.addEventListener('click', saveCardSort);
     const eventTicketTierAccess = document.getElementById('eventTicketAllowedTiers');
     const eventTicketTitleField = els.eventTicketTitle.closest('label');
     if (eventTicketTierAccess && eventTicketTitleField) {
@@ -116,6 +117,10 @@
     els.addGrantPointButton.addEventListener('click', addGrantPointRow);
     els.grantServiceTimeEnabled.addEventListener('change', updateGrantOptions);
     document.addEventListener('click', handleAdminDateControlClick);
+    els.cardListItems.addEventListener('pointerdown', handleCardSortPointerDown);
+    document.addEventListener('pointermove', handleCardSortPointerMove);
+    document.addEventListener('pointerup', handleCardSortPointerUp);
+    document.addEventListener('pointercancel', handleCardSortPointerUp);
     document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); closeEditorModals(); });
   }
 
@@ -133,9 +138,10 @@
   function prepareCardSortControls() {
     const cardList = els.cardListItems && els.cardListItems.closest('.card-list');
     if (!cardList || cardList.querySelector('.card-sort-hint')) return;
-    const hint = document.createElement('p'); hint.className = 'card-sort-hint'; hint.textContent = '使用每張卡片旁的上移／下移調整會員端顯示順序。';
+    const hint = document.createElement('p'); hint.className = 'card-sort-hint'; hint.textContent = '按住集點卡拖曳到指定位置，完成後按「儲存排序」。';
     const message = document.createElement('p'); message.id = 'cardSortMessage'; message.className = 'form-message hidden'; message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite');
-    cardList.insertBefore(hint, els.cardListItems); cardList.insertBefore(message, els.cardListItems); els.cardSortMessage = message;
+    const saveButton = document.createElement('button'); saveButton.id = 'saveCardSortButton'; saveButton.type = 'button'; saveButton.className = 'button button-dark card-sort-save'; saveButton.textContent = '儲存排序';
+    cardList.insertBefore(hint, els.cardListItems); cardList.insertBefore(message, els.cardListItems); cardList.insertBefore(saveButton, els.cardListItems); els.cardSortMessage = message; els.cardSortSaveButton = saveButton;
   }
 
   function prepareEditorModals() {
@@ -198,6 +204,8 @@
       applyMemberPage(result.memberPage, state.memberPage);
       state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : [];
       state.cards = Array.isArray(result.cards) ? result.cards : [];
+      state.cardSortOriginalOrder = state.cards.map((card) => String(card.cardId || ''));
+      state.cardSortDirty = false;
       state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
       state.eventTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
       state.calendarItems = Array.isArray(result.calendarItems) ? result.calendarItems : [];
@@ -420,46 +428,109 @@
   function renderCardList() {
     els.cardResultCount.textContent = String(state.cards.length); els.cardEmptyState.classList.toggle('hidden', state.cards.length !== 0);
     els.cardListItems.replaceChildren(...state.cards.map((card, index) => {
-      const item = document.createElement('article'); item.className = 'card-sort-item'; item.dataset.cardId = String(card.cardId);
+      const item = document.createElement('article'); item.className = 'card-sort-item'; item.dataset.cardSortItem = 'true'; item.dataset.cardId = String(card.cardId); item.setAttribute('aria-roledescription', '可拖曳集點卡');
       const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item card-list-item-main'; button.dataset.cardId = String(card.cardId); button.setAttribute('aria-selected', String(card.cardId) === state.selectedCardId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(card.accent));
       const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(card.title || '未命名集點卡')));
-      const meta = document.createElement('small'); const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${formatAdminDateCompact(card.expiresOn)}` : '無期限'; meta.textContent = `第 ${index + 1} 張 · ${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
+      const meta = document.createElement('small'); meta.textContent = cardSortMeta(card, index);
       button.append(title, meta);
-      const controls = document.createElement('div'); controls.className = 'card-sort-controls';
-      controls.append(createCardSortButton(card, index, 'up'), createCardSortButton(card, index, 'down'));
-      item.append(button, controls); return item;
+      item.append(button); return item;
     }));
+    updateCardSortSaveState();
   }
 
-  function createCardSortButton(card, index, direction) {
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'card-sort-button'; button.dataset.cardSortCardId = String(card.cardId); button.dataset.cardSortDirection = direction; button.disabled = state.cardSortBusy || state.writeConfirmationRequired || (direction === 'up' ? index === 0 : index === state.cards.length - 1); button.setAttribute('aria-label', `${direction === 'up' ? '將' : '將'}${String(card.title || '集點卡')}${direction === 'up' ? '上移' : '下移'}`); button.title = direction === 'up' ? '上移' : '下移'; button.textContent = direction === 'up' ? '↑' : '↓'; return button;
+  function cardSortMeta(card, index) {
+    const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${formatAdminDateCompact(card.expiresOn)}` : '無期限';
+    return `第 ${index + 1} 張 · ${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
   }
 
   function handleCardListClick(event) {
-    const sortButton = event.target instanceof Element ? event.target.closest('[data-card-sort-card-id]') : null;
-    if (sortButton) return moveCard(String(sortButton.dataset.cardSortCardId || ''), String(sortButton.dataset.cardSortDirection || ''));
+    if (state.suppressCardClick) return;
     const button = event.target instanceof Element ? event.target.closest('[data-card-id]') : null;
     if (button) { loadCardForm(button.dataset.cardId); openEditorModal('card'); }
   }
 
-  async function moveCard(cardId, direction) {
-    if (state.cardSortBusy || requireRefreshBeforeWrite(els.cardSortMessage)) return;
-    const currentIndex = state.cards.findIndex((card) => String(card.cardId) === cardId);
-    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= state.cards.length) return;
-    const originalCards = state.cards.slice(); const reorderedCards = state.cards.slice(); const moved = reorderedCards.splice(currentIndex, 1)[0]; reorderedCards.splice(nextIndex, 0, moved);
-    const cardOrders = reorderedCards.map((card, index) => ({ cardId: String(card.cardId), sortOrder: index, expectedUpdatedAt: String(card.updatedAt || '') }));
-    state.cardSortBusy = true; state.cards = reorderedCards; renderCardList(); showOperationProgress('正在更新集點卡排序…');
+  function handleCardSortPointerDown(event) {
+    if (state.cardSortBusy || state.writeConfirmationRequired || (event.button !== undefined && event.button !== 0)) return;
+    const item = event.target instanceof Element ? event.target.closest('[data-card-sort-item]') : null;
+    if (!item || item.parentElement !== els.cardListItems) return;
+    state.cardSortDrag = { item, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false };
+    if (typeof item.setPointerCapture === 'function') {
+      try { item.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+  }
+
+  function handleCardSortPointerMove(event) {
+    const drag = state.cardSortDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (!drag.active && distance < 6) return;
+    if (!drag.active) {
+      drag.active = true;
+      drag.item.classList.add('is-dragging');
+      drag.item.setAttribute('aria-grabbed', 'true');
+    }
+    event.preventDefault();
+    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
+    const target = targetElement instanceof Element ? targetElement.closest('[data-card-sort-item]') : null;
+    if (!target || target === drag.item || target.parentElement !== els.cardListItems) return;
+    const items = Array.from(els.cardListItems.querySelectorAll('[data-card-sort-item]'));
+    const fromIndex = items.indexOf(drag.item); const targetIndex = items.indexOf(target);
+    if (fromIndex < 0 || targetIndex < 0) return;
+    if (fromIndex < targetIndex) els.cardListItems.insertBefore(drag.item, target.nextSibling);
+    else els.cardListItems.insertBefore(drag.item, target);
+    els.cardListItems.querySelectorAll('[data-card-sort-item]').forEach((item) => item.classList.toggle('is-drag-over', item === target));
+    updateCardSortDraftFromDom();
+  }
+
+  function handleCardSortPointerUp(event) {
+    const drag = state.cardSortDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.item.classList.remove('is-dragging');
+    drag.item.removeAttribute('aria-grabbed');
+    els.cardListItems.querySelectorAll('[data-card-sort-item]').forEach((item) => item.classList.remove('is-drag-over'));
+    state.cardSortDrag = null;
+    if (!drag.active) return;
+    state.suppressCardClick = true;
+    window.setTimeout(() => { state.suppressCardClick = false; }, 0);
+    updateCardSortDraftFromDom();
+    showMessage(els.cardSortMessage, state.cardSortDirty ? '排序草稿已變更，請按「儲存排序」套用。' : '排序未變更。');
+  }
+
+  function updateCardSortDraftFromDom() {
+    const cardIds = Array.from(els.cardListItems.querySelectorAll('[data-card-sort-item]')).map((item) => String(item.dataset.cardId || ''));
+    const cardsById = new Map(state.cards.map((card) => [String(card.cardId), card]));
+    if (cardIds.length !== state.cards.length || cardIds.some((cardId) => !cardsById.has(cardId))) return;
+    state.cards = cardIds.map((cardId) => cardsById.get(cardId));
+    state.cardSortDirty = cardIds.some((cardId, index) => cardId !== state.cardSortOriginalOrder[index]);
+    updateCardSortPositions();
+    updateCardSortSaveState();
+  }
+
+  function updateCardSortPositions() {
+    Array.from(els.cardListItems.querySelectorAll('[data-card-sort-item]')).forEach((item, index) => {
+      const card = state.cards[index]; const meta = item.querySelector('.card-list-item small');
+      if (card && meta) meta.textContent = cardSortMeta(card, index);
+    });
+  }
+
+  function updateCardSortSaveState() {
+    if (!els.cardSortSaveButton) return;
+    els.cardSortSaveButton.disabled = state.cardSortBusy || state.writeConfirmationRequired || !state.cardSortDirty;
+    els.cardSortSaveButton.textContent = state.cardSortBusy ? '儲存中…' : '儲存排序';
+  }
+
+  async function saveCardSort() {
+    if (state.cardSortBusy || !state.cardSortDirty || requireRefreshBeforeWrite(els.cardSortMessage)) return;
+    const cardOrders = state.cards.map((card, index) => ({ cardId: String(card.cardId), sortOrder: index, expectedUpdatedAt: String(card.updatedAt || '') }));
+    state.cardSortBusy = true; updateCardSortSaveState(); showOperationProgress('正在儲存集點卡排序…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.reorder', { cardOrders });
       if (!Array.isArray(result.cards) || result.cards.length !== cardOrders.length || result.cards.some((card) => !card || !card.cardId)) { const error = new Error('無法確認集點卡排序結果。'); error.code = 'API_RESPONSE_UNCERTAIN'; throw error; }
-      state.cards = result.cards; renderCardList(); showOperationSuccess('集點卡排序已更新'); showMessage(els.cardSortMessage, '已更新會員端顯示順序。', true);
+      state.cards = result.cards; state.cardSortOriginalOrder = state.cards.map((card) => String(card.cardId || '')); state.cardSortDirty = false; renderCardList(); showOperationSuccess('集點卡排序已儲存'); showMessage(els.cardSortMessage, '已更新會員端顯示順序。', true);
     } catch (error) {
-      state.cards = originalCards;
       if (error && error.code === 'API_RESPONSE_UNCERTAIN') { state.writeConfirmationRequired = true; lockAdminWrites(); showOperationNotice('無法確認排序是否完成，請重新整理確認。', 'warning', 0); showUncertainWriteMessage(els.cardSortMessage); setSyncStatus('排序結果尚未確認；請重新整理確認後再操作。', true); }
-      else { showOperationNotice(error && error.code === 'CONFLICT' ? '集點卡資料已變更，請重新整理後再排序。' : '排序未完成，請稍後再試。', 'error', 4600); showMessage(els.cardSortMessage, error && error.code === 'CONFLICT' ? '集點卡已被其他管理者更新，請重新整理後再排序。' : error && error.message || '排序未完成，請稍後再試。'); }
-      renderCardList();
-    } finally { state.cardSortBusy = false; renderCardList(); }
+      else { showOperationNotice(error && error.code === 'CONFLICT' ? '集點卡資料已變更，請重新整理後再試。' : '排序未完成，請稍後再試。', 'error', 4600); showMessage(els.cardSortMessage, error && error.code === 'CONFLICT' ? '集點卡已被其他管理者更新，請重新整理後再排序。' : error && error.message || '排序未完成，請稍後再試。'); }
+    } finally { state.cardSortBusy = false; updateCardSortSaveState(); }
   }
 
   function loadCardForm(cardId) {

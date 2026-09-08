@@ -34,11 +34,25 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(223, 107, 77, .4
 .profile-form input { display: block; min-width: 0; max-width: 100%; }
 .date-input-shell { position: relative; display: flex; align-items: center; min-height: 46px; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid #d8e3db; border-radius: 9px; background: #fff; }
 .date-input-shell:focus-within { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(223, 107, 77, .1); }
-.date-input-display { min-width: 0; max-width: calc(100% - 48px); padding: 11px 12px; color: #a7aaa8; font: inherit; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.date-picker-trigger { display: flex; align-items: center; width: 100%; min-width: 0; min-height: 46px; padding: 0; border: 0; color: var(--ink); background: transparent; cursor: pointer; text-align: left; touch-action: manipulation; }
+.date-picker-trigger:focus-visible { outline: 3px solid rgba(223, 107, 77, .32); outline-offset: -4px; }
+.date-input-display { flex: 1 1 auto; min-width: 0; max-width: calc(100% - 48px); padding: 11px 12px; color: #a7aaa8; font: inherit; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
 .date-input-display.has-value { color: var(--ink); }
 .date-input-icon { flex: 0 0 auto; margin-left: auto; padding: 0 13px; color: var(--coral); font-size: 16px; pointer-events: none; }
-.date-input-shell input[type="date"] { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; min-width: 0; max-width: 100%; min-height: 46px; padding: 0; border: 0; border-radius: inherit; opacity: 0; cursor: pointer; color-scheme: light; touch-action: manipulation; }
-.date-input-shell input[type="date"]::-webkit-calendar-picker-indicator { width: 100%; height: 100%; cursor: pointer; }
+.date-input-shell input[type="date"] { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; border: 0; opacity: 0; pointer-events: none; clip-path: inset(50%); }
+.profile-date-modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(23, 53, 46, .36); }
+.profile-date-modal-card { width: min(100%, 420px); max-height: min(88vh, 560px); overflow: auto; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); box-shadow: 0 24px 60px rgba(23, 53, 46, .22); }
+.date-picker-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.date-picker-heading h2 { margin: 4px 0 0; color: var(--ink); font-size: 26px; letter-spacing: -.06em; line-height: 1.15; }
+.date-picker-close { flex: 0 0 auto; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: transparent; cursor: pointer; font: inherit; font-size: 22px; line-height: 1; }
+.date-picker-description { margin: 18px 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.date-picker-fields { display: grid; grid-template-columns: 1.2fr .85fr .85fr; gap: 10px; }
+.date-picker-fields label { display: grid; gap: 7px; min-width: 0; color: #5d6d64; font-size: 11px; font-weight: 850; }
+.date-picker-fields select { width: 100%; min-width: 0; min-height: 48px; padding: 10px 9px; border: 1px solid #d8e3db; border-radius: 9px; color: var(--ink); background: #fff; font: inherit; font-size: 14px; }
+.date-picker-fields select:focus { border-color: var(--coral); outline: none; box-shadow: 0 0 0 3px rgba(223, 107, 77, .1); }
+.date-picker-message { min-height: 20px; margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.date-picker-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 19px; }
+.date-picker-actions .button { min-width: 112px; }
 .profile-field-help { margin: -1px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .topbar { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin: 4px 0 30px; animation: rise-in .55s ease both; }
 .topbar h1 { margin: 5px 0 0; font-size: clamp(32px, 7vw, 58px); letter-spacing: -.08em; line-height: .9; }
@@ -75,10 +89,15 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(223, 107, 77, .4
   .pass-stamp { width: 58px; height: 58px; }
   .profile-details { grid-template-columns: 1fr; gap: 18px; padding: 20px 20px 0; }.profile-detail-list > div { padding-left: 14px; }
   .date-input-shell { min-height: 54px; border-radius: 11px; }
-  .date-input-shell input[type="date"] { min-height: 54px; }
+  .date-picker-trigger { min-height: 54px; }
   .date-input-display { padding: 12px 13px; font-size: 16px; }
   .date-input-icon { padding-right: 14px; padding-left: 10px; }
+  .profile-date-modal { align-items: end; padding: 10px; }
+  .profile-date-modal-card { width: 100%; max-height: min(88vh, 560px); padding: 19px; border-radius: 18px 18px 0 0; }
+  .date-picker-actions { justify-content: stretch; }
+  .date-picker-actions .button { flex: 1 1 0; min-width: 0; }
 }
+@media (max-width: 380px) { .date-picker-fields { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 
 /* Keep identity and status text readable when LINE supplies long display names. */

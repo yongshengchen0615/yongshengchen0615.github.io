@@ -292,15 +292,25 @@ test('admin mobile layout contains LINE WebView overflow guards', () => {
 
 test('member profile date input is LINE-safe and touch-friendly', () => {
   const memberHtml = read('member/index.html');
+  const memberApp = read('member/app.js');
   const memberStyles = read('member/styles.css');
   assert.match(memberHtml, /styles\.css\?v=member-membership-20260908-date-ui/);
-  assert.match(memberHtml, /<div class="profile-field">\s*<label for="profileBirthday">生日<\/label>/);
-  assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"/);
+  assert.match(memberHtml, /<label for="profileBirthdayPickerButton">生日<\/label>/);
+  assert.match(memberHtml, /id="profileBirthdayPickerButton" class="date-picker-trigger"[^>]*aria-haspopup="dialog"/);
+  assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"[^>]*tabindex="-1"/);
   assert.match(memberHtml, /id="profileBirthdayDisplay" class="date-input-display"/);
-  assert.match(memberHtml, /id="profileBirthdayHint" class="profile-field-help">點擊欄位選擇生日<\/small>/);
+  assert.match(memberHtml, /id="profileBirthdayPickerModal" class="profile-date-modal hidden"[^>]*role="dialog"/);
+  assert.match(memberHtml, /id="profileBirthdayYear"/);
+  assert.match(memberHtml, /id="profileBirthdayMonth"/);
+  assert.match(memberHtml, /id="profileBirthdayDay"/);
+  assert.match(memberApp, /function openBirthdayPicker/);
+  assert.match(memberApp, /function confirmBirthdayPicker/);
+  assert.match(memberApp, /function updateBirthdayPickerState/);
   assert.match(memberStyles, /\.profile-form, \.profile-field, \.date-input-shell \{ min-width: 0; max-width: 100%; \}/);
   assert.match(memberStyles, /\.date-input-shell \{ position: relative;[\s\S]*overflow: hidden;/);
-  assert.match(memberStyles, /\.date-input-shell input\[type="date"\] \{ position: absolute; inset: 0;[\s\S]*opacity: 0;/);
+  assert.match(memberStyles, /\.date-picker-trigger \{ display: flex;[\s\S]*touch-action: manipulation;/);
+  assert.match(memberStyles, /\.date-input-shell input\[type="date"\] \{ position: absolute; width: 1px; height: 1px;[\s\S]*clip-path: inset\(50%\);/);
+  assert.match(memberStyles, /\.profile-date-modal \{ position: fixed; inset: 0;[\s\S]*overflow/);
   assert.match(memberStyles, /@media \(max-width: 620px\) \{[\s\S]*\.date-input-shell \{ min-height: 54px;/);
 });
 
@@ -339,8 +349,13 @@ test('point-card administration exposes persisted sorting and batch grant contro
   const pointService = read('gas/PointCardService.gs');
   const storage = read('gas/Storage.gs');
   assert.match(adminApp, /prepareCardSortControls/);
+  assert.match(adminApp, /handleCardSortPointerDown/);
+  assert.match(adminApp, /function saveCardSort/);
   assert.match(adminApp, /admin\.pointcards\.reorder/);
-  assert.match(adminApp, /data-card-sort-card-id/);
+  assert.match(adminApp, /data-card-sort-item/);
+  assert.match(adminApp, /cardSortDirty/);
+  assert.doesNotMatch(adminApp, /cardSortButton/);
+  assert.doesNotMatch(adminApp, /function moveCard/);
   assert.doesNotMatch(adminApp, /prepareCardSortOrderEditor/);
   assert.match(adminApp, /payload\.points = points/);
   assert.match(adminApp, /addGrantPointRow/);
