@@ -6,7 +6,7 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
@@ -325,7 +325,9 @@
   function setLoginProgress(value) {
     const progress = Math.max(0, Math.min(100, Number(value) || 0));
     els.loadingProgress.setAttribute('aria-valuenow', String(progress));
+    els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`);
     els.loadingProgressBar.style.width = `${progress}%`;
+    els.loadingProgressText.textContent = `${progress}%`;
   }
 
   function showError(error) {
