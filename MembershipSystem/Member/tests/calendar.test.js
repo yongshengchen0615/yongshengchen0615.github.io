@@ -200,6 +200,7 @@ test('calendar client and admin form keep read-only user display and server-admi
   const calendarStyles = read('calendar/styles.css');
   const adminHtml = read('admin/index.html');
   const adminApp = read('admin/app.js');
+  const adminStyles = read('admin/styles.css');
   const code = read('gas/Code.gs');
   const auth = read('gas/Auth.gs');
   assert.match(calendarHtml, /Content-Security-Policy/);
@@ -238,6 +239,10 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarHtml, /calendar-login-status-20260908/);
   assert.doesNotMatch(calendarApp, /innerHTML/);
   assert.match(adminHtml, /id="calendarPanel"/);
+  assert.match(adminHtml, /id="adminCalendarGrid"/);
+  assert.match(adminHtml, /id="adminCalendarPreviousMonthButton"/);
+  assert.match(adminHtml, /id="adminCalendarNextMonthButton"/);
+  assert.match(adminHtml, /點選日期即可新增休假日或活動/);
   assert.match(adminHtml, /id="calendarItemForm"/);
   assert.match(adminHtml, /id="calendarBatchRows"/);
   assert.match(adminApp, /calendarItemAllowedTiers/);
@@ -248,6 +253,13 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(adminApp, /admin\.calendar-items\.save/);
   assert.match(adminApp, /admin\.calendar-items\.delete/);
   assert.match(adminApp, /admin\.calendar-items\.batch/);
+  assert.match(adminApp, /function renderAdminCalendar\(\)/);
+  assert.match(adminApp, /data-admin-calendar-date/);
+  assert.match(adminApp, /data-admin-calendar-item-id/);
+  assert.match(adminApp, /function openCalendarDateEditor\(dateValue, opener\)/);
+  assert.match(adminApp, /openEditorModal\('calendar', opener\)/);
+  assert.match(adminStyles, /\.admin-calendar-grid \{[^}]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
+  assert.match(adminStyles, /\.admin-calendar-day \{[^}]*min-height: 110px/);
   assert.match(code, /case 'admin\.calendar-items\.save':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemSave_/);
   assert.match(code, /case 'admin\.calendar-items\.delete':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemDelete_/);
   assert.match(code, /case 'admin\.calendar-items\.batch':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemBatch_/);

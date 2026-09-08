@@ -6,7 +6,7 @@
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const MEMBERSHIP_TIER_STYLE_LABELS = Object.freeze({ forest: '森林綠', midnight: '午夜藍', ocean: '海灣青', sunset: '夕陽橘', lavender: '薰衣草紫', rose: '玫瑰粉', gold: '金曜棕', platinum: '鉑金灰', mint: '薄荷綠', cherry: '櫻桃紅' });
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -18,7 +18,7 @@
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
-      'newCalendarItemButton', 'calendarItemResultCount', 'calendarItemListItems', 'calendarItemEmptyState', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
+      'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemResultCount', 'calendarItemListItems', 'calendarItemEmptyState', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
       'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -92,7 +92,11 @@
     els.resetEventTicketButton.addEventListener('click', resetEventTicketForm);
     els.deleteEventTicketButton.addEventListener('click', deleteEventTicket);
     els.newCalendarItemButton.addEventListener('click', () => { resetCalendarItemForm(); openEditorModal('calendar'); });
-    els.calendarItemListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null; if (button) { loadCalendarItemForm(button.dataset.calendarItemId); openEditorModal('calendar'); } });
+    els.adminCalendarPreviousMonthButton.addEventListener('click', () => changeAdminCalendarMonth(-1));
+    els.adminCalendarNextMonthButton.addEventListener('click', () => changeAdminCalendarMonth(1));
+    els.adminCalendarTodayButton.addEventListener('click', () => { state.adminCalendarMonth = ''; renderAdminCalendar(); });
+    els.adminCalendarGrid.addEventListener('click', handleAdminCalendarGridClick);
+    els.calendarItemListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null; if (button) { loadCalendarItemForm(button.dataset.calendarItemId, false); openEditorModal('calendar', button); } });
     els.calendarItemListItems.addEventListener('change', handleCalendarItemSelectionChange);
     els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
     els.calendarItemForm.addEventListener('change', handleCalendarItemFormChange);
@@ -215,9 +219,9 @@
     });
   }
 
-  function openEditorModal(key) {
+  function openEditorModal(key, opener) {
     const entry = state.editorModals[key]; if (!entry) return;
-    entry.opener = document.activeElement;
+    entry.opener = opener instanceof HTMLElement ? opener : document.activeElement;
     entry.modal.classList.remove('hidden');
     const focusTarget = entry.modal.querySelector('input:not([type="hidden"]), select, textarea, button:not(.editor-modal-close)');
     (focusTarget || entry.close).focus();
@@ -805,6 +809,80 @@
       button.append(title, meta); row.append(selectLabel, button); return row;
     }));
     renderCalendarBatchControls();
+    renderAdminCalendar();
+  }
+
+  function renderAdminCalendar() {
+    const month = currentAdminCalendarMonth();
+    state.adminCalendarMonth = toAdminIsoDate(month);
+    const monthTitle = new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: 'long' }).format(month);
+    const firstWeekday = month.getUTCDay();
+    const daysInMonth = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0)).getUTCDate();
+    const today = todayAdminIsoDate();
+    const cells = [];
+    els.adminCalendarMonthTitle.textContent = monthTitle;
+    els.adminCalendarGrid.setAttribute('aria-label', `${monthTitle}日曆；點選日期新增休假日或活動`);
+
+    for (let index = 0; index < 42; index += 1) {
+      const day = index - firstWeekday + 1;
+      if (day < 1 || day > daysInMonth) {
+        const blank = document.createElement('div'); blank.className = 'admin-calendar-day admin-calendar-day-empty'; blank.setAttribute('aria-hidden', 'true'); cells.push(blank); continue;
+      }
+      const date = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), day));
+      const dateValue = toAdminIsoDate(date);
+      const entries = adminCalendarItemsForDate(dateValue);
+      const cell = document.createElement('article'); cell.className = 'admin-calendar-day';
+      if (dateValue === today) cell.classList.add('is-today');
+      if (entries.length) cell.classList.add('has-items');
+      const dateButton = document.createElement('button'); dateButton.type = 'button'; dateButton.className = 'admin-calendar-day-button'; dateButton.dataset.adminCalendarDate = dateValue; dateButton.setAttribute('aria-label', `${formatAdminDateValue(dateValue, true)}，新增休假日或活動`);
+      const dateNumber = document.createElement('span'); dateNumber.className = 'admin-calendar-day-number'; dateNumber.textContent = String(day); dateButton.append(dateNumber);
+      const entryList = document.createElement('div'); entryList.className = 'admin-calendar-items';
+      entries.forEach((item) => {
+        const itemButton = document.createElement('button'); itemButton.type = 'button'; itemButton.className = `admin-calendar-item ${item.itemType === 'holiday' ? 'holiday' : 'event'}`; itemButton.dataset.adminCalendarItemId = String(item.calendarItemId || ''); itemButton.style.setProperty('--calendar-item-accent', safeAccent(item.accent)); itemButton.setAttribute('aria-label', `編輯${item.itemType === 'holiday' ? '休假日' : '活動'}：${String(item.title || '未命名日期')}`); itemButton.textContent = String(item.title || '未命名日期'); entryList.append(itemButton);
+      });
+      cell.append(dateButton, entryList); cells.push(cell);
+    }
+    els.adminCalendarGrid.replaceChildren(...cells);
+  }
+
+  function currentAdminCalendarMonth() {
+    const current = parseAdminIsoDate(state.adminCalendarMonth) || parseAdminIsoDate(todayAdminIsoDate());
+    if (!current) return new Date();
+    current.setUTCDate(1);
+    return current;
+  }
+
+  function changeAdminCalendarMonth(offset) {
+    const month = currentAdminCalendarMonth();
+    month.setUTCMonth(month.getUTCMonth() + Number(offset || 0));
+    state.adminCalendarMonth = toAdminIsoDate(month);
+    renderAdminCalendar();
+  }
+
+  function adminCalendarItemsForDate(dateValue) {
+    return state.calendarItems.filter((item) => {
+      const startsOn = String(item && item.startsOn || '');
+      const endsOn = String(item && item.endsOn || startsOn);
+      return Boolean(parseAdminIsoDate(startsOn) && parseAdminIsoDate(endsOn) && startsOn <= dateValue && dateValue <= endsOn);
+    });
+  }
+
+  function handleAdminCalendarGridClick(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const itemButton = target.closest('[data-admin-calendar-item-id]');
+    if (itemButton) { loadCalendarItemForm(itemButton.dataset.adminCalendarItemId, false); openEditorModal('calendar', itemButton); return; }
+    const dateButton = target.closest('[data-admin-calendar-date]');
+    if (dateButton) openCalendarDateEditor(dateButton.dataset.adminCalendarDate, dateButton);
+  }
+
+  function openCalendarDateEditor(dateValue, opener) {
+    if (!parseAdminIsoDate(dateValue)) return;
+    resetCalendarItemForm(false);
+    els.calendarItemStartsOn.value = dateValue;
+    els.calendarItemEndsOn.value = '';
+    els.calendarItemEditorTitle.textContent = `新增${formatAdminDateValue(dateValue, true)}日曆項目`;
+    openEditorModal('calendar', opener);
   }
 
   function handleCalendarItemSelectionChange(event) {
@@ -1095,7 +1173,7 @@
     } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { if (!state.writeConfirmationRequired) els.deleteSelectedCalendarItemsButton.textContent = originalText; renderCalendarBatchRows(); renderCalendarItemList(); }
   }
 
-  function loadCalendarItemForm(calendarItemId) {
+  function loadCalendarItemForm(calendarItemId, shouldRender) {
     const item = state.calendarItems.find((value) => value.calendarItemId === calendarItemId); if (!item) return;
     state.selectedCalendarItemId = calendarItemId;
     els.calendarItemId.value = String(item.calendarItemId || '');
@@ -1112,14 +1190,14 @@
     setCalendarItemAllowedTiers(item.allowedTierKeys);
     els.deleteCalendarItemButton.disabled = false; els.deleteCalendarItemButton.textContent = '刪除目前項目';
     updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage);
-    els.calendarItemEditorKicker.textContent = 'Edit calendar item'; els.calendarItemEditorTitle.textContent = String(item.title || '編輯日曆項目'); updateEditorStatus(els.calendarItemEditorStatus, item.status); renderCalendarItemList();
+    els.calendarItemEditorKicker.textContent = 'Edit calendar item'; els.calendarItemEditorTitle.textContent = String(item.title || '編輯日曆項目'); updateEditorStatus(els.calendarItemEditorStatus, item.status); if (shouldRender !== false) renderCalendarItemList();
   }
 
-  function resetCalendarItemForm() {
+  function resetCalendarItemForm(shouldRender) {
     state.selectedCalendarItemId = ''; els.calendarItemForm.reset();
     els.calendarItemId.value = ''; els.calendarItemExpectedUpdatedAt.value = ''; els.calendarItemType.value = 'holiday'; els.calendarItemStatus.value = ''; els.calendarItemStartsOn.value = todayAdminIsoDate(); els.calendarItemEndsOn.value = ''; els.calendarItemAccent.value = '#df6b4d'; els.calendarItemLinkLabel.value = ''; els.calendarItemLinkUrl.value = ''; setCalendarItemAllowedTiers(CALENDAR_ITEM_TIER_KEYS);
     els.deleteCalendarItemButton.disabled = true; els.deleteCalendarItemButton.textContent = '先儲存後才能刪除';
-    els.calendarItemEditorKicker.textContent = 'Create calendar item'; els.calendarItemEditorTitle.textContent = '新增日曆項目'; updateEditorStatus(els.calendarItemEditorStatus, ''); updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage); renderCalendarItemList();
+    els.calendarItemEditorKicker.textContent = 'Create calendar item'; els.calendarItemEditorTitle.textContent = '新增日曆項目'; updateEditorStatus(els.calendarItemEditorStatus, ''); updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage); if (shouldRender !== false) renderCalendarItemList();
   }
 
   function validateCalendarItem(item) {
