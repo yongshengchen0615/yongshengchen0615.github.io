@@ -350,7 +350,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-calendar-grid-20260908/);
+  assert.match(adminHtml, /styles\.css\?v=admin-calendar-month-workflow-20260908/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; \}/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -502,7 +502,7 @@ test('every surface protects responsive text layout and busts its updated styles
     ['points', 'points-login-status-20260908', 'points-login-status-20260908', 'points-local-client-20260908'],
     ['event', 'event-login-status-20260908', 'event-login-status-20260908', 'event-local-client-20260908'],
     ['calendar', 'calendar-login-status-20260908', 'calendar-login-status-20260908', 'calendar-local-client-20260908'],
-    ['admin', 'admin-calendar-grid-20260908', 'admin-calendar-grid-20260908', 'admin-local-client-20260908']
+    ['admin', 'admin-calendar-month-workflow-20260908', 'admin-calendar-month-workflow-20260908', 'admin-local-client-20260908']
   ];
 
   surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {

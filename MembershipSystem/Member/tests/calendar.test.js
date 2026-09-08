@@ -245,6 +245,14 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(adminHtml, /點選日期即可新增休假日或活動/);
   assert.match(adminHtml, /id="calendarItemForm"/);
   assert.match(adminHtml, /id="calendarBatchRows"/);
+  assert.match(adminApp, /function prepareCalendarWorkspace\(\)/);
+  assert.match(adminApp, /calendarItemListItems'\)\?\.remove\(\)/);
+  assert.match(adminApp, /calendar-batch-editor/);
+  assert.match(adminApp, /selectedCalendarDates/);
+  assert.match(adminApp, /dataset\.adminCalendarDateSelect/);
+  assert.match(adminApp, /dataset\.adminCalendarItemSelect/);
+  assert.match(adminApp, /function queueSelectedCalendarDates\(\)/);
+  assert.doesNotMatch(adminApp, /function renderCalendarItemList\(\)/);
   assert.match(adminApp, /calendarItemAllowedTiers/);
   assert.match(adminApp, /allowedTierKeys/);
   assert.match(adminHtml, /calendarItemLinkLabel/);
@@ -260,6 +268,9 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(adminApp, /openEditorModal\('calendar', opener\)/);
   assert.match(adminStyles, /\.admin-calendar-grid \{[^}]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
   assert.match(adminStyles, /\.admin-calendar-day \{[^}]*min-height: 110px/);
+  assert.match(adminStyles, /#calendarItemListItems[^}]*display: none/);
+  assert.match(adminStyles, /\.admin-calendar-day-header/);
+  assert.match(adminStyles, /\.admin-calendar-item-row/);
   assert.match(code, /case 'admin\.calendar-items\.save':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemSave_/);
   assert.match(code, /case 'admin\.calendar-items\.delete':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemDelete_/);
   assert.match(code, /case 'admin\.calendar-items\.batch':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleCalendarItemBatch_/);

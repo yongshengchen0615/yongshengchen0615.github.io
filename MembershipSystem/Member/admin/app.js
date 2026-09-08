@@ -6,7 +6,7 @@
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const MEMBERSHIP_TIER_STYLE_LABELS = Object.freeze({ forest: '森林綠', midnight: '午夜藍', ocean: '海灣青', sunset: '夕陽橘', lavender: '薰衣草紫', rose: '玫瑰粉', gold: '金曜棕', platinum: '鉑金灰', mint: '薄荷綠', cherry: '櫻桃紅' });
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -18,7 +18,7 @@
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
-      'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemResultCount', 'calendarItemListItems', 'calendarItemEmptyState', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
+      'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
       'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -42,6 +42,7 @@
       updateEventTicketTierSummary();
     }
     ensureCalendarItemTierAccess();
+    prepareCalendarWorkspace();
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.membersTab.addEventListener('click', () => switchPanel('members'));
@@ -96,14 +97,13 @@
     els.adminCalendarNextMonthButton.addEventListener('click', () => changeAdminCalendarMonth(1));
     els.adminCalendarTodayButton.addEventListener('click', () => { state.adminCalendarMonth = ''; renderAdminCalendar(); });
     els.adminCalendarGrid.addEventListener('click', handleAdminCalendarGridClick);
-    els.calendarItemListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null; if (button) { loadCalendarItemForm(button.dataset.calendarItemId, false); openEditorModal('calendar', button); } });
-    els.calendarItemListItems.addEventListener('change', handleCalendarItemSelectionChange);
+    els.adminCalendarGrid.addEventListener('change', handleAdminCalendarGridChange);
     els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
     els.calendarItemForm.addEventListener('change', handleCalendarItemFormChange);
     els.calendarItemForm.addEventListener('submit', saveCalendarItem);
     els.resetCalendarItemButton.addEventListener('click', resetCalendarItemForm);
     els.deleteCalendarItemButton.addEventListener('click', deleteCalendarItem);
-    els.addCalendarBatchItemButton.addEventListener('click', addCalendarBatchItem);
+    els.addCalendarBatchItemButton.addEventListener('click', queueSelectedCalendarDates);
     els.queueSelectedCalendarItemsButton.addEventListener('click', queueSelectedCalendarItems);
     els.deleteSelectedCalendarItemsButton.addEventListener('click', deleteSelectedCalendarItems);
     els.calendarBatchRows.addEventListener('click', handleCalendarBatchRowClick);
@@ -280,7 +280,7 @@
     els.activeCardCount.textContent = String(state.stats.activeCardCount ?? state.cards.filter((card) => card.status === 'active').length);
     els.todayEntryCount.textContent = String(state.stats.todayEntryCount ?? 0);
     els.activeEventTicketCount.textContent = String(state.stats.activeEventTicketCount ?? state.eventTickets.filter((ticket) => ticket.status === 'active' && ticket.availability === 'open').length);
-    renderMembers(); renderTierSettings(); renderCardList(); renderTicketList(); renderEventTicketList(); renderCalendarItemList();
+    renderMembers(); renderTierSettings(); renderCardList(); renderTicketList(); renderEventTicketList(); renderAdminCalendar(); renderCalendarBatchRows();
     if (state.selectedCardId && state.cards.some((card) => card.cardId === state.selectedCardId)) loadCardForm(state.selectedCardId); else if (!els.cardId.value) resetCardForm();
     if (state.selectedTicketId && state.tickets.some((ticket) => ticket.ticketTemplateId === state.selectedTicketId)) loadTicketForm(state.selectedTicketId); else if (!els.ticketTemplateId.value) resetTicketForm();
     if (state.selectedEventTicketId && state.eventTickets.some((ticket) => ticket.eventTicketId === state.selectedEventTicketId)) loadEventTicketForm(state.selectedEventTicketId); else if (!els.eventTicketId.value) resetEventTicketForm();
@@ -792,24 +792,23 @@
   }
   function updateEventTicketAccentValue() { els.eventTicketAccentValue.textContent = safeAccent(els.eventTicketAccent.value).toUpperCase(); }
 
-  function renderCalendarItemList() {
-    els.calendarItemResultCount.textContent = String(state.calendarItems.length);
-    els.calendarItemEmptyState.classList.toggle('hidden', state.calendarItems.length !== 0);
-    els.calendarItemListItems.replaceChildren(...state.calendarItems.map((item) => {
-      const row = document.createElement('div'); row.className = 'calendar-list-row';
-      const selectLabel = document.createElement('label'); selectLabel.className = 'calendar-item-selector';
-      const select = document.createElement('input'); select.type = 'checkbox'; select.dataset.calendarItemSelect = String(item.calendarItemId || ''); select.checked = state.selectedCalendarItemIds.has(String(item.calendarItemId || ''));
-      select.setAttribute('aria-label', `選取${String(item.title || '日曆項目')}進行批次處理`);
-      selectLabel.append(select);
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.calendarItemId = String(item.calendarItemId); button.setAttribute('aria-selected', String(item.calendarItemId) === state.selectedCalendarItemId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(item.accent));
-      const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(item.title || '未命名日期')));
-      const end = String(item.endsOn || '') === String(item.startsOn || '') ? '' : '–' + formatAdminDateCompact(item.endsOn);
-      const tierSummary = item.itemType === 'event' ? ' · ' + calendarItemTierSummaryText(item.allowedTierKeys) : '';
-      const meta = document.createElement('small'); meta.textContent = (item.itemType === 'holiday' ? '休假日' : '活動') + tierSummary + ' · ' + formatAdminDateCompact(item.startsOn) + end + ' · ' + statusLabel(item.status);
-      button.append(title, meta); row.append(selectLabel, button); return row;
-    }));
-    renderCalendarBatchControls();
-    renderAdminCalendar();
+  function prepareCalendarWorkspace() {
+    document.getElementById('calendarItemResultCount')?.closest('.list-heading')?.remove();
+    document.getElementById('calendarItemListItems')?.remove();
+    document.getElementById('calendarItemEmptyState')?.remove();
+    const calendar = els.adminCalendarGrid.closest('.admin-calendar');
+    const batchEditor = document.querySelector('.calendar-batch-editor');
+    calendar?.closest('.card-list')?.setAttribute('aria-label', '月曆');
+    if (calendar && batchEditor) calendar.append(batchEditor);
+    const batchTitle = document.getElementById('calendarBatchTitle');
+    if (batchTitle) batchTitle.textContent = '月曆批次作業';
+    const batchDescription = batchEditor && batchEditor.querySelector('.section-heading p:not(.kicker)');
+    if (batchDescription) batchDescription.textContent = '在月曆勾選日期以批次新增；勾選既有項目後可批次修改或刪除。每次最多 20 筆，送出前會先檢查全部資料。';
+    const calendarHint = calendar && calendar.querySelector('.admin-calendar-toolbar p');
+    if (calendarHint) calendarHint.textContent = '點選空白日期新增，點選既有項目編輯；勾選日期或項目可批次處理。';
+    els.addCalendarBatchItemButton.textContent = '新增選取日期';
+    els.queueSelectedCalendarItemsButton.textContent = '修改選取項目';
+    els.deleteSelectedCalendarItemsButton.textContent = '刪除選取項目';
   }
 
   function renderAdminCalendar() {
@@ -821,7 +820,7 @@
     const today = todayAdminIsoDate();
     const cells = [];
     els.adminCalendarMonthTitle.textContent = monthTitle;
-    els.adminCalendarGrid.setAttribute('aria-label', `${monthTitle}日曆；點選日期新增休假日或活動`);
+    els.adminCalendarGrid.setAttribute('aria-label', `${monthTitle}日曆；點選空白日期新增，點選既有項目編輯，勾選日期或項目進行批次作業`);
 
     for (let index = 0; index < 42; index += 1) {
       const day = index - firstWeekday + 1;
@@ -834,13 +833,20 @@
       const cell = document.createElement('article'); cell.className = 'admin-calendar-day';
       if (dateValue === today) cell.classList.add('is-today');
       if (entries.length) cell.classList.add('has-items');
+      if (state.selectedCalendarDates.has(dateValue)) cell.classList.add('is-selected-for-batch');
+      const dayHeader = document.createElement('div'); dayHeader.className = 'admin-calendar-day-header';
+      const dateSelect = document.createElement('input'); dateSelect.type = 'checkbox'; dateSelect.className = 'admin-calendar-selection admin-calendar-date-select'; dateSelect.dataset.adminCalendarDateSelect = dateValue; dateSelect.checked = state.selectedCalendarDates.has(dateValue); dateSelect.disabled = state.writeConfirmationRequired; dateSelect.setAttribute('aria-label', `選取${formatAdminDateValue(dateValue, true)}以批次新增`);
       const dateButton = document.createElement('button'); dateButton.type = 'button'; dateButton.className = 'admin-calendar-day-button'; dateButton.dataset.adminCalendarDate = dateValue; dateButton.setAttribute('aria-label', `${formatAdminDateValue(dateValue, true)}，新增休假日或活動`);
       const dateNumber = document.createElement('span'); dateNumber.className = 'admin-calendar-day-number'; dateNumber.textContent = String(day); dateButton.append(dateNumber);
       const entryList = document.createElement('div'); entryList.className = 'admin-calendar-items';
       entries.forEach((item) => {
-        const itemButton = document.createElement('button'); itemButton.type = 'button'; itemButton.className = `admin-calendar-item ${item.itemType === 'holiday' ? 'holiday' : 'event'}`; itemButton.dataset.adminCalendarItemId = String(item.calendarItemId || ''); itemButton.style.setProperty('--calendar-item-accent', safeAccent(item.accent)); itemButton.setAttribute('aria-label', `編輯${item.itemType === 'holiday' ? '休假日' : '活動'}：${String(item.title || '未命名日期')}`); itemButton.textContent = String(item.title || '未命名日期'); entryList.append(itemButton);
+        const calendarItemId = String(item.calendarItemId || '');
+        const itemRow = document.createElement('div'); itemRow.className = 'admin-calendar-item-row';
+        if (state.selectedCalendarItemIds.has(calendarItemId)) itemRow.classList.add('is-selected-for-batch');
+        const itemSelect = document.createElement('input'); itemSelect.type = 'checkbox'; itemSelect.className = 'admin-calendar-selection admin-calendar-item-select'; itemSelect.dataset.adminCalendarItemSelect = calendarItemId; itemSelect.checked = state.selectedCalendarItemIds.has(calendarItemId); itemSelect.disabled = state.writeConfirmationRequired; itemSelect.setAttribute('aria-label', `選取${String(item.title || '日曆項目')}進行批次修改或刪除`);
+        const itemButton = document.createElement('button'); itemButton.type = 'button'; itemButton.className = `admin-calendar-item ${item.itemType === 'holiday' ? 'holiday' : 'event'}`; itemButton.dataset.adminCalendarItemId = calendarItemId; itemButton.style.setProperty('--calendar-item-accent', safeAccent(item.accent)); itemButton.setAttribute('aria-label', `編輯${item.itemType === 'holiday' ? '休假日' : '活動'}：${String(item.title || '未命名日期')}`); itemButton.textContent = String(item.title || '未命名日期'); itemRow.append(itemSelect, itemButton); entryList.append(itemRow);
       });
-      cell.append(dateButton, entryList); cells.push(cell);
+      dayHeader.append(dateSelect, dateButton); cell.append(dayHeader, entryList); cells.push(cell);
     }
     els.adminCalendarGrid.replaceChildren(...cells);
   }
@@ -876,6 +882,20 @@
     if (dateButton) openCalendarDateEditor(dateButton.dataset.adminCalendarDate, dateButton);
   }
 
+  function handleAdminCalendarGridChange(event) {
+    const input = event.target instanceof HTMLInputElement ? event.target : null;
+    if (!input) return;
+    const dateValue = String(input.dataset.adminCalendarDateSelect || '');
+    if (dateValue) {
+      if (input.checked) state.selectedCalendarDates.add(dateValue); else state.selectedCalendarDates.delete(dateValue);
+      renderAdminCalendar(); renderCalendarBatchControls(); return;
+    }
+    const calendarItemId = String(input.dataset.adminCalendarItemSelect || '');
+    if (!calendarItemId) return;
+    if (input.checked) state.selectedCalendarItemIds.add(calendarItemId); else state.selectedCalendarItemIds.delete(calendarItemId);
+    renderAdminCalendar(); renderCalendarBatchControls();
+  }
+
   function openCalendarDateEditor(dateValue, opener) {
     if (!parseAdminIsoDate(dateValue)) return;
     resetCalendarItemForm(false);
@@ -885,28 +905,24 @@
     openEditorModal('calendar', opener);
   }
 
-  function handleCalendarItemSelectionChange(event) {
-    const input = event.target instanceof HTMLInputElement ? event.target : null;
-    if (!input || !input.dataset.calendarItemSelect) return;
-    const calendarItemId = String(input.dataset.calendarItemSelect || '');
-    if (input.checked) state.selectedCalendarItemIds.add(calendarItemId); else state.selectedCalendarItemIds.delete(calendarItemId);
-    renderCalendarBatchControls();
-  }
-
   function selectedCalendarItems() {
     return state.calendarItems.filter((item) => state.selectedCalendarItemIds.has(String(item.calendarItemId || '')));
   }
 
-  function calendarBatchItemFromCalendarItem(item) {
+  function selectedCalendarDates() {
+    return Array.from(state.selectedCalendarDates).filter((dateValue) => parseAdminIsoDate(dateValue)).sort();
+  }
+
+  function calendarBatchItemFromCalendarItem(item, startsOn) {
     return {
       key: 'calendar-batch-' + String(state.calendarBatchNextKey++),
       calendarItem: {
         calendarItemId: String(item && item.calendarItemId || ''),
         title: String(item && item.title || ''),
-        itemType: item && item.itemType === 'holiday' ? 'holiday' : 'event',
+        itemType: item && item.itemType === 'event' ? 'event' : 'holiday',
         description: String(item && item.description || ''),
         status: String(item && item.status || 'draft'),
-        startsOn: String(item && item.startsOn || todayAdminIsoDate()),
+        startsOn: String(item && item.startsOn || startsOn || todayAdminIsoDate()),
         endsOn: String(item && item.endsOn || ''),
         accent: safeAccent(item && item.accent || '#df6b4d'),
         allowedTierKeys: item && item.itemType === 'event' ? normalizeCalendarItemTierKeys(item.allowedTierKeys, CALENDAR_ITEM_TIER_KEYS) : [],
@@ -938,10 +954,13 @@
     }));
   }
 
-  function addCalendarBatchItem() {
+  function queueSelectedCalendarDates() {
     synchronizeCalendarBatchItemsFromDom();
-    if (state.calendarBatchItems.length >= 20) return showMessage(els.calendarBatchMessage, '每次最多可批次處理 20 筆日曆項目。');
-    state.calendarBatchItems.push(calendarBatchItemFromCalendarItem(null));
+    const dates = selectedCalendarDates();
+    if (!dates.length) return showMessage(els.calendarBatchMessage, '請先在月曆勾選要批次新增的日期。');
+    if (state.calendarBatchItems.length + dates.length > 20) return showMessage(els.calendarBatchMessage, '批次處理最多 20 筆；請減少勾選日期或先儲存目前批次。');
+    dates.forEach((dateValue) => state.calendarBatchItems.push(calendarBatchItemFromCalendarItem(null, dateValue)));
+    state.selectedCalendarDates.clear();
     hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
     els.calendarBatchRows.querySelector('[data-calendar-batch-row]:last-child [data-calendar-batch-field="title"]')?.focus();
   }
@@ -1097,14 +1116,17 @@
   }
 
   function renderCalendarBatchControls() {
+    const selectedDateCount = selectedCalendarDates().length;
     const selectedCount = state.selectedCalendarItemIds.size;
     const batchCount = state.calendarBatchItems.length;
     els.queueSelectedCalendarItemsButton.disabled = !selectedCount || state.writeConfirmationRequired;
     els.deleteSelectedCalendarItemsButton.disabled = !selectedCount || state.writeConfirmationRequired;
-    els.addCalendarBatchItemButton.disabled = batchCount >= 20 || state.writeConfirmationRequired;
+    els.addCalendarBatchItemButton.disabled = !selectedDateCount || batchCount + selectedDateCount > 20 || state.writeConfirmationRequired;
+    els.addCalendarBatchItemButton.textContent = selectedDateCount ? `新增選取日期（${selectedDateCount}）` : '新增選取日期';
     els.clearCalendarBatchButton.disabled = !batchCount || state.writeConfirmationRequired;
     els.saveCalendarBatchButton.disabled = !batchCount || state.writeConfirmationRequired;
-    els.calendarBatchSummary.textContent = batchCount ? `待儲存 ${batchCount} 筆${selectedCount ? `；另選取 ${selectedCount} 筆可批次刪除或加入修改` : ''}。` : selectedCount ? `已選取 ${selectedCount} 筆，可加入批次修改或批次刪除。` : '尚未加入批次項目。';
+    const selectedText = [selectedDateCount ? `已選取 ${selectedDateCount} 個日期可新增` : '', selectedCount ? `已選取 ${selectedCount} 筆項目可修改或刪除` : ''].filter(Boolean).join('；');
+    els.calendarBatchSummary.textContent = batchCount ? `待儲存 ${batchCount} 筆${selectedText ? `；${selectedText}` : ''}。` : selectedText || '在月曆勾選日期或項目以開始批次作業。';
   }
 
   function handleCalendarBatchRowClick(event) {
@@ -1150,7 +1172,7 @@
       (Array.isArray(result.savedCalendarItems) ? result.savedCalendarItems : []).forEach((item) => { state.calendarItems = replaceById(state.calendarItems, item, 'calendarItemId'); });
       state.calendarBatchItems = [];
       if (await refreshAfterSuccessfulWrite(`已批次儲存 ${payload.operations.length} 筆日曆項目`, els.calendarBatchMessage)) showMessage(els.calendarBatchMessage, `已批次儲存 ${payload.operations.length} 筆日曆項目；啟用後會顯示在會員日曆。`, true);
-    } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { setSaving(els.saveCalendarBatchButton, false); renderCalendarBatchRows(); }
+    } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { setSaving(els.saveCalendarBatchButton, false); renderCalendarBatchRows(); renderAdminCalendar(); }
   }
 
   async function deleteSelectedCalendarItems() {
@@ -1170,7 +1192,7 @@
       state.calendarBatchItems = state.calendarBatchItems.filter((entry) => !deletedIds.has(String(entry.calendarItem.calendarItemId || '')));
       if (state.selectedCalendarItemId && deletedIds.has(state.selectedCalendarItemId)) resetCalendarItemForm();
       if (await refreshAfterSuccessfulWrite(`已批次刪除 ${operations.length} 筆日曆項目`, els.calendarBatchMessage)) showMessage(els.calendarBatchMessage, `已批次刪除 ${operations.length} 筆日曆項目。`, true);
-    } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { if (!state.writeConfirmationRequired) els.deleteSelectedCalendarItemsButton.textContent = originalText; renderCalendarBatchRows(); renderCalendarItemList(); }
+    } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { if (!state.writeConfirmationRequired) els.deleteSelectedCalendarItemsButton.textContent = originalText; renderCalendarBatchRows(); renderAdminCalendar(); }
   }
 
   function loadCalendarItemForm(calendarItemId, shouldRender) {
@@ -1190,14 +1212,14 @@
     setCalendarItemAllowedTiers(item.allowedTierKeys);
     els.deleteCalendarItemButton.disabled = false; els.deleteCalendarItemButton.textContent = '刪除目前項目';
     updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage);
-    els.calendarItemEditorKicker.textContent = 'Edit calendar item'; els.calendarItemEditorTitle.textContent = String(item.title || '編輯日曆項目'); updateEditorStatus(els.calendarItemEditorStatus, item.status); if (shouldRender !== false) renderCalendarItemList();
+    els.calendarItemEditorKicker.textContent = 'Edit calendar item'; els.calendarItemEditorTitle.textContent = String(item.title || '編輯日曆項目'); updateEditorStatus(els.calendarItemEditorStatus, item.status); if (shouldRender !== false) renderAdminCalendar();
   }
 
   function resetCalendarItemForm(shouldRender) {
     state.selectedCalendarItemId = ''; els.calendarItemForm.reset();
     els.calendarItemId.value = ''; els.calendarItemExpectedUpdatedAt.value = ''; els.calendarItemType.value = 'holiday'; els.calendarItemStatus.value = ''; els.calendarItemStartsOn.value = todayAdminIsoDate(); els.calendarItemEndsOn.value = ''; els.calendarItemAccent.value = '#df6b4d'; els.calendarItemLinkLabel.value = ''; els.calendarItemLinkUrl.value = ''; setCalendarItemAllowedTiers(CALENDAR_ITEM_TIER_KEYS);
     els.deleteCalendarItemButton.disabled = true; els.deleteCalendarItemButton.textContent = '先儲存後才能刪除';
-    els.calendarItemEditorKicker.textContent = 'Create calendar item'; els.calendarItemEditorTitle.textContent = '新增日曆項目'; updateEditorStatus(els.calendarItemEditorStatus, ''); updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage); if (shouldRender !== false) renderCalendarItemList();
+    els.calendarItemEditorKicker.textContent = 'Create calendar item'; els.calendarItemEditorTitle.textContent = '新增日曆項目'; updateEditorStatus(els.calendarItemEditorStatus, ''); updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage); if (shouldRender !== false) renderAdminCalendar();
   }
 
   function validateCalendarItem(item) {
