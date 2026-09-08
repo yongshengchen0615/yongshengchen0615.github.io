@@ -214,8 +214,45 @@ test('tickets redeem directly and only once', () => {
   assert.equal(rows.PointCardTickets[0].status, 'used');
   assert.equal(rows.PointBalances[0].stamps, '0');
   assert.equal(rows.PointEntries[0].amount, '-10');
+  assert.equal(rows.PointEntries[0].entry_type, 'ticket_redeem');
+  assert.equal(rows.PointEntries[0].reference_type, 'point_card_ticket');
+  assert.equal(rows.PointEntries[0].reference_id, 'TK-1');
+  assert.equal(redeemed.activity.activityId, 'ticket:TK-1');
+  assert.equal(redeemed.activity.pointsSpent, 10);
   assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
   assert.throws(() => context.handleTicketRedeem_(identity, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'TICKET_ALREADY_USED');
+});
+
+
+test('ticket history presents one correlated business event after refresh', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCardTickets[0].ticket_type = 'lottery';
+  rows.PointCardTickets[0].ticket_title = '抽獎券';
+  rows.PointCardTickets[0].lottery_prizes_json = JSON.stringify([{ prize_id: 'P-NONE', prize_title: '未獲得優惠', prize_description: '本次未中獎', win_rate: '100' }]);
+  context.generateTicketRandomBasisPoint_ = () => 0;
+  const redeemed = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
+  assert.equal(redeemed.activity.activityType, 'lottery_ticket_redeem');
+  assert.equal(redeemed.activity.result.prizeTitle, '未獲得優惠');
+  assert.equal(redeemed.activity.pointsSpent, 10);
+
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  const refreshed = context.handlePointCardBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
+  assert.equal(refreshed.history.length, 1);
+  assert.equal(refreshed.history[0].activityId, 'ticket:TK-1');
+  assert.equal(refreshed.history[0].pointsSpent, 10);
+  assert.equal(refreshed.history[0].result.prizeTitle, '未獲得優惠');
+});
+
+test('legacy ticket redemption rows are correlated without creating a duplicate history item', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCardTickets[0].status = 'used';
+  rows.PointCardTickets[0].used_at = '2026-09-02T08:52:00.000Z';
+  rows.PointCardTickets[0].result_json = JSON.stringify({ prizeTitle: '未獲得優惠' });
+  rows.PointEntries.push({ entry_id: 'PE-OLD', line_user_id: 'U-1', card_id: 'PC-1', amount: '-10', note: '票券兌換：咖啡券', created_by: 'U-1', created_at: '2026-09-02T08:52:00.000Z', request_id: '' });
+  const history = context.pointCardActivityHistoryForMember_('U-1');
+  assert.equal(history.length, 1);
+  assert.equal(history[0].activityId, 'ticket:TK-1');
+  assert.equal(history[0].pointsSpent, 10);
 });
 
 test('point-card bootstrap uses one coherent snapshot instead of repeated full-sheet reads', () => {
@@ -235,7 +272,8 @@ test('point-card bootstrap uses one coherent snapshot instead of repeated full-s
     PointCardLotteryPrizes: 1,
     PointCardTicketTemplates: 1,
     PointBalances: 1,
-    PointCardTickets: 1
+    PointCardTickets: 1,
+    PointEntries: 1
   });
   assert.equal(rows.PointCardTickets.length, 1);
 });
@@ -463,6 +501,12 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(storage, /PointCardTickets:/);
   assert.match(pointsHtml, /確認使用這張票券/);
   assert.match(pointsHtml, /id="ticketModalProcessing"/);
+  assert.match(pointsHtml, /id="ticketHistoryList"/);
+  assert.match(pointsApp, /function renderHistory\(\)/);
+  assert.match(pointsApp, /本次抽獎結果/);
+  assert.doesNotMatch(pointsApp, /恭喜你抽中/);
+  assert.match(pointsApp, /本次實際扣除/);
+  assert.match(pointsApp, /紀錄編號/);
   assert.match(pointsApp, /confirmTicketUseButton\.addEventListener/);
   assert.match(pointsApp, /redeemTicket/);
   assert.match(pointsApp, /setTicketProcessing\(true\)/);
