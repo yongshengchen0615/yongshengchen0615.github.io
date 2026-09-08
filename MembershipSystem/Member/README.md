@@ -85,7 +85,7 @@ GAS 會建立並維護以下 schema：
 - `EventTickets`：活動票券設定；保存名稱、類型、說明、使用方式、活動期間、發放上限、可領取與使用的會員等級、狀態與抽獎獎項。每張票券各自保存等級設定；會員端會看到所有啟用中的活動票券，並標示目前等級是否適用。
 - `EventTicketClaims`：會員領取的活動票券快照；每位會員每張活動票券限領一次，保留使用結果與歷史紀錄。
 - `PointBalances`：每位會員在每張卡的目前餘額。
-- `PointEntries`：每次補登點數的不可變流水紀錄，以及用來避免同一發點操作重複寫入的 request ID。
+- `PointEntries`：點數不可變流水紀錄；管理端發點保留 request ID，票券核銷則以 `entry_type`、`reference_type`、`reference_id` 明確連回對應票券，避免同一次核銷被解讀成兩筆消耗。
 - `ServiceTimeEntries`：管理端登錄的消費服務時間不可變流水；每筆帶有管理員、備註與 request ID，會員卡顯示其累積分鐘數。
 - `MembershipTierSettings`：四個固定會員等級（一般、銀級、金級、白金）的升級門檻；一般會員固定從 0 分鐘開始，其餘三個門檻必須依序遞增。
 - `AuditLogs`：管理端會員/卡片/集點操作紀錄。
