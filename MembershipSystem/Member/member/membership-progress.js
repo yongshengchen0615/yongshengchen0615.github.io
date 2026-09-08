@@ -1,6 +1,8 @@
 (() => {
   'use strict';
 
+  const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
+
   function wholeMinutes(value) {
     return Math.max(0, Math.floor(Number(value) || 0));
   }
@@ -29,8 +31,18 @@
     if (element) element.textContent = value;
   }
 
+  function tierStyleKeyForProfile(profile) {
+    const styleKey = String(profile && profile.tierStyleKey || '').trim();
+    return MEMBERSHIP_TIER_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest';
+  }
+
+  function applyTierStyle(root, profile) {
+    if (typeof root.setAttribute === 'function') root.setAttribute('data-membership-tier-style', tierStyleKeyForProfile(profile));
+  }
+
   function render(root, profile) {
     if (!root || typeof root.querySelector !== 'function') return;
+    applyTierStyle(root, profile);
     const progress = progressForProfile(profile);
     const currentTier = String(profile && profile.tier || '一般會員');
     const currentTierText = `目前會員階級：${currentTier}`;
@@ -60,4 +72,3 @@
 
   window.MembershipProgress = Object.freeze({ render });
 })();
-

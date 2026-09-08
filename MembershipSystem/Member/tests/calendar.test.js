@@ -33,7 +33,7 @@ function loadCalendarService() {
     withDataLock_: (callback) => callback(),
     rotateMembershipDataCacheEpoch_: () => {},
     ensureMember_: (identity) => rows.Members.find((member) => member.line_user_id === identity.lineUserId),
-    memberForClient_: (member) => ({ displayName: String(member.display_name || 'LINE 使用者'), tier: '銀級會員', tierProgress: { serviceMinutesTotal: 900, currentTierKey: 'silver', currentRequiredServiceMinutes: 600, nextTierLabel: '金級會員', nextRequiredServiceMinutes: 1800, remainingServiceMinutes: 900, isHighestTier: false } }),
+    memberForClient_: (member) => ({ displayName: String(member.display_name || 'LINE 使用者'), tier: '銀級會員', tierStyleKey: 'ocean', tierProgress: { serviceMinutesTotal: 900, currentTierKey: 'silver', currentRequiredServiceMinutes: 600, nextTierLabel: '金級會員', nextRequiredServiceMinutes: 1800, remainingServiceMinutes: 900, isHighestTier: false } }),
     readRecords_: (sheetName) => rows[sheetName] || [],
     findRecordWithRow_: (sheetName, keyField, keyValue) => {
       const index = (rows[sheetName] || []).findIndex((record) => String(record[keyField] || '') === String(keyValue || ''));
@@ -58,6 +58,7 @@ test('member calendar returns active items with server-derived activity-tier eli
   const result = context.handleCalendarBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { rangeStart: '2026-08-01', rangeEnd: '2026-10-31' });
   assert.equal(result.profile.displayName, '測試會員');
   assert.equal(result.profile.tier, '銀級會員');
+  assert.equal(result.profile.tierStyleKey, 'ocean');
   assert.equal(result.profile.tierProgress.nextTierLabel, '金級會員');
   assert.equal(result.profile.birthday, undefined);
   assert.equal(result.profile.phone, undefined);

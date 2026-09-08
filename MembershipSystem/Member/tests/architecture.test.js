@@ -523,7 +523,7 @@ test('every surface protects responsive text layout and busts its updated styles
     assert.match(styles, /max-width: 100%/);
   });
 
-  [['member', 'member-local-progress-20260908'], ['points', 'points-local-progress-20260908'], ['event', 'event-local-progress-20260908'], ['calendar', 'calendar-local-progress-20260908']].forEach(([surface, version]) => {
+  [['member', 'member-tier-style-20260908'], ['points', 'points-tier-style-20260908'], ['event', 'event-tier-style-20260908'], ['calendar', 'calendar-tier-style-20260908']].forEach(([surface, version]) => {
     assert.match(read(`${surface}/index.html`), new RegExp(`membership-progress\\.css\\?v=${version}`));
     assert.match(read(`${surface}/membership-progress.css`), /Membership copy is server-derived/);
   });

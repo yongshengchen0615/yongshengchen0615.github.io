@@ -18,7 +18,7 @@ function handleEventTicketBootstrap_(identity, request) {
     const tier = eventTicketMemberTier_(member.line_user_id, serviceMinutesTotal);
     const usedTickets = usedEventTicketHistoryForMember_(identity.lineUserId, snapshot);
     return {
-      profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey, serviceMinutesTotal, tierProgress: eventTicketTierProgress_(serviceMinutesTotal, tier) },
+      profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey, tierStyleKey: String(tier.styleKey || ''), serviceMinutesTotal, tierProgress: eventTicketTierProgress_(serviceMinutesTotal, tier) },
       offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey),
       usedTickets: usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_),
       usedTicketCount: usedTickets.length

@@ -20,7 +20,16 @@ function loadComponent(surface = 'member') {
   vm.createContext(context);
   const file = path.join(root, surface, 'membership-progress.js');
   vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
-  return { component: context.window.MembershipProgress, nodes, root: { querySelector: (selector) => nodes.get(selector) || null } };
+  const attributes = new Map();
+  return {
+    component: context.window.MembershipProgress,
+    nodes,
+    root: {
+      querySelector: (selector) => nodes.get(selector) || null,
+      setAttribute(name, value) { attributes.set(name, value); },
+      attributes
+    }
+  };
 }
 
 test('local membership progress uses the requested tier format and calculated progress', () => {
@@ -40,6 +49,7 @@ test('local membership progress uses the requested tier format and calculated pr
   assert.equal(nodes.get('[data-membership-remaining]').textContent, '距離 金級會員 還需要 900 分鐘');
   assert.equal(nodes.get('[data-membership-progress-bar]').style.width, '25%');
   assert.equal(nodes.get('[data-membership-progress-track]').attributes.get('aria-valuetext'), '距離 金級會員 還需要 900 分鐘');
+  assert.equal(progressRoot.attributes.get('data-membership-tier-style'), 'forest');
 });
 
 test('local membership progress keeps the highest-tier state explicit', () => {
@@ -48,6 +58,21 @@ test('local membership progress keeps the highest-tier state explicit', () => {
   assert.equal(nodes.get('[data-membership-summary]').textContent, '累積 3600 分鐘・已達最高會員階級');
   assert.equal(nodes.get('[data-membership-remaining]').textContent, '已達最高會員階級');
   assert.equal(nodes.get('[data-membership-progress-bar]').style.width, '100%');
+});
+
+test('every member-facing progress component applies the server-derived membership-card style safely', () => {
+  ['member', 'points', 'event', 'calendar'].forEach((surface) => {
+    const { component, root: progressRoot } = loadComponent(surface);
+    component.render(progressRoot, { tierStyleKey: 'lavender', tierProgress: {} });
+    assert.equal(progressRoot.attributes.get('data-membership-tier-style'), 'lavender');
+    component.render(progressRoot, { tierStyleKey: 'not-a-style', tierProgress: {} });
+    assert.equal(progressRoot.attributes.get('data-membership-tier-style'), 'forest');
+
+    const styles = fs.readFileSync(path.join(root, surface, 'membership-progress.css'), 'utf8');
+    ['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry'].forEach((styleKey) => {
+      assert.match(styles, new RegExp(`data-membership-tier-style=\\"${styleKey}\\"`));
+    });
+  });
 });
 
 test('every member-facing LIFF owns its membership progress structure', () => {

@@ -74,7 +74,7 @@ function loadTicketService() {
       const records = rows[sheetName] || []; const retained = records.filter((record) => !predicate(record)); const deleted = records.length - retained.length;
       rows[sheetName] = retained; return deleted;
     },
-    memberForClient_: (member) => ({ displayName: String(member.display_name || '測試會員'), tier: '銀級會員', birthday: '2000-01-01', phone: '0912345678', tierProgress: { serviceMinutesTotal: 600, currentRequiredServiceMinutes: 600, nextTierLabel: '金級會員', nextRequiredServiceMinutes: 1800, remainingServiceMinutes: 1200, isHighestTier: false } }),
+    memberForClient_: (member) => ({ displayName: String(member.display_name || '測試會員'), tier: '銀級會員', tierStyleKey: 'rose', birthday: '2000-01-01', phone: '0912345678', tierProgress: { serviceMinutesTotal: 600, currentRequiredServiceMinutes: 600, nextTierLabel: '金級會員', nextRequiredServiceMinutes: 1800, remainingServiceMinutes: 1200, isHighestTier: false } }),
     appendAuditRecord_: () => {}
   };
   vm.createContext(context);
@@ -326,7 +326,7 @@ test('point-card bootstrap uses one coherent snapshot instead of repeated full-s
   context.ensureMember_ = () => ({ display_name: '測試會員' });
   const response = context.handlePointCardBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
   assert.equal(response.profile.displayName, '測試會員');
-  assert.deepEqual(JSON.parse(JSON.stringify(response.profile)), { displayName: '測試會員', tier: '銀級會員', tierProgress: { serviceMinutesTotal: 600, currentRequiredServiceMinutes: 600, nextTierLabel: '金級會員', nextRequiredServiceMinutes: 1800, remainingServiceMinutes: 1200, isHighestTier: false } });
+  assert.deepEqual(JSON.parse(JSON.stringify(response.profile)), { displayName: '測試會員', tier: '銀級會員', tierStyleKey: 'rose', tierProgress: { serviceMinutesTotal: 600, currentRequiredServiceMinutes: 600, nextTierLabel: '金級會員', nextRequiredServiceMinutes: 1800, remainingServiceMinutes: 1200, isHighestTier: false } });
   assert.equal(response.cards.length, 1);
   assert.equal(response.tickets.length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), {

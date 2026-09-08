@@ -44,6 +44,7 @@ function pointCardMembershipProfileForClient_(member, identity) {
   return {
     displayName: String(profile.displayName || identity.displayName || 'LINE 使用者'),
     tier: String(profile.tier || '一般會員'),
+    tierStyleKey: String(profile.tierStyleKey || ''),
     tierProgress: profile.tierProgress || {}
   };
 }
