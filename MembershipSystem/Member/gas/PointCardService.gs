@@ -17,21 +17,26 @@ const POINT_MUTATION_TYPE_REDEEM_ = 'ticket_redeem';
 const POINT_MUTATION_STATUS_PENDING_ = 'pending';
 const POINT_MUTATION_STATUS_COMPLETE_ = 'complete';
 
-function handlePointCardBootstrap_(identity) {
+function handlePointCardBootstrap_(identity, request) {
   const member = ensureMember_(identity);
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
   reconcilePendingPointMutationsForMember_(identity.lineUserId);
-  let snapshot = readPointCardSnapshot_(identity.lineUserId);
-  if (pointCardTicketIssuanceRequired_(identity.lineUserId, snapshot)) {
-    snapshot = withDataLock_(function() {
-      reconcilePendingPointMutationsLocked_(identity.lineUserId);
-      const lockedSnapshot = readPointCardSnapshot_(identity.lineUserId);
-      ensurePointCardTicketsForMember_(identity.lineUserId, lockedSnapshot);
-      return lockedSnapshot;
-    });
-  }
-  const history = pointCardActivityHistoryForMember_(identity.lineUserId, snapshot);
-  return { profile: pointCardMembershipProfileForClient_(member, identity), cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot), history: history.slice(0, POINT_CARD_HISTORY_LIMIT_), historyTotal: history.length };
+  const buildPayload = function() {
+    let snapshot = readPointCardSnapshot_(identity.lineUserId);
+    if (pointCardTicketIssuanceRequired_(identity.lineUserId, snapshot)) {
+      snapshot = withDataLock_(function() {
+        reconcilePendingPointMutationsLocked_(identity.lineUserId);
+        const lockedSnapshot = readPointCardSnapshot_(identity.lineUserId);
+        ensurePointCardTicketsForMember_(identity.lineUserId, lockedSnapshot);
+        return lockedSnapshot;
+      });
+    }
+    const history = pointCardActivityHistoryForMember_(identity.lineUserId, snapshot);
+    return { profile: pointCardMembershipProfileForClient_(member, identity), cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot), history: history.slice(0, POINT_CARD_HISTORY_LIMIT_), historyTotal: history.length };
+  };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('points', identity, request, buildPayload)
+    : buildPayload();
 }
 
 function pointCardMembershipProfileForClient_(member, identity) {
@@ -50,11 +55,12 @@ function pointCardRecordsForMember_(sheetName, lineUserId) {
 
 function readPointCardSnapshot_(lineUserId) {
   const memberId = String(lineUserId || '').trim();
+  const staticSnapshot = readPointCardStaticSnapshot_();
   const snapshot = {
-    cards: readRecords_('PointCards'),
-    rewards: readRecords_('PointCardRewards'),
-    lotteryPrizes: readRecords_('PointCardLotteryPrizes'),
-    ticketTemplates: readRecords_('PointCardTicketTemplates'),
+    cards: staticSnapshot.cards,
+    rewards: staticSnapshot.rewards,
+    lotteryPrizes: staticSnapshot.lotteryPrizes,
+    ticketTemplates: staticSnapshot.ticketTemplates,
     balances: memberId ? pointCardRecordsForMember_('PointBalances', memberId) : readRecords_('PointBalances'),
     tickets: memberId ? pointCardRecordsForMember_('PointCardTickets', memberId) : readRecords_('PointCardTickets')
   };
@@ -64,6 +70,30 @@ function readPointCardSnapshot_(lineUserId) {
   snapshot.balancesByMemberCard = pointCardBalancesByMemberCard_(snapshot.balances);
   snapshot.ticketsByMember = pointCardRecordsByMember_(snapshot.tickets);
   snapshot.ticketsByMemberCard = pointCardRecordsByMemberCard_(snapshot.tickets);
+  return snapshot;
+}
+
+function readPointCardStaticSnapshot_() {
+  const buildPayload = function() {
+    return {
+      cards: readRecords_('PointCards'),
+      rewards: readRecords_('PointCardRewards'),
+      lotteryPrizes: readRecords_('PointCardLotteryPrizes'),
+      ticketTemplates: readRecords_('PointCardTicketTemplates')
+    };
+  };
+  const source = typeof membershipReadThroughCache_ === 'function'
+    ? membershipReadThroughCache_('pointcard-static', buildPayload)
+    : buildPayload();
+  const snapshot = {
+    cards: Array.isArray(source && source.cards) ? source.cards : [],
+    rewards: Array.isArray(source && source.rewards) ? source.rewards : [],
+    lotteryPrizes: Array.isArray(source && source.lotteryPrizes) ? source.lotteryPrizes : [],
+    ticketTemplates: Array.isArray(source && source.ticketTemplates) ? source.ticketTemplates : []
+  };
+  snapshot.prizesByReward = pointCardLotteryPrizesByReward_(snapshot.lotteryPrizes);
+  snapshot.rewardsByCard = pointCardRewardsByCard_(snapshot.rewards, snapshot.prizesByReward);
+  snapshot.ticketTemplatesById = pointCardTicketTemplatesById_(snapshot.ticketTemplates);
   return snapshot;
 }
 
@@ -210,9 +240,10 @@ function pointCardTicketIssuanceRequired_(lineUserId, snapshot) {
 }
 
 function readPointCards_(includeAdminDetails, snapshot) {
-  const rewardsByCard = snapshot ? snapshot.rewardsByCard : pointCardRewardsByCard_();
-  const ticketTemplatesById = snapshot ? snapshot.ticketTemplatesById : pointCardTicketTemplatesById_();
-  const cards = snapshot ? snapshot.cards : readRecords_('PointCards');
+  const source = snapshot || readPointCardStaticSnapshot_();
+  const rewardsByCard = source.rewardsByCard;
+  const ticketTemplatesById = source.ticketTemplatesById;
+  const cards = source.cards;
   return cards.map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || [], includeAdminDetails, ticketTemplatesById); }).sort(comparePointCards_);
 }
 
@@ -280,7 +311,8 @@ function pointCardTicketTemplatesById_(records) {
 }
 
 function readPointCardTicketTemplates_(includeAdminDetails, snapshot) {
-  const templates = snapshot ? snapshot.ticketTemplates : readRecords_('PointCardTicketTemplates');
+  const source = snapshot || readPointCardStaticSnapshot_();
+  const templates = source.ticketTemplates;
   return templates.map(function(template) {
     return pointCardTicketTemplateForClient_(template, includeAdminDetails);
   }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
@@ -447,15 +479,74 @@ function handlePointCardRemove_(identity, admin, request) {
 }
 
 function handleAdminBootstrap_(identity, admin, request) {
-  const memberResult = readMembersPage_(request);
-  const tierSettings = readMembershipTierSettings_();
-  const cards = readPointCards_(true);
-  const tickets = readPointCardTicketTemplates_(true);
-  const eventTickets = readEventTickets_(true);
-  const calendarItems = readCalendarItems_(true);
-  const entries = readRecordFields_('PointEntries', ['created_at']);
-  const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
-  return { profile: { displayName: identity.displayName }, role: admin.role, members: memberResult.members, memberPage: memberResult.memberPage, tierSettings, cards, tickets, eventTickets, calendarItems, stats: { memberCount: memberResult.stats.memberCount, activeMemberCount: memberResult.stats.activeMemberCount, activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length, activeEventTicketCount: eventTickets.filter(function(ticket) { return ticket.status === 'active' && ticket.availability === 'open'; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
+  const lazy = Boolean(request && request.lazy);
+  const pageRequest = normalizeAdminMemberPageRequest_(request);
+  const scope = 'admin-bootstrap:' + (lazy ? 'initial' : 'full') + ':' + pageRequest.page + ':' + pageRequest.pageSize + ':' + pageRequest.query;
+  const buildPayload = function() {
+    const memberResult = readMembersPage_(request);
+    const tierSettings = readMembershipTierSettings_();
+    const initial = { profile: { displayName: identity.displayName }, role: admin.role, members: memberResult.members, memberPage: memberResult.memberPage, tierSettings, stats: { memberCount: memberResult.stats.memberCount, activeMemberCount: memberResult.stats.activeMemberCount } };
+    if (lazy) return initial;
+    const cards = readPointCards_(true);
+    const tickets = readPointCardTicketTemplates_(true);
+    const eventTickets = readEventTickets_(true);
+    const calendarItems = readCalendarItems_(true);
+    const entries = readRecordFields_('PointEntries', ['created_at']);
+    const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
+    initial.cards = cards;
+    initial.tickets = tickets;
+    initial.eventTickets = eventTickets;
+    initial.calendarItems = calendarItems;
+    initial.stats.activeCardCount = cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length;
+    initial.stats.activeEventTicketCount = eventTickets.filter(function(ticket) { return ticket.status === 'active' && ticket.availability === 'open'; }).length;
+    initial.stats.todayEntryCount = entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length;
+    return initial;
+  };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_(scope, identity, request, buildPayload)
+    : buildPayload();
+}
+
+function handleAdminPointCardsList_(identity, request) {
+  const includeTickets = Boolean(request && request.includeTickets);
+  const buildPayload = function() {
+    const snapshot = readPointCardStaticSnapshot_();
+    const cards = readPointCards_(true, snapshot);
+    const response = { cards: cards, stats: { activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length } };
+    if (includeTickets) response.tickets = readPointCardTicketTemplates_(true, snapshot);
+    return response;
+  };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_(includeTickets ? 'admin-pointcards-with-tickets' : 'admin-pointcards', identity, request, buildPayload)
+    : buildPayload();
+}
+
+function handleAdminEventTicketsList_(identity, request) {
+  const buildPayload = function() {
+    const eventTickets = readEventTickets_(true);
+    return { eventTickets: eventTickets, stats: { activeEventTicketCount: eventTickets.filter(function(ticket) { return ticket.status === 'active' && ticket.availability === 'open'; }).length } };
+  };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('admin-event-tickets', identity, request, buildPayload)
+    : buildPayload();
+}
+
+function handleAdminCalendarItemsList_(identity, request) {
+  const buildPayload = function() { return { calendarItems: readCalendarItems_(true) }; };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('admin-calendar-items', identity, request, buildPayload)
+    : buildPayload();
+}
+
+function handleAdminSummary_(identity, request) {
+  const buildPayload = function() {
+    const entries = readRecordFields_('PointEntries', ['created_at']);
+    const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
+    return { stats: { todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
+  };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('admin-summary', identity, request, buildPayload)
+    : buildPayload();
 }
 
 function handlePointCardSave_(identity, admin, request) {

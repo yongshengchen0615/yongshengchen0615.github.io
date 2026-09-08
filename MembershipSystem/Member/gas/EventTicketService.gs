@@ -9,19 +9,24 @@ const EVENT_TICKET_STATUS_AVAILABLE_ = 'available';
 const EVENT_TICKET_STATUS_USED_ = 'used';
 const EVENT_TICKET_HISTORY_LIMIT_ = 5;
 
-function handleEventTicketBootstrap_(identity) {
+function handleEventTicketBootstrap_(identity, request) {
   const member = ensureMember_(identity);
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
-  const snapshot = readEventTicketSnapshot_(identity.lineUserId, true);
-  const serviceMinutesTotal = eventTicketServiceMinutesTotal_(member.line_user_id);
-  const tier = eventTicketMemberTier_(member.line_user_id, serviceMinutesTotal);
-  const usedTickets = usedEventTicketHistoryForMember_(identity.lineUserId, snapshot);
-  return {
-    profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey, serviceMinutesTotal, tierProgress: eventTicketTierProgress_(serviceMinutesTotal, tier) },
-    offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey),
-    usedTickets: usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_),
-    usedTicketCount: usedTickets.length
+  const buildPayload = function() {
+    const snapshot = readEventTicketSnapshot_(identity.lineUserId, true);
+    const serviceMinutesTotal = eventTicketServiceMinutesTotal_(member.line_user_id);
+    const tier = eventTicketMemberTier_(member.line_user_id, serviceMinutesTotal);
+    const usedTickets = usedEventTicketHistoryForMember_(identity.lineUserId, snapshot);
+    return {
+      profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey, serviceMinutesTotal, tierProgress: eventTicketTierProgress_(serviceMinutesTotal, tier) },
+      offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey),
+      usedTickets: usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_),
+      usedTicketCount: usedTickets.length
+    };
   };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('event', identity, request, buildPayload)
+    : buildPayload();
 }
 
 function eventTicketClaimsForMember_(lineUserId) {
@@ -30,12 +35,17 @@ function eventTicketClaimsForMember_(lineUserId) {
 }
 
 function eventTicketClaimReferences_() {
-  if (typeof readRecordFields_ === 'function') return readRecordFields_('EventTicketClaims', ['event_ticket_id', 'line_user_id']);
-  return readRecords_('EventTicketClaims').map(function(claim) { return { event_ticket_id: claim.event_ticket_id, line_user_id: claim.line_user_id }; });
+  const buildPayload = function() {
+    if (typeof readRecordFields_ === 'function') return readRecordFields_('EventTicketClaims', ['event_ticket_id', 'line_user_id']);
+    return readRecords_('EventTicketClaims').map(function(claim) { return { event_ticket_id: claim.event_ticket_id, line_user_id: claim.line_user_id }; });
+  };
+  return typeof membershipReadThroughCache_ === 'function'
+    ? membershipReadThroughCache_('event-ticket-claim-references', buildPayload)
+    : buildPayload();
 }
 
 function readEventTicketSnapshot_(lineUserId, compactClaims) {
-  const tickets = readRecords_('EventTickets');
+  const tickets = readEventTicketDefinitions_();
   const memberId = String(lineUserId || '').trim();
   const useCompactClaims = Boolean(compactClaims || memberId);
   const claimReferences = useCompactClaims ? eventTicketClaimReferences_() : readRecords_('EventTicketClaims');
@@ -67,6 +77,13 @@ function readEventTicketSnapshot_(lineUserId, compactClaims) {
     if (claimMemberId) claimsByMemberTicket[key].push(claim);
   });
   return { tickets, ticketsById, claims, claimsByTicket, claimsByMemberTicket };
+}
+
+function readEventTicketDefinitions_() {
+  const buildPayload = function() { return readRecords_('EventTickets'); };
+  return typeof membershipReadThroughCache_ === 'function'
+    ? membershipReadThroughCache_('event-ticket-definitions', buildPayload)
+    : buildPayload();
 }
 
 function eventTicketMemberTicketKey_(lineUserId, eventTicketId) {

@@ -11,12 +11,17 @@ function handleCalendarBootstrap_(identity, request) {
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
   const range = calendarRangeFromRequest_(request);
   const profile = calendarMemberProfileForClient_(member, identity);
-  return {
-    profile: profile,
-    rangeStart: range.start,
-    rangeEnd: range.end,
-    items: readCalendarItemsForRange_(range.start, range.end, calendarMemberTierKey_(profile))
+  const buildPayload = function() {
+    return {
+      profile: profile,
+      rangeStart: range.start,
+      rangeEnd: range.end,
+      items: readCalendarItemsForRange_(range.start, range.end, calendarMemberTierKey_(profile))
+    };
   };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('calendar:' + range.start + ':' + range.end, identity, request, buildPayload)
+    : buildPayload();
 }
 
 function calendarMemberProfileForClient_(member, identity) {
@@ -37,12 +42,22 @@ function readCalendarItems_(includeAdminDetails) {
 }
 
 function readCalendarItemsForRange_(rangeStart, rangeEnd, memberTierKey) {
-  return readRecords_('CalendarItems').map(function(item) {
-    return calendarItemForClient_(item, false, memberTierKey);
-  }).filter(function(item) {
-    return item.status === 'active' && calendarItemOverlapsRange_(item, rangeStart, rangeEnd);
-  }).sort(function(left, right) {
-    return String(left.startsOn).localeCompare(String(right.startsOn)) || String(left.title).localeCompare(String(right.title));
+  const buildPayload = function() {
+    return readRecords_('CalendarItems').map(function(item) {
+      return calendarItemForClient_(item, false);
+    }).filter(function(item) {
+      return item.status === 'active' && calendarItemOverlapsRange_(item, rangeStart, rangeEnd);
+    }).sort(function(left, right) {
+      return String(left.startsOn).localeCompare(String(right.startsOn)) || String(left.title).localeCompare(String(right.title));
+    });
+  };
+  const baseItems = typeof membershipReadThroughCache_ === 'function'
+    ? membershipReadThroughCache_('calendar-range:' + rangeStart + ':' + rangeEnd, buildPayload)
+    : buildPayload();
+  return (Array.isArray(baseItems) ? baseItems : []).map(function(item) {
+    const clientItem = Object.assign({}, item);
+    if (clientItem.itemType === 'event') clientItem.tierEligible = (clientItem.allowedTierKeys || []).indexOf(memberTierKey) >= 0;
+    return clientItem;
   });
 }
 

@@ -63,7 +63,7 @@ test('LIFF surfaces load only their own frontend assets', () => {
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
   assert.match(calendarHtml, /\.\/common\.js\?v=calendar-local-client-\d{8}/);
-  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-login-progress-\d{8}/);
+  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-performance-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
@@ -350,7 +350,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-login-progress-20260908/);
+  assert.match(adminHtml, /styles\.css\?v=admin-performance-20260908/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; \}/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -380,7 +380,7 @@ test('member profile date input is LINE-safe and touch-friendly', () => {
   const memberHtml = read('member/index.html');
   const memberApp = read('member/app.js');
   const memberStyles = read('member/styles.css');
-  assert.match(memberHtml, /styles\.css\?v=member-login-progress-20260908/);
+  assert.match(memberHtml, /styles\.css\?v=member-performance-20260908/);
   assert.match(memberHtml, /<label for="profileBirthdayPickerButton">生日<\/label>/);
   assert.match(memberHtml, /id="profileBirthdayPickerButton" class="date-picker-trigger"[^>]*aria-haspopup="dialog"/);
   assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"[^>]*tabindex="-1"/);
@@ -504,11 +504,11 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-login-progress-20260908', 'member-login-progress-20260908', 'member-local-client-20260908'],
-    ['points', 'points-login-progress-20260908', 'points-login-progress-20260908', 'points-local-client-20260908'],
-    ['event', 'event-login-progress-20260908', 'event-login-progress-20260908', 'event-local-client-20260908'],
-    ['calendar', 'calendar-login-progress-20260908', 'calendar-login-progress-20260908', 'calendar-local-client-20260908'],
-    ['admin', 'admin-login-progress-20260908', 'admin-login-progress-20260908', 'admin-local-client-20260908']
+    ['member', 'member-performance-20260908', 'member-performance-20260908', 'member-local-client-20260908'],
+    ['points', 'points-performance-20260908', 'points-performance-20260908', 'points-local-client-20260908'],
+    ['event', 'event-performance-20260908', 'event-performance-20260908', 'event-local-client-20260908'],
+    ['calendar', 'calendar-performance-20260908', 'calendar-performance-20260908', 'calendar-local-client-20260908'],
+    ['admin', 'admin-performance-20260908', 'admin-performance-20260908', 'admin-local-client-20260908']
   ];
 
   surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {
@@ -517,6 +517,7 @@ test('every surface protects responsive text layout and busts its updated styles
     assert.match(html, new RegExp(`styles\\.css\\?v=${styleVersion}`));
     assert.match(html, new RegExp(`app\\.js\\?v=${appVersion}`));
     assert.match(html, new RegExp(`common\\.js\\?v=${commonVersion}`));
+    assert.match(html, /rel="preconnect" href="https:\/\/static\.line-scdn\.net" crossorigin/);
     assert.doesNotMatch(html, /\.\.\/shared\//);
     assert.match(styles, /overflow-wrap: anywhere/);
     assert.match(styles, /max-width: 100%/);

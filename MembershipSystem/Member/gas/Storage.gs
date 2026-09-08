@@ -4,6 +4,9 @@ const MEMBERSHIP_STORAGE_PROPERTY_ = 'MEMBERSHIP_SYSTEM_SPREADSHEET_ID';
 const MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_DATA_CACHE_EPOCH_KEY_ = 'membership:data-epoch:v1';
 const MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_ = 21600;
+const MEMBERSHIP_BOOTSTRAP_VERSION_KEY_ = 'membership:bootstrap-version:v1';
+const MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_ = 120;
+const MEMBERSHIP_BOOTSTRAP_CACHE_MAX_BYTES_ = 90000;
 const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at', 'birthday', 'phone', 'membership_status']),
   Admins: Object.freeze(['line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at']),
@@ -56,6 +59,91 @@ function rotateMembershipDataCacheEpoch_() {
   const cache = membershipSchemaCache_();
   if (!cache) return;
   try { cache.put(MEMBERSHIP_DATA_CACHE_EPOCH_KEY_, Utilities.getUuid(), MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_); } catch (_) {}
+}
+
+function membershipBootstrapVersion_() {
+  const cache = membershipSchemaCache_();
+  if (!cache) return '';
+  try {
+    const cached = String(cache.get(MEMBERSHIP_BOOTSTRAP_VERSION_KEY_) || '').trim();
+    if (cached) return cached;
+    const version = membershipCacheVersionToken_();
+    cache.put(MEMBERSHIP_BOOTSTRAP_VERSION_KEY_, version, MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_);
+    return version;
+  } catch (_) {
+    return '';
+  }
+}
+
+function rotateMembershipBootstrapVersion_() {
+  const cache = membershipSchemaCache_();
+  if (!cache) return;
+  try { cache.put(MEMBERSHIP_BOOTSTRAP_VERSION_KEY_, membershipCacheVersionToken_(), MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_); } catch (_) {}
+}
+
+function membershipVersionedBootstrapResponse_(scope, identity, request, buildPayload) {
+  const version = membershipBootstrapVersion_();
+  const knownVersion = String(request && request.knownVersion || '').trim();
+  if (version && knownVersion && knownVersion === version) return { unchanged: true, version: version };
+
+  const cache = membershipSchemaCache_();
+  const cacheKey = membershipBootstrapPayloadCacheKey_(scope, identity, version);
+  let payload = null;
+  if (cache && version) {
+    try { payload = JSON.parse(cache.get(cacheKey) || 'null'); } catch (_) { payload = null; }
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    payload = typeof buildPayload === 'function' ? buildPayload() : {};
+    if (cache && version) {
+      try {
+        const serialized = JSON.stringify(payload);
+        if (serialized.length <= MEMBERSHIP_BOOTSTRAP_CACHE_MAX_BYTES_) cache.put(cacheKey, serialized, MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_);
+      } catch (_) {}
+    }
+  }
+  return Object.assign({}, payload, { unchanged: false, version: version });
+}
+
+function membershipReadThroughCache_(scope, buildPayload) {
+  const cache = membershipSchemaCache_();
+  const version = membershipDataCacheEpoch_();
+  const cacheKey = 'membership:read:v1:' + membershipSafeCacheScope_(scope) + ':' + membershipSafeCacheScope_(version || 'uncached');
+  if (cache) {
+    try {
+      const cached = JSON.parse(cache.get(cacheKey) || 'null');
+      if (cached !== null) return cached;
+    } catch (_) {}
+  }
+  const payload = typeof buildPayload === 'function' ? buildPayload() : null;
+  if (cache) {
+    try {
+      const serialized = JSON.stringify(payload);
+      if (serialized.length <= MEMBERSHIP_BOOTSTRAP_CACHE_MAX_BYTES_) cache.put(cacheKey, serialized, MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_);
+    } catch (_) {}
+  }
+  return payload;
+}
+
+function membershipBootstrapPayloadCacheKey_(scope, identity, version) {
+  const lineUserId = String(identity && identity.lineUserId || '').trim();
+  const identityKey = typeof digest_ === 'function' ? digest_(lineUserId).substring(0, 32) : 'authenticated';
+  return 'membership:bootstrap-payload:v1:' + membershipSafeCacheScope_(scope) + ':' + membershipSafeCacheScope_(version) + ':' + identityKey;
+}
+
+function membershipSafeCacheScope_(value) {
+  const raw = String(value || '');
+  const readable = raw.replace(/[^A-Za-z0-9:_-]/g, '_').substring(0, 96) || 'default';
+  try {
+    if (typeof digest_ === 'function') return readable + '-' + String(digest_(raw)).substring(0, 24);
+  } catch (_) {}
+  return readable;
+}
+
+function membershipCacheVersionToken_() {
+  try {
+    if (typeof Utilities !== 'undefined' && Utilities && typeof Utilities.getUuid === 'function') return Utilities.getUuid();
+  } catch (_) {}
+  return 'cache-' + Date.now() + '-' + Math.random().toString(36).substring(2, 14);
 }
 
 function membershipSchemaCacheKey_(spreadsheetId) {

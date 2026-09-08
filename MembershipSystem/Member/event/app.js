@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', profile: null, offers: [], usedTickets: [], usedTicketCount: 0, pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '', ticketModalOpener: null };
+  const state = { config: null, idToken: '', bootstrapVersion: '', profile: null, offers: [], usedTickets: [], usedTicketCount: 0, pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '', ticketModalOpener: null };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -41,7 +41,10 @@
   async function loadOffers(showBusy) {
     if (showBusy) { els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
     try {
-      const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap');
+      const payload = state.bootstrapVersion ? { knownVersion: state.bootstrapVersion } : {};
+      const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap', payload);
+      if (result.unchanged) return;
+      state.bootstrapVersion = String(result.version || '');
       state.offers = Array.isArray(result.offers) ? result.offers : [];
       state.usedTickets = Array.isArray(result.usedTickets) ? result.usedTickets : [];
       const usedTicketCount = Number(result.usedTicketCount);
@@ -122,7 +125,7 @@
     state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '領取中…'; els.ticketModalProcessingText.textContent = '正在確認活動名額，請稍候…'; setProcessing(true); hideMessage();
     try {
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.claim', { eventTicketId: offer.ticket.eventTicketId });
-      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); renderTicketModal(findOffer(offer.ticket.eventTicketId)); showMessage(result.alreadyClaimed ? '你已經領取過這張活動票券。' : '活動票券已領取，請在活動期間使用。', true); }
+      if (result.ticket) { state.bootstrapVersion = ''; updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); renderTicketModal(findOffer(offer.ticket.eventTicketId)); showMessage(result.alreadyClaimed ? '你已經領取過這張活動票券。' : '活動票券已領取，請在活動期間使用。', true); }
     } catch (error) { handleTicketError(error, '領取票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; const current = findOffer(offer.ticket.eventTicketId); if (current) renderTicketModal(current); }
   }
 
@@ -130,7 +133,7 @@
     state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '使用中…'; els.ticketModalProcessingText.textContent = '正在確認票券與活動期限，請稍候…'; setProcessing(true); hideMessage();
     try {
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.redeem', { claimId: offer.claim.claimId });
-      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); await showRedeemedResult(result.ticket); }
+      if (result.ticket) { state.bootstrapVersion = ''; updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); await showRedeemedResult(result.ticket); }
     } catch (error) { handleTicketError(error, '使用票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; }
   }
 

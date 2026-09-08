@@ -2,7 +2,7 @@
   'use strict';
 
   const POINT_CARD_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', profile: null, cards: [], tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '', ticketModalOpener: null };
+  const state = { config: null, idToken: '', bootstrapVersion: '', profile: null, cards: [], tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '', ticketModalOpener: null };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -44,7 +44,10 @@
   async function loadCards(showBusy) {
     if (showBusy) { els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
     try {
-      const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.bootstrap');
+      const payload = state.bootstrapVersion ? { knownVersion: state.bootstrapVersion } : {};
+      const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.bootstrap', payload);
+      if (result.unchanged) return;
+      state.bootstrapVersion = String(result.version || '');
       state.profile = result.profile && typeof result.profile === 'object' ? result.profile : {};
       state.cards = Array.isArray(result.cards) ? result.cards : [];
       state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
@@ -193,7 +196,7 @@
     state.redeeming = true; els.confirmTicketUseButton.disabled = true; els.confirmTicketUseButton.textContent = '使用中…'; els.ticketModalCost.textContent = '正在確認票券與可用點數…'; setTicketProcessing(true);
     try {
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.redeem', { ticketId });
-      const redeemed = result.ticket; state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (result.activity) { const isNewHistory = !state.history.some((item) => item.activityId === result.activity.activityId); state.history = [result.activity].concat(state.history.filter((item) => item.activityId !== result.activity.activityId)).slice(0, 5); if (isNewHistory) state.historyTotal += 1; } if (result.balance) updateCardBalance(result.balance); renderCards(); setTicketProcessing(false); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
+      const redeemed = result.ticket; state.bootstrapVersion = ''; state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (result.activity) { const isNewHistory = !state.history.some((item) => item.activityId === result.activity.activityId); state.history = [result.activity].concat(state.history.filter((item) => item.activityId !== result.activity.activityId)).slice(0, 5); if (isNewHistory) state.historyTotal += 1; } if (result.balance) updateCardBalance(result.balance); renderCards(); setTicketProcessing(false); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
     } catch (error) {
       setTicketProcessing(false);
       const responseUncertain = error && error.code === 'API_RESPONSE_UNCERTAIN';

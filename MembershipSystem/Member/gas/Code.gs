@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.13.0';
+const MEMBERSHIP_API_VERSION_ = '1.14.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
@@ -49,13 +49,13 @@ function doPost(e) {
     let data;
     switch (request.action) {
       case 'user.member.bootstrap':
-        data = handleMemberBootstrap_(identity);
+        data = handleMemberBootstrap_(identity, request);
         break;
       case 'user.member.profile.save':
         data = handleMemberProfileSave_(identity, request);
         break;
       case 'user.pointcard.bootstrap':
-        data = handlePointCardBootstrap_(identity);
+        data = handlePointCardBootstrap_(identity, request);
         break;
       case 'user.calendar.bootstrap':
         data = handleCalendarBootstrap_(identity, request);
@@ -72,7 +72,22 @@ function doPost(e) {
       }
       case 'admin.pointcards.list': {
         authorizeAdmin_(identity);
-        data = { cards: readPointCards_(true) };
+        data = handleAdminPointCardsList_(identity, request);
+        break;
+      }
+      case 'admin.event-tickets.list': {
+        authorizeAdmin_(identity);
+        data = handleAdminEventTicketsList_(identity, request);
+        break;
+      }
+      case 'admin.calendar-items.list': {
+        authorizeAdmin_(identity);
+        data = handleAdminCalendarItemsList_(identity, request);
+        break;
+      }
+      case 'admin.summary': {
+        authorizeAdmin_(identity);
+        data = handleAdminSummary_(identity, request);
         break;
       }
       case 'admin.member.update': {
@@ -115,7 +130,7 @@ function doPost(e) {
         data = handleTicketRedeem_(identity, request);
         break;
       case 'user.event.bootstrap':
-        data = handleEventTicketBootstrap_(identity);
+        data = handleEventTicketBootstrap_(identity, request);
         break;
       case 'user.event.ticket.claim':
         data = handleEventTicketClaim_(identity, request);
@@ -167,6 +182,10 @@ function doPost(e) {
         throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
     }
 
+    if (MEMBERSHIP_WRITE_ACTIONS_.indexOf(request.action) >= 0) {
+      rotateMembershipDataCacheEpoch_();
+      rotateMembershipBootstrapVersion_();
+    }
     return jsonResponse_({ ok: true, status: 200, data: data || {} });
   } catch (error) {
     return errorResponse_(error);

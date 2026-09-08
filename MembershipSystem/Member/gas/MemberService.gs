@@ -32,9 +32,11 @@ const MEMBERSHIP_TIER_STYLE_DEFINITIONS_ = Object.freeze([
 ]);
 const MEMBERSHIP_TIER_DEFAULT_STYLE_KEYS_ = Object.freeze({ general: 'forest', silver: 'ocean', gold: 'gold', platinum: 'platinum' });
 
-function handleMemberBootstrap_(identity) {
+function handleMemberBootstrap_(identity, request) {
   const member = ensureMember_(identity);
-  return { profile: memberForClient_(member) };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('member', identity, request, function() { return { profile: memberForClient_(member) }; })
+    : { profile: memberForClient_(member) };
 }
 
 function memberNeedsLoginTouch_(member, identity, nowMs) {
@@ -48,12 +50,14 @@ function ensureMember_(identity) {
   const nowMs = Date.now();
   if (initialMatch && !memberNeedsLoginTouch_(initialMatch.record, identity, nowMs)) return initialMatch.record;
 
-  return withDataLock_(function() {
+  let changed = false;
+  const member = withDataLock_(function() {
     const now = nowIso_();
     const match = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
     if (!match) {
       const member = newMemberRecord_(identity, now);
       appendRecord_('Members', member);
+      changed = true;
       return member;
     }
     const member = match.record;
@@ -62,8 +66,11 @@ function ensureMember_(identity) {
     member.last_login_at = now;
     member.updated_at = now;
     updateRecordAtRow_('Members', match.rowNumber, member);
+    changed = true;
     return member;
   });
+  if (changed && typeof rotateMembershipBootstrapVersion_ === 'function') rotateMembershipBootstrapVersion_();
+  return member;
 }
 
 function generateMemberCode_() { return 'LM-' + Utilities.getUuid().replace(/-/g, '').substring(0, 8).toUpperCase(); }

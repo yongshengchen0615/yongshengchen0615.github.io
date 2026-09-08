@@ -105,6 +105,9 @@ GAS 會建立並維護以下 schema：
 - `admin.bootstrap`
 - `admin.members.list`（支援 `memberPage`、`memberPageSize`、`memberQuery`；每頁最多 100 筆）
 - `admin.pointcards.list`
+- `admin.event-tickets.list`
+- `admin.calendar-items.list`
+- `admin.summary`
 - `admin.member.update`
 - `admin.member-tiers.save`
 - `admin.pointcards.save`
@@ -143,6 +146,8 @@ GAS 會建立並維護以下 schema：
 前端以 `text/plain` JSON POST，避免不必要的 CORS preflight。公開設定與 API 讀取若遇到暫時性網路或非 JSON 回應，會等待後自動再試一次；讀取逾時為 20 秒，寫入逾時延長為 30 秒，且沒有 `AbortController` 的舊 WebView 也會結束等待並顯示可操作的錯誤。寫入操作仍不會自動重送，以免重複異動。管理端所有寫入、封存與刪除動作會立即顯示處理中提示，並在伺服器確認後顯示完成提示。若寫入回應無法確認，受影響操作會鎖定並提供「重新整理確認」，避免使用者直接重送；管理端在寫入成功後若僅畫面同步失敗，會明確提示「資料已更新」並要求重新整理，而不誤報寫入失敗；ID token 只存在目前頁面的記憶體，未寫入 URL、localStorage、sessionStorage、Sheet、log 或 API cache value。
 
 為避免首頁同步隨資料量增加而重複掃描相同 Sheet，Points bootstrap 只讀取登入會員本人的餘額、票券與未完成點數異動，再建立會員／集點卡索引；Event bootstrap 對全體領券資料只讀取計數所需欄位，完整票券快照只讀取本人紀錄。只有真的需要恢復異動或補發票券時，才會取得資料鎖，避免純讀取互相排隊且仍防止重複發券。會員卡的單一會員服務時數會快取 120 秒，系統寫入服務時間時立即失效；管理端會員名冊與會員端票券歷史都限制回傳範圍，避免大量資料同時傳輸與渲染。所有 API 的 schema 驗證也會依 Spreadsheet 與 schema 指紋快取 120 秒；schema 變更會自動使用新指紋重新驗證。部署新版 GAS 後，`setupMembershipSystem()` 或第一個 API 請求會自動建立 `PointMutations`。
+
+所有 bootstrap 讀取另有 120 秒的伺服器端版本與投影快取。用戶端帶回上一個 `knownVersion` 時，版本相同只收到 `unchanged`，不會重傳原本已顯示的完整 payload；每一個成功的 API 寫入都會同時輪替資料快取與版本，所以下一個讀取一定重建資料。Admin 初始只讀會員名冊、階級與基本統計，集點卡／票券、活動票券、日曆與今日點數統計會在開啟對應分頁後才讀取。權限、會員階級與票券可用性仍由 GAS 重新驗證，前端版本只用來省略未變更的傳輸。若直接手動編輯 Google Sheet，快取最長可能保留 120 秒；需要立即生效時請透過管理端寫入或等待快取到期。
 
 ## 本地驗證
 

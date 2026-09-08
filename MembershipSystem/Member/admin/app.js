@@ -6,7 +6,7 @@
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const MEMBERSHIP_TIER_STYLE_LABELS = Object.freeze({ forest: '森林綠', midnight: '午夜藍', ocean: '海灣青', sunset: '夕陽橘', lavender: '薰衣草紫', rose: '玫瑰粉', gold: '金曜棕', platinum: '鉑金灰', mint: '薄荷綠', cherry: '櫻桃紅' });
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', bootstrapVersion: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -256,38 +256,119 @@
   async function refreshData(showBusy) {
     if (showBusy) { els.refreshButton.disabled = true; els.syncStatus.textContent = '同步中…'; }
     try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', memberPagePayload(state.memberPage.page, state.memberPage.query));
-      state.members = Array.isArray(result.members) ? result.members : [];
-      applyMemberPage(result.memberPage, state.memberPage);
-      state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : [];
-      state.cards = Array.isArray(result.cards) ? result.cards : [];
-      state.cardSortOriginalOrder = state.cards.map((card) => String(card.cardId || ''));
-      state.cardSortDirty = false;
-      state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
-      state.eventTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
-      state.calendarItems = Array.isArray(result.calendarItems) ? result.calendarItems : [];
-      const calendarIds = new Set(state.calendarItems.map((item) => String(item.calendarItemId || '')));
-      state.selectedCalendarItemIds = new Set(Array.from(state.selectedCalendarItemIds).filter((calendarItemId) => calendarIds.has(calendarItemId)));
-      state.stats = result.stats || {};
-      els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
-      els.roleLabel.textContent = String(result.role || 'Admin');
-      renderAll();
+      const payload = { ...memberPagePayload(state.memberPage.page, state.memberPage.query), lazy: true };
+      if (state.bootstrapVersion) payload.knownVersion = state.bootstrapVersion;
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', payload);
+      if (result.unchanged) {
+        setSyncStatus('資料未變更', false);
+        return;
+      }
+      applyAdminBootstrap(result);
+      if (state.activePanel !== 'members') await ensureAdminPanelData(state.activePanel);
+      loadAdminSummary().catch(() => { /* The primary workspace is usable even when a background metric is unavailable. */ });
       els.syncStatus.textContent = `已同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
       els.syncStatus.classList.remove('error');
     } finally { if (showBusy) els.refreshButton.disabled = false; }
   }
 
-  function renderAll() {
+  function applyAdminBootstrap(result) {
+    const incomingVersion = String(result.version || '');
+    const versionChanged = Boolean(state.bootstrapVersion && incomingVersion && state.bootstrapVersion !== incomingVersion);
+    if (versionChanged) invalidateLazyPanels();
+    if (incomingVersion) state.bootstrapVersion = incomingVersion;
+    state.members = Array.isArray(result.members) ? result.members : [];
+    applyMemberPage(result.memberPage, state.memberPage);
+    state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : [];
+    state.stats = result.stats && typeof result.stats === 'object' ? result.stats : {};
+    state.loadedPanels.members = true;
+    els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
+    els.roleLabel.textContent = String(result.role || 'Admin');
+    renderAdminOverview();
+  }
+
+  function invalidateLazyPanels() {
+    state.cards = []; state.cardSortOriginalOrder = []; state.cardSortDirty = false; state.tickets = []; state.eventTickets = []; state.calendarItems = [];
+    state.selectedCalendarItemIds = new Set(); state.selectedCardId = ''; state.selectedTicketId = ''; state.selectedEventTicketId = ''; state.selectedCalendarItemId = '';
+    state.loadedPanels = { members: true, cards: false, events: false, calendar: false };
+    state.summaryLoaded = false;
+  }
+
+  function renderAdminOverview() {
     els.memberCount.textContent = String(state.stats.memberCount ?? state.members.length);
     els.activeMemberCount.textContent = String(state.stats.activeMemberCount ?? state.members.filter((member) => member.status === 'active').length);
-    els.activeCardCount.textContent = String(state.stats.activeCardCount ?? state.cards.filter((card) => card.status === 'active').length);
-    els.todayEntryCount.textContent = String(state.stats.todayEntryCount ?? 0);
-    els.activeEventTicketCount.textContent = String(state.stats.activeEventTicketCount ?? state.eventTickets.filter((ticket) => ticket.status === 'active' && ticket.availability === 'open').length);
-    renderMembers(); renderTierSettings(); renderCardList(); renderTicketList(); renderEventTicketList(); renderAdminCalendar(); renderCalendarBatchRows();
-    if (state.selectedCardId && state.cards.some((card) => card.cardId === state.selectedCardId)) loadCardForm(state.selectedCardId); else if (!els.cardId.value) resetCardForm();
-    if (state.selectedTicketId && state.tickets.some((ticket) => ticket.ticketTemplateId === state.selectedTicketId)) loadTicketForm(state.selectedTicketId); else if (!els.ticketTemplateId.value) resetTicketForm();
-    if (state.selectedEventTicketId && state.eventTickets.some((ticket) => ticket.eventTicketId === state.selectedEventTicketId)) loadEventTicketForm(state.selectedEventTicketId); else if (!els.eventTicketId.value) resetEventTicketForm();
-    if (state.selectedCalendarItemId && state.calendarItems.some((item) => item.calendarItemId === state.selectedCalendarItemId)) loadCalendarItemForm(state.selectedCalendarItemId); else if (!els.calendarItemId.value) resetCalendarItemForm();
+    els.activeCardCount.textContent = state.stats.activeCardCount === undefined ? '—' : String(state.stats.activeCardCount);
+    els.todayEntryCount.textContent = state.stats.todayEntryCount === undefined ? '—' : String(state.stats.todayEntryCount);
+    els.activeEventTicketCount.textContent = state.stats.activeEventTicketCount === undefined ? '—' : String(state.stats.activeEventTicketCount);
+    renderMembers(); renderTierSettings();
+  }
+
+  async function loadAdminSummary() {
+    const payload = {};
+    if (state.summaryLoaded && state.bootstrapVersion) payload.knownVersion = state.bootstrapVersion;
+    const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.summary', payload);
+    if (result.unchanged) return;
+    if (adoptIncomingBootstrapVersion(result.version)) return refreshData(false);
+    state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
+    state.summaryLoaded = true;
+    renderAdminOverview();
+  }
+
+  async function ensureAdminPanelData(panel) {
+    if (panel === 'members') return;
+    if (state.panelLoads[panel]) return state.panelLoads[panel];
+    const actionByPanel = { cards: 'admin.pointcards.list', events: 'admin.event-tickets.list', calendar: 'admin.calendar-items.list' };
+    const action = actionByPanel[panel];
+    if (!action) return;
+    const payload = panel === 'cards' ? { includeTickets: true } : {};
+    if (state.loadedPanels[panel] && state.bootstrapVersion) payload.knownVersion = state.bootstrapVersion;
+    const load = window.MemberSystem.request(state.config, 'admin', state.idToken, action, payload).then((result) => {
+      if (result.unchanged) return;
+      if (adoptIncomingBootstrapVersion(result.version)) return refreshData(false).then(() => ensureAdminPanelData(panel));
+      if (panel === 'cards') applyAdminCards(result);
+      if (panel === 'events') applyAdminEventTickets(result);
+      if (panel === 'calendar') applyAdminCalendarItems(result);
+      state.loadedPanels[panel] = true;
+    }).finally(() => { delete state.panelLoads[panel]; });
+    state.panelLoads[panel] = load;
+    return load;
+  }
+
+  function adoptIncomingBootstrapVersion(version) {
+    const incomingVersion = String(version || '');
+    if (!incomingVersion) return false;
+    if (state.bootstrapVersion && state.bootstrapVersion !== incomingVersion) {
+      invalidateLazyPanels();
+      state.bootstrapVersion = '';
+      return true;
+    }
+    state.bootstrapVersion = incomingVersion;
+    return false;
+  }
+
+  function applyAdminCards(result) {
+    state.cards = Array.isArray(result.cards) ? result.cards : [];
+    state.cardSortOriginalOrder = state.cards.map((card) => String(card.cardId || ''));
+    state.cardSortDirty = false;
+    state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
+    state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
+    renderAdminOverview(); renderCardList(); renderTicketList();
+    if (state.selectedCardId && state.cards.some((card) => card.cardId === state.selectedCardId)) loadCardForm(state.selectedCardId); else resetCardForm();
+    if (state.selectedTicketId && state.tickets.some((ticket) => ticket.ticketTemplateId === state.selectedTicketId)) loadTicketForm(state.selectedTicketId); else resetTicketForm();
+  }
+
+  function applyAdminEventTickets(result) {
+    state.eventTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
+    state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
+    renderAdminOverview(); renderEventTicketList();
+    if (state.selectedEventTicketId && state.eventTickets.some((ticket) => ticket.eventTicketId === state.selectedEventTicketId)) loadEventTicketForm(state.selectedEventTicketId); else resetEventTicketForm();
+  }
+
+  function applyAdminCalendarItems(result) {
+    state.calendarItems = Array.isArray(result.calendarItems) ? result.calendarItems : [];
+    const calendarIds = new Set(state.calendarItems.map((item) => String(item.calendarItemId || '')));
+    state.selectedCalendarItemIds = new Set(Array.from(state.selectedCalendarItemIds).filter((calendarItemId) => calendarIds.has(calendarItemId)));
+    renderAdminCalendar(); renderCalendarBatchRows();
+    if (state.selectedCalendarItemId && state.calendarItems.some((item) => item.calendarItemId === state.selectedCalendarItemId)) loadCalendarItemForm(state.selectedCalendarItemId); else resetCalendarItemForm();
   }
 
   function renderMembers() {
@@ -385,7 +466,16 @@
   }
 
   function actionButton(label, action, value, accent) { const button = document.createElement('button'); button.type = 'button'; button.className = `small-button${accent ? ' accent' : ''}`; button.dataset.action = action; button.dataset.value = String(value || ''); button.textContent = label; return button; }
-  function handleMemberTableClick(event) { const button = event.target instanceof Element ? event.target.closest('[data-action]') : null; if (!button) return; const member = state.members.find((item) => item.lineUserId === button.dataset.value); if (!member) return; if (button.dataset.action === 'edit-member') openMemberModal(member); if (button.dataset.action === 'add-grant') openGrantModal(member); }
+  async function handleMemberTableClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-action]') : null;
+    if (!button) return;
+    const member = state.members.find((item) => item.lineUserId === button.dataset.value);
+    if (!member) return;
+    if (button.dataset.action === 'edit-member') return openMemberModal(member);
+    if (button.dataset.action !== 'add-grant') return;
+    button.disabled = true;
+    try { await ensureAdminPanelData('cards'); openGrantModal(member); } catch (error) { setSyncStatus(error && error.message || '無法載入集點卡，請稍後再試。', true); } finally { button.disabled = false; }
+  }
 
 
   function parseAdminIsoDate(value) {
@@ -1276,7 +1366,19 @@
 
   function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.textContent = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberStatus.focus(); }
   function closeMemberModal() { els.memberModal.classList.add('hidden'); }
-  async function saveMember(event) { event.preventDefault(); if (requireRefreshBeforeWrite(els.memberFormMessage)) return; hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true, '正在儲存會員狀態…'); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); showOperationSuccess('會員狀態已儲存'); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
+  async function saveMember(event) {
+    event.preventDefault();
+    if (requireRefreshBeforeWrite(els.memberFormMessage)) return;
+    hideMessage(els.memberFormMessage);
+    setSaving(els.saveMemberButton, true, '正在儲存會員狀態…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value });
+      if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId');
+      closeMemberModal();
+      renderAdminOverview();
+      if (await refreshAfterSuccessfulWrite('會員狀態已儲存', els.memberFormMessage)) setSyncStatus('會員狀態已儲存 · 已同步', false);
+    } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); }
+  }
   function openGrantModal(member) { const activeCards = activeGrantCards(); state.grantRequestId = createRequestId(); els.grantMemberId.value = String(member.lineUserId); els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`; renderGrantPointRows([]); els.grantStampsEnabled.checked = false; els.grantStampsEnabled.disabled = activeCards.length === 0; els.grantServiceTimeEnabled.checked = false; els.grantStampAmount.value = ''; els.grantServiceTimeMinutes.value = ''; els.grantNote.value = ''; updateGrantOptions(); hideMessage(els.grantFormMessage); els.grantModal.classList.remove('hidden'); (activeCards.length ? els.grantStampsEnabled : els.grantServiceTimeEnabled).focus(); }
   function closeGrantModal() { state.grantRequestId = ''; els.grantModal.classList.add('hidden'); }
   function activeGrantCards() { return state.cards.filter((card) => card.status === 'active' && !card.expired); }
@@ -1324,7 +1426,11 @@
     } catch (error) { handleActionError(error, els.grantFormMessage); } finally { setSaving(els.saveGrantButton, false); }
   }
 
-  function switchPanel(panel) { state.activePanel = panel; ['members', 'cards', 'events', 'calendar'].forEach((name) => { const selected = name === panel; els[name + 'Tab'].setAttribute('aria-selected', String(selected)); els[name + 'Panel'].classList.toggle('hidden', !selected); }); }
+  function switchPanel(panel) {
+    state.activePanel = panel;
+    ['members', 'cards', 'events', 'calendar'].forEach((name) => { const selected = name === panel; els[name + 'Tab'].setAttribute('aria-selected', String(selected)); els[name + 'Panel'].classList.toggle('hidden', !selected); });
+    ensureAdminPanelData(panel).catch((error) => { setSyncStatus(error && error.message || '資料載入失敗，請稍後再試。', true); });
+  }
   function switchCardWorkspace(workspace) { state.activeCardWorkspace = workspace; const workspaces = [['cards', 'cardSettingsTab', 'cardSettingsPanel'], ['tickets', 'ticketSettingsTab', 'ticketSettingsPanel']]; workspaces.forEach(([name, tabId, panelId]) => { const selected = name === workspace; els[tabId].setAttribute('aria-selected', String(selected)); els[panelId].classList.toggle('hidden', !selected); }); }
   function updateAccentValue() { els.accentValue.textContent = safeAccent(els.cardAccent.value).toUpperCase(); }
   function updateEditorStatus(element, status) { element.textContent = statusLabel(status); element.className = `editor-status ${status}`; }
