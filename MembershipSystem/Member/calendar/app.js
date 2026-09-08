@@ -6,7 +6,7 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
@@ -24,10 +24,14 @@
 
   async function boot() {
     setView('loading');
+    setLoginProgress(8);
     try {
       state.config = await window.MemberSystem.loadConfig();
+      setLoginProgress(35);
       state.idToken = await window.MemberSystem.signIn(state.config, 'calendar');
+      setLoginProgress(68);
       await loadCalendar();
+      setLoginProgress(100);
       setView('calendar');
     } catch (error) {
       showError(error);
@@ -316,6 +320,12 @@
     els.loadingView.classList.toggle('hidden', view !== 'loading');
     els.errorView.classList.toggle('hidden', view !== 'error');
     els.calendarView.classList.toggle('hidden', view !== 'calendar');
+  }
+
+  function setLoginProgress(value) {
+    const progress = Math.max(0, Math.min(100, Number(value) || 0));
+    els.loadingProgress.setAttribute('aria-valuenow', String(progress));
+    els.loadingProgressBar.style.width = `${progress}%`;
   }
 
   function showError(error) {

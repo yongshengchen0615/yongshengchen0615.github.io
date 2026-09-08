@@ -6,7 +6,7 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profileBirthdayDisplay', 'profileBirthdayPickerButton', 'profileBirthdayPickerModal', 'profileBirthdayPickerTitle', 'closeProfileBirthdayPicker', 'cancelProfileBirthdayPicker', 'confirmProfileBirthdayPicker', 'profileBirthdayPickerMessage', 'profileBirthdayYear', 'profileBirthdayMonth', 'profileBirthdayDay', 'profilePhone', 'profileFormMessage', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'memberPass', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'membershipProgress'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profileBirthdayDisplay', 'profileBirthdayPickerButton', 'profileBirthdayPickerModal', 'profileBirthdayPickerTitle', 'closeProfileBirthdayPicker', 'cancelProfileBirthdayPicker', 'confirmProfileBirthdayPicker', 'profileBirthdayPickerMessage', 'profileBirthdayYear', 'profileBirthdayMonth', 'profileBirthdayDay', 'profilePhone', 'profileFormMessage', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'memberPass', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'membershipProgress'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.refreshProfileButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
@@ -29,10 +29,14 @@
 
   async function boot() {
     setView('loading');
+    setLoginProgress(8);
     try {
       state.config = await window.MemberSystem.loadConfig();
+      setLoginProgress(35);
       state.idToken = await window.MemberSystem.signIn(state.config, 'member');
+      setLoginProgress(68);
       const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
+      setLoginProgress(100);
       state.profile = result.profile || {};
       if (!state.profile.profileComplete || state.profile.membershipRequired) return setView('profileSetup');
       renderProfile(state.profile);
@@ -178,6 +182,12 @@
     els.errorView.classList.toggle('hidden', view !== 'error');
     els.profileSetupView.classList.toggle('hidden', view !== 'profileSetup');
     els.memberView.classList.toggle('hidden', view !== 'member');
+  }
+
+  function setLoginProgress(value) {
+    const progress = Math.max(0, Math.min(100, Number(value) || 0));
+    els.loadingProgress.setAttribute('aria-valuenow', String(progress));
+    els.loadingProgressBar.style.width = `${progress}%`;
   }
 
   function showError(error) {

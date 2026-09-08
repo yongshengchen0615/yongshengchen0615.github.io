@@ -7,20 +7,20 @@
   <meta name="theme-color" content="#f3eee6">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>集點卡｜Lumen Club</title>
-  <link rel="stylesheet" href="./styles.css?v=points-scroll-20260908">
+  <link rel="stylesheet" href="./styles.css?v=points-login-progress-20260908">
   <link rel="stylesheet" href="./membership-progress.css?v=points-local-progress-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="./common.js?v=points-local-client-20260908" defer></script>
   <script src="./membership-progress.js?v=points-local-progress-20260908" defer></script>
-  <script src="./app.js?v=points-local-ui-20260908" defer></script>
+  <script src="./app.js?v=points-login-progress-20260908" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
-    <section id="loadingView" class="state-view">
-      <div class="loader-mark" aria-hidden="true">✦</div>
-      <p class="kicker">Rewards in progress</p>
-      <h1>正在整理你的集點卡</h1>
-      <p>每次開啟都會重新確認 LINE 身份，接著就能繼續累積你的下一個回饋。</p>
+    <section id="loadingView" class="state-view login-loading" aria-live="polite">
+      <h1>登入中</h1>
+      <div id="loadingProgress" class="login-progress" role="progressbar" aria-label="登入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8">
+        <span id="loadingProgressBar" class="login-progress-bar"></span>
+      </div>
     </section>
 
     <section id="errorView" class="state-view hidden" role="alert">

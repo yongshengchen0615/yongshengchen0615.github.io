@@ -7,7 +7,7 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     [
-      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
+      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
       'ticketHistorySummary', 'ticketHistoryList', 'ticketHistoryEmpty', 'ticketModal', 'closeTicketModal', 'ticketModalTicketName', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalCost', 'ticketModalProcessing', 'confirmTicketUseButton', 'refreshTicketButton', 'ticketModalResult', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
@@ -26,10 +26,14 @@
 
   async function boot() {
     setView('loading');
+    setLoginProgress(8);
     try {
       state.config = await window.MemberSystem.loadConfig();
+      setLoginProgress(35);
       state.idToken = await window.MemberSystem.signIn(state.config, 'points');
+      setLoginProgress(68);
       await loadCards(false);
+      setLoginProgress(100);
       setView('points');
     } catch (error) { showError(error); } finally { els.app.setAttribute('aria-busy', 'false'); }
   }
@@ -213,5 +217,6 @@
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
   function safeCardStyle(value) { const styleKey = String(value || '').trim().toLowerCase(); return POINT_CARD_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.pointsView.classList.toggle('hidden', view !== 'points'); }
+  function setLoginProgress(value) { const progress = Math.max(0, Math.min(100, Number(value) || 0)); els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgressBar.style.width = `${progress}%`; }
   function showError(error) { const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED'; els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '集點卡暫時無法載入'; els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用集點卡與票券功能。' : error && error.message ? error.message : '請稍後重新整理再試。'; els.joinMemberButton.classList.toggle('hidden', !membershipRequired); els.retryButton.classList.toggle('hidden', membershipRequired); setView('error'); }
 })();
