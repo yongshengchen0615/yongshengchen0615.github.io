@@ -4,6 +4,7 @@
   const EVENT_TICKET_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
   const CALENDAR_ITEM_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
+  const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], calendarItems: [], selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, writeConfirmationRequired: false };
   const els = {};
 
@@ -11,7 +12,7 @@
     [
       'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton',
       'membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'cardSettingsTab', 'ticketSettingsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'activeEventTicketCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'cardSettingsPanel', 'ticketSettingsPanel', 'syncStatus', 'refreshButton',
-      'tierSettingsForm', 'tierGeneralMinutes', 'tierSilverMinutes', 'tierGoldMinutes', 'tierPlatinumMinutes', 'tierSettingsFormMessage', 'saveTierSettingsButton',
+      'tierSettingsForm', 'tierGeneralMinutes', 'tierSilverMinutes', 'tierGoldMinutes', 'tierPlatinumMinutes', 'tierGeneralStyle', 'tierSilverStyle', 'tierGoldStyle', 'tierPlatinumStyle', 'tierSettingsFormMessage', 'saveTierSettingsButton',
       'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
@@ -191,29 +192,33 @@
   }
   function renderTierSettings() {
     const inputsByKey = { general: els.tierGeneralMinutes, silver: els.tierSilverMinutes, gold: els.tierGoldMinutes, platinum: els.tierPlatinumMinutes };
+    const stylesByKey = { general: els.tierGeneralStyle, silver: els.tierSilverStyle, gold: els.tierGoldStyle, platinum: els.tierPlatinumStyle };
     state.tierSettings.forEach((setting) => {
       const input = inputsByKey[setting && setting.tierKey];
-      if (!input) return;
+      const style = stylesByKey[setting && setting.tierKey];
+      if (!input || !style) return;
       input.value = String(Math.max(0, Math.floor(Number(setting.requiredServiceMinutes) || 0)));
+      style.value = safeTierStyle(setting.styleKey);
       input.dataset.updatedAt = String(setting.updatedAt || '');
+      style.dataset.updatedAt = String(setting.updatedAt || '');
     });
   }
   function collectTierSettings() {
     return [
-      ['general', els.tierGeneralMinutes], ['silver', els.tierSilverMinutes], ['gold', els.tierGoldMinutes], ['platinum', els.tierPlatinumMinutes]
-    ].map(([tierKey, input]) => ({ tierKey, requiredServiceMinutes: Number(input.value), expectedUpdatedAt: String(input.dataset.updatedAt || '') }));
+      ['general', els.tierGeneralMinutes, els.tierGeneralStyle], ['silver', els.tierSilverMinutes, els.tierSilverStyle], ['gold', els.tierGoldMinutes, els.tierGoldStyle], ['platinum', els.tierPlatinumMinutes, els.tierPlatinumStyle]
+    ].map(([tierKey, input, style]) => ({ tierKey, requiredServiceMinutes: Number(input.value), styleKey: safeTierStyle(style.value), expectedUpdatedAt: String(input.dataset.updatedAt || '') }));
   }
   async function saveTierSettings(event) {
     event.preventDefault(); if (requireRefreshBeforeWrite(els.tierSettingsFormMessage)) return; hideMessage(els.tierSettingsFormMessage);
     const tierSettings = collectTierSettings();
-    const invalid = tierSettings.some((setting, index) => !Number.isInteger(setting.requiredServiceMinutes) || setting.requiredServiceMinutes < 0 || setting.requiredServiceMinutes > 10000000 || (index === 0 ? setting.requiredServiceMinutes !== 0 : setting.requiredServiceMinutes <= tierSettings[index - 1].requiredServiceMinutes));
+    const invalid = tierSettings.some((setting, index) => !Number.isInteger(setting.requiredServiceMinutes) || setting.requiredServiceMinutes < 0 || setting.requiredServiceMinutes > 10000000 || !MEMBERSHIP_TIER_STYLE_KEYS.includes(setting.styleKey) || (index === 0 ? setting.requiredServiceMinutes !== 0 : setting.requiredServiceMinutes <= tierSettings[index - 1].requiredServiceMinutes));
     if (invalid) return showMessage(els.tierSettingsFormMessage, '門檻必須由一般會員 0 分鐘開始，銀級、金級與白金會員需依序遞增。');
     setSaving(els.saveTierSettingsButton, true, '正在儲存會員等級門檻…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-tiers.save', { tierSettings });
       state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : state.tierSettings;
       renderTierSettings();
-      if (await refreshAfterSuccessfulWrite('會員等級門檻已儲存', els.tierSettingsFormMessage)) showMessage(els.tierSettingsFormMessage, '會員等級門檻已儲存，名冊已依累積服務時間重新計算。', true);
+      if (await refreshAfterSuccessfulWrite('會員等級與卡面樣式已儲存', els.tierSettingsFormMessage)) showMessage(els.tierSettingsFormMessage, '會員等級與卡面樣式已儲存，會員卡會依目前等級顯示對應外觀。', true);
     } catch (error) { handleActionError(error, els.tierSettingsFormMessage); } finally { setSaving(els.saveTierSettingsButton, false); }
   }
   function scheduleMemberSearch() {
@@ -962,6 +967,7 @@
   function updateEditorStatus(element, status) { element.textContent = statusLabel(status); element.className = `editor-status ${status}`; }
   function statusLabel(status) { return ({ active: '啟用中', draft: '草稿', archived: '已封存', disabled: '已停用' })[status] || '未設定'; }
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
+  function safeTierStyle(value) { const styleKey = String(value || '').trim(); return MEMBERSHIP_TIER_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
   function replaceById(items, next, key) { return items.some((item) => item[key] === next[key]) ? items.map((item) => item[key] === next[key] ? next : item) : [next, ...items]; }
   function createRequestId() { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); return `request-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`; }
   function formatServiceMinutes(value) { return `${Math.max(0, Math.floor(Number(value) || 0))} 分鐘`; }

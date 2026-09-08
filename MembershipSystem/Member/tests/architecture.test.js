@@ -126,6 +126,8 @@ test('admin derives fixed membership tiers from service-time thresholds instead 
   assert.match(adminHtml, /tierSilverMinutes/);
   assert.match(adminHtml, /tierGoldMinutes/);
   assert.match(adminHtml, /tierPlatinumMinutes/);
+  ['tierGeneralStyle', 'tierSilverStyle', 'tierGoldStyle', 'tierPlatinumStyle'].forEach((id) => assert.match(adminHtml, new RegExp(id)));
+  assert.equal((adminHtml.match(/<option value="(?:forest|midnight|ocean|sunset|lavender|rose|gold|platinum|mint|cherry)">/g) || []).length, 40);
   assert.doesNotMatch(adminHtml, /<input id="memberTier"/);
   assert.match(adminApp, /admin\.member-tiers\.save/);
   assert.doesNotMatch(adminApp, /tier:\s*String\(els\.memberTier/);
@@ -133,6 +135,8 @@ test('admin derives fixed membership tiers from service-time thresholds instead 
   assert.match(memberService, /function membershipTierForServiceMinutes_/);
   assert.match(memberService, /function membershipTierProgressForServiceMinutes_/);
   assert.match(memberService, /function handleMembershipTierSettingsSave_/);
+  assert.match(memberService, /MEMBERSHIP_TIER_STYLE_DEFINITIONS_/);
+  assert.match(memberService, /tierStyleKey/);
 });
 
 test('all browser JavaScript and GAS files parse as JavaScript', () => {
@@ -260,7 +264,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-ui-layout-20260906/);
+  assert.match(adminHtml, /styles\.css\?v=admin-tier-style-20260908/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -286,13 +290,25 @@ test('admin mobile layout contains LINE WebView overflow guards', () => {
   assert.doesNotMatch(adminStyles, /\.card-list > div:last-child \{ display: flex; overflow-x: auto;/);
 });
 
+test('point-card usage history starts collapsed and renders only the latest five records', () => {
+  const pointsHtml = read('points/index.html');
+  const pointsApp = read('points/app.js');
+  const pointsStyles = read('points/styles.css');
+  assert.match(pointsHtml, /<details id="ticketHistoryDisclosure" class="ticket-history-disclosure">/);
+  assert.match(pointsHtml, /<ul id="ticketHistoryList" class="ticket-history-list"><\/ul>/);
+  assert.match(pointsHtml, /展開後顯示最新 5 筆資料/);
+  assert.match(pointsApp, /const latestHistory = history\.slice\(0, 5\)/);
+  assert.match(pointsApp, /document\.createElement\('li'\)/);
+  assert.match(pointsStyles, /\.ticket-history-summary \{ display: flex;/);
+});
+
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-ui-layout-20260906'],
+    ['member', 'member-tier-style-20260908'],
     ['points', 'points-ticket-history-20260908'],
-    ['event', 'event-ui-layout-20260906'],
+    ['event', 'event-ticket-lottery-20260908'],
     ['calendar', 'calendar-ui-layout-20260906'],
-    ['admin', 'admin-ui-layout-20260906']
+    ['admin', 'admin-tier-style-20260908']
   ];
 
   surfaces.forEach(([surface, version]) => {

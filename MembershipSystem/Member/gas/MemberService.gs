@@ -7,7 +7,7 @@ const MEMBERSHIP_SERVICE_MINUTES_MAX_GRANT_ = 1440;
 const MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ = 10000000;
 const MEMBERSHIP_LAST_LOGIN_TOUCH_INTERVAL_MS_ = 5 * 60 * 1000;
 const MEMBERSHIP_TIER_SETTINGS_CACHE_SECONDS_ = 120;
-const MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_ = 'membership:tier-settings:v1';
+const MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_ = 'membership:tier-settings:v2';
 const MEMBERSHIP_SERVICE_MINUTES_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_TIER_DEFINITIONS_ = Object.freeze([
   Object.freeze({ tierKey: 'general', label: '一般會員', defaultRequiredServiceMinutes: 0 }),
@@ -15,6 +15,19 @@ const MEMBERSHIP_TIER_DEFINITIONS_ = Object.freeze([
   Object.freeze({ tierKey: 'gold', label: '金級會員', defaultRequiredServiceMinutes: 1800 }),
   Object.freeze({ tierKey: 'platinum', label: '白金會員', defaultRequiredServiceMinutes: 3600 })
 ]);
+const MEMBERSHIP_TIER_STYLE_DEFINITIONS_ = Object.freeze([
+  Object.freeze({ styleKey: 'forest', label: '森林綠' }),
+  Object.freeze({ styleKey: 'midnight', label: '午夜藍' }),
+  Object.freeze({ styleKey: 'ocean', label: '海灣青' }),
+  Object.freeze({ styleKey: 'sunset', label: '夕陽橘' }),
+  Object.freeze({ styleKey: 'lavender', label: '薰衣草紫' }),
+  Object.freeze({ styleKey: 'rose', label: '玫瑰粉' }),
+  Object.freeze({ styleKey: 'gold', label: '金曜棕' }),
+  Object.freeze({ styleKey: 'platinum', label: '鉑金灰' }),
+  Object.freeze({ styleKey: 'mint', label: '薄荷綠' }),
+  Object.freeze({ styleKey: 'cherry', label: '櫻桃紅' })
+]);
+const MEMBERSHIP_TIER_DEFAULT_STYLE_KEYS_ = Object.freeze({ general: 'forest', silver: 'ocean', gold: 'gold', platinum: 'platinum' });
 
 function handleMemberBootstrap_(identity) {
   const member = ensureMember_(identity);
@@ -55,8 +68,10 @@ function newMemberRecord_(identity, now) { return { line_user_id: identity.lineU
 
 function memberForClient_(member) {
   const serviceMinutesTotal = serviceMinutesTotalForMember_(member.line_user_id);
-  const tierProgress = membershipTierProgressForServiceMinutes_(serviceMinutesTotal);
-  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tierProgress.currentTierLabel, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal, tierProgress, benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
+  const tierSettings = readMembershipTierSettings_();
+  const tierProgress = membershipTierProgressForServiceMinutes_(serviceMinutesTotal, tierSettings);
+  const tierStyle = membershipTierStyleForKey_(tierProgress.currentTierKey, tierSettings);
+  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tierProgress.currentTierLabel, tierStyleKey: tierStyle.styleKey, tierStyleLabel: tierStyle.label, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal, tierProgress, benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
 }
 
 function readMembers_() {
@@ -90,7 +105,7 @@ function ensureMembershipTierSettings_() {
     if (readRecords_('MembershipTierSettings').length) return;
     const now = nowIso_();
     MEMBERSHIP_TIER_DEFINITIONS_.forEach(function(definition) {
-      appendRecord_('MembershipTierSettings', { tier_key: definition.tierKey, tier_label: definition.label, required_service_minutes: String(definition.defaultRequiredServiceMinutes), updated_by: 'system', updated_at: now });
+      appendRecord_('MembershipTierSettings', { tier_key: definition.tierKey, tier_label: definition.label, required_service_minutes: String(definition.defaultRequiredServiceMinutes), style_key: membershipTierDefaultStyleKey_(definition.tierKey), updated_by: 'system', updated_at: now });
     });
     clearMembershipTierSettingsCache_();
   });
@@ -121,7 +136,8 @@ function readMembershipTierSettings_(forceFresh) {
     const validMinimum = index === 0 ? requiredServiceMinutes === 0 : requiredServiceMinutes > previousRequiredServiceMinutes;
     if (!/^(0|[1-9]\d*)$/.test(storedRequiredServiceMinutes) || !Number.isInteger(requiredServiceMinutes) || requiredServiceMinutes < 0 || requiredServiceMinutes > MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ || !validMinimum) throw new ApiError(500, 'TIER_SETTINGS_INVALID', '會員等級門檻資料不合法。');
     previousRequiredServiceMinutes = requiredServiceMinutes;
-    return { tierKey: definition.tierKey, label: definition.label, requiredServiceMinutes, updatedAt: String(record.updated_at || '') };
+    const style = membershipTierStyleForRecord_(record, definition.tierKey);
+    return { tierKey: definition.tierKey, label: definition.label, requiredServiceMinutes, styleKey: style.styleKey, styleLabel: style.label, updatedAt: String(record.updated_at || '') };
   });
   if (cache) {
     try { cache.put(MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_, JSON.stringify(settings), MEMBERSHIP_TIER_SETTINGS_CACHE_SECONDS_); } catch (_) {}
@@ -152,6 +168,35 @@ function membershipTierProgressForServiceMinutes_(serviceMinutesTotal, tierSetti
     remainingServiceMinutes: nextTier ? Math.max(0, nextTier.requiredServiceMinutes - normalizedServiceMinutesTotal) : 0,
     isHighestTier: !nextTier
   };
+}
+
+function membershipTierStyleForKey_(tierKey, tierSettings) {
+  const settings = Array.isArray(tierSettings) ? tierSettings : [];
+  const setting = settings.find(function(item) { return String(item && item.tierKey || '') === String(tierKey || ''); });
+  return membershipTierStyleDefinition_(setting && setting.styleKey, tierKey);
+}
+
+function membershipTierStyleForRecord_(record, tierKey) {
+  return membershipTierStyleDefinition_(record && record.style_key, tierKey);
+}
+
+function membershipTierStyleDefinition_(styleKey, tierKey) {
+  const requested = String(styleKey || '').trim();
+  const selected = MEMBERSHIP_TIER_STYLE_DEFINITIONS_.find(function(style) { return style.styleKey === requested; });
+  if (selected) return selected;
+  const fallbackKey = membershipTierDefaultStyleKey_(tierKey);
+  return MEMBERSHIP_TIER_STYLE_DEFINITIONS_.find(function(style) { return style.styleKey === fallbackKey; }) || MEMBERSHIP_TIER_STYLE_DEFINITIONS_[0];
+}
+
+function membershipTierDefaultStyleKey_(tierKey) {
+  return MEMBERSHIP_TIER_DEFAULT_STYLE_KEYS_[String(tierKey || '').trim()] || MEMBERSHIP_TIER_STYLE_DEFINITIONS_[0].styleKey;
+}
+
+function normalizeMembershipTierStyleKey_(value, tierKey) {
+  const styleKey = String(value || '').trim();
+  if (!styleKey) throw new ApiError(400, 'INVALID_TIER_SETTINGS', '會員卡樣式不合法。');
+  if (!MEMBERSHIP_TIER_STYLE_DEFINITIONS_.some(function(style) { return style.styleKey === styleKey; })) throw new ApiError(400, 'INVALID_TIER_SETTINGS', '會員卡樣式不合法。');
+  return styleKey;
 }
 
 function memberProfileComplete_(member) { return Boolean(String(member.birthday || '').trim() && String(member.phone || '').trim()); }
@@ -290,10 +335,12 @@ function normalizeMembershipTierSettingsRequest_(request) {
     const setting = inputByKey[definition.tierKey];
     const requiredServiceMinutes = Number(setting && setting.requiredServiceMinutes);
     const expectedUpdatedAt = String(setting && setting.expectedUpdatedAt || '').trim();
+    const hasStyleKey = Boolean(setting && Object.prototype.hasOwnProperty.call(setting, 'styleKey'));
+    const styleKey = hasStyleKey ? normalizeMembershipTierStyleKey_(setting.styleKey, definition.tierKey) : '';
     const validMinimum = index === 0 ? requiredServiceMinutes === 0 : requiredServiceMinutes > previousRequiredServiceMinutes;
     if (!setting || !Number.isInteger(requiredServiceMinutes) || requiredServiceMinutes < 0 || requiredServiceMinutes > MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ || !validMinimum || expectedUpdatedAt.length > 80) throw new ApiError(400, 'INVALID_TIER_SETTINGS', '會員等級門檻必須由一般會員 0 分鐘開始，並依序遞增。');
     previousRequiredServiceMinutes = requiredServiceMinutes;
-    return { tierKey: definition.tierKey, requiredServiceMinutes, expectedUpdatedAt };
+    return { tierKey: definition.tierKey, requiredServiceMinutes, styleKey, hasStyleKey, expectedUpdatedAt };
   });
 }
 
@@ -311,6 +358,7 @@ function handleMembershipTierSettingsSave_(identity, admin, request) {
       if (!match) throw new ApiError(500, 'TIER_SETTINGS_INVALID', '會員等級設定資料不完整。');
       const record = match.record;
       record.required_service_minutes = String(setting.requiredServiceMinutes);
+      if (setting.hasStyleKey) record.style_key = setting.styleKey;
       record.updated_by = identity.lineUserId;
       record.updated_at = now;
       updateRecordAtRow_('MembershipTierSettings', match.rowNumber, record);

@@ -94,7 +94,15 @@ button { line-height: 1.35; }
 /* Ticket redemption history keeps one business event per use so members do not see
    the point ledger and the ticket result as two separate charges. */
 .ticket-history-panel { margin-top: 22px; padding: 24px; border-radius: 28px; background: rgba(255,255,255,.72); }
-.ticket-history-list { display: grid; gap: 14px; margin-top: 16px; }
+.ticket-history-disclosure { max-width: 100%; }
+.ticket-history-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; list-style: none; cursor: pointer; }
+.ticket-history-summary::-webkit-details-marker { display: none; }
+.ticket-history-summary::after { content: '＋'; display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(46,38,30,.15); border-radius: 50%; color: #806d52; font-size: 18px; line-height: 1; }
+.ticket-history-disclosure[open] .ticket-history-summary::after { content: '−'; }
+.ticket-history-summary-title { display: grid; gap: 5px; min-width: 0; }
+.ticket-history-summary-title strong { color: #2e261e; font-size: clamp(21px, 4vw, 28px); letter-spacing: -.07em; }
+.ticket-history-description { margin: 16px 0 0; color: #83776d; font-size: 12px; line-height: 1.65; }
+.ticket-history-list { display: grid; gap: 14px; margin: 16px 0 0; padding: 0; list-style: none; }
 .ticket-history-item { display: grid; gap: 14px; padding: 18px; border: 1px solid rgba(46,38,30,.12); border-radius: 20px; background: rgba(255,255,255,.78); max-width: 100%; overflow-wrap: anywhere; }
 .ticket-history-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .ticket-history-heading h3 { margin: 5px 0 0; font-size: 1.06rem; }

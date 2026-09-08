@@ -90,6 +90,7 @@ test('member tiers are derived from accumulated service time and fixed threshold
   const member = rows.Members[0];
   member.tier = '白金會員';
   assert.equal(context.memberForClient_(member).tier, '一般會員');
+  assert.equal(context.memberForClient_(member).tierStyleKey, 'forest');
   assert.deepEqual(JSON.parse(JSON.stringify(context.memberForClient_(member).tierProgress)), {
     serviceMinutesTotal: 0,
     currentTierKey: 'general',
@@ -116,13 +117,16 @@ test('member tiers are derived from accumulated service time and fixed threshold
   const result = context.handleMembershipTierSettingsSave_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
     tierSettings: [
       { tierKey: 'general', requiredServiceMinutes: 0, expectedUpdatedAt: '2026-09-03T00:00:00.000Z' },
-      { tierKey: 'silver', requiredServiceMinutes: 1200, expectedUpdatedAt: '2026-09-03T00:00:00.000Z' },
-      { tierKey: 'gold', requiredServiceMinutes: 2400, expectedUpdatedAt: '2026-09-03T00:00:00.000Z' },
-      { tierKey: 'platinum', requiredServiceMinutes: 4800, expectedUpdatedAt: '2026-09-03T00:00:00.000Z' }
+      { tierKey: 'silver', requiredServiceMinutes: 1200, styleKey: 'ocean', expectedUpdatedAt: '2026-09-03T00:00:00.000Z' },
+      { tierKey: 'gold', requiredServiceMinutes: 2400, styleKey: 'lavender', expectedUpdatedAt: '2026-09-03T00:00:00.000Z' },
+      { tierKey: 'platinum', requiredServiceMinutes: 4800, styleKey: 'platinum', expectedUpdatedAt: '2026-09-03T00:00:00.000Z' }
     ]
   });
   assert.deepEqual(JSON.parse(JSON.stringify(result.tierSettings.map((setting) => setting.requiredServiceMinutes))), [0, 1200, 2400, 4800]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.tierSettings.map((setting) => setting.styleKey))), ['forest', 'ocean', 'lavender', 'platinum']);
   assert.equal(context.memberForClient_(member).tier, '金級會員');
+  assert.equal(context.memberForClient_(member).tierStyleKey, 'lavender');
+  assert.equal(rows.MembershipTierSettings[2].style_key, 'lavender');
   assert.equal(audit.at(-1).action, 'MEMBER_TIER_SETTINGS_SAVE');
   assert.throws(
     () => context.handleMembershipTierSettingsSave_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { tierSettings: [{ tierKey: 'general', requiredServiceMinutes: 1 }, { tierKey: 'silver', requiredServiceMinutes: 1200 }, { tierKey: 'gold', requiredServiceMinutes: 2400 }, { tierKey: 'platinum', requiredServiceMinutes: 4800 }] }),
@@ -130,6 +134,10 @@ test('member tiers are derived from accumulated service time and fixed threshold
   );
   assert.throws(
     () => context.handleMembershipTierSettingsSave_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { tierSettings: [{ tierKey: 'general', requiredServiceMinutes: 0 }, { tierKey: 'silver', requiredServiceMinutes: 1200 }, { tierKey: 'gold', requiredServiceMinutes: 1200 }, { tierKey: 'platinum', requiredServiceMinutes: 4800 }] }),
+    (error) => error instanceof TestApiError && error.code === 'INVALID_TIER_SETTINGS'
+  );
+  assert.throws(
+    () => context.handleMembershipTierSettingsSave_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { tierSettings: [{ tierKey: 'general', requiredServiceMinutes: 0, styleKey: 'custom' }, { tierKey: 'silver', requiredServiceMinutes: 1200, styleKey: 'ocean' }, { tierKey: 'gold', requiredServiceMinutes: 2400, styleKey: 'lavender' }, { tierKey: 'platinum', requiredServiceMinutes: 4800, styleKey: 'platinum' }] }),
     (error) => error instanceof TestApiError && error.code === 'INVALID_TIER_SETTINGS'
   );
   rows.MembershipTierSettings[1].required_service_minutes = '1200.5';

@@ -85,13 +85,14 @@
 
   function renderHistory() {
     const history = Array.isArray(state.history) ? state.history.slice().sort((a, b) => String(b.occurredAt || '').localeCompare(String(a.occurredAt || ''))) : [];
-    els.ticketHistorySummary.textContent = history.length ? `共 ${history.length} 筆；每次票券使用只會顯示一筆完整紀錄。` : '使用票券後，抽獎結果與實際扣點會一起保留在這裡。';
+    const latestHistory = history.slice(0, 5);
+    els.ticketHistorySummary.textContent = history.length ? `共 ${history.length} 筆 · 展開查看最新 ${latestHistory.length} 筆` : '尚無使用紀錄';
     els.ticketHistoryEmpty.classList.toggle('hidden', history.length !== 0);
-    els.ticketHistoryList.replaceChildren(...history.map((activity) => createHistoryCard(activity)));
+    els.ticketHistoryList.replaceChildren(...latestHistory.map((activity) => createHistoryCard(activity)));
   }
 
   function createHistoryCard(activity) {
-    const item = document.createElement('article'); item.className = 'ticket-history-item';
+    const item = document.createElement('li'); item.className = 'ticket-history-item';
     const heading = document.createElement('div'); heading.className = 'ticket-history-heading';
     const titleWrap = document.createElement('div');
     const type = document.createElement('span'); type.className = 'member-ticket-type'; type.textContent = activity.ticketType === 'lottery' ? '抽獎券已使用' : '優惠券已使用';

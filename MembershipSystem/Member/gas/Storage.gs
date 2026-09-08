@@ -19,7 +19,7 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
   PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at', 'request_id', 'entry_type', 'reference_type', 'reference_id']),
   ServiceTimeEntries: Object.freeze(['entry_id', 'line_user_id', 'minutes', 'note', 'created_by', 'created_at', 'request_id']),
-  MembershipTierSettings: Object.freeze(['tier_key', 'tier_label', 'required_service_minutes', 'updated_by', 'updated_at']),
+  MembershipTierSettings: Object.freeze(['tier_key', 'tier_label', 'required_service_minutes', 'updated_by', 'updated_at', 'style_key']),
   AuditLogs: Object.freeze(['audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id', 'result', 'detail', 'created_at'])
 });
 let MEMBERSHIP_SPREADSHEET_CACHE_ = null;
@@ -174,7 +174,7 @@ function resetMembershipSystemDataForNewEnvironment() {
     // Keep the required system baseline while leaving all member and operational records empty.
     const now = nowIso_();
     MEMBERSHIP_TIER_DEFINITIONS_.forEach(function(definition) {
-      appendRecord_('MembershipTierSettings', { tier_key: definition.tierKey, tier_label: definition.label, required_service_minutes: String(definition.defaultRequiredServiceMinutes), updated_by: 'system', updated_at: now });
+      appendRecord_('MembershipTierSettings', { tier_key: definition.tierKey, tier_label: definition.label, required_service_minutes: String(definition.defaultRequiredServiceMinutes), style_key: membershipTierDefaultStyleKey_(definition.tierKey), updated_by: 'system', updated_at: now });
     });
     return cleared;
   });

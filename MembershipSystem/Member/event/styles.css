@@ -53,3 +53,11 @@ button { line-height: 1.35; }
   .event-ticket-action small { order: 2; }
   .ticket-button { width: 100%; min-height: 44px; }
 }
+
+.ticket-success, .lottery-reveal, .lottery-result { max-width: 100%; overflow-wrap: anywhere; }
+.ticket-success { margin-top: 14px; padding: 19px; color: #286a4a; background: #e8f6eb; border-radius: 14px; font-size: 14px; font-weight: 850; line-height: 1.55; }
+.lottery-reveal { display: grid; min-height: 92px; place-items: center; margin-top: 14px; color: #8a5b25; background: #fff1d9; border-radius: 14px; font-size: 18px; font-weight: 900; letter-spacing: .08em; animation: lottery-pulse .68s ease-in-out infinite alternate; }
+.lottery-result { display: grid; gap: 7px; margin-top: 14px; padding: 19px; color: #286a4a; background: #e8f6eb; border-radius: 14px; line-height: 1.55; }
+.lottery-result span { font-size: 11px; opacity: .78; }.lottery-result strong { font-size: 25px; letter-spacing: -.06em; }.lottery-result p { max-width: 280px; margin: 0; font-size: 12px; line-height: 1.5; opacity: .84; }
+@keyframes lottery-pulse { from { transform: scale(.96) rotate(-1deg); opacity: .72; } to { transform: scale(1.04) rotate(1deg); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lottery-reveal { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }

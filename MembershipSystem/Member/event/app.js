@@ -78,7 +78,7 @@
     const prizes = claim ? claim.prizes : ticket.prizes; renderPrizes(ticket.ticketType, prizes);
     const eligible = !history && eventTicketTierEligible(offer); const canAct = !state.actionLocked && !history && eligible && ((claim && offer.canUse) || (!claim && offer.canClaim));
     els.ticketModalStatus.textContent = modalStatusText(offer); els.ticketModalAction.textContent = state.actionLocked ? '請重新整理確認' : history ? '這張票券已使用' : !eligible ? '目前等級無法使用' : claim ? offer.canUse ? '確認使用這張票券' : '這張票券已使用' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !canAct; els.ticketModalAction.classList.toggle('hidden', history || Boolean(claim && !offer.canUse && eligible) && !state.actionLocked); els.refreshTicketButton.classList.toggle('hidden', !state.actionLocked);
-    if (history && claim && claim.ticketType === 'lottery' && claim.result) showRedeemedResult(claim);
+    if (history && claim && claim.ticketType === 'lottery' && claim.result) renderRedeemedResult(claim);
   }
 
   function renderPrizes(ticketType, prizes) {
@@ -108,11 +108,39 @@
     state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '使用中…'; els.ticketModalProcessingText.textContent = '正在確認票券與活動期限，請稍候…'; setProcessing(true); hideMessage();
     try {
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.redeem', { claimId: offer.claim.claimId });
-      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); showRedeemedResult(result.ticket); }
+      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); await showRedeemedResult(result.ticket); }
     } catch (error) { handleTicketError(error, '使用票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; }
   }
 
-  function showRedeemedResult(claim) { els.ticketModalAction.classList.add('hidden'); els.ticketModalResult.classList.remove('hidden'); els.ticketModalResult.textContent = claim.ticketType === 'lottery' && claim.result ? `抽獎完成：${claim.result.prizeTitle || '結果已記錄'}${claim.result.prizeDescription ? `｜${claim.result.prizeDescription}` : ''}` : '這張活動票券已成功使用，請向現場工作人員兌換。'; showMessage('票券已完成核銷。', true); }
+  async function showRedeemedResult(claim) {
+    els.ticketModalAction.classList.add('hidden');
+    els.ticketModalResult.classList.remove('hidden');
+    if (claim.ticketType === 'lottery' && claim.result) {
+      els.ticketModalStatus.textContent = '開獎中，請稍候…';
+      const reveal = document.createElement('div'); reveal.className = 'lottery-reveal'; reveal.textContent = '✦ 抽獎中 ✦';
+      els.ticketModalResult.replaceChildren(reveal);
+      await new Promise((resolve) => window.setTimeout(resolve, 1350));
+    }
+    renderRedeemedResult(claim);
+    showMessage(claim.ticketType === 'lottery' ? '票券已完成核銷；抽獎結果已保存到使用紀錄。' : '活動票券已完成核銷，使用紀錄已保存。', true);
+  }
+
+  function renderRedeemedResult(claim) {
+    els.ticketModalResult.classList.remove('hidden');
+    if (claim.ticketType === 'lottery' && claim.result) {
+      els.ticketModalStatus.textContent = '開獎完成，結果已保存。';
+      const resultBox = document.createElement('div'); resultBox.className = 'lottery-result';
+      const label = document.createElement('span'); label.textContent = '本次抽獎結果';
+      const title = document.createElement('strong'); title.textContent = claim.result.prizeTitle || '本次抽獎結果已記錄';
+      resultBox.append(label, title);
+      if (claim.result.prizeDescription) { const description = document.createElement('p'); description.textContent = claim.result.prizeDescription; resultBox.append(description); }
+      els.ticketModalResult.replaceChildren(resultBox);
+    } else {
+      els.ticketModalStatus.textContent = '票券已成功使用。';
+      const resultBox = document.createElement('div'); resultBox.className = 'ticket-success'; resultBox.textContent = '這張活動票券已成功使用，請向現場工作人員兌換。';
+      els.ticketModalResult.replaceChildren(resultBox);
+    }
+  }
   function updateOfferClaim(eventTicketId, claim) { const current = findOffer(eventTicketId); if (String(claim.status || '') === 'used') { state.offers = state.offers.filter((offer) => offer.ticket && offer.ticket.eventTicketId !== eventTicketId); const historyTicket = { ...(current || {}), ticket: ticketForOffer({ ...(current || {}), claim }), claim, availability: 'used', tierEligible: true, canClaim: false, canUse: false, soldOut: false, history: true }; state.usedTickets = [historyTicket, ...state.usedTickets.filter((offer) => !offer.ticket || offer.ticket.eventTicketId !== eventTicketId)]; return; } state.offers = state.offers.map((offer) => offer.ticket && offer.ticket.eventTicketId === eventTicketId ? { ...offer, claim, canClaim: false, canUse: eventTicketTierEligible(offer) && claim.status === 'available', soldOut: false } : offer); }
   function eventTicketIdForOffer(offer) { const ticket = offer && offer.ticket || {}; const claim = offer && offer.claim || {}; return String(ticket.eventTicketId || claim.eventTicketId || '').trim(); }
   function findOffer(eventTicketId) { const targetId = String(eventTicketId || '').trim(); if (!targetId) return null; return state.offers.concat(state.usedTickets).find((offer) => eventTicketIdForOffer(offer) === targetId) || null; }

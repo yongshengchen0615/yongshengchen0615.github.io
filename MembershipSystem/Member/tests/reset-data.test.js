@@ -43,6 +43,6 @@ test('manual new-environment reset clears every data table and restores only def
   assert.equal(result.restoredMembershipTierSettings, 4);
   sheetNames.forEach((sheetName) => assert.equal(result.clearedRowsBySheet[sheetName], 2));
   sheetNames.filter((sheetName) => sheetName !== 'MembershipTierSettings').forEach((sheetName) => assert.deepEqual(rows[sheetName], []));
-  assert.deepEqual(JSON.parse(JSON.stringify(rows.MembershipTierSettings.map((row) => [row.tier_key, row.required_service_minutes]))), [['general', '0'], ['silver', '600'], ['gold', '1800'], ['platinum', '3600']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(rows.MembershipTierSettings.map((row) => [row.tier_key, row.required_service_minutes, row.style_key]))), [['general', '0', 'forest'], ['silver', '600', 'ocean'], ['gold', '1800', 'gold'], ['platinum', '3600', 'platinum']]);
   assert.equal(cache.get('membership:data-epoch:v1'), 'reset-epoch');
 });

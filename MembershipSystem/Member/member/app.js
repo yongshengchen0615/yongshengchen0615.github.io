@@ -1,11 +1,12 @@
 (() => {
   'use strict';
 
+  const MEMBER_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const state = { config: null, idToken: '', profile: null, profileSaveLocked: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profilePhone', 'profileFormMessage', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'membershipProgress'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profilePhone', 'profileFormMessage', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'memberPass', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'membershipProgress'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.refreshProfileButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
@@ -40,6 +41,10 @@
     els.memberInitial.textContent = window.MemberSystem.initials(displayName);
     els.memberName.textContent = displayName;
     els.memberTier.textContent = String(profile.tier || '一般會員');
+    const tierStyleKey = safeTierStyle(profile.tierStyleKey);
+    MEMBER_TIER_STYLE_KEYS.forEach((styleKey) => els.memberPass.classList.remove(`tier-style-${styleKey}`));
+    els.memberPass.classList.add(`tier-style-${tierStyleKey}`);
+    els.memberPass.dataset.tierStyle = tierStyleKey;
     els.memberCode.textContent = String(profile.memberCode || '尚未建立');
     els.joinedAt.textContent = window.MemberSystem.formatDate(profile.joinedAt);
     els.memberBirthday.textContent = String(profile.birthday || '未填寫');
@@ -79,6 +84,8 @@
   function showUncertainSaveMessage() { showMessage('無法確認資料是否已儲存。請先重新整理確認；在確認前請勿再次送出。'); els.refreshProfileButton.classList.remove('hidden'); els.saveProfileButton.disabled = true; els.saveProfileButton.textContent = '請重新整理確認'; }
   function showMessage(message) { els.profileFormMessage.textContent = message; els.profileFormMessage.classList.remove('hidden'); }
   function hideMessage() { els.profileFormMessage.textContent = ''; els.profileFormMessage.classList.add('hidden'); if (!state.profileSaveLocked) els.refreshProfileButton.classList.add('hidden'); }
+
+  function safeTierStyle(value) { const styleKey = String(value || '').trim(); return MEMBER_TIER_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
 
   function setView(view) {
     els.loadingView.classList.toggle('hidden', view !== 'loading');

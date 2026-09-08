@@ -6,12 +6,12 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>會員卡｜Lumen Club</title>
-  <link rel="stylesheet" href="./styles.css?v=member-ui-layout-20260906">
+  <link rel="stylesheet" href="./styles.css?v=member-tier-style-20260908">
   <link rel="stylesheet" href="../shared/membership-progress.css?v=membership-progress-ui-layout-20260906">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="../shared/common.js" defer></script>
   <script src="../shared/membership-progress.js?v=membership-progress-20260905" defer></script>
-  <script src="./app.js" defer></script>
+  <script src="./app.js?v=member-tier-style-20260908" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -56,7 +56,7 @@
         </div>
       </header>
 
-      <section class="member-pass" aria-label="會員卡資訊">
+      <section id="memberPass" class="member-pass tier-style-forest" aria-label="會員卡資訊">
         <div class="pass-topline"><span id="brandName">Lumen Club</span><span class="status-tag"><i></i><span id="memberStatus">使用中</span></span></div>
         <div class="pass-content">
           <div class="avatar" id="memberInitial" aria-hidden="true">會</div>

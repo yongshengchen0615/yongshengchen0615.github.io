@@ -187,6 +187,22 @@ test('event ticket redemption checks ownership, expiry, and one-time use without
   assert.throws(() => context.handleEventTicketRedeem_({ lineUserId: 'U-1' }, { claimId: 'EC-EXPIRED' }), (error) => error instanceof TestApiError && error.code === 'EVENT_TICKET_ENDED');
 });
 
+test('event lottery tickets draw a server-side result and preserve it in the used claim', () => {
+  const { context, rows } = loadEventTicketService();
+  rows.EventTickets[0].ticket_type = 'lottery';
+  rows.EventTickets[0].lottery_prizes_json = JSON.stringify([
+    { prize_id: 'EP-0', prize_title: '不會抽中', prize_description: '', win_rate: '0' },
+    { prize_id: 'EP-1', prize_title: '會員禮', prize_description: '限定禮物', win_rate: '100' }
+  ]);
+  context.generateTicketRandomBasisPoint_ = () => 0;
+
+  const claim = context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' });
+  const redeemed = context.handleEventTicketRedeem_({ lineUserId: 'U-1' }, { claimId: claim.ticket.claimId });
+  assert.equal(redeemed.ticket.result.prizeId, 'EP-1');
+  assert.equal(redeemed.ticket.result.prizeTitle, '會員禮');
+  assert.equal(JSON.parse(rows.EventTicketClaims[0].result_json).prizeTitle, '會員禮');
+});
+
 test('deleting an event ticket removes its definition but retains claim and audit history', () => {
   const { context, rows, TestApiError } = loadEventTicketService();
   const claim = context.handleEventTicketClaim_({ lineUserId: 'U-1' }, { eventTicketId: 'ET-1' });
@@ -208,11 +224,11 @@ test('event ticket browser and admin contracts are present', () => {
   const storage = read('gas/Storage.gs');
   const code = read('gas/Code.gs');
   assert.match(eventHtml, /static\.line-scdn\.net\/liff/);
-  assert.match(adminHtml, /app\.js\?v=admin-calendar-links-20260906/);
+  assert.match(adminHtml, /app\.js\?v=admin-tier-style-20260908/);
   assert.match(eventHtml, /id="ticketModalAction"/);
   assert.match(eventHtml, /id="membershipProgress"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
-  assert.match(eventHtml, /app\.js\?v=event-tier-progress-20260905/);
+  assert.match(eventHtml, /app\.js\?v=event-ticket-lottery-20260908/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
   assert.match(eventApp, /user\.event\.ticket\.claim/);
   assert.match(eventApp, /user\.event\.ticket\.redeem/);
@@ -224,6 +240,9 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(eventApp, /new Intl\.DateTimeFormat\('zh-Hant-TW'/);
   assert.doesNotMatch(eventApp, /timestamp\.replace/);
   assert.match(eventApp, /setProcessing\(true\)/);
+  assert.match(eventApp, /lottery-reveal/);
+  assert.match(eventApp, /ticketModalResult\.classList\.remove\('hidden'\)/);
+  assert.match(eventApp, /開獎完成，結果已保存/);
   assert.doesNotMatch(eventApp, /innerHTML/);
   assert.match(adminHtml, /id="eventsPanel"/);
   assert.match(adminHtml, /id="eventTicketForm"/);
