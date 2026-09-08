@@ -63,7 +63,7 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
 
 /* Calendar labels can contain arbitrary event names and links from the admin editor. */
-html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+html, body { width: 100%; max-width: 100%; }
 body { line-height: 1.5; }
 button { line-height: 1.35; }
 .app-shell, .state-view, .topbar > *, .calendar-toolbar > *, .calendar-detail-card, .calendar-detail-item { min-width: 0; max-width: 100%; }
@@ -81,31 +81,4 @@ button { line-height: 1.35; }
   .month-button { width: 38px; height: 38px; font-size: 25px; }
   .month-title { font-size: 20px; line-height: 1.15; }
   .calendar-detail-modal { padding-right: 10px; padding-left: 10px; }
-}
-+
-/* Surface-local device and interaction baseline. */
-:root { color-scheme: light; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
-body { min-height: 100vh; min-height: 100dvh; overflow-y: auto; overscroll-behavior-y: auto; }
-button, input, select, textarea { font: inherit; }
-button, a, summary, input, select, textarea { -webkit-tap-highlight-color: transparent; }
-button, [role="button"] { touch-action: manipulation; }
-button:not(:disabled), a, summary { transition: transform .18s ease, opacity .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease; }
-button:disabled { cursor: not-allowed; }
-button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--coral, var(--orange, #df6b4d)); outline-offset: 3px; }
-input, select, textarea, [id] { scroll-margin-top: 24px; }
-::selection { color: #17352e; background: rgba(242, 195, 111, .5); }
-
-@media (hover: hover) { button:not(:disabled):hover, summary:hover { opacity: .9; } }
-
-@media (max-width: 760px) {
-  .app-shell { padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: max(32px, env(safe-area-inset-bottom)); padding-left: max(14px, env(safe-area-inset-left)); }
-  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
-  .button, .refresh-button, .ticket-button, .small-ticket-button, .ticket-confirm-button, .modal-action, .calendar-nav-button, .date-picker-button, .date-picker-trigger, .date-chip, .small-button, .close-button, .ticket-close-button, .date-picker-close { min-height: 44px; }
-  .modal, .ticket-modal, .profile-date-modal, .calendar-detail-modal { padding-right: max(12px, env(safe-area-inset-right)); padding-left: max(12px, env(safe-area-inset-left)); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }

@@ -2,7 +2,7 @@
   'use strict';
 
   const initialMonth = firstOfMonth(taipeiToday());
-  const state = { config: null, idToken: '', profile: null, items: [], initialMonth: initialMonth, visibleMonth: initialMonth, detailTrigger: null, lastWheelNavigationAt: 0, touchStart: null, suppressCalendarDayClickUntil: 0 };
+  const state = { config: null, idToken: '', profile: null, items: [], initialMonth: initialMonth, visibleMonth: initialMonth, detailTrigger: null, touchStart: null, suppressCalendarDayClickUntil: 0 };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -16,7 +16,6 @@
     els.calendarGrid.addEventListener('click', handleCalendarDayClick);
     els.calendarGrid.addEventListener('touchstart', handleCalendarTouchStart, { passive: true });
     els.calendarGrid.addEventListener('touchend', handleCalendarTouchEnd, { passive: true });
-    els.calendarGrid.addEventListener('wheel', handleCalendarWheel, { passive: false });
     els.closeCalendarDetailButton.addEventListener('click', closeCalendarItemDetail);
     els.calendarDetailModal.addEventListener('click', (event) => { if (event.target === els.calendarDetailModal) closeCalendarItemDetail(); });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeCalendarItemDetail(); });
@@ -155,20 +154,6 @@
     if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
     state.suppressCalendarDayClickUntil = Date.now() + 500;
     changeMonth(deltaX < 0 ? 1 : -1);
-  }
-
-  function handleCalendarWheel(event) {
-    const horizontalDelta = Math.abs(event.deltaX || 0);
-    const verticalDelta = Math.abs(event.deltaY || 0);
-    const isHorizontalNavigation = event.shiftKey || horizontalDelta > verticalDelta;
-    if (!isHorizontalNavigation) return;
-    const delta = horizontalDelta ? event.deltaX : event.deltaY;
-    if (!delta) return;
-    event.preventDefault();
-    const now = Date.now();
-    if (now - state.lastWheelNavigationAt < 450) return;
-    state.lastWheelNavigationAt = now;
-    changeMonth(delta > 0 ? 1 : -1);
   }
 
   function openCalendarDateDetails(isoDate, trigger) {

@@ -63,7 +63,7 @@ test('LIFF surfaces load only their own frontend assets', () => {
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
   assert.match(calendarHtml, /\.\/common\.js\?v=calendar-local-client-\d{8}/);
-  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-local-ui-\d{8}/);
+  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-scroll-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
@@ -72,13 +72,14 @@ test('LIFF surfaces load only their own frontend assets', () => {
   surfaces.forEach((surface) => assert.doesNotMatch(read(`${surface}/index.html`), /\.\.\/shared\//));
 });
 
-test('all LIFF surfaces own a device-safe UI baseline and ticket dialogs restore focus', () => {
+test('all LIFF surfaces preserve native viewport scrolling and ticket dialogs restore focus', () => {
   surfaces.forEach((surface) => {
     const html = read(`${surface}/index.html`);
     const styles = read(`${surface}/styles.css`);
     assert.match(html, /viewport-fit=cover/);
     assert.match(html, /<meta name="theme-color"/);
-    ['100dvh', 'safe-area-inset-left', 'font-size: 16px', 'prefers-reduced-motion', 'focus-visible', 'overflow-y: auto'].forEach((rule) => assert.match(styles, new RegExp(rule)));
+    assert.doesNotMatch(styles, /html, body \{[^}]*overflow-/);
+    assert.doesNotMatch(styles, /touch-action: none/);
   });
   ['points/app.js', 'event/app.js'].forEach((file) => {
     const app = read(file);
@@ -349,8 +350,8 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-local-ui-20260908/);
-  assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
+  assert.match(adminHtml, /styles\.css\?v=admin-scroll-20260908/);
+  assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; \}/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
   assert.match(adminStyles, /\.surface-nav \{ max-width: 100%; overflow-x: auto;/);
@@ -379,7 +380,7 @@ test('member profile date input is LINE-safe and touch-friendly', () => {
   const memberHtml = read('member/index.html');
   const memberApp = read('member/app.js');
   const memberStyles = read('member/styles.css');
-  assert.match(memberHtml, /styles\.css\?v=member-local-ui-20260908/);
+  assert.match(memberHtml, /styles\.css\?v=member-scroll-20260908/);
   assert.match(memberHtml, /<label for="profileBirthdayPickerButton">生日<\/label>/);
   assert.match(memberHtml, /id="profileBirthdayPickerButton" class="date-picker-trigger"[^>]*aria-haspopup="dialog"/);
   assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"[^>]*tabindex="-1"/);
@@ -474,11 +475,11 @@ test('admin content editors open in bounded dialogs and long ticket choices rema
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-local-ui-20260908', 'member-local-ui-20260908', 'member-local-client-20260908'],
-    ['points', 'points-local-ui-20260908', 'points-local-ui-20260908', 'points-local-client-20260908'],
-    ['event', 'event-local-ui-20260908', 'event-local-ui-20260908', 'event-local-client-20260908'],
-    ['calendar', 'calendar-local-ui-20260908', 'calendar-local-ui-20260908', 'calendar-local-client-20260908'],
-    ['admin', 'admin-local-ui-20260908', 'admin-local-ui-20260908', 'admin-local-client-20260908']
+    ['member', 'member-scroll-20260908', 'member-local-ui-20260908', 'member-local-client-20260908'],
+    ['points', 'points-scroll-20260908', 'points-local-ui-20260908', 'points-local-client-20260908'],
+    ['event', 'event-scroll-20260908', 'event-local-ui-20260908', 'event-local-client-20260908'],
+    ['calendar', 'calendar-scroll-20260908', 'calendar-scroll-20260908', 'calendar-local-client-20260908'],
+    ['admin', 'admin-scroll-20260908', 'admin-local-ui-20260908', 'admin-local-client-20260908']
   ];
 
   surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {
