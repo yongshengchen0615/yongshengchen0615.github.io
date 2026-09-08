@@ -7,23 +7,39 @@ const EVENT_TICKET_MAX_QUOTA_ = 1000000;
 const EVENT_TICKET_RATE_BASIS_POINTS_ = 10000;
 const EVENT_TICKET_STATUS_AVAILABLE_ = 'available';
 const EVENT_TICKET_STATUS_USED_ = 'used';
+const EVENT_TICKET_HISTORY_LIMIT_ = 5;
 
 function handleEventTicketBootstrap_(identity) {
   const member = ensureMember_(identity);
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
-  const snapshot = readEventTicketSnapshot_();
+  const snapshot = readEventTicketSnapshot_(identity.lineUserId, true);
   const serviceMinutesTotal = eventTicketServiceMinutesTotal_(member.line_user_id);
   const tier = eventTicketMemberTier_(member.line_user_id, serviceMinutesTotal);
+  const usedTickets = usedEventTicketHistoryForMember_(identity.lineUserId, snapshot);
   return {
     profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey, serviceMinutesTotal, tierProgress: eventTicketTierProgress_(serviceMinutesTotal, tier) },
     offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey),
-    usedTickets: usedEventTicketHistoryForMember_(identity.lineUserId, snapshot)
+    usedTickets: usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_),
+    usedTicketCount: usedTickets.length
   };
 }
 
-function readEventTicketSnapshot_() {
+function eventTicketClaimsForMember_(lineUserId) {
+  if (typeof readRecordsByExactField_ === 'function') return readRecordsByExactField_('EventTicketClaims', 'line_user_id', String(lineUserId || '').trim());
+  return readRecords_('EventTicketClaims').filter(function(claim) { return String(claim.line_user_id || '') === String(lineUserId || ''); });
+}
+
+function eventTicketClaimReferences_() {
+  if (typeof readRecordFields_ === 'function') return readRecordFields_('EventTicketClaims', ['event_ticket_id', 'line_user_id']);
+  return readRecords_('EventTicketClaims').map(function(claim) { return { event_ticket_id: claim.event_ticket_id, line_user_id: claim.line_user_id }; });
+}
+
+function readEventTicketSnapshot_(lineUserId, compactClaims) {
   const tickets = readRecords_('EventTickets');
-  const claims = readRecords_('EventTicketClaims');
+  const memberId = String(lineUserId || '').trim();
+  const useCompactClaims = Boolean(compactClaims || memberId);
+  const claimReferences = useCompactClaims ? eventTicketClaimReferences_() : readRecords_('EventTicketClaims');
+  const claims = memberId ? eventTicketClaimsForMember_(memberId) : useCompactClaims ? [] : claimReferences;
   const ticketsById = {};
   const claimsByTicket = {};
   const claimsByMemberTicket = {};
@@ -31,15 +47,24 @@ function readEventTicketSnapshot_() {
     const eventTicketId = String(ticket.event_ticket_id || '').trim();
     if (eventTicketId) ticketsById[eventTicketId] = ticket;
   });
-  claims.forEach(function(claim) {
+  claimReferences.forEach(function(claim) {
     const eventTicketId = String(claim.event_ticket_id || '').trim();
-    const lineUserId = String(claim.line_user_id || '').trim();
+    const claimMemberId = String(claim.line_user_id || '').trim();
     if (!eventTicketId) return;
     if (!claimsByTicket[eventTicketId]) claimsByTicket[eventTicketId] = [];
     claimsByTicket[eventTicketId].push(claim);
-    const key = eventTicketMemberTicketKey_(lineUserId, eventTicketId);
-    if (lineUserId && !claimsByMemberTicket[key]) claimsByMemberTicket[key] = [];
-    if (lineUserId) claimsByMemberTicket[key].push(claim);
+    if (!useCompactClaims) {
+      const key = eventTicketMemberTicketKey_(claimMemberId, eventTicketId);
+      if (claimMemberId && !claimsByMemberTicket[key]) claimsByMemberTicket[key] = [];
+      if (claimMemberId) claimsByMemberTicket[key].push(claim);
+    }
+  });
+  if (useCompactClaims) claims.forEach(function(claim) {
+    const eventTicketId = String(claim.event_ticket_id || '').trim();
+    const claimMemberId = String(claim.line_user_id || '').trim();
+    const key = eventTicketMemberTicketKey_(claimMemberId, eventTicketId);
+    if (claimMemberId && !claimsByMemberTicket[key]) claimsByMemberTicket[key] = [];
+    if (claimMemberId) claimsByMemberTicket[key].push(claim);
   });
   return { tickets, ticketsById, claims, claimsByTicket, claimsByMemberTicket };
 }
@@ -49,7 +74,7 @@ function eventTicketMemberTicketKey_(lineUserId, eventTicketId) {
 }
 
 function readEventTickets_(includeAdminDetails, snapshot) {
-  const source = snapshot || readEventTicketSnapshot_();
+  const source = snapshot || readEventTicketSnapshot_('', Boolean(includeAdminDetails));
   return source.tickets.map(function(ticket) {
     const claims = source.claimsByTicket[String(ticket.event_ticket_id || '')] || [];
     return eventTicketForClient_(ticket, includeAdminDetails, claims.length);
@@ -57,7 +82,7 @@ function readEventTickets_(includeAdminDetails, snapshot) {
 }
 
 function visibleEventTicketOffersForMember_(lineUserId, snapshot, memberTierKey) {
-  const source = snapshot || readEventTicketSnapshot_();
+  const source = snapshot || readEventTicketSnapshot_(lineUserId, true);
   return source.tickets.filter(function(ticket) {
     // All active offers remain visible so members can see the applicable tiers.
     // Eligibility is still computed here and enforced again by claim/redeem.
@@ -90,7 +115,7 @@ function visibleEventTicketOffersForMember_(lineUserId, snapshot, memberTierKey)
 }
 
 function usedEventTicketHistoryForMember_(lineUserId, snapshot) {
-  const source = snapshot || readEventTicketSnapshot_();
+  const source = snapshot || readEventTicketSnapshot_(lineUserId, true);
   const memberId = String(lineUserId || '').trim();
   return source.claims.filter(function(claim) {
     return String(claim.line_user_id || '').trim() === memberId && String(claim.status || '') === EVENT_TICKET_STATUS_USED_;
@@ -262,7 +287,7 @@ function handleEventTicketSave_(identity, admin, request) {
     ticket.updated_by = identity.lineUserId;
     ticket.updated_at = now;
     if (rowNumber) updateRecordAtRow_('EventTickets', rowNumber, ticket); else appendRecord_('EventTickets', ticket);
-    const claims = readRecords_('EventTicketClaims').filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId || String(claim.event_ticket_id || '') === ticket.event_ticket_id; });
+    const claims = eventTicketClaimReferences_().filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId || String(claim.event_ticket_id || '') === ticket.event_ticket_id; });
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'EVENT_TICKET_SAVE', target_type: 'event_ticket', target_id: ticket.event_ticket_id, result: 'success', detail: 'Event ticket saved; existing claim snapshots retained', created_at: now });
     return { eventTicket: eventTicketForClient_(ticket, true, claims.length) };
   });
@@ -276,7 +301,7 @@ function handleEventTicketDelete_(identity, admin, request) {
     const match = findRecordWithRow_('EventTickets', 'event_ticket_id', eventTicketId);
     if (!match) throw new ApiError(404, 'EVENT_TICKET_NOT_FOUND', '找不到活動票券。');
     if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '活動票券已被更新，請重新整理。');
-    const preservedClaimCount = readRecords_('EventTicketClaims').filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId; }).length;
+    const preservedClaimCount = eventTicketClaimReferences_().filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId; }).length;
     const deleted = deleteRecordsWhere_('EventTickets', function(ticket) { return String(ticket.event_ticket_id || '') === eventTicketId; });
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'EVENT_TICKET_DELETE', target_type: 'event_ticket', target_id: eventTicketId, result: 'success', detail: 'Event ticket deleted; ' + String(preservedClaimCount) + ' claim snapshots retained', created_at: nowIso_() });
     return { deleted: Boolean(deleted), eventTicketId, preservedClaimCount };
@@ -295,11 +320,11 @@ function handleEventTicketClaim_(identity, request) {
     if (!member || String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法領取活動票券。');
     assertEventTicketOpen_(ticket);
     assertEventTicketAllowsTier_(ticket, eventTicketMemberTier_(identity.lineUserId).tierKey);
-    const claims = readRecords_('EventTicketClaims');
-    const existing = claims.find(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId && String(claim.line_user_id || '') === String(identity.lineUserId); });
+    const memberClaims = eventTicketClaimsForMember_(identity.lineUserId);
+    const existing = memberClaims.find(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId; });
     if (existing) return { claimed: false, alreadyClaimed: true, ticket: eventTicketClaimForClient_(existing) };
     const quota = eventTicketQuota_(ticket);
-    const claimedCount = claims.filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId; }).length;
+    const claimedCount = eventTicketClaimReferences_().filter(function(claim) { return String(claim.event_ticket_id || '') === eventTicketId; }).length;
     if (quota > 0 && claimedCount >= quota) throw new ApiError(409, 'EVENT_TICKET_SOLD_OUT', '這張活動票券已達發放上限。');
     const now = nowIso_();
     const claim = eventTicketClaimFromDefinition_(identity.lineUserId, ticket, now);
@@ -316,7 +341,7 @@ function handleEventTicketRedeem_(identity, request) {
     const claimMatch = findRecordWithRow_('EventTicketClaims', 'claim_id', claimId);
     if (!claimMatch || String(claimMatch.record.line_user_id || '') !== String(identity.lineUserId)) throw new ApiError(404, 'EVENT_TICKET_CLAIM_NOT_FOUND', '找不到這張活動票券。');
     const claim = claimMatch.record;
-    if (String(claim.status || '') === EVENT_TICKET_STATUS_USED_) throw new ApiError(409, 'EVENT_TICKET_ALREADY_USED', '這張活動票券已使用。', { usedAt: String(claim.used_at || '') });
+    if (String(claim.status || '') === EVENT_TICKET_STATUS_USED_) return { redeemed: false, alreadyRedeemed: true, ticket: eventTicketClaimForClient_(claim) };
     const ticketMatch = findRecordWithRow_('EventTickets', 'event_ticket_id', String(claim.event_ticket_id || ''));
     if (!ticketMatch) throw new ApiError(410, 'EVENT_TICKET_REMOVED', '這張活動票券已移除，無法使用。');
     const member = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);

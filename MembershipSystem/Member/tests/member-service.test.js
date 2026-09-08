@@ -25,6 +25,7 @@ function loadMemberService() {
     PointCards: [{ card_id: 'PC-1', title: '測試集點卡', target_stamps: '10', reward_title: '', expiry_mode: 'unlimited', expires_on: '', status: 'active', updated_at: '2026-09-03T00:00:00.000Z' }, { card_id: 'PC-2', title: '第二張集點卡', target_stamps: '8', reward_title: '', expiry_mode: 'unlimited', expires_on: '', status: 'active', updated_at: '2026-09-03T00:00:00.000Z' }],
     PointBalances: [],
     PointEntries: [],
+    PointMutations: [],
     PointCardRewards: [],
     PointCardLotteryPrizes: [],
     PointCardTicketTemplates: [],

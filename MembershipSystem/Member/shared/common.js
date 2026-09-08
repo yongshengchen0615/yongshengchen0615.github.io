@@ -5,7 +5,9 @@
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
   const READ_RESPONSE_ATTEMPTS = 2;
   const READ_RETRY_DELAY_MS = 400;
-  const REQUEST_TIMEOUT_MS = 15000;
+  const READ_REQUEST_TIMEOUT_MS = 20000;
+  const WRITE_REQUEST_TIMEOUT_MS = 30000;
+  const CONFIG_RESPONSE_ATTEMPTS = 2;
   const WRITE_ACTIONS = Object.freeze([
     'user.member.profile.save',
     'admin.member.update',
@@ -36,21 +38,26 @@
   }
 
   async function loadConfig() {
-    let response;
-    try {
-      response = await fetch('../config.json', { cache: 'no-store' });
-    } catch (_) {
-      throw clientError('CONFIG_ERROR', '無法讀取公開設定，請確認網站設定。');
+    let lastError;
+    for (let attempt = 0; attempt < CONFIG_RESPONSE_ATTEMPTS; attempt += 1) {
+      try {
+        const fetched = await fetchWithTimeout('../config.json', { cache: 'no-store' }, READ_REQUEST_TIMEOUT_MS, (response) => response.text());
+        const response = fetched.response;
+        if (!response.ok) throw clientError('CONFIG_ERROR', '讀取 config.json 失敗。');
+        let config;
+        try {
+          config = JSON.parse(fetched.body);
+        } catch (_) {
+          throw clientError('CONFIG_ERROR', 'config.json 格式不正確。');
+        }
+        if (!config || typeof config !== 'object' || Array.isArray(config)) throw clientError('CONFIG_ERROR', 'config.json 格式不正確。');
+        return config;
+      } catch (error) {
+        lastError = error && error.code === 'CONFIG_ERROR' ? error : clientError('CONFIG_ERROR', '無法讀取公開設定，請確認網路後重試。');
+      }
+      if (attempt < CONFIG_RESPONSE_ATTEMPTS - 1) await waitForReadRetry(attempt);
     }
-    if (!response.ok) throw clientError('CONFIG_ERROR', '讀取 config.json 失敗。');
-
-    let config;
-    try {
-      config = await response.json();
-    } catch (_) {
-      throw clientError('CONFIG_ERROR', 'config.json 格式不正確。');
-    }
-    return config;
+    throw lastError || clientError('CONFIG_ERROR', '無法讀取公開設定，請確認網站設定。');
   }
 
   function validateConfig(config, surface) {
@@ -120,14 +127,34 @@
     return true;
   }
 
-  async function fetchWithTimeout(url, options) {
-    if (typeof AbortController === 'undefined') return fetch(url, options);
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  async function fetchWithTimeout(url, options, timeoutMs, readBody) {
+    const schedule = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
+      ? window.setTimeout.bind(window)
+      : typeof setTimeout === 'function' ? setTimeout : null;
+    const cancel = typeof window !== 'undefined' && typeof window.clearTimeout === 'function'
+      ? window.clearTimeout.bind(window)
+      : typeof clearTimeout === 'function' ? clearTimeout : null;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timer;
+    const requestOptions = controller ? { ...options, signal: controller.signal } : options;
+    const requestPromise = (async () => {
+      const response = await fetch(url, requestOptions);
+      const body = typeof readBody === 'function' ? await readBody(response) : undefined;
+      return { response, body };
+    })();
+    if (!schedule) return requestPromise;
     try {
-      return await fetch(url, { ...options, signal: controller.signal });
+      return await Promise.race([
+        requestPromise,
+        new Promise((_, reject) => {
+          timer = schedule(() => {
+            if (controller) controller.abort();
+            reject(clientError('REQUEST_TIMEOUT', '資料服務回應逾時。'));
+          }, timeoutMs);
+        })
+      ]);
     } finally {
-      window.clearTimeout(timer);
+      if (timer !== undefined && cancel) cancel(timer);
     }
   }
 
@@ -137,14 +164,17 @@
     let lastError;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       let response;
+      let rawResponse = '';
       try {
-        response = await fetchWithTimeout(config.gasWebAppUrl, {
+        const fetched = await fetchWithTimeout(config.gasWebAppUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           cache: 'no-store',
           redirect: 'follow',
           body: JSON.stringify({ action, clientType, idToken, ...payload })
-        });
+        }, isWrite ? WRITE_REQUEST_TIMEOUT_MS : READ_REQUEST_TIMEOUT_MS, (result) => result.text());
+        response = fetched.response;
+        rawResponse = fetched.body;
       } catch (_) {
         lastError = clientError(
           isWrite ? 'API_RESPONSE_UNCERTAIN' : 'NETWORK_ERROR',
@@ -157,7 +187,7 @@
       if (!lastError) {
         let data;
         try {
-          data = JSON.parse(await response.text());
+          data = JSON.parse(rawResponse);
         } catch (_) {
           lastError = clientError(
             isWrite ? 'API_RESPONSE_UNCERTAIN' : 'API_RESPONSE_ERROR',

@@ -11,19 +11,27 @@ const POINT_CARD_DEFAULT_STYLE_KEY_ = 'forest';
 const POINT_CARD_TICKET_TEMPLATE_STATUSES_ = Object.freeze(['active', 'draft', 'archived']);
 const POINT_CARD_TICKET_STATUS_AVAILABLE_ = 'available';
 const POINT_CARD_TICKET_STATUS_USED_ = 'used';
+const POINT_CARD_HISTORY_LIMIT_ = 5;
+const POINT_MUTATION_TYPE_GRANT_ = 'point_grant';
+const POINT_MUTATION_TYPE_REDEEM_ = 'ticket_redeem';
+const POINT_MUTATION_STATUS_PENDING_ = 'pending';
+const POINT_MUTATION_STATUS_COMPLETE_ = 'complete';
 
 function handlePointCardBootstrap_(identity) {
   const member = ensureMember_(identity);
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
-  let snapshot = readPointCardSnapshot_();
+  reconcilePendingPointMutationsForMember_(identity.lineUserId);
+  let snapshot = readPointCardSnapshot_(identity.lineUserId);
   if (pointCardTicketIssuanceRequired_(identity.lineUserId, snapshot)) {
     snapshot = withDataLock_(function() {
-      const lockedSnapshot = readPointCardSnapshot_();
+      reconcilePendingPointMutationsLocked_(identity.lineUserId);
+      const lockedSnapshot = readPointCardSnapshot_(identity.lineUserId);
       ensurePointCardTicketsForMember_(identity.lineUserId, lockedSnapshot);
       return lockedSnapshot;
     });
   }
-  return { profile: pointCardMembershipProfileForClient_(member, identity), cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot), history: pointCardActivityHistoryForMember_(identity.lineUserId, snapshot) };
+  const history = pointCardActivityHistoryForMember_(identity.lineUserId, snapshot);
+  return { profile: pointCardMembershipProfileForClient_(member, identity), cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot), history: history.slice(0, POINT_CARD_HISTORY_LIMIT_), historyTotal: history.length };
 }
 
 function pointCardMembershipProfileForClient_(member, identity) {
@@ -35,14 +43,20 @@ function pointCardMembershipProfileForClient_(member, identity) {
   };
 }
 
-function readPointCardSnapshot_() {
+function pointCardRecordsForMember_(sheetName, lineUserId) {
+  if (typeof readRecordsByExactField_ === 'function') return readRecordsByExactField_(sheetName, 'line_user_id', String(lineUserId || '').trim());
+  return readRecords_(sheetName).filter(function(record) { return String(record.line_user_id || '') === String(lineUserId || ''); });
+}
+
+function readPointCardSnapshot_(lineUserId) {
+  const memberId = String(lineUserId || '').trim();
   const snapshot = {
     cards: readRecords_('PointCards'),
     rewards: readRecords_('PointCardRewards'),
     lotteryPrizes: readRecords_('PointCardLotteryPrizes'),
     ticketTemplates: readRecords_('PointCardTicketTemplates'),
-    balances: readRecords_('PointBalances'),
-    tickets: readRecords_('PointCardTickets')
+    balances: memberId ? pointCardRecordsForMember_('PointBalances', memberId) : readRecords_('PointBalances'),
+    tickets: memberId ? pointCardRecordsForMember_('PointCardTickets', memberId) : readRecords_('PointCardTickets')
   };
   snapshot.prizesByReward = pointCardLotteryPrizesByReward_(snapshot.lotteryPrizes);
   snapshot.rewardsByCard = pointCardRewardsByCard_(snapshot.rewards, snapshot.prizesByReward);
@@ -144,7 +158,7 @@ function pointCardActivityHistoryForMember_(lineUserId, snapshot) {
 
 function pointCardTicketsForMember_(lineUserId, snapshot) {
   if (snapshot && snapshot.ticketsByMember) return snapshot.ticketsByMember[String(lineUserId || '').trim()] || [];
-  return readRecords_('PointCardTickets').filter(function(ticket) { return String(ticket.line_user_id || '') === String(lineUserId || ''); });
+  return pointCardRecordsForMember_('PointCardTickets', lineUserId);
 }
 
 function pointCardTicketsForMemberCard_(lineUserId, cardId, snapshot) {
@@ -414,7 +428,8 @@ function handlePointCardDelete_(identity, admin, request) {
       rewards: deleteRecordsWhere_('PointCardRewards', function(reward) { return String(reward.card_id || '') === cardId; }),
       tickets: deleteRecordsWhere_('PointCardTickets', function(ticket) { return String(ticket.card_id || '') === cardId; }),
       balances: deleteRecordsWhere_('PointBalances', function(balance) { return String(balance.card_id || '') === cardId; }),
-      entries: deleteRecordsWhere_('PointEntries', function(entry) { return String(entry.card_id || '') === cardId; })
+      entries: deleteRecordsWhere_('PointEntries', function(entry) { return String(entry.card_id || '') === cardId; }),
+      mutations: deleteRecordsWhere_('PointMutations', function(mutation) { return String(mutation.card_id || '') === cardId; })
     };
     deleted.auditLogs = deleteRecordsWhere_('AuditLogs', function(audit) {
       const targetType = String(audit.target_type || ''); const targetId = String(audit.target_id || '');
@@ -438,7 +453,7 @@ function handleAdminBootstrap_(identity, admin, request) {
   const tickets = readPointCardTicketTemplates_(true);
   const eventTickets = readEventTickets_(true);
   const calendarItems = readCalendarItems_(true);
-  const entries = readRecords_('PointEntries');
+  const entries = readRecordFields_('PointEntries', ['created_at']);
   const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
   return { profile: { displayName: identity.displayName }, role: admin.role, members: memberResult.members, memberPage: memberResult.memberPage, tierSettings, cards, tickets, eventTickets, calendarItems, stats: { memberCount: memberResult.stats.memberCount, activeMemberCount: memberResult.stats.activeMemberCount, activeCardCount: cards.filter(function(card) { return card.status === 'active' && !card.expired; }).length, activeEventTicketCount: eventTickets.filter(function(ticket) { return ticket.status === 'active' && ticket.availability === 'open'; }).length, todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
 }
@@ -675,6 +690,188 @@ function replacePointCardLotteryPrizes_(rewardId, prizes, now) {
   for (let index = matches.length - 1; index >= prizes.length; index -= 1) sheet.deleteRow(matches[index].rowNumber);
 }
 
+function pointMutationOperationId_(operationType, stableId) {
+  return String(operationType || '').trim() + ':' + String(stableId || '').trim();
+}
+
+function pointMutationStableRecordId_(prefix, operationId) {
+  return String(prefix || '') + String(operationId || '').replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
+function pointMutationRecordsForMember_(lineUserId) {
+  if (typeof readRecordsByExactField_ === 'function') return readRecordsByExactField_('PointMutations', 'line_user_id', String(lineUserId || '').trim());
+  return readRecords_('PointMutations').filter(function(record) { return String(record.line_user_id || '') === String(lineUserId || ''); });
+}
+
+function reconcilePendingPointMutationsForMember_(lineUserId) {
+  if (typeof readRecords_ !== 'function' && typeof readRecordsByExactField_ !== 'function') return false;
+  const pending = pointMutationRecordsForMember_(lineUserId).filter(function(record) { return String(record.status || '') === POINT_MUTATION_STATUS_PENDING_; });
+  if (!pending.length) return false;
+  withDataLock_(function() { reconcilePendingPointMutationsLocked_(lineUserId); });
+  return true;
+}
+
+function reconcilePendingPointMutationsLocked_(lineUserId) {
+  if (typeof readRecords_ !== 'function' && typeof readRecordsByExactField_ !== 'function') return 0;
+  const memberId = String(lineUserId || '').trim();
+  const pending = pointMutationRecordsForMember_(memberId).filter(function(record) { return String(record.status || '') === POINT_MUTATION_STATUS_PENDING_; });
+  pending.sort(function(left, right) { return String(left.created_at || '').localeCompare(String(right.created_at || '')); });
+  pending.forEach(function(record) {
+    const match = findRecordWithRow_('PointMutations', 'operation_id', String(record.operation_id || ''));
+    if (match && String(match.record.status || '') === POINT_MUTATION_STATUS_PENDING_) completePointMutationLocked_(match.record, match.rowNumber);
+  });
+  return pending.length;
+}
+
+function pointMutationInteger_(value, label) {
+  const normalized = Number(value);
+  if (!Number.isInteger(normalized)) throw new ApiError(500, 'POINT_MUTATION_INVALID', label + '資料不完整，請聯絡管理員。');
+  return normalized;
+}
+
+function assertPointMutationMatches_(mutation, input) {
+  const stringFields = ['operation_type', 'request_id', 'line_user_id', 'card_id', 'ticket_id', 'note', 'created_by', 'actor_role'];
+  const mismatch = stringFields.some(function(field) { return String(mutation[field] || '') !== String(input[field] || ''); }) || Number(mutation.amount || 0) !== Number(input.amount || 0);
+  if (mismatch) throw new ApiError(409, 'REQUEST_REUSE_MISMATCH', '這個請求識別碼已用於不同的點數異動，請重新開啟操作視窗。');
+}
+
+function beginPointMutationLocked_(input) {
+  const operationId = String(input.operation_id || '').trim();
+  const existing = findRecordWithRow_('PointMutations', 'operation_id', operationId);
+  if (existing) {
+    assertPointMutationMatches_(existing.record, input);
+    return { created: false, record: existing.record, rowNumber: existing.rowNumber };
+  }
+
+  const beforeStamps = pointMutationInteger_(input.before_stamps, '異動前餘額');
+  const amount = pointMutationInteger_(input.amount, '異動點數');
+  const afterStamps = pointMutationInteger_(input.after_stamps, '異動後餘額');
+  if (!operationId || operationId.length > 140 || beforeStamps < 0 || afterStamps < 0 || afterStamps !== beforeStamps + amount) throw new ApiError(500, 'POINT_MUTATION_INVALID', '點數異動資料不完整，請聯絡管理員。');
+  const now = String(input.created_at || nowIso_());
+  const record = {
+    operation_id: operationId,
+    operation_type: String(input.operation_type || ''),
+    request_id: String(input.request_id || ''),
+    line_user_id: String(input.line_user_id || ''),
+    card_id: String(input.card_id || ''),
+    amount: String(amount),
+    ticket_id: String(input.ticket_id || ''),
+    before_stamps: String(beforeStamps),
+    after_stamps: String(afterStamps),
+    entry_id: pointMutationStableRecordId_('PEM-', operationId),
+    note: String(input.note || ''),
+    created_by: String(input.created_by || ''),
+    actor_role: String(input.actor_role || ''),
+    result_json: String(input.result_json || ''),
+    status: POINT_MUTATION_STATUS_PENDING_,
+    created_at: now,
+    updated_at: now
+  };
+  const rowNumber = appendRecord_('PointMutations', record);
+  return { created: true, record, rowNumber };
+}
+
+function pointMutationEntryForRecord_(mutation) {
+  const operationType = String(mutation.operation_type || '');
+  const isRedeem = operationType === POINT_MUTATION_TYPE_REDEEM_;
+  return {
+    entry_id: String(mutation.entry_id || ''),
+    line_user_id: String(mutation.line_user_id || ''),
+    card_id: String(mutation.card_id || ''),
+    amount: String(pointMutationInteger_(mutation.amount, '異動點數')),
+    note: String(mutation.note || ''),
+    created_by: String(mutation.created_by || ''),
+    created_at: String(mutation.created_at || ''),
+    request_id: String(mutation.request_id || ''),
+    entry_type: isRedeem ? 'ticket_redeem' : 'point_grant',
+    reference_type: isRedeem ? 'point_card_ticket' : 'point_mutation',
+    reference_id: isRedeem ? String(mutation.ticket_id || '') : String(mutation.operation_id || '')
+  };
+}
+
+function ensurePointMutationEntryLocked_(mutation) {
+  const expected = pointMutationEntryForRecord_(mutation);
+  const existing = findRecordWithRow_('PointEntries', 'entry_id', expected.entry_id);
+  if (!existing) {
+    appendRecord_('PointEntries', expected);
+    return expected;
+  }
+  const actual = existing.record;
+  const valid = ['line_user_id', 'card_id', 'amount', 'note', 'created_by', 'request_id', 'entry_type', 'reference_type', 'reference_id'].every(function(field) { return String(actual[field] || '') === String(expected[field] || ''); });
+  if (!valid) throw new ApiError(500, 'POINT_MUTATION_CONFLICT', '點數流水與異動日誌不一致，已停止寫入以保護會員權益。');
+  return actual;
+}
+
+function ensurePointMutationAuditLocked_(mutation) {
+  const operationType = String(mutation.operation_type || '');
+  const auditId = pointMutationStableRecordId_('AUM-', String(mutation.operation_id || ''));
+  if (findRecordWithRow_('AuditLogs', 'audit_id', auditId)) return;
+  const isRedeem = operationType === POINT_MUTATION_TYPE_REDEEM_;
+  appendAuditRecord_({
+    audit_id: auditId,
+    actor_line_user_id: String(mutation.created_by || ''),
+    actor_role: String(mutation.actor_role || (isRedeem ? 'member' : 'admin')),
+    action: isRedeem ? 'POINT_CARD_TICKET_REDEEM' : 'STAMP_ADD',
+    target_type: isRedeem ? 'point_card_ticket' : 'point_balance',
+    target_id: isRedeem ? String(mutation.ticket_id || '') : String(mutation.line_user_id || '') + ':' + String(mutation.card_id || ''),
+    result: 'success',
+    detail: isRedeem ? 'Ticket redemption completed through recoverable mutation' : 'Point grant completed through recoverable mutation',
+    created_at: String(mutation.created_at || nowIso_())
+  });
+}
+
+function completePointMutationLocked_(mutation, mutationRowNumber) {
+  if (String(mutation.status || '') === POINT_MUTATION_STATUS_COMPLETE_) return { mutation, created: false, nextTickets: [] };
+  const operationType = String(mutation.operation_type || '');
+  if ([POINT_MUTATION_TYPE_GRANT_, POINT_MUTATION_TYPE_REDEEM_].indexOf(operationType) < 0) throw new ApiError(500, 'POINT_MUTATION_INVALID', '點數異動類型不合法，已停止寫入。');
+
+  const lineUserId = String(mutation.line_user_id || '');
+  const cardId = String(mutation.card_id || '');
+  const beforeStamps = pointMutationInteger_(mutation.before_stamps, '異動前餘額');
+  const afterStamps = pointMutationInteger_(mutation.after_stamps, '異動後餘額');
+  const cardMatch = findRecordWithRow_('PointCards', 'card_id', cardId);
+  if (!cardMatch) throw new ApiError(410, 'TICKET_CARD_REMOVED', '點數異動所屬的集點卡已移除，請聯絡管理員。');
+  let ticket = null;
+  let ticketMatch = null;
+  if (operationType === POINT_MUTATION_TYPE_REDEEM_) {
+    ticketMatch = findRecordWithRow_('PointCardTickets', 'ticket_id', String(mutation.ticket_id || ''));
+    if (!ticketMatch || String(ticketMatch.record.line_user_id || '') !== lineUserId || String(ticketMatch.record.card_id || '') !== cardId) throw new ApiError(500, 'POINT_MUTATION_CONFLICT', '票券與點數異動日誌不一致，已停止寫入。');
+    ticket = ticketMatch.record;
+    const recordedEntryId = String(ticket.redeem_entry_id || '');
+    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_ && recordedEntryId && recordedEntryId !== String(mutation.entry_id || '')) throw new ApiError(500, 'POINT_MUTATION_CONFLICT', '票券已連結至不同的兌換流水，已停止寫入。');
+  }
+  const balanceMatch = findBalance_(lineUserId, cardId);
+  const currentStamps = balanceMatch ? pointMutationInteger_(balanceMatch.record.stamps || 0, '目前餘額') : 0;
+  if (currentStamps === beforeStamps) {
+    const balance = { line_user_id: lineUserId, card_id: cardId, stamps: String(afterStamps), updated_at: String(mutation.created_at || nowIso_()) };
+    if (balanceMatch) updateRecordAtRow_('PointBalances', balanceMatch.rowNumber, balance); else appendRecord_('PointBalances', balance);
+  } else if (currentStamps !== afterStamps) {
+    throw new ApiError(409, 'POINT_MUTATION_CONFLICT', '點數餘額與未完成異動不一致，已停止寫入以保護會員權益。', { operationId: String(mutation.operation_id || '') });
+  }
+
+  const pointEntry = ensurePointMutationEntryLocked_(mutation);
+  if (operationType === POINT_MUTATION_TYPE_REDEEM_) {
+    if (String(ticket.status || '') !== POINT_CARD_TICKET_STATUS_USED_ || String(ticket.redeem_entry_id || '') !== String(pointEntry.entry_id || '')) {
+      ticket.status = POINT_CARD_TICKET_STATUS_USED_;
+      ticket.used_at = String(mutation.created_at || nowIso_());
+      ticket.result_json = String(mutation.result_json || '');
+      ticket.points_spent = String(Math.abs(pointMutationInteger_(mutation.amount, '異動點數')));
+      ticket.redeem_entry_id = String(pointEntry.entry_id || '');
+      ticket.updated_at = String(mutation.created_at || nowIso_());
+      updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket);
+    }
+  }
+
+  const nextTickets = String(cardMatch.record.status || '') === 'active' && !pointCardIsExpired_(cardMatch.record)
+    ? issuePointCardTicketsForBalance_(lineUserId, cardMatch.record, beforeStamps, afterStamps, String(mutation.created_at || nowIso_()))
+    : [];
+  ensurePointMutationAuditLocked_(mutation);
+  mutation.status = POINT_MUTATION_STATUS_COMPLETE_;
+  mutation.updated_at = nowIso_();
+  updateRecordAtRow_('PointMutations', mutationRowNumber, mutation);
+  return { mutation, pointEntry, ticket, card: cardMatch.record, nextTickets, created: true };
+}
+
 function handleStampAdd_(identity, admin, request) {
   const stamp = normalizeStampAddRequest_(request);
   return withDataLock_(function() { return addStampLocked_(identity, admin, stamp); });
@@ -683,12 +880,13 @@ function handleStampAdd_(identity, admin, request) {
 function normalizeStampAddRequest_(request) {
   const lineUserId = String(request.lineUserId || '').trim(); const cardId = String(request.cardId || '').trim(); const amount = Number(request.amount); const note = String(request.note || '').trim(); const requestId = String(request.requestId || '').trim();
   if (!lineUserId || lineUserId.length > 80 || !cardId || cardId.length > 80 || !Number.isInteger(amount) || amount < 1 || amount > 100 || note.length > 160) throw new ApiError(400, 'INVALID_STAMP', '會員、集點卡、點數或備註不合法。');
-  if (requestId && !/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) throw new ApiError(400, 'INVALID_REQUEST_ID', '發點請求識別碼不合法。');
+  if (!requestId || !/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) throw new ApiError(400, 'INVALID_REQUEST_ID', '發點請求必須包含有效且不重複的識別碼。');
   return { lineUserId, cardId, amount, note, requestId };
 }
 
 function addStampLocked_(identity, admin, stamp) {
   const lineUserId = stamp.lineUserId; const cardId = stamp.cardId; const amount = stamp.amount; const note = stamp.note; const requestId = stamp.requestId;
+  reconcilePendingPointMutationsLocked_(lineUserId);
   const prior = requestId ? findRecordWithRow_('PointEntries', 'request_id', requestId) : null;
   if (prior) {
     const entry = prior.record;
@@ -701,15 +899,15 @@ function addStampLocked_(identity, admin, stamp) {
   if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法補登點數。');
   const card = findRecordWithRow_('PointCards', 'card_id', cardId); if (!card || String(card.record.status) !== 'active') throw new ApiError(400, 'CARD_NOT_ACTIVE', '只能為啟用中的集點卡增加點數。');
   if (pointCardIsExpired_(card.record)) throw new ApiError(410, 'CARD_EXPIRED', '這張集點卡已超過使用期限，無法再增加點數。');
-  const balanceMatch = findBalance_(lineUserId, cardId); const now = nowIso_(); const current = balanceMatch ? Number(balanceMatch.record.stamps || 0) : 0; const nextBalance = current + amount; const balance = { line_user_id: lineUserId, card_id: cardId, stamps: String(nextBalance), updated_at: now };
-  if (balanceMatch) updateRecordAtRow_('PointBalances', balanceMatch.rowNumber, balance); else appendRecord_('PointBalances', balance);
-  issuePointCardTicketsForBalance_(lineUserId, card.record, current, nextBalance, now);
-  appendRecord_('PointEntries', { entry_id: 'PE-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, card_id: cardId, amount: String(amount), note, created_by: identity.lineUserId, created_at: now, request_id: requestId });
-  appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'STAMP_ADD', target_type: 'point_balance', target_id: lineUserId + ':' + cardId, result: 'success', detail: 'Added ' + amount + ' stamp(s)', created_at: now });
-  return { created: true, lineUserId, cardId, cardTitle: String(card.record.title || ''), amount, stamps: nextBalance, updatedAt: now };
+  const balanceMatch = findBalance_(lineUserId, cardId); const now = nowIso_(); const current = balanceMatch ? Number(balanceMatch.record.stamps || 0) : 0; const nextBalance = current + amount;
+  const mutationInput = { operation_id: pointMutationOperationId_(POINT_MUTATION_TYPE_GRANT_, requestId), operation_type: POINT_MUTATION_TYPE_GRANT_, request_id: requestId, line_user_id: lineUserId, card_id: cardId, amount: String(amount), ticket_id: '', before_stamps: String(current), after_stamps: String(nextBalance), note, created_by: identity.lineUserId, actor_role: String(admin.role || 'admin'), result_json: '', created_at: now };
+  const started = beginPointMutationLocked_(mutationInput);
+  const completed = completePointMutationLocked_(started.record, started.rowNumber);
+  return { created: started.created, lineUserId, cardId, cardTitle: String(card.record.title || ''), amount, stamps: nextBalance, updatedAt: String(completed.mutation.updated_at || now) };
 }
 
 function findBalance_(lineUserId, cardId) {
+  if (typeof findRecordWithRowByExactFields_ === 'function') return findRecordWithRowByExactFields_('PointBalances', { line_user_id: lineUserId, card_id: cardId });
   return readRecords_('PointBalances').map(function(record, index) { return { record, index }; }).reduce(function(found, item) { if (found) return found; return item.record.line_user_id === lineUserId && item.record.card_id === cardId ? { rowNumber: item.index + 2, record: item.record } : null; }, null);
 }
 
@@ -862,35 +1060,32 @@ function handleTicketRedeem_(identity, request) {
   const ticketId = String(request.ticketId || '').trim();
   if (!ticketId || ticketId.length > 80) throw new ApiError(400, 'INVALID_TICKET_REDEEM', '票券識別碼不合法。');
   return withDataLock_(function() {
+    reconcilePendingPointMutationsLocked_(identity.lineUserId);
     const ticketMatch = findRecordWithRow_('PointCardTickets', 'ticket_id', ticketId);
     if (!ticketMatch || String(ticketMatch.record.line_user_id || '') !== String(identity.lineUserId)) throw new ApiError(404, 'TICKET_NOT_FOUND', '找不到這張票券。');
     const ticket = ticketMatch.record;
+    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_) {
+      const usedBalance = findBalance_(identity.lineUserId, String(ticket.card_id || ''));
+      const usedCard = findRecordWithRow_('PointCards', 'card_id', String(ticket.card_id || ''));
+      const activity = pointCardTicketActivityForClient_(ticket, null, (function() { const map = {}; if (usedCard) map[String(ticket.card_id || '')] = usedCard.record; return map; })());
+      return { redeemed: false, alreadyRedeemed: true, ticket: ticketForClient_(ticket), activity, nextTickets: [], balance: { cardId: String(ticket.card_id || ''), stamps: Math.max(0, Number(usedBalance && usedBalance.record.stamps || 0)), updatedAt: String(usedBalance && usedBalance.record.updated_at || ticket.updated_at || '') } };
+    }
     const member = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
     if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member && member.record);
     const card = assertTicketCardUsable_(ticket);
-    if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_) throw new ApiError(409, 'TICKET_ALREADY_USED', '這張票券已使用。', { usedAt: String(ticket.used_at || '') });
     const now = nowIso_();
     const consumeStamps = rewardConsumeStamps_(ticket, Number(ticket.threshold_stamps || 0));
     const balanceMatch = findBalance_(identity.lineUserId, String(ticket.card_id || ''));
     const currentBalance = balanceMatch ? Number(balanceMatch.record.stamps || 0) : 0;
     if (!Number.isInteger(consumeStamps) || consumeStamps < 1 || currentBalance < consumeStamps) throw new ApiError(409, 'INSUFFICIENT_STAMPS', '目前點數不足，無法兌換這項獎勵。', { requiredStamps: consumeStamps, availableStamps: Math.max(0, currentBalance), ticketStatus: POINT_CARD_TICKET_STATUS_AVAILABLE_ });
     const nextBalance = currentBalance - consumeStamps;
-    const balance = { line_user_id: identity.lineUserId, card_id: String(ticket.card_id || ''), stamps: String(nextBalance), updated_at: now };
-    updateRecordAtRow_('PointBalances', balanceMatch.rowNumber, balance);
-    const pointEntry = { entry_id: 'PE-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: identity.lineUserId, card_id: String(ticket.card_id || ''), amount: String(-consumeStamps), note: '票券兌換：' + String(ticket.ticket_title || ''), created_by: identity.lineUserId, created_at: now, request_id: '', entry_type: 'ticket_redeem', reference_type: 'point_card_ticket', reference_id: ticketId };
-    appendRecord_('PointEntries', pointEntry);
     const result = String(ticket.ticket_type || '') === 'lottery' ? drawTicketPrize_(ticket) : null;
-    ticket.status = POINT_CARD_TICKET_STATUS_USED_;
-    ticket.used_at = now;
-    ticket.result_json = result ? JSON.stringify(result) : '';
-    ticket.points_spent = String(consumeStamps);
-    ticket.redeem_entry_id = String(pointEntry.entry_id || '');
-    ticket.updated_at = now;
-    updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket);
-    const nextTickets = issuePointCardTicketsForBalance_(identity.lineUserId, card, currentBalance, nextBalance, now).map(ticketForClient_);
-    appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: 'member', action: 'POINT_CARD_TICKET_REDEEM', target_type: 'point_card_ticket', target_id: ticketId, result: 'success', detail: result ? 'Lottery ticket redeemed and prize drawn' : 'Coupon ticket redeemed', created_at: now });
-    const activity = pointCardTicketActivityForClient_(ticket, pointEntry, (function() { const map = {}; map[String(card.card_id || '')] = card; return map; })());
-    return { redeemed: true, ticket: ticketForClient_(ticket), activity, nextTickets, balance: { cardId: String(ticket.card_id || ''), stamps: nextBalance, updatedAt: now } };
+    const mutationInput = { operation_id: pointMutationOperationId_(POINT_MUTATION_TYPE_REDEEM_, ticketId), operation_type: POINT_MUTATION_TYPE_REDEEM_, request_id: '', line_user_id: identity.lineUserId, card_id: String(ticket.card_id || ''), amount: String(-consumeStamps), ticket_id: ticketId, before_stamps: String(currentBalance), after_stamps: String(nextBalance), note: '票券兌換：' + String(ticket.ticket_title || ''), created_by: identity.lineUserId, actor_role: 'member', result_json: result ? JSON.stringify(result) : '', created_at: now };
+    const started = beginPointMutationLocked_(mutationInput);
+    const completed = completePointMutationLocked_(started.record, started.rowNumber);
+    const redeemedTicket = completed.ticket || findRecordWithRow_('PointCardTickets', 'ticket_id', ticketId).record;
+    const activity = pointCardTicketActivityForClient_(redeemedTicket, completed.pointEntry, (function() { const map = {}; map[String(card.card_id || '')] = card; return map; })());
+    return { redeemed: true, ticket: ticketForClient_(redeemedTicket), activity, nextTickets: completed.nextTickets.map(ticketForClient_), balance: { cardId: String(ticket.card_id || ''), stamps: nextBalance, updatedAt: String(completed.mutation.updated_at || now) } };
   });
 }
 

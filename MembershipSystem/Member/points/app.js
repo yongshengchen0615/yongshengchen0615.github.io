@@ -2,7 +2,7 @@
   'use strict';
 
   const POINT_CARD_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', profile: null, cards: [], tickets: [], history: [], activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '' };
+  const state = { config: null, idToken: '', profile: null, cards: [], tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -42,6 +42,8 @@
       state.cards = Array.isArray(result.cards) ? result.cards : [];
       state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
       state.history = Array.isArray(result.history) ? result.history : [];
+      const historyTotal = Number(result.historyTotal);
+      state.historyTotal = Number.isInteger(historyTotal) && historyTotal >= state.history.length ? historyTotal : state.history.length;
       els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
       if (!state.cards.some((card) => card.cardId === state.activeCardId)) state.activeCardId = state.cards[0] ? state.cards[0].cardId : '';
       window.MembershipProgress.render(els.membershipProgress, state.profile);
@@ -89,8 +91,8 @@
   function renderHistory() {
     const history = Array.isArray(state.history) ? state.history.slice().sort((a, b) => String(b.occurredAt || '').localeCompare(String(a.occurredAt || ''))) : [];
     const latestHistory = history.slice(0, 5);
-    els.ticketHistorySummary.textContent = history.length ? `共 ${history.length} 筆 · 展開查看最新 ${latestHistory.length} 筆` : '尚無使用紀錄';
-    els.ticketHistoryEmpty.classList.toggle('hidden', history.length !== 0);
+    els.ticketHistorySummary.textContent = state.historyTotal ? `共 ${state.historyTotal} 筆 · 展開查看最新 ${latestHistory.length} 筆` : '尚無使用紀錄';
+    els.ticketHistoryEmpty.classList.toggle('hidden', state.historyTotal !== 0);
     els.ticketHistoryList.replaceChildren(...latestHistory.map((activity) => createHistoryCard(activity)));
   }
 
@@ -184,7 +186,7 @@
     state.redeeming = true; els.confirmTicketUseButton.disabled = true; els.confirmTicketUseButton.textContent = '使用中…'; els.ticketModalCost.textContent = '正在確認票券與可用點數…'; setTicketProcessing(true);
     try {
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.redeem', { ticketId });
-      const redeemed = result.ticket; state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (result.activity) state.history = [result.activity].concat(state.history.filter((item) => item.activityId !== result.activity.activityId)); if (result.balance) updateCardBalance(result.balance); renderCards(); setTicketProcessing(false); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
+      const redeemed = result.ticket; state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (result.activity) { const isNewHistory = !state.history.some((item) => item.activityId === result.activity.activityId); state.history = [result.activity].concat(state.history.filter((item) => item.activityId !== result.activity.activityId)).slice(0, 5); if (isNewHistory) state.historyTotal += 1; } if (result.balance) updateCardBalance(result.balance); renderCards(); setTicketProcessing(false); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
     } catch (error) {
       setTicketProcessing(false);
       const responseUncertain = error && error.code === 'API_RESPONSE_UNCERTAIN';

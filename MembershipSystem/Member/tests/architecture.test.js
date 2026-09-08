@@ -59,7 +59,7 @@ test('user clients expose separate entry points while admin uses one app', () =>
   assert.match(eventHtml, /\.\/app\.js/);
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
-  assert.match(calendarHtml, /\.\.\/shared\/common\.js\?v=membership-join-\d{8}/);
+  assert.match(calendarHtml, /\.\.\/shared\/common\.js\?v=member-reliability-\d{8}/);
   assert.match(calendarHtml, /\.\/app\.js\?v=calendar-membership-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
@@ -222,6 +222,40 @@ test('transport distinguishes an uncertain write outcome from a failed read resp
     () => request({ gasWebAppUrl: 'https://example.invalid' }, 'admin', 'id-token', 'admin.stamps.add'),
     (error) => error && error.code === 'API_RESPONSE_UNCERTAIN'
   );
+
+  let configAttempts = 0;
+  context.fetch = async () => {
+    configAttempts += 1;
+    if (configAttempts === 1) throw new Error('temporary network failure');
+    return { ok: true, text: async () => JSON.stringify({ gasWebAppUrl: 'https://example.invalid' }) };
+  };
+  const config = await context.window.MemberSystem.loadConfig();
+  assert.equal(config.gasWebAppUrl, 'https://example.invalid');
+  assert.equal(configAttempts, 2, 'public config reads retry once on a transient failure');
+
+  let stalledBodyAttempts = 0;
+  const timeoutContext = {
+    window: {
+      setTimeout(callback) { setImmediate(callback); return 1; },
+      clearTimeout() {}
+    },
+    fetch: async () => {
+      stalledBodyAttempts += 1;
+      return { ok: true, text: () => new Promise(() => {}) };
+    }
+  };
+  vm.createContext(timeoutContext);
+  vm.runInContext(read('shared/common.js'), timeoutContext, { filename: 'shared/common.js' });
+  await assert.rejects(
+    () => timeoutContext.window.MemberSystem.loadConfig(),
+    (error) => error && error.code === 'CONFIG_ERROR'
+  );
+  assert.equal(stalledBodyAttempts, 2, 'a stalled response body times out and retries even without AbortController');
+
+  const transport = read('shared/common.js');
+  assert.match(transport, /READ_REQUEST_TIMEOUT_MS = 20000/);
+  assert.match(transport, /WRITE_REQUEST_TIMEOUT_MS = 30000/);
+  assert.match(transport, /Promise\.race/);
 });
 
 test('uncertain writes lock the affected UI and expose a reload confirmation path', () => {
@@ -263,9 +297,12 @@ test('storage schema checks are cached and point-card bootstrap has a snapshot r
   assert.match(storage, /reference_type/);
   assert.match(storage, /reference_id/);
   assert.doesNotMatch(code, /case 'admin\.membership\.reset'|case 'user\.membership\.reset'/);
-  assert.match(pointService, /function readPointCardSnapshot_\(\)/);
+  assert.match(pointService, /function readPointCardSnapshot_\(lineUserId\)/);
+  assert.match(storage, /function readRecordsByExactField_\(sheetName, keyField, keyValue\)/);
+  assert.match(storage, /PointMutations:/);
+  assert.match(pointService, /function reconcilePendingPointMutationsForMember_\(lineUserId\)/);
   assert.match(pointService, /function pointCardTicketIssuanceRequired_\(lineUserId, snapshot\)/);
-  assert.match(pointService, /const lockedSnapshot = readPointCardSnapshot_\(\)/);
+  assert.match(pointService, /const lockedSnapshot = readPointCardSnapshot_\(identity\.lineUserId\)/);
   assert.match(pointService, /ensurePointCardTicketsForMember_\(identity\.lineUserId, lockedSnapshot\)/);
   assert.match(pointService, /visiblePointCardsForMember_\(identity\.lineUserId, snapshot\)/);
 });
@@ -285,7 +322,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
   context.ensureMembershipStorage_();
   context.ensureMembershipStorage_();
   assert.ok(schemaChecks > 0);
-  assert.equal(schemaChecks, 17);
+  assert.equal(schemaChecks, 18);
 });
 
 
@@ -408,17 +445,19 @@ test('admin content editors open in bounded dialogs and long ticket choices rema
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-membership-20260908-date-ui'],
-    ['points', 'points-card-style-20260908'],
-    ['event', 'event-history-membership-20260908'],
-    ['calendar', 'calendar-membership-20260908'],
-    ['admin', 'admin-ui-card-style-20260908']
+    ['member', 'member-membership-20260908-date-ui', 'member-membership-20260908-date-shell'],
+    ['points', 'points-card-style-20260908', 'points-reliability-20260908'],
+    ['event', 'event-history-membership-20260908', 'event-reliability-20260908'],
+    ['calendar', 'calendar-membership-20260908', 'calendar-membership-20260908'],
+    ['admin', 'admin-ui-card-style-20260908', 'admin-ui-card-style-20260908']
   ];
 
-  surfaces.forEach(([surface, version]) => {
+  surfaces.forEach(([surface, styleVersion, appVersion]) => {
     const html = read(`${surface}/index.html`);
     const styles = read(`${surface}/styles.css`);
-    assert.match(html, new RegExp(`styles\\.css\\?v=${version}`));
+    assert.match(html, new RegExp(`styles\\.css\\?v=${styleVersion}`));
+    assert.match(html, new RegExp(`app\\.js\\?v=${appVersion}`));
+    assert.match(html, /shared\/common\.js\?v=member-reliability-20260908/);
     assert.match(styles, /overflow-wrap: anywhere/);
     assert.match(styles, /max-width: 100%/);
   });

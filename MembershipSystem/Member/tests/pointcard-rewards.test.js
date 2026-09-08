@@ -41,6 +41,7 @@ function loadTicketService() {
     PointCardTickets: [{ ticket_id: 'TK-1', line_user_id: 'U-1', card_id: 'PC-1', reward_id: 'PR-1', reward_key: 'PC-1:10', threshold_stamps: '10', ticket_type: 'coupon', ticket_title: '咖啡券', ticket_description: '', lottery_prizes_json: '[]', status: 'available', failed_attempts: '0', earned_at: '2026-09-02T00:00:00.000Z', used_at: '', result_json: '', created_at: '2026-09-02T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z', consume_stamps: '10' }],
     PointBalances: [{ line_user_id: 'U-1', card_id: 'PC-1', stamps: '10', updated_at: '2026-09-02T00:00:00.000Z' }],
     PointEntries: [],
+    PointMutations: [],
     PointCardTicketChallenges: [],
     PointCardRewards: [],
     PointCardLotteryPrizes: [],
@@ -225,7 +226,10 @@ test('tickets redeem directly and only once', () => {
   assert.equal(redeemed.activity.activityId, 'ticket:TK-1');
   assert.equal(redeemed.activity.pointsSpent, 10);
   assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
-  assert.throws(() => context.handleTicketRedeem_(identity, { ticketId: 'TK-1' }), (error) => error instanceof TestApiError && error.code === 'TICKET_ALREADY_USED');
+  const replay = context.handleTicketRedeem_(identity, { ticketId: 'TK-1' });
+  assert.equal(replay.alreadyRedeemed, true);
+  assert.equal(rows.PointBalances[0].stamps, '0');
+  assert.equal(rows.PointEntries.length, 1);
 });
 
 
@@ -246,6 +250,22 @@ test('ticket history presents one correlated business event after refresh', () =
   assert.equal(refreshed.history[0].activityId, 'ticket:TK-1');
   assert.equal(refreshed.history[0].pointsSpent, 10);
   assert.equal(refreshed.history[0].result.prizeTitle, '未獲得優惠');
+});
+
+test('point-card bootstrap limits history payload while retaining the exact total', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCardTickets = Array.from({ length: 7 }, (_, index) => ({
+    ...rows.PointCardTickets[0],
+    ticket_id: `TK-HISTORY-${index + 1}`,
+    status: 'used',
+    used_at: `2026-09-0${index + 1}T00:00:00.000Z`,
+    points_spent: '10'
+  }));
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  const result = context.handlePointCardBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
+  assert.equal(result.historyTotal, 7);
+  assert.equal(result.history.length, 5);
+  assert.equal(result.history[0].ticketId, 'TK-HISTORY-7');
 });
 
 test('legacy used tickets remain one history item without scanning the point ledger', () => {
@@ -315,7 +335,8 @@ test('point-card bootstrap uses one coherent snapshot instead of repeated full-s
     PointCardLotteryPrizes: 1,
     PointCardTicketTemplates: 1,
     PointBalances: 1,
-    PointCardTickets: 1
+    PointCardTickets: 1,
+    PointMutations: 1
   });
   assert.equal(rows.PointCardTickets.length, 1);
 });
@@ -402,6 +423,41 @@ test('replaying the same stamp request does not add points twice', () => {
   assert.throws(() => context.handleStampAdd_(identity, admin, Object.assign({}, request, { amount: 3 })), (error) => error instanceof TestApiError && error.code === 'REQUEST_REUSE_MISMATCH');
 });
 
+test('pending point grants recover after the journal write without duplicating member rights', () => {
+  const { context, rows } = loadTicketService();
+  context.issuePointCardTicketsForBalance_ = () => [];
+  rows.PointMutations.push({
+    operation_id: 'point_grant:stamp-recovery-0001', operation_type: 'point_grant', request_id: 'stamp-recovery-0001', line_user_id: 'U-1', card_id: 'PC-1', amount: '2', ticket_id: '', before_stamps: '10', after_stamps: '12', entry_id: 'PEM-point_grant_stamp-recovery-0001', note: '弱網補登', created_by: 'ADMIN-1', result_json: '', status: 'pending', created_at: '2026-09-02T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z'
+  });
+
+  assert.equal(context.reconcilePendingPointMutationsForMember_('U-1'), true);
+  assert.equal(rows.PointBalances[0].stamps, '12');
+  assert.equal(rows.PointEntries.length, 1);
+  assert.equal(rows.PointEntries[0].request_id, 'stamp-recovery-0001');
+  assert.equal(rows.PointMutations[0].status, 'complete');
+  assert.equal(context.reconcilePendingPointMutationsForMember_('U-1'), false);
+  assert.equal(rows.PointBalances[0].stamps, '12');
+  assert.equal(rows.PointEntries.length, 1);
+});
+
+test('pending ticket redemption recovers when the balance changed before the ticket and ledger writes', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointBalances[0].stamps = '0';
+  rows.PointMutations.push({
+    operation_id: 'ticket_redeem:TK-1', operation_type: 'ticket_redeem', request_id: '', line_user_id: 'U-1', card_id: 'PC-1', amount: '-10', ticket_id: 'TK-1', before_stamps: '10', after_stamps: '0', entry_id: 'PEM-ticket_redeem_TK-1', note: '票券兌換：咖啡券', created_by: 'U-1', result_json: '', status: 'pending', created_at: '2026-09-02T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z'
+  });
+
+  assert.equal(context.reconcilePendingPointMutationsForMember_('U-1'), true);
+  assert.equal(rows.PointBalances[0].stamps, '0');
+  assert.equal(rows.PointEntries.length, 1);
+  assert.equal(rows.PointCardTickets[0].status, 'used');
+  assert.equal(rows.PointCardTickets[0].redeem_entry_id, rows.PointEntries[0].entry_id);
+  assert.equal(rows.PointMutations[0].status, 'complete');
+  const replay = context.handleTicketRedeem_({ lineUserId: 'U-1' }, { ticketId: 'TK-1' });
+  assert.equal(replay.alreadyRedeemed, true);
+  assert.equal(rows.PointEntries.length, 1);
+});
+
 test('archiving a point card preserves its data while hiding it from members', () => {
   const { context, rows } = loadTicketService();
   const archived = context.handlePointCardArchive_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { cardId: 'PC-1' });
@@ -427,7 +483,7 @@ test('deleting a point card permanently removes its dependent records but not sh
   rows.PointCardTicketTemplates = [{ ticket_template_id: 'PT-SHARED', title: '共用票券' }];
   const deleted = context.handlePointCardDelete_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { cardId: 'PC-1' });
   assert.equal(deleted.deleted, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(deleted.counts)), { ticketChallenges: 1, lotteryPrizes: 1, rewards: 1, tickets: 1, balances: 1, entries: 1, auditLogs: 3, cards: 1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(deleted.counts)), { ticketChallenges: 1, lotteryPrizes: 1, rewards: 1, tickets: 1, balances: 1, entries: 1, mutations: 0, auditLogs: 3, cards: 1 });
   assert.equal(rows.PointCards.length, 0);
   assert.equal(rows.PointCardRewards.length, 0);
   assert.equal(rows.PointCardLotteryPrizes.length, 0);

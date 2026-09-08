@@ -18,6 +18,7 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   CalendarItems: Object.freeze(['calendar_item_id', 'title', 'item_type', 'description', 'starts_on', 'ends_on', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at', 'allowed_tier_keys', 'link_label', 'link_url']),
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
   PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at', 'request_id', 'entry_type', 'reference_type', 'reference_id']),
+  PointMutations: Object.freeze(['operation_id', 'operation_type', 'request_id', 'line_user_id', 'card_id', 'amount', 'ticket_id', 'before_stamps', 'after_stamps', 'entry_id', 'note', 'created_by', 'actor_role', 'result_json', 'status', 'created_at', 'updated_at']),
   ServiceTimeEntries: Object.freeze(['entry_id', 'line_user_id', 'minutes', 'note', 'created_by', 'created_at', 'request_id']),
   LineNotificationLogs: Object.freeze(['notification_id', 'request_id', 'line_user_id', 'message', 'status', 'error_code', 'created_at', 'sent_at', 'updated_at']),
   MembershipTierSettings: Object.freeze(['tier_key', 'tier_label', 'required_service_minutes', 'updated_by', 'updated_at', 'style_key']),
@@ -128,12 +129,62 @@ function readRecordFields_(sheetName, fieldNames) {
   });
 }
 
+function readRecordsByExactField_(sheetName, keyField, keyValue) {
+  const sheet = getDataSheet_(sheetName);
+  const headers = MEMBERSHIP_SHEET_SCHEMAS_[sheetName];
+  const keyIndex = headers.indexOf(keyField);
+  const normalizedKey = String(keyValue || '');
+  if (keyIndex < 0) throw new ApiError(500, 'SCHEMA_MISSING', '未知欄位：' + keyField);
+  if (!normalizedKey || sheet.getLastRow() < 2) return [];
+
+  const matches = sheet.getRange(2, keyIndex + 1, sheet.getLastRow() - 1, 1)
+    .createTextFinder(normalizedKey)
+    .matchEntireCell(true)
+    .matchCase(true)
+    .findAll();
+  const rowNumbers = matches.map(function(match) { return match.getRow(); }).sort(function(left, right) { return left - right; });
+  if (!rowNumbers.length) return [];
+
+  const groups = [];
+  rowNumbers.forEach(function(rowNumber) {
+    const last = groups[groups.length - 1];
+    if (last && rowNumber === last.end + 1) last.end = rowNumber;
+    else groups.push({ start: rowNumber, end: rowNumber });
+  });
+  return groups.reduce(function(records, group) {
+    const values = sheet.getRange(group.start, 1, group.end - group.start + 1, headers.length).getValues();
+    return records.concat(values.map(function(row) { return rowToRecord_(headers, row); }));
+  }, []);
+}
+
 function findRecordWithRow_(sheetName, keyField, keyValue) {
   const sheet = getDataSheet_(sheetName); const headers = MEMBERSHIP_SHEET_SCHEMAS_[sheetName]; const index = headers.indexOf(keyField); if (index < 0) throw new ApiError(500, 'SCHEMA_MISSING', '未知欄位：' + keyField);
   if (sheet.getLastRow() < 2) return null;
   const match = sheet.getRange(2, index + 1, sheet.getLastRow() - 1, 1).createTextFinder(String(keyValue || '')).matchEntireCell(true).matchCase(true).findNext();
   if (!match) return null;
   return { rowNumber: match.getRow(), record: rowToRecord_(headers, sheet.getRange(match.getRow(), 1, 1, headers.length).getValues()[0]) };
+}
+
+function findRecordWithRowByExactFields_(sheetName, expectedFields) {
+  const fields = expectedFields && typeof expectedFields === 'object' && !Array.isArray(expectedFields) ? Object.keys(expectedFields) : [];
+  if (!fields.length) return null;
+  const sheet = getDataSheet_(sheetName);
+  const headers = MEMBERSHIP_SHEET_SCHEMAS_[sheetName];
+  fields.forEach(function(field) { if (headers.indexOf(field) < 0) throw new ApiError(500, 'SCHEMA_MISSING', '未知欄位：' + field); });
+  if (sheet.getLastRow() < 2) return null;
+  const primaryField = fields[0];
+  const primaryIndex = headers.indexOf(primaryField);
+  const matches = sheet.getRange(2, primaryIndex + 1, sheet.getLastRow() - 1, 1)
+    .createTextFinder(String(expectedFields[primaryField] || ''))
+    .matchEntireCell(true)
+    .matchCase(true)
+    .findAll();
+  for (let index = 0; index < matches.length; index += 1) {
+    const rowNumber = matches[index].getRow();
+    const record = rowToRecord_(headers, sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0]);
+    if (fields.every(function(field) { return String(record[field] || '') === String(expectedFields[field] || ''); })) return { rowNumber, record };
+  }
+  return null;
 }
 
 function appendRecord_(sheetName, record) {

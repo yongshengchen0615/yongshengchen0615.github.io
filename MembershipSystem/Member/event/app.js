@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', profile: null, offers: [], usedTickets: [], pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '' };
+  const state = { config: null, idToken: '', profile: null, offers: [], usedTickets: [], usedTicketCount: 0, pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '' };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -37,6 +37,8 @@
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap');
       state.offers = Array.isArray(result.offers) ? result.offers : [];
       state.usedTickets = Array.isArray(result.usedTickets) ? result.usedTickets : [];
+      const usedTicketCount = Number(result.usedTicketCount);
+      state.usedTicketCount = Number.isInteger(usedTicketCount) && usedTicketCount >= state.usedTickets.length ? usedTicketCount : state.usedTickets.length;
       state.profile = result.profile || {};
       els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
       window.MembershipProgress.render(els.membershipProgress, state.profile);
@@ -46,15 +48,15 @@
 
   function renderOffers() {
     const hasOffers = state.offers.length > 0;
-    const hasUsedTickets = state.usedTickets.length > 0;
+    const hasUsedTickets = state.usedTicketCount > 0;
     const ineligibleOfferCount = state.offers.filter((offer) => !eventTicketTierEligible(offer)).length;
     els.eventList.replaceChildren(...state.offers.map(createOfferCard));
     const latestUsedTickets = state.usedTickets.slice(0, 5);
     els.usedTicketList.replaceChildren(...latestUsedTickets.map(createHistoryItem));
     els.emptyView.classList.toggle('hidden', hasOffers);
     els.usedTicketHistory.classList.toggle('hidden', !hasUsedTickets);
-    els.usedTicketHistorySummary.textContent = hasUsedTickets ? `共 ${state.usedTickets.length} 筆 · 展開查看最新 ${latestUsedTickets.length} 筆` : '尚無使用紀錄';
-    els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${ineligibleOfferCount ? ` · ${ineligibleOfferCount} 張尚未達適用等級` : ''}${hasUsedTickets ? ` · ${state.usedTickets.length} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有開放中的活動 · ${state.usedTickets.length} 筆已使用紀錄` : '目前沒有開放中的活動';
+    els.usedTicketHistorySummary.textContent = hasUsedTickets ? `共 ${state.usedTicketCount} 筆 · 展開查看最新 ${latestUsedTickets.length} 筆` : '尚無使用紀錄';
+    els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${ineligibleOfferCount ? ` · ${ineligibleOfferCount} 張尚未達適用等級` : ''}${hasUsedTickets ? ` · ${state.usedTicketCount} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有開放中的活動 · ${state.usedTicketCount} 筆已使用紀錄` : '目前沒有開放中的活動';
   }
 
   function createOfferCard(offer) {
@@ -154,7 +156,7 @@
       els.ticketModalResult.replaceChildren(resultBox);
     }
   }
-  function updateOfferClaim(eventTicketId, claim) { const current = findOffer(eventTicketId); if (String(claim.status || '') === 'used') { state.offers = state.offers.filter((offer) => offer.ticket && offer.ticket.eventTicketId !== eventTicketId); const historyTicket = { ...(current || {}), ticket: ticketForOffer({ ...(current || {}), claim }), claim, availability: 'used', tierEligible: true, canClaim: false, canUse: false, soldOut: false, history: true }; state.usedTickets = [historyTicket, ...state.usedTickets.filter((offer) => !offer.ticket || offer.ticket.eventTicketId !== eventTicketId)]; return; } state.offers = state.offers.map((offer) => offer.ticket && offer.ticket.eventTicketId === eventTicketId ? { ...offer, claim, canClaim: false, canUse: eventTicketTierEligible(offer) && claim.status === 'available', soldOut: false } : offer); }
+  function updateOfferClaim(eventTicketId, claim) { const current = findOffer(eventTicketId); if (String(claim.status || '') === 'used') { const isNewHistory = !state.usedTickets.some((offer) => eventTicketIdForOffer(offer) === eventTicketId); state.offers = state.offers.filter((offer) => offer.ticket && offer.ticket.eventTicketId !== eventTicketId); const historyTicket = { ...(current || {}), ticket: ticketForOffer({ ...(current || {}), claim }), claim, availability: 'used', tierEligible: true, canClaim: false, canUse: false, soldOut: false, history: true }; state.usedTickets = [historyTicket, ...state.usedTickets.filter((offer) => !offer.ticket || offer.ticket.eventTicketId !== eventTicketId)].slice(0, 5); if (isNewHistory) state.usedTicketCount += 1; return; } state.offers = state.offers.map((offer) => offer.ticket && offer.ticket.eventTicketId === eventTicketId ? { ...offer, claim, canClaim: false, canUse: eventTicketTierEligible(offer) && claim.status === 'available', soldOut: false } : offer); }
   function eventTicketIdForOffer(offer) { const ticket = offer && offer.ticket || {}; const claim = offer && offer.claim || {}; return String(ticket.eventTicketId || claim.eventTicketId || '').trim(); }
   function findOffer(eventTicketId) { const targetId = String(eventTicketId || '').trim(); if (!targetId) return null; return state.offers.concat(state.usedTickets).find((offer) => eventTicketIdForOffer(offer) === targetId) || null; }
   function ticketForOffer(offer) { const ticket = offer && offer.ticket || {}; const claim = offer && offer.claim; if (!claim) return ticket; return { ...ticket, title: String(claim.ticketTitle || ticket.title || ''), ticketType: claim.ticketType || ticket.ticketType, description: String(claim.ticketDescription || ticket.description || ''), usageMethod: String(claim.usageMethod || ticket.usageMethod || ''), usageInstructions: String(claim.usageInstructions || ticket.usageInstructions || ''), prizes: Array.isArray(claim.prizes) ? claim.prizes : ticket.prizes }; }
