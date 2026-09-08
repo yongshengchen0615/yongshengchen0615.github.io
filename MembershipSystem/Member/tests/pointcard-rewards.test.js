@@ -166,12 +166,15 @@ test('point cards expose an explicit expiry state and keep unlimited cards activ
   const { context } = loadPointCardService();
   const expired = context.pointCardForClient_({ card_id: 'PC-EXPIRED', target_stamps: '10', reward_title: '已到期', status: 'active', expiry_mode: 'date', expires_on: '2026-09-01' });
   const active = context.pointCardForClient_({ card_id: 'PC-ACTIVE', target_stamps: '10', reward_title: '無期限', status: 'active', expiry_mode: 'unlimited', expires_on: '' });
+  const styled = context.pointCardForClient_({ card_id: 'PC-STYLED', target_stamps: '10', reward_title: '午夜藍', status: 'active', style_key: 'midnight' });
   assert.equal(expired.expiryMode, 'date');
   assert.equal(expired.expiresOn, '2026-09-01');
   assert.equal(expired.expired, true);
   assert.equal(active.expiryMode, 'unlimited');
   assert.equal(active.expiresOn, '');
   assert.equal(active.expired, false);
+  assert.equal(styled.styleKey, 'midnight');
+  assert.equal(active.styleKey, 'forest');
 });
 
 test('tickets keep a reward snapshot without any usage password data', () => {

@@ -1,6 +1,7 @@
 (() => {
   'use strict';
 
+  const POINT_CARD_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const state = { config: null, idToken: '', profile: null, cards: [], tickets: [], history: [], activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '' };
   const els = {};
 
@@ -53,7 +54,7 @@
     els.emptyView.classList.toggle('hidden', hasCards);
     els.activeCardView.classList.toggle('hidden', !hasCards);
     els.cardTabs.replaceChildren(...state.cards.map((card) => {
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-tab'; button.dataset.cardId = card.cardId; button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(card.cardId === state.activeCardId)); button.style.setProperty('--card-accent', safeAccent(card.accent)); const title = document.createElement('strong'); title.textContent = String(card.title || '未命名集點卡'); const meta = document.createElement('span'); meta.textContent = `${Number(card.stamps || 0)} 點`; button.append(title, meta); return button;
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-tab'; button.dataset.cardId = card.cardId; button.dataset.cardStyle = safeCardStyle(card.styleKey); button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(card.cardId === state.activeCardId)); button.style.setProperty('--card-accent', safeAccent(card.accent)); const title = document.createElement('strong'); title.textContent = String(card.title || '未命名集點卡'); const meta = document.createElement('span'); meta.textContent = `${Number(card.stamps || 0)} 點`; button.append(title, meta); return button;
     }));
     renderHistory();
     if (!hasCards) { els.ticketList.replaceChildren(); els.ticketSummary.textContent = ''; return; }
@@ -64,6 +65,7 @@
   function renderActiveCard(card) {
     const stamps = Math.max(0, Number(card.stamps || 0));
     const ticketOfferCount = ticketOffersForCard(card).length;
+    els.activeCardView.dataset.cardStyle = safeCardStyle(card.styleKey);
     els.activeCardView.style.setProperty('--card-accent', safeAccent(card.accent));
     els.activeCardTitle.textContent = String(card.title || '集點卡');
     els.activeCardDescription.textContent = String(card.description || '每次消費後由店家為你累積點數。');
@@ -207,6 +209,7 @@
   function showTicketMessage(message, success) { els.ticketModalMessage.textContent = message; els.ticketModalMessage.classList.toggle('success', Boolean(success)); els.ticketModalMessage.classList.remove('hidden'); }
   function hideTicketMessage() { els.ticketModalMessage.textContent = ''; els.ticketModalMessage.classList.add('hidden'); els.ticketModalMessage.classList.remove('success'); }
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
+  function safeCardStyle(value) { const styleKey = String(value || '').trim().toLowerCase(); return POINT_CARD_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.pointsView.classList.toggle('hidden', view !== 'points'); }
   function showError(error) { const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED'; els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '集點卡暫時無法載入'; els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用集點卡與票券功能。' : error && error.message ? error.message : '請稍後重新整理再試。'; els.joinMemberButton.classList.toggle('hidden', !membershipRequired); els.retryButton.classList.toggle('hidden', membershipRequired); setView('error'); }
 })();

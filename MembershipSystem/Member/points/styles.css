@@ -117,3 +117,17 @@ button { line-height: 1.35; }
   .ticket-history-heading { flex-direction: column; gap: 8px; }
   .ticket-history-heading time { text-align: left; }
 }
+
+/* Point-card style presets are selected by the admin and rendered consistently in the member LIFF. */
+.card-tab[aria-selected="true"] { background: var(--card-style-surface, var(--ink)); border-color: var(--card-style-surface, var(--ink)); }
+.active-card[data-card-style="forest"], .card-tab[data-card-style="forest"] { --card-style-surface: #123f34; }
+.active-card[data-card-style="midnight"], .card-tab[data-card-style="midnight"] { --card-style-surface: #17243f; }
+.active-card[data-card-style="ocean"], .card-tab[data-card-style="ocean"] { --card-style-surface: #0d4d58; }
+.active-card[data-card-style="sunset"], .card-tab[data-card-style="sunset"] { --card-style-surface: #8f402f; }
+.active-card[data-card-style="lavender"], .card-tab[data-card-style="lavender"] { --card-style-surface: #554174; }
+.active-card[data-card-style="rose"], .card-tab[data-card-style="rose"] { --card-style-surface: #803c59; }
+.active-card[data-card-style="gold"], .card-tab[data-card-style="gold"] { --card-style-surface: #654718; }
+.active-card[data-card-style="platinum"], .card-tab[data-card-style="platinum"] { --card-style-surface: #46515e; }
+.active-card[data-card-style="mint"], .card-tab[data-card-style="mint"] { --card-style-surface: #22634f; }
+.active-card[data-card-style="cherry"], .card-tab[data-card-style="cherry"] { --card-style-surface: #76253d; }
+.active-card[data-card-style] { background: var(--card-style-surface, var(--ink)); }

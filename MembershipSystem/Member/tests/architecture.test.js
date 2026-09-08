@@ -139,6 +139,34 @@ test('admin derives fixed membership tiers from service-time thresholds instead 
   assert.match(memberService, /tierStyleKey/);
 });
 
+test('admin requires explicit grant actions and status choices while exposing card style previews', () => {
+  const adminApp = read('admin/app.js');
+  const adminHtml = read('admin/index.html');
+  const adminStyles = read('admin/styles.css');
+  const storage = read('gas/Storage.gs');
+  const pointService = read('gas/PointCardService.gs');
+  const pointsApp = read('points/app.js');
+  const pointsStyles = read('points/styles.css');
+  assert.match(adminApp, /function prepareExplicitStatusOptions/);
+  assert.match(adminApp, /option\.value = ''; option\.disabled = true/);
+  ['cardStatus', 'ticketStatus', 'eventTicketStatus', 'calendarItemStatus'].forEach((field) => assert.match(adminApp, new RegExp(`els\\.${field}\\.value = ''`)));
+  assert.match(adminApp, /renderGrantPointRows\(\[\]\)/);
+  assert.match(adminApp, /els\.grantStampsEnabled\.checked = false/);
+  assert.match(adminApp, /els\.grantServiceTimeEnabled\.checked = false/);
+  assert.match(adminApp, /els\.grantServiceTimeMinutes\.value = ''/);
+  assert.match(adminApp, /placeholder\.textContent = '請選擇集點卡'/);
+  assert.match(adminApp, /function prepareTierStylePreviews/);
+  assert.match(adminApp, /function preparePointCardStyleEditor/);
+  assert.match(adminApp, /id = 'cardStyle'/);
+  assert.match(adminStyles, /\.style-preview/);
+  assert.match(adminHtml, /tierGeneralStyle/);
+  assert.match(storage, /PointCards:.*style_key/);
+  assert.match(pointService, /styleKey: pointCardStyleKey_\(card\.style_key\)/);
+  assert.match(pointService, /POINT_CARD_STYLE_KEYS_/);
+  assert.match(pointsApp, /dataset\.cardStyle = safeCardStyle/);
+  assert.match(pointsStyles, /\.active-card\[data-card-style/);
+});
+
 test('all browser JavaScript and GAS files parse as JavaScript', () => {
   const files = ['shared/common.js', 'member/app.js', 'points/app.js', 'event/app.js', 'calendar/app.js', 'admin/app.js', 'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/EventTicketService.gs', 'gas/CalendarService.gs'];
   files.forEach((file) => assert.doesNotThrow(() => new vm.Script(read(file), { filename: file }), file));
@@ -264,7 +292,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-ui-cards-modal-20260908/);
+  assert.match(adminHtml, /styles\.css\?v=admin-ui-card-style-20260908/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -381,10 +409,10 @@ test('admin content editors open in bounded dialogs and long ticket choices rema
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
     ['member', 'member-membership-20260908-date-ui'],
-    ['points', 'points-membership-20260908'],
+    ['points', 'points-card-style-20260908'],
     ['event', 'event-history-membership-20260908'],
     ['calendar', 'calendar-membership-20260908'],
-    ['admin', 'admin-ui-cards-modal-20260908']
+    ['admin', 'admin-ui-card-style-20260908']
   ];
 
   surfaces.forEach(([surface, version]) => {

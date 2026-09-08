@@ -214,6 +214,25 @@ input, select, textarea, button { min-width: 0; max-width: 100%; }
   .table-wrap .small-button { flex: 1 1 0; }
 }
 
+/* Small card previews make the ten reusable card styles distinguishable before saving. */
+.style-preview { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; margin-top: 1px; padding: 7px; border: 1px solid #dce7df; border-radius: 10px; background: rgba(255, 254, 250, .75); }
+.style-thumbnail { position: relative; display: block; width: 78px; height: 46px; overflow: hidden; border-radius: 8px; background: linear-gradient(135deg, #123f34, #2f9b68); box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+.style-thumbnail::before { content: ''; position: absolute; right: -15px; bottom: -24px; width: 58px; height: 58px; border: 1px solid rgba(255,255,255,.35); border-radius: 50%; box-shadow: 0 0 0 8px rgba(255,255,255,.08), 0 0 0 16px rgba(255,255,255,.05); }
+.style-thumbnail::after { content: '✦'; position: absolute; top: 6px; left: 8px; color: rgba(255,255,255,.82); font-size: 10px; }
+.style-preview-copy { display: grid; min-width: 0; gap: 2px; }.style-preview-copy small, .style-preview-copy strong { min-width: 0; overflow-wrap: anywhere; }.style-preview-copy small { color: var(--muted); font-size: 9px; font-weight: 700; }.style-preview-copy strong { color: var(--ink); font-size: 12px; }
+.style-preview[data-style="forest"] .style-thumbnail { background: linear-gradient(135deg, #123f34, #2f9b68); }
+.style-preview[data-style="midnight"] .style-thumbnail { background: linear-gradient(135deg, #17243f, #405b91); }
+.style-preview[data-style="ocean"] .style-thumbnail { background: linear-gradient(135deg, #0d4d58, #2c9aa1); }
+.style-preview[data-style="sunset"] .style-thumbnail { background: linear-gradient(135deg, #8f402f, #e47845); }
+.style-preview[data-style="lavender"] .style-thumbnail { background: linear-gradient(135deg, #554174, #a078bf); }
+.style-preview[data-style="rose"] .style-thumbnail { background: linear-gradient(135deg, #803c59, #d77b91); }
+.style-preview[data-style="gold"] .style-thumbnail { background: linear-gradient(135deg, #654718, #c18b36); }
+.style-preview[data-style="platinum"] .style-thumbnail { background: linear-gradient(135deg, #46515e, #9ca8b4); }
+.style-preview[data-style="mint"] .style-thumbnail { background: linear-gradient(135deg, #22634f, #6dbb91); }
+.style-preview[data-style="cherry"] .style-thumbnail { background: linear-gradient(135deg, #76253d, #c64f68); }
+.card-style-field { min-width: 0; }
+@media (max-width: 480px) { .style-preview { grid-template-columns: 70px minmax(0, 1fr); }.style-thumbnail { width: 70px; height: 42px; } }
+
 /* Admin-provided labels, notes, and member names should never create a page-width overflow. */
 body { line-height: 1.5; }
 button, input, select, textarea { line-height: 1.35; }
