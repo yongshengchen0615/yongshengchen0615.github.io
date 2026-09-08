@@ -6,12 +6,12 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>集點卡｜Lumen Club</title>
-  <link rel="stylesheet" href="./styles.css?v=points-ui-layout-20260906">
+  <link rel="stylesheet" href="./styles.css?v=points-ticket-history-20260908">
   <link rel="stylesheet" href="../shared/membership-progress.css?v=membership-progress-ui-layout-20260906">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="../shared/common.js" defer></script>
   <script src="../shared/membership-progress.js?v=membership-progress-20260905" defer></script>
-  <script src="./app.js" defer></script>
+  <script src="./app.js?v=points-ticket-history-20260908" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -65,6 +65,8 @@
       </section>
 
       <section class="tickets-panel" aria-labelledby="ticketsTitle"><div class="tickets-heading"><div><p class="label dark-label">Point card tickets</p><h2 id="ticketsTitle">集點卡票券總覽</h2></div><span id="ticketSummary" class="tickets-summary"></span></div><div id="ticketList" class="member-ticket-list"></div><div id="ticketEmpty" class="ticket-empty"><span aria-hidden="true">○</span><p>店家尚未為這張集點卡設定兌換票券。</p></div></section>
+
+      <section class="ticket-history-panel" aria-labelledby="ticketHistoryTitle"><div class="tickets-heading"><div><p class="label dark-label">Ticket history</p><h2 id="ticketHistoryTitle">票券使用紀錄</h2></div><span id="ticketHistorySummary" class="tickets-summary"></span></div><div id="ticketHistoryList" class="ticket-history-list"></div><div id="ticketHistoryEmpty" class="ticket-empty"><span aria-hidden="true">○</span><p>尚未使用過集點卡票券。</p></div></section>
 
       <section class="points-note"><span class="note-mark" aria-hidden="true">i</span><p>集點由店家於消費後登錄，若進度與實際消費不符，請直接向店員出示此畫面協助確認。</p></section>
     </main>
