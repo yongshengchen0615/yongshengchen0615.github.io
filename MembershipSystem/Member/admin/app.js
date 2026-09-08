@@ -5,7 +5,7 @@
   const CALENDAR_ITEM_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], calendarItems: [], selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], tickets: [], eventTickets: [], calendarItems: [], selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, writeConfirmationRequired: false };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -14,7 +14,7 @@
       'membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'cardSettingsTab', 'ticketSettingsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'activeEventTicketCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'cardSettingsPanel', 'ticketSettingsPanel', 'syncStatus', 'refreshButton',
       'tierSettingsForm', 'tierGeneralMinutes', 'tierSilverMinutes', 'tierGoldMinutes', 'tierPlatinumMinutes', 'tierGeneralStyle', 'tierSilverStyle', 'tierGoldStyle', 'tierPlatinumStyle', 'tierSettingsFormMessage', 'saveTierSettingsButton',
       'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
-      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardSortOrder', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
+      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
       'newCalendarItemButton', 'calendarItemResultCount', 'calendarItemListItems', 'calendarItemEmptyState', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
@@ -26,8 +26,9 @@
   });
 
   function bindEvents() {
-    prepareCardSortOrderEditor();
     prepareGrantPointEditor();
+    prepareCardSortControls();
+    prepareEditorModals();
     const eventTicketTierAccess = document.getElementById('eventTicketAllowedTiers');
     const eventTicketTitleField = els.eventTicketTitle.closest('label');
     if (eventTicketTierAccess && eventTicketTitleField) {
@@ -50,8 +51,8 @@
     els.memberNextPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page + 1, state.memberPage.query));
     els.memberTableBody.addEventListener('click', handleMemberTableClick);
     els.tierSettingsForm.addEventListener('submit', saveTierSettings);
-    els.newCardButton.addEventListener('click', resetCardForm);
-    els.cardListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-card-id]') : null; if (button) loadCardForm(button.dataset.cardId); });
+    els.newCardButton.addEventListener('click', () => { resetCardForm(); openEditorModal('card'); });
+    els.cardListItems.addEventListener('click', handleCardListClick);
     els.addRewardButton.addEventListener('click', addRewardRow);
     els.rewardRows.addEventListener('input', updateRewardEditorHint);
     els.rewardRows.addEventListener('change', updateRewardEditorHint);
@@ -63,8 +64,8 @@
     els.resetCardButton.addEventListener('click', resetCardForm);
     els.archiveCardButton.addEventListener('click', archiveCard);
     els.deleteCardButton.addEventListener('click', deleteCard);
-    els.newTicketButton.addEventListener('click', resetTicketForm);
-    els.ticketListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-ticket-template-id]') : null; if (button) loadTicketForm(button.dataset.ticketTemplateId); });
+    els.newTicketButton.addEventListener('click', () => { resetTicketForm(); openEditorModal('ticket'); });
+    els.ticketListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-ticket-template-id]') : null; if (button) { loadTicketForm(button.dataset.ticketTemplateId); openEditorModal('ticket'); } });
     els.ticketType.addEventListener('change', updateTicketTypeUI);
     els.ticketPrizeRows.addEventListener('input', updateTicketPrizeTotal);
     els.ticketPrizeRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-ticket-prize]') : null; if (button) { button.closest('[data-ticket-prize-row]')?.remove(); updateTicketPrizeTotal(); } });
@@ -72,8 +73,8 @@
     els.balanceTicketPrizesButton.addEventListener('click', balanceTicketPrizes);
     els.ticketForm.addEventListener('submit', saveTicket);
     els.resetTicketButton.addEventListener('click', resetTicketForm);
-    els.newEventTicketButton.addEventListener('click', resetEventTicketForm);
-    els.eventTicketListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-event-ticket-id]') : null; if (button) loadEventTicketForm(button.dataset.eventTicketId); });
+    els.newEventTicketButton.addEventListener('click', () => { resetEventTicketForm(); openEditorModal('eventTicket'); });
+    els.eventTicketListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-event-ticket-id]') : null; if (button) { loadEventTicketForm(button.dataset.eventTicketId); openEditorModal('eventTicket'); } });
     els.eventTicketType.addEventListener('change', updateEventTicketTypeUI);
     els.eventTicketPrizeRows.addEventListener('input', updateEventTicketPrizeTotal);
     els.eventTicketPrizeRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-event-ticket-prize]') : null; if (button) { button.closest('[data-event-ticket-prize-row]')?.remove(); updateEventTicketPrizeTotal(); } });
@@ -85,8 +86,8 @@
     els.eventTicketForm.addEventListener('submit', saveEventTicket);
     els.resetEventTicketButton.addEventListener('click', resetEventTicketForm);
     els.deleteEventTicketButton.addEventListener('click', deleteEventTicket);
-    els.newCalendarItemButton.addEventListener('click', resetCalendarItemForm);
-    els.calendarItemListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null; if (button) loadCalendarItemForm(button.dataset.calendarItemId); });
+    els.newCalendarItemButton.addEventListener('click', () => { resetCalendarItemForm(); openEditorModal('calendar'); });
+    els.calendarItemListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-calendar-item-id]') : null; if (button) { loadCalendarItemForm(button.dataset.calendarItemId); openEditorModal('calendar'); } });
     els.calendarItemListItems.addEventListener('change', handleCalendarItemSelectionChange);
     els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
     els.calendarItemForm.addEventListener('change', handleCalendarItemFormChange);
@@ -115,16 +116,7 @@
     els.addGrantPointButton.addEventListener('click', addGrantPointRow);
     els.grantServiceTimeEnabled.addEventListener('change', updateGrantOptions);
     document.addEventListener('click', handleAdminDateControlClick);
-    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); });
-  }
-
-  function prepareCardSortOrderEditor() {
-    if (els.cardSortOrder || !els.cardStatus) return;
-    const field = document.createElement('label'); field.className = 'card-sort-order-field';
-    const caption = document.createElement('span'); caption.textContent = '會員端顯示排序';
-    const input = document.createElement('input'); input.id = 'cardSortOrder'; input.type = 'number'; input.min = '0'; input.max = '100000'; input.step = '1'; input.value = '0';
-    const help = document.createElement('small'); help.className = 'field-help'; help.textContent = '數字越小越前面；相同時依建立時間排序';
-    field.append(caption, input, help); els.cardStatus.closest('.form-grid').append(field); els.cardSortOrder = input;
+    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); closeEditorModals(); });
   }
 
   function prepareGrantPointEditor() {
@@ -137,6 +129,56 @@
     const hint = document.createElement('p'); hint.id = 'grantPointHint'; hint.className = 'field-help'; hint.textContent = '可在同一次操作中為不同集點卡發放不同點數。';
     els.grantStampsFields.replaceChildren(rows, addButton, hint); els.grantPointRows = rows; els.addGrantPointButton = addButton; els.grantPointHint = hint;
   }
+
+  function prepareCardSortControls() {
+    const cardList = els.cardListItems && els.cardListItems.closest('.card-list');
+    if (!cardList || cardList.querySelector('.card-sort-hint')) return;
+    const hint = document.createElement('p'); hint.className = 'card-sort-hint'; hint.textContent = '使用每張卡片旁的上移／下移調整會員端顯示順序。';
+    const message = document.createElement('p'); message.id = 'cardSortMessage'; message.className = 'form-message hidden'; message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite');
+    cardList.insertBefore(hint, els.cardListItems); cardList.insertBefore(message, els.cardListItems); els.cardSortMessage = message;
+  }
+
+  function prepareEditorModals() {
+    [
+      { key: 'card', form: els.cardForm, titleId: 'editorTitle', label: '集點卡' },
+      { key: 'ticket', form: els.ticketForm, titleId: 'ticketEditorTitle', label: '票券' },
+      { key: 'eventTicket', form: els.eventTicketForm, titleId: 'eventTicketEditorTitle', label: '活動票券' },
+      { key: 'calendar', form: els.calendarItemForm, titleId: 'calendarItemEditorTitle', label: '日曆項目' }
+    ].forEach((config) => {
+      const editor = config.form && config.form.closest('.editor');
+      const workspace = editor && editor.closest('.card-workspace');
+      if (!editor || !workspace || !editor.parentNode) return;
+      workspace.classList.add('editor-modal-host');
+      const modal = document.createElement('div'); modal.id = `${config.key}EditorModal`; modal.className = 'modal editor-modal hidden'; modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', config.titleId);
+      const card = document.createElement('div'); card.className = 'modal-card editor-modal-card';
+      const heading = editor.querySelector('.editor-heading');
+      const status = editor.querySelector('.editor-status');
+      const actions = document.createElement('div'); actions.className = 'editor-heading-actions';
+      const close = document.createElement('button'); close.type = 'button'; close.className = 'close-button editor-modal-close'; close.setAttribute('aria-label', `關閉${config.label}視窗`); close.textContent = '×';
+      if (heading) { if (status) actions.append(status); actions.append(close); heading.append(actions); }
+      card.append(editor); modal.append(card); document.body.append(modal);
+      modal.addEventListener('click', (event) => { if (event.target === modal) closeEditorModal(config.key); });
+      close.addEventListener('click', () => closeEditorModal(config.key));
+      state.editorModals[config.key] = { modal, close, opener: null };
+    });
+  }
+
+  function openEditorModal(key) {
+    const entry = state.editorModals[key]; if (!entry) return;
+    entry.opener = document.activeElement;
+    entry.modal.classList.remove('hidden');
+    const focusTarget = entry.modal.querySelector('input:not([type="hidden"]), select, textarea, button:not(.editor-modal-close)');
+    (focusTarget || entry.close).focus();
+  }
+
+  function closeEditorModal(key) {
+    const entry = state.editorModals[key]; if (!entry) return;
+    entry.modal.classList.add('hidden');
+    if (entry.opener instanceof HTMLElement && document.contains(entry.opener)) entry.opener.focus();
+    entry.opener = null;
+  }
+
+  function closeEditorModals() { Object.keys(state.editorModals).forEach(closeEditorModal); }
 
   async function boot() {
     setView('loading');
@@ -377,27 +419,61 @@
 
   function renderCardList() {
     els.cardResultCount.textContent = String(state.cards.length); els.cardEmptyState.classList.toggle('hidden', state.cards.length !== 0);
-    els.cardListItems.replaceChildren(...state.cards.map((card) => {
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.cardId = String(card.cardId); button.setAttribute('aria-selected', String(card.cardId) === state.selectedCardId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(card.accent));
+    els.cardListItems.replaceChildren(...state.cards.map((card, index) => {
+      const item = document.createElement('article'); item.className = 'card-sort-item'; item.dataset.cardId = String(card.cardId);
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item card-list-item-main'; button.dataset.cardId = String(card.cardId); button.setAttribute('aria-selected', String(card.cardId) === state.selectedCardId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(card.accent));
       const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(card.title || '未命名集點卡')));
-      const meta = document.createElement('small'); const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${formatAdminDateCompact(card.expiresOn)}` : '無期限'; meta.textContent = `排序 ${Number(card.sortOrder || 0)} · ${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
-      button.append(title, meta); return button;
+      const meta = document.createElement('small'); const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${formatAdminDateCompact(card.expiresOn)}` : '無期限'; meta.textContent = `第 ${index + 1} 張 · ${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
+      button.append(title, meta);
+      const controls = document.createElement('div'); controls.className = 'card-sort-controls';
+      controls.append(createCardSortButton(card, index, 'up'), createCardSortButton(card, index, 'down'));
+      item.append(button, controls); return item;
     }));
+  }
+
+  function createCardSortButton(card, index, direction) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'card-sort-button'; button.dataset.cardSortCardId = String(card.cardId); button.dataset.cardSortDirection = direction; button.disabled = state.cardSortBusy || state.writeConfirmationRequired || (direction === 'up' ? index === 0 : index === state.cards.length - 1); button.setAttribute('aria-label', `${direction === 'up' ? '將' : '將'}${String(card.title || '集點卡')}${direction === 'up' ? '上移' : '下移'}`); button.title = direction === 'up' ? '上移' : '下移'; button.textContent = direction === 'up' ? '↑' : '↓'; return button;
+  }
+
+  function handleCardListClick(event) {
+    const sortButton = event.target instanceof Element ? event.target.closest('[data-card-sort-card-id]') : null;
+    if (sortButton) return moveCard(String(sortButton.dataset.cardSortCardId || ''), String(sortButton.dataset.cardSortDirection || ''));
+    const button = event.target instanceof Element ? event.target.closest('[data-card-id]') : null;
+    if (button) { loadCardForm(button.dataset.cardId); openEditorModal('card'); }
+  }
+
+  async function moveCard(cardId, direction) {
+    if (state.cardSortBusy || requireRefreshBeforeWrite(els.cardSortMessage)) return;
+    const currentIndex = state.cards.findIndex((card) => String(card.cardId) === cardId);
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= state.cards.length) return;
+    const originalCards = state.cards.slice(); const reorderedCards = state.cards.slice(); const moved = reorderedCards.splice(currentIndex, 1)[0]; reorderedCards.splice(nextIndex, 0, moved);
+    const cardOrders = reorderedCards.map((card, index) => ({ cardId: String(card.cardId), sortOrder: index, expectedUpdatedAt: String(card.updatedAt || '') }));
+    state.cardSortBusy = true; state.cards = reorderedCards; renderCardList(); showOperationProgress('正在更新集點卡排序…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.reorder', { cardOrders });
+      if (!Array.isArray(result.cards) || result.cards.length !== cardOrders.length || result.cards.some((card) => !card || !card.cardId)) { const error = new Error('無法確認集點卡排序結果。'); error.code = 'API_RESPONSE_UNCERTAIN'; throw error; }
+      state.cards = result.cards; renderCardList(); showOperationSuccess('集點卡排序已更新'); showMessage(els.cardSortMessage, '已更新會員端顯示順序。', true);
+    } catch (error) {
+      state.cards = originalCards;
+      if (error && error.code === 'API_RESPONSE_UNCERTAIN') { state.writeConfirmationRequired = true; lockAdminWrites(); showOperationNotice('無法確認排序是否完成，請重新整理確認。', 'warning', 0); showUncertainWriteMessage(els.cardSortMessage); setSyncStatus('排序結果尚未確認；請重新整理確認後再操作。', true); }
+      else { showOperationNotice(error && error.code === 'CONFLICT' ? '集點卡資料已變更，請重新整理後再排序。' : '排序未完成，請稍後再試。', 'error', 4600); showMessage(els.cardSortMessage, error && error.code === 'CONFLICT' ? '集點卡已被其他管理者更新，請重新整理後再排序。' : error && error.message || '排序未完成，請稍後再試。'); }
+      renderCardList();
+    } finally { state.cardSortBusy = false; renderCardList(); }
   }
 
   function loadCardForm(cardId) {
     const card = state.cards.find((item) => item.cardId === cardId); if (!card) return;
-    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardSortOrder.value = String(Number(card.sortOrder || 0)); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.archiveCardButton.disabled = card.status === 'archived'; els.archiveCardButton.textContent = card.status === 'archived' ? '已封存集點卡' : '封存集點卡'; els.deleteCardButton.disabled = false; hideMessage(els.cardFormMessage); renderCardList();
+    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.archiveCardButton.disabled = card.status === 'archived'; els.archiveCardButton.textContent = card.status === 'archived' ? '已封存集點卡' : '封存集點卡'; els.deleteCardButton.disabled = false; hideMessage(els.cardFormMessage); renderCardList();
   }
 
   function resetCardForm() {
-    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = 'draft'; els.cardSortOrder.value = '0'; els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, 'draft'); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
+    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = 'draft'; els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, 'draft'); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
   }
 
   function defaultReward(thresholdStamps) { return { thresholdStamps, ticketTemplateId: '' }; }
   function updateCardExpiryUI() { const limited = els.cardExpiryMode.value === 'date'; els.cardExpiresOnField.classList.toggle('hidden', !limited); els.cardExpiresOn.required = limited; updateCardExpiryDateUI(); }
   function validateCardExpiry(mode, expiresOn) { if (mode === 'unlimited') return ''; if (mode !== 'date' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) return '請選擇有效的集點卡到期日。'; const parts = expiresOn.split('-').map(Number); const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])); return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2] ? '' : '請選擇有效的集點卡到期日。'; }
-  function validateCardSortOrder(value) { return Number.isInteger(value) && value >= 0 && value <= 100000 ? '' : '會員端顯示排序必須是 0–100000 的整數。'; }
 
   function activeTicketOptions(currentTicketTemplateId) {
     const tickets = state.tickets.filter((ticket) => ticket.status === 'active' || ticket.ticketTemplateId === currentTicketTemplateId);
@@ -412,7 +488,7 @@
   }
   function fieldLabel(labelText, type, value, options) {
     const label = document.createElement('label'); label.dataset.fieldLabel = options.field; const caption = document.createElement('span'); caption.textContent = labelText; label.append(caption); let input;
-    if (type === 'select') { input = document.createElement('select'); (options.options || []).forEach(([optionValue, optionLabel]) => { const option = document.createElement('option'); option.value = optionValue; option.textContent = optionLabel; input.append(option); }); input.value = String(value || ''); } else { input = document.createElement('input'); input.type = type; input.value = value === undefined || value === null ? '' : String(value); if (options.min) input.min = options.min; if (options.max) input.max = options.max; if (options.step) input.step = options.step; if (options.maxlength) input.maxLength = Number(options.maxlength); if (options.placeholder) input.placeholder = options.placeholder; }
+    if (type === 'select') { input = document.createElement('select'); (options.options || []).forEach(([optionValue, optionLabel]) => { const option = document.createElement('option'); option.value = optionValue; option.textContent = optionLabel; input.append(option); }); input.value = String(value || ''); input.title = String(input.selectedOptions[0] && input.selectedOptions[0].textContent || ''); input.addEventListener('change', () => { input.title = String(input.selectedOptions[0] && input.selectedOptions[0].textContent || ''); }); } else { input = document.createElement('input'); input.type = type; input.value = value === undefined || value === null ? '' : String(value); if (options.min) input.min = options.min; if (options.max) input.max = options.max; if (options.step) input.step = options.step; if (options.maxlength) input.maxLength = Number(options.maxlength); if (options.placeholder) input.placeholder = options.placeholder; }
     input.dataset.field = options.field; if (options.suffix) { const suffix = document.createElement('span'); suffix.className = 'field-suffix'; suffix.textContent = options.suffix; label.append(input, suffix); } else label.append(input); return label;
   }
   function addRewardRow() { const rewards = collectRewards(); const highest = rewards.reduce((max, reward) => Math.max(max, Number(reward.thresholdStamps) || 0), 0); rewards.push(defaultReward(Math.min(100, highest + 5 || 5))); renderRewardRows(rewards); els.rewardRows.querySelector('[data-reward-row]:last-child [data-field="ticketTemplateId"]')?.focus(); }
@@ -425,12 +501,12 @@
   function validateRewardEditor(title, rewards) { if (!title || title.length > 80) return '請填寫卡片名稱（最多 80 字）。'; if (!rewards.length || rewards.length > 30) return '請至少設定 1 個兌換節點，最多 30 個節點。'; const thresholds = new Set(); for (const reward of rewards) { if (!Number.isInteger(reward.thresholdStamps) || reward.thresholdStamps < 1 || reward.thresholdStamps > 100) return '需要集到的點數必須是 1–100 的整數。'; if (thresholds.has(reward.thresholdStamps)) return '每個點數只能設定一個節點。'; thresholds.add(reward.thresholdStamps); if (!reward.ticketTemplateId) return '請為每個節點選擇一張票券。'; } return ''; }
   async function saveCard(event) {
     event.preventDefault(); if (requireRefreshBeforeWrite(els.cardFormMessage)) return; hideMessage(els.cardFormMessage);
-    const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim(); const sortOrder = Number(els.cardSortOrder.value);
-    const validationMessage = validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardExpiry(expiryMode, expiresOn) || validateCardSortOrder(sortOrder);
+    const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim();
+    const validationMessage = validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardExpiry(expiryMode, expiresOn);
     if (validationMessage) return showMessage(els.cardFormMessage, validationMessage);
     setSaving(els.saveCardButton, true, '正在儲存集點卡…');
     try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), description: String(els.cardDescription.value || '').trim(), rewardTitle: '', rewards, status: els.cardStatus.value, expiryMode, expiresOn, sortOrder, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), description: String(els.cardDescription.value || '').trim(), rewardTitle: '', rewards, status: els.cardStatus.value, expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       if (result.card) { state.cards = replaceById(state.cards, result.card, 'cardId'); loadCardForm(result.card.cardId); }
       if (await refreshAfterSuccessfulWrite('集點卡已儲存', els.cardFormMessage)) showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true);
     } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
@@ -1036,7 +1112,7 @@
     const refreshButton = document.createElement('button'); refreshButton.type = 'button'; refreshButton.className = 'button button-outline uncertain-write-refresh'; refreshButton.dataset.uncertainWriteRefresh = 'true'; refreshButton.textContent = '重新整理確認'; refreshButton.addEventListener('click', () => window.location.reload());
     element.insertAdjacentElement('afterend', refreshButton);
   }
-  function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.deleteEventTicketButton, els.saveCalendarItemButton, els.deleteCalendarItemButton, els.addCalendarBatchItemButton, els.queueSelectedCalendarItemsButton, els.deleteSelectedCalendarItemsButton, els.clearCalendarBatchButton, els.saveCalendarBatchButton, els.saveMemberButton, els.saveGrantButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; }
+  function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.deleteEventTicketButton, els.saveCalendarItemButton, els.deleteCalendarItemButton, els.addCalendarBatchItemButton, els.queueSelectedCalendarItemsButton, els.deleteSelectedCalendarItemsButton, els.clearCalendarBatchButton, els.saveCalendarBatchButton, els.saveMemberButton, els.saveGrantButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; renderCardList(); }
   function requireRefreshBeforeWrite(element) { if (!state.writeConfirmationRequired) return false; showUncertainWriteMessage(element); return true; }
   function setSyncStatus(message, error) { els.syncStatus.textContent = message; els.syncStatus.classList.toggle('error', Boolean(error)); }
   async function refreshAfterSuccessfulWrite(successMessage, messageElement, showSuccessNotice = true) {

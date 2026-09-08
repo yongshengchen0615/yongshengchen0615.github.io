@@ -11,7 +11,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="../shared/common.js?v=membership-join-20260908" defer></script>
   <script src="../shared/membership-progress.js?v=membership-progress-20260905" defer></script>
-  <script src="./app.js?v=member-membership-20260908" defer></script>
+  <script src="./app.js?v=member-membership-20260908-date-shell" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -39,6 +39,8 @@
         <div class="profile-field">
           <label for="profileBirthday">生日</label>
           <span class="date-input-shell">
+            <span id="profileBirthdayDisplay" class="date-input-display" aria-hidden="true">請選擇生日</span>
+            <span class="date-input-icon" aria-hidden="true">▣</span>
             <input id="profileBirthday" type="date" autocomplete="bday" aria-describedby="profileBirthdayHint" required>
           </span>
           <small id="profileBirthdayHint" class="profile-field-help">點擊欄位選擇生日</small>

@@ -75,6 +75,7 @@ test('spreadsheet writes protect formulas and point entries are append-only', ()
   assert.match(memberService, /REQUEST_REUSE_MISMATCH/);
   assert.match(code, /case 'admin\.member-grants\.add':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleMemberGrantAdd_/);
   assert.match(code, /case 'admin\.member-tiers\.save':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleMembershipTierSettingsSave_/);
+  assert.match(code, /case 'admin\.pointcards\.reorder':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handlePointCardReorder_/);
   assert.match(memberService, /function handleMemberGrantAdd_/);
   assert.match(memberService, /normalizeMemberGrantPoints_/);
   assert.match(memberService, /'_points_'/);

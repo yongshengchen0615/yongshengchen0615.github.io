@@ -483,6 +483,48 @@ function handlePointCardSave_(identity, admin, request) {
   });
 }
 
+function handlePointCardReorder_(identity, admin, request) {
+  const rawOrders = Array.isArray(request.cardOrders) ? request.cardOrders : [];
+  if (!rawOrders.length || rawOrders.length > 1000) throw new ApiError(400, 'INVALID_CARD_ORDER', '集點卡排序資料不合法。');
+  const seenCardIds = Object.create(null);
+  const seenSortOrders = Object.create(null);
+  const cardOrders = rawOrders.map(function(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'INVALID_CARD_ORDER', '集點卡排序資料不合法。');
+    const cardId = String(input.cardId || '').trim();
+    const sortOrder = Number(input.sortOrder);
+    const expectedUpdatedAt = String(input.expectedUpdatedAt || '').trim();
+    if (!cardId || cardId.length > 80 || seenCardIds[cardId] || !Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > POINT_CARD_MAX_SORT_ORDER_ || seenSortOrders[sortOrder]) throw new ApiError(400, 'INVALID_CARD_ORDER', '集點卡排序資料不合法。');
+    seenCardIds[cardId] = true;
+    seenSortOrders[sortOrder] = true;
+    return { cardId, sortOrder, expectedUpdatedAt };
+  });
+
+  return withDataLock_(function() {
+    const allCards = readRecords_('PointCards');
+    if (allCards.length !== cardOrders.length || allCards.some(function(card) { return !seenCardIds[String(card.card_id || '').trim()]; })) throw new ApiError(409, 'CARD_ORDER_STALE', '集點卡列表已變更，請重新整理。');
+    const prepared = cardOrders.map(function(order) {
+      const match = findRecordWithRow_('PointCards', 'card_id', order.cardId);
+      if (!match) throw new ApiError(404, 'CARD_NOT_FOUND', '找不到集點卡。');
+      if (order.expectedUpdatedAt && String(match.record.updated_at || '') !== order.expectedUpdatedAt) throw new ApiError(409, 'CONFLICT', '集點卡已被更新，請重新整理。');
+      return { order, match };
+    });
+    const now = nowIso_();
+    const rewardsByCard = pointCardRewardsByCard_();
+    const ticketTemplatesById = pointCardTicketTemplatesById_();
+    const cards = [];
+    prepared.forEach(function(entry) {
+      const card = entry.match.record;
+      card.sort_order = String(entry.order.sortOrder);
+      card.updated_by = identity.lineUserId;
+      card.updated_at = now;
+      updateRecordAtRow_('PointCards', entry.match.rowNumber, card);
+      appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_REORDER', target_type: 'point_card', target_id: entry.order.cardId, result: 'success', detail: 'Point card display order updated', created_at: now });
+      cards.push(pointCardForClient_(card, rewardsByCard[entry.order.cardId] || [], true, ticketTemplatesById));
+    });
+    return { cards: cards.sort(comparePointCards_) };
+  });
+}
+
 function handleTicketTemplateSave_(identity, admin, request) {
   const input = request.ticket && typeof request.ticket === 'object' && !Array.isArray(request.ticket) ? request.ticket : {};
   const ticketTemplateId = String(input.ticketTemplateId || '').trim();

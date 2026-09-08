@@ -264,7 +264,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-grants-sort-20260908/);
+  assert.match(adminHtml, /styles\.css\?v=admin-ui-cards-modal-20260908/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -296,11 +296,12 @@ test('member profile date input is LINE-safe and touch-friendly', () => {
   assert.match(memberHtml, /styles\.css\?v=member-membership-20260908-date-ui/);
   assert.match(memberHtml, /<div class="profile-field">\s*<label for="profileBirthday">生日<\/label>/);
   assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"/);
+  assert.match(memberHtml, /id="profileBirthdayDisplay" class="date-input-display"/);
   assert.match(memberHtml, /id="profileBirthdayHint" class="profile-field-help">點擊欄位選擇生日<\/small>/);
   assert.match(memberStyles, /\.profile-form, \.profile-field, \.date-input-shell \{ min-width: 0; max-width: 100%; \}/);
-  assert.match(memberStyles, /\.date-input-shell input\[type="date"\] \{ display: block; box-sizing: border-box; inline-size: 100%; min-inline-size: 0; max-inline-size: 100%; min-height: 46px;/);
-  assert.match(memberStyles, /::-webkit-datetime-edit-fields-wrapper/);
-  assert.match(memberStyles, /@media \(max-width: 620px\) \{[\s\S]*\.profile-form input\[type="date"\] \{ min-height: 54px; padding: 12px 13px; font-size: 16px;/);
+  assert.match(memberStyles, /\.date-input-shell \{ position: relative;[\s\S]*overflow: hidden;/);
+  assert.match(memberStyles, /\.date-input-shell input\[type="date"\] \{ position: absolute; inset: 0;[\s\S]*opacity: 0;/);
+  assert.match(memberStyles, /@media \(max-width: 620px\) \{[\s\S]*\.date-input-shell \{ min-height: 54px;/);
 });
 
 test('point-card usage history starts collapsed and renders only the latest five records', () => {
@@ -337,13 +338,29 @@ test('point-card administration exposes persisted sorting and batch grant contro
   const adminApp = read('admin/app.js');
   const pointService = read('gas/PointCardService.gs');
   const storage = read('gas/Storage.gs');
-  assert.match(adminApp, /prepareCardSortOrderEditor/);
-  assert.match(adminApp, /sortOrder/);
+  assert.match(adminApp, /prepareCardSortControls/);
+  assert.match(adminApp, /admin\.pointcards\.reorder/);
+  assert.match(adminApp, /data-card-sort-card-id/);
+  assert.doesNotMatch(adminApp, /prepareCardSortOrderEditor/);
   assert.match(adminApp, /payload\.points = points/);
   assert.match(adminApp, /addGrantPointRow/);
   assert.match(pointService, /sort_order/);
   assert.match(pointService, /comparePointCards_/);
+  assert.match(pointService, /function handlePointCardReorder_/);
   assert.match(storage, /LineNotificationLogs/);
+});
+
+test('admin content editors open in bounded dialogs and long ticket choices remain readable', () => {
+  const adminApp = read('admin/app.js');
+  const adminStyles = read('admin/styles.css');
+  assert.match(adminApp, /prepareEditorModals/);
+  assert.match(adminApp, /openEditorModal\('card'\)/);
+  assert.match(adminApp, /openEditorModal\('eventTicket'\)/);
+  assert.match(adminApp, /openEditorModal\('calendar'\)/);
+  assert.match(adminStyles, /\.editor-modal-card/);
+  assert.match(adminStyles, /\.editor-modal-host/);
+  assert.match(adminStyles, /grid-template-columns: minmax\(110px, \.65fr\) minmax\(0, 1\.35fr\)/);
+  assert.match(adminStyles, /\.reward-row-summary[^\n]*overflow-wrap: anywhere/);
 });
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
@@ -352,7 +369,7 @@ test('every surface protects responsive text layout and busts its updated styles
     ['points', 'points-membership-20260908'],
     ['event', 'event-history-membership-20260908'],
     ['calendar', 'calendar-membership-20260908'],
-    ['admin', 'admin-grants-sort-20260908']
+    ['admin', 'admin-ui-cards-modal-20260908']
   ];
 
   surfaces.forEach(([surface, version]) => {

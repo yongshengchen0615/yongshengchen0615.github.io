@@ -105,6 +105,7 @@ GAS 會建立並維護以下 schema：
 - `admin.member.update`
 - `admin.member-tiers.save`
 - `admin.pointcards.save`
+- `admin.pointcards.reorder`（管理端以卡片控制調整會員端顯示順序）
 - `admin.pointcards.archive`（封存集點卡，保留歷史資料）
 - `admin.pointcards.delete`（永久刪除集點卡與相依資料）
 - `admin.pointcards.remove`（舊版相容別名，等同封存）

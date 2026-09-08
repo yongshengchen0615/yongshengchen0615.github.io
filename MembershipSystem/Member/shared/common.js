@@ -11,6 +11,7 @@
     'admin.member.update',
     'admin.member-tiers.save',
     'admin.pointcards.save',
+    'admin.pointcards.reorder',
     'admin.pointcards.archive',
     'admin.pointcards.delete',
     'admin.pointcards.remove',

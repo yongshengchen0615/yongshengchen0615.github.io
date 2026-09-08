@@ -270,6 +270,31 @@ test('point cards sort by the persisted display order before stable fallbacks', 
   assert.deepEqual(cards.map((card) => card.cardId), ['PC-C', 'PC-A', 'PC-B']);
 });
 
+test('point-card reorder updates the complete list atomically and rejects stale edits', () => {
+  const { context, rows, TestApiError } = loadTicketService();
+  rows.PointCards[0].title = '第一張';
+  rows.PointCards[0].sort_order = '10';
+  rows.PointCards[0].updated_at = 'old-1';
+  rows.PointCards.push({ card_id: 'PC-2', title: '第二張', status: 'draft', expiry_mode: 'unlimited', expires_on: '', sort_order: '20', updated_at: 'old-2', created_at: '2026-09-02T00:00:00.000Z' });
+  let auditCount = 0;
+  context.appendAuditRecord_ = () => { auditCount += 1; };
+
+  const result = context.handlePointCardReorder_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { cardOrders: [
+    { cardId: 'PC-2', sortOrder: 0, expectedUpdatedAt: 'old-2' },
+    { cardId: 'PC-1', sortOrder: 1, expectedUpdatedAt: 'old-1' }
+  ] });
+  assert.deepEqual(JSON.parse(JSON.stringify(result.cards.map((card) => card.cardId))), ['PC-2', 'PC-1']);
+  assert.deepEqual(rows.PointCards.map((card) => Number(card.sort_order)), [1, 0]);
+  assert.equal(auditCount, 2);
+
+  const before = JSON.stringify(rows.PointCards);
+  assert.throws(() => context.handlePointCardReorder_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { cardOrders: [
+    { cardId: 'PC-2', sortOrder: 0, expectedUpdatedAt: 'old-2' },
+    { cardId: 'PC-1', sortOrder: 1, expectedUpdatedAt: 'old-1' }
+  ] }), (error) => error instanceof TestApiError && error.code === 'CONFLICT');
+  assert.equal(JSON.stringify(rows.PointCards), before);
+});
+
 test('point-card bootstrap uses one coherent snapshot instead of repeated full-sheet reads', () => {
   const { context, rows } = loadTicketService();
   const calls = {};
