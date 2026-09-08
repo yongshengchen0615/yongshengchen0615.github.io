@@ -17,7 +17,7 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   EventTicketClaims: Object.freeze(['claim_id', 'event_ticket_id', 'line_user_id', 'ticket_type', 'ticket_title', 'ticket_description', 'usage_method', 'usage_instructions', 'lottery_prizes_json', 'status', 'claimed_at', 'used_at', 'result_json', 'created_at', 'updated_at']),
   CalendarItems: Object.freeze(['calendar_item_id', 'title', 'item_type', 'description', 'starts_on', 'ends_on', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at', 'allowed_tier_keys', 'link_label', 'link_url']),
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
-  PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at', 'request_id']),
+  PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at', 'request_id', 'entry_type', 'reference_type', 'reference_id']),
   ServiceTimeEntries: Object.freeze(['entry_id', 'line_user_id', 'minutes', 'note', 'created_by', 'created_at', 'request_id']),
   MembershipTierSettings: Object.freeze(['tier_key', 'tier_label', 'required_service_minutes', 'updated_by', 'updated_at']),
   AuditLogs: Object.freeze(['audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id', 'result', 'detail', 'created_at'])
