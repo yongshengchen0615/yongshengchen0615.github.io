@@ -2,7 +2,7 @@
   'use strict';
 
   const initialMonth = firstOfMonth(taipeiToday());
-  const state = { config: null, idToken: '', profile: null, items: [], initialMonth: initialMonth, visibleMonth: initialMonth, detailTrigger: null, touchStart: null, suppressCalendarDayClickUntil: 0 };
+  const state = { config: null, idToken: '', bootstrapVersion: '', cacheScope: '', profile: null, items: [], initialMonth: initialMonth, visibleMonth: initialMonth, detailTrigger: null, touchStart: null, suppressCalendarDayClickUntil: 0 };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -64,18 +64,42 @@
     renderCalendar();
   }
 
-  async function loadCalendar() {
+  async function loadCalendar(bypassSnapshot) {
     const range = initialCalendarDataRange(state.initialMonth);
     try {
-      const result = await window.MemberSystem.request(state.config, 'calendar', state.idToken, 'user.calendar.bootstrap', { rangeStart: range.start, rangeEnd: range.end });
-      state.profile = result.profile && typeof result.profile === 'object' ? result.profile : {};
-      state.items = Array.isArray(result.items) ? result.items : [];
-      els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
-      window.MembershipProgress.render(els.membershipProgress, state.profile);
+      const cached = bypassSnapshot ? null : await window.MemberSystem.readSyncSnapshot('calendar');
+      const payload = { rangeStart: range.start, rangeEnd: range.end, compact: true };
+      if (cached && cached.payload && cached.payload.rangeStart === range.start && cached.payload.rangeEnd === range.end) {
+        payload.knownRevision = cached.revision; payload.knownCacheScope = cached.cacheScope;
+      }
+      const result = await window.MemberSystem.request(state.config, 'calendar', state.idToken, 'user.calendar.bootstrap', payload);
+      if (result.unchanged) {
+        const confirmed = cached && cached.cacheScope === result.cacheScope && cached.revision === result.revision ? cached : null;
+        if (!confirmed) return loadCalendar(true);
+        applyCalendarSnapshot(confirmed.payload, result);
+      } else {
+        applyCalendarSnapshot(result, result);
+      }
       renderCalendar();
+      await persistCalendarSnapshot();
     } catch (error) {
       throw error;
     }
+  }
+
+  function applyCalendarSnapshot(payload, sync) {
+    state.bootstrapVersion = String(sync && (sync.revision || sync.version) || '');
+    state.cacheScope = String(sync && sync.cacheScope || '');
+    state.profile = payload && payload.profile && typeof payload.profile === 'object' ? payload.profile : {};
+    state.items = Array.isArray(payload && payload.items) ? payload.items : [];
+    els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
+    window.MembershipProgress.render(els.membershipProgress, state.profile);
+  }
+
+  function persistCalendarSnapshot() {
+    if (!state.bootstrapVersion || !state.cacheScope) return Promise.resolve(false);
+    const range = initialCalendarDataRange(state.initialMonth);
+    return window.MemberSystem.writeSyncSnapshot('calendar', state.bootstrapVersion, state.cacheScope, { profile: state.profile, items: state.items, rangeStart: range.start, rangeEnd: range.end });
   }
 
   function renderCalendar() {
@@ -165,16 +189,34 @@
     changeMonth(deltaX < 0 ? 1 : -1);
   }
 
-  function openCalendarDateDetails(isoDate, trigger) {
+  async function openCalendarDateDetails(isoDate, trigger) {
     const items = state.items.filter((item) => itemOnDate(item, isoDate));
     if (!items.length) return;
     state.detailTrigger = trigger instanceof HTMLElement ? trigger : null;
     els.calendarDetailTitle.textContent = calendarDateLabel(isoDate);
     els.calendarDetailDate.textContent = `${items.length} 項相關日期說明`;
-    els.calendarDetailItems.replaceChildren(...items.map(createCalendarDetailItem));
+    els.calendarDetailItems.replaceChildren(createCalendarDetailLoadingItem());
     els.calendarDetailModal.classList.remove('hidden');
     els.closeCalendarDetailButton.focus();
+    try {
+      const result = await window.MemberSystem.request(state.config, 'calendar', state.idToken, 'user.calendar.date.details', { calendarDate: isoDate });
+      const detailedItems = Array.isArray(result.items) ? result.items : [];
+      const byId = Object.fromEntries(detailedItems.map((item) => [String(item.calendarItemId || ''), item]));
+      state.items = state.items.map((item) => byId[String(item.calendarItemId || '')] ? { ...item, ...byId[String(item.calendarItemId || '')] } : item);
+      if (!els.calendarDetailModal.classList.contains('hidden') && state.detailTrigger === trigger) {
+        const currentItems = state.items.filter((item) => itemOnDate(item, isoDate));
+        els.calendarDetailItems.replaceChildren(...currentItems.map(createCalendarDetailItem));
+      }
+      await persistCalendarSnapshot();
+    } catch (error) {
+      if (!els.calendarDetailModal.classList.contains('hidden') && state.detailTrigger === trigger) {
+        els.calendarDetailItems.replaceChildren(createCalendarDetailErrorItem(error && error.message || '日期詳細資料載入失敗，請稍後再試。'));
+      }
+    }
   }
+
+  function createCalendarDetailLoadingItem() { const item = document.createElement('p'); item.className = 'calendar-detail-item'; item.textContent = '正在載入日期詳細內容…'; return item; }
+  function createCalendarDetailErrorItem(message) { const item = document.createElement('p'); item.className = 'calendar-detail-item'; item.textContent = String(message || '日期詳細資料載入失敗。'); return item; }
 
   function createCalendarDetailItem(item) {
     const detail = document.createElement('section');

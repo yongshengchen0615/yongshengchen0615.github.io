@@ -21,6 +21,7 @@ function handlePointCardBootstrap_(identity, request) {
   const member = ensureMember_(identity);
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
   reconcilePendingPointMutationsForMember_(identity.lineUserId);
+  const compact = Boolean(request && request.compact);
   const buildPayload = function() {
     let snapshot = readPointCardSnapshot_(identity.lineUserId);
     if (pointCardTicketIssuanceRequired_(identity.lineUserId, snapshot)) {
@@ -32,10 +33,34 @@ function handlePointCardBootstrap_(identity, request) {
       });
     }
     const history = pointCardActivityHistoryForMember_(identity.lineUserId, snapshot);
-    return { profile: pointCardMembershipProfileForClient_(member, identity), cards: visiblePointCardsForMember_(identity.lineUserId, snapshot), tickets: visibleTicketsForMember_(identity.lineUserId, snapshot), history: history.slice(0, POINT_CARD_HISTORY_LIMIT_), historyTotal: history.length };
+    const cards = compact
+      ? visiblePointCardSummariesForMember_(identity.lineUserId, snapshot)
+      : visiblePointCardsForMember_(identity.lineUserId, snapshot);
+    return { profile: pointCardMembershipProfileForClient_(member, identity), cards, tickets: compact ? [] : visibleTicketsForMember_(identity.lineUserId, snapshot), history: history.slice(0, POINT_CARD_HISTORY_LIMIT_), historyTotal: history.length, compact };
   };
   return typeof membershipVersionedBootstrapResponse_ === 'function'
     ? membershipVersionedBootstrapResponse_('points', identity, request, buildPayload)
+    : buildPayload();
+}
+
+function handlePointCardDetail_(identity, request) {
+  const cardId = String(request && request.cardId || '').trim();
+  if (!cardId || cardId.length > 80) throw new ApiError(400, 'INVALID_POINT_CARD', '集點卡識別碼不合法。');
+  const member = ensureMember_(identity);
+  if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
+  const buildPayload = function() {
+    const snapshot = readPointCardSnapshot_(identity.lineUserId);
+    const rawCard = snapshot.cards.find(function(card) { return String(card.card_id || '') === cardId && String(card.status || '') === 'active'; });
+    if (!rawCard) throw new ApiError(404, 'POINT_CARD_NOT_FOUND', '找不到可用的集點卡。');
+    const balance = snapshot.balancesByMemberCard[pointCardMemberCardKey_(identity.lineUserId, cardId)] || {};
+    const card = pointCardForClient_(rawCard, snapshot.rewardsByCard[cardId] || [], false, snapshot.ticketTemplatesById);
+    card.stamps = Math.max(0, Number(balance.stamps || 0));
+    card.updatedAt = String(balance.updated_at || '') || card.updatedAt;
+    const tickets = visibleTicketsForMember_(identity.lineUserId, snapshot).filter(function(ticket) { return String(ticket.cardId || '') === cardId; });
+    return { card, tickets };
+  };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('points-detail:' + cardId, identity, request, buildPayload)
     : buildPayload();
 }
 
@@ -394,6 +419,33 @@ function visiblePointCardsForMember_(lineUserId, snapshot) {
     const balance = balanceMap[pointCardMemberCardKey_(lineUserId, card.cardId)] || {};
     return Object.assign({}, card, { stamps: Math.max(0, Number(balance.stamps || 0)), updatedAt: String(balance.updated_at || '') || card.updatedAt });
   });
+}
+
+function visiblePointCardSummariesForMember_(lineUserId, snapshot) {
+  const balanceMap = snapshot && snapshot.balancesByMemberCard ? snapshot.balancesByMemberCard : {};
+  const rewardsByCard = snapshot && snapshot.rewardsByCard ? snapshot.rewardsByCard : {};
+  return (snapshot && Array.isArray(snapshot.cards) ? snapshot.cards : []).filter(function(card) {
+    return String(card.status || '') === 'active';
+  }).map(function(card) {
+    const cardId = String(card.card_id || '');
+    const balance = balanceMap[pointCardMemberCardKey_(lineUserId, cardId)] || {};
+    const configuredRewards = rewardsByCard[cardId] || [];
+    const rewardCount = configuredRewards.length || (String(card.reward_title || '').trim() ? 1 : 0);
+    return {
+      cardId,
+      title: String(card.title || ''),
+      rewardCount,
+      expiryMode: pointCardExpiryMode_(card),
+      expiresOn: pointCardExpiresOn_(card),
+      expired: pointCardIsExpired_(card),
+      status: String(card.status || 'draft'),
+      accent: String(card.accent || '#e47845'),
+      styleKey: pointCardStyleKey_(card.style_key),
+      sortOrder: pointCardSortOrder_(card),
+      updatedAt: String(balance.updated_at || '') || String(card.updated_at || ''),
+      stamps: Math.max(0, Number(balance.stamps || 0))
+    };
+  }).sort(comparePointCards_);
 }
 
 function pointCardExpiryMode_(card) {

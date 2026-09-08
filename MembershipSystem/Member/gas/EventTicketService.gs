@@ -12,21 +12,71 @@ const EVENT_TICKET_HISTORY_LIMIT_ = 5;
 function handleEventTicketBootstrap_(identity, request) {
   const member = ensureMember_(identity);
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
+  const compact = Boolean(request && request.compact);
   const buildPayload = function() {
     const snapshot = readEventTicketSnapshot_(identity.lineUserId, true);
     const serviceMinutesTotal = eventTicketServiceMinutesTotal_(member.line_user_id);
     const tier = eventTicketMemberTier_(member.line_user_id, serviceMinutesTotal);
     const usedTickets = usedEventTicketHistoryForMember_(identity.lineUserId, snapshot);
+    const offers = visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey);
     return {
       profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey, tierStyleKey: String(tier.styleKey || ''), serviceMinutesTotal, tierProgress: eventTicketTierProgress_(serviceMinutesTotal, tier) },
-      offers: visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey),
-      usedTickets: usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_),
-      usedTicketCount: usedTickets.length
+      offers: compact ? offers.map(compactEventTicketOffer_) : offers,
+      usedTickets: compact ? usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_).map(compactEventTicketOffer_) : usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_),
+      usedTicketCount: usedTickets.length,
+      compact
     };
   };
   return typeof membershipVersionedBootstrapResponse_ === 'function'
     ? membershipVersionedBootstrapResponse_('event', identity, request, buildPayload)
     : buildPayload();
+}
+
+function handleEventTicketDetail_(identity, request) {
+  const eventTicketId = String(request && request.eventTicketId || '').trim();
+  if (!eventTicketId || eventTicketId.length > 80) throw new ApiError(400, 'INVALID_EVENT_TICKET', '活動票券識別碼不合法。');
+  const member = ensureMember_(identity);
+  if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
+  const buildPayload = function() {
+    const snapshot = readEventTicketSnapshot_(identity.lineUserId, true);
+    const serviceMinutesTotal = eventTicketServiceMinutesTotal_(identity.lineUserId);
+    const tier = eventTicketMemberTier_(identity.lineUserId, serviceMinutesTotal);
+    const offer = visibleEventTicketOffersForMember_(identity.lineUserId, snapshot, tier.tierKey).find(function(value) {
+      return String(value && value.ticket && value.ticket.eventTicketId || '') === eventTicketId;
+    }) || usedEventTicketHistoryForMember_(identity.lineUserId, snapshot).find(function(value) {
+      return String(value && value.ticket && value.ticket.eventTicketId || '') === eventTicketId;
+    });
+    if (!offer) throw new ApiError(404, 'EVENT_TICKET_NOT_FOUND', '找不到可查看的活動票券。');
+    return { offer };
+  };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('event-detail:' + eventTicketId, identity, request, buildPayload)
+    : buildPayload();
+}
+
+function compactEventTicketOffer_(offer) {
+  const compact = Object.assign({}, offer || {});
+  compact.ticket = compactEventTicketForClient_(offer && offer.ticket);
+  if (offer && offer.claim) compact.claim = compactEventTicketClaimForClient_(offer.claim);
+  return compact;
+}
+
+function compactEventTicketForClient_(ticket) {
+  const compact = Object.assign({}, ticket || {});
+  delete compact.description;
+  delete compact.usageMethod;
+  delete compact.usageInstructions;
+  delete compact.prizes;
+  return compact;
+}
+
+function compactEventTicketClaimForClient_(claim) {
+  const compact = Object.assign({}, claim || {});
+  delete compact.ticketDescription;
+  delete compact.usageMethod;
+  delete compact.usageInstructions;
+  delete compact.prizes;
+  return compact;
 }
 
 function eventTicketClaimsForMember_(lineUserId) {

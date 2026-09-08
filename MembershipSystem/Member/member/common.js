@@ -232,11 +232,60 @@
     });
   }
 
+  function syncCacheKey(surface, cacheScope) { return `membership-sync-v2:${String(surface || '')}:${String(cacheScope || '')}`; }
+
+  function openSyncCache() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error('INDEXEDDB_UNAVAILABLE'));
+      const request = window.indexedDB.open('MembershipSystemSyncCache', 1);
+      request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains('snapshots')) request.result.createObjectStore('snapshots', { keyPath: 'key' }); };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('INDEXEDDB_ERROR'));
+    });
+  }
+
+  function readSyncSnapshot(surface, cacheScope, revision) {
+    return openSyncCache().then((db) => new Promise((resolve, reject) => {
+      const store = db.transaction('snapshots', 'readonly').objectStore('snapshots');
+      const request = cacheScope && revision ? store.get(syncCacheKey(surface, cacheScope)) : store.getAll();
+      request.onsuccess = () => {
+        const candidates = Array.isArray(request.result) ? request.result : [request.result];
+        const now = Date.now();
+        const match = candidates.filter((entry) => entry && entry.surface === surface && (!cacheScope || entry.cacheScope === cacheScope) && (!revision || entry.revision === revision) && Number(entry.expiresAt || 0) > now)
+          .sort((left, right) => Number(right.savedAt || 0) - Number(left.savedAt || 0))[0] || null;
+        db.close(); resolve(match);
+      };
+      request.onerror = () => { db.close(); reject(request.error || new Error('INDEXEDDB_ERROR')); };
+    })).catch(() => null);
+  }
+
+  function writeSyncSnapshot(surface, revision, cacheScope, payload) {
+    let serialized;
+    try { serialized = JSON.stringify(payload); } catch (_) { return Promise.resolve(false); }
+    if (!surface || !revision || !cacheScope || serialized.length > 180000) return Promise.resolve(false);
+    const now = Date.now();
+    const entry = { key: syncCacheKey(surface, cacheScope), surface, revision, cacheScope, payload, savedAt: now, expiresAt: now + 24 * 60 * 60 * 1000 };
+    return openSyncCache().then((db) => new Promise((resolve, reject) => {
+      const request = db.transaction('snapshots', 'readwrite').objectStore('snapshots').put(entry);
+      request.onsuccess = () => { db.close(); resolve(true); };
+      request.onerror = () => { db.close(); reject(request.error || new Error('INDEXEDDB_ERROR')); };
+    })).catch(() => false);
+  }
+
+  function clearSyncSnapshots() {
+    return openSyncCache().then((db) => new Promise((resolve) => {
+      const request = db.transaction('snapshots', 'readwrite').objectStore('snapshots').clear();
+      request.onsuccess = request.onerror = () => { db.close(); resolve(); };
+    })).catch(() => {});
+  }
+
   function logout() {
     try {
       if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
     } finally {
-      window.location.reload();
+      clearSyncSnapshots().finally(function() {
+        window.location.reload();
+      });
     }
   }
 
@@ -269,6 +318,5 @@
     return Array.from(text).slice(0, 2).join('') || '會員';
   }
 
-  window.MemberSystem = Object.freeze({ clientError, loadConfig, validateConfig, signIn, request, logout, openMemberJoin, formatDate, formatDateTime, initials });
+  window.MemberSystem = Object.freeze({ clientError, loadConfig, validateConfig, signIn, request, readSyncSnapshot, writeSyncSnapshot, clearSyncSnapshots, logout, openMemberJoin, formatDate, formatDateTime, initials });
 })();
-

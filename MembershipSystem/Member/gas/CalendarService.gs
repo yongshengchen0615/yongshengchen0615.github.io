@@ -11,17 +11,51 @@ function handleCalendarBootstrap_(identity, request) {
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
   const range = calendarRangeFromRequest_(request);
   const profile = calendarMemberProfileForClient_(member, identity);
+  const compact = Boolean(request && request.compact);
   const buildPayload = function() {
+    const items = readCalendarItemsForRange_(range.start, range.end, calendarMemberTierKey_(profile));
     return {
       profile: profile,
       rangeStart: range.start,
       rangeEnd: range.end,
-      items: readCalendarItemsForRange_(range.start, range.end, calendarMemberTierKey_(profile))
+      items: compact ? items.map(compactCalendarItemForClient_) : items,
+      compact: compact
     };
   };
   return typeof membershipVersionedBootstrapResponse_ === 'function'
     ? membershipVersionedBootstrapResponse_('calendar:' + range.start + ':' + range.end, identity, request, buildPayload)
     : buildPayload();
+}
+
+function handleCalendarDateDetails_(identity, request) {
+  const calendarDate = String(request && request.calendarDate || '').trim();
+  if (!calendarDateIsValid_(calendarDate)) throw new ApiError(400, 'INVALID_CALENDAR_DATE', '日期格式不合法。');
+  const member = ensureMember_(identity);
+  if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
+  const profile = calendarMemberProfileForClient_(member, identity);
+  const buildPayload = function() {
+    const tierKey = calendarMemberTierKey_(profile);
+    const items = readCalendarItemsForRange_(calendarDate, calendarDate, tierKey);
+    return { calendarDate, items };
+  };
+  return typeof membershipVersionedBootstrapResponse_ === 'function'
+    ? membershipVersionedBootstrapResponse_('calendar-date:' + calendarDate, identity, request, buildPayload)
+    : buildPayload();
+}
+
+function calendarDateIsValid_(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parts = value.split('-').map(Number);
+  const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2];
+}
+
+function compactCalendarItemForClient_(item) {
+  const compact = Object.assign({}, item || {});
+  delete compact.description;
+  delete compact.linkLabel;
+  delete compact.linkUrl;
+  return compact;
 }
 
 function calendarMemberProfileForClient_(member, identity) {

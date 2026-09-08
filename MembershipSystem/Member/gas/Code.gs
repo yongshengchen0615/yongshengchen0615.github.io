@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.14.0';
+const MEMBERSHIP_API_VERSION_ = '1.15.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
@@ -57,8 +57,14 @@ function doPost(e) {
       case 'user.pointcard.bootstrap':
         data = handlePointCardBootstrap_(identity, request);
         break;
+      case 'user.pointcard.detail':
+        data = handlePointCardDetail_(identity, request);
+        break;
       case 'user.calendar.bootstrap':
         data = handleCalendarBootstrap_(identity, request);
+        break;
+      case 'user.calendar.date.details':
+        data = handleCalendarDateDetails_(identity, request);
         break;
       case 'admin.bootstrap': {
         const admin = authorizeAdmin_(identity);
@@ -132,6 +138,9 @@ function doPost(e) {
       case 'user.event.bootstrap':
         data = handleEventTicketBootstrap_(identity, request);
         break;
+      case 'user.event.ticket.detail':
+        data = handleEventTicketDetail_(identity, request);
+        break;
       case 'user.event.ticket.claim':
         data = handleEventTicketClaim_(identity, request);
         break;
@@ -184,7 +193,7 @@ function doPost(e) {
 
     if (MEMBERSHIP_WRITE_ACTIONS_.indexOf(request.action) >= 0) {
       rotateMembershipDataCacheEpoch_();
-      rotateMembershipBootstrapVersion_();
+      if (typeof membershipSyncBumpForWrite_ === 'function') membershipSyncBumpForWrite_(request.action, identity, request);
     }
     return jsonResponse_({ ok: true, status: 200, data: data || {} });
   } catch (error) {
@@ -218,16 +227,19 @@ function parseRequest_(e) {
   request.action = String(request.action || '').trim();
   request.clientType = String(request.clientType || '').trim();
   request.idToken = typeof request.idToken === 'string' ? request.idToken.trim() : '';
+  request.knownRevision = typeof request.knownRevision === 'string' ? request.knownRevision.trim() : '';
+  request.knownCacheScope = typeof request.knownCacheScope === 'string' ? request.knownCacheScope.trim() : '';
   if (!request.action || request.action.length > 80) throw new ApiError(400, 'INVALID_ACTION', 'API action 不合法。');
   if (!request.idToken) throw new ApiError(401, 'AUTH_REQUIRED', '需要 LINE 登入。');
+  if (request.knownRevision.length > 180 || request.knownCacheScope.length > 180) throw new ApiError(400, 'INVALID_SYNC_REVISION', '同步版本資料不合法。');
   return request;
 }
 
 function clientTypeForAction_(action) {
   if (action === 'user.member.bootstrap' || action === 'user.member.profile.save') return 'member';
-  if (action === 'user.pointcard.bootstrap' || action.indexOf('user.pointcard.ticket.') === 0) return 'points';
-  if (action === 'user.event.bootstrap' || action.indexOf('user.event.ticket.') === 0) return 'event';
-  if (action === 'user.calendar.bootstrap') return 'calendar';
+  if (action === 'user.pointcard.bootstrap' || action === 'user.pointcard.detail' || action.indexOf('user.pointcard.ticket.') === 0) return 'points';
+  if (action === 'user.event.bootstrap' || action === 'user.event.ticket.detail' || action.indexOf('user.event.ticket.') === 0) return 'event';
+  if (action === 'user.calendar.bootstrap' || action === 'user.calendar.date.details') return 'calendar';
   if (action.indexOf('admin.') === 0) return 'admin';
   throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
 }

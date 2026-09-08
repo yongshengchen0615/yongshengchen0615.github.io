@@ -4,9 +4,10 @@ const MEMBERSHIP_STORAGE_PROPERTY_ = 'MEMBERSHIP_SYSTEM_SPREADSHEET_ID';
 const MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_DATA_CACHE_EPOCH_KEY_ = 'membership:data-epoch:v1';
 const MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_ = 21600;
-const MEMBERSHIP_BOOTSTRAP_VERSION_KEY_ = 'membership:bootstrap-version:v1';
 const MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_BOOTSTRAP_CACHE_MAX_BYTES_ = 90000;
+const MEMBERSHIP_SYNC_SCHEMA_VERSION_ = '2';
+const MEMBERSHIP_SYNC_PROPERTY_PREFIX_ = 'MEMBERSHIP_SYNC_REVISION_V2:';
 const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at', 'birthday', 'phone', 'membership_status']),
   Admins: Object.freeze(['line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at']),
@@ -61,30 +62,16 @@ function rotateMembershipDataCacheEpoch_() {
   try { cache.put(MEMBERSHIP_DATA_CACHE_EPOCH_KEY_, Utilities.getUuid(), MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_); } catch (_) {}
 }
 
-function membershipBootstrapVersion_() {
-  const cache = membershipSchemaCache_();
-  if (!cache) return '';
-  try {
-    const cached = String(cache.get(MEMBERSHIP_BOOTSTRAP_VERSION_KEY_) || '').trim();
-    if (cached) return cached;
-    const version = membershipCacheVersionToken_();
-    cache.put(MEMBERSHIP_BOOTSTRAP_VERSION_KEY_, version, MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_);
-    return version;
-  } catch (_) {
-    return '';
-  }
-}
-
-function rotateMembershipBootstrapVersion_() {
-  const cache = membershipSchemaCache_();
-  if (!cache) return;
-  try { cache.put(MEMBERSHIP_BOOTSTRAP_VERSION_KEY_, membershipCacheVersionToken_(), MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_); } catch (_) {}
-}
-
 function membershipVersionedBootstrapResponse_(scope, identity, request, buildPayload) {
-  const version = membershipBootstrapVersion_();
-  const knownVersion = String(request && request.knownVersion || '').trim();
-  if (version && knownVersion && knownVersion === version) return { unchanged: true, version: version };
+  const version = membershipSyncRevision_(scope, identity);
+  const cacheScope = membershipClientCacheScope_(scope, identity);
+  const knownRevision = String(request && (request.knownRevision || request.knownVersion) || '').trim();
+  const knownCacheScope = String(request && request.knownCacheScope || '').trim();
+  // A revision alone is not enough: two accounts can legitimately have the
+  // same surface revision, but must never reuse each other's browser cache.
+  if (version && knownRevision && knownCacheScope && knownCacheScope === cacheScope && knownRevision === version) {
+    return { unchanged: true, version: version, revision: version, cacheScope: cacheScope };
+  }
 
   const cache = membershipSchemaCache_();
   const cacheKey = membershipBootstrapPayloadCacheKey_(scope, identity, version);
@@ -101,13 +88,131 @@ function membershipVersionedBootstrapResponse_(scope, identity, request, buildPa
       } catch (_) {}
     }
   }
-  return Object.assign({}, payload, { unchanged: false, version: version });
+  return Object.assign({}, payload, { unchanged: false, version: version, revision: version, cacheScope: cacheScope });
+}
+
+function membershipSyncScopeBase_(scope) {
+  const value = String(scope || '').trim();
+  if (value.indexOf('points') === 0) return 'points';
+  if (value.indexOf('event') === 0) return 'event';
+  if (value.indexOf('calendar') === 0) return 'calendar';
+  if (value.indexOf('admin') === 0) return 'admin';
+  return 'member';
+}
+
+function membershipSyncProperties_() {
+  try { return PropertiesService.getScriptProperties(); } catch (_) { return null; }
+}
+
+function membershipSyncPropertyKey_(scope, lineUserId) {
+  const base = membershipSyncScopeBase_(scope);
+  if (!lineUserId) return MEMBERSHIP_SYNC_PROPERTY_PREFIX_ + 'surface:' + base;
+  const raw = String(lineUserId || '').trim();
+  const identityKey = typeof digest_ === 'function' ? String(digest_(raw)).substring(0, 40) : raw.replace(/[^A-Za-z0-9_-]/g, '_').substring(0, 40);
+  return MEMBERSHIP_SYNC_PROPERTY_PREFIX_ + 'member:' + identityKey;
+}
+
+function membershipSyncRead_(scope, lineUserId) {
+  const properties = membershipSyncProperties_();
+  const key = membershipSyncPropertyKey_(scope, lineUserId);
+  if (properties) {
+    try { return String(properties.getProperty(key) || '0'); } catch (_) {}
+  }
+  const cache = membershipSchemaCache_();
+  if (cache) {
+    try { return String(cache.get(key) || '0'); } catch (_) {}
+  }
+  return '0';
+}
+
+function membershipSyncBump_(scope, lineUserId) {
+  const key = membershipSyncPropertyKey_(scope, lineUserId);
+  const value = membershipCacheVersionToken_();
+  const properties = membershipSyncProperties_();
+  if (properties) {
+    try { properties.setProperty(key, value); return value; } catch (_) {}
+  }
+  const cache = membershipSchemaCache_();
+  if (cache) {
+    try { cache.put(key, value, MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_); } catch (_) {}
+  }
+  return value;
+}
+
+function membershipSyncBumpMember_(lineUserId) {
+  const memberId = String(lineUserId || '').trim();
+  if (!memberId) return '';
+  const properties = membershipSyncProperties_();
+  if (properties) {
+    try {
+      const value = membershipCacheVersionToken_();
+      properties.setProperty(membershipSyncPropertyKey_('member', memberId), value);
+      return value;
+    } catch (_) {
+      // Script Properties has a finite size. A global member revision keeps
+      // existing clients correct after the granular revision store is full.
+      return membershipSyncBump_('member', '');
+    }
+  }
+  return membershipSyncBump_('member', memberId);
+}
+
+function membershipSyncDateKey_(scope) {
+  const base = membershipSyncScopeBase_(scope);
+  if (base !== 'event' && base !== 'calendar') return '';
+  try { return Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd'); } catch (_) { return new Date().toISOString().slice(0, 10); }
+}
+
+function membershipSyncWindowKey_() {
+  const seconds = Math.max(1, Number(MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_) || 120);
+  return String(Math.floor(Date.now() / (seconds * 1000)));
+}
+
+function membershipSyncRevision_(scope, identity) {
+  const base = membershipSyncScopeBase_(scope);
+  const lineUserId = String(identity && identity.lineUserId || '').trim();
+  const surfaceRevision = membershipSyncRead_(base, '');
+  const globalMemberRevision = membershipSyncRead_('member', '');
+  const memberRevision = membershipSyncRead_('member', lineUserId);
+  const dateKey = membershipSyncDateKey_(base);
+  // The bounded window also detects direct Sheet edits that bypass API writes.
+  return [MEMBERSHIP_SYNC_SCHEMA_VERSION_, base, surfaceRevision, globalMemberRevision, memberRevision, dateKey || 'static', membershipSyncWindowKey_()].join(':');
+}
+
+function membershipClientCacheScope_(scope, identity) {
+  const base = membershipSyncScopeBase_(scope);
+  const lineUserId = String(identity && identity.lineUserId || '').trim();
+  const raw = 'membership-client-cache:' + base + ':' + lineUserId;
+  const fingerprint = typeof digest_ === 'function' ? String(digest_(raw)).substring(0, 48) : membershipSafeCacheScope_(raw);
+  return 'v' + MEMBERSHIP_SYNC_SCHEMA_VERSION_ + ':' + base + ':' + fingerprint;
+}
+
+function membershipSyncBumpForWrite_(action, identity, request) {
+  const name = String(action || '').trim();
+  const targetMemberId = String(request && request.lineUserId || identity && identity.lineUserId || '').trim();
+  const bumpSurface = function(scope) { membershipSyncBump_(scope, ''); };
+  const bumpMember = function(lineUserId) { membershipSyncBumpMember_(lineUserId); };
+
+  if (name === 'user.member.profile.save') return bumpMember(identity && identity.lineUserId);
+  if (name === 'admin.member.update') return bumpMember(targetMemberId);
+  if (name === 'admin.member-tiers.save') {
+    ['member', 'points', 'event', 'calendar'].forEach(bumpSurface);
+    return;
+  }
+  if (name.indexOf('admin.pointcards.') === 0 || name === 'admin.tickets.save') return bumpSurface('points');
+  if (name === 'user.pointcard.ticket.redeem' || name === 'admin.stamps.add') return bumpMember(targetMemberId);
+  if (name.indexOf('admin.event-tickets.') === 0) return bumpSurface('event');
+  if (name === 'user.event.ticket.claim' || name === 'user.event.ticket.redeem') return bumpMember(identity && identity.lineUserId);
+  if (name.indexOf('admin.calendar-items.') === 0) return bumpSurface('calendar');
+  if (name === 'admin.service_minutes.add') return bumpMember(targetMemberId);
+  if (name === 'admin.member-grants.add') return bumpMember(targetMemberId);
 }
 
 function membershipReadThroughCache_(scope, buildPayload) {
   const cache = membershipSchemaCache_();
   const version = membershipDataCacheEpoch_();
-  const cacheKey = 'membership:read:v1:' + membershipSafeCacheScope_(scope) + ':' + membershipSafeCacheScope_(version || 'uncached');
+  const windowKey = membershipSyncWindowKey_();
+  const cacheKey = 'membership:read:v1:' + membershipSafeCacheScope_(scope) + ':' + membershipSafeCacheScope_(version || 'uncached') + ':' + windowKey;
   if (cache) {
     try {
       const cached = JSON.parse(cache.get(cacheKey) || 'null');

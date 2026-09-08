@@ -2,7 +2,7 @@
   'use strict';
 
   const POINT_CARD_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', bootstrapVersion: '', profile: null, cards: [], tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '', ticketModalOpener: null };
+  const state = { config: null, idToken: '', bootstrapVersion: '', cacheScope: '', profile: null, cards: [], cardDetails: Object.create(null), detailLoadingCardId: '', tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '', ticketModalOpener: null };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -17,7 +17,7 @@
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.refreshButton.addEventListener('click', () => loadCards(true));
-    els.cardTabs.addEventListener('click', (event) => { const tab = event.target instanceof Element ? event.target.closest('[data-card-id]') : null; if (tab) { state.activeCardId = tab.dataset.cardId; renderCards(); } });
+    els.cardTabs.addEventListener('click', (event) => { const tab = event.target instanceof Element ? event.target.closest('[data-card-id]') : null; if (tab) selectCard(tab.dataset.cardId); });
     els.ticketList.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-use-ticket]') : null; if (button) openTicketModal(button.dataset.useTicket); });
     els.closeTicketModal.addEventListener('click', closeTicketModal);
     els.ticketModal.addEventListener('click', (event) => { if (event.target === els.ticketModal && !state.redeeming) closeTicketModal(); });
@@ -41,24 +41,74 @@
     } catch (error) { stopLoginProgress(); showError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
 
-  async function loadCards(showBusy) {
+  async function loadCards(showBusy, bypassSnapshot) {
     if (showBusy) { els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
     try {
-      const payload = state.bootstrapVersion ? { knownVersion: state.bootstrapVersion } : {};
+      const cached = bypassSnapshot ? null : await window.MemberSystem.readSyncSnapshot('points');
+      const payload = { compact: true };
+      if (cached) { payload.knownRevision = cached.revision; payload.knownCacheScope = cached.cacheScope; }
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.bootstrap', payload);
-      if (result.unchanged) return;
-      state.bootstrapVersion = String(result.version || '');
-      state.profile = result.profile && typeof result.profile === 'object' ? result.profile : {};
-      state.cards = Array.isArray(result.cards) ? result.cards : [];
-      state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
-      state.history = Array.isArray(result.history) ? result.history : [];
-      const historyTotal = Number(result.historyTotal);
-      state.historyTotal = Number.isInteger(historyTotal) && historyTotal >= state.history.length ? historyTotal : state.history.length;
-      els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
-      if (!state.cards.some((card) => card.cardId === state.activeCardId)) state.activeCardId = state.cards[0] ? state.cards[0].cardId : '';
-      window.MembershipProgress.render(els.membershipProgress, state.profile);
+      if (result.unchanged) {
+        const confirmed = cached && cached.cacheScope === result.cacheScope && cached.revision === result.revision ? cached : null;
+        if (!confirmed) return loadCards(showBusy, true);
+        applyCardsSnapshot(confirmed.payload, result);
+      } else {
+        applyCardsSnapshot(result, result);
+      }
+      await ensureActiveCardDetail();
       renderCards();
+      await persistCardsSnapshot();
     } catch (error) { if (!showBusy) throw error; showError(error); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
+  }
+
+  function applyCardsSnapshot(payload, sync) {
+    state.bootstrapVersion = String(sync && (sync.revision || sync.version) || '');
+    state.cacheScope = String(sync && sync.cacheScope || '');
+    state.profile = payload && payload.profile && typeof payload.profile === 'object' ? payload.profile : {};
+    state.cards = Array.isArray(payload && payload.cards) ? payload.cards : [];
+    state.cardDetails = payload && payload.cardDetails && typeof payload.cardDetails === 'object' ? payload.cardDetails : Object.create(null);
+    state.history = Array.isArray(payload && payload.history) ? payload.history : [];
+    const historyTotal = Number(payload && payload.historyTotal);
+    state.historyTotal = Number.isInteger(historyTotal) && historyTotal >= state.history.length ? historyTotal : state.history.length;
+    if (!state.cards.some((card) => card.cardId === state.activeCardId)) state.activeCardId = state.cards[0] ? state.cards[0].cardId : '';
+    els.displayName.textContent = String(state.profile.displayName || 'LINE 使用者');
+    window.MembershipProgress.render(els.membershipProgress, state.profile);
+  }
+
+  function activeCard() {
+    const summary = state.cards.find((card) => card.cardId === state.activeCardId) || state.cards[0] || null;
+    if (!summary) return null;
+    const detail = state.cardDetails[summary.cardId];
+    state.tickets = detail && Array.isArray(detail.tickets) ? detail.tickets : [];
+    return detail && detail.card ? { ...summary, ...detail.card } : summary;
+  }
+
+  async function ensureActiveCardDetail() {
+    const cardId = String(state.activeCardId || '');
+    if (!cardId || state.cardDetails[cardId]) return;
+    state.detailLoadingCardId = cardId;
+    try {
+      const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.detail', { cardId });
+      if (!result.card) throw new Error('集點卡明細回應不完整。');
+      state.cardDetails[cardId] = { card: result.card, tickets: Array.isArray(result.tickets) ? result.tickets : [] };
+    } finally {
+      if (state.detailLoadingCardId === cardId) state.detailLoadingCardId = '';
+    }
+  }
+
+  async function selectCard(cardId) {
+    const nextCardId = String(cardId || '');
+    if (!nextCardId || nextCardId === state.activeCardId) return;
+    state.activeCardId = nextCardId;
+    renderCards();
+    try { await ensureActiveCardDetail(); await persistCardsSnapshot(); renderCards(); } catch (error) { showError(error); }
+  }
+
+  function persistCardsSnapshot() {
+    if (!state.bootstrapVersion || !state.cacheScope) return Promise.resolve(false);
+    return window.MemberSystem.writeSyncSnapshot('points', state.bootstrapVersion, state.cacheScope, {
+      profile: state.profile, cards: state.cards, cardDetails: state.cardDetails, history: state.history, historyTotal: state.historyTotal
+    });
   }
 
   function renderCards() {
@@ -70,13 +120,14 @@
     }));
     renderHistory();
     if (!hasCards) { els.ticketList.replaceChildren(); els.ticketSummary.textContent = ''; return; }
-    const card = state.cards.find((item) => item.cardId === state.activeCardId) || state.cards[0];
+    const card = activeCard();
+    if (!card) return;
     renderActiveCard(card); renderTickets(card);
   }
 
   function renderActiveCard(card) {
     const stamps = Math.max(0, Number(card.stamps || 0));
-    const ticketOfferCount = ticketOffersForCard(card).length;
+    const ticketOfferCount = Array.isArray(card.rewards) ? ticketOffersForCard(card).length : Math.max(0, Number(card.rewardCount || 0));
     els.activeCardView.dataset.cardStyle = safeCardStyle(card.styleKey);
     els.activeCardView.style.setProperty('--card-accent', safeAccent(card.accent));
     els.activeCardTitle.textContent = String(card.title || '集點卡');
@@ -91,6 +142,9 @@
   }
 
   function renderTickets(card) {
+    if (!Array.isArray(card.rewards) && state.detailLoadingCardId === card.cardId) {
+      els.ticketSummary.textContent = '正在載入這張集點卡的票券明細…'; els.ticketEmpty.classList.add('hidden'); els.ticketList.replaceChildren(); return;
+    }
     const offers = ticketOffersForCard(card);
     els.ticketSummary.textContent = offers.length ? `共 ${offers.length} 種票券；持續集點即可解鎖，點數足夠即可使用。` : '店家尚未為這張集點卡設定兌換票券。';
     els.ticketEmpty.classList.toggle('hidden', offers.length !== 0);
@@ -196,7 +250,7 @@
     state.redeeming = true; els.confirmTicketUseButton.disabled = true; els.confirmTicketUseButton.textContent = '使用中…'; els.ticketModalCost.textContent = '正在確認票券與可用點數…'; setTicketProcessing(true);
     try {
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.redeem', { ticketId });
-      const redeemed = result.ticket; state.bootstrapVersion = ''; state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (result.activity) { const isNewHistory = !state.history.some((item) => item.activityId === result.activity.activityId); state.history = [result.activity].concat(state.history.filter((item) => item.activityId !== result.activity.activityId)).slice(0, 5); if (isNewHistory) state.historyTotal += 1; } if (result.balance) updateCardBalance(result.balance); renderCards(); setTicketProcessing(false); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
+      const redeemed = result.ticket; state.bootstrapVersion = ''; state.cacheScope = ''; window.MemberSystem.clearSyncSnapshots(); state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (state.cardDetails[state.activeCardId]) state.cardDetails[state.activeCardId].tickets = state.tickets; if (result.activity) { const isNewHistory = !state.history.some((item) => item.activityId === result.activity.activityId); state.history = [result.activity].concat(state.history.filter((item) => item.activityId !== result.activity.activityId)).slice(0, 5); if (isNewHistory) state.historyTotal += 1; } if (result.balance) updateCardBalance(result.balance); renderCards(); setTicketProcessing(false); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
     } catch (error) {
       setTicketProcessing(false);
       const responseUncertain = error && error.code === 'API_RESPONSE_UNCERTAIN';
@@ -216,7 +270,7 @@
     showTicketMessage('票券已完成核銷；票券結果與實際扣點已保存到使用紀錄。', true);
   }
 
-  function updateCardBalance(balance) { const cardId = String(balance.cardId || ''); const stamps = Number(balance.stamps || 0); state.cards = state.cards.map((card) => card.cardId === cardId ? { ...card, stamps: Math.max(0, stamps), updatedAt: String(balance.updatedAt || card.updatedAt || '') } : card); }
+  function updateCardBalance(balance) { const cardId = String(balance.cardId || ''); const stamps = Number(balance.stamps || 0); const updatedAt = String(balance.updatedAt || ''); state.cards = state.cards.map((card) => card.cardId === cardId ? { ...card, stamps: Math.max(0, stamps), updatedAt: updatedAt || card.updatedAt || '' } : card); if (state.cardDetails[cardId] && state.cardDetails[cardId].card) state.cardDetails[cardId].card = { ...state.cardDetails[cardId].card, stamps: Math.max(0, stamps), updatedAt: updatedAt || state.cardDetails[cardId].card.updatedAt || '' }; }
   function setTicketProcessing(processing) { els.ticketModalProcessing.classList.toggle('hidden', !processing); els.ticketModal.setAttribute('aria-busy', String(Boolean(processing))); }
   function showTicketMessage(message, success) { els.ticketModalMessage.textContent = message; els.ticketModalMessage.classList.toggle('success', Boolean(success)); els.ticketModalMessage.classList.remove('hidden'); }
   function hideTicketMessage() { els.ticketModalMessage.textContent = ''; els.ticketModalMessage.classList.add('hidden'); els.ticketModalMessage.classList.remove('success'); }

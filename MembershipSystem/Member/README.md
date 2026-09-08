@@ -25,7 +25,7 @@ Member/
 
 日曆用戶端需要自己的 Calendar LIFF。部署前需在 config.json 的 calendarLiffId 填入該 LIFF ID，並在 GAS Script properties 設定 MEMBERSHIP_CALENDAR_LINE_CHANNEL_ID 為其所屬的純數字 LINE Channel ID。Calendar LIFF Endpoint URL 為 https://<your-pages-host>/MembershipSystem/Member/calendar/。
 
-第一次執行 setupMembershipSystem() 或部署更新後，系統會建立 CalendarItems 資料表。欄位包含日期項目 ID、名稱、類型、說明、起訖日、狀態、識別色、活動適用會員階級、活動連結名稱、活動連結網址與建立／更新稽核欄位。相關 API action 為 user.calendar.bootstrap、admin.calendar-items.save、admin.calendar-items.delete 與 admin.calendar-items.batch；所有管理端寫入 action 僅限已授權的管理員。
+第一次執行 setupMembershipSystem() 或部署更新後，系統會建立 CalendarItems 資料表。欄位包含日期項目 ID、名稱、類型、說明、起訖日、狀態、識別色、活動適用會員階級、活動連結名稱、活動連結網址與建立／更新稽核欄位。相關 API action 為 user.calendar.bootstrap、user.calendar.date.details、admin.calendar-items.save、admin.calendar-items.delete 與 admin.calendar-items.batch；所有管理端寫入 action 僅限已授權的管理員。
 
 ## 初始化 GAS
 
@@ -102,6 +102,7 @@ GAS 會建立並維護以下 schema：
 - `user.member.bootstrap`（Member LIFF）
 - `user.member.profile.save`（Member LIFF；首次填寫生日與電話）
 - `user.pointcard.bootstrap`（Points LIFF）
+- `user.pointcard.detail`（Points LIFF；僅在開啟指定集點卡時取得完整節點與票券）
 - `admin.bootstrap`
 - `admin.members.list`（支援 `memberPage`、`memberPageSize`、`memberQuery`；每頁最多 100 筆）
 - `admin.pointcards.list`
@@ -121,10 +122,12 @@ GAS 會建立並維護以下 schema：
 - `admin.member-grants.add`（管理端合併發放；`points` 可傳多列 `{ cardId, amount }`，可一次寫入不同集點卡、服務時間或兩者；設定 Channel access token 後會推播 LINE 官方帳號通知）
 - `user.pointcard.ticket.redeem`
 - `user.event.bootstrap`（Event LIFF）
+- `user.event.ticket.detail`（Event LIFF；僅在開啟指定票券時取得完整說明與獎項）
 - `user.event.ticket.claim`（Event LIFF；每位會員每張限領一次）
 - `user.event.ticket.redeem`（Event LIFF；本人直接使用）
 - `admin.event-tickets.save`
 - `admin.event-tickets.delete`（刪除活動票券設定；保留已領取的票券快照與稽核紀錄）
+- `user.calendar.date.details`（Calendar LIFF；一次取得選取日期的完整項目）
 - `admin.calendar-items.batch`（一次新增／修改／刪除最多 20 筆日曆項目）
 
 所有用戶端功能都需要已加入會員。新使用者開啟 Points、Event 或 Calendar LIFF 時，伺服器會回傳 `MEMBERSHIP_REQUIRED`，畫面會提供「前往加入會員」按鈕；使用者先在 Member LIFF 填寫生日與電話完成加入後，才能使用其他用戶端功能。這項檢查也會套用到集點卡票券核銷與活動票券領取／使用，不能只靠前端繞過。活動票券使用紀錄與集點卡相同，預設以條列收合，點擊展開後只顯示最新 5 筆，仍可點開查看票券快照與抽獎結果。
@@ -147,7 +150,9 @@ GAS 會建立並維護以下 schema：
 
 為避免首頁同步隨資料量增加而重複掃描相同 Sheet，Points bootstrap 只讀取登入會員本人的餘額、票券與未完成點數異動，再建立會員／集點卡索引；Event bootstrap 對全體領券資料只讀取計數所需欄位，完整票券快照只讀取本人紀錄。只有真的需要恢復異動或補發票券時，才會取得資料鎖，避免純讀取互相排隊且仍防止重複發券。會員卡的單一會員服務時數會快取 120 秒，系統寫入服務時間時立即失效；管理端會員名冊與會員端票券歷史都限制回傳範圍，避免大量資料同時傳輸與渲染。所有 API 的 schema 驗證也會依 Spreadsheet 與 schema 指紋快取 120 秒；schema 變更會自動使用新指紋重新驗證。部署新版 GAS 後，`setupMembershipSystem()` 或第一個 API 請求會自動建立 `PointMutations`。
 
-所有 bootstrap 讀取另有 120 秒的伺服器端版本與投影快取。用戶端帶回上一個 `knownVersion` 時，版本相同只收到 `unchanged`，不會重傳原本已顯示的完整 payload；每一個成功的 API 寫入都會同時輪替資料快取與版本，所以下一個讀取一定重建資料。Admin 初始只讀會員名冊、階級與基本統計，集點卡／票券、活動票券、日曆與今日點數統計會在開啟對應分頁後才讀取。權限、會員階級與票券可用性仍由 GAS 重新驗證，前端版本只用來省略未變更的傳輸。若直接手動編輯 Google Sheet，快取最長可能保留 120 秒；需要立即生效時請透過管理端寫入或等待快取到期。
+Points、Event 與 Calendar 每次登入都先完成 LINE 身分驗證，再帶回前次的 `knownRevision` 與帳號／surface 綁定的 `knownCacheScope`。GAS 以 durable Script Properties 修訂版號比對；完全相同才只回傳 `unchanged`，任一帳號不同、修訂版不同或本機快取缺漏都會改傳完整資料。所有成功寫入都會更新對應會員或功能 surface 的修訂版；日曆與活動也會隨台北日切換而刷新。修訂版另有 120 秒的檢查窗口，因此直接手動編輯 Google Sheet 最多在下一個窗口就會重新取得資料，不會永久沿用快取。舊用戶端只傳 `knownVersion` 時仍會取得完整資料，保持相容。Admin 初始只讀會員名冊、階級與基本統計，集點卡／票券、活動票券、日曆與今日點數統計會在開啟對應分頁後才讀取。權限、會員階級與票券可用性仍由 GAS 重新驗證，前端修訂版只用來省略未變更的傳輸。
+
+大量資料先傳可顯示的摘要：集點卡完整節點／票券僅在選取該卡時讀取，活動票券完整說明／獎項僅在開啟時讀取，日曆只在點選某日後一次讀取該日完整說明與連結。Points、Event 與 Calendar 會把已驗證、已顯示的摘要與已開啟明細存入 IndexedDB，最多保留 24 小時並在登出時清除；快取鍵包含不公開的帳號／surface 範圍，不能跨帳號重用。絕不保存 ID token、LINE user ID、生日、電話或管理端名冊；Member LIFF 的完整個人資料也不落地。IndexedDB 無法使用時會自動退回每次完整讀取，不影響正確性。
 
 ## 本地驗證
 

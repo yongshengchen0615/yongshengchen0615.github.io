@@ -62,8 +62,8 @@ test('LIFF surfaces load only their own frontend assets', () => {
   assert.match(eventHtml, /\.\/app\.js/);
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
-  assert.match(calendarHtml, /\.\/common\.js\?v=calendar-local-client-\d{8}/);
-  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-performance-\d{8}/);
+  assert.match(calendarHtml, /\.\/common\.js\?v=calendar-sync-cache-\d{8}/);
+  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-incremental-payload-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
@@ -504,10 +504,10 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-performance-20260908', 'member-performance-20260908', 'member-local-client-20260908'],
-    ['points', 'points-performance-20260908', 'points-performance-20260908', 'points-local-client-20260908'],
-    ['event', 'event-performance-20260908', 'event-performance-20260908', 'event-local-client-20260908'],
-    ['calendar', 'calendar-performance-20260908', 'calendar-performance-20260908', 'calendar-local-client-20260908'],
+    ['member', 'member-performance-20260908', 'member-performance-20260908', 'member-sync-cache-20260908'],
+    ['points', 'points-performance-20260908', 'points-incremental-payload-20260908', 'points-sync-cache-20260908'],
+    ['event', 'event-performance-20260908', 'event-incremental-payload-20260908', 'event-sync-cache-20260908'],
+    ['calendar', 'calendar-performance-20260908', 'calendar-incremental-payload-20260908', 'calendar-sync-cache-20260908'],
     ['admin', 'admin-performance-20260908', 'admin-performance-20260908', 'admin-local-client-20260908']
   ];
 
@@ -532,4 +532,26 @@ test('every surface protects responsive text layout and busts its updated styles
   assert.match(read('event/styles.css'), /\.event-ticket-action \{ align-items: stretch; flex-direction: column; \}/);
   assert.match(read('calendar/styles.css'), /@media \(max-width: 380px\)/);
   assert.match(read('admin/styles.css'), /@media \(max-width: 360px\)/);
+});
+
+test('incremental member surfaces use identity-scoped IndexedDB snapshots and server-authorized detail reads', () => {
+  const storage = read('gas/Storage.gs');
+  const code = read('gas/Code.gs');
+  assert.match(storage, /MEMBERSHIP_SYNC_PROPERTY_PREFIX_/);
+  assert.match(storage, /membershipClientCacheScope_/);
+  assert.match(storage, /knownCacheScope === cacheScope/);
+  assert.match(storage, /membershipSyncBumpForWrite_/);
+  ['points', 'event', 'calendar'].forEach((surface) => {
+    const common = read(`${surface}/common.js`);
+    const app = read(`${surface}/app.js`);
+    assert.match(common, /indexedDB\.open\('MembershipSystemSyncCache', 1\)/);
+    assert.match(common, /expiresAt: now \+ 24 \* 60 \* 60 \* 1000/);
+    assert.match(common, /clearSyncSnapshots\(\)\.finally/);
+    assert.doesNotMatch(common, /localStorage|sessionStorage/);
+    assert.match(app, /knownRevision = cached\.revision; payload\.knownCacheScope = cached\.cacheScope/);
+    assert.match(app, /compact: true/);
+  });
+  assert.match(code, /case 'user\.pointcard\.detail'/);
+  assert.match(code, /case 'user\.event\.ticket\.detail'/);
+  assert.match(code, /case 'user\.calendar\.date\.details'/);
 });

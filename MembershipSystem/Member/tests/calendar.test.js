@@ -81,6 +81,25 @@ test('member calendar returns active items with server-derived activity-tier eli
   );
 });
 
+test('calendar incremental bootstrap strips descriptions and loads full details once for the selected date', () => {
+  const { context, TestApiError } = loadCalendarService();
+  const compact = context.handleCalendarBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { rangeStart: '2026-08-01', rangeEnd: '2026-10-31', compact: true });
+  const restrictedEvent = compact.items.find((item) => item.calendarItemId === 'CI-3');
+  assert.equal(compact.compact, true);
+  assert.equal(restrictedEvent.description, undefined);
+  assert.equal(restrictedEvent.linkLabel, undefined);
+  assert.equal(restrictedEvent.linkUrl, undefined);
+
+  const detail = context.handleCalendarDateDetails_({ lineUserId: 'U-1', displayName: '測試會員' }, { calendarDate: '2026-10-03' });
+  assert.equal(detail.items.length, 1);
+  assert.equal(detail.items[0].description, '金級以上可參加');
+  assert.equal(detail.items[0].linkUrl, 'https://example.com/gold-event');
+  assert.throws(
+    () => context.handleCalendarDateDetails_({ lineUserId: 'U-1', displayName: '測試會員' }, { calendarDate: '2026-02-30' }),
+    (error) => error instanceof TestApiError && error.code === 'INVALID_CALENDAR_DATE'
+  );
+});
+
 test('calendar item settings persist per-activity membership tiers, preserve legacy updates, enforce conflicts, and audit mutations', () => {
   const { context, rows, TestApiError } = loadCalendarService();
   const create = context.handleCalendarItemSave_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {

@@ -139,6 +139,7 @@ test('point card nodes can select a managed ticket template without duplicating 
 
 test('archiving a managed ticket stops new issuance without removing already earned tickets', () => {
   const { context, rows } = loadTicketService();
+  rows.PointCards[0].description = '完整集點卡說明';
   rows.PointCardTickets[0].status = 'used';
   context.pointCardRewardsByCard_ = () => ({ 'PC-1': [{ reward_id: 'PR-1', card_id: 'PC-1', threshold_stamps: '5', consume_stamps: '5', ticket_template_id: 'PT-ARCHIVED' }] });
   context.pointCardTicketTemplatesById_ = () => ({ 'PT-ARCHIVED': { ticket_template_id: 'PT-ARCHIVED', status: 'archived', ticket_type: 'coupon', title: '停止發放的票券' } });
@@ -266,6 +267,23 @@ test('point-card bootstrap limits history payload while retaining the exact tota
   assert.equal(result.historyTotal, 7);
   assert.equal(result.history.length, 5);
   assert.equal(result.history[0].ticketId, 'TK-HISTORY-7');
+});
+
+test('point-card incremental bootstrap returns summaries while the selected card keeps its full detail endpoint', () => {
+  const { context, rows } = loadTicketService();
+  rows.PointCardRewards.push({ reward_id: 'PR-1', card_id: 'PC-1', threshold_stamps: '10', reward_type: 'coupon', reward_title: '咖啡券', reward_description: '集點獎勵', consume_stamps: '10' });
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  const compact = context.handlePointCardBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { compact: true });
+  assert.equal(compact.compact, true);
+  assert.equal(compact.cards.length, 1);
+  assert.equal(compact.cards[0].rewards, undefined);
+  assert.equal(compact.cards[0].description, undefined);
+  assert.deepEqual(Array.from(compact.tickets), []);
+
+  const detail = context.handlePointCardDetail_({ lineUserId: 'U-1', displayName: '測試會員' }, { cardId: 'PC-1' });
+  assert.equal(detail.card.cardId, 'PC-1');
+  assert.equal(detail.card.rewards.length, 1);
+  assert.equal(detail.tickets.length, 1);
 });
 
 test('legacy used tickets remain one history item without scanning the point ledger', () => {

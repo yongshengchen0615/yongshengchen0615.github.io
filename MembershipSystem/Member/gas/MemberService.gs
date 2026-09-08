@@ -50,26 +50,33 @@ function ensureMember_(identity) {
   const nowMs = Date.now();
   if (initialMatch && !memberNeedsLoginTouch_(initialMatch.record, identity, nowMs)) return initialMatch.record;
 
-  let changed = false;
+  let profileChanged = false;
   const member = withDataLock_(function() {
     const now = nowIso_();
     const match = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
     if (!match) {
       const member = newMemberRecord_(identity, now);
       appendRecord_('Members', member);
-      changed = true;
+      profileChanged = true;
       return member;
     }
     const member = match.record;
     if (!memberNeedsLoginTouch_(member, identity, Date.now())) return member;
-    member.display_name = identity.displayName;
+    const displayNameChanged = String(member.display_name || '') !== String(identity.displayName || '');
+    if (displayNameChanged) {
+      member.display_name = identity.displayName;
+      profileChanged = true;
+    }
     member.last_login_at = now;
-    member.updated_at = now;
+    // Keep the login audit timestamp accurate without treating a periodic
+    // login touch as a display-data revision.
+    if (displayNameChanged) member.updated_at = now;
     updateRecordAtRow_('Members', match.rowNumber, member);
-    changed = true;
     return member;
   });
-  if (changed && typeof rotateMembershipBootstrapVersion_ === 'function') rotateMembershipBootstrapVersion_();
+  if (profileChanged) {
+    if (typeof membershipSyncBumpMember_ === 'function') membershipSyncBumpMember_(identity.lineUserId);
+  }
   return member;
 }
 

@@ -105,6 +105,18 @@ test('event ticket bootstrap returns only the latest five history records with a
   assert.equal(result.usedTickets[0].claim.usedAt, '2026-09-07T00:00:00.000Z');
 });
 
+test('event ticket incremental bootstrap strips detail until the member opens that ticket', () => {
+  const { context } = loadEventTicketService();
+  const compact = context.handleEventTicketBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' }, { compact: true });
+  assert.equal(compact.compact, true);
+  assert.equal(compact.offers[0].ticket.description, undefined);
+  assert.equal(compact.offers[0].ticket.usageMethod, undefined);
+
+  const detail = context.handleEventTicketDetail_({ lineUserId: 'U-1', displayName: '測試會員' }, { eventTicketId: 'ET-1' });
+  assert.equal(detail.offer.ticket.description, '會員限定禮物');
+  assert.equal(detail.offer.ticket.usageMethod, '出示本券');
+});
+
 test('event tickets stay visible to every member while tier eligibility blocks claim and redemption', () => {
   const { context, rows, TestApiError } = loadEventTicketService();
   rows.EventTickets[0].allowed_tier_keys = JSON.stringify(['gold', 'platinum']);
@@ -248,7 +260,7 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(eventHtml, /id="usedTicketHistory"/);
   assert.match(eventHtml, /<details id="usedTicketHistoryDisclosure"/);
   assert.match(eventHtml, /<ul id="usedTicketList" class="used-ticket-list"/);
-  assert.match(eventHtml, /app\.js\?v=event-performance-20260908/);
+  assert.match(eventHtml, /app\.js\?v=event-incremental-payload-20260908/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
   assert.match(eventApp, /user\.event\.ticket\.claim/);
   assert.match(eventApp, /user\.event\.ticket\.redeem/);

@@ -80,18 +80,28 @@ function loadServiceMinutesCache() {
 
 function loadVersionedBootstrapCache() {
   const entries = new Map();
+  const properties = new Map();
   let sequence = 0;
+  let now = 0;
+  class TestDate extends Date {
+    static now() { return now; }
+  }
   const context = {
     CacheService: { getScriptCache: () => ({
       get: (key) => entries.get(key) || null,
       put: (key, value) => { entries.set(key, String(value)); }
     }) },
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (key) => properties.get(key) || null,
+      setProperty: (key, value) => { properties.set(key, String(value)); }
+    }) },
     Utilities: { getUuid: () => `version-${++sequence}` },
-    digest_: (value) => `digest-${String(value)}`
+    digest_: (value) => `digest-${String(value)}`,
+    Date: TestDate
   };
   vm.createContext(context);
   vm.runInContext(read('gas/Storage.gs'), context, { filename: 'gas/Storage.gs' });
-  return { context };
+  return { context, setNow: (value) => { now = value; } };
 }
 
 test('synthetic 5,000 authenticated read requests do not acquire the global rate-limit lock', () => {
@@ -221,27 +231,35 @@ test('schema cache hit skips repeated tier initialization', () => {
   assert.doesNotMatch(cacheHitBody[1], /ensureMembershipTierSettings_/);
 });
 
-test('versioned bootstrap omits unchanged payloads and invalidates all short-lived read caches after a write', () => {
-  const { context } = loadVersionedBootstrapCache();
+test('versioned bootstrap uses durable identity-bound revisions and invalidates short-lived read caches after a write', () => {
+  const { context, setNow } = loadVersionedBootstrapCache();
   assert.notEqual(context.membershipSafeCacheScope_('會員甲'), context.membershipSafeCacheScope_('會員乙'));
   let bootstrapBuilds = 0;
   const identity = { lineUserId: 'U-1' };
   const first = context.membershipVersionedBootstrapResponse_('points', identity, {}, () => ({ cards: [++bootstrapBuilds] }));
-  const unchanged = context.membershipVersionedBootstrapResponse_('points', identity, { knownVersion: first.version }, () => ({ cards: [++bootstrapBuilds] }));
+  const unchanged = context.membershipVersionedBootstrapResponse_('points', identity, { knownRevision: first.revision, knownCacheScope: first.cacheScope }, () => ({ cards: [++bootstrapBuilds] }));
   assert.equal(first.unchanged, false);
   assert.equal(unchanged.unchanged, true);
   assert.equal(bootstrapBuilds, 1);
+  assert.notEqual(first.cacheScope, context.membershipVersionedBootstrapResponse_('points', { lineUserId: 'U-2' }, {}, () => ({ cards: [] })).cacheScope);
+  assert.equal(context.membershipVersionedBootstrapResponse_('points', { lineUserId: 'U-2' }, { knownRevision: first.revision, knownCacheScope: first.cacheScope }, () => ({ cards: [++bootstrapBuilds] })).unchanged, false);
 
-  context.rotateMembershipBootstrapVersion_();
-  const refreshed = context.membershipVersionedBootstrapResponse_('points', identity, { knownVersion: first.version }, () => ({ cards: [++bootstrapBuilds] }));
+  setNow(120000);
+  const windowRefreshed = context.membershipVersionedBootstrapResponse_('points', identity, { knownRevision: first.revision, knownCacheScope: first.cacheScope }, () => ({ cards: [++bootstrapBuilds] }));
+  assert.equal(windowRefreshed.unchanged, false);
+
+  context.membershipSyncBump_('points', '');
+  const refreshed = context.membershipVersionedBootstrapResponse_('points', identity, { knownRevision: windowRefreshed.revision, knownCacheScope: windowRefreshed.cacheScope }, () => ({ cards: [++bootstrapBuilds] }));
   assert.equal(refreshed.unchanged, false);
-  assert.equal(bootstrapBuilds, 2);
+  assert.equal(bootstrapBuilds, 3);
 
   let readBuilds = 0;
   assert.deepEqual(JSON.parse(JSON.stringify(context.membershipReadThroughCache_('definitions', () => ({ generation: ++readBuilds })))), { generation: 1 });
   assert.deepEqual(JSON.parse(JSON.stringify(context.membershipReadThroughCache_('definitions', () => ({ generation: ++readBuilds })))), { generation: 1 });
   context.rotateMembershipDataCacheEpoch_();
   assert.deepEqual(JSON.parse(JSON.stringify(context.membershipReadThroughCache_('definitions', () => ({ generation: ++readBuilds })))), { generation: 2 });
+  setNow(240000);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.membershipReadThroughCache_('definitions', () => ({ generation: ++readBuilds })))), { generation: 3 });
 });
 
 test('performance routes keep authorization on the server while loading admin datasets only when needed', () => {
@@ -250,7 +268,7 @@ test('performance routes keep authorization on the server while loading admin da
   const adminApp = read('admin/app.js');
   assert.match(code, /case 'admin\.summary'/);
   assert.match(code, /case 'admin\.event-tickets\.list'/);
-  assert.match(code, /rotateMembershipBootstrapVersion_\(\)/);
+  assert.match(code, /membershipSyncBumpForWrite_\(request\.action, identity, request\)/);
   assert.match(service, /const lazy = Boolean\(request && request\.lazy\)/);
   assert.match(service, /function handleAdminSummary_/);
   assert.match(adminApp, /lazy: true/);
