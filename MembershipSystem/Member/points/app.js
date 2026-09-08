@@ -4,10 +4,13 @@
   const POINT_CARD_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const state = { config: null, idToken: '', profile: null, cards: [], tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '', ticketModalOpener: null };
   const els = {};
+  const LOGIN_PROGRESS_TICK_MS = 650;
+  let loginProgressTimer = null;
+  let loginProgressValue = 8;
 
   window.addEventListener('DOMContentLoaded', () => {
     [
-      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
+      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
       'ticketHistorySummary', 'ticketHistoryList', 'ticketHistoryEmpty', 'ticketModal', 'closeTicketModal', 'ticketModalTicketName', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalCost', 'ticketModalProcessing', 'confirmTicketUseButton', 'refreshTicketButton', 'ticketModalResult', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
@@ -26,16 +29,16 @@
 
   async function boot() {
     setView('loading');
-    setLoginProgress(8);
     try {
+      startLoginProgress('正在取得開啟設定…', 18);
       state.config = await window.MemberSystem.loadConfig();
-      setLoginProgress(35);
+      startLoginProgress('正在驗證 LINE 身分…', 48);
       state.idToken = await window.MemberSystem.signIn(state.config, 'points');
-      setLoginProgress(68);
+      startLoginProgress('正在同步集點卡與票券…', 92);
       await loadCards(false);
-      setLoginProgress(100);
+      await completeLoginProgress('集點卡資料已準備完成');
       setView('points');
-    } catch (error) { showError(error); } finally { els.app.setAttribute('aria-busy', 'false'); }
+    } catch (error) { stopLoginProgress(); showError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
 
   async function loadCards(showBusy) {
@@ -217,6 +220,9 @@
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
   function safeCardStyle(value) { const styleKey = String(value || '').trim().toLowerCase(); return POINT_CARD_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.pointsView.classList.toggle('hidden', view !== 'points'); }
-  function setLoginProgress(value) { const progress = Math.max(0, Math.min(100, Number(value) || 0)); els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; }
+  function startLoginProgress(status, ceiling) { stopLoginProgress(); const maximum = Math.max(loginProgressValue, Math.min(98, Number(ceiling) || loginProgressValue)); setLoginProgress(loginProgressValue, status); loginProgressTimer = window.setInterval(() => { const remaining = maximum - loginProgressValue; if (remaining <= 0) return stopLoginProgress(); setLoginProgress(Math.min(maximum, loginProgressValue + Math.max(1, Math.ceil(remaining * .12))), status); }, LOGIN_PROGRESS_TICK_MS); }
+  function stopLoginProgress() { if (loginProgressTimer !== null) window.clearInterval(loginProgressTimer); loginProgressTimer = null; }
+  function completeLoginProgress(status) { stopLoginProgress(); const start = loginProgressValue; const duration = Math.max(220, Math.min(700, (100 - start) * 14)); const startedAt = Date.now(); return new Promise((resolve) => { const tick = () => { const elapsed = Date.now() - startedAt; const ratio = Math.min(1, elapsed / duration); setLoginProgress(Math.round(start + (100 - start) * (1 - Math.pow(1 - ratio, 2))), status); if (ratio < 1) return window.setTimeout(tick, 32); resolve(); }; tick(); }); }
+  function setLoginProgress(value, status) { const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0)))); loginProgressValue = progress; els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; if (status) els.loadingStatus.textContent = status; }
   function showError(error) { const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED'; els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '集點卡暫時無法載入'; els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用集點卡與票券功能。' : error && error.message ? error.message : '請稍後重新整理再試。'; els.joinMemberButton.classList.toggle('hidden', !membershipRequired); els.retryButton.classList.toggle('hidden', membershipRequired); setView('error'); }
 })();

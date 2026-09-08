@@ -4,9 +4,12 @@
   const initialMonth = firstOfMonth(taipeiToday());
   const state = { config: null, idToken: '', profile: null, items: [], initialMonth: initialMonth, visibleMonth: initialMonth, detailTrigger: null, touchStart: null, suppressCalendarDayClickUntil: 0 };
   const els = {};
+  const LOGIN_PROGRESS_TICK_MS = 650;
+  let loginProgressTimer = null;
+  let loginProgressValue = 8;
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
@@ -24,18 +27,20 @@
 
   async function boot() {
     setView('loading');
-    setLoginProgress(8);
     try {
+      startLoginProgress('正在取得開啟設定…', 18);
       state.config = await window.MemberSystem.loadConfig();
-      setLoginProgress(35);
+      startLoginProgress('正在驗證 LINE 身分…', 48);
       state.idToken = await window.MemberSystem.signIn(state.config, 'calendar');
-      setLoginProgress(68);
+      startLoginProgress('正在同步月曆資料…', 92);
       await loadCalendar();
-      setLoginProgress(100);
+      await completeLoginProgress('月曆資料已準備完成');
       setView('calendar');
     } catch (error) {
+      stopLoginProgress();
       showError(error);
     } finally {
+      stopLoginProgress();
       els.app.setAttribute('aria-busy', 'false');
     }
   }
@@ -322,12 +327,47 @@
     els.calendarView.classList.toggle('hidden', view !== 'calendar');
   }
 
-  function setLoginProgress(value) {
-    const progress = Math.max(0, Math.min(100, Number(value) || 0));
+  function startLoginProgress(status, ceiling) {
+    stopLoginProgress();
+    const maximum = Math.max(loginProgressValue, Math.min(98, Number(ceiling) || loginProgressValue));
+    setLoginProgress(loginProgressValue, status);
+    loginProgressTimer = window.setInterval(() => {
+      const remaining = maximum - loginProgressValue;
+      if (remaining <= 0) return stopLoginProgress();
+      setLoginProgress(Math.min(maximum, loginProgressValue + Math.max(1, Math.ceil(remaining * .12))), status);
+    }, LOGIN_PROGRESS_TICK_MS);
+  }
+
+  function stopLoginProgress() {
+    if (loginProgressTimer !== null) window.clearInterval(loginProgressTimer);
+    loginProgressTimer = null;
+  }
+
+  function completeLoginProgress(status) {
+    stopLoginProgress();
+    const start = loginProgressValue;
+    const duration = Math.max(220, Math.min(700, (100 - start) * 14));
+    const startedAt = Date.now();
+    return new Promise((resolve) => {
+      const tick = () => {
+        const elapsed = Date.now() - startedAt;
+        const ratio = Math.min(1, elapsed / duration);
+        setLoginProgress(Math.round(start + (100 - start) * (1 - Math.pow(1 - ratio, 2))), status);
+        if (ratio < 1) return window.setTimeout(tick, 32);
+        resolve();
+      };
+      tick();
+    });
+  }
+
+  function setLoginProgress(value, status) {
+    const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0))));
+    loginProgressValue = progress;
     els.loadingProgress.setAttribute('aria-valuenow', String(progress));
     els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`);
     els.loadingProgressBar.style.width = `${progress}%`;
     els.loadingProgressText.textContent = `${progress}%`;
+    if (status) els.loadingStatus.textContent = status;
   }
 
   function showError(error) {

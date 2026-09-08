@@ -240,13 +240,13 @@ test('event ticket browser and admin contracts are present', () => {
   const storage = read('gas/Storage.gs');
   const code = read('gas/Code.gs');
   assert.match(eventHtml, /static\.line-scdn\.net\/liff/);
-  assert.match(adminHtml, /app\.js\?v=admin-calendar-month-workflow-20260908/);
+  assert.match(adminHtml, /app\.js\?v=admin-login-progress-20260908/);
   assert.match(eventHtml, /id="ticketModalAction"/);
   assert.match(eventHtml, /id="membershipProgress"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
   assert.match(eventHtml, /<details id="usedTicketHistoryDisclosure"/);
   assert.match(eventHtml, /<ul id="usedTicketList" class="used-ticket-list"/);
-  assert.match(eventHtml, /app\.js\?v=event-login-status-20260908/);
+  assert.match(eventHtml, /app\.js\?v=event-login-progress-20260908/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
   assert.match(eventApp, /user\.event\.ticket\.claim/);
   assert.match(eventApp, /user\.event\.ticket\.redeem/);

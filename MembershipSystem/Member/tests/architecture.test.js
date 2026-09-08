@@ -63,7 +63,7 @@ test('LIFF surfaces load only their own frontend assets', () => {
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
   assert.match(calendarHtml, /\.\/common\.js\?v=calendar-local-client-\d{8}/);
-  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-login-status-\d{8}/);
+  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-login-progress-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
@@ -350,7 +350,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-calendar-month-workflow-20260908/);
+  assert.match(adminHtml, /styles\.css\?v=admin-login-progress-20260908/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; \}/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -380,7 +380,7 @@ test('member profile date input is LINE-safe and touch-friendly', () => {
   const memberHtml = read('member/index.html');
   const memberApp = read('member/app.js');
   const memberStyles = read('member/styles.css');
-  assert.match(memberHtml, /styles\.css\?v=member-login-status-20260908/);
+  assert.match(memberHtml, /styles\.css\?v=member-login-progress-20260908/);
   assert.match(memberHtml, /<label for="profileBirthdayPickerButton">生日<\/label>/);
   assert.match(memberHtml, /id="profileBirthdayPickerButton" class="date-picker-trigger"[^>]*aria-haspopup="dialog"/);
   assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"[^>]*tabindex="-1"/);
@@ -486,23 +486,29 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
     assert.match(loading[0], /id="loadingProgress" class="login-progress" role="progressbar"[^>]*aria-label="登入進度"/);
     assert.match(loading[0], /id="loadingProgressBar" class="login-progress-bar"/);
     assert.match(loading[0], /id="loadingProgressText" class="login-progress-value"[^>]*>8%<\/p>/);
+    assert.match(loading[0], /id="loadingStatus" class="login-status" role="status">正在準備安全登入…<\/p>/);
     assert.doesNotMatch(loading[0], /loader-mark|kicker/);
-    assert.match(app, /setLoginProgress\(8\)[\s\S]*?setLoginProgress\(35\)[\s\S]*?setLoginProgress\(68\)[\s\S]*?setLoginProgress\(100\)/);
-    assert.match(app, /function setLoginProgress\(value\)[\s\S]*?aria-valuenow[\s\S]*?aria-valuetext[\s\S]*?loadingProgressBar\.style\.width[\s\S]*?loadingProgressText\.textContent/);
+    assert.match(app, /startLoginProgress\('正在取得開啟設定…', 18\)[\s\S]*?startLoginProgress\('正在驗證 LINE 身分…', 48\)[\s\S]*?startLoginProgress\([^)]*, 92\)[\s\S]*?await completeLoginProgress\(/);
+    assert.match(app, /function startLoginProgress\(status, ceiling\)[\s\S]*?window\.setInterval[\s\S]*?Math\.min\(maximum/);
+    assert.match(app, /function completeLoginProgress\(status\)[\s\S]*?Date\.now\(\)[\s\S]*?window\.setTimeout/);
+    assert.match(app, /function stopLoginProgress\(\)[\s\S]*?window\.clearInterval/);
+    assert.match(app, /function setLoginProgress\(value, status\)[\s\S]*?aria-valuenow[\s\S]*?aria-valuetext[\s\S]*?loadingProgressBar\.style\.width[\s\S]*?loadingProgressText\.textContent[\s\S]*?loadingStatus\.textContent/);
     assert.match(styles, /\.login-loading \{[^}]*100dvh[^}]*margin-inline: auto/);
     assert.match(styles, /\.login-progress \{[^}]*height: 6px/);
-    assert.match(styles, /\.login-progress-bar \{[^}]*transition: width \.3s ease/);
+    assert.match(styles, /\.login-status::before \{[^}]*animation: login-status-spin/);
+    assert.match(styles, /\.login-progress-bar::after \{[^}]*animation: login-progress-shimmer/);
+    assert.match(styles, /\.login-progress-bar \{[^}]*transition: width \.45s cubic-bezier/);
     assert.match(styles, /\.state-view\.login-loading \.login-progress-value \{[^}]*tabular-nums/);
   });
 });
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-login-status-20260908', 'member-login-status-20260908', 'member-local-client-20260908'],
-    ['points', 'points-login-status-20260908', 'points-login-status-20260908', 'points-local-client-20260908'],
-    ['event', 'event-login-status-20260908', 'event-login-status-20260908', 'event-local-client-20260908'],
-    ['calendar', 'calendar-login-status-20260908', 'calendar-login-status-20260908', 'calendar-local-client-20260908'],
-    ['admin', 'admin-calendar-month-workflow-20260908', 'admin-calendar-month-workflow-20260908', 'admin-local-client-20260908']
+    ['member', 'member-login-progress-20260908', 'member-login-progress-20260908', 'member-local-client-20260908'],
+    ['points', 'points-login-progress-20260908', 'points-login-progress-20260908', 'points-local-client-20260908'],
+    ['event', 'event-login-progress-20260908', 'event-login-progress-20260908', 'event-local-client-20260908'],
+    ['calendar', 'calendar-login-progress-20260908', 'calendar-login-progress-20260908', 'calendar-local-client-20260908'],
+    ['admin', 'admin-login-progress-20260908', 'admin-login-progress-20260908', 'admin-local-client-20260908']
   ];
 
   surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {

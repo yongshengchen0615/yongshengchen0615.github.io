@@ -7,17 +7,18 @@
   <meta name="theme-color" content="#f6f1e8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>會員卡｜Lumen Club</title>
-  <link rel="stylesheet" href="./styles.css?v=member-login-status-20260908">
+  <link rel="stylesheet" href="./styles.css?v=member-login-progress-20260908">
   <link rel="stylesheet" href="./membership-progress.css?v=member-local-progress-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="./common.js?v=member-local-client-20260908" defer></script>
   <script src="./membership-progress.js?v=member-local-progress-20260908" defer></script>
-  <script src="./app.js?v=member-login-status-20260908" defer></script>
+  <script src="./app.js?v=member-login-progress-20260908" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
     <section id="loadingView" class="state-view login-loading" aria-live="polite">
       <h1>正在登入會員卡</h1>
+      <p id="loadingStatus" class="login-status" role="status">正在準備安全登入…</p>
       <div id="loadingProgress" class="login-progress" role="progressbar" aria-label="登入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8" aria-valuetext="8%">
         <span id="loadingProgressBar" class="login-progress-bar"></span>
       </div>
