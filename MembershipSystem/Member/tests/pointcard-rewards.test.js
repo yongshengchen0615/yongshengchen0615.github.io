@@ -217,6 +217,8 @@ test('tickets redeem directly and only once', () => {
   assert.equal(rows.PointEntries[0].entry_type, 'ticket_redeem');
   assert.equal(rows.PointEntries[0].reference_type, 'point_card_ticket');
   assert.equal(rows.PointEntries[0].reference_id, 'TK-1');
+  assert.equal(rows.PointCardTickets[0].points_spent, '10');
+  assert.equal(rows.PointCardTickets[0].redeem_entry_id, rows.PointEntries[0].entry_id);
   assert.equal(redeemed.activity.activityId, 'ticket:TK-1');
   assert.equal(redeemed.activity.pointsSpent, 10);
   assert.deepEqual(context.visibleTicketsForMember_('U-1'), []);
@@ -243,16 +245,19 @@ test('ticket history presents one correlated business event after refresh', () =
   assert.equal(refreshed.history[0].result.prizeTitle, '未獲得優惠');
 });
 
-test('legacy ticket redemption rows are correlated without creating a duplicate history item', () => {
+test('legacy used tickets remain one history item without scanning the point ledger', () => {
   const { context, rows } = loadTicketService();
   rows.PointCardTickets[0].status = 'used';
   rows.PointCardTickets[0].used_at = '2026-09-02T08:52:00.000Z';
   rows.PointCardTickets[0].result_json = JSON.stringify({ prizeTitle: '未獲得優惠' });
-  rows.PointEntries.push({ entry_id: 'PE-OLD', line_user_id: 'U-1', card_id: 'PC-1', amount: '-10', note: '票券兌換：咖啡券', created_by: 'U-1', created_at: '2026-09-02T08:52:00.000Z', request_id: '' });
+  let pointEntryReads = 0;
+  const readRecords = context.readRecords_;
+  context.readRecords_ = (sheetName) => { if (sheetName === 'PointEntries') pointEntryReads += 1; return readRecords(sheetName); };
   const history = context.pointCardActivityHistoryForMember_('U-1');
   assert.equal(history.length, 1);
   assert.equal(history[0].activityId, 'ticket:TK-1');
   assert.equal(history[0].pointsSpent, 10);
+  assert.equal(pointEntryReads, 0);
 });
 
 test('point-card bootstrap uses one coherent snapshot instead of repeated full-sheet reads', () => {
@@ -272,8 +277,7 @@ test('point-card bootstrap uses one coherent snapshot instead of repeated full-s
     PointCardLotteryPrizes: 1,
     PointCardTicketTemplates: 1,
     PointBalances: 1,
-    PointCardTickets: 1,
-    PointEntries: 1
+    PointCardTickets: 1
   });
   assert.equal(rows.PointCardTickets.length, 1);
 });
