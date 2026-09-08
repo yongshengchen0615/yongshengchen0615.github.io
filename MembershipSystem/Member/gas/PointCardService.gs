@@ -117,10 +117,19 @@ function pointCardTicketActivityForClient_(ticket, entry, cardsById) {
 
 function pointCardActivityHistoryForMember_(lineUserId, snapshot) {
   const memberId = String(lineUserId || '').trim();
-  const cards = snapshot && Array.isArray(snapshot.cards) ? snapshot.cards : readRecords_('PointCards');
+  const cards = snapshot
+    ? (Array.isArray(snapshot.cards) ? snapshot.cards : [])
+    : (typeof readRecords_ === 'function' ? readRecords_('PointCards') : []);
+  const tickets = snapshot
+    ? snapshot.ticketsByMember
+      ? (snapshot.ticketsByMember[memberId] || [])
+      : Array.isArray(snapshot.tickets)
+        ? snapshot.tickets.filter(function(ticket) { return String(ticket.line_user_id || '') === memberId; })
+        : []
+    : pointCardTicketsForMember_(memberId);
   const cardsById = {};
   cards.forEach(function(card) { const cardId = String(card.card_id || ''); if (cardId) cardsById[cardId] = card; });
-  return pointCardTicketsForMember_(memberId, snapshot).filter(function(ticket) {
+  return tickets.filter(function(ticket) {
     return String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_;
   }).map(function(ticket) {
     return pointCardTicketActivityForClient_(ticket, null, cardsById);
