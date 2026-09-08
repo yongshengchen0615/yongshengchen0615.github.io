@@ -2,25 +2,30 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#f6f1e8">
   <title>會員中心</title>
   <style>
     :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif; color: #17352e; background: #f6f1e8; }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f6f1e8; }
-    main { width: min(100%, 560px); }
+    body { margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); background: radial-gradient(circle at 100% 0, rgba(239,157,116,.2), transparent 32%), #f6f1e8; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    main { width: min(100%, 560px); animation: enter .42s ease both; }
     .kicker { margin: 0 0 12px; color: #df6b4d; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
     h1 { margin: 0; font-size: clamp(32px, 8vw, 58px); letter-spacing: -.06em; line-height: .95; }
     p { color: #6c7c74; line-height: 1.7; }
     .intro { margin-bottom: 28px; }
     .links { display: grid; gap: 12px; }
-    a { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 22px; color: #17352e; text-decoration: none; background: #fffdf8; border: 1px solid rgba(23,53,46,.12); border-radius: 18px; box-shadow: 0 14px 35px rgba(50, 64, 54, .07); transition: transform .2s ease, border-color .2s ease; }
-    a:hover { transform: translateY(-2px); border-color: #df6b4d; }
+    a { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 76px; padding: 20px 22px; color: #17352e; text-decoration: none; background: #fffdf8; border: 1px solid rgba(23,53,46,.12); border-radius: 18px; box-shadow: 0 14px 35px rgba(50, 64, 54, .07); transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; -webkit-tap-highlight-color: transparent; }
+    a:focus-visible { outline: 3px solid rgba(223,107,77,.52); outline-offset: 3px; }
+    @media (hover: hover) { a:hover { transform: translateY(-2px); border-color: #df6b4d; box-shadow: 0 18px 40px rgba(50, 64, 54, .1); } }
+    a:active { transform: scale(.985); }
     a strong { display: block; font-size: 17px; }
     a span { display: block; margin-top: 4px; color: #75847d; font-size: 13px; }
     .arrow { color: #df6b4d; font-size: 24px; }
-    @media (prefers-reduced-motion: reduce) { a { transition: none; } a:hover { transform: none; } }
+    @keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 420px) { body { place-items: start center; padding-top: max(32px, env(safe-area-inset-top)); } .intro { margin-bottom: 22px; } a { gap: 14px; padding: 17px 18px; border-radius: 15px; } a strong { font-size: 16px; } a span { line-height: 1.5; } }
+    @media (prefers-reduced-motion: reduce) { main { animation: none; } a { transition: none; } a:hover, a:active { transform: none; } }
   </style>
 </head>
 <body>

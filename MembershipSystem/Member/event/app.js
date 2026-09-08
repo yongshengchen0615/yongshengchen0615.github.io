@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', profile: null, offers: [], usedTickets: [], usedTicketCount: 0, pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '' };
+  const state = { config: null, idToken: '', profile: null, offers: [], usedTickets: [], usedTicketCount: 0, pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '', ticketModalOpener: null };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -83,7 +83,7 @@
 
   function openTicketModal(eventTicketId) {
     const targetId = String(eventTicketId || '').trim(); const offer = findOffer(targetId); if (!offer) return;
-    state.pendingEventTicketId = targetId; state.processing = false; state.actionLocked = targetId === String(state.uncertainEventTicketId || '').trim();
+    state.pendingEventTicketId = targetId; state.processing = false; state.actionLocked = targetId === String(state.uncertainEventTicketId || '').trim(); state.ticketModalOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); renderTicketModal(offer); if (state.actionLocked) showMessage('無法確認這次操作是否完成。請先重新整理確認；在確認前請勿再次送出。'); else hideMessage(); setProcessing(false); els.ticketModal.classList.remove('hidden'); (offer.history ? els.closeTicketModal : state.actionLocked ? els.refreshTicketButton : els.ticketModalAction).focus();
   }
 
@@ -101,7 +101,7 @@
     const heading = document.createElement('strong'); heading.textContent = '有機會獲得'; const list = document.createElement('ul'); prizes.filter((prize) => String(prize && prize.prizeTitle || '').trim()).forEach((prize) => { const item = document.createElement('li'); item.textContent = String(prize.prizeTitle || '').trim(); list.append(item); }); els.ticketModalPrizes.replaceChildren(heading, list); els.ticketModalPrizes.classList.toggle('hidden', !list.children.length);
   }
 
-  function closeTicketModal() { if (state.processing) return; state.pendingEventTicketId = ''; els.ticketModal.classList.add('hidden'); setProcessing(false); hideMessage(); els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); }
+  function closeTicketModal() { if (state.processing) return; state.pendingEventTicketId = ''; els.ticketModal.classList.add('hidden'); setProcessing(false); hideMessage(); els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); const opener = state.ticketModalOpener; state.ticketModalOpener = null; if (opener instanceof HTMLElement && document.contains(opener)) opener.focus(); }
 
   async function handleTicketAction() {
     const offer = findOffer(state.pendingEventTicketId); if (!offer || state.processing || state.actionLocked) return;

@@ -12,7 +12,7 @@ const exists = (relativePath) => fs.existsSync(path.join(root, relativePath));
 
 test('Member module has independent user surfaces and one shared admin surface', () => {
   [
-    'index.html', 'config.json', 'README.md', 'shared/common.js',
+    'index.html', 'config.json', 'README.md', 'shared/common.js', 'shared/ui.css',
     'member/index.html', 'member/styles.css', 'member/app.js',
     'points/index.html', 'points/styles.css', 'points/app.js',
     'event/index.html', 'event/styles.css', 'event/app.js',
@@ -66,6 +66,22 @@ test('user clients expose separate entry points while admin uses one app', () =>
   assert.match(adminHtml, /\.\/app\.js/);
   assert.match(adminHtml, /membersPanel/);
   assert.match(adminHtml, /cardsPanel/);
+});
+
+test('all LIFF surfaces share the device-safe UI baseline and ticket dialogs restore focus', () => {
+  const uiStyles = read('shared/ui.css');
+  ['member', 'points', 'event', 'calendar', 'admin'].forEach((surface) => {
+    const html = read(`${surface}/index.html`);
+    assert.match(html, /viewport-fit=cover/);
+    assert.match(html, /<meta name="theme-color"/);
+    assert.match(html, /\.\.\/shared\/ui\.css\?v=member-ui-ux-\d{8}/);
+  });
+  ['100dvh', 'safe-area-inset-left', 'font-size: 16px', 'prefers-reduced-motion', 'focus-visible'].forEach((rule) => assert.match(uiStyles, new RegExp(rule)));
+  ['points/app.js', 'event/app.js'].forEach((file) => {
+    const app = read(file);
+    assert.match(app, /ticketModalOpener/);
+    assert.match(app, /document\.contains\(opener\)/);
+  });
 });
 
 test('member card omits the removed member-exclusive content section', () => {

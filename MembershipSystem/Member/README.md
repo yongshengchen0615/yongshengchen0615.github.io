@@ -13,9 +13,12 @@ Member/
 ├── event/                     # 活動票券用戶端（獨立 HTML/CSS/JS）
 ├── admin/                     # 會員卡、集點卡與活動票券共用管理端（單一 HTML/CSS/JS）
 ├── shared/common.js           # 共用 LIFF 初始化、API transport、格式化工具
+├── shared/ui.css              # 所有 LIFF 共用的安全區、觸控與可近用性基線
 ├── gas/                       # Apps Script Web App
 └── tests/                     # 本地結構與安全契約測試
 ```
+
+所有 LIFF 用戶端會載入 `shared/ui.css`：手機採用安全區邊距、44px 以上的主要觸控目標與 16px 表單文字；同時支援鍵盤焦點、減少動態效果設定與動態視窗的焦點回復。各用戶端既有的視覺主題和 API 合約維持不變。
 
 ## 日曆功能
 

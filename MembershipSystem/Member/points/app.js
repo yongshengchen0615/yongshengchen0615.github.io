@@ -2,7 +2,7 @@
   'use strict';
 
   const POINT_CARD_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', profile: null, cards: [], tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '' };
+  const state = { config: null, idToken: '', profile: null, cards: [], tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '', ticketModalOpener: null };
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -167,7 +167,7 @@
 
   function openTicketModal(ticketId) {
     const ticket = state.tickets.find((item) => item.ticketId === ticketId); if (!ticket || ticket.status === 'used') return;
-    state.pendingTicketId = ticketId; state.redeeming = false;
+    state.pendingTicketId = ticketId; state.redeeming = false; state.ticketModalOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     els.ticketModalTicketName.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'}｜${ticket.ticketTitle || '票券'}`;
     els.ticketModalDescription.textContent = String(ticket.ticketDescription || '此票券尚未提供額外說明。');
     els.ticketModalUsageMethod.textContent = `使用方式：${ticket.usageMethod || '請向店員出示本券'}`;
@@ -179,7 +179,7 @@
     els.ticketModal.classList.remove('hidden'); (needsConfirmation ? els.refreshTicketButton : els.confirmTicketUseButton).focus();
   }
 
-  function closeTicketModal() { if (state.redeeming) return; state.pendingTicketId = ''; els.ticketModal.classList.add('hidden'); els.ticketModalResult.replaceChildren(); setTicketProcessing(false); hideTicketMessage(); }
+  function closeTicketModal() { if (state.redeeming) return; state.pendingTicketId = ''; els.ticketModal.classList.add('hidden'); els.ticketModalResult.replaceChildren(); setTicketProcessing(false); hideTicketMessage(); const opener = state.ticketModalOpener; state.ticketModalOpener = null; if (opener instanceof HTMLElement && document.contains(opener)) opener.focus(); }
 
   async function redeemTicket(ticketId) {
     const ticket = state.tickets.find((item) => item.ticketId === ticketId); if (!ticket || state.redeeming || ticketId === state.uncertainTicketId) return;
