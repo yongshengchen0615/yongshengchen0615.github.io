@@ -30,7 +30,7 @@ test('GAS verifies LINE ID tokens server-side against the surface channel', () =
 });
 
 test('browser clients use ID tokens and do not persist credentials', () => {
-  const clients = [read('shared/common.js'), read('member/app.js'), read('points/app.js'), read('event/app.js'), read('calendar/app.js'), read('admin/app.js')].join('\n');
+  const clients = ['member', 'points', 'event', 'calendar', 'admin'].flatMap((surface) => [read(`${surface}/common.js`), read(`${surface}/app.js`)]).join('\n');
   assert.match(clients, /getIDToken\(\)/);
   assert.match(clients, /signIn\(state\.config, 'member'\)/);
   assert.match(clients, /signIn\(state\.config, 'points'\)/);

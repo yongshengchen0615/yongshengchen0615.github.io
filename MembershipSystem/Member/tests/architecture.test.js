@@ -9,17 +9,20 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const exists = (relativePath) => fs.existsSync(path.join(root, relativePath));
+const surfaces = ['member', 'points', 'event', 'calendar', 'admin'];
+const memberFacingSurfaces = ['member', 'points', 'event', 'calendar'];
 
-test('Member module has independent user surfaces and one shared admin surface', () => {
+test('Member module keeps every LIFF surface frontend independent', () => {
   [
-    'index.html', 'config.json', 'README.md', 'shared/common.js', 'shared/ui.css',
-    'member/index.html', 'member/styles.css', 'member/app.js',
-    'points/index.html', 'points/styles.css', 'points/app.js',
-    'event/index.html', 'event/styles.css', 'event/app.js',
-    'calendar/index.html', 'calendar/styles.css', 'calendar/app.js',
-    'admin/index.html', 'admin/styles.css', 'admin/app.js',
+    'index.html', 'config.json', 'README.md',
+    'member/index.html', 'member/styles.css', 'member/common.js', 'member/membership-progress.css', 'member/membership-progress.js', 'member/app.js',
+    'points/index.html', 'points/styles.css', 'points/common.js', 'points/membership-progress.css', 'points/membership-progress.js', 'points/app.js',
+    'event/index.html', 'event/styles.css', 'event/common.js', 'event/membership-progress.css', 'event/membership-progress.js', 'event/app.js',
+    'calendar/index.html', 'calendar/styles.css', 'calendar/common.js', 'calendar/membership-progress.css', 'calendar/membership-progress.js', 'calendar/app.js',
+    'admin/index.html', 'admin/styles.css', 'admin/common.js', 'admin/app.js',
     'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/EventTicketService.gs', 'gas/CalendarService.gs', 'gas/appsscript.json', 'tests/pointcard-rewards.test.js', 'tests/event-tickets.test.js', 'tests/calendar.test.js'
   ].forEach((file) => assert.equal(exists(file), true, `missing ${file}`));
+  ['shared/common.js', 'shared/membership-progress.js', 'shared/membership-progress.css', 'shared/ui.css'].forEach((file) => assert.equal(exists(file), false, `shared frontend asset must not exist: ${file}`));
 });
 
 test('public config contains separate LIFF ids and no secret-shaped key', () => {
@@ -43,7 +46,7 @@ test('public config contains separate LIFF ids and no secret-shaped key', () => 
   assert.equal(Object.keys(config).some((key) => /secret|token|password/i.test(key)), false);
 });
 
-test('user clients expose separate entry points while admin uses one app', () => {
+test('LIFF surfaces load only their own frontend assets', () => {
   const memberHtml = read('member/index.html');
   const pointsHtml = read('points/index.html');
   const adminHtml = read('admin/index.html');
@@ -59,24 +62,24 @@ test('user clients expose separate entry points while admin uses one app', () =>
   assert.match(eventHtml, /\.\/app\.js/);
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
-  assert.match(calendarHtml, /\.\.\/shared\/common\.js\?v=member-reliability-\d{8}/);
-  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-membership-\d{8}/);
+  assert.match(calendarHtml, /\.\/common\.js\?v=calendar-local-client-\d{8}/);
+  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-local-ui-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
   assert.match(adminHtml, /membersPanel/);
   assert.match(adminHtml, /cardsPanel/);
+  surfaces.forEach((surface) => assert.doesNotMatch(read(`${surface}/index.html`), /\.\.\/shared\//));
 });
 
-test('all LIFF surfaces share the device-safe UI baseline and ticket dialogs restore focus', () => {
-  const uiStyles = read('shared/ui.css');
-  ['member', 'points', 'event', 'calendar', 'admin'].forEach((surface) => {
+test('all LIFF surfaces own a device-safe UI baseline and ticket dialogs restore focus', () => {
+  surfaces.forEach((surface) => {
     const html = read(`${surface}/index.html`);
+    const styles = read(`${surface}/styles.css`);
     assert.match(html, /viewport-fit=cover/);
     assert.match(html, /<meta name="theme-color"/);
-    assert.match(html, /\.\.\/shared\/ui\.css\?v=member-ui-ux-\d{8}/);
+    ['100dvh', 'safe-area-inset-left', 'font-size: 16px', 'prefers-reduced-motion', 'focus-visible', 'overflow-y: auto'].forEach((rule) => assert.match(styles, new RegExp(rule)));
   });
-  ['100dvh', 'safe-area-inset-left', 'font-size: 16px', 'prefers-reduced-motion', 'focus-visible'].forEach((rule) => assert.match(uiStyles, new RegExp(rule)));
   ['points/app.js', 'event/app.js'].forEach((file) => {
     const app = read(file);
     assert.match(app, /ticketModalOpener/);
@@ -184,7 +187,8 @@ test('admin requires explicit grant actions and status choices while exposing ca
 });
 
 test('all browser JavaScript and GAS files parse as JavaScript', () => {
-  const files = ['shared/common.js', 'member/app.js', 'points/app.js', 'event/app.js', 'calendar/app.js', 'admin/app.js', 'gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/EventTicketService.gs', 'gas/CalendarService.gs'];
+  const files = surfaces.flatMap((surface) => [`${surface}/common.js`, `${surface}/app.js`])
+    .concat(memberFacingSurfaces.map((surface) => `${surface}/membership-progress.js`), ['gas/Code.gs', 'gas/Auth.gs', 'gas/Storage.gs', 'gas/MemberService.gs', 'gas/PointCardService.gs', 'gas/EventTicketService.gs', 'gas/CalendarService.gs']);
   files.forEach((file) => assert.doesNotThrow(() => new vm.Script(read(file), { filename: file }), file));
 });
 
@@ -199,7 +203,7 @@ test('transport distinguishes an uncertain write outcome from a failed read resp
     fetch: async () => ({ text: async () => '<html>temporary response</html>' })
   };
   vm.createContext(context);
-  vm.runInContext(read('shared/common.js'), context, { filename: 'shared/common.js' });
+  vm.runInContext(read('admin/common.js'), context, { filename: 'admin/common.js' });
   const request = context.window.MemberSystem.request;
   await assert.rejects(
     () => request({ gasWebAppUrl: 'https://example.invalid' }, 'admin', 'id-token', 'admin.stamps.add'),
@@ -261,14 +265,14 @@ test('transport distinguishes an uncertain write outcome from a failed read resp
     }
   };
   vm.createContext(timeoutContext);
-  vm.runInContext(read('shared/common.js'), timeoutContext, { filename: 'shared/common.js' });
+  vm.runInContext(read('admin/common.js'), timeoutContext, { filename: 'admin/common.js' });
   await assert.rejects(
     () => timeoutContext.window.MemberSystem.loadConfig(),
     (error) => error && error.code === 'CONFIG_ERROR'
   );
   assert.equal(stalledBodyAttempts, 2, 'a stalled response body times out and retries even without AbortController');
 
-  const transport = read('shared/common.js');
+  const transport = read('admin/common.js');
   assert.match(transport, /READ_REQUEST_TIMEOUT_MS = 20000/);
   assert.match(transport, /WRITE_REQUEST_TIMEOUT_MS = 30000/);
   assert.match(transport, /Promise\.race/);
@@ -345,7 +349,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-ui-card-style-20260908/);
+  assert.match(adminHtml, /styles\.css\?v=admin-local-ui-20260908/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -375,7 +379,7 @@ test('member profile date input is LINE-safe and touch-friendly', () => {
   const memberHtml = read('member/index.html');
   const memberApp = read('member/app.js');
   const memberStyles = read('member/styles.css');
-  assert.match(memberHtml, /styles\.css\?v=member-membership-20260908-date-ui/);
+  assert.match(memberHtml, /styles\.css\?v=member-local-ui-20260908/);
   assert.match(memberHtml, /<label for="profileBirthdayPickerButton">生日<\/label>/);
   assert.match(memberHtml, /id="profileBirthdayPickerButton" class="date-picker-trigger"[^>]*aria-haspopup="dialog"/);
   assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"[^>]*tabindex="-1"/);
@@ -408,9 +412,11 @@ test('point-card usage history starts collapsed and renders only the latest five
 });
 
 test('all user feature surfaces provide a membership join path', () => {
-  const common = read('shared/common.js');
-  assert.match(common, /function openMemberJoin\(config\)/);
-  assert.match(common, /window\.liff\.openWindow/);
+  surfaces.forEach((surface) => {
+    const common = read(`${surface}/common.js`);
+    assert.match(common, /function openMemberJoin\(config\)/);
+    assert.match(common, /window\.liff\.openWindow/);
+  });
   ['points', 'event', 'calendar'].forEach((surface) => {
     const html = read(`${surface}/index.html`);
     const app = read(`${surface}/app.js`);
@@ -434,10 +440,17 @@ test('point-card administration exposes persisted sorting and batch grant contro
   assert.match(adminApp, /function saveCardSort/);
   assert.match(adminApp, /admin\.pointcards\.reorder/);
   assert.match(adminApp, /data-card-sort-item/);
+  assert.match(adminApp, /data-card-sort-move/);
+  assert.match(adminApp, /function adjustCardSortPosition/);
+  assert.match(adminApp, /event\.pointerType && event\.pointerType !== 'mouse'/);
   assert.match(adminApp, /cardSortDirty/);
   assert.doesNotMatch(adminApp, /cardSortButton/);
-  assert.doesNotMatch(adminApp, /function moveCard/);
   assert.doesNotMatch(adminApp, /prepareCardSortOrderEditor/);
+  const adminStyles = read('admin/styles.css');
+  assert.match(adminStyles, /#cardListItems \{ display: grid; grid-template-columns: minmax\(0, 1fr\); gap: 7px; overflow: visible;/);
+  assert.match(adminStyles, /\.card-sort-item \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto;[\s\S]*touch-action: pan-y;/);
+  assert.doesNotMatch(adminStyles, /touch-action: none/);
+  assert.match(adminStyles, /\.card-sort-move \{ width: 44px; height: 44px;/);
   assert.match(adminApp, /payload\.points = points/);
   assert.match(adminApp, /addGrantPointRow/);
   assert.match(pointService, /sort_order/);
@@ -461,27 +474,28 @@ test('admin content editors open in bounded dialogs and long ticket choices rema
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-membership-20260908-date-ui', 'member-membership-20260908-date-shell'],
-    ['points', 'points-card-style-20260908', 'points-reliability-20260908'],
-    ['event', 'event-history-membership-20260908', 'event-reliability-20260908'],
-    ['calendar', 'calendar-membership-20260908', 'calendar-membership-20260908'],
-    ['admin', 'admin-ui-card-style-20260908', 'admin-ui-card-style-20260908']
+    ['member', 'member-local-ui-20260908', 'member-local-ui-20260908', 'member-local-client-20260908'],
+    ['points', 'points-local-ui-20260908', 'points-local-ui-20260908', 'points-local-client-20260908'],
+    ['event', 'event-local-ui-20260908', 'event-local-ui-20260908', 'event-local-client-20260908'],
+    ['calendar', 'calendar-local-ui-20260908', 'calendar-local-ui-20260908', 'calendar-local-client-20260908'],
+    ['admin', 'admin-local-ui-20260908', 'admin-local-ui-20260908', 'admin-local-client-20260908']
   ];
 
-  surfaces.forEach(([surface, styleVersion, appVersion]) => {
+  surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {
     const html = read(`${surface}/index.html`);
     const styles = read(`${surface}/styles.css`);
     assert.match(html, new RegExp(`styles\\.css\\?v=${styleVersion}`));
     assert.match(html, new RegExp(`app\\.js\\?v=${appVersion}`));
-    assert.match(html, /shared\/common\.js\?v=member-reliability-20260908/);
+    assert.match(html, new RegExp(`common\\.js\\?v=${commonVersion}`));
+    assert.doesNotMatch(html, /\.\.\/shared\//);
     assert.match(styles, /overflow-wrap: anywhere/);
     assert.match(styles, /max-width: 100%/);
   });
 
-  ['member', 'points', 'event', 'calendar'].forEach((surface) => {
-    assert.match(read(`${surface}/index.html`), /membership-progress\.css\?v=membership-progress-ui-layout-20260906/);
+  [['member', 'member-local-progress-20260908'], ['points', 'points-local-progress-20260908'], ['event', 'event-local-progress-20260908'], ['calendar', 'calendar-local-progress-20260908']].forEach(([surface, version]) => {
+    assert.match(read(`${surface}/index.html`), new RegExp(`membership-progress\\.css\\?v=${version}`));
+    assert.match(read(`${surface}/membership-progress.css`), /Membership copy is server-derived/);
   });
-  assert.match(read('shared/membership-progress.css'), /Shared membership copy is server-derived/);
   assert.match(read('member/styles.css'), /@media \(max-width: 420px\)/);
   assert.match(read('points/styles.css'), /\.milestone-item strong, \.milestone-item small, \.milestone-item p/);
   assert.match(read('event/styles.css'), /\.event-ticket-action \{ align-items: stretch; flex-direction: column; \}/);

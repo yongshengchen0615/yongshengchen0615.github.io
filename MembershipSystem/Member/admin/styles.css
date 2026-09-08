@@ -14,7 +14,7 @@ button, input, select, textarea { font: inherit; } button:focus-visible, input:f
 .member-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; color: var(--muted); font-size: 12px; }.member-pagination .button { min-width: 72px; }.member-pagination .button:disabled { cursor: not-allowed; opacity: .5; }
 .empty-state { padding: 55px 20px; color: var(--muted); text-align: center; }.empty-state > span { color: var(--coral); font-size: 31px; }.empty-state h3 { margin: 12px 0 5px; color: var(--ink); font-size: 18px; }.empty-state p { margin: 0; font-size: 13px; line-height: 1.6; }.empty-state.compact { padding: 38px 12px; }
 .card-workspace { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(360px, 1.3fr); gap: 24px; }.card-list { border-right: 1px solid var(--line); padding-right: 24px; }.list-heading { display: flex; justify-content: space-between; margin-bottom: 10px; color: var(--muted); font-size: 11px; font-weight: 850; text-transform: uppercase; letter-spacing: .1em; }.list-heading span:last-child { color: var(--coral); }.card-list-item { width: 100%; display: block; padding: 14px; border: 1px solid transparent; border-radius: 12px; color: var(--ink); background: transparent; text-align: left; cursor: pointer; }.card-list-item + .card-list-item { margin-top: 4px; }.card-list-item[aria-selected="true"] { background: #f0f5f1; border-color: #d7e5da; }.card-list-item strong, .card-list-item small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.card-list-item strong { font-size: 14px; }.card-list-item small { margin-top: 5px; color: var(--muted); font-size: 11px; }.card-list-item i { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--card-accent, var(--green)); }.editor { padding: 1px 0 0; }.editor-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 19px; }.editor-heading h3 { margin: 5px 0 0; color: var(--ink); font-size: 22px; letter-spacing: -.06em; }.editor-status { border-radius: 999px; padding: 6px 9px; color: #65736b; background: #eef3ef; font-size: 10px; font-weight: 850; }.editor-status.active { color: #2f8459; background: #e8f6ec; }.editor-status.archived { color: #9b6d68; background: #f8ecea; }
-.card-sort-item { position: relative; display: block; min-width: 0; touch-action: none; user-select: none; cursor: grab; }.card-sort-item + .card-sort-item { margin-top: 5px; }.card-sort-item .card-list-item { min-width: 0; cursor: inherit; }.card-sort-item::after { content: '⠿'; position: absolute; top: 50%; right: 12px; color: #91a097; font-size: 18px; line-height: 1; pointer-events: none; transform: translateY(-50%); }.card-sort-item.is-dragging { opacity: .55; cursor: grabbing; }.card-sort-item.is-dragging::after { color: var(--coral); }.card-sort-item.is-drag-over .card-list-item { border-color: var(--coral); background: #fff7f3; }.card-sort-save { width: 100%; margin: 0 0 10px; }.card-sort-hint { margin: 0 0 10px; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }.editor-modal-host { grid-template-columns: 1fr; }.editor-modal-host .card-list { border-right: 0; padding-right: 0; }.editor-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }.editor-heading-actions .editor-status { flex: 0 1 auto; }.editor-modal-card { width: min(100%, 760px); max-height: min(92vh, 820px); overflow: auto; }.editor-modal-card .editor { min-width: 0; max-width: 100%; }.editor-modal-close { flex: 0 0 auto; }
+.card-sort-item { position: relative; display: block; min-width: 0; touch-action: pan-y; user-select: none; cursor: grab; }.card-sort-item + .card-sort-item { margin-top: 5px; }.card-sort-item .card-list-item { min-width: 0; padding-right: 92px; cursor: inherit; }.card-sort-item::after { content: '⠿'; position: absolute; top: 50%; right: 12px; color: #91a097; font-size: 18px; line-height: 1; pointer-events: none; transform: translateY(-50%); }.card-sort-controls { position: absolute; top: 50%; right: 38px; display: flex; gap: 4px; transform: translateY(-50%); }.card-sort-move { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid #d7e5da; border-radius: 8px; color: var(--green); background: var(--paper); cursor: pointer; font-size: 15px; font-weight: 900; line-height: 1; }.card-sort-move:hover:not(:disabled) { border-color: #a5c8ae; background: #f0f7f1; }.card-sort-move:disabled { opacity: .42; }.card-sort-item.is-dragging { opacity: .55; cursor: grabbing; }.card-sort-item.is-dragging::after { color: var(--coral); }.card-sort-item.is-drag-over .card-list-item { border-color: var(--coral); background: #fff7f3; }.card-sort-save { width: 100%; margin: 0 0 10px; }.card-sort-hint { margin: 0 0 10px; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }.editor-modal-host { grid-template-columns: 1fr; }.editor-modal-host .card-list { border-right: 0; padding-right: 0; }.editor-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }.editor-heading-actions .editor-status { flex: 0 1 auto; }.editor-modal-card { width: min(100%, 760px); max-height: min(92vh, 820px); overflow: auto; }.editor-modal-card .editor { min-width: 0; max-width: 100%; }.editor-modal-close { flex: 0 0 auto; }
 form { display: grid; gap: 15px; }label { display: grid; gap: 7px; color: #5d6d64; font-size: 11px; font-weight: 850; }input, select, textarea { width: 100%; border: 1px solid #d8e3db; border-radius: 9px; padding: 11px 12px; color: var(--ink); background: #fff; outline: none; font-size: 13px; }input:focus, select:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(47, 155, 104, .1); }textarea { resize: vertical; line-height: 1.55; }.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }.input-suffix { position: relative; display: block; margin-top: -39px; margin-right: 12px; color: var(--muted); font-size: 12px; text-align: right; pointer-events: none; }.color-field { display: flex; align-items: center; gap: 10px; }.color-field input { width: 44px; height: 40px; padding: 3px; cursor: pointer; }.color-field span { color: var(--muted); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }.form-message { padding: 10px 12px; border-radius: 9px; color: #a33f35; background: #fff0ec; font-size: 12px; line-height: 1.55; }.editor-actions, .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 4px; }
 .modal { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgba(20, 40, 32, .42); backdrop-filter: blur(4px); }.modal-card { width: min(100%, 470px); max-height: 90vh; overflow: auto; padding: 24px; background: var(--paper); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 28px 70px rgba(17, 40, 29, .22); }.modal-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 22px; }.modal-heading h2 { margin: 5px 0 0; color: var(--ink); font-size: 25px; letter-spacing: -.07em; }.close-button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: transparent; cursor: pointer; font-size: 21px; line-height: 1; }.identity-line { margin: -7px 0 5px; color: var(--ink); font-size: 14px; font-weight: 850; }.pending-box { max-width: 510px; margin: 10px auto 6px; padding: 13px; color: #76584e; background: #fff6ed; border: 1px solid #f4dcc8; border-radius: 11px; text-align: left; }.pending-box strong, .pending-box code { display: block; }.pending-box code { margin-top: 6px; color: var(--coral); word-break: break-all; }.pending-box p { margin: 8px 0 0; font-size: 12px; line-height: 1.6; }
 .grant-option { display: grid; gap: 12px; margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 11px; }.grant-option-fields { display: grid; gap: 12px; }.grant-toggle { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; }.grant-toggle input { width: auto; margin: 0; padding: 0; accent-color: var(--coral); }
@@ -150,14 +150,18 @@ input, select, textarea, button { min-width: 0; max-width: 100%; }
 .date-control input[type="date"] { min-width: 0; width: 100%; }
 
 @media (max-width: 760px) {
-  .card-list { overflow: hidden; }
+  .card-list { overflow: visible; }
+  #cardListItems { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; overflow: visible; padding-bottom: 0; }
   #cardListItems, #ticketListItems, #eventTicketListItems { width: 100%; }
   #calendarItemListItems { width: 100%; }
   .calendar-batch-editor { padding: 14px; border-radius: 14px; }.calendar-batch-editor .section-heading { align-items: stretch; flex-direction: column; }.calendar-batch-editor .heading-actions { width: 100%; }.calendar-batch-editor .heading-actions .button { flex: 1 1 145px; }.calendar-batch-fields { grid-template-columns: 1fr; }.calendar-batch-description-field { grid-column: auto; }
   .card-list-item { flex: 0 0 auto; max-width: min(78vw, 280px); }
-  .card-sort-item { flex: 0 0 min(78vw, 320px); }
-  .card-sort-item .card-list-item { display: block; width: 100%; min-width: 0; max-width: none; margin: 0 !important; }
-  .card-sort-item::after { right: 10px; }
+  .card-sort-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 8px; flex: none; touch-action: pan-y; cursor: default; }
+  .card-sort-item + .card-sort-item { margin-top: 0; }
+  .card-sort-item .card-list-item { grid-column: 1; width: 100%; min-width: 0; max-width: none; margin: 0 !important; padding-right: 14px; }
+  .card-sort-item::after { display: none; }
+  .card-sort-controls { position: static; grid-column: 2; display: grid; align-content: center; gap: 6px; transform: none; }
+  .card-sort-move { width: 44px; height: 44px; border-radius: 11px; font-size: 20px; }
   .heading-actions, .editor-actions, .modal-actions, .prize-actions { flex-wrap: wrap; }
   .heading-actions .button { flex: 1 1 145px; }
   .editor-actions .button, .modal-actions .button { flex: 1 1 140px; }
@@ -261,4 +265,31 @@ button, input, select, textarea { line-height: 1.35; }
   .panel { padding-right: 12px; padding-left: 12px; }
   .editor-actions .button, .modal-actions .button, .heading-actions .button { flex-basis: 100%; }
   .table-wrap td { grid-template-columns: 76px minmax(0, 1fr); }
+}
++
+/* Surface-local device and interaction baseline. */
+:root { color-scheme: light; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+body { min-height: 100vh; min-height: 100dvh; overflow-y: auto; overscroll-behavior-y: auto; }
+button, input, select, textarea { font: inherit; }
+button, a, summary, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button, [role="button"] { touch-action: manipulation; }
+button:not(:disabled), a, summary { transition: transform .18s ease, opacity .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease; }
+button:disabled { cursor: not-allowed; }
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--coral, var(--orange, #df6b4d)); outline-offset: 3px; }
+input, select, textarea, [id] { scroll-margin-top: 24px; }
+::selection { color: #17352e; background: rgba(242, 195, 111, .5); }
+
+@media (hover: hover) { button:not(:disabled):hover, summary:hover { opacity: .9; } }
+
+@media (max-width: 760px) {
+  .app-shell { padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: max(32px, env(safe-area-inset-bottom)); padding-left: max(14px, env(safe-area-inset-left)); }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+  .button, .refresh-button, .ticket-button, .small-ticket-button, .ticket-confirm-button, .modal-action, .calendar-nav-button, .date-picker-button, .date-picker-trigger, .date-chip, .small-button, .close-button, .ticket-close-button, .date-picker-close { min-height: 44px; }
+  .modal, .ticket-modal, .profile-date-modal, .calendar-detail-modal { padding-right: max(12px, env(safe-area-inset-right)); padding-left: max(12px, env(safe-area-inset-left)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }

@@ -143,7 +143,7 @@ test('all browser write actions are single-attempt when the response is uncertai
     }
   };
   vm.createContext(context);
-  vm.runInContext(read('shared/common.js'), context, { filename: 'shared/common.js' });
+  vm.runInContext(read('admin/common.js'), context, { filename: 'admin/common.js' });
   const request = context.window.MemberSystem.request;
   const writeActions = [
     'user.member.profile.save',

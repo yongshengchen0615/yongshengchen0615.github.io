@@ -158,12 +158,17 @@
   }
 
   function handleCalendarWheel(event) {
-    if (!event.deltaY) return;
+    const horizontalDelta = Math.abs(event.deltaX || 0);
+    const verticalDelta = Math.abs(event.deltaY || 0);
+    const isHorizontalNavigation = event.shiftKey || horizontalDelta > verticalDelta;
+    if (!isHorizontalNavigation) return;
+    const delta = horizontalDelta ? event.deltaX : event.deltaY;
+    if (!delta) return;
     event.preventDefault();
     const now = Date.now();
     if (now - state.lastWheelNavigationAt < 450) return;
     state.lastWheelNavigationAt = now;
-    changeMonth(event.deltaY > 0 ? 1 : -1);
+    changeMonth(delta > 0 ? 1 : -1);
   }
 
   function openCalendarDateDetails(isoDate, trigger) {

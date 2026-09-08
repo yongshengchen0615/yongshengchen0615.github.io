@@ -60,3 +60,4 @@
 
   window.MembershipProgress = Object.freeze({ render });
 })();
+

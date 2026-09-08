@@ -61,3 +61,30 @@ button { line-height: 1.35; }
 .lottery-result span { font-size: 11px; opacity: .78; }.lottery-result strong { font-size: 25px; letter-spacing: -.06em; }.lottery-result p { max-width: 280px; margin: 0; font-size: 12px; line-height: 1.5; opacity: .84; }
 @keyframes lottery-pulse { from { transform: scale(.96) rotate(-1deg); opacity: .72; } to { transform: scale(1.04) rotate(1deg); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .lottery-reveal { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
++
+/* Surface-local device and interaction baseline. */
+:root { color-scheme: light; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+body { min-height: 100vh; min-height: 100dvh; overflow-y: auto; overscroll-behavior-y: auto; }
+button, input, select, textarea { font: inherit; }
+button, a, summary, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button, [role="button"] { touch-action: manipulation; }
+button:not(:disabled), a, summary { transition: transform .18s ease, opacity .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease; }
+button:disabled { cursor: not-allowed; }
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--coral, var(--orange, #df6b4d)); outline-offset: 3px; }
+input, select, textarea, [id] { scroll-margin-top: 24px; }
+::selection { color: #17352e; background: rgba(242, 195, 111, .5); }
+
+@media (hover: hover) { button:not(:disabled):hover, summary:hover { opacity: .9; } }
+
+@media (max-width: 760px) {
+  .app-shell { padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: max(32px, env(safe-area-inset-bottom)); padding-left: max(14px, env(safe-area-inset-left)); }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+  .button, .refresh-button, .ticket-button, .small-ticket-button, .ticket-confirm-button, .modal-action, .calendar-nav-button, .date-picker-button, .date-picker-trigger, .date-chip, .small-button, .close-button, .ticket-close-button, .date-picker-close { min-height: 44px; }
+  .modal, .ticket-modal, .profile-date-modal, .calendar-detail-modal { padding-right: max(12px, env(safe-area-inset-right)); padding-left: max(12px, env(safe-area-inset-left)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}

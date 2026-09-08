@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 
-function loadComponent() {
+function loadComponent(surface = 'member') {
   const nodes = new Map([
     ['[data-membership-current-tier]', { textContent: '' }],
     ['[data-membership-summary]', { textContent: '' }],
@@ -18,11 +18,12 @@ function loadComponent() {
   ]);
   const context = { window: {} };
   vm.createContext(context);
-  vm.runInContext(fs.readFileSync(path.join(root, 'shared/membership-progress.js'), 'utf8'), context, { filename: 'shared/membership-progress.js' });
+  const file = path.join(root, surface, 'membership-progress.js');
+  vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   return { component: context.window.MembershipProgress, nodes, root: { querySelector: (selector) => nodes.get(selector) || null } };
 }
 
-test('shared membership progress uses the same requested tier format and calculated progress', () => {
+test('local membership progress uses the requested tier format and calculated progress', () => {
   const { component, nodes, root: progressRoot } = loadComponent();
   component.render(progressRoot, {
     tier: '銀級會員',
@@ -41,7 +42,7 @@ test('shared membership progress uses the same requested tier format and calcula
   assert.equal(nodes.get('[data-membership-progress-track]').attributes.get('aria-valuetext'), '距離 金級會員 還需要 900 分鐘');
 });
 
-test('shared membership progress keeps the highest-tier state explicit', () => {
+test('local membership progress keeps the highest-tier state explicit', () => {
   const { component, nodes, root: progressRoot } = loadComponent();
   component.render(progressRoot, { tier: '鑽石會員', tierProgress: { serviceMinutesTotal: 3600, isHighestTier: true } });
   assert.equal(nodes.get('[data-membership-summary]').textContent, '累積 3600 分鐘・已達最高會員階級');
@@ -49,7 +50,7 @@ test('shared membership progress keeps the highest-tier state explicit', () => {
   assert.equal(nodes.get('[data-membership-progress-bar]').style.width, '100%');
 });
 
-test('every member-facing LIFF loads the same membership progress structure', () => {
+test('every member-facing LIFF owns its membership progress structure', () => {
   const surfaces = [
     ['member', 'profile'],
     ['points', 'state.profile'],
@@ -59,8 +60,13 @@ test('every member-facing LIFF loads the same membership progress structure', ()
   surfaces.forEach(([surface, profile]) => {
     const html = fs.readFileSync(path.join(root, surface, 'index.html'), 'utf8');
     const app = fs.readFileSync(path.join(root, surface, 'app.js'), 'utf8');
+    const progress = fs.readFileSync(path.join(root, surface, 'membership-progress.js'), 'utf8');
+    const styles = fs.readFileSync(path.join(root, surface, 'membership-progress.css'), 'utf8');
     assert.match(html, /membership-progress\.css/);
     assert.match(html, /membership-progress\.js/);
+    assert.match(html, /\.\/membership-progress\.js/);
+    assert.match(progress, /window\.MembershipProgress/);
+    assert.match(styles, /Membership copy is server-derived/);
     assert.match(html, /<h2 id="membershipProgressTitle">會員階級<\/h2>/);
     assert.match(html, /data-membership-current-tier/);
     assert.match(html, /data-membership-summary/);

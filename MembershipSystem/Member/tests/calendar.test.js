@@ -210,6 +210,8 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarApp, /isLoadedCalendarMonth/);
   assert.match(calendarApp, /handleCalendarTouchStart/);
   assert.match(calendarApp, /handleCalendarWheel/);
+  assert.match(calendarApp, /const isHorizontalNavigation = event\.shiftKey \|\| horizontalDelta > verticalDelta/);
+  assert.match(calendarApp, /if \(!isHorizontalNavigation\) return;/);
   assert.match(calendarApp, /suppressCalendarDayClickUntil/);
   assert.match(calendarHtml, /id="calendarRangeNotice"/);
   assert.match(calendarHtml, /id="calendarDetailModal"/);
@@ -234,7 +236,7 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarStyles, /\.calendar-item \{[^}]*color: var\(--item-foreground[^}]*background: var\(--item-accent/);
   assert.doesNotMatch(calendarStyles, /\.calendar-item\.holiday \{[^}]*background:/);
   assert.doesNotMatch(calendarStyles, /\.calendar-item\.event \{[^}]*background:/);
-  assert.match(calendarHtml, /calendar-membership-20260908/);
+  assert.match(calendarHtml, /calendar-local-ui-20260908/);
   assert.doesNotMatch(calendarApp, /innerHTML/);
   assert.match(adminHtml, /id="calendarPanel"/);
   assert.match(adminHtml, /id="calendarItemForm"/);

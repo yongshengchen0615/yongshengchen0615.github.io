@@ -632,8 +632,8 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(adminApp, /requestId: state\.grantRequestId/);
   assert.match(adminApp, /admin\.member-grants\.add/);
   assert.match(adminApp, /API_RESPONSE_UNCERTAIN/);
-  assert.match(read('shared/common.js'), /API_RESPONSE_UNCERTAIN/);
-  assert.doesNotMatch(read('shared/common.js'), /確認 GAS 部署的是最新版本/);
+  assert.match(read('points/common.js'), /API_RESPONSE_UNCERTAIN/);
+  assert.doesNotMatch(read('points/common.js'), /確認 GAS 部署的是最新版本/);
   assert.match(pointsApp, /uncertainTicketId/);
   assert.match(pointsHtml, /id="refreshTicketButton"/);
 });

@@ -271,3 +271,4 @@
 
   window.MemberSystem = Object.freeze({ clientError, loadConfig, validateConfig, signIn, request, logout, openMemberJoin, formatDate, formatDateTime, initials });
 })();
+
