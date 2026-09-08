@@ -38,8 +38,7 @@ function readPointCardSnapshot_() {
     lotteryPrizes: readRecords_('PointCardLotteryPrizes'),
     ticketTemplates: readRecords_('PointCardTicketTemplates'),
     balances: readRecords_('PointBalances'),
-    tickets: readRecords_('PointCardTickets'),
-    entries: readRecords_('PointEntries')
+    tickets: readRecords_('PointCardTickets')
   };
   snapshot.prizesByReward = pointCardLotteryPrizesByReward_(snapshot.lotteryPrizes);
   snapshot.rewardsByCard = pointCardRewardsByCard_(snapshot.rewards, snapshot.prizesByReward);
@@ -86,12 +85,6 @@ function pointCardRecordsByMemberCard_(records) {
 }
 
 
-function pointCardEntriesForMember_(lineUserId, snapshot) {
-  const memberId = String(lineUserId || '').trim();
-  const source = snapshot && Array.isArray(snapshot.entries) ? snapshot.entries : readRecords_('PointEntries');
-  return source.filter(function(entry) { return String(entry.line_user_id || '') === memberId; });
-}
-
 function pointCardTicketActivityForClient_(ticket, entry, cardsById) {
   const ticketId = String(ticket.ticket_id || '');
   const ticketType = String(ticket.ticket_type || '').toLowerCase() === 'lottery' ? 'lottery' : 'coupon';
@@ -99,9 +92,14 @@ function pointCardTicketActivityForClient_(ticket, entry, cardsById) {
   const card = cardsById && cardsById[cardId] ? cardsById[cardId] : null;
   let result = null;
   try { result = ticket.result_json ? ticketResultForClient_(JSON.parse(String(ticket.result_json))) : null; } catch (_) { result = null; }
+  const storedPointsSpent = Number(ticket.points_spent);
   const entryAmount = Number(entry && entry.amount);
   const fallbackAmount = Number(ticket.threshold_stamps || ticket.consume_stamps || 0);
-  const pointsSpent = Number.isFinite(entryAmount) && entryAmount < 0 ? Math.abs(entryAmount) : Math.max(0, fallbackAmount);
+  const pointsSpent = Number.isFinite(storedPointsSpent) && storedPointsSpent > 0
+    ? storedPointsSpent
+    : Number.isFinite(entryAmount) && entryAmount < 0
+      ? Math.abs(entryAmount)
+      : Math.max(0, fallbackAmount);
   return {
     activityId: 'ticket:' + ticketId,
     activityType: ticketType === 'lottery' ? 'lottery_ticket_redeem' : 'coupon_ticket_redeem',
@@ -119,33 +117,13 @@ function pointCardTicketActivityForClient_(ticket, entry, cardsById) {
 
 function pointCardActivityHistoryForMember_(lineUserId, snapshot) {
   const memberId = String(lineUserId || '').trim();
-  const entries = pointCardEntriesForMember_(memberId, snapshot);
   const cards = snapshot && Array.isArray(snapshot.cards) ? snapshot.cards : readRecords_('PointCards');
   const cardsById = {};
   cards.forEach(function(card) { const cardId = String(card.card_id || ''); if (cardId) cardsById[cardId] = card; });
-
   return pointCardTicketsForMember_(memberId, snapshot).filter(function(ticket) {
     return String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_;
   }).map(function(ticket) {
-    const ticketId = String(ticket.ticket_id || '');
-    const cardId = String(ticket.card_id || '');
-    const usedAt = String(ticket.used_at || '');
-    const expectedNote = '票券兌換：' + String(ticket.ticket_title || '');
-    let entry = entries.find(function(candidate) {
-      return String(candidate.reference_type || '') === 'point_card_ticket'
-        && String(candidate.reference_id || '') === ticketId;
-    }) || null;
-
-    if (!entry) {
-      entry = entries.find(function(candidate) {
-        return String(candidate.card_id || '') === cardId
-          && Number(candidate.amount || 0) < 0
-          && String(candidate.note || '') === expectedNote
-          && Boolean(usedAt)
-          && String(candidate.created_at || '') === usedAt;
-      }) || null;
-    }
-    return pointCardTicketActivityForClient_(ticket, entry, cardsById);
+    return pointCardTicketActivityForClient_(ticket, null, cardsById);
   }).sort(function(a, b) {
     return String(b.occurredAt || '').localeCompare(String(a.occurredAt || ''));
   });
@@ -825,6 +803,8 @@ function handleTicketRedeem_(identity, request) {
     ticket.status = POINT_CARD_TICKET_STATUS_USED_;
     ticket.used_at = now;
     ticket.result_json = result ? JSON.stringify(result) : '';
+    ticket.points_spent = String(consumeStamps);
+    ticket.redeem_entry_id = String(pointEntry.entry_id || '');
     ticket.updated_at = now;
     updateRecordAtRow_('PointCardTickets', ticketMatch.rowNumber, ticket);
     const nextTickets = issuePointCardTicketsForBalance_(identity.lineUserId, card, currentBalance, nextBalance, now).map(ticketForClient_);
