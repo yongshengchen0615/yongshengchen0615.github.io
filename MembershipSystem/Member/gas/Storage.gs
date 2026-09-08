@@ -5,9 +5,9 @@ const MEMBERSHIP_STORAGE_SCHEMA_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_DATA_CACHE_EPOCH_KEY_ = 'membership:data-epoch:v1';
 const MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_ = 21600;
 const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
-  Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at', 'birthday', 'phone']),
+  Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at', 'birthday', 'phone', 'membership_status']),
   Admins: Object.freeze(['line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at']),
-  PointCards: Object.freeze(['card_id', 'title', 'description', 'target_stamps', 'reward_title', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at', 'expiry_mode', 'expires_on']),
+  PointCards: Object.freeze(['card_id', 'title', 'description', 'target_stamps', 'reward_title', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at', 'expiry_mode', 'expires_on', 'sort_order']),
   PointCardRewards: Object.freeze(['reward_id', 'card_id', 'threshold_stamps', 'reward_type', 'reward_title', 'reward_description', 'lottery_win_rate', 'created_at', 'updated_at', 'consume_stamps', 'ticket_template_id']),
   PointCardLotteryPrizes: Object.freeze(['prize_id', 'reward_id', 'prize_title', 'prize_description', 'win_rate', 'created_at', 'updated_at']),
   PointCardTicketTemplates: Object.freeze(['ticket_template_id', 'title', 'ticket_type', 'description', 'usage_method', 'usage_instructions', 'lottery_prizes_json', 'status', 'created_by', 'created_at', 'updated_by', 'updated_at']),
@@ -19,6 +19,7 @@ const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   PointBalances: Object.freeze(['line_user_id', 'card_id', 'stamps', 'updated_at']),
   PointEntries: Object.freeze(['entry_id', 'line_user_id', 'card_id', 'amount', 'note', 'created_by', 'created_at', 'request_id', 'entry_type', 'reference_type', 'reference_id']),
   ServiceTimeEntries: Object.freeze(['entry_id', 'line_user_id', 'minutes', 'note', 'created_by', 'created_at', 'request_id']),
+  LineNotificationLogs: Object.freeze(['notification_id', 'request_id', 'line_user_id', 'message', 'status', 'error_code', 'created_at', 'sent_at', 'updated_at']),
   MembershipTierSettings: Object.freeze(['tier_key', 'tier_label', 'required_service_minutes', 'updated_by', 'updated_at', 'style_key']),
   AuditLogs: Object.freeze(['audit_id', 'actor_line_user_id', 'actor_role', 'action', 'target_type', 'target_id', 'result', 'detail', 'created_at'])
 });

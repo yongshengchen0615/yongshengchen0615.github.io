@@ -6,10 +6,11 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     [
-      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'eventView', 'displayName', 'membershipProgress', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketList',
+      'app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'eventView', 'displayName', 'membershipProgress', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketHistorySummary', 'usedTicketList',
       'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
+    els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.refreshButton.addEventListener('click', () => loadOffers(true));
     els.closeTicketModal.addEventListener('click', closeTicketModal);
@@ -48,9 +49,11 @@
     const hasUsedTickets = state.usedTickets.length > 0;
     const ineligibleOfferCount = state.offers.filter((offer) => !eventTicketTierEligible(offer)).length;
     els.eventList.replaceChildren(...state.offers.map(createOfferCard));
-    els.usedTicketList.replaceChildren(...state.usedTickets.map(createOfferCard));
+    const latestUsedTickets = state.usedTickets.slice(0, 5);
+    els.usedTicketList.replaceChildren(...latestUsedTickets.map(createHistoryItem));
     els.emptyView.classList.toggle('hidden', hasOffers);
     els.usedTicketHistory.classList.toggle('hidden', !hasUsedTickets);
+    els.usedTicketHistorySummary.textContent = hasUsedTickets ? `共 ${state.usedTickets.length} 筆 · 展開查看最新 ${latestUsedTickets.length} 筆` : '尚無使用紀錄';
     els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${ineligibleOfferCount ? ` · ${ineligibleOfferCount} 張尚未達適用等級` : ''}${hasUsedTickets ? ` · ${state.usedTickets.length} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有開放中的活動 · ${state.usedTickets.length} 筆已使用紀錄` : '目前沒有開放中的活動';
   }
 
@@ -64,6 +67,16 @@
     const meta = document.createElement('div'); meta.className = 'event-ticket-meta'; const date = document.createElement('span'); const dateLabel = document.createElement('strong'); dateLabel.textContent = history ? '使用時間' : '活動期間'; date.append(dateLabel, document.createTextNode(`　${history ? eventTicketTimestamp(offer.claim && offer.claim.usedAt) : eventDates(ticket)}`)); meta.append(date); if (!history) { const quota = document.createElement('span'); const quotaLabel = document.createElement('strong'); quotaLabel.textContent = '領取方式'; quota.append(quotaLabel, document.createTextNode('　每位會員限領 1 張')); const tiers = document.createElement('span'); const tierLabel = document.createElement('strong'); tierLabel.textContent = '適用等級'; tiers.append(tierLabel, document.createTextNode(`　${eventTicketAllowedTiers(ticket)}`)); meta.append(quota, tiers); }
     const eventTicketId = eventTicketIdForOffer(offer); const action = document.createElement('div'); action.className = 'event-ticket-action'; const hint = document.createElement('small'); hint.textContent = history ? '票券內容與核銷結果已保留' : !eligible ? '目前會員等級無法領取或使用' : offer.claim ? claimLabel(offer.claim.status) : offer.soldOut ? '名額已滿' : offer.availability === 'scheduled' ? '活動開始後即可領取' : offer.availability === 'ended' ? '活動已結束' : '點開查看完整說明'; const button = document.createElement('button'); button.type = 'button'; button.className = `ticket-button${!history && (offer.canClaim || offer.canUse) ? ' accent' : ''}`; button.dataset.eventTicketId = eventTicketId; button.textContent = history ? '查看紀錄' : !eligible ? '查看詳情' : offer.claim ? offer.canUse ? '查看並使用' : '已使用' : offer.canClaim ? '領取票券' : '查看詳情'; button.disabled = !eventTicketId || (!history && Boolean(offer.claim && !offer.canUse && eligible)); button.addEventListener('click', () => openTicketModal(eventTicketId)); action.append(hint, button);
     item.append(head, title, description, meta, action); return item;
+  }
+
+  function createHistoryItem(offer) {
+    const ticket = ticketForOffer(offer);
+    const item = document.createElement('li'); item.className = 'event-history-item';
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'event-history-button'; button.dataset.eventTicketId = eventTicketIdForOffer(offer); button.addEventListener('click', () => openTicketModal(eventTicketIdForOffer(offer)));
+    const title = document.createElement('strong'); title.textContent = String(ticket.title || '活動票券');
+    const meta = document.createElement('span'); meta.textContent = `使用於 ${eventTicketTimestamp(offer.claim && offer.claim.usedAt)}`;
+    const result = document.createElement('small'); result.textContent = ticket.ticketType === 'lottery' && offer.claim && offer.claim.result ? `抽獎結果：${offer.claim.result.prizeTitle || '結果已記錄'}` : '核銷完成 · 點擊查看紀錄';
+    button.append(title, meta, result); item.append(button); return item;
   }
 
   function openTicketModal(eventTicketId) {
@@ -158,5 +171,5 @@
   function handleTicketError(error, fallback) { const uncertain = error && error.code === 'API_RESPONSE_UNCERTAIN'; if (uncertain) state.uncertainEventTicketId = state.pendingEventTicketId; showMessage(uncertain ? '無法確認這次操作是否完成。請先重新整理確認；在確認前請勿再次送出。' : error && error.message || fallback, false); state.actionLocked = uncertain; els.ticketModalAction.disabled = true; els.refreshTicketButton.classList.toggle('hidden', !uncertain); }
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#d86e50'; }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.eventView.classList.toggle('hidden', view !== 'event'); }
-  function showError(error) { els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '活動票券暫時無法載入'; els.errorMessage.textContent = error && error.message ? error.message : '請稍後重新整理再試。'; setView('error'); }
+  function showError(error) { const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED'; els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '活動票券暫時無法載入'; els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用活動票券功能。' : error && error.message ? error.message : '請稍後重新整理再試。'; els.joinMemberButton.classList.toggle('hidden', !membershipRequired); els.retryButton.classList.toggle('hidden', membershipRequired); setView('error'); }
 })();

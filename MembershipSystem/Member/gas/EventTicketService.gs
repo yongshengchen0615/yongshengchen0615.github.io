@@ -10,6 +10,7 @@ const EVENT_TICKET_STATUS_USED_ = 'used';
 
 function handleEventTicketBootstrap_(identity) {
   const member = ensureMember_(identity);
+  if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
   const snapshot = readEventTicketSnapshot_();
   const serviceMinutesTotal = eventTicketServiceMinutesTotal_(member.line_user_id);
   const tier = eventTicketMemberTier_(member.line_user_id, serviceMinutesTotal);
@@ -290,6 +291,7 @@ function handleEventTicketClaim_(identity, request) {
     if (!match) throw new ApiError(404, 'EVENT_TICKET_NOT_FOUND', '找不到活動票券。');
     const ticket = match.record;
     const member = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
+    if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member && member.record);
     if (!member || String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法領取活動票券。');
     assertEventTicketOpen_(ticket);
     assertEventTicketAllowsTier_(ticket, eventTicketMemberTier_(identity.lineUserId).tierKey);
@@ -318,6 +320,7 @@ function handleEventTicketRedeem_(identity, request) {
     const ticketMatch = findRecordWithRow_('EventTickets', 'event_ticket_id', String(claim.event_ticket_id || ''));
     if (!ticketMatch) throw new ApiError(410, 'EVENT_TICKET_REMOVED', '這張活動票券已移除，無法使用。');
     const member = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
+    if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member && member.record);
     if (!member || String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法使用活動票券。');
     assertEventTicketOpen_(ticketMatch.record);
     assertEventTicketAllowsTier_(ticketMatch.record, eventTicketMemberTier_(identity.lineUserId).tierKey);

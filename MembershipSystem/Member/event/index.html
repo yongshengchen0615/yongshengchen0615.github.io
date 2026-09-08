@@ -6,17 +6,17 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>活動票券｜Lumen Club</title>
-  <link rel="stylesheet" href="./styles.css?v=event-ticket-lottery-20260908">
+  <link rel="stylesheet" href="./styles.css?v=event-history-membership-20260908">
   <link rel="stylesheet" href="../shared/membership-progress.css?v=membership-progress-ui-layout-20260906">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="../shared/common.js" defer></script>
+  <script src="../shared/common.js?v=membership-join-20260908" defer></script>
   <script src="../shared/membership-progress.js?v=membership-progress-20260905" defer></script>
-  <script src="./app.js?v=event-ticket-lottery-20260908" defer></script>
+  <script src="./app.js?v=event-history-membership-20260908" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
     <section id="loadingView" class="state-view"><div class="loader-mark" aria-hidden="true">✦</div><p class="kicker">Lumen Club / Event</p><h1>正在準備你的活動票券</h1><p>每次開啟都會重新確認 LINE 身份，請稍候。</p></section>
-    <section id="errorView" class="state-view hidden" role="alert"><div class="error-mark" aria-hidden="true">!</div><p class="kicker">Event access</p><h1 id="errorTitle">活動票券暫時無法載入</h1><p id="errorMessage"></p><button id="retryButton" class="button button-dark" type="button">重新整理</button></section>
+    <section id="errorView" class="state-view hidden" role="alert"><div class="error-mark" aria-hidden="true">!</div><p class="kicker">Event access</p><h1 id="errorTitle">活動票券暫時無法載入</h1><p id="errorMessage"></p><button id="joinMemberButton" class="button button-dark hidden" type="button">前往加入會員</button><button id="retryButton" class="button button-dark" type="button">重新整理</button></section>
 
     <main id="eventView" class="hidden">
       <header class="topbar"><div><p class="kicker">Lumen Club / Member event</p><h1>活動票券</h1></div><div class="account-menu"><span id="displayName">LINE 使用者</span><button id="logoutButton" class="text-button" type="button">登出</button></div></header>
@@ -25,7 +25,7 @@
       <section class="event-toolbar" aria-label="活動票券資訊"><span class="toolbar-rule"></span><span id="eventSummary">目前沒有開放中的活動</span></section>
       <section id="eventList" class="event-list" aria-live="polite"></section>
       <section id="emptyView" class="empty-view hidden"><span class="empty-mark" aria-hidden="true">○</span><h2>還沒有活動票券</h2><p>有新的會員活動時，票券會出現在這裡。</p></section>
-      <section id="usedTicketHistory" class="used-ticket-history hidden" aria-labelledby="usedTicketHistoryTitle"><div class="history-heading"><p class="eyebrow">Ticket history</p><h2 id="usedTicketHistoryTitle">已使用紀錄</h2><p>已使用的活動票券會保留在這裡，可隨時查看票券內容與核銷結果。</p></div><section id="usedTicketList" class="event-list" aria-live="polite"></section></section>
+      <section id="usedTicketHistory" class="used-ticket-history hidden" aria-labelledby="usedTicketHistoryTitle"><details id="usedTicketHistoryDisclosure" class="used-ticket-history-disclosure"><summary class="history-summary"><span class="history-summary-title"><span class="eyebrow">Ticket history</span><strong id="usedTicketHistoryTitle">票券使用紀錄</strong></span><span id="usedTicketHistorySummary" class="history-summary-count">點擊查看最新使用紀錄</span></summary><p class="history-description">展開後顯示最新 5 筆資料；點擊條列項目可查看票券內容與核銷結果。</p><ul id="usedTicketList" class="used-ticket-list" aria-live="polite"></ul></details></section>
       <p class="privacy-note"><span aria-hidden="true">i</span> 活動票券只會綁定目前登入的 LINE 會員，領取與使用紀錄由系統保留。</p>
     </main>
   </div>

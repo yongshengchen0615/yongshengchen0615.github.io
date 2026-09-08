@@ -234,7 +234,7 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarStyles, /\.calendar-item \{[^}]*color: var\(--item-foreground[^}]*background: var\(--item-accent/);
   assert.doesNotMatch(calendarStyles, /\.calendar-item\.holiday \{[^}]*background:/);
   assert.doesNotMatch(calendarStyles, /\.calendar-item\.event \{[^}]*background:/);
-  assert.match(calendarHtml, /calendar-20260908-item-accent-background/);
+  assert.match(calendarHtml, /calendar-membership-20260908/);
   assert.doesNotMatch(calendarApp, /innerHTML/);
   assert.match(adminHtml, /id="calendarPanel"/);
   assert.match(adminHtml, /id="calendarItemForm"/);

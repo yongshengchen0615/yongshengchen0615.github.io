@@ -14,18 +14,20 @@
       'membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'cardSettingsTab', 'ticketSettingsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'activeEventTicketCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'cardSettingsPanel', 'ticketSettingsPanel', 'syncStatus', 'refreshButton',
       'tierSettingsForm', 'tierGeneralMinutes', 'tierSilverMinutes', 'tierGoldMinutes', 'tierPlatinumMinutes', 'tierGeneralStyle', 'tierSilverStyle', 'tierGoldStyle', 'tierPlatinumStyle', 'tierSettingsFormMessage', 'saveTierSettingsButton',
       'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
-      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
+      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardDescription', 'cardStatus', 'cardSortOrder', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
       'newCalendarItemButton', 'calendarItemResultCount', 'calendarItemListItems', 'calendarItemEmptyState', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
-      'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
+      'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     bindEvents();
     boot();
   });
 
   function bindEvents() {
+    prepareCardSortOrderEditor();
+    prepareGrantPointEditor();
     const eventTicketTierAccess = document.getElementById('eventTicketAllowedTiers');
     const eventTicketTitleField = els.eventTicketTitle.closest('label');
     if (eventTicketTierAccess && eventTicketTitleField) {
@@ -107,9 +109,33 @@
     els.closeGrantModal.addEventListener('click', closeGrantModal);
     els.grantModal.addEventListener('click', (event) => { if (event.target === els.grantModal) closeGrantModal(); });
     els.grantStampsEnabled.addEventListener('change', updateGrantOptions);
+    els.grantPointRows.addEventListener('input', updateGrantPointHint);
+    els.grantPointRows.addEventListener('change', updateGrantPointHint);
+    els.grantPointRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-grant-point]') : null; if (button) { button.closest('[data-grant-point-row]')?.remove(); updateGrantPointHint(); } });
+    els.addGrantPointButton.addEventListener('click', addGrantPointRow);
     els.grantServiceTimeEnabled.addEventListener('change', updateGrantOptions);
     document.addEventListener('click', handleAdminDateControlClick);
     document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); });
+  }
+
+  function prepareCardSortOrderEditor() {
+    if (els.cardSortOrder || !els.cardStatus) return;
+    const field = document.createElement('label'); field.className = 'card-sort-order-field';
+    const caption = document.createElement('span'); caption.textContent = '會員端顯示排序';
+    const input = document.createElement('input'); input.id = 'cardSortOrder'; input.type = 'number'; input.min = '0'; input.max = '100000'; input.step = '1'; input.value = '0';
+    const help = document.createElement('small'); help.className = 'field-help'; help.textContent = '數字越小越前面；相同時依建立時間排序';
+    field.append(caption, input, help); els.cardStatus.closest('.form-grid').append(field); els.cardSortOrder = input;
+  }
+
+  function prepareGrantPointEditor() {
+    if (els.grantPointRows || !els.grantStampsFields) return;
+    const legacyCardLabel = els.grantCardId.closest('label'); const legacyAmountLabel = els.grantStampAmount.closest('label');
+    if (legacyCardLabel) legacyCardLabel.classList.add('hidden');
+    if (legacyAmountLabel) legacyAmountLabel.classList.add('hidden');
+    const rows = document.createElement('div'); rows.id = 'grantPointRows'; rows.className = 'grant-point-rows';
+    const addButton = document.createElement('button'); addButton.id = 'addGrantPointButton'; addButton.type = 'button'; addButton.className = 'text-button grant-add-point'; addButton.textContent = '＋ 再加入一張集點卡';
+    const hint = document.createElement('p'); hint.id = 'grantPointHint'; hint.className = 'field-help'; hint.textContent = '可在同一次操作中為不同集點卡發放不同點數。';
+    els.grantStampsFields.replaceChildren(rows, addButton, hint); els.grantPointRows = rows; els.addGrantPointButton = addButton; els.grantPointHint = hint;
   }
 
   async function boot() {
@@ -354,23 +380,24 @@
     els.cardListItems.replaceChildren(...state.cards.map((card) => {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.cardId = String(card.cardId); button.setAttribute('aria-selected', String(card.cardId) === state.selectedCardId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(card.accent));
       const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(card.title || '未命名集點卡')));
-      const meta = document.createElement('small'); const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${formatAdminDateCompact(card.expiresOn)}` : '無期限'; meta.textContent = `${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
+      const meta = document.createElement('small'); const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${formatAdminDateCompact(card.expiresOn)}` : '無期限'; meta.textContent = `排序 ${Number(card.sortOrder || 0)} · ${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
       button.append(title, meta); return button;
     }));
   }
 
   function loadCardForm(cardId) {
     const card = state.cards.find((item) => item.cardId === cardId); if (!card) return;
-    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.archiveCardButton.disabled = card.status === 'archived'; els.archiveCardButton.textContent = card.status === 'archived' ? '已封存集點卡' : '封存集點卡'; els.deleteCardButton.disabled = false; hideMessage(els.cardFormMessage); renderCardList();
+    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardDescription.value = String(card.description || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardSortOrder.value = String(Number(card.sortOrder || 0)); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.archiveCardButton.disabled = card.status === 'archived'; els.archiveCardButton.textContent = card.status === 'archived' ? '已封存集點卡' : '封存集點卡'; els.deleteCardButton.disabled = false; hideMessage(els.cardFormMessage); renderCardList();
   }
 
   function resetCardForm() {
-    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = 'draft'; els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, 'draft'); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
+    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = 'draft'; els.cardSortOrder.value = '0'; els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, 'draft'); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
   }
 
   function defaultReward(thresholdStamps) { return { thresholdStamps, ticketTemplateId: '' }; }
   function updateCardExpiryUI() { const limited = els.cardExpiryMode.value === 'date'; els.cardExpiresOnField.classList.toggle('hidden', !limited); els.cardExpiresOn.required = limited; updateCardExpiryDateUI(); }
   function validateCardExpiry(mode, expiresOn) { if (mode === 'unlimited') return ''; if (mode !== 'date' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) return '請選擇有效的集點卡到期日。'; const parts = expiresOn.split('-').map(Number); const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])); return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2] ? '' : '請選擇有效的集點卡到期日。'; }
+  function validateCardSortOrder(value) { return Number.isInteger(value) && value >= 0 && value <= 100000 ? '' : '會員端顯示排序必須是 0–100000 的整數。'; }
 
   function activeTicketOptions(currentTicketTemplateId) {
     const tickets = state.tickets.filter((ticket) => ticket.status === 'active' || ticket.ticketTemplateId === currentTicketTemplateId);
@@ -398,12 +425,12 @@
   function validateRewardEditor(title, rewards) { if (!title || title.length > 80) return '請填寫卡片名稱（最多 80 字）。'; if (!rewards.length || rewards.length > 30) return '請至少設定 1 個兌換節點，最多 30 個節點。'; const thresholds = new Set(); for (const reward of rewards) { if (!Number.isInteger(reward.thresholdStamps) || reward.thresholdStamps < 1 || reward.thresholdStamps > 100) return '需要集到的點數必須是 1–100 的整數。'; if (thresholds.has(reward.thresholdStamps)) return '每個點數只能設定一個節點。'; thresholds.add(reward.thresholdStamps); if (!reward.ticketTemplateId) return '請為每個節點選擇一張票券。'; } return ''; }
   async function saveCard(event) {
     event.preventDefault(); if (requireRefreshBeforeWrite(els.cardFormMessage)) return; hideMessage(els.cardFormMessage);
-    const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim();
-    const validationMessage = validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardExpiry(expiryMode, expiresOn);
+    const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim(); const sortOrder = Number(els.cardSortOrder.value);
+    const validationMessage = validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardExpiry(expiryMode, expiresOn) || validateCardSortOrder(sortOrder);
     if (validationMessage) return showMessage(els.cardFormMessage, validationMessage);
     setSaving(els.saveCardButton, true, '正在儲存集點卡…');
     try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), description: String(els.cardDescription.value || '').trim(), rewardTitle: '', rewards, status: els.cardStatus.value, expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), description: String(els.cardDescription.value || '').trim(), rewardTitle: '', rewards, status: els.cardStatus.value, expiryMode, expiresOn, sortOrder, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       if (result.card) { state.cards = replaceById(state.cards, result.card, 'cardId'); loadCardForm(result.card.cardId); }
       if (await refreshAfterSuccessfulWrite('集點卡已儲存', els.cardFormMessage)) showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true);
     } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
@@ -930,34 +957,49 @@
   function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.textContent = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberStatus.focus(); }
   function closeMemberModal() { els.memberModal.classList.add('hidden'); }
   async function saveMember(event) { event.preventDefault(); if (requireRefreshBeforeWrite(els.memberFormMessage)) return; hideMessage(els.memberFormMessage); setSaving(els.saveMemberButton, true, '正在儲存會員狀態…'); try { const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value }); if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId'); closeMemberModal(); renderAll(); showOperationSuccess('會員狀態已儲存'); } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); } }
-  function openGrantModal(member) { const activeCards = state.cards.filter((card) => card.status === 'active' && !card.expired); state.grantRequestId = createRequestId(); els.grantMemberId.value = String(member.lineUserId); els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`; els.grantCardId.replaceChildren(...activeCards.map((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); return option; })); els.grantStampsEnabled.checked = activeCards.length > 0; els.grantStampsEnabled.disabled = activeCards.length === 0; els.grantServiceTimeEnabled.checked = activeCards.length === 0; els.grantStampAmount.value = '1'; els.grantServiceTimeMinutes.value = '30'; els.grantNote.value = ''; updateGrantOptions(); hideMessage(els.grantFormMessage); els.grantModal.classList.remove('hidden'); (activeCards.length ? els.grantCardId : els.grantServiceTimeMinutes).focus(); }
+  function openGrantModal(member) { const activeCards = activeGrantCards(); state.grantRequestId = createRequestId(); els.grantMemberId.value = String(member.lineUserId); els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`; renderGrantPointRows(activeCards.length ? [{ cardId: activeCards[0].cardId, amount: 1 }] : []); els.grantStampsEnabled.checked = activeCards.length > 0; els.grantStampsEnabled.disabled = activeCards.length === 0; els.grantServiceTimeEnabled.checked = activeCards.length === 0; els.grantServiceTimeMinutes.value = '30'; els.grantNote.value = ''; updateGrantOptions(); hideMessage(els.grantFormMessage); els.grantModal.classList.remove('hidden'); (activeCards.length ? els.grantPointRows.querySelector('select') : els.grantServiceTimeMinutes).focus(); }
   function closeGrantModal() { state.grantRequestId = ''; els.grantModal.classList.add('hidden'); }
+  function activeGrantCards() { return state.cards.filter((card) => card.status === 'active' && !card.expired); }
+  function renderGrantPointRows(points) { const grants = Array.isArray(points) ? points : []; els.grantPointRows.replaceChildren(...grants.map((grant, index) => createGrantPointRow(grant, index, grants))); updateGrantPointHint(); }
+  function createGrantPointRow(grant, index, grants) {
+    const row = document.createElement('article'); row.className = 'grant-point-row'; row.dataset.grantPointRow = 'true';
+    const heading = document.createElement('div'); heading.className = 'grant-point-row-heading'; const title = document.createElement('strong'); title.textContent = `集點卡 ${index + 1}`; heading.append(title);
+    if (grants.length > 1) { const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button'; remove.dataset.removeGrantPoint = 'true'; remove.textContent = '刪除'; heading.append(remove); }
+    const grid = document.createElement('div'); grid.className = 'grant-point-row-fields';
+    const cardLabel = document.createElement('label'); cardLabel.textContent = '集點卡'; const select = document.createElement('select'); select.dataset.grantPointField = 'cardId'; const selectedIds = new Set(grants.map((item) => String(item.cardId || ''))); activeGrantCards().filter((card) => !selectedIds.has(String(card.cardId)) || String(card.cardId) === String(grant.cardId || '')).forEach((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); select.append(option); }); select.value = String(grant.cardId || ''); cardLabel.append(select);
+    const amountLabel = document.createElement('label'); amountLabel.textContent = '增加點數'; const amount = document.createElement('input'); amount.type = 'number'; amount.min = '1'; amount.max = '100'; amount.step = '1'; amount.value = String(grant.amount || 1); amount.dataset.grantPointField = 'amount'; amountLabel.append(amount); grid.append(cardLabel, amountLabel); row.append(heading, grid); return row;
+  }
+  function collectGrantPoints() { return Array.from(els.grantPointRows.querySelectorAll('[data-grant-point-row]')).map((row) => ({ cardId: String(row.querySelector('[data-grant-point-field="cardId"]')?.value || '').trim(), amount: Number(row.querySelector('[data-grant-point-field="amount"]')?.value) })); }
+  function addGrantPointRow() { const grants = collectGrantPoints(); const selected = new Set(grants.map((grant) => grant.cardId)); const nextCard = activeGrantCards().find((card) => !selected.has(String(card.cardId))); if (!nextCard || grants.length >= 20) return; grants.push({ cardId: nextCard.cardId, amount: 1 }); renderGrantPointRows(grants); els.grantPointRows.querySelector('[data-grant-point-row]:last-child select')?.focus(); }
+  function updateGrantPointHint() { const grants = collectGrantPoints(); const duplicate = grants.some((grant, index) => grants.findIndex((item) => item.cardId === grant.cardId) !== index); const invalid = grants.some((grant) => !grant.cardId || !Number.isInteger(grant.amount) || grant.amount < 1 || grant.amount > 100); els.grantPointHint.textContent = duplicate ? '同一次發放不可重複選擇同一張集點卡。' : invalid ? '每張集點卡請輸入 1–100 的整數點數。' : `${grants.length} 張集點卡 · 每張可設定不同點數。`; els.grantPointHint.classList.toggle('warning', duplicate || invalid); els.addGrantPointButton.disabled = activeGrantCards().length <= grants.length || grants.length >= 20 || !els.grantStampsEnabled.checked; }
   function updateGrantOptions() {
     const addStamps = els.grantStampsEnabled.checked;
     const addServiceTime = els.grantServiceTimeEnabled.checked;
     els.grantStampsFields.classList.toggle('hidden', !addStamps);
-    els.grantCardId.disabled = !addStamps;
-    els.grantStampAmount.disabled = !addStamps;
+    els.grantPointRows.querySelectorAll('select, input, button').forEach((element) => { element.disabled = !addStamps; });
+    els.addGrantPointButton.disabled = !addStamps || activeGrantCards().length <= collectGrantPoints().length;
     els.grantServiceTimeFields.classList.toggle('hidden', !addServiceTime);
     els.grantServiceTimeMinutes.disabled = !addServiceTime;
   }
   async function saveGrant(event) {
     event.preventDefault(); if (requireRefreshBeforeWrite(els.grantFormMessage)) return; hideMessage(els.grantFormMessage);
     const addStamps = els.grantStampsEnabled.checked; const addServiceTime = els.grantServiceTimeEnabled.checked;
-    const stampAmount = Number(els.grantStampAmount.value); const serviceTimeMinutes = Number(els.grantServiceTimeMinutes.value);
+    const points = collectGrantPoints(); const serviceTimeMinutes = Number(els.grantServiceTimeMinutes.value);
     if (!addStamps && !addServiceTime) return showMessage(els.grantFormMessage, '請至少勾選「發放集點」或「發放消費服務時間」。');
-    if (addStamps && (!els.grantCardId.value || !Number.isInteger(stampAmount) || stampAmount < 1 || stampAmount > 100)) return showMessage(els.grantFormMessage, '請選擇啟用中的集點卡，並輸入 1–100 的整數點數。');
+    if (addStamps && (!points.length || points.some((point) => !point.cardId || !Number.isInteger(point.amount) || point.amount < 1 || point.amount > 100) || new Set(points.map((point) => point.cardId)).size !== points.length)) return showMessage(els.grantFormMessage, '請為每張集點卡選擇不同卡片，並輸入 1–100 的整數點數。');
     if (addServiceTime && (!Number.isInteger(serviceTimeMinutes) || serviceTimeMinutes < 1 || serviceTimeMinutes > 1440)) return showMessage(els.grantFormMessage, '請輸入 1–1440 的整數分鐘數。');
     const note = String(els.grantNote.value || '').trim(); const payload = { lineUserId: els.grantMemberId.value, requestId: state.grantRequestId || (state.grantRequestId = createRequestId()), note };
-    if (addStamps) payload.points = { cardId: els.grantCardId.value, amount: stampAmount };
+    if (addStamps) payload.points = points;
     if (addServiceTime) payload.serviceTime = { minutes: serviceTimeMinutes };
     setSaving(els.saveGrantButton, true, '正在發放集點與服務時間…', '發放中…');
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-grants.add', payload);
       if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId');
-      const details = [addStamps ? `${stampAmount} 點` : '', addServiceTime ? formatServiceMinutes(serviceTimeMinutes) : ''].filter(Boolean).join('、');
+      const titlesById = Object.fromEntries(activeGrantCards().map((card) => [String(card.cardId), String(card.title || '集點卡')]));
+      const details = [addStamps ? points.map((point) => `${titlesById[point.cardId] || '集點卡'} +${point.amount} 點`).join('、') : '', addServiceTime ? formatServiceMinutes(serviceTimeMinutes) : ''].filter(Boolean).join('、');
+      const notificationMessage = result.notification && result.notification.status !== 'sent' ? `；${result.notification.message}` : '';
       closeGrantModal(); showGrantSuccess(details);
-      if (await refreshAfterSuccessfulWrite('發放完成', null, false)) setSyncStatus(`發放完成：${details} · 已同步`, false);
+      if (await refreshAfterSuccessfulWrite('發放完成' + notificationMessage, null, false)) setSyncStatus(`發放完成：${details}${notificationMessage} · 已同步`, false);
     } catch (error) { handleActionError(error, els.grantFormMessage); } finally { setSaving(els.saveGrantButton, false); }
   }
 

@@ -9,6 +9,9 @@ const MEMBERSHIP_LAST_LOGIN_TOUCH_INTERVAL_MS_ = 5 * 60 * 1000;
 const MEMBERSHIP_TIER_SETTINGS_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_ = 'membership:tier-settings:v2';
 const MEMBERSHIP_SERVICE_MINUTES_CACHE_SECONDS_ = 120;
+const MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN_PROPERTY_ = 'MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN';
+const MEMBERSHIP_LINE_PUSH_URL_ = 'https://api.line.me/v2/bot/message/push';
+const MEMBERSHIP_LINE_MESSAGE_MAX_LENGTH_ = 5000;
 const MEMBERSHIP_TIER_DEFINITIONS_ = Object.freeze([
   Object.freeze({ tierKey: 'general', label: '一般會員', defaultRequiredServiceMinutes: 0 }),
   Object.freeze({ tierKey: 'silver', label: '銀級會員', defaultRequiredServiceMinutes: 600 }),
@@ -64,14 +67,32 @@ function ensureMember_(identity) {
 }
 
 function generateMemberCode_() { return 'LM-' + Utilities.getUuid().replace(/-/g, '').substring(0, 8).toUpperCase(); }
-function newMemberRecord_(identity, now) { return { line_user_id: identity.lineUserId, display_name: identity.displayName, member_code: generateMemberCode_(), tier: '一般會員', status: 'active', joined_at: now, last_login_at: now, created_at: now, updated_at: now, birthday: '', phone: '' }; }
+function newMemberRecord_(identity, now) { return { line_user_id: identity.lineUserId, display_name: identity.displayName, member_code: generateMemberCode_(), tier: '一般會員', status: 'active', joined_at: now, last_login_at: now, created_at: now, updated_at: now, birthday: '', phone: '', membership_status: 'pending' }; }
+
+function memberMembershipStatus_(member) {
+  const stored = String(member && member.membership_status || '').trim().toLowerCase();
+  // Existing rows predate this additive field and remain available to avoid
+  // locking out established members during the migration.
+  return stored || 'active';
+}
+
+function memberIsJoined_(member) {
+  return Boolean(member) && String(member.status || 'active').toLowerCase() === 'active' && memberMembershipStatus_(member) === 'active';
+}
+
+function assertMemberJoined_(member) {
+  if (!member) throw new ApiError(403, 'MEMBERSHIP_REQUIRED', '請先加入會員，完成會員資料後才能使用此功能。');
+  if (String(member.status || 'active').toLowerCase() !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法使用此功能。');
+  if (!memberIsJoined_(member)) throw new ApiError(403, 'MEMBERSHIP_REQUIRED', '請先加入會員，完成會員資料後才能使用此功能。');
+  return member;
+}
 
 function memberForClient_(member) {
   const serviceMinutesTotal = serviceMinutesTotalForMember_(member.line_user_id);
   const tierSettings = readMembershipTierSettings_();
   const tierProgress = membershipTierProgressForServiceMinutes_(serviceMinutesTotal, tierSettings);
   const tierStyle = membershipTierStyleForKey_(tierProgress.currentTierKey, tierSettings);
-  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tierProgress.currentTierLabel, tierStyleKey: tierStyle.styleKey, tierStyleLabel: tierStyle.label, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal, tierProgress, benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
+  return { displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tierProgress.currentTierLabel, tierStyleKey: tierStyle.styleKey, tierStyleLabel: tierStyle.label, status: String(member.status || 'active'), membershipStatus: memberMembershipStatus_(member), membershipRequired: !memberIsJoined_(member), joinedAt: String(member.joined_at || ''), birthday: String(member.birthday || ''), phone: String(member.phone || ''), profileComplete: memberProfileComplete_(member), serviceMinutesTotal, tierProgress, benefits: ['會員專屬活動通知', '消費可累積集點進度', '優先享有新方案與回饋'] };
 }
 
 function readMembers_() {
@@ -267,6 +288,7 @@ function handleMemberProfileSave_(identity, request) {
     record.display_name = identity.displayName;
     record.birthday = birthday;
     record.phone = phone;
+    record.membership_status = 'active';
     record.last_login_at = now;
     record.updated_at = now;
     if (match) updateRecordAtRow_('Members', match.rowNumber, record); else appendRecord_('Members', record);
@@ -388,7 +410,7 @@ function addServiceMinutesLocked_(identity, admin, serviceTime) {
     const entry = prior.record;
     if (String(entry.line_user_id || '') !== lineUserId || Number(entry.minutes || 0) !== minutes || String(entry.note || '') !== note || String(entry.created_by || '') !== String(identity.lineUserId || '')) throw new ApiError(409, 'REQUEST_REUSE_MISMATCH', '這個服務時間請求已用於不同資料，請重新開啟登錄視窗。');
     const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
-    return { member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
+    return { created: false, member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
   }
   const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
   if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法登錄服務時間。');
@@ -396,24 +418,119 @@ function addServiceMinutesLocked_(identity, admin, serviceTime) {
   appendRecord_('ServiceTimeEntries', { entry_id: 'ST-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, minutes: String(minutes), note, created_by: identity.lineUserId, created_at: now, request_id: requestId });
   clearServiceMinutesTotalCache_(lineUserId);
   appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'SERVICE_TIME_ADD', target_type: 'service_time', target_id: lineUserId, result: 'success', detail: 'Added ' + minutes + ' service minute(s)', created_at: now });
-  return { member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
+  return { created: true, member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
 }
 
 function handleMemberGrantAdd_(identity, admin, request) {
   const lineUserId = String(request.lineUserId || '').trim(); const requestId = String(request.requestId || '').trim(); const note = String(request.note || '').trim();
-  const pointsInput = request.points && !Array.isArray(request.points) && typeof request.points === 'object' ? request.points : null;
-  const serviceTimeInput = request.serviceTime && !Array.isArray(request.serviceTime) && typeof request.serviceTime === 'object' ? request.serviceTime : null;
-  if (!lineUserId || lineUserId.length > 80 || !requestId || !/^[A-Za-z0-9_-]{16,88}$/.test(requestId) || note.length > 160 || (!pointsInput && !serviceTimeInput)) throw new ApiError(400, 'INVALID_MEMBER_GRANT', '發放內容或請求識別碼不合法。');
-  const stamp = pointsInput ? normalizeStampAddRequest_({ lineUserId, cardId: pointsInput.cardId, amount: pointsInput.amount, note, requestId: requestId + '_points' }) : null;
-  const serviceTime = serviceTimeInput ? normalizeServiceMinutesAddRequest_({ lineUserId, minutes: serviceTimeInput.minutes, note, requestId: requestId + '_service' }) : null;
-  return withDataLock_(function() {
-    const stampResult = stamp ? addStampLocked_(identity, admin, stamp) : null;
+  const hasPoints = Array.isArray(request.points) || Boolean(request.points && typeof request.points === 'object');
+  const hasServiceTime = Boolean(request.serviceTime && !Array.isArray(request.serviceTime) && typeof request.serviceTime === 'object');
+  if (!lineUserId || lineUserId.length > 80 || !requestId || !/^[A-Za-z0-9_-]{16,88}$/.test(requestId) || note.length > 160 || (!hasPoints && !hasServiceTime)) throw new ApiError(400, 'INVALID_MEMBER_GRANT', '發放內容或請求識別碼不合法。');
+  const stamps = hasPoints ? normalizeMemberGrantPoints_(lineUserId, request.points, note, requestId) : [];
+  const serviceTime = hasServiceTime ? normalizeServiceMinutesAddRequest_({ lineUserId, minutes: request.serviceTime.minutes, note, requestId: requestId + '_service' }) : null;
+  const grantResult = withDataLock_(function() {
+    validateMemberGrantTargetsLocked_(lineUserId, stamps, serviceTime);
+    const stampResults = stamps.map(function(stamp) { return addStampLocked_(identity, admin, stamp); });
     const serviceTimeResult = serviceTime ? addServiceMinutesLocked_(identity, admin, serviceTime) : null;
     let memberResult = serviceTimeResult && serviceTimeResult.member ? serviceTimeResult.member : null;
     if (!memberResult) {
       const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
       memberResult = adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId));
     }
-    return { member: memberResult, stamps: stampResult, serviceTime: serviceTimeResult ? { minutes: serviceTime.minutes } : null };
+
+    const existingNotification = findRecordWithRow_('LineNotificationLogs', 'request_id', requestId);
+    const created = stampResults.some(function(result) { return result.created; }) || Boolean(serviceTimeResult && serviceTimeResult.created);
+    let notificationLog = existingNotification ? existingNotification.record : null;
+    if (!notificationLog && created) {
+      const now = nowIso_();
+      notificationLog = { notification_id: 'LN-' + Utilities.getUuid().replace(/-/g, '').substring(0, 16).toUpperCase(), request_id: requestId, line_user_id: lineUserId, message: memberGrantNotificationText_(memberResult, stampResults, serviceTime), status: 'pending', error_code: '', created_at: now, sent_at: '', updated_at: now };
+      appendRecord_('LineNotificationLogs', notificationLog);
+    }
+    return { member: memberResult, stampResults, serviceTimeResult, notificationLog };
   });
+
+  const notification = grantResult.notificationLog && String(grantResult.notificationLog.status || '') === 'pending'
+    ? dispatchMemberGrantLineNotification_(grantResult.notificationLog)
+    : lineNotificationForClient_(grantResult.notificationLog);
+  return {
+    member: grantResult.member,
+    stamps: grantResult.stampResults.length === 1 && !Array.isArray(request.points) ? grantResult.stampResults[0] : grantResult.stampResults,
+    stampGrants: grantResult.stampResults,
+    serviceTime: grantResult.serviceTimeResult ? { minutes: serviceTime.minutes } : null,
+    notification
+  };
+}
+
+function normalizeMemberGrantPoints_(lineUserId, rawPoints, note, requestId) {
+  const inputs = Array.isArray(rawPoints) ? rawPoints : [rawPoints];
+  if (!inputs.length || inputs.length > 20) throw new ApiError(400, 'INVALID_MEMBER_GRANT', '一次最多可發放 20 張不同集點卡。');
+  const cardIds = {};
+  return inputs.map(function(input, index) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'INVALID_MEMBER_GRANT', '集點發放資料格式不合法。');
+    const stamp = normalizeStampAddRequest_({ lineUserId, cardId: input.cardId, amount: input.amount, note, requestId: requestId + (Array.isArray(rawPoints) ? '_points_' + (index + 1) : '_points') });
+    if (cardIds[stamp.cardId]) throw new ApiError(400, 'INVALID_MEMBER_GRANT', '同一次發放不可重複選擇同一張集點卡。');
+    cardIds[stamp.cardId] = true;
+    return stamp;
+  });
+}
+
+function validateMemberGrantTargetsLocked_(lineUserId, stamps, serviceTime) {
+  const member = findRecordWithRow_('Members', 'line_user_id', lineUserId);
+  if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
+  if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法發放福利。');
+  (Array.isArray(stamps) ? stamps : []).forEach(function(stamp) {
+    const card = findRecordWithRow_('PointCards', 'card_id', stamp.cardId);
+    if (!card || String(card.record.status || '') !== 'active') throw new ApiError(400, 'CARD_NOT_ACTIVE', '只能發放啟用中的集點卡。');
+    if (pointCardIsExpired_(card.record)) throw new ApiError(410, 'CARD_EXPIRED', '集點卡已超過使用期限，無法發放點數。');
+  });
+  if (serviceTime && (serviceTime.minutes < 1 || serviceTime.minutes > MEMBERSHIP_SERVICE_MINUTES_MAX_GRANT_)) throw new ApiError(400, 'INVALID_SERVICE_TIME', '服務時間不合法。');
+  return member.record;
+}
+
+function memberGrantNotificationText_(member, stampResults, serviceTime) {
+  const lines = ['會員福利已更新', String(member && member.displayName || '會員') + '，您好！'];
+  (Array.isArray(stampResults) ? stampResults : []).forEach(function(result) {
+    lines.push('・' + String(result.cardTitle || '集點卡') + '：+' + String(result.amount || 0) + ' 點');
+  });
+  if (serviceTime) lines.push('・消費服務時間：+' + String(serviceTime.minutes) + ' 分鐘');
+  lines.push('請開啟會員中心查看最新進度。');
+  return lines.join('\n').substring(0, MEMBERSHIP_LINE_MESSAGE_MAX_LENGTH_);
+}
+
+function lineNotificationForClient_(record) {
+  const status = String(record && record.status || 'skipped');
+  const messages = {
+    sent: 'LINE 官方帳號通知已發送。',
+    not_configured: '資料已發放，但尚未設定 LINE 官方帳號通知。',
+    failed: '資料已發放，但 LINE 官方帳號通知未送出，請檢查官方帳號推播設定。',
+    pending: '資料已發放，LINE 官方帳號通知仍在處理中。',
+    skipped: '資料已發放。'
+  };
+  return { status, message: messages[status] || messages.failed };
+}
+
+function dispatchMemberGrantLineNotification_(record) {
+  const properties = typeof PropertiesService !== 'undefined' ? PropertiesService.getScriptProperties() : null;
+  const token = properties ? String(properties.getProperty(MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN_PROPERTY_) || '').trim() : '';
+  if (!token) return updateLineNotificationStatus_(record, 'not_configured', 'LINE_CHANNEL_ACCESS_TOKEN_MISSING');
+  if (typeof UrlFetchApp === 'undefined') return updateLineNotificationStatus_(record, 'failed', 'URL_FETCH_UNAVAILABLE');
+  try {
+    const response = UrlFetchApp.fetch(MEMBERSHIP_LINE_PUSH_URL_, { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + token }, payload: JSON.stringify({ to: String(record.line_user_id || ''), messages: [{ type: 'text', text: String(record.message || '').substring(0, MEMBERSHIP_LINE_MESSAGE_MAX_LENGTH_) }] }), muteHttpExceptions: true });
+    const responseCode = Number(response && response.getResponseCode && response.getResponseCode());
+    return updateLineNotificationStatus_(record, responseCode >= 200 && responseCode < 300 ? 'sent' : 'failed', responseCode >= 200 && responseCode < 300 ? '' : 'LINE_PUSH_HTTP_' + responseCode);
+  } catch (_) {
+    return updateLineNotificationStatus_(record, 'failed', 'LINE_PUSH_REQUEST_FAILED');
+  }
+}
+
+function updateLineNotificationStatus_(record, status, errorCode) {
+  const updated = withDataLock_(function() {
+    const match = findRecordWithRow_('LineNotificationLogs', 'notification_id', String(record && record.notification_id || ''));
+    if (!match) return record;
+    const next = match.record; const now = nowIso_();
+    next.status = status; next.error_code = String(errorCode || ''); next.sent_at = status === 'sent' ? now : String(next.sent_at || ''); next.updated_at = now;
+    updateRecordAtRow_('LineNotificationLogs', match.rowNumber, next);
+    return next;
+  });
+  return lineNotificationForClient_(updated);
 }

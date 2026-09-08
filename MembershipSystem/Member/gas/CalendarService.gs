@@ -8,6 +8,7 @@ const CALENDAR_ITEM_BATCH_MAX_OPERATIONS_ = 20;
 
 function handleCalendarBootstrap_(identity, request) {
   const member = ensureMember_(identity);
+  if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
   const range = calendarRangeFromRequest_(request);
   const profile = calendarMemberProfileForClient_(member, identity);
   return {

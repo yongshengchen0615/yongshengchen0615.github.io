@@ -59,8 +59,8 @@ test('user clients expose separate entry points while admin uses one app', () =>
   assert.match(eventHtml, /\.\/app\.js/);
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
-  assert.match(calendarHtml, /\.\.\/shared\/common\.js\?v=calendar-\d{8}/);
-  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-\d{8}/);
+  assert.match(calendarHtml, /\.\.\/shared\/common\.js\?v=membership-join-\d{8}/);
+  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-membership-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
@@ -257,14 +257,14 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
   context.ensureMembershipStorage_();
   context.ensureMembershipStorage_();
   assert.ok(schemaChecks > 0);
-  assert.equal(schemaChecks, 16);
+  assert.equal(schemaChecks, 17);
 });
 
 
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-tier-style-20260908/);
+  assert.match(adminHtml, /styles\.css\?v=admin-grants-sort-20260908/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; overflow-x: hidden;/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -302,13 +302,44 @@ test('point-card usage history starts collapsed and renders only the latest five
   assert.match(pointsStyles, /\.ticket-history-summary \{ display: flex;/);
 });
 
+test('all user feature surfaces provide a membership join path', () => {
+  const common = read('shared/common.js');
+  assert.match(common, /function openMemberJoin\(config\)/);
+  assert.match(common, /window\.liff\.openWindow/);
+  ['points', 'event', 'calendar'].forEach((surface) => {
+    const html = read(`${surface}/index.html`);
+    const app = read(`${surface}/app.js`);
+    assert.match(html, /id="joinMemberButton"/);
+    assert.match(app, /MEMBERSHIP_REQUIRED/);
+    assert.match(app, /openMemberJoin\(state\.config\)/);
+  });
+  const memberService = read('gas/MemberService.gs');
+  assert.match(memberService, /membership_status: 'pending'/);
+  assert.match(memberService, /record\.membership_status = 'active'/);
+  assert.match(memberService, /function assertMemberJoined_\(member\)/);
+  ['PointCardService.gs', 'EventTicketService.gs', 'CalendarService.gs'].forEach((file) => assert.match(read(`gas/${file}`), /assertMemberJoined_/));
+});
+
+test('point-card administration exposes persisted sorting and batch grant controls', () => {
+  const adminApp = read('admin/app.js');
+  const pointService = read('gas/PointCardService.gs');
+  const storage = read('gas/Storage.gs');
+  assert.match(adminApp, /prepareCardSortOrderEditor/);
+  assert.match(adminApp, /sortOrder/);
+  assert.match(adminApp, /payload\.points = points/);
+  assert.match(adminApp, /addGrantPointRow/);
+  assert.match(pointService, /sort_order/);
+  assert.match(pointService, /comparePointCards_/);
+  assert.match(storage, /LineNotificationLogs/);
+});
+
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-tier-style-20260908'],
-    ['points', 'points-ticket-history-20260908'],
-    ['event', 'event-ticket-lottery-20260908'],
-    ['calendar', 'calendar-ui-layout-20260906'],
-    ['admin', 'admin-tier-style-20260908']
+    ['member', 'member-membership-20260908'],
+    ['points', 'points-membership-20260908'],
+    ['event', 'event-history-membership-20260908'],
+    ['calendar', 'calendar-membership-20260908'],
+    ['admin', 'admin-grants-sort-20260908']
   ];
 
   surfaces.forEach(([surface, version]) => {

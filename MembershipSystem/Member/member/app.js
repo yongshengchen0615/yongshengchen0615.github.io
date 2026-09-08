@@ -21,7 +21,7 @@
       state.idToken = await window.MemberSystem.signIn(state.config, 'member');
       const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
       state.profile = result.profile || {};
-      if (!state.profile.profileComplete) return setView('profileSetup');
+      if (!state.profile.profileComplete || state.profile.membershipRequired) return setView('profileSetup');
       renderProfile(state.profile);
       setView('member');
     } catch (error) {
@@ -80,7 +80,7 @@
     }
   }
 
-  function setSaving(saving) { els.saveProfileButton.disabled = saving || state.profileSaveLocked; els.saveProfileButton.textContent = saving ? '儲存中…' : state.profileSaveLocked ? '請重新整理確認' : '儲存並開啟會員卡'; }
+  function setSaving(saving) { els.saveProfileButton.disabled = saving || state.profileSaveLocked; els.saveProfileButton.textContent = saving ? '加入中…' : state.profileSaveLocked ? '請重新整理確認' : '加入會員並開啟會員卡'; }
   function showUncertainSaveMessage() { showMessage('無法確認資料是否已儲存。請先重新整理確認；在確認前請勿再次送出。'); els.refreshProfileButton.classList.remove('hidden'); els.saveProfileButton.disabled = true; els.saveProfileButton.textContent = '請重新整理確認'; }
   function showMessage(message) { els.profileFormMessage.textContent = message; els.profileFormMessage.classList.remove('hidden'); }
   function hideMessage() { els.profileFormMessage.textContent = ''; els.profileFormMessage.classList.add('hidden'); if (!state.profileSaveLocked) els.refreshProfileButton.classList.add('hidden'); }

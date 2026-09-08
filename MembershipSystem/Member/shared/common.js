@@ -209,6 +209,18 @@
     }
   }
 
+  function openMemberJoin(config) {
+    const memberLiffId = String(config && config.memberLiffId || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(memberLiffId)) return false;
+    const url = `https://liff.line.me/${encodeURIComponent(memberLiffId)}`;
+    if (window.liff && typeof window.liff.openWindow === 'function') {
+      window.liff.openWindow({ url, external: false });
+      return true;
+    }
+    if (window.location && typeof window.location.assign === 'function') window.location.assign(url);
+    return true;
+  }
+
   function formatDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value ? String(value) : '—';
@@ -226,5 +238,5 @@
     return Array.from(text).slice(0, 2).join('') || '會員';
   }
 
-  window.MemberSystem = Object.freeze({ clientError, loadConfig, validateConfig, signIn, request, logout, formatDate, formatDateTime, initials });
+  window.MemberSystem = Object.freeze({ clientError, loadConfig, validateConfig, signIn, request, logout, openMemberJoin, formatDate, formatDateTime, initials });
 })();

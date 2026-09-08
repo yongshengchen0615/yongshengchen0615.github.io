@@ -33,6 +33,7 @@ Member/
    - `MEMBERSHIP_POINTS_LINE_CHANNEL_ID`：集點卡 LIFF 所屬 LINE Login Channel ID，例如 `2010787602`
    - `MEMBERSHIP_ADMIN_LINE_CHANNEL_ID`：Admin LIFF 所屬 LINE Login Channel ID
    - `MEMBERSHIP_EVENT_LINE_CHANNEL_ID`：活動票券 LIFF 所屬 LINE Login Channel ID
+   - `MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN`：選填；LINE Official Account Messaging API 的 Channel access token，只放 GAS Script properties，用於管理端發放後推播通知
    - `MEMBERSHIP_SYSTEM_SPREADSHEET_ID`：選填；設定後固定使用此 Spreadsheet，不設定時才會使用目前綁定的 Spreadsheet，或建立 `Lumen Club Membership Data`
 3. 執行 `setupMembershipSystem()` 完成授權與資料表建立。
 4. Deploy → New deployment → Web app：Execute as 選自己、Who has access 選 Anyone。
@@ -74,9 +75,9 @@ Member、Points、Event 與 Admin 使用不同 LIFF；各 surface 的 LIFF 可�
 
 GAS 會建立並維護以下 schema：
 
-- `Members`：會員身份、會員編號、狀態、登入時間，以及首次登入填寫的生日與電話；舊有的 `tier` 欄位僅供相容，會員顯示等級一律由累積消費服務時間計算。
+- `Members`：會員身份、會員編號、狀態、登入時間，以及首次登入填寫的生日與電話；`membership_status` 為新登入使用者的加入狀態，完成會員資料後才會變成 `active`。舊有資料沒有此欄位時相容視為已加入；舊有的 `tier` 欄位僅供相容，會員顯示等級一律由累積消費服務時間計算。
 - `Admins`：管理端授權。第一次登入只會建立 `role=none`、`status=pending`，手動改成 `admin` / `active` 後才能進入。
-- `PointCards`：集點卡設定、相容用的最後回饋文字、公開狀態、識別色與使用期限；集點卡採持續累積的兌換制，不再以卡片完成點數作為上限。封存會保留這些資料；永久刪除則會移除它與相依紀錄。
+- `PointCards`：集點卡設定、相容用的最後回饋文字、公開狀態、識別色、使用期限與 `sort_order`；會員端依排序數字由小到大顯示，相同排序依建立時間。集點卡採持續累積的兌換制，不再以卡片完成點數作為上限。封存會保留這些資料；永久刪除則會移除它與相依紀錄。
 - `PointCardTicketTemplates`：管理端票券庫；統一管理票券名稱、類型、票券說明、使用方式、使用說明與抽獎獎項。
 - `PointCardRewards`：每張集點卡的節點設定；只保存需要集到的點數與選取的票券 ID，兌換時會扣除相同點數。試算表中的舊 `consume_stamps` 欄位僅為相容保留，不再作為設定或扣點依據。
 - `PointCardLotteryPrizes`：舊版抽獎券節點的獎項資料，保留相容與歷史讀取；新抽獎券的獎項設定儲存在票券庫。
@@ -87,6 +88,7 @@ GAS 會建立並維護以下 schema：
 - `PointBalances`：每位會員在每張卡的目前餘額。
 - `PointEntries`：點數不可變流水紀錄；管理端發點保留 request ID，票券核銷則以 `entry_type`、`reference_type`、`reference_id` 明確連回對應票券，避免同一次核銷被解讀成兩筆消耗。
 - `ServiceTimeEntries`：管理端登錄的消費服務時間不可變流水；每筆帶有管理員、備註與 request ID，會員卡顯示其累積分鐘數。
+- `LineNotificationLogs`：管理端合併發放後的 LINE 官方帳號通知狀態；以合併發放 request ID 去重，不保存 Channel access token。
 - `MembershipTierSettings`：四個固定會員等級（一般、銀級、金級、白金）的升級門檻與會員卡樣式；一般會員固定從 0 分鐘開始，其餘三個門檻必須依序遞增。會員卡樣式使用固定白名單：森林綠、午夜藍、海灣青、夕陽橘、薰衣草紫、玫瑰粉、金曜棕、鉑金灰、薄荷綠、櫻桃紅。
 - `AuditLogs`：管理端會員/卡片/集點操作紀錄。
 
@@ -109,7 +111,7 @@ GAS 會建立並維護以下 schema：
 - `admin.tickets.save`
 - `admin.stamps.add`
 - `admin.service_minutes.add`
-- `admin.member-grants.add`（管理端合併發放；可一次寫入集點、服務時間或兩者）
+- `admin.member-grants.add`（管理端合併發放；`points` 可傳多列 `{ cardId, amount }`，可一次寫入不同集點卡、服務時間或兩者；設定 Channel access token 後會推播 LINE 官方帳號通知）
 - `user.pointcard.ticket.redeem`
 - `user.event.bootstrap`（Event LIFF）
 - `user.event.ticket.claim`（Event LIFF；每位會員每張限領一次）
@@ -117,6 +119,10 @@ GAS 會建立並維護以下 schema：
 - `admin.event-tickets.save`
 - `admin.event-tickets.delete`（刪除活動票券設定；保留已領取的票券快照與稽核紀錄）
 - `admin.calendar-items.batch`（一次新增／修改／刪除最多 20 筆日曆項目）
+
+所有用戶端功能都需要已加入會員。新使用者開啟 Points、Event 或 Calendar LIFF 時，伺服器會回傳 `MEMBERSHIP_REQUIRED`，畫面會提供「前往加入會員」按鈕；使用者先在 Member LIFF 填寫生日與電話完成加入後，才能使用其他用戶端功能。這項檢查也會套用到集點卡票券核銷與活動票券領取／使用，不能只靠前端繞過。活動票券使用紀錄與集點卡相同，預設以條列收合，點擊展開後只顯示最新 5 筆，仍可點開查看票券快照與抽獎結果。
+
+管理端合併發放的 `points` 可使用陣列同時指定多張不同集點卡與各自點數，例如 `[{ cardId: "PC-A", amount: 2 }, { cardId: "PC-B", amount: 5 }]`。同一個 request ID 會讓點數、服務時間與通知都保持冪等。若要啟用 LINE 官方帳號推播，請將 Official Account Messaging API token 放在 `MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN`；token 不可放入公開 `config.json`。本地測試不會送出真實推播，部署後仍需用測試會員確認官方帳號與 LINE Login 使用者已正確連結。
 
 `admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，並以 `ticketTemplateId` 選擇票券庫中的票券；兌換時會自動扣除相同的 `thresholdStamps` 點數。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
 

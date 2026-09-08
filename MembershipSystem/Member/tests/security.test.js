@@ -76,9 +76,13 @@ test('spreadsheet writes protect formulas and point entries are append-only', ()
   assert.match(code, /case 'admin\.member-grants\.add':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleMemberGrantAdd_/);
   assert.match(code, /case 'admin\.member-tiers\.save':[\s\S]*?authorizeAdmin_\(identity\)[\s\S]*?handleMembershipTierSettingsSave_/);
   assert.match(memberService, /function handleMemberGrantAdd_/);
-  assert.match(memberService, /requestId \+ '_points'/);
+  assert.match(memberService, /normalizeMemberGrantPoints_/);
+  assert.match(memberService, /'_points_'/);
   assert.match(memberService, /requestId \+ '_service'/);
   assert.match(pointService, /function addStampLocked_/);
+  assert.match(memberService, /MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN/);
+  assert.match(memberService, /api\.line\.me\/v2\/bot\/message\/push/);
+  assert.match(memberService, /assertMemberJoined_/);
 });
 
 test('CSP allows the LIFF subwindow without unsafe-eval', () => {

@@ -22,13 +22,14 @@ function loadMemberService() {
       { tier_key: 'gold', tier_label: '金級會員', required_service_minutes: '1800', updated_by: 'system', updated_at: '2026-09-03T00:00:00.000Z' },
       { tier_key: 'platinum', tier_label: '白金會員', required_service_minutes: '3600', updated_by: 'system', updated_at: '2026-09-03T00:00:00.000Z' }
     ],
-    PointCards: [{ card_id: 'PC-1', title: '測試集點卡', target_stamps: '10', reward_title: '', expiry_mode: 'unlimited', expires_on: '', status: 'active', updated_at: '2026-09-03T00:00:00.000Z' }],
+    PointCards: [{ card_id: 'PC-1', title: '測試集點卡', target_stamps: '10', reward_title: '', expiry_mode: 'unlimited', expires_on: '', status: 'active', updated_at: '2026-09-03T00:00:00.000Z' }, { card_id: 'PC-2', title: '第二張集點卡', target_stamps: '8', reward_title: '', expiry_mode: 'unlimited', expires_on: '', status: 'active', updated_at: '2026-09-03T00:00:00.000Z' }],
     PointBalances: [],
     PointEntries: [],
     PointCardRewards: [],
     PointCardLotteryPrizes: [],
     PointCardTicketTemplates: [],
-    PointCardTickets: []
+    PointCardTickets: [],
+    LineNotificationLogs: []
   };
   const audit = [];
   let id = 0;
@@ -164,6 +165,8 @@ test('combined member grants support either type or both without duplicate write
   assert.equal(first.serviceTime.minutes, 75);
   assert.equal(first.member.serviceMinutesTotal, 75);
   assert.equal(replay.member.serviceMinutesTotal, 75);
+  assert.equal(first.notification.status, 'not_configured');
+  assert.equal(replay.notification.status, 'not_configured');
   assert.deepEqual(audit.map((record) => record.action), ['STAMP_ADD', 'SERVICE_TIME_ADD']);
 
   context.handleMemberGrantAdd_(identity, admin, {
@@ -186,4 +189,44 @@ test('combined member grants support either type or both without duplicate write
     () => context.handleMemberGrantAdd_(identity, admin, { lineUserId: 'U-1', requestId: 'request-member-grant-0004' }),
     (error) => error instanceof TestApiError && error.code === 'INVALID_MEMBER_GRANT'
   );
+});
+
+test('combined member grants can issue different point amounts to different cards atomically and notify once', () => {
+  const { context, rows, TestApiError } = loadMemberService();
+  const result = context.handleMemberGrantAdd_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
+    lineUserId: 'U-1', requestId: 'request-member-grant-batch-01', points: [{ cardId: 'PC-1', amount: 2 }, { cardId: 'PC-2', amount: 7 }]
+  });
+  const replay = context.handleMemberGrantAdd_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
+    lineUserId: 'U-1', requestId: 'request-member-grant-batch-01', points: [{ cardId: 'PC-1', amount: 2 }, { cardId: 'PC-2', amount: 7 }]
+  });
+  assert.deepEqual(result.stamps.map((stamp) => [stamp.cardId, stamp.stamps]), [['PC-1', 2], ['PC-2', 7]]);
+  assert.deepEqual(replay.stamps.map((stamp) => [stamp.cardId, stamp.stamps]), [['PC-1', 2], ['PC-2', 7]]);
+  assert.deepEqual(rows.PointBalances.map((balance) => [balance.card_id, balance.stamps]), [['PC-1', '2'], ['PC-2', '7']]);
+  assert.equal(rows.PointEntries.length, 2);
+  assert.equal(rows.LineNotificationLogs.length, 1);
+  assert.equal(rows.LineNotificationLogs[0].status, 'not_configured');
+  assert.throws(
+    () => context.handleMemberGrantAdd_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, { lineUserId: 'U-1', requestId: 'request-member-grant-batch-02', points: [{ cardId: 'PC-1', amount: 1 }, { cardId: 'PC-1', amount: 4 }] }),
+    (error) => error instanceof TestApiError && error.code === 'INVALID_MEMBER_GRANT'
+  );
+  assert.equal(rows.PointEntries.length, 2);
+});
+
+test('member grant notification uses the configured LINE push endpoint without returning the token', () => {
+  const { context, rows } = loadMemberService();
+  let request;
+  context.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'test-channel-access-token' }) };
+  context.UrlFetchApp = { fetch: (url, options) => { request = { url, options }; return { getResponseCode: () => 200 }; } };
+  const result = context.handleMemberGrantAdd_({ lineUserId: 'ADMIN-1' }, { role: 'admin' }, {
+    lineUserId: 'U-1', requestId: 'request-member-grant-notify-01', points: [{ cardId: 'PC-1', amount: 4 }, { cardId: 'PC-2', amount: 1 }]
+  });
+  assert.equal(result.notification.status, 'sent');
+  assert.equal(rows.LineNotificationLogs[0].status, 'sent');
+  assert.equal(request.url, 'https://api.line.me/v2/bot/message/push');
+  assert.equal(request.options.headers.Authorization, 'Bearer test-channel-access-token');
+  const body = JSON.parse(request.options.payload);
+  assert.equal(body.to, 'U-1');
+  assert.match(body.messages[0].text, /測試集點卡：\+4 點/);
+  assert.match(body.messages[0].text, /第二張集點卡：\+1 點/);
+  assert.doesNotMatch(JSON.stringify(result), /test-channel-access-token/);
 });

@@ -6,12 +6,12 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>集點卡｜Lumen Club</title>
-  <link rel="stylesheet" href="./styles.css?v=points-ticket-history-20260908">
+  <link rel="stylesheet" href="./styles.css?v=points-membership-20260908">
   <link rel="stylesheet" href="../shared/membership-progress.css?v=membership-progress-ui-layout-20260906">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="../shared/common.js" defer></script>
+  <script src="../shared/common.js?v=membership-join-20260908" defer></script>
   <script src="../shared/membership-progress.js?v=membership-progress-20260905" defer></script>
-  <script src="./app.js?v=points-ticket-history-20260908" defer></script>
+  <script src="./app.js?v=points-membership-20260908" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -27,6 +27,7 @@
       <p class="kicker">Unable to continue</p>
       <h1 id="errorTitle">集點卡暫時無法載入</h1>
       <p id="errorMessage"></p>
+      <button id="joinMemberButton" class="button button-dark hidden" type="button">前往加入會員</button>
       <button id="retryButton" class="button button-dark" type="button">重新整理</button>
     </section>
 

@@ -260,6 +260,16 @@ test('legacy used tickets remain one history item without scanning the point led
   assert.equal(pointEntryReads, 0);
 });
 
+test('point cards sort by the persisted display order before stable fallbacks', () => {
+  const { context } = loadPointCardService();
+  const cards = [
+    { cardId: 'PC-B', title: '第二張', sortOrder: 20, createdAt: '2026-09-02' },
+    { cardId: 'PC-A', title: '第一張', sortOrder: 10, createdAt: '2026-09-03' },
+    { cardId: 'PC-C', title: '同序較早', sortOrder: 10, createdAt: '2026-09-01' }
+  ].sort(context.comparePointCards_);
+  assert.deepEqual(cards.map((card) => card.cardId), ['PC-C', 'PC-A', 'PC-B']);
+});
+
 test('point-card bootstrap uses one coherent snapshot instead of repeated full-sheet reads', () => {
   const { context, rows } = loadTicketService();
   const calls = {};

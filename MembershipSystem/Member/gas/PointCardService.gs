@@ -5,12 +5,14 @@ const POINT_CARD_MAX_REWARDS_ = 30;
 const POINT_CARD_MAX_THRESHOLD_STAMPS_ = 100;
 const POINT_CARD_MAX_LOTTERY_PRIZES_ = 30;
 const POINT_CARD_RATE_BASIS_POINTS_ = 10000;
+const POINT_CARD_MAX_SORT_ORDER_ = 100000;
 const POINT_CARD_TICKET_TEMPLATE_STATUSES_ = Object.freeze(['active', 'draft', 'archived']);
 const POINT_CARD_TICKET_STATUS_AVAILABLE_ = 'available';
 const POINT_CARD_TICKET_STATUS_USED_ = 'used';
 
 function handlePointCardBootstrap_(identity) {
   const member = ensureMember_(identity);
+  if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
   let snapshot = readPointCardSnapshot_();
   if (pointCardTicketIssuanceRequired_(identity.lineUserId, snapshot)) {
     snapshot = withDataLock_(function() {
@@ -195,7 +197,19 @@ function readPointCards_(includeAdminDetails, snapshot) {
   const rewardsByCard = snapshot ? snapshot.rewardsByCard : pointCardRewardsByCard_();
   const ticketTemplatesById = snapshot ? snapshot.ticketTemplatesById : pointCardTicketTemplatesById_();
   const cards = snapshot ? snapshot.cards : readRecords_('PointCards');
-  return cards.map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || [], includeAdminDetails, ticketTemplatesById); }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return cards.map(function(card) { return pointCardForClient_(card, rewardsByCard[String(card.card_id || '')] || [], includeAdminDetails, ticketTemplatesById); }).sort(comparePointCards_);
+}
+
+function pointCardSortOrder_(card) {
+  const value = Number(card && (card.sort_order !== undefined ? card.sort_order : card.sortOrder));
+  return Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function comparePointCards_(left, right) {
+  return pointCardSortOrder_(left) - pointCardSortOrder_(right)
+    || String(left && (left.createdAt || left.created_at) || '').localeCompare(String(right && (right.createdAt || right.created_at) || ''))
+    || String(left && (left.title || '')).localeCompare(String(right && (right.title || '')))
+    || String(left && (left.cardId || left.card_id) || '').localeCompare(String(right && (right.cardId || right.card_id) || ''));
 }
 
 function pointCardForClient_(card, configuredRewards, includeAdminDetails, ticketTemplatesById) {
@@ -204,7 +218,7 @@ function pointCardForClient_(card, configuredRewards, includeAdminDetails, ticke
     ? configuredRewards.map(function(reward) { return pointCardRewardForClient_(reward, includeAdminDetails, ticketTemplatesById); }).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
     : legacyPointCardReward_(card);
   const finalReward = rewards.length ? rewards[rewards.length - 1] : null;
-  const clientCard = { cardId, title: String(card.title || ''), description: String(card.description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || (finalReward && finalReward.rewardTitle) || ''), rewards, expiryMode: pointCardExpiryMode_(card), expiresOn: pointCardExpiresOn_(card), expired: pointCardIsExpired_(card), status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
+  const clientCard = { cardId, title: String(card.title || ''), description: String(card.description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || (finalReward && finalReward.rewardTitle) || ''), rewards, expiryMode: pointCardExpiryMode_(card), expiresOn: pointCardExpiresOn_(card), expired: pointCardIsExpired_(card), status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), sortOrder: pointCardSortOrder_(card), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
   return clientCard;
 }
 
@@ -433,12 +447,14 @@ function handlePointCardSave_(identity, admin, request) {
   const accent = String(input.accent || '').trim();
   const expiryMode = String(input.expiryMode || 'unlimited').trim().toLowerCase();
   const expiresOn = String(input.expiresOn || '').trim();
+  const hasSortOrder = Object.prototype.hasOwnProperty.call(input, 'sortOrder');
+  const sortOrder = hasSortOrder ? Number(input.sortOrder) : 0;
   const expected = String(request.expectedUpdatedAt || '').trim();
   const hasRewards = Object.prototype.hasOwnProperty.call(input, 'rewards');
   if (!title || title.length > 80 || description.length > 240 || (!hasRewards && (!rewardTitle || rewardTitle.length > 100))) throw new ApiError(400, 'INVALID_CARD', '集點卡名稱、說明或回饋內容不合法。');
   const ticketTemplatesById = pointCardTicketTemplatesById_();
   const rewards = hasRewards ? normalizePointCardRewards_(input.rewards, POINT_CARD_MAX_THRESHOLD_STAMPS_, ticketTemplatesById) : null;
-  if (['active', 'draft', 'archived'].indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(accent) || ['unlimited', 'date'].indexOf(expiryMode) < 0 || (expiryMode === 'date' && !isValidDateOnly_(expiresOn))) throw new ApiError(400, 'INVALID_CARD', '集點卡狀態、識別色或使用期限不合法。');
+  if (['active', 'draft', 'archived'].indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(accent) || ['unlimited', 'date'].indexOf(expiryMode) < 0 || (expiryMode === 'date' && !isValidDateOnly_(expiresOn)) || (hasSortOrder && (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > POINT_CARD_MAX_SORT_ORDER_))) throw new ApiError(400, 'INVALID_CARD', '集點卡狀態、識別色、使用期限或排序不合法。');
 
   return withDataLock_(function() {
     const now = nowIso_();
@@ -459,7 +475,7 @@ function handlePointCardSave_(identity, admin, request) {
           ? Math.max.apply(null, existingRewards.map(function(reward) { return Number(reward.threshold_stamps || 0); }))
           : Number.isInteger(storedTargetStamps) && storedTargetStamps >= 1 && storedTargetStamps <= POINT_CARD_MAX_THRESHOLD_STAMPS_ ? storedTargetStamps : 10;
     if (!hasRewards && existingRewards.some(function(existingReward) { return Number(existingReward.threshold_stamps || 0) > targetStamps; })) throw new ApiError(400, 'INVALID_CARD_REWARDS', '舊版集點卡完成點數不可低於既有節點點數，請一併更新節點設定。');
-    card.title = title; card.description = description; card.target_stamps = String(targetStamps); card.reward_title = hasRewards ? rewards[rewards.length - 1].reward_title : rewardTitle; card.status = status; card.accent = accent.toUpperCase(); card.expiry_mode = expiryMode; card.expires_on = expiryMode === 'date' ? expiresOn : ''; card.updated_by = identity.lineUserId; card.updated_at = now;
+    card.title = title; card.description = description; card.target_stamps = String(targetStamps); card.reward_title = hasRewards ? rewards[rewards.length - 1].reward_title : rewardTitle; card.status = status; card.accent = accent.toUpperCase(); card.expiry_mode = expiryMode; card.expires_on = expiryMode === 'date' ? expiresOn : ''; card.sort_order = String(hasSortOrder ? sortOrder : pointCardSortOrder_(card)); card.updated_by = identity.lineUserId; card.updated_at = now;
     if (rowNumber) updateRecordAtRow_('PointCards', rowNumber, card); else appendRecord_('PointCards', card);
     if (hasRewards) replacePointCardRewards_(card.card_id, rewards, now);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_SAVE', target_type: 'point_card', target_id: card.card_id, result: 'success', detail: 'Point card saved', created_at: now });
@@ -626,7 +642,8 @@ function addStampLocked_(identity, admin, stamp) {
     const entry = prior.record;
     if (String(entry.line_user_id || '') !== lineUserId || String(entry.card_id || '') !== cardId || Number(entry.amount || 0) !== amount || String(entry.note || '') !== note || String(entry.created_by || '') !== String(identity.lineUserId || '')) throw new ApiError(409, 'REQUEST_REUSE_MISMATCH', '這個發點請求已用於不同資料，請重新開啟發點視窗。');
     const currentBalance = findBalance_(lineUserId, cardId);
-    return { lineUserId, cardId, stamps: currentBalance ? Number(currentBalance.record.stamps || 0) : 0, updatedAt: String(currentBalance && currentBalance.record.updated_at || entry.created_at || '') };
+    const priorCard = findRecordWithRow_('PointCards', 'card_id', cardId);
+    return { created: false, lineUserId, cardId, cardTitle: String(priorCard && priorCard.record.title || ''), amount, stamps: currentBalance ? Number(currentBalance.record.stamps || 0) : 0, updatedAt: String(currentBalance && currentBalance.record.updated_at || entry.created_at || '') };
   }
   const member = findRecordWithRow_('Members', 'line_user_id', lineUserId); if (!member) throw new ApiError(404, 'MEMBER_NOT_FOUND', '找不到會員資料。');
   if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法補登點數。');
@@ -637,7 +654,7 @@ function addStampLocked_(identity, admin, stamp) {
   issuePointCardTicketsForBalance_(lineUserId, card.record, current, nextBalance, now);
   appendRecord_('PointEntries', { entry_id: 'PE-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, card_id: cardId, amount: String(amount), note, created_by: identity.lineUserId, created_at: now, request_id: requestId });
   appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'STAMP_ADD', target_type: 'point_balance', target_id: lineUserId + ':' + cardId, result: 'success', detail: 'Added ' + amount + ' stamp(s)', created_at: now });
-  return { lineUserId, cardId, stamps: nextBalance, updatedAt: now };
+  return { created: true, lineUserId, cardId, cardTitle: String(card.record.title || ''), amount, stamps: nextBalance, updatedAt: now };
 }
 
 function findBalance_(lineUserId, cardId) {
@@ -796,6 +813,8 @@ function handleTicketRedeem_(identity, request) {
     const ticketMatch = findRecordWithRow_('PointCardTickets', 'ticket_id', ticketId);
     if (!ticketMatch || String(ticketMatch.record.line_user_id || '') !== String(identity.lineUserId)) throw new ApiError(404, 'TICKET_NOT_FOUND', '找不到這張票券。');
     const ticket = ticketMatch.record;
+    const member = findRecordWithRow_('Members', 'line_user_id', identity.lineUserId);
+    if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member && member.record);
     const card = assertTicketCardUsable_(ticket);
     if (String(ticket.status || '') === POINT_CARD_TICKET_STATUS_USED_) throw new ApiError(409, 'TICKET_ALREADY_USED', '這張票券已使用。', { usedAt: String(ticket.used_at || '') });
     const now = nowIso_();

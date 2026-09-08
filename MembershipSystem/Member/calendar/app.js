@@ -6,8 +6,9 @@
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
+    els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.previousMonthButton.addEventListener('click', () => changeMonth(-1));
     els.nextMonthButton.addEventListener('click', () => changeMonth(1));
@@ -328,8 +329,11 @@
   }
 
   function showError(error) {
-    els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '活動日曆暫時無法載入';
-    els.errorMessage.textContent = error && error.message ? error.message : '請稍後重新整理再試。';
+    const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED';
+    els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '活動日曆暫時無法載入';
+    els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用活動日曆功能。' : error && error.message ? error.message : '請稍後重新整理再試。';
+    els.joinMemberButton.classList.toggle('hidden', !membershipRequired);
+    els.retryButton.classList.toggle('hidden', membershipRequired);
     setView('error');
   }
 })();
