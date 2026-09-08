@@ -290,6 +290,19 @@ test('admin mobile layout contains LINE WebView overflow guards', () => {
   assert.doesNotMatch(adminStyles, /\.card-list > div:last-child \{ display: flex; overflow-x: auto;/);
 });
 
+test('member profile date input is LINE-safe and touch-friendly', () => {
+  const memberHtml = read('member/index.html');
+  const memberStyles = read('member/styles.css');
+  assert.match(memberHtml, /styles\.css\?v=member-membership-20260908-date-ui/);
+  assert.match(memberHtml, /<div class="profile-field">\s*<label for="profileBirthday">生日<\/label>/);
+  assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"/);
+  assert.match(memberHtml, /id="profileBirthdayHint" class="profile-field-help">點擊欄位選擇生日<\/small>/);
+  assert.match(memberStyles, /\.profile-form, \.profile-field, \.date-input-shell \{ min-width: 0; max-width: 100%; \}/);
+  assert.match(memberStyles, /\.date-input-shell input\[type="date"\] \{ display: block; box-sizing: border-box; inline-size: 100%; min-inline-size: 0; max-inline-size: 100%; min-height: 46px;/);
+  assert.match(memberStyles, /::-webkit-datetime-edit-fields-wrapper/);
+  assert.match(memberStyles, /@media \(max-width: 620px\) \{[\s\S]*\.profile-form input\[type="date"\] \{ min-height: 54px; padding: 12px 13px; font-size: 16px;/);
+});
+
 test('point-card usage history starts collapsed and renders only the latest five records', () => {
   const pointsHtml = read('points/index.html');
   const pointsApp = read('points/app.js');
@@ -335,7 +348,7 @@ test('point-card administration exposes persisted sorting and batch grant contro
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-membership-20260908'],
+    ['member', 'member-membership-20260908-date-ui'],
     ['points', 'points-membership-20260908'],
     ['event', 'event-history-membership-20260908'],
     ['calendar', 'calendar-membership-20260908'],

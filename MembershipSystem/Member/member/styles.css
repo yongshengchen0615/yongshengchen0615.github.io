@@ -28,6 +28,17 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(223, 107, 77, .4
 .button-dark { margin-top: 8px; color: var(--paper); background: var(--ink); }.button-refresh { color: var(--ink); background: transparent; border: 1px solid #ccd9d0; }
 .profile-form { width: min(100%, 420px); display: grid; gap: 14px; margin-top: 12px; padding: 20px; background: rgba(255, 253, 248, .78); border: 1px solid var(--line); border-radius: 18px; text-align: left; }
 .profile-form label { display: grid; gap: 7px; color: #5d6d64; font-size: 11px; font-weight: 850; }.profile-form input { width: 100%; border: 1px solid #d8e3db; border-radius: 9px; padding: 11px 12px; color: var(--ink); background: #fff; font: inherit; outline: none; }.profile-form input:focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(223, 107, 77, .1); }.profile-form .button { width: 100%; }.profile-form .button:disabled { cursor: wait; opacity: .65; }.form-message { padding: 10px 12px; border-radius: 9px; color: #a33f35; background: #fff0ec; font-size: 12px; line-height: 1.55; }
+.profile-form, .profile-field, .date-input-shell { min-width: 0; max-width: 100%; }
+.profile-field { display: grid; gap: 7px; }
+.profile-field > label { min-width: 0; max-width: 100%; }
+.profile-form input { display: block; min-width: 0; max-width: 100%; }
+.date-input-shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.date-input-shell > *, .date-input-shell input[type="date"] { min-width: 0; max-width: 100%; }
+.date-input-shell input[type="date"] { display: block; box-sizing: border-box; inline-size: 100%; min-inline-size: 0; max-inline-size: 100%; min-height: 46px; color-scheme: light; touch-action: manipulation; }
+.date-input-shell input[type="date"]::-webkit-datetime-edit,
+.date-input-shell input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+.date-input-shell input[type="date"]::-webkit-date-and-time-value { min-width: 0; max-width: 100%; }
+.profile-field-help { margin: -1px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .topbar { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin: 4px 0 30px; animation: rise-in .55s ease both; }
 .topbar h1 { margin: 5px 0 0; font-size: clamp(32px, 7vw, 58px); letter-spacing: -.08em; line-height: .9; }
 .account-menu { display: grid; justify-items: end; gap: 4px; font-size: 13px; font-weight: 800; }
@@ -62,6 +73,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(223, 107, 77, .4
   .avatar { width: 64px; height: 64px; font-size: 19px; }
   .pass-stamp { width: 58px; height: 58px; }
   .profile-details { grid-template-columns: 1fr; gap: 18px; padding: 20px 20px 0; }.profile-detail-list > div { padding-left: 14px; }
+  .profile-form input[type="date"] { min-height: 54px; padding: 12px 13px; font-size: 16px; border-radius: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 

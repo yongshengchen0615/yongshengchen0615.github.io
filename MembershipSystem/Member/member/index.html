@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>會員卡｜Lumen Club</title>
-  <link rel="stylesheet" href="./styles.css?v=member-membership-20260908">
+  <link rel="stylesheet" href="./styles.css?v=member-membership-20260908-date-ui">
   <link rel="stylesheet" href="../shared/membership-progress.css?v=membership-progress-ui-layout-20260906">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="../shared/common.js?v=membership-join-20260908" defer></script>
@@ -36,8 +36,17 @@
       <h1 id="profileSetupTitle">加入會員</h1>
       <p>請填寫生日與電話完成加入會員，之後即可使用會員卡、集點卡、活動票券與日曆。</p>
       <form id="profileForm" class="profile-form" novalidate>
-        <label>生日<input id="profileBirthday" type="date" autocomplete="bday" required></label>
-        <label>電話<input id="profilePhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required></label>
+        <div class="profile-field">
+          <label for="profileBirthday">生日</label>
+          <span class="date-input-shell">
+            <input id="profileBirthday" type="date" autocomplete="bday" aria-describedby="profileBirthdayHint" required>
+          </span>
+          <small id="profileBirthdayHint" class="profile-field-help">點擊欄位選擇生日</small>
+        </div>
+        <div class="profile-field">
+          <label for="profilePhone">電話</label>
+          <input id="profilePhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required>
+        </div>
         <div id="profileFormMessage" class="form-message hidden" role="alert"></div>
         <button id="saveProfileButton" class="button button-dark" type="submit">加入會員並開啟會員卡</button>
         <button id="refreshProfileButton" class="button button-refresh hidden" type="button">重新整理確認</button>
