@@ -478,6 +478,17 @@ test('admin content editors open in bounded dialogs and long ticket choices rema
   assert.match(adminStyles, /\.reward-row-summary[^\n]*overflow-wrap: anywhere/);
 });
 
+test('admin dialog backdrops dismiss only on touch-first devices', () => {
+  const adminApp = read('admin/app.js');
+  assert.match(adminApp, /function shouldDismissModalFromBackdrop\(event, modal\)/);
+  assert.match(adminApp, /event\.target !== modal/);
+  assert.match(adminApp, /matchMedia\('\(hover: none\) and \(pointer: coarse\)'\)/);
+  assert.match(adminApp, /shouldDismissModalFromBackdrop\(event, els\.memberModal\)/);
+  assert.match(adminApp, /shouldDismissModalFromBackdrop\(event, els\.grantModal\)/);
+  assert.match(adminApp, /shouldDismissModalFromBackdrop\(event, modal\).*closeEditorModal/);
+  assert.doesNotMatch(adminApp, /event\.target === els\.(?:memberModal|grantModal)/);
+});
+
 test('all LIFF frontends use a centered, contextual login progress view', () => {
   const loginTargets = { member: '會員卡', points: '集點卡', event: '活動票券', calendar: '活動日曆', admin: '管理端' };
   const syncProgressCeilings = { member: 92, points: 92, event: 92, calendar: 92, admin: 96 };
