@@ -22,14 +22,12 @@ function handleEventTicketBootstrap_(identity, request) {
     return {
       profile: { displayName: String(member.display_name || identity.displayName), tier: tier.label, tierKey: tier.tierKey, tierStyleKey: String(tier.styleKey || ''), serviceMinutesTotal, tierProgress: eventTicketTierProgress_(serviceMinutesTotal, tier) },
       offers: compact ? offers.map(compactEventTicketOffer_) : offers,
-      usedTickets: compact ? usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_).map(compactEventTicketOffer_) : usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_),
+      usedTickets: compact ? usedTickets.slice(0, EVENT_TICKET_HISTORY_LIMIT_).map(compactEventTicketOffer_) : usedTickets,
       usedTicketCount: usedTickets.length,
       compact
     };
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('event', identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function handleEventTicketDetail_(identity, request) {
@@ -49,9 +47,7 @@ function handleEventTicketDetail_(identity, request) {
     if (!offer) throw new ApiError(404, 'EVENT_TICKET_NOT_FOUND', '找不到可查看的活動票券。');
     return { offer };
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('event-detail:' + eventTicketId, identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function compactEventTicketOffer_(offer) {
@@ -89,9 +85,7 @@ function eventTicketClaimReferences_() {
     if (typeof readRecordFields_ === 'function') return readRecordFields_('EventTicketClaims', ['event_ticket_id', 'line_user_id']);
     return readRecords_('EventTicketClaims').map(function(claim) { return { event_ticket_id: claim.event_ticket_id, line_user_id: claim.line_user_id }; });
   };
-  return typeof membershipReadThroughCache_ === 'function'
-    ? membershipReadThroughCache_('event-ticket-claim-references', buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function readEventTicketSnapshot_(lineUserId, compactClaims) {
@@ -131,9 +125,7 @@ function readEventTicketSnapshot_(lineUserId, compactClaims) {
 
 function readEventTicketDefinitions_() {
   const buildPayload = function() { return readRecords_('EventTickets'); };
-  return typeof membershipReadThroughCache_ === 'function'
-    ? membershipReadThroughCache_('event-ticket-definitions', buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function eventTicketMemberTicketKey_(lineUserId, eventTicketId) {

@@ -9,22 +9,24 @@ const CALENDAR_ITEM_BATCH_MAX_OPERATIONS_ = 20;
 function handleCalendarBootstrap_(identity, request) {
   const member = ensureMember_(identity);
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
-  const range = calendarRangeFromRequest_(request);
+  const includeAll = Boolean(request && request.includeAll);
+  const range = includeAll ? null : calendarRangeFromRequest_(request);
   const profile = calendarMemberProfileForClient_(member, identity);
   const compact = Boolean(request && request.compact);
   const buildPayload = function() {
-    const items = readCalendarItemsForRange_(range.start, range.end, calendarMemberTierKey_(profile));
+    const items = includeAll
+      ? readCalendarItemsForMember_(calendarMemberTierKey_(profile))
+      : readCalendarItemsForRange_(range.start, range.end, calendarMemberTierKey_(profile));
     return {
       profile: profile,
-      rangeStart: range.start,
-      rangeEnd: range.end,
+      rangeStart: range ? range.start : '',
+      rangeEnd: range ? range.end : '',
       items: compact ? items.map(compactCalendarItemForClient_) : items,
-      compact: compact
+      compact: compact,
+      complete: includeAll
     };
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('calendar:' + range.start + ':' + range.end, identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function handleCalendarDateDetails_(identity, request) {
@@ -38,9 +40,7 @@ function handleCalendarDateDetails_(identity, request) {
     const items = readCalendarItemsForRange_(calendarDate, calendarDate, tierKey);
     return { calendarDate, items };
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('calendar-date:' + calendarDate, identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function calendarDateIsValid_(value) {
@@ -77,19 +77,19 @@ function readCalendarItems_(includeAdminDetails) {
 }
 
 function readCalendarItemsForRange_(rangeStart, rangeEnd, memberTierKey) {
-  const buildPayload = function() {
-    return readRecords_('CalendarItems').map(function(item) {
-      return calendarItemForClient_(item, false);
-    }).filter(function(item) {
-      return item.status === 'active' && calendarItemOverlapsRange_(item, rangeStart, rangeEnd);
-    }).sort(function(left, right) {
-      return String(left.startsOn).localeCompare(String(right.startsOn)) || String(left.title).localeCompare(String(right.title));
-    });
-  };
-  const baseItems = typeof membershipReadThroughCache_ === 'function'
-    ? membershipReadThroughCache_('calendar-range:' + rangeStart + ':' + rangeEnd, buildPayload)
-    : buildPayload();
-  return (Array.isArray(baseItems) ? baseItems : []).map(function(item) {
+  return readCalendarItemsForMember_(memberTierKey).filter(function(item) {
+    return calendarItemOverlapsRange_(item, rangeStart, rangeEnd);
+  });
+}
+
+function readCalendarItemsForMember_(memberTierKey) {
+  return readRecords_('CalendarItems').map(function(item) {
+    return calendarItemForClient_(item, false);
+  }).filter(function(item) {
+    return item.status === 'active';
+  }).sort(function(left, right) {
+    return String(left.startsOn).localeCompare(String(right.startsOn)) || String(left.title).localeCompare(String(right.title));
+  }).map(function(item) {
     const clientItem = Object.assign({}, item);
     if (clientItem.itemType === 'event') clientItem.tierEligible = (clientItem.allowedTierKeys || []).indexOf(memberTierKey) >= 0;
     return clientItem;
@@ -145,7 +145,6 @@ function handleCalendarItemSave_(identity, admin, request) {
     item.updated_at = now;
     if (rowNumber) updateRecordAtRow_('CalendarItems', rowNumber, item); else appendRecord_('CalendarItems', item);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'CALENDAR_ITEM_SAVE', target_type: 'calendar_item', target_id: item.calendar_item_id, result: 'success', detail: 'Calendar item saved', created_at: now });
-    rotateMembershipDataCacheEpoch_();
     return { calendarItem: calendarItemForClient_(item, true) };
   });
 }
@@ -190,7 +189,6 @@ function handleCalendarItemBatch_(identity, admin, request) {
         appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'CALENDAR_ITEM_BATCH_DELETE', target_type: 'calendar_item', target_id: calendarItemId, result: 'success', detail: 'Calendar batch item deleted', created_at: now });
       });
     }
-    rotateMembershipDataCacheEpoch_();
     return { savedCalendarItems: savedCalendarItems, deletedCalendarItemIds: deletedCalendarItemIds, operationCount: operations.length };
   });
 }
@@ -205,7 +203,6 @@ function handleCalendarItemDelete_(identity, admin, request) {
     if (expected && String(match.record.updated_at || '') !== expected) throw new ApiError(409, 'CONFLICT', '日曆項目已被更新，請重新整理。');
     const deleted = deleteRecordsWhere_('CalendarItems', function(item) { return String(item.calendar_item_id || '') === calendarItemId; });
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'CALENDAR_ITEM_DELETE', target_type: 'calendar_item', target_id: calendarItemId, result: 'success', detail: 'Calendar item deleted', created_at: nowIso_() });
-    rotateMembershipDataCacheEpoch_();
     return { deleted: Boolean(deleted), calendarItemId: calendarItemId };
   });
 }

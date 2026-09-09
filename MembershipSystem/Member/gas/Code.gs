@@ -191,10 +191,6 @@ function doPost(e) {
         throw new ApiError(404, 'ACTION_NOT_FOUND', '不支援的 API action。');
     }
 
-    if (MEMBERSHIP_WRITE_ACTIONS_.indexOf(request.action) >= 0) {
-      rotateMembershipDataCacheEpoch_();
-      if (typeof membershipSyncBumpForWrite_ === 'function') membershipSyncBumpForWrite_(request.action, identity, request);
-    }
     return jsonResponse_({ ok: true, status: 200, data: data || {} });
   } catch (error) {
     return errorResponse_(error);
@@ -227,11 +223,8 @@ function parseRequest_(e) {
   request.action = String(request.action || '').trim();
   request.clientType = String(request.clientType || '').trim();
   request.idToken = typeof request.idToken === 'string' ? request.idToken.trim() : '';
-  request.knownRevision = typeof request.knownRevision === 'string' ? request.knownRevision.trim() : '';
-  request.knownCacheScope = typeof request.knownCacheScope === 'string' ? request.knownCacheScope.trim() : '';
   if (!request.action || request.action.length > 80) throw new ApiError(400, 'INVALID_ACTION', 'API action 不合法。');
   if (!request.idToken) throw new ApiError(401, 'AUTH_REQUIRED', '需要 LINE 登入。');
-  if (request.knownRevision.length > 180 || request.knownCacheScope.length > 180) throw new ApiError(400, 'INVALID_SYNC_REVISION', '同步版本資料不合法。');
   return request;
 }
 
@@ -293,4 +286,3 @@ function errorResponse_(error) {
 class ApiError extends Error {
   constructor(status, code, message, details) { super(message); this.name = 'ApiError'; this.status = status; this.code = code; this.details = details || null; }
 }
-

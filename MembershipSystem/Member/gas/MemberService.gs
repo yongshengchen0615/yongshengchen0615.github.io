@@ -6,9 +6,6 @@ const MEMBERSHIP_ADMIN_MEMBER_QUERY_MAX_LENGTH_ = 80;
 const MEMBERSHIP_SERVICE_MINUTES_MAX_GRANT_ = 1440;
 const MEMBERSHIP_TIER_MAX_REQUIRED_SERVICE_MINUTES_ = 10000000;
 const MEMBERSHIP_LAST_LOGIN_TOUCH_INTERVAL_MS_ = 5 * 60 * 1000;
-const MEMBERSHIP_TIER_SETTINGS_CACHE_SECONDS_ = 120;
-const MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_ = 'membership:tier-settings:v2';
-const MEMBERSHIP_SERVICE_MINUTES_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN_PROPERTY_ = 'MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN';
 const MEMBERSHIP_LINE_PUSH_URL_ = 'https://api.line.me/v2/bot/message/push';
 const MEMBERSHIP_LINE_MESSAGE_MAX_LENGTH_ = 5000;
@@ -34,9 +31,7 @@ const MEMBERSHIP_TIER_DEFAULT_STYLE_KEYS_ = Object.freeze({ general: 'forest', s
 
 function handleMemberBootstrap_(identity, request) {
   const member = ensureMember_(identity);
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('member', identity, request, function() { return { profile: memberForClient_(member) }; })
-    : { profile: memberForClient_(member) };
+  return { profile: memberForClient_(member) };
 }
 
 function memberNeedsLoginTouch_(member, identity, nowMs) {
@@ -74,9 +69,6 @@ function ensureMember_(identity) {
     updateRecordAtRow_('Members', match.rowNumber, member);
     return member;
   });
-  if (profileChanged) {
-    if (typeof membershipSyncBumpMember_ === 'function') membershipSyncBumpMember_(identity.lineUserId);
-  }
   return member;
 }
 
@@ -121,15 +113,6 @@ function adminMemberForClient_(member, serviceMinutesTotal, tierSettings) {
   return { lineUserId: String(member.line_user_id || ''), displayName: String(member.display_name || 'LINE 使用者'), memberCode: String(member.member_code || ''), tier: tier.label, status: String(member.status || 'active'), joinedAt: String(member.joined_at || ''), updatedAt: String(member.updated_at || ''), serviceMinutesTotal: normalizedServiceMinutesTotal };
 }
 
-function membershipTierSettingsCache_() {
-  try { return typeof CacheService !== 'undefined' ? CacheService.getScriptCache() : null; } catch (_) { return null; }
-}
-
-function clearMembershipTierSettingsCache_() {
-  const cache = membershipTierSettingsCache_();
-  if (!cache) return;
-  try { cache.remove(MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_); } catch (_) {}
-}
 
 function ensureMembershipTierSettings_() {
   if (readRecords_('MembershipTierSettings').length) {
@@ -142,20 +125,11 @@ function ensureMembershipTierSettings_() {
     MEMBERSHIP_TIER_DEFINITIONS_.forEach(function(definition) {
       appendRecord_('MembershipTierSettings', { tier_key: definition.tierKey, tier_label: definition.label, required_service_minutes: String(definition.defaultRequiredServiceMinutes), style_key: membershipTierDefaultStyleKey_(definition.tierKey), updated_by: 'system', updated_at: now });
     });
-    clearMembershipTierSettingsCache_();
   });
   readMembershipTierSettings_(true);
 }
 
 function readMembershipTierSettings_(forceFresh) {
-  const cache = membershipTierSettingsCache_();
-  if (!forceFresh && cache) {
-    try {
-      const cached = JSON.parse(cache.get(MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_) || 'null');
-      if (Array.isArray(cached) && cached.length === MEMBERSHIP_TIER_DEFINITIONS_.length) return cached;
-    } catch (_) {}
-  }
-
   const recordsByKey = {};
   readRecords_('MembershipTierSettings').forEach(function(record) {
     const tierKey = String(record.tier_key || '').trim();
@@ -174,9 +148,6 @@ function readMembershipTierSettings_(forceFresh) {
     const style = membershipTierStyleForRecord_(record, definition.tierKey);
     return { tierKey: definition.tierKey, label: definition.label, requiredServiceMinutes, styleKey: style.styleKey, styleLabel: style.label, updatedAt: String(record.updated_at || '') };
   });
-  if (cache) {
-    try { cache.put(MEMBERSHIP_TIER_SETTINGS_CACHE_KEY_, JSON.stringify(settings), MEMBERSHIP_TIER_SETTINGS_CACHE_SECONDS_); } catch (_) {}
-  }
   return settings;
 }
 
@@ -245,34 +216,10 @@ function serviceMinutesTotalsByMember_() {
   }, {});
 }
 
-function serviceMinutesTotalCacheKey_(lineUserId) {
-  const dataEpoch = typeof membershipDataCacheEpoch_ === 'function' ? membershipDataCacheEpoch_() : 'default';
-  return 'membership:service-minutes:' + dataEpoch + ':' + digest_(String(lineUserId || '').trim()).substring(0, 32);
-}
-
-function clearServiceMinutesTotalCache_(lineUserId) {
-  const normalizedLineUserId = String(lineUserId || '').trim();
-  const cache = membershipTierSettingsCache_();
-  if (!normalizedLineUserId || !cache) return;
-  try { cache.remove(serviceMinutesTotalCacheKey_(normalizedLineUserId)); } catch (_) {}
-}
-
 function serviceMinutesTotalForMember_(lineUserId) {
   const normalizedLineUserId = String(lineUserId || '').trim();
   if (!normalizedLineUserId) return 0;
-  const cache = membershipTierSettingsCache_();
-  const cacheKey = cache ? serviceMinutesTotalCacheKey_(normalizedLineUserId) : '';
-  if (cache) {
-    try {
-      const cached = String(cache.get(cacheKey) || '');
-      if (/^\d+$/.test(cached)) return Number(cached);
-    } catch (_) {}
-  }
-  const total = Number(serviceMinutesTotalsByMember_()[normalizedLineUserId] || 0);
-  if (cache) {
-    try { cache.put(cacheKey, String(total), MEMBERSHIP_SERVICE_MINUTES_CACHE_SECONDS_); } catch (_) {}
-  }
-  return total;
+  return Number(serviceMinutesTotalsByMember_()[normalizedLineUserId] || 0);
 }
 
 function normalizeBirthday_(value) {
@@ -331,12 +278,14 @@ function readMembersPage_(request) {
   const matchingMembers = query ? allMembers.filter(function(member) {
     return [member.displayName, member.memberCode, member.tier].join(' ').toLowerCase().indexOf(query) >= 0;
   }) : allMembers;
-  const totalPages = Math.max(1, Math.ceil(matchingMembers.length / pageRequest.pageSize));
-  const page = Math.min(pageRequest.page, totalPages);
-  const start = (page - 1) * pageRequest.pageSize;
+  const includeAllMembers = Boolean(request && request.includeAllMembers);
+  const pageSize = includeAllMembers ? Math.max(1, matchingMembers.length) : pageRequest.pageSize;
+  const totalPages = Math.max(1, Math.ceil(matchingMembers.length / pageSize));
+  const page = includeAllMembers ? 1 : Math.min(pageRequest.page, totalPages);
+  const start = includeAllMembers ? 0 : (page - 1) * pageSize;
   return {
-    members: matchingMembers.slice(start, start + pageRequest.pageSize),
-    memberPage: { page, pageSize: pageRequest.pageSize, total: matchingMembers.length, totalPages, query },
+    members: matchingMembers.slice(start, start + pageSize),
+    memberPage: { page, pageSize, total: matchingMembers.length, totalPages, query },
     stats: { memberCount: allMembers.length, activeMemberCount: allMembers.filter(function(member) { return member.status === 'active'; }).length }
   };
 }
@@ -399,7 +348,6 @@ function handleMembershipTierSettingsSave_(identity, admin, request) {
       record.updated_at = now;
       updateRecordAtRow_('MembershipTierSettings', match.rowNumber, record);
     });
-    clearMembershipTierSettingsCache_();
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'MEMBER_TIER_SETTINGS_SAVE', target_type: 'membership_tiers', target_id: 'all', result: 'success', detail: 'Membership tier thresholds updated', created_at: now });
   });
   return { tierSettings: readMembershipTierSettings_(true) };
@@ -430,7 +378,6 @@ function addServiceMinutesLocked_(identity, admin, serviceTime) {
   if (String(member.record.status || 'active') !== 'active') throw new ApiError(400, 'MEMBER_DISABLED', '停用中的會員無法登錄服務時間。');
   const now = nowIso_();
   appendRecord_('ServiceTimeEntries', { entry_id: 'ST-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12).toUpperCase(), line_user_id: lineUserId, minutes: String(minutes), note, created_by: identity.lineUserId, created_at: now, request_id: requestId });
-  clearServiceMinutesTotalCache_(lineUserId);
   appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'SERVICE_TIME_ADD', target_type: 'service_time', target_id: lineUserId, result: 'success', detail: 'Added ' + minutes + ' service minute(s)', created_at: now });
   return { created: true, member: adminMemberForClient_(member.record, serviceMinutesTotalForMember_(lineUserId)) };
 }

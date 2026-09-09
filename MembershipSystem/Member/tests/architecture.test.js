@@ -62,8 +62,8 @@ test('LIFF surfaces load only their own frontend assets', () => {
   assert.match(eventHtml, /\.\/app\.js/);
   assert.match(eventApp, /user\.event\.bootstrap/);
   assert.match(calendarHtml, /\.\/styles\.css/);
-  assert.match(calendarHtml, /\.\/common\.js\?v=calendar-sync-cache-\d{8}/);
-  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-incremental-payload-\d{8}/);
+  assert.match(calendarHtml, /\.\/common\.js\?v=calendar-fresh-data-\d{8}/);
+  assert.match(calendarHtml, /\.\/app\.js\?v=calendar-fresh-data-\d{8}/);
   assert.match(calendarApp, /user\.calendar\.bootstrap/);
   assert.match(adminHtml, /\.\/styles\.css/);
   assert.match(adminHtml, /\.\/app\.js/);
@@ -318,7 +318,7 @@ test('storage schema checks are cached and point-card bootstrap has a snapshot r
   assert.match(storage, /schemaCache\.get\(schemaCacheKey\) === 'ready'/);
   assert.match(storage, /function resetMembershipSystemDataForNewEnvironment\(\)/);
   assert.match(storage, /sheet\.deleteRows\(2, rowCount\)/);
-  assert.match(storage, /rotateMembershipDataCacheEpoch_\(\)/);
+  assert.doesNotMatch(storage, /rotateMembershipDataCacheEpoch_/);
   assert.match(storage, /entry_type/);
   assert.match(storage, /reference_type/);
   assert.match(storage, /reference_id/);
@@ -405,14 +405,15 @@ test('member profile date input is LINE-safe and touch-friendly', () => {
   assert.match(memberStyles, /@media \(max-width: 620px\) \{[\s\S]*\.date-input-shell \{ min-height: 54px;/);
 });
 
-test('point-card usage history starts collapsed and renders only the latest five records', () => {
+test('point-card usage history starts collapsed and renders every loaded record', () => {
   const pointsHtml = read('points/index.html');
   const pointsApp = read('points/app.js');
   const pointsStyles = read('points/styles.css');
   assert.match(pointsHtml, /<details id="ticketHistoryDisclosure" class="ticket-history-disclosure">/);
   assert.match(pointsHtml, /<ul id="ticketHistoryList" class="ticket-history-list"><\/ul>/);
-  assert.match(pointsHtml, /展開後顯示最新 5 筆資料/);
-  assert.match(pointsApp, /const latestHistory = history\.slice\(0, 5\)/);
+  assert.match(pointsHtml, /展開後顯示所有資料/);
+  assert.doesNotMatch(pointsApp, /history\.slice\(0, 5\)/);
+  assert.match(pointsApp, /history\.map\(\(activity\) => createHistoryCard\(activity\)\)/);
   assert.match(pointsApp, /document\.createElement\('li'\)/);
   assert.match(pointsStyles, /\.ticket-history-summary \{ display: flex;/);
 });
@@ -522,11 +523,11 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-performance-20260909', 'member-performance-20260909', 'member-sync-cache-20260909'],
-    ['points', 'points-card-guidance-20260909', 'points-card-ui-cleanup-20260909', 'points-sync-cache-20260909'],
-    ['event', 'event-performance-20260909', 'event-incremental-payload-20260909', 'event-sync-cache-20260909'],
-    ['calendar', 'calendar-performance-20260909', 'calendar-incremental-payload-20260909', 'calendar-sync-cache-20260909'],
-    ['admin', 'admin-performance-20260909', 'member-card-ui-cleanup-20260909', 'admin-local-client-20260909']
+    ['member', 'member-performance-20260909', 'member-performance-20260909', 'member-fresh-data-20260909'],
+    ['points', 'points-card-guidance-20260909', 'points-fresh-data-20260909', 'points-fresh-data-20260909'],
+    ['event', 'event-performance-20260909', 'event-fresh-data-20260909', 'event-fresh-data-20260909'],
+    ['calendar', 'calendar-performance-20260909', 'calendar-fresh-data-20260909', 'calendar-fresh-data-20260909'],
+    ['admin', 'admin-performance-20260909', 'admin-fresh-data-20260909', 'admin-local-client-20260909']
   ];
 
   surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {
@@ -552,25 +553,28 @@ test('every surface protects responsive text layout and busts its updated styles
   assert.match(read('admin/styles.css'), /@media \(max-width: 360px\)/);
 });
 
-test('incremental member surfaces use identity-scoped IndexedDB snapshots and server-authorized detail reads', () => {
+test('member surfaces read complete current GAS data before showing the workspace', () => {
   const storage = read('gas/Storage.gs');
   const code = read('gas/Code.gs');
-  assert.match(storage, /MEMBERSHIP_SYNC_PROPERTY_PREFIX_/);
-  assert.match(storage, /membershipClientCacheScope_/);
-  assert.match(storage, /knownCacheScope === cacheScope/);
-  assert.match(storage, /membershipSyncBumpForWrite_/);
+  assert.doesNotMatch(storage, /MEMBERSHIP_SYNC_|membershipVersionedBootstrapResponse_|membershipReadThroughCache_/);
+  assert.doesNotMatch(code, /knownRevision|knownCacheScope|membershipSyncBumpForWrite_/);
   ['points', 'event', 'calendar'].forEach((surface) => {
     const common = read(`${surface}/common.js`);
     const app = read(`${surface}/app.js`);
-    assert.match(common, /indexedDB\.open\('MembershipSystemSyncCache', 1\)/);
-    assert.match(common, /expiresAt: now \+ 24 \* 60 \* 60 \* 1000/);
-    assert.match(common, /clearSyncSnapshots\(\)\.finally/);
+    assert.match(common, /indexedDB\.deleteDatabase\('MembershipSystemSyncCache'\)/);
+    assert.doesNotMatch(common, /indexedDB\.open|readSyncSnapshot|writeSyncSnapshot|clearSyncSnapshots/);
     assert.doesNotMatch(common, /localStorage|sessionStorage/);
-    assert.match(app, /knownRevision = cached\.revision; payload\.knownCacheScope = cached\.cacheScope/);
-    assert.match(app, /compact: true/);
+    assert.doesNotMatch(app, /knownRevision|knownCacheScope|readSyncSnapshot|writeSyncSnapshot/);
   });
+  assert.match(read('points/app.js'), /user\.pointcard\.bootstrap', \{ compact: false \}/);
+  assert.match(read('points/app.js'), /assertCompleteCardsBootstrap\(\)/);
+  assert.doesNotMatch(read('points/app.js'), /user\.pointcard\.detail/);
+  assert.match(read('event/app.js'), /user\.event\.bootstrap', \{ compact: false \}/);
+  assert.match(read('event/app.js'), /assertCompleteEventBootstrap\(\)/);
+  assert.doesNotMatch(read('event/app.js'), /user\.event\.ticket\.detail/);
+  assert.match(read('calendar/app.js'), /user\.calendar\.bootstrap', \{ includeAll: true, compact: false \}/);
+  assert.doesNotMatch(read('calendar/app.js'), /user\.calendar\.date\.details/);
   assert.match(code, /case 'user\.pointcard\.detail'/);
   assert.match(code, /case 'user\.event\.ticket\.detail'/);
   assert.match(code, /case 'user\.calendar\.date\.details'/);
 });
-

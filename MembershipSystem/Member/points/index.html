@@ -11,9 +11,9 @@
   <link rel="stylesheet" href="./styles.css?v=points-card-guidance-20260909">
   <link rel="stylesheet" href="./membership-progress.css?v=points-tier-style-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="./common.js?v=points-sync-cache-20260909" defer></script>
+  <script src="./common.js?v=points-fresh-data-20260909" defer></script>
   <script src="./membership-progress.js?v=points-tier-style-20260908" defer></script>
-  <script src="./app.js?v=points-card-ui-cleanup-20260909" defer></script>
+  <script src="./app.js?v=points-fresh-data-20260909" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -74,7 +74,7 @@
 
       <section class="tickets-panel" aria-labelledby="ticketsTitle"><div class="tickets-heading"><div><p class="label dark-label">Point card tickets</p><h2 id="ticketsTitle">集點卡票券總覽</h2></div><span id="ticketSummary" class="tickets-summary"></span></div><div id="ticketList" class="member-ticket-list"></div><div id="ticketEmpty" class="ticket-empty"><span aria-hidden="true">○</span><p>店家尚未為這張集點卡設定兌換票券。</p></div></section>
 
-      <section class="ticket-history-panel" aria-labelledby="ticketHistoryTitle"><details id="ticketHistoryDisclosure" class="ticket-history-disclosure"><summary class="ticket-history-summary"><span class="ticket-history-summary-title"><span class="label dark-label">Ticket history</span><strong id="ticketHistoryTitle">票券使用紀錄</strong></span><span id="ticketHistorySummary" class="tickets-summary">點擊查看最新使用紀錄</span></summary><p class="ticket-history-description">展開後顯示最新 5 筆資料；每次票券使用只會保留一筆完整紀錄。</p><ul id="ticketHistoryList" class="ticket-history-list"></ul><div id="ticketHistoryEmpty" class="ticket-empty"><span aria-hidden="true">○</span><p>尚未使用過集點卡票券。</p></div></details></section>
+      <section class="ticket-history-panel" aria-labelledby="ticketHistoryTitle"><details id="ticketHistoryDisclosure" class="ticket-history-disclosure"><summary class="ticket-history-summary"><span class="ticket-history-summary-title"><span class="label dark-label">Ticket history</span><strong id="ticketHistoryTitle">票券使用紀錄</strong></span><span id="ticketHistorySummary" class="tickets-summary">點擊查看所有使用紀錄</span></summary><p class="ticket-history-description">展開後顯示所有資料；每次票券使用只會保留一筆完整紀錄。</p><ul id="ticketHistoryList" class="ticket-history-list"></ul><div id="ticketHistoryEmpty" class="ticket-empty"><span aria-hidden="true">○</span><p>尚未使用過集點卡票券。</p></div></details></section>
 
       <section class="points-note"><span class="note-mark" aria-hidden="true">i</span><p>集點由店家於消費後登錄，若進度與實際消費不符，請直接向店員出示此畫面協助確認。</p></section>
     </main>
@@ -83,4 +83,3 @@
   <div id="ticketModal" class="ticket-modal hidden" role="dialog" aria-modal="true" aria-labelledby="ticketModalTitle"><div class="ticket-modal-card"><div class="ticket-modal-heading"><div><p class="kicker">Ticket details</p><h2 id="ticketModalTitle">使用票券</h2></div><button id="closeTicketModal" class="ticket-close-button" type="button" aria-label="關閉">×</button></div><p id="ticketModalTicketName" class="ticket-modal-name"></p><p id="ticketModalDescription" class="ticket-modal-description"></p><section class="ticket-instructions" aria-label="票券使用說明"><strong id="ticketModalUsageMethod"></strong><p id="ticketModalUsageInstructions"></p></section><p id="ticketModalCost" class="ticket-modal-hint"></p><div id="ticketModalProcessing" class="ticket-processing hidden" role="status" aria-live="polite"><span class="ticket-processing-spinner" aria-hidden="true"></span><span>正在使用票券，請稍候…</span></div><div id="ticketModalResult" class="ticket-modal-result"></div><button id="confirmTicketUseButton" class="ticket-confirm-button" type="button">確認使用這張票券</button><button id="refreshTicketButton" class="ticket-confirm-button ticket-refresh-button hidden" type="button">重新整理確認</button><div id="ticketModalMessage" class="ticket-modal-message hidden" role="status"></div></div></div>
 </body>
 </html>
-

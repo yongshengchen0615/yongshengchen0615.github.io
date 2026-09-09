@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', bootstrapVersion: '', cacheScope: '', profile: null, offers: [], usedTickets: [], usedTicketCount: 0, pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '', ticketModalOpener: null };
+  const state = { config: null, idToken: '', profile: null, offers: [], usedTickets: [], usedTicketCount: 0, pendingEventTicketId: '', processing: false, actionLocked: false, uncertainEventTicketId: '', ticketModalOpener: null };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -39,23 +39,14 @@
     } catch (error) { stopLoginProgress(); showError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
 
-  async function loadOffers(showBusy, bypassSnapshot) {
+  async function loadOffers(showBusy) {
     if (showBusy) { setInlineStatus('正在更新活動票券…'); els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
     try {
-      const cached = bypassSnapshot ? null : await window.MemberSystem.readSyncSnapshot('event');
-      const payload = { compact: true };
-      if (cached) { payload.knownRevision = cached.revision; payload.knownCacheScope = cached.cacheScope; }
-      const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap', payload);
-      if (result.unchanged) {
-        const confirmed = cached && cached.cacheScope === result.cacheScope && cached.revision === result.revision ? cached : null;
-        if (!confirmed) return loadOffers(showBusy, true);
-        applyOfferSnapshot(confirmed.payload, result);
-      } else {
-        applyOfferSnapshot(result, result);
-      }
+      const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap', { compact: false });
+      applyOfferSnapshot(result);
+      assertCompleteEventBootstrap();
       renderOffers();
       if (showBusy) setInlineStatus('活動票券已更新。');
-      void persistOfferSnapshot();
     } catch (error) { if (!showBusy) throw error; if (/^(AUTH_|MEMBERSHIP_REQUIRED|MEMBER_)/.test(String(error && error.code || ''))) showError(error); else setInlineStatus('更新失敗，畫面保留上次資料。請按「更新」重試；領取與使用時會重新驗證資格。', true); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
   }
 
@@ -66,9 +57,7 @@
     status.classList.toggle('is-error', error);
   }
 
-  function applyOfferSnapshot(payload, sync) {
-    state.bootstrapVersion = String(sync && (sync.revision || sync.version) || '');
-    state.cacheScope = String(sync && sync.cacheScope || '');
+  function applyOfferSnapshot(payload) {
     state.offers = Array.isArray(payload && payload.offers) ? payload.offers : [];
     state.usedTickets = Array.isArray(payload && payload.usedTickets) ? payload.usedTickets : [];
     const usedTicketCount = Number(payload && payload.usedTicketCount);
@@ -78,11 +67,12 @@
     window.MembershipProgress.render(els.membershipProgress, state.profile);
   }
 
-  function persistOfferSnapshot() {
-    if (!state.bootstrapVersion || !state.cacheScope) return Promise.resolve(false);
-    return window.MemberSystem.writeSyncSnapshot('event', state.bootstrapVersion, state.cacheScope, {
-      profile: state.profile, offers: state.offers, usedTickets: state.usedTickets, usedTicketCount: state.usedTicketCount
-    });
+  function assertCompleteEventBootstrap() {
+    const incomplete = state.offers.concat(state.usedTickets).some((offer) => !offerHasDetails(offer));
+    if (!incomplete) return;
+    const error = new Error('活動票券資料回應不完整，已停止顯示活動票券頁面。請重新整理後再試。');
+    error.code = 'EVENT_TICKET_BOOTSTRAP_INCOMPLETE';
+    throw error;
   }
 
   function renderOffers() {
@@ -90,11 +80,10 @@
     const hasUsedTickets = state.usedTicketCount > 0;
     const ineligibleOfferCount = state.offers.filter((offer) => !eventTicketTierEligible(offer)).length;
     els.eventList.replaceChildren(...state.offers.map(createOfferCard));
-    const latestUsedTickets = state.usedTickets.slice(0, 5);
-    els.usedTicketList.replaceChildren(...latestUsedTickets.map(createHistoryItem));
+    els.usedTicketList.replaceChildren(...state.usedTickets.map(createHistoryItem));
     els.emptyView.classList.toggle('hidden', hasOffers);
     els.usedTicketHistory.classList.toggle('hidden', !hasUsedTickets);
-    els.usedTicketHistorySummary.textContent = hasUsedTickets ? `共 ${state.usedTicketCount} 筆 · 展開查看最新 ${latestUsedTickets.length} 筆` : '尚無使用紀錄';
+    els.usedTicketHistorySummary.textContent = hasUsedTickets ? `共 ${state.usedTicketCount} 筆使用紀錄` : '尚無使用紀錄';
     els.eventSummary.textContent = hasOffers ? `${state.offers.length} 個活動票券 · 領取後由本人使用${ineligibleOfferCount ? ` · ${ineligibleOfferCount} 張尚未達適用等級` : ''}${hasUsedTickets ? ` · ${state.usedTicketCount} 筆已使用紀錄` : ''}` : hasUsedTickets ? `目前沒有開放中的活動 · ${state.usedTicketCount} 筆已使用紀錄` : '目前沒有開放中的活動';
   }
 
@@ -124,19 +113,6 @@
     const targetId = String(eventTicketId || '').trim(); const offer = findOffer(targetId); if (!offer) return;
     state.pendingEventTicketId = targetId; state.processing = false; state.actionLocked = targetId === String(state.uncertainEventTicketId || '').trim(); state.ticketModalOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); renderTicketModal(offer); if (state.actionLocked) showMessage('無法確認這次操作是否完成。請先重新整理確認；在確認前請勿再次送出。'); else hideMessage(); setProcessing(false); els.ticketModal.classList.remove('hidden'); (offer.history ? els.closeTicketModal : state.actionLocked ? els.refreshTicketButton : els.ticketModalAction).focus();
-    if (!offerHasDetails(offer)) {
-      els.ticketModalDescription.textContent = '正在載入票券完整說明…';
-      els.ticketModalAction.disabled = true;
-      try {
-        const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.detail', { eventTicketId: targetId });
-        if (!result.offer) throw new Error('活動票券明細回應不完整。');
-        replaceOffer(result.offer); renderOffers();
-        const detailed = findOffer(targetId); if (detailed && state.pendingEventTicketId === targetId) renderTicketModal(detailed);
-        void persistOfferSnapshot();
-      } catch (error) {
-        if (state.pendingEventTicketId === targetId) showMessage(error && error.message || '票券明細載入失敗，請稍後再試。', false);
-      }
-    }
   }
 
   function offerHasDetails(offer) {
@@ -179,7 +155,7 @@
     state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '領取中…'; els.ticketModalProcessingText.textContent = '正在確認活動名額，請稍候…'; setProcessing(true); hideMessage();
     try {
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.claim', { eventTicketId: offer.ticket.eventTicketId });
-      if (result.ticket) { state.bootstrapVersion = ''; state.cacheScope = ''; window.MemberSystem.clearSyncSnapshots(); updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); renderTicketModal(findOffer(offer.ticket.eventTicketId)); showMessage(result.alreadyClaimed ? '你已經領取過這張活動票券。' : '活動票券已領取，請在活動期間使用。', true); }
+      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); renderTicketModal(findOffer(offer.ticket.eventTicketId)); showMessage(result.alreadyClaimed ? '你已經領取過這張活動票券。' : '活動票券已領取，請在活動期間使用。', true); }
     } catch (error) { handleTicketError(error, '領取票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; const current = findOffer(offer.ticket.eventTicketId); if (current) renderTicketModal(current); }
   }
 
@@ -187,7 +163,7 @@
     state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '使用中…'; els.ticketModalProcessingText.textContent = '正在確認票券與活動期限，請稍候…'; setProcessing(true); hideMessage();
     try {
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.redeem', { claimId: offer.claim.claimId });
-      if (result.ticket) { state.bootstrapVersion = ''; state.cacheScope = ''; window.MemberSystem.clearSyncSnapshots(); updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); await showRedeemedResult(result.ticket); }
+      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); await showRedeemedResult(result.ticket); }
     } catch (error) { handleTicketError(error, '使用票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; }
   }
 
@@ -220,7 +196,7 @@
       els.ticketModalResult.replaceChildren(resultBox);
     }
   }
-  function updateOfferClaim(eventTicketId, claim) { const current = findOffer(eventTicketId); if (String(claim.status || '') === 'used') { const isNewHistory = !state.usedTickets.some((offer) => eventTicketIdForOffer(offer) === eventTicketId); state.offers = state.offers.filter((offer) => offer.ticket && offer.ticket.eventTicketId !== eventTicketId); const historyTicket = { ...(current || {}), ticket: ticketForOffer({ ...(current || {}), claim }), claim, availability: 'used', tierEligible: true, canClaim: false, canUse: false, soldOut: false, history: true }; state.usedTickets = [historyTicket, ...state.usedTickets.filter((offer) => !offer.ticket || offer.ticket.eventTicketId !== eventTicketId)].slice(0, 5); if (isNewHistory) state.usedTicketCount += 1; return; } state.offers = state.offers.map((offer) => offer.ticket && offer.ticket.eventTicketId === eventTicketId ? { ...offer, claim, canClaim: false, canUse: eventTicketTierEligible(offer) && claim.status === 'available', soldOut: false } : offer); }
+  function updateOfferClaim(eventTicketId, claim) { const current = findOffer(eventTicketId); if (String(claim.status || '') === 'used') { const isNewHistory = !state.usedTickets.some((offer) => eventTicketIdForOffer(offer) === eventTicketId); state.offers = state.offers.filter((offer) => offer.ticket && offer.ticket.eventTicketId !== eventTicketId); const historyTicket = { ...(current || {}), ticket: ticketForOffer({ ...(current || {}), claim }), claim, availability: 'used', tierEligible: true, canClaim: false, canUse: false, soldOut: false, history: true }; state.usedTickets = [historyTicket, ...state.usedTickets.filter((offer) => !offer.ticket || offer.ticket.eventTicketId !== eventTicketId)]; if (isNewHistory) state.usedTicketCount += 1; return; } state.offers = state.offers.map((offer) => offer.ticket && offer.ticket.eventTicketId === eventTicketId ? { ...offer, claim, canClaim: false, canUse: eventTicketTierEligible(offer) && claim.status === 'available', soldOut: false } : offer); }
   function eventTicketIdForOffer(offer) { const ticket = offer && offer.ticket || {}; const claim = offer && offer.claim || {}; return String(ticket.eventTicketId || claim.eventTicketId || '').trim(); }
   function findOffer(eventTicketId) { const targetId = String(eventTicketId || '').trim(); if (!targetId) return null; return state.offers.concat(state.usedTickets).find((offer) => eventTicketIdForOffer(offer) === targetId) || null; }
   function ticketForOffer(offer) { const ticket = offer && offer.ticket || {}; const claim = offer && offer.claim; if (!claim) return ticket; return { ...ticket, title: String(claim.ticketTitle || ticket.title || ''), ticketType: claim.ticketType || ticket.ticketType, description: String(claim.ticketDescription || ticket.description || ''), usageMethod: String(claim.usageMethod || ticket.usageMethod || ''), usageInstructions: String(claim.usageInstructions || ticket.usageInstructions || ''), prizes: Array.isArray(claim.prizes) ? claim.prizes : ticket.prizes }; }
@@ -249,4 +225,3 @@
   function setLoginProgress(value, status) { const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0)))); loginProgressValue = progress; els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; if (status) els.loadingStatus.textContent = status; }
   function showError(error) { const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED'; els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '活動票券暫時無法載入'; els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用活動票券功能。' : error && error.message ? error.message : '請稍後重新整理再試。'; els.joinMemberButton.classList.toggle('hidden', !membershipRequired); els.retryButton.classList.toggle('hidden', membershipRequired); setView('error'); }
 })();
-

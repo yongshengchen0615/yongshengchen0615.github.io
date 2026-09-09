@@ -38,8 +38,15 @@ function handlePointCardBootstrap_(identity, request) {
     const cards = compact
       ? visiblePointCardSummariesForMember_(identity.lineUserId, snapshot)
       : visiblePointCardsForMember_(identity.lineUserId, snapshot);
-    const payload = { profile: pointCardMembershipProfileForClient_(member, identity), cards, tickets: compact ? [] : visibleTicketsForMember_(identity.lineUserId, snapshot), history: history.slice(0, POINT_CARD_HISTORY_LIMIT_), historyTotal: history.length, compact };
-    // 摘要與目前卡片共用同一份已授權快照，首次開啟少一次 API 與試算表讀取。
+    const payload = { profile: pointCardMembershipProfileForClient_(member, identity), cards, tickets: compact ? [] : visibleTicketsForMember_(identity.lineUserId, snapshot), history: compact ? history.slice(0, POINT_CARD_HISTORY_LIMIT_) : history, historyTotal: history.length, compact };
+    // Full bootstrap returns every visible card detail from one current,
+    // authorized Sheets snapshot before the LIFF is shown.
+    if (!compact && cards.length) {
+      payload.cardDetails = {};
+      cards.forEach(function(card) {
+        payload.cardDetails[card.cardId] = pointCardDetailFromSnapshot_(identity.lineUserId, card.cardId, snapshot);
+      });
+    }
     if (compact && request && request.includeActiveCard === true && cards.length) {
       const requestedId = String(request.activeCardId || '');
       const selected = cards.find(function(card) { return card.cardId === requestedId; }) || cards[0];
@@ -48,9 +55,7 @@ function handlePointCardBootstrap_(identity, request) {
     }
     return payload;
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('points', identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function handlePointCardDetail_(identity, request) {
@@ -62,9 +67,7 @@ function handlePointCardDetail_(identity, request) {
     const snapshot = readPointCardSnapshot_(identity.lineUserId);
     return pointCardDetailFromSnapshot_(identity.lineUserId, cardId, snapshot);
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('points-detail:' + cardId, identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 // 保留與獨立明細 API 相同的卡片狀態、會員點數及票券篩選規則。
@@ -123,9 +126,7 @@ function readPointCardStaticSnapshot_() {
       ticketTemplates: readRecords_('PointCardTicketTemplates')
     };
   };
-  const source = typeof membershipReadThroughCache_ === 'function'
-    ? membershipReadThroughCache_('pointcard-static', buildPayload)
-    : buildPayload();
+  const source = buildPayload();
   const snapshot = {
     cards: Array.isArray(source && source.cards) ? source.cards : [],
     rewards: Array.isArray(source && source.rewards) ? source.rewards : [],
@@ -547,14 +548,10 @@ function handlePointCardRemove_(identity, admin, request) {
 }
 
 function handleAdminBootstrap_(identity, admin, request) {
-  const lazy = Boolean(request && request.lazy);
-  const pageRequest = normalizeAdminMemberPageRequest_(request);
-  const scope = 'admin-bootstrap:' + (lazy ? 'initial' : 'full') + ':' + pageRequest.page + ':' + pageRequest.pageSize + ':' + pageRequest.query;
   const buildPayload = function() {
-    const memberResult = readMembersPage_(request);
+    const memberResult = readMembersPage_(Object.assign({}, request || {}, { includeAllMembers: true }));
     const tierSettings = readMembershipTierSettings_();
     const initial = { profile: { displayName: identity.displayName }, role: admin.role, members: memberResult.members, memberPage: memberResult.memberPage, tierSettings, stats: { memberCount: memberResult.stats.memberCount, activeMemberCount: memberResult.stats.activeMemberCount } };
-    if (lazy) return initial;
     const cards = readPointCards_(true);
     const tickets = readPointCardTicketTemplates_(true);
     const eventTickets = readEventTickets_(true);
@@ -570,9 +567,7 @@ function handleAdminBootstrap_(identity, admin, request) {
     initial.stats.todayEntryCount = entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length;
     return initial;
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_(scope, identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function handleAdminPointCardsList_(identity, request) {
@@ -584,9 +579,7 @@ function handleAdminPointCardsList_(identity, request) {
     if (includeTickets) response.tickets = readPointCardTicketTemplates_(true, snapshot);
     return response;
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_(includeTickets ? 'admin-pointcards-with-tickets' : 'admin-pointcards', identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function handleAdminEventTicketsList_(identity, request) {
@@ -594,16 +587,12 @@ function handleAdminEventTicketsList_(identity, request) {
     const eventTickets = readEventTickets_(true);
     return { eventTickets: eventTickets, stats: { activeEventTicketCount: eventTickets.filter(function(ticket) { return ticket.status === 'active' && ticket.availability === 'open'; }).length } };
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('admin-event-tickets', identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function handleAdminCalendarItemsList_(identity, request) {
   const buildPayload = function() { return { calendarItems: readCalendarItems_(true) }; };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('admin-calendar-items', identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function handleAdminSummary_(identity, request) {
@@ -612,9 +601,7 @@ function handleAdminSummary_(identity, request) {
     const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
     return { stats: { todayEntryCount: entries.filter(function(entry) { return formatEntryDate_(entry.created_at) === today; }).length } };
   };
-  return typeof membershipVersionedBootstrapResponse_ === 'function'
-    ? membershipVersionedBootstrapResponse_('admin-summary', identity, request, buildPayload)
-    : buildPayload();
+  return buildPayload();
 }
 
 function handlePointCardSave_(identity, admin, request) {
@@ -1268,4 +1255,3 @@ function drawTicketPrize_(ticket) {
 function ticketPrizeResult_(prize) {
   return { prizeId: String(prize.prize_id || prize.prizeId || ''), prizeTitle: String(prize.prize_title || prize.prizeTitle || ''), prizeDescription: String(prize.prize_description || prize.prizeDescription || '') };
 }
-

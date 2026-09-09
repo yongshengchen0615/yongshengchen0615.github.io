@@ -91,7 +91,7 @@ test('event ticket bootstrap exposes the member tier and the remaining time to t
   assert.equal(gold.profile.tierProgress.remainingServiceMinutes, 1800);
 });
 
-test('event ticket bootstrap returns only the latest five history records with an exact total', () => {
+test('event ticket bootstrap returns all history records with an exact total', () => {
   const { context, rows } = loadEventTicketService();
   for (let index = 0; index < 7; index += 1) {
     const claim = context.eventTicketClaimFromDefinition_('U-1', rows.EventTickets[0], `2026-09-0${index + 1}T00:00:00.000Z`);
@@ -101,7 +101,7 @@ test('event ticket bootstrap returns only the latest five history records with a
   }
   const result = context.handleEventTicketBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
   assert.equal(result.usedTicketCount, 7);
-  assert.equal(result.usedTickets.length, 5);
+  assert.equal(result.usedTickets.length, 7);
   assert.equal(result.usedTickets[0].claim.usedAt, '2026-09-07T00:00:00.000Z');
 });
 
@@ -254,13 +254,13 @@ test('event ticket browser and admin contracts are present', () => {
   const storage = read('gas/Storage.gs');
   const code = read('gas/Code.gs');
   assert.match(eventHtml, /static\.line-scdn\.net\/liff/);
-  assert.match(adminHtml, /app\.js\?v=member-card-ui-cleanup-20260909/);
+  assert.match(adminHtml, /app\.js\?v=admin-fresh-data-20260909/);
   assert.match(eventHtml, /id="ticketModalAction"/);
   assert.match(eventHtml, /id="membershipProgress"/);
   assert.match(eventHtml, /id="usedTicketHistory"/);
   assert.match(eventHtml, /<details id="usedTicketHistoryDisclosure"/);
   assert.match(eventHtml, /<ul id="usedTicketList" class="used-ticket-list"/);
-  assert.match(eventHtml, /app\.js\?v=event-incremental-payload-20260909/);
+  assert.match(eventHtml, /app\.js\?v=event-fresh-data-20260909/);
   assert.match(eventApp, /signIn\(state\.config, 'event'\)/);
   assert.match(eventApp, /user\.event\.ticket\.claim/);
   assert.match(eventApp, /user\.event\.ticket\.redeem/);
@@ -308,7 +308,7 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(storage, /allowed_tier_keys/);
   assert.match(storage, /EventTicketClaims:/);
   assert.match(eventApp, /usedTickets/);
-  assert.match(eventApp, /const latestUsedTickets = state\.usedTickets\.slice\(0, 5\)/);
+  assert.doesNotMatch(eventApp, /state\.usedTickets\.slice\(0, 5\)/);
   assert.match(eventApp, /function createHistoryItem\(offer\)/);
   assert.match(eventService, /usedEventTicketHistoryForMember_/);
   assert.match(code, /user\.event\.bootstrap/);
@@ -317,4 +317,3 @@ test('event ticket browser and admin contracts are present', () => {
   assert.match(code, /admin\.event-tickets\.save/);
   assert.match(code, /admin\.event-tickets\.delete/);
 });
-

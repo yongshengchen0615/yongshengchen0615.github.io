@@ -17,7 +17,7 @@ test('point-card guidance is wired through schema, admin save, and member render
   const pointsApp = read('points/app.js');
 
   assert.match(storage, /PointCards:[\s\S]*'usage_method'[\s\S]*'usage_instructions'[\s\S]*'benefit_description'/);
-  assert.match(storage, /MEMBERSHIP_SYNC_SCHEMA_VERSION_ = '4'/);
+  assert.doesNotMatch(storage, /MEMBERSHIP_SYNC_SCHEMA_VERSION_/);
   assert.match(service, /card\.usage_method = usageMethod/);
   assert.match(service, /card\.usage_instructions = usageInstructions/);
   assert.match(service, /card\.benefit_description = benefitDescription/);

@@ -92,16 +92,15 @@ test('LIFF init cannot leave a permanent loading screen or trigger late login si
   });
   await assert.rejects(api.signIn(config, 'member'), { code: 'LIFF_INIT_ERROR' }); finish(); await new Promise(setImmediate); assert.equal(tokenReads, 0);
 });
-test('unresponsive IndexedDB is optional and a late-opened connection is closed', async () => {
-  let openRequest; let closed = 0;
+test('legacy display snapshots are removed without reading or writing their records', () => {
+  let removedName = '';
   const { api } = client('points', async () => ok(), {
-    setTimeout: (callback) => setImmediate(callback), clearTimeout: clearImmediate,
-    indexedDB: { open() { openRequest = {}; return openRequest; } }
+    indexedDB: { deleteDatabase(name) { removedName = name; } }
   });
-  assert.equal(await api.readSyncSnapshot('points'), null);
-  openRequest.result = { close() { closed++; } }; openRequest.onsuccess(); assert.equal(closed, 1);
-  assert.equal(await api.writeSyncSnapshot('points', 'revision', 'account', {}), false);
-  await api.clearSyncSnapshots();
+  assert.equal(removedName, 'MembershipSystemSyncCache');
+  assert.equal(typeof api.readSyncSnapshot, 'undefined');
+  assert.equal(typeof api.writeSyncSnapshot, 'undefined');
+  assert.equal(typeof api.clearSyncSnapshots, 'undefined');
 });
 test('dialog keyboard focus wraps in both directions and ignores hidden/disabled controls', () => {
   let listener; let focused = '';

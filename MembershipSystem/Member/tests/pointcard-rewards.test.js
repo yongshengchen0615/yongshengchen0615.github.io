@@ -275,7 +275,7 @@ test('ticket history presents one correlated business event after refresh', () =
   assert.equal(refreshed.history[0].result.prizeTitle, '未獲得優惠');
 });
 
-test('point-card bootstrap limits history payload while retaining the exact total', () => {
+test('point-card bootstrap returns all history records with the exact total', () => {
   const { context, rows } = loadTicketService();
   rows.PointCardTickets = Array.from({ length: 7 }, (_, index) => ({
     ...rows.PointCardTickets[0],
@@ -287,7 +287,7 @@ test('point-card bootstrap limits history payload while retaining the exact tota
   context.ensureMember_ = () => ({ display_name: '測試會員' });
   const result = context.handlePointCardBootstrap_({ lineUserId: 'U-1', displayName: '測試會員' });
   assert.equal(result.historyTotal, 7);
-  assert.equal(result.history.length, 5);
+  assert.equal(result.history.length, 7);
   assert.equal(result.history[0].ticketId, 'TK-HISTORY-7');
 });
 

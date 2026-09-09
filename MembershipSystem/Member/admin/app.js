@@ -6,7 +6,7 @@
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const MEMBERSHIP_TIER_STYLE_LABELS = Object.freeze({ forest: '森林綠', midnight: '午夜藍', ocean: '海灣青', sunset: '夕陽橘', lavender: '薰衣草紫', rose: '玫瑰粉', gold: '金曜棕', platinum: '鉑金灰', mint: '薄荷綠', cherry: '櫻桃紅' });
-  const state = { config: null, idToken: '', bootstrapVersion: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -263,13 +263,7 @@
     if (showBusy) { els.refreshButton.disabled = true; els.syncStatus.textContent = '完整同步中…'; }
     try {
       // 管理端採用 GAS full bootstrap：所有管理資料完整回傳並套用後，boot 才會顯示 adminView。
-      const payload = memberPagePayload(state.memberPage.page, state.memberPage.query);
-      if (state.bootstrapVersion) payload.knownVersion = state.bootstrapVersion;
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', payload);
-      if (result.unchanged) {
-        setSyncStatus('資料未變更', false);
-        return;
-      }
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', {});
       assertCompleteAdminBootstrap(result);
       applyAdminBootstrap(result);
       els.syncStatus.textContent = `已完整同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
@@ -291,10 +285,6 @@
   }
 
   function applyAdminBootstrap(result) {
-    const incomingVersion = String(result.version || '');
-    const versionChanged = Boolean(state.bootstrapVersion && incomingVersion && state.bootstrapVersion !== incomingVersion);
-    if (versionChanged) invalidateLazyPanels();
-    if (incomingVersion) state.bootstrapVersion = incomingVersion;
     state.members = result.members;
     applyMemberPage(result.memberPage, state.memberPage);
     state.tierSettings = result.tierSettings;
@@ -309,13 +299,6 @@
     applyAdminCalendarItems(result);
   }
 
-  function invalidateLazyPanels() {
-    state.cards = []; state.cardSortOriginalOrder = []; state.cardSortDirty = false; state.tickets = []; state.eventTickets = []; state.calendarItems = [];
-    state.selectedCalendarItemIds = new Set(); state.selectedCardId = ''; state.selectedTicketId = ''; state.selectedEventTicketId = ''; state.selectedCalendarItemId = '';
-    state.loadedPanels = { members: true, cards: false, events: false, calendar: false };
-    state.summaryLoaded = false;
-  }
-
   function renderAdminOverview() {
     els.memberCount.textContent = String(state.stats.memberCount ?? state.members.length);
     els.activeMemberCount.textContent = String(state.stats.activeMemberCount ?? state.members.filter((member) => member.status === 'active').length);
@@ -326,11 +309,7 @@
   }
 
   async function loadAdminSummary() {
-    const payload = {};
-    if (state.summaryLoaded && state.bootstrapVersion) payload.knownVersion = state.bootstrapVersion;
-    const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.summary', payload);
-    if (result.unchanged) return;
-    if (adoptIncomingBootstrapVersion(result.version)) return refreshData(false);
+    const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.summary', {});
     state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
     state.summaryLoaded = true;
     renderAdminOverview();
@@ -343,16 +322,7 @@
     const action = actionByPanel[panel];
     if (!action) return;
     const payload = panel === 'cards' ? { includeTickets: true } : {};
-    if (state.loadedPanels[panel] && state.bootstrapVersion) payload.knownVersion = state.bootstrapVersion;
     const load = window.MemberSystem.request(state.config, 'admin', state.idToken, action, payload).then((result) => {
-      if (result.unchanged) return;
-      if (adoptIncomingBootstrapVersion(result.version)) {
-        // 先釋放舊面板請求，避免 refreshData 再等待目前的 Promise 而互相卡住。
-        delete state.panelLoads[panel];
-        return refreshData(false).then(() => {
-          if (!state.loadedPanels[panel]) return ensureAdminPanelData(panel);
-        });
-      }
       if (panel === 'cards') applyAdminCards(result);
       if (panel === 'events') applyAdminEventTickets(result);
       if (panel === 'calendar') applyAdminCalendarItems(result);
@@ -360,18 +330,6 @@
     }).finally(() => { if (state.panelLoads[panel] === load) delete state.panelLoads[panel]; });
     state.panelLoads[panel] = load;
     return load;
-  }
-
-  function adoptIncomingBootstrapVersion(version) {
-    const incomingVersion = String(version || '');
-    if (!incomingVersion) return false;
-    if (state.bootstrapVersion && state.bootstrapVersion !== incomingVersion) {
-      invalidateLazyPanels();
-      state.bootstrapVersion = '';
-      return true;
-    }
-    state.bootstrapVersion = incomingVersion;
-    return false;
   }
 
   function applyAdminCards(result, renderOverview = true) {
@@ -1552,4 +1510,3 @@
   function setLoginProgress(value, status) { const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0)))); loginProgressValue = progress; els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; if (status) els.loadingStatus.textContent = status; }
   function showError(title, message) { els.errorTitle.textContent = title; els.errorMessage.textContent = message; setView('error'); }
 })();
-

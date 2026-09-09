@@ -11,9 +11,9 @@
   <link rel="stylesheet" href="./styles.css?v=event-performance-20260909">
   <link rel="stylesheet" href="./membership-progress.css?v=event-tier-style-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="./common.js?v=event-sync-cache-20260909" defer></script>
+  <script src="./common.js?v=event-fresh-data-20260909" defer></script>
   <script src="./membership-progress.js?v=event-tier-style-20260908" defer></script>
-  <script src="./app.js?v=event-incremental-payload-20260909" defer></script>
+  <script src="./app.js?v=event-fresh-data-20260909" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -28,7 +28,7 @@
       <section class="event-toolbar" aria-label="活動票券資訊"><span class="toolbar-rule"></span><span id="eventSummary">目前沒有開放中的活動</span></section>
       <section id="eventList" class="event-list" aria-live="polite"></section>
       <section id="emptyView" class="empty-view hidden"><span class="empty-mark" aria-hidden="true">○</span><h2>還沒有活動票券</h2><p>有新的會員活動時，票券會出現在這裡。</p></section>
-      <section id="usedTicketHistory" class="used-ticket-history hidden" aria-labelledby="usedTicketHistoryTitle"><details id="usedTicketHistoryDisclosure" class="used-ticket-history-disclosure"><summary class="history-summary"><span class="history-summary-title"><span class="eyebrow">Ticket history</span><strong id="usedTicketHistoryTitle">票券使用紀錄</strong></span><span id="usedTicketHistorySummary" class="history-summary-count">點擊查看最新使用紀錄</span></summary><p class="history-description">展開後顯示最新 5 筆資料；點擊條列項目可查看票券內容與核銷結果。</p><ul id="usedTicketList" class="used-ticket-list" aria-live="polite"></ul></details></section>
+      <section id="usedTicketHistory" class="used-ticket-history hidden" aria-labelledby="usedTicketHistoryTitle"><details id="usedTicketHistoryDisclosure" class="used-ticket-history-disclosure"><summary class="history-summary"><span class="history-summary-title"><span class="eyebrow">Ticket history</span><strong id="usedTicketHistoryTitle">票券使用紀錄</strong></span><span id="usedTicketHistorySummary" class="history-summary-count">點擊查看所有使用紀錄</span></summary><p class="history-description">展開後顯示所有資料；點擊條列項目可查看票券內容與核銷結果。</p><ul id="usedTicketList" class="used-ticket-list" aria-live="polite"></ul></details></section>
       <p class="privacy-note"><span aria-hidden="true">i</span> 活動票券只會綁定目前登入的 LINE 會員，領取與使用紀錄由系統保留。</p>
     </main>
   </div>
@@ -51,4 +51,3 @@
   </div>
 </body>
 </html>
-

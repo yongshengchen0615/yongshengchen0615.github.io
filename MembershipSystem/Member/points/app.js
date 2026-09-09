@@ -2,7 +2,7 @@
   'use strict';
 
   const POINT_CARD_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', bootstrapVersion: '', cacheScope: '', profile: null, cards: [], cardDetails: Object.create(null), detailLoadingCardId: '', tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '', ticketModalOpener: null };
+  const state = { config: null, idToken: '', profile: null, cards: [], cardDetails: Object.create(null), tickets: [], history: [], historyTotal: 0, activeCardId: '', pendingTicketId: '', redeeming: false, uncertainTicketId: '', ticketModalOpener: null };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -54,34 +54,22 @@
     } catch (error) { stopLoginProgress(); showError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
 
-  async function loadCards(showBusy, bypassSnapshot) {
+  async function loadCards(showBusy) {
     if (showBusy) { setInlineStatus('正在更新集點卡…'); els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
     const requestVersion = (state.loadVersion || 0) + 1;
     state.loadVersion = requestVersion;
     try {
-      const cached = bypassSnapshot ? null : await window.MemberSystem.readSyncSnapshot('points');
-      const payload = { compact: true, includeActiveCard: true, activeCardId: state.activeCardId };
-      if (cached) { payload.knownRevision = cached.revision; payload.knownCacheScope = cached.cacheScope; }
-      const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.bootstrap', payload);
+      const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.bootstrap', { compact: false });
       if (requestVersion !== state.loadVersion) return;
-      if (result.unchanged) {
-        const confirmed = cached && cached.cacheScope === result.cacheScope && cached.revision === result.revision ? cached : null;
-        if (!confirmed) return loadCards(showBusy, true);
-        applyCardsSnapshot(confirmed.payload, result);
-      } else {
-        applyCardsSnapshot(result, result);
-      }
-      await ensureActiveCardDetail();
+      applyCardsSnapshot(result);
+      assertCompleteCardsBootstrap();
       if (requestVersion !== state.loadVersion) return;
       renderCards();
       if (showBusy) setInlineStatus('集點卡已更新。');
-      void persistCardsSnapshot();
     } catch (error) { if (!showBusy) throw error; handleReadError(error); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
   }
 
-  function applyCardsSnapshot(payload, sync) {
-    state.bootstrapVersion = String(sync && (sync.revision || sync.version) || '');
-    state.cacheScope = String(sync && sync.cacheScope || '');
+  function applyCardsSnapshot(payload) {
     state.profile = payload && payload.profile && typeof payload.profile === 'object' ? payload.profile : {};
     state.cards = Array.isArray(payload && payload.cards) ? payload.cards : [];
     state.cardDetails = payload && payload.cardDetails && typeof payload.cardDetails === 'object' ? payload.cardDetails : Object.create(null);
@@ -101,37 +89,25 @@
     return detail && detail.card ? { ...summary, ...detail.card } : summary;
   }
 
-  async function ensureActiveCardDetail() {
-    const cardId = String(state.activeCardId || '');
-    if (!cardId || state.cardDetails[cardId]) return;
-    const details = state.cardDetails;
-    state.detailLoadingCardId = cardId;
-    renderCards();
-    try {
-      const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.detail', { cardId });
-      if (!result.card || String(result.card.cardId) !== cardId) throw new Error('集點卡明細回應不完整。');
-      // 更新或核銷後的快照不得被舊請求覆寫。
-      if (details !== state.cardDetails) return;
-      details[cardId] = { card: result.card, tickets: Array.isArray(result.tickets) ? result.tickets : [] };
-    } finally {
-      if (details === state.cardDetails && state.detailLoadingCardId === cardId) state.detailLoadingCardId = '';
-    }
+  function assertCompleteCardsBootstrap() {
+    const incomplete = state.cards.some((card) => {
+      const cardId = String(card && card.cardId || '');
+      const detail = state.cardDetails[cardId];
+      return !cardId || !detail || !detail.card || String(detail.card.cardId || '') !== cardId || !Array.isArray(detail.tickets);
+    });
+    if (!incomplete) return;
+    const error = new Error('集點卡資料回應不完整，已停止顯示集點卡頁面。請重新整理後再試。');
+    error.code = 'POINTCARD_BOOTSTRAP_INCOMPLETE';
+    throw error;
   }
 
   async function selectCard(cardId) {
     const nextCardId = String(cardId || '');
     if (!state.cards.some((card) => card.cardId === nextCardId)) return;
-    if (nextCardId === state.activeCardId && state.cardDetails[nextCardId]) return;
+    if (nextCardId === state.activeCardId) return;
     state.activeCardId = nextCardId;
     setInlineStatus('');
-    try {
-      await ensureActiveCardDetail();
-      if (state.activeCardId !== nextCardId) return;
-      renderCards();
-      void persistCardsSnapshot();
-    } catch (error) {
-      if (state.activeCardId === nextCardId) { renderCards(); handleReadError(error); }
-    }
+    renderCards();
   }
 
   function setInlineStatus(message, error = false) {
@@ -144,13 +120,6 @@
   function handleReadError(error) {
     if (/^(AUTH_|MEMBERSHIP_REQUIRED|MEMBER_)/.test(String(error && error.code || ''))) return showError(error);
     setInlineStatus('更新失敗，畫面保留上次資料。請按「更新」重試；票券狀態以使用時驗證為準。', true);
-  }
-
-  function persistCardsSnapshot() {
-    if (!state.bootstrapVersion || !state.cacheScope) return Promise.resolve(false);
-    return window.MemberSystem.writeSyncSnapshot('points', state.bootstrapVersion, state.cacheScope, {
-      profile: state.profile, cards: state.cards, cardDetails: state.cardDetails, history: state.history, historyTotal: state.historyTotal
-    });
   }
 
   function renderCards() {
@@ -189,9 +158,6 @@
   }
 
   function renderTickets(card) {
-    if (!state.cardDetails[card.cardId]) {
-      els.ticketSummary.textContent = state.detailLoadingCardId === card.cardId ? '正在載入這張集點卡的票券明細…' : '明細尚未載入，請再次選取此卡或按「更新」。'; els.ticketEmpty.classList.add('hidden'); els.ticketList.replaceChildren(); return;
-    }
     const offers = ticketOffersForCard(card);
     els.ticketSummary.textContent = offers.length ? `共 ${offers.length} 種票券；持續集點即可解鎖，點數足夠即可使用。` : '店家尚未為這張集點卡設定兌換票券。';
     els.ticketEmpty.classList.toggle('hidden', offers.length !== 0);
@@ -201,10 +167,9 @@
 
   function renderHistory() {
     const history = Array.isArray(state.history) ? state.history.slice().sort((a, b) => String(b.occurredAt || '').localeCompare(String(a.occurredAt || ''))) : [];
-    const latestHistory = history.slice(0, 5);
-    els.ticketHistorySummary.textContent = state.historyTotal ? `共 ${state.historyTotal} 筆 · 展開查看最新 ${latestHistory.length} 筆` : '尚無使用紀錄';
+    els.ticketHistorySummary.textContent = state.historyTotal ? `共 ${state.historyTotal} 筆使用紀錄` : '尚無使用紀錄';
     els.ticketHistoryEmpty.classList.toggle('hidden', state.historyTotal !== 0);
-    els.ticketHistoryList.replaceChildren(...latestHistory.map((activity) => createHistoryCard(activity)));
+    els.ticketHistoryList.replaceChildren(...history.map((activity) => createHistoryCard(activity)));
   }
 
   function createHistoryCard(activity) {
@@ -297,7 +262,7 @@
     state.redeeming = true; els.confirmTicketUseButton.disabled = true; els.confirmTicketUseButton.textContent = '使用中…'; els.ticketModalCost.textContent = '正在確認票券與可用點數…'; setTicketProcessing(true);
     try {
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.ticket.redeem', { ticketId });
-      const redeemed = result.ticket; state.bootstrapVersion = ''; state.cacheScope = ''; window.MemberSystem.clearSyncSnapshots(); state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (state.cardDetails[state.activeCardId]) state.cardDetails[state.activeCardId].tickets = state.tickets; if (result.activity) { const isNewHistory = !state.history.some((item) => item.activityId === result.activity.activityId); state.history = [result.activity].concat(state.history.filter((item) => item.activityId !== result.activity.activityId)).slice(0, 5); if (isNewHistory) state.historyTotal += 1; } if (result.balance) updateCardBalance(result.balance); renderCards(); setTicketProcessing(false); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
+      const redeemed = result.ticket; state.tickets = state.tickets.filter((item) => item.ticketId !== ticketId); if (Array.isArray(result.nextTickets)) state.tickets = state.tickets.concat(result.nextTickets); if (state.cardDetails[state.activeCardId]) state.cardDetails[state.activeCardId].tickets = state.tickets; if (result.activity) { const isNewHistory = !state.history.some((item) => item.activityId === result.activity.activityId); state.history = [result.activity].concat(state.history.filter((item) => item.activityId !== result.activity.activityId)); if (isNewHistory) state.historyTotal += 1; } if (result.balance) updateCardBalance(result.balance); renderCards(); setTicketProcessing(false); await showRedeemedTicket(redeemed); state.pendingTicketId = '';
     } catch (error) {
       setTicketProcessing(false);
       const responseUncertain = error && error.code === 'API_RESPONSE_UNCERTAIN';
@@ -336,4 +301,3 @@
   function setLoginProgress(value, status) { const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0)))); loginProgressValue = progress; els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; if (status) els.loadingStatus.textContent = status; }
   function showError(error) { const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED'; els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '集點卡暫時無法載入'; els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用集點卡與票券功能。' : error && error.message ? error.message : '請稍後重新整理再試。'; els.joinMemberButton.classList.toggle('hidden', !membershipRequired); els.retryButton.classList.toggle('hidden', membershipRequired); setView('error'); }
 })();
-
