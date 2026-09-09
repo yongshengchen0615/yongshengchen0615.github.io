@@ -332,7 +332,7 @@
   }
 
   async function ensureAdminPanelData(panel) {
-    if (panel === 'members') return;
+    if (panel === 'members' || state.loadedPanels[panel]) return;
     if (state.panelLoads[panel]) return state.panelLoads[panel];
     const actionByPanel = { cards: 'admin.pointcards.list', events: 'admin.event-tickets.list', calendar: 'admin.calendar-items.list' };
     const action = actionByPanel[panel];
@@ -497,6 +497,8 @@
     if (!member) return;
     if (button.dataset.action === 'edit-member') return openMemberModal(member);
     if (button.dataset.action !== 'add-grant') return;
+    // Full bootstrap 已載入集點卡時直接開啟，不再為互動重打 GAS。
+    if (state.loadedPanels.cards) return openGrantModal(member);
     button.disabled = true;
     try { await ensureAdminPanelData('cards'); openGrantModal(member); } catch (error) { setSyncStatus(error && error.message || '無法載入集點卡，請稍後再試。', true); } finally { button.disabled = false; }
   }
@@ -1453,7 +1455,7 @@
   function switchPanel(panel) {
     state.activePanel = panel;
     ['members', 'cards', 'events', 'calendar'].forEach((name) => { const selected = name === panel; els[name + 'Tab'].setAttribute('aria-selected', String(selected)); els[name + 'Panel'].classList.toggle('hidden', !selected); });
-    ensureAdminPanelData(panel).catch((error) => { setSyncStatus(error && error.message || '資料載入失敗，請稍後再試。', true); });
+    if (!state.loadedPanels[panel]) ensureAdminPanelData(panel).catch((error) => { setSyncStatus(error && error.message || '資料載入失敗，請稍後再試。', true); });
   }
   function switchCardWorkspace(workspace) { state.activeCardWorkspace = workspace; const workspaces = [['cards', 'cardSettingsTab', 'cardSettingsPanel'], ['tickets', 'ticketSettingsTab', 'ticketSettingsPanel']]; workspaces.forEach(([name, tabId, panelId]) => { const selected = name === workspace; els[tabId].setAttribute('aria-selected', String(selected)); els[panelId].classList.toggle('hidden', !selected); }); }
   function updateAccentValue() { els.accentValue.textContent = safeAccent(els.cardAccent.value).toUpperCase(); }
