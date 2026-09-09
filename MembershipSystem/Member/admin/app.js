@@ -1407,7 +1407,34 @@
       if (await refreshAfterSuccessfulWrite('會員狀態已儲存', els.memberFormMessage)) setSyncStatus('會員狀態已儲存 · 已同步', false);
     } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); }
   }
-  function openGrantModal(member) { const activeCards = activeGrantCards(); state.grantRequestId = createRequestId(); els.grantMemberId.value = String(member.lineUserId); els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`; renderGrantPointRows([]); els.grantStampsEnabled.checked = false; els.grantStampsEnabled.disabled = activeCards.length === 0; els.grantServiceTimeEnabled.checked = false; els.grantStampAmount.value = ''; els.grantServiceTimeMinutes.value = ''; els.grantNote.value = ''; updateGrantOptions(); hideMessage(els.grantFormMessage); els.grantModal.classList.remove('hidden'); (activeCards.length ? els.grantStampsEnabled : els.grantServiceTimeEnabled).focus(); }
+  function openGrantModal(member) {
+    const activeCards = activeGrantCards();
+    state.grantRequestId = createRequestId();
+    els.grantMemberId.value = String(member.lineUserId);
+    els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`;
+    // 先清掉前一次內容，再立即顯示；不要讓 focus/layout 阻塞 Modal 第一幀。
+    els.grantStampsEnabled.checked = false;
+    els.grantStampsEnabled.disabled = activeCards.length === 0;
+    els.grantServiceTimeEnabled.checked = false;
+    els.grantStampAmount.value = '';
+    els.grantServiceTimeMinutes.value = '';
+    els.grantNote.value = '';
+    els.grantPointRows.replaceChildren();
+    els.grantPointHint.textContent = '勾選「發放集點」後選擇集點卡與點數。';
+    els.grantPointHint.classList.remove('warning');
+    els.addGrantPointButton.disabled = true;
+    els.grantStampsFields.classList.add('hidden');
+    els.grantServiceTimeFields.classList.add('hidden');
+    els.grantServiceTimeMinutes.disabled = true;
+    hideMessage(els.grantFormMessage);
+    els.grantModal.classList.remove('hidden');
+
+    const focusTarget = activeCards.length ? els.grantStampsEnabled : els.grantServiceTimeEnabled;
+    window.requestAnimationFrame(() => {
+      if (els.grantModal.classList.contains('hidden')) return;
+      try { focusTarget.focus({ preventScroll: true }); } catch (_) { focusTarget.focus(); }
+    });
+  }
   function closeGrantModal() { state.grantRequestId = ''; els.grantModal.classList.add('hidden'); }
   function activeGrantCards() { return state.cards.filter((card) => card.status === 'active' && !card.expired); }
   function renderGrantPointRows(points) { const grants = Array.isArray(points) ? points : []; els.grantPointRows.replaceChildren(...grants.map((grant, index) => createGrantPointRow(grant, index, grants))); updateGrantPointHint(); }
