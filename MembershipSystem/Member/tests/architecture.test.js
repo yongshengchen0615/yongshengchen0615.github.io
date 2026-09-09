@@ -173,6 +173,7 @@ test('admin requires explicit grant actions and status choices while exposing ca
   assert.match(adminApp, /els\.grantPointRows\.replaceChildren\(\)/);
   assert.match(adminApp, /els\.grantModal\.classList\.remove\('hidden'\)[\s\S]*?window\.requestAnimationFrame/);
   assert.match(adminStyles, /#grantModal \{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/);
+  assert.match(adminStyles, /\.small-button \{[^}]*touch-action: manipulation;/);
   assert.match(adminApp, /els\.grantStampsEnabled\.checked = false/);
   assert.match(adminApp, /els\.grantServiceTimeEnabled\.checked = false/);
   assert.match(adminApp, /els\.grantServiceTimeMinutes\.value = ''/);
