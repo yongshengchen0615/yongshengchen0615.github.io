@@ -477,6 +477,7 @@ test('admin content editors open in bounded dialogs and long ticket choices rema
 
 test('all LIFF frontends use a centered, contextual login progress view', () => {
   const loginTargets = { member: '會員卡', points: '集點卡', event: '活動票券', calendar: '活動日曆', admin: '管理端' };
+  const syncProgressCeilings = { member: 92, points: 92, event: 92, calendar: 92, admin: 96 };
   surfaces.forEach((surface) => {
     const html = read(`${surface}/index.html`);
     const app = read(`${surface}/app.js`);
@@ -490,7 +491,8 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
     assert.match(loading[0], /id="loadingProgressText" class="login-progress-value"[^>]*>8%<\/p>/);
     assert.match(loading[0], /id="loadingStatus" class="login-status" role="status">正在準備安全登入…<\/p>/);
     assert.doesNotMatch(loading[0], /loader-mark|kicker/);
-    assert.match(app, /startLoginProgress\('正在取得開啟設定…', 18\)[\s\S]*?startLoginProgress\('正在驗證 LINE 身分…', 48\)[\s\S]*?startLoginProgress\([^)]*, 92\)[\s\S]*?await completeLoginProgress\(/);
+    const syncProgressPattern = new RegExp(`startLoginProgress\\('正在取得開啟設定…', 18\\)[\\s\\S]*?startLoginProgress\\('正在驗證 LINE 身分…', 48\\)[\\s\\S]*?startLoginProgress\\([^)]*, ${syncProgressCeilings[surface]}\\)[\\s\\S]*?await completeLoginProgress\\(`);
+    assert.match(app, syncProgressPattern);
     assert.match(app, /function startLoginProgress\(status, ceiling\)[\s\S]*?window\.setInterval[\s\S]*?Math\.min\(maximum/);
     assert.match(app, /function completeLoginProgress\(status\)[\s\S]*?setLoginProgress\(100, status\)[\s\S]*?Promise\.resolve\(\)/);
     assert.match(app, /function stopLoginProgress\(\)[\s\S]*?window\.clearInterval/);
