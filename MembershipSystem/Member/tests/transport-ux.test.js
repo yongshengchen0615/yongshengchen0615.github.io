@@ -58,19 +58,38 @@ test('a failed shared read is evicted and the next explicit retry sends a fresh 
   await assert.rejects(first, { code: 'MEMBERSHIP_REQUIRED' }); await assert.rejects(second, { code: 'MEMBERSHIP_REQUIRED' });
   assert.equal(calls, 1); await api.request(config, 'points', 'A', 'user.pointcard.bootstrap'); assert.equal(calls, 2);
 });
-test('stalled reads abort once within a 9000 ms aggregate transport budget; writes send once', async () => {
+test('stalled non-bootstrap reads abort once within a 9000 ms aggregate transport budget; writes send once', async () => {
   const scheduled = []; const signals = []; let now = 0;
   class Clock extends Date { static now() { return now; } }
   const { api, context } = client('points', (_url, options) => { signals.push(options.signal); return new Promise(() => {}); }, {
     setTimeout(callback, ms) { scheduled.push(ms); return setImmediate(() => { now += ms; callback(); }); }, clearTimeout: clearImmediate
   });
   context.Date = Clock;
-  await assert.rejects(api.request(config, 'points', 'A', 'user.pointcard.bootstrap'), { code: 'NETWORK_ERROR' });
+  await assert.rejects(api.request(config, 'points', 'A', 'user.pointcard.detail', { cardId: 'one' }), { code: 'SERVICE_TIMEOUT' });
   assert.deepEqual(scheduled, [9000]); assert.equal(now, 9000); assert.equal(signals.length, 1); assert.ok(signals.every((signal) => signal.aborted));
   await assert.rejects(api.request(config, 'points', 'A', 'user.pointcard.ticket.redeem'), { code: 'API_RESPONSE_UNCERTAIN' });
   assert.equal(signals.length, 2);
 });
-test('admin full bootstrap has a bounded 30000 ms budget while lazy reads keep the 9000 ms budget', async () => {
+test('all complete bootstrap reads have a bounded 30000 ms budget while lightweight reads keep 9000 ms', async () => {
+  const cases = [
+    ['member', 'user.member.bootstrap', {}],
+    ['points', 'user.pointcard.bootstrap', {}],
+    ['event', 'user.event.bootstrap', {}],
+    ['calendar', 'user.calendar.bootstrap', {}],
+    ['admin', 'admin.bootstrap', {}]
+  ];
+  for (const [surface, action, payload] of cases) {
+    const scheduled = []; let now = 0;
+    class Clock extends Date { static now() { return now; } }
+    const { api, context } = client(surface, () => new Promise(() => {}), {
+      setTimeout(callback, ms) { scheduled.push(ms); return setImmediate(() => { now += ms; callback(); }); },
+      clearTimeout: clearImmediate
+    });
+    context.Date = Clock;
+    await assert.rejects(api.request(config, surface, 'A', action, payload), { code: 'SERVICE_TIMEOUT' });
+    assert.deepEqual(scheduled, [30000], surface);
+  }
+
   const scheduled = []; let now = 0;
   class Clock extends Date { static now() { return now; } }
   const { api, context } = client('admin', () => new Promise(() => {}), {
@@ -78,10 +97,7 @@ test('admin full bootstrap has a bounded 30000 ms budget while lazy reads keep t
     clearTimeout: clearImmediate
   });
   context.Date = Clock;
-  await assert.rejects(api.request(config, 'admin', 'A', 'admin.bootstrap', {}), { code: 'NETWORK_ERROR' });
-  assert.deepEqual(scheduled, [30000]);
-  scheduled.length = 0; now = 0;
-  await assert.rejects(api.request(config, 'admin', 'A', 'admin.bootstrap', { lazy: true }), { code: 'NETWORK_ERROR' });
+  await assert.rejects(api.request(config, 'admin', 'A', 'admin.bootstrap', { lazy: true }), { code: 'SERVICE_TIMEOUT' });
   assert.deepEqual(scheduled, [9000]);
 });
 test('LIFF init cannot leave a permanent loading screen or trigger late login side effects', async () => {
