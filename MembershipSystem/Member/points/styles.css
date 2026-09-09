@@ -148,3 +148,13 @@ button { line-height: 1.35; }
 /* 更新狀態就地顯示，保留已載入內容與使用者的位置。 */
 .sync-notice { margin: 12px 0; padding: 12px 16px; border: 1px solid #bac9ba; border-radius: 12px; background: #f2f7ef; color: #274c38; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .sync-notice.is-error { background: #fff4e8; border-color: #dfb68c; color: #743e18; }
+
+
+/* Card-level instructions are separate from ticket-specific redemption details. */
+.card-guidance-panel { margin-top: 17px; padding: 22px; background: rgba(255, 250, 243, .72); border: 1px solid rgba(40, 32, 22, .11); border-radius: 20px; animation: rise-in .55s .23s ease both; }
+.card-guidance-heading h2 { margin: 5px 0 0; color: var(--ink); font-size: 24px; letter-spacing: -.07em; }
+.card-guidance-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 15px; }
+.card-guidance-grid article { min-width: 0; padding: 16px; background: rgba(255, 255, 255, .68); border: 1px solid rgba(40, 32, 22, .09); border-radius: 14px; }
+.card-guidance-grid strong { display: block; color: var(--ink); font-size: 12px; }
+.card-guidance-grid p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .card-guidance-panel { padding: 18px; }.card-guidance-grid { grid-template-columns: 1fr; } }
