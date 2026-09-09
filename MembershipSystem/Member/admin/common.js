@@ -5,9 +5,10 @@
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
   const READ_RESPONSE_ATTEMPTS = 2;
   const READ_RETRY_DELAY_MS = 400;
-  // 兩次讀取共用 9 秒預算；寫入仍只送一次，保留結果不確定的處理。
+  // 一般讀取維持 9 秒總預算；管理端 full bootstrap 因需完整讀取多個資料集，使用獨立 30 秒上限。
   const READ_REQUEST_TIMEOUT_MS = 9000;
   const READ_TOTAL_TIMEOUT_MS = 9000;
+  const ADMIN_FULL_BOOTSTRAP_TIMEOUT_MS = 30000;
   const pendingReads = new Map();
   const WRITE_REQUEST_TIMEOUT_MS = 30000;
   const CONFIG_RESPONSE_ATTEMPTS = 2;
@@ -206,8 +207,11 @@
 
   async function sendRequest(config, clientType, idToken, action, payload = {}) {
     const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
+    const isFullAdminBootstrap = !isWrite && clientType === 'admin' && action === 'admin.bootstrap' && !Boolean(payload && payload.lazy);
     const attempts = isWrite ? 1 : READ_RESPONSE_ATTEMPTS;
-    const deadline = Date.now() + READ_TOTAL_TIMEOUT_MS;
+    const readBudgetMs = isFullAdminBootstrap ? ADMIN_FULL_BOOTSTRAP_TIMEOUT_MS : READ_TOTAL_TIMEOUT_MS;
+    const readRequestTimeoutMs = isFullAdminBootstrap ? ADMIN_FULL_BOOTSTRAP_TIMEOUT_MS : READ_REQUEST_TIMEOUT_MS;
+    const deadline = Date.now() + readBudgetMs;
     let lastError;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       let response;
@@ -219,7 +223,7 @@
           cache: 'no-store',
           redirect: 'follow',
           body: JSON.stringify({ ...payload, action, clientType, idToken })
-        }, isWrite ? WRITE_REQUEST_TIMEOUT_MS : Math.max(1, Math.min(READ_REQUEST_TIMEOUT_MS, deadline - Date.now())), (result) => result.text());
+        }, isWrite ? WRITE_REQUEST_TIMEOUT_MS : Math.max(1, Math.min(readRequestTimeoutMs, deadline - Date.now())), (result) => result.text());
         response = fetched.response;
         rawResponse = fetched.body;
       } catch (_) {
