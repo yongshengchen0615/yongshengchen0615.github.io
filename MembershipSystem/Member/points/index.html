@@ -13,7 +13,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="./common.js?v=points-sync-cache-20260909" defer></script>
   <script src="./membership-progress.js?v=points-tier-style-20260908" defer></script>
-  <script src="./app.js?v=points-card-guidance-20260909" defer></script>
+  <script src="./app.js?v=points-card-ui-cleanup-20260909" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -62,12 +62,12 @@
 
       <section id="activeCardView" class="active-card" aria-live="polite">
         <div class="card-ornament" aria-hidden="true"><span></span><span></span><span></span></div>
-        <div class="active-card-header"><div><p class="label">Current reward</p><h2 id="activeCardTitle">集點卡</h2><p id="activeCardDescription" class="description"></p></div><div id="activeCardStatus" class="card-status">進行中</div></div>
+        <div class="active-card-header"><div><p class="label">Current reward</p><h2 id="activeCardTitle">集點卡</h2></div><div id="activeCardStatus" class="card-status">進行中</div></div>
         <div class="progress-section">
           <div class="progress-numbers"><strong id="progressCount">0</strong><span>點</span></div>
           <div class="progress-foot"><span id="progressMessage">點數會持續累積，達標後系統會發放票券。</span><span id="remainingMessage">尚未設定兌換票券</span></div>
         </div>
-        <div class="reward-row"><span class="reward-icon" aria-hidden="true">✦</span><div><p class="label">Reward options</p><strong id="rewardTitle">集點卡票券總覽</strong></div><div class="reward-meta"><span id="cardExpiry" class="updated-at">使用期限：無期限</span><span id="updatedAt" class="updated-at">—</span></div></div>
+        <p id="cardExpiry" class="updated-at card-expiry-only">使用期限：無期限</p>
       </section>
 
       <section id="cardGuidancePanel" class="card-guidance-panel hidden" aria-labelledby="cardGuidanceTitle"><div class="card-guidance-heading"><p class="label dark-label">Card details</p><h2 id="cardGuidanceTitle">使用與優惠說明</h2></div><div class="card-guidance-grid"><article data-card-guidance-item><strong>使用方式</strong><p id="cardUsageMethod"></p></article><article data-card-guidance-item><strong>使用說明</strong><p id="cardUsageInstructions"></p></article><article data-card-guidance-item><strong>優惠說明</strong><p id="cardBenefitDescription"></p></article></div></section>
