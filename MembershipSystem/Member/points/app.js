@@ -11,7 +11,7 @@
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
     [
-      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
+      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'cardGuidancePanel', 'cardUsageMethod', 'cardUsageInstructions', 'cardBenefitDescription', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
       'ticketHistorySummary', 'ticketHistoryList', 'ticketHistoryEmpty', 'ticketModal', 'closeTicketModal', 'ticketModalTicketName', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalCost', 'ticketModalProcessing', 'confirmTicketUseButton', 'refreshTicketButton', 'ticketModalResult', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
@@ -161,7 +161,7 @@
       const button = document.createElement('button'); button.type = 'button'; button.className = 'card-tab'; button.dataset.cardId = card.cardId; button.dataset.cardStyle = safeCardStyle(card.styleKey); button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(card.cardId === state.activeCardId)); button.tabIndex = card.cardId === state.activeCardId ? 0 : -1; button.setAttribute('aria-controls', 'activeCardView'); button.style.setProperty('--card-accent', safeAccent(card.accent)); const title = document.createElement('strong'); title.textContent = String(card.title || '未命名集點卡'); const meta = document.createElement('span'); meta.textContent = `${Number(card.stamps || 0)} 點`; button.append(title, meta); return button;
     }));
     renderHistory();
-    if (!hasCards) { els.ticketList.replaceChildren(); els.ticketSummary.textContent = ''; return; }
+    if (!hasCards) { els.cardGuidancePanel.classList.add('hidden'); els.ticketList.replaceChildren(); els.ticketSummary.textContent = ''; return; }
     const card = activeCard();
     if (!card) return;
     renderActiveCard(card); renderTickets(card);
@@ -181,6 +181,14 @@
     els.rewardTitle.textContent = '集點卡票券總覽';
     els.cardExpiry.textContent = card.expiryMode === 'date' && card.expiresOn ? `${card.expired ? '已於' : '使用期限至'} ${card.expiresOn}` : '使用期限：無期限';
     els.updatedAt.textContent = card.updatedAt ? `更新於 ${window.MemberSystem.formatDateTime(card.updatedAt)}` : '尚未更新';
+    renderCardGuidance(card);
+  }
+
+  function renderCardGuidance(card) {
+    const fields = [[els.cardUsageMethod, card.usageMethod], [els.cardUsageInstructions, card.usageInstructions], [els.cardBenefitDescription, card.benefitDescription]];
+    let visibleCount = 0;
+    fields.forEach(([output, value]) => { const text = String(value || '').trim(); output.textContent = text; const item = output.closest('[data-card-guidance-item]'); if (item) item.classList.toggle('hidden', !text); if (text) visibleCount += 1; });
+    els.cardGuidancePanel.classList.toggle('hidden', visibleCount === 0);
   }
 
   function renderTickets(card) {
