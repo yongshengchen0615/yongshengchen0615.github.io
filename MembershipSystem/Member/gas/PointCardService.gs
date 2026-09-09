@@ -8,6 +8,8 @@ const POINT_CARD_RATE_BASIS_POINTS_ = 10000;
 const POINT_CARD_MAX_SORT_ORDER_ = 100000;
 const POINT_CARD_STYLE_KEYS_ = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
 const POINT_CARD_DEFAULT_STYLE_KEY_ = 'forest';
+const POINT_CARD_MAX_USAGE_METHOD_LENGTH_ = 120;
+const POINT_CARD_MAX_GUIDANCE_LENGTH_ = 500;
 const POINT_CARD_TICKET_TEMPLATE_STATUSES_ = Object.freeze(['active', 'draft', 'archived']);
 const POINT_CARD_TICKET_STATUS_AVAILABLE_ = 'available';
 const POINT_CARD_TICKET_STATUS_USED_ = 'used';
@@ -309,7 +311,7 @@ function pointCardForClient_(card, configuredRewards, includeAdminDetails, ticke
     ? configuredRewards.map(function(reward) { return pointCardRewardForClient_(reward, includeAdminDetails, ticketTemplatesById); }).sort(function(a, b) { return a.thresholdStamps - b.thresholdStamps; })
     : legacyPointCardReward_(card);
   const finalReward = rewards.length ? rewards[rewards.length - 1] : null;
-  const clientCard = { cardId, title: String(card.title || ''), description: String(card.description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || (finalReward && finalReward.rewardTitle) || ''), rewards, expiryMode: pointCardExpiryMode_(card), expiresOn: pointCardExpiresOn_(card), expired: pointCardIsExpired_(card), status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), styleKey: pointCardStyleKey_(card.style_key), sortOrder: pointCardSortOrder_(card), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
+  const clientCard = { cardId, title: String(card.title || ''), description: String(card.description || ''), usageMethod: String(card.usage_method || ''), usageInstructions: String(card.usage_instructions || ''), benefitDescription: String(card.benefit_description || ''), targetStamps: Number(card.target_stamps || 0), rewardTitle: String(card.reward_title || (finalReward && finalReward.rewardTitle) || ''), rewards, expiryMode: pointCardExpiryMode_(card), expiresOn: pointCardExpiresOn_(card), expired: pointCardIsExpired_(card), status: String(card.status || 'draft'), accent: String(card.accent || '#e47845'), styleKey: pointCardStyleKey_(card.style_key), sortOrder: pointCardSortOrder_(card), createdAt: String(card.created_at || ''), updatedAt: String(card.updated_at || '') };
   return clientCard;
 }
 
@@ -620,6 +622,9 @@ function handlePointCardSave_(identity, admin, request) {
   const cardId = String(input.cardId || '').trim();
   const title = String(input.title || '').trim();
   const description = String(input.description || '').trim();
+  const usageMethod = String(input.usageMethod || '').trim();
+  const usageInstructions = String(input.usageInstructions || '').trim();
+  const benefitDescription = String(input.benefitDescription || '').trim();
   const rewardTitle = String(input.rewardTitle || '').trim();
   const legacyTargetStamps = Number(input.targetStamps);
   const status = String(input.status || '').trim().toLowerCase();
@@ -632,7 +637,7 @@ function handlePointCardSave_(identity, admin, request) {
   const sortOrder = hasSortOrder ? Number(input.sortOrder) : 0;
   const expected = String(request.expectedUpdatedAt || '').trim();
   const hasRewards = Object.prototype.hasOwnProperty.call(input, 'rewards');
-  if (!title || title.length > 80 || description.length > 240 || (!hasRewards && (!rewardTitle || rewardTitle.length > 100))) throw new ApiError(400, 'INVALID_CARD', '集點卡名稱、說明或回饋內容不合法。');
+  if (!title || title.length > 80 || description.length > 240 || usageMethod.length > POINT_CARD_MAX_USAGE_METHOD_LENGTH_ || usageInstructions.length > POINT_CARD_MAX_GUIDANCE_LENGTH_ || benefitDescription.length > POINT_CARD_MAX_GUIDANCE_LENGTH_ || (!hasRewards && (!rewardTitle || rewardTitle.length > 100))) throw new ApiError(400, 'INVALID_CARD', '集點卡名稱、說明、使用方式、使用說明、優惠說明或回饋內容不合法。');
   const ticketTemplatesById = pointCardTicketTemplatesById_();
   const rewards = hasRewards ? normalizePointCardRewards_(input.rewards, POINT_CARD_MAX_THRESHOLD_STAMPS_, ticketTemplatesById) : null;
   if (['active', 'draft', 'archived'].indexOf(status) < 0 || !/^#[0-9a-f]{6}$/i.test(accent) || (hasStyleKey && POINT_CARD_STYLE_KEYS_.indexOf(inputStyleKey) < 0) || ['unlimited', 'date'].indexOf(expiryMode) < 0 || (expiryMode === 'date' && !isValidDateOnly_(expiresOn)) || (hasSortOrder && (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > POINT_CARD_MAX_SORT_ORDER_))) throw new ApiError(400, 'INVALID_CARD', '集點卡狀態、樣式、識別色、使用期限或排序不合法。');
@@ -657,7 +662,7 @@ function handlePointCardSave_(identity, admin, request) {
           ? Math.max.apply(null, existingRewards.map(function(reward) { return Number(reward.threshold_stamps || 0); }))
           : Number.isInteger(storedTargetStamps) && storedTargetStamps >= 1 && storedTargetStamps <= POINT_CARD_MAX_THRESHOLD_STAMPS_ ? storedTargetStamps : 10;
     if (!hasRewards && existingRewards.some(function(existingReward) { return Number(existingReward.threshold_stamps || 0) > targetStamps; })) throw new ApiError(400, 'INVALID_CARD_REWARDS', '舊版集點卡完成點數不可低於既有節點點數，請一併更新節點設定。');
-    card.title = title; card.description = description; card.target_stamps = String(targetStamps); card.reward_title = hasRewards ? rewards[rewards.length - 1].reward_title : rewardTitle; card.status = status; card.accent = accent.toUpperCase(); card.style_key = styleKey; card.expiry_mode = expiryMode; card.expires_on = expiryMode === 'date' ? expiresOn : ''; card.sort_order = String(hasSortOrder ? sortOrder : pointCardSortOrder_(card)); card.updated_by = identity.lineUserId; card.updated_at = now;
+    card.title = title; card.description = description; card.usage_method = usageMethod; card.usage_instructions = usageInstructions; card.benefit_description = benefitDescription; card.target_stamps = String(targetStamps); card.reward_title = hasRewards ? rewards[rewards.length - 1].reward_title : rewardTitle; card.status = status; card.accent = accent.toUpperCase(); card.style_key = styleKey; card.expiry_mode = expiryMode; card.expires_on = expiryMode === 'date' ? expiresOn : ''; card.sort_order = String(hasSortOrder ? sortOrder : pointCardSortOrder_(card)); card.updated_by = identity.lineUserId; card.updated_at = now;
     if (rowNumber) updateRecordAtRow_('PointCards', rowNumber, card); else appendRecord_('PointCards', card);
     if (hasRewards) replacePointCardRewards_(card.card_id, rewards, now);
     appendAuditRecord_({ audit_id: Utilities.getUuid(), actor_line_user_id: identity.lineUserId, actor_role: admin.role, action: 'POINT_CARD_SAVE', target_type: 'point_card', target_id: card.card_id, result: 'success', detail: 'Point card saved', created_at: now });
