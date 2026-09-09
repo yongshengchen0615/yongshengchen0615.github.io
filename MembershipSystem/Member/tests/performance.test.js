@@ -279,6 +279,9 @@ test('admin waits for the complete GAS bootstrap before exposing the workspace',
   assert.match(adminApp, /state\.loadedPanels = \{ members: true, cards: true, events: true, calendar: true \}/);
   assert.match(adminApp, /await refreshData\(false\);[\s\S]*setView\('admin'\)/);
   assert.match(adminApp, /function ensureAdminPanelData\(panel\)/);
+  assert.match(adminApp, /panel === 'members' \|\| state\.loadedPanels\[panel\]/);
+  assert.match(adminApp, /if \(state\.loadedPanels\.cards\) return openGrantModal\(member\)/);
+  assert.match(adminApp, /if \(!state\.loadedPanels\[panel\]\) ensureAdminPanelData\(panel\)/);
   assert.match(adminApp, /admin\.pointcards\.list/);
   assert.match(adminApp, /admin\.event-tickets\.list/);
   assert.match(adminApp, /admin\.calendar-items\.list/);
@@ -296,6 +299,28 @@ test('server payload cache separates full, compact and selected-card representat
   ];
   for (const [request, label] of shapes) assert.equal(context.membershipVersionedBootstrapResponse_('points', identity, request, () => ({ shape: label })).shape, label);
   for (const [request, label] of shapes) assert.equal(context.membershipVersionedBootstrapResponse_('points', identity, request, () => { throw new Error('cache miss'); }).shape, label);
+});
+
+test('preloaded admin panels do not issue redundant GAS reads', async () => {
+  const source = read('admin/app.js');
+  const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start) + start.length));
+  const state = { config: {}, idToken: 'local-test', bootstrapVersion: 'v1', loadedPanels: { members: true, cards: true, events: true, calendar: true }, panelLoads: {} };
+  const calls = [];
+  const context = {
+    state,
+    window: { MemberSystem: { request: async (_config, _surface, _token, action) => { calls.push(action); return {}; } } },
+    adoptIncomingBootstrapVersion: () => false,
+    refreshData: async () => {},
+    applyAdminCards: () => {},
+    applyAdminEventTickets: () => {},
+    applyAdminCalendarItems: () => {}
+  };
+  vm.createContext(context);
+  vm.runInContext(extract('  async function ensureAdminPanelData(', '  function adoptIncomingBootstrapVersion('), context);
+  await context.ensureAdminPanelData('cards');
+  await context.ensureAdminPanelData('events');
+  await context.ensureAdminPanelData('calendar');
+  assert.deepEqual(calls, []);
 });
 
 test('admin panel version refresh resolves without waiting on its own in-flight promise', async () => {
