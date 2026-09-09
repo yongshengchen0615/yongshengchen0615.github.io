@@ -8,12 +8,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>集點卡｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=points-performance-20260909">
+  <link rel="stylesheet" href="./styles.css?v=points-card-guidance-20260909">
   <link rel="stylesheet" href="./membership-progress.css?v=points-tier-style-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="./common.js?v=points-sync-cache-20260909" defer></script>
   <script src="./membership-progress.js?v=points-tier-style-20260908" defer></script>
-  <script src="./app.js?v=points-incremental-payload-20260909" defer></script>
+  <script src="./app.js?v=points-card-guidance-20260909" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -69,6 +69,8 @@
         </div>
         <div class="reward-row"><span class="reward-icon" aria-hidden="true">✦</span><div><p class="label">Reward options</p><strong id="rewardTitle">集點卡票券總覽</strong></div><div class="reward-meta"><span id="cardExpiry" class="updated-at">使用期限：無期限</span><span id="updatedAt" class="updated-at">—</span></div></div>
       </section>
+
+      <section id="cardGuidancePanel" class="card-guidance-panel hidden" aria-labelledby="cardGuidanceTitle"><div class="card-guidance-heading"><p class="label dark-label">Card details</p><h2 id="cardGuidanceTitle">使用與優惠說明</h2></div><div class="card-guidance-grid"><article data-card-guidance-item><strong>使用方式</strong><p id="cardUsageMethod"></p></article><article data-card-guidance-item><strong>使用說明</strong><p id="cardUsageInstructions"></p></article><article data-card-guidance-item><strong>優惠說明</strong><p id="cardBenefitDescription"></p></article></div></section>
 
       <section class="tickets-panel" aria-labelledby="ticketsTitle"><div class="tickets-heading"><div><p class="label dark-label">Point card tickets</p><h2 id="ticketsTitle">集點卡票券總覽</h2></div><span id="ticketSummary" class="tickets-summary"></span></div><div id="ticketList" class="member-ticket-list"></div><div id="ticketEmpty" class="ticket-empty"><span aria-hidden="true">○</span><p>店家尚未為這張集點卡設定兌換票券。</p></div></section>
 
