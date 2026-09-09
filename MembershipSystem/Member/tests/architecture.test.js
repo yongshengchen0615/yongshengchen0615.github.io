@@ -278,8 +278,8 @@ test('transport distinguishes an uncertain write outcome from a failed read resp
 
   const transport = read('admin/common.js');
   assert.match(transport, /READ_REQUEST_TIMEOUT_MS = 9000/);
-  assert.match(transport, /ADMIN_FULL_BOOTSTRAP_TIMEOUT_MS = 30000/);
-  assert.match(transport, /isFullAdminBootstrap/);
+  assert.match(transport, /FULL_BOOTSTRAP_TIMEOUT_MS = 30000/);
+  assert.match(transport, /isFullBootstrapRead/);
   assert.match(transport, /WRITE_REQUEST_TIMEOUT_MS = 30000/);
   assert.match(transport, /Promise\.race/);
 });
