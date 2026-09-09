@@ -170,7 +170,9 @@ test('admin requires explicit grant actions and status choices while exposing ca
   assert.match(adminApp, /function prepareExplicitStatusOptions/);
   assert.match(adminApp, /option\.value = ''; option\.disabled = true/);
   ['cardStatus', 'ticketStatus', 'eventTicketStatus', 'calendarItemStatus'].forEach((field) => assert.match(adminApp, new RegExp(`els\\.${field}\\.value = ''`)));
-  assert.match(adminApp, /renderGrantPointRows\(\[\]\)/);
+  assert.match(adminApp, /els\.grantPointRows\.replaceChildren\(\)/);
+  assert.match(adminApp, /els\.grantModal\.classList\.remove\('hidden'\)[\s\S]*?window\.requestAnimationFrame/);
+  assert.match(adminStyles, /#grantModal \{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/);
   assert.match(adminApp, /els\.grantStampsEnabled\.checked = false/);
   assert.match(adminApp, /els\.grantServiceTimeEnabled\.checked = false/);
   assert.match(adminApp, /els\.grantServiceTimeMinutes\.value = ''/);
