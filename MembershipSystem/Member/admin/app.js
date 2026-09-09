@@ -117,11 +117,11 @@
     els.memberForm.addEventListener('submit', saveMember);
     els.cancelMemberButton.addEventListener('click', closeMemberModal);
     els.closeMemberModal.addEventListener('click', closeMemberModal);
-    els.memberModal.addEventListener('click', (event) => { if (event.target === els.memberModal) closeMemberModal(); });
+    els.memberModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.memberModal)) closeMemberModal(); });
     els.grantForm.addEventListener('submit', saveGrant);
     els.cancelGrantButton.addEventListener('click', closeGrantModal);
     els.closeGrantModal.addEventListener('click', closeGrantModal);
-    els.grantModal.addEventListener('click', (event) => { if (event.target === els.grantModal) closeGrantModal(); });
+    els.grantModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.grantModal)) closeGrantModal(); });
     els.grantStampsEnabled.addEventListener('change', updateGrantOptions);
     els.grantPointRows.addEventListener('input', updateGrantPointHint);
     els.grantPointRows.addEventListener('change', updateGrantPointHint);
@@ -134,6 +134,11 @@
     document.addEventListener('pointerup', handleCardSortPointerUp);
     document.addEventListener('pointercancel', handleCardSortPointerUp);
     document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); closeEditorModals(); });
+  }
+
+  function shouldDismissModalFromBackdrop(event, modal) {
+    if (!event || event.target !== modal) return false;
+    return typeof window.matchMedia === 'function' && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
   }
 
   function prepareGrantPointEditor() {
@@ -217,7 +222,7 @@
       const close = document.createElement('button'); close.type = 'button'; close.className = 'close-button editor-modal-close'; close.setAttribute('aria-label', `關閉${config.label}視窗`); close.textContent = '×';
       if (heading) { if (status) actions.append(status); actions.append(close); heading.append(actions); }
       card.append(editor); modal.append(card); document.body.append(modal);
-      modal.addEventListener('click', (event) => { if (event.target === modal) closeEditorModal(config.key); });
+      modal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, modal)) closeEditorModal(config.key); });
       close.addEventListener('click', () => closeEditorModal(config.key));
       state.editorModals[config.key] = { modal, close, opener: null };
     });
