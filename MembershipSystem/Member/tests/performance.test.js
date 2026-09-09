@@ -277,6 +277,8 @@ test('admin waits for the complete GAS bootstrap before exposing the workspace',
   assert.doesNotMatch(adminApp, /lazy:\s*true/);
   assert.match(adminApp, /function assertCompleteAdminBootstrap\(result\)/);
   assert.match(adminApp, /state\.loadedPanels = \{ members: true, cards: true, events: true, calendar: true \}/);
+  assert.match(adminApp, /applyAdminCards\(result, false\)/);
+  assert.match(adminApp, /applyAdminEventTickets\(result, false\)/);
   assert.match(adminApp, /await refreshData\(false\);[\s\S]*setView\('admin'\)/);
   assert.match(adminApp, /function ensureAdminPanelData\(panel\)/);
   assert.match(adminApp, /panel === 'members' \|\| state\.loadedPanels\[panel\]/);
