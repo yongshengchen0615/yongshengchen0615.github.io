@@ -11,7 +11,7 @@
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
     [
-      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'cardGuidancePanel', 'cardUsageMethod', 'cardUsageInstructions', 'cardBenefitDescription', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
+      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardStatus', 'cardGuidancePanel', 'cardUsageMethod', 'cardUsageInstructions', 'cardBenefitDescription', 'progressCount', 'progressMessage', 'remainingMessage', 'cardExpiry', 'ticketSummary', 'ticketList', 'ticketEmpty',
       'ticketHistorySummary', 'ticketHistoryList', 'ticketHistoryEmpty', 'ticketModal', 'closeTicketModal', 'ticketModalTicketName', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalCost', 'ticketModalProcessing', 'confirmTicketUseButton', 'refreshTicketButton', 'ticketModalResult', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
@@ -173,14 +173,11 @@
     els.activeCardView.dataset.cardStyle = safeCardStyle(card.styleKey);
     els.activeCardView.style.setProperty('--card-accent', safeAccent(card.accent));
     els.activeCardTitle.textContent = String(card.title || '集點卡');
-    els.activeCardDescription.textContent = String(card.description || '每次消費後由店家為你累積點數。');
     els.activeCardStatus.textContent = card.expired ? '已超過期限' : card.status === 'archived' ? '已停止集點' : '進行中';
     els.progressCount.textContent = String(stamps);
     els.progressMessage.textContent = card.expired ? '這張集點卡已超過使用期限' : card.status === 'archived' ? '這張卡已停止集點' : '點數會持續累積，達標後系統會將票券放進下方。';
     els.remainingMessage.textContent = ticketOfferCount ? `已設定 ${ticketOfferCount} 種兌換票券` : '尚未設定兌換票券';
-    els.rewardTitle.textContent = '集點卡票券總覽';
     els.cardExpiry.textContent = card.expiryMode === 'date' && card.expiresOn ? `${card.expired ? '已於' : '使用期限至'} ${card.expiresOn}` : '使用期限：無期限';
-    els.updatedAt.textContent = card.updatedAt ? `更新於 ${window.MemberSystem.formatDateTime(card.updatedAt)}` : '尚未更新';
     renderCardGuidance(card);
   }
 
