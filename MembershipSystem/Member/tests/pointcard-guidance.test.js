@@ -30,4 +30,12 @@ test('point-card guidance is wired through schema, admin save, and member render
   }
   assert.match(pointsApp, /renderCardGuidance\(card\)/);
   assert.match(pointsApp, /visibleCount === 0/);
+  assert.match(pointsHtml, /id=["']cardExpiry["']/);
+  assert.match(pointsApp, /els\.cardExpiry\.textContent/);
+  assert.doesNotMatch(adminHtml, /cardDescription|一句話說明/);
+  assert.doesNotMatch(adminApp, /cardDescription/);
+  assert.doesNotMatch(pointsHtml, /activeCardDescription|Reward options|rewardTitle|id=["']updatedAt["']/);
+  assert.doesNotMatch(pointsApp, /els\.activeCardDescription|els\.rewardTitle|els\.updatedAt/);
+  assert.doesNotMatch(service, /description: String\(card\.description/);
+  assert.doesNotMatch(service, /card\.description = description/);
 });
