@@ -6,12 +6,12 @@ const MEMBERSHIP_DATA_CACHE_EPOCH_KEY_ = 'membership:data-epoch:v1';
 const MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_ = 21600;
 const MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_BOOTSTRAP_CACHE_MAX_BYTES_ = 90000;
-const MEMBERSHIP_SYNC_SCHEMA_VERSION_ = '3';
+const MEMBERSHIP_SYNC_SCHEMA_VERSION_ = '4';
 const MEMBERSHIP_SYNC_PROPERTY_PREFIX_ = 'MEMBERSHIP_SYNC_REVISION_V2:';
 const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at', 'birthday', 'phone', 'membership_status']),
   Admins: Object.freeze(['line_user_id', 'display_name', 'role', 'status', 'first_seen_at', 'updated_at']),
-  PointCards: Object.freeze(['card_id', 'title', 'description', 'target_stamps', 'reward_title', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at', 'expiry_mode', 'expires_on', 'sort_order', 'style_key']),
+  PointCards: Object.freeze(['card_id', 'title', 'description', 'target_stamps', 'reward_title', 'status', 'accent', 'created_by', 'created_at', 'updated_by', 'updated_at', 'expiry_mode', 'expires_on', 'sort_order', 'style_key', 'usage_method', 'usage_instructions', 'benefit_description']),
   PointCardRewards: Object.freeze(['reward_id', 'card_id', 'threshold_stamps', 'reward_type', 'reward_title', 'reward_description', 'lottery_win_rate', 'created_at', 'updated_at', 'consume_stamps', 'ticket_template_id']),
   PointCardLotteryPrizes: Object.freeze(['prize_id', 'reward_id', 'prize_title', 'prize_description', 'win_rate', 'created_at', 'updated_at']),
   PointCardTicketTemplates: Object.freeze(['ticket_template_id', 'title', 'ticket_type', 'description', 'usage_method', 'usage_instructions', 'lottery_prizes_json', 'status', 'created_by', 'created_at', 'updated_by', 'updated_at']),
