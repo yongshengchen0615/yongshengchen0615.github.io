@@ -247,29 +247,42 @@
       state.config = await window.MemberSystem.loadConfig();
       startLoginProgress('正在驗證 LINE 身分…', 48);
       state.idToken = await window.MemberSystem.signIn(state.config, 'admin');
-      startLoginProgress('正在同步管理資料…', 92);
+      startLoginProgress('正在完整同步管理資料…', 96);
       await refreshData(false);
-      await completeLoginProgress('管理資料已準備完成');
+      await completeLoginProgress('完整管理資料已準備完成');
       setView('admin');
     } catch (error) { stopLoginProgress(); handleBootError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
 
   async function refreshData(showBusy) {
-    if (showBusy) { els.refreshButton.disabled = true; els.syncStatus.textContent = '同步中…'; }
+    if (showBusy) { els.refreshButton.disabled = true; els.syncStatus.textContent = '完整同步中…'; }
     try {
-      const payload = { ...memberPagePayload(state.memberPage.page, state.memberPage.query), lazy: true };
+      // 管理端採用 GAS full bootstrap：所有管理資料完整回傳並套用後，boot 才會顯示 adminView。
+      const payload = memberPagePayload(state.memberPage.page, state.memberPage.query);
       if (state.bootstrapVersion) payload.knownVersion = state.bootstrapVersion;
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', payload);
       if (result.unchanged) {
         setSyncStatus('資料未變更', false);
         return;
       }
+      assertCompleteAdminBootstrap(result);
       applyAdminBootstrap(result);
-      if (state.activePanel !== 'members') await ensureAdminPanelData(state.activePanel);
-      loadAdminSummary().catch(() => { /* The primary workspace is usable even when a background metric is unavailable. */ });
-      els.syncStatus.textContent = `已同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
+      els.syncStatus.textContent = `已完整同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
       els.syncStatus.classList.remove('error');
     } finally { if (showBusy) els.refreshButton.disabled = false; }
+  }
+
+  function assertCompleteAdminBootstrap(result) {
+    const requiredArrays = ['members', 'tierSettings', 'cards', 'tickets', 'eventTickets', 'calendarItems'];
+    const missing = requiredArrays.filter((key) => !Array.isArray(result && result[key]));
+    const hasStats = Boolean(result && result.stats && typeof result.stats === 'object' && !Array.isArray(result.stats));
+    const hasMemberPage = Boolean(result && result.memberPage && typeof result.memberPage === 'object' && !Array.isArray(result.memberPage));
+    if (!result || typeof result !== 'object' || Array.isArray(result) || missing.length || !hasStats || !hasMemberPage) {
+      const suffix = missing.length ? `（缺少：${missing.join('、')}）` : '';
+      const error = new Error(`GAS 管理資料回應不完整${suffix}，已停止顯示管理頁面，請重新整理後再試。`);
+      error.code = 'ADMIN_BOOTSTRAP_INCOMPLETE';
+      throw error;
+    }
   }
 
   function applyAdminBootstrap(result) {
@@ -277,14 +290,18 @@
     const versionChanged = Boolean(state.bootstrapVersion && incomingVersion && state.bootstrapVersion !== incomingVersion);
     if (versionChanged) invalidateLazyPanels();
     if (incomingVersion) state.bootstrapVersion = incomingVersion;
-    state.members = Array.isArray(result.members) ? result.members : [];
+    state.members = result.members;
     applyMemberPage(result.memberPage, state.memberPage);
-    state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : [];
-    state.stats = result.stats && typeof result.stats === 'object' ? result.stats : {};
-    state.loadedPanels.members = true;
+    state.tierSettings = result.tierSettings;
+    state.stats = result.stats;
+    state.loadedPanels = { members: true, cards: true, events: true, calendar: true };
+    state.summaryLoaded = Object.prototype.hasOwnProperty.call(state.stats, 'todayEntryCount');
     els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
     els.roleLabel.textContent = String(result.role || 'Admin');
     renderAdminOverview();
+    applyAdminCards(result);
+    applyAdminEventTickets(result);
+    applyAdminCalendarItems(result);
   }
 
   function invalidateLazyPanels() {
