@@ -512,10 +512,10 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
     ['member', 'member-performance-20260909', 'member-performance-20260909', 'member-sync-cache-20260909'],
-    ['points', 'points-card-guidance-20260909', 'points-card-guidance-20260909', 'points-sync-cache-20260909'],
+    ['points', 'points-card-guidance-20260909', 'points-card-ui-cleanup-20260909', 'points-sync-cache-20260909'],
     ['event', 'event-performance-20260909', 'event-incremental-payload-20260909', 'event-sync-cache-20260909'],
     ['calendar', 'calendar-performance-20260909', 'calendar-incremental-payload-20260909', 'calendar-sync-cache-20260909'],
-    ['admin', 'admin-performance-20260909', 'member-card-guidance-20260909', 'admin-local-client-20260909']
+    ['admin', 'admin-performance-20260909', 'member-card-ui-cleanup-20260909', 'admin-local-client-20260909']
   ];
 
   surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {
