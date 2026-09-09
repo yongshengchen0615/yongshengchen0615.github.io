@@ -262,7 +262,7 @@ test('versioned bootstrap uses durable identity-bound revisions and invalidates 
   assert.deepEqual(JSON.parse(JSON.stringify(context.membershipReadThroughCache_('definitions', () => ({ generation: ++readBuilds })))), { generation: 3 });
 });
 
-test('performance routes keep authorization on the server while loading admin datasets only when needed', () => {
+test('admin waits for the complete GAS bootstrap before exposing the workspace', () => {
   const code = read('gas/Code.gs');
   const service = read('gas/PointCardService.gs');
   const adminApp = read('admin/app.js');
@@ -270,8 +270,14 @@ test('performance routes keep authorization on the server while loading admin da
   assert.match(code, /case 'admin\.event-tickets\.list'/);
   assert.match(code, /membershipSyncBumpForWrite_\(request\.action, identity, request\)/);
   assert.match(service, /const lazy = Boolean\(request && request\.lazy\)/);
-  assert.match(service, /function handleAdminSummary_/);
-  assert.match(adminApp, /lazy: true/);
+  assert.match(service, /initial\.cards = cards/);
+  assert.match(service, /initial\.tickets = tickets/);
+  assert.match(service, /initial\.eventTickets = eventTickets/);
+  assert.match(service, /initial\.calendarItems = calendarItems/);
+  assert.doesNotMatch(adminApp, /lazy:\s*true/);
+  assert.match(adminApp, /function assertCompleteAdminBootstrap\(result\)/);
+  assert.match(adminApp, /state\.loadedPanels = \{ members: true, cards: true, events: true, calendar: true \}/);
+  assert.match(adminApp, /await refreshData\(false\);[\s\S]*setView\('admin'\)/);
   assert.match(adminApp, /function ensureAdminPanelData\(panel\)/);
   assert.match(adminApp, /admin\.pointcards\.list/);
   assert.match(adminApp, /admin\.event-tickets\.list/);
@@ -300,7 +306,11 @@ test('admin panel version refresh resolves without waiting on its own in-flight 
   const context = {
     state,
     els: { syncStatus: { classList: { remove() {} } } },
-    window: { MemberSystem: { request: async (_config, _surface, _token, action) => { calls.push(action); return { version: 'v2', cards: [{ cardId: 'new' }] }; } } },
+    window: { MemberSystem: { request: async (_config, _surface, _token, action) => {
+      calls.push(action);
+      if (action === 'admin.bootstrap') return { version: 'v2', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, tierSettings: [], cards: [{ cardId: 'new' }], tickets: [], eventTickets: [], calendarItems: [], stats: {} };
+      return { version: 'v2', cards: [{ cardId: 'new' }] };
+    } } },
     memberPagePayload: () => ({}),
     invalidateLazyPanels: () => { state.loadedPanels = {}; },
     applyAdminBootstrap: (result) => { state.bootstrapVersion = result.version; },
