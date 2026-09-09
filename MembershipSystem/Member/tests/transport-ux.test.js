@@ -70,6 +70,20 @@ test('stalled reads abort once within a 9000 ms aggregate transport budget; writ
   await assert.rejects(api.request(config, 'points', 'A', 'user.pointcard.ticket.redeem'), { code: 'API_RESPONSE_UNCERTAIN' });
   assert.equal(signals.length, 2);
 });
+test('admin full bootstrap has a bounded 30000 ms budget while lazy reads keep the 9000 ms budget', async () => {
+  const scheduled = []; let now = 0;
+  class Clock extends Date { static now() { return now; } }
+  const { api, context } = client('admin', () => new Promise(() => {}), {
+    setTimeout(callback, ms) { scheduled.push(ms); return setImmediate(() => { now += ms; callback(); }); },
+    clearTimeout: clearImmediate
+  });
+  context.Date = Clock;
+  await assert.rejects(api.request(config, 'admin', 'A', 'admin.bootstrap', {}), { code: 'NETWORK_ERROR' });
+  assert.deepEqual(scheduled, [30000]);
+  scheduled.length = 0; now = 0;
+  await assert.rejects(api.request(config, 'admin', 'A', 'admin.bootstrap', { lazy: true }), { code: 'NETWORK_ERROR' });
+  assert.deepEqual(scheduled, [9000]);
+});
 test('LIFF init cannot leave a permanent loading screen or trigger late login side effects', async () => {
   let finish; let tokenReads = 0;
   const { api } = client('member', async () => ok(), {
