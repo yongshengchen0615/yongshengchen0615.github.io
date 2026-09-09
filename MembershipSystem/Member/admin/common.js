@@ -5,10 +5,10 @@
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
   const READ_RESPONSE_ATTEMPTS = 2;
   const READ_RETRY_DELAY_MS = 400;
-  // 一般讀取維持 9 秒總預算；管理端 full bootstrap 因需完整讀取多個資料集，使用獨立 30 秒上限。
+  // 一般讀取維持 9 秒總預算；完整 bootstrap 需從 GAS／Sheets 讀取完整資料，使用獨立 30 秒上限。
   const READ_REQUEST_TIMEOUT_MS = 9000;
   const READ_TOTAL_TIMEOUT_MS = 9000;
-  const ADMIN_FULL_BOOTSTRAP_TIMEOUT_MS = 30000;
+  const FULL_BOOTSTRAP_TIMEOUT_MS = 30000;
   const pendingReads = new Map();
   const WRITE_REQUEST_TIMEOUT_MS = 30000;
   const CONFIG_RESPONSE_ATTEMPTS = 2;
@@ -205,12 +205,23 @@
     });
   }
 
+  function isFullBootstrapRead(clientType, action, payload) {
+    if (action === 'admin.bootstrap') return clientType === 'admin' && !Boolean(payload && payload.lazy);
+    const actions = {
+      member: 'user.member.bootstrap',
+      points: 'user.pointcard.bootstrap',
+      event: 'user.event.bootstrap',
+      calendar: 'user.calendar.bootstrap'
+    };
+    return actions[clientType] === action;
+  }
+
   async function sendRequest(config, clientType, idToken, action, payload = {}) {
     const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
-    const isFullAdminBootstrap = !isWrite && clientType === 'admin' && action === 'admin.bootstrap' && !Boolean(payload && payload.lazy);
+    const isFullBootstrap = !isWrite && isFullBootstrapRead(clientType, action, payload);
     const attempts = isWrite ? 1 : READ_RESPONSE_ATTEMPTS;
-    const readBudgetMs = isFullAdminBootstrap ? ADMIN_FULL_BOOTSTRAP_TIMEOUT_MS : READ_TOTAL_TIMEOUT_MS;
-    const readRequestTimeoutMs = isFullAdminBootstrap ? ADMIN_FULL_BOOTSTRAP_TIMEOUT_MS : READ_REQUEST_TIMEOUT_MS;
+    const readBudgetMs = isFullBootstrap ? FULL_BOOTSTRAP_TIMEOUT_MS : READ_TOTAL_TIMEOUT_MS;
+    const readRequestTimeoutMs = isFullBootstrap ? FULL_BOOTSTRAP_TIMEOUT_MS : READ_REQUEST_TIMEOUT_MS;
     const deadline = Date.now() + readBudgetMs;
     let lastError;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -226,12 +237,15 @@
         }, isWrite ? WRITE_REQUEST_TIMEOUT_MS : Math.max(1, Math.min(readRequestTimeoutMs, deadline - Date.now())), (result) => result.text());
         response = fetched.response;
         rawResponse = fetched.body;
-      } catch (_) {
+      } catch (error) {
+        const timedOut = Boolean(error && error.code === 'REQUEST_TIMEOUT');
         lastError = clientError(
-          isWrite ? 'API_RESPONSE_UNCERTAIN' : 'NETWORK_ERROR',
+          isWrite ? 'API_RESPONSE_UNCERTAIN' : timedOut ? 'SERVICE_TIMEOUT' : 'NETWORK_ERROR',
           isWrite
             ? '無法確認這次操作是否已送達；資料可能已更新，請先重新整理確認，請勿重複送出。'
-            : '目前無法連線資料服務，請檢查網路後重試。'
+            : timedOut
+              ? '資料服務回應時間較長，已停止等待；請重新整理後再試。'
+              : '目前無法連線資料服務，請檢查網路後重試。'
         );
       }
 
