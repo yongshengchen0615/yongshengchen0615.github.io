@@ -13,6 +13,7 @@
   let loginProgressValue = 8;
 
   window.addEventListener('DOMContentLoaded', () => {
+    window.MemberSystem.bindDialogKeyboard();
     [
       'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton',
       'membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'cardSettingsTab', 'ticketSettingsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'activeEventTicketCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'cardSettingsPanel', 'ticketSettingsPanel', 'syncStatus', 'refreshButton',
@@ -323,12 +324,18 @@
     if (state.loadedPanels[panel] && state.bootstrapVersion) payload.knownVersion = state.bootstrapVersion;
     const load = window.MemberSystem.request(state.config, 'admin', state.idToken, action, payload).then((result) => {
       if (result.unchanged) return;
-      if (adoptIncomingBootstrapVersion(result.version)) return refreshData(false).then(() => ensureAdminPanelData(panel));
+      if (adoptIncomingBootstrapVersion(result.version)) {
+        // 先釋放舊面板請求，避免 refreshData 再等待目前的 Promise 而互相卡住。
+        delete state.panelLoads[panel];
+        return refreshData(false).then(() => {
+          if (!state.loadedPanels[panel]) return ensureAdminPanelData(panel);
+        });
+      }
       if (panel === 'cards') applyAdminCards(result);
       if (panel === 'events') applyAdminEventTickets(result);
       if (panel === 'calendar') applyAdminCalendarItems(result);
       state.loadedPanels[panel] = true;
-    }).finally(() => { delete state.panelLoads[panel]; });
+    }).finally(() => { if (state.panelLoads[panel] === load) delete state.panelLoads[panel]; });
     state.panelLoads[panel] = load;
     return load;
   }
@@ -1481,7 +1488,14 @@
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.adminView.classList.toggle('hidden', view !== 'admin'); }
   function startLoginProgress(status, ceiling) { stopLoginProgress(); const maximum = Math.max(loginProgressValue, Math.min(98, Number(ceiling) || loginProgressValue)); setLoginProgress(loginProgressValue, status); loginProgressTimer = window.setInterval(() => { const remaining = maximum - loginProgressValue; if (remaining <= 0) return stopLoginProgress(); setLoginProgress(Math.min(maximum, loginProgressValue + Math.max(1, Math.ceil(remaining * .12))), status); }, LOGIN_PROGRESS_TICK_MS); }
   function stopLoginProgress() { if (loginProgressTimer !== null) window.clearInterval(loginProgressTimer); loginProgressTimer = null; }
-  function completeLoginProgress(status) { stopLoginProgress(); const start = loginProgressValue; const duration = Math.max(220, Math.min(700, (100 - start) * 14)); const startedAt = Date.now(); return new Promise((resolve) => { const tick = () => { const elapsed = Date.now() - startedAt; const ratio = Math.min(1, elapsed / duration); setLoginProgress(Math.round(start + (100 - start) * (1 - Math.pow(1 - ratio, 2))), status); if (ratio < 1) return window.setTimeout(tick, 32); resolve(); }; tick(); }); }
+  function completeLoginProgress(status) {
+    stopLoginProgress();
+    // 資料就緒便交還操作，不讓裝飾性動畫阻塞主要畫面。
+    setLoginProgress(100, status);
+    return Promise.resolve();
+  }
+
   function setLoginProgress(value, status) { const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0)))); loginProgressValue = progress; els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; if (status) els.loadingStatus.textContent = status; }
   function showError(title, message) { els.errorTitle.textContent = title; els.errorMessage.textContent = message; setView('error'); }
 })();
+

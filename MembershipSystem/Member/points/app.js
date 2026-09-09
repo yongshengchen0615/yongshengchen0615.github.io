@@ -9,6 +9,7 @@
   let loginProgressValue = 8;
 
   window.addEventListener('DOMContentLoaded', () => {
+    window.MemberSystem.bindDialogKeyboard();
     [
       'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView', 'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView', 'activeCardView', 'activeCardTitle', 'activeCardDescription', 'activeCardStatus', 'progressCount', 'progressMessage', 'remainingMessage', 'rewardTitle', 'cardExpiry', 'updatedAt', 'ticketSummary', 'ticketList', 'ticketEmpty',
       'ticketHistorySummary', 'ticketHistoryList', 'ticketHistoryEmpty', 'ticketModal', 'closeTicketModal', 'ticketModalTicketName', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalCost', 'ticketModalProcessing', 'confirmTicketUseButton', 'refreshTicketButton', 'ticketModalResult', 'ticketModalMessage'
@@ -18,6 +19,18 @@
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.refreshButton.addEventListener('click', () => loadCards(true));
     els.cardTabs.addEventListener('click', (event) => { const tab = event.target instanceof Element ? event.target.closest('[data-card-id]') : null; if (tab) selectCard(tab.dataset.cardId); });
+    els.cardTabs.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !state.cards.length) return;
+      event.preventDefault();
+      const current = state.cards.findIndex((card) => card.cardId === state.activeCardId);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? state.cards.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + state.cards.length) % state.cards.length;
+      const cardId = state.cards[next].cardId;
+      selectCard(cardId).then(() => {
+        if (state.activeCardId !== cardId) return;
+        const tab = Array.from(els.cardTabs.children).find((button) => button.dataset.cardId === cardId);
+        if (tab) tab.focus();
+      });
+    });
     els.ticketList.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-use-ticket]') : null; if (button) openTicketModal(button.dataset.useTicket); });
     els.closeTicketModal.addEventListener('click', closeTicketModal);
     els.ticketModal.addEventListener('click', (event) => { if (event.target === els.ticketModal && !state.redeeming) closeTicketModal(); });
@@ -42,12 +55,15 @@
   }
 
   async function loadCards(showBusy, bypassSnapshot) {
-    if (showBusy) { els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
+    if (showBusy) { setInlineStatus('正在更新集點卡…'); els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
+    const requestVersion = (state.loadVersion || 0) + 1;
+    state.loadVersion = requestVersion;
     try {
       const cached = bypassSnapshot ? null : await window.MemberSystem.readSyncSnapshot('points');
-      const payload = { compact: true };
+      const payload = { compact: true, includeActiveCard: true, activeCardId: state.activeCardId };
       if (cached) { payload.knownRevision = cached.revision; payload.knownCacheScope = cached.cacheScope; }
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.bootstrap', payload);
+      if (requestVersion !== state.loadVersion) return;
       if (result.unchanged) {
         const confirmed = cached && cached.cacheScope === result.cacheScope && cached.revision === result.revision ? cached : null;
         if (!confirmed) return loadCards(showBusy, true);
@@ -56,9 +72,11 @@
         applyCardsSnapshot(result, result);
       }
       await ensureActiveCardDetail();
+      if (requestVersion !== state.loadVersion) return;
       renderCards();
-      await persistCardsSnapshot();
-    } catch (error) { if (!showBusy) throw error; showError(error); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
+      if (showBusy) setInlineStatus('集點卡已更新。');
+      void persistCardsSnapshot();
+    } catch (error) { if (!showBusy) throw error; handleReadError(error); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
   }
 
   function applyCardsSnapshot(payload, sync) {
@@ -86,22 +104,46 @@
   async function ensureActiveCardDetail() {
     const cardId = String(state.activeCardId || '');
     if (!cardId || state.cardDetails[cardId]) return;
+    const details = state.cardDetails;
     state.detailLoadingCardId = cardId;
+    renderCards();
     try {
       const result = await window.MemberSystem.request(state.config, 'points', state.idToken, 'user.pointcard.detail', { cardId });
-      if (!result.card) throw new Error('集點卡明細回應不完整。');
-      state.cardDetails[cardId] = { card: result.card, tickets: Array.isArray(result.tickets) ? result.tickets : [] };
+      if (!result.card || String(result.card.cardId) !== cardId) throw new Error('集點卡明細回應不完整。');
+      // 更新或核銷後的快照不得被舊請求覆寫。
+      if (details !== state.cardDetails) return;
+      details[cardId] = { card: result.card, tickets: Array.isArray(result.tickets) ? result.tickets : [] };
     } finally {
-      if (state.detailLoadingCardId === cardId) state.detailLoadingCardId = '';
+      if (details === state.cardDetails && state.detailLoadingCardId === cardId) state.detailLoadingCardId = '';
     }
   }
 
   async function selectCard(cardId) {
     const nextCardId = String(cardId || '');
-    if (!nextCardId || nextCardId === state.activeCardId) return;
+    if (!state.cards.some((card) => card.cardId === nextCardId)) return;
+    if (nextCardId === state.activeCardId && state.cardDetails[nextCardId]) return;
     state.activeCardId = nextCardId;
-    renderCards();
-    try { await ensureActiveCardDetail(); await persistCardsSnapshot(); renderCards(); } catch (error) { showError(error); }
+    setInlineStatus('');
+    try {
+      await ensureActiveCardDetail();
+      if (state.activeCardId !== nextCardId) return;
+      renderCards();
+      void persistCardsSnapshot();
+    } catch (error) {
+      if (state.activeCardId === nextCardId) { renderCards(); handleReadError(error); }
+    }
+  }
+
+  function setInlineStatus(message, error = false) {
+    const status = document.getElementById('syncNotice');
+    status.textContent = message;
+    status.classList.toggle('hidden', !message);
+    status.classList.toggle('is-error', error);
+  }
+
+  function handleReadError(error) {
+    if (/^(AUTH_|MEMBERSHIP_REQUIRED|MEMBER_)/.test(String(error && error.code || ''))) return showError(error);
+    setInlineStatus('更新失敗，畫面保留上次資料。請按「更新」重試；票券狀態以使用時驗證為準。', true);
   }
 
   function persistCardsSnapshot() {
@@ -116,7 +158,7 @@
     els.emptyView.classList.toggle('hidden', hasCards);
     els.activeCardView.classList.toggle('hidden', !hasCards);
     els.cardTabs.replaceChildren(...state.cards.map((card) => {
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-tab'; button.dataset.cardId = card.cardId; button.dataset.cardStyle = safeCardStyle(card.styleKey); button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(card.cardId === state.activeCardId)); button.style.setProperty('--card-accent', safeAccent(card.accent)); const title = document.createElement('strong'); title.textContent = String(card.title || '未命名集點卡'); const meta = document.createElement('span'); meta.textContent = `${Number(card.stamps || 0)} 點`; button.append(title, meta); return button;
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-tab'; button.dataset.cardId = card.cardId; button.dataset.cardStyle = safeCardStyle(card.styleKey); button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(card.cardId === state.activeCardId)); button.tabIndex = card.cardId === state.activeCardId ? 0 : -1; button.setAttribute('aria-controls', 'activeCardView'); button.style.setProperty('--card-accent', safeAccent(card.accent)); const title = document.createElement('strong'); title.textContent = String(card.title || '未命名集點卡'); const meta = document.createElement('span'); meta.textContent = `${Number(card.stamps || 0)} 點`; button.append(title, meta); return button;
     }));
     renderHistory();
     if (!hasCards) { els.ticketList.replaceChildren(); els.ticketSummary.textContent = ''; return; }
@@ -142,8 +184,8 @@
   }
 
   function renderTickets(card) {
-    if (!Array.isArray(card.rewards) && state.detailLoadingCardId === card.cardId) {
-      els.ticketSummary.textContent = '正在載入這張集點卡的票券明細…'; els.ticketEmpty.classList.add('hidden'); els.ticketList.replaceChildren(); return;
+    if (!state.cardDetails[card.cardId]) {
+      els.ticketSummary.textContent = state.detailLoadingCardId === card.cardId ? '正在載入這張集點卡的票券明細…' : '明細尚未載入，請再次選取此卡或按「更新」。'; els.ticketEmpty.classList.add('hidden'); els.ticketList.replaceChildren(); return;
     }
     const offers = ticketOffersForCard(card);
     els.ticketSummary.textContent = offers.length ? `共 ${offers.length} 種票券；持續集點即可解鎖，點數足夠即可使用。` : '店家尚未為這張集點卡設定兌換票券。';
@@ -279,7 +321,14 @@
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.pointsView.classList.toggle('hidden', view !== 'points'); }
   function startLoginProgress(status, ceiling) { stopLoginProgress(); const maximum = Math.max(loginProgressValue, Math.min(98, Number(ceiling) || loginProgressValue)); setLoginProgress(loginProgressValue, status); loginProgressTimer = window.setInterval(() => { const remaining = maximum - loginProgressValue; if (remaining <= 0) return stopLoginProgress(); setLoginProgress(Math.min(maximum, loginProgressValue + Math.max(1, Math.ceil(remaining * .12))), status); }, LOGIN_PROGRESS_TICK_MS); }
   function stopLoginProgress() { if (loginProgressTimer !== null) window.clearInterval(loginProgressTimer); loginProgressTimer = null; }
-  function completeLoginProgress(status) { stopLoginProgress(); const start = loginProgressValue; const duration = Math.max(220, Math.min(700, (100 - start) * 14)); const startedAt = Date.now(); return new Promise((resolve) => { const tick = () => { const elapsed = Date.now() - startedAt; const ratio = Math.min(1, elapsed / duration); setLoginProgress(Math.round(start + (100 - start) * (1 - Math.pow(1 - ratio, 2))), status); if (ratio < 1) return window.setTimeout(tick, 32); resolve(); }; tick(); }); }
+  function completeLoginProgress(status) {
+    stopLoginProgress();
+    // 資料就緒便交還操作，不讓裝飾性動畫阻塞主要畫面。
+    setLoginProgress(100, status);
+    return Promise.resolve();
+  }
+
   function setLoginProgress(value, status) { const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0)))); loginProgressValue = progress; els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; if (status) els.loadingStatus.textContent = status; }
   function showError(error) { const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED'; els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '集點卡暫時無法載入'; els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用集點卡與票券功能。' : error && error.message ? error.message : '請稍後重新整理再試。'; els.joinMemberButton.classList.toggle('hidden', !membershipRequired); els.retryButton.classList.toggle('hidden', membershipRequired); setView('error'); }
 })();
+

@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_API_VERSION_ = '1.15.0';
+const MEMBERSHIP_API_VERSION_ = '1.16.0';
 const MEMBERSHIP_WRITE_ACTIONS_ = Object.freeze([
   'user.member.profile.save',
   'admin.member.update',
@@ -293,3 +293,4 @@ function errorResponse_(error) {
 class ApiError extends Error {
   constructor(status, code, message, details) { super(message); this.name = 'ApiError'; this.status = status; this.code = code; this.details = details || null; }
 }
+

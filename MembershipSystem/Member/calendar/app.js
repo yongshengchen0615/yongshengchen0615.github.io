@@ -9,6 +9,7 @@
   let loginProgressValue = 8;
 
   window.addEventListener('DOMContentLoaded', () => {
+    window.MemberSystem.bindDialogKeyboard();
     ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'calendarView', 'displayName', 'membershipProgress', 'logoutButton', 'previousMonthButton', 'nextMonthButton', 'todayButton', 'monthTitle', 'calendarSummary', 'calendarRangeNotice', 'calendarGrid', 'emptyView', 'calendarDetailModal', 'closeCalendarDetailButton', 'calendarDetailTitle', 'calendarDetailDate', 'calendarDetailItems'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
@@ -81,7 +82,7 @@
         applyCalendarSnapshot(result, result);
       }
       renderCalendar();
-      await persistCalendarSnapshot();
+      void persistCalendarSnapshot();
     } catch (error) {
       throw error;
     }
@@ -207,7 +208,7 @@
         const currentItems = state.items.filter((item) => itemOnDate(item, isoDate));
         els.calendarDetailItems.replaceChildren(...currentItems.map(createCalendarDetailItem));
       }
-      await persistCalendarSnapshot();
+      void persistCalendarSnapshot();
     } catch (error) {
       if (!els.calendarDetailModal.classList.contains('hidden') && state.detailTrigger === trigger) {
         els.calendarDetailItems.replaceChildren(createCalendarDetailErrorItem(error && error.message || '日期詳細資料載入失敗，請稍後再試。'));
@@ -387,19 +388,9 @@
 
   function completeLoginProgress(status) {
     stopLoginProgress();
-    const start = loginProgressValue;
-    const duration = Math.max(220, Math.min(700, (100 - start) * 14));
-    const startedAt = Date.now();
-    return new Promise((resolve) => {
-      const tick = () => {
-        const elapsed = Date.now() - startedAt;
-        const ratio = Math.min(1, elapsed / duration);
-        setLoginProgress(Math.round(start + (100 - start) * (1 - Math.pow(1 - ratio, 2))), status);
-        if (ratio < 1) return window.setTimeout(tick, 32);
-        resolve();
-      };
-      tick();
-    });
+    // 資料就緒便交還操作，不讓裝飾性動畫阻塞主要畫面。
+    setLoginProgress(100, status);
+    return Promise.resolve();
   }
 
   function setLoginProgress(value, status) {
@@ -421,3 +412,4 @@
     setView('error');
   }
 })();
+

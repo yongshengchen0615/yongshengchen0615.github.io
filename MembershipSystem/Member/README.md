@@ -163,3 +163,10 @@ node --test Member/tests/*.test.js
 ```
 
 這些測試驗證檔案結構、LIFF/GAS 合約、資料表 schema、CSP 與 token 不落地等不變量。實際 LINE 登入、GAS Web App 與 Spreadsheet 仍需部署後做 integration verification；本次不會自動 deploy。
+
+
+## 2026-09-09 UI／UX 與載入優化
+
+詳見 [優化分析、測試與部署驗收](./OPTIMIZATION-20260909.md)。本版將 API 讀取（含重試）限制於 9 秒等待預算、合併同時發出的相同讀取、為 LIFF／IndexedDB 加入等待出口，並移除登入完成後的裝飾動畫等待。寫入仍只送一次且保留結果不確定時的鎖定與確認流程。
+
+Points bootstrap 可傳 `{ compact: true, includeActiveCard: true, activeCardId }`，在同一快照內回傳該卡（不存在時回退至首張可見卡）的 `cardDetails`；其他卡片保留按需明細。GAS 版本為 `1.16.0`，同步 schema 為 3。請先更新對應 Member GAS deployment，再驗證前端；既有 `deploy-membership-gas.yml` 的發布目標是另一個 `MembershipSystem/app/gas/` 路徑。

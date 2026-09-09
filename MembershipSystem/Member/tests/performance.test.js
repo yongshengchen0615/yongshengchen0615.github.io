@@ -277,3 +277,46 @@ test('performance routes keep authorization on the server while loading admin da
   assert.match(adminApp, /admin\.event-tickets\.list/);
   assert.match(adminApp, /admin\.calendar-items\.list/);
 });
+
+
+test('server payload cache separates full, compact and selected-card representations', () => {
+  const { context } = loadVersionedBootstrapCache();
+  const identity = { lineUserId: 'U-1' };
+  const shapes = [
+    [{}, 'full'],
+    [{ compact: true }, 'compact'],
+    [{ compact: true, includeActiveCard: true, activeCardId: 'A' }, 'detail-A'],
+    [{ compact: true, includeActiveCard: true, activeCardId: 'B' }, 'detail-B']
+  ];
+  for (const [request, label] of shapes) assert.equal(context.membershipVersionedBootstrapResponse_('points', identity, request, () => ({ shape: label })).shape, label);
+  for (const [request, label] of shapes) assert.equal(context.membershipVersionedBootstrapResponse_('points', identity, request, () => { throw new Error('cache miss'); }).shape, label);
+});
+
+test('admin panel version refresh resolves without waiting on its own in-flight promise', async () => {
+  const source = read('admin/app.js');
+  const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start) + start.length));
+  const state = { config: {}, idToken: 'local-test', activePanel: 'cards', bootstrapVersion: 'v1', memberPage: { page: 1, query: '' }, loadedPanels: {}, panelLoads: {} };
+  const calls = [];
+  const context = {
+    state,
+    els: { syncStatus: { classList: { remove() {} } } },
+    window: { MemberSystem: { request: async (_config, _surface, _token, action) => { calls.push(action); return { version: 'v2', cards: [{ cardId: 'new' }] }; } } },
+    memberPagePayload: () => ({}),
+    invalidateLazyPanels: () => { state.loadedPanels = {}; },
+    applyAdminBootstrap: (result) => { state.bootstrapVersion = result.version; },
+    applyAdminCards: (result) => { state.cards = result.cards; },
+    loadAdminSummary: async () => {},
+    setSyncStatus: () => {}
+  };
+  vm.createContext(context);
+  vm.runInContext([
+    extract('  async function refreshData(', '  function applyAdminBootstrap('),
+    extract('  async function ensureAdminPanelData(', '  function applyAdminCards(')
+  ].join('\n'), context);
+  let timer;
+  try {
+    await Promise.race([context.ensureAdminPanelData('cards'), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('panel refresh deadlocked')), 1000); })]);
+  } finally { clearTimeout(timer); }
+  assert.deepEqual(calls, ['admin.pointcards.list', 'admin.bootstrap', 'admin.pointcards.list']);
+  assert.equal(state.cards[0].cardId, 'new'); assert.equal(state.loadedPanels.cards, true); assert.equal(state.panelLoads.cards, undefined);
+});

@@ -256,7 +256,7 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(calendarStyles, /\.calendar-item \{[^}]*color: var\(--item-foreground[^}]*background: var\(--item-accent/);
   assert.doesNotMatch(calendarStyles, /\.calendar-item\.holiday \{[^}]*background:/);
   assert.doesNotMatch(calendarStyles, /\.calendar-item\.event \{[^}]*background:/);
-  assert.match(calendarHtml, /calendar-performance-20260908/);
+  assert.match(calendarHtml, /calendar-performance-20260909/);
   assert.doesNotMatch(calendarApp, /innerHTML/);
   assert.match(adminHtml, /id="calendarPanel"/);
   assert.match(adminHtml, /id="adminCalendarGrid"/);
@@ -297,3 +297,4 @@ test('calendar client and admin form keep read-only user display and server-admi
   assert.match(auth, /MEMBERSHIP_CALENDAR_LINE_CHANNEL_ID/);
   assert.match(read('gas\/Storage.gs'), /CalendarItems:[\s\S]*?allowed_tier_keys[\s\S]*?link_label[\s\S]*?link_url/);
 });
+

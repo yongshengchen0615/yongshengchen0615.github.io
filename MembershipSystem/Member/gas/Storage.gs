@@ -6,7 +6,7 @@ const MEMBERSHIP_DATA_CACHE_EPOCH_KEY_ = 'membership:data-epoch:v1';
 const MEMBERSHIP_DATA_CACHE_EPOCH_SECONDS_ = 21600;
 const MEMBERSHIP_BOOTSTRAP_CACHE_SECONDS_ = 120;
 const MEMBERSHIP_BOOTSTRAP_CACHE_MAX_BYTES_ = 90000;
-const MEMBERSHIP_SYNC_SCHEMA_VERSION_ = '2';
+const MEMBERSHIP_SYNC_SCHEMA_VERSION_ = '3';
 const MEMBERSHIP_SYNC_PROPERTY_PREFIX_ = 'MEMBERSHIP_SYNC_REVISION_V2:';
 const MEMBERSHIP_SHEET_SCHEMAS_ = Object.freeze({
   Members: Object.freeze(['line_user_id', 'display_name', 'member_code', 'tier', 'status', 'joined_at', 'last_login_at', 'created_at', 'updated_at', 'birthday', 'phone', 'membership_status']),
@@ -74,7 +74,8 @@ function membershipVersionedBootstrapResponse_(scope, identity, request, buildPa
   }
 
   const cache = membershipSchemaCache_();
-  const cacheKey = membershipBootstrapPayloadCacheKey_(scope, identity, version);
+  const representation = JSON.stringify([Boolean(request && request.compact), Boolean(request && request.includeActiveCard), String(request && request.activeCardId || '').substring(0, 80)]);
+  const cacheKey = membershipBootstrapPayloadCacheKey_(scope + ':' + representation, identity, version);
   let payload = null;
   if (cache && version) {
     try { payload = JSON.parse(cache.get(cacheKey) || 'null'); } catch (_) { payload = null; }
@@ -440,3 +441,4 @@ function decodeSheetValue_(value) { const text = value === null || value === und
 function withDataLock_(callback) { const lock = LockService.getScriptLock(); try { lock.waitLock(5000); } catch (_) { throw new ApiError(429, 'STORAGE_BUSY', '資料正在更新，請稍後再試。'); } try { return callback(); } finally { lock.releaseLock(); } }
 function appendAuditRecord_(record) { appendRecord_('AuditLogs', record); }
 function nowIso_() { return new Date().toISOString(); }
+

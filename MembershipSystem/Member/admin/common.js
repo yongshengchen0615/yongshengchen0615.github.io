@@ -5,7 +5,10 @@
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
   const READ_RESPONSE_ATTEMPTS = 2;
   const READ_RETRY_DELAY_MS = 400;
-  const READ_REQUEST_TIMEOUT_MS = 20000;
+  // 兩次讀取共用 9 秒預算；寫入仍只送一次，保留結果不確定的處理。
+  const READ_REQUEST_TIMEOUT_MS = 9000;
+  const READ_TOTAL_TIMEOUT_MS = 9000;
+  const pendingReads = new Map();
   const WRITE_REQUEST_TIMEOUT_MS = 30000;
   const CONFIG_RESPONSE_ATTEMPTS = 2;
   const WRITE_ACTIONS = Object.freeze([
@@ -38,10 +41,11 @@
   }
 
   async function loadConfig() {
+    const deadline = Date.now() + READ_TOTAL_TIMEOUT_MS;
     let lastError;
     for (let attempt = 0; attempt < CONFIG_RESPONSE_ATTEMPTS; attempt += 1) {
       try {
-        const fetched = await fetchWithTimeout('../config.json', { cache: 'no-store' }, READ_REQUEST_TIMEOUT_MS, (response) => response.text());
+        const fetched = await fetchWithTimeout('../config.json', { cache: 'no-cache' }, Math.max(1, deadline - Date.now()), (response) => response.text());
         const response = fetched.response;
         if (!response.ok) throw clientError('CONFIG_ERROR', '讀取 config.json 失敗。');
         let config;
@@ -55,6 +59,7 @@
       } catch (error) {
         lastError = error && error.code === 'CONFIG_ERROR' ? error : clientError('CONFIG_ERROR', '無法讀取公開設定，請確認網路後重試。');
       }
+      if (Date.now() + READ_RETRY_DELAY_MS >= deadline) break;
       if (attempt < CONFIG_RESPONSE_ATTEMPTS - 1) await waitForReadRetry(attempt);
     }
     throw lastError || clientError('CONFIG_ERROR', '無法讀取公開設定，請確認網站設定。');
@@ -82,7 +87,7 @@
 
     const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : surface === 'event' ? config.eventLiffId : surface === 'calendar' ? config.calendarLiffId : config.memberLiffId;
     try {
-      await window.liff.init({ liffId });
+      await withTimeout(window.liff.init({ liffId }), 8000, 'LINE 初始化逾時，請重新開啟此頁面。');
     } catch (_) {
       const label = surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : surface === 'calendar' ? 'Calendar' : 'Member';
       throw clientError('LIFF_INIT_ERROR', `${label} LIFF 初始化失敗，請檢查 LIFF ID 與 Endpoint URL。`);
@@ -100,11 +105,11 @@
           try { window.liff.logout(); } catch (_) {}
         }
         redirectToFreshLogin(surface);
-        await new Promise(() => {});
+        await withTimeout(new Promise(() => {}), 8000, '登入跳轉未完成，請重新開啟此頁面。');
       }
       if (!window.liff.isLoggedIn()) {
         redirectToFreshLogin(surface);
-        await new Promise(() => {});
+        await withTimeout(new Promise(() => {}), 8000, '登入跳轉未完成，請重新開啟此頁面。');
       }
     }
 
@@ -158,9 +163,51 @@
     }
   }
 
-  async function request(config, clientType, idToken, action, payload = {}) {
+  // 同一個帳號、API、參數的同時讀取只送一次；寫入前後清除舊請求索引。
+  function request(config, clientType, idToken, action, payload = {}) {
+    if (WRITE_ACTIONS.includes(action)) {
+      pendingReads.clear();
+      return sendRequest(config, clientType, idToken, action, payload).finally(() => pendingReads.clear());
+    }
+    const key = JSON.stringify([config.gasWebAppUrl, clientType, idToken, action, payload]);
+    if (pendingReads.has(key)) return pendingReads.get(key);
+    const pending = sendRequest(config, clientType, idToken, action, payload).finally(() => {
+      if (pendingReads.get(key) === pending) pendingReads.delete(key);
+    });
+    pendingReads.set(key, pending);
+    return pending;
+  }
+
+  function withTimeout(promise, timeoutMs, message) {
+    const schedule = typeof window.setTimeout === 'function' ? window.setTimeout.bind(window) : typeof setTimeout === 'function' ? setTimeout : null;
+    const cancel = typeof window.clearTimeout === 'function' ? window.clearTimeout.bind(window) : typeof clearTimeout === 'function' ? clearTimeout : null;
+    if (!schedule) return promise;
+    let timer;
+    return Promise.race([promise, new Promise((_, reject) => {
+      timer = schedule(() => reject(clientError('REQUEST_TIMEOUT', message || '等待逾時。')), timeoutMs);
+    })]).finally(() => { if (cancel) cancel(timer); });
+  }
+
+  // 將 Tab 焦點保留在目前的對話框內，避免操作到後方的核銷或管理按鈕。
+  function bindDialogKeyboard() {
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return;
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).filter((dialog) => dialog.getClientRects().length);
+      const dialog = dialogs[dialogs.length - 1];
+      if (!dialog) return;
+      const controls = Array.from(dialog.querySelectorAll('button, a[href], input, select, textarea, [tabindex]')).filter((el) => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
+      const first = controls[0]; const last = controls[controls.length - 1];
+      if (!first) { event.preventDefault(); dialog.tabIndex = -1; dialog.focus(); return; }
+      if (!dialog.contains(document.activeElement) || (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        event.preventDefault(); (event.shiftKey ? last : first).focus();
+      }
+    });
+  }
+
+  async function sendRequest(config, clientType, idToken, action, payload = {}) {
     const isWrite = WRITE_ACTIONS.indexOf(action) !== -1;
     const attempts = isWrite ? 1 : READ_RESPONSE_ATTEMPTS;
+    const deadline = Date.now() + READ_TOTAL_TIMEOUT_MS;
     let lastError;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       let response;
@@ -171,8 +218,8 @@
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           cache: 'no-store',
           redirect: 'follow',
-          body: JSON.stringify({ action, clientType, idToken, ...payload })
-        }, isWrite ? WRITE_REQUEST_TIMEOUT_MS : READ_REQUEST_TIMEOUT_MS, (result) => result.text());
+          body: JSON.stringify({ ...payload, action, clientType, idToken })
+        }, isWrite ? WRITE_REQUEST_TIMEOUT_MS : Math.max(1, Math.min(READ_REQUEST_TIMEOUT_MS, deadline - Date.now())), (result) => result.text());
         response = fetched.response;
         rawResponse = fetched.body;
       } catch (_) {
@@ -212,7 +259,7 @@
         }
       }
 
-      if (isWrite || attempt === attempts - 1) throw lastError;
+      if (isWrite || attempt === attempts - 1 || Date.now() + READ_RETRY_DELAY_MS >= deadline) throw lastError;
       await waitForReadRetry(attempt);
       lastError = null;
     }
@@ -269,6 +316,7 @@
     return Array.from(text).slice(0, 2).join('') || '會員';
   }
 
-  window.MemberSystem = Object.freeze({ clientError, loadConfig, validateConfig, signIn, request, logout, openMemberJoin, formatDate, formatDateTime, initials });
+  window.MemberSystem = Object.freeze({ bindDialogKeyboard, clientError, loadConfig, validateConfig, signIn, request, logout, openMemberJoin, formatDate, formatDateTime, initials });
 })();
+
 

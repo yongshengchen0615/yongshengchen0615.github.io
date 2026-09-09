@@ -655,3 +655,42 @@ test('admin ticket library and member ticket confirmation flow are present', () 
   assert.match(pointsApp, /uncertainTicketId/);
   assert.match(pointsHtml, /id="refreshTicketButton"/);
 });
+
+
+test('compact bootstrap includes only the selected card detail from one snapshot and matches the detail API', () => {
+  const { context, rows } = loadTicketService();
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  rows.PointCardRewards.push({ reward_id: 'PR-1', card_id: 'PC-1', threshold_stamps: '10', reward_type: 'coupon', reward_title: '咖啡券', reward_description: '集點獎勵', consume_stamps: '10' });
+  rows.PointCards.push({ ...rows.PointCards[0], card_id: 'PC-2' });
+  rows.PointCardTickets.push({ ...rows.PointCardTickets[0], ticket_id: 'OTHER-USER', line_user_id: 'U-2' });
+  let snapshots = 0;
+  const readSnapshot = context.readPointCardSnapshot_;
+  context.readPointCardSnapshot_ = (id) => { snapshots++; return readSnapshot(id); };
+  const identity = { lineUserId: 'U-1', displayName: '測試會員' };
+  const result = context.handlePointCardBootstrap_(identity, { compact: true, includeActiveCard: true, activeCardId: 'PC-1' });
+  assert.equal(snapshots, 1);
+  assert.deepEqual(Object.keys(result.cardDetails), ['PC-1']);
+  const separate = context.handlePointCardDetail_(identity, { cardId: 'PC-1' });
+  assert.deepEqual(JSON.parse(JSON.stringify(result.cardDetails['PC-1'])), JSON.parse(JSON.stringify(separate)));
+  assert.equal(result.cardDetails['PC-1'].tickets.length, 1);
+  assert.equal(result.cards[1].rewards, undefined);
+  assert.equal(result.profile.phone, undefined);
+  const selected = context.handlePointCardBootstrap_(identity, { compact: true, includeActiveCard: true, activeCardId: 'PC-2' });
+  assert.deepEqual(Object.keys(selected.cardDetails), ['PC-2']);
+  assert.equal(selected.cardDetails['PC-2'].tickets.length, 0);
+});
+
+test('inline point-card detail respects archived cards, expired ticket visibility, empty data and membership checks', () => {
+  const { context, rows, TestApiError } = loadTicketService();
+  context.ensureMember_ = () => ({ display_name: '測試會員' });
+  const identity = { lineUserId: 'U-1' };
+  const request = { compact: true, includeActiveCard: true, activeCardId: 'MISSING' };
+  assert.deepEqual(Object.keys(context.handlePointCardBootstrap_(identity, request).cardDetails), ['PC-1']);
+  rows.PointCards[0].expiry_mode = 'date'; rows.PointCards[0].expires_on = '2000-01-01';
+  assert.equal(context.handlePointCardBootstrap_(identity, request).cardDetails['PC-1'].tickets.length, 0);
+  rows.PointCards[0].status = 'archived';
+  const empty = context.handlePointCardBootstrap_(identity, request);
+  assert.equal(empty.cards.length, 0); assert.equal(empty.cardDetails, undefined);
+  context.assertMemberJoined_ = () => { throw new TestApiError(403, 'MEMBERSHIP_REQUIRED'); };
+  assert.throws(() => context.handlePointCardBootstrap_(identity, request), { code: 'MEMBERSHIP_REQUIRED' });
+});

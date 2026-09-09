@@ -73,3 +73,8 @@ button { line-height: 1.35; }
 @keyframes login-status-spin { to { transform: rotate(360deg); } }
 @keyframes login-progress-shimmer { to { transform: translateX(280%); } }
 @media (prefers-reduced-motion: reduce) { .login-status::before, .login-progress-bar::after { animation: none; }.login-progress-bar { transition: none; } }
+
+
+/* 更新狀態就地顯示，保留已載入內容與使用者的位置。 */
+.sync-notice { margin: 12px 0; padding: 12px 16px; border: 1px solid #bac9ba; border-radius: 12px; background: #f2f7ef; color: #274c38; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.sync-notice.is-error { background: #fff4e8; border-color: #dfb68c; color: #743e18; }

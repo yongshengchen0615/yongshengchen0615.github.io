@@ -8,6 +8,7 @@
   let loginProgressValue = 8;
 
   window.addEventListener('DOMContentLoaded', () => {
+    window.MemberSystem.bindDialogKeyboard();
     [
       'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'eventView', 'displayName', 'membershipProgress', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketHistorySummary', 'usedTicketList',
       'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage'
@@ -39,7 +40,7 @@
   }
 
   async function loadOffers(showBusy, bypassSnapshot) {
-    if (showBusy) { els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
+    if (showBusy) { setInlineStatus('正在更新活動票券…'); els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
     try {
       const cached = bypassSnapshot ? null : await window.MemberSystem.readSyncSnapshot('event');
       const payload = { compact: true };
@@ -53,8 +54,16 @@
         applyOfferSnapshot(result, result);
       }
       renderOffers();
-      await persistOfferSnapshot();
-    } catch (error) { if (!showBusy) throw error; showError(error); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
+      if (showBusy) setInlineStatus('活動票券已更新。');
+      void persistOfferSnapshot();
+    } catch (error) { if (!showBusy) throw error; if (/^(AUTH_|MEMBERSHIP_REQUIRED|MEMBER_)/.test(String(error && error.code || ''))) showError(error); else setInlineStatus('更新失敗，畫面保留上次資料。請按「更新」重試；領取與使用時會重新驗證資格。', true); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
+  }
+
+  function setInlineStatus(message, error = false) {
+    const status = document.getElementById('syncNotice');
+    status.textContent = message;
+    status.classList.toggle('hidden', !message);
+    status.classList.toggle('is-error', error);
   }
 
   function applyOfferSnapshot(payload, sync) {
@@ -123,7 +132,7 @@
         if (!result.offer) throw new Error('活動票券明細回應不完整。');
         replaceOffer(result.offer); renderOffers();
         const detailed = findOffer(targetId); if (detailed && state.pendingEventTicketId === targetId) renderTicketModal(detailed);
-        await persistOfferSnapshot();
+        void persistOfferSnapshot();
       } catch (error) {
         if (state.pendingEventTicketId === targetId) showMessage(error && error.message || '票券明細載入失敗，請稍後再試。', false);
       }
@@ -230,7 +239,14 @@
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.eventView.classList.toggle('hidden', view !== 'event'); }
   function startLoginProgress(status, ceiling) { stopLoginProgress(); const maximum = Math.max(loginProgressValue, Math.min(98, Number(ceiling) || loginProgressValue)); setLoginProgress(loginProgressValue, status); loginProgressTimer = window.setInterval(() => { const remaining = maximum - loginProgressValue; if (remaining <= 0) return stopLoginProgress(); setLoginProgress(Math.min(maximum, loginProgressValue + Math.max(1, Math.ceil(remaining * .12))), status); }, LOGIN_PROGRESS_TICK_MS); }
   function stopLoginProgress() { if (loginProgressTimer !== null) window.clearInterval(loginProgressTimer); loginProgressTimer = null; }
-  function completeLoginProgress(status) { stopLoginProgress(); const start = loginProgressValue; const duration = Math.max(220, Math.min(700, (100 - start) * 14)); const startedAt = Date.now(); return new Promise((resolve) => { const tick = () => { const elapsed = Date.now() - startedAt; const ratio = Math.min(1, elapsed / duration); setLoginProgress(Math.round(start + (100 - start) * (1 - Math.pow(1 - ratio, 2))), status); if (ratio < 1) return window.setTimeout(tick, 32); resolve(); }; tick(); }); }
+  function completeLoginProgress(status) {
+    stopLoginProgress();
+    // 資料就緒便交還操作，不讓裝飾性動畫阻塞主要畫面。
+    setLoginProgress(100, status);
+    return Promise.resolve();
+  }
+
   function setLoginProgress(value, status) { const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0)))); loginProgressValue = progress; els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; if (status) els.loadingStatus.textContent = status; }
   function showError(error) { const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED'; els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '活動票券暫時無法載入'; els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用活動票券功能。' : error && error.message ? error.message : '請稍後重新整理再試。'; els.joinMemberButton.classList.toggle('hidden', !membershipRequired); els.retryButton.classList.toggle('hidden', membershipRequired); setView('error'); }
 })();
+

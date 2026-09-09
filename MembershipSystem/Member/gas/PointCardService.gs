@@ -36,7 +36,15 @@ function handlePointCardBootstrap_(identity, request) {
     const cards = compact
       ? visiblePointCardSummariesForMember_(identity.lineUserId, snapshot)
       : visiblePointCardsForMember_(identity.lineUserId, snapshot);
-    return { profile: pointCardMembershipProfileForClient_(member, identity), cards, tickets: compact ? [] : visibleTicketsForMember_(identity.lineUserId, snapshot), history: history.slice(0, POINT_CARD_HISTORY_LIMIT_), historyTotal: history.length, compact };
+    const payload = { profile: pointCardMembershipProfileForClient_(member, identity), cards, tickets: compact ? [] : visibleTicketsForMember_(identity.lineUserId, snapshot), history: history.slice(0, POINT_CARD_HISTORY_LIMIT_), historyTotal: history.length, compact };
+    // 摘要與目前卡片共用同一份已授權快照，首次開啟少一次 API 與試算表讀取。
+    if (compact && request && request.includeActiveCard === true && cards.length) {
+      const requestedId = String(request.activeCardId || '');
+      const selected = cards.find(function(card) { return card.cardId === requestedId; }) || cards[0];
+      payload.cardDetails = {};
+      payload.cardDetails[selected.cardId] = pointCardDetailFromSnapshot_(identity.lineUserId, selected.cardId, snapshot);
+    }
+    return payload;
   };
   return typeof membershipVersionedBootstrapResponse_ === 'function'
     ? membershipVersionedBootstrapResponse_('points', identity, request, buildPayload)
@@ -50,18 +58,23 @@ function handlePointCardDetail_(identity, request) {
   if (typeof assertMemberJoined_ === 'function') assertMemberJoined_(member);
   const buildPayload = function() {
     const snapshot = readPointCardSnapshot_(identity.lineUserId);
-    const rawCard = snapshot.cards.find(function(card) { return String(card.card_id || '') === cardId && String(card.status || '') === 'active'; });
-    if (!rawCard) throw new ApiError(404, 'POINT_CARD_NOT_FOUND', '找不到可用的集點卡。');
-    const balance = snapshot.balancesByMemberCard[pointCardMemberCardKey_(identity.lineUserId, cardId)] || {};
-    const card = pointCardForClient_(rawCard, snapshot.rewardsByCard[cardId] || [], false, snapshot.ticketTemplatesById);
-    card.stamps = Math.max(0, Number(balance.stamps || 0));
-    card.updatedAt = String(balance.updated_at || '') || card.updatedAt;
-    const tickets = visibleTicketsForMember_(identity.lineUserId, snapshot).filter(function(ticket) { return String(ticket.cardId || '') === cardId; });
-    return { card, tickets };
+    return pointCardDetailFromSnapshot_(identity.lineUserId, cardId, snapshot);
   };
   return typeof membershipVersionedBootstrapResponse_ === 'function'
     ? membershipVersionedBootstrapResponse_('points-detail:' + cardId, identity, request, buildPayload)
     : buildPayload();
+}
+
+// 保留與獨立明細 API 相同的卡片狀態、會員點數及票券篩選規則。
+function pointCardDetailFromSnapshot_(lineUserId, cardId, snapshot) {
+  const rawCard = snapshot.cards.find(function(card) { return String(card.card_id || '') === cardId && String(card.status || '') === 'active'; });
+  if (!rawCard) throw new ApiError(404, 'POINT_CARD_NOT_FOUND', '找不到可用的集點卡。');
+  const balance = snapshot.balancesByMemberCard[pointCardMemberCardKey_(lineUserId, cardId)] || {};
+  const card = pointCardForClient_(rawCard, snapshot.rewardsByCard[cardId] || [], false, snapshot.ticketTemplatesById);
+  card.stamps = Math.max(0, Number(balance.stamps || 0));
+  card.updatedAt = String(balance.updated_at || '') || card.updatedAt;
+  const tickets = visibleTicketsForMember_(lineUserId, snapshot).filter(function(ticket) { return String(ticket.cardId || '') === cardId; });
+  return { card, tickets };
 }
 
 function pointCardMembershipProfileForClient_(member, identity) {
@@ -1251,3 +1264,4 @@ function drawTicketPrize_(ticket) {
 function ticketPrizeResult_(prize) {
   return { prizeId: String(prize.prize_id || prize.prizeId || ''), prizeTitle: String(prize.prize_title || prize.prizeTitle || ''), prizeDescription: String(prize.prize_description || prize.prizeDescription || '') };
 }
+

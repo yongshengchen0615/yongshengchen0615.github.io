@@ -8,12 +8,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://script.google.com https://*.googleusercontent.com https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>集點卡｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=points-performance-20260908">
+  <link rel="stylesheet" href="./styles.css?v=points-performance-20260909">
   <link rel="stylesheet" href="./membership-progress.css?v=points-tier-style-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="./common.js?v=points-sync-cache-20260908" defer></script>
+  <script src="./common.js?v=points-sync-cache-20260909" defer></script>
   <script src="./membership-progress.js?v=points-tier-style-20260908" defer></script>
-  <script src="./app.js?v=points-incremental-payload-20260908" defer></script>
+  <script src="./app.js?v=points-incremental-payload-20260909" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -49,6 +49,7 @@
         <button id="refreshButton" class="refresh-button" type="button"><span aria-hidden="true">↻</span> 更新</button>
       </section>
 
+      <p id="syncNotice" class="sync-notice hidden" role="status" aria-live="polite"></p>
       <section id="membershipProgress" class="membership-progress" aria-labelledby="membershipProgressTitle" aria-live="polite">
         <div><p class="membership-progress-kicker">Membership progress</p><h2 id="membershipProgressTitle">會員階級</h2><p data-membership-current-tier class="membership-progress-current">目前會員階級：載入中</p></div>
         <p data-membership-summary class="membership-progress-summary">累積 0 分鐘・下一階段資料載入中</p>
@@ -80,3 +81,4 @@
   <div id="ticketModal" class="ticket-modal hidden" role="dialog" aria-modal="true" aria-labelledby="ticketModalTitle"><div class="ticket-modal-card"><div class="ticket-modal-heading"><div><p class="kicker">Ticket details</p><h2 id="ticketModalTitle">使用票券</h2></div><button id="closeTicketModal" class="ticket-close-button" type="button" aria-label="關閉">×</button></div><p id="ticketModalTicketName" class="ticket-modal-name"></p><p id="ticketModalDescription" class="ticket-modal-description"></p><section class="ticket-instructions" aria-label="票券使用說明"><strong id="ticketModalUsageMethod"></strong><p id="ticketModalUsageInstructions"></p></section><p id="ticketModalCost" class="ticket-modal-hint"></p><div id="ticketModalProcessing" class="ticket-processing hidden" role="status" aria-live="polite"><span class="ticket-processing-spinner" aria-hidden="true"></span><span>正在使用票券，請稍候…</span></div><div id="ticketModalResult" class="ticket-modal-result"></div><button id="confirmTicketUseButton" class="ticket-confirm-button" type="button">確認使用這張票券</button><button id="refreshTicketButton" class="ticket-confirm-button ticket-refresh-button hidden" type="button">重新整理確認</button><div id="ticketModalMessage" class="ticket-modal-message hidden" role="status"></div></div></div>
 </body>
 </html>
+

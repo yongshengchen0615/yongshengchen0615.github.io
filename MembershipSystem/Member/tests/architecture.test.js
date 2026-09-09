@@ -274,7 +274,7 @@ test('transport distinguishes an uncertain write outcome from a failed read resp
   assert.equal(stalledBodyAttempts, 2, 'a stalled response body times out and retries even without AbortController');
 
   const transport = read('admin/common.js');
-  assert.match(transport, /READ_REQUEST_TIMEOUT_MS = 20000/);
+  assert.match(transport, /READ_REQUEST_TIMEOUT_MS = 9000/);
   assert.match(transport, /WRITE_REQUEST_TIMEOUT_MS = 30000/);
   assert.match(transport, /Promise\.race/);
 });
@@ -350,7 +350,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-performance-20260908/);
+  assert.match(adminHtml, /styles\.css\?v=admin-performance-20260909/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; \}/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -380,7 +380,7 @@ test('member profile date input is LINE-safe and touch-friendly', () => {
   const memberHtml = read('member/index.html');
   const memberApp = read('member/app.js');
   const memberStyles = read('member/styles.css');
-  assert.match(memberHtml, /styles\.css\?v=member-performance-20260908/);
+  assert.match(memberHtml, /styles\.css\?v=member-performance-20260909/);
   assert.match(memberHtml, /<label for="profileBirthdayPickerButton">生日<\/label>/);
   assert.match(memberHtml, /id="profileBirthdayPickerButton" class="date-picker-trigger"[^>]*aria-haspopup="dialog"/);
   assert.match(memberHtml, /id="profileBirthday" type="date"[^>]*aria-describedby="profileBirthdayHint"[^>]*tabindex="-1"/);
@@ -490,7 +490,7 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
     assert.doesNotMatch(loading[0], /loader-mark|kicker/);
     assert.match(app, /startLoginProgress\('正在取得開啟設定…', 18\)[\s\S]*?startLoginProgress\('正在驗證 LINE 身分…', 48\)[\s\S]*?startLoginProgress\([^)]*, 92\)[\s\S]*?await completeLoginProgress\(/);
     assert.match(app, /function startLoginProgress\(status, ceiling\)[\s\S]*?window\.setInterval[\s\S]*?Math\.min\(maximum/);
-    assert.match(app, /function completeLoginProgress\(status\)[\s\S]*?Date\.now\(\)[\s\S]*?window\.setTimeout/);
+    assert.match(app, /function completeLoginProgress\(status\)[\s\S]*?setLoginProgress\(100, status\)[\s\S]*?Promise\.resolve\(\)/);
     assert.match(app, /function stopLoginProgress\(\)[\s\S]*?window\.clearInterval/);
     assert.match(app, /function setLoginProgress\(value, status\)[\s\S]*?aria-valuenow[\s\S]*?aria-valuetext[\s\S]*?loadingProgressBar\.style\.width[\s\S]*?loadingProgressText\.textContent[\s\S]*?loadingStatus\.textContent/);
     assert.match(styles, /\.login-loading \{[^}]*100dvh[^}]*margin-inline: auto/);
@@ -504,11 +504,11 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
-    ['member', 'member-performance-20260908', 'member-performance-20260908', 'member-sync-cache-20260908'],
-    ['points', 'points-performance-20260908', 'points-incremental-payload-20260908', 'points-sync-cache-20260908'],
-    ['event', 'event-performance-20260908', 'event-incremental-payload-20260908', 'event-sync-cache-20260908'],
-    ['calendar', 'calendar-performance-20260908', 'calendar-incremental-payload-20260908', 'calendar-sync-cache-20260908'],
-    ['admin', 'admin-performance-20260908', 'admin-performance-20260908', 'admin-local-client-20260908']
+    ['member', 'member-performance-20260909', 'member-performance-20260909', 'member-sync-cache-20260909'],
+    ['points', 'points-performance-20260909', 'points-incremental-payload-20260909', 'points-sync-cache-20260909'],
+    ['event', 'event-performance-20260909', 'event-incremental-payload-20260909', 'event-sync-cache-20260909'],
+    ['calendar', 'calendar-performance-20260909', 'calendar-incremental-payload-20260909', 'calendar-sync-cache-20260909'],
+    ['admin', 'admin-performance-20260909', 'admin-performance-20260909', 'admin-local-client-20260909']
   ];
 
   surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {
@@ -555,3 +555,4 @@ test('incremental member surfaces use identity-scoped IndexedDB snapshots and se
   assert.match(code, /case 'user\.event\.ticket\.detail'/);
   assert.match(code, /case 'user\.calendar\.date\.details'/);
 });
+
