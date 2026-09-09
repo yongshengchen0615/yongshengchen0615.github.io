@@ -299,8 +299,8 @@
     els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
     els.roleLabel.textContent = String(result.role || 'Admin');
     renderAdminOverview();
-    applyAdminCards(result);
-    applyAdminEventTickets(result);
+    applyAdminCards(result, false);
+    applyAdminEventTickets(result, false);
     applyAdminCalendarItems(result);
   }
 
@@ -369,21 +369,23 @@
     return false;
   }
 
-  function applyAdminCards(result) {
+  function applyAdminCards(result, renderOverview = true) {
     state.cards = Array.isArray(result.cards) ? result.cards : [];
     state.cardSortOriginalOrder = state.cards.map((card) => String(card.cardId || ''));
     state.cardSortDirty = false;
     state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
     state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
-    renderAdminOverview(); renderCardList(); renderTicketList();
+    if (renderOverview) renderAdminOverview();
+    renderCardList(); renderTicketList();
     if (state.selectedCardId && state.cards.some((card) => card.cardId === state.selectedCardId)) loadCardForm(state.selectedCardId); else resetCardForm();
     if (state.selectedTicketId && state.tickets.some((ticket) => ticket.ticketTemplateId === state.selectedTicketId)) loadTicketForm(state.selectedTicketId); else resetTicketForm();
   }
 
-  function applyAdminEventTickets(result) {
+  function applyAdminEventTickets(result, renderOverview = true) {
     state.eventTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
     state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
-    renderAdminOverview(); renderEventTicketList();
+    if (renderOverview) renderAdminOverview();
+    renderEventTicketList();
     if (state.selectedEventTicketId && state.eventTickets.some((ticket) => ticket.eventTicketId === state.selectedEventTicketId)) loadEventTicketForm(state.selectedEventTicketId); else resetEventTicketForm();
   }
 
