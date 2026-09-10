@@ -2,7 +2,7 @@
   'use strict';
 
   const MEMBER_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', profile: null, profileSaveLocked: false, birthdayPicker: { opener: null } };
+  const state = { config: null, idToken: '', profile: null, lineProfile: null, profileSaveLocked: false, birthdayPicker: { opener: null } };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -38,6 +38,7 @@
       state.config = await window.MemberSystem.loadConfig();
       startLoginProgress('正在驗證 LINE 身分…', 48);
       state.idToken = await window.MemberSystem.signIn(state.config, 'member');
+      state.lineProfile = await loadLineProfile();
       startLoginProgress('正在同步會員資料…', 92);
       const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
       state.profile = result.profile || {};
@@ -64,14 +65,44 @@
     }
   }
 
+  async function loadLineProfile() {
+    const decoded = typeof window.liff?.getDecodedIDToken === 'function' ? window.liff.getDecodedIDToken() : null;
+    const fallback = {
+      displayName: String(decoded && decoded.name || ''),
+      pictureUrl: normalizeLinePictureUrl(decoded && decoded.picture),
+    };
+    if (typeof window.liff?.getProfile !== 'function') return fallback;
+    try {
+      const profile = await window.liff.getProfile();
+      return {
+        displayName: String(profile && profile.displayName || fallback.displayName || ''),
+        pictureUrl: normalizeLinePictureUrl(profile && profile.pictureUrl) || fallback.pictureUrl,
+      };
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function normalizeLinePictureUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== 'https:') return '';
+      return url.href;
+    } catch (_) {
+      return '';
+    }
+  }
+
   function renderProfile(profile) {
     const brandName = String(state.config.brandName || 'Lumen Club');
-    const displayName = String(profile.displayName || 'LINE 使用者');
+    const displayName = String(profile.displayName || state.lineProfile?.displayName || 'LINE 使用者');
     const status = String(profile.status || 'active').toLowerCase();
     const isActive = status === 'active';
     els.brandName.textContent = brandName;
     els.displayName.textContent = displayName;
-    els.memberInitial.textContent = window.MemberSystem.initials(displayName);
+    renderMemberAvatar(state.lineProfile?.pictureUrl, displayName);
     els.memberName.textContent = displayName;
     els.memberTier.textContent = String(profile.tier || '一般會員');
     const tierStyleKey = safeTierStyle(profile.tierStyleKey);
@@ -85,6 +116,35 @@
     window.MembershipProgress.render(els.membershipProgress, profile);
     els.memberStatus.textContent = isActive ? '使用中' : '暫停';
     els.memberStatus.parentElement.classList.toggle('inactive', !isActive);
+  }
+
+  function renderMemberAvatar(pictureUrl, displayName) {
+    const initials = window.MemberSystem.initials(displayName);
+    els.memberInitial.textContent = initials;
+    els.memberInitial.style.backgroundImage = '';
+    els.memberInitial.style.backgroundSize = '';
+    els.memberInitial.style.backgroundPosition = '';
+    els.memberInitial.style.backgroundRepeat = '';
+    els.memberInitial.style.color = '';
+
+    const url = normalizeLinePictureUrl(pictureUrl);
+    if (!url) return;
+
+    const image = new Image();
+    image.referrerPolicy = 'no-referrer';
+    image.onload = () => {
+      els.memberInitial.style.backgroundImage = `url("${url.replaceAll('"', '%22')}")`;
+      els.memberInitial.style.backgroundSize = 'cover';
+      els.memberInitial.style.backgroundPosition = 'center';
+      els.memberInitial.style.backgroundRepeat = 'no-repeat';
+      els.memberInitial.style.color = 'transparent';
+    };
+    image.onerror = () => {
+      els.memberInitial.textContent = initials;
+      els.memberInitial.style.backgroundImage = '';
+      els.memberInitial.style.color = '';
+    };
+    image.src = url;
   }
 
   async function saveProfile(event) {
@@ -244,4 +304,3 @@
     setView('error');
   }
 })();
-
