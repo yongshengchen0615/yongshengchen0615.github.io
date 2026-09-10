@@ -11,7 +11,9 @@
     occupancyRequestSeq: 0,
     reloadTimer: 0,
     occupiedByDate: new Map(),
+    holidaysByDate: new Map(),
     lastDateTrigger: null,
+    holidayTrigger: null,
   };
 
   const els = {};
@@ -25,6 +27,7 @@
 
     if (!els.calendarGrid || !els.bookingDate || !els.servicePicker || !els.appointmentPanel) return;
 
+    ensureHolidayUi();
     state.today = taipeiDate();
     state.minimumDate = state.today;
     state.month = state.today.slice(0, 7);
@@ -42,11 +45,16 @@
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       if (els.bookingConfirmModal && !els.bookingConfirmModal.classList.contains('hidden')) return;
+      if (els.holidayModal && !els.holidayModal.classList.contains('hidden')) {
+        closeHolidayNotice(true);
+        return;
+      }
       closeAppointmentModal(true);
     });
 
     window.addEventListener('booking:settings-updated', (event) => {
       applyGlobalSettings(event.detail || {});
+      scheduleMonthOccupancyReload();
     });
     window.addEventListener('booking:created', () => {
       closeAppointmentModal(false);
@@ -74,6 +82,100 @@
     }
   });
 
+  function ensureHolidayUi() {
+    const bookingCard = els.calendarGrid.closest('.booking-card');
+    const calendarShell = els.calendarGrid.closest('.calendar-shell');
+    if (bookingCard && calendarShell && !document.getElementById('bookingNotice')) {
+      const notice = document.createElement('div');
+      notice.id = 'bookingNotice';
+      notice.className = 'service-info booking-shop-notice hidden';
+      notice.setAttribute('role', 'note');
+      const heading = document.createElement('strong');
+      heading.textContent = '店家預約說明：';
+      const body = document.createElement('span');
+      body.dataset.bookingNoticeText = '1';
+      notice.append(heading, body);
+      bookingCard.insertBefore(notice, calendarShell);
+      els.bookingNotice = notice;
+      els.bookingNoticeText = body;
+    } else {
+      els.bookingNotice = document.getElementById('bookingNotice');
+      els.bookingNoticeText = els.bookingNotice?.querySelector('[data-booking-notice-text]') || null;
+    }
+
+    const legend = els.calendarGrid.parentElement?.querySelector('.calendar-legend');
+    if (legend && !legend.querySelector('[data-holiday-legend]')) {
+      const item = document.createElement('span');
+      item.dataset.holidayLegend = '1';
+      const dot = document.createElement('i');
+      dot.className = 'legend-dot holiday-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      item.append(dot, document.createTextNode('休假日（點選查看）'));
+      legend.appendChild(item);
+    }
+
+    if (!document.getElementById('bookingHolidayModal')) {
+      const modal = document.createElement('div');
+      modal.id = 'bookingHolidayModal';
+      modal.className = 'booking-modal hidden';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', 'bookingHolidayTitle');
+      modal.innerHTML = `
+        <div class="booking-modal-card booking-holiday-modal-card">
+          <div class="booking-modal-heading">
+            <div><p class="kicker">Holiday</p><h2 id="bookingHolidayTitle">休假日，無法預約</h2></div>
+            <button id="closeBookingHolidayButton" class="booking-modal-close" type="button" aria-label="關閉休假提示">×</button>
+          </div>
+          <p id="bookingHolidayDate" class="booking-holiday-date"></p>
+          <div id="bookingHolidayDetails" class="booking-holiday-details"></div>
+          <div class="booking-modal-actions"><button id="ackBookingHolidayButton" class="button button-dark" type="button">知道了</button></div>
+        </div>`;
+      document.body.appendChild(modal);
+      els.holidayModal = modal;
+      els.holidayDate = modal.querySelector('#bookingHolidayDate');
+      els.holidayDetails = modal.querySelector('#bookingHolidayDetails');
+      els.closeHolidayButton = modal.querySelector('#closeBookingHolidayButton');
+      els.ackHolidayButton = modal.querySelector('#ackBookingHolidayButton');
+      els.closeHolidayButton.addEventListener('click', () => closeHolidayNotice(true));
+      els.ackHolidayButton.addEventListener('click', () => closeHolidayNotice(true));
+      modal.addEventListener('click', (event) => {
+        if (event.target === modal && window.matchMedia('(max-width: 768px)').matches) closeHolidayNotice(true);
+      });
+    } else {
+      els.holidayModal = document.getElementById('bookingHolidayModal');
+      els.holidayDate = document.getElementById('bookingHolidayDate');
+      els.holidayDetails = document.getElementById('bookingHolidayDetails');
+      els.closeHolidayButton = document.getElementById('closeBookingHolidayButton');
+      els.ackHolidayButton = document.getElementById('ackBookingHolidayButton');
+    }
+
+    if (!document.getElementById('bookingHolidayStyles')) {
+      const style = document.createElement('style');
+      style.id = 'bookingHolidayStyles';
+      style.textContent = `
+        .booking-shop-notice{white-space:normal}.booking-shop-notice>span{display:block;margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere}
+        .calendar-day.holiday-disabled{border-color:rgba(166,70,55,.28);background:#fff2ee;color:#8a4036;cursor:pointer}
+        .calendar-day.holiday-disabled:hover{border-color:rgba(166,70,55,.5);background:#ffebe5}
+        .calendar-day.holiday-disabled .calendar-day-number{color:#8a4036}
+        .calendar-holiday-label{display:block;margin-top:5px;font-size:10px;font-weight:850;line-height:1.25;color:#9a493c}
+        .calendar-legend .holiday-dot{background:#c76b59}
+        .booking-holiday-date{margin:0 0 12px;color:#66746d;font-weight:700}
+        .booking-holiday-details{display:grid;gap:10px;margin:0 0 18px}
+        .booking-holiday-detail{padding:12px;border-radius:12px;background:#fff4ef;border:1px solid rgba(166,70,55,.14)}
+        .booking-holiday-detail strong{display:block;color:#793b32}.booking-holiday-detail p{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:#6e5b56;line-height:1.55}
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  function renderBookingNotice(value) {
+    if (!els.bookingNotice || !els.bookingNoticeText) return;
+    const text = String(value || '').replace(/\r\n?/g, '\n');
+    els.bookingNoticeText.textContent = text;
+    els.bookingNotice.classList.toggle('hidden', !text.trim());
+  }
+
   function taipeiDate() {
     const parts = {};
     new Intl.DateTimeFormat('en-CA', {
@@ -100,6 +202,7 @@
     const minimumMonth = state.today.slice(0, 7);
     const next = shiftMonth(state.month, delta);
     if (next < minimumMonth) return;
+    closeHolidayNotice(false);
     state.month = next;
     renderCalendar();
     loadMonthOccupancy();
@@ -112,21 +215,28 @@
     state.today = /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : taipeiDate();
     state.minAdvanceDays = minAdvanceDays;
     state.minimumDate = addDays(state.today, minAdvanceDays);
+    if (Object.prototype.hasOwnProperty.call(detail.settings || {}, 'bookingNotice')) {
+      renderBookingNotice(detail.settings.bookingNotice);
+    }
 
     const actualDate = String(els.bookingDate?.value || '');
-    if (actualDate && actualDate >= state.minimumDate && actualDate !== state.selectedDate) {
+    if (actualDate && actualDate >= state.minimumDate && actualDate !== state.selectedDate && !state.holidaysByDate.has(actualDate)) {
       state.selectedDate = actualDate;
       state.month = actualDate.slice(0, 7);
-    } else if (state.selectedDate && state.selectedDate < state.minimumDate) {
-      state.selectedDate = '';
-      if (els.bookingDate) {
-        els.bookingDate.value = '';
-        els.bookingDate.disabled = true;
-        els.bookingDate.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+    } else if (state.selectedDate && (state.selectedDate < state.minimumDate || state.holidaysByDate.has(state.selectedDate))) {
+      clearSelectedDate();
       closeAppointmentModal(false);
     }
     renderCalendar();
+  }
+
+  function clearSelectedDate() {
+    state.selectedDate = '';
+    if (els.bookingDate) {
+      els.bookingDate.value = '';
+      els.bookingDate.disabled = true;
+      els.bookingDate.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   }
 
   function renderCalendar() {
@@ -153,15 +263,18 @@
       const date = `${state.month}-${String(day).padStart(2, '0')}`;
       const isPast = date < today;
       const isAdvanceBlocked = !isPast && date < minimumDate;
+      const holidays = state.holidaysByDate.get(date) || [];
+      const isHoliday = holidays.length > 0;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'calendar-day';
       button.dataset.date = date;
       button.setAttribute('role', 'gridcell');
       button.setAttribute('aria-selected', state.selectedDate === date ? 'true' : 'false');
-      button.disabled = isPast || isAdvanceBlocked;
+      button.disabled = isPast || (isAdvanceBlocked && !isHoliday);
       if (isPast) button.classList.add('past-disabled');
-      if (isAdvanceBlocked) button.classList.add('advance-disabled');
+      if (isAdvanceBlocked && !isHoliday) button.classList.add('advance-disabled');
+      if (isHoliday) button.classList.add('holiday-disabled');
       if (date === today) button.classList.add('today');
       if (date === state.selectedDate) button.classList.add('selected');
 
@@ -170,8 +283,15 @@
       number.textContent = String(day);
       button.appendChild(number);
 
+      if (isHoliday) {
+        const label = document.createElement('span');
+        label.className = 'calendar-holiday-label';
+        label.textContent = holidays.length === 1 ? (holidays[0].title || '休假日') : `休假日 · ${holidays.length} 項`;
+        button.appendChild(label);
+      }
+
       const intervals = state.occupiedByDate.get(date) || [];
-      if (intervals.length) {
+      if (intervals.length && !isHoliday) {
         button.classList.add('has-booking');
         const list = document.createElement('span');
         list.className = 'calendar-booking-times';
@@ -188,13 +308,17 @@
         button.appendChild(list);
       }
 
-      if (isAdvanceBlocked) {
+      if (isPast) {
+        button.title = isHoliday ? '休假日；日期已過，無法預約' : '日期已過，無法預約';
+        button.setAttribute('aria-label', `${formatDate(date)}，${button.title}`);
+      } else if (isHoliday) {
+        button.title = '休假日，無法預約；點選查看說明';
+        button.setAttribute('aria-label', `${formatDate(date)}，休假日，無法預約，點選查看休假說明`);
+        button.addEventListener('click', () => showHolidayNotice(date, holidays, button));
+      } else if (isAdvanceBlocked) {
         const reason = `需提前 ${state.minAdvanceDays} 天，最早可預約 ${formatDate(minimumDate)}`;
         button.title = reason;
         button.setAttribute('aria-label', `${formatDate(date)}，${reason}`);
-      } else if (isPast) {
-        button.title = '日期已過，無法預約';
-        button.setAttribute('aria-label', `${formatDate(date)}，日期已過，無法預約`);
       } else {
         const occupiedText = intervals.length ? `，已有 ${intervals.length} 個預約時段` : '';
         button.setAttribute('aria-label', `${formatDate(date)}${occupiedText}，可開啟預約`);
@@ -235,9 +359,42 @@
           : [];
         if (intervals.length) state.occupiedByDate.set(date, intervals);
       }
+      for (const raw of Array.isArray(result.holidays) ? result.holidays : []) {
+        addHolidayToMonth(month, raw);
+      }
+      if (state.selectedDate && state.holidaysByDate.has(state.selectedDate)) {
+        clearSelectedDate();
+        closeAppointmentModal(false);
+      }
       renderCalendar();
     } catch (_) {
-      // Monthly occupancy is supplemental. Global advance rules also arrive from booking bootstrap.
+      // Monthly occupancy/holiday decorations are supplemental. Booking creation remains protected server-side.
+    }
+  }
+
+  function addHolidayToMonth(month, raw) {
+    const startsOn = String(raw?.startsOn || '').slice(0, 10);
+    const endsOn = String(raw?.endsOn || startsOn).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startsOn) || !/^\d{4}-\d{2}-\d{2}$/.test(endsOn) || endsOn < startsOn) return;
+    const holiday = {
+      calendarItemId: String(raw?.calendarItemId || ''),
+      title: String(raw?.title || '休假日').slice(0, 200),
+      description: String(raw?.description || '').slice(0, 2000),
+      startsOn,
+      endsOn,
+    };
+    let date = startsOn < `${month}-01` ? `${month}-01` : startsOn;
+    const monthEndExclusive = `${shiftMonth(month, 1)}-01`;
+    let guard = 0;
+    while (date <= endsOn && date < monthEndExclusive && guard < 32) {
+      if (date.startsWith(`${month}-`)) {
+        const rows = state.holidaysByDate.get(date) || [];
+        if (!rows.some((item) => item.calendarItemId && item.calendarItemId === holiday.calendarItemId)) rows.push(holiday);
+        else if (!holiday.calendarItemId && !rows.some((item) => item.title === holiday.title && item.startsOn === holiday.startsOn && item.endsOn === holiday.endsOn)) rows.push(holiday);
+        state.holidaysByDate.set(date, rows);
+      }
+      date = addDays(date, 1);
+      guard += 1;
     }
   }
 
@@ -272,6 +429,9 @@
     for (const date of [...state.occupiedByDate.keys()]) {
       if (String(date).startsWith(`${month}-`)) state.occupiedByDate.delete(date);
     }
+    for (const date of [...state.holidaysByDate.keys()]) {
+      if (String(date).startsWith(`${month}-`)) state.holidaysByDate.delete(date);
+    }
   }
 
   function scheduleMonthOccupancyReload() {
@@ -281,6 +441,11 @@
 
   function selectDate(date, trigger) {
     if (date < (state.minimumDate || state.today)) return;
+    const holidays = state.holidaysByDate.get(date) || [];
+    if (holidays.length) {
+      showHolidayNotice(date, holidays, trigger);
+      return;
+    }
     state.selectedDate = date;
     state.lastDateTrigger = trigger || null;
     els.bookingDate.disabled = false;
@@ -288,6 +453,38 @@
     els.bookingDate.dispatchEvent(new Event('change', { bubbles: true }));
     renderCalendar();
     openAppointmentModal(date);
+  }
+
+  function showHolidayNotice(date, holidays, trigger) {
+    closeAppointmentModal(false);
+    state.holidayTrigger = trigger instanceof HTMLElement ? trigger : null;
+    if (els.holidayDate) els.holidayDate.textContent = `${formatDate(date)}｜此日休假，無法預約`;
+    if (els.holidayDetails) {
+      els.holidayDetails.replaceChildren(...holidays.map((holiday) => {
+        const item = document.createElement('section');
+        item.className = 'booking-holiday-detail';
+        const title = document.createElement('strong');
+        title.textContent = holiday.title || '休假日';
+        item.appendChild(title);
+        const description = String(holiday.description || '').trim();
+        if (description) {
+          const text = document.createElement('p');
+          text.textContent = description;
+          item.appendChild(text);
+        }
+        return item;
+      }));
+    }
+    els.holidayModal?.classList.remove('hidden');
+    window.setTimeout(() => els.closeHolidayButton?.focus(), 0);
+  }
+
+  function closeHolidayNotice(returnFocus) {
+    if (!els.holidayModal || els.holidayModal.classList.contains('hidden')) return;
+    els.holidayModal.classList.add('hidden');
+    const trigger = state.holidayTrigger;
+    state.holidayTrigger = null;
+    if (returnFocus && trigger && document.contains(trigger)) window.setTimeout(() => trigger.focus(), 0);
   }
 
   function openAppointmentModal(date) {
@@ -317,6 +514,11 @@
     }
 
     const actualDate = els.bookingDate.value;
+    if (state.holidaysByDate.has(actualDate)) {
+      clearSelectedDate();
+      closeAppointmentModal(false);
+      return;
+    }
     if (actualDate !== state.selectedDate) {
       state.selectedDate = actualDate;
       state.month = actualDate.slice(0, 7);
