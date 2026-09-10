@@ -9,16 +9,16 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>預約｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=booking-20260910">
+  <link rel="stylesheet" href="./styles.css?v=booking-calendar-20260910">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="./common.js?v=booking-20260910" defer></script>
-  <script src="./app.js?v=booking-20260910" defer></script>
+  <script src="./app.js?v=booking-calendar-20260910" defer></script>
 </head>
 <body>
   <div class="app-shell">
     <section id="loadingView" class="state-view" aria-live="polite">
       <div class="loader" aria-hidden="true"></div>
-      <h1>正在載入預約時段</h1>
+      <h1>正在載入預約日曆</h1>
       <p>正在確認會員身分與可預約時間…</p>
     </section>
 
@@ -38,27 +38,41 @@
         <div class="account-menu"><span id="memberName">LINE 會員</span><button id="logoutButton" class="text-button" type="button">登出</button></div>
       </header>
 
-      <section class="booking-card" aria-labelledby="bookingTitle">
+      <section class="booking-card" aria-labelledby="calendarTitle">
         <div class="section-heading">
-          <div><p class="kicker">New appointment</p><h2 id="bookingTitle">選擇預約時段</h2><p>每個時段固定 30 分鐘。送出後需由管理端確認，確認後才算完成預約。</p></div>
+          <div><p class="kicker">Choose a date</p><h2 id="calendarTitle">選擇預約日期</h2><p>先從日曆選擇日期，再選擇當天開放的預約項目與時間。</p></div>
           <span class="slot-unit">30 MIN</span>
         </div>
 
-        <form id="bookingForm" novalidate>
-          <div class="form-grid">
-            <label>預約項目
-              <select id="serviceSelect" required><option value="">請選擇預約項目</option></select>
-            </label>
-            <label>預約日期
-              <input id="bookingDate" type="date" required disabled>
-            </label>
+        <div class="calendar-shell">
+          <div class="calendar-toolbar">
+            <button id="previousMonthButton" class="calendar-nav-button" type="button" aria-label="上個月">‹</button>
+            <strong id="calendarMonthLabel" aria-live="polite"></strong>
+            <button id="nextMonthButton" class="calendar-nav-button" type="button" aria-label="下個月">›</button>
           </div>
+          <div class="calendar-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+          <div id="calendarGrid" class="calendar-grid" role="grid" aria-labelledby="calendarMonthLabel"></div>
+          <div class="calendar-legend"><span><i class="legend-dot today-dot"></i>今天</span><span><i class="legend-dot booking-dot"></i>我的已預約時段</span><span><i class="legend-dot disabled-dot"></i>無可預約項目</span></div>
+        </div>
+      </section>
+
+      <section id="appointmentPanel" class="booking-card hidden" aria-labelledby="bookingTitle">
+        <div class="section-heading compact">
+          <div><p class="kicker">Available appointments</p><h2 id="bookingTitle">預約項目與可預約時間</h2><p id="selectedDateSummary">請先從日曆選擇日期。</p></div>
+          <button id="changeDateButton" class="button button-light" type="button">重新選日期</button>
+        </div>
+
+        <form id="bookingForm" novalidate>
+          <input id="bookingDate" type="hidden">
+          <label>預約項目
+            <select id="serviceSelect" required><option value="">請選擇預約項目</option></select>
+          </label>
 
           <div id="serviceInfo" class="service-info hidden" aria-live="polite"></div>
 
           <fieldset class="slot-fieldset">
             <legend>可預約時間</legend>
-            <p id="slotHint" class="slot-hint">請先選擇預約項目與日期。</p>
+            <p id="slotHint" class="slot-hint">請先選擇預約項目。</p>
             <div id="slotGrid" class="slot-grid" role="group" aria-label="可預約時間"></div>
           </fieldset>
 
@@ -74,7 +88,7 @@
       <section class="booking-card" aria-labelledby="myBookingsTitle">
         <div class="section-heading compact"><div><p class="kicker">My appointments</p><h2 id="myBookingsTitle">我的預約</h2><p>等待確認中的時段已暫時保留，不會再提供其他會員選擇。</p></div><button id="refreshButton" class="button button-light" type="button">更新</button></div>
         <div id="bookingList" class="booking-list"></div>
-        <div id="bookingEmpty" class="empty-state hidden"><strong>目前沒有預約紀錄</strong><span>選擇上方服務與時段即可建立第一筆預約。</span></div>
+        <div id="bookingEmpty" class="empty-state hidden"><strong>目前沒有預約紀錄</strong><span>從上方日曆選擇日期即可建立第一筆預約。</span></div>
       </section>
     </main>
   </div>
