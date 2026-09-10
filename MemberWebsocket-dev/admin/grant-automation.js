@@ -7,6 +7,10 @@
   const originalRequest = base.request.bind(base);
   const calendarCache = new Map();
   let lastCalendarItemId = null;
+  let lastEventTicketId = null;
+  let lastAdminConfig = null;
+  let lastAdminIdToken = '';
+  let eventCalendarSyncVersion = 0;
 
   function cacheCalendarResult(result) {
     if (!result || typeof result !== 'object') return result;
@@ -103,7 +107,181 @@
     return cacheCalendarResult(result);
   }
 
+  function eventTicketCalendarLink(eventTicketId) {
+    const url = new URL('../event/', window.location.href);
+    url.searchParams.set('source', 'event-ticket-calendar');
+    url.searchParams.set('eventTicketId', String(eventTicketId || '').trim());
+    return url.toString();
+  }
+
+  function isManagedEventTicketCalendarItem(item, eventTicketId) {
+    const expectedId = String(eventTicketId || '').trim();
+    if (!item || !expectedId || String(item.itemType || '') !== 'event') return false;
+    try {
+      const url = new URL(String(item.linkUrl || ''), window.location.href);
+      return url.searchParams.get('source') === 'event-ticket-calendar' && url.searchParams.get('eventTicketId') === expectedId;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function fetchCalendarItemsForEventSync(config, idToken) {
+    const result = await automationRequest(config, idToken, 'admin.calendar-items.list', {});
+    return Array.isArray(result.calendarItems) ? result.calendarItems : [];
+  }
+
+  function setEventTicketCalendarStatus(message) {
+    const status = document.getElementById('eventTicketCalendarStatus');
+    if (status) status.textContent = String(message || '');
+  }
+
+  function setEventTicketFormMessage(message) {
+    const box = document.getElementById('eventTicketFormMessage');
+    if (!box) return;
+    box.textContent = String(message || '');
+    box.classList.remove('hidden');
+  }
+
+  function updateEventTicketCalendarHint() {
+    const checkbox = document.getElementById('eventTicketAddToCalendar');
+    if (!checkbox || checkbox.disabled) return;
+    setEventTicketCalendarStatus(checkbox.checked
+      ? '儲存票券時，會同步建立或更新日曆中的「活動」。'
+      : '目前不加入日曆；若先前已同步，儲存後會從日曆移除。');
+  }
+
+  function handleEventTicketCalendarSubmitCapture(event) {
+    const checkbox = document.getElementById('eventTicketAddToCalendar');
+    if (!checkbox || checkbox.disabled || !checkbox.checked) return;
+    const startsOn = String(document.getElementById('eventTicketStartsOn')?.value || '').trim();
+    if (startsOn) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const message = '要加入日曆時，活動票券必須設定開始日。';
+    setEventTicketCalendarStatus(message);
+    setEventTicketFormMessage(message);
+    document.getElementById('eventTicketStartsOn')?.focus();
+  }
+
+  async function syncEventTicketCalendarChoiceFromSelection(force = false) {
+    const eventTicketId = String(document.getElementById('eventTicketId')?.value || '').trim();
+    if (!force && eventTicketId === lastEventTicketId) return;
+    lastEventTicketId = eventTicketId;
+    const checkbox = document.getElementById('eventTicketAddToCalendar');
+    if (!checkbox) return;
+    if (!eventTicketId) {
+      checkbox.checked = false;
+      checkbox.disabled = false;
+      checkbox.dataset.syncUnknown = '0';
+      updateEventTicketCalendarHint();
+      return;
+    }
+    if (!lastAdminConfig || !lastAdminIdToken) return;
+    const version = ++eventCalendarSyncVersion;
+    checkbox.disabled = true;
+    checkbox.dataset.syncUnknown = '1';
+    setEventTicketCalendarStatus('正在確認這張票券的日曆設定…');
+    try {
+      const rows = await fetchCalendarItemsForEventSync(lastAdminConfig, lastAdminIdToken);
+      if (version !== eventCalendarSyncVersion || String(document.getElementById('eventTicketId')?.value || '').trim() !== eventTicketId) return;
+      checkbox.checked = rows.some((item) => isManagedEventTicketCalendarItem(item, eventTicketId));
+      checkbox.disabled = false;
+      checkbox.dataset.syncUnknown = '0';
+      updateEventTicketCalendarHint();
+    } catch (_) {
+      if (version !== eventCalendarSyncVersion) return;
+      checkbox.disabled = true;
+      checkbox.dataset.syncUnknown = '1';
+      setEventTicketCalendarStatus('暫時無法確認日曆設定；本次儲存票券時會保留原本的日曆狀態。');
+    }
+  }
+
+  async function syncEventTicketCalendarAfterSave(config, idToken, result) {
+    const ticket = result && result.eventTicket && typeof result.eventTicket === 'object' ? result.eventTicket : null;
+    if (!ticket || !ticket.eventTicketId) return;
+    const checkbox = document.getElementById('eventTicketAddToCalendar');
+    if (!checkbox || checkbox.dataset.syncUnknown === '1') return;
+    const enabled = Boolean(checkbox.checked);
+    try {
+      const rows = await fetchCalendarItemsForEventSync(config, idToken);
+      const existing = rows.find((item) => isManagedEventTicketCalendarItem(item, ticket.eventTicketId)) || null;
+      if (!enabled) {
+        if (existing && existing.calendarItemId) {
+          await originalRequest(config, 'admin', idToken, 'admin.calendar-items.delete', {
+            calendarItemId: existing.calendarItemId,
+            expectedUpdatedAt: String(existing.updatedAt || '')
+          });
+          calendarCache.delete(String(existing.calendarItemId));
+          setEventTicketCalendarStatus('活動票券已儲存，並已從日曆移除。');
+        } else {
+          setEventTicketCalendarStatus('活動票券已儲存，目前未加入日曆。');
+        }
+        return;
+      }
+      const startsOn = String(ticket.startsOn || '').trim();
+      if (!startsOn) {
+        setEventTicketCalendarStatus('活動票券已儲存，但缺少開始日，因此未加入日曆。');
+        return;
+      }
+      const calendarItem = {
+        calendarItemId: existing ? String(existing.calendarItemId || '') : '',
+        title: String(ticket.title || '活動票券'),
+        itemType: 'event',
+        description: String(ticket.description || ''),
+        startsOn,
+        endsOn: String(ticket.endsOn || ''),
+        status: String(ticket.status || 'draft'),
+        accent: String(ticket.accent || '#df6b4d'),
+        allowedTierKeys: Array.isArray(ticket.allowedTierKeys) ? ticket.allowedTierKeys : [],
+        linkLabel: '查看活動票券',
+        linkUrl: eventTicketCalendarLink(ticket.eventTicketId),
+        bonusPointsEnabled: Boolean(existing && existing.bonusPointsEnabled),
+        bonusPoints: existing && Number(existing.bonusPoints) > 0 ? Number(existing.bonusPoints) : 0
+      };
+      const saved = await automationRequest(config, idToken, 'admin.calendar-items.save', {
+        calendarItem,
+        expectedUpdatedAt: existing ? String(existing.updatedAt || '') : ''
+      });
+      cacheCalendarResult(saved);
+      setEventTicketCalendarStatus(existing
+        ? '活動票券已儲存，日曆活動已同步更新。'
+        : '活動票券已儲存，並已加入日曆。');
+    } catch (error) {
+      setEventTicketCalendarStatus(`活動票券已儲存，但日曆同步失敗：${String(error && error.message || '請稍後重試')}`);
+    }
+  }
+
+  async function saveEventTicketWithCalendarSync(config, clientType, idToken, action, payload) {
+    const result = cacheCalendarResult(await originalRequest(config, clientType, idToken, action, payload));
+    await syncEventTicketCalendarAfterSave(config, idToken, result);
+    return result;
+  }
+
+  async function deleteEventTicketWithCalendarCleanup(config, clientType, idToken, action, payload) {
+    const eventTicketId = String(payload && payload.eventTicketId || '').trim();
+    const result = cacheCalendarResult(await originalRequest(config, clientType, idToken, action, payload));
+    if (!eventTicketId) return result;
+    try {
+      const rows = await fetchCalendarItemsForEventSync(config, idToken);
+      const existing = rows.find((item) => isManagedEventTicketCalendarItem(item, eventTicketId));
+      if (existing && existing.calendarItemId) {
+        await originalRequest(config, 'admin', idToken, 'admin.calendar-items.delete', {
+          calendarItemId: existing.calendarItemId,
+          expectedUpdatedAt: String(existing.updatedAt || '')
+        });
+        calendarCache.delete(String(existing.calendarItemId));
+      }
+    } catch (_) {
+      // Deleting the ticket remains the primary operation; stale calendar cleanup can be retried later.
+    }
+    return result;
+  }
+
   function request(config, clientType, idToken, action, payload = {}) {
+    if (clientType === 'admin') {
+      lastAdminConfig = config;
+      lastAdminIdToken = idToken;
+    }
     if (clientType === 'admin' && action === 'admin.member-grants.add') {
       return automationRequest(config, idToken, action, decorateGrantPayload(payload));
     }
@@ -112,6 +290,12 @@
     }
     if (clientType === 'admin' && action === 'admin.calendar-items.list') {
       return automationRequest(config, idToken, action, payload);
+    }
+    if (clientType === 'admin' && action === 'admin.event-tickets.save') {
+      return saveEventTicketWithCalendarSync(config, clientType, idToken, action, payload);
+    }
+    if (clientType === 'admin' && action === 'admin.event-tickets.delete') {
+      return deleteEventTicketWithCalendarCleanup(config, clientType, idToken, action, payload);
     }
     if (clientType === 'admin' && action === 'admin.bootstrap') {
       return Promise.resolve(originalRequest(config, clientType, idToken, action, payload)).then((result) => mergeCalendarBonusList(config, idToken, result));
@@ -232,10 +416,39 @@
     document.getElementById('newCalendarItemButton')?.addEventListener('click', () => window.setTimeout(() => syncCalendarBonusFromSelection(true), 0));
   }
 
+  function createEventTicketCalendarControls() {
+    const form = document.getElementById('eventTicketForm');
+    const dateRange = document.getElementById('eventTicketDateRangeTitle')?.closest('.date-range-control');
+    if (!form || !dateRange || document.getElementById('eventTicketCalendarControls')) return;
+    const section = document.createElement('section');
+    section.id = 'eventTicketCalendarControls';
+    section.className = 'calendar-event-link-fields';
+    section.innerHTML = `
+      <div><p class="kicker">Calendar sync</p><h4>加入活動日曆</h4><p>可將這張活動票券同步成會員日曆中的活動；名稱、期間、公開狀態、顏色與適用會員等級會跟著票券更新。</p></div>
+      <label class="grant-toggle"><input id="eventTicketAddToCalendar" type="checkbox">將這張活動票券加入日曆</label>
+      <p id="eventTicketCalendarStatus" class="editor-hint" aria-live="polite">目前不加入日曆。</p>`;
+    dateRange.insertAdjacentElement('afterend', section);
+    document.getElementById('eventTicketAddToCalendar')?.addEventListener('change', updateEventTicketCalendarHint);
+    form.addEventListener('submit', handleEventTicketCalendarSubmitCapture, true);
+    form.addEventListener('reset', () => window.setTimeout(() => syncEventTicketCalendarChoiceFromSelection(true), 0));
+    updateEventTicketCalendarHint();
+  }
+
+  function bindEventTicketCalendarSelectionSync() {
+    document.addEventListener('click', () => window.setTimeout(() => syncEventTicketCalendarChoiceFromSelection(false), 0));
+    document.getElementById('eventTicketForm')?.addEventListener('focusin', () => syncEventTicketCalendarChoiceFromSelection(false));
+    document.getElementById('newEventTicketButton')?.addEventListener('click', () => window.setTimeout(() => syncEventTicketCalendarChoiceFromSelection(true), 0));
+  }
+
   window.addEventListener('DOMContentLoaded', () => {
     createGrantNotificationControls();
     createCalendarBonusControls();
     bindCalendarSelectionSync();
-    window.setTimeout(() => syncCalendarBonusFromSelection(true), 0);
+    createEventTicketCalendarControls();
+    bindEventTicketCalendarSelectionSync();
+    window.setTimeout(() => {
+      syncCalendarBonusFromSelection(true);
+      syncEventTicketCalendarChoiceFromSelection(true);
+    }, 0);
   });
 })();
