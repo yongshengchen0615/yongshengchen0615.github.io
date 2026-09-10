@@ -51,20 +51,20 @@ assert.doesNotMatch(adminLink, /document\.addEventListener\('click', \(\) =>/);
 assert.match(adminLink, /form\.addEventListener\('submit',[\s\S]*true\)/);
 assert.match(adminLink, /僅接受 https:\/\//);
 
-assert.match(memberLink, /user\.event-ticket-links\.list/);
-assert.match(memberLink, /activityLinkNames/);
-assert.match(memberLink, /ticketModalActivityLink/);
-assert.match(memberLink, /target = '_blank'/);
-assert.match(memberLink, /rel = 'noopener noreferrer'/);
-assert.match(memberLink, /link\.textContent = '前往活動連結'/);
-assert.match(memberLink, /aria-label/);
-assert.doesNotMatch(memberLink, /link\.textContent = `\$\{name/);
+// Member ticket modal must not expose the activity-link button. Calendar deep-link
+// support remains so the calendar can open the matching ticket detail inside LIFF.
+assert.doesNotMatch(memberLink, /user\.event-ticket-links\.list/);
+assert.doesNotMatch(memberLink, /ticketModalActivityLink/);
+assert.doesNotMatch(memberLink, /activity-link-button/);
+assert.doesNotMatch(memberLink, /target = '_blank'/);
+assert.doesNotMatch(memberLink, /前往活動連結/);
 assert.doesNotMatch(memberLink, /↗/);
 assert.match(memberLink, /source.*event-ticket-calendar/);
 assert.match(memberLink, /autoOpenFromCalendar/);
 
 assert.equal((adminHtml.match(/event-ticket-activity-link\.js/g) || []).length, 1);
 assert.equal((eventHtml.match(/\.\/activity-link\.js/g) || []).length, 1);
+assert.doesNotMatch(eventHtml, /ticketModalActivityLink/);
 
 // Calendar source identity must remain internal; replacing it with the external
 // activity URL would break readonly/source cleanup and holiday behavior.
