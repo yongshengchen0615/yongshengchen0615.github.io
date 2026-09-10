@@ -1424,8 +1424,8 @@
     if (preferred && state.messagePresets.some((preset) => String(preset.presetId || '') === preferred)) els.messagePresetList.value = preferred;
   }
   function openMessagePresetModal() {
-    renderMessagePresetList(els.grantMessagePreset.value);
-    const selectedId = String(els.grantMessagePreset.value || els.messagePresetList.value || state.messagePresets[0]?.presetId || '');
+    renderMessagePresetList();
+    const selectedId = String(els.messagePresetList.value || state.messagePresets[0]?.presetId || '');
     if (selectedId) loadMessagePresetForm(selectedId); else resetMessagePresetForm();
     hideMessage(els.messagePresetFormMessage);
     els.messagePresetModal.classList.remove('hidden');
