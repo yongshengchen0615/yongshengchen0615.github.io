@@ -9,6 +9,8 @@ const MAX_REQUEST_BYTES = 30_000;
 const READ_LIMIT = 90;
 const WRITE_LIMIT = 30;
 const SLOT_START_INTERVAL_MINUTES = 30;
+const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
+const TYPE_PREFIX = "__TYPE__:";
 const WRITE_ACTIONS = new Set([
   "user.booking.create",
   "user.booking.cancel",
@@ -76,6 +78,12 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_SERVICE_DISABLED", 409, "BOOKING_SERVICE_DISABLED", "其中一個預約項目目前未開放。"],
     ["BOOKING_SERVICE_NOT_FOUND", 404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個預約項目。"],
     ["BOOKING_SETTINGS_MISSING", 503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。"],
+    ["BOOKING_SETTINGS_CONFLICT", 409, "CONFLICT", "預約共用設定已被其他操作更新，請重新整理後再試。"],
+    ["BOOKING_SERVICE_TYPE_IN_USE", 409, "BOOKING_SERVICE_TYPE_IN_USE", "仍有預約項目使用這個項目類型，請先調整項目後再移除。"],
+    ["BOOKING_SERVICE_TYPE_REQUIRED", 400, "BOOKING_SERVICE_TYPE_REQUIRED", "請先在預約共用設定建立並選擇項目類型。"],
+    ["BOOKING_SERVICE_TYPE_INVALID", 400, "BOOKING_SERVICE_TYPE_INVALID", "所選項目類型不在預約共用設定中，請重新選擇。"],
+    ["INVALID_SERVICE_TYPES", 400, "INVALID_SERVICE_TYPES", "項目類型設定格式不正確。"],
+    ["DUPLICATE_SERVICE_TYPE", 400, "DUPLICATE_SERVICE_TYPE", "項目類型不可重複。"],
     ["INVALID_BOOKING_ITEMS", 400, "INVALID_BOOKING_ITEMS", "請至少選擇一個預約項目。"],
     ["INVALID_BOOKING_QUANTITY", 400, "INVALID_BOOKING_QUANTITY", "每個預約項目的數量只能選擇 1 或 2。"],
     ["DUPLICATE_BOOKING_SERVICE", 400, "DUPLICATE_BOOKING_SERVICE", "同一個預約項目只能選擇一次，請用數量調整。"],
@@ -251,6 +259,30 @@ function addDays(date: string, days: number): string {
   return parsed.toISOString().slice(0, 10);
 }
 
+function normalizeServiceTypes(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 50) {
+    throw new ApiError(400, "INVALID_SERVICE_TYPES", "項目類型必須是最多 50 筆的清單。");
+  }
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const name = String(raw ?? "").trim();
+    if (!name || name.length > 80) {
+      throw new ApiError(400, "INVALID_SERVICE_TYPES", "每個項目類型必須是 1–80 字。");
+    }
+    const key = name.toLocaleLowerCase("zh-Hant-TW");
+    if (seen.has(key)) throw new ApiError(400, "DUPLICATE_SERVICE_TYPE", `項目類型「${name}」重複。`);
+    seen.add(key);
+    result.push(name);
+  }
+  return result;
+}
+
+function legacyServiceType(description: unknown): string {
+  const text = String(description ?? "").trim();
+  return text.startsWith(TYPE_PREFIX) ? text.slice(TYPE_PREFIX.length).trim() : "";
+}
+
 function settingsClient(row: any): Json {
   return {
     workStartTime: String(row?.work_start_time || "09:00:00").slice(0, 5),
@@ -265,6 +297,7 @@ function serviceClient(row: any): Json {
     serviceId: row.id,
     title: row.title,
     description: row.description || "",
+    serviceType: row.service_type || "",
     durationMinutes: Number(row.duration_minutes || 30),
     priceAmount: Number(row.price_amount || 0),
     isActive: Boolean(row.is_active),
@@ -337,6 +370,15 @@ async function bookingSettings(supabase: SupabaseClient): Promise<any> {
   if (result.error) throw mapDatabaseError(result.error);
   if (!result.data) throw new ApiError(503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。");
   return result.data;
+}
+
+async function bookingServiceTypes(supabase: SupabaseClient): Promise<string[]> {
+  const result = await supabase.from("booking_service_types")
+    .select("name")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (result.error) throw mapDatabaseError(result.error);
+  return (result.data || []).map((row: any) => String(row.name || "").trim()).filter(Boolean);
 }
 
 async function activeServices(supabase: SupabaseClient): Promise<any[]> {
@@ -530,32 +572,57 @@ async function adminSettingsSave(supabase: SupabaseClient, identity: Identity, b
   if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) {
     throw new ApiError(400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。");
   }
-  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+
   const current = await bookingSettings(supabase);
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
   if (expectedUpdatedAt && current.updated_at !== expectedUpdatedAt) {
     throw new ApiError(409, "CONFLICT", "預約共用設定已被其他操作更新，請重新整理後再試。");
   }
-  const updated = await supabase.from("booking_settings").update({
-    work_start_time: `${workStartTime}:00`,
-    work_end_time: `${workEndTime}:00`,
-    min_advance_days: minAdvanceDays,
-    updated_by: identity.lineUserId,
-  }).eq("id", 1).select("*").single();
-  if (updated.error) throw mapDatabaseError(updated.error);
+
+  const hasServiceTypes = Object.prototype.hasOwnProperty.call(body, "serviceTypes");
+  const serviceTypes = hasServiceTypes ? normalizeServiceTypes(body.serviceTypes) : await bookingServiceTypes(supabase);
+  const saved = await supabase.rpc("save_booking_settings_with_service_types", {
+    p_work_start_time: `${workStartTime}:00`,
+    p_work_end_time: `${workEndTime}:00`,
+    p_min_advance_days: minAdvanceDays,
+    p_service_types: serviceTypes,
+    p_expected_updated_at: expectedUpdatedAt || null,
+    p_actor: identity.lineUserId,
+  });
+  if (saved.error) throw mapDatabaseError(saved.error);
+
+  const [updated, persistedServiceTypes] = await Promise.all([
+    bookingSettings(supabase),
+    bookingServiceTypes(supabase),
+  ]);
   await audit(supabase, identity, "admin", "BOOKING_SETTINGS_UPDATED", "booking_settings", "1", {
     workStartTime,
     workEndTime,
     minAdvanceDays,
+    serviceTypes: persistedServiceTypes,
   });
-  return { settings: settingsClient(updated.data) };
+  return { settings: { ...settingsClient(updated), serviceTypes: persistedServiceTypes } };
 }
 
 async function adminServiceSave(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const serviceId = asText(body.serviceId, 60);
   if (serviceId) requireUuid(serviceId, "預約項目");
+  if (serviceId === STORE_SERVICE_ID) {
+    throw new ApiError(409, "BOOKING_SYSTEM_SERVICE_IMMUTABLE", "店內固定服務不可從一般預約項目編輯。" );
+  }
+
   const title = asText(body.title, 100);
   if (!title) throw new ApiError(400, "INVALID_INPUT", "預約項目名稱不可空白。");
-  const description = asText(body.description, 1000);
+  const requestedServiceType = asText(body.serviceType, 80) || legacyServiceType(body.description);
+  if (!requestedServiceType) {
+    throw new ApiError(400, "BOOKING_SERVICE_TYPE_REQUIRED", "請從預約共用設定選擇項目類型。" );
+  }
+  const allowedServiceTypes = await bookingServiceTypes(supabase);
+  const serviceType = allowedServiceTypes.find((name) => name.toLocaleLowerCase("zh-Hant-TW") === requestedServiceType.toLocaleLowerCase("zh-Hant-TW"));
+  if (!serviceType) {
+    throw new ApiError(400, "BOOKING_SERVICE_TYPE_INVALID", "所選項目類型不在預約共用設定中，請重新選擇。" );
+  }
+  const description = `${TYPE_PREFIX}${serviceType}`;
   const isActive = body.isActive !== false;
 
   let current: any = null;
@@ -587,24 +654,25 @@ async function adminServiceSave(supabase: SupabaseClient, identity: Identity, bo
   const patch = {
     title,
     description,
+    service_type: serviceType,
     duration_minutes: durationMinutes,
     price_amount: priceAmount,
     is_active: isActive,
   };
 
-  let saved: any;
+  let savedService: any;
   if (serviceId) {
     const updated = await supabase.from("booking_services").update(patch).eq("id", serviceId).select("*").single();
     if (updated.error) throw mapDatabaseError(updated.error);
-    saved = updated.data;
-    await audit(supabase, identity, "admin", "BOOKING_SERVICE_UPDATED", "booking_service", serviceId, { durationMinutes, priceAmount });
+    savedService = updated.data;
+    await audit(supabase, identity, "admin", "BOOKING_SERVICE_UPDATED", "booking_service", serviceId, { durationMinutes, priceAmount, serviceType });
   } else {
     const inserted = await supabase.from("booking_services").insert({ ...patch, created_by: identity.lineUserId }).select("*").single();
     if (inserted.error) throw mapDatabaseError(inserted.error);
-    saved = inserted.data;
-    await audit(supabase, identity, "admin", "BOOKING_SERVICE_CREATED", "booking_service", String(saved.id), { durationMinutes, priceAmount });
+    savedService = inserted.data;
+    await audit(supabase, identity, "admin", "BOOKING_SERVICE_CREATED", "booking_service", String(savedService.id), { durationMinutes, priceAmount, serviceType });
   }
-  return { service: serviceClient(saved) };
+  return { service: serviceClient(savedService) };
 }
 
 async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
@@ -632,15 +700,16 @@ async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
 }
 
 async function adminBootstrap(supabase: SupabaseClient): Promise<Json> {
-  const [settings, servicesResult, bookings] = await Promise.all([
+  const [settings, servicesResult, bookings, serviceTypes] = await Promise.all([
     bookingSettings(supabase),
     supabase.from("booking_services").select("*").order("created_at", { ascending: true }),
     adminBookings(supabase),
+    bookingServiceTypes(supabase),
   ]);
   if ((servicesResult as any).error) throw mapDatabaseError((servicesResult as any).error);
   return {
     today: taipeiDate(),
-    settings: settingsClient(settings),
+    settings: { ...settingsClient(settings), serviceTypes },
     services: ((servicesResult as any).data || []).map(serviceClient),
     bookings,
   };
