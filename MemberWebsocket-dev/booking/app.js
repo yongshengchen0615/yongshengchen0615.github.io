@@ -131,7 +131,7 @@
       const title = document.createElement('strong');
       title.textContent = service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${service.durationMinutes} 分鐘`;
+      meta.textContent = `服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
       text.append(title, meta);
       if (service.description) {
         const description = document.createElement('small');
@@ -168,7 +168,7 @@
       const title = document.createElement('strong');
       title.textContent = item.service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${item.service.durationMinutes} 分鐘`;
+      meta.textContent = `服務 ${item.service.durationMinutes} 分鐘 · ${formatMoney(item.service.priceAmount)}`;
       text.append(title, meta);
 
       const removeButton = document.createElement('button');
@@ -226,6 +226,10 @@
     return selectedServiceRows().reduce((sum, item) => sum + Number(item.service.durationMinutes || 0), 0);
   }
 
+  function totalAmount() {
+    return selectedServiceRows().reduce((sum, item) => sum + Number(item.service.priceAmount || 0), 0);
+  }
+
   function globalMinimumDate() {
     return window.BookingSystem.addDays(state.data.today, Number(state.data.settings?.minAdvanceDays || 0));
   }
@@ -256,7 +260,7 @@
     els.bookingDate.disabled = false;
     if (!els.bookingDate.value || els.bookingDate.value < minimumDate) els.bookingDate.value = minimumDate;
     els.selectionSummary.classList.remove('hidden');
-    els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 總服務時間 ${total} 分鐘 · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}`;
+    els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 總服務時間 ${total} 分鐘 · 總額 ${formatMoney(totalAmount())} · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}`;
     els.slotHint.textContent = '正在計算整段服務時間可使用的時段…';
     if (loadAfter && els.bookingDate.value) loadSlots();
   }
@@ -355,13 +359,13 @@
     const list = document.createElement('ul');
     for (const item of items) {
       const li = document.createElement('li');
-      li.textContent = `${item.service.title}（${item.service.durationMinutes} 分鐘）`;
+      li.textContent = `${item.service.title}（${item.service.durationMinutes} 分鐘 · ${formatMoney(item.service.priceAmount)}）`;
       list.appendChild(li);
     }
     fragment.appendChild(list);
 
     const total = document.createElement('strong');
-    total.textContent = `總服務時間：${totalDurationMinutes()} 分鐘`;
+    total.textContent = `總服務時間：${totalDurationMinutes()} 分鐘 · 預約總額：${formatMoney(totalAmount())}`;
     fragment.appendChild(total);
     if (els.memberNote.value.trim()) {
       const note = document.createElement('p');
@@ -458,7 +462,7 @@
       const title = document.createElement('strong');
       title.textContent = booking.serviceTitle || '預約項目';
       const time = document.createElement('span');
-      time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${booking.totalDurationMinutes || 0} 分鐘`;
+      time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${booking.totalDurationMinutes || 0} 分鐘 · ${formatMoney(booking.totalAmount)}`;
       titleBox.append(title, time);
       const status = document.createElement('span');
       status.className = `status-badge status-${booking.status}`;
@@ -473,7 +477,7 @@
           const repeat = Math.max(1, Number(service.quantity || 1));
           for (let index = 0; index < repeat; index += 1) {
             const li = document.createElement('li');
-            li.textContent = service.serviceTitle;
+            li.textContent = `${service.serviceTitle} · ${formatMoney(service.unitPriceAmount)}`;
             serviceList.appendChild(li);
           }
         });
@@ -524,6 +528,11 @@
       button.disabled = false;
       showFormMessage(error?.message || '目前無法取消預約。', 'error');
     }
+  }
+
+  function formatMoney(value) {
+    const amount = Number(value || 0);
+    return `NT$${Number.isFinite(amount) ? Math.max(0, Math.trunc(amount)).toLocaleString('zh-Hant-TW') : '0'}`;
   }
 
   function setRefreshBusy(busy) {
