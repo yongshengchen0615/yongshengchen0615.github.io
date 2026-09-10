@@ -309,7 +309,6 @@ async function generateSlots(supabase: SupabaseClient, serviceId: string, date: 
 
   const bookings = await supabase.from("bookings")
     .select("start_time")
-    .eq("service_id", serviceId)
     .eq("booking_date", date)
     .in("status", ["pending", "confirmed"]);
   if (bookings.error) throw mapDatabaseError(bookings.error);
