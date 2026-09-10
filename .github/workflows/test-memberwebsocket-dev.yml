@@ -31,6 +31,7 @@ jobs:
           node --check MemberWebsocket-dev/admin/common.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
+          node --check MemberWebsocket-dev/admin/event-ticket-activity-link.js
           node --check MemberWebsocket-dev/admin/booking-panel.js
           node --check MemberWebsocket-dev/member/common.js
           node --check MemberWebsocket-dev/member/app.js
@@ -38,6 +39,7 @@ jobs:
           node --check MemberWebsocket-dev/points/app.js
           node --check MemberWebsocket-dev/event/common.js
           node --check MemberWebsocket-dev/event/app.js
+          node --check MemberWebsocket-dev/event/activity-link.js
           node --check MemberWebsocket-dev/calendar/common.js
           node --check MemberWebsocket-dev/calendar/tier-sync.js
           node --check MemberWebsocket-dev/calendar/app.js
@@ -51,6 +53,7 @@ jobs:
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/grant-automation/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/event-ticket-links/index.ts
           deno check MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts
           deno check MemberWebsocket-dev/supabase/functions/booking-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/booking-admin-api/index.ts
@@ -59,6 +62,10 @@ jobs:
         run: |
           grep -q 'grant-automation.js' MemberWebsocket-dev/admin/index.html
           grep -q 'supabaseGrantAutomationUrl' MemberWebsocket-dev/config.json
+          grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
+          grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
+          grep -q 'activity_url' MemberWebsocket-dev/supabase/migrations/20260910175251_add_event_ticket_activity_url.sql
+          node MemberWebsocket-dev/tests/event_ticket_activity_link.test.js
           grep -q 'grant_member_benefits_with_event_bonus' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
           grep -q 'claim_due_grant_messages' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
       - name: Check calendar tier sync wiring
