@@ -813,7 +813,6 @@ async function grantAvailableTicketSection(
   if (pointCardsResult.error) throw mapDatabaseError(pointCardsResult.error);
 
   const activePointCards = (pointCardsResult.data || []).filter((row:any) => !isExpiredCard(row));
-  const activePointCardIds = new Set(activePointCards.map((row:any) => String(row.card_id)));
   const pointCardsToIssue = activePointCards.filter((row:any) => grantedCardIds.includes(String(row.card_id)));
   if (pointCardsToIssue.length) {
     await Promise.all(pointCardsToIssue.map(async (row:any) => {
@@ -834,9 +833,7 @@ async function grantAvailableTicketSection(
   if (pointTicketsResult.error) throw mapDatabaseError(pointTicketsResult.error);
 
   const pointCardTitleById = new Map(activePointCards.map((row:any) => [String(row.id),String(row.title || "集點卡")]));
-  const pointTicketItems = (pointTicketsResult.data || [])
-    .filter((row:any) => activePointCardIds.has(String(activePointCards.find((card:any) => String(card.id) === String(row.point_card_id))?.card_id || "")))
-    .map((row:any) => ({
+  const pointTicketItems = (pointTicketsResult.data || []).map((row:any) => ({
       label: (pointCardTitleById.get(String(row.point_card_id)) || "集點卡") + "｜" + String(row.ticket_title || "可用票券"),
     }));
   if (pointTicketItems.length) {
@@ -848,7 +845,7 @@ async function grantAvailableTicketSection(
 
   const eventTicketsResult = await supabase
     .from("event_tickets")
-    .select("id,title,status,starts_on,ends_on,quota,allowed_tier_keys")
+    .select("id,title,status,starts_on,ends_on,quota,allowed_tier_keys,created_at")
     .eq("status","active")
     .is("deleted_at",null)
     .order("created_at",{ ascending:false });
