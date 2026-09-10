@@ -1,0 +1,1513 @@
+(() => {
+  'use strict';
+
+  const EVENT_TICKET_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
+  const CALENDAR_ITEM_TIER_KEYS = Object.freeze(['general', 'silver', 'gold', 'platinum']);
+  const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
+  const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
+  const MEMBERSHIP_TIER_STYLE_LABELS = Object.freeze({ forest: '森林綠', midnight: '午夜藍', ocean: '海灣青', sunset: '夕陽橘', lavender: '薰衣草紫', rose: '玫瑰粉', gold: '金曜棕', platinum: '鉑金灰', mint: '薄荷綠', cherry: '櫻桃紅' });
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
+  const els = {};
+  const LOGIN_PROGRESS_TICK_MS = 650;
+  let loginProgressTimer = null;
+  let loginProgressValue = 8;
+
+  window.addEventListener('DOMContentLoaded', () => {
+    window.MemberSystem.bindDialogKeyboard();
+    [
+      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'displayName', 'roleLabel', 'logoutButton',
+      'membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'cardSettingsTab', 'ticketSettingsTab', 'memberCount', 'activeMemberCount', 'activeCardCount', 'activeEventTicketCount', 'todayEntryCount', 'membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'cardSettingsPanel', 'ticketSettingsPanel', 'syncStatus', 'refreshButton',
+      'tierSettingsForm', 'tierGeneralMinutes', 'tierSilverMinutes', 'tierGoldMinutes', 'tierPlatinumMinutes', 'tierGeneralStyle', 'tierSilverStyle', 'tierGoldStyle', 'tierPlatinumStyle', 'tierSettingsFormMessage', 'saveTierSettingsButton',
+      'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
+      'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardUsageMethod', 'cardUsageInstructions', 'cardBenefitDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
+      'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
+      'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
+      'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
+      'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
+      'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
+    ].forEach((id) => { els[id] = document.getElementById(id); });
+    bindEvents();
+    boot();
+  });
+
+  function bindEvents() {
+    prepareGrantPointEditor();
+    prepareExplicitStatusOptions();
+    prepareTierStylePreviews();
+    preparePointCardStyleEditor();
+    prepareCardSortControls();
+    prepareEditorModals();
+    els.cardSortSaveButton.addEventListener('click', saveCardSort);
+    const eventTicketTierAccess = document.getElementById('eventTicketAllowedTiers');
+    const eventTicketTitleField = els.eventTicketTitle.closest('label');
+    if (eventTicketTierAccess && eventTicketTitleField) {
+      els.eventTicketForm.insertBefore(eventTicketTierAccess, eventTicketTitleField);
+      eventTicketTierAccess.addEventListener('change', updateEventTicketTierSummary);
+      updateEventTicketTierSummary();
+    }
+    ensureCalendarItemTierAccess();
+    prepareCalendarWorkspace();
+    els.retryButton.addEventListener('click', () => window.location.reload());
+    els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
+    els.membersTab.addEventListener('click', () => switchPanel('members'));
+    els.cardsTab.addEventListener('click', () => switchPanel('cards'));
+    els.eventsTab.addEventListener('click', () => switchPanel('events'));
+    els.calendarTab.addEventListener('click', () => switchPanel('calendar'));
+    els.cardSettingsTab.addEventListener('click', () => switchCardWorkspace('cards'));
+    els.ticketSettingsTab.addEventListener('click', () => switchCardWorkspace('tickets'));
+    els.refreshButton.addEventListener('click', () => { if (state.writeConfirmationRequired) return window.location.reload(); return refreshData(true).catch((error) => { els.syncStatus.textContent = error && error.message || '同步失敗，請稍後再試。'; els.syncStatus.classList.add('error'); }); });
+    els.memberSearch.addEventListener('input', scheduleMemberSearch);
+    els.memberPrevPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page - 1, state.memberPage.query));
+    els.memberNextPageButton.addEventListener('click', () => loadMembersPage(state.memberPage.page + 1, state.memberPage.query));
+    els.memberTableBody.addEventListener('click', handleMemberTableClick);
+    els.tierSettingsForm.addEventListener('submit', saveTierSettings);
+    els.newCardButton.addEventListener('click', () => { resetCardForm(); openEditorModal('card'); });
+    els.cardListItems.addEventListener('click', handleCardListClick);
+    els.addRewardButton.addEventListener('click', addRewardRow);
+    els.rewardRows.addEventListener('input', updateRewardEditorHint);
+    els.rewardRows.addEventListener('change', updateRewardEditorHint);
+    els.rewardRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-reward]') : null; if (button) { button.closest('[data-reward-row]')?.remove(); updateRewardEditorHint(); } });
+    els.cardExpiryMode.addEventListener('change', updateCardExpiryUI);
+    els.cardExpiresOn.addEventListener('change', updateCardExpiryDateUI);
+    els.cardAccent.addEventListener('input', updateAccentValue);
+    els.cardForm.addEventListener('submit', saveCard);
+    els.resetCardButton.addEventListener('click', resetCardForm);
+    els.archiveCardButton.addEventListener('click', archiveCard);
+    els.deleteCardButton.addEventListener('click', deleteCard);
+    els.newTicketButton.addEventListener('click', () => { resetTicketForm(); openEditorModal('ticket'); });
+    els.ticketListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-ticket-template-id]') : null; if (button) { loadTicketForm(button.dataset.ticketTemplateId); openEditorModal('ticket'); } });
+    els.ticketType.addEventListener('change', updateTicketTypeUI);
+    els.ticketPrizeRows.addEventListener('input', updateTicketPrizeTotal);
+    els.ticketPrizeRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-ticket-prize]') : null; if (button) { button.closest('[data-ticket-prize-row]')?.remove(); updateTicketPrizeTotal(); } });
+    els.addTicketPrizeButton.addEventListener('click', () => { renderTicketPrizeRows([...collectTicketPrizes(), defaultPrize(0)]); });
+    els.balanceTicketPrizesButton.addEventListener('click', balanceTicketPrizes);
+    els.ticketForm.addEventListener('submit', saveTicket);
+    els.resetTicketButton.addEventListener('click', resetTicketForm);
+    els.newEventTicketButton.addEventListener('click', () => { resetEventTicketForm(); openEditorModal('eventTicket'); });
+    els.eventTicketListItems.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-event-ticket-id]') : null; if (button) { loadEventTicketForm(button.dataset.eventTicketId); openEditorModal('eventTicket'); } });
+    els.eventTicketType.addEventListener('change', updateEventTicketTypeUI);
+    els.eventTicketPrizeRows.addEventListener('input', updateEventTicketPrizeTotal);
+    els.eventTicketPrizeRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-event-ticket-prize]') : null; if (button) { button.closest('[data-event-ticket-prize-row]')?.remove(); updateEventTicketPrizeTotal(); } });
+    els.addEventTicketPrizeButton.addEventListener('click', () => { renderEventTicketPrizeRows([...collectEventTicketPrizes(), defaultPrize(0)]); });
+    els.balanceEventTicketPrizesButton.addEventListener('click', balanceEventTicketPrizes);
+    els.eventTicketStartsOn.addEventListener('change', updateEventTicketDateRangeUI);
+    els.eventTicketEndsOn.addEventListener('change', updateEventTicketDateRangeUI);
+    els.eventTicketAccent.addEventListener('input', updateEventTicketAccentValue);
+    els.eventTicketForm.addEventListener('submit', saveEventTicket);
+    els.resetEventTicketButton.addEventListener('click', resetEventTicketForm);
+    els.deleteEventTicketButton.addEventListener('click', deleteEventTicket);
+    els.newCalendarItemButton.addEventListener('click', () => { resetCalendarItemForm(); openEditorModal('calendar'); });
+    els.adminCalendarPreviousMonthButton.addEventListener('click', () => changeAdminCalendarMonth(-1));
+    els.adminCalendarNextMonthButton.addEventListener('click', () => changeAdminCalendarMonth(1));
+    els.adminCalendarTodayButton.addEventListener('click', () => { state.adminCalendarMonth = ''; renderAdminCalendar(); });
+    els.adminCalendarGrid.addEventListener('click', handleAdminCalendarGridClick);
+    els.adminCalendarGrid.addEventListener('change', handleAdminCalendarGridChange);
+    els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
+    els.calendarItemForm.addEventListener('change', handleCalendarItemFormChange);
+    els.calendarItemForm.addEventListener('submit', saveCalendarItem);
+    els.resetCalendarItemButton.addEventListener('click', resetCalendarItemForm);
+    els.deleteCalendarItemButton.addEventListener('click', deleteCalendarItem);
+    els.addCalendarBatchItemButton.addEventListener('click', queueSelectedCalendarDates);
+    els.queueSelectedCalendarItemsButton.addEventListener('click', queueSelectedCalendarItems);
+    els.deleteSelectedCalendarItemsButton.addEventListener('click', deleteSelectedCalendarItems);
+    els.calendarBatchRows.addEventListener('click', handleCalendarBatchRowClick);
+    els.calendarBatchRows.addEventListener('change', handleCalendarBatchRowChange);
+    els.clearCalendarBatchButton.addEventListener('click', clearCalendarBatch);
+    els.saveCalendarBatchButton.addEventListener('click', saveCalendarBatch);
+    els.memberForm.addEventListener('submit', saveMember);
+    els.cancelMemberButton.addEventListener('click', closeMemberModal);
+    els.closeMemberModal.addEventListener('click', closeMemberModal);
+    els.memberModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.memberModal)) closeMemberModal(); });
+    els.grantForm.addEventListener('submit', saveGrant);
+    els.cancelGrantButton.addEventListener('click', closeGrantModal);
+    els.closeGrantModal.addEventListener('click', closeGrantModal);
+    els.grantModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.grantModal)) closeGrantModal(); });
+    els.grantStampsEnabled.addEventListener('change', updateGrantOptions);
+    els.grantPointRows.addEventListener('input', updateGrantPointHint);
+    els.grantPointRows.addEventListener('change', updateGrantPointHint);
+    els.grantPointRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-grant-point]') : null; if (button) { button.closest('[data-grant-point-row]')?.remove(); updateGrantPointHint(); } });
+    els.addGrantPointButton.addEventListener('click', addGrantPointRow);
+    els.grantServiceTimeEnabled.addEventListener('change', updateGrantOptions);
+    document.addEventListener('click', handleAdminDateControlClick);
+    els.cardListItems.addEventListener('pointerdown', handleCardSortPointerDown);
+    document.addEventListener('pointermove', handleCardSortPointerMove);
+    document.addEventListener('pointerup', handleCardSortPointerUp);
+    document.addEventListener('pointercancel', handleCardSortPointerUp);
+    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); closeEditorModals(); });
+  }
+
+  function shouldDismissModalFromBackdrop(event, modal) {
+    if (!event || event.target !== modal) return false;
+    return typeof window.matchMedia === 'function' && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  }
+
+  function prepareGrantPointEditor() {
+    if (els.grantPointRows || !els.grantStampsFields) return;
+    const legacyCardLabel = els.grantCardId.closest('label'); const legacyAmountLabel = els.grantStampAmount.closest('label');
+    if (legacyCardLabel) legacyCardLabel.classList.add('hidden');
+    if (legacyAmountLabel) legacyAmountLabel.classList.add('hidden');
+    const rows = document.createElement('div'); rows.id = 'grantPointRows'; rows.className = 'grant-point-rows';
+    const addButton = document.createElement('button'); addButton.id = 'addGrantPointButton'; addButton.type = 'button'; addButton.className = 'text-button grant-add-point'; addButton.textContent = '＋ 再加入一張集點卡';
+    const hint = document.createElement('p'); hint.id = 'grantPointHint'; hint.className = 'field-help'; hint.textContent = '可在同一次操作中為不同集點卡發放不同點數。';
+    els.grantStampsFields.replaceChildren(rows, addButton, hint); els.grantPointRows = rows; els.addGrantPointButton = addButton; els.grantPointHint = hint;
+  }
+
+  function prepareExplicitStatusOptions() {
+    [els.cardStatus, els.ticketStatus, els.eventTicketStatus, els.calendarItemStatus].forEach((select) => {
+      if (!select || select.querySelector('option[value=""]')) return;
+      const option = document.createElement('option'); option.value = ''; option.disabled = true; option.textContent = '請選擇公開狀態'; select.insertBefore(option, select.firstChild); select.value = '';
+    });
+  }
+
+  function prepareTierStylePreviews() {
+    [['general', els.tierGeneralStyle], ['silver', els.tierSilverStyle], ['gold', els.tierGoldStyle], ['platinum', els.tierPlatinumStyle]].forEach(([tierKey, select]) => {
+      const label = select && select.closest('label');
+      if (!label || label.querySelector('[data-tier-style-preview]')) return;
+      select.dataset.tierStyleSelect = tierKey;
+      const preview = createStylePreview(`目前${CALENDAR_ITEM_TIER_LABELS[tierKey] || ''}卡面`);
+      preview.dataset.tierStylePreview = tierKey;
+      label.insertBefore(preview, select);
+      select.addEventListener('change', syncTierStylePreviews);
+    });
+    syncTierStylePreviews();
+  }
+
+  function preparePointCardStyleEditor() {
+    const accentGrid = els.cardAccent && els.cardAccent.closest('.form-grid');
+    if (!accentGrid || els.cardStyle) return;
+    const label = document.createElement('label'); label.className = 'card-style-field'; label.append(document.createTextNode('集點卡樣式'));
+    const select = document.createElement('select'); select.id = 'cardStyle'; select.name = 'styleKey'; select.setAttribute('aria-label', '集點卡樣式');
+    MEMBERSHIP_TIER_STYLE_KEYS.forEach((styleKey) => { const option = document.createElement('option'); option.value = styleKey; option.textContent = MEMBERSHIP_TIER_STYLE_LABELS[styleKey]; select.append(option); });
+    const preview = createStylePreview('目前集點卡面'); preview.dataset.pointCardStylePreview = 'true'; label.append(select, preview); accentGrid.insertBefore(label, accentGrid.firstChild); els.cardStyle = select; els.cardStylePreview = preview; select.addEventListener('change', updatePointCardStylePreview); updatePointCardStylePreview();
+  }
+
+  function createStylePreview(prefix) {
+    const preview = document.createElement('div'); preview.className = 'style-preview'; preview.setAttribute('role', 'img');
+    const thumbnail = document.createElement('span'); thumbnail.className = 'style-thumbnail'; thumbnail.setAttribute('aria-hidden', 'true');
+    const copy = document.createElement('span'); copy.className = 'style-preview-copy'; const eyebrow = document.createElement('small'); eyebrow.textContent = prefix; const name = document.createElement('strong'); name.dataset.stylePreviewName = 'true'; copy.append(eyebrow, name); preview.append(thumbnail, copy); return preview;
+  }
+
+  function syncTierStylePreviews() {
+    document.querySelectorAll('[data-tier-style-select]').forEach((select) => { const preview = select.closest('label')?.querySelector('[data-tier-style-preview]'); if (preview) updateStylePreview(select, preview, `目前${CALENDAR_ITEM_TIER_LABELS[select.dataset.tierStyleSelect] || ''}卡面`); });
+  }
+
+  function updatePointCardStylePreview() { if (els.cardStyle && els.cardStylePreview) updateStylePreview(els.cardStyle, els.cardStylePreview, '目前集點卡面'); }
+  function updateStylePreview(select, preview, prefix) { const styleKey = safeTierStyle(select.value); preview.dataset.style = styleKey; preview.setAttribute('aria-label', `${prefix}：${MEMBERSHIP_TIER_STYLE_LABELS[styleKey]}`); const name = preview.querySelector('[data-style-preview-name]'); if (name) name.textContent = MEMBERSHIP_TIER_STYLE_LABELS[styleKey]; }
+
+  function prepareCardSortControls() {
+    const cardList = els.cardListItems && els.cardListItems.closest('.card-list');
+    if (!cardList || cardList.querySelector('.card-sort-hint')) return;
+    const hint = document.createElement('p'); hint.className = 'card-sort-hint'; hint.textContent = '電腦可拖曳排序；手機請使用每張卡右側的上下按鈕，完成後按「儲存排序」。';
+    const message = document.createElement('p'); message.id = 'cardSortMessage'; message.className = 'form-message hidden'; message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite');
+    const saveButton = document.createElement('button'); saveButton.id = 'saveCardSortButton'; saveButton.type = 'button'; saveButton.className = 'button button-dark card-sort-save'; saveButton.textContent = '儲存排序';
+    cardList.insertBefore(hint, els.cardListItems); cardList.insertBefore(message, els.cardListItems); cardList.insertBefore(saveButton, els.cardListItems); els.cardSortMessage = message; els.cardSortSaveButton = saveButton;
+  }
+
+  function prepareEditorModals() {
+    [
+      { key: 'card', form: els.cardForm, titleId: 'editorTitle', label: '集點卡' },
+      { key: 'ticket', form: els.ticketForm, titleId: 'ticketEditorTitle', label: '票券' },
+      { key: 'eventTicket', form: els.eventTicketForm, titleId: 'eventTicketEditorTitle', label: '活動票券' },
+      { key: 'calendar', form: els.calendarItemForm, titleId: 'calendarItemEditorTitle', label: '日曆項目' }
+    ].forEach((config) => {
+      const editor = config.form && config.form.closest('.editor');
+      const workspace = editor && editor.closest('.card-workspace');
+      if (!editor || !workspace || !editor.parentNode) return;
+      workspace.classList.add('editor-modal-host');
+      const modal = document.createElement('div'); modal.id = `${config.key}EditorModal`; modal.className = 'modal editor-modal hidden'; modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', config.titleId);
+      const card = document.createElement('div'); card.className = 'modal-card editor-modal-card';
+      const heading = editor.querySelector('.editor-heading');
+      const status = editor.querySelector('.editor-status');
+      const actions = document.createElement('div'); actions.className = 'editor-heading-actions';
+      const close = document.createElement('button'); close.type = 'button'; close.className = 'close-button editor-modal-close'; close.setAttribute('aria-label', `關閉${config.label}視窗`); close.textContent = '×';
+      if (heading) { if (status) actions.append(status); actions.append(close); heading.append(actions); }
+      card.append(editor); modal.append(card); document.body.append(modal);
+      modal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, modal)) closeEditorModal(config.key); });
+      close.addEventListener('click', () => closeEditorModal(config.key));
+      state.editorModals[config.key] = { modal, close, opener: null };
+    });
+  }
+
+  function openEditorModal(key, opener) {
+    const entry = state.editorModals[key]; if (!entry) return;
+    entry.opener = opener instanceof HTMLElement ? opener : document.activeElement;
+    entry.modal.classList.remove('hidden');
+    const focusTarget = entry.modal.querySelector('input:not([type="hidden"]), select, textarea, button:not(.editor-modal-close)');
+    (focusTarget || entry.close).focus();
+  }
+
+  function closeEditorModal(key) {
+    const entry = state.editorModals[key]; if (!entry) return;
+    entry.modal.classList.add('hidden');
+    if (entry.opener instanceof HTMLElement && document.contains(entry.opener)) entry.opener.focus();
+    entry.opener = null;
+  }
+
+  function closeEditorModals() { Object.keys(state.editorModals).forEach(closeEditorModal); }
+
+  async function boot() {
+    setView('loading');
+    try {
+      startLoginProgress('正在取得開啟設定…', 18);
+      state.config = await window.MemberSystem.loadConfig();
+      startLoginProgress('正在驗證 LINE 身分…', 48);
+      state.idToken = await window.MemberSystem.signIn(state.config, 'admin');
+      startLoginProgress('正在完整同步管理資料…', 96);
+      await refreshData(false);
+      await completeLoginProgress('完整管理資料已準備完成');
+      setView('admin');
+      window.MemberSystem.subscribeRealtime(state.config, 'admin', () => refreshData(false));
+    } catch (error) { stopLoginProgress(); handleBootError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
+  }
+
+  async function refreshData(showBusy) {
+    if (showBusy) { els.refreshButton.disabled = true; els.syncStatus.textContent = '完整同步中…'; }
+    try {
+      // 管理端採用 GAS full bootstrap：所有管理資料完整回傳並套用後，boot 才會顯示 adminView。
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', {});
+      assertCompleteAdminBootstrap(result);
+      applyAdminBootstrap(result);
+      els.syncStatus.textContent = `已完整同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
+      els.syncStatus.classList.remove('error');
+    } finally { if (showBusy) els.refreshButton.disabled = false; }
+  }
+
+  function assertCompleteAdminBootstrap(result) {
+    const requiredArrays = ['members', 'tierSettings', 'cards', 'tickets', 'eventTickets', 'calendarItems'];
+    const missing = requiredArrays.filter((key) => !Array.isArray(result && result[key]));
+    const hasStats = Boolean(result && result.stats && typeof result.stats === 'object' && !Array.isArray(result.stats));
+    const hasMemberPage = Boolean(result && result.memberPage && typeof result.memberPage === 'object' && !Array.isArray(result.memberPage));
+    if (!result || typeof result !== 'object' || Array.isArray(result) || missing.length || !hasStats || !hasMemberPage) {
+      const suffix = missing.length ? `（缺少：${missing.join('、')}）` : '';
+      const error = new Error(`GAS 管理資料回應不完整${suffix}，已停止顯示管理頁面，請重新整理後再試。`);
+      error.code = 'ADMIN_BOOTSTRAP_INCOMPLETE';
+      throw error;
+    }
+  }
+
+  function applyAdminBootstrap(result) {
+    state.members = result.members;
+    applyMemberPage(result.memberPage, state.memberPage);
+    state.tierSettings = result.tierSettings;
+    state.stats = result.stats;
+    state.loadedPanels = { members: true, cards: true, events: true, calendar: true };
+    state.summaryLoaded = Object.prototype.hasOwnProperty.call(state.stats, 'todayEntryCount');
+    els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
+    els.roleLabel.textContent = String(result.role || 'Admin');
+    renderAdminOverview();
+    applyAdminCards(result, false);
+    applyAdminEventTickets(result, false);
+    applyAdminCalendarItems(result);
+  }
+
+  function renderAdminOverview() {
+    els.memberCount.textContent = String(state.stats.memberCount ?? state.members.length);
+    els.activeMemberCount.textContent = String(state.stats.activeMemberCount ?? state.members.filter((member) => member.status === 'active').length);
+    els.activeCardCount.textContent = state.stats.activeCardCount === undefined ? '—' : String(state.stats.activeCardCount);
+    els.todayEntryCount.textContent = state.stats.todayEntryCount === undefined ? '—' : String(state.stats.todayEntryCount);
+    els.activeEventTicketCount.textContent = state.stats.activeEventTicketCount === undefined ? '—' : String(state.stats.activeEventTicketCount);
+    renderMembers(); renderTierSettings();
+  }
+
+  async function loadAdminSummary() {
+    const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.summary', {});
+    state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
+    state.summaryLoaded = true;
+    renderAdminOverview();
+  }
+
+  async function ensureAdminPanelData(panel) {
+    if (panel === 'members' || state.loadedPanels[panel]) return;
+    if (state.panelLoads[panel]) return state.panelLoads[panel];
+    const actionByPanel = { cards: 'admin.pointcards.list', events: 'admin.event-tickets.list', calendar: 'admin.calendar-items.list' };
+    const action = actionByPanel[panel];
+    if (!action) return;
+    const payload = panel === 'cards' ? { includeTickets: true } : {};
+    const load = window.MemberSystem.request(state.config, 'admin', state.idToken, action, payload).then((result) => {
+      if (panel === 'cards') applyAdminCards(result);
+      if (panel === 'events') applyAdminEventTickets(result);
+      if (panel === 'calendar') applyAdminCalendarItems(result);
+      state.loadedPanels[panel] = true;
+    }).finally(() => { if (state.panelLoads[panel] === load) delete state.panelLoads[panel]; });
+    state.panelLoads[panel] = load;
+    return load;
+  }
+
+  function applyAdminCards(result, renderOverview = true) {
+    state.cards = Array.isArray(result.cards) ? result.cards : [];
+    state.cardSortOriginalOrder = state.cards.map((card) => String(card.cardId || ''));
+    state.cardSortDirty = false;
+    state.tickets = Array.isArray(result.tickets) ? result.tickets : [];
+    state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
+    if (renderOverview) renderAdminOverview();
+    renderCardList(); renderTicketList();
+    if (state.selectedCardId && state.cards.some((card) => card.cardId === state.selectedCardId)) loadCardForm(state.selectedCardId); else resetCardForm();
+    if (state.selectedTicketId && state.tickets.some((ticket) => ticket.ticketTemplateId === state.selectedTicketId)) loadTicketForm(state.selectedTicketId); else resetTicketForm();
+  }
+
+  function applyAdminEventTickets(result, renderOverview = true) {
+    state.eventTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
+    state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
+    if (renderOverview) renderAdminOverview();
+    renderEventTicketList();
+    if (state.selectedEventTicketId && state.eventTickets.some((ticket) => ticket.eventTicketId === state.selectedEventTicketId)) loadEventTicketForm(state.selectedEventTicketId); else resetEventTicketForm();
+  }
+
+  function applyAdminCalendarItems(result) {
+    state.calendarItems = Array.isArray(result.calendarItems) ? result.calendarItems : [];
+    const calendarIds = new Set(state.calendarItems.map((item) => String(item.calendarItemId || '')));
+    state.selectedCalendarItemIds = new Set(Array.from(state.selectedCalendarItemIds).filter((calendarItemId) => calendarIds.has(calendarItemId)));
+    renderAdminCalendar(); renderCalendarBatchRows();
+    if (state.selectedCalendarItemId && state.calendarItems.some((item) => item.calendarItemId === state.selectedCalendarItemId)) loadCalendarItemForm(state.selectedCalendarItemId); else resetCalendarItemForm();
+  }
+
+  function renderMembers() {
+    const members = state.members;
+    const page = state.memberPage;
+    els.memberResultCount.textContent = `共 ${page.total} 位會員`;
+    els.memberTableBody.replaceChildren(...members.map((member) => {
+      const row = document.createElement('tr');
+      const memberCell = document.createElement('td'); memberCell.append(createMemberIdentity(member));
+      const tierCell = document.createElement('td'); const tier = document.createElement('span'); tier.className = 'tier-text'; tier.textContent = String(member.tier || '一般會員'); tierCell.append(tier);
+      const statusCell = document.createElement('td'); const status = document.createElement('span'); status.className = `status-pill${member.status === 'active' ? '' : ' disabled'}`; status.textContent = member.status === 'active' ? '啟用中' : '已停用'; statusCell.append(status);
+      const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
+      const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
+      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true)); actionsCell.append(actions);
+      row.append(memberCell, tierCell, statusCell, serviceTimeCell, dateCell, actionsCell); return row;
+    }));
+    els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
+    renderMemberPagination();
+  }
+
+  function memberPagePayload(page, query) { return { memberPage: Math.max(1, Number(page) || 1), memberPageSize: state.memberPage.pageSize || 100, memberQuery: String(query || '').trim() }; }
+  function applyMemberPage(value, fallback) {
+    const source = value && typeof value === 'object' ? value : fallback || {};
+    const pageSize = Math.max(1, Number(source.pageSize) || 100);
+    const total = Math.max(0, Number(source.total) || 0);
+    const totalPages = Math.max(1, Number(source.totalPages) || Math.ceil(total / pageSize) || 1);
+    state.memberPage = { page: Math.min(Math.max(1, Number(source.page) || 1), totalPages), pageSize, total, totalPages, query: String(source.query || '').trim() };
+  }
+  function renderMemberPagination() {
+    const page = state.memberPage;
+    els.memberPagination.classList.toggle('hidden', page.totalPages <= 1);
+    els.memberPrevPageButton.disabled = page.page <= 1;
+    els.memberNextPageButton.disabled = page.page >= page.totalPages;
+    els.memberPageStatus.textContent = `第 ${page.page} / ${page.totalPages} 頁`;
+  }
+  function renderTierSettings() {
+    const inputsByKey = { general: els.tierGeneralMinutes, silver: els.tierSilverMinutes, gold: els.tierGoldMinutes, platinum: els.tierPlatinumMinutes };
+    const stylesByKey = { general: els.tierGeneralStyle, silver: els.tierSilverStyle, gold: els.tierGoldStyle, platinum: els.tierPlatinumStyle };
+    state.tierSettings.forEach((setting) => {
+      const input = inputsByKey[setting && setting.tierKey];
+      const style = stylesByKey[setting && setting.tierKey];
+      if (!input || !style) return;
+      input.value = String(Math.max(0, Math.floor(Number(setting.requiredServiceMinutes) || 0)));
+      style.value = safeTierStyle(setting.styleKey);
+      input.dataset.updatedAt = String(setting.updatedAt || '');
+      style.dataset.updatedAt = String(setting.updatedAt || '');
+    });
+    syncTierStylePreviews();
+  }
+  function collectTierSettings() {
+    return [
+      ['general', els.tierGeneralMinutes, els.tierGeneralStyle], ['silver', els.tierSilverMinutes, els.tierSilverStyle], ['gold', els.tierGoldMinutes, els.tierGoldStyle], ['platinum', els.tierPlatinumMinutes, els.tierPlatinumStyle]
+    ].map(([tierKey, input, style]) => ({ tierKey, requiredServiceMinutes: Number(input.value), styleKey: safeTierStyle(style.value), expectedUpdatedAt: String(input.dataset.updatedAt || '') }));
+  }
+  async function saveTierSettings(event) {
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.tierSettingsFormMessage)) return; hideMessage(els.tierSettingsFormMessage);
+    const tierSettings = collectTierSettings();
+    const invalid = tierSettings.some((setting, index) => !Number.isInteger(setting.requiredServiceMinutes) || setting.requiredServiceMinutes < 0 || setting.requiredServiceMinutes > 10000000 || !MEMBERSHIP_TIER_STYLE_KEYS.includes(setting.styleKey) || (index === 0 ? setting.requiredServiceMinutes !== 0 : setting.requiredServiceMinutes <= tierSettings[index - 1].requiredServiceMinutes));
+    if (invalid) return showMessage(els.tierSettingsFormMessage, '門檻必須由一般會員 0 分鐘開始，銀級、金級與白金會員需依序遞增。');
+    setSaving(els.saveTierSettingsButton, true, '正在儲存會員等級門檻…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-tiers.save', { tierSettings });
+      state.tierSettings = Array.isArray(result.tierSettings) ? result.tierSettings : state.tierSettings;
+      renderTierSettings();
+      if (await refreshAfterSuccessfulWrite('會員等級與卡面樣式已儲存', els.tierSettingsFormMessage)) showMessage(els.tierSettingsFormMessage, '會員等級與卡面樣式已儲存，會員卡會依目前等級顯示對應外觀。', true);
+    } catch (error) { handleActionError(error, els.tierSettingsFormMessage); } finally { setSaving(els.saveTierSettingsButton, false); }
+  }
+  function scheduleMemberSearch() {
+    if (state.memberSearchTimer) window.clearTimeout(state.memberSearchTimer);
+    const query = String(els.memberSearch.value || '').trim().toLowerCase();
+    if (query === state.memberPage.query) return;
+    state.memberSearchTimer = window.setTimeout(() => {
+      state.memberSearchTimer = null;
+      loadMembersPage(1, query).catch((error) => { setSyncStatus(error && error.message || '搜尋會員失敗，請稍後再試。', true); });
+    }, 250);
+  }
+  async function loadMembersPage(page, query) {
+    const requestVersion = ++state.memberRequestVersion;
+    els.memberPrevPageButton.disabled = true;
+    els.memberNextPageButton.disabled = true;
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.members.list', memberPagePayload(page, query));
+      if (requestVersion !== state.memberRequestVersion) return;
+      state.members = Array.isArray(result.members) ? result.members : [];
+      applyMemberPage(result.memberPage, state.memberPage);
+      renderMembers();
+    } catch (error) {
+      if (requestVersion === state.memberRequestVersion) renderMemberPagination();
+      throw error;
+    }
+  }
+
+  function createMemberIdentity(member) {
+    const wrapper = document.createElement('div'); wrapper.className = 'member-cell'; const avatar = document.createElement('span'); avatar.className = 'member-avatar'; avatar.textContent = window.MemberSystem.initials(member.displayName); const copy = document.createElement('div'); const name = document.createElement('strong'); name.textContent = String(member.displayName || 'LINE 使用者'); const code = document.createElement('small'); code.textContent = String(member.memberCode || '尚未建立'); copy.append(name, code); wrapper.append(avatar, copy); return wrapper;
+  }
+
+  function actionButton(label, action, value, accent) { const button = document.createElement('button'); button.type = 'button'; button.className = `small-button${accent ? ' accent' : ''}`; button.dataset.action = action; button.dataset.value = String(value || ''); button.textContent = label; return button; }
+  async function handleMemberTableClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-action]') : null;
+    if (!button) return;
+    const member = state.members.find((item) => item.lineUserId === button.dataset.value);
+    if (!member) return;
+    if (button.dataset.action === 'edit-member') return openMemberModal(member);
+    if (button.dataset.action !== 'add-grant') return;
+    // Full bootstrap 已載入集點卡時直接開啟，不再為互動重打 GAS。
+    if (state.loadedPanels.cards) return openGrantModal(member);
+    button.disabled = true;
+    try { await ensureAdminPanelData('cards'); openGrantModal(member); } catch (error) { setSyncStatus(error && error.message || '無法載入集點卡，請稍後再試。', true); } finally { button.disabled = false; }
+  }
+
+
+  function parseAdminIsoDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
+    if (!match) return null;
+    const year = Number(match[1]); const month = Number(match[2]); const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : null;
+  }
+  function toAdminIsoDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    const year = date.getUTCFullYear(); const month = String(date.getUTCMonth() + 1).padStart(2, '0'); const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  function todayAdminIsoDate() {
+    const values = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).forEach((part) => { if (part.type !== 'literal') values[part.type] = part.value; });
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+  function addAdminDays(value, amount) {
+    const date = parseAdminIsoDate(value); const days = Number(amount);
+    if (!date || !Number.isFinite(days)) return '';
+    date.setUTCDate(date.getUTCDate() + Math.trunc(days));
+    return toAdminIsoDate(date);
+  }
+  function formatAdminDateValue(value, includeWeekday) {
+    const date = parseAdminIsoDate(value); if (!date) return '';
+    const options = { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' };
+    if (includeWeekday) options.weekday = 'short';
+    return new Intl.DateTimeFormat('zh-Hant-TW', options).format(date);
+  }
+  function formatAdminDateCompact(value) {
+    const date = parseAdminIsoDate(value); if (!date) return String(value || '');
+    return new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  }
+  function setAdminDateInput(input, value) {
+    if (!(input instanceof HTMLInputElement)) return;
+    input.value = String(value || '');
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  function updateCardExpiryDateUI() {
+    if (!els.cardExpiresOnSummary) return;
+    const limited = els.cardExpiryMode.value === 'date'; const value = String(els.cardExpiresOn.value || '').trim(); const parsed = value ? parseAdminIsoDate(value) : null;
+    els.cardExpiresOnSummary.textContent = limited ? (parsed ? formatAdminDateValue(value, true) : '請選擇到期日') : '無期限';
+    els.cardExpiresOnField.classList.toggle('invalid', limited && Boolean(value) && !parsed);
+  }
+  function updateEventTicketDateRangeUI() {
+    if (!els.eventTicketDateRangeSummary || !els.eventTicketDateRangeMessage) return;
+    const startsOn = String(els.eventTicketStartsOn.value || '').trim(); const endsOn = String(els.eventTicketEndsOn.value || '').trim();
+    const startDate = startsOn ? parseAdminIsoDate(startsOn) : null; const endDate = endsOn ? parseAdminIsoDate(endsOn) : null; const validationMessage = validateEventTicketDates(startsOn, endsOn);
+    const startControl = els.eventTicketStartsOn.closest('.date-control'); const endControl = els.eventTicketEndsOn.closest('.date-control');
+    if (startControl) startControl.classList.toggle('invalid', Boolean(startsOn) && !startDate || Boolean(startDate && endDate && startDate > endDate));
+    if (endControl) endControl.classList.toggle('invalid', Boolean(endsOn) && !endDate || Boolean(startDate && endDate && startDate > endDate));
+    els.eventTicketDateRangeMessage.classList.toggle('warning', Boolean(validationMessage));
+    if (validationMessage) { els.eventTicketDateRangeSummary.textContent = '日期需要調整'; els.eventTicketDateRangeMessage.textContent = validationMessage; return; }
+    if (!startsOn && !endsOn) { els.eventTicketDateRangeSummary.textContent = '不限制日期'; els.eventTicketDateRangeMessage.textContent = '未設定期間限制，票券會依公開狀態與其他條件判定是否可用。'; return; }
+    if (startDate && endDate) {
+      const days = Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+      els.eventTicketDateRangeSummary.textContent = `${formatAdminDateCompact(startsOn)} → ${formatAdminDateCompact(endsOn)}`;
+      els.eventTicketDateRangeMessage.textContent = `${formatAdminDateValue(startsOn, true)} 至 ${formatAdminDateValue(endsOn, true)}，共 ${days} 天。`;
+      return;
+    }
+    if (startDate) { els.eventTicketDateRangeSummary.textContent = `自 ${formatAdminDateCompact(startsOn)} 起`; els.eventTicketDateRangeMessage.textContent = `從 ${formatAdminDateValue(startsOn, true)} 起生效，未設定結束日。`; return; }
+    els.eventTicketDateRangeSummary.textContent = `至 ${formatAdminDateCompact(endsOn)}`;
+    els.eventTicketDateRangeMessage.textContent = `截至 ${formatAdminDateValue(endsOn, true)}，未設定開始日。`;
+  }
+  function handleAdminDateControlClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-open-date-picker], [data-date-target], [data-event-range-days], [data-event-range-action]') : null;
+    if (!button) return;
+    const pickerTargetId = String(button.dataset.openDatePicker || '');
+    if (pickerTargetId) {
+      const input = document.getElementById(pickerTargetId); if (!(input instanceof HTMLInputElement)) return;
+      event.preventDefault();
+      try { if (typeof input.showPicker === 'function') { input.showPicker(); return; } } catch (_) {}
+      input.focus({ preventScroll: true });
+      input.click();
+      return;
+    }
+    const targetId = String(button.dataset.dateTarget || '');
+    if (targetId) {
+      const input = document.getElementById(targetId); if (!(input instanceof HTMLInputElement)) return;
+      const action = String(button.dataset.dateAction || ''); const today = todayAdminIsoDate(); let nextValue = '';
+      if (action === 'clear') nextValue = '';
+      else if (action === 'end-of-year') nextValue = `${today.slice(0, 4)}-12-31`;
+      else if (button.dataset.dateOffset !== undefined) nextValue = addAdminDays(today, Number(button.dataset.dateOffset));
+      else return;
+      event.preventDefault(); setAdminDateInput(input, nextValue); return;
+    }
+    if (button.dataset.eventRangeAction === 'clear') {
+      event.preventDefault(); els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; updateEventTicketDateRangeUI(); return;
+    }
+    if (button.dataset.eventRangeDays !== undefined) {
+      const days = Number(button.dataset.eventRangeDays); if (!Number.isInteger(days) || days < 1) return;
+      event.preventDefault(); const startsOn = todayAdminIsoDate(); els.eventTicketStartsOn.value = startsOn; els.eventTicketEndsOn.value = addAdminDays(startsOn, days - 1); updateEventTicketDateRangeUI();
+    }
+  }
+
+  function renderCardList() {
+    els.cardResultCount.textContent = String(state.cards.length); els.cardEmptyState.classList.toggle('hidden', state.cards.length !== 0);
+    els.cardListItems.replaceChildren(...state.cards.map((card, index) => {
+      const cardId = String(card.cardId); const titleText = String(card.title || '未命名集點卡');
+      const item = document.createElement('article'); item.className = 'card-sort-item'; item.dataset.cardSortItem = 'true'; item.dataset.cardId = cardId; item.setAttribute('aria-roledescription', '可拖曳集點卡');
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item card-list-item-main'; button.dataset.cardId = cardId; button.setAttribute('aria-selected', cardId === state.selectedCardId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(card.accent));
+      const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(titleText));
+      const meta = document.createElement('small'); meta.textContent = cardSortMeta(card, index);
+      button.append(title, meta);
+      const controls = document.createElement('div'); controls.className = 'card-sort-controls'; controls.setAttribute('aria-label', `調整${titleText}顯示順序`);
+      controls.append(createCardSortMoveButton(cardId, titleText, 'up', index === 0), createCardSortMoveButton(cardId, titleText, 'down', index === state.cards.length - 1));
+      item.append(button, controls); return item;
+    }));
+    updateCardSortSaveState();
+  }
+
+  function createCardSortMoveButton(cardId, title, direction, disabled) { const button = document.createElement('button'); button.type = 'button'; button.className = 'card-sort-move'; button.dataset.cardSortMove = direction; button.dataset.cardId = cardId; button.disabled = disabled; button.setAttribute('aria-label', direction === 'up' ? `將${title}上移一位` : `將${title}下移一位`); button.textContent = direction === 'up' ? '↑' : '↓'; return button; }
+
+  function cardSortMeta(card, index) {
+    const expiry = card.expiryMode === 'date' && card.expiresOn ? `到期 ${formatAdminDateCompact(card.expiresOn)}` : '無期限';
+    return `第 ${index + 1} 張 · ${Array.isArray(card.rewards) ? card.rewards.length : 0} 個兌換節點 · ${expiry} · ${statusLabel(card.status)}`;
+  }
+
+  function handleCardListClick(event) {
+    const move = event.target instanceof Element ? event.target.closest('[data-card-sort-move]') : null;
+    if (move) { adjustCardSortPosition(move.dataset.cardId, move.dataset.cardSortMove === 'up' ? -1 : 1); return; }
+    if (state.suppressCardClick) return;
+    const button = event.target instanceof Element ? event.target.closest('[data-card-id]') : null;
+    if (button) { loadCardForm(button.dataset.cardId); openEditorModal('card'); }
+  }
+
+  function handleCardSortPointerDown(event) {
+    if (state.cardSortBusy || state.writeConfirmationRequired || (event.pointerType && event.pointerType !== 'mouse') || (event.button !== undefined && event.button !== 0)) return;
+    const item = event.target instanceof Element ? event.target.closest('[data-card-sort-item]') : null;
+    if (!item || item.parentElement !== els.cardListItems) return;
+    state.cardSortDrag = { item, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false };
+    if (typeof item.setPointerCapture === 'function') {
+      try { item.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+  }
+
+  function handleCardSortPointerMove(event) {
+    const drag = state.cardSortDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (!drag.active && distance < 6) return;
+    if (!drag.active) {
+      drag.active = true;
+      drag.item.classList.add('is-dragging');
+      drag.item.setAttribute('aria-grabbed', 'true');
+    }
+    event.preventDefault();
+    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
+    const target = targetElement instanceof Element ? targetElement.closest('[data-card-sort-item]') : null;
+    if (!target || target === drag.item || target.parentElement !== els.cardListItems) return;
+    const items = Array.from(els.cardListItems.querySelectorAll('[data-card-sort-item]'));
+    const fromIndex = items.indexOf(drag.item); const targetIndex = items.indexOf(target);
+    if (fromIndex < 0 || targetIndex < 0) return;
+    if (fromIndex < targetIndex) els.cardListItems.insertBefore(drag.item, target.nextSibling);
+    else els.cardListItems.insertBefore(drag.item, target);
+    els.cardListItems.querySelectorAll('[data-card-sort-item]').forEach((item) => item.classList.toggle('is-drag-over', item === target));
+    updateCardSortDraftFromDom();
+  }
+
+  function handleCardSortPointerUp(event) {
+    const drag = state.cardSortDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.item.classList.remove('is-dragging');
+    drag.item.removeAttribute('aria-grabbed');
+    els.cardListItems.querySelectorAll('[data-card-sort-item]').forEach((item) => item.classList.remove('is-drag-over'));
+    state.cardSortDrag = null;
+    if (!drag.active) return;
+    state.suppressCardClick = true;
+    window.setTimeout(() => { state.suppressCardClick = false; }, 0);
+    updateCardSortDraftFromDom();
+    showMessage(els.cardSortMessage, state.cardSortDirty ? '排序草稿已變更，請按「儲存排序」套用。' : '排序未變更。');
+  }
+
+  function updateCardSortDraftFromDom() {
+    const cardIds = Array.from(els.cardListItems.querySelectorAll('[data-card-sort-item]')).map((item) => String(item.dataset.cardId || ''));
+    const cardsById = new Map(state.cards.map((card) => [String(card.cardId), card]));
+    if (cardIds.length !== state.cards.length || cardIds.some((cardId) => !cardsById.has(cardId))) return;
+    state.cards = cardIds.map((cardId) => cardsById.get(cardId));
+    state.cardSortDirty = cardIds.some((cardId, index) => cardId !== state.cardSortOriginalOrder[index]);
+    updateCardSortPositions();
+    updateCardSortSaveState();
+  }
+
+  function updateCardSortPositions() {
+    Array.from(els.cardListItems.querySelectorAll('[data-card-sort-item]')).forEach((item, index) => {
+      const card = state.cards[index]; const meta = item.querySelector('.card-list-item small');
+      if (card && meta) meta.textContent = cardSortMeta(card, index);
+    });
+  }
+
+  function adjustCardSortPosition(cardId, offset) {
+    if (state.cardSortBusy || state.writeConfirmationRequired) return;
+    const fromIndex = state.cards.findIndex((card) => String(card.cardId || '') === String(cardId || '')); const toIndex = fromIndex + offset;
+    if (fromIndex < 0 || toIndex < 0 || toIndex >= state.cards.length) return;
+    const card = state.cards[fromIndex]; state.cards.splice(fromIndex, 1); state.cards.splice(toIndex, 0, card);
+    state.cardSortDirty = state.cards.some((item, index) => String(item.cardId || '') !== state.cardSortOriginalOrder[index]); renderCardList();
+    const focusDirection = toIndex === 0 ? 'down' : 'up'; const focusTarget = Array.from(els.cardListItems.querySelectorAll('[data-card-sort-move]')).find((button) => button.dataset.cardId === String(card.cardId || '') && button.dataset.cardSortMove === focusDirection && !button.disabled);
+    if (focusTarget) focusTarget.focus();
+    showMessage(els.cardSortMessage, `已將「${String(card.title || '集點卡')}」調整為第 ${toIndex + 1} 張；請按「儲存排序」套用。`);
+  }
+
+  function updateCardSortSaveState() {
+    if (!els.cardSortSaveButton) return;
+    els.cardSortSaveButton.disabled = state.cardSortBusy || state.writeConfirmationRequired || !state.cardSortDirty;
+    els.cardSortSaveButton.textContent = state.cardSortBusy ? '儲存中…' : '儲存排序';
+  }
+
+  async function saveCardSort() {
+    if (state.cardSortBusy || !state.cardSortDirty || requireRefreshBeforeWrite(els.cardSortMessage)) return;
+    const cardOrders = state.cards.map((card, index) => ({ cardId: String(card.cardId), sortOrder: index, expectedUpdatedAt: String(card.updatedAt || '') }));
+    state.cardSortBusy = true; updateCardSortSaveState(); showOperationProgress('正在儲存集點卡排序…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.reorder', { cardOrders });
+      if (!Array.isArray(result.cards) || result.cards.length !== cardOrders.length || result.cards.some((card) => !card || !card.cardId)) { const error = new Error('無法確認集點卡排序結果。'); error.code = 'API_RESPONSE_UNCERTAIN'; throw error; }
+      state.cards = result.cards; state.cardSortOriginalOrder = state.cards.map((card) => String(card.cardId || '')); state.cardSortDirty = false; renderCardList(); showOperationSuccess('集點卡排序已儲存'); showMessage(els.cardSortMessage, '已更新會員端顯示順序。', true);
+    } catch (error) {
+      if (error && error.code === 'API_RESPONSE_UNCERTAIN') { state.writeConfirmationRequired = true; lockAdminWrites(); showOperationNotice('無法確認排序是否完成，請重新整理確認。', 'warning', 0); showUncertainWriteMessage(els.cardSortMessage); setSyncStatus('排序結果尚未確認；請重新整理確認後再操作。', true); }
+      else { showOperationNotice(error && error.code === 'CONFLICT' ? '集點卡資料已變更，請重新整理後再試。' : '排序未完成，請稍後再試。', 'error', 4600); showMessage(els.cardSortMessage, error && error.code === 'CONFLICT' ? '集點卡已被其他管理者更新，請重新整理後再排序。' : error && error.message || '排序未完成，請稍後再試。'); }
+    } finally { state.cardSortBusy = false; updateCardSortSaveState(); }
+  }
+
+  function loadCardForm(cardId) {
+    const card = state.cards.find((item) => item.cardId === cardId); if (!card) return;
+    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardUsageMethod.value = String(card.usageMethod || ''); els.cardUsageInstructions.value = String(card.usageInstructions || ''); els.cardBenefitDescription.value = String(card.benefitDescription || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardStyle.value = safeTierStyle(card.styleKey); updatePointCardStylePreview(); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.archiveCardButton.disabled = card.status === 'archived'; els.archiveCardButton.textContent = card.status === 'archived' ? '已封存集點卡' : '封存集點卡'; els.deleteCardButton.disabled = false; hideMessage(els.cardFormMessage); renderCardList();
+  }
+
+  function resetCardForm() {
+    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = ''; els.cardStyle.value = 'forest'; updatePointCardStylePreview(); els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, ''); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
+  }
+
+  function defaultReward(thresholdStamps) { return { thresholdStamps, ticketTemplateId: '' }; }
+  function updateCardExpiryUI() { const limited = els.cardExpiryMode.value === 'date'; els.cardExpiresOnField.classList.toggle('hidden', !limited); els.cardExpiresOn.required = limited; updateCardExpiryDateUI(); }
+  function validatePublicStatus(value, label) { return ['active', 'draft', 'archived'].includes(String(value || '')) ? '' : `請選擇${label}公開狀態。`; }
+  function validateCardExpiry(mode, expiresOn) { if (mode === 'unlimited') return ''; if (mode !== 'date' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) return '請選擇有效的集點卡到期日。'; const parts = expiresOn.split('-').map(Number); const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])); return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2] ? '' : '請選擇有效的集點卡到期日。'; }
+  function validateCardGuidance(usageMethod, usageInstructions, benefitDescription) { if (usageMethod.length > 120) return '使用方式最多 120 字。'; if (usageInstructions.length > 500) return '使用說明最多 500 字。'; if (benefitDescription.length > 500) return '優惠說明最多 500 字。'; return ''; }
+
+  function activeTicketOptions(currentTicketTemplateId) {
+    const tickets = state.tickets.filter((ticket) => ticket.status === 'active' || ticket.ticketTemplateId === currentTicketTemplateId);
+    return [['', state.tickets.some((ticket) => ticket.status === 'active') ? '請選擇票券' : '請先到「票券」頁新增並啟用票券']].concat(tickets.map((ticket) => [ticket.ticketTemplateId, `${ticket.title || '未命名票券'} · ${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'}${ticket.status === 'active' ? '' : '（未啟用）'}`]));
+  }
+
+  function renderRewardRows(rewards) { els.rewardRows.replaceChildren(...rewards.map((reward, index) => createRewardRow(reward, index))); updateRewardEditorHint(); }
+  function createRewardRow(reward, index) {
+    const row = document.createElement('article'); row.className = 'reward-row-editor'; row.dataset.rewardRow = 'true';
+    const heading = document.createElement('div'); heading.className = 'reward-row-heading'; const label = document.createElement('strong'); label.textContent = `節點 ${index + 1}`; const summary = document.createElement('span'); summary.className = 'reward-row-summary'; summary.dataset.rewardSummary = 'true'; const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button remove-reward'; remove.dataset.removeReward = 'true'; remove.textContent = '刪除'; heading.append(label, summary, remove);
+    const grid = document.createElement('div'); grid.className = 'reward-row-grid'; grid.append(fieldLabel('需要集到', 'number', reward.thresholdStamps, { field: 'thresholdStamps', min: '1', max: '100', step: '1', suffix: '點' }), fieldLabel('選擇票券', 'select', reward.ticketTemplateId, { field: 'ticketTemplateId', options: activeTicketOptions(String(reward.ticketTemplateId || '')) })); row.append(heading, grid); return row;
+  }
+  function fieldLabel(labelText, type, value, options) {
+    const label = document.createElement('label'); label.dataset.fieldLabel = options.field; const caption = document.createElement('span'); caption.textContent = labelText; label.append(caption); let input;
+    if (type === 'select') { input = document.createElement('select'); (options.options || []).forEach(([optionValue, optionLabel]) => { const option = document.createElement('option'); option.value = optionValue; option.textContent = optionLabel; input.append(option); }); input.value = String(value || ''); input.title = String(input.selectedOptions[0] && input.selectedOptions[0].textContent || ''); input.addEventListener('change', () => { input.title = String(input.selectedOptions[0] && input.selectedOptions[0].textContent || ''); }); } else if (type === 'textarea') { input = document.createElement('textarea'); input.value = value === undefined || value === null ? '' : String(value); input.rows = Number(options.rows) || 3; if (options.maxlength) input.maxLength = Number(options.maxlength); if (options.placeholder) input.placeholder = options.placeholder; } else { input = document.createElement('input'); input.type = type; input.value = value === undefined || value === null ? '' : String(value); if (options.min) input.min = options.min; if (options.max) input.max = options.max; if (options.step) input.step = options.step; if (options.maxlength) input.maxLength = Number(options.maxlength); if (options.placeholder) input.placeholder = options.placeholder; }
+    input.dataset.field = options.field; if (options.suffix) { const suffix = document.createElement('span'); suffix.className = 'field-suffix'; suffix.textContent = options.suffix; label.append(input, suffix); } else label.append(input); return label;
+  }
+  function addRewardRow() { const rewards = collectRewards(); const highest = rewards.reduce((max, reward) => Math.max(max, Number(reward.thresholdStamps) || 0), 0); rewards.push(defaultReward(Math.min(100, highest + 5 || 5))); renderRewardRows(rewards); els.rewardRows.querySelector('[data-reward-row]:last-child [data-field="ticketTemplateId"]')?.focus(); }
+  function collectRewards() { return Array.from(els.rewardRows.querySelectorAll('[data-reward-row]')).map((row) => ({ thresholdStamps: Number(row.querySelector('[data-field="thresholdStamps"]')?.value), ticketTemplateId: String(row.querySelector('[data-field="ticketTemplateId"]')?.value || '').trim() })); }
+  function updateRewardEditorHint() {
+    const rewards = collectRewards(); const duplicate = rewards.some((reward, index) => rewards.findIndex((item) => item.thresholdStamps === reward.thresholdStamps) !== index); const missingTicket = rewards.some((reward) => !reward.ticketTemplateId);
+    els.rewardRows.querySelectorAll('[data-reward-row]').forEach((row) => { const threshold = Number(row.querySelector('[data-field="thresholdStamps"]')?.value); const ticket = state.tickets.find((item) => item.ticketTemplateId === row.querySelector('[data-field="ticketTemplateId"]')?.value); const summary = row.querySelector('[data-reward-summary]'); if (summary) summary.textContent = Number.isInteger(threshold) && threshold > 0 ? `集到 ${threshold} 點即可兌換 · ${ticket ? ticket.title : '尚未選擇票券'}` : '請先設定點數節點'; });
+    els.rewardEditorHint.textContent = duplicate ? '有節點使用相同點數，請調整後再儲存。' : missingTicket ? '每個節點都要選擇一張已啟用票券。' : `${rewards.length} 個兌換節點 · 兌換時會自動扣除該節點需要集到的點數。`; els.rewardEditorHint.classList.toggle('warning', duplicate || missingTicket);
+  }
+  function validateRewardEditor(title, rewards) { if (!title || title.length > 80) return '請填寫卡片名稱（最多 80 字）。'; if (!rewards.length || rewards.length > 30) return '請至少設定 1 個兌換節點，最多 30 個節點。'; const thresholds = new Set(); for (const reward of rewards) { if (!Number.isInteger(reward.thresholdStamps) || reward.thresholdStamps < 1 || reward.thresholdStamps > 100) return '需要集到的點數必須是 1–100 的整數。'; if (thresholds.has(reward.thresholdStamps)) return '每個點數只能設定一個節點。'; thresholds.add(reward.thresholdStamps); if (!reward.ticketTemplateId) return '請為每個節點選擇一張票券。'; } return ''; }
+  async function saveCard(event) {
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.cardFormMessage)) return; hideMessage(els.cardFormMessage);
+    const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim(); const usageMethod = String(els.cardUsageMethod.value || '').trim(); const usageInstructions = String(els.cardUsageInstructions.value || '').trim(); const benefitDescription = String(els.cardBenefitDescription.value || '').trim();
+    const validationMessage = validatePublicStatus(els.cardStatus.value, '集點卡') || validateRewardEditor(String(els.cardTitle.value || '').trim(), rewards) || validateCardGuidance(usageMethod, usageInstructions, benefitDescription) || validateCardExpiry(expiryMode, expiresOn);
+    if (validationMessage) return showMessage(els.cardFormMessage, validationMessage);
+    setSaving(els.saveCardButton, true, '正在儲存集點卡…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), usageMethod, usageInstructions, benefitDescription, rewardTitle: '', rewards, status: els.cardStatus.value, styleKey: safeTierStyle(els.cardStyle.value), expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      if (result.card) { state.cards = replaceById(state.cards, result.card, 'cardId'); loadCardForm(result.card.cardId); }
+      if (await refreshAfterSuccessfulWrite('集點卡已儲存', els.cardFormMessage)) showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true);
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
+  }
+
+  async function archiveCard() {
+    if (requireRefreshBeforeWrite(els.cardFormMessage)) return;
+    const cardId = String(els.cardId.value || '').trim();
+    if (!cardId || els.archiveCardButton.disabled) return;
+    if (!window.confirm('封存後不再接受新的集點；會員端會同步隱藏這張卡與相關票券，但所有資料與歷史紀錄都會保留。確定要封存嗎？')) return;
+    const originalText = els.archiveCardButton.textContent;
+    els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '封存中…'; showOperationProgress('正在封存集點卡…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.archive', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      if (result.card) state.cards = replaceById(state.cards, result.card, 'cardId');
+      if (result.card) loadCardForm(result.card.cardId);
+      if (await refreshAfterSuccessfulWrite('集點卡已封存，所有資料仍保留', els.cardFormMessage)) showMessage(els.cardFormMessage, '集點卡已封存；會員端不再顯示，資料與歷史紀錄仍保留。', true);
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (!state.writeConfirmationRequired && els.cardId.value === cardId && els.cardStatus.value !== 'archived') { els.archiveCardButton.disabled = false; els.archiveCardButton.textContent = originalText; } }
+  }
+
+  async function deleteCard() {
+    if (requireRefreshBeforeWrite(els.cardFormMessage)) return;
+    const cardId = String(els.cardId.value || '').trim();
+    const cardTitle = String(els.cardTitle.value || '這張集點卡').trim();
+    if (!cardId || els.deleteCardButton.disabled) return;
+    if (!window.confirm(`永久刪除「${cardTitle}」後，集點卡、節點、票券、餘額、點數流水與相關歷史都會移除，無法復原。要繼續嗎？`)) return;
+    if (!window.confirm('最後確認：這是永久刪除，不是封存。確定要刪除嗎？')) return;
+    const originalText = els.deleteCardButton.textContent;
+    els.deleteCardButton.disabled = true; els.deleteCardButton.textContent = '刪除中…'; showOperationProgress('正在永久刪除集點卡…');
+    try {
+      await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.delete', { cardId, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      state.cards = state.cards.filter((card) => card.cardId !== cardId); state.selectedCardId = ''; resetCardForm();
+      if (await refreshAfterSuccessfulWrite('集點卡已永久刪除', els.cardFormMessage)) showMessage(els.cardFormMessage, '集點卡與所有相關資料已永久刪除。', true);
+    } catch (error) { handleActionError(error, els.cardFormMessage); } finally { if (!state.writeConfirmationRequired && els.cardId.value === cardId) { els.deleteCardButton.disabled = false; els.deleteCardButton.textContent = originalText; } }
+  }
+
+  function renderTicketList() {
+    els.ticketResultCount.textContent = String(state.tickets.length); els.ticketEmptyState.classList.toggle('hidden', state.tickets.length !== 0);
+    els.ticketListItems.replaceChildren(...state.tickets.map((ticket) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.ticketTemplateId = String(ticket.ticketTemplateId); button.setAttribute('aria-selected', String(ticket.ticketTemplateId) === state.selectedTicketId ? 'true' : 'false'); const title = document.createElement('strong'); title.textContent = String(ticket.title || '未命名票券'); const meta = document.createElement('small'); meta.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'} · ${statusLabel(ticket.status)}`; button.append(title, meta); return button; }));
+  }
+  function loadTicketForm(ticketTemplateId) { const ticket = state.tickets.find((item) => item.ticketTemplateId === ticketTemplateId); if (!ticket) return; state.selectedTicketId = ticketTemplateId; els.ticketTemplateId.value = String(ticket.ticketTemplateId); els.ticketExpectedUpdatedAt.value = String(ticket.updatedAt || ''); els.ticketTitle.value = String(ticket.title || ''); els.ticketType.value = ticket.ticketType === 'lottery' ? 'lottery' : 'coupon'; els.ticketDescription.value = String(ticket.description || ''); els.ticketUsageMethod.value = String(ticket.usageMethod || ''); els.ticketUsageInstructions.value = String(ticket.usageInstructions || ''); els.ticketStatus.value = String(ticket.status || 'draft'); renderTicketPrizeRows(ticket.prizes && ticket.prizes.length ? ticket.prizes : [defaultPrize()]); updateTicketTypeUI(); els.ticketEditorKicker.textContent = 'Edit ticket'; els.ticketEditorTitle.textContent = String(ticket.title || '編輯票券'); updateEditorStatus(els.ticketEditorStatus, ticket.status); hideMessage(els.ticketFormMessage); renderTicketList(); }
+  function resetTicketForm() { state.selectedTicketId = ''; els.ticketForm.reset(); els.ticketTemplateId.value = ''; els.ticketExpectedUpdatedAt.value = ''; els.ticketType.value = 'coupon'; els.ticketStatus.value = ''; renderTicketPrizeRows([defaultPrize()]); updateTicketTypeUI(); els.ticketEditorKicker.textContent = 'Create ticket'; els.ticketEditorTitle.textContent = '新增票券'; updateEditorStatus(els.ticketEditorStatus, ''); hideMessage(els.ticketFormMessage); renderTicketList(); }
+  function defaultPrize(rate) { return { prizeTitle: '', prizeDescription: '', winRate: rate === undefined ? 100 : rate }; }
+  function updateTicketTypeUI() { const lottery = els.ticketType.value === 'lottery'; els.ticketPrizeEditor.classList.toggle('hidden', !lottery); if (lottery && !els.ticketPrizeRows.children.length) renderTicketPrizeRows([defaultPrize()]); }
+  function renderTicketPrizeRows(prizes) { els.ticketPrizeRows.replaceChildren(...prizes.map((prize, index) => { const row = document.createElement('div'); row.className = 'prize-row'; row.dataset.ticketPrizeRow = 'true'; row.append(fieldLabel(`獎項 ${index + 1} 名稱`, 'text', prize.prizeTitle, { field: 'ticketPrizeTitle', maxlength: '100', placeholder: '例如：免費蛋糕' }), fieldLabel('中獎機率', 'number', prize.winRate, { field: 'ticketPrizeRate', min: '0', max: '100', step: '0.01', suffix: '%' })); const description = fieldLabel('獎項說明（可換行，選填）', 'textarea', prize.prizeDescription, { field: 'ticketPrizeDescription', maxlength: '240', rows: 2, placeholder: '例如：可兌換任一蛋糕' }); description.classList.add('prize-description-field'); const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button remove-prize'; remove.dataset.removeTicketPrize = 'true'; remove.textContent = '刪除'; row.append(description, remove); return row; })); updateTicketPrizeTotal(); }
+  function collectTicketPrizes() { return Array.from(els.ticketPrizeRows.querySelectorAll('[data-ticket-prize-row]')).map((row) => ({ prizeTitle: String(row.querySelector('[data-field="ticketPrizeTitle"]')?.value || '').trim(), prizeDescription: String(row.querySelector('[data-field="ticketPrizeDescription"]')?.value || '').trim(), winRate: Number(row.querySelector('[data-field="ticketPrizeRate"]')?.value) })); }
+  function updateTicketPrizeTotal() { const total = Math.round(collectTicketPrizes().reduce((sum, prize) => sum + (Number.isFinite(prize.winRate) ? prize.winRate : 0), 0) * 100); els.ticketPrizeTotal.textContent = `機率合計 ${formatRate(total / 100)}%${total === 10000 ? ' ✓' : '／還差 ' + formatRate((10000 - total) / 100) + '%'}`; els.ticketPrizeTotal.classList.toggle('warning', total !== 10000); }
+  function balanceTicketPrizes() { const rows = Array.from(els.ticketPrizeRows.querySelectorAll('[data-ticket-prize-row]')); if (!rows.length) return; const base = Math.floor(10000 / rows.length); const remainder = 10000 - base * rows.length; rows.forEach((row, index) => { row.querySelector('[data-field="ticketPrizeRate"]').value = String((base + (index < remainder ? 1 : 0)) / 100); }); updateTicketPrizeTotal(); }
+  function validateTicket(ticket) { if (!['active', 'draft', 'archived'].includes(ticket.status)) return '請選擇票券公開狀態。'; if (!ticket.title || ticket.title.length > 100) return '請填寫票券名稱（最多 100 字）。'; if (!ticket.description || ticket.description.length > 240) return '請填寫票券說明（最多 240 字）。'; if (!ticket.usageMethod || ticket.usageMethod.length > 120) return '請填寫使用方式（最多 120 字）。'; if (!ticket.usageInstructions || ticket.usageInstructions.length > 500) return '請填寫使用說明（最多 500 字）。'; if (ticket.ticketType !== 'lottery') return ''; if (!ticket.prizes.length || ticket.prizes.length > 30) return '抽獎券至少要設定 1 個獎項，最多 30 個獎項。'; let total = 0; for (const prize of ticket.prizes) { if (!prize.prizeTitle || prize.prizeTitle.length > 100) return '每個抽獎獎項都需要填寫名稱。'; if (prize.prizeDescription.length > 240) return '獎項說明最多 240 字。'; if (!Number.isFinite(prize.winRate) || prize.winRate < 0 || prize.winRate > 100) return '每個獎項機率必須介於 0–100%。'; total += Math.round(prize.winRate * 100); } return total === 10000 ? '' : '同一張抽獎券的獎項機率合計必須正好是 100%。'; }
+  async function saveTicket(event) {
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.ticketFormMessage)) return; hideMessage(els.ticketFormMessage);
+    const ticket = { ticketTemplateId: els.ticketTemplateId.value, title: String(els.ticketTitle.value || '').trim(), ticketType: els.ticketType.value, description: String(els.ticketDescription.value || '').trim(), usageMethod: String(els.ticketUsageMethod.value || '').trim(), usageInstructions: String(els.ticketUsageInstructions.value || '').trim(), status: els.ticketStatus.value, prizes: els.ticketType.value === 'lottery' ? collectTicketPrizes() : [] };
+    const validationMessage = validateTicket(ticket);
+    if (validationMessage) return showMessage(els.ticketFormMessage, validationMessage);
+    setSaving(els.saveTicketButton, true, '正在儲存票券…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.tickets.save', { ticket, expectedUpdatedAt: els.ticketExpectedUpdatedAt.value });
+      if (result.ticket) { state.tickets = replaceById(state.tickets, result.ticket, 'ticketTemplateId'); loadTicketForm(result.ticket.ticketTemplateId); }
+      if (await refreshAfterSuccessfulWrite('票券已儲存', els.ticketFormMessage)) showMessage(els.ticketFormMessage, '票券已儲存；集點卡節點現在可以選擇它。', true);
+    } catch (error) { handleActionError(error, els.ticketFormMessage); } finally { setSaving(els.saveTicketButton, false); }
+  }
+  function formatRate(value) { const rate = Number(value); return Number.isFinite(rate) ? String(Number(rate.toFixed(2))) : '0'; }
+
+  function renderEventTicketList() {
+    els.eventTicketResultCount.textContent = String(state.eventTickets.length);
+    els.eventTicketEmptyState.classList.toggle('hidden', state.eventTickets.length !== 0);
+    els.eventTicketListItems.replaceChildren(...state.eventTickets.map((ticket) => {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.eventTicketId = String(ticket.eventTicketId); button.setAttribute('aria-selected', String(ticket.eventTicketId) === state.selectedEventTicketId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(ticket.accent));
+      const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(ticket.title || '未命名活動票券')));
+      const limit = Number(ticket.quota || 0) > 0 ? `${Number(ticket.claimedCount || 0)} / ${Number(ticket.quota)} 張` : `${Number(ticket.claimedCount || 0)} 張已領取`;
+      const dates = ticket.startsOn || ticket.endsOn ? `${ticket.startsOn ? formatAdminDateCompact(ticket.startsOn) : '即日起'}–${ticket.endsOn ? formatAdminDateCompact(ticket.endsOn) : '不限期'}` : '不限期';
+      const allowedTiers = Array.isArray(ticket.allowedTierLabels) && ticket.allowedTierLabels.length ? ticket.allowedTierLabels.join('、') : '全部等級';
+      const meta = document.createElement('small'); meta.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'} · ${allowedTiers} · ${dates} · ${limit} · ${statusLabel(ticket.status)}`;
+      button.append(title, meta); return button;
+    }));
+  }
+
+  function loadEventTicketForm(eventTicketId) {
+    const ticket = state.eventTickets.find((item) => item.eventTicketId === eventTicketId); if (!ticket) return;
+    state.selectedEventTicketId = eventTicketId;
+    els.eventTicketId.value = String(ticket.eventTicketId);
+    els.eventTicketExpectedUpdatedAt.value = String(ticket.updatedAt || '');
+    els.eventTicketTitle.value = String(ticket.title || '');
+    els.eventTicketType.value = ticket.ticketType === 'lottery' ? 'lottery' : 'coupon';
+    els.eventTicketDescription.value = String(ticket.description || '');
+    els.eventTicketUsageMethod.value = String(ticket.usageMethod || '');
+    els.eventTicketUsageInstructions.value = String(ticket.usageInstructions || '');
+    els.eventTicketStatus.value = String(ticket.status || 'draft');
+    els.eventTicketStartsOn.value = String(ticket.startsOn || '');
+    els.eventTicketEndsOn.value = String(ticket.endsOn || '');
+    els.eventTicketQuota.value = String(Number(ticket.quota || 0));
+    els.eventTicketAccent.value = safeAccent(ticket.accent || '#df6b4d');
+    setEventTicketAllowedTiers(ticket.allowedTierKeys);
+    els.deleteEventTicketButton.disabled = false; els.deleteEventTicketButton.textContent = '刪除目前票券';
+    renderEventTicketPrizeRows(ticket.prizes && ticket.prizes.length ? ticket.prizes : [defaultPrize()]);
+    updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI();
+    els.eventTicketEditorKicker.textContent = 'Edit event ticket'; els.eventTicketEditorTitle.textContent = String(ticket.title || '編輯活動票券'); updateEditorStatus(els.eventTicketEditorStatus, ticket.status); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
+  }
+
+  function resetEventTicketForm() {
+    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = ''; els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, ''); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
+  }
+
+  function collectEventTicketAllowedTiers() { return Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.value || '').trim()).filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)); }
+  function setEventTicketAllowedTiers(tierKeys) { const allowed = Array.isArray(tierKeys) ? tierKeys.filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)) : tierKeys === undefined || tierKeys === null ? EVENT_TICKET_TIER_KEYS : []; document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]').forEach((input) => { input.checked = allowed.includes(input.value); }); updateEventTicketTierSummary(); }
+  function updateEventTicketTierSummary() { const summary = document.getElementById('eventTicketTierSummary'); if (!summary) return; const selected = Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.parentElement && input.parentElement.textContent || '').trim()).filter(Boolean); summary.textContent = selected.length === EVENT_TICKET_TIER_KEYS.length ? '已選擇：所有會員等級' : selected.length ? `已選擇：${selected.join('、')}` : '尚未選擇可使用的會員等級'; }
+  function updateEventTicketTypeUI() { const lottery = els.eventTicketType.value === 'lottery'; els.eventTicketPrizeEditor.classList.toggle('hidden', !lottery); if (lottery && !els.eventTicketPrizeRows.children.length) renderEventTicketPrizeRows([defaultPrize()]); }
+  function renderEventTicketPrizeRows(prizes) { els.eventTicketPrizeRows.replaceChildren(...prizes.map((prize, index) => { const row = document.createElement('div'); row.className = 'prize-row'; row.dataset.eventTicketPrizeRow = 'true'; row.append(fieldLabel(`獎項 ${index + 1} 名稱`, 'text', prize.prizeTitle, { field: 'eventTicketPrizeTitle', maxlength: '100', placeholder: '例如：免費蛋糕' }), fieldLabel('中獎機率', 'number', prize.winRate, { field: 'eventTicketPrizeRate', min: '0', max: '100', step: '0.01', suffix: '%' })); const description = fieldLabel('獎項說明（選填）', 'text', prize.prizeDescription, { field: 'eventTicketPrizeDescription', maxlength: '240', placeholder: '例如：可兌換任一蛋糕' }); description.classList.add('prize-description-field'); const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button remove-prize'; remove.dataset.removeEventTicketPrize = 'true'; remove.textContent = '刪除'; row.append(description, remove); return row; })); updateEventTicketPrizeTotal(); }
+  function collectEventTicketPrizes() { return Array.from(els.eventTicketPrizeRows.querySelectorAll('[data-event-ticket-prize-row]')).map((row) => ({ prizeTitle: String(row.querySelector('[data-field="eventTicketPrizeTitle"]')?.value || '').trim(), prizeDescription: String(row.querySelector('[data-field="eventTicketPrizeDescription"]')?.value || '').trim(), winRate: Number(row.querySelector('[data-field="eventTicketPrizeRate"]')?.value) })); }
+  function updateEventTicketPrizeTotal() { const total = Math.round(collectEventTicketPrizes().reduce((sum, prize) => sum + (Number.isFinite(prize.winRate) ? prize.winRate : 0), 0) * 100); els.eventTicketPrizeTotal.textContent = `機率合計 ${formatRate(total / 100)}%${total === 10000 ? ' ✓' : '／還差 ' + formatRate((10000 - total) / 100) + '%'}`; els.eventTicketPrizeTotal.classList.toggle('warning', total !== 10000); }
+  function balanceEventTicketPrizes() { const rows = Array.from(els.eventTicketPrizeRows.querySelectorAll('[data-event-ticket-prize-row]')); if (!rows.length) return; const base = Math.floor(10000 / rows.length); const remainder = 10000 - base * rows.length; rows.forEach((row, index) => { row.querySelector('[data-field="eventTicketPrizeRate"]').value = String((base + (index < remainder ? 1 : 0)) / 100); }); updateEventTicketPrizeTotal(); }
+  function validateEventTicketDates(startsOn, endsOn) { const dateMessage = (value, label) => !value || /^\d{4}-\d{2}-\d{2}$/.test(value) && (() => { const parts = value.split('-').map(Number); const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])); return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2]; })() ? '' : `請選擇有效的${label}。`; return dateMessage(startsOn, '活動開始日') || dateMessage(endsOn, '活動結束日') || (startsOn && endsOn && startsOn > endsOn ? '活動結束日不可早於開始日。' : ''); }
+  function validateEventTicket(ticket) { if (!['active', 'draft', 'archived'].includes(ticket.status)) return '請選擇活動票券公開狀態。'; if (!ticket.title || ticket.title.length > 100) return '請填寫活動票券名稱（最多 100 字）。'; if (!ticket.description || ticket.description.length > 240) return '請填寫票券說明（最多 240 字）。'; if (!ticket.usageMethod || ticket.usageMethod.length > 120) return '請填寫使用方式（最多 120 字）。'; if (!ticket.usageInstructions || ticket.usageInstructions.length > 500) return '請填寫使用說明（最多 500 字）。'; if (!ticket.allowedTierKeys.length) return '請至少選擇一個可使用的會員等級。'; if (!Number.isInteger(ticket.quota) || ticket.quota < 0 || ticket.quota > 1000000) return '總發放上限必須是 0–1,000,000 的整數。'; const dateMessage = validateEventTicketDates(ticket.startsOn, ticket.endsOn); if (dateMessage) return dateMessage; if (ticket.ticketType !== 'lottery') return ''; if (!ticket.prizes.length || ticket.prizes.length > 30) return '抽獎券至少要設定 1 個獎項，最多 30 個獎項。'; let total = 0; for (const prize of ticket.prizes) { if (!prize.prizeTitle || prize.prizeTitle.length > 100) return '每個抽獎獎項都需要填寫名稱。'; if (prize.prizeDescription.length > 240) return '獎項說明最多 240 字。'; if (!Number.isFinite(prize.winRate) || prize.winRate < 0 || prize.winRate > 100) return '每個獎項機率必須介於 0–100%。'; total += Math.round(prize.winRate * 100); } return total === 10000 ? '' : '同一張抽獎券的獎項機率合計必須正好是 100%。'; }
+  async function saveEventTicket(event) {
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.eventTicketFormMessage)) return; hideMessage(els.eventTicketFormMessage);
+    const ticket = { eventTicketId: els.eventTicketId.value, title: String(els.eventTicketTitle.value || '').trim(), ticketType: els.eventTicketType.value, description: String(els.eventTicketDescription.value || '').trim(), usageMethod: String(els.eventTicketUsageMethod.value || '').trim(), usageInstructions: String(els.eventTicketUsageInstructions.value || '').trim(), status: els.eventTicketStatus.value, startsOn: String(els.eventTicketStartsOn.value || '').trim(), endsOn: String(els.eventTicketEndsOn.value || '').trim(), quota: Number(els.eventTicketQuota.value), allowedTierKeys: collectEventTicketAllowedTiers(), accent: safeAccent(els.eventTicketAccent.value), prizes: els.eventTicketType.value === 'lottery' ? collectEventTicketPrizes() : [] };
+    const validationMessage = validateEventTicket(ticket); if (validationMessage) return showMessage(els.eventTicketFormMessage, validationMessage);
+    setSaving(els.saveEventTicketButton, true, '正在儲存活動票券…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.event-tickets.save', { eventTicket: ticket, expectedUpdatedAt: els.eventTicketExpectedUpdatedAt.value });
+      if (result.eventTicket) { state.eventTickets = replaceById(state.eventTickets, result.eventTicket, 'eventTicketId'); loadEventTicketForm(result.eventTicket.eventTicketId); }
+      if (await refreshAfterSuccessfulWrite('活動票券已儲存', els.eventTicketFormMessage)) showMessage(els.eventTicketFormMessage, '活動票券已儲存；會員可在活動票券 LIFF 領取。', true);
+    } catch (error) { handleActionError(error, els.eventTicketFormMessage); } finally { setSaving(els.saveEventTicketButton, false); }
+  }
+  async function deleteEventTicket() {
+    if (requireRefreshBeforeWrite(els.eventTicketFormMessage)) return;
+    const eventTicketId = String(els.eventTicketId.value || '').trim(); const title = String(els.eventTicketTitle.value || '這張活動票券').trim();
+    if (!eventTicketId || els.deleteEventTicketButton.disabled) return;
+    if (!window.confirm(`刪除「${title}」後，會員端將無法再領取或使用；已領取的票券快照與稽核紀錄會保留。確定要刪除嗎？`)) return;
+    const originalText = els.deleteEventTicketButton.textContent;
+    els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.textContent = '刪除中…'; showOperationProgress('正在刪除活動票券…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.event-tickets.delete', { eventTicketId, expectedUpdatedAt: els.eventTicketExpectedUpdatedAt.value });
+      state.eventTickets = state.eventTickets.filter((ticket) => ticket.eventTicketId !== eventTicketId); state.selectedEventTicketId = ''; resetEventTicketForm();
+      const preserved = Number(result.preservedClaimCount || 0);
+      if (await refreshAfterSuccessfulWrite('活動票券已刪除', els.eventTicketFormMessage)) showMessage(els.eventTicketFormMessage, preserved ? `活動票券已刪除；已保留 ${preserved} 筆會員票券歷史。` : '活動票券已刪除。', true);
+    } catch (error) { handleActionError(error, els.eventTicketFormMessage); } finally { if (!state.writeConfirmationRequired && els.eventTicketId.value === eventTicketId) { els.deleteEventTicketButton.disabled = false; els.deleteEventTicketButton.textContent = originalText; } }
+  }
+  function updateEventTicketAccentValue() { els.eventTicketAccentValue.textContent = safeAccent(els.eventTicketAccent.value).toUpperCase(); }
+
+  function prepareCalendarWorkspace() {
+    document.getElementById('calendarItemResultCount')?.closest('.list-heading')?.remove();
+    document.getElementById('calendarItemListItems')?.remove();
+    document.getElementById('calendarItemEmptyState')?.remove();
+    const calendar = els.adminCalendarGrid.closest('.admin-calendar');
+    const batchEditor = document.querySelector('.calendar-batch-editor');
+    calendar?.closest('.card-list')?.setAttribute('aria-label', '月曆');
+    if (calendar && batchEditor) calendar.append(batchEditor);
+    const batchTitle = document.getElementById('calendarBatchTitle');
+    if (batchTitle) batchTitle.textContent = '月曆批次作業';
+    const batchDescription = batchEditor && batchEditor.querySelector('.section-heading p:not(.kicker)');
+    if (batchDescription) batchDescription.textContent = '在月曆勾選日期以批次新增；勾選既有項目後可批次修改或刪除。每次最多 20 筆，送出前會先檢查全部資料。';
+    const calendarHint = calendar && calendar.querySelector('.admin-calendar-toolbar p');
+    if (calendarHint) calendarHint.textContent = '點選空白日期新增，點選既有項目編輯；勾選日期或項目可批次處理。';
+    els.addCalendarBatchItemButton.textContent = '新增選取日期';
+    els.queueSelectedCalendarItemsButton.textContent = '修改選取項目';
+    els.deleteSelectedCalendarItemsButton.textContent = '刪除選取項目';
+  }
+
+  function renderAdminCalendar() {
+    const month = currentAdminCalendarMonth();
+    state.adminCalendarMonth = toAdminIsoDate(month);
+    const monthTitle = new Intl.DateTimeFormat('zh-Hant-TW', { timeZone: 'UTC', year: 'numeric', month: 'long' }).format(month);
+    const firstWeekday = month.getUTCDay();
+    const daysInMonth = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0)).getUTCDate();
+    const today = todayAdminIsoDate();
+    const cells = [];
+    els.adminCalendarMonthTitle.textContent = monthTitle;
+    els.adminCalendarGrid.setAttribute('aria-label', `${monthTitle}日曆；點選空白日期新增，點選既有項目編輯，勾選日期或項目進行批次作業`);
+
+    for (let index = 0; index < 42; index += 1) {
+      const day = index - firstWeekday + 1;
+      if (day < 1 || day > daysInMonth) {
+        const blank = document.createElement('div'); blank.className = 'admin-calendar-day admin-calendar-day-empty'; blank.setAttribute('aria-hidden', 'true'); cells.push(blank); continue;
+      }
+      const date = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), day));
+      const dateValue = toAdminIsoDate(date);
+      const entries = adminCalendarItemsForDate(dateValue);
+      const cell = document.createElement('article'); cell.className = 'admin-calendar-day';
+      if (dateValue === today) cell.classList.add('is-today');
+      if (entries.length) cell.classList.add('has-items');
+      if (state.selectedCalendarDates.has(dateValue)) cell.classList.add('is-selected-for-batch');
+      const dayHeader = document.createElement('div'); dayHeader.className = 'admin-calendar-day-header';
+      const dateSelect = document.createElement('input'); dateSelect.type = 'checkbox'; dateSelect.className = 'admin-calendar-selection admin-calendar-date-select'; dateSelect.dataset.adminCalendarDateSelect = dateValue; dateSelect.checked = state.selectedCalendarDates.has(dateValue); dateSelect.disabled = state.writeConfirmationRequired; dateSelect.setAttribute('aria-label', `選取${formatAdminDateValue(dateValue, true)}以批次新增`);
+      const dateButton = document.createElement('button'); dateButton.type = 'button'; dateButton.className = 'admin-calendar-day-button'; dateButton.dataset.adminCalendarDate = dateValue; dateButton.setAttribute('aria-label', `${formatAdminDateValue(dateValue, true)}，新增休假日或活動`);
+      const dateNumber = document.createElement('span'); dateNumber.className = 'admin-calendar-day-number'; dateNumber.textContent = String(day); dateButton.append(dateNumber);
+      const entryList = document.createElement('div'); entryList.className = 'admin-calendar-items';
+      entries.forEach((item) => {
+        const calendarItemId = String(item.calendarItemId || '');
+        const itemRow = document.createElement('div'); itemRow.className = 'admin-calendar-item-row';
+        if (state.selectedCalendarItemIds.has(calendarItemId)) itemRow.classList.add('is-selected-for-batch');
+        const itemSelect = document.createElement('input'); itemSelect.type = 'checkbox'; itemSelect.className = 'admin-calendar-selection admin-calendar-item-select'; itemSelect.dataset.adminCalendarItemSelect = calendarItemId; itemSelect.checked = state.selectedCalendarItemIds.has(calendarItemId); itemSelect.disabled = state.writeConfirmationRequired; itemSelect.setAttribute('aria-label', `選取${String(item.title || '日曆項目')}進行批次修改或刪除`);
+        const itemButton = document.createElement('button'); itemButton.type = 'button'; itemButton.className = `admin-calendar-item ${item.itemType === 'holiday' ? 'holiday' : 'event'}`; itemButton.dataset.adminCalendarItemId = calendarItemId; itemButton.style.setProperty('--calendar-item-accent', safeAccent(item.accent)); itemButton.setAttribute('aria-label', `編輯${item.itemType === 'holiday' ? '休假日' : '活動'}：${String(item.title || '未命名日期')}`); itemButton.textContent = String(item.title || '未命名日期'); itemRow.append(itemSelect, itemButton); entryList.append(itemRow);
+      });
+      dayHeader.append(dateSelect, dateButton); cell.append(dayHeader, entryList); cells.push(cell);
+    }
+    els.adminCalendarGrid.replaceChildren(...cells);
+  }
+
+  function currentAdminCalendarMonth() {
+    const current = parseAdminIsoDate(state.adminCalendarMonth) || parseAdminIsoDate(todayAdminIsoDate());
+    if (!current) return new Date();
+    current.setUTCDate(1);
+    return current;
+  }
+
+  function changeAdminCalendarMonth(offset) {
+    const month = currentAdminCalendarMonth();
+    month.setUTCMonth(month.getUTCMonth() + Number(offset || 0));
+    state.adminCalendarMonth = toAdminIsoDate(month);
+    renderAdminCalendar();
+  }
+
+  function adminCalendarItemsForDate(dateValue) {
+    return state.calendarItems.filter((item) => {
+      const startsOn = String(item && item.startsOn || '');
+      const endsOn = String(item && item.endsOn || startsOn);
+      return Boolean(parseAdminIsoDate(startsOn) && parseAdminIsoDate(endsOn) && startsOn <= dateValue && dateValue <= endsOn);
+    });
+  }
+
+  function handleAdminCalendarGridClick(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const itemButton = target.closest('[data-admin-calendar-item-id]');
+    if (itemButton) { loadCalendarItemForm(itemButton.dataset.adminCalendarItemId, false); openEditorModal('calendar', itemButton); return; }
+    const dateButton = target.closest('[data-admin-calendar-date]');
+    if (dateButton) openCalendarDateEditor(dateButton.dataset.adminCalendarDate, dateButton);
+  }
+
+  function handleAdminCalendarGridChange(event) {
+    const input = event.target instanceof HTMLInputElement ? event.target : null;
+    if (!input) return;
+    const dateValue = String(input.dataset.adminCalendarDateSelect || '');
+    if (dateValue) {
+      if (input.checked) state.selectedCalendarDates.add(dateValue); else state.selectedCalendarDates.delete(dateValue);
+      renderAdminCalendar(); renderCalendarBatchControls(); return;
+    }
+    const calendarItemId = String(input.dataset.adminCalendarItemSelect || '');
+    if (!calendarItemId) return;
+    if (input.checked) state.selectedCalendarItemIds.add(calendarItemId); else state.selectedCalendarItemIds.delete(calendarItemId);
+    renderAdminCalendar(); renderCalendarBatchControls();
+  }
+
+  function openCalendarDateEditor(dateValue, opener) {
+    if (!parseAdminIsoDate(dateValue)) return;
+    resetCalendarItemForm(false);
+    els.calendarItemStartsOn.value = dateValue;
+    els.calendarItemEndsOn.value = '';
+    els.calendarItemEditorTitle.textContent = `新增${formatAdminDateValue(dateValue, true)}日曆項目`;
+    openEditorModal('calendar', opener);
+  }
+
+  function selectedCalendarItems() {
+    return state.calendarItems.filter((item) => state.selectedCalendarItemIds.has(String(item.calendarItemId || '')));
+  }
+
+  function selectedCalendarDates() {
+    return Array.from(state.selectedCalendarDates).filter((dateValue) => parseAdminIsoDate(dateValue)).sort();
+  }
+
+  function calendarBatchItemFromCalendarItem(item, startsOn) {
+    return {
+      key: 'calendar-batch-' + String(state.calendarBatchNextKey++),
+      calendarItem: {
+        calendarItemId: String(item && item.calendarItemId || ''),
+        title: String(item && item.title || ''),
+        itemType: item && item.itemType === 'event' ? 'event' : 'holiday',
+        description: String(item && item.description || ''),
+        status: String(item && item.status || 'draft'),
+        startsOn: String(item && item.startsOn || startsOn || todayAdminIsoDate()),
+        endsOn: String(item && item.endsOn || ''),
+        accent: safeAccent(item && item.accent || '#df6b4d'),
+        allowedTierKeys: item && item.itemType === 'event' ? normalizeCalendarItemTierKeys(item.allowedTierKeys, CALENDAR_ITEM_TIER_KEYS) : [],
+        linkLabel: item && item.itemType === 'event' ? String(item.linkLabel || '') : '',
+        linkUrl: item && item.itemType === 'event' ? String(item.linkUrl || '') : ''
+      },
+      expectedUpdatedAt: String(item && item.updatedAt || '')
+    };
+  }
+
+  function synchronizeCalendarBatchItemsFromDom() {
+    if (!els.calendarBatchRows.children.length) return;
+    state.calendarBatchItems = Array.from(els.calendarBatchRows.querySelectorAll('[data-calendar-batch-row]')).map((row) => ({
+      key: String(row.dataset.calendarBatchRow || ''),
+      calendarItem: {
+        calendarItemId: String(row.dataset.calendarItemId || ''),
+        title: String(row.querySelector('[data-calendar-batch-field="title"]')?.value || '').trim(),
+        itemType: String(row.querySelector('[data-calendar-batch-field="itemType"]')?.value || ''),
+        description: String(row.querySelector('[data-calendar-batch-field="description"]')?.value || '').trim(),
+        status: String(row.querySelector('[data-calendar-batch-field="status"]')?.value || ''),
+        startsOn: String(row.querySelector('[data-calendar-batch-field="startsOn"]')?.value || '').trim(),
+        endsOn: String(row.querySelector('[data-calendar-batch-field="endsOn"]')?.value || '').trim(),
+        accent: safeAccent(row.querySelector('[data-calendar-batch-field="accent"]')?.value || ''),
+        allowedTierKeys: calendarTierKeysFromAccess(row.querySelector('[data-calendar-tier-access]')),
+        linkLabel: String(row.querySelector('[data-calendar-batch-field="linkLabel"]')?.value || '').trim(),
+        linkUrl: String(row.querySelector('[data-calendar-batch-field="linkUrl"]')?.value || '').trim()
+      },
+      expectedUpdatedAt: String(row.dataset.expectedUpdatedAt || '')
+    }));
+  }
+
+  function queueSelectedCalendarDates() {
+    synchronizeCalendarBatchItemsFromDom();
+    const dates = selectedCalendarDates();
+    if (!dates.length) return showMessage(els.calendarBatchMessage, '請先在月曆勾選要批次新增的日期。');
+    if (state.calendarBatchItems.length + dates.length > 20) return showMessage(els.calendarBatchMessage, '批次處理最多 20 筆；請減少勾選日期或先儲存目前批次。');
+    dates.forEach((dateValue) => state.calendarBatchItems.push(calendarBatchItemFromCalendarItem(null, dateValue)));
+    state.selectedCalendarDates.clear();
+    hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+    els.calendarBatchRows.querySelector('[data-calendar-batch-row]:last-child [data-calendar-batch-field="title"]')?.focus();
+  }
+
+  function queueSelectedCalendarItems() {
+    synchronizeCalendarBatchItemsFromDom();
+    const queuedIds = new Set(state.calendarBatchItems.map((entry) => String(entry.calendarItem.calendarItemId || '')).filter(Boolean));
+    const selected = selectedCalendarItems().filter((item) => !queuedIds.has(String(item.calendarItemId || '')));
+    if (!selected.length) return showMessage(els.calendarBatchMessage, state.selectedCalendarItemIds.size ? '選取的項目都已加入批次。' : '請先勾選要批次修改的日曆項目。');
+    if (state.calendarBatchItems.length + selected.length > 20) return showMessage(els.calendarBatchMessage, '批次處理最多 20 筆；請減少選取項目後再加入。');
+    selected.forEach((item) => state.calendarBatchItems.push(calendarBatchItemFromCalendarItem(item)));
+    hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+  }
+
+  function createCalendarBatchField(labelText, field, type, value, options) {
+    const label = document.createElement('label'); label.className = 'calendar-batch-field';
+    if (field === 'description') label.classList.add('calendar-batch-description-field');
+    if (field === 'accent') label.classList.add('calendar-batch-accent-field');
+    if (field === 'linkLabel' || field === 'linkUrl') label.dataset.calendarEventLinkField = 'true';
+    const caption = document.createElement('span'); caption.textContent = labelText; label.append(caption);
+    let control;
+    if (type === 'select') {
+      control = document.createElement('select');
+      (options || []).forEach(([optionValue, optionLabel]) => { const option = document.createElement('option'); option.value = optionValue; option.textContent = optionLabel; control.append(option); });
+      control.value = String(value || '');
+    } else if (type === 'textarea') {
+      control = document.createElement('textarea'); control.rows = 3; control.maxLength = 500; control.value = String(value || '');
+    } else {
+      control = document.createElement('input'); control.type = type; control.value = String(value || '');
+      if (type === 'text') { control.maxLength = 100; control.required = true; }
+      if (type === 'date') control.required = field === 'startsOn';
+      if (field === 'linkLabel') { control.maxLength = 80; control.required = false; }
+      if (field === 'linkUrl') { control.maxLength = 2048; control.inputMode = 'url'; }
+    }
+    control.dataset.calendarBatchField = field;
+    label.append(control);
+    return label;
+  }
+
+  function createCalendarTierAccess() {
+    const access = document.createElement('fieldset'); access.className = 'event-ticket-tier-access'; access.dataset.calendarTierAccess = 'true';
+    const legend = document.createElement('legend'); legend.textContent = '這個活動的參加會員階級';
+    const description = document.createElement('p'); description.textContent = '只在類型為「活動」時套用。每筆活動各自儲存設定，未符合階級的會員仍可看到活動與資格提示。';
+    const options = document.createElement('div'); options.className = 'event-ticket-tier-options';
+    CALENDAR_ITEM_TIER_KEYS.forEach((tierKey) => {
+      const label = document.createElement('label'); const input = document.createElement('input'); input.type = 'checkbox'; input.value = tierKey; input.checked = true; input.dataset.calendarAllowedTierKey = 'true';
+      label.append(input, document.createTextNode(CALENDAR_ITEM_TIER_LABELS[tierKey])); options.append(label);
+    });
+    const summary = document.createElement('output'); summary.className = 'event-ticket-tier-summary'; summary.dataset.calendarTierSummary = 'true'; summary.setAttribute('aria-live', 'polite');
+    access.append(legend, description, options, summary);
+    return access;
+  }
+
+  function ensureCalendarItemTierAccess() {
+    let access = document.getElementById('calendarItemAllowedTiers');
+    if (!access) {
+      access = createCalendarTierAccess(); access.id = 'calendarItemAllowedTiers';
+      const titleField = els.calendarItemTitle.closest('label');
+      if (titleField) els.calendarItemForm.insertBefore(access, titleField);
+    }
+    updateCalendarItemTierSummary();
+    updateCalendarItemTypeUI();
+    return access;
+  }
+
+  function normalizeCalendarItemTierKeys(tierKeys, fallback) {
+    if (!Array.isArray(tierKeys)) return Array.isArray(fallback) ? fallback.slice() : [];
+    return CALENDAR_ITEM_TIER_KEYS.filter((tierKey) => tierKeys.includes(tierKey));
+  }
+
+  function calendarTierKeysFromAccess(access) {
+    if (!access) return [];
+    return Array.from(access.querySelectorAll('input[data-calendar-allowed-tier-key]:checked')).map((input) => String(input.value || '')).filter((tierKey) => CALENDAR_ITEM_TIER_KEYS.includes(tierKey));
+  }
+
+  function setCalendarTierAccess(access, tierKeys) {
+    if (!access) return;
+    const allowed = normalizeCalendarItemTierKeys(tierKeys, CALENDAR_ITEM_TIER_KEYS);
+    access.querySelectorAll('input[data-calendar-allowed-tier-key]').forEach((input) => { input.checked = allowed.includes(input.value); });
+    updateCalendarTierAccessSummary(access);
+  }
+
+  function calendarItemTierSummaryText(tierKeys) {
+    const labels = normalizeCalendarItemTierKeys(tierKeys, CALENDAR_ITEM_TIER_KEYS).map((tierKey) => CALENDAR_ITEM_TIER_LABELS[tierKey]);
+    return labels.length === CALENDAR_ITEM_TIER_KEYS.length ? '所有會員等級' : labels.length ? labels.join('、') : '尚未設定參加階級';
+  }
+
+  function updateCalendarTierAccessSummary(access) {
+    const summary = access && access.querySelector('[data-calendar-tier-summary]');
+    if (summary) summary.textContent = '已選擇：' + calendarItemTierSummaryText(calendarTierKeysFromAccess(access));
+  }
+
+  function collectCalendarItemAllowedTiers() { return calendarTierKeysFromAccess(document.getElementById('calendarItemAllowedTiers')); }
+
+  function setCalendarItemAllowedTiers(tierKeys) { setCalendarTierAccess(document.getElementById('calendarItemAllowedTiers'), tierKeys); }
+
+  function updateCalendarItemTierSummary() { updateCalendarTierAccessSummary(document.getElementById('calendarItemAllowedTiers')); }
+
+  function updateCalendarItemTypeUI() {
+    const access = document.getElementById('calendarItemAllowedTiers');
+    if (!access) return;
+    const isEvent = els.calendarItemType.value === 'event';
+    access.classList.toggle('hidden', !isEvent);
+    access.querySelectorAll('input[data-calendar-allowed-tier-key]').forEach((input) => { input.disabled = !isEvent; });
+    els.calendarItemEventLinkFields.classList.toggle('hidden', !isEvent);
+    [els.calendarItemLinkLabel, els.calendarItemLinkUrl].forEach((input) => { input.disabled = !isEvent; });
+  }
+
+  function handleCalendarItemFormChange(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    if (target === els.calendarItemType) updateCalendarItemTypeUI();
+    if (target.matches('input[data-calendar-allowed-tier-key]')) updateCalendarItemTierSummary();
+  }
+
+  function updateCalendarBatchTierAccess(row) {
+    const access = row && row.querySelector('[data-calendar-tier-access]');
+    if (!access) return;
+    const isEvent = row.querySelector('[data-calendar-batch-field="itemType"]')?.value === 'event';
+    access.classList.toggle('hidden', !isEvent);
+    access.querySelectorAll('input[data-calendar-allowed-tier-key]').forEach((input) => { input.disabled = !isEvent; });
+    row.querySelectorAll('[data-calendar-event-link-field]').forEach((field) => {
+      field.classList.toggle('hidden', !isEvent);
+      field.querySelectorAll('input').forEach((input) => { input.disabled = !isEvent; });
+    });
+    updateCalendarTierAccessSummary(access);
+  }
+
+  function renderCalendarBatchRows() {
+    els.calendarBatchRows.replaceChildren(...state.calendarBatchItems.map((entry, index) => {
+      const item = entry.calendarItem;
+      const row = document.createElement('article'); row.className = 'calendar-batch-row'; row.dataset.calendarBatchRow = entry.key; row.dataset.calendarItemId = String(item.calendarItemId || ''); row.dataset.expectedUpdatedAt = String(entry.expectedUpdatedAt || '');
+      const heading = document.createElement('div'); heading.className = 'calendar-batch-row-heading';
+      const title = document.createElement('strong'); title.textContent = item.calendarItemId ? `修改項目 ${index + 1}` : `新增項目 ${index + 1}`;
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button'; remove.dataset.removeCalendarBatchRow = entry.key; remove.textContent = '移除'; heading.append(title, remove);
+      const fields = document.createElement('div'); fields.className = 'calendar-batch-fields';
+      fields.append(
+        createCalendarBatchField('名稱', 'title', 'text', item.title),
+        createCalendarBatchField('類型', 'itemType', 'select', item.itemType, [['holiday', '休假日'], ['event', '活動']]),
+        createCalendarBatchField('公開狀態', 'status', 'select', item.status, [['active', '啟用中'], ['draft', '草稿'], ['archived', '已封存']]),
+        createCalendarBatchField('開始日', 'startsOn', 'date', item.startsOn),
+        createCalendarBatchField('結束日（選填）', 'endsOn', 'date', item.endsOn),
+        createCalendarBatchField('識別色', 'accent', 'color', safeAccent(item.accent)),
+        createCalendarBatchField('說明（選填）', 'description', 'textarea', item.description),
+        createCalendarBatchField('連結名稱（選填）', 'linkLabel', 'text', item.linkLabel),
+        createCalendarBatchField('連結網址（選填）', 'linkUrl', 'url', item.linkUrl)
+      );
+      const tierAccess = createCalendarTierAccess();
+      setCalendarTierAccess(tierAccess, item.allowedTierKeys);
+      row.append(heading, fields, tierAccess); updateCalendarBatchTierAccess(row); return row;
+    }));
+    renderCalendarBatchControls();
+  }
+
+  function renderCalendarBatchControls() {
+    const selectedDateCount = selectedCalendarDates().length;
+    const selectedCount = state.selectedCalendarItemIds.size;
+    const batchCount = state.calendarBatchItems.length;
+    els.queueSelectedCalendarItemsButton.disabled = !selectedCount || state.writeConfirmationRequired;
+    els.deleteSelectedCalendarItemsButton.disabled = !selectedCount || state.writeConfirmationRequired;
+    els.addCalendarBatchItemButton.disabled = !selectedDateCount || batchCount + selectedDateCount > 20 || state.writeConfirmationRequired;
+    els.addCalendarBatchItemButton.textContent = selectedDateCount ? `新增選取日期（${selectedDateCount}）` : '新增選取日期';
+    els.clearCalendarBatchButton.disabled = !batchCount || state.writeConfirmationRequired;
+    els.saveCalendarBatchButton.disabled = !batchCount || state.writeConfirmationRequired;
+    const selectedText = [selectedDateCount ? `已選取 ${selectedDateCount} 個日期可新增` : '', selectedCount ? `已選取 ${selectedCount} 筆項目可修改或刪除` : ''].filter(Boolean).join('；');
+    els.calendarBatchSummary.textContent = batchCount ? `待儲存 ${batchCount} 筆${selectedText ? `；${selectedText}` : ''}。` : selectedText || '在月曆勾選日期或項目以開始批次作業。';
+  }
+
+  function handleCalendarBatchRowClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-remove-calendar-batch-row]') : null;
+    if (!button) return;
+    synchronizeCalendarBatchItemsFromDom();
+    state.calendarBatchItems = state.calendarBatchItems.filter((entry) => entry.key !== button.dataset.removeCalendarBatchRow);
+    hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+  }
+
+  function handleCalendarBatchRowChange(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const row = target && target.closest('[data-calendar-batch-row]');
+    if (!row) return;
+    if (target.matches('[data-calendar-batch-field="itemType"]')) updateCalendarBatchTierAccess(row);
+    if (target.matches('input[data-calendar-allowed-tier-key]')) updateCalendarTierAccessSummary(row.querySelector('[data-calendar-tier-access]'));
+  }
+
+  function clearCalendarBatch() {
+    state.calendarBatchItems = [];
+    hideMessage(els.calendarBatchMessage); renderCalendarBatchRows();
+  }
+
+  function calendarBatchOperationsFromForm() {
+    synchronizeCalendarBatchItemsFromDom();
+    const operations = state.calendarBatchItems.map((entry) => ({ operation: 'save', calendarItem: entry.calendarItem, expectedUpdatedAt: entry.expectedUpdatedAt }));
+    for (let index = 0; index < operations.length; index += 1) {
+      const validationMessage = validateCalendarItem(operations[index].calendarItem);
+      if (validationMessage) return { operations: [], error: `第 ${index + 1} 筆：${validationMessage}` };
+    }
+    return { operations: operations, error: '' };
+  }
+
+  async function saveCalendarBatch() {
+    if (requireRefreshBeforeWrite(els.calendarBatchMessage)) return;
+    hideMessage(els.calendarBatchMessage);
+    const payload = calendarBatchOperationsFromForm();
+    if (payload.error) return showMessage(els.calendarBatchMessage, payload.error);
+    if (!payload.operations.length) return;
+    setSaving(els.saveCalendarBatchButton, true, '正在批次儲存日曆項目…', '批次儲存中…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.calendar-items.batch', { calendarItemOperations: payload.operations });
+      (Array.isArray(result.savedCalendarItems) ? result.savedCalendarItems : []).forEach((item) => { state.calendarItems = replaceById(state.calendarItems, item, 'calendarItemId'); });
+      state.calendarBatchItems = [];
+      if (await refreshAfterSuccessfulWrite(`已批次儲存 ${payload.operations.length} 筆日曆項目`, els.calendarBatchMessage)) showMessage(els.calendarBatchMessage, `已批次儲存 ${payload.operations.length} 筆日曆項目；啟用後會顯示在會員日曆。`, true);
+    } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { setSaving(els.saveCalendarBatchButton, false); renderCalendarBatchRows(); renderAdminCalendar(); }
+  }
+
+  async function deleteSelectedCalendarItems() {
+    if (requireRefreshBeforeWrite(els.calendarBatchMessage)) return;
+    const selected = selectedCalendarItems();
+    if (!selected.length) return;
+    if (!window.confirm(`確定要批次刪除 ${selected.length} 筆日曆項目嗎？刪除後會立即不再顯示於會員日曆。`)) return;
+    hideMessage(els.calendarBatchMessage);
+    const operations = selected.map((item) => ({ operation: 'delete', calendarItemId: String(item.calendarItemId || ''), expectedUpdatedAt: String(item.updatedAt || '') }));
+    const originalText = els.deleteSelectedCalendarItemsButton.textContent;
+    els.deleteSelectedCalendarItemsButton.disabled = true; els.deleteSelectedCalendarItemsButton.textContent = '批次刪除中…'; showOperationProgress('正在批次刪除日曆項目…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.calendar-items.batch', { calendarItemOperations: operations });
+      const deletedIds = new Set(Array.isArray(result.deletedCalendarItemIds) ? result.deletedCalendarItemIds.map(String) : operations.map((operation) => operation.calendarItemId));
+      state.calendarItems = state.calendarItems.filter((item) => !deletedIds.has(String(item.calendarItemId || '')));
+      state.selectedCalendarItemIds = new Set();
+      state.calendarBatchItems = state.calendarBatchItems.filter((entry) => !deletedIds.has(String(entry.calendarItem.calendarItemId || '')));
+      if (state.selectedCalendarItemId && deletedIds.has(state.selectedCalendarItemId)) resetCalendarItemForm();
+      if (await refreshAfterSuccessfulWrite(`已批次刪除 ${operations.length} 筆日曆項目`, els.calendarBatchMessage)) showMessage(els.calendarBatchMessage, `已批次刪除 ${operations.length} 筆日曆項目。`, true);
+    } catch (error) { handleActionError(error, els.calendarBatchMessage); } finally { if (!state.writeConfirmationRequired) els.deleteSelectedCalendarItemsButton.textContent = originalText; renderCalendarBatchRows(); renderAdminCalendar(); }
+  }
+
+  function loadCalendarItemForm(calendarItemId, shouldRender) {
+    const item = state.calendarItems.find((value) => value.calendarItemId === calendarItemId); if (!item) return;
+    state.selectedCalendarItemId = calendarItemId;
+    els.calendarItemId.value = String(item.calendarItemId || '');
+    els.calendarItemExpectedUpdatedAt.value = String(item.updatedAt || '');
+    els.calendarItemTitle.value = String(item.title || '');
+    els.calendarItemType.value = item.itemType === 'holiday' ? 'holiday' : 'event';
+    els.calendarItemDescription.value = String(item.description || '');
+    els.calendarItemLinkLabel.value = String(item.linkLabel || '');
+    els.calendarItemLinkUrl.value = String(item.linkUrl || '');
+    els.calendarItemStatus.value = String(item.status || 'draft');
+    els.calendarItemStartsOn.value = String(item.startsOn || '');
+    els.calendarItemEndsOn.value = String(item.endsOn || '') === String(item.startsOn || '') ? '' : String(item.endsOn || '');
+    els.calendarItemAccent.value = safeAccent(item.accent || '#df6b4d');
+    setCalendarItemAllowedTiers(item.allowedTierKeys);
+    els.deleteCalendarItemButton.disabled = false; els.deleteCalendarItemButton.textContent = '刪除目前項目';
+    updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage);
+    els.calendarItemEditorKicker.textContent = 'Edit calendar item'; els.calendarItemEditorTitle.textContent = String(item.title || '編輯日曆項目'); updateEditorStatus(els.calendarItemEditorStatus, item.status); if (shouldRender !== false) renderAdminCalendar();
+  }
+
+  function resetCalendarItemForm(shouldRender) {
+    state.selectedCalendarItemId = ''; els.calendarItemForm.reset();
+    els.calendarItemId.value = ''; els.calendarItemExpectedUpdatedAt.value = ''; els.calendarItemType.value = 'holiday'; els.calendarItemStatus.value = ''; els.calendarItemStartsOn.value = todayAdminIsoDate(); els.calendarItemEndsOn.value = ''; els.calendarItemAccent.value = '#df6b4d'; els.calendarItemLinkLabel.value = ''; els.calendarItemLinkUrl.value = ''; setCalendarItemAllowedTiers(CALENDAR_ITEM_TIER_KEYS);
+    els.deleteCalendarItemButton.disabled = true; els.deleteCalendarItemButton.textContent = '先儲存後才能刪除';
+    els.calendarItemEditorKicker.textContent = 'Create calendar item'; els.calendarItemEditorTitle.textContent = '新增日曆項目'; updateEditorStatus(els.calendarItemEditorStatus, ''); updateCalendarItemAccentValue(); updateCalendarItemTypeUI(); hideMessage(els.calendarItemFormMessage); if (shouldRender !== false) renderAdminCalendar();
+  }
+
+  function validateCalendarItem(item) {
+    if (!item.title || item.title.length > 100) return '請填寫日曆項目名稱（最多 100 字）。';
+    if (!['holiday', 'event'].includes(item.itemType)) return '日曆項目類型不合法。';
+    if (item.itemType === 'event' && !normalizeCalendarItemTierKeys(item.allowedTierKeys).length) return '請至少選擇一個可參加活動的會員階級。';
+    const linkLabel = String(item.linkLabel || '').trim(); const linkUrl = String(item.linkUrl || '').trim();
+    if (item.itemType === 'event' && ((linkLabel || linkUrl) && (!linkLabel || !linkUrl || linkLabel.length > 80 || linkUrl.length > 2048 || !isSafeCalendarLinkUrl(linkUrl)))) return '活動連結需要同時填寫名稱與有效的 HTTPS 網址。';
+    if (item.description.length > 500) return '日曆項目說明最多 500 字。';
+    if (!parseAdminIsoDate(item.startsOn)) return '請選擇有效的開始日。';
+    if (item.endsOn && !parseAdminIsoDate(item.endsOn)) return '請選擇有效的結束日。';
+    if (item.endsOn && item.endsOn < item.startsOn) return '結束日不可早於開始日。';
+    if (item.endsOn && (parseAdminIsoDate(item.endsOn).getTime() - parseAdminIsoDate(item.startsOn).getTime()) / 86400000 + 1 > 366) return '單一日曆項目最長可設定 366 天。';
+    if (!['active', 'draft', 'archived'].includes(item.status)) return '公開狀態不合法。';
+    if (!/^#[0-9a-f]{6}$/i.test(item.accent)) return '識別色不合法。';
+    return '';
+  }
+
+  function isSafeCalendarLinkUrl(value) {
+    const url = String(value || '').trim();
+    return /^https:\/\/[^\s<>"']+$/i.test(url) && /^https:\/\/[^\/?#@]+(?:[\/?#]|$)/i.test(url);
+  }
+
+  async function saveCalendarItem(event) {
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.calendarItemFormMessage)) return; hideMessage(els.calendarItemFormMessage);
+    const item = { calendarItemId: String(els.calendarItemId.value || '').trim(), title: String(els.calendarItemTitle.value || '').trim(), itemType: els.calendarItemType.value, description: String(els.calendarItemDescription.value || '').trim(), linkLabel: els.calendarItemType.value === 'event' ? String(els.calendarItemLinkLabel.value || '').trim() : '', linkUrl: els.calendarItemType.value === 'event' ? String(els.calendarItemLinkUrl.value || '').trim() : '', status: els.calendarItemStatus.value, startsOn: String(els.calendarItemStartsOn.value || '').trim(), endsOn: String(els.calendarItemEndsOn.value || '').trim(), allowedTierKeys: els.calendarItemType.value === 'event' ? collectCalendarItemAllowedTiers() : [], accent: safeAccent(els.calendarItemAccent.value) };
+    const validationMessage = validateCalendarItem(item); if (validationMessage) return showMessage(els.calendarItemFormMessage, validationMessage);
+    setSaving(els.saveCalendarItemButton, true, '正在儲存日曆項目…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.calendar-items.save', { calendarItem: item, expectedUpdatedAt: els.calendarItemExpectedUpdatedAt.value });
+      if (result.calendarItem) { state.calendarItems = replaceById(state.calendarItems, result.calendarItem, 'calendarItemId'); loadCalendarItemForm(result.calendarItem.calendarItemId); }
+      if (await refreshAfterSuccessfulWrite('日曆項目已儲存', els.calendarItemFormMessage)) showMessage(els.calendarItemFormMessage, '日曆項目已儲存；啟用後會顯示在會員日曆。', true);
+    } catch (error) { handleActionError(error, els.calendarItemFormMessage); } finally { setSaving(els.saveCalendarItemButton, false); }
+  }
+
+  async function deleteCalendarItem() {
+    if (requireRefreshBeforeWrite(els.calendarItemFormMessage)) return;
+    const calendarItemId = String(els.calendarItemId.value || '').trim(); const title = String(els.calendarItemTitle.value || '這個日曆項目').trim();
+    if (!calendarItemId || els.deleteCalendarItemButton.disabled) return;
+    if (!window.confirm('確定要刪除「' + title + '」嗎？這項日期將立即不再顯示於會員日曆。')) return;
+    const originalText = els.deleteCalendarItemButton.textContent;
+    els.deleteCalendarItemButton.disabled = true; els.deleteCalendarItemButton.textContent = '刪除中…'; showOperationProgress('正在刪除日曆項目…');
+    try {
+      await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.calendar-items.delete', { calendarItemId: calendarItemId, expectedUpdatedAt: els.calendarItemExpectedUpdatedAt.value });
+      state.calendarItems = state.calendarItems.filter((item) => item.calendarItemId !== calendarItemId); state.selectedCalendarItemId = ''; resetCalendarItemForm();
+      if (await refreshAfterSuccessfulWrite('日曆項目已刪除', els.calendarItemFormMessage)) showMessage(els.calendarItemFormMessage, '日曆項目已刪除。', true);
+    } catch (error) { handleActionError(error, els.calendarItemFormMessage); } finally { if (!state.writeConfirmationRequired && els.calendarItemId.value === calendarItemId) { els.deleteCalendarItemButton.disabled = false; els.deleteCalendarItemButton.textContent = originalText; } }
+  }
+
+  function updateCalendarItemAccentValue() { els.calendarItemAccentValue.textContent = safeAccent(els.calendarItemAccent.value).toUpperCase(); }
+
+  function openMemberModal(member) { els.memberLineUserId.value = String(member.lineUserId); els.memberExpectedUpdatedAt.value = String(member.updatedAt || ''); els.memberIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`; els.memberTier.textContent = String(member.tier || '一般會員'); els.memberStatus.value = member.status === 'active' ? 'active' : 'disabled'; hideMessage(els.memberFormMessage); els.memberModal.classList.remove('hidden'); els.memberStatus.focus(); }
+  function closeMemberModal() { els.memberModal.classList.add('hidden'); }
+  async function saveMember(event) {
+    event.preventDefault();
+    if (requireRefreshBeforeWrite(els.memberFormMessage)) return;
+    hideMessage(els.memberFormMessage);
+    setSaving(els.saveMemberButton, true, '正在儲存會員狀態…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.update', { lineUserId: els.memberLineUserId.value, status: els.memberStatus.value, expectedUpdatedAt: els.memberExpectedUpdatedAt.value });
+      if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId');
+      closeMemberModal();
+      renderAdminOverview();
+      if (await refreshAfterSuccessfulWrite('會員狀態已儲存', els.memberFormMessage)) setSyncStatus('會員狀態已儲存 · 已同步', false);
+    } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); }
+  }
+  function openGrantModal(member) {
+    const activeCards = activeGrantCards();
+    state.grantRequestId = createRequestId();
+    els.grantMemberId.value = String(member.lineUserId);
+    els.grantMemberName.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'} · 服務時間 ${formatServiceMinutes(member.serviceMinutesTotal)}`;
+    // 先清掉前一次內容，再立即顯示；不要讓 focus/layout 阻塞 Modal 第一幀。
+    els.grantStampsEnabled.checked = false;
+    els.grantStampsEnabled.disabled = activeCards.length === 0;
+    els.grantServiceTimeEnabled.checked = false;
+    els.grantStampAmount.value = '';
+    els.grantServiceTimeMinutes.value = '';
+    els.grantNote.value = '';
+    els.grantPointRows.replaceChildren();
+    els.grantPointHint.textContent = '勾選「發放集點」後選擇集點卡與點數。';
+    els.grantPointHint.classList.remove('warning');
+    els.addGrantPointButton.disabled = true;
+    els.grantStampsFields.classList.add('hidden');
+    els.grantServiceTimeFields.classList.add('hidden');
+    els.grantServiceTimeMinutes.disabled = true;
+    hideMessage(els.grantFormMessage);
+    els.grantModal.classList.remove('hidden');
+
+    const focusTarget = activeCards.length ? els.grantStampsEnabled : els.grantServiceTimeEnabled;
+    window.requestAnimationFrame(() => {
+      if (els.grantModal.classList.contains('hidden')) return;
+      try { focusTarget.focus({ preventScroll: true }); } catch (_) { focusTarget.focus(); }
+    });
+  }
+  function closeGrantModal() { state.grantRequestId = ''; els.grantModal.classList.add('hidden'); }
+  function activeGrantCards() { return state.cards.filter((card) => card.status === 'active' && !card.expired); }
+  function renderGrantPointRows(points) { const grants = Array.isArray(points) ? points : []; els.grantPointRows.replaceChildren(...grants.map((grant, index) => createGrantPointRow(grant, index, grants))); updateGrantPointHint(); }
+  function createGrantPointRow(grant, index, grants) {
+    const row = document.createElement('article'); row.className = 'grant-point-row'; row.dataset.grantPointRow = 'true';
+    const heading = document.createElement('div'); heading.className = 'grant-point-row-heading'; const title = document.createElement('strong'); title.textContent = `集點卡 ${index + 1}`; heading.append(title);
+    if (grants.length > 1) { const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button'; remove.dataset.removeGrantPoint = 'true'; remove.textContent = '刪除'; heading.append(remove); }
+    const grid = document.createElement('div'); grid.className = 'grant-point-row-fields';
+    const cardLabel = document.createElement('label'); cardLabel.textContent = '集點卡'; const select = document.createElement('select'); select.dataset.grantPointField = 'cardId'; const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.disabled = true; placeholder.textContent = '請選擇集點卡'; select.append(placeholder); const selectedIds = new Set(grants.map((item) => String(item.cardId || ''))); activeGrantCards().filter((card) => !selectedIds.has(String(card.cardId)) || String(card.cardId) === String(grant.cardId || '')).forEach((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); select.append(option); }); select.value = String(grant.cardId || ''); cardLabel.append(select);
+    const amountLabel = document.createElement('label'); amountLabel.textContent = '增加點數'; const amount = document.createElement('input'); amount.type = 'number'; amount.min = '1'; amount.max = '100'; amount.step = '1'; amount.value = grant.amount === undefined || grant.amount === null ? '' : String(grant.amount); amount.dataset.grantPointField = 'amount'; amountLabel.append(amount); grid.append(cardLabel, amountLabel); row.append(heading, grid); return row;
+  }
+  function collectGrantPoints() { return Array.from(els.grantPointRows.querySelectorAll('[data-grant-point-row]')).map((row) => ({ cardId: String(row.querySelector('[data-grant-point-field="cardId"]')?.value || '').trim(), amount: Number(row.querySelector('[data-grant-point-field="amount"]')?.value) })); }
+  function addGrantPointRow() { const grants = collectGrantPoints(); if (!activeGrantCards().length || grants.length >= 20) return; grants.push({ cardId: '', amount: '' }); renderGrantPointRows(grants); els.grantPointRows.querySelector('[data-grant-point-row]:last-child select')?.focus(); }
+  function updateGrantPointHint() { const grants = collectGrantPoints(); const duplicate = grants.some((grant, index) => grants.findIndex((item) => item.cardId === grant.cardId) !== index); const invalid = grants.some((grant) => !grant.cardId || !Number.isInteger(grant.amount) || grant.amount < 1 || grant.amount > 100); const message = !grants.length ? '勾選「發放集點」後選擇集點卡與點數。' : duplicate ? '同一次發放不可重複選擇同一張集點卡。' : invalid ? '每張集點卡請輸入 1–100 的整數點數。' : `${grants.length} 張集點卡 · 每張可設定不同點數。`; els.grantPointHint.textContent = message; els.grantPointHint.classList.toggle('warning', duplicate || invalid); els.addGrantPointButton.disabled = activeGrantCards().length <= grants.length || grants.length >= 20 || !els.grantStampsEnabled.checked; }
+  function updateGrantOptions() {
+    const addStamps = els.grantStampsEnabled.checked;
+    const addServiceTime = els.grantServiceTimeEnabled.checked;
+    if (addStamps && !els.grantPointRows.children.length) renderGrantPointRows([{ cardId: '', amount: '' }]);
+    els.grantStampsFields.classList.toggle('hidden', !addStamps);
+    els.grantPointRows.querySelectorAll('select, input, button').forEach((element) => { element.disabled = !addStamps; });
+    els.addGrantPointButton.disabled = !addStamps || activeGrantCards().length <= collectGrantPoints().length;
+    els.grantServiceTimeFields.classList.toggle('hidden', !addServiceTime);
+    els.grantServiceTimeMinutes.disabled = !addServiceTime;
+  }
+  async function saveGrant(event) {
+    event.preventDefault(); if (requireRefreshBeforeWrite(els.grantFormMessage)) return; hideMessage(els.grantFormMessage);
+    const addStamps = els.grantStampsEnabled.checked; const addServiceTime = els.grantServiceTimeEnabled.checked;
+    const points = collectGrantPoints(); const serviceTimeMinutes = Number(els.grantServiceTimeMinutes.value);
+    if (!addStamps && !addServiceTime) return showMessage(els.grantFormMessage, '請至少勾選「發放集點」或「發放消費服務時間」。');
+    if (addStamps && (!points.length || points.some((point) => !point.cardId || !Number.isInteger(point.amount) || point.amount < 1 || point.amount > 100) || new Set(points.map((point) => point.cardId)).size !== points.length)) return showMessage(els.grantFormMessage, '請為每張集點卡選擇不同卡片，並輸入 1–100 的整數點數。');
+    if (addServiceTime && (!Number.isInteger(serviceTimeMinutes) || serviceTimeMinutes < 1 || serviceTimeMinutes > 1440)) return showMessage(els.grantFormMessage, '請輸入 1–1440 的整數分鐘數。');
+    const note = String(els.grantNote.value || '').trim(); const payload = { lineUserId: els.grantMemberId.value, requestId: state.grantRequestId || (state.grantRequestId = createRequestId()), note };
+    if (addStamps) payload.points = points;
+    if (addServiceTime) payload.serviceTime = { minutes: serviceTimeMinutes };
+    setSaving(els.saveGrantButton, true, '正在發放集點與服務時間…', '發放中…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-grants.add', payload);
+      if (result.member) state.members = replaceById(state.members, result.member, 'lineUserId');
+      const titlesById = Object.fromEntries(activeGrantCards().map((card) => [String(card.cardId), String(card.title || '集點卡')]));
+      const details = [addStamps ? points.map((point) => `${titlesById[point.cardId] || '集點卡'} +${point.amount} 點`).join('、') : '', addServiceTime ? formatServiceMinutes(serviceTimeMinutes) : ''].filter(Boolean).join('、');
+      const notificationMessage = result.notification && result.notification.status !== 'sent' ? `；${result.notification.message}` : '';
+      closeGrantModal(); showGrantSuccess(details);
+      if (await refreshAfterSuccessfulWrite('發放完成' + notificationMessage, null, false)) setSyncStatus(`發放完成：${details}${notificationMessage} · 已同步`, false);
+    } catch (error) { handleActionError(error, els.grantFormMessage); } finally { setSaving(els.saveGrantButton, false); }
+  }
+
+  function switchPanel(panel) {
+    state.activePanel = panel;
+    ['members', 'cards', 'events', 'calendar'].forEach((name) => { const selected = name === panel; els[name + 'Tab'].setAttribute('aria-selected', String(selected)); els[name + 'Panel'].classList.toggle('hidden', !selected); });
+    if (!state.loadedPanels[panel]) ensureAdminPanelData(panel).catch((error) => { setSyncStatus(error && error.message || '資料載入失敗，請稍後再試。', true); });
+  }
+  function switchCardWorkspace(workspace) { state.activeCardWorkspace = workspace; const workspaces = [['cards', 'cardSettingsTab', 'cardSettingsPanel'], ['tickets', 'ticketSettingsTab', 'ticketSettingsPanel']]; workspaces.forEach(([name, tabId, panelId]) => { const selected = name === workspace; els[tabId].setAttribute('aria-selected', String(selected)); els[panelId].classList.toggle('hidden', !selected); }); }
+  function updateAccentValue() { els.accentValue.textContent = safeAccent(els.cardAccent.value).toUpperCase(); }
+  function updateEditorStatus(element, status) { element.textContent = statusLabel(status); element.className = `editor-status ${status}`; }
+  function statusLabel(status) { return ({ active: '啟用中', draft: '草稿', archived: '已封存', disabled: '已停用' })[status] || '未設定'; }
+  function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
+  function safeTierStyle(value) { const styleKey = String(value || '').trim(); return MEMBERSHIP_TIER_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
+  function replaceById(items, next, key) { return items.some((item) => item[key] === next[key]) ? items.map((item) => item[key] === next[key] ? next : item) : [next, ...items]; }
+  function createRequestId() { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); return `request-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`; }
+  function formatServiceMinutes(value) { return `${Math.max(0, Math.floor(Number(value) || 0))} 分鐘`; }
+  function showOperationNotice(message, tone, duration) {
+    const notice = els.grantSuccessNotice;
+    if (!notice) return;
+    if (state.grantSuccessTimer) window.clearTimeout(state.grantSuccessTimer);
+    notice.textContent = message;
+    notice.classList.remove('hidden', 'is-processing', 'is-success', 'is-warning', 'is-error');
+    notice.classList.add(`is-${tone}`);
+    const hideAfter = duration === undefined ? (tone === 'processing' ? 0 : 3600) : duration;
+    if (hideAfter > 0) state.grantSuccessTimer = window.setTimeout(() => { notice.classList.add('hidden'); state.grantSuccessTimer = null; }, hideAfter);
+    else state.grantSuccessTimer = null;
+  }
+  function showOperationProgress(message) { showOperationNotice(message, 'processing', 0); }
+  function showOperationSuccess(message) { showOperationNotice(message, 'success'); }
+  function showGrantSuccess(details) { showOperationSuccess(details ? `發放完成：${details}` : '發放完成'); }
+  function setSaving(button, saving, progressMessage, busyLabel) { button.disabled = saving || state.writeConfirmationRequired; if (saving) { button.dataset.originalText = button.textContent; button.textContent = busyLabel || '儲存中…'; showOperationProgress(progressMessage || '正在儲存…'); } else button.textContent = state.writeConfirmationRequired ? '請重新整理確認' : button.dataset.originalText || button.textContent; }
+  function showMessage(element, message, success) { element.textContent = message; element.classList.toggle('success', Boolean(success)); element.classList.remove('hidden'); }
+  function hideMessage(element) { element.textContent = ''; element.classList.add('hidden'); element.classList.remove('success'); const action = element.nextElementSibling; if (action && action.matches('[data-uncertain-write-refresh]')) action.remove(); }
+  function showUncertainWriteMessage(element) {
+    hideMessage(element);
+    showMessage(element, '無法確認這次操作是否完成。資料可能已更新；請先重新整理確認，請勿重複送出。');
+    const refreshButton = document.createElement('button'); refreshButton.type = 'button'; refreshButton.className = 'button button-outline uncertain-write-refresh'; refreshButton.dataset.uncertainWriteRefresh = 'true'; refreshButton.textContent = '重新整理確認'; refreshButton.addEventListener('click', () => window.location.reload());
+    element.insertAdjacentElement('afterend', refreshButton);
+  }
+  function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.deleteEventTicketButton, els.saveCalendarItemButton, els.deleteCalendarItemButton, els.addCalendarBatchItemButton, els.queueSelectedCalendarItemsButton, els.deleteSelectedCalendarItemsButton, els.clearCalendarBatchButton, els.saveCalendarBatchButton, els.saveMemberButton, els.saveGrantButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; renderCardList(); }
+  function requireRefreshBeforeWrite(element) { if (!state.writeConfirmationRequired) return false; showUncertainWriteMessage(element); return true; }
+  function setSyncStatus(message, error) { els.syncStatus.textContent = message; els.syncStatus.classList.toggle('error', Boolean(error)); }
+  async function refreshAfterSuccessfulWrite(successMessage, messageElement, showSuccessNotice = true) {
+    if (showSuccessNotice) showOperationSuccess(successMessage);
+    try { await refreshData(false); return true; } catch (_) {
+      const message = `${successMessage}；資料已完成更新，但畫面同步失敗，請重新整理確認。`;
+      showOperationNotice(message, 'warning', 5200);
+      if (messageElement) showMessage(messageElement, message, true);
+      setSyncStatus('資料已更新，但畫面同步失敗，請重新整理確認。', true);
+      return false;
+    }
+  }
+  function handleActionError(error, element) { if (error && error.code === 'API_RESPONSE_UNCERTAIN') { state.writeConfirmationRequired = true; lockAdminWrites(); showOperationNotice('無法確認這次操作是否完成，請重新整理確認。', 'warning', 0); showUncertainWriteMessage(element); setSyncStatus('寫入結果尚未確認；請重新整理確認後再操作。', true); return; } showOperationNotice(error && error.code === 'CONFLICT' ? '資料已被其他管理者更新，請重新整理後再試。' : '操作未完成，請查看表單提示。', 'error', 4600); showMessage(element, error && error.code === 'CONFLICT' ? '資料已被另一位管理者更新，請重新整理後再儲存。' : error && error.message || '操作失敗，請稍後再試。'); }
+  function handleBootError(error) { if (error && error.code === 'ADMIN_PENDING') { els.pendingUserId.textContent = String(error.details && error.details.lineUserId || '請查看 Admins 資料表'); els.pendingBox.classList.remove('hidden'); showError('此 LINE 帳號尚未授權', 'GAS 已記錄這次管理端登入，但目前不允許進入管理功能。'); return; } if (error && error.code === 'ADMIN_FORBIDDEN') { showError('沒有管理端權限', '此 LINE 帳號未啟用管理權限，請檢查 Admins 的 role 與 status。'); return; } showError(error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '暫時無法進入管理端', error && error.message || '請稍後重新整理。'); }
+  function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.adminView.classList.toggle('hidden', view !== 'admin'); }
+  function startLoginProgress(status, ceiling) { stopLoginProgress(); const maximum = Math.max(loginProgressValue, Math.min(98, Number(ceiling) || loginProgressValue)); setLoginProgress(loginProgressValue, status); loginProgressTimer = window.setInterval(() => { const remaining = maximum - loginProgressValue; if (remaining <= 0) return stopLoginProgress(); setLoginProgress(Math.min(maximum, loginProgressValue + Math.max(1, Math.ceil(remaining * .12))), status); }, LOGIN_PROGRESS_TICK_MS); }
+  function stopLoginProgress() { if (loginProgressTimer !== null) window.clearInterval(loginProgressTimer); loginProgressTimer = null; }
+  function completeLoginProgress(status) {
+    stopLoginProgress();
+    // 資料就緒便交還操作，不讓裝飾性動畫阻塞主要畫面。
+    setLoginProgress(100, status);
+    return Promise.resolve();
+  }
+
+  function setLoginProgress(value, status) { const progress = Math.max(loginProgressValue, Math.max(0, Math.min(100, Math.round(Number(value) || 0)))); loginProgressValue = progress; els.loadingProgress.setAttribute('aria-valuenow', String(progress)); els.loadingProgress.setAttribute('aria-valuetext', `${progress}%`); els.loadingProgressBar.style.width = `${progress}%`; els.loadingProgressText.textContent = `${progress}%`; if (status) els.loadingStatus.textContent = status; }
+  function showError(title, message) { els.errorTitle.textContent = title; els.errorMessage.textContent = message; setView('error'); }
+})();
