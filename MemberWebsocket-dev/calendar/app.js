@@ -192,13 +192,24 @@
         const link = document.createElement('a');
         link.className = 'calendar-detail-link';
         link.href = linkUrl;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
         link.textContent = linkLabel;
+        link.addEventListener('click', (event) => {
+          event.preventDefault();
+          openCalendarLinkInLine(linkUrl);
+        });
         detail.append(link);
       }
     }
     return detail;
+  }
+
+  function openCalendarLinkInLine(url) {
+    if (!isSafeCalendarLink(url)) return;
+    if (window.liff && typeof window.liff.openWindow === 'function') {
+      window.liff.openWindow({ url, external: false });
+      return;
+    }
+    window.location.assign(url);
   }
 
   function closeCalendarItemDetail(restoreFocus = true) {
