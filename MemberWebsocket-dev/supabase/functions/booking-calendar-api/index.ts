@@ -154,7 +154,35 @@ function nextMonthStart(monthKey: string): string {
   return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
-async function loadOccupiedDates(supabase: SupabaseClient, month: string): Promise<Json> {
+function taipeiDate(): string {
+  const parts: Record<string, string> = {};
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date()).forEach((part) => {
+    if (part.type !== "literal") parts[part.type] = part.value;
+  });
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function addDays(date: string, days: number): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + Number(days || 0));
+  return parsed.toISOString().slice(0, 10);
+}
+
+async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Json> {
+  const settingsResult = await supabase.from("booking_settings")
+    .select("min_advance_days")
+    .eq("id", 1)
+    .maybeSingle();
+  if (settingsResult.error || !settingsResult.data) {
+    throw new ApiError(503, "BOOKING_SETTINGS_MISSING", "預約共用設定暫時無法載入。");
+  }
+  const minAdvanceDays = Number(settingsResult.data.min_advance_days || 0);
+  if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) {
+    throw new ApiError(503, "BOOKING_SETTINGS_INVALID", "預約共用設定不正確。");
+  }
+
   const startDate = `${month}-01`;
   const endDate = nextMonthStart(month);
   const rows: Array<{ booking_date: string; start_time: string; end_time: string }> = [];
@@ -189,8 +217,12 @@ async function loadOccupiedDates(supabase: SupabaseClient, month: string): Promi
     grouped.set(date, intervals);
   }
 
+  const today = taipeiDate();
   return {
     month,
+    today,
+    settings: { minAdvanceDays },
+    earliestBookingDate: addDays(today, minAdvanceDays),
     occupiedDates: [...grouped.entries()].map(([date, intervals]) => ({ date, intervals })),
   };
 }
@@ -227,7 +259,7 @@ Deno.serve(async (request) => {
     const supabase = dbClient();
     await consumeRateLimit(supabase, identity);
     await requireJoinedMember(supabase, identity);
-    const data = await loadOccupiedDates(supabase, month);
+    const data = await loadCalendar(supabase, month);
     return response(origin, { ok: true, data });
   } catch (error) {
     return errorResponse(origin, error);
