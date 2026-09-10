@@ -115,7 +115,11 @@ jobs:
             grep -q '../realtime-resync.js' "$file"
           done
           grep -q "table: 'realtime_events'" MemberWebsocket-dev/booking/common.js
-          grep -q "type.startsWith('booking.')" MemberWebsocket-dev/booking/common.js
+          grep -q "scope === 'all' || scope === 'member'" MemberWebsocket-dev/booking/common.js
+          grep -q "addEventListener('visibilitychange'" MemberWebsocket-dev/booking/common.js
+          grep -q "addEventListener('pageshow'" MemberWebsocket-dev/booking/common.js
+          grep -q "addEventListener('online'" MemberWebsocket-dev/booking/common.js
+          grep -q "status !== 'SUBSCRIBED'" MemberWebsocket-dev/booking/common.js
           grep -q "table: 'realtime_events'" MemberWebsocket-dev/admin/booking-panel.js
           grep -q "type.startsWith('booking.')" MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'notify_booking_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
