@@ -31,6 +31,7 @@
     'admin.stamps.add',
     'admin.service_minutes.add',
     'admin.member-grants.add',
+    'admin.grant-message-presets.save',
     'user.pointcard.ticket.redeem',
     'user.event.ticket.claim',
     'user.event.ticket.redeem'
