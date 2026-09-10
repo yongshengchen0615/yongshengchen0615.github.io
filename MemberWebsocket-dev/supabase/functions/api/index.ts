@@ -7,6 +7,12 @@ const MAX_REQUEST_BYTES = 40_000;
 const READ_LIMIT = 90;
 const WRITE_LIMIT = 30;
 const TIER_KEYS = ["general", "silver", "gold", "platinum"] as const;
+const DEFAULT_TIER_SETTINGS = Object.freeze([
+  Object.freeze({ tier_key:"general",tier_label:"一般會員",required_service_minutes:0,style_key:"forest",updated_by:"system",updated_at:"" }),
+  Object.freeze({ tier_key:"silver",tier_label:"銀級會員",required_service_minutes:600,style_key:"ocean",updated_by:"system",updated_at:"" }),
+  Object.freeze({ tier_key:"gold",tier_label:"金級會員",required_service_minutes:1800,style_key:"gold",updated_by:"system",updated_at:"" }),
+  Object.freeze({ tier_key:"platinum",tier_label:"白金會員",required_service_minutes:3600,style_key:"platinum",updated_by:"system",updated_at:"" }),
+]);
 const STYLE_KEYS = ["forest","midnight","ocean","sunset","lavender","rose","gold","platinum","mint","cherry"] as const;
 const WRITE_ACTIONS = new Set([
   "user.member.profile.save",
@@ -285,7 +291,24 @@ async function requireJoinedMember(supabase: SupabaseClient, identity: { lineUse
 async function tierSettings(supabase: SupabaseClient): Promise<any[]> {
   const { data, error } = await supabase.from("membership_tier_settings").select("*").order("required_service_minutes",{ ascending: true });
   if (error) throw mapDatabaseError(error);
-  return data || [];
+  const rows = data || [];
+  if (!rows.length) return DEFAULT_TIER_SETTINGS.map((row) => ({ ...row }));
+
+  const rowsByKey = new Map(rows.map((row:any) => [String(row.tier_key),row]));
+  if (rows.length !== TIER_KEYS.length || TIER_KEYS.some((tierKey) => !rowsByKey.has(tierKey))) {
+    throw new ApiError(503,"TIER_SETTINGS_INCOMPLETE","會員等級設定資料不完整，請由管理端重新儲存。");
+  }
+
+  const ordered = TIER_KEYS.map((tierKey) => rowsByKey.get(tierKey));
+  if (Number(ordered[0].required_service_minutes) !== 0) {
+    throw new ApiError(503,"TIER_SETTINGS_INVALID","一般會員門檻必須從 0 分鐘開始。");
+  }
+  for (let index = 1; index < ordered.length; index += 1) {
+    if (Number(ordered[index].required_service_minutes) <= Number(ordered[index - 1].required_service_minutes)) {
+      throw new ApiError(503,"TIER_SETTINGS_INVALID","會員等級門檻順序不正確。");
+    }
+  }
+  return ordered;
 }
 
 function tierSettingsClient(rows: any[]): any[] {
