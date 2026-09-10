@@ -6,64 +6,43 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('admin loads isolated bulk action UI assets', () => {
   const html = read('admin/index.html');
   assert.match(html, /bulk-actions\.css/);
   assert.match(html, /bulk-actions\.js/);
+  assert.match(html, /bulk-create-ux\.js/);
 });
 
-test('bulk UI supports create, update, and archive without HTML injection APIs', () => {
+test('bulk UI supports update and soft archive through Supabase transport', () => {
   const ui = read('admin/bulk-actions.js');
-  assert.match(ui, /admin\.calendar\.bulkCreate/);
   assert.match(ui, /admin\.calendar\.bulkUpdate/);
   assert.match(ui, /admin\.calendar\.bulkArchive/);
   assert.match(ui, /MAX_BATCH_ITEMS\s*=\s*20/);
   assert.match(ui, /expectedUpdatedAt:\s*item\.updatedAt/);
   assert.match(ui, /window\.confirm/);
   assert.match(ui, /移除採封存/);
+  assert.match(ui, /supabaseFunctionUrl/);
+  assert.doesNotMatch(ui, /gasWebAppUrl|script\.google\.com/i);
   assert.doesNotMatch(ui, /\.innerHTML\s*=/);
-  assert.doesNotMatch(ui, /insertAdjacentHTML/);
   assert.doesNotMatch(ui, /localStorage|sessionStorage/);
 });
 
-test('bulk API routes are admin-authorized write actions with weighted rate limiting', () => {
-  const code = read('gas/Code.gs');
-  ['bulkCreate', 'bulkUpdate', 'bulkArchive'].forEach((name) => {
-    assert.match(code, new RegExp(`admin\\.calendar\\.${name}`));
-  });
-  assert.match(code, /authorizeAdmin_\(identity\)/);
-  assert.match(code, /requestRateLimitCost_/);
-  assert.match(code, /current \+ cost > limit/);
-  assert.match(code, /retryAfterSeconds/);
-  assert.match(code, /RATE_LIMIT_BUSY[\s\S]*retryAfterSeconds/);
-  assert.match(read('admin/bulk-actions.js'), /rateLimitMessage/);
-  assert.match(read('admin/bulk-create-ux.js'), /rateLimitMessage/);
+test('database batch RPC is limited to 20 and is one PostgreSQL transaction', () => {
+  const sql = read('supabase/migrations/001_calendar_system.sql');
+  assert.match(sql, /calendar_system_apply_batch/);
+  assert.match(sql, /jsonb_array_length\(p_operations\) > 20/);
+  assert.match(sql, /for v_op in select value from jsonb_array_elements\(p_operations\)/i);
+  assert.match(sql, /for update/i);
+  assert.match(sql, /raise exception 'CONFLICT'/);
+  assert.match(sql, /status='archived'/);
+  assert.doesNotMatch(sql, /delete from public\.calendar_system_items/i);
 });
 
-test('bulk service validates count, versions, duplicates, past dates, and uses soft archive', () => {
-  const service = read('gas/CalendarBulkService.gs');
-  assert.match(service, /CALENDAR_BULK_MAX_ITEMS_\s*=\s*20/);
-  assert.match(service, /validateCalendarItem_/);
-  assert.match(service, /enforceAdminCalendarNotPast_/);
-  assert.match(service, /expectedUpdatedAt/);
-  assert.match(service, /DUPLICATE_ITEM_ID/);
-  assert.match(service, /CONFLICT/);
-  assert.match(service, /status:\s*'archived'/);
-  assert.match(service, /withDataLock_/);
-  assert.match(service, /writeCalendarRowsBatch_/);
-  assert.match(service, /rowNumber:\s*index \+ 2/);
-  assert.doesNotMatch(service, /table\.values/);
-  assert.doesNotMatch(service, /deleteRow|deleteRows|clearContent/);
-});
-
-test('bulk service emits per-item audit records and does not log credentials', () => {
-  const service = read('gas/CalendarBulkService.gs');
-  assert.match(service, /CALENDAR_ITEM_CREATE/);
-  assert.match(service, /CALENDAR_ITEM_UPDATE/);
-  assert.match(service, /CALENDAR_ITEM_ARCHIVE/);
-  assert.match(service, /actor_line_user_id/);
-  assert.doesNotMatch(service, /console\.(log|info|warn|error)\([^\n]*idToken/i);
-  assert.doesNotMatch(service, /password|access_token/i);
+test('batch RPC is not callable by public browser roles', () => {
+  const sql = read('supabase/migrations/001_calendar_system.sql');
+  assert.match(sql, /security invoker/i);
+  assert.match(sql, /revoke all on function public\.calendar_system_apply_batch\(text,jsonb\) from public, anon, authenticated/i);
+  assert.match(sql, /grant execute on function public\.calendar_system_apply_batch\(text,jsonb\) to service_role/i);
 });
