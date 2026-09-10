@@ -1,6 +1,8 @@
 (() => {
   'use strict';
 
+  const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
+  const TYPE_PREFIX = '__TYPE__:';
   const PRIMARY_TAB_IDS = ['membersTab', 'cardsTab', 'eventsTab', 'calendarTab'];
   const PRIMARY_PANEL_IDS = ['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel'];
   const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', rejected: '未通過', cancelled: '已取消' };
@@ -45,7 +47,7 @@
     panel.setAttribute('aria-labelledby', 'bookingTab');
     panel.innerHTML = `
       <div class="panel-heading booking-admin-heading">
-        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與提前預約天數為共用設定；預約項目管理服務時間、價格與開放狀態。</p></div>
+        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與提前預約天數為共用設定；預約項目管理類型、服務時間、價格與開放狀態。</p></div>
         <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span><button id="bookingAdminRefreshButton" class="button button-outline" type="button">更新預約</button></div>
       </div>
 
@@ -72,7 +74,7 @@
 
       <div class="booking-admin-workspace">
         <section class="booking-admin-card" aria-labelledby="bookingAdminServiceTitle">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目設定名稱、服務時間、價格與開放狀態。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目設定名稱、類型、服務時間、價格與開放狀態；會員選到相同類型時會收到提醒。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
           <div class="booking-admin-list-heading"><strong>已建立項目</strong><span id="bookingAdminServiceListCount">0</span></div>
           <div id="bookingAdminServiceList" class="booking-admin-service-list"></div>
           <div id="bookingAdminServiceEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立預約項目</p></div>
@@ -103,6 +105,7 @@
         <form id="bookingAdminServiceForm" class="booking-admin-form" novalidate>
           <input id="bookingAdminServiceId" type="hidden"><input id="bookingAdminExpectedUpdatedAt" type="hidden">
           <label>預約項目名稱<input id="bookingAdminServiceName" type="text" maxlength="100" placeholder="例如：腳底按摩" required></label>
+          <label>項目類型<input id="bookingAdminServiceType" type="text" maxlength="80" placeholder="例如：足部按摩" required><small>相同類型的不同預約項目可以同時選擇，但會員加入與確認預約時都會收到提醒。</small></label>
           <label>項目服務時間（分鐘）<input id="bookingAdminDurationMinutes" type="number" min="1" max="720" step="1" value="30" required><small>例如 40 分鐘服務請輸入 40；數量 2 會計算為 80 分鐘。</small></label>
           <label>價格（NT$）<input id="bookingAdminPriceAmount" type="number" min="0" max="10000000" step="1" value="0" inputmode="numeric" required><small>輸入單次服務價格；會員重複加入同一項目時會依數量累加總額。</small></label>
           <label class="booking-admin-toggle"><input id="bookingAdminActive" type="checkbox" checked><span><strong>開放會員預約</strong><small>關閉後會員端不再顯示此項目，既有預約紀錄仍保留。</small></span></label>
@@ -123,7 +126,7 @@
       'bookingAdminSettingsForm', 'bookingAdminStartTime', 'bookingAdminEndTime', 'bookingAdminAdvanceDays', 'bookingAdminSettingsMessage', 'bookingAdminSaveSettingsButton',
       'bookingAdminNewServiceButton', 'bookingAdminServiceListCount', 'bookingAdminServiceList', 'bookingAdminServiceEmpty', 'bookingAdminQueue', 'bookingAdminQueueEmpty',
       'bookingAdminServiceModal', 'bookingAdminServiceModalTitle', 'bookingAdminCloseServiceModal', 'bookingAdminCancelServiceButton', 'bookingAdminServiceForm',
-      'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminDurationMinutes', 'bookingAdminPriceAmount',
+      'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminServiceType', 'bookingAdminDurationMinutes', 'bookingAdminPriceAmount',
       'bookingAdminActive', 'bookingAdminServiceMessage', 'bookingAdminSaveServiceButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
@@ -250,6 +253,10 @@
     }
   }
 
+  function visibleServices() {
+    return (state.data.services || []).filter((service) => service.serviceId !== STORE_SERVICE_ID);
+  }
+
   function renderAll() {
     renderSettings();
     renderStats();
@@ -265,7 +272,7 @@
   }
 
   function renderStats() {
-    const services = state.data.services || [];
+    const services = visibleServices();
     const bookings = state.data.bookings || [];
     const pending = bookings.filter((booking) => booking.status === 'pending').length;
     els.bookingAdminServiceCount.textContent = String(services.length);
@@ -275,8 +282,13 @@
     els.bookingTab.setAttribute('aria-label', pending ? `預約，${pending} 筆待確認` : '預約');
   }
 
+  function serviceTypeOf(service) {
+    const description = String(service?.description || '');
+    return description.startsWith(TYPE_PREFIX) ? description.slice(TYPE_PREFIX.length).trim() : '';
+  }
+
   function renderServices() {
-    const services = state.data.services || [];
+    const services = visibleServices();
     els.bookingAdminServiceListCount.textContent = String(services.length);
     els.bookingAdminServiceEmpty.classList.toggle('hidden', services.length > 0);
     els.bookingAdminServiceList.replaceChildren();
@@ -288,7 +300,7 @@
       const title = document.createElement('strong');
       title.textContent = service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
+      meta.textContent = `類型 ${serviceTypeOf(service) || '未設定'} · 服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
       content.append(title, meta);
       const status = document.createElement('span');
       status.className = `booking-admin-service-status ${service.isActive ? 'active' : 'inactive'}`;
@@ -306,6 +318,7 @@
     els.bookingAdminServiceId.value = editing ? service.serviceId : '';
     els.bookingAdminExpectedUpdatedAt.value = editing ? service.updatedAt || '' : '';
     els.bookingAdminServiceName.value = editing ? service.title || '' : '';
+    els.bookingAdminServiceType.value = editing ? serviceTypeOf(service) : '';
     els.bookingAdminDurationMinutes.value = String(editing ? service.durationMinutes || 30 : 30);
     els.bookingAdminPriceAmount.value = String(editing ? Number(service.priceAmount || 0) : 0);
     els.bookingAdminActive.checked = editing ? service.isActive !== false : true;
@@ -355,6 +368,12 @@
   async function saveService(event) {
     event.preventDefault();
     if (state.savingService || state.writeLocked) return;
+    const serviceType = String(els.bookingAdminServiceType.value || '').trim();
+    if (!serviceType || serviceType.length > 80) {
+      showMessage(els.bookingAdminServiceMessage, '請輸入 1–80 字的項目類型。', 'error');
+      els.bookingAdminServiceType.focus();
+      return;
+    }
     const priceAmount = Number(els.bookingAdminPriceAmount.value);
     if (!Number.isSafeInteger(priceAmount) || priceAmount < 0 || priceAmount > 10000000) {
       showMessage(els.bookingAdminServiceMessage, '價格必須是 0–10,000,000 元的整數。', 'error');
@@ -370,7 +389,7 @@
         serviceId: els.bookingAdminServiceId.value,
         expectedUpdatedAt: els.bookingAdminExpectedUpdatedAt.value,
         title: els.bookingAdminServiceName.value,
-        description: '',
+        description: `${TYPE_PREFIX}${serviceType}`,
         durationMinutes: Number(els.bookingAdminDurationMinutes.value),
         priceAmount,
         isActive: els.bookingAdminActive.checked,
@@ -391,6 +410,19 @@
       els.bookingAdminSaveServiceButton.textContent = '儲存預約項目';
       applyWriteLock();
     }
+  }
+
+  function bookingVisibleItems(booking) {
+    return Array.isArray(booking?.items) ? booking.items.filter((item) => item.serviceId !== STORE_SERVICE_ID) : [];
+  }
+
+  function bookingStoreItem(booking) {
+    return Array.isArray(booking?.items) ? booking.items.find((item) => item.serviceId === STORE_SERVICE_ID) : null;
+  }
+
+  function bookingDisplayTitle(booking) {
+    const titles = bookingVisibleItems(booking).map((item) => item.serviceTitle).filter(Boolean);
+    return titles.length ? titles.join(' + ') : booking.serviceTitle || '預約項目';
   }
 
   function renderBookings() {
@@ -415,21 +447,29 @@
       card.appendChild(heading);
 
       const title = document.createElement('h4');
-      title.textContent = booking.serviceTitle || '預約項目';
+      title.textContent = bookingDisplayTitle(booking);
       card.appendChild(title);
+      const storeItem = bookingStoreItem(booking);
+      const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || 10) * Number(storeItem.quantity || 1) : 0;
       const time = document.createElement('p');
       time.className = 'booking-admin-time';
-      time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 共 ${booking.totalDurationMinutes || 0} 分鐘 · 總額 ${formatMoney(booking.totalAmount)}`;
+      time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 共 ${booking.totalDurationMinutes || 0} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 總額 ${formatMoney(booking.totalAmount)}`;
       card.appendChild(time);
 
-      if (Array.isArray(booking.items) && booking.items.length) {
+      const visibleItems = bookingVisibleItems(booking);
+      if (visibleItems.length || storeItem) {
         const list = document.createElement('ul');
         list.className = 'booking-admin-item-list';
-        booking.items.forEach((item) => {
+        visibleItems.forEach((item) => {
           const li = document.createElement('li');
           li.textContent = `${item.serviceTitle} × ${item.quantity}（${item.unitDurationMinutes} 分鐘/份 · ${formatMoney(item.unitPriceAmount)}/份）`;
           list.appendChild(li);
         });
+        if (storeItem) {
+          const li = document.createElement('li');
+          li.textContent = `店內服務 ${storeMinutes} 分鐘：肩頸服務、龜苓膏、熱茶（計入預約佔用時間；不計入會員累積消費服務時數／會員階級）`;
+          list.appendChild(li);
+        }
         card.appendChild(list);
       }
       if (booking.memberNote) appendNote(card, `會員備註：${booking.memberNote}`, false);

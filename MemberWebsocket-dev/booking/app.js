@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
+  const TYPE_PREFIX = '__TYPE__:';
+  const DEFAULT_STORE_SERVICE_MINUTES = 10;
   const state = {
     config: null,
     idToken: '',
@@ -92,8 +95,12 @@
   }
 
   function pruneSelections() {
-    const valid = new Set((state.data.services || []).map((service) => service.serviceId));
+    const valid = new Set(userServices().map((service) => service.serviceId));
     state.selections = state.selections.filter((selection) => valid.has(selection.serviceId));
+  }
+
+  function userServices() {
+    return (state.data.services || []).filter((service) => service.serviceId !== STORE_SERVICE_ID);
   }
 
   function renderMemberProfile() {
@@ -115,7 +122,7 @@
   }
 
   function renderServices() {
-    const services = state.data.services || [];
+    const services = userServices();
     els.servicePicker.replaceChildren();
     els.serviceEmpty.classList.toggle('hidden', services.length > 0);
 
@@ -131,13 +138,9 @@
       const title = document.createElement('strong');
       title.textContent = service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
+      const serviceType = serviceTypeOf(service);
+      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
       text.append(title, meta);
-      if (service.description) {
-        const description = document.createElement('small');
-        description.textContent = service.description;
-        text.append(description);
-      }
       main.appendChild(text);
 
       const addButton = document.createElement('button');
@@ -168,7 +171,8 @@
       const title = document.createElement('strong');
       title.textContent = item.service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${item.service.durationMinutes} 分鐘 · ${formatMoney(item.service.priceAmount)}`;
+      const serviceType = serviceTypeOf(item.service);
+      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${item.service.durationMinutes} 分鐘 · ${formatMoney(item.service.priceAmount)}`;
       text.append(title, meta);
 
       const removeButton = document.createElement('button');
@@ -189,7 +193,18 @@
       showFormMessage(`${service.title} 已加入兩次，無法再重複加入。`, 'error');
       return;
     }
-    if (duplicateCount > 0 && !window.confirm(`${service.title} 已有選擇，是否要再加入？`)) return;
+
+    const warnings = [];
+    if (duplicateCount > 0) warnings.push(`${service.title} 已有選擇。`);
+    const serviceType = serviceTypeOf(service);
+    if (serviceType) {
+      const sameTypeRows = selectedServiceRows().filter((item) => serviceTypeKey(serviceTypeOf(item.service)) === serviceTypeKey(serviceType));
+      if (sameTypeRows.length) {
+        const names = [...new Set(sameTypeRows.map((item) => item.service.title))].join('、');
+        warnings.push(`目前已選擇相同類型「${serviceType}」的項目：${names}。`);
+      }
+    }
+    if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n仍要加入這個預約項目嗎？`)) return;
 
     state.selections.push({
       selectionId: crypto.randomUUID(),
@@ -210,24 +225,63 @@
     for (const selection of state.selections) {
       counts.set(selection.serviceId, (counts.get(selection.serviceId) || 0) + 1);
     }
-    return [...counts.entries()]
+    const items = [...counts.entries()]
       .filter(([, count]) => count >= 1 && count <= 2)
       .map(([serviceId, count]) => ({ serviceId, quantity: count }));
+    if (items.length) items.push({ serviceId: STORE_SERVICE_ID, quantity: 1 });
+    return items;
   }
 
   function selectedServiceRows() {
-    const byId = new Map((state.data.services || []).map((service) => [service.serviceId, service]));
+    const byId = new Map(userServices().map((service) => [service.serviceId, service]));
     return state.selections
       .map((selection) => ({ ...selection, service: byId.get(selection.serviceId) }))
       .filter((item) => item.service);
   }
 
-  function totalDurationMinutes() {
+  function serviceDurationMinutes() {
     return selectedServiceRows().reduce((sum, item) => sum + Number(item.service.durationMinutes || 0), 0);
   }
 
+  function storeServiceMinutes() {
+    const service = (state.data.services || []).find((item) => item.serviceId === STORE_SERVICE_ID);
+    const value = Number(service?.durationMinutes ?? DEFAULT_STORE_SERVICE_MINUTES);
+    return Number.isInteger(value) && value >= 0 ? value : DEFAULT_STORE_SERVICE_MINUTES;
+  }
+
+  function totalDurationMinutes() {
+    return serviceDurationMinutes() + storeServiceMinutes();
+  }
+
   function totalAmount() {
-    return selectedServiceRows().reduce((sum, item) => sum + Number(item.service.priceAmount || 0), 0);
+    const services = new Map((state.data.services || []).map((service) => [service.serviceId, service]));
+    return selectedItems().reduce((sum, item) => {
+      const service = services.get(item.serviceId);
+      return sum + (Number(service?.priceAmount || 0) * Number(item.quantity || 0));
+    }, 0);
+  }
+
+  function serviceTypeOf(service) {
+    const description = String(service?.description || '');
+    return description.startsWith(TYPE_PREFIX) ? description.slice(TYPE_PREFIX.length).trim() : '';
+  }
+
+  function serviceTypeKey(value) {
+    return String(value || '').trim().toLocaleLowerCase('zh-Hant-TW');
+  }
+
+  function duplicateTypeGroups(rows = selectedServiceRows()) {
+    const groups = new Map();
+    for (const item of rows) {
+      const label = serviceTypeOf(item.service);
+      const key = serviceTypeKey(label);
+      if (!key) continue;
+      const group = groups.get(key) || { label, titles: [], count: 0 };
+      group.count += 1;
+      group.titles.push(item.service.title);
+      groups.set(key, group);
+    }
+    return [...groups.values()].filter((group) => group.count > 1);
   }
 
   function globalMinimumDate() {
@@ -256,11 +310,13 @@
       return;
     }
 
-    const total = totalDurationMinutes();
+    const serviceMinutes = serviceDurationMinutes();
+    const includedMinutes = storeServiceMinutes();
+    const totalMinutes = serviceMinutes + includedMinutes;
     els.bookingDate.disabled = false;
     if (!els.bookingDate.value || els.bookingDate.value < minimumDate) els.bookingDate.value = minimumDate;
     els.selectionSummary.classList.remove('hidden');
-    els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 總服務時間 ${total} 分鐘 · 總額 ${formatMoney(totalAmount())} · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}`;
+    els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 項目 ${serviceMinutes} 分鐘 + 店內服務 ${includedMinutes} 分鐘 = 預約共 ${totalMinutes} 分鐘 · 總額 ${formatMoney(totalAmount())} · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}`;
     els.slotHint.textContent = '正在計算整段服務時間可使用的時段…';
     if (loadAfter && els.bookingDate.value) loadSlots();
   }
@@ -307,7 +363,7 @@
     const availableCount = slots.filter((slot) => slot.available).length;
     els.slotHint.textContent = slots.length
       ? availableCount
-        ? `總服務 ${totalDuration} 分鐘，共有 ${availableCount} 個可開始時段。已被其他預約重疊的時間不可選。`
+        ? `預約共 ${totalDuration} 分鐘（已含店內服務 ${storeServiceMinutes()} 分鐘），共有 ${availableCount} 個可開始時段。已被其他預約重疊的時間不可選。`
         : '這一天目前沒有可容納完整服務時間的時段。'
       : '這一天沒有可預約時段。';
 
@@ -359,13 +415,28 @@
     const list = document.createElement('ul');
     for (const item of items) {
       const li = document.createElement('li');
-      li.textContent = `${item.service.title}（${item.service.durationMinutes} 分鐘 · ${formatMoney(item.service.priceAmount)}）`;
+      const serviceType = serviceTypeOf(item.service);
+      li.textContent = `${item.service.title}${serviceType ? `｜${serviceType}` : ''}（${item.service.durationMinutes} 分鐘 · ${formatMoney(item.service.priceAmount)}）`;
       list.appendChild(li);
     }
     fragment.appendChild(list);
 
+    const storeNotice = document.createElement('div');
+    storeNotice.className = 'service-info';
+    storeNotice.textContent = `店內服務：每筆預約自動加入 ${storeServiceMinutes()} 分鐘，包含肩頸服務、龜苓膏與熱茶。這 ${storeServiceMinutes()} 分鐘會算入預約佔用時間，但不另外計價，也不計入會員累積消費服務時數或會員階級。`;
+    fragment.appendChild(storeNotice);
+
+    const duplicateGroups = duplicateTypeGroups(items);
+    if (duplicateGroups.length) {
+      const warning = document.createElement('div');
+      warning.className = 'form-message error';
+      warning.setAttribute('role', 'alert');
+      warning.textContent = `提醒：你選擇了相同類型的預約項目：${duplicateGroups.map((group) => `「${group.label}」${group.titles.join('、')}`).join('；')}。請再次確認是否需要同類型項目。`;
+      fragment.appendChild(warning);
+    }
+
     const total = document.createElement('strong');
-    total.textContent = `總服務時間：${totalDurationMinutes()} 分鐘 · 預約總額：${formatMoney(totalAmount())}`;
+    total.textContent = `項目服務：${serviceDurationMinutes()} 分鐘 + 店內服務：${storeServiceMinutes()} 分鐘 = 預約共 ${totalDurationMinutes()} 分鐘 · 預約總額：${formatMoney(totalAmount())}`;
     fragment.appendChild(total);
     if (els.memberNote.value.trim()) {
       const note = document.createElement('p');
@@ -448,6 +519,19 @@
     }
   }
 
+  function bookingVisibleItems(booking) {
+    return Array.isArray(booking?.items) ? booking.items.filter((service) => service.serviceId !== STORE_SERVICE_ID) : [];
+  }
+
+  function bookingStoreItem(booking) {
+    return Array.isArray(booking?.items) ? booking.items.find((service) => service.serviceId === STORE_SERVICE_ID) : null;
+  }
+
+  function bookingDisplayTitle(booking) {
+    const titles = bookingVisibleItems(booking).map((service) => service.serviceTitle).filter(Boolean);
+    return titles.length ? titles.join(' + ') : booking.serviceTitle || '預約項目';
+  }
+
   function renderBookings() {
     const bookings = state.data.bookings || [];
     els.bookingList.replaceChildren();
@@ -460,9 +544,11 @@
       top.className = 'booking-item-top';
       const titleBox = document.createElement('div');
       const title = document.createElement('strong');
-      title.textContent = booking.serviceTitle || '預約項目';
+      title.textContent = bookingDisplayTitle(booking);
       const time = document.createElement('span');
-      time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${booking.totalDurationMinutes || 0} 分鐘 · ${formatMoney(booking.totalAmount)}`;
+      const storeItem = bookingStoreItem(booking);
+      const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || DEFAULT_STORE_SERVICE_MINUTES) * Number(storeItem.quantity || 1) : 0;
+      time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${booking.totalDurationMinutes || 0} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · ${formatMoney(booking.totalAmount)}`;
       titleBox.append(title, time);
       const status = document.createElement('span');
       status.className = `status-badge status-${booking.status}`;
@@ -470,10 +556,11 @@
       top.append(titleBox, status);
       item.appendChild(top);
 
-      if (Array.isArray(booking.items) && booking.items.length) {
+      const visibleItems = bookingVisibleItems(booking);
+      if (visibleItems.length || storeItem) {
         const serviceList = document.createElement('ul');
         serviceList.className = 'booking-service-items';
-        booking.items.forEach((service) => {
+        visibleItems.forEach((service) => {
           const repeat = Math.max(1, Number(service.quantity || 1));
           for (let index = 0; index < repeat; index += 1) {
             const li = document.createElement('li');
@@ -481,6 +568,11 @@
             serviceList.appendChild(li);
           }
         });
+        if (storeItem) {
+          const li = document.createElement('li');
+          li.textContent = `店內服務 ${storeMinutes} 分鐘：肩頸服務、龜苓膏、熱茶（不計入會員累積消費服務時數）`;
+          serviceList.appendChild(li);
+        }
         item.appendChild(serviceList);
       }
       if (booking.memberNote) {
@@ -516,7 +608,7 @@
   }
 
   async function cancelBooking(booking, button) {
-    if (!window.confirm(`確定取消 ${booking.serviceTitle} ${booking.bookingDate} ${booking.startTime}–${booking.endTime} 的預約嗎？`)) return;
+    if (!window.confirm(`確定取消 ${bookingDisplayTitle(booking)} ${booking.bookingDate} ${booking.startTime}–${booking.endTime} 的預約嗎？`)) return;
     button.disabled = true;
     try {
       const result = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.cancel', { bookingId: booking.bookingId });
