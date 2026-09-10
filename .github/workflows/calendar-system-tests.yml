@@ -1,0 +1,27 @@
+name: CalendarSystem Tests
+
+on:
+  push:
+    paths:
+      - 'MembershipSystem/CalendarSystem/**'
+      - '.github/workflows/calendar-system-tests.yml'
+  pull_request:
+    paths:
+      - 'MembershipSystem/CalendarSystem/**'
+      - '.github/workflows/calendar-system-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run CalendarSystem tests
+        run: node --test MembershipSystem/CalendarSystem/tests/*.test.js
