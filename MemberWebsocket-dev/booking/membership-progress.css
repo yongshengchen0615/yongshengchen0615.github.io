@@ -23,3 +23,6 @@
 .membership-progress[data-membership-tier-style="platinum"] { --membership-card-background: #38414e; --membership-card-accent: #b8cadc; --membership-card-soft: #e9eff5; }
 .membership-progress[data-membership-tier-style="mint"] { --membership-card-background: #1e4039; --membership-card-accent: #6bd0a0; --membership-card-soft: #d1f4de; }
 .membership-progress[data-membership-tier-style="cherry"] { --membership-card-background: #4a1721; --membership-card-accent: #ec6973; --membership-card-soft: #ffd0d4; }
+.member-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.service-choice-main > span > small + small { display: none; }
+@media (max-width: 420px) { .member-summary { grid-template-columns: 1fr; } }
