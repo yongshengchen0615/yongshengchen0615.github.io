@@ -101,7 +101,7 @@ create trigger bookings_touch_updated_at
 before update on public.bookings
 for each row execute function public.touch_booking_updated_at();
 
--- Atomic server-side booking creation. This function is intentionally unavailable to public clients.
+-- Atomic server-side booking creation. It runs with the Edge Function's service_role privileges only.
 create or replace function public.create_booking_request(
   p_request_id text,
   p_service_id uuid,
@@ -112,7 +112,7 @@ create or replace function public.create_booking_request(
 )
 returns public.bookings
 language plpgsql
-security definer
+security invoker
 set search_path = public
 as $$
 declare
