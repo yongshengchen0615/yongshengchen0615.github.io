@@ -1,0 +1,41 @@
+name: Apply Event Ticket Activity Link Patch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'MemberWebsocket-dev/scripts/apply-event-ticket-activity-link-patch.mjs'
+      - '.github/workflows/apply-event-ticket-activity-link-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply exact wiring patch
+        run: node MemberWebsocket-dev/scripts/apply-event-ticket-activity-link-patch.mjs
+      - name: Validate patched sources
+        run: |
+          node --check MemberWebsocket-dev/admin/event-ticket-activity-link.js
+          node --check MemberWebsocket-dev/event/activity-link.js
+          node MemberWebsocket-dev/tests/event_ticket_activity_link.test.js
+          git diff --check
+      - name: Commit patched files
+        run: |
+          if git diff --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add MemberWebsocket-dev/admin/index.html MemberWebsocket-dev/event/index.html .github/workflows/test-memberwebsocket-dev.yml
+          git commit -m 'feat(event): wire activity link UI'
+          git push origin HEAD:main
