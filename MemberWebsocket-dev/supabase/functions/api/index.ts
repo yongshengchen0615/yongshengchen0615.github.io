@@ -776,6 +776,139 @@ async function lineMessagingToken(supabase: SupabaseClient): Promise<string> {
   return asText(result.data,10000);
 }
 
+function grantTicketItemLines(items: { label: string; status?: string }[], maxItems = 5): string[] {
+  const grouped = new Map<string,{ label:string;status:string;count:number }>();
+  for (const item of items) {
+    const label = asText(item.label,180);
+    const status = asText(item.status,40);
+    if (!label) continue;
+    const key = label + "\n" + status;
+    const current = grouped.get(key);
+    if (current) current.count += 1;
+    else grouped.set(key,{ label,status,count:1 });
+  }
+
+  const entries = [...grouped.values()];
+  const visible = entries.slice(0,maxItems).map((item) =>
+    "・" + item.label + (item.count > 1 ? " ×" + item.count : "") + (item.status ? "（" + item.status + "）" : "")
+  );
+  const hiddenCount = entries.slice(maxItems).reduce((sum,item) => sum + item.count,0);
+  if (hiddenCount > 0) visible.push("・另有 " + hiddenCount + " 張");
+  return visible;
+}
+
+async function grantAvailableTicketSection(
+  supabase: SupabaseClient,
+  memberId: string,
+  tierKey: string,
+  grantedCardIds: string[],
+): Promise<string> {
+  const today = taipeiDate();
+  const ticketBlocks: string[] = [];
+
+  const pointCardsResult = await supabase
+    .from("point_cards")
+    .select("id,card_id,title,status,expiry_mode,expires_on")
+    .eq("status","active");
+  if (pointCardsResult.error) throw mapDatabaseError(pointCardsResult.error);
+
+  const activePointCards = (pointCardsResult.data || []).filter((row:any) => !isExpiredCard(row));
+  const pointCardsToIssue = activePointCards.filter((row:any) => grantedCardIds.includes(String(row.card_id)));
+  if (pointCardsToIssue.length) {
+    await Promise.all(pointCardsToIssue.map(async (row:any) => {
+      const issueResult = await supabase.rpc("issue_eligible_point_tickets",{ p_member_id:memberId,p_point_card_id:row.id });
+      if (issueResult.error) throw mapDatabaseError(issueResult.error);
+    }));
+  }
+
+  const internalPointCardIds = activePointCards.map((row:any) => row.id);
+  const pointTicketsResult = internalPointCardIds.length
+    ? await supabase
+        .from("point_tickets")
+        .select("ticket_id,ticket_title,point_card_id,status,created_at")
+        .eq("member_id",memberId)
+        .eq("status","available")
+        .in("point_card_id",internalPointCardIds)
+        .order("created_at",{ ascending:false })
+    : { data:[],error:null };
+  if (pointTicketsResult.error) throw mapDatabaseError(pointTicketsResult.error);
+
+  const pointCardTitleById = new Map(activePointCards.map((row:any) => [String(row.id),String(row.title || "集點卡")]));
+  const pointTicketItems = (pointTicketsResult.data || []).map((row:any) => ({
+      label: (pointCardTitleById.get(String(row.point_card_id)) || "集點卡") + "｜" + String(row.ticket_title || "可用票券"),
+    }));
+  if (pointTicketItems.length) {
+    ticketBlocks.push(
+      "集點卡票券 " + pointTicketItems.length + " 張\n" +
+      grantTicketItemLines(pointTicketItems).join("\n")
+    );
+  }
+
+  const eventTicketsResult = await supabase
+    .from("event_tickets")
+    .select("id,title,status,starts_on,ends_on,quota,allowed_tier_keys,created_at")
+    .eq("status","active")
+    .is("deleted_at",null)
+    .order("created_at",{ ascending:false });
+  if (eventTicketsResult.error) throw mapDatabaseError(eventTicketsResult.error);
+
+  const eligibleEventRows = (eventTicketsResult.data || []).filter((row:any) => {
+    const scheduled = Boolean(row.starts_on && today < String(row.starts_on));
+    const ended = Boolean(row.ends_on && today > String(row.ends_on));
+    const allowedTierKeys = Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [];
+    return !scheduled && !ended && allowedTierKeys.includes(tierKey);
+  });
+  const eventIds = eligibleEventRows.map((row:any) => row.id);
+
+  const memberClaimsResult = eventIds.length
+    ? await supabase
+        .from("event_ticket_claims")
+        .select("event_ticket_id,status")
+        .eq("member_id",memberId)
+        .in("event_ticket_id",eventIds)
+    : { data:[],error:null };
+  if (memberClaimsResult.error) throw mapDatabaseError(memberClaimsResult.error);
+
+  const claimCountsResult = eventIds.length
+    ? await supabase
+        .from("event_ticket_claims")
+        .select("event_ticket_id")
+        .in("event_ticket_id",eventIds)
+    : { data:[],error:null };
+  if (claimCountsResult.error) throw mapDatabaseError(claimCountsResult.error);
+
+  const memberClaimByEvent = new Map((memberClaimsResult.data || []).map((row:any) => [String(row.event_ticket_id),String(row.status || "")]));
+  const claimCounts = new Map<string,number>();
+  for (const row of claimCountsResult.data || []) {
+    const eventId = String(row.event_ticket_id);
+    claimCounts.set(eventId,(claimCounts.get(eventId) || 0) + 1);
+  }
+
+  const eventTicketItems: { label:string;status:string }[] = [];
+  for (const row of eligibleEventRows) {
+    const eventId = String(row.id);
+    const claimStatus = memberClaimByEvent.get(eventId) || "";
+    if (claimStatus === "claimed" || claimStatus === "available") {
+      eventTicketItems.push({ label:String(row.title || "活動票券"),status:"已領取，可使用" });
+      continue;
+    }
+    if (claimStatus) continue;
+    const quota = Number(row.quota || 0);
+    const soldOut = quota > 0 && (claimCounts.get(eventId) || 0) >= quota;
+    if (!soldOut) eventTicketItems.push({ label:String(row.title || "活動票券"),status:"可領取" });
+  }
+  if (eventTicketItems.length) {
+    ticketBlocks.push(
+      "活動票券 " + eventTicketItems.length + " 張\n" +
+      grantTicketItemLines(eventTicketItems).join("\n")
+    );
+  }
+
+  return ticketBlocks.length
+    ? "【目前可用票券】\n" + ticketBlocks.join("\n\n") + "\n請至會員系統查看與使用。"
+    : "";
+}
+
 async function pushGrantNotification(
   supabase: SupabaseClient,
   lineUserId: string,
@@ -786,6 +919,7 @@ async function pushGrantNotification(
   serviceMinutes: number,
   presetMessage: string,
   totalServiceMinutes: number,
+  tierKey: string,
   tierLabel: string,
 ): Promise<GrantNotificationResult> {
   const token = await lineMessagingToken(supabase);
@@ -837,6 +971,13 @@ async function pushGrantNotification(
   }
 
   if (!sections.length) return { status:"skipped",message:"本次沒有需要推播的發放內容。" };
+
+  try {
+    const ticketSection = await grantAvailableTicketSection(supabase,memberId,tierKey,cardIds);
+    if (ticketSection) sections.push(ticketSection);
+  } catch {
+    // 票券摘要屬於附加資訊；同步失敗時仍需送出主要發放通知，避免成功發放卻沒有 LINE 訊息。
+  }
 
   const body = {
     to: lineUserId,
@@ -1325,6 +1466,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
           serviceMinutes,
           selectedMessagePreset?.message || "",
           minutes,
+          tier.tier_key,
           tier.tier_label,
         );
       } catch {
