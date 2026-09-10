@@ -56,7 +56,10 @@ assert.match(memberLink, /activityLinkNames/);
 assert.match(memberLink, /ticketModalActivityLink/);
 assert.match(memberLink, /target = '_blank'/);
 assert.match(memberLink, /rel = 'noopener noreferrer'/);
-assert.match(memberLink, /name \|\| '前往活動連結'/);
+assert.match(memberLink, /link\.textContent = '前往活動連結'/);
+assert.match(memberLink, /aria-label/);
+assert.doesNotMatch(memberLink, /link\.textContent = `\$\{name/);
+assert.doesNotMatch(memberLink, /↗/);
 assert.match(memberLink, /source.*event-ticket-calendar/);
 assert.match(memberLink, /autoOpenFromCalendar/);
 
