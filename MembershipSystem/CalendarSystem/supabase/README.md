@@ -36,7 +36,7 @@ No table, RPC, role state, audit state, or rate-limit state is read from `Member
 
 `migrations/001_calendar_system.sql` defines the Calendar user/item schema and transactional batch RPC. `migrations/002_standalone_support.sql` defines the CalendarSystem-specific Admin, Audit, and rate-limit components.
 
-All backend tables have RLS enabled and browser roles (`anon`, `authenticated`) have no direct table privileges. GitHub Pages accesses data only through the Edge Function. Supabase secret/service credentials remain server-side.
+All backend tables have RLS enabled and browser roles (`anon`, `authenticated`) have no direct table privileges. GitHub Pages accesses data only through the Edge Function. Supabase secret/service credentials remain server-side. Supabase secret/service credentials must never be added to GitHub Pages or `config.json`.
 
 ## Authorization
 
