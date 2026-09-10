@@ -10,6 +10,17 @@ const edge = read('MemberWebsocket-dev/supabase/functions/grant-automation/index
 
 assert.match(adminFlow, /EVENT_TICKET_CALENDAR_MANAGED/);
 assert.match(adminFlow, /syncManagedEventTicketDeleteButton/);
+assert.match(adminFlow, /decorateManagedEventTicketCalendarRows/);
+assert.match(adminFlow, /handleManagedEventTicketCalendarClick/);
+assert.match(adminFlow, /openManagedEventTicketInfo/);
+assert.match(adminFlow, /eventTicketCalendarInfoModal/);
+assert.match(adminFlow, /row\.querySelector\('\[data-admin-calendar-item-select\]'\)\?\.remove\(\)/);
+assert.match(adminFlow, /grid\.addEventListener\('click', handleManagedEventTicketCalendarClick, true\)/);
+assert.match(adminFlow, /grid\.addEventListener\('change', handleManagedEventTicketCalendarSelection, true\)/);
+assert.match(adminFlow, /日曆中僅供查看/);
+assert.match(adminFlow, /日曆中只能查看資訊/);
+assert.match(adminFlow, /admin\.calendar-items\.save/);
+assert.match(adminFlow, /不能批次修改或刪除/);
 assert.match(adminFlow, /由活動票券管理/);
 assert.match(adminFlow, /休假日不顯示活動，移除休假後會自動恢復/);
 assert.doesNotMatch(adminFlow, /已自動取消加入日曆/);
@@ -102,7 +113,7 @@ vm.runInNewContext(realtime, context);
   assert.equal(restored[0].startsOn, '2026-09-11');
   assert.equal(restored[0].endsOn, '2026-09-13');
 
-  console.log('event ticket calendar holiday/source guard OK');
+  console.log('event ticket calendar holiday/source/read-only guard OK');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
