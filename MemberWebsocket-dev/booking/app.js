@@ -80,6 +80,7 @@
       renderServices();
       renderBookings();
       applySelectionConstraints(false);
+      window.dispatchEvent(new CustomEvent('booking:settings-updated', { detail: { settings: state.data.settings, today: state.data.today } }));
       if (selectedItems().length && els.bookingDate.value) await loadSlots();
       if (showMessage) showFormMessage('資料已更新。', 'success');
     } catch (error) {
@@ -106,9 +107,11 @@
 
   function renderSettings() {
     const settings = state.data.settings || {};
-    els.workHoursBadge.textContent = settings.workStartTime && settings.workEndTime
+    const hours = settings.workStartTime && settings.workEndTime
       ? `${settings.workStartTime}–${settings.workEndTime}`
       : '上班時間未設定';
+    const advanceDays = Number(settings.minAdvanceDays || 0);
+    els.workHoursBadge.textContent = advanceDays > 0 ? `${hours} · 提前 ${advanceDays} 天` : hours;
   }
 
   function renderServices() {
@@ -128,7 +131,7 @@
       const title = document.createElement('strong');
       title.textContent = service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${service.durationMinutes} 分鐘${service.minAdvanceDays ? ` · 需提前 ${service.minAdvanceDays} 天` : ''}`;
+      meta.textContent = `服務 ${service.durationMinutes} 分鐘`;
       text.append(title, meta);
       if (service.description) {
         const description = document.createElement('small');
@@ -165,7 +168,7 @@
       const title = document.createElement('strong');
       title.textContent = item.service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${item.service.durationMinutes} 分鐘${item.service.minAdvanceDays ? ` · 需提前 ${item.service.minAdvanceDays} 天` : ''}`;
+      meta.textContent = `服務 ${item.service.durationMinutes} 分鐘`;
       text.append(title, meta);
 
       const removeButton = document.createElement('button');
@@ -223,8 +226,8 @@
     return selectedServiceRows().reduce((sum, item) => sum + Number(item.service.durationMinutes || 0), 0);
   }
 
-  function maxAdvanceDays() {
-    return selectedServiceRows().reduce((max, item) => Math.max(max, Number(item.service.minAdvanceDays || 0)), 0);
+  function globalMinimumDate() {
+    return window.BookingSystem.addDays(state.data.today, Number(state.data.settings?.minAdvanceDays || 0));
   }
 
   function selectionChanged() {
@@ -239,18 +242,17 @@
     els.slotGrid.replaceChildren();
     state.selectedSlot = null;
     els.submitBookingButton.disabled = true;
+    const minimumDate = globalMinimumDate();
+    els.bookingDate.min = minimumDate;
+
     if (!rows.length) {
-      els.bookingDate.value = '';
-      els.bookingDate.disabled = true;
+      els.bookingDate.disabled = !els.bookingDate.value;
       els.selectionSummary.classList.add('hidden');
       els.slotHint.textContent = '請先選擇至少一個預約項目。';
       return;
     }
 
     const total = totalDurationMinutes();
-    const advanceDays = maxAdvanceDays();
-    const minimumDate = window.BookingSystem.addDays(state.data.today, advanceDays);
-    els.bookingDate.min = minimumDate;
     els.bookingDate.disabled = false;
     if (!els.bookingDate.value || els.bookingDate.value < minimumDate) els.bookingDate.value = minimumDate;
     els.selectionSummary.classList.remove('hidden');
@@ -282,6 +284,11 @@
         bookingDate,
       });
       if (requestSequence !== state.slotRequestSequence) return;
+      if (result.settings) {
+        state.data.settings = { ...state.data.settings, ...result.settings };
+        renderSettings();
+        window.dispatchEvent(new CustomEvent('booking:settings-updated', { detail: { settings: state.data.settings, today: state.data.today } }));
+      }
       renderSlots(result.slots || [], previouslySelected, Number(result.totalDurationMinutes || totalDurationMinutes()));
     } catch (error) {
       if (requestSequence !== state.slotRequestSequence) return;
@@ -404,6 +411,7 @@
       applySelectionConstraints(false);
       renderBookings();
       showFormMessage('預約已送出，整段服務時間已保留，等待管理端確認。', 'success');
+      window.dispatchEvent(new CustomEvent('booking:created', { detail: { booking: result.booking } }));
     } catch (error) {
       if (error?.code === 'API_TIMEOUT') {
         try {
@@ -418,6 +426,7 @@
             renderServices();
             applySelectionConstraints(false);
             showFormMessage('預約已成功送出，整段時間已保留，等待管理端確認。', 'success');
+            window.dispatchEvent(new CustomEvent('booking:created', { detail: { booking: recovered } }));
             return;
           }
         } catch (_) {}

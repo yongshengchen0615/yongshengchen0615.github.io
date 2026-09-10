@@ -75,7 +75,7 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_TIME_PASSED", 409, "BOOKING_TIME_PASSED", "這個預約時間已經過了，請重新選擇。"],
     ["BOOKING_SERVICE_DISABLED", 409, "BOOKING_SERVICE_DISABLED", "其中一個預約項目目前未開放。"],
     ["BOOKING_SERVICE_NOT_FOUND", 404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個預約項目。"],
-    ["BOOKING_SETTINGS_MISSING", 503, "BOOKING_SETTINGS_MISSING", "預約上班時間尚未完成設定。"],
+    ["BOOKING_SETTINGS_MISSING", 503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。"],
     ["INVALID_BOOKING_ITEMS", 400, "INVALID_BOOKING_ITEMS", "請至少選擇一個預約項目。"],
     ["INVALID_BOOKING_QUANTITY", 400, "INVALID_BOOKING_QUANTITY", "每個預約項目的數量只能選擇 1 或 2。"],
     ["DUPLICATE_BOOKING_SERVICE", 400, "DUPLICATE_BOOKING_SERVICE", "同一個預約項目只能選擇一次，請用數量調整。"],
@@ -255,6 +255,7 @@ function settingsClient(row: any): Json {
   return {
     workStartTime: String(row?.work_start_time || "09:00:00").slice(0, 5),
     workEndTime: String(row?.work_end_time || "17:00:00").slice(0, 5),
+    minAdvanceDays: Number(row?.min_advance_days || 0),
     updatedAt: row?.updated_at || null,
   };
 }
@@ -265,7 +266,6 @@ function serviceClient(row: any): Json {
     title: row.title,
     description: row.description || "",
     durationMinutes: Number(row.duration_minutes || 30),
-    minAdvanceDays: Number(row.min_advance_days || 0),
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -329,7 +329,7 @@ async function hydrateBookings(supabase: SupabaseClient, rows: any[]): Promise<J
 async function bookingSettings(supabase: SupabaseClient): Promise<any> {
   const result = await supabase.from("booking_settings").select("*").eq("id", 1).maybeSingle();
   if (result.error) throw mapDatabaseError(result.error);
-  if (!result.data) throw new ApiError(503, "BOOKING_SETTINGS_MISSING", "預約上班時間尚未完成設定。");
+  if (!result.data) throw new ApiError(503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。");
   return result.data;
 }
 
@@ -370,10 +370,6 @@ function totalDuration(items: RequestedItem[]): number {
   return items.reduce((sum, item) => sum + Number(item.service.duration_minutes || 0) * item.quantity, 0);
 }
 
-function maximumAdvanceDays(items: RequestedItem[]): number {
-  return items.reduce((max, item) => Math.max(max, Number(item.service.min_advance_days || 0)), 0);
-}
-
 async function generateSlots(supabase: SupabaseClient, body: Json): Promise<Json> {
   const date = requireDate(body.bookingDate);
   const items = await normalizeRequestedItems(supabase, body);
@@ -382,7 +378,7 @@ async function generateSlots(supabase: SupabaseClient, body: Json): Promise<Json
   if (duration < 1 || duration > 1440) throw new ApiError(400, "INVALID_BOOKING_DURATION", "預約服務總時間不正確。");
 
   const today = taipeiDate();
-  const earliestBookingDate = addDays(today, maximumAdvanceDays(items));
+  const earliestBookingDate = addDays(today, Number(settings.min_advance_days || 0));
   if (date < earliestBookingDate) {
     return {
       settings: settingsClient(settings),
@@ -514,23 +510,29 @@ async function userCancel(supabase: SupabaseClient, identity: Identity, member: 
 async function adminSettingsSave(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const workStartTime = normalizeTime(body.workStartTime);
   const workEndTime = normalizeTime(body.workEndTime);
+  const minAdvanceDays = Number(body.minAdvanceDays);
   if (timeToMinutes(workEndTime) - timeToMinutes(workStartTime) < SLOT_START_INTERVAL_MINUTES) {
     throw new ApiError(400, "INVALID_WORK_HOURS", "結束工作時間必須晚於開始工作時間至少 30 分鐘。");
+  }
+  if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) {
+    throw new ApiError(400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。");
   }
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
   const current = await bookingSettings(supabase);
   if (expectedUpdatedAt && current.updated_at !== expectedUpdatedAt) {
-    throw new ApiError(409, "CONFLICT", "上班時間已被其他操作更新，請重新整理後再試。");
+    throw new ApiError(409, "CONFLICT", "預約共用設定已被其他操作更新，請重新整理後再試。");
   }
   const updated = await supabase.from("booking_settings").update({
     work_start_time: `${workStartTime}:00`,
     work_end_time: `${workEndTime}:00`,
+    min_advance_days: minAdvanceDays,
     updated_by: identity.lineUserId,
   }).eq("id", 1).select("*").single();
   if (updated.error) throw mapDatabaseError(updated.error);
   await audit(supabase, identity, "admin", "BOOKING_SETTINGS_UPDATED", "booking_settings", "1", {
     workStartTime,
     workEndTime,
+    minAdvanceDays,
   });
   return { settings: settingsClient(updated.data) };
 }
@@ -541,10 +543,6 @@ async function adminServiceSave(supabase: SupabaseClient, identity: Identity, bo
   const title = asText(body.title, 100);
   if (!title) throw new ApiError(400, "INVALID_INPUT", "預約項目名稱不可空白。");
   const description = asText(body.description, 1000);
-  const minAdvanceDays = Number(body.minAdvanceDays);
-  if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) {
-    throw new ApiError(400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。");
-  }
   const isActive = body.isActive !== false;
 
   let current: any = null;
@@ -570,7 +568,6 @@ async function adminServiceSave(supabase: SupabaseClient, identity: Identity, bo
     title,
     description,
     duration_minutes: durationMinutes,
-    min_advance_days: minAdvanceDays,
     is_active: isActive,
   };
 

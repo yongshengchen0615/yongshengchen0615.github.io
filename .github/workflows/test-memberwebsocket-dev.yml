@@ -86,9 +86,13 @@ jobs:
           grep -q 'quantity > 2' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
           grep -q 'calendar-flow.js' MemberWebsocket-dev/booking/index.html
           grep -q 'id="calendarGrid"' MemberWebsocket-dev/booking/index.html
-          grep -q 'id="appointmentPanel"' MemberWebsocket-dev/booking/index.html
+          grep -q 'id="appointmentPanel" class="booking-selection-modal' MemberWebsocket-dev/booking/index.html
+          grep -q 'id="closeAppointmentButton"' MemberWebsocket-dev/booking/index.html
+          grep -q 'advance-disabled' MemberWebsocket-dev/booking/calendar-flow.js
+          grep -q 'booking:settings-updated' MemberWebsocket-dev/booking/app.js
           grep -q 'booking-calendar-api' MemberWebsocket-dev/booking/calendar-flow.js
           grep -q 'booking_date,start_time,end_time' MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
+          grep -q 'min_advance_days' MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
           grep -q 'requireJoinedMember' MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
           grep -q 'subtabs.js' MemberWebsocket-dev/booking/admin/index.html
           grep -q '預約管理分類' MemberWebsocket-dev/booking/admin/subtabs.js
@@ -97,7 +101,8 @@ jobs:
           grep -q 'admin.booking.settings.save' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'id="bookingAdminStartTime"' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'id="bookingAdminEndTime"' MemberWebsocket-dev/admin/booking-panel.js
-          grep -q '上班時間設定' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'id="bookingAdminAdvanceDays"' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q '預約共用設定' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'bookingAdminDurationMinutes' MemberWebsocket-dev/admin/booking-panel.js
           ! grep -q 'bookingAdminWeekday' MemberWebsocket-dev/admin/booking-panel.js
           ! grep -q 'bookingAdminDescription' MemberWebsocket-dev/admin/booking-panel.js
@@ -107,7 +112,11 @@ jobs:
           grep -q 'booking_items' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
           grep -q 'bookings_no_active_overlap' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
           grep -q 'BOOKING_SLOT_TAKEN' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'minAdvanceDays: Number(row?.min_advance_days' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'Number(settings.min_advance_days' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
           grep -q 'requireJoinedMember' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'booking_settings_min_advance_days_check' MemberWebsocket-dev/supabase/migrations/20260910203100_booking_global_advance_days.sql
+          grep -q 'v_settings.min_advance_days' MemberWebsocket-dev/supabase/migrations/20260910203100_booking_global_advance_days.sql
       - name: Check realtime sync wiring
         run: |
           for file in \
