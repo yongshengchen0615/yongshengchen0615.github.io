@@ -129,16 +129,13 @@
           </div>
           <p id="bookingHolidayDate" class="booking-holiday-date"></p>
           <div id="bookingHolidayDetails" class="booking-holiday-details"></div>
-          <div class="booking-modal-actions"><button id="ackBookingHolidayButton" class="button button-dark" type="button">知道了</button></div>
         </div>`;
       document.body.appendChild(modal);
       els.holidayModal = modal;
       els.holidayDate = modal.querySelector('#bookingHolidayDate');
       els.holidayDetails = modal.querySelector('#bookingHolidayDetails');
       els.closeHolidayButton = modal.querySelector('#closeBookingHolidayButton');
-      els.ackHolidayButton = modal.querySelector('#ackBookingHolidayButton');
       els.closeHolidayButton.addEventListener('click', () => closeHolidayNotice(true));
-      els.ackHolidayButton.addEventListener('click', () => closeHolidayNotice(true));
       modal.addEventListener('click', (event) => {
         if (event.target === modal && window.matchMedia('(max-width: 768px)').matches) closeHolidayNotice(true);
       });
@@ -147,7 +144,6 @@
       els.holidayDate = document.getElementById('bookingHolidayDate');
       els.holidayDetails = document.getElementById('bookingHolidayDetails');
       els.closeHolidayButton = document.getElementById('closeBookingHolidayButton');
-      els.ackHolidayButton = document.getElementById('ackBookingHolidayButton');
     }
 
     if (!document.getElementById('bookingHolidayStyles')) {
@@ -155,15 +151,15 @@
       style.id = 'bookingHolidayStyles';
       style.textContent = `
         .booking-shop-notice{white-space:normal}.booking-shop-notice>span{display:block;margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere}
-        .calendar-day.holiday-disabled{border-color:rgba(166,70,55,.28);background:#fff2ee;color:#8a4036;cursor:pointer}
-        .calendar-day.holiday-disabled:hover{border-color:rgba(166,70,55,.5);background:#ffebe5}
-        .calendar-day.holiday-disabled .calendar-day-number{color:#8a4036}
-        .calendar-holiday-label{display:block;margin-top:5px;font-size:10px;font-weight:850;line-height:1.25;color:#9a493c}
-        .calendar-legend .holiday-dot{background:#c76b59}
+        .calendar-day.holiday-disabled{--holiday-accent:#df6b4d;--holiday-foreground:#000000;border-color:var(--holiday-accent);background:#fff;color:#17352e;cursor:pointer;box-shadow:inset 0 3px 0 var(--holiday-accent)}
+        .calendar-day.holiday-disabled:hover{border-color:var(--holiday-accent);background:#f8faf7}
+        .calendar-day.holiday-disabled .calendar-day-number{color:#17352e}
+        .calendar-holiday-label{display:block;margin-top:5px;padding:3px 5px;border-radius:4px;background:var(--holiday-accent);color:var(--holiday-foreground);font-size:10px;font-weight:850;line-height:1.25}
+        .calendar-legend .holiday-dot{background:#df6b4d}
         .booking-holiday-date{margin:0 0 12px;color:#66746d;font-weight:700}
-        .booking-holiday-details{display:grid;gap:10px;margin:0 0 18px}
-        .booking-holiday-detail{padding:12px;border-radius:12px;background:#fff4ef;border:1px solid rgba(166,70,55,.14)}
-        .booking-holiday-detail strong{display:block;color:#793b32}.booking-holiday-detail p{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:#6e5b56;line-height:1.55}
+        .booking-holiday-details{display:grid;gap:10px;margin:0}
+        .booking-holiday-detail{padding:12px;border-radius:12px;background:#f5f7f2;border:1px solid rgba(23,53,46,.1);border-left:4px solid var(--holiday-accent,#df6b4d)}
+        .booking-holiday-detail strong{display:block;color:#17352e}.booking-holiday-detail p{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:#5d6b65;line-height:1.55}
       `;
       document.head.appendChild(style);
     }
@@ -196,6 +192,25 @@
     const [year, month] = String(key).split('-').map(Number);
     const date = new Date(Date.UTC(year, month - 1 + delta, 1));
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function safeHolidayAccent(value) {
+    const accent = String(value || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(accent) ? accent.toLowerCase() : '#df6b4d';
+  }
+
+  function holidayAccentForeground(value) {
+    const hex = safeHolidayAccent(value).slice(1);
+    const channels = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+    const luminance = channels.reduce((sum, channel, index) => sum + (channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)) * [0.2126, 0.7152, 0.0722][index], 0);
+    return luminance > 0.179 ? '#000000' : '#ffffff';
+  }
+
+  function applyHolidayAccent(element, value) {
+    if (!(element instanceof HTMLElement)) return;
+    const accent = safeHolidayAccent(value);
+    element.style.setProperty('--holiday-accent', accent);
+    element.style.setProperty('--holiday-foreground', holidayAccentForeground(accent));
   }
 
   function changeMonth(delta) {
@@ -274,7 +289,10 @@
       button.disabled = isPast || (isAdvanceBlocked && !isHoliday);
       if (isPast) button.classList.add('past-disabled');
       if (isAdvanceBlocked && !isHoliday) button.classList.add('advance-disabled');
-      if (isHoliday) button.classList.add('holiday-disabled');
+      if (isHoliday) {
+        button.classList.add('holiday-disabled');
+        applyHolidayAccent(button, holidays[0]?.accent);
+      }
       if (date === today) button.classList.add('today');
       if (date === state.selectedDate) button.classList.add('selected');
 
@@ -382,6 +400,7 @@
       description: String(raw?.description || '').slice(0, 2000),
       startsOn,
       endsOn,
+      accent: safeHolidayAccent(raw?.accent),
     };
     let date = startsOn < `${month}-01` ? `${month}-01` : startsOn;
     const monthEndExclusive = `${shiftMonth(month, 1)}-01`;
@@ -463,6 +482,7 @@
       els.holidayDetails.replaceChildren(...holidays.map((holiday) => {
         const item = document.createElement('section');
         item.className = 'booking-holiday-detail';
+        applyHolidayAccent(item, holiday.accent);
         const title = document.createElement('strong');
         title.textContent = holiday.title || '休假日';
         item.appendChild(title);
