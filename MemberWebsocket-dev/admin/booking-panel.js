@@ -1,6 +1,8 @@
 (() => {
   'use strict';
 
+  const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
+  const TYPE_PREFIX = '__TYPE__:';
   const PRIMARY_TAB_IDS = ['membersTab', 'cardsTab', 'eventsTab', 'calendarTab'];
   const PRIMARY_PANEL_IDS = ['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel'];
   const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', rejected: '未通過', cancelled: '已取消' };
@@ -251,6 +253,10 @@
     }
   }
 
+  function visibleServices() {
+    return (state.data.services || []).filter((service) => service.serviceId !== STORE_SERVICE_ID);
+  }
+
   function renderAll() {
     renderSettings();
     renderStats();
@@ -266,7 +272,7 @@
   }
 
   function renderStats() {
-    const services = state.data.services || [];
+    const services = visibleServices();
     const bookings = state.data.bookings || [];
     const pending = bookings.filter((booking) => booking.status === 'pending').length;
     els.bookingAdminServiceCount.textContent = String(services.length);
@@ -276,8 +282,13 @@
     els.bookingTab.setAttribute('aria-label', pending ? `預約，${pending} 筆待確認` : '預約');
   }
 
+  function serviceTypeOf(service) {
+    const description = String(service?.description || '');
+    return description.startsWith(TYPE_PREFIX) ? description.slice(TYPE_PREFIX.length).trim() : '';
+  }
+
   function renderServices() {
-    const services = state.data.services || [];
+    const services = visibleServices();
     els.bookingAdminServiceListCount.textContent = String(services.length);
     els.bookingAdminServiceEmpty.classList.toggle('hidden', services.length > 0);
     els.bookingAdminServiceList.replaceChildren();
@@ -289,7 +300,7 @@
       const title = document.createElement('strong');
       title.textContent = service.title;
       const meta = document.createElement('small');
-      meta.textContent = `類型 ${service.serviceType || '未設定'} · 服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
+      meta.textContent = `類型 ${serviceTypeOf(service) || '未設定'} · 服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
       content.append(title, meta);
       const status = document.createElement('span');
       status.className = `booking-admin-service-status ${service.isActive ? 'active' : 'inactive'}`;
@@ -307,7 +318,7 @@
     els.bookingAdminServiceId.value = editing ? service.serviceId : '';
     els.bookingAdminExpectedUpdatedAt.value = editing ? service.updatedAt || '' : '';
     els.bookingAdminServiceName.value = editing ? service.title || '' : '';
-    els.bookingAdminServiceType.value = editing ? service.serviceType || '' : '';
+    els.bookingAdminServiceType.value = editing ? serviceTypeOf(service) : '';
     els.bookingAdminDurationMinutes.value = String(editing ? service.durationMinutes || 30 : 30);
     els.bookingAdminPriceAmount.value = String(editing ? Number(service.priceAmount || 0) : 0);
     els.bookingAdminActive.checked = editing ? service.isActive !== false : true;
@@ -378,8 +389,7 @@
         serviceId: els.bookingAdminServiceId.value,
         expectedUpdatedAt: els.bookingAdminExpectedUpdatedAt.value,
         title: els.bookingAdminServiceName.value,
-        serviceType,
-        description: '',
+        description: `${TYPE_PREFIX}${serviceType}`,
         durationMinutes: Number(els.bookingAdminDurationMinutes.value),
         priceAmount,
         isActive: els.bookingAdminActive.checked,
@@ -400,6 +410,19 @@
       els.bookingAdminSaveServiceButton.textContent = '儲存預約項目';
       applyWriteLock();
     }
+  }
+
+  function bookingVisibleItems(booking) {
+    return Array.isArray(booking?.items) ? booking.items.filter((item) => item.serviceId !== STORE_SERVICE_ID) : [];
+  }
+
+  function bookingStoreItem(booking) {
+    return Array.isArray(booking?.items) ? booking.items.find((item) => item.serviceId === STORE_SERVICE_ID) : null;
+  }
+
+  function bookingDisplayTitle(booking) {
+    const titles = bookingVisibleItems(booking).map((item) => item.serviceTitle).filter(Boolean);
+    return titles.length ? titles.join(' + ') : booking.serviceTitle || '預約項目';
   }
 
   function renderBookings() {
@@ -424,21 +447,29 @@
       card.appendChild(heading);
 
       const title = document.createElement('h4');
-      title.textContent = booking.serviceTitle || '預約項目';
+      title.textContent = bookingDisplayTitle(booking);
       card.appendChild(title);
+      const storeItem = bookingStoreItem(booking);
+      const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || 10) * Number(storeItem.quantity || 1) : 0;
       const time = document.createElement('p');
       time.className = 'booking-admin-time';
-      time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 共 ${booking.totalDurationMinutes || 0} 分鐘（含店內服務 10 分鐘） · 總額 ${formatMoney(booking.totalAmount)}`;
+      time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 共 ${booking.totalDurationMinutes || 0} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 總額 ${formatMoney(booking.totalAmount)}`;
       card.appendChild(time);
 
-      if (Array.isArray(booking.items) && booking.items.length) {
+      const visibleItems = bookingVisibleItems(booking);
+      if (visibleItems.length || storeItem) {
         const list = document.createElement('ul');
         list.className = 'booking-admin-item-list';
-        booking.items.forEach((item) => {
+        visibleItems.forEach((item) => {
           const li = document.createElement('li');
           li.textContent = `${item.serviceTitle} × ${item.quantity}（${item.unitDurationMinutes} 分鐘/份 · ${formatMoney(item.unitPriceAmount)}/份）`;
           list.appendChild(li);
         });
+        if (storeItem) {
+          const li = document.createElement('li');
+          li.textContent = `店內服務 ${storeMinutes} 分鐘：肩頸服務、龜苓膏、熱茶（計入預約佔用時間；不計入會員累積消費服務時數／會員階級）`;
+          list.appendChild(li);
+        }
         card.appendChild(list);
       }
       if (booking.memberNote) appendNote(card, `會員備註：${booking.memberNote}`, false);
