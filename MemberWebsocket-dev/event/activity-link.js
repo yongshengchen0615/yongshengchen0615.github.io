@@ -6,6 +6,7 @@
   const base = window.MemberSystem;
   const originalRequest = base.request.bind(base);
   const activityLinks = new Map();
+  const activityLinkNames = new Map();
   let selectedEventTicketId = '';
   let autoOpenHandled = false;
 
@@ -27,8 +28,14 @@
     }
   }
 
+  function safeActivityLinkName(value) {
+    const raw = String(value || '').trim();
+    if (raw.length > 120 || /[\u0000-\u001F\u007F]/.test(raw)) return '';
+    return raw;
+  }
+
   async function linkRequest(config, idToken, eventTicketIds) {
-    if (!eventTicketIds.length) return {};
+    if (!eventTicketIds.length) return { activityLinks: {}, activityLinkNames: {} };
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = window.setTimeout(() => controller?.abort(), 20000);
     try {
@@ -48,10 +55,13 @@
         })
       });
       const data = await response.json();
-      if (!response.ok || !data || data.ok !== true) return {};
-      return data.data && typeof data.data.activityLinks === 'object' ? data.data.activityLinks : {};
+      if (!response.ok || !data || data.ok !== true) return { activityLinks: {}, activityLinkNames: {} };
+      return {
+        activityLinks: data.data && typeof data.data.activityLinks === 'object' ? data.data.activityLinks : {},
+        activityLinkNames: data.data && typeof data.data.activityLinkNames === 'object' ? data.data.activityLinkNames : {}
+      };
     } catch (_) {
-      return {};
+      return { activityLinks: {}, activityLinkNames: {} };
     } finally {
       window.clearTimeout(timer);
     }
@@ -75,11 +85,16 @@
       .concat(Array.isArray(result.usedTickets) ? result.usedTickets : []);
     rows.forEach((offer) => {
       const eventTicketId = ticketIdFromOffer(offer);
-      if (offer && offer.ticket && eventTicketId) offer.ticket.activityUrl = String(activityLinks.get(eventTicketId) || '');
+      if (!offer || !offer.ticket || !eventTicketId) return;
+      offer.ticket.activityUrl = String(activityLinks.get(eventTicketId) || '');
+      offer.ticket.activityLinkName = String(activityLinkNames.get(eventTicketId) || '');
     });
     if (result.offer && result.offer.ticket) {
       const eventTicketId = ticketIdFromOffer(result.offer);
-      if (eventTicketId) result.offer.ticket.activityUrl = String(activityLinks.get(eventTicketId) || '');
+      if (eventTicketId) {
+        result.offer.ticket.activityUrl = String(activityLinks.get(eventTicketId) || '');
+        result.offer.ticket.activityLinkName = String(activityLinkNames.get(eventTicketId) || '');
+      }
     }
     return result;
   }
@@ -90,8 +105,9 @@
       const id = ticketIdFromOffer(result.offer);
       if (id && !ids.includes(id)) ids.push(id);
     }
-    const links = await linkRequest(config, idToken, ids);
-    Object.entries(links).forEach(([id, url]) => activityLinks.set(String(id), safeActivityUrl(url)));
+    const payload = await linkRequest(config, idToken, ids);
+    Object.entries(payload.activityLinks).forEach(([id, url]) => activityLinks.set(String(id), safeActivityUrl(url)));
+    Object.entries(payload.activityLinkNames).forEach(([id, name]) => activityLinkNames.set(String(id), safeActivityLinkName(name)));
     mergeLinksIntoResult(result);
     window.setTimeout(() => {
       syncModalActivityLink();
@@ -141,7 +157,9 @@
       link.classList.add('hidden');
       return;
     }
+    const name = safeActivityLinkName(activityLinkNames.get(selectedEventTicketId));
     link.href = url;
+    link.textContent = `${name || '前往活動連結'} ↗`;
     link.classList.remove('hidden');
   }
 
