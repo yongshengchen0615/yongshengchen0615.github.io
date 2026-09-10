@@ -9,7 +9,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>預約｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=booking-member-gate-20260910-2">
+  <link rel="stylesheet" href="./styles.css?v=booking-selection-list-20260910-1">
   <link rel="stylesheet" href="./membership-progress.css?v=booking-tier-style-20260910-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -17,7 +17,7 @@
   <script src="./liff-fresh-login.js?v=booking-liff-fresh-login-20260910-1" defer></script>
   <script src="./membership-progress.js?v=booking-tier-style-20260910-1" defer></script>
   <script src="./member-ui.js?v=booking-member-gate-20260910-2" defer></script>
-  <script src="./app.js?v=booking-member-gate-20260910-2" defer></script>
+  <script src="./app.js?v=booking-selection-list-20260910-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -57,16 +57,23 @@
 
       <section class="booking-card" aria-labelledby="bookingTitle">
         <div class="section-heading">
-          <div><p class="kicker">New appointment</p><h2 id="bookingTitle">選擇預約項目與時間</h2><p>可同時選擇多個服務，每個項目最多 2 份。系統會依總服務時間計算整段可預約時間。</p></div>
+          <div><p class="kicker">New appointment</p><h2 id="bookingTitle">選擇預約項目與時間</h2><p>從可選項目按下「增加」加入預約；重複加入同一項目時會先再次確認。</p></div>
           <span id="workHoursBadge" class="slot-unit">載入中</span>
         </div>
 
         <form id="bookingForm" novalidate>
           <fieldset class="service-picker-fieldset">
-            <legend>預約項目</legend>
-            <p class="slot-hint">勾選需要的服務；每個服務數量可選 1 或 2。</p>
+            <legend>可選預約項目</legend>
+            <p class="slot-hint">按下「增加」後，項目會加入下方「目前選擇」。</p>
             <div id="servicePicker" class="service-picker"></div>
             <div id="serviceEmpty" class="empty-state compact hidden"><strong>目前沒有開放的預約項目</strong></div>
+          </fieldset>
+
+          <fieldset class="selected-service-fieldset">
+            <legend>目前選擇</legend>
+            <p class="slot-hint">每一筆選擇都可單獨移除；重複加入會顯示成兩筆獨立項目。</p>
+            <div id="selectedServiceList" class="selected-service-list"></div>
+            <div id="selectedServiceEmpty" class="empty-state compact"><strong>尚未選擇預約項目</strong><span>請從上方可選項目加入。</span></div>
           </fieldset>
 
           <div id="selectionSummary" class="service-info hidden" aria-live="polite"></div>
