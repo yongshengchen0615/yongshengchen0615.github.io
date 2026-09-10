@@ -40,8 +40,8 @@ assert.match(memberLink, /rel = 'noopener noreferrer'/);
 assert.match(memberLink, /source.*event-ticket-calendar/);
 assert.match(memberLink, /autoOpenFromCalendar/);
 
-assert.match(adminHtml, /event-ticket-activity-link\.js/);
-assert.match(eventHtml, /activity-link\.js/);
+assert.equal((adminHtml.match(/event-ticket-activity-link\.js/g) || []).length, 1);
+assert.equal((eventHtml.match(/\.\/activity-link\.js/g) || []).length, 1);
 
 // Calendar source identity must remain internal; replacing it with the external
 // activity URL would break readonly/source cleanup and holiday behavior.
