@@ -12,7 +12,7 @@
 
   async function loadConfig() {
     const depth = window.location.pathname.includes('/booking/admin/') ? '../../config.json' : '../config.json';
-    const response = await fetch(`${depth}?v=booking-20260910`, { cache: 'no-store' });
+    const response = await fetch(`${depth}?v=booking-20260910-2`, { cache: 'no-store' });
     if (!response.ok) throw clientError('CONFIG_LOAD_FAILED', '無法載入系統設定。');
     const config = await response.json();
     if (!config.supabaseUrl || !config.supabasePublishableKey) throw clientError('CONFIG_INVALID', 'Supabase 設定不完整。');
@@ -21,8 +21,10 @@
 
   async function signIn(config, clientType) {
     const isAdmin = clientType === 'admin';
-    const liffId = isAdmin ? config.adminLiffId : config.memberLiffId;
-    if (!liffId) throw clientError('LIFF_CONFIG_MISSING', isAdmin ? '尚未設定管理端 LIFF ID。' : '尚未設定會員 LIFF ID。');
+    const isBooking = clientType === 'booking';
+    const liffId = isAdmin ? config.adminLiffId : isBooking ? config.bookingLiffId : config.memberLiffId;
+    const label = isAdmin ? '管理端' : isBooking ? '預約' : '會員';
+    if (!liffId) throw clientError('LIFF_CONFIG_MISSING', `尚未設定${label} LIFF ID。`);
     if (!window.liff) throw clientError('LIFF_SDK_MISSING', 'LINE LIFF SDK 尚未載入。');
     await window.liff.init({ liffId });
     if (!window.liff.isLoggedIn()) {
@@ -35,10 +37,25 @@
   }
 
   async function request(config, clientType, idToken, action, payload = {}) {
+    const endpoint = `${String(config.supabaseUrl).replace(/\/$/, '')}/functions/v1/booking-api`;
+    return postJson(endpoint, config, { ...payload, action, clientType, idToken }, '預約服務');
+  }
+
+  async function memberProfile(config, idToken) {
+    const endpoint = String(config.supabaseFunctionUrl || '').trim();
+    if (!endpoint) throw clientError('CONFIG_INVALID', '會員資料服務設定不完整。');
+    const data = await postJson(endpoint, config, {
+      action: 'user.member.bootstrap',
+      clientType: 'member',
+      idToken,
+    }, '會員資料服務');
+    return data && data.profile && typeof data.profile === 'object' ? data.profile : {};
+  }
+
+  async function postJson(endpoint, config, body, serviceLabel) {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const endpoint = `${String(config.supabaseUrl).replace(/\/$/, '')}/functions/v1/booking-api`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -47,18 +64,18 @@
         },
         cache: 'no-store',
         signal: controller.signal,
-        body: JSON.stringify({ ...payload, action, clientType, idToken }),
+        body: JSON.stringify(body),
       });
       let data;
       try { data = await response.json(); }
-      catch { throw clientError('API_INVALID_RESPONSE', '預約服務回傳格式不正確。'); }
+      catch { throw clientError('API_INVALID_RESPONSE', `${serviceLabel}回傳格式不正確。`); }
       if (!response.ok || !data || data.ok !== true) {
         const apiError = data && data.error || {};
-        throw clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || '預約服務暫時無法完成操作。'), apiError.details || null);
+        throw clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || `${serviceLabel}暫時無法完成操作。`), apiError.details || null);
       }
       return data.data || {};
     } catch (error) {
-      if (error && error.name === 'AbortError') throw clientError('API_TIMEOUT', '預約服務回應逾時，請稍後再試。');
+      if (error && error.name === 'AbortError') throw clientError('API_TIMEOUT', `${serviceLabel}回應逾時，請稍後再試。`);
       throw error;
     } finally {
       window.clearTimeout(timer);
@@ -81,5 +98,5 @@
     return parsed.toISOString().slice(0, 10);
   }
 
-  window.BookingSystem = { loadConfig, signIn, request, logout, formatDate, addDays, clientError };
+  window.BookingSystem = { loadConfig, signIn, request, memberProfile, logout, formatDate, addDays, clientError };
 })();

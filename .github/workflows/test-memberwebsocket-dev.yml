@@ -31,6 +31,7 @@ jobs:
           node --check MemberWebsocket-dev/admin/common.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
+          node --check MemberWebsocket-dev/admin/booking-panel.js
           node --check MemberWebsocket-dev/member/common.js
           node --check MemberWebsocket-dev/member/app.js
           node --check MemberWebsocket-dev/points/common.js
@@ -62,9 +63,15 @@ jobs:
       - name: Check booking wiring
         run: |
           grep -q './booking/' MemberWebsocket-dev/index.html
-          grep -q './booking/admin/' MemberWebsocket-dev/index.html
-          grep -q 'user.booking.create' MemberWebsocket-dev/booking/app.js
-          grep -q 'admin.booking.status.update' MemberWebsocket-dev/booking/admin/app.js
+          grep -q './admin/#booking' MemberWebsocket-dev/index.html
+          grep -q '"bookingLiffId": "2010787602-sgiB0ETj"' MemberWebsocket-dev/config.json
+          grep -q 'config.bookingLiffId' MemberWebsocket-dev/booking/common.js
+          grep -q "signIn(state.config, 'booking')" MemberWebsocket-dev/booking/app.js
+          grep -q 'memberProfile' MemberWebsocket-dev/booking/app.js
+          grep -q 'id="memberTier"' MemberWebsocket-dev/booking/index.html
+          grep -q 'booking-panel.js' MemberWebsocket-dev/admin/common.js
+          grep -q "tab.textContent = '預約'" MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'admin.booking.status.update' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'bookings_active_slot_unique' MemberWebsocket-dev/supabase/migrations/20260910_add_booking_system.sql
           grep -q 'create_booking_request' MemberWebsocket-dev/supabase/migrations/20260910_add_booking_system.sql
           grep -q 'BOOKING_SLOT_TAKEN' MemberWebsocket-dev/supabase/functions/booking-api/index.ts

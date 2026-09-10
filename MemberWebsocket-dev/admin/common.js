@@ -61,7 +61,7 @@
   }
 
   function validateConfig(config, surface) {
-    const keys = { member: 'memberLiffId', points: 'pointsLiffId', admin: 'adminLiffId', event: 'eventLiffId', calendar: 'calendarLiffId' };
+    const keys = { member: 'memberLiffId', points: 'pointsLiffId', admin: 'adminLiffId', event: 'eventLiffId', calendar: 'calendarLiffId', booking: 'bookingLiffId' };
     const key = keys[surface];
     const liffId = String(config && config[key] || '').trim();
     const supabaseUrl = String(config && config.supabaseUrl || '').trim();
@@ -81,16 +81,17 @@
       throw clientError('CONFIG_ERROR', 'Supabase Realtime SDK 載入失敗。');
     }
     if (!key || !liffId || liffId.includes('REPLACE_WITH_')) {
-      throw clientError('CONFIG_ERROR', `尚未設定 ${surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : surface === 'calendar' ? 'Calendar' : 'Member'} LIFF ID。`);
+      const label = surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : surface === 'calendar' ? 'Calendar' : surface === 'booking' ? 'Booking' : 'Member';
+      throw clientError('CONFIG_ERROR', `尚未設定 ${label} LIFF ID。`);
     }
     const ids = Object.values(keys).map((name) => String(config && config[name] || '').trim()).filter(Boolean);
-    if (new Set(ids).size !== ids.length) throw clientError('CONFIG_ERROR', '會員、集點卡、活動票券、日曆與管理端必須使用不同的 LIFF ID。');
+    if (new Set(ids).size !== ids.length) throw clientError('CONFIG_ERROR', '會員、集點卡、活動票券、日曆、預約與管理端必須使用不同的 LIFF ID。');
   }
 
   async function signIn(config, surface) {
     validateConfig(config, surface);
     if (!window.liff) throw clientError('LIFF_SDK_ERROR', 'LIFF SDK 載入失敗，請確認網路後重試。');
-    const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : surface === 'event' ? config.eventLiffId : surface === 'calendar' ? config.calendarLiffId : config.memberLiffId;
+    const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : surface === 'event' ? config.eventLiffId : surface === 'calendar' ? config.calendarLiffId : surface === 'booking' ? config.bookingLiffId : config.memberLiffId;
 
     try {
       await withTimeout(window.liff.init({ liffId }), 8000, 'LINE 初始化逾時，請重新開啟此頁面。');
@@ -352,6 +353,14 @@
     return Array.from(text).slice(0, 2).join('') || '會員';
   }
 
+  function loadBookingAdminPanelExtension() {
+    if (document.querySelector('script[data-booking-admin-panel-extension]')) return;
+    const script = document.createElement('script');
+    script.src = './booking-panel.js?v=booking-workbench-20260910';
+    script.dataset.bookingAdminPanelExtension = 'true';
+    document.head.appendChild(script);
+  }
+
   try {
     if (window.indexedDB && typeof window.indexedDB.deleteDatabase === 'function') {
       window.indexedDB.deleteDatabase('MembershipSystemSyncCache');
@@ -362,4 +371,6 @@
     bindDialogKeyboard, clientError, loadConfig, validateConfig, signIn, request,
     subscribeRealtime, logout, openMemberJoin, formatDate, formatDateTime, initials
   });
+
+  loadBookingAdminPanelExtension();
 })();

@@ -5,6 +5,7 @@
     config: null,
     idToken: '',
     data: { today: '', services: [], bookings: [] },
+    profile: {},
     selectedSlot: '',
     loadingSlots: false,
     submitting: false,
@@ -19,7 +20,7 @@
   const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['loadingView', 'errorView', 'errorMessage', 'retryButton', 'bookingView', 'memberName', 'logoutButton', 'bookingForm', 'serviceSelect', 'bookingDate', 'serviceInfo', 'slotHint', 'slotGrid', 'memberNote', 'formMessage', 'submitBookingButton', 'refreshButton', 'bookingList', 'bookingEmpty']
+    ['loadingView', 'errorView', 'errorMessage', 'retryButton', 'bookingView', 'memberName', 'memberProfileName', 'memberCode', 'memberTier', 'logoutButton', 'bookingForm', 'serviceSelect', 'bookingDate', 'serviceInfo', 'slotHint', 'slotGrid', 'memberNote', 'formMessage', 'submitBookingButton', 'refreshButton', 'bookingList', 'bookingEmpty']
       .forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.BookingSystem.logout());
@@ -34,9 +35,11 @@
     showView('loading');
     try {
       state.config = await window.BookingSystem.loadConfig();
-      state.idToken = await window.BookingSystem.signIn(state.config, 'member');
+      state.idToken = await window.BookingSystem.signIn(state.config, 'booking');
       const decoded = typeof window.liff?.getDecodedIDToken === 'function' ? window.liff.getDecodedIDToken() : null;
-      els.memberName.textContent = String(decoded?.name || 'LINE 會員');
+      const fallbackName = String(decoded?.name || 'LINE 會員');
+      els.memberName.textContent = fallbackName;
+      els.memberProfileName.textContent = fallbackName;
       await refresh(false);
       showView('booking');
     } catch (error) {
@@ -47,7 +50,13 @@
   async function refresh(showMessage = true) {
     setRefreshBusy(true);
     try {
-      state.data = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap');
+      const [bookingData, profile] = await Promise.all([
+        window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap'),
+        window.BookingSystem.memberProfile(state.config, state.idToken),
+      ]);
+      state.data = bookingData;
+      state.profile = profile || {};
+      renderMemberProfile();
       renderServices();
       renderBookings();
       if (showMessage) showFormMessage('資料已更新。', 'success');
@@ -58,6 +67,17 @@
     } finally {
       setRefreshBusy(false);
     }
+  }
+
+  function renderMemberProfile() {
+    const profile = state.profile || {};
+    const name = String(profile.displayName || els.memberName.textContent || 'LINE 會員');
+    const code = String(profile.memberCode || '—');
+    const tier = String(profile.tier || '一般會員');
+    els.memberName.textContent = name;
+    els.memberProfileName.textContent = name;
+    els.memberCode.textContent = code;
+    els.memberTier.textContent = tier;
   }
 
   function renderServices() {
