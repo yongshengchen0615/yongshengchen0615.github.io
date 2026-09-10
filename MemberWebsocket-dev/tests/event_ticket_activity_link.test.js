@@ -43,6 +43,11 @@ assert.match(adminLink, /expectedActivityUrl/);
 assert.match(adminLink, /expectedActivityLinkName/);
 assert.match(adminLink, /fieldsDirty/);
 assert.match(adminLink, /Never overwrite an in-progress draft/);
+assert.match(adminLink, /preserveSavedTicketIdentity\(result\)/);
+assert.match(adminLink, /ACTIVITY_LINK_SAVE_FAILED/);
+assert.match(adminLink, /fieldsDirty = true/);
+assert.match(adminLink, /closest\('\[data-event-ticket-id\]'\)/);
+assert.doesNotMatch(adminLink, /document\.addEventListener\('click', \(\) =>/);
 assert.match(adminLink, /form\.addEventListener\('submit',[\s\S]*true\)/);
 assert.match(adminLink, /僅接受 https:\/\//);
 
