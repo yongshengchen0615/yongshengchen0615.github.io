@@ -12,7 +12,8 @@
   <link rel="stylesheet" href="./styles.css?v=booking-calendar-20260910">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="./common.js?v=booking-20260910" defer></script>
-  <script src="./app.js?v=booking-calendar-20260910" defer></script>
+  <script src="./app.js?v=booking-20260910" defer></script>
+  <script src="./calendar-flow.js?v=booking-calendar-20260910" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -52,7 +53,7 @@
           </div>
           <div class="calendar-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
           <div id="calendarGrid" class="calendar-grid" role="grid" aria-labelledby="calendarMonthLabel"></div>
-          <div class="calendar-legend"><span><i class="legend-dot today-dot"></i>今天</span><span><i class="legend-dot booking-dot"></i>我的已預約時段</span><span><i class="legend-dot disabled-dot"></i>無可預約項目</span></div>
+          <div class="calendar-legend"><span><i class="legend-dot today-dot"></i>今天</span><span><i class="legend-dot booking-dot"></i>已預約時段</span><span><i class="legend-dot disabled-dot"></i>過去日期</span></div>
         </div>
       </section>
 
