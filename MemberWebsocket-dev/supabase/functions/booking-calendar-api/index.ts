@@ -194,7 +194,7 @@ async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Js
     .eq("item_type", "holiday")
     .eq("status", "active")
     .lt("starts_on", endDate)
-    .gte("ends_on", startDate)
+    .or(`ends_on.gte.${startDate},and(ends_on.is.null,starts_on.gte.${startDate})`)
     .order("starts_on", { ascending: true })
     .limit(HOLIDAY_LIMIT + 1);
   if (holidaysResult.error) throw new ApiError(503, "DATABASE_ERROR", "休假日資料暫時無法載入。");
