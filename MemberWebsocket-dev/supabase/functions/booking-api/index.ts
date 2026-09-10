@@ -358,6 +358,43 @@ async function userBootstrap(supabase: SupabaseClient, member: any): Promise<Jso
   };
 }
 
+async function userCalendar(supabase: SupabaseClient, body: Json): Promise<Json> {
+  const month = asText(body.month, 7);
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new ApiError(400, "INVALID_MONTH", "月份格式不正確。");
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!Number.isInteger(year) || year < 2000 || year > 2200 || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+    throw new ApiError(400, "INVALID_MONTH", "月份格式不正確。");
+  }
+
+  const startDate = `${month}-01`;
+  const nextMonthDate = new Date(Date.UTC(year, monthNumber, 1));
+  const endDate = `${nextMonthDate.getUTCFullYear()}-${String(nextMonthDate.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const result = await supabase.from("bookings")
+    .select("booking_date,start_time")
+    .gte("booking_date", startDate)
+    .lt("booking_date", endDate)
+    .in("status", ["pending", "confirmed"])
+    .order("booking_date", { ascending: true })
+    .order("start_time", { ascending: true })
+    .limit(500);
+  if (result.error) throw mapDatabaseError(result.error);
+
+  const grouped = new Map<string, string[]>();
+  for (const row of result.data || []) {
+    const date = String((row as any).booking_date || "").slice(0, 10);
+    const time = String((row as any).start_time || "").slice(0, 5);
+    if (!date || !time) continue;
+    const times = grouped.get(date) || [];
+    if (!times.includes(time)) times.push(time);
+    grouped.set(date, times);
+  }
+
+  return {
+    month,
+    occupiedDates: [...grouped.entries()].map(([date, times]) => ({ date, times })),
+  };
+}
+
 async function userCreate(supabase: SupabaseClient, identity: Identity, member: any, body: Json): Promise<Json> {
   const serviceId = requireUuid(body.serviceId, "預約項目");
   const bookingDate = requireDate(body.bookingDate);
@@ -541,6 +578,7 @@ async function route(supabase: SupabaseClient, identity: Identity, clientType: C
   if (clientType === "member") {
     const member = await requireJoinedMember(supabase, identity);
     if (action === "user.booking.bootstrap") return await userBootstrap(supabase, member);
+    if (action === "user.booking.calendar") return await userCalendar(supabase, body);
     if (action === "user.booking.slots") {
       const serviceId = requireUuid(body.serviceId, "預約項目");
       const bookingDate = requireDate(body.bookingDate);
