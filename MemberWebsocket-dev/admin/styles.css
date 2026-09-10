@@ -309,3 +309,17 @@ button, input, select, textarea { line-height: 1.35; }
 #messagePresetModal { z-index: 18; }
 .message-preset-list { min-height: 132px; }
 #messagePresetBody { min-height: 118px; resize: vertical; }
+
+/* Prevent iOS Safari / LINE WebView from auto-zooming focused form controls on mobile. */
+@media (max-width: 760px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  select,
+  textarea,
+  .search-box input,
+  .reward-row-grid input,
+  .reward-row-grid select,
+  .prize-row input,
+  .prize-row textarea {
+    font-size: 16px;
+  }
+}
