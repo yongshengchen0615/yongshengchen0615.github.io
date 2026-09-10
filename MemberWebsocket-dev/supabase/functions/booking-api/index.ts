@@ -266,6 +266,7 @@ function serviceClient(row: any): Json {
     title: row.title,
     description: row.description || "",
     durationMinutes: Number(row.duration_minutes || 30),
+    priceAmount: Number(row.price_amount || 0),
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -273,12 +274,16 @@ function serviceClient(row: any): Json {
 }
 
 function itemClient(row: any): Json {
+  const quantity = Number(row.quantity || 1);
+  const unitPriceAmount = Number(row.unit_price_amount || 0);
   return {
     serviceId: row.service_id,
     serviceTitle: row.service_title || "預約項目",
     unitDurationMinutes: Number(row.unit_duration_minutes || 0),
-    quantity: Number(row.quantity || 1),
-    subtotalMinutes: Number(row.unit_duration_minutes || 0) * Number(row.quantity || 1),
+    unitPriceAmount,
+    quantity,
+    subtotalMinutes: Number(row.unit_duration_minutes || 0) * quantity,
+    subtotalAmount: unitPriceAmount * quantity,
   };
 }
 
@@ -292,6 +297,7 @@ function bookingClient(row: any, items: any[] = []): Json {
     serviceTitle: mappedItems.length ? mappedItems.map((item: any) => item.serviceTitle).join(" + ") : "預約項目",
     items: mappedItems,
     totalDurationMinutes: Number(row.total_duration_minutes || 30),
+    totalAmount: mappedItems.reduce((sum, item: any) => sum + Number(item.subtotalAmount || 0), 0),
     memberId: row.member_id,
     memberDisplayName: member?.display_name || "",
     memberCode: member?.member_code || "",
@@ -313,7 +319,7 @@ async function hydrateBookings(supabase: SupabaseClient, rows: any[]): Promise<J
   if (!rows.length) return [];
   const bookingIds = rows.map((row) => row.id);
   const itemResult = await supabase.from("booking_items")
-    .select("booking_id,service_id,service_title,unit_duration_minutes,quantity")
+    .select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity")
     .in("booking_id", bookingIds)
     .order("created_at", { ascending: true });
   if (itemResult.error) throw mapDatabaseError(itemResult.error);
@@ -370,6 +376,10 @@ function totalDuration(items: RequestedItem[]): number {
   return items.reduce((sum, item) => sum + Number(item.service.duration_minutes || 0) * item.quantity, 0);
 }
 
+function totalAmount(items: RequestedItem[]): number {
+  return items.reduce((sum, item) => sum + Number(item.service.price_amount || 0) * item.quantity, 0);
+}
+
 async function generateSlots(supabase: SupabaseClient, body: Json): Promise<Json> {
   const date = requireDate(body.bookingDate);
   const items = await normalizeRequestedItems(supabase, body);
@@ -383,6 +393,7 @@ async function generateSlots(supabase: SupabaseClient, body: Json): Promise<Json
     return {
       settings: settingsClient(settings),
       totalDurationMinutes: duration,
+      totalAmount: totalAmount(items),
       earliestBookingDate,
       slots: [],
     };
@@ -416,6 +427,7 @@ async function generateSlots(supabase: SupabaseClient, body: Json): Promise<Json
   return {
     settings: settingsClient(settings),
     totalDurationMinutes: duration,
+    totalAmount: totalAmount(items),
     earliestBookingDate,
     slots,
   };
@@ -479,6 +491,7 @@ async function userCreate(supabase: SupabaseClient, identity: Identity, member: 
     bookingDate,
     startTime,
     totalDurationMinutes: totalDuration(items),
+    totalAmount: totalAmount(items),
     items: rpcItems,
   });
   return { booking: hydrated[0] };
@@ -564,10 +577,18 @@ async function adminServiceSave(supabase: SupabaseClient, identity: Identity, bo
     throw new ApiError(400, "INVALID_SERVICE_DURATION", "項目服務時間必須介於 1–720 分鐘。");
   }
 
+  const priceAmount = body.priceAmount === undefined || body.priceAmount === null || body.priceAmount === ""
+    ? Number(current?.price_amount || 0)
+    : Number(body.priceAmount);
+  if (!Number.isSafeInteger(priceAmount) || priceAmount < 0 || priceAmount > 10_000_000) {
+    throw new ApiError(400, "INVALID_SERVICE_PRICE", "項目價格必須是 0–10,000,000 元的整數。");
+  }
+
   const patch = {
     title,
     description,
     duration_minutes: durationMinutes,
+    price_amount: priceAmount,
     is_active: isActive,
   };
 
@@ -576,12 +597,12 @@ async function adminServiceSave(supabase: SupabaseClient, identity: Identity, bo
     const updated = await supabase.from("booking_services").update(patch).eq("id", serviceId).select("*").single();
     if (updated.error) throw mapDatabaseError(updated.error);
     saved = updated.data;
-    await audit(supabase, identity, "admin", "BOOKING_SERVICE_UPDATED", "booking_service", serviceId);
+    await audit(supabase, identity, "admin", "BOOKING_SERVICE_UPDATED", "booking_service", serviceId, { durationMinutes, priceAmount });
   } else {
     const inserted = await supabase.from("booking_services").insert({ ...patch, created_by: identity.lineUserId }).select("*").single();
     if (inserted.error) throw mapDatabaseError(inserted.error);
     saved = inserted.data;
-    await audit(supabase, identity, "admin", "BOOKING_SERVICE_CREATED", "booking_service", String(saved.id));
+    await audit(supabase, identity, "admin", "BOOKING_SERVICE_CREATED", "booking_service", String(saved.id), { durationMinutes, priceAmount });
   }
   return { service: serviceClient(saved) };
 }
