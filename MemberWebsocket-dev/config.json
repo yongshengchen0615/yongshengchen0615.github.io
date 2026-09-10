@@ -2,6 +2,7 @@
   "brandName": "Lumen Club",
   "supabaseUrl": "https://dbuquirnaskrwcamdxki.supabase.co",
   "supabaseFunctionUrl": "https://dbuquirnaskrwcamdxki.supabase.co/functions/v1/api",
+  "supabaseGrantAutomationUrl": "https://dbuquirnaskrwcamdxki.supabase.co/functions/v1/grant-automation",
   "supabasePublishableKey": "sb_publishable_W492suU5Hb7LJIJ2DmHbZw_KVp9vB4S",
   "realtimeEnabled": true,
   "memberLiffId": "2010787602-kaiSm2eq",
