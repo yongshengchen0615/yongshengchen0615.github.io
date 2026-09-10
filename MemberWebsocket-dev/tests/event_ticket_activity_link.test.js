@@ -7,52 +7,15 @@ const adminHtml = read('MemberWebsocket-dev/admin/index.html');
 const eventHtml = read('MemberWebsocket-dev/event/index.html');
 const adminLink = read('MemberWebsocket-dev/admin/event-ticket-activity-link.js');
 const memberLink = read('MemberWebsocket-dev/event/activity-link.js');
-const linkEdge = read('MemberWebsocket-dev/supabase/functions/event-ticket-links/index.ts');
-const migration = read('MemberWebsocket-dev/supabase/migrations/20260910175251_add_event_ticket_activity_url.sql');
-const linkNameMigration = read('MemberWebsocket-dev/supabase/migrations/20260910182000_add_event_ticket_activity_link_name.sql');
 const calendarSync = read('MemberWebsocket-dev/admin/grant-automation.js');
 
-assert.match(migration, /add column if not exists activity_url text not null default ''/);
-assert.match(migration, /event_tickets_activity_url_check/);
-assert.match(migration, /\^https:\/\//);
-assert.match(migration, /char_length\(activity_url\) <= 2048/);
+// The optional activity-link settings are retired from both admin and member UI.
+assert.doesNotMatch(adminLink, /eventTicketActivityUrl/);
+assert.doesNotMatch(adminLink, /eventTicketActivityLinkName/);
+assert.doesNotMatch(adminLink, /admin\.event-ticket-links\.(?:list|save)/);
+assert.doesNotMatch(adminLink, /連結名稱（選填）/);
+assert.doesNotMatch(adminLink, /活動連結（選填）/);
 
-assert.match(linkNameMigration, /add column if not exists activity_link_name text not null default ''/);
-assert.match(linkNameMigration, /event_tickets_activity_link_name_check/);
-assert.match(linkNameMigration, /char_length\(activity_link_name\) <= 120/);
-
-assert.match(linkEdge, /admin\.event-ticket-links\.save/);
-assert.match(linkEdge, /user\.event-ticket-links\.list/);
-assert.match(linkEdge, /verifyLineIdToken/);
-assert.match(linkEdge, /authorizeAdmin/);
-assert.match(linkEdge, /requireMember/);
-assert.match(linkEdge, /EVENT_TICKET_ACTIVITY_URL_CHANGED/);
-assert.match(linkEdge, /activity_link_name/);
-assert.match(linkEdge, /activityLinkNames/);
-assert.match(linkEdge, /expectedActivityLinkName/);
-assert.match(linkEdge, /protocol !== "https:"/);
-assert.match(linkEdge, /username \|\| parsed\.password/);
-assert.doesNotMatch(linkEdge, /detail:\s*\{[^}]*activityUrl:/);
-assert.doesNotMatch(linkEdge, /detail:\s*\{[^}]*activityLinkName:/);
-
-assert.match(adminLink, /id = 'eventTicketActivityUrl'/);
-assert.match(adminLink, /id = 'eventTicketActivityLinkName'/);
-assert.match(adminLink, /admin\.event-ticket-links\.list/);
-assert.match(adminLink, /admin\.event-ticket-links\.save/);
-assert.match(adminLink, /expectedActivityUrl/);
-assert.match(adminLink, /expectedActivityLinkName/);
-assert.match(adminLink, /fieldsDirty/);
-assert.match(adminLink, /Never overwrite an in-progress draft/);
-assert.match(adminLink, /preserveSavedTicketIdentity\(result\)/);
-assert.match(adminLink, /ACTIVITY_LINK_SAVE_FAILED/);
-assert.match(adminLink, /fieldsDirty = true/);
-assert.match(adminLink, /closest\('\[data-event-ticket-id\]'\)/);
-assert.doesNotMatch(adminLink, /document\.addEventListener\('click', \(\) =>/);
-assert.match(adminLink, /form\.addEventListener\('submit',[\s\S]*true\)/);
-assert.match(adminLink, /僅接受 https:\/\//);
-
-// Member ticket modal must not expose the activity-link button. Calendar deep-link
-// support remains so the calendar can open the matching ticket detail inside LIFF.
 assert.doesNotMatch(memberLink, /user\.event-ticket-links\.list/);
 assert.doesNotMatch(memberLink, /ticketModalActivityLink/);
 assert.doesNotMatch(memberLink, /activity-link-button/);
@@ -62,13 +25,13 @@ assert.doesNotMatch(memberLink, /↗/);
 assert.match(memberLink, /source.*event-ticket-calendar/);
 assert.match(memberLink, /autoOpenFromCalendar/);
 
+// Keep the compatibility script reference until the large admin HTML is next edited.
 assert.equal((adminHtml.match(/event-ticket-activity-link\.js/g) || []).length, 1);
 assert.equal((eventHtml.match(/\.\/activity-link\.js/g) || []).length, 1);
 assert.doesNotMatch(eventHtml, /ticketModalActivityLink/);
 
-// Calendar source identity must remain internal; replacing it with the external
-// activity URL would break readonly/source cleanup and holiday behavior.
+// Calendar source identity still drives the internal ticket deep-link.
 assert.match(calendarSync, /url\.searchParams\.set\('source', 'event-ticket-calendar'\)/);
 assert.match(calendarSync, /url\.searchParams\.set\('eventTicketId'/);
 
-console.log('event ticket activity link wiring/security OK');
+console.log('event ticket retired activity-link settings guard OK');
