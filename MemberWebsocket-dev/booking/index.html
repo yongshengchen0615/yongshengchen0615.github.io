@@ -9,11 +9,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>預約｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=booking-20260910-3">
+  <link rel="stylesheet" href="./styles.css?v=booking-member-ux-20260910-1">
+  <link rel="stylesheet" href="./membership-progress.css?v=booking-tier-style-20260910-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./common.js?v=booking-20260910-3" defer></script>
-  <script src="./app.js?v=booking-20260910-3" defer></script>
+  <script src="./common.js?v=booking-member-ux-20260910-1" defer></script>
+  <script src="./membership-progress.js?v=booking-tier-style-20260910-1" defer></script>
+  <script src="./member-ui.js?v=booking-member-ux-20260910-1" defer></script>
+  <script src="./app.js?v=booking-member-ux-20260910-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -25,13 +28,11 @@
 
     <section id="errorView" class="state-view hidden" role="alert">
       <div class="error-mark" aria-hidden="true">!</div>
+      <p class="kicker">Booking access</p>
       <h1 id="errorTitle">預約功能暫時無法使用</h1>
       <p id="errorMessage"></p>
-      <div class="state-actions">
-        <button id="joinMemberButton" class="button button-dark hidden" type="button">前往加入會員</button>
-        <a class="button button-light" href="../member/">前往會員卡</a>
-        <button id="retryButton" class="button button-dark" type="button">重新整理</button>
-      </div>
+      <button id="joinMemberButton" class="button button-dark hidden" type="button">前往加入會員</button>
+      <button id="retryButton" class="button button-dark" type="button">重新整理</button>
     </section>
 
     <main id="bookingView" class="hidden">
@@ -39,6 +40,17 @@
         <div><p class="kicker">Lumen Club / Booking</p><h1>預約服務</h1></div>
         <div class="account-menu"><span id="memberName">LINE 會員</span><button id="logoutButton" class="text-button" type="button">登出</button></div>
       </header>
+
+      <section id="membershipProgress" class="membership-progress" aria-labelledby="membershipProgressTitle" aria-live="polite">
+        <div>
+          <p class="membership-progress-kicker">Membership progress</p>
+          <h2 id="membershipProgressTitle">會員階級</h2>
+          <p id="memberTier" data-membership-current-tier class="membership-progress-current">目前會員階級：載入中</p>
+        </div>
+        <p data-membership-summary class="membership-progress-summary">累積 0 分鐘・下一階段資料載入中</p>
+        <p data-membership-remaining class="membership-progress-remaining">正在計算升等進度</p>
+        <div data-membership-progress-track class="membership-progress-track" role="progressbar" aria-label="會員階級進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-membership-progress-bar></span></div>
+      </section>
 
       <section class="booking-card" aria-labelledby="bookingTitle">
         <div class="section-heading">
@@ -49,7 +61,6 @@
         <section class="member-summary" aria-label="目前會員資訊">
           <div><span>會員</span><strong id="memberProfileName">LINE 會員</strong></div>
           <div><span>會員編號</span><strong id="memberCode">—</strong></div>
-          <div><span>會員階級</span><strong id="memberTier">載入中</strong></div>
         </section>
 
         <form id="bookingForm" novalidate>
