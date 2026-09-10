@@ -7,6 +7,7 @@ const MAX_REQUEST_BYTES = 10_000;
 const READ_LIMIT = 90;
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 10;
+const HOLIDAY_LIMIT = 500;
 
 class ApiError extends Error {
   status: number;
@@ -172,7 +173,7 @@ function addDays(date: string, days: number): string {
 
 async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Json> {
   const settingsResult = await supabase.from("booking_settings")
-    .select("min_advance_days")
+    .select("min_advance_days,booking_notice")
     .eq("id", 1)
     .maybeSingle();
   if (settingsResult.error || !settingsResult.data) {
@@ -182,10 +183,24 @@ async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Js
   if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) {
     throw new ApiError(503, "BOOKING_SETTINGS_INVALID", "預約共用設定不正確。");
   }
+  const bookingNotice = String(settingsResult.data.booking_notice || "");
 
   const startDate = `${month}-01`;
   const endDate = nextMonthStart(month);
   const rows: Array<{ booking_date: string; start_time: string; end_time: string }> = [];
+
+  const holidaysResult = await supabase.from("calendar_items")
+    .select("calendar_item_id,title,description,starts_on,ends_on")
+    .eq("item_type", "holiday")
+    .eq("status", "active")
+    .lt("starts_on", endDate)
+    .gte("ends_on", startDate)
+    .order("starts_on", { ascending: true })
+    .limit(HOLIDAY_LIMIT + 1);
+  if (holidaysResult.error) throw new ApiError(503, "DATABASE_ERROR", "休假日資料暫時無法載入。");
+  if ((holidaysResult.data || []).length > HOLIDAY_LIMIT) {
+    throw new ApiError(503, "HOLIDAY_RESULT_LIMIT", "本月休假日資料量過大，請稍後再試。");
+  }
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const from = page * PAGE_SIZE;
@@ -217,13 +232,22 @@ async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Js
     grouped.set(date, intervals);
   }
 
+  const holidays = (holidaysResult.data || []).map((row: any) => ({
+    calendarItemId: String(row.calendar_item_id || ""),
+    title: String(row.title || "休假日"),
+    description: String(row.description || ""),
+    startsOn: String(row.starts_on || "").slice(0, 10),
+    endsOn: String(row.ends_on || row.starts_on || "").slice(0, 10),
+  })).filter((row: any) => /^\d{4}-\d{2}-\d{2}$/.test(row.startsOn) && /^\d{4}-\d{2}-\d{2}$/.test(row.endsOn));
+
   const today = taipeiDate();
   return {
     month,
     today,
-    settings: { minAdvanceDays },
+    settings: { minAdvanceDays, bookingNotice },
     earliestBookingDate: addDays(today, minAdvanceDays),
     occupiedDates: [...grouped.entries()].map(([date, intervals]) => ({ date, intervals })),
+    holidays,
   };
 }
 
