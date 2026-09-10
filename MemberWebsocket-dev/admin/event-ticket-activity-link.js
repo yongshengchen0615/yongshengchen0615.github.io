@@ -6,9 +6,12 @@
   const base = window.MemberSystem;
   const originalRequest = base.request.bind(base);
   const activityLinks = new Map();
+  const activityLinkNames = new Map();
   let linksKnown = false;
   let lastConfig = null;
   let lastIdToken = '';
+  let lastSyncedEventTicketId = null;
+  let fieldsDirty = false;
 
   function safeActivityUrl(value) {
     const raw = String(value || '').trim();
@@ -21,6 +24,12 @@
     } catch (_) {
       return null;
     }
+  }
+
+  function safeActivityLinkName(value) {
+    const raw = String(value || '').trim();
+    if (raw.length > 120 || /[\u0000-\u001F\u007F]/.test(raw)) return null;
+    return raw;
   }
 
   function endpoint(config) {
@@ -76,11 +85,14 @@
     const rows = Array.isArray(result.eventTickets) ? result.eventTickets : [];
     rows.forEach((ticket) => {
       const id = String(ticket && ticket.eventTicketId || '').trim();
-      if (id) ticket.activityUrl = String(activityLinks.get(id) || '');
+      if (!id) return;
+      ticket.activityUrl = String(activityLinks.get(id) || '');
+      ticket.activityLinkName = String(activityLinkNames.get(id) || '');
     });
     if (result.eventTicket && result.eventTicket.eventTicketId) {
       const id = String(result.eventTicket.eventTicketId);
       result.eventTicket.activityUrl = String(activityLinks.get(id) || result.eventTicket.activityUrl || '');
+      result.eventTicket.activityLinkName = String(activityLinkNames.get(id) || result.eventTicket.activityLinkName || '');
     }
     return result;
   }
@@ -88,11 +100,15 @@
   async function refreshLinks(config, idToken) {
     const result = await linkRequest(config, idToken, 'admin.event-ticket-links.list');
     activityLinks.clear();
+    activityLinkNames.clear();
     Object.entries(result.activityLinks && typeof result.activityLinks === 'object' ? result.activityLinks : {}).forEach(([id, url]) => {
       activityLinks.set(String(id), String(url || ''));
     });
+    Object.entries(result.activityLinkNames && typeof result.activityLinkNames === 'object' ? result.activityLinkNames : {}).forEach(([id, name]) => {
+      activityLinkNames.set(String(id), String(name || ''));
+    });
     linksKnown = true;
-    syncFieldFromSelection(true);
+    syncFieldsFromSelection(false);
   }
 
   async function enrichAdminResult(config, idToken, promise) {
@@ -102,33 +118,48 @@
       return mergeLinks(result);
     } catch (_) {
       linksKnown = false;
-      syncFieldFromSelection(true);
+      syncFieldsFromSelection(false);
       return result;
     }
   }
 
   async function saveTicketAndActivityLink(config, clientType, idToken, action, payload) {
-    const input = document.getElementById('eventTicketActivityUrl');
-    const requestedUrl = safeActivityUrl(input && input.value);
+    const urlInput = document.getElementById('eventTicketActivityUrl');
+    const nameInput = document.getElementById('eventTicketActivityLinkName');
+    const requestedUrl = safeActivityUrl(urlInput && urlInput.value);
+    const requestedName = safeActivityLinkName(nameInput && nameInput.value);
     const result = await originalRequest(config, clientType, idToken, action, payload);
     const eventTicketId = String(result && result.eventTicket && result.eventTicket.eventTicketId || '').trim();
-    if (!eventTicketId || !input || input.disabled || requestedUrl === null) return mergeLinks(result);
 
+    if (!eventTicketId || !urlInput || !nameInput || urlInput.disabled || nameInput.disabled || requestedUrl === null || requestedName === null) {
+      return mergeLinks(result);
+    }
+
+    const normalizedName = requestedUrl ? requestedName : '';
     const expectedActivityUrl = String(activityLinks.get(eventTicketId) || '');
+    const expectedActivityLinkName = String(activityLinkNames.get(eventTicketId) || '');
     try {
       const saved = await linkRequest(config, idToken, 'admin.event-ticket-links.save', {
         eventTicketId,
         activityUrl: requestedUrl,
-        expectedActivityUrl
+        activityLinkName: normalizedName,
+        expectedActivityUrl,
+        expectedActivityLinkName
       });
       activityLinks.set(eventTicketId, String(saved.activityUrl || ''));
+      activityLinkNames.set(eventTicketId, String(saved.activityLinkName || ''));
       linksKnown = true;
-      if (result.eventTicket) result.eventTicket.activityUrl = String(saved.activityUrl || '');
+      fieldsDirty = false;
+      lastSyncedEventTicketId = eventTicketId;
+      if (result.eventTicket) {
+        result.eventTicket.activityUrl = String(saved.activityUrl || '');
+        result.eventTicket.activityLinkName = String(saved.activityLinkName || '');
+      }
       setFieldStatus(saved.changed ? '活動連結已儲存。' : '活動連結未變更。', false);
     } catch (error) {
       setFieldStatus(`活動票券已儲存，但活動連結未更新：${String(error && error.message || '請重新整理後再試')}`, true);
     }
-    window.setTimeout(() => syncFieldFromSelection(true), 0);
+    window.setTimeout(() => syncFieldsFromSelection(true), 0);
     return result;
   }
 
@@ -158,76 +189,124 @@
     status.classList.toggle('warning', Boolean(error));
   }
 
-  function createActivityUrlField() {
+  function createActivityLinkFields() {
     const form = document.getElementById('eventTicketForm');
     const description = document.getElementById('eventTicketDescription');
     if (!form || !description || document.getElementById('eventTicketActivityUrl')) return;
 
-    const label = document.createElement('label');
-    label.id = 'eventTicketActivityUrlField';
-    label.append(document.createTextNode('活動連結（選填）'));
-    const input = document.createElement('input');
-    input.id = 'eventTicketActivityUrl';
-    input.type = 'url';
-    input.inputMode = 'url';
-    input.autocomplete = 'url';
-    input.maxLength = 2048;
-    input.placeholder = 'https://example.com/event';
-    input.setAttribute('aria-describedby', 'eventTicketActivityUrlStatus');
+    const nameLabel = document.createElement('label');
+    nameLabel.id = 'eventTicketActivityLinkNameField';
+    nameLabel.append(document.createTextNode('連結名稱（選填）'));
+    const nameInput = document.createElement('input');
+    nameInput.id = 'eventTicketActivityLinkName';
+    nameInput.type = 'text';
+    nameInput.autocomplete = 'off';
+    nameInput.maxLength = 120;
+    nameInput.placeholder = '例如：查看活動詳情';
+    nameLabel.append(nameInput);
+
+    const urlLabel = document.createElement('label');
+    urlLabel.id = 'eventTicketActivityUrlField';
+    urlLabel.append(document.createTextNode('活動連結（選填）'));
+    const urlInput = document.createElement('input');
+    urlInput.id = 'eventTicketActivityUrl';
+    urlInput.type = 'url';
+    urlInput.inputMode = 'url';
+    urlInput.autocomplete = 'url';
+    urlInput.maxLength = 2048;
+    urlInput.placeholder = 'https://example.com/event';
+    urlInput.setAttribute('aria-describedby', 'eventTicketActivityUrlStatus');
     const status = document.createElement('small');
     status.id = 'eventTicketActivityUrlStatus';
     status.className = 'field-help';
     status.textContent = '會員可從活動票券詳情開啟；僅接受 https:// 網址。';
-    label.append(input, status);
-    description.closest('label')?.insertAdjacentElement('afterend', label);
+    urlLabel.append(urlInput, status);
+
+    const descriptionLabel = description.closest('label');
+    descriptionLabel?.insertAdjacentElement('afterend', urlLabel);
+    descriptionLabel?.insertAdjacentElement('afterend', nameLabel);
+
+    const markDirty = () => { fieldsDirty = true; };
+    nameInput.addEventListener('input', markDirty);
+    urlInput.addEventListener('input', markDirty);
 
     form.addEventListener('submit', (event) => {
-      const normalized = safeActivityUrl(input.value);
-      if (normalized !== null) return;
+      const normalizedUrl = safeActivityUrl(urlInput.value);
+      const normalizedName = safeActivityLinkName(nameInput.value);
+      let message = '';
+      if (normalizedUrl === null) message = '請輸入有效的 https:// 活動連結。';
+      else if (normalizedName === null) message = '連結名稱最多 120 個字，且不可包含控制字元。';
+      else if (!normalizedUrl && normalizedName) message = '請先輸入活動連結，或清空連結名稱。';
+      if (!message) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      setFieldStatus('請輸入有效的 https:// 活動連結。', true);
-      input.focus();
+      setFieldStatus(message, true);
+      (normalizedUrl === null || (!normalizedUrl && normalizedName) ? urlInput : nameInput).focus();
     }, true);
-    form.addEventListener('reset', () => window.setTimeout(() => syncFieldFromSelection(true), 0));
+
+    form.addEventListener('reset', () => {
+      fieldsDirty = false;
+      window.setTimeout(() => syncFieldsFromSelection(true), 0);
+    });
   }
 
-  function syncFieldFromSelection(force = false) {
-    const input = document.getElementById('eventTicketActivityUrl');
-    if (!input) return;
+  function syncFieldsFromSelection(force = false) {
+    const urlInput = document.getElementById('eventTicketActivityUrl');
+    const nameInput = document.getElementById('eventTicketActivityLinkName');
+    if (!urlInput || !nameInput) return;
+
     const eventTicketId = String(document.getElementById('eventTicketId')?.value || '').trim();
+    const selectionChanged = eventTicketId !== lastSyncedEventTicketId;
+
+    // Never overwrite an in-progress draft just because the user clicked elsewhere.
+    if (!selectionChanged && !force) return;
+    if (!selectionChanged && fieldsDirty) return;
+
+    lastSyncedEventTicketId = eventTicketId;
+    fieldsDirty = false;
+
     if (!eventTicketId) {
-      input.disabled = false;
-      input.value = '';
+      urlInput.disabled = false;
+      nameInput.disabled = false;
+      urlInput.value = '';
+      nameInput.value = '';
       setFieldStatus('會員可從活動票券詳情開啟；僅接受 https:// 網址。');
       return;
     }
+
     if (!linksKnown) {
-      input.disabled = true;
-      if (force) setFieldStatus('暫時無法讀取既有活動連結；為避免覆蓋資料，已停用此欄位。', true);
+      urlInput.disabled = true;
+      nameInput.disabled = true;
+      setFieldStatus('暫時無法讀取既有活動連結；為避免覆蓋資料，已停用此欄位。', true);
       return;
     }
-    input.disabled = false;
-    input.value = String(activityLinks.get(eventTicketId) || '');
-    setFieldStatus(input.value ? '已設定活動連結；儲存票券時會一併更新。' : '尚未設定活動連結。');
+
+    urlInput.disabled = false;
+    nameInput.disabled = false;
+    urlInput.value = String(activityLinks.get(eventTicketId) || '');
+    nameInput.value = String(activityLinkNames.get(eventTicketId) || '');
+    setFieldStatus(urlInput.value ? '已設定活動連結；儲存票券時會一併更新。' : '尚未設定活動連結。');
   }
 
   function bindSelectionSync() {
-    document.addEventListener('click', () => window.setTimeout(() => syncFieldFromSelection(false), 0));
-    document.getElementById('eventTicketForm')?.addEventListener('focusin', () => syncFieldFromSelection(false));
-    document.getElementById('newEventTicketButton')?.addEventListener('click', () => window.setTimeout(() => syncFieldFromSelection(true), 0));
+    document.addEventListener('click', () => window.setTimeout(() => syncFieldsFromSelection(false), 0));
+    document.getElementById('newEventTicketButton')?.addEventListener('click', () => {
+      fieldsDirty = false;
+      lastSyncedEventTicketId = null;
+      window.setTimeout(() => syncFieldsFromSelection(true), 0);
+    });
   }
 
   window.addEventListener('DOMContentLoaded', () => {
-    createActivityUrlField();
+    createActivityLinkFields();
     bindSelectionSync();
     if (lastConfig && lastIdToken && !linksKnown) {
       refreshLinks(lastConfig, lastIdToken).catch(() => {
         linksKnown = false;
-        syncFieldFromSelection(true);
+        syncFieldsFromSelection(false);
       });
     } else {
-      syncFieldFromSelection(true);
+      syncFieldsFromSelection(true);
     }
   });
 })();
