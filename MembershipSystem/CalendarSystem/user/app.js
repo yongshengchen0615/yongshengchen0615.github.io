@@ -171,11 +171,11 @@
   }
 
   function validatePublicConfig(config, liffKey) {
-    const gasUrl = String(config && config.gasWebAppUrl || '').trim();
+    const apiUrl = String(config && config.supabaseFunctionUrl || '').trim();
     const liffId = String(config && config[liffKey] || '').trim();
 
-    if (!gasUrl || gasUrl.includes('REPLACE_WITH_') || !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
-      throw clientError('CONFIG_ERROR', '尚未正確設定 GAS Web App URL。');
+    if (!/^https:\/\/[a-z0-9]+\.supabase\.co\/functions\/v1\/[a-z0-9-]+$/i.test(apiUrl)) {
+      throw clientError('CONFIG_ERROR', '尚未正確設定 Supabase Edge Function URL。');
     }
     if (!liffId || liffId.includes('REPLACE_WITH_')) {
       throw clientError('CONFIG_ERROR', '尚未設定 User LIFF ID。');
@@ -207,22 +207,21 @@
 
     let response;
     try {
-      response = await fetch(state.config.gasWebAppUrl, {
+      response = await fetch(state.config.supabaseFunctionUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         cache: 'no-store',
-        redirect: 'follow',
         body: JSON.stringify(body)
       });
     } catch (error) {
-      throw clientError('NETWORK_ERROR', '無法連線 GAS 後端，請檢查 Web App 部署與網路。');
+      throw clientError('NETWORK_ERROR', '無法連線 Supabase 日曆服務，請檢查網路後重試。');
     }
 
     let data;
     try {
       data = await response.json();
     } catch (error) {
-      throw clientError('API_RESPONSE_ERROR', 'GAS 回傳格式錯誤，請確認部署的是最新版本。');
+      throw clientError('API_RESPONSE_ERROR', 'Supabase 日曆服務回傳格式錯誤。');
     }
 
     if (!data || data.ok !== true) {
