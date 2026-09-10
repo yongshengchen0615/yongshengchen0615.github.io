@@ -190,7 +190,7 @@ async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Js
   const rows: Array<{ booking_date: string; start_time: string; end_time: string }> = [];
 
   const holidaysResult = await supabase.from("calendar_items")
-    .select("calendar_item_id,title,description,starts_on,ends_on")
+    .select("calendar_item_id,title,description,starts_on,ends_on,accent")
     .eq("item_type", "holiday")
     .eq("status", "active")
     .lt("starts_on", endDate)
@@ -238,6 +238,7 @@ async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Js
     description: String(row.description || ""),
     startsOn: String(row.starts_on || "").slice(0, 10),
     endsOn: String(row.ends_on || row.starts_on || "").slice(0, 10),
+    accent: String(row.accent || ""),
   })).filter((row: any) => /^\d{4}-\d{2}-\d{2}$/.test(row.startsOn) && /^\d{4}-\d{2}-\d{2}$/.test(row.endsOn));
 
   const today = taipeiDate();
