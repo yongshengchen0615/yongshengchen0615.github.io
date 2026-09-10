@@ -302,56 +302,6 @@ function calendarClient(row: any): Json {
     createdAt:row.created_at,updatedAt:row.updated_at,
   };
 }
-function isManagedEventTicketCalendarLink(value: unknown): boolean {
-  const link = asText(value,2000);
-  if (!link) return false;
-  try { return new URL(link).searchParams.get("source") === "event-ticket-calendar"; }
-  catch { return false; }
-}
-function calendarDateRange(startsOnValue: unknown, endsOnValue: unknown): { start:string;end:string } | null {
-  const start = asText(startsOnValue,10);
-  const end = asText(endsOnValue,10) || start;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) return null;
-  return { start,end };
-}
-function calendarRangesOverlap(a: { start:string;end:string }, b: { start:string;end:string }): boolean {
-  return a.start <= b.end && a.end >= b.start;
-}
-async function findActiveHolidayOverlap(supabase: SupabaseClient, item: Json): Promise<any | null> {
-  if (asText(item.itemType,20) !== "event" || !isManagedEventTicketCalendarLink(item.linkUrl)) return null;
-  const eventRange = calendarDateRange(item.startsOn,item.endsOn);
-  if (!eventRange) return null;
-  const holidays = await supabase.from("calendar_items").select("*").eq("item_type","holiday").eq("status","active").order("starts_on",{ ascending:true });
-  if (holidays.error) throw mapError(holidays.error);
-  return (holidays.data || []).find((row:any) => {
-    const holidayRange = calendarDateRange(row.starts_on,row.ends_on);
-    return Boolean(holidayRange && calendarRangesOverlap(eventRange,holidayRange));
-  }) || null;
-}
-async function auditAutomaticCalendarRemoval(supabase: SupabaseClient, actor: string, calendarItemId: string, holidayCalendarItemId: string): Promise<void> {
-  const audit = await supabase.from("audit_logs").insert({
-    audit_id:"AUD-" + crypto.randomUUID().replaceAll("-",""),actor_line_user_id:actor,actor_role:"admin",
-    action:"admin.calendar-items.auto-delete-holiday-conflict",target_type:"calendar_item",target_id:calendarItemId,result:"success",
-    detail:{ reason:"event_ticket_holiday_overlap",holidayCalendarItemId },
-  });
-  if (audit.error) console.error("calendar holiday cleanup audit failed",audit.error.message);
-}
-async function removeManagedEventTicketCalendarItems(supabase: SupabaseClient, identity: { lineUserId:string }, rows: any[], holiday: any): Promise<number> {
-  const holidayRange = calendarDateRange(holiday?.starts_on,holiday?.ends_on);
-  if (!holidayRange) return 0;
-  const conflicts = (rows || []).filter((row:any) => {
-    if (!row || row.item_type !== "event" || !isManagedEventTicketCalendarLink(row.link_url)) return false;
-    const eventRange = calendarDateRange(row.starts_on,row.ends_on);
-    return Boolean(eventRange && calendarRangesOverlap(eventRange,holidayRange));
-  });
-  if (!conflicts.length) return 0;
-  const ids = conflicts.map((row:any) => String(row.calendar_item_id || "")).filter(Boolean);
-  if (!ids.length) return 0;
-  const deleted = await supabase.from("calendar_items").delete().in("calendar_item_id",ids);
-  if (deleted.error) throw mapError(deleted.error);
-  await Promise.all(ids.map((id) => auditAutomaticCalendarRemoval(supabase,identity.lineUserId,id,String(holiday.calendar_item_id || ""))));
-  return ids.length;
-}
 async function handleCalendarList(supabase: SupabaseClient): Promise<Json> {
   const rows = await supabase.from("calendar_items").select("*").order("starts_on",{ ascending:true }).order("created_at",{ ascending:true });
   if (rows.error) throw mapError(rows.error);
@@ -359,23 +309,6 @@ async function handleCalendarList(supabase: SupabaseClient): Promise<Json> {
 }
 async function handleCalendarSave(supabase: SupabaseClient, identity: { lineUserId:string }, body: Json): Promise<Json> {
   const item = body.calendarItem && typeof body.calendarItem === "object" ? body.calendarItem as Json : {};
-  const holiday = await findActiveHolidayOverlap(supabase,item);
-  if (holiday) {
-    const existingId = asText(item.calendarItemId,120);
-    let removedCalendarItems = 0;
-    if (existingId) {
-      const existing = await supabase.from("calendar_items").select("*").eq("calendar_item_id",existingId).maybeSingle();
-      if (existing.error) throw mapError(existing.error);
-      if (existing.data && existing.data.item_type === "event" && isManagedEventTicketCalendarLink(existing.data.link_url)) {
-        removedCalendarItems = await removeManagedEventTicketCalendarItems(supabase,identity,[existing.data],holiday);
-      }
-    }
-    return {
-      calendarItem:null,
-      calendarSync:{ status:"skipped",reason:"holiday",holiday:calendarClient(holiday),removedCalendarItems },
-    };
-  }
-
   const result = await supabase.rpc("save_calendar_item_with_bonus",{
     p_actor_line_user_id:identity.lineUserId,p_calendar_item:item,p_expected_updated_at:asText(body.expectedUpdatedAt,100),
   });
@@ -383,18 +316,7 @@ async function handleCalendarSave(supabase: SupabaseClient, identity: { lineUser
   const id = String((result.data as any[])?.[0]?.calendarItemId || "");
   const row = await supabase.from("calendar_items").select("*").eq("calendar_item_id",id).single();
   if (row.error) throw mapError(row.error);
-
-  let removedEventTicketCalendarItems = 0;
-  if (row.data.item_type === "holiday" && row.data.status === "active") {
-    const events = await supabase.from("calendar_items").select("*").eq("item_type","event");
-    if (events.error) throw mapError(events.error);
-    removedEventTicketCalendarItems = await removeManagedEventTicketCalendarItems(supabase,identity,events.data || [],row.data);
-  }
-
-  return {
-    calendarItem:calendarClient(row.data),
-    calendarSync:{ status:"saved",removedEventTicketCalendarItems },
-  };
+  return { calendarItem:calendarClient(row.data) };
 }
 
 Deno.serve(async (request: Request) => {
