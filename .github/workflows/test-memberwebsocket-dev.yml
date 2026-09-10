@@ -45,12 +45,15 @@ jobs:
           node --check MemberWebsocket-dev/booking/membership-progress.js
           node --check MemberWebsocket-dev/booking/member-ui.js
           node --check MemberWebsocket-dev/booking/app.js
+          node --check MemberWebsocket-dev/booking/calendar-flow.js
           node --check MemberWebsocket-dev/booking/admin/app.js
+          node --check MemberWebsocket-dev/booking/admin/subtabs.js
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/grant-automation/index.ts
           deno check MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts
           deno check MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
       - name: Check grant automation wiring
         run: |
           grep -q 'grant-automation.js' MemberWebsocket-dev/admin/index.html
@@ -81,6 +84,14 @@ jobs:
           grep -q 'id="bookingConfirmModal"' MemberWebsocket-dev/booking/index.html
           grep -q 'servicePicker' MemberWebsocket-dev/booking/app.js
           grep -q 'quantity > 2' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'calendar-flow.js' MemberWebsocket-dev/booking/index.html
+          grep -q 'id="calendarGrid"' MemberWebsocket-dev/booking/index.html
+          grep -q 'id="appointmentPanel"' MemberWebsocket-dev/booking/index.html
+          grep -q 'booking-calendar-api' MemberWebsocket-dev/booking/calendar-flow.js
+          grep -q 'booking_date,start_time,end_time' MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
+          grep -q 'requireJoinedMember' MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
+          grep -q 'subtabs.js' MemberWebsocket-dev/booking/admin/index.html
+          grep -q '預約管理分類' MemberWebsocket-dev/booking/admin/subtabs.js
           grep -q 'booking-panel.js' MemberWebsocket-dev/admin/common.js
           grep -q "tab.textContent = '預約'" MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'admin.booking.settings.save' MemberWebsocket-dev/admin/booking-panel.js
