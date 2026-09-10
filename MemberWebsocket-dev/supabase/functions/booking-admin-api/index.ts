@@ -45,6 +45,11 @@ function mapDatabaseError(error: unknown): ApiError {
   const raw = error as { message?: string; details?: string; code?: string };
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
+    ["BOOKING_SETTINGS_CONFLICT", 409, "BOOKING_SETTINGS_CONFLICT", "預約共用設定已被其他操作更新，請重新整理後再試。"],
+    ["BOOKING_SETTINGS_MISSING", 503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。"],
+    ["INVALID_WORK_HOURS", 400, "INVALID_WORK_HOURS", "結束工作時間必須晚於開始工作時間至少 30 分鐘。"],
+    ["INVALID_ADVANCE_DAYS", 400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。"],
+    ["INVALID_BOOKING_NOTICE", 400, "INVALID_BOOKING_NOTICE", "預約說明不可超過 2,000 字。"],
     ["BOOKING_SERVICE_TYPE_IN_USE", 409, "BOOKING_SERVICE_TYPE_IN_USE", "此項目類型仍有預約項目使用，請先修改或刪除相關預約項目。"],
     ["BOOKING_SERVICE_TYPE_NOT_FOUND", 404, "BOOKING_SERVICE_TYPE_NOT_FOUND", "找不到這個項目類型。"],
     ["DUPLICATE_SERVICE_TYPE", 409, "DUPLICATE_SERVICE_TYPE", "已有相同名稱的項目類型。"],
@@ -71,10 +76,24 @@ function dbClient(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 function asText(value: unknown, max = 1000): string { return String(value ?? "").trim().slice(0, max); }
+function preserveText(value: unknown, max = 2000): string { return String(value ?? "").replace(/\r\n?/g, "\n").slice(0, max); }
 function requireUuid(value: unknown, label: string): string {
   const text = asText(value, 60);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)) throw new ApiError(400, "INVALID_INPUT", `${label}格式不正確。`);
   return text;
+}
+function normalizeTime(value: unknown): string {
+  const text = asText(value, 8);
+  const match = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(text);
+  if (!match) throw new ApiError(400, "INVALID_WORK_HOURS", "時間格式不正確。" );
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || ![0, 30].includes(minute)) throw new ApiError(400, "INVALID_WORK_HOURS", "工作時間必須以 30 分鐘為單位。" );
+  return `${match[1]}:${match[2]}`;
+}
+function timeToMinutes(value: string): number {
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
 }
 async function verifyLineIdToken(idToken: string): Promise<Identity> {
   if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。" );
@@ -114,6 +133,15 @@ async function consumeRateLimit(supabase: SupabaseClient, identity: Identity, is
   if (error) throw new ApiError(503, "RATE_LIMIT_UNAVAILABLE", "無法確認請求頻率限制。" );
   if (!data) throw new ApiError(429, "RATE_LIMITED", "請求過於密集，請稍後再試。" );
 }
+function settingsClient(row: any): Json {
+  return {
+    workStartTime: String(row?.work_start_time || "09:00:00").slice(0, 5),
+    workEndTime: String(row?.work_end_time || "17:00:00").slice(0, 5),
+    minAdvanceDays: Number(row?.min_advance_days || 0),
+    bookingNotice: String(row?.booking_notice || ""),
+    updatedAt: row?.updated_at || null,
+  };
+}
 function serviceClient(row: any): Json {
   return { serviceId: row.id, title: row.title, serviceType: row.service_type || "", durationMinutes: Number(row.duration_minutes || 30), priceAmount: Number(row.price_amount || 0), isActive: Boolean(row.is_active), createdAt: row.created_at, updatedAt: row.updated_at };
 }
@@ -123,13 +151,37 @@ async function audit(supabase: SupabaseClient, identity: Identity, action: strin
   if (result.error) console.error("booking admin audit failed", result.error.message);
 }
 async function bootstrap(supabase: SupabaseClient): Promise<Json> {
-  const [types, services] = await Promise.all([
+  const [settings, types, services] = await Promise.all([
+    supabase.from("booking_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.from("booking_service_types").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
     supabase.from("booking_services").select("*").is("deleted_at", null).neq("id", STORE_SERVICE_ID).order("created_at", { ascending: true }),
   ]);
+  if (settings.error) throw mapDatabaseError(settings.error);
+  if (!settings.data) throw new ApiError(503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。" );
   if (types.error) throw mapDatabaseError(types.error);
   if (services.error) throw mapDatabaseError(services.error);
-  return { serviceTypes: (types.data || []).map(typeClient), services: (services.data || []).map(serviceClient) };
+  return { settings: settingsClient(settings.data), serviceTypes: (types.data || []).map(typeClient), services: (services.data || []).map(serviceClient) };
+}
+async function settingsSave(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
+  const workStartTime = normalizeTime(body.workStartTime);
+  const workEndTime = normalizeTime(body.workEndTime);
+  const minAdvanceDays = Number(body.minAdvanceDays);
+  const bookingNotice = preserveText(body.bookingNotice, 2001);
+  if (timeToMinutes(workEndTime) - timeToMinutes(workStartTime) < 30) throw new ApiError(400, "INVALID_WORK_HOURS", "結束工作時間必須晚於開始工作時間至少 30 分鐘。" );
+  if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) throw new ApiError(400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。" );
+  if (bookingNotice.length > 2000) throw new ApiError(400, "INVALID_BOOKING_NOTICE", "預約說明不可超過 2,000 字。" );
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  const result = await supabase.rpc("save_booking_shared_settings", {
+    p_work_start_time: `${workStartTime}:00`,
+    p_work_end_time: `${workEndTime}:00`,
+    p_min_advance_days: minAdvanceDays,
+    p_booking_notice: bookingNotice,
+    p_expected_updated_at: expectedUpdatedAt || null,
+    p_actor: identity.lineUserId,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
+  await audit(supabase, identity, "BOOKING_SETTINGS_UPDATED", "booking_settings", "1", { workStartTime, workEndTime, minAdvanceDays, bookingNoticeLength: bookingNotice.length });
+  return { settings: settingsClient(result.data) };
 }
 async function typeCreate(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const name = asText(body.name, 80);
@@ -212,6 +264,7 @@ async function servicesBatch(supabase: SupabaseClient, identity: Identity, body:
 
 async function route(supabase: SupabaseClient, identity: Identity, action: string, body: Json): Promise<Json> {
   if (action === "admin.booking.manage.bootstrap") return await bootstrap(supabase);
+  if (action === "admin.booking.settings.save") return await settingsSave(supabase, identity, body);
   if (action === "admin.booking.type.create") return await typeCreate(supabase, identity, body);
   if (action === "admin.booking.type.update") return await typeUpdate(supabase, identity, body);
   if (action === "admin.booking.type.delete") return await typeDelete(supabase, identity, body);

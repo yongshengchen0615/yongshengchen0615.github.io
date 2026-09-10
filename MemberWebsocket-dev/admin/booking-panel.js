@@ -50,12 +50,13 @@
       </div>
 
       <section class="booking-admin-card booking-admin-hours-card" aria-labelledby="bookingAdminHoursTitle">
-        <div class="booking-admin-section-heading"><div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>工作時間與提前預約天數套用到所有預約項目。</p></div></div>
+        <div class="booking-admin-section-heading"><div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>工作時間、提前預約天數與會員端預約說明套用到所有預約項目。</p></div></div>
         <form id="bookingAdminSettingsForm" class="booking-admin-form booking-admin-settings-form" novalidate>
           <div class="booking-admin-form-grid booking-admin-global-settings-grid">
             <label>開始工作時間<input id="bookingAdminStartTime" type="time" step="1800" value="09:00" required></label>
             <label>結束工作時間<input id="bookingAdminEndTime" type="time" step="1800" value="17:00" required></label>
             <label>需要提前幾天預約<input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的開始時段。</small></label>
+            <label style="grid-column:1/-1">預約說明（可換行）<textarea id="bookingAdminNotice" maxlength="2000" rows="5" placeholder="例如：\n請於預約時間前 10 分鐘抵達。\n如需取消或更改時間，請提前聯繫。"></textarea><small>最多 2,000 字；會員端會依原本換行顯示。</small></label>
           </div>
           <div id="bookingAdminSettingsMessage" class="form-message hidden" role="status" aria-live="polite"></div>
           <div class="booking-admin-inline-actions"><button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約設定</button></div>
@@ -121,7 +122,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminRefreshButton','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminRefreshButton','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminConfirmedCount',
       'bookingAdminServicesSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminServicesPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -230,7 +231,10 @@
         bookingRequest('admin.booking.bootstrap'),
         manageRequest('admin.booking.manage.bootstrap'),
       ]);
-      state.booking = { settings: booking.settings || {}, bookings: Array.isArray(booking.bookings) ? booking.bookings : [] };
+      state.booking = {
+        settings: { ...(booking.settings || {}), ...(catalog.settings || {}) },
+        bookings: Array.isArray(booking.bookings) ? booking.bookings : [],
+      };
       state.catalog = { serviceTypes: Array.isArray(catalog.serviceTypes) ? catalog.serviceTypes : [], services: Array.isArray(catalog.services) ? catalog.services : [] };
       state.selected = new Set([...state.selected].filter((id) => state.catalog.services.some((service) => service.serviceId === id)));
       renderAll();
@@ -251,6 +255,7 @@
     els.bookingAdminStartTime.value = String(settings.workStartTime || '09:00');
     els.bookingAdminEndTime.value = String(settings.workEndTime || '17:00');
     els.bookingAdminAdvanceDays.value = String(Number(settings.minAdvanceDays || 0));
+    els.bookingAdminNotice.value = String(settings.bookingNotice || '');
   }
   function renderStats() {
     const bookings = state.booking.bookings || [];
@@ -317,13 +322,16 @@
     event.preventDefault();
     if (state.busy) return;
     const minAdvanceDays = Number(els.bookingAdminAdvanceDays.value);
+    const bookingNotice = String(els.bookingAdminNotice.value || '').replace(/\r\n?/g, '\n');
     if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) return showMessage(els.bookingAdminSettingsMessage, '提前預約天數必須介於 0–365 天。', 'error');
+    if (bookingNotice.length > 2000) return showMessage(els.bookingAdminSettingsMessage, '預約說明不可超過 2,000 字。', 'error');
     state.busy = true; clearMessage(els.bookingAdminSettingsMessage);
     try {
-      const result = await bookingRequest('admin.booking.settings.save', {
+      const result = await manageRequest('admin.booking.settings.save', {
         workStartTime: els.bookingAdminStartTime.value,
         workEndTime: els.bookingAdminEndTime.value,
         minAdvanceDays,
+        bookingNotice,
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',
       }, true);
       state.booking.settings = result.settings || state.booking.settings;
