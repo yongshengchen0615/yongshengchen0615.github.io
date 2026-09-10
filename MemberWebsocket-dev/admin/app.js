@@ -6,7 +6,7 @@
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const MEMBERSHIP_TIER_STYLE_LABELS = Object.freeze({ forest: '森林綠', midnight: '午夜藍', ocean: '海灣青', sunset: '夕陽橘', lavender: '薰衣草紫', rose: '玫瑰粉', gold: '金曜棕', platinum: '鉑金灰', mint: '薄荷綠', cherry: '櫻桃紅' });
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -24,7 +24,8 @@
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
       'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
-      'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantNote', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice'
+      'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantMessagePreset', 'grantMessagePreview', 'manageGrantMessagesButton', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice',
+      'messagePresetModal', 'closeMessagePresetModal', 'messagePresetForm', 'messagePresetList', 'messagePresetId', 'messagePresetExpectedUpdatedAt', 'messagePresetTitle', 'messagePresetBody', 'messagePresetStatus', 'messagePresetFormMessage', 'newMessagePresetButton', 'saveMessagePresetButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     bindEvents();
     boot();
@@ -128,12 +129,19 @@
     els.grantPointRows.addEventListener('click', (event) => { const button = event.target instanceof Element ? event.target.closest('[data-remove-grant-point]') : null; if (button) { button.closest('[data-grant-point-row]')?.remove(); updateGrantPointHint(); } });
     els.addGrantPointButton.addEventListener('click', addGrantPointRow);
     els.grantServiceTimeEnabled.addEventListener('change', updateGrantOptions);
+    els.grantMessagePreset.addEventListener('change', updateGrantMessagePreview);
+    els.manageGrantMessagesButton.addEventListener('click', openMessagePresetModal);
+    els.closeMessagePresetModal.addEventListener('click', closeMessagePresetModal);
+    els.messagePresetModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.messagePresetModal)) closeMessagePresetModal(); });
+    els.messagePresetList.addEventListener('change', () => { if (els.messagePresetList.value) loadMessagePresetForm(els.messagePresetList.value); });
+    els.newMessagePresetButton.addEventListener('click', resetMessagePresetForm);
+    els.messagePresetForm.addEventListener('submit', saveMessagePreset);
     document.addEventListener('click', handleAdminDateControlClick);
     els.cardListItems.addEventListener('pointerdown', handleCardSortPointerDown);
     document.addEventListener('pointermove', handleCardSortPointerMove);
     document.addEventListener('pointerup', handleCardSortPointerUp);
     document.addEventListener('pointercancel', handleCardSortPointerUp);
-    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); closeEditorModals(); });
+    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; closeMemberModal(); closeGrantModal(); closeMessagePresetModal(); closeEditorModals(); });
   }
 
   function shouldDismissModalFromBackdrop(event, modal) {
@@ -273,7 +281,7 @@
   }
 
   function assertCompleteAdminBootstrap(result) {
-    const requiredArrays = ['members', 'tierSettings', 'cards', 'tickets', 'eventTickets', 'calendarItems'];
+    const requiredArrays = ['members', 'tierSettings', 'cards', 'tickets', 'eventTickets', 'calendarItems', 'messagePresets'];
     const missing = requiredArrays.filter((key) => !Array.isArray(result && result[key]));
     const hasStats = Boolean(result && result.stats && typeof result.stats === 'object' && !Array.isArray(result.stats));
     const hasMemberPage = Boolean(result && result.memberPage && typeof result.memberPage === 'object' && !Array.isArray(result.memberPage));
@@ -290,6 +298,9 @@
     applyMemberPage(result.memberPage, state.memberPage);
     state.tierSettings = result.tierSettings;
     state.stats = result.stats;
+    state.messagePresets = Array.isArray(result.messagePresets) ? result.messagePresets : [];
+    renderGrantMessagePresetOptions();
+    renderMessagePresetList();
     state.loadedPanels = { members: true, cards: true, events: true, calendar: true };
     state.summaryLoaded = Object.prototype.hasOwnProperty.call(state.stats, 'todayEntryCount');
     els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
@@ -1372,6 +1383,108 @@
       if (await refreshAfterSuccessfulWrite('會員狀態已儲存', els.memberFormMessage)) setSyncStatus('會員狀態已儲存 · 已同步', false);
     } catch (error) { handleActionError(error, els.memberFormMessage); } finally { setSaving(els.saveMemberButton, false); }
   }
+
+  function activeGrantMessagePresets() {
+    return state.messagePresets.filter((preset) => preset.status === 'active');
+  }
+  function renderGrantMessagePresetOptions(selectedId) {
+    if (!els.grantMessagePreset) return;
+    const preferred = selectedId === undefined ? String(els.grantMessagePreset.value || '') : String(selectedId || '');
+    const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '不附加預設訊息';
+    const options = activeGrantMessagePresets().map((preset) => {
+      const option = document.createElement('option');
+      option.value = String(preset.presetId || '');
+      option.textContent = String(preset.title || '未命名預設訊息');
+      return option;
+    });
+    els.grantMessagePreset.replaceChildren(placeholder, ...options);
+    const fallback = activeGrantMessagePresets()[0];
+    const nextValue = preferred && activeGrantMessagePresets().some((preset) => String(preset.presetId) === preferred)
+      ? preferred
+      : fallback ? String(fallback.presetId || '') : '';
+    els.grantMessagePreset.value = nextValue;
+    updateGrantMessagePreview();
+  }
+  function updateGrantMessagePreview() {
+    if (!els.grantMessagePreview) return;
+    const preset = state.messagePresets.find((item) => String(item.presetId || '') === String(els.grantMessagePreset.value || ''));
+    els.grantMessagePreview.textContent = preset ? String(preset.message || '') : '未選擇預設訊息，LINE 通知只會顯示會員名稱與本次發放明細。';
+    els.grantMessagePreview.classList.toggle('is-empty', !preset);
+  }
+  function renderMessagePresetList(selectedId) {
+    if (!els.messagePresetList) return;
+    const preferred = selectedId === undefined ? String(els.messagePresetList.value || '') : String(selectedId || '');
+    const options = state.messagePresets.map((preset) => {
+      const option = document.createElement('option');
+      option.value = String(preset.presetId || '');
+      option.textContent = String(preset.title || '未命名預設訊息') + (preset.status === 'archived' ? '（停用）' : '');
+      return option;
+    });
+    els.messagePresetList.replaceChildren(...options);
+    if (preferred && state.messagePresets.some((preset) => String(preset.presetId || '') === preferred)) els.messagePresetList.value = preferred;
+  }
+  function openMessagePresetModal() {
+    renderMessagePresetList(els.grantMessagePreset.value);
+    const selectedId = String(els.grantMessagePreset.value || els.messagePresetList.value || state.messagePresets[0]?.presetId || '');
+    if (selectedId) loadMessagePresetForm(selectedId); else resetMessagePresetForm();
+    hideMessage(els.messagePresetFormMessage);
+    els.messagePresetModal.classList.remove('hidden');
+    window.requestAnimationFrame(() => { if (!els.messagePresetModal.classList.contains('hidden')) els.messagePresetTitle.focus(); });
+  }
+  function closeMessagePresetModal() { els.messagePresetModal.classList.add('hidden'); }
+  function resetMessagePresetForm() {
+    els.messagePresetId.value = '';
+    els.messagePresetExpectedUpdatedAt.value = '';
+    els.messagePresetTitle.value = '';
+    els.messagePresetBody.value = '';
+    els.messagePresetStatus.value = 'active';
+    els.messagePresetList.selectedIndex = -1;
+    hideMessage(els.messagePresetFormMessage);
+    els.messagePresetTitle.focus();
+  }
+  function loadMessagePresetForm(presetId) {
+    const preset = state.messagePresets.find((item) => String(item.presetId || '') === String(presetId || ''));
+    if (!preset) return resetMessagePresetForm();
+    els.messagePresetId.value = String(preset.presetId || '');
+    els.messagePresetExpectedUpdatedAt.value = String(preset.updatedAt || '');
+    els.messagePresetTitle.value = String(preset.title || '');
+    els.messagePresetBody.value = String(preset.message || '');
+    els.messagePresetStatus.value = preset.status === 'archived' ? 'archived' : 'active';
+    els.messagePresetList.value = String(preset.presetId || '');
+    hideMessage(els.messagePresetFormMessage);
+  }
+  async function saveMessagePreset(event) {
+    event.preventDefault();
+    if (requireRefreshBeforeWrite(els.messagePresetFormMessage)) return;
+    hideMessage(els.messagePresetFormMessage);
+    const title = String(els.messagePresetTitle.value || '').trim();
+    const message = String(els.messagePresetBody.value || '').trim();
+    const status = els.messagePresetStatus.value === 'archived' ? 'archived' : 'active';
+    if (!title || title.length > 80) return showMessage(els.messagePresetFormMessage, '請輸入預設訊息名稱（最多 80 字）。');
+    if (!message || message.length > 1000) return showMessage(els.messagePresetFormMessage, '請輸入預設訊息內容（最多 1000 字）。');
+    setSaving(els.saveMessagePresetButton, true, '正在儲存預設訊息…', '儲存中…');
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.grant-message-presets.save', {
+        messagePreset: {
+          presetId: els.messagePresetId.value,
+          title,
+          message,
+          status,
+          sortOrder: 0
+        },
+        expectedUpdatedAt: els.messagePresetExpectedUpdatedAt.value
+      });
+      state.messagePresets = Array.isArray(result.messagePresets) ? result.messagePresets : state.messagePresets;
+      const savedId = String(result.messagePreset && result.messagePreset.presetId || '');
+      renderMessagePresetList(savedId);
+      renderGrantMessagePresetOptions(status === 'active' ? savedId : '');
+      if (savedId) loadMessagePresetForm(savedId);
+      showOperationSuccess('預設訊息已儲存');
+      showMessage(els.messagePresetFormMessage, '預設訊息已儲存，可直接在發放視窗中選擇。', true);
+    } catch (error) { handleActionError(error, els.messagePresetFormMessage); }
+    finally { setSaving(els.saveMessagePresetButton, false); }
+  }
+
   function openGrantModal(member) {
     const activeCards = activeGrantCards();
     state.grantRequestId = createRequestId();
@@ -1383,7 +1496,7 @@
     els.grantServiceTimeEnabled.checked = false;
     els.grantStampAmount.value = '';
     els.grantServiceTimeMinutes.value = '';
-    els.grantNote.value = '';
+    renderGrantMessagePresetOptions();
     els.grantPointRows.replaceChildren();
     els.grantPointHint.textContent = '勾選「發放集點」後選擇集點卡與點數。';
     els.grantPointHint.classList.remove('warning');
@@ -1431,7 +1544,7 @@
     if (!addStamps && !addServiceTime) return showMessage(els.grantFormMessage, '請至少勾選「發放集點」或「發放消費服務時間」。');
     if (addStamps && (!points.length || points.some((point) => !point.cardId || !Number.isInteger(point.amount) || point.amount < 1 || point.amount > 100) || new Set(points.map((point) => point.cardId)).size !== points.length)) return showMessage(els.grantFormMessage, '請為每張集點卡選擇不同卡片，並輸入 1–100 的整數點數。');
     if (addServiceTime && (!Number.isInteger(serviceTimeMinutes) || serviceTimeMinutes < 1 || serviceTimeMinutes > 1440)) return showMessage(els.grantFormMessage, '請輸入 1–1440 的整數分鐘數。');
-    const note = String(els.grantNote.value || '').trim(); const payload = { lineUserId: els.grantMemberId.value, requestId: state.grantRequestId || (state.grantRequestId = createRequestId()), note };
+    const payload = { lineUserId: els.grantMemberId.value, requestId: state.grantRequestId || (state.grantRequestId = createRequestId()), messagePresetId: String(els.grantMessagePreset.value || '') };
     if (addStamps) payload.points = points;
     if (addServiceTime) payload.serviceTime = { minutes: serviceTimeMinutes };
     setSaving(els.saveGrantButton, true, '正在發放集點與服務時間…', '發放中…');
@@ -1483,7 +1596,7 @@
     const refreshButton = document.createElement('button'); refreshButton.type = 'button'; refreshButton.className = 'button button-outline uncertain-write-refresh'; refreshButton.dataset.uncertainWriteRefresh = 'true'; refreshButton.textContent = '重新整理確認'; refreshButton.addEventListener('click', () => window.location.reload());
     element.insertAdjacentElement('afterend', refreshButton);
   }
-  function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.deleteEventTicketButton, els.saveCalendarItemButton, els.deleteCalendarItemButton, els.addCalendarBatchItemButton, els.queueSelectedCalendarItemsButton, els.deleteSelectedCalendarItemsButton, els.clearCalendarBatchButton, els.saveCalendarBatchButton, els.saveMemberButton, els.saveGrantButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; renderCardList(); }
+  function lockAdminWrites() { [els.saveTierSettingsButton, els.saveCardButton, els.archiveCardButton, els.deleteCardButton, els.saveTicketButton, els.saveEventTicketButton, els.deleteEventTicketButton, els.saveCalendarItemButton, els.deleteCalendarItemButton, els.addCalendarBatchItemButton, els.queueSelectedCalendarItemsButton, els.deleteSelectedCalendarItemsButton, els.clearCalendarBatchButton, els.saveCalendarBatchButton, els.saveMemberButton, els.saveGrantButton, els.saveMessagePresetButton].forEach((button) => { if (button) button.disabled = true; }); els.refreshButton.textContent = '重新整理確認'; renderCardList(); }
   function requireRefreshBeforeWrite(element) { if (!state.writeConfirmationRequired) return false; showUncertainWriteMessage(element); return true; }
   function setSyncStatus(message, error) { els.syncStatus.textContent = message; els.syncStatus.classList.toggle('error', Boolean(error)); }
   async function refreshAfterSuccessfulWrite(successMessage, messageElement, showSuccessNotice = true) {
