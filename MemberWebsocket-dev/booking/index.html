@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta name="robots" content="noindex,nofollow">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#f6f1e8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
+  <title>預約｜Lumen Club</title>
+  <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
+  <link rel="stylesheet" href="./styles.css?v=booking-20260910">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="./common.js?v=booking-20260910" defer></script>
+  <script src="./app.js?v=booking-20260910" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <section id="loadingView" class="state-view" aria-live="polite">
+      <div class="loader" aria-hidden="true"></div>
+      <h1>正在載入預約時段</h1>
+      <p>正在確認會員身分與可預約時間…</p>
+    </section>
+
+    <section id="errorView" class="state-view hidden" role="alert">
+      <div class="error-mark" aria-hidden="true">!</div>
+      <h1>預約功能暫時無法使用</h1>
+      <p id="errorMessage"></p>
+      <div class="state-actions">
+        <a class="button button-light" href="../member/">前往會員卡</a>
+        <button id="retryButton" class="button button-dark" type="button">重新整理</button>
+      </div>
+    </section>
+
+    <main id="bookingView" class="hidden">
+      <header class="topbar">
+        <div><p class="kicker">Lumen Club / Booking</p><h1>預約服務</h1></div>
+        <div class="account-menu"><span id="memberName">LINE 會員</span><button id="logoutButton" class="text-button" type="button">登出</button></div>
+      </header>
+
+      <section class="booking-card" aria-labelledby="bookingTitle">
+        <div class="section-heading">
+          <div><p class="kicker">New appointment</p><h2 id="bookingTitle">選擇預約時段</h2><p>每個時段固定 30 分鐘。送出後需由管理端確認，確認後才算完成預約。</p></div>
+          <span class="slot-unit">30 MIN</span>
+        </div>
+
+        <form id="bookingForm" novalidate>
+          <div class="form-grid">
+            <label>預約項目
+              <select id="serviceSelect" required><option value="">請選擇預約項目</option></select>
+            </label>
+            <label>預約日期
+              <input id="bookingDate" type="date" required disabled>
+            </label>
+          </div>
+
+          <div id="serviceInfo" class="service-info hidden" aria-live="polite"></div>
+
+          <fieldset class="slot-fieldset">
+            <legend>可預約時間</legend>
+            <p id="slotHint" class="slot-hint">請先選擇預約項目與日期。</p>
+            <div id="slotGrid" class="slot-grid" role="group" aria-label="可預約時間"></div>
+          </fieldset>
+
+          <label>備註（選填）
+            <textarea id="memberNote" maxlength="500" rows="3" placeholder="例如：希望安排的服務需求"></textarea>
+          </label>
+
+          <div id="formMessage" class="form-message hidden" role="status" aria-live="polite"></div>
+          <button id="submitBookingButton" class="button button-dark button-wide" type="submit" disabled>送出預約</button>
+        </form>
+      </section>
+
+      <section class="booking-card" aria-labelledby="myBookingsTitle">
+        <div class="section-heading compact"><div><p class="kicker">My appointments</p><h2 id="myBookingsTitle">我的預約</h2><p>等待確認中的時段已暫時保留，不會再提供其他會員選擇。</p></div><button id="refreshButton" class="button button-light" type="button">更新</button></div>
+        <div id="bookingList" class="booking-list"></div>
+        <div id="bookingEmpty" class="empty-state hidden"><strong>目前沒有預約紀錄</strong><span>選擇上方服務與時段即可建立第一筆預約。</span></div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta name="robots" content="noindex,nofollow">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#f5f7f2">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
+  <title>預約管理｜Lumen Club</title>
+  <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
+  <link rel="stylesheet" href="./styles.css?v=booking-admin-20260910">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="../common.js?v=booking-20260910" defer></script>
+  <script src="./app.js?v=booking-admin-20260910" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <section id="loadingView" class="state-view" aria-live="polite"><div class="loader" aria-hidden="true"></div><h1>正在登入預約管理</h1><p>正在取得預約項目與待確認預約…</p></section>
+    <section id="errorView" class="state-view hidden" role="alert"><div class="error-mark" aria-hidden="true">!</div><h1>無法進入預約管理</h1><p id="errorMessage"></p><div id="pendingBox" class="pending-box hidden"><strong>待授權 LINE User ID</strong><code id="pendingUserId"></code><span>請確認 admins 資料表中的 role=admin、status=active。</span></div><div class="state-actions"><a class="button button-light" href="../../admin/">返回管理工作台</a><button id="retryButton" class="button button-dark" type="button">重新整理</button></div></section>
+
+    <main id="adminView" class="hidden">
+      <header class="topbar">
+        <div><p class="kicker">Lumen Club / Booking operations</p><h1>預約管理</h1></div>
+        <div class="account-menu"><a href="../../admin/">管理工作台</a><span id="adminName">管理員</span><button id="logoutButton" class="text-button" type="button">登出</button></div>
+      </header>
+
+      <section class="stats-row" aria-label="預約概況">
+        <div><span>預約項目</span><strong id="serviceCount">0</strong><small>已建立項目</small></div>
+        <div><span>待確認</span><strong id="pendingCount">0</strong><small>需管理端處理</small></div>
+        <div><span>已確認</span><strong id="confirmedCount">0</strong><small>已完成預約</small></div>
+      </section>
+
+      <div class="workspace-grid">
+        <section class="panel" aria-labelledby="serviceEditorTitle">
+          <div class="panel-heading"><div><p class="kicker">Booking services</p><h2 id="serviceEditorTitle">預約項目設定</h2><p>設定服務名稱、工作時間與需要提前幾天預約。每個可選時段固定 30 分鐘。</p></div><button id="newServiceButton" class="button button-light" type="button">＋ 新增</button></div>
+
+          <form id="serviceForm" novalidate>
+            <input id="serviceId" type="hidden"><input id="expectedUpdatedAt" type="hidden">
+            <label>預約項目名稱<input id="serviceTitle" type="text" maxlength="100" placeholder="例如：諮詢服務" required></label>
+            <label>項目說明<textarea id="serviceDescription" maxlength="1000" rows="3" placeholder="會員選擇此項目時顯示的說明"></textarea></label>
+            <div class="two-columns">
+              <label>開始工作時間<input id="workStartTime" type="time" step="1800" value="09:00" required></label>
+              <label>結束工作時間<input id="workEndTime" type="time" step="1800" value="17:00" required></label>
+            </div>
+            <label>需要提前幾天預約<input id="minAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的時段；2 = 最早只能預約兩天後。</small></label>
+
+            <fieldset class="weekday-fieldset"><legend>開放預約星期</legend><div class="weekday-grid">
+              <label><input type="checkbox" name="weekday" value="1" checked>一</label><label><input type="checkbox" name="weekday" value="2" checked>二</label><label><input type="checkbox" name="weekday" value="3" checked>三</label><label><input type="checkbox" name="weekday" value="4" checked>四</label><label><input type="checkbox" name="weekday" value="5" checked>五</label><label><input type="checkbox" name="weekday" value="6" checked>六</label><label><input type="checkbox" name="weekday" value="0" checked>日</label>
+            </div></fieldset>
+
+            <label class="toggle-row"><input id="serviceActive" type="checkbox" checked><span><strong>開放會員預約</strong><small>關閉後不再顯示給會員，但既有預約紀錄仍保留。</small></span></label>
+            <div id="serviceFormMessage" class="form-message hidden" role="status" aria-live="polite"></div>
+            <button id="saveServiceButton" class="button button-dark button-wide" type="submit">儲存預約項目</button>
+          </form>
+
+          <div class="service-list-heading"><strong>已建立項目</strong><span id="serviceListCount">0</span></div>
+          <div id="serviceList" class="service-list"></div>
+          <div id="serviceEmpty" class="empty-state hidden">尚未建立預約項目。</div>
+        </section>
+
+        <section class="panel queue-panel" aria-labelledby="bookingQueueTitle">
+          <div class="panel-heading queue-heading"><div><p class="kicker">Confirmation queue</p><h2 id="bookingQueueTitle">預約確認</h2><p>會員送出後先保留時段；只有按下「確認預約」後才算完成預約。</p></div><button id="refreshButton" class="button button-light" type="button">更新資料</button></div>
+          <div class="filter-row" role="group" aria-label="預約狀態篩選"><button class="filter-button active" data-filter="pending" type="button">待確認</button><button class="filter-button" data-filter="confirmed" type="button">已確認</button><button class="filter-button" data-filter="all" type="button">全部</button></div>
+          <div id="bookingQueue" class="booking-queue"></div>
+          <div id="bookingEmpty" class="empty-state hidden">目前沒有符合條件的預約。</div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
