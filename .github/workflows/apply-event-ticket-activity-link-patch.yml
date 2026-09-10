@@ -36,6 +36,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add MemberWebsocket-dev/admin/index.html MemberWebsocket-dev/event/index.html .github/workflows/test-memberwebsocket-dev.yml
+          git add MemberWebsocket-dev/admin/index.html MemberWebsocket-dev/event/index.html
           git commit -m 'feat(event): wire activity link UI'
           git push origin HEAD:main
