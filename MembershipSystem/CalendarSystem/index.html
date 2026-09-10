@@ -20,7 +20,7 @@
 <body>
   <main>
     <h1>日曆系統</h1>
-    <p>用戶端與管理端採用不同 LIFF 入口。實際資料存取與管理權限由 GAS 後端驗證。</p>
+    <p>用戶端與管理端採用不同 LIFF 入口。LINE 身分驗證、管理權限與日曆資料存取皆由 Supabase Edge Function 與 PostgreSQL 執行。</p>
     <div class="links">
       <a class="primary" href="./user/">進入用戶端</a>
       <a class="secondary" href="./admin/">進入管理端</a>
