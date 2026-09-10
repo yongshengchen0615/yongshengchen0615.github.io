@@ -40,10 +40,14 @@ jobs:
           node --check MemberWebsocket-dev/calendar/common.js
           node --check MemberWebsocket-dev/calendar/tier-sync.js
           node --check MemberWebsocket-dev/calendar/app.js
+          node --check MemberWebsocket-dev/booking/common.js
+          node --check MemberWebsocket-dev/booking/app.js
+          node --check MemberWebsocket-dev/booking/admin/app.js
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/grant-automation/index.ts
           deno check MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/booking-api/index.ts
       - name: Check grant automation wiring
         run: |
           grep -q 'grant-automation.js' MemberWebsocket-dev/admin/index.html
@@ -55,6 +59,15 @@ jobs:
           grep -q 'tier-sync.js' MemberWebsocket-dev/calendar/index.html
           grep -q 'allowedTierLabels' MemberWebsocket-dev/calendar/tier-sync.js
           grep -q 'tierEligible' MemberWebsocket-dev/calendar/tier-sync.js
+      - name: Check booking wiring
+        run: |
+          grep -q './booking/' MemberWebsocket-dev/index.html
+          grep -q './booking/admin/' MemberWebsocket-dev/index.html
+          grep -q 'user.booking.create' MemberWebsocket-dev/booking/app.js
+          grep -q 'admin.booking.status.update' MemberWebsocket-dev/booking/admin/app.js
+          grep -q 'bookings_active_slot_unique' MemberWebsocket-dev/supabase/migrations/20260910_add_booking_system.sql
+          grep -q 'create_booking_request' MemberWebsocket-dev/supabase/migrations/20260910_add_booking_system.sql
+          grep -q 'BOOKING_SLOT_TAKEN' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
       - name: Check realtime sync wiring
         run: |
           for file in \
