@@ -1,14 +1,15 @@
 # Grant notification scheduling / calendar bonus deployment
 
-This feature has three deployment parts. Deploy them together so the admin UI never points at a missing backend.
+Deploy the database migrations, Edge Functions, and admin frontend together so the UI never points at a missing backend.
 
-## 1. Apply the database migration
+## 1. Apply both database migrations
 
-Apply:
+Apply in order:
 
-`migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql`
+1. `migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql`
+2. `migrations/20260910_setup_grant_message_dispatch.sql`
 
-It adds:
+They add:
 
 - `calendar_items.bonus_points_enabled`
 - `calendar_items.bonus_points`
@@ -16,77 +17,60 @@ It adds:
 - `save_calendar_item_with_bonus(...)`
 - `grant_member_benefits_with_event_bonus(...)`
 - `claim_due_grant_messages(...)`
+- `get_grant_dispatch_secret()`
+- Supabase Vault dispatcher secret + project URL
+- `pg_net` / `pg_cron`
+- once-per-minute `dispatch-scheduled-grant-messages` Cron job
 
-The new internal table has RLS enabled and direct `anon` / `authenticated` access revoked. The new `SECURITY DEFINER` RPCs are executable only by `service_role`.
+The scheduled-message table has RLS enabled and direct `anon` / `authenticated` access revoked. All new `SECURITY DEFINER` RPCs are executable only by `service_role`.
+
+The dispatcher secret is generated inside Supabase Vault by the migration. Do not copy it into GitHub, `config.json`, browser JavaScript, logs, or analytics.
 
 ## 2. Deploy both Edge Functions
 
-Deploy these functions with gateway JWT verification disabled because they implement their own authentication boundaries:
+Deploy these functions with gateway JWT verification disabled because each function implements its own authentication boundary:
 
 ```bash
 supabase functions deploy grant-automation --no-verify-jwt
 supabase functions deploy scheduled-grant-messages --no-verify-jwt
 ```
 
-`grant-automation` verifies the Admin LIFF ID token against LINE and then checks the `admins` table server-side before allowing a protected operation.
+`grant-automation` verifies the Admin LIFF ID token against LINE and then checks the `admins` table server-side before allowing protected operations.
 
-`scheduled-grant-messages` requires a separate service-to-service secret in the `x-dispatch-secret` header.
+`scheduled-grant-messages` validates the `x-dispatch-secret` value against the Vault-backed dispatcher secret before claiming or sending queued notifications.
 
-Set a strong random dispatcher secret in the Edge Function environment:
+No manual dispatcher secret configuration is required. `GRANT_MESSAGE_DISPATCH_SECRET` remains supported as an optional Edge Function environment override, but the default deployment reads the generated secret through the service-role-only `get_grant_dispatch_secret()` RPC.
 
-```bash
-supabase secrets set GRANT_MESSAGE_DISPATCH_SECRET='<strong-random-secret>'
-```
+## 3. Verify the dispatcher
 
-Do not put this secret in GitHub, `config.json`, browser JavaScript, logs, or analytics.
+The second migration creates this Cron job automatically:
 
-## 3. Schedule the dispatcher
+- job: `dispatch-scheduled-grant-messages`
+- schedule: `* * * * *`
+- target: `/functions/v1/scheduled-grant-messages`
 
-Enable Supabase Cron / `pg_cron` and `pg_net`, then store the same dispatcher secret plus the project URL and publishable key in Vault. Example names used below:
-
-- `grant_automation_project_url`
-- `grant_automation_publishable_key`
-- `grant_message_dispatch_secret`
-
-Then create a once-per-minute Cron job:
+Verify it is active:
 
 ```sql
-select cron.schedule(
-  'dispatch-scheduled-grant-messages',
-  '* * * * *',
-  $$
-  select net.http_post(
-    url := (
-      select decrypted_secret
-      from vault.decrypted_secrets
-      where name='grant_automation_project_url'
-      order by updated_at desc
-      limit 1
-    ) || '/functions/v1/scheduled-grant-messages',
-    headers := jsonb_build_object(
-      'Content-Type','application/json',
-      'apikey',(
-        select decrypted_secret
-        from vault.decrypted_secrets
-        where name='grant_automation_publishable_key'
-        order by updated_at desc
-        limit 1
-      ),
-      'x-dispatch-secret',(
-        select decrypted_secret
-        from vault.decrypted_secrets
-        where name='grant_message_dispatch_secret'
-        order by updated_at desc
-        limit 1
-      )
-    ),
-    body := '{}'::jsonb
-  );
-  $$
-);
+select jobid, jobname, schedule, active
+from cron.job
+where jobname='dispatch-scheduled-grant-messages';
 ```
 
-Use the existing project URL / publishable key; generate the dispatcher secret separately. Do not use the `service_role` key in this Cron request.
+Verify recent HTTP responses:
+
+```sql
+select id, status_code, content, timed_out, error_msg, created
+from net._http_response
+order by created desc
+limit 10;
+```
+
+With an empty queue the expected response is HTTP 200 with:
+
+```json
+{"ok":true,"claimed":0,"sent":0,"failed":0}
+```
 
 ## Expected behavior
 
@@ -106,4 +90,4 @@ Use the existing project URL / publishable key; generate the dispatcher secret s
 6. Select **立即傳送**; confirm LINE message includes base points, event bonus, service time, tier, and currently usable tickets when available.
 7. Select **預約傳送** for a future time; confirm grant is immediate, one queue row is `pending`, and the dispatcher changes it to `sent` after delivery.
 8. Retry the same `requestId`; confirm no duplicate point/service-time entry is created.
-9. Disable/suspend a non-admin account and confirm the automation endpoint rejects admin writes.
+9. Use an invalid or unauthorized Admin LINE identity and confirm the automation endpoint rejects protected writes.
