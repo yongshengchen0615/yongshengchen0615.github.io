@@ -42,6 +42,8 @@ jobs:
           node --check MemberWebsocket-dev/calendar/tier-sync.js
           node --check MemberWebsocket-dev/calendar/app.js
           node --check MemberWebsocket-dev/booking/common.js
+          node --check MemberWebsocket-dev/booking/membership-progress.js
+          node --check MemberWebsocket-dev/booking/member-ui.js
           node --check MemberWebsocket-dev/booking/app.js
           node --check MemberWebsocket-dev/booking/admin/app.js
       - name: Check Edge Functions
@@ -69,15 +71,24 @@ jobs:
           grep -q "signIn(state.config, 'booking')" MemberWebsocket-dev/booking/app.js
           grep -q 'memberProfile' MemberWebsocket-dev/booking/app.js
           grep -q 'id="memberTier"' MemberWebsocket-dev/booking/index.html
+          grep -q 'id="membershipProgress"' MemberWebsocket-dev/booking/index.html
+          grep -q 'membership-progress.js' MemberWebsocket-dev/booking/index.html
+          grep -q 'member-ui.js' MemberWebsocket-dev/booking/index.html
           grep -q 'id="joinMemberButton"' MemberWebsocket-dev/booking/index.html
+          grep -q 'Booking access' MemberWebsocket-dev/booking/index.html
           grep -q 'id="bookingConfirmModal"' MemberWebsocket-dev/booking/index.html
           grep -q 'servicePicker' MemberWebsocket-dev/booking/app.js
           grep -q 'quantity > 2' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
           grep -q 'booking-panel.js' MemberWebsocket-dev/admin/common.js
           grep -q "tab.textContent = '預約'" MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'admin.booking.settings.save' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'id="bookingAdminStartTime"' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'id="bookingAdminEndTime"' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q '上班時間設定' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'bookingAdminDurationMinutes' MemberWebsocket-dev/admin/booking-panel.js
           ! grep -q 'bookingAdminWeekday' MemberWebsocket-dev/admin/booking-panel.js
+          ! grep -q 'bookingAdminDescription' MemberWebsocket-dev/admin/booking-panel.js
+          ! grep -q '項目說明' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'create_booking_bundle_request' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
           grep -q 'booking_settings' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
           grep -q 'booking_items' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
