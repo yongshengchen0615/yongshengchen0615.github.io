@@ -114,14 +114,63 @@
     return url.toString();
   }
 
-  function isManagedEventTicketCalendarItem(item, eventTicketId) {
-    const expectedId = String(eventTicketId || '').trim();
-    if (!item || !expectedId || String(item.itemType || '') !== 'event') return false;
+  function eventTicketIdFromCalendarItem(item) {
+    if (!item || String(item.itemType || '') !== 'event') return '';
     try {
       const url = new URL(String(item.linkUrl || ''), window.location.href);
-      return url.searchParams.get('source') === 'event-ticket-calendar' && url.searchParams.get('eventTicketId') === expectedId;
+      return url.searchParams.get('source') === 'event-ticket-calendar'
+        ? String(url.searchParams.get('eventTicketId') || '').trim()
+        : '';
     } catch (_) {
-      return false;
+      return '';
+    }
+  }
+
+  function isManagedEventTicketCalendarItem(item, eventTicketId) {
+    const expectedId = String(eventTicketId || '').trim();
+    return Boolean(expectedId && eventTicketIdFromCalendarItem(item) === expectedId);
+  }
+
+  function managedEventTicketCalendarItemById(calendarItemId) {
+    const item = calendarCache.get(String(calendarItemId || '').trim()) || null;
+    return eventTicketIdFromCalendarItem(item) ? item : null;
+  }
+
+  function assertCalendarDeleteAllowed(action, payload) {
+    if (action === 'admin.calendar-items.delete' && managedEventTicketCalendarItemById(payload && payload.calendarItemId)) {
+      throw clientError(
+        'EVENT_TICKET_CALENDAR_MANAGED',
+        '此活動由活動票券管理，請至活動票券取消「加入日曆」或刪除票券。',
+        409
+      );
+    }
+    if (action === 'admin.calendar-items.batch') {
+      const operations = Array.isArray(payload && payload.calendarItemOperations) ? payload.calendarItemOperations : [];
+      const hasManagedDelete = operations.some((operation) => {
+        const operationType = String(operation && (operation.action || operation.operation) || '');
+        return operationType === 'delete' && managedEventTicketCalendarItemById(operation && operation.calendarItemId);
+      });
+      if (hasManagedDelete) {
+        throw clientError(
+          'EVENT_TICKET_CALENDAR_MANAGED',
+          '選取項目包含由活動票券管理的活動；這類活動不能從日曆刪除。',
+          409
+        );
+      }
+    }
+  }
+
+  function syncManagedEventTicketDeleteButton() {
+    const calendarItemId = String(document.getElementById('calendarItemId')?.value || '').trim();
+    const item = managedEventTicketCalendarItemById(calendarItemId);
+    const button = document.getElementById('deleteCalendarItemButton');
+    if (!button) return;
+    if (item) {
+      button.disabled = true;
+      button.textContent = '由活動票券管理';
+      button.title = '請至活動票券取消「加入日曆」或刪除票券。';
+    } else if (button.title) {
+      button.removeAttribute('title');
     }
   }
 
@@ -146,7 +195,7 @@
     const checkbox = document.getElementById('eventTicketAddToCalendar');
     if (!checkbox || checkbox.disabled) return;
     setEventTicketCalendarStatus(checkbox.checked
-      ? '儲存票券時，會同步建立或更新日曆中的「活動」；若期間遇到休假，會自動取消加入日曆。'
+      ? '儲存票券時，會同步建立或更新日曆中的「活動」；休假日不顯示活動，移除休假後會自動恢復。'
       : '目前不加入日曆；若先前已同步，儲存後會從日曆移除。');
   }
 
@@ -242,17 +291,6 @@
         calendarItem,
         expectedUpdatedAt: existing ? String(existing.updatedAt || '') : ''
       });
-      if (saved && saved.calendarSync && saved.calendarSync.reason === 'holiday') {
-        const holiday = saved.calendarSync.holiday && typeof saved.calendarSync.holiday === 'object' ? saved.calendarSync.holiday : null;
-        const holidayTitle = String(holiday && holiday.title || '').trim();
-        if (existing && existing.calendarItemId) calendarCache.delete(String(existing.calendarItemId));
-        checkbox.checked = false;
-        checkbox.dataset.syncUnknown = '0';
-        setEventTicketCalendarStatus(holidayTitle
-          ? `活動票券已儲存，但活動期間遇到休假「${holidayTitle}」，已自動取消加入日曆。`
-          : '活動票券已儲存，但活動期間遇到休假，已自動取消加入日曆。');
-        return;
-      }
       cacheCalendarResult(saved);
       setEventTicketCalendarStatus(existing
         ? '活動票券已儲存，日曆活動已同步更新。'
@@ -293,6 +331,7 @@
       lastAdminConfig = config;
       lastAdminIdToken = idToken;
     }
+    if (clientType === 'admin') assertCalendarDeleteAllowed(action, payload);
     if (clientType === 'admin' && action === 'admin.member-grants.add') {
       return automationRequest(config, idToken, action, decorateGrantPayload(payload));
     }
@@ -422,9 +461,18 @@
   }
 
   function bindCalendarSelectionSync() {
-    document.addEventListener('click', () => window.setTimeout(() => syncCalendarBonusFromSelection(false), 0));
-    document.getElementById('calendarItemForm')?.addEventListener('focusin', () => syncCalendarBonusFromSelection(false));
-    document.getElementById('newCalendarItemButton')?.addEventListener('click', () => window.setTimeout(() => syncCalendarBonusFromSelection(true), 0));
+    document.addEventListener('click', () => window.setTimeout(() => {
+      syncCalendarBonusFromSelection(false);
+      syncManagedEventTicketDeleteButton();
+    }, 0));
+    document.getElementById('calendarItemForm')?.addEventListener('focusin', () => {
+      syncCalendarBonusFromSelection(false);
+      syncManagedEventTicketDeleteButton();
+    });
+    document.getElementById('newCalendarItemButton')?.addEventListener('click', () => window.setTimeout(() => {
+      syncCalendarBonusFromSelection(true);
+      syncManagedEventTicketDeleteButton();
+    }, 0));
   }
 
   function createEventTicketCalendarControls() {
@@ -435,7 +483,7 @@
     section.id = 'eventTicketCalendarControls';
     section.className = 'calendar-event-link-fields';
     section.innerHTML = `
-      <div><p class="kicker">Calendar sync</p><h4>加入活動日曆</h4><p>可將這張活動票券同步成會員日曆中的活動；名稱、期間、公開狀態、顏色與適用會員等級會跟著票券更新。若活動期間遇到休假，會自動取消加入日曆。</p></div>
+      <div><p class="kicker">Calendar sync</p><h4>加入活動日曆</h4><p>可將這張活動票券同步成會員日曆中的活動；名稱、期間、公開狀態、顏色與適用會員等級會跟著票券更新。活動期間遇到休假時只隱藏休假當日，移除休假後會自動恢復。</p></div>
       <label class="grant-toggle"><input id="eventTicketAddToCalendar" type="checkbox">將這張活動票券加入日曆</label>
       <p id="eventTicketCalendarStatus" class="editor-hint" aria-live="polite">目前不加入日曆。</p>`;
     dateRange.insertAdjacentElement('afterend', section);
@@ -460,6 +508,7 @@
     window.setTimeout(() => {
       syncCalendarBonusFromSelection(true);
       syncEventTicketCalendarChoiceFromSelection(true);
+      syncManagedEventTicketDeleteButton();
     }, 0);
   });
 })();
