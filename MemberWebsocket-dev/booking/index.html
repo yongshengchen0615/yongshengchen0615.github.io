@@ -9,17 +9,17 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>預約｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=booking-20260910">
+  <link rel="stylesheet" href="./styles.css?v=booking-20260910-2">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="./common.js?v=booking-20260910" defer></script>
-  <script src="./app.js?v=booking-20260910" defer></script>
+  <script src="./common.js?v=booking-20260910-2" defer></script>
+  <script src="./app.js?v=booking-20260910-2" defer></script>
 </head>
 <body>
   <div class="app-shell">
     <section id="loadingView" class="state-view" aria-live="polite">
       <div class="loader" aria-hidden="true"></div>
       <h1>正在載入預約時段</h1>
-      <p>正在確認會員身分與可預約時間…</p>
+      <p>正在確認會員身分、會員階級與可預約時間…</p>
     </section>
 
     <section id="errorView" class="state-view hidden" role="alert">
@@ -43,6 +43,12 @@
           <div><p class="kicker">New appointment</p><h2 id="bookingTitle">選擇預約時段</h2><p>每個時段固定 30 分鐘。送出後需由管理端確認，確認後才算完成預約。</p></div>
           <span class="slot-unit">30 MIN</span>
         </div>
+
+        <section class="member-summary" aria-label="目前會員資訊">
+          <div><span>會員</span><strong id="memberProfileName">LINE 會員</strong></div>
+          <div><span>會員編號</span><strong id="memberCode">—</strong></div>
+          <div><span>會員階級</span><strong id="memberTier">載入中</strong></div>
+        </section>
 
         <form id="bookingForm" novalidate>
           <div class="form-grid">
