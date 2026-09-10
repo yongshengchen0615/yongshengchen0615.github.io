@@ -7,6 +7,7 @@ const MAX_REQUEST_BYTES = 40_000;
 const READ_LIMIT = 90;
 const WRITE_LIMIT = 30;
 const TIER_KEYS = ["general", "silver", "gold", "platinum"] as const;
+const TIER_LABELS: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
 const STYLE_KEYS = ["forest","midnight","ocean","sunset","lavender","rose","gold","platinum","mint","cherry"] as const;
 const WRITE_ACTIONS = new Set([
   "user.member.profile.save",
@@ -581,7 +582,7 @@ function eventTicketClient(row: any, claimedCount = 0): Json {
     claimedCount,
     accent: row.accent,
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
-    allowedTierLabels: [],
+    allowedTierLabels: (Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS]).map((key:string) => TIER_LABELS[key]).filter(Boolean),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -614,12 +615,7 @@ async function adminEventTickets(supabase: SupabaseClient): Promise<any[]> {
     if (claims.error) throw mapDatabaseError(claims.error);
     for (const claim of claims.data || []) counts.set(claim.event_ticket_id,(counts.get(claim.event_ticket_id)||0)+1);
   }
-  const tierLabels: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
-  return (rows || []).map((row:any) => {
-    const result = eventTicketClient(row,counts.get(row.id)||0) as any;
-    result.allowedTierLabels = result.allowedTierKeys.map((key:string) => tierLabels[key]).filter(Boolean);
-    return result;
-  });
+  return (rows || []).map((row:any) => eventTicketClient(row,counts.get(row.id)||0));
 }
 
 async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
@@ -1118,10 +1114,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   }
   const claims = await supabase.from("event_ticket_claims").select("*",{ count:"exact",head:true }).eq("event_ticket_id",row.id);
   if (claims.error) throw mapDatabaseError(claims.error);
-  const output = eventTicketClient(row,claims.count || 0) as any;
-  const labels: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
-  output.allowedTierLabels = output.allowedTierKeys.map((key:string) => labels[key]).filter(Boolean);
-  return { eventTicket: output };
+  return { eventTicket:eventTicketClient(row,claims.count || 0) };
 }
 
 async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string }, action: string, body: Json): Promise<Json> {
