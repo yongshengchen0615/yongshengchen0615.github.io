@@ -134,7 +134,7 @@ GAS 會建立並維護以下 schema：
 
 管理端合併發放的 `points` 可使用陣列同時指定多張不同集點卡與各自點數，例如 `[{ cardId: "PC-A", amount: 2 }, { cardId: "PC-B", amount: 5 }]`。所有發點 action 現在都必須提供 16–100 字元的 request ID；同一個 request ID 會讓點數、服務時間與通知都保持冪等。若要啟用 LINE 官方帳號推播，請將 Official Account Messaging API token 放在 `MEMBERSHIP_LINE_CHANNEL_ACCESS_TOKEN`；token 不可放入公開 `config.json`。本地測試不會送出真實推播，部署後仍需用測試會員確認官方帳號與 LINE Login 使用者已正確連結。
 
-`admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，並以 `ticketTemplateId` 選擇票券庫中的票券；兌換時會自動扣除相同的 `thresholdStamps` 點數。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
+`admin.tickets.save` 管理獨立票券庫。每張票券都需要票券說明、使用方式與使用說明；抽獎券可設定多個 `{ prizeTitle, prizeDescription, winRate }`，各獎項機率可為 0–100%，合計必須正好 100%。集點卡與票券的說明欄位可用 Enter 分段，會員端的票券總覽、詳情、抽獎結果與使用紀錄都會保留這些換行。`admin.pointcards.save` 的 `card.rewards` 是兌換節點陣列：每個節點的 `thresholdStamps`（需要集到的點數）必須唯一且為 1–100 的整數，並以 `ticketTemplateId` 選擇票券庫中的票券；兌換時會自動扣除相同的 `thresholdStamps` 點數。集點卡會持續累積，不存在會員端顯示的點數上限。舊版直接傳入票券內容的節點仍可相容處理。
 
 `admin.event-tickets.save` 沿用集點卡票券的名稱、類型、說明、使用方式、使用說明與抽獎獎項設定，另外可設定活動起訖日與總發放上限（0 代表不限量）。每張活動票券的編輯區都會各自設定可領取／使用的會員等級（一般、銀級、金級、白金可複選），不會共用其他票券的設定；既有活動票券沒有等級設定時，會相容地視為所有等級都可使用。Event LIFF 只顯示啟用中的活動；即使會員目前等級不適用，仍會顯示票券、適用等級與「目前會員等級無法領取或使用」提示；後端也會在領取與核銷時強制檢查。會員先領取票券，再由本人確認使用。抽獎活動票券沿用集點卡抽獎券的機率驗證、伺服器開獎、結果保存與前端揭曉動畫。票券內容在領取時建立快照，之後管理端修改設定不會改寫已領取的票券。使用完成的票券會從目前活動清單移到「已使用紀錄」，即使管理端之後封存或刪除活動設定，會員仍可查看票券快照與抽獎結果；刪除活動票券會立即停止新領取與使用，並保留既有 `EventTicketClaims` 快照和稽核紀錄。
 

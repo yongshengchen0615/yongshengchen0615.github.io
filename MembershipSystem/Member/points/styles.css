@@ -81,6 +81,10 @@ button { line-height: 1.35; }
   .member-ticket-footer { align-items: start; flex-wrap: wrap; }
 }
 
+/* Admin-configured copy uses textContent and must preserve intentional line breaks. */
+.configured-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.prize-opportunity .configured-text { white-space: pre-wrap; }
+
 @media (max-width: 420px) {
   .app-shell { padding-right: 12px; padding-left: 12px; }
   .active-card, .milestones-panel, .tickets-panel { border-radius: 18px; }

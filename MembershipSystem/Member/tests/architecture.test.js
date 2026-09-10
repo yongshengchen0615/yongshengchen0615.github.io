@@ -355,7 +355,7 @@ test('storage schema cache skips repeated schema checks for the same spreadsheet
 test('admin mobile layout contains LINE WebView overflow guards', () => {
   const adminHtml = read('admin/index.html');
   const adminStyles = read('admin/styles.css');
-  assert.match(adminHtml, /styles\.css\?v=admin-performance-20260909/);
+  assert.match(adminHtml, /styles\.css\?v=admin-multiline-text-20260910/);
   assert.match(adminStyles, /html, body \{ width: 100%; max-width: 100%; \}/);
   assert.match(adminStyles, /#cardListItems, #ticketListItems, #eventTicketListItems \{ display: flex;/);
   assert.match(adminStyles, /\.editor-actions \.button, \.modal-actions \.button \{ flex: 1 1 140px;/);
@@ -524,10 +524,10 @@ test('all LIFF frontends use a centered, contextual login progress view', () => 
 test('every surface protects responsive text layout and busts its updated stylesheet cache', () => {
   const surfaces = [
     ['member', 'member-performance-20260909', 'member-performance-20260909', 'member-fresh-data-20260909'],
-    ['points', 'points-card-guidance-20260909', 'points-fresh-data-20260909', 'points-fresh-data-20260909'],
+    ['points', 'points-multiline-text-20260910', 'points-multiline-text-20260910', 'points-fresh-data-20260909'],
     ['event', 'event-performance-20260909', 'event-fresh-data-20260909', 'event-fresh-data-20260909'],
     ['calendar', 'calendar-performance-20260909', 'calendar-fresh-data-20260909', 'calendar-fresh-data-20260909'],
-    ['admin', 'admin-performance-20260909', 'admin-fresh-data-20260909', 'admin-local-client-20260909']
+    ['admin', 'admin-multiline-text-20260910', 'admin-multiline-text-20260910', 'admin-local-client-20260909']
   ];
 
   surfaces.forEach(([surface, styleVersion, appVersion, commonVersion]) => {

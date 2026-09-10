@@ -141,7 +141,7 @@
     const ticketOfferCount = Array.isArray(card.rewards) ? ticketOffersForCard(card).length : Math.max(0, Number(card.rewardCount || 0));
     els.activeCardView.dataset.cardStyle = safeCardStyle(card.styleKey);
     els.activeCardView.style.setProperty('--card-accent', safeAccent(card.accent));
-    els.activeCardTitle.textContent = String(card.title || '集點卡');
+    setConfiguredText(els.activeCardTitle, card.title || '集點卡');
     els.activeCardStatus.textContent = card.expired ? '已超過期限' : card.status === 'archived' ? '已停止集點' : '進行中';
     els.progressCount.textContent = String(stamps);
     els.progressMessage.textContent = card.expired ? '這張集點卡已超過使用期限' : card.status === 'archived' ? '這張卡已停止集點' : '點數會持續累積，達標後系統會將票券放進下方。';
@@ -153,7 +153,7 @@
   function renderCardGuidance(card) {
     const fields = [[els.cardUsageMethod, card.usageMethod], [els.cardUsageInstructions, card.usageInstructions], [els.cardBenefitDescription, card.benefitDescription]];
     let visibleCount = 0;
-    fields.forEach(([output, value]) => { const text = String(value || '').trim(); output.textContent = text; const item = output.closest('[data-card-guidance-item]'); if (item) item.classList.toggle('hidden', !text); if (text) visibleCount += 1; });
+    fields.forEach(([output, value]) => { const text = String(value || '').trim(); setConfiguredText(output, text); const item = output.closest('[data-card-guidance-item]'); if (item) item.classList.toggle('hidden', !text); if (text) visibleCount += 1; });
     els.cardGuidancePanel.classList.toggle('hidden', visibleCount === 0);
   }
 
@@ -177,17 +177,17 @@
     const heading = document.createElement('div'); heading.className = 'ticket-history-heading';
     const titleWrap = document.createElement('div');
     const type = document.createElement('span'); type.className = 'member-ticket-type'; type.textContent = activity.ticketType === 'lottery' ? '抽獎券已使用' : '優惠券已使用';
-    const title = document.createElement('h3'); title.textContent = String(activity.ticketTitle || '票券');
+    const title = document.createElement('h3'); setConfiguredText(title, activity.ticketTitle || '票券');
     titleWrap.append(type, title);
     const time = document.createElement('time'); time.dateTime = String(activity.occurredAt || ''); time.textContent = activity.occurredAt ? window.MemberSystem.formatDateTime(activity.occurredAt) : '時間未記錄';
     heading.append(titleWrap, time);
 
     const details = document.createElement('div'); details.className = 'ticket-history-details';
-    if (activity.cardTitle) { const card = document.createElement('p'); card.textContent = `集點卡：${activity.cardTitle}`; details.append(card); }
+    if (activity.cardTitle) { const card = document.createElement('p'); setConfiguredText(card, `集點卡：${activity.cardTitle}`); details.append(card); }
     const points = document.createElement('p'); points.className = 'ticket-history-points'; points.textContent = `本次實際扣除 ${Math.max(0, Number(activity.pointsSpent || 0))} 點`; details.append(points);
     if (activity.ticketType === 'lottery') {
-      const result = document.createElement('p'); result.className = 'ticket-history-result'; result.textContent = `本次抽獎結果：${activity.result && activity.result.prizeTitle ? activity.result.prizeTitle : '結果已記錄'}`; details.append(result);
-      if (activity.result && activity.result.prizeDescription) { const description = document.createElement('p'); description.textContent = String(activity.result.prizeDescription); details.append(description); }
+      const result = document.createElement('p'); result.className = 'ticket-history-result'; setConfiguredText(result, `本次抽獎結果：${activity.result && activity.result.prizeTitle ? activity.result.prizeTitle : '結果已記錄'}`); details.append(result);
+      if (activity.result && activity.result.prizeDescription) { const description = document.createElement('p'); setConfiguredText(description, activity.result.prizeDescription); details.append(description); }
     } else {
       const result = document.createElement('p'); result.className = 'ticket-history-result'; result.textContent = '票券核銷完成'; details.append(result);
     }
@@ -221,9 +221,9 @@
   function createTicketCard(offer) {
     const item = document.createElement('article'); item.className = `member-ticket${offer.canUse ? ' is-ready' : ' locked'}`;
     const type = document.createElement('span'); type.className = 'member-ticket-type'; type.textContent = offer.ticketType === 'lottery' ? '抽獎券' : '優惠券';
-    const title = document.createElement('h3'); title.textContent = offer.ticketTitle;
-    const description = document.createElement('p'); description.textContent = offer.ticketDescription;
-    const method = document.createElement('p'); method.className = 'member-ticket-method'; method.textContent = `使用方式：${offer.usageMethod}`;
+    const title = document.createElement('h3'); setConfiguredText(title, offer.ticketTitle);
+    const description = document.createElement('p'); setConfiguredText(description, offer.ticketDescription);
+    const method = document.createElement('p'); method.className = 'member-ticket-method'; setConfiguredText(method, `使用方式：${offer.usageMethod}`);
     const footer = document.createElement('div'); footer.className = 'member-ticket-footer'; const status = document.createElement('span'); status.className = 'ticket-state';
     if (offer.canUse) { status.textContent = `集滿 ${offer.thresholdStamps} 點可使用`; const button = document.createElement('button'); button.type = 'button'; button.className = 'small-ticket-button'; button.dataset.useTicket = offer.ticket.ticketId; button.textContent = '查看並使用'; footer.append(status, button); } else { status.textContent = offer.unlockShortage ? `再集 ${offer.unlockShortage} 點即可解鎖` : '目前無法使用'; footer.append(status); }
     const prizeOpportunities = createLotteryPrizeOpportunities(offer);
@@ -237,17 +237,17 @@
     const container = document.createElement('div'); container.className = 'lottery-prize-opportunities';
     const label = document.createElement('p'); label.className = 'prize-opportunity-label'; label.textContent = '有機會獲得';
     const list = document.createElement('ul'); list.className = 'prize-opportunities'; list.setAttribute('aria-label', '抽獎可能獲得的獎項');
-    prizes.forEach((prize) => { const item = document.createElement('li'); item.className = 'prize-opportunity'; const title = document.createElement('span'); title.textContent = String(prize.prizeTitle || '').trim(); item.append(title); list.append(item); });
+    prizes.forEach((prize) => { const item = document.createElement('li'); item.className = 'prize-opportunity'; const title = document.createElement('span'); setConfiguredText(title, String(prize.prizeTitle || '').trim()); item.append(title); list.append(item); });
     container.append(label, list); return container;
   }
 
   function openTicketModal(ticketId) {
     const ticket = state.tickets.find((item) => item.ticketId === ticketId); if (!ticket || ticket.status === 'used') return;
     state.pendingTicketId = ticketId; state.redeeming = false; state.ticketModalOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    els.ticketModalTicketName.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'}｜${ticket.ticketTitle || '票券'}`;
-    els.ticketModalDescription.textContent = String(ticket.ticketDescription || '此票券尚未提供額外說明。');
-    els.ticketModalUsageMethod.textContent = `使用方式：${ticket.usageMethod || '請向店員出示本券'}`;
-    els.ticketModalUsageInstructions.textContent = String(ticket.usageInstructions || '確認使用後，系統會扣除對應點數並將票券標記為已使用。');
+    setConfiguredText(els.ticketModalTicketName, `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'}｜${ticket.ticketTitle || '票券'}`);
+    setConfiguredText(els.ticketModalDescription, ticket.ticketDescription || '此票券尚未提供額外說明。');
+    setConfiguredText(els.ticketModalUsageMethod, `使用方式：${ticket.usageMethod || '請向店員出示本券'}`);
+    setConfiguredText(els.ticketModalUsageInstructions, ticket.usageInstructions || '確認使用後，系統會扣除對應點數並將票券標記為已使用。');
     els.ticketModalCost.textContent = `確認使用會扣除 ${Number(ticket.thresholdStamps || 0)} 點，使用後無法復原。`;
     const needsConfirmation = ticketId === state.uncertainTicketId;
     els.confirmTicketUseButton.disabled = needsConfirmation; els.confirmTicketUseButton.textContent = needsConfirmation ? '請重新整理確認' : '確認使用這張票券'; els.confirmTicketUseButton.classList.remove('hidden'); els.refreshTicketButton.classList.toggle('hidden', !needsConfirmation); els.ticketModalResult.replaceChildren(); setTicketProcessing(false);
@@ -277,7 +277,7 @@
   async function showRedeemedTicket(ticket) {
     els.confirmTicketUseButton.classList.add('hidden');
     if (ticket.ticketType === 'lottery') {
-      els.ticketModalCost.textContent = '開獎中，請稍候…'; const reveal = document.createElement('div'); reveal.className = 'lottery-reveal'; reveal.textContent = '✦ 抽獎中 ✦'; els.ticketModalResult.replaceChildren(reveal); await new Promise((resolve) => window.setTimeout(resolve, 1350)); const result = ticket.result; els.ticketModalCost.textContent = `開獎完成；本次已扣除 ${Math.max(0, Number(ticket.thresholdStamps || 0))} 點。`; const resultBox = document.createElement('div'); resultBox.className = 'lottery-result'; const label = document.createElement('span'); label.textContent = '本次抽獎結果'; const title = document.createElement('strong'); title.textContent = result && result.prizeTitle || '本次抽獎結果已記錄'; resultBox.append(label, title); if (result && result.prizeDescription) { const description = document.createElement('p'); description.textContent = result.prizeDescription; resultBox.append(description); } els.ticketModalResult.replaceChildren(resultBox);
+      els.ticketModalCost.textContent = '開獎中，請稍候…'; const reveal = document.createElement('div'); reveal.className = 'lottery-reveal'; reveal.textContent = '✦ 抽獎中 ✦'; els.ticketModalResult.replaceChildren(reveal); await new Promise((resolve) => window.setTimeout(resolve, 1350)); const result = ticket.result; els.ticketModalCost.textContent = `開獎完成；本次已扣除 ${Math.max(0, Number(ticket.thresholdStamps || 0))} 點。`; const resultBox = document.createElement('div'); resultBox.className = 'lottery-result'; const label = document.createElement('span'); label.textContent = '本次抽獎結果'; const title = document.createElement('strong'); setConfiguredText(title, result && result.prizeTitle || '本次抽獎結果已記錄'); resultBox.append(label, title); if (result && result.prizeDescription) { const description = document.createElement('p'); setConfiguredText(description, result.prizeDescription); resultBox.append(description); } els.ticketModalResult.replaceChildren(resultBox);
     } else { els.ticketModalCost.textContent = `核銷完成；本次已扣除 ${Math.max(0, Number(ticket.thresholdStamps || 0))} 點，請向店員兌換。`; const resultBox = document.createElement('div'); resultBox.className = 'ticket-success'; resultBox.textContent = '這張票券已成功使用。'; els.ticketModalResult.replaceChildren(resultBox); }
     showTicketMessage('票券已完成核銷；票券結果與實際扣點已保存到使用紀錄。', true);
   }
@@ -286,6 +286,7 @@
   function setTicketProcessing(processing) { els.ticketModalProcessing.classList.toggle('hidden', !processing); els.ticketModal.setAttribute('aria-busy', String(Boolean(processing))); }
   function showTicketMessage(message, success) { els.ticketModalMessage.textContent = message; els.ticketModalMessage.classList.toggle('success', Boolean(success)); els.ticketModalMessage.classList.remove('hidden'); }
   function hideTicketMessage() { els.ticketModalMessage.textContent = ''; els.ticketModalMessage.classList.add('hidden'); els.ticketModalMessage.classList.remove('success'); }
+  function setConfiguredText(element, value) { element.textContent = String(value === null || value === undefined ? '' : value); element.classList.add('configured-text'); return element; }
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
   function safeCardStyle(value) { const styleKey = String(value || '').trim().toLowerCase(); return POINT_CARD_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
   function setView(view) { els.loadingView.classList.toggle('hidden', view !== 'loading'); els.errorView.classList.toggle('hidden', view !== 'error'); els.pointsView.classList.toggle('hidden', view !== 'points'); }

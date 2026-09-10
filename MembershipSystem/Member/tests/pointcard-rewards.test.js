@@ -184,17 +184,17 @@ test('point cards expose optional card-level usage and benefit guidance', () => 
   const card = context.pointCardForClient_({
     card_id: 'PC-GUIDE',
     title: '夏日集點',
-    usage_method: '結帳後由店員發放點數',
-    usage_instructions: '每筆消費限累積一次；點數以系統紀錄為準。',
-    benefit_description: '達指定點數可兌換活動票券。',
+    usage_method: '結帳後由店員發放點數\n請保留收據。',
+    usage_instructions: '每筆消費限累積一次；\n點數以系統紀錄為準。',
+    benefit_description: '達指定點數可兌換活動票券。\n優惠內容依票券說明為準。',
     target_stamps: '10',
     reward_title: '優惠券',
     status: 'active'
   });
   assert.equal(card.description, undefined);
-  assert.equal(card.usageMethod, '結帳後由店員發放點數');
-  assert.equal(card.usageInstructions, '每筆消費限累積一次；點數以系統紀錄為準。');
-  assert.equal(card.benefitDescription, '達指定點數可兌換活動票券。');
+  assert.equal(card.usageMethod, '結帳後由店員發放點數\n請保留收據。');
+  assert.equal(card.usageInstructions, '每筆消費限累積一次；\n點數以系統紀錄為準。');
+  assert.equal(card.benefitDescription, '達指定點數可兌換活動票券。\n優惠內容依票券說明為準。');
   const legacy = context.pointCardForClient_({ card_id: 'PC-LEGACY', title: '舊卡', target_stamps: '10', reward_title: '優惠券', status: 'active' });
   assert.equal(legacy.usageMethod, '');
   assert.equal(legacy.usageInstructions, '');
