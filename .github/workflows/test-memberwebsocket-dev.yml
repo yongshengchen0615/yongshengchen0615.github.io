@@ -76,6 +76,8 @@ jobs:
           grep -q 'member-ui.js' MemberWebsocket-dev/booking/index.html
           grep -q 'id="joinMemberButton"' MemberWebsocket-dev/booking/index.html
           grep -q 'Booking access' MemberWebsocket-dev/booking/index.html
+          grep -q 'membershipRequired === true' MemberWebsocket-dev/booking/member-ui.js
+          ! grep -q 'class="member-summary"' MemberWebsocket-dev/booking/index.html
           grep -q 'id="bookingConfirmModal"' MemberWebsocket-dev/booking/index.html
           grep -q 'servicePicker' MemberWebsocket-dev/booking/app.js
           grep -q 'quantity > 2' MemberWebsocket-dev/supabase/functions/booking-api/index.ts

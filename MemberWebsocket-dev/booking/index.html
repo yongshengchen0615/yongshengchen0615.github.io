@@ -9,14 +9,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>預約｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=booking-member-ux-20260910-1">
+  <link rel="stylesheet" href="./styles.css?v=booking-member-gate-20260910-2">
   <link rel="stylesheet" href="./membership-progress.css?v=booking-tier-style-20260910-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./common.js?v=booking-member-ux-20260910-1" defer></script>
+  <script src="./common.js?v=booking-member-gate-20260910-2" defer></script>
   <script src="./membership-progress.js?v=booking-tier-style-20260910-1" defer></script>
-  <script src="./member-ui.js?v=booking-member-ux-20260910-1" defer></script>
-  <script src="./app.js?v=booking-member-ux-20260910-1" defer></script>
+  <script src="./member-ui.js?v=booking-member-gate-20260910-2" defer></script>
+  <script src="./app.js?v=booking-member-gate-20260910-2" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -40,6 +40,8 @@
         <div><p class="kicker">Lumen Club / Booking</p><h1>預約服務</h1></div>
         <div class="account-menu"><span id="memberName">LINE 會員</span><button id="logoutButton" class="text-button" type="button">登出</button></div>
       </header>
+      <span id="memberProfileName" class="hidden" aria-hidden="true"></span>
+      <span id="memberCode" class="hidden" aria-hidden="true"></span>
 
       <section id="membershipProgress" class="membership-progress" aria-labelledby="membershipProgressTitle" aria-live="polite">
         <div>
@@ -57,11 +59,6 @@
           <div><p class="kicker">New appointment</p><h2 id="bookingTitle">選擇預約項目與時間</h2><p>可同時選擇多個服務，每個項目最多 2 份。系統會依總服務時間計算整段可預約時間。</p></div>
           <span id="workHoursBadge" class="slot-unit">載入中</span>
         </div>
-
-        <section class="member-summary" aria-label="目前會員資訊">
-          <div><span>會員</span><strong id="memberProfileName">LINE 會員</strong></div>
-          <div><span>會員編號</span><strong id="memberCode">—</strong></div>
-        </section>
 
         <form id="bookingForm" novalidate>
           <fieldset class="service-picker-fieldset">
