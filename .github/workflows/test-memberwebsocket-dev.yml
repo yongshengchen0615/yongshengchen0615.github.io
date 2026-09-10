@@ -105,8 +105,14 @@ jobs:
           grep -q '預約共用設定' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'bookingAdminDurationMinutes' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'bookingAdminPriceAmount' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'bookingAdminServiceType' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'TYPE_PREFIX' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'priceAmount' MemberWebsocket-dev/admin/booking-panel.js
-          grep -q '總額' MemberWebsocket-dev/booking/app.js
+          grep -q 'totalAmount()' MemberWebsocket-dev/booking/app.js
+          grep -q 'STORE_SERVICE_ID' MemberWebsocket-dev/booking/app.js
+          grep -q 'duplicateTypeGroups' MemberWebsocket-dev/booking/app.js
+          grep -q '會員累積消費服務時數' MemberWebsocket-dev/booking/index.html
+          grep -q '會員累積消費服務時數' MemberWebsocket-dev/booking/app.js
           ! grep -q 'bookingAdminWeekday' MemberWebsocket-dev/admin/booking-panel.js
           ! grep -q 'bookingAdminDescription' MemberWebsocket-dev/admin/booking-panel.js
           ! grep -q '項目說明' MemberWebsocket-dev/admin/booking-panel.js
@@ -126,6 +132,11 @@ jobs:
           grep -q 'booking_items_snapshot_price' MemberWebsocket-dev/supabase/migrations/20260910212500_booking_service_pricing.sql
           grep -q 'booking_settings_min_advance_days_check' MemberWebsocket-dev/supabase/migrations/20260910203100_booking_global_advance_days.sql
           grep -q 'v_settings.min_advance_days' MemberWebsocket-dev/supabase/migrations/20260910203100_booking_global_advance_days.sql
+          grep -q 'booking_services_service_type_check' MemberWebsocket-dev/supabase/migrations/20260910224000_booking_service_types_and_store_service.sql
+          grep -q 'counts_toward_membership boolean not null default true' MemberWebsocket-dev/supabase/migrations/20260910224000_booking_service_types_and_store_service.sql
+          grep -q "00000000-0000-4000-8000-000000000010" MemberWebsocket-dev/supabase/migrations/20260910224000_booking_service_types_and_store_service.sql
+          grep -q 'duration_minutes = 10' MemberWebsocket-dev/supabase/migrations/20260910224000_booking_service_types_and_store_service.sql
+          grep -q 'counts_toward_membership = false' MemberWebsocket-dev/supabase/migrations/20260910224000_booking_service_types_and_store_service.sql
       - name: Check realtime sync wiring
         run: |
           for file in \
