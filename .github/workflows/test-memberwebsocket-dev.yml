@@ -104,6 +104,9 @@ jobs:
           grep -q 'id="bookingAdminAdvanceDays"' MemberWebsocket-dev/admin/booking-panel.js
           grep -q '預約共用設定' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'bookingAdminDurationMinutes' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'bookingAdminPriceAmount' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'priceAmount' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q '總額' MemberWebsocket-dev/booking/app.js
           ! grep -q 'bookingAdminWeekday' MemberWebsocket-dev/admin/booking-panel.js
           ! grep -q 'bookingAdminDescription' MemberWebsocket-dev/admin/booking-panel.js
           ! grep -q '項目說明' MemberWebsocket-dev/admin/booking-panel.js
@@ -115,6 +118,12 @@ jobs:
           grep -q 'minAdvanceDays: Number(row?.min_advance_days' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
           grep -q 'Number(settings.min_advance_days' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
           grep -q 'requireJoinedMember' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'priceAmount: Number(row.price_amount' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'unit_price_amount' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'totalAmount:' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'booking_services_price_amount_check' MemberWebsocket-dev/supabase/migrations/20260910212500_booking_service_pricing.sql
+          grep -q 'booking_items_unit_price_amount_check' MemberWebsocket-dev/supabase/migrations/20260910212500_booking_service_pricing.sql
+          grep -q 'booking_items_snapshot_price' MemberWebsocket-dev/supabase/migrations/20260910212500_booking_service_pricing.sql
           grep -q 'booking_settings_min_advance_days_check' MemberWebsocket-dev/supabase/migrations/20260910203100_booking_global_advance_days.sql
           grep -q 'v_settings.min_advance_days' MemberWebsocket-dev/supabase/migrations/20260910203100_booking_global_advance_days.sql
       - name: Check realtime sync wiring
