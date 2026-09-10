@@ -45,21 +45,22 @@
     panel.setAttribute('aria-labelledby', 'bookingTab');
     panel.innerHTML = `
       <div class="panel-heading booking-admin-heading">
-        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與預約項目分開管理；會員端會依服務時間與既有預約自動排除衝突。</p></div>
+        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與提前預約天數為共用設定；預約項目只管理服務內容與服務時間。</p></div>
         <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span><button id="bookingAdminRefreshButton" class="button button-outline" type="button">更新預約</button></div>
       </div>
 
       <section class="booking-admin-card booking-admin-hours-card" aria-labelledby="bookingAdminHoursTitle">
         <div class="booking-admin-section-heading">
-          <div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">上班時間設定</h3><p>此設定為管理員共用上班時間，不屬於任何單一預約項目。</p></div>
+          <div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>上班時間與需要提前幾天預約套用到所有預約項目，不屬於任何單一服務。</p></div>
         </div>
         <form id="bookingAdminSettingsForm" class="booking-admin-form booking-admin-settings-form" novalidate>
-          <div class="booking-admin-form-grid">
+          <div class="booking-admin-form-grid booking-admin-global-settings-grid">
             <label>開始工作時間<input id="bookingAdminStartTime" type="time" step="1800" value="09:00" required></label>
             <label>結束工作時間<input id="bookingAdminEndTime" type="time" step="1800" value="17:00" required></label>
+            <label>需要提前幾天預約<input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的開始時段；例如 2 = 最早只能預約兩天後。</small></label>
           </div>
           <div id="bookingAdminSettingsMessage" class="form-message hidden" role="status" aria-live="polite"></div>
-          <div class="booking-admin-inline-actions"><button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存上班時間</button></div>
+          <div class="booking-admin-inline-actions"><button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約設定</button></div>
         </form>
       </section>
 
@@ -71,7 +72,7 @@
 
       <div class="booking-admin-workspace">
         <section class="booking-admin-card" aria-labelledby="bookingAdminServiceTitle">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目只設定名稱、服務時間、提前預約天數與開放狀態。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目只設定名稱、服務時間與開放狀態。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
           <div class="booking-admin-list-heading"><strong>已建立項目</strong><span id="bookingAdminServiceListCount">0</span></div>
           <div id="bookingAdminServiceList" class="booking-admin-service-list"></div>
           <div id="bookingAdminServiceEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立預約項目</p></div>
@@ -102,10 +103,7 @@
         <form id="bookingAdminServiceForm" class="booking-admin-form" novalidate>
           <input id="bookingAdminServiceId" type="hidden"><input id="bookingAdminExpectedUpdatedAt" type="hidden">
           <label>預約項目名稱<input id="bookingAdminServiceName" type="text" maxlength="100" placeholder="例如：腳底按摩" required></label>
-          <div class="booking-admin-form-grid">
-            <label>項目服務時間（分鐘）<input id="bookingAdminDurationMinutes" type="number" min="1" max="720" step="1" value="30" required><small>例如 40 分鐘服務請輸入 40；數量 2 會計算為 80 分鐘。</small></label>
-            <label>需要提前幾天預約<input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的開始時段。</small></label>
-          </div>
+          <label>項目服務時間（分鐘）<input id="bookingAdminDurationMinutes" type="number" min="1" max="720" step="1" value="30" required><small>例如 40 分鐘服務請輸入 40；數量 2 會計算為 80 分鐘。</small></label>
           <label class="booking-admin-toggle"><input id="bookingAdminActive" type="checkbox" checked><span><strong>開放會員預約</strong><small>關閉後會員端不再顯示此項目，既有預約紀錄仍保留。</small></span></label>
           <div id="bookingAdminServiceMessage" class="form-message hidden" role="status" aria-live="polite"></div>
           <div class="booking-admin-modal-actions"><button id="bookingAdminCancelServiceButton" class="button button-outline" type="button">取消</button><button id="bookingAdminSaveServiceButton" class="button button-dark" type="submit">儲存預約項目</button></div>
@@ -121,10 +119,10 @@
   function cacheElements() {
     [
       'bookingTab', 'bookingPanel', 'bookingAdminSyncStatus', 'bookingAdminRefreshButton', 'bookingAdminServiceCount', 'bookingAdminPendingCount', 'bookingAdminConfirmedCount',
-      'bookingAdminSettingsForm', 'bookingAdminStartTime', 'bookingAdminEndTime', 'bookingAdminSettingsMessage', 'bookingAdminSaveSettingsButton',
+      'bookingAdminSettingsForm', 'bookingAdminStartTime', 'bookingAdminEndTime', 'bookingAdminAdvanceDays', 'bookingAdminSettingsMessage', 'bookingAdminSaveSettingsButton',
       'bookingAdminNewServiceButton', 'bookingAdminServiceListCount', 'bookingAdminServiceList', 'bookingAdminServiceEmpty', 'bookingAdminQueue', 'bookingAdminQueueEmpty',
       'bookingAdminServiceModal', 'bookingAdminServiceModalTitle', 'bookingAdminCloseServiceModal', 'bookingAdminCancelServiceButton', 'bookingAdminServiceForm',
-      'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminDurationMinutes', 'bookingAdminAdvanceDays',
+      'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminDurationMinutes',
       'bookingAdminActive', 'bookingAdminServiceMessage', 'bookingAdminSaveServiceButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
@@ -262,6 +260,7 @@
     const settings = state.data.settings || {};
     els.bookingAdminStartTime.value = String(settings.workStartTime || '09:00');
     els.bookingAdminEndTime.value = String(settings.workEndTime || '17:00');
+    els.bookingAdminAdvanceDays.value = String(Number(settings.minAdvanceDays || 0));
   }
 
   function renderStats() {
@@ -288,7 +287,7 @@
       const title = document.createElement('strong');
       title.textContent = service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${service.durationMinutes} 分鐘 · 提前 ${service.minAdvanceDays || 0} 天`;
+      meta.textContent = `服務 ${service.durationMinutes} 分鐘`;
       content.append(title, meta);
       const status = document.createElement('span');
       status.className = `booking-admin-service-status ${service.isActive ? 'active' : 'inactive'}`;
@@ -307,7 +306,6 @@
     els.bookingAdminExpectedUpdatedAt.value = editing ? service.updatedAt || '' : '';
     els.bookingAdminServiceName.value = editing ? service.title || '' : '';
     els.bookingAdminDurationMinutes.value = String(editing ? service.durationMinutes || 30 : 30);
-    els.bookingAdminAdvanceDays.value = String(editing ? service.minAdvanceDays || 0 : 0);
     els.bookingAdminActive.checked = editing ? service.isActive !== false : true;
     clearMessage(els.bookingAdminServiceMessage);
     els.bookingAdminServiceModal.classList.remove('hidden');
@@ -323,6 +321,12 @@
   async function saveSettings(event) {
     event.preventDefault();
     if (state.savingSettings || state.writeLocked) return;
+    const minAdvanceDays = Number(els.bookingAdminAdvanceDays.value);
+    if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) {
+      showMessage(els.bookingAdminSettingsMessage, '提前預約天數必須介於 0–365 天。', 'error');
+      els.bookingAdminAdvanceDays.focus();
+      return;
+    }
     state.savingSettings = true;
     els.bookingAdminSaveSettingsButton.disabled = true;
     els.bookingAdminSaveSettingsButton.textContent = '儲存中…';
@@ -331,16 +335,17 @@
       const result = await bookingRequest('admin.booking.settings.save', {
         workStartTime: els.bookingAdminStartTime.value,
         workEndTime: els.bookingAdminEndTime.value,
+        minAdvanceDays,
         expectedUpdatedAt: state.data.settings?.updatedAt || '',
       });
       state.data.settings = result.settings || state.data.settings;
       renderSettings();
-      showMessage(els.bookingAdminSettingsMessage, '上班時間已儲存，會員端可預約時間會即時更新。', 'success');
+      showMessage(els.bookingAdminSettingsMessage, '預約共用設定已儲存；不符合提前天數的日期會在會員端反灰且不可預約。', 'success');
     } catch (error) {
       handleWriteError(error, els.bookingAdminSettingsMessage);
     } finally {
       state.savingSettings = false;
-      els.bookingAdminSaveSettingsButton.textContent = '儲存上班時間';
+      els.bookingAdminSaveSettingsButton.textContent = '儲存預約設定';
       applyWriteLock();
     }
   }
@@ -359,7 +364,6 @@
         title: els.bookingAdminServiceName.value,
         description: '',
         durationMinutes: Number(els.bookingAdminDurationMinutes.value),
-        minAdvanceDays: Number(els.bookingAdminAdvanceDays.value),
         isActive: els.bookingAdminActive.checked,
       });
       const saved = result.service;
