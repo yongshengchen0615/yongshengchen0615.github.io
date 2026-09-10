@@ -22,6 +22,10 @@ async function lineToken(supabase: SupabaseClient): Promise<string> {
   const result = await supabase.rpc("get_line_messaging_token");
   return result.error ? "" : asText(result.data,10000);
 }
+async function dispatchSecret(supabase: SupabaseClient): Promise<string> {
+  const result = await supabase.rpc("get_grant_dispatch_secret");
+  return result.error ? "" : asText(result.data,500);
+}
 async function writeAudit(supabase: SupabaseClient, row: any, result: string, detail: Json): Promise<void> {
   await supabase.from("audit_logs").insert({
     audit_id:"AUD-" + crypto.randomUUID().replaceAll("-",""),
@@ -55,13 +59,14 @@ async function dispatchOne(supabase: SupabaseClient, token: string, row: any): P
 
 Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return new Response(JSON.stringify({ ok:false,error:"METHOD_NOT_ALLOWED" }),{ status:405,headers:{ "Content-Type":"application/json" } });
-  const expectedSecret = env("GRANT_MESSAGE_DISPATCH_SECRET");
+
+  const supabase = dbClient();
+  const expectedSecret = env("GRANT_MESSAGE_DISPATCH_SECRET") || await dispatchSecret(supabase);
   const suppliedSecret = request.headers.get("x-dispatch-secret") || "";
   if (!expectedSecret || !secureEqual(expectedSecret,suppliedSecret)) {
     return new Response(JSON.stringify({ ok:false,error:"UNAUTHORIZED" }),{ status:401,headers:{ "Content-Type":"application/json","Cache-Control":"no-store" } });
   }
 
-  const supabase = dbClient();
   const claim = await supabase.rpc("claim_due_grant_messages",{ p_limit:20 });
   if (claim.error) return new Response(JSON.stringify({ ok:false,error:"CLAIM_FAILED" }),{ status:500,headers:{ "Content-Type":"application/json" } });
   const rows:any[] = Array.isArray(claim.data) ? claim.data : [];
