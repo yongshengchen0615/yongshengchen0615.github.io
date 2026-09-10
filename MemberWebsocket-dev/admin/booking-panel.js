@@ -11,6 +11,7 @@
     config: null,
     data: { settings: {}, services: [], bookings: [] },
     filter: 'pending',
+    subtab: 'services',
     loaded: false,
     loading: false,
     savingSettings: false,
@@ -47,7 +48,7 @@
     panel.setAttribute('aria-labelledby', 'bookingTab');
     panel.innerHTML = `
       <div class="panel-heading booking-admin-heading">
-        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與提前預約天數為共用設定；預約項目管理類型、服務時間、價格與開放狀態。</p></div>
+        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與提前預約天數為共用設定；預約項目與預約確認分開管理。</p></div>
         <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span><button id="bookingAdminRefreshButton" class="button button-outline" type="button">更新預約</button></div>
       </div>
 
@@ -72,15 +73,20 @@
         <div><span>已確認</span><strong id="bookingAdminConfirmedCount">0</strong><small>完成預約</small></div>
       </section>
 
-      <div class="booking-admin-workspace">
-        <section class="booking-admin-card" aria-labelledby="bookingAdminServiceTitle">
+      <nav class="booking-admin-filter booking-admin-subtabs" role="tablist" aria-label="預約管理分類">
+        <button id="bookingAdminServicesSubtab" class="booking-admin-filter-button active" type="button" role="tab" aria-selected="true" aria-controls="bookingAdminServicesPanel">預約項目</button>
+        <button id="bookingAdminQueueSubtab" class="booking-admin-filter-button" type="button" role="tab" aria-selected="false" aria-controls="bookingAdminQueuePanel">預約確認<span id="bookingAdminQueueSubtabCount"></span></button>
+      </nav>
+
+      <div class="booking-admin-subtab-panels">
+        <section id="bookingAdminServicesPanel" class="booking-admin-card" role="tabpanel" aria-labelledby="bookingAdminServicesSubtab">
           <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目設定名稱、類型、服務時間、價格與開放狀態；會員選到相同類型時會收到提醒。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
           <div class="booking-admin-list-heading"><strong>已建立項目</strong><span id="bookingAdminServiceListCount">0</span></div>
           <div id="bookingAdminServiceList" class="booking-admin-service-list"></div>
           <div id="bookingAdminServiceEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立預約項目</p></div>
         </section>
 
-        <section class="booking-admin-card" aria-labelledby="bookingAdminQueueTitle">
+        <section id="bookingAdminQueuePanel" class="booking-admin-card hidden" role="tabpanel" aria-labelledby="bookingAdminQueueSubtab">
           <div class="booking-admin-section-heading"><div><p class="kicker">Confirmation queue</p><h3 id="bookingAdminQueueTitle">預約確認</h3><p>待確認預約也會立即佔用整段時間；取消或未通過後才重新開放。</p></div></div>
           <div class="booking-admin-filter" role="group" aria-label="預約狀態篩選">
             <button class="booking-admin-filter-button active" data-booking-filter="pending" type="button">待確認</button>
@@ -117,6 +123,7 @@
 
     cacheElements();
     bindEvents();
+    setBookingSubtab(state.subtab);
     openHashWhenAdminReady();
   }
 
@@ -124,6 +131,7 @@
     [
       'bookingTab', 'bookingPanel', 'bookingAdminSyncStatus', 'bookingAdminRefreshButton', 'bookingAdminServiceCount', 'bookingAdminPendingCount', 'bookingAdminConfirmedCount',
       'bookingAdminSettingsForm', 'bookingAdminStartTime', 'bookingAdminEndTime', 'bookingAdminAdvanceDays', 'bookingAdminSettingsMessage', 'bookingAdminSaveSettingsButton',
+      'bookingAdminServicesSubtab', 'bookingAdminQueueSubtab', 'bookingAdminQueueSubtabCount', 'bookingAdminServicesPanel', 'bookingAdminQueuePanel',
       'bookingAdminNewServiceButton', 'bookingAdminServiceListCount', 'bookingAdminServiceList', 'bookingAdminServiceEmpty', 'bookingAdminQueue', 'bookingAdminQueueEmpty',
       'bookingAdminServiceModal', 'bookingAdminServiceModalTitle', 'bookingAdminCloseServiceModal', 'bookingAdminCancelServiceButton', 'bookingAdminServiceForm',
       'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminServiceType', 'bookingAdminDurationMinutes', 'bookingAdminPriceAmount',
@@ -136,6 +144,8 @@
     PRIMARY_TAB_IDS.forEach((id) => document.getElementById(id)?.addEventListener('click', deactivateBookingPanel));
     els.bookingAdminRefreshButton.addEventListener('click', () => refreshBookingData(true));
     els.bookingAdminSettingsForm.addEventListener('submit', saveSettings);
+    els.bookingAdminServicesSubtab.addEventListener('click', () => setBookingSubtab('services'));
+    els.bookingAdminQueueSubtab.addEventListener('click', () => setBookingSubtab('queue'));
     els.bookingAdminNewServiceButton.addEventListener('click', () => openServiceModal(null));
     els.bookingAdminCloseServiceModal.addEventListener('click', closeServiceModal);
     els.bookingAdminCancelServiceButton.addEventListener('click', closeServiceModal);
@@ -148,11 +158,23 @@
     window.addEventListener('beforeunload', teardownRealtime);
   }
 
+  function setBookingSubtab(subtab) {
+    state.subtab = subtab === 'queue' ? 'queue' : 'services';
+    const queueActive = state.subtab === 'queue';
+    els.bookingAdminServicesSubtab.classList.toggle('active', !queueActive);
+    els.bookingAdminServicesSubtab.setAttribute('aria-selected', queueActive ? 'false' : 'true');
+    els.bookingAdminQueueSubtab.classList.toggle('active', queueActive);
+    els.bookingAdminQueueSubtab.setAttribute('aria-selected', queueActive ? 'true' : 'false');
+    els.bookingAdminServicesPanel.classList.toggle('hidden', queueActive);
+    els.bookingAdminQueuePanel.classList.toggle('hidden', !queueActive);
+  }
+
   function activateBookingPanel() {
     PRIMARY_TAB_IDS.forEach((id) => document.getElementById(id)?.setAttribute('aria-selected', 'false'));
     PRIMARY_PANEL_IDS.forEach((id) => document.getElementById(id)?.classList.add('hidden'));
     els.bookingTab.setAttribute('aria-selected', 'true');
     els.bookingPanel.classList.remove('hidden');
+    setBookingSubtab(state.subtab);
     if (window.location.hash !== '#booking') window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}#booking`);
     if (!state.loaded && !state.loading) refreshBookingData(false);
   }
@@ -278,6 +300,8 @@
     els.bookingAdminServiceCount.textContent = String(services.length);
     els.bookingAdminPendingCount.textContent = String(pending);
     els.bookingAdminConfirmedCount.textContent = String(bookings.filter((booking) => booking.status === 'confirmed').length);
+    els.bookingAdminQueueSubtabCount.textContent = pending > 0 ? `（${pending}）` : '';
+    els.bookingAdminQueueSubtab.setAttribute('aria-label', pending > 0 ? `預約確認，${pending} 筆待確認` : '預約確認');
     els.bookingTab.dataset.pendingCount = String(pending);
     els.bookingTab.setAttribute('aria-label', pending ? `預約，${pending} 筆待確認` : '預約');
   }
