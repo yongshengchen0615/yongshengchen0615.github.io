@@ -301,3 +301,11 @@ button, input, select, textarea { line-height: 1.35; }
 .state-view.login-loading .login-progress-value {
   display: none !important;
 }
+
+.grant-message-selector { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); }
+.grant-message-selector .text-button { justify-self: start; }
+.grant-message-preview { margin: 0; padding: 10px 11px; border-radius: 9px; color: var(--ink); background: #f6f7f4; font-size: 12px; line-height: 1.65; white-space: pre-wrap; }
+.grant-message-preview.is-empty { color: var(--muted); }
+#messagePresetModal { z-index: 18; }
+.message-preset-list { min-height: 132px; }
+#messagePresetBody { min-height: 118px; resize: vertical; }
