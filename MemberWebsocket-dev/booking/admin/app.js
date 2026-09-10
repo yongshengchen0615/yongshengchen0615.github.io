@@ -6,15 +6,17 @@
     idToken: '',
     data: { today: '', services: [], bookings: [] },
     filter: 'pending',
+    activeTab: 'services',
     savingService: false,
     refreshing: false,
   };
   const els = {};
   const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', rejected: '未通過', cancelled: '已取消' };
   const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+  const ADMIN_TABS = ['services', 'confirmation'];
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['loadingView', 'errorView', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'adminName', 'logoutButton', 'serviceCount', 'pendingCount', 'confirmedCount', 'newServiceButton', 'serviceForm', 'serviceId', 'expectedUpdatedAt', 'serviceTitle', 'serviceDescription', 'workStartTime', 'workEndTime', 'minAdvanceDays', 'serviceActive', 'serviceFormMessage', 'saveServiceButton', 'serviceListCount', 'serviceList', 'serviceEmpty', 'refreshButton', 'bookingQueue', 'bookingEmpty']
+    ['loadingView', 'errorView', 'errorMessage', 'pendingBox', 'pendingUserId', 'retryButton', 'adminView', 'adminName', 'logoutButton', 'serviceCount', 'pendingCount', 'confirmedCount', 'bookingSubtabs', 'servicesTab', 'confirmationTab', 'serviceTabCount', 'confirmationTabCount', 'servicePanel', 'confirmationPanel', 'newServiceButton', 'serviceForm', 'serviceId', 'expectedUpdatedAt', 'serviceTitle', 'serviceDescription', 'workStartTime', 'workEndTime', 'minAdvanceDays', 'serviceActive', 'serviceFormMessage', 'saveServiceButton', 'serviceListCount', 'serviceList', 'serviceEmpty', 'refreshButton', 'bookingQueue', 'bookingEmpty']
       .forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.BookingSystem.logout());
@@ -22,6 +24,10 @@
     els.serviceForm.addEventListener('submit', saveService);
     els.refreshButton.addEventListener('click', refresh);
     document.querySelectorAll('.filter-button').forEach((button) => button.addEventListener('click', () => setFilter(button.dataset.filter || 'pending')));
+    document.querySelectorAll('.subtab-button').forEach((button) => button.addEventListener('click', () => setAdminTab(button.dataset.adminTab || 'services')));
+    els.bookingSubtabs.addEventListener('keydown', handleSubtabKeydown);
+    const initialTab = window.location.hash === '#confirmation' ? 'confirmation' : 'services';
+    setAdminTab(initialTab, false);
     boot();
   });
 
@@ -66,9 +72,47 @@
   function renderStats() {
     const services = state.data.services || [];
     const bookings = state.data.bookings || [];
+    const pending = bookings.filter((item) => item.status === 'pending').length;
+    const confirmed = bookings.filter((item) => item.status === 'confirmed').length;
     els.serviceCount.textContent = String(services.length);
-    els.pendingCount.textContent = String(bookings.filter((item) => item.status === 'pending').length);
-    els.confirmedCount.textContent = String(bookings.filter((item) => item.status === 'confirmed').length);
+    els.pendingCount.textContent = String(pending);
+    els.confirmedCount.textContent = String(confirmed);
+    els.serviceTabCount.textContent = String(services.length);
+    els.confirmationTabCount.textContent = String(pending);
+    els.confirmationTabCount.classList.toggle('attention', pending > 0);
+    els.confirmationTab.setAttribute('aria-label', pending > 0 ? `預約確認，${pending} 筆待確認` : '預約確認，目前沒有待確認預約');
+  }
+
+  function setAdminTab(tab, updateHistory = true) {
+    const resolved = ADMIN_TABS.includes(tab) ? tab : 'services';
+    state.activeTab = resolved;
+    const isServices = resolved === 'services';
+    els.servicePanel.classList.toggle('hidden', !isServices);
+    els.confirmationPanel.classList.toggle('hidden', isServices);
+    els.servicesTab.classList.toggle('active', isServices);
+    els.confirmationTab.classList.toggle('active', !isServices);
+    els.servicesTab.setAttribute('aria-selected', isServices ? 'true' : 'false');
+    els.confirmationTab.setAttribute('aria-selected', isServices ? 'false' : 'true');
+    els.servicesTab.tabIndex = isServices ? 0 : -1;
+    els.confirmationTab.tabIndex = isServices ? -1 : 0;
+    if (updateHistory && window.history?.replaceState) {
+      const hash = isServices ? '#services' : '#confirmation';
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+    }
+  }
+
+  function handleSubtabKeydown(event) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = ADMIN_TABS.indexOf(state.activeTab);
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % ADMIN_TABS.length;
+    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + ADMIN_TABS.length) % ADMIN_TABS.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = ADMIN_TABS.length - 1;
+    const nextTab = ADMIN_TABS[nextIndex];
+    setAdminTab(nextTab);
+    (nextTab === 'services' ? els.servicesTab : els.confirmationTab).focus();
   }
 
   function renderServices() {
@@ -98,6 +142,7 @@
   }
 
   function editService(service) {
+    setAdminTab('services');
     els.serviceId.value = service.serviceId;
     els.expectedUpdatedAt.value = service.updatedAt || '';
     els.serviceTitle.value = service.title || '';
@@ -115,6 +160,7 @@
   }
 
   function resetServiceForm() {
+    setAdminTab('services');
     els.serviceForm.reset();
     els.serviceId.value = '';
     els.expectedUpdatedAt.value = '';
