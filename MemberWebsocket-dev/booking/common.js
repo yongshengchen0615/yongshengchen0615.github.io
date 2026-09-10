@@ -2,6 +2,9 @@
   'use strict';
 
   const REQUEST_TIMEOUT_MS = 15000;
+  let realtimeClient = null;
+  let realtimeChannel = null;
+  let realtimeTimer = null;
 
   function clientError(code, message, details = null) {
     const error = new Error(message);
@@ -12,7 +15,7 @@
 
   async function loadConfig() {
     const depth = window.location.pathname.includes('/booking/admin/') ? '../../config.json' : '../config.json';
-    const response = await fetch(`${depth}?v=booking-20260910-2`, { cache: 'no-store' });
+    const response = await fetch(`${depth}?v=booking-20260910-3`, { cache: 'no-store' });
     if (!response.ok) throw clientError('CONFIG_LOAD_FAILED', '無法載入系統設定。');
     const config = await response.json();
     if (!config.supabaseUrl || !config.supabasePublishableKey) throw clientError('CONFIG_INVALID', 'Supabase 設定不完整。');
@@ -82,6 +85,52 @@
     }
   }
 
+  function subscribeRealtime(config, onUpdate) {
+    if (config.realtimeEnabled === false || typeof onUpdate !== 'function') return () => {};
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') return () => {};
+    if (!realtimeClient) {
+      realtimeClient = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
+        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+      });
+    }
+    if (realtimeChannel) return () => {};
+    const schedule = () => {
+      if (realtimeTimer !== null) return;
+      realtimeTimer = window.setTimeout(() => {
+        realtimeTimer = null;
+        Promise.resolve(onUpdate()).catch(() => {});
+      }, 450);
+    };
+    realtimeChannel = realtimeClient
+      .channel('booking-member-sync')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
+        const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
+        const scope = String(row.scope || '');
+        const type = String(row.event_type || '');
+        if ((scope === 'all' || scope === 'member') && type.startsWith('booking.')) schedule();
+      })
+      .subscribe();
+    return () => {
+      if (realtimeTimer !== null) window.clearTimeout(realtimeTimer);
+      realtimeTimer = null;
+      const channel = realtimeChannel;
+      realtimeChannel = null;
+      try { if (channel) Promise.resolve(realtimeClient.removeChannel(channel)).catch(() => {}); } catch (_) {}
+    };
+  }
+
+  function openMemberJoin(config) {
+    const memberLiffId = String(config && config.memberLiffId || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(memberLiffId)) return false;
+    const url = `https://liff.line.me/${encodeURIComponent(memberLiffId)}`;
+    if (window.liff && typeof window.liff.openWindow === 'function') {
+      window.liff.openWindow({ url, external: false });
+      return true;
+    }
+    window.location.href = url;
+    return true;
+  }
+
   async function logout() {
     try { if (window.liff && window.liff.isLoggedIn()) window.liff.logout(); } catch (_) {}
     window.location.reload();
@@ -98,5 +147,5 @@
     return parsed.toISOString().slice(0, 10);
   }
 
-  window.BookingSystem = { loadConfig, signIn, request, memberProfile, logout, formatDate, addDays, clientError };
+  window.BookingSystem = { loadConfig, signIn, request, memberProfile, subscribeRealtime, openMemberJoin, logout, formatDate, addDays, clientError };
 })();
