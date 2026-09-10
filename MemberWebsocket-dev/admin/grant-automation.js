@@ -6,11 +6,14 @@
   const base = window.MemberSystem;
   const originalRequest = base.request.bind(base);
   const calendarCache = new Map();
+  const EVENT_TICKET_TIER_LABELS = { general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' };
   let lastCalendarItemId = null;
   let lastEventTicketId = null;
   let lastAdminConfig = null;
   let lastAdminIdToken = '';
   let eventCalendarSyncVersion = 0;
+  let managedCalendarInfoOpener = null;
+  let managedCalendarObserver = null;
 
   function cacheCalendarResult(result) {
     if (!result || typeof result !== 'object') return result;
@@ -137,23 +140,26 @@
   }
 
   function assertCalendarDeleteAllowed(action, payload) {
-    if (action === 'admin.calendar-items.delete' && managedEventTicketCalendarItemById(payload && payload.calendarItemId)) {
+    const directItemId = String(payload && payload.calendarItem && payload.calendarItem.calendarItemId || payload && payload.calendarItemId || '').trim();
+    if ((action === 'admin.calendar-items.save' || action === 'admin.calendar-items.delete') && managedEventTicketCalendarItemById(directItemId)) {
       throw clientError(
         'EVENT_TICKET_CALENDAR_MANAGED',
-        '此活動由活動票券管理，請至活動票券取消「加入日曆」或刪除票券。',
+        action === 'admin.calendar-items.delete'
+          ? '此活動由活動票券管理，請至活動票券取消「加入日曆」或刪除票券。'
+          : '此活動由活動票券管理，日曆中只能查看資訊；請至活動票券修改設定。',
         409
       );
     }
     if (action === 'admin.calendar-items.batch') {
       const operations = Array.isArray(payload && payload.calendarItemOperations) ? payload.calendarItemOperations : [];
-      const hasManagedDelete = operations.some((operation) => {
-        const operationType = String(operation && (operation.action || operation.operation) || '');
-        return operationType === 'delete' && managedEventTicketCalendarItemById(operation && operation.calendarItemId);
+      const hasManagedOperation = operations.some((operation) => {
+        const calendarItemId = String(operation && (operation.calendarItemId || operation.calendarItem && operation.calendarItem.calendarItemId) || '').trim();
+        return Boolean(calendarItemId && managedEventTicketCalendarItemById(calendarItemId));
       });
-      if (hasManagedDelete) {
+      if (hasManagedOperation) {
         throw clientError(
           'EVENT_TICKET_CALENDAR_MANAGED',
-          '選取項目包含由活動票券管理的活動；這類活動不能從日曆刪除。',
+          '選取項目包含由活動票券管理的活動；這類活動在日曆中只能查看資訊，不能批次修改或刪除。',
           409
         );
       }
@@ -172,6 +178,172 @@
     } else if (button.title) {
       button.removeAttribute('title');
     }
+  }
+
+  function managedEventTicketStatusLabel(value) {
+    const status = String(value || 'draft');
+    return status === 'active' ? '啟用中' : status === 'archived' ? '已封存' : '草稿';
+  }
+
+  function managedEventTicketDateRange(item) {
+    const startsOn = String(item && item.startsOn || '').trim();
+    const endsOn = String(item && item.endsOn || '').trim();
+    if (!startsOn) return '未設定';
+    return endsOn && endsOn !== startsOn ? `${startsOn} ～ ${endsOn}` : startsOn;
+  }
+
+  function managedEventTicketTierLabels(item) {
+    const keys = Array.isArray(item && item.allowedTierKeys) ? item.allowedTierKeys : [];
+    if (!keys.length) return '未設定';
+    return keys.map((key) => EVENT_TICKET_TIER_LABELS[String(key)] || String(key)).join('、');
+  }
+
+  function createManagedEventTicketInfoRow(labelText, valueText) {
+    const row = document.createElement('p');
+    const label = document.createElement('strong');
+    const value = document.createElement('span');
+    label.textContent = String(labelText || '');
+    value.textContent = String(valueText || '');
+    row.append(label, document.createElement('br'), value);
+    return row;
+  }
+
+  function closeManagedEventTicketInfo(restoreFocus = true) {
+    const modal = document.getElementById('eventTicketCalendarInfoModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    modal.classList.add('hidden');
+    const opener = managedCalendarInfoOpener;
+    managedCalendarInfoOpener = null;
+    if (restoreFocus && opener && document.contains(opener)) opener.focus();
+  }
+
+  function ensureManagedEventTicketInfoModal() {
+    let modal = document.getElementById('eventTicketCalendarInfoModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'eventTicketCalendarInfoModal';
+    modal.className = 'modal editor-modal hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'eventTicketCalendarInfoTitle');
+
+    const card = document.createElement('div');
+    card.className = 'modal-card editor-modal-card';
+    const heading = document.createElement('div');
+    heading.className = 'editor-heading';
+    const headingText = document.createElement('div');
+    const kicker = document.createElement('p');
+    kicker.className = 'kicker';
+    kicker.textContent = 'Activity ticket calendar';
+    const title = document.createElement('h3');
+    title.id = 'eventTicketCalendarInfoTitle';
+    title.textContent = '活動票券資訊';
+    headingText.append(kicker, title);
+    const actions = document.createElement('div');
+    actions.className = 'editor-heading-actions';
+    const closeButton = document.createElement('button');
+    closeButton.id = 'closeEventTicketCalendarInfoButton';
+    closeButton.type = 'button';
+    closeButton.className = 'button button-outline';
+    closeButton.textContent = '關閉';
+    actions.append(closeButton);
+    heading.append(headingText, actions);
+
+    const notice = document.createElement('p');
+    notice.className = 'editor-hint';
+    notice.textContent = '此項目由活動票券同步管理，日曆中僅供查看；如需修改或移除，請至「活動票券」設定。';
+    const content = document.createElement('section');
+    content.id = 'eventTicketCalendarInfoContent';
+    content.className = 'calendar-event-link-fields';
+    card.append(heading, notice, content);
+    modal.append(card);
+    document.body.append(modal);
+
+    closeButton.addEventListener('click', () => closeManagedEventTicketInfo());
+    modal.addEventListener('click', (event) => {
+      if (event.target !== modal) return;
+      const coarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+      if (coarsePointer) closeManagedEventTicketInfo();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeManagedEventTicketInfo();
+    });
+    return modal;
+  }
+
+  function openManagedEventTicketInfo(item, opener) {
+    if (!item || !eventTicketIdFromCalendarItem(item)) return;
+    const modal = ensureManagedEventTicketInfoModal();
+    const content = document.getElementById('eventTicketCalendarInfoContent');
+    const title = document.getElementById('eventTicketCalendarInfoTitle');
+    const ticketId = eventTicketIdFromCalendarItem(item);
+    if (!content || !title) return;
+    title.textContent = String(item.title || '活動票券資訊');
+    const rows = [
+      createManagedEventTicketInfoRow('來源', '活動票券同步'),
+      createManagedEventTicketInfoRow('活動票券識別', ticketId),
+      createManagedEventTicketInfoRow('活動期間', managedEventTicketDateRange(item)),
+      createManagedEventTicketInfoRow('公開狀態', managedEventTicketStatusLabel(item.status)),
+      createManagedEventTicketInfoRow('適用會員等級', managedEventTicketTierLabels(item)),
+      createManagedEventTicketInfoRow('票券說明', String(item.description || '尚未提供說明。'))
+    ];
+    if (item.bonusPointsEnabled) rows.push(createManagedEventTicketInfoRow('活動加贈點數', `每張本次發放集點卡 +${Number(item.bonusPoints || 0)} 點`));
+    content.replaceChildren(...rows);
+    managedCalendarInfoOpener = opener instanceof HTMLElement ? opener : null;
+    modal.classList.remove('hidden');
+    document.getElementById('closeEventTicketCalendarInfoButton')?.focus();
+  }
+
+  function decorateManagedEventTicketCalendarRows() {
+    const grid = document.getElementById('adminCalendarGrid');
+    if (!grid) return;
+    grid.querySelectorAll('[data-admin-calendar-item-id]').forEach((button) => {
+      const calendarItemId = String(button.dataset.adminCalendarItemId || '').trim();
+      const item = managedEventTicketCalendarItemById(calendarItemId);
+      if (!item) return;
+      const row = button.closest('.admin-calendar-item-row');
+      if (row) {
+        row.dataset.eventTicketCalendarManaged = 'true';
+        row.classList.remove('is-selected-for-batch');
+        row.querySelector('[data-admin-calendar-item-select]')?.remove();
+      }
+      button.dataset.eventTicketCalendarReadonly = 'true';
+      button.setAttribute('aria-label', `查看活動票券資訊：${String(item.title || '未命名活動')}`);
+      button.title = '由活動票券管理；點擊查看資訊';
+    });
+  }
+
+  function handleManagedEventTicketCalendarClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-admin-calendar-item-id]') : null;
+    if (!button) return;
+    const item = managedEventTicketCalendarItemById(button.dataset.adminCalendarItemId);
+    if (!item) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openManagedEventTicketInfo(item, button);
+  }
+
+  function handleManagedEventTicketCalendarSelection(event) {
+    const input = event.target instanceof HTMLInputElement ? event.target.closest('[data-admin-calendar-item-select]') : null;
+    if (!input) return;
+    const item = managedEventTicketCalendarItemById(input.dataset.adminCalendarItemSelect);
+    if (!item) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    input.checked = false;
+    decorateManagedEventTicketCalendarRows();
+  }
+
+  function bindManagedEventTicketCalendarReadOnly() {
+    const grid = document.getElementById('adminCalendarGrid');
+    if (!grid) return;
+    grid.addEventListener('click', handleManagedEventTicketCalendarClick, true);
+    grid.addEventListener('change', handleManagedEventTicketCalendarSelection, true);
+    if (typeof MutationObserver !== 'undefined') {
+      managedCalendarObserver = new MutationObserver(() => decorateManagedEventTicketCalendarRows());
+      managedCalendarObserver.observe(grid, { childList: true, subtree: true });
+    }
+    decorateManagedEventTicketCalendarRows();
   }
 
   async function fetchCalendarItemsForEventSync(config, idToken) {
@@ -464,6 +636,7 @@
     document.addEventListener('click', () => window.setTimeout(() => {
       syncCalendarBonusFromSelection(false);
       syncManagedEventTicketDeleteButton();
+      decorateManagedEventTicketCalendarRows();
     }, 0));
     document.getElementById('calendarItemForm')?.addEventListener('focusin', () => {
       syncCalendarBonusFromSelection(false);
@@ -505,10 +678,12 @@
     bindCalendarSelectionSync();
     createEventTicketCalendarControls();
     bindEventTicketCalendarSelectionSync();
+    bindManagedEventTicketCalendarReadOnly();
     window.setTimeout(() => {
       syncCalendarBonusFromSelection(true);
       syncEventTicketCalendarChoiceFromSelection(true);
       syncManagedEventTicketDeleteButton();
+      decorateManagedEventTicketCalendarRows();
     }, 0);
   });
 })();
