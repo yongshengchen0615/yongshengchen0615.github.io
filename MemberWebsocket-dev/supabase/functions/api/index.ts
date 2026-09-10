@@ -816,7 +816,8 @@ async function grantAvailableTicketSection(
   const pointCardsToIssue = activePointCards.filter((row:any) => grantedCardIds.includes(String(row.card_id)));
   if (pointCardsToIssue.length) {
     await Promise.all(pointCardsToIssue.map(async (row:any) => {
-      await supabase.rpc("issue_eligible_point_tickets",{ p_member_id:memberId,p_point_card_id:row.id });
+      const issueResult = await supabase.rpc("issue_eligible_point_tickets",{ p_member_id:memberId,p_point_card_id:row.id });
+      if (issueResult.error) throw mapDatabaseError(issueResult.error);
     }));
   }
 
