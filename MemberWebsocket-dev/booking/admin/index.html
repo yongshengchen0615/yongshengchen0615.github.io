@@ -9,10 +9,10 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>預約管理｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=booking-admin-20260910">
+  <link rel="stylesheet" href="./styles.css?v=booking-admin-tabs-20260910">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="../common.js?v=booking-20260910" defer></script>
-  <script src="./app.js?v=booking-admin-20260910" defer></script>
+  <script src="./app.js?v=booking-admin-tabs-20260910" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -31,8 +31,17 @@
         <div><span>已確認</span><strong id="confirmedCount">0</strong><small>已完成預約</small></div>
       </section>
 
+      <nav id="bookingSubtabs" class="booking-subtabs" role="tablist" aria-label="預約管理分類">
+        <button id="servicesTab" class="subtab-button active" type="button" role="tab" aria-selected="true" aria-controls="servicePanel" data-admin-tab="services">
+          <span>預約項目</span><span id="serviceTabCount" class="subtab-count" aria-label="預約項目數量">0</span>
+        </button>
+        <button id="confirmationTab" class="subtab-button" type="button" role="tab" aria-selected="false" aria-controls="confirmationPanel" data-admin-tab="confirmation" tabindex="-1">
+          <span>預約確認</span><span id="confirmationTabCount" class="subtab-count attention" aria-label="待確認預約數量">0</span>
+        </button>
+      </nav>
+
       <div class="workspace-grid">
-        <section class="panel" aria-labelledby="serviceEditorTitle">
+        <section id="servicePanel" class="panel booking-tab-panel" role="tabpanel" aria-labelledby="servicesTab" aria-labelledby="serviceEditorTitle">
           <div class="panel-heading"><div><p class="kicker">Booking services</p><h2 id="serviceEditorTitle">預約項目設定</h2><p>設定服務名稱、工作時間與需要提前幾天預約。每個可選時段固定 30 分鐘。</p></div><button id="newServiceButton" class="button button-light" type="button">＋ 新增</button></div>
 
           <form id="serviceForm" novalidate>
@@ -59,7 +68,7 @@
           <div id="serviceEmpty" class="empty-state hidden">尚未建立預約項目。</div>
         </section>
 
-        <section class="panel queue-panel" aria-labelledby="bookingQueueTitle">
+        <section id="confirmationPanel" class="panel queue-panel booking-tab-panel hidden" role="tabpanel" aria-labelledby="confirmationTab">
           <div class="panel-heading queue-heading"><div><p class="kicker">Confirmation queue</p><h2 id="bookingQueueTitle">預約確認</h2><p>會員送出後先保留時段；只有按下「確認預約」後才算完成預約。</p></div><button id="refreshButton" class="button button-light" type="button">更新資料</button></div>
           <div class="filter-row" role="group" aria-label="預約狀態篩選"><button class="filter-button active" data-filter="pending" type="button">待確認</button><button class="filter-button" data-filter="confirmed" type="button">已確認</button><button class="filter-button" data-filter="all" type="button">全部</button></div>
           <div id="bookingQueue" class="booking-queue"></div>
