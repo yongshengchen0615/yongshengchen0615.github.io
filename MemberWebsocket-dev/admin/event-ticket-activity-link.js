@@ -97,6 +97,12 @@
     return result;
   }
 
+  function scheduleSelectionSync(force = false) {
+    const run = () => syncFieldsFromSelection(force);
+    window.setTimeout(run, 0);
+    window.setTimeout(run, 80);
+  }
+
   async function refreshLinks(config, idToken) {
     const result = await linkRequest(config, idToken, 'admin.event-ticket-links.list');
     activityLinks.clear();
@@ -108,7 +114,7 @@
       activityLinkNames.set(String(id), String(name || ''));
     });
     linksKnown = true;
-    syncFieldsFromSelection(false);
+    scheduleSelectionSync(false);
   }
 
   async function enrichAdminResult(config, idToken, promise) {
@@ -118,9 +124,19 @@
       return mergeLinks(result);
     } catch (_) {
       linksKnown = false;
-      syncFieldsFromSelection(false);
+      scheduleSelectionSync(false);
       return result;
     }
+  }
+
+  function preserveSavedTicketIdentity(result) {
+    const ticket = result && result.eventTicket;
+    if (!ticket || !ticket.eventTicketId) return;
+    const idField = document.getElementById('eventTicketId');
+    const expectedField = document.getElementById('eventTicketExpectedUpdatedAt');
+    if (idField) idField.value = String(ticket.eventTicketId);
+    if (expectedField && ticket.updatedAt) expectedField.value = String(ticket.updatedAt);
+    lastSyncedEventTicketId = String(ticket.eventTicketId);
   }
 
   async function saveTicketAndActivityLink(config, clientType, idToken, action, payload) {
@@ -155,12 +171,20 @@
         result.eventTicket.activityUrl = String(saved.activityUrl || '');
         result.eventTicket.activityLinkName = String(saved.activityLinkName || '');
       }
-      setFieldStatus(saved.changed ? '活動連結已儲存。' : '活動連結未變更。', false);
+      setFieldStatus(saved.changed ? '活動連結與連結名稱已儲存。' : '活動連結未變更。', false);
+      scheduleSelectionSync(true);
+      return result;
     } catch (error) {
-      setFieldStatus(`活動票券已儲存，但活動連結未更新：${String(error && error.message || '請重新整理後再試')}`, true);
+      preserveSavedTicketIdentity(result);
+      fieldsDirty = true;
+      const reason = String(error && error.message || '請再儲存一次。');
+      setFieldStatus(`活動票券主資料已儲存，但活動連結未完成：${reason}`, true);
+      throw clientError(
+        error && error.code || 'ACTIVITY_LINK_SAVE_FAILED',
+        `活動票券主資料已儲存，但活動連結未完成。${reason}`,
+        Number(error && error.status || 0)
+      );
     }
-    window.setTimeout(() => syncFieldsFromSelection(true), 0);
-    return result;
   }
 
   function request(config, clientType, idToken, action, payload = {}) {
@@ -219,7 +243,7 @@
     const status = document.createElement('small');
     status.id = 'eventTicketActivityUrlStatus';
     status.className = 'field-help';
-    status.textContent = '會員可從活動票券詳情開啟；僅接受 https:// 網址。';
+    status.textContent = '會員可從活動票券詳情開啟；僅接受 https:// 網址。未填連結名稱時顯示「前往活動連結」。';
     urlLabel.append(urlInput, status);
 
     const descriptionLabel = description.closest('label');
@@ -246,7 +270,8 @@
 
     form.addEventListener('reset', () => {
       fieldsDirty = false;
-      window.setTimeout(() => syncFieldsFromSelection(true), 0);
+      lastSyncedEventTicketId = null;
+      scheduleSelectionSync(true);
     });
   }
 
@@ -270,7 +295,7 @@
       nameInput.disabled = false;
       urlInput.value = '';
       nameInput.value = '';
-      setFieldStatus('會員可從活動票券詳情開啟；僅接受 https:// 網址。');
+      setFieldStatus('會員可從活動票券詳情開啟；僅接受 https:// 網址。未填連結名稱時顯示「前往活動連結」。');
       return;
     }
 
@@ -285,15 +310,21 @@
     nameInput.disabled = false;
     urlInput.value = String(activityLinks.get(eventTicketId) || '');
     nameInput.value = String(activityLinkNames.get(eventTicketId) || '');
-    setFieldStatus(urlInput.value ? '已設定活動連結；儲存票券時會一併更新。' : '尚未設定活動連結。');
+    setFieldStatus(urlInput.value ? '已設定活動連結；修改後請儲存票券。' : '尚未設定活動連結。');
   }
 
   function bindSelectionSync() {
-    document.addEventListener('click', () => window.setTimeout(() => syncFieldsFromSelection(false), 0));
+    document.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target.closest('[data-event-ticket-id]') : null;
+      if (!target) return;
+      fieldsDirty = false;
+      lastSyncedEventTicketId = null;
+      scheduleSelectionSync(true);
+    });
     document.getElementById('newEventTicketButton')?.addEventListener('click', () => {
       fieldsDirty = false;
       lastSyncedEventTicketId = null;
-      window.setTimeout(() => syncFieldsFromSelection(true), 0);
+      scheduleSelectionSync(true);
     });
   }
 
@@ -303,10 +334,10 @@
     if (lastConfig && lastIdToken && !linksKnown) {
       refreshLinks(lastConfig, lastIdToken).catch(() => {
         linksKnown = false;
-        syncFieldsFromSelection(false);
+        scheduleSelectionSync(false);
       });
     } else {
-      syncFieldsFromSelection(true);
+      scheduleSelectionSync(true);
     }
   });
 })();
