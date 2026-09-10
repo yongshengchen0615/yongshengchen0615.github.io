@@ -45,18 +45,14 @@
     panel.setAttribute('aria-labelledby', 'bookingTab');
     panel.innerHTML = `
       <div class="panel-heading booking-admin-heading">
-        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間為全域設定；每個項目只設定服務時間。會員端會依總服務分鐘數與既有預約自動排除衝突。</p></div>
+        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與預約項目分開管理；會員端會依服務時間與既有預約自動排除衝突。</p></div>
         <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span><button id="bookingAdminRefreshButton" class="button button-outline" type="button">更新預約</button></div>
       </div>
 
-      <section class="booking-admin-stats" aria-label="預約概況">
-        <div><span>預約項目</span><strong id="bookingAdminServiceCount">0</strong><small>已建立項目</small></div>
-        <div><span>待確認</span><strong id="bookingAdminPendingCount">0</strong><small>需管理端確認</small></div>
-        <div><span>已確認</span><strong id="bookingAdminConfirmedCount">0</strong><small>完成預約</small></div>
-      </section>
-
       <section class="booking-admin-card booking-admin-hours-card" aria-labelledby="bookingAdminHoursTitle">
-        <div class="booking-admin-section-heading"><div><p class="kicker">Working hours</p><h3 id="bookingAdminHoursTitle">管理員上班時間</h3><p>所有預約項目共用這段時間。會員選擇的總服務時間必須完整落在上班時間內。</p></div></div>
+        <div class="booking-admin-section-heading">
+          <div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">上班時間設定</h3><p>此設定為管理員共用上班時間，不屬於任何單一預約項目。</p></div>
+        </div>
         <form id="bookingAdminSettingsForm" class="booking-admin-form booking-admin-settings-form" novalidate>
           <div class="booking-admin-form-grid">
             <label>開始工作時間<input id="bookingAdminStartTime" type="time" step="1800" value="09:00" required></label>
@@ -67,9 +63,15 @@
         </form>
       </section>
 
+      <section class="booking-admin-stats" aria-label="預約概況">
+        <div><span>預約項目</span><strong id="bookingAdminServiceCount">0</strong><small>已建立項目</small></div>
+        <div><span>待確認</span><strong id="bookingAdminPendingCount">0</strong><small>需管理端確認</small></div>
+        <div><span>已確認</span><strong id="bookingAdminConfirmedCount">0</strong><small>完成預約</small></div>
+      </section>
+
       <div class="booking-admin-workspace">
         <section class="booking-admin-card" aria-labelledby="bookingAdminServiceTitle">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>項目服務時間會直接參與會員端可預約時間與衝突計算。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目只設定名稱、服務時間、提前預約天數與開放狀態。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
           <div class="booking-admin-list-heading"><strong>已建立項目</strong><span id="bookingAdminServiceListCount">0</span></div>
           <div id="bookingAdminServiceList" class="booking-admin-service-list"></div>
           <div id="bookingAdminServiceEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立預約項目</p></div>
@@ -100,9 +102,8 @@
         <form id="bookingAdminServiceForm" class="booking-admin-form" novalidate>
           <input id="bookingAdminServiceId" type="hidden"><input id="bookingAdminExpectedUpdatedAt" type="hidden">
           <label>預約項目名稱<input id="bookingAdminServiceName" type="text" maxlength="100" placeholder="例如：腳底按摩" required></label>
-          <label>項目說明<textarea id="bookingAdminDescription" maxlength="1000" rows="3" placeholder="會員選擇此項目時顯示的說明"></textarea></label>
           <div class="booking-admin-form-grid">
-            <label>項目服務時間（分鐘）<input id="bookingAdminDurationMinutes" type="number" min="1" max="720" step="1" value="30" required><small>例如 40 分鐘服務請輸入 40。預約數量 2 會計算為 80 分鐘。</small></label>
+            <label>項目服務時間（分鐘）<input id="bookingAdminDurationMinutes" type="number" min="1" max="720" step="1" value="30" required><small>例如 40 分鐘服務請輸入 40；數量 2 會計算為 80 分鐘。</small></label>
             <label>需要提前幾天預約<input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的開始時段。</small></label>
           </div>
           <label class="booking-admin-toggle"><input id="bookingAdminActive" type="checkbox" checked><span><strong>開放會員預約</strong><small>關閉後會員端不再顯示此項目，既有預約紀錄仍保留。</small></span></label>
@@ -123,8 +124,8 @@
       'bookingAdminSettingsForm', 'bookingAdminStartTime', 'bookingAdminEndTime', 'bookingAdminSettingsMessage', 'bookingAdminSaveSettingsButton',
       'bookingAdminNewServiceButton', 'bookingAdminServiceListCount', 'bookingAdminServiceList', 'bookingAdminServiceEmpty', 'bookingAdminQueue', 'bookingAdminQueueEmpty',
       'bookingAdminServiceModal', 'bookingAdminServiceModalTitle', 'bookingAdminCloseServiceModal', 'bookingAdminCancelServiceButton', 'bookingAdminServiceForm',
-      'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminDescription', 'bookingAdminDurationMinutes',
-      'bookingAdminAdvanceDays', 'bookingAdminActive', 'bookingAdminServiceMessage', 'bookingAdminSaveServiceButton'
+      'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminDurationMinutes', 'bookingAdminAdvanceDays',
+      'bookingAdminActive', 'bookingAdminServiceMessage', 'bookingAdminSaveServiceButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
 
@@ -189,35 +190,33 @@
     const endpoint = `${String(config.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-api`;
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), isWrite ? 30000 : 15000);
-    let response;
-    let text;
     try {
-      response = await fetch(endpoint, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': String(config.supabasePublishableKey || '') },
         cache: 'no-store',
         signal: controller.signal,
         body: JSON.stringify({ ...payload, action, clientType: 'admin', idToken }),
       });
-      text = await response.text();
-    } catch (_) {
+      const text = await response.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch { throw clientError(isWrite ? 'API_RESPONSE_UNCERTAIN' : 'API_RESPONSE_ERROR', isWrite ? '無法確認操作結果；請先更新資料確認。' : '預約服務回傳格式不正確。'); }
+      if (!response.ok || !data || data.ok !== true) {
+        const apiError = data && data.error || {};
+        const error = clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || '預約服務拒絕此操作。'));
+        error.details = apiError.details || null;
+        error.status = Number(data && data.status || response.status || 0);
+        throw error;
+      }
+      return data.data || {};
+    } catch (error) {
+      if (error?.code) throw error;
       if (isWrite) throw clientError('API_RESPONSE_UNCERTAIN', '無法確認這次預約管理操作是否已送達；請先更新資料確認，請勿重複送出。');
       throw clientError('NETWORK_ERROR', '目前無法連線預約服務，請檢查網路後重試。');
     } finally {
       window.clearTimeout(timer);
     }
-
-    let data;
-    try { data = JSON.parse(text); }
-    catch { throw clientError(isWrite ? 'API_RESPONSE_UNCERTAIN' : 'API_RESPONSE_ERROR', isWrite ? '無法確認操作結果；請先更新資料確認。' : '預約服務回傳格式不正確。'); }
-    if (!response.ok || !data || data.ok !== true) {
-      const apiError = data && data.error || {};
-      const error = clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || '預約服務拒絕此操作。'));
-      error.details = apiError.details || null;
-      error.status = Number(data && data.status || response.status || 0);
-      throw error;
-    }
-    return data.data || {};
   }
 
   function clientError(code, message) {
@@ -253,10 +252,16 @@
   }
 
   function renderAll() {
-    renderStats();
     renderSettings();
+    renderStats();
     renderServices();
     renderBookings();
+  }
+
+  function renderSettings() {
+    const settings = state.data.settings || {};
+    els.bookingAdminStartTime.value = String(settings.workStartTime || '09:00');
+    els.bookingAdminEndTime.value = String(settings.workEndTime || '17:00');
   }
 
   function renderStats() {
@@ -268,12 +273,6 @@
     els.bookingAdminConfirmedCount.textContent = String(bookings.filter((booking) => booking.status === 'confirmed').length);
     els.bookingTab.dataset.pendingCount = String(pending);
     els.bookingTab.setAttribute('aria-label', pending ? `預約，${pending} 筆待確認` : '預約');
-  }
-
-  function renderSettings() {
-    const settings = state.data.settings || {};
-    els.bookingAdminStartTime.value = String(settings.workStartTime || '09:00');
-    els.bookingAdminEndTime.value = String(settings.workEndTime || '17:00');
   }
 
   function renderServices() {
@@ -291,11 +290,6 @@
       const meta = document.createElement('small');
       meta.textContent = `服務 ${service.durationMinutes} 分鐘 · 提前 ${service.minAdvanceDays || 0} 天`;
       content.append(title, meta);
-      if (service.description) {
-        const description = document.createElement('small');
-        description.textContent = service.description;
-        content.appendChild(description);
-      }
       const status = document.createElement('span');
       status.className = `booking-admin-service-status ${service.isActive ? 'active' : 'inactive'}`;
       status.textContent = service.isActive ? '開放' : '停用';
@@ -312,7 +306,6 @@
     els.bookingAdminServiceId.value = editing ? service.serviceId : '';
     els.bookingAdminExpectedUpdatedAt.value = editing ? service.updatedAt || '' : '';
     els.bookingAdminServiceName.value = editing ? service.title || '' : '';
-    els.bookingAdminDescription.value = editing ? service.description || '' : '';
     els.bookingAdminDurationMinutes.value = String(editing ? service.durationMinutes || 30 : 30);
     els.bookingAdminAdvanceDays.value = String(editing ? service.minAdvanceDays || 0 : 0);
     els.bookingAdminActive.checked = editing ? service.isActive !== false : true;
@@ -364,7 +357,7 @@
         serviceId: els.bookingAdminServiceId.value,
         expectedUpdatedAt: els.bookingAdminExpectedUpdatedAt.value,
         title: els.bookingAdminServiceName.value,
-        description: els.bookingAdminDescription.value,
+        description: '',
         durationMinutes: Number(els.bookingAdminDurationMinutes.value),
         minAdvanceDays: Number(els.bookingAdminAdvanceDays.value),
         isActive: els.bookingAdminActive.checked,
