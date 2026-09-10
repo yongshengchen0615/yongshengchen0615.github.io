@@ -2,6 +2,7 @@
   'use strict';
 
   const REQUEST_TIMEOUT_MS = 15000;
+  const MIN_RESYNC_INTERVAL_MS = 1500;
   let realtimeClient = null;
   let realtimeChannel = null;
   let realtimeTimer = null;
@@ -86,36 +87,74 @@
   }
 
   function subscribeRealtime(config, onUpdate) {
-    if (config.realtimeEnabled === false || typeof onUpdate !== 'function') return () => {};
-    if (!window.supabase || typeof window.supabase.createClient !== 'function') return () => {};
-    if (!realtimeClient) {
-      realtimeClient = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
-        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
-      });
-    }
-    if (realtimeChannel) return () => {};
+    if (typeof onUpdate !== 'function') return () => {};
+
+    let disposed = false;
+    let resyncPending = false;
+    let lastResyncAt = 0;
+    let subscribedOnce = false;
+
+    const runResync = () => {
+      if (disposed || document.visibilityState === 'hidden' || !navigator.onLine) return;
+      const now = Date.now();
+      if (resyncPending || now - lastResyncAt < MIN_RESYNC_INTERVAL_MS) return;
+      lastResyncAt = now;
+      resyncPending = true;
+      Promise.resolve(onUpdate()).catch(() => {}).finally(() => { resyncPending = false; });
+    };
+
     const schedule = () => {
-      if (realtimeTimer !== null) return;
+      if (disposed || realtimeTimer !== null) return;
       realtimeTimer = window.setTimeout(() => {
         realtimeTimer = null;
-        Promise.resolve(onUpdate()).catch(() => {});
+        runResync();
       }, 450);
     };
-    realtimeChannel = realtimeClient
-      .channel('booking-member-sync')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
-        const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
-        const scope = String(row.scope || '');
-        const type = String(row.event_type || '');
-        if ((scope === 'all' || scope === 'member') && type.startsWith('booking.')) schedule();
-      })
-      .subscribe();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') runResync();
+    };
+    const onPageShow = () => runResync();
+    const onOnline = () => runResync();
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('online', onOnline);
+
+    if (config.realtimeEnabled !== false && window.supabase && typeof window.supabase.createClient === 'function') {
+      if (!realtimeClient) {
+        realtimeClient = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
+          auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+        });
+      }
+
+      if (!realtimeChannel) {
+        realtimeChannel = realtimeClient
+          .channel('booking-member-sync')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
+            const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
+            const scope = String(row.scope || '');
+            if (scope === 'all' || scope === 'member') schedule();
+          })
+          .subscribe((status) => {
+            if (status !== 'SUBSCRIBED') return;
+            if (subscribedOnce) runResync();
+            else subscribedOnce = true;
+          });
+      }
+    }
+
     return () => {
+      if (disposed) return;
+      disposed = true;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('online', onOnline);
       if (realtimeTimer !== null) window.clearTimeout(realtimeTimer);
       realtimeTimer = null;
       const channel = realtimeChannel;
       realtimeChannel = null;
-      try { if (channel) Promise.resolve(realtimeClient.removeChannel(channel)).catch(() => {}); } catch (_) {}
+      try { if (channel && realtimeClient) Promise.resolve(realtimeClient.removeChannel(channel)).catch(() => {}); } catch (_) {}
     };
   }
 
