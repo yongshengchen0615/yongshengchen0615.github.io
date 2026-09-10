@@ -94,3 +94,9 @@ button { line-height: 1.35; }
 @keyframes login-status-spin { to { transform: rotate(360deg); } }
 @keyframes login-progress-shimmer { to { transform: translateX(280%); } }
 @media (prefers-reduced-motion: reduce) { .login-status::before, .login-progress-bar::after { animation: none; }.login-progress-bar { transition: none; } }
+
+/* Loading UI: keep status text, hide progress bar and percentage. */
+.login-progress,
+.state-view.login-loading .login-progress-value {
+  display: none !important;
+}

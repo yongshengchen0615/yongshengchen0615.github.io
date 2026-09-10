@@ -162,3 +162,9 @@ button { line-height: 1.35; }
 .card-guidance-grid strong { display: block; color: var(--ink); font-size: 12px; }
 .card-guidance-grid p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 620px) { .card-guidance-panel { padding: 18px; }.card-guidance-grid { grid-template-columns: 1fr; } }
+
+/* Loading UI: keep status text, hide progress bar and percentage. */
+.login-progress,
+.state-view.login-loading .login-progress-value {
+  display: none !important;
+}
