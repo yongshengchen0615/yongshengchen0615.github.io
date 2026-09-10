@@ -72,7 +72,7 @@ function requireText(value: unknown, label: string, max = 100): string {
 }
 
 function activityUrl(value: unknown): string {
-  const raw = asText(value, 2049);
+  const raw = String(value ?? "").trim();
   if (!raw) return "";
   if (raw.length > 2048 || /\s/.test(raw)) {
     throw new ApiError(400, "INVALID_ACTIVITY_URL", "活動連結格式不正確。");
@@ -87,6 +87,14 @@ function activityUrl(value: unknown): string {
     throw new ApiError(400, "INVALID_ACTIVITY_URL", "活動連結必須使用 https:// 網址。");
   }
   return parsed.toString();
+}
+
+function activityLinkName(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (raw.length > 120 || /[\u0000-\u001F\u007F]/.test(raw)) {
+    throw new ApiError(400, "INVALID_ACTIVITY_LINK_NAME", "連結名稱最多 120 個字，且不可包含控制字元。");
+  }
+  return raw;
 }
 
 function dbClient(): SupabaseClient {
@@ -170,21 +178,35 @@ function linkMap(rows: any[]): Record<string, string> {
   return Object.fromEntries(rows.map((row) => [String(row.event_ticket_id), String(row.activity_url || "")]));
 }
 
+function linkNameMap(rows: any[]): Record<string, string> {
+  return Object.fromEntries(rows.map((row) => [String(row.event_ticket_id), String(row.activity_link_name || "")]));
+}
+
+function linkPayload(rows: any[]): Json {
+  return {
+    activityLinks: linkMap(rows),
+    activityLinkNames: linkNameMap(rows),
+  };
+}
+
 async function adminList(supabase: SupabaseClient): Promise<Json> {
   const result = await supabase
     .from("event_tickets")
-    .select("event_ticket_id,activity_url")
+    .select("event_ticket_id,activity_url,activity_link_name")
     .is("deleted_at", null);
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "活動連結資料暫時無法讀取。");
-  return { activityLinks: linkMap(result.data || []) };
+  return linkPayload(result.data || []);
 }
 
 async function adminSave(supabase: SupabaseClient, actor: string, body: Json): Promise<Json> {
   const eventTicketId = requireText(body.eventTicketId, "活動票券識別", 120);
   const nextUrl = activityUrl(body.activityUrl);
+  const requestedName = activityLinkName(body.activityLinkName);
+  const nextName = nextUrl ? requestedName : "";
+
   const current = await supabase
     .from("event_tickets")
-    .select("id,event_ticket_id,activity_url")
+    .select("id,event_ticket_id,activity_url,activity_link_name")
     .eq("event_ticket_id", eventTicketId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -192,18 +214,28 @@ async function adminSave(supabase: SupabaseClient, actor: string, body: Json): P
   if (!current.data) throw new ApiError(404, "EVENT_TICKET_NOT_FOUND", "找不到指定活動票券。");
 
   const currentUrl = String(current.data.activity_url || "");
+  const currentName = String(current.data.activity_link_name || "");
+
   if (Object.prototype.hasOwnProperty.call(body, "expectedActivityUrl")) {
     const expected = activityUrl(body.expectedActivityUrl);
     if (expected !== currentUrl) throw new ApiError(409, "CONFLICT", "活動連結已被其他管理者更新，請重新整理後再試。");
   }
-  if (currentUrl === nextUrl) return { eventTicketId, activityUrl: nextUrl, changed: false };
+  if (Object.prototype.hasOwnProperty.call(body, "expectedActivityLinkName")) {
+    const expectedName = activityLinkName(body.expectedActivityLinkName);
+    if (expectedName !== currentName) throw new ApiError(409, "CONFLICT", "活動連結名稱已被其他管理者更新，請重新整理後再試。");
+  }
+
+  if (currentUrl === nextUrl && currentName === nextName) {
+    return { eventTicketId, activityUrl: nextUrl, activityLinkName: nextName, changed: false };
+  }
 
   const updated = await supabase
     .from("event_tickets")
-    .update({ activity_url: nextUrl })
+    .update({ activity_url: nextUrl, activity_link_name: nextName })
     .eq("id", current.data.id)
     .eq("activity_url", currentUrl)
-    .select("event_ticket_id,activity_url")
+    .eq("activity_link_name", currentName)
+    .select("event_ticket_id,activity_url,activity_link_name")
     .maybeSingle();
   if (updated.error) throw new ApiError(500, "DATABASE_ERROR", "活動連結暫時無法儲存。");
   if (!updated.data) throw new ApiError(409, "CONFLICT", "活動連結已被其他管理者更新，請重新整理後再試。");
@@ -216,28 +248,37 @@ async function adminSave(supabase: SupabaseClient, actor: string, body: Json): P
     target_type: "event_ticket",
     target_id: eventTicketId,
     result: "success",
-    detail: { hadActivityUrl: Boolean(currentUrl), hasActivityUrl: Boolean(nextUrl) },
+    detail: {
+      hadActivityUrl: Boolean(currentUrl),
+      hasActivityUrl: Boolean(nextUrl),
+      linkNameChanged: currentName !== nextName,
+    },
   });
   await supabase.from("realtime_events").insert([
     { scope: "event", event_type: "admin.event-ticket-link.save" },
     { scope: "admin", event_type: "admin.event-ticket-link.save" },
   ]);
-  return { eventTicketId, activityUrl: String(updated.data.activity_url || ""), changed: true };
+  return {
+    eventTicketId,
+    activityUrl: String(updated.data.activity_url || ""),
+    activityLinkName: String(updated.data.activity_link_name || ""),
+    changed: true,
+  };
 }
 
 async function memberList(supabase: SupabaseClient, member: any, body: Json): Promise<Json> {
   const ids = Array.isArray(body.eventTicketIds)
     ? [...new Set(body.eventTicketIds.map((value) => asText(value, 120)).filter(Boolean))].slice(0, 100)
     : [];
-  if (!ids.length) return { activityLinks: {} };
+  if (!ids.length) return { activityLinks: {}, activityLinkNames: {} };
 
   const rowsResult = await supabase
     .from("event_tickets")
-    .select("id,event_ticket_id,activity_url,status,deleted_at")
+    .select("id,event_ticket_id,activity_url,activity_link_name,status,deleted_at")
     .in("event_ticket_id", ids);
   if (rowsResult.error) throw new ApiError(500, "DATABASE_ERROR", "活動連結資料暫時無法讀取。");
   const rows = rowsResult.data || [];
-  if (!rows.length) return { activityLinks: {} };
+  if (!rows.length) return { activityLinks: {}, activityLinkNames: {} };
 
   const internalIds = rows.map((row) => row.id);
   const claims = await supabase
@@ -251,7 +292,7 @@ async function memberList(supabase: SupabaseClient, member: any, body: Json): Pr
   const allowedRows = rows.filter((row) =>
     (row.status === "active" && !row.deleted_at) || claimedIds.has(String(row.id))
   );
-  return { activityLinks: linkMap(allowedRows) };
+  return linkPayload(allowedRows);
 }
 
 async function handleRequest(request: Request): Promise<Response> {
@@ -259,7 +300,7 @@ async function handleRequest(request: Request): Promise<Response> {
   try {
     if (origin && !allowedOrigins().has(origin)) throw new ApiError(403, "ORIGIN_NOT_ALLOWED", "此網站來源未被允許使用活動連結服務。");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    if (request.method === "GET") return json(origin, { ok: true, status: 200, data: { service: "event-ticket-links", version: "1.0.0" } });
+    if (request.method === "GET") return json(origin, { ok: true, status: 200, data: { service: "event-ticket-links", version: "1.1.0" } });
     if (request.method !== "POST") throw new ApiError(405, "METHOD_NOT_ALLOWED", "不支援的 HTTP method。");
 
     const raw = await request.text();
