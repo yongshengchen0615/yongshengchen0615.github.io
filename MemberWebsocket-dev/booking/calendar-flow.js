@@ -4,13 +4,17 @@
   const state = {
     month: '',
     selectedDate: '',
-    occupiedByDate: new Map(),
+    config: null,
+    occupancyRequestSeq: 0,
+    reloadTimer: 0,
+    monthlyOccupiedByDate: new Map(),
+    liveOccupiedByDate: new Map(),
   };
 
   const els = {};
 
   window.addEventListener('DOMContentLoaded', () => {
-    ['calendarMonthLabel', 'calendarGrid', 'previousMonthButton', 'nextMonthButton', 'appointmentPanel', 'selectedDateSummary', 'changeDateButton', 'bookingDate', 'serviceSelect', 'slotGrid']
+    ['bookingView', 'calendarMonthLabel', 'calendarGrid', 'previousMonthButton', 'nextMonthButton', 'appointmentPanel', 'selectedDateSummary', 'changeDateButton', 'bookingDate', 'serviceSelect', 'slotGrid', 'bookingList']
       .forEach((id) => { els[id] = document.getElementById(id); });
 
     if (!els.calendarGrid || !els.bookingDate || !els.serviceSelect) return;
@@ -24,8 +28,21 @@
     els.changeDateButton?.addEventListener('click', focusSelectedDate);
     els.serviceSelect.addEventListener('change', syncAfterServiceChange);
 
-    const observer = new MutationObserver(syncOccupiedSlots);
-    observer.observe(els.slotGrid, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+    const slotObserver = new MutationObserver(syncOccupiedSlotsFromVisibleGrid);
+    slotObserver.observe(els.slotGrid, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+
+    if (els.bookingList) {
+      const bookingObserver = new MutationObserver(scheduleMonthOccupancyReload);
+      bookingObserver.observe(els.bookingList, { childList: true, subtree: true });
+    }
+
+    if (els.bookingView) {
+      const viewObserver = new MutationObserver(() => {
+        if (!els.bookingView.classList.contains('hidden')) loadMonthOccupancy();
+      });
+      viewObserver.observe(els.bookingView, { attributes: true, attributeFilter: ['class'] });
+      if (!els.bookingView.classList.contains('hidden')) loadMonthOccupancy();
+    }
   });
 
   function taipeiDate() {
@@ -71,6 +88,14 @@
     if (next < todayMonth) return;
     state.month = next;
     renderCalendar();
+    loadMonthOccupancy();
+  }
+
+  function occupiedTimesForDate(date) {
+    return [...new Set([
+      ...(state.monthlyOccupiedByDate.get(date) || []),
+      ...(state.liveOccupiedByDate.get(date) || []),
+    ])].sort();
   }
 
   function renderCalendar() {
@@ -109,9 +134,10 @@
       number.textContent = String(day);
       button.appendChild(number);
 
-      const occupied = state.occupiedByDate.get(date) || [];
+      const occupied = occupiedTimesForDate(date);
       if (occupied.length) {
         button.classList.add('has-booking');
+        button.setAttribute('aria-label', `${formatDate(date)}，已有 ${occupied.length} 個時段被預約`);
         const times = document.createElement('span');
         times.className = 'calendar-booking-times';
         occupied.slice(0, 2).forEach((time) => {
@@ -130,6 +156,45 @@
       if (!button.disabled) button.addEventListener('click', () => selectDate(date));
       els.calendarGrid.appendChild(button);
     }
+  }
+
+  async function loadMonthOccupancy() {
+    if (!window.BookingSystem || !window.liff || typeof window.liff.isLoggedIn !== 'function' || !window.liff.isLoggedIn()) return;
+    const idToken = typeof window.liff.getIDToken === 'function' ? window.liff.getIDToken() : '';
+    if (!idToken) return;
+
+    const month = state.month;
+    const requestSeq = ++state.occupancyRequestSeq;
+    try {
+      state.config = state.config || await window.BookingSystem.loadConfig();
+      const result = await window.BookingSystem.request(state.config, 'member', idToken, 'user.booking.calendar', { month });
+      if (requestSeq !== state.occupancyRequestSeq || month !== state.month) return;
+
+      clearMonthEntries(state.monthlyOccupiedByDate, month);
+      clearMonthEntries(state.liveOccupiedByDate, month);
+      for (const item of Array.isArray(result.occupiedDates) ? result.occupiedDates : []) {
+        const date = String(item?.date || '').slice(0, 10);
+        if (!date.startsWith(`${month}-`)) continue;
+        const times = Array.isArray(item?.times)
+          ? [...new Set(item.times.map((time) => String(time || '').slice(0, 5)).filter((time) => /^\d{2}:\d{2}$/.test(time)))].sort()
+          : [];
+        if (times.length) state.monthlyOccupiedByDate.set(date, times);
+      }
+      renderCalendar();
+    } catch (_) {
+      // Keep the last successfully loaded occupancy summary. Slot-level API remains authoritative.
+    }
+  }
+
+  function clearMonthEntries(map, month) {
+    for (const date of [...map.keys()]) {
+      if (String(date).startsWith(`${month}-`)) map.delete(date);
+    }
+  }
+
+  function scheduleMonthOccupancyReload() {
+    window.clearTimeout(state.reloadTimer);
+    state.reloadTimer = window.setTimeout(() => loadMonthOccupancy(), 350);
   }
 
   function selectDate(date) {
@@ -155,11 +220,12 @@
       state.selectedDate = actualDate;
       state.month = actualDate.slice(0, 7);
       renderCalendar();
+      loadMonthOccupancy();
     }
     if (els.selectedDateSummary) els.selectedDateSummary.textContent = `${formatDate(actualDate)}｜請選擇預約項目與時間`;
   }
 
-  function syncOccupiedSlots() {
+  function syncOccupiedSlotsFromVisibleGrid() {
     if (!state.selectedDate) return;
     const today = taipeiDate();
     const nowMinutes = taipeiMinutes();
@@ -168,7 +234,8 @@
       .filter(Boolean)
       .filter((time) => state.selectedDate > today || timeToMinutes(time) > nowMinutes);
 
-    state.occupiedByDate.set(state.selectedDate, [...new Set(occupied)]);
+    if (occupied.length) state.liveOccupiedByDate.set(state.selectedDate, [...new Set(occupied)].sort());
+    else state.liveOccupiedByDate.delete(state.selectedDate);
     renderCalendar();
   }
 
