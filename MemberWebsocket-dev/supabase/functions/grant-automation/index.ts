@@ -104,9 +104,9 @@ async function authorizeAdmin(supabase: SupabaseClient, identity: { lineUserId:s
     await supabase.from("admins").update({ display_name:identity.displayName,updated_at:new Date().toISOString() }).eq("id",result.data.id);
   }
 }
-async function consumeRateLimit(supabase: SupabaseClient, principal: string): Promise<void> {
+async function consumeRateLimit(supabase: SupabaseClient, principal: string, isWrite: boolean): Promise<void> {
   const result = await supabase.rpc("consume_api_rate_limit",{
-    p_principal_hash:await sha256(principal),p_is_write:true,p_cost:1,p_read_limit:READ_LIMIT,p_write_limit:WRITE_LIMIT,
+    p_principal_hash:await sha256(principal),p_is_write:isWrite,p_cost:1,p_read_limit:READ_LIMIT,p_write_limit:WRITE_LIMIT,
   });
   if (result.error) throw new ApiError(503,"RATE_LIMIT_UNAVAILABLE","無法確認請求頻率限制。");
   if (!result.data) throw new ApiError(429,"RATE_LIMITED","請求過於密集，請稍後再試。");
@@ -225,7 +225,7 @@ async function handleGrant(supabase: SupabaseClient, identity: { lineUserId:stri
   const mode = notificationMode(body.notificationMode);
   const messagePresetId = asText(body.messagePresetId,120);
   let presetMessage = "";
-  if (messagePresetId) {
+  if (mode !== "none" && messagePresetId) {
     const preset = await supabase.from("grant_message_presets").select("message,status").eq("preset_id",messagePresetId).eq("status","active").maybeSingle();
     if (preset.error) throw mapError(preset.error);
     if (!preset.data) throw new ApiError(400,"MESSAGE_PRESET_NOT_AVAILABLE","選擇的預設訊息目前無法使用。");
@@ -302,6 +302,11 @@ function calendarClient(row: any): Json {
     createdAt:row.created_at,updatedAt:row.updated_at,
   };
 }
+async function handleCalendarList(supabase: SupabaseClient): Promise<Json> {
+  const rows = await supabase.from("calendar_items").select("*").order("starts_on",{ ascending:true }).order("created_at",{ ascending:true });
+  if (rows.error) throw mapError(rows.error);
+  return { calendarItems:(rows.data || []).map(calendarClient) };
+}
 async function handleCalendarSave(supabase: SupabaseClient, identity: { lineUserId:string }, body: Json): Promise<Json> {
   const item = body.calendarItem && typeof body.calendarItem === "object" ? body.calendarItem as Json : {};
   const result = await supabase.rpc("save_calendar_item_with_bonus",{
@@ -323,14 +328,17 @@ Deno.serve(async (request: Request) => {
     if (length > MAX_REQUEST_BYTES) throw new ApiError(413,"REQUEST_TOO_LARGE","請求內容過大。");
     const body = await request.json() as Json;
     const action = requireText(body.action,"API action",100);
-    if (!["admin.member-grants.add","admin.calendar-items.save"].includes(action)) throw new ApiError(404,"ACTION_NOT_FOUND","不支援的 API action。");
+    if (!["admin.member-grants.add","admin.calendar-items.save","admin.calendar-items.list"].includes(action)) throw new ApiError(404,"ACTION_NOT_FOUND","不支援的 API action。");
     const identity = await verifyAdminIdToken(requireText(body.idToken,"LINE ID token",5000));
     const supabase = dbClient();
     await authorizeAdmin(supabase,identity);
-    await consumeRateLimit(supabase,identity.lineUserId);
+    const isWrite = action !== "admin.calendar-items.list";
+    await consumeRateLimit(supabase,identity.lineUserId,isWrite);
     const data = action === "admin.member-grants.add"
       ? await handleGrant(supabase,identity,body)
-      : await handleCalendarSave(supabase,identity,body);
+      : action === "admin.calendar-items.save"
+        ? await handleCalendarSave(supabase,identity,body)
+        : await handleCalendarList(supabase);
     return response(origin,{ ok:true,status:200,data },200);
   } catch (error) {
     const apiError = mapError(error);
