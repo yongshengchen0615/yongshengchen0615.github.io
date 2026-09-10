@@ -27,6 +27,7 @@ jobs:
           deno-version: v2.x
       - name: Check browser JavaScript syntax
         run: |
+          node --check MemberWebsocket-dev/realtime-resync.js
           node --check MemberWebsocket-dev/admin/common.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
@@ -64,5 +65,14 @@ jobs:
             grep -q "table: 'realtime_events'" "$file"
             grep -q "scope === 'all' || scope === clientType" "$file"
           done
+          for file in \
+            MemberWebsocket-dev/member/index.html \
+            MemberWebsocket-dev/points/index.html \
+            MemberWebsocket-dev/event/index.html \
+            MemberWebsocket-dev/calendar/index.html; do
+            grep -q '../realtime-resync.js' "$file"
+          done
+          grep -q 'visibilitychange' MemberWebsocket-dev/realtime-resync.js
+          grep -q "addEventListener('online'" MemberWebsocket-dev/realtime-resync.js
           grep -q 'notify_admin_config_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
           grep -q 'notify_admin_grant_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
