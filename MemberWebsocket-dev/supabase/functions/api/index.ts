@@ -338,7 +338,7 @@ function profileFrom(member: any, settings: any[], serviceMinutesTotal: number):
       nextTierLabel: next?.tier_label || "",
       nextRequiredServiceMinutes: next ? Number(next.required_service_minutes || 0) : null,
       remainingServiceMinutes: next ? Math.max(0,Number(next.required_service_minutes || 0) - serviceMinutesTotal) : 0,
-      isHighestTier: !next,
+      isHighestTier: !next && current.tier_key === TIER_KEYS[TIER_KEYS.length - 1],
     },
   };
 }
