@@ -30,6 +30,7 @@ jobs:
           node --check MemberWebsocket-dev/admin/common.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
+          node --check MemberWebsocket-dev/calendar/tier-sync.js
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/grant-automation/index.ts
@@ -40,3 +41,8 @@ jobs:
           grep -q 'supabaseGrantAutomationUrl' MemberWebsocket-dev/config.json
           grep -q 'grant_member_benefits_with_event_bonus' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
           grep -q 'claim_due_grant_messages' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
+      - name: Check calendar tier sync wiring
+        run: |
+          grep -q 'tier-sync.js' MemberWebsocket-dev/calendar/index.html
+          grep -q 'allowedTierLabels' MemberWebsocket-dev/calendar/tier-sync.js
+          grep -q 'tierEligible' MemberWebsocket-dev/calendar/tier-sync.js
