@@ -74,10 +74,11 @@
   }
 
   function decorateGrantPayload(payload) {
+    const mode = selectedNotificationMode();
     return {
       ...payload,
-      notificationMode: selectedNotificationMode(),
-      scheduledAt: selectedNotificationMode() === 'scheduled' ? scheduledAtIso() : ''
+      notificationMode: mode,
+      scheduledAt: mode === 'scheduled' ? scheduledAtIso() : ''
     };
   }
 
@@ -91,12 +92,29 @@
     };
   }
 
+  async function mergeCalendarBonusList(config, idToken, result) {
+    cacheCalendarResult(result);
+    try {
+      const bonusResult = await automationRequest(config, idToken, 'admin.calendar-items.list', {});
+      if (Array.isArray(bonusResult.calendarItems)) result.calendarItems = bonusResult.calendarItems;
+    } catch (_) {
+      // Bootstrap must remain usable if the optional extension endpoint is unavailable.
+    }
+    return cacheCalendarResult(result);
+  }
+
   function request(config, clientType, idToken, action, payload = {}) {
     if (clientType === 'admin' && action === 'admin.member-grants.add') {
       return automationRequest(config, idToken, action, decorateGrantPayload(payload));
     }
     if (clientType === 'admin' && action === 'admin.calendar-items.save') {
       return automationRequest(config, idToken, action, decorateCalendarPayload(payload));
+    }
+    if (clientType === 'admin' && action === 'admin.calendar-items.list') {
+      return automationRequest(config, idToken, action, payload);
+    }
+    if (clientType === 'admin' && action === 'admin.bootstrap') {
+      return Promise.resolve(originalRequest(config, clientType, idToken, action, payload)).then((result) => mergeCalendarBonusList(config, idToken, result));
     }
     return Promise.resolve(originalRequest(config, clientType, idToken, action, payload)).then(cacheCalendarResult);
   }
