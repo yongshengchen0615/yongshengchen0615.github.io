@@ -6,7 +6,7 @@
     idToken: '',
     data: { today: '', settings: {}, services: [], bookings: [] },
     profile: {},
-    quantities: new Map(),
+    selections: [],
     selectedSlot: null,
     loadingSlots: false,
     slotRequestSequence: 0,
@@ -25,10 +25,10 @@
     [
       'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'bookingView',
       'memberName', 'memberProfileName', 'memberCode', 'memberTier', 'logoutButton', 'workHoursBadge',
-      'bookingForm', 'servicePicker', 'serviceEmpty', 'selectionSummary', 'bookingDate', 'slotHint', 'slotGrid',
-      'memberNote', 'formMessage', 'submitBookingButton', 'refreshButton', 'bookingList', 'bookingEmpty',
-      'bookingConfirmModal', 'closeBookingConfirmButton', 'cancelBookingConfirmButton', 'bookingConfirmSummary',
-      'bookingConfirmMessage', 'confirmBookingButton'
+      'bookingForm', 'servicePicker', 'serviceEmpty', 'selectedServiceList', 'selectedServiceEmpty', 'selectionSummary',
+      'bookingDate', 'slotHint', 'slotGrid', 'memberNote', 'formMessage', 'submitBookingButton', 'refreshButton',
+      'bookingList', 'bookingEmpty', 'bookingConfirmModal', 'closeBookingConfirmButton', 'cancelBookingConfirmButton',
+      'bookingConfirmSummary', 'bookingConfirmMessage', 'confirmBookingButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
     els.retryButton.addEventListener('click', () => window.location.reload());
@@ -92,7 +92,7 @@
 
   function pruneSelections() {
     const valid = new Set((state.data.services || []).map((service) => service.serviceId));
-    for (const id of [...state.quantities.keys()]) if (!valid.has(id)) state.quantities.delete(id);
+    state.selections = state.selections.filter((selection) => valid.has(selection.serviceId));
   }
 
   function renderMemberProfile() {
@@ -115,17 +115,15 @@
     const services = state.data.services || [];
     els.servicePicker.replaceChildren();
     els.serviceEmpty.classList.toggle('hidden', services.length > 0);
-    services.forEach((service, index) => {
-      const selectedQuantity = state.quantities.get(service.serviceId) || 0;
-      const row = document.createElement('article');
-      row.className = `service-choice${selectedQuantity ? ' selected' : ''}`;
 
-      const checkLabel = document.createElement('label');
-      checkLabel.className = 'service-choice-main';
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = selectedQuantity > 0;
-      checkbox.setAttribute('aria-label', `選擇 ${service.title}`);
+    services.forEach((service, index) => {
+      const alreadySelected = state.selections.some((selection) => selection.serviceId === service.serviceId);
+      const row = document.createElement('article');
+      row.className = `service-choice${alreadySelected ? ' selected' : ''}`;
+      row.dataset.serviceIndex = String(index);
+
+      const main = document.createElement('div');
+      main.className = 'service-choice-main';
       const text = document.createElement('span');
       const title = document.createElement('strong');
       title.textContent = service.title;
@@ -137,48 +135,92 @@
         description.textContent = service.description;
         text.append(description);
       }
-      checkLabel.append(checkbox, text);
+      main.appendChild(text);
 
-      const quantityLabel = document.createElement('label');
-      quantityLabel.className = 'service-quantity';
-      const quantityText = document.createElement('span');
-      quantityText.textContent = '數量';
-      const quantity = document.createElement('select');
-      quantity.setAttribute('aria-label', `${service.title} 數量`);
-      quantity.append(new Option('1', '1'), new Option('2', '2'));
-      quantity.value = String(selectedQuantity || 1);
-      quantity.disabled = !selectedQuantity;
-      quantityLabel.append(quantityText, quantity);
+      const addButton = document.createElement('button');
+      addButton.type = 'button';
+      addButton.className = 'service-add-button';
+      addButton.textContent = '增加';
+      addButton.setAttribute('aria-label', `增加 ${service.title}`);
+      addButton.addEventListener('click', () => addSelection(service));
 
-      checkbox.addEventListener('change', () => {
-        if (checkbox.checked) state.quantities.set(service.serviceId, Number(quantity.value || 1));
-        else state.quantities.delete(service.serviceId);
-        selectionChanged();
-      });
-      quantity.addEventListener('change', () => {
-        if (checkbox.checked) state.quantities.set(service.serviceId, Number(quantity.value || 1));
-        selectionChanged();
-      });
-
-      row.dataset.serviceIndex = String(index);
-      row.append(checkLabel, quantityLabel);
+      row.append(main, addButton);
       els.servicePicker.appendChild(row);
+    });
+
+    renderSelectedServices();
+  }
+
+  function renderSelectedServices() {
+    const rows = selectedServiceRows();
+    els.selectedServiceList.replaceChildren();
+    els.selectedServiceEmpty.classList.toggle('hidden', rows.length > 0);
+
+    rows.forEach((item) => {
+      const row = document.createElement('article');
+      row.className = 'selected-service-item';
+
+      const text = document.createElement('div');
+      text.className = 'selected-service-main';
+      const title = document.createElement('strong');
+      title.textContent = item.service.title;
+      const meta = document.createElement('small');
+      meta.textContent = `服務 ${item.service.durationMinutes} 分鐘${item.service.minAdvanceDays ? ` · 需提前 ${item.service.minAdvanceDays} 天` : ''}`;
+      text.append(title, meta);
+
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'selected-service-remove';
+      removeButton.textContent = '移除';
+      removeButton.setAttribute('aria-label', `移除 ${item.service.title}`);
+      removeButton.addEventListener('click', () => removeSelection(item.selectionId));
+
+      row.append(text, removeButton);
+      els.selectedServiceList.appendChild(row);
     });
   }
 
+  function addSelection(service) {
+    const duplicateCount = state.selections.filter((selection) => selection.serviceId === service.serviceId).length;
+    if (duplicateCount >= 2) {
+      showFormMessage(`${service.title} 已加入兩次，無法再重複加入。`, 'error');
+      return;
+    }
+    if (duplicateCount > 0 && !window.confirm(`${service.title} 已有選擇，是否要再加入？`)) return;
+
+    state.selections.push({
+      selectionId: crypto.randomUUID(),
+      serviceId: service.serviceId,
+    });
+    selectionChanged();
+  }
+
+  function removeSelection(selectionId) {
+    const index = state.selections.findIndex((selection) => selection.selectionId === selectionId);
+    if (index < 0) return;
+    state.selections.splice(index, 1);
+    selectionChanged();
+  }
+
   function selectedItems() {
-    return [...state.quantities.entries()]
-      .filter(([, quantity]) => quantity >= 1 && quantity <= 2)
-      .map(([serviceId, quantity]) => ({ serviceId, quantity }));
+    const counts = new Map();
+    for (const selection of state.selections) {
+      counts.set(selection.serviceId, (counts.get(selection.serviceId) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .filter(([, count]) => count >= 1 && count <= 2)
+      .map(([serviceId, count]) => ({ serviceId, quantity: count }));
   }
 
   function selectedServiceRows() {
     const byId = new Map((state.data.services || []).map((service) => [service.serviceId, service]));
-    return selectedItems().map((item) => ({ ...item, service: byId.get(item.serviceId) })).filter((item) => item.service);
+    return state.selections
+      .map((selection) => ({ ...selection, service: byId.get(selection.serviceId) }))
+      .filter((item) => item.service);
   }
 
   function totalDurationMinutes() {
-    return selectedServiceRows().reduce((sum, item) => sum + Number(item.service.durationMinutes || 0) * item.quantity, 0);
+    return selectedServiceRows().reduce((sum, item) => sum + Number(item.service.durationMinutes || 0), 0);
   }
 
   function maxAdvanceDays() {
@@ -193,11 +235,11 @@
   }
 
   function applySelectionConstraints(loadAfter) {
-    const items = selectedItems();
+    const rows = selectedServiceRows();
     els.slotGrid.replaceChildren();
     state.selectedSlot = null;
     els.submitBookingButton.disabled = true;
-    if (!items.length) {
+    if (!rows.length) {
       els.bookingDate.value = '';
       els.bookingDate.disabled = true;
       els.selectionSummary.classList.add('hidden');
@@ -212,7 +254,7 @@
     els.bookingDate.disabled = false;
     if (!els.bookingDate.value || els.bookingDate.value < minimumDate) els.bookingDate.value = minimumDate;
     els.selectionSummary.classList.remove('hidden');
-    els.selectionSummary.textContent = `已選 ${items.length} 個項目 · 總服務時間 ${total} 分鐘 · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}`;
+    els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 總服務時間 ${total} 分鐘 · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}`;
     els.slotHint.textContent = '正在計算整段服務時間可使用的時段…';
     if (loadAfter && els.bookingDate.value) loadSlots();
   }
@@ -306,7 +348,7 @@
     const list = document.createElement('ul');
     for (const item of items) {
       const li = document.createElement('li');
-      li.textContent = `${item.service.title} × ${item.quantity}（${item.service.durationMinutes} 分鐘/份）`;
+      li.textContent = `${item.service.title}（${item.service.durationMinutes} 分鐘）`;
       list.appendChild(li);
     }
     fragment.appendChild(list);
@@ -356,7 +398,7 @@
       state.data.bookings = [result.booking, ...(state.data.bookings || []).filter((item) => item.bookingId !== result.booking.bookingId)];
       els.bookingConfirmModal.classList.add('hidden');
       els.memberNote.value = '';
-      state.quantities.clear();
+      state.selections = [];
       state.selectedSlot = null;
       renderServices();
       applySelectionConstraints(false);
@@ -371,7 +413,7 @@
           const recovered = (fresh.bookings || []).find((item) => item.requestId === requestId);
           if (recovered) {
             els.bookingConfirmModal.classList.add('hidden');
-            state.quantities.clear();
+            state.selections = [];
             state.selectedSlot = null;
             renderServices();
             applySelectionConstraints(false);
@@ -419,9 +461,12 @@
         const serviceList = document.createElement('ul');
         serviceList.className = 'booking-service-items';
         booking.items.forEach((service) => {
-          const li = document.createElement('li');
-          li.textContent = `${service.serviceTitle} × ${service.quantity}`;
-          serviceList.appendChild(li);
+          const repeat = Math.max(1, Number(service.quantity || 1));
+          for (let index = 0; index < repeat; index += 1) {
+            const li = document.createElement('li');
+            li.textContent = service.serviceTitle;
+            serviceList.appendChild(li);
+          }
         });
         item.appendChild(serviceList);
       }
