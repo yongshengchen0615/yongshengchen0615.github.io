@@ -85,6 +85,15 @@
   margin-top: 5px;
 }
 
+#calendarPanel .admin-calendar-item-row[data-event-ticket-calendar-managed="true"] {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+#calendarPanel .admin-calendar-item-row[data-event-ticket-calendar-managed="true"] .admin-calendar-item {
+  width: 100%;
+}
+
 #calendarPanel .calendar-batch-editor {
   box-shadow: 0 10px 24px rgba(37, 60, 49, .04);
 }
@@ -106,6 +115,35 @@
 
 #calendarEditorModal #calendarItemForm textarea {
   min-height: 104px;
+}
+
+#eventTicketCalendarInfoModal .editor-modal-card {
+  width: min(100%, 640px);
+  max-height: min(88dvh, 760px);
+}
+
+#eventTicketCalendarInfoContent {
+  display: grid;
+  gap: 0;
+}
+
+#eventTicketCalendarInfoContent > p {
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+#eventTicketCalendarInfoContent > p:first-child {
+  border-top: 0;
+}
+
+#eventTicketCalendarInfoContent > p strong {
+  color: var(--ink);
+  font-size: 11px;
 }
 
 @media (min-width: 1180px) {
@@ -259,6 +297,10 @@
     gap: 5px;
   }
 
+  #calendarPanel .admin-calendar-item-row[data-event-ticket-calendar-managed="true"] {
+    gap: 0;
+  }
+
   #calendarPanel .admin-calendar-item-row .admin-calendar-selection {
     margin-top: 6px;
   }
@@ -274,19 +316,22 @@
     width: 100%;
   }
 
-  #calendarEditorModal {
+  #calendarEditorModal,
+  #eventTicketCalendarInfoModal {
     padding: 0;
     align-items: end;
   }
 
-  #calendarEditorModal .editor-modal-card {
+  #calendarEditorModal .editor-modal-card,
+  #eventTicketCalendarInfoModal .editor-modal-card {
     width: 100%;
     max-height: 94dvh;
     padding: 18px 16px max(18px, env(safe-area-inset-bottom));
     border-radius: 22px 22px 0 0;
   }
 
-  #calendarEditorModal .editor-heading {
+  #calendarEditorModal .editor-heading,
+  #eventTicketCalendarInfoModal .editor-heading {
     position: sticky;
     top: -18px;
     z-index: 4;
@@ -300,6 +345,10 @@
     width: 44px;
     height: 44px;
     flex: 0 0 44px;
+  }
+
+  #eventTicketCalendarInfoModal #closeEventTicketCalendarInfoButton {
+    min-height: 44px;
   }
 
   #calendarEditorModal #calendarItemForm {
@@ -358,7 +407,8 @@
     display: none;
   }
 
-  #calendarEditorModal .editor-modal-card {
+  #calendarEditorModal .editor-modal-card,
+  #eventTicketCalendarInfoModal .editor-modal-card {
     padding-right: 13px;
     padding-left: 13px;
   }
