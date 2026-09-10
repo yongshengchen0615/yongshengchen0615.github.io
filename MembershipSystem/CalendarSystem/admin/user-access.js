@@ -3,7 +3,7 @@
 
   const READY_RETRY_MS = 250;
   const READY_MAX_ATTEMPTS = 60;
-  const state = { config: null, idToken: '', users: [], loading: false };
+  const state = { users: [], loading: false };
 
   window.addEventListener('DOMContentLoaded', () => {
     const root = document.getElementById('userAccessCard');
@@ -18,36 +18,13 @@
     async function waitForAdminReady(attempt) {
       const adminView = document.getElementById('adminView');
       let loggedIn = false;
-      try {
-        loggedIn = Boolean(window.liff && window.liff.isLoggedIn && window.liff.isLoggedIn());
-      } catch (_) {}
+      try { loggedIn = Boolean(window.liff?.isLoggedIn?.()); } catch (_) {}
 
       if (adminView && !adminView.classList.contains('hidden') && loggedIn) {
-        try {
-          state.config = await loadConfig();
-          state.idToken = window.liff.getIDToken() || '';
-          if (!state.idToken) throw new Error('無法取得 LINE ID token。');
-          await loadUsers(false);
-        } catch (error) {
-          setStatus(error && error.message ? error.message : '無法載入用戶使用權限。', true);
-        }
+        await loadUsers(false);
         return;
       }
-
-      if (attempt < READY_MAX_ATTEMPTS) {
-        window.setTimeout(() => waitForAdminReady(attempt + 1), READY_RETRY_MS);
-      }
-    }
-
-    async function loadConfig() {
-      const response = await fetch('../config.json', { cache: 'no-store' });
-      if (!response.ok) throw new Error('讀取 config.json 失敗。');
-      const config = await response.json();
-      const gasUrl = String(config && config.gasWebAppUrl || '').trim();
-      if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
-        throw new Error('GAS Web App URL 設定不合法。');
-      }
-      return config;
+      if (attempt < READY_MAX_ATTEMPTS) window.setTimeout(() => waitForAdminReady(attempt + 1), READY_RETRY_MS);
     }
 
     async function loadUsers(showLoading) {
@@ -55,14 +32,13 @@
       state.loading = true;
       refresh.disabled = true;
       if (showLoading) setStatus('載入中…', false);
-
       try {
-        const result = await api('admin.users.list');
+        const result = await adminApi('admin.users.list');
         state.users = Array.isArray(result.users) ? result.users : [];
         renderUsers();
         setStatus(`共 ${state.users.length} 位用戶`, false);
       } catch (error) {
-        setStatus(error && error.message ? error.message : '載入用戶失敗。', true);
+        setStatus(error.message || '載入用戶失敗。', true);
       } finally {
         state.loading = false;
         refresh.disabled = false;
@@ -77,7 +53,6 @@
         list.replaceChildren(empty);
         return;
       }
-
       const fragment = document.createDocumentFragment();
       state.users.forEach((user) => fragment.appendChild(createUserRow(user)));
       list.replaceChildren(fragment);
@@ -86,7 +61,6 @@
     function createUserRow(user) {
       const row = document.createElement('article');
       row.className = 'user-access-row';
-
       const identity = document.createElement('div');
       identity.className = 'user-access-identity';
       const name = document.createElement('strong');
@@ -104,7 +78,7 @@
         const option = document.createElement('option');
         option.value = value;
         option.textContent = label;
-        if (value === user.status) option.selected = true;
+        option.selected = value === user.status;
         select.appendChild(option);
       });
 
@@ -118,12 +92,11 @@
           setStatus('使用權限沒有變更。', false);
           return;
         }
-
         select.disabled = true;
         save.disabled = true;
         save.textContent = '儲存中…';
         try {
-          const result = await api('admin.users.updateStatus', {
+          const result = await adminApi('admin.users.updateStatus', {
             lineUserId: user.lineUserId,
             status: nextStatus,
             expectedUpdatedAt: user.updatedAt
@@ -134,8 +107,8 @@
           renderUsers();
           setStatus(nextStatus === 'disabled' ? '用戶已停用。' : '用戶已通過。', false);
         } catch (error) {
-          if (error && error.code === 'CONFLICT') await loadUsers(false);
-          setStatus(error && error.message ? error.message : '更新使用權限失敗。', true);
+          if (error.code === 'CONFLICT') await loadUsers(false);
+          setStatus(error.message || '更新使用權限失敗。', true);
         } finally {
           select.disabled = false;
           save.disabled = false;
@@ -148,43 +121,15 @@
       return row;
     }
 
-    async function api(action, payload = {}) {
-      const response = await fetch(state.config.gasWebAppUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        cache: 'no-store',
-        redirect: 'follow',
-        body: JSON.stringify({ action, clientType: 'admin', idToken: state.idToken, ...payload })
-      });
-
-      let data;
-      try {
-        data = await response.json();
-      } catch (_) {
-        throw new Error('GAS 回傳格式錯誤。');
-      }
-      if (!data || data.ok !== true) {
-        const code = data && data.error && data.error.code || 'API_ERROR';
-        const details = data && data.error && data.error.details || null;
-        const error = new Error(rateLimitMessage(code, data && data.error && data.error.message || '後端拒絕此請求。', details));
-        error.code = code;
-        error.details = details;
-        throw error;
-      }
-      return data.data || {};
+    async function adminApi(action, payload = {}) {
+      const transport = window.CalendarSystemAdminTransport;
+      if (!transport || typeof transport.api !== 'function') throw new Error('管理端 API 尚未初始化，請重新整理。');
+      return transport.api(action, payload);
     }
 
     function setStatus(message, isError) {
       status.textContent = message;
       status.classList.toggle('error', Boolean(isError));
-    }
-
-    function rateLimitMessage(code, message, details) {
-      if (code !== 'RATE_LIMITED' && code !== 'RATE_LIMIT_BUSY') return message;
-      const retryAfterSeconds = Number(details && details.retryAfterSeconds);
-      return Number.isInteger(retryAfterSeconds) && retryAfterSeconds > 0
-        ? `${message} 約 ${retryAfterSeconds} 秒後可再試。`
-        : message;
     }
   });
 
