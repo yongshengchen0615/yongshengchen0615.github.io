@@ -4,7 +4,9 @@ const assert = require('node:assert/strict');
 const read = (path) => fs.readFileSync(path, 'utf8');
 
 const adminPanel = read('MemberWebsocket-dev/admin/booking-panel.js');
+const bookingIndex = read('MemberWebsocket-dev/booking/index.html');
 const calendarFlow = read('MemberWebsocket-dev/booking/calendar-flow.js');
+const holidayTheme = read('MemberWebsocket-dev/booking/calendar-holiday-theme.css');
 const adminApi = read('MemberWebsocket-dev/supabase/functions/booking-admin-api/index.ts');
 const calendarApi = read('MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts');
 const migration = read('MemberWebsocket-dev/supabase/migrations/20260910235500_booking_notice_holiday_block.sql');
@@ -28,6 +30,14 @@ assert.match(calendarFlow, /applyHolidayAccent\(button, holidays\[0\]\?\.accent\
 assert.match(calendarFlow, /applyHolidayAccent\(item, holiday\.accent\)/);
 assert.doesNotMatch(calendarFlow, /ackBookingHolidayButton/);
 assert.doesNotMatch(calendarFlow, />知道了</);
+assert.match(bookingIndex, /calendar-holiday-theme\.css\?v=booking-calendar-holiday-theme-20260911-1/);
+assert.match(holidayTheme, /#calendarGrid \.calendar-holiday-label/);
+assert.match(holidayTheme, /background: var\(--holiday-accent, #df6b4d\)/);
+assert.match(holidayTheme, /color: var\(--holiday-foreground, #000000\)/);
+assert.match(holidayTheme, /#calendarGrid \.calendar-holiday-label::before/);
+assert.match(holidayTheme, /@media \(max-width: 430px\)/);
+assert.match(holidayTheme, /height: 5px/);
+assert.match(holidayTheme, /#bookingHolidayModal \.booking-holiday-detail/);
 assert.match(migration, /booking_notice/);
 assert.match(migration, /prevent_booking_on_active_holiday/);
 assert.match(migration, /BOOKING_HOLIDAY/);
