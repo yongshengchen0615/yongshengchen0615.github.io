@@ -146,7 +146,7 @@
     const checkbox = document.getElementById('eventTicketAddToCalendar');
     if (!checkbox || checkbox.disabled) return;
     setEventTicketCalendarStatus(checkbox.checked
-      ? '儲存票券時，會同步建立或更新日曆中的「活動」。'
+      ? '儲存票券時，會同步建立或更新日曆中的「活動」；若期間遇到休假，會自動取消加入日曆。'
       : '目前不加入日曆；若先前已同步，儲存後會從日曆移除。');
   }
 
@@ -242,6 +242,17 @@
         calendarItem,
         expectedUpdatedAt: existing ? String(existing.updatedAt || '') : ''
       });
+      if (saved && saved.calendarSync && saved.calendarSync.reason === 'holiday') {
+        const holiday = saved.calendarSync.holiday && typeof saved.calendarSync.holiday === 'object' ? saved.calendarSync.holiday : null;
+        const holidayTitle = String(holiday && holiday.title || '').trim();
+        if (existing && existing.calendarItemId) calendarCache.delete(String(existing.calendarItemId));
+        checkbox.checked = false;
+        checkbox.dataset.syncUnknown = '0';
+        setEventTicketCalendarStatus(holidayTitle
+          ? `活動票券已儲存，但活動期間遇到休假「${holidayTitle}」，已自動取消加入日曆。`
+          : '活動票券已儲存，但活動期間遇到休假，已自動取消加入日曆。');
+        return;
+      }
       cacheCalendarResult(saved);
       setEventTicketCalendarStatus(existing
         ? '活動票券已儲存，日曆活動已同步更新。'
@@ -424,7 +435,7 @@
     section.id = 'eventTicketCalendarControls';
     section.className = 'calendar-event-link-fields';
     section.innerHTML = `
-      <div><p class="kicker">Calendar sync</p><h4>加入活動日曆</h4><p>可將這張活動票券同步成會員日曆中的活動；名稱、期間、公開狀態、顏色與適用會員等級會跟著票券更新。</p></div>
+      <div><p class="kicker">Calendar sync</p><h4>加入活動日曆</h4><p>可將這張活動票券同步成會員日曆中的活動；名稱、期間、公開狀態、顏色與適用會員等級會跟著票券更新。若活動期間遇到休假，會自動取消加入日曆。</p></div>
       <label class="grant-toggle"><input id="eventTicketAddToCalendar" type="checkbox">將這張活動票券加入日曆</label>
       <p id="eventTicketCalendarStatus" class="editor-hint" aria-live="polite">目前不加入日曆。</p>`;
     dateRange.insertAdjacentElement('afterend', section);
