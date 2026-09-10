@@ -42,6 +42,7 @@ jobs:
           node --check MemberWebsocket-dev/calendar/app.js
           node --check MemberWebsocket-dev/booking/common.js
           node --check MemberWebsocket-dev/booking/app.js
+          node --check MemberWebsocket-dev/booking/calendar-flow.js
           node --check MemberWebsocket-dev/booking/admin/app.js
       - name: Check Edge Functions
         run: |
@@ -63,11 +64,19 @@ jobs:
         run: |
           grep -q './booking/' MemberWebsocket-dev/index.html
           grep -q './booking/admin/' MemberWebsocket-dev/index.html
+          grep -q 'calendar-flow.js' MemberWebsocket-dev/booking/index.html
+          grep -q 'calendarGrid' MemberWebsocket-dev/booking/calendar-flow.js
           grep -q 'user.booking.create' MemberWebsocket-dev/booking/app.js
+          grep -q 'bookingSubtabs' MemberWebsocket-dev/booking/admin/index.html
+          grep -q 'data-admin-tab="services"' MemberWebsocket-dev/booking/admin/index.html
+          grep -q 'data-admin-tab="confirmation"' MemberWebsocket-dev/booking/admin/index.html
           grep -q 'admin.booking.status.update' MemberWebsocket-dev/booking/admin/app.js
           grep -q 'bookings_active_slot_unique' MemberWebsocket-dev/supabase/migrations/20260910_add_booking_system.sql
           grep -q 'create_booking_request' MemberWebsocket-dev/supabase/migrations/20260910_add_booking_system.sql
           grep -q 'BOOKING_SLOT_TAKEN' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'eq("booking_date", date)' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'on public.bookings(booking_date, start_time)' MemberWebsocket-dev/supabase/migrations/20260910_global_booking_slot_occupancy.sql
+          grep -q 'BOOKING_GLOBAL_SLOT_MIGRATION_CONFLICT' MemberWebsocket-dev/supabase/migrations/20260910_global_booking_slot_occupancy.sql
       - name: Check realtime sync wiring
         run: |
           for file in \
