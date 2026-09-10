@@ -6,6 +6,7 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 
 const adminFlow = read('MemberWebsocket-dev/admin/grant-automation.js');
 const adminCalendarStyles = read('MemberWebsocket-dev/admin/calendar-responsive.css');
+const userCalendar = read('MemberWebsocket-dev/calendar/app.js');
 const realtime = read('MemberWebsocket-dev/realtime-resync.js');
 const edge = read('MemberWebsocket-dev/supabase/functions/grant-automation/index.ts');
 
@@ -30,6 +31,13 @@ assert.doesNotMatch(adminFlow, /saved\.calendarSync[\s\S]{0,160}reason === 'holi
 assert.match(adminCalendarStyles, /admin-calendar-item-row\[data-event-ticket-calendar-managed="true"\][^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
 assert.match(adminCalendarStyles, /#eventTicketCalendarInfoModal \.editor-modal-card/);
 assert.match(adminCalendarStyles, /#calendarEditorModal,\s*#eventTicketCalendarInfoModal/);
+
+assert.match(userCalendar, /openCalendarLinkInLine/);
+assert.match(userCalendar, /window\.liff\.openWindow\(\{ url, external: false \}\)/);
+assert.match(userCalendar, /event\.preventDefault\(\)/);
+assert.match(userCalendar, /window\.location\.assign\(url\)/);
+assert.doesNotMatch(userCalendar, /link\.target = '_blank'/);
+assert.doesNotMatch(userCalendar, /link\.rel = 'noopener noreferrer'/);
 
 assert.match(realtime, /splitManagedEventAroundHolidays/);
 assert.match(realtime, /holidayDateSet/);
