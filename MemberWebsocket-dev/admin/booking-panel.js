@@ -45,7 +45,7 @@
     panel.setAttribute('aria-labelledby', 'bookingTab');
     panel.innerHTML = `
       <div class="panel-heading booking-admin-heading">
-        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與提前預約天數為共用設定；預約項目管理服務時間、價格與開放狀態。</p></div>
+        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與提前預約天數為共用設定；預約項目管理類型、服務時間、價格與開放狀態。</p></div>
         <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span><button id="bookingAdminRefreshButton" class="button button-outline" type="button">更新預約</button></div>
       </div>
 
@@ -72,7 +72,7 @@
 
       <div class="booking-admin-workspace">
         <section class="booking-admin-card" aria-labelledby="bookingAdminServiceTitle">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目設定名稱、服務時間、價格與開放狀態。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目設定名稱、類型、服務時間、價格與開放狀態；會員選到相同類型時會收到提醒。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
           <div class="booking-admin-list-heading"><strong>已建立項目</strong><span id="bookingAdminServiceListCount">0</span></div>
           <div id="bookingAdminServiceList" class="booking-admin-service-list"></div>
           <div id="bookingAdminServiceEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立預約項目</p></div>
@@ -103,6 +103,7 @@
         <form id="bookingAdminServiceForm" class="booking-admin-form" novalidate>
           <input id="bookingAdminServiceId" type="hidden"><input id="bookingAdminExpectedUpdatedAt" type="hidden">
           <label>預約項目名稱<input id="bookingAdminServiceName" type="text" maxlength="100" placeholder="例如：腳底按摩" required></label>
+          <label>項目類型<input id="bookingAdminServiceType" type="text" maxlength="80" placeholder="例如：足部按摩" required><small>相同類型的不同預約項目可以同時選擇，但會員加入與確認預約時都會收到提醒。</small></label>
           <label>項目服務時間（分鐘）<input id="bookingAdminDurationMinutes" type="number" min="1" max="720" step="1" value="30" required><small>例如 40 分鐘服務請輸入 40；數量 2 會計算為 80 分鐘。</small></label>
           <label>價格（NT$）<input id="bookingAdminPriceAmount" type="number" min="0" max="10000000" step="1" value="0" inputmode="numeric" required><small>輸入單次服務價格；會員重複加入同一項目時會依數量累加總額。</small></label>
           <label class="booking-admin-toggle"><input id="bookingAdminActive" type="checkbox" checked><span><strong>開放會員預約</strong><small>關閉後會員端不再顯示此項目，既有預約紀錄仍保留。</small></span></label>
@@ -123,7 +124,7 @@
       'bookingAdminSettingsForm', 'bookingAdminStartTime', 'bookingAdminEndTime', 'bookingAdminAdvanceDays', 'bookingAdminSettingsMessage', 'bookingAdminSaveSettingsButton',
       'bookingAdminNewServiceButton', 'bookingAdminServiceListCount', 'bookingAdminServiceList', 'bookingAdminServiceEmpty', 'bookingAdminQueue', 'bookingAdminQueueEmpty',
       'bookingAdminServiceModal', 'bookingAdminServiceModalTitle', 'bookingAdminCloseServiceModal', 'bookingAdminCancelServiceButton', 'bookingAdminServiceForm',
-      'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminDurationMinutes', 'bookingAdminPriceAmount',
+      'bookingAdminServiceId', 'bookingAdminExpectedUpdatedAt', 'bookingAdminServiceName', 'bookingAdminServiceType', 'bookingAdminDurationMinutes', 'bookingAdminPriceAmount',
       'bookingAdminActive', 'bookingAdminServiceMessage', 'bookingAdminSaveServiceButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
@@ -288,7 +289,7 @@
       const title = document.createElement('strong');
       title.textContent = service.title;
       const meta = document.createElement('small');
-      meta.textContent = `服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
+      meta.textContent = `類型 ${service.serviceType || '未設定'} · 服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
       content.append(title, meta);
       const status = document.createElement('span');
       status.className = `booking-admin-service-status ${service.isActive ? 'active' : 'inactive'}`;
@@ -306,6 +307,7 @@
     els.bookingAdminServiceId.value = editing ? service.serviceId : '';
     els.bookingAdminExpectedUpdatedAt.value = editing ? service.updatedAt || '' : '';
     els.bookingAdminServiceName.value = editing ? service.title || '' : '';
+    els.bookingAdminServiceType.value = editing ? service.serviceType || '' : '';
     els.bookingAdminDurationMinutes.value = String(editing ? service.durationMinutes || 30 : 30);
     els.bookingAdminPriceAmount.value = String(editing ? Number(service.priceAmount || 0) : 0);
     els.bookingAdminActive.checked = editing ? service.isActive !== false : true;
@@ -355,6 +357,12 @@
   async function saveService(event) {
     event.preventDefault();
     if (state.savingService || state.writeLocked) return;
+    const serviceType = String(els.bookingAdminServiceType.value || '').trim();
+    if (!serviceType || serviceType.length > 80) {
+      showMessage(els.bookingAdminServiceMessage, '請輸入 1–80 字的項目類型。', 'error');
+      els.bookingAdminServiceType.focus();
+      return;
+    }
     const priceAmount = Number(els.bookingAdminPriceAmount.value);
     if (!Number.isSafeInteger(priceAmount) || priceAmount < 0 || priceAmount > 10000000) {
       showMessage(els.bookingAdminServiceMessage, '價格必須是 0–10,000,000 元的整數。', 'error');
@@ -370,6 +378,7 @@
         serviceId: els.bookingAdminServiceId.value,
         expectedUpdatedAt: els.bookingAdminExpectedUpdatedAt.value,
         title: els.bookingAdminServiceName.value,
+        serviceType,
         description: '',
         durationMinutes: Number(els.bookingAdminDurationMinutes.value),
         priceAmount,
@@ -419,7 +428,7 @@
       card.appendChild(title);
       const time = document.createElement('p');
       time.className = 'booking-admin-time';
-      time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 共 ${booking.totalDurationMinutes || 0} 分鐘 · 總額 ${formatMoney(booking.totalAmount)}`;
+      time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 共 ${booking.totalDurationMinutes || 0} 分鐘（含店內服務 10 分鐘） · 總額 ${formatMoney(booking.totalAmount)}`;
       card.appendChild(time);
 
       if (Array.isArray(booking.items) && booking.items.length) {
