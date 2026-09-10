@@ -69,12 +69,21 @@ jobs:
           grep -q "signIn(state.config, 'booking')" MemberWebsocket-dev/booking/app.js
           grep -q 'memberProfile' MemberWebsocket-dev/booking/app.js
           grep -q 'id="memberTier"' MemberWebsocket-dev/booking/index.html
+          grep -q 'id="joinMemberButton"' MemberWebsocket-dev/booking/index.html
+          grep -q 'id="bookingConfirmModal"' MemberWebsocket-dev/booking/index.html
+          grep -q 'servicePicker' MemberWebsocket-dev/booking/app.js
+          grep -q 'quantity > 2' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
           grep -q 'booking-panel.js' MemberWebsocket-dev/admin/common.js
           grep -q "tab.textContent = '預約'" MemberWebsocket-dev/admin/booking-panel.js
-          grep -q 'admin.booking.status.update' MemberWebsocket-dev/admin/booking-panel.js
-          grep -q 'bookings_active_slot_unique' MemberWebsocket-dev/supabase/migrations/20260910_add_booking_system.sql
-          grep -q 'create_booking_request' MemberWebsocket-dev/supabase/migrations/20260910_add_booking_system.sql
+          grep -q 'admin.booking.settings.save' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'bookingAdminDurationMinutes' MemberWebsocket-dev/admin/booking-panel.js
+          ! grep -q 'bookingAdminWeekday' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'create_booking_bundle_request' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
+          grep -q 'booking_settings' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
+          grep -q 'booking_items' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
+          grep -q 'bookings_no_active_overlap' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
           grep -q 'BOOKING_SLOT_TAKEN' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
+          grep -q 'requireJoinedMember' MemberWebsocket-dev/supabase/functions/booking-api/index.ts
       - name: Check realtime sync wiring
         run: |
           for file in \
@@ -92,6 +101,11 @@ jobs:
             MemberWebsocket-dev/calendar/index.html; do
             grep -q '../realtime-resync.js' "$file"
           done
+          grep -q "table: 'realtime_events'" MemberWebsocket-dev/booking/common.js
+          grep -q "type.startsWith('booking.')" MemberWebsocket-dev/booking/common.js
+          grep -q "table: 'realtime_events'" MemberWebsocket-dev/admin/booking-panel.js
+          grep -q "type.startsWith('booking.')" MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'notify_booking_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
           grep -q 'visibilitychange' MemberWebsocket-dev/realtime-resync.js
           grep -q "addEventListener('online'" MemberWebsocket-dev/realtime-resync.js
           grep -q 'notify_admin_config_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
