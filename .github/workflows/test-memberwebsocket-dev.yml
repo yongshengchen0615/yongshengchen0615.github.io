@@ -30,7 +30,15 @@ jobs:
           node --check MemberWebsocket-dev/admin/common.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
+          node --check MemberWebsocket-dev/member/common.js
+          node --check MemberWebsocket-dev/member/app.js
+          node --check MemberWebsocket-dev/points/common.js
+          node --check MemberWebsocket-dev/points/app.js
+          node --check MemberWebsocket-dev/event/common.js
+          node --check MemberWebsocket-dev/event/app.js
+          node --check MemberWebsocket-dev/calendar/common.js
           node --check MemberWebsocket-dev/calendar/tier-sync.js
+          node --check MemberWebsocket-dev/calendar/app.js
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/grant-automation/index.ts
@@ -46,3 +54,15 @@ jobs:
           grep -q 'tier-sync.js' MemberWebsocket-dev/calendar/index.html
           grep -q 'allowedTierLabels' MemberWebsocket-dev/calendar/tier-sync.js
           grep -q 'tierEligible' MemberWebsocket-dev/calendar/tier-sync.js
+      - name: Check realtime sync wiring
+        run: |
+          for file in \
+            MemberWebsocket-dev/member/common.js \
+            MemberWebsocket-dev/points/common.js \
+            MemberWebsocket-dev/event/common.js \
+            MemberWebsocket-dev/calendar/common.js; do
+            grep -q "table: 'realtime_events'" "$file"
+            grep -q "scope === 'all' || scope === clientType" "$file"
+          done
+          grep -q 'notify_admin_config_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
+          grep -q 'notify_admin_grant_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
