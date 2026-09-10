@@ -136,7 +136,7 @@
     link.className = 'modal-action activity-link-button hidden';
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
-    link.textContent = '前往活動連結 ↗';
+    link.textContent = '前往活動連結';
     action.insertAdjacentElement('beforebegin', link);
 
     if (!document.getElementById('eventTicketActivityLinkStyle')) {
@@ -154,12 +154,16 @@
     const url = safeActivityUrl(activityLinks.get(selectedEventTicketId));
     if (!selectedEventTicketId || !url) {
       link.removeAttribute('href');
+      link.removeAttribute('title');
+      link.removeAttribute('aria-label');
       link.classList.add('hidden');
       return;
     }
     const name = safeActivityLinkName(activityLinkNames.get(selectedEventTicketId));
     link.href = url;
-    link.textContent = `${name || '前往活動連結'} ↗`;
+    link.textContent = '前往活動連結';
+    link.title = name || '活動連結';
+    link.setAttribute('aria-label', name ? `開啟活動連結：${name}` : '開啟活動連結');
     link.classList.remove('hidden');
   }
 
