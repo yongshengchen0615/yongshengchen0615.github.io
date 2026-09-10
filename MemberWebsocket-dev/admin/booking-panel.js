@@ -48,13 +48,13 @@
     panel.setAttribute('aria-labelledby', 'bookingTab');
     panel.innerHTML = `
       <div class="panel-heading booking-admin-heading">
-        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間與提前預約天數為共用設定；預約項目與預約確認分開管理。</p></div>
+        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>上班時間、提前預約天數與項目類型由共用設定統一管理；預約項目與預約確認分開操作。</p></div>
         <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span><button id="bookingAdminRefreshButton" class="button button-outline" type="button">更新預約</button></div>
       </div>
 
       <section class="booking-admin-card booking-admin-hours-card" aria-labelledby="bookingAdminHoursTitle">
         <div class="booking-admin-section-heading">
-          <div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>上班時間與需要提前幾天預約套用到所有預約項目，不屬於任何單一服務。</p></div>
+          <div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>工作時間、提前預約天數與項目類型套用到所有預約項目，不屬於任何單一服務。</p></div>
         </div>
         <form id="bookingAdminSettingsForm" class="booking-admin-form booking-admin-settings-form" novalidate>
           <div class="booking-admin-form-grid booking-admin-global-settings-grid">
@@ -62,6 +62,7 @@
             <label>結束工作時間<input id="bookingAdminEndTime" type="time" step="1800" value="17:00" required></label>
             <label>需要提前幾天預約<input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的開始時段；例如 2 = 最早只能預約兩天後。</small></label>
           </div>
+          <label>項目類型（每行一個）<textarea id="bookingAdminServiceTypes" rows="4" maxlength="4050" placeholder="例如：足部按摩&#10;肩頸按摩&#10;身體按摩"></textarea><small>在這裡統一建立項目類型；儲存後，新增或編輯預約項目時只能從下拉選單選擇。仍有預約項目使用的類型不可移除。</small></label>
           <div id="bookingAdminSettingsMessage" class="form-message hidden" role="status" aria-live="polite"></div>
           <div class="booking-admin-inline-actions"><button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約設定</button></div>
         </form>
@@ -80,7 +81,7 @@
 
       <div class="booking-admin-subtab-panels">
         <section id="bookingAdminServicesPanel" class="booking-admin-card" role="tabpanel" aria-labelledby="bookingAdminServicesSubtab">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目設定名稱、類型、服務時間、價格與開放狀態；會員選到相同類型時會收到提醒。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3 id="bookingAdminServiceTitle">預約項目</h3><p>每個項目設定名稱、共用類型、服務時間、價格與開放狀態；會員選到相同類型時會收到提醒。</p></div><button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button></div>
           <div class="booking-admin-list-heading"><strong>已建立項目</strong><span id="bookingAdminServiceListCount">0</span></div>
           <div id="bookingAdminServiceList" class="booking-admin-service-list"></div>
           <div id="bookingAdminServiceEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立預約項目</p></div>
@@ -111,7 +112,7 @@
         <form id="bookingAdminServiceForm" class="booking-admin-form" novalidate>
           <input id="bookingAdminServiceId" type="hidden"><input id="bookingAdminExpectedUpdatedAt" type="hidden">
           <label>預約項目名稱<input id="bookingAdminServiceName" type="text" maxlength="100" placeholder="例如：腳底按摩" required></label>
-          <label>項目類型<input id="bookingAdminServiceType" type="text" maxlength="80" placeholder="例如：足部按摩" required><small>相同類型的不同預約項目可以同時選擇，但會員加入與確認預約時都會收到提醒。</small></label>
+          <label>項目類型<select id="bookingAdminServiceType" required><option value="">請選擇項目類型</option></select><small>項目類型由「預約共用設定」統一管理；相同類型的不同項目可同時選擇，但會員加入與確認預約時都會收到提醒。</small></label>
           <label>項目服務時間（分鐘）<input id="bookingAdminDurationMinutes" type="number" min="1" max="720" step="1" value="30" required><small>例如 40 分鐘服務請輸入 40；數量 2 會計算為 80 分鐘。</small></label>
           <label>價格（NT$）<input id="bookingAdminPriceAmount" type="number" min="0" max="10000000" step="1" value="0" inputmode="numeric" required><small>輸入單次服務價格；會員重複加入同一項目時會依數量累加總額。</small></label>
           <label class="booking-admin-toggle"><input id="bookingAdminActive" type="checkbox" checked><span><strong>開放會員預約</strong><small>關閉後會員端不再顯示此項目，既有預約紀錄仍保留。</small></span></label>
@@ -130,7 +131,7 @@
   function cacheElements() {
     [
       'bookingTab', 'bookingPanel', 'bookingAdminSyncStatus', 'bookingAdminRefreshButton', 'bookingAdminServiceCount', 'bookingAdminPendingCount', 'bookingAdminConfirmedCount',
-      'bookingAdminSettingsForm', 'bookingAdminStartTime', 'bookingAdminEndTime', 'bookingAdminAdvanceDays', 'bookingAdminSettingsMessage', 'bookingAdminSaveSettingsButton',
+      'bookingAdminSettingsForm', 'bookingAdminStartTime', 'bookingAdminEndTime', 'bookingAdminAdvanceDays', 'bookingAdminServiceTypes', 'bookingAdminSettingsMessage', 'bookingAdminSaveSettingsButton',
       'bookingAdminServicesSubtab', 'bookingAdminQueueSubtab', 'bookingAdminQueueSubtabCount', 'bookingAdminServicesPanel', 'bookingAdminQueuePanel',
       'bookingAdminNewServiceButton', 'bookingAdminServiceListCount', 'bookingAdminServiceList', 'bookingAdminServiceEmpty', 'bookingAdminQueue', 'bookingAdminQueueEmpty',
       'bookingAdminServiceModal', 'bookingAdminServiceModalTitle', 'bookingAdminCloseServiceModal', 'bookingAdminCancelServiceButton', 'bookingAdminServiceForm',
@@ -291,6 +292,7 @@
     els.bookingAdminStartTime.value = String(settings.workStartTime || '09:00');
     els.bookingAdminEndTime.value = String(settings.workEndTime || '17:00');
     els.bookingAdminAdvanceDays.value = String(Number(settings.minAdvanceDays || 0));
+    els.bookingAdminServiceTypes.value = (Array.isArray(settings.serviceTypes) ? settings.serviceTypes : []).join('\n');
   }
 
   function renderStats() {
@@ -307,8 +309,54 @@
   }
 
   function serviceTypeOf(service) {
+    const direct = String(service?.serviceType || '').trim();
+    if (direct) return direct;
     const description = String(service?.description || '');
     return description.startsWith(TYPE_PREFIX) ? description.slice(TYPE_PREFIX.length).trim() : '';
+  }
+
+  function normalizedTypeKey(value) {
+    return String(value || '').trim().toLocaleLowerCase('zh-Hant-TW');
+  }
+
+  function parseServiceTypesInput() {
+    const types = String(els.bookingAdminServiceTypes.value || '')
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (types.length > 50) throw clientError('INVALID_SERVICE_TYPES', '項目類型最多可設定 50 筆。');
+    const seen = new Set();
+    for (const type of types) {
+      if (type.length > 80) throw clientError('INVALID_SERVICE_TYPES', `項目類型「${type.slice(0, 20)}…」超過 80 字。`);
+      const key = normalizedTypeKey(type);
+      if (seen.has(key)) throw clientError('DUPLICATE_SERVICE_TYPE', `項目類型「${type}」重複，請只保留一筆。`);
+      seen.add(key);
+    }
+    return types;
+  }
+
+  function populateServiceTypeOptions(selectedValue = '') {
+    const types = Array.isArray(state.data.settings?.serviceTypes) ? state.data.settings.serviceTypes : [];
+    const selectedKey = normalizedTypeKey(selectedValue);
+    els.bookingAdminServiceType.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = types.length ? '請選擇項目類型' : '請先在預約共用設定建立項目類型';
+    els.bookingAdminServiceType.appendChild(placeholder);
+    types.forEach((type) => {
+      const option = document.createElement('option');
+      option.value = type;
+      option.textContent = type;
+      els.bookingAdminServiceType.appendChild(option);
+    });
+    if (selectedValue && !types.some((type) => normalizedTypeKey(type) === selectedKey)) {
+      const legacyOption = document.createElement('option');
+      legacyOption.value = selectedValue;
+      legacyOption.textContent = `${selectedValue}（現有類型）`;
+      els.bookingAdminServiceType.appendChild(legacyOption);
+    }
+    const matched = [...els.bookingAdminServiceType.options].find((option) => normalizedTypeKey(option.value) === selectedKey);
+    els.bookingAdminServiceType.value = matched ? matched.value : '';
   }
 
   function renderServices() {
@@ -338,11 +386,12 @@
   function openServiceModal(service) {
     if (state.writeLocked) return;
     const editing = Boolean(service);
+    const currentServiceType = editing ? serviceTypeOf(service) : '';
     els.bookingAdminServiceModalTitle.textContent = editing ? '編輯預約項目' : '新增預約項目';
     els.bookingAdminServiceId.value = editing ? service.serviceId : '';
     els.bookingAdminExpectedUpdatedAt.value = editing ? service.updatedAt || '' : '';
     els.bookingAdminServiceName.value = editing ? service.title || '' : '';
-    els.bookingAdminServiceType.value = editing ? serviceTypeOf(service) : '';
+    populateServiceTypeOptions(currentServiceType);
     els.bookingAdminDurationMinutes.value = String(editing ? service.durationMinutes || 30 : 30);
     els.bookingAdminPriceAmount.value = String(editing ? Number(service.priceAmount || 0) : 0);
     els.bookingAdminActive.checked = editing ? service.isActive !== false : true;
@@ -366,6 +415,25 @@
       els.bookingAdminAdvanceDays.focus();
       return;
     }
+
+    let serviceTypes;
+    try {
+      serviceTypes = parseServiceTypesInput();
+    } catch (error) {
+      showMessage(els.bookingAdminSettingsMessage, error?.message || '項目類型設定不正確。', 'error');
+      els.bookingAdminServiceTypes.focus();
+      return;
+    }
+
+    const allowedTypeKeys = new Set(serviceTypes.map(normalizedTypeKey));
+    const usedTypes = [...new Set(visibleServices().map(serviceTypeOf).filter(Boolean))];
+    const missingTypes = usedTypes.filter((type) => !allowedTypeKeys.has(normalizedTypeKey(type)));
+    if (missingTypes.length) {
+      showMessage(els.bookingAdminSettingsMessage, `以下項目類型仍有預約項目使用，不能移除：${missingTypes.join('、')}。請先修改對應預約項目。`, 'error');
+      els.bookingAdminServiceTypes.focus();
+      return;
+    }
+
     state.savingSettings = true;
     els.bookingAdminSaveSettingsButton.disabled = true;
     els.bookingAdminSaveSettingsButton.textContent = '儲存中…';
@@ -375,11 +443,12 @@
         workStartTime: els.bookingAdminStartTime.value,
         workEndTime: els.bookingAdminEndTime.value,
         minAdvanceDays,
+        serviceTypes,
         expectedUpdatedAt: state.data.settings?.updatedAt || '',
       });
-      state.data.settings = result.settings || state.data.settings;
+      state.data.settings = result.settings || { ...state.data.settings, serviceTypes };
       renderSettings();
-      showMessage(els.bookingAdminSettingsMessage, '預約共用設定已儲存；不符合提前天數的日期會在會員端反灰且不可預約。', 'success');
+      showMessage(els.bookingAdminSettingsMessage, '預約共用設定已儲存；項目類型已同步到預約項目的下拉選單。', 'success');
     } catch (error) {
       handleWriteError(error, els.bookingAdminSettingsMessage);
     } finally {
@@ -394,7 +463,7 @@
     if (state.savingService || state.writeLocked) return;
     const serviceType = String(els.bookingAdminServiceType.value || '').trim();
     if (!serviceType || serviceType.length > 80) {
-      showMessage(els.bookingAdminServiceMessage, '請輸入 1–80 字的項目類型。', 'error');
+      showMessage(els.bookingAdminServiceMessage, '請從「預約共用設定」建立的項目類型中選擇一項。', 'error');
       els.bookingAdminServiceType.focus();
       return;
     }
@@ -413,6 +482,7 @@
         serviceId: els.bookingAdminServiceId.value,
         expectedUpdatedAt: els.bookingAdminExpectedUpdatedAt.value,
         title: els.bookingAdminServiceName.value,
+        serviceType,
         description: `${TYPE_PREFIX}${serviceType}`,
         durationMinutes: Number(els.bookingAdminDurationMinutes.value),
         priceAmount,
