@@ -1,0 +1,62 @@
+name: One-shot finalize booking completion consistency
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/one-shot-booking-finalize-v2.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Align booking completion rule and cache versions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          api = Path('MemberWebsocket-dev/supabase/functions/booking-api/index.ts')
+          text = api.read_text(encoding='utf-8')
+          old = '  if (nextStatus === "completed" && Date.parse(`${booking.booking_date}T${String(booking.end_time).slice(0, 8)}+08:00`) > Date.now()) {\n    throw new ApiError(409, "BOOKING_NOT_FINISHED", "服務結束時間尚未到，無法確認完成。");\n  }\n'
+          if old not in text:
+              raise SystemExit('expected BOOKING_NOT_FINISHED guard not found')
+          api.write_text(text.replace(old, '', 1), encoding='utf-8')
+
+          test_file = Path('MemberWebsocket-dev/tests/booking_lifecycle.test.js')
+          test_text = test_file.read_text(encoding='utf-8')
+          old_test = "test('future appointment cannot be marked complete', async () => {\n  await assert.rejects(context.adminStatusUpdate(db({ ...booking, booking_date: '2099-01-01' }), identity, { bookingId: id, status: 'completed', expectedUpdatedAt: version }), { code: 'BOOKING_NOT_FINISHED' });\n});"
+          new_test = "test('confirmed appointment can be completed before scheduled end', async () => {\n  const client = db({ ...booking, booking_date: '2099-01-01' });\n  const result = await context.adminStatusUpdate(client, identity, { bookingId: id, status: 'completed', expectedUpdatedAt: version });\n  assert.equal(result.booking.status, 'completed');\n  assert.equal(client.writes[0].patch.completed_by, identity.lineUserId);\n});"
+          if old_test not in test_text:
+              raise SystemExit('expected future completion test not found')
+          test_file.write_text(test_text.replace(old_test, new_test, 1), encoding='utf-8')
+
+          cache_updates = {
+              Path('MemberWebsocket-dev/admin/index.html'): ('booking-panel.js?v=booking-lifecycle-20260911-2', 'booking-panel.js?v=booking-onsite-20260911-3'),
+              Path('MemberWebsocket-dev/booking/admin/index.html'): ('app.js?v=booking-lifecycle-20260911-2', 'app.js?v=booking-onsite-20260911-3'),
+          }
+          for path, (before, after) in cache_updates.items():
+              html = path.read_text(encoding='utf-8')
+              if before not in html:
+                  raise SystemExit(f'expected cache token not found: {path}')
+              path.write_text(html.replace(before, after, 1), encoding='utf-8')
+          PY
+
+      - name: Verify booking lifecycle test
+        run: node --test MemberWebsocket-dev/tests/booking_lifecycle.test.js
+
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm .github/workflows/one-shot-booking-finalize-v2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add MemberWebsocket-dev/supabase/functions/booking-api/index.ts MemberWebsocket-dev/tests/booking_lifecycle.test.js MemberWebsocket-dev/admin/index.html MemberWebsocket-dev/booking/admin/index.html .github/workflows/one-shot-booking-finalize-v2.yml
+          git commit -m "fix(booking): align admin completion rules"
+          git push
