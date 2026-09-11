@@ -56,6 +56,13 @@
       applyGlobalSettings(event.detail || {});
       scheduleMonthOccupancyReload();
     });
+    window.addEventListener('booking:edit', (event) => {
+      state.selectedDate = event.detail.date;
+      state.month = state.selectedDate.slice(0, 7);
+      renderCalendar();
+      openAppointmentModal(state.selectedDate);
+      scheduleMonthOccupancyReload();
+    });
     window.addEventListener('booking:created', () => {
       closeAppointmentModal(false);
       scheduleMonthOccupancyReload();
@@ -472,6 +479,7 @@
     els.bookingDate.dispatchEvent(new Event('change', { bubbles: true }));
     renderCalendar();
     openAppointmentModal(date);
+    window.dispatchEvent(new CustomEvent('booking:date-selected'));
   }
 
   function showHolidayNotice(date, holidays, trigger) {

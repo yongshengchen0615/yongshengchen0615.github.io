@@ -14,12 +14,14 @@
     loadingSlots: false,
     slotRequestSequence: 0,
     submitting: false,
+    editing: null,
     realtimeUnsubscribe: null,
   };
   const els = {};
   const STATUS_LABELS = {
     pending: '等待管理端確認',
     confirmed: '已確認',
+    completed: '服務已完成',
     rejected: '未通過',
     cancelled: '已取消',
   };
@@ -40,13 +42,35 @@
     els.refreshButton.addEventListener('click', () => refresh(true));
     els.bookingDate.addEventListener('change', dateChanged);
     els.bookingForm.addEventListener('submit', openConfirmation);
+    document.getElementById('cancelEditBookingButton').addEventListener('click', endEditing);
+    window.addEventListener('booking:date-selected', () => updateEditingLabel());
     els.closeBookingConfirmButton.addEventListener('click', closeConfirmation);
     els.cancelBookingConfirmButton.addEventListener('click', closeConfirmation);
     els.confirmBookingButton.addEventListener('click', confirmBooking);
     els.bookingConfirmModal.addEventListener('click', (event) => {
       if (event.target === els.bookingConfirmModal && window.matchMedia('(max-width: 768px)').matches) closeConfirmation();
     });
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeConfirmation(); });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !els.bookingConfirmModal.classList.contains('hidden')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeConfirmation();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const modal = [els.bookingConfirmModal, document.getElementById('bookingHolidayModal'), document.getElementById('appointmentPanel')]
+        .find((node) => node && !node.classList.contains('hidden'));
+      if (!modal) return;
+      const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]')]
+        .filter((node) => node.getClientRects().length);
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    });
     window.addEventListener('beforeunload', () => { if (state.realtimeUnsubscribe) state.realtimeUnsubscribe(); });
     boot();
   });
@@ -342,6 +366,7 @@
       const result = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.slots', {
         items,
         bookingDate,
+        bookingId: state.editing?.bookingId,
       });
       if (requestSequence !== state.slotRequestSequence) return;
       if (result.settings) {
@@ -470,7 +495,9 @@
     els.submitBookingButton.disabled = true;
     clearConfirmMessage();
     try {
-      const result = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.create', {
+      const result = await window.BookingSystem.request(state.config, 'member', state.idToken, state.editing ? 'user.booking.update' : 'user.booking.create', {
+        bookingId: state.editing?.bookingId,
+        expectedUpdatedAt: state.editing?.updatedAt,
         requestId,
         items,
         bookingDate,
@@ -479,6 +506,8 @@
       });
       state.data.bookings = [result.booking, ...(state.data.bookings || []).filter((item) => item.bookingId !== result.booking.bookingId)];
       els.bookingConfirmModal.classList.add('hidden');
+      state.editing = null;
+      updateEditingLabel();
       els.memberNote.value = '';
       state.selections = [];
       state.selectedSlot = null;
@@ -496,6 +525,8 @@
           const recovered = (fresh.bookings || []).find((item) => item.requestId === requestId);
           if (recovered) {
             els.bookingConfirmModal.classList.add('hidden');
+            state.editing = null;
+            updateEditingLabel();
             state.selections = [];
             state.selectedSlot = null;
             renderServices();
@@ -596,7 +627,12 @@
         cancelButton.className = 'text-danger-button';
         cancelButton.textContent = '取消預約';
         cancelButton.addEventListener('click', () => cancelBooking(booking, cancelButton));
-        actions.appendChild(cancelButton);
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'button button-light';
+        editButton.textContent = '修改預約';
+        editButton.addEventListener('click', () => editBooking(booking));
+        actions.append(editButton, cancelButton);
         item.appendChild(actions);
       }
       els.bookingList.appendChild(item);
@@ -604,7 +640,43 @@
   }
 
   function canCancel(booking) {
-    return ['pending', 'confirmed'].includes(booking.status) && booking.bookingDate >= state.data.today;
+    return ['pending', 'confirmed'].includes(booking.status) && Date.parse(`${booking.bookingDate}T${booking.startTime}:00+08:00`) > Date.now();
+  }
+
+  function updateEditingLabel() {
+    const editing = Boolean(state.editing);
+    document.getElementById('editingBookingNotice').classList.toggle('hidden', !editing);
+    document.getElementById('appointmentModalTitle').textContent = editing ? '修改預約' : '預約';
+    document.getElementById('bookingConfirmTitle').textContent = editing ? '確認修改預約' : '確認預約';
+    els.submitBookingButton.textContent = editing ? '確認修改內容' : '確認預約內容';
+  }
+
+  function endEditing() {
+    if (state.submitting) return;
+    state.editing = null;
+    state.selections = [];
+    state.selectedSlot = null;
+    ++state.slotRequestSequence;
+    els.memberNote.value = '';
+    updateEditingLabel();
+    renderServices();
+    applySelectionConstraints(false);
+  }
+
+  function editBooking(booking) {
+    if (state.submitting || !canCancel(booking)) return;
+    state.editing = { bookingId: booking.bookingId, updatedAt: booking.updatedAt };
+    const activeIds = new Set(userServices().map((service) => service.serviceId));
+    state.selections = bookingVisibleItems(booking).filter((item) => activeIds.has(item.serviceId))
+      .flatMap((item) => Array.from({ length: Number(item.quantity || 1) }, () => ({ serviceId: item.serviceId, selectionId: crypto.randomUUID() })));
+    els.memberNote.value = booking.memberNote || '';
+    els.bookingDate.value = booking.bookingDate;
+    renderServices();
+    applySelectionConstraints(false);
+    updateEditingLabel();
+    window.dispatchEvent(new CustomEvent('booking:edit', { detail: { date: els.bookingDate.value } }));
+    showFormMessage('修改後將重新等待管理端確認，原預約會保留至修改成功。已停用的項目需重新選擇。', 'success');
+    loadSlots();
   }
 
   async function cancelBooking(booking, button) {

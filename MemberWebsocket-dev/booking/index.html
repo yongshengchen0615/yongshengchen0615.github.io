@@ -21,6 +21,7 @@
   <script src="./member-ui.js?v=booking-member-gate-20260910-2" defer></script>
   <script src="./app.js?v=booking-type-store-service-20260910-1" defer></script>
   <script src="./calendar-flow.js?v=booking-calendar-modal-20260910-1" defer></script>
+  <link rel="stylesheet" href="../responsive.css">
 </head>
 <body>
   <div class="app-shell">
@@ -96,6 +97,10 @@
                 <button id="changeDateButton" class="button button-light" type="button">選其他日期</button>
               </div>
 
+              <div id="editingBookingNotice" class="service-info hidden" role="status">
+                正在修改既有預約；送出後需重新確認。
+                <button id="cancelEditBookingButton" class="button button-light" type="button">放棄修改／新增預約</button>
+              </div>
               <fieldset class="service-picker-fieldset">
                 <legend>可選預約項目</legend>
                 <p class="slot-hint">按下「增加」後，項目會加入下方「目前選擇」。</p>
