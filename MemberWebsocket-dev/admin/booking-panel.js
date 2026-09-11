@@ -12,6 +12,6 @@
   });
 
   load('booking-panel-core.js', 'booking-panel-core-20260911-1')
-    .then(() => load('booking-cancellation-sync.js', 'booking-cancellation-sync-20260911-1'))
+    .then(() => load('booking-cancellation-sync.js', 'booking-cancellation-sync-20260911-2'))
     .catch((error) => console.error('booking admin extension load failed', error));
 })();
