@@ -1,0 +1,20 @@
+.booking-contact-admin {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(38, 88, 63, .07);
+  color: #25362c;
+  font-size: .88rem;
+  line-height: 1.55;
+}
+
+.booking-contact-admin strong {
+  font-weight: 800;
+}
+
+.booking-contact-source-label {
+  display: inline-block;
+  margin-left: 6px;
+  color: #66746c;
+  font-size: .76rem;
+}
