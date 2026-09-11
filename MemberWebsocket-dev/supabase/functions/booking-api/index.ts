@@ -761,9 +761,6 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
 
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
   if (!expectedUpdatedAt || expectedUpdatedAt !== booking.updated_at) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再確認。");
-  if (nextStatus === "completed" && Date.parse(`${booking.booking_date}T${String(booking.end_time).slice(0, 8)}+08:00`) > Date.now()) {
-    throw new ApiError(409, "BOOKING_NOT_FINISHED", "服務結束時間尚未到，無法確認完成。");
-  }
   const allowed = booking.status === "pending"
     ? ["confirmed", "rejected", "cancelled"]
     : booking.status === "confirmed" ? ["cancelled", "completed"] : [];

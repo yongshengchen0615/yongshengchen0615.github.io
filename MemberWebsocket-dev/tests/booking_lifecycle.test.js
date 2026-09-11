@@ -34,8 +34,11 @@ test('pending, cancelled and completed appointments cannot be completed', async 
     assert.equal(client.writes.length, 0);
   }
 });
-test('future appointment cannot be marked complete', async () => {
-  await assert.rejects(context.adminStatusUpdate(db({ ...booking, booking_date: '2099-01-01' }), identity, { bookingId: id, status: 'completed', expectedUpdatedAt: version }), { code: 'BOOKING_NOT_FINISHED' });
+test('confirmed appointment can be completed before scheduled end', async () => {
+  const client = db({ ...booking, booking_date: '2099-01-01' });
+  const result = await context.adminStatusUpdate(client, identity, { bookingId: id, status: 'completed', expectedUpdatedAt: version });
+  assert.equal(result.booking.status, 'completed');
+  assert.equal(client.writes[0].patch.completed_by, identity.lineUserId);
 });
 test('stale confirmation cannot confirm a rescheduled pending appointment', async () => {
   const client = db({ ...booking, status: 'pending', updated_at: '2026-09-11T01:00:00.000Z' });
