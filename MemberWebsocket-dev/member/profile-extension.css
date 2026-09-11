@@ -1,0 +1,19 @@
+.profile-booking-help {
+  display: block;
+  margin-top: .45rem;
+  color: #b42318;
+  font-size: .78rem;
+  line-height: 1.55;
+  font-weight: 650;
+}
+
+.profile-field select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(24, 32, 27, .16);
+  border-radius: 14px;
+  background: #fff;
+  color: inherit;
+  padding: 0 14px;
+  font: inherit;
+}
