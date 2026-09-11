@@ -520,7 +520,10 @@
       heading.append(member, status); card.appendChild(heading);
       const title = document.createElement('h4'); title.textContent = bookingDisplayTitle(booking); card.appendChild(title);
       const storeItem = bookingStoreItem(booking); const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || 10) * Number(storeItem.quantity || 1) : 0;
-      const time = document.createElement('p'); time.className = 'booking-admin-time'; time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 預約佔用 ${booking.totalDurationMinutes || 0} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 總額 ${formatMoney(booking.totalAmount)}`; card.appendChild(time);
+      const scheduledMinutes = Number(booking.totalDurationMinutes || 0);
+      const currentMinutes = Array.isArray(booking.items) && booking.items.length ? booking.items.reduce((sum, item) => sum + Number(item.unitDurationMinutes || 0) * Number(item.quantity || 1), 0) : scheduledMinutes;
+      const durationText = currentMinutes !== scheduledMinutes ? `目前項目共 ${currentMinutes} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 原排程佔用 ${scheduledMinutes} 分鐘` : `預約佔用 ${scheduledMinutes} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''}`;
+      const time = document.createElement('p'); time.className = 'booking-admin-time'; time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${durationText} · 總額 ${formatMoney(booking.totalAmount)}`; card.appendChild(time);
       const items = bookingVisibleItems(booking);
       if (items.length || storeItem) {
         const list = document.createElement('ul'); list.className = 'booking-admin-item-list';

@@ -240,7 +240,14 @@
     service.textContent = visibleBookingItems(booking).map((item) => item.serviceTitle).filter(Boolean).join(' + ') || booking.serviceTitle || '預約項目';
     const time = document.createElement('p');
     time.className = 'booking-time';
-    time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)}　${booking.startTime}–${booking.endTime}（原預約時段）`;
+    const scheduledMinutes = Number(booking.totalDurationMinutes || 0);
+    const currentMinutes = Array.isArray(booking.items) && booking.items.length
+      ? booking.items.reduce((sum, item) => sum + Number(item.unitDurationMinutes || 0) * Number(item.quantity || 1), 0)
+      : scheduledMinutes;
+    const durationText = currentMinutes !== scheduledMinutes
+      ? `目前項目共 ${currentMinutes} 分鐘 · 原排程佔用 ${scheduledMinutes} 分鐘`
+      : `目前項目共 ${currentMinutes} 分鐘`;
+    time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)}　${booking.startTime}–${booking.endTime}（原預約時段） · ${durationText}`;
     article.append(heading, service, time);
 
     const items = visibleBookingItems(booking);

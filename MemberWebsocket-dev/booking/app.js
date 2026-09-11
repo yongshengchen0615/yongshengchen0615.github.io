@@ -579,7 +579,14 @@
       const time = document.createElement('span');
       const storeItem = bookingStoreItem(booking);
       const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || DEFAULT_STORE_SERVICE_MINUTES) * Number(storeItem.quantity || 1) : 0;
-      time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${booking.totalDurationMinutes || 0} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · ${formatMoney(booking.totalAmount)}`;
+      const scheduledMinutes = Number(booking.totalDurationMinutes || 0);
+      const currentMinutes = Array.isArray(booking.items) && booking.items.length
+        ? booking.items.reduce((sum, service) => sum + Number(service.unitDurationMinutes || 0) * Number(service.quantity || 1), 0)
+        : scheduledMinutes;
+      const durationText = currentMinutes !== scheduledMinutes
+        ? `目前項目共 ${currentMinutes} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 原排程佔用 ${scheduledMinutes} 分鐘`
+        : `${currentMinutes} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''}`;
+      time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${durationText} · ${formatMoney(booking.totalAmount)}`;
       titleBox.append(title, time);
       const status = document.createElement('span');
       status.className = `status-badge status-${booking.status}`;
