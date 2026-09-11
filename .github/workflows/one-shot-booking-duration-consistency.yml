@@ -1,0 +1,143 @@
+name: One-shot booking duration consistency UI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/one-shot-booking-duration-consistency.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch booking duration presentation and regression checks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def rewrite_lines(path, transform):
+              p = Path(path)
+              lines = p.read_text(encoding='utf-8').splitlines()
+              new_lines = transform(lines)
+              p.write_text('\n'.join(new_lines) + '\n', encoding='utf-8')
+
+          # Member booking history: derive current duration from item snapshots.
+          def member_transform(lines):
+              out = []
+              changed = False
+              for line in lines:
+                  if 'time.textContent =' in line and 'booking.totalDurationMinutes' in line and 'window.BookingSystem.formatDate' in line:
+                      indent = line[:len(line)-len(line.lstrip())]
+                      out.extend([
+                          indent + "const scheduledMinutes = Number(booking.totalDurationMinutes || 0);",
+                          indent + "const currentMinutes = Array.isArray(booking.items) && booking.items.length ? booking.items.reduce((sum, item) => sum + Number(item.unitDurationMinutes || 0) * Number(item.quantity || 1), 0) : scheduledMinutes;",
+                          indent + "const durationText = currentMinutes !== scheduledMinutes ? `目前項目共 ${currentMinutes} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 原排程佔用 ${scheduledMinutes} 分鐘` : `${currentMinutes} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''}`;",
+                          indent + "time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${durationText} · ${formatMoney(booking.totalAmount)}`;",
+                      ])
+                      changed = True
+                  else:
+                      out.append(line)
+              if not changed:
+                  raise SystemExit('member booking duration display target not found')
+              return out
+          rewrite_lines('MemberWebsocket-dev/booking/app.js', member_transform)
+
+          # Main admin booking panel: replace misleading scheduled duration label.
+          def admin_panel_transform(lines):
+              out = []
+              changed = False
+              for line in lines:
+                  if '預約佔用 ${booking.totalDurationMinutes' in line and 'booking-admin-time' in line:
+                      indent = line[:len(line)-len(line.lstrip())]
+                      out.extend([
+                          indent + "const storeItem = bookingStoreItem(booking); const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || 10) * Number(storeItem.quantity || 1) : 0;",
+                          indent + "const scheduledMinutes = Number(booking.totalDurationMinutes || 0);",
+                          indent + "const currentMinutes = Array.isArray(booking.items) && booking.items.length ? booking.items.reduce((sum, item) => sum + Number(item.unitDurationMinutes || 0) * Number(item.quantity || 1), 0) : scheduledMinutes;",
+                          indent + "const durationText = currentMinutes !== scheduledMinutes ? `目前項目共 ${currentMinutes} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 原排程佔用 ${scheduledMinutes} 分鐘` : `預約佔用 ${scheduledMinutes} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''}`;",
+                          indent + "const time = document.createElement('p'); time.className = 'booking-admin-time'; time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${durationText} · 總額 ${formatMoney(booking.totalAmount)}`; card.appendChild(time);",
+                      ])
+                      changed = True
+                  else:
+                      out.append(line)
+              if not changed:
+                  raise SystemExit('main admin booking duration display target not found')
+              return out
+          rewrite_lines('MemberWebsocket-dev/admin/booking-panel.js', admin_panel_transform)
+
+          # Standalone admin already identifies the original slot; add current item total.
+          def standalone_transform(lines):
+              out = []
+              changed = False
+              for line in lines:
+                  if 'time.textContent =' in line and '（原預約時段）' in line and 'booking.startTime' in line:
+                      indent = line[:len(line)-len(line.lstrip())]
+                      out.extend([
+                          indent + "const scheduledMinutes = Number(booking.totalDurationMinutes || 0);",
+                          indent + "const currentMinutes = Array.isArray(booking.items) && booking.items.length ? booking.items.reduce((sum, item) => sum + Number(item.unitDurationMinutes || 0) * Number(item.quantity || 1), 0) : scheduledMinutes;",
+                          indent + "const durationText = currentMinutes !== scheduledMinutes ? `目前項目共 ${currentMinutes} 分鐘 · 原排程佔用 ${scheduledMinutes} 分鐘` : `目前項目共 ${currentMinutes} 分鐘`;",
+                          indent + "time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)}　${booking.startTime}–${booking.endTime}（原預約時段） · ${durationText}`;",
+                      ])
+                      changed = True
+                  else:
+                      out.append(line)
+              if not changed:
+                  raise SystemExit('standalone admin duration display target not found')
+              return out
+          rewrite_lines('MemberWebsocket-dev/booking/admin/app.js', standalone_transform)
+
+          replacements = {
+              'MemberWebsocket-dev/booking/index.html': ('./app.js?v=booking-lifecycle-20260911-2', './app.js?v=booking-duration-consistency-20260911-4'),
+              'MemberWebsocket-dev/admin/index.html': ('./booking-panel.js?v=booking-onsite-20260911-3', './booking-panel.js?v=booking-duration-consistency-20260911-4'),
+              'MemberWebsocket-dev/booking/admin/index.html': ('./app.js?v=booking-onsite-20260911-3', './app.js?v=booking-duration-consistency-20260911-4'),
+          }
+          for file, (before, after) in replacements.items():
+              p = Path(file)
+              text = p.read_text(encoding='utf-8')
+              if before not in text:
+                  raise SystemExit(f'cache token not found: {file}')
+              p.write_text(text.replace(before, after, 1), encoding='utf-8')
+
+          workflow = Path('.github/workflows/test-memberwebsocket-dev.yml')
+          text = workflow.read_text(encoding='utf-8')
+          anchor = "          grep -q 'bookingAdminApi' /dev/null || true\n"
+          checks = """          grep -q '目前項目共' MemberWebsocket-dev/booking/app.js
+          grep -q '原排程佔用' MemberWebsocket-dev/booking/app.js
+          grep -q '目前項目共' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q '原排程佔用' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q '目前項目共' MemberWebsocket-dev/booking/admin/app.js
+          grep -q 'bookings_validate_schedule_consistency' MemberWebsocket-dev/supabase/migrations/20260911103022_booking_duration_consistency_guards.sql
+          grep -q 'booking_items_assert_bundle' MemberWebsocket-dev/supabase/migrations/20260911103022_booking_duration_consistency_guards.sql
+          grep -q 'create_booking_bundle_request' MemberWebsocket-dev/supabase/migrations/20260911103022_booking_duration_consistency_guards.sql
+"""
+          if checks.strip() not in text:
+              if anchor not in text:
+                  raise SystemExit('test workflow insertion anchor not found')
+              text = text.replace(anchor, checks + anchor, 1)
+              workflow.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify patched JavaScript and booking lifecycle
+        run: |
+          node --check MemberWebsocket-dev/booking/app.js
+          node --check MemberWebsocket-dev/admin/booking-panel.js
+          node --check MemberWebsocket-dev/booking/admin/app.js
+          node --test MemberWebsocket-dev/tests/booking_lifecycle.test.js
+          grep -q '目前項目共' MemberWebsocket-dev/booking/app.js
+          grep -q '原排程佔用' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'booking_items_assert_bundle' MemberWebsocket-dev/supabase/migrations/20260911103022_booking_duration_consistency_guards.sql
+
+      - name: Commit final changes and remove one-shot workflow
+        run: |
+          rm .github/workflows/one-shot-booking-duration-consistency.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add MemberWebsocket-dev/booking/app.js MemberWebsocket-dev/admin/booking-panel.js MemberWebsocket-dev/booking/admin/app.js MemberWebsocket-dev/booking/index.html MemberWebsocket-dev/admin/index.html MemberWebsocket-dev/booking/admin/index.html .github/workflows/test-memberwebsocket-dev.yml .github/workflows/one-shot-booking-duration-consistency.yml
+          git commit -m "fix(booking): distinguish actual and scheduled duration"
+          git push
