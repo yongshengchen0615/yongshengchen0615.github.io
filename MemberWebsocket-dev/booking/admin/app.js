@@ -1,6 +1,7 @@
 (() => {
   'use strict';
 
+  const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
   const state = {
     config: null,
     idToken: '',
@@ -57,6 +58,36 @@
     }
   }
 
+  async function requestOperations(action, payload = {}) {
+    const endpoint = `${String(state.config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-admin-operations`;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: String(state.config?.supabasePublishableKey || ''),
+        },
+        body: JSON.stringify({ ...payload, action, clientType: 'admin', idToken: state.idToken }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.ok !== true) {
+        const error = new Error(String(data?.error?.message || '預約管理操作失敗。'));
+        error.code = String(data?.error?.code || 'API_ERROR');
+        throw error;
+      }
+      return data.data || {};
+    } catch (error) {
+      if (error?.code) throw error;
+      throw new Error('目前無法連線預約管理服務，請更新資料後再試。');
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
   function renderAll() {
     renderStats();
     renderServices();
@@ -86,7 +117,7 @@
       const title = document.createElement('strong');
       title.textContent = service.title;
       const meta = document.createElement('small');
-      meta.textContent = `${service.workStartTime}–${service.workEndTime}｜提前 ${service.minAdvanceDays} 天｜星期${(service.availableWeekdays || []).map((day) => WEEKDAY_LABELS[day]).join('、')}`;
+      meta.textContent = `${service.workStartTime || '—'}–${service.workEndTime || '—'}｜提前 ${service.minAdvanceDays ?? 0} 天｜星期${(service.availableWeekdays || []).map((day) => WEEKDAY_LABELS[day]).join('、')}`;
       text.append(title, meta);
 
       const badge = document.createElement('span');
@@ -159,7 +190,7 @@
       renderStats();
       renderServices();
       editService(saved);
-      showServiceMessage('預約項目已儲存。會員端會依新的工作時間產生 30 分鐘時段。', 'success');
+      showServiceMessage('預約項目已儲存。', 'success');
     } catch (error) {
       showServiceMessage(error?.message || '預約項目儲存失敗。', 'error');
       if (error?.code === 'CONFLICT') await refresh();
@@ -184,6 +215,10 @@
     for (const booking of bookings) els.bookingQueue.appendChild(bookingCard(booking));
   }
 
+  function visibleBookingItems(booking) {
+    return Array.isArray(booking?.items) ? booking.items.filter((item) => item.serviceId !== STORE_SERVICE_ID) : [];
+  }
+
   function bookingCard(booking) {
     const article = document.createElement('article');
     article.className = `booking-card status-${booking.status}`;
@@ -202,11 +237,22 @@
     heading.append(identity, badge);
 
     const service = document.createElement('h3');
-    service.textContent = booking.serviceTitle || '預約項目';
+    service.textContent = visibleBookingItems(booking).map((item) => item.serviceTitle).filter(Boolean).join(' + ') || booking.serviceTitle || '預約項目';
     const time = document.createElement('p');
     time.className = 'booking-time';
-    time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)}　${booking.startTime}–${booking.endTime}`;
+    time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)}　${booking.startTime}–${booking.endTime}（原預約時段）`;
     article.append(heading, service, time);
+
+    const items = visibleBookingItems(booking);
+    if (items.length) {
+      const list = document.createElement('ul');
+      items.forEach((item) => {
+        const row = document.createElement('li');
+        row.textContent = `${item.serviceTitle} × ${Number(item.quantity || 1)}｜${Number(item.unitDurationMinutes || 0)} 分鐘/份｜NT$${Number(item.unitPriceAmount || 0).toLocaleString('zh-Hant-TW')}/份`;
+        list.appendChild(row);
+      });
+      article.appendChild(list);
+    }
 
     if (booking.memberNote) {
       const memberNote = document.createElement('p');
@@ -229,21 +275,20 @@
       noteInput.rows = 2;
       noteInput.maxLength = 500;
       noteInput.value = booking.adminNote || '';
-      noteInput.placeholder = booking.status === 'pending' ? '確認或拒絕時可提供會員說明' : '取消已確認預約時可提供原因';
+      noteInput.placeholder = booking.status === 'pending' ? '確認或拒絕時可提供會員說明' : '完成或取消預約時可提供說明';
       noteLabel.appendChild(noteInput);
       article.appendChild(noteLabel);
 
       const actions = document.createElement('div');
       actions.className = 'booking-actions';
+      actions.append(actionButton('修改服務項目', 'secondary', () => toggleBookingItemEditor(booking, article)));
       if (booking.status === 'pending') {
         const reject = actionButton('拒絕', 'danger', () => updateStatus(booking, 'rejected', noteInput.value, actions));
         const confirm = actionButton('確認預約', 'primary', () => updateStatus(booking, 'confirmed', noteInput.value, actions));
         actions.append(reject, confirm);
       } else {
-        const cancel = actionButton('取消已確認預約', 'danger', () => updateStatus(booking, 'cancelled', noteInput.value, actions));
         const complete = actionButton('確認服務完成', 'primary', () => updateStatus(booking, 'completed', noteInput.value, actions));
-        complete.disabled = Date.parse(`${booking.bookingDate}T${booking.endTime}:00+08:00`) > Date.now();
-        if (complete.disabled) complete.title = '服務結束時間到達後，請更新預約再確認完成';
+        const cancel = actionButton('取消已確認預約', 'danger', () => updateStatus(booking, 'cancelled', noteInput.value, actions));
         actions.append(complete, cancel);
       }
       article.appendChild(actions);
@@ -251,28 +296,96 @@
     return article;
   }
 
+  function toggleBookingItemEditor(booking, article) {
+    const existing = article.querySelector('[data-booking-item-editor]');
+    if (existing) { existing.remove(); return; }
+    const services = (state.data.services || []).filter((service) => service.serviceId !== STORE_SERVICE_ID);
+    if (!services.length) return window.alert('目前沒有可選擇的服務項目。');
+    const current = new Map(visibleBookingItems(booking).map((item) => [item.serviceId, Number(item.quantity || 1)]));
+    const editor = document.createElement('div');
+    editor.dataset.bookingItemEditor = '1';
+    editor.className = 'admin-note-field';
+    const heading = document.createElement('strong');
+    heading.textContent = '現場實際服務項目';
+    const hint = document.createElement('small');
+    hint.textContent = '修改項目與數量不會改變原預約日期與佔用時段。';
+    editor.append(heading, hint);
+
+    services.forEach((service) => {
+      const row = document.createElement('label');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.dataset.serviceId = service.serviceId;
+      check.checked = current.has(service.serviceId);
+      const label = document.createElement('span');
+      label.textContent = `${service.title}${service.isActive ? '' : '（目前停用）'}｜${Number(service.durationMinutes || 0)} 分鐘｜NT$${Number(service.priceAmount || 0).toLocaleString('zh-Hant-TW')}`;
+      const quantity = document.createElement('select');
+      quantity.dataset.quantityFor = service.serviceId;
+      quantity.innerHTML = '<option value="1">1 份</option><option value="2">2 份</option>';
+      quantity.value = String(current.get(service.serviceId) || 1);
+      quantity.disabled = !check.checked;
+      check.addEventListener('change', () => { quantity.disabled = !check.checked; });
+      row.append(check, label, quantity);
+      editor.appendChild(row);
+    });
+
+    const editorActions = document.createElement('div');
+    editorActions.className = 'booking-actions';
+    const save = actionButton('儲存現場改單', 'primary', async () => {
+      const selected = [...editor.querySelectorAll('input[data-service-id]:checked')].map((check) => ({
+        serviceId: check.dataset.serviceId,
+        quantity: Number(editor.querySelector(`select[data-quantity-for="${check.dataset.serviceId}"]`)?.value || 1),
+      }));
+      if (!selected.length) return window.alert('請至少選擇一個服務項目。');
+      editor.querySelectorAll('button,input,select').forEach((control) => { control.disabled = true; });
+      try {
+        const result = await requestOperations('admin.booking.items.update', {
+          bookingId: booking.bookingId,
+          expectedUpdatedAt: booking.updatedAt,
+          items: selected,
+        });
+        state.data.bookings = (state.data.bookings || []).map((item) => item.bookingId === result.booking.bookingId ? result.booking : item);
+        renderStats();
+        renderBookings();
+      } catch (error) {
+        window.alert(error?.message || '修改服務項目失敗。');
+        await refresh();
+      }
+    });
+    const cancel = actionButton('取消修改', 'secondary', () => editor.remove());
+    editorActions.append(save, cancel);
+    editor.appendChild(editorActions);
+    article.appendChild(editor);
+  }
+
   function actionButton(label, kind, handler) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `button ${kind === 'primary' ? 'button-dark' : 'button-danger'}`;
+    button.className = `button ${kind === 'primary' ? 'button-dark' : kind === 'danger' ? 'button-danger' : 'button-light'}`;
     button.textContent = label;
     button.addEventListener('click', handler);
     return button;
   }
 
   async function updateStatus(booking, nextStatus, adminNote, actionContainer) {
-    const confirmText = nextStatus === 'completed' ? '確認這筆服務已完成？完成後不可修改或取消。' : nextStatus === 'confirmed'
+    const confirmText = nextStatus === 'completed' ? '確認這筆服務已完成？系統不要求等待原預約結束時間；完成後不可修改或取消。' : nextStatus === 'confirmed'
       ? `確認 ${booking.memberDisplayName || '此會員'} 的 ${booking.bookingDate} ${booking.startTime} 預約？`
       : nextStatus === 'rejected' ? '確定拒絕這筆預約？此時段會重新開放。' : '確定取消這筆已確認預約？此時段會重新開放。';
     if (!window.confirm(confirmText)) return;
     actionContainer.querySelectorAll('button').forEach((button) => { button.disabled = true; });
     try {
-      const result = await window.BookingSystem.request(state.config, 'admin', state.idToken, 'admin.booking.status.update', {
-        bookingId: booking.bookingId,
-        expectedUpdatedAt: booking.updatedAt,
-        status: nextStatus,
-        adminNote,
-      });
+      const result = nextStatus === 'completed'
+        ? await requestOperations('admin.booking.status.complete', {
+            bookingId: booking.bookingId,
+            expectedUpdatedAt: booking.updatedAt,
+            adminNote,
+          })
+        : await window.BookingSystem.request(state.config, 'admin', state.idToken, 'admin.booking.status.update', {
+            bookingId: booking.bookingId,
+            expectedUpdatedAt: booking.updatedAt,
+            status: nextStatus,
+            adminNote,
+          });
       state.data.bookings = (state.data.bookings || []).map((item) => item.bookingId === result.booking.bookingId ? result.booking : item);
       renderStats();
       renderBookings();
