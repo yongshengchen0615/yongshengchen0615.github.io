@@ -6,9 +6,16 @@
 
   const originalMemberProfile = window.BookingSystem.memberProfile.bind(window.BookingSystem);
   const originalRequest = window.BookingSystem.request.bind(window.BookingSystem);
+  const BOOKING_GROUPS = [
+    { key: 'reserved', title: '已預約服務', description: '等待確認與已確認的預約服務。' },
+    { key: 'completed', title: '已完成的服務', description: '已由管理端確認完成的服務紀錄。' },
+    { key: 'cancelled', title: '已取消的服務', description: '已取消或未通過的預約服務。' },
+  ];
   let lastProfile = null;
   let renderTimer = null;
   let bookingListObserver = null;
+  let bookingHistoryTimer = null;
+  let reorganizingBookingHistory = false;
 
   function membershipRequiredError() {
     if (typeof window.BookingSystem.clientError === 'function') {
@@ -53,17 +60,89 @@
     });
   }
 
-  function installCompletedServiceCopy() {
+  function bookingGroupKey(item) {
+    if (item.classList.contains('status-completed')) return 'completed';
+    if (item.classList.contains('status-cancelled') || item.classList.contains('status-rejected')) return 'cancelled';
+    return 'reserved';
+  }
+
+  function createBookingGroup(group, items) {
+    const section = document.createElement('section');
+    section.className = `booking-service-group booking-service-group-${group.key}`;
+    section.dataset.bookingServiceGroup = group.key;
+    section.setAttribute('aria-labelledby', `bookingServiceGroupTitle-${group.key}`);
+
+    const heading = document.createElement('div');
+    heading.className = 'booking-service-group-heading';
+    const text = document.createElement('div');
+    const title = document.createElement('h3');
+    title.id = `bookingServiceGroupTitle-${group.key}`;
+    title.textContent = group.title;
+    const description = document.createElement('p');
+    description.textContent = group.description;
+    const count = document.createElement('span');
+    count.className = 'booking-service-group-count';
+    count.textContent = `${items.length} 筆`;
+    text.append(title, description);
+    heading.append(text, count);
+
+    const list = document.createElement('div');
+    list.className = 'booking-service-group-list';
+    if (items.length) {
+      list.append(...items);
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'booking-service-group-empty';
+      empty.textContent = group.key === 'reserved'
+        ? '目前沒有已預約服務'
+        : group.key === 'completed'
+          ? '目前沒有已完成的服務'
+          : '目前沒有已取消的服務';
+      list.appendChild(empty);
+    }
+
+    section.append(heading, list);
+    return section;
+  }
+
+  function organizeBookingHistory() {
+    const bookingList = document.getElementById('bookingList');
+    if (!bookingList || reorganizingBookingHistory) return;
+    normalizeCompletedServiceLabel(bookingList);
+
+    const directItems = [...bookingList.children].filter((node) => node.classList?.contains('booking-item'));
+    if (!directItems.length) return;
+
+    const grouped = new Map(BOOKING_GROUPS.map((group) => [group.key, []]));
+    directItems.forEach((item) => grouped.get(bookingGroupKey(item)).push(item));
+
+    reorganizingBookingHistory = true;
+    if (bookingListObserver) bookingListObserver.disconnect();
+    try {
+      bookingList.replaceChildren(...BOOKING_GROUPS.map((group) => createBookingGroup(group, grouped.get(group.key))));
+      normalizeCompletedServiceLabel(bookingList);
+    } finally {
+      reorganizingBookingHistory = false;
+      if (bookingListObserver) bookingListObserver.observe(bookingList, { childList: true, subtree: true });
+    }
+  }
+
+  function scheduleBookingHistoryEnhancement() {
+    if (bookingHistoryTimer !== null) window.clearTimeout(bookingHistoryTimer);
+    bookingHistoryTimer = window.setTimeout(() => {
+      bookingHistoryTimer = null;
+      organizeBookingHistory();
+    }, 0);
+  }
+
+  function installBookingHistoryEnhancement() {
     const bookingList = document.getElementById('bookingList');
     if (!bookingList) return;
     normalizeCompletedServiceLabel(bookingList);
     if (bookingListObserver) bookingListObserver.disconnect();
-    bookingListObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => normalizeCompletedServiceLabel(node));
-      });
-    });
+    bookingListObserver = new MutationObserver(() => scheduleBookingHistoryEnhancement());
     bookingListObserver.observe(bookingList, { childList: true, subtree: true });
+    scheduleBookingHistoryEnhancement();
   }
 
   window.BookingSystem.memberProfile = async (...args) => {
@@ -90,8 +169,9 @@
     }
   };
 
-  window.addEventListener('DOMContentLoaded', installCompletedServiceCopy);
+  window.addEventListener('DOMContentLoaded', installBookingHistoryEnhancement);
   window.addEventListener('beforeunload', () => {
     if (bookingListObserver) bookingListObserver.disconnect();
+    if (bookingHistoryTimer !== null) window.clearTimeout(bookingHistoryTimer);
   });
 })();
