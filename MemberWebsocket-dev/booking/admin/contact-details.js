@@ -33,13 +33,13 @@
     const byId = new Map((contacts.contacts || []).map((item) => [item.bookingId, item]));
     result.bookings = bookings.map((item) => ({ ...item, ...(byId.get(item.bookingId) || {}) }));
     latestBookings = result.bookings;
-    queueMicrotask(injectContactRows);
+    queueMicrotask(injectBookingSummaries);
     return result;
   };
 
   window.addEventListener('DOMContentLoaded', () => {
     const queue = document.getElementById('bookingQueue');
-    if (queue) new MutationObserver(injectContactRows).observe(queue, { childList: true, subtree: false });
+    if (queue) new MutationObserver(injectBookingSummaries).observe(queue, { childList: true, subtree: false });
   });
 
   async function postJson(endpoint, config, body) {
@@ -62,35 +62,26 @@
       }
       return data.data || {};
     } catch (error) {
-      if (error?.name === 'AbortError') throw clientError('API_TIMEOUT', '預約聯絡資料服務回應逾時。');
+      if (error?.name === 'AbortError') throw clientError('API_TIMEOUT', '預約聯絡資料服務回應逾時，請稍後再試。');
       throw error;
     } finally {
       window.clearTimeout(timer);
     }
   }
 
-  function injectContactRows() {
+  function injectBookingSummaries() {
     const cards = [...document.querySelectorAll('#bookingQueue > .booking-card')];
     const used = new Set();
 
     cards.forEach((card) => {
+      card.querySelector('.booking-received-summary')?.remove();
       card.querySelector('.booking-contact-admin')?.remove();
+
       const booking = findBookingForCard(card, used);
       if (!booking) return;
       used.add(booking.bookingId);
       card.dataset.bookingId = String(booking.bookingId || '');
-
       normalizeBookingCard(card, booking);
-
-      const row = document.createElement('p');
-      row.className = 'booking-contact-admin';
-      const label = salutationLabel(booking.contactSalutation);
-      const sourceLabel = booking.contactSource === 'custom' ? '本次另填' : '會員資料';
-      const safeName = booking.contactSurname && label ? `${booking.contactSurname}${label}` : '資料未完整';
-      row.innerHTML = `<strong>預約聯絡：</strong>${escapeHtml(safeName)}｜${escapeHtml(booking.contactPhone || '未填寫')}<span class="booking-contact-source-label">${escapeHtml(sourceLabel)}</span>`;
-      const heading = card.querySelector('.booking-heading');
-      if (heading) heading.insertAdjacentElement('afterend', row);
-      else card.prepend(row);
     });
   }
 
@@ -114,38 +105,67 @@
 
   function normalizeBookingCard(card, booking) {
     const visibleItems = visibleBookingItems(booking);
-    const serviceTitle = visibleItems.map((item) => String(item.serviceTitle || '').trim()).filter(Boolean).join(' + ');
-    const heading = card.querySelector('h3');
-    if (heading) heading.textContent = serviceTitle || '尚無會員服務項目';
+    const displayName = bookingContactName(booking);
 
-    const serviceMinutes = visibleItems.reduce((sum, item) => {
-      return sum + Number(item.unitDurationMinutes || 0) * Number(item.quantity || 1);
-    }, 0);
+    const heading = card.querySelector('.booking-heading');
+    const headingIdentity = heading?.querySelector('div');
+    const headingName = headingIdentity?.querySelector('strong');
+    const headingCode = headingIdentity?.querySelector('small');
+    if (headingName) headingName.textContent = displayName;
+    if (headingCode) headingCode.hidden = true;
+
+    const legacyServiceHeading = card.querySelector('h3');
+    if (legacyServiceHeading) legacyServiceHeading.hidden = true;
+
+    const directList = [...card.children].find((element) => element.tagName === 'UL');
+    directList?.remove();
+
+    const summary = document.createElement('div');
+    summary.className = 'booking-received-summary';
+
+    const phone = document.createElement('p');
+    const phoneLabel = document.createElement('strong');
+    phoneLabel.textContent = '電話：';
+    phone.append(phoneLabel, document.createTextNode(String(booking.contactPhone || '未填寫')));
+    summary.appendChild(phone);
+
+    const servicesLabel = document.createElement('p');
+    servicesLabel.className = 'booking-received-services-label';
+    const servicesLabelStrong = document.createElement('strong');
+    servicesLabelStrong.textContent = '服務項目：';
+    servicesLabel.appendChild(servicesLabelStrong);
+    summary.appendChild(servicesLabel);
+
+    const services = document.createElement('div');
+    services.className = 'booking-received-services';
+    if (!visibleItems.length) {
+      const empty = document.createElement('span');
+      empty.textContent = '尚無會員服務項目';
+      services.appendChild(empty);
+    } else {
+      visibleItems.forEach((item) => {
+        const line = document.createElement('span');
+        const quantity = Math.max(1, Number(item.quantity || 1));
+        line.textContent = `${String(item.serviceTitle || '服務項目').trim()}${quantity > 1 ? ` × ${quantity}` : ''}`;
+        services.appendChild(line);
+      });
+    }
+    summary.appendChild(services);
+
+    if (heading) heading.insertAdjacentElement('afterend', summary);
+    else card.prepend(summary);
 
     const time = card.querySelector('.booking-time');
     if (time) {
-      const durationText = serviceMinutes > 0 ? `　｜　服務時間：${serviceMinutes} 分鐘` : '';
-      time.textContent = `預約日期：${system.formatDate(booking.bookingDate)}　｜　開始時間：${booking.startTime || '—'}${durationText}`;
+      time.textContent = `預約日期：${system.formatDate(booking.bookingDate)}　｜　開始時間：${booking.startTime || '—'}`;
     }
+  }
 
-    const directList = [...card.children].find((element) => element.tagName === 'UL');
-    if (!visibleItems.length) {
-      directList?.remove();
-      return;
-    }
-
-    const list = directList || document.createElement('ul');
-    list.replaceChildren();
-    visibleItems.forEach((item) => {
-      const row = document.createElement('li');
-      row.textContent = `${item.serviceTitle || '服務項目'} × ${Number(item.quantity || 1)}｜${Number(item.unitDurationMinutes || 0)} 分鐘/份｜NT$${Number(item.unitPriceAmount || 0).toLocaleString('zh-Hant-TW')}/份`;
-      list.appendChild(row);
-    });
-    if (!directList) {
-      const timeRow = card.querySelector('.booking-time');
-      if (timeRow) timeRow.insertAdjacentElement('afterend', list);
-      else card.appendChild(list);
-    }
+  function bookingContactName(booking) {
+    const surname = String(booking?.contactSurname || '').trim();
+    const label = salutationLabel(booking?.contactSalutation);
+    if (surname && label) return `${surname}${label}`;
+    return String(booking?.memberDisplayName || booking?.memberCode || '會員');
   }
 
   function visibleBookingItems(booking) {
@@ -155,8 +175,5 @@
   }
 
   function salutationLabel(value) { return value === 'mr' ? '先生' : value === 'ms' ? '小姐' : ''; }
-  function escapeHtml(value) {
-    return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  }
   function clientError(code, message) { const error = new Error(message); error.code = code; return error; }
 })();
