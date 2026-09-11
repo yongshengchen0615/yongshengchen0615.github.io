@@ -163,7 +163,70 @@
     }
     summary.appendChild(services);
 
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'booking-copy-button';
+    copyButton.textContent = '複製預約內容';
+    copyButton.addEventListener('click', async () => {
+      const originalLabel = copyButton.textContent;
+      copyButton.disabled = true;
+      try {
+        await copyText(buildBookingCopyText(booking));
+        copyButton.textContent = '已複製';
+      } catch (_) {
+        copyButton.textContent = '複製失敗';
+      } finally {
+        window.setTimeout(() => {
+          copyButton.disabled = false;
+          copyButton.textContent = originalLabel;
+        }, 1500);
+      }
+    });
+    summary.appendChild(copyButton);
+
     card.prepend(summary);
+  }
+
+  function buildBookingCopyText(booking) {
+    const lines = [
+      `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—')}`,
+      bookingContactName(booking),
+      `電話：${String(booking.contactPhone || '未填寫')}`,
+      '服務項目：',
+    ];
+
+    const visibleItems = visibleBookingItems(booking);
+    if (!visibleItems.length) {
+      lines.push('尚無會員服務項目');
+      return lines.join('\n');
+    }
+
+    visibleItems.forEach((item) => {
+      const quantity = Math.max(1, Number(item.quantity || 1));
+      const title = String(item.serviceTitle || '服務項目').trim();
+      for (let index = 0; index < quantity; index += 1) lines.push(title);
+    });
+    return lines.join('\n');
+  }
+
+  async function copyText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('COPY_FAILED');
   }
 
   function formatBookingDate(value) {
