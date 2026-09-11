@@ -1,0 +1,42 @@
+name: One-shot booking duration consistency v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-shot-booking-duration-consistency-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply patch
+        run: python3 .github/scripts/patch-booking-duration-consistency.py
+      - name: Verify
+        run: |
+          node --check MemberWebsocket-dev/booking/app.js
+          node --check MemberWebsocket-dev/admin/booking-panel.js
+          node --check MemberWebsocket-dev/booking/admin/app.js
+          node --test MemberWebsocket-dev/tests/booking_lifecycle.test.js
+          grep -q '目前項目共' MemberWebsocket-dev/booking/app.js
+          grep -q '原排程佔用' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'booking_items_assert_bundle' MemberWebsocket-dev/supabase/migrations/20260911103022_booking_duration_consistency_guards.sql
+      - name: Commit
+        run: |
+          rm .github/scripts/patch-booking-duration-consistency.py
+          rm .github/workflows/one-shot-booking-duration-consistency-v2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add MemberWebsocket-dev/booking/app.js MemberWebsocket-dev/admin/booking-panel.js MemberWebsocket-dev/booking/admin/app.js MemberWebsocket-dev/booking/index.html MemberWebsocket-dev/admin/index.html MemberWebsocket-dev/booking/admin/index.html .github/workflows/test-memberwebsocket-dev.yml .github/scripts/patch-booking-duration-consistency.py .github/workflows/one-shot-booking-duration-consistency-v2.yml
+          git commit -m "fix(booking): distinguish actual and scheduled duration"
+          git push
