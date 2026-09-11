@@ -236,7 +236,7 @@
   window.confirm = (message) => {
     const text = String(message ?? '');
     if (text.startsWith('確定取消 ') && text.endsWith(' 的預約嗎？')) {
-      return originalConfirm(`${text.replace(/^確定取消 /, '確定申請取消 ')}\n\n送出後需由管理端確認；確認前原預約時段仍會保留。`);
+      return originalConfirm(`${text}\n\n確定取消後會送出申請，需由管理端確認；確認前原預約時段仍會保留。`);
     }
     return originalConfirm(message);
   };
