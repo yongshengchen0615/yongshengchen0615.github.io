@@ -14,6 +14,7 @@ const TYPE_PREFIX = "__TYPE__:";
 const WRITE_ACTIONS = new Set([
   "user.booking.create",
   "user.booking.cancel",
+  "user.booking.update",
   "admin.booking.settings.save",
   "admin.booking.service.save",
   "admin.booking.status.update",
@@ -72,6 +73,9 @@ function mapDatabaseError(error: unknown): ApiError {
   const raw = error as { message?: string; details?: string; code?: string };
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
+    ["BOOKING_CONFLICT", 409, "BOOKING_CONFLICT", "預約已被更新，請重新整理後再操作。"],
+    ["BOOKING_NOT_EDITABLE", 409, "BOOKING_NOT_EDITABLE", "這筆預約已開始或狀態已變更，無法修改。"],
+    ["BOOKING_HOLIDAY", 409, "BOOKING_HOLIDAY", "這一天為休假日，請選擇其他日期。"],
     ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "這段時間剛剛已被其他會員預約，請選擇其他時間。"],
     ["BOOKING_TOO_EARLY", 409, "BOOKING_TOO_EARLY", "尚未符合提前預約天數，請選擇較晚的日期。"],
     ["BOOKING_TIME_PASSED", 409, "BOOKING_TIME_PASSED", "這個預約時間已經過了，請重新選擇。"],
@@ -340,6 +344,7 @@ function bookingClient(row: any, items: any[] = []): Json {
     status: row.status,
     memberNote: row.member_note || "",
     adminNote: row.admin_note || "",
+    completedAt: row.completed_at || null,
     confirmedAt: row.confirmed_at,
     rejectedAt: row.rejected_at,
     cancelledAt: row.cancelled_at,
@@ -422,7 +427,7 @@ function totalAmount(items: RequestedItem[]): number {
   return items.reduce((sum, item) => sum + Number(item.service.price_amount || 0) * item.quantity, 0);
 }
 
-async function generateSlots(supabase: SupabaseClient, body: Json): Promise<Json> {
+async function generateSlots(supabase: SupabaseClient, body: Json, member: any): Promise<Json> {
   const date = requireDate(body.bookingDate);
   const items = await normalizeRequestedItems(supabase, body);
   const settings = await bookingSettings(supabase);
@@ -441,12 +446,19 @@ async function generateSlots(supabase: SupabaseClient, body: Json): Promise<Json
     };
   }
 
+  let excludedId = "";
+  if (body.bookingId) {
+    excludedId = requireUuid(body.bookingId, "預約");
+    const owned = await supabase.from("bookings").select("id,status").eq("id", excludedId).eq("member_id", member.id).maybeSingle();
+    if (owned.error) throw mapDatabaseError(owned.error);
+    if (!owned.data || !["pending", "confirmed"].includes(owned.data.status)) throw new ApiError(409, "BOOKING_NOT_EDITABLE", "找不到可修改的預約。");
+  }
   const bookings = await supabase.from("bookings")
-    .select("start_time,end_time")
+    .select("id,start_time,end_time")
     .eq("booking_date", date)
     .in("status", ["pending", "confirmed"]);
   if (bookings.error) throw mapDatabaseError(bookings.error);
-  const occupied = (bookings.data || []).map((row: any) => ({
+  const occupied = (bookings.data || []).filter((row: any) => row.id !== excludedId).map((row: any) => ({
     start: timeToMinutes(row.start_time),
     end: timeToMinutes(row.end_time),
   }));
@@ -539,6 +551,26 @@ async function userCreate(supabase: SupabaseClient, identity: Identity, member: 
   return { booking: hydrated[0] };
 }
 
+async function userUpdate(supabase: SupabaseClient, identity: Identity, member: any, body: Json): Promise<Json> {
+  const bookingId = requireUuid(body.bookingId, "預約");
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請重新整理。");
+  const requestId = asText(body.requestId, 100);
+  if (!/^BOOK-[A-Za-z0-9-]{8,95}$/.test(requestId)) throw new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
+  const items = await normalizeRequestedItems(supabase, body);
+  const result = await supabase.rpc("update_booking_bundle_request", {
+    p_booking_id: bookingId, p_member_id: member.id,
+    p_expected_updated_at: expectedUpdatedAt, p_request_id: requestId,
+    p_booking_date: requireDate(body.bookingDate), p_start_time: `${normalizeTime(body.startTime)}:00`,
+    p_items: items.map((item) => ({ serviceId: item.serviceId, quantity: item.quantity })),
+    p_member_note: asText(body.memberNote, 500), p_actor: identity.lineUserId,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
+  const row = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!row) throw new ApiError(500, "BOOKING_UPDATE_FAILED", "無法確認修改結果，請更新預約紀錄。");
+  return { booking: (await hydrateBookings(supabase, [row]))[0] };
+}
+
 async function userCancel(supabase: SupabaseClient, identity: Identity, member: any, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
   const existing = await supabase.from("bookings").select("*").eq("id", bookingId).eq("member_id", member.id).maybeSingle();
@@ -555,7 +587,7 @@ async function userCancel(supabase: SupabaseClient, identity: Identity, member: 
     status: "cancelled",
     cancelled_by: identity.lineUserId,
     cancelled_at: new Date().toISOString(),
-  }).eq("id", bookingId).eq("member_id", member.id).in("status", ["pending", "confirmed"]).select("*").single();
+  }).eq("id", bookingId).eq("member_id", member.id).eq("updated_at", booking.updated_at).in("status", ["pending", "confirmed"]).select("*").single();
   if (updated.error) throw mapDatabaseError(updated.error);
   const hydrated = await hydrateBookings(supabase, [updated.data]);
   await audit(supabase, identity, "member", "BOOKING_CANCELLED", "booking", bookingId);
@@ -718,7 +750,7 @@ async function adminBootstrap(supabase: SupabaseClient): Promise<Json> {
 async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
   const nextStatus = asText(body.status, 20);
-  if (!["confirmed", "rejected", "cancelled"].includes(nextStatus)) {
+  if (!["confirmed", "rejected", "cancelled", "completed"].includes(nextStatus)) {
     throw new ApiError(400, "INVALID_BOOKING_STATUS", "不支援的預約狀態。");
   }
   const adminNote = asText(body.adminNote, 500);
@@ -727,9 +759,14 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
   const booking = existing.data;
   if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
 
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  if (!expectedUpdatedAt || expectedUpdatedAt !== booking.updated_at) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再確認。");
+  if (nextStatus === "completed" && Date.parse(`${booking.booking_date}T${String(booking.end_time).slice(0, 8)}+08:00`) > Date.now()) {
+    throw new ApiError(409, "BOOKING_NOT_FINISHED", "服務結束時間尚未到，無法確認完成。");
+  }
   const allowed = booking.status === "pending"
     ? ["confirmed", "rejected", "cancelled"]
-    : booking.status === "confirmed" ? ["cancelled"] : [];
+    : booking.status === "confirmed" ? ["cancelled", "completed"] : [];
   if (!allowed.includes(nextStatus)) {
     throw new ApiError(409, "INVALID_BOOKING_TRANSITION", `目前狀態 ${booking.status} 無法變更為 ${nextStatus}。`);
   }
@@ -739,6 +776,9 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
   if (nextStatus === "confirmed") {
     patch.confirmed_by = identity.lineUserId;
     patch.confirmed_at = now;
+  } else if (nextStatus === "completed") {
+    patch.completed_by = identity.lineUserId;
+    patch.completed_at = now;
   } else if (nextStatus === "rejected") {
     patch.rejected_by = identity.lineUserId;
     patch.rejected_at = now;
@@ -747,7 +787,7 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
     patch.cancelled_at = now;
   }
 
-  const updated = await supabase.from("bookings").update(patch).eq("id", bookingId).eq("status", booking.status)
+  const updated = await supabase.from("bookings").update(patch).eq("id", bookingId).eq("status", booking.status).eq("updated_at", booking.updated_at)
     .select("*, members(display_name, member_code)").single();
   if (updated.error) throw mapDatabaseError(updated.error);
   const hydrated = await hydrateBookings(supabase, [updated.data]);
@@ -759,8 +799,9 @@ async function route(supabase: SupabaseClient, identity: Identity, clientType: C
   if (clientType === "member") {
     const member = await requireJoinedMember(supabase, identity);
     if (action === "user.booking.bootstrap") return await userBootstrap(supabase, member);
-    if (action === "user.booking.slots") return await generateSlots(supabase, body);
+    if (action === "user.booking.slots") return await generateSlots(supabase, body, member);
     if (action === "user.booking.create") return await userCreate(supabase, identity, member, body);
+    if (action === "user.booking.update") return await userUpdate(supabase, identity, member, body);
     if (action === "user.booking.cancel") return await userCancel(supabase, identity, member, body);
     throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的會員預約操作。");
   }

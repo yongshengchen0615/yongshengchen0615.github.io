@@ -10,7 +10,7 @@
     refreshing: false,
   };
   const els = {};
-  const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', rejected: '未通過', cancelled: '已取消' };
+  const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', completed: '服務已完成', rejected: '未通過', cancelled: '已取消' };
   const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -171,7 +171,7 @@
   }
 
   function setFilter(filter) {
-    state.filter = ['pending', 'confirmed', 'all'].includes(filter) ? filter : 'pending';
+    state.filter = ['pending', 'confirmed', 'completed', 'all'].includes(filter) ? filter : 'pending';
     document.querySelectorAll('.filter-button').forEach((button) => button.classList.toggle('active', button.dataset.filter === state.filter));
     renderBookings();
   }
@@ -241,7 +241,10 @@
         actions.append(reject, confirm);
       } else {
         const cancel = actionButton('取消已確認預約', 'danger', () => updateStatus(booking, 'cancelled', noteInput.value, actions));
-        actions.append(cancel);
+        const complete = actionButton('確認服務完成', 'primary', () => updateStatus(booking, 'completed', noteInput.value, actions));
+        complete.disabled = Date.parse(`${booking.bookingDate}T${booking.endTime}:00+08:00`) > Date.now();
+        if (complete.disabled) complete.title = '服務結束時間到達後，請更新預約再確認完成';
+        actions.append(complete, cancel);
       }
       article.appendChild(actions);
     }
@@ -258,7 +261,7 @@
   }
 
   async function updateStatus(booking, nextStatus, adminNote, actionContainer) {
-    const confirmText = nextStatus === 'confirmed'
+    const confirmText = nextStatus === 'completed' ? '確認這筆服務已完成？完成後不可修改或取消。' : nextStatus === 'confirmed'
       ? `確認 ${booking.memberDisplayName || '此會員'} 的 ${booking.bookingDate} ${booking.startTime} 預約？`
       : nextStatus === 'rejected' ? '確定拒絕這筆預約？此時段會重新開放。' : '確定取消這筆已確認預約？此時段會重新開放。';
     if (!window.confirm(confirmText)) return;
@@ -266,6 +269,7 @@
     try {
       const result = await window.BookingSystem.request(state.config, 'admin', state.idToken, 'admin.booking.status.update', {
         bookingId: booking.bookingId,
+        expectedUpdatedAt: booking.updatedAt,
         status: nextStatus,
         adminNote,
       });

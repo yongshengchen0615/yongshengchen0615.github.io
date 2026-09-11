@@ -1,0 +1,45 @@
+/* Shared device adaptation: keep content readable at narrow widths and zoom. */
+:root { --device-safe-bottom: env(safe-area-inset-bottom, 0px); }
+*, *::before, *::after { box-sizing: border-box; }
+img, svg, video, canvas { max-width: 100%; }
+input, select, textarea { max-width: 100%; min-width: 0; }
+button, a, input, select, textarea { touch-action: manipulation; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid #bc593b; outline-offset: 3px;
+}
+.booking-item, .booking-card, .booking-admin-card, .service-choice-main, .selected-service-main {
+  min-width: 0; overflow-wrap: anywhere;
+}
+.booking-actions, .booking-admin-actions, .filter-row, .heading-actions { flex-wrap: wrap; gap: 10px; }
+.status-completed { color: #225741; background-color: #e7f3eb; }
+.booking-modal-card, .booking-selection-modal-card {
+  max-height: calc(100dvh - 32px - var(--device-safe-bottom));
+  overscroll-behavior: contain; scrollbar-gutter: stable;
+  padding-bottom: max(20px, var(--device-safe-bottom));
+}
+#editingBookingNotice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+@media (pointer: coarse) {
+  button, .button, .small-button, .filter-button { min-height: 44px; }
+}
+@media (max-width: 768px) {
+  input, select, textarea { font-size: 16px !important; }
+  .app-shell { padding-bottom: max(24px, var(--device-safe-bottom)); }
+  .booking-actions > button { flex: 1 1 130px; }
+  .booking-modal, .booking-selection-modal { padding: 8px; }
+  .booking-modal-card, .booking-selection-modal-card { max-height: calc(100dvh - 16px - var(--device-safe-bottom)); }
+}
+@media (max-width: 360px) {
+  .calendar-grid, .calendar-weekdays { gap: 3px; }
+  .calendar-day { padding: 5px 2px; }
+  .calendar-booking-times small { padding-inline: 1px; font-size: 9px; }
+  .booking-card { padding: 12px; }
+  .booking-modal-actions { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .booking-modal, .booking-selection-modal { align-items: center; padding: 8px; }
+  .booking-modal-card, .booking-selection-modal-card { max-height: calc(100dvh - 16px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

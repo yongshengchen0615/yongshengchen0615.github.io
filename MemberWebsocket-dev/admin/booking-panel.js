@@ -4,7 +4,7 @@
   const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
   const PRIMARY_TAB_IDS = ['membersTab', 'cardsTab', 'eventsTab', 'calendarTab'];
   const PRIMARY_PANEL_IDS = ['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel'];
-  const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', rejected: '未通過', cancelled: '已取消' };
+  const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', completed: '服務已完成', rejected: '未通過', cancelled: '已取消' };
   const state = {
     config: null,
     booking: { settings: {}, bookings: [] },
@@ -97,7 +97,7 @@
           <div class="booking-admin-section-heading"><div><p class="kicker">Confirmation queue</p><h3>預約確認</h3><p>待確認預約會先佔用整段時間；取消或未通過後才重新開放。</p></div></div>
           <div class="booking-admin-filter" role="group" aria-label="預約狀態篩選">
             <button class="booking-admin-filter-button active" data-booking-filter="pending" type="button">待確認</button>
-            <button class="booking-admin-filter-button" data-booking-filter="confirmed" type="button">已確認</button>
+            <button class="booking-admin-filter-button" data-booking-filter="confirmed" type="button">已確認</button><button class="booking-admin-filter-button" data-booking-filter="completed" type="button">已完成</button>
             <button class="booking-admin-filter-button" data-booking-filter="all" type="button">全部</button>
           </div>
           <div id="bookingAdminQueue" class="booking-admin-queue"></div>
@@ -487,7 +487,12 @@
         const textarea = document.createElement('textarea'); textarea.maxLength = 500; textarea.rows = 2; textarea.value = booking.adminNote || ''; note.appendChild(textarea); card.appendChild(note);
         const actions = document.createElement('div'); actions.className = 'booking-admin-actions';
         if (booking.status === 'pending') actions.append(actionButton('不通過', 'button button-outline', () => updateBookingStatus(booking, 'rejected', textarea.value)), actionButton('確認預約', 'button button-dark', () => updateBookingStatus(booking, 'confirmed', textarea.value)));
-        else actions.append(actionButton('取消預約', 'button button-danger', () => updateBookingStatus(booking, 'cancelled', textarea.value)));
+        else {
+          const complete = actionButton('確認服務完成', 'button button-dark', () => updateBookingStatus(booking, 'completed', textarea.value));
+          complete.disabled = Date.parse(`${booking.bookingDate}T${booking.endTime}:00+08:00`) > Date.now();
+          if (complete.disabled) complete.title = '服務結束時間到達後，請更新預約再確認完成';
+          actions.append(complete, actionButton('取消預約', 'button button-danger', () => updateBookingStatus(booking, 'cancelled', textarea.value)));
+        }
         card.appendChild(actions);
       }
       els.bookingAdminQueue.appendChild(card);
@@ -495,10 +500,11 @@
   }
 
   async function updateBookingStatus(booking, status, adminNote) {
-    await runPageAction(els.bookingAdminServiceMessage, async () => bookingRequest('admin.booking.status.update', { bookingId: booking.bookingId, status, adminNote }, true));
+    if (status === 'completed' && !window.confirm(`確認 ${booking.memberDisplayName || '此會員'} 的 ${booking.bookingDate} ${booking.startTime} 服務已完成？完成後不可修改或取消。`)) return;
+    await runPageAction(els.bookingAdminServiceMessage, async () => bookingRequest('admin.booking.status.update', { bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt, status, adminNote }, true));
   }
   function setFilter(filter) {
-    state.filter = ['pending','confirmed','all'].includes(filter) ? filter : 'pending';
+    state.filter = ['pending','confirmed','completed','all'].includes(filter) ? filter : 'pending';
     document.querySelectorAll('[data-booking-filter]').forEach((button) => button.classList.toggle('active', button.dataset.bookingFilter === state.filter));
     renderBookings();
   }
