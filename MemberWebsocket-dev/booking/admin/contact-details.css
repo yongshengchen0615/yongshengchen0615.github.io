@@ -1,29 +1,41 @@
 .booking-received-summary {
-  margin: 10px 0 10px;
-  padding: 12px 14px;
+  margin: 0 0 12px;
+  padding: 14px 16px;
   border-radius: 12px;
   background: rgba(38, 88, 63, .07);
   color: #25362c;
-  font-size: .92rem;
-  line-height: 1.6;
+  font-size: .96rem;
+  line-height: 1.65;
 }
 
 .booking-received-summary p {
   margin: 0;
 }
 
-.booking-received-summary strong {
+.booking-received-datetime {
+  font-size: 1.08rem;
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+
+.booking-received-name {
+  margin-top: 4px !important;
+  font-size: 1.05rem;
   font-weight: 800;
 }
 
+.booking-received-phone {
+  margin-top: 2px !important;
+}
+
 .booking-received-services-label {
-  margin-top: 6px !important;
+  margin-top: 8px !important;
+  font-weight: 800;
 }
 
 .booking-received-services {
   display: grid;
-  gap: 2px;
-  margin-top: 2px;
+  gap: 1px;
 }
 
 .booking-received-services span {
