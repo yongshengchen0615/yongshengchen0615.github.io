@@ -1,9 +1,12 @@
 (() => {
   'use strict';
 
+  const FALLBACK_SYNC_MS = 4000;
   let config = null;
   let loading = false;
   let mounted = false;
+  let pollTimer = null;
+  let realtimeUnsubscribe = null;
   const els = {};
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
@@ -48,6 +51,9 @@
     ['cancellationReviewCount','cancellationReviewMessage','cancellationReviewList','cancellationReviewEmpty','cancellationReviewRefresh'].forEach((id) => { els[id] = document.getElementById(id); });
     els.cancellationReviewRefresh.addEventListener('click', () => refresh(true));
     document.getElementById('refreshButton')?.addEventListener('click', () => window.setTimeout(() => refresh(false), 100));
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('beforeunload', teardownSync);
     waitForAdminAndRefresh();
   }
 
@@ -83,16 +89,50 @@
 
   function waitForAdminAndRefresh() {
     let attempts = 0;
-    const run = () => {
+    const run = async () => {
       attempts += 1;
-      if (window.liff?.getIDToken?.()) return refresh(false);
+      if (window.liff?.getIDToken?.()) {
+        await refresh(false);
+        await setupSync();
+        return;
+      }
       if (attempts < 60) window.setTimeout(run, 500);
     };
     run();
   }
 
+  async function setupSync() {
+    if (pollTimer !== null || realtimeUnsubscribe) return;
+    try {
+      const ctx = await context();
+      if (typeof window.BookingSystem.subscribeRealtime === 'function') {
+        realtimeUnsubscribe = window.BookingSystem.subscribeRealtime(ctx.config, () => refresh(false));
+      }
+    } catch (_) {}
+    pollTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine) refresh(false);
+    }, FALLBACK_SYNC_MS);
+  }
+
+  function teardownSync() {
+    if (pollTimer !== null) window.clearInterval(pollTimer);
+    pollTimer = null;
+    if (typeof realtimeUnsubscribe === 'function') realtimeUnsubscribe();
+    realtimeUnsubscribe = null;
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('focus', handleFocus);
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible') refresh(false);
+  }
+
+  function handleFocus() {
+    if (document.visibilityState === 'visible') refresh(false);
+  }
+
   async function refresh(showSuccess) {
-    if (loading) return;
+    if (loading || document.visibilityState === 'hidden') return;
     loading = true;
     els.cancellationReviewRefresh.disabled = true;
     try {
