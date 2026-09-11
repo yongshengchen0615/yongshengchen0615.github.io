@@ -10,10 +10,12 @@
   <title>會員卡｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=loading-center-all-20260910">
+  <link rel="stylesheet" href="./profile-extension.css?v=booking-contact-profile-20260911-1">
   <link rel="stylesheet" href="./membership-progress.css?v=member-tier-style-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="./common.js?v=supabase-native-20260910" defer></script>
+  <script src="./profile-extension.js?v=booking-contact-profile-20260911-1" defer></script>
   <script src="../realtime-resync.js?v=realtime-resync-20260910" defer></script>
   <script src="./membership-progress.js?v=member-tier-style-20260908" defer></script>
   <script src="./app.js?v=supabase-native-20260910" defer></script>
@@ -42,8 +44,21 @@
       <div class="loader-mark" aria-hidden="true">1</div>
       <p class="kicker">Join membership</p>
       <h1 id="profileSetupTitle">加入會員</h1>
-      <p>請填寫生日與電話完成加入會員，之後即可使用會員卡、集點卡、活動票券與日曆。</p>
+      <p>請填寫姓氏、稱謂、生日與電話完成加入會員，之後即可使用會員卡、集點卡、活動票券與日曆。</p>
       <form id="profileForm" class="profile-form" novalidate>
+        <div class="profile-field">
+          <label for="profileSurname">姓氏</label>
+          <input id="profileSurname" type="text" autocomplete="family-name" maxlength="40" placeholder="例如：王" required>
+        </div>
+        <div class="profile-field">
+          <label for="profileSalutation">稱謂</label>
+          <select id="profileSalutation" autocomplete="honorific-suffix" required>
+            <option value="">請選擇稱謂</option>
+            <option value="mr">先生</option>
+            <option value="ms">小姐</option>
+          </select>
+          <small class="profile-booking-help">＊姓氏與稱謂會用於預約稱呼；預約時仍可選擇使用會員資料或重新填寫。</small>
+        </div>
         <div class="profile-field">
           <label for="profileBirthdayPickerButton">生日</label>
           <span class="date-input-shell">
@@ -124,6 +139,8 @@
         <dl class="profile-detail-list">
           <div><dt>會員編號</dt><dd id="memberCode">—</dd></div>
           <div><dt>加入日期</dt><dd id="joinedAt">—</dd></div>
+          <div><dt>姓氏</dt><dd id="memberSurname">—</dd></div>
+          <div><dt>稱謂</dt><dd id="memberSalutation">—</dd></div>
           <div><dt>生日</dt><dd id="memberBirthday">—</dd></div>
           <div><dt>電話</dt><dd id="memberPhone">—</dd></div>
         </dl>
