@@ -7,6 +7,7 @@
   const originalRequest = system.request.bind(system);
   const REQUEST_TIMEOUT_MS = 15000;
   const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
+  const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
   let latestBookings = [];
 
   system.request = async function requestWithContactDetails(config, clientType, idToken, action, payload = {}) {
@@ -98,7 +99,7 @@
       const identityMatches = item.memberCode ? text.includes(item.memberCode) : text.includes(item.memberDisplayName || '');
       const dateMatches = text.includes(system.formatDate(item.bookingDate));
       const originalRangeMatches = text.includes(`${item.startTime}–${item.endTime}`);
-      const startTimeMatches = text.includes(`開始時間：${item.startTime}`) || text.includes(String(item.startTime || ''));
+      const startTimeMatches = text.includes(String(item.startTime || ''));
       return identityMatches && dateMatches && (originalRangeMatches || startTimeMatches);
     });
   }
@@ -109,13 +110,13 @@
 
     const heading = card.querySelector('.booking-heading');
     const headingIdentity = heading?.querySelector('div');
-    const headingName = headingIdentity?.querySelector('strong');
-    const headingCode = headingIdentity?.querySelector('small');
-    if (headingName) headingName.textContent = displayName;
-    if (headingCode) headingCode.hidden = true;
+    if (headingIdentity) headingIdentity.hidden = true;
 
     const legacyServiceHeading = card.querySelector('h3');
     if (legacyServiceHeading) legacyServiceHeading.hidden = true;
+
+    const legacyTime = card.querySelector('.booking-time');
+    if (legacyTime) legacyTime.hidden = true;
 
     const directList = [...card.children].find((element) => element.tagName === 'UL');
     directList?.remove();
@@ -123,17 +124,24 @@
     const summary = document.createElement('div');
     summary.className = 'booking-received-summary';
 
+    const dateTime = document.createElement('p');
+    dateTime.className = 'booking-received-datetime';
+    dateTime.textContent = `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—')}`;
+    summary.appendChild(dateTime);
+
+    const name = document.createElement('p');
+    name.className = 'booking-received-name';
+    name.textContent = displayName;
+    summary.appendChild(name);
+
     const phone = document.createElement('p');
-    const phoneLabel = document.createElement('strong');
-    phoneLabel.textContent = '電話：';
-    phone.append(phoneLabel, document.createTextNode(String(booking.contactPhone || '未填寫')));
+    phone.className = 'booking-received-phone';
+    phone.textContent = `電話：${String(booking.contactPhone || '未填寫')}`;
     summary.appendChild(phone);
 
     const servicesLabel = document.createElement('p');
     servicesLabel.className = 'booking-received-services-label';
-    const servicesLabelStrong = document.createElement('strong');
-    servicesLabelStrong.textContent = '服務項目：';
-    servicesLabel.appendChild(servicesLabelStrong);
+    servicesLabel.textContent = '服務項目：';
     summary.appendChild(servicesLabel);
 
     const services = document.createElement('div');
@@ -144,21 +152,28 @@
       services.appendChild(empty);
     } else {
       visibleItems.forEach((item) => {
-        const line = document.createElement('span');
         const quantity = Math.max(1, Number(item.quantity || 1));
-        line.textContent = `${String(item.serviceTitle || '服務項目').trim()}${quantity > 1 ? ` × ${quantity}` : ''}`;
-        services.appendChild(line);
+        const title = String(item.serviceTitle || '服務項目').trim();
+        for (let index = 0; index < quantity; index += 1) {
+          const line = document.createElement('span');
+          line.textContent = title;
+          services.appendChild(line);
+        }
       });
     }
     summary.appendChild(services);
 
-    if (heading) heading.insertAdjacentElement('afterend', summary);
-    else card.prepend(summary);
+    card.prepend(summary);
+  }
 
-    const time = card.querySelector('.booking-time');
-    if (time) {
-      time.textContent = `預約日期：${system.formatDate(booking.bookingDate)}　｜　開始時間：${booking.startTime || '—'}`;
-    }
+  function formatBookingDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+    if (!match) return String(value || '—');
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const weekday = WEEKDAY_LABELS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] || '';
+    return `${month}/${day}（${weekday}）`;
   }
 
   function bookingContactName(booking) {
