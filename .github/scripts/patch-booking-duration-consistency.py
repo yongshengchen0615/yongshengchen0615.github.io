@@ -42,12 +42,3 @@ replace_once(
     './app.js?v=booking-onsite-20260911-3',
     './app.js?v=booking-duration-consistency-20260911-4',
 )
-
-workflow = Path(".github/workflows/test-memberwebsocket-dev.yml")
-text = workflow.read_text(encoding="utf-8")
-anchor = "          grep -q 'bookingAdminApi' /dev/null || true\n"
-checks = """          grep -q '目前項目共' MemberWebsocket-dev/booking/app.js\n          grep -q '原排程佔用' MemberWebsocket-dev/booking/app.js\n          grep -q '目前項目共' MemberWebsocket-dev/admin/booking-panel.js\n          grep -q '原排程佔用' MemberWebsocket-dev/admin/booking-panel.js\n          grep -q '目前項目共' MemberWebsocket-dev/booking/admin/app.js\n          grep -q 'bookings_validate_schedule_consistency' MemberWebsocket-dev/supabase/migrations/20260911103022_booking_duration_consistency_guards.sql\n          grep -q 'booking_items_assert_bundle' MemberWebsocket-dev/supabase/migrations/20260911103022_booking_duration_consistency_guards.sql\n          grep -q 'create_booking_bundle_request' MemberWebsocket-dev/supabase/migrations/20260911103022_booking_duration_consistency_guards.sql\n"""
-if checks.strip() not in text:
-    if anchor not in text:
-        raise SystemExit("test workflow anchor not found")
-    workflow.write_text(text.replace(anchor, checks + anchor, 1), encoding="utf-8")
