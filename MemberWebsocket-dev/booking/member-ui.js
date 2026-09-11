@@ -8,6 +8,7 @@
   const originalRequest = window.BookingSystem.request.bind(window.BookingSystem);
   let lastProfile = null;
   let renderTimer = null;
+  let bookingListObserver = null;
 
   function membershipRequiredError() {
     if (typeof window.BookingSystem.clientError === 'function') {
@@ -42,6 +43,29 @@
     window.MembershipProgress.render(root, lastProfile);
   }
 
+  function normalizeCompletedServiceLabel(root) {
+    if (!root) return;
+    const badges = [];
+    if (root.nodeType === Node.ELEMENT_NODE && root.matches?.('.status-badge.status-completed')) badges.push(root);
+    if (typeof root.querySelectorAll === 'function') badges.push(...root.querySelectorAll('.status-badge.status-completed'));
+    badges.forEach((badge) => {
+      if (badge.textContent !== '完成服務') badge.textContent = '完成服務';
+    });
+  }
+
+  function installCompletedServiceCopy() {
+    const bookingList = document.getElementById('bookingList');
+    if (!bookingList) return;
+    normalizeCompletedServiceLabel(bookingList);
+    if (bookingListObserver) bookingListObserver.disconnect();
+    bookingListObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => normalizeCompletedServiceLabel(node));
+      });
+    });
+    bookingListObserver.observe(bookingList, { childList: true, subtree: true });
+  }
+
   window.BookingSystem.memberProfile = async (...args) => {
     const profile = await originalMemberProfile(...args);
     lastProfile = profile && typeof profile === 'object' ? profile : {};
@@ -65,4 +89,9 @@
       throw error;
     }
   };
+
+  window.addEventListener('DOMContentLoaded', installCompletedServiceCopy);
+  window.addEventListener('beforeunload', () => {
+    if (bookingListObserver) bookingListObserver.disconnect();
+  });
 })();
