@@ -110,13 +110,10 @@
 
     const heading = card.querySelector('.booking-heading');
     const headingIdentity = heading?.querySelector('div');
-    if (headingIdentity) headingIdentity.hidden = true;
+    headingIdentity?.remove();
 
-    const legacyServiceHeading = card.querySelector('h3');
-    if (legacyServiceHeading) legacyServiceHeading.hidden = true;
-
-    const legacyTime = card.querySelector('.booking-time');
-    if (legacyTime) legacyTime.hidden = true;
+    card.querySelector('h3')?.remove();
+    card.querySelector('.booking-time')?.remove();
 
     const directList = [...card.children].find((element) => element.tagName === 'UL');
     directList?.remove();
