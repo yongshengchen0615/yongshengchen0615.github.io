@@ -1,0 +1,80 @@
+/* Responsive booking admin navigation. Keep desktop layout intact; enable native horizontal touch scrolling on compact viewports. */
+@media (max-width: 768px) {
+  #bookingPanel {
+    min-width: 0;
+    overflow-x: clip;
+  }
+
+  #bookingPanel .booking-admin-card,
+  #bookingPanel .booking-admin-queue,
+  #bookingPanel .booking-admin-booking,
+  #bookingPanel .booking-admin-cancellation-review {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #bookingPanel .booking-admin-filter {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin-bottom: 12px;
+    padding: 2px 4px 9px;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 4px;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  #bookingPanel .booking-admin-filter::-webkit-scrollbar {
+    display: none;
+  }
+
+  #bookingPanel .booking-admin-filter-button {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 9px 13px;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    touch-action: manipulation;
+  }
+
+  #bookingPanel .booking-admin-booking-heading,
+  #bookingPanel .booking-cancellation-top {
+    min-width: 0;
+  }
+
+  #bookingPanel .booking-admin-booking-heading > div,
+  #bookingPanel .booking-cancellation-top > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 480px) {
+  #bookingPanel .booking-admin-card {
+    padding: 14px;
+    border-radius: 15px;
+  }
+
+  #bookingPanel .booking-admin-filter {
+    margin-inline: -2px;
+    width: calc(100% + 4px);
+    padding-inline: 2px;
+  }
+
+  #bookingPanel .booking-admin-filter-button {
+    min-height: 42px;
+    padding-inline: 14px;
+  }
+
+  #bookingPanel .booking-admin-booking,
+  #bookingPanel .booking-cancellation-card {
+    padding: 13px;
+  }
+}
