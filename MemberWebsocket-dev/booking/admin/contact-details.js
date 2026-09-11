@@ -13,6 +13,10 @@
     const result = await originalRequest(config, clientType, idToken, action, payload);
     if (clientType !== 'admin' || action !== 'admin.booking.bootstrap') return result;
 
+    result.services = Array.isArray(result?.services)
+      ? result.services.filter((service) => String(service?.serviceId || '') !== STORE_SERVICE_ID)
+      : [];
+
     const bookings = Array.isArray(result?.bookings) ? result.bookings : [];
     if (!bookings.length) {
       latestBookings = [];
