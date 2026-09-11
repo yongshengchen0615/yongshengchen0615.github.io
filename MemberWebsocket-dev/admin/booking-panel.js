@@ -94,7 +94,7 @@
         </section>
 
         <section id="bookingAdminQueuePanel" class="booking-admin-card hidden" role="tabpanel" aria-labelledby="bookingAdminQueueSubtab">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Confirmation queue</p><h3>預約確認</h3><p>待確認預約會先佔用整段時間；取消或未通過後才重新開放。</p></div></div>
+          <div class="booking-admin-section-heading"><div><p class="kicker">Confirmation queue</p><h3>預約確認</h3><p>待確認預約會先佔用整段時間；管理員可依現場實際服務修改項目，再確認服務完成。</p></div></div>
           <div class="booking-admin-filter" role="group" aria-label="預約狀態篩選">
             <button class="booking-admin-filter-button active" data-booking-filter="pending" type="button">待確認</button>
             <button class="booking-admin-filter-button" data-booking-filter="confirmed" type="button">已確認</button><button class="booking-admin-filter-button" data-booking-filter="completed" type="button">已完成</button>
@@ -219,6 +219,7 @@
 
   const bookingRequest = (action, payload = {}, write = false) => requestFunction('booking-api', action, payload, write);
   const manageRequest = (action, payload = {}, write = false) => requestFunction('booking-admin-api', action, payload, write);
+  const operationsRequest = (action, payload = {}, write = false) => requestFunction('booking-admin-operations', action, payload, write);
   function clientError(code, message) { const error = new Error(message); error.code = code; return error; }
 
   async function refreshAll(showSuccess) {
@@ -458,6 +459,53 @@
     return titles.length ? titles.join(' + ') : booking.serviceTitle || '預約項目';
   }
 
+  function openBookingItemsModal(booking) {
+    const services = (state.catalog.services || []).filter((service) => service.serviceId !== STORE_SERVICE_ID);
+    if (!services.length) return window.alert('目前沒有可供管理員選擇的服務項目。');
+    const current = new Map(bookingVisibleItems(booking).map((item) => [item.serviceId, Number(item.quantity || 1)]));
+    els.bookingAdminCrudModalTitle.textContent = `現場改單｜${booking.memberDisplayName || '會員'}`;
+    els.bookingAdminCrudModalBody.innerHTML = `<form class="booking-admin-form"><p class="booking-admin-time">只修改這筆預約的實際服務項目與數量；原預約日期與時段會保留，不會重新排程。</p><div data-booking-item-rows style="display:grid;gap:10px"></div><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">取消</button><button class="button button-dark" type="submit">儲存現場改單</button></div></form>`;
+    const form = els.bookingAdminCrudModalBody.querySelector('form');
+    const rows = form.querySelector('[data-booking-item-rows]');
+    services.forEach((service) => {
+      const row = document.createElement('label');
+      row.className = 'booking-admin-toggle';
+      row.style.alignItems = 'center';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.bookingService = service.serviceId;
+      checkbox.checked = current.has(service.serviceId);
+      const text = document.createElement('span');
+      const title = document.createElement('strong'); title.textContent = `${service.title}${service.isActive ? '' : '（目前停用）'}`;
+      const meta = document.createElement('small'); meta.textContent = `${Number(service.durationMinutes || 0)} 分鐘／份 · ${formatMoney(service.priceAmount)}`;
+      text.append(title, meta);
+      const quantity = document.createElement('select');
+      quantity.dataset.bookingQuantity = service.serviceId;
+      quantity.setAttribute('aria-label', `${service.title} 數量`);
+      quantity.innerHTML = '<option value="1">1 份</option><option value="2">2 份</option>';
+      quantity.value = String(current.get(service.serviceId) || 1);
+      quantity.disabled = !checkbox.checked;
+      checkbox.addEventListener('change', () => { quantity.disabled = !checkbox.checked; });
+      row.append(checkbox, text, quantity);
+      rows.appendChild(row);
+    });
+    form.querySelector('[data-cancel]').addEventListener('click', closeModal);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const items = [...form.querySelectorAll('[data-booking-service]:checked')].map((checkbox) => ({
+        serviceId: checkbox.dataset.bookingService,
+        quantity: Number(form.querySelector(`[data-booking-quantity="${checkbox.dataset.bookingService}"]`)?.value || 1),
+      }));
+      if (!items.length) return showMessage(form.querySelector('[data-modal-message]'), '請至少選擇一個實際服務項目。', 'error');
+      await runModalAction(async () => operationsRequest('admin.booking.items.update', {
+        bookingId: booking.bookingId,
+        expectedUpdatedAt: booking.updatedAt,
+        items,
+      }, true));
+    });
+    showModal();
+  }
+
   function renderBookings() {
     const bookings = (state.booking.bookings || []).filter((booking) => state.filter === 'all' || booking.status === state.filter);
     els.bookingAdminQueue.replaceChildren();
@@ -472,7 +520,7 @@
       heading.append(member, status); card.appendChild(heading);
       const title = document.createElement('h4'); title.textContent = bookingDisplayTitle(booking); card.appendChild(title);
       const storeItem = bookingStoreItem(booking); const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || 10) * Number(storeItem.quantity || 1) : 0;
-      const time = document.createElement('p'); time.className = 'booking-admin-time'; time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 共 ${booking.totalDurationMinutes || 0} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 總額 ${formatMoney(booking.totalAmount)}`; card.appendChild(time);
+      const time = document.createElement('p'); time.className = 'booking-admin-time'; time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · 預約佔用 ${booking.totalDurationMinutes || 0} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 總額 ${formatMoney(booking.totalAmount)}`; card.appendChild(time);
       const items = bookingVisibleItems(booking);
       if (items.length || storeItem) {
         const list = document.createElement('ul'); list.className = 'booking-admin-item-list';
@@ -486,12 +534,11 @@
         const note = document.createElement('label'); note.className = 'booking-admin-note-field'; note.textContent = '管理端說明（選填）';
         const textarea = document.createElement('textarea'); textarea.maxLength = 500; textarea.rows = 2; textarea.value = booking.adminNote || ''; note.appendChild(textarea); card.appendChild(note);
         const actions = document.createElement('div'); actions.className = 'booking-admin-actions';
-        if (booking.status === 'pending') actions.append(actionButton('不通過', 'button button-outline', () => updateBookingStatus(booking, 'rejected', textarea.value)), actionButton('確認預約', 'button button-dark', () => updateBookingStatus(booking, 'confirmed', textarea.value)));
-        else {
-          const complete = actionButton('確認服務完成', 'button button-dark', () => updateBookingStatus(booking, 'completed', textarea.value));
-          complete.disabled = Date.parse(`${booking.bookingDate}T${booking.endTime}:00+08:00`) > Date.now();
-          if (complete.disabled) complete.title = '服務結束時間到達後，請更新預約再確認完成';
-          actions.append(complete, actionButton('取消預約', 'button button-danger', () => updateBookingStatus(booking, 'cancelled', textarea.value)));
+        actions.append(actionButton('修改服務項目', 'button button-outline', () => openBookingItemsModal(booking)));
+        if (booking.status === 'pending') {
+          actions.append(actionButton('不通過', 'button button-outline', () => updateBookingStatus(booking, 'rejected', textarea.value)), actionButton('確認預約', 'button button-dark', () => updateBookingStatus(booking, 'confirmed', textarea.value)));
+        } else {
+          actions.append(actionButton('確認服務完成', 'button button-dark', () => updateBookingStatus(booking, 'completed', textarea.value)), actionButton('取消預約', 'button button-danger', () => updateBookingStatus(booking, 'cancelled', textarea.value)));
         }
         card.appendChild(actions);
       }
@@ -500,8 +547,13 @@
   }
 
   async function updateBookingStatus(booking, status, adminNote) {
-    if (status === 'completed' && !window.confirm(`確認 ${booking.memberDisplayName || '此會員'} 的 ${booking.bookingDate} ${booking.startTime} 服務已完成？完成後不可修改或取消。`)) return;
-    await runPageAction(els.bookingAdminServiceMessage, async () => bookingRequest('admin.booking.status.update', { bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt, status, adminNote }, true));
+    if (status === 'completed' && !window.confirm(`確認 ${booking.memberDisplayName || '此會員'} 的服務已完成？\n系統不再要求等待原預約結束時間；完成後不可修改或取消。`)) return;
+    await runPageAction(els.bookingAdminServiceMessage, async () => {
+      if (status === 'completed') {
+        return operationsRequest('admin.booking.status.complete', { bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt, adminNote }, true);
+      }
+      return bookingRequest('admin.booking.status.update', { bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt, status, adminNote }, true);
+    });
   }
   function setFilter(filter) {
     state.filter = ['pending','confirmed','completed','all'].includes(filter) ? filter : 'pending';
