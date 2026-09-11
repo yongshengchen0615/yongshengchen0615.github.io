@@ -42,6 +42,24 @@
   display: block;
 }
 
+.booking-copy-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(37, 54, 44, .22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .76);
+  color: #25362c;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.booking-copy-button:disabled {
+  opacity: .68;
+  cursor: default;
+}
+
 .booking-contact-admin {
   display: none;
 }
