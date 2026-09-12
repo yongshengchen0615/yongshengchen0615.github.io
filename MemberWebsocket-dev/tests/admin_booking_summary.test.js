@@ -9,7 +9,7 @@ const styles = read('MemberWebsocket-dev/admin/booking-summary.css');
 
 assert.match(loader, /booking-summary\.css/);
 assert.match(loader, /booking-summary\.js/);
-assert.match(loader, /booking-summary-20260912-5/);
+assert.match(loader, /booking-summary-20260912-6/);
 assert.ok(loader.indexOf("load('booking-summary.js'") < loader.indexOf("load('booking-panel-core.js'"));
 assert.match(summary, /booking-contact-api/);
 assert.match(summary, /admin\.booking\.contacts/);
@@ -35,6 +35,12 @@ assert.match(summary, /summaryMetaItem\('總服務時間'/);
 assert.match(summary, /summaryMetaItem\('總金額'/);
 assert.match(summary, /totalServiceMinutes/);
 assert.match(summary, /formatMoney/);
+
+const renderFunction = summary.slice(
+  summary.indexOf('function renderBookingSummary'),
+  summary.indexOf('function summaryMetaItem'),
+);
+assert.ok(renderFunction.indexOf("memberMeta.className = 'booking-member-meta'") < renderFunction.indexOf("dateTime.className = 'booking-received-datetime'"));
 
 const copyFunction = summary.slice(
   summary.indexOf('function buildBookingCopyText'),
@@ -62,4 +68,4 @@ assert.match(styles, /booking-member-meta-item/);
 assert.doesNotMatch(styles, /正在載入預約內容/);
 assert.match(styles, /min-height: 44px/);
 
-console.log('admin booking summary/member totals/copy wiring OK');
+console.log('admin booking summary/member totals/order/copy wiring OK');
