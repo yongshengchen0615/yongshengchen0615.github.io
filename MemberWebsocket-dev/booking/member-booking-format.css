@@ -1,0 +1,54 @@
+.booking-item.member-booking-format-card > .booking-item-top {
+  align-items: flex-start;
+}
+
+.booking-item .member-booking-format-summary {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.booking-item .member-booking-format-row {
+  display: grid;
+  grid-template-columns: 7em minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  align-items: baseline;
+}
+
+.booking-item .member-booking-format-label {
+  color: rgba(37, 54, 44, .68);
+  font-size: .9rem;
+  font-weight: 700;
+}
+
+.booking-item .member-booking-format-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #25362c;
+  font-size: .96rem;
+  font-weight: 800;
+}
+
+.booking-item .member-booking-format-services-label {
+  margin: 9px 0 0;
+  color: #25362c;
+  font-size: .94rem;
+  font-weight: 800;
+}
+
+.booking-item.member-booking-format-card > .booking-service-items {
+  margin-top: 6px;
+}
+
+@media (max-width: 620px) {
+  .booking-item .member-booking-format-row {
+    grid-template-columns: 6.6em minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .booking-item .member-booking-format-label,
+  .booking-item .member-booking-format-value {
+    font-size: .92rem;
+  }
+}
