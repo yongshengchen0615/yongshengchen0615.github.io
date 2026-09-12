@@ -46,6 +46,7 @@
     state.refreshTimer = window.setTimeout(() => {
       state.refreshTimer = null;
       refreshAndDecorate(Boolean(force)).catch((error) => {
+        showLegacyFallback();
         console.warn('booking summary refresh failed', error?.code || error?.message || 'UNKNOWN_ERROR');
       });
     }, force ? 120 : 180);
@@ -53,6 +54,7 @@
 
   async function refreshAndDecorate(force) {
     if (!state.queue || !state.queue.querySelector('.booking-admin-booking')) return;
+    markCardsPending();
 
     const cacheFresh = state.bookings.length && Date.now() - state.loadedAt < CACHE_TTL_MS;
     if (!force && cacheFresh) {
@@ -138,16 +140,41 @@
     }
   }
 
+  function markCardsPending() {
+    if (!state.queue) return;
+    state.queue.querySelectorAll(':scope > .booking-admin-booking').forEach((card) => {
+      if (card.classList.contains('booking-summary-normalized')) return;
+      card.classList.remove('booking-summary-fallback');
+      card.setAttribute('aria-busy', 'true');
+    });
+  }
+
+  function showLegacyFallback() {
+    if (!state.queue) return;
+    state.queue.querySelectorAll(':scope > .booking-admin-booking').forEach((card) => {
+      if (card.classList.contains('booking-summary-normalized')) return;
+      showLegacyCard(card);
+    });
+  }
+
+  function showLegacyCard(card) {
+    card.classList.add('booking-summary-fallback');
+    card.removeAttribute('aria-busy');
+  }
+
   function decorateCards() {
     if (!state.queue) return;
     const cards = [...state.queue.querySelectorAll(':scope > .booking-admin-booking')];
     const used = new Set();
 
     cards.forEach((card) => {
-      card.querySelector('.booking-received-summary')?.remove();
       const booking = findBookingForCard(card, used);
-      if (!booking) return;
+      if (!booking) {
+        if (!card.classList.contains('booking-summary-normalized')) showLegacyCard(card);
+        return;
+      }
 
+      card.querySelector('.booking-received-summary')?.remove();
       used.add(String(booking.bookingId || ''));
       card.dataset.bookingId = String(booking.bookingId || '');
       normalizeBookingCard(card, booking);
@@ -175,7 +202,9 @@
   }
 
   function normalizeBookingCard(card, booking) {
+    card.classList.remove('booking-summary-fallback');
     card.classList.add('booking-summary-normalized');
+    card.removeAttribute('aria-busy');
 
     const heading = card.querySelector(':scope > .booking-admin-booking-heading');
     heading?.querySelector(':scope > div')?.remove();
