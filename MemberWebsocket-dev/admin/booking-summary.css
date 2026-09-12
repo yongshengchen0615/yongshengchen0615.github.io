@@ -1,3 +1,27 @@
+.booking-admin-booking:not(.booking-summary-normalized):not(.booking-summary-fallback) > .booking-admin-booking-heading > div,
+.booking-admin-booking:not(.booking-summary-normalized):not(.booking-summary-fallback) > h4,
+.booking-admin-booking:not(.booking-summary-normalized):not(.booking-summary-fallback) > .booking-admin-time,
+.booking-admin-booking:not(.booking-summary-normalized):not(.booking-summary-fallback) > .booking-admin-item-list {
+  display: none !important;
+}
+
+.booking-admin-booking:not(.booking-summary-normalized):not(.booking-summary-fallback)::before {
+  content: '正在載入預約內容…';
+  display: flex;
+  min-height: 150px;
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(38, 88, 63, .07);
+  color: rgba(37, 54, 44, .72);
+  font-size: .96rem;
+  font-weight: 800;
+  line-height: 1.65;
+  text-align: center;
+}
+
 .booking-admin-booking.booking-summary-normalized > .booking-admin-booking-heading {
   justify-content: flex-end;
 }
@@ -65,6 +89,11 @@
 }
 
 @media (max-width: 768px) {
+  .booking-admin-booking:not(.booking-summary-normalized):not(.booking-summary-fallback)::before {
+    min-height: 170px;
+    padding: 13px 14px;
+  }
+
   .booking-admin-booking .booking-received-summary {
     padding: 13px 14px;
   }
