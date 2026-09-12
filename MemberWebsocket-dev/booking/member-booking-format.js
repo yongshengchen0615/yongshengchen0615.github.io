@@ -41,7 +41,7 @@
     const summary = document.createElement('div');
     summary.className = 'member-booking-format-summary';
     summary.append(
-      summaryRow('日期', `${parsed.date} ${parsed.timeRange}`),
+      summaryRow('日期', parsed.date),
       summaryRow('時間', parsed.timeRange),
     );
     titleBox.replaceChildren(summary);
