@@ -1,0 +1,75 @@
+.booking-admin-booking.booking-summary-normalized > .booking-admin-booking-heading {
+  justify-content: flex-end;
+}
+
+.booking-admin-booking .booking-received-summary {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(38, 88, 63, .07);
+  color: #25362c;
+  font-size: .96rem;
+  line-height: 1.65;
+}
+
+.booking-admin-booking .booking-received-summary p {
+  margin: 0;
+}
+
+.booking-admin-booking .booking-received-datetime {
+  font-size: 1.08rem;
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+
+.booking-admin-booking .booking-received-name {
+  margin-top: 4px !important;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.booking-admin-booking .booking-received-phone {
+  margin-top: 2px !important;
+}
+
+.booking-admin-booking .booking-received-services-label {
+  margin-top: 8px !important;
+  font-weight: 800;
+}
+
+.booking-admin-booking .booking-received-services {
+  display: grid;
+  gap: 1px;
+}
+
+.booking-admin-booking .booking-received-services span {
+  display: block;
+}
+
+.booking-admin-booking .booking-copy-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(37, 54, 44, .22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .76);
+  color: #25362c;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.booking-admin-booking .booking-copy-button:disabled {
+  opacity: .68;
+  cursor: default;
+}
+
+@media (max-width: 768px) {
+  .booking-admin-booking .booking-received-summary {
+    padding: 13px 14px;
+  }
+
+  .booking-admin-booking .booking-copy-button {
+    min-height: 44px;
+  }
+}
