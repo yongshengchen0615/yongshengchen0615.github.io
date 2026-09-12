@@ -194,7 +194,7 @@
 
     const heading = document.createElement('p');
     heading.className = 'member-booking-format-services-label booking-confirm-contact-title';
-    heading.textContent = '預約資料：';
+    heading.textContent = '預約資料';
 
     block.append(
       heading,
