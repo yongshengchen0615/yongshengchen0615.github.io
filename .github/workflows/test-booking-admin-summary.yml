@@ -1,0 +1,36 @@
+name: Test Booking Admin Summary
+
+on:
+  push:
+    paths:
+      - 'MemberWebsocket-dev/admin/booking-panel.js'
+      - 'MemberWebsocket-dev/admin/booking-summary.js'
+      - 'MemberWebsocket-dev/admin/booking-summary.css'
+      - 'MemberWebsocket-dev/tests/admin_booking_summary.test.js'
+      - '.github/workflows/test-booking-admin-summary.yml'
+  pull_request:
+    paths:
+      - 'MemberWebsocket-dev/admin/booking-panel.js'
+      - 'MemberWebsocket-dev/admin/booking-summary.js'
+      - 'MemberWebsocket-dev/admin/booking-summary.css'
+      - 'MemberWebsocket-dev/tests/admin_booking_summary.test.js'
+      - '.github/workflows/test-booking-admin-summary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check booking admin JavaScript syntax
+        run: |
+          node --check MemberWebsocket-dev/admin/booking-panel.js
+          node --check MemberWebsocket-dev/admin/booking-summary.js
+      - name: Check booking summary and copy wiring
+        run: node MemberWebsocket-dev/tests/admin_booking_summary.test.js
