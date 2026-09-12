@@ -3,13 +3,17 @@
 }
 
 .booking-item .member-booking-format-summary,
-.booking-item .member-booking-format-totals {
+.booking-item .member-booking-format-totals,
+.booking-confirm-summary .booking-confirm-format-main,
+.booking-confirm-summary .member-booking-format-totals,
+.booking-confirm-summary .booking-confirm-contact-formatted {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
-.booking-item .member-booking-format-row {
+.booking-item .member-booking-format-row,
+.booking-confirm-summary .member-booking-format-row {
   display: grid;
   grid-template-columns: 7em minmax(0, 1fr);
   gap: 8px;
@@ -17,13 +21,15 @@
   align-items: baseline;
 }
 
-.booking-item .member-booking-format-label {
+.booking-item .member-booking-format-label,
+.booking-confirm-summary .member-booking-format-label {
   color: rgba(37, 54, 44, .68);
   font-size: .9rem;
   font-weight: 700;
 }
 
-.booking-item .member-booking-format-value {
+.booking-item .member-booking-format-value,
+.booking-confirm-summary .member-booking-format-value {
   min-width: 0;
   overflow-wrap: anywhere;
   color: #25362c;
@@ -31,7 +37,8 @@
   font-weight: 800;
 }
 
-.booking-item .member-booking-format-services-label {
+.booking-item .member-booking-format-services-label,
+.booking-confirm-summary .member-booking-format-services-label {
   margin: 12px 0 0;
   color: #25362c;
   font-size: .94rem;
@@ -43,20 +50,46 @@
   padding-left: 20px;
 }
 
-.booking-item .member-booking-format-totals {
+.booking-confirm-summary .booking-confirm-format-services {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  color: #607269;
+  font-size: .94rem;
+  line-height: 1.7;
+}
+
+.booking-item .member-booking-format-totals,
+.booking-confirm-summary .member-booking-format-totals {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid rgba(37, 54, 44, .10);
 }
 
+.booking-confirm-summary .booking-confirm-contact-formatted {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(37, 54, 44, .10);
+}
+
+.booking-confirm-summary .booking-confirm-contact-title {
+  margin-top: 0;
+}
+
+.booking-confirm-summary .booking-confirm-format-main > .form-message {
+  margin-top: 12px;
+}
+
 @media (max-width: 620px) {
-  .booking-item .member-booking-format-row {
+  .booking-item .member-booking-format-row,
+  .booking-confirm-summary .member-booking-format-row {
     grid-template-columns: 6.6em minmax(0, 1fr);
     gap: 6px;
   }
 
   .booking-item .member-booking-format-label,
-  .booking-item .member-booking-format-value {
+  .booking-item .member-booking-format-value,
+  .booking-confirm-summary .member-booking-format-label,
+  .booking-confirm-summary .member-booking-format-value {
     font-size: .92rem;
   }
 }
