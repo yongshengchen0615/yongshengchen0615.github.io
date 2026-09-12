@@ -9,7 +9,7 @@ const styles = read('MemberWebsocket-dev/admin/booking-summary.css');
 
 assert.match(loader, /booking-summary\.css/);
 assert.match(loader, /booking-summary\.js/);
-assert.match(loader, /booking-summary-20260912-4/);
+assert.match(loader, /booking-summary-20260912-5/);
 assert.ok(loader.indexOf("load('booking-summary.js'") < loader.indexOf("load('booking-panel-core.js'"));
 assert.match(summary, /booking-contact-api/);
 assert.match(summary, /admin\.booking\.contacts/);
@@ -29,12 +29,37 @@ assert.match(summary, /legacyBookingFromCard/);
 assert.match(summary, /booking-summary-provisional/);
 assert.match(summary, /bookingMemberCode/);
 assert.match(summary, /bookingStartTime/);
+assert.match(summary, /summaryMetaItem\('LINE 名稱'/);
+assert.match(summary, /summaryMetaItem\('會員編號'/);
+assert.match(summary, /summaryMetaItem\('總服務時間'/);
+assert.match(summary, /summaryMetaItem\('總金額'/);
+assert.match(summary, /totalServiceMinutes/);
+assert.match(summary, /formatMoney/);
+
+const copyFunction = summary.slice(
+  summary.indexOf('function buildBookingCopyText'),
+  summary.indexOf('async function copyText'),
+);
+assert.ok(copyFunction.includes("bookingContactName(booking)"));
+assert.ok(copyFunction.includes("電話："));
+assert.ok(copyFunction.includes("服務項目："));
+assert.ok(!copyFunction.includes('memberDisplayName'));
+assert.ok(!copyFunction.includes('memberCode'));
+assert.ok(!copyFunction.includes('totalServiceMinutes'));
+assert.ok(!copyFunction.includes('totalAmount'));
+assert.ok(!copyFunction.includes('LINE 名稱'));
+assert.ok(!copyFunction.includes('會員編號'));
+assert.ok(!copyFunction.includes('總服務時間'));
+assert.ok(!copyFunction.includes('總金額'));
+
 assert.doesNotMatch(summary, /markCardsPending/);
 assert.doesNotMatch(summary, /showLegacyFallback/);
 assert.match(styles, /booking-received-summary/);
 assert.match(styles, /booking-copy-button/);
 assert.match(styles, /booking-summary-normalized/);
+assert.match(styles, /booking-member-meta/);
+assert.match(styles, /booking-member-meta-item/);
 assert.doesNotMatch(styles, /正在載入預約內容/);
 assert.match(styles, /min-height: 44px/);
 
-console.log('admin booking summary/copy/immediate-render wiring OK');
+console.log('admin booking summary/member totals/copy wiring OK');
