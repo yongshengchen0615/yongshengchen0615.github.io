@@ -11,10 +11,12 @@
     const form = document.getElementById('profileForm');
     if (form) form.addEventListener('submit', saveExtendedProfile, true);
 
-    const bookingForm = document.getElementById('bookingProfileForm');
-    if (bookingForm) bookingForm.addEventListener('submit', saveBookingProfile);
-    document.getElementById('editBookingProfileButton')?.addEventListener('click', openBookingProfileEditor);
-    document.getElementById('cancelBookingProfileButton')?.addEventListener('click', closeBookingProfileEditor);
+    document.getElementById('editSalutationButton')?.addEventListener('click', () => openInlineEditor('salutation'));
+    document.getElementById('cancelSalutationEditButton')?.addEventListener('click', () => closeInlineEditor('salutation'));
+    document.getElementById('saveSalutationEditButton')?.addEventListener('click', () => saveInlineProfileField('salutation'));
+    document.getElementById('editPhoneButton')?.addEventListener('click', () => openInlineEditor('phone'));
+    document.getElementById('cancelPhoneEditButton')?.addEventListener('click', () => closeInlineEditor('phone'));
+    document.getElementById('savePhoneEditButton')?.addEventListener('click', () => saveInlineProfileField('phone'));
 
     scheduleProfileSync(0);
     window.addEventListener('pageshow', () => scheduleProfileSync(0));
@@ -60,21 +62,27 @@
     }
   }
 
-  async function saveBookingProfile(event) {
-    event.preventDefault();
-    const surname = valueOf('bookingSurname');
-    const salutation = valueOf('bookingSalutation');
-    const rawPhone = valueOf('bookingPhone');
+  async function saveInlineProfileField(field) {
+    if (!currentProfile || typeof currentProfile !== 'object') {
+      return showInlineMessage(field, '會員資料尚在同步，請稍後再試。');
+    }
+
+    const surname = String(currentProfile.surname || '').trim();
+    const birthday = String(currentProfile.birthday || '').trim();
+    let salutation = String(currentProfile.salutation || '').trim().toLowerCase();
+    let rawPhone = String(currentProfile.phone || '').trim();
+
+    if (field === 'salutation') salutation = valueOf('salutationEditSelect');
+    if (field === 'phone') rawPhone = valueOf('phoneEditInput');
+
     const phone = rawPhone.replace(/[()\s-]/g, '');
-    const birthday = String(currentProfile?.birthday || valueOf('profileBirthday') || '').trim();
+    if (!surname) return showInlineMessage(field, '目前會員姓氏資料不完整，請重新整理後再試。');
+    if (!['mr', 'ms'].includes(salutation)) return showInlineMessage(field, '請選擇先生或小姐。');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showInlineMessage(field, '目前會員生日資料不完整，請重新整理後再試。');
+    if (!/^\+?\d{8,15}$/.test(phone)) return showInlineMessage(field, '請填寫正確的電話。');
 
-    if (!surname) return showBookingMessage('請填寫姓氏。');
-    if (!['mr', 'ms'].includes(salutation)) return showBookingMessage('請選擇先生或小姐。');
-    if (!/^\+?\d{8,15}$/.test(phone)) return showBookingMessage('請填寫正確的電話。');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showBookingMessage('目前會員生日資料不完整，請重新整理後再試。');
-
-    setBookingSaving(true);
-    hideBookingMessage();
+    setInlineSaving(field, true);
+    hideInlineMessage(field);
     try {
       const { config, idToken } = await resolveSession();
       const result = await requestProfile(config, idToken, 'user.member.profile.save', {
@@ -85,39 +93,49 @@
       });
       currentProfile = result.profile || { ...currentProfile, surname, salutation, birthday, phone: rawPhone };
       applyProfileDisplay(currentProfile);
-      closeBookingProfileEditor();
+      closeInlineEditor(field);
     } catch (error) {
-      showBookingMessage(error?.message || '預約資料暫時無法儲存，請稍後再試。');
+      showInlineMessage(field, error?.message || '會員資料暫時無法儲存，請稍後再試。');
     } finally {
-      setBookingSaving(false);
+      setInlineSaving(field, false);
     }
   }
 
-  function openBookingProfileEditor() {
-    if (!currentProfile) return;
-    setValue('bookingSurname', String(currentProfile.surname || ''));
-    setValue('bookingSalutation', String(currentProfile.salutation || '').toLowerCase());
-    setValue('bookingPhone', String(currentProfile.phone || ''));
-    hideBookingMessage();
-    const form = document.getElementById('bookingProfileForm');
-    const button = document.getElementById('editBookingProfileButton');
-    if (form) form.classList.remove('hidden');
+  function openInlineEditor(field) {
+    if (!currentProfile || typeof currentProfile !== 'object') {
+      return showInlineMessage(field, '會員資料尚在同步，請稍後再試。');
+    }
+
+    const otherField = field === 'salutation' ? 'phone' : 'salutation';
+    closeInlineEditor(otherField);
+    hideInlineMessage(field);
+
+    if (field === 'salutation') {
+      setValue('salutationEditSelect', String(currentProfile.salutation || '').toLowerCase());
+    } else {
+      setValue('phoneEditInput', String(currentProfile.phone || ''));
+    }
+
+    const editor = document.getElementById(`${field}InlineEditor`);
+    const button = document.getElementById(field === 'salutation' ? 'editSalutationButton' : 'editPhoneButton');
+    if (editor) editor.classList.remove('hidden');
     if (button) {
       button.setAttribute('aria-expanded', 'true');
       button.classList.add('hidden');
     }
-    document.getElementById('bookingSurname')?.focus();
+
+    document.getElementById(field === 'salutation' ? 'salutationEditSelect' : 'phoneEditInput')?.focus();
   }
 
-  function closeBookingProfileEditor() {
-    const form = document.getElementById('bookingProfileForm');
-    const button = document.getElementById('editBookingProfileButton');
-    if (form) form.classList.add('hidden');
+  function closeInlineEditor(field) {
+    const editor = document.getElementById(`${field}InlineEditor`);
+    const button = document.getElementById(field === 'salutation' ? 'editSalutationButton' : 'editPhoneButton');
+    if (editor) editor.classList.add('hidden');
     if (button) {
       button.setAttribute('aria-expanded', 'false');
       button.classList.remove('hidden');
     }
-    hideBookingMessage();
+    hideInlineMessage(field);
   }
 
   function scheduleProfileSync(delay = 350) {
@@ -195,21 +213,19 @@
     const surname = String(profile.surname || '').trim();
     const salutation = String(profile.salutation || '').trim().toLowerCase();
     const salutationLabel = salutation === 'mr' ? '先生' : salutation === 'ms' ? '小姐' : '';
-    const honorificName = surname && salutationLabel ? `${surname}${salutationLabel}` : '';
     const phone = String(profile.phone || '').trim();
 
     setValue('profileSurname', surname);
     setValue('profileSalutation', salutation);
     setValue('profilePhone', phone);
     setValue('profileBirthday', String(profile.birthday || ''));
-    setValue('bookingSurname', surname);
-    setValue('bookingSalutation', salutation);
-    setValue('bookingPhone', phone);
+    setValue('salutationEditSelect', salutation);
+    setValue('phoneEditInput', phone);
 
     const surnameDisplay = document.getElementById('memberSurname');
     const salutationDisplay = document.getElementById('memberSalutation');
     const phoneDisplay = document.getElementById('memberPhone');
-    if (surnameDisplay) surnameDisplay.textContent = honorificName || '未填寫';
+    if (surnameDisplay) surnameDisplay.textContent = surname || '未填寫';
     if (salutationDisplay) salutationDisplay.textContent = salutationLabel || '未填寫';
     if (phoneDisplay) phoneDisplay.textContent = phone || '未填寫';
   }
@@ -234,14 +250,16 @@
     button.textContent = saving ? '加入中…' : '加入會員並開啟會員卡';
   }
 
-  function setBookingSaving(saving) {
-    const button = document.getElementById('saveBookingProfileButton');
-    const cancelButton = document.getElementById('cancelBookingProfileButton');
-    if (button) {
-      button.disabled = saving;
-      button.textContent = saving ? '儲存中…' : '儲存預約資料';
+  function setInlineSaving(field, saving) {
+    const saveButton = document.getElementById(field === 'salutation' ? 'saveSalutationEditButton' : 'savePhoneEditButton');
+    const cancelButton = document.getElementById(field === 'salutation' ? 'cancelSalutationEditButton' : 'cancelPhoneEditButton');
+    const input = document.getElementById(field === 'salutation' ? 'salutationEditSelect' : 'phoneEditInput');
+    if (saveButton) {
+      saveButton.disabled = saving;
+      saveButton.textContent = saving ? '儲存中…' : '儲存';
     }
     if (cancelButton) cancelButton.disabled = saving;
+    if (input) input.disabled = saving;
   }
 
   function showMessage(message) {
@@ -258,15 +276,15 @@
     element.classList.add('hidden');
   }
 
-  function showBookingMessage(message) {
-    const element = document.getElementById('bookingProfileMessage');
+  function showInlineMessage(field, message) {
+    const element = document.getElementById(field === 'salutation' ? 'salutationEditMessage' : 'phoneEditMessage');
     if (!element) return;
     element.textContent = String(message || '');
     element.classList.remove('hidden');
   }
 
-  function hideBookingMessage() {
-    const element = document.getElementById('bookingProfileMessage');
+  function hideInlineMessage(field) {
+    const element = document.getElementById(field === 'salutation' ? 'salutationEditMessage' : 'phoneEditMessage');
     if (!element) return;
     element.textContent = '';
     element.classList.add('hidden');
