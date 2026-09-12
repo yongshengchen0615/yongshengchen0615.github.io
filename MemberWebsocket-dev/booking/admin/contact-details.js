@@ -136,6 +136,16 @@
     phone.textContent = `電話：${String(booking.contactPhone || '未填寫')}`;
     summary.appendChild(phone);
 
+    const memberMeta = document.createElement('div');
+    memberMeta.className = 'booking-member-meta';
+    memberMeta.append(
+      summaryMetaItem('LINE 名稱', String(booking.memberDisplayName || '未取得')),
+      summaryMetaItem('會員編號', String(booking.memberCode || '未取得')),
+      summaryMetaItem('總服務時間', `${Math.max(0, Number(booking.totalDurationMinutes || 0))} 分鐘`),
+      summaryMetaItem('總金額', formatMoney(booking.totalAmount)),
+    );
+    summary.appendChild(memberMeta);
+
     const servicesLabel = document.createElement('p');
     servicesLabel.className = 'booking-received-services-label';
     servicesLabel.textContent = '服務項目：';
@@ -182,6 +192,18 @@
     summary.appendChild(copyButton);
 
     card.prepend(summary);
+  }
+
+  function summaryMetaItem(label, value) {
+    const item = document.createElement('div');
+    item.className = 'booking-member-meta-item';
+    const key = document.createElement('span');
+    key.className = 'booking-member-meta-label';
+    key.textContent = label;
+    const content = document.createElement('strong');
+    content.textContent = value;
+    item.append(key, content);
+    return item;
   }
 
   function buildBookingCopyText(booking) {
@@ -247,6 +269,11 @@
     return Array.isArray(booking?.items)
       ? booking.items.filter((item) => String(item?.serviceId || '') !== STORE_SERVICE_ID)
       : [];
+  }
+
+  function formatMoney(value) {
+    const amount = Number(value || 0);
+    return `NT$${Number.isFinite(amount) ? Math.max(0, Math.trunc(amount)).toLocaleString('zh-Hant-TW') : '0'}`;
   }
 
   function salutationLabel(value) { return value === 'mr' ? '先生' : value === 'ms' ? '小姐' : ''; }
