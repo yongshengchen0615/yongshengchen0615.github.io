@@ -10,7 +10,7 @@
   <title>會員卡｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=loading-center-all-20260910">
-  <link rel="stylesheet" href="./profile-extension.css?v=booking-profile-edit-20260912-1">
+  <link rel="stylesheet" href="./profile-extension.css?v=profile-section-layout-20260912-2">
   <link rel="stylesheet" href="./membership-progress.css?v=member-tier-style-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -134,56 +134,72 @@
         <div data-membership-progress-track class="membership-progress-track" role="progressbar" aria-label="會員階級進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-membership-progress-bar></span></div>
       </section>
 
-      <section class="profile-details" aria-labelledby="profileDetailsTitle">
-        <div><p class="kicker">Personal profile</p><h2 id="profileDetailsTitle">個人資料</h2><p>會員識別資料與預約聯絡資料集中在這裡，方便確認與修改。</p></div>
-        <dl class="profile-detail-list">
-          <div><dt>會員編號</dt><dd id="memberCode">—</dd></div>
-          <div><dt>加入日期</dt><dd id="joinedAt">—</dd></div>
-          <div><dt>生日</dt><dd id="memberBirthday">—</dd></div>
-        </dl>
+      <section class="profile-details profile-overview" aria-labelledby="profileDetailsTitle">
+        <div class="profile-overview-heading">
+          <p class="kicker">Personal profile</p>
+          <h2 id="profileDetailsTitle">個人資料</h2>
+          <p>基本會員資訊與預約聯絡資料分開管理，查找與修改更清楚。</p>
+        </div>
 
-        <section class="booking-profile-card" aria-labelledby="bookingProfileTitle">
-          <div class="booking-profile-heading">
-            <div>
-              <p class="kicker">Booking profile</p>
-              <h3 id="bookingProfileTitle">預約資料</h3>
-              <p>預約時可直接帶入以下稱呼與電話。</p>
-            </div>
-            <button id="editBookingProfileButton" class="button button-refresh booking-profile-edit-button" type="button" aria-expanded="false" aria-controls="bookingProfileForm">修改</button>
-          </div>
-
-          <dl id="bookingProfileSummary" class="profile-detail-list booking-profile-summary">
-            <div><dt>稱呼</dt><dd id="memberSurname">未填寫</dd></div>
-            <div hidden><dt>稱謂</dt><dd id="memberSalutation">—</dd></div>
-            <div><dt>電話</dt><dd id="memberPhone">未填寫</dd></div>
-          </dl>
-
-          <form id="bookingProfileForm" class="booking-profile-form hidden" novalidate>
-            <div class="booking-profile-grid">
-              <div class="profile-field">
-                <label for="bookingSurname">姓氏</label>
-                <input id="bookingSurname" type="text" autocomplete="family-name" maxlength="40" placeholder="例如：王" required>
-              </div>
-              <div class="profile-field">
-                <label for="bookingSalutation">稱謂</label>
-                <select id="bookingSalutation" autocomplete="honorific-suffix" required>
-                  <option value="">請選擇稱謂</option>
-                  <option value="mr">先生</option>
-                  <option value="ms">小姐</option>
-                </select>
-              </div>
-              <div class="profile-field booking-profile-phone-field">
-                <label for="bookingPhone">電話</label>
-                <input id="bookingPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required>
+        <div class="profile-section-grid">
+          <section class="profile-panel basic-profile-card" aria-labelledby="basicProfileTitle">
+            <div class="profile-panel-heading">
+              <div>
+                <p class="kicker">Basic profile</p>
+                <h3 id="basicProfileTitle">基本資料</h3>
+                <p>會員帳號與身份相關資訊。</p>
               </div>
             </div>
-            <div id="bookingProfileMessage" class="form-message hidden" role="alert"></div>
-            <div class="booking-profile-actions">
-              <button id="cancelBookingProfileButton" class="button button-refresh" type="button">取消</button>
-              <button id="saveBookingProfileButton" class="button button-dark" type="submit">儲存預約資料</button>
+            <dl class="profile-detail-list profile-panel-list basic-profile-list">
+              <div><dt>會員編號</dt><dd id="memberCode">—</dd></div>
+              <div><dt>加入日期</dt><dd id="joinedAt">—</dd></div>
+              <div><dt>生日</dt><dd id="memberBirthday">—</dd></div>
+            </dl>
+          </section>
+
+          <section class="profile-panel booking-profile-card" aria-labelledby="bookingProfileTitle">
+            <div class="profile-panel-heading booking-profile-heading">
+              <div>
+                <p class="kicker">Booking profile</p>
+                <h3 id="bookingProfileTitle">預約資料</h3>
+                <p>預約時可直接帶入以下稱呼與電話。</p>
+              </div>
+              <button id="editBookingProfileButton" class="button button-refresh booking-profile-edit-button" type="button" aria-expanded="false" aria-controls="bookingProfileForm">修改</button>
             </div>
-          </form>
-        </section>
+
+            <dl id="bookingProfileSummary" class="profile-detail-list profile-panel-list booking-profile-summary">
+              <div><dt>稱呼</dt><dd id="memberSurname">未填寫</dd></div>
+              <div hidden><dt>稱謂</dt><dd id="memberSalutation">—</dd></div>
+              <div><dt>電話</dt><dd id="memberPhone">未填寫</dd></div>
+            </dl>
+
+            <form id="bookingProfileForm" class="booking-profile-form hidden" novalidate>
+              <div class="booking-profile-grid">
+                <div class="profile-field">
+                  <label for="bookingSurname">姓氏</label>
+                  <input id="bookingSurname" type="text" autocomplete="family-name" maxlength="40" placeholder="例如：王" required>
+                </div>
+                <div class="profile-field">
+                  <label for="bookingSalutation">稱謂</label>
+                  <select id="bookingSalutation" autocomplete="honorific-suffix" required>
+                    <option value="">請選擇稱謂</option>
+                    <option value="mr">先生</option>
+                    <option value="ms">小姐</option>
+                  </select>
+                </div>
+                <div class="profile-field booking-profile-phone-field">
+                  <label for="bookingPhone">電話</label>
+                  <input id="bookingPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required>
+                </div>
+              </div>
+              <div id="bookingProfileMessage" class="form-message hidden" role="alert"></div>
+              <div class="booking-profile-actions">
+                <button id="cancelBookingProfileButton" class="button button-refresh" type="button">取消</button>
+                <button id="saveBookingProfileButton" class="button button-dark" type="submit">儲存預約資料</button>
+              </div>
+            </form>
+          </section>
+        </div>
       </section>
 
     </main>
