@@ -218,7 +218,8 @@
   }
 
   function parseBookingMeta(text) {
-    const match = /^(\d{4}\/\d{1,2}\/\d{1,2})\s+(\d{2}:\d{2}–\d{2}:\d{2})\s+·\s+(.+)\s+·\s+(NT\$[\d,]+)$/.exec(text);
+    const datePattern = '(\\d{4}\\/\\d{1,2}\\/\\d{1,2}(?:（星期[日一二三四五六]）)?)';
+    const match = new RegExp(`^${datePattern}\\s+(\\d{2}:\\d{2}–\\d{2}:\\d{2})\\s+·\\s+(.+)\\s+·\\s+(NT\\$[\\d,]+)$`).exec(text);
     if (!match) return null;
 
     const durationText = match[3];
@@ -234,7 +235,7 @@
   }
 
   function parseConfirmationTime(text) {
-    const match = /^(\d{4}\/\d{1,2}\/\d{1,2})\s+(\d{2}:\d{2}–\d{2}:\d{2})$/.exec(String(text || '').trim());
+    const match = /^(\d{4}\/\d{1,2}\/\d{1,2}(?:（星期[日一二三四五六]）)?)\s+(\d{2}:\d{2}–\d{2}:\d{2})$/.exec(String(text || '').trim());
     return match ? { date: match[1], timeRange: match[2] } : null;
   }
 
