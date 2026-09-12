@@ -5,6 +5,7 @@
   let observer = null;
   let confirmObserver = null;
   let scheduled = false;
+  let confirmTimer = null;
 
   function scheduleFormat() {
     if (scheduled) return;
@@ -15,33 +16,59 @@
     });
   }
 
+  function scheduleConfirmationFormat() {
+    if (confirmTimer !== null) window.clearTimeout(confirmTimer);
+    confirmTimer = window.setTimeout(() => {
+      confirmTimer = null;
+      try {
+        formatConfirmation();
+      } catch (error) {
+        console.warn('booking confirmation format failed', error);
+      }
+    }, 0);
+  }
+
   function mount() {
+    const form = document.getElementById('bookingForm');
+    const confirmSummary = document.getElementById('bookingConfirmSummary');
+    if (form && confirmSummary) {
+      form.addEventListener('submit', scheduleConfirmationFormat);
+      confirmObserver = new MutationObserver(scheduleConfirmationFormat);
+      confirmObserver.observe(confirmSummary, { childList: true, subtree: true });
+    }
+
     root = document.getElementById('bookingList');
     if (root) {
       observer = new MutationObserver(scheduleFormat);
       observer.observe(root, { childList: true, subtree: true });
-      formatAll();
-    }
-
-    const form = document.getElementById('bookingForm');
-    const confirmSummary = document.getElementById('bookingConfirmSummary');
-    if (form && confirmSummary) {
-      form.addEventListener('submit', () => window.queueMicrotask(formatConfirmation));
-      confirmObserver = new MutationObserver(() => window.queueMicrotask(formatConfirmation));
-      confirmObserver.observe(confirmSummary, { childList: true, subtree: true });
+      try {
+        formatAll();
+      } catch (error) {
+        console.warn('member booking history format failed', error);
+      }
     }
   }
 
   function formatAll() {
     if (!root) return;
-    root.querySelectorAll('.booking-item').forEach(formatCard);
+    root.querySelectorAll('.booking-item').forEach((card) => {
+      try {
+        formatCard(card);
+      } catch (error) {
+        console.warn('member booking card format failed', error);
+      }
+    });
+  }
+
+  function directChild(parent, predicate) {
+    return [...parent.children].find(predicate) || null;
   }
 
   function formatCard(card) {
     if (card.dataset.memberBookingFormat === '1') return;
 
-    const top = card.querySelector(':scope > .booking-item-top');
-    const titleBox = top?.querySelector(':scope > div');
+    const top = directChild(card, (node) => node.classList?.contains('booking-item-top'));
+    const titleBox = top ? directChild(top, (node) => node.tagName === 'DIV') : null;
     const rawMeta = String(titleBox?.querySelector('span')?.textContent || '').trim();
     if (!top || !titleBox || !rawMeta) return;
 
@@ -56,7 +83,7 @@
     );
     titleBox.replaceChildren(summary);
 
-    let serviceList = card.querySelector(':scope > .booking-service-items');
+    let serviceList = directChild(card, (node) => node.classList?.contains('booking-service-items'));
     if (serviceList) {
       [...serviceList.children].forEach((entry) => {
         if (String(entry.textContent || '').trim().startsWith('店內服務 ')) entry.remove();
@@ -95,16 +122,23 @@
     const summary = document.getElementById('bookingConfirmSummary');
     if (!summary) return;
 
-    if (!summary.querySelector(':scope > .booking-confirm-format-main')) {
-      const timeNode = summary.querySelector(':scope > .booking-confirm-time');
-      const list = summary.querySelector(':scope > ul');
-      const totalNode = summary.querySelector(':scope > strong');
+    const existingMain = directChild(summary, (node) => node.classList?.contains('booking-confirm-format-main'));
+    if (!existingMain) {
+      const timeNode = directChild(summary, (node) => node.classList?.contains('booking-confirm-time'));
+      const list = directChild(summary, (node) => node.tagName === 'UL');
+      const totalNode = directChild(summary, (node) => node.tagName === 'STRONG');
+
       if (timeNode && list && totalNode) {
         const time = parseConfirmationTime(timeNode.textContent);
         const total = parseConfirmationTotal(totalNode.textContent);
         if (time && total) {
-          const warnings = [...summary.querySelectorAll(':scope > .form-message')];
-          const note = [...summary.querySelectorAll(':scope > p')].find((node) => node !== timeNode && !node.classList.contains('booking-confirm-contact')) || null;
+          const warnings = [...summary.children].filter((node) => node.classList?.contains('form-message'));
+          const note = [...summary.children].find((node) => (
+            node.tagName === 'P'
+            && node !== timeNode
+            && !node.classList.contains('booking-confirm-contact')
+          )) || null;
+          const existingContact = directChild(summary, (node) => node.classList?.contains('booking-confirm-contact'));
 
           const main = document.createElement('div');
           main.className = 'booking-confirm-format-main';
@@ -134,17 +168,20 @@
             summaryRow('總金額', total.totalAmount),
           );
           main.appendChild(totals);
+
           warnings.forEach((warning) => main.appendChild(warning));
           if (note) main.appendChild(note);
 
-          const existingContact = summary.querySelector(':scope > .booking-confirm-contact');
           summary.replaceChildren(main);
           if (existingContact) summary.appendChild(existingContact);
         }
       }
     }
 
-    const contact = summary.querySelector(':scope > .booking-confirm-contact:not(.booking-confirm-contact-formatted)');
+    const contact = directChild(summary, (node) => (
+      node.classList?.contains('booking-confirm-contact')
+      && !node.classList.contains('booking-confirm-contact-formatted')
+    ));
     if (contact) formatConfirmationContact(contact);
   }
 
@@ -224,5 +261,6 @@
   window.addEventListener('beforeunload', () => {
     observer?.disconnect();
     confirmObserver?.disconnect();
+    if (confirmTimer !== null) window.clearTimeout(confirmTimer);
   });
 })();
