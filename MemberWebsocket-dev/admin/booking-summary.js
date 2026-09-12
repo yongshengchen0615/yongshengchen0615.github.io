@@ -42,19 +42,75 @@
   }
 
   function scheduleRefresh(force) {
+    renderImmediateSummaries();
     if (state.refreshTimer !== null) window.clearTimeout(state.refreshTimer);
     state.refreshTimer = window.setTimeout(() => {
       state.refreshTimer = null;
       refreshAndDecorate(Boolean(force)).catch((error) => {
-        showLegacyFallback();
         console.warn('booking summary refresh failed', error?.code || error?.message || 'UNKNOWN_ERROR');
       });
     }, force ? 120 : 180);
   }
 
+  function renderImmediateSummaries() {
+    if (!state.queue) return;
+    state.queue.querySelectorAll(':scope > .booking-admin-booking').forEach((card) => {
+      if (card.classList.contains('booking-summary-normalized')) return;
+      const booking = legacyBookingFromCard(card);
+      if (!booking) return;
+
+      card.dataset.bookingMemberCode = String(booking.memberCode || '');
+      card.dataset.bookingMemberName = String(booking.memberDisplayName || '');
+      card.dataset.bookingDate = String(booking.bookingDate || '');
+      card.dataset.bookingStartTime = String(booking.startTime || '');
+      card.classList.add('booking-summary-normalized', 'booking-summary-provisional');
+      renderBookingSummary(card, booking);
+    });
+  }
+
+  function legacyBookingFromCard(card) {
+    const heading = card.querySelector(':scope > .booking-admin-booking-heading');
+    const identity = heading?.querySelector(':scope > div');
+    const memberDisplayName = String(identity?.querySelector('strong')?.textContent || '').trim();
+    const rawMemberCode = String(identity?.querySelector('small')?.textContent || '').trim();
+    const memberCode = rawMemberCode === '無會員編號' ? '' : rawMemberCode;
+    const timeText = String(card.querySelector(':scope > .booking-admin-time')?.textContent || '').trim();
+    const timeMatch = /^(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{2}:\d{2})/.exec(timeText);
+    if (!timeMatch || (!memberDisplayName && !memberCode)) return null;
+
+    const bookingDate = `${timeMatch[1]}-${String(Number(timeMatch[2])).padStart(2, '0')}-${String(Number(timeMatch[3])).padStart(2, '0')}`;
+    const items = [];
+    card.querySelectorAll(':scope > .booking-admin-item-list > li').forEach((item) => {
+      const text = String(item.textContent || '').trim();
+      if (!text || text.startsWith('店內服務 ')) return;
+      const match = /^(.*?)\s+×\s+(\d+)/.exec(text);
+      items.push({
+        serviceId: '',
+        serviceTitle: String(match?.[1] || text).trim(),
+        quantity: Math.max(1, Number(match?.[2] || 1)),
+      });
+    });
+
+    if (!items.length) {
+      const title = String(card.querySelector(':scope > h4')?.textContent || '').trim();
+      title.split(' + ').map((value) => value.trim()).filter(Boolean).forEach((serviceTitle) => {
+        items.push({ serviceId: '', serviceTitle, quantity: 1 });
+      });
+    }
+
+    return {
+      bookingId: '',
+      bookingDate,
+      startTime: timeMatch[4],
+      memberDisplayName: memberDisplayName || memberCode || '會員',
+      memberCode,
+      contactPhone: '',
+      items,
+    };
+  }
+
   async function refreshAndDecorate(force) {
     if (!state.queue || !state.queue.querySelector('.booking-admin-booking')) return;
-    markCardsPending();
 
     const cacheFresh = state.bookings.length && Date.now() - state.loadedAt < CACHE_TTL_MS;
     if (!force && cacheFresh) {
@@ -140,28 +196,6 @@
     }
   }
 
-  function markCardsPending() {
-    if (!state.queue) return;
-    state.queue.querySelectorAll(':scope > .booking-admin-booking').forEach((card) => {
-      if (card.classList.contains('booking-summary-normalized')) return;
-      card.classList.remove('booking-summary-fallback');
-      card.setAttribute('aria-busy', 'true');
-    });
-  }
-
-  function showLegacyFallback() {
-    if (!state.queue) return;
-    state.queue.querySelectorAll(':scope > .booking-admin-booking').forEach((card) => {
-      if (card.classList.contains('booking-summary-normalized')) return;
-      showLegacyCard(card);
-    });
-  }
-
-  function showLegacyCard(card) {
-    card.classList.add('booking-summary-fallback');
-    card.removeAttribute('aria-busy');
-  }
-
   function decorateCards() {
     if (!state.queue) return;
     const cards = [...state.queue.querySelectorAll(':scope > .booking-admin-booking')];
@@ -169,12 +203,8 @@
 
     cards.forEach((card) => {
       const booking = findBookingForCard(card, used);
-      if (!booking) {
-        if (!card.classList.contains('booking-summary-normalized')) showLegacyCard(card);
-        return;
-      }
+      if (!booking) return;
 
-      card.querySelector('.booking-received-summary')?.remove();
       used.add(String(booking.bookingId || ''));
       card.dataset.bookingId = String(booking.bookingId || '');
       normalizeBookingCard(card, booking);
@@ -188,6 +218,24 @@
       if (exact) return exact;
     }
 
+    const storedCode = String(card.dataset.bookingMemberCode || '');
+    const storedName = String(card.dataset.bookingMemberName || '');
+    const storedDate = String(card.dataset.bookingDate || '');
+    const storedTime = String(card.dataset.bookingStartTime || '');
+    if (storedDate && storedTime && (storedCode || storedName)) {
+      const stored = state.bookings.find((booking) => {
+        const bookingId = String(booking.bookingId || '');
+        if (!bookingId || used.has(bookingId)) return false;
+        const identityMatches = storedCode
+          ? String(booking.memberCode || '') === storedCode
+          : String(booking.memberDisplayName || '') === storedName;
+        return identityMatches
+          && String(booking.bookingDate || '') === storedDate
+          && String(booking.startTime || '').slice(0, 5) === storedTime;
+      });
+      if (stored) return stored;
+    }
+
     const text = String(card.textContent || '');
     return state.bookings.find((booking) => {
       const bookingId = String(booking.bookingId || '');
@@ -196,15 +244,14 @@
         ? text.includes(String(booking.memberCode))
         : text.includes(String(booking.memberDisplayName || ''));
       const dateMatches = text.includes(formatLegacyDate(booking.bookingDate));
-      const timeMatches = text.includes(String(booking.startTime || ''));
+      const timeMatches = text.includes(String(booking.startTime || '').slice(0, 5));
       return identityMatches && dateMatches && timeMatches;
     });
   }
 
   function normalizeBookingCard(card, booking) {
-    card.classList.remove('booking-summary-fallback');
     card.classList.add('booking-summary-normalized');
-    card.removeAttribute('aria-busy');
+    card.classList.remove('booking-summary-provisional');
 
     const heading = card.querySelector(':scope > .booking-admin-booking-heading');
     heading?.querySelector(':scope > div')?.remove();
@@ -212,12 +259,17 @@
     card.querySelector(':scope > .booking-admin-time')?.remove();
     card.querySelector(':scope > .booking-admin-item-list')?.remove();
 
+    renderBookingSummary(card, booking);
+  }
+
+  function renderBookingSummary(card, booking) {
+    card.querySelector(':scope > .booking-received-summary')?.remove();
     const summary = document.createElement('div');
     summary.className = 'booking-received-summary';
 
     const dateTime = document.createElement('p');
     dateTime.className = 'booking-received-datetime';
-    dateTime.textContent = `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—')}`;
+    dateTime.textContent = `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—').slice(0, 5)}`;
     summary.appendChild(dateTime);
 
     const name = document.createElement('p');
@@ -227,7 +279,7 @@
 
     const phone = document.createElement('p');
     phone.className = 'booking-received-phone';
-    phone.textContent = `電話：${String(booking.contactPhone || '未填寫')}`;
+    phone.textContent = `電話：${String(booking.contactPhone || '—')}`;
     summary.appendChild(phone);
 
     const servicesLabel = document.createElement('p');
@@ -285,9 +337,9 @@
 
   function buildBookingCopyText(booking) {
     const lines = [
-      `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—')}`,
+      `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—').slice(0, 5)}`,
       bookingContactName(booking),
-      `電話：${String(booking.contactPhone || '未填寫')}`,
+      `電話：${String(booking.contactPhone || '—')}`,
       '服務項目：',
     ];
 
