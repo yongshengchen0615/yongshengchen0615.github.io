@@ -41,26 +41,41 @@
     const summary = document.createElement('div');
     summary.className = 'member-booking-format-summary';
     summary.append(
-      summaryRow('日期', parsed.date),
+      summaryRow('日期', `${parsed.date} ${parsed.timeRange}`),
       summaryRow('時間', parsed.timeRange),
-      summaryRow('總服務時間', `${parsed.totalMinutes} 分鐘`),
-      summaryRow('總金額', parsed.totalAmount),
     );
-
-    const servicesLabel = document.createElement('p');
-    servicesLabel.className = 'member-booking-format-services-label';
-    servicesLabel.textContent = '服務項目';
-    summary.appendChild(servicesLabel);
-
     titleBox.replaceChildren(summary);
 
-    const serviceList = card.querySelector(':scope > .booking-service-items');
+    let serviceList = card.querySelector(':scope > .booking-service-items');
     if (serviceList) {
       [...serviceList.children].forEach((entry) => {
         if (String(entry.textContent || '').trim().startsWith('店內服務 ')) entry.remove();
       });
-      if (!serviceList.children.length) serviceList.remove();
+    } else {
+      serviceList = document.createElement('ul');
+      serviceList.className = 'booking-service-items';
     }
+
+    if (!serviceList.children.length) {
+      const empty = document.createElement('li');
+      empty.textContent = '尚無會員服務項目';
+      serviceList.appendChild(empty);
+    }
+
+    const servicesLabel = document.createElement('p');
+    servicesLabel.className = 'member-booking-format-services-label';
+    servicesLabel.textContent = '服務項目';
+
+    const totals = document.createElement('div');
+    totals.className = 'member-booking-format-totals';
+    totals.append(
+      summaryRow('總服務時間', `${parsed.totalMinutes} 分鐘`),
+      summaryRow('總金額', parsed.totalAmount),
+    );
+
+    top.after(servicesLabel);
+    servicesLabel.after(serviceList);
+    serviceList.after(totals);
 
     card.classList.add('member-booking-format-card');
     card.dataset.memberBookingFormat = '1';
