@@ -28,8 +28,40 @@
   margin-top: 2px !important;
 }
 
+.booking-member-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.booking-member-meta-item {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(37, 54, 44, .1);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .58);
+}
+
+.booking-member-meta-label {
+  display: block;
+  margin-bottom: 1px;
+  color: rgba(37, 54, 44, .66);
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.booking-member-meta-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #25362c;
+  font-size: .94rem;
+  line-height: 1.45;
+}
+
 .booking-received-services-label {
-  margin-top: 8px !important;
+  margin-top: 10px !important;
   font-weight: 800;
 }
 
@@ -62,4 +94,22 @@
 
 .booking-contact-admin {
   display: none;
+}
+
+@media (max-width: 520px) {
+  .booking-member-meta {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .booking-member-meta-item {
+    display: grid;
+    grid-template-columns: minmax(88px, .72fr) minmax(0, 1.28fr);
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .booking-member-meta-label {
+    margin-bottom: 0;
+  }
 }
