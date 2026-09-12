@@ -272,6 +272,16 @@
     const summary = document.createElement('div');
     summary.className = 'booking-received-summary';
 
+    const memberMeta = document.createElement('div');
+    memberMeta.className = 'booking-member-meta';
+    memberMeta.append(
+      summaryMetaItem('LINE 名稱', String(booking.memberDisplayName || '未取得')),
+      summaryMetaItem('會員編號', String(booking.memberCode || '未取得')),
+      summaryMetaItem('總服務時間', `${totalServiceMinutes(booking)} 分鐘`),
+      summaryMetaItem('總金額', formatMoney(booking.totalAmount)),
+    );
+    summary.appendChild(memberMeta);
+
     const dateTime = document.createElement('p');
     dateTime.className = 'booking-received-datetime';
     dateTime.textContent = `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—').slice(0, 5)}`;
@@ -286,16 +296,6 @@
     phone.className = 'booking-received-phone';
     phone.textContent = `電話：${String(booking.contactPhone || '—')}`;
     summary.appendChild(phone);
-
-    const memberMeta = document.createElement('div');
-    memberMeta.className = 'booking-member-meta';
-    memberMeta.append(
-      summaryMetaItem('LINE 名稱', String(booking.memberDisplayName || '未取得')),
-      summaryMetaItem('會員編號', String(booking.memberCode || '未取得')),
-      summaryMetaItem('總服務時間', `${totalServiceMinutes(booking)} 分鐘`),
-      summaryMetaItem('總金額', formatMoney(booking.totalAmount)),
-    );
-    summary.appendChild(memberMeta);
 
     const servicesLabel = document.createElement('p');
     servicesLabel.className = 'booking-received-services-label';
