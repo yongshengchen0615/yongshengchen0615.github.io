@@ -10,12 +10,12 @@
   <title>會員卡｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=loading-center-all-20260910">
-  <link rel="stylesheet" href="./profile-extension.css?v=profile-inline-edit-20260912-3">
+  <link rel="stylesheet" href="./profile-extension.css?v=profile-modal-edit-20260912-4">
   <link rel="stylesheet" href="./membership-progress.css?v=member-tier-style-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="./common.js?v=supabase-native-20260910" defer></script>
-  <script src="./profile-extension.js?v=profile-inline-edit-20260912-3" defer></script>
+  <script src="./profile-extension.js?v=profile-modal-edit-20260912-4" defer></script>
   <script src="../realtime-resync.js?v=realtime-resync-20260910" defer></script>
   <script src="./membership-progress.js?v=member-tier-style-20260908" defer></script>
   <script src="./app.js?v=supabase-native-20260910" defer></script>
@@ -144,49 +144,76 @@
         <dl class="profile-detail-list">
           <div><dt>會員編號</dt><dd id="memberCode">—</dd></div>
           <div><dt>加入日期</dt><dd id="joinedAt">—</dd></div>
-          <div><dt>姓氏</dt><dd id="memberSurname">未填寫</dd></div>
           <div class="profile-editable-row">
-            <dt>稱謂</dt>
-            <dd>
-              <div class="profile-value-line">
-                <span id="memberSalutation">未填寫</span>
-                <button id="editSalutationButton" class="profile-inline-edit-button" type="button" aria-expanded="false" aria-controls="salutationInlineEditor">修改</button>
-              </div>
-              <div id="salutationInlineEditor" class="profile-inline-editor hidden">
-                <select id="salutationEditSelect" aria-label="修改稱謂">
-                  <option value="">請選擇稱謂</option>
-                  <option value="mr">先生</option>
-                  <option value="ms">小姐</option>
-                </select>
-                <div class="profile-inline-actions">
-                  <button id="cancelSalutationEditButton" class="profile-inline-action secondary" type="button">取消</button>
-                  <button id="saveSalutationEditButton" class="profile-inline-action primary" type="button">儲存</button>
-                </div>
-                <p id="salutationEditMessage" class="profile-inline-message hidden" role="alert"></p>
-              </div>
+            <dt>稱呼</dt>
+            <dd class="profile-value-line">
+              <span id="memberHonorificName">未填寫</span>
+              <button id="editHonorificButton" class="profile-inline-edit-button" type="button" aria-haspopup="dialog" aria-controls="honorificEditModal">修改</button>
             </dd>
           </div>
           <div><dt>生日</dt><dd id="memberBirthday">—</dd></div>
           <div class="profile-editable-row">
             <dt>電話</dt>
-            <dd>
-              <div class="profile-value-line">
-                <span id="memberPhone">未填寫</span>
-                <button id="editPhoneButton" class="profile-inline-edit-button" type="button" aria-expanded="false" aria-controls="phoneInlineEditor">修改</button>
-              </div>
-              <div id="phoneInlineEditor" class="profile-inline-editor hidden">
-                <input id="phoneEditInput" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" aria-label="修改電話" placeholder="例如：0912-345-678">
-                <div class="profile-inline-actions">
-                  <button id="cancelPhoneEditButton" class="profile-inline-action secondary" type="button">取消</button>
-                  <button id="savePhoneEditButton" class="profile-inline-action primary" type="button">儲存</button>
-                </div>
-                <p id="phoneEditMessage" class="profile-inline-message hidden" role="alert"></p>
-              </div>
+            <dd class="profile-value-line">
+              <span id="memberPhone">未填寫</span>
+              <button id="editPhoneButton" class="profile-inline-edit-button" type="button" aria-haspopup="dialog" aria-controls="phoneEditModal">修改</button>
             </dd>
           </div>
         </dl>
       </section>
 
+      <div id="honorificEditModal" class="profile-edit-modal hidden" role="dialog" aria-modal="true" aria-labelledby="honorificEditTitle">
+        <section class="profile-edit-modal-card" tabindex="-1">
+          <div class="profile-edit-modal-heading">
+            <div>
+              <p class="kicker">Booking name</p>
+              <h2 id="honorificEditTitle">修改稱呼</h2>
+              <p>姓氏與稱謂會一起用於預約，例如「陳先生」。</p>
+            </div>
+            <button id="closeHonorificEditButton" class="profile-edit-modal-close" type="button" aria-label="關閉修改稱呼視窗">×</button>
+          </div>
+          <div class="profile-edit-modal-fields profile-edit-modal-grid">
+            <label for="honorificSurnameInput">姓氏
+              <input id="honorificSurnameInput" type="text" autocomplete="family-name" maxlength="40" placeholder="例如：陳">
+            </label>
+            <label for="honorificSalutationSelect">稱謂
+              <select id="honorificSalutationSelect" autocomplete="honorific-suffix">
+                <option value="">請選擇稱謂</option>
+                <option value="mr">先生</option>
+                <option value="ms">小姐</option>
+              </select>
+            </label>
+          </div>
+          <p id="honorificEditMessage" class="profile-modal-message hidden" role="alert"></p>
+          <div class="profile-edit-modal-actions">
+            <button id="cancelHonorificEditButton" class="button button-refresh" type="button">取消</button>
+            <button id="saveHonorificEditButton" class="button button-dark" type="button">儲存</button>
+          </div>
+        </section>
+      </div>
+
+      <div id="phoneEditModal" class="profile-edit-modal hidden" role="dialog" aria-modal="true" aria-labelledby="phoneEditTitle">
+        <section class="profile-edit-modal-card" tabindex="-1">
+          <div class="profile-edit-modal-heading">
+            <div>
+              <p class="kicker">Contact phone</p>
+              <h2 id="phoneEditTitle">修改電話</h2>
+              <p>此電話會作為會員聯絡與預約資料。</p>
+            </div>
+            <button id="closePhoneEditButton" class="profile-edit-modal-close" type="button" aria-label="關閉修改電話視窗">×</button>
+          </div>
+          <div class="profile-edit-modal-fields">
+            <label for="phoneEditInput">電話
+              <input id="phoneEditInput" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678">
+            </label>
+          </div>
+          <p id="phoneEditMessage" class="profile-modal-message hidden" role="alert"></p>
+          <div class="profile-edit-modal-actions">
+            <button id="cancelPhoneEditButton" class="button button-refresh" type="button">取消</button>
+            <button id="savePhoneEditButton" class="button button-dark" type="button">儲存</button>
+          </div>
+        </section>
+      </div>
     </main>
   </div>
 </body>
