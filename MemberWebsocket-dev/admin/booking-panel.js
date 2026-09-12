@@ -20,7 +20,7 @@
   });
 
   loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260911-1');
-  loadStyle('booking-summary.css', 'booking-summary-20260912-4');
+  loadStyle('booking-summary.css', 'booking-summary-20260912-5');
 
   document.addEventListener('click', (event) => {
     if (!window.matchMedia('(max-width: 768px)').matches) return;
@@ -31,7 +31,7 @@
     });
   });
 
-  load('booking-summary.js', 'booking-summary-20260912-4')
+  load('booking-summary.js', 'booking-summary-20260912-5')
     .then(() => load('booking-panel-core.js', 'booking-panel-core-20260911-1'))
     .then(() => load('booking-cancellation-sync.js', 'booking-cancellation-sync-20260911-2'))
     .catch((error) => console.error('booking admin extension load failed', error));
