@@ -3,6 +3,7 @@
 
   let root = null;
   let observer = null;
+  let confirmObserver = null;
   let scheduled = false;
 
   function scheduleFormat() {
@@ -16,10 +17,19 @@
 
   function mount() {
     root = document.getElementById('bookingList');
-    if (!root) return;
-    observer = new MutationObserver(scheduleFormat);
-    observer.observe(root, { childList: true, subtree: true });
-    formatAll();
+    if (root) {
+      observer = new MutationObserver(scheduleFormat);
+      observer.observe(root, { childList: true, subtree: true });
+      formatAll();
+    }
+
+    const form = document.getElementById('bookingForm');
+    const confirmSummary = document.getElementById('bookingConfirmSummary');
+    if (form && confirmSummary) {
+      form.addEventListener('submit', () => window.queueMicrotask(formatConfirmation));
+      confirmObserver = new MutationObserver(() => window.queueMicrotask(formatConfirmation));
+      confirmObserver.observe(confirmSummary, { childList: true, subtree: true });
+    }
   }
 
   function formatAll() {
@@ -81,6 +91,82 @@
     card.dataset.memberBookingFormat = '1';
   }
 
+  function formatConfirmation() {
+    const summary = document.getElementById('bookingConfirmSummary');
+    if (!summary) return;
+
+    if (!summary.querySelector(':scope > .booking-confirm-format-main')) {
+      const timeNode = summary.querySelector(':scope > .booking-confirm-time');
+      const list = summary.querySelector(':scope > ul');
+      const totalNode = summary.querySelector(':scope > strong');
+      if (timeNode && list && totalNode) {
+        const time = parseConfirmationTime(timeNode.textContent);
+        const total = parseConfirmationTotal(totalNode.textContent);
+        if (time && total) {
+          const warnings = [...summary.querySelectorAll(':scope > .form-message')];
+          const note = [...summary.querySelectorAll(':scope > p')].find((node) => node !== timeNode && !node.classList.contains('booking-confirm-contact')) || null;
+
+          const main = document.createElement('div');
+          main.className = 'booking-confirm-format-main';
+          main.append(
+            summaryRow('日期', time.date),
+            summaryRow('時間', time.timeRange),
+          );
+
+          const servicesLabel = document.createElement('p');
+          servicesLabel.className = 'member-booking-format-services-label';
+          servicesLabel.textContent = '服務項目';
+          main.appendChild(servicesLabel);
+
+          const services = document.createElement('ul');
+          services.className = 'booking-confirm-format-services';
+          [...list.children].forEach((entry) => {
+            const li = document.createElement('li');
+            li.textContent = confirmationServiceText(entry.textContent);
+            services.appendChild(li);
+          });
+          main.appendChild(services);
+
+          const totals = document.createElement('div');
+          totals.className = 'member-booking-format-totals';
+          totals.append(
+            summaryRow('總服務時間', `${total.totalMinutes} 分鐘`),
+            summaryRow('總金額', total.totalAmount),
+          );
+          main.appendChild(totals);
+          warnings.forEach((warning) => main.appendChild(warning));
+          if (note) main.appendChild(note);
+
+          const existingContact = summary.querySelector(':scope > .booking-confirm-contact');
+          summary.replaceChildren(main);
+          if (existingContact) summary.appendChild(existingContact);
+        }
+      }
+    }
+
+    const contact = summary.querySelector(':scope > .booking-confirm-contact:not(.booking-confirm-contact-formatted)');
+    if (contact) formatConfirmationContact(contact);
+  }
+
+  function formatConfirmationContact(contact) {
+    const parsed = parseConfirmationContact(contact.textContent);
+    if (!parsed) return;
+
+    const block = document.createElement('div');
+    block.className = 'booking-confirm-contact booking-confirm-contact-formatted';
+
+    const heading = document.createElement('p');
+    heading.className = 'member-booking-format-services-label booking-confirm-contact-title';
+    heading.textContent = '預約資料：';
+
+    block.append(
+      heading,
+      summaryRow('稱呼', parsed.name),
+      summaryRow('電話', `${parsed.phone}（${parsed.sourceLabel}）`),
+    );
+    contact.replaceWith(block);
+  }
+
   function summaryRow(label, value) {
     const row = document.createElement('p');
     row.className = 'member-booking-format-row';
@@ -110,8 +196,33 @@
     };
   }
 
+  function parseConfirmationTime(text) {
+    const match = /^(\d{4}\/\d{1,2}\/\d{1,2})\s+(\d{2}:\d{2}–\d{2}:\d{2})$/.exec(String(text || '').trim());
+    return match ? { date: match[1], timeRange: match[2] } : null;
+  }
+
+  function parseConfirmationTotal(text) {
+    const match = /預約共\s*(\d+)\s*分鐘\s*·\s*預約總額：\s*(NT\$[\d,]+)/.exec(String(text || ''));
+    return match ? { totalMinutes: Math.max(0, Number(match[1] || 0)), totalAmount: match[2] } : null;
+  }
+
+  function confirmationServiceText(text) {
+    const raw = String(text || '').trim();
+    const price = raw.match(/NT\$[\d,]+/)?.[0] || 'NT$0';
+    const title = raw.split('｜')[0].split('（')[0].trim() || '服務項目';
+    return `${title} · ${price}`;
+  }
+
+  function parseConfirmationContact(text) {
+    const match = /^預約資料：(.+?)｜(.+?)（(使用會員資料|本次重新填寫)）$/.exec(String(text || '').trim());
+    return match ? { name: match[1], phone: match[2], sourceLabel: match[3] } : null;
+  }
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
   else mount();
 
-  window.addEventListener('beforeunload', () => observer?.disconnect());
+  window.addEventListener('beforeunload', () => {
+    observer?.disconnect();
+    confirmObserver?.disconnect();
+  });
 })();
