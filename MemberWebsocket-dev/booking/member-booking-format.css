@@ -66,13 +66,35 @@
 }
 
 .booking-confirm-summary .booking-confirm-contact-formatted {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(37, 54, 44, .10);
+  margin-top: 16px;
+  padding: 14px;
+  gap: 8px;
+  border: 1px solid rgba(37, 54, 44, .10);
+  border-radius: 12px;
+  background: #fff;
 }
 
 .booking-confirm-summary .booking-confirm-contact-title {
-  margin-top: 0;
+  margin: 0 0 2px;
+  color: #25362c;
+  font-size: .92rem;
+  font-weight: 850;
+}
+
+.booking-confirm-summary .booking-confirm-contact-formatted .member-booking-format-row {
+  grid-template-columns: 3.4em minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+
+.booking-confirm-summary .booking-confirm-contact-formatted .member-booking-format-label {
+  color: #607269;
+  line-height: 1.55;
+}
+
+.booking-confirm-summary .booking-confirm-contact-formatted .member-booking-format-value {
+  font-weight: 700;
+  line-height: 1.55;
 }
 
 .booking-confirm-summary .booking-confirm-format-main > .form-message {
@@ -91,5 +113,14 @@
   .booking-confirm-summary .member-booking-format-label,
   .booking-confirm-summary .member-booking-format-value {
     font-size: .92rem;
+  }
+
+  .booking-confirm-summary .booking-confirm-contact-formatted {
+    padding: 13px;
+  }
+
+  .booking-confirm-summary .booking-confirm-contact-formatted .member-booking-format-row {
+    grid-template-columns: 3.25em minmax(0, 1fr);
+    gap: 5px;
   }
 }
