@@ -55,77 +55,143 @@
 }
 
 .profile-inline-edit-button:focus-visible,
-.profile-inline-action:focus-visible,
-.profile-inline-editor input:focus,
-.profile-inline-editor select:focus {
+.profile-edit-modal-close:focus-visible,
+.profile-edit-modal input:focus,
+.profile-edit-modal select:focus {
   outline: none;
   border-color: var(--coral);
   box-shadow: 0 0 0 3px rgba(223, 107, 77, .1);
 }
 
-.profile-inline-editor {
+.profile-modal-open {
+  overflow: hidden;
+}
+
+.profile-edit-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
   display: grid;
-  gap: 9px;
-  margin-top: 11px;
+  place-items: center;
+  padding: 20px;
+  background: rgba(23, 53, 46, .38);
+  backdrop-filter: blur(4px);
 }
 
-.profile-inline-editor input,
-.profile-inline-editor select {
-  width: 100%;
-  min-width: 0;
-  min-height: 42px;
-  padding: 9px 11px;
-  border: 1px solid #d8e3db;
-  border-radius: 10px;
-  color: var(--ink);
-  background: #fff;
-  font: inherit;
-  font-size: 14px;
+.profile-edit-modal-card {
+  width: min(100%, 460px);
+  max-height: min(88vh, 620px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid rgba(23, 53, 46, .12);
+  border-radius: 22px;
+  background: var(--paper);
+  box-shadow: 0 24px 64px rgba(23, 53, 46, .24);
 }
 
-.profile-inline-actions {
+.profile-edit-modal-heading {
   display: flex;
-  justify-content: flex-end;
-  gap: 7px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.profile-inline-action {
-  min-height: 34px;
-  padding: 7px 12px;
-  border-radius: 9px;
+.profile-edit-modal-heading h2 {
+  margin: 5px 0 7px;
+  color: var(--ink);
+  font-size: 25px;
+  line-height: 1.08;
+  letter-spacing: -.055em;
+}
+
+.profile-edit-modal-heading p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.profile-edit-modal-close {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  background: transparent;
   cursor: pointer;
   font: inherit;
+  font-size: 23px;
+  line-height: 1;
+}
+
+.profile-edit-modal-fields {
+  display: grid;
+  gap: 13px;
+  margin-top: 20px;
+}
+
+.profile-edit-modal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-edit-modal-fields label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: #5d6d64;
   font-size: 11px;
   font-weight: 850;
 }
 
-.profile-inline-action.secondary {
-  border: 1px solid rgba(23, 53, 46, .16);
+.profile-edit-modal input,
+.profile-edit-modal select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #d8e3db;
+  border-radius: 12px;
   color: var(--ink);
-  background: transparent;
+  background: #fff;
+  font: inherit;
+  font-size: 15px;
 }
 
-.profile-inline-action.primary {
-  border: 1px solid var(--ink);
-  color: var(--paper);
-  background: var(--ink);
-}
-
-.profile-inline-action:disabled,
-.profile-inline-editor input:disabled,
-.profile-inline-editor select:disabled {
+.profile-edit-modal input:disabled,
+.profile-edit-modal select:disabled,
+.profile-edit-modal button:disabled {
   cursor: wait;
   opacity: .62;
 }
 
-.profile-inline-message {
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: 9px;
+.profile-modal-message {
+  margin: 14px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
   color: #a33f35;
   background: #fff0ec;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.profile-edit-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.profile-edit-modal-actions .button {
+  width: auto;
+  min-width: 110px;
+}
+
+.profile-edit-modal-actions .button-dark {
+  margin-top: 0;
 }
 
 @media (max-width: 620px) {
@@ -138,19 +204,39 @@
     padding: 6px 10px;
   }
 
-  .profile-inline-editor input,
-  .profile-inline-editor select {
-    min-height: 44px;
+  .profile-edit-modal {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .profile-edit-modal-card {
+    width: 100%;
+    max-height: min(88vh, 620px);
+    padding: 20px;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .profile-edit-modal-heading h2 {
+    font-size: 23px;
+  }
+
+  .profile-edit-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-edit-modal input,
+  .profile-edit-modal select {
+    min-height: 52px;
     font-size: 16px;
   }
 
-  .profile-inline-actions {
+  .profile-edit-modal-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
 
-  .profile-inline-action {
+  .profile-edit-modal-actions .button {
     width: 100%;
-    min-height: 38px;
+    min-width: 0;
   }
 }
