@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const { stripTypeScriptTypes } = require('node:module');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../supabase/functions/booking-api/index.ts'), 'utf8').replace(/^import .*\n/, '');
+const source = fs.readFileSync(require('node:path').join(__dirname, '../supabase/functions/booking-api/index.ts'), 'utf8').replace(/^import .*\n/gm, '');
 const context = vm.createContext({ Deno: { serve() {}, env: { get() { return ''; } } }, Date, Intl, Set, Map, console, crypto: require('node:crypto').webcrypto, TextEncoder });
 vm.runInContext(stripTypeScriptTypes(source), context);
 const id = '10000000-0000-4000-8000-000000000001';
@@ -61,3 +61,4 @@ test('edit rejects missing version before database mutation', async () => {
   await assert.rejects(context.userUpdate(client, identity, { id }, { bookingId: id }), { code: 'INVALID_INPUT' });
   assert.equal(client.writes.length, 0);
 });
+

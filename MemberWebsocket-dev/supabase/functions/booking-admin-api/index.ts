@@ -1,3 +1,4 @@
+import { readJsonObject } from "../_shared/request-body.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -280,10 +281,8 @@ Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return response(origin, { ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "只支援 POST。" } }, 405);
   if (origin && !allowedOrigins().has(origin)) return response(origin, { ok: false, error: { code: "ORIGIN_DENIED", message: "不允許的來源。" } }, 403);
   try {
-    const raw = await request.text();
-    if (new TextEncoder().encode(raw).byteLength > MAX_REQUEST_BYTES) throw new ApiError(413, "REQUEST_TOO_LARGE", "請求內容過大。" );
-    let body: Json;
-    try { body = raw ? JSON.parse(raw) : {}; } catch { throw new ApiError(400, "INVALID_JSON", "請求格式不正確。" ); }
+    const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
+
     const action = asText(body.action, 100);
     if (!action.startsWith("admin.booking.")) throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。" );
     const identity = await verifyLineIdToken(asText(body.idToken, 5000));
@@ -294,3 +293,4 @@ Deno.serve(async (request: Request) => {
     return response(origin, { ok: true, status: 200, data });
   } catch (error) { return errorResponse(origin, error); }
 });
+

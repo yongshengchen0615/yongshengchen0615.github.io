@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#eef4f0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>活動日曆｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=loading-center-all-20260910">
@@ -14,12 +14,13 @@
   <link rel="stylesheet" href="./membership-progress.css?v=calendar-tier-style-20260908">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./common.js?v=supabase-native-20260910" defer></script>
+  <script src="./common.js?v=responsive-security-20260913" defer></script>
   <script src="../realtime-resync.js?v=realtime-resync-20260910" defer></script>
   <script src="./tier-sync.js?v=calendar-tier-sync-20260910" defer></script>
   <script src="./membership-progress.js?v=calendar-tier-style-20260908" defer></script>
   <script src="./app.js?v=calendar-liff-internal-20260911" defer></script>
-  <link rel="stylesheet" href="../responsive.css">
+  <link rel="stylesheet" href="../responsive.css?v=20260913">
+  <script src="../dialog-accessibility.js?v=20260913" defer></script>
 </head>
 <body>
   <div id="app" class="app-shell" aria-busy="true">
@@ -45,3 +46,4 @@
   </div>
 </body>
 </html>
+

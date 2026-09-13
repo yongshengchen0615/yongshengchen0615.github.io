@@ -1,3 +1,4 @@
+import { readJsonObject } from "../_shared/request-body.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -266,17 +267,7 @@ Deno.serve(async (request) => {
       throw new ApiError(413, "REQUEST_TOO_LARGE", "請求內容過大。");
     }
 
-    const rawBody = await request.text();
-    if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) {
-      throw new ApiError(413, "REQUEST_TOO_LARGE", "請求內容過大。");
-    }
-
-    let body: Json;
-    try {
-      body = rawBody ? JSON.parse(rawBody) : {};
-    } catch {
-      throw new ApiError(400, "INVALID_JSON", "請求格式不正確。");
-    }
+    const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
 
     const idToken = typeof body.idToken === "string" ? body.idToken.trim() : "";
     const month = requireMonth(body.month);

@@ -1,3 +1,4 @@
+import { readJsonObject } from "../_shared/request-body.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -128,9 +129,8 @@ Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return response(origin, { ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "只支援 POST。" } }, 405);
   if (origin && !allowedOrigins().has(origin)) return response(origin, { ok: false, error: { code: "ORIGIN_DENIED", message: "不允許的來源。" } }, 403);
   try {
-    const raw = await request.text();
-    if (!raw || new TextEncoder().encode(raw).byteLength > MAX_REQUEST_BYTES) throw new ApiError(413, "REQUEST_TOO_LARGE", "請求內容大小不合法。");
-    let body: Json; try { body = JSON.parse(raw); } catch { throw new ApiError(400, "INVALID_JSON", "請求格式不正確。"); }
+    const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
+
     const action = asText(body.action, 80);
     if (!["user.member.bootstrap", "user.member.profile.save"].includes(action) || asText(body.clientType, 20) !== "member") throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     const identity = await verifyLineIdToken(asText(body.idToken, 10_000));
@@ -157,3 +157,4 @@ Deno.serve(async (request: Request) => {
     return response(origin, { ok: false, status: e.status, error: { code: e.code, message: e.message, details: e.details } }, e.status);
   }
 });
+
