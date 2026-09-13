@@ -41,5 +41,42 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto !important; }
-  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* 讓所有功能的彈窗都能在橫向手機、縮放與動態工具列下捲動。 */
+[role="dialog"][aria-modal="true"] {
+  max-width: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+}
+.modal-card, .editor-modal-card, .ticket-modal-card, .calendar-detail-card,
+.profile-date-modal-card, .profile-edit-modal-card, .booking-admin-modal-card {
+  min-width: 0;
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+.modal-heading > *, .ticket-modal-heading > *, .profile-edit-modal-heading > *,
+.booking-admin-modal-heading > *, .topbar > *, .workspace-heading > * { min-width: 0; }
+.modal-heading h2, .ticket-modal-heading h2, .profile-edit-modal-heading h2,
+.booking-admin-modal-heading h2, .identity-line, .member-cell { overflow-wrap: anywhere; }
+.close-button, .ticket-close-button, .profile-edit-modal-close, .booking-admin-modal-close {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+}
+.modal-actions, .profile-edit-modal-actions, .booking-admin-modal-actions { flex-wrap: wrap; }
+@media (max-width: 480px) {
+  .modal-actions > button, .profile-edit-modal-actions > button,
+  .booking-admin-modal-actions > button { flex: 1 1 120px; white-space: normal; }
+  .profile-edit-modal-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (pointer: coarse) {
+  .nav-link, .card-tab, .card-settings-tab, .logout-button { min-height: 44px; }
 }

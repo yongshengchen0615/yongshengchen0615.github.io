@@ -1,3 +1,4 @@
+import { readJsonObject } from "../_shared/request-body.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type ClientType = "member" | "points" | "event" | "calendar" | "admin";
@@ -1484,11 +1485,7 @@ async function handleRequest(request: Request): Promise<Response> {
     if (request.method === "GET") return json(origin,{ ok:true,status:200,data:{ service:"MemberWebsocket Supabase Native",version:"1.0.0" } });
     if (request.method !== "POST") throw new ApiError(405,"METHOD_NOT_ALLOWED","不支援的 HTTP method。");
 
-    const raw = await request.text();
-    if (!raw || new TextEncoder().encode(raw).byteLength > MAX_REQUEST_BYTES) throw new ApiError(413,"REQUEST_TOO_LARGE","Request body 大小不合法。");
-    let body: Json;
-    try { body = JSON.parse(raw); } catch { throw new ApiError(400,"INVALID_JSON","Request body 必須是 JSON。"); }
-    if (!body || Array.isArray(body) || typeof body !== "object") throw new ApiError(400,"INVALID_REQUEST","Request body 格式不合法。");
+    const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
 
     const action = asText(body.action,80);
     const requestedClientType = asText(body.clientType,20);
@@ -1510,3 +1507,4 @@ async function handleRequest(request: Request): Promise<Response> {
 }
 
 export default { fetch: handleRequest };
+

@@ -140,7 +140,7 @@
       pendingReads.clear();
       return sendRequest(config, clientType, idToken, action, payload).finally(() => pendingReads.clear());
     }
-    const key = JSON.stringify([clientType, action, payload]);
+    const key = JSON.stringify([config.supabaseFunctionUrl, clientType, idToken, action, payload]);
     if (pendingReads.has(key)) return pendingReads.get(key);
     const pending = sendRequest(config, clientType, idToken, action, payload).finally(() => {
       if (pendingReads.get(key) === pending) pendingReads.delete(key);
@@ -249,7 +249,7 @@
     const unsubscribe = () => {
       if (disposed) return;
       disposed = true;
-      if (timer !== undefined && cancel) cancel(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
       realtimeSubscriptions.delete(clientType);
       try { Promise.resolve(client.removeChannel(channel)).catch(() => {}); } catch (_) {}
     };
@@ -302,19 +302,7 @@
   }
 
   function bindDialogKeyboard() {
-    document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Tab') return;
-      const dialogs = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).filter((dialog) => dialog.getClientRects().length);
-      const dialog = dialogs[dialogs.length - 1];
-      if (!dialog) return;
-      const controls = Array.from(dialog.querySelectorAll('button, a[href], input, select, textarea, [tabindex]')).filter((el) => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
-      const first = controls[0], last = controls[controls.length - 1];
-      if (!first) { event.preventDefault(); dialog.tabIndex = -1; dialog.focus(); return; }
-      if (!dialog.contains(document.activeElement) || (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
-        event.preventDefault();
-        (event.shiftKey ? last : first).focus();
-      }
-    });
+    // 保留既有呼叫介面；焦點管理統一由共用 dialog-accessibility.js 初始化。
   }
 
   function logout() {
@@ -362,3 +350,4 @@
     subscribeRealtime, logout, openMemberJoin, formatDate, formatDateTime, initials
   });
 })();
+

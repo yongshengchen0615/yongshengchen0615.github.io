@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const read = (path) => fs.readFileSync(path, 'utf8');
 
-const adminPanel = read('MemberWebsocket-dev/admin/booking-panel.js');
+const adminPanel = read('MemberWebsocket-dev/admin/booking-panel-core.js');
 const bookingIndex = read('MemberWebsocket-dev/booking/index.html');
 const calendarFlow = read('MemberWebsocket-dev/booking/calendar-flow.js');
 const holidayTheme = read('MemberWebsocket-dev/booking/calendar-holiday-theme.css');
@@ -44,3 +44,4 @@ assert.match(migration, /BOOKING_HOLIDAY/);
 assert.match(migration, /status = 'active'/);
 
 console.log('booking notice/holiday wiring OK');
+

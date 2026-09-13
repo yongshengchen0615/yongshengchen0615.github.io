@@ -1,3 +1,4 @@
+import { readJsonObject } from "../_shared/request-body.ts";
 import {
   ApiError,
   asText,
@@ -106,17 +107,7 @@ Deno.serve(async (request: Request) => {
   }
 
   try {
-    const raw = await request.text();
-    if (!raw || new TextEncoder().encode(raw).byteLength > MAX_REQUEST_BYTES) {
-      throw new ApiError(413, "REQUEST_TOO_LARGE", "請求內容大小不合法。");
-    }
-
-    let body: Json;
-    try {
-      body = JSON.parse(raw);
-    } catch {
-      throw new ApiError(400, "INVALID_JSON", "請求格式不正確。");
-    }
+    const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
 
     const action = asText(body.action, 80);
     const clientType = asText(body.clientType, 20) as ClientType;
@@ -157,3 +148,4 @@ Deno.serve(async (request: Request) => {
     }, apiError.status);
   }
 });
+

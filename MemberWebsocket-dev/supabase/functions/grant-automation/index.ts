@@ -1,3 +1,4 @@
+import { readJsonObject } from "../_shared/request-body.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -324,9 +325,7 @@ Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response(null,{ status:204,headers:corsHeaders(origin) });
   if (request.method !== "POST") return response(origin,{ ok:false,status:405,error:{ code:"METHOD_NOT_ALLOWED",message:"只支援 POST。" } },405);
   try {
-    const length = Number(request.headers.get("content-length") || 0);
-    if (length > MAX_REQUEST_BYTES) throw new ApiError(413,"REQUEST_TOO_LARGE","請求內容過大。");
-    const body = await request.json() as Json;
+    const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
     const action = requireText(body.action,"API action",100);
     if (!["admin.member-grants.add","admin.calendar-items.save","admin.calendar-items.list"].includes(action)) throw new ApiError(404,"ACTION_NOT_FOUND","不支援的 API action。");
     const identity = await verifyAdminIdToken(requireText(body.idToken,"LINE ID token",5000));
@@ -345,3 +344,4 @@ Deno.serve(async (request: Request) => {
     return response(origin,{ ok:false,status:apiError.status,error:{ code:apiError.code,message:apiError.message,details:apiError.details } },apiError.status);
   }
 });
+
