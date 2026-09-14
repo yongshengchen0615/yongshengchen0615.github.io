@@ -3,6 +3,25 @@
 
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
 
+  // The member client keeps its raw tier field separate from the visible
+  // membership-progress label. Booking used the same DOM node for both,
+  // which caused app.js and MembershipProgress to overwrite each other on
+  // every realtime refresh. Split those targets before app.js binds them.
+  function ensureSeparateTierTargets() {
+    const root = document.getElementById('membershipProgress');
+    const visible = root?.querySelector('[data-membership-current-tier]');
+    if (!visible) return;
+
+    if (visible.id === 'memberTier') visible.removeAttribute('id');
+    if (!document.getElementById('memberTier')) {
+      const rawTier = document.createElement('span');
+      rawTier.id = 'memberTier';
+      rawTier.className = 'hidden';
+      rawTier.setAttribute('aria-hidden', 'true');
+      root.before(rawTier);
+    }
+  }
+
   function wholeMinutes(value) {
     return Math.max(0, Math.floor(Number(value) || 0));
   }
@@ -44,12 +63,11 @@
 
   function render(root, profile) {
     if (!root || typeof root.querySelector !== 'function') return;
+    ensureSeparateTierTargets();
     applyTierStyle(root, profile);
     const progress = progressForProfile(profile);
     const currentTier = String(profile && profile.tier || '一般會員');
-    // app.js also writes #memberTier during refresh. Keep the exact same text so
-    // Realtime refreshes do not visibly toggle between two different labels.
-    const currentTierText = currentTier;
+    const currentTierText = `目前會員階級：${currentTier}`;
     let summaryText = `累積 ${formatMinutes(progress.serviceMinutesTotal)}・下一階段資料載入中`;
     let remainingText = '下一階段資料載入中';
 
@@ -75,5 +93,6 @@
     }
   }
 
+  ensureSeparateTierTargets();
   window.MembershipProgress = Object.freeze({ render });
 })();
