@@ -80,3 +80,43 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (pointer: coarse) {
   .nav-link, .card-tab, .card-settings-tab, .logout-button { min-height: 44px; }
 }
+
+/* Native date/time controls can keep an intrinsic width inside LINE/iOS WebView.
+   Force the control and its WebKit value box to shrink with the form column. */
+input[type="time"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="week"] {
+  display: block;
+  inline-size: 100%;
+  width: 100%;
+  min-inline-size: 0 !important;
+  min-width: 0 !important;
+  max-inline-size: 100%;
+  max-width: 100%;
+}
+input[type="time"]::-webkit-date-and-time-value,
+input[type="date"]::-webkit-date-and-time-value,
+input[type="datetime-local"]::-webkit-date-and-time-value,
+input[type="month"]::-webkit-date-and-time-value,
+input[type="week"]::-webkit-date-and-time-value {
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+.form-grid > *, .two-columns > *,
+.booking-admin-form-grid > *, .booking-admin-global-settings-grid > *,
+.profile-edit-modal-grid > * {
+  min-width: 0;
+}
+@supports (-webkit-touch-callout: none) {
+  input[type="time"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="month"],
+  input[type="week"] {
+    width: -webkit-fill-available;
+    max-width: -webkit-fill-available;
+  }
+}
