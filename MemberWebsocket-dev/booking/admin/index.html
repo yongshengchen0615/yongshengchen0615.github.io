@@ -6,14 +6,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#f5f7f2">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' https://static.line-scdn.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>預約管理｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=booking-admin-20260910">
   <link rel="stylesheet" href="./contact-details.css?v=booking-member-summary-20260912-1">
   <link rel="stylesheet" href="./subtabs.css?v=booking-admin-subtabs-main-20260910-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-  <script src="../common.js?v=booking-20260910" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="../common.js?v=booking-realtime-sync-20260914-2" defer></script>
   <script src="./contact-details.js?v=booking-member-summary-20260912-1" defer></script>
   <script src="./app.js?v=booking-duration-consistency-20260911-4" defer></script>
   <script src="./subtabs.js?v=booking-admin-subtabs-main-20260910-1" defer></script>
@@ -77,4 +78,3 @@
   </div>
 </body>
 </html>
-
