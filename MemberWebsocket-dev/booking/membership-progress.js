@@ -28,7 +28,7 @@
 
   function setText(root, selector, value) {
     const element = root.querySelector(selector);
-    if (element) element.textContent = value;
+    if (element && element.textContent !== value) element.textContent = value;
   }
 
   function tierStyleKeyForProfile(profile) {
@@ -37,7 +37,9 @@
   }
 
   function applyTierStyle(root, profile) {
-    if (typeof root.setAttribute === 'function') root.setAttribute('data-membership-tier-style', tierStyleKeyForProfile(profile));
+    if (typeof root.setAttribute !== 'function') return;
+    const next = tierStyleKeyForProfile(profile);
+    if (root.getAttribute('data-membership-tier-style') !== next) root.setAttribute('data-membership-tier-style', next);
   }
 
   function render(root, profile) {
@@ -45,7 +47,9 @@
     applyTierStyle(root, profile);
     const progress = progressForProfile(profile);
     const currentTier = String(profile && profile.tier || '一般會員');
-    const currentTierText = `目前會員階級：${currentTier}`;
+    // app.js also writes #memberTier during refresh. Keep the exact same text so
+    // Realtime refreshes do not visibly toggle between two different labels.
+    const currentTierText = currentTier;
     let summaryText = `累積 ${formatMinutes(progress.serviceMinutesTotal)}・下一階段資料載入中`;
     let remainingText = '下一階段資料載入中';
 
@@ -63,10 +67,11 @@
     setText(root, '[data-membership-remaining]', remainingText);
     const track = root.querySelector('[data-membership-progress-track]');
     const bar = root.querySelector('[data-membership-progress-bar]');
-    if (bar) bar.style.width = `${roundedPercent}%`;
+    const width = `${roundedPercent}%`;
+    if (bar && bar.style.width !== width) bar.style.width = width;
     if (track) {
-      track.setAttribute('aria-valuenow', String(roundedPercent));
-      track.setAttribute('aria-valuetext', remainingText);
+      if (track.getAttribute('aria-valuenow') !== String(roundedPercent)) track.setAttribute('aria-valuenow', String(roundedPercent));
+      if (track.getAttribute('aria-valuetext') !== remainingText) track.setAttribute('aria-valuetext', remainingText);
     }
   }
 
