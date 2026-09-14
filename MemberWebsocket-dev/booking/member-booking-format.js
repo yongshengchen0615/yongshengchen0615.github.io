@@ -4,8 +4,10 @@
   let root = null;
   let observer = null;
   let confirmObserver = null;
+  let selectionSummaryObserver = null;
   let scheduled = false;
   let confirmTimer = null;
+  let selectionSummaryTimer = null;
 
   function scheduleFormat() {
     if (scheduled) return;
@@ -28,6 +30,18 @@
     }, 0);
   }
 
+  function scheduleSelectionSummaryFormat() {
+    if (selectionSummaryTimer !== null) window.clearTimeout(selectionSummaryTimer);
+    selectionSummaryTimer = window.setTimeout(() => {
+      selectionSummaryTimer = null;
+      try {
+        formatSelectionSummary();
+      } catch (error) {
+        console.warn('booking selection summary format failed', error);
+      }
+    }, 0);
+  }
+
   function mount() {
     const form = document.getElementById('bookingForm');
     const confirmSummary = document.getElementById('bookingConfirmSummary');
@@ -35,6 +49,13 @@
       form.addEventListener('submit', scheduleConfirmationFormat);
       confirmObserver = new MutationObserver(scheduleConfirmationFormat);
       confirmObserver.observe(confirmSummary, { childList: true, subtree: true });
+    }
+
+    const selectionSummary = document.getElementById('selectionSummary');
+    if (selectionSummary) {
+      selectionSummaryObserver = new MutationObserver(scheduleSelectionSummaryFormat);
+      selectionSummaryObserver.observe(selectionSummary, { childList: true, subtree: true, characterData: true });
+      scheduleSelectionSummaryFormat();
     }
 
     root = document.getElementById('bookingList');
@@ -62,6 +83,38 @@
 
   function directChild(parent, predicate) {
     return [...parent.children].find(predicate) || null;
+  }
+
+  function formatSelectionSummary() {
+    const summary = document.getElementById('selectionSummary');
+    if (!summary || summary.classList.contains('hidden')) return;
+
+    const parsed = parseSelectionSummary(summary.textContent);
+    if (!parsed) return;
+
+    const services = [...document.querySelectorAll('#selectedServiceList .selected-service-item')]
+      .map((item) => {
+        const title = String(item.querySelector('strong')?.textContent || '').trim();
+        const meta = String(item.querySelector('small')?.textContent || '');
+        const duration = /服務\s*(\d+)\s*分鐘/.exec(meta)?.[1] || '';
+        return title ? `${title}${duration}` : '';
+      })
+      .filter(Boolean);
+    if (!services.length) return;
+
+    const lines = [
+      `服務項目：${services.join('、')}`,
+      `總額：NT ${parsed.totalAmount.replace(/^NT\$/, '')}`,
+      `總服務時間：${parsed.totalMinutes}分鐘`,
+      `最早可預約 ${parsed.minimumDate}`,
+    ];
+
+    const fragment = document.createDocumentFragment();
+    lines.forEach((line, index) => {
+      if (index > 0) fragment.appendChild(document.createElement('br'));
+      fragment.appendChild(document.createTextNode(line));
+    });
+    summary.replaceChildren(fragment);
   }
 
   function formatCard(card) {
@@ -217,6 +270,15 @@
     return row;
   }
 
+  function parseSelectionSummary(text) {
+    const match = /預約共\s*(\d+)\s*分鐘\s*·\s*總額\s*(NT\$[\d,]+)\s*·\s*最早可預約\s*(.+)$/.exec(String(text || '').trim());
+    return match ? {
+      totalMinutes: Math.max(0, Number(match[1] || 0)),
+      totalAmount: match[2],
+      minimumDate: match[3],
+    } : null;
+  }
+
   function parseBookingMeta(text) {
     const datePattern = '(\\d{4}\\/\\d{1,2}\\/\\d{1,2}(?:（星期[日一二三四五六]）)?)';
     const match = new RegExp(`^${datePattern}\\s+(\\d{2}:\\d{2}–\\d{2}:\\d{2})\\s+·\\s+(.+)\\s+·\\s+(NT\\$[\\d,]+)$`).exec(text);
@@ -262,6 +324,8 @@
   window.addEventListener('beforeunload', () => {
     observer?.disconnect();
     confirmObserver?.disconnect();
+    selectionSummaryObserver?.disconnect();
     if (confirmTimer !== null) window.clearTimeout(confirmTimer);
+    if (selectionSummaryTimer !== null) window.clearTimeout(selectionSummaryTimer);
   });
 })();
