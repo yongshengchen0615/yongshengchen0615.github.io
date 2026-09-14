@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="./member-booking-format.css?v=booking-member-format-20260912-5">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./common.js?v=booking-realtime-sync-20260914-2" defer></script>
+  <script src="./common.js?v=booking-notice-20260914-1" defer></script>
   <script src="./booking-date-display.js?v=booking-weekday-20260912-1" defer></script>
   <script src="./contact-details.js?v=booking-contact-profile-20260911-1" defer></script>
   <script src="./liff-fresh-login.js?v=booking-liff-fresh-login-20260910-1" defer></script>
@@ -27,7 +27,7 @@
   <script src="./app.js?v=booking-duration-consistency-20260911-4" defer></script>
   <script src="./member-booking-format.js?v=booking-member-format-20260914-2" defer></script>
   <script src="./calendar-flow.js?v=booking-lifecycle-20260911-2" defer></script>
-  <link rel="stylesheet" href="../responsive.css?v=20260913">
+  <link rel="stylesheet" href="../responsive.css?v=20260914-time-input-1">
   <link rel="stylesheet" href="./booking-typography.css?v=booking-typography-20260912-1">
   <script src="../dialog-accessibility.js?v=20260913" defer></script>
 </head>
@@ -73,7 +73,7 @@
           <span id="workHoursBadge" class="slot-unit">載入中</span>
         </div>
 
-        <div class="service-info" role="note"><strong>預約說明：</strong>每筆預約會自動加入 10 分鐘店內服務，包含 10 分鐘肩頸服務、龜苓膏與熱茶。這 10 分鐘會算入預約佔用時間與結束時間，但不另外計價，也不計入會員累積消費服務時數或會員階級。</div>
+        <div id="bookingPublicNotice" class="service-info" role="note" aria-live="polite"><strong>預約說明：</strong><span>正在載入…</span></div>
 
         <section class="calendar-shell" aria-label="預約日期日曆">
           <div class="calendar-toolbar">
