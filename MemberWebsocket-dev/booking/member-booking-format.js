@@ -97,7 +97,7 @@
         const title = String(item.querySelector('strong')?.textContent || '').trim();
         const meta = String(item.querySelector('small')?.textContent || '');
         const duration = /服務\s*(\d+)\s*分鐘/.exec(meta)?.[1] || '';
-        return title ? `${title}${duration}` : '';
+        return title ? (duration ? `${title}（${duration}分鐘）` : title) : '';
       })
       .filter(Boolean);
     if (!services.length) return;
