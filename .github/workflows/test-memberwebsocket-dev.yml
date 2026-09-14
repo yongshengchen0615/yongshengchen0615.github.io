@@ -50,6 +50,7 @@ jobs:
           node --check MemberWebsocket-dev/booking/member-ui.js
           node --check MemberWebsocket-dev/booking/app.js
           node --check MemberWebsocket-dev/booking/calendar-flow.js
+          node --check MemberWebsocket-dev/booking/booking-notice-dedupe.js
           node --check MemberWebsocket-dev/booking/admin/app.js
           node --check MemberWebsocket-dev/booking/admin/subtabs.js
           node --check MemberWebsocket-dev/booking/admin/cancellation-review.js
@@ -88,6 +89,8 @@ jobs:
           grep -q 'id="memberTier"' MemberWebsocket-dev/booking/index.html
           grep -q 'id="membershipProgress"' MemberWebsocket-dev/booking/index.html
           grep -q 'membership-progress.js' MemberWebsocket-dev/booking/index.html
+          grep -q 'ensureSeparateTierTargets' MemberWebsocket-dev/booking/membership-progress.js
+          grep -q '目前會員階級：' MemberWebsocket-dev/booking/membership-progress.js
           grep -q 'member-ui.js' MemberWebsocket-dev/booking/index.html
           grep -q 'id="joinMemberButton"' MemberWebsocket-dev/booking/index.html
           grep -q 'Booking access' MemberWebsocket-dev/booking/index.html
@@ -117,6 +120,9 @@ jobs:
           grep -q 'id="bookingAdminStartTime"' MemberWebsocket-dev/admin/booking-panel-core.js
           grep -q 'id="bookingAdminEndTime"' MemberWebsocket-dev/admin/booking-panel-core.js
           grep -q 'id="bookingAdminAdvanceDays"' MemberWebsocket-dev/admin/booking-panel-core.js
+          grep -q 'id="bookingAdminNotice"' MemberWebsocket-dev/admin/booking-panel-core.js
+          grep -q 'bookingNotice' MemberWebsocket-dev/booking/common.js
+          grep -q 'id="bookingNotice"' MemberWebsocket-dev/booking/index.html
           grep -q '預約共用設定' MemberWebsocket-dev/admin/booking-panel-core.js
           grep -q 'id="bookingAdminNewTypeButton"' MemberWebsocket-dev/admin/booking-panel-core.js
           grep -q 'id="bookingAdminBatchAddButton"' MemberWebsocket-dev/admin/booking-panel-core.js
@@ -135,8 +141,6 @@ jobs:
           grep -q 'totalAmount()' MemberWebsocket-dev/booking/app.js
           grep -q 'STORE_SERVICE_ID' MemberWebsocket-dev/booking/app.js
           grep -q 'duplicateTypeGroups' MemberWebsocket-dev/booking/app.js
-          grep -q '會員累積消費服務時數' MemberWebsocket-dev/booking/index.html
-          grep -q '會員累積消費服務時數' MemberWebsocket-dev/booking/app.js
           ! grep -q 'bookingAdminWeekday' MemberWebsocket-dev/admin/booking-panel-core.js
           ! grep -q 'bookingAdminDescription' MemberWebsocket-dev/admin/booking-panel-core.js
           ! grep -q '項目說明' MemberWebsocket-dev/admin/booking-panel-core.js
@@ -176,7 +180,7 @@ jobs:
             grep -q '../realtime-resync.js' "$file"
           done
           grep -q "table: 'realtime_events'" MemberWebsocket-dev/booking/common.js
-          grep -q "scope === 'all' || scope === 'member'" MemberWebsocket-dev/booking/common.js
+          grep -q "scope === 'all' || scope === targetScope" MemberWebsocket-dev/booking/common.js
           grep -q "addEventListener('visibilitychange'" MemberWebsocket-dev/booking/common.js
           grep -q "addEventListener('pageshow'" MemberWebsocket-dev/booking/common.js
           grep -q "addEventListener('online'" MemberWebsocket-dev/booking/common.js
