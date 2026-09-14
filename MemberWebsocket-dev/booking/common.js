@@ -5,6 +5,8 @@
   const MIN_RESYNC_INTERVAL_MS = 1500;
   let realtimeClient = null;
   let realtimeChannel = null;
+  let publicNoticeClient = null;
+  let publicNoticeSequence = 0;
 
   function clientError(code, message, details = null) {
     const error = new Error(message);
@@ -39,9 +41,66 @@
     return idToken;
   }
 
+  function bookingNoticeElement() {
+    const card = document.querySelector('.booking-card[aria-labelledby="bookingTitle"]');
+    if (!card) return null;
+    return [...card.children].find((node) => (
+      node.classList?.contains('service-info')
+      && node.getAttribute('role') === 'note'
+    )) || null;
+  }
+
+  function renderBookingNotice(value) {
+    const notice = bookingNoticeElement();
+    if (!notice) return;
+    const text = String(value ?? '').replace(/\r\n?/g, '\n');
+    const visible = text.trim().length > 0;
+    notice.classList.toggle('hidden', !visible);
+    if (!visible) {
+      notice.replaceChildren();
+      return;
+    }
+    const label = document.createElement('strong');
+    label.textContent = '預約說明：';
+    const body = document.createElement('span');
+    body.textContent = text;
+    body.style.whiteSpace = 'pre-line';
+    body.style.overflowWrap = 'anywhere';
+    notice.replaceChildren(label, document.createTextNode(' '), body);
+  }
+
+  async function syncPublicBookingNotice(config, preferredValue) {
+    const sequence = ++publicNoticeSequence;
+    if (typeof preferredValue === 'string') {
+      renderBookingNotice(preferredValue);
+      return;
+    }
+    try {
+      if (!window.supabase?.createClient) return;
+      if (!publicNoticeClient) {
+        publicNoticeClient = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
+          auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+        });
+      }
+      const { data, error } = await publicNoticeClient.rpc('get_booking_public_notice');
+      if (error) throw error;
+      if (sequence !== publicNoticeSequence) return;
+      renderBookingNotice(typeof data === 'string' ? data : '');
+    } catch (error) {
+      console.warn('booking notice load failed', error);
+    }
+  }
+
   async function request(config, clientType, idToken, action, payload = {}) {
     const endpoint = `${String(config.supabaseUrl).replace(/\/$/, '')}/functions/v1/booking-api`;
-    return postJson(endpoint, config, { ...payload, action, clientType, idToken }, '預約服務');
+    const data = await postJson(endpoint, config, { ...payload, action, clientType, idToken }, '預約服務');
+    if (clientType === 'member' && action === 'user.booking.bootstrap') {
+      const notice = data?.settings && Object.prototype.hasOwnProperty.call(data.settings, 'bookingNotice')
+        ? data.settings.bookingNotice
+        : undefined;
+      void syncPublicBookingNotice(config, typeof notice === 'string' ? notice : undefined);
+    }
+    return data;
   }
 
   async function memberProfile(config, idToken) {
