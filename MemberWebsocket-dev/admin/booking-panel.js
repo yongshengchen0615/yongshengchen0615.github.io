@@ -10,6 +10,15 @@
     link.dataset.bookingPanelStyle = name;
     document.head.appendChild(link);
   };
+  const loadSharedResponsive = () => {
+    const href = new URL('../responsive.css?v=20260914-time-input-1', current).toString();
+    if ([...document.querySelectorAll('link[rel="stylesheet"]')].some((link) => link.href === href)) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.dataset.bookingPanelStyle = 'shared-responsive-time-input';
+    document.head.appendChild(link);
+  };
   const load = (name, version) => new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = new URL(`./${name}?v=${version}`, current).toString();
@@ -19,6 +28,7 @@
     document.head.appendChild(script);
   });
 
+  loadSharedResponsive();
   loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260911-1');
   loadStyle('booking-summary.css', 'booking-summary-20260912-6');
 
