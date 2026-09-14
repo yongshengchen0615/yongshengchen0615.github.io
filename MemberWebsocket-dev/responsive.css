@@ -1,6 +1,7 @@
 /* Shared device adaptation: keep content readable at narrow widths and zoom. */
 :root { --device-safe-bottom: env(safe-area-inset-bottom, 0px); }
 *, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 img, svg, video, canvas { max-width: 100%; }
 input, select, textarea { max-width: 100%; min-width: 0; }
 button, a, input, select, textarea { touch-action: manipulation; }
@@ -118,5 +119,57 @@ input[type="week"]::-webkit-date-and-time-value {
   input[type="week"] {
     width: -webkit-fill-available;
     max-width: -webkit-fill-available;
+  }
+}
+
+/* LINE / WebKit form hardening.
+   Fieldsets and native selects can retain min-content width and push a narrow LIFF viewport wider. */
+form,
+fieldset,
+label {
+  min-inline-size: 0;
+  min-width: 0;
+  max-inline-size: 100%;
+  max-width: 100%;
+}
+fieldset {
+  inline-size: 100%;
+  width: 100%;
+}
+legend {
+  max-inline-size: 100%;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+form > *,
+fieldset > *,
+label > * {
+  min-width: 0;
+  max-width: 100%;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="hidden"]),
+select,
+textarea {
+  display: block;
+  inline-size: 100%;
+  width: 100%;
+  min-inline-size: 0;
+  min-width: 0;
+  max-inline-size: 100%;
+  max-width: 100%;
+}
+select {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* iOS WebKit zooms focused controls below 16px. Width breakpoints are not enough because
+   an iPhone in landscape can expose a CSS viewport wider than the phone breakpoints. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="hidden"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
   }
 }
