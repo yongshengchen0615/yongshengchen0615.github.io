@@ -5,7 +5,6 @@
   const MIN_RESYNC_INTERVAL_MS = 1500;
   let realtimeClient = null;
   let realtimeChannel = null;
-  let realtimeTimer = null;
 
   function clientError(code, message, details = null) {
     const error = new Error(message);
@@ -91,31 +90,59 @@
 
     let disposed = false;
     let resyncPending = false;
+    let resyncQueued = false;
     let lastResyncAt = 0;
     let subscribedOnce = false;
+    let realtimeTimer = null;
 
-    const runResync = () => {
-      if (disposed || document.visibilityState === 'hidden' || !navigator.onLine) return;
-      const now = Date.now();
-      if (resyncPending || now - lastResyncAt < MIN_RESYNC_INTERVAL_MS) return;
-      lastResyncAt = now;
-      resyncPending = true;
-      Promise.resolve(onUpdate()).catch(() => {}).finally(() => { resyncPending = false; });
+    const clearScheduledResync = () => {
+      if (realtimeTimer !== null) window.clearTimeout(realtimeTimer);
+      realtimeTimer = null;
     };
 
-    const schedule = () => {
-      if (disposed || realtimeTimer !== null) return;
+    const schedule = (delayMs = 450) => {
+      if (disposed) return;
+      resyncQueued = true;
+      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+      if (realtimeTimer !== null) return;
       realtimeTimer = window.setTimeout(() => {
         realtimeTimer = null;
         runResync();
-      }, 450);
+      }, Math.max(0, delayMs));
+    };
+
+    const runResync = () => {
+      if (disposed) return;
+      if (document.visibilityState === 'hidden' || !navigator.onLine) {
+        resyncQueued = true;
+        return;
+      }
+      if (resyncPending) {
+        resyncQueued = true;
+        return;
+      }
+
+      const now = Date.now();
+      const waitMs = MIN_RESYNC_INTERVAL_MS - (now - lastResyncAt);
+      if (waitMs > 0) {
+        schedule(waitMs);
+        return;
+      }
+
+      resyncQueued = false;
+      lastResyncAt = now;
+      resyncPending = true;
+      Promise.resolve(onUpdate()).catch(() => {}).finally(() => {
+        resyncPending = false;
+        if (resyncQueued) schedule(0);
+      });
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') runResync();
+      if (document.visibilityState === 'visible') schedule(0);
     };
-    const onPageShow = () => runResync();
-    const onOnline = () => runResync();
+    const onPageShow = () => schedule(0);
+    const onOnline = () => schedule(0);
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pageshow', onPageShow);
@@ -138,7 +165,7 @@
           })
           .subscribe((status) => {
             if (status !== 'SUBSCRIBED') return;
-            if (subscribedOnce) runResync();
+            if (subscribedOnce) schedule(0);
             else subscribedOnce = true;
           });
       }
@@ -150,8 +177,7 @@
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pageshow', onPageShow);
       window.removeEventListener('online', onOnline);
-      if (realtimeTimer !== null) window.clearTimeout(realtimeTimer);
-      realtimeTimer = null;
+      clearScheduledResync();
       const channel = realtimeChannel;
       realtimeChannel = null;
       try { if (channel && realtimeClient) Promise.resolve(realtimeClient.removeChannel(channel)).catch(() => {}); } catch (_) {}
