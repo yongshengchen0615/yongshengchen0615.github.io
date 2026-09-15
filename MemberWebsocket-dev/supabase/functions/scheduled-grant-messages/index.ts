@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
+import { buildLineFlexNotice } from "../_shared/line-flex.ts";
 
 type Json = Record<string, unknown>;
 
@@ -40,6 +41,10 @@ async function writeAudit(supabase: SupabaseClient, row: any, result: string, de
 }
 async function dispatchOne(supabase: SupabaseClient, token: string, row: any): Promise<{ sent:boolean;lineRequestId:string;error:string }> {
   try {
+    const message = buildLineFlexNotice(row.message_text,{
+      title:"會員權益通知",
+      eyebrow:"MEMBER BENEFITS",
+    });
     const response = await fetch("https://api.line.me/v2/bot/message/push",{
       method:"POST",
       headers:{
@@ -47,7 +52,7 @@ async function dispatchOne(supabase: SupabaseClient, token: string, row: any): P
         "Content-Type":"application/json",
         "X-Line-Retry-Key":crypto.randomUUID(),
       },
-      body:JSON.stringify({ to:String(row.line_user_id),messages:[{ type:"text",text:String(row.message_text).slice(0,5000) }] }),
+      body:JSON.stringify({ to:String(row.line_user_id),messages:[message] }),
     });
     const lineRequestId = response.headers.get("x-line-request-id") || "";
     if (response.ok) return { sent:true,lineRequestId,error:"" };

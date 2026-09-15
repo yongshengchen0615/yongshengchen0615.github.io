@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { buildLineFlexNotice } from "../_shared/line-flex.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -140,10 +141,14 @@ async function pushLine(supabase: SupabaseClient, actor: string, lineUserId: str
   if (!token) return { status:"failed",message:"發放已成功，但 LINE Messaging API 尚未設定。" };
   let lineResponse: Response;
   try {
+    const flexMessage = buildLineFlexNotice(message,{
+      title:"會員權益通知",
+      eyebrow:"MEMBER BENEFITS",
+    });
     lineResponse = await fetch("https://api.line.me/v2/bot/message/push",{
       method:"POST",
       headers:{ "Authorization":"Bearer " + token,"Content-Type":"application/json","X-Line-Retry-Key":crypto.randomUUID() },
-      body:JSON.stringify({ to:lineUserId,messages:[{ type:"text",text:message }] }),
+      body:JSON.stringify({ to:lineUserId,messages:[flexMessage] }),
     });
   } catch {
     await auditLine(supabase,actor,lineUserId,requestId,"failed",{ reason:"network_error" });
@@ -344,4 +349,3 @@ Deno.serve(async (request: Request) => {
     return response(origin,{ ok:false,status:apiError.status,error:{ code:apiError.code,message:apiError.message,details:apiError.details } },apiError.status);
   }
 });
-
