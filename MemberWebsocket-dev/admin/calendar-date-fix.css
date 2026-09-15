@@ -1,5 +1,6 @@
 /* Calendar date-field hardening for LINE / iOS WebView.
-   Native date controls may keep an intrinsic width wider than the modal column. */
+   Native date controls may keep an intrinsic width wider than the modal column.
+   Keep the width constrained without clipping the native date text/indicator. */
 #calendarEditorModal .date-range-control,
 #calendarEditorModal .date-range-control .form-grid,
 #calendarEditorModal .date-control,
@@ -10,7 +11,13 @@
   min-width: 0;
   max-inline-size: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+}
+
+#calendarEditorModal .date-control,
+#calendarEditorModal .date-input-shell,
+#calendarPanel .calendar-batch-editor .date-control,
+#calendarPanel .calendar-batch-editor .date-input-shell {
+  overflow: visible;
 }
 
 #calendarEditorModal .date-range-control .form-grid {
@@ -27,7 +34,11 @@
   min-width: 0 !important;
   max-inline-size: 100% !important;
   max-width: 100% !important;
-  overflow: hidden;
+  min-height: 56px;
+  height: auto;
+  padding-block: 12px;
+  line-height: normal;
+  overflow: visible;
 }
 
 #calendarEditorModal input[type="date"]::-webkit-datetime-edit,
@@ -40,14 +51,23 @@
   min-width: 0;
   max-inline-size: 100%;
   max-width: 100%;
-  overflow: hidden;
+  line-height: 1.35;
+  overflow: visible;
+}
+
+#calendarEditorModal input[type="date"]::-webkit-date-and-time-value,
+#calendarPanel .calendar-batch-editor input[type="date"]::-webkit-date-and-time-value {
+  padding-block: 1px;
+  text-align: left;
 }
 
 #calendarEditorModal input[type="date"]::-webkit-calendar-picker-indicator,
 #calendarPanel .calendar-batch-editor input[type="date"]::-webkit-calendar-picker-indicator {
   flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
   margin: 0;
-  padding: 0;
+  padding: 1px;
 }
 
 @supports (-webkit-touch-callout: none) {
@@ -71,5 +91,12 @@
   #calendarPanel .calendar-batch-editor .date-input-shell {
     grid-template-columns: minmax(0, 1fr);
     width: 100%;
+  }
+
+  #calendarEditorModal input[type="date"],
+  #calendarPanel .calendar-batch-editor input[type="date"] {
+    min-height: 58px;
+    padding-top: 13px;
+    padding-bottom: 13px;
   }
 }
