@@ -208,6 +208,99 @@ function sectionLineComponents(lines: string[], accent: string): Array<Record<st
   return components;
 }
 
+function offerItemCard(
+  title: string,
+  source: string,
+  meta: string,
+  accent: string,
+): Record<string, unknown> {
+  const contents: Array<Record<string, unknown>> = [
+    {
+      type: "text",
+      text: truncate(title, 180),
+      size: "sm",
+      weight: "bold",
+      color: TEXT_COLOR,
+      wrap: true,
+    },
+  ];
+
+  if (source) {
+    contents.push({
+      type: "text",
+      text: truncate(source, 180),
+      size: "xs",
+      color: MUTED_COLOR,
+      wrap: true,
+      margin: "xs",
+    });
+  }
+  if (meta) {
+    contents.push({
+      type: "text",
+      text: truncate(meta, 180),
+      size: "xs",
+      weight: "bold",
+      color: accent,
+      wrap: true,
+      margin: "xs",
+    });
+  }
+
+  return {
+    type: "box",
+    layout: "vertical",
+    paddingAll: "12px",
+    backgroundColor: "#FFFFFF",
+    cornerRadius: "10px",
+    contents,
+  };
+}
+
+function offerSectionComponents(lines: string[], accent: string): Array<Record<string, unknown>> {
+  const components: Array<Record<string, unknown>> = [];
+  const normalized = lines.map((line) => line.trim());
+
+  for (let index = 0; index < normalized.length; index++) {
+    const line = normalized[index];
+    if (!line) continue;
+
+    const bulletMatch = line.match(/^[・•]\s*(.+)$/);
+    if (!bulletMatch) {
+      const nextLine = nextMeaningfulLine(normalized, index + 1);
+      const isGroupHeading = /^[・•]/.test(nextLine) && !/^請至/.test(line);
+      components.push({
+        type: "text",
+        text: truncate(line, 100),
+        size: isGroupHeading ? "xs" : "xxs",
+        weight: isGroupHeading ? "bold" : "regular",
+        color: isGroupHeading ? accent : MUTED_COLOR,
+        wrap: true,
+        ...(components.length ? { margin: isGroupHeading ? "sm" : "xs" } : {}),
+      });
+      continue;
+    }
+
+    const content = bulletMatch[1].trim();
+    const pointOfferParts = content.split("｜").map((part) => part.trim()).filter(Boolean);
+    if (pointOfferParts.length >= 3) {
+      const [source, title, ...metaParts] = pointOfferParts;
+      components.push(offerItemCard(title, source, metaParts.join("｜"), accent));
+      continue;
+    }
+
+    const eventMatch = content.match(/^(.+?)（(已領取|可領取)）$/);
+    if (eventMatch) {
+      components.push(offerItemCard(eventMatch[1], "活動票券", `狀態：${eventMatch[2]}`, accent));
+      continue;
+    }
+
+    components.push(offerItemCard(content, "", "", accent));
+  }
+
+  return components;
+}
+
 function introCard(intro: string): Record<string, unknown> {
   return {
     type: "box",
@@ -231,7 +324,9 @@ function sectionCard(section: ParsedSection, accent: string): Record<string, unk
       wrap: true,
     },
   ];
-  const details = sectionLineComponents(section.lines, accent);
+  const details = section.title === "目前可用優惠"
+    ? offerSectionComponents(section.lines, accent)
+    : sectionLineComponents(section.lines, accent);
   if (details.length) {
     contents.push({ type: "separator", margin: "sm", color: "#E5EAE7" });
     contents.push({

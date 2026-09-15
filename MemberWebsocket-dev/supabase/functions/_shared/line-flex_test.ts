@@ -43,6 +43,41 @@ Deno.test("buildLineFlexNotice creates a structured card layout with useful alt 
   assert(components.some((item) => item.text === "銀級會員"), "key/value lines should preserve the value");
 });
 
+Deno.test("buildLineFlexNotice renders available offers as scannable offer cards", () => {
+  const message = buildLineFlexNotice(
+    [
+      "王小明，您好：",
+      "",
+      "【目前可用優惠】",
+      "集點卡優惠（依節點排序）",
+      "・腳底按摩集點卡｜免費加時 10 分鐘｜消耗 8 點",
+      "・全身按摩集點卡｜折抵 NT$200｜消耗 12 點",
+      "",
+      "活動票券",
+      "・九月會員回饋（已領取）",
+      "・生日月優惠（可領取）",
+      "請至會員系統查看與使用。",
+    ].join("\n"),
+    { title: "會員權益通知", eyebrow: "MEMBER BENEFITS" },
+  );
+
+  const body = message.contents.body as Record<string, unknown>;
+  const components = collectComponents(body);
+
+  assert(components.some((item) => item.text === "目前可用優惠"), "available offers section heading should be preserved");
+  assert(components.some((item) => item.text === "集點卡優惠（依節點排序）" && item.weight === "bold"), "point-card subgroup should be emphasized");
+  assert(components.some((item) => item.text === "活動票券" && item.weight === "bold"), "event-ticket subgroup should be emphasized");
+  assert(components.some((item) => item.text === "免費加時 10 分鐘" && item.weight === "bold"), "offer title should be the primary text");
+  assert(components.some((item) => item.text === "腳底按摩集點卡"), "point-card source should remain visible");
+  assert(components.some((item) => item.text === "消耗 8 點"), "redemption cost should remain visible");
+  assert(components.some((item) => item.text === "九月會員回饋" && item.weight === "bold"), "event ticket title should be primary text");
+  assert(components.some((item) => item.text === "狀態：已領取"), "claimed event ticket status should be explicit");
+  assert(components.some((item) => item.text === "狀態：可領取"), "claimable event ticket status should be explicit");
+
+  const offerCards = components.filter((item) => item.type === "box" && item.cornerRadius === "10px" && item.backgroundColor === "#FFFFFF");
+  assert(offerCards.length === 4, "each available offer should render as an individual inner card");
+});
+
 Deno.test("buildLineFlexNotice falls back safely and chunks long text", () => {
   const fallback = buildLineFlexNotice("");
   assert(fallback.type === "flex", "empty input should still produce a flex message");
