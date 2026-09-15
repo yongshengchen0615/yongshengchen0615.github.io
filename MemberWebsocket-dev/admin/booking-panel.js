@@ -29,7 +29,7 @@
   });
 
   loadSharedResponsive();
-  loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260911-1');
+  loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260915-mobile-field-overflow-1');
   loadStyle('booking-summary.css', 'booking-summary-20260912-6');
 
   document.addEventListener('click', (event) => {
