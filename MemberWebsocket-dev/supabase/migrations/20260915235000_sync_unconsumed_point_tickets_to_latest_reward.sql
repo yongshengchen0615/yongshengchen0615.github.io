@@ -136,11 +136,8 @@ when (
 )
 execute function public.sync_available_point_tickets_after_template_update();
 
--- Repair historical orphan tickets created before reward identity became stable.
--- Prefer a unique current reward using the same ticket template; if unavailable,
--- fall back to a unique reward at the same point-card threshold.
 with template_match as (
-  select pt.id as ticket_db_id, min(r.id) as reward_id
+  select pt.id as ticket_db_id, (array_agg(r.id))[1] as reward_id
   from public.point_tickets pt
   join public.point_card_rewards r
     on r.point_card_id=pt.point_card_id
@@ -151,7 +148,7 @@ with template_match as (
   having count(*)=1
 ),
 threshold_match as (
-  select pt.id as ticket_db_id, min(r.id) as reward_id
+  select pt.id as ticket_db_id, (array_agg(r.id))[1] as reward_id
   from public.point_tickets pt
   join public.point_card_rewards r
     on r.point_card_id=pt.point_card_id
@@ -197,7 +194,7 @@ where pt.id=r.id
   and r.rn>1;
 
 with template_match as (
-  select pt.id as ticket_db_id, min(r.id) as reward_id
+  select pt.id as ticket_db_id, (array_agg(r.id))[1] as reward_id
   from public.point_tickets pt
   join public.point_card_rewards r
     on r.point_card_id=pt.point_card_id
@@ -208,7 +205,7 @@ with template_match as (
   having count(*)=1
 ),
 threshold_match as (
-  select pt.id as ticket_db_id, min(r.id) as reward_id
+  select pt.id as ticket_db_id, (array_agg(r.id))[1] as reward_id
   from public.point_tickets pt
   join public.point_card_rewards r
     on r.point_card_id=pt.point_card_id
@@ -236,15 +233,12 @@ where pt.id=m.ticket_db_id
   and pt.status='available'
   and pt.reward_id is null;
 
--- If an old available ticket can no longer map to any current reward node, it is
--- no longer a valid live benefit under the latest-only business rule.
 update public.point_tickets
 set status='cancelled',
     updated_at=now()
 where status='available'
   and reward_id is null;
 
--- Rewrite every remaining unconsumed ticket to the current reward/template state.
 select public.sync_available_point_tickets_for_reward(reward_id)
 from (
   select distinct reward_id
