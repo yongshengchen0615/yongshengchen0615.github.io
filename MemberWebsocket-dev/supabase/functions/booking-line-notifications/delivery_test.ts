@@ -4,6 +4,20 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+function collectComponents(value: unknown): Array<Record<string, unknown>> {
+  if (!value || typeof value !== 'object') return [];
+  const record = value as Record<string, unknown>;
+  const collected: Array<Record<string, unknown>> = [record];
+  for (const child of Object.values(record)) {
+    if (Array.isArray(child)) {
+      for (const item of child) collected.push(...collectComponents(item));
+    } else if (child && typeof child === 'object') {
+      collected.push(...collectComponents(child));
+    }
+  }
+  return collected;
+}
+
 const sampleJob = {
   id: '11111111-1111-4111-8111-111111111111',
   recipient: `U${'a'.repeat(32)}`,
@@ -20,25 +34,36 @@ const sampleJob = {
   attempt_count: 1,
 };
 
-Deno.test('booking notification builds a structured Flex Message', () => {
+Deno.test('booking notification builds a structured mobile-friendly Flex Message', () => {
   const message = buildBookingFlexMessage(sampleJob);
   assert(message.type === 'flex', 'notification must be a Flex Message');
   assert(message.altText.includes('預約確認'), 'altText must describe the booking event');
   assert(message.altText.includes('2026/09/15'), 'altText must include the booking date');
 
-  const payload = JSON.stringify(message.contents);
-  assert(payload.includes('王小姐'), 'Flex body must include the booking contact');
-  assert(payload.includes('10:00–11:00（台北時間）'), 'Flex body must include the booking time');
-  assert(payload.includes('腳底40（40分鐘）'), 'Flex body must include booking services');
-  assert(payload.includes('Lumen Club 預約系統'), 'Flex footer must identify the booking system');
+  const body = message.contents.body as Record<string, unknown>;
+  const cards = body.contents as Array<Record<string, unknown>>;
+  assert(Array.isArray(cards) && cards.length === 3, 'schedule, details and services should render as separate cards');
+  assert(cards.every((item) => item.type === 'box'), 'body sections should render as boxes');
+  assert(cards.every((item) => item.cornerRadius === '12px'), 'body cards should use consistent rounded corners');
+
+  const components = collectComponents(message.contents);
+  assert(components.some((item) => item.text === '預約時間'), 'Flex body must highlight the booking schedule');
+  assert(components.some((item) => item.text === '2026/09/15' && item.size === 'lg'), 'date should receive strong visual emphasis');
+  assert(components.some((item) => item.text === '王小姐'), 'Flex body must include the booking contact');
+  assert(components.some((item) => item.text === '10:00–11:00（台北時間）'), 'Flex body must include the booking time');
+  assert(components.some((item) => item.text === '腳底40（40分鐘）'), 'Flex body must include booking services');
+  assert(components.some((item) => item.text === 'Lumen Club 預約系統'), 'Flex footer must identify the booking system');
 });
 
-Deno.test('legacy or unexpected booking text still uses a Flex fallback', () => {
+Deno.test('legacy or unexpected booking text still uses a Flex fallback card', () => {
   const message = buildBookingFlexMessage({
     ...sampleJob,
     message_text: '預約狀態已更新，請查看最新資料。',
   });
   assert(message.type === 'flex', 'fallback notification must remain a Flex Message');
+  const body = message.contents.body as Record<string, unknown>;
+  const cards = body.contents as Array<Record<string, unknown>>;
+  assert(cards.length === 1 && cards[0].cornerRadius === '12px', 'fallback should use the same card presentation');
   assert(JSON.stringify(message.contents).includes('預約狀態已更新'), 'fallback must preserve the original information');
 });
 
