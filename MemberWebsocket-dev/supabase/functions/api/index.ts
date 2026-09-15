@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { buildLineFlexNotice } from "../_shared/line-flex.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type ClientType = "member" | "points" | "event" | "calendar" | "admin";
@@ -70,7 +71,7 @@ function corsHeaders(origin: string | null): HeadersInit {
 function json(origin: string | null, payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders(origin), "Content-Type": "application/json; charset=utf-8" },
+    headers: { ...corsHeaders(origin), "Content-Type":"application/json; charset=utf-8" },
   });
 }
 
@@ -976,12 +977,13 @@ async function pushGrantNotification(
     // 票券摘要屬於附加資訊；同步失敗時仍需送出主要發放通知，避免成功發放卻沒有 LINE 訊息。
   }
 
+  const messageText = (greetingName + " 您好！\n\n" + (announcement ? announcement + "\n\n" : "") + sections.join("\n\n")).slice(0,4500);
   const body = {
     to: lineUserId,
-    messages: [{
-      type: "text",
-      text: (greetingName + " 您好！\n\n" + (announcement ? announcement + "\n\n" : "") + sections.join("\n\n")).slice(0,4500),
-    }],
+    messages: [buildLineFlexNotice(messageText,{
+      title:"會員權益通知",
+      eyebrow:"MEMBER BENEFITS",
+    })],
   };
 
   let response: Response;
@@ -1507,4 +1509,3 @@ async function handleRequest(request: Request): Promise<Response> {
 }
 
 export default { fetch: handleRequest };
-
