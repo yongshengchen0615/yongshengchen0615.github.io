@@ -49,7 +49,8 @@ function parseMessage(message: string): { intro: string[]; sections: ParsedSecti
   for (const rawLine of message.split("\n")) {
     const line = rawLine.trimEnd();
     const heading = line.trim().match(/^【([^】]{1,40})】(?:\s*(.*))?$/);
-    if (heading && sections.length < MAX_SECTIONS) {
+    const sectionCount = sections.length + (current ? 1 : 0);
+    if (heading && sectionCount < MAX_SECTIONS) {
       if (current) sections.push(current);
       current = { title: truncate(heading[1], 40), lines: [] };
       if (heading[2]) current.lines.push(truncate(heading[2], MAX_COMPONENT_TEXT));
