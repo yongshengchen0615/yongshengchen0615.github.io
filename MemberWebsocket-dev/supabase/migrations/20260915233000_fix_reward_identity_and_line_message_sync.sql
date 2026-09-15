@@ -172,9 +172,9 @@ $function$;
 revoke all on function public.issue_eligible_point_tickets(uuid,uuid) from public, anon, authenticated;
 grant execute on function public.issue_eligible_point_tickets(uuid,uuid) to service_role;
 
--- Repair only orphaned available tickets that have one exact, unambiguous match in
--- the current reward definition. Historical tickets whose reward semantics changed
--- remain immutable snapshots and are intentionally not rewritten.
+-- Repair only orphaned available tickets that have one exact current reward match
+-- and only when that member does not already hold another available ticket linked
+-- to the same reward. This avoids rewriting or deleting existing member rights.
 update public.point_tickets pt
 set reward_id=r.id,
     updated_at=now()
@@ -183,4 +183,11 @@ where pt.status='available'
   and pt.reward_id is null
   and pt.point_card_id=r.point_card_id
   and pt.ticket_template_id=r.ticket_template_id
-  and pt.threshold_stamps=r.threshold_stamps;
+  and pt.threshold_stamps=r.threshold_stamps
+  and not exists (
+    select 1
+    from public.point_tickets existing
+    where existing.member_id=pt.member_id
+      and existing.reward_id=r.id
+      and existing.status='available'
+  );
