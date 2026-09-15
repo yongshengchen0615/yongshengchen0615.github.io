@@ -44,8 +44,8 @@ function corsHeaders(origin: string | null): HeadersInit {
     "Access-Control-Allow-Headers": "content-type, apikey",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Access-Control-Max-Age": "86400",
-    "Cache-Control": "no-store",
-    "Vary": "Origin",
+    "Cache-Control":"no-store",
+    "Vary":"Origin",
   };
 }
 function response(origin: string | null, payload: unknown, status = 200): Response {
@@ -161,16 +161,43 @@ async function pushLine(supabase: SupabaseClient, actor: string, lineUserId: str
 }
 async function availableTicketsSection(supabase: SupabaseClient, memberId: string, tierKey: string): Promise<string> {
   const blocks: string[] = [];
-  const pointTickets = await supabase.from("point_tickets").select("ticket_title,point_card_id,status,point_cards(title,status,expiry_mode,expires_on)").eq("member_id",memberId).eq("status","available").order("created_at",{ ascending:false }).limit(20);
+  const pointTickets = await supabase
+    .from("point_tickets")
+    .select("ticket_title,threshold_stamps,point_card_id,status,point_cards(title,status,expiry_mode,expires_on,sort_order)")
+    .eq("member_id",memberId)
+    .eq("status","available")
+    .order("threshold_stamps",{ ascending:true })
+    .order("created_at",{ ascending:false })
+    .limit(100);
   if (!pointTickets.error) {
     const today = taipeiDate();
-    const items = (pointTickets.data || []).filter((row:any) => {
-      const card = row.point_cards;
-      return card && card.status === "active" && (card.expiry_mode === "unlimited" || !card.expires_on || String(card.expires_on) >= today);
-    });
+    const items = (pointTickets.data || [])
+      .filter((row:any) => {
+        const card = row.point_cards;
+        return card && card.status === "active" && (card.expiry_mode === "unlimited" || !card.expires_on || String(card.expires_on) >= today);
+      })
+      .sort((left:any,right:any) => {
+        const cardOrder = Number(left.point_cards?.sort_order || 0) - Number(right.point_cards?.sort_order || 0);
+        if (cardOrder) return cardOrder;
+        const thresholdOrder = Number(left.threshold_stamps || 0) - Number(right.threshold_stamps || 0);
+        if (thresholdOrder) return thresholdOrder;
+        return String(left.ticket_title || "").localeCompare(String(right.ticket_title || ""),"zh-Hant");
+      });
     if (items.length) {
-      const labels = [...new Set(items.map((row:any) => String(row.point_cards?.title || "集點卡") + "｜" + String(row.ticket_title || "可用優惠")))];
-      blocks.push("集點卡優惠\n" + labels.slice(0,8).map((label) => "・" + label).join("\n"));
+      const seen = new Set<string>();
+      const lines: string[] = [];
+      for (const row of items) {
+        const threshold = Number(row.threshold_stamps || 0);
+        if (!Number.isFinite(threshold) || threshold <= 0) continue;
+        const cardTitle = String(row.point_cards?.title || "集點卡");
+        const ticketTitle = String(row.ticket_title || "可用優惠");
+        const key = String(row.point_card_id || "") + "\n" + threshold + "\n" + ticketTitle;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        lines.push("・" + cardTitle + "｜" + ticketTitle + "｜消耗 " + threshold + " 點");
+        if (lines.length >= 12) break;
+      }
+      if (lines.length) blocks.push("集點卡優惠（依節點排序）\n" + lines.join("\n"));
     }
   }
 
@@ -279,7 +306,7 @@ async function handleGrant(supabase: SupabaseClient, identity: { lineUserId:stri
       if (existing.error) throw mapError(existing.error);
       if (!existing.data) {
         const inserted = await supabase.from("scheduled_grant_messages").insert({
-          schedule_id:"SGM-" + crypto.randomUUID().replaceAll("-","") ,request_id:req,member_id:member.id,line_user_id:lineUserId,
+          schedule_id:"SGM-" + crypto.randomUUID().replaceAll("-",""),request_id:req,member_id:member.id,line_user_id:lineUserId,
           scheduled_for:scheduledAt.toISOString(),message_text:message,status:"pending",created_by:identity.lineUserId,
         }).select("schedule_id,status,scheduled_for").single();
         if (inserted.error) throw mapError(inserted.error);
