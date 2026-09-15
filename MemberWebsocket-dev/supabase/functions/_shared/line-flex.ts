@@ -21,6 +21,9 @@ const MAX_COMPONENT_TEXT = 1900;
 const MAX_MESSAGE_TEXT = 5000;
 const MAX_SECTIONS = 12;
 const DEFAULT_ACCENT = "#315D50";
+const TEXT_COLOR = "#17352E";
+const MUTED_COLOR = "#728079";
+const SURFACE_COLOR = "#F6F8F7";
 
 function truncate(value: unknown, max: number): string {
   const text = String(value ?? "").replace(/\u0000/g, "").trim();
@@ -79,15 +82,174 @@ function splitComponentText(value: string): string[] {
   return chunks;
 }
 
-function textComponents(value: string, color = "#17352E"): Array<Record<string, unknown>> {
+function textComponents(
+  value: string,
+  color = TEXT_COLOR,
+  size = "sm",
+): Array<Record<string, unknown>> {
   return splitComponentText(value).map((text, index) => ({
     type: "text",
     text,
-    size: "sm",
+    size,
     color,
     wrap: true,
     ...(index > 0 ? { margin: "sm" } : {}),
   }));
+}
+
+function detailRow(label: string, value: string): Record<string, unknown> {
+  return {
+    type: "box",
+    layout: "horizontal",
+    spacing: "sm",
+    alignItems: "flex-start",
+    contents: [
+      {
+        type: "box",
+        layout: "vertical",
+        flex: 0,
+        width: "82px",
+        contents: [
+          {
+            type: "text",
+            text: truncate(label, 24),
+            size: "xs",
+            color: MUTED_COLOR,
+            wrap: true,
+          },
+        ],
+      },
+      {
+        type: "text",
+        text: truncate(value, MAX_COMPONENT_TEXT),
+        size: "sm",
+        color: TEXT_COLOR,
+        weight: "bold",
+        flex: 1,
+        wrap: true,
+      },
+    ],
+  };
+}
+
+function bulletRow(value: string, accent: string): Record<string, unknown> {
+  return {
+    type: "box",
+    layout: "horizontal",
+    spacing: "sm",
+    alignItems: "flex-start",
+    contents: [
+      {
+        type: "text",
+        text: "•",
+        size: "sm",
+        color: accent,
+        flex: 0,
+      },
+      {
+        type: "text",
+        text: truncate(value, MAX_COMPONENT_TEXT),
+        size: "sm",
+        color: TEXT_COLOR,
+        flex: 1,
+        wrap: true,
+      },
+    ],
+  };
+}
+
+function nextMeaningfulLine(lines: string[], start: number): string {
+  for (let index = start; index < lines.length; index++) {
+    const line = lines[index].trim();
+    if (line) return line;
+  }
+  return "";
+}
+
+function sectionLineComponents(lines: string[], accent: string): Array<Record<string, unknown>> {
+  const components: Array<Record<string, unknown>> = [];
+  const normalized = lines.map((line) => line.trim());
+
+  for (let index = 0; index < normalized.length; index++) {
+    const line = normalized[index];
+    if (!line) continue;
+
+    const bulletMatch = line.match(/^[・•]\s*(.+)$/);
+    const content = bulletMatch ? bulletMatch[1].trim() : line;
+    const keyValue = content.match(/^([^：]{1,24})：\s*(.+)$/);
+
+    if (keyValue) {
+      components.push(detailRow(keyValue[1], keyValue[2]));
+      continue;
+    }
+
+    if (bulletMatch) {
+      components.push(bulletRow(content, accent));
+      continue;
+    }
+
+    const nextLine = nextMeaningfulLine(normalized, index + 1);
+    const introducesList = /^[・•]/.test(nextLine);
+    if (introducesList && Array.from(content).length <= 36) {
+      components.push({
+        type: "text",
+        text: truncate(content, 80),
+        size: "xs",
+        weight: "bold",
+        color: MUTED_COLOR,
+        wrap: true,
+      });
+      continue;
+    }
+
+    components.push(...textComponents(content, MUTED_COLOR, "xs"));
+  }
+
+  return components;
+}
+
+function introCard(intro: string): Record<string, unknown> {
+  return {
+    type: "box",
+    layout: "vertical",
+    spacing: "xs",
+    paddingAll: "14px",
+    backgroundColor: SURFACE_COLOR,
+    cornerRadius: "12px",
+    contents: textComponents(intro, TEXT_COLOR),
+  };
+}
+
+function sectionCard(section: ParsedSection, accent: string): Record<string, unknown> {
+  const contents: Array<Record<string, unknown>> = [
+    {
+      type: "text",
+      text: section.title,
+      size: "sm",
+      weight: "bold",
+      color: accent,
+      wrap: true,
+    },
+  ];
+  const details = sectionLineComponents(section.lines, accent);
+  if (details.length) {
+    contents.push({ type: "separator", margin: "sm", color: "#E5EAE7" });
+    contents.push({
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      margin: "sm",
+      contents: details,
+    });
+  }
+  return {
+    type: "box",
+    layout: "vertical",
+    paddingAll: "14px",
+    backgroundColor: SURFACE_COLOR,
+    cornerRadius: "12px",
+    contents,
+  };
 }
 
 function makeAltText(message: string, title: string): string {
@@ -108,29 +270,9 @@ export function buildLineFlexNotice(messageText: unknown, options: LineFlexNotic
   const bodyContents: Array<Record<string, unknown>> = [];
   const intro = compactLines(parsed.intro);
 
-  if (intro) bodyContents.push(...textComponents(intro));
-
-  for (const section of parsed.sections) {
-    if (bodyContents.length) bodyContents.push({ type: "separator", margin: "lg", color: "#E3EAE6" });
-    bodyContents.push({
-      type: "text",
-      text: section.title,
-      size: "sm",
-      weight: "bold",
-      color: accent,
-      wrap: true,
-      margin: bodyContents.length ? "lg" : "none",
-    });
-    const sectionText = compactLines(section.lines);
-    if (sectionText) {
-      bodyContents.push(...textComponents(sectionText).map((component, index) => ({
-        ...component,
-        margin: index === 0 ? "sm" : "xs",
-      })));
-    }
-  }
-
-  if (!bodyContents.length) bodyContents.push(...textComponents(message));
+  if (intro) bodyContents.push(introCard(intro));
+  for (const section of parsed.sections) bodyContents.push(sectionCard(section, accent));
+  if (!bodyContents.length) bodyContents.push(introCard(message));
 
   return {
     type: "flex",
@@ -140,25 +282,27 @@ export function buildLineFlexNotice(messageText: unknown, options: LineFlexNotic
       header: {
         type: "box",
         layout: "vertical",
+        spacing: "xs",
         backgroundColor: accent,
-        paddingAll: "20px",
+        paddingAll: "18px",
         contents: [
           { type: "text", text: eyebrow, size: "xxs", weight: "bold", color: "#DDE9E5" },
-          { type: "text", text: title, size: "xl", weight: "bold", color: "#FFFFFF", wrap: true, margin: "sm" },
+          { type: "text", text: title, size: "xl", weight: "bold", color: "#FFFFFF", wrap: true },
         ],
       },
       body: {
         type: "box",
         layout: "vertical",
         spacing: "md",
-        paddingAll: "20px",
+        paddingAll: "16px",
+        backgroundColor: "#FFFFFF",
         contents: bodyContents,
       },
       footer: {
         type: "box",
         layout: "vertical",
-        paddingAll: "14px",
-        backgroundColor: "#F6F8F7",
+        paddingAll: "12px",
+        backgroundColor: SURFACE_COLOR,
         contents: [
           { type: "text", text: footer, size: "xxs", color: "#87928D", align: "center" },
         ],
