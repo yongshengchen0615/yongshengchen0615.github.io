@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 import { buildLineFlexNotice } from "../_shared/line-flex.ts";
 import { replaceCurrentGrantSections } from "../_shared/grant-message-sections.ts";
+import { buildLatestAvailableOffersSection } from "../_shared/latest-available-offers.ts";
 
 type Json = Record<string, unknown>;
 
@@ -22,12 +23,6 @@ function secureEqual(left: string, right: string): boolean {
   for (let index = 0; index < a.length; index += 1) diff |= a[index] ^ b[index];
   return diff === 0;
 }
-function taipeiDate(): string {
-  return new Intl.DateTimeFormat("en-CA",{ timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit" }).format(new Date());
-}
-function pointCardRelation(row: any): any {
-  return Array.isArray(row?.point_cards) ? row.point_cards[0] : row?.point_cards;
-}
 function resolveTier(settings: any[], minutes: number): any {
   const ordered = [...settings].sort((a,b) => Number(a.required_service_minutes || 0) - Number(b.required_service_minutes || 0));
   let selected = ordered[0] || { tier_key:"general",tier_label:"一般會員" };
@@ -43,72 +38,7 @@ async function dispatchSecret(supabase: SupabaseClient): Promise<string> {
   return result.error ? "" : asText(result.data,500);
 }
 async function availableTicketsSection(supabase: SupabaseClient, memberId: string, tierKey: string): Promise<string> {
-  const blocks: string[] = [];
-  const pointTickets = await supabase
-    .from("point_tickets")
-    .select("ticket_title,threshold_stamps,point_card_id,status,point_cards(title,status,expiry_mode,expires_on,sort_order)")
-    .eq("member_id",memberId)
-    .eq("status","available")
-    .order("threshold_stamps",{ ascending:true })
-    .order("created_at",{ ascending:false })
-    .limit(100);
-  if (pointTickets.error) throw pointTickets.error;
-
-  const today = taipeiDate();
-  const pointItems = (pointTickets.data || [])
-    .filter((row:any) => {
-      const card = pointCardRelation(row);
-      return card && card.status === "active" && (card.expiry_mode === "unlimited" || !card.expires_on || String(card.expires_on) >= today);
-    })
-    .sort((left:any,right:any) => {
-      const leftCard = pointCardRelation(left);
-      const rightCard = pointCardRelation(right);
-      const cardOrder = Number(leftCard?.sort_order || 0) - Number(rightCard?.sort_order || 0);
-      if (cardOrder) return cardOrder;
-      const thresholdOrder = Number(left.threshold_stamps || 0) - Number(right.threshold_stamps || 0);
-      if (thresholdOrder) return thresholdOrder;
-      return String(left.ticket_title || "").localeCompare(String(right.ticket_title || ""),"zh-Hant");
-    });
-  if (pointItems.length) {
-    const seen = new Set<string>();
-    const lines: string[] = [];
-    for (const row of pointItems) {
-      const threshold = Number(row.threshold_stamps || 0);
-      if (!Number.isFinite(threshold) || threshold <= 0) continue;
-      const cardTitle = String(pointCardRelation(row)?.title || "集點卡");
-      const ticketTitle = String(row.ticket_title || "可用優惠");
-      const key = String(row.point_card_id || "") + "\n" + threshold + "\n" + ticketTitle;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      lines.push("・" + cardTitle + "｜" + ticketTitle + "｜消耗 " + threshold + " 點");
-      if (lines.length >= 12) break;
-    }
-    if (lines.length) blocks.push("集點卡優惠（依節點排序）\n" + lines.join("\n"));
-  }
-
-  const events = await supabase.from("event_tickets").select("id,title,status,starts_on,ends_on,quota,allowed_tier_keys").eq("status","active");
-  if (events.error) throw events.error;
-  const eligible = (events.data || []).filter((row:any) => {
-    const allowed = Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [];
-    return (!row.starts_on || String(row.starts_on) <= today) && (!row.ends_on || String(row.ends_on) >= today) && (!allowed.length || allowed.includes(tierKey));
-  });
-  const ids = eligible.map((row:any) => row.id);
-  let claimCounts = new Map<string,number>();
-  let memberClaims = new Set<string>();
-  if (ids.length) {
-    const allClaims = await supabase.from("event_ticket_claims").select("event_ticket_id,member_id,status").in("event_ticket_id",ids);
-    if (allClaims.error) throw allClaims.error;
-    for (const claim of allClaims.data || []) {
-      if (claim.status !== "cancelled") claimCounts.set(String(claim.event_ticket_id),(claimCounts.get(String(claim.event_ticket_id)) || 0) + 1);
-      if (String(claim.member_id) === memberId && claim.status !== "cancelled") memberClaims.add(String(claim.event_ticket_id));
-    }
-  }
-  const eventItems = eligible.filter((row:any) => memberClaims.has(String(row.id)) || Number(row.quota || 0) === 0 || (claimCounts.get(String(row.id)) || 0) < Number(row.quota || 0));
-  if (eventItems.length) {
-    blocks.push("活動票券\n" + eventItems.slice(0,8).map((row:any) => "・" + String(row.title || "活動票券") + (memberClaims.has(String(row.id)) ? "（已領取）" : "（可領取）")).join("\n"));
-  }
-
-  return blocks.length ? "【目前可用優惠】\n" + blocks.join("\n\n") + "\n請至會員系統查看與使用。" : "";
+  return await buildLatestAvailableOffersSection(supabase,memberId,tierKey,{ strict:true });
 }
 async function refreshScheduledMessage(supabase: SupabaseClient, row: any): Promise<string> {
   const memberId = String(row.member_id || "");
