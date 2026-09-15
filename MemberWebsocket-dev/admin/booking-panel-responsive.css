@@ -13,6 +13,34 @@
     max-width: 100%;
   }
 
+  #bookingPanel .booking-admin-settings-form,
+  #bookingPanel .booking-admin-global-settings-grid,
+  #bookingPanel .booking-admin-global-settings-grid > label {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #bookingPanel .booking-admin-global-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #bookingPanel .booking-admin-global-settings-grid input[type="time"] {
+    display: block;
+    inline-size: 100%;
+    width: 100%;
+    min-inline-size: 0 !important;
+    min-width: 0 !important;
+    max-inline-size: 100%;
+    max-width: 100%;
+  }
+
+  #bookingPanel .booking-admin-global-settings-grid input[type="time"]::-webkit-date-and-time-value {
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+  }
+
   #bookingPanel .booking-admin-filter {
     display: flex;
     flex-wrap: nowrap;
@@ -53,6 +81,55 @@
   #bookingPanel .booking-cancellation-top > div {
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+
+  #eventTicketForm,
+  #eventTicketForm .date-range-control,
+  #eventTicketForm .date-range-control .form-grid,
+  #eventTicketForm .date-control,
+  #eventTicketForm .date-input-shell {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #eventTicketForm .date-range-control .form-grid {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #eventTicketForm .date-input-shell > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #eventTicketForm .date-input-shell input[type="date"] {
+    display: block;
+    inline-size: 100%;
+    width: 100%;
+    min-inline-size: 0 !important;
+    min-width: 0 !important;
+    max-inline-size: 100%;
+    max-width: 100%;
+  }
+
+  #eventTicketForm .date-input-shell input[type="date"]::-webkit-date-and-time-value {
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+  }
+
+  #eventTicketForm .date-picker-button {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  #eventTicketForm .date-quick-actions,
+  #eventTicketForm .date-range-presets {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
   }
 }
 
