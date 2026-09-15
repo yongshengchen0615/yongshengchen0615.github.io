@@ -1,0 +1,30 @@
+name: Test Booking LINE Notifications
+
+on:
+  push:
+    paths:
+      - 'MemberWebsocket-dev/supabase/functions/booking-line-notifications/**'
+      - '.github/workflows/test-booking-line-notifications.yml'
+  pull_request:
+    paths:
+      - 'MemberWebsocket-dev/supabase/functions/booking-line-notifications/**'
+      - '.github/workflows/test-booking-line-notifications.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check booking LINE notification function
+        run: |
+          deno check MemberWebsocket-dev/supabase/functions/booking-line-notifications/delivery.ts
+          deno check MemberWebsocket-dev/supabase/functions/booking-line-notifications/index.ts
+      - name: Test booking LINE Flex payload
+        run: deno test MemberWebsocket-dev/supabase/functions/booking-line-notifications/delivery_test.ts
