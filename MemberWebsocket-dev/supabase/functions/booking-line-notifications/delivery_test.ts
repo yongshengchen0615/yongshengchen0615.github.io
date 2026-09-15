@@ -43,17 +43,18 @@ Deno.test('legacy or unexpected booking text still uses a Flex fallback', () => 
 });
 
 Deno.test('delivery preserves LINE retry idempotency while sending Flex', async () => {
-  let requestBody: Record<string, unknown> | null = null;
+  let requestBodyText = '';
   let retryKey = '';
 
   const send = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    requestBody = JSON.parse(String(init?.body || '{}'));
+    requestBodyText = String(init?.body || '{}');
     retryKey = new Headers(init?.headers).get('X-Line-Retry-Key') || '';
     return new Response('', { status: 200, headers: { 'x-line-request-id': 'req-123' } });
   }) as typeof fetch;
 
   const result = await deliver(sampleJob, 'test-channel-access-token', send);
-  const messages = requestBody?.messages as Array<Record<string, unknown>> | undefined;
+  const requestBody = JSON.parse(requestBodyText) as { messages?: Array<Record<string, unknown>> };
+  const messages = requestBody.messages;
 
   assert(result.accepted === true, 'successful LINE response must be accepted');
   assert(result.lineRequestId === 'req-123', 'LINE request id must be retained');
