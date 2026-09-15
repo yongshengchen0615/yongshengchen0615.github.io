@@ -100,13 +100,19 @@ function fieldRow(label: string, value: string): Record<string, unknown> {
     alignItems: 'flex-start',
     contents: [
       {
-        type: 'text',
-        text: truncate(label, 30),
-        size: 'sm',
-        color: '#7B8781',
+        type: 'box',
+        layout: 'vertical',
         flex: 0,
         width: '74px',
-        wrap: true,
+        contents: [
+          {
+            type: 'text',
+            text: truncate(label, 30),
+            size: 'sm',
+            color: '#7B8781',
+            wrap: true,
+          },
+        ],
       },
       {
         type: 'text',
@@ -178,7 +184,7 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
       text: style.eyebrow,
       size: 'xxs',
       weight: 'bold',
-      color: '#FFFFFFCC',
+      color: '#FBE7E1',
     },
     {
       type: 'text',
@@ -193,7 +199,7 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
       type: 'text',
       text: channelLabel,
       size: 'xs',
-      color: '#FFFFFFDD',
+      color: '#F5F7F6',
       margin: 'sm',
     },
   ];
