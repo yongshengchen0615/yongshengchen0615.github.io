@@ -36,6 +36,9 @@ const TITLE_STYLES: Record<string, { color: string; eyebrow: string }> = {
 
 const MAX_COMPONENT_TEXT = 1900;
 const MAX_ALT_TEXT = 500;
+const TEXT_COLOR = '#17352E';
+const MUTED_COLOR = '#728079';
+const SURFACE_COLOR = '#F6F8F7';
 
 function truncate(value: unknown, max: number): string {
   const text = String(value ?? '').replace(/\u0000/g, '').trim();
@@ -96,20 +99,20 @@ function fieldRow(label: string, value: string): Record<string, unknown> {
   return {
     type: 'box',
     layout: 'horizontal',
-    spacing: 'md',
+    spacing: 'sm',
     alignItems: 'flex-start',
     contents: [
       {
         type: 'box',
         layout: 'vertical',
         flex: 0,
-        width: '74px',
+        width: '68px',
         contents: [
           {
             type: 'text',
             text: truncate(label, 30),
-            size: 'sm',
-            color: '#7B8781',
+            size: 'xs',
+            color: MUTED_COLOR,
             wrap: true,
           },
         ],
@@ -118,8 +121,137 @@ function fieldRow(label: string, value: string): Record<string, unknown> {
         type: 'text',
         text: truncate(value, 500),
         size: 'sm',
-        color: '#17352E',
+        color: TEXT_COLOR,
+        weight: 'bold',
         flex: 1,
+        wrap: true,
+      },
+    ],
+  };
+}
+
+function scheduleCard(parsed: ParsedBookingMessage, accent: string): Record<string, unknown> | null {
+  const date = parsed.fields.find((field) => field.label === '日期')?.value || '';
+  const time = parsed.fields.find((field) => field.label === '時段')?.value || '';
+  if (!date && !time) return null;
+
+  const contents: Array<Record<string, unknown>> = [
+    {
+      type: 'text',
+      text: '預約時間',
+      size: 'xs',
+      weight: 'bold',
+      color: MUTED_COLOR,
+    },
+  ];
+  if (date) {
+    contents.push({
+      type: 'text',
+      text: truncate(date, 80),
+      size: 'lg',
+      weight: 'bold',
+      color: accent,
+      wrap: true,
+      margin: 'xs',
+    });
+  }
+  if (time) {
+    contents.push({
+      type: 'text',
+      text: truncate(time, 160),
+      size: 'sm',
+      weight: 'bold',
+      color: TEXT_COLOR,
+      wrap: true,
+      margin: 'xs',
+    });
+  }
+
+  return {
+    type: 'box',
+    layout: 'vertical',
+    paddingAll: '14px',
+    backgroundColor: SURFACE_COLOR,
+    cornerRadius: '12px',
+    contents,
+  };
+}
+
+function detailsCard(fields: Array<{ label: string; value: string }>): Record<string, unknown> | null {
+  const details = fields.filter((field) => field.label !== '日期' && field.label !== '時段');
+  if (!details.length) return null;
+  return {
+    type: 'box',
+    layout: 'vertical',
+    spacing: 'sm',
+    paddingAll: '14px',
+    backgroundColor: SURFACE_COLOR,
+    cornerRadius: '12px',
+    contents: details.map((field) => fieldRow(field.label, field.value)),
+  };
+}
+
+function servicesCard(services: string[], accent: string): Record<string, unknown> | null {
+  if (!services.length) return null;
+  return {
+    type: 'box',
+    layout: 'vertical',
+    paddingAll: '14px',
+    backgroundColor: SURFACE_COLOR,
+    cornerRadius: '12px',
+    contents: [
+      {
+        type: 'text',
+        text: '預約項目',
+        size: 'sm',
+        weight: 'bold',
+        color: accent,
+      },
+      {
+        type: 'separator',
+        margin: 'sm',
+        color: '#E5EAE7',
+      },
+      {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        margin: 'sm',
+        contents: services.map((service) => ({
+          type: 'box',
+          layout: 'horizontal',
+          spacing: 'sm',
+          alignItems: 'flex-start',
+          contents: [
+            { type: 'text', text: '•', size: 'sm', color: accent, flex: 0 },
+            {
+              type: 'text',
+              text: truncate(service, 180),
+              size: 'sm',
+              color: TEXT_COLOR,
+              flex: 1,
+              wrap: true,
+            },
+          ],
+        })),
+      },
+    ],
+  };
+}
+
+function fallbackCard(text: string): Record<string, unknown> {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    paddingAll: '14px',
+    backgroundColor: SURFACE_COLOR,
+    cornerRadius: '12px',
+    contents: [
+      {
+        type: 'text',
+        text,
+        size: 'sm',
+        color: TEXT_COLOR,
         wrap: true,
       },
     ],
@@ -140,43 +272,13 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
   const channelLabel = job.channel === 'admin' ? '管理端預約通知' : '會員預約通知';
   const bodyContents: Array<Record<string, unknown>> = [];
 
-  if (parsed.fields.length) {
-    bodyContents.push(...parsed.fields.map((field) => fieldRow(field.label, field.value)));
-  }
-
-  if (parsed.services.length) {
-    if (bodyContents.length) {
-      bodyContents.push({ type: 'separator', margin: 'lg', color: '#E3EAE6' });
-    }
-    bodyContents.push(
-      {
-        type: 'text',
-        text: '預約項目',
-        size: 'xs',
-        weight: 'bold',
-        color: '#7B8781',
-        margin: bodyContents.length ? 'lg' : 'none',
-      },
-      {
-        type: 'text',
-        text: truncate(parsed.services.map((service) => `• ${service}`).join('\n'), MAX_COMPONENT_TEXT),
-        size: 'sm',
-        color: '#17352E',
-        wrap: true,
-        margin: 'sm',
-      },
-    );
-  }
-
-  if (!bodyContents.length) {
-    bodyContents.push({
-      type: 'text',
-      text: parsed.fallbackText,
-      size: 'sm',
-      color: '#17352E',
-      wrap: true,
-    });
-  }
+  const schedule = scheduleCard(parsed, style.color);
+  const details = detailsCard(parsed.fields);
+  const services = servicesCard(parsed.services, style.color);
+  if (schedule) bodyContents.push(schedule);
+  if (details) bodyContents.push(details);
+  if (services) bodyContents.push(services);
+  if (!bodyContents.length) bodyContents.push(fallbackCard(parsed.fallbackText));
 
   const headerContents: FlexText[] = [
     {
@@ -184,7 +286,7 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
       text: style.eyebrow,
       size: 'xxs',
       weight: 'bold',
-      color: '#FBE7E1',
+      color: '#F3EAE6',
     },
     {
       type: 'text',
@@ -193,14 +295,12 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
       weight: 'bold',
       color: '#FFFFFF',
       wrap: true,
-      margin: 'sm',
     },
     {
       type: 'text',
       text: channelLabel,
       size: 'xs',
       color: '#F5F7F6',
-      margin: 'sm',
     },
   ];
 
@@ -212,22 +312,24 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
       header: {
         type: 'box',
         layout: 'vertical',
+        spacing: 'xs',
         backgroundColor: style.color,
-        paddingAll: '20px',
+        paddingAll: '18px',
         contents: headerContents,
       },
       body: {
         type: 'box',
         layout: 'vertical',
         spacing: 'md',
-        paddingAll: '20px',
+        paddingAll: '16px',
+        backgroundColor: '#FFFFFF',
         contents: bodyContents,
       },
       footer: {
         type: 'box',
         layout: 'vertical',
-        paddingAll: '14px',
-        backgroundColor: '#F6F8F7',
+        paddingAll: '12px',
+        backgroundColor: SURFACE_COLOR,
         contents: [
           {
             type: 'text',
