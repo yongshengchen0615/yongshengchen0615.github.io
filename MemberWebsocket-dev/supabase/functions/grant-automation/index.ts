@@ -168,7 +168,10 @@ async function availableTicketsSection(supabase: SupabaseClient, memberId: strin
       const card = row.point_cards;
       return card && card.status === "active" && (card.expiry_mode === "unlimited" || !card.expires_on || String(card.expires_on) >= today);
     });
-    if (items.length) blocks.push("集點卡票券 " + items.length + " 張\n" + items.slice(0,8).map((row:any) => "・" + String(row.point_cards?.title || "集點卡") + "｜" + String(row.ticket_title || "可用票券")).join("\n"));
+    if (items.length) {
+      const labels = [...new Set(items.map((row:any) => String(row.point_cards?.title || "集點卡") + "｜" + String(row.ticket_title || "可用優惠")))];
+      blocks.push("集點卡優惠\n" + labels.slice(0,8).map((label) => "・" + label).join("\n"));
+    }
   }
 
   const today = taipeiDate();
@@ -191,9 +194,9 @@ async function availableTicketsSection(supabase: SupabaseClient, memberId: strin
       }
     }
     const items = eligible.filter((row:any) => memberClaims.has(String(row.id)) || Number(row.quota || 0) === 0 || (claimCounts.get(String(row.id)) || 0) < Number(row.quota || 0));
-    if (items.length) blocks.push("活動票券 " + items.length + " 張\n" + items.slice(0,8).map((row:any) => "・" + String(row.title || "活動票券") + (memberClaims.has(String(row.id)) ? "（已領取）" : "（可領取）")).join("\n"));
+    if (items.length) blocks.push("活動票券\n" + items.slice(0,8).map((row:any) => "・" + String(row.title || "活動票券") + (memberClaims.has(String(row.id)) ? "（已領取）" : "（可領取）")).join("\n"));
   }
-  return blocks.length ? "【目前可用票券】\n" + blocks.join("\n\n") + "\n請至會員系統查看與使用。" : "";
+  return blocks.length ? "【目前可用優惠】\n" + blocks.join("\n\n") + "\n請至會員系統查看與使用。" : "";
 }
 async function buildGrantMessage(supabase: SupabaseClient, member: any, tier: any, totalMinutes: number, grantResult: any, presetMessage: string, serviceMinutes: number): Promise<string> {
   const sections: string[] = [];
@@ -276,7 +279,7 @@ async function handleGrant(supabase: SupabaseClient, identity: { lineUserId:stri
       if (existing.error) throw mapError(existing.error);
       if (!existing.data) {
         const inserted = await supabase.from("scheduled_grant_messages").insert({
-          schedule_id:"SGM-" + crypto.randomUUID().replaceAll("-",""),request_id:req,member_id:member.id,line_user_id:lineUserId,
+          schedule_id:"SGM-" + crypto.randomUUID().replaceAll("-","") ,request_id:req,member_id:member.id,line_user_id:lineUserId,
           scheduled_for:scheduledAt.toISOString(),message_text:message,status:"pending",created_by:identity.lineUserId,
         }).select("schedule_id,status,scheduled_for").single();
         if (inserted.error) throw mapError(inserted.error);
