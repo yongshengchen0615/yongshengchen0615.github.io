@@ -477,7 +477,7 @@
     modal.className = 'ticket-batch-modal hidden';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
-    modal.innerHTML = '<div class="ticket-batch-card"><h2 data-batch-title>確認使用票券</h2><p data-batch-message></p><div class="ticket-batch-list" data-batch-list></div><div class="ticket-batch-actions"><button class="ticket-batch-cancel" type="button">取消</button><button class="ticket-batch-confirm" type="button">確認使用</button></div></div>';
+    modal.innerHTML = '<div class="ticket-batch-card"><h2 data-batch-title>確認使用票券</h2><p class="ticket-batch-warning" data-batch-message></p><div class="ticket-batch-list" data-batch-list></div><div class="ticket-batch-actions"><button class="ticket-batch-cancel" type="button">取消</button><button class="ticket-batch-confirm" type="button">確認使用</button></div></div>';
     document.body.append(modal);
 
     modal.querySelector('.ticket-batch-cancel').addEventListener('click', () => {
@@ -517,16 +517,39 @@
     modal.querySelector('[data-batch-title]').textContent = tickets.length > 1
       ? `確認同時使用 ${tickets.length} 張票券`
       : '確認使用票券';
-    const cardSpendLines = spendByCard(tickets).map(
-      (item) => `• ${item.cardTitle}：扣 ${item.points} 點（目前 ${item.currentStamps} 點）`
-    );
-    modal.querySelector('[data-batch-message]').textContent = `本次扣點來源：\n${cardSpendLines.join('\n')}\n\n送出後會立即扣點並完成核銷，此操作不可取消。`;
+    modal.querySelector('[data-batch-message]').textContent = '送出後將立即完成扣點與票券核銷，此操作無法取消或復原。';
 
     const list = modal.querySelector('[data-batch-list]');
     list.replaceChildren(...tickets.map((ticket) => {
-      const line = document.createElement('div');
+      const line = document.createElement('article');
       line.className = 'ticket-batch-line';
-      line.textContent = `${ticket.cardTitle}｜${ticket.ticketTitle}｜從此卡扣 ${points(ticket.thresholdStamps)} 點`;
+      line.dataset.cardStyle = safeCardStyle(ticket.cardStyleKey);
+
+      const head = document.createElement('div');
+      head.className = 'ticket-batch-line-head';
+      const cardTitle = document.createElement('strong');
+      cardTitle.className = 'ticket-batch-card-title';
+      cardTitle.textContent = text(ticket.cardTitle || '集點卡');
+      const ticketTitle = document.createElement('span');
+      ticketTitle.className = 'ticket-batch-ticket-badge';
+      ticketTitle.textContent = text(ticket.ticketTitle || '票券');
+      head.append(cardTitle, ticketTitle);
+
+      const spend = document.createElement('div');
+      spend.className = 'ticket-batch-spend';
+      const spendLabel = document.createElement('span');
+      spendLabel.textContent = '從此卡扣除';
+      const spendValue = document.createElement('strong');
+      const spent = points(ticket.thresholdStamps);
+      spendValue.textContent = `${spent} 點`;
+      spend.append(spendLabel, spendValue);
+
+      const balance = document.createElement('small');
+      balance.className = 'ticket-batch-balance';
+      const current = points(ticket.cardStamps);
+      balance.textContent = `目前 ${current} 點・使用後 ${Math.max(0, current - spent)} 點`;
+
+      line.append(head, spend, balance);
       return line;
     }));
 
