@@ -32,6 +32,7 @@
   loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260915-mobile-field-overflow-1');
   loadStyle('booking-summary.css', 'booking-summary-20260912-6');
   loadStyle('ui-polish.css', 'admin-ui-20260916-1');
+  loadStyle('ui-polish-responsive.css', 'admin-ui-responsive-20260916-1');
 
   document.addEventListener('click', (event) => {
     if (!window.matchMedia('(max-width: 768px)').matches) return;
