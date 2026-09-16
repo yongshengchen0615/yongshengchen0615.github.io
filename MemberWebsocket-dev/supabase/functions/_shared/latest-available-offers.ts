@@ -19,6 +19,12 @@ export type AvailablePointTicketRef = {
   thresholdStamps: number;
 };
 
+export type CurrentEventOffer = {
+  eventId: string;
+  title: string;
+  claimed: boolean;
+};
+
 function text(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -96,6 +102,47 @@ export function selectLatestPointOffers(
     left.thresholdStamps - right.thresholdStamps ||
     left.ticketTitle.localeCompare(right.ticketTitle, "zh-Hant")
   );
+}
+
+export function selectLatestEventOffers(
+  events: JsonRow[],
+  claims: JsonRow[],
+  memberId: string,
+): CurrentEventOffer[] {
+  const claimCounts = new Map<string, number>();
+  const memberAvailableClaims = new Set<string>();
+  const memberUnavailableClaims = new Set<string>();
+
+  for (const claim of claims) {
+    const eventId = text(claim.event_ticket_id);
+    const status = text(claim.status);
+    if (!eventId || status === "cancelled") continue;
+
+    claimCounts.set(eventId, (claimCounts.get(eventId) || 0) + 1);
+    if (text(claim.member_id) !== memberId) continue;
+
+    if (status === "available") memberAvailableClaims.add(eventId);
+    else memberUnavailableClaims.add(eventId);
+  }
+
+  const offers: CurrentEventOffer[] = [];
+  for (const row of events) {
+    const eventId = text(row.id);
+    if (!eventId || memberUnavailableClaims.has(eventId)) continue;
+
+    const claimed = memberAvailableClaims.has(eventId);
+    const quota = number(row.quota);
+    const hasQuota = quota === 0 || (claimCounts.get(eventId) || 0) < quota;
+    if (!claimed && !hasQuota) continue;
+
+    offers.push({
+      eventId,
+      title: text(row.title) || "活動票券",
+      claimed,
+    });
+  }
+
+  return offers;
 }
 
 async function pointOfferLines(
@@ -191,23 +238,13 @@ async function eventOfferLines(
     return [];
   }
 
-  const claimCounts = new Map<string, number>();
-  const memberClaims = new Set<string>();
-  for (const claim of claimsResult.data || []) {
-    if (claim.status !== "cancelled") {
-      const eventId = text(claim.event_ticket_id);
-      claimCounts.set(eventId, (claimCounts.get(eventId) || 0) + 1);
-      if (text(claim.member_id) === memberId) memberClaims.add(eventId);
-    }
-  }
-
-  return eligible
-    .filter((row: any) => {
-      const eventId = text(row.id);
-      return memberClaims.has(eventId) || number(row.quota) === 0 || (claimCounts.get(eventId) || 0) < number(row.quota);
-    })
-    .slice(0, 8)
-    .map((row: any) => `・${text(row.title) || "活動票券"}${memberClaims.has(text(row.id)) ? "（已領取）" : "（可領取）"}`);
+  return selectLatestEventOffers(
+    eligible,
+    claimsResult.data || [],
+    memberId,
+  ).slice(0, 8).map((offer) =>
+    `・${offer.title}${offer.claimed ? "（已領取）" : "（可領取）"}`
+  );
 }
 
 export async function buildLatestAvailableOffersSection(
@@ -226,6 +263,6 @@ export async function buildLatestAvailableOffersSection(
   if (pointLines.length) blocks.push("集點卡優惠（目前設定）\n" + pointLines.join("\n"));
   if (eventLines.length) blocks.push("活動票券\n" + eventLines.join("\n"));
   return blocks.length
-    ? "【目前可用優惠】\n" + blocks.join("\n\n") + "\n請至會員系統查看與使用。"
+    ? "【目前可用優惠】\n" + blocks.join("\n\n")
     : "";
 }

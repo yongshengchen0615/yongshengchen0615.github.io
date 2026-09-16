@@ -24,6 +24,8 @@ const DEFAULT_ACCENT = "#315D50";
 const TEXT_COLOR = "#17352E";
 const MUTED_COLOR = "#728079";
 const SURFACE_COLOR = "#F6F8F7";
+const POINTS_LIFF_URL = "https://liff.line.me/2010787602-eIzRN9l6";
+const EVENT_LIFF_URL = "https://liff.line.me/2010787602-tuapstY3";
 
 function truncate(value: unknown, max: number): string {
   const text = String(value ?? "").replace(/\u0000/g, "").trim();
@@ -35,6 +37,9 @@ function normalizeMessage(value: unknown): string {
   const text = String(value ?? "")
     .replace(/\u0000/g, "")
     .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .filter((line) => line.trim() !== "請至會員系統查看與使用。")
+    .join("\n")
     .trim();
   return truncate(text || "會員權益已更新，請至會員系統查看最新資訊。", MAX_MESSAGE_TEXT);
 }
@@ -257,18 +262,58 @@ function offerItemCard(
   };
 }
 
+function offerGroupAction(groupHeading: string, accent: string): Record<string, unknown> | null {
+  const heading = groupHeading.trim();
+  let label = "";
+  let uri = "";
+
+  if (heading.startsWith("集點卡優惠")) {
+    label = "開啟集點卡";
+    uri = POINTS_LIFF_URL;
+  } else if (heading.startsWith("活動票券")) {
+    label = "開啟活動票券";
+    uri = EVENT_LIFF_URL;
+  } else {
+    return null;
+  }
+
+  return {
+    type: "button",
+    style: "primary",
+    height: "sm",
+    color: accent,
+    margin: "sm",
+    action: {
+      type: "uri",
+      label,
+      uri,
+    },
+  };
+}
+
 function offerSectionComponents(lines: string[], accent: string): Array<Record<string, unknown>> {
   const components: Array<Record<string, unknown>> = [];
   const normalized = lines.map((line) => line.trim());
+  let currentGroupHeading = "";
+  let currentGroupHasItems = false;
+
+  const appendGroupAction = () => {
+    if (!currentGroupHasItems) return;
+    const action = offerGroupAction(currentGroupHeading, accent);
+    if (action) components.push(action);
+    currentGroupHasItems = false;
+  };
 
   for (let index = 0; index < normalized.length; index++) {
     const line = normalized[index];
-    if (!line) continue;
+    if (!line || line === "請至會員系統查看與使用。") continue;
 
     const bulletMatch = line.match(/^[・•]\s*(.+)$/);
     if (!bulletMatch) {
+      appendGroupAction();
+      currentGroupHeading = line;
       const nextLine = nextMeaningfulLine(normalized, index + 1);
-      const isGroupHeading = /^[・•]/.test(nextLine) && !/^請至/.test(line);
+      const isGroupHeading = /^[・•]/.test(nextLine);
       components.push({
         type: "text",
         text: truncate(line, 100),
@@ -286,18 +331,22 @@ function offerSectionComponents(lines: string[], accent: string): Array<Record<s
     if (pointOfferParts.length >= 3) {
       const [source, title, ...metaParts] = pointOfferParts;
       components.push(offerItemCard(title, source, metaParts.join("｜"), accent));
+      currentGroupHasItems = true;
       continue;
     }
 
     const eventMatch = content.match(/^(.+?)（(已領取|可領取)）$/);
     if (eventMatch) {
       components.push(offerItemCard(eventMatch[1], "活動票券", `狀態：${eventMatch[2]}`, accent));
+      currentGroupHasItems = true;
       continue;
     }
 
     components.push(offerItemCard(content, "", "", accent));
+    currentGroupHasItems = true;
   }
 
+  appendGroupAction();
   return components;
 }
 
