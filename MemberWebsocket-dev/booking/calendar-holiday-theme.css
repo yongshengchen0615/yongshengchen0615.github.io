@@ -11,6 +11,12 @@
   background: #fffdf8;
 }
 
+/* A holiday can also be today. Keep the holiday treatment, but do not hide the current-day marker. */
+#calendarGrid .calendar-day.holiday-disabled.today {
+  border-color: #df6b4d;
+  box-shadow: inset 0 0 0 2px rgba(223, 107, 77, .72);
+}
+
 #calendarGrid .calendar-day.holiday-disabled .calendar-day-number {
   color: #17352e;
 }
