@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', snapshot: null, selected: new Set(), busy: false, renderScheduled: false };
+  const state = { config: null, idToken: '', snapshot: null, selected: new Set(), busy: false, renderScheduled: false, maxTicketsPerRedemption: 1 };
   let root = null;
   let selectionText = null;
   let selectionHint = null;
@@ -15,6 +15,10 @@
 
   function escapeText(value) { return String(value == null ? '' : value); }
   function points(value) { return Math.max(0, Number(value || 0)); }
+  function normalizeLimit(value) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 50 ? parsed : 1;
+  }
   function newRequestId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') return `PTR-${window.crypto.randomUUID().replaceAll('-', '')}`;
     return `PTR-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
@@ -36,6 +40,13 @@
     return data.data || {};
   }
 
+  function overviewError(message = '') {
+    const box = root && root.querySelector('[data-ticket-error]');
+    if (!box) return;
+    box.hidden = !message;
+    box.textContent = message;
+  }
+
   function ensureUi() {
     const ticketList = document.getElementById('ticketList');
     const ticketEmpty = document.getElementById('ticketEmpty');
@@ -54,7 +65,7 @@
     const overview = document.createElement('div');
     overview.className = 'ticket-overview-extension';
     overview.dataset.allTicketOverview = 'true';
-    overview.innerHTML = '<div class="ticket-overview-toolbar"><div class="ticket-overview-selection"><strong data-ticket-selection>尚未選擇票券</strong><small data-ticket-selection-hint>可直接在總覽勾選所有集點卡票券，不需要切換集點卡。</small></div><button class="ticket-overview-use" type="button" disabled>使用已選票券</button></div><div class="ticket-overview-error" data-ticket-error hidden></div><div class="ticket-overview-groups"></div>';
+    overview.innerHTML = '<div class="ticket-overview-toolbar"><div class="ticket-overview-selection"><strong data-ticket-selection>尚未選擇票券</strong><small data-ticket-selection-hint>直接在此總覽勾選所有集點卡票券。</small></div><button class="ticket-overview-use" type="button" disabled>使用已選票券</button></div><div class="ticket-overview-error" data-ticket-error hidden></div><div class="ticket-overview-groups"></div>';
     root.append(overview);
     selectionText = overview.querySelector('[data-ticket-selection]');
     selectionHint = overview.querySelector('[data-ticket-selection-hint]');
@@ -66,7 +77,17 @@
       if (!input) return;
       const ticketId = String(input.dataset.ticketSelect || '');
       if (!ticketId) return;
-      if (input.checked) state.selected.add(ticketId); else state.selected.delete(ticketId);
+      overviewError('');
+      if (input.checked) {
+        if (!state.selected.has(ticketId) && state.selected.size >= state.maxTicketsPerRedemption) {
+          input.checked = false;
+          overviewError(`單次最多可使用 ${state.maxTicketsPerRedemption} 張票券，請先取消其他票券再選擇。`);
+          return;
+        }
+        state.selected.add(ticketId);
+      } else {
+        state.selected.delete(ticketId);
+      }
       updateSelection();
     });
     return true;
@@ -102,12 +123,12 @@
     if (!state.snapshot || !ensureUi() || !groups) return;
     const grouped = availableByCard(state.snapshot);
     const availableIds = new Set(grouped.flatMap((entry) => entry.tickets.map((ticket) => String(ticket.ticketId || ''))));
-    state.selected = new Set([...state.selected].filter((id) => availableIds.has(id)));
+    state.selected = new Set([...state.selected].filter((id) => availableIds.has(id)).slice(0, state.maxTicketsPerRedemption));
     groups.replaceChildren();
 
     const total = grouped.reduce((sum, entry) => sum + entry.tickets.length, 0);
     const ticketSummary = document.getElementById('ticketSummary');
-    if (ticketSummary) ticketSummary.textContent = total ? `共 ${total} 張可用票券・可跨集點卡勾選使用` : '目前沒有可使用的集點卡票券。';
+    if (ticketSummary) ticketSummary.textContent = total ? `共 ${total} 張可用票券・單次最多使用 ${state.maxTicketsPerRedemption} 張` : '目前沒有可使用的集點卡票券。';
 
     if (!total) {
       const empty = document.createElement('div');
@@ -203,7 +224,7 @@
   function updateSelection() {
     const tickets = selectedTickets();
     const count = tickets.length;
-    if (selectionText) selectionText.textContent = count ? `已選 ${count} 張票券` : '尚未選擇票券';
+    if (selectionText) selectionText.textContent = count ? `已選 ${count} / ${state.maxTicketsPerRedemption} 張票券` : `尚未選擇票券・單次最多 ${state.maxTicketsPerRedemption} 張`;
     if (selectionHint) {
       selectionHint.textContent = count
         ? `預計扣點：${spendSummaryText(tickets)}`
@@ -234,6 +255,10 @@
   function openConfirmModal() {
     const tickets = selectedTickets();
     if (!tickets.length) return;
+    if (tickets.length > state.maxTicketsPerRedemption) {
+      overviewError(`單次最多可使用 ${state.maxTicketsPerRedemption} 張票券。`);
+      return;
+    }
     const modal = modalBase();
     modal.querySelector('[data-batch-title]').textContent = tickets.length > 1 ? `確認同時使用 ${tickets.length} 張票券` : '確認使用票券';
     const cardSpendLines = spendByCard(tickets).map((item) => `• ${item.cardTitle}：扣 ${item.points} 點（目前 ${item.currentStamps} 點）`);
@@ -257,7 +282,7 @@
   async function redeemSelected() {
     if (state.busy) return;
     const tickets = selectedTickets();
-    if (!tickets.length) return;
+    if (!tickets.length || tickets.length > state.maxTicketsPerRedemption) return;
     const modal = modalBase();
     const confirm = modal.querySelector('.ticket-batch-confirm');
     const message = modal.querySelector('[data-batch-message]');
@@ -330,7 +355,13 @@
     if (cardTabs) cardTabs.addEventListener('click', () => scheduleRender());
     const refreshButton = document.getElementById('refreshButton');
     if (refreshButton) refreshButton.addEventListener('click', () => {
-      window.setTimeout(() => refreshSnapshot().catch(() => {}), 700);
+      window.setTimeout(async () => {
+        try {
+          const setting = await extensionRequest('member.settings.get');
+          state.maxTicketsPerRedemption = normalizeLimit(setting.maxTicketsPerRedemption);
+          await refreshSnapshot();
+        } catch (_) {}
+      }, 700);
     });
     window.addEventListener('pagehide', () => { if (observer) observer.disconnect(); }, { once: true });
   }
@@ -338,15 +369,13 @@
   async function boot() {
     try {
       await waitForLogin();
+      const setting = await extensionRequest('member.settings.get');
+      state.maxTicketsPerRedemption = normalizeLimit(setting.maxTicketsPerRedemption);
       await refreshSnapshot();
       observeLegacyRenders();
     } catch (error) {
       ensureUi();
-      const box = root && root.querySelector('[data-ticket-error]');
-      if (box) {
-        box.hidden = false;
-        box.textContent = error && error.message || '票券總覽暫時無法載入。';
-      }
+      overviewError(error && error.message || '票券總覽暫時無法載入。');
     }
   }
 
