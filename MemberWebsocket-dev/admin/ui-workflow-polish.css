@@ -1,0 +1,1073 @@
+/* Module-level admin workflow polish.
+ * Purpose: make Member / Points Card / Event Ticket / Calendar / Booking flows easier to scan and operate.
+ * Loaded after shared ui-polish.css; no business logic or data contract changes.
+ */
+
+/* ---------- Shared workflow structure ---------- */
+
+#membersPanel,
+#cardsPanel,
+#eventsPanel,
+#calendarPanel,
+#bookingPanel {
+  scroll-margin-top: 16px;
+}
+
+#cardsPanel .card-workspace,
+#eventsPanel .card-workspace {
+  grid-template-columns: minmax(240px, 290px) minmax(0, 1fr);
+  align-items: start;
+}
+
+#cardsPanel .card-list,
+#eventsPanel .card-list {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
+  background: #f8faf7;
+  scrollbar-gutter: stable;
+}
+
+#cardsPanel .card-list .list-heading,
+#eventsPanel .card-list .list-heading {
+  position: sticky;
+  top: -14px;
+  z-index: 2;
+  margin: -14px -14px 10px;
+  padding: 13px 14px 10px;
+  border-bottom: 1px solid var(--admin-border);
+  background: rgba(248, 250, 247, .96);
+  backdrop-filter: blur(8px);
+}
+
+#cardsPanel .card-list-item,
+#eventsPanel .card-list-item,
+#calendarPanel .card-list-item {
+  position: relative;
+}
+
+#cardsPanel .card-list-item[aria-selected="true"]::before,
+#eventsPanel .card-list-item[aria-selected="true"]::before,
+#calendarPanel .card-list-item[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 6px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--green);
+}
+
+#cardsPanel .card-list-item[aria-selected="true"],
+#eventsPanel .card-list-item[aria-selected="true"],
+#calendarPanel .card-list-item[aria-selected="true"] {
+  padding-left: 18px;
+}
+
+#cardsPanel .editor,
+#eventsPanel .editor,
+#calendarPanel .editor {
+  overflow: clip;
+}
+
+#cardsPanel .editor-heading,
+#eventsPanel .editor-heading,
+#calendarPanel .editor-heading {
+  position: relative;
+}
+
+#cardsPanel .editor-heading::after,
+#eventsPanel .editor-heading::after,
+#calendarPanel .editor-heading::after {
+  content: "編輯區";
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 1px solid #d9e4dc;
+  border-radius: 999px;
+  color: #74847b;
+  background: #f5f8f5;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+#cardsPanel .editor-heading .editor-status,
+#eventsPanel .editor-heading .editor-status,
+#calendarPanel .editor-heading .editor-status {
+  margin-left: 4px;
+}
+
+#cardsPanel .editor-actions,
+#eventsPanel .editor-actions,
+#calendarPanel .editor-actions {
+  position: sticky;
+  z-index: 6;
+  bottom: 0;
+  margin: 20px -18px -18px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--admin-border);
+  background: rgba(252, 253, 251, .96);
+  box-shadow: 0 -10px 28px rgba(31, 61, 48, .06);
+  backdrop-filter: blur(10px);
+}
+
+#cardsPanel #saveCardButton,
+#cardsPanel #saveTicketButton,
+#eventsPanel #saveEventTicketButton,
+#calendarPanel #saveCalendarItemButton {
+  min-width: 132px;
+}
+
+#cardsPanel #deleteCardButton,
+#calendarPanel #deleteCalendarItemButton {
+  margin-right: auto;
+}
+
+#cardsPanel #archiveCardButton {
+  margin-right: 2px;
+}
+
+#cardsPanel .form-grid > label,
+#eventsPanel .form-grid > label,
+#calendarPanel .form-grid > label {
+  min-width: 0;
+}
+
+/* ---------- Member card / directory ---------- */
+
+#membersPanel .tier-settings {
+  grid-template-columns: minmax(220px, .72fr) minmax(0, 1.55fr);
+  align-items: start;
+  padding: 20px;
+}
+
+#membersPanel .tier-settings > div:first-child {
+  position: sticky;
+  top: 12px;
+  padding: 4px 4px 4px 0;
+}
+
+#membersPanel .tier-settings > div:first-child::after {
+  content: "等級會依累積服務時間自動升級";
+  display: block;
+  margin-top: 13px;
+  padding: 10px 11px;
+  border-left: 3px solid #8dbb9a;
+  border-radius: 0 9px 9px 0;
+  color: #4e675a;
+  background: #eef6f0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+#membersPanel .tier-settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+#membersPanel .tier-settings-grid > label {
+  position: relative;
+  gap: 9px;
+  min-height: 190px;
+  padding: 14px;
+  border-color: #d8e3db;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(31, 61, 48, .035);
+}
+
+#membersPanel .tier-settings-grid > label::before {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #54685d;
+  background: #eff4f0;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+#membersPanel .tier-settings-grid > label:nth-child(1)::before { content: "基礎"; }
+#membersPanel .tier-settings-grid > label:nth-child(2)::before { content: "Level 2"; }
+#membersPanel .tier-settings-grid > label:nth-child(3)::before { content: "Level 3"; }
+#membersPanel .tier-settings-grid > label:nth-child(4)::before { content: "Level 4"; }
+
+#membersPanel .tier-settings-grid input,
+#membersPanel .tier-settings-grid select {
+  background: #fcfdfc;
+}
+
+#membersPanel .tier-settings-actions {
+  position: sticky;
+  z-index: 4;
+  bottom: 0;
+  margin: 4px -2px -2px;
+  padding: 10px 2px 2px;
+  background: linear-gradient(to top, #f7faf7 70%, rgba(247, 250, 247, 0));
+}
+
+#membersPanel .toolbar {
+  margin-top: 20px;
+  padding: 12px;
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  background: #f8faf7;
+}
+
+#membersPanel .result-count {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #edf3ee;
+  color: #586b61;
+  font-weight: 800;
+}
+
+#membersPanel .table-wrap {
+  box-shadow: 0 5px 18px rgba(31, 61, 48, .035);
+}
+
+#membersPanel .table-wrap th:last-child,
+#membersPanel .table-wrap td:last-child {
+  padding-right: 14px;
+}
+
+#membersPanel .row-actions {
+  gap: 7px;
+}
+
+#membersPanel .row-actions .small-button {
+  min-width: 56px;
+}
+
+#membersPanel .small-button.accent {
+  border-color: rgba(223, 107, 77, .38);
+  background: #fff8f5;
+}
+
+#membersPanel .member-pagination {
+  padding: 10px 0 0;
+  border-top: 1px solid #edf1ee;
+}
+
+/* ---------- Points card / ticket library ---------- */
+
+#cardsPanel .card-settings-nav {
+  position: sticky;
+  z-index: 7;
+  top: 8px;
+  box-shadow: 0 6px 18px rgba(31, 61, 48, .06);
+  backdrop-filter: blur(8px);
+}
+
+#cardsPanel .workspace-heading {
+  align-items: center;
+  padding: 4px 0 2px;
+}
+
+#cardsPanel .workspace-heading > div {
+  min-width: 0;
+}
+
+#cardsPanel .reward-editor {
+  overflow: hidden;
+  padding: 16px;
+  border-left: 4px solid #86b695;
+  background: #f6faf7;
+}
+
+#cardsPanel .reward-editor .section-heading {
+  align-items: center;
+  margin-bottom: 13px;
+}
+
+#cardsPanel .reward-editor .section-heading h4 {
+  font-size: 17px;
+}
+
+#cardsPanel .reward-rows {
+  gap: 11px;
+}
+
+#cardsPanel .reward-row-editor {
+  position: relative;
+  padding: 14px;
+  border-color: #d7e3da;
+  background: #fff;
+}
+
+#cardsPanel .reward-row-editor::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  border-radius: 11px 0 0 11px;
+  background: #d7e9dc;
+}
+
+#cardsPanel .reward-row-heading {
+  padding-bottom: 9px;
+  border-bottom: 1px solid #edf1ee;
+}
+
+#cardsPanel .reward-row-heading strong {
+  font-size: 13px;
+}
+
+#cardsPanel .reward-row-summary {
+  color: #6c7d74;
+}
+
+#cardsPanel .ticket-workspace .card-list {
+  background: #faf9f6;
+}
+
+#cardsPanel .ticket-workspace .card-list .list-heading {
+  background: rgba(250, 249, 246, .96);
+}
+
+#cardsPanel #ticketPrizeEditor,
+#eventsPanel #eventTicketPrizeEditor {
+  padding: 15px;
+  border-color: #ead8b9;
+  border-radius: 12px;
+  background: #fffaf1;
+}
+
+#cardsPanel .prize-heading,
+#eventsPanel .prize-heading {
+  align-items: center;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #f1e5ce;
+}
+
+#cardsPanel .prize-row,
+#eventsPanel .prize-row {
+  background: #fffefa;
+}
+
+#cardsPanel .color-field,
+#eventsPanel .color-field,
+#calendarPanel .color-field {
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+#cardsPanel .color-field input,
+#eventsPanel .color-field input,
+#calendarPanel .color-field input {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 34px;
+  min-height: 34px;
+  border: 0;
+  padding: 0;
+}
+
+#cardsPanel .color-field span,
+#eventsPanel .color-field span,
+#calendarPanel .color-field span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Event tickets ---------- */
+
+#eventsPanel > .panel-heading .heading-actions {
+  align-items: center;
+}
+
+#eventsPanel #newEventTicketButton {
+  order: 1;
+}
+
+#eventsPanel #deleteEventTicketButton {
+  order: 2;
+}
+
+#eventsPanel .event-ticket-tier-access {
+  position: relative;
+  padding: 18px;
+  border-left: 4px solid #7fae8d;
+  background: #f7faf7;
+}
+
+#eventsPanel .event-ticket-tier-access legend {
+  font-size: 14px;
+}
+
+#eventsPanel .event-ticket-tier-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#eventsPanel .event-ticket-tier-options label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+#eventsPanel .event-ticket-tier-options label:hover {
+  border-color: #bed2c3;
+  background: #fbfdfb;
+}
+
+#eventsPanel .event-ticket-tier-options label:has(input:checked) {
+  border-color: #96bfa1;
+  background: #edf7ef;
+  box-shadow: inset 0 0 0 1px rgba(47, 155, 104, .08);
+}
+
+#eventsPanel .event-ticket-tier-options input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  accent-color: var(--green);
+}
+
+#eventsPanel .event-ticket-tier-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin-top: 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: #286943;
+  background: #e8f5eb;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+#eventsPanel .date-range-control {
+  overflow: hidden;
+  padding: 16px;
+  border-left: 4px solid #d6a264;
+}
+
+#eventsPanel .date-range-heading {
+  align-items: center;
+  padding-bottom: 11px;
+  border-bottom: 1px solid #e7ede8;
+}
+
+#eventsPanel .date-range-summary {
+  border: 1px solid #cfe2d4;
+  color: #2c6d48;
+  background: #edf7ef;
+}
+
+#eventsPanel .date-control {
+  padding: 13px;
+}
+
+#eventsPanel .date-control-heading {
+  min-height: 38px;
+}
+
+#eventsPanel .date-quick-actions,
+#eventsPanel .date-range-presets {
+  gap: 7px;
+}
+
+#eventsPanel .event-ticket-note {
+  margin-top: 0;
+  border-radius: 0 9px 9px 0;
+}
+
+/* ---------- Calendar ---------- */
+
+#calendarPanel .calendar-workspace {
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, .7fr);
+  gap: 20px;
+  align-items: start;
+}
+
+#calendarPanel .calendar-workspace > .card-list {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+#calendarPanel .calendar-workspace > .editor {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+}
+
+#calendarPanel .admin-calendar {
+  padding: 16px;
+  border-radius: 16px;
+  background: #f8faf7;
+}
+
+#calendarPanel .admin-calendar-toolbar {
+  margin-bottom: 14px;
+  padding: 4px 2px 12px;
+  border-bottom: 1px solid #dfe8e1;
+}
+
+#calendarPanel .admin-calendar-month-button {
+  border-color: #cfdcd2;
+  box-shadow: 0 2px 6px rgba(31, 61, 48, .04);
+}
+
+#calendarPanel .admin-calendar-weekdays {
+  padding: 0 2px 5px;
+  color: #63756b;
+  font-size: 11px;
+}
+
+#calendarPanel .admin-calendar-weekdays span:first-child,
+#calendarPanel .admin-calendar-weekdays span:last-child {
+  color: #b0604f;
+}
+
+#calendarPanel .admin-calendar-grid {
+  overflow: hidden;
+  border: 1px solid #dbe5dd;
+  border-radius: 12px;
+  background: #dbe5dd;
+  gap: 1px;
+}
+
+#calendarPanel .admin-calendar-day {
+  min-height: 104px;
+  border: 0;
+  background: #fff;
+  transition: background .12s ease, box-shadow .12s ease;
+}
+
+#calendarPanel .admin-calendar-day:nth-child(7n + 1),
+#calendarPanel .admin-calendar-day:nth-child(7n) {
+  background: #fffaf8;
+}
+
+#calendarPanel .admin-calendar-day-empty {
+  background: #f3f6f3 !important;
+}
+
+#calendarPanel .admin-calendar-day.is-today {
+  z-index: 1;
+  box-shadow: inset 0 0 0 2px #6dad80;
+}
+
+#calendarPanel .admin-calendar-day-button {
+  min-height: 34px;
+  border-radius: 8px;
+}
+
+#calendarPanel .admin-calendar-day-button:focus-visible {
+  outline: 2px solid rgba(47, 155, 104, .35);
+  outline-offset: -2px;
+}
+
+#calendarPanel .admin-calendar-item {
+  min-height: 27px;
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-left-width: 4px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+#calendarPanel .admin-calendar-item.holiday {
+  background: #fff3ed;
+}
+
+#calendarPanel .admin-calendar-item.event {
+  background: #edf7ef;
+}
+
+#calendarPanel #calendarItemListItems {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+#calendarPanel .calendar-list-row {
+  min-width: 0;
+}
+
+#calendarPanel .calendar-list-row .card-list-item {
+  height: 100%;
+  min-width: 0;
+  border: 1px solid var(--admin-border);
+  background: #fff;
+}
+
+#calendarPanel .calendar-event-link-fields,
+#calendarPanel .date-range-control {
+  padding: 15px;
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  background: #f7faf7;
+}
+
+#calendarPanel .calendar-event-link-fields h4,
+#calendarPanel .date-range-control h4 {
+  margin: 4px 0 4px;
+  font-size: 17px;
+}
+
+#calendarPanel .calendar-batch-editor {
+  margin-top: 20px;
+  border-left: 4px solid #8aa79a;
+}
+
+#calendarPanel .calendar-batch-row-heading {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf1ee;
+}
+
+/* ---------- Booking ---------- */
+
+#bookingPanel .booking-admin-hours-card {
+  padding: 20px;
+  border-left: 4px solid #7fae8d;
+}
+
+#bookingPanel .booking-admin-global-settings-grid {
+  gap: 12px;
+}
+
+#bookingPanel .booking-admin-list-heading {
+  align-items: center;
+  margin-top: 20px;
+}
+
+#bookingPanel .booking-admin-list-heading strong {
+  font-size: 14px;
+}
+
+#bookingPanel .booking-admin-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#bookingPanel .booking-admin-stats > div {
+  position: relative;
+  overflow: hidden;
+  min-height: 104px;
+  padding: 16px 17px;
+}
+
+#bookingPanel .booking-admin-stats > div::after {
+  content: "";
+  position: absolute;
+  right: -18px;
+  bottom: -28px;
+  width: 70px;
+  height: 70px;
+  border: 10px solid rgba(47, 155, 104, .045);
+  border-radius: 50%;
+}
+
+#bookingPanel .booking-admin-stats strong {
+  line-height: 1;
+}
+
+#bookingPanel .booking-admin-subtabs {
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px;
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  background: #f1f6f2;
+}
+
+#bookingPanel .booking-admin-subtabs .booking-admin-filter-button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+}
+
+#bookingPanel .booking-admin-subtabs .booking-admin-filter-button.active {
+  color: var(--admin-text);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(31, 61, 48, .08);
+}
+
+#bookingPanel .booking-admin-service-list {
+  gap: 9px;
+}
+
+#bookingPanel .booking-admin-service-row {
+  position: relative;
+  min-height: 62px;
+  padding: 13px 14px;
+  border-radius: 12px;
+}
+
+#bookingPanel .booking-admin-service-row::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 5px;
+  width: 3px;
+  border-radius: 999px;
+  background: #dce9df;
+}
+
+#bookingPanel .booking-admin-service-row:hover::before {
+  background: #86b695;
+}
+
+#bookingPanel .booking-admin-service-row > span:first-child {
+  padding-left: 4px;
+}
+
+#bookingPanel .booking-admin-queue {
+  gap: 12px;
+}
+
+#bookingPanel .booking-admin-booking,
+#bookingPanel .booking-cancellation-card {
+  position: relative;
+  overflow: hidden;
+  padding: 15px;
+}
+
+#bookingPanel .booking-admin-booking::before,
+#bookingPanel .booking-cancellation-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: #d7e3da;
+}
+
+#bookingPanel .booking-admin-booking:has(.status-pending)::before {
+  background: #ddb35e;
+}
+
+#bookingPanel .booking-admin-booking:has(.status-confirmed)::before {
+  background: #62a678;
+}
+
+#bookingPanel .booking-admin-booking:has(.status-completed)::before {
+  background: #6c8fb2;
+}
+
+#bookingPanel .booking-admin-booking:has(.status-rejected)::before,
+#bookingPanel .booking-admin-booking:has(.status-cancelled)::before {
+  background: #b78078;
+}
+
+#bookingPanel .booking-admin-booking-heading {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #edf1ee;
+}
+
+#bookingPanel .booking-admin-time {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin-top: 9px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  color: #4f665a;
+  background: #f2f6f3;
+  font-weight: 750;
+}
+
+#bookingPanel .booking-admin-item-list {
+  margin-top: 10px;
+  padding: 10px 10px 10px 28px;
+  border-radius: 10px;
+  background: #f8faf7;
+}
+
+#bookingPanel .booking-admin-note {
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #faf8f4;
+}
+
+#bookingPanel .booking-admin-note.admin {
+  background: #fff4ed;
+}
+
+#bookingPanel .booking-admin-actions {
+  padding-top: 11px;
+  border-top: 1px solid #edf1ee;
+}
+
+#bookingPanel .booking-admin-actions .button-dark {
+  min-width: 110px;
+}
+
+#bookingPanel .booking-cancellation-review {
+  gap: 12px;
+}
+
+/* ---------- Responsive module workflow ---------- */
+
+@media (max-width: 1080px) {
+  #calendarPanel .calendar-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #calendarPanel .calendar-workspace > .editor {
+    position: static;
+  }
+
+  #calendarPanel #calendarItemListItems {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 5px;
+  }
+
+  #calendarPanel .calendar-list-row {
+    min-width: 220px;
+  }
+}
+
+@media (max-width: 900px) {
+  #cardsPanel .card-workspace,
+  #eventsPanel .card-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #cardsPanel .card-list,
+  #eventsPanel .card-list {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  #membersPanel .tier-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #membersPanel .tier-settings > div:first-child {
+    position: static;
+  }
+
+  #eventsPanel .event-ticket-tier-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  #cardsPanel .editor-actions,
+  #eventsPanel .editor-actions,
+  #calendarPanel .editor-actions {
+    margin: 18px -14px -14px;
+    padding: 11px 14px max(11px, env(safe-area-inset-bottom));
+  }
+
+  #cardsPanel .card-list,
+  #eventsPanel .card-list {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  #cardsPanel .card-list .list-heading,
+  #eventsPanel .card-list .list-heading {
+    position: static;
+    margin: -2px 0 8px;
+    padding: 0 2px 8px;
+    backdrop-filter: none;
+  }
+
+  #membersPanel .tier-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #membersPanel .tier-settings-grid > label {
+    min-height: 0;
+  }
+
+  #membersPanel .toolbar {
+    padding: 10px;
+  }
+
+  #membersPanel .result-count {
+    align-self: flex-start;
+  }
+
+  #membersPanel .row-actions .small-button {
+    flex: 1 1 92px;
+    min-height: 44px;
+  }
+
+  #cardsPanel .workspace-heading,
+  #eventsPanel > .panel-heading,
+  #calendarPanel > .panel-heading {
+    align-items: stretch;
+  }
+
+  #cardsPanel .workspace-heading .button,
+  #eventsPanel > .panel-heading .button,
+  #calendarPanel > .panel-heading .button {
+    width: 100%;
+  }
+
+  #eventsPanel .event-ticket-tier-access {
+    padding: 14px;
+  }
+
+  #eventsPanel .date-range-control {
+    padding: 14px;
+  }
+
+  #calendarPanel .admin-calendar {
+    padding: 11px 7px;
+  }
+
+  #calendarPanel .admin-calendar-grid {
+    border-radius: 10px;
+  }
+
+  #calendarPanel .admin-calendar-day {
+    min-height: 82px;
+    padding: 3px;
+  }
+
+  #calendarPanel .admin-calendar-item {
+    min-height: 24px;
+    padding: 3px 4px;
+    font-size: 9px;
+  }
+
+  #calendarPanel #calendarItemListItems {
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    gap: 7px;
+    scroll-snap-type: x proximity;
+  }
+
+  #calendarPanel .calendar-list-row {
+    flex: 0 0 min(82vw, 310px);
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+
+  #bookingPanel .booking-admin-stats {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  #bookingPanel .booking-admin-stats > div {
+    min-width: 150px;
+    scroll-snap-align: start;
+  }
+
+  #bookingPanel .booking-admin-subtabs {
+    width: 100%;
+  }
+
+  #bookingPanel .booking-admin-subtabs .booking-admin-filter-button {
+    flex: 1 1 0;
+    text-align: center;
+  }
+
+  #bookingPanel .booking-admin-service-row {
+    min-height: 68px;
+  }
+
+  #bookingPanel .booking-admin-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #bookingPanel .booking-admin-actions .button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  #cardsPanel .editor-heading::after,
+  #eventsPanel .editor-heading::after,
+  #calendarPanel .editor-heading::after {
+    display: none;
+  }
+
+  #cardsPanel .editor-actions,
+  #eventsPanel .editor-actions,
+  #calendarPanel .editor-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #cardsPanel #deleteCardButton,
+  #calendarPanel #deleteCalendarItemButton {
+    margin-right: 0;
+  }
+
+  #cardsPanel #saveCardButton,
+  #cardsPanel #saveTicketButton,
+  #eventsPanel #saveEventTicketButton,
+  #calendarPanel #saveCalendarItemButton {
+    min-width: 0;
+  }
+
+  #eventsPanel .event-ticket-tier-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #eventsPanel .event-ticket-tier-options label {
+    min-height: 46px;
+  }
+
+  #calendarPanel .admin-calendar-toolbar h3 {
+    font-size: 18px;
+  }
+
+  #bookingPanel .booking-admin-stats {
+    grid-template-columns: repeat(3, minmax(142px, 1fr));
+  }
+
+  #bookingPanel .booking-admin-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 390px) {
+  #cardsPanel .editor-actions,
+  #eventsPanel .editor-actions,
+  #calendarPanel .editor-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #calendarPanel .admin-calendar-day {
+    min-height: 76px;
+  }
+}
+
+@media (hover: none) {
+  #eventsPanel .event-ticket-tier-options label:hover,
+  #bookingPanel .booking-admin-service-row:hover {
+    transform: none;
+  }
+}
