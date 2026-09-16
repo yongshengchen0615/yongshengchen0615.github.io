@@ -28,9 +28,12 @@ assert.match(calendarFlow, /textContent = description/);
 assert.match(calendarFlow, /accent: safeHolidayAccent\(raw\?\.accent\)/);
 assert.match(calendarFlow, /applyHolidayAccent\(button, holidays\[0\]\?\.accent\)/);
 assert.match(calendarFlow, /applyHolidayAccent\(item, holiday\.accent\)/);
+assert.match(calendarFlow, /if \(date === today\) button\.classList\.add\('today'\)/);
 assert.doesNotMatch(calendarFlow, /ackBookingHolidayButton/);
 assert.doesNotMatch(calendarFlow, />知道了</);
 assert.match(bookingIndex, /calendar-holiday-theme\.css\?v=booking-calendar-holiday-theme-20260911-1/);
+assert.match(holidayTheme, /#calendarGrid \.calendar-day\.holiday-disabled\.today/);
+assert.match(holidayTheme, /box-shadow: inset 0 0 0 2px rgba\(223, 107, 77, \.72\)/);
 assert.match(holidayTheme, /#calendarGrid \.calendar-holiday-label/);
 assert.match(holidayTheme, /background: var\(--holiday-accent, #df6b4d\)/);
 assert.match(holidayTheme, /color: var\(--holiday-foreground, #000000\)/);
@@ -44,4 +47,3 @@ assert.match(migration, /BOOKING_HOLIDAY/);
 assert.match(migration, /status = 'active'/);
 
 console.log('booking notice/holiday wiring OK');
-
