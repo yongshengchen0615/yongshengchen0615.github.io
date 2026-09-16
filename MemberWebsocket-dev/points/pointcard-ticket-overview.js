@@ -8,6 +8,7 @@
     selected: new Set(),
     busy: false,
     initialized: false,
+    refreshData: null,
     maxTicketsPerRedemption: 1
   };
 
@@ -68,12 +69,9 @@
 
   function ensureUi() {
     const ticketList = document.getElementById('ticketList');
-    const ticketEmpty = document.getElementById('ticketEmpty');
     if (!ticketList) return false;
 
     root = ticketList;
-    if (ticketEmpty) ticketEmpty.classList.add('hidden');
-
     let overview = root.querySelector('[data-all-ticket-overview]');
     if (!overview) {
       root.replaceChildren();
@@ -465,8 +463,11 @@
     });
     modal.querySelector('.ticket-batch-confirm').addEventListener('click', () => {
       const confirm = modal.querySelector('.ticket-batch-confirm');
-      if (confirm.dataset.mode === 'done') window.location.reload();
-      else redeemSelected();
+      if (confirm.dataset.mode === 'close') {
+        modal.classList.add('hidden');
+        return;
+      }
+      redeemSelected();
     });
     return modal;
   }
@@ -530,6 +531,9 @@
     const confirm = modal.querySelector('.ticket-batch-confirm');
     const message = modal.querySelector('[data-batch-message]');
     const cancel = modal.querySelector('.ticket-batch-cancel');
+    let redeemed = false;
+    let synced = false;
+
     state.busy = true;
     confirm.disabled = true;
     confirm.textContent = '使用中…';
@@ -542,6 +546,8 @@
         ticketIds: tickets.map((ticket) => ticket.ticketId),
         requestId: newRequestId()
       });
+      redeemed = true;
+
       const resultTickets = Array.isArray(result.tickets) ? result.tickets : [];
       modal.querySelector('[data-batch-title]').textContent = `已完成 ${Number(result.ticketCount || resultTickets.length)} 張票券使用`;
       const resultSpend = spendByCard(
@@ -552,8 +558,8 @@
         ? '\n' + resultSpend.map((item) => `• ${item.cardTitle}：已扣 ${item.points} 點`).join('\n')
         : '';
       message.textContent = (result.alreadyApplied
-        ? '此操作先前已完成，以下為已確認的使用結果。'
-        : '票券已完成核銷。') + resultSpendText;
+        ? '此操作先前已完成，正在同步最新資料。'
+        : '票券已完成核銷，正在同步最新資料。') + resultSpendText;
 
       const list = modal.querySelector('[data-batch-list]');
       list.replaceChildren(...resultTickets.map((ticket) => {
@@ -567,25 +573,48 @@
       }));
 
       state.selected.clear();
-      confirm.dataset.mode = 'done';
+      confirm.textContent = '同步中…';
+
+      if (typeof state.refreshData !== 'function') {
+        throw new Error('票券已完成使用，但頁面同步功能未就緒。');
+      }
+      await state.refreshData();
+      synced = true;
+
+      message.textContent = (result.alreadyApplied
+        ? '此操作先前已完成，最新資料已同步。'
+        : '票券已完成核銷，最新資料已同步。') + resultSpendText;
+      confirm.dataset.mode = 'close';
       confirm.disabled = false;
-      confirm.textContent = '完成並更新';
+      confirm.textContent = '關閉';
+      overviewError('');
     } catch (error) {
-      message.textContent = error && error.message || '票券使用失敗，請重新整理後再試。';
-      confirm.dataset.mode = 'redeem';
-      confirm.disabled = false;
-      confirm.textContent = '重新確認';
-      cancel.hidden = false;
+      if (redeemed) {
+        message.textContent = '票券已完成使用，但最新資料同步失敗；系統將重新載入以確認最新狀態。';
+        confirm.disabled = true;
+        cancel.hidden = true;
+        window.setTimeout(() => window.location.reload(), 150);
+      } else {
+        message.textContent = error && error.message || '票券使用失敗，請重新整理後再試。';
+        confirm.dataset.mode = 'redeem';
+        confirm.disabled = false;
+        confirm.textContent = '重新確認';
+        cancel.hidden = false;
+      }
     } finally {
       state.busy = false;
-      updateSelection();
-      render();
+      if (synced) render();
+      else if (!redeemed) {
+        updateSelection();
+        render();
+      }
     }
   }
 
-  async function initialize({ config, idToken } = {}) {
+  async function initialize({ config, idToken, refreshData } = {}) {
     state.config = config && typeof config === 'object' ? config : null;
     state.idToken = String(idToken || '');
+    state.refreshData = typeof refreshData === 'function' ? refreshData : null;
     if (!state.config || !state.idToken) {
       const error = new Error('票券登入資訊不完整。');
       error.code = 'AUTH_NOT_READY';
