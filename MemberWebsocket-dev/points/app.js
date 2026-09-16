@@ -86,7 +86,8 @@
       startLoginProgress('正在準備票券設定…', 72);
       await window.PointCardTicketOverview.initialize({
         config: state.config,
-        idToken: state.idToken
+        idToken: state.idToken,
+        refreshData: () => loadCards(false)
       });
 
       startLoginProgress('正在同步集點卡與票券…', 92);
