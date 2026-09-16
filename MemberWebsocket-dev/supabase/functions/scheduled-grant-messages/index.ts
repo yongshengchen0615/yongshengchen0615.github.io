@@ -34,15 +34,26 @@ function isBirthdayFixedTicket(row: any): boolean {
   const requestId = asText(row?.request_id || row?.schedule_id,500);
   return requestId.startsWith("FIXED-") && /-birthday-\d{4}(?:-\d{2})?-/.test(requestId);
 }
+function removeUriButtons(node: any, uri: string): void {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node.contents)) {
+    node.contents = node.contents.filter((item: any) =>
+      !(item?.type === "button" && item?.action?.type === "uri" && item?.action?.uri === uri)
+    );
+    for (const child of node.contents) removeUriButtons(child, uri);
+  }
+  if (node.header) removeUriButtons(node.header, uri);
+  if (node.body) removeUriButtons(node.body, uri);
+  if (node.footer) removeUriButtons(node.footer, uri);
+}
 function addBirthdayEventTicketAction(message: any): void {
   const bubble = message?.contents;
   const footer = bubble?.footer;
-  if (!footer || footer.type !== "box" || !Array.isArray(footer.contents)) return;
+  if (!bubble || !footer || footer.type !== "box" || !Array.isArray(footer.contents)) return;
 
-  const alreadyExists = footer.contents.some((item: any) =>
-    item?.type === "button" && item?.action?.type === "uri" && item?.action?.uri === EVENT_LIFF_URL
-  );
-  if (alreadyExists) return;
+  // Birthday notices must show exactly one activity-ticket CTA, always at the bottom.
+  removeUriButtons(bubble.body, EVENT_LIFF_URL);
+  removeUriButtons(footer, EVENT_LIFF_URL);
 
   const accent = /^#[0-9a-f]{6}$/i.test(String(bubble?.header?.backgroundColor || ""))
     ? String(bubble.header.backgroundColor)
