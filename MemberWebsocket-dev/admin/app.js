@@ -6,6 +6,9 @@
   const CALENDAR_ITEM_TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const MEMBERSHIP_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const MEMBERSHIP_TIER_STYLE_LABELS = Object.freeze({ forest: '森林綠', midnight: '午夜藍', ocean: '海灣青', sunset: '夕陽橘', lavender: '薰衣草紫', rose: '玫瑰粉', gold: '金曜棕', platinum: '鉑金灰', mint: '薄荷綠', cherry: '櫻桃紅' });
+  const POINT_CARD_STYLE_KEYS = Object.freeze(['citrus', 'coral', 'lagoon', 'skyline', 'violet', 'berry', 'cocoa', 'lime', 'denim', 'peach']);
+  const POINT_CARD_STYLE_LABELS = Object.freeze({ citrus: '柑橘氣泡', coral: '珊瑚蘇打', lagoon: '潟湖水光', skyline: '晴空城市', violet: '電光紫', berry: '莓果霓虹', cocoa: '可可拿鐵', lime: '萊姆汽水', denim: '丹寧晴藍', peach: '蜜桃冰沙' });
+  const LEGACY_POINT_CARD_STYLE_MAP = Object.freeze({ forest: 'lagoon', midnight: 'skyline', ocean: 'denim', sunset: 'coral', lavender: 'violet', rose: 'berry', gold: 'citrus', platinum: 'cocoa', mint: 'lime', cherry: 'peach' });
   const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
@@ -185,7 +188,7 @@
     if (!accentGrid || els.cardStyle) return;
     const label = document.createElement('label'); label.className = 'card-style-field'; label.append(document.createTextNode('集點卡樣式'));
     const select = document.createElement('select'); select.id = 'cardStyle'; select.name = 'styleKey'; select.setAttribute('aria-label', '集點卡樣式');
-    MEMBERSHIP_TIER_STYLE_KEYS.forEach((styleKey) => { const option = document.createElement('option'); option.value = styleKey; option.textContent = MEMBERSHIP_TIER_STYLE_LABELS[styleKey]; select.append(option); });
+    POINT_CARD_STYLE_KEYS.forEach((styleKey) => { const option = document.createElement('option'); option.value = styleKey; option.textContent = POINT_CARD_STYLE_LABELS[styleKey]; select.append(option); });
     const preview = createStylePreview('目前集點卡面'); preview.dataset.pointCardStylePreview = 'true'; label.append(select, preview); accentGrid.insertBefore(label, accentGrid.firstChild); els.cardStyle = select; els.cardStylePreview = preview; select.addEventListener('change', updatePointCardStylePreview); updatePointCardStylePreview();
   }
 
@@ -199,7 +202,7 @@
     document.querySelectorAll('[data-tier-style-select]').forEach((select) => { const preview = select.closest('label')?.querySelector('[data-tier-style-preview]'); if (preview) updateStylePreview(select, preview, `目前${CALENDAR_ITEM_TIER_LABELS[select.dataset.tierStyleSelect] || ''}卡面`); });
   }
 
-  function updatePointCardStylePreview() { if (els.cardStyle && els.cardStylePreview) updateStylePreview(els.cardStyle, els.cardStylePreview, '目前集點卡面'); }
+  function updatePointCardStylePreview() { if (!els.cardStyle || !els.cardStylePreview) return; const styleKey = safePointCardStyle(els.cardStyle.value); els.cardStylePreview.dataset.style = styleKey; els.cardStylePreview.setAttribute('aria-label', `目前集點卡面：${POINT_CARD_STYLE_LABELS[styleKey]}`); const name = els.cardStylePreview.querySelector('[data-style-preview-name]'); if (name) name.textContent = POINT_CARD_STYLE_LABELS[styleKey]; }
   function updateStylePreview(select, preview, prefix) { const styleKey = safeTierStyle(select.value); preview.dataset.style = styleKey; preview.setAttribute('aria-label', `${prefix}：${MEMBERSHIP_TIER_STYLE_LABELS[styleKey]}`); const name = preview.querySelector('[data-style-preview-name]'); if (name) name.textContent = MEMBERSHIP_TIER_STYLE_LABELS[styleKey]; }
 
   function prepareCardSortControls() {
@@ -704,11 +707,11 @@
 
   function loadCardForm(cardId) {
     const card = state.cards.find((item) => item.cardId === cardId); if (!card) return;
-    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardUsageMethod.value = String(card.usageMethod || ''); els.cardUsageInstructions.value = String(card.usageInstructions || ''); els.cardBenefitDescription.value = String(card.benefitDescription || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardStyle.value = safeTierStyle(card.styleKey); updatePointCardStylePreview(); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.archiveCardButton.disabled = card.status === 'archived'; els.archiveCardButton.textContent = card.status === 'archived' ? '已封存集點卡' : '封存集點卡'; els.deleteCardButton.disabled = false; hideMessage(els.cardFormMessage); renderCardList();
+    state.selectedCardId = cardId; els.cardId.value = String(card.cardId); els.cardExpectedUpdatedAt.value = String(card.updatedAt || ''); els.cardTitle.value = String(card.title || ''); els.cardUsageMethod.value = String(card.usageMethod || ''); els.cardUsageInstructions.value = String(card.usageInstructions || ''); els.cardBenefitDescription.value = String(card.benefitDescription || ''); els.cardStatus.value = String(card.status || 'draft'); els.cardStyle.value = safePointCardStyle(card.styleKey); updatePointCardStylePreview(); els.cardExpiryMode.value = String(card.expiryMode || 'unlimited'); els.cardExpiresOn.value = String(card.expiresOn || ''); updateCardExpiryUI(); els.cardAccent.value = safeAccent(card.accent); updateAccentValue(); renderRewardRows(card.rewards && card.rewards.length ? card.rewards : [defaultReward(5)]); els.editorKicker.textContent = 'Edit points card'; els.editorTitle.textContent = String(card.title || '編輯集點卡'); updateEditorStatus(els.editorStatus, card.status); els.archiveCardButton.disabled = card.status === 'archived'; els.archiveCardButton.textContent = card.status === 'archived' ? '已封存集點卡' : '封存集點卡'; els.deleteCardButton.disabled = false; hideMessage(els.cardFormMessage); renderCardList();
   }
 
   function resetCardForm() {
-    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = ''; els.cardStyle.value = 'forest'; updatePointCardStylePreview(); els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, ''); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
+    state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = ''; els.cardStyle.value = POINT_CARD_STYLE_KEYS[0]; updatePointCardStylePreview(); els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, ''); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
   }
 
   function defaultReward(thresholdStamps) { return { thresholdStamps, ticketTemplateId: '' }; }
@@ -748,7 +751,7 @@
     if (validationMessage) return showMessage(els.cardFormMessage, validationMessage);
     setSaving(els.saveCardButton, true, '正在儲存集點卡…');
     try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), usageMethod, usageInstructions, benefitDescription, rewardTitle: '', rewards, status: els.cardStatus.value, styleKey: safeTierStyle(els.cardStyle.value), expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), usageMethod, usageInstructions, benefitDescription, rewardTitle: '', rewards, status: els.cardStatus.value, styleKey: safePointCardStyle(els.cardStyle.value), expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       if (result.card) { state.cards = replaceById(state.cards, result.card, 'cardId'); loadCardForm(result.card.cardId); }
       if (await refreshAfterSuccessfulWrite('集點卡已儲存', els.cardFormMessage)) showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true);
     } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
@@ -1570,6 +1573,7 @@
   function statusLabel(status) { return ({ active: '啟用中', draft: '草稿', archived: '已封存', disabled: '已停用' })[status] || '未設定'; }
   function safeAccent(value) { return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#e47845'; }
   function safeTierStyle(value) { const styleKey = String(value || '').trim(); return MEMBERSHIP_TIER_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
+  function safePointCardStyle(value) { const styleKey = String(value || '').trim().toLowerCase(); return POINT_CARD_STYLE_KEYS.includes(styleKey) ? styleKey : (LEGACY_POINT_CARD_STYLE_MAP[styleKey] || POINT_CARD_STYLE_KEYS[0]); }
   function replaceById(items, next, key) { return items.some((item) => item[key] === next[key]) ? items.map((item) => item[key] === next[key] ? next : item) : [next, ...items]; }
   function createRequestId() { if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); return `request-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`; }
   function formatServiceMinutes(value) { return `${Math.max(0, Math.floor(Number(value) || 0))} 分鐘`; }

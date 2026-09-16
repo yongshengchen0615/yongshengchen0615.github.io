@@ -234,6 +234,16 @@ input, select, textarea, button { min-width: 0; max-width: 100%; }
 .style-preview[data-style="platinum"] .style-thumbnail { background: linear-gradient(135deg, #46515e, #9ca8b4); }
 .style-preview[data-style="mint"] .style-thumbnail { background: linear-gradient(135deg, #22634f, #6dbb91); }
 .style-preview[data-style="cherry"] .style-thumbnail { background: linear-gradient(135deg, #76253d, #c64f68); }
+.style-preview[data-style="citrus"] .style-thumbnail { background: linear-gradient(135deg, #6f2f0e, #a84e13 56%, #573018); }
+.style-preview[data-style="coral"] .style-thumbnail { background: linear-gradient(135deg, #7a2630, #b24c3b 55%, #5f2330); }
+.style-preview[data-style="lagoon"] .style-thumbnail { background: linear-gradient(135deg, #07505b, #0b7380 55%, #123d4c); }
+.style-preview[data-style="skyline"] .style-thumbnail { background: linear-gradient(135deg, #1b3f72, #2567a7 55%, #182e52); }
+.style-preview[data-style="violet"] .style-thumbnail { background: linear-gradient(135deg, #3d286c, #6d4aa0 55%, #2a234e); }
+.style-preview[data-style="berry"] .style-thumbnail { background: linear-gradient(135deg, #662445, #9a3b6e 55%, #47223f); }
+.style-preview[data-style="cocoa"] .style-thumbnail { background: linear-gradient(135deg, #523328, #80503b 55%, #3d2a26); }
+.style-preview[data-style="lime"] .style-thumbnail { background: linear-gradient(135deg, #315422, #5d7e28 55%, #263d24); }
+.style-preview[data-style="denim"] .style-thumbnail { background: linear-gradient(135deg, #314658, #52718b 55%, #263846); }
+.style-preview[data-style="peach"] .style-thumbnail { background: linear-gradient(135deg, #78383b, #b75f4f 55%, #5d3038); }
 .card-style-field { min-width: 0; }
 @media (max-width: 480px) { .style-preview { grid-template-columns: 70px minmax(0, 1fr); }.style-thumbnail { width: 70px; height: 42px; } }
 

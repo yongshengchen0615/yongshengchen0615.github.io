@@ -122,19 +122,19 @@ button { line-height: 1.35; }
   .ticket-history-heading time { text-align: left; }
 }
 
-/* Point-card style presets are selected by the admin and rendered consistently in the member LIFF. */
-.card-tab[aria-selected="true"] { background: var(--card-style-surface, var(--ink)); border-color: var(--card-style-surface, var(--ink)); }
-.active-card[data-card-style="forest"], .card-tab[data-card-style="forest"] { --card-style-surface: #123f34; }
-.active-card[data-card-style="midnight"], .card-tab[data-card-style="midnight"] { --card-style-surface: #17243f; }
-.active-card[data-card-style="ocean"], .card-tab[data-card-style="ocean"] { --card-style-surface: #0d4d58; }
-.active-card[data-card-style="sunset"], .card-tab[data-card-style="sunset"] { --card-style-surface: #8f402f; }
-.active-card[data-card-style="lavender"], .card-tab[data-card-style="lavender"] { --card-style-surface: #554174; }
-.active-card[data-card-style="rose"], .card-tab[data-card-style="rose"] { --card-style-surface: #803c59; }
-.active-card[data-card-style="gold"], .card-tab[data-card-style="gold"] { --card-style-surface: #654718; }
-.active-card[data-card-style="platinum"], .card-tab[data-card-style="platinum"] { --card-style-surface: #46515e; }
-.active-card[data-card-style="mint"], .card-tab[data-card-style="mint"] { --card-style-surface: #22634f; }
-.active-card[data-card-style="cherry"], .card-tab[data-card-style="cherry"] { --card-style-surface: #76253d; }
-.active-card[data-card-style] { background: var(--card-style-surface, var(--ink)); }
+/* Point-card presets use a separate namespace from membership-tier card styles. */
+.card-tab[aria-selected="true"] { background: var(--card-style-background, var(--card-style-surface, var(--ink))); border-color: var(--card-style-surface, var(--ink)); }
+.active-card[data-card-style="citrus"], .card-tab[data-card-style="citrus"], .member-ticket[data-card-style="citrus"] { --card-style-surface: #6f2f0e; --card-style-background: linear-gradient(135deg, #6f2f0e 0%, #a84e13 56%, #573018 100%); --card-style-accent: #ffd29a; }
+.active-card[data-card-style="coral"], .card-tab[data-card-style="coral"], .member-ticket[data-card-style="coral"] { --card-style-surface: #7a2630; --card-style-background: linear-gradient(135deg, #7a2630 0%, #b24c3b 55%, #5f2330 100%); --card-style-accent: #ffc0ad; }
+.active-card[data-card-style="lagoon"], .card-tab[data-card-style="lagoon"], .member-ticket[data-card-style="lagoon"] { --card-style-surface: #07505b; --card-style-background: linear-gradient(135deg, #07505b 0%, #0b7380 55%, #123d4c 100%); --card-style-accent: #9ee9df; }
+.active-card[data-card-style="skyline"], .card-tab[data-card-style="skyline"], .member-ticket[data-card-style="skyline"] { --card-style-surface: #1b3f72; --card-style-background: linear-gradient(135deg, #1b3f72 0%, #2567a7 55%, #182e52 100%); --card-style-accent: #b9dbff; }
+.active-card[data-card-style="violet"], .card-tab[data-card-style="violet"], .member-ticket[data-card-style="violet"] { --card-style-surface: #3d286c; --card-style-background: linear-gradient(135deg, #3d286c 0%, #6d4aa0 55%, #2a234e 100%); --card-style-accent: #ddc5ff; }
+.active-card[data-card-style="berry"], .card-tab[data-card-style="berry"], .member-ticket[data-card-style="berry"] { --card-style-surface: #662445; --card-style-background: linear-gradient(135deg, #662445 0%, #9a3b6e 55%, #47223f 100%); --card-style-accent: #ffc4df; }
+.active-card[data-card-style="cocoa"], .card-tab[data-card-style="cocoa"], .member-ticket[data-card-style="cocoa"] { --card-style-surface: #523328; --card-style-background: linear-gradient(135deg, #523328 0%, #80503b 55%, #3d2a26 100%); --card-style-accent: #f3c8a6; }
+.active-card[data-card-style="lime"], .card-tab[data-card-style="lime"], .member-ticket[data-card-style="lime"] { --card-style-surface: #315422; --card-style-background: linear-gradient(135deg, #315422 0%, #5d7e28 55%, #263d24 100%); --card-style-accent: #d9ef9c; }
+.active-card[data-card-style="denim"], .card-tab[data-card-style="denim"], .member-ticket[data-card-style="denim"] { --card-style-surface: #314658; --card-style-background: linear-gradient(135deg, #314658 0%, #52718b 55%, #263846 100%); --card-style-accent: #c5dbea; }
+.active-card[data-card-style="peach"], .card-tab[data-card-style="peach"], .member-ticket[data-card-style="peach"] { --card-style-surface: #78383b; --card-style-background: linear-gradient(135deg, #78383b 0%, #b75f4f 55%, #5d3038 100%); --card-style-accent: #ffd0bd; }
+.active-card[data-card-style] { background: var(--card-style-background, var(--card-style-surface, var(--ink))); }
 
 .login-loading { width: min(100%, 280px); min-height: calc(100vh - max(24px, env(safe-area-inset-top)) - max(42px, env(safe-area-inset-bottom))); min-height: calc(100dvh - max(24px, env(safe-area-inset-top)) - max(42px, env(safe-area-inset-bottom))); margin-inline: auto; justify-items: stretch; gap: 12px; text-align: center; }
 .login-loading h1 { margin: 0; color: #17352e; font-size: clamp(22px, 5.5vw, 28px); letter-spacing: -.04em; line-height: 1.2;  width: 100%; text-align: center;}
