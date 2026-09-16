@@ -11,10 +11,20 @@
   background: #fffdf8;
 }
 
-/* A holiday can also be today. Keep the holiday treatment, but do not hide the current-day marker. */
+/* A holiday can also be today. Draw an independent inset frame so holiday box-shadow rules cannot hide it. */
 #calendarGrid .calendar-day.holiday-disabled.today {
+  position: relative;
   border-color: #df6b4d;
-  box-shadow: inset 0 0 0 2px rgba(223, 107, 77, .72);
+}
+
+#calendarGrid .calendar-day.holiday-disabled.today::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: 2;
+  border: 2px solid rgba(223, 107, 77, .82);
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 #calendarGrid .calendar-day.holiday-disabled .calendar-day-number {
