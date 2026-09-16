@@ -136,10 +136,18 @@
     return config;
   }
 
+  async function waitForAdminIdToken() {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const idToken = typeof window.liff?.getIDToken === 'function' ? String(window.liff.getIDToken() || '') : '';
+      if (idToken) return idToken;
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    }
+    throw new Error('LINE 管理端登入尚未完成，請重新整理後再試。');
+  }
+
   async function request(action, payload = {}) {
     const currentConfig = await loadConfig();
-    const idToken = typeof window.liff?.getIDToken === 'function' ? String(window.liff.getIDToken() || '') : '';
-    if (!idToken) throw new Error('LINE 管理端登入尚未完成。');
+    const idToken = await waitForAdminIdToken();
     const endpoint = `${String(currentConfig.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/fixed-ticket-automation`;
     const response = await fetch(endpoint, {
       method: 'POST',
