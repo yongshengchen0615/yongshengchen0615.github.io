@@ -1,3 +1,5 @@
+@import url("./ticket-batch-overview.css?v=20260916");
+
 .membership-progress { --membership-card-background: #17352e; --membership-card-accent: #df6b4d; --membership-card-soft: #f3c9ab; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 13px 24px; margin: 18px 0; padding: 22px; overflow: hidden; color: #fdf7ed; border: 1px solid rgba(253, 247, 237, .28); border-radius: 20px; background: var(--membership-card-background); box-shadow: 0 16px 36px rgba(23, 53, 46, .16); }
 .membership-progress::before { content: ""; position: absolute; width: 210px; height: 210px; right: -88px; top: -126px; border: 1px solid rgba(253, 247, 237, .18); border-radius: 50%; box-shadow: 0 0 0 28px rgba(253, 247, 237, .035); }
 .membership-progress > * { position: relative; z-index: 1; }
