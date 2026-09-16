@@ -14,6 +14,7 @@ class ApiError extends Error {
 
 const TIER_KEYS = ["general", "silver", "gold", "platinum"] as const;
 const SCHEDULE_TYPES = ["birthday_month", "yearly", "monthly", "weekly"] as const;
+const EXPIRY_MODES = ["month_end", "fixed_date"] as const;
 
 function env(name: string): string { return (Deno.env.get(name) || "").trim(); }
 function asText(value: unknown, max = 1000): string { return String(value ?? "").trim().slice(0, max); }
@@ -103,6 +104,16 @@ function requireInteger(value: unknown, min: number, max: number, label: string)
   return number;
 }
 
+function requireDate(value: unknown, label: string): string {
+  const text = asText(value, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new ApiError(400, "INVALID_INPUT", `${label}格式不正確。`);
+  const parsed = new Date(`${text}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+    throw new ApiError(400, "INVALID_INPUT", `${label}格式不正確。`);
+  }
+  return text;
+}
+
 function validateTemplate(value: unknown): Json {
   const input = value && typeof value === "object" ? value as Json : {};
   const title = asText(input.title, 100);
@@ -111,6 +122,7 @@ function validateTemplate(value: unknown): Json {
   const usageInstructions = asText(input.usageInstructions, 500);
   const status = asText(input.status, 20);
   const scheduleType = asText(input.scheduleType, 30);
+  const expiryMode = asText(input.expiryMode, 20) || "month_end";
   const accent = asText(input.accent, 20).toLowerCase();
   const allowedTierKeys = normalizeTiers(input.allowedTierKeys);
   const quota = requireInteger(input.quota ?? 0, 0, 1_000_000, "總發放上限");
@@ -121,6 +133,7 @@ function validateTemplate(value: unknown): Json {
   if (!usageInstructions) throw new ApiError(400, "INVALID_INPUT", "請填寫使用說明。");
   if (!["active", "draft", "archived"].includes(status)) throw new ApiError(400, "INVALID_STATUS", "請選擇公開狀態。");
   if (!(SCHEDULE_TYPES as readonly string[]).includes(scheduleType)) throw new ApiError(400, "INVALID_SCHEDULE", "請選擇固定票券發放週期。");
+  if (!(EXPIRY_MODES as readonly string[]).includes(expiryMode)) throw new ApiError(400, "INVALID_EXPIRY_MODE", "請選擇固定票券使用期限。");
   if (!/^#[0-9a-f]{6}$/i.test(accent)) throw new ApiError(400, "INVALID_ACCENT", "識別色格式不正確。");
   if (!allowedTierKeys.length) throw new ApiError(400, "INVALID_TIERS", "請至少選擇一個適用會員等級。");
 
@@ -136,6 +149,12 @@ function validateTemplate(value: unknown): Json {
     scheduleWeekday = requireInteger(input.scheduleWeekday, 1, 7, "星期");
   }
 
+  let expiryDate: string | null = null;
+  if (expiryMode === "fixed_date") {
+    expiryDate = requireDate(input.expiryDate, "指定到期日");
+    if (expiryDate < taipeiDate()) throw new ApiError(400, "INVALID_EXPIRY_DATE", "指定到期日不可早於今天。");
+  }
+
   return {
     fixed_ticket_id: asText(input.fixedTicketId, 80),
     title,
@@ -147,6 +166,8 @@ function validateTemplate(value: unknown): Json {
     schedule_month: scheduleMonth,
     schedule_day: scheduleDay,
     schedule_weekday: scheduleWeekday,
+    expiry_mode: expiryMode,
+    expiry_date: expiryDate,
     quota,
     accent,
     allowed_tier_keys: allowedTierKeys,
@@ -166,6 +187,8 @@ function clientTemplate(row: any): Json {
     scheduleMonth: row.schedule_month,
     scheduleDay: row.schedule_day,
     scheduleWeekday: row.schedule_weekday,
+    expiryMode: row.expiry_mode || "month_end",
+    expiryDate: row.expiry_date || "",
     quota: Number(row.quota || 0),
     accent: row.accent || "#df6b4d",
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
@@ -258,7 +281,13 @@ Deno.serve(async (request: Request) => {
         run = issued.data;
       }
 
-      await audit(supabase, identity.lineUserId, "admin.fixed-tickets.save", row.fixed_ticket_id, { status: row.status, scheduleType: row.schedule_type, run });
+      await audit(supabase, identity.lineUserId, "admin.fixed-tickets.save", row.fixed_ticket_id, {
+        status: row.status,
+        scheduleType: row.schedule_type,
+        expiryMode: row.expiry_mode,
+        expiryDate: row.expiry_date,
+        run,
+      });
       return reply(origin, { ok: true, data: { template: clientTemplate(row), run, templates: await listTemplates(supabase) } });
     }
 
