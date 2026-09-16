@@ -1,14 +1,13 @@
 (() => {
   'use strict';
 
-  document.documentElement.classList.add('pointcard-overview-enabled');
-
   const state = {
     config: null,
     idToken: '',
     snapshot: null,
     selected: new Set(),
     busy: false,
+    initialized: false,
     maxTicketsPerRedemption: 1
   };
 
@@ -22,12 +21,19 @@
     return `${String(state.config && state.config.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/pointcard-extension-api`;
   }
 
-  function text(value) { return String(value == null ? '' : value); }
-  function points(value) { return Math.max(0, Number(value || 0)); }
+  function text(value) {
+    return String(value == null ? '' : value);
+  }
+
+  function points(value) {
+    return Math.max(0, Number(value || 0));
+  }
+
   function normalizeLimit(value) {
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed >= 1 && parsed <= 50 ? parsed : 1;
   }
+
   function newRequestId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
       return `PTR-${window.crypto.randomUUID().replaceAll('-', '')}`;
@@ -36,11 +42,17 @@
   }
 
   async function extensionRequest(operation, payload = {}) {
+    if (!state.config || !state.idToken) {
+      const error = new Error('票券登入狀態尚未完成。');
+      error.code = 'AUTH_NOT_READY';
+      throw error;
+    }
+
     const response = await fetch(extensionUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: String(state.config && state.config.supabasePublishableKey || '')
+        apikey: String(state.config.supabasePublishableKey || '')
       },
       cache: 'no-store',
       body: JSON.stringify({ ...payload, operation, idToken: state.idToken })
@@ -55,22 +67,16 @@
   }
 
   function ensureUi() {
-    const legacyList = document.getElementById('ticketList');
+    const ticketList = document.getElementById('ticketList');
     const ticketEmpty = document.getElementById('ticketEmpty');
-    if (!legacyList) return false;
+    if (!ticketList) return false;
 
-    let host = document.getElementById('ticketOverviewList');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'ticketOverviewList';
-      host.className = 'ticket-overview-host';
-      legacyList.insertAdjacentElement('afterend', host);
-    }
-    root = host;
+    root = ticketList;
     if (ticketEmpty) ticketEmpty.classList.add('hidden');
 
     let overview = root.querySelector('[data-all-ticket-overview]');
     if (!overview) {
+      root.replaceChildren();
       overview = document.createElement('div');
       overview.className = 'ticket-overview-extension';
       overview.dataset.allTicketOverview = 'true';
@@ -83,6 +89,7 @@
     selectionHint = overview.querySelector('[data-ticket-selection-hint]');
     useButton = overview.querySelector('.ticket-overview-use');
     groups = overview.querySelector('.ticket-overview-groups');
+
     if (useButton && !useButton.dataset.bound) {
       useButton.dataset.bound = 'true';
       useButton.addEventListener('click', openConfirmModal);
@@ -113,18 +120,42 @@
         ? detail.tickets.filter((ticket) => ticket && ticket.status !== 'used')
         : [];
       const cardStamps = points(card.stamps);
+      const matchedTicketIds = new Set();
 
       const offers = rewards.map((reward) => {
         const thresholdStamps = Math.max(1, Number(reward.thresholdStamps || 0));
         const templateId = String(reward.ticketTemplateId || reward.ticket_template_id || '');
-        const ticket = tickets.find((item) => templateId && String(item.ticketTemplateId || item.ticket_template_id || '') === templateId)
-          || tickets.find((item) => Number(item.thresholdStamps || 0) === thresholdStamps)
-          || null;
+        const rewardTitle = String(reward.rewardTitle || '');
+        let ticket = tickets.find((item) => {
+          const ticketId = String(item.ticketId || '');
+          return ticketId && !matchedTicketIds.has(ticketId)
+            && templateId
+            && String(item.ticketTemplateId || item.ticket_template_id || '') === templateId;
+        }) || null;
+
+        if (!ticket) {
+          ticket = tickets.find((item) => {
+            const ticketId = String(item.ticketId || '');
+            return ticketId && !matchedTicketIds.has(ticketId)
+              && Number(item.thresholdStamps || 0) === thresholdStamps
+              && (!rewardTitle || String(item.ticketTitle || '') === rewardTitle);
+          }) || null;
+        }
+
+        if (!ticket) {
+          ticket = tickets.find((item) => {
+            const ticketId = String(item.ticketId || '');
+            return ticketId && !matchedTicketIds.has(ticketId)
+              && Number(item.thresholdStamps || 0) === thresholdStamps;
+          }) || null;
+        }
+
         const ticketId = String(ticket && ticket.ticketId || '');
+        if (ticketId) matchedTicketIds.add(ticketId);
+
         const shortage = Math.max(0, thresholdStamps - cardStamps);
         const expired = Boolean(card.expired);
         const active = String(card.status || 'active') === 'active';
-
         let statusText = '可勾選使用';
         if (expired) statusText = '集點卡已超過使用期限';
         else if (!active) statusText = '集點卡目前未開放使用';
@@ -142,6 +173,7 @@
           ticketDescription: String(ticket ? ticket.ticketDescription : reward.rewardDescription || '達到此集點節點後即可使用這張票券。'),
           usageMethod: String(ticket ? ticket.usageMethod : reward.usageMethod || ''),
           usageInstructions: String(ticket ? ticket.usageInstructions : reward.usageInstructions || ''),
+          prizes: Array.isArray(ticket ? ticket.prizes : reward.prizes) ? (ticket ? ticket.prizes : reward.prizes) : [],
           shortage,
           baseCanUse: Boolean(ticketId) && !expired && active && shortage === 0,
           statusText
@@ -190,13 +222,6 @@
     return map;
   }
 
-  function ticketDescription(ticket) {
-    const parts = [];
-    if (ticket.ticketDescription) parts.push(ticket.ticketDescription);
-    if (ticket.usageMethod) parts.push(`使用方式：${ticket.usageMethod}`);
-    return parts.join('\n');
-  }
-
   function handleSelectionChange(event) {
     const input = event.target instanceof HTMLInputElement ? event.target.closest('[data-ticket-select]') : null;
     if (!input) return;
@@ -222,7 +247,9 @@
     }
 
     const nextTickets = selectedTicketsFromIds(nextSelected);
-    const insufficient = spendByCard(nextTickets).find((item) => item.currentStamps !== null && item.points > item.currentStamps);
+    const insufficient = spendByCard(nextTickets).find(
+      (item) => item.currentStamps !== null && item.points > item.currentStamps
+    );
     if (insufficient) {
       input.checked = false;
       overviewError(`${insufficient.cardTitle} 點數不足：目前 ${insufficient.currentStamps} 點，本次已選票券需要 ${insufficient.points} 點。`);
@@ -241,6 +268,31 @@
       : '目前所有集點卡都尚未設定票券節點。';
   }
 
+  function createLotteryPrizeOpportunities(offer) {
+    if (offer.ticketType !== 'lottery' || !Array.isArray(offer.prizes)) return null;
+    const prizes = offer.prizes.filter((prize) => String(prize && prize.prizeTitle || '').trim());
+    if (!prizes.length) return null;
+
+    const container = document.createElement('div');
+    container.className = 'lottery-prize-opportunities';
+    const label = document.createElement('p');
+    label.className = 'prize-opportunity-label';
+    label.textContent = '有機會獲得';
+    const list = document.createElement('ul');
+    list.className = 'prize-opportunities';
+    list.setAttribute('aria-label', '抽獎可能獲得的獎項');
+    prizes.forEach((prize) => {
+      const item = document.createElement('li');
+      item.className = 'prize-opportunity';
+      const title = document.createElement('span');
+      title.textContent = String(prize.prizeTitle || '').trim();
+      item.append(title);
+      list.append(item);
+    });
+    container.append(label, list);
+    return container;
+  }
+
   function render() {
     if (!state.snapshot || !ensureUi() || !groups) return;
 
@@ -252,7 +304,6 @@
       [...state.selected].filter((id) => selectableIds.has(id)).slice(0, state.maxTicketsPerRedemption)
     );
 
-    const selectedSpend = selectedSpendMap();
     for (const item of spendByCard(selectedTickets())) {
       if (item.currentStamps !== null && item.points > item.currentStamps) {
         state.selected.clear();
@@ -260,6 +311,7 @@
       }
     }
 
+    const selectedSpend = selectedSpendMap();
     groups.replaceChildren();
     const all = grouped.flatMap((entry) => entry.offers);
     const totalNodes = all.length;
@@ -295,7 +347,9 @@
         const spentOnCard = selectedSpend.get(offer.cardId) || 0;
         const remainingForNewSelection = Math.max(0, offer.cardStamps - spentOnCard);
         const hitGlobalLimit = !isSelected && state.selected.size >= state.maxTicketsPerRedemption;
-        const insufficientAfterSelection = !isSelected && offer.baseCanUse && points(offer.thresholdStamps) > remainingForNewSelection;
+        const insufficientAfterSelection = !isSelected
+          && offer.baseCanUse
+          && points(offer.thresholdStamps) > remainingForNewSelection;
         const selectable = isSelected || (offer.baseCanUse && !hitGlobalLimit && !insufficientAfterSelection);
 
         let statusText = offer.statusText;
@@ -348,7 +402,10 @@
         selectWrap.append(checkbox, selectText);
         footer.append(status, selectWrap);
 
-        item.append(type, name, description, method, cost, footer);
+        item.append(type, name, description, method);
+        const prizeOpportunities = createLotteryPrizeOpportunities(offer);
+        if (prizeOpportunities) item.append(prizeOpportunities);
+        item.append(cost, footer);
         section.append(item);
       });
 
@@ -380,13 +437,18 @@
     }
     if (useButton) {
       useButton.disabled = state.busy || count === 0;
-      useButton.textContent = state.busy ? '處理中…' : count > 1 ? `使用 ${count} 張票券` : '使用已選票券';
+      useButton.textContent = state.busy
+        ? '處理中…'
+        : count > 1
+          ? `使用 ${count} 張票券`
+          : '使用已選票券';
     }
   }
 
   function modalBase() {
     let modal = document.getElementById('ticketBatchModal');
     if (modal) return modal;
+
     modal = document.createElement('div');
     modal.id = 'ticketBatchModal';
     modal.className = 'ticket-batch-modal hidden';
@@ -394,13 +456,18 @@
     modal.setAttribute('aria-modal', 'true');
     modal.innerHTML = '<div class="ticket-batch-card"><h2 data-batch-title>確認使用票券</h2><p data-batch-message></p><div class="ticket-batch-list" data-batch-list></div><div class="ticket-batch-actions"><button class="ticket-batch-cancel" type="button">取消</button><button class="ticket-batch-confirm" type="button">確認使用</button></div></div>';
     document.body.append(modal);
+
     modal.querySelector('.ticket-batch-cancel').addEventListener('click', () => {
       if (!state.busy) modal.classList.add('hidden');
     });
     modal.addEventListener('click', (event) => {
       if (event.target === modal && !state.busy) modal.classList.add('hidden');
     });
-    modal.querySelector('.ticket-batch-confirm').addEventListener('click', redeemSelected);
+    modal.querySelector('.ticket-batch-confirm').addEventListener('click', () => {
+      const confirm = modal.querySelector('.ticket-batch-confirm');
+      if (confirm.dataset.mode === 'done') window.location.reload();
+      else redeemSelected();
+    });
     return modal;
   }
 
@@ -411,7 +478,10 @@
       overviewError(`單次最多可使用 ${state.maxTicketsPerRedemption} 張票券。`);
       return;
     }
-    const insufficient = spendByCard(tickets).find((item) => item.currentStamps !== null && item.points > item.currentStamps);
+
+    const insufficient = spendByCard(tickets).find(
+      (item) => item.currentStamps !== null && item.points > item.currentStamps
+    );
     if (insufficient) {
       overviewError(`${insufficient.cardTitle} 點數不足，請取消部分票券。`);
       return;
@@ -436,7 +506,7 @@
 
     modal.querySelector('.ticket-batch-cancel').hidden = false;
     const confirm = modal.querySelector('.ticket-batch-confirm');
-    confirm.onclick = null;
+    confirm.dataset.mode = 'redeem';
     confirm.disabled = false;
     confirm.textContent = '確認使用';
     modal.classList.remove('hidden');
@@ -448,7 +518,9 @@
     const tickets = selectedTickets();
     if (!tickets.length || tickets.length > state.maxTicketsPerRedemption) return;
 
-    const insufficient = spendByCard(tickets).find((item) => item.currentStamps !== null && item.points > item.currentStamps);
+    const insufficient = spendByCard(tickets).find(
+      (item) => item.currentStamps !== null && item.points > item.currentStamps
+    );
     if (insufficient) {
       overviewError(`${insufficient.cardTitle} 點數不足，請取消部分票券。`);
       return;
@@ -494,16 +566,16 @@
         return line;
       }));
 
+      state.selected.clear();
+      confirm.dataset.mode = 'done';
       confirm.disabled = false;
       confirm.textContent = '完成並更新';
-      confirm.onclick = () => window.location.reload();
-      state.selected.clear();
     } catch (error) {
       message.textContent = error && error.message || '票券使用失敗，請重新整理後再試。';
+      confirm.dataset.mode = 'redeem';
       confirm.disabled = false;
       confirm.textContent = '重新確認';
       cancel.hidden = false;
-      confirm.onclick = null;
     } finally {
       state.busy = false;
       updateSelection();
@@ -511,73 +583,30 @@
     }
   }
 
-  async function waitForLogin() {
-    state.config = await window.MemberSystem.loadConfig();
-    for (let i = 0; i < 80; i += 1) {
-      state.idToken = window.liff && typeof window.liff.getIDToken === 'function'
-        ? (window.liff.getIDToken() || '')
-        : '';
-      if (state.idToken) return;
-      await new Promise((resolve) => window.setTimeout(resolve, 100));
+  async function initialize({ config, idToken } = {}) {
+    state.config = config && typeof config === 'object' ? config : null;
+    state.idToken = String(idToken || '');
+    if (!state.config || !state.idToken) {
+      const error = new Error('票券登入資訊不完整。');
+      error.code = 'AUTH_NOT_READY';
+      throw error;
     }
-    throw new Error('無法取得集點卡登入狀態。');
+
+    const setting = await extensionRequest('member.settings.get');
+    state.maxTicketsPerRedemption = normalizeLimit(setting.maxTicketsPerRedemption);
+    state.initialized = true;
+    ensureUi();
   }
 
-  async function refreshSnapshot() {
-    state.snapshot = await window.MemberSystem.request(
-      state.config,
-      'points',
-      state.idToken,
-      'user.pointcard.bootstrap',
-      { compact: false }
-    );
+  function renderSnapshot(snapshot) {
+    if (!state.initialized) {
+      const error = new Error('票券總覽尚未初始化。');
+      error.code = 'TICKET_OVERVIEW_NOT_INITIALIZED';
+      throw error;
+    }
+    state.snapshot = snapshot && typeof snapshot === 'object' ? snapshot : { cards: [], cardDetails: {} };
     render();
   }
 
-  function bindStableRefresh() {
-    const refreshButton = document.getElementById('refreshButton');
-    if (refreshButton && !refreshButton.dataset.ticketOverviewBound) {
-      refreshButton.dataset.ticketOverviewBound = 'true';
-      refreshButton.addEventListener('click', () => {
-        window.setTimeout(async () => {
-          try {
-            const setting = await extensionRequest('member.settings.get');
-            state.maxTicketsPerRedemption = normalizeLimit(setting.maxTicketsPerRedemption);
-            await refreshSnapshot();
-          } catch (_) {}
-        }, 700);
-      });
-    }
-
-    const cardTabs = document.getElementById('cardTabs');
-    if (cardTabs && !cardTabs.dataset.ticketOverviewBound) {
-      cardTabs.dataset.ticketOverviewBound = 'true';
-      cardTabs.addEventListener('click', () => {
-        window.setTimeout(() => {
-          const all = allOffers();
-          updateSummary(all.length, all.filter((offer) => offer.baseCanUse).length);
-        }, 0);
-      });
-    }
-  }
-
-  async function boot() {
-    ensureUi();
-    try {
-      await waitForLogin();
-      const setting = await extensionRequest('member.settings.get');
-      state.maxTicketsPerRedemption = normalizeLimit(setting.maxTicketsPerRedemption);
-      await refreshSnapshot();
-      bindStableRefresh();
-    } catch (error) {
-      ensureUi();
-      overviewError(error && error.message || '票券總覽暫時無法載入。');
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot, { once: true });
-  } else {
-    boot();
-  }
+  window.PointCardTicketOverview = Object.freeze({ initialize, renderSnapshot });
 })();
