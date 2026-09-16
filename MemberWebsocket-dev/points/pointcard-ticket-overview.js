@@ -1,12 +1,13 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', snapshot: null, selected: new Set(), busy: false };
+  const state = { config: null, idToken: '', snapshot: null, selected: new Set(), busy: false, renderScheduled: false };
   let root = null;
   let selectionText = null;
   let selectionHint = null;
   let useButton = null;
   let groups = null;
+  let observer = null;
 
   function extensionUrl() {
     return `${String(state.config && state.config.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/pointcard-extension-api`;
@@ -35,26 +36,32 @@
     return data.data || {};
   }
 
-  function buildUi() {
-    const panel = document.querySelector('.tickets-panel');
-    const originalList = document.getElementById('ticketList');
-    const originalEmpty = document.getElementById('ticketEmpty');
-    const originalSummary = document.getElementById('ticketSummary');
-    if (!panel || root) return;
-    if (originalList) originalList.hidden = true;
-    if (originalEmpty) originalEmpty.hidden = true;
-    if (originalSummary) originalSummary.hidden = true;
+  function ensureUi() {
+    const ticketList = document.getElementById('ticketList');
+    const ticketEmpty = document.getElementById('ticketEmpty');
+    if (!ticketList) return false;
+    root = ticketList;
+    if (ticketEmpty) ticketEmpty.classList.add('hidden');
+    if (root.querySelector('[data-all-ticket-overview]')) {
+      selectionText = root.querySelector('[data-ticket-selection]');
+      selectionHint = root.querySelector('[data-ticket-selection-hint]');
+      useButton = root.querySelector('.ticket-overview-use');
+      groups = root.querySelector('.ticket-overview-groups');
+      return true;
+    }
 
-    root = document.createElement('div');
-    root.className = 'ticket-overview-extension';
-    root.innerHTML = '<div class="ticket-overview-toolbar"><div class="ticket-overview-selection"><strong data-ticket-selection>尚未選擇票券</strong><small data-ticket-selection-hint>可直接查看並選擇所有集點卡的票券，不需要切換集點卡。</small></div><button class="ticket-overview-use" type="button" disabled>使用已選票券</button></div><div class="ticket-overview-error" data-ticket-error hidden></div><div class="ticket-overview-groups"></div>';
-    panel.append(root);
-    selectionText = root.querySelector('[data-ticket-selection]');
-    selectionHint = root.querySelector('[data-ticket-selection-hint]');
-    useButton = root.querySelector('.ticket-overview-use');
-    groups = root.querySelector('.ticket-overview-groups');
+    root.replaceChildren();
+    const overview = document.createElement('div');
+    overview.className = 'ticket-overview-extension';
+    overview.dataset.allTicketOverview = 'true';
+    overview.innerHTML = '<div class="ticket-overview-toolbar"><div class="ticket-overview-selection"><strong data-ticket-selection>尚未選擇票券</strong><small data-ticket-selection-hint>可直接在總覽勾選所有集點卡票券，不需要切換集點卡。</small></div><button class="ticket-overview-use" type="button" disabled>使用已選票券</button></div><div class="ticket-overview-error" data-ticket-error hidden></div><div class="ticket-overview-groups"></div>';
+    root.append(overview);
+    selectionText = overview.querySelector('[data-ticket-selection]');
+    selectionHint = overview.querySelector('[data-ticket-selection-hint]');
+    useButton = overview.querySelector('.ticket-overview-use');
+    groups = overview.querySelector('.ticket-overview-groups');
     useButton.addEventListener('click', openConfirmModal);
-    root.addEventListener('change', (event) => {
+    overview.addEventListener('change', (event) => {
       const input = event.target instanceof HTMLInputElement ? event.target.closest('[data-ticket-select]') : null;
       if (!input) return;
       const ticketId = String(input.dataset.ticketSelect || '');
@@ -62,6 +69,7 @@
       if (input.checked) state.selected.add(ticketId); else state.selected.delete(ticketId);
       updateSelection();
     });
+    return true;
   }
 
   function availableByCard(snapshot) {
@@ -81,15 +89,26 @@
     return parts.join('\n');
   }
 
+  function scheduleRender() {
+    if (state.renderScheduled || !state.snapshot) return;
+    state.renderScheduled = true;
+    window.setTimeout(() => {
+      state.renderScheduled = false;
+      render();
+    }, 0);
+  }
+
   function render() {
-    buildUi();
-    if (!groups || !state.snapshot) return;
+    if (!state.snapshot || !ensureUi() || !groups) return;
     const grouped = availableByCard(state.snapshot);
     const availableIds = new Set(grouped.flatMap((entry) => entry.tickets.map((ticket) => String(ticket.ticketId || ''))));
     state.selected = new Set([...state.selected].filter((id) => availableIds.has(id)));
     groups.replaceChildren();
 
     const total = grouped.reduce((sum, entry) => sum + entry.tickets.length, 0);
+    const ticketSummary = document.getElementById('ticketSummary');
+    if (ticketSummary) ticketSummary.textContent = total ? `共 ${total} 張可用票券・可跨集點卡勾選使用` : '目前沒有可使用的集點卡票券。';
+
     if (!total) {
       const empty = document.createElement('div');
       empty.className = 'ticket-empty';
@@ -188,7 +207,7 @@
     if (selectionHint) {
       selectionHint.textContent = count
         ? `預計扣點：${spendSummaryText(tickets)}`
-        : '可直接查看並選擇所有集點卡的票券，不需要切換集點卡。';
+        : '直接在此總覽勾選票券即可，不需要到其他區塊再次選擇。';
     }
     if (useButton) {
       useButton.disabled = state.busy || count === 0;
@@ -299,12 +318,30 @@
     render();
   }
 
+  function observeLegacyRenders() {
+    const ticketList = document.getElementById('ticketList');
+    if (!ticketList || observer) return;
+    observer = new MutationObserver(() => {
+      if (!ticketList.querySelector('[data-all-ticket-overview]')) scheduleRender();
+    });
+    observer.observe(ticketList, { childList: true });
+
+    const cardTabs = document.getElementById('cardTabs');
+    if (cardTabs) cardTabs.addEventListener('click', () => scheduleRender());
+    const refreshButton = document.getElementById('refreshButton');
+    if (refreshButton) refreshButton.addEventListener('click', () => {
+      window.setTimeout(() => refreshSnapshot().catch(() => {}), 700);
+    });
+    window.addEventListener('pagehide', () => { if (observer) observer.disconnect(); }, { once: true });
+  }
+
   async function boot() {
-    buildUi();
     try {
       await waitForLogin();
       await refreshSnapshot();
+      observeLegacyRenders();
     } catch (error) {
+      ensureUi();
       const box = root && root.querySelector('[data-ticket-error]');
       if (box) {
         box.hidden = false;
