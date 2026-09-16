@@ -33,6 +33,7 @@
   loadStyle('booking-summary.css', 'booking-summary-20260912-6');
   loadStyle('ui-polish.css', 'admin-ui-20260916-1');
   loadStyle('ui-polish-responsive.css', 'admin-ui-responsive-20260916-1');
+  loadStyle('ui-workflow-polish.css', 'admin-module-workflows-20260916-1');
 
   document.addEventListener('click', (event) => {
     if (!window.matchMedia('(max-width: 768px)').matches) return;
@@ -40,6 +41,49 @@
     if (!button) return;
     window.requestAnimationFrame(() => {
       try { button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); } catch (_) {}
+    });
+  });
+
+  const mobileEditorTriggers = [
+    '#newCardButton',
+    '#newTicketButton',
+    '#newEventTicketButton',
+    '#newCalendarItemButton',
+    '#cardListItems .card-list-item',
+    '#ticketListItems .card-list-item',
+    '#eventTicketListItems .card-list-item',
+    '#calendarItemListItems .card-list-item',
+  ].join(',');
+
+  const resolveMobileEditor = (trigger) => {
+    if (!trigger) return null;
+    if (trigger.matches('#newTicketButton') || trigger.closest('#ticketListItems')) {
+      return document.querySelector('#ticketSettingsPanel .editor');
+    }
+    if (trigger.matches('#newCardButton') || trigger.closest('#cardListItems')) {
+      return document.querySelector('#cardSettingsPanel .editor');
+    }
+    if (trigger.matches('#newEventTicketButton') || trigger.closest('#eventTicketListItems')) {
+      return document.querySelector('#eventsPanel .editor');
+    }
+    if (trigger.matches('#newCalendarItemButton') || trigger.closest('#calendarItemListItems')) {
+      return document.querySelector('#calendarPanel .editor');
+    }
+    return null;
+  };
+
+  document.addEventListener('click', (event) => {
+    if (!window.matchMedia('(max-width: 760px)').matches) return;
+    const trigger = event.target?.closest?.(mobileEditorTriggers);
+    if (!trigger) return;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const editor = resolveMobileEditor(trigger);
+        if (!editor || editor.classList.contains('hidden')) return;
+        const rect = editor.getBoundingClientRect();
+        if (rect.top >= 64 && rect.top <= window.innerHeight * .45) return;
+        try { editor.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+      });
     });
   });
 
