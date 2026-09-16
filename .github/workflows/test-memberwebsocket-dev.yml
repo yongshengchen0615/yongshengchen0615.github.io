@@ -21,10 +21,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Run application regression tests
+        run: node --test MemberWebsocket-dev/tests/*.test.js
       - name: Check browser JavaScript syntax
         run: |
           node --check MemberWebsocket-dev/realtime-resync.js
@@ -56,6 +58,7 @@ jobs:
           node --check MemberWebsocket-dev/booking/admin/cancellation-review.js
       - name: Check Edge Functions
         run: |
+          deno check MemberWebsocket-dev/supabase/functions/api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/grant-automation/index.ts
           deno check MemberWebsocket-dev/supabase/functions/event-ticket-links/index.ts
           deno check MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts
@@ -192,7 +195,7 @@ jobs:
           grep -q 'notify_booking_cancellation_realtime_change' MemberWebsocket-dev/supabase/migrations/20260911123000_booking_cancellation_realtime_sync.sql
           grep -q 'notify_booking_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
           grep -q 'realtime_booking_service_types_change' MemberWebsocket-dev/supabase/migrations/20260910233100_booking_service_type_realtime.sql
-          grep -q 'visibilitychange' MemberWebsocket-dev/realtime-resync.js
-          grep -q "addEventListener('online'" MemberWebsocket-dev/realtime-resync.js
+          grep -q 'visibilitychange' MemberWebsocket-dev/member/common.js
+          grep -q "addEventListener('online'" MemberWebsocket-dev/member/common.js
           grep -q 'notify_admin_config_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
           grep -q 'notify_admin_grant_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql

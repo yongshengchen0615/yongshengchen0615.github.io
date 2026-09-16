@@ -231,13 +231,43 @@
 
     let disposed = false;
     let timer;
-    const schedule = () => {
-      if (disposed || timer !== undefined) return;
-      timer = window.setTimeout(() => {
-        timer = undefined;
-        if (!disposed) Promise.resolve(onUpdate()).catch(() => {});
-      }, 650);
+    let pending = false;
+    let queued = false;
+    let lastRefreshAt = -Infinity;
+    let subscribedOnce = false;
+    const isPaused = () => document.visibilityState === 'hidden'
+      || (typeof navigator !== 'undefined' && navigator.onLine === false);
+
+    // Realtime, reconnect and page-resume signals share one refresh queue.
+    // Preserve one trailing refresh when data changes during an active request.
+    const schedule = (delayMs = 650) => {
+      if (disposed) return;
+      queued = true;
+      if (pending || timer !== undefined || isPaused()) return;
+      const waitMs = Math.max(delayMs, 1500 - (Date.now() - lastRefreshAt));
+      timer = window.setTimeout(runRefresh, waitMs);
     };
+    const runRefresh = () => {
+      timer = undefined;
+      if (disposed || isPaused() || pending) return;
+      queued = false;
+      pending = true;
+      lastRefreshAt = Date.now();
+      Promise.resolve().then(() => {
+        if (!disposed) return onUpdate();
+      }).catch(() => {}).finally(() => {
+        pending = false;
+        if (queued && !disposed) schedule(0);
+      });
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') schedule(0);
+    };
+    const onPageShow = () => schedule(0);
+    const onOnline = () => schedule(0);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('online', onOnline);
 
     const channel = client
       .channel(`member-system-${clientType}`)
@@ -246,12 +276,20 @@
         const scope = String(row.scope || '');
         if (scope === 'all' || scope === clientType) schedule();
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status !== 'SUBSCRIBED') return;
+        if (subscribedOnce) schedule(0);
+        else subscribedOnce = true;
+      });
 
     const unsubscribe = () => {
       if (disposed) return;
       disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
+      queued = false;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('online', onOnline);
       realtimeSubscriptions.delete(clientType);
       try { Promise.resolve(client.removeChannel(channel)).catch(() => {}); } catch (_) {}
     };

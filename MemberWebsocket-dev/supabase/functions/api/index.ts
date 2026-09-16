@@ -347,8 +347,10 @@ function profileFrom(member: any, settings: any[], serviceMinutesTotal: number):
 }
 
 async function profileFor(supabase: SupabaseClient, member: any): Promise<Json> {
-  const settings = await tierSettings(supabase);
-  const totals = await serviceMinutesForMembers(supabase,[member.id]);
+  const [settings,totals] = await Promise.all([
+    tierSettings(supabase),
+    serviceMinutesForMembers(supabase,[member.id]),
+  ]);
   return profileFrom(member,settings,totals.get(member.id) || 0);
 }
 
@@ -378,17 +380,19 @@ async function authorizeAdmin(supabase: SupabaseClient, identity: { lineUserId: 
   return admin;
 }
 
-async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, query = ""): Promise<{ members: any[]; memberPage: Json }> {
+async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, query = "", sharedSettings?: Promise<any[]>): Promise<{ members: any[]; memberPage: Json }> {
   const safePageSize = Math.max(1,Math.min(100,Math.floor(Number(pageSize) || 100)));
   const safePage = Math.max(1,Math.floor(Number(page) || 1));
   const normalizedQuery = asText(query,100).toLowerCase();
   let q = supabase.from("members").select("*",{ count:"exact" });
   if (normalizedQuery) q = q.or(`display_name.ilike.%${normalizedQuery.replaceAll(",","")}%,member_code.ilike.%${normalizedQuery.replaceAll(",","")}%`);
   const start = (safePage - 1) * safePageSize;
-  const { data, count, error } = await q.order("created_at",{ ascending:false }).range(start,start + safePageSize - 1);
+  const [{ data, count, error },settings] = await Promise.all([
+    q.order("created_at",{ ascending:false }).range(start,start + safePageSize - 1),
+    sharedSettings || tierSettings(supabase),
+  ]);
   if (error) throw mapDatabaseError(error);
   const rows = data || [];
-  const settings = await tierSettings(supabase);
   const totals = await serviceMinutesForMembers(supabase,rows.map((row) => row.id));
   const members = rows.map((member) => {
     const minutes = totals.get(member.id) || 0;
@@ -513,10 +517,14 @@ function pointTicketClient(row: any, cardId = ""): Json {
 }
 
 async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const profile = await profileFor(supabase,member);
-  const { cards: adminCardRows } = await adminCards(supabase);
+  const [profile,{ cards: adminCardRows }] = await Promise.all([
+    profileFor(supabase,member),
+    adminCards(supabase),
+  ]);
   const activeCards = adminCardRows.filter((card:any) => card.status === "active");
-  const rawCards = await supabase.from("point_cards").select("id,card_id").in("card_id",activeCards.map((card:any) => card.cardId));
+  const rawCards = activeCards.length
+    ? await supabase.from("point_cards").select("id,card_id").in("card_id",activeCards.map((card:any) => card.cardId))
+    : { data:[], error:null };
   if (rawCards.error) throw mapDatabaseError(rawCards.error);
   const idByCard = new Map((rawCards.data || []).map((row:any) => [row.card_id,row.id]));
   for (const card of activeCards) {
@@ -525,16 +533,15 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   }
 
   const pointCardIds = [...idByCard.values()];
-  const balancesRes = pointCardIds.length
-    ? await supabase.from("point_balances").select("*").eq("member_id",member.id).in("point_card_id",pointCardIds)
-    : { data:[], error:null };
+  const [balancesRes,ticketsRes] = pointCardIds.length
+    ? await Promise.all([
+      supabase.from("point_balances").select("*").eq("member_id",member.id).in("point_card_id",pointCardIds),
+      supabase.from("point_tickets").select("*").eq("member_id",member.id).in("point_card_id",pointCardIds).order("created_at",{ ascending:false }),
+    ])
+    : [{ data:[], error:null },{ data:[], error:null }];
   if (balancesRes.error) throw mapDatabaseError(balancesRes.error);
-  const balanceById = new Map((balancesRes.data || []).map((row:any) => [row.point_card_id,row]));
-
-  const ticketsRes = pointCardIds.length
-    ? await supabase.from("point_tickets").select("*").eq("member_id",member.id).in("point_card_id",pointCardIds).order("created_at",{ ascending:false })
-    : { data:[], error:null };
   if (ticketsRes.error) throw mapDatabaseError(ticketsRes.error);
+  const balanceById = new Map((balancesRes.data || []).map((row:any) => [row.point_card_id,row]));
   const availableTickets = (ticketsRes.data || []).filter((row:any) => row.status === "available");
   const usedTickets = (ticketsRes.data || []).filter((row:any) => row.status === "used");
   const cardIdByUuid = new Map((rawCards.data || []).map((row:any) => [row.id,row.card_id]));
@@ -553,7 +560,8 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   const cardDetails: Json = {};
   for (const card of cards) cardDetails[card.cardId] = { card, tickets: ticketByCard.get(card.cardId) || [] };
 
-  const cardTitleByUuid = new Map((rawCards.data || []).map((row:any) => [row.id,activeCards.find((card:any) => card.cardId === row.card_id)?.title || "集點卡"]));
+  const titleByCardId = new Map(activeCards.map((card:any) => [card.cardId,card.title]));
+  const cardTitleByUuid = new Map((rawCards.data || []).map((row:any) => [row.id,titleByCardId.get(row.card_id) || "集點卡"]));
   const history = usedTickets.map((row:any) => ({
     activityId: "point-ticket:" + row.ticket_id,
     referenceId: row.ticket_id,
@@ -621,24 +629,26 @@ async function adminEventTickets(supabase: SupabaseClient): Promise<any[]> {
 }
 
 async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const profile = await profileFor(supabase,member);
-  const { data: eventRows, error } = await supabase.from("event_tickets").select("*").eq("status","active").is("deleted_at",null).order("created_at",{ ascending:false });
+  const [profile,{ data: eventRows, error },allHistoryRes] = await Promise.all([
+    profileFor(supabase,member),
+    supabase.from("event_tickets").select("*").eq("status","active").is("deleted_at",null).order("created_at",{ ascending:false }),
+    supabase.from("event_ticket_claims").select("*,event_tickets(*)").eq("member_id",member.id).eq("status","used").order("used_at",{ ascending:false }),
+  ]);
   if (error) throw mapDatabaseError(error);
   const ids = (eventRows || []).map((row:any) => row.id);
-  const claimsRes = ids.length
-    ? await supabase.from("event_ticket_claims").select("*").eq("member_id",member.id).in("event_ticket_id",ids).order("created_at",{ ascending:false })
-    : { data:[], error:null };
-  if (claimsRes.error) throw mapDatabaseError(claimsRes.error);
-  const allHistoryRes = await supabase.from("event_ticket_claims").select("*,event_tickets(*)").eq("member_id",member.id).eq("status","used").order("used_at",{ ascending:false });
   if (allHistoryRes.error) throw mapDatabaseError(allHistoryRes.error);
+  const [claimsRes,countRes] = ids.length
+    ? await Promise.all([
+      supabase.from("event_ticket_claims").select("*").eq("member_id",member.id).in("event_ticket_id",ids).order("created_at",{ ascending:false }),
+      supabase.from("event_ticket_claims").select("event_ticket_id").in("event_ticket_id",ids),
+    ])
+    : [{ data:[], error:null },{ data:[], error:null }];
+  if (claimsRes.error) throw mapDatabaseError(claimsRes.error);
+  if (countRes.error) throw mapDatabaseError(countRes.error);
 
   const claimByEvent = new Map((claimsRes.data || []).map((row:any) => [row.event_ticket_id,row]));
   const counts = new Map<string,number>();
-  if (ids.length) {
-    const countRes = await supabase.from("event_ticket_claims").select("event_ticket_id").in("event_ticket_id",ids);
-    if (countRes.error) throw mapDatabaseError(countRes.error);
-    for (const row of countRes.data || []) counts.set(row.event_ticket_id,(counts.get(row.event_ticket_id)||0)+1);
-  }
+  for (const row of countRes.data || []) counts.set(row.event_ticket_id,(counts.get(row.event_ticket_id)||0)+1);
   const today = taipeiDate();
   const offers = (eventRows || []).map((row:any) => {
     const ticket = eventTicketClient(row,counts.get(row.id)||0) as any;
@@ -1210,8 +1220,10 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
 
   if (action.startsWith("user.calendar.")) {
     const member = await requireJoinedMember(supabase,identity);
-    const profile = await profileFor(supabase,member);
-    const items = await calendarItems(supabase,true);
+    const [profile,items] = await Promise.all([
+      profileFor(supabase,member),
+      calendarItems(supabase,true),
+    ]);
     if (action === "user.calendar.bootstrap") return { profile,items };
     const date = asText(body.date,20);
     return { profile,items:items.filter((item:any) => item.startsOn <= date && (item.endsOn || item.startsOn) >= date) };
@@ -1221,9 +1233,11 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   const admin = await authorizeAdmin(supabase,identity);
 
   if (action === "admin.bootstrap") {
+    // Share only within this authorized request; never cache member data globally.
+    const settings = tierSettings(supabase);
     const [members,tierRows,cardData,eventTickets,calendar,stats,messagePresets] = await Promise.all([
-      membersPage(supabase,1,100,""),
-      tierSettings(supabase),
+      membersPage(supabase,1,100,"",settings),
+      settings,
       adminCards(supabase),
       adminEventTickets(supabase),
       calendarItems(supabase,false),
