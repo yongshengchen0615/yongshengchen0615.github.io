@@ -71,4 +71,13 @@
   }
 
   window.MembershipProgress = Object.freeze({ render });
+
+  const style = document.createElement('link');
+  style.rel = 'stylesheet';
+  style.href = './pointcard-ticket-overview.css?v=20260916-1';
+  document.head.append(style);
+  const script = document.createElement('script');
+  script.src = './pointcard-ticket-overview.js?v=20260916-1';
+  script.defer = true;
+  document.head.append(script);
 })();
