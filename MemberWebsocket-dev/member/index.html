@@ -15,7 +15,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="./common.js?v=performance-20260916-1" defer></script>
-  <script src="./profile-extension.js?v=profile-modal-edit-20260912-4" defer></script>
+  <script src="./profile-extension.js?v=profile-birthday-edit-20260916-1" defer></script>
   <script src="../realtime-resync.js?v=performance-20260916-1" defer></script>
   <script src="./membership-progress.js?v=member-tier-style-20260908" defer></script>
   <script src="./app.js?v=supabase-native-20260910" defer></script>
@@ -152,7 +152,13 @@
               <button id="editHonorificButton" class="profile-inline-edit-button" type="button" aria-haspopup="dialog" aria-controls="honorificEditModal">修改</button>
             </dd>
           </div>
-          <div><dt>生日</dt><dd id="memberBirthday">—</dd></div>
+          <div class="profile-editable-row">
+            <dt>生日</dt>
+            <dd class="profile-value-line">
+              <span id="memberBirthday">—</span>
+              <button id="editBirthdayButton" class="profile-inline-edit-button" type="button" aria-haspopup="dialog" aria-controls="birthdayEditModal">修改</button>
+            </dd>
+          </div>
           <div class="profile-editable-row">
             <dt>電話</dt>
             <dd class="profile-value-line">
@@ -193,6 +199,29 @@
         </section>
       </div>
 
+      <div id="birthdayEditModal" class="profile-edit-modal hidden" role="dialog" aria-modal="true" aria-labelledby="birthdayEditTitle">
+        <section class="profile-edit-modal-card" tabindex="-1">
+          <div class="profile-edit-modal-heading">
+            <div>
+              <p class="kicker">Birthday</p>
+              <h2 id="birthdayEditTitle">修改生日</h2>
+              <p>請選擇正確的出生年月日，生日不可晚於今天。</p>
+            </div>
+            <button id="closeBirthdayEditButton" class="profile-edit-modal-close" type="button" aria-label="關閉修改生日視窗">×</button>
+          </div>
+          <div class="profile-edit-modal-fields">
+            <label for="birthdayEditInput">生日
+              <input id="birthdayEditInput" type="date" autocomplete="bday" min="1900-01-01">
+            </label>
+          </div>
+          <p id="birthdayEditMessage" class="profile-modal-message hidden" role="alert"></p>
+          <div class="profile-edit-modal-actions">
+            <button id="cancelBirthdayEditButton" class="button button-refresh" type="button">取消</button>
+            <button id="saveBirthdayEditButton" class="button button-dark" type="button">儲存</button>
+          </div>
+        </section>
+      </div>
+
       <div id="phoneEditModal" class="profile-edit-modal hidden" role="dialog" aria-modal="true" aria-labelledby="phoneEditTitle">
         <section class="profile-edit-modal-card" tabindex="-1">
           <div class="profile-edit-modal-heading">
@@ -219,4 +248,3 @@
   </div>
 </body>
 </html>
-
