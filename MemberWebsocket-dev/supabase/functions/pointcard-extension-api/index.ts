@@ -73,18 +73,31 @@ async function requireAdmin(supabase: ReturnType<typeof db>, lineUserId: string)
   if (result.error) throw new ApiError(503, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
   if (!result.data || result.data.role !== "admin" || result.data.status !== "active") throw new ApiError(403, "ADMIN_REQUIRED", "管理端帳號尚未授權。");
 }
+async function globalSetting(supabase: ReturnType<typeof db>) {
+  const result = await supabase.from("point_card_settings").select("max_tickets_per_redemption,updated_at").eq("id", 1).maybeSingle();
+  if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取集點卡設定。");
+  const maxTicketsPerRedemption = Number(result.data?.max_tickets_per_redemption || 1);
+  return { maxTicketsPerRedemption, updatedAt: String(result.data?.updated_at || "") };
+}
 function mapRpcError(error: unknown): ApiError {
   const message = String((error as { message?: string })?.message || "");
   if (message.includes("MEMBERSHIP_REQUIRED")) return new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入後再使用此功能。");
   if (message.includes("TICKET_NOT_FOUND")) return new ApiError(404, "TICKET_NOT_FOUND", "找不到其中一張票券。");
   if (message.includes("TICKET_NOT_AVAILABLE")) return new ApiError(409, "TICKET_NOT_AVAILABLE", "其中一張票券目前已無法使用，請更新後再試。");
-  if (message.includes("TICKET_BATCH_LIMIT_EXCEEDED")) return new ApiError(409, "TICKET_BATCH_LIMIT_EXCEEDED", "選取票券數超過該集點卡設定的單次使用上限。");
-  if (message.includes("INSUFFICIENT_POINTS")) return new ApiError(409, "INSUFFICIENT_POINTS", "選取票券所需點數超過目前可用點數。");
+  if (message.includes("TICKET_BATCH_LIMIT_EXCEEDED")) return new ApiError(409, "TICKET_BATCH_LIMIT_EXCEEDED", "選取票券數超過集點卡設定的單次總票券使用上限。");
+  if (message.includes("INSUFFICIENT_POINTS")) return new ApiError(409, "INSUFFICIENT_POINTS", "選取票券所需點數超過對應集點卡目前可用點數。");
   if (message.includes("POINT_CARD_EXPIRED")) return new ApiError(409, "POINT_CARD_EXPIRED", "其中一張集點卡已超過使用期限。");
   if (message.includes("POINT_CARD_NOT_AVAILABLE")) return new ApiError(409, "POINT_CARD_NOT_AVAILABLE", "其中一張集點卡目前無法使用。");
   if (message.includes("INVALID_TICKET_BATCH")) return new ApiError(400, "INVALID_TICKET_BATCH", "請選擇 1–50 張不同的票券。");
   if (message.includes("INVALID_REQUEST_ID")) return new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
   return new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
+}
+
+async function memberSetting(origin: string | null, body: Json) {
+  const identity = await verifyLineIdToken(asText(body.idToken, 10000), "points");
+  const supabase = db();
+  await consumeRateLimit(supabase, identity.lineUserId, false, 1);
+  return json(origin, { ok: true, status: 200, data: await globalSetting(supabase) });
 }
 
 async function redeemTickets(origin: string | null, body: Json) {
@@ -96,6 +109,10 @@ async function redeemTickets(origin: string | null, body: Json) {
   const requestId = asText(body.requestId, 120);
   if (!/^[A-Za-z0-9_-]{8,120}$/.test(requestId)) throw new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
   const supabase = db();
+  const setting = await globalSetting(supabase);
+  if (ticketIds.length > setting.maxTicketsPerRedemption) {
+    throw new ApiError(409, "TICKET_BATCH_LIMIT_EXCEEDED", `單次最多可使用 ${setting.maxTicketsPerRedemption} 張票券。`);
+  }
   await consumeRateLimit(supabase, identity.lineUserId, true, ticketIds.length);
   const rpc = await supabase.rpc("redeem_point_tickets", { p_line_user_id: identity.lineUserId, p_ticket_ids: ticketIds, p_request_id: requestId });
   if (rpc.error) throw mapRpcError(rpc.error);
@@ -109,6 +126,7 @@ async function redeemTickets(origin: string | null, body: Json) {
   return json(origin, { ok: true, status: 200, data: {
     requestId, alreadyApplied: Boolean((rpc.data as Json)?.alreadyApplied),
     ticketCount: Number((rpc.data as Json)?.ticketCount || ticketIds.length),
+    maxTicketsPerRedemption: setting.maxTicketsPerRedemption,
     pointsByCard: (rpc.data as Json)?.pointsByCard || {},
     tickets: (used.data || []).map((row: any) => ({
       ticketId: row.ticket_id, ticketType: row.ticket_type, ticketTitle: row.ticket_title,
@@ -118,16 +136,47 @@ async function redeemTickets(origin: string | null, body: Json) {
   } });
 }
 
-async function listLimits(origin: string | null, body: Json) {
+async function adminSetting(origin: string | null, body: Json) {
   const identity = await verifyLineIdToken(asText(body.idToken, 10000), "admin");
   const supabase = db();
   await consumeRateLimit(supabase, identity.lineUserId, false, 1);
   await requireAdmin(supabase, identity.lineUserId);
-  const result = await supabase.from("point_cards").select("card_id,max_tickets_per_redemption,updated_at");
-  if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取集點卡使用上限。");
-  return json(origin, { ok: true, status: 200, data: { limits: (result.data || []).map((row: any) => ({
-    cardId: row.card_id, maxTicketsPerRedemption: Number(row.max_tickets_per_redemption || 1), updatedAt: row.updated_at,
-  })) } });
+  return json(origin, { ok: true, status: 200, data: await globalSetting(supabase) });
+}
+
+async function saveAdminSetting(origin: string | null, body: Json) {
+  const identity = await verifyLineIdToken(asText(body.idToken, 10000), "admin");
+  const supabase = db();
+  await consumeRateLimit(supabase, identity.lineUserId, true, 1);
+  await requireAdmin(supabase, identity.lineUserId);
+  const maxTickets = Number(body.maxTicketsPerRedemption);
+  if (!Number.isInteger(maxTickets) || maxTickets < 1 || maxTickets > 50) {
+    throw new ApiError(400, "INVALID_TICKET_USE_LIMIT", "單次最多使用票券數必須是 1–50 的整數。");
+  }
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 100);
+  let query = supabase.from("point_card_settings").update({
+    max_tickets_per_redemption: maxTickets,
+    updated_by: identity.lineUserId,
+    updated_at: new Date().toISOString(),
+  }).eq("id", 1);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const saved = await query.select("max_tickets_per_redemption,updated_at").maybeSingle();
+  if (saved.error) throw new ApiError(500, "DATABASE_ERROR", "無法儲存集點卡設定。");
+  if (!saved.data) throw new ApiError(409, "CONFLICT", "集點卡設定已被其他管理者更新，請重新整理後再試。");
+  await supabase.from("audit_logs").insert({
+    audit_id: `AUD-${crypto.randomUUID().replaceAll("-", "")}`,
+    actor_line_user_id: identity.lineUserId,
+    actor_role: "admin",
+    action: "admin.pointcard.settings.save",
+    target_type: "point_card_settings",
+    target_id: "global",
+    result: "success",
+    detail: { maxTicketsPerRedemption: maxTickets },
+  });
+  return json(origin, { ok: true, status: 200, data: {
+    maxTicketsPerRedemption: Number(saved.data.max_tickets_per_redemption || 1),
+    updatedAt: String(saved.data.updated_at || ""),
+  } });
 }
 
 Deno.serve(async (request) => {
@@ -142,8 +191,10 @@ Deno.serve(async (request) => {
     try { body = JSON.parse(raw); } catch { throw new ApiError(400, "INVALID_JSON", "Request body 必須是 JSON。"); }
     if (!body || Array.isArray(body) || typeof body !== "object") throw new ApiError(400, "INVALID_REQUEST", "Request body 格式不合法。");
     const operation = asText(body.operation, 60);
+    if (operation === "member.settings.get") return await memberSetting(origin, body);
     if (operation === "member.redeem") return await redeemTickets(origin, body);
-    if (operation === "admin.limits.list") return await listLimits(origin, body);
+    if (operation === "admin.settings.get") return await adminSetting(origin, body);
+    if (operation === "admin.settings.save") return await saveAdminSetting(origin, body);
     throw new ApiError(404, "OPERATION_NOT_FOUND", "不支援的操作。");
   } catch (error) {
     const apiError = error instanceof ApiError ? error : new ApiError(500, "INTERNAL_ERROR", "服務暫時無法完成操作。");
