@@ -1,20 +1,45 @@
-/* Keep the original point-ticket card look. The extension only replaces the old action button with checkbox selection. */
-#ticketList > .member-ticket{display:none!important}
-.ticket-overview-extension{grid-column:1/-1;width:100%;min-width:0;display:grid;gap:18px}
-.member-ticket-list:has(.ticket-overview-extension){grid-template-columns:minmax(0,1fr)}
-.tickets-panel:has([data-all-ticket-overview])>#ticketEmpty{display:none!important}
+/* The legacy renderer owns #ticketList. Keep it out of layout completely and render the selectable overview in a separate stable host. */
+html.pointcard-overview-enabled #ticketList,
+html.pointcard-overview-enabled #ticketEmpty{display:none!important}
+
+.ticket-overview-host{display:block;width:100%;min-width:0}
+.ticket-overview-extension{display:grid;gap:18px;width:100%;min-width:0}
 .ticket-overview-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;border:1px solid rgba(40,32,22,.11);border-radius:15px;background:rgba(255,255,255,.58)}
-.ticket-overview-selection{display:grid;gap:3px;min-width:0}.ticket-overview-selection strong{font-size:13px;color:var(--ink)}.ticket-overview-selection small{color:var(--muted);font-size:11px;line-height:1.55;overflow-wrap:anywhere}
+.ticket-overview-selection{display:grid;gap:3px;min-width:0}.ticket-overview-selection strong{color:var(--ink);font-size:13px}.ticket-overview-selection small{color:var(--muted);font-size:11px;line-height:1.55;overflow-wrap:anywhere}
 .ticket-overview-use{border:0;border-radius:999px;padding:9px 13px;color:var(--paper);background:var(--orange);font:inherit;font-size:11px;font-weight:850;cursor:pointer}.ticket-overview-use:hover{filter:brightness(.96)}.ticket-overview-use:disabled{cursor:not-allowed;opacity:.42}
-.ticket-overview-groups{display:grid;gap:18px;min-width:0}.ticket-overview-group{display:grid;gap:10px;min-width:0}.ticket-overview-group-heading{display:flex;justify-content:space-between;gap:12px;align-items:flex-end}.ticket-overview-group-heading h3{margin:0;color:var(--ink);font-size:14px;letter-spacing:-.03em}.ticket-overview-group-heading small{color:var(--muted);font-size:10px;text-align:right}
-/* Match the legacy .member-ticket card exactly, with the checkbox taking the old action-button position. */
-.ticket-overview-item{position:relative;display:grid;align-content:start;gap:8px;min-width:0;padding:17px 54px 17px 17px;background:rgba(255,255,255,.72);border:1px solid rgba(40,32,22,.11);border-radius:15px;cursor:pointer;transition:border-color .18s ease,box-shadow .18s ease,opacity .18s ease}
-.ticket-overview-item:not(.is-disabled){border-color:rgba(228,120,69,.45);box-shadow:0 8px 22px rgba(228,120,69,.08)}
-.ticket-overview-item.is-disabled{cursor:not-allowed;background:rgba(255,255,255,.48)}
-.ticket-overview-content{min-width:0;display:grid;align-content:start;gap:8px}.ticket-overview-title-row{display:grid;gap:8px;min-width:0}.ticket-overview-title-row strong{order:2;margin:1px 0 0;color:var(--ink);font-size:16px;letter-spacing:-.04em;overflow-wrap:anywhere}.ticket-overview-badge{order:1;width:fit-content;border-radius:999px;padding:4px 7px;color:#995330;background:#fff0d3;font-size:10px;font-weight:900}.ticket-overview-item.is-disabled .ticket-overview-badge{color:#71685f;background:#ece7df}
-.ticket-overview-content p{margin:0;color:var(--muted);font-size:12px;line-height:1.55;white-space:pre-line;overflow-wrap:anywhere}.ticket-overview-meta{color:#5a5046;font-size:11px;font-weight:700;line-height:1.55;overflow-wrap:anywhere}.ticket-overview-status{margin-top:5px;color:var(--muted);font-size:10px;line-height:1.45;overflow-wrap:anywhere}.ticket-overview-status.is-ready,.ticket-overview-status.is-selected{color:#995330;font-weight:800}.ticket-overview-status.is-shortage{color:var(--muted)}.ticket-overview-status.is-limited{color:#725b28;font-weight:800}
-.ticket-overview-check{position:absolute;right:17px;bottom:17px;width:22px;height:22px;margin:0;accent-color:var(--orange);cursor:pointer}.ticket-overview-check:disabled{cursor:not-allowed;opacity:.5}
 .ticket-overview-error{padding:10px 12px;border-radius:10px;color:#a33f35;background:#fff0ec;font-size:12px;line-height:1.55}
-.ticket-batch-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:18px;background:rgba(40,32,22,.47);backdrop-filter:blur(5px)}.ticket-batch-modal.hidden{display:none}.ticket-batch-card{width:min(100%,420px);max-height:min(82vh,720px);overflow:auto;padding:23px;background:var(--paper);border-radius:22px;box-shadow:0 28px 70px rgba(40,32,22,.25)}.ticket-batch-card h2{margin:0 0 8px;color:var(--ink);font-size:27px;letter-spacing:-.08em}.ticket-batch-card p{color:var(--muted);font-size:12px;line-height:1.6;white-space:pre-line}.ticket-batch-list{display:grid;gap:8px;margin:16px 0}.ticket-batch-line{padding:10px 12px;border-radius:12px;background:#f6f0e8;color:var(--ink);font-size:12px;line-height:1.55}.ticket-batch-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap}.ticket-batch-actions button{border-radius:999px;padding:9px 13px;font:inherit;font-size:11px;font-weight:850;cursor:pointer}.ticket-batch-cancel{border:1px solid rgba(40,32,22,.18);color:var(--ink);background:transparent}.ticket-batch-confirm{border:0;color:var(--paper);background:var(--orange)}.ticket-batch-confirm:disabled{opacity:.5;cursor:not-allowed}
-@media(max-width:640px){.ticket-overview-toolbar{align-items:stretch}.ticket-overview-use{width:100%}.ticket-overview-group-heading{align-items:flex-start;flex-direction:column}.ticket-overview-group-heading small{text-align:left}.ticket-batch-card{padding:20px}.ticket-batch-actions{display:grid}.ticket-batch-actions button{width:100%}}
-@media(max-width:420px){.ticket-overview-item{padding:15px 50px 15px 15px}.ticket-overview-check{right:15px;bottom:15px}.ticket-batch-modal{padding:10px;align-items:end}.ticket-batch-card{width:100%;border-radius:20px 20px 0 0}}
+
+.ticket-overview-groups{display:grid;gap:18px;min-width:0}
+.ticket-overview-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+.ticket-overview-group-heading{grid-column:1/-1;display:flex;align-items:end;justify-content:space-between;gap:12px}
+.ticket-overview-group-heading h3{margin:0;color:var(--ink);font-size:14px;letter-spacing:-.03em}
+.ticket-overview-group-heading small{color:var(--muted);font-size:10px;text-align:right}
+
+/* Reuse the original .member-ticket visual language. Only selection controls are new. */
+.ticket-overview-group .member-ticket{height:100%}
+.ticket-overview-group .member-ticket.is-selected{border-color:rgba(228,120,69,.72);box-shadow:0 8px 22px rgba(228,120,69,.14)}
+.ticket-overview-meta{color:var(--muted)!important;font-size:11px!important;line-height:1.55!important}
+.ticket-checkbox-action{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;border-radius:999px;padding:7px 10px;color:var(--ink);background:#fff6e6;border:1px solid rgba(228,120,69,.28);font-size:10px;font-weight:850;cursor:pointer}
+.ticket-checkbox-action input{width:16px;height:16px;margin:0;accent-color:var(--orange);cursor:pointer}
+.ticket-checkbox-action:has(input:disabled){cursor:not-allowed;opacity:.5;background:#f0ece6;border-color:rgba(40,32,22,.12)}
+.ticket-checkbox-action:has(input:disabled) input{cursor:not-allowed}
+.member-ticket.locked .ticket-checkbox-action{color:var(--muted);background:#ece7df;border-color:rgba(40,32,22,.1)}
+.member-ticket.is-selected .ticket-checkbox-action{color:var(--paper);background:var(--orange);border-color:var(--orange)}
+
+.ticket-batch-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:18px;background:rgba(40,32,22,.47);backdrop-filter:blur(5px)}
+.ticket-batch-modal.hidden{display:none}
+.ticket-batch-card{width:min(560px,100%);max-height:min(82vh,720px);overflow:auto;border-radius:22px;background:var(--paper);padding:22px;box-shadow:0 28px 70px rgba(40,32,22,.25)}
+.ticket-batch-card h2{margin:0 0 8px;color:var(--ink)}.ticket-batch-card p{white-space:pre-line;color:var(--muted);line-height:1.6}
+.ticket-batch-list{display:grid;gap:8px;margin:16px 0}.ticket-batch-line{padding:10px 12px;border-radius:12px;background:#f6f0e8;color:var(--ink);font-size:12px;line-height:1.55}
+.ticket-batch-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap}.ticket-batch-actions button{border-radius:999px;padding:10px 16px;font:inherit;font-weight:800;cursor:pointer}.ticket-batch-cancel{border:1px solid rgba(40,32,22,.18);background:transparent;color:var(--ink)}.ticket-batch-confirm{border:0;background:var(--orange);color:var(--paper)}.ticket-batch-confirm:disabled{opacity:.5;cursor:not-allowed}
+
+@media(max-width:620px){
+  .ticket-overview-toolbar{align-items:stretch}
+  .ticket-overview-use{width:100%}
+  .ticket-overview-group{grid-template-columns:1fr}
+  .ticket-overview-group-heading{align-items:start;flex-direction:column}
+  .ticket-overview-group-heading small{text-align:left}
+  .ticket-batch-card{padding:18px}
+  .ticket-batch-actions{display:grid}
+  .ticket-batch-actions button{width:100%}
+}
