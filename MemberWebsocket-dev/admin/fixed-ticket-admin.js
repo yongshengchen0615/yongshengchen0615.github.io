@@ -164,7 +164,7 @@
 
   function renderFixedList() {
     const list = document.getElementById('eventTicketListItems');
-    if (!list) return;
+    if (!list || renderingList) return;
     renderingList = true;
     try {
       list.querySelectorAll('[data-fixed-ticket-id]').forEach((node) => node.remove());
@@ -191,7 +191,7 @@
       if (count) count.textContent = String(total);
       document.getElementById('eventTicketEmptyState')?.classList.toggle('hidden', total !== 0);
     } finally {
-      renderingList = false;
+      window.setTimeout(() => { renderingList = false; }, 0);
     }
   }
 
@@ -233,9 +233,11 @@
     document.getElementById('eventTicketEndsOn').value = '';
     document.getElementById('eventTicketQuota').value = String(Number(template.quota || 0));
     document.getElementById('eventTicketAccent').value = /^#[0-9a-f]{6}$/i.test(String(template.accent || '')) ? template.accent : '#df6b4d';
+    document.getElementById('eventTicketAccentValue').textContent = String(document.getElementById('eventTicketAccent').value || '#df6b4d').toUpperCase();
     document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]').forEach((input) => {
       input.checked = (Array.isArray(template.allowedTierKeys) ? template.allowedTierKeys : TIER_KEYS).includes(input.value);
     });
+    document.getElementById('eventTicketAllowedTiers')?.dispatchEvent(new Event('change', { bubbles: true }));
 
     document.getElementById('fixedTicketScheduleType').value = String(template.scheduleType || 'birthday_month');
     document.getElementById('fixedTicketScheduleMonth').value = String(Number(template.scheduleMonth || 1));
@@ -259,6 +261,7 @@
     if (fixed) {
       document.getElementById('eventTicketStartsOn').value = '';
       document.getElementById('eventTicketEndsOn').value = '';
+      document.getElementById('eventTicketPrizeEditor')?.classList.add('hidden');
     }
 
     const save = document.getElementById('saveEventTicketButton');
