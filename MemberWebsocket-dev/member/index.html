@@ -15,7 +15,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="./common.js?v=performance-20260916-1" defer></script>
-  <script src="./profile-extension.js?v=profile-birthday-edit-20260916-1" defer></script>
+  <script src="./profile-extension.js?v=profile-modal-edit-20260912-4" defer></script>
   <script src="../realtime-resync.js?v=performance-20260916-1" defer></script>
   <script src="./membership-progress.js?v=member-tier-style-20260908" defer></script>
   <script src="./app.js?v=supabase-native-20260910" defer></script>
@@ -67,7 +67,6 @@
               <span id="profileBirthdayDisplay" class="date-input-display">請選擇生日</span>
               <span class="date-input-icon" aria-hidden="true">▣</span>
             </button>
-            <input id="profileBirthday" type="date" autocomplete="bday" aria-describedby="profileBirthdayHint" tabindex="-1" aria-hidden="true" required>
           </span>
           <small id="profileBirthdayHint" class="profile-field-help">點擊欄位後，在同一個視窗選擇年月日</small>
         </div>
@@ -75,7 +74,6 @@
           <label for="profilePhone">電話</label>
           <input id="profilePhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required>
         </div>
-        <div id="profileFormMessage" class="form-message hidden" role="alert"></div>
         <button id="saveProfileButton" class="button button-dark" type="submit">加入會員並開啟會員卡</button>
         <button id="refreshProfileButton" class="button button-refresh hidden" type="button">重新整理確認</button>
       </form>
@@ -102,6 +100,8 @@
         </div>
       </div>
     </section>
+
+    <div id="profileFormMessage" class="form-message hidden" role="alert"></div>
 
     <main id="memberView" class="hidden">
       <header class="topbar">
@@ -155,8 +155,9 @@
           <div class="profile-editable-row">
             <dt>生日</dt>
             <dd class="profile-value-line">
-              <span id="memberBirthday">—</span>
-              <button id="editBirthdayButton" class="profile-inline-edit-button" type="button" aria-haspopup="dialog" aria-controls="birthdayEditModal">修改</button>
+              <span id="memberBirthday" hidden>—</span>
+              <input id="profileBirthday" class="profile-inline-edit-button" type="date" autocomplete="bday" form="profileForm" min="1900-01-01" required aria-label="生日">
+              <button id="saveBirthdayButton" class="profile-inline-edit-button" type="submit" form="profileForm">儲存</button>
             </dd>
           </div>
           <div class="profile-editable-row">
@@ -195,29 +196,6 @@
           <div class="profile-edit-modal-actions">
             <button id="cancelHonorificEditButton" class="button button-refresh" type="button">取消</button>
             <button id="saveHonorificEditButton" class="button button-dark" type="button">儲存</button>
-          </div>
-        </section>
-      </div>
-
-      <div id="birthdayEditModal" class="profile-edit-modal hidden" role="dialog" aria-modal="true" aria-labelledby="birthdayEditTitle">
-        <section class="profile-edit-modal-card" tabindex="-1">
-          <div class="profile-edit-modal-heading">
-            <div>
-              <p class="kicker">Birthday</p>
-              <h2 id="birthdayEditTitle">修改生日</h2>
-              <p>請選擇正確的出生年月日，生日不可晚於今天。</p>
-            </div>
-            <button id="closeBirthdayEditButton" class="profile-edit-modal-close" type="button" aria-label="關閉修改生日視窗">×</button>
-          </div>
-          <div class="profile-edit-modal-fields">
-            <label for="birthdayEditInput">生日
-              <input id="birthdayEditInput" type="date" autocomplete="bday" min="1900-01-01">
-            </label>
-          </div>
-          <p id="birthdayEditMessage" class="profile-modal-message hidden" role="alert"></p>
-          <div class="profile-edit-modal-actions">
-            <button id="cancelBirthdayEditButton" class="button button-refresh" type="button">取消</button>
-            <button id="saveBirthdayEditButton" class="button button-dark" type="button">儲存</button>
           </div>
         </section>
       </div>
