@@ -69,20 +69,32 @@
 
   function patchFetch() {
     window.fetch = async function patchedFetch(input, init) {
+      let savedLimit = null;
+      let requestedCardId = '';
       if (init && typeof init.body === 'string') {
         try {
           const body = JSON.parse(init.body);
           if (body && body.action === 'admin.pointcards.save' && body.card && typeof body.card === 'object') {
             const field = document.getElementById('cardMaxTicketsPerRedemption');
-            const limit = normalizeLimit(field && field.value);
-            body.card.maxTicketsPerRedemption = limit;
+            savedLimit = normalizeLimit(field && field.value);
+            body.card.maxTicketsPerRedemption = savedLimit;
+            requestedCardId = String(body.card.cardId || '');
             init = { ...init, body: JSON.stringify(body) };
-            const cardId = String(body.card.cardId || '');
-            if (cardId) state.limits.set(cardId, limit);
+            if (requestedCardId) state.limits.set(requestedCardId, savedLimit);
           }
         } catch (_) {}
       }
-      return originalFetch(input, init);
+      const response = await originalFetch(input, init);
+      if (savedLimit !== null) {
+        response.clone().json().then((payload) => {
+          const savedCardId = String(payload && payload.data && payload.data.card && payload.data.card.cardId || requestedCardId || '');
+          if (!savedCardId) return;
+          state.limits.set(savedCardId, savedLimit);
+          state.activeCardId = '__refresh__';
+          window.setTimeout(syncField, 0);
+        }).catch(() => {});
+      }
+      return response;
     };
   }
 
