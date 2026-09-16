@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { selectLatestPointOffers } from "./latest-available-offers.ts";
+import { selectLatestEventOffers, selectLatestPointOffers } from "./latest-available-offers.ts";
 
 Deno.test("selectLatestPointOffers uses current reward/template definitions and hides historical duplicates", () => {
   const offers = selectLatestPointOffers(
@@ -53,4 +53,29 @@ Deno.test("selectLatestPointOffers ignores deleted or inactive current definitio
     "2026-09-15",
   );
   assertEquals(offers, []);
+});
+
+Deno.test("selectLatestEventOffers only returns unused claimed or still-claimable event tickets", () => {
+  const offers = selectLatestEventOffers(
+    [
+      { id:"event-claimed",title:"已領取未使用",quota:10 },
+      { id:"event-used",title:"已使用活動券",quota:0 },
+      { id:"event-new",title:"尚未領取",quota:0 },
+      { id:"event-full",title:"名額已滿",quota:1 },
+      { id:"event-cancelled",title:"取消後可再領取",quota:2 },
+    ],
+    [
+      { event_ticket_id:"event-claimed",member_id:"member-1",status:"available" },
+      { event_ticket_id:"event-used",member_id:"member-1",status:"used" },
+      { event_ticket_id:"event-full",member_id:"member-2",status:"used" },
+      { event_ticket_id:"event-cancelled",member_id:"member-1",status:"cancelled" },
+    ],
+    "member-1",
+  );
+
+  assertEquals(offers, [
+    { eventId:"event-claimed",title:"已領取未使用",claimed:true },
+    { eventId:"event-new",title:"尚未領取",claimed:false },
+    { eventId:"event-cancelled",title:"取消後可再領取",claimed:false },
+  ]);
 });
