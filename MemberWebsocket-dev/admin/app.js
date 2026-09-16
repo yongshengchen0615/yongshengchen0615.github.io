@@ -751,7 +751,7 @@
     if (validationMessage) return showMessage(els.cardFormMessage, validationMessage);
     setSaving(els.saveCardButton, true, '正在儲存集點卡…');
     try {
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), usageMethod, usageInstructions, benefitDescription, rewardTitle: '', rewards, status: els.cardStatus.value, styleKey: safePointCardStyle(els.cardStyle.value), expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.pointcards.save', { card: { cardId: els.cardId.value, title: String(els.cardTitle.value || '').trim(), usageMethod, usageInstructions, benefitDescription, rewardTitle: '', rewards, status: els.cardStatus.value, styleKey: safePointCardStyle(els.cardStyle.value), pointCardStyleKey: safePointCardStyle(els.cardStyle.value), expiryMode, expiresOn, accent: safeAccent(els.cardAccent.value) }, expectedUpdatedAt: els.cardExpectedUpdatedAt.value });
       if (result.card) { state.cards = replaceById(state.cards, result.card, 'cardId'); loadCardForm(result.card.cardId); }
       if (await refreshAfterSuccessfulWrite('集點卡已儲存', els.cardFormMessage)) showMessage(els.cardFormMessage, '已儲存，會員端下次更新時會看到最新設定。', true);
     } catch (error) { handleActionError(error, els.cardFormMessage); } finally { setSaving(els.saveCardButton, false); }
