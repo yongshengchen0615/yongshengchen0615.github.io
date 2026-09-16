@@ -6,6 +6,7 @@ import { buildLatestAvailableOffersSection } from "../_shared/latest-available-o
 type Json = Record<string, unknown>;
 
 const TIER_LABELS: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
+const EVENT_LIFF_URL = "https://liff.line.me/2010787602-tuapstY3";
 
 function env(name: string): string { return (Deno.env.get(name) || "").trim(); }
 function asText(value: unknown, max = 5000): string { return String(value ?? "").trim().slice(0,max); }
@@ -28,6 +29,36 @@ function resolveTier(settings: any[], minutes: number): any {
   let selected = ordered[0] || { tier_key:"general",tier_label:"一般會員" };
   for (const row of ordered) if (minutes >= Number(row.required_service_minutes || 0)) selected = row;
   return selected;
+}
+function isBirthdayFixedTicket(row: any): boolean {
+  const requestId = asText(row?.request_id || row?.schedule_id,500);
+  return requestId.startsWith("FIXED-") && /-birthday-\d{4}(?:-\d{2})?-/.test(requestId);
+}
+function addBirthdayEventTicketAction(message: any): void {
+  const bubble = message?.contents;
+  const footer = bubble?.footer;
+  if (!footer || footer.type !== "box" || !Array.isArray(footer.contents)) return;
+
+  const alreadyExists = footer.contents.some((item: any) =>
+    item?.type === "button" && item?.action?.type === "uri" && item?.action?.uri === EVENT_LIFF_URL
+  );
+  if (alreadyExists) return;
+
+  const accent = /^#[0-9a-f]{6}$/i.test(String(bubble?.header?.backgroundColor || ""))
+    ? String(bubble.header.backgroundColor)
+    : "#315D50";
+  footer.spacing = "sm";
+  footer.contents.unshift({
+    type:"button",
+    style:"primary",
+    height:"sm",
+    color:accent,
+    action:{
+      type:"uri",
+      label:"開啟活動票卷",
+      uri:EVENT_LIFF_URL,
+    },
+  });
 }
 async function lineToken(supabase: SupabaseClient): Promise<string> {
   const result = await supabase.rpc("get_line_messaging_token");
@@ -75,6 +106,8 @@ async function dispatchOne(supabase: SupabaseClient, token: string, row: any): P
       title:"會員權益通知",
       eyebrow:"MEMBER BENEFITS",
     });
+    if (isBirthdayFixedTicket(row)) addBirthdayEventTicketAction(message);
+
     const response = await fetch("https://api.line.me/v2/bot/message/push",{
       method:"POST",
       headers:{
