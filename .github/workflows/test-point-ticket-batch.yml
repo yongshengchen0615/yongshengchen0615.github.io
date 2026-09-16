@@ -1,0 +1,57 @@
+name: Test Point Ticket Batch Redemption
+
+on:
+  push:
+    paths:
+      - 'MemberWebsocket-dev/points/**'
+      - 'MemberWebsocket-dev/admin/event-ticket-activity-link.js'
+      - 'MemberWebsocket-dev/supabase/functions/point-ticket-batch-api/**'
+      - 'MemberWebsocket-dev/supabase/migrations/*point_ticket_batch_redemption.sql'
+      - '.github/workflows/test-point-ticket-batch.yml'
+  pull_request:
+    paths:
+      - 'MemberWebsocket-dev/points/**'
+      - 'MemberWebsocket-dev/admin/event-ticket-activity-link.js'
+      - 'MemberWebsocket-dev/supabase/functions/point-ticket-batch-api/**'
+      - 'MemberWebsocket-dev/supabase/migrations/*point_ticket_batch_redemption.sql'
+      - '.github/workflows/test-point-ticket-batch.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check browser extensions
+        run: |
+          node --check MemberWebsocket-dev/points/membership-progress.js
+          node --check MemberWebsocket-dev/admin/event-ticket-activity-link.js
+      - name: Check batch Edge Function
+        run: deno check MemberWebsocket-dev/supabase/functions/point-ticket-batch-api/index.ts
+      - name: Check database enforcement wiring
+        run: |
+          migration="MemberWebsocket-dev/supabase/migrations/20260916120000_point_ticket_batch_redemption.sql"
+          grep -q 'max_tickets_per_redemption' "$migration"
+          grep -q 'create or replace function public.redeem_point_tickets' "$migration"
+          grep -q 'TICKET_BATCH_LIMIT_EXCEEDED' "$migration"
+          grep -q 'INSUFFICIENT_POINTS' "$migration"
+          grep -q 'grant execute on function public.redeem_point_tickets' "$migration"
+      - name: Check member multi-select wiring
+        run: |
+          grep -q 'user.pointcard.tickets.overview' MemberWebsocket-dev/points/membership-progress.js
+          grep -q 'user.pointcard.tickets.redeem' MemberWebsocket-dev/points/membership-progress.js
+          grep -q 'data-multi-ticket-id' MemberWebsocket-dev/points/membership-progress.js
+          grep -q 'ticket-batch-overview.css' MemberWebsocket-dev/points/membership-progress.css
+      - name: Check admin limit wiring
+        run: |
+          grep -q 'cardMaxTicketsPerRedemption' MemberWebsocket-dev/admin/event-ticket-activity-link.js
+          grep -q 'maxTicketsPerRedemption' MemberWebsocket-dev/admin/event-ticket-activity-link.js
