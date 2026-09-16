@@ -24,3 +24,21 @@
 .ticket-batch-list{display:grid;gap:8px;margin:16px 0}.ticket-batch-line{padding:10px 12px;border-radius:12px;background:#f6f0e8;color:var(--ink);font-size:12px;line-height:1.55}
 .ticket-batch-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap}.ticket-batch-actions button{border-radius:999px;padding:10px 16px;font:inherit;font-weight:800;cursor:pointer}.ticket-batch-cancel{border:1px solid rgba(40,32,22,.18);background:transparent;color:var(--ink)}.ticket-batch-confirm{border:0;background:var(--orange);color:var(--paper)}.ticket-batch-confirm:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:620px){.ticket-overview-toolbar{align-items:stretch}.ticket-overview-use{width:100%}.ticket-overview-group{grid-template-columns:1fr}.ticket-overview-group-heading{align-items:start;flex-direction:column}.ticket-overview-group-heading small{text-align:left}.ticket-batch-card{padding:18px}.ticket-batch-actions{display:grid}.ticket-batch-actions button{width:100%}}
+/* Ticket cards inherit their source point-card preset and keep redemption data readable at every width. */
+.ticket-overview-group .member-ticket[data-card-style]{position:relative;overflow:hidden;color:var(--paper);background:var(--card-style-background,var(--card-style-surface,var(--ink)));border-color:rgba(255,250,243,.18);border-radius:22px;box-shadow:0 18px 34px rgba(40,32,22,.14)}
+.ticket-overview-group .member-ticket[data-card-style]::before{content:"";position:absolute;right:-76px;bottom:-102px;width:180px;height:180px;border:1px solid rgba(255,250,243,.2);border-radius:50%;box-shadow:0 0 0 24px rgba(255,250,243,.045),0 0 0 48px rgba(255,250,243,.025);pointer-events:none}
+.ticket-overview-group .member-ticket[data-card-style]>*{position:relative;z-index:1;min-width:0}
+.ticket-overview-group .member-ticket[data-card-style] h3{color:var(--paper)}
+.ticket-overview-group .member-ticket[data-card-style] p,.ticket-overview-group .member-ticket[data-card-style] .ticket-state{color:rgba(255,250,243,.74)}
+.ticket-overview-group .member-ticket[data-card-style] .member-ticket-method{color:rgba(255,250,243,.9)}
+.ticket-overview-group .member-ticket[data-card-style] .member-ticket-type{color:var(--card-style-surface,#282016);background:var(--card-style-accent,#fff0d3)}
+.ticket-overview-group .member-ticket[data-card-style].locked{filter:saturate(.72);opacity:.76}
+.ticket-overview-group .member-ticket[data-card-style].is-selected{border-color:var(--card-style-accent,#f2c36f);box-shadow:0 18px 38px rgba(40,32,22,.2),0 0 0 2px rgba(255,250,243,.28)}
+.ticket-cost-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:4px 0 0}
+.ticket-cost-card{min-width:0;padding:10px 11px;border:1px solid rgba(255,250,243,.17);border-radius:12px;background:rgba(255,250,243,.09)}
+.ticket-cost-card dt{color:rgba(255,250,243,.62);font-size:9px;font-weight:800;letter-spacing:.02em}
+.ticket-cost-card dd{min-width:0;margin:4px 0 0;color:var(--paper);font-size:12px;font-weight:850;line-height:1.45;overflow-wrap:anywhere}
+.ticket-overview-group .member-ticket[data-card-style] .ticket-checkbox-action{color:var(--paper);background:rgba(255,250,243,.12);border-color:rgba(255,250,243,.26)}
+.ticket-overview-group .member-ticket[data-card-style].is-selected .ticket-checkbox-action{color:var(--card-style-surface,#282016);background:var(--card-style-accent,#f2c36f);border-color:transparent}
+@media(max-width:480px){.ticket-cost-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.ticket-cost-card.is-source{grid-column:1/-1}.ticket-overview-group .member-ticket[data-card-style]{border-radius:18px;padding:16px}}
+@media(max-width:340px){.ticket-cost-cards{grid-template-columns:1fr}.ticket-cost-card.is-source{grid-column:auto}}

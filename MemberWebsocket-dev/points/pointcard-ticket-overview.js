@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  const POINT_CARD_STYLE_KEYS = Object.freeze(['citrus', 'coral', 'lagoon', 'skyline', 'violet', 'berry', 'cocoa', 'lime', 'denim', 'peach']);
+  const LEGACY_POINT_CARD_STYLE_MAP = Object.freeze({ forest: 'lagoon', midnight: 'skyline', ocean: 'denim', sunset: 'coral', lavender: 'violet', rose: 'berry', gold: 'citrus', platinum: 'cocoa', mint: 'lime', cherry: 'peach' });
+
   const state = {
     config: null,
     idToken: '',
@@ -28,6 +31,11 @@
 
   function points(value) {
     return Math.max(0, Number(value || 0));
+  }
+
+  function safeCardStyle(value) {
+    const styleKey = String(value || '').trim().toLowerCase();
+    return POINT_CARD_STYLE_KEYS.includes(styleKey) ? styleKey : (LEGACY_POINT_CARD_STYLE_MAP[styleKey] || POINT_CARD_STYLE_KEYS[0]);
   }
 
   function normalizeLimit(value) {
@@ -163,6 +171,7 @@
         return {
           cardId: String(card.cardId || summary.cardId || ''),
           cardTitle: String(card.title || '集點卡'),
+          cardStyleKey: safeCardStyle(card.styleKey),
           cardStamps,
           ticketId,
           thresholdStamps,
@@ -291,6 +300,17 @@
     return container;
   }
 
+  function createCostCard(label, value, modifier = '') {
+    const row = document.createElement('div');
+    row.className = `ticket-cost-card${modifier ? ` ${modifier}` : ''}`;
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const detail = document.createElement('dd');
+    detail.textContent = value;
+    row.append(term, detail);
+    return row;
+  }
+
   function render() {
     if (!state.snapshot || !ensureUi() || !groups) return;
 
@@ -361,6 +381,7 @@
 
         const item = document.createElement('article');
         item.className = `member-ticket${offer.baseCanUse ? ' is-ready' : ' locked'}${isSelected ? ' is-selected' : ''}`;
+        item.dataset.cardStyle = safeCardStyle(offer.cardStyleKey);
 
         const type = document.createElement('span');
         type.className = 'member-ticket-type';
@@ -376,9 +397,13 @@
         method.className = 'member-ticket-method';
         method.textContent = `使用方式：${offer.usageMethod || '達標後請向店員出示本券'}`;
 
-        const cost = document.createElement('p');
-        cost.className = 'ticket-overview-meta';
-        cost.textContent = `兌換需扣 ${points(offer.thresholdStamps)} 點｜目前 ${offer.cardStamps} 點｜扣點來源：${offer.cardTitle}`;
+        const cost = document.createElement('dl');
+        cost.className = 'ticket-cost-cards';
+        cost.append(
+          createCostCard('兌換需扣', `${points(offer.thresholdStamps)} 點`, 'is-cost'),
+          createCostCard('目前點數', `${offer.cardStamps} 點`, 'is-balance'),
+          createCostCard('扣點來源', offer.cardTitle, 'is-source')
+        );
 
         const footer = document.createElement('div');
         footer.className = 'member-ticket-footer';

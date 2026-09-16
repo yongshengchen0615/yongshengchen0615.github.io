@@ -1,10 +1,8 @@
 (() => {
   'use strict';
 
-  const POINT_CARD_STYLE_KEYS = Object.freeze([
-    'forest', 'midnight', 'ocean', 'sunset', 'lavender',
-    'rose', 'gold', 'platinum', 'mint', 'cherry'
-  ]);
+  const POINT_CARD_STYLE_KEYS = Object.freeze(['citrus', 'coral', 'lagoon', 'skyline', 'violet', 'berry', 'cocoa', 'lime', 'denim', 'peach']);
+  const LEGACY_POINT_CARD_STYLE_MAP = Object.freeze({ forest: 'lagoon', midnight: 'skyline', ocean: 'denim', sunset: 'coral', lavender: 'violet', rose: 'berry', gold: 'citrus', platinum: 'cocoa', mint: 'lime', cherry: 'peach' });
 
   const state = {
     config: null,
@@ -388,7 +386,7 @@
 
   function safeCardStyle(value) {
     const styleKey = String(value || '').trim().toLowerCase();
-    return POINT_CARD_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest';
+    return POINT_CARD_STYLE_KEYS.includes(styleKey) ? styleKey : (LEGACY_POINT_CARD_STYLE_MAP[styleKey] || POINT_CARD_STYLE_KEYS[0]);
   }
 
   function setView(view) {
