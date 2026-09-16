@@ -8,8 +8,8 @@ for(const surface of ['member','points','event','calendar','admin']) {
     let onChange, removed=0, cleared=0;
     const channel={on(event,filter,callback){onChange=callback;return this;},subscribe(){return this;}};
     const client={channel(){return channel;},removeChannel(){removed++;}};
-    const window={supabase:{createClient(){return client;}},setTimeout(){return 7;},clearTimeout(id){assert.equal(id,7);cleared++;}};
-    const context=vm.createContext({window,document:{querySelector(){return {};}},Map,Set,URL,console});
+    const window={addEventListener(){},removeEventListener(){},supabase:{createClient(){return client;}},setTimeout(){return 7;},clearTimeout(id){assert.equal(id,7);cleared++;}};
+    const context=vm.createContext({window,document:{addEventListener(){},removeEventListener(){},querySelector(){return {};}},Map,Set,URL,console});
     vm.runInContext(fs.readFileSync(path.join(__dirname,`../${surface}/common.js`),'utf8'),context);
     const config={supabaseUrl:'https://example.supabase.co',supabaseFunctionUrl:'https://example.supabase.co/functions/v1/api',supabasePublishableKey:'fixture',memberLiffId:'member',pointsLiffId:'points',eventLiffId:'event',calendarLiffId:'calendar',adminLiffId:'admin'};
     const stop=window.MemberSystem.subscribeRealtime(config,surface,()=>assert.fail('Disposed refresh ran'));
@@ -20,7 +20,7 @@ for(const surface of ['member','points','event','calendar','admin']) {
   test(`${surface}: in-flight reads deduplicate only within the same identity`,async()=>{
     const deferred=[];
     const window={setTimeout,clearTimeout};
-    const context=vm.createContext({window,document:{querySelector(){return {};}},Map,Set,URL,AbortController,Date,console,fetch(url,options){return new Promise(resolve=>deferred.push({resolve,token:JSON.parse(options.body).idToken}));}});
+    const context=vm.createContext({window,document:{addEventListener(){},removeEventListener(){},querySelector(){return {};}},Map,Set,URL,AbortController,Date,console,fetch(url,options){return new Promise(resolve=>deferred.push({resolve,token:JSON.parse(options.body).idToken}));}});
     vm.runInContext(fs.readFileSync(path.join(__dirname,`../${surface}/common.js`),'utf8'),context);
     const config={realtimeEnabled:false,supabaseUrl:'https://example.supabase.co',supabaseFunctionUrl:'https://example.supabase.co/functions/v1/api',supabasePublishableKey:'fixture',memberLiffId:'member',pointsLiffId:'points',eventLiffId:'event',calendarLiffId:'calendar',adminLiffId:'admin'};
     const first=window.MemberSystem.request(config,surface,'identity-A','read');
