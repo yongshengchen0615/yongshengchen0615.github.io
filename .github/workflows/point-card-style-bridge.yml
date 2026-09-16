@@ -1,0 +1,34 @@
+name: Apply point card style persistence bridge
+
+on:
+  push:
+    branches:
+      - codex/point-card-style-presets
+    paths:
+      - .github/workflows/point-card-style-bridge.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/point-card-style-presets
+          fetch-depth: 0
+      - name: Patch admin payload
+        run: python3 .github/scripts/patch_point_card_style_bridge.py
+      - name: Validate and commit
+        shell: bash
+        run: |
+          node --check MemberWebsocket-dev/admin/app.js
+          grep -q "pointCardStyleKey: safePointCardStyle(els.cardStyle.value)" MemberWebsocket-dev/admin/app.js
+          rm .github/workflows/point-card-style-bridge.yml .github/scripts/patch_point_card_style_bridge.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(point-card): persist distinct style key through API bridge"
+          git push origin HEAD:codex/point-card-style-presets
