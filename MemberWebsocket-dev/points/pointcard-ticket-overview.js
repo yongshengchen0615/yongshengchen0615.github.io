@@ -13,6 +13,7 @@
   }
 
   function escapeText(value) { return String(value == null ? '' : value); }
+  function points(value) { return Math.max(0, Number(value || 0)); }
   function newRequestId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') return `PTR-${window.crypto.randomUUID().replaceAll('-', '')}`;
     return `PTR-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
@@ -46,7 +47,7 @@
 
     root = document.createElement('div');
     root.className = 'ticket-overview-extension';
-    root.innerHTML = '<div class="ticket-overview-toolbar"><div class="ticket-overview-selection"><strong data-ticket-selection>尚未選擇票券</strong><small data-ticket-selection-hint>可選擇 1 張或多張；實際單次上限依各集點卡設定。</small></div><button class="ticket-overview-use" type="button" disabled>使用已選票券</button></div><div class="ticket-overview-error" data-ticket-error hidden></div><div class="ticket-overview-groups"></div>';
+    root.innerHTML = '<div class="ticket-overview-toolbar"><div class="ticket-overview-selection"><strong data-ticket-selection>尚未選擇票券</strong><small data-ticket-selection-hint>可直接查看並選擇所有集點卡的票券，不需要切換集點卡。</small></div><button class="ticket-overview-use" type="button" disabled>使用已選票券</button></div><div class="ticket-overview-error" data-ticket-error hidden></div><div class="ticket-overview-groups"></div>';
     panel.append(root);
     selectionText = root.querySelector('[data-ticket-selection]');
     selectionHint = root.querySelector('[data-ticket-selection-hint]');
@@ -107,7 +108,7 @@
       const title = document.createElement('h3');
       title.textContent = escapeText(card.title || '集點卡');
       const meta = document.createElement('small');
-      meta.textContent = `目前 ${Math.max(0, Number(card.stamps || 0))} 點・可用 ${tickets.length} 張`;
+      meta.textContent = `目前 ${points(card.stamps)} 點・可用 ${tickets.length} 張`;
       heading.append(title, meta);
       section.append(heading);
 
@@ -134,7 +135,7 @@
         description.textContent = ticketDescription(ticket) || '可使用票券';
         const cost = document.createElement('span');
         cost.className = 'ticket-overview-meta';
-        cost.textContent = `使用需扣 ${Math.max(0, Number(ticket.thresholdStamps || 0))} 點`;
+        cost.textContent = `使用時會從「${card.title || '集點卡'}」扣 ${points(ticket.thresholdStamps)} 點`;
         content.append(row, description, cost);
         item.append(checkbox, content);
         section.append(item);
@@ -146,17 +147,53 @@
 
   function selectedTickets() {
     const grouped = availableByCard(state.snapshot);
-    const all = grouped.flatMap(({ card, tickets }) => tickets.map((ticket) => ({ ...ticket, cardTitle: card.title || '集點卡' })));
+    const all = grouped.flatMap(({ card, tickets }) => tickets.map((ticket) => ({
+      ...ticket,
+      cardId: ticket.cardId || card.cardId || '',
+      cardTitle: card.title || '集點卡',
+      cardStamps: points(card.stamps)
+    })));
     return all.filter((ticket) => state.selected.has(String(ticket.ticketId || '')));
+  }
+
+  function spendByCard(tickets, spentField = 'thresholdStamps') {
+    const grouped = new Map();
+    tickets.forEach((ticket) => {
+      const cardId = String(ticket.cardId || ticket.cardTitle || 'point-card');
+      const current = grouped.get(cardId) || {
+        cardId,
+        cardTitle: String(ticket.cardTitle || '集點卡'),
+        currentStamps: Number.isFinite(Number(ticket.cardStamps)) ? points(ticket.cardStamps) : null,
+        points: 0,
+        count: 0
+      };
+      current.points += points(ticket[spentField]);
+      current.count += 1;
+      grouped.set(cardId, current);
+    });
+    return [...grouped.values()];
+  }
+
+  function spendSummaryText(tickets) {
+    return spendByCard(tickets).map((item) => {
+      const balance = item.currentStamps === null ? '' : `（目前 ${item.currentStamps} 點）`;
+      return `${item.cardTitle}扣 ${item.points} 點${balance}`;
+    }).join('｜');
   }
 
   function updateSelection() {
     const tickets = selectedTickets();
     const count = tickets.length;
-    const points = tickets.reduce((sum, ticket) => sum + Math.max(0, Number(ticket.thresholdStamps || 0)), 0);
     if (selectionText) selectionText.textContent = count ? `已選 ${count} 張票券` : '尚未選擇票券';
-    if (selectionHint) selectionHint.textContent = count ? `預計合計扣除 ${points} 點（各集點卡分別計算餘額與單次上限）` : '可選擇 1 張或多張；實際單次上限依各集點卡設定。';
-    if (useButton) { useButton.disabled = state.busy || count === 0; useButton.textContent = state.busy ? '處理中…' : count > 1 ? `使用 ${count} 張票券` : '使用已選票券'; }
+    if (selectionHint) {
+      selectionHint.textContent = count
+        ? `預計扣點：${spendSummaryText(tickets)}`
+        : '可直接查看並選擇所有集點卡的票券，不需要切換集點卡。';
+    }
+    if (useButton) {
+      useButton.disabled = state.busy || count === 0;
+      useButton.textContent = state.busy ? '處理中…' : count > 1 ? `使用 ${count} 張票券` : '使用已選票券';
+    }
   }
 
   function modalBase() {
@@ -180,15 +217,20 @@
     if (!tickets.length) return;
     const modal = modalBase();
     modal.querySelector('[data-batch-title]').textContent = tickets.length > 1 ? `確認同時使用 ${tickets.length} 張票券` : '確認使用票券';
-    modal.querySelector('[data-batch-message]').textContent = '送出後會立即扣除各票券所需點數並完成核銷；此操作不可取消。';
+    const cardSpendLines = spendByCard(tickets).map((item) => `• ${item.cardTitle}：扣 ${item.points} 點（目前 ${item.currentStamps} 點）`);
+    modal.querySelector('[data-batch-message]').textContent = `本次扣點來源：\n${cardSpendLines.join('\n')}\n\n送出後會立即扣點並完成核銷，此操作不可取消。`;
     const list = modal.querySelector('[data-batch-list]');
     list.replaceChildren(...tickets.map((ticket) => {
-      const line = document.createElement('div'); line.className = 'ticket-batch-line';
-      line.textContent = `${ticket.cardTitle}｜${ticket.ticketTitle}｜${Math.max(0, Number(ticket.thresholdStamps || 0))} 點`;
+      const line = document.createElement('div');
+      line.className = 'ticket-batch-line';
+      line.textContent = `${ticket.cardTitle}｜${ticket.ticketTitle}｜從此卡扣 ${points(ticket.thresholdStamps)} 點`;
       return line;
     }));
     modal.querySelector('.ticket-batch-cancel').hidden = false;
-    const confirm = modal.querySelector('.ticket-batch-confirm'); confirm.disabled = false; confirm.textContent = '確認使用';
+    const confirm = modal.querySelector('.ticket-batch-confirm');
+    confirm.onclick = null;
+    confirm.disabled = false;
+    confirm.textContent = '確認使用';
     modal.classList.remove('hidden');
     confirm.focus();
   }
@@ -201,28 +243,43 @@
     const confirm = modal.querySelector('.ticket-batch-confirm');
     const message = modal.querySelector('[data-batch-message]');
     const cancel = modal.querySelector('.ticket-batch-cancel');
-    state.busy = true; confirm.disabled = true; confirm.textContent = '使用中…'; cancel.hidden = true; updateSelection(); render();
+    state.busy = true;
+    confirm.disabled = true;
+    confirm.textContent = '使用中…';
+    cancel.hidden = true;
+    updateSelection();
+    render();
     try {
       const result = await extensionRequest('member.redeem', { ticketIds: tickets.map((ticket) => ticket.ticketId), requestId: newRequestId() });
       const resultTickets = Array.isArray(result.tickets) ? result.tickets : [];
       modal.querySelector('[data-batch-title]').textContent = `已完成 ${Number(result.ticketCount || resultTickets.length)} 張票券使用`;
-      message.textContent = result.alreadyApplied ? '此操作先前已完成，以下為已確認的使用結果。' : '票券已完成核銷。';
+      const resultSpend = spendByCard(resultTickets.map((ticket) => ({ ...ticket, thresholdStamps: ticket.pointsSpent })), 'thresholdStamps');
+      const resultSpendText = resultSpend.length
+        ? '\n' + resultSpend.map((item) => `• ${item.cardTitle}：已扣 ${item.points} 點`).join('\n')
+        : '';
+      message.textContent = (result.alreadyApplied ? '此操作先前已完成，以下為已確認的使用結果。' : '票券已完成核銷。') + resultSpendText;
       const list = modal.querySelector('[data-batch-list]');
       list.replaceChildren(...resultTickets.map((ticket) => {
-        const line = document.createElement('div'); line.className = 'ticket-batch-line';
+        const line = document.createElement('div');
+        line.className = 'ticket-batch-line';
         const prize = ticket.ticketType === 'lottery' && ticket.result && ticket.result.prizeTitle ? `｜抽中：${ticket.result.prizeTitle}` : '';
-        line.textContent = `${ticket.cardTitle}｜${ticket.ticketTitle}${prize}`;
+        line.textContent = `${ticket.cardTitle}｜${ticket.ticketTitle}｜已扣 ${points(ticket.pointsSpent)} 點${prize}`;
         return line;
       }));
-      confirm.disabled = false; confirm.textContent = '完成並更新';
+      confirm.disabled = false;
+      confirm.textContent = '完成並更新';
       confirm.onclick = () => window.location.reload();
       state.selected.clear();
     } catch (error) {
       message.textContent = error && error.message || '票券使用失敗，請重新整理後再試。';
-      confirm.disabled = false; confirm.textContent = '重新確認'; cancel.hidden = false;
+      confirm.disabled = false;
+      confirm.textContent = '重新確認';
+      cancel.hidden = false;
       confirm.onclick = null;
     } finally {
-      state.busy = false; updateSelection(); render();
+      state.busy = false;
+      updateSelection();
+      render();
     }
   }
 
@@ -244,10 +301,15 @@
 
   async function boot() {
     buildUi();
-    try { await waitForLogin(); await refreshSnapshot(); }
-    catch (error) {
+    try {
+      await waitForLogin();
+      await refreshSnapshot();
+    } catch (error) {
       const box = root && root.querySelector('[data-ticket-error]');
-      if (box) { box.hidden = false; box.textContent = error && error.message || '票券總覽暫時無法載入。'; }
+      if (box) {
+        box.hidden = false;
+        box.textContent = error && error.message || '票券總覽暫時無法載入。';
+      }
     }
   }
 
