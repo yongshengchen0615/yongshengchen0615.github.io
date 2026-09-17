@@ -47,12 +47,19 @@ test('booking entry points bust caches for participant-parity assets', () => {
   const adminLoader = fs.readFileSync(path.join(root, 'admin/booking-panel.js'), 'utf8');
   const groupCss = fs.readFileSync(path.join(root, 'booking/group-booking.css'), 'utf8');
   const groupJs = fs.readFileSync(path.join(root, 'booking/group-booking.js'), 'utf8');
+  const confirmJs = fs.readFileSync(path.join(root, 'booking/booking-confirm-details.js'), 'utf8');
+  const adminGroupJs = fs.readFileSync(path.join(root, 'booking-admin-group-details.js'), 'utf8');
+  const migration = fs.readFileSync(path.join(root, 'supabase/migrations/20260917150000_booking_group_parallel_duration.sql'), 'utf8');
 
   assert.ok(memberHtml.includes('group-booking.css?v=booking-participant-parity-20260917-1'));
   assert.ok(memberHtml.includes('group-booking.js?v=booking-participant-parity-20260917-1'));
+  assert.ok(memberHtml.includes('booking-confirm-details.js?v=booking-confirm-details-20260917-2'));
+  assert.ok(bookingAdminHtml.includes('../booking-admin-group-details.js?v=booking-group-details-20260917-2'));
+  assert.ok(bookingAdminHtml.includes('../booking-admin-group-details.css?v=booking-group-details-20260917-2'));
   assert.ok(bookingAdminHtml.includes('resources.js?v=booking-primary-tech-20260917-2'));
   assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3')"));
   assert.ok(adminLoader.includes("load('booking-resources.js', 'booking-primary-tech-20260917-3')"));
+  assert.ok(adminLoader.includes("load('../booking-admin-group-details.js', 'booking-group-details-20260917-2')"));
   assert.match(groupCss, /\.participant-service-stack\{[^}]*display:grid/);
   assert.match(groupCss, /\.group-selection-summary\{[^}]*display:grid/);
   assert.match(groupJs, /className = 'service-add-button'/);
@@ -61,6 +68,17 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.match(groupJs, /reduce\(\(max, item\) => Math\.max\(max, item\.totalMinutes\), 0\)/);
   assert.match(groupJs, /總服務時間：\$\{overallMinutes\}分鐘/);
   assert.match(groupJs, /總金額：\$\{formatMoney\(overallAmount\)\}/);
+  assert.match(confirmJs, /預約技師：/);
+  assert.match(confirmJs, /個別總時間：/);
+  assert.match(confirmJs, /個別金額：/);
+  assert.match(confirmJs, /整體總服務時間：/);
+  assert.match(confirmJs, /預約聯絡資料/);
+  assert.match(adminGroupJs, /booking-group-details-api/);
+  assert.match(adminGroupJs, /預約技師：/);
+  assert.match(adminGroupJs, /個別總時間：/);
+  assert.match(adminGroupJs, /個別金額：/);
+  assert.match(adminGroupJs, /button\.disabled = true/);
+  assert.match(migration, /greatest\(v_total_duration, v_participant_duration\)/);
 });
 
 test('calendar date fix keeps native date inputs shrinkable in LINE WebView', () => {
