@@ -27,6 +27,11 @@ jobs:
           deno-version: v2.x
       - name: Run application regression tests
         run: node --test MemberWebsocket-dev/tests/*.test.js
+      - name: Install DOM integration test dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: MemberWebsocket-dev/tests/integration
+      - name: Check admin startup and observer responsiveness
+        run: node --test MemberWebsocket-dev/tests/integration/admin_startup.cjs
       - name: Check browser JavaScript syntax
         run: |
           node --check MemberWebsocket-dev/realtime-resync.js
