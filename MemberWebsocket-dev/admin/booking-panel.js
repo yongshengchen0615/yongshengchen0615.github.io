@@ -47,7 +47,7 @@
   load('booking-summary.js', 'booking-summary-20260912-6')
     .then(() => load('booking-panel-core.js', 'booking-panel-core-20260911-1'))
     .then(() => load('booking-resources.js', 'booking-resources-20260917-2'))
-    .then(() => load('booking-always-open.js', 'booking-always-open-20260917-1'))
+    .then(() => load('booking-always-open.js', 'booking-always-open-20260917-2'))
     .then(() => load('booking-cancellation-sync.js', 'booking-cancellation-sync-20260911-2'))
     .catch((error) => console.error('booking admin extension load failed', error));
 })();
