@@ -1,0 +1,48 @@
+name: Test Booking Technician Delete
+
+on:
+  push:
+    paths:
+      - 'MemberWebsocket-dev/booking-technician-delete.js'
+      - 'MemberWebsocket-dev/admin/booking-panel.js'
+      - 'MemberWebsocket-dev/booking/admin/resources.js'
+      - 'MemberWebsocket-dev/supabase/functions/booking-technician-delete/**'
+      - '.github/workflows/test-booking-technician-delete.yml'
+  pull_request:
+    paths:
+      - 'MemberWebsocket-dev/booking-technician-delete.js'
+      - 'MemberWebsocket-dev/admin/booking-panel.js'
+      - 'MemberWebsocket-dev/booking/admin/resources.js'
+      - 'MemberWebsocket-dev/supabase/functions/booking-technician-delete/**'
+      - '.github/workflows/test-booking-technician-delete.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check browser JavaScript syntax
+        run: |
+          node --check MemberWebsocket-dev/booking-technician-delete.js
+          node --check MemberWebsocket-dev/admin/booking-panel.js
+          node --check MemberWebsocket-dev/booking/admin/resources.js
+      - name: Check delete Edge Function
+        run: deno check MemberWebsocket-dev/supabase/functions/booking-technician-delete/index.ts
+      - name: Check delete wiring and safety guards
+        run: |
+          grep -q 'booking-technician-delete.js' MemberWebsocket-dev/admin/booking-panel.js
+          grep -q 'booking-technician-delete.js' MemberWebsocket-dev/booking/admin/resources.js
+          grep -q 'admin.booking.resources.technician.delete' MemberWebsocket-dev/booking-technician-delete.js
+          grep -q 'BOOKING_TECHNICIAN_PRIMARY' MemberWebsocket-dev/supabase/functions/booking-technician-delete/index.ts
+          grep -q 'BOOKING_TECHNICIAN_IN_USE' MemberWebsocket-dev/supabase/functions/booking-technician-delete/index.ts
+          grep -q 'booking_participant_reservations' MemberWebsocket-dev/supabase/functions/booking-technician-delete/index.ts
