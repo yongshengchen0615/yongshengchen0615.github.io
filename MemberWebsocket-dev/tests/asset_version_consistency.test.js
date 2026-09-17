@@ -31,7 +31,8 @@ test('admin entry references current assets that changed after older cache keys'
   const html = fs.readFileSync(path.join(root, 'admin/index.html'), 'utf8');
   assert.ok(html.includes('calendar-responsive.css?v=calendar-responsive-20260914-mobile-fit-2'));
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
-  assert.ok(html.includes('common.js?v=performance-20260916-1'));
+  assert.ok(html.includes('common.js?v=admin-fresh-login-20260917-1'));
+  assert.ok(html.includes('app.js?v=admin-fresh-login-20260917-1'));
   assert.ok(html.includes('booking-panel.js?v=responsive-controls-20260914-1'));
   assert.ok(html.includes(`../responsive.css?v=${responsiveVersion}`));
   assert.doesNotMatch(html, /calendar-responsive\.css\?v=calendar-responsive-20260910-1/);

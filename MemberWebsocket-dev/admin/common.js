@@ -4,6 +4,7 @@
   const SUPABASE_URL_PATTERN = /^https:\/\/[a-z0-9-]+\.supabase\.co$/i;
   const SUPABASE_FUNCTION_PATTERN = /^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1\/[A-Za-z0-9_-]+$/i;
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
+  const FRESH_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
   const READ_RETRY_DELAY_MS = 400;
   const READ_TIMEOUT_MS = 12000;
   const BOOTSTRAP_TIMEOUT_MS = 30000;
@@ -106,14 +107,15 @@
       const returned = consumeFreshLoginQuery(surface);
       if (!returned) {
         if (window.liff.isLoggedIn()) {
-          try { window.liff.logout(); } catch (_) {}
+          try { window.liff.logout(); }
+          catch (_) { throw clientError('AUTH_LOGOUT_FAILED', '無法清除先前的 LINE 登入，請重新開啟管理端。'); }
+          if (window.liff.isLoggedIn()) throw clientError('AUTH_LOGOUT_FAILED', '先前的 LINE 登入尚未清除，請重新開啟管理端。');
         }
         redirectToFreshLogin(surface);
         await withTimeout(new Promise(() => {}), 8000, '登入跳轉未完成，請重新開啟此頁面。');
       }
       if (!window.liff.isLoggedIn()) {
-        redirectToFreshLogin(surface);
-        await withTimeout(new Promise(() => {}), 8000, '登入跳轉未完成，請重新開啟此頁面。');
+        throw clientError('AUTH_REQUIRED', 'LINE 登入尚未完成，請重新整理後再登入。');
       }
     }
 
@@ -124,16 +126,41 @@
 
   function redirectToFreshLogin(surface) {
     const redirectUrl = new URL(window.location.href);
-    redirectUrl.searchParams.set(FRESH_LOGIN_QUERY, surface);
+    // Correlate this tab's redirect only; this is not an authentication token.
+    let nonce;
+    try {
+      const bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      nonce = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      window.sessionStorage.setItem(`${FRESH_LOGIN_QUERY}:${surface}`, JSON.stringify({
+        nonce, createdAt: Date.now(), pathname: redirectUrl.pathname,
+      }));
+    } catch (_) {
+      throw clientError('AUTH_STORAGE_UNAVAILABLE', '無法建立本次 LINE 登入流程，請允許此網站使用瀏覽器工作階段儲存後重試。');
+    }
+    redirectUrl.searchParams.set(FRESH_LOGIN_QUERY, `${surface}.${nonce}`);
     window.liff.login({ redirectUri: redirectUrl.toString() });
   }
 
   function consumeFreshLoginQuery(surface) {
     const current = new URL(window.location.href);
-    if (current.searchParams.get(FRESH_LOGIN_QUERY) !== surface) return false;
-    current.searchParams.delete(FRESH_LOGIN_QUERY);
-    window.history.replaceState({}, document.title, current.pathname + current.search + current.hash);
-    return true;
+    const marker = current.searchParams.get(FRESH_LOGIN_QUERY);
+    if (marker !== null) {
+      current.searchParams.delete(FRESH_LOGIN_QUERY);
+      window.history.replaceState({}, document.title, current.pathname + current.search + current.hash);
+    }
+    let pending;
+    try {
+      const key = `${FRESH_LOGIN_QUERY}:${surface}`;
+      const raw = window.sessionStorage.getItem(key);
+      // Consume before accepting, so reloading or replaying the URL requires login.
+      window.sessionStorage.removeItem(key);
+      pending = raw ? JSON.parse(raw) : null;
+    } catch (_) { return false; }
+    const age = Date.now() - Number(pending && pending.createdAt);
+    return Boolean(pending && /^[a-f0-9]{32}$/.test(pending.nonce)
+      && marker === `${surface}.${pending.nonce}` && pending.pathname === current.pathname
+      && Number.isFinite(age) && age >= 0 && age <= FRESH_LOGIN_MAX_AGE_MS);
   }
 
   function request(config, clientType, idToken, action, payload = {}) {
@@ -400,4 +427,3 @@
 
   loadBookingAdminPanelExtension();
 })();
-

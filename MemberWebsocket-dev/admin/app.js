@@ -14,6 +14,7 @@
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
   let loginProgressValue = 8;
+  let stopAdminRealtime = null;
 
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
@@ -31,6 +32,18 @@
       'messagePresetModal', 'closeMessagePresetModal', 'messagePresetForm', 'messagePresetList', 'messagePresetId', 'messagePresetExpectedUpdatedAt', 'messagePresetTitle', 'messagePresetBody', 'messagePresetStatus', 'messagePresetFormMessage', 'newMessagePresetButton', 'saveMessagePresetButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     bindEvents();
+    window.addEventListener('pagehide', () => {
+      // Hide private views before the browser snapshots this page for Back/Forward.
+      state.idToken = '';
+      stopLoginProgress();
+      if (typeof stopAdminRealtime === 'function') stopAdminRealtime();
+      stopAdminRealtime = null;
+      document.querySelectorAll('.modal').forEach((modal) => modal.classList.add('hidden'));
+      setView('loading');
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) window.location.reload();
+    });
     boot();
   });
 
@@ -267,7 +280,7 @@
       await refreshData(false);
       await completeLoginProgress('完整管理資料已準備完成');
       setView('admin');
-      window.MemberSystem.subscribeRealtime(state.config, 'admin', () => refreshData(false));
+      stopAdminRealtime = window.MemberSystem.subscribeRealtime(state.config, 'admin', () => refreshData(false));
     } catch (error) { stopLoginProgress(); handleBootError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
 
