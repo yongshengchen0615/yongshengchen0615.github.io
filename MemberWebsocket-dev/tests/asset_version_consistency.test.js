@@ -41,6 +41,18 @@ test('admin entry references current assets that changed after older cache keys'
   assert.doesNotMatch(html, /booking-panel\.js\?v=booking-duration-consistency-20260911-4/);
 });
 
+test('booking entry points bust caches for primary technician booking assets', () => {
+  const memberHtml = fs.readFileSync(path.join(root, 'booking/index.html'), 'utf8');
+  const bookingAdminHtml = fs.readFileSync(path.join(root, 'booking/admin/index.html'), 'utf8');
+  const adminLoader = fs.readFileSync(path.join(root, 'admin/booking-panel.js'), 'utf8');
+
+  assert.ok(memberHtml.includes('group-booking.css?v=booking-primary-tech-20260917-2'));
+  assert.ok(memberHtml.includes('group-booking.js?v=booking-primary-tech-20260917-2'));
+  assert.ok(bookingAdminHtml.includes('resources.js?v=booking-primary-tech-20260917-2'));
+  assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3')"));
+  assert.ok(adminLoader.includes("load('booking-resources.js', 'booking-primary-tech-20260917-3')"));
+});
+
 test('calendar date fix keeps native date inputs shrinkable in LINE WebView', () => {
   const css = fs.readFileSync(path.join(root, 'admin/calendar-date-fix.css'), 'utf8');
   assert.match(css, /#calendarEditorModal input\[type="date"\][\s\S]*?width:\s*100%\s*!important/);
