@@ -1,0 +1,207 @@
+(() => {
+  'use strict';
+
+  const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+  const participantNames = ['第一', '第二', '第三', '第四', '第五', '第六', '第七', '第八', '第九', '第十'];
+  let configPromise = null;
+
+  document.addEventListener('click', (event) => {
+    const button = event.target?.closest?.('.booking-copy-button');
+    if (!button) return;
+
+    const card = button.closest('.booking-admin-booking');
+    if (!card) return;
+
+    // booking-summary.js also owns this button. Capture the click here so only the
+    // participant-aware formatter writes to the clipboard.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    copyBooking(button, card).catch(() => setTemporaryLabel(button, '複製失敗'));
+  }, true);
+
+  async function copyBooking(button, card) {
+    if (button.dataset.copyBusy === 'true') return;
+    button.dataset.copyBusy = 'true';
+    button.disabled = true;
+    const originalLabel = button.textContent || '複製預約內容';
+
+    try {
+      const bookingId = String(card.dataset.bookingId || '').trim();
+      let group = bookingId ? await fetchGroupDetails(bookingId).catch(() => null) : null;
+      if (!group?.participants?.length) group = groupFromRenderedDetails(card);
+      await copyText(buildCopyText(card, group));
+      button.textContent = '已複製';
+    } catch (error) {
+      console.warn('booking copy failed', error?.code || error?.message || 'COPY_FAILED');
+      button.textContent = '複製失敗';
+    } finally {
+      window.setTimeout(() => {
+        button.dataset.copyBusy = 'false';
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }, 1500);
+    }
+  }
+
+  async function fetchGroupDetails(bookingId) {
+    const system = window.MemberSystem || window.BookingSystem;
+    if (!system?.loadConfig) throw clientError('CONFIG_ERROR', '預約管理設定尚未載入。');
+    if (!configPromise) configPromise = Promise.resolve(system.loadConfig());
+    const config = await configPromise;
+    const idToken = String(window.liff?.getIDToken?.() || '');
+    if (!idToken) throw clientError('AUTH_REQUIRED', '管理端登入尚未完成。');
+
+    const endpoint = `${String(config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-group-details-api`;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: String(config?.supabasePublishableKey || ''),
+        },
+        body: JSON.stringify({
+          action: 'admin.booking.group.details',
+          clientType: 'admin',
+          idToken,
+          bookingIds: [bookingId],
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.ok !== true) {
+        throw clientError(String(data?.error?.code || 'API_ERROR'), String(data?.error?.message || '無法取得逐位預約資料。'));
+      }
+      return data?.data?.bookingGroups?.[bookingId] || null;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  function buildCopyText(card, group) {
+    const lines = [];
+    lines.push(`${formatShortDate(card.dataset.bookingDate)} ${startTime(card)}`);
+    lines.push(contactName(card));
+    lines.push(`電話：${contactPhone(card)}`);
+
+    const participants = normalizedParticipants(card, group);
+    const partySize = Math.max(1, Number(group?.partySize || participants.length || 1));
+    lines.push(`預約人數：${partySize} 位`);
+
+    participants.forEach((participant, index) => {
+      lines.push(participantLabel(index));
+      lines.push(`預約項目：${participantItems(participant.items)}`);
+      lines.push(`預約技師：${String(participant.technicianName || '現場安排').replace(/（主要技師）/g, '').trim() || '現場安排'}`);
+    });
+
+    return lines.join('\n');
+  }
+
+  function normalizedParticipants(card, group) {
+    if (Array.isArray(group?.participants) && group.participants.length) {
+      return group.participants.map((participant) => ({
+        technicianName: String(participant?.technicianName || '現場安排'),
+        items: Array.isArray(participant?.items) ? participant.items : [],
+      }));
+    }
+
+    const serviceTitles = [...card.querySelectorAll('.booking-received-services span')]
+      .map((node) => String(node.textContent || '').trim())
+      .filter(Boolean);
+    return [{
+      technicianName: '現場安排',
+      items: serviceTitles.map((serviceTitle) => ({ serviceTitle, quantity: 1 })),
+    }];
+  }
+
+  function groupFromRenderedDetails(card) {
+    const blocks = [...card.querySelectorAll(':scope > .booking-group-admin-details .booking-group-admin-participant')];
+    if (!blocks.length) return null;
+    const participants = blocks.map((block) => {
+      const rows = [...block.querySelectorAll('p')].map((node) => String(node.textContent || '').trim());
+      const itemText = rows.find((text) => text.startsWith('預約項目：'))?.slice('預約項目：'.length) || '';
+      const technicianName = rows.find((text) => text.startsWith('預約技師：'))?.slice('預約技師：'.length) || '現場安排';
+      return {
+        technicianName: technicianName.replace(/（主要技師）/g, '').trim() || '現場安排',
+        items: itemText.split('、').map((text) => ({
+          serviceTitle: text.replace(/（\d+分鐘）/g, '').replace(/\s*×\s*\d+\s*$/g, '').trim(),
+          quantity: Number(/×\s*(\d+)\s*$/.exec(text)?.[1] || 1),
+        })).filter((item) => item.serviceTitle),
+      };
+    });
+    return { partySize: participants.length, participants };
+  }
+
+  function participantItems(items) {
+    const rows = Array.isArray(items) ? items : [];
+    if (!rows.length) return '—';
+    return rows.map((item) => {
+      const title = String(item?.serviceTitle || '預約項目').trim();
+      const quantity = Math.max(1, Number(item?.quantity || 1));
+      return quantity > 1 ? `${title} × ${quantity}` : title;
+    }).join('、');
+  }
+
+  function participantLabel(index) {
+    return `${participantNames[index] || `第 ${index + 1} `}位預約`;
+  }
+
+  function contactName(card) {
+    return String(card.querySelector('.booking-received-name')?.textContent || '會員').trim() || '會員';
+  }
+
+  function contactPhone(card) {
+    const text = String(card.querySelector('.booking-received-phone')?.textContent || '').trim();
+    const phone = text.replace(/^電話：/, '').trim();
+    if (!phone || phone === '—') return '—';
+    return phone.replace(/[\s()－—-]/g, '');
+  }
+
+  function startTime(card) {
+    const stored = String(card.dataset.bookingStartTime || '').slice(0, 5);
+    if (/^\d{2}:\d{2}$/.test(stored)) return stored;
+    const text = String(card.querySelector('.booking-received-datetime')?.textContent || '');
+    return /(\d{2}:\d{2})/.exec(text)?.[1] || '—';
+  }
+
+  function formatShortDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+    if (!match) return String(value || '—');
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const weekday = WEEKDAYS[new Date(year, month - 1, day).getDay()] || '';
+    return `${month}/${day}（${weekday}）`;
+  }
+
+  async function copyText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw clientError('COPY_FAILED', '無法複製預約內容。');
+  }
+
+  function setTemporaryLabel(button, label) {
+    const originalLabel = button.textContent || '複製預約內容';
+    button.textContent = label;
+    window.setTimeout(() => { button.textContent = originalLabel; }, 1500);
+  }
+
+  function clientError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
+})();
