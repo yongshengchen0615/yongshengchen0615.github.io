@@ -5,6 +5,7 @@
   const templateById = new Map();
   const originalFetch = window.fetch.bind(window);
   const TARGETED_MESSAGE = '此日曆項目由壽星固定票券自動管理；請回到活動票券中的固定票券設定修改或關閉。';
+  const FIXED_TIER_HELP = '固定票券會和一般活動票券一樣顯示給會員；只有勾選的會員等級會自動取得並可使用。不符合等級的會員仍看得到票券與適用等級，但會顯示「等級不適用」且不可使用。';
 
   function isFixedTicketRequest(input) {
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input || '');
@@ -61,8 +62,17 @@
     }
     const scheduleType = String(document.getElementById('fixedTicketScheduleType')?.value || 'birthday_month');
     summary.textContent = scheduleType === 'birthday_month'
-      ? '會加入會員日曆，但只有生日月份相符的當月壽星看得到；其他會員不會收到這筆日曆資料。'
-      : '會依固定票券的每個發放週期自動建立或更新會員日曆項目。';
+      ? '會加入會員日曆，但只有生日月份相符的當月壽星看得到；其他會員不會收到這筆日曆資料。會員等級不符的當月壽星仍看得到日曆與票券，但不可使用。'
+      : '會依固定票券的每個發放週期自動建立或更新會員日曆項目；會員等級不符仍看得到活動，但不可使用票券。';
+  }
+
+  function updateTierHelp() {
+    const fieldset = document.getElementById('eventTicketAllowedTiers');
+    const help = fieldset?.querySelector('p');
+    if (!help) return;
+    if (!help.dataset.defaultTierHelp) help.dataset.defaultTierHelp = help.textContent || '';
+    const fixed = document.getElementById('eventTicketType')?.value === 'fixed';
+    help.textContent = fixed ? FIXED_TIER_HELP : help.dataset.defaultTierHelp;
   }
 
   function syncSelectedTemplate(fixedTicketId) {
@@ -71,12 +81,14 @@
     const template = templateById.get(String(fixedTicketId || ''));
     input.checked = Boolean(template && template.calendarEnabled);
     updateSummary();
+    updateTierHelp();
   }
 
   function resetControl() {
     const input = ensureControl();
     if (input) input.checked = false;
     updateSummary();
+    updateTierHelp();
   }
 
   function ensureTargetedStatusOption() {
@@ -157,12 +169,17 @@
     if (!form) return;
     ensureControl();
     ensureTargetedStatusOption();
+    updateTierHelp();
 
-    new MutationObserver(() => ensureControl()).observe(form, { childList: true, subtree: true });
+    new MutationObserver(() => {
+      ensureControl();
+      updateTierHelp();
+    }).observe(form, { childList: true, subtree: true });
 
     document.getElementById('fixedTicketScheduleType')?.addEventListener('change', updateSummary);
     form.addEventListener('change', (event) => {
       if (event.target && event.target.id === 'fixedTicketScheduleType') updateSummary();
+      if (event.target && event.target.id === 'eventTicketType') window.queueMicrotask(updateTierHelp);
     });
 
     document.getElementById('eventTicketListItems')?.addEventListener('click', (event) => {
@@ -195,7 +212,10 @@
       new MutationObserver(() => window.queueMicrotask(updateTargetedCalendarGuard))
         .observe(calendarEditorStatus, { childList: true, characterData: true, subtree: true, attributes: true });
     }
-    window.setTimeout(updateTargetedCalendarGuard, 0);
+    window.setTimeout(() => {
+      updateTargetedCalendarGuard();
+      updateTierHelp();
+    }, 0);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, { once: true });
