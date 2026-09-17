@@ -60,13 +60,26 @@
 
 .booking-admin-resource-box label {
   min-width: 0;
+  display: grid;
+  gap: 6px;
 }
 
 .booking-admin-resource-box input[type="text"],
-.booking-admin-resource-box input[type="number"] {
+.booking-admin-resource-box input[type="number"],
+.booking-admin-resource-box select {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+}
+
+.booking-admin-resource-box select {
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid rgba(36, 49, 41, 0.18);
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
 }
 
 .booking-admin-resource-toggle {
