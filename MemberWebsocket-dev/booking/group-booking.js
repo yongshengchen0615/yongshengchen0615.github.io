@@ -6,6 +6,8 @@
 
   const originalRequest = system.request.bind(system);
   const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
+  const TYPE_PREFIX = '__TYPE__:';
+  const DEFAULT_STORE_SERVICE_MINUTES = 10;
   const state = {
     config: null,
     idToken: '',
@@ -17,6 +19,7 @@
     services: [],
     primaryItems: [],
     extras: [],
+    storeServiceMinutes: DEFAULT_STORE_SERVICE_MINUTES,
     bookingGroups: new Map(),
     editingBookingId: '',
     primaryPicker: null,
@@ -35,6 +38,13 @@
       state.maxPartySize = clamp(Number(group.settings?.maxPartySize || 1), 1, 10);
       state.primaryTechnicianId = String(group.settings?.primaryTechnicianId || '');
       state.technicians = Array.isArray(group.technicians) ? group.technicians.filter((item) => item.isActive) : [];
+      const storeService = Array.isArray(base.services)
+        ? base.services.find((item) => item.serviceId === STORE_SERVICE_ID)
+        : null;
+      const configuredStoreMinutes = Number(storeService?.durationMinutes ?? DEFAULT_STORE_SERVICE_MINUTES);
+      state.storeServiceMinutes = Number.isInteger(configuredStoreMinutes) && configuredStoreMinutes >= 0
+        ? configuredStoreMinutes
+        : DEFAULT_STORE_SERVICE_MINUTES;
       state.services = Array.isArray(base.services) ? base.services.filter((item) => item.serviceId !== STORE_SERVICE_ID) : [];
       state.bookingGroups = new Map(Object.entries(group.bookingGroups || {}));
       ensureParticipantCount(true);
@@ -55,7 +65,10 @@
     if (action === 'user.booking.slots') {
       ensureEditingGroup(payload.bookingId);
       const participants = buildParticipants(payload.items);
-      queueMicrotask(updateCardSummaries);
+      queueMicrotask(() => {
+        updateCardSummaries();
+        updateSelectionSummary();
+      });
       if (!participants) {
         return {
           settings: { maxPartySize: state.maxPartySize, primaryTechnicianId: state.primaryTechnicianId },
@@ -64,11 +77,13 @@
           slots: [],
         };
       }
-      return groupRequest('user.booking.group.slots', {
+      const result = await groupRequest('user.booking.group.slots', {
         bookingId: payload.bookingId,
         bookingDate: payload.bookingDate,
         participants,
       });
+      queueMicrotask(updateSelectionSummary);
+      return result;
     }
 
     if (action === 'user.booking.create' || action === 'user.booking.update') {
@@ -221,6 +236,7 @@
     state.partySize = clamp(Number(event.target.value || 1), 1, state.maxPartySize);
     ensureParticipantCount(false);
     renderParticipantCards();
+    updateSelectionSummary();
     reloadSlots();
   }
 
@@ -278,6 +294,7 @@
       root.appendChild(details);
     }
     updateCardSummaries();
+    updateSelectionSummary();
   }
 
   function createTechnicianField(index) {
@@ -304,6 +321,7 @@
     select.value = state.participantTechnicians[index] || '';
     select.addEventListener('change', () => {
       state.participantTechnicians[index] = String(select.value || '');
+      state.openCards.add(index);
       renderParticipantCards();
       reloadSlots();
     });
@@ -314,43 +332,108 @@
   function createExtraServicePicker(index) {
     const extraIndex = index - 1;
     const selected = state.extras[extraIndex] || new Set();
-    const wrap = document.createElement('section');
-    wrap.className = 'participant-service-section';
-    const heading = document.createElement('div');
-    heading.className = 'participant-service-heading';
-    const strong = document.createElement('strong');
-    strong.textContent = '服務項目';
-    const count = document.createElement('span');
-    count.textContent = selected.size ? `已選 ${selected.size} 項` : '尚未選擇';
-    heading.append(strong, count);
-    wrap.appendChild(heading);
+    const stack = document.createElement('div');
+    stack.className = 'participant-service-stack';
 
+    const picker = document.createElement('fieldset');
+    picker.className = 'service-picker-fieldset participant-service-picker-fieldset';
+    const pickerLegend = document.createElement('legend');
+    pickerLegend.textContent = '可選預約項目';
+    const pickerHint = document.createElement('p');
+    pickerHint.className = 'slot-hint';
+    pickerHint.textContent = '相同類型服務會集中在同一區塊；按下「增加」後會加入下方「目前選擇」。';
     const choices = document.createElement('div');
-    choices.className = 'participant-service-grid';
+    choices.className = 'service-picker';
+
     state.services.forEach((service) => {
-      const label = document.createElement('label');
-      label.className = `participant-service-option${selected.has(service.serviceId) ? ' selected' : ''}`;
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.checked = selected.has(service.serviceId);
-      input.value = service.serviceId;
-      const copy = document.createElement('span');
-      const name = document.createElement('strong');
-      name.textContent = service.title;
-      const small = document.createElement('small');
-      small.textContent = `${Number(service.durationMinutes || 0)} 分鐘 · NT$${Number(service.priceAmount || 0).toLocaleString('zh-Hant-TW')}`;
-      copy.append(name, small);
-      label.append(input, copy);
-      input.addEventListener('change', () => {
-        if (input.checked) selected.add(service.serviceId); else selected.delete(service.serviceId);
+      const row = document.createElement('article');
+      row.className = `service-choice${selected.has(service.serviceId) ? ' selected' : ''}`;
+      const main = document.createElement('div');
+      main.className = 'service-choice-main';
+      const text = document.createElement('span');
+      const title = document.createElement('strong');
+      title.textContent = service.title;
+      const meta = document.createElement('small');
+      const serviceType = serviceTypeOf(service);
+      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatMoney(service.priceAmount)}`;
+      text.append(title, meta);
+      main.appendChild(text);
+
+      const addButton = document.createElement('button');
+      addButton.type = 'button';
+      addButton.className = 'service-add-button';
+      addButton.textContent = '增加';
+      addButton.setAttribute('aria-label', `${participantLabel(index)}增加 ${service.title}`);
+      addButton.addEventListener('click', () => {
+        selected.add(service.serviceId);
         state.extras[extraIndex] = selected;
+        state.openCards.add(index);
         renderParticipantCards();
+        updateSelectionSummary();
         reloadSlots();
       });
-      choices.appendChild(label);
+      row.append(main, addButton);
+      choices.appendChild(row);
     });
-    wrap.appendChild(choices);
-    return wrap;
+
+    const pickerEmpty = document.createElement('div');
+    pickerEmpty.className = `empty-state compact${state.services.length ? ' hidden' : ''}`;
+    const pickerEmptyText = document.createElement('strong');
+    pickerEmptyText.textContent = '目前沒有開放的預約項目';
+    pickerEmpty.appendChild(pickerEmptyText);
+    picker.append(pickerLegend, pickerHint, choices, pickerEmpty);
+
+    const selectedFieldset = document.createElement('fieldset');
+    selectedFieldset.className = 'selected-service-fieldset participant-selected-service-fieldset';
+    const selectedLegend = document.createElement('legend');
+    selectedLegend.textContent = '目前選擇';
+    const selectedHint = document.createElement('p');
+    selectedHint.className = 'slot-hint';
+    selectedHint.textContent = '相同類型會集中顯示；每一筆選擇都可單獨移除。';
+    const selectedList = document.createElement('div');
+    selectedList.className = 'selected-service-list';
+
+    [...selected].forEach((serviceId) => {
+      const service = state.services.find((item) => item.serviceId === serviceId);
+      if (!service) return;
+      const row = document.createElement('article');
+      row.className = 'selected-service-item';
+      const text = document.createElement('div');
+      text.className = 'selected-service-main';
+      const title = document.createElement('strong');
+      title.textContent = service.title;
+      const meta = document.createElement('small');
+      const serviceType = serviceTypeOf(service);
+      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatMoney(service.priceAmount)}`;
+      text.append(title, meta);
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'selected-service-remove';
+      removeButton.textContent = '移除';
+      removeButton.setAttribute('aria-label', `${participantLabel(index)}移除 ${service.title}`);
+      removeButton.addEventListener('click', () => {
+        selected.delete(serviceId);
+        state.extras[extraIndex] = selected;
+        state.openCards.add(index);
+        renderParticipantCards();
+        updateSelectionSummary();
+        reloadSlots();
+      });
+      row.append(text, removeButton);
+      selectedList.appendChild(row);
+    });
+
+    const selectedEmpty = document.createElement('div');
+    selectedEmpty.className = `empty-state compact${selected.size ? ' hidden' : ''}`;
+    const selectedEmptyTitle = document.createElement('strong');
+    selectedEmptyTitle.textContent = '尚未選擇預約項目';
+    const selectedEmptyHint = document.createElement('span');
+    selectedEmptyHint.textContent = '請從上方可選項目加入。';
+    selectedEmpty.append(selectedEmptyTitle, selectedEmptyHint);
+    selectedFieldset.append(selectedLegend, selectedHint, selectedList, selectedEmpty);
+
+    stack.append(picker, selectedFieldset);
+    return stack;
   }
 
   function updateCardSummaries() {
@@ -457,6 +540,77 @@
     };
   }
 
+  function updateSelectionSummary() {
+    const root = document.getElementById('selectionSummary');
+    if (!root || !state.primaryItems.length) return;
+    const metrics = [];
+    for (let index = 0; index < state.partySize; index += 1) metrics.push(participantMetrics(index));
+    const overallMinutes = metrics.reduce((max, item) => Math.max(max, item.totalMinutes), 0);
+    const overallAmount = metrics.reduce((sum, item) => sum + item.amount, 0);
+    const minimumDate = String(document.getElementById('bookingDate')?.min || '');
+
+    root.replaceChildren();
+    root.classList.remove('hidden');
+    root.classList.add('group-selection-summary');
+    metrics.forEach((metric, index) => {
+      const block = document.createElement('div');
+      block.className = 'group-selection-participant';
+      const heading = document.createElement('strong');
+      heading.textContent = participantLabel(index);
+      const services = document.createElement('p');
+      services.textContent = `服務項目：${metric.labels.join('、') || '尚未選擇'}`;
+      const duration = document.createElement('p');
+      duration.textContent = metric.totalMinutes
+        ? `總時間：${metric.totalMinutes}分鐘（含店內服務 ${state.storeServiceMinutes} 分鐘）`
+        : '總時間：尚未計算';
+      block.append(heading, services, duration);
+      root.appendChild(block);
+    });
+
+    const totals = document.createElement('div');
+    totals.className = 'group-selection-totals';
+    const duration = document.createElement('strong');
+    duration.textContent = `總服務時間：${overallMinutes}分鐘`;
+    const durationNote = document.createElement('span');
+    durationNote.textContent = '（以各預約人最長總時間計）';
+    duration.appendChild(durationNote);
+    const amount = document.createElement('p');
+    amount.textContent = `總金額：${formatMoney(overallAmount)}`;
+    totals.append(duration, amount);
+    if (minimumDate) {
+      const earliest = document.createElement('p');
+      earliest.textContent = `最早可預約 ${system.formatDate(minimumDate)}`;
+      totals.appendChild(earliest);
+    }
+    root.appendChild(totals);
+  }
+
+  function participantMetrics(index) {
+    const items = participantItems(index);
+    let serviceMinutes = 0;
+    let amount = 0;
+    const labels = [];
+    items.forEach((item) => {
+      const service = state.services.find((candidate) => candidate.serviceId === item.serviceId);
+      if (!service) return;
+      const quantity = Math.max(1, Number(item.quantity || 1));
+      const duration = Number(service.durationMinutes || 0);
+      serviceMinutes += duration * quantity;
+      amount += Number(service.priceAmount || 0) * quantity;
+      labels.push(`${service.title}（${duration}分鐘）${quantity > 1 ? `×${quantity}` : ''}`);
+    });
+    return {
+      labels,
+      amount,
+      totalMinutes: items.length ? serviceMinutes + state.storeServiceMinutes : 0,
+    };
+  }
+
+  function participantItems(index) {
+    if (index === 0) return state.primaryItems;
+    return [...(state.extras[index - 1] || [])].map((serviceId) => ({ serviceId, quantity: 1 }));
+  }
+
   function decorateConfirmation() {
     const root = document.getElementById('bookingConfirmSummary');
     if (!root) return;
@@ -468,18 +622,28 @@
     title.textContent = `本次預約 ${state.partySize} 位`;
     box.appendChild(title);
 
+    const metrics = [];
     for (let index = 0; index < state.partySize; index += 1) {
+      const metric = participantMetrics(index);
+      metrics.push(metric);
       const card = document.createElement('div');
       card.className = 'group-confirm-participant';
       const heading = document.createElement('strong');
       heading.textContent = participantLabel(index);
       const itemLine = document.createElement('p');
-      itemLine.textContent = `項目：${participantServiceNames(index).join('、') || '尚未選擇項目'}`;
+      itemLine.textContent = `項目：${metric.labels.join('、') || '尚未選擇項目'}`;
+      const durationLine = document.createElement('p');
+      durationLine.textContent = `總時間：${metric.totalMinutes || 0} 分鐘`;
       const techLine = document.createElement('p');
       techLine.textContent = `技師：${technicianLabel(state.participantTechnicians[index])}`;
-      card.append(heading, itemLine, techLine);
+      card.append(heading, itemLine, durationLine, techLine);
       box.appendChild(card);
     }
+    const totalLine = document.createElement('p');
+    const overallMinutes = metrics.reduce((max, item) => Math.max(max, item.totalMinutes), 0);
+    const overallAmount = metrics.reduce((sum, item) => sum + item.amount, 0);
+    totalLine.textContent = `總服務時間：${overallMinutes} 分鐘（以各預約人最長總時間計） · 總金額：${formatMoney(overallAmount)}`;
+    box.appendChild(totalLine);
     root.prepend(box);
   }
 
@@ -513,10 +677,16 @@
   }
 
   function participantServiceNames(index) {
-    if (index === 0) {
-      return state.primaryItems.map((item) => state.services.find((service) => service.serviceId === item.serviceId)?.title).filter(Boolean);
-    }
-    return [...(state.extras[index - 1] || [])].map((id) => state.services.find((service) => service.serviceId === id)?.title).filter(Boolean);
+    return participantMetrics(index).labels;
+  }
+
+  function serviceTypeOf(service) {
+    const description = String(service?.description || '');
+    return description.startsWith(TYPE_PREFIX) ? description.slice(TYPE_PREFIX.length).trim() : '';
+  }
+
+  function formatMoney(value) {
+    return `NT ${Number(value || 0).toLocaleString('zh-Hant-TW')}`;
   }
 
   function participantLabel(index) {
