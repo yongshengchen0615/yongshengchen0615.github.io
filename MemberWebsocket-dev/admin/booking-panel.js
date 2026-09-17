@@ -82,7 +82,7 @@
 
   load('booking-summary.js', 'booking-summary-20260912-6')
     .then(() => load('../booking-admin-group-details.js', 'booking-group-details-20260917-2'))
-    .then(() => load('../booking-copy-format.js', 'booking-copy-format-20260917-1'))
+    .then(() => load('../booking-copy-format.js', 'booking-copy-format-20260917-2'))
     .then(() => load('booking-panel-core.js', 'booking-panel-core-tdz-20260917-1'))
     .then(() => {
       restoreBookingHashAndOpen();
