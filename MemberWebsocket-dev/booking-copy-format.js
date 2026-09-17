@@ -82,18 +82,20 @@
 
   function buildCopyText(card, group) {
     const lines = [];
-    lines.push(`${formatShortDate(card.dataset.bookingDate)} ${startTime(card)}`);
+    lines.push(`**${formatShortDate(card.dataset.bookingDate)} ${startTime(card)}**`);
     lines.push(contactName(card));
     lines.push(`電話：${contactPhone(card)}`);
 
     const participants = normalizedParticipants(card, group);
     const partySize = Math.max(1, Number(group?.partySize || participants.length || 1));
-    lines.push(`預約人數：${partySize} 位`);
+    lines.push(`**預約人數：${partySize} 位**`);
+    lines.push('');
 
     participants.forEach((participant, index) => {
-      lines.push(participantLabel(index));
+      lines.push(`**${participantLabel(index)}**`);
       lines.push(`預約項目：${participantItems(participant.items)}`);
       lines.push(`預約技師：${String(participant.technicianName || '現場安排').replace(/（主要技師）/g, '').trim() || '現場安排'}`);
+      if (index < participants.length - 1) lines.push('');
     });
 
     return lines.join('\n');
