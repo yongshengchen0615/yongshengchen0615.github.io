@@ -3,6 +3,7 @@
 
   const TIER_KEYS = ['general', 'silver', 'gold', 'platinum'];
   const WEEKDAYS = { 1: '星期一', 2: '星期二', 3: '星期三', 4: '星期四', 5: '星期五', 6: '星期六', 7: '星期日' };
+  const EXPIRY_MODES = ['month_end', 'week_end', 'days_after_issue', 'fixed_date'];
   let config = null;
   let templates = [];
   let selectedFixedTicketId = '';
@@ -76,8 +77,13 @@
         <label>使用期限
           <select id="fixedTicketExpiryMode">
             <option value="month_end">當月月底</option>
+            <option value="week_end">當週</option>
+            <option value="days_after_issue">發放後設定天數</option>
             <option value="fixed_date">指定日期</option>
           </select>
+        </label>
+        <label id="fixedTicketExpiryDaysField" class="hidden">發放後可使用天數
+          <input id="fixedTicketExpiryDays" type="number" min="1" max="3650" step="1" value="7" inputmode="numeric">
         </label>
         <label id="fixedTicketExpiryDateField" class="hidden">指定到期日
           <input id="fixedTicketExpiryDate" type="date">
@@ -106,6 +112,7 @@
     document.getElementById('fixedTicketScheduleDay').addEventListener('input', updateFixedScheduleUI);
     document.getElementById('fixedTicketScheduleWeekday').addEventListener('change', updateFixedScheduleUI);
     document.getElementById('fixedTicketExpiryMode').addEventListener('change', updateFixedExpiryUI);
+    document.getElementById('fixedTicketExpiryDays').addEventListener('input', updateFixedExpiryUI);
     document.getElementById('fixedTicketExpiryDate').addEventListener('change', updateFixedExpiryUI);
     document.getElementById('fixedTicketRunButton').addEventListener('click', runFixedNow);
 
@@ -239,9 +246,11 @@
   }
 
   function expiryLabel(template) {
-    return template.expiryMode === 'fixed_date' && template.expiryDate
-      ? `期限 ${String(template.expiryDate).replaceAll('-', '/')}`
-      : '當月月底到期';
+    const mode = String(template.expiryMode || 'month_end');
+    if (mode === 'fixed_date' && template.expiryDate) return `期限 ${String(template.expiryDate).replaceAll('-', '/')}`;
+    if (mode === 'week_end') return '當週到期';
+    if (mode === 'days_after_issue') return `發放後 ${Number(template.expiryDays || 0)} 天`;
+    return '當月月底到期';
   }
 
   function resetFixedState() {
@@ -251,8 +260,10 @@
     if (type?.value === 'fixed') type.value = 'coupon';
     const expiryMode = document.getElementById('fixedTicketExpiryMode');
     const expiryDate = document.getElementById('fixedTicketExpiryDate');
+    const expiryDays = document.getElementById('fixedTicketExpiryDays');
     if (expiryMode) expiryMode.value = 'month_end';
     if (expiryDate) expiryDate.value = '';
+    if (expiryDays) expiryDays.value = '7';
     updateFixedUI();
     renderFixedList();
   }
@@ -285,8 +296,10 @@
     document.getElementById('fixedTicketScheduleMonth').value = String(Number(template.scheduleMonth || 1));
     document.getElementById('fixedTicketScheduleDay').value = String(Number(template.scheduleDay || 1));
     document.getElementById('fixedTicketScheduleWeekday').value = String(Number(template.scheduleWeekday || 1));
-    document.getElementById('fixedTicketExpiryMode').value = template.expiryMode === 'fixed_date' ? 'fixed_date' : 'month_end';
+    const expiryMode = EXPIRY_MODES.includes(String(template.expiryMode || '')) ? String(template.expiryMode) : 'month_end';
+    document.getElementById('fixedTicketExpiryMode').value = expiryMode;
     document.getElementById('fixedTicketExpiryDate').value = String(template.expiryDate || '');
+    document.getElementById('fixedTicketExpiryDays').value = String(Number(template.expiryDays || 7));
     document.getElementById('fixedTicketNotifyLine').checked = Boolean(template.notifyLine);
 
     document.getElementById('eventTicketEditorKicker').textContent = 'Edit fixed ticket';
@@ -355,14 +368,24 @@
     const mode = String(document.getElementById('fixedTicketExpiryMode')?.value || 'month_end');
     const dateField = document.getElementById('fixedTicketExpiryDateField');
     const dateInput = document.getElementById('fixedTicketExpiryDate');
+    const daysField = document.getElementById('fixedTicketExpiryDaysField');
+    const daysInput = document.getElementById('fixedTicketExpiryDays');
     const summary = document.getElementById('fixedTicketExpirySummary');
     dateField?.classList.toggle('hidden', mode !== 'fixed_date');
+    daysField?.classList.toggle('hidden', mode !== 'days_after_issue');
     if (!summary) return;
     if (mode === 'fixed_date') {
       const date = String(dateInput?.value || '');
       summary.textContent = date
         ? `票券可使用至 ${date.replaceAll('-', '/')}；到期後停止發放新的固定票券。`
         : '請選擇指定到期日；到期後系統會停止發放新的固定票券。';
+    } else if (mode === 'week_end') {
+      summary.textContent = '每次發放後可使用至發放當週的星期日。';
+    } else if (mode === 'days_after_issue') {
+      const days = Number(daysInput?.value || 0);
+      summary.textContent = Number.isInteger(days) && days >= 1
+        ? `自實際發放日起算，可使用 ${days} 天（含發放當日）。`
+        : '請輸入發放後可使用天數。';
     } else {
       summary.textContent = '每次發放的票券可使用至該次發放月份的最後一天。';
     }
@@ -384,6 +407,7 @@
       scheduleWeekday: scheduleType === 'weekly' ? Number(document.getElementById('fixedTicketScheduleWeekday').value) : null,
       expiryMode,
       expiryDate: expiryMode === 'fixed_date' ? String(document.getElementById('fixedTicketExpiryDate').value || '') : null,
+      expiryDays: expiryMode === 'days_after_issue' ? Number(document.getElementById('fixedTicketExpiryDays').value) : null,
       quota: Number(document.getElementById('eventTicketQuota').value || 0),
       accent: String(document.getElementById('eventTicketAccent').value || '#df6b4d'),
       allowedTierKeys: Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => input.value),
@@ -402,10 +426,13 @@
     if (template.scheduleType === 'yearly' && (!Number.isInteger(template.scheduleMonth) || template.scheduleMonth < 1 || template.scheduleMonth > 12)) return '請選擇每年發放月份。';
     if (['yearly', 'monthly'].includes(template.scheduleType) && (!Number.isInteger(template.scheduleDay) || template.scheduleDay < 1 || template.scheduleDay > 31)) return '發放日期必須是 1–31。';
     if (template.scheduleType === 'weekly' && (!Number.isInteger(template.scheduleWeekday) || template.scheduleWeekday < 1 || template.scheduleWeekday > 7)) return '請選擇每週發放日。';
-    if (!['month_end', 'fixed_date'].includes(template.expiryMode)) return '請選擇固定票券使用期限。';
+    if (!EXPIRY_MODES.includes(template.expiryMode)) return '請選擇固定票券使用期限。';
     if (template.expiryMode === 'fixed_date') {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(template.expiryDate || ''))) return '請選擇指定到期日。';
       if (String(template.expiryDate) < taipeiDate()) return '指定到期日不可早於今天。';
+    }
+    if (template.expiryMode === 'days_after_issue' && (!Number.isInteger(template.expiryDays) || template.expiryDays < 1 || template.expiryDays > 3650)) {
+      return '發放後使用天數必須是 1–3650 的整數。';
     }
     return '';
   }
