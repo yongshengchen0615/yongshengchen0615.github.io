@@ -141,7 +141,10 @@
       queueMicrotask(decorateBookingHistory);
     });
     const list = document.getElementById('bookingList');
-    if (list) new MutationObserver(decorateBookingHistory).observe(list, { childList: true, subtree: true });
+    // Only watch direct booking-list membership changes. Watching the whole subtree
+    // observes the decoration inserted by decorateBookingHistory itself, causing an
+    // endless remove/insert observer feedback loop after a grouped booking exists.
+    if (list) new MutationObserver(decorateBookingHistory).observe(list, { childList: true });
   });
 
   async function groupRequest(action, payload = {}) {
