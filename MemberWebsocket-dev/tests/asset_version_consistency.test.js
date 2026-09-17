@@ -41,16 +41,19 @@ test('admin entry references current assets that changed after older cache keys'
   assert.doesNotMatch(html, /booking-panel\.js\?v=booking-duration-consistency-20260911-4/);
 });
 
-test('booking entry points bust caches for primary technician booking assets', () => {
+test('booking entry points bust caches for primary technician and participant layout assets', () => {
   const memberHtml = fs.readFileSync(path.join(root, 'booking/index.html'), 'utf8');
   const bookingAdminHtml = fs.readFileSync(path.join(root, 'booking/admin/index.html'), 'utf8');
   const adminLoader = fs.readFileSync(path.join(root, 'admin/booking-panel.js'), 'utf8');
+  const groupCss = fs.readFileSync(path.join(root, 'booking/group-booking.css'), 'utf8');
 
-  assert.ok(memberHtml.includes('group-booking.css?v=booking-primary-tech-20260917-2'));
+  assert.ok(memberHtml.includes('group-booking.css?v=booking-group-layout-20260917-1'));
   assert.ok(memberHtml.includes('group-booking.js?v=booking-primary-tech-20260917-2'));
   assert.ok(bookingAdminHtml.includes('resources.js?v=booking-primary-tech-20260917-2'));
   assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3')"));
   assert.ok(adminLoader.includes("load('booking-resources.js', 'booking-primary-tech-20260917-3')"));
+  assert.match(groupCss, /\.participant-service-option input\[type="checkbox"\]\{[^}]*width:18px;[^}]*min-height:18px;/);
+  assert.match(groupCss, /\.participant-card-body\{[^}]*min-width:0/);
 });
 
 test('calendar date fix keeps native date inputs shrinkable in LINE WebView', () => {
