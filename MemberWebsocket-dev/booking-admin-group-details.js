@@ -112,6 +112,7 @@
       used.add(id);
       card.dataset.bookingId = id;
       renderDetails(card, group);
+      protectUnsafeGroupEdits(card, group);
     });
   }
 
@@ -182,9 +183,27 @@
     totals.append(duration, note, amount);
     box.appendChild(totals);
 
+    if (Number(group.partySize || group.participants.length) > 1) {
+      const warning = document.createElement('p');
+      warning.className = 'booking-group-admin-warning';
+      warning.textContent = '多人預約的服務項目需維持逐位對應；管理端不使用舊的整筆合併改單功能，避免預約人與項目錯置。';
+      box.appendChild(warning);
+    }
+
     const heading = card.querySelector(':scope > .booking-admin-booking-heading, :scope > .booking-heading');
     if (heading) heading.insertAdjacentElement('afterend', box);
     else card.prepend(box);
+  }
+
+  function protectUnsafeGroupEdits(card, group) {
+    if (Number(group.partySize || group.participants.length) <= 1) return;
+    [...card.querySelectorAll('button')].forEach((button) => {
+      const label = String(button.textContent || '').trim();
+      if (!label.includes('修改服務項目') && !label.includes('現場改單')) return;
+      button.disabled = true;
+      button.title = '多人預約必須逐位修改服務項目，舊的整筆合併改單功能已停用以保護資料一致性。';
+      button.setAttribute('aria-label', `${label}（多人預約暫停使用）`);
+    });
   }
 
   function participantItemsLabel(items) {
