@@ -145,7 +145,8 @@
   });
 
   async function groupRequest(action, payload = {}) {
-    const endpoint = `${String(state.config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-group-api`;
+    const functionName = action === 'user.booking.group.slots' ? 'booking-group-slots-api' : 'booking-group-api';
+    const endpoint = `${String(state.config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/${functionName}`;
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 15000);
     try {
