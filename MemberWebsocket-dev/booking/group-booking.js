@@ -11,12 +11,17 @@
     idToken: '',
     maxPartySize: 1,
     partySize: 1,
+    primaryTechnicianId: '',
     technicians: [],
-    technicianId: '',
+    participantTechnicians: [],
     services: [],
+    primaryItems: [],
     extras: [],
     bookingGroups: new Map(),
     editingBookingId: '',
+    primaryPicker: null,
+    primarySelected: null,
+    openCards: new Set([0]),
   };
 
   system.request = async function groupBookingRequest(config, clientType, idToken, action, payload = {}) {
@@ -28,13 +33,16 @@
       const base = await originalRequest(config, clientType, idToken, action, payload);
       const group = await groupRequest('user.booking.group.bootstrap');
       state.maxPartySize = clamp(Number(group.settings?.maxPartySize || 1), 1, 10);
+      state.primaryTechnicianId = String(group.settings?.primaryTechnicianId || '');
       state.technicians = Array.isArray(group.technicians) ? group.technicians.filter((item) => item.isActive) : [];
       state.services = Array.isArray(base.services) ? base.services.filter((item) => item.serviceId !== STORE_SERVICE_ID) : [];
       state.bookingGroups = new Map(Object.entries(group.bookingGroups || {}));
-      if (!state.technicianId || !state.technicians.some((item) => item.technicianId === state.technicianId)) {
-        state.technicianId = state.technicians[0]?.technicianId || '';
-      }
-      base.settings = { ...(base.settings || {}), maxPartySize: state.maxPartySize };
+      ensureParticipantCount(true);
+      base.settings = {
+        ...(base.settings || {}),
+        maxPartySize: state.maxPartySize,
+        primaryTechnicianId: state.primaryTechnicianId,
+      };
       base.technicians = state.technicians;
       base.bookings = (base.bookings || []).map((booking) => normalizeBookingForMember(booking, state.bookingGroups.get(booking.bookingId)));
       queueMicrotask(() => {
@@ -47,11 +55,18 @@
     if (action === 'user.booking.slots') {
       ensureEditingGroup(payload.bookingId);
       const participants = buildParticipants(payload.items);
-      if (!participants) return { settings: { maxPartySize: state.maxPartySize }, totalDurationMinutes: 0, totalAmount: 0, slots: [] };
+      queueMicrotask(updateCardSummaries);
+      if (!participants) {
+        return {
+          settings: { maxPartySize: state.maxPartySize, primaryTechnicianId: state.primaryTechnicianId },
+          totalDurationMinutes: 0,
+          totalAmount: 0,
+          slots: [],
+        };
+      }
       return groupRequest('user.booking.group.slots', {
         bookingId: payload.bookingId,
         bookingDate: payload.bookingDate,
-        technicianId: state.technicianId,
         participants,
       });
     }
@@ -62,7 +77,6 @@
       const result = await groupRequest(action === 'user.booking.create' ? 'user.booking.group.create' : 'user.booking.group.update', {
         ...payload,
         items: undefined,
-        technicianId: state.technicianId,
         participants,
         ...contactPayload(),
       });
@@ -121,8 +135,13 @@
     const timer = window.setTimeout(() => controller.abort(), 15000);
     try {
       const response = await fetch(endpoint, {
-        method: 'POST', cache: 'no-store', signal: controller.signal,
-        headers: { 'Content-Type': 'application/json', apikey: String(state.config?.supabasePublishableKey || '') },
+        method: 'POST',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: String(state.config?.supabasePublishableKey || ''),
+        },
         body: JSON.stringify({ ...payload, action, clientType: 'member', idToken: state.idToken }),
       });
       const data = await response.json().catch(() => null);
@@ -147,119 +166,237 @@
 
   function injectGroupControls() {
     const picker = document.querySelector('.service-picker-fieldset');
-    if (!picker || document.getElementById('groupBookingFields')) return;
+    const selected = document.querySelector('.selected-service-fieldset');
+    if (!picker || !selected || document.getElementById('groupBookingFields')) return;
+    state.primaryPicker = picker;
+    state.primarySelected = selected;
+
     const section = document.createElement('fieldset');
     section.id = 'groupBookingFields';
     section.className = 'group-booking-fieldset';
     section.innerHTML = `
-      <legend>預約人數與技師</legend>
+      <legend>多人預約</legend>
       <div class="group-booking-topline">
         <label>預約人數<select id="bookingPartySize" aria-label="預約人數"></select></label>
-        <label>預約技師<select id="bookingTechnician" aria-label="預約技師"></select></label>
       </div>
-      <p class="slot-hint">第 1 位使用下方原本的項目選擇；第 2 位起可在這裡分別設定服務項目。</p>
-      <div id="extraParticipantList" class="extra-participant-list"></div>`;
+      <div id="primaryTechnicianRule" class="group-booking-rule" role="note"></div>
+      <div id="participantCardList" class="participant-card-list"></div>`;
     picker.insertAdjacentElement('beforebegin', section);
     document.getElementById('bookingPartySize').addEventListener('change', partySizeChanged);
-    document.getElementById('bookingTechnician').addEventListener('change', technicianChanged);
     renderGroupControls();
   }
 
   function renderGroupControls() {
     const party = document.getElementById('bookingPartySize');
-    const tech = document.getElementById('bookingTechnician');
-    if (!party || !tech) return;
-
+    if (!party) return;
     const previousSize = state.partySize;
     party.replaceChildren();
     for (let value = 1; value <= state.maxPartySize; value += 1) {
-      const option = document.createElement('option'); option.value = String(value); option.textContent = `${value} 人`; party.appendChild(option);
+      const option = document.createElement('option');
+      option.value = String(value);
+      option.textContent = `${value} 人`;
+      party.appendChild(option);
     }
     state.partySize = clamp(previousSize, 1, state.maxPartySize);
     party.value = String(state.partySize);
+    ensureParticipantCount(false);
+    renderPrimaryRule();
+    renderParticipantCards();
+  }
 
-    tech.replaceChildren();
-    if (!state.technicians.length) {
-      const option = document.createElement('option'); option.value = ''; option.textContent = '目前沒有可預約技師'; tech.appendChild(option); tech.disabled = true;
-      state.technicianId = '';
-    } else {
-      tech.disabled = false;
-      state.technicians.forEach((item) => {
-        const option = document.createElement('option'); option.value = item.technicianId; option.textContent = item.name; tech.appendChild(option);
-      });
-      if (!state.technicians.some((item) => item.technicianId === state.technicianId)) state.technicianId = state.technicians[0].technicianId;
-      tech.value = state.technicianId;
+  function renderPrimaryRule() {
+    const rule = document.getElementById('primaryTechnicianRule');
+    if (!rule) return;
+    const primary = technicianById(state.primaryTechnicianId);
+    if (!primary) {
+      rule.className = 'group-booking-rule error';
+      rule.textContent = '管理端尚未設定可用的主要技師，目前無法送出預約。';
+      return;
     }
-    ensureExtraCount();
-    renderExtraParticipants();
+    rule.className = 'group-booking-rule';
+    rule.textContent = `預約規則：不論預約幾位，至少一位必須選擇主要技師「${primary.name}」；其他預約人可選其他技師或現場安排。`;
   }
 
   function partySizeChanged(event) {
     state.partySize = clamp(Number(event.target.value || 1), 1, state.maxPartySize);
-    ensureExtraCount();
-    renderExtraParticipants();
+    ensureParticipantCount(false);
+    renderParticipantCards();
     reloadSlots();
   }
 
-  function technicianChanged(event) {
-    state.technicianId = String(event.target.value || '');
-    reloadSlots();
+  function ensureParticipantCount(initial) {
+    const previous = state.participantTechnicians.slice();
+    while (state.participantTechnicians.length < state.partySize) state.participantTechnicians.push('');
+    if (state.participantTechnicians.length > state.partySize) state.participantTechnicians.length = state.partySize;
+    while (state.extras.length < Math.max(0, state.partySize - 1)) state.extras.push(new Set());
+    if (state.extras.length > Math.max(0, state.partySize - 1)) state.extras.length = Math.max(0, state.partySize - 1);
+
+    if (initial || !previous.length) {
+      state.participantTechnicians[0] = state.primaryTechnicianId && technicianById(state.primaryTechnicianId) ? state.primaryTechnicianId : '';
+    }
   }
 
-  function ensureExtraCount() {
-    const count = Math.max(0, state.partySize - 1);
-    while (state.extras.length < count) state.extras.push(new Set());
-    if (state.extras.length > count) state.extras.length = count;
-  }
-
-  function renderExtraParticipants() {
-    const root = document.getElementById('extraParticipantList');
+  function renderParticipantCards() {
+    const root = document.getElementById('participantCardList');
     if (!root) return;
     root.replaceChildren();
-    state.extras.forEach((selected, extraIndex) => {
-      const card = document.createElement('section'); card.className = 'participant-card';
-      const heading = document.createElement('div'); heading.className = 'participant-heading';
-      const title = document.createElement('strong'); title.textContent = `第 ${extraIndex + 2} 位預約人`;
-      const count = document.createElement('span'); count.textContent = selected.size ? `已選 ${selected.size} 項` : '尚未選擇';
-      heading.append(title, count); card.appendChild(heading);
-      const choices = document.createElement('div'); choices.className = 'participant-service-grid';
-      state.services.forEach((service) => {
-        const label = document.createElement('label'); label.className = `participant-service-option${selected.has(service.serviceId) ? ' selected' : ''}`;
-        const input = document.createElement('input'); input.type = 'checkbox'; input.checked = selected.has(service.serviceId); input.value = service.serviceId;
-        const text = document.createElement('span'); const strong = document.createElement('strong'); strong.textContent = service.title;
-        const small = document.createElement('small'); small.textContent = `${Number(service.durationMinutes || 0)} 分鐘 · NT$${Number(service.priceAmount || 0).toLocaleString('zh-Hant-TW')}`;
-        text.append(strong, small); label.append(input, text);
-        input.addEventListener('change', () => {
-          if (input.checked) selected.add(service.serviceId); else selected.delete(service.serviceId);
-          renderExtraParticipants(); reloadSlots();
-        });
-        choices.appendChild(label);
+    for (let index = 0; index < state.partySize; index += 1) {
+      const details = document.createElement('details');
+      details.className = 'participant-card';
+      details.dataset.participantIndex = String(index);
+      details.open = state.openCards.has(index) || index === 0;
+      details.addEventListener('toggle', () => {
+        if (details.open) state.openCards.add(index); else state.openCards.delete(index);
       });
-      card.appendChild(choices); root.appendChild(card);
+
+      const summary = document.createElement('summary');
+      const heading = document.createElement('span');
+      heading.className = 'participant-heading';
+      const title = document.createElement('strong');
+      title.textContent = participantLabel(index);
+      const meta = document.createElement('span');
+      meta.dataset.participantSummary = String(index);
+      heading.append(title, meta);
+      const chevron = document.createElement('span');
+      chevron.className = 'participant-chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      chevron.textContent = '⌄';
+      summary.append(heading, chevron);
+      details.appendChild(summary);
+
+      const body = document.createElement('div');
+      body.className = 'participant-card-body';
+      body.appendChild(createTechnicianField(index));
+
+      if (index === 0) {
+        if (state.primaryPicker) body.appendChild(state.primaryPicker);
+        if (state.primarySelected) body.appendChild(state.primarySelected);
+      } else {
+        body.appendChild(createExtraServicePicker(index));
+      }
+      details.appendChild(body);
+      root.appendChild(details);
+    }
+    updateCardSummaries();
+  }
+
+  function createTechnicianField(index) {
+    const wrap = document.createElement('label');
+    wrap.className = 'participant-technician-field';
+    const text = document.createElement('span');
+    text.textContent = '預約技師';
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', `${participantLabel(index)}預約技師`);
+
+    const onsite = document.createElement('option');
+    onsite.value = '';
+    onsite.textContent = '現場安排';
+    select.appendChild(onsite);
+
+    const selectedElsewhere = new Set(state.participantTechnicians.filter((id, i) => i !== index && id));
+    state.technicians.forEach((technician) => {
+      const option = document.createElement('option');
+      option.value = technician.technicianId;
+      option.textContent = technician.technicianId === state.primaryTechnicianId ? `${technician.name}（主要技師）` : technician.name;
+      option.disabled = selectedElsewhere.has(technician.technicianId);
+      select.appendChild(option);
+    });
+    select.value = state.participantTechnicians[index] || '';
+    select.addEventListener('change', () => {
+      state.participantTechnicians[index] = String(select.value || '');
+      renderParticipantCards();
+      reloadSlots();
+    });
+    wrap.append(text, select);
+    return wrap;
+  }
+
+  function createExtraServicePicker(index) {
+    const extraIndex = index - 1;
+    const selected = state.extras[extraIndex] || new Set();
+    const wrap = document.createElement('section');
+    wrap.className = 'participant-service-section';
+    const heading = document.createElement('div');
+    heading.className = 'participant-service-heading';
+    const strong = document.createElement('strong');
+    strong.textContent = '服務項目';
+    const count = document.createElement('span');
+    count.textContent = selected.size ? `已選 ${selected.size} 項` : '尚未選擇';
+    heading.append(strong, count);
+    wrap.appendChild(heading);
+
+    const choices = document.createElement('div');
+    choices.className = 'participant-service-grid';
+    state.services.forEach((service) => {
+      const label = document.createElement('label');
+      label.className = `participant-service-option${selected.has(service.serviceId) ? ' selected' : ''}`;
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = selected.has(service.serviceId);
+      input.value = service.serviceId;
+      const copy = document.createElement('span');
+      const name = document.createElement('strong');
+      name.textContent = service.title;
+      const small = document.createElement('small');
+      small.textContent = `${Number(service.durationMinutes || 0)} 分鐘 · NT$${Number(service.priceAmount || 0).toLocaleString('zh-Hant-TW')}`;
+      copy.append(name, small);
+      label.append(input, copy);
+      input.addEventListener('change', () => {
+        if (input.checked) selected.add(service.serviceId); else selected.delete(service.serviceId);
+        state.extras[extraIndex] = selected;
+        renderParticipantCards();
+        reloadSlots();
+      });
+      choices.appendChild(label);
+    });
+    wrap.appendChild(choices);
+    return wrap;
+  }
+
+  function updateCardSummaries() {
+    document.querySelectorAll('[data-participant-summary]').forEach((node) => {
+      const index = Number(node.dataset.participantSummary || 0);
+      const tech = technicianLabel(state.participantTechnicians[index]);
+      const count = index === 0 ? countItems(state.primaryItems) : (state.extras[index - 1]?.size || 0);
+      node.textContent = `${count ? `已選 ${count} 項` : '尚未選項目'} · ${tech}`;
     });
   }
 
   function buildParticipants(primaryItems, strict = false) {
-    if (!state.technicianId) {
-      if (strict) throw clientError('BOOKING_TECHNICIAN_REQUIRED', '請先選擇預約技師。');
-      return null;
-    }
-    const primary = (Array.isArray(primaryItems) ? primaryItems : [])
+    state.primaryItems = (Array.isArray(primaryItems) ? primaryItems : [])
       .filter((item) => item.serviceId !== STORE_SERVICE_ID)
       .map((item) => ({ serviceId: item.serviceId, quantity: Number(item.quantity || 1) }));
-    if (!primary.length) {
-      if (strict) throw clientError('INVALID_BOOKING_ITEMS', '第 1 位預約人尚未選擇預約項目。');
+
+    if (!state.primaryItems.length) {
+      if (strict) throw clientError('INVALID_BOOKING_ITEMS', '第一位預約尚未選擇預約項目。');
       return null;
     }
-    ensureExtraCount();
-    const participants = [{ items: primary }];
+    ensureParticipantCount(false);
+    const primaryCount = state.participantTechnicians.filter((id) => id && id === state.primaryTechnicianId).length;
+    if (!state.primaryTechnicianId || primaryCount < 1) {
+      if (strict) throw clientError('BOOKING_PRIMARY_TECHNICIAN_REQUIRED', '至少一位預約必須選擇主要技師。');
+      return null;
+    }
+    const selectedTechs = state.participantTechnicians.filter(Boolean);
+    if (new Set(selectedTechs).size !== selectedTechs.length) {
+      if (strict) throw clientError('DUPLICATE_PARTICIPANT_TECHNICIAN', '同一位技師不能同時安排給兩位預約人。');
+      return null;
+    }
+
+    const participants = [{
+      technicianId: state.participantTechnicians[0] || null,
+      items: state.primaryItems,
+    }];
     for (let index = 0; index < state.extras.length; index += 1) {
       const items = [...state.extras[index]].map((serviceId) => ({ serviceId, quantity: 1 }));
       if (!items.length) {
-        if (strict) throw clientError('INVALID_BOOKING_ITEMS', `第 ${index + 2} 位預約人尚未選擇預約項目。`);
+        if (strict) throw clientError('INVALID_BOOKING_ITEMS', `${participantLabel(index + 1)}尚未選擇預約項目。`);
         return null;
       }
-      participants.push({ items });
+      participants.push({
+        technicianId: state.participantTechnicians[index + 1] || null,
+        items,
+      });
     }
     return participants;
   }
@@ -275,17 +412,23 @@
     const group = state.bookingGroups.get(bookingId);
     if (!group) return;
     state.partySize = clamp(Number(group.partySize || 1), 1, state.maxPartySize);
-    state.technicianId = String(group.technicianId || state.technicianId || '');
     const participants = Array.isArray(group.participants) ? group.participants : [];
+    state.participantTechnicians = participants.map((participant) => String(participant.technicianId || ''));
+    state.primaryItems = Array.isArray(participants[0]?.items)
+      ? participants[0].items.map((item) => ({ serviceId: item.serviceId, quantity: Number(item.quantity || 1) }))
+      : [];
     state.extras = participants.slice(1).map((participant) => new Set((participant.items || []).map((item) => item.serviceId).filter(Boolean)));
-    ensureExtraCount();
+    ensureParticipantCount(false);
+    state.openCards = new Set([0]);
     renderGroupControls();
   }
 
   function resetGroupSelection() {
     state.partySize = 1;
+    state.primaryItems = [];
     state.extras = [];
-    if (!state.technicians.some((item) => item.technicianId === state.technicianId)) state.technicianId = state.technicians[0]?.technicianId || '';
+    state.participantTechnicians = [state.primaryTechnicianId && technicianById(state.primaryTechnicianId) ? state.primaryTechnicianId : ''];
+    state.openCards = new Set([0]);
     renderGroupControls();
   }
 
@@ -297,7 +440,7 @@
       ...booking,
       partySize: Number(group.partySize || 1),
       technicianId: group.technicianId || '',
-      technicianName: group.technicianName || '店家安排',
+      technicianName: group.technicianName || '',
       participants: group.participants || [],
       items: [...participantOneItems, ...(store ? [store] : [])],
     };
@@ -316,14 +459,27 @@
 
   function decorateConfirmation() {
     const root = document.getElementById('bookingConfirmSummary');
-    if (!root || root.querySelector('[data-group-confirm]')) return;
-    const box = document.createElement('div'); box.dataset.groupConfirm = 'true'; box.className = 'group-confirm-summary';
-    const tech = state.technicians.find((item) => item.technicianId === state.technicianId);
-    const title = document.createElement('strong'); title.textContent = `預約 ${state.partySize} 人 · 技師：${tech?.name || '未選擇'}`; box.appendChild(title);
-    state.extras.forEach((selected, index) => {
-      const names = [...selected].map((id) => state.services.find((service) => service.serviceId === id)?.title).filter(Boolean);
-      const row = document.createElement('p'); row.textContent = `第 ${index + 2} 位：${names.join('、') || '尚未選擇項目'}`; box.appendChild(row);
-    });
+    if (!root) return;
+    root.querySelector('[data-group-confirm]')?.remove();
+    const box = document.createElement('div');
+    box.dataset.groupConfirm = 'true';
+    box.className = 'group-confirm-summary';
+    const title = document.createElement('strong');
+    title.textContent = `本次預約 ${state.partySize} 位`;
+    box.appendChild(title);
+
+    for (let index = 0; index < state.partySize; index += 1) {
+      const card = document.createElement('div');
+      card.className = 'group-confirm-participant';
+      const heading = document.createElement('strong');
+      heading.textContent = participantLabel(index);
+      const itemLine = document.createElement('p');
+      itemLine.textContent = `項目：${participantServiceNames(index).join('、') || '尚未選擇項目'}`;
+      const techLine = document.createElement('p');
+      techLine.textContent = `技師：${technicianLabel(state.participantTechnicians[index])}`;
+      card.append(heading, itemLine, techLine);
+      box.appendChild(card);
+    }
     root.prepend(box);
   }
 
@@ -331,15 +487,60 @@
     document.querySelectorAll('.booking-item[data-booking-id]').forEach((node) => {
       const id = String(node.dataset.bookingId || '');
       const group = state.bookingGroups.get(id);
-      if (!group || node.querySelector('[data-group-history]')) return;
-      const box = document.createElement('div'); box.dataset.groupHistory = 'true'; box.className = 'group-history-summary';
-      const head = document.createElement('strong'); head.textContent = `${Number(group.partySize || 1)} 人 · 技師：${group.technicianName || '店家安排'}`; box.appendChild(head);
+      if (!group) return;
+      node.querySelector('[data-group-history]')?.remove();
+      const box = document.createElement('div');
+      box.dataset.groupHistory = 'true';
+      box.className = 'group-history-summary';
+      const head = document.createElement('strong');
+      head.textContent = `${Number(group.partySize || 1)} 位預約`;
+      box.appendChild(head);
       (group.participants || []).forEach((participant, index) => {
-        const p = document.createElement('p'); p.textContent = `第 ${index + 1} 位：${(participant.items || []).map((item) => item.serviceTitle).filter(Boolean).join('、') || '—'}`; box.appendChild(p);
+        const card = document.createElement('div');
+        card.className = 'group-history-participant';
+        const title = document.createElement('strong');
+        title.textContent = participantLabel(index);
+        const items = document.createElement('p');
+        items.textContent = `項目：${(participant.items || []).map((item) => item.serviceTitle).filter(Boolean).join('、') || '—'}`;
+        const tech = document.createElement('p');
+        tech.textContent = `技師：${participant.technicianName || '現場安排'}`;
+        card.append(title, items, tech);
+        box.appendChild(card);
       });
       const top = node.querySelector('.booking-item-top');
       if (top) top.insertAdjacentElement('afterend', box); else node.prepend(box);
     });
+  }
+
+  function participantServiceNames(index) {
+    if (index === 0) {
+      return state.primaryItems.map((item) => state.services.find((service) => service.serviceId === item.serviceId)?.title).filter(Boolean);
+    }
+    return [...(state.extras[index - 1] || [])].map((id) => state.services.find((service) => service.serviceId === id)?.title).filter(Boolean);
+  }
+
+  function participantLabel(index) {
+    return `${ordinal(index + 1)}位預約`;
+  }
+
+  function ordinal(value) {
+    const names = ['第一', '第二', '第三', '第四', '第五', '第六', '第七', '第八', '第九', '第十'];
+    return names[value - 1] || `第 ${value} `;
+  }
+
+  function technicianLabel(id) {
+    if (!id) return '現場安排';
+    const tech = technicianById(id);
+    if (!tech) return '現場安排';
+    return id === state.primaryTechnicianId ? `${tech.name}（主要技師）` : tech.name;
+  }
+
+  function technicianById(id) {
+    return state.technicians.find((item) => item.technicianId === id) || null;
+  }
+
+  function countItems(items) {
+    return (Array.isArray(items) ? items : []).reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1)), 0);
   }
 
   function reloadSlots() {
@@ -347,6 +548,13 @@
     if (date?.value) date.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function clientError(code, message) { const error = new Error(message); error.code = code; return error; }
-  function clamp(value, min, max) { return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min)); }
+  function clientError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+  }
 })();
