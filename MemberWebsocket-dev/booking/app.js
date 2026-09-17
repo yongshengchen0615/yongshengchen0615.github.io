@@ -111,7 +111,9 @@
       if (selectedItems().length && els.bookingDate.value) await loadSlots();
       if (showMessage) showFormMessage('資料已更新。', 'success');
     } catch (error) {
-      if (!state.data.today) return showError(error);
+      // Let boot own initial failures; otherwise it would reveal an empty booking
+      // view and subscribe to realtime immediately after showError returned.
+      if (!state.data.today) throw error;
       showFormMessage(error?.message || '資料暫時無法更新。', 'error');
     } finally {
       setRefreshBusy(false);

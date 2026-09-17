@@ -33,7 +33,7 @@ test('admin entry references current assets that changed after older cache keys'
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
   assert.ok(html.includes('common.js?v=admin-fresh-login-20260917-1'));
   assert.ok(html.includes('app.js?v=admin-fresh-login-20260917-1'));
-  assert.ok(html.includes('booking-panel.js?v=booking-toggle-removal-20260917-3'));
+  assert.ok(html.includes('booking-panel.js?v=booking-copy-entrypoints-20260917-1'));
   assert.ok(html.includes(`../responsive.css?v=${responsiveVersion}`));
   assert.doesNotMatch(html, /calendar-responsive\.css\?v=calendar-responsive-20260910-1/);
   assert.doesNotMatch(html, /common\.js\?v=supabase-native-booking-20260910-1/);
@@ -55,8 +55,8 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.ok(memberHtml.includes('group-booking.css?v=booking-participant-parity-20260917-1'));
   assert.ok(memberHtml.includes('group-booking.js?v=booking-request-stability-20260917-1'));
   assert.ok(memberHtml.includes('booking-confirm-details.js?v=booking-confirm-details-20260917-4'));
-  assert.ok(bookingAdminHtml.includes('../booking-admin-group-details.js?v=booking-group-details-20260917-2'));
-  assert.ok(bookingAdminHtml.includes('../booking-admin-group-details.css?v=booking-group-details-20260917-2'));
+  assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.js?v=booking-group-details-20260917-2'));
+  assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.css?v=booking-group-details-20260917-2'));
   assert.ok(bookingAdminHtml.includes('resources.js?v=booking-primary-tech-20260917-2'));
   assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3')"));
   assert.ok(adminLoader.includes("load('booking-resources.js', 'booking-primary-tech-20260917-3')"));

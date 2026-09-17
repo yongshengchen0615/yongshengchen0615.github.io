@@ -82,6 +82,8 @@
       if (!booking) return;
       used.add(booking.bookingId);
       card.dataset.bookingId = String(booking.bookingId || '');
+      card.dataset.bookingDate = String(booking.bookingDate || '');
+      card.dataset.bookingStartTime = String(booking.startTime || '');
       normalizeBookingCard(card, booking);
     });
   }

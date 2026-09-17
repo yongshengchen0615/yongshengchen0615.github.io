@@ -1,0 +1,89 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { JSDOM } = require('jsdom');
+const root = path.join(__dirname, '../..');
+const tick = ms => new Promise(resolve => setTimeout(resolve, ms));
+const bookingId = '30000000-0000-4000-8000-000000000001';
+const booking = { bookingId, bookingDate: '2026-09-17', startTime: '09:00:00', memberDisplayName: '測試會員', memberCode: 'M001', contactSurname: '王', contactSalutation: 'mr', contactPhone: '0912-345-678', items: [{ serviceTitle: '腳底40', quantity: 1 }] };
+const group = { partySize: 2, participants: [
+  { technicianName: '甲（主要技師）', items: [{ serviceTitle: '腳底40', quantity: 1 }] },
+  { technicianName: '乙', items: [{ serviceTitle: '肩頸', quantity: 2 }] },
+] };
+const expected = '9/17（四） 09:00\n王先生\n電話：0912345678\n預約人數：2 位\n\n第一位預約\n預約項目：腳底40\n預約技師：甲\n\n第二位預約\n預約項目：肩頸 × 2\n預約技師：乙';
+
+for (const entry of ['admin', 'booking/admin']) {
+  test(`${entry}: real copy button uses participant format exactly once`, async () => {
+    const dom = new JSDOM(fs.readFileSync(path.join(root, entry, 'index.html'), 'utf8'), { url: `https://example.test/MemberWebsocket-dev/${entry}/`, runScripts: 'outside-only' });
+    const w = dom.window;
+    const observers = [];
+    const NativeObserver = w.MutationObserver;
+    w.MutationObserver = class extends NativeObserver {
+      constructor(callback) { super(callback); observers.push(this); }
+    };
+    const copied = [];
+    let mode = 'group';
+    const system = { loadConfig: async () => ({ supabaseUrl: 'https://fixture.supabase.co', supabasePublishableKey: 'fixture-key' }), request: async () => ({ bookings: [structuredClone(booking)], services: [] }) };
+    w.MemberSystem = system;
+    w.BookingSystem = system;
+    w.liff = { getIDToken: () => 'fixture-token' };
+    w.isSecureContext = true;
+    w.navigator.clipboard = { writeText: async text => copied.push(text) };
+    w.fetch = async (url, init) => {
+      const { action, clientType, idToken, bookingIds } = JSON.parse(init.body);
+      assert.equal(clientType, 'admin');
+      assert.equal(idToken, 'fixture-token');
+      let data;
+      if (action === 'admin.booking.bootstrap') data = { bookings: [booking] };
+      else if (action === 'admin.booking.contacts') data = { contacts: [booking] };
+      else {
+        assert.equal(action, 'admin.booking.group.details');
+        assert.deepEqual(bookingIds, [bookingId]);
+        if (mode === 'failure') return new Response(JSON.stringify({ ok: false, error: { code: 'AUTH_INVALID' } }), { status: 401 });
+        data = { bookingGroups: { [bookingId]: mode === 'single' ? { partySize: 1, participants: [] } : group } };
+      }
+      return new Response(JSON.stringify({ ok: true, data }));
+    };
+    const load = file => w.eval(fs.readFileSync(path.join(root, file), 'utf8'));
+    try {
+      // Verify real entrypoint URLs resolve to committed files, not a missing path.
+      const formatScript = [...w.document.querySelectorAll('script[src]')].find(s => s.src.includes('booking-copy-format.js'));
+      assert.ok(formatScript);
+      for (const node of w.document.querySelectorAll('[src], link[href]')) {
+        const src = node.getAttribute('src') || node.getAttribute('href');
+        if (!src.includes('booking-admin-group-details.') && !src.includes('booking-copy-format.js')) continue;
+        assert.ok(fs.existsSync(path.resolve(root, entry, src.split('?')[0])), src);
+      }
+      const legacy = entry === 'booking/admin';
+      let queue = w.document.getElementById(legacy ? 'bookingQueue' : 'bookingAdminQueue');
+      if (!queue) { queue = w.document.createElement('div'); queue.id = 'bookingAdminQueue'; w.document.body.append(queue); }
+      queue.innerHTML = legacy
+        ? `<article class="booking-card" data-booking-id="${bookingId}"><div class="booking-heading"><strong>測試會員</strong></div></article>`
+        : `<article class="booking-admin-booking" data-booking-id="${bookingId}"><div class="booking-admin-booking-heading"><div><strong>測試會員</strong><small>M001</small></div></div><p class="booking-admin-time">2026/9/17 09:00</p></article>`;
+      load(legacy ? 'booking/admin/contact-details.js' : 'admin/booking-summary.js');
+      load('booking-copy-format.js');
+      load('booking-copy-format.js'); // Cached dynamic loader must not install twice.
+      if (legacy) await system.request({}, 'admin', 'fixture-token', 'admin.booking.bootstrap');
+      await tick(300);
+      const button = queue.querySelector('.booking-copy-button');
+      assert.ok(button);
+      button.click();
+      button.click();
+      await tick(20);
+      assert.deepEqual(copied, [expected]);
+      assert.equal(button.textContent, '已複製');
+      await tick(1550);
+      mode = 'failure';
+      button.click();
+      await tick(20);
+      assert.equal(copied.length, 1, 'Do not invent single-person details on API failure');
+      assert.equal(button.textContent, '複製失敗');
+      await tick(1550);
+      mode = 'single';
+      button.click();
+      await tick(20);
+      assert.match(copied[1], /預約人數：1 位\n\n第一位預約\n預約項目：腳底40\n預約技師：現場安排$/);
+    } finally { observers.forEach(observer => observer.disconnect()); w.close(); }
+  });
+}

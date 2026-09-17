@@ -55,8 +55,7 @@
         return new Promise(() => {});
       }
       if (!window.liff.isLoggedIn()) {
-        redirectToFreshLogin();
-        return new Promise(() => {});
+        throw authError('AUTH_REQUIRED', 'LINE 登入未完成，請重新開啟預約頁面再試。');
       }
     }
 
