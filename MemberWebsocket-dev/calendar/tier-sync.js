@@ -41,7 +41,42 @@
     };
   }
 
+  async function requestCalendar(config, idToken, action, payload) {
+    const supabaseUrl = String(config && config.supabaseUrl || '').replace(/\/$/, '');
+    const publishableKey = String(config && config.supabasePublishableKey || '');
+    if (!supabaseUrl || !publishableKey) throw new Error('會員日曆服務設定尚未完成。');
+
+    let response;
+    try {
+      response = await fetch(`${supabaseUrl}/functions/v1/member-calendar-api`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: publishableKey
+        },
+        cache: 'no-store',
+        body: JSON.stringify({ ...payload, action, clientType: 'calendar', idToken })
+      });
+    } catch {
+      throw new Error('目前無法連線活動日曆服務，請檢查網路後重試。');
+    }
+
+    let data;
+    try { data = await response.json(); }
+    catch { throw new Error('活動日曆服務暫時未正常回應。'); }
+    if (!response.ok || !data || data.ok !== true) {
+      const error = new Error(String(data && data.error && data.error.message || '活動日曆服務拒絕此請求。'));
+      error.code = String(data && data.error && data.error.code || 'API_ERROR');
+      error.status = Number(data && data.status || response.status || 0);
+      throw error;
+    }
+    return data.data || {};
+  }
+
   function request(config, clientType, idToken, action, payload = {}) {
+    if (clientType === 'calendar' && (action === 'user.calendar.bootstrap' || action === 'user.calendar.date.details')) {
+      return requestCalendar(config, idToken, action, payload).then(decorateCalendarPayload);
+    }
     return Promise.resolve(originalRequest(config, clientType, idToken, action, payload)).then((result) => {
       if (clientType === 'calendar' && (action === 'user.calendar.bootstrap' || action === 'user.calendar.date.details')) {
         return decorateCalendarPayload(result);
