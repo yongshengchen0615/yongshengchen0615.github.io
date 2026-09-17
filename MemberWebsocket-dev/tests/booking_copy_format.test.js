@@ -7,7 +7,7 @@ const root = path.join(__dirname, '..');
 
 test('participant-aware booking copy formatter is valid and wired', () => {
   const source = fs.readFileSync(path.join(root, 'booking-copy-format.js'), 'utf8');
-  const loader = fs.readFileSync(path.join(root, 'admin/booking-panel.js'), 'utf8');
+  const loader = fs.readFileSync(path.join(root, 'admin/index.html'), 'utf8');
 
   assert.doesNotThrow(() => new Function(source));
   assert.match(loader, /booking-copy-format\.js/);

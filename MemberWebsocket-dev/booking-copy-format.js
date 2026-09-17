@@ -1,6 +1,10 @@
 (() => {
   'use strict';
 
+  // An older cached admin loader can still request this script dynamically.
+  if (window.bookingCopyFormatInstalled) return;
+  window.bookingCopyFormatInstalled = true;
+
   const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
   const participantNames = ['第一', '第二', '第三', '第四', '第五', '第六', '第七', '第八', '第九', '第十'];
   let configPromise = null;
@@ -9,7 +13,7 @@
     const button = event.target?.closest?.('.booking-copy-button');
     if (!button) return;
 
-    const card = button.closest('.booking-admin-booking');
+    const card = button.closest('.booking-admin-booking, #bookingQueue > .booking-card');
     if (!card) return;
 
     // booking-summary.js also owns this button. Capture the click here so only the
@@ -27,7 +31,14 @@
 
     try {
       const bookingId = String(card.dataset.bookingId || '').trim();
-      let group = bookingId ? await fetchGroupDetails(bookingId).catch(() => null) : null;
+      if (!bookingId) throw clientError('BOOKING_NOT_READY', '預約資料尚未載入完成。');
+      let group;
+      try {
+        group = await fetchGroupDetails(bookingId);
+      } catch (error) {
+        group = groupFromRenderedDetails(card);
+        if (!group) throw error;
+      }
       if (!group?.participants?.length) group = groupFromRenderedDetails(card);
       await copyText(buildCopyText(card, group));
       button.textContent = '已複製';
@@ -46,7 +57,10 @@
   async function fetchGroupDetails(bookingId) {
     const system = window.MemberSystem || window.BookingSystem;
     if (!system?.loadConfig) throw clientError('CONFIG_ERROR', '預約管理設定尚未載入。');
-    if (!configPromise) configPromise = Promise.resolve(system.loadConfig());
+    if (!configPromise) configPromise = Promise.resolve(system.loadConfig()).catch((error) => {
+      configPromise = null;
+      throw error;
+    });
     const config = await configPromise;
     const idToken = String(window.liff?.getIDToken?.() || '');
     if (!idToken) throw clientError('AUTH_REQUIRED', '管理端登入尚未完成。');
@@ -74,7 +88,10 @@
       if (!response.ok || data?.ok !== true) {
         throw clientError(String(data?.error?.code || 'API_ERROR'), String(data?.error?.message || '無法取得逐位預約資料。'));
       }
-      return data?.data?.bookingGroups?.[bookingId] || null;
+      const group = data?.data?.bookingGroups?.[bookingId];
+      if (!group || !Array.isArray(group.participants)) throw clientError('BOOKING_NOT_READY', '預約明細尚未載入完成。');
+      if (Number(group.partySize || 1) > Math.max(1, group.participants.length)) throw clientError('BOOKING_INCOMPLETE', '逐位預約明細尚未完整。');
+      return group;
     } finally {
       window.clearTimeout(timer);
     }

@@ -268,6 +268,8 @@
   }
 
   function renderBookingSummary(card, booking) {
+    card.dataset.bookingDate = String(booking.bookingDate || '');
+    card.dataset.bookingStartTime = String(booking.startTime || '');
     card.querySelector(':scope > .booking-received-summary')?.remove();
     const summary = document.createElement('div');
     summary.className = 'booking-received-summary';
