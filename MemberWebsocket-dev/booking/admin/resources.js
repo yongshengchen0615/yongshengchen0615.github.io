@@ -2,11 +2,27 @@
   'use strict';
 
   const state = { config: null, idToken: '', data: null, saving: false };
+  const currentScriptUrl = document.currentScript?.src || new URL('./resources.js', window.location.href).toString();
 
   window.addEventListener('DOMContentLoaded', () => {
     injectPanel();
+    loadTechnicianDeleteControls();
+    window.addEventListener('booking:technician-deleted', async () => {
+      resetTechnicianForm();
+      try { await refresh(); } catch (error) { showMessage(error?.message || '技師清單更新失敗，請手動重新整理。', 'error'); }
+    });
     boot();
   });
+
+  function loadTechnicianDeleteControls() {
+    if (document.querySelector('script[data-booking-technician-delete]')) return;
+    const script = document.createElement('script');
+    script.src = new URL('../../booking-technician-delete.js?v=booking-technician-delete-20260917-1', currentScriptUrl).toString();
+    script.defer = true;
+    script.dataset.bookingTechnicianDelete = 'true';
+    script.onerror = () => console.error('booking technician delete controls load failed');
+    document.head.appendChild(script);
+  }
 
   function injectPanel() {
     const adminView = document.getElementById('adminView');
