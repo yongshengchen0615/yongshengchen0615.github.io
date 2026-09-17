@@ -72,7 +72,10 @@
     if (!help) return;
     if (!help.dataset.defaultTierHelp) help.dataset.defaultTierHelp = help.textContent || '';
     const fixed = document.getElementById('eventTicketType')?.value === 'fixed';
-    help.textContent = fixed ? FIXED_TIER_HELP : help.dataset.defaultTierHelp;
+    const text = fixed ? FIXED_TIER_HELP : help.dataset.defaultTierHelp;
+    // This help is inside the observed form. Even assigning identical text
+    // creates a childList mutation, so only write when the content changes.
+    if (help.textContent !== text) help.textContent = text;
   }
 
   function syncSelectedTemplate(fixedTicketId) {
