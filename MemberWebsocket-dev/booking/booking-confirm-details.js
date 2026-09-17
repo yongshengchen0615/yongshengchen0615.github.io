@@ -1,6 +1,21 @@
 (() => {
   'use strict';
 
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = function bookingParallelSlotsFetch(input, init) {
+    let target = input;
+    try {
+      const url = input instanceof Request ? input.url : String(input || '');
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+      if (url.includes('/functions/v1/booking-group-api') && body?.action === 'user.booking.group.slots' && body?.clientType === 'member') {
+        target = url.replace('/functions/v1/booking-group-api', '/functions/v1/booking-group-slots-api');
+      }
+    } catch (_) {
+      // Keep the original request when the payload is not a JSON booking request.
+    }
+    return nativeFetch(target, init);
+  };
+
   const system = window.BookingSystem;
   if (system && typeof system.request === 'function') {
     const previousRequest = system.request.bind(system);
