@@ -44,7 +44,7 @@ function calendarClient(row: any): Json {
     description: row.description || "",
     startsOn: row.starts_on,
     endsOn: row.ends_on || "",
-    status: row.status,
+    status: row.status === "targeted" ? "active" : row.status,
     accent: row.accent,
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [],
     linkLabel: row.link_label || "",
@@ -116,7 +116,7 @@ Deno.serve(async (request: Request) => {
     const db = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession:false, autoRefreshToken:false } });
     const result = await db.from("calendar_items")
       .select("*")
-      .eq("status", "active")
+      .in("status", ["active", "targeted"])
       .order("starts_on", { ascending:true })
       .order("created_at", { ascending:true });
     if (result.error) {
@@ -126,8 +126,11 @@ Deno.serve(async (request: Request) => {
     const memberBirthdayMonth = birthdayMonth(profile.birthday);
     let rows = (result.data || []).filter((row:any) => {
       const audienceType = asText(row.audience_type || "all", 30);
-      if (audienceType !== "birthday_month") return true;
-      return memberBirthdayMonth > 0 && Number(row.audience_month || 0) === memberBirthdayMonth;
+      if (row.status === "targeted" && audienceType !== "birthday_month") return false;
+      if (audienceType !== "birthday_month") return row.status === "active";
+      return row.status === "targeted"
+        && memberBirthdayMonth > 0
+        && Number(row.audience_month || 0) === memberBirthdayMonth;
     });
 
     if (action === "user.calendar.date.details") {
