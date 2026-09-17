@@ -5,7 +5,10 @@
   let observer = null;
   let confirmObserver = null;
   let selectionSummaryObserver = null;
+  let servicePickerObserver = null;
+  let selectedServiceObserver = null;
   let scheduled = false;
+  let serviceGroupingScheduled = false;
   let confirmTimer = null;
   let selectionSummaryTimer = null;
 
@@ -15,6 +18,19 @@
     window.requestAnimationFrame(() => {
       scheduled = false;
       formatAll();
+    });
+  }
+
+  function scheduleServiceGrouping() {
+    if (serviceGroupingScheduled) return;
+    serviceGroupingScheduled = true;
+    window.requestAnimationFrame(() => {
+      serviceGroupingScheduled = false;
+      try {
+        groupBookingServices();
+      } catch (error) {
+        console.warn('booking service grouping failed', error);
+      }
     });
   }
 
@@ -58,6 +74,8 @@
       scheduleSelectionSummaryFormat();
     }
 
+    mountServiceGrouping();
+
     root = document.getElementById('bookingList');
     if (root) {
       observer = new MutationObserver(scheduleFormat);
@@ -68,6 +86,94 @@
         console.warn('member booking history format failed', error);
       }
     }
+  }
+
+  function mountServiceGrouping() {
+    const servicePicker = document.getElementById('servicePicker');
+    const selectedServiceList = document.getElementById('selectedServiceList');
+
+    if (servicePicker) {
+      servicePickerObserver = new MutationObserver(scheduleServiceGrouping);
+      servicePickerObserver.observe(servicePicker, { childList: true });
+    }
+    if (selectedServiceList) {
+      selectedServiceObserver = new MutationObserver(scheduleServiceGrouping);
+      selectedServiceObserver.observe(selectedServiceList, { childList: true });
+    }
+    scheduleServiceGrouping();
+  }
+
+  function groupBookingServices() {
+    groupServiceContainer(document.getElementById('servicePicker'), '.service-choice', true);
+    groupServiceContainer(document.getElementById('selectedServiceList'), '.selected-service-item', false);
+  }
+
+  function groupServiceContainer(container, rowSelector, hideSelected) {
+    if (!container) return;
+
+    const directRows = [...container.children].filter((node) => node.matches?.(rowSelector));
+    if (!directRows.length) return;
+
+    const visibleRows = directRows.filter((row) => {
+      if (hideSelected && row.classList.contains('selected')) {
+        row.remove();
+        return false;
+      }
+      return true;
+    });
+
+    if (!visibleRows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state compact';
+      const message = document.createElement('strong');
+      message.textContent = '可選項目已全部加入目前選擇';
+      empty.appendChild(message);
+      container.replaceChildren(empty);
+      return;
+    }
+
+    const groups = new Map();
+    for (const row of visibleRows) {
+      const typeLabel = serviceTypeFromRow(row);
+      const key = typeLabel.toLocaleLowerCase('zh-Hant-TW');
+      let group = groups.get(key);
+      if (!group) {
+        group = { label: typeLabel, rows: [] };
+        groups.set(key, group);
+      }
+      group.rows.push(row);
+      stripTypeFromMeta(row);
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const group of groups.values()) {
+      const section = document.createElement('section');
+      section.className = 'service-info';
+      section.setAttribute('aria-label', `${group.label}服務`);
+
+      const heading = document.createElement('strong');
+      heading.textContent = `${group.label}（${group.rows.length}）`;
+
+      const list = document.createElement('div');
+      list.className = rowSelector === '.service-choice' ? 'service-picker' : 'selected-service-list';
+      group.rows.forEach((row) => list.appendChild(row));
+
+      section.append(heading, list);
+      fragment.appendChild(section);
+    }
+    container.replaceChildren(fragment);
+  }
+
+  function serviceTypeFromRow(row) {
+    const meta = String(row.querySelector('small')?.textContent || '').trim();
+    const match = /^類型\s+(.+?)\s+·\s+服務\s+/u.exec(meta);
+    return String(match?.[1] || '其他').trim() || '其他';
+  }
+
+  function stripTypeFromMeta(row) {
+    const meta = row.querySelector('small');
+    if (!meta) return;
+    meta.textContent = String(meta.textContent || '').replace(/^類型\s+.+?\s+·\s+(?=服務\s+)/u, '');
   }
 
   function formatAll() {
@@ -325,6 +431,8 @@
     observer?.disconnect();
     confirmObserver?.disconnect();
     selectionSummaryObserver?.disconnect();
+    servicePickerObserver?.disconnect();
+    selectedServiceObserver?.disconnect();
     if (confirmTimer !== null) window.clearTimeout(confirmTimer);
     if (selectionSummaryTimer !== null) window.clearTimeout(selectionSummaryTimer);
   });
