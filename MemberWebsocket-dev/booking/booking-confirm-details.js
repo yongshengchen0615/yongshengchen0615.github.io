@@ -1,6 +1,18 @@
 (() => {
   'use strict';
 
+  const system = window.BookingSystem;
+  if (system && typeof system.request === 'function') {
+    const previousRequest = system.request.bind(system);
+    system.request = async function parallelDurationRequest(config, clientType, idToken, action, payload = {}) {
+      const result = await previousRequest(config, clientType, idToken, action, payload);
+      if (clientType === 'member' && action === 'user.booking.slots' && result && Array.isArray(result.slots)) {
+        normalizeSlotDuration(result);
+      }
+      return result;
+    };
+  }
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind, { once: true });
   else bind();
 
@@ -8,6 +20,21 @@
     const form = document.getElementById('bookingForm');
     if (!form) return;
     form.addEventListener('submit', () => window.setTimeout(renderDetailedConfirmation, 0));
+  }
+
+  function normalizeSlotDuration(result) {
+    const participantCards = [...document.querySelectorAll('#participantCardList .participant-card')];
+    if (!participantCards.length) return;
+    const storeMinutes = detectStoreMinutes();
+    const participants = participantCards.map((card, index) => participantFromCard(card, index, storeMinutes));
+    if (participants.some((participant) => participant.items.length === 0)) return;
+    const overallMinutes = participants.reduce((max, participant) => Math.max(max, participant.totalMinutes), 0);
+    if (!overallMinutes) return;
+    result.totalDurationMinutes = overallMinutes;
+    result.slots = result.slots.map((slot) => ({
+      ...slot,
+      endTime: addMinutes(String(slot.startTime || ''), overallMinutes) || slot.endTime,
+    }));
   }
 
   function renderDetailedConfirmation() {
@@ -123,6 +150,14 @@
     const text = String(document.getElementById('selectionSummary')?.textContent || '');
     const match = /含店內服務\s*(\d+)\s*分鐘/.exec(text);
     return Math.max(0, Number(match?.[1] || 0));
+  }
+
+  function addMinutes(time, minutes) {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(time || '').slice(0, 5));
+    if (!match) return '';
+    const total = Number(match[1]) * 60 + Number(match[2]) + Number(minutes || 0);
+    if (!Number.isFinite(total) || total < 0 || total >= 24 * 60) return '';
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
   }
 
   function contactSummary() {
