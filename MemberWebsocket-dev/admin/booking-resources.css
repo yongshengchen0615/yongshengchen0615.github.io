@@ -1,0 +1,178 @@
+.booking-admin-resource-settings {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(36, 49, 41, 0.12);
+}
+
+.booking-admin-resource-heading {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.booking-admin-resource-heading h4 {
+  margin: 3px 0 6px;
+  font-size: 1.05rem;
+}
+
+.booking-admin-resource-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.booking-admin-resource-box {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(36, 49, 41, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.booking-admin-resource-box > div:first-child,
+.booking-admin-resource-box-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.booking-admin-resource-box small,
+.booking-admin-technician-row small {
+  color: var(--muted, #6f786f);
+  line-height: 1.45;
+}
+
+.booking-admin-resource-box-heading,
+.booking-admin-resource-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.booking-admin-resource-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.42fr);
+  gap: 12px;
+}
+
+.booking-admin-resource-box label {
+  min-width: 0;
+}
+
+.booking-admin-resource-box input[type="text"],
+.booking-admin-resource-box input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.booking-admin-resource-toggle {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.booking-admin-resource-toggle > input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.booking-admin-resource-toggle > span {
+  display: grid;
+  gap: 3px;
+}
+
+.booking-admin-resource-list-heading {
+  margin-top: 18px;
+  padding-bottom: 8px;
+}
+
+.booking-admin-resource-list-heading > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(36, 49, 41, 0.08);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.booking-admin-technician-list {
+  display: grid;
+  gap: 8px;
+}
+
+.booking-admin-technician-row {
+  width: 100%;
+  border: 1px solid rgba(36, 49, 41, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.booking-admin-technician-row:hover,
+.booking-admin-technician-row:focus-visible {
+  border-color: rgba(36, 49, 41, 0.28);
+}
+
+.booking-admin-technician-row > span:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.booking-admin-technician-row.inactive {
+  opacity: 0.68;
+}
+
+.booking-admin-resource-status {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: rgba(36, 104, 72, 0.1);
+  color: #246848;
+}
+
+.booking-admin-resource-status.inactive {
+  background: rgba(99, 103, 100, 0.1);
+  color: #636764;
+}
+
+@media (max-width: 760px) {
+  .booking-admin-resource-grid,
+  .booking-admin-resource-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .booking-admin-resource-heading,
+  .booking-admin-resource-box-heading,
+  .booking-admin-resource-list-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .booking-admin-resource-heading .button,
+  .booking-admin-resource-box-heading .button,
+  .booking-admin-resource-box > .button {
+    width: 100%;
+  }
+
+  .booking-admin-technician-row {
+    align-items: flex-start;
+  }
+}
