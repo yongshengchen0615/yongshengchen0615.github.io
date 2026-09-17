@@ -28,6 +28,41 @@
     document.head.appendChild(script);
   });
 
+  // booking-panel-core.js is dynamically loaded after DOMContentLoaded in some paths.
+  // Its auto-open path can synchronously call request helpers before their lexical
+  // initialization has completed. Temporarily mask #booking while the core script
+  // initializes, then restore and open the tab after the script has fully evaluated.
+  const requestedBookingHash = window.location.hash === '#booking';
+  const locationWithoutHash = `${window.location.pathname}${window.location.search}`;
+  if (requestedBookingHash) {
+    window.history.replaceState({}, document.title, locationWithoutHash);
+  }
+
+  function restoreBookingHashAndOpen() {
+    if (!requestedBookingHash) return;
+    if (window.location.hash !== '#booking') {
+      window.history.replaceState({}, document.title, `${locationWithoutHash}#booking`);
+    }
+
+    let attempts = 0;
+    const tryOpen = () => {
+      attempts += 1;
+      const adminView = document.getElementById('adminView');
+      const bookingTab = document.getElementById('bookingTab');
+      const authenticated = Boolean(window.liff?.getIDToken?.());
+      if (adminView && bookingTab && !adminView.classList.contains('hidden') && authenticated) {
+        bookingTab.click();
+        return true;
+      }
+      return attempts >= 300;
+    };
+
+    if (tryOpen()) return;
+    const timer = window.setInterval(() => {
+      if (tryOpen()) window.clearInterval(timer);
+    }, 100);
+  }
+
   loadSharedResponsive();
   loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260915-mobile-field-overflow-1');
   loadStyle('booking-summary.css', 'booking-summary-20260912-6');
@@ -48,8 +83,11 @@
   load('booking-summary.js', 'booking-summary-20260912-6')
     .then(() => load('../booking-admin-group-details.js', 'booking-group-details-20260917-2'))
     .then(() => load('../booking-copy-format.js', 'booking-copy-format-20260917-1'))
-    .then(() => load('booking-panel-core.js', 'booking-panel-core-20260911-1'))
-    .then(() => load('booking-resources.js', 'booking-primary-tech-20260917-3'))
+    .then(() => load('booking-panel-core.js', 'booking-panel-core-tdz-20260917-1'))
+    .then(() => {
+      restoreBookingHashAndOpen();
+      return load('booking-resources.js', 'booking-primary-tech-20260917-3');
+    })
     .then(() => load('../booking-technician-delete.js', 'booking-technician-delete-20260917-1'))
     .then(() => load('booking-always-open.js', 'booking-always-open-20260917-2'))
     .then(() => load('booking-cancellation-sync.js', 'booking-cancellation-sync-20260911-2'))
