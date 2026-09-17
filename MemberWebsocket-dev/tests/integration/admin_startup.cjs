@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 
 const root = path.join(__dirname, '../..');
 
@@ -26,8 +26,15 @@ if (!process.argv.includes('--fixture')) {
 }
 
 async function runFixture(mode) {
+  const navigationAttempts = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (error) => {
+    // JSDOM cannot navigate; observe reload attempts at its browser boundary.
+    if (/Not implemented: navigation/.test(error.message)) navigationAttempts.push(error.message);
+    else throw error;
+  });
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'admin/index.html'), 'utf8'), {
-    runScripts: 'outside-only', url: 'https://example.test/MemberWebsocket-dev/admin/',
+    runScripts: 'outside-only', url: 'https://example.test/MemberWebsocket-dev/admin/', virtualConsole,
   });
   const w = dom.window;
   const el = (id) => w.document.getElementById(id);
@@ -35,6 +42,7 @@ async function runFixture(mode) {
   const calls = [];
   const errors = [];
   let subscriptions = 0;
+  let stoppedSubscriptions = 0;
   w.addEventListener('error', (event) => errors.push(event.message));
   w.Request = Request;
   w.fetch = async (url, init) => {
@@ -55,7 +63,7 @@ async function runFixture(mode) {
         calendarItems: [], messagePresets: [], stats: {},
       };
     },
-    subscribeRealtime() { subscriptions += 1; },
+    subscribeRealtime() { subscriptions += 1; return () => { stoppedSubscriptions += 1; }; },
   };
   const load = (name) => w.eval(fs.readFileSync(path.join(root, 'admin', name), 'utf8'));
   try {
@@ -142,6 +150,15 @@ async function runFixture(mode) {
     assert.equal(el('saveCalendarItemButton').disabled, false);
     assert.equal(el('deleteCalendarItemButton').disabled, false);
     assert.deepEqual(errors, []);
+
+    w.dispatchEvent(new w.PageTransitionEvent('pageshow', { persisted: false }));
+    assert.equal(navigationAttempts.length, 0);
+    w.dispatchEvent(new w.PageTransitionEvent('pagehide', { persisted: true }));
+    assert.equal(el('adminView').classList.contains('hidden'), true);
+    assert.equal(el('eventTicketEditorModal').classList.contains('hidden'), true);
+    assert.equal(stoppedSubscriptions, 1);
+    w.dispatchEvent(new w.PageTransitionEvent('pageshow', { persisted: true }));
+    assert.equal(navigationAttempts.length, 1, 'Back/Forward cache restore must start a fresh document login');
   } finally {
     w.close();
   }
