@@ -60,3 +60,27 @@ test('LINE Flex transport parses note labels as standard booking detail fields',
   assert.match(deliveryTest, /Flex body must include the member note/);
   assert.match(deliveryTest, /Flex body must include the admin note/);
 });
+
+
+test('confirmation modal always shows the booking note for single and group bookings', () => {
+  const app = read('booking/app.js');
+  const detailed = read('booking/booking-confirm-details.js');
+  const formatter = read('booking/member-booking-format.js');
+  const html = read('booking/index.html');
+
+  assert.match(app, /note\.className = 'booking-confirm-note'/);
+  assert.match(app, /note\.textContent = `預約備註：\$\{els\.memberNote\.value\.trim\(\) \|\| '未填寫'\}`/);
+
+  assert.match(detailed, /noteBox\.className = 'group-confirm-participant booking-confirm-note'/);
+  assert.match(detailed, /noteTitle\.textContent = '預約備註'/);
+  assert.match(detailed, /note\.textContent = noteValue \|\| '未填寫'/);
+
+  assert.match(formatter, /classList\?\.contains\('booking-confirm-note'\)/);
+  assert.match(formatter, /summaryRow\('預約備註', confirmationNoteValue\(note\?\.textContent\)\)/);
+  assert.match(formatter, /function confirmationNoteValue\(text\)/);
+  assert.match(formatter, /\|\| '未填寫'/);
+
+  assert.match(html, /app\.js\?v=booking-confirm-note-20260918-1/);
+  assert.match(html, /booking-confirm-details\.js\?v=booking-confirm-note-20260918-1/);
+  assert.match(html, /member-booking-format\.js\?v=booking-confirm-note-20260918-1/);
+});
