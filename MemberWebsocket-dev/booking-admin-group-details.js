@@ -144,50 +144,36 @@
   }
 
   function renderDetails(card, group) {
-    card.querySelector(':scope > .booking-group-admin-details')?.remove();
+    card.querySelectorAll('.booking-group-admin-details').forEach((node) => node.remove());
+
     const box = document.createElement('section');
     box.className = 'booking-group-admin-details';
-    box.setAttribute('aria-label', '多人預約逐位明細');
-
-    const title = document.createElement('strong');
-    title.className = 'booking-group-admin-title';
-    title.textContent = `${Number(group.partySize || group.participants.length)} 位預約明細`;
-    box.appendChild(title);
+    box.setAttribute('aria-label', '逐位預約明細');
 
     group.participants.forEach((participant, index) => {
       const block = document.createElement('div');
       block.className = 'booking-group-admin-participant';
+
       const heading = document.createElement('strong');
       heading.textContent = participantLabel(index);
+
       const items = document.createElement('p');
       items.textContent = `預約項目：${participantItemsLabel(participant.items)}`;
+
       const tech = document.createElement('p');
-      const techName = String(participant.technicianName || '現場安排');
-      tech.textContent = `預約技師：${participant.isPrimaryTechnician ? `${techName}（主要技師）` : techName}`;
-      const duration = document.createElement('p');
-      duration.textContent = `個別總時間：${Number(participant.totalMinutes || 0)} 分鐘${Number(participant.storeServiceMinutes || 0) > 0 ? `（含店內服務 ${Number(participant.storeServiceMinutes)} 分鐘）` : ''}`;
-      const amount = document.createElement('p');
-      amount.textContent = `個別金額：${formatMoney(participant.amount)}`;
-      block.append(heading, items, tech, duration, amount);
+      const techName = String(participant.technicianName || '現場安排').replace(/（主要技師）/g, '').trim() || '現場安排';
+      tech.textContent = `預約技師：${techName}`;
+
+      block.append(heading, items, tech);
       box.appendChild(block);
     });
 
-    const totals = document.createElement('div');
-    totals.className = 'booking-group-admin-totals';
-    const duration = document.createElement('strong');
-    duration.textContent = `整體總服務時間：${Number(group.totalDurationMinutes || 0)} 分鐘`;
-    const note = document.createElement('span');
-    note.textContent = '（以各預約人最長總時間計）';
-    const amount = document.createElement('strong');
-    amount.textContent = `總金額：${formatMoney(group.totalAmount)}`;
-    totals.append(duration, note, amount);
-    box.appendChild(totals);
-
-    if (Number(group.partySize || group.participants.length) > 1) {
-      const warning = document.createElement('p');
-      warning.className = 'booking-group-admin-warning';
-      warning.textContent = '多人預約的服務項目需維持逐位對應；管理端不使用舊的整筆合併改單功能，避免預約人與項目錯置。';
-      box.appendChild(warning);
+    const summary = card.querySelector(':scope > .booking-received-summary');
+    const copyButton = summary?.querySelector(':scope > .booking-copy-button');
+    if (summary) {
+      if (copyButton) summary.insertBefore(box, copyButton);
+      else summary.appendChild(box);
+      return;
     }
 
     const heading = card.querySelector(':scope > .booking-admin-booking-heading, :scope > .booking-heading');
@@ -211,9 +197,8 @@
     if (!rows.length) return '—';
     return rows.map((item) => {
       const title = String(item.serviceTitle || '預約項目');
-      const duration = Number(item.unitDurationMinutes || 0);
       const quantity = Math.max(1, Number(item.quantity || 1));
-      return `${title}（${duration}分鐘）${quantity > 1 ? ` × ${quantity}` : ''}`;
+      return quantity > 1 ? `${title} × ${quantity}` : title;
     }).join('、');
   }
 
