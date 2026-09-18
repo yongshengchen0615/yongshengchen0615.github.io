@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -73,8 +74,8 @@ test('selection summary sync scripts have valid JavaScript syntax', () => {
 
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
-  assert.match(html, /member-booking-format\.js\?v=booking-all-participants-type-colors-20260918-3/);
-  assert.match(html, /group-booking\.js\?v=booking-all-participants-type-colors-20260918-3/);
+  assert.match(html, /member-booking-format\.js\?v=booking-shared-type-color-map-20260918-4/);
+  assert.match(html, /group-booking\.js\?v=booking-shared-type-color-map-20260918-4/);
 });
 
 
@@ -87,7 +88,7 @@ test('member group booking shows an amount for every participant surface', () =>
   assert.match(groupBooking, /amountLine\.textContent = `金額：\$\{formatMoney\(metric\.amount\)\}`/);
   assert.match(groupBooking, /storedParticipantAmount\(participant\)/);
   assert.match(groupBooking, /item\?\.subtotalAmount/);
-  assert.match(html, /group-booking\.js\?v=booking-all-participants-type-colors-20260918-3/);
+  assert.match(html, /group-booking\.js\?v=booking-shared-type-color-map-20260918-4/);
 });
 
 
@@ -112,9 +113,7 @@ test('service type blocks use stable distinct colors across all participant pick
   const css = read('booking/member-booking-format.css');
   const html = read('booking/index.html');
 
-  assert.match(formatter, /const SERVICE_TYPE_COLOR_COUNT = 12/);
-  assert.match(formatter, /function serviceTypeColorSlot\(label\)/);
-  assert.match(formatter, /hash = \(\(hash \* 31\) \+ key\.charCodeAt\(index\)\) >>> 0/);
+  assert.match(formatter, /window\.BookingServiceTypeColor\.slot\(label\)/);
   assert.match(formatter, /decorateServiceTypeGroups\(\)/);
   assert.match(formatter, /section\.className = 'service-info service-type-group'/);
   assert.match(formatter, /section\.dataset\.serviceTypeColor = String\(slot\)/);
@@ -131,7 +130,7 @@ test('service type blocks use stable distinct colors across all participant pick
   assert.match(css, /service-info\.service-type-group > strong::before/);
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*border-left-width: 5px/);
   assert.match(html, /member-booking-format\.css\?v=booking-service-type-colors-webview-20260918-2/);
-  assert.match(html, /member-booking-format\.js\?v=booking-all-participants-type-colors-20260918-3/);
+  assert.match(html, /member-booking-format\.js\?v=booking-shared-type-color-map-20260918-4/);
 });
 
 
@@ -139,13 +138,39 @@ test('every participant renderer assigns service type colors before DOM insertio
   const groupBooking = read('booking/group-booking.js');
   const formatter = read('booking/member-booking-format.js');
 
-  assert.match(groupBooking, /const SERVICE_TYPE_COLOR_COUNT = 12/);
-  assert.match(groupBooking, /function serviceTypeColorSlot\(value\)/);
-  assert.match(groupBooking, /const colorSlot = serviceTypeColorSlot\(group\.label\)/);
+  assert.match(groupBooking, /const colorSlot = window\.BookingServiceTypeColor\.slot\(group\.label\)/);
   assert.match(groupBooking, /section\.className = `service-info service-type-group service-type-color-\$\{colorSlot\}`/);
   assert.match(groupBooking, /section\.dataset\.serviceTypeColor = String\(colorSlot\)/);
 
-  assert.match(formatter, /function serviceTypeColorSlot\(label\)/);
-  assert.match(formatter, /const slot = serviceTypeColorSlot\(label\)/);
+  assert.match(formatter, /const slot = window\.BookingServiceTypeColor\.slot\(label\)/);
   assert.match(formatter, /section\.classList\.add\(`service-type-color-\$\{slot\}`\)/);
+});
+
+
+test('same service type keeps the same color across different participants', () => {
+  const html = read('booking/index.html');
+  const groupBooking = read('booking/group-booking.js');
+  const formatter = read('booking/member-booking-format.js');
+  const colorSource = read('booking/service-type-color.js');
+
+  const context = { window: {} };
+  vm.runInNewContext(colorSource, context);
+  const colorMap = context.window.BookingServiceTypeColor;
+
+  assert.equal(colorMap.slot('按摩'), colorMap.slot('按摩'));
+  assert.equal(colorMap.slot('按摩'), colorMap.slot(' 按摩 '));
+  assert.equal(colorMap.normalize(' 按摩 '), '按摩');
+
+  assert.match(groupBooking, /window\.BookingServiceTypeColor\.slot\(group\.label\)/);
+  assert.match(formatter, /window\.BookingServiceTypeColor\.slot\(label\)/);
+
+  const sharedIndex = html.indexOf('service-type-color.js?v=booking-shared-type-color-map-20260918-4');
+  const groupIndex = html.indexOf('group-booking.js?v=booking-shared-type-color-map-20260918-4');
+  const formatterIndex = html.indexOf('member-booking-format.js?v=booking-shared-type-color-map-20260918-4');
+  assert.ok(sharedIndex >= 0 && sharedIndex < groupIndex);
+  assert.ok(sharedIndex < formatterIndex);
+});
+
+test('shared service type color map has valid JavaScript syntax', () => {
+  execFileSync(process.execPath, ['--check', path.join(root, 'booking/service-type-color.js')], { stdio: 'pipe' });
 });
