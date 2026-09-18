@@ -360,7 +360,7 @@
       title.textContent = service.title;
       const meta = document.createElement('small');
       const serviceType = serviceTypeOf(service);
-      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatMoney(service.priceAmount)}`;
+      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}`;
       text.append(title, meta);
       main.appendChild(text);
 
@@ -371,6 +371,7 @@
       addButton.setAttribute('aria-label', `${participantLabel(index)}增加 ${service.title}`);
       addButton.addEventListener('click', () => {
         if (!confirmExtraServiceSelection(service, selections)) return;
+        clearParticipantFormMessage();
         selections.push({ selectionId: crypto.randomUUID(), serviceId: service.serviceId });
         state.extras[extraIndex] = selections;
         state.openCards.add(index);
@@ -410,7 +411,7 @@
       title.textContent = service.title;
       const meta = document.createElement('small');
       const serviceType = serviceTypeOf(service);
-      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatMoney(service.priceAmount)}`;
+      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}`;
       text.append(title, meta);
       const removeButton = document.createElement('button');
       removeButton.type = 'button';
@@ -420,6 +421,7 @@
       removeButton.addEventListener('click', () => {
         const selectionIndex = selections.findIndex((item) => item.selectionId === selection.selectionId);
         if (selectionIndex >= 0) selections.splice(selectionIndex, 1);
+        clearParticipantFormMessage();
         state.extras[extraIndex] = selections;
         state.openCards.add(index);
         renderParticipantCards();
@@ -471,6 +473,13 @@
     if (!node) return;
     node.textContent = message;
     node.className = `form-message ${type || ''}`;
+  }
+
+  function clearParticipantFormMessage() {
+    const node = document.getElementById('formMessage');
+    if (!node) return;
+    node.textContent = '';
+    node.className = 'form-message hidden';
   }
 
   function extraSelectionsToItems(selections) {
@@ -743,6 +752,11 @@
 
   function serviceTypeKey(value) {
     return String(value || '').trim().toLocaleLowerCase('zh-Hant-TW');
+  }
+
+  function formatServiceMoney(value) {
+    const amount = Number(value || 0);
+    return `NT$${Number.isFinite(amount) ? Math.max(0, Math.trunc(amount)).toLocaleString('zh-Hant-TW') : '0'}`;
   }
 
   function formatMoney(value) {
