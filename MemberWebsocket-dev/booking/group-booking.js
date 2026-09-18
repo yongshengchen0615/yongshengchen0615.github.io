@@ -124,6 +124,12 @@
     updateSelectionSummary();
   });
 
+  window.addEventListener('booking:date-selected', () => {
+    if (!state.editingBookingId) return;
+    state.editingBookingId = '';
+    resetGroupSelection();
+  });
+
   window.addEventListener('DOMContentLoaded', () => {
     injectGroupControls();
     document.getElementById('bookingForm')?.addEventListener('submit', () => window.setTimeout(decorateConfirmation, 0));
@@ -721,7 +727,9 @@
         : '總時間：尚未計算';
       const amount = document.createElement('p');
       amount.textContent = `金額：${formatMoney(metric.amount)}`;
-      block.append(heading, services, duration, amount);
+      const technician = document.createElement('p');
+      technician.textContent = `預約技師：${technicianLabel(state.participantTechnicians[index])}`;
+      block.append(heading, services, duration, amount, technician);
       root.appendChild(block);
     });
 
