@@ -7,6 +7,7 @@
   let selectionSummaryObserver = null;
   let servicePickerObserver = null;
   let selectedServiceObserver = null;
+  let participantCardObserver = null;
   let scheduled = false;
   let serviceGroupingScheduled = false;
   let confirmTimer = null;
@@ -91,6 +92,7 @@
   function mountServiceGrouping() {
     const servicePicker = document.getElementById('servicePicker');
     const selectedServiceList = document.getElementById('selectedServiceList');
+    const participantCardList = document.getElementById('participantCardList');
 
     if (servicePicker) {
       servicePickerObserver = new MutationObserver(scheduleServiceGrouping);
@@ -100,12 +102,25 @@
       selectedServiceObserver = new MutationObserver(scheduleServiceGrouping);
       selectedServiceObserver.observe(selectedServiceList, { childList: true });
     }
+    if (participantCardList) {
+      participantCardObserver = new MutationObserver(scheduleServiceGrouping);
+      participantCardObserver.observe(participantCardList, { childList: true, subtree: true });
+    }
     scheduleServiceGrouping();
   }
 
   function groupBookingServices() {
-    groupServiceContainer(document.getElementById('servicePicker'), '.service-choice', true);
-    groupServiceContainer(document.getElementById('selectedServiceList'), '.selected-service-item', false);
+    const pickerContainers = new Set([
+      document.getElementById('servicePicker'),
+      ...document.querySelectorAll('#participantCardList .service-picker-fieldset > .service-picker'),
+    ].filter(Boolean));
+    const selectedContainers = new Set([
+      document.getElementById('selectedServiceList'),
+      ...document.querySelectorAll('#participantCardList .selected-service-fieldset > .selected-service-list'),
+    ].filter(Boolean));
+
+    pickerContainers.forEach((container) => groupServiceContainer(container, '.service-choice', true));
+    selectedContainers.forEach((container) => groupServiceContainer(container, '.selected-service-item', false));
   }
 
   function groupServiceContainer(container, rowSelector, hideSelected) {
@@ -433,6 +448,7 @@
     selectionSummaryObserver?.disconnect();
     servicePickerObserver?.disconnect();
     selectedServiceObserver?.disconnect();
+    participantCardObserver?.disconnect();
     if (confirmTimer !== null) window.clearTimeout(confirmTimer);
     if (selectionSummaryTimer !== null) window.clearTimeout(selectionSummaryTimer);
   });
