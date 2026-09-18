@@ -41,6 +41,7 @@ jobs:
           node --check MemberWebsocket-dev/admin/event-ticket-activity-link.js
           node --check MemberWebsocket-dev/admin/booking-panel.js
           node --check MemberWebsocket-dev/admin/booking-panel-core.js
+          node --check MemberWebsocket-dev/admin/booking-resources.js
           node --check MemberWebsocket-dev/admin/booking-cancellation-sync.js
           node --check MemberWebsocket-dev/member/common.js
           node --check MemberWebsocket-dev/member/app.js
