@@ -79,6 +79,12 @@ begin
 
   v_primary_technician_id := public.validate_group_booking_technicians(p_participants);
 
+  -- Clear this booking's own reservations before rebuilding the final assignment.
+  -- This allows valid technician swaps (A↔B) without falsely conflicting with
+  -- the other participant's old reservation from the same booking.
+  delete from public.booking_participant_reservations
+  where booking_id = b.id;
+
   for person in
     select value
     from jsonb_array_elements(p_participants)
@@ -117,9 +123,6 @@ begin
     update public.booking_participants
     set technician_id = v_technician_id
     where id = participant.id;
-
-    delete from public.booking_participant_reservations
-    where participant_id = participant.id;
 
     if v_technician_id is not null then
       select coalesce(sum(unit_duration_minutes * quantity), 0)::integer
