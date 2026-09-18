@@ -580,6 +580,8 @@
       const item = document.createElement('article');
       item.className = `booking-item status-${booking.status}`;
       item.dataset.bookingId = String(booking.bookingId || '');
+      const hasParticipantDetails = Array.isArray(booking.participants) && booking.participants.length > 0;
+      item.dataset.participantDetails = hasParticipantDetails ? '1' : '0';
 
       const top = document.createElement('div');
       top.className = 'booking-item-top';
@@ -605,7 +607,7 @@
       item.appendChild(top);
 
       const visibleItems = bookingVisibleItems(booking);
-      if (visibleItems.length || storeItem) {
+      if (!hasParticipantDetails && (visibleItems.length || storeItem)) {
         const serviceList = document.createElement('ul');
         serviceList.className = 'booking-service-items';
         visibleItems.forEach((service) => {
