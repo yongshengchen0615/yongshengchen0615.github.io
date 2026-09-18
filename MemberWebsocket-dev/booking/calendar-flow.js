@@ -21,7 +21,7 @@
   window.addEventListener('DOMContentLoaded', () => {
     [
       'bookingView', 'calendarMonthLabel', 'calendarGrid', 'previousMonthButton', 'nextMonthButton',
-      'appointmentPanel', 'appointmentModalTitle', 'selectedDateSummary', 'changeDateButton', 'closeAppointmentButton',
+      'appointmentPanel', 'appointmentModalTitle', 'selectedDateSummary', 'closeAppointmentButton',
       'bookingDate', 'servicePicker', 'selectedServiceList', 'bookingList', 'bookingConfirmModal'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
@@ -35,7 +35,6 @@
 
     els.previousMonthButton?.addEventListener('click', () => changeMonth(-1));
     els.nextMonthButton?.addEventListener('click', () => changeMonth(1));
-    els.changeDateButton?.addEventListener('click', () => closeAppointmentModal(true));
     els.closeAppointmentButton?.addEventListener('click', () => closeAppointmentModal(true));
     els.appointmentPanel.addEventListener('click', (event) => {
       if (event.target === els.appointmentPanel && window.matchMedia('(max-width: 768px)').matches) {
