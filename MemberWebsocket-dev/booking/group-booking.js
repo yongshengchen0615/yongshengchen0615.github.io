@@ -710,6 +710,7 @@
     const overallMinutes = metrics.reduce((max, item) => Math.max(max, item.totalMinutes), 0);
     const overallAmount = metrics.reduce((sum, item) => sum + item.amount, 0);
     const minimumDate = String(document.getElementById('bookingDate')?.min || '');
+    const maximumDate = String(document.getElementById('bookingDate')?.max || '');
 
     root.replaceChildren();
     root.classList.remove('hidden');
@@ -747,6 +748,11 @@
       const earliest = document.createElement('p');
       earliest.textContent = `最早可預約 ${system.formatDate(minimumDate)}`;
       totals.appendChild(earliest);
+    }
+    if (maximumDate) {
+      const latest = document.createElement('p');
+      latest.textContent = `最遠可預約 ${system.formatDate(maximumDate)}`;
+      totals.appendChild(latest);
     }
     root.appendChild(totals);
   }
