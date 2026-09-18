@@ -86,19 +86,26 @@ function itemClient(row: any): Json {
 }
 
 export function contactClient(row: any): Json {
-  const salutation = asText(row.contact_salutation, 10);
+  const source = asText(row.contact_source || "member", 20).toLowerCase() || "member";
+  const member = row.members || {};
+  const contactSurname = asText(row.contact_surname, 40)
+    || (source === "member" ? asText(member.surname, 40) : "");
+  const salutation = asText(row.contact_salutation, 10).toLowerCase()
+    || (source === "member" ? asText(member.salutation, 10).toLowerCase() : "");
+  const contactPhone = asText(row.contact_phone, 30)
+    || (source === "member" ? asText(member.phone, 30) : "");
   return {
     bookingId: row.id,
-    contactSource: row.contact_source || "member",
-    contactSurname: row.contact_surname || "",
+    contactSource: source,
+    contactSurname,
     contactSalutation: salutation,
     contactSalutationLabel: salutation === "mr" ? "先生" : salutation === "ms" ? "小姐" : "",
-    contactPhone: row.contact_phone || "",
+    contactPhone,
   };
 }
 
 export async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Promise<Json> {
-  const booking = await supabase.from("bookings").select("*, members(display_name,member_code)").eq("id", bookingId).single();
+  const booking = await supabase.from("bookings").select("*, members(display_name,member_code,surname,salutation,phone)").eq("id", bookingId).single();
   if (booking.error) throw mapDbError(booking.error);
   const itemsResult = await supabase.from("booking_items").select("*").eq("booking_id", bookingId).order("created_at", { ascending: true });
   if (itemsResult.error) throw mapDbError(itemsResult.error);
@@ -136,7 +143,7 @@ export async function hydrateBooking(supabase: SupabaseClient, bookingId: string
 export async function contactsForIds(supabase: SupabaseClient, bookingIds: string[], memberId = ""): Promise<Json[]> {
   if (!bookingIds.length) return [];
   let query = supabase.from("bookings")
-    .select("id,contact_source,contact_surname,contact_salutation,contact_phone")
+    .select("id,contact_source,contact_surname,contact_salutation,contact_phone,members(surname,salutation,phone)")
     .in("id", bookingIds);
   if (memberId) query = query.eq("member_id", memberId);
   const result = await query;
