@@ -56,8 +56,9 @@ test('booking entry points bust caches for participant-parity assets', () => {
 
   assert.ok(memberHtml.includes('group-booking.css?v=booking-participant-colors-20260918-1'));
   assert.ok(memberHtml.includes('member-booking-format.css?v=booking-service-type-colors-webview-20260918-2'));
-  assert.ok(memberHtml.includes('member-booking-format.js?v=booking-all-participants-type-colors-20260918-3'));
-  assert.ok(memberHtml.includes('group-booking.js?v=booking-all-participants-type-colors-20260918-3'));
+  assert.ok(memberHtml.includes('service-type-color.js?v=booking-shared-type-color-map-20260918-4'));
+  assert.ok(memberHtml.includes('member-booking-format.js?v=booking-shared-type-color-map-20260918-4'));
+  assert.ok(memberHtml.includes('group-booking.js?v=booking-shared-type-color-map-20260918-4'));
   assert.ok(memberHtml.includes('booking-confirm-details.js?v=booking-confirm-details-20260917-4'));
   assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.js?v=booking-group-details-20260918-tech-edit-2'));
   assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.css?v=booking-group-details-20260918-tech-edit-2'));
