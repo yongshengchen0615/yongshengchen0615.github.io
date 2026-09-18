@@ -331,11 +331,12 @@
         const total = parseConfirmationTotal(totalNode.textContent);
         if (time && total) {
           const warnings = [...summary.children].filter((node) => node.classList?.contains('form-message'));
-          const note = [...summary.children].find((node) => (
-            node.tagName === 'P'
-            && node !== timeNode
-            && !node.classList.contains('booking-confirm-contact')
-          )) || null;
+          const note = directChild(summary, (node) => node.classList?.contains('booking-confirm-note'))
+            || [...summary.children].find((node) => (
+              node.tagName === 'P'
+              && node !== timeNode
+              && !node.classList.contains('booking-confirm-contact')
+            )) || null;
           const existingContact = directChild(summary, (node) => node.classList?.contains('booking-confirm-contact'));
 
           const main = document.createElement('div');
@@ -368,7 +369,7 @@
           main.appendChild(totals);
 
           warnings.forEach((warning) => main.appendChild(warning));
-          if (note) main.appendChild(note);
+          main.appendChild(summaryRow('預約備註', confirmationNoteValue(note?.textContent)));
 
           summary.replaceChildren(main);
           if (existingContact) summary.appendChild(existingContact);
@@ -381,6 +382,12 @@
       && !node.classList.contains('booking-confirm-contact-formatted')
     ));
     if (contact) formatConfirmationContact(contact);
+  }
+
+  function confirmationNoteValue(text) {
+    return String(text || '')
+      .replace(/^(?:預約備註|備註)\s*：\s*/u, '')
+      .trim() || '未填寫';
   }
 
   function formatConfirmationContact(contact) {
