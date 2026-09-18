@@ -76,6 +76,7 @@ function mapDatabaseError(error: unknown): ApiError {
   const rules: Array<[string, number, string, string]> = [
     ["BOOKING_CONFLICT", 409, "BOOKING_CONFLICT", "預約已被更新，請重新整理後再操作。"],
     ["BOOKING_NOT_EDITABLE", 409, "BOOKING_NOT_EDITABLE", "這筆預約已開始或狀態已變更，無法修改。"],
+    ["BOOKING_CANCELLATION_PENDING", 409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核後再變更預約。"],
     ["BOOKING_HOLIDAY", 409, "BOOKING_HOLIDAY", "這一天為休假日，請選擇其他日期。"],
     ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "這段時間剛剛已被其他會員預約，請選擇其他時間。"],
     ["BOOKING_TOO_EARLY", 409, "BOOKING_TOO_EARLY", "尚未符合提前預約天數，請選擇較晚的日期。"],
@@ -349,6 +350,9 @@ function bookingClient(row: any, items: any[] = []): Json {
     confirmedAt: row.confirmed_at,
     rejectedAt: row.rejected_at,
     cancelledAt: row.cancelled_at,
+    cancellationRequestedAt: row.cancellation_requested_at || null,
+    cancellationReviewedAt: row.cancellation_reviewed_at || null,
+    cancellationDecision: row.cancellation_decision || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -578,21 +582,30 @@ async function userCancel(supabase: SupabaseClient, identity: Identity, member: 
   if (existing.error) throw mapDatabaseError(existing.error);
   const booking = existing.data;
   if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
-  if (!["pending", "confirmed"].includes(booking.status)) throw new ApiError(409, "BOOKING_NOT_CANCELLABLE", "這筆預約目前無法取消。");
+  if (booking.cancellation_requested_at && !booking.cancellation_reviewed_at) {
+    const hydrated = (await hydrateBookings(supabase, [booking]))[0];
+    return { booking: { ...hydrated, baseStatus: booking.status, status: "cancel_requested" }, alreadyRequested: true };
+  }
+  if (!["pending", "confirmed"].includes(booking.status)) throw new ApiError(409, "BOOKING_NOT_CANCELLABLE", "這筆預約目前無法申請取消。");
   const today = taipeiDate();
   if (booking.booking_date < today || (booking.booking_date === today && timeToMinutes(String(booking.start_time).slice(0, 5)) <= taipeiMinutes())) {
-    throw new ApiError(409, "BOOKING_TIME_PASSED", "預約時間已經過了，無法取消。");
+    throw new ApiError(409, "BOOKING_TIME_PASSED", "預約時間已經開始或經過，無法申請取消。");
   }
 
+  const now = new Date().toISOString();
   const updated = await supabase.from("bookings").update({
-    status: "cancelled",
-    cancelled_by: identity.lineUserId,
-    cancelled_at: new Date().toISOString(),
-  }).eq("id", bookingId).eq("member_id", member.id).eq("updated_at", booking.updated_at).in("status", ["pending", "confirmed"]).select("*").single();
+    cancellation_requested_at: now,
+    cancellation_requested_by: identity.lineUserId,
+    cancellation_source_status: booking.status,
+    cancellation_reviewed_at: null,
+    cancellation_reviewed_by: null,
+    cancellation_decision: null,
+  }).eq("id", bookingId).eq("member_id", member.id).eq("status", booking.status).eq("updated_at", booking.updated_at).select("*").maybeSingle();
   if (updated.error) throw mapDatabaseError(updated.error);
-  const hydrated = await hydrateBookings(supabase, [updated.data]);
-  await audit(supabase, identity, "member", "BOOKING_CANCELLED", "booking", bookingId);
-  return { booking: hydrated[0] };
+  if (!updated.data) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再申請取消。");
+  const hydrated = (await hydrateBookings(supabase, [updated.data]))[0];
+  await audit(supabase, identity, "member", "BOOKING_CANCELLATION_REQUESTED", "booking", bookingId, { sourceStatus: booking.status });
+  return { booking: { ...hydrated, baseStatus: booking.status, status: "cancel_requested" }, alreadyRequested: false };
 }
 
 async function adminSettingsSave(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
@@ -762,6 +775,9 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
 
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
   if (!expectedUpdatedAt || expectedUpdatedAt !== booking.updated_at) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再確認。");
+  if (booking.cancellation_requested_at && !booking.cancellation_reviewed_at) {
+    throw new ApiError(409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請至「取消申請」完成審核。");
+  }
   const allowed = booking.status === "pending"
     ? ["confirmed", "rejected", "cancelled"]
     : booking.status === "confirmed" ? ["cancelled", "completed"] : [];
