@@ -105,3 +105,27 @@ test('primary participant summary follows add/remove selection state without wai
   assert.match(groupBooking, /syncPrimaryItems\(primaryItems\)/);
   assert.match(groupBooking, /root\.replaceChildren\(\);\n\s*root\.classList\.add\('hidden'\)/);
 });
+
+
+test('service type blocks use stable distinct colors across all participant pickers', () => {
+  const formatter = read('booking/member-booking-format.js');
+  const css = read('booking/member-booking-format.css');
+  const html = read('booking/index.html');
+
+  assert.match(formatter, /const SERVICE_TYPE_COLOR_COUNT = 12/);
+  assert.match(formatter, /const serviceTypeColorSlots = new Map\(\)/);
+  assert.match(formatter, /decorateServiceTypeGroups\(\)/);
+  assert.match(formatter, /section\.className = 'service-info service-type-group'/);
+  assert.match(formatter, /section\.dataset\.serviceTypeColor = String\(serviceTypeColorSlots\.get\(key\)\)/);
+  assert.match(formatter, /#participantCardList \.service-picker > \.service-info/);
+  assert.match(formatter, /#participantCardList \.selected-service-list > \.service-info/);
+
+  for (let index = 0; index < 12; index += 1) {
+    assert.match(css, new RegExp('service-type-group\\[data-service-type-color="' + index + '"\\]'));
+  }
+  assert.match(css, /border-left: 4px solid rgb\(var\(--service-type-rgb\) \/ \.82\)/);
+  assert.match(css, /service-info\.service-type-group > strong::before/);
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*border-left-width: 5px/);
+  assert.match(html, /member-booking-format\.css\?v=booking-service-type-colors-20260918-1/);
+  assert.match(html, /member-booking-format\.js\?v=booking-service-type-colors-20260918-1/);
+});
