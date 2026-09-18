@@ -270,6 +270,10 @@
   function renderBookingSummary(card, booking) {
     card.dataset.bookingDate = String(booking.bookingDate || '');
     card.dataset.bookingStartTime = String(booking.startTime || '');
+    card.dataset.bookingCopyItems = JSON.stringify(visibleBookingItems(booking).map((item) => ({
+      serviceTitle: String(item?.serviceTitle || '服務項目').trim(),
+      quantity: Math.max(1, Number(item?.quantity || 1)),
+    })));
     card.querySelector(':scope > .booking-received-summary')?.remove();
     const summary = document.createElement('div');
     summary.className = 'booking-received-summary';
