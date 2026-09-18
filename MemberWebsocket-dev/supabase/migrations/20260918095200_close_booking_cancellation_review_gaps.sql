@@ -38,6 +38,8 @@ create trigger bookings_pending_cancellation_guard
 before update on public.bookings
 for each row execute function public.guard_pending_booking_cancellation();
 
+revoke all on function public.guard_pending_booking_cancellation() from public, anon, authenticated;
+
 -- Do not deliver lifecycle messages that have already been superseded by the
 -- current terminal state. Keep the matching terminal notification.
 update booking_notifications.outbox q
