@@ -144,7 +144,11 @@
       ? `${settings.workStartTime}–${settings.workEndTime}`
       : '上班時間未設定';
     const advanceDays = Number(settings.minAdvanceDays || 0);
-    els.workHoursBadge.textContent = advanceDays > 0 ? `${hours} · 提前 ${advanceDays} 天` : hours;
+    const maxAdvanceDays = Number(settings.maxAdvanceDays || 0);
+    const labels = [hours];
+    if (advanceDays > 0) labels.push(`提前 ${advanceDays} 天`);
+    if (maxAdvanceDays > 0) labels.push(`可預約 ${maxAdvanceDays} 天內`);
+    els.workHoursBadge.textContent = labels.join(' · ');
   }
 
   function renderServices() {
@@ -314,6 +318,11 @@
     return window.BookingSystem.addDays(state.data.today, Number(state.data.settings?.minAdvanceDays || 0));
   }
 
+  function globalMaximumDate() {
+    const maxAdvanceDays = Number(state.data.settings?.maxAdvanceDays || 0);
+    return maxAdvanceDays > 0 ? window.BookingSystem.addDays(state.data.today, maxAdvanceDays) : '';
+  }
+
   function selectionChanged() {
     clearFormMessage();
     state.selectedSlot = null;
@@ -327,7 +336,9 @@
     state.selectedSlot = null;
     els.submitBookingButton.disabled = true;
     const minimumDate = globalMinimumDate();
+    const maximumDate = globalMaximumDate();
     els.bookingDate.min = minimumDate;
+    els.bookingDate.max = maximumDate;
 
     if (!rows.length) {
       els.bookingDate.disabled = !els.bookingDate.value;
@@ -341,9 +352,10 @@
     const includedMinutes = storeServiceMinutes();
     const totalMinutes = serviceMinutes + includedMinutes;
     els.bookingDate.disabled = false;
-    if (!els.bookingDate.value || els.bookingDate.value < minimumDate) els.bookingDate.value = minimumDate;
+    if (!els.bookingDate.value || els.bookingDate.value < minimumDate || (maximumDate && els.bookingDate.value > maximumDate)) els.bookingDate.value = minimumDate;
     els.selectionSummary.classList.remove('hidden');
-    els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 項目 ${serviceMinutes} 分鐘 + 店內服務 ${includedMinutes} 分鐘 = 預約共 ${totalMinutes} 分鐘 · 總額 ${formatMoney(totalAmount())} · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}`;
+    const latestText = maximumDate ? ` · 最遠可預約 ${window.BookingSystem.formatDate(maximumDate)}` : '';
+    els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 項目 ${serviceMinutes} 分鐘 + 店內服務 ${includedMinutes} 分鐘 = 預約共 ${totalMinutes} 分鐘 · 總額 ${formatMoney(totalAmount())} · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}${latestText}`;
     notifySelectionChanged();
     els.slotHint.textContent = '正在計算整段服務時間可使用的時段…';
     if (loadAfter && els.bookingDate.value) loadSlots();
@@ -365,6 +377,13 @@
     const items = selectedItems();
     const bookingDate = els.bookingDate.value;
     if (!items.length || !bookingDate) return;
+    const maximumDate = globalMaximumDate();
+    if (maximumDate && bookingDate > maximumDate) {
+      els.slotGrid.replaceChildren();
+      els.slotHint.textContent = `此日期超過可預約範圍，最遠可預約 ${window.BookingSystem.formatDate(maximumDate)}。`;
+      els.submitBookingButton.disabled = true;
+      return;
+    }
     const requestSequence = ++state.slotRequestSequence;
     state.loadingSlots = true;
     const previouslySelected = state.selectedSlot?.startTime || '';
