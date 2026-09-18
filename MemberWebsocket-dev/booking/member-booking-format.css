@@ -101,6 +101,42 @@
   margin-top: 12px;
 }
 
+.service-type-color-0 .service-choice,
+.service-type-color-0 .selected-service-item { background: #f6fbfc; border-color: #8fbcc5; }
+
+.service-type-color-1 .service-choice,
+.service-type-color-1 .selected-service-item { background: #fff8f4; border-color: #e8b494; }
+
+.service-type-color-2 .service-choice,
+.service-type-color-2 .selected-service-item { background: #f8f8fd; border-color: #b8bde1; }
+
+.service-type-color-3 .service-choice,
+.service-type-color-3 .selected-service-item { background: #f7fbf8; border-color: #a8cfb5; }
+
+.service-type-color-4 .service-choice,
+.service-type-color-4 .selected-service-item { background: #fffaf0; border-color: #dfc780; }
+
+.service-type-color-5 .service-choice,
+.service-type-color-5 .selected-service-item { background: #fcf7fa; border-color: #d7adcb; }
+
+.service-type-color-6 .service-choice,
+.service-type-color-6 .selected-service-item { background: #f5f9fd; border-color: #aac7e4; }
+
+.service-type-color-7 .service-choice,
+.service-type-color-7 .selected-service-item { background: #fdf6f6; border-color: #e1adad; }
+
+.service-type-color-8 .service-choice,
+.service-type-color-8 .selected-service-item { background: #f8faf4; border-color: #bdcba9; }
+
+.service-type-color-9 .service-choice,
+.service-type-color-9 .selected-service-item { background: #faf7fc; border-color: #c5b2d8; }
+
+.service-type-color-10 .service-choice,
+.service-type-color-10 .selected-service-item { background: #f4fbfa; border-color: #a7d3cd; }
+
+.service-type-color-11 .service-choice,
+.service-type-color-11 .selected-service-item { background: #fcf7f9; border-color: #d9b1be; }
+
 @media (max-width: 620px) {
   .booking-item .member-booking-format-row,
   .booking-confirm-summary .member-booking-format-row {
