@@ -32,5 +32,13 @@ test('admin cancellation request card uses the normalized booking format', () =>
   assert.match(ui, /預約項目：\$\{participantItemsLabel/);
   assert.match(ui, /預約技師：/);
   assert.match(ui, /return `\$\{month\}\/\$\{day\}（\$\{weekday\}）`/);
-  assert.match(loader, /booking-cancellation-format-20260918-1/);
+  assert.match(loader, /booking-card-unified-20260918-1/);
+  assert.match(ui, /booking-admin-booking booking-summary-normalized/);
+  assert.match(ui, /booking-admin-booking-heading/);
+  assert.match(ui, /booking-received-summary/);
+  assert.match(ui, /booking-member-meta/);
+  assert.match(ui, /booking-admin-actions/);
+  assert.match(ui, /booking-copy-button/);
+  assert.doesNotMatch(ui, /booking-cancellation-card/);
+  assert.doesNotMatch(ui, /background:#fffaf5/);
 });
