@@ -50,6 +50,8 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_SETTINGS_MISSING", 503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。"],
     ["INVALID_WORK_HOURS", 400, "INVALID_WORK_HOURS", "結束工作時間必須晚於開始工作時間至少 30 分鐘。"],
     ["INVALID_ADVANCE_DAYS", 400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。"],
+    ["INVALID_MAX_ADVANCE_DAYS", 400, "INVALID_MAX_ADVANCE_DAYS", "最遠可預約天數必須介於 0–365 天；0 代表不限制。"],
+    ["INVALID_ADVANCE_WINDOW", 400, "INVALID_ADVANCE_WINDOW", "最遠可預約天數不可小於需要提前的天數。"],
     ["INVALID_BOOKING_NOTICE", 400, "INVALID_BOOKING_NOTICE", "預約說明不可超過 2,000 字。"],
     ["BOOKING_SERVICE_TYPE_IN_USE", 409, "BOOKING_SERVICE_TYPE_IN_USE", "此項目類型仍有預約項目使用，請先修改或刪除相關預約項目。"],
     ["BOOKING_SERVICE_TYPE_NOT_FOUND", 404, "BOOKING_SERVICE_TYPE_NOT_FOUND", "找不到這個項目類型。"],
@@ -139,6 +141,7 @@ function settingsClient(row: any): Json {
     workStartTime: String(row?.work_start_time || "09:00:00").slice(0, 5),
     workEndTime: String(row?.work_end_time || "17:00:00").slice(0, 5),
     minAdvanceDays: Number(row?.min_advance_days || 0),
+    maxAdvanceDays: Number(row?.max_advance_days || 0),
     bookingNotice: String(row?.booking_notice || ""),
     updatedAt: row?.updated_at || null,
   };
@@ -167,21 +170,25 @@ async function settingsSave(supabase: SupabaseClient, identity: Identity, body: 
   const workStartTime = normalizeTime(body.workStartTime);
   const workEndTime = normalizeTime(body.workEndTime);
   const minAdvanceDays = Number(body.minAdvanceDays);
+  const maxAdvanceDays = Number(body.maxAdvanceDays);
   const bookingNotice = preserveText(body.bookingNotice, 2001);
   if (timeToMinutes(workEndTime) - timeToMinutes(workStartTime) < 30) throw new ApiError(400, "INVALID_WORK_HOURS", "結束工作時間必須晚於開始工作時間至少 30 分鐘。" );
   if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) throw new ApiError(400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。" );
+  if (!Number.isInteger(maxAdvanceDays) || maxAdvanceDays < 0 || maxAdvanceDays > 365) throw new ApiError(400, "INVALID_MAX_ADVANCE_DAYS", "最遠可預約天數必須介於 0–365 天；0 代表不限制。" );
+  if (maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays) throw new ApiError(400, "INVALID_ADVANCE_WINDOW", "最遠可預約天數不可小於需要提前的天數。" );
   if (bookingNotice.length > 2000) throw new ApiError(400, "INVALID_BOOKING_NOTICE", "預約說明不可超過 2,000 字。" );
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
   const result = await supabase.rpc("save_booking_shared_settings", {
     p_work_start_time: `${workStartTime}:00`,
     p_work_end_time: `${workEndTime}:00`,
     p_min_advance_days: minAdvanceDays,
+    p_max_advance_days: maxAdvanceDays,
     p_booking_notice: bookingNotice,
     p_expected_updated_at: expectedUpdatedAt || null,
     p_actor: identity.lineUserId,
   });
   if (result.error) throw mapDatabaseError(result.error);
-  await audit(supabase, identity, "BOOKING_SETTINGS_UPDATED", "booking_settings", "1", { workStartTime, workEndTime, minAdvanceDays, bookingNoticeLength: bookingNotice.length });
+  await audit(supabase, identity, "BOOKING_SETTINGS_UPDATED", "booking_settings", "1", { workStartTime, workEndTime, minAdvanceDays, maxAdvanceDays, bookingNoticeLength: bookingNotice.length });
   return { settings: settingsClient(result.data) };
 }
 async function typeCreate(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {

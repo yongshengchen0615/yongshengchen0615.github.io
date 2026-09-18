@@ -6,7 +6,9 @@
     selectedDate: '',
     today: '',
     minAdvanceDays: 0,
+    maxAdvanceDays: 0,
     minimumDate: '',
+    maximumDate: '',
     config: null,
     occupancyRequestSeq: 0,
     reloadTimer: 0,
@@ -221,8 +223,9 @@
 
   function changeMonth(delta) {
     const minimumMonth = state.today.slice(0, 7);
+    const maximumMonth = state.maximumDate ? state.maximumDate.slice(0, 7) : '';
     const next = shiftMonth(state.month, delta);
-    if (next < minimumMonth) return;
+    if (next < minimumMonth || (maximumMonth && next > maximumMonth)) return;
     closeHolidayNotice(false);
     state.month = next;
     renderCalendar();
@@ -232,19 +235,23 @@
   function applyGlobalSettings(detail) {
     const today = String(detail.today || state.today || taipeiDate()).slice(0, 10);
     const rawDays = Number(detail.settings?.minAdvanceDays ?? state.minAdvanceDays ?? 0);
+    const rawMaxDays = Number(detail.settings?.maxAdvanceDays ?? state.maxAdvanceDays ?? 0);
     const minAdvanceDays = Number.isInteger(rawDays) && rawDays >= 0 && rawDays <= 365 ? rawDays : 0;
+    const maxAdvanceDays = Number.isInteger(rawMaxDays) && rawMaxDays >= 0 && rawMaxDays <= 365 ? rawMaxDays : 0;
     state.today = /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : taipeiDate();
     state.minAdvanceDays = minAdvanceDays;
+    state.maxAdvanceDays = maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays ? 0 : maxAdvanceDays;
     state.minimumDate = addDays(state.today, minAdvanceDays);
+    state.maximumDate = state.maxAdvanceDays > 0 ? addDays(state.today, state.maxAdvanceDays) : '';
     if (Object.prototype.hasOwnProperty.call(detail.settings || {}, 'bookingNotice')) {
       renderBookingNotice(detail.settings.bookingNotice);
     }
 
     const actualDate = String(els.bookingDate?.value || '');
-    if (actualDate && actualDate >= state.minimumDate && actualDate !== state.selectedDate && !state.holidaysByDate.has(actualDate)) {
+    if (actualDate && actualDate >= state.minimumDate && (!state.maximumDate || actualDate <= state.maximumDate) && actualDate !== state.selectedDate && !state.holidaysByDate.has(actualDate)) {
       state.selectedDate = actualDate;
       state.month = actualDate.slice(0, 7);
-    } else if (state.selectedDate && (state.selectedDate < state.minimumDate || state.holidaysByDate.has(state.selectedDate))) {
+    } else if (state.selectedDate && (state.selectedDate < state.minimumDate || (state.maximumDate && state.selectedDate > state.maximumDate) || state.holidaysByDate.has(state.selectedDate))) {
       clearSelectedDate();
       closeAppointmentModal(false);
     }
@@ -263,12 +270,14 @@
   function renderCalendar() {
     const today = state.today || taipeiDate();
     const minimumDate = state.minimumDate || today;
+    const maximumDate = state.maximumDate || '';
     const [year, month] = state.month.split('-').map(Number);
     const firstDay = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
     const dayCount = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
     els.calendarMonthLabel.textContent = `${year} 年 ${month} 月`;
     if (els.previousMonthButton) els.previousMonthButton.disabled = state.month <= today.slice(0, 7);
+    if (els.nextMonthButton) els.nextMonthButton.disabled = Boolean(maximumDate && state.month >= maximumDate.slice(0, 7));
     els.calendarGrid.replaceChildren();
 
     for (let index = 0; index < 42; index += 1) {
@@ -284,6 +293,7 @@
       const date = `${state.month}-${String(day).padStart(2, '0')}`;
       const isPast = date < today;
       const isAdvanceBlocked = !isPast && date < minimumDate;
+      const isRangeBlocked = Boolean(maximumDate && date > maximumDate);
       const holidays = state.holidaysByDate.get(date) || [];
       const isHoliday = holidays.length > 0;
       const button = document.createElement('button');
@@ -292,9 +302,9 @@
       button.dataset.date = date;
       button.setAttribute('role', 'gridcell');
       button.setAttribute('aria-selected', state.selectedDate === date ? 'true' : 'false');
-      button.disabled = isPast || (isAdvanceBlocked && !isHoliday);
+      button.disabled = isPast || ((isAdvanceBlocked || isRangeBlocked) && !isHoliday);
       if (isPast) button.classList.add('past-disabled');
-      if (isAdvanceBlocked && !isHoliday) button.classList.add('advance-disabled');
+      if ((isAdvanceBlocked || isRangeBlocked) && !isHoliday) button.classList.add('advance-disabled');
       if (isHoliday) {
         button.classList.add('holiday-disabled');
         applyHolidayAccent(button, holidays[0]?.accent);
@@ -343,6 +353,10 @@
         const reason = `需提前 ${state.minAdvanceDays} 天，最早可預約 ${formatDate(minimumDate)}`;
         button.title = reason;
         button.setAttribute('aria-label', `${formatDate(date)}，${reason}`);
+      } else if (isRangeBlocked) {
+        const reason = `超過可預約範圍，最遠可預約 ${formatDate(maximumDate)}`;
+        button.title = reason;
+        button.setAttribute('aria-label', `${formatDate(date)}，${reason}`);
       } else {
         const occupiedText = intervals.length ? `，有 ${intervals.length} 個我的預約時段` : '';
         button.setAttribute('aria-label', `${formatDate(date)}${occupiedText}，可開啟預約`);
@@ -369,6 +383,11 @@
       }
       if (typeof result.earliestBookingDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(result.earliestBookingDate)) {
         state.minimumDate = result.earliestBookingDate;
+      }
+      if (typeof result.latestBookingDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(result.latestBookingDate)) {
+        state.maximumDate = result.latestBookingDate;
+      } else if (Number(result.settings?.maxAdvanceDays || 0) === 0) {
+        state.maximumDate = '';
       }
 
       clearMonthEntries(month);
@@ -465,7 +484,7 @@
   }
 
   function selectDate(date, trigger) {
-    if (date < (state.minimumDate || state.today)) return;
+    if (date < (state.minimumDate || state.today) || (state.maximumDate && date > state.maximumDate)) return;
     const holidays = state.holidaysByDate.get(date) || [];
     if (holidays.length) {
       showHolidayNotice(date, holidays, trigger);

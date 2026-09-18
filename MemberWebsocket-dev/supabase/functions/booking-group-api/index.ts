@@ -38,6 +38,7 @@ function mapDbError(error: any): ApiError {
     ["BOOKING_CANCELLATION_PENDING",409,"BOOKING_CANCELLATION_PENDING","這筆預約已有待確認的取消申請，請先完成取消審核後再修改。"],
     ["BOOKING_NOT_EDITABLE",409,"BOOKING_NOT_EDITABLE","這筆預約目前無法修改。"],
     ["BOOKING_TOO_EARLY",409,"BOOKING_TOO_EARLY","尚未符合提前預約天數。"],
+    ["BOOKING_TOO_FAR",409,"BOOKING_TOO_FAR","此日期超過可預約範圍。"],
     ["BOOKING_TIME_PASSED",409,"BOOKING_TIME_PASSED","這個預約時間已經過了。"],
     ["BOOKING_SERVICE_DISABLED",409,"BOOKING_SERVICE_DISABLED","其中一個預約項目目前未開放。"],
     ["BOOKING_SERVICE_NOT_FOUND",404,"BOOKING_SERVICE_NOT_FOUND","找不到其中一個預約項目。"],
@@ -123,6 +124,11 @@ function itemClient(row: any) { const q=Number(row.quantity||1), price=Number(ro
 
 async function settings(s: SupabaseClient) {
   const r = await s.from("booking_settings").select("*").eq("id",1).single(); if (r.error) throw mapDbError(r.error); return r.data;
+}
+function assertBookingDateWindow(cfg: any, date: string) {
+  const today=taipeiDate(), earliest=addDays(today,Number(cfg.min_advance_days||0)), max=Number(cfg.max_advance_days||0), latest=max>0?addDays(today,max):"";
+  if (date < earliest) throw new ApiError(409,"BOOKING_TOO_EARLY","尚未符合提前預約天數。");
+  if (latest && date > latest) throw new ApiError(409,"BOOKING_TOO_FAR","此日期超過可預約範圍。");
 }
 async function activeTechs(s: SupabaseClient) {
   const r = await s.from("booking_technicians").select("*").eq("is_active",true).order("sort_order",{ascending:true}).order("created_at",{ascending:true}); if (r.error) throw mapDbError(r.error); return r.data || [];
@@ -216,8 +222,8 @@ async function memberBootstrap(s: SupabaseClient, m: any) {
 }
 
 async function slots(s: SupabaseClient, m: any, body: Json) {
-  const g=await normalizeGroup(s,body), date=dateValue(body.bookingDate), cfg=g.cfg, today=taipeiDate(), earliest=addDays(today,Number(cfg.min_advance_days||0));
-  if (date < earliest) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:[] };
+  const g=await normalizeGroup(s,body), date=dateValue(body.bookingDate), cfg=g.cfg, today=taipeiDate(), earliest=addDays(today,Number(cfg.min_advance_days||0)), max=Number(cfg.max_advance_days||0), latest=max>0?addDays(today,max):"";
+  if (date < earliest || (latest && date > latest)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:[] };
   let excluded="";
   if (body.bookingId) {
     excluded=uuid(body.bookingId,"預約"); const r=await s.from("bookings").select("id,status").eq("id",excluded).eq("member_id",m.id).maybeSingle();
@@ -243,22 +249,24 @@ async function slots(s: SupabaseClient, m: any, body: Json) {
     const passed=date===today && cursor<=now;
     out.push({startTime:toTime(cursor),endTime:toTime(groupEnd),available:!mainOverlap&&!assignmentOverlap&&!passed});
   }
-  return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:out };
+  return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:out };
 }
 
 function contact(body: Json) { const source=asText(body.contactSource,20)||"member"; return { source, surname:asText(body.contactSurname,40)||null, salutation:asText(body.contactSalutation,10)||null, phone:asText(body.contactPhone,20)||null }; }
 async function createBooking(s: SupabaseClient, i: Identity, m: any, body: Json) {
-  const g=await normalizeGroup(s,body), c=contact(body), requestId=asText(body.requestId,100);
+  const g=await normalizeGroup(s,body), c=contact(body), requestId=asText(body.requestId,100), bookingDate=dateValue(body.bookingDate);
+  assertBookingDateWindow(g.cfg,bookingDate);
   if (!/^BOOK-[A-Za-z0-9-]{8,95}$/.test(requestId)) throw new ApiError(400,"INVALID_REQUEST_ID","操作識別碼格式不正確。");
-  const r=await s.rpc("create_group_booking_request_v2", { p_request_id:requestId, p_member_id:m.id, p_booking_date:dateValue(body.bookingDate), p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone });
+  const r=await s.rpc("create_group_booking_request_v2", { p_request_id:requestId, p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone });
   if (r.error) throw mapDbError(r.error); const row=Array.isArray(r.data)?r.data[0]:r.data, booking=await fullBooking(s,row.id);
   await audit(s,i,"member","BOOKING_GROUP_REQUESTED","booking",row.id,{partySize:g.participants.length,primaryTechnicianId:g.primaryId,participantTechnicians:g.participants.map((p:any)=>p.technicianId||null)});
   return {booking};
 }
 async function updateBooking(s: SupabaseClient, i: Identity, m: any, body: Json) {
-  const g=await normalizeGroup(s,body), c=contact(body), bookingId=uuid(body.bookingId,"預約"), expected=asText(body.expectedUpdatedAt,80);
+  const g=await normalizeGroup(s,body), c=contact(body), bookingId=uuid(body.bookingId,"預約"), expected=asText(body.expectedUpdatedAt,80), bookingDate=dateValue(body.bookingDate);
+  assertBookingDateWindow(g.cfg,bookingDate);
   if (!expected || !Number.isFinite(Date.parse(expected))) throw new ApiError(400,"INVALID_INPUT","缺少預約版本，請重新整理。");
-  const r=await s.rpc("update_group_booking_request_v2", { p_booking_id:bookingId, p_expected_updated_at:expected, p_actor:i.lineUserId, p_request_id:asText(body.requestId,100), p_member_id:m.id, p_booking_date:dateValue(body.bookingDate), p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone });
+  const r=await s.rpc("update_group_booking_request_v2", { p_booking_id:bookingId, p_expected_updated_at:expected, p_actor:i.lineUserId, p_request_id:asText(body.requestId,100), p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone });
   if (r.error) throw mapDbError(r.error); return {booking:await fullBooking(s,bookingId)};
 }
 

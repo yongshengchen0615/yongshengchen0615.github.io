@@ -99,7 +99,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-settings-layout-20260918-1');
+      return load('booking-panel-core.js', 'booking-settings-layout-20260918-1-max-advance-20260919-1');
     })
     .then(() => {
       restoreBookingHashAndOpen();
