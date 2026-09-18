@@ -21,6 +21,10 @@
   margin-top: 14px;
 }
 
+.booking-admin-resource-grid-single {
+  grid-template-columns: minmax(0, 640px);
+}
+
 .booking-admin-resource-box {
   display: grid;
   gap: 12px;
@@ -103,7 +107,13 @@
   padding-bottom: 8px;
 }
 
-.booking-admin-resource-list-heading > span {
+.booking-admin-resource-list-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.booking-admin-resource-list-heading > div > span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -187,5 +197,58 @@
 
   .booking-admin-technician-row {
     align-items: flex-start;
+  }
+}
+
+.booking-admin-technician-modal-card {
+  width: min(100%, 560px);
+}
+
+.booking-admin-technician-modal-form {
+  gap: 14px;
+}
+
+.booking-admin-technician-modal-actions {
+  justify-content: flex-end;
+}
+
+.booking-admin-technician-modal-actions .button-danger {
+  margin-right: auto;
+}
+
+.booking-admin-technician-delete-confirm {
+  display: grid;
+  gap: 18px;
+}
+
+.booking-admin-technician-delete-confirm > div:first-child {
+  display: grid;
+  gap: 8px;
+}
+
+.booking-admin-technician-delete-confirm h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.booking-admin-technician-delete-confirm p,
+.booking-admin-technician-delete-confirm small {
+  margin: 0;
+  color: var(--muted, #6f786f);
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .booking-admin-technician-modal-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .booking-admin-technician-modal-actions .button,
+  .booking-admin-technician-delete-confirm .booking-admin-modal-actions .button {
+    width: 100%;
+  }
+
+  .booking-admin-technician-modal-actions .button-danger {
+    margin-right: 0;
   }
 }
