@@ -270,6 +270,10 @@
   function renderBookingSummary(card, booking) {
     card.dataset.bookingDate = String(booking.bookingDate || '');
     card.dataset.bookingStartTime = String(booking.startTime || '');
+    card.dataset.bookingCopyItems = JSON.stringify(visibleBookingItems(booking).map((item) => ({
+      serviceTitle: String(item?.serviceTitle || '服務項目').trim(),
+      quantity: Math.max(1, Number(item?.quantity || 1)),
+    })));
     card.querySelector(':scope > .booking-received-summary')?.remove();
     const summary = document.createElement('div');
     summary.className = 'booking-received-summary';
@@ -298,31 +302,6 @@
     phone.className = 'booking-received-phone';
     phone.textContent = `電話：${String(booking.contactPhone || '—')}`;
     summary.appendChild(phone);
-
-    const servicesLabel = document.createElement('p');
-    servicesLabel.className = 'booking-received-services-label';
-    servicesLabel.textContent = '服務項目：';
-    summary.appendChild(servicesLabel);
-
-    const services = document.createElement('div');
-    services.className = 'booking-received-services';
-    const visibleItems = visibleBookingItems(booking);
-    if (!visibleItems.length) {
-      const empty = document.createElement('span');
-      empty.textContent = '尚無會員服務項目';
-      services.appendChild(empty);
-    } else {
-      visibleItems.forEach((item) => {
-        const quantity = Math.max(1, Number(item.quantity || 1));
-        const title = String(item.serviceTitle || '服務項目').trim();
-        for (let index = 0; index < quantity; index += 1) {
-          const line = document.createElement('span');
-          line.textContent = title;
-          services.appendChild(line);
-        }
-      });
-    }
-    summary.appendChild(services);
 
     const copyButton = document.createElement('button');
     copyButton.type = 'button';
@@ -441,7 +420,7 @@
     const surname = String(booking?.contactSurname || '').trim();
     const label = salutationLabel(booking?.contactSalutation);
     if (surname && label) return `${surname}${label}`;
-    return String(booking?.memberDisplayName || booking?.memberCode || '會員');
+    return '未取得預約人資料';
   }
 
   function visibleBookingItems(booking) {

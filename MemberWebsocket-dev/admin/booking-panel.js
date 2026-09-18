@@ -65,9 +65,9 @@
 
   loadSharedResponsive();
   loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260915-mobile-field-overflow-1');
-  loadStyle('booking-summary.css', 'booking-summary-20260912-6');
+  loadStyle('booking-summary.css', 'booking-summary-20260918-participants-1');
   loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3');
-  loadStyle('../booking-admin-group-details.css', 'booking-group-details-20260917-2');
+  loadStyle('../booking-admin-group-details.css', 'booking-group-details-20260918-participants-1');
   loadStyle('ui-polish.css', 'admin-ui-20260916-1');
   loadStyle('ui-polish-responsive.css', 'admin-ui-responsive-20260916-1');
 
@@ -80,8 +80,8 @@
     });
   });
 
-  load('booking-summary.js', 'booking-copy-entrypoints-20260917-1')
-    .then(() => load('../booking-admin-group-details.js', 'booking-group-details-20260917-2'))
+  load('booking-summary.js', 'booking-participant-contact-20260918-1')
+    .then(() => load('../booking-admin-group-details.js', 'booking-group-details-20260918-participants-1'))
     .then(() => load('booking-panel-core.js', 'booking-lifecycle-20260918-1'))
     .then(() => {
       restoreBookingHashAndOpen();

@@ -27,8 +27,15 @@ const sampleJob = {
     '日期：2026/09/15',
     '時段：10:00–11:00（台北時間）',
     '電話：0912345678',
-    '預約項目：',
-    '腳底40（40分鐘）',
+    '預約人數：2 位',
+    '',
+    '第一位預約',
+    '預約項目：腳底40',
+    '預約技師：10',
+    '',
+    '第二位預約',
+    '預約項目：肩頸30、頭部20',
+    '預約技師：現場安排',
   ].join('\n'),
   channel: 'member',
   attempt_count: 1,
@@ -51,8 +58,29 @@ Deno.test('booking notification builds a structured mobile-friendly Flex Message
   assert(components.some((item) => item.text === '2026/09/15' && item.size === 'lg'), 'date should receive strong visual emphasis');
   assert(components.some((item) => item.text === '王小姐'), 'Flex body must include the booking contact');
   assert(components.some((item) => item.text === '10:00–11:00（台北時間）'), 'Flex body must include the booking time');
-  assert(components.some((item) => item.text === '腳底40（40分鐘）'), 'Flex body must include booking services');
+  assert(components.some((item) => item.text === '第一位預約'), 'Flex body must identify the first participant');
+  assert(components.some((item) => item.text === '第二位預約'), 'Flex body must identify the second participant');
+  assert(components.some((item) => item.text === '腳底40'), 'Flex body must include the first participant services');
+  assert(components.some((item) => item.text === '肩頸30、頭部20'), 'Flex body must keep participant services grouped');
+  assert(components.some((item) => item.text === '10'), 'Flex body must include the selected technician');
+  assert(components.some((item) => item.text === '現場安排'), 'Flex body must support on-site technician assignment');
   assert(components.some((item) => item.text === 'Lumen Club 預約系統'), 'Flex footer must identify the booking system');
+});
+
+Deno.test('legacy aggregate service notification remains compatible', () => {
+  const message = buildBookingFlexMessage({
+    ...sampleJob,
+    message_text: [
+      '【預約】',
+      '預約人：王小姐',
+      '日期：2026/09/15',
+      '時段：10:00–11:00（台北時間）',
+      '電話：0912345678',
+      '預約項目：',
+      '腳底40',
+    ].join('\n'),
+  });
+  assert(JSON.stringify(message.contents).includes('腳底40'), 'legacy queued service details must still render');
 });
 
 Deno.test('legacy or unexpected booking text still uses a Flex fallback card', () => {

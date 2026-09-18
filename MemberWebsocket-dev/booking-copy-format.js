@@ -126,6 +126,11 @@
       }));
     }
 
+    const storedItems = copyItemsFromCard(card);
+    if (storedItems.length) {
+      return [{ technicianName: '現場安排', items: storedItems }];
+    }
+
     const serviceTitles = [...card.querySelectorAll('.booking-received-services span')]
       .map((node) => String(node.textContent || '').trim())
       .filter(Boolean);
@@ -135,8 +140,21 @@
     }];
   }
 
+  function copyItemsFromCard(card) {
+    try {
+      const parsed = JSON.parse(String(card.dataset.bookingCopyItems || '[]'));
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((item) => ({
+        serviceTitle: String(item?.serviceTitle || '').trim(),
+        quantity: Math.max(1, Number(item?.quantity || 1)),
+      })).filter((item) => item.serviceTitle);
+    } catch (_) {
+      return [];
+    }
+  }
+
   function groupFromRenderedDetails(card) {
-    const blocks = [...card.querySelectorAll(':scope > .booking-group-admin-details .booking-group-admin-participant')];
+    const blocks = [...card.querySelectorAll('.booking-group-admin-details .booking-group-admin-participant')];
     if (!blocks.length) return null;
     const participants = blocks.map((block) => {
       const rows = [...block.querySelectorAll('p')].map((node) => String(node.textContent || '').trim());

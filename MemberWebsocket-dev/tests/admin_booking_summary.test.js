@@ -6,10 +6,11 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const loader = read('MemberWebsocket-dev/admin/booking-panel.js');
 const summary = read('MemberWebsocket-dev/admin/booking-summary.js');
 const styles = read('MemberWebsocket-dev/admin/booking-summary.css');
+const groupDetails = read('MemberWebsocket-dev/booking-admin-group-details.js');
 
 assert.match(loader, /booking-summary\.css/);
 assert.match(loader, /booking-summary\.js/);
-assert.match(loader, /booking-summary-20260912-6/);
+assert.match(loader, /booking-summary-20260918-participants-1/);
 assert.ok(loader.indexOf("load('booking-summary.js'") < loader.indexOf("load('booking-panel-core.js'"));
 assert.match(summary, /booking-contact-api/);
 assert.match(summary, /admin\.booking\.contacts/);
@@ -17,6 +18,7 @@ assert.match(summary, /contactSurname/);
 assert.match(summary, /contactSalutation/);
 assert.match(summary, /contactPhone/);
 assert.match(summary, /return `\$\{surname\}\$\{label\}`/);
+assert.match(summary, /return '未取得預約人資料'/);
 assert.match(summary, /複製預約內容/);
 assert.match(summary, /navigator\.clipboard\.writeText/);
 assert.match(summary, /document\.execCommand\('copy'\)/);
@@ -35,6 +37,15 @@ assert.match(summary, /summaryMetaItem\('總服務時間'/);
 assert.match(summary, /summaryMetaItem\('總金額'/);
 assert.match(summary, /totalServiceMinutes/);
 assert.match(summary, /formatMoney/);
+assert.doesNotMatch(renderFunctionSource(summary), /booking-received-services-label/);
+assert.match(groupDetails, /逐位預約明細/);
+assert.match(groupDetails, /預約項目：\$\{participantItemsLabel\(participant\.items\)\}/);
+assert.match(groupDetails, /預約技師：\$\{techName\}/);
+assert.match(groupDetails, /summary\.insertBefore\(box, copyButton\)/);
+
+function renderFunctionSource(source) {
+  return source.slice(source.indexOf('function renderBookingSummary'), source.indexOf('function summaryMetaItem'));
+}
 
 const renderFunction = summary.slice(
   summary.indexOf('function renderBookingSummary'),
