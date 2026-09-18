@@ -66,6 +66,11 @@ test('participant format parity formatter has valid JavaScript syntax', () => {
   execFileSync(process.execPath, ['--check', path.join(root, 'booking/member-booking-format.js')], { stdio: 'pipe' });
 });
 
+test('selection summary sync scripts have valid JavaScript syntax', () => {
+  execFileSync(process.execPath, ['--check', path.join(root, 'booking/app.js')], { stdio: 'pipe' });
+  execFileSync(process.execPath, ['--check', path.join(root, 'booking/group-booking.js')], { stdio: 'pipe' });
+});
+
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
   assert.match(html, /member-booking-format\.js\?v=booking-participant-format-parity-20260918-1/);
