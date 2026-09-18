@@ -18,7 +18,7 @@ test('member booking routes group slot requests without global fetch monkey patc
 });
 
 test('member booking runtime extension scripts have valid JavaScript syntax', () => {
-  for (const relativePath of ['booking/group-booking.js', 'booking/booking-confirm-details.js']) {
+  for (const relativePath of ['booking/group-booking.js', 'booking/booking-confirm-details.js', 'booking/member-ui.js', 'booking/member-booking-format.js', 'booking/app.js']) {
     execFileSync(process.execPath, ['--check', path.join(root, relativePath)], { stdio: 'pipe' });
   }
 });
@@ -28,6 +28,23 @@ test('member booking entrypoint cache-busts the stabilized runtime scripts', () 
   assert.match(html, /group-booking\.js\?v=booking-shared-type-color-map-20260918-4/);
   assert.match(html, /booking-confirm-details\.js\?v=booking-confirm-note-20260918-1/);
   assert.match(html, /group-booking\.css\?v=booking-participant-colors-20260918-1/);
+  assert.match(html, /member-ui\.js\?v=booking-history-single-pass-20260918-1/);
+  assert.match(html, /app\.js\?v=booking-history-single-pass-20260918-1/);
+  assert.match(html, /member-booking-format\.js\?v=booking-history-single-pass-20260918-1/);
+});
+
+test('member booking history is finalized synchronously in the primary render pass', () => {
+  const app = read('booking/app.js');
+  const memberUi = read('booking/member-ui.js');
+  const memberFormat = read('booking/member-booking-format.js');
+
+  assert.match(memberFormat, /window\.BookingMemberFormat = Object\.freeze\(\{[\s\S]*formatHistory\(\)/);
+  assert.match(memberUi, /window\.BookingMemberUI = Object\.freeze\(\{[\s\S]*organizeBookingHistory/);
+
+  const formatCall = app.indexOf('window.BookingMemberFormat.formatHistory()');
+  const groupCall = app.indexOf('window.BookingMemberUI.organizeBookingHistory()');
+  assert.ok(formatCall > 0, 'primary renderer should format member booking cards synchronously');
+  assert.ok(groupCall > formatCall, 'primary renderer should group already-formatted cards before paint');
 });
 
 
