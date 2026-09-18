@@ -25,7 +25,7 @@ test('member booking runtime extension scripts have valid JavaScript syntax', ()
 
 test('member booking entrypoint cache-busts the stabilized runtime scripts', () => {
   const html = read('booking/index.html');
-  assert.match(html, /group-booking\.js\?v=booking-shared-type-color-map-20260918-4/);
+  assert.match(html, /group-booking\.js\?v=booking-history-dedupe-final-20260918-1/);
   assert.match(html, /booking-confirm-details\.js\?v=booking-confirm-note-20260918-1/);
   assert.match(html, /group-booking\.css\?v=booking-participant-colors-20260918-1/);
   assert.match(html, /member-ui\.js\?v=booking-history-single-pass-20260918-1/);
@@ -71,4 +71,14 @@ test('member booking history omits duplicate top-level services when participant
   assert.match(formatter, /if \(!hasParticipantDetails\) \{/);
   assert.match(formatter, /serviceList\?\.remove\(\)/);
   assert.match(formatter, /if \(hasParticipantDetails\) \{\s*top\.after\(totals\)/s);
+});
+
+
+test('group history decoration removes stale top-level service section after participant data is available', () => {
+  const groupBooking = read('booking/group-booking.js');
+
+  assert.match(groupBooking, /function removeDuplicateHistoryServices\(node\)/);
+  assert.match(groupBooking, /child\.classList\?\.contains\('member-booking-format-services-label'\)/);
+  assert.match(groupBooking, /child\.classList\?\.contains\('booking-service-items'\)/);
+  assert.match(groupBooking, /const group = state\.bookingGroups\.get\(id\);\s*if \(!group\) return;\s*removeDuplicateHistoryServices\(node\);/s);
 });
