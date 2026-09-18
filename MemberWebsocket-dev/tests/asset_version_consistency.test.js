@@ -55,6 +55,8 @@ test('booking entry points bust caches for participant-parity assets', () => {
   const slotApi = fs.readFileSync(path.join(root, 'supabase/functions/booking-group-slots-api/index.ts'), 'utf8');
 
   assert.ok(memberHtml.includes('group-booking.css?v=booking-participant-colors-20260918-1'));
+  assert.ok(memberHtml.includes('member-booking-format.css?v=booking-service-type-colors-20260918-1'));
+  assert.ok(memberHtml.includes('member-booking-format.js?v=booking-service-type-colors-20260918-1'));
   assert.ok(memberHtml.includes('group-booking.js?v=booking-selection-summary-sync-20260918-1'));
   assert.ok(memberHtml.includes('booking-confirm-details.js?v=booking-confirm-details-20260917-4'));
   assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.js?v=booking-group-details-20260918-tech-edit-2'));
