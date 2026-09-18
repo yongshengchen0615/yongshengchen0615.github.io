@@ -11,7 +11,7 @@ assert.match(loader, /booking-summary\.css/);
 assert.match(loader, /booking-admin-group-details\.css/);
 assert.doesNotMatch(loader, /\['booking-summary\.js'/);
 assert.doesNotMatch(loader, /\['\.\.\/booking-admin-group-details\.js'/);
-assert.match(loader, /booking-single-renderer-20260918-1/);
+assert.match(loader, /booking-layout-tabs-20260918-1/);
 
 assert.match(core, /booking-contact-api/);
 assert.match(core, /admin\.booking\.contacts/);
