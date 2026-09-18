@@ -25,7 +25,7 @@ test('member booking runtime extension scripts have valid JavaScript syntax', ()
 
 test('member booking entrypoint cache-busts the stabilized runtime scripts', () => {
   const html = read('booking/index.html');
-  assert.match(html, /group-booking\.js\?v=booking-all-participants-type-colors-20260918-3/);
+  assert.match(html, /group-booking\.js\?v=booking-shared-type-color-map-20260918-4/);
   assert.match(html, /booking-confirm-details\.js\?v=booking-confirm-details-20260917-4/);
   assert.match(html, /group-booking\.css\?v=booking-participant-colors-20260918-1/);
 });
