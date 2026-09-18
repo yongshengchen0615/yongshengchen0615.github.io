@@ -578,7 +578,8 @@
       const index = Number(node.dataset.participantSummary || 0);
       const tech = technicianLabel(state.participantTechnicians[index]);
       const count = index === 0 ? countItems(state.primaryItems) : (state.extras[index - 1]?.length || 0);
-      node.textContent = `${count ? `已選 ${count} 項` : '尚未選項目'} · ${tech}`;
+      const amount = participantMetrics(index).amount;
+      node.textContent = `${count ? `已選 ${count} 項` : '尚未選項目'} · 金額 ${formatMoney(amount)} · ${tech}`;
     });
   }
 
@@ -700,7 +701,9 @@
       duration.textContent = metric.totalMinutes
         ? `總時間：${metric.totalMinutes}分鐘（含店內服務 ${state.storeServiceMinutes} 分鐘）`
         : '總時間：尚未計算';
-      block.append(heading, services, duration);
+      const amount = document.createElement('p');
+      amount.textContent = `金額：${formatMoney(metric.amount)}`;
+      block.append(heading, services, duration, amount);
       root.appendChild(block);
     });
 
@@ -748,6 +751,14 @@
     return extraSelectionsToItems(state.extras[index - 1]);
   }
 
+  function storedParticipantAmount(participant) {
+    return (Array.isArray(participant?.items) ? participant.items : []).reduce((sum, item) => {
+      const subtotal = Number(item?.subtotalAmount);
+      if (Number.isFinite(subtotal)) return sum + subtotal;
+      return sum + (Number(item?.unitPriceAmount || 0) * Math.max(1, Number(item?.quantity || 1)));
+    }, 0);
+  }
+
   function decorateConfirmation() {
     const root = document.getElementById('bookingConfirmSummary');
     if (!root) return;
@@ -771,9 +782,11 @@
       itemLine.textContent = `項目：${metric.labels.join('、') || '尚未選擇項目'}`;
       const durationLine = document.createElement('p');
       durationLine.textContent = `總時間：${metric.totalMinutes || 0} 分鐘`;
+      const amountLine = document.createElement('p');
+      amountLine.textContent = `金額：${formatMoney(metric.amount)}`;
       const techLine = document.createElement('p');
       techLine.textContent = `技師：${technicianLabel(state.participantTechnicians[index])}`;
-      card.append(heading, itemLine, durationLine, techLine);
+      card.append(heading, itemLine, durationLine, amountLine, techLine);
       box.appendChild(card);
     }
     const totalLine = document.createElement('p');
@@ -803,9 +816,11 @@
         title.textContent = participantLabel(index);
         const items = document.createElement('p');
         items.textContent = `項目：${(participant.items || []).map((item) => item.serviceTitle).filter(Boolean).join('、') || '—'}`;
+        const amount = document.createElement('p');
+        amount.textContent = `金額：${formatMoney(storedParticipantAmount(participant))}`;
         const tech = document.createElement('p');
         tech.textContent = `技師：${participant.technicianName || '現場安排'}`;
-        card.append(title, items, tech);
+        card.append(title, items, amount, tech);
         box.appendChild(card);
       });
       const top = node.querySelector('.booking-item-top');
