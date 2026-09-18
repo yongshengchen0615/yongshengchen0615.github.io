@@ -75,7 +75,7 @@ test('selection summary sync scripts have valid JavaScript syntax', () => {
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
   assert.match(html, /member-booking-format\.js\?v=booking-confirm-note-20260918-1/);
-  assert.match(html, /group-booking\.js\?v=booking-confirm-note-20260918-1/);
+  assert.match(html, /group-booking\.js\?v=booking-shared-type-color-map-20260918-4/);
 });
 
 
@@ -88,7 +88,7 @@ test('member group booking shows an amount for every participant surface', () =>
   assert.match(groupBooking, /amountLine\.textContent = `金額：\$\{formatMoney\(metric\.amount\)\}`/);
   assert.match(groupBooking, /storedParticipantAmount\(participant\)/);
   assert.match(groupBooking, /item\?\.subtotalAmount/);
-  assert.match(html, /group-booking\.js\?v=booking-confirm-note-20260918-1/);
+  assert.match(html, /group-booking\.js\?v=booking-shared-type-color-map-20260918-4/);
 });
 
 
