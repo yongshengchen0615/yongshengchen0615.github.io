@@ -17,6 +17,30 @@ test('member booking formatter applies the first participant service format to e
   assert.match(formatter, /selectedContainers\.forEach\(\(container\) => groupServiceContainer\(container, '\.selected-service-item', false\)\)/);
 });
 
+
+test('later participants use the same duplicate item and same-type warning rules as the first participant', () => {
+  const app = read('booking/app.js');
+  const groupBooking = read('booking/group-booking.js');
+
+  const sharedMessages = [
+    '${service.title} 已加入兩次，無法再重複加入。',
+    '${service.title} 已有選擇。',
+    '目前已選擇相同類型「${serviceType}」的項目：${names}。',
+    '仍要加入這個預約項目嗎？',
+  ];
+
+  for (const source of [app, groupBooking]) {
+    sharedMessages.forEach((message) => assert.ok(source.includes(message), message));
+  }
+
+  assert.match(groupBooking, /formatServiceMoney\(service\.priceAmount\)/);
+  assert.match(groupBooking, /clearParticipantFormMessage\(\)/);
+  assert.match(groupBooking, /state\.extras\[extraIndex\] = selections/);
+  assert.match(groupBooking, /extraSelectionsToItems\(state\.extras\[index\]\)/);
+  assert.match(groupBooking, /participantSelections\(participant\)/);
+  assert.doesNotMatch(groupBooking, /state\.extras\.push\(new Set\(\)\)/);
+});
+
 test('participant format parity formatter has valid JavaScript syntax', () => {
   execFileSync(process.execPath, ['--check', path.join(root, 'booking/member-booking-format.js')], { stdio: 'pipe' });
 });
