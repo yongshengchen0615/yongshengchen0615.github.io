@@ -33,7 +33,7 @@ test('admin entry references current assets that changed after older cache keys'
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
   assert.ok(html.includes('common.js?v=admin-fresh-login-20260917-1'));
   assert.ok(html.includes('app.js?v=admin-fresh-login-20260917-1'));
-  assert.ok(html.includes('booking-panel.js?v=booking-lifecycle-20260918-1'));
+  assert.ok(html.includes('booking-panel.js?v=booking-resource-mount-20260918-1'));
   assert.ok(html.includes(`../responsive.css?v=${responsiveVersion}`));
   assert.doesNotMatch(html, /calendar-responsive\.css\?v=calendar-responsive-20260910-1/);
   assert.doesNotMatch(html, /common\.js\?v=supabase-native-booking-20260910-1/);
@@ -59,7 +59,7 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.css?v=booking-group-details-20260918-participants-1'));
   assert.ok(bookingAdminHtml.includes('resources.js?v=booking-primary-tech-20260917-2'));
   assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3')"));
-  assert.ok(adminLoader.includes("load('booking-resources.js', 'booking-primary-tech-20260917-3')"));
+  assert.ok(adminLoader.includes("load('booking-resources.js', 'booking-resource-mount-20260918-1')"));
   assert.ok(adminLoader.includes("load('../booking-admin-group-details.js', 'booking-group-details-20260918-participants-1')"));
   assert.match(groupCss, /\.participant-service-stack\{[^}]*display:grid/);
   assert.match(groupCss, /\.group-selection-summary\{[^}]*display:grid/);
@@ -87,6 +87,15 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.match(migration, /greatest\(v_total_duration, v_participant_duration\)/);
   assert.match(slotApi, /maxParticipantServiceMinutes = Math\.max\(maxParticipantServiceMinutes, participantServiceMinutes\)/);
   assert.match(slotApi, /totalDurationMinutes = maxParticipantServiceMinutes \+ storeServiceMinutes/);
+});
+
+test('admin booking technician settings remount after dynamic panel creation', () => {
+  const resources = fs.readFileSync(path.join(root, 'admin/booking-resources.js'), 'utf8');
+  assert.match(resources, /initialized:\s*false/);
+  assert.match(resources, /function startWhenReady\(\)/);
+  assert.match(resources, /new MutationObserver/);
+  assert.match(resources, /observer\.observe\(document\.documentElement, \{ childList: true, subtree: true \}\)/);
+  assert.match(resources, /if \(!mount\(\)\) return false/);
 });
 
 test('calendar date fix keeps native date inputs shrinkable in LINE WebView', () => {
