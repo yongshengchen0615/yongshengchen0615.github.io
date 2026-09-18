@@ -61,7 +61,6 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.ok(bookingAdminHtml.includes('resources.js?v=booking-primary-tech-20260917-2'));
   assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3')"));
   assert.ok(adminLoader.includes("['booking-resources.js', 'booking-resource-mount-20260918-2']"));
-  assert.ok(adminLoader.includes("['booking-resources.js', 'booking-resource-mount-20260918-2']"));
   assert.ok(adminLoader.includes("load('booking-panel-core.js', 'booking-single-renderer-20260918-1')"));
   assert.doesNotMatch(adminLoader, /\['booking-summary\.js'/);
   assert.doesNotMatch(adminLoader, /\['\.\.\/booking-admin-group-details\.js'/);
