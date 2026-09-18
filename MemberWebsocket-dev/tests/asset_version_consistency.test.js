@@ -33,7 +33,8 @@ test('admin entry references current assets that changed after older cache keys'
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
   assert.ok(html.includes('common.js?v=admin-fresh-login-20260917-1'));
   assert.ok(html.includes('app.js?v=admin-fresh-login-20260917-1'));
-  assert.ok(html.includes('booking-panel.js?v=booking-cancellation-format-20260918-1'));
+  assert.ok(html.includes('booking-panel.css?v=booking-card-unified-20260918-1'));
+  assert.ok(html.includes('booking-panel.js?v=booking-card-unified-20260918-1'));
   assert.ok(html.includes(`../responsive.css?v=${responsiveVersion}`));
   assert.doesNotMatch(html, /calendar-responsive\.css\?v=calendar-responsive-20260910-1/);
   assert.doesNotMatch(html, /common\.js\?v=supabase-native-booking-20260910-1/);
