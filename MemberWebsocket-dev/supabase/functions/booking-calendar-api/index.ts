@@ -125,7 +125,7 @@ async function consumeRateLimit(supabase: SupabaseClient, identity: Identity): P
   if (!data) throw new ApiError(429, "RATE_LIMITED", "請求過於密集，請稍後再試。");
 }
 
-async function requireJoinedMember(supabase: SupabaseClient, identity: Identity): Promise<void> {
+async function requireJoinedMember(supabase: SupabaseClient, identity: Identity): Promise<{ id: string; membership_status: string; status: string }> {
   const result = await supabase.from("members")
     .select("id,membership_status,status")
     .eq("line_user_id", identity.lineUserId)
@@ -136,6 +136,7 @@ async function requireJoinedMember(supabase: SupabaseClient, identity: Identity)
     throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先加入會員並完成會員資料後再使用預約功能。");
   }
   if (member.status !== "active") throw new ApiError(403, "MEMBER_DISABLED", "此會員目前已停用，無法預約。");
+  return member;
 }
 
 function requireMonth(value: unknown): string {
@@ -172,7 +173,7 @@ function addDays(date: string, days: number): string {
   return parsed.toISOString().slice(0, 10);
 }
 
-async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Json> {
+async function loadCalendar(supabase: SupabaseClient, month: string, memberId: string): Promise<Json> {
   const settingsResult = await supabase.from("booking_settings")
     .select("min_advance_days,booking_notice")
     .eq("id", 1)
@@ -208,6 +209,7 @@ async function loadCalendar(supabase: SupabaseClient, month: string): Promise<Js
     const to = from + PAGE_SIZE - 1;
     const result = await supabase.from("bookings")
       .select("booking_date,start_time,end_time")
+      .eq("member_id", memberId)
       .gte("booking_date", startDate)
       .lt("booking_date", endDate)
       .in("status", ["pending", "confirmed"])
@@ -274,8 +276,8 @@ Deno.serve(async (request) => {
     const identity = await verifyLineIdToken(idToken);
     const supabase = dbClient();
     await consumeRateLimit(supabase, identity);
-    await requireJoinedMember(supabase, identity);
-    const data = await loadCalendar(supabase, month);
+    const member = await requireJoinedMember(supabase, identity);
+    const data = await loadCalendar(supabase, month, member.id);
     return response(origin, { ok: true, data });
   } catch (error) {
     return errorResponse(origin, error);
