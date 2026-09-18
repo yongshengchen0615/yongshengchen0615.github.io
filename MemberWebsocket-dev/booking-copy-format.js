@@ -136,7 +136,7 @@
   }
 
   function groupFromRenderedDetails(card) {
-    const blocks = [...card.querySelectorAll(':scope > .booking-group-admin-details .booking-group-admin-participant')];
+    const blocks = [...card.querySelectorAll('.booking-group-admin-details .booking-group-admin-participant')];
     if (!blocks.length) return null;
     const participants = blocks.map((block) => {
       const rows = [...block.querySelectorAll('p')].map((node) => String(node.textContent || '').trim());
