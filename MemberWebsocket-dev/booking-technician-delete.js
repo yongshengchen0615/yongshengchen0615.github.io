@@ -3,18 +3,6 @@
 
   const surfaces = [
     {
-      form: 'bookingAdminTechnicianForm',
-      technicianId: 'bookingAdminTechnicianId',
-      expectedUpdatedAt: 'bookingAdminTechnicianExpectedUpdatedAt',
-      technicianName: 'bookingAdminTechnicianName',
-      title: 'bookingAdminTechnicianFormTitle',
-      saveButton: 'bookingAdminSaveTechnicianButton',
-      newButton: 'bookingAdminNewTechnicianButton',
-      refreshButton: 'bookingAdminResourceRefreshButton',
-      message: 'bookingAdminResourceMessage',
-      deleteButton: 'bookingAdminDeleteTechnicianButton',
-    },
-    {
       form: 'technicianForm',
       technicianId: 'technicianId',
       expectedUpdatedAt: 'technicianExpectedUpdatedAt',
@@ -35,9 +23,9 @@
     const installAll = () => surfaces.forEach(installSurface);
     installAll();
 
-    // The booking resource editor is dynamically mounted. Keep watching long
-    // enough for LIFF/admin bootstrap so delete controls cannot disappear just
-    // because this script evaluated before the technician form existed.
+    // The standalone booking resource editor is dynamically mounted. Keep watching
+    // long enough for LIFF/admin bootstrap so its delete control remains available.
+    // The primary admin technician page owns its custom modal deletion flow directly.
     const observer = new MutationObserver(installAll);
     observer.observe(document.documentElement, { childList: true, subtree: true });
     window.setTimeout(() => observer.disconnect(), 30000);
