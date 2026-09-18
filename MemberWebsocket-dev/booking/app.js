@@ -654,6 +654,12 @@
       }
       els.bookingList.appendChild(item);
     }
+
+    // Finalize the history DOM before the browser can paint the booking view.
+    // The extension observers remain as a fallback for external mutations, but
+    // normal app renders must never expose the intermediate legacy card shape.
+    if (window.BookingMemberFormat?.formatHistory) window.BookingMemberFormat.formatHistory();
+    if (window.BookingMemberUI?.organizeBookingHistory) window.BookingMemberUI.organizeBookingHistory();
   }
 
   function canCancel(booking) {
