@@ -69,7 +69,7 @@ test('participant format parity formatter has valid JavaScript syntax', () => {
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
   assert.match(html, /member-booking-format\.js\?v=booking-participant-format-parity-20260918-1/);
-  assert.match(html, /group-booking\.js\?v=booking-full-participant-parity-20260918-3/);
+  assert.match(html, /group-booking\.js\?v=booking-participant-amounts-20260918-1/);
 });
 
 
