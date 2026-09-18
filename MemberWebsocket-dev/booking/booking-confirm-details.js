@@ -79,11 +79,14 @@
     }
 
     const noteValue = String(document.getElementById('memberNote')?.value || '').trim();
-    if (noteValue) {
-      const note = document.createElement('p');
-      note.textContent = `備註：${noteValue}`;
-      box.appendChild(note);
-    }
+    const noteBox = document.createElement('div');
+    noteBox.className = 'group-confirm-participant booking-confirm-note';
+    const noteTitle = document.createElement('strong');
+    noteTitle.textContent = '預約備註';
+    const note = document.createElement('p');
+    note.textContent = noteValue || '未填寫';
+    noteBox.append(noteTitle, note);
+    box.appendChild(noteBox);
 
     root.replaceChildren(box);
   }
