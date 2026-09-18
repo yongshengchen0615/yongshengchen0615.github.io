@@ -281,25 +281,32 @@
     );
     titleBox.replaceChildren(summary);
 
+    const hasParticipantDetails = card.dataset.participantDetails === '1';
     let serviceList = directChild(card, (node) => node.classList?.contains('booking-service-items'));
-    if (serviceList) {
-      [...serviceList.children].forEach((entry) => {
-        if (String(entry.textContent || '').trim().startsWith('店內服務 ')) entry.remove();
-      });
+    let servicesLabel = null;
+
+    if (!hasParticipantDetails) {
+      if (serviceList) {
+        [...serviceList.children].forEach((entry) => {
+          if (String(entry.textContent || '').trim().startsWith('店內服務 ')) entry.remove();
+        });
+      } else {
+        serviceList = document.createElement('ul');
+        serviceList.className = 'booking-service-items';
+      }
+
+      if (!serviceList.children.length) {
+        const empty = document.createElement('li');
+        empty.textContent = '尚無會員服務項目';
+        serviceList.appendChild(empty);
+      }
+
+      servicesLabel = document.createElement('p');
+      servicesLabel.className = 'member-booking-format-services-label';
+      servicesLabel.textContent = '服務項目';
     } else {
-      serviceList = document.createElement('ul');
-      serviceList.className = 'booking-service-items';
+      serviceList?.remove();
     }
-
-    if (!serviceList.children.length) {
-      const empty = document.createElement('li');
-      empty.textContent = '尚無會員服務項目';
-      serviceList.appendChild(empty);
-    }
-
-    const servicesLabel = document.createElement('p');
-    servicesLabel.className = 'member-booking-format-services-label';
-    servicesLabel.textContent = '服務項目';
 
     const totals = document.createElement('div');
     totals.className = 'member-booking-format-totals';
@@ -308,9 +315,13 @@
       summaryRow('總金額', parsed.totalAmount),
     );
 
-    top.after(servicesLabel);
-    servicesLabel.after(serviceList);
-    serviceList.after(totals);
+    if (hasParticipantDetails) {
+      top.after(totals);
+    } else {
+      top.after(servicesLabel);
+      servicesLabel.after(serviceList);
+      serviceList.after(totals);
+    }
 
     card.classList.add('member-booking-format-card');
     card.dataset.memberBookingFormat = '1';
