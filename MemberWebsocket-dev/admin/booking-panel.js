@@ -90,7 +90,6 @@
     // booking host themselves, so they cannot disappear because another
     // decorator or the core load chain failed.
     ['booking-resources.js', 'booking-technician-modal-20260918-1'],
-    ['../booking-technician-delete.js', 'booking-technician-delete-modal-separation-20260918-1'],
   ];
 
   Promise.allSettled(preloadExtensions.map(([name, version]) => load(name, version)))
