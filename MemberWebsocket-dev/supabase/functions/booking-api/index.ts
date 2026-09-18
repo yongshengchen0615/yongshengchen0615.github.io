@@ -80,6 +80,7 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_HOLIDAY", 409, "BOOKING_HOLIDAY", "這一天為休假日，請選擇其他日期。"],
     ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "這段時間剛剛已被其他會員預約，請選擇其他時間。"],
     ["BOOKING_TOO_EARLY", 409, "BOOKING_TOO_EARLY", "尚未符合提前預約天數，請選擇較晚的日期。"],
+    ["BOOKING_TOO_FAR", 409, "BOOKING_TOO_FAR", "此日期超過可預約範圍，請選擇較近的日期。"],
     ["BOOKING_TIME_PASSED", 409, "BOOKING_TIME_PASSED", "這個預約時間已經過了，請重新選擇。"],
     ["BOOKING_SERVICE_DISABLED", 409, "BOOKING_SERVICE_DISABLED", "其中一個預約項目目前未開放。"],
     ["BOOKING_SERVICE_NOT_FOUND", 404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個預約項目。"],
@@ -294,6 +295,7 @@ function settingsClient(row: any): Json {
     workStartTime: String(row?.work_start_time || "09:00:00").slice(0, 5),
     workEndTime: String(row?.work_end_time || "17:00:00").slice(0, 5),
     minAdvanceDays: Number(row?.min_advance_days || 0),
+    maxAdvanceDays: Number(row?.max_advance_days || 0),
     updatedAt: row?.updated_at || null,
   };
 }
@@ -382,6 +384,15 @@ async function bookingSettings(supabase: SupabaseClient): Promise<any> {
   return result.data;
 }
 
+function assertBookingDateWindow(date: string, settings: any): void {
+  const today = taipeiDate();
+  const earliestBookingDate = addDays(today, Number(settings?.min_advance_days || 0));
+  const maxAdvanceDays = Number(settings?.max_advance_days || 0);
+  const latestBookingDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : "";
+  if (date < earliestBookingDate) throw new ApiError(409, "BOOKING_TOO_EARLY", "尚未符合提前預約天數，請選擇較晚的日期。");
+  if (latestBookingDate && date > latestBookingDate) throw new ApiError(409, "BOOKING_TOO_FAR", "此日期超過可預約範圍，請選擇較近的日期。");
+}
+
 async function bookingServiceTypes(supabase: SupabaseClient): Promise<string[]> {
   const result = await supabase.from("booking_service_types")
     .select("name")
@@ -441,12 +452,15 @@ async function generateSlots(supabase: SupabaseClient, body: Json, member: any):
 
   const today = taipeiDate();
   const earliestBookingDate = addDays(today, Number(settings.min_advance_days || 0));
-  if (date < earliestBookingDate) {
+  const maxAdvanceDays = Number(settings.max_advance_days || 0);
+  const latestBookingDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : "";
+  if (date < earliestBookingDate || (latestBookingDate && date > latestBookingDate)) {
     return {
       settings: settingsClient(settings),
       totalDurationMinutes: duration,
       totalAmount: totalAmount(items),
       earliestBookingDate,
+      latestBookingDate: latestBookingDate || null,
       slots: [],
     };
   }
@@ -488,6 +502,7 @@ async function generateSlots(supabase: SupabaseClient, body: Json, member: any):
     totalDurationMinutes: duration,
     totalAmount: totalAmount(items),
     earliestBookingDate,
+    latestBookingDate: latestBookingDate || null,
     slots,
   };
 }
@@ -527,6 +542,8 @@ async function userBootstrap(supabase: SupabaseClient, member: any): Promise<Jso
 
 async function userCreate(supabase: SupabaseClient, identity: Identity, member: any, body: Json): Promise<Json> {
   const bookingDate = requireDate(body.bookingDate);
+  const settings = await bookingSettings(supabase);
+  assertBookingDateWindow(bookingDate, settings);
   const startTime = normalizeTime(body.startTime);
   const requestId = asText(body.requestId, 100);
   if (!/^BOOK-[A-Za-z0-9-]{8,95}$/.test(requestId)) throw new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
@@ -562,11 +579,14 @@ async function userUpdate(supabase: SupabaseClient, identity: Identity, member: 
   if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請重新整理。");
   const requestId = asText(body.requestId, 100);
   if (!/^BOOK-[A-Za-z0-9-]{8,95}$/.test(requestId)) throw new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
+  const bookingDate = requireDate(body.bookingDate);
+  const settings = await bookingSettings(supabase);
+  assertBookingDateWindow(bookingDate, settings);
   const items = await normalizeRequestedItems(supabase, body);
   const result = await supabase.rpc("update_booking_bundle_request", {
     p_booking_id: bookingId, p_member_id: member.id,
     p_expected_updated_at: expectedUpdatedAt, p_request_id: requestId,
-    p_booking_date: requireDate(body.bookingDate), p_start_time: `${normalizeTime(body.startTime)}:00`,
+    p_booking_date: bookingDate, p_start_time: `${normalizeTime(body.startTime)}:00`,
     p_items: items.map((item) => ({ serviceId: item.serviceId, quantity: item.quantity })),
     p_member_note: asText(body.memberNote, 500), p_actor: identity.lineUserId,
   });
@@ -612,11 +632,18 @@ async function adminSettingsSave(supabase: SupabaseClient, identity: Identity, b
   const workStartTime = normalizeTime(body.workStartTime);
   const workEndTime = normalizeTime(body.workEndTime);
   const minAdvanceDays = Number(body.minAdvanceDays);
+  const maxAdvanceDays = Number(body.maxAdvanceDays);
   if (timeToMinutes(workEndTime) - timeToMinutes(workStartTime) < SLOT_START_INTERVAL_MINUTES) {
     throw new ApiError(400, "INVALID_WORK_HOURS", "結束工作時間必須晚於開始工作時間至少 30 分鐘。");
   }
   if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) {
     throw new ApiError(400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。");
+  }
+  if (!Number.isInteger(maxAdvanceDays) || maxAdvanceDays < 0 || maxAdvanceDays > 365) {
+    throw new ApiError(400, "INVALID_MAX_ADVANCE_DAYS", "最遠可預約天數必須介於 0–365 天；0 代表不限制。");
+  }
+  if (maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays) {
+    throw new ApiError(400, "INVALID_ADVANCE_WINDOW", "最遠可預約天數不可小於需要提前的天數。");
   }
 
   const current = await bookingSettings(supabase);
@@ -631,6 +658,7 @@ async function adminSettingsSave(supabase: SupabaseClient, identity: Identity, b
     p_work_start_time: `${workStartTime}:00`,
     p_work_end_time: `${workEndTime}:00`,
     p_min_advance_days: minAdvanceDays,
+    p_max_advance_days: maxAdvanceDays,
     p_service_types: serviceTypes,
     p_expected_updated_at: expectedUpdatedAt || null,
     p_actor: identity.lineUserId,
@@ -645,6 +673,7 @@ async function adminSettingsSave(supabase: SupabaseClient, identity: Identity, b
     workStartTime,
     workEndTime,
     minAdvanceDays,
+    maxAdvanceDays,
     serviceTypes: persistedServiceTypes,
   });
   return { settings: { ...settingsClient(updated), serviceTypes: persistedServiceTypes } };
