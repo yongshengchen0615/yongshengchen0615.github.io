@@ -4,6 +4,7 @@
   const state = {
     config: null,
     bookings: [],
+    services: [],
     groups: {},
     loading: null,
     loadedAt: 0,
@@ -57,6 +58,7 @@
   async function load() {
     const bootstrap = await request('booking-api', 'admin.booking.bootstrap');
     const bookings = Array.isArray(bootstrap?.bookings) ? bootstrap.bookings : [];
+    const services = Array.isArray(bootstrap?.services) ? bootstrap.services : [];
     const bookingIds = bookings.map((booking) => String(booking.bookingId || '')).filter(Boolean);
     let groups = {};
     if (bookingIds.length) {
@@ -64,6 +66,7 @@
       groups = details?.bookingGroups && typeof details.bookingGroups === 'object' ? details.bookingGroups : {};
     }
     state.bookings = bookings;
+    state.services = services;
     state.groups = groups;
     state.loadedAt = Date.now();
   }
@@ -108,12 +111,14 @@
       const booking = findBooking(card, used);
       if (!booking) return;
       const id = String(booking.bookingId || '');
-      const group = groupForDisplay(state.groups[id], booking);
+      const storedGroup = state.groups[id];
+      const hasStoredParticipants = Boolean(storedGroup && Array.isArray(storedGroup.participants) && storedGroup.participants.length);
+      const group = groupForDisplay(storedGroup, booking);
       if (!group) return;
       used.add(id);
       card.dataset.bookingId = id;
-      renderDetails(card, group);
-      protectUnsafeGroupEdits(card, group);
+      renderDetails(card, group, booking, hasStoredParticipants);
+      protectUnsafeGroupEdits(card, group, hasStoredParticipants);
     });
   }
 
@@ -162,7 +167,7 @@
     return [date, `${y}/${match[2]}/${match[3]}`, `${y}/${m}/${d}`];
   }
 
-  function renderDetails(card, group) {
+  function renderDetails(card, group, booking, hasStoredParticipants) {
     card.querySelectorAll('.booking-group-admin-details').forEach((node) => node.remove());
 
     const box = document.createElement('section');
@@ -184,6 +189,15 @@
       tech.textContent = `預約技師：${techName}`;
 
       block.append(heading, items, tech);
+
+      if (hasStoredParticipants && canEditBooking(booking)) {
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'booking-group-admin-edit-button';
+        edit.textContent = '修改此位項目';
+        edit.addEventListener('click', () => openParticipantEditor(booking, group, index));
+        block.appendChild(edit);
+      }
       box.appendChild(block);
     });
 
@@ -200,14 +214,187 @@
     else card.prepend(box);
   }
 
-  function protectUnsafeGroupEdits(card, group) {
-    if (Number(group.partySize || group.participants.length) <= 1) return;
+  function canEditBooking(booking) {
+    if (!booking || !['pending', 'confirmed'].includes(String(booking.status || ''))) return false;
+    return !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt);
+  }
+
+  function protectUnsafeGroupEdits(card, group, hasStoredParticipants) {
+    if (!hasStoredParticipants) return;
     [...card.querySelectorAll('button')].forEach((button) => {
       const label = String(button.textContent || '').trim();
       if (!label.includes('修改服務項目') && !label.includes('現場改單')) return;
+      button.hidden = true;
       button.disabled = true;
-      button.title = '多人預約必須逐位修改服務項目，舊的整筆合併改單功能已停用以保護資料一致性。';
-      button.setAttribute('aria-label', `${label}（多人預約暫停使用）`);
+      button.title = '此預約使用逐位項目資料，請使用每位預約明細中的「修改此位項目」。';
+    });
+  }
+
+  function editableServices() {
+    return (state.services || []).filter((service) => String(service.serviceId || '') !== STORE_SERVICE_ID);
+  }
+
+  function openParticipantEditor(booking, group, participantIndex) {
+    if (!canEditBooking(booking)) {
+      window.alert('這筆預約目前無法修改服務項目。');
+      return;
+    }
+    const participant = group?.participants?.[participantIndex];
+    if (!participant) return;
+    const services = editableServices();
+    if (!services.length) {
+      window.alert('目前沒有可選擇的預約項目。');
+      return;
+    }
+
+    document.querySelectorAll('.booking-group-admin-edit-modal').forEach((node) => node.remove());
+
+    const overlay = document.createElement('div');
+    overlay.className = 'booking-group-admin-edit-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', `${participantLabel(participantIndex)}修改服務項目`);
+
+    const panel = document.createElement('div');
+    panel.className = 'booking-group-admin-edit-panel';
+
+    const header = document.createElement('div');
+    header.className = 'booking-group-admin-edit-heading';
+    const titleBox = document.createElement('div');
+    const kicker = document.createElement('small');
+    kicker.textContent = 'Booking participant';
+    const title = document.createElement('h3');
+    title.textContent = `${participantLabel(participantIndex)}｜修改項目`;
+    titleBox.append(kicker, title);
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'booking-group-admin-edit-close';
+    close.textContent = '×';
+    close.setAttribute('aria-label', '關閉');
+    close.addEventListener('click', () => overlay.remove());
+    header.append(titleBox, close);
+
+    const hint = document.createElement('p');
+    hint.className = 'booking-group-admin-edit-hint';
+    hint.textContent = '只修改這一位的預約項目與數量；系統會重新計算整筆預約結束時間，技師與日期不變。';
+
+    const form = document.createElement('form');
+    form.className = 'booking-group-admin-edit-form';
+    const rows = document.createElement('div');
+    rows.className = 'booking-group-admin-edit-rows';
+    const current = new Map((participant.items || []).map((item) => [String(item.serviceId || ''), Math.max(1, Number(item.quantity || 1))]));
+
+    services.forEach((service) => {
+      const serviceId = String(service.serviceId || '');
+      if (!serviceId) return;
+      const row = document.createElement('label');
+      row.className = 'booking-group-admin-edit-row';
+
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.value = serviceId;
+      check.checked = current.has(serviceId);
+
+      const copy = document.createElement('span');
+      copy.className = 'booking-group-admin-edit-copy';
+      const name = document.createElement('strong');
+      name.textContent = `${String(service.title || '預約項目')}${service.isActive === false ? '（目前停用）' : ''}`;
+      const meta = document.createElement('small');
+      meta.textContent = `${Number(service.durationMinutes || 0)} 分鐘｜${formatMoney(service.priceAmount)}`;
+      copy.append(name, meta);
+
+      const quantity = document.createElement('select');
+      quantity.setAttribute('aria-label', `${String(service.title || '預約項目')}數量`);
+      quantity.innerHTML = '<option value="1">1 份</option><option value="2">2 份</option>';
+      quantity.value = String(current.get(serviceId) || 1);
+      quantity.disabled = !check.checked;
+      check.addEventListener('change', () => { quantity.disabled = !check.checked; });
+
+      row.append(check, copy, quantity);
+      rows.appendChild(row);
+    });
+
+    const message = document.createElement('div');
+    message.className = 'booking-group-admin-edit-message';
+    message.setAttribute('aria-live', 'polite');
+
+    const actions = document.createElement('div');
+    actions.className = 'booking-group-admin-edit-actions';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'booking-group-admin-edit-secondary';
+    cancel.textContent = '取消';
+    cancel.addEventListener('click', () => overlay.remove());
+    const save = document.createElement('button');
+    save.type = 'submit';
+    save.className = 'booking-group-admin-edit-primary';
+    save.textContent = '儲存修改';
+    actions.append(cancel, save);
+
+    form.append(rows, message, actions);
+    panel.append(header, hint, form);
+    overlay.appendChild(panel);
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      message.textContent = '';
+      const selected = [...rows.querySelectorAll('input[type="checkbox"]:checked')].map((checkbox) => {
+        const row = checkbox.closest('.booking-group-admin-edit-row');
+        return {
+          serviceId: checkbox.value,
+          quantity: Number(row?.querySelector('select')?.value || 1),
+        };
+      });
+      if (!selected.length) {
+        message.textContent = '請至少選擇一個預約項目。';
+        return;
+      }
+
+      const participants = (group.participants || []).map((person, index) => ({
+        position: Number(person.position || index + 1),
+        items: index === participantIndex
+          ? selected
+          : (person.items || []).map((item) => ({
+              serviceId: String(item.serviceId || ''),
+              quantity: Math.max(1, Number(item.quantity || 1)),
+            })),
+      }));
+      if (participants.some((person) => !person.position || !person.items.length || person.items.some((item) => !item.serviceId))) {
+        message.textContent = '預約明細不完整，請更新資料後再試。';
+        return;
+      }
+
+      save.disabled = true;
+      cancel.disabled = true;
+      rows.querySelectorAll('input,select').forEach((control) => { control.disabled = true; });
+      save.textContent = '儲存中…';
+      try {
+        await request('booking-admin-operations', 'admin.booking.participants.items.update', {
+          bookingId: booking.bookingId,
+          expectedUpdatedAt: booking.updatedAt,
+          participants,
+        });
+        overlay.remove();
+        await refresh(true);
+      } catch (error) {
+        message.textContent = error?.message || '修改預約項目失敗。';
+        save.disabled = false;
+        cancel.disabled = false;
+        rows.querySelectorAll('input[type="checkbox"]').forEach((control) => { control.disabled = false; });
+        rows.querySelectorAll('.booking-group-admin-edit-row').forEach((row) => {
+          const checkbox = row.querySelector('input[type="checkbox"]');
+          const select = row.querySelector('select');
+          if (select) select.disabled = !checkbox?.checked;
+        });
+        save.textContent = '儲存修改';
+        if (error?.code === 'BOOKING_CONFLICT') {
+          await refresh(true).catch(() => {});
+        }
+      }
     });
   }
 
