@@ -56,14 +56,14 @@ from public.bookings b
 where q.booking_id = b.id
   and q.status in ('pending','sending')
   and (
-    (b.status = 'cancelled' and q.event_key not like b.id::text || ':cancelled:%')
-    or (b.status = 'completed' and q.event_key not like b.id::text || ':completed:%')
-    or (b.status = 'rejected' and q.event_key not like b.id::text || ':rejected:%')
+    (b.status = 'cancelled' and q.event_key not like (b.id::text || ':cancelled:%'))
+    or (b.status = 'completed' and q.event_key not like (b.id::text || ':completed:%'))
+    or (b.status = 'rejected' and q.event_key not like (b.id::text || ':rejected:%'))
     or (
       b.status in ('pending','confirmed')
       and b.cancellation_requested_at is not null
       and b.cancellation_reviewed_at is null
-      and q.event_key not like b.id::text || ':cancellation_requested:%'
+      and q.event_key not like (b.id::text || ':cancellation_requested:%')
     )
   );
 
@@ -107,14 +107,14 @@ begin
     and q.status in ('pending','sending')
     and q.next_attempt_at <= now()
     and (
-      (b.status = 'cancelled' and q.event_key not like b.id::text || ':cancelled:%')
-      or (b.status = 'completed' and q.event_key not like b.id::text || ':completed:%')
-      or (b.status = 'rejected' and q.event_key not like b.id::text || ':rejected:%')
+      (b.status = 'cancelled' and q.event_key not like (b.id::text || ':cancelled:%'))
+      or (b.status = 'completed' and q.event_key not like (b.id::text || ':completed:%'))
+      or (b.status = 'rejected' and q.event_key not like (b.id::text || ':rejected:%'))
       or (
         b.status in ('pending','confirmed')
         and b.cancellation_requested_at is not null
         and b.cancellation_reviewed_at is null
-        and q.event_key not like b.id::text || ':cancellation_requested:%'
+        and q.event_key not like (b.id::text || ':cancellation_requested:%')
       )
     );
 
