@@ -66,7 +66,7 @@
   loadSharedResponsive();
   loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260915-mobile-field-overflow-1');
   loadStyle('booking-summary.css', 'booking-summary-20260918-participants-1');
-  loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3');
+  loadStyle('booking-resources.css', 'booking-technician-modal-20260918-1');
   loadStyle('../booking-admin-group-details.css', 'booking-group-details-20260918-admin-edit-1');
   loadStyle('ui-polish.css', 'admin-ui-20260916-1');
   loadStyle('ui-polish-responsive.css', 'admin-ui-responsive-20260916-1');
@@ -89,8 +89,8 @@
     // Resource controls are independent required modules. They wait for the
     // booking host themselves, so they cannot disappear because another
     // decorator or the core load chain failed.
-    ['booking-resources.js', 'booking-resource-tabs-20260918-1'],
-    ['../booking-technician-delete.js', 'booking-technician-delete-20260918-3'],
+    ['booking-resources.js', 'booking-technician-modal-20260918-1'],
+    ['../booking-technician-delete.js', 'booking-technician-delete-modal-separation-20260918-1'],
   ];
 
   Promise.allSettled(preloadExtensions.map(([name, version]) => load(name, version)))
