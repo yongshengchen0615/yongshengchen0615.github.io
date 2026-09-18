@@ -333,6 +333,7 @@
       els.bookingDate.disabled = !els.bookingDate.value;
       els.selectionSummary.classList.add('hidden');
       els.slotHint.textContent = '請先選擇至少一個預約項目。';
+      notifySelectionChanged();
       return;
     }
 
@@ -343,8 +344,15 @@
     if (!els.bookingDate.value || els.bookingDate.value < minimumDate) els.bookingDate.value = minimumDate;
     els.selectionSummary.classList.remove('hidden');
     els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 項目 ${serviceMinutes} 分鐘 + 店內服務 ${includedMinutes} 分鐘 = 預約共 ${totalMinutes} 分鐘 · 總額 ${formatMoney(totalAmount())} · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}`;
+    notifySelectionChanged();
     els.slotHint.textContent = '正在計算整段服務時間可使用的時段…';
     if (loadAfter && els.bookingDate.value) loadSlots();
+  }
+
+  function notifySelectionChanged() {
+    window.dispatchEvent(new CustomEvent('booking:selection-changed', {
+      detail: { items: selectedItems() },
+    }));
   }
 
   async function dateChanged() {
