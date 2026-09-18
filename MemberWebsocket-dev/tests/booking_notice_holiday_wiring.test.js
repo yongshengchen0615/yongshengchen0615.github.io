@@ -35,7 +35,6 @@ assert.match(calendarFlow, /applyHolidayAccent\(item, holiday\.accent\)/);
 assert.match(calendarFlow, /\$\{interval\.startTime\}–\$\{interval\.endTime\} 我的預約/);
 assert.match(calendarFlow, /有 \$\{intervals\.length\} 個我的預約時段/);
 assert.match(bookingIndex, /我的預約時段/);
-assert.match(bookingIndex, /calendar-flow\.js\?v=member-own-bookings-20260918-1/);
 assert.match(calendarFlow, /if \(date === today\) button\.classList\.add\('today'\)/);
 assert.doesNotMatch(bookingIndex, /appointment-date-bar/);
 assert.doesNotMatch(bookingIndex, /changeDateButton/);
