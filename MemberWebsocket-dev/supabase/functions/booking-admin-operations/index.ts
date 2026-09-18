@@ -53,7 +53,14 @@ function mapDatabaseError(error: unknown): ApiError {
     ["ADMIN_REQUIRED", 403, "ADMIN_REQUIRED", "管理端帳號尚未授權。"],
     ["BOOKING_PARTICIPANT_EDIT_REQUIRED", 409, "BOOKING_PARTICIPANT_EDIT_REQUIRED", "請重新整理並使用逐位修改服務項目。"],
     ["INVALID_BOOKING_PARTICIPANTS", 400, "INVALID_BOOKING_PARTICIPANTS", "請完整提供每一位預約人的項目，且不可重複。"],
-    ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "調整後的服務時間與其他預約衝突，請縮短項目或另行安排。"],
+    ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "所選技師在這個時段已有其他預約，請改選其他技師或調整預約。"],
+    ["BOOKING_PRIMARY_TECHNICIAN_REQUIRED", 409, "BOOKING_PRIMARY_TECHNICIAN_REQUIRED", "至少一位預約人必須指定主要技師。"],
+    ["BOOKING_PRIMARY_TECHNICIAN_MISSING", 409, "BOOKING_PRIMARY_TECHNICIAN_MISSING", "尚未設定主要技師，請先完成預約技師設定。"],
+    ["BOOKING_PRIMARY_TECHNICIAN_DISABLED", 409, "BOOKING_PRIMARY_TECHNICIAN_DISABLED", "主要技師目前不可使用，請先更新技師設定。"],
+    ["BOOKING_TECHNICIAN_NOT_FOUND", 404, "BOOKING_TECHNICIAN_NOT_FOUND", "找不到其中一位預約技師。"],
+    ["BOOKING_TECHNICIAN_DISABLED", 409, "BOOKING_TECHNICIAN_DISABLED", "其中一位預約技師目前不可使用。"],
+    ["DUPLICATE_PARTICIPANT_TECHNICIAN", 400, "DUPLICATE_PARTICIPANT_TECHNICIAN", "同一筆多人預約不可重複指定同一位技師。"],
+    ["INVALID_BOOKING_TECHNICIAN", 400, "INVALID_BOOKING_TECHNICIAN", "預約技師資料格式不正確。"],
     ["INVALID_BOOKING_SLOT", 400, "INVALID_BOOKING_SLOT", "調整後的結束時間超出營業時間。"],
     ["INVALID_BOOKING_DURATION", 400, "INVALID_BOOKING_DURATION", "調整後的服務時間不正確。"],
     ["BOOKING_CONFLICT", 409, "BOOKING_CONFLICT", "預約已被其他操作更新，請重新整理後再試。"],
@@ -199,6 +206,40 @@ async function audit(supabase: SupabaseClient, identity: Identity, action: strin
   });
   if (result.error) console.error("booking admin audit failed", result.error.message);
 }
+async function updateParticipantTechnicians(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
+  const bookingId = requireUuid(body.bookingId, "預約");
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請重新整理。");
+  }
+  if (!Array.isArray(body.participants) || body.participants.length < 1 || body.participants.length > 10) {
+    throw new ApiError(400, "INVALID_BOOKING_PARTICIPANTS", "請完整提供每一位預約人的技師資料。");
+  }
+
+  const seenPositions = new Set<number>();
+  const participants = body.participants.map((raw: any) => {
+    const position = raw?.position;
+    if (!Number.isInteger(position) || position < 1 || position > 10 || seenPositions.has(position)) {
+      throw new ApiError(400, "INVALID_BOOKING_PARTICIPANTS", "預約人順序不正確或重複。");
+    }
+    seenPositions.add(position);
+    const technicianId = asText(raw?.technicianId, 60);
+    if (technicianId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(technicianId)) {
+      throw new ApiError(400, "INVALID_BOOKING_TECHNICIAN", "預約技師資料格式不正確。");
+    }
+    return { position, technicianId };
+  });
+
+  const result = await supabase.rpc("admin_update_booking_participant_technicians_request", {
+    p_booking_id: bookingId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_actor: identity.lineUserId,
+    p_participants: participants,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
+  return { booking: await hydrateBooking(supabase, bookingId) };
+}
+
 async function updateItems(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
@@ -267,6 +308,7 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
 }
 async function route(supabase: SupabaseClient, identity: Identity, action: string, body: Json): Promise<Json> {
   if (action === "admin.booking.participants.items.update") return await updateParticipantItems(supabase, identity, body);
+  if (action === "admin.booking.participants.technicians.update") return await updateParticipantTechnicians(supabase, identity, body);
   if (action === "admin.booking.items.update") return await updateItems(supabase, identity, body);
   if (action === "admin.booking.status.complete") return await completeBooking(supabase, identity, body);
   throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的管理端預約操作。");
