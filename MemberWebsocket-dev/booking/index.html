@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=booking-selection-list-20260917-2">
   <link rel="stylesheet" href="./contact-details.css?v=booking-contact-profile-20260911-1">
-  <link rel="stylesheet" href="./calendar-flow.css?v=booking-calendar-modal-20260910-1">
+  <link rel="stylesheet" href="./calendar-flow.css?v=booking-remove-date-bar-20260919-1">
   <link rel="stylesheet" href="./calendar-holiday-theme.css?v=booking-calendar-holiday-theme-20260916-2">
   <link rel="stylesheet" href="./membership-progress.css?v=booking-tier-style-20260910-1">
   <link rel="stylesheet" href="./booking-history.css?v=booking-history-accordion-20260918-1">
@@ -30,7 +30,7 @@
   <script src="./app.js?v=booking-history-dedupe-services-20260918-1-edit-reset-1" defer></script>
   <script src="./booking-confirm-details.js?v=booking-confirm-note-20260918-1" defer></script>
   <script src="./member-booking-format.js?v=booking-history-dedupe-services-20260918-1" defer></script>
-  <script src="./calendar-flow.js?v=member-own-bookings-20260918-1" defer></script>
+  <script src="./calendar-flow.js?v=booking-remove-date-bar-20260919-1" defer></script>
   <script src="./booking-notice-dedupe.js?v=20260914-1" defer></script>
   <link rel="stylesheet" href="./booking-typography.css?v=booking-typography-20260912-1">
   <link rel="stylesheet" href="../responsive.css?v=20260914-line-form-1">
@@ -103,11 +103,6 @@
               <div class="booking-selection-modal-heading">
                 <div><p class="kicker">New appointment</p><h2 id="appointmentModalTitle">預約</h2><strong id="selectedDateSummary">尚未選擇日期</strong></div>
                 <button id="closeAppointmentButton" class="booking-selection-modal-close" type="button" aria-label="關閉預約視窗">×</button>
-              </div>
-
-              <div class="appointment-date-bar">
-                <span>已選擇日期</span>
-                <button id="changeDateButton" class="button button-light" type="button">選其他日期</button>
               </div>
 
               <div id="editingBookingNotice" class="service-info hidden" role="status">
