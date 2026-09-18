@@ -175,14 +175,17 @@ function addDays(date: string, days: number): string {
 
 async function loadCalendar(supabase: SupabaseClient, month: string, memberId: string): Promise<Json> {
   const settingsResult = await supabase.from("booking_settings")
-    .select("min_advance_days,booking_notice")
+    .select("min_advance_days,max_advance_days,booking_notice")
     .eq("id", 1)
     .maybeSingle();
   if (settingsResult.error || !settingsResult.data) {
     throw new ApiError(503, "BOOKING_SETTINGS_MISSING", "預約共用設定暫時無法載入。");
   }
   const minAdvanceDays = Number(settingsResult.data.min_advance_days || 0);
-  if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) {
+  const maxAdvanceDays = Number(settingsResult.data.max_advance_days || 0);
+  if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365
+      || !Number.isInteger(maxAdvanceDays) || maxAdvanceDays < 0 || maxAdvanceDays > 365
+      || (maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays)) {
     throw new ApiError(503, "BOOKING_SETTINGS_INVALID", "預約共用設定不正確。");
   }
   const bookingNotice = String(settingsResult.data.booking_notice || "");
@@ -245,11 +248,13 @@ async function loadCalendar(supabase: SupabaseClient, month: string, memberId: s
   })).filter((row: any) => /^\d{4}-\d{2}-\d{2}$/.test(row.startsOn) && /^\d{4}-\d{2}-\d{2}$/.test(row.endsOn));
 
   const today = taipeiDate();
+  const latestBookingDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : null;
   return {
     month,
     today,
-    settings: { minAdvanceDays, bookingNotice },
+    settings: { minAdvanceDays, maxAdvanceDays, bookingNotice },
     earliestBookingDate: addDays(today, minAdvanceDays),
+    latestBookingDate,
     occupiedDates: [...grouped.entries()].map(([date, intervals]) => ({ date, intervals })),
     holidays,
   };
