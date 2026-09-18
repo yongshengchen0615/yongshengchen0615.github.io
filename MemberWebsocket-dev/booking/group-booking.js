@@ -248,7 +248,7 @@
     const previous = state.participantTechnicians.slice();
     while (state.participantTechnicians.length < state.partySize) state.participantTechnicians.push('');
     if (state.participantTechnicians.length > state.partySize) state.participantTechnicians.length = state.partySize;
-    while (state.extras.length < Math.max(0, state.partySize - 1)) state.extras.push(new Set());
+    while (state.extras.length < Math.max(0, state.partySize - 1)) state.extras.push([]);
     if (state.extras.length > Math.max(0, state.partySize - 1)) state.extras.length = Math.max(0, state.partySize - 1);
 
     if (initial || !previous.length) {
@@ -335,7 +335,7 @@
 
   function createExtraServicePicker(index) {
     const extraIndex = index - 1;
-    const selected = state.extras[extraIndex] || new Set();
+    const selections = Array.isArray(state.extras[extraIndex]) ? state.extras[extraIndex] : [];
     const stack = document.createElement('div');
     stack.className = 'participant-service-stack';
 
@@ -350,8 +350,9 @@
     choices.className = 'service-picker';
 
     state.services.forEach((service) => {
+      const alreadySelected = selections.some((selection) => selection.serviceId === service.serviceId);
       const row = document.createElement('article');
-      row.className = `service-choice${selected.has(service.serviceId) ? ' selected' : ''}`;
+      row.className = `service-choice${alreadySelected ? ' selected' : ''}`;
       const main = document.createElement('div');
       main.className = 'service-choice-main';
       const text = document.createElement('span');
@@ -369,8 +370,9 @@
       addButton.textContent = '增加';
       addButton.setAttribute('aria-label', `${participantLabel(index)}增加 ${service.title}`);
       addButton.addEventListener('click', () => {
-        selected.add(service.serviceId);
-        state.extras[extraIndex] = selected;
+        if (!confirmExtraServiceSelection(service, selections)) return;
+        selections.push({ selectionId: crypto.randomUUID(), serviceId: service.serviceId });
+        state.extras[extraIndex] = selections;
         state.openCards.add(index);
         renderParticipantCards();
         updateSelectionSummary();
@@ -397,8 +399,8 @@
     const selectedList = document.createElement('div');
     selectedList.className = 'selected-service-list';
 
-    [...selected].forEach((serviceId) => {
-      const service = state.services.find((item) => item.serviceId === serviceId);
+    selections.forEach((selection) => {
+      const service = state.services.find((item) => item.serviceId === selection.serviceId);
       if (!service) return;
       const row = document.createElement('article');
       row.className = 'selected-service-item';
@@ -416,8 +418,9 @@
       removeButton.textContent = '移除';
       removeButton.setAttribute('aria-label', `${participantLabel(index)}移除 ${service.title}`);
       removeButton.addEventListener('click', () => {
-        selected.delete(serviceId);
-        state.extras[extraIndex] = selected;
+        const selectionIndex = selections.findIndex((item) => item.selectionId === selection.selectionId);
+        if (selectionIndex >= 0) selections.splice(selectionIndex, 1);
+        state.extras[extraIndex] = selections;
         state.openCards.add(index);
         renderParticipantCards();
         updateSelectionSummary();
@@ -428,7 +431,7 @@
     });
 
     const selectedEmpty = document.createElement('div');
-    selectedEmpty.className = `empty-state compact${selected.size ? ' hidden' : ''}`;
+    selectedEmpty.className = `empty-state compact${selections.length ? ' hidden' : ''}`;
     const selectedEmptyTitle = document.createElement('strong');
     selectedEmptyTitle.textContent = '尚未選擇預約項目';
     const selectedEmptyHint = document.createElement('span');
@@ -440,11 +443,60 @@
     return stack;
   }
 
+  function confirmExtraServiceSelection(service, selections) {
+    const duplicateCount = selections.filter((selection) => selection.serviceId === service.serviceId).length;
+    if (duplicateCount >= 2) {
+      showParticipantFormMessage(`${service.title} 已加入兩次，無法再重複加入。`, 'error');
+      return false;
+    }
+
+    const warnings = [];
+    if (duplicateCount > 0) warnings.push(`${service.title} 已有選擇。`);
+    const serviceType = serviceTypeOf(service);
+    if (serviceType) {
+      const sameTypeRows = selections
+        .map((selection) => state.services.find((item) => item.serviceId === selection.serviceId))
+        .filter((item) => item && serviceTypeKey(serviceTypeOf(item)) === serviceTypeKey(serviceType));
+      if (sameTypeRows.length) {
+        const names = [...new Set(sameTypeRows.map((item) => item.title))].join('、');
+        warnings.push(`目前已選擇相同類型「${serviceType}」的項目：${names}。`);
+      }
+    }
+    if (warnings.length && !window.confirm(`${warnings.join('\n')}\n\n仍要加入這個預約項目嗎？`)) return false;
+    return true;
+  }
+
+  function showParticipantFormMessage(message, type) {
+    const node = document.getElementById('formMessage');
+    if (!node) return;
+    node.textContent = message;
+    node.className = `form-message ${type || ''}`;
+  }
+
+  function extraSelectionsToItems(selections) {
+    const counts = new Map();
+    for (const selection of Array.isArray(selections) ? selections : []) {
+      const serviceId = String(selection?.serviceId || '');
+      if (!serviceId) continue;
+      counts.set(serviceId, (counts.get(serviceId) || 0) + 1);
+    }
+    return [...counts.entries()].map(([serviceId, quantity]) => ({ serviceId, quantity }));
+  }
+
+  function participantSelections(participant) {
+    return (Array.isArray(participant?.items) ? participant.items : []).flatMap((item) => {
+      const serviceId = String(item?.serviceId || '');
+      if (!serviceId) return [];
+      const quantity = Math.max(1, Math.min(2, Math.trunc(Number(item?.quantity || 1))));
+      return Array.from({ length: quantity }, () => ({ selectionId: crypto.randomUUID(), serviceId }));
+    });
+  }
+
   function updateCardSummaries() {
     document.querySelectorAll('[data-participant-summary]').forEach((node) => {
       const index = Number(node.dataset.participantSummary || 0);
       const tech = technicianLabel(state.participantTechnicians[index]);
-      const count = index === 0 ? countItems(state.primaryItems) : (state.extras[index - 1]?.size || 0);
+      const count = index === 0 ? countItems(state.primaryItems) : (state.extras[index - 1]?.length || 0);
       node.textContent = `${count ? `已選 ${count} 項` : '尚未選項目'} · ${tech}`;
     });
   }
@@ -475,7 +527,7 @@
       items: state.primaryItems,
     }];
     for (let index = 0; index < state.extras.length; index += 1) {
-      const items = [...state.extras[index]].map((serviceId) => ({ serviceId, quantity: 1 }));
+      const items = extraSelectionsToItems(state.extras[index]);
       if (!items.length) {
         if (strict) throw clientError('INVALID_BOOKING_ITEMS', `${participantLabel(index + 1)}尚未選擇預約項目。`);
         return null;
@@ -504,7 +556,7 @@
     state.primaryItems = Array.isArray(participants[0]?.items)
       ? participants[0].items.map((item) => ({ serviceId: item.serviceId, quantity: Number(item.quantity || 1) }))
       : [];
-    state.extras = participants.slice(1).map((participant) => new Set((participant.items || []).map((item) => item.serviceId).filter(Boolean)));
+    state.extras = participants.slice(1).map((participant) => participantSelections(participant));
     ensureParticipantCount(false);
     state.openCards = new Set([0]);
     renderGroupControls();
@@ -612,7 +664,7 @@
 
   function participantItems(index) {
     if (index === 0) return state.primaryItems;
-    return [...(state.extras[index - 1] || [])].map((serviceId) => ({ serviceId, quantity: 1 }));
+    return extraSelectionsToItems(state.extras[index - 1]);
   }
 
   function decorateConfirmation() {
@@ -687,6 +739,10 @@
   function serviceTypeOf(service) {
     const description = String(service?.description || '');
     return description.startsWith(TYPE_PREFIX) ? description.slice(TYPE_PREFIX.length).trim() : '';
+  }
+
+  function serviceTypeKey(value) {
+    return String(value || '').trim().toLocaleLowerCase('zh-Hant-TW');
   }
 
   function formatMoney(value) {
