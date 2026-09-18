@@ -192,7 +192,7 @@
       resyncQueued = false;
       lastResyncAt = now;
       resyncPending = true;
-      Promise.resolve(onUpdate()).catch(() => {}).finally(() => {
+      Promise.resolve().then(() => onUpdate()).catch(() => {}).finally(() => {
         resyncPending = false;
         if (resyncQueued) schedule(0);
       });
