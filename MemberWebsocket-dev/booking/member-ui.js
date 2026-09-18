@@ -18,6 +18,7 @@
   let bookingHistoryTimer = null;
   let formMessageObserver = null;
   let reorganizingBookingHistory = false;
+  let expandedBookingId = '';
 
   function membershipRequiredError() {
     if (typeof window.BookingSystem.clientError === 'function') {
@@ -180,6 +181,67 @@
     return section;
   }
 
+  function bookingCardId(card) {
+    return String(card?.dataset?.bookingId || '');
+  }
+
+  function applyBookingCardAccordionState(card, expanded) {
+    if (!card) return;
+    const top = card.querySelector(':scope > .booking-item-top');
+    card.classList.add('booking-history-collapsible');
+    card.classList.toggle('is-expanded', expanded);
+    card.dataset.bookingExpanded = expanded ? '1' : '0';
+    if (top) {
+      top.setAttribute('role', 'button');
+      top.setAttribute('tabindex', '0');
+      top.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      top.setAttribute('aria-label', expanded ? '收合預約詳細資料' : '展開預約詳細資料');
+    }
+  }
+
+  function syncBookingAccordionState(bookingList) {
+    if (!bookingList) return;
+    let expandedFound = false;
+    const cards = bookingList.querySelectorAll('.booking-item[data-booking-id]');
+    cards.forEach((card) => {
+      const expanded = Boolean(expandedBookingId) && bookingCardId(card) === expandedBookingId;
+      if (expanded) expandedFound = true;
+      applyBookingCardAccordionState(card, expanded);
+    });
+    if (expandedBookingId && !expandedFound) expandedBookingId = '';
+  }
+
+  function toggleBookingCard(card) {
+    if (!card) return;
+    const bookingList = card.closest('#bookingList');
+    if (!bookingList) return;
+    const id = bookingCardId(card);
+    const shouldExpand = !card.classList.contains('is-expanded');
+    expandedBookingId = shouldExpand ? id : '';
+    bookingList.querySelectorAll('.booking-item[data-booking-id]').forEach((item) => {
+      applyBookingCardAccordionState(item, shouldExpand && item === card);
+    });
+  }
+
+  function handleBookingHistoryClick(event) {
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest('button, a, input, select, textarea, label')) return;
+    const summarySurface = event.target.closest('.booking-item-top, .member-booking-format-totals');
+    if (!summarySurface) return;
+    const card = summarySurface.closest('.booking-item[data-booking-id]');
+    if (!card) return;
+    toggleBookingCard(card);
+  }
+
+  function handleBookingHistoryKeydown(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (!(event.target instanceof Element) || !event.target.matches('.booking-item-top[role="button"]')) return;
+    const card = event.target.closest('.booking-item[data-booking-id]');
+    if (!card) return;
+    event.preventDefault();
+    toggleBookingCard(card);
+  }
+
   function organizeBookingHistory() {
     const bookingList = document.getElementById('bookingList');
     if (!bookingList || reorganizingBookingHistory) return;
@@ -196,6 +258,7 @@
     try {
       bookingList.replaceChildren(...BOOKING_GROUPS.map((group) => createBookingGroup(group, grouped.get(group.key))));
       normalizeBookingUi(bookingList);
+      syncBookingAccordionState(bookingList);
     } finally {
       reorganizingBookingHistory = false;
       if (bookingListObserver) bookingListObserver.observe(bookingList, { childList: true, subtree: true });
@@ -217,6 +280,8 @@
       if (bookingListObserver) bookingListObserver.disconnect();
       bookingListObserver = new MutationObserver(() => scheduleBookingHistoryEnhancement());
       bookingListObserver.observe(bookingList, { childList: true, subtree: true });
+      bookingList.addEventListener('click', handleBookingHistoryClick);
+      bookingList.addEventListener('keydown', handleBookingHistoryKeydown);
       scheduleBookingHistoryEnhancement();
     }
 
@@ -292,6 +357,11 @@
   window.addEventListener('beforeunload', () => {
     window.confirm = originalConfirm;
     if (bookingListObserver) bookingListObserver.disconnect();
+    const bookingList = document.getElementById('bookingList');
+    if (bookingList) {
+      bookingList.removeEventListener('click', handleBookingHistoryClick);
+      bookingList.removeEventListener('keydown', handleBookingHistoryKeydown);
+    }
     if (formMessageObserver) formMessageObserver.disconnect();
     if (bookingHistoryTimer !== null) window.clearTimeout(bookingHistoryTimer);
   });
