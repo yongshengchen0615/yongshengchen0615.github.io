@@ -53,6 +53,7 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_CONFLICT", 409, "BOOKING_CONFLICT", "預約已被其他操作更新，請重新整理後再試。"],
     ["BOOKING_NOT_FOUND", 404, "BOOKING_NOT_FOUND", "找不到這筆預約。"],
     ["BOOKING_NOT_EDITABLE", 409, "BOOKING_NOT_EDITABLE", "這筆預約目前無法修改服務項目。"],
+    ["BOOKING_CANCELLATION_PENDING", 409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核。"],
     ["BOOKING_SERVICE_NOT_FOUND", 404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個服務項目。"],
     ["BOOKING_SYSTEM_SERVICE_IMMUTABLE", 409, "BOOKING_SYSTEM_SERVICE_IMMUTABLE", "店內固定服務不可手動修改。"],
     ["INVALID_BOOKING_ITEMS", 400, "INVALID_BOOKING_ITEMS", "請至少選擇一個服務項目。"],
@@ -178,6 +179,9 @@ async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Prom
     confirmedAt: bookingResult.data.confirmed_at || null,
     rejectedAt: bookingResult.data.rejected_at || null,
     cancelledAt: bookingResult.data.cancelled_at || null,
+    cancellationRequestedAt: bookingResult.data.cancellation_requested_at || null,
+    cancellationReviewedAt: bookingResult.data.cancellation_reviewed_at || null,
+    cancellationDecision: bookingResult.data.cancellation_decision || null,
     createdAt: bookingResult.data.created_at,
     updatedAt: bookingResult.data.updated_at,
   };
@@ -193,6 +197,14 @@ async function updateItems(supabase: SupabaseClient, identity: Identity, body: J
   const bookingId = requireUuid(body.bookingId, "預約");
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
   if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請重新整理。");
+  const guard = await supabase.from("bookings")
+    .select("id,cancellation_requested_at,cancellation_reviewed_at")
+    .eq("id", bookingId).maybeSingle();
+  if (guard.error) throw mapDatabaseError(guard.error);
+  if (!guard.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
+  if (guard.data.cancellation_requested_at && !guard.data.cancellation_reviewed_at) {
+    throw new ApiError(409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核。");
+  }
   const items = normalizeItems(body.items);
   const result = await supabase.rpc("admin_update_booking_items_request", {
     p_booking_id: bookingId,
@@ -207,10 +219,13 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
   const bookingId = requireUuid(body.bookingId, "預約");
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
   const adminNote = asText(body.adminNote, 500);
-  const existing = await supabase.from("bookings").select("id,status,updated_at").eq("id", bookingId).maybeSingle();
+  const existing = await supabase.from("bookings").select("id,status,updated_at,cancellation_requested_at,cancellation_reviewed_at").eq("id", bookingId).maybeSingle();
   if (existing.error) throw mapDatabaseError(existing.error);
   if (!existing.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
   if (!expectedUpdatedAt || expectedUpdatedAt !== existing.data.updated_at) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再確認。");
+  if (existing.data.cancellation_requested_at && !existing.data.cancellation_reviewed_at) {
+    throw new ApiError(409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核。");
+  }
   if (existing.data.status !== "confirmed") throw new ApiError(409, "INVALID_BOOKING_TRANSITION", "只有已確認的預約可以標記服務完成。");
   const now = new Date().toISOString();
   const updated = await supabase.from("bookings").update({

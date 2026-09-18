@@ -45,6 +45,24 @@ test('stale confirmation cannot confirm a rescheduled pending appointment', asyn
   await assert.rejects(context.adminStatusUpdate(client, identity, { bookingId: id, status: 'confirmed', expectedUpdatedAt: version }), { code: 'BOOKING_CONFLICT' });
   assert.equal(client.writes.length, 0);
 });
+test('pending cancellation blocks generic admin lifecycle changes', async () => {
+  const client = db({ ...booking, cancellation_requested_at: '2026-09-18T00:00:00.000Z', cancellation_reviewed_at: null });
+  await assert.rejects(
+    context.adminStatusUpdate(client, identity, { bookingId: id, status: 'completed', expectedUpdatedAt: version }),
+    { code: 'BOOKING_CANCELLATION_PENDING' },
+  );
+  assert.equal(client.writes.length, 0);
+});
+test('legacy member cancel action creates a cancellation request instead of cancelling immediately', async () => {
+  const future = { ...booking, booking_date: '2099-01-01', cancellation_requested_at: null, cancellation_reviewed_at: null };
+  const client = db(future);
+  const result = await context.userCancel(client, identity, { id }, { bookingId: id });
+  assert.equal(result.booking.status, 'cancel_requested');
+  assert.equal(result.booking.baseStatus, 'confirmed');
+  assert.equal(client.writes[0].patch.status, undefined);
+  assert.ok(client.writes[0].patch.cancellation_requested_at);
+  assert.equal(client.writes[0].patch.cancellation_source_status, 'confirmed');
+});
 test('member cannot reach admin completion action', async () => {
   await assert.rejects(context.route(db(booking), identity, 'member', 'admin.booking.status.update', {}), { code: 'ACTION_NOT_FOUND' });
 });
