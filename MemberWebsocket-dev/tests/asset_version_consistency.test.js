@@ -60,7 +60,7 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.ok(memberHtml.includes('member-booking-format.css?v=booking-service-type-colors-webview-20260918-2'));
   assert.ok(memberHtml.includes('service-type-color.js?v=booking-shared-type-color-map-20260918-4'));
   assert.ok(memberHtml.includes('member-booking-format.js?v=booking-history-dedupe-services-20260918-1'));
-  assert.ok(memberHtml.includes('group-booking.js?v=booking-max-advance-days-20260919-1'));
+  assert.ok(memberHtml.includes('group-booking.js?v=booking-history-dedupe-final-20260918-1-tech-summary-edit-reset-1-max-advance-20260919-1'));
   assert.ok(memberHtml.includes('booking-confirm-details.js?v=booking-confirm-note-20260918-1'));
   assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.js?v=booking-group-details-20260918-tech-edit-2'));
   assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.css?v=booking-group-details-20260918-tech-edit-2'));
@@ -68,7 +68,7 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.ok(bookingAdminHtml.includes('../../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1'));
   assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-technician-modal-20260918-1')"));
   assert.ok(adminLoader.includes("['booking-resources.js', 'booking-technician-modal-20260918-1']"));
-  assert.ok(adminLoader.includes("load('booking-panel-core.js', 'booking-max-advance-days-20260919-1')"));
+  assert.ok(adminLoader.includes("load('booking-panel-core.js', 'booking-settings-layout-20260918-1-max-advance-20260919-1')"));
   assert.doesNotMatch(adminLoader, /\['booking-summary\.js'/);
   assert.doesNotMatch(adminLoader, /\['\.\.\/booking-admin-group-details\.js'/);
   assert.match(groupCss, /\.participant-service-stack\{[^}]*display:grid/);
