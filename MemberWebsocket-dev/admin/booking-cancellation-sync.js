@@ -288,22 +288,50 @@
   }
 
   function requestCard(row) {
-    const article = document.createElement('article'); article.className = 'booking-cancellation-card';
+    const article = document.createElement('article'); article.className = 'booking-cancellation-card booking-summary-normalized';
+
     const top = document.createElement('div'); top.className = 'booking-cancellation-top';
-    const identity = document.createElement('div');
-    const name = document.createElement('strong'); name.textContent = row.memberDisplayName || '會員';
-    const code = document.createElement('small'); code.textContent = row.memberCode || '無會員編號';
-    identity.append(name, code);
+    const heading = document.createElement('div');
+    const title = document.createElement('strong'); title.textContent = '取消申請';
+    const status = document.createElement('small');
+    status.textContent = `原狀態：${row.sourceStatus === 'confirmed' ? '已確認' : '待確認'} · 申請時間：${formatDateTime(row.cancellationRequestedAt)}`;
+    heading.append(title, status);
     const badge = document.createElement('span'); badge.className = 'booking-admin-status status-pending'; badge.textContent = '取消待確認';
-    top.append(identity, badge); article.appendChild(top);
+    top.append(heading, badge); article.appendChild(top);
 
-    const time = document.createElement('p'); time.className = 'booking-cancellation-time';
-    time.textContent = `${formatDate(row.bookingDate)} ${row.startTime}–${row.endTime} · 原狀態：${row.sourceStatus === 'confirmed' ? '已確認' : '待確認'} · 申請時間：${formatDateTime(row.cancellationRequestedAt)}`;
-    article.appendChild(time);
+    const summary = document.createElement('div');
+    summary.className = 'booking-received-summary booking-cancellation-summary';
 
-    appendItems(article, row.items || []);
+    const memberMeta = document.createElement('div');
+    memberMeta.className = 'booking-member-meta';
+    memberMeta.append(
+      summaryMetaItem('LINE 名稱', String(row.memberDisplayName || '未取得')),
+      summaryMetaItem('會員編號', String(row.memberCode || '未取得')),
+      summaryMetaItem('總服務時間', `${Math.max(0, Number(row.totalDurationMinutes || 0))} 分鐘`),
+      summaryMetaItem('總金額', formatMoney(row.totalAmount) || 'NT$0'),
+    );
+    summary.appendChild(memberMeta);
+
+    const dateTime = document.createElement('p');
+    dateTime.className = 'booking-received-datetime';
+    dateTime.textContent = `${formatBookingDate(row.bookingDate)} ${String(row.startTime || '—').slice(0, 5)}`;
+    summary.appendChild(dateTime);
+
+    const name = document.createElement('p');
+    name.className = 'booking-received-name';
+    name.textContent = bookingContactName(row);
+    summary.appendChild(name);
+
+    const phone = document.createElement('p');
+    phone.className = 'booking-received-phone';
+    phone.textContent = `電話：${String(row.contactPhone || '—')}`;
+    summary.appendChild(phone);
+
+    appendParticipants(summary, row.participants || []);
+    article.appendChild(summary);
+
     if (row.memberNote) appendNote(article, `會員備註：${row.memberNote}`);
-    if (row.cancellationReason) appendNote(article, `取消原因：${row.cancellationReason}`);
+    if (row.adminNote) appendNote(article, `管理端說明：${row.adminNote}`);
 
     const actions = document.createElement('div'); actions.className = 'booking-cancellation-actions';
     const keep = document.createElement('button'); keep.type = 'button'; keep.className = 'button button-outline'; keep.textContent = '保留預約';
@@ -338,6 +366,61 @@
     if (row.memberNote) appendNote(article, `會員備註：${row.memberNote}`);
     if (row.adminNote) appendNote(article, `管理端說明：${row.adminNote}`);
     return article;
+  }
+
+  function summaryMetaItem(label, value) {
+    const item = document.createElement('div');
+    item.className = 'booking-member-meta-item';
+    const key = document.createElement('span');
+    key.className = 'booking-member-meta-label';
+    key.textContent = label;
+    const content = document.createElement('strong');
+    content.textContent = value;
+    item.append(key, content);
+    return item;
+  }
+
+  function bookingContactName(row) {
+    const surname = String(row?.contactSurname || '').trim();
+    const salutation = String(row?.contactSalutation || '').trim().toLowerCase();
+    const label = salutation === 'mr' ? '先生' : salutation === 'ms' ? '小姐' : '';
+    return surname && label ? `${surname}${label}` : '未取得預約人資料';
+  }
+
+  function appendParticipants(container, participants) {
+    const rows = Array.isArray(participants) ? participants : [];
+    if (!rows.length) return;
+    const box = document.createElement('section');
+    box.className = 'booking-group-admin-details';
+    box.setAttribute('aria-label', '逐位預約明細');
+    rows.forEach((participant, index) => {
+      const block = document.createElement('div');
+      block.className = 'booking-group-admin-participant';
+      const heading = document.createElement('strong');
+      heading.textContent = participantLabel(Number(participant.position || index + 1) - 1);
+      const items = document.createElement('p');
+      items.textContent = `預約項目：${participantItemsLabel(participant.items)}`;
+      const technician = document.createElement('p');
+      technician.textContent = `預約技師：${String(participant.technicianName || '現場安排').replace(/（主要技師）/g, '').trim() || '現場安排'}`;
+      block.append(heading, items, technician);
+      box.appendChild(block);
+    });
+    container.appendChild(box);
+  }
+
+  function participantItemsLabel(items) {
+    const rows = Array.isArray(items) ? items : [];
+    if (!rows.length) return '—';
+    return rows.map((item) => {
+      const title = String(item.serviceTitle || '預約項目').trim();
+      const quantity = Math.max(1, Number(item.quantity || 1));
+      return quantity > 1 ? `${title} × ${quantity}` : title;
+    }).join('、');
+  }
+
+  function participantLabel(index) {
+    const names = ['第一', '第二', '第三', '第四', '第五', '第六', '第七', '第八', '第九', '第十'];
+    return `${names[index] || `第 ${index + 1} `}位預約`;
   }
 
   function appendItems(article, items) {
@@ -382,7 +465,15 @@
 
   function showMessage(message, type) { els.bookingCancellationReviewMessage.textContent = message; els.bookingCancellationReviewMessage.className = `form-message ${type}`; }
   function clearMessage() { els.bookingCancellationReviewMessage.textContent = ''; els.bookingCancellationReviewMessage.className = 'form-message hidden'; }
-  function formatDate(value) { const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '')); return match ? `${Number(match[1])}/${Number(match[2])}/${Number(match[3])}` : String(value || '—'); }
+  function formatBookingDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+    if (!match) return String(value || '—');
+    const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    const weekday = weekdays[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] || '';
+    return `${month}/${day}（${weekday}）`;
+  }
+  function formatDate(value) { return formatBookingDate(value); }
   function formatDateTime(value) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-Hant-TW', { timeZone: 'Asia/Taipei', hour12: false }); }
   function formatMoney(value) { const amount = Number(value || 0); return Number.isFinite(amount) ? `NT$${Math.round(amount).toLocaleString('zh-Hant-TW')}` : ''; }
 })();
