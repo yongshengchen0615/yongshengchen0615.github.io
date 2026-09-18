@@ -9,22 +9,24 @@ as $$
 begin
   if old.cancellation_requested_at is not null
      and old.cancellation_reviewed_at is null
-     and (
-       new.status is distinct from old.status
-       or new.booking_date is distinct from old.booking_date
-       or new.start_time is distinct from old.start_time
-       or new.end_time is distinct from old.end_time
-       or new.service_id is distinct from old.service_id
-       or new.total_duration_minutes is distinct from old.total_duration_minutes
-       or new.technician_id is distinct from old.technician_id
-       or new.party_size is distinct from old.party_size
-     )
-     and not (
-       new.status = 'cancelled'
+  then
+    -- While review is pending, the booking is immutable. Only the explicit
+    -- approval/rejection transitions may change it.
+    if new.status = 'cancelled'
        and new.cancellation_reviewed_at is not null
        and new.cancellation_decision = 'approved'
-     )
-  then
+    then
+      return new;
+    end if;
+
+    if new.status is not distinct from old.status
+       and new.cancellation_requested_at is null
+       and new.cancellation_reviewed_at is not null
+       and new.cancellation_decision = 'rejected'
+    then
+      return new;
+    end if;
+
     raise exception 'BOOKING_CANCELLATION_PENDING';
   end if;
   return new;
@@ -33,8 +35,7 @@ $$;
 
 drop trigger if exists bookings_pending_cancellation_guard on public.bookings;
 create trigger bookings_pending_cancellation_guard
-before update of status, booking_date, start_time, end_time, service_id, total_duration_minutes, technician_id, party_size
-on public.bookings
+before update on public.bookings
 for each row execute function public.guard_pending_booking_cancellation();
 
 -- Repair rows that were cancelled through the generic status endpoint while a
@@ -64,6 +65,12 @@ where q.booking_id = b.id
       and b.cancellation_requested_at is not null
       and b.cancellation_reviewed_at is null
       and q.event_key not like (b.id::text || ':cancellation_requested:%')
+    )
+    or (
+      b.status in ('pending','confirmed')
+      and b.cancellation_decision = 'rejected'
+      and b.cancellation_reviewed_at is not null
+      and q.event_key like (b.id::text || ':cancellation_requested:%')
     )
   );
 
@@ -115,6 +122,12 @@ begin
         and b.cancellation_requested_at is not null
         and b.cancellation_reviewed_at is null
         and q.event_key not like (b.id::text || ':cancellation_requested:%')
+      )
+      or (
+        b.status in ('pending','confirmed')
+        and b.cancellation_decision = 'rejected'
+        and b.cancellation_reviewed_at is not null
+        and q.event_key like (b.id::text || ':cancellation_requested:%')
       )
     );
 
