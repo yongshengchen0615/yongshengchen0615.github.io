@@ -50,6 +50,12 @@ function mapDatabaseError(error: unknown): ApiError {
   const raw = error as { message?: string; details?: string; code?: string };
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
+    ["ADMIN_REQUIRED", 403, "ADMIN_REQUIRED", "管理端帳號尚未授權。"],
+    ["BOOKING_PARTICIPANT_EDIT_REQUIRED", 409, "BOOKING_PARTICIPANT_EDIT_REQUIRED", "請重新整理並使用逐位修改服務項目。"],
+    ["INVALID_BOOKING_PARTICIPANTS", 400, "INVALID_BOOKING_PARTICIPANTS", "請完整提供每一位預約人的項目，且不可重複。"],
+    ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "調整後的服務時間與其他預約衝突，請縮短項目或另行安排。"],
+    ["INVALID_BOOKING_SLOT", 400, "INVALID_BOOKING_SLOT", "調整後的結束時間超出營業時間。"],
+    ["INVALID_BOOKING_DURATION", 400, "INVALID_BOOKING_DURATION", "調整後的服務時間不正確。"],
     ["BOOKING_CONFLICT", 409, "BOOKING_CONFLICT", "預約已被其他操作更新，請重新整理後再試。"],
     ["BOOKING_NOT_FOUND", 404, "BOOKING_NOT_FOUND", "找不到這筆預約。"],
     ["BOOKING_NOT_EDITABLE", 409, "BOOKING_NOT_EDITABLE", "這筆預約目前無法修改服務項目。"],
@@ -215,6 +221,29 @@ async function updateItems(supabase: SupabaseClient, identity: Identity, body: J
   if (result.error) throw mapDatabaseError(result.error);
   return { booking: await hydrateBooking(supabase, bookingId) };
 }
+async function updateParticipantItems(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
+  const bookingId = requireUuid(body.bookingId, "預約");
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請重新整理。");
+  if (!Array.isArray(body.participants) || body.participants.length < 1 || body.participants.length > 10) {
+    throw new ApiError(400, "INVALID_BOOKING_PARTICIPANTS", "請完整提供每一位預約人的項目。");
+  }
+  const seen = new Set<number>();
+  const participants = body.participants.map((raw: any) => {
+    const position = raw?.position;
+    if (!Number.isInteger(position) || position < 1 || position > 10 || seen.has(position)) {
+      throw new ApiError(400, "INVALID_BOOKING_PARTICIPANTS", "預約人順序不正確或重複。");
+    }
+    seen.add(position);
+    return { position, items: normalizeItems(raw.items) };
+  });
+  const result = await supabase.rpc("admin_update_booking_participant_items_request", {
+    p_booking_id: bookingId, p_expected_updated_at: expectedUpdatedAt,
+    p_actor: identity.lineUserId, p_participants: participants,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
+  return { booking: await hydrateBooking(supabase, bookingId) };
+}
 async function completeBooking(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
@@ -237,6 +266,7 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
   return { booking: await hydrateBooking(supabase, bookingId) };
 }
 async function route(supabase: SupabaseClient, identity: Identity, action: string, body: Json): Promise<Json> {
+  if (action === "admin.booking.participants.items.update") return await updateParticipantItems(supabase, identity, body);
   if (action === "admin.booking.items.update") return await updateItems(supabase, identity, body);
   if (action === "admin.booking.status.complete") return await completeBooking(supabase, identity, body);
   throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的管理端預約操作。");
