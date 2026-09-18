@@ -67,7 +67,7 @@
   loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260915-mobile-field-overflow-1');
   loadStyle('booking-summary.css', 'booking-summary-20260918-participants-1');
   loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3');
-  loadStyle('../booking-admin-group-details.css', 'booking-group-details-20260918-participants-1');
+  loadStyle('../booking-admin-group-details.css', 'booking-group-details-20260918-admin-edit-1');
   loadStyle('ui-polish.css', 'admin-ui-20260916-1');
   loadStyle('ui-polish-responsive.css', 'admin-ui-responsive-20260916-1');
 
