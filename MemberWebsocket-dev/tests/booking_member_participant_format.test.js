@@ -71,3 +71,16 @@ test('member booking entrypoint cache-busts participant format parity', () => {
   assert.match(html, /member-booking-format\.js\?v=booking-participant-format-parity-20260918-1/);
   assert.match(html, /group-booking\.js\?v=booking-full-participant-parity-20260918-3/);
 });
+
+
+test('member group booking shows an amount for every participant surface', () => {
+  const groupBooking = read('booking/group-booking.js');
+  const html = read('booking/index.html');
+
+  assert.match(groupBooking, /node\.textContent = .*金額.*formatMoney\(amount\)/s);
+  assert.match(groupBooking, /amount\.textContent = `金額：\$\{formatMoney\(metric\.amount\)\}`/);
+  assert.match(groupBooking, /amountLine\.textContent = `金額：\$\{formatMoney\(metric\.amount\)\}`/);
+  assert.match(groupBooking, /storedParticipantAmount\(participant\)/);
+  assert.match(groupBooking, /item\?\.subtotalAmount/);
+  assert.match(html, /group-booking\.js\?v=booking-participant-amounts-20260918-1/);
+});
