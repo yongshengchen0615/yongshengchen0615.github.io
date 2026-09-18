@@ -85,7 +85,7 @@
     .then(() => load('booking-panel-core.js', 'booking-lifecycle-20260918-1'))
     .then(() => {
       restoreBookingHashAndOpen();
-      return load('booking-resources.js', 'booking-primary-tech-20260917-3');
+      return load('booking-resources.js', 'booking-resource-mount-20260918-1');
     })
     .then(() => load('../booking-technician-delete.js', 'booking-technician-delete-20260917-1'))
     .then(() => load('booking-always-open.js', 'booking-always-open-20260917-2'))
