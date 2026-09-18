@@ -1,0 +1,328 @@
+import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
+
+type Json = Record<string, any>;
+type Identity = { lineUserId: string; displayName: string };
+type ClientType = "member" | "admin";
+const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
+const SLOT_INTERVAL = 30;
+const MAX_REQUEST_BYTES = 40000;
+
+class ApiError extends Error {
+  status: number; code: string; details: unknown;
+  constructor(status: number, code: string, message: string, details: unknown = null) {
+    super(message); this.status = status; this.code = code; this.details = details;
+  }
+}
+
+const env = (name: string) => (Deno.env.get(name) || "").trim();
+function allowedOrigins() {
+  return new Set((env("ALLOWED_ORIGINS") || "https://yongshengchen0615.github.io").split(",").map((v) => v.trim()).filter(Boolean));
+}
+function cors(origin: string | null): HeadersInit {
+  return {
+    "Access-Control-Allow-Origin": origin && allowedOrigins().has(origin) ? origin : "",
+    "Access-Control-Allow-Headers": "content-type, apikey",
+    "Access-Control-Allow-Methods": "POST,OPTIONS",
+    "Cache-Control": "no-store",
+    "Vary": "Origin",
+  };
+}
+function reply(origin: string | null, payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), { status, headers: { ...cors(origin), "Content-Type": "application/json; charset=utf-8" } });
+}
+function mapDbError(error: any): ApiError {
+  const text = `${error?.message || ""} ${error?.details || ""}`;
+  const rules: Array<[string, number, string, string]> = [
+    ["BOOKING_SLOT_TAKEN",409,"BOOKING_SLOT_TAKEN","選擇的技師在這段時間剛被預約，請選擇其他時間。"],
+    ["BOOKING_CONFLICT",409,"BOOKING_CONFLICT","預約已被更新，請重新整理後再操作。"],
+    ["BOOKING_CANCELLATION_PENDING",409,"BOOKING_CANCELLATION_PENDING","這筆預約已有待確認的取消申請，請先完成取消審核後再修改。"],
+    ["BOOKING_NOT_EDITABLE",409,"BOOKING_NOT_EDITABLE","這筆預約目前無法修改。"],
+    ["BOOKING_TOO_EARLY",409,"BOOKING_TOO_EARLY","尚未符合提前預約天數。"],
+    ["BOOKING_TIME_PASSED",409,"BOOKING_TIME_PASSED","這個預約時間已經過了。"],
+    ["BOOKING_SERVICE_DISABLED",409,"BOOKING_SERVICE_DISABLED","其中一個預約項目目前未開放。"],
+    ["BOOKING_SERVICE_NOT_FOUND",404,"BOOKING_SERVICE_NOT_FOUND","找不到其中一個預約項目。"],
+    ["BOOKING_TECHNICIAN_NOT_FOUND",404,"BOOKING_TECHNICIAN_NOT_FOUND","找不到選擇的技師。"],
+    ["BOOKING_TECHNICIAN_DISABLED",409,"BOOKING_TECHNICIAN_DISABLED","選擇的技師目前未開放預約。"],
+    ["BOOKING_PRIMARY_TECHNICIAN_MISSING",409,"BOOKING_PRIMARY_TECHNICIAN_MISSING","管理端尚未設定主要技師，暫時無法建立預約。"],
+    ["BOOKING_PRIMARY_TECHNICIAN_DISABLED",409,"BOOKING_PRIMARY_TECHNICIAN_DISABLED","主要技師目前未開放預約，請聯絡店家。"],
+    ["BOOKING_PRIMARY_TECHNICIAN_REQUIRED",400,"BOOKING_PRIMARY_TECHNICIAN_REQUIRED","每筆預約至少要有一位選擇主要技師。"],
+    ["DUPLICATE_PARTICIPANT_TECHNICIAN",400,"DUPLICATE_PARTICIPANT_TECHNICIAN","同一筆多人預約中，同一位技師不能同時安排給兩位預約人。"],
+    ["INVALID_PARTY_SIZE",400,"INVALID_PARTY_SIZE","預約人數超出目前允許範圍。"],
+    ["INVALID_BOOKING_PARTICIPANTS",400,"INVALID_BOOKING_PARTICIPANTS","預約人員資料格式不正確。"],
+    ["INVALID_BOOKING_ITEMS",400,"INVALID_BOOKING_ITEMS","每一位預約人都至少要選擇一個預約項目。"],
+    ["INVALID_BOOKING_QUANTITY",400,"INVALID_BOOKING_QUANTITY","同一位預約人的單一項目最多選擇 2 次。"],
+    ["DUPLICATE_BOOKING_SERVICE",400,"DUPLICATE_BOOKING_SERVICE","同一位預約人的相同項目請使用數量調整。"],
+    ["INVALID_BOOKING_SLOT",400,"INVALID_BOOKING_SLOT","這段預約時間超出工作時間。"],
+    ["INVALID_BOOKING_CONTACT",400,"INVALID_BOOKING_CONTACT","預約聯絡資料不完整。"],
+    ["MEMBERSHIP_REQUIRED",403,"MEMBERSHIP_REQUIRED","請先加入會員並完成會員資料。"],
+    ["MEMBER_DISABLED",403,"MEMBER_DISABLED","此會員目前已停用。"],
+  ];
+  for (const [needle, status, code, message] of rules) if (text.includes(needle)) return new ApiError(status, code, message);
+  if (error?.code === "23P01" || error?.code === "23505") return new ApiError(409, "BOOKING_SLOT_TAKEN", "選擇的技師在這段時間已被預約。");
+  return new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成預約操作。");
+}
+function fail(origin: string | null, error: unknown) {
+  const e = error instanceof ApiError ? error : mapDbError(error);
+  return reply(origin, { ok: false, error: { code: e.code, message: e.message, details: e.details } }, e.status);
+}
+function db(): SupabaseClient {
+  const url = env("SUPABASE_URL"), key = env("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) throw new ApiError(503, "SUPABASE_CONFIG_MISSING", "Supabase server 設定尚未完成。");
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+function asText(value: unknown, max = 1000) { return String(value ?? "").trim().slice(0, max); }
+function uuid(value: unknown, label: string) {
+  const v = asText(value, 60);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)) throw new ApiError(400, "INVALID_INPUT", `${label}格式不正確。`);
+  return v;
+}
+function optionalUuid(value: unknown, label: string) {
+  const v = asText(value, 60); return v ? uuid(v, label) : "";
+}
+function dateValue(value: unknown) {
+  const v = asText(value, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new ApiError(400, "INVALID_DATE", "日期格式不正確。"); return v;
+}
+function timeValue(value: unknown) {
+  const v = asText(value, 8); const m = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(v);
+  if (!m || Number(m[1]) > 23 || ![0, 30].includes(Number(m[2]))) throw new ApiError(400, "INVALID_TIME", "時間必須以 30 分鐘為起始單位。");
+  return `${m[1]}:${m[2]}`;
+}
+const toMinutes = (v: string) => { const [h, m] = v.slice(0, 5).split(":").map(Number); return h * 60 + m; };
+const toTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+function taipeiDate() { const x: Record<string,string> = {}; new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Taipei", year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(new Date()).forEach((p) => { if (p.type !== "literal") x[p.type] = p.value; }); return `${x.year}-${x.month}-${x.day}`; }
+function taipeiMinutes() { const x: Record<string,string> = {}; new Intl.DateTimeFormat("en-GB", { timeZone:"Asia/Taipei", hour:"2-digit", minute:"2-digit", hourCycle:"h23" }).formatToParts(new Date()).forEach((p) => { if (p.type !== "literal") x[p.type] = p.value; }); return Number(x.hour || 0) * 60 + Number(x.minute || 0); }
+function addDays(date: string, days: number) { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
+function channelId(clientType: ClientType) {
+  const value = env(clientType === "admin" ? "LINE_ADMIN_CHANNEL_ID" : "LINE_MEMBER_CHANNEL_ID") || (clientType === "admin" ? "2010791619" : "2010787602");
+  if (!/^\d{5,30}$/.test(value)) throw new ApiError(503, "AUTH_CONFIG_MISSING", "LINE 驗證設定尚未完成。"); return value;
+}
+async function verifyLine(idToken: string, clientType: ClientType): Promise<Identity> {
+  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
+  const expected = channelId(clientType); let res: Response;
+  try { res = await fetch("https://api.line.me/oauth2/v2.1/verify", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams({ id_token:idToken, client_id:expected }) }); }
+  catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證暫時無法使用。"); }
+  const p = await res.json().catch(() => ({})); const exp = Number(p.exp || 0);
+  if (!res.ok || !p.sub || p.aud !== expected || p.iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
+  return { lineUserId:String(p.sub), displayName:String(p.name || "LINE 使用者").slice(0,120) };
+}
+async function member(s: SupabaseClient, i: Identity) {
+  const r = await s.from("members").select("*").eq("line_user_id", i.lineUserId).maybeSingle(); if (r.error) throw mapDbError(r.error);
+  if (!r.data || r.data.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先加入會員。");
+  if (r.data.status !== "active") throw new ApiError(403, "MEMBER_DISABLED", "會員目前已停用。"); return r.data;
+}
+async function admin(s: SupabaseClient, i: Identity) {
+  const r = await s.from("admins").select("*").eq("line_user_id", i.lineUserId).maybeSingle(); if (r.error) throw mapDbError(r.error);
+  if (!r.data || r.data.role !== "admin" || r.data.status !== "active") throw new ApiError(403, "ADMIN_PENDING", "管理端帳號尚未授權。"); return r.data;
+}
+async function audit(s: SupabaseClient, i: Identity, role: string, action: string, targetType: string, targetId: string, metadata: Json = {}) {
+  const r = await s.from("booking_audit_events").insert({ actor_line_user_id:i.lineUserId, actor_role:role, action, target_type:targetType, target_id:targetId, result:"success", metadata });
+  if (r.error) console.error("audit failed", r.error.message);
+}
+function techClient(row: any) { return { technicianId:row.id, name:row.name, isActive:Boolean(row.is_active), sortOrder:Number(row.sort_order || 0), updatedAt:row.updated_at }; }
+function itemClient(row: any) { const q=Number(row.quantity||1), price=Number(row.unit_price_amount||0), mins=Number(row.unit_duration_minutes||0); return { serviceId:row.service_id, serviceTitle:row.service_title, unitDurationMinutes:mins, unitPriceAmount:price, quantity:q, subtotalMinutes:mins*q, subtotalAmount:price*q }; }
+
+async function settings(s: SupabaseClient) {
+  const r = await s.from("booking_settings").select("*").eq("id",1).single(); if (r.error) throw mapDbError(r.error); return r.data;
+}
+async function activeTechs(s: SupabaseClient) {
+  const r = await s.from("booking_technicians").select("*").eq("is_active",true).order("sort_order",{ascending:true}).order("created_at",{ascending:true}); if (r.error) throw mapDbError(r.error); return r.data || [];
+}
+
+async function groupData(s: SupabaseClient, bookingIds: string[]) {
+  if (!bookingIds.length) return new Map<string,Json>();
+  const [bookings, parts] = await Promise.all([
+    s.from("bookings").select("id,technician_id,party_size,booking_technicians(name)").in("id",bookingIds),
+    s.from("booking_participants").select("id,booking_id,position,technician_id,booking_technicians(name)").in("booking_id",bookingIds).order("position",{ascending:true}),
+  ]);
+  if (bookings.error) throw mapDbError(bookings.error); if (parts.error) throw mapDbError(parts.error);
+  const partIds = (parts.data || []).map((p:any) => p.id); let itemRows:any[] = [];
+  if (partIds.length) {
+    const ir = await s.from("booking_participant_items").select("participant_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity").in("participant_id",partIds).order("created_at",{ascending:true});
+    if (ir.error) throw mapDbError(ir.error); itemRows = ir.data || [];
+  }
+  const byPart = new Map<string,any[]>();
+  for (const x of itemRows) { const a=byPart.get(x.participant_id)||[]; a.push(itemClient(x)); byPart.set(x.participant_id,a); }
+  const byBookingParts = new Map<string,any[]>();
+  for (const p of parts.data || []) {
+    const a = byBookingParts.get(p.booking_id) || [];
+    a.push({ position:Number(p.position), technicianId:p.technician_id || "", technicianName:(p.booking_technicians as any)?.name || "現場安排", items:byPart.get(p.id) || [] });
+    byBookingParts.set(p.booking_id,a);
+  }
+  const out = new Map<string,Json>();
+  for (const b of bookings.data || []) out.set(b.id, { technicianId:b.technician_id, technicianName:(b.booking_technicians as any)?.name || "", partySize:Number(b.party_size || 1), participants:byBookingParts.get(b.id) || [] });
+  return out;
+}
+
+async function fullBooking(s: SupabaseClient, id: string) {
+  const br = await s.from("bookings").select("*, members(display_name,member_code), booking_technicians(name)").eq("id",id).single(); if (br.error) throw mapDbError(br.error);
+  const ir = await s.from("booking_items").select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity").eq("booking_id",id).order("created_at",{ascending:true}); if (ir.error) throw mapDbError(ir.error);
+  const items=(ir.data||[]).map(itemClient), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
+  return { bookingId:r.id, requestId:r.request_id, serviceId:r.service_id, serviceTitle:items.map((x:any)=>x.serviceTitle).join(" + ")||"預約項目", items, totalDurationMinutes:Number(r.total_duration_minutes||30), totalAmount:items.reduce((sum:number,x:any)=>sum+Number(x.subtotalAmount||0),0), memberId:r.member_id, memberDisplayName:r.members?.display_name||"", memberCode:r.members?.member_code||"", bookingDate:r.booking_date, startTime:String(r.start_time||"").slice(0,5), endTime:String(r.end_time||"").slice(0,5), status:r.status, memberNote:r.member_note||"", adminNote:r.admin_note||"", completedAt:r.completed_at||null, confirmedAt:r.confirmed_at, rejectedAt:r.rejected_at, cancelledAt:r.cancelled_at, createdAt:r.created_at, updatedAt:r.updated_at, contactSource:r.contact_source||"member", contactSurname:r.contact_surname||"", contactSalutation:r.contact_salutation||"", contactPhone:r.contact_phone||"", ...g };
+}
+
+async function normalizeGroup(s: SupabaseClient, body: Json) {
+  const cfg = await settings(s), raw = Array.isArray(body.participants) ? body.participants : [];
+  if (raw.length < 1 || raw.length > Number(cfg.max_party_size || 1)) throw new ApiError(400,"INVALID_PARTY_SIZE","預約人數超出目前允許範圍。");
+  const primaryId = optionalUuid(cfg.primary_technician_id,"主要技師");
+  if (!primaryId) throw new ApiError(409,"BOOKING_PRIMARY_TECHNICIAN_MISSING","管理端尚未設定主要技師。");
+  const active = await activeTechs(s), techMap = new Map(active.map((x:any)=>[String(x.id),x]));
+  if (!techMap.has(primaryId)) throw new ApiError(409,"BOOKING_PRIMARY_TECHNICIAN_DISABLED","主要技師目前未開放預約。");
+
+  const serviceIds = new Set<string>(), selectedTechs = new Set<string>(), normalized:Json[] = [];
+  let primarySelected = false;
+  for (const p of raw) {
+    if (!p || !Array.isArray(p.items) || p.items.length < 1 || p.items.length > 20) throw new ApiError(400,"INVALID_BOOKING_ITEMS","每一位預約人都至少要選擇一個項目。");
+    const techId = optionalUuid(p.technicianId,"技師");
+    if (techId) {
+      if (!techMap.has(techId)) throw new ApiError(409,"BOOKING_TECHNICIAN_DISABLED","選擇的技師目前未開放預約。");
+      if (selectedTechs.has(techId)) throw new ApiError(400,"DUPLICATE_PARTICIPANT_TECHNICIAN","同一位技師不能同時安排給兩位預約人。");
+      selectedTechs.add(techId); if (techId === primaryId) primarySelected = true;
+    }
+    const items:Json[] = [], seen = new Set<string>();
+    for (const x of p.items) {
+      const id = uuid(x.serviceId,"預約項目"), q=Number(x.quantity??1);
+      if (id === STORE_SERVICE_ID) throw new ApiError(400,"INVALID_BOOKING_ITEMS","店內服務由系統自動加入。");
+      if (!Number.isInteger(q) || q < 1 || q > 2) throw new ApiError(400,"INVALID_BOOKING_QUANTITY","項目數量不正確。");
+      if (seen.has(id)) throw new ApiError(400,"DUPLICATE_BOOKING_SERVICE","同一位預約人的相同項目不可重複列出。");
+      seen.add(id); serviceIds.add(id); items.push({serviceId:id,quantity:q});
+    }
+    normalized.push({ technicianId:techId || null, items });
+  }
+  if (!primarySelected) throw new ApiError(400,"BOOKING_PRIMARY_TECHNICIAN_REQUIRED","每筆預約至少要有一位選擇主要技師。");
+
+  const sr = await s.from("booking_services").select("*").in("id",[...serviceIds,STORE_SERVICE_ID]); if (sr.error) throw mapDbError(sr.error);
+  const sm = new Map((sr.data||[]).map((x:any)=>[String(x.id),x])), store=sm.get(STORE_SERVICE_ID);
+  if (!store || !store.is_active) throw new ApiError(409,"BOOKING_SERVICE_DISABLED","店內服務目前未開放。");
+  let maxParticipantDuration=0, amount=Number(store.price_amount||0); const assignments:Json[]=[];
+  for (const p of normalized) {
+    let participantDuration=0;
+    for (const x of p.items) {
+      const svc=sm.get(x.serviceId); if (!svc) throw new ApiError(404,"BOOKING_SERVICE_NOT_FOUND","找不到其中一個預約項目。");
+      if (!svc.is_active) throw new ApiError(409,"BOOKING_SERVICE_DISABLED","其中一個預約項目目前未開放。");
+      const mins=Number(svc.duration_minutes||0)*x.quantity, price=Number(svc.price_amount||0)*x.quantity;
+      participantDuration += mins; amount += price;
+    }
+    maxParticipantDuration = Math.max(maxParticipantDuration, participantDuration);
+    if (p.technicianId) assignments.push({ technicianId:p.technicianId, durationMinutes:participantDuration });
+  }
+  const duration=maxParticipantDuration+Number(store.duration_minutes||0);
+  return { cfg, primaryId, participants:normalized, duration, amount, assignments };
+}
+
+async function memberBootstrap(s: SupabaseClient, m: any) {
+  const cfg=await settings(s), techs=await activeTechs(s), br=await s.from("bookings").select("id").eq("member_id",m.id).order("created_at",{ascending:false}).limit(50);
+  if (br.error) throw mapDbError(br.error); const ids=(br.data||[]).map((x:any)=>x.id), groups=await groupData(s,ids);
+  return { settings:{ maxPartySize:Number(cfg.max_party_size||1), primaryTechnicianId:cfg.primary_technician_id||"", updatedAt:cfg.updated_at }, technicians:techs.map(techClient), bookingGroups:Object.fromEntries([...groups.entries()]) };
+}
+
+async function slots(s: SupabaseClient, m: any, body: Json) {
+  const g=await normalizeGroup(s,body), date=dateValue(body.bookingDate), cfg=g.cfg, today=taipeiDate(), earliest=addDays(today,Number(cfg.min_advance_days||0));
+  if (date < earliest) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:[] };
+  let excluded="";
+  if (body.bookingId) {
+    excluded=uuid(body.bookingId,"預約"); const r=await s.from("bookings").select("id,status").eq("id",excluded).eq("member_id",m.id).maybeSingle();
+    if (r.error) throw mapDbError(r.error); if (!r.data || !["pending","confirmed"].includes(r.data.status)) throw new ApiError(409,"BOOKING_NOT_EDITABLE","找不到可修改的預約。");
+  }
+  const primaryRows=await s.from("bookings").select("id,start_time,end_time").eq("booking_date",date).eq("technician_id",g.primaryId).in("status",["pending","confirmed"]);
+  if (primaryRows.error) throw mapDbError(primaryRows.error);
+  const primaryOccupied=(primaryRows.data||[]).filter((x:any)=>x.id!==excluded).map((x:any)=>({start:toMinutes(x.start_time),end:toMinutes(x.end_time)}));
+
+  const techIds=[...new Set(g.assignments.map((x:any)=>x.technicianId))]; let reservationRows:any[]=[];
+  if (techIds.length) {
+    const rr=await s.from("booking_participant_reservations").select("booking_id,technician_id,start_time,end_time").eq("booking_date",date).eq("is_active",true).in("technician_id",techIds);
+    if (rr.error) throw mapDbError(rr.error); reservationRows=(rr.data||[]).filter((x:any)=>x.booking_id!==excluded);
+  }
+  const occupiedByTech=new Map<string,any[]>();
+  for (const row of reservationRows) { const a=occupiedByTech.get(row.technician_id)||[]; a.push({start:toMinutes(row.start_time),end:toMinutes(row.end_time)}); occupiedByTech.set(row.technician_id,a); }
+
+  const workStart=toMinutes(cfg.work_start_time), workEnd=toMinutes(cfg.work_end_time), now=taipeiMinutes(), out:Json[]=[];
+  for (let cursor=workStart; cursor+g.duration<=workEnd; cursor+=SLOT_INTERVAL) {
+    const groupEnd=cursor+g.duration;
+    const mainOverlap=primaryOccupied.some((x:any)=>cursor<x.end && groupEnd>x.start);
+    const assignmentOverlap=g.assignments.some((a:any)=>(occupiedByTech.get(a.technicianId)||[]).some((x:any)=>cursor<x.end && cursor+Number(a.durationMinutes||0)>x.start));
+    const passed=date===today && cursor<=now;
+    out.push({startTime:toTime(cursor),endTime:toTime(groupEnd),available:!mainOverlap&&!assignmentOverlap&&!passed});
+  }
+  return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:out };
+}
+
+function contact(body: Json) { const source=asText(body.contactSource,20)||"member"; return { source, surname:asText(body.contactSurname,40)||null, salutation:asText(body.contactSalutation,10)||null, phone:asText(body.contactPhone,20)||null }; }
+async function createBooking(s: SupabaseClient, i: Identity, m: any, body: Json) {
+  const g=await normalizeGroup(s,body), c=contact(body), requestId=asText(body.requestId,100);
+  if (!/^BOOK-[A-Za-z0-9-]{8,95}$/.test(requestId)) throw new ApiError(400,"INVALID_REQUEST_ID","操作識別碼格式不正確。");
+  const r=await s.rpc("create_group_booking_request_v2", { p_request_id:requestId, p_member_id:m.id, p_booking_date:dateValue(body.bookingDate), p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone });
+  if (r.error) throw mapDbError(r.error); const row=Array.isArray(r.data)?r.data[0]:r.data, booking=await fullBooking(s,row.id);
+  await audit(s,i,"member","BOOKING_GROUP_REQUESTED","booking",row.id,{partySize:g.participants.length,primaryTechnicianId:g.primaryId,participantTechnicians:g.participants.map((p:any)=>p.technicianId||null)});
+  return {booking};
+}
+async function updateBooking(s: SupabaseClient, i: Identity, m: any, body: Json) {
+  const g=await normalizeGroup(s,body), c=contact(body), bookingId=uuid(body.bookingId,"預約"), expected=asText(body.expectedUpdatedAt,80);
+  if (!expected || !Number.isFinite(Date.parse(expected))) throw new ApiError(400,"INVALID_INPUT","缺少預約版本，請重新整理。");
+  const r=await s.rpc("update_group_booking_request_v2", { p_booking_id:bookingId, p_expected_updated_at:expected, p_actor:i.lineUserId, p_request_id:asText(body.requestId,100), p_member_id:m.id, p_booking_date:dateValue(body.bookingDate), p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone });
+  if (r.error) throw mapDbError(r.error); return {booking:await fullBooking(s,bookingId)};
+}
+
+async function adminBootstrap(s: SupabaseClient) {
+  const cfg=await settings(s), tr=await s.from("booking_technicians").select("*").order("sort_order",{ascending:true}).order("created_at",{ascending:true}); if (tr.error) throw mapDbError(tr.error);
+  return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:cfg.primary_technician_id||"",updatedAt:cfg.updated_at}, technicians:(tr.data||[]).map(techClient) };
+}
+async function saveSettings(s: SupabaseClient, i: Identity, body: Json) {
+  const max=Number(body.maxPartySize); if (!Number.isInteger(max)||max<1||max>10) throw new ApiError(400,"INVALID_PARTY_SIZE","預約人數上限必須介於 1–10 人。");
+  const expected=asText(body.expectedUpdatedAt,80), primary=optionalUuid(body.primaryTechnicianId,"主要技師");
+  if (primary) {
+    const tr=await s.from("booking_technicians").select("id,is_active").eq("id",primary).maybeSingle(); if (tr.error) throw mapDbError(tr.error);
+    if (!tr.data) throw new ApiError(404,"BOOKING_TECHNICIAN_NOT_FOUND","找不到選擇的主要技師。");
+    if (!tr.data.is_active) throw new ApiError(409,"BOOKING_TECHNICIAN_DISABLED","主要技師必須是開放狀態。");
+  }
+  let q=s.from("booking_settings").update({max_party_size:max,primary_technician_id:primary||null,updated_by:i.lineUserId}).eq("id",1); if (expected) q=q.eq("updated_at",expected);
+  const r=await q.select("*").maybeSingle(); if (r.error) throw mapDbError(r.error); if (!r.data) throw new ApiError(409,"CONFLICT","預約設定已被其他操作更新，請重新整理。");
+  await audit(s,i,"admin","BOOKING_RESOURCE_SETTINGS_UPDATED","booking_settings","1",{maxPartySize:max,primaryTechnicianId:primary||null});
+  return {settings:{maxPartySize:max,primaryTechnicianId:primary||"",updatedAt:r.data.updated_at}};
+}
+async function saveTechnician(s: SupabaseClient, i: Identity, body: Json) {
+  const name=asText(body.name,80); if (!name) throw new ApiError(400,"INVALID_INPUT","請輸入技師名稱。");
+  const isActive=body.isActive!==false, sortOrder=Number(body.sortOrder||0); if (!Number.isInteger(sortOrder)||sortOrder<0||sortOrder>9999) throw new ApiError(400,"INVALID_INPUT","技師排序必須介於 0–9999。");
+  const id=asText(body.technicianId,60), expected=asText(body.expectedUpdatedAt,80);
+  if (id && !isActive) { const cfg=await settings(s); if (String(cfg.primary_technician_id||"")===id) throw new ApiError(409,"BOOKING_PRIMARY_TECHNICIAN_DISABLED","主要技師不可停用，請先變更主要技師。"); }
+  let saved:any;
+  if (id) {
+    uuid(id,"技師"); let q=s.from("booking_technicians").update({name,is_active:isActive,sort_order:sortOrder,updated_at:new Date().toISOString()}).eq("id",id); if (expected) q=q.eq("updated_at",expected);
+    const r=await q.select("*").maybeSingle(); if (r.error) throw mapDbError(r.error); if (!r.data) throw new ApiError(409,"CONFLICT","技師資料已被其他操作更新，請重新整理。"); saved=r.data;
+  } else {
+    const r=await s.from("booking_technicians").insert({name,is_active:isActive,sort_order:sortOrder,created_by:i.lineUserId}).select("*").single();
+    if (r.error) { if (r.error.code==="23505") throw new ApiError(409,"DUPLICATE_TECHNICIAN","技師名稱不可重複。"); throw mapDbError(r.error); } saved=r.data;
+  }
+  await audit(s,i,"admin",id?"BOOKING_TECHNICIAN_UPDATED":"BOOKING_TECHNICIAN_CREATED","booking_technician",saved.id,{name,isActive,sortOrder}); return {technician:techClient(saved)};
+}
+
+async function route(s: SupabaseClient, i: Identity, clientType: ClientType, action: string, body: Json) {
+  if (clientType === "member") {
+    const m=await member(s,i);
+    if (action==="user.booking.group.bootstrap") return memberBootstrap(s,m);
+    if (action==="user.booking.group.slots") return slots(s,m,body);
+    if (action==="user.booking.group.create") return createBooking(s,i,m,body);
+    if (action==="user.booking.group.update") return updateBooking(s,i,m,body);
+    throw new ApiError(404,"ACTION_NOT_FOUND","不支援的多人預約操作。");
+  }
+  await admin(s,i);
+  if (action==="admin.booking.resources.bootstrap") return adminBootstrap(s);
+  if (action==="admin.booking.resources.settings.save") return saveSettings(s,i,body);
+  if (action==="admin.booking.resources.technician.save") return saveTechnician(s,i,body);
+  throw new ApiError(404,"ACTION_NOT_FOUND","不支援的預約資源管理操作。");
+}
+
+Deno.serve(async (req: Request) => {
+  const origin=req.headers.get("Origin");
+  if (req.method==="OPTIONS") return new Response(null,{status:204,headers:cors(origin)});
+  if (req.method!=="POST") return reply(origin,{ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"只支援 POST。"}},405);
+  if (origin && !allowedOrigins().has(origin)) return reply(origin,{ok:false,error:{code:"ORIGIN_DENIED",message:"不允許的來源。"}},403);
+  try {
+    const len=Number(req.headers.get("content-length")||0); if (len>MAX_REQUEST_BYTES) throw new ApiError(413,"REQUEST_TOO_LARGE","請求內容過大。");
+    const raw=await req.text(); if (new TextEncoder().encode(raw).byteLength>MAX_REQUEST_BYTES) throw new ApiError(413,"REQUEST_TOO_LARGE","請求內容過大。");
+    const body=raw?JSON.parse(raw):{}, action=asText(body.action,100), clientType=asText(body.clientType,20) as ClientType;
+    if (!action || !["member","admin"].includes(clientType)) throw new ApiError(400,"INVALID_INPUT","請求格式不正確。");
+    if (clientType==="member" && !action.startsWith("user.booking.group.")) throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
+    if (clientType==="admin" && !action.startsWith("admin.booking.resources.")) throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
+    const identity=await verifyLine(asText(body.idToken,5000),clientType), data=await route(db(),identity,clientType,action,body); return reply(origin,{ok:true,data});
+  } catch (error) { return fail(origin,error); }
+});
