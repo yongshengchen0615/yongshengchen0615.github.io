@@ -32,12 +32,14 @@
     try {
       const bookingId = String(card.dataset.bookingId || '').trim();
       if (!bookingId) throw clientError('BOOKING_NOT_READY', '預約資料尚未載入完成。');
-      let group;
-      try {
-        group = await fetchGroupDetails(bookingId);
-      } catch (error) {
-        group = groupFromRenderedDetails(card);
-        if (!group) throw error;
+      let group = groupFromCardData(card);
+      if (!group) {
+        try {
+          group = await fetchGroupDetails(bookingId);
+        } catch (error) {
+          group = groupFromRenderedDetails(card);
+          if (!group) throw error;
+        }
       }
       if (!group?.participants?.length) group = groupFromRenderedDetails(card);
       await copyText(buildCopyText(card, group));
@@ -153,6 +155,26 @@
     }
   }
 
+  function groupFromCardData(card) {
+    try {
+      const parsed = JSON.parse(String(card.dataset.bookingCopyGroup || ''));
+      if (!parsed || !Array.isArray(parsed.participants) || !parsed.participants.length) return null;
+      const participants = parsed.participants.map((participant) => ({
+        technicianName: String(participant?.technicianName || '現場安排'),
+        items: Array.isArray(participant?.items) ? participant.items.map((item) => ({
+          serviceTitle: String(item?.serviceTitle || '').trim(),
+          quantity: Math.max(1, Number(item?.quantity || 1)),
+        })).filter((item) => item.serviceTitle) : [],
+      }));
+      if (!participants.length) return null;
+      const partySize = Math.max(1, Number(parsed.partySize || participants.length));
+      if (partySize > participants.length) return null;
+      return { partySize, participants };
+    } catch (_) {
+      return null;
+    }
+  }
+
   function groupFromRenderedDetails(card) {
     const blocks = [...card.querySelectorAll('.booking-group-admin-details .booking-group-admin-participant')];
     if (!blocks.length) return null;
@@ -186,14 +208,16 @@
   }
 
   function contactName(card) {
+    const stored = String(card.dataset.bookingCopyContactName || '').trim();
+    if (stored) return stored;
     return String(card.querySelector('.booking-received-name')?.textContent || '會員').trim() || '會員';
   }
 
   function contactPhone(card) {
-    const text = String(card.querySelector('.booking-received-phone')?.textContent || '').trim();
-    const phone = text.replace(/^電話：/, '').trim();
-    if (!phone || phone === '—') return '—';
-    return phone.replace(/[\s()－—-]/g, '');
+    const stored = String(card.dataset.bookingCopyPhone || '').trim();
+    const text = stored || String(card.querySelector('.booking-received-phone')?.textContent || '').trim().replace(/^電話：/, '').trim();
+    if (!text || text === '—') return '—';
+    return text.replace(/[\s()－—-]/g, '');
   }
 
   function startTime(card) {
