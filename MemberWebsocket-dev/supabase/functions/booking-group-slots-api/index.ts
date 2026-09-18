@@ -209,6 +209,7 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
     .select("id,start_time,end_time")
     .eq("booking_date", bookingDate)
     .eq("technician_id", group.primaryId)
+    .eq("party_size", 1)
     .in("status", ["pending", "confirmed"]);
   if (primaryRows.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取主要技師時段。");
   const primaryOccupied = (primaryRows.data || [])
