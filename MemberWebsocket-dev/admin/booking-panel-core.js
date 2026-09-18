@@ -91,7 +91,7 @@
         </section>
 
         <section id="bookingAdminSettingsPanel" class="booking-admin-card booking-admin-settings-panel hidden" role="tabpanel" aria-labelledby="bookingAdminSettingsSubtab">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>集中管理所有預約共同使用的工作時間、提前預約規則與會員端說明。</p></div></div>
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>集中管理所有預約共同使用的工作時間、可預約日期範圍與會員端說明。</p></div></div>
           <form id="bookingAdminSettingsForm" class="booking-admin-form booking-admin-settings-form" novalidate>
             <div class="booking-admin-settings-layout">
               <section class="booking-admin-settings-block booking-admin-settings-hours" aria-labelledby="bookingAdminWorkingHoursHeading">
@@ -113,6 +113,11 @@
                   <span>需要提前幾天預約</span>
                   <div class="booking-admin-number-field"><input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><span aria-hidden="true">天</span></div>
                   <small>設定 0 天時，可預約今天尚未經過的開始時段。</small>
+                </label>
+                <label class="booking-admin-settings-field">
+                  <span>最多可預約幾天內</span>
+                  <div class="booking-admin-number-field"><input id="bookingAdminMaxAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><span aria-hidden="true">天</span></div>
+                  <small>例如 20 代表最遠可預約今天起 20 天內；設定 0 代表不限制最遠日期。</small>
                 </label>
               </section>
 
@@ -165,7 +170,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminRefreshButton','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminRefreshButton','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -328,6 +333,7 @@
     els.bookingAdminStartTime.value = String(settings.workStartTime || '09:00');
     els.bookingAdminEndTime.value = String(settings.workEndTime || '17:00');
     els.bookingAdminAdvanceDays.value = String(Number(settings.minAdvanceDays || 0));
+    els.bookingAdminMaxAdvanceDays.value = String(Number(settings.maxAdvanceDays || 0));
     els.bookingAdminNotice.value = String(settings.bookingNotice || '');
   }
   function renderStats() {
@@ -395,8 +401,11 @@
     event.preventDefault();
     if (state.busy) return;
     const minAdvanceDays = Number(els.bookingAdminAdvanceDays.value);
+    const maxAdvanceDays = Number(els.bookingAdminMaxAdvanceDays.value);
     const bookingNotice = String(els.bookingAdminNotice.value || '').replace(/\r\n?/g, '\n');
     if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) return showMessage(els.bookingAdminSettingsMessage, '提前預約天數必須介於 0–365 天。', 'error');
+    if (!Number.isInteger(maxAdvanceDays) || maxAdvanceDays < 0 || maxAdvanceDays > 365) return showMessage(els.bookingAdminSettingsMessage, '最遠可預約天數必須介於 0–365 天；0 代表不限制。', 'error');
+    if (maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays) return showMessage(els.bookingAdminSettingsMessage, '最遠可預約天數不可小於需要提前的天數。', 'error');
     if (bookingNotice.length > 2000) return showMessage(els.bookingAdminSettingsMessage, '預約說明不可超過 2,000 字。', 'error');
     state.busy = true; clearMessage(els.bookingAdminSettingsMessage);
     try {
@@ -404,6 +413,7 @@
         workStartTime: els.bookingAdminStartTime.value,
         workEndTime: els.bookingAdminEndTime.value,
         minAdvanceDays,
+        maxAdvanceDays,
         bookingNotice,
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',
       }, true);
