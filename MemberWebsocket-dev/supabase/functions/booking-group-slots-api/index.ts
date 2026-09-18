@@ -1,9 +1,12 @@
+import { readJsonObject } from "../_shared/request-body.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, any>;
 const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
 const SLOT_INTERVAL = 30;
 const MAX_REQUEST_BYTES = 40000;
+const READ_LIMIT = 90;
+const WRITE_LIMIT = 30;
 
 class ApiError extends Error {
   status: number;
@@ -98,6 +101,22 @@ async function verifyMember(idToken: string) {
     throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
   }
   return String(payload.sub);
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function consumeRateLimit(supabase: ReturnType<typeof db>, lineUserId: string): Promise<void> {
+  const { data, error } = await supabase.rpc("consume_api_rate_limit", {
+    p_principal_hash: await sha256(lineUserId),
+    p_is_write: false,
+    p_cost: 1,
+    p_read_limit: READ_LIMIT,
+    p_write_limit: WRITE_LIMIT,
+  });
+  if (error) throw new ApiError(503, "RATE_LIMIT_UNAVAILABLE", "無法確認請求頻率限制。");
+  if (!data) throw new ApiError(429, "RATE_LIMITED", "請求過於密集，請稍後再試。");
 }
 
 async function activeMember(supabase: ReturnType<typeof db>, lineUserId: string) {
@@ -267,16 +286,13 @@ Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return reply(origin, { ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "只支援 POST。" } }, 405);
   if (origin && !allowedOrigins().has(origin)) return reply(origin, { ok: false, error: { code: "ORIGIN_DENIED", message: "不允許的來源。" } }, 403);
   try {
-    const length = Number(request.headers.get("content-length") || 0);
-    if (length > MAX_REQUEST_BYTES) throw new ApiError(413, "REQUEST_TOO_LARGE", "請求內容過大。");
-    const raw = await request.text();
-    if (new TextEncoder().encode(raw).byteLength > MAX_REQUEST_BYTES) throw new ApiError(413, "REQUEST_TOO_LARGE", "請求內容過大。");
-    const body = raw ? JSON.parse(raw) : {};
+    const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
     if (asText(body.action, 100) !== "user.booking.group.slots" || asText(body.clientType, 20) !== "member") {
       throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     }
     const lineUserId = await verifyMember(asText(body.idToken, 5000));
     const supabase = db();
+    await consumeRateLimit(supabase, lineUserId);
     const member = await activeMember(supabase, lineUserId);
     return reply(origin, { ok: true, data: await slots(supabase, member, body) });
   } catch (error) {
