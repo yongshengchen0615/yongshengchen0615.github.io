@@ -4,9 +4,18 @@ const assert = require('node:assert/strict');
 const edge = fs.readFileSync('MemberWebsocket-dev/supabase/functions/booking-admin-operations/index.ts', 'utf8');
 const migration = fs.readFileSync('MemberWebsocket-dev/supabase/migrations/20260918161000_admin_booking_participant_technicians.sql', 'utf8');
 const core = fs.readFileSync('MemberWebsocket-dev/admin/booking-panel-core.js', 'utf8');
+const standalone = fs.readFileSync('MemberWebsocket-dev/booking-admin-group-details.js', 'utf8');
 
 assert.match(core, /修改此位技師/);
 assert.match(core, /admin\.booking\.participants\.technicians\.update/);
+assert.match(standalone, /修改此位技師/);
+assert.match(standalone, /openParticipantTechnicianEditor/);
+assert.match(standalone, /booking-group-api/);
+assert.match(standalone, /admin\.booking\.resources\.bootstrap/);
+assert.match(standalone, /admin\.booking\.participants\.technicians\.update/);
+assert.match(standalone, /expectedUpdatedAt:\s*booking\.updatedAt/);
+assert.match(standalone, /至少一位預約人必須指定主要技師/);
+assert.match(standalone, /同一筆多人預約不可重複指定同一位技師/);
 assert.match(core, /expectedUpdatedAt:\s*booking\.updatedAt/);
 assert.match(core, /至少一位預約人必須指定主要技師/);
 assert.match(core, /同一筆多人預約不可重複指定同一位技師/);
