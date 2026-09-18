@@ -104,7 +104,7 @@
 
       // Resource controls require the core settings host. Technician delete is
       // loaded after resources, but is also resilient to later DOM remounts.
-      return load('booking-resources.js', 'booking-resource-mount-20260918-2')
+      return load('booking-resources.js', 'booking-resource-mount-20260918-1')
         .catch((error) => {
           console.error('booking resource extension load failed', error);
         })
