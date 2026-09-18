@@ -13,7 +13,6 @@
   let confirmTimer = null;
   let selectionSummaryTimer = null;
   const SERVICE_TYPE_COLOR_COUNT = 12;
-  const serviceTypeColorSlots = new Map();
 
   function scheduleFormat() {
     if (scheduled) return;
@@ -196,12 +195,17 @@
     });
   }
 
-  function applyServiceTypeColor(section, label) {
+  function serviceTypeColorSlot(label) {
     const key = String(label || '其他').trim().toLocaleLowerCase('zh-Hant-TW') || '其他';
-    if (!serviceTypeColorSlots.has(key)) {
-      serviceTypeColorSlots.set(key, serviceTypeColorSlots.size % SERVICE_TYPE_COLOR_COUNT);
+    let hash = 0;
+    for (let index = 0; index < key.length; index += 1) {
+      hash = ((hash * 31) + key.charCodeAt(index)) >>> 0;
     }
-    const slot = serviceTypeColorSlots.get(key);
+    return hash % SERVICE_TYPE_COLOR_COUNT;
+  }
+
+  function applyServiceTypeColor(section, label) {
+    const slot = serviceTypeColorSlot(label);
     section.dataset.serviceTypeColor = String(slot);
     [...section.classList]
       .filter((name) => name.startsWith('service-type-color-'))

@@ -26,7 +26,7 @@ test('later participants render the same final service picker and selected-item 
   assert.match(groupBooking, /selectedFieldset\.className = 'selected-service-fieldset'/);
   assert.match(groupBooking, /choices\.className = 'service-picker'/);
   assert.match(groupBooking, /selectedList\.className = 'selected-service-list'/);
-  assert.match(groupBooking, /section\.className = 'service-info'/);
+  assert.match(groupBooking, /section\.className = `service-info service-type-group service-type-color-\$\{colorSlot\}`/);
   assert.match(groupBooking, /heading\.textContent = `\$\{group\.label\}（\$\{group\.entries\.length\}）`/);
   assert.match(groupBooking, /list\.className = listClass/);
   assert.match(groupBooking, /row\.className = 'service-choice'/);
@@ -73,8 +73,8 @@ test('selection summary sync scripts have valid JavaScript syntax', () => {
 
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
-  assert.match(html, /member-booking-format\.js\?v=booking-service-type-colors-webview-20260918-2/);
-  assert.match(html, /group-booking\.js\?v=booking-selection-summary-sync-20260918-1/);
+  assert.match(html, /member-booking-format\.js\?v=booking-all-participants-type-colors-20260918-3/);
+  assert.match(html, /group-booking\.js\?v=booking-all-participants-type-colors-20260918-3/);
 });
 
 
@@ -87,7 +87,7 @@ test('member group booking shows an amount for every participant surface', () =>
   assert.match(groupBooking, /amountLine\.textContent = `金額：\$\{formatMoney\(metric\.amount\)\}`/);
   assert.match(groupBooking, /storedParticipantAmount\(participant\)/);
   assert.match(groupBooking, /item\?\.subtotalAmount/);
-  assert.match(html, /group-booking\.js\?v=booking-selection-summary-sync-20260918-1/);
+  assert.match(html, /group-booking\.js\?v=booking-all-participants-type-colors-20260918-3/);
 });
 
 
@@ -113,7 +113,8 @@ test('service type blocks use stable distinct colors across all participant pick
   const html = read('booking/index.html');
 
   assert.match(formatter, /const SERVICE_TYPE_COLOR_COUNT = 12/);
-  assert.match(formatter, /const serviceTypeColorSlots = new Map\(\)/);
+  assert.match(formatter, /function serviceTypeColorSlot\(label\)/);
+  assert.match(formatter, /hash = \(\(hash \* 31\) \+ key\.charCodeAt\(index\)\) >>> 0/);
   assert.match(formatter, /decorateServiceTypeGroups\(\)/);
   assert.match(formatter, /section\.className = 'service-info service-type-group'/);
   assert.match(formatter, /section\.dataset\.serviceTypeColor = String\(slot\)/);
@@ -130,5 +131,21 @@ test('service type blocks use stable distinct colors across all participant pick
   assert.match(css, /service-info\.service-type-group > strong::before/);
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*border-left-width: 5px/);
   assert.match(html, /member-booking-format\.css\?v=booking-service-type-colors-webview-20260918-2/);
-  assert.match(html, /member-booking-format\.js\?v=booking-service-type-colors-webview-20260918-2/);
+  assert.match(html, /member-booking-format\.js\?v=booking-all-participants-type-colors-20260918-3/);
+});
+
+
+test('every participant renderer assigns service type colors before DOM insertion', () => {
+  const groupBooking = read('booking/group-booking.js');
+  const formatter = read('booking/member-booking-format.js');
+
+  assert.match(groupBooking, /const SERVICE_TYPE_COLOR_COUNT = 12/);
+  assert.match(groupBooking, /function serviceTypeColorSlot\(value\)/);
+  assert.match(groupBooking, /const colorSlot = serviceTypeColorSlot\(group\.label\)/);
+  assert.match(groupBooking, /section\.className = `service-info service-type-group service-type-color-\$\{colorSlot\}`/);
+  assert.match(groupBooking, /section\.dataset\.serviceTypeColor = String\(colorSlot\)/);
+
+  assert.match(formatter, /function serviceTypeColorSlot\(label\)/);
+  assert.match(formatter, /const slot = serviceTypeColorSlot\(label\)/);
+  assert.match(formatter, /section\.classList\.add\(`service-type-color-\$\{slot\}`\)/);
 });

@@ -8,6 +8,7 @@
   const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
   const TYPE_PREFIX = '__TYPE__:';
   const DEFAULT_STORE_SERVICE_MINUTES = 10;
+  const SERVICE_TYPE_COLOR_COUNT = 12;
   const state = {
     config: null,
     idToken: '',
@@ -432,7 +433,9 @@
 
     for (const group of groups.values()) {
       const section = document.createElement('section');
-      section.className = 'service-info';
+      const colorSlot = serviceTypeColorSlot(group.label);
+      section.className = `service-info service-type-group service-type-color-${colorSlot}`;
+      section.dataset.serviceTypeColor = String(colorSlot);
       section.setAttribute('aria-label', `${group.label}服務`);
 
       const heading = document.createElement('strong');
@@ -855,6 +858,15 @@
 
   function serviceTypeKey(value) {
     return String(value || '').trim().toLocaleLowerCase('zh-Hant-TW');
+  }
+
+  function serviceTypeColorSlot(value) {
+    const key = serviceTypeKey(value) || '其他';
+    let hash = 0;
+    for (let index = 0; index < key.length; index += 1) {
+      hash = ((hash * 31) + key.charCodeAt(index)) >>> 0;
+    }
+    return hash % SERVICE_TYPE_COLOR_COUNT;
   }
 
   function formatServiceMoney(value) {
