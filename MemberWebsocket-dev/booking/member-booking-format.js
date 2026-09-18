@@ -201,7 +201,12 @@
     if (!serviceTypeColorSlots.has(key)) {
       serviceTypeColorSlots.set(key, serviceTypeColorSlots.size % SERVICE_TYPE_COLOR_COUNT);
     }
-    section.dataset.serviceTypeColor = String(serviceTypeColorSlots.get(key));
+    const slot = serviceTypeColorSlots.get(key);
+    section.dataset.serviceTypeColor = String(slot);
+    [...section.classList]
+      .filter((name) => name.startsWith('service-type-color-'))
+      .forEach((name) => section.classList.remove(name));
+    section.classList.add(`service-type-color-${slot}`);
   }
 
   function serviceTypeFromRow(row) {

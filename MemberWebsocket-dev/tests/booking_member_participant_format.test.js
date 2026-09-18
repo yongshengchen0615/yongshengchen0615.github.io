@@ -73,7 +73,7 @@ test('selection summary sync scripts have valid JavaScript syntax', () => {
 
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
-  assert.match(html, /member-booking-format\.js\?v=booking-service-type-colors-20260918-1/);
+  assert.match(html, /member-booking-format\.js\?v=booking-service-type-colors-webview-20260918-2/);
   assert.match(html, /group-booking\.js\?v=booking-selection-summary-sync-20260918-1/);
 });
 
@@ -116,16 +116,19 @@ test('service type blocks use stable distinct colors across all participant pick
   assert.match(formatter, /const serviceTypeColorSlots = new Map\(\)/);
   assert.match(formatter, /decorateServiceTypeGroups\(\)/);
   assert.match(formatter, /section\.className = 'service-info service-type-group'/);
-  assert.match(formatter, /section\.dataset\.serviceTypeColor = String\(serviceTypeColorSlots\.get\(key\)\)/);
+  assert.match(formatter, /section\.dataset\.serviceTypeColor = String\(slot\)/);
+  assert.match(formatter, /section\.classList\.add\(\`service-type-color-\$\{slot\}\`\)/);
   assert.match(formatter, /#participantCardList \.service-picker > \.service-info/);
   assert.match(formatter, /#participantCardList \.selected-service-list > \.service-info/);
 
   for (let index = 0; index < 12; index += 1) {
-    assert.match(css, new RegExp('service-type-group\\[data-service-type-color="' + index + '"\\]'));
+    assert.match(css, new RegExp('service-type-color-' + index + ' \\{'));
   }
-  assert.match(css, /border-left: 4px solid rgb\(var\(--service-type-rgb\) \/ \.82\)/);
+  assert.doesNotMatch(css, /rgb\(var\(--service-type-rgb\)/);
+  assert.match(css, /service-type-color-0 \.service-choice/);
+  assert.match(css, /service-type-color-11 \.selected-service-item/);
   assert.match(css, /service-info\.service-type-group > strong::before/);
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*border-left-width: 5px/);
-  assert.match(html, /member-booking-format\.css\?v=booking-service-type-colors-20260918-1/);
-  assert.match(html, /member-booking-format\.js\?v=booking-service-type-colors-20260918-1/);
+  assert.match(html, /member-booking-format\.css\?v=booking-service-type-colors-webview-20260918-2/);
+  assert.match(html, /member-booking-format\.js\?v=booking-service-type-colors-webview-20260918-2/);
 });
