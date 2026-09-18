@@ -8,6 +8,7 @@
     loading: false,
     savingSettings: false,
     savingTechnician: false,
+    deletingTechnician: false,
     initialized: false,
   };
 
@@ -30,6 +31,15 @@
     technicianList: 'bookingAdminTechnicianList',
     technicianCount: 'bookingAdminTechnicianCount',
     technicianEmpty: 'bookingAdminTechnicianEmpty',
+    technicianModal: 'bookingAdminTechnicianModal',
+    technicianModalClose: 'bookingAdminTechnicianModalClose',
+    technicianModalCancel: 'bookingAdminTechnicianModalCancel',
+    technicianModalMessage: 'bookingAdminTechnicianModalMessage',
+    technicianDelete: 'bookingAdminDeleteTechnicianButton',
+    technicianDeleteConfirm: 'bookingAdminTechnicianDeleteConfirm',
+    technicianDeleteConfirmText: 'bookingAdminTechnicianDeleteConfirmText',
+    technicianDeleteBack: 'bookingAdminTechnicianDeleteBack',
+    technicianDeleteSubmit: 'bookingAdminTechnicianDeleteSubmit',
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
@@ -70,12 +80,12 @@
         <div>
           <p class="kicker">Capacity & technicians</p>
           <h3 id="bookingAdminResourceSettingsTitle">技師設定</h3>
-          <p>設定單筆預約最多人數與主要技師。多人預約時，至少一位預約人必須選擇主要技師。</p>
+          <p>設定單筆預約最多人數、主要技師與技師清單；新增、修改與刪除技師統一使用小視窗。</p>
         </div>
         <button id="bookingAdminResourceRefreshButton" class="button button-outline" type="button">更新設定</button>
       </div>
 
-      <div class="booking-admin-resource-grid">
+      <div class="booking-admin-resource-grid booking-admin-resource-grid-single">
         <form id="${ids.settingsForm}" class="booking-admin-resource-box" novalidate>
           <div>
             <strong>預約基本設定</strong>
@@ -90,37 +100,12 @@
           </label>
           <button id="${ids.settingsSave}" class="button button-dark" type="submit">儲存預約設定</button>
         </form>
-
-        <form id="${ids.technicianForm}" class="booking-admin-resource-box" novalidate>
-          <input id="${ids.technicianId}" type="hidden">
-          <input id="${ids.technicianExpectedUpdatedAt}" type="hidden">
-          <div class="booking-admin-resource-box-heading">
-            <div>
-              <strong id="${ids.technicianTitle}">新增技師</strong>
-              <small>同一位技師的預約時段不可重疊；其他預約人也可選擇現場安排。</small>
-            </div>
-            <button id="${ids.technicianNew}" class="button button-outline" type="button">＋ 新增</button>
-          </div>
-          <div class="booking-admin-resource-fields">
-            <label>技師名稱
-              <input id="${ids.technicianName}" type="text" maxlength="80" placeholder="例如：小林" required>
-            </label>
-            <label>顯示排序
-              <input id="${ids.technicianSortOrder}" type="number" min="0" max="9999" step="1" value="0" required>
-            </label>
-          </div>
-          <label class="booking-admin-resource-toggle">
-            <input id="${ids.technicianActive}" type="checkbox" checked>
-            <span><strong>開放會員選擇</strong><small>主要技師不可直接停用；請先變更主要技師。</small></span>
-          </label>
-          <button id="${ids.technicianSave}" class="button button-dark" type="submit">儲存技師</button>
-        </form>
       </div>
 
       <div id="${ids.message}" class="form-message hidden" role="status" aria-live="polite"></div>
       <div class="booking-admin-resource-list-heading">
-        <strong>技師清單</strong>
-        <span id="${ids.technicianCount}">0</span>
+        <div><strong>技師清單</strong><span id="${ids.technicianCount}">0</span></div>
+        <button id="${ids.technicianNew}" class="button button-dark" type="button">＋ 新增技師</button>
       </div>
       <div id="${ids.technicianList}" class="booking-admin-technician-list"></div>
       <div id="${ids.technicianEmpty}" class="empty-state compact hidden">
@@ -128,13 +113,78 @@
       </div>`;
 
     host.appendChild(section);
+
+    if (!document.getElementById(ids.technicianModal)) {
+      const modal = document.createElement('div');
+      modal.id = ids.technicianModal;
+      modal.className = 'booking-admin-modal hidden';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', ids.technicianTitle);
+      modal.innerHTML = `
+        <div class="booking-admin-modal-card booking-admin-technician-modal-card">
+          <div class="booking-admin-modal-heading">
+            <div><p class="kicker">Technician editor</p><h2 id="${ids.technicianTitle}">新增技師</h2></div>
+            <button id="${ids.technicianModalClose}" class="booking-admin-modal-close" type="button" aria-label="關閉">×</button>
+          </div>
+
+          <form id="${ids.technicianForm}" class="booking-admin-form booking-admin-technician-modal-form" novalidate>
+            <input id="${ids.technicianId}" type="hidden">
+            <input id="${ids.technicianExpectedUpdatedAt}" type="hidden">
+            <div class="booking-admin-form-grid">
+              <label>技師名稱
+                <input id="${ids.technicianName}" type="text" maxlength="80" placeholder="例如：小林" required>
+              </label>
+              <label>顯示排序
+                <input id="${ids.technicianSortOrder}" type="number" min="0" max="9999" step="1" value="0" required>
+              </label>
+            </div>
+            <label class="booking-admin-toggle">
+              <input id="${ids.technicianActive}" type="checkbox" checked>
+              <span><strong>開放會員選擇</strong><small>主要技師不可直接停用；請先變更主要技師。</small></span>
+            </label>
+            <div class="booking-admin-modal-actions booking-admin-technician-modal-actions">
+              <button id="${ids.technicianDelete}" class="button button-danger hidden" type="button">刪除技師</button>
+              <button id="${ids.technicianModalCancel}" class="button button-outline" type="button">取消</button>
+              <button id="${ids.technicianSave}" class="button button-dark" type="submit">儲存技師</button>
+            </div>
+          </form>
+
+          <section id="${ids.technicianDeleteConfirm}" class="booking-admin-technician-delete-confirm hidden" aria-labelledby="bookingAdminTechnicianDeleteTitle">
+            <div>
+              <p class="kicker">Delete technician</p>
+              <h3 id="bookingAdminTechnicianDeleteTitle">確認刪除技師</h3>
+              <p id="${ids.technicianDeleteConfirmText}"></p>
+              <small>若已有預約紀錄、目前為主要技師或不符合刪除條件，系統會拒絕刪除並保留資料。</small>
+            </div>
+            <div class="booking-admin-modal-actions">
+              <button id="${ids.technicianDeleteBack}" class="button button-outline" type="button">返回修改</button>
+              <button id="${ids.technicianDeleteSubmit}" class="button button-danger" type="button">確認刪除</button>
+            </div>
+          </section>
+
+          <div id="${ids.technicianModalMessage}" class="form-message hidden" role="status" aria-live="polite"></div>
+        </div>`;
+      document.body.appendChild(modal);
+    }
     return true;
   }
 
   function bind() {
     document.getElementById(ids.settingsForm)?.addEventListener('submit', saveSettings);
     document.getElementById(ids.technicianForm)?.addEventListener('submit', saveTechnician);
-    document.getElementById(ids.technicianNew)?.addEventListener('click', resetTechnicianForm);
+    document.getElementById(ids.technicianNew)?.addEventListener('click', openNewTechnicianModal);
+    document.getElementById(ids.technicianModalClose)?.addEventListener('click', closeTechnicianModal);
+    document.getElementById(ids.technicianModalCancel)?.addEventListener('click', closeTechnicianModal);
+    document.getElementById(ids.technicianDelete)?.addEventListener('click', openDeleteTechnicianConfirm);
+    document.getElementById(ids.technicianDeleteBack)?.addEventListener('click', showTechnicianEditor);
+    document.getElementById(ids.technicianDeleteSubmit)?.addEventListener('click', deleteTechnician);
+    document.getElementById(ids.technicianModal)?.addEventListener('click', (event) => {
+      if (event.target === event.currentTarget && window.matchMedia('(max-width: 768px)').matches) closeTechnicianModal();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !document.getElementById(ids.technicianModal)?.classList.contains('hidden')) closeTechnicianModal();
+    });
     document.getElementById('bookingAdminResourceRefreshButton')?.addEventListener('click', () => refresh(true));
   }
 
@@ -302,11 +352,11 @@
       state.data.technicians = rows;
       renderPrimaryOptions();
       renderTechnicians();
-      editTechnician(saved);
+      closeTechnicianModal(true);
       const needsPrimary = !state.data.settings?.primaryTechnicianId && rows.some((item) => item.isActive);
-      showMessage(needsPrimary ? '技師已儲存。請在左側「主要技師」選擇一位並儲存預約設定。' : '技師設定已儲存。', needsPrimary ? 'error' : 'success');
+      showMessage(needsPrimary ? '技師已儲存。請在「主要技師」選擇一位並儲存預約設定。' : '技師設定已儲存。', needsPrimary ? 'error' : 'success');
     } catch (error) {
-      showMessage(error?.code === 'CONFLICT' ? '技師資料已被其他管理者更新，已重新載入最新資料。' : error?.message || '技師設定儲存失敗。', 'error');
+      showTechnicianModalMessage(error?.code === 'CONFLICT' ? '技師資料已被其他管理者更新，請重新開啟技師資料。' : error?.message || '技師設定儲存失敗。', 'error');
       if (error?.code === 'CONFLICT') await refresh(false);
     } finally {
       state.savingTechnician = false;
@@ -339,22 +389,28 @@
       badge.className = `booking-admin-resource-status ${technician.isActive ? 'active' : 'inactive'}`;
       badge.textContent = technician.technicianId === primaryId ? '主要' : technician.isActive ? '開放' : '停用';
       row.append(copy, badge);
-      row.addEventListener('click', () => editTechnician(technician));
+      row.addEventListener('click', () => openEditTechnicianModal(technician));
       list.append(row);
     });
   }
 
-  function editTechnician(technician) {
+  function openEditTechnicianModal(technician) {
+    const form = document.getElementById(ids.technicianForm);
+    if (!form || !technician) return;
+    form.reset();
     document.getElementById(ids.technicianId).value = String(technician.technicianId || '');
     document.getElementById(ids.technicianExpectedUpdatedAt).value = String(technician.updatedAt || '');
     document.getElementById(ids.technicianName).value = String(technician.name || '');
     document.getElementById(ids.technicianSortOrder).value = String(Number(technician.sortOrder) || 0);
     document.getElementById(ids.technicianActive).checked = Boolean(technician.isActive);
-    document.getElementById(ids.technicianTitle).textContent = technician.technicianId === state.data?.settings?.primaryTechnicianId ? '編輯主要技師' : '編輯技師';
+    document.getElementById(ids.technicianTitle).textContent = technician.technicianId === state.data?.settings?.primaryTechnicianId ? '修改主要技師' : '修改技師';
     document.getElementById(ids.technicianSave).textContent = '儲存修改';
+    document.getElementById(ids.technicianDelete).classList.remove('hidden');
+    showTechnicianEditor();
+    showTechnicianModal();
   }
 
-  function resetTechnicianForm() {
+  function openNewTechnicianModal() {
     const form = document.getElementById(ids.technicianForm);
     if (!form) return;
     form.reset();
@@ -364,7 +420,117 @@
     document.getElementById(ids.technicianActive).checked = true;
     document.getElementById(ids.technicianTitle).textContent = '新增技師';
     document.getElementById(ids.technicianSave).textContent = '儲存技師';
-    document.getElementById(ids.technicianName).focus();
+    document.getElementById(ids.technicianDelete).classList.add('hidden');
+    showTechnicianEditor();
+    showTechnicianModal();
+  }
+
+  function showTechnicianModal() {
+    clearTechnicianModalMessage();
+    const modal = document.getElementById(ids.technicianModal);
+    modal?.classList.remove('hidden');
+    window.requestAnimationFrame(() => document.getElementById(ids.technicianName)?.focus());
+  }
+
+  function closeTechnicianModal(force = false) {
+    if (!force && (state.savingTechnician || state.deletingTechnician)) return;
+    document.getElementById(ids.technicianModal)?.classList.add('hidden');
+    showTechnicianEditor();
+    clearTechnicianModalMessage();
+  }
+
+  function showTechnicianEditor() {
+    document.getElementById(ids.technicianForm)?.classList.remove('hidden');
+    document.getElementById(ids.technicianDeleteConfirm)?.classList.add('hidden');
+    clearTechnicianModalMessage();
+  }
+
+  function openDeleteTechnicianConfirm() {
+    const technicianId = String(document.getElementById(ids.technicianId)?.value || '');
+    if (!technicianId) return;
+    const name = String(document.getElementById(ids.technicianName)?.value || '').trim() || '這位技師';
+    document.getElementById(ids.technicianDeleteConfirmText).textContent = `確定永久刪除技師「${name}」？此操作不可復原。`;
+    document.getElementById(ids.technicianForm)?.classList.add('hidden');
+    document.getElementById(ids.technicianDeleteConfirm)?.classList.remove('hidden');
+    clearTechnicianModalMessage();
+  }
+
+  async function deleteTechnician() {
+    if (state.deletingTechnician) return;
+    const technicianId = String(document.getElementById(ids.technicianId)?.value || '');
+    const expectedUpdatedAt = String(document.getElementById(ids.technicianExpectedUpdatedAt)?.value || '');
+    const technicianName = String(document.getElementById(ids.technicianName)?.value || '').trim() || '這位技師';
+    if (!technicianId || !expectedUpdatedAt) return showTechnicianModalMessage('無法確認要刪除的技師版本，請重新開啟後再試。', 'error');
+
+    const button = document.getElementById(ids.technicianDeleteSubmit);
+    state.deletingTechnician = true;
+    setButtonBusy(button, true, '確認刪除');
+    if (button) button.textContent = '刪除中…';
+    try {
+      await deleteTechnicianRequest({ technicianId, expectedUpdatedAt });
+      state.data = state.data || { settings: {}, technicians: [] };
+      state.data.technicians = (state.data.technicians || []).filter((item) => String(item.technicianId || '') !== technicianId);
+      renderPrimaryOptions();
+      renderTechnicians();
+      closeTechnicianModal(true);
+      showMessage(`技師「${technicianName}」已刪除。`, 'success');
+      window.dispatchEvent(new CustomEvent('booking:technician-deleted', { detail: { technicianId } }));
+    } catch (error) {
+      const message = error?.name === 'AbortError'
+        ? '技師刪除服務逾時，請稍後再試。'
+        : error?.message || '技師刪除失敗。';
+      showTechnicianModalMessage(message, 'error');
+      if (error?.code === 'CONFLICT') await refresh(false);
+    } finally {
+      state.deletingTechnician = false;
+      setButtonBusy(button, false, '確認刪除');
+    }
+  }
+
+  async function deleteTechnicianRequest(payload) {
+    if (!state.config) state.config = await window.MemberSystem.loadConfig();
+    if (!state.idToken) state.idToken = await waitForToken();
+    const endpoint = `${String(state.config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-technician-delete`;
+    if (!state.config?.supabaseUrl || !state.config?.supabasePublishableKey) throw clientError('CONFIG_ERROR', '預約服務設定不完整。');
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', apikey: String(state.config.supabasePublishableKey) },
+        body: JSON.stringify({
+          action: 'admin.booking.resources.technician.delete',
+          clientType: 'admin',
+          idToken: state.idToken,
+          technicianId: payload.technicianId,
+          expectedUpdatedAt: payload.expectedUpdatedAt,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.ok !== true) {
+        throw clientError(String(data?.error?.code || 'API_ERROR'), String(data?.error?.message || '技師刪除失敗。'));
+      }
+      return data.data || {};
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  function showTechnicianModalMessage(message, type) {
+    const element = document.getElementById(ids.technicianModalMessage);
+    if (!element) return;
+    element.textContent = String(message || '');
+    element.className = `form-message${type === 'success' ? ' success' : ''}`;
+  }
+
+  function clearTechnicianModalMessage() {
+    const element = document.getElementById(ids.technicianModalMessage);
+    if (!element) return;
+    element.textContent = '';
+    element.className = 'form-message hidden';
   }
 
   function sortTechnicians(a, b) {
