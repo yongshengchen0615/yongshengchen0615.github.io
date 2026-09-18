@@ -336,11 +336,10 @@
   function createExtraServicePicker(index) {
     const extraIndex = index - 1;
     const selections = Array.isArray(state.extras[extraIndex]) ? state.extras[extraIndex] : [];
-    const stack = document.createElement('div');
-    stack.className = 'participant-service-stack';
+    const fragment = document.createDocumentFragment();
 
     const picker = document.createElement('fieldset');
-    picker.className = 'service-picker-fieldset participant-service-picker-fieldset';
+    picker.className = 'service-picker-fieldset';
     const pickerLegend = document.createElement('legend');
     pickerLegend.textContent = '可選預約項目';
     const pickerHint = document.createElement('p');
@@ -349,39 +348,20 @@
     const choices = document.createElement('div');
     choices.className = 'service-picker';
 
-    state.services.forEach((service) => {
-      const alreadySelected = selections.some((selection) => selection.serviceId === service.serviceId);
-      const row = document.createElement('article');
-      row.className = `service-choice${alreadySelected ? ' selected' : ''}`;
-      const main = document.createElement('div');
-      main.className = 'service-choice-main';
-      const text = document.createElement('span');
-      const title = document.createElement('strong');
-      title.textContent = service.title;
-      const meta = document.createElement('small');
-      const serviceType = serviceTypeOf(service);
-      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}`;
-      text.append(title, meta);
-      main.appendChild(text);
-
-      const addButton = document.createElement('button');
-      addButton.type = 'button';
-      addButton.className = 'service-add-button';
-      addButton.textContent = '增加';
-      addButton.setAttribute('aria-label', `${participantLabel(index)}增加 ${service.title}`);
-      addButton.addEventListener('click', () => {
-        if (!confirmExtraServiceSelection(service, selections)) return;
-        clearParticipantFormMessage();
-        selections.push({ selectionId: crypto.randomUUID(), serviceId: service.serviceId });
-        state.extras[extraIndex] = selections;
-        state.openCards.add(index);
-        renderParticipantCards();
-        updateSelectionSummary();
-        reloadSlots();
-      });
-      row.append(main, addButton);
-      choices.appendChild(row);
-    });
+    const availableServices = state.services.filter((service) => (
+      !selections.some((selection) => selection.serviceId === service.serviceId)
+    ));
+    if (availableServices.length) {
+      appendServiceCategoryGroups(
+        choices,
+        availableServices,
+        (service) => service,
+        (service) => createExtraServiceChoiceRow(index, extraIndex, selections, service),
+        'service-picker',
+      );
+    } else if (state.services.length) {
+      choices.appendChild(createCompactEmptyState('可選項目已全部加入目前選擇'));
+    }
 
     const pickerEmpty = document.createElement('div');
     pickerEmpty.className = `empty-state compact${state.services.length ? ' hidden' : ''}`;
@@ -391,7 +371,7 @@
     picker.append(pickerLegend, pickerHint, choices, pickerEmpty);
 
     const selectedFieldset = document.createElement('fieldset');
-    selectedFieldset.className = 'selected-service-fieldset participant-selected-service-fieldset';
+    selectedFieldset.className = 'selected-service-fieldset';
     const selectedLegend = document.createElement('legend');
     selectedLegend.textContent = '目前選擇';
     const selectedHint = document.createElement('p');
@@ -400,40 +380,24 @@
     const selectedList = document.createElement('div');
     selectedList.className = 'selected-service-list';
 
-    selections.forEach((selection) => {
-      const service = state.services.find((item) => item.serviceId === selection.serviceId);
-      if (!service) return;
-      const row = document.createElement('article');
-      row.className = 'selected-service-item';
-      const text = document.createElement('div');
-      text.className = 'selected-service-main';
-      const title = document.createElement('strong');
-      title.textContent = service.title;
-      const meta = document.createElement('small');
-      const serviceType = serviceTypeOf(service);
-      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}`;
-      text.append(title, meta);
-      const removeButton = document.createElement('button');
-      removeButton.type = 'button';
-      removeButton.className = 'selected-service-remove';
-      removeButton.textContent = '移除';
-      removeButton.setAttribute('aria-label', `${participantLabel(index)}移除 ${service.title}`);
-      removeButton.addEventListener('click', () => {
-        const selectionIndex = selections.findIndex((item) => item.selectionId === selection.selectionId);
-        if (selectionIndex >= 0) selections.splice(selectionIndex, 1);
-        clearParticipantFormMessage();
-        state.extras[extraIndex] = selections;
-        state.openCards.add(index);
-        renderParticipantCards();
-        updateSelectionSummary();
-        reloadSlots();
-      });
-      row.append(text, removeButton);
-      selectedList.appendChild(row);
-    });
+    const selectedEntries = selections
+      .map((selection) => ({
+        selection,
+        service: state.services.find((item) => item.serviceId === selection.serviceId) || null,
+      }))
+      .filter((entry) => entry.service);
+    if (selectedEntries.length) {
+      appendServiceCategoryGroups(
+        selectedList,
+        selectedEntries,
+        (entry) => entry.service,
+        (entry) => createExtraSelectedServiceRow(index, extraIndex, selections, entry),
+        'selected-service-list',
+      );
+    }
 
     const selectedEmpty = document.createElement('div');
-    selectedEmpty.className = `empty-state compact${selections.length ? ' hidden' : ''}`;
+    selectedEmpty.className = `empty-state compact${selectedEntries.length ? ' hidden' : ''}`;
     const selectedEmptyTitle = document.createElement('strong');
     selectedEmptyTitle.textContent = '尚未選擇預約項目';
     const selectedEmptyHint = document.createElement('span');
@@ -441,8 +405,116 @@
     selectedEmpty.append(selectedEmptyTitle, selectedEmptyHint);
     selectedFieldset.append(selectedLegend, selectedHint, selectedList, selectedEmpty);
 
-    stack.append(picker, selectedFieldset);
-    return stack;
+    fragment.append(picker, selectedFieldset);
+    return fragment;
+  }
+
+  function appendServiceCategoryGroups(container, entries, getService, createRow, listClass) {
+    const groups = new Map();
+    for (const entry of entries) {
+      const service = getService(entry);
+      if (!service) continue;
+      const label = serviceTypeOf(service) || '其他';
+      const key = serviceTypeKey(label) || '其他';
+      let group = groups.get(key);
+      if (!group) {
+        group = { label, entries: [] };
+        groups.set(key, group);
+      }
+      group.entries.push(entry);
+    }
+
+    for (const group of groups.values()) {
+      const section = document.createElement('section');
+      section.className = 'service-info';
+      section.setAttribute('aria-label', `${group.label}服務`);
+
+      const heading = document.createElement('strong');
+      heading.textContent = `${group.label}（${group.entries.length}）`;
+
+      const list = document.createElement('div');
+      list.className = listClass;
+      group.entries.forEach((entry) => list.appendChild(createRow(entry)));
+
+      section.append(heading, list);
+      container.appendChild(section);
+    }
+  }
+
+  function createExtraServiceChoiceRow(index, extraIndex, selections, service) {
+    const row = document.createElement('article');
+    row.className = 'service-choice';
+
+    const main = document.createElement('div');
+    main.className = 'service-choice-main';
+    const text = document.createElement('span');
+    const title = document.createElement('strong');
+    title.textContent = service.title;
+    const meta = document.createElement('small');
+    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}`;
+    text.append(title, meta);
+    main.appendChild(text);
+
+    const addButton = document.createElement('button');
+    addButton.type = 'button';
+    addButton.className = 'service-add-button';
+    addButton.textContent = '增加';
+    addButton.setAttribute('aria-label', `${participantLabel(index)}增加 ${service.title}`);
+    addButton.addEventListener('click', () => {
+      if (!confirmExtraServiceSelection(service, selections)) return;
+      clearParticipantFormMessage();
+      selections.push({ selectionId: crypto.randomUUID(), serviceId: service.serviceId });
+      state.extras[extraIndex] = selections;
+      state.openCards.add(index);
+      renderParticipantCards();
+      updateSelectionSummary();
+      reloadSlots();
+    });
+
+    row.append(main, addButton);
+    return row;
+  }
+
+  function createExtraSelectedServiceRow(index, extraIndex, selections, entry) {
+    const { selection, service } = entry;
+    const row = document.createElement('article');
+    row.className = 'selected-service-item';
+
+    const text = document.createElement('div');
+    text.className = 'selected-service-main';
+    const title = document.createElement('strong');
+    title.textContent = service.title;
+    const meta = document.createElement('small');
+    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}`;
+    text.append(title, meta);
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'selected-service-remove';
+    removeButton.textContent = '移除';
+    removeButton.setAttribute('aria-label', `${participantLabel(index)}移除 ${service.title}`);
+    removeButton.addEventListener('click', () => {
+      const selectionIndex = selections.findIndex((item) => item.selectionId === selection.selectionId);
+      if (selectionIndex >= 0) selections.splice(selectionIndex, 1);
+      clearParticipantFormMessage();
+      state.extras[extraIndex] = selections;
+      state.openCards.add(index);
+      renderParticipantCards();
+      updateSelectionSummary();
+      reloadSlots();
+    });
+
+    row.append(text, removeButton);
+    return row;
+  }
+
+  function createCompactEmptyState(titleText) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state compact';
+    const title = document.createElement('strong');
+    title.textContent = titleText;
+    empty.appendChild(title);
+    return empty;
   }
 
   function confirmExtraServiceSelection(service, selections) {
