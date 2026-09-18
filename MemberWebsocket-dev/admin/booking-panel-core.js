@@ -5,9 +5,10 @@
   const PRIMARY_TAB_IDS = ['membersTab', 'cardsTab', 'eventsTab', 'calendarTab'];
   const PRIMARY_PANEL_IDS = ['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel'];
   const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', completed: '服務已完成', rejected: '未通過', cancelled: '已取消' };
+  const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
   const state = {
     config: null,
-    booking: { settings: {}, bookings: [] },
+    booking: { settings: {}, bookings: [], groups: {}, technicians: [], primaryTechnicianId: '' },
     catalog: { serviceTypes: [], services: [] },
     filter: 'pending',
     subtab: 'services',
@@ -220,6 +221,9 @@
   const bookingRequest = (action, payload = {}, write = false) => requestFunction('booking-api', action, payload, write);
   const manageRequest = (action, payload = {}, write = false) => requestFunction('booking-admin-api', action, payload, write);
   const operationsRequest = (action, payload = {}, write = false) => requestFunction('booking-admin-operations', action, payload, write);
+  const contactRequest = (action, payload = {}) => requestFunction('booking-contact-api', action, payload, false);
+  const groupDetailsRequest = (action, payload = {}) => requestFunction('booking-group-details-api', action, payload, false);
+  const resourceRequest = (action, payload = {}) => requestFunction('booking-group-api', action, payload, false);
   function clientError(code, message) { const error = new Error(message); error.code = code; return error; }
 
   async function refreshAll(showSuccess) {
@@ -228,13 +232,31 @@
     els.bookingAdminRefreshButton.disabled = true;
     setSyncStatus('同步預約資料中…');
     try {
-      const [booking, catalog] = await Promise.all([
+      const [booking, catalog, resources] = await Promise.all([
         bookingRequest('admin.booking.bootstrap'),
         manageRequest('admin.booking.manage.bootstrap'),
+        resourceRequest('admin.booking.resources.bootstrap'),
       ]);
+      const rawBookings = Array.isArray(booking.bookings) ? booking.bookings : [];
+      const bookingIds = rawBookings.map((item) => String(item.bookingId || '')).filter(Boolean);
+      const [contactData, groupData] = bookingIds.length
+        ? await Promise.all([
+            contactRequest('admin.booking.contacts', { bookingIds }),
+            groupDetailsRequest('admin.booking.group.details', { bookingIds }),
+          ])
+        : [{ contacts: [] }, { bookingGroups: {} }];
+      const contacts = Array.isArray(contactData.contacts) ? contactData.contacts : [];
+      const contactsById = new Map(contacts.map((item) => [String(item.bookingId || ''), item]));
+      const bookings = rawBookings.map((item) => ({
+        ...item,
+        ...(contactsById.get(String(item.bookingId || '')) || {}),
+      }));
       state.booking = {
-        settings: { ...(booking.settings || {}), ...(catalog.settings || {}) },
-        bookings: Array.isArray(booking.bookings) ? booking.bookings : [],
+        settings: { ...(booking.settings || {}), ...(catalog.settings || {}), ...(resources.settings || {}) },
+        bookings,
+        groups: groupData?.bookingGroups && typeof groupData.bookingGroups === 'object' ? groupData.bookingGroups : {},
+        technicians: Array.isArray(resources.technicians) ? resources.technicians : [],
+        primaryTechnicianId: String(resources.settings?.primaryTechnicianId || groupData?.primaryTechnicianId || ''),
       };
       state.catalog = { serviceTypes: Array.isArray(catalog.serviceTypes) ? catalog.serviceTypes : [], services: Array.isArray(catalog.services) ? catalog.services : [] };
       state.selected = new Set([...state.selected].filter((id) => state.catalog.services.some((service) => service.serviceId === id)));
@@ -249,7 +271,6 @@
       els.bookingAdminRefreshButton.disabled = false;
     }
   }
-
   function renderAll() { renderSettings(); renderTypes(); renderServices(); renderStats(); renderBookings(); }
   function renderSettings() {
     const settings = state.booking.settings || {};
@@ -510,45 +531,360 @@
     const bookings = (state.booking.bookings || []).filter((booking) => state.filter === 'all' || booking.status === state.filter);
     els.bookingAdminQueue.replaceChildren();
     els.bookingAdminQueueEmpty.classList.toggle('hidden', bookings.length > 0);
+
     bookings.forEach((booking) => {
-      const card = document.createElement('article'); card.className = 'booking-admin-booking'; card.dataset.bookingId = String(booking.bookingId || '');
-      const heading = document.createElement('div'); heading.className = 'booking-admin-booking-heading';
-      const member = document.createElement('div');
-      const memberName = document.createElement('strong'); memberName.textContent = booking.memberDisplayName || '會員';
-      const code = document.createElement('small'); code.textContent = booking.memberCode || '無會員編號'; member.append(memberName, code);
-      const status = document.createElement('span'); status.className = `booking-admin-status status-${booking.status}`; status.textContent = STATUS_LABELS[booking.status] || booking.status;
-      heading.append(member, status); card.appendChild(heading);
-      const title = document.createElement('h4'); title.textContent = bookingDisplayTitle(booking); card.appendChild(title);
-      const storeItem = bookingStoreItem(booking); const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || 10) * Number(storeItem.quantity || 1) : 0;
-      const scheduledMinutes = Number(booking.totalDurationMinutes || 0);
-      const currentMinutes = Array.isArray(booking.items) && booking.items.length ? booking.items.reduce((sum, item) => sum + Number(item.unitDurationMinutes || 0) * Number(item.quantity || 1), 0) : scheduledMinutes;
-      const durationText = currentMinutes !== scheduledMinutes ? `目前項目共 ${currentMinutes} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 原排程佔用 ${scheduledMinutes} 分鐘` : `預約佔用 ${scheduledMinutes} 分鐘${storeMinutes ? `（含店內服務 ${storeMinutes} 分鐘）` : ''}`;
-      const time = document.createElement('p'); time.className = 'booking-admin-time'; time.textContent = `${formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${durationText} · 總額 ${formatMoney(booking.totalAmount)}`; card.appendChild(time);
-      const items = bookingVisibleItems(booking);
-      if (items.length || storeItem) {
-        const list = document.createElement('ul'); list.className = 'booking-admin-item-list';
-        items.forEach((item) => { const li = document.createElement('li'); li.textContent = `${item.serviceTitle} × ${item.quantity}（${item.unitDurationMinutes} 分鐘/份 · ${formatMoney(item.unitPriceAmount)}/份）`; list.appendChild(li); });
-        if (storeItem) { const li = document.createElement('li'); li.textContent = `店內服務 ${storeMinutes} 分鐘：肩頸服務、龜苓膏、熱茶（不計入會員累積消費服務時數／會員階級）`; list.appendChild(li); }
-        card.appendChild(list);
-      }
+      const bookingId = String(booking.bookingId || '');
+      const storedGroup = state.booking.groups?.[bookingId];
+      const hasStoredParticipants = Boolean(storedGroup && Array.isArray(storedGroup.participants) && storedGroup.participants.length);
+      const group = groupForDisplay(storedGroup, booking);
+      const card = document.createElement('article');
+      card.className = 'booking-admin-booking booking-summary-normalized';
+      card.dataset.bookingId = bookingId;
+      card.dataset.bookingMemberCode = String(booking.memberCode || '');
+      card.dataset.bookingMemberName = String(booking.memberDisplayName || '');
+      card.dataset.bookingDate = String(booking.bookingDate || '');
+      card.dataset.bookingStartTime = String(booking.startTime || '').slice(0, 5);
+      card.dataset.bookingCopyItems = JSON.stringify(bookingVisibleItems(booking).map((item) => ({
+        serviceTitle: String(item?.serviceTitle || '預約項目').trim(),
+        quantity: Math.max(1, Number(item?.quantity || 1)),
+      })));
+      card.dataset.bookingCopyGroup = JSON.stringify({
+        partySize: Math.max(1, Number(group?.partySize || group?.participants?.length || 1)),
+        participants: (group?.participants || []).map((participant) => ({
+          technicianName: String(participant?.technicianName || '現場安排'),
+          items: Array.isArray(participant?.items) ? participant.items.map((item) => ({
+            serviceTitle: String(item?.serviceTitle || '預約項目').trim(),
+            quantity: Math.max(1, Number(item?.quantity || 1)),
+          })) : [],
+        })),
+      });
+      card.dataset.bookingCopyContactName = bookingContactName(booking);
+      card.dataset.bookingCopyPhone = String(booking.contactPhone || '—');
+
+      card.appendChild(renderBookingSummary(booking, group, hasStoredParticipants));
+
+      const heading = document.createElement('div');
+      heading.className = 'booking-admin-booking-heading';
+      const status = document.createElement('span');
+      status.className = `booking-admin-status status-${booking.status}`;
+      status.textContent = STATUS_LABELS[booking.status] || booking.status;
+      heading.appendChild(status);
+      card.appendChild(heading);
+
       if (booking.memberNote) appendNote(card, `會員備註：${booking.memberNote}`, false);
       if (booking.adminNote) appendNote(card, `管理端說明：${booking.adminNote}`, true);
       const cancellationPending = Boolean(booking.cancellationRequestedAt && !booking.cancellationReviewedAt);
       if (cancellationPending) appendNote(card, '會員已提出取消申請，請至「取消申請」分頁選擇保留預約或確認取消；審核完成前不可修改、確認或完成此預約。', true);
-      if ((booking.status === 'pending' || booking.status === 'confirmed') && !cancellationPending) {
-        const note = document.createElement('label'); note.className = 'booking-admin-note-field'; note.textContent = '管理端說明（選填）';
-        const textarea = document.createElement('textarea'); textarea.maxLength = 500; textarea.rows = 2; textarea.value = booking.adminNote || ''; note.appendChild(textarea); card.appendChild(note);
-        const actions = document.createElement('div'); actions.className = 'booking-admin-actions';
-        actions.append(actionButton('修改服務項目', 'button button-outline', () => openBookingItemsModal(booking)));
+
+      if (canEditBooking(booking)) {
+        const note = document.createElement('label');
+        note.className = 'booking-admin-note-field';
+        note.textContent = '管理端說明（選填）';
+        const textarea = document.createElement('textarea');
+        textarea.maxLength = 500;
+        textarea.rows = 2;
+        textarea.value = booking.adminNote || '';
+        note.appendChild(textarea);
+        card.appendChild(note);
+
+        const actions = document.createElement('div');
+        actions.className = 'booking-admin-actions';
+        if (!hasStoredParticipants) {
+          actions.append(actionButton('修改服務項目', 'button button-outline', () => openBookingItemsModal(booking)));
+        }
         if (booking.status === 'pending') {
-          actions.append(actionButton('不通過', 'button button-outline', () => updateBookingStatus(booking, 'rejected', textarea.value)), actionButton('確認預約', 'button button-dark', () => updateBookingStatus(booking, 'confirmed', textarea.value)));
+          actions.append(
+            actionButton('不通過', 'button button-outline', () => updateBookingStatus(booking, 'rejected', textarea.value)),
+            actionButton('確認預約', 'button button-dark', () => updateBookingStatus(booking, 'confirmed', textarea.value)),
+          );
         } else {
-          actions.append(actionButton('確認服務完成', 'button button-dark', () => updateBookingStatus(booking, 'completed', textarea.value)), actionButton('取消預約', 'button button-danger', () => updateBookingStatus(booking, 'cancelled', textarea.value)));
+          actions.append(
+            actionButton('確認服務完成', 'button button-dark', () => updateBookingStatus(booking, 'completed', textarea.value)),
+            actionButton('取消預約', 'button button-danger', () => updateBookingStatus(booking, 'cancelled', textarea.value)),
+          );
         }
         card.appendChild(actions);
       }
+
       els.bookingAdminQueue.appendChild(card);
     });
+  }
+
+  function canEditBooking(booking) {
+    return Boolean(
+      (booking?.status === 'pending' || booking?.status === 'confirmed')
+      && !(booking?.cancellationRequestedAt && !booking?.cancellationReviewedAt)
+    );
+  }
+
+  function groupForDisplay(group, booking) {
+    if (group && Array.isArray(group.participants) && group.participants.length) return group;
+    const items = bookingVisibleItems(booking);
+    if (!items.length) return { partySize: 1, participants: [] };
+    return {
+      partySize: 1,
+      participants: [{
+        position: 1,
+        technicianId: '',
+        technicianName: '現場安排',
+        isPrimaryTechnician: false,
+        items,
+      }],
+      totalDurationMinutes: Number(booking?.totalDurationMinutes || 0),
+      totalAmount: Number(booking?.totalAmount || 0),
+    };
+  }
+
+  function renderBookingSummary(booking, group, hasStoredParticipants) {
+    const summary = document.createElement('div');
+    summary.className = 'booking-received-summary';
+
+    const memberMeta = document.createElement('div');
+    memberMeta.className = 'booking-member-meta';
+    memberMeta.append(
+      summaryMetaItem('LINE 名稱', String(booking.memberDisplayName || '未取得')),
+      summaryMetaItem('會員編號', String(booking.memberCode || '未取得')),
+      summaryMetaItem('總服務時間', `${Math.max(0, Number(group?.totalDurationMinutes || booking.totalDurationMinutes || 0))} 分鐘`),
+      summaryMetaItem('總金額', formatMoney(Number(group?.totalAmount ?? booking.totalAmount ?? 0))),
+    );
+    summary.appendChild(memberMeta);
+
+    const dateTime = document.createElement('p');
+    dateTime.className = 'booking-received-datetime';
+    dateTime.textContent = `${formatBookingDateSummary(booking.bookingDate)} ${String(booking.startTime || '—').slice(0, 5)}`;
+    summary.appendChild(dateTime);
+
+    const contactName = document.createElement('p');
+    contactName.className = 'booking-received-name';
+    contactName.textContent = bookingContactName(booking);
+    summary.appendChild(contactName);
+
+    const phone = document.createElement('p');
+    phone.className = 'booking-received-phone';
+    phone.textContent = `電話：${String(booking.contactPhone || '—')}`;
+    summary.appendChild(phone);
+
+    summary.appendChild(renderParticipantDetails(booking, group, hasStoredParticipants));
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'booking-copy-button';
+    copyButton.textContent = '複製預約內容';
+    copyButton.setAttribute('aria-label', `複製 ${bookingContactName(booking)} 的預約內容`);
+    summary.appendChild(copyButton);
+
+    return summary;
+  }
+
+  function summaryMetaItem(label, value) {
+    const item = document.createElement('div');
+    item.className = 'booking-member-meta-item';
+    const key = document.createElement('span');
+    key.className = 'booking-member-meta-label';
+    key.textContent = label;
+    const content = document.createElement('strong');
+    content.textContent = value;
+    item.append(key, content);
+    return item;
+  }
+
+  function renderParticipantDetails(booking, group, hasStoredParticipants) {
+    const box = document.createElement('section');
+    box.className = 'booking-group-admin-details';
+    box.setAttribute('aria-label', '逐位預約明細');
+    const participants = Array.isArray(group?.participants) ? group.participants : [];
+
+    if (!participants.length) {
+      const empty = document.createElement('p');
+      empty.textContent = '逐位預約明細尚未建立。';
+      box.appendChild(empty);
+      return box;
+    }
+
+    participants.forEach((participant, index) => {
+      const block = document.createElement('div');
+      block.className = 'booking-group-admin-participant';
+
+      const heading = document.createElement('strong');
+      heading.textContent = participantLabel(index);
+      const items = document.createElement('p');
+      items.textContent = `預約項目：${participantItemsLabel(participant.items)}`;
+      const tech = document.createElement('p');
+      const techName = String(participant.technicianName || '現場安排').replace(/（主要技師）/g, '').trim() || '現場安排';
+      tech.textContent = `預約技師：${techName}`;
+      block.append(heading, items, tech);
+
+      if (hasStoredParticipants && canEditBooking(booking)) {
+        const actions = document.createElement('div');
+        actions.className = 'booking-admin-actions';
+        actions.style.margin = '4px 0 0';
+        actions.append(
+          actionButton('修改此位項目', 'button button-outline', () => openParticipantItemsEditor(booking, group, index)),
+          actionButton('修改此位技師', 'button button-outline', () => openParticipantTechnicianEditor(booking, group, index)),
+        );
+        block.appendChild(actions);
+      }
+
+      box.appendChild(block);
+    });
+
+    return box;
+  }
+
+  function openParticipantItemsEditor(booking, group, participantIndex) {
+    if (!canEditBooking(booking)) return window.alert('這筆預約目前無法修改服務項目。');
+    const participant = group?.participants?.[participantIndex];
+    const services = (state.catalog.services || []).filter((service) => service.serviceId !== STORE_SERVICE_ID);
+    if (!participant || !services.length) return window.alert('目前沒有可供管理員選擇的服務項目。');
+
+    const current = new Map((participant.items || []).map((item) => [String(item.serviceId || ''), Math.max(1, Number(item.quantity || 1))]));
+    els.bookingAdminCrudModalTitle.textContent = `${participantLabel(participantIndex)}｜修改項目`;
+    els.bookingAdminCrudModalBody.innerHTML = '<form class="booking-admin-form"><p class="booking-admin-time">只修改這一位的預約項目與數量；系統會重新計算整筆預約時間。</p><div data-participant-item-rows style="display:grid;gap:10px"></div><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">取消</button><button class="button button-dark" type="submit">儲存修改</button></div></form>';
+    const form = els.bookingAdminCrudModalBody.querySelector('form');
+    const rows = form.querySelector('[data-participant-item-rows]');
+
+    services.forEach((service) => {
+      const row = document.createElement('label');
+      row.className = 'booking-admin-toggle';
+      row.style.alignItems = 'center';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = String(service.serviceId || '');
+      checkbox.checked = current.has(checkbox.value);
+      const text = document.createElement('span');
+      const title = document.createElement('strong');
+      title.textContent = `${service.title}${service.isActive ? '' : '（目前停用）'}`;
+      const meta = document.createElement('small');
+      meta.textContent = `${Number(service.durationMinutes || 0)} 分鐘／份 · ${formatMoney(service.priceAmount)}`;
+      text.append(title, meta);
+      const quantity = document.createElement('select');
+      quantity.innerHTML = '<option value="1">1 份</option><option value="2">2 份</option>';
+      quantity.value = String(current.get(checkbox.value) || 1);
+      quantity.disabled = !checkbox.checked;
+      checkbox.addEventListener('change', () => { quantity.disabled = !checkbox.checked; });
+      row.append(checkbox, text, quantity);
+      rows.appendChild(row);
+    });
+
+    form.querySelector('[data-cancel]').addEventListener('click', closeModal);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const selected = [...rows.querySelectorAll('input[type="checkbox"]:checked')].map((checkbox) => ({
+        serviceId: checkbox.value,
+        quantity: Number(checkbox.closest('label')?.querySelector('select')?.value || 1),
+      }));
+      if (!selected.length) return showMessage(form.querySelector('[data-modal-message]'), '請至少選擇一個預約項目。', 'error');
+
+      const participants = (group.participants || []).map((person, index) => ({
+        position: Number(person.position || index + 1),
+        items: index === participantIndex
+          ? selected
+          : (person.items || []).map((item) => ({
+              serviceId: String(item.serviceId || ''),
+              quantity: Math.max(1, Number(item.quantity || 1)),
+            })),
+      }));
+
+      await runModalAction(async () => operationsRequest('admin.booking.participants.items.update', {
+        bookingId: booking.bookingId,
+        expectedUpdatedAt: booking.updatedAt,
+        participants,
+      }, true));
+    });
+    showModal();
+  }
+
+  function openParticipantTechnicianEditor(booking, group, participantIndex) {
+    if (!canEditBooking(booking)) return window.alert('這筆預約目前無法修改預約技師。');
+    const participant = group?.participants?.[participantIndex];
+    if (!participant) return;
+
+    const technicians = (state.booking.technicians || [])
+      .filter((item) => item.isActive || String(item.technicianId || '') === String(participant.technicianId || ''))
+      .slice()
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'));
+    if (!technicians.length) return window.alert('目前沒有可用技師，請先到預約人數與技師設定新增技師。');
+
+    els.bookingAdminCrudModalTitle.textContent = `${participantLabel(participantIndex)}｜修改技師`;
+    els.bookingAdminCrudModalBody.innerHTML = '<form class="booking-admin-form"><p class="booking-admin-time">同一筆多人預約不可重複指定同一位技師，且至少一位必須指定主要技師。儲存時會重新檢查技師時段衝突。</p><label>預約技師<select data-participant-technician></select></label><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">取消</button><button class="button button-dark" type="submit">儲存修改</button></div></form>';
+    const form = els.bookingAdminCrudModalBody.querySelector('form');
+    const select = form.querySelector('[data-participant-technician]');
+    const onsite = document.createElement('option');
+    onsite.value = '';
+    onsite.textContent = '現場安排';
+    select.appendChild(onsite);
+
+    technicians.forEach((technician) => {
+      const option = document.createElement('option');
+      option.value = String(technician.technicianId || '');
+      const primary = option.value && option.value === String(state.booking.primaryTechnicianId || '');
+      option.textContent = `${String(technician.name || '未命名技師')}${primary ? '（主要技師）' : ''}${technician.isActive ? '' : '（目前停用）'}`;
+      option.disabled = technician.isActive === false && option.value !== String(participant.technicianId || '');
+      select.appendChild(option);
+    });
+    select.value = String(participant.technicianId || '');
+
+    form.querySelector('[data-cancel]').addEventListener('click', closeModal);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const participants = (group.participants || []).map((person, index) => ({
+        position: Number(person.position || index + 1),
+        technicianId: index === participantIndex ? String(select.value || '') : String(person.technicianId || ''),
+      }));
+      const selectedIds = participants.map((person) => person.technicianId).filter(Boolean);
+      if (new Set(selectedIds).size !== selectedIds.length) {
+        return showMessage(form.querySelector('[data-modal-message]'), '同一筆多人預約不可重複指定同一位技師。', 'error');
+      }
+      const primaryTechnicianId = String(state.booking.primaryTechnicianId || '');
+      if (primaryTechnicianId && !selectedIds.includes(primaryTechnicianId)) {
+        return showMessage(form.querySelector('[data-modal-message]'), '至少一位預約人必須指定主要技師。', 'error');
+      }
+
+      await runModalAction(async () => operationsRequest('admin.booking.participants.technicians.update', {
+        bookingId: booking.bookingId,
+        expectedUpdatedAt: booking.updatedAt,
+        participants,
+      }, true));
+    });
+    showModal();
+  }
+
+  function participantItemsLabel(items) {
+    const rows = Array.isArray(items) ? items : [];
+    if (!rows.length) return '—';
+    return rows.map((item) => {
+      const title = String(item?.serviceTitle || '預約項目');
+      const quantity = Math.max(1, Number(item?.quantity || 1));
+      return quantity > 1 ? `${title} × ${quantity}` : title;
+    }).join('、');
+  }
+
+  function participantLabel(index) {
+    const names = ['第一', '第二', '第三', '第四', '第五', '第六', '第七', '第八', '第九', '第十'];
+    return `${names[index] || `第 ${index + 1} `}位預約`;
+  }
+
+  function bookingContactName(booking) {
+    const surname = String(booking?.contactSurname || '').trim();
+    const label = salutationLabel(booking?.contactSalutation);
+    if (surname && label) return `${surname}${label}`;
+    return '未取得預約人資料';
+  }
+
+  function salutationLabel(value) {
+    if (value === 'mr') return '先生';
+    if (value === 'ms') return '小姐';
+    return '';
+  }
+
+  function formatBookingDateSummary(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+    if (!match) return String(value || '—');
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const weekday = WEEKDAY_LABELS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] || '';
+    return `${month}/${day}（${weekday}）`;
   }
 
   async function updateBookingStatus(booking, status, adminNote) {

@@ -169,6 +169,16 @@
 
   function renderDetails(card, group, booking, hasStoredParticipants) {
     card.querySelectorAll('.booking-group-admin-details').forEach((node) => node.remove());
+    card.dataset.bookingCopyGroup = JSON.stringify({
+      partySize: Math.max(1, Number(group?.partySize || group?.participants?.length || 1)),
+      participants: (group?.participants || []).map((participant) => ({
+        technicianName: String(participant?.technicianName || '現場安排'),
+        items: Array.isArray(participant?.items) ? participant.items.map((item) => ({
+          serviceTitle: String(item?.serviceTitle || '預約項目').trim(),
+          quantity: Math.max(1, Number(item?.quantity || 1)),
+        })) : [],
+      })),
+    });
 
     const box = document.createElement('section');
     box.className = 'booking-group-admin-details';

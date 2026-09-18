@@ -6,7 +6,7 @@ const { JSDOM } = require('jsdom');
 const root = path.join(__dirname, '../..');
 const tick = ms => new Promise(resolve => setTimeout(resolve, ms));
 const bookingId = '30000000-0000-4000-8000-000000000001';
-const booking = { bookingId, bookingDate: '2026-09-17', startTime: '09:00:00', memberDisplayName: '測試會員', memberCode: 'M001', contactSurname: '王', contactSalutation: 'mr', contactPhone: '0912-345-678', items: [{ serviceTitle: '腳底40', quantity: 1 }] };
+const booking = { bookingId, bookingDate: '2026-09-17', startTime: '09:00:00', endTime: '10:00:00', memberDisplayName: '測試會員', memberCode: 'M001', contactSurname: '王', contactSalutation: 'mr', contactPhone: '0912-345-678', items: [{ serviceId: '10000000-0000-4000-8000-000000000001', serviceTitle: '腳底40', quantity: 1, unitDurationMinutes: 40, subtotalAmount: 800 }], totalDurationMinutes: 40, totalAmount: 800, status: 'pending', updatedAt: '2026-09-17T00:00:00.000Z' };
 const group = { partySize: 2, participants: [
   { technicianName: '甲（主要技師）', items: [{ serviceTitle: '腳底40', quantity: 1 }] },
   { technicianName: '乙', items: [{ serviceTitle: '肩頸', quantity: 2 }] },
@@ -35,7 +35,15 @@ for (const entry of ['admin', 'booking/admin']) {
       assert.equal(clientType, 'admin');
       assert.equal(idToken, 'fixture-token');
       let data;
-      if (action === 'admin.booking.bootstrap') data = { bookings: [booking] };
+      if (action === 'admin.booking.bootstrap') data = { bookings: [booking], settings: {} };
+      else if (action === 'admin.booking.manage.bootstrap') data = { settings: {}, services: [], serviceTypes: [] };
+      else if (action === 'admin.booking.resources.bootstrap') data = {
+        settings: { maxPartySize: 2, primaryTechnicianId: '20000000-0000-4000-8000-000000000001' },
+        technicians: [
+          { technicianId: '20000000-0000-4000-8000-000000000001', name: '甲', isActive: true, sortOrder: 0 },
+          { technicianId: '20000000-0000-4000-8000-000000000002', name: '乙', isActive: true, sortOrder: 1 },
+        ],
+      };
       else if (action === 'admin.booking.contacts') data = { contacts: [booking] };
       else {
         assert.equal(action, 'admin.booking.group.details');
@@ -56,15 +64,26 @@ for (const entry of ['admin', 'booking/admin']) {
         assert.ok(fs.existsSync(path.resolve(root, entry, src.split('?')[0])), src);
       }
       const legacy = entry === 'booking/admin';
-      let queue = w.document.getElementById(legacy ? 'bookingQueue' : 'bookingAdminQueue');
-      if (!queue) { queue = w.document.createElement('div'); queue.id = 'bookingAdminQueue'; w.document.body.append(queue); }
-      queue.innerHTML = legacy
-        ? `<article class="booking-card" data-booking-id="${bookingId}"><div class="booking-heading"><strong>測試會員</strong></div></article>`
-        : `<article class="booking-admin-booking" data-booking-id="${bookingId}"><div class="booking-admin-booking-heading"><div><strong>測試會員</strong><small>M001</small></div></div><p class="booking-admin-time">2026/9/17 09:00</p></article>`;
-      load(legacy ? 'booking/admin/contact-details.js' : 'admin/booking-summary.js');
+      let queue;
+      if (legacy) {
+        queue = w.document.getElementById('bookingQueue');
+        queue.innerHTML = `<article class="booking-card" data-booking-id="${bookingId}"><div class="booking-heading"><strong>測試會員</strong></div></article>`;
+        load('booking/admin/contact-details.js');
+        await system.request({}, 'admin', 'fixture-token', 'admin.booking.bootstrap');
+      } else {
+        load('admin/booking-panel-core.js');
+        if (!w.document.getElementById('bookingTab')) {
+          w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
+          await tick(20);
+        }
+        const bookingTab = w.document.getElementById('bookingTab');
+        assert.ok(bookingTab);
+        bookingTab.click();
+        await tick(350);
+        queue = w.document.getElementById('bookingAdminQueue');
+      }
       load('booking-copy-format.js');
       load('booking-copy-format.js'); // Cached dynamic loader must not install twice.
-      if (legacy) await system.request({}, 'admin', 'fixture-token', 'admin.booking.bootstrap');
       await tick(300);
       const button = queue.querySelector('.booking-copy-button');
       assert.ok(button);
@@ -77,13 +96,22 @@ for (const entry of ['admin', 'booking/admin']) {
       mode = 'failure';
       button.click();
       await tick(20);
-      assert.equal(copied.length, 1, 'Do not invent single-person details on API failure');
-      assert.equal(button.textContent, '複製失敗');
+      if (legacy) {
+        assert.equal(copied.length, 1, 'Legacy admin must not invent single-person details on API failure');
+        assert.equal(button.textContent, '複製失敗');
+      } else {
+        assert.deepEqual(copied, [expected, expected], 'Main admin should copy from canonical rendered data without a second details request');
+        assert.equal(button.textContent, '已複製');
+      }
       await tick(1550);
       mode = 'single';
       button.click();
       await tick(20);
-      assert.match(copied[1], /預約人數：1 位\n\n第一位預約\n預約項目：腳底40\n預約技師：現場安排$/);
+      if (legacy) {
+        assert.match(copied[1], /預約人數：1 位\n\n第一位預約\n預約項目：腳底40\n預約技師：現場安排$/);
+      } else {
+        assert.equal(copied[2], expected, 'Main admin copy stays pinned to the single-renderer data model');
+      }
     } finally { observers.forEach(observer => observer.disconnect()); w.close(); }
   });
 }

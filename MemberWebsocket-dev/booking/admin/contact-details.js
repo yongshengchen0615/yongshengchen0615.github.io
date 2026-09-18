@@ -113,6 +113,8 @@
       serviceTitle: String(item?.serviceTitle || '服務項目').trim(),
       quantity: Math.max(1, Number(item?.quantity || 1)),
     })));
+    card.dataset.bookingCopyContactName = displayName;
+    card.dataset.bookingCopyPhone = String(booking.contactPhone || '未填寫');
 
     const heading = card.querySelector('.booking-heading');
     const headingIdentity = heading?.querySelector('div');
