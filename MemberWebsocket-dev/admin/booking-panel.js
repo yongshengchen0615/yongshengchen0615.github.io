@@ -88,6 +88,10 @@
     ['../booking-admin-group-details.js', 'booking-group-details-20260918-admin-edit-1'],
     ['booking-always-open.js', 'booking-always-open-20260917-2'],
     ['booking-cancellation-sync.js', 'booking-card-unified-20260918-1'],
+    // These controls must not depend on the core loader's success chain. Both
+    // modules can safely execute before the host exists and mount themselves later.
+    ['booking-resources.js', 'booking-resource-mount-20260918-2'],
+    ['../booking-technician-delete.js', 'booking-technician-delete-20260918-3'],
   ];
 
   Promise.allSettled(preloadExtensions.map(([name, version]) => load(name, version)))
@@ -101,17 +105,6 @@
     })
     .then(() => {
       restoreBookingHashAndOpen();
-
-      // Resource controls require the core settings host. Technician delete is
-      // loaded after resources, but is also resilient to later DOM remounts.
-      return load('booking-resources.js', 'booking-resource-mount-20260918-1')
-        .catch((error) => {
-          console.error('booking resource extension load failed', error);
-        })
-        .then(() => load('../booking-technician-delete.js', 'booking-technician-delete-20260918-2'))
-        .catch((error) => {
-          console.error('booking technician delete extension load failed', error);
-        });
     })
     .catch((error) => console.error('booking admin core load failed', error));
 })();
