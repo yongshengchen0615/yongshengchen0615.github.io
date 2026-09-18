@@ -96,14 +96,11 @@
     const style = document.createElement('style');
     style.id = 'bookingCancellationReviewStyles';
     style.textContent = `
-      .booking-admin-cancellation-review{display:grid;gap:12px;margin:14px 0 0;padding:16px;border:1px solid rgba(177,89,45,.22);border-radius:16px;background:#fffaf5}
+      .booking-admin-cancellation-review{display:block;margin:0;padding:0;border:0;background:transparent}
       .booking-admin-cancellation-review.hidden{display:none!important}
-      .booking-cancellation-heading{margin:0}.booking-cancellation-card{display:grid;gap:9px;padding:14px;border:1px solid rgba(23,53,46,.12);border-radius:14px;background:#fff}
-      .booking-cancellation-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.booking-cancellation-top small{display:block;margin-top:3px;color:#718078}
-      .booking-cancellation-time{margin:0;color:#566b62;font-size:13px;line-height:1.55}.booking-cancellation-items{margin:0;padding-left:20px;color:#566b62;font-size:13px;line-height:1.6}
-      .booking-cancellation-note{margin:0;padding:9px 11px;border-radius:10px;background:rgba(23,53,46,.05);color:#566b62;font-size:13px;line-height:1.55;white-space:pre-wrap}
-      .booking-cancellation-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.booking-cancellation-actions .button{min-width:110px}
-      @media(max-width:600px){.booking-cancellation-top{display:grid}.booking-cancellation-actions{display:grid;grid-template-columns:1fr 1fr}.booking-cancellation-actions .button{width:100%;min-width:0}}
+      .booking-admin-cancellation-review .booking-cancellation-heading{display:none!important}
+      .booking-admin-cancellation-review .booking-admin-queue{display:grid;gap:10px}
+      .booking-admin-cancellation-review .booking-admin-booking{margin:0}
     `;
     document.head.appendChild(style);
   }
@@ -140,6 +137,8 @@
 
   const cancellationRequest = (action, payload = {}) => requestFunction('booking-cancellation-api', action, payload);
   const bookingRequest = (action, payload = {}) => requestFunction('booking-api', action, payload);
+  const contactRequest = (action, payload = {}) => requestFunction('booking-contact-api', action, payload);
+  const groupDetailsRequest = (action, payload = {}) => requestFunction('booking-group-details-api', action, payload);
 
   function waitForAdmin() {
     let attempts = 0;
@@ -238,7 +237,31 @@
       if (includeBookings) {
         try {
           const data = await bookingRequest('admin.booking.bootstrap');
-          cancelledRows = (Array.isArray(data.bookings) ? data.bookings : []).filter((booking) => booking.status === 'cancelled');
+          const cancelled = (Array.isArray(data.bookings) ? data.bookings : []).filter((booking) => booking.status === 'cancelled');
+          const bookingIds = cancelled.map((booking) => String(booking.bookingId || '')).filter(Boolean);
+          let contacts = [];
+          let groups = {};
+          if (bookingIds.length) {
+            const [contactData, groupData] = await Promise.all([
+              contactRequest('admin.booking.contacts', { bookingIds }),
+              groupDetailsRequest('admin.booking.group.details', { bookingIds }),
+            ]);
+            contacts = Array.isArray(contactData?.contacts) ? contactData.contacts : [];
+            groups = groupData?.bookingGroups && typeof groupData.bookingGroups === 'object' ? groupData.bookingGroups : {};
+          }
+          const contactsById = new Map(contacts.map((contact) => [String(contact.bookingId || ''), contact]));
+          cancelledRows = cancelled.map((booking) => {
+            const id = String(booking.bookingId || '');
+            const group = groups[id] || null;
+            return {
+              ...booking,
+              ...(contactsById.get(id) || {}),
+              partySize: Math.max(1, Number(group?.partySize || 1)),
+              participants: Array.isArray(group?.participants) && group.participants.length
+                ? group.participants
+                : [{ position: 1, technicianName: '現場安排', items: Array.isArray(booking.items) ? booking.items : [] }],
+            };
+          });
         } catch (error) {
           errors.push(error?.message || '已取消預約同步失敗。');
         }
@@ -288,19 +311,44 @@
   }
 
   function requestCard(row) {
-    const article = document.createElement('article'); article.className = 'booking-cancellation-card booking-summary-normalized';
+    return bookingCard(row, {
+      badgeClass: 'status-pending',
+      badgeText: '取消待確認',
+      footerText: `原狀態：${row.sourceStatus === 'confirmed' ? '已確認' : '待確認'} · 申請時間：${formatDateTime(row.cancellationRequestedAt)}`,
+      actions: true,
+    });
+  }
 
-    const top = document.createElement('div'); top.className = 'booking-cancellation-top';
+  function cancelledCard(row) {
+    return bookingCard(row, {
+      badgeClass: 'status-cancelled',
+      badgeText: '已取消',
+      footerText: row.updatedAt ? `最後更新：${formatDateTime(row.updatedAt)}` : '',
+      actions: false,
+    });
+  }
+
+  function bookingCard(row, options) {
+    const article = document.createElement('article');
+    article.className = 'booking-admin-booking booking-summary-normalized';
+    article.dataset.bookingId = String(row.bookingId || '');
+
     const heading = document.createElement('div');
-    const title = document.createElement('strong'); title.textContent = '取消申請';
-    const status = document.createElement('small');
-    status.textContent = `原狀態：${row.sourceStatus === 'confirmed' ? '已確認' : '待確認'} · 申請時間：${formatDateTime(row.cancellationRequestedAt)}`;
-    heading.append(title, status);
-    const badge = document.createElement('span'); badge.className = 'booking-admin-status status-pending'; badge.textContent = '取消待確認';
-    top.append(heading, badge); article.appendChild(top);
+    heading.className = 'booking-admin-booking-heading';
+    const identity = document.createElement('div');
+    const memberName = document.createElement('strong');
+    memberName.textContent = row.memberDisplayName || '會員';
+    const memberCode = document.createElement('small');
+    memberCode.textContent = row.memberCode || '無會員編號';
+    identity.append(memberName, memberCode);
+    const badge = document.createElement('span');
+    badge.className = `booking-admin-status ${options.badgeClass}`;
+    badge.textContent = options.badgeText;
+    heading.append(identity, badge);
+    article.appendChild(heading);
 
     const summary = document.createElement('div');
-    summary.className = 'booking-received-summary booking-cancellation-summary';
+    summary.className = 'booking-received-summary';
 
     const memberMeta = document.createElement('div');
     memberMeta.className = 'booking-member-meta';
@@ -328,43 +376,38 @@
     summary.appendChild(phone);
 
     appendParticipants(summary, row.participants || []);
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'booking-copy-button';
+    copyButton.textContent = '複製預約內容';
+    copyButton.setAttribute('aria-label', `複製 ${bookingContactName(row)} 的預約內容`);
+    copyButton.addEventListener('click', () => copyBooking(copyButton, row));
+    summary.appendChild(copyButton);
+
     article.appendChild(summary);
 
-    if (row.memberNote) appendNote(article, `會員備註：${row.memberNote}`);
-    if (row.adminNote) appendNote(article, `管理端說明：${row.adminNote}`);
+    if (options.footerText) appendNote(article, options.footerText, true);
+    if (row.memberNote) appendNote(article, `會員備註：${row.memberNote}`, false);
+    if (row.adminNote) appendNote(article, `管理端說明：${row.adminNote}`, true);
 
-    const actions = document.createElement('div'); actions.className = 'booking-cancellation-actions';
-    const keep = document.createElement('button'); keep.type = 'button'; keep.className = 'button button-outline'; keep.textContent = '保留預約';
-    const approve = document.createElement('button'); approve.type = 'button'; approve.className = 'button button-danger'; approve.textContent = '確認取消';
-    keep.addEventListener('click', () => review(row, 'admin.reject', actions));
-    approve.addEventListener('click', () => review(row, 'admin.approve', actions));
-    actions.append(keep, approve); article.appendChild(actions);
-    return article;
-  }
+    if (options.actions) {
+      const actions = document.createElement('div');
+      actions.className = 'booking-admin-actions';
+      const keep = document.createElement('button');
+      keep.type = 'button';
+      keep.className = 'button button-outline';
+      keep.textContent = '保留預約';
+      const approve = document.createElement('button');
+      approve.type = 'button';
+      approve.className = 'button button-danger';
+      approve.textContent = '確認取消';
+      keep.addEventListener('click', () => review(row, 'admin.reject', actions));
+      approve.addEventListener('click', () => review(row, 'admin.approve', actions));
+      actions.append(keep, approve);
+      article.appendChild(actions);
+    }
 
-  function cancelledCard(row) {
-    const article = document.createElement('article'); article.className = 'booking-cancellation-card';
-    const top = document.createElement('div'); top.className = 'booking-cancellation-top';
-    const identity = document.createElement('div');
-    const name = document.createElement('strong'); name.textContent = row.memberDisplayName || '會員';
-    const code = document.createElement('small'); code.textContent = row.memberCode || '無會員編號';
-    identity.append(name, code);
-    const badge = document.createElement('span'); badge.className = 'booking-admin-status status-cancelled'; badge.textContent = '已取消';
-    top.append(identity, badge); article.appendChild(top);
-
-    const title = document.createElement('strong');
-    title.textContent = bookingDisplayTitle(row);
-    article.appendChild(title);
-
-    const time = document.createElement('p'); time.className = 'booking-cancellation-time';
-    const duration = Number(row.totalDurationMinutes || 0);
-    const amount = formatMoney(row.totalAmount);
-    time.textContent = `${formatDate(row.bookingDate)} ${row.startTime}–${row.endTime}${duration ? ` · 原預約 ${duration} 分鐘` : ''}${amount ? ` · 總額 ${amount}` : ''} · 最後更新：${formatDateTime(row.updatedAt)}`;
-    article.appendChild(time);
-
-    appendItems(article, row.items || []);
-    if (row.memberNote) appendNote(article, `會員備註：${row.memberNote}`);
-    if (row.adminNote) appendNote(article, `管理端說明：${row.adminNote}`);
     return article;
   }
 
@@ -423,26 +466,68 @@
     return `${names[index] || `第 ${index + 1} `}位預約`;
   }
 
-  function appendItems(article, items) {
-    const visibleItems = (Array.isArray(items) ? items : []).filter((item) => item.serviceTitle);
-    if (!visibleItems.length) return;
-    const list = document.createElement('ul'); list.className = 'booking-cancellation-items';
-    visibleItems.forEach((item) => {
-      const li = document.createElement('li');
-      const quantity = Number(item.quantity || 1);
-      li.textContent = `${item.serviceTitle} × ${quantity}`;
-      list.appendChild(li);
+  function appendNote(article, text, admin) {
+    const note = document.createElement('p');
+    note.className = `booking-admin-note${admin ? ' admin' : ''}`;
+    note.textContent = text;
+    article.appendChild(note);
+  }
+
+  async function copyBooking(button, booking) {
+    if (button.disabled) return;
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    try {
+      await copyText(buildBookingCopyText(booking));
+      button.textContent = '已複製';
+    } catch (_) {
+      button.textContent = '複製失敗';
+    } finally {
+      window.setTimeout(() => {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }, 1500);
+    }
+  }
+
+  function buildBookingCopyText(booking) {
+    const lines = [
+      `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—').slice(0, 5)}`,
+      bookingContactName(booking),
+      `電話：${String(booking.contactPhone || '—')}`,
+      '服務項目：',
+    ];
+    const participants = Array.isArray(booking.participants) ? booking.participants : [];
+    const items = participants.length
+      ? participants.flatMap((participant) => Array.isArray(participant.items) ? participant.items : [])
+      : Array.isArray(booking.items) ? booking.items : [];
+    const visible = items.filter((item) => String(item?.serviceTitle || '').trim());
+    if (!visible.length) lines.push('尚無會員服務項目');
+    else visible.forEach((item) => {
+      const quantity = Math.max(1, Number(item.quantity || 1));
+      const title = String(item.serviceTitle || '服務項目').trim();
+      for (let index = 0; index < quantity; index += 1) lines.push(title);
     });
-    article.appendChild(list);
+    return lines.join('\n');
   }
 
-  function appendNote(article, text) {
-    const note = document.createElement('p'); note.className = 'booking-cancellation-note'; note.textContent = text; article.appendChild(note);
-  }
-
-  function bookingDisplayTitle(booking) {
-    const titles = (Array.isArray(booking?.items) ? booking.items : []).map((item) => item.serviceTitle).filter(Boolean);
-    return titles.length ? titles.join(' + ') : booking?.serviceTitle || '預約項目';
+  async function copyText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('COPY_FAILED');
   }
 
   async function review(row, action, actions) {
