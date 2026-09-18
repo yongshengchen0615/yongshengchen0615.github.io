@@ -81,7 +81,7 @@
   });
 
   load('booking-summary.js', 'booking-participant-contact-20260918-1')
-    .then(() => load('../booking-admin-group-details.js', 'booking-group-details-20260918-participants-1'))
+    .then(() => load('../booking-admin-group-details.js', 'booking-group-details-20260918-admin-edit-1'))
     .then(() => load('booking-panel-core.js', 'booking-lifecycle-20260918-1'))
     .then(() => {
       restoreBookingHashAndOpen();
