@@ -9,6 +9,7 @@ const MAX_REQUEST_BYTES = 20_000;
 const READ_LIMIT = 90;
 const WRITE_LIMIT = 30;
 const WRITE_ACTIONS = new Set(["member.request", "admin.approve", "admin.reject"]);
+const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
 
 class ApiError extends Error {
   status: number;
@@ -172,26 +173,119 @@ async function memberRequest(supabase: SupabaseClient, identity: Identity, membe
 }
 async function adminList(supabase: SupabaseClient): Promise<Json> {
   const result = await supabase.from("bookings")
-    .select("id,status,member_id,booking_date,start_time,end_time,total_duration_minutes,member_note,admin_note,cancellation_source_status,cancellation_requested_at,updated_at,members(display_name,member_code)")
+    .select("id,status,member_id,booking_date,start_time,end_time,total_duration_minutes,member_note,admin_note,cancellation_source_status,cancellation_requested_at,updated_at,contact_source,contact_surname,contact_salutation,contact_phone,technician_id,party_size,members(display_name,member_code,surname,salutation,phone),booking_technicians(name)")
     .in("status", ["pending", "confirmed"])
     .not("cancellation_requested_at", "is", null).is("cancellation_reviewed_at", null)
     .order("cancellation_requested_at", { ascending: true }).limit(250);
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請。");
+
   const rows = result.data || [];
-  const ids = rows.map((row: any) => row.id);
-  const items = ids.length ? await supabase.from("booking_items").select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity").in("booking_id", ids).order("created_at", { ascending: true }) : { data: [], error: null } as any;
-  if (items.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請服務項目。");
-  const grouped = new Map<string, any[]>();
-  for (const item of items.data || []) {
-    const list = grouped.get(item.booking_id) || [];
-    list.push({ serviceId: item.service_id, serviceTitle: item.service_title, unitDurationMinutes: Number(item.unit_duration_minutes || 0), unitPriceAmount: Number(item.unit_price_amount || 0), quantity: Number(item.quantity || 1) });
-    grouped.set(item.booking_id, list);
+  const bookingIds = rows.map((row: any) => row.id);
+  const [itemsResult, participantsResult] = bookingIds.length
+    ? await Promise.all([
+        supabase.from("booking_items")
+          .select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity")
+          .in("booking_id", bookingIds)
+          .order("created_at", { ascending: true }),
+        supabase.from("booking_participants")
+          .select("id,booking_id,position,technician_id,booking_technicians(name)")
+          .in("booking_id", bookingIds)
+          .order("position", { ascending: true }),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }] as any;
+
+  if (itemsResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請服務項目。");
+  if (participantsResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請預約人員。");
+
+  const participantIds = (participantsResult.data || []).map((row: any) => row.id);
+  const participantItemsResult = participantIds.length
+    ? await supabase.from("booking_participant_items")
+        .select("participant_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity")
+        .in("participant_id", participantIds)
+        .order("created_at", { ascending: true })
+    : { data: [], error: null } as any;
+  if (participantItemsResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請逐位預約項目。");
+
+  const itemsByBooking = new Map<string, any[]>();
+  for (const item of itemsResult.data || []) {
+    const list = itemsByBooking.get(item.booking_id) || [];
+    list.push({
+      serviceId: item.service_id,
+      serviceTitle: item.service_title,
+      unitDurationMinutes: Number(item.unit_duration_minutes || 0),
+      unitPriceAmount: Number(item.unit_price_amount || 0),
+      quantity: Number(item.quantity || 1),
+    });
+    itemsByBooking.set(item.booking_id, list);
   }
-  return { requests: rows.map((row: any) => ({
-    ...cancellationClient(row), memberDisplayName: row.members?.display_name || "會員", memberCode: row.members?.member_code || "",
-    totalDurationMinutes: Number(row.total_duration_minutes || 0), memberNote: row.member_note || "", adminNote: row.admin_note || "",
-    items: grouped.get(row.id) || [],
-  })) };
+
+  const itemsByParticipant = new Map<string, any[]>();
+  for (const item of participantItemsResult.data || []) {
+    const list = itemsByParticipant.get(item.participant_id) || [];
+    list.push({
+      serviceId: item.service_id,
+      serviceTitle: item.service_title,
+      unitDurationMinutes: Number(item.unit_duration_minutes || 0),
+      unitPriceAmount: Number(item.unit_price_amount || 0),
+      quantity: Number(item.quantity || 1),
+    });
+    itemsByParticipant.set(item.participant_id, list);
+  }
+
+  const participantsByBooking = new Map<string, any[]>();
+  for (const participant of participantsResult.data || []) {
+    const list = participantsByBooking.get(participant.booking_id) || [];
+    list.push({
+      position: Number(participant.position || list.length + 1),
+      technicianId: participant.technician_id || "",
+      technicianName: (participant.booking_technicians as any)?.name || "現場安排",
+      items: itemsByParticipant.get(participant.id) || [],
+    });
+    participantsByBooking.set(participant.booking_id, list);
+  }
+
+  return { requests: rows.map((row: any) => {
+    const member = row.members || {};
+    const source = asText(row.contact_source || "member", 20).toLowerCase() || "member";
+    const contactSurname = asText(row.contact_surname, 40)
+      || (source === "member" ? asText(member.surname, 40) : "");
+    const contactSalutation = asText(row.contact_salutation, 10).toLowerCase()
+      || (source === "member" ? asText(member.salutation, 10).toLowerCase() : "");
+    const contactPhone = asText(row.contact_phone, 30)
+      || (source === "member" ? asText(member.phone, 30) : "");
+    const allItems = itemsByBooking.get(row.id) || [];
+    const visibleItems = allItems.filter((item: any) => String(item.serviceId || "") !== STORE_SERVICE_ID);
+    let participants = participantsByBooking.get(row.id) || [];
+    if (!participants.length) {
+      participants = [{
+        position: 1,
+        technicianId: row.technician_id || "",
+        technicianName: (row.booking_technicians as any)?.name || "現場安排",
+        items: visibleItems,
+      }];
+    }
+    const totalAmount = allItems.reduce(
+      (sum: number, item: any) => sum + Number(item.unitPriceAmount || 0) * Math.max(1, Number(item.quantity || 1)),
+      0,
+    );
+
+    return {
+      ...cancellationClient(row),
+      memberDisplayName: member.display_name || "會員",
+      memberCode: member.member_code || "",
+      contactSource: source,
+      contactSurname,
+      contactSalutation,
+      contactPhone,
+      partySize: Math.max(1, Number(row.party_size || participants.length || 1)),
+      totalDurationMinutes: Number(row.total_duration_minutes || 0),
+      totalAmount,
+      memberNote: row.member_note || "",
+      adminNote: row.admin_note || "",
+      items: visibleItems,
+      participants,
+    };
+  }) };
 }
 async function loadPendingRequest(supabase: SupabaseClient, bookingId: string): Promise<any> {
   const result = await supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle();
