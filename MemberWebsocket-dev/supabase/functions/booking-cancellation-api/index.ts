@@ -142,7 +142,7 @@ function cancellationClient(row: any): Json {
 async function memberList(supabase: SupabaseClient, member: any): Promise<Json> {
   const result = await supabase.from("bookings")
     .select("id,status,booking_date,start_time,end_time,cancellation_source_status,cancellation_requested_at,updated_at")
-    .eq("member_id", member.id).not("cancellation_requested_at", "is", null).is("cancellation_reviewed_at", null);
+    .eq("member_id", member.id).in("status", ["pending", "confirmed"]).not("cancellation_requested_at", "is", null).is("cancellation_reviewed_at", null);
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請狀態。");
   return { requests: (result.data || []).map(cancellationClient) };
 }
@@ -173,6 +173,7 @@ async function memberRequest(supabase: SupabaseClient, identity: Identity, membe
 async function adminList(supabase: SupabaseClient): Promise<Json> {
   const result = await supabase.from("bookings")
     .select("id,status,member_id,booking_date,start_time,end_time,total_duration_minutes,member_note,admin_note,cancellation_source_status,cancellation_requested_at,updated_at,members(display_name,member_code)")
+    .in("status", ["pending", "confirmed"])
     .not("cancellation_requested_at", "is", null).is("cancellation_reviewed_at", null)
     .order("cancellation_requested_at", { ascending: true }).limit(250);
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請。");
