@@ -73,7 +73,7 @@ test('selection summary sync scripts have valid JavaScript syntax', () => {
 
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
-  assert.match(html, /member-booking-format\.js\?v=booking-participant-format-parity-20260918-1/);
+  assert.match(html, /member-booking-format\.js\?v=booking-service-type-colors-20260918-1/);
   assert.match(html, /group-booking\.js\?v=booking-selection-summary-sync-20260918-1/);
 });
 
