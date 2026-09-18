@@ -109,6 +109,10 @@
   function normalizeBookingCard(card, booking) {
     const visibleItems = visibleBookingItems(booking);
     const displayName = bookingContactName(booking);
+    card.dataset.bookingCopyItems = JSON.stringify(visibleItems.map((item) => ({
+      serviceTitle: String(item?.serviceTitle || '服務項目').trim(),
+      quantity: Math.max(1, Number(item?.quantity || 1)),
+    })));
 
     const heading = card.querySelector('.booking-heading');
     const headingIdentity = heading?.querySelector('div');
