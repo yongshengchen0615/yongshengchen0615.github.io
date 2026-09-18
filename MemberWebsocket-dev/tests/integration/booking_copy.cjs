@@ -72,6 +72,10 @@ for (const entry of ['admin', 'booking/admin']) {
         await system.request({}, 'admin', 'fixture-token', 'admin.booking.bootstrap');
       } else {
         load('admin/booking-panel-core.js');
+        if (!w.document.getElementById('bookingTab')) {
+          w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
+          await tick(20);
+        }
         const bookingTab = w.document.getElementById('bookingTab');
         assert.ok(bookingTab);
         bookingTab.click();
