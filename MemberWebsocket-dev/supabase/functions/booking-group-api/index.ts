@@ -1,3 +1,4 @@
+import { readJsonObject } from "../_shared/request-body.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, any>;
@@ -6,6 +7,14 @@ type ClientType = "member" | "admin";
 const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
 const SLOT_INTERVAL = 30;
 const MAX_REQUEST_BYTES = 40000;
+const READ_LIMIT = 90;
+const WRITE_LIMIT = 30;
+const WRITE_ACTIONS = new Set([
+  "user.booking.group.create",
+  "user.booking.group.update",
+  "admin.booking.resources.settings.save",
+  "admin.booking.resources.technician.save",
+]);
 
 class ApiError extends Error {
   status: number; code: string; details: unknown;
@@ -106,6 +115,22 @@ async function verifyLine(idToken: string, clientType: ClientType): Promise<Iden
   if (!res.ok || !p.sub || p.aud !== expected || p.iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
   return { lineUserId:String(p.sub), displayName:String(p.name || "LINE 使用者").slice(0,120) };
 }
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function consumeRateLimit(s: SupabaseClient, i: Identity, action: string): Promise<void> {
+  const { data, error } = await s.rpc("consume_api_rate_limit", {
+    p_principal_hash: await sha256(i.lineUserId),
+    p_is_write: WRITE_ACTIONS.has(action),
+    p_cost: 1,
+    p_read_limit: READ_LIMIT,
+    p_write_limit: WRITE_LIMIT,
+  });
+  if (error) throw new ApiError(503, "RATE_LIMIT_UNAVAILABLE", "無法確認請求頻率限制。");
+  if (!data) throw new ApiError(429, "RATE_LIMITED", "請求過於密集，請稍後再試。");
+}
+
 async function member(s: SupabaseClient, i: Identity) {
   const r = await s.from("members").select("*").eq("line_user_id", i.lineUserId).maybeSingle(); if (r.error) throw mapDbError(r.error);
   if (!r.data || r.data.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先加入會員。");
@@ -325,12 +350,14 @@ Deno.serve(async (req: Request) => {
   if (req.method!=="POST") return reply(origin,{ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"只支援 POST。"}},405);
   if (origin && !allowedOrigins().has(origin)) return reply(origin,{ok:false,error:{code:"ORIGIN_DENIED",message:"不允許的來源。"}},403);
   try {
-    const len=Number(req.headers.get("content-length")||0); if (len>MAX_REQUEST_BYTES) throw new ApiError(413,"REQUEST_TOO_LARGE","請求內容過大。");
-    const raw=await req.text(); if (new TextEncoder().encode(raw).byteLength>MAX_REQUEST_BYTES) throw new ApiError(413,"REQUEST_TOO_LARGE","請求內容過大。");
-    const body=raw?JSON.parse(raw):{}, action=asText(body.action,100), clientType=asText(body.clientType,20) as ClientType;
+    const body=await readJsonObject(req,MAX_REQUEST_BYTES,ApiError), action=asText(body.action,100), clientType=asText(body.clientType,20) as ClientType;
     if (!action || !["member","admin"].includes(clientType)) throw new ApiError(400,"INVALID_INPUT","請求格式不正確。");
     if (clientType==="member" && !action.startsWith("user.booking.group.")) throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
     if (clientType==="admin" && !action.startsWith("admin.booking.resources.")) throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
-    const identity=await verifyLine(asText(body.idToken,5000),clientType), data=await route(db(),identity,clientType,action,body); return reply(origin,{ok:true,data});
+    const identity=await verifyLine(asText(body.idToken,5000),clientType);
+    const supabase=db();
+    await consumeRateLimit(supabase,identity,action);
+    const data=await route(supabase,identity,clientType,action,body);
+    return reply(origin,{ok:true,data});
   } catch (error) { return fail(origin,error); }
 });
