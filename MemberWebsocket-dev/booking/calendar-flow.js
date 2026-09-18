@@ -322,7 +322,7 @@
         list.className = 'calendar-booking-times';
         intervals.slice(0, 2).forEach((interval) => {
           const label = document.createElement('small');
-          label.textContent = `${interval.startTime}–${interval.endTime} 已預約`;
+          label.textContent = `${interval.startTime}–${interval.endTime} 我的預約`;
           list.appendChild(label);
         });
         if (intervals.length > 2) {
@@ -345,7 +345,7 @@
         button.title = reason;
         button.setAttribute('aria-label', `${formatDate(date)}，${reason}`);
       } else {
-        const occupiedText = intervals.length ? `，已有 ${intervals.length} 個預約時段` : '';
+        const occupiedText = intervals.length ? `，有 ${intervals.length} 個我的預約時段` : '';
         button.setAttribute('aria-label', `${formatDate(date)}${occupiedText}，可開啟預約`);
         button.addEventListener('click', () => selectDate(date, button));
       }
