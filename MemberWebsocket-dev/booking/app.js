@@ -572,6 +572,7 @@
     for (const booking of bookings) {
       const item = document.createElement('article');
       item.className = `booking-item status-${booking.status}`;
+      item.dataset.bookingId = String(booking.bookingId || '');
 
       const top = document.createElement('div');
       top.className = 'booking-item-top';
@@ -695,7 +696,7 @@
       const result = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.cancel', { bookingId: booking.bookingId });
       state.data.bookings = (state.data.bookings || []).map((item) => item.bookingId === result.booking.bookingId ? result.booking : item);
       renderBookings();
-      showFormMessage('預約已取消，原本佔用的整段時間已重新開放。', 'success');
+      showFormMessage('已送出取消申請，等待管理端確認；確認前原預約時段仍會保留。', 'success');
       if (selectedItems().length && els.bookingDate.value === booking.bookingDate) await loadSlots();
     } catch (error) {
       button.disabled = false;
