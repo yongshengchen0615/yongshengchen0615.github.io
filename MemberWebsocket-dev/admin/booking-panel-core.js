@@ -548,6 +548,18 @@
         serviceTitle: String(item?.serviceTitle || '預約項目').trim(),
         quantity: Math.max(1, Number(item?.quantity || 1)),
       })));
+      card.dataset.bookingCopyGroup = JSON.stringify({
+        partySize: Math.max(1, Number(group?.partySize || group?.participants?.length || 1)),
+        participants: (group?.participants || []).map((participant) => ({
+          technicianName: String(participant?.technicianName || '現場安排'),
+          items: Array.isArray(participant?.items) ? participant.items.map((item) => ({
+            serviceTitle: String(item?.serviceTitle || '預約項目').trim(),
+            quantity: Math.max(1, Number(item?.quantity || 1)),
+          })) : [],
+        })),
+      });
+      card.dataset.bookingCopyContactName = bookingContactName(booking);
+      card.dataset.bookingCopyPhone = String(booking.contactPhone || '—');
 
       card.appendChild(renderBookingSummary(booking, group, hasStoredParticipants));
 
