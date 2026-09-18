@@ -29,8 +29,8 @@ test('member booking entrypoint cache-busts the stabilized runtime scripts', () 
   assert.match(html, /booking-confirm-details\.js\?v=booking-confirm-note-20260918-1/);
   assert.match(html, /group-booking\.css\?v=booking-participant-colors-20260918-1/);
   assert.match(html, /member-ui\.js\?v=booking-history-single-pass-20260918-1/);
-  assert.match(html, /app\.js\?v=booking-history-single-pass-20260918-1/);
-  assert.match(html, /member-booking-format\.js\?v=booking-history-single-pass-20260918-1/);
+  assert.match(html, /app\.js\?v=booking-history-dedupe-services-20260918-1/);
+  assert.match(html, /member-booking-format\.js\?v=booking-history-dedupe-services-20260918-1/);
 });
 
 test('member booking history is finalized synchronously in the primary render pass', () => {
@@ -56,4 +56,19 @@ test('member booking participant cards have distinct mobile-identification color
   assert.match(css, /border-left:4px solid rgb\(var\(--participant-rgb\) \/ \.78\)/);
   assert.match(css, /participant-heading>strong::before/);
   assert.match(css, /@media\(max-width:680px\).*\.participant-card\{border-left-width:5px\}/s);
+});
+
+
+test('member booking history omits duplicate top-level services when participant details exist', () => {
+  const app = read('booking/app.js');
+  const formatter = read('booking/member-booking-format.js');
+
+  assert.match(app, /const hasParticipantDetails = Array\.isArray\(booking\.participants\) && booking\.participants\.length > 0/);
+  assert.match(app, /item\.dataset\.participantDetails = hasParticipantDetails \? '1' : '0'/);
+  assert.match(app, /if \(!hasParticipantDetails && \(visibleItems\.length \|\| storeItem\)\)/);
+
+  assert.match(formatter, /const hasParticipantDetails = card\.dataset\.participantDetails === '1'/);
+  assert.match(formatter, /if \(!hasParticipantDetails\) \{/);
+  assert.match(formatter, /serviceList\?\.remove\(\)/);
+  assert.match(formatter, /if \(hasParticipantDetails\) \{\s*top\.after\(totals\)/s);
 });
