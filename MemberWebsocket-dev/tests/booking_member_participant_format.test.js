@@ -92,6 +92,22 @@ test('member group booking shows an amount for every participant surface', () =>
 });
 
 
+test('selection summary shows the assigned technician for every participant', () => {
+  const groupBooking = read('booking/group-booking.js');
+
+  assert.match(groupBooking, /technician\.textContent = `預約技師：\$\{technicianLabel\(state\.participantTechnicians\[index\]\)\}`/);
+  assert.match(groupBooking, /block\.append\(heading, services, duration, amount, technician\)/);
+});
+
+test('calendar date selection exits edit mode and clears grouped edit state', () => {
+  const app = read('booking/app.js');
+  const groupBooking = read('booking/group-booking.js');
+
+  assert.match(app, /window\.addEventListener\('booking:date-selected', beginNewBookingFromDateSelection\)/);
+  assert.match(app, /function beginNewBookingFromDateSelection\(\) \{\s*if \(state\.editing\) endEditing\(\);\s*else updateEditingLabel\(\);\s*\}/);
+  assert.match(groupBooking, /window\.addEventListener\('booking:date-selected', \(\) => \{[\s\S]*?if \(!state\.editingBookingId\) return;[\s\S]*?state\.editingBookingId = '';[\s\S]*?resetGroupSelection\(\);[\s\S]*?\}\);/);
+});
+
 test('primary participant summary follows add/remove selection state without waiting for slot API', () => {
   const app = read('booking/app.js');
   const groupBooking = read('booking/group-booking.js');
