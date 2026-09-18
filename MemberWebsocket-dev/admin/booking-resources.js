@@ -8,6 +8,7 @@
     loading: false,
     savingSettings: false,
     savingTechnician: false,
+    initialized: false,
   };
 
   const ids = {
@@ -35,10 +36,24 @@
   else init();
 
   function init() {
-    if (!mount()) return;
+    if (startWhenReady()) return;
+
+    const observer = new MutationObserver(() => {
+      if (startWhenReady()) observer.disconnect();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    window.setTimeout(() => observer.disconnect(), 30000);
+  }
+
+  function startWhenReady() {
+    if (state.initialized) return true;
+    if (!mount()) return false;
+
+    state.initialized = true;
     bind();
     observeBookingPanel();
     boot();
+    return true;
   }
 
   function mount() {
