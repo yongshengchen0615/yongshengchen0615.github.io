@@ -43,7 +43,7 @@
     els.bookingDate.addEventListener('change', dateChanged);
     els.bookingForm.addEventListener('submit', openConfirmation);
     document.getElementById('cancelEditBookingButton').addEventListener('click', endEditing);
-    window.addEventListener('booking:date-selected', () => updateEditingLabel());
+    window.addEventListener('booking:date-selected', beginNewBookingFromDateSelection);
     els.closeBookingConfirmButton.addEventListener('click', closeConfirmation);
     els.cancelBookingConfirmButton.addEventListener('click', closeConfirmation);
     els.confirmBookingButton.addEventListener('click', confirmBooking);
@@ -674,6 +674,11 @@
     document.getElementById('appointmentModalTitle').textContent = editing ? '修改預約' : '預約';
     document.getElementById('bookingConfirmTitle').textContent = editing ? '確認修改預約' : '確認預約';
     els.submitBookingButton.textContent = editing ? '確認修改內容' : '確認預約內容';
+  }
+
+  function beginNewBookingFromDateSelection() {
+    if (state.editing) endEditing();
+    else updateEditingLabel();
   }
 
   function endEditing() {
