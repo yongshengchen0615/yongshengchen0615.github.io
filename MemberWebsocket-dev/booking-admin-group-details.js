@@ -6,6 +6,8 @@
     bookings: [],
     services: [],
     groups: {},
+    technicians: [],
+    primaryTechnicianId: '',
     loading: null,
     loadedAt: 0,
     observer: null,
@@ -56,7 +58,10 @@
   }
 
   async function load() {
-    const bootstrap = await request('booking-api', 'admin.booking.bootstrap');
+    const [bootstrap, resources] = await Promise.all([
+      request('booking-api', 'admin.booking.bootstrap'),
+      request('booking-group-api', 'admin.booking.resources.bootstrap'),
+    ]);
     const bookings = Array.isArray(bootstrap?.bookings) ? bootstrap.bookings : [];
     const services = Array.isArray(bootstrap?.services) ? bootstrap.services : [];
     const bookingIds = bookings.map((booking) => String(booking.bookingId || '')).filter(Boolean);
@@ -68,6 +73,8 @@
     state.bookings = bookings;
     state.services = services;
     state.groups = groups;
+    state.technicians = Array.isArray(resources?.technicians) ? resources.technicians : [];
+    state.primaryTechnicianId = String(resources?.settings?.primaryTechnicianId || '');
     state.loadedAt = Date.now();
   }
 
@@ -201,12 +208,19 @@
       block.append(heading, items, tech);
 
       if (hasStoredParticipants && canEditBooking(booking)) {
-        const edit = document.createElement('button');
-        edit.type = 'button';
-        edit.className = 'booking-group-admin-edit-button';
-        edit.textContent = '修改此位項目';
-        edit.addEventListener('click', () => openParticipantEditor(booking, group, index));
-        block.appendChild(edit);
+        const itemEdit = document.createElement('button');
+        itemEdit.type = 'button';
+        itemEdit.className = 'booking-group-admin-edit-button';
+        itemEdit.textContent = '修改此位項目';
+        itemEdit.addEventListener('click', () => openParticipantEditor(booking, group, index));
+
+        const technicianEdit = document.createElement('button');
+        technicianEdit.type = 'button';
+        technicianEdit.className = 'booking-group-admin-edit-button';
+        technicianEdit.textContent = '修改此位技師';
+        technicianEdit.addEventListener('click', () => openParticipantTechnicianEditor(booking, group, index));
+
+        block.append(itemEdit, technicianEdit);
       }
       box.appendChild(block);
     });
@@ -400,6 +414,159 @@
           const select = row.querySelector('select');
           if (select) select.disabled = !checkbox?.checked;
         });
+        save.textContent = '儲存修改';
+        if (error?.code === 'BOOKING_CONFLICT') {
+          await refresh(true).catch(() => {});
+        }
+      }
+    });
+  }
+
+  function openParticipantTechnicianEditor(booking, group, participantIndex) {
+    if (!canEditBooking(booking)) {
+      window.alert('這筆預約目前無法修改預約技師。');
+      return;
+    }
+    const participant = group?.participants?.[participantIndex];
+    if (!participant) return;
+
+    const technicians = (state.technicians || [])
+      .filter((technician) => technician.isActive || String(technician.technicianId || '') === String(participant.technicianId || ''))
+      .slice()
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'));
+
+    if (!technicians.length) {
+      window.alert('目前沒有可用技師，請先到預約人數與技師設定新增技師。');
+      return;
+    }
+
+    document.querySelectorAll('.booking-group-admin-edit-modal').forEach((node) => node.remove());
+
+    const overlay = document.createElement('div');
+    overlay.className = 'booking-group-admin-edit-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', `${participantLabel(participantIndex)}修改預約技師`);
+
+    const panel = document.createElement('div');
+    panel.className = 'booking-group-admin-edit-panel';
+
+    const header = document.createElement('div');
+    header.className = 'booking-group-admin-edit-heading';
+    const titleBox = document.createElement('div');
+    const kicker = document.createElement('small');
+    kicker.textContent = 'Booking technician';
+    const title = document.createElement('h3');
+    title.textContent = `${participantLabel(participantIndex)}｜修改技師`;
+    titleBox.append(kicker, title);
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'booking-group-admin-edit-close';
+    close.textContent = '×';
+    close.setAttribute('aria-label', '關閉');
+    close.addEventListener('click', () => overlay.remove());
+    header.append(titleBox, close);
+
+    const hint = document.createElement('p');
+    hint.className = 'booking-group-admin-edit-hint';
+    hint.textContent = '同一筆多人預約不可重複指定同一位技師，且至少一位必須指定主要技師。儲存時會重新檢查技師時段衝突。';
+
+    const form = document.createElement('form');
+    form.className = 'booking-group-admin-edit-form';
+
+    const label = document.createElement('label');
+    label.className = 'booking-group-admin-technician-field';
+    const labelText = document.createElement('strong');
+    labelText.textContent = '預約技師';
+
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', '預約技師');
+    const onsite = document.createElement('option');
+    onsite.value = '';
+    onsite.textContent = '現場安排';
+    select.appendChild(onsite);
+
+    technicians.forEach((technician) => {
+      const option = document.createElement('option');
+      option.value = String(technician.technicianId || '');
+      const isPrimary = option.value && option.value === String(state.primaryTechnicianId || '');
+      option.textContent = `${String(technician.name || '未命名技師')}${isPrimary ? '（主要技師）' : ''}${technician.isActive === false ? '（目前停用）' : ''}`;
+      option.disabled = technician.isActive === false && option.value !== String(participant.technicianId || '');
+      select.appendChild(option);
+    });
+    select.value = String(participant.technicianId || '');
+    label.append(labelText, select);
+
+    const message = document.createElement('div');
+    message.className = 'booking-group-admin-edit-message';
+    message.setAttribute('aria-live', 'polite');
+
+    const actions = document.createElement('div');
+    actions.className = 'booking-group-admin-edit-actions';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'booking-group-admin-edit-secondary';
+    cancel.textContent = '取消';
+    cancel.addEventListener('click', () => overlay.remove());
+
+    const save = document.createElement('button');
+    save.type = 'submit';
+    save.className = 'booking-group-admin-edit-primary';
+    save.textContent = '儲存修改';
+    actions.append(cancel, save);
+
+    form.append(label, message, actions);
+    panel.append(header, hint, form);
+    overlay.appendChild(panel);
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      message.textContent = '';
+
+      const participants = (group.participants || []).map((person, index) => ({
+        position: Number(person.position || index + 1),
+        technicianId: index === participantIndex ? String(select.value || '') : String(person.technicianId || ''),
+      }));
+
+      if (participants.some((person) => !person.position)) {
+        message.textContent = '預約明細不完整，請更新資料後再試。';
+        return;
+      }
+
+      const selectedIds = participants.map((person) => person.technicianId).filter(Boolean);
+      if (new Set(selectedIds).size !== selectedIds.length) {
+        message.textContent = '同一筆多人預約不可重複指定同一位技師。';
+        return;
+      }
+
+      const primaryTechnicianId = String(state.primaryTechnicianId || '');
+      if (primaryTechnicianId && !selectedIds.includes(primaryTechnicianId)) {
+        message.textContent = '至少一位預約人必須指定主要技師。';
+        return;
+      }
+
+      save.disabled = true;
+      cancel.disabled = true;
+      select.disabled = true;
+      save.textContent = '儲存中…';
+      try {
+        await request('booking-admin-operations', 'admin.booking.participants.technicians.update', {
+          bookingId: booking.bookingId,
+          expectedUpdatedAt: booking.updatedAt,
+          participants,
+        });
+        overlay.remove();
+        await refresh(true);
+      } catch (error) {
+        message.textContent = error?.message || '修改預約技師失敗。';
+        save.disabled = false;
+        cancel.disabled = false;
+        select.disabled = false;
         save.textContent = '儲存修改';
         if (error?.code === 'BOOKING_CONFLICT') {
           await refresh(true).catch(() => {});
