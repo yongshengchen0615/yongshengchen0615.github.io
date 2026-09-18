@@ -126,6 +126,11 @@
       }));
     }
 
+    const storedItems = copyItemsFromCard(card);
+    if (storedItems.length) {
+      return [{ technicianName: '現場安排', items: storedItems }];
+    }
+
     const serviceTitles = [...card.querySelectorAll('.booking-received-services span')]
       .map((node) => String(node.textContent || '').trim())
       .filter(Boolean);
@@ -133,6 +138,19 @@
       technicianName: '現場安排',
       items: serviceTitles.map((serviceTitle) => ({ serviceTitle, quantity: 1 })),
     }];
+  }
+
+  function copyItemsFromCard(card) {
+    try {
+      const parsed = JSON.parse(String(card.dataset.bookingCopyItems || '[]'));
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((item) => ({
+        serviceTitle: String(item?.serviceTitle || '').trim(),
+        quantity: Math.max(1, Number(item?.quantity || 1)),
+      })).filter((item) => item.serviceTitle);
+    } catch (_) {
+      return [];
+    }
   }
 
   function groupFromRenderedDetails(card) {
