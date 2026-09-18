@@ -28,7 +28,7 @@ test('member booking entrypoint cache-busts the stabilized runtime scripts', () 
   assert.match(html, /group-booking\.js\?v=booking-history-dedupe-final-20260918-1/);
   assert.match(html, /booking-confirm-details\.js\?v=booking-confirm-note-20260918-1/);
   assert.match(html, /group-booking\.css\?v=booking-participant-colors-20260918-1/);
-  assert.match(html, /member-ui\.js\?v=booking-history-single-pass-20260918-1/);
+  assert.match(html, /member-ui\.js\?v=booking-history-accordion-20260918-1/);
   assert.match(html, /app\.js\?v=booking-history-dedupe-services-20260918-1/);
   assert.match(html, /member-booking-format\.js\?v=booking-history-dedupe-services-20260918-1/);
 });
@@ -81,4 +81,27 @@ test('group history decoration removes stale top-level service section after par
   assert.match(groupBooking, /child\.classList\?\.contains\('member-booking-format-services-label'\)/);
   assert.match(groupBooking, /child\.classList\?\.contains\('booking-service-items'\)/);
   assert.match(groupBooking, /const group = state\.bookingGroups\.get\(id\);\s*if \(!group\) return;\s*removeDuplicateHistoryServices\(node\);/s);
+});
+
+
+test('member booking history cards collapse to the four-field summary and keep only one card open', () => {
+  const memberUi = read('booking/member-ui.js');
+  const css = read('booking/booking-history.css');
+  const html = read('booking/index.html');
+
+  assert.match(memberUi, /let expandedBookingId = ''/);
+  assert.match(memberUi, /function applyBookingCardAccordionState\(card, expanded\)/);
+  assert.match(memberUi, /card\.classList\.toggle\('is-expanded', expanded\)/);
+  assert.match(memberUi, /top\.setAttribute\('aria-expanded', expanded \? 'true' : 'false'\)/);
+  assert.match(memberUi, /const shouldExpand = !card\.classList\.contains\('is-expanded'\)/);
+  assert.match(memberUi, /bookingList\.querySelectorAll\('\.booking-item\[data-booking-id\]'\)\.forEach/);
+  assert.match(memberUi, /bookingList\.addEventListener\('click', handleBookingHistoryClick\)/);
+  assert.match(memberUi, /bookingList\.addEventListener\('keydown', handleBookingHistoryKeydown\)/);
+  assert.match(memberUi, /event\.key !== 'Enter' && event\.key !== ' '/);
+
+  assert.match(css, /booking-history-collapsible:not\(\.is-expanded\)>:not\(\.booking-item-top\):not\(\.member-booking-format-totals\)\{display:none!important\}/);
+  assert.match(css, /booking-history-collapsible:not\(\.is-expanded\)>\.booking-item-top>\.status-badge\{display:none!important\}/);
+  assert.match(css, /booking-history-collapsible\.is-expanded/);
+  assert.match(html, /booking-history\.css\?v=booking-history-accordion-20260918-1/);
+  assert.match(html, /member-ui\.js\?v=booking-history-accordion-20260918-1/);
 });
