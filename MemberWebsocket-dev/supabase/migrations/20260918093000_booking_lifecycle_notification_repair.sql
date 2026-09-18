@@ -38,6 +38,8 @@ create trigger bookings_pending_cancellation_guard
 before update on public.bookings
 for each row execute function public.guard_pending_booking_cancellation();
 
+revoke all on function public.guard_pending_booking_cancellation() from public, anon, authenticated;
+
 -- Repair rows that were cancelled through the generic status endpoint while a
 -- member cancellation request was still open.
 update public.bookings
