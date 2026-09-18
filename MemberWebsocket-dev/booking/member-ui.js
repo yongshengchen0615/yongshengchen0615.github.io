@@ -233,6 +233,10 @@
     }
   }
 
+  window.BookingMemberUI = Object.freeze({
+    organizeBookingHistory,
+  });
+
   window.confirm = (message) => {
     const text = String(message ?? '');
     if (text.startsWith('確定取消 ') && text.endsWith(' 的預約嗎？')) {

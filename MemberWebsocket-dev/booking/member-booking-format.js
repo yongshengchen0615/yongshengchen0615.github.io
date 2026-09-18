@@ -470,6 +470,13 @@
     return match ? { name: match[1], phone: match[2], sourceLabel: match[3] } : null;
   }
 
+  window.BookingMemberFormat = Object.freeze({
+    formatHistory() {
+      if (!root) root = document.getElementById('bookingList');
+      formatAll();
+    },
+  });
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
   else mount();
 

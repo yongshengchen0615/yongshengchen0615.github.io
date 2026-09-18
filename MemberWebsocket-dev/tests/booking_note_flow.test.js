@@ -80,7 +80,7 @@ test('confirmation modal always shows the booking note for single and group book
   assert.match(formatter, /function confirmationNoteValue\(text\)/);
   assert.match(formatter, /\|\| '未填寫'/);
 
-  assert.match(html, /app\.js\?v=booking-confirm-note-20260918-1/);
+  assert.match(html, /app\.js\?v=booking-history-single-pass-20260918-1/);
   assert.match(html, /booking-confirm-details\.js\?v=booking-confirm-note-20260918-1/);
-  assert.match(html, /member-booking-format\.js\?v=booking-confirm-note-20260918-1/);
+  assert.match(html, /member-booking-format\.js\?v=booking-history-single-pass-20260918-1/);
 });
