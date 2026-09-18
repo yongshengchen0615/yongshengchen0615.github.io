@@ -48,7 +48,7 @@ test('stalled request times out and cancels without waiting for cancellation', a
   assert.ok(cancelled);
 });
 
-for (const name of ['api','booking-api','booking-admin-api','booking-admin-operations','booking-calendar-api','booking-cancellation-api','event-ticket-links','grant-automation','member-profile-api','booking-contact-api']) {
+for (const name of ['api','booking-api','booking-admin-api','booking-admin-operations','booking-group-api','booking-group-slots-api','booking-calendar-api','booking-cancellation-api','event-ticket-links','grant-automation','member-profile-api','booking-contact-api']) {
   test(`${name}: invalid JSON is rejected before identity verification or database access`, async () => {
     let handler;
     const sandbox = vm.createContext({
