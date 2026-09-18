@@ -90,17 +90,49 @@
           </div>
         </section>
 
-        <section id="bookingAdminSettingsPanel" class="booking-admin-card hidden" role="tabpanel" aria-labelledby="bookingAdminSettingsSubtab">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>工作時間、提前預約天數與會員端預約說明套用到所有預約項目。</p></div></div>
+        <section id="bookingAdminSettingsPanel" class="booking-admin-card booking-admin-settings-panel hidden" role="tabpanel" aria-labelledby="bookingAdminSettingsSubtab">
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>集中管理所有預約共同使用的工作時間、提前預約規則與會員端說明。</p></div></div>
           <form id="bookingAdminSettingsForm" class="booking-admin-form booking-admin-settings-form" novalidate>
-            <div class="booking-admin-form-grid booking-admin-global-settings-grid">
-              <label>開始工作時間<input id="bookingAdminStartTime" type="time" step="1800" value="09:00" required></label>
-              <label>結束工作時間<input id="bookingAdminEndTime" type="time" step="1800" value="17:00" required></label>
-              <label>需要提前幾天預約<input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的開始時段。</small></label>
-              <label style="grid-column:1/-1">預約說明（可換行）<textarea id="bookingAdminNotice" maxlength="2000" rows="5" placeholder="例如：\n請於預約時間前 10 分鐘抵達。\n如需取消或更改時間，請提前聯繫。"></textarea><small>最多 2,000 字；會員端會依原本換行顯示。</small></label>
+            <div class="booking-admin-settings-layout">
+              <section class="booking-admin-settings-block booking-admin-settings-hours" aria-labelledby="bookingAdminWorkingHoursHeading">
+                <div class="booking-admin-settings-block-heading">
+                  <div><span class="booking-admin-settings-eyebrow">營業時段</span><h4 id="bookingAdminWorkingHoursHeading">工作時間</h4></div>
+                  <span class="booking-admin-settings-badge">每日共用</span>
+                </div>
+                <div class="booking-admin-form-grid booking-admin-global-settings-grid booking-admin-time-grid">
+                  <label class="booking-admin-settings-field"><span>開始工作時間</span><input id="bookingAdminStartTime" type="time" step="1800" value="09:00" required><small>會員端可選擇的第一個開始時段。</small></label>
+                  <label class="booking-admin-settings-field"><span>結束工作時間</span><input id="bookingAdminEndTime" type="time" step="1800" value="17:00" required><small>最後可安排服務的工作時間上限。</small></label>
+                </div>
+              </section>
+
+              <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminAdvanceRuleHeading">
+                <div class="booking-admin-settings-block-heading">
+                  <div><span class="booking-admin-settings-eyebrow">預約限制</span><h4 id="bookingAdminAdvanceRuleHeading">提前預約</h4></div>
+                </div>
+                <label class="booking-admin-settings-field">
+                  <span>需要提前幾天預約</span>
+                  <div class="booking-admin-number-field"><input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><span aria-hidden="true">天</span></div>
+                  <small>設定 0 天時，可預約今天尚未經過的開始時段。</small>
+                </label>
+              </section>
+
+              <section class="booking-admin-settings-block booking-admin-settings-notice" aria-labelledby="bookingAdminNoticeHeading">
+                <div class="booking-admin-settings-block-heading">
+                  <div><span class="booking-admin-settings-eyebrow">會員端內容</span><h4 id="bookingAdminNoticeHeading">預約說明</h4></div>
+                  <span class="booking-admin-settings-badge">所有項目套用</span>
+                </div>
+                <label class="booking-admin-settings-field booking-admin-settings-notice-field">
+                  <span>顯示給會員的預約說明（可換行）</span>
+                  <textarea id="bookingAdminNotice" maxlength="2000" rows="5" placeholder="例如：\n請於預約時間前 10 分鐘抵達。\n如需取消或更改時間，請提前聯繫。"></textarea>
+                  <small>最多 2,000 字；會員端會依原本換行顯示。</small>
+                </label>
+              </section>
             </div>
             <div id="bookingAdminSettingsMessage" class="form-message hidden" role="status" aria-live="polite"></div>
-            <div class="booking-admin-inline-actions"><button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約設定</button></div>
+            <div class="booking-admin-settings-actions">
+              <p><strong>儲存後立即套用</strong><span>這些設定會套用到所有預約項目，不需逐項調整。</span></p>
+              <button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約設定</button>
+            </div>
           </form>
         </section>
 

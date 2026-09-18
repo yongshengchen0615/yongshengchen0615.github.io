@@ -155,3 +155,41 @@
     padding: 13px;
   }
 }
+
+
+/* Shared booking settings responsive layout 20260918 */
+@media (max-width: 768px) {
+  #bookingPanel .booking-admin-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #bookingPanel .booking-admin-settings-notice {
+    grid-column: auto;
+  }
+
+  #bookingPanel .booking-admin-settings-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  #bookingPanel .booking-admin-settings-actions .button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  #bookingPanel .booking-admin-settings-block {
+    padding: 14px;
+    border-radius: 13px;
+  }
+
+  #bookingPanel .booking-admin-settings-block-heading {
+    gap: 8px;
+  }
+
+  #bookingPanel .booking-admin-settings-badge {
+    font-size: 10px;
+  }
+}

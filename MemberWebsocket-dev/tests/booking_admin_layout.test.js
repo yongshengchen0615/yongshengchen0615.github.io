@@ -20,5 +20,12 @@ assert.match(resources, /getElementById\('bookingAdminTechnicianMount'\)/);
 assert.doesNotMatch(resources, /booking-admin-hours-card/);
 assert.match(css, /booking admin four-tab layout 20260918/);
 assert.match(css, /grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+assert.match(core, /booking-admin-settings-layout/);
+assert.match(core, /booking-admin-settings-hours/);
+assert.match(core, /booking-admin-settings-rule/);
+assert.match(core, /booking-admin-settings-notice/);
+assert.doesNotMatch(core, /label style="grid-column:1\/-1"/);
+assert.match(css, /booking shared settings layout 20260918/);
+assert.match(css, /booking-admin-settings-actions/);
 
 console.log('booking admin four-tab layout OK');

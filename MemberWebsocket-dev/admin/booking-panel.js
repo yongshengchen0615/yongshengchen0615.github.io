@@ -64,7 +64,7 @@
   }
 
   loadSharedResponsive();
-  loadStyle('booking-panel-responsive.css', 'booking-panel-responsive-20260915-mobile-field-overflow-1');
+  loadStyle('booking-panel-responsive.css', 'booking-settings-layout-20260918-1');
   loadStyle('booking-summary.css', 'booking-summary-20260918-participants-1');
   loadStyle('booking-resources.css', 'booking-technician-modal-20260918-1');
   loadStyle('../booking-admin-group-details.css', 'booking-group-details-20260918-admin-edit-1');
@@ -99,7 +99,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-layout-tabs-20260918-1');
+      return load('booking-panel-core.js', 'booking-settings-layout-20260918-1');
     })
     .then(() => {
       restoreBookingHashAndOpen();
