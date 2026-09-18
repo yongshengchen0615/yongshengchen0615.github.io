@@ -223,7 +223,7 @@ async function slots(s: SupabaseClient, m: any, body: Json) {
     excluded=uuid(body.bookingId,"預約"); const r=await s.from("bookings").select("id,status").eq("id",excluded).eq("member_id",m.id).maybeSingle();
     if (r.error) throw mapDbError(r.error); if (!r.data || !["pending","confirmed"].includes(r.data.status)) throw new ApiError(409,"BOOKING_NOT_EDITABLE","找不到可修改的預約。");
   }
-  const primaryRows=await s.from("bookings").select("id,start_time,end_time").eq("booking_date",date).eq("technician_id",g.primaryId).in("status",["pending","confirmed"]);
+  const primaryRows=await s.from("bookings").select("id,start_time,end_time").eq("booking_date",date).eq("technician_id",g.primaryId).eq("party_size",1).in("status",["pending","confirmed"]);
   if (primaryRows.error) throw mapDbError(primaryRows.error);
   const primaryOccupied=(primaryRows.data||[]).filter((x:any)=>x.id!==excluded).map((x:any)=>({start:toMinutes(x.start_time),end:toMinutes(x.end_time)}));
 
