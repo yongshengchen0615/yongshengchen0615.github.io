@@ -84,12 +84,11 @@
   // responsible for waiting for its own host element. allSettled prevents one
   // optional feature from blocking every feature loaded after it.
   const preloadExtensions = [
-    ['booking-summary.js', 'booking-participant-contact-20260918-1'],
-    ['../booking-admin-group-details.js', 'booking-group-details-20260918-admin-edit-1'],
     ['booking-always-open.js', 'booking-always-open-20260917-2'],
     ['booking-cancellation-sync.js', 'booking-card-unified-20260918-1'],
-    // These controls must not depend on the core loader's success chain. Both
-    // modules can safely execute before the host exists and mount themselves later.
+    // Resource controls are independent required modules. They wait for the
+    // booking host themselves, so they cannot disappear because another
+    // decorator or the core load chain failed.
     ['booking-resources.js', 'booking-resource-mount-20260918-2'],
     ['../booking-technician-delete.js', 'booking-technician-delete-20260918-3'],
   ];
@@ -101,7 +100,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-lifecycle-20260918-2');
+      return load('booking-panel-core.js', 'booking-single-renderer-20260918-1');
     })
     .then(() => {
       restoreBookingHashAndOpen();
