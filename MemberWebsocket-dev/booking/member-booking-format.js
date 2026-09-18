@@ -12,6 +12,8 @@
   let serviceGroupingScheduled = false;
   let confirmTimer = null;
   let selectionSummaryTimer = null;
+  const SERVICE_TYPE_COLOR_COUNT = 12;
+  const serviceTypeColorSlots = new Map();
 
   function scheduleFormat() {
     if (scheduled) return;
@@ -121,6 +123,7 @@
 
     pickerContainers.forEach((container) => groupServiceContainer(container, '.service-choice', true));
     selectedContainers.forEach((container) => groupServiceContainer(container, '.selected-service-item', false));
+    decorateServiceTypeGroups();
   }
 
   function groupServiceContainer(container, rowSelector, hideSelected) {
@@ -163,8 +166,9 @@
     const fragment = document.createDocumentFragment();
     for (const group of groups.values()) {
       const section = document.createElement('section');
-      section.className = 'service-info';
+      section.className = 'service-info service-type-group';
       section.setAttribute('aria-label', `${group.label}服務`);
+      applyServiceTypeColor(section, group.label);
 
       const heading = document.createElement('strong');
       heading.textContent = `${group.label}（${group.rows.length}）`;
@@ -177,6 +181,27 @@
       fragment.appendChild(section);
     }
     container.replaceChildren(fragment);
+  }
+
+  function decorateServiceTypeGroups() {
+    document.querySelectorAll(
+      '#participantCardList .service-picker > .service-info, #participantCardList .selected-service-list > .service-info',
+    ).forEach((section) => {
+      const heading = [...section.children].find((node) => node.tagName === 'STRONG');
+      const label = String(heading?.textContent || '')
+        .replace(/（\d+）\s*$/u, '')
+        .trim() || '其他';
+      section.classList.add('service-type-group');
+      applyServiceTypeColor(section, label);
+    });
+  }
+
+  function applyServiceTypeColor(section, label) {
+    const key = String(label || '其他').trim().toLocaleLowerCase('zh-Hant-TW') || '其他';
+    if (!serviceTypeColorSlots.has(key)) {
+      serviceTypeColorSlots.set(key, serviceTypeColorSlots.size % SERVICE_TYPE_COLOR_COUNT);
+    }
+    section.dataset.serviceTypeColor = String(serviceTypeColorSlots.get(key));
   }
 
   function serviceTypeFromRow(row) {
