@@ -69,7 +69,7 @@ test('participant format parity formatter has valid JavaScript syntax', () => {
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
   assert.match(html, /member-booking-format\.js\?v=booking-participant-format-parity-20260918-1/);
-  assert.match(html, /group-booking\.js\?v=booking-participant-amounts-20260918-1/);
+  assert.match(html, /group-booking\.js\?v=booking-selection-summary-sync-20260918-1/);
 });
 
 
@@ -82,5 +82,21 @@ test('member group booking shows an amount for every participant surface', () =>
   assert.match(groupBooking, /amountLine\.textContent = `金額：\$\{formatMoney\(metric\.amount\)\}`/);
   assert.match(groupBooking, /storedParticipantAmount\(participant\)/);
   assert.match(groupBooking, /item\?\.subtotalAmount/);
-  assert.match(html, /group-booking\.js\?v=booking-participant-amounts-20260918-1/);
+  assert.match(html, /group-booking\.js\?v=booking-selection-summary-sync-20260918-1/);
+});
+
+
+test('primary participant summary follows add/remove selection state without waiting for slot API', () => {
+  const app = read('booking/app.js');
+  const groupBooking = read('booking/group-booking.js');
+
+  assert.match(app, /notifySelectionChanged\(\);\n\s*els\.slotHint\.textContent = '正在計算整段服務時間可使用的時段…'/);
+  assert.match(app, /window\.dispatchEvent\(new CustomEvent\('booking:selection-changed'/);
+  assert.match(app, /detail: \{ items: selectedItems\(\) \}/);
+
+  assert.match(groupBooking, /window\.addEventListener\('booking:selection-changed'/);
+  assert.match(groupBooking, /syncPrimaryItems\(event\?\.detail\?\.items\)/);
+  assert.match(groupBooking, /function syncPrimaryItems\(items\)/);
+  assert.match(groupBooking, /syncPrimaryItems\(primaryItems\)/);
+  assert.match(groupBooking, /root\.replaceChildren\(\);\n\s*root\.classList\.add\('hidden'\)/);
 });
