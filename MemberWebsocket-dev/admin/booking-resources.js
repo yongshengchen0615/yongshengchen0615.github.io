@@ -58,9 +58,8 @@
 
   function mount() {
     if (document.getElementById(ids.section)) return true;
-    const host = document.querySelector('#bookingPanel .booking-admin-hours-card');
-    const settingsForm = document.getElementById('bookingAdminSettingsForm');
-    if (!host || !settingsForm) return false;
+    const host = document.getElementById('bookingAdminTechnicianMount');
+    if (!host) return false;
 
     const section = document.createElement('section');
     section.id = ids.section;
@@ -70,7 +69,7 @@
       <div class="booking-admin-section-heading booking-admin-resource-heading">
         <div>
           <p class="kicker">Capacity & technicians</p>
-          <h4 id="bookingAdminResourceSettingsTitle">預約人數與技師</h4>
+          <h3 id="bookingAdminResourceSettingsTitle">技師設定</h3>
           <p>設定單筆預約最多人數與主要技師。多人預約時，至少一位預約人必須選擇主要技師。</p>
         </div>
         <button id="bookingAdminResourceRefreshButton" class="button button-outline" type="button">更新設定</button>
@@ -128,7 +127,7 @@
         <span aria-hidden="true">○</span><p>尚未建立技師。請先新增技師，再設定主要技師。</p>
       </div>`;
 
-    settingsForm.insertAdjacentElement('afterend', section);
+    host.appendChild(section);
     return true;
   }
 

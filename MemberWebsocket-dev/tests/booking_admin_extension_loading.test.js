@@ -21,9 +21,9 @@ const technicianDeleteIndex = loader.indexOf("['../booking-technician-delete.js'
 assert.ok(preloadIndex >= 0 && coreIndex > preloadIndex, 'booking extensions should preload before core');
 assert.ok(resourcesIndex >= 0 && resourcesIndex < coreIndex, 'technician resource controls must preload independently of core');
 assert.ok(technicianDeleteIndex >= 0 && technicianDeleteIndex < coreIndex, 'technician delete controls must preload independently of core');
-assert.match(loader, /booking-resource-mount-20260918-2/);
+assert.match(loader, /booking-resource-tabs-20260918-1/);
 assert.match(loader, /booking-technician-delete-20260918-3/);
-assert.match(loader, /booking-single-renderer-20260918-1/);
+assert.match(loader, /booking-layout-tabs-20260918-1/);
 
 assert.match(technicianDelete, /const installAll = \(\) => surfaces\.forEach\(installSurface\)/);
 assert.match(technicianDelete, /new MutationObserver\(installAll\)/);

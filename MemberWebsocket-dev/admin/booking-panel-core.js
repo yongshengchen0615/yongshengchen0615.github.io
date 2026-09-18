@@ -11,7 +11,7 @@
     booking: { settings: {}, bookings: [], groups: {}, technicians: [], primaryTechnicianId: '' },
     catalog: { serviceTypes: [], services: [] },
     filter: 'pending',
-    subtab: 'services',
+    subtab: 'technicians',
     selected: new Set(),
     loading: false,
     busy: false,
@@ -46,28 +46,9 @@
     panel.setAttribute('aria-labelledby', 'bookingTab');
     panel.innerHTML = `
       <div class="panel-heading booking-admin-heading">
-        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>共用設定、項目類型、預約項目與預約確認分開管理。</p></div>
+        <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>技師、預約項目、共用設定與用戶預約分頁管理，降低單頁資訊密度。</p></div>
         <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span><button id="bookingAdminRefreshButton" class="button button-outline" type="button">更新預約</button></div>
       </div>
-
-      <section class="booking-admin-card booking-admin-hours-card" aria-labelledby="bookingAdminHoursTitle">
-        <div class="booking-admin-section-heading"><div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>工作時間、提前預約天數與會員端預約說明套用到所有預約項目。</p></div></div>
-        <form id="bookingAdminSettingsForm" class="booking-admin-form booking-admin-settings-form" novalidate>
-          <div class="booking-admin-form-grid booking-admin-global-settings-grid">
-            <label>開始工作時間<input id="bookingAdminStartTime" type="time" step="1800" value="09:00" required></label>
-            <label>結束工作時間<input id="bookingAdminEndTime" type="time" step="1800" value="17:00" required></label>
-            <label>需要提前幾天預約<input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的開始時段。</small></label>
-            <label style="grid-column:1/-1">預約說明（可換行）<textarea id="bookingAdminNotice" maxlength="2000" rows="5" placeholder="例如：\n請於預約時間前 10 分鐘抵達。\n如需取消或更改時間，請提前聯繫。"></textarea><small>最多 2,000 字；會員端會依原本換行顯示。</small></label>
-          </div>
-          <div id="bookingAdminSettingsMessage" class="form-message hidden" role="status" aria-live="polite"></div>
-          <div class="booking-admin-inline-actions"><button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約設定</button></div>
-        </form>
-
-        <div class="booking-admin-list-heading"><strong>項目類型</strong><button id="bookingAdminNewTypeButton" class="button button-outline" type="button">＋ 新增類型</button></div>
-        <div id="bookingAdminTypeMessage" class="form-message hidden" role="status"></div>
-        <div id="bookingAdminTypeList" class="booking-admin-service-list"></div>
-        <div id="bookingAdminTypeEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立項目類型</p></div>
-      </section>
 
       <section class="booking-admin-stats" aria-label="預約概況">
         <div><span>預約項目</span><strong id="bookingAdminServiceCount">0</strong><small>目前可管理項目</small></div>
@@ -76,26 +57,55 @@
       </section>
 
       <nav class="booking-admin-filter booking-admin-subtabs" role="tablist" aria-label="預約管理分類">
-        <button id="bookingAdminServicesSubtab" class="booking-admin-filter-button active" type="button" role="tab" aria-selected="true" aria-controls="bookingAdminServicesPanel">預約項目</button>
-        <button id="bookingAdminQueueSubtab" class="booking-admin-filter-button" type="button" role="tab" aria-selected="false" aria-controls="bookingAdminQueuePanel">預約確認<span id="bookingAdminQueueSubtabCount"></span></button>
+        <button id="bookingAdminTechniciansSubtab" class="booking-admin-filter-button active" type="button" role="tab" aria-selected="true" aria-controls="bookingAdminTechniciansPanel">技師設定</button>
+        <button id="bookingAdminServicesSubtab" class="booking-admin-filter-button" type="button" role="tab" aria-selected="false" aria-controls="bookingAdminServicesPanel">預約項目</button>
+        <button id="bookingAdminSettingsSubtab" class="booking-admin-filter-button" type="button" role="tab" aria-selected="false" aria-controls="bookingAdminSettingsPanel">預約共用設定</button>
+        <button id="bookingAdminQueueSubtab" class="booking-admin-filter-button" type="button" role="tab" aria-selected="false" aria-controls="bookingAdminQueuePanel">用戶預約<span id="bookingAdminQueueSubtabCount"></span></button>
       </nav>
 
       <div class="booking-admin-subtab-panels">
-        <section id="bookingAdminServicesPanel" class="booking-admin-card" role="tabpanel" aria-labelledby="bookingAdminServicesSubtab">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Booking services</p><h3>預約項目</h3><p>可單筆新增、修改、刪除，也可勾選後批次修改或批次刪除。</p></div></div>
-          <div class="booking-admin-actions" style="justify-content:flex-start;margin:0 0 14px">
-            <button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button>
-            <button id="bookingAdminBatchAddButton" class="button button-outline" type="button">批次新增</button>
-            <button id="bookingAdminBatchEditButton" class="button button-outline" type="button" disabled>批次修改</button>
-            <button id="bookingAdminBatchDeleteButton" class="button button-danger" type="button" disabled>批次刪除</button>
+        <section id="bookingAdminTechniciansPanel" class="booking-admin-card" role="tabpanel" aria-labelledby="bookingAdminTechniciansSubtab">
+          <div id="bookingAdminTechnicianMount" class="booking-admin-technician-mount"></div>
+        </section>
+
+        <section id="bookingAdminServicesPanel" class="booking-admin-card hidden" role="tabpanel" aria-labelledby="bookingAdminServicesSubtab">
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking catalog</p><h3>預約項目</h3><p>項目類型與實際預約項目集中在同一頁管理。</p></div></div>
+          <div class="booking-admin-catalog-section">
+            <div class="booking-admin-list-heading booking-admin-list-heading-first"><strong>項目類型</strong><button id="bookingAdminNewTypeButton" class="button button-outline" type="button">＋ 新增類型</button></div>
+            <div id="bookingAdminTypeMessage" class="form-message hidden" role="status"></div>
+            <div id="bookingAdminTypeList" class="booking-admin-service-list"></div>
+            <div id="bookingAdminTypeEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立項目類型</p></div>
           </div>
-          <div id="bookingAdminServiceMessage" class="form-message hidden" role="status"></div>
-          <div id="bookingAdminServiceList" class="booking-admin-service-list"></div>
-          <div id="bookingAdminServiceEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立預約項目</p></div>
+          <div class="booking-admin-catalog-section booking-admin-catalog-services">
+            <div class="booking-admin-list-heading"><strong>預約項目</strong></div>
+            <div class="booking-admin-actions booking-admin-service-actions">
+              <button id="bookingAdminNewServiceButton" class="button button-dark" type="button">＋ 新增項目</button>
+              <button id="bookingAdminBatchAddButton" class="button button-outline" type="button">批次新增</button>
+              <button id="bookingAdminBatchEditButton" class="button button-outline" type="button" disabled>批次修改</button>
+              <button id="bookingAdminBatchDeleteButton" class="button button-danger" type="button" disabled>批次刪除</button>
+            </div>
+            <div id="bookingAdminServiceMessage" class="form-message hidden" role="status"></div>
+            <div id="bookingAdminServiceList" class="booking-admin-service-list"></div>
+            <div id="bookingAdminServiceEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立預約項目</p></div>
+          </div>
+        </section>
+
+        <section id="bookingAdminSettingsPanel" class="booking-admin-card hidden" role="tabpanel" aria-labelledby="bookingAdminSettingsSubtab">
+          <div class="booking-admin-section-heading"><div><p class="kicker">Booking settings</p><h3 id="bookingAdminHoursTitle">預約共用設定</h3><p>工作時間、提前預約天數與會員端預約說明套用到所有預約項目。</p></div></div>
+          <form id="bookingAdminSettingsForm" class="booking-admin-form booking-admin-settings-form" novalidate>
+            <div class="booking-admin-form-grid booking-admin-global-settings-grid">
+              <label>開始工作時間<input id="bookingAdminStartTime" type="time" step="1800" value="09:00" required></label>
+              <label>結束工作時間<input id="bookingAdminEndTime" type="time" step="1800" value="17:00" required></label>
+              <label>需要提前幾天預約<input id="bookingAdminAdvanceDays" type="number" min="0" max="365" step="1" value="0" required><small>0 = 可預約今天尚未經過的開始時段。</small></label>
+              <label style="grid-column:1/-1">預約說明（可換行）<textarea id="bookingAdminNotice" maxlength="2000" rows="5" placeholder="例如：\n請於預約時間前 10 分鐘抵達。\n如需取消或更改時間，請提前聯繫。"></textarea><small>最多 2,000 字；會員端會依原本換行顯示。</small></label>
+            </div>
+            <div id="bookingAdminSettingsMessage" class="form-message hidden" role="status" aria-live="polite"></div>
+            <div class="booking-admin-inline-actions"><button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約設定</button></div>
+          </form>
         </section>
 
         <section id="bookingAdminQueuePanel" class="booking-admin-card hidden" role="tabpanel" aria-labelledby="bookingAdminQueueSubtab">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Confirmation queue</p><h3>預約確認</h3><p>待確認預約會先佔用整段時間；管理員可依現場實際服務修改項目，再確認服務完成。</p></div></div>
+          <div class="booking-admin-section-heading"><div><p class="kicker">Member bookings</p><h3>用戶預約</h3><p>查看待確認、已確認與已完成預約；管理員可依現場實際服務修改項目與預約狀態。</p></div></div>
           <div class="booking-admin-filter" role="group" aria-label="預約狀態篩選">
             <button class="booking-admin-filter-button active" data-booking-filter="pending" type="button">待確認</button>
             <button class="booking-admin-filter-button" data-booking-filter="confirmed" type="button">已確認</button><button class="booking-admin-filter-button" data-booking-filter="completed" type="button">已完成</button>
@@ -117,7 +127,7 @@
 
     cacheElements();
     bindEvents();
-    setSubtab('services');
+    setSubtab('technicians');
     openHashWhenAdminReady();
   }
 
@@ -125,7 +135,7 @@
     [
       'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminRefreshButton','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminConfirmedCount',
-      'bookingAdminServicesSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminServicesPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
+      'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
@@ -136,7 +146,9 @@
     els.bookingAdminRefreshButton.addEventListener('click', () => refreshAll(true));
     els.bookingAdminSettingsForm.addEventListener('submit', saveSettings);
     els.bookingAdminNewTypeButton.addEventListener('click', () => openTypeModal(null));
+    els.bookingAdminTechniciansSubtab.addEventListener('click', () => setSubtab('technicians'));
     els.bookingAdminServicesSubtab.addEventListener('click', () => setSubtab('services'));
+    els.bookingAdminSettingsSubtab.addEventListener('click', () => setSubtab('settings'));
     els.bookingAdminQueueSubtab.addEventListener('click', () => setSubtab('queue'));
     els.bookingAdminNewServiceButton.addEventListener('click', () => openServiceModal(null));
     els.bookingAdminBatchAddButton.addEventListener('click', () => openBatchModal('create'));
@@ -150,14 +162,21 @@
   }
 
   function setSubtab(subtab) {
-    state.subtab = subtab === 'queue' ? 'queue' : 'services';
-    const queue = state.subtab === 'queue';
-    els.bookingAdminServicesSubtab.classList.toggle('active', !queue);
-    els.bookingAdminServicesSubtab.setAttribute('aria-selected', String(!queue));
-    els.bookingAdminQueueSubtab.classList.toggle('active', queue);
-    els.bookingAdminQueueSubtab.setAttribute('aria-selected', String(queue));
-    els.bookingAdminServicesPanel.classList.toggle('hidden', queue);
-    els.bookingAdminQueuePanel.classList.toggle('hidden', !queue);
+    const allowed = ['technicians', 'services', 'settings', 'queue'];
+    state.subtab = allowed.includes(subtab) ? subtab : 'technicians';
+    const tabs = {
+      technicians: [els.bookingAdminTechniciansSubtab, els.bookingAdminTechniciansPanel],
+      services: [els.bookingAdminServicesSubtab, els.bookingAdminServicesPanel],
+      settings: [els.bookingAdminSettingsSubtab, els.bookingAdminSettingsPanel],
+      queue: [els.bookingAdminQueueSubtab, els.bookingAdminQueuePanel],
+    };
+    Object.entries(tabs).forEach(([key, pair]) => {
+      const [tab, panel] = pair;
+      const active = key === state.subtab;
+      tab?.classList.toggle('active', active);
+      tab?.setAttribute('aria-selected', String(active));
+      panel?.classList.toggle('hidden', !active);
+    });
   }
 
   function activateBookingPanel() {
