@@ -28,6 +28,8 @@ const sampleJob = {
     '時段：10:00–11:00（台北時間）',
     '電話：0912345678',
     '預約人數：2 位',
+    '會員備註：希望加強肩頸',
+    '管理端說明：已安排安靜區域',
     '',
     '第一位預約',
     '預約項目：腳底40',
@@ -57,6 +59,8 @@ Deno.test('booking notification builds a structured mobile-friendly Flex Message
   assert(components.some((item) => item.text === '預約時間'), 'Flex body must highlight the booking schedule');
   assert(components.some((item) => item.text === '2026/09/15' && item.size === 'lg'), 'date should receive strong visual emphasis');
   assert(components.some((item) => item.text === '王小姐'), 'Flex body must include the booking contact');
+  assert(components.some((item) => item.text === '希望加強肩頸'), 'Flex body must include the member note');
+  assert(components.some((item) => item.text === '已安排安靜區域'), 'Flex body must include the admin note');
   assert(components.some((item) => item.text === '10:00–11:00（台北時間）'), 'Flex body must include the booking time');
   assert(components.some((item) => item.text === '第一位預約'), 'Flex body must identify the first participant');
   assert(components.some((item) => item.text === '第二位預約'), 'Flex body must identify the second participant');
