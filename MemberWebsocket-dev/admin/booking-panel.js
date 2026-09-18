@@ -80,15 +80,38 @@
     });
   });
 
-  load('booking-summary.js', 'booking-participant-contact-20260918-1')
-    .then(() => load('../booking-admin-group-details.js', 'booking-group-details-20260918-admin-edit-1'))
-    .then(() => load('booking-panel-core.js', 'booking-lifecycle-20260918-1'))
+  // Preload DOM decorators before the core panel is mounted. Each decorator is
+  // responsible for waiting for its own host element. allSettled prevents one
+  // optional feature from blocking every feature loaded after it.
+  const preloadExtensions = [
+    ['booking-summary.js', 'booking-participant-contact-20260918-1'],
+    ['../booking-admin-group-details.js', 'booking-group-details-20260918-admin-edit-1'],
+    ['booking-always-open.js', 'booking-always-open-20260917-2'],
+    ['booking-cancellation-sync.js', 'booking-card-unified-20260918-1'],
+  ];
+
+  Promise.allSettled(preloadExtensions.map(([name, version]) => load(name, version)))
+    .then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
+        }
+      });
+      return load('booking-panel-core.js', 'booking-lifecycle-20260918-2');
+    })
     .then(() => {
       restoreBookingHashAndOpen();
-      return load('booking-resources.js', 'booking-resource-mount-20260918-1');
+
+      // Resource controls require the core settings host. Technician delete is
+      // loaded after resources, but is also resilient to later DOM remounts.
+      return load('booking-resources.js', 'booking-resource-mount-20260918-2')
+        .catch((error) => {
+          console.error('booking resource extension load failed', error);
+        })
+        .then(() => load('../booking-technician-delete.js', 'booking-technician-delete-20260918-2'))
+        .catch((error) => {
+          console.error('booking technician delete extension load failed', error);
+        });
     })
-    .then(() => load('../booking-technician-delete.js', 'booking-technician-delete-20260917-1'))
-    .then(() => load('booking-always-open.js', 'booking-always-open-20260917-2'))
-    .then(() => load('booking-cancellation-sync.js', 'booking-card-unified-20260918-1'))
-    .catch((error) => console.error('booking admin extension load failed', error));
+    .catch((error) => console.error('booking admin core load failed', error));
 })();
