@@ -100,7 +100,7 @@ test('booking realtime recovers after a synchronous refresh exception', async ()
   }, 'member');
 
   h.emit();
-  await h.runNextTimer();
+  await h.drainTimers();
   assert.equal(calls, 1);
 
   h.emit();
@@ -125,7 +125,7 @@ test('booking realtime coalesces an event storm while one refresh is in flight',
   }, 'member');
 
   h.emit();
-  await h.runNextTimer();
+  await h.drainTimers();
   assert.equal(calls, 1);
 
   for (let i = 0; i < 100; i++) h.emit();
