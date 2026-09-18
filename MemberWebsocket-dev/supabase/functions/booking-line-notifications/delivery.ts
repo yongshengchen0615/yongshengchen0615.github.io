@@ -9,10 +9,17 @@ export type Job = {
 };
 export type Delivery = { accepted: boolean; retryable: boolean; status: number | null; lineRequestId: string };
 
+type ParsedBookingParticipant = {
+  label: string;
+  items: string[];
+  technician: string;
+};
+
 type ParsedBookingMessage = {
   title: string;
   fields: Array<{ label: string; value: string }>;
   services: string[];
+  participants: ParsedBookingParticipant[];
   fallbackText: string;
 };
 
@@ -64,18 +71,45 @@ function parseBookingMessage(message: string): ParsedBookingMessage {
 
   const fields: Array<{ label: string; value: string }> = [];
   const services: string[] = [];
+  const participants: ParsedBookingParticipant[] = [];
+  let currentParticipant: ParsedBookingParticipant | null = null;
   let readingServices = false;
 
   for (; index < lines.length; index++) {
     const line = lines[index];
-    if (!line) continue;
+    if (!line) {
+      readingServices = false;
+      continue;
+    }
+
+    if (/^第(?:[一二三四五六七八九十]+|\s*\d+\s*)位預約$/.test(line)) {
+      currentParticipant = { label: truncate(line, 40), items: [], technician: '' };
+      participants.push(currentParticipant);
+      readingServices = false;
+      continue;
+    }
+
+    const separator = line.indexOf('：');
+    if (currentParticipant && separator > 0) {
+      const label = truncate(line.slice(0, separator), 30);
+      const value = truncate(line.slice(separator + 1), 500);
+      if (label === '預約項目') {
+        currentParticipant.items = value
+          ? value.split('、').map((item) => truncate(item, 180)).filter(Boolean)
+          : [];
+        continue;
+      }
+      if (label === '預約技師') {
+        currentParticipant.technician = value || '現場安排';
+        continue;
+      }
+    }
 
     if (readingServices) {
       services.push(truncate(line, 180));
       continue;
     }
 
-    const separator = line.indexOf('：');
     if (separator > 0) {
       const label = truncate(line.slice(0, separator), 30);
       const value = truncate(line.slice(separator + 1), 500);
@@ -88,11 +122,10 @@ function parseBookingMessage(message: string): ParsedBookingMessage {
       continue;
     }
 
-    // Preserve unexpected legacy/future text rather than dropping information.
     fields.push({ label: '說明', value: truncate(line, 500) });
   }
 
-  return { title, fields, services, fallbackText };
+  return { title, fields, services, participants, fallbackText };
 }
 
 function fieldRow(label: string, value: string): Record<string, unknown> {
@@ -239,6 +272,50 @@ function servicesCard(services: string[], accent: string): Record<string, unknow
   };
 }
 
+function participantsCard(participants: ParsedBookingParticipant[], accent: string): Record<string, unknown> | null {
+  if (!participants.length) return null;
+  const contents: Array<Record<string, unknown>> = [
+    {
+      type: 'text',
+      text: '每位預約明細',
+      size: 'sm',
+      weight: 'bold',
+      color: accent,
+    },
+  ];
+
+  participants.forEach((participant, index) => {
+    if (index > 0) contents.push({ type: 'separator', margin: 'md', color: '#E5EAE7' });
+    contents.push({
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      margin: index === 0 ? 'sm' : 'md',
+      contents: [
+        {
+          type: 'text',
+          text: truncate(participant.label, 40),
+          size: 'sm',
+          weight: 'bold',
+          color: TEXT_COLOR,
+          wrap: true,
+        },
+        fieldRow('預約項目', participant.items.length ? participant.items.join('、') : '—'),
+        fieldRow('預約技師', participant.technician || '現場安排'),
+      ],
+    });
+  });
+
+  return {
+    type: 'box',
+    layout: 'vertical',
+    paddingAll: '14px',
+    backgroundColor: SURFACE_COLOR,
+    cornerRadius: '12px',
+    contents,
+  };
+}
+
 function fallbackCard(text: string): Record<string, unknown> {
   return {
     type: 'box',
@@ -261,7 +338,7 @@ function fallbackCard(text: string): Record<string, unknown> {
 function makeAltText(parsed: ParsedBookingMessage): string {
   const date = parsed.fields.find((field) => field.label === '日期')?.value || '';
   const time = parsed.fields.find((field) => field.label === '時段')?.value || '';
-  const service = parsed.services[0] || '';
+  const service = parsed.participants[0]?.items[0] || parsed.services[0] || '';
   const summary = [parsed.title, date, time, service].filter(Boolean).join('｜');
   return truncate(summary || parsed.fallbackText, MAX_ALT_TEXT);
 }
@@ -274,10 +351,12 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
 
   const schedule = scheduleCard(parsed, style.color);
   const details = detailsCard(parsed.fields);
-  const services = servicesCard(parsed.services, style.color);
+  const participants = participantsCard(parsed.participants, style.color);
+  const services = parsed.participants.length ? null : servicesCard(parsed.services, style.color);
   if (schedule) bodyContents.push(schedule);
   if (details) bodyContents.push(details);
-  if (services) bodyContents.push(services);
+  if (participants) bodyContents.push(participants);
+  else if (services) bodyContents.push(services);
   if (!bodyContents.length) bodyContents.push(fallbackCard(parsed.fallbackText));
 
   const headerContents: FlexText[] = [
