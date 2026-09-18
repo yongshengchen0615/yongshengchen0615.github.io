@@ -10,7 +10,7 @@ const groupDetails = read('MemberWebsocket-dev/booking-admin-group-details.js');
 
 assert.match(loader, /booking-summary\.css/);
 assert.match(loader, /booking-summary\.js/);
-assert.match(loader, /booking-summary-20260912-6/);
+assert.match(loader, /booking-summary-20260918-participants-1/);
 assert.ok(loader.indexOf("load('booking-summary.js'") < loader.indexOf("load('booking-panel-core.js'"));
 assert.match(summary, /booking-contact-api/);
 assert.match(summary, /admin\.booking\.contacts/);
@@ -18,6 +18,7 @@ assert.match(summary, /contactSurname/);
 assert.match(summary, /contactSalutation/);
 assert.match(summary, /contactPhone/);
 assert.match(summary, /return `\$\{surname\}\$\{label\}`/);
+assert.match(summary, /return '未取得預約人資料'/);
 assert.match(summary, /複製預約內容/);
 assert.match(summary, /navigator\.clipboard\.writeText/);
 assert.match(summary, /document\.execCommand\('copy'\)/);
