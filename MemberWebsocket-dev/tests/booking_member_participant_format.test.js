@@ -18,6 +18,27 @@ test('member booking formatter applies the first participant service format to e
 });
 
 
+
+test('later participants render the same final service picker and selected-item structure as the first participant', () => {
+  const groupBooking = read('booking/group-booking.js');
+
+  assert.match(groupBooking, /picker\.className = 'service-picker-fieldset'/);
+  assert.match(groupBooking, /selectedFieldset\.className = 'selected-service-fieldset'/);
+  assert.match(groupBooking, /choices\.className = 'service-picker'/);
+  assert.match(groupBooking, /selectedList\.className = 'selected-service-list'/);
+  assert.match(groupBooking, /section\.className = 'service-info'/);
+  assert.match(groupBooking, /heading\.textContent = `\$\{group\.label\}（\$\{group\.entries\.length\}）`/);
+  assert.match(groupBooking, /list\.className = listClass/);
+  assert.match(groupBooking, /row\.className = 'service-choice'/);
+  assert.match(groupBooking, /row\.className = 'selected-service-item'/);
+  assert.match(groupBooking, /meta\.textContent = `服務 \$\{Number\(service\.durationMinutes \|\| 0\)\} 分鐘 · \$\{formatServiceMoney\(service\.priceAmount\)\}`/);
+  assert.match(groupBooking, /!selections\.some\(\(selection\) => selection\.serviceId === service\.serviceId\)/);
+  assert.match(groupBooking, /createCompactEmptyState\('可選項目已全部加入目前選擇'\)/);
+  assert.doesNotMatch(groupBooking, /participant-service-stack/);
+  assert.doesNotMatch(groupBooking, /participant-service-picker-fieldset/);
+  assert.doesNotMatch(groupBooking, /participant-selected-service-fieldset/);
+});
+
 test('later participants use the same duplicate item and same-type warning rules as the first participant', () => {
   const app = read('booking/app.js');
   const groupBooking = read('booking/group-booking.js');
@@ -48,4 +69,5 @@ test('participant format parity formatter has valid JavaScript syntax', () => {
 test('member booking entrypoint cache-busts participant format parity', () => {
   const html = read('booking/index.html');
   assert.match(html, /member-booking-format\.js\?v=booking-participant-format-parity-20260918-1/);
+  assert.match(html, /group-booking\.js\?v=booking-full-participant-parity-20260918-3/);
 });
