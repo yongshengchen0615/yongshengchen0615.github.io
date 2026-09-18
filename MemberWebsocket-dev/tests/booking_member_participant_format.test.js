@@ -26,7 +26,7 @@ test('later participants render the same final service picker and selected-item 
   assert.match(groupBooking, /selectedFieldset\.className = 'selected-service-fieldset'/);
   assert.match(groupBooking, /choices\.className = 'service-picker'/);
   assert.match(groupBooking, /selectedList\.className = 'selected-service-list'/);
-  assert.match(groupBooking, /section\.className = 'service-info'/);
+  assert.match(groupBooking, /section\.className = `service-info service-type-group service-type-color-\$\{colorSlot\}`/);
   assert.match(groupBooking, /heading\.textContent = `\$\{group\.label\}（\$\{group\.entries\.length\}）`/);
   assert.match(groupBooking, /list\.className = listClass/);
   assert.match(groupBooking, /row\.className = 'service-choice'/);
@@ -130,7 +130,7 @@ test('service type blocks use stable distinct colors across all participant pick
   assert.match(css, /service-type-color-11 \.selected-service-item/);
   assert.match(css, /service-info\.service-type-group > strong::before/);
   assert.match(css, /@media \(max-width: 620px\)[\s\S]*border-left-width: 5px/);
-  assert.match(html, /member-booking-format\.css\?v=booking-all-participants-type-colors-20260918-3/);
+  assert.match(html, /member-booking-format\.css\?v=booking-service-type-colors-webview-20260918-2/);
   assert.match(html, /member-booking-format\.js\?v=booking-all-participants-type-colors-20260918-3/);
 });
 
