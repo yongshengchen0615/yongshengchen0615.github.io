@@ -24,7 +24,11 @@ assert.match(migration, /b\.updated_at <> p_expected_updated_at/);
 assert.match(migration, /b\.status not in \('pending', 'confirmed'\)/);
 assert.match(migration, /BOOKING_CANCELLATION_PENDING/);
 assert.match(migration, /validate_group_booking_technicians\(p_participants\)/);
-assert.match(migration, /booking_participant_reservations/);
+assert.match(migration, /delete from public\.booking_participant_reservations[\s\S]*where booking_id = b\.id/);
+assert.ok(
+  migration.indexOf('delete from public.booking_participant_reservations') < migration.indexOf('for person in'),
+  'existing reservations must be cleared before rebuilding assignments so technician swaps do not self-conflict',
+);
 assert.match(migration, /when exclusion_violation/);
 assert.match(migration, /BOOKING_SLOT_TAKEN/);
 assert.match(migration, /BOOKING_PARTICIPANT_TECHNICIANS_UPDATED/);
