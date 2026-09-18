@@ -55,12 +55,12 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.ok(memberHtml.includes('group-booking.css?v=booking-participant-parity-20260917-1'));
   assert.ok(memberHtml.includes('group-booking.js?v=booking-request-stability-20260917-1'));
   assert.ok(memberHtml.includes('booking-confirm-details.js?v=booking-confirm-details-20260917-4'));
-  assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.js?v=booking-group-details-20260918-participants-1'));
-  assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.css?v=booking-group-details-20260918-participants-1'));
+  assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.js?v=booking-group-details-20260918-admin-edit-1'));
+  assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.css?v=booking-group-details-20260918-admin-edit-1'));
   assert.ok(bookingAdminHtml.includes('resources.js?v=booking-primary-tech-20260917-2'));
   assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3')"));
   assert.ok(adminLoader.includes("load('booking-resources.js', 'booking-resource-mount-20260918-1')"));
-  assert.ok(adminLoader.includes("load('../booking-admin-group-details.js', 'booking-group-details-20260918-participants-1')"));
+  assert.ok(adminLoader.includes("load('../booking-admin-group-details.js', 'booking-group-details-20260918-admin-edit-1')"));
   assert.match(groupCss, /\.participant-service-stack\{[^}]*display:grid/);
   assert.match(groupCss, /\.group-selection-summary\{[^}]*display:grid/);
   assert.match(groupJs, /className = 'service-add-button'/);
