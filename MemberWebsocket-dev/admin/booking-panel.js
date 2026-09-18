@@ -89,6 +89,6 @@
     })
     .then(() => load('../booking-technician-delete.js', 'booking-technician-delete-20260917-1'))
     .then(() => load('booking-always-open.js', 'booking-always-open-20260917-2'))
-    .then(() => load('booking-cancellation-sync.js', 'booking-cancellation-format-20260918-1'))
+    .then(() => load('booking-cancellation-sync.js', 'booking-card-unified-20260918-1'))
     .catch((error) => console.error('booking admin extension load failed', error));
 })();
