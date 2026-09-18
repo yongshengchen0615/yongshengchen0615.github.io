@@ -815,11 +815,21 @@
     root.prepend(box);
   }
 
+  function removeDuplicateHistoryServices(node) {
+    [...node.children].forEach((child) => {
+      if (child.classList?.contains('member-booking-format-services-label')
+        || child.classList?.contains('booking-service-items')) {
+        child.remove();
+      }
+    });
+  }
+
   function decorateBookingHistory() {
     document.querySelectorAll('.booking-item[data-booking-id]').forEach((node) => {
       const id = String(node.dataset.bookingId || '');
       const group = state.bookingGroups.get(id);
       if (!group) return;
+      removeDuplicateHistoryServices(node);
       node.querySelector('[data-group-history]')?.remove();
       const box = document.createElement('div');
       box.dataset.groupHistory = 'true';
