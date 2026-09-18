@@ -15,12 +15,12 @@ assert.match(loader, /booking-technician-delete\.js/);
 
 const preloadIndex = loader.indexOf('Promise.allSettled');
 const coreIndex = loader.indexOf("load('booking-panel-core.js'");
-const resourcesIndex = loader.indexOf("load('booking-resources.js'");
-const technicianDeleteIndex = loader.indexOf("load('../booking-technician-delete.js'");
+const resourcesIndex = loader.indexOf("['booking-resources.js'");
+const technicianDeleteIndex = loader.indexOf("['../booking-technician-delete.js'");
 
-assert.ok(preloadIndex >= 0 && coreIndex > preloadIndex, 'optional booking extensions should preload before core');
-assert.ok(resourcesIndex > coreIndex, 'resource controls require the mounted booking core');
-assert.ok(technicianDeleteIndex > resourcesIndex, 'technician delete should load after resource controls');
+assert.ok(preloadIndex >= 0 && coreIndex > preloadIndex, 'booking extensions should preload before core');
+assert.ok(resourcesIndex >= 0 && resourcesIndex < coreIndex, 'technician resource controls must preload independently of core');
+assert.ok(technicianDeleteIndex >= 0 && technicianDeleteIndex < coreIndex, 'technician delete controls must preload independently of core');
 
 assert.match(technicianDelete, /const installAll = \(\) => surfaces\.forEach\(installSurface\)/);
 assert.match(technicianDelete, /new MutationObserver\(installAll\)/);
