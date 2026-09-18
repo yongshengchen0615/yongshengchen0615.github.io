@@ -34,7 +34,7 @@ test('admin entry references current assets that changed after older cache keys'
   assert.ok(html.includes('common.js?v=admin-fresh-login-20260917-1'));
   assert.ok(html.includes('app.js?v=admin-fresh-login-20260917-1'));
   assert.ok(html.includes('booking-panel.css?v=booking-layout-tabs-20260918-1'));
-  assert.ok(html.includes('booking-panel.js?v=booking-layout-tabs-20260918-1'));
+  assert.ok(html.includes('booking-panel.js?v=booking-technician-modal-20260918-1'));
   assert.ok(html.includes('../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1'));
   assert.ok(html.includes(`../responsive.css?v=${responsiveVersion}`));
   assert.doesNotMatch(html, /calendar-responsive\.css\?v=calendar-responsive-20260910-1/);
@@ -61,8 +61,8 @@ test('booking entry points bust caches for participant-parity assets', () => {
   assert.ok(bookingAdminHtml.includes('../../booking-admin-group-details.css?v=booking-group-details-20260918-tech-edit-2'));
   assert.ok(bookingAdminHtml.includes('resources.js?v=booking-primary-tech-20260917-2'));
   assert.ok(bookingAdminHtml.includes('../../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1'));
-  assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-primary-tech-20260917-3')"));
-  assert.ok(adminLoader.includes("['booking-resources.js', 'booking-resource-tabs-20260918-1']"));
+  assert.ok(adminLoader.includes("loadStyle('booking-resources.css', 'booking-technician-modal-20260918-1')"));
+  assert.ok(adminLoader.includes("['booking-resources.js', 'booking-technician-modal-20260918-1']"));
   assert.ok(adminLoader.includes("load('booking-panel-core.js', 'booking-layout-tabs-20260918-1')"));
   assert.doesNotMatch(adminLoader, /\['booking-summary\.js'/);
   assert.doesNotMatch(adminLoader, /\['\.\.\/booking-admin-group-details\.js'/);
