@@ -96,13 +96,22 @@ for (const entry of ['admin', 'booking/admin']) {
       mode = 'failure';
       button.click();
       await tick(20);
-      assert.equal(copied.length, 1, 'Do not invent single-person details on API failure');
-      assert.equal(button.textContent, '複製失敗');
+      if (legacy) {
+        assert.equal(copied.length, 1, 'Legacy admin must not invent single-person details on API failure');
+        assert.equal(button.textContent, '複製失敗');
+      } else {
+        assert.deepEqual(copied, [expected, expected], 'Main admin should copy from canonical rendered data without a second details request');
+        assert.equal(button.textContent, '已複製');
+      }
       await tick(1550);
       mode = 'single';
       button.click();
       await tick(20);
-      assert.match(copied[1], /預約人數：1 位\n\n第一位預約\n預約項目：腳底40\n預約技師：現場安排$/);
+      if (legacy) {
+        assert.match(copied[1], /預約人數：1 位\n\n第一位預約\n預約項目：腳底40\n預約技師：現場安排$/);
+      } else {
+        assert.equal(copied[2], expected, 'Main admin copy stays pinned to the single-renderer data model');
+      }
     } finally { observers.forEach(observer => observer.disconnect()); w.close(); }
   });
 }
