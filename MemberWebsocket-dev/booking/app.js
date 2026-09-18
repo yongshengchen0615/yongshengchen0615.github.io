@@ -473,11 +473,10 @@
     const total = document.createElement('strong');
     total.textContent = `項目服務：${serviceDurationMinutes()} 分鐘 + 店內服務：${storeServiceMinutes()} 分鐘 = 預約共 ${totalDurationMinutes()} 分鐘 · 預約總額：${formatMoney(totalAmount())}`;
     fragment.appendChild(total);
-    if (els.memberNote.value.trim()) {
-      const note = document.createElement('p');
-      note.textContent = `備註：${els.memberNote.value.trim()}`;
-      fragment.appendChild(note);
-    }
+    const note = document.createElement('p');
+    note.className = 'booking-confirm-note';
+    note.textContent = `預約備註：${els.memberNote.value.trim() || '未填寫'}`;
+    fragment.appendChild(note);
     els.bookingConfirmSummary.replaceChildren(fragment);
   }
 
