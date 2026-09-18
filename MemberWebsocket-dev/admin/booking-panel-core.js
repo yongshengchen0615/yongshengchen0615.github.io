@@ -511,7 +511,7 @@
     els.bookingAdminQueue.replaceChildren();
     els.bookingAdminQueueEmpty.classList.toggle('hidden', bookings.length > 0);
     bookings.forEach((booking) => {
-      const card = document.createElement('article'); card.className = 'booking-admin-booking';
+      const card = document.createElement('article'); card.className = 'booking-admin-booking'; card.dataset.bookingId = String(booking.bookingId || '');
       const heading = document.createElement('div'); heading.className = 'booking-admin-booking-heading';
       const member = document.createElement('div');
       const memberName = document.createElement('strong'); memberName.textContent = booking.memberDisplayName || '會員';
@@ -533,7 +533,9 @@
       }
       if (booking.memberNote) appendNote(card, `會員備註：${booking.memberNote}`, false);
       if (booking.adminNote) appendNote(card, `管理端說明：${booking.adminNote}`, true);
-      if (booking.status === 'pending' || booking.status === 'confirmed') {
+      const cancellationPending = Boolean(booking.cancellationRequestedAt && !booking.cancellationReviewedAt);
+      if (cancellationPending) appendNote(card, '會員已提出取消申請，請至「取消申請」分頁選擇保留預約或確認取消；審核完成前不可修改、確認或完成此預約。', true);
+      if ((booking.status === 'pending' || booking.status === 'confirmed') && !cancellationPending) {
         const note = document.createElement('label'); note.className = 'booking-admin-note-field'; note.textContent = '管理端說明（選填）';
         const textarea = document.createElement('textarea'); textarea.maxLength = 500; textarea.rows = 2; textarea.value = booking.adminNote || ''; note.appendChild(textarea); card.appendChild(note);
         const actions = document.createElement('div'); actions.className = 'booking-admin-actions';
