@@ -166,7 +166,7 @@ test('same service type keeps the same color across different participants', () 
 
   const sharedIndex = html.indexOf('service-type-color.js?v=booking-shared-type-color-map-20260918-4');
   const groupIndex = html.indexOf('group-booking.js?v=booking-shared-type-color-map-20260918-4');
-  const formatterIndex = html.indexOf('member-booking-format.js?v=booking-confirm-note-20260918-1');
+  const formatterIndex = html.indexOf('member-booking-format.js?v=booking-history-single-pass-20260918-1');
   assert.ok(sharedIndex >= 0 && sharedIndex < groupIndex);
   assert.ok(sharedIndex < formatterIndex);
 });
