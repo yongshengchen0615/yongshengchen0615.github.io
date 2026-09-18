@@ -11,6 +11,7 @@
     timer: null,
   };
   const CACHE_TTL_MS = 3000;
+  const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
   else mount();
@@ -107,13 +108,31 @@
       const booking = findBooking(card, used);
       if (!booking) return;
       const id = String(booking.bookingId || '');
-      const group = state.groups[id];
-      if (!group || !Array.isArray(group.participants) || !group.participants.length) return;
+      const group = groupForDisplay(state.groups[id], booking);
+      if (!group) return;
       used.add(id);
       card.dataset.bookingId = id;
       renderDetails(card, group);
       protectUnsafeGroupEdits(card, group);
     });
+  }
+
+  function groupForDisplay(group, booking) {
+    if (group && Array.isArray(group.participants) && group.participants.length) return group;
+
+    const items = Array.isArray(booking?.items)
+      ? booking.items.filter((item) => String(item?.serviceId || '') !== STORE_SERVICE_ID)
+      : [];
+    if (!items.length) return null;
+
+    return {
+      partySize: 1,
+      participants: [{
+        technicianName: '現場安排',
+        isPrimaryTechnician: false,
+        items,
+      }],
+    };
   }
 
   function findBooking(card, used) {
