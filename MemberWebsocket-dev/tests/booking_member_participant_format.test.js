@@ -22,18 +22,19 @@ test('later participants use the same duplicate item and same-type warning rules
   const app = read('booking/app.js');
   const groupBooking = read('booking/group-booking.js');
 
-  const duplicateLimit = /${service\.title} 已加入兩次，無法再重複加入。/;
-  const duplicateExisting = /${service\.title} 已有選擇。/;
-  const sameType = /目前已選擇相同類型「${serviceType}」的項目：${names}。/;
-  const confirmText = /仍要加入這個預約項目嗎？/;
+  const sharedMessages = [
+    '${service.title} 已加入兩次，無法再重複加入。',
+    '${service.title} 已有選擇。',
+    '目前已選擇相同類型「${serviceType}」的項目：${names}。',
+    '仍要加入這個預約項目嗎？',
+  ];
 
   for (const source of [app, groupBooking]) {
-    assert.match(source, duplicateLimit);
-    assert.match(source, duplicateExisting);
-    assert.match(source, sameType);
-    assert.match(source, confirmText);
+    sharedMessages.forEach((message) => assert.ok(source.includes(message), message));
   }
 
+  assert.match(groupBooking, /formatServiceMoney\(service\.priceAmount\)/);
+  assert.match(groupBooking, /clearParticipantFormMessage\(\)/);
   assert.match(groupBooking, /state\.extras\[extraIndex\] = selections/);
   assert.match(groupBooking, /extraSelectionsToItems\(state\.extras\[index\]\)/);
   assert.match(groupBooking, /participantSelections\(participant\)/);
