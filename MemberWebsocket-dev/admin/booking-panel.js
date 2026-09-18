@@ -89,7 +89,7 @@
     // Resource controls are independent required modules. They wait for the
     // booking host themselves, so they cannot disappear because another
     // decorator or the core load chain failed.
-    ['booking-resources.js', 'booking-resource-mount-20260918-2'],
+    ['booking-resources.js', 'booking-resource-tabs-20260918-1'],
     ['../booking-technician-delete.js', 'booking-technician-delete-20260918-3'],
   ];
 
@@ -100,7 +100,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-single-renderer-20260918-1');
+      return load('booking-panel-core.js', 'booking-layout-tabs-20260918-1');
     })
     .then(() => {
       restoreBookingHashAndOpen();
