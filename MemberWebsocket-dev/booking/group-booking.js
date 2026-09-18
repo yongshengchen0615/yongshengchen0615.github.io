@@ -118,6 +118,12 @@
     return originalRequest(config, clientType, idToken, action, payload);
   };
 
+  window.addEventListener('booking:selection-changed', (event) => {
+    syncPrimaryItems(event?.detail?.items);
+    updateCardSummaries();
+    updateSelectionSummary();
+  });
+
   window.addEventListener('DOMContentLoaded', () => {
     injectGroupControls();
     document.getElementById('bookingForm')?.addEventListener('submit', () => window.setTimeout(decorateConfirmation, 0));
@@ -583,10 +589,14 @@
     });
   }
 
-  function buildParticipants(primaryItems, strict = false) {
-    state.primaryItems = (Array.isArray(primaryItems) ? primaryItems : [])
+  function syncPrimaryItems(items) {
+    state.primaryItems = (Array.isArray(items) ? items : [])
       .filter((item) => item.serviceId !== STORE_SERVICE_ID)
       .map((item) => ({ serviceId: item.serviceId, quantity: Number(item.quantity || 1) }));
+  }
+
+  function buildParticipants(primaryItems, strict = false) {
+    syncPrimaryItems(primaryItems);
 
     if (!state.primaryItems.length) {
       if (strict) throw clientError('INVALID_BOOKING_ITEMS', '第一位預約尚未選擇預約項目。');
@@ -680,7 +690,13 @@
 
   function updateSelectionSummary() {
     const root = document.getElementById('selectionSummary');
-    if (!root || !state.primaryItems.length) return;
+    if (!root) return;
+    if (!state.primaryItems.length) {
+      root.replaceChildren();
+      root.classList.add('hidden');
+      root.classList.remove('group-selection-summary');
+      return;
+    }
     const metrics = [];
     for (let index = 0; index < state.partySize; index += 1) metrics.push(participantMetrics(index));
     const overallMinutes = metrics.reduce((max, item) => Math.max(max, item.totalMinutes), 0);

@@ -124,3 +124,62 @@
     gap: 5px;
   }
 }
+
+
+/* Service type colors are intentionally separate from participant-card colors:
+   participant color identifies who is booking; service type color identifies what kind of service it is. */
+.service-info.service-type-group {
+  --service-type-rgb: 67 111 118;
+  border: 1px solid rgb(var(--service-type-rgb) / .24);
+  border-left: 4px solid rgb(var(--service-type-rgb) / .82);
+  background: rgb(var(--service-type-rgb) / .075);
+  color: #31483f;
+}
+
+.service-type-group[data-service-type-color="0"] { --service-type-rgb: 52 111 126; }
+.service-type-group[data-service-type-color="1"] { --service-type-rgb: 166 93 55; }
+.service-type-group[data-service-type-color="2"] { --service-type-rgb: 91 101 163; }
+.service-type-group[data-service-type-color="3"] { --service-type-rgb: 60 126 86; }
+.service-type-group[data-service-type-color="4"] { --service-type-rgb: 160 112 38; }
+.service-type-group[data-service-type-color="5"] { --service-type-rgb: 143 80 122; }
+.service-type-group[data-service-type-color="6"] { --service-type-rgb: 55 108 160; }
+.service-type-group[data-service-type-color="7"] { --service-type-rgb: 172 79 82; }
+.service-type-group[data-service-type-color="8"] { --service-type-rgb: 92 116 74; }
+.service-type-group[data-service-type-color="9"] { --service-type-rgb: 111 82 145; }
+.service-type-group[data-service-type-color="10"] { --service-type-rgb: 45 126 119; }
+.service-type-group[data-service-type-color="11"] { --service-type-rgb: 155 89 112; }
+
+.service-info.service-type-group > strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--service-type-rgb));
+  font-size: .9rem;
+}
+
+.service-info.service-type-group > strong::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 999px;
+  background: rgb(var(--service-type-rgb));
+  box-shadow: 0 0 0 3px rgb(var(--service-type-rgb) / .13);
+}
+
+.service-info.service-type-group > .service-picker,
+.service-info.service-type-group > .selected-service-list {
+  margin-top: 8px;
+}
+
+.service-info.service-type-group .service-choice,
+.service-info.service-type-group .selected-service-item {
+  border-color: rgb(var(--service-type-rgb) / .20);
+}
+
+@media (max-width: 620px) {
+  .service-info.service-type-group {
+    border-left-width: 5px;
+    padding: 11px 12px;
+  }
+}
