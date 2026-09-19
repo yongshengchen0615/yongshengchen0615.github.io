@@ -9,7 +9,7 @@
   const state = {
     config: null,
     booking: { settings: {}, bookings: [], groups: {}, technicians: [], primaryTechnicianId: '' },
-    catalog: { serviceTypes: [], services: [] },
+    catalog: { serviceTypes: [], services: [], pointCards: [] },
     filter: 'pending',
     subtab: 'technicians',
     selected: new Set(),
@@ -326,7 +326,7 @@
         technicians: Array.isArray(resources.technicians) ? resources.technicians : [],
         primaryTechnicianId: String(resources.settings?.primaryTechnicianId || groupData?.primaryTechnicianId || ''),
       };
-      state.catalog = { serviceTypes: Array.isArray(catalog.serviceTypes) ? catalog.serviceTypes : [], services: Array.isArray(catalog.services) ? catalog.services : [] };
+      state.catalog = { serviceTypes: Array.isArray(catalog.serviceTypes) ? catalog.serviceTypes : [], services: Array.isArray(catalog.services) ? catalog.services : [], pointCards: Array.isArray(catalog.pointCards) ? catalog.pointCards : [] };
       state.selected = new Set([...state.selected].filter((id) => state.catalog.services.some((service) => service.serviceId === id)));
       renderAll();
       setupRealtime();
@@ -368,7 +368,7 @@
       row.style.cursor = 'default';
       const content = document.createElement('span');
       const title = document.createElement('strong'); title.textContent = type.name;
-      const small = document.createElement('small'); small.textContent = '共用項目類型';
+      const small = document.createElement('small'); small.textContent = type.rewardMinutesPerPoint && type.rewardPointCardId ? `完成服務每 ${type.rewardMinutesPerPoint} 分鐘 → ${type.rewardPointCardTitle || '指定集點卡'} +1 點` : '未設定完成服務自動集點';
       content.append(title, small);
       const actions = document.createElement('span'); actions.className = 'booking-admin-actions'; actions.style.margin = '0';
       actions.append(actionButton('修改', 'button button-outline', () => openTypeModal(type)), actionButton('刪除', 'button button-danger', () => deleteType(type)));
@@ -440,13 +440,66 @@
 
   function openTypeModal(type) {
     els.bookingAdminCrudModalTitle.textContent = type ? '修改項目類型' : '新增項目類型';
-    els.bookingAdminCrudModalBody.innerHTML = `<form class="booking-admin-form"><label>項目類型名稱<input data-type-name maxlength="80" required></label><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">取消</button><button class="button button-dark" type="submit">${type ? '儲存修改' : '新增類型'}</button></div></form>`;
+    const cards = state.catalog.pointCards || [];
+    const cardOptions = ['<option value="">請選擇集點卡</option>', ...cards.map((card) => `<option value="${escapeAttr(card.id)}">${escapeHtml(card.title || card.cardId || '集點卡')}</option>`)].join('');
+    els.bookingAdminCrudModalBody.innerHTML = `<form class="booking-admin-form">
+      <label>項目類型名稱<input data-type-name maxlength="80" required></label>
+      <label class="booking-admin-toggle"><input data-type-reward-enabled type="checkbox"><span><strong>完成服務自動集點</strong><small>管理員確認服務完成後，依此類型實際服務分鐘自動加點；店內服務時間不計入。</small></span></label>
+      <div data-type-reward-fields style="display:grid;gap:12px">
+        <label>每多少服務分鐘獲得 1 點<input data-type-reward-minutes type="number" min="1" max="10080" step="1" placeholder="例如：60"></label>
+        <label>加到哪張集點卡<select data-type-reward-card>${cardOptions}</select></label>
+        <small>同一筆完成服務會以此類型的服務分鐘計算：可獲得點數 = 服務分鐘 ÷ 設定分鐘數（無條件捨去）。</small>
+      </div>
+      <div data-modal-message class="form-message hidden"></div>
+      <div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">取消</button><button class="button button-dark" type="submit">${type ? '儲存修改' : '新增類型'}</button></div>
+    </form>`;
     const form = els.bookingAdminCrudModalBody.querySelector('form');
-    const input = form.querySelector('[data-type-name]'); input.value = type?.name || '';
+    const input = form.querySelector('[data-type-name]');
+    const enabled = form.querySelector('[data-type-reward-enabled]');
+    const rewardFields = form.querySelector('[data-type-reward-fields]');
+    const minutesInput = form.querySelector('[data-type-reward-minutes]');
+    const cardSelect = form.querySelector('[data-type-reward-card]');
+    input.value = type?.name || '';
+    minutesInput.value = type?.rewardMinutesPerPoint ? String(type.rewardMinutesPerPoint) : '';
+    cardSelect.value = type?.rewardPointCardId || '';
+    enabled.checked = Boolean(type?.rewardMinutesPerPoint && type?.rewardPointCardId);
+
+    const syncRewardFields = () => {
+      rewardFields.classList.toggle('hidden', !enabled.checked);
+      minutesInput.disabled = !enabled.checked;
+      cardSelect.disabled = !enabled.checked;
+    };
+    enabled.addEventListener('change', () => {
+      if (enabled.checked && !cards.length) {
+        enabled.checked = false;
+        syncRewardFields();
+        return showMessage(form.querySelector('[data-modal-message]'), '目前沒有可使用的集點卡，請先建立並啟用集點卡。', 'error');
+      }
+      clearMessage(form.querySelector('[data-modal-message]'));
+      syncRewardFields();
+    });
+    syncRewardFields();
+
     form.querySelector('[data-cancel]').addEventListener('click', closeModal);
     form.addEventListener('submit', async (event) => {
-      event.preventDefault(); const name = input.value.trim(); if (!name) return;
-      await runModalAction(async () => manageRequest(type ? 'admin.booking.type.update' : 'admin.booking.type.create', type ? { typeId: type.id, name } : { name }, true));
+      event.preventDefault();
+      const name = input.value.trim();
+      if (!name) return;
+      let rewardMinutesPerPoint = null;
+      let rewardPointCardId = null;
+      if (enabled.checked) {
+        rewardMinutesPerPoint = Number(minutesInput.value);
+        rewardPointCardId = cardSelect.value;
+        if (!Number.isInteger(rewardMinutesPerPoint) || rewardMinutesPerPoint < 1 || rewardMinutesPerPoint > 10080) {
+          return showMessage(form.querySelector('[data-modal-message]'), '自動集點分鐘必須介於 1–10,080 分鐘。', 'error');
+        }
+        if (!rewardPointCardId) {
+          return showMessage(form.querySelector('[data-modal-message]'), '請選擇要自動加點的集點卡。', 'error');
+        }
+      }
+      const payload = { name, rewardMinutesPerPoint, rewardPointCardId };
+      if (type) payload.typeId = type.id;
+      await runModalAction(async () => manageRequest(type ? 'admin.booking.type.update' : 'admin.booking.type.create', payload, true));
     });
     showModal(); input.focus();
   }
@@ -969,7 +1022,7 @@
   }
 
   async function updateBookingStatus(booking, status, adminNote) {
-    if (status === 'completed' && !window.confirm(`確認 ${booking.memberDisplayName || '此會員'} 的服務已完成？\n系統不再要求等待原預約結束時間；完成後不可修改或取消。`)) return;
+    if (status === 'completed' && !window.confirm(`確認 ${booking.memberDisplayName || '此會員'} 的服務已完成？\n完成後會自動累積服務時間、依項目類型發放集點並發送 LINE 通知；店內服務分鐘不列入服務時間與集點計算。\n系統不再要求等待原預約結束時間；完成後不可修改或取消。`)) return;
     await runPageAction(els.bookingAdminServiceMessage, async () => {
       if (status === 'completed') {
         return operationsRequest('admin.booking.status.complete', { bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt, adminNote }, true);
