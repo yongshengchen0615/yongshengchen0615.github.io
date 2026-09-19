@@ -50,6 +50,7 @@ function mapDbError(error: any): ApiError {
     ["BOOKING_TOO_FAR",409,"BOOKING_TOO_FAR","此日期超過可預約範圍。"],
     ["BOOKING_TIME_PASSED",409,"BOOKING_TIME_PASSED","這個預約時間已經過了。"],
     ["BOOKING_SERVICE_DISABLED",409,"BOOKING_SERVICE_DISABLED","其中一個預約項目目前未開放。"],
+    ["BOOKING_ADD_ON_REQUIRES_COMPANION",400,"BOOKING_ADD_ON_REQUIRES_COMPANION","加購項目不能單獨預約，請至少再選擇一個一般項目。"],
     ["BOOKING_SERVICE_NOT_FOUND",404,"BOOKING_SERVICE_NOT_FOUND","找不到其中一個預約項目。"],
     ["BOOKING_TECHNICIAN_NOT_FOUND",404,"BOOKING_TECHNICIAN_NOT_FOUND","找不到選擇的技師。"],
     ["BOOKING_TECHNICIAN_DISABLED",409,"BOOKING_TECHNICIAN_DISABLED","選擇的技師目前未開放預約。"],
@@ -226,13 +227,15 @@ async function normalizeGroup(s: SupabaseClient, body: Json) {
   if (!store || !store.is_active) throw new ApiError(409,"BOOKING_SERVICE_DISABLED","店內服務目前未開放。");
   let maxParticipantDuration=0, amount=Number(store.price_amount||0); const assignments:Json[]=[];
   for (const p of normalized) {
-    let participantDuration=0;
+    let participantDuration=0, hasAddOn=false, hasRegular=false;
     for (const x of p.items) {
       const svc=sm.get(x.serviceId); if (!svc) throw new ApiError(404,"BOOKING_SERVICE_NOT_FOUND","找不到其中一個預約項目。");
       if (!svc.is_active) throw new ApiError(409,"BOOKING_SERVICE_DISABLED","其中一個預約項目目前未開放。");
+      if (Boolean(svc.requires_companion_service)) hasAddOn=true; else hasRegular=true;
       const mins=Number(svc.duration_minutes||0)*x.quantity, price=Number(svc.price_amount||0)*x.quantity;
       participantDuration += mins; amount += price;
     }
+    if (hasAddOn && !hasRegular) throw new ApiError(400,"BOOKING_ADD_ON_REQUIRES_COMPANION","加購項目不能單獨預約，請至少再選擇一個一般項目。");
     maxParticipantDuration = Math.max(maxParticipantDuration, participantDuration);
     if (p.technicianId) assignments.push({ technicianId:p.technicianId, durationMinutes:participantDuration });
   }
