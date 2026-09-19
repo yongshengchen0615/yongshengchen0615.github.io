@@ -114,8 +114,8 @@ jobs:
           grep -q 'ensureSeparateTierTargets' MemberWebsocket-dev/booking/membership-progress.js
           grep -q '目前會員階級：' MemberWebsocket-dev/booking/membership-progress.js
           grep -q 'member-ui.js?v=booking-single-render-20260919-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'app.js?v=booking-clock-sync-20260919-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'group-booking.js?v=booking-single-render-20260919-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'app.js?v=booking-addon-rules-20260919-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'group-booking.js?v=booking-addon-rules-20260919-1' MemberWebsocket-dev/booking/index.html
           ! grep -q 'member-booking-format.js' MemberWebsocket-dev/booking/index.html
           ! grep -q 'booking-confirm-details.js' MemberWebsocket-dev/booking/index.html
           ! grep -q 'booking-notice-dedupe.js' MemberWebsocket-dev/booking/index.html
@@ -140,7 +140,7 @@ jobs:
           test ! -e MemberWebsocket-dev/booking/admin/app.js
           test ! -e MemberWebsocket-dev/booking/admin/subtabs.js
           test ! -e MemberWebsocket-dev/booking/admin/cancellation-review.js
-          grep -q 'booking-panel.js?v=booking-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
+          grep -q 'booking-panel.js?v=booking-addon-settings-20260919-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'loadBookingAdminPanelExtension' MemberWebsocket-dev/member-system.js
           grep -q 'booking-panel-core.js' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'booking-cancellation-sync.js' MemberWebsocket-dev/admin/booking-panel.js
