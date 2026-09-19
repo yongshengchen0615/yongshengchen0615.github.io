@@ -174,7 +174,7 @@ async function normalizeGroup(supabase: ReturnType<typeof db>, body: Json) {
   }
   if (!primarySelected) throw new ApiError(400, "BOOKING_PRIMARY_TECHNICIAN_REQUIRED", "每筆預約至少要有一位選擇主要技師。");
 
-  const servicesResult = await supabase.from("booking_services").select("id,is_active,duration_minutes,price_amount").in("id", [...serviceIds, STORE_SERVICE_ID]);
+  const servicesResult = await supabase.from("booking_services").select("id,is_active,duration_minutes,price_amount,requires_companion_service").in("id", [...serviceIds, STORE_SERVICE_ID]);
   if (servicesResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取預約項目。");
   const serviceMap = new Map((servicesResult.data || []).map((row: any) => [String(row.id), row]));
   const storeService = serviceMap.get(STORE_SERVICE_ID);
@@ -185,13 +185,17 @@ async function normalizeGroup(supabase: ReturnType<typeof db>, body: Json) {
   const assignments: Json[] = [];
   for (const participant of normalized) {
     let participantServiceMinutes = 0;
+    let hasAddOn = false;
+    let hasRegular = false;
     for (const item of participant.items) {
       const service = serviceMap.get(item.serviceId);
       if (!service) throw new ApiError(404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個預約項目。");
       if (!service.is_active) throw new ApiError(409, "BOOKING_SERVICE_DISABLED", "其中一個預約項目目前未開放。");
+      if (Boolean(service.requires_companion_service)) hasAddOn = true; else hasRegular = true;
       participantServiceMinutes += Number(service.duration_minutes || 0) * Number(item.quantity || 1);
       totalAmount += Number(service.price_amount || 0) * Number(item.quantity || 1);
     }
+    if (hasAddOn && !hasRegular) throw new ApiError(400, "BOOKING_ADD_ON_REQUIRES_COMPANION", "加購項目不能單獨預約，請至少再選擇一個一般項目。");
     maxParticipantServiceMinutes = Math.max(maxParticipantServiceMinutes, participantServiceMinutes);
     if (participant.technicianId) assignments.push({ technicianId: participant.technicianId, durationMinutes: participantServiceMinutes });
   }
