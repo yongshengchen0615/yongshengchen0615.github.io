@@ -49,7 +49,7 @@
       attempts += 1;
       const adminView = document.getElementById('adminView');
       const bookingTab = document.getElementById('bookingTab');
-      const authenticated = Boolean(window.liff?.getIDToken?.());
+      const authenticated = Boolean(window.MemberAdminSession?.isReady?.());
       if (adminView && bookingTab && !adminView.classList.contains('hidden') && authenticated) {
         bookingTab.click();
         return true;
@@ -85,11 +85,11 @@
   // optional feature from blocking every feature loaded after it.
   const preloadExtensions = [
     ['booking-always-open.js', 'booking-always-open-20260917-2'],
-    ['booking-cancellation-sync.js', 'booking-card-unified-20260918-1'],
+    ['booking-cancellation-sync.js', 'booking-unified-session-20260919-1'],
     // Resource controls are independent required modules. They wait for the
     // booking host themselves, so they cannot disappear because another
     // decorator or the core load chain failed.
-    ['booking-resources.js', 'booking-technician-modal-20260918-1'],
+    ['booking-resources.js', 'booking-unified-session-20260919-1'],
   ];
 
   Promise.allSettled(preloadExtensions.map(([name, version]) => load(name, version)))
@@ -99,7 +99,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-realtime-refresh-20260919-2');
+      return load('booking-panel-core.js', 'booking-unified-session-20260919-1');
     })
     .then(() => {
       restoreBookingHashAndOpen();
