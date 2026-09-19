@@ -106,10 +106,12 @@
   }
 
   async function context() {
-    if (!config) config = await window.MemberSystem.loadConfig();
-    const idToken = String(window.liff?.getIDToken?.() || '');
-    if (!idToken) throw clientError('AUTH_REQUIRED', '管理端登入尚未完成。');
-    return { config, idToken };
+    if (!window.MemberAdminSession || typeof window.MemberAdminSession.wait !== 'function') {
+      throw clientError('AUTH_REQUIRED', '管理端登入服務尚未準備完成。');
+    }
+    const session = await window.MemberAdminSession.wait();
+    config = session.config;
+    return { config, idToken: session.idToken };
   }
 
   function clientError(code, message) { const error = new Error(message); error.code = code; return error; }
@@ -141,18 +143,14 @@
   const groupDetailsRequest = (action, payload = {}) => requestFunction('booking-group-details-api', action, payload);
 
   function waitForAdmin() {
-    let attempts = 0;
-    const run = async () => {
-      attempts += 1;
-      if (window.liff?.getIDToken?.()) {
+    if (!window.MemberAdminSession || typeof window.MemberAdminSession.wait !== 'function') return;
+    window.MemberAdminSession.wait()
+      .then(async () => {
         await refresh(false, true);
         await setupRealtime();
         setupPolling();
-        return;
-      }
-      if (attempts < 80) window.setTimeout(run, 250);
-    };
-    run();
+      })
+      .catch(() => {});
   }
 
   async function setupRealtime() {
