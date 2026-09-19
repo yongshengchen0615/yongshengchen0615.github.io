@@ -278,6 +278,23 @@
     els.cancelledButton.textContent = cancelledRows.length ? `已取消（${cancelledRows.length}）` : '已取消';
   }
 
+  function timestampValue(value) {
+    const parsed = Date.parse(String(value || ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function compareCancellationRequestsNewestFirst(a, b) {
+    const timestampDiff = timestampValue(b?.cancellationRequestedAt || b?.updatedAt) - timestampValue(a?.cancellationRequestedAt || a?.updatedAt);
+    if (timestampDiff) return timestampDiff;
+    return String(b?.bookingId || '').localeCompare(String(a?.bookingId || ''));
+  }
+
+  function compareCancelledNewestFirst(a, b) {
+    const timestampDiff = timestampValue(b?.cancelledAt || b?.updatedAt || b?.createdAt) - timestampValue(a?.cancelledAt || a?.updatedAt || a?.createdAt);
+    if (timestampDiff) return timestampDiff;
+    return String(b?.bookingId || '').localeCompare(String(a?.bookingId || ''));
+  }
+
   function renderActiveMode() {
     if (activeMode === MODE_REQUESTS) renderRequests();
     else if (activeMode === MODE_CANCELLED) renderCancelled();
@@ -288,7 +305,7 @@
     els.bookingCancellationReviewTitle.textContent = '取消申請';
     els.bookingCancellationReviewDescription.textContent = '會員申請取消後，原預約時段仍保留；管理端確認取消後才會重新開放。';
     els.bookingCancellationReviewCount.className = 'booking-admin-status status-pending';
-    renderRows(requestRows, '目前沒有待確認的取消申請', requestCard);
+    renderRows(requestRows.slice().sort(compareCancellationRequestsNewestFirst), '目前沒有待確認的取消申請', requestCard);
   }
 
   function renderCancelled() {
@@ -296,7 +313,7 @@
     els.bookingCancellationReviewTitle.textContent = '已取消';
     els.bookingCancellationReviewDescription.textContent = '顯示已完成取消的預約紀錄；此分頁僅供查詢，不會重新開放或變更其他預約。';
     els.bookingCancellationReviewCount.className = 'booking-admin-status status-cancelled';
-    renderRows(cancelledRows, '目前沒有已取消的預約', cancelledCard);
+    renderRows(cancelledRows.slice().sort(compareCancelledNewestFirst), '目前沒有已取消的預約', cancelledCard);
   }
 
   function renderRows(rows, emptyText, cardFactory) {
