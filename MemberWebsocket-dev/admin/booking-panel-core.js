@@ -235,7 +235,7 @@
     if (window.location.hash !== '#booking') return;
     const adminView = document.getElementById('adminView');
     const tryOpen = () => {
-      if (!adminView.classList.contains('hidden') && window.liff?.getIDToken?.()) { activateBookingPanel(); return true; }
+      if (!adminView.classList.contains('hidden') && window.MemberAdminSession?.isReady?.()) { activateBookingPanel(); return true; }
       return false;
     };
     if (tryOpen()) return;
@@ -245,10 +245,12 @@
   }
 
   async function context() {
-    if (!state.config) state.config = await window.MemberSystem.loadConfig();
-    const idToken = String(window.liff?.getIDToken?.() || '');
-    if (!idToken) throw clientError('AUTH_REQUIRED', '管理端登入尚未完成，請重新整理後再試。');
-    return { config: state.config, idToken };
+    if (!window.MemberAdminSession || typeof window.MemberAdminSession.wait !== 'function') {
+      throw clientError('AUTH_REQUIRED', '管理端登入服務尚未準備完成。');
+    }
+    const session = await window.MemberAdminSession.wait();
+    state.config = session.config;
+    return { config: session.config, idToken: session.idToken };
   }
 
   async function requestFunction(name, action, payload = {}, write = false) {
