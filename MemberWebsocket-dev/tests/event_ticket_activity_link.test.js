@@ -16,7 +16,7 @@ assert.equal(fs.existsSync('MemberWebsocket-dev/event/activity-link.js'), false)
 for (const asset of [
   'fixed-ticket-admin-integration.js?v=fixed-ticket-sync-20260916-1',
   'fixed-ticket-calendar-option.js?v=fixed-ticket-calendar-20260917-4',
-  'fixed-ticket-admin.js?v=fixed-ticket-realtime-20260919-2',
+  'fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1',
 ]) assert.ok(adminHtml.includes(asset), asset);
 
 assert.ok(adminHtml.includes('fixed-ticket-admin.css?v=fixed-ticket-20260916-1'));
