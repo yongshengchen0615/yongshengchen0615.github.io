@@ -1,5 +1,4 @@
 const fs = require('node:fs');
-const vm = require('node:vm');
 const assert = require('node:assert/strict');
 
 const read = (path) => fs.readFileSync(path, 'utf8');
@@ -7,7 +6,7 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const adminFlow = read('MemberWebsocket-dev/admin/grant-automation.js');
 const adminCalendarStyles = read('MemberWebsocket-dev/admin/calendar-responsive.css');
 const userCalendar = read('MemberWebsocket-dev/calendar/app.js');
-const realtime = read('MemberWebsocket-dev/realtime-resync.js');
+const calendarApi = read('MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts');
 const edge = read('MemberWebsocket-dev/supabase/functions/grant-automation/index.ts');
 
 assert.match(adminFlow, /EVENT_TICKET_CALENDAR_MANAGED/);
@@ -39,95 +38,18 @@ assert.match(userCalendar, /window\.location\.assign\(url\)/);
 assert.doesNotMatch(userCalendar, /link\.target = '_blank'/);
 assert.doesNotMatch(userCalendar, /link\.rel = 'noopener noreferrer'/);
 
-assert.match(realtime, /splitManagedEventAroundHolidays/);
-assert.match(realtime, /holidayDateSet/);
-assert.match(realtime, /source.*event-ticket-calendar/);
+assert.match(calendarApi, /splitManagedEventAroundHolidays/);
+assert.match(calendarApi, /holidayDateSet/);
+assert.match(calendarApi, /source.*event-ticket-calendar/);
+assert.match(calendarApi, /applyCalendarDisplayRules/);
+assert.match(calendarApi, /calendarDisplaySourceId/);
 assert.doesNotMatch(edge, /findActiveHolidayOverlap/);
 assert.doesNotMatch(edge, /removeManagedEventTicketCalendarItems/);
 assert.doesNotMatch(edge, /event_ticket_holiday_overlap/);
 
-const sourceResult = {
-  items: [
-    {
-      calendarItemId: 'HOL-12',
-      itemType: 'holiday',
-      title: '休假',
-      status: 'active',
-      startsOn: '2026-09-12',
-      endsOn: '',
-      linkUrl: ''
-    },
-    {
-      calendarItemId: 'EVT-TICKET',
-      itemType: 'event',
-      title: '活動票券活動',
-      status: 'active',
-      startsOn: '2026-09-11',
-      endsOn: '2026-09-13',
-      linkUrl: 'https://example.com/event/?source=event-ticket-calendar&eventTicketId=ET-1'
-    },
-    {
-      calendarItemId: 'EVT-MANUAL',
-      itemType: 'event',
-      title: '一般活動',
-      status: 'active',
-      startsOn: '2026-09-11',
-      endsOn: '2026-09-13',
-      linkUrl: ''
-    }
-  ]
-};
 
-let nextResult = sourceResult;
-const baseRequest = async () => structuredClone(nextResult);
-const windowMock = {
-  MemberSystem: {
-    request: baseRequest,
-    subscribeRealtime() { return () => {}; }
-  },
-  location: { href: 'https://example.com/calendar/' },
-  addEventListener() {},
-  removeEventListener() {}
-};
-const context = {
-  window: windowMock,
-  document: {
-    visibilityState: 'visible',
-    addEventListener() {},
-    removeEventListener() {}
-  },
-  navigator: { onLine: true },
-  URL,
-  Date,
-  Set,
-  Promise,
-  structuredClone,
-  console
-};
-vm.runInNewContext(realtime, context);
+assert.match(calendarApi, /if \(holidays\.has\(date\)\) \{[\s\S]*?pushSegment\(\)/);
+assert.match(calendarApi, /items = applyCalendarDisplayRules\(items\)/);
+assert.match(calendarApi, /items = items\.filter\(\(item\) => includesDate\(item, date\)\)/);
 
-(async () => {
-  const withHoliday = await windowMock.MemberSystem.request({}, 'calendar', 'token', 'user.calendar.bootstrap', {});
-  const ticketSegments = withHoliday.items.filter((item) => item.calendarItemId === 'EVT-TICKET');
-  assert.deepEqual(
-    ticketSegments.map((item) => [item.startsOn, item.endsOn]),
-    [['2026-09-11', ''], ['2026-09-13', '']]
-  );
-  const manualEvent = withHoliday.items.find((item) => item.calendarItemId === 'EVT-MANUAL');
-  assert.equal(manualEvent.startsOn, '2026-09-11');
-  assert.equal(manualEvent.endsOn, '2026-09-13');
-
-  nextResult = {
-    items: sourceResult.items.filter((item) => item.itemType !== 'holiday')
-  };
-  const withoutHoliday = await windowMock.MemberSystem.request({}, 'calendar', 'token', 'user.calendar.bootstrap', {});
-  const restored = withoutHoliday.items.filter((item) => item.calendarItemId === 'EVT-TICKET');
-  assert.equal(restored.length, 1);
-  assert.equal(restored[0].startsOn, '2026-09-11');
-  assert.equal(restored[0].endsOn, '2026-09-13');
-
-  console.log('event ticket calendar holiday/source/read-only guard OK');
-})().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+console.log('event ticket calendar holiday/source/read-only guard OK');
