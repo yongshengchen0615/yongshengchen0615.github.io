@@ -13,11 +13,6 @@
     { key: 'cancelled', title: '已取消的服務', description: '已由管理端確認取消或未通過的預約服務。' },
   ];
   let lastProfile = null;
-  let renderTimer = null;
-  let bookingListObserver = null;
-  let bookingHistoryTimer = null;
-  let formMessageObserver = null;
-  let reorganizingBookingHistory = false;
   let expandedBookingId = '';
 
   function membershipRequiredError() {
@@ -244,58 +239,27 @@
 
   function organizeBookingHistory() {
     const bookingList = document.getElementById('bookingList');
-    if (!bookingList || reorganizingBookingHistory) return;
+    if (!bookingList) return;
     normalizeBookingUi(bookingList);
 
     const directItems = [...bookingList.children].filter((node) => node.classList?.contains('booking-item'));
-    if (!directItems.length) return;
+    if (!directItems.length) {
+      syncBookingAccordionState(bookingList);
+      return;
+    }
 
     const grouped = new Map(BOOKING_GROUPS.map((group) => [group.key, []]));
     directItems.forEach((item) => grouped.get(bookingGroupKey(item)).push(item));
-
-    reorganizingBookingHistory = true;
-    if (bookingListObserver) bookingListObserver.disconnect();
-    try {
-      bookingList.replaceChildren(...BOOKING_GROUPS.map((group) => createBookingGroup(group, grouped.get(group.key))));
-      normalizeBookingUi(bookingList);
-      syncBookingAccordionState(bookingList);
-    } finally {
-      reorganizingBookingHistory = false;
-      if (bookingListObserver) bookingListObserver.observe(bookingList, { childList: true, subtree: true });
-    }
+    bookingList.replaceChildren(...BOOKING_GROUPS.map((group) => createBookingGroup(group, grouped.get(group.key))));
+    normalizeBookingUi(bookingList);
+    syncBookingAccordionState(bookingList);
   }
 
-  function scheduleBookingHistoryEnhancement() {
-    if (bookingHistoryTimer !== null) window.clearTimeout(bookingHistoryTimer);
-    bookingHistoryTimer = window.setTimeout(() => {
-      bookingHistoryTimer = null;
-      organizeBookingHistory();
-    }, 0);
-  }
-
-  function installBookingHistoryEnhancement() {
+  function installBookingHistoryInteractions() {
     const bookingList = document.getElementById('bookingList');
-    if (bookingList) {
-      normalizeBookingUi(bookingList);
-      if (bookingListObserver) bookingListObserver.disconnect();
-      bookingListObserver = new MutationObserver(() => scheduleBookingHistoryEnhancement());
-      bookingListObserver.observe(bookingList, { childList: true, subtree: true });
-      bookingList.addEventListener('click', handleBookingHistoryClick);
-      bookingList.addEventListener('keydown', handleBookingHistoryKeydown);
-      scheduleBookingHistoryEnhancement();
-    }
-
-    const formMessage = document.getElementById('formMessage');
-    if (formMessage) {
-      const normalizeMessage = () => {
-        if (formMessage.textContent?.includes('預約已取消')) {
-          formMessage.textContent = '已送出取消申請，等待管理端確認；確認前原預約時段仍會保留。';
-        }
-      };
-      normalizeMessage();
-      formMessageObserver = new MutationObserver(normalizeMessage);
-      formMessageObserver.observe(formMessage, { childList: true, subtree: true, characterData: true });
-    }
+    if (!bookingList) return;
+    bookingList.addEventListener('click', handleBookingHistoryClick);
+    bookingList.addEventListener('keydown', handleBookingHistoryKeydown);
   }
 
   window.BookingMemberUI = Object.freeze({
@@ -317,11 +281,7 @@
       showMembershipRequiredView();
       throw membershipRequiredError();
     }
-    if (renderTimer !== null) window.clearTimeout(renderTimer);
-    renderTimer = window.setTimeout(() => {
-      renderTimer = null;
-      renderMembershipProgress();
-    }, 0);
+    renderMembershipProgress();
     return profile;
   };
 
@@ -353,16 +313,13 @@
     }
   };
 
-  window.addEventListener('DOMContentLoaded', installBookingHistoryEnhancement);
+  window.addEventListener('DOMContentLoaded', installBookingHistoryInteractions);
   window.addEventListener('beforeunload', () => {
     window.confirm = originalConfirm;
-    if (bookingListObserver) bookingListObserver.disconnect();
     const bookingList = document.getElementById('bookingList');
     if (bookingList) {
       bookingList.removeEventListener('click', handleBookingHistoryClick);
       bookingList.removeEventListener('keydown', handleBookingHistoryKeydown);
     }
-    if (formMessageObserver) formMessageObserver.disconnect();
-    if (bookingHistoryTimer !== null) window.clearTimeout(bookingHistoryTimer);
   });
 })();
