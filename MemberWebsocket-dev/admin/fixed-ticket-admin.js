@@ -150,15 +150,11 @@
       }
     });
 
-    if (list) {
-      const observer = new MutationObserver(() => {
-        if (!renderingList) window.queueMicrotask(renderFixedList);
-      });
-      observer.observe(list, { childList: true });
-    }
+    window.addEventListener('member-admin-event-ticket-list-rendered', renderFixedList);
 
     updateFixedUI();
-    loadTemplates();
+    if (document.documentElement.dataset.memberAdminReady === 'true') loadTemplates();
+    else window.addEventListener('member-admin-ready', loadTemplates, { once: true });
   });
 
   async function loadConfig() {
@@ -168,12 +164,9 @@
   }
 
   async function waitForAdminIdToken() {
-    for (let attempt = 0; attempt < 80; attempt += 1) {
-      const idToken = typeof window.liff?.getIDToken === 'function' ? String(window.liff.getIDToken() || '') : '';
-      if (idToken) return idToken;
-      await new Promise((resolve) => window.setTimeout(resolve, 100));
-    }
-    throw new Error('LINE 管理端登入尚未完成，請重新整理後再試。');
+    const idToken = typeof window.liff?.getIDToken === 'function' ? String(window.liff.getIDToken() || '') : '';
+    if (idToken) return idToken;
+    throw new Error('LINE 管理端登入狀態已失效，請重新整理後再試。');
   }
 
   async function request(action, payload = {}) {
