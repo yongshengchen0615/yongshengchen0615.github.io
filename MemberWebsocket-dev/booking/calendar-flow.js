@@ -69,48 +69,13 @@
       scheduleMonthOccupancyReload();
     });
 
-    const syncAfterSelectionEvent = () => window.setTimeout(syncAfterSelectionMutation, 0);
-    els.servicePicker.addEventListener('click', syncAfterSelectionEvent);
-    els.selectedServiceList?.addEventListener('click', syncAfterSelectionEvent);
-
-    const pickerObserver = new MutationObserver(syncAfterSelectionMutation);
-    pickerObserver.observe(els.servicePicker, { childList: true, subtree: true });
-
-    if (els.bookingList) {
-      const bookingObserver = new MutationObserver(scheduleMonthOccupancyReload);
-      bookingObserver.observe(els.bookingList, { childList: true, subtree: true });
-    }
-
-    if (els.bookingView) {
-      const viewObserver = new MutationObserver(() => {
-        if (!els.bookingView.classList.contains('hidden')) loadMonthOccupancy();
-      });
-      viewObserver.observe(els.bookingView, { attributes: true, attributeFilter: ['class'] });
-      if (!els.bookingView.classList.contains('hidden')) loadMonthOccupancy();
-    }
+    window.addEventListener('booking:selection-changed', syncAfterSelectionMutation);
+    window.addEventListener('booking:bookings-rendered', scheduleMonthOccupancyReload);
+    window.addEventListener('booking:view-shown', loadMonthOccupancy);
+    if (els.bookingView && !els.bookingView.classList.contains('hidden')) loadMonthOccupancy();
   });
 
   function ensureHolidayUi() {
-    const bookingCard = els.calendarGrid.closest('.booking-card');
-    const calendarShell = els.calendarGrid.closest('.calendar-shell');
-    if (bookingCard && calendarShell && !document.getElementById('bookingNotice')) {
-      const notice = document.createElement('div');
-      notice.id = 'bookingNotice';
-      notice.className = 'service-info booking-shop-notice hidden';
-      notice.setAttribute('role', 'note');
-      const heading = document.createElement('strong');
-      heading.textContent = '店家預約說明：';
-      const body = document.createElement('span');
-      body.dataset.bookingNoticeText = '1';
-      notice.append(heading, body);
-      bookingCard.insertBefore(notice, calendarShell);
-      els.bookingNotice = notice;
-      els.bookingNoticeText = body;
-    } else {
-      els.bookingNotice = document.getElementById('bookingNotice');
-      els.bookingNoticeText = els.bookingNotice?.querySelector('[data-booking-notice-text]') || null;
-    }
-
     const legend = els.calendarGrid.parentElement?.querySelector('.calendar-legend');
     if (legend && !legend.querySelector('[data-holiday-legend]')) {
       const item = document.createElement('span');
@@ -158,7 +123,6 @@
       const style = document.createElement('style');
       style.id = 'bookingHolidayStyles';
       style.textContent = `
-        .booking-shop-notice{white-space:normal}.booking-shop-notice>span{display:block;margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere}
         .calendar-day.holiday-disabled{--holiday-accent:#df6b4d;--holiday-foreground:#000000;border-color:var(--holiday-accent);background:#fff;color:#17352e;cursor:pointer;box-shadow:inset 0 3px 0 var(--holiday-accent)}
         .calendar-day.holiday-disabled:hover{border-color:var(--holiday-accent);background:#f8faf7}
         .calendar-day.holiday-disabled .calendar-day-number{color:#17352e}
@@ -171,13 +135,6 @@
       `;
       document.head.appendChild(style);
     }
-  }
-
-  function renderBookingNotice(value) {
-    if (!els.bookingNotice || !els.bookingNoticeText) return;
-    const text = String(value || '').replace(/\r\n?/g, '\n');
-    els.bookingNoticeText.textContent = text;
-    els.bookingNotice.classList.toggle('hidden', !text.trim());
   }
 
   function taipeiDate() {
@@ -243,10 +200,6 @@
     state.maxAdvanceDays = maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays ? 0 : maxAdvanceDays;
     state.minimumDate = addDays(state.today, minAdvanceDays);
     state.maximumDate = state.maxAdvanceDays > 0 ? addDays(state.today, state.maxAdvanceDays) : '';
-    if (Object.prototype.hasOwnProperty.call(detail.settings || {}, 'bookingNotice')) {
-      renderBookingNotice(detail.settings.bookingNotice);
-    }
-
     const actualDate = String(els.bookingDate?.value || '');
     if (actualDate && actualDate >= state.minimumDate && (!state.maximumDate || actualDate <= state.maximumDate) && actualDate !== state.selectedDate && !state.holidaysByDate.has(actualDate)) {
       state.selectedDate = actualDate;
