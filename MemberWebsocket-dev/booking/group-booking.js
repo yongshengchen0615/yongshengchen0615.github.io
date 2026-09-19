@@ -504,7 +504,7 @@
         .filter(Boolean);
       if (remainingServices.some((item) => item.requiresCompanionService)
           && !remainingServices.some((item) => !item.requiresCompanionService)) {
-        showParticipantFormMessage('加購項目不能單獨保留，請先移除加購項目再移除最後一個一般項目。', 'error');
+        system.showNotice('加購項目不能單獨保留，請先移除加購項目再移除最後一個一般項目。', { title: '加購項目提醒' });
         return;
       }
       selections.splice(selectionIndex, 1);
@@ -534,7 +534,7 @@
       .map((selection) => state.services.find((item) => item.serviceId === selection.serviceId))
       .filter(Boolean);
     if (service.requiresCompanionService && !existingServices.some((item) => !item.requiresCompanionService)) {
-      showParticipantFormMessage(`${service.title} 是加購項目，請先選擇一個一般項目後再加入。`, 'error');
+      system.showNotice(`${service.title} 是加購項目，請先選擇一個一般項目後再加入。`, { title: '加購項目提醒' });
       return false;
     }
     const duplicateCount = selections.filter((selection) => selection.serviceId === service.serviceId).length;
@@ -616,7 +616,7 @@
         && !services.some((service) => !service.requiresCompanionService)) {
       const message = `${label}只有加購項目；加購項目必須搭配至少一個一般項目。`;
       if (strict) throw clientError('BOOKING_ADD_ON_REQUIRES_COMPANION', message);
-      showParticipantFormMessage(message, 'error');
+      system.showNotice(message, { title: '加購項目提醒' });
       return false;
     }
     return true;
