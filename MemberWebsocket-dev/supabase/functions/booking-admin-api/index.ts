@@ -241,8 +241,14 @@ async function serviceSave(supabase: SupabaseClient, identity: Identity, body: J
     if (!current.data) throw new ApiError(404, "BOOKING_SERVICE_NOT_FOUND", "找不到這個預約項目。" );
     const expected = asText(body.expectedUpdatedAt, 80);
     if (expected && new Date(current.data.updated_at).getTime() !== new Date(expected).getTime()) throw new ApiError(409, "BOOKING_SERVICE_CONFLICT", "預約項目已被其他操作更新，請重新整理後再試。" );
-    const updated = await supabase.from("booking_services").update(patch).eq("id", serviceId).is("deleted_at", null).select("*").single();
+    const updated = await supabase.from("booking_services").update(patch)
+      .eq("id", serviceId)
+      .is("deleted_at", null)
+      .eq("updated_at", current.data.updated_at)
+      .select("*")
+      .maybeSingle();
     if (updated.error) throw mapDatabaseError(updated.error);
+    if (!updated.data) throw new ApiError(409, "BOOKING_SERVICE_CONFLICT", "預約項目已被其他操作更新，請重新整理後再試。" );
     saved = updated.data;
     await audit(supabase, identity, "BOOKING_SERVICE_UPDATED", "booking_service", serviceId, { durationMinutes, priceAmount, serviceType });
   } else {
