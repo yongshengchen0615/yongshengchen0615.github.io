@@ -30,9 +30,9 @@ test('admin entry references current booking assets', () => {
   assert.ok(html.includes('calendar-responsive.css?v=calendar-responsive-20260914-mobile-fit-2'));
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
   assert.ok(html.includes('common.js?v=admin-fresh-login-20260917-1'));
-  assert.ok(html.includes('app.js?v=admin-event-ticket-refresh-20260919-1'));
+  assert.ok(html.includes('app.js?v=admin-realtime-refresh-20260919-2'));
   assert.ok(html.includes('booking-panel.css?v=booking-settings-layout-20260918-1'));
-  assert.ok(html.includes('booking-panel.js?v=booking-settings-layout-20260918-1-max-advance-20260919-1'));
+  assert.ok(html.includes('booking-panel.js?v=booking-realtime-refresh-20260919-2'));
   assert.ok(html.includes('../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1'));
 });
 
@@ -48,7 +48,7 @@ test('member booking entry loads only the current single render pipeline', () =>
   assert.ok(html.includes('service-type-color.js?v=booking-shared-type-color-map-20260918-4'));
   assert.ok(html.includes('group-booking.js?v=booking-single-render-20260919-1'));
   assert.ok(html.includes('member-ui.js?v=booking-single-render-20260919-1'));
-  assert.ok(html.includes('app.js?v=booking-single-render-20260919-1'));
+  assert.ok(html.includes('app.js?v=booking-single-render-20260919-2'));
   assert.ok(html.includes('contact-details.js?v=booking-single-render-20260919-1'));
   assert.ok(html.includes('calendar-flow.js?v=booking-single-render-20260919-1'));
 
