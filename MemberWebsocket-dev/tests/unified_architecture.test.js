@@ -52,3 +52,27 @@ test('calendar backend returns final display contract', () => {
   assert.match(source, /applyCalendarDisplayRules/);
   assert.match(source, /calendarDisplaySourceId/);
 });
+
+
+test('admin authentication has one LIFF owner and one shared session broker', () => {
+  const adminDir = path.join(root, 'admin');
+  const adminJsFiles = fs.readdirSync(adminDir).filter((name) => name.endsWith('.js'));
+  const html = read('admin/index.html');
+  const app = read('admin/app.js');
+  const session = read('admin/admin-session.js');
+
+  assert.match(html, /admin-session\.js\?v=admin-session-20260919-1/);
+  assert.ok(html.indexOf('admin-session.js') < html.indexOf('pointcard-redemption-limit.js'));
+  assert.ok(html.indexOf('admin-session.js') < html.indexOf('app.js'));
+  assert.match(app, /MemberSystem\.signIn\(state\.config, 'admin'\)/);
+  assert.match(app, /MemberAdminSession\.establish/);
+  assert.match(session, /function wait\(/);
+  assert.match(session, /function establish\(/);
+  assert.doesNotMatch(session, /liff\.init|getIDToken|window\.liff/);
+
+  for (const name of adminJsFiles) {
+    const source = read(`admin/${name}`);
+    assert.doesNotMatch(source, /window\.liff|getIDToken|liff\.init/, name);
+    if (name !== 'app.js') assert.doesNotMatch(source, /MemberSystem\.signIn/, name);
+  }
+});
