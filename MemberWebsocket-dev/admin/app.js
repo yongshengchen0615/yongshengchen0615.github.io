@@ -863,14 +863,14 @@
     els.eventTicketQuota.value = String(Number(ticket.quota || 0));
     els.eventTicketAccent.value = safeAccent(ticket.accent || '#df6b4d');
     setEventTicketAllowedTiers(ticket.allowedTierKeys);
-    els.deleteEventTicketButton.disabled = false; els.deleteEventTicketButton.textContent = '刪除目前票券';
+    els.deleteEventTicketButton.disabled = false; els.deleteEventTicketButton.classList.remove('hidden'); els.deleteEventTicketButton.textContent = '刪除目前票券';
     renderEventTicketPrizeRows(ticket.prizes && ticket.prizes.length ? ticket.prizes : [defaultPrize()]);
     updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI();
     els.eventTicketEditorKicker.textContent = 'Edit event ticket'; els.eventTicketEditorTitle.textContent = String(ticket.title || '編輯活動票券'); updateEditorStatus(els.eventTicketEditorStatus, ticket.status); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
   }
 
   function resetEventTicketForm() {
-    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = ''; els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, ''); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
+    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = ''; els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.classList.add('hidden'); els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, ''); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
   }
 
   function collectEventTicketAllowedTiers() { return Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.value || '').trim()).filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)); }
