@@ -34,8 +34,7 @@ jobs:
         run: node --test MemberWebsocket-dev/tests/integration/admin_startup.cjs MemberWebsocket-dev/tests/integration/booking_startup.cjs MemberWebsocket-dev/tests/integration/booking_copy.cjs
       - name: Check browser JavaScript syntax
         run: |
-          node --check MemberWebsocket-dev/realtime-resync.js
-          node --check MemberWebsocket-dev/admin/common.js
+          node --check MemberWebsocket-dev/member-system.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
           node --check MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js
@@ -46,15 +45,10 @@ jobs:
           node --check MemberWebsocket-dev/admin/booking-panel-core.js
           node --check MemberWebsocket-dev/admin/booking-resources.js
           node --check MemberWebsocket-dev/admin/booking-cancellation-sync.js
-          node --check MemberWebsocket-dev/member/common.js
           node --check MemberWebsocket-dev/member/app.js
-          node --check MemberWebsocket-dev/points/common.js
           node --check MemberWebsocket-dev/points/pointcard-ticket-overview.js
           node --check MemberWebsocket-dev/points/app.js
-          node --check MemberWebsocket-dev/event/common.js
           node --check MemberWebsocket-dev/event/app.js
-          node --check MemberWebsocket-dev/calendar/common.js
-          node --check MemberWebsocket-dev/calendar/tier-sync.js
           node --check MemberWebsocket-dev/calendar/app.js
           node --check MemberWebsocket-dev/booking/common.js
           node --check MemberWebsocket-dev/booking/membership-progress.js
@@ -75,6 +69,7 @@ jobs:
           deno check MemberWebsocket-dev/supabase/functions/booking-group-slots-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/booking-cancellation-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts
       - name: Check grant automation wiring
         run: |
           grep -q 'grant-automation.js' MemberWebsocket-dev/admin/index.html
@@ -92,11 +87,15 @@ jobs:
           node MemberWebsocket-dev/tests/event_ticket_activity_link.test.js
           grep -q 'grant_member_benefits_with_event_bonus' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
           grep -q 'claim_due_grant_messages' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
-      - name: Check calendar tier sync wiring
+      - name: Check unified calendar backend wiring
         run: |
-          grep -q 'tier-sync.js' MemberWebsocket-dev/calendar/index.html
-          grep -q 'allowedTierLabels' MemberWebsocket-dev/calendar/tier-sync.js
-          grep -q 'tierEligible' MemberWebsocket-dev/calendar/tier-sync.js
+          grep -q 'member-system.js?v=unified-core-20260919-1' MemberWebsocket-dev/calendar/index.html
+          ! grep -q 'tier-sync.js' MemberWebsocket-dev/calendar/index.html
+          ! grep -q 'realtime-resync.js' MemberWebsocket-dev/calendar/index.html
+          grep -q 'memberCalendarFunctionUrl' MemberWebsocket-dev/config.json
+          grep -q 'allowedTierLabels' MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts
+          grep -q 'tierEligible' MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts
+          grep -q 'applyCalendarDisplayRules' MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts
       - name: Check booking wiring
         run: |
           grep -q './booking/' MemberWebsocket-dev/index.html
@@ -137,7 +136,8 @@ jobs:
           test ! -e MemberWebsocket-dev/booking/admin/app.js
           test ! -e MemberWebsocket-dev/booking/admin/subtabs.js
           test ! -e MemberWebsocket-dev/booking/admin/cancellation-review.js
-          grep -q 'booking-panel.js' MemberWebsocket-dev/admin/common.js
+          grep -q 'booking-panel.js?v=booking-realtime-refresh-20260919-2' MemberWebsocket-dev/admin/index.html
+          ! grep -q 'loadBookingAdminPanelExtension' MemberWebsocket-dev/member-system.js
           grep -q 'booking-panel-core.js' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'booking-cancellation-sync.js' MemberWebsocket-dev/admin/booking-panel.js
           grep -q "tab.textContent = '預約'" MemberWebsocket-dev/admin/booking-panel-core.js
@@ -189,20 +189,17 @@ jobs:
           grep -q 'bookingAdminApi' /dev/null || true
       - name: Check realtime sync wiring
         run: |
-          for file in \
-            MemberWebsocket-dev/member/common.js \
-            MemberWebsocket-dev/points/common.js \
-            MemberWebsocket-dev/event/common.js \
-            MemberWebsocket-dev/calendar/common.js; do
-            grep -q "table: 'realtime_events'" "$file"
-            grep -q "scope === 'all' || scope === clientType" "$file"
-          done
+          grep -q "table: 'realtime_events'" MemberWebsocket-dev/member-system.js
+          grep -q "scope === 'all' || scope === clientType" MemberWebsocket-dev/member-system.js
           for file in \
             MemberWebsocket-dev/member/index.html \
             MemberWebsocket-dev/points/index.html \
             MemberWebsocket-dev/event/index.html \
-            MemberWebsocket-dev/calendar/index.html; do
-            grep -q '../realtime-resync.js' "$file"
+            MemberWebsocket-dev/calendar/index.html \
+            MemberWebsocket-dev/admin/index.html; do
+            grep -q '../member-system.js?v=unified-core-20260919-1' "$file"
+            ! grep -q 'realtime-resync.js' "$file"
+            ! grep -q './common.js' "$file"
           done
           grep -q "table: 'realtime_events'" MemberWebsocket-dev/booking/common.js
           grep -q "scope === 'all' || scope === targetScope" MemberWebsocket-dev/booking/common.js
@@ -219,7 +216,7 @@ jobs:
           grep -q 'realtime_booking_service_types_change' MemberWebsocket-dev/supabase/migrations/20260910233100_booking_service_type_realtime.sql
           grep -q 'notify_surface_realtime_change' MemberWebsocket-dev/supabase/migrations/20260919062515_complete_realtime_invalidation_coverage.sql
           grep -q 'realtime_member_profile_change' MemberWebsocket-dev/supabase/migrations/20260919062515_complete_realtime_invalidation_coverage.sql
-          grep -q 'visibilitychange' MemberWebsocket-dev/member/common.js
-          grep -q "addEventListener('online'" MemberWebsocket-dev/member/common.js
+          grep -q 'visibilitychange' MemberWebsocket-dev/member-system.js
+          grep -q "addEventListener('online'" MemberWebsocket-dev/member-system.js
           grep -q 'notify_admin_config_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
           grep -q 'notify_admin_grant_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql

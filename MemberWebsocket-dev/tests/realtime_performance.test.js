@@ -14,7 +14,7 @@ function events() {
   };
 }
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
-function harness(surface, { enabled = true, wrapper = true } = {}) {
+function harness(surface, { enabled = true } = {}) {
   let now = 0, timerId = 0, onChange, onStatus, removed = 0;
   const timers = new Map();
   const channel = { on(_, __, callback) { onChange = callback; return this; }, subscribe(callback) { onStatus = callback; return this; } };
@@ -23,9 +23,8 @@ function harness(surface, { enabled = true, wrapper = true } = {}) {
   const document = { ...events(), visibilityState: 'visible', querySelector() { return {}; } };
   const navigator = { onLine: true };
   const context = vm.createContext({ window, document, navigator, URL, console, Date: class extends Date { static now() { return now; } } });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, `../${surface}/common.js`), 'utf8'), context);
-  if (wrapper && surface !== 'admin') vm.runInContext(fs.readFileSync(path.join(__dirname, '../realtime-resync.js'), 'utf8'), context);
-  const config = { realtimeEnabled: enabled, supabaseUrl: 'https://example.supabase.co', supabaseFunctionUrl: 'https://example.supabase.co/functions/v1/api', supabasePublishableKey: 'fixture', memberLiffId: 'member', pointsLiffId: 'points', eventLiffId: 'event', calendarLiffId: 'calendar', adminLiffId: 'admin' };
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../member-system.js'), 'utf8'), context);
+  const config = { realtimeEnabled: enabled, supabaseUrl: 'https://example.supabase.co', supabaseFunctionUrl: 'https://example.supabase.co/functions/v1/api', memberCalendarFunctionUrl: 'https://example.supabase.co/functions/v1/member-calendar-api', supabasePublishableKey: 'fixture', memberLiffId: 'member', pointsLiffId: 'points', eventLiffId: 'event', calendarLiffId: 'calendar', adminLiffId: 'admin' };
   return { window, document, navigator, timers,
     subscribe(fn) { return window.MemberSystem.subscribeRealtime(config, surface, fn); },
     change(scope = surface) { onChange({ new: { scope } }); },

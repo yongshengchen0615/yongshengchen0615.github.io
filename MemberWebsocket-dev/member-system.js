@@ -4,6 +4,7 @@
   const SUPABASE_URL_PATTERN = /^https:\/\/[a-z0-9-]+\.supabase\.co$/i;
   const SUPABASE_FUNCTION_PATTERN = /^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1\/[A-Za-z0-9_-]+$/i;
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
+  const FRESH_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
   const READ_RETRY_DELAY_MS = 400;
   const READ_TIMEOUT_MS = 12000;
   const BOOTSTRAP_TIMEOUT_MS = 30000;
@@ -31,6 +32,7 @@
     'admin.stamps.add',
     'admin.service_minutes.add',
     'admin.member-grants.add',
+    'admin.grant-message-presets.save',
     'user.pointcard.ticket.redeem',
     'user.event.ticket.claim',
     'user.event.ticket.redeem'
@@ -60,7 +62,7 @@
   }
 
   function validateConfig(config, surface) {
-    const keys = { member: 'memberLiffId', points: 'pointsLiffId', admin: 'adminLiffId', event: 'eventLiffId', calendar: 'calendarLiffId' };
+    const keys = { member: 'memberLiffId', points: 'pointsLiffId', admin: 'adminLiffId', event: 'eventLiffId', calendar: 'calendarLiffId', booking: 'bookingLiffId' };
     const key = keys[surface];
     const liffId = String(config && config[key] || '').trim();
     const supabaseUrl = String(config && config.supabaseUrl || '').trim();
@@ -73,6 +75,12 @@
     if (!SUPABASE_FUNCTION_PATTERN.test(functionUrl) || functionUrl.includes('REPLACE_')) {
       throw clientError('CONFIG_ERROR', '尚未設定 Supabase Edge Function URL。');
     }
+    if (surface === 'calendar') {
+      const calendarFunctionUrl = String(config && config.memberCalendarFunctionUrl || '').trim();
+      if (!SUPABASE_FUNCTION_PATTERN.test(calendarFunctionUrl) || calendarFunctionUrl.includes('REPLACE_')) {
+        throw clientError('CONFIG_ERROR', '尚未設定會員日曆 Supabase Edge Function URL。');
+      }
+    }
     if (!publishableKey || publishableKey.includes('REPLACE_')) {
       throw clientError('CONFIG_ERROR', '尚未設定 Supabase Publishable Key。');
     }
@@ -80,16 +88,17 @@
       throw clientError('CONFIG_ERROR', 'Supabase Realtime SDK 載入失敗。');
     }
     if (!key || !liffId || liffId.includes('REPLACE_WITH_')) {
-      throw clientError('CONFIG_ERROR', `尚未設定 ${surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : surface === 'calendar' ? 'Calendar' : 'Member'} LIFF ID。`);
+      const label = surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : surface === 'calendar' ? 'Calendar' : surface === 'booking' ? 'Booking' : 'Member';
+      throw clientError('CONFIG_ERROR', `尚未設定 ${label} LIFF ID。`);
     }
     const ids = Object.values(keys).map((name) => String(config && config[name] || '').trim()).filter(Boolean);
-    if (new Set(ids).size !== ids.length) throw clientError('CONFIG_ERROR', '會員、集點卡、活動票券、日曆與管理端必須使用不同的 LIFF ID。');
+    if (new Set(ids).size !== ids.length) throw clientError('CONFIG_ERROR', '會員、集點卡、活動票券、日曆、預約與管理端必須使用不同的 LIFF ID。');
   }
 
   async function signIn(config, surface) {
     validateConfig(config, surface);
     if (!window.liff) throw clientError('LIFF_SDK_ERROR', 'LIFF SDK 載入失敗，請確認網路後重試。');
-    const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : surface === 'event' ? config.eventLiffId : surface === 'calendar' ? config.calendarLiffId : config.memberLiffId;
+    const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : surface === 'event' ? config.eventLiffId : surface === 'calendar' ? config.calendarLiffId : surface === 'booking' ? config.bookingLiffId : config.memberLiffId;
 
     try {
       await withTimeout(window.liff.init({ liffId }), 8000, 'LINE 初始化逾時，請重新開啟此頁面。');
@@ -104,14 +113,15 @@
       const returned = consumeFreshLoginQuery(surface);
       if (!returned) {
         if (window.liff.isLoggedIn()) {
-          try { window.liff.logout(); } catch (_) {}
+          try { window.liff.logout(); }
+          catch (_) { throw clientError('AUTH_LOGOUT_FAILED', '無法清除先前的 LINE 登入，請重新開啟管理端。'); }
+          if (window.liff.isLoggedIn()) throw clientError('AUTH_LOGOUT_FAILED', '先前的 LINE 登入尚未清除，請重新開啟管理端。');
         }
         redirectToFreshLogin(surface);
         await withTimeout(new Promise(() => {}), 8000, '登入跳轉未完成，請重新開啟此頁面。');
       }
       if (!window.liff.isLoggedIn()) {
-        redirectToFreshLogin(surface);
-        await withTimeout(new Promise(() => {}), 8000, '登入跳轉未完成，請重新開啟此頁面。');
+        throw clientError('AUTH_REQUIRED', 'LINE 登入尚未完成，請重新整理後再登入。');
       }
     }
 
@@ -122,16 +132,41 @@
 
   function redirectToFreshLogin(surface) {
     const redirectUrl = new URL(window.location.href);
-    redirectUrl.searchParams.set(FRESH_LOGIN_QUERY, surface);
+    // Correlate this tab's redirect only; this is not an authentication token.
+    let nonce;
+    try {
+      const bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      nonce = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      window.sessionStorage.setItem(`${FRESH_LOGIN_QUERY}:${surface}`, JSON.stringify({
+        nonce, createdAt: Date.now(), pathname: redirectUrl.pathname,
+      }));
+    } catch (_) {
+      throw clientError('AUTH_STORAGE_UNAVAILABLE', '無法建立本次 LINE 登入流程，請允許此網站使用瀏覽器工作階段儲存後重試。');
+    }
+    redirectUrl.searchParams.set(FRESH_LOGIN_QUERY, `${surface}.${nonce}`);
     window.liff.login({ redirectUri: redirectUrl.toString() });
   }
 
   function consumeFreshLoginQuery(surface) {
     const current = new URL(window.location.href);
-    if (current.searchParams.get(FRESH_LOGIN_QUERY) !== surface) return false;
-    current.searchParams.delete(FRESH_LOGIN_QUERY);
-    window.history.replaceState({}, document.title, current.pathname + current.search + current.hash);
-    return true;
+    const marker = current.searchParams.get(FRESH_LOGIN_QUERY);
+    if (marker !== null) {
+      current.searchParams.delete(FRESH_LOGIN_QUERY);
+      window.history.replaceState({}, document.title, current.pathname + current.search + current.hash);
+    }
+    let pending;
+    try {
+      const key = `${FRESH_LOGIN_QUERY}:${surface}`;
+      const raw = window.sessionStorage.getItem(key);
+      // Consume before accepting, so reloading or replaying the URL requires login.
+      window.sessionStorage.removeItem(key);
+      pending = raw ? JSON.parse(raw) : null;
+    } catch (_) { return false; }
+    const age = Date.now() - Number(pending && pending.createdAt);
+    return Boolean(pending && /^[a-f0-9]{32}$/.test(pending.nonce)
+      && marker === `${surface}.${pending.nonce}` && pending.pathname === current.pathname
+      && Number.isFinite(age) && age >= 0 && age <= FRESH_LOGIN_MAX_AGE_MS);
   }
 
   function request(config, clientType, idToken, action, payload = {}) {
@@ -140,7 +175,8 @@
       pendingReads.clear();
       return sendRequest(config, clientType, idToken, action, payload).finally(() => pendingReads.clear());
     }
-    const key = JSON.stringify([config.supabaseFunctionUrl, clientType, idToken, action, payload]);
+    const endpoint = requestEndpoint(config, clientType, action);
+    const key = JSON.stringify([endpoint, clientType, idToken, action, payload]);
     if (pendingReads.has(key)) return pendingReads.get(key);
     const pending = sendRequest(config, clientType, idToken, action, payload).finally(() => {
       if (pendingReads.get(key) === pending) pendingReads.delete(key);
@@ -149,8 +185,19 @@
     return pending;
   }
 
+  function requestEndpoint(config, clientType, action) {
+    if (clientType === 'calendar' && (action === 'user.calendar.bootstrap' || action === 'user.calendar.date.details')) {
+      return String(config.memberCalendarFunctionUrl || '').trim();
+    }
+    return String(config.supabaseFunctionUrl || '').trim();
+  }
+
   async function sendRequest(config, clientType, idToken, action, payload) {
     validateConfig(config, clientType);
+    const endpoint = requestEndpoint(config, clientType, action);
+    if (!SUPABASE_FUNCTION_PATTERN.test(endpoint) || endpoint.includes('REPLACE_')) {
+      throw clientError('CONFIG_ERROR', '此功能的 Supabase Edge Function URL 尚未設定。');
+    }
     const isWrite = WRITE_ACTIONS.includes(action);
     const timeoutMs = isWrite ? WRITE_TIMEOUT_MS : isFullBootstrap(clientType, action, payload) ? BOOTSTRAP_TIMEOUT_MS : READ_TIMEOUT_MS;
     const attempts = isWrite ? 1 : 2;
@@ -161,7 +208,7 @@
       const remaining = isWrite ? WRITE_TIMEOUT_MS : Math.max(1, deadline - Date.now());
       if (!isWrite && remaining <= 1 && attempt > 0) break;
       try {
-        const fetched = await fetchWithTimeout(config.supabaseFunctionUrl, {
+        const fetched = await fetchWithTimeout(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -377,6 +424,7 @@
     return Array.from(text).slice(0, 2).join('') || '會員';
   }
 
+
   try {
     if (window.indexedDB && typeof window.indexedDB.deleteDatabase === 'function') {
       window.indexedDB.deleteDatabase('MembershipSystemSyncCache');
@@ -388,4 +436,3 @@
     subscribeRealtime, logout, openMemberJoin, formatDate, formatDateTime, initials
   });
 })();
-

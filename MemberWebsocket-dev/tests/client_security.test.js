@@ -10,8 +10,8 @@ for(const surface of ['member','points','event','calendar','admin']) {
     const client={channel(){return channel;},removeChannel(){removed++;}};
     const window={addEventListener(){},removeEventListener(){},supabase:{createClient(){return client;}},setTimeout(){return 7;},clearTimeout(id){assert.equal(id,7);cleared++;}};
     const context=vm.createContext({window,document:{addEventListener(){},removeEventListener(){},querySelector(){return {};}},Map,Set,URL,console});
-    vm.runInContext(fs.readFileSync(path.join(__dirname,`../${surface}/common.js`),'utf8'),context);
-    const config={supabaseUrl:'https://example.supabase.co',supabaseFunctionUrl:'https://example.supabase.co/functions/v1/api',supabasePublishableKey:'fixture',memberLiffId:'member',pointsLiffId:'points',eventLiffId:'event',calendarLiffId:'calendar',adminLiffId:'admin'};
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../member-system.js'),'utf8'),context);
+    const config={supabaseUrl:'https://example.supabase.co',supabaseFunctionUrl:'https://example.supabase.co/functions/v1/api',memberCalendarFunctionUrl:'https://example.supabase.co/functions/v1/member-calendar-api',supabasePublishableKey:'fixture',memberLiffId:'member',pointsLiffId:'points',eventLiffId:'event',calendarLiffId:'calendar',adminLiffId:'admin'};
     const stop=window.MemberSystem.subscribeRealtime(config,surface,()=>assert.fail('Disposed refresh ran'));
     onChange({new:{scope:surface}}); stop();stop();
     assert.equal(cleared,1);assert.equal(removed,1);
@@ -21,8 +21,8 @@ for(const surface of ['member','points','event','calendar','admin']) {
     const deferred=[];
     const window={setTimeout,clearTimeout};
     const context=vm.createContext({window,document:{addEventListener(){},removeEventListener(){},querySelector(){return {};}},Map,Set,URL,AbortController,Date,console,fetch(url,options){return new Promise(resolve=>deferred.push({resolve,token:JSON.parse(options.body).idToken}));}});
-    vm.runInContext(fs.readFileSync(path.join(__dirname,`../${surface}/common.js`),'utf8'),context);
-    const config={realtimeEnabled:false,supabaseUrl:'https://example.supabase.co',supabaseFunctionUrl:'https://example.supabase.co/functions/v1/api',supabasePublishableKey:'fixture',memberLiffId:'member',pointsLiffId:'points',eventLiffId:'event',calendarLiffId:'calendar',adminLiffId:'admin'};
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../member-system.js'),'utf8'),context);
+    const config={realtimeEnabled:false,supabaseUrl:'https://example.supabase.co',supabaseFunctionUrl:'https://example.supabase.co/functions/v1/api',memberCalendarFunctionUrl:'https://example.supabase.co/functions/v1/member-calendar-api',supabasePublishableKey:'fixture',memberLiffId:'member',pointsLiffId:'points',eventLiffId:'event',calendarLiffId:'calendar',adminLiffId:'admin'};
     const first=window.MemberSystem.request(config,surface,'identity-A','read');
     const duplicate=window.MemberSystem.request(config,surface,'identity-A','read');
     const other=window.MemberSystem.request(config,surface,'identity-B','read');
