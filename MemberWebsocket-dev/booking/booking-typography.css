@@ -47,8 +47,7 @@ body {
 label,
 .slot-fieldset legend,
 .service-picker-fieldset legend,
-.selected-service-fieldset legend,
-.booking-contact-fieldset legend {
+.selected-service-fieldset legend {
   color: var(--booking-text-strong);
   font-size: 14px;
   line-height: 1.45;
@@ -67,7 +66,6 @@ textarea {
 }
 
 .slot-hint,
-.booking-contact-help,
 .service-choice-main small,
 .selected-service-main small,
 .empty-state span {
@@ -134,39 +132,6 @@ textarea {
   color: var(--booking-text-muted);
   font-size: 13px;
   line-height: 1.45;
-}
-
-.booking-contact-fieldset legend {
-  padding-inline: 5px;
-}
-
-.booking-contact-option {
-  align-items: flex-start;
-  line-height: 1.45;
-}
-
-.booking-contact-option > span {
-  min-width: 0;
-}
-
-.booking-contact-option strong {
-  display: inline-block;
-  color: var(--booking-text-strong);
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.booking-contact-option small {
-  display: inline-block;
-  margin-top: 3px;
-  color: var(--booking-text-muted);
-  font-size: 12.5px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-
-.booking-contact-help {
-  margin-top: 11px;
 }
 
 /* Calendar typography */
@@ -384,9 +349,6 @@ textarea {
     gap: 5px;
   }
 
-  .booking-contact-option small {
-    font-size: 12px;
-  }
 }
 
 @media (max-width: 420px) {
