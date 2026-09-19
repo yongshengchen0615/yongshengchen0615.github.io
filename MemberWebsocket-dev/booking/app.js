@@ -24,6 +24,7 @@
     completed: '服務已完成',
     rejected: '未通過',
     cancelled: '已取消',
+    cancel_requested: '取消待確認',
   };
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -153,38 +154,53 @@
 
   function renderServices() {
     const services = userServices();
+    const selectedIds = new Set(state.selections.map((selection) => selection.serviceId));
+    const available = services.filter((service) => !selectedIds.has(service.serviceId));
     els.servicePicker.replaceChildren();
-    els.serviceEmpty.classList.toggle('hidden', services.length > 0);
 
-    services.forEach((service, index) => {
-      const alreadySelected = state.selections.some((selection) => selection.serviceId === service.serviceId);
-      const row = document.createElement('article');
-      row.className = `service-choice${alreadySelected ? ' selected' : ''}`;
-      row.dataset.serviceIndex = String(index);
+    if (available.length) {
+      appendServiceCategoryGroups(
+        els.servicePicker,
+        available,
+        (service) => service,
+        (service) => createServiceChoiceRow(service),
+        'service-picker',
+      );
+    }
 
-      const main = document.createElement('div');
-      main.className = 'service-choice-main';
-      const text = document.createElement('span');
-      const title = document.createElement('strong');
-      title.textContent = service.title;
-      const meta = document.createElement('small');
-      const serviceType = serviceTypeOf(service);
-      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)}`;
-      text.append(title, meta);
-      main.appendChild(text);
-
-      const addButton = document.createElement('button');
-      addButton.type = 'button';
-      addButton.className = 'service-add-button';
-      addButton.textContent = '增加';
-      addButton.setAttribute('aria-label', `增加 ${service.title}`);
-      addButton.addEventListener('click', () => addSelection(service));
-
-      row.append(main, addButton);
-      els.servicePicker.appendChild(row);
-    });
+    const noServices = services.length === 0;
+    const allSelected = services.length > 0 && available.length === 0;
+    els.serviceEmpty.classList.toggle('hidden', !noServices && !allSelected);
+    const emptyTitle = els.serviceEmpty.querySelector('strong');
+    if (emptyTitle) emptyTitle.textContent = allSelected ? '可選項目已全部加入目前選擇' : '目前沒有開放的預約項目';
 
     renderSelectedServices();
+  }
+
+  function createServiceChoiceRow(service) {
+    const row = document.createElement('article');
+    row.className = 'service-choice';
+    row.dataset.serviceId = String(service.serviceId || '');
+
+    const main = document.createElement('div');
+    main.className = 'service-choice-main';
+    const text = document.createElement('span');
+    const title = document.createElement('strong');
+    title.textContent = service.title;
+    const meta = document.createElement('small');
+    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatMoney(service.priceAmount)}`;
+    text.append(title, meta);
+    main.appendChild(text);
+
+    const addButton = document.createElement('button');
+    addButton.type = 'button';
+    addButton.className = 'service-add-button';
+    addButton.textContent = '增加';
+    addButton.setAttribute('aria-label', `增加 ${service.title}`);
+    addButton.addEventListener('click', () => addSelection(service));
+
+    row.append(main, addButton);
+    return row;
   }
 
   function renderSelectedServices() {
@@ -192,29 +208,69 @@
     els.selectedServiceList.replaceChildren();
     els.selectedServiceEmpty.classList.toggle('hidden', rows.length > 0);
 
-    rows.forEach((item) => {
-      const row = document.createElement('article');
-      row.className = 'selected-service-item';
+    if (!rows.length) return;
+    appendServiceCategoryGroups(
+      els.selectedServiceList,
+      rows,
+      (entry) => entry.service,
+      (entry) => createSelectedServiceRow(entry),
+      'selected-service-list',
+    );
+  }
 
-      const text = document.createElement('div');
-      text.className = 'selected-service-main';
-      const title = document.createElement('strong');
-      title.textContent = item.service.title;
-      const meta = document.createElement('small');
-      const serviceType = serviceTypeOf(item.service);
-      meta.textContent = `${serviceType ? `類型 ${serviceType} · ` : ''}服務 ${item.service.durationMinutes} 分鐘 · ${formatMoney(item.service.priceAmount)}`;
-      text.append(title, meta);
+  function createSelectedServiceRow(item) {
+    const row = document.createElement('article');
+    row.className = 'selected-service-item';
 
-      const removeButton = document.createElement('button');
-      removeButton.type = 'button';
-      removeButton.className = 'selected-service-remove';
-      removeButton.textContent = '移除';
-      removeButton.setAttribute('aria-label', `移除 ${item.service.title}`);
-      removeButton.addEventListener('click', () => removeSelection(item.selectionId));
+    const text = document.createElement('div');
+    text.className = 'selected-service-main';
+    const title = document.createElement('strong');
+    title.textContent = item.service.title;
+    const meta = document.createElement('small');
+    meta.textContent = `服務 ${Number(item.service.durationMinutes || 0)} 分鐘 · ${formatMoney(item.service.priceAmount)}`;
+    text.append(title, meta);
 
-      row.append(text, removeButton);
-      els.selectedServiceList.appendChild(row);
-    });
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'selected-service-remove';
+    removeButton.textContent = '移除';
+    removeButton.setAttribute('aria-label', `移除 ${item.service.title}`);
+    removeButton.addEventListener('click', () => removeSelection(item.selectionId));
+
+    row.append(text, removeButton);
+    return row;
+  }
+
+  function appendServiceCategoryGroups(container, entries, getService, createRow, listClass) {
+    const groups = new Map();
+    for (const entry of entries) {
+      const service = getService(entry);
+      if (!service) continue;
+      const label = serviceTypeOf(service) || '其他';
+      const key = serviceTypeKey(label) || '其他';
+      let group = groups.get(key);
+      if (!group) {
+        group = { label, entries: [] };
+        groups.set(key, group);
+      }
+      group.entries.push(entry);
+    }
+
+    for (const group of groups.values()) {
+      const section = document.createElement('section');
+      const colorSlot = window.BookingServiceTypeColor?.slot?.(group.label) ?? 0;
+      section.className = `service-info service-type-group service-type-color-${colorSlot}`;
+      section.dataset.serviceTypeColor = String(colorSlot);
+      section.setAttribute('aria-label', `${group.label}服務`);
+
+      const heading = document.createElement('strong');
+      heading.textContent = `${group.label}（${group.entries.length}）`;
+      const list = document.createElement('div');
+      list.className = listClass;
+      group.entries.forEach((entry) => list.appendChild(createRow(entry)));
+      section.append(heading, list);
+      container.appendChild(section);
+    }
   }
 
   function addSelection(service) {
@@ -354,8 +410,7 @@
     els.bookingDate.disabled = false;
     if (!els.bookingDate.value || els.bookingDate.value < minimumDate || (maximumDate && els.bookingDate.value > maximumDate)) els.bookingDate.value = minimumDate;
     els.selectionSummary.classList.remove('hidden');
-    const latestText = maximumDate ? ` · 最遠可預約 ${window.BookingSystem.formatDate(maximumDate)}` : '';
-    els.selectionSummary.textContent = `已選 ${rows.length} 個項目 · 項目 ${serviceMinutes} 分鐘 + 店內服務 ${includedMinutes} 分鐘 = 預約共 ${totalMinutes} 分鐘 · 總額 ${formatMoney(totalAmount())} · 最早可預約 ${window.BookingSystem.formatDate(minimumDate)}${latestText}`;
+    els.selectionSummary.replaceChildren();
     notifySelectionChanged();
     els.slotHint.textContent = '正在計算整段服務時間可使用的時段…';
     if (loadAfter && els.bookingDate.value) loadSlots();
@@ -460,43 +515,42 @@
   }
 
   function renderConfirmation(items) {
-    const fragment = document.createDocumentFragment();
+    if (window.BookingGroupUI?.renderConfirmation?.()) return;
+
+    const box = document.createElement('div');
+    box.className = 'group-confirm-summary booking-detailed-confirmation';
+    const heading = document.createElement('strong');
+    heading.textContent = '本次預約 1 位';
+    box.appendChild(heading);
+
     const time = document.createElement('p');
     time.className = 'booking-confirm-time';
     time.textContent = `${window.BookingSystem.formatDate(els.bookingDate.value)} ${state.selectedSlot.startTime}–${state.selectedSlot.endTime}`;
-    fragment.appendChild(time);
+    box.appendChild(time);
 
-    const list = document.createElement('ul');
-    for (const item of items) {
-      const li = document.createElement('li');
-      const serviceType = serviceTypeOf(item.service);
-      li.textContent = `${item.service.title}${serviceType ? `｜${serviceType}` : ''}（${item.service.durationMinutes} 分鐘 · ${formatMoney(item.service.priceAmount)}）`;
-      list.appendChild(li);
-    }
-    fragment.appendChild(list);
+    const card = document.createElement('div');
+    card.className = 'group-confirm-participant';
+    const title = document.createElement('strong');
+    title.textContent = '第一位預約';
+    const serviceLine = document.createElement('p');
+    serviceLine.textContent = `預約項目：${items.map((item) => `${item.service.title}（${item.service.durationMinutes}分鐘）`).join('、')}`;
+    const duration = document.createElement('p');
+    duration.textContent = `個別總時間：${totalDurationMinutes()} 分鐘（含店內服務 ${storeServiceMinutes()} 分鐘）`;
+    const amount = document.createElement('p');
+    amount.textContent = `個別金額：${formatMoney(totalAmount())}`;
+    card.append(title, serviceLine, duration, amount);
+    box.appendChild(card);
 
-    const storeNotice = document.createElement('div');
-    storeNotice.className = 'service-info';
-    storeNotice.textContent = `店內服務：每筆預約自動加入 ${storeServiceMinutes()} 分鐘，包含肩頸服務、龜苓膏與熱茶。這 ${storeServiceMinutes()} 分鐘會算入預約佔用時間，但不另外計價，也不計入會員累積消費服務時數或會員階級。`;
-    fragment.appendChild(storeNotice);
-
-    const duplicateGroups = duplicateTypeGroups(items);
-    if (duplicateGroups.length) {
-      const warning = document.createElement('div');
-      warning.className = 'form-message error';
-      warning.setAttribute('role', 'alert');
-      warning.textContent = `提醒：你選擇了相同類型的預約項目：${duplicateGroups.map((group) => `「${group.label}」${group.titles.join('、')}`).join('；')}。請再次確認是否需要同類型項目。`;
-      fragment.appendChild(warning);
-    }
-
-    const total = document.createElement('strong');
-    total.textContent = `項目服務：${serviceDurationMinutes()} 分鐘 + 店內服務：${storeServiceMinutes()} 分鐘 = 預約共 ${totalDurationMinutes()} 分鐘 · 預約總額：${formatMoney(totalAmount())}`;
-    fragment.appendChild(total);
+    const noteBox = document.createElement('div');
+    noteBox.className = 'group-confirm-participant booking-confirm-note';
+    const noteTitle = document.createElement('strong');
+    noteTitle.textContent = '預約備註';
     const note = document.createElement('p');
-    note.className = 'booking-confirm-note';
-    note.textContent = `預約備註：${els.memberNote.value.trim() || '未填寫'}`;
-    fragment.appendChild(note);
-    els.bookingConfirmSummary.replaceChildren(fragment);
+    note.textContent = els.memberNote.value.trim() || '未填寫';
+    noteBox.append(noteTitle, note);
+    box.appendChild(noteBox);
+
+    els.bookingConfirmSummary.replaceChildren(box);
   }
 
   function closeConfirmation() {
@@ -595,9 +649,10 @@
     const bookings = state.data.bookings || [];
     els.bookingList.replaceChildren();
     els.bookingEmpty.classList.toggle('hidden', bookings.length > 0);
+
     for (const booking of bookings) {
       const item = document.createElement('article');
-      item.className = `booking-item status-${booking.status}`;
+      item.className = `booking-item member-booking-format-card status-${booking.status}`;
       item.dataset.bookingId = String(booking.bookingId || '');
       const hasParticipantDetails = Array.isArray(booking.participants) && booking.participants.length > 0;
       item.dataset.participantDetails = hasParticipantDetails ? '1' : '0';
@@ -605,45 +660,48 @@
       const top = document.createElement('div');
       top.className = 'booking-item-top';
       const titleBox = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = bookingDisplayTitle(booking);
-      const time = document.createElement('span');
-      const storeItem = bookingStoreItem(booking);
-      const storeMinutes = storeItem ? Number(storeItem.unitDurationMinutes || DEFAULT_STORE_SERVICE_MINUTES) * Number(storeItem.quantity || 1) : 0;
-      const scheduledMinutes = Number(booking.totalDurationMinutes || 0);
-      const currentMinutes = Array.isArray(booking.items) && booking.items.length
-        ? booking.items.reduce((sum, service) => sum + Number(service.unitDurationMinutes || 0) * Number(service.quantity || 1), 0)
-        : scheduledMinutes;
-      const durationText = currentMinutes !== scheduledMinutes
-        ? `目前項目共 ${currentMinutes} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''} · 原排程佔用 ${scheduledMinutes} 分鐘`
-        : `${currentMinutes} 分鐘${storeMinutes > 0 ? `（含店內服務 ${storeMinutes} 分鐘）` : ''}`;
-      time.textContent = `${window.BookingSystem.formatDate(booking.bookingDate)} ${booking.startTime}–${booking.endTime} · ${durationText} · ${formatMoney(booking.totalAmount)}`;
-      titleBox.append(title, time);
+      titleBox.append(
+        summaryRow('日期', window.BookingSystem.formatDate(booking.bookingDate)),
+        summaryRow('時間', `${booking.startTime}–${booking.endTime}`),
+      );
+
       const status = document.createElement('span');
       status.className = `status-badge status-${booking.status}`;
       status.textContent = STATUS_LABELS[booking.status] || booking.status;
       top.append(titleBox, status);
       item.appendChild(top);
 
-      const visibleItems = bookingVisibleItems(booking);
-      if (!hasParticipantDetails && (visibleItems.length || storeItem)) {
-        const serviceList = document.createElement('ul');
-        serviceList.className = 'booking-service-items';
-        visibleItems.forEach((service) => {
-          const repeat = Math.max(1, Number(service.quantity || 1));
-          for (let index = 0; index < repeat; index += 1) {
-            const li = document.createElement('li');
-            li.textContent = `${service.serviceTitle} · ${formatMoney(service.unitPriceAmount)}`;
-            serviceList.appendChild(li);
-          }
-        });
-        if (storeItem) {
-          const li = document.createElement('li');
-          li.textContent = `店內服務 ${storeMinutes} 分鐘：肩頸服務、龜苓膏、熱茶（不計入會員累積消費服務時數）`;
-          serviceList.appendChild(li);
+      if (hasParticipantDetails) {
+        window.BookingGroupUI?.renderBookingHistoryCard?.(item, booking);
+      } else {
+        const visibleItems = bookingVisibleItems(booking);
+        if (visibleItems.length) {
+          const servicesLabel = document.createElement('p');
+          servicesLabel.className = 'member-booking-format-services-label';
+          servicesLabel.textContent = '服務項目';
+          const serviceList = document.createElement('ul');
+          serviceList.className = 'booking-service-items';
+          visibleItems.forEach((service) => {
+            const repeat = Math.max(1, Number(service.quantity || 1));
+            for (let index = 0; index < repeat; index += 1) {
+              const li = document.createElement('li');
+              li.textContent = `${service.serviceTitle}（${Number(service.unitDurationMinutes || 0)}分鐘） · ${formatMoney(service.unitPriceAmount)}`;
+              serviceList.appendChild(li);
+            }
+          });
+          item.append(servicesLabel, serviceList);
         }
-        item.appendChild(serviceList);
       }
+
+      const totals = document.createElement('div');
+      totals.className = 'member-booking-format-totals';
+      const scheduledMinutes = Math.max(0, Number(booking.totalDurationMinutes || 0));
+      totals.append(
+        summaryRow('總服務時間', `${scheduledMinutes} 分鐘`),
+        summaryRow('總金額', formatMoney(booking.totalAmount)),
+      );
+      item.appendChild(totals);
+
       if (booking.memberNote) {
         const note = document.createElement('p');
         note.className = 'booking-note';
@@ -663,7 +721,7 @@
         const cancelButton = document.createElement('button');
         cancelButton.type = 'button';
         cancelButton.className = 'text-danger-button';
-        cancelButton.textContent = '取消預約';
+        cancelButton.textContent = '申請取消';
         cancelButton.addEventListener('click', () => cancelBooking(booking, cancelButton));
         const editButton = document.createElement('button');
         editButton.type = 'button';
@@ -673,14 +731,25 @@
         actions.append(editButton, cancelButton);
         item.appendChild(actions);
       }
+
       els.bookingList.appendChild(item);
     }
 
-    // Finalize the history DOM before the browser can paint the booking view.
-    // The extension observers remain as a fallback for external mutations, but
-    // normal app renders must never expose the intermediate legacy card shape.
-    if (window.BookingMemberFormat?.formatHistory) window.BookingMemberFormat.formatHistory();
-    if (window.BookingMemberUI?.organizeBookingHistory) window.BookingMemberUI.organizeBookingHistory();
+    window.BookingMemberUI?.organizeBookingHistory?.();
+    window.dispatchEvent(new CustomEvent('booking:bookings-rendered'));
+  }
+
+  function summaryRow(label, value) {
+    const row = document.createElement('p');
+    row.className = 'member-booking-format-row';
+    const key = document.createElement('span');
+    key.className = 'member-booking-format-label';
+    key.textContent = `${label}：`;
+    const content = document.createElement('strong');
+    content.className = 'member-booking-format-value';
+    content.textContent = String(value ?? '');
+    row.append(key, content);
+    return row;
   }
 
   function canCancel(booking) {
@@ -777,6 +846,7 @@
     els.loadingView.classList.toggle('hidden', view !== 'loading');
     els.errorView.classList.toggle('hidden', view !== 'error');
     els.bookingView.classList.toggle('hidden', view !== 'booking');
+    if (view === 'booking') window.dispatchEvent(new CustomEvent('booking:view-shown'));
   }
 
   function showError(error) {
