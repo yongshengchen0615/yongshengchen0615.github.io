@@ -61,7 +61,7 @@
         return;
       }
       if (event.key !== 'Tab') return;
-      const modal = [els.bookingConfirmModal, document.getElementById('bookingHolidayModal'), document.getElementById('appointmentPanel')]
+      const modal = [document.getElementById('bookingNoticeModal'), els.bookingConfirmModal, document.getElementById('bookingHolidayModal'), document.getElementById('appointmentPanel')]
         .find((node) => node && !node.classList.contains('hidden'));
       if (!modal) return;
       const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]')]
