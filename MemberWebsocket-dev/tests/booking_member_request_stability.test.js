@@ -30,9 +30,9 @@ test('current member booking runtime scripts have valid JavaScript syntax', () =
 test('member booking entrypoint loads the single render pipeline only', () => {
   const html = read('booking/index.html');
   for (const asset of [
-    'group-booking.js?v=booking-single-render-20260919-1',
+    'group-booking.js?v=booking-addon-rules-20260919-1',
     'member-ui.js?v=booking-single-render-20260919-1',
-    'app.js?v=booking-clock-sync-20260919-1',
+    'app.js?v=booking-addon-rules-20260919-1',
     'contact-details.js?v=booking-single-render-20260919-1',
     'calendar-flow.js?v=booking-single-render-20260919-1',
   ]) assert.ok(html.includes(asset), asset);
