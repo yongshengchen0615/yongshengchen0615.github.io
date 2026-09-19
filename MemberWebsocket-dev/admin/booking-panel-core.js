@@ -121,6 +121,18 @@
                 </label>
               </section>
 
+              <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminStoreServiceHeading">
+                <div class="booking-admin-settings-block-heading">
+                  <div><span class="booking-admin-settings-eyebrow">共同服務時間</span><h4 id="bookingAdminStoreServiceHeading">店內服務</h4></div>
+                  <span class="booking-admin-settings-badge">每位預約套用</span>
+                </div>
+                <label class="booking-admin-settings-field">
+                  <span>店內服務分鐘</span>
+                  <div class="booking-admin-number-field"><input id="bookingAdminStoreServiceMinutes" type="number" min="1" max="720" step="1" value="10" required><span aria-hidden="true">分鐘</span></div>
+                  <small>每位預約人的項目時間會再加上此分鐘數；只影響之後新增或修改的預約，既有預約保留原始快照。</small>
+                </label>
+              </section>
+
               <section class="booking-admin-settings-block booking-admin-settings-notice" aria-labelledby="bookingAdminNoticeHeading">
                 <div class="booking-admin-settings-block-heading">
                   <div><span class="booking-admin-settings-eyebrow">會員端內容</span><h4 id="bookingAdminNoticeHeading">預約說明</h4></div>
@@ -170,7 +182,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -333,6 +345,7 @@
     els.bookingAdminEndTime.value = String(settings.workEndTime || '17:00');
     els.bookingAdminAdvanceDays.value = String(Number(settings.minAdvanceDays || 0));
     els.bookingAdminMaxAdvanceDays.value = String(Number(settings.maxAdvanceDays || 0));
+    els.bookingAdminStoreServiceMinutes.value = String(Number(settings.storeServiceMinutes || 10));
     els.bookingAdminNotice.value = String(settings.bookingNotice || '');
   }
   function renderStats() {
@@ -379,7 +392,7 @@
       check.addEventListener('change', () => { check.checked ? state.selected.add(service.serviceId) : state.selected.delete(service.serviceId); updateBatchButtons(); });
       const text = document.createElement('span');
       const title = document.createElement('strong'); title.textContent = service.title;
-      const meta = document.createElement('small'); meta.textContent = `類型 ${service.serviceType || '未設定'} · ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)} · ${service.isActive ? '開放' : '停用'}`;
+      const meta = document.createElement('small'); meta.textContent = `類型 ${service.serviceType || '未設定'} · ${service.durationMinutes} 分鐘 · ${formatMoney(service.priceAmount)} · ${service.requiresCompanionService ? '加購／需搭配一般項目 · ' : ''}${service.isActive ? '開放' : '停用'}`;
       text.append(title, meta); left.append(check, text);
       const actions = document.createElement('span'); actions.className = 'booking-admin-actions'; actions.style.margin = '0';
       actions.append(actionButton('修改', 'button button-outline', () => openServiceModal(service)), actionButton('刪除', 'button button-danger', () => deleteService(service)));
@@ -401,10 +414,12 @@
     if (state.busy) return;
     const minAdvanceDays = Number(els.bookingAdminAdvanceDays.value);
     const maxAdvanceDays = Number(els.bookingAdminMaxAdvanceDays.value);
+    const storeServiceMinutes = Number(els.bookingAdminStoreServiceMinutes.value);
     const bookingNotice = String(els.bookingAdminNotice.value || '').replace(/\r\n?/g, '\n');
     if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) return showMessage(els.bookingAdminSettingsMessage, '提前預約天數必須介於 0–365 天。', 'error');
     if (!Number.isInteger(maxAdvanceDays) || maxAdvanceDays < 0 || maxAdvanceDays > 365) return showMessage(els.bookingAdminSettingsMessage, '最遠可預約天數必須介於 0–365 天；0 代表不限制。', 'error');
     if (maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays) return showMessage(els.bookingAdminSettingsMessage, '最遠可預約天數不可小於需要提前的天數。', 'error');
+    if (!Number.isInteger(storeServiceMinutes) || storeServiceMinutes < 1 || storeServiceMinutes > 720) return showMessage(els.bookingAdminSettingsMessage, '店內服務分鐘必須介於 1–720 分鐘。', 'error');
     if (bookingNotice.length > 2000) return showMessage(els.bookingAdminSettingsMessage, '預約說明不可超過 2,000 字。', 'error');
     state.busy = true; clearMessage(els.bookingAdminSettingsMessage);
     try {
@@ -413,6 +428,7 @@
         workEndTime: els.bookingAdminEndTime.value,
         minAdvanceDays,
         maxAdvanceDays,
+        storeServiceMinutes,
         bookingNotice,
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',
       }, true);
@@ -442,7 +458,7 @@
 
   function serviceFormHtml(service = {}) {
     const options = ['<option value="">請選擇項目類型</option>', ...(state.catalog.serviceTypes || []).map((type) => `<option value="${escapeAttr(type.name)}">${escapeHtml(type.name)}</option>`)].join('');
-    return `<label>預約項目名稱<input data-field="title" maxlength="100" required value="${escapeAttr(service.title || '')}"></label><label>項目類型<select data-field="serviceType" required>${options}</select></label><label>服務時間（分鐘）<input data-field="durationMinutes" type="number" min="1" max="720" step="1" required value="${Number(service.durationMinutes || 30)}"></label><label>價格（NT$）<input data-field="priceAmount" type="number" min="0" max="10000000" step="1" required value="${Number(service.priceAmount || 0)}"></label><label class="booking-admin-toggle"><input data-field="isActive" type="checkbox" ${service.isActive === false ? '' : 'checked'}><span><strong>開放會員預約</strong><small>關閉後會員端不再顯示，既有預約紀錄仍保留。</small></span></label>`;
+    return `<label>預約項目名稱<input data-field="title" maxlength="100" required value="${escapeAttr(service.title || '')}"></label><label>項目類型<select data-field="serviceType" required>${options}</select></label><label>服務時間（分鐘）<input data-field="durationMinutes" type="number" min="1" max="720" step="1" required value="${Number(service.durationMinutes || 30)}"></label><label>價格（NT$）<input data-field="priceAmount" type="number" min="0" max="10000000" step="1" required value="${Number(service.priceAmount || 0)}"></label><label class="booking-admin-toggle"><input data-field="requiresCompanionService" type="checkbox" ${service.requiresCompanionService ? 'checked' : ''}><span><strong>加購項目，需搭配其他項目</strong><small>開啟後不能單獨預約；同一位預約人至少還要選擇一個一般項目。</small></span></label><label class="booking-admin-toggle"><input data-field="isActive" type="checkbox" ${service.isActive === false ? '' : 'checked'}><span><strong>開放會員預約</strong><small>關閉後會員端不再顯示，既有預約紀錄仍保留。</small></span></label>`;
   }
 
   function openServiceModal(service) {
@@ -466,6 +482,7 @@
       serviceType: form.querySelector('[data-field="serviceType"]').value,
       durationMinutes: Number(form.querySelector('[data-field="durationMinutes"]').value),
       priceAmount: Number(form.querySelector('[data-field="priceAmount"]').value),
+      requiresCompanionService: form.querySelector('[data-field="requiresCompanionService"]').checked,
       isActive: form.querySelector('[data-field="isActive"]').checked,
     };
   }
@@ -558,7 +575,7 @@
       checkbox.checked = current.has(service.serviceId);
       const text = document.createElement('span');
       const title = document.createElement('strong'); title.textContent = `${service.title}${service.isActive ? '' : '（目前停用）'}`;
-      const meta = document.createElement('small'); meta.textContent = `${Number(service.durationMinutes || 0)} 分鐘／份 · ${formatMoney(service.priceAmount)}`;
+      const meta = document.createElement('small'); meta.textContent = `${Number(service.durationMinutes || 0)} 分鐘／份 · ${formatMoney(service.priceAmount)}${service.requiresCompanionService ? ' · 加購／需搭配一般項目' : ''}`;
       text.append(title, meta);
       const quantity = document.createElement('select');
       quantity.dataset.bookingQuantity = service.serviceId;
@@ -578,6 +595,10 @@
         quantity: Number(form.querySelector(`[data-booking-quantity="${checkbox.dataset.bookingService}"]`)?.value || 1),
       }));
       if (!items.length) return showMessage(form.querySelector('[data-modal-message]'), '請至少選擇一個實際服務項目。', 'error');
+      const selectedServices = items.map((item) => services.find((service) => service.serviceId === item.serviceId)).filter(Boolean);
+      if (selectedServices.some((service) => service.requiresCompanionService) && !selectedServices.some((service) => !service.requiresCompanionService)) {
+        return showMessage(form.querySelector('[data-modal-message]'), '加購項目不能單獨使用，請至少再選擇一個一般項目。', 'error');
+      }
       await runModalAction(async () => operationsRequest('admin.booking.items.update', {
         bookingId: booking.bookingId,
         expectedUpdatedAt: booking.updatedAt,
