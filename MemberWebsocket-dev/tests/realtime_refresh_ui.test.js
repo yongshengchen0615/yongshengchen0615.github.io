@@ -77,10 +77,13 @@ test('admin extensions reload their authoritative data after realtime refresh', 
   const fixedTickets = read('admin/fixed-ticket-admin.js');
   const pointLimit = read('admin/pointcard-redemption-limit.js');
 
-  assert.match(adminHtml, /pointcard-redemption-limit\.js\?v=pointcard-realtime-20260919-1/);
+  assert.match(adminHtml, /pointcard-redemption-limit\.js\?v=pointcard-admin-ready-20260919-1/);
   assert.match(adminApp, /member-admin-data-refreshed/);
   assert.match(fixedTickets, /member-admin-data-refreshed/);
   assert.match(fixedTickets, /loadTemplates\(\)/);
+  assert.match(pointLimit, /member-admin-ready/);
+  assert.match(pointLimit, /memberAdminReady/);
+  assert.doesNotMatch(pointLimit, /for \(let i = 0; i < 80/);
   assert.match(pointLimit, /member-admin-data-refreshed/);
   assert.match(pointLimit, /loadSetting\(\)/);
 });
