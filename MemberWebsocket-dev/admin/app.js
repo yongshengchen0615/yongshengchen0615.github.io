@@ -296,6 +296,7 @@
       applyAdminBootstrap(result);
       els.syncStatus.textContent = `已完整同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
       els.syncStatus.classList.remove('error');
+      window.dispatchEvent(new Event('member-admin-data-refreshed'));
     } finally { if (showBusy) els.refreshButton.disabled = false; }
   }
 
