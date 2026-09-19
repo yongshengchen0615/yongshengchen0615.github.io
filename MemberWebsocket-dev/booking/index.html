@@ -10,7 +10,7 @@
   <title>預約｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=booking-selection-list-20260917-2">
-  <link rel="stylesheet" href="./contact-details.css?v=booking-contact-profile-20260911-1">
+  <link rel="stylesheet" href="./contact-details.css?v=booking-contact-top-ui-20260919-1">
   <link rel="stylesheet" href="./calendar-flow.css?v=booking-remove-date-bar-20260919-1">
   <link rel="stylesheet" href="./calendar-holiday-theme.css?v=booking-calendar-holiday-theme-20260916-2">
   <link rel="stylesheet" href="./membership-progress.css?v=booking-tier-style-20260910-1">
@@ -105,6 +105,20 @@
                 <button id="closeAppointmentButton" class="booking-selection-modal-close" type="button" aria-label="關閉預約視窗">×</button>
               </div>
 
+              <fieldset class="booking-contact-fieldset">
+                <legend>預約資料</legend>
+                <div class="booking-contact-options" role="radiogroup" aria-label="預約資料來源">
+                  <label class="booking-contact-option"><input type="radio" name="bookingContactSource" value="member" checked><span><strong>使用會員資料</strong><br><small id="bookingMemberContactSummary">正在載入會員資料…</small></span></label>
+                  <label class="booking-contact-option"><input type="radio" name="bookingContactSource" value="custom"><span><strong>本次重新填寫</strong><br><small>只套用到這筆預約</small></span></label>
+                </div>
+                <div id="bookingCustomContactFields" class="booking-contact-custom hidden">
+                  <label>姓氏<input id="bookingContactSurname" type="text" maxlength="40" autocomplete="family-name" placeholder="例如：王"></label>
+                  <label>稱謂<select id="bookingContactSalutation"><option value="">請選擇</option><option value="mr">先生</option><option value="ms">小姐</option></select></label>
+                  <label>電話<input id="bookingContactPhone" type="tel" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="例如：0912-345-678"></label>
+                </div>
+                <small class="booking-contact-help">＊重新填寫只會用於本次預約，不會修改會員卡內的會員資料。</small>
+              </fieldset>
+
               <div id="editingBookingNotice" class="service-info hidden" role="status">
                 正在修改既有預約；送出後需重新確認。
                 <button id="cancelEditBookingButton" class="button button-light" type="button">放棄修改／新增預約</button>
@@ -131,19 +145,6 @@
                 <div id="slotGrid" class="slot-grid" role="group" aria-label="可預約時間"></div>
               </fieldset>
 
-              <fieldset class="booking-contact-fieldset">
-                <legend>預約資料</legend>
-                <div class="booking-contact-options" role="radiogroup" aria-label="預約資料來源">
-                  <label class="booking-contact-option"><input type="radio" name="bookingContactSource" value="member" checked><span><strong>使用會員資料</strong><br><small id="bookingMemberContactSummary">正在載入會員資料…</small></span></label>
-                  <label class="booking-contact-option"><input type="radio" name="bookingContactSource" value="custom"><span><strong>本次重新填寫</strong><br><small>只套用到這筆預約</small></span></label>
-                </div>
-                <div id="bookingCustomContactFields" class="booking-contact-custom hidden">
-                  <label>姓氏<input id="bookingContactSurname" type="text" maxlength="40" autocomplete="family-name" placeholder="例如：王"></label>
-                  <label>稱謂<select id="bookingContactSalutation"><option value="">請選擇</option><option value="mr">先生</option><option value="ms">小姐</option></select></label>
-                  <label>電話<input id="bookingContactPhone" type="tel" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="例如：0912-345-678"></label>
-                </div>
-                <small class="booking-contact-help">＊重新填寫只會用於本次預約，不會修改會員卡內的會員資料。</small>
-              </fieldset>
 
               <label>備註（選填）
                 <textarea id="memberNote" maxlength="500" rows="3" placeholder="例如：希望安排的服務需求"></textarea>
