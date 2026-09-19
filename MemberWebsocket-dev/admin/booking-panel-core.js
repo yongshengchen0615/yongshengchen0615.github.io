@@ -47,7 +47,7 @@
     panel.innerHTML = `
       <div class="panel-heading booking-admin-heading">
         <div><p class="kicker">Booking operations</p><h2>預約管理</h2><p>技師、預約項目、共用設定與用戶預約分頁管理，降低單頁資訊密度。</p></div>
-        <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span><button id="bookingAdminRefreshButton" class="button button-outline" type="button">更新預約</button></div>
+        <div class="heading-actions"><span id="bookingAdminSyncStatus" class="sync-status">尚未同步</span></div>
       </div>
 
       <section class="booking-admin-stats" aria-label="預約概況">
@@ -170,7 +170,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminRefreshButton','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -180,7 +180,6 @@
   function bindEvents() {
     els.bookingTab.addEventListener('click', activateBookingPanel);
     PRIMARY_TAB_IDS.forEach((id) => document.getElementById(id)?.addEventListener('click', deactivateBookingPanel));
-    els.bookingAdminRefreshButton.addEventListener('click', () => refreshAll(true));
     els.bookingAdminSettingsForm.addEventListener('submit', saveSettings);
     els.bookingAdminNewTypeButton.addEventListener('click', () => openTypeModal(null));
     els.bookingAdminTechniciansSubtab.addEventListener('click', () => setSubtab('technicians'));
@@ -285,7 +284,6 @@
   async function refreshAll(showSuccess) {
     if (state.loading) return;
     state.loading = true;
-    els.bookingAdminRefreshButton.disabled = true;
     setSyncStatus('同步預約資料中…');
     try {
       const [booking, catalog, resources] = await Promise.all([
@@ -324,7 +322,6 @@
       showMessage(els.bookingAdminServiceMessage, error?.message || '預約資料同步失敗', 'error');
     } finally {
       state.loading = false;
-      els.bookingAdminRefreshButton.disabled = false;
     }
   }
   function renderAll() { renderSettings(); renderTypes(); renderServices(); renderStats(); renderBookings(); }
