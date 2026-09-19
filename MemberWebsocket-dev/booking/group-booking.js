@@ -453,7 +453,7 @@
     const title = document.createElement('strong');
     title.textContent = service.title;
     const meta = document.createElement('small');
-    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}`;
+    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}${service.requiresCompanionService ? ' · 加購／需搭配一般項目' : ''}`;
     text.append(title, meta);
     main.appendChild(text);
 
@@ -487,7 +487,7 @@
     const title = document.createElement('strong');
     title.textContent = service.title;
     const meta = document.createElement('small');
-    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}`;
+    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatServiceMoney(service.priceAmount)}${service.requiresCompanionService ? ' · 加購／需搭配一般項目' : ''}`;
     text.append(title, meta);
 
     const removeButton = document.createElement('button');
@@ -497,7 +497,17 @@
     removeButton.setAttribute('aria-label', `${participantLabel(index)}移除 ${service.title}`);
     removeButton.addEventListener('click', () => {
       const selectionIndex = selections.findIndex((item) => item.selectionId === selection.selectionId);
-      if (selectionIndex >= 0) selections.splice(selectionIndex, 1);
+      if (selectionIndex < 0) return;
+      const remainingServices = selections
+        .filter((_, currentIndex) => currentIndex !== selectionIndex)
+        .map((item) => state.services.find((candidate) => candidate.serviceId === item.serviceId))
+        .filter(Boolean);
+      if (remainingServices.some((item) => item.requiresCompanionService)
+          && !remainingServices.some((item) => !item.requiresCompanionService)) {
+        showParticipantFormMessage('加購項目不能單獨保留，請先移除加購項目再移除最後一個一般項目。', 'error');
+        return;
+      }
+      selections.splice(selectionIndex, 1);
       clearParticipantFormMessage();
       state.extras[extraIndex] = selections;
       state.openCards.add(index);
@@ -520,6 +530,13 @@
   }
 
   function confirmExtraServiceSelection(service, selections) {
+    const existingServices = selections
+      .map((selection) => state.services.find((item) => item.serviceId === selection.serviceId))
+      .filter(Boolean);
+    if (service.requiresCompanionService && !existingServices.some((item) => !item.requiresCompanionService)) {
+      showParticipantFormMessage(`${service.title} 是加購項目，請先選擇一個一般項目後再加入。`, 'error');
+      return false;
+    }
     const duplicateCount = selections.filter((selection) => selection.serviceId === service.serviceId).length;
     if (duplicateCount >= 2) {
       showParticipantFormMessage(`${service.title} 已加入兩次，無法再重複加入。`, 'error');
@@ -591,6 +608,20 @@
       .map((item) => ({ serviceId: item.serviceId, quantity: Number(item.quantity || 1) }));
   }
 
+  function validateCompanionItems(items, label, strict) {
+    const services = (Array.isArray(items) ? items : [])
+      .map((item) => state.services.find((service) => service.serviceId === item.serviceId))
+      .filter(Boolean);
+    if (services.some((service) => service.requiresCompanionService)
+        && !services.some((service) => !service.requiresCompanionService)) {
+      const message = `${label}只有加購項目；加購項目必須搭配至少一個一般項目。`;
+      if (strict) throw clientError('BOOKING_ADD_ON_REQUIRES_COMPANION', message);
+      showParticipantFormMessage(message, 'error');
+      return false;
+    }
+    return true;
+  }
+
   function buildParticipants(primaryItems, strict = false) {
     syncPrimaryItems(primaryItems);
 
@@ -598,6 +629,7 @@
       if (strict) throw clientError('INVALID_BOOKING_ITEMS', '第一位預約尚未選擇預約項目。');
       return null;
     }
+    if (!validateCompanionItems(state.primaryItems, participantLabel(0), strict)) return null;
     ensureParticipantCount(false);
     const primaryCount = state.participantTechnicians.filter((id) => id && id === state.primaryTechnicianId).length;
     if (!state.primaryTechnicianId || primaryCount < 1) {
@@ -620,6 +652,7 @@
         if (strict) throw clientError('INVALID_BOOKING_ITEMS', `${participantLabel(index + 1)}尚未選擇預約項目。`);
         return null;
       }
+      if (!validateCompanionItems(items, participantLabel(index + 1), strict)) return null;
       participants.push({
         technicianId: state.participantTechnicians[index + 1] || null,
         items,
