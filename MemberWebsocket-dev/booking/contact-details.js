@@ -35,7 +35,6 @@
       const byId = new Map((contacts.contacts || []).map((item) => [item.bookingId, item]));
       result.bookings = bookings.map((item) => ({ ...item, ...(byId.get(item.bookingId) || {}) }));
       latestBookings = result.bookings;
-      queueMicrotask(tagBookingItems);
       return result;
     }
 
@@ -72,7 +71,6 @@
         event.stopImmediatePropagation();
         showFormError(error);
       }, true);
-      form.addEventListener('submit', () => window.setTimeout(renderConfirmationContact, 0));
     }
 
     document.addEventListener('click', (event) => {
@@ -95,11 +93,7 @@
     window.addEventListener('booking:created', () => {
       editingBookingId = '';
       setMemberContactMode();
-      queueMicrotask(tagBookingItems);
     });
-
-    const list = document.getElementById('bookingList');
-    if (list) new MutationObserver(tagBookingItems).observe(list, { childList: true, subtree: false });
     updateContactMode();
     syncMemberContactSummary();
   });
@@ -218,30 +212,6 @@
       setInputValue('bookingContactPhone', booking.contactPhone || '');
     }
     updateContactMode();
-  }
-
-  function renderConfirmationContact() {
-    const summary = document.getElementById('bookingConfirmSummary');
-    if (!summary || document.getElementById('bookingConfirmModal')?.classList.contains('hidden')) return;
-    summary.querySelector('.booking-confirm-contact')?.remove();
-    const payload = getContactPayload(false);
-    const source = payload.contactSource;
-    const surname = source === 'member' ? String(cachedProfile.surname || '') : String(payload.contactSurname || '');
-    const salutation = source === 'member' ? String(cachedProfile.salutation || '') : String(payload.contactSalutation || '');
-    const phone = source === 'member' ? String(cachedProfile.phone || '') : String(payload.contactPhone || '');
-    const row = document.createElement('p');
-    row.className = 'booking-confirm-contact';
-    row.textContent = `預約資料：${surname}${salutationLabel(salutation)}｜${phone}（${source === 'member' ? '使用會員資料' : '本次重新填寫'}）`;
-    summary.appendChild(row);
-  }
-
-  function tagBookingItems() {
-    const list = document.getElementById('bookingList');
-    if (!list) return;
-    [...list.querySelectorAll(':scope > .booking-item')].forEach((node, index) => {
-      const booking = latestBookings[index];
-      if (booking) node.dataset.bookingId = booking.bookingId;
-    });
   }
 
   function contactFields(booking) {
