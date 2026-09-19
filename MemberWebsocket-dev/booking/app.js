@@ -188,7 +188,7 @@
     const title = document.createElement('strong');
     title.textContent = service.title;
     const meta = document.createElement('small');
-    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatMoney(service.priceAmount)}`;
+    meta.textContent = `服務 ${Number(service.durationMinutes || 0)} 分鐘 · ${formatMoney(service.priceAmount)}${service.requiresCompanionService ? ' · 加購／需搭配一般項目' : ''}`;
     text.append(title, meta);
     main.appendChild(text);
 
@@ -227,7 +227,7 @@
     const title = document.createElement('strong');
     title.textContent = item.service.title;
     const meta = document.createElement('small');
-    meta.textContent = `服務 ${Number(item.service.durationMinutes || 0)} 分鐘 · ${formatMoney(item.service.priceAmount)}`;
+    meta.textContent = `服務 ${Number(item.service.durationMinutes || 0)} 分鐘 · ${formatMoney(item.service.priceAmount)}${item.service.requiresCompanionService ? ' · 加購／需搭配一般項目' : ''}`;
     text.append(title, meta);
 
     const removeButton = document.createElement('button');
@@ -274,6 +274,11 @@
   }
 
   function addSelection(service) {
+    const existingServices = selectedServiceRows().map((item) => item.service);
+    if (service.requiresCompanionService && !existingServices.some((item) => !item.requiresCompanionService)) {
+      showFormMessage(`${service.title} 是加購項目，請先選擇一個一般項目後再加入。`, 'error');
+      return;
+    }
     const duplicateCount = state.selections.filter((selection) => selection.serviceId === service.serviceId).length;
     if (duplicateCount >= 2) {
       showFormMessage(`${service.title} 已加入兩次，無法再重複加入。`, 'error');
@@ -302,6 +307,16 @@
   function removeSelection(selectionId) {
     const index = state.selections.findIndex((selection) => selection.selectionId === selectionId);
     if (index < 0) return;
+    const serviceMap = new Map(userServices().map((service) => [service.serviceId, service]));
+    const remainingServices = state.selections
+      .filter((_, selectionIndex) => selectionIndex !== index)
+      .map((selection) => serviceMap.get(selection.serviceId))
+      .filter(Boolean);
+    if (remainingServices.some((service) => service.requiresCompanionService)
+        && !remainingServices.some((service) => !service.requiresCompanionService)) {
+      showFormMessage('加購項目不能單獨保留，請先移除加購項目再移除最後一個一般項目。', 'error');
+      return;
+    }
     state.selections.splice(index, 1);
     selectionChanged();
   }
