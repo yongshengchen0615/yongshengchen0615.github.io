@@ -52,7 +52,7 @@ test('member booking entry loads only the current single render pipeline', () =>
   assert.ok(html.includes('service-type-color.js?v=booking-shared-type-color-map-20260918-4'));
   assert.ok(html.includes('group-booking.js?v=booking-single-render-20260919-1'));
   assert.ok(html.includes('member-ui.js?v=booking-single-render-20260919-1'));
-  assert.ok(html.includes('app.js?v=booking-single-render-20260919-2'));
+  assert.ok(html.includes('app.js?v=booking-clock-sync-20260919-1'));
   assert.ok(html.includes('contact-details.js?v=booking-single-render-20260919-1'));
   assert.ok(html.includes('calendar-flow.js?v=booking-single-render-20260919-1'));
 
