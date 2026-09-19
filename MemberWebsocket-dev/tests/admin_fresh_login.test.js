@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 
-const source = fs.readFileSync(path.join(__dirname, '../admin/common.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../member-system.js'), 'utf8');
 const entry = 'https://example.test/MemberWebsocket-dev/admin/?view=members#top';
 const storageKey = 'member_system_reauth:admin';
 const config = {
