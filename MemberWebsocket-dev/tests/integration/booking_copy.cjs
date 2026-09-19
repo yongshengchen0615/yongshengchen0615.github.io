@@ -27,7 +27,6 @@ for (const entry of ['admin']) {
     const system = { loadConfig: async () => ({ supabaseUrl: 'https://fixture.supabase.co', supabasePublishableKey: 'fixture-key' }), request: async () => ({ bookings: [structuredClone(booking)], services: [] }) };
     w.MemberSystem = system;
     w.BookingSystem = system;
-    w.liff = { getIDToken: () => 'fixture-token' };
     w.isSecureContext = true;
     w.navigator.clipboard = { writeText: async text => copied.push(text) };
     w.fetch = async (url, init) => {
@@ -63,6 +62,11 @@ for (const entry of ['admin']) {
         if (!src.includes('booking-admin-group-details.') && !src.includes('booking-copy-format.js')) continue;
         assert.ok(fs.existsSync(path.resolve(root, entry, src.split('?')[0])), src);
       }
+      load('admin/admin-session.js');
+      w.MemberAdminSession.establish(
+        { supabaseUrl: 'https://fixture.supabase.co', supabasePublishableKey: 'fixture-key' },
+        'fixture-token'
+      );
       let queue;
       load('admin/booking-panel-core.js');
       if (!w.document.getElementById('bookingTab')) {
