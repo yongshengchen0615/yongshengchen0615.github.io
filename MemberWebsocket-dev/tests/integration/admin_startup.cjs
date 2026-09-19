@@ -67,6 +67,7 @@ async function runFixture(mode) {
   };
   const load = (name) => w.eval(fs.readFileSync(path.join(root, 'admin', name), 'utf8'));
   try {
+    load('admin-session.js');
     load('app.js');
     if (mode === 'late') await tick();
     load('fixed-ticket-admin-integration.js');
