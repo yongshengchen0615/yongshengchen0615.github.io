@@ -146,7 +146,7 @@ jobs:
           test ! -e MemberWebsocket-dev/booking/admin/app.js
           test ! -e MemberWebsocket-dev/booking/admin/subtabs.js
           test ! -e MemberWebsocket-dev/booking/admin/cancellation-review.js
-          grep -q 'booking-panel.js?v=booking-addon-settings-20260919-1' MemberWebsocket-dev/admin/index.html
+          grep -q 'booking-panel.js?v=booking-completion-rewards-20260919-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'loadBookingAdminPanelExtension' MemberWebsocket-dev/member-system.js
           grep -q 'booking-panel-core.js' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'booking-cancellation-sync.js' MemberWebsocket-dev/admin/booking-panel.js
