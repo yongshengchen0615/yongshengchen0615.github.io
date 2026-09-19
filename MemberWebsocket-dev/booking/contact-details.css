@@ -1,14 +1,18 @@
 .booking-contact-fieldset {
-  margin: 18px 0;
-  padding: 16px;
-  border: 1px solid rgba(31, 43, 35, .14);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, .72);
+  margin: 4px 0 20px;
+  padding: 18px;
+  border: 1px solid rgba(23, 53, 46, .12);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(246, 249, 245, .96), rgba(255, 253, 248, .98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85);
 }
 
 .booking-contact-fieldset legend {
-  padding: 0 6px;
-  font-weight: 800;
+  padding: 0 7px;
+  color: #17352e;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -.01em;
 }
 
 .booking-contact-options {
@@ -18,15 +22,66 @@
 }
 
 .booking-contact-option {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 1px solid rgba(31, 43, 35, .14);
-  border-radius: 12px;
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-height: 76px;
+  padding: 13px 14px;
+  border: 1px solid rgba(23, 53, 46, .13);
+  border-radius: 14px;
   background: #fff;
   cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.booking-contact-option:hover {
+  border-color: rgba(223, 107, 77, .45);
+  transform: translateY(-1px);
+}
+
+.booking-contact-option:has(input:checked) {
+  border-color: #17352e;
+  background: #f3f7f3;
+  box-shadow: 0 0 0 2px rgba(23, 53, 46, .07);
+}
+
+.booking-contact-option:focus-within {
+  outline: 3px solid rgba(223, 107, 77, .16);
+  outline-offset: 2px;
+}
+
+.booking-contact-option input[type="radio"] {
+  width: 18px;
+  min-height: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: #17352e;
+  box-shadow: none;
+}
+
+.booking-contact-option span {
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.booking-contact-option strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #17352e;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.booking-contact-option small {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #718078;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
 }
 
 .booking-contact-summary {
@@ -39,9 +94,15 @@
 
 .booking-contact-custom {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, .55fr);
-  gap: 12px;
-  margin-top: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, .55fr);
+  gap: 10px 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(23, 53, 46, .09);
+}
+
+.booking-contact-custom label {
+  gap: 6px;
 }
 
 .booking-contact-custom label:last-of-type {
@@ -51,19 +112,21 @@
 .booking-contact-custom input,
 .booking-contact-custom select {
   width: 100%;
-  min-height: 44px;
-  border: 1px solid rgba(31, 43, 35, .16);
+  min-height: 46px;
+  border: 1px solid rgba(23, 53, 46, .16);
   border-radius: 12px;
   background: #fff;
-  padding: 0 12px;
+  padding: 10px 12px;
   font: inherit;
+  font-size: 16px;
   color: inherit;
 }
 
 .booking-contact-help {
   display: block;
-  margin-top: 10px;
-  color: #b42318;
+  margin-top: 11px;
+  padding-left: 2px;
+  color: #9a4d38;
   font-size: .78rem;
   line-height: 1.55;
   font-weight: 650;
@@ -78,11 +141,48 @@
 }
 
 @media (max-width: 640px) {
+  .booking-contact-fieldset {
+    margin-top: 2px;
+    padding: 15px;
+    border-radius: 16px;
+  }
+
   .booking-contact-options,
   .booking-contact-custom {
     grid-template-columns: 1fr;
   }
+
+  .booking-contact-option {
+    min-height: 0;
+    padding: 12px 13px;
+  }
+
   .booking-contact-custom label:last-of-type {
     grid-column: auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .booking-contact-fieldset {
+    padding: 13px;
+  }
+
+  .booking-contact-options {
+    gap: 8px;
+  }
+
+  .booking-contact-option {
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .booking-contact-option {
+    transition: none;
+  }
+
+  .booking-contact-option:hover {
+    transform: none;
   }
 }
