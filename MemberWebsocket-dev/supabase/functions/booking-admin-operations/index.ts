@@ -67,6 +67,11 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_NOT_FOUND", 404, "BOOKING_NOT_FOUND", "找不到這筆預約。"],
     ["BOOKING_NOT_EDITABLE", 409, "BOOKING_NOT_EDITABLE", "這筆預約目前無法修改服務項目。"],
     ["BOOKING_CANCELLATION_PENDING", 409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核。"],
+    ["INVALID_BOOKING_TRANSITION", 409, "INVALID_BOOKING_TRANSITION", "只有已確認的預約可以標記服務完成。"],
+    ["BOOKING_COMPLETION_ALREADY_SETTLED", 409, "BOOKING_COMPLETION_ALREADY_SETTLED", "這筆預約已完成結算，請重新整理。"],
+    ["BOOKING_COMPLETION_SERVICE_TIME_CONFLICT", 409, "BOOKING_COMPLETION_SERVICE_TIME_CONFLICT", "服務時間已結算，請重新整理確認預約狀態。"],
+    ["BOOKING_COMPLETION_POINT_CONFLICT", 409, "BOOKING_COMPLETION_POINT_CONFLICT", "集點已結算，請重新整理確認預約狀態。"],
+    ["BOOKING_REWARD_POINT_CARD_UNAVAILABLE", 409, "BOOKING_REWARD_POINT_CARD_UNAVAILABLE", "此預約使用的自動集點卡目前不可發點，請先調整項目類型的集點設定。"],
     ["BOOKING_SERVICE_NOT_FOUND", 404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個服務項目。"],
     ["BOOKING_ADD_ON_REQUIRES_COMPANION", 400, "BOOKING_ADD_ON_REQUIRES_COMPANION", "加購項目不能單獨使用，請至少再選擇一個一般項目。"],
     ["BOOKING_SYSTEM_SERVICE_IMMUTABLE", 409, "BOOKING_SYSTEM_SERVICE_IMMUTABLE", "店內固定服務不可手動修改。"],
@@ -290,22 +295,26 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
   const bookingId = requireUuid(body.bookingId, "預約");
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
   const adminNote = asText(body.adminNote, 500);
-  const existing = await supabase.from("bookings").select("id,status,updated_at,cancellation_requested_at,cancellation_reviewed_at").eq("id", bookingId).maybeSingle();
-  if (existing.error) throw mapDatabaseError(existing.error);
-  if (!existing.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
-  if (!expectedUpdatedAt || expectedUpdatedAt !== existing.data.updated_at) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再確認。");
-  if (existing.data.cancellation_requested_at && !existing.data.cancellation_reviewed_at) {
-    throw new ApiError(409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核。");
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請重新整理。");
   }
-  if (existing.data.status !== "confirmed") throw new ApiError(409, "INVALID_BOOKING_TRANSITION", "只有已確認的預約可以標記服務完成。");
-  const now = new Date().toISOString();
-  const updated = await supabase.from("bookings").update({
-    status: "completed", admin_note: adminNote, completed_by: identity.lineUserId, completed_at: now,
-  }).eq("id", bookingId).eq("status", "confirmed").eq("updated_at", expectedUpdatedAt).select("id").maybeSingle();
-  if (updated.error) throw mapDatabaseError(updated.error);
-  if (!updated.data) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再確認。");
-  await audit(supabase, identity, "BOOKING_COMPLETED", bookingId, { previousStatus: "confirmed", endTimeRestrictionBypassed: true });
-  return { booking: await hydrateBooking(supabase, bookingId) };
+
+  const result = await supabase.rpc("complete_booking_with_rewards_request", {
+    p_booking_id: bookingId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_actor: identity.lineUserId,
+    p_admin_note: adminNote,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
+
+  const settlement = result.data && typeof result.data === "object" ? result.data as Json : {};
+  await audit(supabase, identity, "BOOKING_COMPLETED", bookingId, {
+    previousStatus: "confirmed",
+    endTimeRestrictionBypassed: true,
+    serviceMinutes: Number(settlement.serviceMinutes || 0),
+    rewards: Array.isArray(settlement.rewards) ? settlement.rewards : [],
+  });
+  return { booking: await hydrateBooking(supabase, bookingId), settlement };
 }
 async function route(supabase: SupabaseClient, identity: Identity, action: string, body: Json): Promise<Json> {
   if (action === "admin.booking.participants.items.update") return await updateParticipantItems(supabase, identity, body);
