@@ -202,7 +202,6 @@
 
   async function boot() {
     try {
-      state.config = await window.MemberSystem.loadConfig();
       state.idToken = await waitForToken();
       await refresh(false);
     } catch (error) {
@@ -211,17 +210,16 @@
   }
 
   async function waitForToken() {
-    for (let i = 0; i < 150; i += 1) {
-      const token = typeof window.liff?.getIDToken === 'function' ? String(window.liff.getIDToken() || '') : '';
-      if (token) return token;
-      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    if (!window.MemberAdminSession || typeof window.MemberAdminSession.wait !== 'function') {
+      throw clientError('AUTH_REQUIRED', '管理端登入服務尚未準備完成。');
     }
-    throw clientError('AUTH_REQUIRED', '管理端登入尚未完成，請重新整理後再試。');
+    const session = await window.MemberAdminSession.wait();
+    state.config = session.config;
+    return String(session.idToken || '');
   }
 
   async function request(action, payload = {}, write = false) {
-    if (!state.config) state.config = await window.MemberSystem.loadConfig();
-    if (!state.idToken) state.idToken = await waitForToken();
+    if (!state.config || !state.idToken) state.idToken = await waitForToken();
     const endpoint = `${String(state.config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-group-api`;
     if (!state.config?.supabaseUrl || !state.config?.supabasePublishableKey) throw clientError('CONFIG_ERROR', '預約服務設定不完整，請重新整理後再試。');
 
@@ -488,8 +486,7 @@
   }
 
   async function deleteTechnicianRequest(payload) {
-    if (!state.config) state.config = await window.MemberSystem.loadConfig();
-    if (!state.idToken) state.idToken = await waitForToken();
+    if (!state.config || !state.idToken) state.idToken = await waitForToken();
     const endpoint = `${String(state.config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-technician-delete`;
     if (!state.config?.supabaseUrl || !state.config?.supabasePublishableKey) throw clientError('CONFIG_ERROR', '預約服務設定不完整。');
 
