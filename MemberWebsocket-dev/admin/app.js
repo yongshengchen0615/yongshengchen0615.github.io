@@ -1544,18 +1544,32 @@
     const heading = document.createElement('div'); heading.className = 'grant-point-row-heading'; const title = document.createElement('strong'); title.textContent = `集點卡 ${index + 1}`; heading.append(title);
     if (grants.length > 1) { const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button'; remove.dataset.removeGrantPoint = 'true'; remove.textContent = '刪除'; heading.append(remove); }
     const grid = document.createElement('div'); grid.className = 'grant-point-row-fields';
-    const cardLabel = document.createElement('label'); cardLabel.textContent = '集點卡'; const select = document.createElement('select'); select.dataset.grantPointField = 'cardId'; const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.disabled = true; placeholder.textContent = '請選擇集點卡'; select.append(placeholder); const selectedIds = new Set(grants.map((item) => String(item.cardId || ''))); activeGrantCards().filter((card) => !selectedIds.has(String(card.cardId)) || String(card.cardId) === String(grant.cardId || '')).forEach((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.textContent = String(card.title || '未命名集點卡'); select.append(option); }); select.value = String(grant.cardId || ''); cardLabel.append(select);
+    const cardLabel = document.createElement('label'); cardLabel.textContent = '集點卡'; const select = document.createElement('select'); select.dataset.grantPointField = 'cardId'; const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.disabled = true; placeholder.textContent = '請選擇集點卡'; select.append(placeholder); activeGrantCards().forEach((card) => { const option = document.createElement('option'); option.value = String(card.cardId); option.dataset.cardTitle = String(card.title || '未命名集點卡'); option.textContent = option.dataset.cardTitle; select.append(option); }); select.value = String(grant.cardId || ''); cardLabel.append(select);
     const amountLabel = document.createElement('label'); amountLabel.textContent = '增加點數'; const amount = document.createElement('input'); amount.type = 'number'; amount.min = '1'; amount.max = '100'; amount.step = '1'; amount.value = grant.amount === undefined || grant.amount === null ? '' : String(grant.amount); amount.dataset.grantPointField = 'amount'; amountLabel.append(amount); grid.append(cardLabel, amountLabel); row.append(heading, grid); return row;
   }
   function collectGrantPoints() { return Array.from(els.grantPointRows.querySelectorAll('[data-grant-point-row]')).map((row) => ({ cardId: String(row.querySelector('[data-grant-point-field="cardId"]')?.value || '').trim(), amount: Number(row.querySelector('[data-grant-point-field="amount"]')?.value) })); }
+  function syncGrantPointCardOptions() {
+    const selects = Array.from(els.grantPointRows.querySelectorAll('[data-grant-point-field="cardId"]'));
+    const selectedIds = selects.map((select) => String(select.value || '')).filter(Boolean);
+    selects.forEach((select) => {
+      const currentId = String(select.value || '');
+      select.querySelectorAll('option[value]:not([value=""])').forEach((option) => {
+        const cardId = String(option.value || '');
+        const selectedElsewhere = selectedIds.includes(cardId) && cardId !== currentId;
+        option.disabled = selectedElsewhere;
+        option.textContent = `${option.dataset.cardTitle || option.textContent.replace(/\s*（已選擇）$/, '')}${selectedElsewhere ? '（已選擇）' : ''}`;
+      });
+    });
+  }
   function addGrantPointRow() { const grants = collectGrantPoints(); if (!activeGrantCards().length || grants.length >= 20) return; grants.push({ cardId: '', amount: '' }); renderGrantPointRows(grants); els.grantPointRows.querySelector('[data-grant-point-row]:last-child select')?.focus(); }
-  function updateGrantPointHint() { const grants = collectGrantPoints(); const duplicate = grants.some((grant, index) => grants.findIndex((item) => item.cardId === grant.cardId) !== index); const invalid = grants.some((grant) => !grant.cardId || !Number.isInteger(grant.amount) || grant.amount < 1 || grant.amount > 100); const message = !grants.length ? '勾選「發放集點」後選擇集點卡與點數。' : duplicate ? '同一次發放不可重複選擇同一張集點卡。' : invalid ? '每張集點卡請輸入 1–100 的整數點數。' : `${grants.length} 張集點卡 · 每張可設定不同點數。`; els.grantPointHint.textContent = message; els.grantPointHint.classList.toggle('warning', duplicate || invalid); els.addGrantPointButton.disabled = activeGrantCards().length <= grants.length || grants.length >= 20 || !els.grantStampsEnabled.checked; }
+  function updateGrantPointHint() { syncGrantPointCardOptions(); const grants = collectGrantPoints(); const duplicate = grants.some((grant, index) => grants.findIndex((item) => item.cardId === grant.cardId) !== index); const invalid = grants.some((grant) => !grant.cardId || !Number.isInteger(grant.amount) || grant.amount < 1 || grant.amount > 100); const message = !grants.length ? '勾選「發放集點」後選擇集點卡與點數。' : duplicate ? '同一次發放不可重複選擇同一張集點卡。' : invalid ? '每張集點卡請輸入 1–100 的整數點數。' : `${grants.length} 張集點卡 · 每張可設定不同點數。`; els.grantPointHint.textContent = message; els.grantPointHint.classList.toggle('warning', duplicate || invalid); els.addGrantPointButton.disabled = activeGrantCards().length <= grants.length || grants.length >= 20 || !els.grantStampsEnabled.checked; }
   function updateGrantOptions() {
     const addStamps = els.grantStampsEnabled.checked;
     const addServiceTime = els.grantServiceTimeEnabled.checked;
     if (addStamps && !els.grantPointRows.children.length) renderGrantPointRows([{ cardId: '', amount: '' }]);
     els.grantStampsFields.classList.toggle('hidden', !addStamps);
     els.grantPointRows.querySelectorAll('select, input, button').forEach((element) => { element.disabled = !addStamps; });
+    if (addStamps) syncGrantPointCardOptions();
     els.addGrantPointButton.disabled = !addStamps || activeGrantCards().length <= collectGrantPoints().length;
     els.grantServiceTimeFields.classList.toggle('hidden', !addServiceTime);
     els.grantServiceTimeMinutes.disabled = !addServiceTime;
