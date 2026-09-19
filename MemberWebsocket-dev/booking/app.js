@@ -16,6 +16,9 @@
     submitting: false,
     editing: null,
     realtimeUnsubscribe: null,
+    serverClockEpochMs: 0,
+    serverClockMonotonicMs: 0,
+    serverClockOffsetMs: 0,
   };
   const els = {};
   const STATUS_LABELS = {
@@ -99,6 +102,7 @@
         window.BookingSystem.memberProfile(state.config, state.idToken),
       ]);
       state.data = bookingData || state.data;
+      syncServerClock(state.data.serverNow);
       state.profile = profile || {};
       pruneSelections();
       renderMemberProfile();
@@ -449,6 +453,7 @@
         bookingId: state.editing?.bookingId,
       });
       if (requestSequence !== state.slotRequestSequence) return;
+      syncServerClock(result.serverNow);
       if (result.settings) {
         state.data.settings = { ...state.data.settings, ...result.settings };
         renderSettings();
@@ -599,6 +604,7 @@
         try {
           const fresh = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap');
           state.data = fresh;
+          syncServerClock(state.data.serverNow);
           renderBookings();
           const recovered = (fresh.bookings || []).find((item) => item.requestId === requestId);
           if (recovered) {
@@ -748,8 +754,31 @@
     return row;
   }
 
+  function syncServerClock(value) {
+    const epochMs = Date.parse(String(value || ''));
+    if (!Number.isFinite(epochMs)) return;
+    state.serverClockEpochMs = epochMs;
+    state.serverClockOffsetMs = epochMs - Date.now();
+    state.serverClockMonotonicMs = typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : 0;
+  }
+
+  function currentServerTimeMs() {
+    if (state.serverClockEpochMs > 0 && typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      const elapsed = performance.now() - state.serverClockMonotonicMs;
+      if (Number.isFinite(elapsed) && elapsed >= 0) return state.serverClockEpochMs + elapsed;
+    }
+    return Date.now() + Number(state.serverClockOffsetMs || 0);
+  }
+
   function canCancel(booking) {
-    return ['pending', 'confirmed'].includes(booking.status) && Date.parse(`${booking.bookingDate}T${booking.startTime}:00+08:00`) > Date.now();
+    const cancellationPending = Boolean(booking?.cancellationRequestedAt && !booking?.cancellationReviewedAt);
+    const startsAt = Date.parse(`${booking.bookingDate}T${booking.startTime}:00+08:00`);
+    return ['pending', 'confirmed'].includes(booking.status)
+      && !cancellationPending
+      && Number.isFinite(startsAt)
+      && startsAt > currentServerTimeMs();
   }
 
   function updateEditingLabel() {
