@@ -995,7 +995,7 @@
     const minutes = Number(reward?.minutesPerPoint || 0);
     const card = String(reward?.pointCardTitle || '').trim();
     return Number.isInteger(minutes) && minutes > 0 && card
-      ? `每 ${minutes} 分鐘於「${card}」集點卡獲得 1 點`
+      ? `僅主要技師項目計算：每 ${minutes} 分鐘於「${card}」集點卡獲得 1 點`
       : '';
   }
 
