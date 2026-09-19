@@ -79,7 +79,7 @@ jobs:
           grep -q 'supabaseGrantAutomationUrl' MemberWebsocket-dev/config.json
           grep -q 'fixed-ticket-admin-integration.js?v=fixed-ticket-sync-20260916-1' MemberWebsocket-dev/admin/index.html
           grep -q 'fixed-ticket-calendar-option.js?v=fixed-ticket-calendar-20260917-4' MemberWebsocket-dev/admin/index.html
-          grep -q 'fixed-ticket-admin.js?v=fixed-ticket-expiry-20260917-2' MemberWebsocket-dev/admin/index.html
+          grep -q 'fixed-ticket-admin.js?v=fixed-ticket-refresh-20260919-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
           grep -q 'app.js?v=event-single-render-20260919-1' MemberWebsocket-dev/event/index.html
           ! grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
