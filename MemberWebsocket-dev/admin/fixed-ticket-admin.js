@@ -310,6 +310,7 @@
     document.getElementById('eventTicketEditorKicker').textContent = 'Edit fixed ticket';
     document.getElementById('eventTicketEditorTitle').textContent = String(template.title || '編輯固定票券');
     document.getElementById('deleteEventTicketButton').disabled = false;
+    document.getElementById('deleteEventTicketButton').classList.remove('hidden');
     updateFixedUI();
     renderFixedList();
     hideMessage();
@@ -331,6 +332,11 @@
     const del = document.getElementById('deleteEventTicketButton');
     if (del && selectedFixedTicketId) {
       del.disabled = false;
+      del.classList.remove('hidden');
+      del.textContent = '刪除目前固定票券';
+    } else if (del && fixed) {
+      del.disabled = true;
+      del.classList.add('hidden');
       del.textContent = '刪除目前固定票券';
     } else if (del && !fixed) {
       del.textContent = '刪除目前票券';
