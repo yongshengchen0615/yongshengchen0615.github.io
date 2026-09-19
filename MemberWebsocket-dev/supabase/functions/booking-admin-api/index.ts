@@ -234,7 +234,9 @@ async function serviceSave(supabase: SupabaseClient, identity: Identity, body: J
   const typeInput = asText(body.serviceType, 80);
   const durationMinutes = Number(body.durationMinutes);
   const priceAmount = Number(body.priceAmount);
-  const requiresCompanionService = body.requiresCompanionService === true;
+  const requiresCompanionProvided = Object.prototype.hasOwnProperty.call(body, "requiresCompanionService");
+  const requestedRequiresCompanionService = body.requiresCompanionService === true;
+  let requiresCompanionService = requestedRequiresCompanionService;
   const isActive = body.isActive !== false;
   if (!title) throw new ApiError(400, "INVALID_SERVICE_TITLE", "預約項目名稱不可空白。" );
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 720) throw new ApiError(400, "INVALID_SERVICE_DURATION", "服務時間必須介於 1–720 分鐘。" );
@@ -243,14 +245,15 @@ async function serviceSave(supabase: SupabaseClient, identity: Identity, body: J
   if (typeResult.error) throw mapDatabaseError(typeResult.error);
   if (!typeResult.data) throw new ApiError(400, "BOOKING_SERVICE_TYPE_INVALID", "所選項目類型不存在，請重新選擇。" );
   const serviceType = typeResult.data.name;
-  const patch = { title, description: `__TYPE__:${serviceType}`, service_type: serviceType, duration_minutes: durationMinutes, price_amount: priceAmount, requires_companion_service: requiresCompanionService, is_active: isActive, counts_toward_membership: true };
   let saved: any;
   if (serviceId) {
-    const current = await supabase.from("booking_services").select("updated_at").eq("id", serviceId).is("deleted_at", null).maybeSingle();
+    const current = await supabase.from("booking_services").select("updated_at,requires_companion_service").eq("id", serviceId).is("deleted_at", null).maybeSingle();
     if (current.error) throw mapDatabaseError(current.error);
     if (!current.data) throw new ApiError(404, "BOOKING_SERVICE_NOT_FOUND", "找不到這個預約項目。" );
     const expected = asText(body.expectedUpdatedAt, 80);
     if (expected && new Date(current.data.updated_at).getTime() !== new Date(expected).getTime()) throw new ApiError(409, "BOOKING_SERVICE_CONFLICT", "預約項目已被其他操作更新，請重新整理後再試。" );
+    requiresCompanionService = requiresCompanionProvided ? requestedRequiresCompanionService : Boolean(current.data.requires_companion_service);
+    const patch = { title, description: `__TYPE__:${serviceType}`, service_type: serviceType, duration_minutes: durationMinutes, price_amount: priceAmount, requires_companion_service: requiresCompanionService, is_active: isActive, counts_toward_membership: true };
     const updated = await supabase.from("booking_services").update(patch)
       .eq("id", serviceId)
       .is("deleted_at", null)
@@ -262,6 +265,7 @@ async function serviceSave(supabase: SupabaseClient, identity: Identity, body: J
     saved = updated.data;
     await audit(supabase, identity, "BOOKING_SERVICE_UPDATED", "booking_service", serviceId, { durationMinutes, priceAmount, serviceType, requiresCompanionService });
   } else {
+    const patch = { title, description: `__TYPE__:${serviceType}`, service_type: serviceType, duration_minutes: durationMinutes, price_amount: priceAmount, requires_companion_service: requiresCompanionService, is_active: isActive, counts_toward_membership: true };
     const inserted = await supabase.from("booking_services").insert({ ...patch, created_by: identity.lineUserId }).select("*").single();
     if (inserted.error) throw mapDatabaseError(inserted.error);
     saved = inserted.data;
