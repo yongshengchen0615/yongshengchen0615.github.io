@@ -410,6 +410,26 @@ async function activeServices(supabase: SupabaseClient): Promise<any[]> {
   return result.data || [];
 }
 
+async function bookingServiceTypeRewards(supabase: SupabaseClient): Promise<Json[]> {
+  const [rewardResult, typeResult, cardResult] = await Promise.all([
+    supabase.from("booking_service_type_rewards").select("service_type_id,point_card_id,minutes_per_point"),
+    supabase.from("booking_service_types").select("id,name"),
+    supabase.from("point_cards").select("id,title"),
+  ]);
+  if (rewardResult.error) throw mapDatabaseError(rewardResult.error);
+  if (typeResult.error) throw mapDatabaseError(typeResult.error);
+  if (cardResult.error) throw mapDatabaseError(cardResult.error);
+
+  const typeNames = new Map((typeResult.data || []).map((row: any) => [String(row.id), String(row.name || "").trim()]));
+  const cardTitles = new Map((cardResult.data || []).map((row: any) => [String(row.id), String(row.title || "").trim()]));
+  return (rewardResult.data || []).map((row: any) => ({
+    serviceType: typeNames.get(String(row.service_type_id)) || "",
+    pointCardId: String(row.point_card_id || ""),
+    pointCardTitle: cardTitles.get(String(row.point_card_id)) || "",
+    minutesPerPoint: Number(row.minutes_per_point || 0),
+  })).filter((row: any) => row.serviceType && row.pointCardId && row.pointCardTitle && Number.isInteger(row.minutesPerPoint) && row.minutesPerPoint > 0);
+}
+
 async function normalizeRequestedItems(supabase: SupabaseClient, body: Json): Promise<RequestedItem[]> {
   const rawItems = Array.isArray(body.items) && body.items.length
     ? body.items
@@ -530,9 +550,10 @@ async function audit(supabase: SupabaseClient, identity: Identity, role: "member
 }
 
 async function userBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const [settings, services, bookingResult] = await Promise.all([
+  const [settings, services, serviceTypeRewards, bookingResult] = await Promise.all([
     bookingSettings(supabase),
     activeServices(supabase),
+    bookingServiceTypeRewards(supabase),
     supabase.from("bookings")
       .select("*")
       .eq("member_id", member.id)
@@ -544,7 +565,7 @@ async function userBootstrap(supabase: SupabaseClient, member: any): Promise<Jso
   return {
     serverNow: new Date().toISOString(),
     today: taipeiDate(),
-    settings: settingsClient(settings),
+    settings: { ...settingsClient(settings), serviceTypeRewards },
     services: services.map(serviceClient),
     bookings: await hydrateBookings(supabase, ((bookingResult as any).data || []) as any[]),
   };
