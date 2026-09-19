@@ -7,6 +7,8 @@ const adminHtml = read('MemberWebsocket-dev/admin/index.html');
 const eventHtml = read('MemberWebsocket-dev/event/index.html');
 const eventApp = read('MemberWebsocket-dev/event/app.js');
 const calendarSync = read('MemberWebsocket-dev/admin/grant-automation.js');
+const adminApp = read('MemberWebsocket-dev/admin/app.js');
+const fixedTicketAdmin = read('MemberWebsocket-dev/admin/fixed-ticket-admin.js');
 
 assert.equal(fs.existsSync('MemberWebsocket-dev/admin/event-ticket-activity-link.js'), false);
 assert.equal(fs.existsSync('MemberWebsocket-dev/event/activity-link.js'), false);
@@ -14,7 +16,7 @@ assert.equal(fs.existsSync('MemberWebsocket-dev/event/activity-link.js'), false)
 for (const asset of [
   'fixed-ticket-admin-integration.js?v=fixed-ticket-sync-20260916-1',
   'fixed-ticket-calendar-option.js?v=fixed-ticket-calendar-20260917-4',
-  'fixed-ticket-admin.js?v=fixed-ticket-expiry-20260917-2',
+  'fixed-ticket-admin.js?v=fixed-ticket-refresh-20260919-1',
 ]) assert.ok(adminHtml.includes(asset), asset);
 
 assert.ok(adminHtml.includes('fixed-ticket-admin.css?v=fixed-ticket-20260916-1'));
@@ -33,3 +35,11 @@ assert.ok(calendarSync.includes("url.searchParams.set('source', 'event-ticket-ca
 assert.ok(calendarSync.includes("url.searchParams.set('eventTicketId'"));
 
 console.log('event ticket fixed-ticket rendering is integrated into current entrypoints');
+
+assert.ok(adminApp.includes("dataset.memberAdminReady = 'true'"));
+assert.ok(adminApp.includes("new Event('member-admin-ready')"));
+assert.ok(adminApp.includes("new Event('member-admin-event-ticket-list-rendered')"));
+assert.ok(fixedTicketAdmin.includes("window.addEventListener('member-admin-ready', loadTemplates, { once: true })"));
+assert.ok(fixedTicketAdmin.includes("window.addEventListener('member-admin-event-ticket-list-rendered', renderFixedList)"));
+assert.ok(!fixedTicketAdmin.includes("new MutationObserver(() => {"));
+assert.ok(!fixedTicketAdmin.includes("for (let attempt = 0; attempt < 80; attempt += 1)"));
