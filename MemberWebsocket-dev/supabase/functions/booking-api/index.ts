@@ -83,6 +83,7 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_TOO_FAR", 409, "BOOKING_TOO_FAR", "此日期超過可預約範圍，請選擇較近的日期。"],
     ["BOOKING_TIME_PASSED", 409, "BOOKING_TIME_PASSED", "這個預約時間已經過了，請重新選擇。"],
     ["BOOKING_SERVICE_DISABLED", 409, "BOOKING_SERVICE_DISABLED", "其中一個預約項目目前未開放。"],
+    ["BOOKING_ADD_ON_REQUIRES_COMPANION", 400, "BOOKING_ADD_ON_REQUIRES_COMPANION", "加購項目不能單獨預約，請至少再選擇一個一般項目。"],
     ["BOOKING_SERVICE_NOT_FOUND", 404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個預約項目。"],
     ["BOOKING_SETTINGS_MISSING", 503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。"],
     ["BOOKING_SETTINGS_CONFLICT", 409, "CONFLICT", "預約共用設定已被其他操作更新，請重新整理後再試。"],
@@ -308,6 +309,7 @@ function serviceClient(row: any): Json {
     serviceType: row.service_type || "",
     durationMinutes: Number(row.duration_minutes || 30),
     priceAmount: Number(row.price_amount || 0),
+    requiresCompanionService: Boolean(row.requires_companion_service),
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -431,6 +433,11 @@ async function normalizeRequestedItems(supabase: SupabaseClient, body: Json): Pr
     if (!serviceResult.data) throw new ApiError(404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個預約項目。");
     if (!serviceResult.data.is_active) throw new ApiError(409, "BOOKING_SERVICE_DISABLED", "其中一個預約項目目前未開放。");
     normalized.push({ serviceId, quantity, service: serviceResult.data });
+  }
+  const visibleItems = normalized.filter((item) => item.serviceId !== STORE_SERVICE_ID);
+  if (visibleItems.some((item) => Boolean(item.service.requires_companion_service))
+      && !visibleItems.some((item) => !Boolean(item.service.requires_companion_service))) {
+    throw new ApiError(400, "BOOKING_ADD_ON_REQUIRES_COMPANION", "加購項目不能單獨預約，請至少再選擇一個一般項目。");
   }
   return normalized;
 }
