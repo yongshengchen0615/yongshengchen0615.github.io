@@ -879,6 +879,10 @@
       ? booking.participants
       : Array.isArray(group?.participants) ? group.participants : [];
     if (!participants.length) return;
+    const storeItem = Array.isArray(booking.items) ? booking.items.find((item) => item?.serviceId === STORE_SERVICE_ID) : null;
+    const historicalStoreMinutes = storeItem
+      ? Number(storeItem.unitDurationMinutes || DEFAULT_STORE_SERVICE_MINUTES) * Math.max(1, Number(storeItem.quantity || 1))
+      : 0;
 
     const box = document.createElement('div');
     box.dataset.groupHistory = 'true';
@@ -906,7 +910,7 @@
         sum + Number(item?.unitDurationMinutes || 0) * Math.max(1, Number(item?.quantity || 1))
       ), 0);
       const duration = document.createElement('p');
-      duration.textContent = `總時間：${serviceMinutes + state.storeServiceMinutes} 分鐘${state.storeServiceMinutes > 0 ? `（含店內服務 ${state.storeServiceMinutes} 分鐘）` : ''}`;
+      duration.textContent = `總時間：${serviceMinutes + historicalStoreMinutes} 分鐘${historicalStoreMinutes > 0 ? `（含店內服務 ${historicalStoreMinutes} 分鐘）` : ''}`;
 
       const amount = document.createElement('p');
       amount.textContent = `金額：${formatMoney(storedParticipantAmount(participant))}`;
