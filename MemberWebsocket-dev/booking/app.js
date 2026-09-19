@@ -265,10 +265,15 @@
 
       const heading = document.createElement('strong');
       heading.textContent = `${group.label}（${group.entries.length}）`;
+      const rewardText = serviceTypeRewardText(group.label);
+      const reward = document.createElement('small');
+      reward.className = 'service-type-reward';
+      reward.textContent = rewardText;
+      reward.classList.toggle('hidden', !rewardText);
       const list = document.createElement('div');
       list.className = listClass;
       group.entries.forEach((entry) => list.appendChild(createRow(entry)));
-      section.append(heading, list);
+      section.append(heading, reward, list);
       container.appendChild(section);
     }
   }
@@ -369,6 +374,20 @@
 
   function serviceTypeKey(value) {
     return String(value || '').trim().toLocaleLowerCase('zh-Hant-TW');
+  }
+
+  function serviceTypeRewardOf(label) {
+    const key = serviceTypeKey(label);
+    return (state.data.settings?.serviceTypeRewards || []).find((reward) => serviceTypeKey(reward?.serviceType) === key) || null;
+  }
+
+  function serviceTypeRewardText(label) {
+    const reward = serviceTypeRewardOf(label);
+    const minutes = Number(reward?.minutesPerPoint || 0);
+    const card = String(reward?.pointCardTitle || '').trim();
+    return Number.isInteger(minutes) && minutes > 0 && card
+      ? `每 ${minutes} 分鐘於「${card}」集點卡獲得 1 點`
+      : '';
   }
 
   function duplicateTypeGroups(rows = selectedServiceRows()) {
