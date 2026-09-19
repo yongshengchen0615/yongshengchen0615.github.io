@@ -120,7 +120,7 @@ async function audit(supabase: SupabaseClient, identity: Identity, technicianId:
   if (result.error) console.error("booking technician delete audit failed", result.error.message);
 }
 async function referenceCount(supabase: SupabaseClient, table: string, technicianId: string): Promise<number> {
-  const result = await supabase.from(table).select("id", { count: "exact", head: true }).eq("technician_id", technicianId);
+  const result = await supabase.from(table).select("technician_id", { count: "exact", head: true }).eq("technician_id", technicianId);
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法確認技師預約關聯。");
   return Number(result.count || 0);
 }
