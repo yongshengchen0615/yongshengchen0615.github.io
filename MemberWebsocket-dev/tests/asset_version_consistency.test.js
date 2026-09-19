@@ -29,7 +29,8 @@ test('admin entry references current booking assets', () => {
   const html = read('admin/index.html');
   assert.ok(html.includes('calendar-responsive.css?v=calendar-responsive-20260914-mobile-fit-2'));
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
-  assert.ok(html.includes('../member-system.js?v=unified-core-20260919-1'));\n  assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
+  assert.ok(html.includes('../member-system.js?v=unified-core-20260919-1'));
+  assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
   assert.ok(html.includes('app.js?v=admin-unified-session-20260919-1'));
   assert.ok(html.includes('booking-panel.css?v=booking-settings-layout-20260918-1'));
   assert.ok(html.includes('booking-panel.js?v=booking-unified-session-20260919-1'));
