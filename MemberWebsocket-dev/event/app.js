@@ -11,13 +11,12 @@
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
     [
-      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'eventView', 'displayName', 'membershipProgress', 'logoutButton', 'refreshButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketHistorySummary', 'usedTicketList',
+      'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'eventView', 'displayName', 'membershipProgress', 'logoutButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketHistorySummary', 'usedTicketList',
       'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
-    els.refreshButton.addEventListener('click', () => loadOffers(true));
     els.closeTicketModal.addEventListener('click', closeTicketModal);
     els.ticketModal.addEventListener('click', (event) => { if (event.target === els.ticketModal && !state.processing) closeTicketModal(); });
     els.ticketModalAction.addEventListener('click', handleTicketAction);
@@ -42,14 +41,14 @@
   }
 
   async function loadOffers(showBusy) {
-    if (showBusy) { setInlineStatus('正在更新活動票券…'); els.refreshButton.disabled = true; els.refreshButton.textContent = '更新中…'; }
+    if (showBusy) setInlineStatus('正在更新活動票券…');
     try {
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap', { compact: false });
       applyOfferSnapshot(result);
       assertCompleteEventBootstrap();
       renderOffers();
       if (showBusy) setInlineStatus('活動票券已更新。');
-    } catch (error) { if (!showBusy) throw error; if (/^(AUTH_|MEMBERSHIP_REQUIRED|MEMBER_)/.test(String(error && error.code || ''))) showError(error); else setInlineStatus('更新失敗，畫面保留上次資料。請按「更新」重試；領取與使用時會重新驗證資格。', true); } finally { if (showBusy) { els.refreshButton.disabled = false; els.refreshButton.textContent = '↻ 更新'; } }
+    } catch (error) { if (!showBusy) throw error; if (/^(AUTH_|MEMBERSHIP_REQUIRED|MEMBER_)/.test(String(error && error.code || ''))) showError(error); else setInlineStatus('更新失敗，畫面保留上次資料。請重新整理頁面後重試；領取與使用時會重新驗證資格。', true); }
   }
 
   function setInlineStatus(message, error = false) {
