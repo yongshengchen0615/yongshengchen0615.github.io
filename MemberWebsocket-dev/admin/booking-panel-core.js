@@ -610,6 +610,21 @@
     return titles.length ? titles.join(' + ') : booking.serviceTitle || '預約項目';
   }
 
+  function bookingCreatedTimestamp(booking) {
+    const createdAt = Date.parse(String(booking?.createdAt || ''));
+    if (Number.isFinite(createdAt)) return createdAt;
+    const updatedAt = Date.parse(String(booking?.updatedAt || ''));
+    if (Number.isFinite(updatedAt)) return updatedAt;
+    const fallback = Date.parse(`${String(booking?.bookingDate || '')}T${String(booking?.startTime || '00:00').slice(0, 5)}:00+08:00`);
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+
+  function compareBookingsNewestFirst(a, b) {
+    const timestampDiff = bookingCreatedTimestamp(b) - bookingCreatedTimestamp(a);
+    if (timestampDiff) return timestampDiff;
+    return String(b?.bookingId || '').localeCompare(String(a?.bookingId || ''));
+  }
+
   function openBookingItemsModal(booking) {
     const services = (state.catalog.services || []).filter((service) => service.serviceId !== STORE_SERVICE_ID);
     if (!services.length) return window.alert('目前沒有可供管理員選擇的服務項目。');
@@ -662,7 +677,10 @@
   }
 
   function renderBookings() {
-    const bookings = (state.booking.bookings || []).filter((booking) => state.filter === 'all' || booking.status === state.filter);
+    const bookings = (state.booking.bookings || [])
+      .filter((booking) => state.filter === 'all' || booking.status === state.filter)
+      .slice()
+      .sort(compareBookingsNewestFirst);
     els.bookingAdminQueue.replaceChildren();
     els.bookingAdminQueueEmpty.classList.toggle('hidden', bookings.length > 0);
 
