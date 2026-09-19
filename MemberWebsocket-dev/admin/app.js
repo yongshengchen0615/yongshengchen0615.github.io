@@ -35,6 +35,7 @@
     window.addEventListener('pagehide', () => {
       // Hide private views before the browser snapshots this page for Back/Forward.
       state.idToken = '';
+      delete document.documentElement.dataset.memberAdminReady;
       stopLoginProgress();
       if (typeof stopAdminRealtime === 'function') stopAdminRealtime();
       stopAdminRealtime = null;
@@ -280,6 +281,8 @@
       await refreshData(false);
       await completeLoginProgress('完整管理資料已準備完成');
       setView('admin');
+      document.documentElement.dataset.memberAdminReady = 'true';
+      window.dispatchEvent(new Event('member-admin-ready'));
       stopAdminRealtime = window.MemberSystem.subscribeRealtime(state.config, 'admin', () => refreshData(false));
     } catch (error) { stopLoginProgress(); handleBootError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
@@ -840,6 +843,7 @@
       const meta = document.createElement('small'); meta.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'} · ${allowedTiers} · ${dates} · ${limit} · ${statusLabel(ticket.status)}`;
       button.append(title, meta); return button;
     }));
+    window.dispatchEvent(new Event('member-admin-event-ticket-list-rendered'));
   }
 
   function loadEventTicketForm(eventTicketId) {
