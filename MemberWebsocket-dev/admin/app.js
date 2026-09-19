@@ -280,7 +280,6 @@
       state.idToken = await window.MemberSystem.signIn(state.config, 'admin');
       startLoginProgress('正在完整同步管理資料…', 96);
       await refreshData(false);
-      window.MemberAdminSession.establish(state.config, state.idToken);
       await completeLoginProgress('完整管理資料已準備完成');
       setView('admin');
       document.documentElement.dataset.memberAdminReady = 'true';
@@ -296,6 +295,7 @@
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', {});
       assertCompleteAdminBootstrap(result);
       applyAdminBootstrap(result);
+      if (!window.MemberAdminSession.isReady()) window.MemberAdminSession.establish(state.config, state.idToken);
       els.syncStatus.textContent = `已完整同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
       els.syncStatus.classList.remove('error');
       window.dispatchEvent(new Event('member-admin-data-refreshed'));
