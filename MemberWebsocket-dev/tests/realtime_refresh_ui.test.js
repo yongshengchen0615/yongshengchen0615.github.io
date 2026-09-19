@@ -65,7 +65,7 @@ test('user-visible data tables have transactional realtime invalidation coverage
     'service_time_entries',
     'fixed_ticket_templates',
   ]) {
-    assert.match(migration, new RegExp(`on public\\\\.${table}\\\\nfor each statement execute function public\\\\.notify_surface_realtime_change\\\\(\\\\);`));
+    assert.match(migration, new RegExp(`on public\\.${table}\\nfor each statement execute function public\\.notify_surface_realtime_change\\(\\);`));
   }
   assert.match(migration, /realtime_member_profile_change/);
   assert.match(migration, /member\.db\.members\.profile/);
