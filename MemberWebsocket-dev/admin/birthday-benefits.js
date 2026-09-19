@@ -69,16 +69,22 @@
     loadSettings();
   });
 
+  async function adminSession() {
+    if (!window.MemberAdminSession || typeof window.MemberAdminSession.wait !== 'function') throw new Error('管理端登入服務尚未準備完成。');
+    return window.MemberAdminSession.wait();
+  }
+
   async function loadConfig() {
     if (config) return config;
-    if (!window.MemberSystem || typeof window.MemberSystem.loadConfig !== 'function') throw new Error('管理系統尚未準備完成。');
-    config = await window.MemberSystem.loadConfig();
+    config = (await adminSession()).config;
     return config;
   }
 
   async function request(action, payload = {}) {
-    const currentConfig = await loadConfig();
-    const idToken = typeof window.liff?.getIDToken === 'function' ? String(window.liff.getIDToken() || '') : '';
+    const session = await adminSession();
+    const currentConfig = session.config;
+    config = currentConfig;
+    const idToken = String(session.idToken || '');
     if (!idToken) throw new Error('LINE 管理端登入尚未完成。');
     const endpoint = `${String(currentConfig.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/birthday-benefits`;
     const response = await fetch(endpoint, {
