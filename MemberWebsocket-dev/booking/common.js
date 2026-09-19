@@ -261,6 +261,29 @@
     window.location.reload();
   }
 
+  function showNotice(message, options = {}) {
+    const modal = document.getElementById('bookingNoticeModal');
+    const title = document.getElementById('bookingNoticeTitle');
+    const text = document.getElementById('bookingNoticeMessage');
+    const confirmButton = document.getElementById('confirmBookingNoticeButton');
+    if (!modal || !title || !text || !confirmButton) {
+      window.alert(String(message || ''));
+      return false;
+    }
+
+    const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    title.textContent = String(options.title || '提醒');
+    text.textContent = String(message || '');
+    modal.classList.remove('hidden');
+    confirmButton.onclick = () => {
+      modal.classList.add('hidden');
+      confirmButton.onclick = null;
+      if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
+    };
+    confirmButton.focus();
+    return true;
+  }
+
   function formatDate(value) {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
     return match ? `${Number(match[1])}/${Number(match[2])}/${Number(match[3])}` : String(value || '—');
@@ -272,5 +295,5 @@
     return parsed.toISOString().slice(0, 10);
   }
 
-  window.BookingSystem = { loadConfig, signIn, request, memberProfile, subscribeRealtime, openMemberJoin, logout, formatDate, addDays, clientError };
+  window.BookingSystem = { loadConfig, signIn, request, memberProfile, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
 })();
