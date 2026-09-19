@@ -75,6 +75,12 @@
     if (!SUPABASE_FUNCTION_PATTERN.test(functionUrl) || functionUrl.includes('REPLACE_')) {
       throw clientError('CONFIG_ERROR', '尚未設定 Supabase Edge Function URL。');
     }
+    if (surface === 'calendar') {
+      const calendarFunctionUrl = String(config && config.memberCalendarFunctionUrl || '').trim();
+      if (!SUPABASE_FUNCTION_PATTERN.test(calendarFunctionUrl) || calendarFunctionUrl.includes('REPLACE_')) {
+        throw clientError('CONFIG_ERROR', '尚未設定會員日曆 Supabase Edge Function URL。');
+      }
+    }
     if (!publishableKey || publishableKey.includes('REPLACE_')) {
       throw clientError('CONFIG_ERROR', '尚未設定 Supabase Publishable Key。');
     }
@@ -169,7 +175,8 @@
       pendingReads.clear();
       return sendRequest(config, clientType, idToken, action, payload).finally(() => pendingReads.clear());
     }
-    const key = JSON.stringify([config.supabaseFunctionUrl, clientType, idToken, action, payload]);
+    const endpoint = requestEndpoint(config, clientType, action);
+    const key = JSON.stringify([endpoint, clientType, idToken, action, payload]);
     if (pendingReads.has(key)) return pendingReads.get(key);
     const pending = sendRequest(config, clientType, idToken, action, payload).finally(() => {
       if (pendingReads.get(key) === pending) pendingReads.delete(key);
@@ -178,8 +185,19 @@
     return pending;
   }
 
+  function requestEndpoint(config, clientType, action) {
+    if (clientType === 'calendar' && (action === 'user.calendar.bootstrap' || action === 'user.calendar.date.details')) {
+      return String(config.memberCalendarFunctionUrl || '').trim();
+    }
+    return String(config.supabaseFunctionUrl || '').trim();
+  }
+
   async function sendRequest(config, clientType, idToken, action, payload) {
     validateConfig(config, clientType);
+    const endpoint = requestEndpoint(config, clientType, action);
+    if (!SUPABASE_FUNCTION_PATTERN.test(endpoint) || endpoint.includes('REPLACE_')) {
+      throw clientError('CONFIG_ERROR', '此功能的 Supabase Edge Function URL 尚未設定。');
+    }
     const isWrite = WRITE_ACTIONS.includes(action);
     const timeoutMs = isWrite ? WRITE_TIMEOUT_MS : isFullBootstrap(clientType, action, payload) ? BOOTSTRAP_TIMEOUT_MS : READ_TIMEOUT_MS;
     const attempts = isWrite ? 1 : 2;
@@ -190,7 +208,7 @@
       const remaining = isWrite ? WRITE_TIMEOUT_MS : Math.max(1, deadline - Date.now());
       if (!isWrite && remaining <= 1 && attempt > 0) break;
       try {
-        const fetched = await fetchWithTimeout(config.supabaseFunctionUrl, {
+        const fetched = await fetchWithTimeout(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -406,13 +424,6 @@
     return Array.from(text).slice(0, 2).join('') || '會員';
   }
 
-  function loadBookingAdminPanelExtension() {
-    if (document.querySelector('script[data-booking-admin-panel-extension]')) return;
-    const script = document.createElement('script');
-    script.src = './booking-panel.js?v=booking-workbench-20260910';
-    script.dataset.bookingAdminPanelExtension = 'true';
-    document.head.appendChild(script);
-  }
 
   try {
     if (window.indexedDB && typeof window.indexedDB.deleteDatabase === 'function') {
