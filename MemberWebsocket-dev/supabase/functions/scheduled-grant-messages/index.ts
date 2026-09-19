@@ -30,9 +30,9 @@ function resolveTier(settings: any[], minutes: number): any {
   for (const row of ordered) if (minutes >= Number(row.required_service_minutes || 0)) selected = row;
   return selected;
 }
-function isBirthdayFixedTicket(row: any): boolean {
+function isFixedTicketNotification(row: any): boolean {
   const requestId = asText(row?.request_id || row?.schedule_id,500);
-  return requestId.startsWith("FIXED-") && /-birthday-\d{4}(?:-\d{2})?-/.test(requestId);
+  return requestId.startsWith("FIXED-");
 }
 function removeUriButtons(node: any, uri: string): void {
   if (!node || typeof node !== "object") return;
@@ -46,12 +46,11 @@ function removeUriButtons(node: any, uri: string): void {
   if (node.body) removeUriButtons(node.body, uri);
   if (node.footer) removeUriButtons(node.footer, uri);
 }
-function addBirthdayEventTicketAction(message: any): void {
+function addEventTicketAction(message: any): void {
   const bubble = message?.contents;
   const footer = bubble?.footer;
   if (!bubble || !footer || footer.type !== "box" || !Array.isArray(footer.contents)) return;
 
-  // Birthday notices must show exactly one activity-ticket CTA, always at the bottom.
   removeUriButtons(bubble.body, EVENT_LIFF_URL);
   removeUriButtons(footer, EVENT_LIFF_URL);
 
@@ -66,7 +65,7 @@ function addBirthdayEventTicketAction(message: any): void {
     color:accent,
     action:{
       type:"uri",
-      label:"開啟活動票卷",
+      label:"開啟活動票券",
       uri:EVENT_LIFF_URL,
     },
   });
@@ -117,7 +116,7 @@ async function dispatchOne(supabase: SupabaseClient, token: string, row: any): P
       title:"會員權益通知",
       eyebrow:"MEMBER BENEFITS",
     });
-    if (isBirthdayFixedTicket(row)) addBirthdayEventTicketAction(message);
+    if (isFixedTicketNotification(row)) addEventTicketAction(message);
 
     const response = await fetch("https://api.line.me/v2/bot/message/push",{
       method:"POST",
