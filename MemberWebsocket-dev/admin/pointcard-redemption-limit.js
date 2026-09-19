@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { config: null, idToken: '', updatedAt: '', saving: false };
+  const state = { config: null, idToken: '', updatedAt: '', saving: false, loading: null };
 
   function extensionUrl() {
     const base = String(state.config && state.config.supabaseUrl || '').replace(/\/$/, '');
@@ -96,14 +96,29 @@
     throw new Error('無法取得管理端登入狀態。');
   }
 
-  async function boot() {
-    ensurePanel();
-    try {
-      await waitForLogin();
+  async function loadSetting() {
+    if (state.loading) return state.loading;
+    state.loading = (async () => {
       const result = await extensionRequest('admin.settings.get');
       state.updatedAt = String(result.updatedAt || '');
       const input = document.getElementById('globalMaxTicketsPerRedemption');
       if (input) input.value = String(normalizeLimit(result.maxTicketsPerRedemption));
+    })();
+    try {
+      await state.loading;
+    } finally {
+      state.loading = null;
+    }
+  }
+
+  async function boot() {
+    ensurePanel();
+    try {
+      await waitForLogin();
+      await loadSetting();
+      window.addEventListener('member-admin-data-refreshed', () => {
+        if (!state.saving) loadSetting().catch((error) => showMessage(error && error.message || '無法同步票券使用設定。', true));
+      });
     } catch (error) {
       showMessage(error && error.message || '無法載入票券使用設定。', true);
     }
