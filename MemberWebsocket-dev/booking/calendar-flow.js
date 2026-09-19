@@ -284,7 +284,7 @@
         list.className = 'calendar-booking-times';
         intervals.slice(0, 2).forEach((interval) => {
           const label = document.createElement('small');
-          label.textContent = `${interval.startTime}–${interval.endTime} 我的預約`;
+          label.textContent = `${interval.startTime}–${interval.endTime}`;
           list.appendChild(label);
         });
         if (intervals.length > 2) {
