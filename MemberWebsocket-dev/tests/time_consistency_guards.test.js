@@ -37,3 +37,19 @@ test('database booking guards evaluate business time at row-mutation wall clock'
   assert.match(source, /raise exception 'BOOKING_TIME_PASSED'/);
   assert.doesNotMatch(source, /v_today date := \(now\(\) at time zone 'Asia\/Taipei'\)/);
 });
+
+test('ticket and benefit validity checks use live business time after lock waits', () => {
+  const source = read('supabase/migrations/20260919074433_harden_live_business_clock.sql');
+  assert.match(source, /claim_event_ticket/);
+  assert.match(source, /redeem_event_ticket/);
+  assert.match(source, /redeem_point_tickets/);
+  assert.match(source, /grant_member_benefits_with_event_bonus/);
+  assert.match(source, /clock_timestamp\(\) at time zone ''Asia\/Taipei''/);
+});
+
+test('realtime invalidation events have bounded retention', () => {
+  const source = read('supabase/migrations/20260919074608_bound_realtime_event_retention.sql');
+  assert.match(source, /create trigger realtime_events_prune_after_insert/);
+  assert.match(source, /created_at < clock_timestamp\(\) - interval '7 days'/);
+  assert.match(source, /for each statement/);
+});
