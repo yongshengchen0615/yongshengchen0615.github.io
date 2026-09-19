@@ -32,7 +32,7 @@
       'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'bookingView',
       'memberName', 'memberProfileName', 'memberCode', 'memberTier', 'logoutButton', 'workHoursBadge',
       'bookingForm', 'servicePicker', 'serviceEmpty', 'selectedServiceList', 'selectedServiceEmpty', 'selectionSummary',
-      'bookingDate', 'slotHint', 'slotGrid', 'memberNote', 'formMessage', 'submitBookingButton', 'refreshButton',
+      'bookingDate', 'slotHint', 'slotGrid', 'memberNote', 'formMessage', 'submitBookingButton',
       'bookingList', 'bookingEmpty', 'bookingConfirmModal', 'closeBookingConfirmButton', 'cancelBookingConfirmButton',
       'bookingConfirmSummary', 'bookingConfirmMessage', 'confirmBookingButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -40,7 +40,6 @@
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.BookingSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.BookingSystem.logout());
-    els.refreshButton.addEventListener('click', () => refresh(true));
     els.bookingDate.addEventListener('change', dateChanged);
     els.bookingForm.addEventListener('submit', openConfirmation);
     document.getElementById('cancelEditBookingButton').addEventListener('click', endEditing);
@@ -94,7 +93,6 @@
   }
 
   async function refresh(showMessage = true) {
-    setRefreshBusy(true);
     try {
       const [bookingData, profile] = await Promise.all([
         window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap'),
@@ -116,8 +114,6 @@
       // view and subscribe to realtime immediately after showError returned.
       if (!state.data.today) throw error;
       showFormMessage(error?.message || '資料暫時無法更新。', 'error');
-    } finally {
-      setRefreshBusy(false);
     }
   }
 
@@ -815,11 +811,6 @@
   function formatMoney(value) {
     const amount = Number(value || 0);
     return `NT$${Number.isFinite(amount) ? Math.max(0, Math.trunc(amount)).toLocaleString('zh-Hant-TW') : '0'}`;
-  }
-
-  function setRefreshBusy(busy) {
-    els.refreshButton.disabled = busy;
-    els.refreshButton.textContent = busy ? '更新中…' : '更新';
   }
 
   function showFormMessage(message, type) {
