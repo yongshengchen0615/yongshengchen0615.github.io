@@ -85,7 +85,7 @@
   // optional feature from blocking every feature loaded after it.
   const preloadExtensions = [
     ['booking-always-open.js', 'booking-always-open-20260917-2'],
-    ['booking-cancellation-sync.js', 'booking-unified-session-20260919-1'],
+    ['booking-cancellation-sync.js', 'booking-latest-first-20260919-1'],
     // Resource controls are independent required modules. They wait for the
     // booking host themselves, so they cannot disappear because another
     // decorator or the core load chain failed.
@@ -99,7 +99,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-completion-rewards-20260919-1');
+      return load('booking-panel-core.js', 'booking-latest-first-20260919-1');
     })
     .then(() => {
       restoreBookingHashAndOpen();
