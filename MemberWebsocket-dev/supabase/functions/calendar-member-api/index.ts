@@ -9,7 +9,7 @@ Deno.serve((request: Request) => {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Headers": "content-type, apikey",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
-    "Access-Control-Allow-Max-Age": "86400",
+    "Access-Control-Max-Age": "86400",
     "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8",
     "Vary": "Origin",
