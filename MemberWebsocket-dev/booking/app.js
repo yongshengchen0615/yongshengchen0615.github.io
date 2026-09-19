@@ -276,7 +276,7 @@
   function addSelection(service) {
     const existingServices = selectedServiceRows().map((item) => item.service);
     if (service.requiresCompanionService && !existingServices.some((item) => !item.requiresCompanionService)) {
-      showFormMessage(`${service.title} 是加購項目，請先選擇一個一般項目後再加入。`, 'error');
+      window.BookingSystem.showNotice(`${service.title} 是加購項目，請先選擇一個一般項目後再加入。`, { title: '加購項目提醒' });
       return;
     }
     const duplicateCount = state.selections.filter((selection) => selection.serviceId === service.serviceId).length;
@@ -314,7 +314,7 @@
       .filter(Boolean);
     if (remainingServices.some((service) => service.requiresCompanionService)
         && !remainingServices.some((service) => !service.requiresCompanionService)) {
-      showFormMessage('加購項目不能單獨保留，請先移除加購項目再移除最後一個一般項目。', 'error');
+      window.BookingSystem.showNotice('加購項目不能單獨保留，請先移除加購項目再移除最後一個一般項目。', { title: '加購項目提醒' });
       return;
     }
     state.selections.splice(index, 1);
