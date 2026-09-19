@@ -92,7 +92,14 @@
       await completeLoginProgress('集點卡資料已準備完成');
       setView('points');
 
-      window.MemberSystem.subscribeRealtime(state.config, 'points', () => loadCards(false));
+      window.MemberSystem.subscribeRealtime(state.config, 'points', async () => {
+        const results = await Promise.allSettled([
+          window.PointCardTicketOverview.refreshSettings(),
+          loadCards(false),
+        ]);
+        const failed = results.find((result) => result.status === 'rejected');
+        if (failed) throw failed.reason;
+      });
     } catch (error) {
       stopLoginProgress();
       showError(error);
