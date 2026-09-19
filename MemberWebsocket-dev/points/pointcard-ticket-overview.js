@@ -659,6 +659,18 @@
     }
   }
 
+  async function refreshSettings() {
+    if (!state.config || !state.idToken) {
+      const error = new Error('票券登入資訊不完整。');
+      error.code = 'AUTH_NOT_READY';
+      throw error;
+    }
+    const setting = await extensionRequest('member.settings.get');
+    state.maxTicketsPerRedemption = normalizeLimit(setting.maxTicketsPerRedemption);
+    if (state.initialized) render();
+    return state.maxTicketsPerRedemption;
+  }
+
   async function initialize({ config, idToken, refreshData } = {}) {
     state.config = config && typeof config === 'object' ? config : null;
     state.idToken = String(idToken || '');
@@ -669,8 +681,7 @@
       throw error;
     }
 
-    const setting = await extensionRequest('member.settings.get');
-    state.maxTicketsPerRedemption = normalizeLimit(setting.maxTicketsPerRedemption);
+    await refreshSettings();
     state.initialized = true;
     ensureUi();
   }
@@ -685,5 +696,5 @@
     render();
   }
 
-  window.PointCardTicketOverview = Object.freeze({ initialize, renderSnapshot });
+  window.PointCardTicketOverview = Object.freeze({ initialize, refreshSettings, renderSnapshot });
 })();
