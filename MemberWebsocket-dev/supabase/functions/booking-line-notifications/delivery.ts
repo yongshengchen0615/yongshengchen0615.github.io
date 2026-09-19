@@ -12,6 +12,8 @@ export type Delivery = { accepted: boolean; retryable: boolean; status: number |
 type ParsedBookingParticipant = {
   label: string;
   items: string[];
+  duration: string;
+  amount: string;
   technician: string;
 };
 
@@ -83,7 +85,7 @@ function parseBookingMessage(message: string): ParsedBookingMessage {
     }
 
     if (/^第(?:[一二三四五六七八九十]+|\s*\d+\s*)位預約$/.test(line)) {
-      currentParticipant = { label: truncate(line, 40), items: [], technician: '' };
+      currentParticipant = { label: truncate(line, 40), items: [], duration: '', amount: '', technician: '' };
       participants.push(currentParticipant);
       readingServices = false;
       continue;
@@ -97,6 +99,14 @@ function parseBookingMessage(message: string): ParsedBookingMessage {
         currentParticipant.items = value
           ? value.split('、').map((item) => truncate(item, 180)).filter(Boolean)
           : [];
+        continue;
+      }
+      if (label === '個別時間') {
+        currentParticipant.duration = value;
+        continue;
+      }
+      if (label === '個別金額') {
+        currentParticipant.amount = value;
         continue;
       }
       if (label === '預約技師') {
@@ -301,6 +311,8 @@ function participantsCard(participants: ParsedBookingParticipant[], accent: stri
           wrap: true,
         },
         fieldRow('預約項目', participant.items.length ? participant.items.join('、') : '—'),
+        fieldRow('個別時間', participant.duration || '—'),
+        fieldRow('個別金額', participant.amount || '—'),
         fieldRow('預約技師', participant.technician || '現場安排'),
       ],
     });
