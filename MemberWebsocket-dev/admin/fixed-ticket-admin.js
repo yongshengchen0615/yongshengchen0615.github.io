@@ -10,6 +10,7 @@
   let selectedUpdatedAt = '';
   let busy = false;
   let renderingList = false;
+  let loadTemplatesPromise = null;
 
   function ready(callback) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', callback, { once: true });
@@ -155,6 +156,9 @@
     updateFixedUI();
     if (document.documentElement.dataset.memberAdminReady === 'true') loadTemplates();
     else window.addEventListener('member-admin-ready', loadTemplates, { once: true });
+    window.addEventListener('member-admin-data-refreshed', () => {
+      if (document.documentElement.dataset.memberAdminReady === 'true' && !busy) loadTemplates();
+    });
   });
 
   async function loadConfig() {
@@ -185,12 +189,20 @@
   }
 
   async function loadTemplates() {
+    if (loadTemplatesPromise) return loadTemplatesPromise;
+    loadTemplatesPromise = (async () => {
+      try {
+        const data = await request('admin.fixed-tickets.list');
+        templates = Array.isArray(data.templates) ? data.templates : [];
+        renderFixedList();
+      } catch (error) {
+        showMessage(error?.message || '固定票券設定載入失敗。');
+      }
+    })();
     try {
-      const data = await request('admin.fixed-tickets.list');
-      templates = Array.isArray(data.templates) ? data.templates : [];
-      renderFixedList();
-    } catch (error) {
-      showMessage(error?.message || '固定票券設定載入失敗。');
+      await loadTemplatesPromise;
+    } finally {
+      loadTemplatesPromise = null;
     }
   }
 
