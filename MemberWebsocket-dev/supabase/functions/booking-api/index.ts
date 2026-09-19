@@ -456,6 +456,7 @@ async function generateSlots(supabase: SupabaseClient, body: Json, member: any):
   const latestBookingDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : "";
   if (date < earliestBookingDate || (latestBookingDate && date > latestBookingDate)) {
     return {
+      serverNow: new Date().toISOString(),
       settings: settingsClient(settings),
       totalDurationMinutes: duration,
       totalAmount: totalAmount(items),
@@ -498,6 +499,7 @@ async function generateSlots(supabase: SupabaseClient, body: Json, member: any):
   }
 
   return {
+    serverNow: new Date().toISOString(),
     settings: settingsClient(settings),
     totalDurationMinutes: duration,
     totalAmount: totalAmount(items),
@@ -533,6 +535,7 @@ async function userBootstrap(supabase: SupabaseClient, member: any): Promise<Jso
   ]);
   if ((bookingResult as any).error) throw mapDatabaseError((bookingResult as any).error);
   return {
+    serverNow: new Date().toISOString(),
     today: taipeiDate(),
     settings: settingsClient(settings),
     services: services.map(serviceClient),
