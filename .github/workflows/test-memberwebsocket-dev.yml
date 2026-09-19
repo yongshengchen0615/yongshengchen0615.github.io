@@ -38,7 +38,9 @@ jobs:
           node --check MemberWebsocket-dev/admin/common.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
-          node --check MemberWebsocket-dev/admin/event-ticket-activity-link.js
+          node --check MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js
+          node --check MemberWebsocket-dev/admin/fixed-ticket-calendar-option.js
+          node --check MemberWebsocket-dev/admin/fixed-ticket-admin.js
           node --check MemberWebsocket-dev/admin/booking-panel.js
           node --check MemberWebsocket-dev/admin/booking-panel-core.js
           node --check MemberWebsocket-dev/admin/booking-resources.js
@@ -49,7 +51,6 @@ jobs:
           node --check MemberWebsocket-dev/points/app.js
           node --check MemberWebsocket-dev/event/common.js
           node --check MemberWebsocket-dev/event/app.js
-          node --check MemberWebsocket-dev/event/activity-link.js
           node --check MemberWebsocket-dev/calendar/common.js
           node --check MemberWebsocket-dev/calendar/tier-sync.js
           node --check MemberWebsocket-dev/calendar/app.js
@@ -60,7 +61,6 @@ jobs:
           node --check MemberWebsocket-dev/booking/contact-details.js
           node --check MemberWebsocket-dev/booking/app.js
           node --check MemberWebsocket-dev/booking/calendar-flow.js
-          node --check MemberWebsocket-dev/booking/booking-notice-dedupe.js
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/api/index.ts
@@ -77,8 +77,14 @@ jobs:
         run: |
           grep -q 'grant-automation.js' MemberWebsocket-dev/admin/index.html
           grep -q 'supabaseGrantAutomationUrl' MemberWebsocket-dev/config.json
-          grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
-          grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
+          grep -q 'fixed-ticket-admin-integration.js?v=fixed-ticket-sync-20260916-1' MemberWebsocket-dev/admin/index.html
+          grep -q 'fixed-ticket-calendar-option.js?v=fixed-ticket-calendar-20260917-4' MemberWebsocket-dev/admin/index.html
+          grep -q 'fixed-ticket-admin.js?v=fixed-ticket-expiry-20260917-2' MemberWebsocket-dev/admin/index.html
+          ! grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
+          grep -q 'app.js?v=event-single-render-20260919-1' MemberWebsocket-dev/event/index.html
+          ! grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
+          test ! -e MemberWebsocket-dev/admin/event-ticket-activity-link.js
+          test ! -e MemberWebsocket-dev/event/activity-link.js
           grep -q 'activity_url' MemberWebsocket-dev/supabase/migrations/20260910175251_add_event_ticket_activity_url.sql
           node MemberWebsocket-dev/tests/event_ticket_activity_link.test.js
           grep -q 'grant_member_benefits_with_event_bonus' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
