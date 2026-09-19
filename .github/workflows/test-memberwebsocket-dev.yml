@@ -70,6 +70,9 @@ jobs:
           deno check MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/booking-cancellation-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/calendar-system-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/calendar-member-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/point-ticket-batch-api/index.ts
       - name: Check grant automation wiring
         run: |
           grep -q 'grant-automation.js' MemberWebsocket-dev/admin/index.html
