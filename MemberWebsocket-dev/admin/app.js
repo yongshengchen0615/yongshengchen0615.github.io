@@ -35,6 +35,7 @@
     window.addEventListener('pagehide', () => {
       // Hide private views before the browser snapshots this page for Back/Forward.
       state.idToken = '';
+      window.MemberAdminSession?.clear();
       delete document.documentElement.dataset.memberAdminReady;
       stopLoginProgress();
       if (typeof stopAdminRealtime === 'function') stopAdminRealtime();
@@ -279,6 +280,7 @@
       state.idToken = await window.MemberSystem.signIn(state.config, 'admin');
       startLoginProgress('正在完整同步管理資料…', 96);
       await refreshData(false);
+      window.MemberAdminSession.establish(state.config, state.idToken);
       await completeLoginProgress('完整管理資料已準備完成');
       setView('admin');
       document.documentElement.dataset.memberAdminReady = 'true';
