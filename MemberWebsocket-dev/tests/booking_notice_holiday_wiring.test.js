@@ -41,7 +41,7 @@ assert.doesNotMatch(bookingIndex, /changeDateButton/);
 assert.doesNotMatch(bookingIndex, /選其他日期/);
 assert.doesNotMatch(calendarFlow, /changeDateButton/);
 assert.match(bookingIndex, /calendar-flow\.css\?v=booking-remove-date-bar-20260919-1/);
-assert.match(bookingIndex, /calendar-flow\.js\?v=booking-remove-date-bar-20260919-1-max-advance-20260919-1/);
+assert.ok(bookingIndex.includes('calendar-flow.js?v=booking-single-render-20260919-1'));
 assert.doesNotMatch(calendarFlow, /ackBookingHolidayButton/);
 assert.doesNotMatch(calendarFlow, />知道了</);
 assert.match(bookingIndex, /calendar-holiday-theme\.css\?v=booking-calendar-holiday-theme-20260916-2/);

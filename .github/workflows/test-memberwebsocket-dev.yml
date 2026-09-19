@@ -38,7 +38,9 @@ jobs:
           node --check MemberWebsocket-dev/admin/common.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
-          node --check MemberWebsocket-dev/admin/event-ticket-activity-link.js
+          node --check MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js
+          node --check MemberWebsocket-dev/admin/fixed-ticket-calendar-option.js
+          node --check MemberWebsocket-dev/admin/fixed-ticket-admin.js
           node --check MemberWebsocket-dev/admin/booking-panel.js
           node --check MemberWebsocket-dev/admin/booking-panel-core.js
           node --check MemberWebsocket-dev/admin/booking-resources.js
@@ -49,19 +51,16 @@ jobs:
           node --check MemberWebsocket-dev/points/app.js
           node --check MemberWebsocket-dev/event/common.js
           node --check MemberWebsocket-dev/event/app.js
-          node --check MemberWebsocket-dev/event/activity-link.js
           node --check MemberWebsocket-dev/calendar/common.js
           node --check MemberWebsocket-dev/calendar/tier-sync.js
           node --check MemberWebsocket-dev/calendar/app.js
           node --check MemberWebsocket-dev/booking/common.js
           node --check MemberWebsocket-dev/booking/membership-progress.js
           node --check MemberWebsocket-dev/booking/member-ui.js
+          node --check MemberWebsocket-dev/booking/group-booking.js
+          node --check MemberWebsocket-dev/booking/contact-details.js
           node --check MemberWebsocket-dev/booking/app.js
           node --check MemberWebsocket-dev/booking/calendar-flow.js
-          node --check MemberWebsocket-dev/booking/booking-notice-dedupe.js
-          node --check MemberWebsocket-dev/booking/admin/app.js
-          node --check MemberWebsocket-dev/booking/admin/subtabs.js
-          node --check MemberWebsocket-dev/booking/admin/cancellation-review.js
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/api/index.ts
@@ -78,8 +77,14 @@ jobs:
         run: |
           grep -q 'grant-automation.js' MemberWebsocket-dev/admin/index.html
           grep -q 'supabaseGrantAutomationUrl' MemberWebsocket-dev/config.json
-          grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
-          grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
+          grep -q 'fixed-ticket-admin-integration.js?v=fixed-ticket-sync-20260916-1' MemberWebsocket-dev/admin/index.html
+          grep -q 'fixed-ticket-calendar-option.js?v=fixed-ticket-calendar-20260917-4' MemberWebsocket-dev/admin/index.html
+          grep -q 'fixed-ticket-admin.js?v=fixed-ticket-expiry-20260917-2' MemberWebsocket-dev/admin/index.html
+          ! grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
+          grep -q 'app.js?v=event-single-render-20260919-1' MemberWebsocket-dev/event/index.html
+          ! grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
+          test ! -e MemberWebsocket-dev/admin/event-ticket-activity-link.js
+          test ! -e MemberWebsocket-dev/event/activity-link.js
           grep -q 'activity_url' MemberWebsocket-dev/supabase/migrations/20260910175251_add_event_ticket_activity_url.sql
           node MemberWebsocket-dev/tests/event_ticket_activity_link.test.js
           grep -q 'grant_member_benefits_with_event_bonus' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
@@ -102,7 +107,12 @@ jobs:
           grep -q 'membership-progress.js' MemberWebsocket-dev/booking/index.html
           grep -q 'ensureSeparateTierTargets' MemberWebsocket-dev/booking/membership-progress.js
           grep -q '目前會員階級：' MemberWebsocket-dev/booking/membership-progress.js
-          grep -q 'member-ui.js' MemberWebsocket-dev/booking/index.html
+          grep -q 'member-ui.js?v=booking-single-render-20260919-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'app.js?v=booking-single-render-20260919-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'group-booking.js?v=booking-single-render-20260919-1' MemberWebsocket-dev/booking/index.html
+          ! grep -q 'member-booking-format.js' MemberWebsocket-dev/booking/index.html
+          ! grep -q 'booking-confirm-details.js' MemberWebsocket-dev/booking/index.html
+          ! grep -q 'booking-notice-dedupe.js' MemberWebsocket-dev/booking/index.html
           grep -q 'id="joinMemberButton"' MemberWebsocket-dev/booking/index.html
           grep -q 'Booking access' MemberWebsocket-dev/booking/index.html
           grep -q 'membershipRequired === true' MemberWebsocket-dev/booking/member-ui.js
@@ -120,9 +130,10 @@ jobs:
           grep -q 'booking_date,start_time,end_time' MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
           grep -q 'min_advance_days' MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
           grep -q 'requireJoinedMember' MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
-          grep -q 'subtabs.js' MemberWebsocket-dev/booking/admin/index.html
-          grep -q 'cancellation-review.js' MemberWebsocket-dev/booking/admin/index.html
-          grep -q '預約管理分類' MemberWebsocket-dev/booking/admin/subtabs.js
+          grep -q 'url=../../admin/#booking' MemberWebsocket-dev/booking/admin/index.html
+          test ! -e MemberWebsocket-dev/booking/admin/app.js
+          test ! -e MemberWebsocket-dev/booking/admin/subtabs.js
+          test ! -e MemberWebsocket-dev/booking/admin/cancellation-review.js
           grep -q 'booking-panel.js' MemberWebsocket-dev/admin/common.js
           grep -q 'booking-panel-core.js' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'booking-cancellation-sync.js' MemberWebsocket-dev/admin/booking-panel.js

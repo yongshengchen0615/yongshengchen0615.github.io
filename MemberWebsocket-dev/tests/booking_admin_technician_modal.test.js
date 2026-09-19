@@ -2,7 +2,6 @@ const fs = require('node:fs');
 const assert = require('node:assert/strict');
 
 const resources = fs.readFileSync('MemberWebsocket-dev/admin/booking-resources.js', 'utf8');
-const deleteExtension = fs.readFileSync('MemberWebsocket-dev/booking-technician-delete.js', 'utf8');
 const loader = fs.readFileSync('MemberWebsocket-dev/admin/booking-panel.js', 'utf8');
 const styles = fs.readFileSync('MemberWebsocket-dev/admin/booking-resources.css', 'utf8');
 
@@ -18,8 +17,7 @@ assert.match(resources, /確認刪除技師/);
 assert.doesNotMatch(resources, /window\.confirm/);
 
 assert.doesNotMatch(loader, /booking-technician-delete\.js/);
-assert.doesNotMatch(deleteExtension, /bookingAdminTechnicianForm/);
-assert.match(deleteExtension, /form: 'technicianForm'/);
+assert.equal(fs.existsSync('MemberWebsocket-dev/booking-technician-delete.js'), false);
 
 assert.match(styles, /booking-admin-technician-modal-card/);
 assert.match(styles, /booking-admin-technician-delete-confirm/);

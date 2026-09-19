@@ -13,7 +13,7 @@ const group = { partySize: 2, participants: [
 ] };
 const expected = '9/17（四） 09:00\n王先生\n電話：0912345678\n預約人數：2 位\n\n第一位預約\n預約項目：腳底40\n預約技師：甲\n\n第二位預約\n預約項目：肩頸 × 2\n預約技師：乙';
 
-for (const entry of ['admin', 'booking/admin']) {
+for (const entry of ['admin']) {
   test(`${entry}: real copy button uses participant format exactly once`, async () => {
     const dom = new JSDOM(fs.readFileSync(path.join(root, entry, 'index.html'), 'utf8'), { url: `https://example.test/MemberWebsocket-dev/${entry}/`, runScripts: 'outside-only' });
     const w = dom.window;
@@ -63,25 +63,17 @@ for (const entry of ['admin', 'booking/admin']) {
         if (!src.includes('booking-admin-group-details.') && !src.includes('booking-copy-format.js')) continue;
         assert.ok(fs.existsSync(path.resolve(root, entry, src.split('?')[0])), src);
       }
-      const legacy = entry === 'booking/admin';
       let queue;
-      if (legacy) {
-        queue = w.document.getElementById('bookingQueue');
-        queue.innerHTML = `<article class="booking-card" data-booking-id="${bookingId}"><div class="booking-heading"><strong>測試會員</strong></div></article>`;
-        load('booking/admin/contact-details.js');
-        await system.request({}, 'admin', 'fixture-token', 'admin.booking.bootstrap');
-      } else {
-        load('admin/booking-panel-core.js');
-        if (!w.document.getElementById('bookingTab')) {
-          w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
-          await tick(20);
-        }
-        const bookingTab = w.document.getElementById('bookingTab');
-        assert.ok(bookingTab);
-        bookingTab.click();
-        await tick(350);
-        queue = w.document.getElementById('bookingAdminQueue');
+      load('admin/booking-panel-core.js');
+      if (!w.document.getElementById('bookingTab')) {
+        w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
+        await tick(20);
       }
+      const bookingTab = w.document.getElementById('bookingTab');
+      assert.ok(bookingTab);
+      bookingTab.click();
+      await tick(350);
+      queue = w.document.getElementById('bookingAdminQueue');
       load('booking-copy-format.js');
       load('booking-copy-format.js'); // Cached dynamic loader must not install twice.
       await tick(300);
@@ -96,22 +88,22 @@ for (const entry of ['admin', 'booking/admin']) {
       mode = 'failure';
       button.click();
       await tick(20);
-      if (legacy) {
-        assert.equal(copied.length, 1, 'Legacy admin must not invent single-person details on API failure');
-        assert.equal(button.textContent, '複製失敗');
-      } else {
-        assert.deepEqual(copied, [expected, expected], 'Main admin should copy from canonical rendered data without a second details request');
-        assert.equal(button.textContent, '已複製');
-      }
+      assert.deepEqual(copied, [expected, expected], 'Main admin should copy from canonical rendered data without a second details request');
+      assert.equal(button.textContent, '已複製');
       await tick(1550);
       mode = 'single';
       button.click();
       await tick(20);
-      if (legacy) {
-        assert.match(copied[1], /預約人數：1 位\n\n第一位預約\n預約項目：腳底40\n預約技師：現場安排$/);
-      } else {
-        assert.equal(copied[2], expected, 'Main admin copy stays pinned to the single-renderer data model');
-      }
+      assert.equal(copied[2], expected, 'Main admin copy stays pinned to the single-renderer data model');
     } finally { observers.forEach(observer => observer.disconnect()); w.close(); }
   });
 }
+
+
+test('legacy booking admin entry redirects to current admin booking workspace', () => {
+  const html = fs.readFileSync(path.join(root, 'booking/admin/index.html'), 'utf8');
+  assert.match(html, /http-equiv="refresh" content="0; url=\.\.\/\.\.\/admin\/#booking"/);
+  assert.match(html, /href="\.\.\/\.\.\/admin\/#booking"/);
+  assert.equal(fs.existsSync(path.join(root, 'booking/admin/app.js')), false);
+  assert.equal(fs.existsSync(path.join(root, 'booking/admin/contact-details.js')), false);
+});

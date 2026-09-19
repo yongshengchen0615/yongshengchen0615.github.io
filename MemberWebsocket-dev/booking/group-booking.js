@@ -55,20 +55,15 @@
       };
       base.technicians = state.technicians;
       base.bookings = (base.bookings || []).map((booking) => normalizeBookingForMember(booking, state.bookingGroups.get(booking.bookingId)));
-      queueMicrotask(() => {
-        renderGroupControls();
-        decorateBookingHistory();
-      });
+      renderGroupControls();
       return base;
     }
 
     if (action === 'user.booking.slots') {
       ensureEditingGroup(payload.bookingId);
       const participants = buildParticipants(payload.items);
-      queueMicrotask(() => {
-        updateCardSummaries();
-        updateSelectionSummary();
-      });
+      updateCardSummaries();
+      updateSelectionSummary();
       if (!participants) {
         return {
           settings: { maxPartySize: state.maxPartySize, primaryTechnicianId: state.primaryTechnicianId },
@@ -82,7 +77,7 @@
         bookingDate: payload.bookingDate,
         participants,
       });
-      queueMicrotask(updateSelectionSummary);
+      updateSelectionSummary();
       return result;
     }
 
@@ -132,7 +127,6 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     injectGroupControls();
-    document.getElementById('bookingForm')?.addEventListener('submit', () => window.setTimeout(decorateConfirmation, 0));
     document.addEventListener('click', (event) => {
       const button = event.target instanceof Element ? event.target.closest('button') : null;
       if (!button) return;
@@ -150,13 +144,7 @@
     window.addEventListener('booking:created', () => {
       state.editingBookingId = '';
       resetGroupSelection();
-      queueMicrotask(decorateBookingHistory);
     });
-    const list = document.getElementById('bookingList');
-    // Only watch direct booking-list membership changes. Watching the whole subtree
-    // observes the decoration inserted by decorateBookingHistory itself, causing an
-    // endless remove/insert observer feedback loop after a grouped booking exists.
-    if (list) new MutationObserver(decorateBookingHistory).observe(list, { childList: true });
   });
 
   async function groupRequest(action, payload = {}) {
@@ -791,84 +779,158 @@
     }, 0);
   }
 
-  function decorateConfirmation() {
+  function renderConfirmation() {
     const root = document.getElementById('bookingConfirmSummary');
-    if (!root) return;
-    root.querySelector('[data-group-confirm]')?.remove();
-    const box = document.createElement('div');
-    box.dataset.groupConfirm = 'true';
-    box.className = 'group-confirm-summary';
-    const title = document.createElement('strong');
-    title.textContent = `本次預約 ${state.partySize} 位`;
-    box.appendChild(title);
+    if (!root) return false;
 
     const metrics = [];
-    for (let index = 0; index < state.partySize; index += 1) {
-      const metric = participantMetrics(index);
-      metrics.push(metric);
+    for (let index = 0; index < state.partySize; index += 1) metrics.push(participantMetrics(index));
+    if (!metrics.length || metrics.some((metric) => !metric.labels.length)) return false;
+
+    const box = document.createElement('div');
+    box.className = 'group-confirm-summary booking-detailed-confirmation';
+    box.dataset.groupConfirm = 'true';
+
+    const heading = document.createElement('strong');
+    heading.textContent = `本次預約 ${state.partySize} 位`;
+    box.appendChild(heading);
+
+    const bookingDate = String(document.getElementById('bookingDate')?.value || '');
+    const selectedSlot = String(document.querySelector('#slotGrid .slot-button.selected')?.textContent || '').trim();
+    if (bookingDate || selectedSlot) {
+      const time = document.createElement('p');
+      time.className = 'booking-confirm-time';
+      time.textContent = [bookingDate ? system.formatDate(bookingDate) : '', selectedSlot].filter(Boolean).join(' ');
+      box.appendChild(time);
+    }
+
+    metrics.forEach((metric, index) => {
       const card = document.createElement('div');
       card.className = 'group-confirm-participant';
-      const heading = document.createElement('strong');
-      heading.textContent = participantLabel(index);
-      const itemLine = document.createElement('p');
-      itemLine.textContent = `項目：${metric.labels.join('、') || '尚未選擇項目'}`;
-      const durationLine = document.createElement('p');
-      durationLine.textContent = `總時間：${metric.totalMinutes || 0} 分鐘`;
-      const amountLine = document.createElement('p');
-      amountLine.textContent = `金額：${formatMoney(metric.amount)}`;
-      const techLine = document.createElement('p');
-      techLine.textContent = `技師：${technicianLabel(state.participantTechnicians[index])}`;
-      card.append(heading, itemLine, durationLine, amountLine, techLine);
+
+      const title = document.createElement('strong');
+      title.textContent = participantLabel(index);
+      const items = document.createElement('p');
+      items.textContent = `預約項目：${metric.labels.join('、')}`;
+      const technician = document.createElement('p');
+      technician.textContent = `預約技師：${technicianLabel(state.participantTechnicians[index])}`;
+      const duration = document.createElement('p');
+      duration.textContent = `個別總時間：${metric.totalMinutes} 分鐘${state.storeServiceMinutes > 0 ? `（含店內服務 ${state.storeServiceMinutes} 分鐘）` : ''}`;
+      const amount = document.createElement('p');
+      amount.textContent = `個別金額：${formatMoney(metric.amount)}`;
+
+      card.append(title, items, technician, duration, amount);
       box.appendChild(card);
-    }
-    const totalLine = document.createElement('p');
+    });
+
     const overallMinutes = metrics.reduce((max, item) => Math.max(max, item.totalMinutes), 0);
     const overallAmount = metrics.reduce((sum, item) => sum + item.amount, 0);
-    totalLine.textContent = `總服務時間：${overallMinutes} 分鐘（以各預約人最長總時間計） · 總金額：${formatMoney(overallAmount)}`;
-    box.appendChild(totalLine);
-    root.prepend(box);
+    const totals = document.createElement('div');
+    totals.className = 'group-confirm-participant booking-confirm-overall';
+    const duration = document.createElement('strong');
+    duration.textContent = `整體總服務時間：${overallMinutes} 分鐘`;
+    const durationNote = document.createElement('p');
+    durationNote.textContent = '以所有預約人中最長的個別總時間計算。';
+    const amount = document.createElement('p');
+    amount.textContent = `預約總金額：${formatMoney(overallAmount)}`;
+    totals.append(duration, durationNote, amount);
+    box.appendChild(totals);
+
+    const contact = confirmationContactSummary();
+    const contactBox = document.createElement('div');
+    contactBox.className = 'group-confirm-participant booking-confirm-contact';
+    const contactTitle = document.createElement('strong');
+    contactTitle.textContent = '預約聯絡資料';
+    const contactValue = document.createElement('p');
+    contactValue.textContent = contact;
+    contactBox.append(contactTitle, contactValue);
+    box.appendChild(contactBox);
+
+    const noteBox = document.createElement('div');
+    noteBox.className = 'group-confirm-participant booking-confirm-note';
+    const noteTitle = document.createElement('strong');
+    noteTitle.textContent = '預約備註';
+    const note = document.createElement('p');
+    note.textContent = String(document.getElementById('memberNote')?.value || '').trim() || '未填寫';
+    noteBox.append(noteTitle, note);
+    box.appendChild(noteBox);
+
+    root.replaceChildren(box);
+    return true;
   }
 
-  function removeDuplicateHistoryServices(node) {
-    [...node.children].forEach((child) => {
-      if (child.classList?.contains('member-booking-format-services-label')
-        || child.classList?.contains('booking-service-items')) {
-        child.remove();
-      }
-    });
+  function confirmationContactSummary() {
+    const source = String(document.querySelector('input[name="bookingContactSource"]:checked')?.value || 'member');
+    if (source !== 'custom') {
+      const member = String(document.getElementById('bookingMemberContactSummary')?.textContent || '').trim();
+      return member ? `使用會員資料：${member}` : '使用會員資料';
+    }
+    const surname = String(document.getElementById('bookingContactSurname')?.value || '').trim();
+    const salutationValue = String(document.getElementById('bookingContactSalutation')?.value || '').trim();
+    const salutation = salutationValue === 'mr' ? '先生' : salutationValue === 'ms' ? '小姐' : '';
+    const phone = String(document.getElementById('bookingContactPhone')?.value || '').trim();
+    return `本次重新填寫：${surname}${salutation}${phone ? ` · ${phone}` : ''}`;
   }
 
-  function decorateBookingHistory() {
-    document.querySelectorAll('.booking-item[data-booking-id]').forEach((node) => {
-      const id = String(node.dataset.bookingId || '');
-      const group = state.bookingGroups.get(id);
-      if (!group) return;
-      removeDuplicateHistoryServices(node);
-      node.querySelector('[data-group-history]')?.remove();
-      const box = document.createElement('div');
-      box.dataset.groupHistory = 'true';
-      box.className = 'group-history-summary';
-      const head = document.createElement('strong');
-      head.textContent = `${Number(group.partySize || 1)} 位預約`;
-      box.appendChild(head);
-      (group.participants || []).forEach((participant, index) => {
-        const card = document.createElement('div');
-        card.className = 'group-history-participant';
-        const title = document.createElement('strong');
-        title.textContent = participantLabel(index);
-        const items = document.createElement('p');
-        items.textContent = `項目：${(participant.items || []).map((item) => item.serviceTitle).filter(Boolean).join('、') || '—'}`;
-        const amount = document.createElement('p');
-        amount.textContent = `金額：${formatMoney(storedParticipantAmount(participant))}`;
-        const tech = document.createElement('p');
-        tech.textContent = `技師：${participant.technicianName || '現場安排'}`;
-        card.append(title, items, amount, tech);
-        box.appendChild(card);
-      });
-      const top = node.querySelector('.booking-item-top');
-      if (top) top.insertAdjacentElement('afterend', box); else node.prepend(box);
+  function renderBookingHistoryCard(node, booking) {
+    if (!node || !booking) return;
+    const group = state.bookingGroups.get(String(booking.bookingId || ''));
+    const participants = Array.isArray(booking.participants) && booking.participants.length
+      ? booking.participants
+      : Array.isArray(group?.participants) ? group.participants : [];
+    if (!participants.length) return;
+    const storeItem = Array.isArray(booking.items) ? booking.items.find((item) => item?.serviceId === STORE_SERVICE_ID) : null;
+    const historicalStoreMinutes = storeItem
+      ? Number(storeItem.unitDurationMinutes || DEFAULT_STORE_SERVICE_MINUTES) * Math.max(1, Number(storeItem.quantity || 1))
+      : 0;
+
+    const box = document.createElement('div');
+    box.dataset.groupHistory = 'true';
+    box.className = 'group-history-summary';
+    const head = document.createElement('strong');
+    head.textContent = `${participants.length} 位預約`;
+    box.appendChild(head);
+
+    participants.forEach((participant, index) => {
+      const card = document.createElement('div');
+      card.className = 'group-history-participant';
+      const title = document.createElement('strong');
+      title.textContent = participantLabel(index);
+
+      const items = Array.isArray(participant?.items) ? participant.items : [];
+      const itemLine = document.createElement('p');
+      itemLine.textContent = `項目：${items.map((item) => {
+        const name = String(item?.serviceTitle || '預約項目');
+        const minutes = Number(item?.unitDurationMinutes || 0);
+        const quantity = Math.max(1, Number(item?.quantity || 1));
+        return `${name}${minutes > 0 ? `（${minutes}分鐘）` : ''}${quantity > 1 ? `×${quantity}` : ''}`;
+      }).join('、') || '—'}`;
+
+      const serviceMinutes = items.reduce((sum, item) => (
+        sum + Number(item?.unitDurationMinutes || 0) * Math.max(1, Number(item?.quantity || 1))
+      ), 0);
+      const duration = document.createElement('p');
+      duration.textContent = `總時間：${serviceMinutes + historicalStoreMinutes} 分鐘${historicalStoreMinutes > 0 ? `（含店內服務 ${historicalStoreMinutes} 分鐘）` : ''}`;
+
+      const amount = document.createElement('p');
+      amount.textContent = `金額：${formatMoney(storedParticipantAmount(participant))}`;
+      const tech = document.createElement('p');
+      tech.textContent = `技師：${participant.technicianName || '現場安排'}`;
+      card.append(title, itemLine, duration, amount, tech);
+      box.appendChild(card);
     });
+
+    const top = node.querySelector(':scope > .booking-item-top');
+    if (top) top.insertAdjacentElement('afterend', box);
+    else node.prepend(box);
   }
+
+  window.BookingGroupUI = Object.freeze({
+    renderSelectionSummary: updateSelectionSummary,
+    renderConfirmation,
+    renderBookingHistoryCard,
+    renderControls: renderGroupControls,
+  });
 
   function participantServiceNames(index) {
     return participantMetrics(index).labels;
