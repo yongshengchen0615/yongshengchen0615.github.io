@@ -27,7 +27,32 @@ Deno.serve(async (request: Request) => {
     for (let offset = 0; offset < jobs.length; offset += 5) {
       await Promise.all(jobs.slice(offset, offset + 5).map(async (job: any) => {
         const token = job.channel === 'admin' ? config.data.LINE_BOOKING_ADMIN_CHANNEL_ACCESS_TOKEN : config.data.LINE_BOOKING_MEMBER_CHANNEL_ACCESS_TOKEN;
-        const result = await deliver(job, token || '');
+        let deliveryJob = job;
+        if (job.channel === 'member' && String(job.event_key || '').includes(':completed:') && job.booking_id) {
+          const settlement = await db.from('booking_completion_settlements')
+            .select('service_minutes,reward_details')
+            .eq('booking_id', job.booking_id)
+            .maybeSingle();
+          if (!settlement.error && settlement.data) {
+            const rewards = Array.isArray(settlement.data.reward_details) ? settlement.data.reward_details : [];
+            const rewardText = rewards
+              .map((item: any) => {
+                const title = String(item?.pointCardTitle || '').trim();
+                const points = Math.max(0, Number(item?.points || 0));
+                return title && points > 0 ? `${title} +${points} 點` : '';
+              })
+              .filter(Boolean)
+              .join('、');
+            const suffix = [
+              `完成服務時間：${Math.max(0, Number(settlement.data.service_minutes || 0))} 分鐘`,
+              `獲得集點：${rewardText || '本次無符合自動集點規則'}`,
+            ].join('\n');
+            const base = String(job.message_text || '');
+            const maxBaseLength = Math.max(0, 2200 - suffix.length - 1);
+            deliveryJob = { ...job, message_text: `${base.slice(0, maxBaseLength)}\n${suffix}` };
+          }
+        }
+        const result = await deliver(deliveryJob, token || '');
         const finish = await db.rpc('finish_booking_notification', {
           p_id: job.id, p_attempt: job.attempt_count, p_accepted: result.accepted,
           p_retryable: result.retryable, p_status: result.status, p_line_request_id: result.lineRequestId,
