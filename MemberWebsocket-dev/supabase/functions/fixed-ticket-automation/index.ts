@@ -14,7 +14,7 @@ class ApiError extends Error {
 
 const TIER_KEYS = ["general", "silver", "gold", "platinum"] as const;
 const SCHEDULE_TYPES = ["birthday_month", "yearly", "monthly", "weekly"] as const;
-const EXPIRY_MODES = ["month_end", "fixed_date"] as const;
+const EXPIRY_MODES = ["month_end", "week_end", "days_after_issue", "fixed_date"] as const;
 
 function env(name: string): string { return (Deno.env.get(name) || "").trim(); }
 function asText(value: unknown, max = 1000): string { return String(value ?? "").trim().slice(0, max); }
@@ -46,8 +46,8 @@ function corsHeaders(origin: string | null): HeadersInit {
     "Access-Control-Allow-Headers": "content-type, apikey",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Access-Control-Max-Age": "86400",
-    "Cache-Control": "no-store",
-    "Vary": "Origin",
+    "Cache-Control":"no-store",
+    "Vary":"Origin",
   };
 }
 
@@ -122,7 +122,7 @@ function validateTemplate(value: unknown): Json {
   const usageInstructions = asText(input.usageInstructions, 500);
   const status = asText(input.status, 20);
   const scheduleType = asText(input.scheduleType, 30);
-  const expiryMode = asText(input.expiryMode, 20) || "month_end";
+  const expiryMode = asText(input.expiryMode, 30) || "month_end";
   const accent = asText(input.accent, 20).toLowerCase();
   const allowedTierKeys = normalizeTiers(input.allowedTierKeys);
   const quota = requireInteger(input.quota ?? 0, 0, 1_000_000, "總發放上限");
@@ -150,9 +150,12 @@ function validateTemplate(value: unknown): Json {
   }
 
   let expiryDate: string | null = null;
+  let expiryDays: number | null = null;
   if (expiryMode === "fixed_date") {
     expiryDate = requireDate(input.expiryDate, "指定到期日");
     if (expiryDate < taipeiDate()) throw new ApiError(400, "INVALID_EXPIRY_DATE", "指定到期日不可早於今天。");
+  } else if (expiryMode === "days_after_issue") {
+    expiryDays = requireInteger(input.expiryDays, 1, 3650, "發放後使用天數");
   }
 
   return {
@@ -168,10 +171,12 @@ function validateTemplate(value: unknown): Json {
     schedule_weekday: scheduleWeekday,
     expiry_mode: expiryMode,
     expiry_date: expiryDate,
+    expiry_days: expiryDays,
     quota,
     accent,
     allowed_tier_keys: allowedTierKeys,
     notify_line: Boolean(input.notifyLine),
+    calendar_enabled: Boolean(input.calendarEnabled),
   };
 }
 
@@ -189,10 +194,12 @@ function clientTemplate(row: any): Json {
     scheduleWeekday: row.schedule_weekday,
     expiryMode: row.expiry_mode || "month_end",
     expiryDate: row.expiry_date || "",
+    expiryDays: row.expiry_days == null ? null : Number(row.expiry_days),
     quota: Number(row.quota || 0),
     accent: row.accent || "#df6b4d",
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
     notifyLine: Boolean(row.notify_line),
+    calendarEnabled: Boolean(row.calendar_enabled),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -286,6 +293,8 @@ Deno.serve(async (request: Request) => {
         scheduleType: row.schedule_type,
         expiryMode: row.expiry_mode,
         expiryDate: row.expiry_date,
+        expiryDays: row.expiry_days,
+        calendarEnabled: Boolean(row.calendar_enabled),
         run,
       });
       return reply(origin, { ok: true, data: { template: clientTemplate(row), run, templates: await listTemplates(supabase) } });
