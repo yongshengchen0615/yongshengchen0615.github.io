@@ -244,42 +244,6 @@
     };
   }
 
-  function waitForAdminRefreshCycle(button, deadlineAt) {
-    return new Promise((resolve) => {
-      const poll = () => {
-        if (Date.now() >= deadlineAt || !document.body.contains(button)) return resolve();
-        if (!button.disabled) return resolve();
-        window.setTimeout(poll, 100);
-      };
-      poll();
-    });
-  }
-
-  async function refreshAdminFromRealtime() {
-    const adminView = document.getElementById('adminView');
-    const refreshButton = document.getElementById('refreshButton');
-    if (!adminView || !refreshButton || adminView.classList.contains('hidden')) return;
-
-    const deadlineAt = Date.now() + 20000;
-    if (refreshButton.disabled) await waitForAdminRefreshCycle(refreshButton, deadlineAt);
-    if (Date.now() >= deadlineAt || refreshButton.disabled || adminView.classList.contains('hidden')) return;
-
-    refreshButton.click();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
-    await waitForAdminRefreshCycle(refreshButton, deadlineAt);
-  }
-
-  function enableAdminRealtimeSync() {
-    if (!window.location.pathname.includes('/booking/admin/')) return;
-    window.addEventListener('DOMContentLoaded', async () => {
-      try {
-        const config = await loadConfig();
-        const unsubscribe = subscribeRealtime(config, refreshAdminFromRealtime, 'admin');
-        window.addEventListener('pagehide', unsubscribe, { once: true });
-      } catch (_) {}
-    }, { once: true });
-  }
-
   function openMemberJoin(config) {
     const memberLiffId = String(config && config.memberLiffId || '').trim();
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(memberLiffId)) return false;
@@ -307,8 +271,6 @@
     parsed.setUTCDate(parsed.getUTCDate() + Number(days || 0));
     return parsed.toISOString().slice(0, 10);
   }
-
-  enableAdminRealtimeSync();
 
   window.BookingSystem = { loadConfig, signIn, request, memberProfile, subscribeRealtime, openMemberJoin, logout, formatDate, addDays, clientError };
 })();
