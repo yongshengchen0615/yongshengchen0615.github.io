@@ -26,7 +26,7 @@
     [
       'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus',
       'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView',
-      'displayName', 'logoutButton', 'refreshButton', 'membershipProgress', 'cardTabs', 'emptyView',
+      'displayName', 'logoutButton', 'membershipProgress', 'cardTabs', 'emptyView',
       'activeCardView', 'activeCardTitle', 'activeCardStatus', 'cardGuidancePanel', 'cardUsageMethod',
       'cardUsageInstructions', 'cardBenefitDescription', 'progressCount', 'progressMessage',
       'remainingMessage', 'cardExpiry', 'ticketHistorySummary', 'ticketHistoryList', 'ticketHistoryEmpty'
@@ -37,7 +37,6 @@
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
-    els.refreshButton.addEventListener('click', () => loadCards(true));
 
     els.cardTabs.addEventListener('click', (event) => {
       const tab = event.target instanceof Element ? event.target.closest('[data-card-id]') : null;
@@ -104,11 +103,7 @@
   }
 
   async function loadCards(showBusy) {
-    if (showBusy) {
-      setInlineStatus('正在更新集點卡…');
-      els.refreshButton.disabled = true;
-      els.refreshButton.textContent = '更新中…';
-    }
+    if (showBusy) setInlineStatus('正在更新集點卡…');
 
     const requestVersion = state.loadVersion + 1;
     state.loadVersion = requestVersion;
@@ -134,11 +129,6 @@
     } catch (error) {
       if (!showBusy) throw error;
       handleReadError(error);
-    } finally {
-      if (showBusy) {
-        els.refreshButton.disabled = false;
-        els.refreshButton.textContent = '↻ 更新';
-      }
     }
   }
 
