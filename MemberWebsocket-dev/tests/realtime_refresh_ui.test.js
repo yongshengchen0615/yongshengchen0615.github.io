@@ -42,7 +42,7 @@ test('booking realtime no longer drives admin refresh through a button click', (
 });
 
 test('booking child tables have statement-level realtime invalidation triggers', () => {
-  const migration = read('supabase/migrations/20260919143000_booking_child_realtime_invalidation.sql');
+  const migration = read('supabase/migrations/20260919062515_complete_realtime_invalidation_coverage.sql');
   for (const table of [
     'booking_items',
     'booking_technicians',
@@ -52,4 +52,44 @@ test('booking child tables have statement-level realtime invalidation triggers',
   ]) {
     assert.match(migration, new RegExp(`on public\\.${table}\\nfor each statement execute function public\\.notify_booking_realtime_change\\(\\);`));
   }
+});
+
+
+test('user-visible data tables have transactional realtime invalidation coverage', () => {
+  const migration = read('supabase/migrations/20260919062515_complete_realtime_invalidation_coverage.sql');
+  for (const table of [
+    'point_card_settings',
+    'point_balances',
+    'point_entries',
+    'point_tickets',
+    'service_time_entries',
+    'fixed_ticket_templates',
+  ]) {
+    assert.match(migration, new RegExp(`on public\\\\.${table}\\\\nfor each statement execute function public\\\\.notify_surface_realtime_change\\\\(\\\\);`));
+  }
+  assert.match(migration, /realtime_member_profile_change/);
+  assert.match(migration, /member\.db\.members\.profile/);
+});
+
+test('admin extensions reload their authoritative data after realtime refresh', () => {
+  const adminHtml = read('admin/index.html');
+  const adminApp = read('admin/app.js');
+  const fixedTickets = read('admin/fixed-ticket-admin.js');
+  const pointLimit = read('admin/pointcard-redemption-limit.js');
+
+  assert.match(adminHtml, /pointcard-redemption-limit\.js\?v=pointcard-realtime-20260919-1/);
+  assert.match(adminApp, /member-admin-data-refreshed/);
+  assert.match(fixedTickets, /member-admin-data-refreshed/);
+  assert.match(fixedTickets, /loadTemplates\(\)/);
+  assert.match(pointLimit, /member-admin-data-refreshed/);
+  assert.match(pointLimit, /loadSetting\(\)/);
+});
+
+test('points realtime refresh also reloads point ticket policy', () => {
+  const app = read('points/app.js');
+  const overview = read('points/pointcard-ticket-overview.js');
+
+  assert.match(app, /PointCardTicketOverview\.refreshSettings\(\)/);
+  assert.match(overview, /async function refreshSettings\(\)/);
+  assert.match(overview, /Object\.freeze\(\{ initialize, refreshSettings, renderSnapshot \}\)/);
 });
