@@ -86,38 +86,13 @@
     }
   }
 
-  function isAdminReady() {
-    return document.documentElement.dataset.memberAdminReady === 'true';
-  }
-
   async function waitForLogin() {
-    state.config = await window.MemberSystem.loadConfig();
-
-    if (!isAdminReady()) {
-      await new Promise((resolve, reject) => {
-        let settled = false;
-        const finish = (error) => {
-          if (settled) return;
-          settled = true;
-          window.clearTimeout(timeoutId);
-          window.removeEventListener('member-admin-ready', handleReady);
-          if (error) reject(error);
-          else resolve();
-        };
-        const handleReady = () => finish();
-        const timeoutId = window.setTimeout(() => {
-          finish(new Error('管理端登入尚未完成，請重新整理後再試。'));
-        }, 15000);
-
-        window.addEventListener('member-admin-ready', handleReady, { once: true });
-        if (isAdminReady()) finish();
-      });
+    if (!window.MemberAdminSession || typeof window.MemberAdminSession.wait !== 'function') {
+      throw new Error('管理端登入服務尚未準備完成。');
     }
-
-    state.idToken = window.liff && typeof window.liff.getIDToken === 'function'
-      ? String(window.liff.getIDToken() || '')
-      : '';
-    if (!state.idToken) throw new Error('無法取得管理端登入狀態。');
+    const session = await window.MemberAdminSession.wait();
+    state.config = session.config;
+    state.idToken = session.idToken;
   }
 
   async function loadSetting() {
