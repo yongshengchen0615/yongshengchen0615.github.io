@@ -30,9 +30,9 @@ test('current member booking runtime scripts have valid JavaScript syntax', () =
 test('member booking entrypoint loads the single render pipeline only', () => {
   const html = read('booking/index.html');
   for (const asset of [
-    'group-booking.js?v=booking-addon-rules-20260919-1',
+    'group-booking.js?v=booking-addon-notice-modal-20260919-1',
     'member-ui.js?v=booking-single-render-20260919-1',
-    'app.js?v=booking-addon-rules-20260919-1',
+    'app.js?v=booking-addon-notice-modal-20260919-1',
     'contact-details.js?v=booking-single-render-20260919-1',
     'calendar-flow.js?v=booking-single-render-20260919-1',
   ]) assert.ok(html.includes(asset), asset);
@@ -40,6 +40,25 @@ test('member booking entrypoint loads the single render pipeline only', () => {
   assert.ok(!html.includes('booking-confirm-details.js'));
   assert.ok(!html.includes('member-booking-format.js'));
   assert.ok(!html.includes('booking-notice-dedupe.js'));
+});
+
+test('add-on companion warnings use the shared confirm-only notice dialog', () => {
+  const html = read('booking/index.html');
+  const common = read('booking/common.js');
+  const app = read('booking/app.js');
+  const group = read('booking/group-booking.js');
+  const css = read('booking/styles.css');
+
+  assert.ok(html.includes('id="bookingNoticeModal"'));
+  assert.ok(html.includes('role="alertdialog"'));
+  assert.ok(html.includes('id="confirmBookingNoticeButton"'));
+  assert.ok(!html.includes('id="closeBookingNoticeButton"'));
+  assert.ok(common.includes('function showNotice(message, options = {})'));
+  assert.ok(common.includes("confirmButton.onclick = () =>"));
+  assert.ok(app.includes("BookingSystem.showNotice"));
+  assert.ok(group.includes("system.showNotice"));
+  assert.ok(css.includes('.booking-alert-modal-card'));
+  assert.ok(css.includes('.booking-alert-modal-actions .button{width:100%}'));
 });
 
 test('booking history is finalized synchronously in the primary render pass', () => {
