@@ -35,6 +35,7 @@ jobs:
       - name: Check browser JavaScript syntax
         run: |
           node --check MemberWebsocket-dev/member-system.js
+          node --check MemberWebsocket-dev/admin/admin-session.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
           node --check MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js
@@ -79,8 +80,8 @@ jobs:
           grep -q 'supabaseGrantAutomationUrl' MemberWebsocket-dev/config.json
           grep -q 'fixed-ticket-admin-integration.js?v=fixed-ticket-sync-20260916-1' MemberWebsocket-dev/admin/index.html
           grep -q 'fixed-ticket-calendar-option.js?v=fixed-ticket-calendar-20260917-4' MemberWebsocket-dev/admin/index.html
-          grep -q 'fixed-ticket-admin.js?v=fixed-ticket-realtime-20260919-2' MemberWebsocket-dev/admin/index.html
-          grep -q 'pointcard-redemption-limit.js?v=pointcard-realtime-20260919-1' MemberWebsocket-dev/admin/index.html
+          grep -q 'fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
+          grep -q 'pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
           grep -q 'app.js?v=event-single-render-20260919-1' MemberWebsocket-dev/event/index.html
           ! grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
@@ -139,7 +140,7 @@ jobs:
           test ! -e MemberWebsocket-dev/booking/admin/app.js
           test ! -e MemberWebsocket-dev/booking/admin/subtabs.js
           test ! -e MemberWebsocket-dev/booking/admin/cancellation-review.js
-          grep -q 'booking-panel.js?v=booking-realtime-refresh-20260919-2' MemberWebsocket-dev/admin/index.html
+          grep -q 'booking-panel.js?v=booking-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'loadBookingAdminPanelExtension' MemberWebsocket-dev/member-system.js
           grep -q 'booking-panel-core.js' MemberWebsocket-dev/admin/booking-panel.js
           grep -q 'booking-cancellation-sync.js' MemberWebsocket-dev/admin/booking-panel.js
