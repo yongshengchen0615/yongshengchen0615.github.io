@@ -59,6 +59,9 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_SERVICE_TYPE_NOT_FOUND", 404, "BOOKING_SERVICE_TYPE_NOT_FOUND", "找不到這個項目類型。"],
     ["DUPLICATE_SERVICE_TYPE", 409, "DUPLICATE_SERVICE_TYPE", "已有相同名稱的項目類型。"],
     ["INVALID_SERVICE_TYPE_NAME", 400, "INVALID_SERVICE_TYPE_NAME", "項目類型名稱必須是 1–80 字。"],
+    ["INVALID_BOOKING_REWARD_RULE", 400, "INVALID_BOOKING_REWARD_RULE", "自動集點必須同時設定服務分鐘與集點卡。"],
+    ["INVALID_BOOKING_REWARD_MINUTES", 400, "INVALID_BOOKING_REWARD_MINUTES", "自動集點分鐘必須介於 1–10,080 分鐘。"],
+    ["BOOKING_REWARD_POINT_CARD_UNAVAILABLE", 409, "BOOKING_REWARD_POINT_CARD_UNAVAILABLE", "所選集點卡目前不可發點，請選擇啟用且未過期的集點卡。"],
     ["BOOKING_SERVICE_TYPE_INVALID", 400, "BOOKING_SERVICE_TYPE_INVALID", "所選項目類型不存在，請重新選擇。"],
     ["BOOKING_SERVICE_NOT_FOUND", 404, "BOOKING_SERVICE_NOT_FOUND", "找不到這個預約項目。"],
     ["BOOKING_SERVICE_CONFLICT", 409, "BOOKING_SERVICE_CONFLICT", "預約項目已被其他操作更新，請重新整理後再試。"],
@@ -152,25 +155,64 @@ function settingsClient(row: any, storeService?: any): Json {
 function serviceClient(row: any): Json {
   return { serviceId: row.id, title: row.title, serviceType: row.service_type || "", durationMinutes: Number(row.duration_minutes || 30), priceAmount: Number(row.price_amount || 0), requiresCompanionService: Boolean(row.requires_companion_service), isActive: Boolean(row.is_active), createdAt: row.created_at, updatedAt: row.updated_at };
 }
-function typeClient(row: any): Json { return { id: row.id, name: row.name, sortOrder: Number(row.sort_order || 0), createdAt: row.created_at, updatedAt: row.updated_at }; }
+function typeClient(row: any, reward?: any, card?: any): Json {
+  return {
+    id: row.id,
+    name: row.name,
+    sortOrder: Number(row.sort_order || 0),
+    rewardMinutesPerPoint: reward ? Number(reward.minutes_per_point || 0) : null,
+    rewardPointCardId: reward?.point_card_id || null,
+    rewardPointCardTitle: card?.title || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+function pointCardClient(row: any): Json {
+  return { id: row.id, cardId: row.card_id, title: row.title, status: row.status, expiryMode: row.expiry_mode, expiresOn: row.expires_on || null };
+}
+function taipeiDateText(): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 async function audit(supabase: SupabaseClient, identity: Identity, action: string, targetType: string, targetId: string, metadata: Json = {}): Promise<void> {
   const result = await supabase.from("booking_audit_events").insert({ actor_line_user_id: identity.lineUserId, actor_role: "admin", action, target_type: targetType, target_id: targetId, result: "success", metadata });
   if (result.error) console.error("booking admin audit failed", result.error.message);
 }
 async function bootstrap(supabase: SupabaseClient): Promise<Json> {
-  const [settings, types, services, storeService] = await Promise.all([
+  const [settings, types, services, storeService, rewards, cards] = await Promise.all([
     supabase.from("booking_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.from("booking_service_types").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
     supabase.from("booking_services").select("*").is("deleted_at", null).neq("id", STORE_SERVICE_ID).order("created_at", { ascending: true }),
     supabase.from("booking_services").select("id,duration_minutes,is_active,deleted_at").eq("id", STORE_SERVICE_ID).is("deleted_at", null).maybeSingle(),
+    supabase.from("booking_service_type_rewards").select("service_type_id,point_card_id,minutes_per_point"),
+    supabase.from("point_cards").select("id,card_id,title,status,expiry_mode,expires_on,sort_order").order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
   ]);
   if (settings.error) throw mapDatabaseError(settings.error);
   if (!settings.data) throw new ApiError(503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。" );
   if (types.error) throw mapDatabaseError(types.error);
   if (services.error) throw mapDatabaseError(services.error);
   if (storeService.error) throw mapDatabaseError(storeService.error);
+  if (rewards.error) throw mapDatabaseError(rewards.error);
+  if (cards.error) throw mapDatabaseError(cards.error);
   if (!storeService.data) throw new ApiError(503, "BOOKING_STORE_SERVICE_MISSING", "店內服務系統設定不存在，請聯絡管理員。");
-  return { settings: settingsClient(settings.data, storeService.data), serviceTypes: (types.data || []).map(typeClient), services: (services.data || []).map(serviceClient) };
+
+  const rewardByType = new Map((rewards.data || []).map((row: any) => [String(row.service_type_id), row]));
+  const cardById = new Map((cards.data || []).map((row: any) => [String(row.id), row]));
+  const today = taipeiDateText();
+  const availableCards = (cards.data || []).filter((row: any) =>
+    row.status === "active" && (row.expiry_mode === "unlimited" || (row.expires_on && String(row.expires_on) >= today))
+  );
+
+  return {
+    settings: settingsClient(settings.data, storeService.data),
+    serviceTypes: (types.data || []).map((row: any) => {
+      const reward = rewardByType.get(String(row.id));
+      return typeClient(row, reward, reward ? cardById.get(String(reward.point_card_id)) : null);
+    }),
+    services: (services.data || []).map(serviceClient),
+    pointCards: availableCards.map(pointCardClient),
+  };
 }
 async function settingsSave(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const workStartTime = normalizeTime(body.workStartTime);
@@ -200,23 +242,72 @@ async function settingsSave(supabase: SupabaseClient, identity: Identity, body: 
   await audit(supabase, identity, "BOOKING_SETTINGS_UPDATED", "booking_settings", "1", { workStartTime, workEndTime, minAdvanceDays, maxAdvanceDays, storeServiceMinutes, bookingNoticeLength: bookingNotice.length });
   return { settings: settingsClient(result.data, { duration_minutes: storeServiceMinutes }) };
 }
+function normalizeRewardRule(body: Json): { provided: boolean; minutes: number | null; pointCardId: string | null } {
+  const provided = Object.prototype.hasOwnProperty.call(body, "rewardMinutesPerPoint")
+    || Object.prototype.hasOwnProperty.call(body, "rewardPointCardId");
+  if (!provided) return { provided: false, minutes: null, pointCardId: null };
+
+  const rawMinutes = body.rewardMinutesPerPoint;
+  const rawCard = asText(body.rewardPointCardId, 60);
+  const disabled = (rawMinutes === null || rawMinutes === undefined || rawMinutes === "" || Number(rawMinutes) === 0) && !rawCard;
+  if (disabled) return { provided: true, minutes: null, pointCardId: null };
+
+  const minutes = Number(rawMinutes);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) {
+    throw new ApiError(400, "INVALID_BOOKING_REWARD_MINUTES", "自動集點分鐘必須介於 1–10,080 分鐘。");
+  }
+  if (!rawCard) throw new ApiError(400, "INVALID_BOOKING_REWARD_RULE", "請選擇要自動加點的集點卡。");
+  return { provided: true, minutes, pointCardId: requireUuid(rawCard, "集點卡") };
+}
+
 async function typeCreate(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const name = asText(body.name, 80);
   if (!name) throw new ApiError(400, "INVALID_SERVICE_TYPE_NAME", "項目類型名稱必須是 1–80 字。" );
-  const maxOrder = await supabase.from("booking_service_types").select("sort_order").order("sort_order", { ascending: false }).limit(1).maybeSingle();
-  if (maxOrder.error) throw mapDatabaseError(maxOrder.error);
-  const inserted = await supabase.from("booking_service_types").insert({ name, sort_order: Math.min(1000, Number(maxOrder.data?.sort_order || -1) + 1) }).select("*").single();
-  if (inserted.error) throw mapDatabaseError(inserted.error);
-  await audit(supabase, identity, "BOOKING_SERVICE_TYPE_CREATED", "booking_service_type", String(inserted.data.id), { name });
-  return { serviceType: typeClient(inserted.data) };
+  const reward = normalizeRewardRule(body);
+  const result = await supabase.rpc("save_booking_service_type", {
+    p_type_id: null,
+    p_name: name,
+    p_reward_minutes_per_point: reward.minutes,
+    p_reward_point_card_id: reward.pointCardId,
+    p_actor: identity.lineUserId,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
+  await audit(supabase, identity, "BOOKING_SERVICE_TYPE_CREATED", "booking_service_type", String(result.data?.id || ""), {
+    name, rewardMinutesPerPoint: reward.minutes, rewardPointCardId: reward.pointCardId,
+  });
+  return await bootstrap(supabase);
 }
+
 async function typeUpdate(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const typeId = requireUuid(body.typeId, "項目類型");
   const name = asText(body.name, 80);
   if (!name) throw new ApiError(400, "INVALID_SERVICE_TYPE_NAME", "項目類型名稱必須是 1–80 字。" );
-  const result = await supabase.rpc("rename_booking_service_type", { p_type_id: typeId, p_name: name, p_actor: identity.lineUserId });
+
+  let reward = normalizeRewardRule(body);
+  if (!reward.provided) {
+    const current = await supabase.from("booking_service_type_rewards")
+      .select("minutes_per_point,point_card_id")
+      .eq("service_type_id", typeId)
+      .maybeSingle();
+    if (current.error) throw mapDatabaseError(current.error);
+    reward = {
+      provided: false,
+      minutes: current.data ? Number(current.data.minutes_per_point) : null,
+      pointCardId: current.data?.point_card_id || null,
+    };
+  }
+
+  const result = await supabase.rpc("save_booking_service_type", {
+    p_type_id: typeId,
+    p_name: name,
+    p_reward_minutes_per_point: reward.minutes,
+    p_reward_point_card_id: reward.pointCardId,
+    p_actor: identity.lineUserId,
+  });
   if (result.error) throw mapDatabaseError(result.error);
-  await audit(supabase, identity, "BOOKING_SERVICE_TYPE_UPDATED", "booking_service_type", typeId, { name });
+  await audit(supabase, identity, "BOOKING_SERVICE_TYPE_UPDATED", "booking_service_type", typeId, {
+    name, rewardMinutesPerPoint: reward.minutes, rewardPointCardId: reward.pointCardId,
+  });
   return await bootstrap(supabase);
 }
 async function typeDelete(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
