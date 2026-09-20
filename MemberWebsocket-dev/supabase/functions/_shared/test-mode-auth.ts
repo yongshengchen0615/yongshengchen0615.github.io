@@ -5,6 +5,18 @@ export type TestModeIdentity = {
   isTestAccount: true;
 };
 
+export type TestDeviceClass = "pc" | "mobile";
+
+function maintenanceMessage(settings: any): string {
+  return String(settings?.maintenance_message || "").trim() || "系統維護中，請稍後再試。";
+}
+
+function deviceLoginAllowed(settings: any, deviceClass: TestDeviceClass): boolean {
+  return deviceClass === "mobile"
+    ? settings?.allow_mobile_test_login === true
+    : settings?.allow_pc_test_login === true;
+}
+
 export class TestModeAuthError extends Error {
   status: number;
   code: string;
@@ -35,12 +47,12 @@ export async function resolveTestSession(
   const [settingsResult, sessionResult] = await Promise.all([
     supabase
       .from("test_mode_settings")
-      .select("enabled,maintenance_enabled,maintenance_message")
+      .select("enabled,maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message")
       .eq("id", true)
       .maybeSingle(),
     supabase
       .from("test_login_sessions")
-      .select("id,member_id,expires_at,revoked_at")
+      .select("id,member_id,device_class,expires_at,revoked_at")
       .eq("token_hash", tokenHash)
       .maybeSingle(),
   ]);
@@ -49,18 +61,25 @@ export async function resolveTestSession(
     throw new TestModeAuthError(503, "TEST_SESSION_UNAVAILABLE", "目前無法確認測試登入狀態。");
   }
 
-  if (settingsResult.data?.maintenance_enabled) {
-    throw new TestModeAuthError(
-      503,
-      "SYSTEM_MAINTENANCE",
-      String(settingsResult.data?.maintenance_message || "").trim() || "系統維護中，請稍後再試。",
-    );
+  if (!settingsResult.data?.maintenance_enabled) {
+    throw new TestModeAuthError(403, "TEST_MODE_LOGIN_DISABLED", "目前未啟用系統維護測試登入。");
   }
   if (!settingsResult.data?.enabled) {
-    throw new TestModeAuthError(403, "TEST_MODE_LOGIN_DISABLED", "目前未啟用測試模式。");
+    throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
   }
 
   const session = sessionResult.data;
+  const deviceClass = session?.device_class === "mobile"
+    ? "mobile"
+    : session?.device_class === "pc"
+      ? "pc"
+      : null;
+  if (!deviceClass) {
+    throw new TestModeAuthError(401, "TEST_SESSION_INVALID", "測試登入已失效，請重新選擇測試帳號。");
+  }
+  if (!deviceLoginAllowed(settingsResult.data, deviceClass)) {
+    throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
+  }
   const expiresAt = session?.expires_at ? new Date(session.expires_at).getTime() : 0;
   if (!session || session.revoked_at || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
     throw new TestModeAuthError(401, "TEST_SESSION_EXPIRED", "測試登入已過期，請重新選擇測試帳號。");
@@ -109,7 +128,7 @@ export async function resolveUserTestIdentity(
 ): Promise<TestModeIdentity | null> {
   const settingsResult = await supabase
     .from("test_mode_settings")
-    .select("enabled,maintenance_enabled,maintenance_message")
+    .select("enabled,maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message")
     .eq("id", true)
     .maybeSingle();
 
@@ -117,22 +136,14 @@ export async function resolveUserTestIdentity(
     throw new TestModeAuthError(503, "TEST_MODE_CHECK_FAILED", "目前無法確認系統維護狀態。");
   }
 
-  if (settingsResult.data?.maintenance_enabled) {
-    throw new TestModeAuthError(
-      503,
-      "SYSTEM_MAINTENANCE",
-      String(settingsResult.data?.maintenance_message || "").trim() || "系統維護中，請稍後再試。",
-    );
+  if (!settingsResult.data?.maintenance_enabled) return null;
+  if (!settingsResult.data?.enabled) {
+    throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
   }
-  if (!settingsResult.data?.enabled) return null;
 
   const token = String(rawToken || "").trim();
   if (!token) {
-    throw new TestModeAuthError(
-      503,
-      "SYSTEM_MAINTENANCE",
-      String(settingsResult.data?.maintenance_message || "").trim() || "系統維護中，請稍後再試。",
-    );
+    throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
   }
 
   return await resolveTestSession(supabase, token);

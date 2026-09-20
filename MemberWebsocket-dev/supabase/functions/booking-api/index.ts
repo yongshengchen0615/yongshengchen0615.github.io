@@ -920,7 +920,7 @@ Deno.serve(async (request: Request) => {
         .eq("id", true)
         .maybeSingle();
       if (mode.error) throw new ApiError(503, "TEST_MODE_CHECK_FAILED", "目前無法確認系統維護狀態。");
-      if (mode.data?.maintenance_enabled || (mode.data?.enabled && !testSessionToken)) {
+      if (mode.data?.maintenance_enabled && !testSessionToken) {
         throw new ApiError(503, "SYSTEM_MAINTENANCE", asText(mode.data.maintenance_message, 500) || "系統維護中，請稍後再試。");
       }
     }
