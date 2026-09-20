@@ -9,6 +9,9 @@
   let publicNoticeSequence = 0;
   let presenceContext = null;
   let presenceHooksBound = false;
+  let presenceHeartbeatTimer = null;
+  const PRESENCE_HEARTBEAT_MS = 30_000;
+  const PRESENCE_RESUME_SIGNAL_MS = 60_000;
 
   function clientError(code, message, details = null) {
     const error = new Error(message);
@@ -63,10 +66,45 @@
     return String(context && context.idToken || '');
   }
 
+  function clearPresenceHeartbeat() {
+    if (presenceHeartbeatTimer !== null) {
+      window.clearTimeout(presenceHeartbeatTimer);
+      presenceHeartbeatTimer = null;
+    }
+  }
+
+  function schedulePresenceHeartbeat() {
+    clearPresenceHeartbeat();
+    if (!presenceContext || presenceContext.closed || document.visibilityState === 'hidden') return;
+    presenceHeartbeatTimer = window.setTimeout(() => {
+      presenceHeartbeatTimer = null;
+      void heartbeatPresence();
+    }, PRESENCE_HEARTBEAT_MS);
+  }
+
+  async function heartbeatPresence() {
+    const context = presenceContext;
+    if (!context || context.closed || document.visibilityState === 'hidden') return;
+    try {
+      if (!context.onlineRecorded) {
+        await startPresence(context.config, 'booking', currentPresenceIdToken(context), 'relogin');
+        return;
+      }
+      const response = await Promise.race([
+        sendPresence(context, 'heartbeat', 'heartbeat'),
+        new Promise((resolve) => window.setTimeout(() => resolve(null), 1200))
+      ]);
+      if (response && response.ok) context.lastSeenSignalAt = Date.now();
+    } finally {
+      schedulePresenceHeartbeat();
+    }
+  }
+
   function bindPresenceLifecycle() {
     if (presenceHooksBound) return;
     presenceHooksBound = true;
     window.addEventListener('pagehide', (event) => {
+      clearPresenceHeartbeat();
       void stopPresence(event && event.persisted ? 'bfcache' : 'pagehide');
     });
     window.addEventListener('pageshow', (event) => {
@@ -74,6 +112,20 @@
       const previous = presenceContext;
       presenceContext = null;
       void startPresence(previous.config, 'booking', currentPresenceIdToken(previous), 'resume');
+    });
+    document.addEventListener('visibilitychange', () => {
+      const context = presenceContext;
+      if (!context || context.closed) return;
+      if (document.visibilityState === 'hidden') {
+        clearPresenceHeartbeat();
+        return;
+      }
+      if (Date.now() - Number(context.lastSeenSignalAt || 0) >= PRESENCE_RESUME_SIGNAL_MS) {
+        context.onlineRecorded = false;
+        void startPresence(context.config, 'booking', currentPresenceIdToken(context), 'resume');
+      } else {
+        void heartbeatPresence();
+      }
     });
   }
 
@@ -114,6 +166,8 @@
         new Promise((resolve) => window.setTimeout(() => resolve(null), 1200))
       ]);
       presenceContext.onlineRecorded = Boolean(response && response.ok);
+      if (presenceContext.onlineRecorded) presenceContext.lastSeenSignalAt = Date.now();
+      schedulePresenceHeartbeat();
       return;
     }
     const context = {
@@ -121,6 +175,7 @@
       idToken: String(idToken || ''),
       sessionId: createPresenceSessionId(),
       onlineRecorded: false,
+      lastSeenSignalAt: 0,
       closed: false
     };
     presenceContext = context;
@@ -130,11 +185,14 @@
       new Promise((resolve) => window.setTimeout(() => resolve(null), 1200))
     ]);
     context.onlineRecorded = Boolean(response && response.ok);
+    if (context.onlineRecorded) context.lastSeenSignalAt = Date.now();
+    schedulePresenceHeartbeat();
   }
 
   async function stopPresence(reason = 'pagehide') {
     const context = presenceContext;
     if (!context || context.closed) return;
+    clearPresenceHeartbeat();
     context.closed = true;
     await sendPresence(context, 'offline', reason);
   }
