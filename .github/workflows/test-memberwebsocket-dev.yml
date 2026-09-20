@@ -101,7 +101,7 @@ jobs:
           grep -q 'claim_due_grant_messages' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
       - name: Check unified calendar backend wiring
         run: |
-          grep -q 'member-system.js?v=presence-20260920-1' MemberWebsocket-dev/calendar/index.html
+          grep -q 'member-system.js?v=presence-20260920-2' MemberWebsocket-dev/calendar/index.html
           ! grep -q 'tier-sync.js' MemberWebsocket-dev/calendar/index.html
           ! grep -q 'realtime-resync.js' MemberWebsocket-dev/calendar/index.html
           grep -q 'memberCalendarFunctionUrl' MemberWebsocket-dev/config.json
@@ -124,7 +124,7 @@ jobs:
           grep -q 'member-ui.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'app.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'group-booking.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'common.js?v=member-presence-20260920-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'common.js?v=member-presence-20260920-2' MemberWebsocket-dev/booking/index.html
           grep -q 'liff-fresh-login.js?v=member-presence-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'id="bookingNoticeModal"' MemberWebsocket-dev/booking/index.html
           grep -q 'confirmBookingNoticeButton' MemberWebsocket-dev/booking/index.html
@@ -216,7 +216,7 @@ jobs:
             MemberWebsocket-dev/event/index.html \
             MemberWebsocket-dev/calendar/index.html \
             MemberWebsocket-dev/admin/index.html; do
-            grep -q '../member-system.js?v=presence-20260920-1' "$file"
+            grep -q '../member-system.js?v=presence-20260920-2' "$file"
             ! grep -q 'realtime-resync.js' "$file"
             ! grep -q './common.js' "$file"
           done
