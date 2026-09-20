@@ -19,7 +19,7 @@ test('server recognizes online and offline actions for every member-facing surfa
   ]) assert.ok(api.includes(action), action);
 
   assert.match(api, /type ClientType = "member" \| "points" \| "event" \| "calendar" \| "booking" \| "admin"/);
-  assert.match(api, /booking: "LINE_BOOKING_CHANNEL_ID"/);
+  assert.match(api, /booking: "LINE_MEMBER_CHANNEL_ID"/);
   assert.match(api, /const presence = presenceActionInfo\(action\)/);
 });
 
