@@ -89,7 +89,7 @@
     // Resource controls are independent required modules. They wait for the
     // booking host themselves, so they cannot disappear because another
     // decorator or the core load chain failed.
-    ['booking-resources.js', 'booking-unified-session-20260919-1'],
+    ['booking-resources.js', 'booking-technician-disable-fallback-20260920-1'],
   ];
 
   Promise.allSettled(preloadExtensions.map(([name, version]) => load(name, version)))
