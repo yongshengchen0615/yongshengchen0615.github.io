@@ -324,7 +324,7 @@
     state.messagePresets = Array.isArray(result.messagePresets) ? result.messagePresets : [];
     renderGrantMessagePresetOptions();
     renderMessagePresetList();
-    state.loadedPanels = { members: true, cards: true, events: true, calendar: true };
+    state.loadedPanels = { members: true, cards: true, events: true, calendar: true, testMode: true };
     state.summaryLoaded = Object.prototype.hasOwnProperty.call(state.stats, 'todayEntryCount');
     els.displayName.textContent = String(result.profile && result.profile.displayName || '管理員');
     els.roleLabel.textContent = String(result.role || 'Admin');
