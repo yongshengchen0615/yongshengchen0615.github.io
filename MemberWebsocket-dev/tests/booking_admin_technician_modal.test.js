@@ -6,24 +6,32 @@ const loader = fs.readFileSync('MemberWebsocket-dev/admin/booking-panel.js', 'ut
 const styles = fs.readFileSync('MemberWebsocket-dev/admin/booking-resources.css', 'utf8');
 
 assert.match(resources, /bookingAdminTechnicianModal/);
-assert.match(resources, /bookingAdminTechnicianDeleteConfirm/);
-assert.match(resources, /function openNewTechnicianModal\(/);
-assert.match(resources, /function openEditTechnicianModal\(/);
-assert.match(resources, /function openDeleteTechnicianConfirm\(/);
-assert.match(resources, /function deleteTechnicianRequest\(/);
-assert.match(resources, /function disableTechnicianFromDelete\(/);
-assert.match(resources, /BOOKING_TECHNICIAN_IN_USE/);
-assert.match(resources, /dataset\.action = 'disable'/);
-assert.match(resources, /已有預約歷史，已改為停用/);
-assert.match(resources, /admin\.booking\.resources\.technician\.delete/);
+assert.match(resources, /bookingAdminTechnicianActiveTab/);
+assert.match(resources, /bookingAdminTechnicianDisabledTab/);
+assert.match(resources, /function setTechnicianTab\(/);
+assert.match(resources, /function restoreTechnician\(/);
+assert.match(resources, /booking:technician-restored/);
+assert.match(resources, /恢復公開/);
+assert.match(resources, /已公開/);
+assert.match(resources, /已停用/);
+assert.match(resources, /admin\.booking\.resources\.technician\.save/);
 assert.match(resources, /＋ 新增技師/);
-assert.match(resources, /確認刪除技師/);
+
+assert.doesNotMatch(resources, /bookingAdminTechnicianDeleteConfirm/);
+assert.doesNotMatch(resources, /admin\.booking\.resources\.technician\.delete/);
+assert.doesNotMatch(resources, /function deleteTechnicianRequest\(/);
+assert.doesNotMatch(resources, /function openDeleteTechnicianConfirm\(/);
+assert.doesNotMatch(resources, /刪除技師/);
 assert.doesNotMatch(resources, /window\.confirm/);
 
+assert.match(loader, /booking-technician-status-tabs-20260920-1/);
 assert.doesNotMatch(loader, /booking-technician-delete\.js/);
 assert.equal(fs.existsSync('MemberWebsocket-dev/booking-technician-delete.js'), false);
 
 assert.match(styles, /booking-admin-technician-modal-card/);
-assert.match(styles, /booking-admin-technician-delete-confirm/);
+assert.match(styles, /booking-admin-technician-tabs/);
+assert.match(styles, /booking-admin-technician-tab\.active/);
+assert.match(styles, /booking-admin-technician-restore/);
+assert.doesNotMatch(styles, /booking-admin-technician-delete-confirm/);
 
-console.log('booking admin technician modal CRUD wiring OK');
+console.log('booking admin technician publish/disable lifecycle wiring OK');
