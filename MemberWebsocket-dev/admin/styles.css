@@ -349,6 +349,13 @@ button, input, select, textarea { line-height: 1.35; }
 .member-record-item-heading time { color: var(--muted); font-size: 10px; font-weight: 700; text-align: right; }
 .member-record-category { display: inline-flex; align-items: center; min-height: 22px; padding: 4px 8px; border-radius: 999px; color: #3e6555; background: #eef5f0; font-size: 10px; font-weight: 900; letter-spacing: .03em; }
 .member-record-item.category-presence .member-record-category { color: #2f5e83; background: #eaf4fb; }
+.member-presence-cell { min-width: 118px; }
+.member-presence-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.member-presence-cell small { color: var(--muted, #758078); font-size: 11px; line-height: 1.3; }
+.member-presence-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 900; letter-spacing: .02em; }
+.member-presence-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent); }
+.member-presence-pill.online { color: #237a4b; background: #eaf7ef; }
+.member-presence-pill.offline { color: #7c8580; background: #f0f2f1; }
 .member-record-item.category-eventTickets .member-record-category { color: #88513f; background: #fff1ec; }
 .member-record-item.category-calendar .member-record-category { color: #4d5f88; background: #eef1fb; }
 .member-record-item.category-bookings .member-record-category { color: #6b5b32; background: #f8f3e5; }
