@@ -38,7 +38,7 @@ test('admin member records API stays behind existing admin authorization boundar
   const routePosition = api.indexOf('action === "admin.member-records.list"');
   assert.ok(authorizePosition >= 0);
   assert.ok(routePosition > authorizePosition);
-  assert.match(api, /\.eq\("is_test_account",false\)/);
+  assert.match(api, /select\("id,line_user_id,display_name,member_code,is_test_account"\)/);
 });
 
 test('member records include authenticated online and offline audit events', () => {
