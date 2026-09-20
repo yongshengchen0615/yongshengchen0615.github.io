@@ -114,8 +114,15 @@
     els.memberPass.dataset.tierStyle = tierStyleKey;
     els.memberCode.textContent = String(profile.memberCode || '尚未建立');
     els.joinedAt.textContent = window.MemberSystem.formatDate(profile.joinedAt);
+    const surname = String(profile.surname || '').trim();
+    const salutation = String(profile.salutation || '').trim().toLowerCase();
+    const salutationLabel = salutation === 'mr' ? '先生' : salutation === 'ms' ? '小姐' : '';
+    const honorificName = surname && salutationLabel ? `${surname}${salutationLabel}` : surname || salutationLabel;
+    const honorificDisplay = document.getElementById('memberHonorificName');
+    if (honorificDisplay) honorificDisplay.textContent = honorificName || '未填寫';
     els.memberBirthday.textContent = String(profile.birthday || '未填寫');
     els.memberPhone.textContent = String(profile.phone || '未填寫');
+    try { window.dispatchEvent(new CustomEvent('member-profile-ready', { detail: { profile } })); } catch (_) {}
     window.MembershipProgress.render(els.membershipProgress, profile);
     els.memberStatus.textContent = isActive ? '使用中' : '暫停';
     els.memberStatus.parentElement.classList.toggle('inactive', !isActive);
