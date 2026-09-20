@@ -19,8 +19,8 @@ test('test-account member profile editor resyncs after delayed test login', () =
   assert.match(profile, /return fetchCurrentProfile\(16\)/);
   assert.doesNotMatch(profile, /if \(!currentProfile \|\| typeof currentProfile !== 'object'\) return;/);
   assert.match(html, /test-mode-client\.js\?v=member-profile-session-ready-20260920-1/);
-  assert.match(html, /profile-extension\.js\?v=test-profile-edit-fix-20260920-2/);
-  assert.match(html, /profile-birthday-edit\.js\?v=test-profile-edit-fix-20260920-2/);
+  assert.match(html, /profile-extension\.js\?v=test-profile-edit-fix-20260920-3/);
+  assert.match(html, /profile-birthday-edit\.js\?v=test-profile-edit-fix-20260920-3/);
   assert.match(html, /app\.js\?v=test-profile-edit-fix-20260920-2/);
 });
 
@@ -48,4 +48,16 @@ test('profile edit actions use independent partial updates', () => {
   assert.match(api, /const hasSalutation = Object\.prototype\.hasOwnProperty\.call\(body, "salutation"\)/);
   assert.match(api, /profileFields\.push\("birthday"\)/);
   assert.match(api, /生日不可晚於今天/);
+});
+
+
+test('test profile editors do not read LIFF token when a test session exists', () => {
+  const profile = read('member/profile-extension.js');
+  const birthday = read('member/profile-birthday-edit.js');
+
+  for (const source of [profile, birthday]) {
+    assert.match(source, /const testSessionToken = window\.TestModeClient/);
+    assert.match(source, /if \(!testSessionToken && typeof window\.liff\?\.getIDToken === 'function'\)/);
+    assert.match(source, /try \{ idToken = String\(window\.liff\.getIDToken\(\) \|\| ''\); \}/);
+  }
 });
