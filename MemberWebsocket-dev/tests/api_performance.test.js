@@ -90,6 +90,21 @@ test('event bootstrap keeps quota counts, member-only claims and archived used h
   assert.equal(result.offers[0].ticket.claimedCount, 1); assert.equal(result.usedTicketCount, 1);
   assert.equal(result.usedTickets[0].claim.claimId, 'HISTORY'); assert.equal(result.usedTickets[0].ticket.eventTicketId, 'OLD');
 });
+test('event bootstrap exposes fixed tickets only to members who own the issued claim', async () => {
+  const issued = { ...event, id: 'fixed-issued', event_ticket_id: 'FIXED-ISSUED', title: 'Issued Fixed', fixed_ticket_template_id: 'template-A' };
+  const unissued = { ...event, id: 'fixed-unissued', event_ticket_id: 'FIXED-UNISSUED', title: 'Unissued Fixed', fixed_ticket_template_id: 'template-B' };
+  const rows = {
+    event_tickets: [event, issued, unissued],
+    event_ticket_claims: [
+      { member_id: member.id, event_ticket_id: issued.id, claim_id: 'FIXED-CLAIM', status: 'claimed', ticket_type: 'coupon', ticket_title: 'Issued Fixed' },
+      { member_id: member.id, event_ticket_id: 'archived-event', claim_id: 'HISTORY', status: 'used', event_tickets: { event_ticket_id: 'OLD' } },
+    ],
+  };
+  const result = await api().eventBootstrap(database({ rows }), member);
+  assert.deepEqual(result.offers.map(offer => offer.ticket.eventTicketId), ['EVENT', 'FIXED-ISSUED']);
+  assert.equal(result.offers[1].claim.claimId, 'FIXED-CLAIM');
+  assert.equal(result.offers.some(offer => offer.ticket.eventTicketId === 'FIXED-UNISSUED'), false);
+});
 test('no active events still returns historical tickets and skips active-claim queries', async () => {
   const db = database({ rows: { event_tickets: [] } }); const result = await api().eventBootstrap(db, member);
   assert.equal(result.offers.length, 0); assert.equal(result.usedTicketCount, 1);
