@@ -204,13 +204,10 @@
     return String(offer?.ticket?.eventTicketId || offer?.claim?.eventTicketId || offer?.eventTicketId || '').trim();
   }
   function isFixedOffer(offer) { return fixedEventTicketId(offer).startsWith('FIXED-'); }
-  function monthFromDate(value) { const match = String(value || '').match(/^\\d{4}-(\\d{2})-\\d{2}$/); return match ? Number(match[1]) : 0; }
-  function birthdayMonth(profile) { return monthFromDate(profile && profile.birthday); }
-  function isBirthdayFixedOffer(offer) { return fixedEventTicketId(offer).includes('-birthday-month-'); }
-  function normalizeFixedOffers(offers, profile) {
-    return offers
-      .filter((offer) => !isBirthdayFixedOffer(offer) || (birthdayMonth(profile) > 0 && birthdayMonth(profile) === monthFromDate(offer?.ticket?.startsOn)))
-      .map((offer) => isFixedOffer(offer) && !offer?.claim ? { ...offer, canClaim: false, canUse: false, fixedAutoIssuePending: true } : offer);
+  function normalizeFixedOffers(offers) {
+    // Fixed tickets are server-issued benefits. A fixed ticket without a member claim
+    // must never be rendered as a pending/public offer, even if a stale API response contains it.
+    return offers.filter((offer) => !isFixedOffer(offer) || Boolean(offer?.claim));
   }
   function autoOpenFromCalendar() {
     if (autoOpenHandled) return;
