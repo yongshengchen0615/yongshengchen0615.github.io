@@ -16,7 +16,7 @@ test('member directory exposes a records action beside existing actions', () => 
 });
 
 test('member records modal contains all requested activity categories', () => {
-  for (const filter of ['pointCards', 'eventTickets', 'calendar', 'bookings']) {
+  for (const filter of ['presence', 'pointCards', 'eventTickets', 'calendar', 'bookings']) {
     assert.ok(html.includes('data-record-filter="' + filter + '"'), filter);
   }
   assert.match(app, /admin\.member-records\.list/);
@@ -29,6 +29,16 @@ test('admin member records API stays behind existing admin authorization boundar
   assert.ok(authorizePosition >= 0);
   assert.ok(routePosition > authorizePosition);
   assert.match(api, /\.eq\("is_test_account",false\)/);
+});
+
+test('member records include authenticated online and offline audit events', () => {
+  assert.match(api, /const PRESENCE_ACTIONS = \[/);
+  assert.match(api, /from\("audit_logs"\).*target_type.*member/s);
+  assert.match(api, /presence:presenceRecords/);
+  assert.match(api, /presence:presenceRecords\.length/);
+  assert.match(app, /\['presence', '上／下線'\]/);
+  assert.match(app, /會員下線/);
+  assert.match(app, /會員上線/);
 });
 
 test('member records use existing domain history without fabricating calendar views', () => {
