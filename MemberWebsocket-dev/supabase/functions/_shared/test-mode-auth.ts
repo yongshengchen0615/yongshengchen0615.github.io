@@ -35,7 +35,7 @@ export async function resolveTestSession(
   const [settingsResult, sessionResult] = await Promise.all([
     supabase
       .from("test_mode_settings")
-      .select("enabled")
+      .select("enabled,maintenance_enabled,maintenance_message")
       .eq("id", true)
       .maybeSingle(),
     supabase
@@ -49,6 +49,13 @@ export async function resolveTestSession(
     throw new TestModeAuthError(503, "TEST_SESSION_UNAVAILABLE", "目前無法確認測試登入狀態。");
   }
 
+  if (settingsResult.data?.maintenance_enabled) {
+    throw new TestModeAuthError(
+      503,
+      "SYSTEM_MAINTENANCE",
+      String(settingsResult.data?.maintenance_message || "").trim() || "系統維護中，請稍後再試。",
+    );
+  }
   if (!settingsResult.data?.enabled) {
     throw new TestModeAuthError(403, "TEST_MODE_LOGIN_DISABLED", "目前未啟用測試模式。");
   }
@@ -102,7 +109,7 @@ export async function resolveUserTestIdentity(
 ): Promise<TestModeIdentity | null> {
   const settingsResult = await supabase
     .from("test_mode_settings")
-    .select("enabled,maintenance_message")
+    .select("enabled,maintenance_enabled,maintenance_message")
     .eq("id", true)
     .maybeSingle();
 
@@ -110,6 +117,13 @@ export async function resolveUserTestIdentity(
     throw new TestModeAuthError(503, "TEST_MODE_CHECK_FAILED", "目前無法確認系統維護狀態。");
   }
 
+  if (settingsResult.data?.maintenance_enabled) {
+    throw new TestModeAuthError(
+      503,
+      "SYSTEM_MAINTENANCE",
+      String(settingsResult.data?.maintenance_message || "").trim() || "系統維護中，請稍後再試。",
+    );
+  }
   if (!settingsResult.data?.enabled) return null;
 
   const token = String(rawToken || "").trim();

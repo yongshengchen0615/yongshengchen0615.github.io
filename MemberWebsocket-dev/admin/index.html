@@ -24,7 +24,7 @@
   <script src="./fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1" defer></script>
   <script src="./pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1" defer></script>
   <script src="./app.js?v=test-mode-20260920-1" defer></script>
-  <script src="./test-mode.js?v=test-mode-direct-login-20260920-1" defer></script>
+  <script src="./test-mode.js?v=maintenance-gates-20260920-1" defer></script>
   <script src="./grant-automation.js?v=grant-automation-20260910" defer></script>
   <script src="../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1" defer></script>
   <script src="./booking-panel.js?v=booking-tab-navigation-20260920-1" data-booking-admin-panel-extension defer></script>
@@ -80,11 +80,12 @@
           <div>
             <p class="kicker">Testing environment</p>
             <h2>測試模式</h2>
-            <p>集中控制維護狀態與虛擬測試會員。測試模式啟用後，用戶端可直接選擇測試帳號登入，正式會員資料不會混入測試清單。</p>
+            <p>分開控制全站系統維護與測試模式。系統維護會封鎖所有用戶端；測試模式則只開放 PC 使用測試帳號，手機與平板顯示維護訊息。</p>
           </div>
           <div class="test-mode-status-group" aria-label="測試環境目前狀態">
+            <span id="systemMaintenanceBadge" class="test-mode-status-badge is-loading">系統維護：讀取中</span>
             <span id="testModeStatusBadge" class="test-mode-status-badge is-loading">測試模式：讀取中</span>
-            <span id="testModeDirectLoginBadge" class="test-mode-status-badge is-loading">測試帳號：讀取中</span>
+            <span id="testModeDirectLoginBadge" class="test-mode-status-badge is-loading">PC 測試登入：讀取中</span>
           </div>
         </div>
 
@@ -101,11 +102,15 @@
             <form id="testModeForm" novalidate>
               <section class="test-mode-form-section" aria-labelledby="testModeControlTitle">
                 <div class="test-mode-section-heading">
-                  <div><strong id="testModeControlTitle">測試環境</strong><small>控制用戶端是否進入測試模式。啟用後，測試帳號可直接從用戶端選擇並登入。</small></div>
+                  <div><strong id="testModeControlTitle">系統狀態</strong><small>系統維護優先於測試模式；管理端不受維護閘門影響，方便隨時恢復服務。</small></div>
                 </div>
                 <div class="test-mode-toggle-list">
                   <label class="test-mode-toggle">
-                    <span class="test-mode-toggle-copy"><strong>啟用測試模式</strong><small>開啟後，用戶端會顯示維護訊息與測試帳號選擇器。</small></span>
+                    <span class="test-mode-toggle-copy"><strong>系統維護</strong><small>開啟後，所有用戶端（手機、平板、PC）都只顯示維護訊息；管理端仍可使用。</small></span>
+                    <span class="test-mode-toggle-control"><input id="systemMaintenanceEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
+                  </label>
+                  <label class="test-mode-toggle">
+                    <span class="test-mode-toggle-copy"><strong>啟用測試模式</strong><small>開啟後，手機與平板顯示維護訊息；PC 可直接選擇測試帳號登入。</small></span>
                     <span class="test-mode-toggle-control"><input id="testModeEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
                   </label>
                 </div>
@@ -113,7 +118,7 @@
 
               <section class="test-mode-form-section" aria-labelledby="testModeMaintenanceTitle">
                 <div class="test-mode-section-heading">
-                  <div><strong id="testModeMaintenanceTitle">維護畫面訊息</strong><small>測試模式啟用時，這段內容會顯示在測試帳號選擇畫面；留空時使用系統預設訊息。</small></div>
+                  <div><strong id="testModeMaintenanceTitle">維護畫面訊息</strong><small>系統維護啟用時，或測試模式從行動裝置開啟時，會顯示這段內容；PC 測試帳號選擇畫面不顯示此訊息。</small></div>
                   <span class="test-mode-field-meta">最多 500 字</span>
                 </div>
                 <textarea id="testModeMaintenanceMessage" maxlength="500" rows="5" aria-label="系統維護訊息" placeholder="例如：系統維護中，服務調整完成後將重新開放。"></textarea>
@@ -138,7 +143,7 @@
 
               <div class="test-mode-safety-note" role="note">
                 <span class="test-mode-safety-icon" aria-hidden="true">i</span>
-                <p><strong>測試資料與正式會員隔離</strong><span>停用測試模式後，既有測試 session 會立即失效。</span></p>
+                <p><strong>測試資料與正式會員隔離</strong><span>停用測試模式或啟用系統維護後，既有測試 session 會立即失效。</span></p>
               </div>
 
               <div id="testModeFormMessage" class="form-message hidden" role="status" aria-live="polite"></div>
@@ -154,7 +159,7 @@
               <div>
                 <span class="test-mode-eyebrow">Test members</span>
                 <h3 id="testModeAccountsTitle">測試帳號</h3>
-                <p>測試模式啟用時，用戶端可直接選擇這裡建立的虛擬會員登入。</p>
+                <p>測試模式啟用且未開啟系統維護時，只有 PC 用戶端可直接選擇這裡建立的虛擬會員登入。</p>
               </div>
               <span id="testModeAccountCount" class="test-mode-account-count">0 個</span>
             </div>

@@ -6,26 +6,29 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('admin exposes test mode without a separate admin-login permission', () => {
+test('admin exposes separate system maintenance and test mode controls', () => {
   const html = read('admin/index.html');
   const app = read('admin/app.js');
   const testMode = read('admin/test-mode.js');
 
   assert.match(html, /id="testModeTab"/);
   assert.match(html, /id="testModePanel"/);
+  assert.match(html, /id="systemMaintenanceEnabled"/);
   assert.match(html, /id="testModeEnabled"/);
   assert.doesNotMatch(html, /id="testModeAdminLoginEnabled"/);
   assert.doesNotMatch(html, /允許管理員登入用戶端/);
+  assert.match(html, /id="systemMaintenanceBadge"/);
   assert.match(html, /id="testModeDirectLoginBadge"/);
   assert.match(html, /id="testModeMaintenanceMessage"/);
   assert.match(html, /id="testModeAddAccountCount"/);
-  assert.match(html, /test-mode\.js\?v=test-mode-direct-login-20260920-1/);
+  assert.match(html, /test-mode\.js\?v=maintenance-gates-20260920-1/);
   assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-2/);
   assert.match(app, /switchPanel\('testMode'\)/);
   assert.match(testMode, /admin\.test-mode\.save/);
   assert.match(testMode, /admin\.test-mode\.bootstrap/);
   assert.doesNotMatch(testMode, /allowAdminUserLogin|testModeAdminLogin/);
-  assert.match(testMode, /測試帳號：可直接登入/);
+  assert.match(testMode, /PC 測試登入：可用/);
+  assert.match(testMode, /maintenanceEnabled/);
   assert.match(html, /data-test-account-count="5"/);
   assert.match(testMode, /test-account-avatar/);
 });
@@ -39,7 +42,7 @@ test('all member-facing surfaces load the direct test-account client before app 
     'booking/index.html',
   ]) {
     const html = read(entry);
-    assert.match(html, /test-mode-client\.js\?v=test-mode-direct-login-20260920-1/, entry);
+    assert.match(html, /test-mode-client\.js\?v=maintenance-gates-20260920-1/, entry);
     assert.match(html, /test-mode\.css\?v=test-mode-20260920-1/, entry);
   }
 
@@ -48,7 +51,10 @@ test('all member-facing surfaces load the direct test-account client before app 
   assert.match(client, /action: 'test-mode\.accounts'/);
   assert.match(client, /action: 'test-mode\.login'/);
   assert.doesNotMatch(client, /allowAdminUserLogin|ADMIN_REQUIRED/);
-  assert.match(client, /selector\(accounts, mode\.maintenanceMessage\)/);
+  assert.match(client, /mode\.maintenanceEnabled/);
+  assert.match(client, /isMobileDevice\(\)/);
+  assert.match(client, /selector\(accounts\)/);
+  assert.doesNotMatch(client, /selector\(accounts, mode\.maintenanceMessage\)/);
   assert.match(core, /TestModeClient\.prepare/);
   assert.match(core, /TestModeClient\.payload/);
   assert.match(core, /TestModeClient\.clearSession/);
@@ -61,7 +67,9 @@ test('direct test login is server-side restricted to active test accounts', () =
   const adminAuthCall = api.indexOf('const identity = await verifyLineIdToken');
   assert.ok(api.indexOf('if (action === "test-mode.accounts")') < adminAuthCall);
   assert.ok(api.indexOf('if (action === "test-mode.login")') < adminAuthCall);
-  assert.match(api, /await requireTestModeEnabled\(supabase\)/);
+  assert.match(api, /requireTestModeEnabled\(supabase\)/);
+  assert.match(api, /isMobileRequest\(request\)/);
+  assert.match(api, /maintenance_enabled/);
   assert.match(api, /member\.is_test_account !== true/);
   assert.match(api, /member\.status !== "active"/);
   assert.match(api, /member\.membership_status !== "active"/);
@@ -83,6 +91,7 @@ test('test sessions are short-lived, hashed at rest and support direct sessions'
 
   assert.match(auth, /member\.is_test_account !== true/);
   assert.match(auth, /SYSTEM_MAINTENANCE/);
+  assert.match(auth, /maintenance_enabled/);
   assert.doesNotMatch(auth, /admin_line_user_id|ADMIN_REQUIRED|TEST_ADMIN_DISABLED/);
 
   assert.match(schema, /is_test_account boolean not null default false/);
@@ -145,6 +154,7 @@ test('test account creation remains admin-only and transactional', () => {
   assert.match(rpc, /from public, anon, authenticated/);
   assert.match(rpc, /grant execute on function public\.admin_save_test_mode/);
   assert.match(rpc, /to service_role/);
-  assert.match(api, /p_allow_admin_user_login: true/);
+  assert.match(api, /admin_save_test_mode_v2/);
+  assert.match(api, /p_maintenance_enabled: asBoolean\(body\.maintenanceEnabled\)/);
   assert.match(api, /authorizeAdmin\(supabase, identity\)/);
 });

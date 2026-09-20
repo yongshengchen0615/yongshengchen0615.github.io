@@ -100,7 +100,19 @@
     }
   }
 
-  function selector(accounts, maintenanceMessage) {
+  function maintenanceError(message) {
+    return clientError('SYSTEM_MAINTENANCE', String(message || '').trim() || '系統維護中，請稍後再試。', 503);
+  }
+
+  function isMobileDevice() {
+    const uaData = navigator.userAgentData;
+    if (uaData && typeof uaData.mobile === 'boolean') return uaData.mobile;
+    const ua = String(navigator.userAgent || '');
+    if (/Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua)) return true;
+    return String(navigator.platform || '') === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1;
+  }
+
+  function selector(accounts) {
     return new Promise((resolve) => {
       const existing = document.getElementById('testModeAccountModal');
       if (existing) existing.remove();
@@ -124,7 +136,7 @@
       title.textContent = '選擇測試帳號';
 
       const description = document.createElement('p');
-      description.textContent = String(maintenanceMessage || '').trim() || '目前為測試模式。請直接選擇要登入的虛擬會員帳號。';
+      description.textContent = '目前為測試模式。請直接選擇要登入的虛擬會員帳號。';
 
       const label = document.createElement('label');
       label.className = 'test-mode-field';
@@ -184,9 +196,17 @@
     }
 
     const mode = await status(config);
+    if (mode.maintenanceEnabled) {
+      clearSession();
+      throw maintenanceError(mode.maintenanceMessage);
+    }
     if (!mode.enabled) {
       clearSession();
       return { idToken: await normalSignIn(), testSessionToken: '', testAccount: null };
+    }
+    if (isMobileDevice()) {
+      clearSession();
+      throw maintenanceError(mode.maintenanceMessage);
     }
 
     const existing = await validateStoredSession(config);
@@ -210,7 +230,7 @@
       throw clientError('NO_TEST_ACCOUNTS', '目前尚未建立可登入的測試帳號。', 409);
     }
 
-    const selection = await selector(accounts, mode.maintenanceMessage);
+    const selection = await selector(accounts);
     try {
       const login = await post(config, {
         action: 'test-mode.login',
@@ -242,6 +262,7 @@
     payload,
     getSessionToken,
     clearSession,
-    status
+    status,
+    isMobileDevice
   });
 })();

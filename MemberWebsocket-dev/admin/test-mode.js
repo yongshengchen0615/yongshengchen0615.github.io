@@ -7,11 +7,11 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     [
-      'testModeTab', 'testModePanel', 'testModeForm', 'testModeEnabled',
+      'testModeTab', 'testModePanel', 'testModeForm', 'systemMaintenanceEnabled', 'testModeEnabled',
       'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'testModeFormMessage',
       'testModeAccountCount', 'testModeAccountList', 'testModeAccountEmpty',
-      'testModeStatusBadge', 'testModeDirectLoginBadge'
+      'systemMaintenanceBadge', 'testModeStatusBadge', 'testModeDirectLoginBadge'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
     if (!els.testModeTab || !els.testModeForm) return;
@@ -96,6 +96,7 @@
     try {
       const data = await request('admin.test-mode.save', {
         enabled: els.testModeEnabled.checked,
+        maintenanceEnabled: els.systemMaintenanceEnabled.checked,
         maintenanceMessage,
         addAccountCount
       });
@@ -114,7 +115,9 @@
     const settings = data && data.settings && typeof data.settings === 'object' ? data.settings : {};
     const accounts = Array.isArray(data && data.accounts) ? data.accounts : [];
     const enabled = Boolean(settings.enabled);
+    const maintenanceEnabled = Boolean(settings.maintenanceEnabled);
 
+    els.systemMaintenanceEnabled.checked = maintenanceEnabled;
     els.testModeEnabled.checked = enabled;
     els.testModeMaintenanceMessage.value = String(settings.maintenanceMessage || '');
     els.testModeAccountCount.textContent = accounts.length + ' 個';
@@ -122,14 +125,20 @@
     els.testModeAccountEmpty.classList.toggle('hidden', accounts.length !== 0);
 
     updateStatusBadge(
+      els.systemMaintenanceBadge,
+      maintenanceEnabled ? '系統維護：啟用中' : '系統維護：未啟用',
+      maintenanceEnabled ? 'is-warning' : 'is-off'
+    );
+    updateStatusBadge(
       els.testModeStatusBadge,
       enabled ? '測試模式：啟用中' : '測試模式：未啟用',
       enabled ? 'is-warning' : 'is-off'
     );
+    const pcLoginAvailable = enabled && !maintenanceEnabled;
     updateStatusBadge(
       els.testModeDirectLoginBadge,
-      enabled ? '測試帳號：可直接登入' : '測試帳號：隨模式停用',
-      enabled ? 'is-active' : 'is-off'
+      pcLoginAvailable ? 'PC 測試登入：可用' : maintenanceEnabled ? 'PC 測試登入：系統維護中' : 'PC 測試登入：停用',
+      pcLoginAvailable ? 'is-active' : maintenanceEnabled ? 'is-warning' : 'is-off'
     );
   }
 
@@ -171,6 +180,7 @@
 
   function setBusy(busy) {
     els.saveTestModeButton.disabled = busy;
+    els.systemMaintenanceEnabled.disabled = busy;
     els.testModeEnabled.disabled = busy;
     els.testModeMaintenanceMessage.disabled = busy;
     els.testModeAddAccountCount.disabled = busy;

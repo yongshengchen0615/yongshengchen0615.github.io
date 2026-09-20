@@ -916,11 +916,11 @@ Deno.serve(async (request: Request) => {
     const supabase = dbClient();
     if (clientType === "member") {
       const mode = await supabase.from("test_mode_settings")
-        .select("enabled,maintenance_message")
+        .select("enabled,maintenance_enabled,maintenance_message")
         .eq("id", true)
         .maybeSingle();
       if (mode.error) throw new ApiError(503, "TEST_MODE_CHECK_FAILED", "目前無法確認系統維護狀態。");
-      if (mode.data?.enabled && !testSessionToken) {
+      if (mode.data?.maintenance_enabled || (mode.data?.enabled && !testSessionToken)) {
         throw new ApiError(503, "SYSTEM_MAINTENANCE", asText(mode.data.maintenance_message, 500) || "系統維護中，請稍後再試。");
       }
     }
