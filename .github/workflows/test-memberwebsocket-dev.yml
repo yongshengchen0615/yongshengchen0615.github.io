@@ -124,7 +124,8 @@ jobs:
           grep -q 'member-ui.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'app.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'group-booking.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'common.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'common.js?v=member-presence-20260920-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'liff-fresh-login.js?v=member-presence-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'id="bookingNoticeModal"' MemberWebsocket-dev/booking/index.html
           grep -q 'confirmBookingNoticeButton' MemberWebsocket-dev/booking/index.html
           grep -q 'function showNotice(message, options = {})' MemberWebsocket-dev/booking/common.js
