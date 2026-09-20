@@ -477,6 +477,50 @@ async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, q
   return { members, memberPage: { page: Math.min(safePage,totalPages), pageSize: safePageSize, total, totalPages, query: normalizedQuery } };
 }
 
+async function memberPresenceForLineUserIds(supabase: SupabaseClient, lineUserIds: string[]): Promise<Json> {
+  const normalized = [...new Set(lineUserIds.map((value) => asText(value,120)).filter(Boolean))];
+  if (normalized.length > 100) throw new ApiError(400,"INVALID_MEMBER_PRESENCE_REQUEST","一次最多查詢 100 位會員上線狀態。");
+  if (!normalized.length) return { members:[],onlineWindowMs:PRESENCE_ONLINE_WINDOW_MS };
+
+  const membersResult = await supabase.from("members")
+    .select("id,line_user_id")
+    .eq("is_test_account",false)
+    .in("line_user_id",normalized);
+  if (membersResult.error) throw mapDatabaseError(membersResult.error);
+  const memberRows = membersResult.data || [];
+  const memberIds = memberRows.map((row:any) => row.id);
+  const cutoff = new Date(Date.now() - PRESENCE_ONLINE_WINDOW_MS).toISOString();
+  const presenceResult = memberIds.length
+    ? await supabase.from("member_presence_sessions")
+        .select("member_id,surface,last_seen_at")
+        .in("member_id",memberIds)
+        .is("offline_at",null)
+        .gte("last_seen_at",cutoff)
+        .order("last_seen_at",{ ascending:false })
+    : { data:[],error:null };
+  if (presenceResult.error) throw mapDatabaseError(presenceResult.error);
+
+  const stateByMember = new Map<string,{lastSeenAt:string;surfaces:Set<string>}>();
+  for (const row of presenceResult.data || []) {
+    const current = stateByMember.get(row.member_id) || { lastSeenAt:"",surfaces:new Set<string>() };
+    if (!current.lastSeenAt || String(row.last_seen_at) > current.lastSeenAt) current.lastSeenAt = String(row.last_seen_at || "");
+    if (row.surface) current.surfaces.add(String(row.surface));
+    stateByMember.set(row.member_id,current);
+  }
+  return {
+    members:memberRows.map((row:any) => {
+      const current = stateByMember.get(row.id);
+      return {
+        lineUserId:row.line_user_id,
+        isOnline:Boolean(current),
+        lastSeenAt:current?.lastSeenAt || "",
+        onlineSurfaces:current ? [...current.surfaces] : [],
+      };
+    }),
+    onlineWindowMs:PRESENCE_ONLINE_WINDOW_MS,
+  };
+}
+
 
 async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string): Promise<Json> {
   const memberResult = await supabase.from("members")
@@ -1464,11 +1508,11 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
         updated_at:now,
       },{ onConflict:"member_id,session_id" });
       if (upsert.error) throw mapDatabaseError(upsert.error);
+      const staleCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       void supabase.from("member_presence_sessions")
         .delete()
         .eq("member_id",member.id)
-        .not("offline_at","is",null)
-        .lt("offline_at",new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
+        .lt("last_seen_at",staleCutoff);
     } else if (presence.event === "heartbeat") {
       const heartbeat = await supabase.from("member_presence_sessions")
         .update({ surface:presence.surface,last_seen_at:now,updated_at:now })
@@ -1628,6 +1672,10 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   }
   if (action === "admin.members.list") {
     return await membersPage(supabase,Number(body.memberPage || 1),Number(body.memberPageSize || 100),asText(body.memberQuery,100));
+  }
+  if (action === "admin.members.presence.list") {
+    const lineUserIds = Array.isArray(body.lineUserIds) ? body.lineUserIds.map((value) => asText(value,120)).filter(Boolean) : [];
+    return await memberPresenceForLineUserIds(supabase,lineUserIds);
   }
   if (action === "admin.member-records.list") {
     return await adminMemberRecords(supabase,requireText(body.lineUserId,"會員識別",120));
@@ -1890,7 +1938,8 @@ async function handleRequest(request: Request): Promise<Response> {
         .eq("id",true)
         .maybeSingle();
       if (mode.error) throw new ApiError(503,"TEST_MODE_CHECK_FAILED","目前無法確認系統維護狀態。");
-      if (mode.data?.maintenance_enabled && !testSessionToken && presenceActionInfo(action)?.event !== "offline") {
+      const maintenancePresenceEvent = presenceActionInfo(action)?.event;
+      if (mode.data?.maintenance_enabled && !testSessionToken && maintenancePresenceEvent !== "offline" && maintenancePresenceEvent !== "heartbeat") {
         throw new ApiError(503,"SYSTEM_MAINTENANCE",asText(mode.data.maintenance_message,500) || "系統維護中，請稍後再試。");
       }
     }
