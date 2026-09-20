@@ -765,7 +765,7 @@
             return `${item.title || '預約項目'}${qty > 1 ? ' × ' + qty : ''}${suffix ? '（' + suffix + '）' : ''}`;
           });
           const tech = participant.technicianName ? ` · 技師：${participant.technicianName}` : '';
-          details.push(`第 ${Number(participant.position || 0) + 1} 位：${items.join('、') || '未取得項目'}${tech}`);
+          details.push(`第 ${Math.max(1, Number(participant.position || 1))} 位：${items.join('、') || '未取得項目'}${tech}`);
         });
       } else {
         if (record.technicianName) details.push(`技師：${record.technicianName}`);
