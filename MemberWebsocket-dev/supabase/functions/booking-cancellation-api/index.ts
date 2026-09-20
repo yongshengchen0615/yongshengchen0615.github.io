@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -356,8 +357,21 @@ Deno.serve(async (request: Request) => {
     if (!(["member", "admin"] as string[]).includes(clientType)) throw new ApiError(400, "INVALID_CLIENT_TYPE", "不支援的操作端。");
     if (!action) throw new ApiError(400, "ACTION_REQUIRED", "缺少操作名稱。");
     if ((clientType === "member" && !action.startsWith("member.")) || (clientType === "admin" && !action.startsWith("admin."))) throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
-    const identity = await verifyLineIdToken(asText(body.idToken, 5000), clientType);
     const supabase = dbClient();
+    let identity: Identity;
+    if (clientType === "member") {
+      try {
+        const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken, 200));
+        identity = testIdentity
+          ? { lineUserId:testIdentity.lineUserId, displayName:testIdentity.displayName }
+          : await verifyLineIdToken(asText(body.idToken, 5000), clientType);
+      } catch (error) {
+        if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
+        throw error;
+      }
+    } else {
+      identity = await verifyLineIdToken(asText(body.idToken, 5000), clientType);
+    }
     await consumeRateLimit(supabase, identity, action);
     const data = await route(supabase, identity, clientType, action, body);
     return response(origin, { ok: true, status: 200, data });
