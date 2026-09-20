@@ -10,6 +10,7 @@
     savingTechnician: false,
     technicianTab: 'active',
     restoringTechnicianId: '',
+    disablingTechnicianId: '',
     initialized: false,
   };
 
@@ -409,16 +410,28 @@
       edit.addEventListener('click', () => openEditTechnicianModal(technician));
       row.append(edit);
 
-      if (!technician.isActive) {
-        const restore = document.createElement('button');
-        restore.type = 'button';
-        restore.className = 'button button-outline booking-admin-technician-restore';
-        restore.textContent = state.restoringTechnicianId === technician.technicianId ? '恢復中…' : '恢復公開';
-        restore.disabled = Boolean(state.restoringTechnicianId);
-        restore.addEventListener('click', () => restoreTechnician(technician, restore));
-        row.append(restore);
+      const statusBusy = Boolean(state.restoringTechnicianId || state.disablingTechnicianId);
+      const statusAction = document.createElement('button');
+      statusAction.type = 'button';
+      statusAction.className = 'button button-outline booking-admin-technician-status-action';
+
+      if (technician.isActive) {
+        const isPrimary = technician.technicianId === primaryId;
+        statusAction.textContent = state.disablingTechnicianId === technician.technicianId ? '停用中…' : '停用';
+        statusAction.disabled = statusBusy || isPrimary;
+        if (isPrimary) {
+          statusAction.title = '主要技師需先改指定其他技師後才能停用';
+          statusAction.setAttribute('aria-label', `主要技師 ${technician.name || ''} 需先更換主要技師才能停用`);
+        } else {
+          statusAction.addEventListener('click', () => disableTechnician(technician, statusAction));
+        }
+      } else {
+        statusAction.textContent = state.restoringTechnicianId === technician.technicianId ? '恢復中…' : '恢復公開';
+        statusAction.disabled = statusBusy;
+        statusAction.addEventListener('click', () => restoreTechnician(technician, statusAction));
       }
 
+      row.append(statusAction);
       list.append(row);
     });
   }
@@ -428,10 +441,57 @@
     renderTechnicians();
   }
 
+  async function disableTechnician(technician, button) {
+    const technicianId = String(technician?.technicianId || '');
+    const expectedUpdatedAt = String(technician?.updatedAt || '');
+    const primaryId = String(state.data?.settings?.primaryTechnicianId || '');
+    if (!technicianId || !expectedUpdatedAt || state.disablingTechnicianId || state.restoringTechnicianId) return;
+    if (technicianId === primaryId) {
+      showMessage('主要技師不可直接停用，請先指定其他主要技師。', 'error');
+      return;
+    }
+
+    state.disablingTechnicianId = technicianId;
+    setButtonBusy(button, true, '停用');
+    if (button) button.textContent = '停用中…';
+    try {
+      const result = await request('admin.booking.resources.technician.save', {
+        technicianId,
+        expectedUpdatedAt,
+        name: String(technician.name || '').trim(),
+        sortOrder: Number(technician.sortOrder) || 0,
+        isActive: false,
+      }, true);
+      const saved = result.technician;
+      if (!saved?.technicianId) throw clientError('API_RESPONSE_ERROR', '無法確認技師停用結果。');
+
+      const rows = Array.isArray(state.data?.technicians) ? state.data.technicians : [];
+      const index = rows.findIndex((item) => item.technicianId === saved.technicianId);
+      if (index >= 0) rows[index] = saved; else rows.push(saved);
+      rows.sort(sortTechnicians);
+      state.data.technicians = rows;
+      renderPrimaryOptions();
+      renderTechnicians();
+      showMessage(`技師「${saved.name || technician.name || ''}」已停用，已移至「已停用」。`, 'success');
+      window.dispatchEvent(new CustomEvent('booking:technician-disabled', { detail: { technicianId } }));
+    } catch (error) {
+      showMessage(
+        error?.code === 'CONFLICT'
+          ? '技師資料已被其他管理者更新，已重新載入最新資料。'
+          : error?.message || '技師停用失敗。',
+        'error',
+      );
+      if (error?.code === 'CONFLICT') await refresh(false);
+    } finally {
+      state.disablingTechnicianId = '';
+      renderTechnicians();
+    }
+  }
+
   async function restoreTechnician(technician, button) {
     const technicianId = String(technician?.technicianId || '');
     const expectedUpdatedAt = String(technician?.updatedAt || '');
-    if (!technicianId || !expectedUpdatedAt || state.restoringTechnicianId) return;
+    if (!technicianId || !expectedUpdatedAt || state.restoringTechnicianId || state.disablingTechnicianId) return;
 
     state.restoringTechnicianId = technicianId;
     setButtonBusy(button, true, '恢復公開');
