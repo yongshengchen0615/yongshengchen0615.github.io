@@ -193,7 +193,14 @@ function notificationMode(value: unknown): NotificationMode {
 async function handleGrant(supabase: SupabaseClient, identity: { lineUserId:string;displayName:string }, body: Json): Promise<Json> {
   const lineUserId = requireText(body.lineUserId,"會員識別",120);
   const req = requireText(body.requestId,"操作識別碼",100);
-  const mode = notificationMode(body.notificationMode);
+  const requestedMode = notificationMode(body.notificationMode);
+
+  // Test accounts use the exact same grant path as real members; only LINE side effects are disabled.
+  const memberResult = await supabase.from("members").select("*").eq("line_user_id",lineUserId).single();
+  if (memberResult.error) throw mapError(memberResult.error);
+  const member:any = memberResult.data;
+  const mode: NotificationMode = member.is_test_account === true ? "none" : requestedMode;
+
   const messagePresetId = asText(body.messagePresetId,120);
   let presetMessage = "";
   if (mode !== "none" && messagePresetId) {
@@ -219,9 +226,6 @@ async function handleGrant(supabase: SupabaseClient, identity: { lineUserId:stri
   if (grant.error) throw mapError(grant.error);
   const grantResult:any = grant.data && typeof grant.data === "object" ? grant.data : {};
 
-  const memberResult = await supabase.from("members").select("*").eq("line_user_id",lineUserId).single();
-  if (memberResult.error) throw mapError(memberResult.error);
-  const member:any = memberResult.data;
   const service = await supabase.from("service_time_entries").select("minutes").eq("member_id",member.id);
   if (service.error) throw mapError(service.error);
   const totalMinutes = (service.data || []).reduce((sum,row:any) => sum + Number(row.minutes || 0),0);
