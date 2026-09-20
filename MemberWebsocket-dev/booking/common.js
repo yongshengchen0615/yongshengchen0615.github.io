@@ -109,7 +109,10 @@
     if (clientType !== 'booking') return;
     if (presenceContext && !presenceContext.closed) {
       if (presenceContext.onlineRecorded) return;
-      const response = await sendPresence(presenceContext, 'online', reason);
+      const response = await Promise.race([
+        sendPresence(presenceContext, 'online', reason),
+        new Promise((resolve) => window.setTimeout(() => resolve(null), 1200))
+      ]);
       presenceContext.onlineRecorded = Boolean(response && response.ok);
       return;
     }
@@ -122,7 +125,10 @@
     };
     presenceContext = context;
     bindPresenceLifecycle();
-    const response = await sendPresence(context, 'online', reason);
+    const response = await Promise.race([
+      sendPresence(context, 'online', reason),
+      new Promise((resolve) => window.setTimeout(() => resolve(null), 1200))
+    ]);
     context.onlineRecorded = Boolean(response && response.ok);
   }
 
