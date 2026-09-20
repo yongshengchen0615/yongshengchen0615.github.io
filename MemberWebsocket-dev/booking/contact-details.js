@@ -112,7 +112,9 @@
         headers: { 'Content-Type': 'application/json', apikey: String(config.supabasePublishableKey || '') },
         cache: 'no-store',
         signal: controller.signal,
-        body: JSON.stringify(body),
+        body: JSON.stringify(window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+          ? window.TestModeClient.payload(body)
+          : body),
       });
       let data;
       try { data = await response.json(); }
