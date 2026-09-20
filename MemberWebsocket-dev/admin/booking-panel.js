@@ -28,6 +28,33 @@
     document.head.appendChild(script);
   });
 
+  // Backward compatibility for the legacy /booking/admin/ redirect only.
+  // Normal tab navigation no longer writes or depends on URL hashes.
+  const legacyBookingRouteRequested = window.location.hash === '#booking';
+  if (legacyBookingRouteRequested) {
+    window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
+  }
+
+  function openLegacyBookingRouteWhenReady() {
+    if (!legacyBookingRouteRequested) return;
+    let attempts = 0;
+    const tryOpen = () => {
+      attempts += 1;
+      const adminView = document.getElementById('adminView');
+      const bookingTab = document.getElementById('bookingTab');
+      const authenticated = Boolean(window.MemberAdminSession?.isReady?.());
+      if (adminView && bookingTab && !adminView.classList.contains('hidden') && authenticated) {
+        bookingTab.click();
+        return true;
+      }
+      return attempts >= 300;
+    };
+    if (tryOpen()) return;
+    const timer = window.setInterval(() => {
+      if (tryOpen()) window.clearInterval(timer);
+    }, 100);
+  }
+
   loadSharedResponsive();
   loadStyle('booking-panel-responsive.css', 'booking-settings-layout-20260918-1');
   loadStyle('booking-summary.css', 'booking-summary-20260918-participants-1');
@@ -65,6 +92,9 @@
         }
       });
       return load('booking-panel-core.js', 'booking-tab-navigation-20260920-1');
+    })
+    .then(() => {
+      openLegacyBookingRouteWhenReady();
     })
     .catch((error) => console.error('booking admin core load failed', error));
 })();
