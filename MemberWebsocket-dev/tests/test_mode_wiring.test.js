@@ -247,3 +247,11 @@ test('legacy deleted test-account traces are purged once', () => {
   assert.match(migration, /delete from public\.audit_logs/);
   assert.match(migration, /test_mode\.accounts\.batch_delete/);
 });
+
+
+test('test-account purge has least-privilege access to booking notification outbox', () => {
+  const migration = read('supabase/migrations/20260920134516_grant_test_account_purge_notification_access.sql');
+  assert.match(migration, /grant usage on schema booking_notifications to service_role/);
+  assert.match(migration, /grant select, delete on table booking_notifications\.outbox to service_role/);
+  assert.doesNotMatch(migration, /to anon|to authenticated|to public/);
+});
