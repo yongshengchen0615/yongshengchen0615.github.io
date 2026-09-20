@@ -240,10 +240,10 @@
     if (presenceContext && !presenceContext.closed && presenceContext.surface === surface) {
       if (presenceContext.onlineRecorded) return;
       try {
-        await sendRequest(config, definition.clientType, idToken, definition.prefix + '.online', {
+        await withTimeout(sendRequest(config, definition.clientType, idToken, definition.prefix + '.online', {
           sessionId: presenceContext.sessionId,
           reason
-        });
+        }), 1200, '上線紀錄逾時。');
         presenceContext.onlineRecorded = true;
       } catch (error) {
         console.warn('presence online record failed', error);
@@ -264,10 +264,10 @@
     presenceContext = context;
     bindPresenceLifecycle();
     try {
-      await sendRequest(config, context.clientType, context.idToken, context.prefix + '.online', {
+      await withTimeout(sendRequest(config, context.clientType, context.idToken, context.prefix + '.online', {
         sessionId: context.sessionId,
         reason
-      });
+      }), 1200, '上線紀錄逾時。');
       context.onlineRecorded = true;
     } catch (error) {
       console.warn('presence online record failed', error);
