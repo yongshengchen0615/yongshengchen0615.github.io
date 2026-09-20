@@ -196,15 +196,20 @@
     }
 
     const mode = await status(config);
-    if (mode.maintenanceEnabled) {
-      clearSession();
-      throw maintenanceError(mode.maintenanceMessage);
-    }
-    if (!mode.enabled) {
+    if (!mode.maintenanceEnabled) {
       clearSession();
       return { idToken: await normalSignIn(), testSessionToken: '', testAccount: null };
     }
-    if (isMobileDevice()) {
+    if (!mode.enabled) {
+      clearSession();
+      throw maintenanceError(mode.maintenanceMessage);
+    }
+
+    const mobile = isMobileDevice();
+    const deviceAllowed = mobile
+      ? Boolean(mode.allowMobileTestLogin)
+      : Boolean(mode.allowPcTestLogin);
+    if (!deviceAllowed) {
       clearSession();
       throw maintenanceError(mode.maintenanceMessage);
     }

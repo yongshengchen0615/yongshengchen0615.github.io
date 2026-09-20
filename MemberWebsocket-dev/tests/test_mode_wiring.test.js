@@ -15,19 +15,25 @@ test('admin exposes separate system maintenance and test mode controls', () => {
   assert.match(html, /id="testModePanel"/);
   assert.match(html, /id="systemMaintenanceEnabled"/);
   assert.match(html, /id="testModeEnabled"/);
+  assert.match(html, /id="testModePcLoginEnabled"/);
+  assert.match(html, /id="testModeMobileLoginEnabled"/);
   assert.doesNotMatch(html, /id="testModeAdminLoginEnabled"/);
   assert.doesNotMatch(html, /允許管理員登入用戶端/);
   assert.match(html, /id="systemMaintenanceBadge"/);
-  assert.match(html, /id="testModeDirectLoginBadge"/);
+  assert.match(html, /id="testModePcLoginBadge"/);
+  assert.match(html, /id="testModeMobileLoginBadge"/);
   assert.match(html, /id="testModeMaintenanceMessage"/);
   assert.match(html, /id="testModeAddAccountCount"/);
-  assert.match(html, /test-mode\.js\?v=maintenance-gates-20260920-1/);
+  assert.match(html, /test-mode\.js\?v=test-device-login-20260920-1/);
   assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-2/);
   assert.match(app, /switchPanel\('testMode'\)/);
   assert.match(testMode, /admin\.test-mode\.save/);
   assert.match(testMode, /admin\.test-mode\.bootstrap/);
   assert.doesNotMatch(testMode, /allowAdminUserLogin|testModeAdminLogin/);
   assert.match(testMode, /PC 測試登入：可用/);
+  assert.match(testMode, /行動裝置測試登入：可用/);
+  assert.match(testMode, /allowPcTestLogin/);
+  assert.match(testMode, /allowMobileTestLogin/);
   assert.match(testMode, /maintenanceEnabled/);
   assert.match(html, /data-test-account-count="5"/);
   assert.match(testMode, /test-account-avatar/);
@@ -42,7 +48,7 @@ test('all member-facing surfaces load the direct test-account client before app 
     'booking/index.html',
   ]) {
     const html = read(entry);
-    assert.match(html, /test-mode-client\.js\?v=maintenance-gates-20260920-1/, entry);
+    assert.match(html, /test-mode-client\.js\?v=test-device-login-20260920-1/, entry);
     assert.match(html, /test-mode\.css\?v=test-mode-20260920-1/, entry);
   }
 
@@ -51,7 +57,9 @@ test('all member-facing surfaces load the direct test-account client before app 
   assert.match(client, /action: 'test-mode\.accounts'/);
   assert.match(client, /action: 'test-mode\.login'/);
   assert.doesNotMatch(client, /allowAdminUserLogin|ADMIN_REQUIRED/);
-  assert.match(client, /mode\.maintenanceEnabled/);
+  assert.match(client, /if \(!mode\.maintenanceEnabled\)/);
+  assert.match(client, /mode\.allowMobileTestLogin/);
+  assert.match(client, /mode\.allowPcTestLogin/);
   assert.match(client, /isMobileDevice\(\)/);
   assert.match(client, /selector\(accounts\)/);
   assert.doesNotMatch(client, /selector\(accounts, mode\.maintenanceMessage\)/);
@@ -67,8 +75,10 @@ test('direct test login is server-side restricted to active test accounts', () =
   const adminAuthCall = api.indexOf('const identity = await verifyLineIdToken');
   assert.ok(api.indexOf('if (action === "test-mode.accounts")') < adminAuthCall);
   assert.ok(api.indexOf('if (action === "test-mode.login")') < adminAuthCall);
-  assert.match(api, /requireTestModeEnabled\(supabase\)/);
-  assert.match(api, /isMobileRequest\(request\)/);
+  assert.match(api, /requireTestLoginEnabled\(supabase, request\)/);
+  assert.match(api, /deviceClassForRequest\(request\)/);
+  assert.match(api, /allow_pc_test_login/);
+  assert.match(api, /allow_mobile_test_login/);
   assert.match(api, /maintenance_enabled/);
   assert.match(api, /member\.is_test_account !== true/);
   assert.match(api, /member\.status !== "active"/);
@@ -82,16 +92,21 @@ test('test sessions are short-lived, hashed at rest and support direct sessions'
   const auth = read('supabase/functions/_shared/test-mode-auth.ts');
   const schema = read('supabase/migrations/20260920054312_test_mode_virtual_accounts.sql');
   const directMigration = read('supabase/migrations/20260920081507_test_mode_direct_login_sessions.sql');
+  const deviceMigration = read('supabase/migrations/20260920092340_bind_test_sessions_to_device_class.sql');
 
   assert.match(api, /const TEST_SESSION_HOURS = 2/);
   assert.match(api, /token_hash: tokenHash/);
   assert.match(api, /sha256Hex\(token\)/);
   assert.doesNotMatch(api, /test_login_sessions"\)\.insert\(\{[^}]*\btoken:/s);
   assert.doesNotMatch(api, /admin_line_user_id: identity\.lineUserId/);
+  assert.match(api, /device_class: deviceClass/);
 
   assert.match(auth, /member\.is_test_account !== true/);
   assert.match(auth, /SYSTEM_MAINTENANCE/);
   assert.match(auth, /maintenance_enabled/);
+  assert.match(auth, /allow_pc_test_login/);
+  assert.match(auth, /allow_mobile_test_login/);
+  assert.match(auth, /device_class/);
   assert.doesNotMatch(auth, /admin_line_user_id|ADMIN_REQUIRED|TEST_ADMIN_DISABLED/);
 
   assert.match(schema, /is_test_account boolean not null default false/);
@@ -99,6 +114,8 @@ test('test sessions are short-lived, hashed at rest and support direct sessions'
   assert.match(schema, /revoke all on table public\.test_login_sessions from public, anon, authenticated/);
   assert.match(schema, /grant select, insert, update, delete on table public\.test_login_sessions to service_role/);
   assert.match(directMigration, /alter column admin_line_user_id drop not null/);
+  assert.match(deviceMigration, /add column if not exists device_class text/);
+  assert.match(deviceMigration, /device_class in \('pc', 'mobile'\)/);
 });
 
 test('test members stay out of formal member lists and KPI counts', () => {
@@ -154,7 +171,9 @@ test('test account creation remains admin-only and transactional', () => {
   assert.match(rpc, /from public, anon, authenticated/);
   assert.match(rpc, /grant execute on function public\.admin_save_test_mode/);
   assert.match(rpc, /to service_role/);
-  assert.match(api, /admin_save_test_mode_v2/);
+  assert.match(api, /admin_save_test_mode_v3/);
   assert.match(api, /p_maintenance_enabled: asBoolean\(body\.maintenanceEnabled\)/);
+  assert.match(api, /p_allow_pc_test_login: asBoolean\(body\.allowPcTestLogin\)/);
+  assert.match(api, /p_allow_mobile_test_login: asBoolean\(body\.allowMobileTestLogin\)/);
   assert.match(api, /authorizeAdmin\(supabase, identity\)/);
 });

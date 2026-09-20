@@ -8,10 +8,10 @@
   window.addEventListener('DOMContentLoaded', () => {
     [
       'testModeTab', 'testModePanel', 'testModeForm', 'systemMaintenanceEnabled', 'testModeEnabled',
-      'testModeMaintenanceMessage',
+      'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'testModeFormMessage',
       'testModeAccountCount', 'testModeAccountList', 'testModeAccountEmpty',
-      'systemMaintenanceBadge', 'testModeStatusBadge', 'testModeDirectLoginBadge'
+      'systemMaintenanceBadge', 'testModeStatusBadge', 'testModePcLoginBadge', 'testModeMobileLoginBadge'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
     if (!els.testModeTab || !els.testModeForm) return;
@@ -97,6 +97,8 @@
       const data = await request('admin.test-mode.save', {
         enabled: els.testModeEnabled.checked,
         maintenanceEnabled: els.systemMaintenanceEnabled.checked,
+        allowPcTestLogin: els.testModePcLoginEnabled.checked,
+        allowMobileTestLogin: els.testModeMobileLoginEnabled.checked,
         maintenanceMessage,
         addAccountCount
       });
@@ -116,9 +118,13 @@
     const accounts = Array.isArray(data && data.accounts) ? data.accounts : [];
     const enabled = Boolean(settings.enabled);
     const maintenanceEnabled = Boolean(settings.maintenanceEnabled);
+    const allowPcTestLogin = Boolean(settings.allowPcTestLogin);
+    const allowMobileTestLogin = Boolean(settings.allowMobileTestLogin);
 
     els.systemMaintenanceEnabled.checked = maintenanceEnabled;
     els.testModeEnabled.checked = enabled;
+    els.testModePcLoginEnabled.checked = allowPcTestLogin;
+    els.testModeMobileLoginEnabled.checked = allowMobileTestLogin;
     els.testModeMaintenanceMessage.value = String(settings.maintenanceMessage || '');
     els.testModeAccountCount.textContent = accounts.length + ' 個';
     els.testModeAccountList.replaceChildren(...accounts.map(renderAccount));
@@ -134,11 +140,17 @@
       enabled ? '測試模式：啟用中' : '測試模式：未啟用',
       enabled ? 'is-warning' : 'is-off'
     );
-    const pcLoginAvailable = enabled && !maintenanceEnabled;
+    const pcLoginAvailable = maintenanceEnabled && enabled && allowPcTestLogin;
+    const mobileLoginAvailable = maintenanceEnabled && enabled && allowMobileTestLogin;
     updateStatusBadge(
-      els.testModeDirectLoginBadge,
-      pcLoginAvailable ? 'PC 測試登入：可用' : maintenanceEnabled ? 'PC 測試登入：系統維護中' : 'PC 測試登入：停用',
-      pcLoginAvailable ? 'is-active' : maintenanceEnabled ? 'is-warning' : 'is-off'
+      els.testModePcLoginBadge,
+      pcLoginAvailable ? 'PC 測試登入：可用' : 'PC 測試登入：停用',
+      pcLoginAvailable ? 'is-active' : 'is-off'
+    );
+    updateStatusBadge(
+      els.testModeMobileLoginBadge,
+      mobileLoginAvailable ? '行動裝置測試登入：可用' : '行動裝置測試登入：停用',
+      mobileLoginAvailable ? 'is-active' : 'is-off'
     );
   }
 
@@ -182,6 +194,8 @@
     els.saveTestModeButton.disabled = busy;
     els.systemMaintenanceEnabled.disabled = busy;
     els.testModeEnabled.disabled = busy;
+    els.testModePcLoginEnabled.disabled = busy;
+    els.testModeMobileLoginEnabled.disabled = busy;
     els.testModeMaintenanceMessage.disabled = busy;
     els.testModeAddAccountCount.disabled = busy;
     document.querySelectorAll('[data-test-account-count]').forEach((button) => {
