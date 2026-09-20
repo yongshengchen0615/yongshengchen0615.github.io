@@ -40,3 +40,8 @@ test('member records use existing domain history without fabricating calendar vi
   assert.match(api, /calendarTracking:"linked_records_only"/);
   assert.match(html, /不記錄會員開啟或點擊日曆的瀏覽行為/);
 });
+
+test('booking participant positions remain one-based in record display', () => {
+  assert.match(app, /Math\.max\(1, Number\(participant\.position \|\| 1\)\)/);
+  assert.doesNotMatch(app, /Number\(participant\.position \|\| 0\) \+ 1/);
+});
