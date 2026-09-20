@@ -7,6 +7,8 @@
   let realtimeChannel = null;
   let publicNoticeClient = null;
   let publicNoticeSequence = 0;
+  let presenceContext = null;
+  let presenceHooksBound = false;
 
   function clientError(code, message, details = null) {
     const error = new Error(message);
@@ -38,7 +40,97 @@
     }
     const idToken = window.liff.getIDToken();
     if (!idToken) throw clientError('LIFF_ID_TOKEN_MISSING', '無法取得 LINE 登入憑證，請重新登入。');
+    if (!isAdmin) await startPresence(config, clientType, idToken);
     return idToken;
+  }
+
+  function createPresenceSessionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+      throw clientError('PRESENCE_ID_UNAVAILABLE', '瀏覽器無法建立上下線紀錄識別。');
+    }
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  function currentPresenceIdToken(context) {
+    try {
+      if (context && context.idToken && window.liff && window.liff.isLoggedIn() && typeof window.liff.getIDToken === 'function') {
+        return window.liff.getIDToken() || context.idToken;
+      }
+    } catch (_) {}
+    return String(context && context.idToken || '');
+  }
+
+  function bindPresenceLifecycle() {
+    if (presenceHooksBound) return;
+    presenceHooksBound = true;
+    window.addEventListener('pagehide', (event) => {
+      void stopPresence(event && event.persisted ? 'bfcache' : 'pagehide');
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (!event || !event.persisted || !presenceContext || !presenceContext.closed) return;
+      const previous = presenceContext;
+      presenceContext = null;
+      void startPresence(previous.config, 'booking', currentPresenceIdToken(previous), 'resume');
+    });
+  }
+
+  function presenceBody(context, event, reason) {
+    const payload = {
+      sessionId: context.sessionId,
+      reason,
+      action: 'user.booking.presence.' + event,
+      clientType: 'booking',
+      idToken: currentPresenceIdToken(context)
+    };
+    return window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+      ? window.TestModeClient.payload(payload)
+      : payload;
+  }
+
+  function sendPresence(context, event, reason) {
+    const endpoint = String(context.config.supabaseFunctionUrl || '').trim();
+    if (!endpoint) return Promise.resolve(null);
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': String(context.config.supabasePublishableKey)
+      },
+      cache: 'no-store',
+      keepalive: true,
+      body: JSON.stringify(presenceBody(context, event, reason))
+    }).catch(() => null);
+  }
+
+  async function startPresence(config, clientType, idToken, reason = 'signin') {
+    if (clientType !== 'booking') return;
+    if (presenceContext && !presenceContext.closed) {
+      if (presenceContext.onlineRecorded) return;
+      const response = await sendPresence(presenceContext, 'online', reason);
+      presenceContext.onlineRecorded = Boolean(response && response.ok);
+      return;
+    }
+    const context = {
+      config,
+      idToken: String(idToken || ''),
+      sessionId: createPresenceSessionId(),
+      onlineRecorded: false,
+      closed: false
+    };
+    presenceContext = context;
+    bindPresenceLifecycle();
+    const response = await sendPresence(context, 'online', reason);
+    context.onlineRecorded = Boolean(response && response.ok);
+  }
+
+  async function stopPresence(reason = 'pagehide') {
+    const context = presenceContext;
+    if (!context || context.closed) return;
+    context.closed = true;
+    await sendPresence(context, 'offline', reason);
   }
 
   function bookingNoticeElement() {
@@ -266,6 +358,10 @@
 
   async function logout() {
     try {
+      await Promise.race([
+        stopPresence('logout'),
+        new Promise((resolve) => window.setTimeout(resolve, 1200))
+      ]);
       if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
       if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
     } catch (_) {}
@@ -306,5 +402,5 @@
     return parsed.toISOString().slice(0, 10);
   }
 
-  window.BookingSystem = { loadConfig, signIn, request, memberProfile, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
+  window.BookingSystem = { loadConfig, signIn, startPresence, request, memberProfile, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
 })();
