@@ -152,12 +152,11 @@ async function authorizeAdmin(supabase: any, identity: Identity): Promise<any> {
 
 async function settings(supabase: any): Promise<any> {
   const result = await supabase.from("test_mode_settings")
-    .select("enabled,maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message,updated_by,updated_at")
+    .select("maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message,updated_by,updated_at")
     .eq("id", true)
     .maybeSingle();
-  if (result.error) throw new ApiError(503, "TEST_MODE_SETTINGS_UNAVAILABLE", "目前無法讀取測試模式設定。");
+  if (result.error) throw new ApiError(503, "TEST_MODE_SETTINGS_UNAVAILABLE", "目前無法讀取系統維護設定。");
   return result.data || {
-    enabled: false,
     maintenance_enabled: false,
     allow_pc_test_login: false,
     allow_mobile_test_login: false,
@@ -169,7 +168,6 @@ async function settings(supabase: any): Promise<any> {
 
 function settingsClient(row: any): Json {
   return {
-    enabled: Boolean(row?.enabled),
     maintenanceEnabled: Boolean(row?.maintenance_enabled),
     allowPcTestLogin: Boolean(row?.allow_pc_test_login),
     allowMobileTestLogin: Boolean(row?.allow_mobile_test_login),
@@ -266,10 +264,7 @@ function deviceClassForRequest(request: Request): "pc" | "mobile" {
 async function requireTestLoginEnabled(supabase: any, request: Request): Promise<{ row: any; deviceClass: "pc" | "mobile" }> {
   const row = await settings(supabase);
   if (!row.maintenance_enabled) {
-    throw new ApiError(403, "TEST_MODE_REQUIRES_MAINTENANCE", "測試帳號登入只在系統維護期間開放。");
-  }
-  if (!row.enabled) {
-    throw new ApiError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(row));
+    throw new ApiError(403, "TEST_LOGIN_REQUIRES_MAINTENANCE", "測試帳號登入只在系統維護期間開放。");
   }
   const deviceClass = deviceClassForRequest(request);
   const allowed = deviceClass === "mobile"
@@ -313,7 +308,6 @@ Deno.serve(async (request: Request) => {
       const row = await settings(supabase);
       return reply(origin, {
         ok: true, status: 200, data: {
-          enabled: Boolean(row.enabled),
           maintenanceEnabled: Boolean(row.maintenance_enabled),
           allowPcTestLogin: Boolean(row.allow_pc_test_login),
           allowMobileTestLogin: Boolean(row.allow_mobile_test_login),
@@ -406,20 +400,19 @@ Deno.serve(async (request: Request) => {
     await authorizeAdmin(supabase, identity);
 
     if (action === "admin.test-mode.bootstrap") {
-      if (clientType !== "admin") throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端操作測試模式設定。");
+      if (clientType !== "admin") throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端操作系統維護設定。");
       const [row, accounts] = await Promise.all([settings(supabase), testAccounts(supabase)]);
       return reply(origin, { ok: true, status: 200, data: { settings: settingsClient(row), accounts } });
     }
 
     if (action === "admin.test-mode.save") {
-      if (clientType !== "admin") throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端操作測試模式設定。");
+      if (clientType !== "admin") throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端操作系統維護設定。");
       const addAccountCount = asInteger(body.addAccountCount ?? 0);
       const maintenanceMessage = asText(body.maintenanceMessage, 501);
       if (maintenanceMessage.length > 500) {
         throw new ApiError(400, "INVALID_MAINTENANCE_MESSAGE", "系統維護訊息不可超過 500 字。");
       }
-      const rpc = await supabase.rpc("admin_save_test_mode_v3", {
-        p_test_mode_enabled: asBoolean(body.enabled),
+      const rpc = await supabase.rpc("admin_save_maintenance_test_access", {
         p_maintenance_enabled: asBoolean(body.maintenanceEnabled),
         p_allow_pc_test_login: asBoolean(body.allowPcTestLogin),
         p_allow_mobile_test_login: asBoolean(body.allowMobileTestLogin),
@@ -428,8 +421,7 @@ Deno.serve(async (request: Request) => {
         p_add_account_count: addAccountCount,
       });
       if (rpc.error) throw rpc.error;
-      await audit(supabase, identity, "test_mode.settings.update", "test_mode", "singleton", {
-        enabled: asBoolean(body.enabled),
+      await audit(supabase, identity, "maintenance_test_access.settings.update", "maintenance", "singleton", {
         maintenanceEnabled: asBoolean(body.maintenanceEnabled),
         allowPcTestLogin: asBoolean(body.allowPcTestLogin),
         allowMobileTestLogin: asBoolean(body.allowMobileTestLogin),

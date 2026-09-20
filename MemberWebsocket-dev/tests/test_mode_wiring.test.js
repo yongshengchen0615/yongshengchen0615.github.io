@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('admin exposes separate system maintenance and test mode controls', () => {
+test('admin exposes only maintenance and device login controls', () => {
   const html = read('admin/index.html');
   const app = read('admin/app.js');
   const testMode = read('admin/test-mode.js');
@@ -14,7 +14,7 @@ test('admin exposes separate system maintenance and test mode controls', () => {
   assert.match(html, /id="testModeTab"/);
   assert.match(html, /id="testModePanel"/);
   assert.match(html, /id="systemMaintenanceEnabled"/);
-  assert.match(html, /id="testModeEnabled"/);
+  assert.doesNotMatch(html, /id="testModeEnabled"/);
   assert.match(html, /id="testModePcLoginEnabled"/);
   assert.match(html, /id="testModeMobileLoginEnabled"/);
   assert.doesNotMatch(html, /id="testModeAdminLoginEnabled"/);
@@ -24,7 +24,7 @@ test('admin exposes separate system maintenance and test mode controls', () => {
   assert.match(html, /id="testModeMobileLoginBadge"/);
   assert.match(html, /id="testModeMaintenanceMessage"/);
   assert.match(html, /id="testModeAddAccountCount"/);
-  assert.match(html, /test-mode\.js\?v=test-device-login-20260920-1/);
+  assert.match(html, /test-mode\.js\?v=maintenance-device-login-20260920-2/);
   assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-2/);
   assert.match(app, /switchPanel\('testMode'\)/);
   assert.match(testMode, /admin\.test-mode\.save/);
@@ -35,6 +35,7 @@ test('admin exposes separate system maintenance and test mode controls', () => {
   assert.match(testMode, /allowPcTestLogin/);
   assert.match(testMode, /allowMobileTestLogin/);
   assert.match(testMode, /maintenanceEnabled/);
+  assert.doesNotMatch(testMode, /testModeEnabled|settings\.enabled|enabled: els\.testModeEnabled/);
   assert.match(html, /data-test-account-count="5"/);
   assert.match(testMode, /test-account-avatar/);
 });
@@ -48,7 +49,7 @@ test('all member-facing surfaces load the direct test-account client before app 
     'booking/index.html',
   ]) {
     const html = read(entry);
-    assert.match(html, /test-mode-client\.js\?v=test-device-login-20260920-1/, entry);
+    assert.match(html, /test-mode-client\.js\?v=maintenance-device-login-20260920-2/, entry);
     assert.match(html, /test-mode\.css\?v=test-mode-20260920-1/, entry);
   }
 
@@ -58,6 +59,7 @@ test('all member-facing surfaces load the direct test-account client before app 
   assert.match(client, /action: 'test-mode\.login'/);
   assert.doesNotMatch(client, /allowAdminUserLogin|ADMIN_REQUIRED/);
   assert.match(client, /if \(!mode\.maintenanceEnabled\)/);
+  assert.doesNotMatch(client, /mode\.enabled/);
   assert.match(client, /mode\.allowMobileTestLogin/);
   assert.match(client, /mode\.allowPcTestLogin/);
   assert.match(client, /isMobileDevice\(\)/);
@@ -171,9 +173,11 @@ test('test account creation remains admin-only and transactional', () => {
   assert.match(rpc, /from public, anon, authenticated/);
   assert.match(rpc, /grant execute on function public\.admin_save_test_mode/);
   assert.match(rpc, /to service_role/);
-  assert.match(api, /admin_save_test_mode_v3/);
+  assert.match(api, /admin_save_maintenance_test_access/);
+  assert.doesNotMatch(api, /p_test_mode_enabled|body\.enabled|row\.enabled/);
   assert.match(api, /p_maintenance_enabled: asBoolean\(body\.maintenanceEnabled\)/);
   assert.match(api, /p_allow_pc_test_login: asBoolean\(body\.allowPcTestLogin\)/);
   assert.match(api, /p_allow_mobile_test_login: asBoolean\(body\.allowMobileTestLogin\)/);
+  assert.doesNotMatch(auth, /settingsResult\.data\?\.enabled/);
   assert.match(api, /authorizeAdmin\(supabase, identity\)/);
 });

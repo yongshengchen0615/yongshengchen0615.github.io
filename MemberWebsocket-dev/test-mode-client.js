@@ -200,11 +200,6 @@
       clearSession();
       return { idToken: await normalSignIn(), testSessionToken: '', testAccount: null };
     }
-    if (!mode.enabled) {
-      clearSession();
-      throw maintenanceError(mode.maintenanceMessage);
-    }
-
     const mobile = isMobileDevice();
     const deviceAllowed = mobile
       ? Boolean(mode.allowMobileTestLogin)

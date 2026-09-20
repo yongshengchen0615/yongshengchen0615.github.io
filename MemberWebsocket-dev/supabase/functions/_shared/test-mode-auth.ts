@@ -47,7 +47,7 @@ export async function resolveTestSession(
   const [settingsResult, sessionResult] = await Promise.all([
     supabase
       .from("test_mode_settings")
-      .select("enabled,maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message")
+      .select("maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message")
       .eq("id", true)
       .maybeSingle(),
     supabase
@@ -62,10 +62,7 @@ export async function resolveTestSession(
   }
 
   if (!settingsResult.data?.maintenance_enabled) {
-    throw new TestModeAuthError(403, "TEST_MODE_LOGIN_DISABLED", "目前未啟用系統維護測試登入。");
-  }
-  if (!settingsResult.data?.enabled) {
-    throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
+    throw new TestModeAuthError(403, "TEST_LOGIN_DISABLED", "目前未啟用系統維護測試登入。");
   }
 
   const session = sessionResult.data;
@@ -128,7 +125,7 @@ export async function resolveUserTestIdentity(
 ): Promise<TestModeIdentity | null> {
   const settingsResult = await supabase
     .from("test_mode_settings")
-    .select("enabled,maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message")
+    .select("maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message")
     .eq("id", true)
     .maybeSingle();
 
@@ -137,9 +134,6 @@ export async function resolveUserTestIdentity(
   }
 
   if (!settingsResult.data?.maintenance_enabled) return null;
-  if (!settingsResult.data?.enabled) {
-    throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
-  }
 
   const token = String(rawToken || "").trim();
   if (!token) {

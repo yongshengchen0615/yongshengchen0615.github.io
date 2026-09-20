@@ -7,11 +7,11 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     [
-      'testModeTab', 'testModePanel', 'testModeForm', 'systemMaintenanceEnabled', 'testModeEnabled',
+      'testModeTab', 'testModePanel', 'testModeForm', 'systemMaintenanceEnabled',
       'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'testModeFormMessage',
       'testModeAccountCount', 'testModeAccountList', 'testModeAccountEmpty',
-      'systemMaintenanceBadge', 'testModeStatusBadge', 'testModePcLoginBadge', 'testModeMobileLoginBadge'
+      'systemMaintenanceBadge', 'testModePcLoginBadge', 'testModeMobileLoginBadge'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
     if (!els.testModeTab || !els.testModeForm) return;
@@ -69,7 +69,7 @@
   async function load(force = false) {
     if (loaded && !force) return;
     if (loading) return loading;
-    setMessage('正在讀取測試模式設定…');
+    setMessage('正在讀取環境設定…');
     loading = request('admin.test-mode.bootstrap')
       .then((data) => {
         render(data);
@@ -95,7 +95,6 @@
     setMessage('正在儲存並建立測試帳號…');
     try {
       const data = await request('admin.test-mode.save', {
-        enabled: els.testModeEnabled.checked,
         maintenanceEnabled: els.systemMaintenanceEnabled.checked,
         allowPcTestLogin: els.testModePcLoginEnabled.checked,
         allowMobileTestLogin: els.testModeMobileLoginEnabled.checked,
@@ -105,7 +104,7 @@
       render(data);
       els.testModeAddAccountCount.value = '0';
       const created = Number(data.createdAccountCount || 0);
-      setMessage(created > 0 ? '設定已儲存，已建立 ' + created + ' 個測試帳號。' : '測試模式設定已儲存。');
+      setMessage(created > 0 ? '設定已儲存，已建立 ' + created + ' 個測試帳號。' : '環境設定已儲存。');
     } catch (error) {
       showError(error);
     } finally {
@@ -116,13 +115,11 @@
   function render(data) {
     const settings = data && data.settings && typeof data.settings === 'object' ? data.settings : {};
     const accounts = Array.isArray(data && data.accounts) ? data.accounts : [];
-    const enabled = Boolean(settings.enabled);
     const maintenanceEnabled = Boolean(settings.maintenanceEnabled);
     const allowPcTestLogin = Boolean(settings.allowPcTestLogin);
     const allowMobileTestLogin = Boolean(settings.allowMobileTestLogin);
 
     els.systemMaintenanceEnabled.checked = maintenanceEnabled;
-    els.testModeEnabled.checked = enabled;
     els.testModePcLoginEnabled.checked = allowPcTestLogin;
     els.testModeMobileLoginEnabled.checked = allowMobileTestLogin;
     els.testModeMaintenanceMessage.value = String(settings.maintenanceMessage || '');
@@ -135,13 +132,8 @@
       maintenanceEnabled ? '系統維護：啟用中' : '系統維護：未啟用',
       maintenanceEnabled ? 'is-warning' : 'is-off'
     );
-    updateStatusBadge(
-      els.testModeStatusBadge,
-      enabled ? '測試模式：啟用中' : '測試模式：未啟用',
-      enabled ? 'is-warning' : 'is-off'
-    );
-    const pcLoginAvailable = maintenanceEnabled && enabled && allowPcTestLogin;
-    const mobileLoginAvailable = maintenanceEnabled && enabled && allowMobileTestLogin;
+    const pcLoginAvailable = maintenanceEnabled && allowPcTestLogin;
+    const mobileLoginAvailable = maintenanceEnabled && allowMobileTestLogin;
     updateStatusBadge(
       els.testModePcLoginBadge,
       pcLoginAvailable ? 'PC 測試登入：可用' : 'PC 測試登入：停用',
@@ -193,7 +185,6 @@
   function setBusy(busy) {
     els.saveTestModeButton.disabled = busy;
     els.systemMaintenanceEnabled.disabled = busy;
-    els.testModeEnabled.disabled = busy;
     els.testModePcLoginEnabled.disabled = busy;
     els.testModeMobileLoginEnabled.disabled = busy;
     els.testModeMaintenanceMessage.disabled = busy;
@@ -210,6 +201,6 @@
   }
 
   function showError(error) {
-    setMessage(error && error.message ? error.message : '測試模式操作失敗，請稍後再試。', true);
+    setMessage(error && error.message ? error.message : '環境設定操作失敗，請稍後再試。', true);
   }
 })();

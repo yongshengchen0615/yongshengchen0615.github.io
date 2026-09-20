@@ -24,7 +24,7 @@
   <script src="./fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1" defer></script>
   <script src="./pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1" defer></script>
   <script src="./app.js?v=test-mode-20260920-1" defer></script>
-  <script src="./test-mode.js?v=test-device-login-20260920-1" defer></script>
+  <script src="./test-mode.js?v=maintenance-device-login-20260920-2" defer></script>
   <script src="./grant-automation.js?v=grant-automation-20260910" defer></script>
   <script src="../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1" defer></script>
   <script src="./booking-panel.js?v=booking-tab-navigation-20260920-1" data-booking-admin-panel-extension defer></script>
@@ -79,12 +79,11 @@
         <div class="panel-heading test-mode-panel-heading">
           <div>
             <p class="kicker">Testing environment</p>
-            <h2>測試模式</h2>
-            <p>系統維護是主開關；測試模式只在維護期間提供測試帳號入口，並可分別設定 PC 與行動裝置是否允許登入。</p>
+            <h2>系統維護與測試登入</h2>
+            <p>系統維護開啟後，可分別決定 PC 與行動裝置是否允許直接使用測試帳號；未允許的裝置只會看到維護訊息。</p>
           </div>
           <div class="test-mode-status-group" aria-label="測試環境目前狀態">
             <span id="systemMaintenanceBadge" class="test-mode-status-badge is-loading">系統維護：讀取中</span>
-            <span id="testModeStatusBadge" class="test-mode-status-badge is-loading">測試模式：讀取中</span>
             <span id="testModePcLoginBadge" class="test-mode-status-badge is-loading">PC 測試登入：讀取中</span>
             <span id="testModeMobileLoginBadge" class="test-mode-status-badge is-loading">行動裝置測試登入：讀取中</span>
           </div>
@@ -103,23 +102,19 @@
             <form id="testModeForm" novalidate>
               <section class="test-mode-form-section" aria-labelledby="testModeControlTitle">
                 <div class="test-mode-section-heading">
-                  <div><strong id="testModeControlTitle">系統狀態</strong><small>系統維護是用戶端維護主開關；測試模式與裝置登入權限只在系統維護開啟時生效。管理端不受影響。</small></div>
+                  <div><strong id="testModeControlTitle">系統狀態</strong><small>系統維護是用戶端主開關；PC 與行動裝置登入權限只在系統維護開啟時生效。管理端不受影響。</small></div>
                 </div>
                 <div class="test-mode-toggle-list">
                   <label class="test-mode-toggle">
-                    <span class="test-mode-toggle-copy"><strong>系統維護</strong><small>開啟後，用戶端進入維護狀態；只有同時啟用測試模式且允許該裝置登入時，才會出現測試帳號入口。</small></span>
+                    <span class="test-mode-toggle-copy"><strong>系統維護</strong><small>開啟後，用戶端進入維護狀態；若該裝置的登入開關同時開啟，則會顯示測試帳號入口。</small></span>
                     <span class="test-mode-toggle-control"><input id="systemMaintenanceEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
                   </label>
                   <label class="test-mode-toggle">
-                    <span class="test-mode-toggle-copy"><strong>啟用測試模式</strong><small>只在系統維護期間生效；實際哪些裝置可進入測試帳號，由下方兩個登入開關控制。</small></span>
-                    <span class="test-mode-toggle-control"><input id="testModeEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
-                  </label>
-                  <label class="test-mode-toggle">
-                    <span class="test-mode-toggle-copy"><strong>PC 可登入</strong><small>系統維護與測試模式都開啟時，PC 可直接選擇測試帳號登入。</small></span>
+                    <span class="test-mode-toggle-copy"><strong>PC 可登入</strong><small>系統維護開啟且此開關啟用時，PC 可直接選擇測試帳號登入。</small></span>
                     <span class="test-mode-toggle-control"><input id="testModePcLoginEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
                   </label>
                   <label class="test-mode-toggle">
-                    <span class="test-mode-toggle-copy"><strong>行動裝置可登入</strong><small>系統維護與測試模式都開啟時，手機與平板可直接選擇測試帳號登入。</small></span>
+                    <span class="test-mode-toggle-copy"><strong>行動裝置可登入</strong><small>系統維護開啟且此開關啟用時，手機與平板可直接選擇測試帳號登入。</small></span>
                     <span class="test-mode-toggle-control"><input id="testModeMobileLoginEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
                   </label>
                 </div>
@@ -152,7 +147,7 @@
 
               <div class="test-mode-safety-note" role="note">
                 <span class="test-mode-safety-icon" aria-hidden="true">i</span>
-                <p><strong>測試資料與正式會員隔離</strong><span>關閉系統維護或測試模式後，測試 session 會失效；關閉某類裝置登入後，該類測試 session 會被後端拒絕使用。</span></p>
+                <p><strong>測試資料與正式會員隔離</strong><span>關閉系統維護後，所有測試 session 會失效；關閉某類裝置登入後，該類既有測試 session 會立即失效。</span></p>
               </div>
 
               <div id="testModeFormMessage" class="form-message hidden" role="status" aria-live="polite"></div>
@@ -168,7 +163,7 @@
               <div>
                 <span class="test-mode-eyebrow">Test members</span>
                 <h3 id="testModeAccountsTitle">測試帳號</h3>
-                <p>系統維護與測試模式都啟用後，只有被允許登入的裝置可直接選擇這裡建立的虛擬會員。</p>
+                <p>系統維護啟用後，只有對應登入開關已啟用的裝置可直接選擇這裡建立的虛擬會員。</p>
               </div>
               <span id="testModeAccountCount" class="test-mode-account-count">0 個</span>
             </div>
