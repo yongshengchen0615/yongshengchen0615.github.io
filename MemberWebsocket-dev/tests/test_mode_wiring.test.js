@@ -98,6 +98,14 @@ test('test members stay out of formal member lists and KPI counts', () => {
   assert.match(coreApi, /from\("members"\)\.select\("\*",\{ count:"exact",head:true \}\)\.eq\("is_test_account",false\)/);
 });
 
+test('booking API uses the shared direct test-session verifier', () => {
+  const bookingApi = read('supabase/functions/booking-api/index.ts');
+  const auth = read('supabase/functions/_shared/test-mode-auth.ts');
+  assert.match(bookingApi, /resolveTestSession/);
+  assert.match(bookingApi, /testSessionToken/);
+  assert.doesNotMatch(auth, /TEST_ADMIN_DISABLED|admin_line_user_id|allow_admin_user_login/);
+});
+
 test('all user-side direct APIs enforce the same maintenance-aware test identity', () => {
   for (const relative of [
     'supabase/functions/pointcard-extension-api/index.ts',
