@@ -12,9 +12,12 @@
   const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false, testMode: true }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false, memberRecords: { lineUserId: '', filter: 'all', data: null, requestVersion: 0 } };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
+  const MEMBER_PRESENCE_POLL_MS = 15_000;
   let loginProgressTimer = null;
   let loginProgressValue = 8;
   let stopAdminRealtime = null;
+  let memberPresencePollTimer = null;
+  let memberPresencePollPending = false;
 
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
@@ -41,6 +44,7 @@
       stopLoginProgress();
       if (typeof stopAdminRealtime === 'function') stopAdminRealtime();
       stopAdminRealtime = null;
+      stopMemberPresencePolling();
       document.querySelectorAll('.modal').forEach((modal) => modal.classList.add('hidden'));
       setView('loading');
     });
@@ -289,8 +293,58 @@
       setView('admin');
       document.documentElement.dataset.memberAdminReady = 'true';
       window.dispatchEvent(new Event('member-admin-ready'));
-      stopAdminRealtime = window.MemberSystem.subscribeRealtime(state.config, 'admin', () => refreshData(false));
+      stopAdminRealtime = window.MemberSystem.subscribeRealtime(state.config, 'admin', handleAdminRealtimeUpdate);
+      startMemberPresencePolling();
     } catch (error) { stopLoginProgress(); handleBootError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
+  }
+
+  async function handleAdminRealtimeUpdate() {
+    const tasks = [refreshData(false), refreshOpenMemberRecords()];
+    await Promise.allSettled(tasks);
+    await refreshMemberPresence().catch(() => {});
+  }
+
+  function startMemberPresencePolling() {
+    stopMemberPresencePolling();
+    const tick = async () => {
+      if (!state.idToken) return;
+      if (document.visibilityState === 'visible') await refreshMemberPresence().catch(() => {});
+      if (state.idToken) memberPresencePollTimer = window.setTimeout(tick, MEMBER_PRESENCE_POLL_MS);
+    };
+    memberPresencePollTimer = window.setTimeout(tick, MEMBER_PRESENCE_POLL_MS);
+  }
+
+  function stopMemberPresencePolling() {
+    if (memberPresencePollTimer !== null) {
+      window.clearTimeout(memberPresencePollTimer);
+      memberPresencePollTimer = null;
+    }
+  }
+
+  async function refreshMemberPresence() {
+    if (memberPresencePollPending || !state.config || !state.idToken || !state.members.length) return;
+    memberPresencePollPending = true;
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.members.presence.list', {
+        lineUserIds: state.members.map((member) => String(member.lineUserId || '')).filter(Boolean),
+      });
+      const rows = Array.isArray(result && result.members) ? result.members : [];
+      const byId = new Map(rows.map((row) => [String(row.lineUserId || ''), row]));
+      let changed = false;
+      state.members = state.members.map((member) => {
+        const presence = byId.get(String(member.lineUserId || ''));
+        const nextOnline = Boolean(presence && presence.isOnline);
+        const nextLastSeen = String(presence && presence.lastSeenAt || '');
+        const nextSurfaces = Array.isArray(presence && presence.onlineSurfaces) ? presence.onlineSurfaces.map(String) : [];
+        const previousSurfaces = Array.isArray(member.onlineSurfaces) ? member.onlineSurfaces.map(String) : [];
+        if (Boolean(member.isOnline) !== nextOnline || String(member.lastSeenAt || '') !== nextLastSeen
+          || previousSurfaces.join('|') !== nextSurfaces.join('|')) changed = true;
+        return { ...member,isOnline:nextOnline,lastSeenAt:nextLastSeen,onlineSurfaces:nextSurfaces };
+      });
+      if (changed) renderMembers();
+    } finally {
+      memberPresencePollPending = false;
+    }
   }
 
   async function refreshData(showBusy) {
@@ -408,10 +462,15 @@
       const memberCell = document.createElement('td'); memberCell.append(createMemberIdentity(member));
       const tierCell = document.createElement('td'); const tier = document.createElement('span'); tier.className = 'tier-text'; tier.textContent = String(member.tier || '一般會員'); tierCell.append(tier);
       const statusCell = document.createElement('td'); const status = document.createElement('span'); status.className = `status-pill${member.status === 'active' ? '' : ' disabled'}`; status.textContent = member.status === 'active' ? '啟用中' : '已停用'; statusCell.append(status);
+      const presenceCell = document.createElement('td'); presenceCell.className = 'member-presence-cell';
+      const presence = document.createElement('span'); presence.className = `member-presence-pill ${member.isOnline ? 'online' : 'offline'}`; presence.textContent = member.isOnline ? '上線' : '下線'; presenceCell.append(presence);
+      if (member.isOnline && Array.isArray(member.onlineSurfaces) && member.onlineSurfaces.length) {
+        const surfaces = document.createElement('small'); surfaces.textContent = member.onlineSurfaces.map(memberPresenceSurfaceLabel).join('、'); presenceCell.append(surfaces);
+      }
       const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
       const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
       const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true), actionButton('紀錄', 'view-records', member.lineUserId)); actionsCell.append(actions);
-      row.append(memberCell, tierCell, statusCell, serviceTimeCell, dateCell, actionsCell); return row;
+      row.append(memberCell, tierCell, statusCell, presenceCell, serviceTimeCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
     renderMemberPagination();
@@ -489,6 +548,11 @@
     }
   }
 
+  function memberPresenceSurfaceLabel(surface) {
+    const labels = { member:'會員卡',points:'集點卡',event:'活動票券',calendar:'日曆',booking:'預約' };
+    return labels[String(surface || '')] || '用戶端';
+  }
+
   function createMemberIdentity(member) {
     const wrapper = document.createElement('div'); wrapper.className = 'member-cell'; const avatar = document.createElement('span'); avatar.className = 'member-avatar'; avatar.textContent = window.MemberSystem.initials(member.displayName); const copy = document.createElement('div'); const name = document.createElement('strong'); name.textContent = String(member.displayName || 'LINE 使用者'); const code = document.createElement('small'); code.textContent = String(member.memberCode || '尚未建立'); copy.append(name, code); wrapper.append(avatar, copy); return wrapper;
   }
@@ -557,6 +621,21 @@
       els.memberRecordsList.replaceChildren();
       els.memberRecordsEmpty.classList.add('hidden');
       showMessage(els.memberRecordsMessage, error && error.message || '無法讀取會員紀錄，請稍後再試。');
+    }
+  }
+
+  async function refreshOpenMemberRecords() {
+    const lineUserId = String(state.memberRecords.lineUserId || '');
+    if (!lineUserId || els.memberRecordsModal.classList.contains('hidden')) return;
+    const requestVersion = ++state.memberRecords.requestVersion;
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-records.list', { lineUserId });
+      if (requestVersion !== state.memberRecords.requestVersion || state.memberRecords.lineUserId !== lineUserId) return;
+      state.memberRecords.data = result && typeof result === 'object' ? result : { records:{},counts:{} };
+      renderMemberRecords();
+    } catch (error) {
+      if (requestVersion !== state.memberRecords.requestVersion || state.memberRecords.lineUserId !== lineUserId) return;
+      showMessage(els.memberRecordsMessage, error && error.message || '會員紀錄即時同步失敗，將於下一次資料更新時重試。');
     }
   }
 
