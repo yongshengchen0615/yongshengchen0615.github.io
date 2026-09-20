@@ -333,3 +333,40 @@ button, input, select, textarea { line-height: 1.35; }
     font-size: 16px;
   }
 }
+
+
+/* Member activity history modal */
+.member-records-modal-card { width: min(100%, 760px); max-height: min(92vh, 860px); }
+.member-records-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 16px 0 14px; }
+.member-record-summary-pill { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: #f7faf7; color: var(--muted); font-size: 11px; font-weight: 800; }
+.member-record-summary-pill strong { color: var(--ink); font-size: 14px; }
+.member-records-tabs { display: flex; gap: 7px; max-width: 100%; overflow-x: auto; margin-bottom: 14px; padding-bottom: 2px; scrollbar-width: thin; }
+.member-record-tab { flex: 0 0 auto; min-height: 36px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--paper); cursor: pointer; font-size: 11px; font-weight: 850; white-space: nowrap; }
+.member-record-tab.active { border-color: #b7d7c1; color: #226344; background: #eef7f0; }
+.member-records-list { display: grid; gap: 10px; max-height: 52vh; overflow: auto; padding: 1px 3px 1px 0; overscroll-behavior: contain; }
+.member-record-item { display: grid; gap: 6px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.member-record-item-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.member-record-item-heading time { color: var(--muted); font-size: 10px; font-weight: 700; text-align: right; }
+.member-record-category { display: inline-flex; align-items: center; min-height: 22px; padding: 4px 8px; border-radius: 999px; color: #3e6555; background: #eef5f0; font-size: 10px; font-weight: 900; letter-spacing: .03em; }
+.member-record-item.category-eventTickets .member-record-category { color: #88513f; background: #fff1ec; }
+.member-record-item.category-calendar .member-record-category { color: #4d5f88; background: #eef1fb; }
+.member-record-item.category-bookings .member-record-category { color: #6b5b32; background: #f8f3e5; }
+.member-record-title { color: var(--ink); font-size: 14px; line-height: 1.35; }
+.member-record-summary { margin: 0; color: #435a50; font-size: 12px; font-weight: 750; line-height: 1.5; }
+.member-record-details { display: grid; gap: 3px; padding-top: 2px; }
+.member-record-details small { color: var(--muted); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.member-records-loading, .member-records-empty { padding: 34px 16px; border: 1px dashed #dbe5de; border-radius: 12px; color: var(--muted); background: #fbfcfa; text-align: center; font-size: 12px; }
+.member-records-empty { display: grid; gap: 5px; }
+.member-records-empty > span { color: var(--coral); font-size: 24px; }
+.member-records-empty strong { color: var(--ink); font-size: 13px; }
+.member-records-empty small { font-size: 11px; }
+.member-records-note { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.55; }
+@media (max-width: 620px) {
+  .member-records-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .member-records-list { max-height: 56vh; }
+  .member-record-item-heading { align-items: flex-start; }
+}
+@media (max-width: 380px) {
+  .member-records-modal-card { padding-left: 15px; padding-right: 15px; }
+  .member-record-summary-pill { padding: 8px; }
+}
