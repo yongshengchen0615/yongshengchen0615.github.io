@@ -358,6 +358,8 @@ function profileFrom(member: any, settings: any[], serviceMinutesTotal: number):
   const current = tierForMinutes(settings,serviceMinutesTotal);
   const index = Math.max(0,settings.findIndex((row) => row.tier_key === current.tier_key));
   const next = settings[index + 1] || null;
+  const surname = asText(member.surname,40);
+  const salutation = asText(member.salutation,10).toLowerCase();
   return {
     lineUserId: member.line_user_id,
     displayName: member.display_name || "LINE 使用者",
@@ -366,7 +368,10 @@ function profileFrom(member: any, settings: any[], serviceMinutesTotal: number):
     joinedAt: member.joined_at || member.created_at,
     birthday: member.birthday || "",
     phone: member.phone || "",
-    profileComplete: member.membership_status === "active" && Boolean(member.birthday && member.phone),
+    surname,
+    salutation,
+    salutationLabel: salutation === "mr" ? "先生" : salutation === "ms" ? "小姐" : "",
+    profileComplete: member.membership_status === "active" && Boolean(member.birthday && member.phone && surname && ["mr","ms"].includes(salutation)),
     membershipRequired: member.membership_status !== "active",
     serviceMinutesTotal,
     tierKey: current.tier_key,
