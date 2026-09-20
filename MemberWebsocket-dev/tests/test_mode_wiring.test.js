@@ -235,3 +235,15 @@ test('test accounts support guarded single and batch removal', () => {
   assert.match(migration, /to service_role/);
   assert.match(schema, /member_id uuid not null references public\.members\(id\) on delete cascade/);
 });
+
+
+test('legacy deleted test-account traces are purged once', () => {
+  const migration = read('supabase/migrations/20260920134141_purge_legacy_deleted_test_account_traces.sql');
+  assert.match(migration, /actor_line_user_id like 'TEST-%'/);
+  assert.match(migration, /not exists \([\s\S]*public\.members/);
+  assert.match(migration, /delete from public\.api_rate_limits/);
+  assert.match(migration, /delete from public\.idempotency_results/);
+  assert.match(migration, /delete from public\.booking_audit_events/);
+  assert.match(migration, /delete from public\.audit_logs/);
+  assert.match(migration, /test_mode\.accounts\.batch_delete/);
+});
