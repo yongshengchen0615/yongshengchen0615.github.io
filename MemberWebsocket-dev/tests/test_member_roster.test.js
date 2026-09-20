@@ -65,3 +65,16 @@ test('new and existing test accounts have complete virtual profiles', () => {
   assert.match(migration, /case when v_seq % 2 = 0 then 'ms' else 'mr' end/);
   assert.match(migration, /membership_status = 'active'/);
 });
+
+
+test('test account generator creates varied human-like virtual profiles', () => {
+  const migration = read('supabase/migrations/20260920152808_randomize_test_member_profiles.sql');
+  assert.match(migration, /v_surnames text\[\]/);
+  assert.match(migration, /v_male_names text\[\]/);
+  assert.match(migration, /v_female_names text\[\]/);
+  assert.match(migration, /random\(\) < 0\.5/);
+  assert.match(migration, /current_date - make_interval\(years => 18 \+ floor\(random\(\) \* 48\)::int\)/);
+  assert.match(migration, /'09' \|\| lpad\(floor\(random\(\) \* 100000000\)::bigint::text, 8, '0'\)/);
+  assert.match(migration, /v_surname \|\| v_given_name \|\| '（測試）'/);
+  assert.match(migration, /exit when not exists \(select 1 from public\.members where phone = v_phone\)/);
+});
