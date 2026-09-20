@@ -380,3 +380,13 @@ button, input, select, textarea { line-height: 1.35; }
   .member-records-modal-card { padding-left: 15px; padding-right: 15px; }
   .member-record-summary-pill { padding: 8px; }
 }
+
+
+/* test member roster 20260920 */
+.member-directory-tabs { display: flex; gap: 8px; margin: 18px 0 12px; padding: 4px; width: fit-content; max-width: 100%; border: 1px solid var(--line); border-radius: 12px; background: #f4f7f4; }
+.member-directory-tab { min-width: 108px; border: 0; border-radius: 9px; padding: 9px 14px; color: var(--muted); background: transparent; cursor: pointer; font-size: 12px; font-weight: 850; }
+.member-directory-tab.active, .member-directory-tab[aria-selected="true"] { color: var(--green); background: var(--paper); box-shadow: 0 1px 4px rgba(24, 63, 43, .1); }
+.member-test-profile-fields { display: grid; gap: 13px; padding: 14px; border: 1px solid #dce7df; border-radius: 12px; background: #f7faf7; }
+.member-test-profile-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.grant-test-notification-note { margin: 0; padding: 10px 12px; border: 1px solid #eadbc3; border-radius: 10px; color: #806d52; background: #fffaf0; font-size: 11px; font-weight: 750; line-height: 1.55; }
+@media (max-width: 480px) { .member-directory-tabs { width: 100%; } .member-directory-tab { flex: 1; min-width: 0; } }
