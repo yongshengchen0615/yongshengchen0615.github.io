@@ -13,8 +13,28 @@
   const realtimeSubscriptions = new Map();
   let realtimeClient = null;
   let realtimeClientKey = '';
+  let presenceContext = null;
+  let presenceHooksBound = false;
+
+  const PRESENCE_BY_SURFACE = Object.freeze({
+    member: Object.freeze({ clientType: 'member', prefix: 'user.member.presence' }),
+    points: Object.freeze({ clientType: 'points', prefix: 'user.pointcard.presence' }),
+    event: Object.freeze({ clientType: 'event', prefix: 'user.event.presence' }),
+    calendar: Object.freeze({ clientType: 'calendar', prefix: 'user.calendar.presence' }),
+    booking: Object.freeze({ clientType: 'booking', prefix: 'user.booking.presence' })
+  });
 
   const WRITE_ACTIONS = Object.freeze([
+    'user.member.presence.online',
+    'user.member.presence.offline',
+    'user.pointcard.presence.online',
+    'user.pointcard.presence.offline',
+    'user.event.presence.online',
+    'user.event.presence.offline',
+    'user.calendar.presence.online',
+    'user.calendar.presence.offline',
+    'user.booking.presence.online',
+    'user.booking.presence.offline',
     'user.member.profile.save',
     'admin.member.update',
     'admin.member-tiers.save',
@@ -96,11 +116,15 @@
   }
 
   async function signIn(config, surface) {
+    let idToken;
     if (surface !== 'admin' && window.TestModeClient && typeof window.TestModeClient.prepare === 'function') {
       const prepared = await window.TestModeClient.prepare(config, surface, () => lineSignIn(config, surface));
-      return String(prepared && prepared.idToken || '');
+      idToken = String(prepared && prepared.idToken || '');
+    } else {
+      idToken = await lineSignIn(config, surface);
     }
-    return lineSignIn(config, surface);
+    if (surface !== 'admin') await startPresence(config, surface, idToken);
+    return idToken;
   }
 
   async function lineSignIn(config, surface) {
@@ -175,6 +199,127 @@
     return Boolean(pending && /^[a-f0-9]{32}$/.test(pending.nonce)
       && marker === `${surface}.${pending.nonce}` && pending.pathname === current.pathname
       && Number.isFinite(age) && age >= 0 && age <= FRESH_LOGIN_MAX_AGE_MS);
+  }
+
+  function createPresenceSessionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+      throw clientError('PRESENCE_ID_UNAVAILABLE', '瀏覽器無法建立上下線紀錄識別。');
+    }
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  function currentPresenceIdToken(context) {
+    try {
+      if (context && context.idToken && window.liff && window.liff.isLoggedIn() && typeof window.liff.getIDToken === 'function') {
+        return window.liff.getIDToken() || context.idToken;
+      }
+    } catch (_) {}
+    return String(context && context.idToken || '');
+  }
+
+  function bindPresenceLifecycle() {
+    if (presenceHooksBound) return;
+    presenceHooksBound = true;
+    window.addEventListener('pagehide', (event) => {
+      void stopPresence(event && event.persisted ? 'bfcache' : 'pagehide', true);
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (!event || !event.persisted || !presenceContext || !presenceContext.closed) return;
+      const previous = presenceContext;
+      presenceContext = null;
+      void startPresence(previous.config, previous.surface, currentPresenceIdToken(previous), 'resume');
+    });
+  }
+
+  async function startPresence(config, surface, idToken, reason = 'signin') {
+    const definition = PRESENCE_BY_SURFACE[surface];
+    if (!definition) return;
+    if (presenceContext && !presenceContext.closed && presenceContext.surface === surface) {
+      if (presenceContext.onlineRecorded) return;
+      try {
+        await sendRequest(config, definition.clientType, idToken, definition.prefix + '.online', {
+          sessionId: presenceContext.sessionId,
+          reason
+        });
+        presenceContext.onlineRecorded = true;
+      } catch (error) {
+        console.warn('presence online record failed', error);
+      }
+      return;
+    }
+
+    const context = {
+      config,
+      surface,
+      clientType: definition.clientType,
+      prefix: definition.prefix,
+      idToken: String(idToken || ''),
+      sessionId: createPresenceSessionId(),
+      onlineRecorded: false,
+      closed: false
+    };
+    presenceContext = context;
+    bindPresenceLifecycle();
+    try {
+      await sendRequest(config, context.clientType, context.idToken, context.prefix + '.online', {
+        sessionId: context.sessionId,
+        reason
+      });
+      context.onlineRecorded = true;
+    } catch (error) {
+      console.warn('presence online record failed', error);
+    }
+  }
+
+  function sendPresenceKeepalive(context, reason) {
+    try {
+      validateConfig(context.config, context.clientType);
+      const endpoint = requestEndpoint(context.config, context.clientType, context.prefix + '.offline');
+      if (!SUPABASE_FUNCTION_PATTERN.test(endpoint) || endpoint.includes('REPLACE_')) return Promise.resolve(null);
+      const payload = {
+        sessionId: context.sessionId,
+        reason,
+        action: context.prefix + '.offline',
+        clientType: context.clientType,
+        idToken: currentPresenceIdToken(context)
+      };
+      const body = window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+        ? window.TestModeClient.payload(payload)
+        : payload;
+      return fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': String(context.config.supabasePublishableKey)
+        },
+        cache: 'no-store',
+        keepalive: true,
+        body: JSON.stringify(body)
+      }).catch(() => null);
+    } catch (_) {
+      return Promise.resolve(null);
+    }
+  }
+
+  async function stopPresence(reason = 'pagehide', keepalive = false) {
+    const context = presenceContext;
+    if (!context || context.closed) return;
+    context.closed = true;
+    if (keepalive) {
+      await sendPresenceKeepalive(context, reason);
+      return;
+    }
+    try {
+      await sendRequest(context.config, context.clientType, currentPresenceIdToken(context), context.prefix + '.offline', {
+        sessionId: context.sessionId,
+        reason
+      });
+    } catch (error) {
+      console.warn('presence offline record failed', error);
+    }
   }
 
   function request(config, clientType, idToken, action, payload = {}) {
@@ -401,8 +546,9 @@
     // 保留既有呼叫介面；焦點管理統一由共用 dialog-accessibility.js 初始化。
   }
 
-  function logout() {
+  async function logout() {
     try {
+      try { await withTimeout(stopPresence('logout', true), 1200, '上下線紀錄逾時。'); } catch (_) {}
       if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
       if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
     } finally { window.location.reload(); }
