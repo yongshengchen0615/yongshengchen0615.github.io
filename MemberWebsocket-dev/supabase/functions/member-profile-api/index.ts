@@ -149,19 +149,53 @@ Deno.serve(async (request: Request) => {
     const member = await ensureMember(supabase, identity);
     if (action === "user.member.bootstrap") return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member) } });
 
-    const birthday = asText(body.birthday, 20);
-    const phone = normalizePhone(body.phone);
-    const surname = asText(body.surname, 40);
-    const salutation = asText(body.salutation, 10).toLowerCase();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday) || Number.isNaN(Date.parse(`${birthday}T00:00:00Z`))) throw new ApiError(400, "INVALID_BIRTHDAY", "請填寫正確的生日。");
-    if (!/^\+?\d{8,15}$/.test(phone)) throw new ApiError(400, "INVALID_PHONE", "請填寫正確的電話。");
-    if (!surname || surname.length > 40) throw new ApiError(400, "INVALID_SURNAME", "請填寫姓氏。");
-    if (!["mr", "ms"].includes(salutation)) throw new ApiError(400, "INVALID_SALUTATION", "請選擇先生或小姐。");
+    const hasBirthday = Object.prototype.hasOwnProperty.call(body, "birthday");
+    const hasPhone = Object.prototype.hasOwnProperty.call(body, "phone");
+    const hasSurname = Object.prototype.hasOwnProperty.call(body, "surname");
+    const hasSalutation = Object.prototype.hasOwnProperty.call(body, "salutation");
+    if (!hasBirthday && !hasPhone && !hasSurname && !hasSalutation) {
+      throw new ApiError(400, "PROFILE_FIELDS_REQUIRED", "請提供要修改的會員資料。");
+    }
 
-    const updated = await supabase.from("members").update({ birthday, phone, surname, salutation, membership_status: "active", joined_at: member.joined_at || new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", member.id).select("*").single();
+    const birthday = hasBirthday ? asText(body.birthday, 20) : asText(member.birthday, 20);
+    const phone = hasPhone ? normalizePhone(body.phone) : normalizePhone(member.phone);
+    const surname = hasSurname ? asText(body.surname, 40) : asText(member.surname, 40);
+    const salutation = hasSalutation ? asText(body.salutation, 10).toLowerCase() : asText(member.salutation, 10).toLowerCase();
+
+    if (hasBirthday) {
+      const parsedBirthday = /^\d{4}-\d{2}-\d{2}$/.test(birthday) ? new Date(`${birthday}T00:00:00Z`) : null;
+      const today = new Date();
+      const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+      if (!parsedBirthday || Number.isNaN(parsedBirthday.getTime()) || parsedBirthday.getTime() > todayUtc) {
+        throw new ApiError(400, "INVALID_BIRTHDAY", "請選擇正確的出生年月日，生日不可晚於今天。");
+      }
+    }
+    if (hasPhone && !/^\+?\d{8,15}$/.test(phone)) throw new ApiError(400, "INVALID_PHONE", "請填寫正確的電話。");
+    if (hasSurname && (!surname || surname.length > 40)) throw new ApiError(400, "INVALID_SURNAME", "請填寫姓氏。");
+    if (hasSalutation && !["mr", "ms"].includes(salutation)) throw new ApiError(400, "INVALID_SALUTATION", "請選擇先生或小姐。");
+
+    const patch: Json = { updated_at: new Date().toISOString() };
+    const profileFields: string[] = [];
+    if (hasBirthday) { patch.birthday = birthday; profileFields.push("birthday"); }
+    if (hasPhone) { patch.phone = phone; profileFields.push("phone"); }
+    if (hasSurname) { patch.surname = surname; profileFields.push("surname"); }
+    if (hasSalutation) { patch.salutation = salutation; profileFields.push("salutation"); }
+
+    const mergedComplete = Boolean(
+      birthday
+      && /^\+?\d{8,15}$/.test(phone)
+      && surname
+      && ["mr", "ms"].includes(salutation)
+    );
+    if (mergedComplete) {
+      patch.membership_status = "active";
+      patch.joined_at = member.joined_at || new Date().toISOString();
+    }
+
+    const updated = await supabase.from("members").update(patch).eq("id", member.id).select("*").single();
     if (updated.error) throw new ApiError(500, "DATABASE_ERROR", "會員資料暫時無法儲存。");
-    await supabase.from("audit_logs").insert({ audit_id: "AUD-" + crypto.randomUUID().replaceAll("-", ""), actor_line_user_id: identity.lineUserId, actor_role: "member", action, target_type: "member", target_id: identity.lineUserId, result: "success", detail: { profileFields: ["birthday", "phone", "surname", "salutation"] } });
-    return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, updated.data) } });
+    await supabase.from("audit_logs").insert({ audit_id: "AUD-" + crypto.randomUUID().replaceAll("-", ""), actor_line_user_id: identity.lineUserId, actor_role:"member", action, target_type:"member", target_id:identity.lineUserId, result:"success", detail:{ profileFields } });
+    return response(origin, { ok:true, status:200, data:{ profile:await profileFor(supabase,updated.data) } });
   } catch (error) {
     const e = error instanceof ApiError ? error : new ApiError(500, "INTERNAL_ERROR", "會員資料服務暫時無法完成操作。");
     return response(origin, { ok: false, status: e.status, error: { code: e.code, message: e.message, details: e.details } }, e.status);
