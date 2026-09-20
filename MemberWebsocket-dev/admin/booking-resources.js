@@ -8,7 +8,8 @@
     loading: false,
     savingSettings: false,
     savingTechnician: false,
-    deletingTechnician: false,
+    technicianTab: 'active',
+    restoringTechnicianId: '',
     initialized: false,
   };
 
@@ -29,17 +30,16 @@
     technicianSave: 'bookingAdminSaveTechnicianButton',
     technicianNew: 'bookingAdminNewTechnicianButton',
     technicianList: 'bookingAdminTechnicianList',
-    technicianCount: 'bookingAdminTechnicianCount',
     technicianEmpty: 'bookingAdminTechnicianEmpty',
+    technicianEmptyText: 'bookingAdminTechnicianEmptyText',
+    technicianActiveTab: 'bookingAdminTechnicianActiveTab',
+    technicianDisabledTab: 'bookingAdminTechnicianDisabledTab',
+    technicianActiveCount: 'bookingAdminTechnicianActiveCount',
+    technicianDisabledCount: 'bookingAdminTechnicianDisabledCount',
     technicianModal: 'bookingAdminTechnicianModal',
     technicianModalClose: 'bookingAdminTechnicianModalClose',
     technicianModalCancel: 'bookingAdminTechnicianModalCancel',
     technicianModalMessage: 'bookingAdminTechnicianModalMessage',
-    technicianDelete: 'bookingAdminDeleteTechnicianButton',
-    technicianDeleteConfirm: 'bookingAdminTechnicianDeleteConfirm',
-    technicianDeleteConfirmText: 'bookingAdminTechnicianDeleteConfirmText',
-    technicianDeleteBack: 'bookingAdminTechnicianDeleteBack',
-    technicianDeleteSubmit: 'bookingAdminTechnicianDeleteSubmit',
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
@@ -80,7 +80,7 @@
         <div>
           <p class="kicker">Capacity & technicians</p>
           <h3 id="bookingAdminResourceSettingsTitle">技師設定</h3>
-          <p>設定單筆預約最多人數、主要技師與技師清單；新增、修改與刪除技師統一使用小視窗。</p>
+          <p>設定單筆預約最多人數、主要技師與技師清單；技師分為已公開與已停用，停用後可隨時恢復公開。</p>
         </div>
         <button id="bookingAdminResourceRefreshButton" class="button button-outline" type="button">更新設定</button>
       </div>
@@ -104,12 +104,20 @@
 
       <div id="${ids.message}" class="form-message hidden" role="status" aria-live="polite"></div>
       <div class="booking-admin-resource-list-heading">
-        <div><strong>技師清單</strong><span id="${ids.technicianCount}">0</span></div>
+        <div><strong>技師清單</strong></div>
         <button id="${ids.technicianNew}" class="button button-dark" type="button">＋ 新增技師</button>
       </div>
-      <div id="${ids.technicianList}" class="booking-admin-technician-list"></div>
+      <div class="booking-admin-technician-tabs" role="tablist" aria-label="技師狀態">
+        <button id="${ids.technicianActiveTab}" class="booking-admin-technician-tab active" type="button" role="tab" aria-selected="true" data-tab="active">
+          已公開 <span id="${ids.technicianActiveCount}">0</span>
+        </button>
+        <button id="${ids.technicianDisabledTab}" class="booking-admin-technician-tab" type="button" role="tab" aria-selected="false" data-tab="disabled">
+          已停用 <span id="${ids.technicianDisabledCount}">0</span>
+        </button>
+      </div>
+      <div id="${ids.technicianList}" class="booking-admin-technician-list" role="tabpanel"></div>
       <div id="${ids.technicianEmpty}" class="empty-state compact hidden">
-        <span aria-hidden="true">○</span><p>尚未建立技師。請先新增技師，再設定主要技師。</p>
+        <span aria-hidden="true">○</span><p id="${ids.technicianEmptyText}">目前沒有已公開的技師。</p>
       </div>`;
 
     host.appendChild(section);
@@ -141,27 +149,13 @@
             </div>
             <label class="booking-admin-toggle">
               <input id="${ids.technicianActive}" type="checkbox" checked>
-              <span><strong>開放會員選擇</strong><small>主要技師不可直接停用；請先變更主要技師。</small></span>
+              <span><strong>公開給會員預約</strong><small>關閉後會移到「已停用」；主要技師不可直接停用，請先變更主要技師。</small></span>
             </label>
             <div class="booking-admin-modal-actions booking-admin-technician-modal-actions">
-              <button id="${ids.technicianDelete}" class="button button-danger hidden" type="button">刪除技師</button>
               <button id="${ids.technicianModalCancel}" class="button button-outline" type="button">取消</button>
               <button id="${ids.technicianSave}" class="button button-dark" type="submit">儲存技師</button>
             </div>
           </form>
-
-          <section id="${ids.technicianDeleteConfirm}" class="booking-admin-technician-delete-confirm hidden" aria-labelledby="bookingAdminTechnicianDeleteTitle">
-            <div>
-              <p class="kicker">Delete technician</p>
-              <h3 id="bookingAdminTechnicianDeleteTitle">確認刪除技師</h3>
-              <p id="${ids.technicianDeleteConfirmText}"></p>
-              <small>若已有預約紀錄，系統不會破壞歷史資料，會改為提供「停用技師」；主要技師需先改指定其他技師。</small>
-            </div>
-            <div class="booking-admin-modal-actions">
-              <button id="${ids.technicianDeleteBack}" class="button button-outline" type="button">返回修改</button>
-              <button id="${ids.technicianDeleteSubmit}" class="button button-danger" type="button">確認刪除</button>
-            </div>
-          </section>
 
           <div id="${ids.technicianModalMessage}" class="form-message hidden" role="status" aria-live="polite"></div>
         </div>`;
@@ -176,9 +170,8 @@
     document.getElementById(ids.technicianNew)?.addEventListener('click', openNewTechnicianModal);
     document.getElementById(ids.technicianModalClose)?.addEventListener('click', closeTechnicianModal);
     document.getElementById(ids.technicianModalCancel)?.addEventListener('click', closeTechnicianModal);
-    document.getElementById(ids.technicianDelete)?.addEventListener('click', openDeleteTechnicianConfirm);
-    document.getElementById(ids.technicianDeleteBack)?.addEventListener('click', showTechnicianEditor);
-    document.getElementById(ids.technicianDeleteSubmit)?.addEventListener('click', deleteTechnician);
+    document.getElementById(ids.technicianActiveTab)?.addEventListener('click', () => setTechnicianTab('active'));
+    document.getElementById(ids.technicianDisabledTab)?.addEventListener('click', () => setTechnicianTab('disabled'));
     document.getElementById(ids.technicianModal)?.addEventListener('click', (event) => {
       if (event.target === event.currentTarget && window.matchMedia('(max-width: 768px)').matches) closeTechnicianModal();
     });
@@ -365,31 +358,116 @@
   function renderTechnicians() {
     const list = document.getElementById(ids.technicianList);
     if (!list) return;
-    const rows = Array.isArray(state.data?.technicians) ? state.data.technicians.slice().sort(sortTechnicians) : [];
+
+    const allRows = Array.isArray(state.data?.technicians) ? state.data.technicians.slice().sort(sortTechnicians) : [];
+    const activeRows = allRows.filter((item) => item.isActive);
+    const disabledRows = allRows.filter((item) => !item.isActive);
+    const rows = state.technicianTab === 'disabled' ? disabledRows : activeRows;
     const primaryId = String(state.data?.settings?.primaryTechnicianId || '');
+
+    document.getElementById(ids.technicianActiveCount).textContent = String(activeRows.length);
+    document.getElementById(ids.technicianDisabledCount).textContent = String(disabledRows.length);
+
+    const activeTab = document.getElementById(ids.technicianActiveTab);
+    const disabledTab = document.getElementById(ids.technicianDisabledTab);
+    activeTab?.classList.toggle('active', state.technicianTab === 'active');
+    disabledTab?.classList.toggle('active', state.technicianTab === 'disabled');
+    activeTab?.setAttribute('aria-selected', state.technicianTab === 'active' ? 'true' : 'false');
+    disabledTab?.setAttribute('aria-selected', state.technicianTab === 'disabled' ? 'true' : 'false');
+
     list.replaceChildren();
-    document.getElementById(ids.technicianCount).textContent = String(rows.length);
-    document.getElementById(ids.technicianEmpty).classList.toggle('hidden', rows.length !== 0);
+    document.getElementById(ids.technicianEmpty)?.classList.toggle('hidden', rows.length !== 0);
+    const emptyText = document.getElementById(ids.technicianEmptyText);
+    if (emptyText) {
+      emptyText.textContent = state.technicianTab === 'disabled'
+        ? '目前沒有已停用的技師。'
+        : '目前沒有已公開的技師。';
+    }
+
     rows.forEach((technician) => {
-      const row = document.createElement('button');
-      row.type = 'button';
+      const row = document.createElement('div');
       row.className = `booking-admin-technician-row${technician.isActive ? '' : ' inactive'}`;
-      row.setAttribute('aria-label', `編輯技師 ${technician.name || ''}`);
+
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'booking-admin-technician-row-main';
+      edit.setAttribute('aria-label', `編輯技師 ${technician.name || ''}`);
+
       const copy = document.createElement('span');
       const name = document.createElement('strong');
       name.textContent = String(technician.name || '未命名技師');
       const meta = document.createElement('small');
-      const tags = [`排序 ${Number(technician.sortOrder) || 0}`, technician.isActive ? '會員端可選' : '已停用'];
+      const tags = [`排序 ${Number(technician.sortOrder) || 0}`, technician.isActive ? '已公開' : '已停用'];
       if (technician.technicianId === primaryId) tags.push('主要技師');
       meta.textContent = tags.join(' · ');
       copy.append(name, meta);
+
       const badge = document.createElement('span');
       badge.className = `booking-admin-resource-status ${technician.isActive ? 'active' : 'inactive'}`;
-      badge.textContent = technician.technicianId === primaryId ? '主要' : technician.isActive ? '開放' : '停用';
-      row.append(copy, badge);
-      row.addEventListener('click', () => openEditTechnicianModal(technician));
+      badge.textContent = technician.technicianId === primaryId ? '主要' : technician.isActive ? '公開' : '停用';
+      edit.append(copy, badge);
+      edit.addEventListener('click', () => openEditTechnicianModal(technician));
+      row.append(edit);
+
+      if (!technician.isActive) {
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'button button-outline booking-admin-technician-restore';
+        restore.textContent = state.restoringTechnicianId === technician.technicianId ? '恢復中…' : '恢復公開';
+        restore.disabled = Boolean(state.restoringTechnicianId);
+        restore.addEventListener('click', () => restoreTechnician(technician, restore));
+        row.append(restore);
+      }
+
       list.append(row);
     });
+  }
+
+  function setTechnicianTab(tab) {
+    state.technicianTab = tab === 'disabled' ? 'disabled' : 'active';
+    renderTechnicians();
+  }
+
+  async function restoreTechnician(technician, button) {
+    const technicianId = String(technician?.technicianId || '');
+    const expectedUpdatedAt = String(technician?.updatedAt || '');
+    if (!technicianId || !expectedUpdatedAt || state.restoringTechnicianId) return;
+
+    state.restoringTechnicianId = technicianId;
+    setButtonBusy(button, true, '恢復公開');
+    if (button) button.textContent = '恢復中…';
+    try {
+      const result = await request('admin.booking.resources.technician.save', {
+        technicianId,
+        expectedUpdatedAt,
+        name: String(technician.name || '').trim(),
+        sortOrder: Number(technician.sortOrder) || 0,
+        isActive: true,
+      }, true);
+      const saved = result.technician;
+      if (!saved?.technicianId) throw clientError('API_RESPONSE_ERROR', '無法確認技師恢復結果。');
+
+      const rows = Array.isArray(state.data?.technicians) ? state.data.technicians : [];
+      const index = rows.findIndex((item) => item.technicianId === saved.technicianId);
+      if (index >= 0) rows[index] = saved; else rows.push(saved);
+      rows.sort(sortTechnicians);
+      state.data.technicians = rows;
+      renderPrimaryOptions();
+      renderTechnicians();
+      showMessage(`技師「${saved.name || technician.name || ''}」已恢復公開。`, 'success');
+      window.dispatchEvent(new CustomEvent('booking:technician-restored', { detail: { technicianId } }));
+    } catch (error) {
+      showMessage(
+        error?.code === 'CONFLICT'
+          ? '技師資料已被其他管理者更新，已重新載入最新資料。'
+          : error?.message || '技師恢復失敗。',
+        'error',
+      );
+      if (error?.code === 'CONFLICT') await refresh(false);
+    } finally {
+      state.restoringTechnicianId = '';
+      renderTechnicians();
+    }
   }
 
   function openEditTechnicianModal(technician) {
@@ -403,8 +481,6 @@
     document.getElementById(ids.technicianActive).checked = Boolean(technician.isActive);
     document.getElementById(ids.technicianTitle).textContent = technician.technicianId === state.data?.settings?.primaryTechnicianId ? '修改主要技師' : '修改技師';
     document.getElementById(ids.technicianSave).textContent = '儲存修改';
-    document.getElementById(ids.technicianDelete).classList.remove('hidden');
-    showTechnicianEditor();
     showTechnicianModal();
   }
 
@@ -418,8 +494,6 @@
     document.getElementById(ids.technicianActive).checked = true;
     document.getElementById(ids.technicianTitle).textContent = '新增技師';
     document.getElementById(ids.technicianSave).textContent = '儲存技師';
-    document.getElementById(ids.technicianDelete).classList.add('hidden');
-    showTechnicianEditor();
     showTechnicianModal();
   }
 
@@ -431,173 +505,9 @@
   }
 
   function closeTechnicianModal(force = false) {
-    if (!force && (state.savingTechnician || state.deletingTechnician)) return;
+    if (!force && state.savingTechnician) return;
     document.getElementById(ids.technicianModal)?.classList.add('hidden');
-    showTechnicianEditor();
     clearTechnicianModalMessage();
-  }
-
-  function showTechnicianEditor() {
-    document.getElementById(ids.technicianForm)?.classList.remove('hidden');
-    document.getElementById(ids.technicianDeleteConfirm)?.classList.add('hidden');
-    clearTechnicianModalMessage();
-  }
-
-  function openDeleteTechnicianConfirm() {
-    const technicianId = String(document.getElementById(ids.technicianId)?.value || '');
-    if (!technicianId) return;
-    const name = String(document.getElementById(ids.technicianName)?.value || '').trim() || '這位技師';
-    const submit = document.getElementById(ids.technicianDeleteSubmit);
-    if (submit) {
-      submit.dataset.action = 'delete';
-      submit.disabled = false;
-      submit.textContent = '確認刪除';
-    }
-    document.getElementById(ids.technicianDeleteConfirmText).textContent = `確定永久刪除技師「${name}」？此操作不可復原。`;
-    document.getElementById(ids.technicianForm)?.classList.add('hidden');
-    document.getElementById(ids.technicianDeleteConfirm)?.classList.remove('hidden');
-    clearTechnicianModalMessage();
-  }
-
-  async function deleteTechnician() {
-    if (state.deletingTechnician) return;
-    const button = document.getElementById(ids.technicianDeleteSubmit);
-    if (button?.dataset.action === 'disable') return disableTechnicianFromDelete();
-
-    const technicianId = String(document.getElementById(ids.technicianId)?.value || '');
-    const expectedUpdatedAt = String(document.getElementById(ids.technicianExpectedUpdatedAt)?.value || '');
-    const technicianName = String(document.getElementById(ids.technicianName)?.value || '').trim() || '這位技師';
-    if (!technicianId || !expectedUpdatedAt) return showTechnicianModalMessage('無法確認要刪除的技師版本，請重新開啟後再試。', 'error');
-
-    state.deletingTechnician = true;
-    setButtonBusy(button, true, '確認刪除');
-    if (button) button.textContent = '刪除中…';
-    try {
-      await deleteTechnicianRequest({ technicianId, expectedUpdatedAt });
-      state.data = state.data || { settings: {}, technicians: [] };
-      state.data.technicians = (state.data.technicians || []).filter((item) => String(item.technicianId || '') !== technicianId);
-      renderPrimaryOptions();
-      renderTechnicians();
-      closeTechnicianModal(true);
-      showMessage(`技師「${technicianName}」已刪除。`, 'success');
-      window.dispatchEvent(new CustomEvent('booking:technician-deleted', { detail: { technicianId } }));
-    } catch (error) {
-      if (error?.code === 'BOOKING_TECHNICIAN_IN_USE') {
-        const isActive = Boolean(document.getElementById(ids.technicianActive)?.checked);
-        if (isActive) {
-          document.getElementById(ids.technicianDeleteConfirmText).textContent =
-            `技師「${technicianName}」已有預約紀錄，無法永久刪除。是否改為停用？歷史預約會完整保留。`;
-          if (button) {
-            button.dataset.action = 'disable';
-            button.textContent = '改為停用';
-          }
-          clearTechnicianModalMessage();
-        } else {
-          document.getElementById(ids.technicianDeleteConfirmText).textContent =
-            `技師「${technicianName}」已有預約紀錄且目前已停用。為保留歷史預約資料，不能永久刪除。`;
-          if (button) {
-            button.dataset.action = 'blocked';
-            button.disabled = true;
-            button.textContent = '已停用';
-          }
-          clearTechnicianModalMessage();
-        }
-      } else {
-        const message = error?.name === 'AbortError'
-          ? '技師刪除服務逾時，請稍後再試。'
-          : error?.message || '技師刪除失敗。';
-        showTechnicianModalMessage(message, 'error');
-        if (error?.code === 'CONFLICT') await refresh(false);
-      }
-    } finally {
-      state.deletingTechnician = false;
-      const action = button?.dataset.action || 'delete';
-      setButtonBusy(button, false, action === 'disable' ? '改為停用' : action === 'blocked' ? '已停用' : '確認刪除');
-      if (action === 'blocked' && button) button.disabled = true;
-    }
-  }
-
-  async function disableTechnicianFromDelete() {
-    if (state.deletingTechnician) return;
-    const technicianId = String(document.getElementById(ids.technicianId)?.value || '');
-    const expectedUpdatedAt = String(document.getElementById(ids.technicianExpectedUpdatedAt)?.value || '');
-    const technicianName = String(document.getElementById(ids.technicianName)?.value || '').trim() || '這位技師';
-    const sortOrder = Number(document.getElementById(ids.technicianSortOrder)?.value);
-    const button = document.getElementById(ids.technicianDeleteSubmit);
-    if (!technicianId || !expectedUpdatedAt) return showTechnicianModalMessage('無法確認要停用的技師版本，請重新開啟後再試。', 'error');
-    if (technicianId === String(state.data?.settings?.primaryTechnicianId || '')) {
-      return showTechnicianModalMessage('主要技師不可停用，請先指定其他主要技師。', 'error');
-    }
-
-    state.deletingTechnician = true;
-    setButtonBusy(button, true, '改為停用');
-    if (button) button.textContent = '停用中…';
-    try {
-      const result = await request('admin.booking.resources.technician.save', {
-        technicianId,
-        expectedUpdatedAt,
-        name: technicianName,
-        sortOrder: Number.isInteger(sortOrder) ? sortOrder : 0,
-        isActive: false,
-      }, true);
-      const saved = result.technician;
-      if (!saved?.technicianId) throw clientError('API_RESPONSE_ERROR', '無法確認技師停用結果。');
-
-      state.data = state.data || { settings: {}, technicians: [] };
-      const rows = Array.isArray(state.data.technicians) ? state.data.technicians : [];
-      const index = rows.findIndex((item) => item.technicianId === saved.technicianId);
-      if (index >= 0) rows[index] = saved; else rows.push(saved);
-      rows.sort(sortTechnicians);
-      state.data.technicians = rows;
-      renderPrimaryOptions();
-      renderTechnicians();
-      closeTechnicianModal(true);
-      showMessage(`技師「${technicianName}」已有預約歷史，已改為停用；歷史預約資料完整保留。`, 'success');
-      window.dispatchEvent(new CustomEvent('booking:technician-disabled', { detail: { technicianId } }));
-    } catch (error) {
-      showTechnicianModalMessage(
-        error?.code === 'CONFLICT'
-          ? '技師資料已被其他管理者更新，已重新載入最新資料。'
-          : error?.message || '技師停用失敗。',
-        'error',
-      );
-      if (error?.code === 'CONFLICT') await refresh(false);
-    } finally {
-      state.deletingTechnician = false;
-      if (button) button.dataset.action = 'delete';
-      setButtonBusy(button, false, '確認刪除');
-    }
-  }
-
-  async function deleteTechnicianRequest(payload) {
-    if (!state.config || !state.idToken) state.idToken = await waitForToken();
-    const endpoint = `${String(state.config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-technician-delete`;
-    if (!state.config?.supabaseUrl || !state.config?.supabasePublishableKey) throw clientError('CONFIG_ERROR', '預約服務設定不完整。');
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 30000);
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        cache: 'no-store',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json', apikey: String(state.config.supabasePublishableKey) },
-        body: JSON.stringify({
-          action: 'admin.booking.resources.technician.delete',
-          clientType: 'admin',
-          idToken: state.idToken,
-          technicianId: payload.technicianId,
-          expectedUpdatedAt: payload.expectedUpdatedAt,
-        }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || data?.ok !== true) {
-        throw clientError(String(data?.error?.code || 'API_ERROR'), String(data?.error?.message || '技師刪除失敗。'));
-      }
-      return data.data || {};
-    } finally {
-      window.clearTimeout(timer);
-    }
   }
 
   function showTechnicianModalMessage(message, type) {
