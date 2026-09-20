@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -133,8 +134,17 @@ Deno.serve(async (request: Request) => {
 
     const action = asText(body.action, 80);
     if (!["user.member.bootstrap", "user.member.profile.save"].includes(action) || asText(body.clientType, 20) !== "member") throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
-    const identity = await verifyLineIdToken(asText(body.idToken, 10_000));
     const supabase = dbClient();
+    let identity: Identity;
+    try {
+      const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken, 200));
+      identity = testIdentity
+        ? { lineUserId: testIdentity.lineUserId, displayName: testIdentity.displayName }
+        : await verifyLineIdToken(asText(body.idToken, 10_000));
+    } catch (error) {
+      if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
+      throw error;
+    }
     await consumeRateLimit(supabase, identity, action === "user.member.profile.save");
     const member = await ensureMember(supabase, identity);
     if (action === "user.member.bootstrap") return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member) } });

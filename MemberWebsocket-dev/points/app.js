@@ -435,7 +435,10 @@
 
   function showError(error) {
     const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED';
-    els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR'
+    const maintenance = error && error.code === 'SYSTEM_MAINTENANCE';
+    els.errorTitle.textContent = maintenance
+      ? '系統維護中'
+      : error && error.code === 'CONFIG_ERROR'
       ? '系統尚未完成設定'
       : membershipRequired
         ? '請先加入會員'

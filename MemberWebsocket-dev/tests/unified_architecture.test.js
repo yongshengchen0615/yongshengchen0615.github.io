@@ -9,7 +9,7 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 test('member surfaces use one browser core without runtime monkey patches', () => {
   for (const entry of ['admin/index.html', 'member/index.html', 'points/index.html', 'event/index.html', 'calendar/index.html']) {
     const html = read(entry);
-    assert.match(html, /\.\.\/member-system\.js\?v=unified-core-20260919-1/);
+    assert.match(html, /\.\.\/member-system\.js\?v=test-mode-20260920-1/);
     assert.equal((html.match(/member-system\.js/g) || []).length, 1, entry);
     assert.doesNotMatch(html, /\.\/common\.js/);
     assert.doesNotMatch(html, /realtime-resync\.js/);

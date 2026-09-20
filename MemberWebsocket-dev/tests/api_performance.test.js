@@ -10,7 +10,7 @@ function api() {
   const context = vm.createContext({ Deno: { serve() {}, env: { get() { return ''; } } }, Date, Intl, Set, Map, console, crypto: require('node:crypto').webcrypto, TextEncoder });
   vm.runInContext(stripTypeScriptTypes(source), context); return context;
 }
-const member = { id: 'member-A', line_user_id: 'line-A', display_name: 'Fixture', membership_status: 'active', status: 'active' };
+const member = { id: 'member-A', line_user_id: 'line-A', display_name: 'Fixture', membership_status: 'active', status: 'active', is_test_account: false };
 const identity = { lineUserId: member.line_user_id, displayName: member.display_name };
 const card = { id: 'card-uuid', card_id: 'CARD', title: 'Card', status: 'active' };
 const event = { id: 'event-uuid', event_ticket_id: 'EVENT', title: 'Event', status: 'active', quota: 3, allowed_tier_keys: ['general'] };

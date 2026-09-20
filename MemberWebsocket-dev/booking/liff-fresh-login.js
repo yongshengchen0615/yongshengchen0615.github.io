@@ -64,8 +64,12 @@
     return idToken;
   }
 
-  window.BookingSystem.signIn = (config, clientType) => {
+  window.BookingSystem.signIn = async (config, clientType) => {
     if (clientType !== 'booking') return originalSignIn(config, clientType);
+    if (window.TestModeClient && typeof window.TestModeClient.prepare === 'function') {
+      const prepared = await window.TestModeClient.prepare(config, 'booking', () => freshBookingSignIn(config));
+      return String(prepared && prepared.idToken || '');
+    }
     return freshBookingSignIn(config);
   };
 })();

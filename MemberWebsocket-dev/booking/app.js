@@ -83,7 +83,8 @@
     try {
       state.config = await window.BookingSystem.loadConfig();
       state.idToken = await window.BookingSystem.signIn(state.config, 'booking');
-      const decoded = typeof window.liff?.getDecodedIDToken === 'function' ? window.liff.getDecodedIDToken() : null;
+      const hasTestSession = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function' && window.TestModeClient.getSessionToken();
+      const decoded = !hasTestSession && typeof window.liff?.getDecodedIDToken === 'function' ? window.liff.getDecodedIDToken() : null;
       const fallbackName = String(decoded?.name || 'LINE 會員');
       els.memberName.textContent = fallbackName;
       els.memberProfileName.textContent = fallbackName;
@@ -905,7 +906,8 @@
 
   function showError(error) {
     const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED';
-    els.errorTitle.textContent = membershipRequired ? '請先加入會員' : '預約功能暫時無法使用';
+    const maintenance = error && error.code === 'SYSTEM_MAINTENANCE';
+    els.errorTitle.textContent = maintenance ? '系統維護中' : membershipRequired ? '請先加入會員' : '預約功能暫時無法使用';
     els.errorMessage.textContent = membershipRequired
       ? '加入會員並完成會員資料後，才能使用預約功能。'
       : error?.message || '無法連線預約服務，請稍後再試。';

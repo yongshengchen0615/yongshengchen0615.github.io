@@ -29,9 +29,9 @@ test('admin entry references current booking assets', () => {
   const html = read('admin/index.html');
   assert.ok(html.includes('calendar-responsive.css?v=calendar-responsive-20260914-mobile-fit-2'));
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
-  assert.ok(html.includes('../member-system.js?v=unified-core-20260919-1'));
+  assert.ok(html.includes('../member-system.js?v=test-mode-20260920-1'));
   assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
-  assert.ok(html.includes('app.js?v=admin-grant-card-lock-20260919-1'));
+  assert.ok(html.includes('app.js?v=test-mode-20260920-1'));
   assert.ok(html.includes('booking-panel.css?v=booking-settings-layout-20260918-1'));
   assert.ok(html.includes('booking-panel.js?v=booking-technician-disable-action-20260920-1'));
   assert.equal((html.match(/booking-panel\.js/g) || []).length, 1);
@@ -47,16 +47,16 @@ test('member booking entry loads only the current single render pipeline', () =>
   const loader = read('admin/booking-panel.js');
 
   assert.ok(html.includes('styles.css?v=booking-addon-notice-modal-20260919-1'));
-  assert.ok(html.includes('common.js?v=booking-addon-notice-modal-20260919-1'));
+  assert.ok(html.includes('common.js?v=test-mode-20260920-1'));
   assert.ok(html.includes('group-booking.css?v=booking-participant-colors-20260918-1'));
   assert.ok(html.includes('booking-history.css?v=booking-history-accordion-20260918-1'));
   assert.ok(html.includes('member-booking-format.css?v=booking-service-type-colors-webview-20260918-2'));
   assert.ok(html.includes('service-type-color.js?v=booking-shared-type-color-map-20260918-4'));
-  assert.ok(html.includes('group-booking.js?v=booking-addon-notice-modal-20260919-1'));
-  assert.ok(html.includes('member-ui.js?v=booking-single-render-20260919-1'));
-  assert.ok(html.includes('app.js?v=booking-addon-notice-modal-20260919-1'));
-  assert.ok(html.includes('contact-details.js?v=booking-single-render-20260919-1'));
-  assert.ok(html.includes('calendar-flow.js?v=booking-single-render-20260919-1'));
+  assert.ok(html.includes('group-booking.js?v=test-mode-20260920-1'));
+  assert.ok(html.includes('member-ui.js?v=test-mode-20260920-1'));
+  assert.ok(html.includes('app.js?v=test-mode-20260920-1'));
+  assert.ok(html.includes('contact-details.js?v=test-mode-20260920-1'));
+  assert.ok(html.includes('calendar-flow.js?v=test-mode-20260920-1'));
 
   assert.ok(!html.includes('member-booking-format.js'));
   assert.ok(!html.includes('booking-confirm-details.js'));

@@ -96,6 +96,14 @@
   }
 
   async function signIn(config, surface) {
+    if (surface !== 'admin' && window.TestModeClient && typeof window.TestModeClient.prepare === 'function') {
+      const prepared = await window.TestModeClient.prepare(config, surface, () => lineSignIn(config, surface));
+      return String(prepared && prepared.idToken || '');
+    }
+    return lineSignIn(config, surface);
+  }
+
+  async function lineSignIn(config, surface) {
     validateConfig(config, surface);
     if (!window.liff) throw clientError('LIFF_SDK_ERROR', 'LIFF SDK 載入失敗，請確認網路後重試。');
     const liffId = surface === 'admin' ? config.adminLiffId : surface === 'points' ? config.pointsLiffId : surface === 'event' ? config.eventLiffId : surface === 'calendar' ? config.calendarLiffId : surface === 'booking' ? config.bookingLiffId : config.memberLiffId;
@@ -176,7 +184,8 @@
       return sendRequest(config, clientType, idToken, action, payload).finally(() => pendingReads.clear());
     }
     const endpoint = requestEndpoint(config, clientType, action);
-    const key = JSON.stringify([endpoint, clientType, idToken, action, payload]);
+    const testSessionToken = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function' ? window.TestModeClient.getSessionToken() : '';
+    const key = JSON.stringify([endpoint, clientType, idToken, testSessionToken, action, payload]);
     if (pendingReads.has(key)) return pendingReads.get(key);
     const pending = sendRequest(config, clientType, idToken, action, payload).finally(() => {
       if (pendingReads.get(key) === pending) pendingReads.delete(key);
@@ -215,7 +224,9 @@
             'apikey': String(config.supabasePublishableKey)
           },
           cache: 'no-store',
-          body: JSON.stringify({ ...payload, action, clientType, idToken })
+          body: JSON.stringify(window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+            ? window.TestModeClient.payload({ ...payload, action, clientType, idToken })
+            : { ...payload, action, clientType, idToken })
         }, remaining, (response) => response.text());
 
         let data;
@@ -391,8 +402,10 @@
   }
 
   function logout() {
-    try { if (window.liff && window.liff.isLoggedIn()) window.liff.logout(); }
-    finally { window.location.reload(); }
+    try {
+      if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
+      if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
+    } finally { window.location.reload(); }
   }
 
   function openMemberJoin(config) {

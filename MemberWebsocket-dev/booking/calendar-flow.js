@@ -320,9 +320,13 @@
   }
 
   async function loadMonthOccupancy() {
-    if (!window.BookingSystem || !window.liff || typeof window.liff.isLoggedIn !== 'function' || !window.liff.isLoggedIn()) return;
-    const idToken = typeof window.liff.getIDToken === 'function' ? window.liff.getIDToken() : '';
-    if (!idToken) return;
+    if (!window.BookingSystem) return;
+    const testSessionToken = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function'
+      ? window.TestModeClient.getSessionToken()
+      : '';
+    if (!testSessionToken && (!window.liff || typeof window.liff.isLoggedIn !== 'function' || !window.liff.isLoggedIn())) return;
+    const idToken = !testSessionToken && typeof window.liff?.getIDToken === 'function' ? window.liff.getIDToken() : '';
+    if (!idToken && !testSessionToken) return;
 
     const month = state.month;
     const requestSeq = ++state.occupancyRequestSeq;
@@ -408,7 +412,9 @@
         },
         cache: 'no-store',
         signal: controller.signal,
-        body: JSON.stringify({ idToken, month }),
+        body: JSON.stringify(window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+          ? window.TestModeClient.payload({ idToken, month })
+          : { idToken, month }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload || payload.ok !== true) {

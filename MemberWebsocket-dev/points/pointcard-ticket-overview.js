@@ -64,7 +64,9 @@
         apikey: String(state.config.supabasePublishableKey || '')
       },
       cache: 'no-store',
-      body: JSON.stringify({ ...payload, operation, idToken: state.idToken })
+      body: JSON.stringify(window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+        ? window.TestModeClient.payload({ ...payload, operation, idToken: state.idToken })
+        : { ...payload, operation, idToken: state.idToken })
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data || data.ok !== true) {

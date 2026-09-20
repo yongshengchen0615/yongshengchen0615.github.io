@@ -345,7 +345,8 @@
 
   function showError(error) {
     const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED';
-    els.errorTitle.textContent = error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '活動日曆暫時無法載入';
+    const maintenance = error && error.code === 'SYSTEM_MAINTENANCE';
+    els.errorTitle.textContent = maintenance ? '系統維護中' : error && error.code === 'CONFIG_ERROR' ? '系統尚未完成設定' : membershipRequired ? '請先加入會員' : '活動日曆暫時無法載入';
     els.errorMessage.textContent = membershipRequired ? '加入會員並完成會員資料後，才能使用活動日曆功能。' : error && error.message ? error.message : '請稍後重新整理再試。';
     els.joinMemberButton.classList.toggle('hidden', !membershipRequired);
     els.retryButton.classList.toggle('hidden', membershipRequired);

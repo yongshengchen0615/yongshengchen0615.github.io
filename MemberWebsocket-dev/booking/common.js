@@ -93,7 +93,10 @@
 
   async function request(config, clientType, idToken, action, payload = {}) {
     const endpoint = `${String(config.supabaseUrl).replace(/\/$/, '')}/functions/v1/booking-api`;
-    const data = await postJson(endpoint, config, { ...payload, action, clientType, idToken }, '預約服務');
+    const body = window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+      ? window.TestModeClient.payload({ ...payload, action, clientType, idToken })
+      : { ...payload, action, clientType, idToken };
+    const data = await postJson(endpoint, config, body, '預約服務');
     if (clientType === 'member' && action === 'user.booking.bootstrap') {
       const notice = data?.settings && Object.prototype.hasOwnProperty.call(data.settings, 'bookingNotice')
         ? data.settings.bookingNotice
@@ -106,11 +109,16 @@
   async function memberProfile(config, idToken) {
     const endpoint = String(config.supabaseFunctionUrl || '').trim();
     if (!endpoint) throw clientError('CONFIG_INVALID', '會員資料服務設定不完整。');
-    const data = await postJson(endpoint, config, {
+    const requestBody = {
       action: 'user.member.bootstrap',
       clientType: 'member',
       idToken,
-    }, '會員資料服務');
+    };
+    const data = await postJson(endpoint, config,
+      window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+        ? window.TestModeClient.payload(requestBody)
+        : requestBody,
+      '會員資料服務');
     return data && data.profile && typeof data.profile === 'object' ? data.profile : {};
   }
 
@@ -257,7 +265,10 @@
   }
 
   async function logout() {
-    try { if (window.liff && window.liff.isLoggedIn()) window.liff.logout(); } catch (_) {}
+    try {
+      if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
+      if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
+    } catch (_) {}
     window.location.reload();
   }
 

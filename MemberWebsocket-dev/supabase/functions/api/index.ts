@@ -1,5 +1,6 @@
 import { readJsonObject } from "../_shared/request-body.ts";
 import { buildLineFlexNotice } from "../_shared/line-flex.ts";
+import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type ClientType = "member" | "points" | "event" | "calendar" | "admin";
@@ -384,7 +385,7 @@ async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, q
   const safePageSize = Math.max(1,Math.min(100,Math.floor(Number(pageSize) || 100)));
   const safePage = Math.max(1,Math.floor(Number(page) || 1));
   const normalizedQuery = asText(query,100).toLowerCase();
-  let q = supabase.from("members").select("*",{ count:"exact" });
+  let q = supabase.from("members").select("*",{ count:"exact" }).eq("is_test_account",false);
   if (normalizedQuery) q = q.or(`display_name.ilike.%${normalizedQuery.replaceAll(",","")}%,member_code.ilike.%${normalizedQuery.replaceAll(",","")}%`);
   const start = (safePage - 1) * safePageSize;
   const [{ data, count, error },settings] = await Promise.all([
@@ -721,8 +722,8 @@ async function summaryStats(supabase: SupabaseClient): Promise<Json> {
   const today = taipeiDate();
   const start = new Date(today + "T00:00:00+08:00").toISOString();
   const [members,activeMembers,cards,events,todayEntries] = await Promise.all([
-    supabase.from("members").select("*",{ count:"exact",head:true }),
-    supabase.from("members").select("*",{ count:"exact",head:true }).eq("status","active"),
+    supabase.from("members").select("*",{ count:"exact",head:true }).eq("is_test_account",false),
+    supabase.from("members").select("*",{ count:"exact",head:true }).eq("is_test_account",false).eq("status","active"),
     supabase.from("point_cards").select("*",{ count:"exact",head:true }).eq("status","active"),
     supabase.from("event_tickets").select("*",{ count:"exact",head:true }).eq("status","active").is("deleted_at",null),
     supabase.from("point_entries").select("*",{ count:"exact",head:true }).gte("created_at",start).gt("amount",0),
@@ -1506,13 +1507,36 @@ async function handleRequest(request: Request): Promise<Response> {
     const action = asText(body.action,80);
     const requestedClientType = asText(body.clientType,20);
     const idToken = asText(body.idToken,10000);
+    const testSessionToken = asText(body.testSessionToken,200);
     if (!action) throw new ApiError(400,"INVALID_ACTION","API action 不合法。");
-    if (!idToken) throw new ApiError(401,"AUTH_REQUIRED","需要 LINE 登入。");
     const clientType = clientTypeForAction(action);
     if (requestedClientType && requestedClientType !== clientType) throw new ApiError(400,"CLIENT_TYPE_MISMATCH","Client type 與 API action 不一致。");
+    if (!idToken && !(testSessionToken && clientType !== "admin")) throw new ApiError(401,"AUTH_REQUIRED","需要 LINE 登入。");
 
-    const identity = await verifyLineIdToken(idToken,clientType);
     const supabase = dbClient();
+    if (clientType !== "admin") {
+      const mode = await supabase.from("test_mode_settings")
+        .select("enabled,maintenance_message")
+        .eq("id",true)
+        .maybeSingle();
+      if (mode.error) throw new ApiError(503,"TEST_MODE_CHECK_FAILED","目前無法確認系統維護狀態。");
+      if (mode.data?.enabled && !testSessionToken) {
+        throw new ApiError(503,"SYSTEM_MAINTENANCE",asText(mode.data.maintenance_message,500) || "系統維護中，請稍後再試。");
+      }
+    }
+
+    let identity: { lineUserId: string; displayName: string };
+    if (clientType !== "admin" && testSessionToken) {
+      try {
+        const testIdentity = await resolveTestSession(supabase,testSessionToken);
+        identity = { lineUserId:testIdentity.lineUserId,displayName:testIdentity.displayName };
+      } catch (error) {
+        if (error instanceof TestModeAuthError) throw new ApiError(error.status,error.code,error.message);
+        throw error;
+      }
+    } else {
+      identity = await verifyLineIdToken(idToken,clientType);
+    }
     await consumeRateLimit(supabase,identity.lineUserId,action,body);
     const data = await handleAction(supabase,identity,action,body);
     await emitRealtime(supabase,action);

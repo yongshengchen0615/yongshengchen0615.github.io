@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -906,8 +907,37 @@ Deno.serve(async (request: Request) => {
     const expectedPrefix = clientType === "admin" ? "admin.booking." : "user.booking.";
     if (!action.startsWith(expectedPrefix)) throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
 
-    const identity = await verifyLineIdToken(asText(body.idToken, 5000), clientType);
+    const idToken = asText(body.idToken, 5000);
+    const testSessionToken = asText(body.testSessionToken, 200);
+    if (!idToken && !(clientType === "member" && testSessionToken)) {
+      throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
+    }
+
     const supabase = dbClient();
+    if (clientType === "member") {
+      const mode = await supabase.from("test_mode_settings")
+        .select("enabled,maintenance_message")
+        .eq("id", true)
+        .maybeSingle();
+      if (mode.error) throw new ApiError(503, "TEST_MODE_CHECK_FAILED", "目前無法確認系統維護狀態。");
+      if (mode.data?.enabled && !testSessionToken) {
+        throw new ApiError(503, "SYSTEM_MAINTENANCE", asText(mode.data.maintenance_message, 500) || "系統維護中，請稍後再試。");
+      }
+    }
+
+    let identity: Identity;
+    if (clientType === "member" && testSessionToken) {
+      try {
+        const testIdentity = await resolveTestSession(supabase, testSessionToken);
+        identity = { lineUserId: testIdentity.lineUserId, displayName: testIdentity.displayName };
+      } catch (error) {
+        if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
+        throw error;
+      }
+    } else {
+      identity = await verifyLineIdToken(idToken, clientType);
+    }
+
     await consumeRateLimit(supabase, identity, action);
     const data = await route(supabase, identity, clientType, action, body);
     return response(origin, { ok: true, status: 200, data });

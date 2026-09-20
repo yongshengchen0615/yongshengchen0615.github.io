@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, any>;
@@ -357,8 +358,21 @@ Deno.serve(async (req: Request) => {
     if (!action || !["member","admin"].includes(clientType)) throw new ApiError(400,"INVALID_INPUT","請求格式不正確。");
     if (clientType==="member" && !action.startsWith("user.booking.group.")) throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
     if (clientType==="admin" && !action.startsWith("admin.booking.resources.")) throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
-    const identity=await verifyLine(asText(body.idToken,5000),clientType);
     const supabase=db();
+    let identity: Identity;
+    if (clientType === "member") {
+      try {
+        const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken,200));
+        identity = testIdentity
+          ? { lineUserId:testIdentity.lineUserId, displayName:testIdentity.displayName }
+          : await verifyLine(asText(body.idToken,5000),clientType);
+      } catch (error) {
+        if (error instanceof TestModeAuthError) throw new ApiError(error.status,error.code,error.message);
+        throw error;
+      }
+    } else {
+      identity = await verifyLine(asText(body.idToken,5000),clientType);
+    }
     await consumeRateLimit(supabase,identity,action);
     const data=await route(supabase,identity,clientType,action,body);
     return reply(origin,{ok:true,data});
