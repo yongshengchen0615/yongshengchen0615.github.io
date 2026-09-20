@@ -120,9 +120,10 @@ test('test sessions are short-lived, hashed at rest and support direct sessions'
   assert.match(deviceMigration, /device_class in \('pc', 'mobile'\)/);
 });
 
-test('test members stay out of formal member lists and KPI counts', () => {
+test('test members use an isolated roster while staying out of formal KPI counts', () => {
   const coreApi = read('supabase/functions/api/index.ts');
-  assert.match(coreApi, /from\("members"\)\.select\("\*",\{ count:"exact" \}\)\.eq\("is_test_account",false\)/);
+  assert.match(coreApi, /const isTestAccount = asText\(memberKind,10\).*=== "test"/);
+  assert.match(coreApi, /\.eq\("is_test_account",isTestAccount\)/);
   assert.match(coreApi, /from\("members"\)\.select\("\*",\{ count:"exact",head:true \}\)\.eq\("is_test_account",false\)/);
 });
 
