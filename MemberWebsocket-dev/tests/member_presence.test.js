@@ -1,0 +1,69 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.join(__dirname, '..');
+const shared = fs.readFileSync(path.join(root, 'member-system.js'), 'utf8');
+const booking = fs.readFileSync(path.join(root, 'booking', 'common.js'), 'utf8');
+const bookingFresh = fs.readFileSync(path.join(root, 'booking', 'liff-fresh-login.js'), 'utf8');
+const api = fs.readFileSync(path.join(root, 'supabase', 'functions', 'api', 'index.ts'), 'utf8');
+
+test('server recognizes online and offline actions for every member-facing surface', () => {
+  for (const action of [
+    'user.member.presence.online', 'user.member.presence.offline',
+    'user.pointcard.presence.online', 'user.pointcard.presence.offline',
+    'user.event.presence.online', 'user.event.presence.offline',
+    'user.calendar.presence.online', 'user.calendar.presence.offline',
+    'user.booking.presence.online', 'user.booking.presence.offline',
+  ]) assert.ok(api.includes(action), action);
+
+  assert.match(api, /type ClientType = "member" \| "points" \| "event" \| "calendar" \| "booking" \| "admin"/);
+  assert.match(api, /booking: "LINE_BOOKING_CHANNEL_ID"/);
+  assert.match(api, /const presence = presenceActionInfo\(action\)/);
+});
+
+test('presence events remain authenticated server-side and append only minimal audit detail', () => {
+  const identityPosition = api.indexOf('identity = await verifyLineIdToken(idToken,clientType);');
+  const actionPosition = api.indexOf('const presence = presenceActionInfo(action);', api.indexOf('async function handleAction'));
+  assert.ok(identityPosition >= 0);
+  assert.ok(actionPosition >= 0);
+
+  assert.match(api, /actor_role:"member"/);
+  assert.match(api, /target_type:"member"/);
+  assert.match(api, /detail:\{ sessionId,surface:presence\.surface,reason \}/);
+  assert.doesNotMatch(api, /detail:\{[^}]*idToken/s);
+  assert.doesNotMatch(api, /detail:\{[^}]*testSessionToken/s);
+  assert.match(api, /\["signin","logout","pagehide","bfcache","resume","relogin"\]/);
+});
+
+test('presence events do not trigger realtime fanout', () => {
+  assert.match(api, /if \(!WRITE_ACTIONS\.has\(action\) \|\| presenceActionInfo\(action\)\) return;/);
+});
+
+test('shared member client records sign in, logout, page leave and BFCache resume', () => {
+  assert.match(shared, /await startPresence\(config, surface, idToken\)/);
+  assert.match(shared, /window\.addEventListener\('pagehide'/);
+  assert.match(shared, /stopPresence\(event && event\.persisted \? 'bfcache' : 'pagehide', true\)/);
+  assert.match(shared, /window\.addEventListener\('pageshow'/);
+  assert.match(shared, /startPresence\(previous\.config, previous\.surface, currentPresenceIdToken\(previous\), 'resume'\)/);
+  assert.match(shared, /stopPresence\('logout', true\)/);
+  assert.match(shared, /keepalive: true/);
+  assert.match(shared, /1200, '上線紀錄逾時。'/);
+});
+
+test('booking fresh login path cannot bypass presence tracking', () => {
+  assert.match(booking, /window\.BookingSystem = \{ loadConfig, signIn, startPresence,/);
+  assert.match(booking, /user\.booking\.presence\.' \+ event/);
+  assert.match(booking, /keepalive: true/);
+  assert.match(booking, /stopPresence\('logout'\)/);
+  assert.match(bookingFresh, /window\.BookingSystem\.startPresence\(config, 'booking', idToken\)/);
+});
+
+test('presence session IDs use browser cryptographic randomness', () => {
+  assert.match(shared, /crypto\.randomUUID/);
+  assert.match(shared, /crypto\.getRandomValues/);
+  assert.doesNotMatch(shared, /Math\.random\(\)/);
+  assert.match(booking, /crypto\.randomUUID/);
+  assert.match(booking, /crypto\.getRandomValues/);
+});
