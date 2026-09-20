@@ -109,3 +109,31 @@ export async function resolveTestSession(
     isTestAccount: true,
   };
 }
+
+export async function resolveUserTestIdentity(
+  supabase: any,
+  rawToken: string,
+): Promise<TestModeIdentity | null> {
+  const settingsResult = await supabase
+    .from("test_mode_settings")
+    .select("enabled,maintenance_message")
+    .eq("id", true)
+    .maybeSingle();
+
+  if (settingsResult.error) {
+    throw new TestModeAuthError(503, "TEST_MODE_CHECK_FAILED", "目前無法確認系統維護狀態。");
+  }
+
+  if (!settingsResult.data?.enabled) return null;
+
+  const token = String(rawToken || "").trim();
+  if (!token) {
+    throw new TestModeAuthError(
+      503,
+      "SYSTEM_MAINTENANCE",
+      String(settingsResult.data?.maintenance_message || "").trim() || "系統維護中，請稍後再試。",
+    );
+  }
+
+  return await resolveTestSession(supabase, token);
+}
