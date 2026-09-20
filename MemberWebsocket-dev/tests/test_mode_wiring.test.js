@@ -166,6 +166,7 @@ test('all browser bypass APIs forward the selected test session', () => {
 test('test account creation remains admin-only and transactional', () => {
   const rpc = read('supabase/migrations/20260920054446_test_mode_admin_save_rpc.sql');
   const api = read('supabase/functions/test-mode-api/index.ts');
+  const auth = read('supabase/functions/_shared/test-mode-auth.ts');
   assert.match(rpc, /create or replace function public\.admin_save_test_mode/);
   assert.match(rpc, /v_existing \+ v_count > 200/);
   assert.match(rpc, /is_test_account,/);
