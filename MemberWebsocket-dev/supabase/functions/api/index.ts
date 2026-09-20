@@ -416,6 +416,222 @@ async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, q
   return { members, memberPage: { page: Math.min(safePage,totalPages), pageSize: safePageSize, total, totalPages, query: normalizedQuery } };
 }
 
+
+async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string): Promise<Json> {
+  const memberResult = await supabase.from("members")
+    .select("id,line_user_id,display_name,member_code")
+    .eq("line_user_id",lineUserId)
+    .eq("is_test_account",false)
+    .maybeSingle();
+  if (memberResult.error) throw mapDatabaseError(memberResult.error);
+  if (!memberResult.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
+  const member = memberResult.data;
+
+  const [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes] = await Promise.all([
+    supabase.from("point_entries").select("id,entry_id,point_card_id,amount,note,entry_type,reference_type,reference_id,created_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
+    supabase.from("point_tickets").select("id,ticket_id,point_card_id,ticket_type,ticket_title,status,earned_at,used_at,result,points_spent,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
+    supabase.from("event_ticket_claims").select("id,claim_id,event_ticket_id,ticket_type,ticket_title,status,claimed_at,used_at,result,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
+    supabase.from("bookings").select("id,request_id,service_id,technician_id,booking_date,start_time,end_time,status,member_note,total_duration_minutes,party_size,confirmed_at,rejected_at,cancelled_at,completed_at,cancellation_requested_at,cancellation_reviewed_at,cancellation_decision,created_at,updated_at").eq("member_id",member.id).order("booking_date",{ ascending:false }).order("start_time",{ ascending:false }),
+    supabase.from("booking_completion_settlements").select("booking_id,service_minutes,reward_details,created_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
+  ]);
+  for (const result of [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes]) {
+    if (result.error) throw mapDatabaseError(result.error);
+  }
+
+  const pointEntries = pointEntriesRes.data || [];
+  const pointTickets = pointTicketsRes.data || [];
+  const eventClaims = eventClaimsRes.data || [];
+  const bookings = bookingsRes.data || [];
+  const settlements = settlementsRes.data || [];
+
+  const pointCardIds = [...new Set([...pointEntries,...pointTickets].map((row:any) => row.point_card_id).filter(Boolean))];
+  const eventTicketIds = [...new Set(eventClaims.map((row:any) => row.event_ticket_id).filter(Boolean))];
+  const bookingIds = bookings.map((row:any) => row.id).filter(Boolean);
+  const serviceIds = [...new Set(bookings.map((row:any) => row.service_id).filter(Boolean))];
+
+  const [cardsRes,calendarRes,servicesRes,participantsRes] = await Promise.all([
+    pointCardIds.length
+      ? supabase.from("point_cards").select("id,card_id,title").in("id",pointCardIds)
+      : Promise.resolve({ data:[],error:null }),
+    eventTicketIds.length
+      ? supabase.from("calendar_items").select("calendar_item_id,title,item_type,starts_on,ends_on,status,source_event_ticket_id,created_at,updated_at").in("source_event_ticket_id",eventTicketIds).order("starts_on",{ ascending:false })
+      : Promise.resolve({ data:[],error:null }),
+    serviceIds.length
+      ? supabase.from("booking_services").select("id,title").in("id",serviceIds)
+      : Promise.resolve({ data:[],error:null }),
+    bookingIds.length
+      ? supabase.from("booking_participants").select("id,booking_id,position,technician_id").in("booking_id",bookingIds).order("position",{ ascending:true })
+      : Promise.resolve({ data:[],error:null }),
+  ]);
+  for (const result of [cardsRes,calendarRes,servicesRes,participantsRes]) {
+    if (result.error) throw mapDatabaseError(result.error);
+  }
+
+  const participants = participantsRes.data || [];
+  const participantIds = participants.map((row:any) => row.id).filter(Boolean);
+  const technicianIds = [...new Set([
+    ...bookings.map((row:any) => row.technician_id),
+    ...participants.map((row:any) => row.technician_id),
+  ].filter(Boolean))];
+
+  const [participantItemsRes,techniciansRes] = await Promise.all([
+    participantIds.length
+      ? supabase.from("booking_participant_items").select("participant_id,service_title,unit_duration_minutes,unit_price_amount,quantity").in("participant_id",participantIds)
+      : Promise.resolve({ data:[],error:null }),
+    technicianIds.length
+      ? supabase.from("booking_technicians").select("id,name").in("id",technicianIds)
+      : Promise.resolve({ data:[],error:null }),
+  ]);
+  for (const result of [participantItemsRes,techniciansRes]) {
+    if (result.error) throw mapDatabaseError(result.error);
+  }
+
+  const cardById = new Map((cardsRes.data || []).map((row:any) => [row.id,row]));
+  const serviceById = new Map((servicesRes.data || []).map((row:any) => [row.id,row]));
+  const technicianById = new Map((techniciansRes.data || []).map((row:any) => [row.id,row.name]));
+  const settlementByBooking = new Map(settlements.map((row:any) => [row.booking_id,row]));
+  const itemsByParticipant = new Map<string,any[]>();
+  for (const item of participantItemsRes.data || []) {
+    const items = itemsByParticipant.get(item.participant_id) || [];
+    items.push(item);
+    itemsByParticipant.set(item.participant_id,items);
+  }
+  const participantsByBooking = new Map<string,any[]>();
+  for (const participant of participants) {
+    const rows = participantsByBooking.get(participant.booking_id) || [];
+    rows.push({
+      position:Number(participant.position || 0),
+      technicianName:technicianById.get(participant.technician_id) || "",
+      items:(itemsByParticipant.get(participant.id) || []).map((item:any) => ({
+        title:item.service_title || "預約項目",
+        durationMinutes:Number(item.unit_duration_minutes || 0),
+        priceAmount:Number(item.unit_price_amount || 0),
+        quantity:Number(item.quantity || 1),
+      })),
+    });
+    participantsByBooking.set(participant.booking_id,rows);
+  }
+
+  const pointRecords = [
+    ...pointEntries.map((row:any) => {
+      const card = cardById.get(row.point_card_id);
+      return {
+        recordId:`point-entry:${row.id}`,
+        recordType:"point_entry",
+        title:card?.title || "集點卡",
+        cardId:card?.card_id || "",
+        amount:Number(row.amount || 0),
+        entryType:row.entry_type || "",
+        note:row.note || "",
+        referenceType:row.reference_type || "",
+        referenceId:row.reference_id || "",
+        occurredAt:row.created_at,
+      };
+    }),
+    ...pointTickets.map((row:any) => {
+      const card = cardById.get(row.point_card_id);
+      return {
+        recordId:`point-ticket:${row.id}`,
+        recordType:"point_ticket",
+        title:row.ticket_title || "集點卡票券",
+        cardTitle:card?.title || "",
+        ticketType:row.ticket_type || "",
+        status:row.status || "",
+        pointsSpent:Number(row.points_spent || 0),
+        earnedAt:row.earned_at || row.created_at,
+        usedAt:row.used_at || "",
+        result:row.result || null,
+        occurredAt:row.used_at || row.earned_at || row.updated_at || row.created_at,
+      };
+    }),
+  ].sort((a:any,b:any) => String(b.occurredAt || "").localeCompare(String(a.occurredAt || "")));
+
+  const eventTicketRecords = eventClaims.map((row:any) => ({
+    recordId:`event-ticket:${row.id}`,
+    claimId:row.claim_id,
+    eventTicketId:row.event_ticket_id,
+    title:row.ticket_title || "活動票券",
+    ticketType:row.ticket_type || "",
+    status:row.status || "",
+    claimedAt:row.claimed_at || row.created_at,
+    usedAt:row.used_at || "",
+    result:row.result || null,
+    occurredAt:row.used_at || row.claimed_at || row.updated_at || row.created_at,
+  }));
+
+  const claimByEventTicket = new Map(eventTicketRecords.map((row:any) => [row.eventTicketId,row]));
+  const calendarRecords = (calendarRes.data || []).map((row:any) => {
+    const claim:any = claimByEventTicket.get(row.source_event_ticket_id);
+    return {
+      recordId:`calendar:${row.calendar_item_id}`,
+      calendarItemId:row.calendar_item_id,
+      title:row.title || "日曆項目",
+      itemType:row.item_type || "",
+      status:row.status || "",
+      startsOn:row.starts_on || "",
+      endsOn:row.ends_on || "",
+      relatedTicketTitle:claim?.title || "",
+      relatedTicketStatus:claim?.status || "",
+      relatedClaimId:claim?.claimId || "",
+      occurredAt:row.starts_on || row.created_at,
+    };
+  });
+
+  const bookingRecords = bookings.map((row:any) => {
+    const settlement = settlementByBooking.get(row.id);
+    return {
+      recordId:`booking:${row.id}`,
+      bookingId:row.id,
+      requestId:row.request_id || "",
+      title:serviceById.get(row.service_id)?.title || "預約",
+      technicianName:technicianById.get(row.technician_id) || "",
+      bookingDate:row.booking_date || "",
+      startTime:row.start_time || "",
+      endTime:row.end_time || "",
+      status:row.status || "",
+      memberNote:row.member_note || "",
+      totalDurationMinutes:Number(row.total_duration_minutes || 0),
+      partySize:Number(row.party_size || 1),
+      participants:participantsByBooking.get(row.id) || [],
+      confirmedAt:row.confirmed_at || "",
+      rejectedAt:row.rejected_at || "",
+      cancelledAt:row.cancelled_at || "",
+      completedAt:row.completed_at || "",
+      cancellationRequestedAt:row.cancellation_requested_at || "",
+      cancellationReviewedAt:row.cancellation_reviewed_at || "",
+      cancellationDecision:row.cancellation_decision || "",
+      settlement:settlement ? {
+        serviceMinutes:Number(settlement.service_minutes || 0),
+        rewardDetails:settlement.reward_details || null,
+        createdAt:settlement.created_at || "",
+      } : null,
+      createdAt:row.created_at,
+      occurredAt:row.completed_at || row.cancelled_at || row.rejected_at || row.confirmed_at || row.updated_at || row.created_at,
+    };
+  });
+
+  return {
+    member:{
+      lineUserId:member.line_user_id,
+      displayName:member.display_name,
+      memberCode:member.member_code,
+    },
+    records:{
+      pointCards:pointRecords,
+      eventTickets:eventTicketRecords,
+      calendar:calendarRecords,
+      bookings:bookingRecords,
+    },
+    counts:{
+      pointCards:pointRecords.length,
+      eventTickets:eventTicketRecords.length,
+      calendar:calendarRecords.length,
+      bookings:bookingRecords.length,
+    },
+    calendarTracking:"linked_records_only",
+  };
+}
+
 function isExpiredCard(row: any): boolean {
   if (row.expiry_mode !== "date" || !row.expires_on) return false;
   return String(row.expires_on) < taipeiDate();
@@ -1261,6 +1477,9 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   }
   if (action === "admin.members.list") {
     return await membersPage(supabase,Number(body.memberPage || 1),Number(body.memberPageSize || 100),asText(body.memberQuery,100));
+  }
+  if (action === "admin.member-records.list") {
+    return await adminMemberRecords(supabase,requireText(body.lineUserId,"會員識別",120));
   }
   if (action === "admin.pointcards.list") {
     const data = await adminCards(supabase);
