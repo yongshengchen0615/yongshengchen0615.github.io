@@ -17,10 +17,15 @@ test('admin exposes a dedicated test mode workspace', () => {
   assert.match(html, /id="testModeAdminLoginEnabled"/);
   assert.match(html, /id="testModeMaintenanceMessage"/);
   assert.match(html, /id="testModeAddAccountCount"/);
-  assert.match(html, /test-mode\.js\?v=test-mode-20260920-1/);
+  assert.match(html, /test-mode\.js\?v=test-mode-ui-20260920-2/);
+  assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-2/);
   assert.match(app, /switchPanel\('testMode'\)/);
   assert.match(testMode, /admin\.test-mode\.save/);
   assert.match(testMode, /admin\.test-mode\.bootstrap/);
+  assert.match(html, /id="testModeStatusBadge"/);
+  assert.match(html, /data-test-account-count="5"/);
+  assert.match(testMode, /updateStatusBadge/);
+  assert.match(testMode, /test-account-avatar/);
 });
 
 test('all member-facing surfaces load the shared test-mode client before their app logic', () => {
