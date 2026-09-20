@@ -50,8 +50,15 @@
     return `PTR-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
   }
 
+  function hasMemberAuth() {
+    const testSessionToken = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function'
+      ? String(window.TestModeClient.getSessionToken() || '')
+      : '';
+    return Boolean(state.idToken || testSessionToken);
+  }
+
   async function extensionRequest(operation, payload = {}) {
-    if (!state.config || !state.idToken) {
+    if (!state.config || !hasMemberAuth()) {
       const error = new Error('票券登入狀態尚未完成。');
       error.code = 'AUTH_NOT_READY';
       throw error;
@@ -662,7 +669,7 @@
   }
 
   async function refreshSettings() {
-    if (!state.config || !state.idToken) {
+    if (!state.config || !hasMemberAuth()) {
       const error = new Error('票券登入資訊不完整。');
       error.code = 'AUTH_NOT_READY';
       throw error;
@@ -677,7 +684,7 @@
     state.config = config && typeof config === 'object' ? config : null;
     state.idToken = String(idToken || '');
     state.refreshData = typeof refreshData === 'function' ? refreshData : null;
-    if (!state.config || !state.idToken) {
+    if (!state.config || !hasMemberAuth()) {
       const error = new Error('票券登入資訊不完整。');
       error.code = 'AUTH_NOT_READY';
       throw error;
