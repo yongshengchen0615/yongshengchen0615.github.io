@@ -1000,16 +1000,19 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   const counts = new Map<string,number>();
   for (const row of countRes.data || []) counts.set(row.event_ticket_id,(counts.get(row.event_ticket_id)||0)+1);
   const today = taipeiDate();
-  const offers = (eventRows || []).map((row:any) => {
-    const ticket = eventTicketClient(row,counts.get(row.id)||0) as any;
+  const offers = (eventRows || []).flatMap((row:any) => {
     const claimRow = claimByEvent.get(row.id);
+    // Fixed tickets are server-issued member benefits, not public claimable offers.
+    // Never expose a fixed-ticket event to a member unless that member owns its claim.
+    if (row.fixed_ticket_template_id && !claimRow) return [];
+    const ticket = eventTicketClient(row,counts.get(row.id)||0) as any;
     const claim = claimRow ? claimClient(claimRow,row.event_ticket_id) : null;
     const scheduled = Boolean(row.starts_on && today < row.starts_on);
     const ended = Boolean(row.ends_on && today > row.ends_on);
     const availability = scheduled ? "scheduled" : ended ? "ended" : "active";
     const tierEligible = (row.allowed_tier_keys || []).includes(profile.tierKey);
     const soldOut = Number(row.quota || 0) > 0 && (counts.get(row.id)||0) >= Number(row.quota);
-    return {
+    return [{
       ticket,
       claim,
       availability,
@@ -1018,7 +1021,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       canUse: Boolean(claim && claim.status === "available" && tierEligible && availability === "active"),
       soldOut,
       history: false,
-    };
+    }];
   });
 
   const usedTickets = (allHistoryRes.data || []).map((row:any) => {
