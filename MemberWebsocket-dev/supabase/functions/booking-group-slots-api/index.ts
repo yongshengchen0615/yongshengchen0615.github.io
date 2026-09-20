@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, any>;
@@ -294,8 +295,15 @@ Deno.serve(async (request: Request) => {
     if (asText(body.action, 100) !== "user.booking.group.slots" || asText(body.clientType, 20) !== "member") {
       throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     }
-    const lineUserId = await verifyMember(asText(body.idToken, 5000));
     const supabase = db();
+    let lineUserId: string;
+    try {
+      const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken, 200));
+      lineUserId = testIdentity ? testIdentity.lineUserId : await verifyMember(asText(body.idToken, 5000));
+    } catch (error) {
+      if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
+      throw error;
+    }
     await consumeRateLimit(supabase, lineUserId);
     const member = await activeMember(supabase, lineUserId);
     return reply(origin, { ok: true, data: await slots(supabase, member, body) });
