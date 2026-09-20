@@ -242,7 +242,7 @@ Deno.serve(async (request: Request) => {
     if (asText(body.clientType, 20) !== "calendar") {
       return reply(origin, { ok:false,status:400,error:{ code:"CLIENT_TYPE_MISMATCH",message:"Client type 與 API action 不一致。" } }, 400);
     }
-    if (!asText(body.idToken, 10_000)) {
+    if (!asText(body.idToken, 10_000) && !asText(body.testSessionToken, 200)) {
       return reply(origin, { ok:false,status:401,error:{ code:"AUTH_REQUIRED",message:"需要 LINE 登入。" } }, 401);
     }
 
