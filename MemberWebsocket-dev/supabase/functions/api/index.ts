@@ -3,7 +3,7 @@ import { buildLineFlexNotice } from "../_shared/line-flex.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
-type ClientType = "member" | "points" | "event" | "calendar" | "admin";
+type ClientType = "member" | "points" | "event" | "calendar" | "booking" | "admin";
 type Json = Record<string, unknown>;
 
 const MAX_REQUEST_BYTES = 40_000;
@@ -12,7 +12,15 @@ const WRITE_LIMIT = 30;
 const TIER_KEYS = ["general", "silver", "gold", "platinum"] as const;
 const TIER_LABELS: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
 const STYLE_KEYS = ["forest","midnight","ocean","sunset","lavender","rose","gold","platinum","mint","cherry"] as const;
+const PRESENCE_ACTIONS = [
+  "user.member.presence.online","user.member.presence.offline",
+  "user.pointcard.presence.online","user.pointcard.presence.offline",
+  "user.event.presence.online","user.event.presence.offline",
+  "user.calendar.presence.online","user.calendar.presence.offline",
+  "user.booking.presence.online","user.booking.presence.offline",
+] as const;
 const WRITE_ACTIONS = new Set([
+  ...PRESENCE_ACTIONS,
   "user.member.profile.save",
   "admin.member.update",
   "admin.member-tiers.save",
@@ -119,7 +127,25 @@ function mapDatabaseError(error: unknown): ApiError {
   return new ApiError(500,"DATABASE_ERROR","資料庫暫時無法完成操作。");
 }
 
+function presenceActionInfo(action: string): { clientType: ClientType; surface: string; event: "online"|"offline" } | null {
+  const match = /^user\.(member|pointcard|event|calendar|booking)\.presence\.(online|offline)$/.exec(action);
+  if (!match) return null;
+  const clientTypeBySurface: Record<string,ClientType> = {
+    member:"member", pointcard:"points", event:"event", calendar:"calendar", booking:"booking",
+  };
+  const surfaceByAction: Record<string,string> = {
+    member:"member", pointcard:"points", event:"event", calendar:"calendar", booking:"booking",
+  };
+  return {
+    clientType:clientTypeBySurface[match[1]],
+    surface:surfaceByAction[match[1]],
+    event:match[2] as "online"|"offline",
+  };
+}
+
 function clientTypeForAction(action: string): ClientType {
+  const presence = presenceActionInfo(action);
+  if (presence) return presence.clientType;
   if (action === "user.member.bootstrap" || action === "user.member.profile.save") return "member";
   if (action === "user.pointcard.bootstrap" || action === "user.pointcard.detail" || action.startsWith("user.pointcard.ticket.")) return "points";
   if (action === "user.event.bootstrap" || action === "user.event.ticket.detail" || action.startsWith("user.event.ticket.")) return "event";
@@ -134,6 +160,7 @@ function channelIdFor(clientType: ClientType): string {
     points: "LINE_POINTS_CHANNEL_ID",
     event: "LINE_EVENT_CHANNEL_ID",
     calendar: "LINE_CALENDAR_CHANNEL_ID",
+    booking: "LINE_BOOKING_CHANNEL_ID",
     admin: "LINE_ADMIN_CHANNEL_ID",
   };
   const defaults: Record<ClientType,string> = {
@@ -141,6 +168,7 @@ function channelIdFor(clientType: ClientType): string {
     points: "2010787602",
     event: "2010787602",
     calendar: "2010787602",
+    booking: "2010787602",
     admin: "2010791619",
   };
   const value = env(keys[clientType]) || defaults[clientType];
@@ -427,14 +455,15 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
   if (!memberResult.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
   const member = memberResult.data;
 
-  const [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes] = await Promise.all([
+  const [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes,presenceRes] = await Promise.all([
     supabase.from("point_entries").select("id,entry_id,point_card_id,amount,note,entry_type,reference_type,reference_id,created_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("point_tickets").select("id,ticket_id,point_card_id,ticket_type,ticket_title,status,earned_at,used_at,result,points_spent,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("event_ticket_claims").select("id,claim_id,event_ticket_id,ticket_type,ticket_title,status,claimed_at,used_at,result,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("bookings").select("id,request_id,service_id,technician_id,booking_date,start_time,end_time,status,member_note,total_duration_minutes,party_size,confirmed_at,rejected_at,cancelled_at,completed_at,cancellation_requested_at,cancellation_reviewed_at,cancellation_decision,created_at,updated_at").eq("member_id",member.id).order("booking_date",{ ascending:false }).order("start_time",{ ascending:false }),
     supabase.from("booking_completion_settlements").select("booking_id,service_minutes,reward_details,created_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
+    supabase.from("audit_logs").select("id,audit_id,action,detail,created_at").eq("target_type","member").eq("target_id",member.line_user_id).in("action",[...PRESENCE_ACTIONS]).order("created_at",{ ascending:false }),
   ]);
-  for (const result of [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes]) {
+  for (const result of [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes,presenceRes]) {
     if (result.error) throw mapDatabaseError(result.error);
   }
 
@@ -443,6 +472,7 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
   const eventClaims = eventClaimsRes.data || [];
   const bookings = bookingsRes.data || [];
   const settlements = settlementsRes.data || [];
+  const presenceEvents = presenceRes.data || [];
 
   const pointCardIds = [...new Set([...pointEntries,...pointTickets].map((row:any) => row.point_card_id).filter(Boolean))];
   const eventTicketIds = [...new Set(eventClaims.map((row:any) => row.event_ticket_id).filter(Boolean))];
@@ -577,6 +607,19 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
     };
   });
 
+  const presenceRecords = presenceEvents.map((row:any) => {
+    const info = presenceActionInfo(String(row.action || ""));
+    const detail = row.detail && typeof row.detail === "object" ? row.detail as Json : {};
+    return {
+      recordId:`presence:${row.id}`,
+      event:info?.event || "",
+      surface:info?.surface || asText(detail.surface,20),
+      reason:asText(detail.reason,30),
+      sessionId:asText(detail.sessionId,80),
+      occurredAt:row.created_at,
+    };
+  });
+
   const bookingRecords = bookings.map((row:any) => {
     const settlement = settlementByBooking.get(row.id);
     return {
@@ -621,12 +664,14 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
       eventTickets:eventTicketRecords,
       calendar:calendarRecords,
       bookings:bookingRecords,
+      presence:presenceRecords,
     },
     counts:{
       pointCards:pointRecords.length,
       eventTickets:eventTicketRecords.length,
       calendar:calendarRecords.length,
       bookings:bookingRecords.length,
+      presence:presenceRecords.length,
     },
     calendarTracking:"linked_records_only",
   };
@@ -955,7 +1000,7 @@ async function summaryStats(supabase: SupabaseClient): Promise<Json> {
 }
 
 async function emitRealtime(supabase: SupabaseClient, action: string): Promise<void> {
-  if (!WRITE_ACTIONS.has(action)) return;
+  if (!WRITE_ACTIONS.has(action) || presenceActionInfo(action)) return;
   const scopes: ClientType[] =
     action.startsWith("admin.grant-message-presets.")
       ? ["admin"]
@@ -1348,6 +1393,37 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
 }
 
 async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string }, action: string, body: Json): Promise<Json> {
+  const presence = presenceActionInfo(action);
+  if (presence) {
+    const sessionId = requireText(body.sessionId,"上線紀錄識別",80);
+    if (!/^[A-Za-z0-9_-]{16,80}$/.test(sessionId)) throw new ApiError(400,"INVALID_PRESENCE_SESSION","上線紀錄識別格式不正確。");
+    const reason = asText(body.reason,30) || (presence.event === "online" ? "signin" : "pagehide");
+    if (!["signin","logout","pagehide","bfcache","resume","relogin"].includes(reason)) {
+      throw new ApiError(400,"INVALID_PRESENCE_REASON","上下線紀錄原因不合法。");
+    }
+
+    if (presence.event === "online") {
+      await ensureMember(supabase,identity);
+    } else {
+      const existing = await supabase.from("members").select("id").eq("line_user_id",identity.lineUserId).maybeSingle();
+      if (existing.error) throw mapDatabaseError(existing.error);
+      if (!existing.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
+    }
+
+    const inserted = await supabase.from("audit_logs").insert({
+      audit_id:requestId("AUD"),
+      actor_line_user_id:identity.lineUserId,
+      actor_role:"member",
+      action,
+      target_type:"member",
+      target_id:identity.lineUserId,
+      result:"success",
+      detail:{ sessionId,surface:presence.surface,reason },
+    });
+    if (inserted.error) throw mapDatabaseError(inserted.error);
+    return { recorded:true,event:presence.event,surface:presence.surface,sessionId };
+  }
+
   if (action === "user.member.bootstrap") {
     const member = await ensureMember(supabase,identity);
     return { profile: await profileFor(supabase,member) };
@@ -1739,7 +1815,7 @@ async function handleRequest(request: Request): Promise<Response> {
         .eq("id",true)
         .maybeSingle();
       if (mode.error) throw new ApiError(503,"TEST_MODE_CHECK_FAILED","目前無法確認系統維護狀態。");
-      if (mode.data?.maintenance_enabled && !testSessionToken) {
+      if (mode.data?.maintenance_enabled && !testSessionToken && presenceActionInfo(action)?.event !== "offline") {
         throw new ApiError(503,"SYSTEM_MAINTENANCE",asText(mode.data.maintenance_message,500) || "系統維護中，請稍後再試。");
       }
     }
