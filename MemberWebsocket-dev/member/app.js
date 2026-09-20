@@ -299,7 +299,7 @@
 
   function showError(error) {
     const code = error && error.code;
-    els.errorTitle.textContent = code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '會員卡暫時無法載入';
+    els.errorTitle.textContent = code === 'SYSTEM_MAINTENANCE' ? '系統維護中' : code === 'CONFIG_ERROR' ? '系統尚未完成設定' : '會員卡暫時無法載入';
     els.errorMessage.textContent = error && error.message ? error.message : '請稍後重新整理再試。';
     setView('error');
   }
