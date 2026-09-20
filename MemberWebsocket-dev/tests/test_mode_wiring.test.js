@@ -255,3 +255,13 @@ test('test-account purge has least-privilege access to booking notification outb
   assert.match(migration, /grant select, delete on table booking_notifications\.outbox to service_role/);
   assert.doesNotMatch(migration, /to anon|to authenticated|to public/);
 });
+
+
+test('test member numbering resets to 1 only after every test account is removed', () => {
+  const migration = read('supabase/migrations/20260920134931_reset_test_member_number_after_delete_all.sql');
+  assert.match(migration, /pg_advisory_xact_lock\(2026092001\)/);
+  assert.match(migration, /select count\(\*\)::integer[\s\S]*where is_test_account = true/);
+  assert.match(migration, /if v_remaining_count = 0 then/);
+  assert.match(migration, /setval\('public\.test_member_sequence', 1, false\)/);
+  assert.match(migration, /nextval\('public\.test_member_sequence'\)/);
+});
