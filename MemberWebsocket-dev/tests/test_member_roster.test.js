@@ -57,7 +57,7 @@ test('test grants never enter LINE push notification path', () => {
 });
 
 test('new and existing test accounts have complete virtual profiles', () => {
-  const migration = read('supabase/migrations/20260920225800_test_member_full_profile.sql');
+  const migration = read('supabase/migrations/20260920150345_test_member_full_profile.sql');
   assert.match(migration, /where is_test_account = true/);
   assert.match(migration, /surname = coalesce/);
   assert.match(migration, /salutation = case/);
