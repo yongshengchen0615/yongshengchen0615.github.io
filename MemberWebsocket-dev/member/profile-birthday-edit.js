@@ -218,7 +218,10 @@
     if (!system || typeof system.loadConfig !== 'function') throw new Error('會員系統尚未準備完成。');
     const config = await system.loadConfig();
     const idToken = typeof window.liff?.getIDToken === 'function' ? String(window.liff.getIDToken() || '') : '';
-    if (!idToken) throw new Error('LINE 登入尚未完成。');
+    const testSessionToken = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function'
+      ? window.TestModeClient.getSessionToken()
+      : '';
+    if (!idToken && !testSessionToken) throw new Error('登入尚未完成。');
     const endpoint = `${String(config.supabaseUrl || '').replace(/\/$/, '')}${PROFILE_ENDPOINT}`;
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -231,7 +234,9 @@
         },
         cache: 'no-store',
         signal: controller.signal,
-        body: JSON.stringify({ ...payload, action, clientType: 'member', idToken }),
+        body: JSON.stringify(window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+          ? window.TestModeClient.payload({ ...payload, action, clientType: 'member', idToken })
+          : { ...payload, action, clientType: 'member', idToken }),
       });
       let data;
       try { data = await response.json(); }
