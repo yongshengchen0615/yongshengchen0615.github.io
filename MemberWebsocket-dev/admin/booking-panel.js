@@ -28,41 +28,6 @@
     document.head.appendChild(script);
   });
 
-  // booking-panel-core.js is dynamically loaded after DOMContentLoaded in some paths.
-  // Its auto-open path can synchronously call request helpers before their lexical
-  // initialization has completed. Temporarily mask #booking while the core script
-  // initializes, then restore and open the tab after the script has fully evaluated.
-  const requestedBookingHash = window.location.hash === '#booking';
-  const locationWithoutHash = `${window.location.pathname}${window.location.search}`;
-  if (requestedBookingHash) {
-    window.history.replaceState({}, document.title, locationWithoutHash);
-  }
-
-  function restoreBookingHashAndOpen() {
-    if (!requestedBookingHash) return;
-    if (window.location.hash !== '#booking') {
-      window.history.replaceState({}, document.title, `${locationWithoutHash}#booking`);
-    }
-
-    let attempts = 0;
-    const tryOpen = () => {
-      attempts += 1;
-      const adminView = document.getElementById('adminView');
-      const bookingTab = document.getElementById('bookingTab');
-      const authenticated = Boolean(window.MemberAdminSession?.isReady?.());
-      if (adminView && bookingTab && !adminView.classList.contains('hidden') && authenticated) {
-        bookingTab.click();
-        return true;
-      }
-      return attempts >= 300;
-    };
-
-    if (tryOpen()) return;
-    const timer = window.setInterval(() => {
-      if (tryOpen()) window.clearInterval(timer);
-    }, 100);
-  }
-
   loadSharedResponsive();
   loadStyle('booking-panel-responsive.css', 'booking-settings-layout-20260918-1');
   loadStyle('booking-summary.css', 'booking-summary-20260918-participants-1');
@@ -99,10 +64,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-latest-first-20260919-1');
-    })
-    .then(() => {
-      restoreBookingHashAndOpen();
+      return load('booking-panel-core.js', 'booking-tab-navigation-20260920-1');
     })
     .catch((error) => console.error('booking admin core load failed', error));
 })();
