@@ -24,14 +24,14 @@ assert.doesNotMatch(resources, /function openDeleteTechnicianConfirm\(/);
 assert.doesNotMatch(resources, /刪除技師/);
 assert.doesNotMatch(resources, /window\.confirm/);
 
-assert.match(loader, /booking-technician-status-tabs-20260920-1/);
+assert.match(loader, /booking-technician-disable-action-20260920-1/);
 assert.doesNotMatch(loader, /booking-technician-delete\.js/);
 assert.equal(fs.existsSync('MemberWebsocket-dev/booking-technician-delete.js'), false);
 
 assert.match(styles, /booking-admin-technician-modal-card/);
 assert.match(styles, /booking-admin-technician-tabs/);
 assert.match(styles, /booking-admin-technician-tab\.active/);
-assert.match(styles, /booking-admin-technician-restore/);
+assert.match(styles, /booking-admin-technician-status-action/);
 assert.doesNotMatch(styles, /booking-admin-technician-delete-confirm/);
 
 console.log('booking admin technician publish/disable lifecycle wiring OK');
