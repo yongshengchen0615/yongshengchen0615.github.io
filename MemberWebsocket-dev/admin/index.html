@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="./calendar-date-fix.css?v=20260914-line-date-1">
   <link rel="stylesheet" href="./booking-panel.css?v=booking-settings-layout-20260918-1" data-booking-admin-panel-style>
   <link rel="stylesheet" href="./fixed-ticket-admin.css?v=fixed-ticket-20260916-1">
-  <link rel="stylesheet" href="./test-mode.css?v=test-mode-20260920-1">
+  <link rel="stylesheet" href="./test-mode.css?v=test-mode-ui-20260920-2">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="../member-system.js?v=test-mode-20260920-1" defer></script>
@@ -24,7 +24,7 @@
   <script src="./fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1" defer></script>
   <script src="./pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1" defer></script>
   <script src="./app.js?v=test-mode-20260920-1" defer></script>
-  <script src="./test-mode.js?v=test-mode-20260920-1" defer></script>
+  <script src="./test-mode.js?v=test-mode-ui-20260920-2" defer></script>
   <script src="./grant-automation.js?v=grant-automation-20260910" defer></script>
   <script src="../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1" defer></script>
   <script src="./booking-panel.js?v=booking-tab-navigation-20260920-1" data-booking-admin-panel-extension defer></script>
@@ -75,35 +75,101 @@
         <div class="card-workspace calendar-workspace"><aside class="card-list" aria-label="日曆項目列表"><section class="admin-calendar" aria-labelledby="adminCalendarMonthTitle"><div class="admin-calendar-toolbar"><button id="adminCalendarPreviousMonthButton" class="admin-calendar-month-button" type="button" aria-label="上一個月">‹</button><div><h3 id="adminCalendarMonthTitle"></h3><p>點選日期即可新增休假日或活動；點選日期內項目可編輯。</p><button id="adminCalendarTodayButton" class="text-button admin-calendar-today-button" type="button">回到本月</button></div><button id="adminCalendarNextMonthButton" class="admin-calendar-month-button" type="button" aria-label="下一個月">›</button></div><div class="admin-calendar-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div id="adminCalendarGrid" class="admin-calendar-grid" aria-live="polite"></div></section><div class="list-heading"><span>所有日期</span><span id="calendarItemResultCount">0</span></div><div id="calendarItemListItems"></div><div id="calendarItemEmptyState" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>尚未建立休假日或活動日期</p></div></aside><section class="editor"><div class="editor-heading"><div><p class="kicker" id="calendarItemEditorKicker">Create calendar item</p><h3 id="calendarItemEditorTitle">新增日曆項目</h3></div><span id="calendarItemEditorStatus" class="editor-status">草稿</span></div><form id="calendarItemForm" novalidate><input id="calendarItemId" type="hidden"><input id="calendarItemExpectedUpdatedAt" type="hidden"><label>名稱<input id="calendarItemTitle" required maxlength="100" placeholder="例如：中秋節店休"></label><div class="form-grid"><label>類型<select id="calendarItemType"><option value="holiday">休假日</option><option value="event">活動</option></select></label><label>公開狀態<select id="calendarItemStatus"><option value="active">啟用中</option><option value="draft">草稿</option><option value="archived">已封存</option></select></label></div><label>說明（選填）<textarea id="calendarItemDescription" maxlength="500" rows="4" placeholder="例如：當日暫停營業，祝大家佳節愉快。"></textarea></label><section id="calendarItemEventLinkFields" class="calendar-event-link-fields" aria-labelledby="calendarItemEventLinkTitle"><div><p class="kicker">Event link</p><h4 id="calendarItemEventLinkTitle">活動連結</h4><p>填寫名稱與 HTTPS 網址後，會員可在活動詳情開啟連結。</p></div><div class="form-grid"><label>連結名稱（選填）<input id="calendarItemLinkLabel" maxlength="80" placeholder="例如：查看活動詳情"></label><label>連結網址（選填）<input id="calendarItemLinkUrl" type="url" inputmode="url" maxlength="2048" placeholder="https://example.com/event"></label></div></section><section class="date-range-control" aria-labelledby="calendarItemDateRangeTitle"><div class="date-range-heading"><div><p class="kicker">Date range</p><h4 id="calendarItemDateRangeTitle">日期</h4><p>單日項目只需填寫開始日；跨日活動可再設定結束日。</p></div></div><div class="form-grid"><div class="date-control"><div class="date-control-heading"><label for="calendarItemStartsOn">開始日</label><span>必填</span></div><div class="date-input-shell"><input id="calendarItemStartsOn" type="date" required><button class="date-picker-button" type="button" data-open-date-picker="calendarItemStartsOn" aria-label="開啟開始日選擇器"><span aria-hidden="true">▣</span><span>選擇日期</span></button></div></div><div class="date-control"><div class="date-control-heading"><label for="calendarItemEndsOn">結束日</label><span>選填，留空即為單日</span></div><div class="date-input-shell"><input id="calendarItemEndsOn" type="date"><button class="date-picker-button" type="button" data-open-date-picker="calendarItemEndsOn" aria-label="開啟結束日選擇器"><span aria-hidden="true">▣</span><span>選擇日期</span></button></div></div></div></section><label>識別色<div class="color-field"><input id="calendarItemAccent" type="color" value="#df6b4d"><span id="calendarItemAccentValue">#DF6B4D</span></div></label><div id="calendarItemFormMessage" class="form-message hidden" role="alert"></div><div class="editor-actions"><button id="deleteCalendarItemButton" class="button button-danger" type="button" disabled>刪除目前項目</button><button id="resetCalendarItemButton" class="button button-outline" type="button">清除</button><button id="saveCalendarItemButton" class="button button-dark" type="submit">儲存日曆項目</button></div></form></section></div>
         <section class="calendar-batch-editor" aria-labelledby="calendarBatchTitle"><div class="section-heading"><div><p class="kicker">Batch calendar changes</p><h3 id="calendarBatchTitle">批次新增、修改、刪除</h3><p>可新增多列，或勾選左側既有項目後加入修改／刪除；每次最多 20 筆，送出前會先檢查全部資料。</p></div><div class="heading-actions"><button id="addCalendarBatchItemButton" class="button button-outline" type="button">＋ 新增一列</button><button id="queueSelectedCalendarItemsButton" class="button button-outline" type="button">加入批次修改</button><button id="deleteSelectedCalendarItemsButton" class="button button-danger" type="button" disabled>批次刪除選取</button></div></div><p id="calendarBatchSummary" class="editor-hint" aria-live="polite">尚未加入批次項目。</p><div id="calendarBatchRows" class="calendar-batch-rows"></div><div id="calendarBatchMessage" class="form-message hidden" role="alert"></div><div class="editor-actions"><button id="clearCalendarBatchButton" class="button button-outline" type="button" disabled>清除批次</button><button id="saveCalendarBatchButton" class="button button-dark" type="button" disabled>儲存批次項目</button></div></section>
       </section>
-          <section id="testModePanel" class="panel hidden" role="tabpanel" aria-labelledby="testModeTab">
-        <div class="panel-heading"><div><p class="kicker">Testing environment</p><h2>測試模式</h2><p>控制用戶端維護狀態、管理員測試登入與虛擬測試會員。正式會員不會出現在測試帳號清單中。</p></div></div>
+      <section id="testModePanel" class="panel hidden test-mode-panel" role="tabpanel" aria-labelledby="testModeTab">
+        <div class="panel-heading test-mode-panel-heading">
+          <div>
+            <p class="kicker">Testing environment</p>
+            <h2>測試模式</h2>
+            <p>集中控制維護狀態、管理員測試登入與虛擬測試會員。所有測試帳號與正式會員資料完全分開。</p>
+          </div>
+          <div class="test-mode-status-group" aria-label="測試環境目前狀態">
+            <span id="testModeStatusBadge" class="test-mode-status-badge is-loading">測試模式：讀取中</span>
+            <span id="testModeAdminLoginBadge" class="test-mode-status-badge is-loading">管理員登入：讀取中</span>
+          </div>
+        </div>
+
         <div class="test-mode-panel-grid">
           <section class="test-mode-settings-card" aria-labelledby="testModeSettingsTitle">
-            <h3 id="testModeSettingsTitle">測試模式設定</h3>
-            <p>啟用後，正式用戶端會由後端維護閘門阻擋；只有已授權管理員建立的短效測試 session 可以使用虛擬會員操作。</p>
+            <div class="test-mode-card-heading">
+              <div>
+                <span class="test-mode-eyebrow">Environment controls</span>
+                <h3 id="testModeSettingsTitle">環境與登入設定</h3>
+                <p>調整後需按下儲存才會套用；正式用戶端的存取判斷由後端維護閘門執行。</p>
+              </div>
+            </div>
+
             <form id="testModeForm" novalidate>
-              <div class="test-mode-toggle-list">
-                <label class="test-mode-toggle"><input id="testModeEnabled" type="checkbox"><span><strong>啟用測試模式</strong><small>啟用後，用戶端進入維護狀態。</small></span></label>
-                <label class="test-mode-toggle"><input id="testModeAdminLoginEnabled" type="checkbox"><span><strong>允許管理員登入用戶端</strong><small>管理員通過 LINE 身分與權限驗證後，可從下拉選單選擇測試帳號登入。</small></span></label>
+              <section class="test-mode-form-section" aria-labelledby="testModeControlTitle">
+                <div class="test-mode-section-heading">
+                  <div><strong id="testModeControlTitle">測試環境</strong><small>控制正式用戶端是否進入維護狀態，以及管理員是否可使用虛擬會員測試。</small></div>
+                </div>
+                <div class="test-mode-toggle-list">
+                  <label class="test-mode-toggle">
+                    <span class="test-mode-toggle-copy"><strong>啟用測試模式</strong><small>開啟後，正式會員進入用戶端時會顯示維護狀態。</small></span>
+                    <span class="test-mode-toggle-control"><input id="testModeEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
+                  </label>
+                  <label class="test-mode-toggle">
+                    <span class="test-mode-toggle-copy"><strong>允許管理員登入用戶端</strong><small>管理員驗證成功後，可選擇測試帳號進入會員端操作。</small></span>
+                    <span class="test-mode-toggle-control"><input id="testModeAdminLoginEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
+                  </label>
+                </div>
+              </section>
+
+              <section class="test-mode-form-section" aria-labelledby="testModeMaintenanceTitle">
+                <div class="test-mode-section-heading">
+                  <div><strong id="testModeMaintenanceTitle">維護畫面訊息</strong><small>測試模式啟用時，正式用戶端會顯示這段內容；留空時使用系統預設訊息。</small></div>
+                  <span class="test-mode-field-meta">最多 500 字</span>
+                </div>
+                <textarea id="testModeMaintenanceMessage" maxlength="500" rows="5" aria-label="系統維護訊息" placeholder="例如：系統維護中，服務調整完成後將重新開放。"></textarea>
+              </section>
+
+              <section class="test-mode-form-section test-mode-account-create-section" aria-labelledby="testModeCreateAccountsTitle">
+                <div class="test-mode-section-heading">
+                  <div><strong id="testModeCreateAccountsTitle">新增虛擬測試帳號</strong><small>只會建立測試會員，不會加入正式會員名冊或會員統計。</small></div>
+                </div>
+                <div class="test-mode-account-create-row">
+                  <label class="test-mode-count-field">本次新增數量
+                    <input id="testModeAddAccountCount" type="number" min="0" max="50" step="1" value="0" inputmode="numeric">
+                  </label>
+                  <div class="test-mode-quick-counts" aria-label="快速設定新增測試帳號數量">
+                    <button class="test-mode-count-chip" type="button" data-test-account-count="1">＋1</button>
+                    <button class="test-mode-count-chip" type="button" data-test-account-count="5">＋5</button>
+                    <button class="test-mode-count-chip" type="button" data-test-account-count="10">＋10</button>
+                  </div>
+                </div>
+                <small class="test-mode-account-create-hint">每次最多新增 50 個；儲存設定時會一併建立。</small>
+              </section>
+
+              <div class="test-mode-safety-note" role="note">
+                <span class="test-mode-safety-icon" aria-hidden="true">i</span>
+                <p><strong>測試資料與正式會員隔離</strong><span>停用測試模式或管理員測試登入後，既有測試 session 會立即撤銷。</span></p>
               </div>
-              <label>系統維護訊息
-                <textarea id="testModeMaintenanceMessage" maxlength="500" rows="5" placeholder="例如：系統維護中，服務調整完成後將重新開放。"></textarea>
-              </label>
-              <div class="form-grid">
-                <label>本次新增測試帳號數量
-                  <input id="testModeAddAccountCount" type="number" min="0" max="50" step="1" value="0" inputmode="numeric">
-                  <small>每次最多新增 50 個；儲存後立即建立虛擬會員。</small>
-                </label>
-              </div>
-              <p class="test-mode-warning">測試帳號使用獨立標記，不計入正式會員名冊與管理端會員統計。停用測試模式或管理員測試登入時，現有測試 session 會立即撤銷。</p>
+
               <div id="testModeFormMessage" class="form-message hidden" role="status" aria-live="polite"></div>
-              <div class="test-mode-actions"><button id="saveTestModeButton" class="button button-dark" type="submit">儲存測試模式</button></div>
+              <div class="test-mode-actions">
+                <p>儲存後立即套用目前環境設定。</p>
+                <button id="saveTestModeButton" class="button button-dark" type="submit">儲存測試模式</button>
+              </div>
             </form>
           </section>
+
           <section class="test-mode-accounts-card" aria-labelledby="testModeAccountsTitle">
-            <div class="test-mode-account-heading"><div><h3 id="testModeAccountsTitle">測試帳號</h3><p>管理員用戶端測試登入時只會顯示這些虛擬會員。</p></div><span id="testModeAccountCount" class="test-mode-account-count">0 個</span></div>
-            <div id="testModeAccountList" class="test-mode-account-list"></div>
-            <div id="testModeAccountEmpty" class="empty-state compact"><strong>尚未建立測試帳號</strong><span>在左側設定本次新增數量並儲存即可建立。</span></div>
+            <div class="test-mode-account-heading">
+              <div>
+                <span class="test-mode-eyebrow">Test members</span>
+                <h3 id="testModeAccountsTitle">測試帳號</h3>
+                <p>管理員進入用戶端測試時，只能選擇這裡建立的虛擬會員。</p>
+              </div>
+              <span id="testModeAccountCount" class="test-mode-account-count">0 個</span>
+            </div>
+            <div class="test-mode-account-list-shell">
+              <div id="testModeAccountList" class="test-mode-account-list"></div>
+              <div id="testModeAccountEmpty" class="empty-state compact test-mode-account-empty">
+                <span class="test-mode-empty-mark" aria-hidden="true">○</span>
+                <strong>尚未建立測試帳號</strong>
+                <small>設定左側新增數量並儲存後，帳號會顯示在這裡。</small>
+              </div>
+            </div>
           </section>
         </div>
       </section>
