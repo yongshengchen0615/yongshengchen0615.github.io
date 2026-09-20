@@ -32,7 +32,7 @@ test('admin cancellation request card uses the normalized booking format', () =>
   assert.match(ui, /預約項目：\$\{participantItemsLabel/);
   assert.match(ui, /預約技師：/);
   assert.match(ui, /return `\$\{month\}\/\$\{day\}（\$\{weekday\}）`/);
-  assert.match(loader, /booking-technician-status-tabs-20260920-1/);
+  assert.match(loader, /booking-technician-disable-action-20260920-1/);
   assert.match(ui, /booking-admin-booking booking-summary-normalized/);
   assert.match(ui, /booking-admin-booking-heading/);
   assert.match(ui, /booking-received-summary/);

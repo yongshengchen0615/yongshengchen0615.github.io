@@ -212,7 +212,7 @@
   opacity: 0.72;
 }
 
-.booking-admin-technician-restore {
+.booking-admin-technician-status-action {
   flex: 0 0 auto;
   margin-right: 12px;
   white-space: nowrap;
@@ -263,7 +263,7 @@
     align-items: flex-start;
   }
 
-  .booking-admin-technician-restore {
+  .booking-admin-technician-status-action {
     margin: 0 12px 12px;
     width: calc(100% - 24px);
   }
