@@ -2,8 +2,8 @@
   'use strict';
 
   const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
-  const PRIMARY_TAB_IDS = ['membersTab', 'cardsTab', 'eventsTab', 'calendarTab'];
-  const PRIMARY_PANEL_IDS = ['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel'];
+  const PRIMARY_TAB_IDS = ['membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'testModeTab'];
+  const PRIMARY_PANEL_IDS = ['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'testModePanel'];
   const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', completed: '服務已完成', rejected: '未通過', cancelled: '已取消' };
   const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
   const state = {
@@ -37,7 +37,9 @@
     tab.setAttribute('aria-selected', 'false');
     tab.setAttribute('aria-controls', 'bookingPanel');
     tab.textContent = '預約';
-    nav.appendChild(tab);
+    const testModeTab = document.getElementById('testModeTab');
+    if (testModeTab && testModeTab.parentElement === nav) nav.insertBefore(tab, testModeTab);
+    else nav.appendChild(tab);
 
     const panel = document.createElement('section');
     panel.id = 'bookingPanel';
@@ -177,7 +179,6 @@
     cacheElements();
     bindEvents();
     setSubtab('technicians');
-    openHashWhenAdminReady();
   }
 
   function cacheElements() {
@@ -233,27 +234,12 @@
     els.bookingTab.setAttribute('aria-selected', 'true');
     els.bookingPanel.classList.remove('hidden');
     setSubtab(state.subtab);
-    if (window.location.hash !== '#booking') window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}#booking`);
     if (!state.loading) refreshAll(false);
   }
 
   function deactivateBookingPanel() {
     els.bookingTab.setAttribute('aria-selected', 'false');
     els.bookingPanel.classList.add('hidden');
-    if (window.location.hash === '#booking') window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
-  }
-
-  function openHashWhenAdminReady() {
-    if (window.location.hash !== '#booking') return;
-    const adminView = document.getElementById('adminView');
-    const tryOpen = () => {
-      if (!adminView.classList.contains('hidden') && window.MemberAdminSession?.isReady?.()) { activateBookingPanel(); return true; }
-      return false;
-    };
-    if (tryOpen()) return;
-    const observer = new MutationObserver(() => { if (tryOpen()) observer.disconnect(); });
-    observer.observe(adminView, { attributes: true, attributeFilter: ['class'] });
-    window.setTimeout(() => observer.disconnect(), 30000);
   }
 
   async function context() {
