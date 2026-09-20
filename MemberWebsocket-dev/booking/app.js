@@ -83,7 +83,8 @@
     try {
       state.config = await window.BookingSystem.loadConfig();
       state.idToken = await window.BookingSystem.signIn(state.config, 'booking');
-      const decoded = typeof window.liff?.getDecodedIDToken === 'function' ? window.liff.getDecodedIDToken() : null;
+      const hasTestSession = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function' && window.TestModeClient.getSessionToken();
+      const decoded = !hasTestSession && typeof window.liff?.getDecodedIDToken === 'function' ? window.liff.getDecodedIDToken() : null;
       const fallbackName = String(decoded?.name || 'LINE 會員');
       els.memberName.textContent = fallbackName;
       els.memberProfileName.textContent = fallbackName;
