@@ -15,6 +15,9 @@
   let realtimeClientKey = '';
   let presenceContext = null;
   let presenceHooksBound = false;
+  let presenceHeartbeatTimer = null;
+  const PRESENCE_HEARTBEAT_MS = 30_000;
+  const PRESENCE_RESUME_SIGNAL_MS = 60_000;
 
   const PRESENCE_BY_SURFACE = Object.freeze({
     member: Object.freeze({ clientType: 'member', prefix: 'user.member.presence' }),
@@ -27,14 +30,19 @@
   const WRITE_ACTIONS = Object.freeze([
     'user.member.presence.online',
     'user.member.presence.offline',
+    'user.member.presence.heartbeat',
     'user.pointcard.presence.online',
     'user.pointcard.presence.offline',
+    'user.pointcard.presence.heartbeat',
     'user.event.presence.online',
     'user.event.presence.offline',
+    'user.event.presence.heartbeat',
     'user.calendar.presence.online',
     'user.calendar.presence.offline',
+    'user.calendar.presence.heartbeat',
     'user.booking.presence.online',
     'user.booking.presence.offline',
+    'user.booking.presence.heartbeat',
     'user.member.profile.save',
     'admin.member.update',
     'admin.member-tiers.save',
@@ -220,10 +228,47 @@
     return String(context && context.idToken || '');
   }
 
+  function clearPresenceHeartbeat() {
+    if (presenceHeartbeatTimer !== null) {
+      window.clearTimeout(presenceHeartbeatTimer);
+      presenceHeartbeatTimer = null;
+    }
+  }
+
+  function schedulePresenceHeartbeat() {
+    clearPresenceHeartbeat();
+    if (!presenceContext || presenceContext.closed || document.visibilityState === 'hidden') return;
+    presenceHeartbeatTimer = window.setTimeout(() => {
+      presenceHeartbeatTimer = null;
+      void heartbeatPresence();
+    }, PRESENCE_HEARTBEAT_MS);
+  }
+
+  async function heartbeatPresence() {
+    const context = presenceContext;
+    if (!context || context.closed || document.visibilityState === 'hidden') return;
+    try {
+      if (!context.onlineRecorded) {
+        await startPresence(context.config, context.surface, currentPresenceIdToken(context), 'relogin');
+        return;
+      }
+      await withTimeout(sendRequest(context.config, context.clientType, currentPresenceIdToken(context), context.prefix + '.heartbeat', {
+        sessionId: context.sessionId,
+        reason: 'heartbeat'
+      }), 1200, '上線狀態同步逾時。');
+      context.lastSeenSignalAt = Date.now();
+    } catch (error) {
+      console.warn('presence heartbeat failed', error);
+    } finally {
+      schedulePresenceHeartbeat();
+    }
+  }
+
   function bindPresenceLifecycle() {
     if (presenceHooksBound) return;
     presenceHooksBound = true;
     window.addEventListener('pagehide', (event) => {
+      clearPresenceHeartbeat();
       void stopPresence(event && event.persisted ? 'bfcache' : 'pagehide', true);
     });
     window.addEventListener('pageshow', (event) => {
@@ -231,6 +276,20 @@
       const previous = presenceContext;
       presenceContext = null;
       void startPresence(previous.config, previous.surface, currentPresenceIdToken(previous), 'resume');
+    });
+    document.addEventListener('visibilitychange', () => {
+      const context = presenceContext;
+      if (!context || context.closed) return;
+      if (document.visibilityState === 'hidden') {
+        clearPresenceHeartbeat();
+        return;
+      }
+      if (Date.now() - Number(context.lastSeenSignalAt || 0) >= PRESENCE_RESUME_SIGNAL_MS) {
+        context.onlineRecorded = false;
+        void startPresence(context.config, context.surface, currentPresenceIdToken(context), 'resume');
+      } else {
+        void heartbeatPresence();
+      }
     });
   }
 
@@ -245,6 +304,8 @@
           reason
         }), 1200, '上線紀錄逾時。');
         presenceContext.onlineRecorded = true;
+        presenceContext.lastSeenSignalAt = Date.now();
+        schedulePresenceHeartbeat();
       } catch (error) {
         console.warn('presence online record failed', error);
       }
@@ -259,6 +320,7 @@
       idToken: String(idToken || ''),
       sessionId: createPresenceSessionId(),
       onlineRecorded: false,
+      lastSeenSignalAt: 0,
       closed: false
     };
     presenceContext = context;
@@ -269,8 +331,11 @@
         reason
       }), 1200, '上線紀錄逾時。');
       context.onlineRecorded = true;
+      context.lastSeenSignalAt = Date.now();
     } catch (error) {
       console.warn('presence online record failed', error);
+    } finally {
+      schedulePresenceHeartbeat();
     }
   }
 
@@ -307,6 +372,7 @@
   async function stopPresence(reason = 'pagehide', keepalive = false) {
     const context = presenceContext;
     if (!context || context.closed) return;
+    clearPresenceHeartbeat();
     context.closed = true;
     if (keepalive) {
       await sendPresenceKeepalive(context, reason);
