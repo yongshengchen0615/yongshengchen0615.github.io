@@ -30,6 +30,12 @@
 
     scheduleProfileSync(0);
     window.addEventListener('member-test-session-ready', () => scheduleProfileSync(0));
+    window.addEventListener('member-profile-ready', (event) => {
+      const profile = event?.detail?.profile;
+      if (!profile || typeof profile !== 'object') return;
+      currentProfile = profile;
+      applyProfileDisplay(profile);
+    });
     window.addEventListener('pageshow', () => scheduleProfileSync(0));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') scheduleProfileSync(0);
@@ -79,7 +85,7 @@
     openProfileModal('honorific');
     showModalMessage('honorific', '正在同步會員資料…');
     try {
-      const profile = await ensureCurrentProfile();
+      const profile = await fetchCurrentProfile(4);
       hideModalMessage('honorific');
       setValue('honorificSurnameInput', String(profile.surname || ''));
       setValue('honorificSalutationSelect', String(profile.salutation || '').toLowerCase());
@@ -95,7 +101,7 @@
     openProfileModal('phone');
     showModalMessage('phone', '正在同步會員資料…');
     try {
-      const profile = await ensureCurrentProfile();
+      const profile = await fetchCurrentProfile(4);
       hideModalMessage('phone');
       setValue('phoneEditInput', String(profile.phone || ''));
       document.getElementById('phoneEditInput')?.focus();
@@ -124,23 +130,17 @@
   }
 
   async function saveHonorificProfile() {
-    if (!currentProfile || typeof currentProfile !== 'object') return showModalMessage('honorific', '會員資料尚在同步，請稍後再試。');
-
     const surname = valueOf('honorificSurnameInput');
     const salutation = valueOf('honorificSalutationSelect').toLowerCase();
-    const birthday = String(currentProfile.birthday || '').trim();
-    const rawPhone = String(currentProfile.phone || '').trim();
 
     if (!surname) return showModalMessage('honorific', '請填寫姓氏。');
     if (!['mr', 'ms'].includes(salutation)) return showModalMessage('honorific', '請選擇先生或小姐。');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showModalMessage('honorific', '目前會員生日資料不完整，請重新整理後再試。');
-    if (!/^\+?\d{8,15}$/.test(normalizePhone(rawPhone))) return showModalMessage('honorific', '目前會員電話資料不完整，請先修改電話。');
 
     setModalSaving('honorific', true);
     hideModalMessage('honorific');
     try {
-      const result = await saveProfilePayload({ surname, salutation, birthday, phone: rawPhone });
-      currentProfile = result.profile || { ...currentProfile, surname, salutation };
+      const result = await saveProfilePayload({ surname, salutation });
+      currentProfile = result.profile || { ...(currentProfile || {}), surname, salutation };
       applyProfileDisplay(currentProfile);
       closeProfileModal('honorific');
     } catch (error) {
@@ -151,24 +151,16 @@
   }
 
   async function savePhoneProfile() {
-    if (!currentProfile || typeof currentProfile !== 'object') return showModalMessage('phone', '會員資料尚在同步，請稍後再試。');
-
-    const surname = String(currentProfile.surname || '').trim();
-    const salutation = String(currentProfile.salutation || '').trim().toLowerCase();
-    const birthday = String(currentProfile.birthday || '').trim();
     const rawPhone = valueOf('phoneEditInput');
     const phone = normalizePhone(rawPhone);
 
-    if (!surname) return showModalMessage('phone', '目前會員姓氏資料不完整，請先修改稱呼。');
-    if (!['mr', 'ms'].includes(salutation)) return showModalMessage('phone', '目前會員稱謂資料不完整，請先修改稱呼。');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showModalMessage('phone', '目前會員生日資料不完整，請重新整理後再試。');
     if (!/^\+?\d{8,15}$/.test(phone)) return showModalMessage('phone', '請填寫正確的電話。');
 
     setModalSaving('phone', true);
     hideModalMessage('phone');
     try {
-      const result = await saveProfilePayload({ surname, salutation, birthday, phone: rawPhone });
-      currentProfile = result.profile || { ...currentProfile, phone: rawPhone };
+      const result = await saveProfilePayload({ phone: rawPhone });
+      currentProfile = result.profile || { ...(currentProfile || {}), phone: rawPhone };
       applyProfileDisplay(currentProfile);
       closeProfileModal('phone');
     } catch (error) {
