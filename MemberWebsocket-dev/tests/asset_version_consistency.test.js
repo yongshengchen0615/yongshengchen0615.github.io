@@ -47,7 +47,7 @@ test('member booking entry loads only the current single render pipeline', () =>
   const loader = read('admin/booking-panel.js');
 
   assert.ok(html.includes('styles.css?v=booking-addon-notice-modal-20260919-1'));
-  assert.ok(html.includes('common.js?v=member-member-profile-route-20260920-1'));
+  assert.ok(html.includes('common.js?v=member-presence-20260920-2'));
   assert.ok(html.includes('liff-fresh-login.js?v=member-presence-20260920-1'));
   assert.ok(html.includes('group-booking.css?v=booking-participant-colors-20260918-1'));
   assert.ok(html.includes('booking-history.css?v=booking-history-accordion-20260918-1'));
