@@ -152,13 +152,12 @@ async function authorizeAdmin(supabase: any, identity: Identity): Promise<any> {
 
 async function settings(supabase: any): Promise<any> {
   const result = await supabase.from("test_mode_settings")
-    .select("enabled,allow_admin_user_login,maintenance_message,updated_by,updated_at")
+    .select("enabled,maintenance_message,updated_by,updated_at")
     .eq("id", true)
     .maybeSingle();
   if (result.error) throw new ApiError(503, "TEST_MODE_SETTINGS_UNAVAILABLE", "目前無法讀取測試模式設定。");
   return result.data || {
     enabled: false,
-    allow_admin_user_login: false,
     maintenance_message: "",
     updated_by: null,
     updated_at: null,
@@ -168,7 +167,6 @@ async function settings(supabase: any): Promise<any> {
 function settingsClient(row: any): Json {
   return {
     enabled: Boolean(row?.enabled),
-    allowAdminUserLogin: Boolean(row?.allow_admin_user_login),
     maintenanceMessage: asText(row?.maintenance_message, 500),
     updatedBy: asText(row?.updated_by, 120),
     updatedAt: row?.updated_at || null,
@@ -213,6 +211,26 @@ async function audit(
   });
 }
 
+async function auditTestAccount(
+  supabase: any,
+  member: any,
+  action: string,
+  targetType: string,
+  targetId: string,
+  detail: Json = {},
+): Promise<void> {
+  await supabase.from("audit_logs").insert({
+    audit_id: "TST-" + crypto.randomUUID(),
+    actor_line_user_id: asText(member?.line_user_id, 120) || null,
+    actor_role: "test_account",
+    action,
+    target_type: targetType,
+    target_id: targetId,
+    result: "success",
+    detail,
+  });
+}
+
 function randomToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -226,12 +244,9 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function requireTestLoginEnabled(supabase: any): Promise<any> {
+async function requireTestModeEnabled(supabase: any): Promise<any> {
   const row = await settings(supabase);
   if (!row.enabled) throw new ApiError(403, "TEST_MODE_DISABLED", "目前未啟用測試模式。");
-  if (!row.allow_admin_user_login) {
-    throw new ApiError(403, "TEST_ADMIN_LOGIN_DISABLED", "目前未開放管理員從用戶端測試登入。");
-  }
   return row;
 }
 
@@ -268,7 +283,6 @@ Deno.serve(async (request: Request) => {
       return reply(origin, {
         ok: true, status: 200, data: {
           enabled: Boolean(row.enabled),
-          allowAdminUserLogin: Boolean(row.allow_admin_user_login),
           maintenanceMessage: asText(row.maintenance_message, 500),
         },
       });
@@ -297,8 +311,63 @@ Deno.serve(async (request: Request) => {
       throw new ApiError(400, "INVALID_CLIENT_TYPE", "不支援的操作端。");
     }
 
+    if (action === "test-mode.accounts") {
+      if (!USER_SURFACES.has(clientType)) throw new ApiError(403, "USER_SURFACE_REQUIRED", "請從用戶端進行測試登入。");
+      await requireTestModeEnabled(supabase);
+      const accounts = (await testAccounts(supabase)).filter((account) =>
+        account.status === "active" && account.membershipStatus === "active"
+      );
+      return reply(origin, { ok: true, status: 200, data: { accounts } });
+    }
+
+    if (action === "test-mode.login") {
+      if (!USER_SURFACES.has(clientType)) throw new ApiError(403, "USER_SURFACE_REQUIRED", "請從用戶端進行測試登入。");
+      await requireTestModeEnabled(supabase);
+      const memberId = asText(body.memberId, 80);
+      if (!/^[0-9a-f-]{36}$/i.test(memberId)) throw new ApiError(400, "INVALID_TEST_ACCOUNT", "測試帳號識別不正確。");
+
+      const memberResult = await supabase.from("members")
+        .select("id,line_user_id,display_name,member_code,status,membership_status,is_test_account")
+        .eq("id", memberId)
+        .maybeSingle();
+      if (memberResult.error) throw new ApiError(503, "TEST_ACCOUNT_LOOKUP_FAILED", "目前無法確認測試帳號。");
+      const member = memberResult.data;
+      if (!member || member.is_test_account !== true || member.status !== "active" || member.membership_status !== "active") {
+        throw new ApiError(403, "TEST_ACCOUNT_UNAVAILABLE", "選擇的測試帳號目前無法使用。");
+      }
+
+      const token = randomToken();
+      const tokenHash = await sha256Hex(token);
+      const expiresAt = new Date(Date.now() + TEST_SESSION_HOURS * 60 * 60 * 1000).toISOString();
+
+      const sessionResult = await supabase.from("test_login_sessions").insert({
+        token_hash: tokenHash,
+        member_id: member.id,
+        expires_at: expiresAt,
+      }).select("id").single();
+      if (sessionResult.error) throw new ApiError(503, "TEST_SESSION_CREATE_FAILED", "目前無法建立測試登入。");
+
+      await auditTestAccount(supabase, member, "test_mode.session.start", "member", member.id, {
+        memberCode: member.member_code,
+        expiresAt,
+        clientType,
+      });
+
+      return reply(origin, {
+        ok: true, status: 200, data: {
+          testSessionToken: token,
+          expiresAt,
+          account: {
+            memberId: member.id,
+            displayName: member.display_name,
+            memberCode: member.member_code,
+          },
+        },
+      });
+    }
+
     const identity = await verifyLineIdToken(asText(body.idToken, 10_000), clientType);
-    const admin = await authorizeAdmin(supabase, identity);
+    await authorizeAdmin(supabase, identity);
 
     if (action === "admin.test-mode.bootstrap") {
       if (clientType !== "admin") throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端操作測試模式設定。");
@@ -315,7 +384,7 @@ Deno.serve(async (request: Request) => {
       }
       const rpc = await supabase.rpc("admin_save_test_mode", {
         p_enabled: asBoolean(body.enabled),
-        p_allow_admin_user_login: asBoolean(body.allowAdminUserLogin),
+        p_allow_admin_user_login: true,
         p_maintenance_message: maintenanceMessage,
         p_updated_by: identity.lineUserId,
         p_add_account_count: addAccountCount,
@@ -323,7 +392,6 @@ Deno.serve(async (request: Request) => {
       if (rpc.error) throw rpc.error;
       await audit(supabase, identity, "test_mode.settings.update", "test_mode", "singleton", {
         enabled: asBoolean(body.enabled),
-        allowAdminUserLogin: asBoolean(body.allowAdminUserLogin),
         addAccountCount,
       });
       const [row, accounts] = await Promise.all([settings(supabase), testAccounts(supabase)]);
@@ -332,64 +400,6 @@ Deno.serve(async (request: Request) => {
           settings: settingsClient(row),
           accounts,
           createdAccountCount: Number(rpc.data?.[0]?.created_account_count || addAccountCount || 0),
-        },
-      });
-    }
-
-    if (action === "test-mode.accounts") {
-      if (!USER_SURFACES.has(clientType)) throw new ApiError(403, "USER_SURFACE_REQUIRED", "請從用戶端進行測試登入。");
-      await requireTestLoginEnabled(supabase);
-      return reply(origin, {
-        ok: true, status: 200, data: {
-          admin: { displayName: admin.display_name || identity.displayName },
-          accounts: await testAccounts(supabase),
-        },
-      });
-    }
-
-    if (action === "test-mode.login") {
-      if (!USER_SURFACES.has(clientType)) throw new ApiError(403, "USER_SURFACE_REQUIRED", "請從用戶端進行測試登入。");
-      await requireTestLoginEnabled(supabase);
-      const memberId = asText(body.memberId, 80);
-      if (!/^[0-9a-f-]{36}$/i.test(memberId)) throw new ApiError(400, "INVALID_TEST_ACCOUNT", "測試帳號識別不正確。");
-
-      const memberResult = await supabase.from("members")
-        .select("id,display_name,member_code,status,membership_status,is_test_account")
-        .eq("id", memberId)
-        .maybeSingle();
-      if (memberResult.error) throw new ApiError(503, "TEST_ACCOUNT_LOOKUP_FAILED", "目前無法確認測試帳號。");
-      const member = memberResult.data;
-      if (!member || member.is_test_account !== true || member.status !== "active" || member.membership_status !== "active") {
-        throw new ApiError(403, "TEST_ACCOUNT_UNAVAILABLE", "選擇的測試帳號目前無法使用。");
-      }
-
-      const token = randomToken();
-      const tokenHash = await sha256Hex(token);
-      const expiresAt = new Date(Date.now() + TEST_SESSION_HOURS * 60 * 60 * 1000).toISOString();
-
-      const sessionResult = await supabase.from("test_login_sessions").insert({
-        token_hash: tokenHash,
-        admin_line_user_id: identity.lineUserId,
-        member_id: member.id,
-        expires_at: expiresAt,
-      }).select("id").single();
-      if (sessionResult.error) throw new ApiError(503, "TEST_SESSION_CREATE_FAILED", "目前無法建立測試登入。");
-
-      await audit(supabase, identity, "test_mode.impersonation.start", "member", member.id, {
-        memberCode: member.member_code,
-        expiresAt,
-        clientType,
-      });
-
-      return reply(origin, {
-        ok: true, status: 200, data: {
-          testSessionToken: token,
-          expiresAt,
-          account: {
-            memberId: member.id,
-            displayName: member.display_name,
-            memberCode: member.member_code,
-          },
         },
       });
     }

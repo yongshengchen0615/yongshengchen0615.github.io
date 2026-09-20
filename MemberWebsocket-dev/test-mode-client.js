@@ -100,11 +100,7 @@
     }
   }
 
-  function maintenanceError(message) {
-    return clientError('SYSTEM_MAINTENANCE', String(message || '').trim() || '系統維護中，請稍後再試。', 503);
-  }
-
-  function selector(accounts) {
+  function selector(accounts, maintenanceMessage) {
     return new Promise((resolve) => {
       const existing = document.getElementById('testModeAccountModal');
       if (existing) existing.remove();
@@ -128,7 +124,7 @@
       title.textContent = '選擇測試帳號';
 
       const description = document.createElement('p');
-      description.textContent = '目前為測試模式。請選擇要模擬登入的虛擬會員帳號。';
+      description.textContent = String(maintenanceMessage || '').trim() || '目前為測試模式。請直接選擇要登入的虛擬會員帳號。';
 
       const label = document.createElement('label');
       label.className = 'test-mode-field';
@@ -202,24 +198,10 @@
       };
     }
 
-    if (!mode.allowAdminUserLogin) {
-      throw maintenanceError(mode.maintenanceMessage);
-    }
-
-    const idToken = await normalSignIn();
-    let accountsResult;
-    try {
-      accountsResult = await post(config, {
-        action: 'test-mode.accounts',
-        clientType: surface,
-        idToken
-      });
-    } catch (error) {
-      if (error && ['ADMIN_REQUIRED', 'AUTH_INVALID', 'AUTH_REQUIRED'].includes(String(error.code || ''))) {
-        throw maintenanceError(mode.maintenanceMessage);
-      }
-      throw error;
-    }
+    const accountsResult = await post(config, {
+      action: 'test-mode.accounts',
+      clientType: surface
+    });
 
     const accounts = Array.isArray(accountsResult.accounts)
       ? accountsResult.accounts.filter((account) => account && account.memberId)
@@ -228,18 +210,17 @@
       throw clientError('NO_TEST_ACCOUNTS', '目前尚未建立可登入的測試帳號。', 409);
     }
 
-    const selection = await selector(accounts);
+    const selection = await selector(accounts, mode.maintenanceMessage);
     try {
       const login = await post(config, {
         action: 'test-mode.login',
         clientType: surface,
-        idToken,
         memberId: selection.memberId
       });
       storeToken(login.testSessionToken, login.expiresAt);
       selection.modal.remove();
       return {
-        idToken,
+        idToken: '',
         testSessionToken: getSessionToken(),
         testAccount: login.account || null
       };

@@ -8,10 +8,10 @@
   window.addEventListener('DOMContentLoaded', () => {
     [
       'testModeTab', 'testModePanel', 'testModeForm', 'testModeEnabled',
-      'testModeAdminLoginEnabled', 'testModeMaintenanceMessage',
+      'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'testModeFormMessage',
       'testModeAccountCount', 'testModeAccountList', 'testModeAccountEmpty',
-      'testModeStatusBadge', 'testModeAdminLoginBadge'
+      'testModeStatusBadge', 'testModeDirectLoginBadge'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
     if (!els.testModeTab || !els.testModeForm) return;
@@ -96,7 +96,6 @@
     try {
       const data = await request('admin.test-mode.save', {
         enabled: els.testModeEnabled.checked,
-        allowAdminUserLogin: els.testModeAdminLoginEnabled.checked,
         maintenanceMessage,
         addAccountCount
       });
@@ -115,10 +114,8 @@
     const settings = data && data.settings && typeof data.settings === 'object' ? data.settings : {};
     const accounts = Array.isArray(data && data.accounts) ? data.accounts : [];
     const enabled = Boolean(settings.enabled);
-    const allowAdminLogin = Boolean(settings.allowAdminUserLogin);
 
     els.testModeEnabled.checked = enabled;
-    els.testModeAdminLoginEnabled.checked = allowAdminLogin;
     els.testModeMaintenanceMessage.value = String(settings.maintenanceMessage || '');
     els.testModeAccountCount.textContent = accounts.length + ' 個';
     els.testModeAccountList.replaceChildren(...accounts.map(renderAccount));
@@ -130,9 +127,9 @@
       enabled ? 'is-warning' : 'is-off'
     );
     updateStatusBadge(
-      els.testModeAdminLoginBadge,
-      allowAdminLogin ? '管理員登入：允許' : '管理員登入：停用',
-      allowAdminLogin ? 'is-active' : 'is-off'
+      els.testModeDirectLoginBadge,
+      enabled ? '測試帳號：可直接登入' : '測試帳號：隨模式停用',
+      enabled ? 'is-active' : 'is-off'
     );
   }
 
@@ -175,7 +172,6 @@
   function setBusy(busy) {
     els.saveTestModeButton.disabled = busy;
     els.testModeEnabled.disabled = busy;
-    els.testModeAdminLoginEnabled.disabled = busy;
     els.testModeMaintenanceMessage.disabled = busy;
     els.testModeAddAccountCount.disabled = busy;
     document.querySelectorAll('[data-test-account-count]').forEach((button) => {
