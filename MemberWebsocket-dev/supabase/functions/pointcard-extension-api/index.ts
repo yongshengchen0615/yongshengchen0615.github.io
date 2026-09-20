@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 
 type Json = Record<string, unknown>;
 
@@ -57,6 +58,19 @@ async function verifyLineIdToken(idToken: string, kind: "points" | "admin") {
   }
   return { lineUserId: sub, displayName: asText(payload.name, 120) || "LINE 使用者" };
 }
+
+async function memberIdentity(supabase: ReturnType<typeof db>, body: Json) {
+  try {
+    const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken, 200));
+    if (testIdentity) {
+      return { lineUserId: testIdentity.lineUserId, displayName: testIdentity.displayName };
+    }
+  } catch (error) {
+    if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
+    throw error;
+  }
+  return await verifyLineIdToken(asText(body.idToken, 10000), "points");
+}
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -94,14 +108,13 @@ function mapRpcError(error: unknown): ApiError {
 }
 
 async function memberSetting(origin: string | null, body: Json) {
-  const identity = await verifyLineIdToken(asText(body.idToken, 10000), "points");
   const supabase = db();
+  const identity = await memberIdentity(supabase, body);
   await consumeRateLimit(supabase, identity.lineUserId, false, 1);
   return json(origin, { ok: true, status: 200, data: await globalSetting(supabase) });
 }
 
 async function redeemTickets(origin: string | null, body: Json) {
-  const identity = await verifyLineIdToken(asText(body.idToken, 10000), "points");
   const ticketIds = Array.isArray(body.ticketIds) ? [...new Set(body.ticketIds.map((v) => asText(v, 120)).filter(Boolean))] : [];
   if (ticketIds.length < 1 || ticketIds.length > 50 || ticketIds.length !== (Array.isArray(body.ticketIds) ? body.ticketIds.length : 0)) {
     throw new ApiError(400, "INVALID_TICKET_BATCH", "請選擇 1–50 張不同的票券。");
@@ -109,6 +122,7 @@ async function redeemTickets(origin: string | null, body: Json) {
   const requestId = asText(body.requestId, 120);
   if (!/^[A-Za-z0-9_-]{8,120}$/.test(requestId)) throw new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
   const supabase = db();
+  const identity = await memberIdentity(supabase, body);
   const setting = await globalSetting(supabase);
   if (ticketIds.length > setting.maxTicketsPerRedemption) {
     throw new ApiError(409, "TICKET_BATCH_LIMIT_EXCEEDED", `單次最多可使用 ${setting.maxTicketsPerRedemption} 張票券。`);
