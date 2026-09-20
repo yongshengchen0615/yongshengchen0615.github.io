@@ -51,6 +51,15 @@ test('member records include authenticated online and offline audit events', () 
   assert.match(app, /會員上線/);
 });
 
+test('all member record sources invalidate admin realtime state', () => {
+  const migration = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20260920145127_complete_member_record_realtime_invalidation.sql'), 'utf8');
+  assert.match(migration, /event_ticket_claims/);
+  assert.match(migration, /booking_completion_settlements/);
+  assert.match(migration, /array\['event','admin'\]/);
+  assert.match(migration, /array\['member','admin'\]/);
+  assert.match(migration, /emit_realtime_invalidation/);
+});
+
 test('member records use existing domain history without fabricating calendar views', () => {
   assert.match(api, /from\("point_entries"\)/);
   assert.match(api, /from\("point_tickets"\)/);
