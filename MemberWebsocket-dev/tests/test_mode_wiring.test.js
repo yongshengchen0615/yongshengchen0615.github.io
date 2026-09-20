@@ -197,7 +197,7 @@ test('test accounts support guarded single and batch removal', () => {
   assert.match(adminUi, /admin\.test-mode\.delete-accounts/);
   assert.match(adminUi, /data-test-account-delete/);
   assert.match(adminUi, /window\.confirm/);
-  assert.match(adminUi, /批次移除選取/);
+  assert.match(html, /批次移除選取/);
 
   assert.match(api, /if \(action === "admin\.test-mode\.delete-accounts"\)/);
   assert.match(api, /authorizeAdmin\(supabase, identity\)/);
