@@ -58,8 +58,9 @@ test('direct test login is server-side restricted to active test accounts', () =
   const api = read('supabase/functions/test-mode-api/index.ts');
   const auth = read('supabase/functions/_shared/test-mode-auth.ts');
 
-  assert.ok(api.indexOf('if (action === "test-mode.accounts")') < api.indexOf('verifyLineIdToken'));
-  assert.ok(api.indexOf('if (action === "test-mode.login")') < api.lastIndexOf('verifyLineIdToken'));
+  const adminAuthCall = api.indexOf('const identity = await verifyLineIdToken');
+  assert.ok(api.indexOf('if (action === "test-mode.accounts")') < adminAuthCall);
+  assert.ok(api.indexOf('if (action === "test-mode.login")') < adminAuthCall);
   assert.match(api, /await requireTestModeEnabled\(supabase\)/);
   assert.match(api, /member\.is_test_account !== true/);
   assert.match(api, /member\.status !== "active"/);
