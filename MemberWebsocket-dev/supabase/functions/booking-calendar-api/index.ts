@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -278,8 +279,17 @@ Deno.serve(async (request) => {
 
     const idToken = typeof body.idToken === "string" ? body.idToken.trim() : "";
     const month = requireMonth(body.month);
-    const identity = await verifyLineIdToken(idToken);
     const supabase = dbClient();
+    let identity: Identity;
+    try {
+      const testIdentity = await resolveUserTestIdentity(supabase, typeof body.testSessionToken === "string" ? body.testSessionToken : "");
+      identity = testIdentity
+        ? { lineUserId:testIdentity.lineUserId }
+        : await verifyLineIdToken(idToken);
+    } catch (error) {
+      if (error instanceof TestModeAuthError) throw new ApiError(error.status,error.code,error.message);
+      throw error;
+    }
     await consumeRateLimit(supabase, identity);
     const member = await requireJoinedMember(supabase, identity);
     const data = await loadCalendar(supabase, month, member.id);
