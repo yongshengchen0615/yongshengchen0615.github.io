@@ -34,6 +34,16 @@ test('member card renders honorific from the primary profile source', () => {
   assert.match(profile, /window\.addEventListener\('member-profile-ready'/);
 });
 
+
+test('member bootstrap and profile save use the dedicated profile API', () => {
+  const system = read('member-system.js');
+  const html = read('member/index.html');
+
+  assert.match(system, /clientType === 'member' && \(action === 'user\.member\.bootstrap' \|\| action === 'user\.member\.profile\.save'\)/);
+  assert.match(system, /\/functions\/v1\/member-profile-api/);
+  assert.match(html, /member-system\.js\?v=member-profile-route-20260920-1/);
+});
+
 test('profile edit actions use independent partial updates', () => {
   const profile = read('member/profile-extension.js');
   const birthday = read('member/profile-birthday-edit.js');
