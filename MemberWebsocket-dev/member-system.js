@@ -403,6 +403,9 @@
   }
 
   function requestEndpoint(config, clientType, action) {
+    if (clientType === 'member' && (action === 'user.member.bootstrap' || action === 'user.member.profile.save')) {
+      return String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/member-profile-api';
+    }
     if (clientType === 'calendar' && (action === 'user.calendar.bootstrap' || action === 'user.calendar.date.details')) {
       return String(config.memberCalendarFunctionUrl || '').trim();
     }
