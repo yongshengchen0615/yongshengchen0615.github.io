@@ -97,6 +97,14 @@ async function refreshScheduledMessage(supabase: SupabaseClient, row: any): Prom
 
   return replaceCurrentGrantSections(row.message_text,statusSection,ticketSection);
 }
+async function isTestMember(supabase: SupabaseClient, row: any): Promise<boolean> {
+  const memberId = String(row?.member_id || "").trim();
+  if (!memberId) return false;
+  const member = await supabase.from("members").select("is_test_account").eq("id",memberId).maybeSingle();
+  if (member.error) throw member.error;
+  return member.data?.is_test_account === true;
+}
+
 async function writeAudit(supabase: SupabaseClient, row: any, result: string, detail: Json): Promise<void> {
   await supabase.from("audit_logs").insert({
     audit_id:"AUD-" + crypto.randomUUID().replaceAll("-",""),
@@ -155,6 +163,27 @@ Deno.serve(async (request: Request) => {
   let failed = 0;
 
   for (const row of rows) {
+    try {
+      if (await isTestMember(supabase,row)) {
+        await supabase.from("scheduled_grant_messages").update({
+          status:"cancelled",
+          last_error:"TEST_ACCOUNT_LINE_DISABLED",
+          updated_at:new Date().toISOString(),
+        }).eq("id",row.id).eq("status","sending");
+        await writeAudit(supabase,row,"success",{ reason:"test_account_line_disabled",skipped:true });
+        continue;
+      }
+    } catch (error) {
+      await supabase.from("scheduled_grant_messages").update({
+        status:"pending",
+        scheduled_for:new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+        last_error:"TEST_ACCOUNT_CHECK_FAILED",
+        updated_at:new Date().toISOString(),
+      }).eq("id",row.id).eq("status","sending");
+      failed += 1;
+      continue;
+    }
+
     if (!token) {
       const attempts = Number(row.attempt_count || 0);
       const terminal = attempts >= 3;
