@@ -34,8 +34,10 @@ jobs:
         run: node --test MemberWebsocket-dev/tests/integration/admin_startup.cjs MemberWebsocket-dev/tests/integration/booking_startup.cjs MemberWebsocket-dev/tests/integration/booking_copy.cjs
       - name: Check browser JavaScript syntax
         run: |
+          node --check MemberWebsocket-dev/test-mode-client.js
           node --check MemberWebsocket-dev/member-system.js
           node --check MemberWebsocket-dev/admin/admin-session.js
+          node --check MemberWebsocket-dev/admin/test-mode.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
           node --check MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js
@@ -47,6 +49,8 @@ jobs:
           node --check MemberWebsocket-dev/admin/booking-resources.js
           node --check MemberWebsocket-dev/admin/booking-cancellation-sync.js
           node --check MemberWebsocket-dev/member/app.js
+          node --check MemberWebsocket-dev/member/profile-extension.js
+          node --check MemberWebsocket-dev/member/profile-birthday-edit.js
           node --check MemberWebsocket-dev/points/pointcard-ticket-overview.js
           node --check MemberWebsocket-dev/points/app.js
           node --check MemberWebsocket-dev/event/app.js
@@ -61,6 +65,10 @@ jobs:
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/test-mode-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/pointcard-extension-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/member-profile-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/booking-contact-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/grant-automation/index.ts
           deno check MemberWebsocket-dev/supabase/functions/event-ticket-links/index.ts
           deno check MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts
@@ -83,7 +91,7 @@ jobs:
           grep -q 'fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
           grep -q 'pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
-          grep -q 'app.js?v=event-single-render-20260919-1' MemberWebsocket-dev/event/index.html
+          grep -q 'app.js?v=test-mode-20260920-1' MemberWebsocket-dev/event/index.html
           ! grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
           test ! -e MemberWebsocket-dev/admin/event-ticket-activity-link.js
           test ! -e MemberWebsocket-dev/event/activity-link.js
@@ -93,7 +101,7 @@ jobs:
           grep -q 'claim_due_grant_messages' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
       - name: Check unified calendar backend wiring
         run: |
-          grep -q 'member-system.js?v=unified-core-20260919-1' MemberWebsocket-dev/calendar/index.html
+          grep -q 'member-system.js?v=test-mode-20260920-1' MemberWebsocket-dev/calendar/index.html
           ! grep -q 'tier-sync.js' MemberWebsocket-dev/calendar/index.html
           ! grep -q 'realtime-resync.js' MemberWebsocket-dev/calendar/index.html
           grep -q 'memberCalendarFunctionUrl' MemberWebsocket-dev/config.json
@@ -113,10 +121,10 @@ jobs:
           grep -q 'membership-progress.js' MemberWebsocket-dev/booking/index.html
           grep -q 'ensureSeparateTierTargets' MemberWebsocket-dev/booking/membership-progress.js
           grep -q '目前會員階級：' MemberWebsocket-dev/booking/membership-progress.js
-          grep -q 'member-ui.js?v=booking-single-render-20260919-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'app.js?v=booking-addon-notice-modal-20260919-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'group-booking.js?v=booking-addon-notice-modal-20260919-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'common.js?v=booking-addon-notice-modal-20260919-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'member-ui.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'app.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'group-booking.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'common.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'id="bookingNoticeModal"' MemberWebsocket-dev/booking/index.html
           grep -q 'confirmBookingNoticeButton' MemberWebsocket-dev/booking/index.html
           grep -q 'function showNotice(message, options = {})' MemberWebsocket-dev/booking/common.js
@@ -207,7 +215,7 @@ jobs:
             MemberWebsocket-dev/event/index.html \
             MemberWebsocket-dev/calendar/index.html \
             MemberWebsocket-dev/admin/index.html; do
-            grep -q '../member-system.js?v=unified-core-20260919-1' "$file"
+            grep -q '../member-system.js?v=test-mode-20260920-1' "$file"
             ! grep -q 'realtime-resync.js' "$file"
             ! grep -q './common.js' "$file"
           done
