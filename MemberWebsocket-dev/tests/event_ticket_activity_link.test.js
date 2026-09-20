@@ -22,7 +22,7 @@ for (const asset of [
 assert.ok(adminHtml.includes('fixed-ticket-admin.css?v=fixed-ticket-20260916-1'));
 assert.ok(!adminHtml.includes('event-ticket-activity-link.js'));
 
-assert.ok(eventHtml.includes('app.js?v=event-single-render-20260919-1'));
+assert.ok(eventHtml.includes('app.js?v=test-mode-20260920-1'));
 assert.ok(!eventHtml.includes('activity-link.js'));
 assert.ok(eventApp.includes("type.textContent = fixed ? '固定票券'"));
 assert.ok(eventApp.includes("fixed ? '發放方式' : '領取方式'"));
