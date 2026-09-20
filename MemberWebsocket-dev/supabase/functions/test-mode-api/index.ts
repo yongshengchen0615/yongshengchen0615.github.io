@@ -367,11 +367,6 @@ Deno.serve(async (request: Request) => {
       const tokenHash = await sha256Hex(token);
       const expiresAt = new Date(Date.now() + TEST_SESSION_HOURS * 60 * 60 * 1000).toISOString();
 
-      await supabase.from("test_login_sessions")
-        .update({ revoked_at: new Date().toISOString() })
-        .eq("admin_line_user_id", identity.lineUserId)
-        .is("revoked_at", null);
-
       const sessionResult = await supabase.from("test_login_sessions").insert({
         token_hash: tokenHash,
         admin_line_user_id: identity.lineUserId,
