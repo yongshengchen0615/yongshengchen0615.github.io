@@ -418,11 +418,12 @@ async function authorizeAdmin(supabase: SupabaseClient, identity: { lineUserId: 
   return admin;
 }
 
-async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, query = "", sharedSettings?: Promise<any[]>): Promise<{ members: any[]; memberPage: Json }> {
+async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, query = "", memberKind = "real", sharedSettings?: Promise<any[]>): Promise<{ members: any[]; memberPage: Json }> {
   const safePageSize = Math.max(1,Math.min(100,Math.floor(Number(pageSize) || 100)));
   const safePage = Math.max(1,Math.floor(Number(page) || 1));
   const normalizedQuery = asText(query,100).toLowerCase();
-  let q = supabase.from("members").select("*",{ count:"exact" }).eq("is_test_account",false);
+  const isTestAccount = asText(memberKind,10).toLowerCase() === "test";
+  let q = supabase.from("members").select("*",{ count:"exact" }).eq("is_test_account",isTestAccount);
   if (normalizedQuery) q = q.or(`display_name.ilike.%${normalizedQuery.replaceAll(",","")}%,member_code.ilike.%${normalizedQuery.replaceAll(",","")}%`);
   const start = (safePage - 1) * safePageSize;
   const [{ data, count, error },settings] = await Promise.all([
@@ -461,6 +462,13 @@ async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, q
       displayName: member.display_name,
       memberCode: member.member_code,
       status: member.status,
+      membershipStatus: member.membership_status,
+      birthday: member.birthday || "",
+      phone: member.phone || "",
+      surname: member.surname || "",
+      salutation: member.salutation || "",
+      isTestAccount: member.is_test_account === true,
+      testAccountSequence: member.test_account_sequence || null,
       joinedAt: member.joined_at || member.created_at,
       serviceMinutesTotal: minutes,
       tierKey: tier.tier_key,
@@ -474,7 +482,7 @@ async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, q
   });
   const total = Number(count || 0);
   const totalPages = Math.max(1,Math.ceil(total / safePageSize));
-  return { members, memberPage: { page: Math.min(safePage,totalPages), pageSize: safePageSize, total, totalPages, query: normalizedQuery } };
+  return { members, memberPage: { page: Math.min(safePage,totalPages), pageSize: safePageSize, total, totalPages, query: normalizedQuery, memberKind: isTestAccount ? "test" : "real" } };
 }
 
 async function memberPresenceForLineUserIds(supabase: SupabaseClient, lineUserIds: string[]): Promise<Json> {
@@ -484,7 +492,6 @@ async function memberPresenceForLineUserIds(supabase: SupabaseClient, lineUserId
 
   const membersResult = await supabase.from("members")
     .select("id,line_user_id")
-    .eq("is_test_account",false)
     .in("line_user_id",normalized);
   if (membersResult.error) throw mapDatabaseError(membersResult.error);
   const memberRows = membersResult.data || [];
@@ -524,9 +531,8 @@ async function memberPresenceForLineUserIds(supabase: SupabaseClient, lineUserId
 
 async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string): Promise<Json> {
   const memberResult = await supabase.from("members")
-    .select("id,line_user_id,display_name,member_code")
+    .select("id,line_user_id,display_name,member_code,is_test_account")
     .eq("line_user_id",lineUserId)
-    .eq("is_test_account",false)
     .maybeSingle();
   if (memberResult.error) throw mapDatabaseError(memberResult.error);
   if (!memberResult.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
@@ -1648,7 +1654,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     // Share only within this authorized request; never cache member data globally.
     const settings = tierSettings(supabase);
     const [members,tierRows,cardData,eventTickets,calendar,stats,messagePresets] = await Promise.all([
-      membersPage(supabase,1,100,"",settings),
+      membersPage(supabase,1,100,"","real",settings),
       settings,
       adminCards(supabase),
       adminEventTickets(supabase),
@@ -1671,7 +1677,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     };
   }
   if (action === "admin.members.list") {
-    return await membersPage(supabase,Number(body.memberPage || 1),Number(body.memberPageSize || 100),asText(body.memberQuery,100));
+    return await membersPage(supabase,Number(body.memberPage || 1),Number(body.memberPageSize || 100),asText(body.memberQuery,100),asText(body.memberKind,10));
   }
   if (action === "admin.members.presence.list") {
     const lineUserIds = Array.isArray(body.lineUserIds) ? body.lineUserIds.map((value) => asText(value,120)).filter(Boolean) : [];
@@ -1738,13 +1744,40 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     if (current.error) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
     const expected = asText(body.expectedUpdatedAt,100);
     if (expected && expected !== current.data.updated_at) throw new ApiError(409,"CONFLICT","會員資料已被其他管理者更新。");
-    const updated = await supabase.from("members").update({ status,updated_at:new Date().toISOString() }).eq("id",current.data.id).select("*").single();
+
+    const patch: Record<string, unknown> = { status,updated_at:new Date().toISOString() };
+    const profile = body.profile && typeof body.profile === "object" ? body.profile as Json : null;
+    if (current.data.is_test_account === true && profile) {
+      const displayName = requireText(profile.displayName,"顯示名稱",80);
+      const surname = requireText(profile.surname,"姓氏",40);
+      const salutation = asText(profile.salutation,10).toLowerCase();
+      const birthday = asText(profile.birthday,20);
+      const phone = asText(profile.phone,30).replace(/[()\s-]/g,"");
+      if (!["mr","ms"].includes(salutation)) throw new ApiError(400,"INVALID_SALUTATION","請選擇先生或小姐。");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday) || Number.isNaN(Date.parse(`${birthday}T00:00:00Z`))) throw new ApiError(400,"INVALID_BIRTHDAY","請填寫正確的生日。");
+      if (!/^\+?\d{8,15}$/.test(phone)) throw new ApiError(400,"INVALID_PHONE","請填寫正確的電話。");
+      Object.assign(patch,{ display_name:displayName,surname,salutation,birthday,phone,membership_status:"active" });
+    } else if (current.data.is_test_account !== true && profile) {
+      throw new ApiError(400,"TEST_PROFILE_ONLY","只有測試用戶可由管理端修改虛擬個人資料。");
+    }
+
+    const updated = await supabase.from("members").update(patch).eq("id",current.data.id).select("*").single();
     if (updated.error) throw mapDatabaseError(updated.error);
+    await supabase.from("audit_logs").insert({
+      audit_id:requestId("AUD"),
+      actor_line_user_id:identity.lineUserId,
+      actor_role:admin.role || "admin",
+      action:"ADMIN_MEMBER_UPDATE",
+      target_type:"member",
+      target_id:updated.data.line_user_id,
+      result:"success",
+      detail:{ status,isTestAccount:updated.data.is_test_account === true,profileUpdated:Boolean(profile && updated.data.is_test_account === true) },
+    });
     const settings = await tierSettings(supabase);
     const totals = await serviceMinutesForMembers(supabase,[updated.data.id]);
     const minutes = totals.get(updated.data.id) || 0;
     const tier = tierForMinutes(settings,minutes);
-    return { member:{ lineUserId:updated.data.line_user_id,displayName:updated.data.display_name,memberCode:updated.data.member_code,status:updated.data.status,joinedAt:updated.data.joined_at || updated.data.created_at,serviceMinutesTotal:minutes,tierKey:tier.tier_key,tier:tier.tier_label,tierStyleKey:tier.style_key,updatedAt:updated.data.updated_at } };
+    return { member:{ lineUserId:updated.data.line_user_id,displayName:updated.data.display_name,memberCode:updated.data.member_code,status:updated.data.status,membershipStatus:updated.data.membership_status,birthday:updated.data.birthday || "",phone:updated.data.phone || "",surname:updated.data.surname || "",salutation:updated.data.salutation || "",isTestAccount:updated.data.is_test_account === true,testAccountSequence:updated.data.test_account_sequence || null,joinedAt:updated.data.joined_at || updated.data.created_at,serviceMinutesTotal:minutes,tierKey:tier.tier_key,tier:tier.tier_label,tierStyleKey:tier.style_key,updatedAt:updated.data.updated_at } };
   }
 
   if (action === "admin.member-tiers.save") {
@@ -1846,9 +1879,12 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   if (action === "admin.member-grants.add" || action === "admin.stamps.add" || action === "admin.service_minutes.add") {
     const lineUserId = requireText(body.lineUserId,"會員識別",120);
     const req = requireText(body.requestId,"操作識別碼",100);
+    const targetMember = await supabase.from("members").select("*").eq("line_user_id",lineUserId).single();
+    if (targetMember.error) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
+    const isTestAccount = targetMember.data.is_test_account === true;
     const messagePresetId = asText(body.messagePresetId,120);
     let selectedMessagePreset: any = null;
-    if (messagePresetId) {
+    if (messagePresetId && !isTestAccount) {
       const presetResult = await supabase.from("grant_message_presets").select("*").eq("preset_id",messagePresetId).eq("status","active").maybeSingle();
       if (presetResult.error) throw mapDatabaseError(presetResult.error);
       if (!presetResult.data) throw new ApiError(400,"MESSAGE_PRESET_NOT_AVAILABLE","選擇的預設訊息目前無法使用。");
@@ -1872,18 +1908,16 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     if (rpc.error) throw mapDatabaseError(rpc.error);
 
     const grantResult = (rpc.data && typeof rpc.data === "object" ? rpc.data : {}) as Json;
-    const memberRow = await supabase.from("members").select("*").eq("line_user_id",lineUserId).single();
-    if (memberRow.error) throw mapDatabaseError(memberRow.error);
+    const memberRow = targetMember;
     const settings = await tierSettings(supabase);
     const totals = await serviceMinutesForMembers(supabase,[memberRow.data.id]);
     const minutes = totals.get(memberRow.data.id)||0;
     const tier = tierForMinutes(settings,minutes);
 
-    let notification: GrantNotificationResult = {
-      status:"skipped",
-      message:"此操作已處理，不重複發送 LINE 通知。",
-    };
-    if (Boolean(grantResult.applied)) {
+    let notification: GrantNotificationResult = isTestAccount
+      ? { status:"skipped",message:"測試用戶不發送 LINE 通知。" }
+      : { status:"skipped",message:"此操作已處理，不重複發送 LINE 通知。" };
+    if (Boolean(grantResult.applied) && !isTestAccount) {
       try {
         notification = await pushGrantNotification(
           supabase,
@@ -1904,7 +1938,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     }
 
     return {
-      member:{ lineUserId,displayName:memberRow.data.display_name,memberCode:memberRow.data.member_code,status:memberRow.data.status,joinedAt:memberRow.data.joined_at || memberRow.data.created_at,serviceMinutesTotal:minutes,tierKey:tier.tier_key,tier:tier.tier_label,tierStyleKey:tier.style_key,updatedAt:memberRow.data.updated_at },
+      member:{ lineUserId,displayName:memberRow.data.display_name,memberCode:memberRow.data.member_code,status:memberRow.data.status,membershipStatus:memberRow.data.membership_status,birthday:memberRow.data.birthday || "",phone:memberRow.data.phone || "",surname:memberRow.data.surname || "",salutation:memberRow.data.salutation || "",isTestAccount,testAccountSequence:memberRow.data.test_account_sequence || null,joinedAt:memberRow.data.joined_at || memberRow.data.created_at,serviceMinutesTotal:minutes,tierKey:tier.tier_key,tier:tier.tier_label,tierStyleKey:tier.style_key,updatedAt:memberRow.data.updated_at },
       notification,
     };
   }
