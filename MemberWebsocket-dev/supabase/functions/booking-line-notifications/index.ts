@@ -23,9 +23,24 @@ Deno.serve(async (request: Request) => {
     const jobs = claim.data || [];
     let accepted = 0;
     let failed = 0;
+    let skipped = 0;
     // Bounded parallel work finishes comfortably inside the two-minute claim lease.
     for (let offset = 0; offset < jobs.length; offset += 5) {
       await Promise.all(jobs.slice(offset, offset + 5).map(async (job: any) => {
+        // Defense in depth: never allow a claimed legacy/manual outbox row to send LINE for a test member.
+        const testGuard = await db.rpc('skip_booking_notification_for_test_member', {
+          p_id: job.id,
+          p_attempt: job.attempt_count,
+        });
+        if (testGuard.error) {
+          failed++;
+          return;
+        }
+        if (testGuard.data === true) {
+          skipped++;
+          return;
+        }
+
         const token = job.channel === 'admin' ? config.data.LINE_BOOKING_ADMIN_CHANNEL_ACCESS_TOKEN : config.data.LINE_BOOKING_MEMBER_CHANNEL_ACCESS_TOKEN;
         let deliveryJob = job;
         if (job.channel === 'member' && String(job.event_key || '').includes(':completed:') && job.booking_id) {
@@ -62,7 +77,7 @@ Deno.serve(async (request: Request) => {
         // Failed finalization leaves a leased row for safe retry with the same LINE UUID.
       }));
     }
-    return json({ ok: true, claimed: jobs.length, accepted, failed });
+    return json({ ok: true, claimed: jobs.length, accepted, failed, skipped });
   } catch {
     return json({ ok: false }, 503);
   }
