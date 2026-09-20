@@ -163,7 +163,9 @@
           'Content-Type': 'application/json',
           apikey: String(state.config?.supabasePublishableKey || ''),
         },
-        body: JSON.stringify({ ...payload, action, clientType: 'member', idToken: state.idToken }),
+        body: JSON.stringify(window.TestModeClient && typeof window.TestModeClient.payload === 'function'
+          ? window.TestModeClient.payload({ ...payload, action, clientType: 'member', idToken: state.idToken })
+          : { ...payload, action, clientType: 'member', idToken: state.idToken }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || data?.ok !== true) {
