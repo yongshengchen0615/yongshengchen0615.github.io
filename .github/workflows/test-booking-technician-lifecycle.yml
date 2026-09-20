@@ -1,0 +1,55 @@
+name: Test Booking Technician Lifecycle
+
+on:
+  push:
+    paths:
+      - 'MemberWebsocket-dev/admin/booking-resources.js'
+      - 'MemberWebsocket-dev/admin/booking-resources.css'
+      - 'MemberWebsocket-dev/admin/booking-panel.js'
+      - 'MemberWebsocket-dev/tests/booking_admin_technician_modal.test.js'
+      - 'MemberWebsocket-dev/tests/booking_admin_extension_loading.test.js'
+      - 'MemberWebsocket-dev/supabase/functions/booking-technician-delete/**'
+      - '.github/workflows/test-booking-technician-lifecycle.yml'
+  pull_request:
+    paths:
+      - 'MemberWebsocket-dev/admin/booking-resources.js'
+      - 'MemberWebsocket-dev/admin/booking-resources.css'
+      - 'MemberWebsocket-dev/admin/booking-panel.js'
+      - 'MemberWebsocket-dev/tests/booking_admin_technician_modal.test.js'
+      - 'MemberWebsocket-dev/tests/booking_admin_extension_loading.test.js'
+      - 'MemberWebsocket-dev/supabase/functions/booking-technician-delete/**'
+      - '.github/workflows/test-booking-technician-lifecycle.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check technician UI syntax
+        run: node --check MemberWebsocket-dev/admin/booking-resources.js
+      - name: Check disabled legacy endpoint syntax
+        run: deno check MemberWebsocket-dev/supabase/functions/booking-technician-delete/index.ts
+      - name: Run technician lifecycle tests
+        run: |
+          node MemberWebsocket-dev/tests/booking_admin_technician_modal.test.js
+          node MemberWebsocket-dev/tests/booking_admin_extension_loading.test.js
+      - name: Check delete feature is removed
+        run: |
+          ! grep -q 'admin.booking.resources.technician.delete' MemberWebsocket-dev/admin/booking-resources.js
+          ! grep -q 'bookingAdminTechnicianDeleteConfirm' MemberWebsocket-dev/admin/booking-resources.js
+          ! grep -q 'deleteTechnicianRequest' MemberWebsocket-dev/admin/booking-resources.js
+          grep -q 'bookingAdminTechnicianActiveTab' MemberWebsocket-dev/admin/booking-resources.js
+          grep -q 'bookingAdminTechnicianDisabledTab' MemberWebsocket-dev/admin/booking-resources.js
+          grep -q 'restoreTechnician' MemberWebsocket-dev/admin/booking-resources.js
+          grep -q 'FEATURE_REMOVED' MemberWebsocket-dev/supabase/functions/booking-technician-delete/index.ts
+          grep -q 'status: 410' MemberWebsocket-dev/supabase/functions/booking-technician-delete/index.ts
