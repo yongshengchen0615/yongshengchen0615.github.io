@@ -66,6 +66,9 @@
   }
 
   async function loadLineProfile() {
+    if (window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function' && window.TestModeClient.getSessionToken()) {
+      return { displayName: '', pictureUrl: '' };
+    }
     const decoded = typeof window.liff?.getDecodedIDToken === 'function' ? window.liff.getDecodedIDToken() : null;
     const fallback = {
       displayName: String(decoded && decoded.name || ''),
