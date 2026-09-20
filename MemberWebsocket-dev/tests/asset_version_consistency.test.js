@@ -31,7 +31,7 @@ test('admin entry references current booking assets', () => {
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
   assert.ok(html.includes('../member-system.js?v=test-mode-20260920-1'));
   assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
-  assert.ok(html.includes('app.js?v=test-mode-20260920-1'));
+  assert.ok(html.includes('app.js?v=member-records-20260920-1'));
   assert.ok(html.includes('booking-panel.css?v=booking-settings-layout-20260918-1'));
   assert.ok(html.includes('booking-panel.js?v=booking-tab-navigation-20260920-1'));
   assert.equal((html.match(/booking-panel\.js/g) || []).length, 1);
