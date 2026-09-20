@@ -12,6 +12,7 @@ const WRITE_LIMIT = 30;
 const TIER_KEYS = ["general", "silver", "gold", "platinum"] as const;
 const TIER_LABELS: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
 const STYLE_KEYS = ["forest","midnight","ocean","sunset","lavender","rose","gold","platinum","mint","cherry"] as const;
+const PRESENCE_ONLINE_WINDOW_MS = 90_000;
 const PRESENCE_ACTIONS = [
   "user.member.presence.online","user.member.presence.offline",
   "user.pointcard.presence.online","user.pointcard.presence.offline",
@@ -19,8 +20,16 @@ const PRESENCE_ACTIONS = [
   "user.calendar.presence.online","user.calendar.presence.offline",
   "user.booking.presence.online","user.booking.presence.offline",
 ] as const;
+const PRESENCE_HEARTBEAT_ACTIONS = [
+  "user.member.presence.heartbeat",
+  "user.pointcard.presence.heartbeat",
+  "user.event.presence.heartbeat",
+  "user.calendar.presence.heartbeat",
+  "user.booking.presence.heartbeat",
+] as const;
 const WRITE_ACTIONS = new Set([
   ...PRESENCE_ACTIONS,
+  ...PRESENCE_HEARTBEAT_ACTIONS,
   "user.member.profile.save",
   "admin.member.update",
   "admin.member-tiers.save",
@@ -127,8 +136,8 @@ function mapDatabaseError(error: unknown): ApiError {
   return new ApiError(500,"DATABASE_ERROR","資料庫暫時無法完成操作。");
 }
 
-function presenceActionInfo(action: string): { clientType: ClientType; surface: string; event: "online"|"offline" } | null {
-  const match = /^user\.(member|pointcard|event|calendar|booking)\.presence\.(online|offline)$/.exec(action);
+function presenceActionInfo(action: string): { clientType: ClientType; surface: string; event: "online"|"offline"|"heartbeat" } | null {
+  const match = /^user\.(member|pointcard|event|calendar|booking)\.presence\.(online|offline|heartbeat)$/.exec(action);
   if (!match) return null;
   const clientTypeBySurface: Record<string,ClientType> = {
     member:"member", pointcard:"points", event:"event", calendar:"calendar", booking:"booking",
@@ -139,7 +148,7 @@ function presenceActionInfo(action: string): { clientType: ClientType; surface: 
   return {
     clientType:clientTypeBySurface[match[1]],
     surface:surfaceByAction[match[1]],
-    event:match[2] as "online"|"offline",
+    event:match[2] as "online"|"offline"|"heartbeat",
   };
 }
 
@@ -422,10 +431,31 @@ async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, q
   ]);
   if (error) throw mapDatabaseError(error);
   const rows = data || [];
-  const totals = await serviceMinutesForMembers(supabase,rows.map((row) => row.id));
+  const memberIds = rows.map((row) => row.id);
+  const presenceCutoff = new Date(Date.now() - PRESENCE_ONLINE_WINDOW_MS).toISOString();
+  const [totals,presenceResult] = await Promise.all([
+    serviceMinutesForMembers(supabase,memberIds),
+    memberIds.length
+      ? supabase.from("member_presence_sessions")
+          .select("member_id,surface,last_seen_at")
+          .in("member_id",memberIds)
+          .is("offline_at",null)
+          .gte("last_seen_at",presenceCutoff)
+          .order("last_seen_at",{ ascending:false })
+      : Promise.resolve({ data:[],error:null }),
+  ]);
+  if (presenceResult.error) throw mapDatabaseError(presenceResult.error);
+  const presenceByMember = new Map<string,{ lastSeenAt:string;surfaces:Set<string> }>();
+  for (const row of presenceResult.data || []) {
+    const current = presenceByMember.get(row.member_id) || { lastSeenAt:"",surfaces:new Set<string>() };
+    if (!current.lastSeenAt || String(row.last_seen_at) > current.lastSeenAt) current.lastSeenAt = String(row.last_seen_at || "");
+    if (row.surface) current.surfaces.add(String(row.surface));
+    presenceByMember.set(row.member_id,current);
+  }
   const members = rows.map((member) => {
     const minutes = totals.get(member.id) || 0;
     const tier = tierForMinutes(settings,minutes);
+    const presence = presenceByMember.get(member.id);
     return {
       lineUserId: member.line_user_id,
       displayName: member.display_name,
@@ -436,6 +466,9 @@ async function membersPage(supabase: SupabaseClient, page = 1, pageSize = 100, q
       tierKey: tier.tier_key,
       tier: tier.tier_label,
       tierStyleKey: tier.style_key,
+      isOnline:Boolean(presence),
+      lastSeenAt:presence?.lastSeenAt || "",
+      onlineSurfaces:presence ? [...presence.surfaces] : [],
       updatedAt: member.updated_at,
     };
   });
@@ -1000,7 +1033,13 @@ async function summaryStats(supabase: SupabaseClient): Promise<Json> {
 }
 
 async function emitRealtime(supabase: SupabaseClient, action: string): Promise<void> {
-  if (!WRITE_ACTIONS.has(action) || presenceActionInfo(action)) return;
+  if (!WRITE_ACTIONS.has(action)) return;
+  const presence = presenceActionInfo(action);
+  if (presence) {
+    if (presence.event === "heartbeat") return;
+    await supabase.from("realtime_events").insert({ scope:"admin",event_type:action });
+    return;
+  }
   const scopes: ClientType[] =
     action.startsWith("admin.grant-message-presets.")
       ? ["admin"]
@@ -1397,17 +1436,53 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   if (presence) {
     const sessionId = requireText(body.sessionId,"上線紀錄識別",80);
     if (!/^[A-Za-z0-9_-]{16,80}$/.test(sessionId)) throw new ApiError(400,"INVALID_PRESENCE_SESSION","上線紀錄識別格式不正確。");
-    const reason = asText(body.reason,30) || (presence.event === "online" ? "signin" : "pagehide");
-    if (!["signin","logout","pagehide","bfcache","resume","relogin"].includes(reason)) {
+    const reason = asText(body.reason,30) || (presence.event === "online" ? "signin" : presence.event === "heartbeat" ? "heartbeat" : "pagehide");
+    if (!["signin","logout","pagehide","bfcache","resume","relogin","heartbeat"].includes(reason)) {
       throw new ApiError(400,"INVALID_PRESENCE_REASON","上下線紀錄原因不合法。");
     }
 
+    let member:any;
     if (presence.event === "online") {
-      await ensureMember(supabase,identity);
+      member = await ensureMember(supabase,identity);
     } else {
       const existing = await supabase.from("members").select("id").eq("line_user_id",identity.lineUserId).maybeSingle();
       if (existing.error) throw mapDatabaseError(existing.error);
       if (!existing.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
+      member = existing.data;
+    }
+
+    const now = new Date().toISOString();
+    if (presence.event === "online") {
+      const upsert = await supabase.from("member_presence_sessions").upsert({
+        member_id:member.id,
+        session_id:sessionId,
+        surface:presence.surface,
+        online_at:now,
+        last_seen_at:now,
+        offline_at:null,
+        offline_reason:null,
+        updated_at:now,
+      },{ onConflict:"member_id,session_id" });
+      if (upsert.error) throw mapDatabaseError(upsert.error);
+      void supabase.from("member_presence_sessions")
+        .delete()
+        .eq("member_id",member.id)
+        .not("offline_at","is",null)
+        .lt("offline_at",new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
+    } else if (presence.event === "heartbeat") {
+      const heartbeat = await supabase.from("member_presence_sessions")
+        .update({ surface:presence.surface,last_seen_at:now,updated_at:now })
+        .eq("member_id",member.id)
+        .eq("session_id",sessionId)
+        .is("offline_at",null);
+      if (heartbeat.error) throw mapDatabaseError(heartbeat.error);
+      return { recorded:true,event:presence.event,surface:presence.surface,sessionId,lastSeenAt:now };
+    } else {
+      const offline = await supabase.from("member_presence_sessions")
+        .update({ last_seen_at:now,offline_at:now,offline_reason:reason,updated_at:now })
+        .eq("member_id",member.id)
+        .eq("session_id",sessionId);
+      if (offline.error) throw mapDatabaseError(offline.error);
     }
 
     const inserted = await supabase.from("audit_logs").insert({
@@ -1421,7 +1496,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       detail:{ sessionId,surface:presence.surface,reason },
     });
     if (inserted.error) throw mapDatabaseError(inserted.error);
-    return { recorded:true,event:presence.event,surface:presence.surface,sessionId };
+    return { recorded:true,event:presence.event,surface:presence.surface,sessionId,lastSeenAt:now };
   }
 
   if (action === "user.member.bootstrap") {
