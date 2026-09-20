@@ -9,7 +9,7 @@
   const POINT_CARD_STYLE_KEYS = Object.freeze(['citrus', 'coral', 'lagoon', 'skyline', 'violet', 'berry', 'cocoa', 'lime', 'denim', 'peach']);
   const POINT_CARD_STYLE_LABELS = Object.freeze({ citrus: '柑橘氣泡', coral: '珊瑚蘇打', lagoon: '潟湖水光', skyline: '晴空城市', violet: '電光紫', berry: '莓果霓虹', cocoa: '可可拿鐵', lime: '萊姆汽水', denim: '丹寧晴藍', peach: '蜜桃冰沙' });
   const LEGACY_POINT_CARD_STYLE_MAP = Object.freeze({ forest: 'lagoon', midnight: 'skyline', ocean: 'denim', sunset: 'coral', lavender: 'violet', rose: 'berry', gold: 'citrus', platinum: 'cocoa', mint: 'lime', cherry: 'peach' });
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false, testMode: true }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false, testMode: true }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false, memberRecords: { lineUserId: '', filter: 'all', data: null, requestVersion: 0 } };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -28,6 +28,7 @@
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
       'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIdentity', 'memberTier', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
+      'memberRecordsModal', 'closeMemberRecordsModal', 'memberRecordsIdentity', 'memberRecordsSummary', 'memberRecordsTabs', 'memberRecordsList', 'memberRecordsEmpty', 'memberRecordsMessage',
       'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantMessagePreset', 'grantMessagePreview', 'manageGrantMessagesButton', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice',
       'messagePresetModal', 'closeMessagePresetModal', 'messagePresetForm', 'messagePresetList', 'messagePresetId', 'messagePresetExpectedUpdatedAt', 'messagePresetTitle', 'messagePresetBody', 'messagePresetStatus', 'messagePresetFormMessage', 'newMessagePresetButton', 'saveMessagePresetButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -138,6 +139,9 @@
     els.cancelMemberButton.addEventListener('click', closeMemberModal);
     els.closeMemberModal.addEventListener('click', closeMemberModal);
     els.memberModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.memberModal)) closeMemberModal(); });
+    els.closeMemberRecordsModal.addEventListener('click', closeMemberRecordsModal);
+    els.memberRecordsModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.memberRecordsModal)) closeMemberRecordsModal(); });
+    els.memberRecordsTabs.addEventListener('click', handleMemberRecordsTabClick);
     els.grantForm.addEventListener('submit', saveGrant);
     els.cancelGrantButton.addEventListener('click', closeGrantModal);
     els.closeGrantModal.addEventListener('click', closeGrantModal);
@@ -406,7 +410,7 @@
       const statusCell = document.createElement('td'); const status = document.createElement('span'); status.className = `status-pill${member.status === 'active' ? '' : ' disabled'}`; status.textContent = member.status === 'active' ? '啟用中' : '已停用'; statusCell.append(status);
       const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
       const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
-      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true)); actionsCell.append(actions);
+      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true), actionButton('紀錄', 'view-records', member.lineUserId)); actionsCell.append(actions);
       row.append(memberCell, tierCell, statusCell, serviceTimeCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
@@ -496,6 +500,11 @@
     const member = state.members.find((item) => item.lineUserId === button.dataset.value);
     if (!member) return;
     if (button.dataset.action === 'edit-member') return openMemberModal(member);
+    if (button.dataset.action === 'view-records') {
+      button.disabled = true;
+      try { await openMemberRecordsModal(member); } finally { button.disabled = false; }
+      return;
+    }
     if (button.dataset.action !== 'add-grant') return;
     // Full bootstrap 已載入集點卡時直接開啟，不再為互動重打 GAS。
     if (state.loadedPanels.cards) return openGrantModal(member);
@@ -503,6 +512,334 @@
     try { await ensureAdminPanelData('cards'); openGrantModal(member); } catch (error) { setSyncStatus(error && error.message || '無法載入集點卡，請稍後再試。', true); } finally { button.disabled = false; }
   }
 
+
+
+  const MEMBER_RECORD_FILTERS = Object.freeze([
+    ['all', '全部'],
+    ['pointCards', '集點卡'],
+    ['eventTickets', '活動票券'],
+    ['calendar', '日曆'],
+    ['bookings', '預約'],
+  ]);
+
+  async function openMemberRecordsModal(member) {
+    const requestVersion = ++state.memberRecords.requestVersion;
+    state.memberRecords.lineUserId = String(member.lineUserId || '');
+    state.memberRecords.filter = 'all';
+    state.memberRecords.data = null;
+    els.memberRecordsIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`;
+    els.memberRecordsSummary.replaceChildren();
+    els.memberRecordsList.replaceChildren();
+    els.memberRecordsEmpty.classList.add('hidden');
+    hideMessage(els.memberRecordsMessage);
+    const loading = document.createElement('div');
+    loading.className = 'member-records-loading';
+    loading.textContent = '正在讀取會員紀錄…';
+    els.memberRecordsList.append(loading);
+    renderMemberRecordTabs();
+    els.memberRecordsModal.classList.remove('hidden');
+    window.requestAnimationFrame(() => {
+      if (!els.memberRecordsModal.classList.contains('hidden')) {
+        try { els.closeMemberRecordsModal.focus({ preventScroll: true }); } catch (_) { els.closeMemberRecordsModal.focus(); }
+      }
+    });
+
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-records.list', {
+        lineUserId: state.memberRecords.lineUserId,
+      });
+      if (requestVersion !== state.memberRecords.requestVersion || state.memberRecords.lineUserId !== String(member.lineUserId || '')) return;
+      state.memberRecords.data = result && typeof result === 'object' ? result : { records: {}, counts: {} };
+      renderMemberRecords();
+    } catch (error) {
+      if (requestVersion !== state.memberRecords.requestVersion) return;
+      els.memberRecordsList.replaceChildren();
+      els.memberRecordsEmpty.classList.add('hidden');
+      showMessage(els.memberRecordsMessage, error && error.message || '無法讀取會員紀錄，請稍後再試。');
+    }
+  }
+
+  function closeMemberRecordsModal() {
+    state.memberRecords.requestVersion += 1;
+    state.memberRecords.lineUserId = '';
+    state.memberRecords.data = null;
+    els.memberRecordsModal.classList.add('hidden');
+  }
+
+  function handleMemberRecordsTabClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-record-filter]') : null;
+    if (!button || !state.memberRecords.data) return;
+    const filter = String(button.dataset.recordFilter || 'all');
+    if (!MEMBER_RECORD_FILTERS.some(([value]) => value === filter)) return;
+    state.memberRecords.filter = filter;
+    renderMemberRecordTabs();
+    renderMemberRecordList();
+  }
+
+  function memberRecordCounts() {
+    const data = state.memberRecords.data || {};
+    const records = data.records && typeof data.records === 'object' ? data.records : {};
+    const counts = data.counts && typeof data.counts === 'object' ? data.counts : {};
+    const result = {};
+    for (const [key] of MEMBER_RECORD_FILTERS) {
+      if (key === 'all') continue;
+      result[key] = Math.max(0, Number(counts[key] ?? (Array.isArray(records[key]) ? records[key].length : 0)) || 0);
+    }
+    result.all = Object.values(result).reduce((sum, value) => sum + Number(value || 0), 0);
+    return result;
+  }
+
+  function renderMemberRecordTabs() {
+    if (!els.memberRecordsTabs) return;
+    const counts = memberRecordCounts();
+    els.memberRecordsTabs.querySelectorAll('[data-record-filter]').forEach((button) => {
+      const filter = String(button.dataset.recordFilter || 'all');
+      const item = MEMBER_RECORD_FILTERS.find(([key]) => key === filter);
+      button.textContent = `${item ? item[1] : '全部'} ${counts[filter] || 0}`;
+      const selected = state.memberRecords.filter === filter;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+  }
+
+  function renderMemberRecords() {
+    hideMessage(els.memberRecordsMessage);
+    const counts = memberRecordCounts();
+    const summary = [
+      ['集點卡', counts.pointCards],
+      ['活動票券', counts.eventTickets],
+      ['日曆', counts.calendar],
+      ['預約', counts.bookings],
+    ];
+    els.memberRecordsSummary.replaceChildren(...summary.map(([label, count]) => {
+      const pill = document.createElement('span');
+      pill.className = 'member-record-summary-pill';
+      const name = document.createElement('span');
+      name.textContent = String(label);
+      const value = document.createElement('strong');
+      value.textContent = String(count || 0);
+      pill.append(name, value);
+      return pill;
+    }));
+    renderMemberRecordTabs();
+    renderMemberRecordList();
+  }
+
+  function memberRecordsForFilter() {
+    const data = state.memberRecords.data || {};
+    const records = data.records && typeof data.records === 'object' ? data.records : {};
+    if (state.memberRecords.filter !== 'all') {
+      return (Array.isArray(records[state.memberRecords.filter]) ? records[state.memberRecords.filter] : [])
+        .map((record) => ({ ...record, recordCategory: state.memberRecords.filter }));
+    }
+    const combined = [];
+    for (const [category] of MEMBER_RECORD_FILTERS) {
+      if (category === 'all') continue;
+      for (const record of Array.isArray(records[category]) ? records[category] : []) combined.push({ ...record, recordCategory: category });
+    }
+    return combined.sort((a, b) => memberRecordSortValue(b) - memberRecordSortValue(a));
+  }
+
+  function memberRecordSortValue(record) {
+    const raw = String(record && record.occurredAt || '');
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function renderMemberRecordList() {
+    const records = memberRecordsForFilter();
+    els.memberRecordsList.replaceChildren(...records.map(createMemberRecordItem));
+    els.memberRecordsEmpty.classList.toggle('hidden', records.length !== 0);
+  }
+
+  function createMemberRecordItem(record) {
+    const category = String(record.recordCategory || '');
+    const article = document.createElement('article');
+    article.className = `member-record-item category-${category}`;
+
+    const heading = document.createElement('div');
+    heading.className = 'member-record-item-heading';
+    const categoryPill = document.createElement('span');
+    categoryPill.className = 'member-record-category';
+    categoryPill.textContent = memberRecordCategoryLabel(category);
+    const time = document.createElement('time');
+    time.textContent = formatMemberRecordDateTime(record.occurredAt);
+    heading.append(categoryPill, time);
+
+    const title = document.createElement('strong');
+    title.className = 'member-record-title';
+    title.textContent = memberRecordTitle(record, category);
+
+    const summary = document.createElement('p');
+    summary.className = 'member-record-summary';
+    summary.textContent = memberRecordSummary(record, category);
+
+    const details = memberRecordDetails(record, category);
+    const detailWrap = document.createElement('div');
+    detailWrap.className = 'member-record-details';
+    details.filter(Boolean).forEach((detail) => {
+      const line = document.createElement('small');
+      line.textContent = String(detail);
+      detailWrap.append(line);
+    });
+
+    article.append(heading, title, summary);
+    if (detailWrap.childElementCount) article.append(detailWrap);
+    return article;
+  }
+
+  function memberRecordCategoryLabel(category) {
+    const item = MEMBER_RECORD_FILTERS.find(([key]) => key === category);
+    return item ? item[1] : '紀錄';
+  }
+
+  function memberRecordTitle(record, category) {
+    if (category === 'pointCards' && record.recordType === 'point_entry') return String(record.title || '集點卡點數');
+    if (category === 'pointCards' && record.recordType === 'point_ticket') return String(record.title || '集點卡票券');
+    if (category === 'eventTickets') return String(record.title || '活動票券');
+    if (category === 'calendar') return String(record.title || '日曆項目');
+    if (category === 'bookings') return String(record.title || '預約');
+    return String(record.title || '會員紀錄');
+  }
+
+  function memberRecordSummary(record, category) {
+    if (category === 'pointCards' && record.recordType === 'point_entry') {
+      const amount = Number(record.amount || 0);
+      return `點數異動 ${amount > 0 ? '+' : ''}${amount} 點`;
+    }
+    if (category === 'pointCards' && record.recordType === 'point_ticket') {
+      return `集點票券 · ${memberRecordStatusLabel(record.status, 'ticket')}`;
+    }
+    if (category === 'eventTickets') return `${memberRecordTicketTypeLabel(record.ticketType)} · ${memberRecordStatusLabel(record.status, 'ticket')}`;
+    if (category === 'calendar') {
+      const start = record.startsOn ? window.MemberSystem.formatDate(record.startsOn) : '日期未設定';
+      const end = record.endsOn && record.endsOn !== record.startsOn ? ` ～ ${window.MemberSystem.formatDate(record.endsOn)}` : '';
+      return `${start}${end} · ${memberRecordStatusLabel(record.status, 'calendar')}`;
+    }
+    if (category === 'bookings') {
+      const date = record.bookingDate ? window.MemberSystem.formatDate(record.bookingDate) : '日期未設定';
+      const time = formatMemberRecordTimeRange(record.startTime, record.endTime);
+      return `${date}${time ? ' · ' + time : ''} · ${memberRecordStatusLabel(record.status, 'booking')}`;
+    }
+    return '會員使用紀錄';
+  }
+
+  function memberRecordDetails(record, category) {
+    const details = [];
+    if (category === 'pointCards' && record.recordType === 'point_entry') {
+      if (record.entryType) details.push(`類型：${memberRecordPointEntryLabel(record.entryType)}`);
+      if (record.note) details.push(`備註：${record.note}`);
+      if (record.referenceType) details.push(`來源：${memberRecordReferenceLabel(record.referenceType)}`);
+      return details;
+    }
+    if (category === 'pointCards' && record.recordType === 'point_ticket') {
+      if (record.cardTitle) details.push(`來源集點卡：${record.cardTitle}`);
+      if (Number(record.pointsSpent || 0) > 0) details.push(`兌換扣除：${Number(record.pointsSpent)} 點`);
+      if (record.earnedAt) details.push(`取得：${formatMemberRecordDateTime(record.earnedAt)}`);
+      if (record.usedAt) details.push(`使用：${formatMemberRecordDateTime(record.usedAt)}`);
+      const result = memberRecordResultText(record.result);
+      if (result) details.push(`結果：${result}`);
+      return details;
+    }
+    if (category === 'eventTickets') {
+      if (record.claimedAt) details.push(`領取：${formatMemberRecordDateTime(record.claimedAt)}`);
+      if (record.usedAt) details.push(`使用：${formatMemberRecordDateTime(record.usedAt)}`);
+      const result = memberRecordResultText(record.result);
+      if (result) details.push(`結果：${result}`);
+      return details;
+    }
+    if (category === 'calendar') {
+      if (record.relatedTicketTitle) details.push(`關聯票券：${record.relatedTicketTitle}`);
+      if (record.relatedTicketStatus) details.push(`票券狀態：${memberRecordStatusLabel(record.relatedTicketStatus, 'ticket')}`);
+      return details;
+    }
+    if (category === 'bookings') {
+      const participants = Array.isArray(record.participants) ? record.participants : [];
+      if (participants.length) {
+        participants.forEach((participant) => {
+          const items = (Array.isArray(participant.items) ? participant.items : []).map((item) => {
+            const qty = Number(item.quantity || 1);
+            const duration = Number(item.durationMinutes || 0);
+            const price = Number(item.priceAmount || 0);
+            const suffix = [duration > 0 ? `${duration} 分鐘` : '', price > 0 ? formatMemberRecordMoney(price * qty) : ''].filter(Boolean).join(' / ');
+            return `${item.title || '預約項目'}${qty > 1 ? ' × ' + qty : ''}${suffix ? '（' + suffix + '）' : ''}`;
+          });
+          const tech = participant.technicianName ? ` · 技師：${participant.technicianName}` : '';
+          details.push(`第 ${Number(participant.position || 0) + 1} 位：${items.join('、') || '未取得項目'}${tech}`);
+        });
+      } else {
+        if (record.technicianName) details.push(`技師：${record.technicianName}`);
+        if (Number(record.partySize || 1) > 1) details.push(`預約人數：${Number(record.partySize)} 位`);
+      }
+      if (Number(record.totalDurationMinutes || 0) > 0) details.push(`總服務時間：${Number(record.totalDurationMinutes)} 分鐘`);
+      if (record.memberNote) details.push(`會員備註：${record.memberNote}`);
+      if (record.cancellationRequestedAt && !record.cancelledAt) details.push(`取消申請：${formatMemberRecordDateTime(record.cancellationRequestedAt)}`);
+      if (record.settlement && Number(record.settlement.serviceMinutes || 0) > 0) details.push(`完成後計入服務時間：${Number(record.settlement.serviceMinutes)} 分鐘`);
+      if (record.settlement && record.settlement.rewardDetails) details.push('完成後集點回饋已結算');
+      return details;
+    }
+    return details;
+  }
+
+  function memberRecordStatusLabel(status, kind) {
+    const value = String(status || '').toLowerCase();
+    const common = {
+      available:'可使用', claimed:'已領取', used:'已使用', expired:'已過期', cancelled:'已取消',
+      active:'啟用中', targeted:'指定會員', draft:'草稿', archived:'已封存',
+      pending:'待確認', confirmed:'已確認', completed:'已完成', rejected:'已拒絕',
+    };
+    if (value === 'cancellation_requested') return '取消申請';
+    if (kind === 'booking' && value === 'cancel_requested') return '取消申請';
+    return common[value] || String(status || '—');
+  }
+
+  function memberRecordTicketTypeLabel(type) {
+    const value = String(type || '').toLowerCase();
+    if (value === 'lottery') return '抽獎券';
+    if (value === 'coupon') return '優惠券';
+    return '活動票券';
+  }
+
+  function memberRecordPointEntryLabel(type) {
+    const value = String(type || '').toLowerCase();
+    const labels = {
+      grant:'管理員發放', earn:'獲得點數', redeem:'兌換扣點', redemption:'兌換扣點',
+      booking_reward:'預約完成回饋', calendar_bonus:'日曆活動回饋', adjustment:'點數調整',
+    };
+    return labels[value] || String(type || '點數異動');
+  }
+
+  function memberRecordReferenceLabel(type) {
+    const value = String(type || '').toLowerCase();
+    const labels = { booking:'預約', calendar:'日曆', event_ticket:'活動票券', admin:'管理員操作', point_ticket:'集點票券' };
+    return labels[value] || String(type || '');
+  }
+
+  function memberRecordResultText(result) {
+    if (!result) return '';
+    if (typeof result === 'string' || typeof result === 'number') return String(result);
+    if (typeof result !== 'object') return '';
+    return String(result.prizeTitle || result.title || result.name || result.message || '');
+  }
+
+  function formatMemberRecordDateTime(value) {
+    const text = String(value || '');
+    if (!text) return '—';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return window.MemberSystem.formatDate(text);
+    return window.MemberSystem.formatDateTime(text);
+  }
+
+  function formatMemberRecordTimeRange(start, end) {
+    const normalize = (value) => String(value || '').slice(0,5);
+    const startText = normalize(start);
+    const endText = normalize(end);
+    if (!startText) return '';
+    return endText ? `${startText}–${endText}` : startText;
+  }
+
+  function formatMemberRecordMoney(value) {
+    return `NT ${Math.max(0, Number(value || 0)).toLocaleString('zh-TW')}`;
+  }
 
   function parseAdminIsoDate(value) {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
