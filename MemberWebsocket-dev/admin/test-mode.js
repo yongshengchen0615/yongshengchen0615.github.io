@@ -10,12 +10,21 @@
       'testModeTab', 'testModePanel', 'testModeForm', 'testModeEnabled',
       'testModeAdminLoginEnabled', 'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'testModeFormMessage',
-      'testModeAccountCount', 'testModeAccountList', 'testModeAccountEmpty'
+      'testModeAccountCount', 'testModeAccountList', 'testModeAccountEmpty',
+      'testModeStatusBadge', 'testModeAdminLoginBadge'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
     if (!els.testModeTab || !els.testModeForm) return;
     els.testModeTab.addEventListener('click', () => load().catch(showError));
     els.testModeForm.addEventListener('submit', save);
+    document.querySelectorAll('[data-test-account-count]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const value = Number(button.dataset.testAccountCount || 0);
+        if (!Number.isInteger(value) || value < 0 || value > 50) return;
+        els.testModeAddAccountCount.value = String(value);
+        els.testModeAddAccountCount.focus();
+      });
+    });
     window.addEventListener('member-admin-ready', () => {
       if (els.testModeTab.getAttribute('aria-selected') === 'true') load().catch(showError);
     });
@@ -105,12 +114,32 @@
   function render(data) {
     const settings = data && data.settings && typeof data.settings === 'object' ? data.settings : {};
     const accounts = Array.isArray(data && data.accounts) ? data.accounts : [];
-    els.testModeEnabled.checked = Boolean(settings.enabled);
-    els.testModeAdminLoginEnabled.checked = Boolean(settings.allowAdminUserLogin);
+    const enabled = Boolean(settings.enabled);
+    const allowAdminLogin = Boolean(settings.allowAdminUserLogin);
+
+    els.testModeEnabled.checked = enabled;
+    els.testModeAdminLoginEnabled.checked = allowAdminLogin;
     els.testModeMaintenanceMessage.value = String(settings.maintenanceMessage || '');
     els.testModeAccountCount.textContent = accounts.length + ' 個';
     els.testModeAccountList.replaceChildren(...accounts.map(renderAccount));
     els.testModeAccountEmpty.classList.toggle('hidden', accounts.length !== 0);
+
+    updateStatusBadge(
+      els.testModeStatusBadge,
+      enabled ? '測試模式：啟用中' : '測試模式：未啟用',
+      enabled ? 'is-warning' : 'is-off'
+    );
+    updateStatusBadge(
+      els.testModeAdminLoginBadge,
+      allowAdminLogin ? '管理員登入：允許' : '管理員登入：停用',
+      allowAdminLogin ? 'is-active' : 'is-off'
+    );
+  }
+
+  function updateStatusBadge(element, text, stateClass) {
+    if (!element) return;
+    element.textContent = text;
+    element.className = 'test-mode-status-badge ' + stateClass;
   }
 
   function renderAccount(account) {
@@ -118,15 +147,26 @@
     row.className = 'test-account-row';
 
     const identity = document.createElement('div');
+    identity.className = 'test-account-identity';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'test-account-avatar';
+    const displayName = String(account.displayName || '測試會員');
+    avatar.textContent = displayName.trim().slice(0, 1) || '測';
+
+    const copy = document.createElement('div');
+    copy.className = 'test-account-copy';
     const name = document.createElement('strong');
-    name.textContent = String(account.displayName || '測試會員');
+    name.textContent = displayName;
     const code = document.createElement('small');
     code.textContent = String(account.memberCode || '');
-    identity.append(name, code);
+    copy.append(name, code);
+    identity.append(avatar, copy);
 
+    const available = account.status === 'active' && account.membershipStatus === 'active';
     const status = document.createElement('span');
-    status.className = 'test-account-status';
-    status.textContent = account.status === 'active' && account.membershipStatus === 'active' ? '可登入' : '不可登入';
+    status.className = 'test-account-status' + (available ? '' : ' is-disabled');
+    status.textContent = available ? '可登入' : '不可登入';
 
     row.append(identity, status);
     return row;
@@ -138,6 +178,9 @@
     els.testModeAdminLoginEnabled.disabled = busy;
     els.testModeMaintenanceMessage.disabled = busy;
     els.testModeAddAccountCount.disabled = busy;
+    document.querySelectorAll('[data-test-account-count]').forEach((button) => {
+      button.disabled = busy;
+    });
   }
 
   function setMessage(message, error = false) {
