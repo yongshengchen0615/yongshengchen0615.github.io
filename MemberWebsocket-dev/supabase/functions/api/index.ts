@@ -160,7 +160,7 @@ function channelIdFor(clientType: ClientType): string {
     points: "LINE_POINTS_CHANNEL_ID",
     event: "LINE_EVENT_CHANNEL_ID",
     calendar: "LINE_CALENDAR_CHANNEL_ID",
-    booking: "LINE_BOOKING_CHANNEL_ID",
+    booking: "LINE_MEMBER_CHANNEL_ID",
     admin: "LINE_ADMIN_CHANNEL_ID",
   };
   const defaults: Record<ClientType,string> = {
