@@ -237,7 +237,7 @@
 
   function schedulePresenceHeartbeat() {
     clearPresenceHeartbeat();
-    if (!presenceContext || presenceContext.closed || document.visibilityState === 'hidden') return;
+    if (!presenceContext || presenceContext.closed) return;
     presenceHeartbeatTimer = window.setTimeout(() => {
       presenceHeartbeatTimer = null;
       void heartbeatPresence();
@@ -246,7 +246,7 @@
 
   async function heartbeatPresence() {
     const context = presenceContext;
-    if (!context || context.closed || document.visibilityState === 'hidden') return;
+    if (!context || context.closed) return;
     try {
       if (!context.onlineRecorded) {
         await startPresence(context.config, context.surface, currentPresenceIdToken(context), 'relogin');
@@ -280,10 +280,7 @@
     document.addEventListener('visibilitychange', () => {
       const context = presenceContext;
       if (!context || context.closed) return;
-      if (document.visibilityState === 'hidden') {
-        clearPresenceHeartbeat();
-        return;
-      }
+      if (document.visibilityState !== 'visible') return;
       if (Date.now() - Number(context.lastSeenSignalAt || 0) >= PRESENCE_RESUME_SIGNAL_MS) {
         context.onlineRecorded = false;
         void startPresence(context.config, context.surface, currentPresenceIdToken(context), 'resume');
