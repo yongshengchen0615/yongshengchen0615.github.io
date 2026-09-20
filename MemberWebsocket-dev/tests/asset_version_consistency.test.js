@@ -29,7 +29,7 @@ test('admin entry references current booking assets', () => {
   const html = read('admin/index.html');
   assert.ok(html.includes('calendar-responsive.css?v=calendar-responsive-20260914-mobile-fit-2'));
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
-  assert.ok(html.includes('../member-system.js?v=presence-20260920-2'));
+  assert.ok(html.includes('../member-system.js?v=member-profile-route-20260920-1'));
   assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
   assert.ok(html.includes('app.js?v=test-member-roster-20260920-1'));
   assert.ok(html.includes('booking-panel.css?v=booking-settings-layout-20260918-1'));
@@ -47,7 +47,7 @@ test('member booking entry loads only the current single render pipeline', () =>
   const loader = read('admin/booking-panel.js');
 
   assert.ok(html.includes('styles.css?v=booking-addon-notice-modal-20260919-1'));
-  assert.ok(html.includes('common.js?v=member-presence-20260920-2'));
+  assert.ok(html.includes('common.js?v=member-member-profile-route-20260920-1'));
   assert.ok(html.includes('liff-fresh-login.js?v=member-presence-20260920-1'));
   assert.ok(html.includes('group-booking.css?v=booking-participant-colors-20260918-1'));
   assert.ok(html.includes('booking-history.css?v=booking-history-accordion-20260918-1'));
