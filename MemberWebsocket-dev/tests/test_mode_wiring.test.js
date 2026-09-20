@@ -49,7 +49,10 @@ test('all member-facing surfaces load the direct test-account client before app 
     'booking/index.html',
   ]) {
     const html = read(entry);
-    assert.match(html, /test-mode-client\.js\?v=maintenance-device-login-20260920-2/, entry);
+    const expectedClientVersion = entry === 'member/index.html'
+      ? 'member-profile-session-ready-20260920-1'
+      : 'maintenance-device-login-20260920-2';
+    assert.ok(html.includes(`test-mode-client.js?v=${expectedClientVersion}`), entry);
     assert.match(html, /test-mode\.css\?v=test-mode-20260920-1/, entry);
   }
 

@@ -2,7 +2,12 @@
   'use strict';
 
   const STORAGE_KEY = 'member-test-session-v1';
+  const SESSION_READY_EVENT = 'member-test-session-ready';
   let activeSessionToken = '';
+
+  function announceSessionReady() {
+    try { window.dispatchEvent(new Event(SESSION_READY_EVENT)); } catch (_) {}
+  }
 
   function clientError(code, message, status = 0) {
     const error = new Error(message);
@@ -70,6 +75,7 @@
     } catch (_) {
       throw clientError('AUTH_STORAGE_UNAVAILABLE', '瀏覽器無法保存本次測試登入狀態。');
     }
+    announceSessionReady();
   }
 
   function clearSession() {
@@ -93,6 +99,7 @@
     try {
       const result = await post(config, { action: 'session.status', testSessionToken: token });
       activeSessionToken = token;
+      announceSessionReady();
       return result;
     } catch (_) {
       clearSession();

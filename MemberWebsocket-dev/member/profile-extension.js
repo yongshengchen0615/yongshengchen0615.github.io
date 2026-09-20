@@ -29,6 +29,7 @@
     });
 
     scheduleProfileSync(0);
+    window.addEventListener('member-test-session-ready', () => scheduleProfileSync(0));
     window.addEventListener('pageshow', () => scheduleProfileSync(0));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') scheduleProfileSync(0);
@@ -72,25 +73,35 @@
     }
   }
 
-  function openHonorificModal(event) {
-    if (!currentProfile || typeof currentProfile !== 'object') return;
+  async function openHonorificModal(event) {
     modalOpener = event?.currentTarget || document.activeElement;
     closeProfileModal('phone', false);
-    hideModalMessage('honorific');
-    setValue('honorificSurnameInput', String(currentProfile.surname || ''));
-    setValue('honorificSalutationSelect', String(currentProfile.salutation || '').toLowerCase());
     openProfileModal('honorific');
-    document.getElementById('honorificSurnameInput')?.focus();
+    showModalMessage('honorific', '正在同步會員資料…');
+    try {
+      const profile = await ensureCurrentProfile();
+      hideModalMessage('honorific');
+      setValue('honorificSurnameInput', String(profile.surname || ''));
+      setValue('honorificSalutationSelect', String(profile.salutation || '').toLowerCase());
+      document.getElementById('honorificSurnameInput')?.focus();
+    } catch (error) {
+      showModalMessage('honorific', error?.message || '會員資料尚在同步，請稍後再試。');
+    }
   }
 
-  function openPhoneModal(event) {
-    if (!currentProfile || typeof currentProfile !== 'object') return;
+  async function openPhoneModal(event) {
     modalOpener = event?.currentTarget || document.activeElement;
     closeProfileModal('honorific', false);
-    hideModalMessage('phone');
-    setValue('phoneEditInput', String(currentProfile.phone || ''));
     openProfileModal('phone');
-    document.getElementById('phoneEditInput')?.focus();
+    showModalMessage('phone', '正在同步會員資料…');
+    try {
+      const profile = await ensureCurrentProfile();
+      hideModalMessage('phone');
+      setValue('phoneEditInput', String(profile.phone || ''));
+      document.getElementById('phoneEditInput')?.focus();
+    } catch (error) {
+      showModalMessage('phone', error?.message || '會員資料尚在同步，請稍後再試。');
+    }
   }
 
   function openProfileModal(type) {
@@ -180,14 +191,26 @@
     }, delay);
   }
 
+  async function fetchCurrentProfile(attempts = 1) {
+    const { config, idToken } = await resolveSession(attempts);
+    const result = await requestProfile(config, idToken, 'user.member.bootstrap');
+    const profile = result.profile && typeof result.profile === 'object' ? result.profile : null;
+    if (!profile) throw new Error('會員資料尚在同步，請稍後再試。');
+    currentProfile = profile;
+    applyProfileDisplay(profile);
+    return profile;
+  }
+
+  async function ensureCurrentProfile() {
+    if (currentProfile && typeof currentProfile === 'object') return currentProfile;
+    return fetchCurrentProfile(16);
+  }
+
   async function syncExtendedProfile() {
     if (syncing) return;
     syncing = true;
     try {
-      const { config, idToken } = await resolveSession(16);
-      const result = await requestProfile(config, idToken, 'user.member.bootstrap');
-      currentProfile = result.profile || null;
-      applyProfileDisplay(currentProfile);
+      await fetchCurrentProfile(16);
     } finally {
       syncing = false;
     }
