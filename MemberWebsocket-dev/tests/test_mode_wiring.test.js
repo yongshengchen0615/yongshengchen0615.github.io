@@ -165,6 +165,11 @@ test('all browser bypass APIs forward the selected test session', () => {
   ]) {
     assert.match(read(relative), /TestModeClient/, relative);
   }
+
+  const pointOverview = read('points/pointcard-ticket-overview.js');
+  assert.match(pointOverview, /function hasMemberAuth\(\)/);
+  assert.match(pointOverview, /getSessionToken/);
+  assert.doesNotMatch(pointOverview, /if \(!state\.config \|\| !state\.idToken\)/);
 });
 
 test('test account creation remains admin-only and transactional', () => {
