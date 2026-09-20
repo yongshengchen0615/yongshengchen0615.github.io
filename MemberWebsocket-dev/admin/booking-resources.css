@@ -113,17 +113,56 @@
   gap: 8px;
 }
 
-.booking-admin-resource-list-heading > div > span {
+.booking-admin-technician-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.booking-admin-technician-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid rgba(36, 49, 41, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.booking-admin-technician-tab:hover,
+.booking-admin-technician-tab:focus-visible {
+  border-color: rgba(36, 49, 41, 0.3);
+}
+
+.booking-admin-technician-tab.active {
+  border-color: rgba(36, 49, 41, 0.72);
+  background: #243129;
+  color: #fff;
+}
+
+.booking-admin-technician-tab > span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  min-height: 24px;
-  padding: 0 8px;
+  min-width: 23px;
+  min-height: 21px;
+  padding: 0 6px;
   border-radius: 999px;
   background: rgba(36, 49, 41, 0.08);
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.76rem;
+}
+
+.booking-admin-technician-tab.active > span {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .booking-admin-technician-list {
@@ -136,6 +175,17 @@
   border: 1px solid rgba(36, 49, 41, 0.12);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.78);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.booking-admin-technician-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
   padding: 12px 14px;
   display: flex;
   align-items: center;
@@ -143,22 +193,29 @@
   gap: 12px;
   text-align: left;
   color: inherit;
+  font: inherit;
   cursor: pointer;
 }
 
 .booking-admin-technician-row:hover,
-.booking-admin-technician-row:focus-visible {
+.booking-admin-technician-row:focus-within {
   border-color: rgba(36, 49, 41, 0.28);
 }
 
-.booking-admin-technician-row > span:first-child {
+.booking-admin-technician-row-main > span:first-child {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
-.booking-admin-technician-row.inactive {
-  opacity: 0.68;
+.booking-admin-technician-row.inactive .booking-admin-technician-row-main {
+  opacity: 0.72;
+}
+
+.booking-admin-technician-restore {
+  flex: 0 0 auto;
+  margin-right: 12px;
+  white-space: nowrap;
 }
 
 .booking-admin-resource-status {
@@ -196,7 +253,19 @@
   }
 
   .booking-admin-technician-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .booking-admin-technician-row-main {
+    width: 100%;
     align-items: flex-start;
+  }
+
+  .booking-admin-technician-restore {
+    margin: 0 12px 12px;
+    width: calc(100% - 24px);
   }
 }
 
@@ -212,43 +281,12 @@
   justify-content: flex-end;
 }
 
-.booking-admin-technician-modal-actions .button-danger {
-  margin-right: auto;
-}
-
-.booking-admin-technician-delete-confirm {
-  display: grid;
-  gap: 18px;
-}
-
-.booking-admin-technician-delete-confirm > div:first-child {
-  display: grid;
-  gap: 8px;
-}
-
-.booking-admin-technician-delete-confirm h3 {
-  margin: 0;
-  font-size: 1.2rem;
-}
-
-.booking-admin-technician-delete-confirm p,
-.booking-admin-technician-delete-confirm small {
-  margin: 0;
-  color: var(--muted, #6f786f);
-  line-height: 1.6;
-}
-
 @media (max-width: 640px) {
   .booking-admin-technician-modal-actions {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .booking-admin-technician-modal-actions .button,
-  .booking-admin-technician-delete-confirm .booking-admin-modal-actions .button {
+  .booking-admin-technician-modal-actions .button {
     width: 100%;
-  }
-
-  .booking-admin-technician-modal-actions .button-danger {
-    margin-right: 0;
   }
 }
