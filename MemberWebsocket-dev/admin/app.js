@@ -516,6 +516,7 @@
 
   const MEMBER_RECORD_FILTERS = Object.freeze([
     ['all', '全部'],
+    ['presence', '上／下線'],
     ['pointCards', '集點卡'],
     ['eventTickets', '活動票券'],
     ['calendar', '日曆'],
@@ -606,6 +607,7 @@
     hideMessage(els.memberRecordsMessage);
     const counts = memberRecordCounts();
     const summary = [
+      ['上／下線', counts.presence],
       ['集點卡', counts.pointCards],
       ['活動票券', counts.eventTickets],
       ['日曆', counts.calendar],
@@ -694,6 +696,7 @@
   }
 
   function memberRecordTitle(record, category) {
+    if (category === 'presence') return record.event === 'offline' ? '會員下線' : '會員上線';
     if (category === 'pointCards' && record.recordType === 'point_entry') return String(record.title || '集點卡點數');
     if (category === 'pointCards' && record.recordType === 'point_ticket') return String(record.title || '集點卡票券');
     if (category === 'eventTickets') return String(record.title || '活動票券');
@@ -703,6 +706,9 @@
   }
 
   function memberRecordSummary(record, category) {
+    if (category === 'presence') {
+      return `${record.event === 'offline' ? '下線' : '上線'} · ${memberRecordPresenceSurfaceLabel(record.surface)}`;
+    }
     if (category === 'pointCards' && record.recordType === 'point_entry') {
       const amount = Number(record.amount || 0);
       return `點數異動 ${amount > 0 ? '+' : ''}${amount} 點`;
@@ -726,6 +732,11 @@
 
   function memberRecordDetails(record, category) {
     const details = [];
+    if (category === 'presence') {
+      details.push(`來源：${memberRecordPresenceSurfaceLabel(record.surface)}`);
+      if (record.reason) details.push(`原因：${memberRecordPresenceReasonLabel(record.reason, record.event)}`);
+      return details;
+    }
     if (category === 'pointCards' && record.recordType === 'point_entry') {
       if (record.entryType) details.push(`類型：${memberRecordPointEntryLabel(record.entryType)}`);
       if (record.note) details.push(`備註：${record.note}`);
@@ -779,6 +790,29 @@
       return details;
     }
     return details;
+  }
+
+  function memberRecordPresenceSurfaceLabel(surface) {
+    const labels = {
+      member:'會員卡',
+      points:'集點卡',
+      event:'活動票券',
+      calendar:'日曆',
+      booking:'預約',
+    };
+    return labels[String(surface || '').toLowerCase()] || '會員系統';
+  }
+
+  function memberRecordPresenceReasonLabel(reason, event) {
+    const labels = {
+      signin:'登入完成',
+      resume:'返回頁面',
+      relogin:'重新登入',
+      logout:'主動登出',
+      pagehide:'離開頁面',
+      bfcache:'頁面暫存離開',
+    };
+    return labels[String(reason || '').toLowerCase()] || (event === 'offline' ? '離線' : '上線');
   }
 
   function memberRecordStatusLabel(status, kind) {
