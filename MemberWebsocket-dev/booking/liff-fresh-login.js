@@ -66,10 +66,16 @@
 
   window.BookingSystem.signIn = async (config, clientType) => {
     if (clientType !== 'booking') return originalSignIn(config, clientType);
+    let idToken;
     if (window.TestModeClient && typeof window.TestModeClient.prepare === 'function') {
       const prepared = await window.TestModeClient.prepare(config, 'booking', () => freshBookingSignIn(config));
-      return String(prepared && prepared.idToken || '');
+      idToken = String(prepared && prepared.idToken || '');
+    } else {
+      idToken = await freshBookingSignIn(config);
     }
-    return freshBookingSignIn(config);
+    if (typeof window.BookingSystem.startPresence === 'function') {
+      await window.BookingSystem.startPresence(config, 'booking', idToken);
+    }
+    return idToken;
   };
 })();
