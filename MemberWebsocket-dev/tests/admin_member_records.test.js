@@ -23,6 +23,16 @@ test('member records modal contains all requested activity categories', () => {
   assert.match(css, /\.member-records-modal-card/);
 });
 
+test('open member records and directory presence refresh from realtime updates', () => {
+  assert.match(app, /subscribeRealtime\(state\.config, 'admin', handleAdminRealtimeUpdate\)/);
+  assert.match(app, /refreshOpenMemberRecords\(\)/);
+  assert.match(app, /admin\.members\.presence\.list/);
+  assert.match(app, /MEMBER_PRESENCE_POLL_MS = 15_000/);
+  assert.match(html, />上線狀態<\/th>/);
+  assert.match(css, /\.member-presence-pill\.online/);
+  assert.match(css, /\.member-presence-pill\.offline/);
+});
+
 test('admin member records API stays behind existing admin authorization boundary', () => {
   const authorizePosition = api.indexOf('const admin = await authorizeAdmin(supabase,identity);');
   const routePosition = api.indexOf('action === "admin.member-records.list"');
