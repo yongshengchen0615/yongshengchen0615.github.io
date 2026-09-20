@@ -64,6 +64,12 @@ function errorReply(origin: string | null, error: unknown): Response {
       apiError = new ApiError(400, "INVALID_MAINTENANCE_MESSAGE", "系統維護訊息不可超過 500 字。");
     } else if (message.includes("TEST_ACCOUNT_LIMIT_REACHED")) {
       apiError = new ApiError(409, "TEST_ACCOUNT_LIMIT_REACHED", "測試帳號總數已達 200 個上限。");
+    } else if (message.includes("INVALID_TEST_ACCOUNT_DELETE_COUNT")) {
+      apiError = new ApiError(400, "INVALID_TEST_ACCOUNT_DELETE_COUNT", "每次移除測試帳號必須選擇 1–200 個。");
+    } else if (message.includes("DUPLICATE_TEST_ACCOUNT_ID")) {
+      apiError = new ApiError(400, "DUPLICATE_TEST_ACCOUNT_ID", "批次移除清單包含重複的測試帳號。");
+    } else if (message.includes("INVALID_TEST_ACCOUNT_SELECTION")) {
+      apiError = new ApiError(409, "INVALID_TEST_ACCOUNT_SELECTION", "只能移除目前仍存在的測試帳號，請重新整理後再試。");
     } else {
       apiError = new ApiError(500, "TEST_MODE_ERROR", "測試模式服務暫時無法完成操作。");
     }
@@ -403,6 +409,52 @@ Deno.serve(async (request: Request) => {
       if (clientType !== "admin") throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端操作系統維護設定。");
       const [row, accounts] = await Promise.all([settings(supabase), testAccounts(supabase)]);
       return reply(origin, { ok: true, status: 200, data: { settings: settingsClient(row), accounts } });
+    }
+
+    if (action === "admin.test-mode.delete-accounts") {
+      if (clientType !== "admin") throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端移除測試帳號。");
+      const rawMemberIds = Array.isArray(body.memberIds) ? body.memberIds : [];
+      if (rawMemberIds.length < 1 || rawMemberIds.length > 200) {
+        throw new ApiError(400, "INVALID_TEST_ACCOUNT_DELETE_COUNT", "每次移除測試帳號必須選擇 1–200 個。");
+      }
+      const memberIds = rawMemberIds.map((value) => asText(value, 80));
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (memberIds.some((memberId) => !uuidPattern.test(memberId))) {
+        throw new ApiError(400, "INVALID_TEST_ACCOUNT_SELECTION", "測試帳號識別不正確，請重新整理後再試。");
+      }
+      if (new Set(memberIds).size !== memberIds.length) {
+        throw new ApiError(400, "DUPLICATE_TEST_ACCOUNT_ID", "批次移除清單包含重複的測試帳號。");
+      }
+
+      const rpc = await supabase.rpc("admin_delete_test_accounts", {
+        p_member_ids: memberIds,
+      });
+      if (rpc.error) throw rpc.error;
+
+      const deletedAccountCount = Number(rpc.data?.[0]?.deleted_account_count || 0);
+      if (deletedAccountCount !== memberIds.length) {
+        throw new ApiError(409, "TEST_ACCOUNT_DELETE_MISMATCH", "測試帳號資料已變更，請重新整理後再試。");
+      }
+
+      await audit(
+        supabase,
+        identity,
+        memberIds.length === 1 ? "test_mode.account.delete" : "test_mode.accounts.batch_delete",
+        "test_account",
+        memberIds.length === 1 ? memberIds[0] : "batch",
+        { memberIds, deletedAccountCount },
+      );
+
+      const [row, accounts] = await Promise.all([settings(supabase), testAccounts(supabase)]);
+      return reply(origin, {
+        ok: true,
+        status: 200,
+        data: {
+          settings: settingsClient(row),
+          accounts,
+          deletedAccountCount,
+        },
+      });
     }
 
     if (action === "admin.test-mode.save") {

@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="./calendar-date-fix.css?v=20260914-line-date-1">
   <link rel="stylesheet" href="./booking-panel.css?v=booking-settings-layout-20260918-1" data-booking-admin-panel-style>
   <link rel="stylesheet" href="./fixed-ticket-admin.css?v=fixed-ticket-20260916-1">
-  <link rel="stylesheet" href="./test-mode.css?v=test-mode-ui-20260920-2">
+  <link rel="stylesheet" href="./test-mode.css?v=test-mode-ui-20260920-3">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="../member-system.js?v=test-mode-20260920-1" defer></script>
@@ -24,7 +24,7 @@
   <script src="./fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1" defer></script>
   <script src="./pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1" defer></script>
   <script src="./app.js?v=test-mode-20260920-1" defer></script>
-  <script src="./test-mode.js?v=maintenance-device-login-20260920-2" defer></script>
+  <script src="./test-mode.js?v=maintenance-device-login-20260920-3" defer></script>
   <script src="./grant-automation.js?v=grant-automation-20260910" defer></script>
   <script src="../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1" defer></script>
   <script src="./booking-panel.js?v=booking-tab-navigation-20260920-1" data-booking-admin-panel-extension defer></script>
@@ -168,6 +168,12 @@
               <span id="testModeAccountCount" class="test-mode-account-count">0 個</span>
             </div>
             <div class="test-mode-account-list-shell">
+              <div class="test-mode-account-selection-toolbar">
+                <label class="test-mode-select-all"><input id="testModeSelectAllAccounts" type="checkbox"> 全選</label>
+                <span id="testModeSelectedCount" class="test-mode-selected-count">已選 0 個</span>
+                <button id="deleteSelectedTestAccountsButton" class="button button-danger" type="button" disabled>批次移除選取</button>
+              </div>
+              <div id="testModeAccountActionMessage" class="form-message hidden" role="status" aria-live="polite"></div>
               <div id="testModeAccountList" class="test-mode-account-list"></div>
               <div id="testModeAccountEmpty" class="empty-state compact test-mode-account-empty">
                 <span class="test-mode-empty-mark" aria-hidden="true">○</span>

@@ -24,8 +24,8 @@ test('admin exposes only maintenance and device login controls', () => {
   assert.match(html, /id="testModeMobileLoginBadge"/);
   assert.match(html, /id="testModeMaintenanceMessage"/);
   assert.match(html, /id="testModeAddAccountCount"/);
-  assert.match(html, /test-mode\.js\?v=maintenance-device-login-20260920-2/);
-  assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-2/);
+  assert.match(html, /test-mode\.js\?v=maintenance-device-login-20260920-3/);
+  assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-3/);
   assert.match(app, /switchPanel\('testMode'\)/);
   assert.match(testMode, /admin\.test-mode\.save/);
   assert.match(testMode, /admin\.test-mode\.bootstrap/);
@@ -181,4 +181,37 @@ test('test account creation remains admin-only and transactional', () => {
   assert.match(api, /p_allow_mobile_test_login: asBoolean\(body\.allowMobileTestLogin\)/);
   assert.doesNotMatch(auth, /settingsResult\.data\?\.enabled/);
   assert.match(api, /authorizeAdmin\(supabase, identity\)/);
+});
+
+
+test('test accounts support guarded single and batch removal', () => {
+  const html = read('admin/index.html');
+  const adminUi = read('admin/test-mode.js');
+  const api = read('supabase/functions/test-mode-api/index.ts');
+  const migration = read('supabase/migrations/20260920132731_admin_delete_test_accounts.sql');
+  const schema = read('supabase/migrations/20260920054312_test_mode_virtual_accounts.sql');
+
+  assert.match(html, /id="testModeSelectAllAccounts"/);
+  assert.match(html, /id="deleteSelectedTestAccountsButton"/);
+  assert.match(html, /id="testModeAccountActionMessage"/);
+  assert.match(adminUi, /admin\.test-mode\.delete-accounts/);
+  assert.match(adminUi, /data-test-account-delete/);
+  assert.match(adminUi, /window\.confirm/);
+  assert.match(adminUi, /批次移除選取/);
+
+  assert.match(api, /if \(action === "admin\.test-mode\.delete-accounts"\)/);
+  assert.match(api, /authorizeAdmin\(supabase, identity\)/);
+  assert.match(api, /admin_delete_test_accounts/);
+  assert.match(api, /new Set\(memberIds\)\.size !== memberIds\.length/);
+
+  assert.match(migration, /create or replace function public\.admin_delete_test_accounts/);
+  assert.match(migration, /is_test_account = true/);
+  assert.match(migration, /delete from public\.booking_completion_settlements/);
+  assert.match(migration, /delete from public\.bookings/);
+  assert.match(migration, /delete from public\.point_entries/);
+  assert.match(migration, /delete from public\.service_time_entries/);
+  assert.match(migration, /revoke all on function public\.admin_delete_test_accounts\(uuid\[\]\)/);
+  assert.match(migration, /from public, anon, authenticated/);
+  assert.match(migration, /to service_role/);
+  assert.match(schema, /member_id uuid not null references public\.members\(id\) on delete cascade/);
 });

@@ -4,6 +4,9 @@
   const els = {};
   let loaded = false;
   let loading = null;
+  let busy = false;
+  let currentAccounts = [];
+  let selectedAccountIds = new Set();
 
   window.addEventListener('DOMContentLoaded', () => {
     [
@@ -11,12 +14,24 @@
       'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'testModeFormMessage',
       'testModeAccountCount', 'testModeAccountList', 'testModeAccountEmpty',
+      'testModeSelectAllAccounts', 'testModeSelectedCount', 'deleteSelectedTestAccountsButton',
+      'testModeAccountActionMessage',
       'systemMaintenanceBadge', 'testModePcLoginBadge', 'testModeMobileLoginBadge'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
     if (!els.testModeTab || !els.testModeForm) return;
     els.testModeTab.addEventListener('click', () => load().catch(showError));
     els.testModeForm.addEventListener('submit', save);
+    els.testModeSelectAllAccounts?.addEventListener('change', () => {
+      if (busy) return;
+      selectedAccountIds = els.testModeSelectAllAccounts.checked
+        ? new Set(currentAccounts.map((account) => String(account.memberId || '')).filter(Boolean))
+        : new Set();
+      syncAccountSelection();
+    });
+    els.deleteSelectedTestAccountsButton?.addEventListener('click', () => {
+      removeAccounts([...selectedAccountIds], true).catch((error) => setAccountMessage(error?.message || '批次移除測試帳號失敗。', true));
+    });
     document.querySelectorAll('[data-test-account-count]').forEach((button) => {
       button.addEventListener('click', () => {
         const value = Number(button.dataset.testAccountCount || 0);
@@ -82,6 +97,7 @@
 
   async function save(event) {
     event.preventDefault();
+    if (busy) return;
     const addAccountCount = Number(els.testModeAddAccountCount.value || 0);
     if (!Number.isInteger(addAccountCount) || addAccountCount < 0 || addAccountCount > 50) {
       return setMessage('本次新增測試帳號數量必須是 0–50 的整數。', true);
@@ -115,6 +131,9 @@
   function render(data) {
     const settings = data && data.settings && typeof data.settings === 'object' ? data.settings : {};
     const accounts = Array.isArray(data && data.accounts) ? data.accounts : [];
+    currentAccounts = accounts;
+    const availableIds = new Set(accounts.map((account) => String(account.memberId || '')).filter(Boolean));
+    selectedAccountIds = new Set([...selectedAccountIds].filter((id) => availableIds.has(id)));
     const maintenanceEnabled = Boolean(settings.maintenanceEnabled);
     const allowPcTestLogin = Boolean(settings.allowPcTestLogin);
     const allowMobileTestLogin = Boolean(settings.allowMobileTestLogin);
@@ -126,6 +145,7 @@
     els.testModeAccountCount.textContent = accounts.length + ' 個';
     els.testModeAccountList.replaceChildren(...accounts.map(renderAccount));
     els.testModeAccountEmpty.classList.toggle('hidden', accounts.length !== 0);
+    syncAccountSelection();
 
     updateStatusBadge(
       els.systemMaintenanceBadge,
@@ -156,12 +176,26 @@
     const row = document.createElement('div');
     row.className = 'test-account-row';
 
+    const memberId = String(account.memberId || '');
+    const displayName = String(account.displayName || '測試會員');
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'test-account-checkbox';
+    checkbox.checked = selectedAccountIds.has(memberId);
+    checkbox.disabled = busy || !memberId;
+    checkbox.setAttribute('aria-label', '選取 ' + displayName);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selectedAccountIds.add(memberId);
+      else selectedAccountIds.delete(memberId);
+      syncAccountSelection();
+    });
+
     const identity = document.createElement('div');
     identity.className = 'test-account-identity';
 
     const avatar = document.createElement('span');
     avatar.className = 'test-account-avatar';
-    const displayName = String(account.displayName || '測試會員');
     avatar.textContent = displayName.trim().slice(0, 1) || '測';
 
     const copy = document.createElement('div');
@@ -178,11 +212,77 @@
     status.className = 'test-account-status' + (available ? '' : ' is-disabled');
     status.textContent = available ? '可登入' : '不可登入';
 
-    row.append(identity, status);
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'button button-danger test-account-delete-button';
+    removeButton.dataset.testAccountDelete = memberId;
+    removeButton.textContent = '移除';
+    removeButton.disabled = busy || !memberId;
+    removeButton.addEventListener('click', () => {
+      removeAccounts([memberId], false, displayName).catch((error) => setAccountMessage(error?.message || '移除測試帳號失敗。', true));
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'test-account-actions';
+    actions.append(status, removeButton);
+
+    row.append(checkbox, identity, actions);
     return row;
   }
 
-  function setBusy(busy) {
+  function syncAccountSelection() {
+    const total = currentAccounts.length;
+    const selected = selectedAccountIds.size;
+
+    document.querySelectorAll('.test-account-checkbox').forEach((checkbox) => {
+      const memberId = String(checkbox.closest('.test-account-row')?.querySelector('[data-test-account-delete]')?.dataset.testAccountDelete || '');
+      checkbox.checked = selectedAccountIds.has(memberId);
+      checkbox.disabled = busy || !memberId;
+    });
+
+    if (els.testModeSelectedCount) {
+      els.testModeSelectedCount.textContent = '已選 ' + selected + ' 個';
+    }
+    if (els.testModeSelectAllAccounts) {
+      els.testModeSelectAllAccounts.checked = total > 0 && selected === total;
+      els.testModeSelectAllAccounts.indeterminate = selected > 0 && selected < total;
+      els.testModeSelectAllAccounts.disabled = busy || total === 0;
+    }
+    if (els.deleteSelectedTestAccountsButton) {
+      els.deleteSelectedTestAccountsButton.disabled = busy || selected === 0;
+    }
+  }
+
+  async function removeAccounts(memberIds, batch = false, displayName = '') {
+    if (busy) return;
+    const ids = [...new Set((Array.isArray(memberIds) ? memberIds : []).map((value) => String(value || '').trim()).filter(Boolean))];
+    if (!ids.length) return;
+
+    const subject = batch || ids.length > 1
+      ? ids.length + ' 個測試帳號'
+      : '「' + (displayName || '此測試帳號') + '」';
+    const confirmed = window.confirm(
+      '確定移除' + subject + '？\n\n該帳號的測試預約、點數、票券、服務時間與登入 session 會一併移除，且無法復原。'
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setAccountMessage('正在移除測試帳號…');
+    try {
+      const data = await request('admin.test-mode.delete-accounts', { memberIds: ids });
+      selectedAccountIds.clear();
+      render(data);
+      const deleted = Number(data.deletedAccountCount || ids.length);
+      setAccountMessage('已移除 ' + deleted + ' 個測試帳號與其測試資料。');
+    } catch (error) {
+      setAccountMessage(error && error.message ? error.message : '移除測試帳號失敗，請稍後再試。', true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function setBusy(value) {
+    busy = Boolean(value);
     els.saveTestModeButton.disabled = busy;
     els.systemMaintenanceEnabled.disabled = busy;
     els.testModePcLoginEnabled.disabled = busy;
@@ -192,12 +292,23 @@
     document.querySelectorAll('[data-test-account-count]').forEach((button) => {
       button.disabled = busy;
     });
+    document.querySelectorAll('[data-test-account-delete]').forEach((button) => {
+      button.disabled = busy;
+    });
+    syncAccountSelection();
   }
 
   function setMessage(message, error = false) {
     els.testModeFormMessage.textContent = String(message || '');
     els.testModeFormMessage.classList.toggle('hidden', !message);
     els.testModeFormMessage.classList.toggle('error', Boolean(error));
+  }
+
+  function setAccountMessage(message, error = false) {
+    if (!els.testModeAccountActionMessage) return;
+    els.testModeAccountActionMessage.textContent = String(message || '');
+    els.testModeAccountActionMessage.classList.toggle('hidden', !message);
+    els.testModeAccountActionMessage.classList.toggle('error', Boolean(error));
   }
 
   function showError(error) {
