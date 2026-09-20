@@ -70,6 +70,8 @@ function errorReply(origin: string | null, error: unknown): Response {
       apiError = new ApiError(400, "DUPLICATE_TEST_ACCOUNT_ID", "批次移除清單包含重複的測試帳號。");
     } else if (message.includes("INVALID_TEST_ACCOUNT_SELECTION")) {
       apiError = new ApiError(409, "INVALID_TEST_ACCOUNT_SELECTION", "只能移除目前仍存在的測試帳號，請重新整理後再試。");
+    } else if (message.includes("TEST_ACCOUNT_DELETE_MISMATCH")) {
+      apiError = new ApiError(409, "TEST_ACCOUNT_DELETE_MISMATCH", "測試帳號資料已變更，請重新整理後再試。");
     } else {
       apiError = new ApiError(500, "TEST_MODE_ERROR", "測試模式服務暫時無法完成操作。");
     }
@@ -440,9 +442,9 @@ Deno.serve(async (request: Request) => {
         supabase,
         identity,
         memberIds.length === 1 ? "test_mode.account.delete" : "test_mode.accounts.batch_delete",
-        "test_account",
-        memberIds.length === 1 ? memberIds[0] : "batch",
-        { memberIds, deletedAccountCount },
+        "test_account_purge",
+        "purged",
+        { deletedAccountCount, batch: memberIds.length > 1 },
       );
 
       const [row, accounts] = await Promise.all([settings(supabase), testAccounts(supabase)]);

@@ -24,7 +24,7 @@ test('admin exposes only maintenance and device login controls', () => {
   assert.match(html, /id="testModeMobileLoginBadge"/);
   assert.match(html, /id="testModeMaintenanceMessage"/);
   assert.match(html, /id="testModeAddAccountCount"/);
-  assert.match(html, /test-mode\.js\?v=maintenance-device-login-20260920-3/);
+  assert.match(html, /test-mode\.js\?v=maintenance-device-login-20260920-4/);
   assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-3/);
   assert.match(app, /switchPanel\('testMode'\)/);
   assert.match(testMode, /admin\.test-mode\.save/);
@@ -188,7 +188,7 @@ test('test accounts support guarded single and batch removal', () => {
   const html = read('admin/index.html');
   const adminUi = read('admin/test-mode.js');
   const api = read('supabase/functions/test-mode-api/index.ts');
-  const migration = read('supabase/migrations/20260920132731_admin_delete_test_accounts.sql');
+  const migration = read('supabase/migrations/20260920133911_complete_test_account_purge.sql');
   const schema = read('supabase/migrations/20260920054312_test_mode_virtual_accounts.sql');
 
   assert.match(html, /id="testModeSelectAllAccounts"/);
@@ -197,19 +197,39 @@ test('test accounts support guarded single and batch removal', () => {
   assert.match(adminUi, /admin\.test-mode\.delete-accounts/);
   assert.match(adminUi, /data-test-account-delete/);
   assert.match(adminUi, /window\.confirm/);
+  assert.match(adminUi, /所有相關測試資料/);
+  assert.match(adminUi, /已完整移除/);
   assert.match(html, /批次移除選取/);
 
   assert.match(api, /if \(action === "admin\.test-mode\.delete-accounts"\)/);
   assert.match(api, /authorizeAdmin\(supabase, identity\)/);
   assert.match(api, /admin_delete_test_accounts/);
   assert.match(api, /new Set\(memberIds\)\.size !== memberIds\.length/);
+  assert.match(api, /"test_account_purge"/);
+  assert.match(api, /"purged"/);
+  assert.match(api, /\{ deletedAccountCount, batch: memberIds\.length > 1 \}/);
+  assert.doesNotMatch(api, /\{ memberIds, deletedAccountCount \}/);
 
   assert.match(migration, /create or replace function public\.admin_delete_test_accounts/);
   assert.match(migration, /is_test_account = true/);
+  assert.match(migration, /delete from public\.api_rate_limits/);
+  assert.match(migration, /extensions\.digest\(line_user_id, 'sha256'\)/);
+  assert.match(migration, /delete from public\.idempotency_results/);
+  assert.match(migration, /delete from public\.booking_audit_events/);
+  assert.match(migration, /delete from public\.audit_logs/);
+  assert.match(migration, /delete from booking_notifications\.outbox/);
   assert.match(migration, /delete from public\.booking_completion_settlements/);
   assert.match(migration, /delete from public\.bookings/);
   assert.match(migration, /delete from public\.point_entries/);
+  assert.match(migration, /delete from public\.point_balances/);
+  assert.match(migration, /delete from public\.test_login_sessions/);
   assert.match(migration, /delete from public\.service_time_entries/);
+  assert.match(migration, /delete from public\.fixed_ticket_grants/);
+  assert.ok(
+    migration.indexOf('delete from public.service_time_entries') <
+      migration.indexOf('delete from public.fixed_ticket_grants'),
+    'fixed-ticket grants must be purged after service-time delete triggers finish'
+  );
   assert.match(migration, /revoke all on function public\.admin_delete_test_accounts\(uuid\[\]\)/);
   assert.match(migration, /from public, anon, authenticated/);
   assert.match(migration, /to service_role/);

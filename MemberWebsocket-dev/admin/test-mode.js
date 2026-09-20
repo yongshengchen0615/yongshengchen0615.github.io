@@ -262,7 +262,7 @@
       ? ids.length + ' 個測試帳號'
       : '「' + (displayName || '此測試帳號') + '」';
     const confirmed = window.confirm(
-      '確定移除' + subject + '？\n\n該帳號的測試預約、點數、票券、服務時間與登入 session 會一併移除，且無法復原。'
+      '確定移除' + subject + '？\n\n此操作會永久清除該測試帳號與所有相關測試資料，包括預約、點數、票券、服務時間、登入 session、操作紀錄與相關系統資料，且無法復原。'
     );
     if (!confirmed) return;
 
@@ -273,7 +273,7 @@
       selectedAccountIds.clear();
       render(data);
       const deleted = Number(data.deletedAccountCount || ids.length);
-      setAccountMessage('已移除 ' + deleted + ' 個測試帳號與其測試資料。');
+      setAccountMessage('已完整移除 ' + deleted + ' 個測試帳號與所有相關資料。');
     } catch (error) {
       setAccountMessage(error && error.message ? error.message : '移除測試帳號失敗，請稍後再試。', true);
     } finally {
