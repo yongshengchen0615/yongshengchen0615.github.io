@@ -905,7 +905,8 @@
 
   function showError(error) {
     const membershipRequired = error && error.code === 'MEMBERSHIP_REQUIRED';
-    els.errorTitle.textContent = membershipRequired ? '請先加入會員' : '預約功能暫時無法使用';
+    const maintenance = error && error.code === 'SYSTEM_MAINTENANCE';
+    els.errorTitle.textContent = maintenance ? '系統維護中' : membershipRequired ? '請先加入會員' : '預約功能暫時無法使用';
     els.errorMessage.textContent = membershipRequired
       ? '加入會員並完成會員資料後，才能使用預約功能。'
       : error?.message || '無法連線預約服務，請稍後再試。';
