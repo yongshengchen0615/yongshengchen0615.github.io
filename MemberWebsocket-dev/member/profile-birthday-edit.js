@@ -112,20 +112,7 @@
     setSaving(true);
     hideMessage();
     try {
-      const profile = await loadProfile();
-      const surname = String(profile.surname || '').trim();
-      const salutation = String(profile.salutation || '').trim().toLowerCase();
-      const phone = String(profile.phone || '').trim();
-      if (!surname || !['mr', 'ms'].includes(salutation) || !/^\+?\d{8,15}$/.test(normalizePhone(phone))) {
-        throw new Error('會員資料不完整，請先確認稱呼與電話。');
-      }
-
-      const result = await requestProfile('user.member.profile.save', {
-        surname,
-        salutation,
-        birthday,
-        phone,
-      });
+      const result = await requestProfile('user.member.profile.save', { birthday });
       const updatedBirthday = String(result.profile?.birthday || birthday);
       const display = document.getElementById('memberBirthday');
       if (display) display.textContent = updatedBirthday || '未填寫';
