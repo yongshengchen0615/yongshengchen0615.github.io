@@ -9,7 +9,7 @@ assert.ok(loader.includes('booking-always-open.js'));
 assert.ok(loader.includes('booking-cancellation-sync.js'));
 assert.ok(loader.includes('booking-panel-core.js'));
 assert.ok(loader.includes('booking-resources.js'));
-assert.ok(loader.includes('booking-technician-status-tabs-20260920-1'));
+assert.ok(loader.includes('booking-technician-disable-action-20260920-1'));
 assert.ok(!loader.includes('booking-summary.js'));
 assert.ok(!loader.includes('booking-admin-group-details.js'));
 assert.ok(!loader.includes('booking-technician-delete.js'));
