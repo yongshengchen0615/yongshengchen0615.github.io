@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const core = fs.readFileSync('MemberWebsocket-dev/admin/booking-panel-core.js', 'utf8');
 const resources = fs.readFileSync('MemberWebsocket-dev/admin/booking-resources.js', 'utf8');
 const css = fs.readFileSync('MemberWebsocket-dev/admin/booking-panel.css', 'utf8');
+const loader = fs.readFileSync('MemberWebsocket-dev/admin/booking-panel.js', 'utf8');
 
 for (const label of ['技師設定', '預約項目', '預約共用設定', '用戶預約']) {
   assert.ok(core.includes('>' + label), 'missing booking subtab: ' + label);
@@ -27,5 +28,11 @@ assert.match(core, /booking-admin-settings-notice/);
 assert.doesNotMatch(core, /label style="grid-column:1\/-1"/);
 assert.match(css, /booking shared settings layout 20260918/);
 assert.match(css, /booking-admin-settings-actions/);
+assert.match(core, /const PRIMARY_TAB_IDS = \['membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'testModeTab'\]/);
+assert.match(core, /const PRIMARY_PANEL_IDS = \['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'testModePanel'\]/);
+assert.match(core, /nav\.insertBefore\(tab, testModeTab\)/);
+assert.doesNotMatch(core, /#booking/);
+assert.match(loader, /legacyBookingRouteRequested/);
+assert.doesNotMatch(loader, /restoreBookingHashAndOpen/);
 
 console.log('booking admin four-tab layout OK');
