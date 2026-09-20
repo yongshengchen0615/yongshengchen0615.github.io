@@ -204,10 +204,14 @@
     const system = window.MemberSystem;
     if (!system || typeof system.loadConfig !== 'function') throw new Error('會員系統尚未準備完成。');
     const config = await system.loadConfig();
-    const idToken = typeof window.liff?.getIDToken === 'function' ? String(window.liff.getIDToken() || '') : '';
     const testSessionToken = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function'
-      ? window.TestModeClient.getSessionToken()
+      ? String(window.TestModeClient.getSessionToken() || '')
       : '';
+    let idToken = '';
+    if (!testSessionToken && typeof window.liff?.getIDToken === 'function') {
+      try { idToken = String(window.liff.getIDToken() || ''); }
+      catch (_) { idToken = ''; }
+    }
     if (!idToken && !testSessionToken) throw new Error('登入尚未完成。');
     const endpoint = `${String(config.supabaseUrl || '').replace(/\/$/, '')}${PROFILE_ENDPOINT}`;
     const controller = new AbortController();
