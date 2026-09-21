@@ -392,7 +392,10 @@ async function findBaseSlot(token: string, serviceId: string, settings: any): Pr
       action: "user.booking.slots",
       clientType: "member",
       bookingDate: date,
-      items: [{ serviceId, quantity: 1 }],
+      items: [
+        { serviceId, quantity: 1 },
+        { serviceId: STORE_SERVICE_ID, quantity: 1 },
+      ],
     });
     const slot = Array.isArray(result?.slots) ? result.slots.find((x: any) => x?.available) : null;
     if (slot?.startTime) return { date, startTime: String(slot.startTime).slice(0, 5) };
@@ -420,7 +423,10 @@ async function bookingMutationCase(s: any, identity: any, token: string): Promis
         requestId: request1,
         bookingDate: slot.date,
         startTime: slot.startTime,
-        items: [{ serviceId: service.id, quantity: 1 }],
+        items: [
+          { serviceId: service.id, quantity: 1 },
+          { serviceId: STORE_SERVICE_ID, quantity: 1 },
+        ],
         memberNote: "QA create",
       });
       bookingId = asText(created?.booking?.bookingId || created?.booking?.id, 80);
@@ -436,7 +442,10 @@ async function bookingMutationCase(s: any, identity: any, token: string): Promis
         requestId: request2,
         bookingDate: slot.date,
         startTime: slot.startTime,
-        items: [{ serviceId: service.id, quantity: 1 }],
+        items: [
+          { serviceId: service.id, quantity: 1 },
+          { serviceId: STORE_SERVICE_ID, quantity: 1 },
+        ],
         memberNote: "QA update",
       });
       if (!updated?.booking) throw new ApiError(500, "QA_BOOKING_UPDATE_VERIFY_FAILED", "預約修改後未回傳 booking。");
@@ -627,7 +636,11 @@ async function calendarBoundaryCase(s: any, token: string): Promise<QaCase> {
     const after = await s.from("calendar_items").select("*", { count: "exact", head: true });
     if (after.error) throw new ApiError(500, "QA_CALENDAR_COUNT_FAILED", "無法再次讀取日曆資料數量。");
 
-    const denied = !response.ok && [401,403,404].includes(response.status);
+    const denialCode = asText(payload?.error?.code, 120);
+    const denied = !response.ok && (
+      [401,403,404].includes(response.status)
+      || (response.status === 400 && denialCode === "CLIENT_TYPE_MISMATCH")
+    );
     const unchanged = Number(before.count || 0) === Number(after.count || 0);
     if (!denied || !unchanged) {
       throw new ApiError(500, "QA_CALENDAR_AUTH_BOUNDARY_FAILED", "測試會員的管理端日曆寫入沒有被正確拒絕或資料被改動。", {
@@ -643,7 +656,7 @@ async function calendarBoundaryCase(s: any, token: string): Promise<QaCase> {
       actual: {
         denied,
         httpStatus: response.status,
-        errorCode: asText(payload?.error?.code, 120),
+        errorCode: denialCode,
         rowCountUnchanged: unchanged,
       },
     };
