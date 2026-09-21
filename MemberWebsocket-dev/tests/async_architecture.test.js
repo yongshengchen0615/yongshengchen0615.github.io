@@ -44,7 +44,7 @@ test('profile synchronization is event driven and uses one transport owner', () 
 test('backend background work and database batching avoid request-timing guesses', () => {
   const api = read('supabase/functions/api/index.ts');
   const booking = read('supabase/functions/booking-api/index.ts');
-  const migration = read('supabase/migrations/20260921142500_async_batch_point_ticket_issuance.sql');
+  const migration = read('supabase/migrations/20260921061531_batch_issue_eligible_point_tickets.sql');
   assert.match(api, /EdgeRuntime\.waitUntil/);
   assert.match(api, /issue_eligible_point_tickets_for_member/);
   assert.match(booking, /\.in\("id", requested\.map\(\(item\) => item\.serviceId\)\)/);
