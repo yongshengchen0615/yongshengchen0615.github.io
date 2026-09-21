@@ -143,7 +143,7 @@ async function memberProfileWrite(s: any, identity: any, token: string): Promise
   const key = "MEMBER_PROFILE_WRITE";
   const expected = { writeSucceeded: true, persisted: true, restored: true };
   const beforeResult = await s.from("members")
-    .select("birthday,phone,updated_at")
+    .select("birthday,phone,surname,salutation,updated_at")
     .eq("id", identity.memberId)
     .maybeSingle();
   if (beforeResult.error || !beforeResult.data) {
@@ -153,6 +153,8 @@ async function memberProfileWrite(s: any, identity: any, token: string): Promise
   const before = beforeResult.data;
   const nextBirthday = String(before.birthday || "") === "1990-01-15" ? "1991-02-16" : "1990-01-15";
   const nextPhone = String(before.phone || "") === "+886900000001" ? "+886900000002" : "+886900000001";
+  const nextSurname = String(before.surname || "") === "測" ? "驗" : "測";
+  const nextSalutation = String(before.salutation || "").toLowerCase() === "mr" ? "ms" : "mr";
   let writeSucceeded = false;
   let persisted = false;
   let restored = false;
@@ -164,30 +166,38 @@ async function memberProfileWrite(s: any, identity: any, token: string): Promise
       clientType: "member",
       birthday: nextBirthday,
       phone: nextPhone,
+      surname: nextSurname,
+      salutation: nextSalutation,
     });
     writeSucceeded = write.ok;
     downstreamCode = asText(write.error.code, 120);
     if (write.ok) {
-      const verify = await s.from("members").select("birthday,phone").eq("id", identity.memberId).maybeSingle();
+      const verify = await s.from("members").select("birthday,phone,surname,salutation").eq("id", identity.memberId).maybeSingle();
       persisted = !verify.error
         && String(verify.data?.birthday || "") === nextBirthday
-        && String(verify.data?.phone || "") === nextPhone;
+        && String(verify.data?.phone || "") === nextPhone
+        && String(verify.data?.surname || "") === nextSurname
+        && String(verify.data?.salutation || "").toLowerCase() === nextSalutation;
     }
   } finally {
     const restore = await s.from("members").update({
       birthday: before.birthday,
       phone: before.phone,
+      surname: before.surname,
+      salutation: before.salutation,
       updated_at: before.updated_at,
     }).eq("id", identity.memberId);
     if (!restore.error) {
-      const check = await s.from("members").select("birthday,phone").eq("id", identity.memberId).maybeSingle();
+      const check = await s.from("members").select("birthday,phone,surname,salutation").eq("id", identity.memberId).maybeSingle();
       restored = !check.error
         && String(check.data?.birthday || "") === String(before.birthday || "")
-        && String(check.data?.phone || "") === String(before.phone || "");
+        && String(check.data?.phone || "") === String(before.phone || "")
+        && String(check.data?.surname || "") === String(before.surname || "")
+        && String(check.data?.salutation || "").toLowerCase() === String(before.salutation || "").toLowerCase();
     }
   }
 
-  const actual = { writeSucceeded, persisted, restored, downstreamCode };
+  const actual = { writeSucceeded, persisted, restored, fieldsWritten: 4, downstreamCode };
   return writeSucceeded && persisted && restored
     ? passed(key, "會員資料已透過正式 API 寫入、驗證並還原。", expected, actual)
     : failed(key, "會員資料成功寫入或還原驗證失敗。", expected, actual);
