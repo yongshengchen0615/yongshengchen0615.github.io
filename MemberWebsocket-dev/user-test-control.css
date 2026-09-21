@@ -1,13 +1,13 @@
 .user-qa-launcher{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(18px,calc(env(safe-area-inset-bottom) + 12px));z-index:9500;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(25,72,50,.18);border-radius:999px;padding:10px 14px;background:#173f2e;color:#fff;box-shadow:0 12px 34px rgba(15,48,34,.24);font:800 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}
 .user-qa-launcher span:first-child{display:grid;place-items:center;width:21px;height:21px;border-radius:50%;background:rgba(255,255,255,.16)}
-.user-qa-panel{position:fixed;inset:0;z-index:9600;display:grid;align-items:end;justify-items:center;padding:20px;background:rgba(11,25,18,.42);backdrop-filter:blur(5px)}
+.user-qa-panel{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,calc(env(safe-area-inset-bottom) + 10px));z-index:9600;display:block;width:min(560px,calc(100vw - 28px));max-width:calc(100vw - 28px);pointer-events:none}
 .user-qa-panel.hidden{display:none!important}
-.user-qa-shell{width:min(900px,100%);max-height:min(88vh,900px);overflow:auto;border:1px solid rgba(34,65,49,.14);border-radius:24px 24px 14px 14px;background:#f8faf7;color:#263b31;box-shadow:0 28px 70px rgba(10,34,23,.3)}
+.user-qa-shell{width:100%;min-width:320px;min-height:180px;max-width:calc(100vw - 28px);max-height:min(76vh,760px);overflow:auto;resize:both;pointer-events:auto;border:1px solid rgba(34,65,49,.14);border-radius:18px;background:#f8faf7;color:#263b31;box-shadow:0 22px 58px rgba(10,34,23,.28)}
 .user-qa-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 21px 17px;border-bottom:1px solid rgba(38,59,49,.09);background:#fff}
 .user-qa-head h2{margin:2px 0 0;font-size:22px;letter-spacing:-.035em}
 .user-qa-head p:not(.user-qa-kicker){max-width:680px;margin:7px 0 0;color:#69776f;font-size:12px;line-height:1.65}
 .user-qa-kicker{margin:0;color:#438062;font-size:9px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
-.user-qa-close{display:grid;place-items:center;width:34px;height:34px;flex:0 0 auto;border:0;border-radius:50%;background:#edf2ee;color:#365145;font-size:20px;cursor:pointer}
+.user-qa-head-actions{display:flex;align-items:center;gap:7px;flex:0 0 auto}.user-qa-minimize{min-height:34px;border:0;border-radius:999px;padding:0 11px;background:#edf2ee;color:#365145;font:850 10px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}.user-qa-close{display:grid;place-items:center;width:34px;height:34px;flex:0 0 auto;border:0;border-radius:50%;background:#edf2ee;color:#365145;font-size:20px;cursor:pointer}
 .user-qa-account{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:12px 21px;border-bottom:1px solid rgba(38,59,49,.08);background:#f2f6f2}
 .user-qa-account span,.user-qa-account small{color:#76827b;font-size:10px;font-weight:750}
 .user-qa-account strong{font-size:12px}
@@ -55,9 +55,10 @@
 .user-qa-history-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(38,59,49,.07);font-size:9px}
 .user-qa-history-row span,.user-qa-history-empty{color:#7e8a83}
 .user-qa-history-empty{font-size:10px}
+.user-qa-panel.is-minimized{width:min(360px,calc(100vw - 28px))}.user-qa-panel.is-minimized .user-qa-shell{min-height:0;max-height:none;resize:none;overflow:hidden}.user-qa-panel.is-minimized .user-qa-head{padding:11px 12px;border-bottom:0}.user-qa-panel.is-minimized .user-qa-head p:not(.user-qa-kicker){display:none}.user-qa-panel.is-minimized .user-qa-head h2{font-size:15px}.user-qa-panel.is-minimized .user-qa-account,.user-qa-panel.is-minimized .user-qa-actions,.user-qa-panel.is-minimized .user-qa-summary,.user-qa-panel.is-minimized .user-qa-progress,.user-qa-panel.is-minimized .user-qa-message,.user-qa-panel.is-minimized .user-qa-results,.user-qa-panel.is-minimized .user-qa-history{display:none!important}
 @media (max-width:680px){
-  .user-qa-panel{padding:0;align-items:end}
-  .user-qa-shell{max-height:92vh;border-radius:20px 20px 0 0}
+  .user-qa-panel{right:8px;left:8px;bottom:max(8px,calc(env(safe-area-inset-bottom) + 6px));width:auto;max-width:none}
+  .user-qa-shell{width:100%;min-width:0;max-width:none;max-height:72vh;resize:none;border-radius:16px}
   .user-qa-head{padding:17px}
   .user-qa-actions,.user-qa-results{padding-left:15px;padding-right:15px}
   .user-qa-summary{grid-template-columns:repeat(2,1fr);padding-left:15px;padding-right:15px}
