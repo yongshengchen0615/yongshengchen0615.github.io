@@ -308,23 +308,34 @@ async function evaluateEnvironment(supabase: any): Promise<CaseResult> {
   if (settingsResult.error || memberCountResult.error) {
     throw new ApiError(503, "ENVIRONMENT_READ_FAILED", "無法讀取測試環境狀態。");
   }
-  const row = settingsResult.data || {};
+
+  const row = settingsResult.data;
+  const settingsRowPresent = Boolean(row);
+  const flagsAreBoolean = Boolean(
+    row &&
+    typeof row.maintenance_enabled === "boolean" &&
+    typeof row.allow_pc_test_login === "boolean" &&
+    typeof row.allow_mobile_test_login === "boolean"
+  );
   const actual = {
-    maintenanceEnabled: row.maintenance_enabled === true,
-    pcLoginEnabled: row.allow_pc_test_login === true,
-    mobileLoginEnabled: row.allow_mobile_test_login === true,
+    settingsRowPresent,
+    settingsFlagsValid: flagsAreBoolean,
+    maintenanceEnabled: row?.maintenance_enabled === true,
+    pcLoginEnabled: row?.allow_pc_test_login === true,
+    mobileLoginEnabled: row?.allow_mobile_test_login === true,
     activeTestAccounts: Number(memberCountResult.count || 0),
-    updatedAt: row.updated_at || null,
+    updatedAt: row?.updated_at || null,
+    note: "自動化 Runner 使用管理端 server-side 權限；維護模式與裝置測試登入開關可為關閉。",
   };
   const expected = {
-    maintenanceEnabled: true,
-    pcLoginEnabled: true,
+    settingsRowPresent: true,
+    settingsFlagsValid: true,
     activeTestAccountsAtLeast: 1,
   };
-  const ok = actual.maintenanceEnabled && actual.pcLoginEnabled && actual.activeTestAccounts >= 1;
+  const ok = settingsRowPresent && flagsAreBoolean && actual.activeTestAccounts >= 1;
   return ok
-    ? pass("系統維護、PC 測試登入與可用測試帳號皆已就緒。", expected, actual)
-    : fail("TEST_ENVIRONMENT_NOT_READY", "測試環境尚未具備自動化測試所需條件。", expected, actual);
+    ? pass("測試設定可讀，且存在可用測試會員；維護模式與裝置登入開關不影響 server-side 自動化測試。", expected, actual)
+    : fail("TEST_ENVIRONMENT_NOT_READY", "測試設定不存在、欄位格式異常，或沒有可用測試會員。", expected, actual);
 }
 
 async function evaluateTestAccounts(supabase: any): Promise<CaseResult> {
@@ -815,7 +826,7 @@ async function createRun(supabase: any, identity: { lineUserId: string }, suite:
       total_cases: defs.length,
       passed_cases: 0,
       failed_cases: 0,
-      summary: { runnerVersion: "test-control-20260921-1" },
+      summary: { runnerVersion: "test-control-20260921-2" },
     })
     .select("id")
     .single();
@@ -875,7 +886,7 @@ async function executeRun(supabase: any, runId: string): Promise<Json> {
       completed_at: completedAt,
       updated_at: completedAt,
       summary: {
-        runnerVersion: "test-control-20260921-1",
+        runnerVersion: "test-control-20260921-2",
         completedCases: counters.passed + counters.failed,
         totalCases: counters.total,
         passedCases: counters.passed,
