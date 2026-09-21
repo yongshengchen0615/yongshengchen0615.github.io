@@ -629,15 +629,46 @@ async function bookingGroupWrite(s: any, identity: any, token: string): Promise<
     : failed(key, "多人預約新增、修改或清理驗證失敗。", expected, actual);
 }
 
+async function lineSuppression(s: any): Promise<QaCase> {
+  const key = "LINE_SUPPRESSION";
+  const expected = {
+    scheduledGrantMessages: 0,
+    bookingOutboxMessages: 0,
+    testRecipientOutboxMessages: 0,
+  };
+  const snapshot = await s.rpc("automation_test_notification_snapshot");
+  if (snapshot.error) {
+    return failed(key, "無法讀取測試會員 LINE 通知佇列。", expected, {
+      snapshotAvailable: false,
+      errorCode: asText(snapshot.error.code, 120),
+    });
+  }
+  const data: any = snapshot.data || {};
+  const actual = {
+    scheduledGrantMessages: Number(data.scheduledGrantMessages || 0),
+    bookingOutboxMessages: Number(data.bookingOutboxMessages || 0),
+    testRecipientOutboxMessages: Number(data.testRecipientOutboxMessages || 0),
+  };
+  const ok = actual.scheduledGrantMessages === 0
+    && actual.bookingOutboxMessages === 0
+    && actual.testRecipientOutboxMessages === 0;
+  return ok
+    ? passed(key, "測試會員沒有建立任何 LINE 發送佇列。", expected, actual)
+    : failed(key, "測試會員出現 LINE 發送佇列，通知隔離邊界失敗。", expected, actual);
+}
+
 async function runSurfaceCases(s: any, identity: any, token: string, surface: Surface): Promise<QaCase[]> {
-  if (surface === "member") return [await memberProfileWrite(s, identity, token)];
-  if (surface === "points") return [await pointTicketWrite(s, identity, token)];
-  if (surface === "event") return [await eventTicketWrite(s, identity, token)];
-  if (surface === "calendar") return [await calendarReadOnly(s, identity, token)];
-  return [
+  let cases: QaCase[];
+  if (surface === "member") cases = [await memberProfileWrite(s, identity, token)];
+  else if (surface === "points") cases = [await pointTicketWrite(s, identity, token)];
+  else if (surface === "event") cases = [await eventTicketWrite(s, identity, token)];
+  else if (surface === "calendar") cases = [await calendarReadOnly(s, identity, token)];
+  else cases = [
     await bookingWrite(s, identity, token),
     await bookingGroupWrite(s, identity, token),
   ];
+  cases.push(await lineSuppression(s));
+  return cases;
 }
 
 Deno.serve(async (request: Request) => {
