@@ -211,6 +211,7 @@ test('test accounts support guarded single and batch removal', () => {
   const api = read('supabase/functions/test-mode-api/index.ts');
   const migration = read('supabase/migrations/20260920133911_complete_test_account_purge.sql');
   const schema = read('supabase/migrations/20260920054312_test_mode_virtual_accounts.sql');
+  const qaPurge = read('supabase/migrations/20260921143500_purge_test_member_qa_history.sql');
 
   assert.match(html, /id="testModeSelectAllAccounts"/);
   assert.match(html, /id="deleteSelectedTestAccountsButton"/);
@@ -255,7 +256,12 @@ test('test accounts support guarded single and batch removal', () => {
   assert.match(migration, /from public, anon, authenticated/);
   assert.match(migration, /to service_role/);
   assert.match(schema, /member_id uuid not null references public\.members\(id\) on delete cascade/);
+  assert.match(qaPurge, /before delete on public\.members/);
+  assert.match(qaPurge, /automation_test_runs/);
+  assert.match(qaPurge, /summary ->> 'source'/);
+  assert.match(qaPurge, /automation_test_cases/);
 });
+
 
 
 test('legacy deleted test-account traces are purged once', () => {
