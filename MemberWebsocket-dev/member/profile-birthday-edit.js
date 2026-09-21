@@ -75,19 +75,18 @@
     const modal = document.getElementById('birthdayEditModal');
     if (!modal) return;
     opener = event?.currentTarget || document.activeElement;
-    hideMessage();
+    modal.classList.remove('hidden');
+    document.body.classList.add('profile-modal-open');
+    showMessage('正在同步會員資料…');
 
     try {
       const profile = await loadProfile();
       applyBirthdayToPicker(String(profile.birthday || '').trim());
-      modal.classList.remove('hidden');
-      document.body.classList.add('profile-modal-open');
-      document.getElementById('birthdayEditYear')?.focus();
+      hideMessage();
+      if (!modal.classList.contains('hidden')) document.getElementById('birthdayEditYear')?.focus();
     } catch (error) {
       clearBirthdayEditPicker();
       showMessage(error?.message || '會員資料尚在同步，請稍後再試。');
-      modal.classList.remove('hidden');
-      document.body.classList.add('profile-modal-open');
     }
   }
 
