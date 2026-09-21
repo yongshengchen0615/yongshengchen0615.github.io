@@ -943,4 +943,5 @@
     els.retryButton.classList.toggle('hidden', membershipRequired);
     showView('error');
   }
+  window.MemberClientQaHooks = Object.freeze({ surface: 'booking', refresh: () => refresh(false) });
 })();
