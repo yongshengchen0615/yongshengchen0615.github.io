@@ -326,8 +326,8 @@ async function eventMutationCase(s: any, identity: any, token: string): Promise<
         eventTicketId: eventPublicId,
       });
       claimId = asText(claimed?.ticket?.claimId || claimed?.ticket?.claim_id, 120);
-      if (!claimId || claimed?.ticket?.status !== "claimed") {
-        throw new ApiError(500, "QA_EVENT_CLAIM_VERIFY_FAILED", "活動票券領取結果不正確。");
+      if (!claimId || claimed?.ticket?.status !== "available") {
+        throw new ApiError(500, "QA_EVENT_CLAIM_VERIFY_FAILED", "活動票券領取後對外狀態不是 available。");
       }
 
       const redeemed = await invoke("api", token, {
@@ -406,6 +406,14 @@ async function bookingMutationCase(s: any, identity: any, token: string): Promis
     const service = await createTempService(s);
     let bookingId = "";
     try {
+      if (maxPartySize < 2) {
+        return {
+          skipped: true,
+          message: "目前多人預約上限小於 2 人，無法執行真正的多人成功路徑。",
+          expected: { maxPartySizeAtLeast: 2 },
+          actual: { maxPartySize },
+        };
+      }
       const settingsResult = await s.from("booking_settings").select("*").eq("id", 1).single();
       if (settingsResult.error) throw new ApiError(500, "QA_BOOKING_SETTINGS_FAILED", "無法讀取預約設定。");
       const slot = await findBaseSlot(token, service.id, settingsResult.data);
@@ -476,7 +484,10 @@ async function findGroupSlot(token: string, serviceId: string, primaryTechnician
   const today = isoDateTaipei(0);
   const first = addDays(today, Math.max(1, minAdvance));
   const maxTries = maxAdvance > 0 ? Math.max(1, Math.min(10, maxAdvance - Math.max(1, minAdvance) + 1)) : 10;
-  const participants = [{ technicianId: primaryTechnicianId, items: [{ serviceId, quantity: 1 }] }];
+  const participants = [
+    { technicianId: primaryTechnicianId, items: [{ serviceId, quantity: 1 }] },
+    { technicianId: null, items: [{ serviceId, quantity: 1 }] },
+  ];
   for (let i = 0; i < maxTries; i += 1) {
     const date = addDays(first, i);
     const result = await invoke("booking-group-api", token, {
@@ -502,6 +513,7 @@ async function groupBookingMutationCase(s: any, identity: any, token: string): P
         clientType: "member",
       });
       const primary = asText(bootstrap?.settings?.primaryTechnicianId, 80);
+      const maxPartySize = Number(bootstrap?.settings?.maxPartySize || 1);
       const techExists = Array.isArray(bootstrap?.technicians) && bootstrap.technicians.some((t: any) => String(t?.technicianId || t?.id || "") === primary);
       if (!primary || !techExists) {
         return {
@@ -517,7 +529,10 @@ async function groupBookingMutationCase(s: any, identity: any, token: string): P
       if (!slot) {
         return { skipped: true, message: "目前允許的區間沒有多人預約可用時段。", expected: { availableSlot: true }, actual: { availableSlot: false } };
       }
-      const participants = [{ technicianId: primary, items: [{ serviceId: service.id, quantity: 1 }] }];
+      const participants = [
+        { technicianId: primary, items: [{ serviceId: service.id, quantity: 1 }] },
+        { technicianId: null, items: [{ serviceId: service.id, quantity: 1 }] },
+      ];
       const created = await invoke("booking-group-api", token, {
         action: "user.booking.group.create",
         clientType: "member",
@@ -546,10 +561,25 @@ async function groupBookingMutationCase(s: any, identity: any, token: string): P
       });
       if (!updated?.booking) throw new ApiError(500, "QA_GROUP_UPDATE_VERIFY_FAILED", "多人預約修改未回傳 booking。");
 
+      const cancelled = await invoke("booking-api", token, {
+        action: "user.booking.cancel",
+        clientType: "member",
+        bookingId,
+      });
+      if (cancelled?.booking?.status !== "cancel_requested") {
+        throw new ApiError(500, "QA_GROUP_CANCEL_VERIFY_FAILED", "多人預約取消申請後狀態不是 cancel_requested。");
+      }
+
       return {
-        message: "多人預約新增與修改都經由正式 API 成功，participant/reservation 會隨 QA booking 一起 cascade 清理。",
-        expected: { created: true, updated: true, cleanup: true },
-        actual: { created: true, updated: Boolean(updated?.booking), cleanup: true },
+        message: "2 人預約新增、修改與取消申請都經由正式 API 成功，participant/reservation 會隨 QA booking 一起清理。",
+        expected: { participantCount: 2, created: true, updated: true, cancelRequested: true, cleanup: true },
+        actual: {
+          participantCount: Array.isArray(created?.booking?.participants) ? created.booking.participants.length : Number(created?.booking?.partySize || 0),
+          created: true,
+          updated: Boolean(updated?.booking),
+          cancelRequested: true,
+          cleanup: true,
+        },
       };
     } finally {
       if (bookingId) {
@@ -566,19 +596,65 @@ async function groupBookingMutationCase(s: any, identity: any, token: string): P
   });
 }
 
+async function calendarBoundaryCase(s: any, token: string): Promise<QaCase> {
+  return runCase("CALENDAR_READ_ONLY", "日曆 Server-side 寫入權限邊界", async () => {
+    const before = await s.from("calendar_items").select("*", { count: "exact", head: true });
+    if (before.error) throw new ApiError(500, "QA_CALENDAR_COUNT_FAILED", "無法讀取日曆資料數量。");
+
+    const url = env("SUPABASE_URL");
+    const gatewayKey = env("SUPABASE_ANON_KEY") || env("SUPABASE_SERVICE_ROLE_KEY");
+    if (!url || !gatewayKey) throw new ApiError(503, "SUPABASE_CONFIG_MISSING", "QA server 無法呼叫日曆權限測試。");
+
+    const response = await fetch(`${url.replace(/\/$/, "")}/functions/v1/api`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: gatewayKey },
+      body: JSON.stringify({
+        action: "admin.calendar-items.save",
+        clientType: "calendar",
+        idToken: "",
+        testSessionToken: token,
+        calendarItem: {
+          title: "QA SHOULD NOT WRITE",
+          itemType: "event",
+          status: "active",
+          startsOn: "2099-01-01",
+        },
+      }),
+    });
+    let payload: any = {};
+    try { payload = await response.json(); } catch {}
+
+    const after = await s.from("calendar_items").select("*", { count: "exact", head: true });
+    if (after.error) throw new ApiError(500, "QA_CALENDAR_COUNT_FAILED", "無法再次讀取日曆資料數量。");
+
+    const denied = !response.ok && [401,403,404].includes(response.status);
+    const unchanged = Number(before.count || 0) === Number(after.count || 0);
+    if (!denied || !unchanged) {
+      throw new ApiError(500, "QA_CALENDAR_AUTH_BOUNDARY_FAILED", "測試會員的管理端日曆寫入沒有被正確拒絕或資料被改動。", {
+        httpStatus: response.status,
+        errorCode: payload?.error?.code || "",
+        before: Number(before.count || 0),
+        after: Number(after.count || 0),
+      });
+    }
+    return {
+      message: "測試會員嘗試管理端日曆寫入時被 Server-side Authorization 拒絕，資料筆數保持不變。",
+      expected: { denied: true, rowCountUnchanged: true },
+      actual: {
+        denied,
+        httpStatus: response.status,
+        errorCode: asText(payload?.error?.code, 120),
+        rowCountUnchanged: unchanged,
+      },
+    };
+  });
+}
+
 async function surfaceCases(s: any, identity: any, token: string, surface: Surface): Promise<QaCase[]> {
   if (surface === "member") return [await memberMutationCase(s, identity, token)];
   if (surface === "points") return [await pointsMutationCase(s, identity, token)];
   if (surface === "event") return [await eventMutationCase(s, identity, token)];
-  if (surface === "calendar") return [{
-    key: "CALENDAR_READ_ONLY",
-    name: "日曆寫入邊界",
-    status: "skipped",
-    message: "會員日曆只有讀取功能；管理端寫入不屬於用戶端權限邊界。",
-    expected: { memberWriteApi: false },
-    actual: { memberWriteApi: false },
-    durationMs: 0,
-  }];
+  if (surface === "calendar") return [await calendarBoundaryCase(s, token)];
   return [
     await bookingMutationCase(s, identity, token),
     await groupBookingMutationCase(s, identity, token),
