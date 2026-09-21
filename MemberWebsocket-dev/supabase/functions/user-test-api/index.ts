@@ -406,14 +406,6 @@ async function bookingMutationCase(s: any, identity: any, token: string): Promis
     const service = await createTempService(s);
     let bookingId = "";
     try {
-      if (maxPartySize < 2) {
-        return {
-          skipped: true,
-          message: "目前多人預約上限小於 2 人，無法執行真正的多人成功路徑。",
-          expected: { maxPartySizeAtLeast: 2 },
-          actual: { maxPartySize },
-        };
-      }
       const settingsResult = await s.from("booking_settings").select("*").eq("id", 1).single();
       if (settingsResult.error) throw new ApiError(500, "QA_BOOKING_SETTINGS_FAILED", "無法讀取預約設定。");
       const slot = await findBaseSlot(token, service.id, settingsResult.data);
@@ -521,6 +513,14 @@ async function groupBookingMutationCase(s: any, identity: any, token: string): P
           message: "目前未設定可用主要技師，因此多人預約成功路徑無法建立合法 fixture。",
           expected: { primaryTechnicianConfigured: true },
           actual: { primaryTechnicianConfigured: Boolean(primary), active: techExists },
+        };
+      }
+      if (maxPartySize < 2) {
+        return {
+          skipped: true,
+          message: "目前多人預約上限小於 2 人，無法執行真正的多人成功路徑。",
+          expected: { maxPartySizeAtLeast: 2 },
+          actual: { maxPartySize },
         };
       }
       const settingsResult = await s.from("booking_settings").select("*").eq("id", 1).single();
