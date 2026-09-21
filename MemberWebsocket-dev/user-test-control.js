@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.3';
+  const VERSION = '2026-09-21.4';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -466,7 +466,7 @@
         caseDef('多人預約新增／修改成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_GROUP_WRITE'))
       ]
     };
-    return common.concat(fullCommon, surfaceCases[surface] || []);
+    return common.concat(fullCommon, surfaceCases[surface] || [], [caseDef('測試帳號 LINE 通知抑制', 'Notification', () => mutationQaCase('LINE_SUPPRESSION'))]);
   }
 
   function caseDef(name, domain, run) {
