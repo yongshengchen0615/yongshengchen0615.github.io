@@ -100,3 +100,14 @@ test('legacy booking post-renderer files are removed', () => {
     'booking/booking-notice-dedupe.js',
   ]) assert.equal(fs.existsSync(path.join(root, relativePath)), false, relativePath);
 });
+
+
+test('editing an existing booking restores its current slot before loading edit availability', () => {
+  const app = read('booking/app.js');
+  const editStart = app.indexOf('function editBooking(booking)');
+  const editEnd = app.indexOf('async function cancelBooking', editStart);
+  const editFlow = app.slice(editStart, editEnd);
+  assert.ok(editFlow.includes("state.selectedSlot = booking.startTime"));
+  assert.ok(editFlow.indexOf('state.selectedSlot = booking.startTime') < editFlow.indexOf('loadSlots();'));
+  assert.ok(editFlow.includes("startTime: String(booking.startTime)"));
+});
