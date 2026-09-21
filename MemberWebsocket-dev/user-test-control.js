@@ -93,7 +93,7 @@
     if (Array.isArray(value)) return value.slice(0, 20).map(safeJson);
     if (typeof value !== 'object') return String(value);
     const out = {};
-    const blocked = /(token|secret|password|phone|birthday|lineuserid|line_user_id|surname|displayname)/i;
+    const blocked = /^(?:.*token.*|.*secret.*|password|phone|birthday|lineuserid|line_user_id|surname|displayname)$/i;
     Object.entries(value).slice(0, 40).forEach(([key, item]) => {
       if (blocked.test(key)) {
         out[key] = '[redacted]';
@@ -167,6 +167,7 @@
     state.launcher = null;
     state.panel = null;
     state.visible = false;
+    document.documentElement.classList.remove('user-qa-open');
   }
 
   function ensureUi() {
@@ -752,7 +753,7 @@
   }
 
   async function eventModalCase() {
-    const button = document.querySelector('#eventList button[data-event-ticket-id]');
+    const button = Array.from(document.querySelectorAll('#eventList button[data-event-ticket-id]')).find((node) => !node.disabled) || null;
     if (!button || button.disabled) return skip('目前沒有可開啟詳情的活動票券。', { openableTicket: true }, { openableTicket: false });
     const modal = document.getElementById('ticketModal');
     const close = document.getElementById('closeTicketModal');
