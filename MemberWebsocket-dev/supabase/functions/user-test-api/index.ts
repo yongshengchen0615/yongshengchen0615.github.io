@@ -657,6 +657,105 @@ async function lineSuppression(s: any): Promise<QaCase> {
     : failed(key, "測試會員出現 LINE 發送佇列，通知隔離邊界失敗。", expected, actual);
 }
 
+const QA_CASE_NAMES: Record<string,string> = {
+  MEMBER_PROFILE_WRITE: "會員資料正式寫入／驗證／還原",
+  POINT_TICKET_WRITE: "集點票券正式核銷／清理",
+  EVENT_TICKET_WRITE: "活動票券正式領取／核銷／清理",
+  CALENDAR_READ_ONLY: "日曆寫入權限邊界",
+  BOOKING_WRITE: "預約新增／修改／取消／清理",
+  BOOKING_GROUP_WRITE: "多人預約新增／修改／清理",
+  LINE_SUPPRESSION: "測試會員 LINE 通知隔離",
+};
+
+async function persistUserQaRun(
+  s: any,
+  identity: any,
+  surface: Surface,
+  cases: QaCase[],
+): Promise<{ runId: string; runCode: string }> {
+  const now = new Date().toISOString();
+  const passedCount = cases.filter((item) => item.status === "passed").length;
+  const failedCount = cases.filter((item) => item.status === "failed").length;
+  const skippedCount = cases.filter((item) => item.status === "skipped").length;
+  const runCode = "UQA-" + Date.now().toString(36).toUpperCase() + "-" + suffix().slice(0, 8);
+  const finalStatus = failedCount > 0 ? "failed" : "passed";
+
+  const runInsert = await s.from("automation_test_runs").insert({
+    run_code: runCode,
+    suite: "full",
+    environment: "MemberWebsocket-dev",
+    status: finalStatus,
+    triggered_by: identity.lineUserId,
+    total_cases: cases.length,
+    passed_cases: passedCount,
+    failed_cases: failedCount,
+    summary: {
+      runnerVersion: "user-test-api-20260921-11",
+      source: "member-client",
+      surface,
+      skippedCases: skippedCount,
+      memberId: identity.memberId,
+    },
+    started_at: now,
+    completed_at: now,
+    updated_at: now,
+  }).select("id").single();
+  if (runInsert.error || !runInsert.data) {
+    throw new ApiError(503, "QA_RECORD_WRITE_FAILED", "測試已執行，但無法建立會員測試紀錄。");
+  }
+
+  const runId = String(runInsert.data.id);
+  try {
+    const caseInsert = await s.from("automation_test_cases").insert(
+      cases.map((item, index) => {
+        const actual = item.actual && typeof item.actual === "object" ? item.actual as Json : {};
+        const failureCode = item.status === "failed"
+          ? asText((actual as any).errorCode || (actual as any).downstreamCode, 120) || "QA_ASSERTION_FAILED"
+          : null;
+        return {
+          run_id: runId,
+          case_order: index + 1,
+          case_key: item.key,
+          name: QA_CASE_NAMES[item.key] || item.key,
+          domain: "Member client / " + surface,
+          member_id: identity.memberId,
+          status: item.status,
+          failure_code: failureCode,
+          failure_message: item.status === "failed" ? asText(item.message, 500) : null,
+          started_at: now,
+          completed_at: now,
+          updated_at: now,
+        };
+      }),
+    ).select("id,case_key");
+    if (caseInsert.error) throw new ApiError(503, "QA_RECORD_CASE_WRITE_FAILED", "無法寫入會員測試案例紀錄。");
+
+    const caseIdByKey = new Map((caseInsert.data || []).map((row: any) => [String(row.case_key), String(row.id)]));
+    const steps = cases.map((item) => ({
+      case_id: caseIdByKey.get(item.key),
+      step_order: 1,
+      step_key: "verify",
+      name: "正式流程驗證結果",
+      status: item.status,
+      expected: item.expected ?? {},
+      actual: item.actual ?? {},
+      message: asText(item.message, 1000),
+      started_at: now,
+      completed_at: now,
+      duration_ms: 0,
+      updated_at: now,
+    })).filter((row) => Boolean(row.case_id));
+    if (steps.length !== cases.length) throw new ApiError(503, "QA_RECORD_CASE_MISMATCH", "會員測試案例紀錄建立不完整。");
+    const stepInsert = await s.from("automation_test_steps").insert(steps);
+    if (stepInsert.error) throw new ApiError(503, "QA_RECORD_STEP_WRITE_FAILED", "無法寫入會員測試驗證資料。");
+  } catch (error) {
+    await s.from("automation_test_runs").delete().eq("id", runId);
+    throw error;
+  }
+
+  return { runId, runCode };
+}
+
 async function runSurfaceCases(s: any, identity: any, token: string, surface: Surface): Promise<QaCase[]> {
   let cases: QaCase[];
   if (surface === "member") cases = [await memberProfileWrite(s, identity, token)];
@@ -699,12 +798,16 @@ Deno.serve(async (request: Request) => {
     if (identity.isTestAccount !== true) throw new ApiError(403, "TEST_ACCOUNT_REQUIRED", "此功能只允許測試帳號使用。");
 
     const cases = await runSurfaceCases(s, identity, token, surface);
+    const recordedRun = await persistUserQaRun(s, identity, surface, cases);
     return reply(origin, {
       ok: true,
       status: 200,
       data: {
         surface,
         cases,
+        runId: recordedRun.runId,
+        runCode: recordedRun.runCode,
+        recordPersisted: true,
       },
     });
   } catch (error) {

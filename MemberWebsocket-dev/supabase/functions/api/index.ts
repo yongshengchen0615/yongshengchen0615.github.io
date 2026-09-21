@@ -545,15 +545,16 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
   if (!memberResult.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
   const member = memberResult.data;
 
-  const [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes,presenceRes] = await Promise.all([
+  const [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes,presenceRes,automationCasesRes] = await Promise.all([
     supabase.from("point_entries").select("id,entry_id,point_card_id,amount,note,entry_type,reference_type,reference_id,created_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("point_tickets").select("id,ticket_id,point_card_id,ticket_type,ticket_title,status,earned_at,used_at,result,points_spent,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("event_ticket_claims").select("id,claim_id,event_ticket_id,ticket_type,ticket_title,status,claimed_at,used_at,result,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("bookings").select("id,request_id,service_id,technician_id,booking_date,start_time,end_time,status,member_note,total_duration_minutes,party_size,confirmed_at,rejected_at,cancelled_at,completed_at,cancellation_requested_at,cancellation_reviewed_at,cancellation_decision,created_at,updated_at").eq("member_id",member.id).order("booking_date",{ ascending:false }).order("start_time",{ ascending:false }),
     supabase.from("booking_completion_settlements").select("booking_id,service_minutes,reward_details,created_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("audit_logs").select("id,audit_id,action,detail,created_at").eq("target_type","member").eq("target_id",member.line_user_id).in("action",[...PRESENCE_ACTIONS]).order("created_at",{ ascending:false }),
+    supabase.from("automation_test_cases").select("id,run_id,case_order,case_key,name,domain,status,failure_code,failure_message,started_at,completed_at,duration_ms,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }).limit(100),
   ]);
-  for (const result of [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes,presenceRes]) {
+  for (const result of [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes,presenceRes,automationCasesRes]) {
     if (result.error) throw mapDatabaseError(result.error);
   }
 
@@ -563,13 +564,16 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
   const bookings = bookingsRes.data || [];
   const settlements = settlementsRes.data || [];
   const presenceEvents = presenceRes.data || [];
+  const automationCases = automationCasesRes.data || [];
+  const automationCaseIds = automationCases.map((row:any) => row.id).filter(Boolean);
+  const automationRunIds = [...new Set(automationCases.map((row:any) => row.run_id).filter(Boolean))];
 
   const pointCardIds = [...new Set([...pointEntries,...pointTickets].map((row:any) => row.point_card_id).filter(Boolean))];
   const eventTicketIds = [...new Set(eventClaims.map((row:any) => row.event_ticket_id).filter(Boolean))];
   const bookingIds = bookings.map((row:any) => row.id).filter(Boolean);
   const serviceIds = [...new Set(bookings.map((row:any) => row.service_id).filter(Boolean))];
 
-  const [cardsRes,calendarRes,servicesRes,participantsRes] = await Promise.all([
+  const [cardsRes,calendarRes,servicesRes,participantsRes,automationRunsRes,automationStepsRes] = await Promise.all([
     pointCardIds.length
       ? supabase.from("point_cards").select("id,card_id,title").in("id",pointCardIds)
       : Promise.resolve({ data:[],error:null }),
@@ -582,8 +586,14 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
     bookingIds.length
       ? supabase.from("booking_participants").select("id,booking_id,position,technician_id").in("booking_id",bookingIds).order("position",{ ascending:true })
       : Promise.resolve({ data:[],error:null }),
+    automationRunIds.length
+      ? supabase.from("automation_test_runs").select("id,run_code,suite,status,summary,triggered_by,started_at,completed_at,created_at").in("id",automationRunIds)
+      : Promise.resolve({ data:[],error:null }),
+    automationCaseIds.length
+      ? supabase.from("automation_test_steps").select("id,case_id,step_order,step_key,name,status,expected,actual,message,started_at,completed_at,duration_ms,created_at").in("case_id",automationCaseIds).order("step_order",{ ascending:true })
+      : Promise.resolve({ data:[],error:null }),
   ]);
-  for (const result of [cardsRes,calendarRes,servicesRes,participantsRes]) {
+  for (const result of [cardsRes,calendarRes,servicesRes,participantsRes,automationRunsRes,automationStepsRes]) {
     if (result.error) throw mapDatabaseError(result.error);
   }
 
@@ -610,6 +620,13 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
   const serviceById = new Map((servicesRes.data || []).map((row:any) => [row.id,row]));
   const technicianById = new Map((techniciansRes.data || []).map((row:any) => [row.id,row.name]));
   const settlementByBooking = new Map(settlements.map((row:any) => [row.booking_id,row]));
+  const automationRunById = new Map((automationRunsRes.data || []).map((row:any) => [row.id,row]));
+  const automationStepsByCase = new Map<string,any[]>();
+  for (const step of automationStepsRes.data || []) {
+    const rows = automationStepsByCase.get(step.case_id) || [];
+    rows.push(step);
+    automationStepsByCase.set(step.case_id,rows);
+  }
   const itemsByParticipant = new Map<string,any[]>();
   for (const item of participantItemsRes.data || []) {
     const items = itemsByParticipant.get(item.participant_id) || [];
@@ -710,6 +727,41 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
     };
   });
 
+  const automationRecords = automationCases.map((row:any) => {
+    const run:any = automationRunById.get(row.run_id) || {};
+    const steps = (automationStepsByCase.get(row.id) || []).map((step:any) => ({
+      stepKey:step.step_key || "",
+      name:step.name || "",
+      status:step.status || "",
+      expected:step.expected ?? {},
+      actual:step.actual ?? {},
+      message:step.message || "",
+      durationMs:Number(step.duration_ms || 0),
+    }));
+    const primaryStep:any = steps[steps.length - 1] || {};
+    return {
+      recordId:`automation-test:${row.id}`,
+      runId:row.run_id,
+      runCode:run.run_code || "",
+      suite:run.suite || "",
+      runStatus:run.status || "",
+      source:run.summary && typeof run.summary === "object" ? asText((run.summary as Json).source,40) : "",
+      surface:run.summary && typeof run.summary === "object" ? asText((run.summary as Json).surface,20) : "",
+      caseKey:row.case_key || "",
+      title:row.name || "自動化測試",
+      domain:row.domain || "",
+      status:row.status || "",
+      failureCode:row.failure_code || "",
+      failureMessage:row.failure_message || "",
+      message:primaryStep.message || row.failure_message || "",
+      expected:primaryStep.expected ?? {},
+      actual:primaryStep.actual ?? {},
+      steps,
+      durationMs:Number(row.duration_ms || 0),
+      occurredAt:row.completed_at || row.updated_at || row.created_at,
+    };
+  });
+
   const bookingRecords = bookings.map((row:any) => {
     const settlement = settlementByBooking.get(row.id);
     return {
@@ -755,6 +807,7 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
       calendar:calendarRecords,
       bookings:bookingRecords,
       presence:presenceRecords,
+      testAutomation:automationRecords,
     },
     counts:{
       pointCards:pointRecords.length,
@@ -762,6 +815,7 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
       calendar:calendarRecords.length,
       bookings:bookingRecords.length,
       presence:presenceRecords.length,
+      testAutomation:automationRecords.length,
     },
     calendarTracking:"linked_records_only",
   };

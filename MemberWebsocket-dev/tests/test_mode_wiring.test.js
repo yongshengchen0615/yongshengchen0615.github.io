@@ -211,6 +211,7 @@ test('test accounts support guarded single and batch removal', () => {
   const api = read('supabase/functions/test-mode-api/index.ts');
   const migration = read('supabase/migrations/20260920133911_complete_test_account_purge.sql');
   const schema = read('supabase/migrations/20260920054312_test_mode_virtual_accounts.sql');
+  const qaPurge = read('supabase/migrations/20260921143500_purge_test_member_qa_history.sql');
 
   assert.match(html, /id="testModeSelectAllAccounts"/);
   assert.match(html, /id="deleteSelectedTestAccountsButton"/);
@@ -255,7 +256,12 @@ test('test accounts support guarded single and batch removal', () => {
   assert.match(migration, /from public, anon, authenticated/);
   assert.match(migration, /to service_role/);
   assert.match(schema, /member_id uuid not null references public\.members\(id\) on delete cascade/);
+  assert.match(qaPurge, /before delete on public\.members/);
+  assert.match(qaPurge, /automation_test_runs/);
+  assert.match(qaPurge, /summary ->> 'source'/);
+  assert.match(qaPurge, /automation_test_cases/);
 });
+
 
 
 test('legacy deleted test-account traces are purged once', () => {
@@ -285,4 +291,18 @@ test('test member numbering resets to 1 only after every test account is removed
   assert.match(migration, /if v_remaining_count = 0 then/);
   assert.match(migration, /setval\('public\.test_member_sequence', 1, false\)/);
   assert.match(migration, /nextval\('public\.test_member_sequence'\)/);
+});
+
+test('user QA panel stays observable without covering the real client and can be minimized', () => {
+  const controller = read('user-test-control.js');
+  const css = read('user-test-control.css');
+  assert.match(controller, /aria-modal', 'false'/);
+  assert.match(controller, /data-qa-minimize/);
+  assert.match(controller, /togglePanelMinimized/);
+  assert.match(controller, /與真人相同的登入、API、權限與前端互動流程/);
+  assert.doesNotMatch(controller, /document\.documentElement\.classList\.toggle\('user-qa-open'/);
+  assert.match(css, /pointer-events:none/);
+  assert.match(css, /resize:both/);
+  assert.match(css, /\.user-qa-panel\.is-minimized/);
+  assert.doesNotMatch(css, /backdrop-filter:blur\(5px\)/);
 });

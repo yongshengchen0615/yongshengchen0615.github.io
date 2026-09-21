@@ -16,7 +16,7 @@ test('member directory exposes a records action beside existing actions', () => 
 });
 
 test('member records modal contains all requested activity categories', () => {
-  for (const filter of ['presence', 'pointCards', 'eventTickets', 'calendar', 'bookings']) {
+  for (const filter of ['presence', 'pointCards', 'eventTickets', 'calendar', 'bookings', 'testAutomation']) {
     assert.ok(html.includes('data-record-filter="' + filter + '"'), filter);
   }
   assert.match(app, /admin\.member-records\.list/);
@@ -68,6 +68,23 @@ test('member records use existing domain history without fabricating calendar vi
   assert.match(api, /from\("calendar_items"\).*source_event_ticket_id/s);
   assert.match(api, /calendarTracking:"linked_records_only"/);
   assert.match(html, /不記錄會員開啟或點擊日曆的瀏覽行為/);
+});
+
+test('test member QA runs are linked to roster records with safe expected and actual snapshots', () => {
+  const userQa = fs.readFileSync(path.join(root, 'supabase', 'functions', 'user-test-api', 'index.ts'), 'utf8');
+  const migration = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20260921143000_member_qa_record_realtime.sql'), 'utf8');
+  assert.match(userQa, /from\("automation_test_runs"\)\.insert/);
+  assert.match(userQa, /from\("automation_test_cases"\)\.insert/);
+  assert.match(userQa, /member_id: identity\.memberId/);
+  assert.match(userQa, /from\("automation_test_steps"\)\.insert/);
+  assert.match(api, /from\("automation_test_cases"\).*member\.id/s);
+  assert.match(api, /testAutomation:automationRecords/);
+  assert.match(app, /\['testAutomation', '測試操作'\]/);
+  assert.match(app, /Expected：/);
+  assert.match(app, /Actual：/);
+  assert.match(migration, /automation_test_cases/);
+  assert.match(migration, /automation_test_steps/);
+  assert.match(migration, /notify_member_record_realtime_change/);
 });
 
 test('booking participant positions remain one-based in record display', () => {
