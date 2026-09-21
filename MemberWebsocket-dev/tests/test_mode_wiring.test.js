@@ -155,11 +155,9 @@ test('all user-side direct APIs enforce the same maintenance-aware test identity
   }
 });
 
-test('all browser bypass APIs forward the selected test session', () => {
+test('browser APIs either forward test sessions directly or use the shared member session broker', () => {
   for (const relative of [
     'points/pointcard-ticket-overview.js',
-    'member/profile-extension.js',
-    'member/profile-birthday-edit.js',
     'booking/common.js',
     'booking/group-booking.js',
     'booking/contact-details.js',
@@ -167,6 +165,17 @@ test('all browser bypass APIs forward the selected test session', () => {
     'booking/calendar-flow.js',
   ]) {
     assert.match(read(relative), /TestModeClient/, relative);
+  }
+
+  for (const relative of [
+    'member/profile-extension.js',
+    'member/profile-birthday-edit.js',
+  ]) {
+    const source = read(relative);
+    assert.match(source, /MemberSystem/);
+    assert.match(source, /getSession\('member'\)/);
+    assert.doesNotMatch(source, /fetch\(/);
+    assert.doesNotMatch(source, /getIDToken|window\.liff/);
   }
 
   const pointOverview = read('points/pointcard-ticket-overview.js');

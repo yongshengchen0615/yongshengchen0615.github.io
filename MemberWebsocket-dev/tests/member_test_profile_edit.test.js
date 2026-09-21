@@ -81,6 +81,6 @@ test('member modal automation waits for real UI transitions and keeps safe diagn
     birthday.indexOf('async function openBirthdayModal'),
     birthday.indexOf('function closeBirthdayModal')
   );
-  assert.ok(openFunction.indexOf("modal.classList.remove('hidden')") < openFunction.indexOf('const profile = await loadProfile()'));
+  assert.ok(openFunction.indexOf("modal.classList.remove('hidden')") < openFunction.indexOf('const profile = await ensureCurrentProfile()'));
   assert.match(openFunction, /if \(!modal\.classList\.contains\('hidden'\)\) document\.getElementById\('birthdayEditYear'\)\?\.focus\(\)/);
 });
