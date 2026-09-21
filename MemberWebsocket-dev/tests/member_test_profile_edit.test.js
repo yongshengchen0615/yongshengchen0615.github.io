@@ -39,7 +39,7 @@ test('member bootstrap and profile save use the dedicated profile API', () => {
 
   assert.match(system, /clientType === 'member' && \(action === 'user\.member\.bootstrap' \|\| action === 'user\.member\.profile\.save'\)/);
   assert.match(system, /\/functions\/v1\/member-profile-api/);
-  assert.match(html, /member-system\.js\?v=member-profile-route-20260920-1/);
+  assert.match(html, /member-system\\.js\\?v=async-architecture-20260921-1/);
 });
 
 test('profile edit actions use independent partial updates through the shared transport', () => {
