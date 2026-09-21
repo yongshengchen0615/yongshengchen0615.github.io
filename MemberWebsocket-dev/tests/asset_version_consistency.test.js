@@ -55,7 +55,7 @@ test('member booking entry loads only the current single render pipeline', () =>
   assert.ok(html.includes('service-type-color.js?v=booking-shared-type-color-map-20260918-4'));
   assert.ok(html.includes('group-booking.js?v=async-architecture-20260921-1'));
   assert.ok(html.includes('member-ui.js?v=test-mode-20260920-1'));
-  assert.ok(html.includes('app.js?v=async-architecture-20260921-1'));
+  assert.ok(html.includes('app.js?v=human-e2e-hooks-20260921-1'));
   assert.ok(html.includes('contact-details.js?v=test-mode-20260920-1'));
   assert.ok(html.includes('calendar-flow.js?v=test-mode-20260920-1'));
 
@@ -93,4 +93,16 @@ test('calendar date fix keeps native date inputs shrinkable in LINE WebView', ()
   assert.ok(css.includes('#calendarEditorModal input[type="date"]'));
   assert.ok(css.includes('min-inline-size: 0 !important'));
   assert.ok(css.includes('::-webkit-calendar-picker-indicator'));
+});
+
+
+test('member-facing pages load the current human E2E controller and refresh hooks', () => {
+  for (const relative of ['member/index.html','points/index.html','event/index.html','calendar/index.html','booking/index.html']) {
+    const html = read(relative);
+    assert.ok(html.includes('../user-test-control.js?v=human-e2e-20260921-11'), relative);
+  }
+  for (const relative of ['points/index.html','event/index.html','calendar/index.html','booking/index.html']) {
+    const html = read(relative);
+    assert.ok(html.includes('./app.js?v=human-e2e-hooks-20260921-1'), relative);
+  }
 });
