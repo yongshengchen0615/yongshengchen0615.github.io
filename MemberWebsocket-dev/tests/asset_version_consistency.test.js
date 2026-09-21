@@ -101,8 +101,14 @@ test('member-facing pages load the current human E2E controller and refresh hook
     const html = read(relative);
     assert.ok(html.includes('../user-test-control.js?v=human-e2e-20260922-1'), relative);
   }
-  for (const relative of ['points/index.html','event/index.html','calendar/index.html','booking/index.html']) {
+  const appVersions = {
+    'points/index.html': './app.js?v=human-e2e-hooks-20260921-1',
+    'event/index.html': './app.js?v=human-e2e-hooks-20260921-1',
+    'calendar/index.html': './app.js?v=human-e2e-hooks-20260921-1',
+    'booking/index.html': './app.js?v=human-e2e-hooks-20260922-1',
+  };
+  for (const [relative, asset] of Object.entries(appVersions)) {
     const html = read(relative);
-    assert.ok(html.includes('./app.js?v=human-e2e-hooks-20260922-1'), relative);
+    assert.ok(html.includes(asset), relative);
   }
 });
