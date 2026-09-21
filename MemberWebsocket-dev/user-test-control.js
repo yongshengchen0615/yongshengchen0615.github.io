@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.10';
+  const VERSION = '2026-09-22.1';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1128,7 +1128,7 @@
     const actual = {
       added: false, slotSelected: false, confirmBack: false, confirmClose: false,
       created: false, historyExpanded: false, editOpened: false, editCancelled: false,
-      updated: false, cancelRequested: false, cleaned: false
+      editSlotRestored: false, updated: false, cancelRequested: false, cleaned: false
     };
     let bookingId = '';
     try {
@@ -1177,6 +1177,10 @@
       edit = Array.from(card?.querySelectorAll('button') || []).find((button) => button.textContent?.trim() === '修改預約');
       edit?.click();
       await waitFor(() => !document.getElementById('appointmentPanel')?.classList.contains('hidden'), 1800);
+      actual.editSlotRestored = Boolean(await waitFor(
+        () => document.querySelector('#slotGrid .slot-button[aria-pressed="true"]'),
+        7000
+      ));
       setFieldValue(document.getElementById('memberNote'), updatedNote);
       const editSubmit = await waitFor(() => {
         const button = document.getElementById('submitBookingButton');
@@ -1258,6 +1262,19 @@
       : fail('多人預約真人流程至少一個步驟異常。', { allSteps: true }, actual);
   }
 
+  function matchesButtonCoverage(button, pattern) {
+    if (!button || !pattern) return false;
+    const candidates = [
+      String(button.id || ''),
+      String(button.getAttribute?.('class') || ''),
+      String(button.textContent || '').trim()
+    ].filter(Boolean);
+    return candidates.some((value) => {
+      pattern.lastIndex = 0;
+      return pattern.test(value);
+    });
+  }
+
   async function buttonCoverageCase() {
     const qaPanel = state.panel;
     const qaInfrastructureControls = [LAUNCHER_ID].filter((id) => document.getElementById(id));
@@ -1280,7 +1297,7 @@
         continue;
       }
       const pattern = patterns[surface];
-      if (pattern && pattern.test([button.id, button.className, (button.textContent || '').trim()].join(' '))) mapped.push(signature);
+      if (matchesButtonCoverage(button, pattern)) mapped.push(signature);
       else unmapped.push(signature);
     }
     const actual = { totalButtons: buttons.length, mappedFunctional: mapped.length, navigationSessionControls: navigation, qaInfrastructureControls, unmapped };
@@ -1369,13 +1386,25 @@
     if (!tabs.length) return skip('目前沒有啟用中的集點卡可切換。', { cardTabsAtLeast: 1 }, { cardTabs: 0 });
     const initial = tabs.find((node) => node.getAttribute('aria-selected') === 'true') || tabs[0];
     const target = tabs.length > 1 ? tabs[1] : tabs[0];
+    const initialCardId = String(initial.dataset.cardId || '');
+    const targetCardId = String(target.dataset.cardId || '');
+    const findTab = (cardId) => Array.from(document.querySelectorAll('#cardTabs [data-card-id]'))
+      .find((node) => String(node.dataset.cardId || '') === cardId) || null;
+
     target.click();
-    await wait(120);
-    const selected = target.getAttribute('aria-selected') === 'true';
-    if (initial !== target) {
-      initial.click();
-      await wait(80);
+    const selected = Boolean(await waitFor(() => {
+      const current = findTab(targetCardId);
+      return current && current.getAttribute('aria-selected') === 'true' ? current : null;
+    }, 1500));
+
+    if (initialCardId && initialCardId !== targetCardId) {
+      findTab(initialCardId)?.click();
+      await waitFor(() => {
+        const current = findTab(initialCardId);
+        return current && current.getAttribute('aria-selected') === 'true' ? current : null;
+      }, 1500);
     }
+
     return selected
       ? pass('集點卡分頁可切換且 aria-selected 會同步。', { selectedAfterClick: true }, { cardTabs: tabs.length, selectedAfterClick: selected })
       : fail('集點卡分頁點擊後未同步選取狀態。', { selectedAfterClick: true }, { cardTabs: tabs.length, selectedAfterClick: selected });
