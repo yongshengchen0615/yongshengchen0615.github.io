@@ -626,6 +626,7 @@
     ['eventTickets', '活動票券'],
     ['calendar', '日曆'],
     ['bookings', '預約'],
+    ['testAutomation', '測試操作'],
   ]);
 
   async function openMemberRecordsModal(member) {
@@ -732,6 +733,7 @@
       ['活動票券', counts.eventTickets],
       ['日曆', counts.calendar],
       ['預約', counts.bookings],
+      ['測試操作', counts.testAutomation],
     ];
     els.memberRecordsSummary.replaceChildren(...summary.map(([label, count]) => {
       const pill = document.createElement('span');
@@ -822,6 +824,7 @@
     if (category === 'eventTickets') return String(record.title || '活動票券');
     if (category === 'calendar') return String(record.title || '日曆項目');
     if (category === 'bookings') return String(record.title || '預約');
+    if (category === 'testAutomation') return String(record.title || '測試操作');
     return String(record.title || '會員紀錄');
   }
 
@@ -846,6 +849,11 @@
       const date = record.bookingDate ? window.MemberSystem.formatDate(record.bookingDate) : '日期未設定';
       const time = formatMemberRecordTimeRange(record.startTime, record.endTime);
       return `${date}${time ? ' · ' + time : ''} · ${memberRecordStatusLabel(record.status, 'booking')}`;
+    }
+    if (category === 'testAutomation') {
+      const surface = memberRecordPresenceSurfaceLabel(record.surface);
+      const status = memberRecordQaStatusLabel(record.status);
+      return `${surface} · ${status}${record.runCode ? ' · ' + record.runCode : ''}`;
     }
     return '會員使用紀錄';
   }
@@ -884,6 +892,17 @@
       if (record.relatedTicketStatus) details.push(`票券狀態：${memberRecordStatusLabel(record.relatedTicketStatus, 'ticket')}`);
       return details;
     }
+    if (category === 'testAutomation') {
+      if (record.caseKey) details.push(`案例：${record.caseKey}`);
+      if (record.runCode) details.push(`Run：${record.runCode}`);
+      if (record.domain) details.push(`Domain：${record.domain}`);
+      if (record.message) details.push(`結果：${record.message}`);
+      if (record.failureCode) details.push(`錯誤代碼：${record.failureCode}`);
+      if (record.failureMessage && record.failureMessage !== record.message) details.push(`錯誤：${record.failureMessage}`);
+      if (record.expected !== undefined) details.push(`Expected：${memberRecordJsonPreview(record.expected)}`);
+      if (record.actual !== undefined) details.push(`Actual：${memberRecordJsonPreview(record.actual)}`);
+      return details;
+    }
     if (category === 'bookings') {
       const participants = Array.isArray(record.participants) ? record.participants : [];
       if (participants.length) {
@@ -910,6 +929,20 @@
       return details;
     }
     return details;
+  }
+
+  function memberRecordQaStatusLabel(status) {
+    const labels = { passed:'通過', failed:'失敗', skipped:'略過', running:'執行中', queued:'等待中' };
+    return labels[String(status || '').toLowerCase()] || String(status || '未知');
+  }
+
+  function memberRecordJsonPreview(value) {
+    try {
+      const text = JSON.stringify(value === undefined ? null : value);
+      return text.length > 1200 ? text.slice(0, 1200) + '…' : text;
+    } catch (_) {
+      return String(value ?? '');
+    }
   }
 
   function memberRecordPresenceSurfaceLabel(surface) {
