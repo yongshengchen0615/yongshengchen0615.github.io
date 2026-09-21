@@ -50,6 +50,7 @@ assert.doesNotMatch(edge, /event_ticket_holiday_overlap/);
 
 assert.match(calendarApi, /if \(holidays\.has\(date\)\) \{[\s\S]*?pushSegment\(\)/);
 assert.match(calendarApi, /items = applyCalendarDisplayRules\(items\)/);
+assert.match(calendarApi, /if \(!parseIsoDate\(date\)\)/);
 assert.match(calendarApi, /items = items\.filter\(\(item\) => includesDate\(item, date\)\)/);
 
 console.log('event ticket calendar holiday/source/read-only guard OK');
