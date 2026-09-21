@@ -1163,7 +1163,7 @@
       bookingId = String(card?.dataset.bookingId || '');
       if (!bookingId) throw new Error('真人送出預約後找不到 Booking ID。');
 
-      card?.click();
+      card?.querySelector('.booking-item-top')?.click();
       await wait(80);
       actual.historyExpanded = Boolean(await waitFor(() => document.querySelector('#bookingList .booking-item[data-booking-id="' + bookingId + '"]')?.dataset.bookingExpanded === '1', 1200));
 
