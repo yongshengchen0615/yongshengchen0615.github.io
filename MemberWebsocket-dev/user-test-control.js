@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.6';
+  const VERSION = '2026-09-21.7';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -677,10 +677,17 @@
     const honorific = await clickModalPair('editHonorificButton', 'honorificEditModal', 'closeHonorificEditButton');
     const birthday = await clickModalPair('editBirthdayButton', 'birthdayEditModal', 'closeBirthdayEditButton');
     const phone = await clickModalPair('editPhoneButton', 'phoneEditModal', 'closePhoneEditButton');
+    const expectedModal = Object.freeze({ ok: true, initiallyHidden: true, opened: true, closed: true });
+    const expected = {
+      honorific: { ...expectedModal },
+      birthday: { ...expectedModal },
+      phone: { ...expectedModal }
+    };
     const ok = honorific.ok && birthday.ok && phone.ok;
+    const actual = { honorific, birthday, phone };
     return ok
-      ? pass('三個會員資料編輯視窗都可開啟並安全關閉。', { honorific: true, birthday: true, phone: true }, { honorific, birthday, phone })
-      : fail('至少一個會員資料編輯視窗互動異常。', { honorific: true, birthday: true, phone: true }, { honorific, birthday, phone });
+      ? pass('三個會員資料編輯視窗都可開啟並安全關閉。', expected, actual)
+      : fail('至少一個會員資料編輯視窗互動異常。', expected, actual);
   }
 
   async function expectApiError(action, payload, codes) {
