@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.4';
+  const VERSION = '2026-09-21.5';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -54,6 +54,7 @@
     results: [],
     bootstrap: null,
     mutationSuite: null,
+    availabilitySync: null,
     launcher: null,
     panel: null
   };
@@ -139,24 +140,35 @@
   }
 
   async function synchronizeAvailability() {
-    try {
-      if (!window.TestModeClient || typeof window.TestModeClient.sessionStatus !== 'function') {
-        removeUi();
-        return;
-      }
-      const config = await loadConfig();
-      const session = await window.TestModeClient.sessionStatus(config);
-      const active = Boolean(session && session.active && session.account && session.account.memberId);
-      if (!active) {
+    if (state.availabilitySync) return state.availabilitySync;
+
+    const task = (async () => {
+      try {
+        if (!window.TestModeClient || typeof window.TestModeClient.sessionStatus !== 'function') {
+          removeUi();
+          return;
+        }
+        const config = await loadConfig();
+        const session = await window.TestModeClient.sessionStatus(config);
+        const active = Boolean(session && session.active && session.account && session.account.memberId);
+        if (!active) {
+          state.session = null;
+          removeUi();
+          return;
+        }
+        state.session = session;
+        ensureUi();
+      } catch (_) {
         state.session = null;
         removeUi();
-        return;
       }
-      state.session = session;
-      ensureUi();
-    } catch (_) {
-      state.session = null;
-      removeUi();
+    })();
+
+    state.availabilitySync = task;
+    try {
+      return await task;
+    } finally {
+      if (state.availabilitySync === task) state.availabilitySync = null;
     }
   }
 
