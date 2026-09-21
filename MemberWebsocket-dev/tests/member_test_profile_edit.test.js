@@ -20,7 +20,7 @@ test('test-account member profile editor resyncs after delayed test login', () =
   assert.doesNotMatch(profile, /if \(!currentProfile \|\| typeof currentProfile !== 'object'\) return;/);
   assert.match(html, /test-mode-client\.js\?v=member-profile-session-ready-20260920-1/);
   assert.match(html, /profile-extension\.js\?v=test-profile-edit-fix-20260920-3/);
-  assert.match(html, /profile-birthday-edit\.js\?v=test-profile-edit-fix-20260920-3/);
+  assert.match(html, /profile-birthday-edit\\.js\\?v=test-profile-edit-fix-20260921-4/);
   assert.match(html, /app\.js\?v=test-profile-edit-fix-20260920-2/);
 });
 
@@ -70,4 +70,22 @@ test('test profile editors do not read LIFF token when a test session exists', (
     assert.match(source, /if \(!testSessionToken && typeof window\.liff\?\.getIDToken === 'function'\)/);
     assert.match(source, /try \{ idToken = String\(window\.liff\.getIDToken\(\) \|\| ''\); \}/);
   }
+});
+
+
+test('member modal automation waits for real UI transitions and keeps safe diagnostics visible', () => {
+  const qa = read('user-test-control.js');
+  const birthday = read('member/profile-birthday-edit.js');
+
+  assert.match(qa, /async function waitForModalState\(modal, shouldBeOpen, timeoutMs\)/);
+  assert.match(qa, /const opened = await waitForModalState\(modal, true, 1500\)/);
+  assert.doesNotMatch(qa, /open\.click\(\);\s*await wait\(60\)/);
+  assert.match(qa, /const sensitiveScalar = blocked\.test\(key\)/);
+
+  const openFunction = birthday.slice(
+    birthday.indexOf('async function openBirthdayModal'),
+    birthday.indexOf('function closeBirthdayModal')
+  );
+  assert.ok(openFunction.indexOf("modal.classList.remove('hidden')") < openFunction.indexOf('const profile = await loadProfile()'));
+  assert.match(openFunction, /if \(!modal\.classList\.contains\('hidden'\)\) document\.getElementById\('birthdayEditYear'\)\?\.focus\(\)/);
 });
