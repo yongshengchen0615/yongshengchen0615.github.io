@@ -38,6 +38,7 @@ jobs:
           node --check MemberWebsocket-dev/member-system.js
           node --check MemberWebsocket-dev/admin/admin-session.js
           node --check MemberWebsocket-dev/admin/test-mode.js
+          node --check MemberWebsocket-dev/admin/test-control.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
           node --check MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js
@@ -66,6 +67,7 @@ jobs:
         run: |
           deno check MemberWebsocket-dev/supabase/functions/api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/test-mode-api/index.ts
+          deno check MemberWebsocket-dev/supabase/functions/test-control-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/pointcard-extension-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/member-profile-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/booking-contact-api/index.ts
