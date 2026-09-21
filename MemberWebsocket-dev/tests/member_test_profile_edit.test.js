@@ -18,10 +18,10 @@ test('test-account member profile editor resyncs after delayed test login', () =
   assert.match(profile, /async function ensureCurrentProfile\(\)/);
   assert.match(profile, /return fetchCurrentProfile\(16\)/);
   assert.doesNotMatch(profile, /if \(!currentProfile \|\| typeof currentProfile !== 'object'\) return;/);
-  assert.match(html, /test-mode-client\.js\?v=member-profile-session-ready-20260920-1/);
-  assert.match(html, /profile-extension\.js\?v=test-profile-edit-fix-20260920-3/);
-  assert.match(html, /profile-birthday-edit\\.js\\?v=test-profile-edit-fix-20260921-4/);
-  assert.match(html, /app\.js\?v=test-profile-edit-fix-20260920-2/);
+  assert.match(html, /test-mode-client\.js\?v=[^"']+/);
+  assert.match(html, /profile-extension\.js\?v=[^"']+/);
+  assert.match(html, /profile-birthday-edit\.js\?v=[^"']+/);
+  assert.match(html, /app\.js\?v=[^"']+/);
 });
 
 

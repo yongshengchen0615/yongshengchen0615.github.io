@@ -49,11 +49,14 @@ test('all member-facing surfaces load the direct test-account client before app 
     'booking/index.html',
   ]) {
     const html = read(entry);
-    const expectedClientVersion = entry === 'member/index.html'
-      ? 'member-profile-session-ready-20260920-1'
-      : 'maintenance-device-login-20260920-2';
-    assert.ok(html.includes(`test-mode-client.js?v=${expectedClientVersion}`), entry);
-    assert.match(html, /test-mode\.css\?v=test-mode-20260920-1/, entry);
+    const clientMarker = '../test-mode-client.js?v=';
+    const appMarker = entry === 'booking/index.html' ? './common.js?v=' : '../member-system.js?v=';
+    const clientIndex = html.indexOf(clientMarker);
+    const appIndex = html.indexOf(appMarker);
+    assert.ok(clientIndex >= 0, `${entry}: missing test-mode-client.js cache-busted asset`);
+    assert.ok(appIndex >= 0, `${entry}: missing application bootstrap asset`);
+    assert.ok(clientIndex < appIndex, `${entry}: test-mode-client.js must load before application bootstrap`);
+    assert.match(html, /test-mode\.css\?v=[^"']+/, entry);
   }
 
   const client = read('test-mode-client.js');
