@@ -291,7 +291,7 @@ Deno.serve(async (request: Request) => {
 
     if (action === "user.calendar.date.details") {
       const date = asText(body.date, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      if (!parseIsoDate(date)) {
         return reply(origin, { ok:false,status:400,error:{ code:"INVALID_DATE",message:"日期格式不正確。" } }, 400);
       }
       items = items.filter((item) => includesDate(item, date));
