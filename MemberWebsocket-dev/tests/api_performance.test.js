@@ -67,9 +67,9 @@ test('admin bootstrap queries tiers once and returns all required sections', asy
   assert.ok(result.memberPage); assert.ok(result.stats);
 });
 test('point balance and ticket reads wait for issuance, then start together', async () => {
-  const db = database({ hold: table => ['issue_eligible_point_tickets', 'point_balances', 'point_tickets'].includes(table) });
+  const db = database({ hold: table => ['issue_eligible_point_tickets_for_member', 'point_balances', 'point_tickets'].includes(table) });
   const pending = api().pointBootstrap(db, member); await flush();
-  assert.equal(db.calls.filter(c => c.table === 'issue_eligible_point_tickets').length, 1);
+  assert.equal(db.calls.filter(c => c.table === 'issue_eligible_point_tickets_for_member').length, 1);
   assert.equal(db.calls.filter(c => ['point_balances', 'point_tickets'].includes(c.table)).length, 0);
   db.releases.shift()(); await flush();
   assert.equal(db.calls.filter(c => ['point_balances', 'point_tickets'].includes(c.table)).length, 2);
@@ -82,7 +82,7 @@ test('empty active cards skip identity lookup and issuance', async () => {
   const result = await api().pointBootstrap(db, member);
   assert.equal(result.cards.length, 0); assert.equal(result.historyTotal, 0);
   assert.equal(db.calls.filter(c => c.table === 'point_cards').length, 1);
-  assert.equal(db.calls.filter(c => c.table === 'issue_eligible_point_tickets').length, 0);
+  assert.equal(db.calls.filter(c => c.table === 'issue_eligible_point_tickets_for_member').length, 0);
 });
 test('event bootstrap keeps quota counts, member-only claims and archived used history', async () => {
   const result = await api().eventBootstrap(database(), member);

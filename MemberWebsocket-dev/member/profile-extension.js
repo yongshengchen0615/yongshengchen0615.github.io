@@ -1,11 +1,7 @@
 (() => {
   'use strict';
 
-  const REQUEST_TIMEOUT_MS = 15000;
-  const PROFILE_ENDPOINT = '/functions/v1/member-profile-api';
   let currentProfile = null;
-  let syncTimer = null;
-  let syncing = false;
   let modalOpener = null;
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -28,17 +24,11 @@
       else if (!document.getElementById('phoneEditModal')?.classList.contains('hidden')) closeProfileModal('phone');
     });
 
-    scheduleProfileSync(0);
-    window.addEventListener('member-test-session-ready', () => scheduleProfileSync(0));
     window.addEventListener('member-profile-ready', (event) => {
       const profile = event?.detail?.profile;
       if (!profile || typeof profile !== 'object') return;
       currentProfile = profile;
       applyProfileDisplay(profile);
-    });
-    window.addEventListener('pageshow', () => scheduleProfileSync(0));
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') scheduleProfileSync(0);
     });
   });
 
@@ -63,19 +53,22 @@
     hideMessage();
 
     try {
-      const { config, idToken } = await resolveSession();
-      const result = await requestProfile(config, idToken, 'user.member.profile.save', {
+      const result = await requestProfile('user.member.profile.save', {
         surname,
         salutation,
         birthday,
         phone: rawPhone,
       });
-      currentProfile = result.profile || null;
-      applyProfileDisplay(currentProfile);
+      publishProfile(result.profile || { ...(currentProfile || {}), surname, salutation, birthday, phone: rawPhone });
       window.location.reload();
     } catch (error) {
-      showMessage(error?.message || '會員資料暫時無法儲存，請稍後再試。');
-      setSaving(false);
+      if (error?.code === 'API_RESPONSE_UNCERTAIN') {
+        showMessage('無法確認會員資料是否已儲存。請重新整理確認；系統不會自動重送這次寫入。');
+        setProfileWriteUncertain();
+      } else {
+        showMessage(error?.message || '會員資料暫時無法儲存，請稍後再試。');
+        setSaving(false);
+      }
     }
   }
 
@@ -83,9 +76,10 @@
     modalOpener = event?.currentTarget || document.activeElement;
     closeProfileModal('phone', false);
     openProfileModal('honorific');
-    showModalMessage('honorific', '正在同步會員資料…');
+    setModalSaving('honorific', false);
+    showModalMessage('honorific', '正在準備會員資料…');
     try {
-      const profile = await fetchCurrentProfile(4);
+      const profile = await ensureCurrentProfile();
       hideModalMessage('honorific');
       setValue('honorificSurnameInput', String(profile.surname || ''));
       setValue('honorificSalutationSelect', String(profile.salutation || '').toLowerCase());
@@ -99,9 +93,10 @@
     modalOpener = event?.currentTarget || document.activeElement;
     closeProfileModal('honorific', false);
     openProfileModal('phone');
-    showModalMessage('phone', '正在同步會員資料…');
+    setModalSaving('phone', false);
+    showModalMessage('phone', '正在準備會員資料…');
     try {
-      const profile = await fetchCurrentProfile(4);
+      const profile = await ensureCurrentProfile();
       hideModalMessage('phone');
       setValue('phoneEditInput', String(profile.phone || ''));
       document.getElementById('phoneEditInput')?.focus();
@@ -136,17 +131,21 @@
     if (!surname) return showModalMessage('honorific', '請填寫姓氏。');
     if (!['mr', 'ms'].includes(salutation)) return showModalMessage('honorific', '請選擇先生或小姐。');
 
+    let uncertain = false;
     setModalSaving('honorific', true);
     hideModalMessage('honorific');
     try {
       const result = await saveProfilePayload({ surname, salutation });
-      currentProfile = result.profile || { ...(currentProfile || {}), surname, salutation };
-      applyProfileDisplay(currentProfile);
+      publishProfile(result.profile || { ...(currentProfile || {}), surname, salutation });
       closeProfileModal('honorific');
     } catch (error) {
-      showModalMessage('honorific', error?.message || '稱呼暫時無法儲存，請稍後再試。');
+      uncertain = error?.code === 'API_RESPONSE_UNCERTAIN';
+      showModalMessage('honorific', uncertain
+        ? '無法確認這次修改是否完成。請關閉視窗後重新整理確認；系統不會自動重送。'
+        : error?.message || '稱呼暫時無法儲存，請稍後再試。');
     } finally {
-      setModalSaving('honorific', false);
+      if (uncertain) setModalWriteUncertain('honorific');
+      else setModalSaving('honorific', false);
     }
   }
 
@@ -156,114 +155,67 @@
 
     if (!/^\+?\d{8,15}$/.test(phone)) return showModalMessage('phone', '請填寫正確的電話。');
 
+    let uncertain = false;
     setModalSaving('phone', true);
     hideModalMessage('phone');
     try {
       const result = await saveProfilePayload({ phone: rawPhone });
-      currentProfile = result.profile || { ...(currentProfile || {}), phone: rawPhone };
-      applyProfileDisplay(currentProfile);
+      publishProfile(result.profile || { ...(currentProfile || {}), phone: rawPhone });
       closeProfileModal('phone');
     } catch (error) {
-      showModalMessage('phone', error?.message || '電話暫時無法儲存，請稍後再試。');
+      uncertain = error?.code === 'API_RESPONSE_UNCERTAIN';
+      showModalMessage('phone', uncertain
+        ? '無法確認這次修改是否完成。請關閉視窗後重新整理確認；系統不會自動重送。'
+        : error?.message || '電話暫時無法儲存，請稍後再試。');
     } finally {
-      setModalSaving('phone', false);
+      if (uncertain) setModalWriteUncertain('phone');
+      else setModalSaving('phone', false);
     }
   }
 
   async function saveProfilePayload(payload) {
-    const { config, idToken } = await resolveSession();
-    return requestProfile(config, idToken, 'user.member.profile.save', payload);
+    return requestProfile('user.member.profile.save', payload);
   }
 
-  function scheduleProfileSync(delay = 350) {
-    if (syncTimer !== null) window.clearTimeout(syncTimer);
-    syncTimer = window.setTimeout(() => {
-      syncTimer = null;
-      syncExtendedProfile().catch(() => {});
-    }, delay);
-  }
-
-  async function fetchCurrentProfile(attempts = 1) {
-    const { config, idToken } = await resolveSession(attempts);
-    const result = await requestProfile(config, idToken, 'user.member.bootstrap');
-    const profile = result.profile && typeof result.profile === 'object' ? result.profile : null;
-    if (!profile) throw new Error('會員資料尚在同步，請稍後再試。');
+  async function ensureCurrentProfile() {
+    if (currentProfile && typeof currentProfile === 'object') return currentProfile;
+    const result = await requestProfile('user.member.bootstrap');
+    const profile = result?.profile && typeof result.profile === 'object' ? result.profile : null;
+    if (!profile) throw new Error('會員資料尚未準備完成，請重新整理後再試。');
     currentProfile = profile;
     applyProfileDisplay(profile);
     return profile;
   }
 
-  async function ensureCurrentProfile() {
-    if (currentProfile && typeof currentProfile === 'object') return currentProfile;
-    return fetchCurrentProfile(16);
+  function resolveSession() {
+    const system = window.MemberSystem;
+    if (!system || typeof system.getSession !== 'function' || typeof system.request !== 'function') {
+      throw new Error('會員系統尚未準備完成。');
+    }
+    const session = system.getSession('member');
+    if (!session) throw new Error('登入尚未完成，請重新整理後再試。');
+    return session;
   }
 
-  async function syncExtendedProfile() {
-    if (syncing) return;
-    syncing = true;
-    try {
-      await fetchCurrentProfile(16);
-    } finally {
-      syncing = false;
-    }
+  function requestProfile(action, payload = {}) {
+    const system = window.MemberSystem;
+    const { config, idToken } = resolveSession();
+    return system.request(config, 'member', idToken, action, payload);
   }
 
-  async function resolveSession(attempts = 1) {
-    let lastError;
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        const system = window.MemberSystem;
-        if (!system || typeof system.loadConfig !== 'function') throw new Error('會員系統尚未準備完成。');
-        const config = await system.loadConfig();
-        const testSessionToken = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function'
-          ? String(window.TestModeClient.getSessionToken() || '')
-          : '';
-        let idToken = '';
-        if (!testSessionToken && typeof window.liff?.getIDToken === 'function') {
-          try { idToken = String(window.liff.getIDToken() || ''); }
-          catch (_) { idToken = ''; }
-        }
-        if (!idToken && !testSessionToken) throw new Error('登入尚未完成。');
-        return { config, idToken };
-      } catch (error) {
-        lastError = error;
-        if (attempt < attempts - 1) await wait(350);
-      }
-    }
-    throw lastError || new Error('LINE 登入尚未完成。');
+  function publishProfile(profile) {
+    if (!profile || typeof profile !== 'object') return;
+    currentProfile = profile;
+    applyProfileDisplay(profile);
+    window.dispatchEvent(new CustomEvent('member-profile-updated', { detail: { profile } }));
   }
 
-  async function requestProfile(config, idToken, action, payload = {}) {
-    const endpoint = `${String(config.supabaseUrl || '').replace(/\/$/, '')}${PROFILE_ENDPOINT}`;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: String(config.supabasePublishableKey || ''),
-        },
-        cache: 'no-store',
-        signal: controller.signal,
-        body: JSON.stringify(window.TestModeClient && typeof window.TestModeClient.payload === 'function'
-          ? window.TestModeClient.payload({ ...payload, action, clientType: 'member', idToken })
-          : { ...payload, action, clientType: 'member', idToken }),
-      });
-      let data;
-      try { data = await response.json(); }
-      catch { throw clientError('API_INVALID_RESPONSE', '會員資料服務回傳格式不正確。'); }
-      if (!response.ok || data?.ok !== true) {
-        const apiError = data?.error || {};
-        throw clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || '會員資料暫時無法完成操作。'));
-      }
-      return data.data || {};
-    } catch (error) {
-      if (error?.name === 'AbortError') throw clientError('API_TIMEOUT', '會員資料服務回應逾時，請稍後再試。');
-      throw error;
-    } finally {
-      window.clearTimeout(timer);
-    }
+  function setModalWriteUncertain(type) {
+    setModalSaving(type, false);
+    const saveButton = document.getElementById(type === 'honorific' ? 'saveHonorificEditButton' : 'savePhoneEditButton');
+    if (!saveButton) return;
+    saveButton.disabled = true;
+    saveButton.textContent = '請重新整理確認';
   }
 
   function applyProfileDisplay(profile) {
@@ -343,6 +295,13 @@
     button.textContent = saving ? '加入中…' : '加入會員並開啟會員卡';
   }
 
+  function setProfileWriteUncertain() {
+    const button = document.getElementById('saveProfileButton');
+    if (!button) return;
+    button.disabled = true;
+    button.textContent = '請重新整理確認';
+  }
+
   function showMessage(message) {
     const element = document.getElementById('profileFormMessage');
     if (!element) return;
@@ -357,13 +316,4 @@
     element.classList.add('hidden');
   }
 
-  function clientError(code, message) {
-    const error = new Error(message);
-    error.code = code;
-    return error;
-  }
-
-  function wait(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-  }
 })();

@@ -14,6 +14,7 @@
     loadingSlots: false,
     slotRequestSequence: 0,
     submitting: false,
+    pendingBookingWrite: null,
     editing: null,
     realtimeUnsubscribe: null,
     serverClockEpochMs: 0,
@@ -596,6 +597,29 @@
     els.submitBookingButton.focus();
   }
 
+  function bookingWriteFingerprint(items, bookingDate, startTime) {
+    return JSON.stringify({
+      bookingId: state.editing?.bookingId || '',
+      expectedUpdatedAt: state.editing?.updatedAt || '',
+      items: items.map((item) => ({ serviceId: item.serviceId, quantity: item.quantity })),
+      bookingDate,
+      startTime,
+      memberNote: String(els.memberNote.value || ''),
+    });
+  }
+
+  async function recoverUncertainBookingWrite(requestId) {
+    try {
+      const fresh = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap');
+      state.data = fresh;
+      syncServerClock(state.data.serverNow);
+      renderBookings();
+      return (fresh.bookings || []).find((item) => item.requestId === requestId) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function confirmBooking() {
     if (state.submitting) return;
     const items = selectedItems();
@@ -606,7 +630,11 @@
       return;
     }
 
-    const requestId = `BOOK-${crypto.randomUUID()}`;
+    const fingerprint = bookingWriteFingerprint(items, bookingDate, startTime);
+    if (!state.pendingBookingWrite || state.pendingBookingWrite.fingerprint !== fingerprint) {
+      state.pendingBookingWrite = { fingerprint, requestId: `BOOK-${crypto.randomUUID()}` };
+    }
+    const requestId = state.pendingBookingWrite.requestId;
     state.submitting = true;
     els.confirmBookingButton.disabled = true;
     els.confirmBookingButton.textContent = '送出中…';
@@ -622,6 +650,7 @@
         startTime,
         memberNote: els.memberNote.value,
       });
+      state.pendingBookingWrite = null;
       state.data.bookings = [result.booking, ...(state.data.bookings || []).filter((item) => item.bookingId !== result.booking.bookingId)];
       els.bookingConfirmModal.classList.add('hidden');
       state.editing = null;
@@ -635,27 +664,26 @@
       showFormMessage('預約已送出，整段服務時間已保留，等待管理端確認。', 'success');
       window.dispatchEvent(new CustomEvent('booking:created', { detail: { booking: result.booking } }));
     } catch (error) {
-      if (error?.code === 'API_TIMEOUT') {
-        try {
-          const fresh = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap');
-          state.data = fresh;
-          syncServerClock(state.data.serverNow);
-          renderBookings();
-          const recovered = (fresh.bookings || []).find((item) => item.requestId === requestId);
-          if (recovered) {
-            els.bookingConfirmModal.classList.add('hidden');
-            state.editing = null;
-            updateEditingLabel();
-            state.selections = [];
-            state.selectedSlot = null;
-            renderServices();
-            applySelectionConstraints(false);
-            showFormMessage('預約已成功送出，整段時間已保留，等待管理端確認。', 'success');
-            window.dispatchEvent(new CustomEvent('booking:created', { detail: { booking: recovered } }));
-            return;
-          }
-        } catch (_) {}
+      if (error?.code === 'API_RESPONSE_UNCERTAIN' || error?.code === 'API_TIMEOUT') {
+        const recovered = await recoverUncertainBookingWrite(requestId);
+        if (recovered) {
+          state.pendingBookingWrite = null;
+          els.bookingConfirmModal.classList.add('hidden');
+          state.editing = null;
+          updateEditingLabel();
+          state.selections = [];
+          state.selectedSlot = null;
+          renderServices();
+          applySelectionConstraints(false);
+          showFormMessage('預約已成功送出，整段時間已保留，等待管理端確認。', 'success');
+          window.dispatchEvent(new CustomEvent('booking:created', { detail: { booking: recovered } }));
+          return;
+        }
+        showConfirmMessage('目前無法確認送出結果。請先重新整理確認；若保持相同內容再次按確認，系統會沿用同一操作識別，不會重複建立預約。', 'error');
+        return;
       }
+
+      state.pendingBookingWrite = null;
       showConfirmMessage(error?.message || '預約送出失敗，請返回重新選擇時間。', 'error');
       if (error?.code === 'BOOKING_SLOT_TAKEN') {
         await loadSlots();

@@ -1,10 +1,9 @@
 (() => {
   'use strict';
 
-  const REQUEST_TIMEOUT_MS = 15000;
-  const PROFILE_ENDPOINT = '/functions/v1/member-profile-api';
   let opener = null;
   let saving = false;
+  let currentProfile = null;
 
   window.addEventListener('DOMContentLoaded', () => {
     prepareBirthdayEditPicker();
@@ -26,6 +25,10 @@
 
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeBirthdayModal();
+    });
+    window.addEventListener('member-profile-ready', (event) => {
+      const profile = event?.detail?.profile;
+      if (profile && typeof profile === 'object') currentProfile = profile;
     });
   });
 
@@ -77,16 +80,17 @@
     opener = event?.currentTarget || document.activeElement;
     modal.classList.remove('hidden');
     document.body.classList.add('profile-modal-open');
-    showMessage('正在同步會員資料…');
+    setWriteUncertain(false);
+    showMessage('正在準備會員資料…');
 
     try {
-      const profile = await loadProfile();
+      const profile = await ensureCurrentProfile();
       applyBirthdayToPicker(String(profile.birthday || '').trim());
       hideMessage();
       if (!modal.classList.contains('hidden')) document.getElementById('birthdayEditYear')?.focus();
     } catch (error) {
       clearBirthdayEditPicker();
-      showMessage(error?.message || '會員資料尚在同步，請稍後再試。');
+      showMessage(error?.message || '會員資料尚未準備完成，請重新整理後再試。');
     }
   }
 
@@ -112,21 +116,18 @@
     hideMessage();
     try {
       const result = await requestProfile('user.member.profile.save', { birthday });
-      const updatedBirthday = String(result.profile?.birthday || birthday);
-      const display = document.getElementById('memberBirthday');
-      if (display) display.textContent = updatedBirthday || '未填寫';
-
-      const setupInput = document.getElementById('profileBirthday');
-      if (setupInput) {
-        setupInput.value = updatedBirthday;
-        setupInput.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-
+      const profile = result.profile || { ...(currentProfile || {}), birthday };
+      publishProfile(profile);
+      applyBirthdayToPicker(String(profile.birthday || birthday));
       setSaving(false);
       closeBirthdayModal();
     } catch (error) {
-      showMessage(error?.message || '生日暫時無法儲存，請稍後再試。');
+      const uncertain = error?.code === 'API_RESPONSE_UNCERTAIN';
+      showMessage(uncertain
+        ? '無法確認生日是否已儲存。請關閉視窗後重新整理確認；系統不會自動重送。'
+        : error?.message || '生日暫時無法儲存，請稍後再試。');
       setSaving(false);
+      if (uncertain) setWriteUncertain(true);
     }
   }
 
@@ -193,52 +194,37 @@
     return year && month && day ? `${year}-${month}-${day}` : '';
   }
 
-  async function loadProfile() {
+  async function ensureCurrentProfile() {
+    if (currentProfile && typeof currentProfile === 'object') return currentProfile;
     const result = await requestProfile('user.member.bootstrap');
-    if (!result.profile || typeof result.profile !== 'object') throw new Error('會員資料尚在同步，請稍後再試。');
-    return result.profile;
+    const profile = result?.profile && typeof result.profile === 'object' ? result.profile : null;
+    if (!profile) throw new Error('會員資料尚未準備完成，請重新整理後再試。');
+    currentProfile = profile;
+    return profile;
   }
 
-  async function requestProfile(action, payload = {}) {
+  function requestProfile(action, payload = {}) {
     const system = window.MemberSystem;
-    if (!system || typeof system.loadConfig !== 'function') throw new Error('會員系統尚未準備完成。');
-    const config = await system.loadConfig();
-    const testSessionToken = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function'
-      ? String(window.TestModeClient.getSessionToken() || '')
-      : '';
-    let idToken = '';
-    if (!testSessionToken && typeof window.liff?.getIDToken === 'function') {
-      try { idToken = String(window.liff.getIDToken() || ''); }
-      catch (_) { idToken = ''; }
+    if (!system || typeof system.getSession !== 'function' || typeof system.request !== 'function') {
+      throw new Error('會員系統尚未準備完成。');
     }
-    if (!idToken && !testSessionToken) throw new Error('登入尚未完成。');
-    const endpoint = `${String(config.supabaseUrl || '').replace(/\/$/, '')}${PROFILE_ENDPOINT}`;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: String(config.supabasePublishableKey || ''),
-        },
-        cache: 'no-store',
-        signal: controller.signal,
-        body: JSON.stringify(window.TestModeClient && typeof window.TestModeClient.payload === 'function'
-          ? window.TestModeClient.payload({ ...payload, action, clientType: 'member', idToken })
-          : { ...payload, action, clientType: 'member', idToken }),
-      });
-      let data;
-      try { data = await response.json(); }
-      catch { throw new Error('會員資料服務回傳格式不正確。'); }
-      if (!response.ok || data?.ok !== true) throw new Error(String(data?.error?.message || '會員資料暫時無法完成操作。'));
-      return data.data || {};
-    } catch (error) {
-      if (error?.name === 'AbortError') throw new Error('會員資料服務回應逾時，請稍後再試。');
-      throw error;
-    } finally {
-      window.clearTimeout(timer);
+    const session = system.getSession('member');
+    if (!session) throw new Error('登入尚未完成，請重新整理後再試。');
+    return system.request(session.config, 'member', session.idToken, action, payload);
+  }
+
+  function publishProfile(profile) {
+    if (!profile || typeof profile !== 'object') return;
+    currentProfile = profile;
+    const updatedBirthday = String(profile.birthday || '');
+    const display = document.getElementById('memberBirthday');
+    if (display) display.textContent = updatedBirthday || '未填寫';
+    const setupInput = document.getElementById('profileBirthday');
+    if (setupInput && setupInput.value !== updatedBirthday) {
+      setupInput.value = updatedBirthday;
+      setupInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    window.dispatchEvent(new CustomEvent('member-profile-updated', { detail: { profile } }));
   }
 
   function isValidBirthday(value) {
@@ -283,6 +269,18 @@
     if (cancelButton) cancelButton.disabled = value;
     if (closeButton) closeButton.disabled = value;
     inputs.forEach((input) => { if (input) input.disabled = value; });
+  }
+
+  function setWriteUncertain(value) {
+    const saveButton = document.getElementById('saveBirthdayEditButton');
+    if (!saveButton) return;
+    if (value) {
+      saveButton.disabled = true;
+      saveButton.textContent = '請重新整理確認';
+    } else {
+      saveButton.textContent = '儲存';
+      saveButton.disabled = !isValidBirthday(selectedBirthday());
+    }
   }
 
   function showMessage(message) {

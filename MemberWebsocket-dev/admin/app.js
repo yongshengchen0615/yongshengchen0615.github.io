@@ -18,6 +18,9 @@
   let stopAdminRealtime = null;
   let memberPresencePollTimer = null;
   let memberPresencePollPending = false;
+  let adminRefreshPromise = null;
+  let adminRefreshQueued = false;
+  let adminRefreshBusy = false;
 
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
@@ -350,18 +353,37 @@
     }
   }
 
-  async function refreshData(showBusy) {
-    if (showBusy) { els.refreshButton.disabled = true; els.syncStatus.textContent = '完整同步中…'; }
-    try {
-      // 管理端採用 GAS full bootstrap：所有管理資料完整回傳並套用後，boot 才會顯示 adminView。
-      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', {});
-      assertCompleteAdminBootstrap(result);
-      applyAdminBootstrap(result);
-      if (!window.MemberAdminSession.isReady()) window.MemberAdminSession.establish(state.config, state.idToken);
-      els.syncStatus.textContent = `已完整同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
-      els.syncStatus.classList.remove('error');
-      window.dispatchEvent(new Event('member-admin-data-refreshed'));
-    } finally { if (showBusy) els.refreshButton.disabled = false; }
+  function refreshData(showBusy) {
+    adminRefreshQueued = true;
+    if (showBusy) {
+      adminRefreshBusy = true;
+      els.refreshButton.disabled = true;
+      els.syncStatus.textContent = '完整同步中…';
+    }
+    if (adminRefreshPromise) return adminRefreshPromise;
+
+    adminRefreshPromise = (async () => {
+      try {
+        do {
+          adminRefreshQueued = false;
+          const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', {});
+          assertCompleteAdminBootstrap(result);
+          applyAdminBootstrap(result);
+          if (!window.MemberAdminSession.isReady()) window.MemberAdminSession.establish(state.config, state.idToken);
+          els.syncStatus.textContent = `已完整同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
+          els.syncStatus.classList.remove('error');
+          window.dispatchEvent(new Event('member-admin-data-refreshed'));
+        } while (adminRefreshQueued && state.idToken);
+      } finally {
+        adminRefreshPromise = null;
+        if (adminRefreshBusy) {
+          adminRefreshBusy = false;
+          els.refreshButton.disabled = false;
+        }
+      }
+    })();
+
+    return adminRefreshPromise;
   }
 
   function assertCompleteAdminBootstrap(result) {

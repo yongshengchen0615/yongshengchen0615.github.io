@@ -3,6 +3,8 @@ import { buildLineFlexNotice } from "../_shared/line-flex.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
+
 type ClientType = "member" | "points" | "event" | "calendar" | "booking" | "admin";
 type Json = Record<string, unknown>;
 
@@ -877,12 +879,14 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     : { data:[], error:null };
   if (rawCards.error) throw mapDatabaseError(rawCards.error);
   const idByCard = new Map((rawCards.data || []).map((row:any) => [row.card_id,row.id]));
-  for (const card of activeCards) {
-    const pointCardId = idByCard.get(card.cardId);
-    if (pointCardId) await supabase.rpc("issue_eligible_point_tickets",{ p_member_id: member.id, p_point_card_id: pointCardId });
-  }
-
   const pointCardIds = [...idByCard.values()];
+  if (pointCardIds.length) {
+    const issued = await supabase.rpc("issue_eligible_point_tickets_for_member", {
+      p_member_id: member.id,
+      p_point_card_ids: pointCardIds,
+    });
+    if (issued.error) throw mapDatabaseError(issued.error);
+  }
   const [balancesRes,ticketsRes] = pointCardIds.length
     ? await Promise.all([
       supabase.from("point_balances").select("*").eq("member_id",member.id).in("point_card_id",pointCardIds),
@@ -1523,10 +1527,17 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       },{ onConflict:"member_id,session_id" });
       if (upsert.error) throw mapDatabaseError(upsert.error);
       const staleCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      void supabase.from("member_presence_sessions")
-        .delete()
-        .eq("member_id",member.id)
-        .lt("last_seen_at",staleCutoff);
+      EdgeRuntime.waitUntil((async () => {
+        try {
+          const cleanup = await supabase.from("member_presence_sessions")
+            .delete()
+            .eq("member_id",member.id)
+            .lt("last_seen_at",staleCutoff);
+          if (cleanup.error) console.error("member presence cleanup failed", cleanup.error.message);
+        } catch (error) {
+          console.error("member presence cleanup failed", error);
+        }
+      })());
     } else if (presence.event === "heartbeat") {
       const heartbeat = await supabase.from("member_presence_sessions")
         .update({ surface:presence.surface,last_seen_at:now,updated_at:now })

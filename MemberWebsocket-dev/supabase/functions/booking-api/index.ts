@@ -438,7 +438,7 @@ async function normalizeRequestedItems(supabase: SupabaseClient, body: Json): Pr
   if (!rawItems.length || rawItems.length > 20) throw new ApiError(400, "INVALID_BOOKING_ITEMS", "請至少選擇一個預約項目。");
 
   const seen = new Set<string>();
-  const normalized: RequestedItem[] = [];
+  const requested: Array<{ serviceId: string; quantity: number }> = [];
   for (const raw of rawItems) {
     const item = raw && typeof raw === "object" ? raw as Json : {};
     const serviceId = requireUuid(item.serviceId, "預約項目");
@@ -448,13 +448,18 @@ async function normalizeRequestedItems(supabase: SupabaseClient, body: Json): Pr
     }
     if (seen.has(serviceId)) throw new ApiError(400, "DUPLICATE_BOOKING_SERVICE", "同一個預約項目只能選擇一次，請用數量調整。");
     seen.add(serviceId);
-
-    const serviceResult = await supabase.from("booking_services").select("*").eq("id", serviceId).maybeSingle();
-    if (serviceResult.error) throw mapDatabaseError(serviceResult.error);
-    if (!serviceResult.data) throw new ApiError(404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個預約項目。");
-    if (!serviceResult.data.is_active) throw new ApiError(409, "BOOKING_SERVICE_DISABLED", "其中一個預約項目目前未開放。");
-    normalized.push({ serviceId, quantity, service: serviceResult.data });
+    requested.push({ serviceId, quantity });
   }
+
+  const serviceResult = await supabase.from("booking_services").select("*").in("id", requested.map((item) => item.serviceId));
+  if (serviceResult.error) throw mapDatabaseError(serviceResult.error);
+  const serviceById = new Map((serviceResult.data || []).map((service: any) => [String(service.id), service]));
+  const normalized: RequestedItem[] = requested.map(({ serviceId, quantity }) => {
+    const service = serviceById.get(serviceId);
+    if (!service) throw new ApiError(404, "BOOKING_SERVICE_NOT_FOUND", "找不到其中一個預約項目。");
+    if (!service.is_active) throw new ApiError(409, "BOOKING_SERVICE_DISABLED", "其中一個預約項目目前未開放。");
+    return { serviceId, quantity, service };
+  });
   const visibleItems = normalized.filter((item) => item.serviceId !== STORE_SERVICE_ID);
   if (visibleItems.some((item) => Boolean(item.service.requires_companion_service))
       && !visibleItems.some((item) => !Boolean(item.service.requires_companion_service))) {

@@ -6,24 +6,22 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('test-account member profile editor resyncs after delayed test login', () => {
-  const client = read('test-mode-client.js');
+test('member profile editors use the shared session broker instead of delayed polling', () => {
+  const system = read('member-system.js');
   const profile = read('member/profile-extension.js');
-  const html = read('member/index.html');
+  const birthday = read('member/profile-birthday-edit.js');
 
-  assert.match(client, /SESSION_READY_EVENT = 'member-test-session-ready'/);
-  assert.match(client, /announceSessionReady\(\)/);
-  assert.match(client, /window\.dispatchEvent\(new Event\(SESSION_READY_EVENT\)\)/);
-  assert.match(profile, /window\.addEventListener\('member-test-session-ready', \(\) => scheduleProfileSync\(0\)\)/);
-  assert.match(profile, /async function ensureCurrentProfile\(\)/);
-  assert.match(profile, /return fetchCurrentProfile\(16\)/);
-  assert.doesNotMatch(profile, /if \(!currentProfile \|\| typeof currentProfile !== 'object'\) return;/);
-  assert.match(html, /test-mode-client\.js\?v=[^"']+/);
-  assert.match(html, /profile-extension\.js\?v=[^"']+/);
-  assert.match(html, /profile-birthday-edit\.js\?v=[^"']+/);
-  assert.match(html, /app\.js\?v=[^"']+/);
+  assert.match(system, /const sessions = new Map\(\)/);
+  assert.match(system, /sessions\.set\(surface/);
+  assert.match(system, /function getSession\(surface\)/);
+  assert.match(profile, /getSession\('member'\)/);
+  assert.match(profile, /system\.request\(config, 'member', idToken, action, payload\)/);
+  assert.match(birthday, /system\.getSession\('member'\)/);
+  assert.match(birthday, /system\.request\(session\.config, 'member', session\.idToken, action, payload\)/);
+  assert.doesNotMatch(profile, /scheduleProfileSync|fetchCurrentProfile\(16\)|wait\(350\)/);
+  assert.doesNotMatch(profile, /fetch\(/);
+  assert.doesNotMatch(birthday, /fetch\(/);
 });
-
 
 test('member card renders honorific from the primary profile source', () => {
   const app = read('member/app.js');
@@ -44,7 +42,7 @@ test('member bootstrap and profile save use the dedicated profile API', () => {
   assert.match(html, /member-system\.js\?v=member-profile-route-20260920-1/);
 });
 
-test('profile edit actions use independent partial updates', () => {
+test('profile edit actions use independent partial updates through the shared transport', () => {
   const profile = read('member/profile-extension.js');
   const birthday = read('member/profile-birthday-edit.js');
   const api = read('supabase/functions/member-profile-api/index.ts');
@@ -52,26 +50,23 @@ test('profile edit actions use independent partial updates', () => {
   assert.match(profile, /saveProfilePayload\(\{ surname, salutation \}\)/);
   assert.match(profile, /saveProfilePayload\(\{ phone: rawPhone \}\)/);
   assert.match(birthday, /requestProfile\('user\.member\.profile\.save', \{ birthday \}\)/);
+  assert.match(profile, /member-profile-updated/);
+  assert.match(birthday, /member-profile-updated/);
   assert.match(api, /const hasBirthday = Object\.prototype\.hasOwnProperty\.call\(body, "birthday"\)/);
   assert.match(api, /const hasPhone = Object\.prototype\.hasOwnProperty\.call\(body, "phone"\)/);
   assert.match(api, /const hasSurname = Object\.prototype\.hasOwnProperty\.call\(body, "surname"\)/);
   assert.match(api, /const hasSalutation = Object\.prototype\.hasOwnProperty\.call\(body, "salutation"\)/);
-  assert.match(api, /profileFields\.push\("birthday"\)/);
-  assert.match(api, /生日不可晚於今天/);
 });
 
-
-test('test profile editors do not read LIFF token when a test session exists', () => {
+test('profile editors do not inspect LIFF credentials directly', () => {
   const profile = read('member/profile-extension.js');
   const birthday = read('member/profile-birthday-edit.js');
 
   for (const source of [profile, birthday]) {
-    assert.match(source, /const testSessionToken = window\.TestModeClient/);
-    assert.match(source, /if \(!testSessionToken && typeof window\.liff\?\.getIDToken === 'function'\)/);
-    assert.match(source, /try \{ idToken = String\(window\.liff\.getIDToken\(\) \|\| ''\); \}/);
+    assert.doesNotMatch(source, /getIDToken|window\.liff|liff\.getIDToken/);
+    assert.match(source, /MemberSystem/);
   }
 });
-
 
 test('member modal automation waits for real UI transitions and keeps safe diagnostics visible', () => {
   const qa = read('user-test-control.js');

@@ -27,6 +27,7 @@
     els.profileBirthday.addEventListener('input', updateBirthdayInputDisplay);
     els.profileBirthday.addEventListener('change', updateBirthdayInputDisplay);
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeBirthdayPicker(); });
+    window.addEventListener('member-profile-updated', handleExternalProfileUpdate);
     updateBirthdayInputDisplay();
     boot();
   });
@@ -62,6 +63,16 @@
     } finally {
       stopLoginProgress();
       els.app.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  function handleExternalProfileUpdate(event) {
+    const profile = event?.detail?.profile;
+    if (!profile || typeof profile !== 'object') return;
+    state.profile = profile;
+    if (profile.profileComplete && !profile.membershipRequired) {
+      renderProfile(profile);
+      setView('member');
     }
   }
 

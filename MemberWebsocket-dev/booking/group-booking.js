@@ -152,6 +152,7 @@
   async function groupRequest(action, payload = {}) {
     const functionName = action === 'user.booking.group.slots' ? 'booking-group-slots-api' : 'booking-group-api';
     const endpoint = `${String(state.config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/${functionName}`;
+    const isWrite = action === 'user.booking.group.create' || action === 'user.booking.group.update';
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 15000);
     try {
@@ -167,7 +168,12 @@
           ? window.TestModeClient.payload({ ...payload, action, clientType: 'member', idToken: state.idToken })
           : { ...payload, action, clientType: 'member', idToken: state.idToken }),
       });
-      const data = await response.json().catch(() => null);
+      let data;
+      try { data = await response.json(); }
+      catch {
+        if (isWrite) throw system.clientError('API_RESPONSE_UNCERTAIN', '無法確認這次多人預約操作的回應；請重新整理確認。');
+        throw system.clientError('API_INVALID_RESPONSE', '多人預約服務回傳格式不正確。');
+      }
       if (!response.ok || data?.ok !== true) {
         const error = new Error(String(data?.error?.message || '多人預約服務暫時無法完成操作。'));
         error.code = String(data?.error?.code || 'API_ERROR');
@@ -176,12 +182,13 @@
       }
       return data.data || {};
     } catch (error) {
-      if (error?.name === 'AbortError') {
-        const timeout = new Error('多人預約服務回應逾時，請稍後再試。');
-        timeout.code = 'API_TIMEOUT';
-        throw timeout;
+      if (error?.code === 'API_RESPONSE_UNCERTAIN') throw error;
+      if (isWrite && (error?.name === 'AbortError' || !error?.code)) {
+        throw system.clientError('API_RESPONSE_UNCERTAIN', '無法確認這次多人預約操作是否已送達；系統不會自動重送，請重新整理確認。');
       }
-      throw error;
+      if (error?.name === 'AbortError') throw system.clientError('API_TIMEOUT', '多人預約服務回應逾時，請稍後再試。');
+      if (error?.code) throw error;
+      throw system.clientError('NETWORK_ERROR', '多人預約服務目前無法連線，請檢查網路後再試。');
     } finally {
       window.clearTimeout(timer);
     }

@@ -10,6 +10,7 @@
   const BOOTSTRAP_TIMEOUT_MS = 30000;
   const WRITE_TIMEOUT_MS = 30000;
   const pendingReads = new Map();
+  const sessions = new Map();
   const realtimeSubscriptions = new Map();
   let realtimeClient = null;
   let realtimeClientKey = '';
@@ -131,8 +132,15 @@
     } else {
       idToken = await lineSignIn(config, surface);
     }
+    sessions.set(surface, Object.freeze({ config, idToken: String(idToken || '') }));
     if (surface !== 'admin') await startPresence(config, surface, idToken);
     return idToken;
+  }
+
+  function getSession(surface) {
+    const session = sessions.get(surface);
+    if (!session) return null;
+    return { config: session.config, idToken: session.idToken };
   }
 
   async function lineSignIn(config, surface) {
@@ -615,6 +623,7 @@
   async function logout() {
     try {
       try { await withTimeout(stopPresence('logout', true), 1200, '上下線紀錄逾時。'); } catch (_) {}
+      sessions.clear();
       if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
       if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
     } finally { window.location.reload(); }
@@ -657,7 +666,7 @@
   } catch (_) {}
 
   window.MemberSystem = Object.freeze({
-    bindDialogKeyboard, clientError, loadConfig, validateConfig, signIn, request,
+    bindDialogKeyboard, clientError, loadConfig, validateConfig, signIn, getSession, request,
     subscribeRealtime, logout, openMemberJoin, formatDate, formatDateTime, initials
   });
 })();

@@ -3,6 +3,14 @@
 
   const REQUEST_TIMEOUT_MS = 15000;
   const MIN_RESYNC_INTERVAL_MS = 1500;
+  const WRITE_ACTIONS = new Set([
+    'user.booking.create',
+    'user.booking.update',
+    'user.booking.cancel',
+    'admin.booking.settings.save',
+    'admin.booking.service.save',
+    'admin.booking.status.update',
+  ]);
   let realtimeClient = null;
   let realtimeChannel = null;
   let publicNoticeClient = null;
@@ -249,7 +257,7 @@
     const body = window.TestModeClient && typeof window.TestModeClient.payload === 'function'
       ? window.TestModeClient.payload({ ...payload, action, clientType, idToken })
       : { ...payload, action, clientType, idToken };
-    const data = await postJson(endpoint, config, body, '預約服務');
+    const data = await postJson(endpoint, config, body, '預約服務', { write: WRITE_ACTIONS.has(action) });
     if (clientType === 'member' && action === 'user.booking.bootstrap') {
       const notice = data?.settings && Object.prototype.hasOwnProperty.call(data.settings, 'bookingNotice')
         ? data.settings.bookingNotice
@@ -275,7 +283,8 @@
     return data && data.profile && typeof data.profile === 'object' ? data.profile : {};
   }
 
-  async function postJson(endpoint, config, body, serviceLabel) {
+  async function postJson(endpoint, config, body, serviceLabel, options = {}) {
+    const isWrite = options.write === true;
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -291,15 +300,23 @@
       });
       let data;
       try { data = await response.json(); }
-      catch { throw clientError('API_INVALID_RESPONSE', `${serviceLabel}回傳格式不正確。`); }
+      catch {
+        if (isWrite) throw clientError('API_RESPONSE_UNCERTAIN', '無法確認這次預約操作的回應；系統不會自動重送，請重新整理確認。');
+        throw clientError('API_INVALID_RESPONSE', `${serviceLabel}回傳格式不正確。`);
+      }
       if (!response.ok || !data || data.ok !== true) {
         const apiError = data && data.error || {};
         throw clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || `${serviceLabel}暫時無法完成操作。`), apiError.details || null);
       }
       return data.data || {};
     } catch (error) {
-      if (error && error.name === 'AbortError') throw clientError('API_TIMEOUT', `${serviceLabel}回應逾時，請稍後再試。`);
-      throw error;
+      if (error?.code === 'API_RESPONSE_UNCERTAIN') throw error;
+      if (isWrite && (error?.name === 'AbortError' || !error?.code)) {
+        throw clientError('API_RESPONSE_UNCERTAIN', '無法確認這次預約操作是否已送達；系統不會自動重送，請重新整理確認。');
+      }
+      if (error?.name === 'AbortError') throw clientError('API_TIMEOUT', `${serviceLabel}回應逾時，請稍後再試。`);
+      if (error?.code) throw error;
+      throw clientError('NETWORK_ERROR', `${serviceLabel}目前無法連線，請檢查網路後再試。`);
     } finally {
       window.clearTimeout(timer);
     }
