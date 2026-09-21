@@ -1165,7 +1165,7 @@
 
       card?.click();
       await wait(80);
-      actual.historyExpanded = card?.dataset.bookingExpanded === '1' || true;
+      actual.historyExpanded = Boolean(await waitFor(() => document.querySelector('#bookingList .booking-item[data-booking-id="' + bookingId + '"]')?.dataset.bookingExpanded === '1', 1200));
 
       let edit = Array.from(card.querySelectorAll('button')).find((button) => button.textContent?.trim() === '修改預約');
       edit?.click();
