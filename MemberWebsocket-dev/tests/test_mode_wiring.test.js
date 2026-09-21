@@ -306,3 +306,62 @@ test('user QA panel stays observable without covering the real client and can be
   assert.match(css, /\.user-qa-panel\.is-minimized/);
   assert.doesNotMatch(css, /backdrop-filter:blur\(5px\)/);
 });
+
+
+test('full user test mode drives real UI flows on every member-facing surface', () => {
+  const controller = read('user-test-control.js');
+  for (const functionName of [
+    'memberHumanProfileEditCase',
+    'pointsHumanRedeemCase',
+    'eventHumanTicketLifecycleCase',
+    'calendarHumanDetailCase',
+    'bookingHumanControlsCase',
+    'bookingHumanLifecycleCase',
+    'bookingHumanGroupLifecycleCase',
+    'buttonCoverageCase',
+  ]) {
+    assert.match(controller, new RegExp('function ' + functionName + '\\('), functionName);
+  }
+  assert.match(controller, /document\.getElementById\('saveHonorificEditButton'\)\?\.click\(\)/);
+  assert.match(controller, /ticket-overview-use/);
+  assert.match(controller, /ticketModalAction/);
+  assert.match(controller, /data-calendar-date/);
+  assert.match(controller, /submitBookingButton/);
+  assert.match(controller, /confirmBookingButton/);
+  assert.match(controller, /申請取消/);
+  assert.match(controller, /bookingPartySize/);
+  assert.match(controller, /user\.qa\.browser-run\.record/);
+});
+
+test('human E2E fixtures are test-account-only, ownership checked and cleanup-capable', () => {
+  const api = read('supabase/functions/user-test-api/index.ts');
+  assert.match(api, /resolveTestSession/);
+  assert.match(api, /identity\.isTestAccount !== true/);
+  assert.match(api, /user\.qa\.fixture\.prepare/);
+  assert.match(api, /user\.qa\.fixture\.cleanup/);
+  assert.match(api, /user\.qa\.browser-run\.record/);
+  assert.match(api, /QA-UI-PC-/);
+  assert.match(api, /QA-UI-TPL-/);
+  assert.match(api, /point_card_rewards/);
+  assert.match(api, /point_balances/);
+  assert.match(api, /QA-UI-EVT-/);
+  assert.match(api, /QA-UI-CAL-/);
+  assert.match(api, /QA HUMAN E2E/);
+  assert.match(api, /QA_FIXTURE_OWNERSHIP_FAILED/);
+  assert.match(api, /member_id: identity\.memberId/);
+  assert.match(api, /source: "member-client-browser"/);
+});
+
+test('real client refresh hooks reuse production render paths instead of synthetic DOM', () => {
+  const expected = {
+    'points/app.js': /refresh: \(\) => loadCards\(false\)/,
+    'event/app.js': /refresh: \(\) => loadOffers\(false\)/,
+    'calendar/app.js': /refresh: \(\) => loadCalendar\(\)/,
+    'booking/app.js': /refresh: \(\) => refresh\(false\)/,
+  };
+  for (const [relative, pattern] of Object.entries(expected)) {
+    const source = read(relative);
+    assert.match(source, /window\.MemberClientQaHooks = Object\.freeze/);
+    assert.match(source, pattern, relative);
+  }
+});
