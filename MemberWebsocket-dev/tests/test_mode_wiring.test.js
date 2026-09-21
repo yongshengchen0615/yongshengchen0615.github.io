@@ -367,3 +367,23 @@ test('real client refresh hooks reuse production render paths instead of synthet
     assert.match(source, pattern, relative);
   }
 });
+
+
+test('user E2E coverage classifies each button attribute independently and survives DOM replacement', () => {
+  const controller = read('user-test-control.js');
+  assert.match(controller, /function matchesButtonCoverage\(button, pattern\)/);
+  assert.match(controller, /candidates\.some\(\(value\) =>/);
+  assert.match(controller, /matchesButtonCoverage\(button, pattern\)/);
+  assert.doesNotMatch(controller, /pattern\.test\(\[button\.id, button\.className/);
+  assert.match(controller, /const findTab = \(cardId\) => Array\.from\(document\.querySelectorAll\('#cardTabs \[data-card-id\]'\)\)/);
+  assert.match(controller, /findTab\(targetCardId\)/);
+  assert.match(controller, /findTab\(initialCardId\)/);
+});
+
+test('calendar E2E invalid-date boundary is backed by semantic ISO date validation', () => {
+  const controller = read('user-test-control.js');
+  const api = read('supabase/functions/member-calendar-api/index.ts');
+  assert.match(controller, /date: '2099-99-99'/);
+  assert.match(api, /if \(!parseIsoDate\(date\)\)/);
+  assert.doesNotMatch(api, /if \(!\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(date\)\)/);
+});
