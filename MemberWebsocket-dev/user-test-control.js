@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.7';
+  const VERSION = '2026-09-21.8';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -198,14 +198,14 @@
     panel.id = PANEL_ID;
     panel.className = 'user-qa-panel hidden';
     panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-modal', 'false');
     panel.setAttribute('aria-labelledby', 'userQaTitle');
     panel.innerHTML =
       '<div class="user-qa-shell">' +
         '<header class="user-qa-head">' +
           '<div><p class="user-qa-kicker">Test account QA</p><h2 id="userQaTitle">' + escapeHtml(definition.label) + '自動化測試</h2>' +
-          '<p>只在後端驗證通過的測試帳號顯示。完整測試包含 API、UI、驗證邊界與 Realtime；成功寫入案例只建立臨時 QA 資料，完成後會自動還原或清除，不使用正式會員資料。</p></div>' +
-          '<button type="button" class="user-qa-close" data-qa-close aria-label="關閉">×</button>' +
+          '<p>只在後端驗證通過的測試帳號顯示。測試帳號會走與真人相同的登入、API、權限與前端互動流程；為避免佔用真實資源，寫入測試的臨時腳手架完成後會清理，但測試結果會保留在會員名冊紀錄。</p></div>' +
+          '<div class="user-qa-head-actions"><button type="button" class="user-qa-minimize" data-qa-minimize aria-expanded="true">縮小</button><button type="button" class="user-qa-close" data-qa-close aria-label="關閉">×</button></div>' +
         '</header>' +
         '<div class="user-qa-account"><span>測試帳號</span><strong data-qa-account>—</strong><small data-qa-version>Runner ' + VERSION + '</small></div>' +
         '<div class="user-qa-actions">' +
@@ -226,9 +226,7 @@
       '</div>';
 
     panel.querySelector('[data-qa-close]').addEventListener('click', () => togglePanel(false));
-    panel.addEventListener('click', (event) => {
-      if (event.target === panel) togglePanel(false);
-    });
+    panel.querySelector('[data-qa-minimize]').addEventListener('click', togglePanelMinimized);
     panel.querySelectorAll('[data-qa-run]').forEach((button) => {
       button.addEventListener('click', () => void runSuite(button.dataset.qaRun || 'quick'));
     });
@@ -249,10 +247,20 @@
     if (!state.panel) return;
     state.visible = Boolean(open);
     state.panel.classList.toggle('hidden', !state.visible);
-    document.documentElement.classList.toggle('user-qa-open', state.visible);
     if (state.visible) {
       const close = state.panel.querySelector('[data-qa-close]');
       if (close) close.focus();
+    }
+  }
+
+  function togglePanelMinimized() {
+    if (!state.panel) return;
+    const minimized = !state.panel.classList.contains('is-minimized');
+    state.panel.classList.toggle('is-minimized', minimized);
+    const button = state.panel.querySelector('[data-qa-minimize]');
+    if (button) {
+      button.textContent = minimized ? '展開' : '縮小';
+      button.setAttribute('aria-expanded', minimized ? 'false' : 'true');
     }
   }
 
