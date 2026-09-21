@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="./booking-panel.css?v=booking-settings-layout-20260918-1" data-booking-admin-panel-style>
   <link rel="stylesheet" href="./fixed-ticket-admin.css?v=fixed-ticket-20260916-1">
   <link rel="stylesheet" href="./test-mode.css?v=test-mode-ui-20260920-3">
+  <link rel="stylesheet" href="./test-control.css?v=test-control-20260921-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="../member-system.js?v=member-profile-route-20260920-1" defer></script>
@@ -25,6 +26,7 @@
   <script src="./pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1" defer></script>
   <script src="./app.js?v=test-member-roster-20260920-1" defer></script>
   <script src="./test-mode.js?v=maintenance-device-login-20260920-4" defer></script>
+  <script src="./test-control.js?v=test-control-20260921-1" defer></script>
   <script src="./grant-automation.js?v=grant-automation-20260910" defer></script>
   <script src="../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1" defer></script>
   <script src="./booking-panel.js?v=booking-tab-navigation-20260920-1" data-booking-admin-panel-extension defer></script>
@@ -187,6 +189,63 @@
             </div>
           </section>
         </div>
+
+        <section class="test-control-center" aria-labelledby="automationTestTitle">
+          <div class="test-control-heading">
+            <div>
+              <span class="test-mode-eyebrow">Automated QA</span>
+              <h3 id="automationTestTitle">Test Control Center</h3>
+              <p>直接檢查目前測試環境、測試會員、Session、集點、票券、預約、Presence 與 LINE 通知邊界。執行中會持續顯示每個案例的測試步驟、Expected 與 Actual 數據。</p>
+            </div>
+            <div class="test-control-heading-actions">
+              <span id="automationTestRunnerBadge" class="test-mode-status-badge is-off">Runner：待命</span>
+              <button id="runQuickAutomationTestButton" class="button button-outline" type="button">▶ 快速測試</button>
+              <button id="runFullAutomationTestButton" class="button button-dark" type="button">▶ 完整測試</button>
+            </div>
+          </div>
+
+          <div id="automationTestMessage" class="form-message hidden" role="status" aria-live="polite"></div>
+
+          <div class="test-control-layout">
+            <section class="test-control-run-card" aria-labelledby="automationCurrentRunTitle">
+              <div class="test-control-run-head">
+                <div>
+                  <strong id="automationCurrentRunTitle">目前測試</strong>
+                  <small id="automationTestRunCode">尚未執行</small>
+                </div>
+                <span id="automationTestRunStatus" class="test-control-run-status is-queued">等待執行</span>
+              </div>
+
+              <div class="test-control-summary">
+                <div class="test-control-meta-row">
+                  <span class="test-control-meta-chip">環境：MemberWebsocket-dev</span>
+                  <span id="automationTestRunSuite" class="test-control-meta-chip">—</span>
+                </div>
+                <div class="test-control-progress-shell">
+                  <div id="automationTestProgress" class="test-control-progress" role="progressbar" aria-label="自動化測試進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0%">
+                    <span id="automationTestProgressBar" class="test-control-progress-bar"></span>
+                  </div>
+                  <span id="automationTestProgressText" class="test-control-progress-text">0% · 0 / 0</span>
+                </div>
+                <div class="test-control-stat-grid" aria-label="自動化測試統計">
+                  <div class="test-control-stat"><span>Passed</span><strong id="automationTestPassedCount">0</strong></div>
+                  <div class="test-control-stat"><span>Failed</span><strong id="automationTestFailedCount">0</strong></div>
+                  <div class="test-control-stat"><span>Total</span><strong id="automationTestTotalCount">0</strong></div>
+                </div>
+              </div>
+
+              <div id="automationTestCaseList" class="test-control-case-list"></div>
+              <div id="automationTestCaseEmpty" class="test-control-empty">尚未建立測試案例。按下快速測試或完整測試後，執行過程會顯示在這裡。</div>
+            </section>
+
+            <aside class="test-control-history-card" aria-labelledby="automationHistoryTitle">
+              <h4 id="automationHistoryTitle">歷史測試</h4>
+              <p>保留最近 12 次測試結果，可重新查看每個案例的數據。</p>
+              <div id="automationTestHistoryList" class="test-control-history-list"></div>
+              <div id="automationTestHistoryEmpty" class="test-control-empty">目前尚無測試紀錄。</div>
+            </aside>
+          </div>
+        </section>
       </section>
 </main>
   </div>
