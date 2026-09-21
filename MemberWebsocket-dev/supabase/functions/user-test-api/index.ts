@@ -820,7 +820,12 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
       point_card_id: card.data.id,
       stamps: 2,
     });
-    if (balance.error) throw new ApiError(500, "QA_FIXTURE_BALANCE_FAILED", "無法建立測試會員點數。");
+    if (balance.error) {
+      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_BALANCE_FAILED", "無法建立測試會員點數。");
+    }
 
     const ticket = await s.from("point_tickets").insert({
       ticket_id: "QA-UI-PT-" + tag,
@@ -837,7 +842,13 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
       prizes: [],
       status: "available",
     }).select("ticket_id").single();
-    if (ticket.error || !ticket.data) throw new ApiError(500, "QA_FIXTURE_POINT_TICKET_FAILED", "無法建立可操作的測試票券。");
+    if (ticket.error || !ticket.data) {
+      await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_POINT_TICKET_FAILED", "無法建立可操作的測試票券。");
+    }
 
     return { fixtureTag: tag, cardId: card.data.card_id, ticketId: ticket.data.ticket_id, expectedStamps: 2 };
   }
