@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.8';
+  const VERSION = '2026-09-21.9';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -54,6 +54,7 @@
     results: [],
     bootstrap: null,
     mutationSuite: null,
+    browserRun: null,
     availabilitySync: null,
     launcher: null,
     panel: null
@@ -396,6 +397,7 @@
       if (state.cancelled) break;
       const testCase = cases[index];
       const running = {
+        key: testCase.key || '',
         name: testCase.name,
         domain: testCase.domain,
         status: 'running',
@@ -423,14 +425,31 @@
       await wait(40);
     }
 
-    const failed = state.results.filter((item) => item.status === 'failed').length;
     const cancelled = state.cancelled;
+    if (!cancelled) {
+      try {
+        state.browserRun = await recordBrowserRun();
+      } catch (error) {
+        state.results.push({
+          key: 'QA_BROWSER_RUN_RECORD',
+          name: '會員名冊測試紀錄寫入',
+          domain: 'Audit',
+          status: 'failed',
+          message: error && error.message || '真人操作測試結果無法寫入會員名冊。',
+          expected: { persisted: true },
+          actual: plainError(error),
+          durationMs: 0
+        });
+        renderResults();
+      }
+    }
+    const failed = state.results.filter((item) => item.status === 'failed').length;
     setRunning(false);
     setStatus(cancelled ? '已停止' : failed ? '有異常' : '全部通過');
     setMessage(
       cancelled ? '測試已停止。' :
       failed ? '測試完成，發現 ' + failed + ' 個異常；展開失敗案例查看 Expected / Actual。' :
-      '測試完成，所有已執行案例通過。',
+      '測試完成，所有已執行案例通過；真人操作結果已同步到會員名冊。',
       failed > 0
     );
     saveHistory();
@@ -449,49 +468,63 @@
 
     const fullCommon = [
       caseDef('無測試 Session 必須被拒絕', 'Security', negativeSessionCase),
-      caseDef('Realtime 訂閱能力', 'Realtime', realtimeCase)
+      caseDef('Realtime 訂閱能力', 'Realtime', realtimeCase, 'COMMON_REALTIME')
     ];
 
     const surfaceCases = {
       member: [
-        caseDef('會員資料完整性', 'Member', memberProfileCase),
-        caseDef('稱呼／生日／電話編輯視窗', 'UI', memberModalCase),
-        caseDef('會員資料寫入驗證邊界', 'Validation', memberInvalidWriteCase),
-        caseDef('會員資料成功寫入與還原', 'Mutation QA', () => mutationQaCase('MEMBER_PROFILE_WRITE'))
+        caseDef('會員資料完整性', 'Member', memberProfileCase, 'MEMBER_PROFILE_DATA'),
+        caseDef('稱呼／生日／電話編輯視窗', 'UI', memberModalCase, 'MEMBER_MODAL_OPEN_CLOSE'),
+        caseDef('真人操作：修改並還原稱呼／生日／電話', 'Human E2E', memberHumanProfileEditCase, 'MEMBER_HUMAN_PROFILE_EDIT'),
+        caseDef('會員資料寫入驗證邊界', 'Validation', memberInvalidWriteCase, 'MEMBER_INVALID_WRITE'),
+        caseDef('會員資料成功寫入與還原', 'Mutation QA', () => mutationQaCase('MEMBER_PROFILE_WRITE'), 'MEMBER_SERVER_MUTATION')
       ],
       points: [
-        caseDef('集點卡／票券資料結構', 'Points', pointsDataCase),
-        caseDef('票券使用共用設定', 'Points', pointSettingsCase),
-        caseDef('集點卡切換互動', 'UI', pointsInteractionCase),
-        caseDef('票券核銷輸入驗證', 'Validation', pointsInvalidWriteCase),
-        caseDef('集點票券單筆／批次核銷成功與清理', 'Mutation QA', () => mutationQaCase('POINT_TICKET_WRITE'))
+        caseDef('集點卡／票券資料結構', 'Points', pointsDataCase, 'POINTS_DATA'),
+        caseDef('票券使用共用設定', 'Points', pointSettingsCase, 'POINTS_SETTINGS'),
+        caseDef('集點卡切換互動', 'UI', pointsInteractionCase, 'POINTS_CARD_SWITCH'),
+        caseDef('真人操作：勾選票券／取消／確認核銷', 'Human E2E', pointsHumanRedeemCase, 'POINTS_HUMAN_REDEEM'),
+        caseDef('票券核銷輸入驗證', 'Validation', pointsInvalidWriteCase, 'POINTS_INVALID_WRITE'),
+        caseDef('集點票券單筆／批次核銷成功與清理', 'Mutation QA', () => mutationQaCase('POINT_TICKET_WRITE'), 'POINTS_SERVER_MUTATION')
       ],
       event: [
-        caseDef('活動票券領取／使用狀態', 'Tickets', eventDataCase),
-        caseDef('票券詳情 Modal', 'UI', eventModalCase),
-        caseDef('領券與核銷輸入驗證', 'Validation', eventInvalidWriteCase),
-        caseDef('活動票券領取／核銷成功與清理', 'Mutation QA', () => mutationQaCase('EVENT_TICKET_WRITE'))
+        caseDef('活動票券領取／使用狀態', 'Tickets', eventDataCase, 'EVENT_DATA'),
+        caseDef('票券詳情 Modal', 'UI', eventModalCase, 'EVENT_MODAL'),
+        caseDef('真人操作：開啟／領取／核銷／查看紀錄', 'Human E2E', eventHumanTicketLifecycleCase, 'EVENT_HUMAN_LIFECYCLE'),
+        caseDef('領券與核銷輸入驗證', 'Validation', eventInvalidWriteCase, 'EVENT_INVALID_WRITE'),
+        caseDef('活動票券領取／核銷成功與清理', 'Mutation QA', () => mutationQaCase('EVENT_TICKET_WRITE'), 'EVENT_SERVER_MUTATION')
       ],
       calendar: [
-        caseDef('指定日期明細 API', 'Calendar', calendarDetailApiCase),
-        caseDef('月曆月份切換互動', 'UI', calendarNavigationCase),
-        caseDef('日期輸入驗證邊界', 'Validation', calendarInvalidDateCase),
-        caseDef('日曆寫入權限邊界', 'Mutation QA', () => mutationQaCase('CALENDAR_READ_ONLY'))
+        caseDef('指定日期明細 API', 'Calendar', calendarDetailApiCase, 'CALENDAR_DETAIL_API'),
+        caseDef('月曆月份切換互動', 'UI', calendarNavigationCase, 'CALENDAR_NAVIGATION'),
+        caseDef('真人操作：點日期／開明細／關閉', 'Human E2E', calendarHumanDetailCase, 'CALENDAR_HUMAN_DETAIL'),
+        caseDef('日期輸入驗證邊界', 'Validation', calendarInvalidDateCase, 'CALENDAR_INVALID_DATE'),
+        caseDef('日曆寫入權限邊界', 'Mutation QA', () => mutationQaCase('CALENDAR_READ_ONLY'), 'CALENDAR_SERVER_BOUNDARY')
       ],
       booking: [
-        caseDef('會員與預約 Bootstrap 一致性', 'Booking', bookingDataCase),
-        caseDef('多人預約資源 Bootstrap', 'Booking', bookingGroupBootstrapCase),
-        caseDef('預約表單安全初始狀態', 'UI', bookingFormCase),
-        caseDef('新增／修改／取消輸入驗證', 'Validation', bookingInvalidWriteCase),
-        caseDef('預約新增／修改／取消成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_WRITE')),
-        caseDef('多人預約新增／修改成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_GROUP_WRITE'))
+        caseDef('會員與預約 Bootstrap 一致性', 'Booking', bookingDataCase, 'BOOKING_DATA'),
+        caseDef('多人預約資源 Bootstrap', 'Booking', bookingGroupBootstrapCase, 'BOOKING_GROUP_DATA'),
+        caseDef('預約表單安全初始狀態', 'UI', bookingFormCase, 'BOOKING_FORM_INITIAL'),
+        caseDef('真人操作：日期／視窗／項目／多人控制', 'Human E2E', bookingHumanControlsCase, 'BOOKING_HUMAN_CONTROLS'),
+        caseDef('真人操作：新增／修改／取消預約', 'Human E2E', bookingHumanLifecycleCase, 'BOOKING_HUMAN_LIFECYCLE'),
+        caseDef('真人操作：多人預約新增與清理', 'Human E2E', bookingHumanGroupLifecycleCase, 'BOOKING_HUMAN_GROUP'),
+        caseDef('新增／修改／取消輸入驗證', 'Validation', bookingInvalidWriteCase, 'BOOKING_INVALID_WRITE'),
+        caseDef('預約新增／修改／取消成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_WRITE'), 'BOOKING_SERVER_MUTATION'),
+        caseDef('多人預約新增／修改成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_GROUP_WRITE'), 'BOOKING_GROUP_SERVER_MUTATION')
       ]
     };
-    return common.concat(fullCommon, surfaceCases[surface] || [], [caseDef('測試帳號 LINE 通知抑制', 'Notification', () => mutationQaCase('LINE_SUPPRESSION'))]);
+    return common.concat(
+      fullCommon,
+      surfaceCases[surface] || [],
+      [
+        caseDef('所有按鈕／動態控制覆蓋清單', 'Coverage', buttonCoverageCase, (surface || 'surface').toUpperCase() + '_BUTTON_COVERAGE'),
+        caseDef('測試帳號 LINE 通知抑制', 'Notification', () => mutationQaCase('LINE_SUPPRESSION'), (surface || 'surface').toUpperCase() + '_LINE_SUPPRESSION')
+      ]
+    );
   }
 
-  function caseDef(name, domain, run) {
-    return { name, domain, run };
+  function caseDef(name, domain, run, key) {
+    return { name, domain, run, key: String(key || '') };
   }
 
   async function testSessionCase() {
@@ -696,6 +729,563 @@
     return ok
       ? pass('三個會員資料編輯視窗都可開啟並安全關閉。', expected, actual)
       : fail('至少一個會員資料編輯視窗互動異常。', expected, actual);
+  }
+
+
+  async function waitFor(predicate, timeoutMs = 5000, intervalMs = 40) {
+    const deadline = performance.now() + Math.max(100, Number(timeoutMs) || 5000);
+    let lastError = null;
+    while (performance.now() < deadline) {
+      try {
+        const value = predicate();
+        if (value) return value;
+      } catch (error) {
+        lastError = error;
+      }
+      await wait(intervalMs);
+    }
+    if (lastError) throw lastError;
+    return null;
+  }
+
+  function setFieldValue(element, value) {
+    if (!element) return false;
+    element.value = String(value ?? '');
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  async function qaServiceRequest(action, payload = {}, timeoutMs = 30000) {
+    const config = await loadConfig();
+    const endpoint = String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/user-test-api';
+    const body = window.TestModeClient.payload(Object.assign({}, payload, { action, surface, idToken: '' }));
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: String(config.supabasePublishableKey || '') },
+        cache: 'no-store',
+        signal: controller.signal,
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data || data.ok !== true) {
+        const error = new Error(data && data.error && data.error.message || '用戶端 QA 服務拒絕操作。');
+        error.code = String(data && data.error && data.error.code || 'QA_API_ERROR');
+        throw error;
+      }
+      return data.data || {};
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  async function refreshRealClient() {
+    if (window.MemberClientQaHooks && window.MemberClientQaHooks.surface === surface && typeof window.MemberClientQaHooks.refresh === 'function') {
+      await window.MemberClientQaHooks.refresh();
+      await wait(80);
+      return true;
+    }
+    return false;
+  }
+
+  async function recordBrowserRun() {
+    const cases = state.results.map((item) => ({
+      key: item.key || '',
+      name: item.name,
+      domain: item.domain,
+      status: item.status,
+      message: item.message,
+      expected: item.expected && typeof item.expected === 'object' ? item.expected : {},
+      actual: item.actual && typeof item.actual === 'object' ? item.actual : {},
+      durationMs: Number(item.durationMs || 0)
+    }));
+    return qaServiceRequest('user.qa.browser-run.record', { cases }, 30000);
+  }
+
+  async function memberHumanProfileEditCase() {
+    const original = await requestCore('user.member.bootstrap', {});
+    const profile = original && original.profile || {};
+    const originalSurname = String(profile.surname || '');
+    const originalSalutation = String(profile.salutation || '').toLowerCase();
+    const originalBirthday = String(profile.birthday || '');
+    const originalPhone = String(profile.phone || '');
+    const nextSurname = originalSurname === '測' ? '驗' : '測';
+    const nextSalutation = originalSalutation === 'mr' ? 'ms' : 'mr';
+    const nextBirthday = originalBirthday === '1990-01-15' ? '1991-02-16' : '1990-01-15';
+    const nextPhone = originalPhone.replace(/\D/g, '') === '0900000001' ? '0900000002' : '0900000001';
+    const actual = {
+      honorificCancelled: false, honorificSaved: false, honorificRestored: false,
+      birthdayClosed: false, birthdaySaved: false, birthdayRestored: false,
+      phoneCancelled: false, phoneSaved: false, phoneRestored: false
+    };
+
+    async function open(id, modalId) {
+      document.getElementById(id)?.click();
+      return Boolean(await waitFor(() => {
+        const modal = document.getElementById(modalId);
+        return modal && !modal.classList.contains('hidden') ? modal : null;
+      }, 2500));
+    }
+    async function waitClosed(modalId) {
+      return Boolean(await waitFor(() => document.getElementById(modalId)?.classList.contains('hidden'), 3000));
+    }
+    async function setBirthday(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      const year = document.getElementById('birthdayEditYear');
+      const month = document.getElementById('birthdayEditMonth');
+      const day = document.getElementById('birthdayEditDay');
+      if (match && year && month && day) {
+        setFieldValue(year, match[1]);
+        setFieldValue(month, match[2]);
+        await wait(20);
+        setFieldValue(day, match[3]);
+        return true;
+      }
+      return setFieldValue(document.getElementById('birthdayEditInput'), value);
+    }
+
+    try {
+      if (!await open('editHonorificButton', 'honorificEditModal')) throw new Error('稱呼編輯視窗未開啟。');
+      document.getElementById('cancelHonorificEditButton')?.click();
+      actual.honorificCancelled = await waitClosed('honorificEditModal');
+
+      if (!await open('editHonorificButton', 'honorificEditModal')) throw new Error('稱呼編輯視窗第二次未開啟。');
+      setFieldValue(document.getElementById('honorificSurnameInput'), nextSurname);
+      setFieldValue(document.getElementById('honorificSalutationSelect'), nextSalutation);
+      document.getElementById('saveHonorificEditButton')?.click();
+      await waitClosed('honorificEditModal');
+      let fresh = await requestCore('user.member.bootstrap', {});
+      actual.honorificSaved = String(fresh?.profile?.surname || '') === nextSurname && String(fresh?.profile?.salutation || '').toLowerCase() === nextSalutation;
+
+      await open('editHonorificButton', 'honorificEditModal');
+      setFieldValue(document.getElementById('honorificSurnameInput'), originalSurname);
+      setFieldValue(document.getElementById('honorificSalutationSelect'), originalSalutation);
+      document.getElementById('saveHonorificEditButton')?.click();
+      await waitClosed('honorificEditModal');
+      fresh = await requestCore('user.member.bootstrap', {});
+      actual.honorificRestored = String(fresh?.profile?.surname || '') === originalSurname && String(fresh?.profile?.salutation || '').toLowerCase() === originalSalutation;
+
+      if (!await open('editBirthdayButton', 'birthdayEditModal')) throw new Error('生日編輯視窗未開啟。');
+      document.getElementById('closeBirthdayEditButton')?.click();
+      actual.birthdayClosed = await waitClosed('birthdayEditModal');
+
+      await open('editBirthdayButton', 'birthdayEditModal');
+      await setBirthday(nextBirthday);
+      document.getElementById('saveBirthdayEditButton')?.click();
+      await waitClosed('birthdayEditModal');
+      fresh = await requestCore('user.member.bootstrap', {});
+      actual.birthdaySaved = String(fresh?.profile?.birthday || '') === nextBirthday;
+
+      await open('editBirthdayButton', 'birthdayEditModal');
+      await setBirthday(originalBirthday);
+      document.getElementById('saveBirthdayEditButton')?.click();
+      await waitClosed('birthdayEditModal');
+      fresh = await requestCore('user.member.bootstrap', {});
+      actual.birthdayRestored = String(fresh?.profile?.birthday || '') === originalBirthday;
+
+      if (!await open('editPhoneButton', 'phoneEditModal')) throw new Error('電話編輯視窗未開啟。');
+      document.getElementById('cancelPhoneEditButton')?.click();
+      actual.phoneCancelled = await waitClosed('phoneEditModal');
+
+      await open('editPhoneButton', 'phoneEditModal');
+      setFieldValue(document.getElementById('phoneEditInput'), nextPhone);
+      document.getElementById('savePhoneEditButton')?.click();
+      await waitClosed('phoneEditModal');
+      fresh = await requestCore('user.member.bootstrap', {});
+      actual.phoneSaved = String(fresh?.profile?.phone || '').replace(/\D/g, '') === nextPhone.replace(/\D/g, '');
+
+      await open('editPhoneButton', 'phoneEditModal');
+      setFieldValue(document.getElementById('phoneEditInput'), originalPhone);
+      document.getElementById('savePhoneEditButton')?.click();
+      await waitClosed('phoneEditModal');
+      fresh = await requestCore('user.member.bootstrap', {});
+      actual.phoneRestored = String(fresh?.profile?.phone || '').replace(/\D/g, '') === originalPhone.replace(/\D/g, '');
+    } finally {
+      const fresh = await requestCore('user.member.bootstrap', {}).catch(() => null);
+      const p = fresh && fresh.profile || {};
+      if (String(p.surname || '') !== originalSurname || String(p.salutation || '').toLowerCase() !== originalSalutation || String(p.birthday || '') !== originalBirthday || String(p.phone || '').replace(/\D/g, '') !== originalPhone.replace(/\D/g, '')) {
+        await requestCore('user.member.profile.save', {
+          surname: originalSurname,
+          salutation: originalSalutation,
+          birthday: originalBirthday,
+          phone: originalPhone
+        }).catch(() => {});
+      }
+    }
+
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass('已用真人點擊方式完成稱呼、生日、電話的開啟／取消或關閉／儲存／還原。', { allSteps: true, restored: true }, actual)
+      : fail('會員資料真人操作流程至少一個步驟異常。', { allSteps: true, restored: true }, actual);
+  }
+
+  async function pointsHumanRedeemCase() {
+    const fixture = await qaServiceRequest('user.qa.fixture.prepare');
+    const actual = { selected: false, cancelClosed: false, reopened: false, redeemed: false, historyVisible: false, cleaned: false };
+    try {
+      await refreshRealClient();
+      const snapshot = await requestCore('user.pointcard.bootstrap', { compact: false });
+      window.PointCardTicketOverview?.renderSnapshot?.(snapshot);
+      const checkbox = await waitFor(() => document.querySelector('[data-ticket-select="' + fixture.ticketId + '"]'), 4000);
+      if (!checkbox) throw new Error('QA 可用票券沒有出現在真人票券總覽。');
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      const useButton = await waitFor(() => {
+        const button = document.querySelector('.ticket-overview-use');
+        return button && !button.disabled ? button : null;
+      }, 2000);
+      actual.selected = Boolean(useButton);
+      useButton.click();
+      const modal = await waitFor(() => {
+        const node = document.getElementById('ticketBatchModal');
+        return node && !node.classList.contains('hidden') ? node : null;
+      }, 2000);
+      if (!modal) throw new Error('使用票券確認視窗未開啟。');
+      modal.querySelector('.ticket-batch-cancel')?.click();
+      actual.cancelClosed = Boolean(await waitFor(() => modal.classList.contains('hidden'), 1500));
+      useButton.click();
+      actual.reopened = Boolean(await waitFor(() => !modal.classList.contains('hidden'), 1500));
+      modal.querySelector('.ticket-batch-confirm')?.click();
+      const completed = await waitFor(() => {
+        const confirm = modal.querySelector('.ticket-batch-confirm');
+        return confirm && confirm.dataset.mode === 'close' && !confirm.disabled ? confirm : null;
+      }, 12000);
+      actual.redeemed = Boolean(completed);
+      completed?.click();
+      await refreshRealClient();
+      actual.historyVisible = String(document.getElementById('ticketHistoryList')?.textContent || '').includes('QA 真人操作票券');
+    } finally {
+      const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { fixtureTag: fixture.fixtureTag }).catch(() => null);
+      actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+      await refreshRealClient().catch(() => {});
+    }
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass('已真人勾選票券、開啟確認、取消一次、再次確認核銷並看到使用紀錄，最後清理 QA 資料。', { allSteps: true }, actual)
+      : fail('集點卡真人票券流程至少一個步驟異常。', { allSteps: true }, actual);
+  }
+
+  async function eventHumanTicketLifecycleCase() {
+    const fixture = await qaServiceRequest('user.qa.fixture.prepare');
+    const actual = { opened: false, closeWorked: false, claimed: false, redeemed: false, historyOpened: false, cleaned: false };
+    try {
+      await refreshRealClient();
+      const selector = '[data-event-ticket-id="' + fixture.eventTicketId + '"]';
+      let button = await waitFor(() => document.querySelector('#eventList ' + selector), 4000);
+      if (!button) throw new Error('QA 活動票券沒有出現在活動票券頁面。');
+      button.click();
+      const modal = document.getElementById('ticketModal');
+      actual.opened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
+      document.getElementById('closeTicketModal')?.click();
+      actual.closeWorked = Boolean(await waitFor(() => modal?.classList.contains('hidden'), 1500));
+      button = document.querySelector('#eventList ' + selector);
+      button?.click();
+      await waitFor(() => modal && !modal.classList.contains('hidden'), 1500);
+      const action = document.getElementById('ticketModalAction');
+      if (!action || action.disabled) throw new Error('活動票券領取按鈕不可操作。');
+      action.click();
+      actual.claimed = Boolean(await waitFor(() => !action.disabled && /確認使用/.test(action.textContent || ''), 6000));
+      if (!actual.claimed) throw new Error('領券後 UI 未切換成可核銷狀態。');
+      action.click();
+      actual.redeemed = Boolean(await waitFor(() => !document.getElementById('ticketModalResult')?.classList.contains('hidden'), 6000));
+      document.getElementById('closeTicketModal')?.click();
+      await refreshRealClient();
+      const history = await waitFor(() => document.querySelector('#usedTicketList ' + selector), 3500);
+      history?.click();
+      actual.historyOpened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
+      document.getElementById('closeTicketModal')?.click();
+    } finally {
+      const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { fixtureTag: fixture.fixtureTag }).catch(() => null);
+      actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+      await refreshRealClient().catch(() => {});
+    }
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass('已真人完成活動票券開啟、關閉、領取、核銷、查看使用紀錄並清理 QA 資料。', { allSteps: true }, actual)
+      : fail('活動票券真人流程至少一個步驟異常。', { allSteps: true }, actual);
+  }
+
+  async function calendarHumanDetailCase() {
+    const fixture = await qaServiceRequest('user.qa.fixture.prepare');
+    const actual = { dateVisible: false, opened: false, closeWorked: false, overlayCloseWorked: false, cleaned: false };
+    try {
+      await refreshRealClient();
+      const selector = '[data-calendar-date="' + fixture.date + '"]';
+      let day = await waitFor(() => document.querySelector(selector), 3500);
+      actual.dateVisible = Boolean(day);
+      day?.click();
+      const modal = document.getElementById('calendarDetailModal');
+      actual.opened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
+      document.getElementById('closeCalendarDetailButton')?.click();
+      actual.closeWorked = Boolean(await waitFor(() => modal?.classList.contains('hidden'), 1500));
+      day = document.querySelector(selector);
+      day?.click();
+      await waitFor(() => modal && !modal.classList.contains('hidden'), 1500);
+      modal?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      actual.overlayCloseWorked = Boolean(await waitFor(() => modal?.classList.contains('hidden'), 1500));
+    } finally {
+      const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { fixtureTag: fixture.fixtureTag }).catch(() => null);
+      actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+      await refreshRealClient().catch(() => {});
+    }
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass('已真人點擊含活動的日期、開啟明細、使用關閉鍵與背景關閉並清理 QA 日期。', { allSteps: true }, actual)
+      : fail('日曆真人明細流程至少一個步驟異常。', { allSteps: true }, actual);
+  }
+
+  function chooseNormalServiceButton(root = document) {
+    return Array.from(root.querySelectorAll('.service-choice .service-add-button')).find((button) => {
+      const row = button.closest('.service-choice');
+      return row && !/加購/.test(row.textContent || '');
+    }) || null;
+  }
+
+  function firstEnabledBookingDate() {
+    return Array.from(document.querySelectorAll('#calendarGrid button.calendar-day:not(:disabled)'))
+      .find((button) => !button.classList.contains('holiday-disabled')) || null;
+  }
+
+  async function openBookingForSafeDate() {
+    let day = firstEnabledBookingDate();
+    if (!day) {
+      document.getElementById('nextMonthButton')?.click();
+      await wait(120);
+      day = firstEnabledBookingDate();
+    }
+    if (!day) throw new Error('目前找不到可開啟預約的安全日期。');
+    day.click();
+    const panel = document.getElementById('appointmentPanel');
+    if (!await waitFor(() => panel && !panel.classList.contains('hidden'), 1800)) throw new Error('預約選擇視窗未開啟。');
+    return panel;
+  }
+
+  async function bookingHumanControlsCase() {
+    const actual = {
+      dateOpened: false, dateClosed: false, contactCustom: false, contactMember: false,
+      partySizeChanged: true, serviceAdded: false, serviceRemoved: false, addonNotice: true
+    };
+    const panel = await openBookingForSafeDate();
+    actual.dateOpened = !panel.classList.contains('hidden');
+    document.getElementById('closeAppointmentButton')?.click();
+    actual.dateClosed = Boolean(await waitFor(() => panel.classList.contains('hidden'), 1200));
+    await openBookingForSafeDate();
+
+    const custom = document.querySelector('input[name="bookingContactSource"][value="custom"]');
+    const member = document.querySelector('input[name="bookingContactSource"][value="member"]');
+    custom?.click();
+    actual.contactCustom = !document.getElementById('bookingCustomContactFields')?.classList.contains('hidden');
+    member?.click();
+    actual.contactMember = Boolean(document.getElementById('bookingCustomContactFields')?.classList.contains('hidden'));
+
+    const party = document.getElementById('bookingPartySize');
+    if (party && party.options.length >= 2) {
+      setFieldValue(party, '2');
+      actual.partySizeChanged = document.querySelectorAll('#participantCardList .participant-card').length === 2;
+      setFieldValue(party, '1');
+      await wait(40);
+    }
+
+    const addonButton = Array.from(document.querySelectorAll('.service-choice .service-add-button')).find((button) => /加購/.test(button.closest('.service-choice')?.textContent || ''));
+    if (addonButton) {
+      addonButton.click();
+      const notice = document.getElementById('bookingNoticeModal');
+      actual.addonNotice = Boolean(await waitFor(() => notice && !notice.classList.contains('hidden'), 800));
+      document.getElementById('confirmBookingNoticeButton')?.click();
+      await waitFor(() => notice?.classList.contains('hidden'), 800);
+    }
+
+    const add = chooseNormalServiceButton(panel);
+    if (add) {
+      add.click();
+      actual.serviceAdded = Boolean(await waitFor(() => document.querySelector('#selectedServiceList .selected-service-remove'), 1200));
+      const remove = document.querySelector('#selectedServiceList .selected-service-remove');
+      remove?.click();
+      actual.serviceRemoved = Boolean(await waitFor(() => !document.querySelector('#selectedServiceList .selected-service-remove'), 1200));
+    }
+    document.getElementById('closeAppointmentButton')?.click();
+    await waitFor(() => panel.classList.contains('hidden'), 1200);
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass('已真人操作日期、預約視窗、聯絡資料來源、多人數量、加購提醒、增加與移除項目。', { allSteps: true }, actual)
+      : fail('預約控制項真人操作至少一個步驟異常。', { allSteps: true }, actual);
+  }
+
+  async function waitForBookingCardByNote(note, timeoutMs = 8000) {
+    return waitFor(() => Array.from(document.querySelectorAll('#bookingList .booking-item')).find((card) => (card.textContent || '').includes(note)), timeoutMs);
+  }
+
+  async function chooseAvailableSlot() {
+    return waitFor(() => Array.from(document.querySelectorAll('#slotGrid .slot-button')).find((button) => !button.disabled), 7000);
+  }
+
+  async function bookingHumanLifecycleCase() {
+    const note = 'QA HUMAN E2E ' + Date.now().toString(36);
+    const updatedNote = note + ' updated';
+    const actual = {
+      added: false, slotSelected: false, confirmBack: false, confirmClose: false,
+      created: false, historyExpanded: false, editOpened: false, editCancelled: false,
+      updated: false, cancelRequested: false, cleaned: false
+    };
+    let bookingId = '';
+    try {
+      const panel = await openBookingForSafeDate();
+      const add = chooseNormalServiceButton(panel);
+      if (!add) return skip('目前沒有可供真人 E2E 的一般預約項目。', { normalService: true }, { normalService: false });
+      add.click();
+      actual.added = Boolean(await waitFor(() => document.querySelector('#selectedServiceList .selected-service-remove'), 1200));
+      setFieldValue(document.getElementById('memberNote'), note);
+      const slot = await chooseAvailableSlot();
+      if (!slot) return skip('目前找不到可供真人 E2E 的預約時段。', { availableSlot: true }, { availableSlot: false });
+      slot.click();
+      actual.slotSelected = slot.getAttribute('aria-pressed') === 'true';
+
+      const submit = document.getElementById('submitBookingButton');
+      submit?.click();
+      const confirmModal = document.getElementById('bookingConfirmModal');
+      await waitFor(() => confirmModal && !confirmModal.classList.contains('hidden'), 1500);
+      document.getElementById('cancelBookingConfirmButton')?.click();
+      actual.confirmBack = Boolean(await waitFor(() => confirmModal?.classList.contains('hidden'), 1200));
+
+      submit?.click();
+      await waitFor(() => confirmModal && !confirmModal.classList.contains('hidden'), 1500);
+      document.getElementById('closeBookingConfirmButton')?.click();
+      actual.confirmClose = Boolean(await waitFor(() => confirmModal?.classList.contains('hidden'), 1200));
+
+      submit?.click();
+      await waitFor(() => confirmModal && !confirmModal.classList.contains('hidden'), 1500);
+      document.getElementById('confirmBookingButton')?.click();
+      let card = await waitForBookingCardByNote(note, 10000);
+      actual.created = Boolean(card);
+      bookingId = String(card?.dataset.bookingId || '');
+      if (!bookingId) throw new Error('真人送出預約後找不到 Booking ID。');
+
+      card?.querySelector('.booking-item-top')?.click();
+      await wait(80);
+      actual.historyExpanded = Boolean(await waitFor(() => document.querySelector('#bookingList .booking-item[data-booking-id="' + bookingId + '"]')?.dataset.bookingExpanded === '1', 1200));
+
+      let edit = Array.from(card.querySelectorAll('button')).find((button) => button.textContent?.trim() === '修改預約');
+      edit?.click();
+      actual.editOpened = Boolean(await waitFor(() => !document.getElementById('appointmentPanel')?.classList.contains('hidden'), 1800));
+      document.getElementById('cancelEditBookingButton')?.click();
+      actual.editCancelled = Boolean(await waitFor(() => document.getElementById('editingBookingNotice')?.classList.contains('hidden'), 1500));
+
+      card = document.querySelector('#bookingList .booking-item[data-booking-id="' + bookingId + '"]');
+      edit = Array.from(card?.querySelectorAll('button') || []).find((button) => button.textContent?.trim() === '修改預約');
+      edit?.click();
+      await waitFor(() => !document.getElementById('appointmentPanel')?.classList.contains('hidden'), 1800);
+      setFieldValue(document.getElementById('memberNote'), updatedNote);
+      const editSubmit = await waitFor(() => {
+        const button = document.getElementById('submitBookingButton');
+        return button && !button.disabled ? button : null;
+      }, 7000);
+      editSubmit?.click();
+      await waitFor(() => !document.getElementById('bookingConfirmModal')?.classList.contains('hidden'), 1500);
+      document.getElementById('confirmBookingButton')?.click();
+      card = await waitForBookingCardByNote(updatedNote, 10000);
+      actual.updated = Boolean(card);
+
+      const cancel = Array.from(card?.querySelectorAll('button') || []).find((button) => button.textContent?.trim() === '申請取消');
+      if (cancel) {
+        const originalConfirm = window.confirm;
+        try {
+          window.confirm = () => true;
+          cancel.click();
+        } finally {
+          window.confirm = originalConfirm;
+        }
+        actual.cancelRequested = Boolean(await waitFor(() => /取消待確認/.test(document.querySelector('#bookingList .booking-item[data-booking-id="' + bookingId + '"] .status-badge')?.textContent || ''), 7000));
+      }
+    } finally {
+      if (bookingId) {
+        const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { bookingId }).catch(() => null);
+        actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+        await refreshRealClient().catch(() => {});
+      }
+    }
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass('已真人完成單人預約增加項目、選時段、返回修改、關閉確認、新增、修改、取消申請與清理。', { allSteps: true }, actual)
+      : fail('單人預約真人生命週期至少一個步驟異常。', { allSteps: true }, actual);
+  }
+
+  async function bookingHumanGroupLifecycleCase() {
+    const party = document.getElementById('bookingPartySize');
+    if (!party || party.options.length < 2) {
+      return skip('目前多人預約上限不足 2 人。', { partySizeAtLeast: 2 }, { partySize: party ? party.options.length : 0 });
+    }
+    const note = 'QA HUMAN E2E GROUP ' + Date.now().toString(36);
+    const actual = { partyTwo: false, firstAdded: false, secondAdded: false, slotSelected: false, created: false, cleaned: false };
+    let bookingId = '';
+    try {
+      await openBookingForSafeDate();
+      setFieldValue(party, '2');
+      actual.partyTwo = Boolean(await waitFor(() => document.querySelectorAll('#participantCardList .participant-card').length === 2, 1200));
+      const cards = Array.from(document.querySelectorAll('#participantCardList .participant-card'));
+      const firstAdd = chooseNormalServiceButton(cards[0] || document);
+      firstAdd?.click();
+      actual.firstAdded = Boolean(await waitFor(() => cards[0]?.querySelector('.selected-service-remove') || document.querySelector('#participantCardList .participant-card[data-participant-index="0"] .selected-service-remove'), 1200));
+      const secondCard = document.querySelector('#participantCardList .participant-card[data-participant-index="1"]');
+      if (secondCard && !secondCard.open) secondCard.querySelector('summary')?.click();
+      const secondAdd = chooseNormalServiceButton(secondCard || document);
+      secondAdd?.click();
+      actual.secondAdded = Boolean(await waitFor(() => document.querySelector('#participantCardList .participant-card[data-participant-index="1"] .selected-service-remove'), 1200));
+      setFieldValue(document.getElementById('memberNote'), note);
+      const slot = await chooseAvailableSlot();
+      if (!slot) return skip('目前找不到可容納兩位的安全時段。', { availableGroupSlot: true }, { availableGroupSlot: false });
+      slot.click();
+      actual.slotSelected = slot.getAttribute('aria-pressed') === 'true';
+      document.getElementById('submitBookingButton')?.click();
+      await waitFor(() => !document.getElementById('bookingConfirmModal')?.classList.contains('hidden'), 1800);
+      document.getElementById('confirmBookingButton')?.click();
+      const card = await waitForBookingCardByNote(note, 12000);
+      actual.created = Boolean(card && card.dataset.participantDetails === '1');
+      bookingId = String(card?.dataset.bookingId || '');
+    } finally {
+      if (bookingId) {
+        const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { bookingId }).catch(() => null);
+        actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+        await refreshRealClient().catch(() => {});
+      }
+      setFieldValue(document.getElementById('bookingPartySize'), '1');
+    }
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass('已真人操作兩位預約：設定人數、兩位各加項目、選時段、確認送出並清理。', { allSteps: true }, actual)
+      : fail('多人預約真人流程至少一個步驟異常。', { allSteps: true }, actual);
+  }
+
+  async function buttonCoverageCase() {
+    const qaPanel = state.panel;
+    const buttons = Array.from(document.querySelectorAll('button')).filter((button) => !qaPanel?.contains(button));
+    const navigationIds = new Set(['retryButton','logoutButton','joinMemberButton','refreshProfileButton','refreshTicketButton']);
+    const patterns = {
+      member: /^(edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker)/,
+      points: /^(retryButton|joinMemberButton|logoutButton)$|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
+      event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button/,
+      calendar: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|todayButton|nextMonthButton|closeCalendarDetailButton)$|calendar-day/,
+      booking: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|nextMonthButton|closeAppointmentButton|cancelEditBookingButton|submitBookingButton|confirmBookingNoticeButton|closeBookingConfirmButton|cancelBookingConfirmButton|confirmBookingButton|closeBookingHolidayButton)$|calendar-day|service-add-button|selected-service-remove|slot-button|text-danger-button|button-light/
+    };
+    const mapped = [];
+    const unmapped = [];
+    const navigation = [];
+    for (const button of buttons) {
+      const signature = button.id || button.className || (button.textContent || '').trim().slice(0, 40);
+      if (navigationIds.has(button.id)) {
+        navigation.push(signature);
+        continue;
+      }
+      const pattern = patterns[surface];
+      if (pattern && pattern.test([button.id, button.className, (button.textContent || '').trim()].join(' '))) mapped.push(signature);
+      else unmapped.push(signature);
+    }
+    const actual = { totalButtons: buttons.length, mappedFunctional: mapped.length, navigationSessionControls: navigation, unmapped };
+    return unmapped.length === 0
+      ? pass('目前頁面的功能按鈕都已納入真人操作劇本或明確列為會中斷 Session 的導覽控制。', { unmapped: [] }, actual)
+      : fail('發現尚未納入測試劇本的新按鈕，完整測試需補案例。', { unmapped: [] }, actual);
   }
 
   async function expectApiError(action, payload, codes) {

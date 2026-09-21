@@ -15,5 +15,5 @@ test('fixed tickets are visible only after server-side issuance to the member', 
   assert.match(api, /const offers = \(eventRows \|\| \[\]\)\.flatMap/);
   assert.match(event, /return offers\.filter\(\(offer\) => !isFixedOffer\(offer\) \|\| Boolean\(offer\?\.claim\)\);/);
   assert.doesNotMatch(event, /isBirthdayFixedOffer|birthdayMonth\(profile\)/);
-  assert.match(html, /app\.js\?v=fixed-ticket-member-visibility-20260921-1/);
+  assert.ok(html.includes('app.js?v=human-e2e-hooks-20260921-1'));
 });

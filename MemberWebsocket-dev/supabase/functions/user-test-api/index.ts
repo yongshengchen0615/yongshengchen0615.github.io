@@ -12,7 +12,7 @@ type QaCase = {
   actual: Json;
 };
 
-const MAX_REQUEST_BYTES = 20_000;
+const MAX_REQUEST_BYTES = 80_000;
 const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
 const SURFACES = new Set<Surface>(["member","points","event","calendar","booking"]);
 
@@ -756,6 +756,291 @@ async function persistUserQaRun(
   return { runId, runCode };
 }
 
+
+function requireFixtureTag(value: unknown): string {
+  const tag = asText(value, 32).toUpperCase();
+  if (!/^[A-F0-9]{16}$/.test(tag)) throw new ApiError(400, "INVALID_QA_FIXTURE", "測試 Fixture 識別碼不正確。");
+  return tag;
+}
+
+async function prepareHumanFixture(s: any, identity: any, surface: Surface): Promise<Json> {
+  const tag = suffix();
+  const actor = "qa-ui:" + identity.memberId + ":" + tag;
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (surface === "points") {
+    const template = await s.from("ticket_templates").insert({
+      ticket_template_id: "QA-UI-TPL-" + tag,
+      title: "QA 真人操作票券",
+      ticket_type: "coupon",
+      description: "Human-like E2E fixture",
+      usage_method: "QA UI",
+      usage_instructions: "Only for test account human-like E2E",
+      prizes: [],
+      status: "active",
+      created_by: actor,
+      updated_by: actor,
+    }).select("id").single();
+    if (template.error || !template.data) throw new ApiError(500, "QA_FIXTURE_TEMPLATE_FAILED", "無法建立集點票券測試樣板。");
+
+    const card = await s.from("point_cards").insert({
+      card_id: "QA-UI-PC-" + tag,
+      title: "QA 真人操作集點卡",
+      description: "Human-like E2E fixture",
+      status: "active",
+      accent: "#5f7769",
+      style_key: "forest",
+      expiry_mode: "unlimited",
+      sort_order: 999999,
+      usage_method: "QA UI",
+      usage_instructions: "Only for test account human-like E2E",
+      benefit_description: "QA fixture",
+      created_by: actor,
+      updated_by: actor,
+    }).select("id,card_id").single();
+    if (card.error || !card.data) {
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_CARD_FAILED", "無法建立集點卡測試資料。");
+    }
+
+    const reward = await s.from("point_card_rewards").insert({
+      reward_id: "QA-UI-RWD-" + tag,
+      point_card_id: card.data.id,
+      threshold_stamps: 1,
+      ticket_template_id: template.data.id,
+    }).select("id").single();
+    if (reward.error || !reward.data) {
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_REWARD_FAILED", "無法建立集點獎勵測試資料。");
+    }
+
+    const balance = await s.from("point_balances").insert({
+      member_id: identity.memberId,
+      point_card_id: card.data.id,
+      stamps: 2,
+    });
+    if (balance.error) {
+      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_BALANCE_FAILED", "無法建立測試會員點數。");
+    }
+
+    const ticket = await s.from("point_tickets").insert({
+      ticket_id: "QA-UI-PT-" + tag,
+      member_id: identity.memberId,
+      point_card_id: card.data.id,
+      reward_id: reward.data.id,
+      ticket_template_id: template.data.id,
+      threshold_stamps: 1,
+      ticket_type: "coupon",
+      ticket_title: "QA 真人操作票券",
+      ticket_description: "Human-like E2E fixture",
+      usage_method: "QA UI",
+      usage_instructions: "Only for test account human-like E2E",
+      prizes: [],
+      status: "available",
+    }).select("ticket_id").single();
+    if (ticket.error || !ticket.data) {
+      await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_POINT_TICKET_FAILED", "無法建立可操作的測試票券。");
+    }
+
+    return { fixtureTag: tag, cardId: card.data.card_id, ticketId: ticket.data.ticket_id, expectedStamps: 2 };
+  }
+
+  if (surface === "event") {
+    const event = await s.from("event_tickets").insert({
+      event_ticket_id: "QA-UI-EVT-" + tag,
+      title: "QA 真人操作活動票券",
+      ticket_type: "coupon",
+      description: "Human-like E2E fixture",
+      usage_method: "QA UI",
+      usage_instructions: "Only for test account human-like E2E",
+      prizes: [],
+      status: "active",
+      starts_on: isoDateAdd(today, -1),
+      ends_on: isoDateAdd(today, 1),
+      quota: 10,
+      accent: "#5f7769",
+      allowed_tier_keys: ["general","silver","gold","platinum"],
+      created_by: actor,
+      updated_by: actor,
+    }).select("id,event_ticket_id").single();
+    if (event.error || !event.data) throw new ApiError(500, "QA_FIXTURE_EVENT_FAILED", "無法建立活動票券測試資料。");
+    return { fixtureTag: tag, eventTicketId: event.data.event_ticket_id };
+  }
+
+  if (surface === "calendar") {
+    const item = await s.from("calendar_items").insert({
+      calendar_item_id: "QA-UI-CAL-" + tag,
+      title: "QA 真人操作日曆項目",
+      item_type: "event",
+      description: "Human-like E2E fixture",
+      starts_on: today,
+      ends_on: today,
+      status: "active",
+      accent: "#5f7769",
+      allowed_tier_keys: ["general","silver","gold","platinum"],
+      link_label: "",
+      link_url: "",
+      created_by: actor,
+      updated_by: actor,
+      audience_type: "all",
+    }).select("id,calendar_item_id,starts_on").single();
+    if (item.error || !item.data) throw new ApiError(500, "QA_FIXTURE_CALENDAR_FAILED", "無法建立日曆測試資料。");
+    return { fixtureTag: tag, calendarItemId: item.data.calendar_item_id, date: item.data.starts_on };
+  }
+
+  return { fixtureTag: tag };
+}
+
+async function cleanupHumanFixture(s: any, identity: any, surface: Surface, body: Json): Promise<Json> {
+  if (surface === "booking") {
+    const bookingId = asText(body.bookingId, 80);
+    if (!bookingId) return { cleaned: true };
+    const booking = await s.from("bookings").select("id,member_id,member_note").eq("id", bookingId).maybeSingle();
+    if (booking.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認預約測試資料。");
+    if (!booking.data) return { cleaned: true };
+    if (String(booking.data.member_id) !== identity.memberId || !String(booking.data.member_note || "").startsWith("QA HUMAN E2E")) {
+      throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "只允許清理由目前測試會員建立的 QA 預約。");
+    }
+    const cleaned = await cleanupBooking(s, bookingId);
+    if (!cleaned) throw new ApiError(500, "QA_FIXTURE_CLEANUP_FAILED", "預約測試資料清理失敗。");
+    return { cleaned: true };
+  }
+
+  const tag = requireFixtureTag(body.fixtureTag);
+  const actorPrefix = "qa-ui:" + identity.memberId + ":" + tag;
+
+  if (surface === "points") {
+    const card = await s.from("point_cards").select("id,created_by").eq("card_id", "QA-UI-PC-" + tag).maybeSingle();
+    if (card.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認集點卡測試資料。");
+    if (!card.data) return { cleaned: true };
+    if (String(card.data.created_by) !== actorPrefix) throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "測試資料不屬於目前測試會員。");
+    await s.from("point_tickets").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+    await s.from("point_entries").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+    await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+    const rewards = await s.from("point_card_rewards").select("ticket_template_id").eq("point_card_id", card.data.id);
+    await s.from("point_card_rewards").delete().eq("point_card_id", card.data.id);
+    await s.from("point_cards").delete().eq("id", card.data.id);
+    for (const row of rewards.data || []) {
+      if (row.ticket_template_id) await s.from("ticket_templates").delete().eq("id", row.ticket_template_id).eq("created_by", actorPrefix);
+    }
+    return { cleaned: true };
+  }
+
+  if (surface === "event") {
+    const event = await s.from("event_tickets").select("id,created_by").eq("event_ticket_id", "QA-UI-EVT-" + tag).maybeSingle();
+    if (event.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認活動票券測試資料。");
+    if (!event.data) return { cleaned: true };
+    if (String(event.data.created_by) !== actorPrefix) throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "測試資料不屬於目前測試會員。");
+    await s.from("event_ticket_claims").delete().eq("event_ticket_id", event.data.id).eq("member_id", identity.memberId);
+    await s.from("calendar_items").delete().eq("source_event_ticket_id", event.data.id);
+    await s.from("event_tickets").delete().eq("id", event.data.id);
+    return { cleaned: true };
+  }
+
+  if (surface === "calendar") {
+    const item = await s.from("calendar_items").select("id,created_by").eq("calendar_item_id", "QA-UI-CAL-" + tag).maybeSingle();
+    if (item.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認日曆測試資料。");
+    if (!item.data) return { cleaned: true };
+    if (String(item.data.created_by) !== actorPrefix) throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "測試資料不屬於目前測試會員。");
+    await s.from("calendar_items").delete().eq("id", item.data.id);
+    return { cleaned: true };
+  }
+
+  return { cleaned: true };
+}
+
+async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawCases: unknown): Promise<Json> {
+  const cases = Array.isArray(rawCases) ? rawCases.slice(0, 60) : [];
+  if (!cases.length) throw new ApiError(400, "QA_BROWSER_CASES_REQUIRED", "沒有可記錄的瀏覽器測試案例。");
+  const normalized = cases.map((raw: any, index: number) => {
+    const status = ["passed","failed","skipped"].includes(String(raw?.status)) ? String(raw.status) : "failed";
+    return {
+      key: asText(raw?.key, 100) || ("BROWSER_" + String(index + 1).padStart(2, "0")),
+      name: asText(raw?.name, 180) || "真人操作測試",
+      domain: asText(raw?.domain, 100) || "UI",
+      status,
+      message: asText(raw?.message, 1000),
+      expected: raw?.expected && typeof raw.expected === "object" ? raw.expected : {},
+      actual: raw?.actual && typeof raw.actual === "object" ? raw.actual : {},
+      durationMs: Math.max(0, Math.min(300000, Number(raw?.durationMs || 0))),
+    };
+  });
+  const now = new Date().toISOString();
+  const failedCount = normalized.filter((item) => item.status === "failed").length;
+  const passedCount = normalized.filter((item) => item.status === "passed").length;
+  const skippedCount = normalized.filter((item) => item.status === "skipped").length;
+  const runCode = "UE2E-" + Date.now().toString(36).toUpperCase() + "-" + suffix().slice(0, 8);
+  const run = await s.from("automation_test_runs").insert({
+    run_code: runCode,
+    suite: "full",
+    environment: "MemberWebsocket-dev",
+    status: failedCount ? "failed" : "passed",
+    triggered_by: identity.lineUserId,
+    total_cases: normalized.length,
+    passed_cases: passedCount,
+    failed_cases: failedCount,
+    summary: {
+      runnerVersion: "user-test-control-human-e2e-20260921",
+      source: "member-client-browser",
+      surface,
+      skippedCases: skippedCount,
+      memberId: identity.memberId,
+    },
+    started_at: now,
+    completed_at: now,
+    updated_at: now,
+  }).select("id").single();
+  if (run.error || !run.data) throw new ApiError(503, "QA_RECORD_WRITE_FAILED", "無法建立真人操作測試紀錄。");
+  const runId = String(run.data.id);
+  try {
+    const inserted = await s.from("automation_test_cases").insert(normalized.map((item, index) => ({
+      run_id: runId,
+      case_order: index + 1,
+      case_key: item.key,
+      name: item.name,
+      domain: "Human E2E / " + surface + " / " + item.domain,
+      member_id: identity.memberId,
+      status: item.status,
+      failure_code: item.status === "failed" ? "UI_E2E_FAILED" : null,
+      failure_message: item.status === "failed" ? item.message : null,
+      started_at: now,
+      completed_at: now,
+      duration_ms: Math.trunc(item.durationMs),
+      updated_at: now,
+    }))).select("id,case_key");
+    if (inserted.error) throw new ApiError(503, "QA_RECORD_CASE_WRITE_FAILED", "無法寫入真人操作測試案例。");
+    const ids = new Map((inserted.data || []).map((row: any) => [String(row.case_key), String(row.id)]));
+    const steps = normalized.map((item) => ({
+      case_id: ids.get(item.key),
+      step_order: 1,
+      step_key: "human-ui",
+      name: "模擬真人 UI 操作",
+      status: item.status,
+      expected: item.expected,
+      actual: item.actual,
+      message: item.message,
+      started_at: now,
+      completed_at: now,
+      duration_ms: Math.trunc(item.durationMs),
+      updated_at: now,
+    })).filter((row) => Boolean(row.case_id));
+    const stepInsert = await s.from("automation_test_steps").insert(steps);
+    if (stepInsert.error) throw new ApiError(503, "QA_RECORD_STEP_WRITE_FAILED", "無法寫入真人操作測試步驟。");
+  } catch (error) {
+    await s.from("automation_test_runs").delete().eq("id", runId);
+    throw error;
+  }
+  return { runId, runCode, recorded: normalized.length };
+}
+
 async function runSurfaceCases(s: any, identity: any, token: string, surface: Surface): Promise<QaCase[]> {
   let cases: QaCase[];
   if (surface === "member") cases = [await memberProfileWrite(s, identity, token)];
@@ -778,7 +1063,8 @@ Deno.serve(async (request: Request) => {
 
   try {
     const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
-    if (asText(body.action, 80) !== "user.qa.mutations") {
+    const action = asText(body.action, 80);
+    if (!["user.qa.mutations","user.qa.fixture.prepare","user.qa.fixture.cleanup","user.qa.browser-run.record"].includes(action)) {
       throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的 QA 操作。");
     }
     const surface = asText(body.surface, 20) as Surface;
@@ -796,6 +1082,19 @@ Deno.serve(async (request: Request) => {
       throw error;
     }
     if (identity.isTestAccount !== true) throw new ApiError(403, "TEST_ACCOUNT_REQUIRED", "此功能只允許測試帳號使用。");
+
+    if (action === "user.qa.fixture.prepare") {
+      const fixture = await prepareHumanFixture(s, identity, surface);
+      return reply(origin, { ok: true, status: 200, data: { surface, ...fixture } });
+    }
+    if (action === "user.qa.fixture.cleanup") {
+      const cleanup = await cleanupHumanFixture(s, identity, surface, body);
+      return reply(origin, { ok: true, status: 200, data: { surface, ...cleanup } });
+    }
+    if (action === "user.qa.browser-run.record") {
+      const record = await persistBrowserQaRun(s, identity, surface, body.cases);
+      return reply(origin, { ok: true, status: 200, data: { surface, ...record } });
+    }
 
     const cases = await runSurfaceCases(s, identity, token, surface);
     const recordedRun = await persistUserQaRun(s, identity, surface, cases);

@@ -352,4 +352,5 @@
     els.retryButton.classList.toggle('hidden', membershipRequired);
     setView('error');
   }
+  window.MemberClientQaHooks = Object.freeze({ surface: 'calendar', refresh: () => loadCalendar() });
 })();
