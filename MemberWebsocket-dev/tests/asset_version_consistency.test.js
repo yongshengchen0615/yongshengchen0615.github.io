@@ -99,7 +99,7 @@ test('calendar date fix keeps native date inputs shrinkable in LINE WebView', ()
 test('member-facing pages load the current human E2E controller and refresh hooks', () => {
   for (const relative of ['member/index.html','points/index.html','event/index.html','calendar/index.html','booking/index.html']) {
     const html = read(relative);
-    assert.ok(html.includes('../user-test-control.js?v=human-e2e-20260921-11'), relative);
+    assert.ok(html.includes('../user-test-control.js?v=human-e2e-20260921-12'), relative);
   }
   for (const relative of ['points/index.html','event/index.html','calendar/index.html','booking/index.html']) {
     const html = read(relative);

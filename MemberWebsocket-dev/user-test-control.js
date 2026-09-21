@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.9';
+  const VERSION = '2026-09-21.10';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1260,7 +1260,8 @@
 
   async function buttonCoverageCase() {
     const qaPanel = state.panel;
-    const buttons = Array.from(document.querySelectorAll('button')).filter((button) => !qaPanel?.contains(button));
+    const qaInfrastructureControls = [LAUNCHER_ID].filter((id) => document.getElementById(id));
+    const buttons = Array.from(document.querySelectorAll('button')).filter((button) => !qaPanel?.contains(button) && button.id !== LAUNCHER_ID);
     const navigationIds = new Set(['retryButton','logoutButton','joinMemberButton','refreshProfileButton','refreshTicketButton']);
     const patterns = {
       member: /^(edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker)/,
@@ -1282,7 +1283,7 @@
       if (pattern && pattern.test([button.id, button.className, (button.textContent || '').trim()].join(' '))) mapped.push(signature);
       else unmapped.push(signature);
     }
-    const actual = { totalButtons: buttons.length, mappedFunctional: mapped.length, navigationSessionControls: navigation, unmapped };
+    const actual = { totalButtons: buttons.length, mappedFunctional: mapped.length, navigationSessionControls: navigation, qaInfrastructureControls, unmapped };
     return unmapped.length === 0
       ? pass('目前頁面的功能按鈕都已納入真人操作劇本或明確列為會中斷 Session 的導覽控制。', { unmapped: [] }, actual)
       : fail('發現尚未納入測試劇本的新按鈕，完整測試需補案例。', { unmapped: [] }, actual);

@@ -331,6 +331,8 @@ test('full user test mode drives real UI flows on every member-facing surface', 
   assert.match(controller, /申請取消/);
   assert.match(controller, /bookingPartySize/);
   assert.match(controller, /user\.qa\.browser-run\.record/);
+  assert.match(controller, /button\.id !== LAUNCHER_ID/);
+  assert.match(controller, /qaInfrastructureControls/);
 });
 
 test('human E2E fixtures are test-account-only, ownership checked and cleanup-capable', () => {
