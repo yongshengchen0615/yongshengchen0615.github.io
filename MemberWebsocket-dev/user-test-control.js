@@ -53,6 +53,7 @@
     currentSuite: 'quick',
     results: [],
     bootstrap: null,
+    mutationSuite: null,
     launcher: null,
     panel: null
   };
@@ -360,6 +361,7 @@
     state.currentSuite = suite === 'full' ? 'full' : 'quick';
     state.results = [];
     state.bootstrap = null;
+    state.mutationSuite = null;
     state.cancelled = false;
     setRunning(true);
     setStatus('執行中');
@@ -433,29 +435,35 @@
       member: [
         caseDef('會員資料完整性', 'Member', memberProfileCase),
         caseDef('稱呼／生日／電話編輯視窗', 'UI', memberModalCase),
-        caseDef('會員資料寫入驗證邊界', 'Validation', memberInvalidWriteCase)
+        caseDef('會員資料寫入驗證邊界', 'Validation', memberInvalidWriteCase),
+        caseDef('會員資料成功寫入與還原', 'Mutation QA', () => mutationQaCase('MEMBER_PROFILE_WRITE'))
       ],
       points: [
         caseDef('集點卡／票券資料結構', 'Points', pointsDataCase),
         caseDef('票券使用共用設定', 'Points', pointSettingsCase),
         caseDef('集點卡切換互動', 'UI', pointsInteractionCase),
-        caseDef('票券核銷輸入驗證', 'Validation', pointsInvalidWriteCase)
+        caseDef('票券核銷輸入驗證', 'Validation', pointsInvalidWriteCase),
+        caseDef('集點票券單筆／批次核銷成功與清理', 'Mutation QA', () => mutationQaCase('POINT_TICKET_WRITE'))
       ],
       event: [
         caseDef('活動票券領取／使用狀態', 'Tickets', eventDataCase),
         caseDef('票券詳情 Modal', 'UI', eventModalCase),
-        caseDef('領券與核銷輸入驗證', 'Validation', eventInvalidWriteCase)
+        caseDef('領券與核銷輸入驗證', 'Validation', eventInvalidWriteCase),
+        caseDef('活動票券領取／核銷成功與清理', 'Mutation QA', () => mutationQaCase('EVENT_TICKET_WRITE'))
       ],
       calendar: [
         caseDef('指定日期明細 API', 'Calendar', calendarDetailApiCase),
         caseDef('月曆月份切換互動', 'UI', calendarNavigationCase),
-        caseDef('日期輸入驗證邊界', 'Validation', calendarInvalidDateCase)
+        caseDef('日期輸入驗證邊界', 'Validation', calendarInvalidDateCase),
+        caseDef('日曆寫入權限邊界', 'Mutation QA', () => mutationQaCase('CALENDAR_READ_ONLY'))
       ],
       booking: [
         caseDef('會員與預約 Bootstrap 一致性', 'Booking', bookingDataCase),
         caseDef('多人預約資源 Bootstrap', 'Booking', bookingGroupBootstrapCase),
         caseDef('預約表單安全初始狀態', 'UI', bookingFormCase),
-        caseDef('新增／修改／取消輸入驗證', 'Validation', bookingInvalidWriteCase)
+        caseDef('新增／修改／取消輸入驗證', 'Validation', bookingInvalidWriteCase),
+        caseDef('預約新增／修改／取消成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_WRITE')),
+        caseDef('多人預約新增／修改成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_GROUP_WRITE'))
       ]
     };
     return common.concat(fullCommon, surfaceCases[surface] || []);
@@ -920,6 +928,70 @@
     return ok
       ? pass('新增、修改、取消與多人預約都會在無效輸入階段拒絕，不建立資料。', { createRejected: true, updateRejected: true, cancelRejected: true, groupRejected: true }, { create, update, cancel, group })
       : fail('至少一個預約寫入操作沒有在預期的驗證邊界拒絕。', { createRejected: true, updateRejected: true, cancelRejected: true, groupRejected: true }, { create, update, cancel, group });
+  }
+
+  async function loadMutationSuite() {
+    if (state.mutationSuite) return state.mutationSuite;
+    const config = await loadConfig();
+    const endpoint = String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/user-test-api';
+    const payload = window.TestModeClient.payload({
+      action: 'user.qa.mutations',
+      surface,
+      idToken: ''
+    });
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 60000);
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: String(config.supabasePublishableKey || '')
+        },
+        cache: 'no-store',
+        signal: controller.signal,
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      const wrapped = new Error(error && error.name === 'AbortError'
+        ? '成功寫入 QA 執行逾時。'
+        : '無法連線成功寫入 QA 服務。');
+      wrapped.code = error && error.name === 'AbortError' ? 'QA_TIMEOUT' : 'QA_NETWORK_ERROR';
+      throw wrapped;
+    } finally {
+      window.clearTimeout(timer);
+    }
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data || data.ok !== true) {
+      const wrapped = new Error(data && data.error && data.error.message || '成功寫入 QA 被拒絕。');
+      wrapped.code = String(data && data.error && data.error.code || 'QA_API_ERROR');
+      throw wrapped;
+    }
+    state.mutationSuite = data.data || {};
+    return state.mutationSuite;
+  }
+
+  async function mutationQaCase(caseKey) {
+    const suite = await loadMutationSuite();
+    const cases = Array.isArray(suite.cases) ? suite.cases : [];
+    const item = cases.find((entry) => entry && entry.key === caseKey);
+    if (!item) {
+      return fail(
+        '成功寫入 QA 沒有回傳此案例。',
+        { caseKey, returned: true },
+        { caseKey, returned: false }
+      );
+    }
+    const expected = item.expected && typeof item.expected === 'object' ? item.expected : {};
+    const actual = item.actual && typeof item.actual === 'object' ? item.actual : {};
+    if (item.status === 'skipped') return skip(String(item.message || '此案例略過。'), expected, actual);
+    if (item.status === 'passed') return pass(String(item.message || '成功寫入與清理完成。'), expected, actual);
+    return fail(
+      String(item.message || '成功寫入或清理失敗。'),
+      expected,
+      Object.assign({}, actual, { serverCase: caseKey })
+    );
   }
 
   function saveHistory() {
