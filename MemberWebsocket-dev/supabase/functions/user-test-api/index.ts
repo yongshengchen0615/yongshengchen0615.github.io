@@ -673,7 +673,6 @@ Deno.serve(async (request: Request) => {
       status: 200,
       data: {
         surface,
-        memberId: identity.memberId,
         cases,
       },
     });
