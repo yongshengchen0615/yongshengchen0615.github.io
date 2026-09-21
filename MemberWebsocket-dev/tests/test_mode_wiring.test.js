@@ -286,3 +286,17 @@ test('test member numbering resets to 1 only after every test account is removed
   assert.match(migration, /setval\('public\.test_member_sequence', 1, false\)/);
   assert.match(migration, /nextval\('public\.test_member_sequence'\)/);
 });
+
+test('user QA panel stays observable without covering the real client and can be minimized', () => {
+  const controller = read('user-test-control.js');
+  const css = read('user-test-control.css');
+  assert.match(controller, /aria-modal', 'false'/);
+  assert.match(controller, /data-qa-minimize/);
+  assert.match(controller, /togglePanelMinimized/);
+  assert.match(controller, /與真人相同的登入、API、權限與前端互動流程/);
+  assert.doesNotMatch(controller, /document\.documentElement\.classList\.toggle\('user-qa-open'/);
+  assert.match(css, /pointer-events:none/);
+  assert.match(css, /resize:both/);
+  assert.match(css, /\.user-qa-panel\.is-minimized/);
+  assert.doesNotMatch(css, /backdrop-filter:blur\(5px\)/);
+});
