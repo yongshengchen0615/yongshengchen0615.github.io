@@ -107,6 +107,15 @@
     }
   }
 
+  async function sessionStatus(config) {
+    const token = getSessionToken();
+    if (!token) return null;
+    const result = await post(config, { action: 'session.status', testSessionToken: token });
+    activeSessionToken = token;
+    announceSessionReady();
+    return result;
+  }
+
   function maintenanceError(message) {
     return clientError('SYSTEM_MAINTENANCE', String(message || '').trim() || '系統維護中，請稍後再試。', 503);
   }
@@ -270,6 +279,7 @@
     getSessionToken,
     clearSession,
     status,
+    sessionStatus,
     isMobileDevice
   });
 })();
