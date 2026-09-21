@@ -879,6 +879,9 @@
     els.bookingDate.value = booking.bookingDate;
     renderServices();
     applySelectionConstraints(false);
+    state.selectedSlot = booking.startTime
+      ? { startTime: String(booking.startTime), endTime: String(booking.endTime || '') }
+      : null;
     updateEditingLabel();
     window.dispatchEvent(new CustomEvent('booking:edit', { detail: { date: els.bookingDate.value } }));
     showFormMessage('修改後將重新等待管理端確認，原預約會保留至修改成功。已停用的項目需重新選擇。', 'success');
