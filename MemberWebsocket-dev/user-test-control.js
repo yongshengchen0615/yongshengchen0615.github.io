@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.5';
+  const VERSION = '2026-09-21.6';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -97,7 +97,8 @@
     const out = {};
     const blocked = /^(?:.*token.*|.*secret.*|password|phone|birthday|lineuserid|line_user_id|surname|displayname)$/i;
     Object.entries(value).slice(0, 40).forEach(([key, item]) => {
-      if (blocked.test(key)) {
+      const sensitiveScalar = blocked.test(key) && (item === null || ['string', 'number', 'bigint'].includes(typeof item));
+      if (sensitiveScalar) {
         out[key] = '[redacted]';
         return;
       }
@@ -647,6 +648,16 @@
       : fail('測試會員個人資料不完整，可能造成其他用戶端功能異常。', { memberCodePresent: true, profileComplete: true, honorificComplete: true, birthdayPresent: true, phonePresent: true }, actual);
   }
 
+  async function waitForModalState(modal, shouldBeOpen, timeoutMs) {
+    const deadline = performance.now() + Math.max(100, Number(timeoutMs) || 1000);
+    while (performance.now() < deadline) {
+      const isOpen = !modal.classList.contains('hidden');
+      if (isOpen === shouldBeOpen) return true;
+      await wait(25);
+    }
+    return (!modal.classList.contains('hidden')) === shouldBeOpen;
+  }
+
   async function clickModalPair(openId, modalId, closeId) {
     const open = document.getElementById(openId);
     const modal = document.getElementById(modalId);
@@ -654,11 +665,11 @@
     if (!open || !modal || !close) return { ok: false, reason: 'missing-element' };
     const initiallyHidden = modal.classList.contains('hidden');
     open.click();
-    await wait(60);
-    const opened = !modal.classList.contains('hidden');
-    close.click();
-    await wait(40);
-    const closed = modal.classList.contains('hidden');
+    const opened = await waitForModalState(modal, true, 1500);
+    if (opened) close.click();
+    const closed = opened
+      ? await waitForModalState(modal, false, 1000)
+      : modal.classList.contains('hidden');
     return { ok: initiallyHidden && opened && closed, initiallyHidden, opened, closed };
   }
 
