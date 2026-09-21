@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.1';
+  const VERSION = '2026-09-21.2';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -671,10 +671,28 @@
   }
 
   async function memberInvalidWriteCase() {
-    const checked = await expectApiError('user.member.profile.save', { birthday: 'not-a-date', phone: 'x' }, ['INVALID_BIRTHDAY', 'INVALID_']);
-    return checked.ok
-      ? pass('會員資料寫入 API 正確拒絕無效生日／電話，未執行資料修改。', { rejected: true }, checked)
-      : fail('會員資料寫入驗證沒有依預期拒絕無效輸入。', { rejected: true }, checked);
+    const contact = await expectApiError(
+      'user.member.profile.save',
+      { birthday: 'not-a-date', phone: 'x' },
+      ['INVALID_BIRTHDAY', 'INVALID_PHONE', 'INVALID_']
+    );
+    const honorific = await expectApiError(
+      'user.member.profile.save',
+      { surname: '', salutation: 'invalid' },
+      ['INVALID_SURNAME', 'INVALID_SALUTATION', 'INVALID_']
+    );
+    const ok = contact.ok && honorific.ok;
+    return ok
+      ? pass(
+          '會員資料 API 會拒絕無效生日、電話、姓氏與稱謂，不執行資料修改。',
+          { contactRejected: true, honorificRejected: true },
+          { contact, honorific }
+        )
+      : fail(
+          '會員資料寫入驗證沒有完整拒絕無效輸入。',
+          { contactRejected: true, honorificRejected: true },
+          { contact, honorific }
+        );
   }
 
   async function pointsDataCase() {
