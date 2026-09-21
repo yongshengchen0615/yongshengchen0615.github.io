@@ -1,22 +1,20 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { readJsonObject } from "../_shared/request-body.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 
-type Json = Record<string, any>;
+type Json = Record<string, unknown>;
 type Surface = "member" | "points" | "event" | "calendar" | "booking";
-type QaStatus = "passed" | "failed" | "skipped";
 type QaCase = {
   key: string;
-  name: string;
-  status: QaStatus;
+  status: "passed" | "failed" | "skipped";
   message: string;
   expected: Json;
   actual: Json;
-  durationMs: number;
 };
 
-const MAX_REQUEST_BYTES = 12_000;
+const MAX_REQUEST_BYTES = 20_000;
 const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
-const QA_PREFIX = "QA";
+const SURFACES = new Set<Surface>(["member","points","event","calendar","booking"]);
 
 class ApiError extends Error {
   status: number;
@@ -34,7 +32,7 @@ function env(name: string): string {
   return (Deno.env.get(name) || "").trim();
 }
 
-function asText(value: unknown, max = 500): string {
+function asText(value: unknown, max = 1000): string {
   return String(value ?? "").trim().slice(0, max);
 }
 
@@ -43,9 +41,10 @@ function allowedOrigins(): Set<string> {
     .split(",").map((value) => value.trim()).filter(Boolean));
 }
 
-function cors(origin: string | null): HeadersInit {
+function corsHeaders(origin: string | null): HeadersInit {
+  const resolved = origin && allowedOrigins().has(origin) ? origin : "";
   return {
-    "Access-Control-Allow-Origin": origin && allowedOrigins().has(origin) ? origin : "",
+    "Access-Control-Allow-Origin": resolved,
     "Access-Control-Allow-Headers": "content-type, apikey",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Access-Control-Max-Age": "86400",
@@ -57,574 +56,618 @@ function cors(origin: string | null): HeadersInit {
 function reply(origin: string | null, payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...cors(origin), "Content-Type": "application/json; charset=utf-8" },
+    headers: { ...corsHeaders(origin), "Content-Type": "application/json; charset=utf-8" },
   });
+}
+
+function failReply(origin: string | null, error: unknown): Response {
+  const e = error instanceof ApiError
+    ? error
+    : new ApiError(500, "USER_QA_ERROR", "用戶端自動化測試服務暫時無法完成操作。");
+  return reply(origin, {
+    ok: false,
+    status: e.status,
+    error: { code: e.code, message: e.message, details: e.details },
+  }, e.status);
 }
 
 function db() {
   const url = env("SUPABASE_URL");
   const key = env("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !key) throw new ApiError(503, "SUPABASE_CONFIG_MISSING", "QA server 設定尚未完成。");
+  if (!url || !key) throw new ApiError(503, "SUPABASE_CONFIG_MISSING", "Supabase server 設定尚未完成。");
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-async function bodyJson(request: Request): Promise<Json> {
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > MAX_REQUEST_BYTES) {
-    throw new ApiError(413, "REQUEST_TOO_LARGE", "測試請求內容過大。");
-  }
-  try {
-    const parsed = JSON.parse(raw || "{}");
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-    return parsed;
-  } catch {
-    throw new ApiError(400, "INVALID_JSON", "測試請求必須是 JSON object。");
-  }
+function passed(key: string, message: string, expected: Json, actual: Json): QaCase {
+  return { key, status: "passed", message, expected, actual };
 }
 
-function errorResponse(origin: string | null, error: unknown): Response {
-  let e: ApiError;
-  if (error instanceof ApiError) e = error;
-  else if (error instanceof TestModeAuthError) e = new ApiError(error.status, error.code, error.message);
-  else e = new ApiError(500, "USER_QA_ERROR", "用戶端自動化測試服務暫時無法完成操作。");
-  return reply(origin, { ok: false, status: e.status, error: { code: e.code, message: e.message, details: e.details } }, e.status);
+function failed(key: string, message: string, expected: Json, actual: Json): QaCase {
+  return { key, status: "failed", message, expected, actual };
 }
 
-function safeError(error: unknown): Json {
+function skipped(key: string, message: string, expected: Json, actual: Json): QaCase {
+  return { key, status: "skipped", message, expected, actual };
+}
+
+function suffix(): string {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 16).toUpperCase();
+}
+
+function isoDateAdd(date: string, days: number): string {
+  const parsed = new Date(date + "T00:00:00Z");
+  if (!Number.isFinite(parsed.getTime())) throw new ApiError(500, "INVALID_SERVER_DATE", "伺服器日期格式異常。");
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+async function callFunction(slug: string, token: string, body: Json): Promise<{ status: number; ok: boolean; data: Json; error: Json }> {
+  const url = env("SUPABASE_URL");
+  const key = env("SUPABASE_SERVICE_ROLE_KEY");
+  const response = await fetch(url + "/functions/v1/" + slug, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: key },
+    body: JSON.stringify({ ...body, testSessionToken: token, idToken: "" }),
+  });
+  const text = await response.text();
+  let payload: any = {};
+  try { payload = JSON.parse(text || "{}"); } catch {}
   return {
-    code: asText((error as any)?.code || (error as any)?.name || "ERROR", 100),
-    message: asText((error as any)?.message || "未知錯誤", 300),
+    status: response.status,
+    ok: response.ok && payload?.ok === true,
+    data: payload?.data && typeof payload.data === "object" ? payload.data : {},
+    error: payload?.error && typeof payload.error === "object" ? payload.error : {},
   };
 }
 
-function qaId(kind: string): string {
-  return `${QA_PREFIX}-${kind}-${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+function functionError(result: { status: number; error: Json }, fallback: string): ApiError {
+  return new ApiError(
+    result.status || 500,
+    asText(result.error.code, 120) || "DOWNSTREAM_ERROR",
+    asText(result.error.message, 500) || fallback,
+    result.error.details ?? null,
+  );
 }
 
-function isoDateTaipei(offsetDays = 0): string {
-  const now = new Date(Date.now() + 8 * 60 * 60 * 1000);
-  now.setUTCDate(now.getUTCDate() + offsetDays);
-  return now.toISOString().slice(0, 10);
+async function cleanupBooking(s: any, bookingId: string): Promise<boolean> {
+  if (!bookingId) return true;
+  await s.from("booking_completion_settlements").delete().eq("booking_id", bookingId);
+  await s.from("booking_audit_events").delete().eq("target_id", bookingId);
+  const deleted = await s.from("bookings").delete().eq("id", bookingId);
+  if (deleted.error) return false;
+  const check = await s.from("bookings").select("id").eq("id", bookingId).maybeSingle();
+  return !check.error && !check.data;
 }
 
-function addDays(date: string, days: number): string {
-  const value = new Date(date + "T00:00:00Z");
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-}
+async function memberProfileWrite(s: any, identity: any, token: string): Promise<QaCase> {
+  const key = "MEMBER_PROFILE_WRITE";
+  const expected = { writeSucceeded: true, persisted: true, restored: true };
+  const beforeResult = await s.from("members")
+    .select("birthday,phone,updated_at")
+    .eq("id", identity.memberId)
+    .maybeSingle();
+  if (beforeResult.error || !beforeResult.data) {
+    return failed(key, "無法取得測試會員原始資料。", expected, { writeSucceeded: false, persisted: false, restored: false });
+  }
 
-async function invoke(slug: string, token: string, payload: Json): Promise<Json> {
-  const url = env("SUPABASE_URL");
-  const gatewayKey = env("SUPABASE_ANON_KEY") || env("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !gatewayKey) throw new ApiError(503, "SUPABASE_CONFIG_MISSING", "QA server 無法呼叫既有 API。");
-  let response: Response;
+  const before = beforeResult.data;
+  const nextBirthday = String(before.birthday || "") === "1990-01-15" ? "1991-02-16" : "1990-01-15";
+  const nextPhone = String(before.phone || "") === "+886900000001" ? "+886900000002" : "+886900000001";
+  let writeSucceeded = false;
+  let persisted = false;
+  let restored = false;
+  let downstreamCode = "";
+
   try {
-    response = await fetch(`${url.replace(/\/$/, "")}/functions/v1/${slug}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: gatewayKey },
-      body: JSON.stringify({ ...payload, idToken: "", testSessionToken: token }),
+    const write = await callFunction("member-profile-api", token, {
+      action: "user.member.profile.save",
+      clientType: "member",
+      birthday: nextBirthday,
+      phone: nextPhone,
     });
-  } catch {
-    throw new ApiError(503, "QA_API_UNAVAILABLE", `${slug} 無法連線。`);
+    writeSucceeded = write.ok;
+    downstreamCode = asText(write.error.code, 120);
+    if (write.ok) {
+      const verify = await s.from("members").select("birthday,phone").eq("id", identity.memberId).maybeSingle();
+      persisted = !verify.error
+        && String(verify.data?.birthday || "") === nextBirthday
+        && String(verify.data?.phone || "") === nextPhone;
+    }
+  } finally {
+    const restore = await s.from("members").update({
+      birthday: before.birthday,
+      phone: before.phone,
+      updated_at: before.updated_at,
+    }).eq("id", identity.memberId);
+    if (!restore.error) {
+      const check = await s.from("members").select("birthday,phone").eq("id", identity.memberId).maybeSingle();
+      restored = !check.error
+        && String(check.data?.birthday || "") === String(before.birthday || "")
+        && String(check.data?.phone || "") === String(before.phone || "");
+    }
   }
-  let data: any = null;
-  try { data = await response.json(); } catch {}
-  if (!response.ok || !data || data.ok !== true) {
-    throw new ApiError(
-      Number(data?.status || response.status || 500),
-      asText(data?.error?.code || "QA_API_ERROR", 120),
-      asText(data?.error?.message || `${slug} 拒絕測試請求。`, 400),
-      data?.error?.details || null,
-    );
-  }
-  return data.data || {};
+
+  const actual = { writeSucceeded, persisted, restored, downstreamCode };
+  return writeSucceeded && persisted && restored
+    ? passed(key, "會員資料已透過正式 API 寫入、驗證並還原。", expected, actual)
+    : failed(key, "會員資料成功寫入或還原驗證失敗。", expected, actual);
 }
 
-async function runCase(key: string, name: string, fn: () => Promise<{ message: string; expected?: Json; actual?: Json; skipped?: boolean }>): Promise<QaCase> {
-  const started = performance.now();
+async function pointTicketWrite(s: any, identity: any, token: string): Promise<QaCase> {
+  const key = "POINT_TICKET_WRITE";
+  const expected = { singleRedeem: true, batchRedeem: true, finalBalance: 0, cleanup: true };
+  const tag = suffix();
+  let cardId = "";
+  let ticket1 = "";
+  let ticket2 = "";
+  let singleRedeem = false;
+  let batchRedeem = false;
+  let finalBalance = -1;
+  let cleanup = false;
+  let errorCode = "";
+
   try {
-    const result = await fn();
-    return {
-      key, name,
-      status: result.skipped ? "skipped" : "passed",
-      message: result.message,
-      expected: result.expected || {},
-      actual: result.actual || {},
-      durationMs: Math.max(0, Math.round(performance.now() - started)),
-    };
-  } catch (error) {
-    return {
-      key, name, status: "failed",
-      message: "成功路徑或資料還原失敗。",
-      expected: { success: true, cleanup: true },
-      actual: { success: false, error: safeError(error) },
-      durationMs: Math.max(0, Math.round(performance.now() - started)),
-    };
-  }
-}
+    const card = await s.from("point_cards").insert({
+      card_id: "QA-PC-" + tag,
+      title: "QA 自動化測試卡",
+      description: "Temporary automated QA card",
+      status: "active",
+      accent: "#5f7769",
+      style_key: "forest",
+      expiry_mode: "unlimited",
+      sort_order: 999999,
+      usage_method: "QA only",
+      usage_instructions: "Temporary automated QA record",
+      benefit_description: "QA only",
+      created_by: "qa:" + identity.lineUserId,
+      updated_by: "qa:" + identity.lineUserId,
+    }).select("id").single();
+    if (card.error || !card.data) throw new ApiError(500, "QA_POINT_CARD_CREATE_FAILED", "無法建立臨時 QA 集點卡。");
+    cardId = String(card.data.id);
 
-async function cleanupAudit(s: any, lineUserId: string, startedAt: string, targetIds: string[] = []): Promise<void> {
-  let query = s.from("audit_logs").delete().eq("actor_line_user_id", lineUserId).gte("created_at", startedAt);
-  if (targetIds.length) query = query.in("target_id", targetIds);
-  const result = await query;
-  if (result.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA audit_logs。");
-}
+    const balance = await s.from("point_balances").insert({
+      member_id: identity.memberId,
+      point_card_id: cardId,
+      stamps: 2,
+    });
+    if (balance.error) throw new ApiError(500, "QA_POINT_BALANCE_CREATE_FAILED", "無法建立臨時 QA 點數。");
 
-async function memberMutationCase(s: any, identity: any, token: string): Promise<QaCase> {
-  return runCase("MEMBER_PROFILE_WRITE", "會員資料成功寫入與還原", async () => {
-    const startedAt = new Date().toISOString();
-    const snapshot = await s.from("members").select("id,salutation").eq("id", identity.memberId).single();
-    if (snapshot.error || !snapshot.data) throw new ApiError(500, "QA_MEMBER_SNAPSHOT_FAILED", "無法建立會員資料快照。");
-    const original = snapshot.data.salutation ?? null;
-    const next = original === "mr" ? "ms" : "mr";
-    let writeOk = false;
-    let cleanupOk = false;
-    try {
-      const result = await invoke("member-profile-api", token, {
-        action: "user.member.profile.save",
-        clientType: "member",
-        salutation: next,
-      });
-      writeOk = result?.profile?.salutation === next;
-      if (!writeOk) throw new ApiError(500, "QA_MEMBER_WRITE_VERIFY_FAILED", "會員資料寫入後未讀到預期值。");
-      return {
-        message: "實際呼叫會員資料儲存 API 成功，並在案例結束後還原原值。",
-        expected: { updated: true, restored: true },
-        actual: { updated: writeOk, restored: true },
-      };
-    } finally {
-      const restored = await s.from("members").update({ salutation: original, updated_at: new Date().toISOString() }).eq("id", identity.memberId);
-      if (restored.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "會員稱謂還原失敗。");
-      await cleanupAudit(s, identity.lineUserId, startedAt, [identity.lineUserId]);
-      cleanupOk = true;
-      if (writeOk && !cleanupOk) throw new ApiError(500, "QA_CLEANUP_FAILED", "會員資料測試清理失敗。");
-    }
-  });
-}
-
-async function pointsMutationCase(s: any, identity: any, token: string): Promise<QaCase> {
-  return runCase("POINT_TICKET_WRITE", "集點票券單筆／批次核銷成功與清理", async () => {
-    const startedAt = new Date().toISOString();
-    const cardId = crypto.randomUUID();
-    const cardPublicId = qaId("CARD");
-    const ticket1 = qaId("PT");
-    const ticket2 = qaId("PT");
-    const batchRequest = qaId("REDEEM");
-    let cardCreated = false;
-    try {
-      const card = await s.from("point_cards").insert({
-        id: cardId,
-        card_id: cardPublicId,
-        title: "QA temporary point card",
-        description: "Temporary automated-test fixture",
-        status: "active",
-        accent: "#777777",
-        style_key: "forest",
-        expiry_mode: "unlimited",
-        sort_order: 999999,
-        usage_method: "QA",
-        usage_instructions: "QA",
-        benefit_description: "QA",
-        created_by: "user-test-api",
-        updated_by: "user-test-api",
-      });
-      if (card.error) throw new ApiError(500, "QA_POINT_FIXTURE_FAILED", "無法建立 QA 集點卡。");
-      cardCreated = true;
-
-      const balance = await s.from("point_balances").insert({ member_id: identity.memberId, point_card_id: cardId, stamps: 2 });
-      if (balance.error) throw new ApiError(500, "QA_POINT_FIXTURE_FAILED", "無法建立 QA 點數餘額。");
-
-      const tickets = await s.from("point_tickets").insert([
-        {
-          ticket_id: ticket1, member_id: identity.memberId, point_card_id: cardId,
-          threshold_stamps: 1, ticket_type: "coupon", ticket_title: "QA single redeem",
-          ticket_description: "QA", usage_method: "QA", usage_instructions: "QA", prizes: [], status: "available",
-        },
-        {
-          ticket_id: ticket2, member_id: identity.memberId, point_card_id: cardId,
-          threshold_stamps: 1, ticket_type: "coupon", ticket_title: "QA batch redeem",
-          ticket_description: "QA", usage_method: "QA", usage_instructions: "QA", prizes: [], status: "available",
-        },
-      ]);
-      if (tickets.error) throw new ApiError(500, "QA_POINT_FIXTURE_FAILED", "無法建立 QA 票券。");
-
-      const single = await invoke("api", token, {
-        action: "user.pointcard.ticket.redeem",
-        clientType: "points",
-        ticketId: ticket1,
-      });
-      if (single?.ticket?.status !== "used") throw new ApiError(500, "QA_POINT_SINGLE_VERIFY_FAILED", "單筆核銷沒有變成 used。");
-
-      const batch = await invoke("pointcard-extension-api", token, {
-        operation: "member.redeem",
-        ticketIds: [ticket2],
-        requestId: batchRequest,
-      });
-      const finalBalance = await s.from("point_balances").select("stamps").eq("member_id", identity.memberId).eq("point_card_id", cardId).single();
-      if (finalBalance.error || Number(finalBalance.data?.stamps) !== 0) {
-        throw new ApiError(500, "QA_POINT_BALANCE_VERIFY_FAILED", "核銷後 QA 點數餘額不正確。");
-      }
-      return {
-        message: "單筆核銷與批次核銷都實際成功，QA 卡片／票券／點數／紀錄已清理。",
-        expected: { singleStatus: "used", batchApplied: true, finalStamps: 0, cleanup: true },
-        actual: {
-          singleStatus: single?.ticket?.status || "",
-          batchApplied: Number(batch?.ticketCount || 0) === 1 || Array.isArray(batch?.tickets),
-          finalStamps: Number(finalBalance.data?.stamps || 0),
-          cleanup: true,
-        },
-      };
-    } finally {
-      const qaEntries = await s.from("point_entries").delete().eq("member_id", identity.memberId).eq("point_card_id", cardId);
-      if (qaEntries.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA point_entries。");
-      const qaTickets = await s.from("point_tickets").delete().eq("member_id", identity.memberId).eq("point_card_id", cardId);
-      if (qaTickets.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA point_tickets。");
-      const qaBalance = await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", cardId);
-      if (qaBalance.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA point_balances。");
-      if (cardCreated) {
-        const qaCard = await s.from("point_cards").delete().eq("id", cardId);
-        if (qaCard.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA point_card。");
-      }
-      const audits = await s.from("audit_logs").delete().eq("actor_line_user_id", identity.lineUserId).gte("created_at", startedAt).or(`target_id.eq.${ticket1},target_id.eq.${ticket2},target_id.eq.${batchRequest}`);
-      if (audits.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA 點數 audit。");
-    }
-  });
-}
-
-async function eventMutationCase(s: any, identity: any, token: string): Promise<QaCase> {
-  return runCase("EVENT_TICKET_WRITE", "活動票券領取／核銷成功與清理", async () => {
-    const startedAt = new Date().toISOString();
-    const eventId = crypto.randomUUID();
-    const eventPublicId = qaId("EVENT");
-    let claimId = "";
-    const tier = await s.rpc("current_tier_key", { p_member_id: identity.memberId });
-    if (tier.error || !tier.data) throw new ApiError(500, "QA_TIER_LOOKUP_FAILED", "無法確認測試會員等級。");
-    try {
-      const fixture = await s.from("event_tickets").insert({
-        id: eventId,
-        event_ticket_id: eventPublicId,
-        title: "QA temporary event ticket",
+    ticket1 = "QA-PT-S-" + tag;
+    ticket2 = "QA-PT-B-" + tag;
+    const tickets = await s.from("point_tickets").insert([
+      {
+        ticket_id: ticket1,
+        member_id: identity.memberId,
+        point_card_id: cardId,
+        threshold_stamps: 1,
         ticket_type: "coupon",
-        description: "Temporary automated-test fixture",
+        ticket_title: "QA 單筆核銷",
+        ticket_description: "Temporary QA ticket",
         usage_method: "QA",
         usage_instructions: "QA",
         prizes: [],
-        status: "active",
-        starts_on: isoDateTaipei(-1),
-        ends_on: isoDateTaipei(1),
-        quota: 1,
-        accent: "#777777",
-        allowed_tier_keys: [String(tier.data)],
-        created_by: "user-test-api",
-        updated_by: "user-test-api",
-      });
-      if (fixture.error) throw new ApiError(500, "QA_EVENT_FIXTURE_FAILED", "無法建立 QA 活動票券。");
+        status: "available",
+      },
+      {
+        ticket_id: ticket2,
+        member_id: identity.memberId,
+        point_card_id: cardId,
+        threshold_stamps: 1,
+        ticket_type: "coupon",
+        ticket_title: "QA 批次核銷",
+        ticket_description: "Temporary QA ticket",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "available",
+      },
+    ]);
+    if (tickets.error) throw new ApiError(500, "QA_POINT_TICKET_CREATE_FAILED", "無法建立臨時 QA 票券。");
 
-      const claimed = await invoke("api", token, {
-        action: "user.event.ticket.claim",
-        clientType: "event",
-        eventTicketId: eventPublicId,
-      });
-      claimId = asText(claimed?.ticket?.claimId || claimed?.ticket?.claim_id, 120);
-      if (!claimId || claimed?.ticket?.status !== "claimed") {
-        throw new ApiError(500, "QA_EVENT_CLAIM_VERIFY_FAILED", "活動票券領取結果不正確。");
-      }
-
-      const redeemed = await invoke("api", token, {
-        action: "user.event.ticket.redeem",
-        clientType: "event",
-        claimId,
-      });
-      if (redeemed?.ticket?.status !== "used") throw new ApiError(500, "QA_EVENT_REDEEM_VERIFY_FAILED", "活動票券核銷後未變成 used。");
-
-      return {
-        message: "活動票券領取與核銷都經由正式 API 成功，QA claim/event/audit 已清理。",
-        expected: { claimed: true, used: true, cleanup: true },
-        actual: { claimed: true, used: redeemed?.ticket?.status === "used", cleanup: true },
-      };
-    } finally {
-      const claims = await s.from("event_ticket_claims").delete().eq("event_ticket_id", eventId).eq("member_id", identity.memberId);
-      if (claims.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA event claims。");
-      const event = await s.from("event_tickets").delete().eq("id", eventId);
-      if (event.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA event fixture。");
-      let audits = s.from("audit_logs").delete().eq("actor_line_user_id", identity.lineUserId).gte("created_at", startedAt);
-      if (claimId) audits = audits.or(`target_id.eq.${eventPublicId},target_id.eq.${claimId}`);
-      else audits = audits.eq("target_id", eventPublicId);
-      const cleaned = await audits;
-      if (cleaned.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA event audit。");
-    }
-  });
-}
-
-async function createTempService(s: any): Promise<{ id: string; title: string }> {
-  const id = crypto.randomUUID();
-  const title = qaId("SERVICE");
-  const result = await s.from("booking_services").insert({
-    id,
-    title,
-    description: "__TYPE__:QA",
-    work_start_time: "09:00:00",
-    work_end_time: "17:00:00",
-    slot_minutes: 30,
-    min_advance_days: 0,
-    available_weekdays: [0,1,2,3,4,5,6],
-    is_active: true,
-    created_by: "user-test-api",
-    duration_minutes: 30,
-    price_amount: 1,
-    service_type: "QA",
-    counts_toward_membership: false,
-    requires_companion_service: false,
-  });
-  if (result.error) throw new ApiError(500, "QA_BOOKING_FIXTURE_FAILED", "無法建立 QA 預約項目。");
-  return { id, title };
-}
-
-async function findBaseSlot(token: string, serviceId: string, settings: any): Promise<{ date: string; startTime: string } | null> {
-  const minAdvance = Math.max(0, Number(settings?.minAdvanceDays ?? settings?.min_advance_days ?? 0));
-  const maxAdvance = Math.max(0, Number(settings?.maxAdvanceDays ?? settings?.max_advance_days ?? 0));
-  const today = isoDateTaipei(0);
-  const first = addDays(today, Math.max(1, minAdvance));
-  const maxTries = maxAdvance > 0 ? Math.max(1, Math.min(10, maxAdvance - Math.max(1, minAdvance) + 1)) : 10;
-  for (let i = 0; i < maxTries; i += 1) {
-    const date = addDays(first, i);
-    const result = await invoke("booking-api", token, {
-      action: "user.booking.slots",
-      clientType: "member",
-      bookingDate: date,
-      items: [{ serviceId, quantity: 1 }],
+    const single = await callFunction("api", token, {
+      action: "user.pointcard.ticket.redeem",
+      clientType: "points",
+      ticketId: ticket1,
     });
-    const slot = Array.isArray(result?.slots) ? result.slots.find((x: any) => x?.available) : null;
-    if (slot?.startTime) return { date, startTime: String(slot.startTime).slice(0, 5) };
-  }
-  return null;
-}
+    singleRedeem = single.ok;
+    if (!single.ok) throw functionError(single, "單筆票券核銷失敗。");
 
-async function bookingMutationCase(s: any, identity: any, token: string): Promise<QaCase> {
-  return runCase("BOOKING_WRITE", "預約新增／修改／取消成功與清理", async () => {
-    const startedAt = new Date().toISOString();
-    const service = await createTempService(s);
-    let bookingId = "";
-    try {
-      const settingsResult = await s.from("booking_settings").select("*").eq("id", 1).single();
-      if (settingsResult.error) throw new ApiError(500, "QA_BOOKING_SETTINGS_FAILED", "無法讀取預約設定。");
-      const slot = await findBaseSlot(token, service.id, settingsResult.data);
-      if (!slot) {
-        return { skipped: true, message: "目前允許的預約區間沒有可用時段，成功寫入案例略過。", expected: { availableSlot: true }, actual: { availableSlot: false } };
-      }
+    const batch = await callFunction("pointcard-extension-api", token, {
+      operation: "member.redeem",
+      ticketIds: [ticket2],
+      requestId: "QA_" + tag,
+    });
+    batchRedeem = batch.ok;
+    if (!batch.ok) throw functionError(batch, "批次票券核銷失敗。");
 
-      const request1 = "BOOK-" + qaId("B").replaceAll("_", "-");
-      const created = await invoke("booking-api", token, {
-        action: "user.booking.create",
-        clientType: "member",
-        requestId: request1,
-        bookingDate: slot.date,
-        startTime: slot.startTime,
-        items: [{ serviceId: service.id, quantity: 1 }],
-        memberNote: "QA create",
-      });
-      bookingId = asText(created?.booking?.bookingId || created?.booking?.id, 80);
-      const updatedAt = asText(created?.booking?.updatedAt || created?.booking?.updated_at, 100);
-      if (!bookingId || !updatedAt) throw new ApiError(500, "QA_BOOKING_CREATE_VERIFY_FAILED", "預約建立後缺少 bookingId/updatedAt。");
-
-      const request2 = "BOOK-" + qaId("U").replaceAll("_", "-");
-      const updated = await invoke("booking-api", token, {
-        action: "user.booking.update",
-        clientType: "member",
-        bookingId,
-        expectedUpdatedAt: updatedAt,
-        requestId: request2,
-        bookingDate: slot.date,
-        startTime: slot.startTime,
-        items: [{ serviceId: service.id, quantity: 1 }],
-        memberNote: "QA update",
-      });
-      if (!updated?.booking) throw new ApiError(500, "QA_BOOKING_UPDATE_VERIFY_FAILED", "預約修改後未回傳 booking。");
-
-      const cancelled = await invoke("booking-api", token, {
-        action: "user.booking.cancel",
-        clientType: "member",
-        bookingId,
-      });
-      if (cancelled?.booking?.status !== "cancel_requested") {
-        throw new ApiError(500, "QA_BOOKING_CANCEL_VERIFY_FAILED", "取消申請後狀態不是 cancel_requested。");
-      }
-
-      return {
-        message: "預約新增、修改、取消申請都經由正式 API 成功，QA booking/service/audit 已清理。",
-        expected: { created: true, updated: true, cancelRequested: true, cleanup: true },
-        actual: { created: true, updated: Boolean(updated?.booking), cancelRequested: true, cleanup: true },
-      };
-    } finally {
-      if (bookingId) {
-        const bookingAudit = await s.from("booking_audit_events").delete().eq("target_id", bookingId);
-        if (bookingAudit.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 booking_audit_events。");
-        const audit = await s.from("audit_logs").delete().eq("actor_line_user_id", identity.lineUserId).gte("created_at", startedAt).eq("target_id", bookingId);
-        if (audit.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 booking audit_logs。");
-        const booking = await s.from("bookings").delete().eq("id", bookingId).eq("member_id", identity.memberId);
-        if (booking.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA booking。");
-      }
-      const svc = await s.from("booking_services").delete().eq("id", service.id);
-      if (svc.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理 QA booking service。");
+    const balanceCheck = await s.from("point_balances")
+      .select("stamps")
+      .eq("member_id", identity.memberId)
+      .eq("point_card_id", cardId)
+      .maybeSingle();
+    if (!balanceCheck.error && balanceCheck.data) finalBalance = Number(balanceCheck.data.stamps);
+  } catch (error) {
+    errorCode = error instanceof ApiError ? error.code : "QA_POINT_WRITE_ERROR";
+  } finally {
+    if (cardId) {
+      await s.from("point_tickets").delete().eq("point_card_id", cardId).eq("member_id", identity.memberId);
+      await s.from("point_entries").delete().eq("point_card_id", cardId).eq("member_id", identity.memberId);
+      await s.from("point_balances").delete().eq("point_card_id", cardId).eq("member_id", identity.memberId);
+      await s.from("point_cards").delete().eq("id", cardId);
+      const check = await s.from("point_cards").select("id").eq("id", cardId).maybeSingle();
+      cleanup = !check.error && !check.data;
     }
-  });
+  }
+
+  const actual = { singleRedeem, batchRedeem, finalBalance, cleanup, errorCode };
+  return singleRedeem && batchRedeem && finalBalance === 0 && cleanup
+    ? passed(key, "臨時集點票券已走過單筆與批次正式核銷流程，並完整清理。", expected, actual)
+    : failed(key, "集點票券成功核銷或清理驗證失敗。", expected, actual);
 }
 
-async function findGroupSlot(token: string, serviceId: string, primaryTechnicianId: string, settings: any): Promise<{ date: string; startTime: string } | null> {
-  const minAdvance = Math.max(0, Number(settings?.minAdvanceDays ?? settings?.min_advance_days ?? 0));
-  const maxAdvance = Math.max(0, Number(settings?.maxAdvanceDays ?? settings?.max_advance_days ?? 0));
-  const today = isoDateTaipei(0);
-  const first = addDays(today, Math.max(1, minAdvance));
-  const maxTries = maxAdvance > 0 ? Math.max(1, Math.min(10, maxAdvance - Math.max(1, minAdvance) + 1)) : 10;
-  const participants = [{ technicianId: primaryTechnicianId, items: [{ serviceId, quantity: 1 }] }];
-  for (let i = 0; i < maxTries; i += 1) {
-    const date = addDays(first, i);
-    const result = await invoke("booking-group-api", token, {
-      action: "user.booking.group.slots",
+async function eventTicketWrite(s: any, identity: any, token: string): Promise<QaCase> {
+  const key = "EVENT_TICKET_WRITE";
+  const expected = { claimed: true, redeemed: true, cleanup: true };
+  const tag = suffix();
+  let rowId = "";
+  let claimId = "";
+  let claimed = false;
+  let redeemed = false;
+  let cleanup = false;
+  let errorCode = "";
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const inserted = await s.from("event_tickets").insert({
+      event_ticket_id: "QA-EVT-" + tag,
+      title: "QA 自動化活動票券",
+      ticket_type: "coupon",
+      description: "Temporary automated QA ticket",
+      usage_method: "QA",
+      usage_instructions: "Temporary automated QA record",
+      prizes: [],
+      status: "active",
+      starts_on: isoDateAdd(today, -1),
+      ends_on: isoDateAdd(today, 1),
+      quota: 10,
+      accent: "#5f7769",
+      allowed_tier_keys: ["general","silver","gold","platinum"],
+      created_by: "qa:" + identity.lineUserId,
+      updated_by: "qa:" + identity.lineUserId,
+    }).select("id,event_ticket_id").single();
+    if (inserted.error || !inserted.data) throw new ApiError(500, "QA_EVENT_CREATE_FAILED", "無法建立臨時 QA 活動票券。");
+    rowId = String(inserted.data.id);
+
+    const claim = await callFunction("api", token, {
+      action: "user.event.ticket.claim",
+      clientType: "event",
+      eventTicketId: inserted.data.event_ticket_id,
+    });
+    claimed = claim.ok;
+    if (!claim.ok) throw functionError(claim, "活動票券領取失敗。");
+
+    const claimRow = await s.from("event_ticket_claims")
+      .select("claim_id,status")
+      .eq("event_ticket_id", rowId)
+      .eq("member_id", identity.memberId)
+      .maybeSingle();
+    if (claimRow.error || !claimRow.data) throw new ApiError(500, "QA_EVENT_CLAIM_MISSING", "領券後找不到 Claim。");
+    claimId = String(claimRow.data.claim_id);
+
+    const redeem = await callFunction("api", token, {
+      action: "user.event.ticket.redeem",
+      clientType: "event",
+      claimId,
+    });
+    redeemed = redeem.ok;
+    if (!redeem.ok) throw functionError(redeem, "活動票券核銷失敗。");
+
+    const verify = await s.from("event_ticket_claims")
+      .select("status,used_at")
+      .eq("claim_id", claimId)
+      .maybeSingle();
+    redeemed = redeemed && !verify.error && verify.data?.status === "used" && Boolean(verify.data?.used_at);
+  } catch (error) {
+    errorCode = error instanceof ApiError ? error.code : "QA_EVENT_WRITE_ERROR";
+  } finally {
+    if (rowId) {
+      await s.from("event_ticket_claims").delete().eq("event_ticket_id", rowId).eq("member_id", identity.memberId);
+      await s.from("calendar_items").delete().eq("source_event_ticket_id", rowId);
+      await s.from("event_tickets").delete().eq("id", rowId);
+      const check = await s.from("event_tickets").select("id").eq("id", rowId).maybeSingle();
+      cleanup = !check.error && !check.data;
+    }
+  }
+
+  const actual = { claimed, redeemed, cleanup, errorCode };
+  return claimed && redeemed && cleanup
+    ? passed(key, "臨時活動票券已完成正式領取、核銷並清理。", expected, actual)
+    : failed(key, "活動票券領取、核銷或清理驗證失敗。", expected, actual);
+}
+
+async function calendarReadOnly(s: any, identity: any, token: string): Promise<QaCase> {
+  const key = "CALENDAR_READ_ONLY";
+  const expected = { testSessionCannotAdminWrite: true, calendarCountUnchanged: true };
+  const before = await s.from("calendar_items").select("*", { count: "exact", head: true });
+  const attempt = await callFunction("api", token, {
+    action: "admin.calendar-items.save",
+    clientType: "admin",
+    calendarItem: {
+      title: "QA SHOULD NOT WRITE",
+      itemType: "event",
+      startsOn: new Date().toISOString().slice(0, 10),
+      status: "active",
+    },
+  });
+  const after = await s.from("calendar_items").select("*", { count: "exact", head: true });
+  const rejected = !attempt.ok && [401,403].includes(attempt.status);
+  const unchanged = !before.error && !after.error && Number(before.count || 0) === Number(after.count || 0);
+  const actual = {
+    testSessionCannotAdminWrite: rejected,
+    httpStatus: attempt.status,
+    errorCode: asText(attempt.error.code, 120),
+    calendarCountUnchanged: unchanged,
+  };
+  return rejected && unchanged
+    ? passed(key, "測試會員 Session 無法越權寫入管理端日曆，資料筆數未改變。", expected, actual)
+    : failed(key, "日曆寫入權限邊界或資料不變性驗證失敗。", expected, actual);
+}
+
+function bookingItems(services: any[]): { items: Json[]; normal: any | null } {
+  const normal = services.find((service: any) =>
+    String(service?.serviceId || "") !== STORE_SERVICE_ID
+    && service?.requiresCompanionService !== true
+    && Number(service?.durationMinutes || 0) > 0
+  ) || null;
+  const store = services.find((service: any) => String(service?.serviceId || "") === STORE_SERVICE_ID) || null;
+  const items: Json[] = [];
+  if (normal) items.push({ serviceId: normal.serviceId, quantity: 1 });
+  if (store) items.push({ serviceId: store.serviceId, quantity: 1 });
+  return { items, normal };
+}
+
+async function findBookingSlot(token: string, slug: string, action: string, itemsOrParticipants: Json, today: string, minDays: number, maxDays: number): Promise<{ date: string; startTime: string }> {
+  const startOffset = Math.max(1, Number.isInteger(minDays) ? minDays : 0);
+  const lastOffset = maxDays > 0 ? Math.min(maxDays, startOffset + 20) : startOffset + 14;
+  for (let offset = startOffset; offset <= lastOffset; offset += 1) {
+    const date = isoDateAdd(today, offset);
+    const response = await callFunction(slug, token, {
+      action,
       clientType: "member",
       bookingDate: date,
+      ...itemsOrParticipants,
+    });
+    if (!response.ok) continue;
+    const slots = Array.isArray((response.data as any).slots) ? (response.data as any).slots : [];
+    const available = slots.find((slot: any) => slot && slot.available === true && /^\d{2}:\d{2}$/.test(String(slot.startTime || "")));
+    if (available) return { date, startTime: String(available.startTime) };
+  }
+  throw new ApiError(409, "QA_NO_BOOKING_SLOT", "目前預約設定找不到可供 QA 使用的安全時段。");
+}
+
+async function bookingWrite(s: any, identity: any, token: string): Promise<QaCase> {
+  const key = "BOOKING_WRITE";
+  const expected = { created: true, updated: true, cancellationRequested: true, cleanup: true };
+  let bookingId = "";
+  let created = false;
+  let updated = false;
+  let cancellationRequested = false;
+  let cleanup = false;
+  let errorCode = "";
+
+  try {
+    const bootstrap = await callFunction("booking-api", token, {
+      action: "user.booking.bootstrap",
+      clientType: "member",
+    });
+    if (!bootstrap.ok) throw functionError(bootstrap, "無法讀取預約 Bootstrap。");
+    const services = Array.isArray((bootstrap.data as any).services) ? (bootstrap.data as any).services : [];
+    const setup = bookingItems(services);
+    if (!setup.normal || !setup.items.length) {
+      return skipped(key, "目前沒有可供自動化測試的主要預約項目。", expected, { created: false, updated: false, cancellationRequested: false, cleanup: true });
+    }
+    const settings: any = (bootstrap.data as any).settings || {};
+    const today = asText((bootstrap.data as any).today, 10);
+    const slot = await findBookingSlot(
+      token,
+      "booking-api",
+      "user.booking.slots",
+      { items: setup.items },
+      today,
+      Number(settings.minAdvanceDays || 0),
+      Number(settings.maxAdvanceDays || 0),
+    );
+
+    const create = await callFunction("booking-api", token, {
+      action: "user.booking.create",
+      clientType: "member",
+      requestId: "BOOK-QA-" + suffix(),
+      bookingDate: slot.date,
+      startTime: slot.startTime,
+      items: setup.items,
+      memberNote: "QA automated create",
+    });
+    if (!create.ok) throw functionError(create, "QA 預約新增失敗。");
+    const booking: any = (create.data as any).booking || {};
+    bookingId = asText(booking.bookingId, 80);
+    created = Boolean(bookingId && booking.status === "pending");
+    if (!created) throw new ApiError(500, "QA_BOOKING_CREATE_VERIFY_FAILED", "新增後預約狀態不符合預期。");
+
+    const update = await callFunction("booking-api", token, {
+      action: "user.booking.update",
+      clientType: "member",
+      bookingId,
+      expectedUpdatedAt: booking.updatedAt,
+      requestId: "BOOK-QA-" + suffix(),
+      bookingDate: slot.date,
+      startTime: slot.startTime,
+      items: setup.items,
+      memberNote: "QA automated update",
+    });
+    if (!update.ok) throw functionError(update, "QA 預約修改失敗。");
+    const updatedBooking: any = (update.data as any).booking || {};
+    updated = asText(updatedBooking.memberNote, 500) === "QA automated update";
+    if (!updated) throw new ApiError(500, "QA_BOOKING_UPDATE_VERIFY_FAILED", "修改後預約內容未同步。");
+
+    const cancel = await callFunction("booking-api", token, {
+      action: "user.booking.cancel",
+      clientType: "member",
+      bookingId,
+    });
+    if (!cancel.ok) throw functionError(cancel, "QA 預約取消申請失敗。");
+    const cancelledBooking: any = (cancel.data as any).booking || {};
+    cancellationRequested = cancelledBooking.status === "cancel_requested";
+  } catch (error) {
+    errorCode = error instanceof ApiError ? error.code : "QA_BOOKING_WRITE_ERROR";
+  } finally {
+    cleanup = await cleanupBooking(s, bookingId);
+  }
+
+  const actual = { created, updated, cancellationRequested, cleanup, errorCode };
+  return created && updated && cancellationRequested && cleanup
+    ? passed(key, "預約已走過正式新增、修改、取消申請流程，並清除 QA 資料。", expected, actual)
+    : failed(key, "預約新增、修改、取消申請或清理驗證失敗。", expected, actual);
+}
+
+async function bookingGroupWrite(s: any, identity: any, token: string): Promise<QaCase> {
+  const key = "BOOKING_GROUP_WRITE";
+  const expected = { created: true, updated: true, cleanup: true };
+  let bookingId = "";
+  let created = false;
+  let updated = false;
+  let cleanup = false;
+  let errorCode = "";
+
+  try {
+    const [bookingBootstrap, groupBootstrap] = await Promise.all([
+      callFunction("booking-api", token, { action: "user.booking.bootstrap", clientType: "member" }),
+      callFunction("booking-group-api", token, { action: "user.booking.group.bootstrap", clientType: "member" }),
+    ]);
+    if (!bookingBootstrap.ok) throw functionError(bookingBootstrap, "無法讀取預約資料。");
+    if (!groupBootstrap.ok) throw functionError(groupBootstrap, "無法讀取多人預約資源。");
+
+    const services = Array.isArray((bookingBootstrap.data as any).services) ? (bookingBootstrap.data as any).services : [];
+    const normal = bookingItems(services).normal;
+    const groupSettings: any = (groupBootstrap.data as any).settings || {};
+    const technicians = Array.isArray((groupBootstrap.data as any).technicians) ? (groupBootstrap.data as any).technicians : [];
+    const maxPartySize = Number(groupSettings.maxPartySize || 1);
+    const primaryId = asText(groupSettings.primaryTechnicianId, 80);
+    if (maxPartySize < 2) {
+      return skipped(key, "目前多人預約上限為 1 人，依設定略過多人成功寫入測試。", expected, { maxPartySize, cleanup: true });
+    }
+    if (!normal || !primaryId || !technicians.some((item: any) => item.technicianId === primaryId && item.isActive !== false)) {
+      return failed(key, "多人預約已開啟，但主要技師或可測試項目設定不完整。", expected, { maxPartySize, primaryTechnicianConfigured: Boolean(primaryId), normalServiceAvailable: Boolean(normal), cleanup: true });
+    }
+
+    const participants = [
+      { technicianId: primaryId, items: [{ serviceId: normal.serviceId, quantity: 1 }] },
+      { technicianId: null, items: [{ serviceId: normal.serviceId, quantity: 1 }] },
+    ];
+    const settings: any = (bookingBootstrap.data as any).settings || {};
+    const today = asText((bookingBootstrap.data as any).today, 10);
+    const slot = await findBookingSlot(
+      token,
+      "booking-group-api",
+      "user.booking.group.slots",
+      { participants },
+      today,
+      Number(settings.minAdvanceDays || 0),
+      Number(settings.maxAdvanceDays || 0),
+    );
+
+    const create = await callFunction("booking-group-api", token, {
+      action: "user.booking.group.create",
+      clientType: "member",
+      requestId: "BOOK-QA-" + suffix(),
+      bookingDate: slot.date,
+      startTime: slot.startTime,
       participants,
+      memberNote: "QA automated group create",
+      contactSource: "member",
     });
-    const slot = Array.isArray(result?.slots) ? result.slots.find((x: any) => x?.available) : null;
-    if (slot?.startTime) return { date, startTime: String(slot.startTime).slice(0, 5) };
+    if (!create.ok) throw functionError(create, "多人預約新增失敗。");
+    const booking: any = (create.data as any).booking || {};
+    bookingId = asText(booking.bookingId, 80);
+    created = Boolean(bookingId && Number(booking.partySize || 0) >= 2);
+    if (!created) throw new ApiError(500, "QA_GROUP_CREATE_VERIFY_FAILED", "多人預約新增結果不符合預期。");
+
+    const update = await callFunction("booking-group-api", token, {
+      action: "user.booking.group.update",
+      clientType: "member",
+      bookingId,
+      expectedUpdatedAt: booking.updatedAt,
+      requestId: "BOOK-QA-" + suffix(),
+      bookingDate: slot.date,
+      startTime: slot.startTime,
+      participants,
+      memberNote: "QA automated group update",
+      contactSource: "member",
+    });
+    if (!update.ok) throw functionError(update, "多人預約修改失敗。");
+    const updatedBooking: any = (update.data as any).booking || {};
+    updated = asText(updatedBooking.memberNote, 500) === "QA automated group update"
+      && Number(updatedBooking.partySize || 0) >= 2;
+  } catch (error) {
+    errorCode = error instanceof ApiError ? error.code : "QA_GROUP_WRITE_ERROR";
+  } finally {
+    cleanup = await cleanupBooking(s, bookingId);
   }
-  return null;
+
+  const actual = { created, updated, cleanup, errorCode };
+  return created && updated && cleanup
+    ? passed(key, "多人預約已走過正式新增與修改流程，並清除 QA 資料。", expected, actual)
+    : failed(key, "多人預約新增、修改或清理驗證失敗。", expected, actual);
 }
 
-async function groupBookingMutationCase(s: any, identity: any, token: string): Promise<QaCase> {
-  return runCase("BOOKING_GROUP_WRITE", "多人預約新增／修改成功與清理", async () => {
-    const startedAt = new Date().toISOString();
-    const service = await createTempService(s);
-    let bookingId = "";
-    try {
-      const bootstrap = await invoke("booking-group-api", token, {
-        action: "user.booking.group.bootstrap",
-        clientType: "member",
-      });
-      const primary = asText(bootstrap?.settings?.primaryTechnicianId, 80);
-      const techExists = Array.isArray(bootstrap?.technicians) && bootstrap.technicians.some((t: any) => String(t?.technicianId || t?.id || "") === primary);
-      if (!primary || !techExists) {
-        return {
-          skipped: true,
-          message: "目前未設定可用主要技師，因此多人預約成功路徑無法建立合法 fixture。",
-          expected: { primaryTechnicianConfigured: true },
-          actual: { primaryTechnicianConfigured: Boolean(primary), active: techExists },
-        };
-      }
-      const settingsResult = await s.from("booking_settings").select("*").eq("id", 1).single();
-      if (settingsResult.error) throw new ApiError(500, "QA_BOOKING_SETTINGS_FAILED", "無法讀取預約設定。");
-      const slot = await findGroupSlot(token, service.id, primary, settingsResult.data);
-      if (!slot) {
-        return { skipped: true, message: "目前允許的區間沒有多人預約可用時段。", expected: { availableSlot: true }, actual: { availableSlot: false } };
-      }
-      const participants = [{ technicianId: primary, items: [{ serviceId: service.id, quantity: 1 }] }];
-      const created = await invoke("booking-group-api", token, {
-        action: "user.booking.group.create",
-        clientType: "member",
-        requestId: "BOOK-" + qaId("GB").replaceAll("_", "-"),
-        bookingDate: slot.date,
-        startTime: slot.startTime,
-        participants,
-        memberNote: "QA group create",
-        contactSource: "member",
-      });
-      bookingId = asText(created?.booking?.bookingId || created?.booking?.id, 80);
-      const updatedAt = asText(created?.booking?.updatedAt || created?.booking?.updated_at, 100);
-      if (!bookingId || !updatedAt) throw new ApiError(500, "QA_GROUP_CREATE_VERIFY_FAILED", "多人預約建立後缺少識別或版本。");
-
-      const updated = await invoke("booking-group-api", token, {
-        action: "user.booking.group.update",
-        clientType: "member",
-        bookingId,
-        expectedUpdatedAt: updatedAt,
-        requestId: "BOOK-" + qaId("GU").replaceAll("_", "-"),
-        bookingDate: slot.date,
-        startTime: slot.startTime,
-        participants,
-        memberNote: "QA group update",
-        contactSource: "member",
-      });
-      if (!updated?.booking) throw new ApiError(500, "QA_GROUP_UPDATE_VERIFY_FAILED", "多人預約修改未回傳 booking。");
-
-      return {
-        message: "多人預約新增與修改都經由正式 API 成功，participant/reservation 會隨 QA booking 一起 cascade 清理。",
-        expected: { created: true, updated: true, cleanup: true },
-        actual: { created: true, updated: Boolean(updated?.booking), cleanup: true },
-      };
-    } finally {
-      if (bookingId) {
-        const bookingAudit = await s.from("booking_audit_events").delete().eq("target_id", bookingId);
-        if (bookingAudit.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理多人預約 booking audit。");
-        const audit = await s.from("audit_logs").delete().eq("actor_line_user_id", identity.lineUserId).gte("created_at", startedAt).eq("target_id", bookingId);
-        if (audit.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理多人預約 audit_logs。");
-        const booking = await s.from("bookings").delete().eq("id", bookingId).eq("member_id", identity.memberId);
-        if (booking.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理多人預約 booking。");
-      }
-      const svc = await s.from("booking_services").delete().eq("id", service.id);
-      if (svc.error) throw new ApiError(500, "QA_CLEANUP_FAILED", "無法清理多人預約 QA service。");
-    }
-  });
-}
-
-async function surfaceCases(s: any, identity: any, token: string, surface: Surface): Promise<QaCase[]> {
-  if (surface === "member") return [await memberMutationCase(s, identity, token)];
-  if (surface === "points") return [await pointsMutationCase(s, identity, token)];
-  if (surface === "event") return [await eventMutationCase(s, identity, token)];
-  if (surface === "calendar") return [{
-    key: "CALENDAR_READ_ONLY",
-    name: "日曆寫入邊界",
-    status: "skipped",
-    message: "會員日曆只有讀取功能；管理端寫入不屬於用戶端權限邊界。",
-    expected: { memberWriteApi: false },
-    actual: { memberWriteApi: false },
-    durationMs: 0,
-  }];
+async function runSurfaceCases(s: any, identity: any, token: string, surface: Surface): Promise<QaCase[]> {
+  if (surface === "member") return [await memberProfileWrite(s, identity, token)];
+  if (surface === "points") return [await pointTicketWrite(s, identity, token)];
+  if (surface === "event") return [await eventTicketWrite(s, identity, token)];
+  if (surface === "calendar") return [await calendarReadOnly(s, identity, token)];
   return [
-    await bookingMutationCase(s, identity, token),
-    await groupBookingMutationCase(s, identity, token),
+    await bookingWrite(s, identity, token),
+    await bookingGroupWrite(s, identity, token),
   ];
 }
 
 Deno.serve(async (request: Request) => {
   const origin = request.headers.get("Origin");
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(origin) });
-  if (request.method !== "POST") return errorResponse(origin, new ApiError(405, "METHOD_NOT_ALLOWED", "只支援 POST。"));
-  if (origin && !allowedOrigins().has(origin)) return errorResponse(origin, new ApiError(403, "ORIGIN_DENIED", "此來源不可使用用戶端 QA。"));
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
+  if (request.method !== "POST") return failReply(origin, new ApiError(405, "METHOD_NOT_ALLOWED", "只支援 POST。"));
+  if (origin && !allowedOrigins().has(origin)) return failReply(origin, new ApiError(403, "ORIGIN_NOT_ALLOWED", "此網站來源未被允許使用用戶端 QA 服務。"));
 
   try {
-    const body = await bodyJson(request);
-    const action = asText(body.action, 80);
-    const surface = asText(body.surface, 20) as Surface;
-    if (action !== "user.qa.mutations") throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的 QA 操作。");
-    if (!["member","points","event","calendar","booking"].includes(surface)) {
-      throw new ApiError(400, "INVALID_SURFACE", "不支援的用戶端頁面。");
+    const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
+    if (asText(body.action, 80) !== "user.qa.mutations") {
+      throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的 QA 操作。");
     }
+    const surface = asText(body.surface, 20) as Surface;
+    if (!SURFACES.has(surface)) throw new ApiError(400, "INVALID_SURFACE", "不支援的用戶端測試頁面。");
 
     const token = asText(body.testSessionToken, 200);
-    const s = db();
-    const identity = await resolveTestSession(s, token);
-    const member = await s.from("members")
-      .select("id,is_test_account,status,membership_status")
-      .eq("id", identity.memberId).maybeSingle();
-    if (member.error || !member.data || member.data.is_test_account !== true || member.data.status !== "active" || member.data.membership_status !== "active") {
-      throw new ApiError(403, "TEST_ACCOUNT_REQUIRED", "只有有效測試帳號可以執行成功寫入 QA。");
-    }
+    if (!token) throw new ApiError(401, "TEST_SESSION_REQUIRED", "需要有效的測試帳號 Session。");
 
-    const cases = await surfaceCases(s, identity, token, surface);
+    const s = db();
+    let identity;
+    try {
+      identity = await resolveTestSession(s, token);
+    } catch (error) {
+      if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
+      throw error;
+    }
+    if (identity.isTestAccount !== true) throw new ApiError(403, "TEST_ACCOUNT_REQUIRED", "此功能只允許測試帳號使用。");
+
+    const cases = await runSurfaceCases(s, identity, token, surface);
     return reply(origin, {
       ok: true,
       status: 200,
       data: {
         surface,
+        memberId: identity.memberId,
         cases,
-        summary: {
-          passed: cases.filter((x) => x.status === "passed").length,
-          failed: cases.filter((x) => x.status === "failed").length,
-          skipped: cases.filter((x) => x.status === "skipped").length,
-        },
       },
     });
   } catch (error) {
-    return errorResponse(origin, error);
+    return failReply(origin, error);
   }
 });
