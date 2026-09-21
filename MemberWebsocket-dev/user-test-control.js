@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-21.2';
+  const VERSION = '2026-09-21.3';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -191,7 +191,7 @@
       '<div class="user-qa-shell">' +
         '<header class="user-qa-head">' +
           '<div><p class="user-qa-kicker">Test account QA</p><h2 id="userQaTitle">' + escapeHtml(definition.label) + '自動化測試</h2>' +
-          '<p>只在後端驗證通過的測試帳號顯示。完整測試包含 API、UI、驗證邊界與 Realtime，不會自動消耗票券或建立正式交易。</p></div>' +
+          '<p>只在後端驗證通過的測試帳號顯示。完整測試包含 API、UI、驗證邊界與 Realtime；成功寫入案例只建立臨時 QA 資料，完成後會自動還原或清除，不使用正式會員資料。</p></div>' +
           '<button type="button" class="user-qa-close" data-qa-close aria-label="關閉">×</button>' +
         '</header>' +
         '<div class="user-qa-account"><span>測試帳號</span><strong data-qa-account>—</strong><small data-qa-version>Runner ' + VERSION + '</small></div>' +
