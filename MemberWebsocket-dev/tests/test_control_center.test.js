@@ -12,7 +12,7 @@ test('admin exposes the visible automated test control center', () => {
   const css = read('admin/test-control.css');
 
   assert.match(html, /test-control\.css\?v=test-control-20260921-1/);
-  assert.match(html, /test-control\.js\?v=test-control-20260921-1/);
+  assert.match(html, /test-control\.js\?v=test-control-20260922-\d+/);
   assert.match(html, /id="automationTestTitle"/);
   assert.match(html, /id="runQuickAutomationTestButton"/);
   assert.match(html, /id="runFullAutomationTestButton"/);
