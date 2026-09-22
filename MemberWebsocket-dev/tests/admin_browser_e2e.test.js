@@ -44,8 +44,8 @@ test('test control API records browser results only behind admin authorization',
   const authIndex = api.indexOf('await authorizeAdmin(supabase, identity)');
   const actionIndex = api.indexOf('admin.test-control.record-browser-run');
   assert.ok(authIndex >= 0 && actionIndex > authIndex);
-  assert.match(api, /runnerKind.*admin-browser/);
-  assert.match(api, /runnerKind.*paired-browser/);
+  assert.match(api, /\["admin-browser", "paired-browser"\]\.includes\(runnerKind\)/);
+  assert.match(api, /const runnerKind = asText\(body\.runnerKind, 40\)/);
   assert.match(api, /is_test_account !== true/);
   assert.match(api, /BROWSER_E2E_FAILED/);
   assert.match(api, /automation_test_runs/);
