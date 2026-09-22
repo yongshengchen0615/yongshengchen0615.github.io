@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('paired admin booking E2E covers modify, confirm, complete and cancel using user-created bookings', () => {
+test('paired admin booking E2E covers every admin booking action using user-created bookings', () => {
   const e2e = read('admin/e2e-control.js');
 
   assert.match(e2e, /recordResultRows/);
@@ -15,13 +15,19 @@ test('paired admin booking E2E covers modify, confirm, complete and cancel using
   assert.match(e2e, /QA HUMAN E2E/);
   assert.match(e2e, /修改此位項目/);
   assert.match(e2e, /修改服務項目/);
+  assert.match(e2e, /修改此位技師/);
+  assert.match(e2e, /data-participant-technician/);
   assert.match(e2e, /確認預約/);
+  assert.match(e2e, /不通過/);
   assert.match(e2e, /確認服務完成/);
   assert.match(e2e, /取消預約/);
+  assert.match(e2e, /reject-cancellation/);
+  assert.match(e2e, /保留預約/);
   assert.match(e2e, /approve-cancellation/);
   assert.match(e2e, /確認取消/);
+  assert.match(e2e, /requestDetectedCancellationFromClient/);
   assert.match(e2e, /expectedStatus === 'completed'/);
-  assert.match(e2e, /cancellableBookingSeparateFromCompletion/);
+  assert.match(e2e, /separatePendingBooking/);
   assert.match(e2e, /participant\.account\?\.memberId/);
 
   const clientJoin = e2e.indexOf('await Promise.all([adminTask, ...clientTasks]);');
