@@ -206,7 +206,7 @@
       '<div class="user-qa-shell">' +
         '<header class="user-qa-head">' +
           '<div><p class="user-qa-kicker">Test account QA</p><h2 id="userQaTitle">' + escapeHtml(definition.label) + '自動化測試</h2>' +
-          '<p>只在後端驗證通過的測試帳號顯示。測試帳號會走與真人相同的登入、API、權限與前端互動流程；為避免佔用真實資源，寫入測試的臨時腳手架完成後會清理，但測試結果會保留在會員名冊紀錄。</p></div>' +
+          '<p>只在後端驗證通過的測試帳號顯示。測試帳號會走與真人相同的登入、API、權限與前端互動流程；測試產生的點數、票券、預約與 QA 紀錄會保留，方便管理端檢查，直到管理員在測試頁面按下「移除測試資料」。會員基本資料與共用設定仍會在案例結束時還原。</p></div>' +
           '<div class="user-qa-head-actions"><button type="button" class="user-qa-minimize" data-qa-minimize aria-expanded="true">縮小</button><button type="button" class="user-qa-close" data-qa-close aria-label="關閉">×</button></div>' +
         '</header>' +
         '<div class="user-qa-account"><span>測試帳號</span><strong data-qa-account>—</strong><small data-qa-version>Runner ' + VERSION + '</small></div>' +
