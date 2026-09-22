@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.4';
+  const VERSION = '2026-09-22.5';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -231,10 +231,7 @@
     panel.querySelectorAll('[data-qa-run]').forEach((button) => {
       button.addEventListener('click', () => void runSuite(button.dataset.qaRun || 'quick'));
     });
-    panel.querySelector('[data-qa-cancel]').addEventListener('click', () => {
-      state.cancelled = true;
-      setMessage('已要求停止；目前案例完成後不再執行下一項。');
-    });
+    panel.querySelector('[data-qa-cancel]').addEventListener('click', requestStop);
 
     document.body.append(launcher, panel);
     state.launcher = launcher;
@@ -277,6 +274,14 @@
     if (!state.panel) return;
     state.panel.querySelectorAll('[data-qa-run]').forEach((button) => { button.disabled = state.running; });
     state.panel.querySelector('[data-qa-cancel]').classList.toggle('hidden', !state.running);
+  }
+
+  function requestStop() {
+    if (!state.running || state.cancelled) return false;
+    state.cancelled = true;
+    setStatus('停止中');
+    setMessage('已要求停止；目前案例完成安全清理後不再執行下一項。');
+    return true;
   }
 
   function setStatus(value) {
@@ -1835,6 +1840,8 @@
     version: VERSION,
     surface,
     runQuick: () => runSuite('quick'),
-    runFull: () => runSuite('full')
+    runFull: () => runSuite('full'),
+    stop: () => requestStop(),
+    isRunning: () => state.running
   });
 })();
