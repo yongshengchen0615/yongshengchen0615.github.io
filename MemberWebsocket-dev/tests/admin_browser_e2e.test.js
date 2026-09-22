@@ -72,7 +72,7 @@ test('user E2E returns structured results to the paired admin runner', () => {
 test('test control API records browser results only behind admin authorization', () => {
   const api = read('supabase/functions/test-control-api/index.ts');
   const authIndex = api.indexOf('await authorizeAdmin(supabase, identity)');
-  const actionIndex = api.indexOf('admin.test-control.record-browser-run');
+  const actionIndex = api.indexOf('if (action === "admin.test-control.record-browser-run")', authIndex);
   assert.ok(authIndex >= 0 && actionIndex > authIndex);
   assert.match(api, /\["admin-browser", "paired-browser"\]\.includes\(runnerKind\)/);
   assert.match(api, /const runnerKind = asText\(body\.runnerKind, 40\)/);
