@@ -12,6 +12,7 @@
       'automationTestRunnerBadge',
       'runQuickAutomationTestButton',
       'runFullAutomationTestButton',
+      'purgeTestDataButton',
       'automationTestMessage',
       'automationTestRunCode',
       'automationTestRunStatus',
@@ -32,6 +33,7 @@
 
     els.runQuickAutomationTestButton.addEventListener('click', () => startRun('quick'));
     els.runFullAutomationTestButton.addEventListener('click', () => startRun('full'));
+    els.purgeTestDataButton?.addEventListener('click', () => purgeTestData().catch(showError));
     els.testModeTab.addEventListener('click', () => loadHistory().catch(showError));
 
     window.addEventListener('member-admin-ready', () => {
@@ -82,13 +84,59 @@
 
   async function loadHistory() {
     const data = await request('admin.test-control.list');
-    renderHistory(Array.isArray(data.runs) ? data.runs : []);
-    if (!currentRunId && Array.isArray(data.runs) && data.runs.length) {
-      currentRunId = String(data.runs[0].id || '');
+    const runs = Array.isArray(data.runs) ? data.runs : [];
+    renderHistory(runs);
+    if (!runs.length) {
+      currentRunId = '';
+      resetDetail();
+      return;
+    }
+    if (!currentRunId || !runs.some((run) => String(run.id || '') === currentRunId)) {
+      currentRunId = String(runs[0].id || '');
       if (currentRunId) {
         const detail = await request('admin.test-control.status', { runId: currentRunId });
         renderDetail(detail);
       }
+    }
+  }
+
+  async function purgeTestData() {
+    if (busy) return;
+    const confirmed = window.confirm(
+      '確定移除測試資料？\n\n' +
+      '會清除所有測試帳號產生的點數、票券、服務時數、預約、測試 Session／Presence、相關稽核與冪等資料，以及 E2E 測試歷史。\n\n' +
+      '測試帳號與測試模式環境設定會保留。既有測試用戶端 Session 會失效，需要重新登入。此操作無法復原。'
+    );
+    if (!confirmed) return;
+
+    stopPolling();
+    setBusy(true);
+    setMessage('正在移除測試資料…');
+    try {
+      const data = await request('admin.test-control.purge-test-data');
+      currentRunId = '';
+      renderHistory(Array.isArray(data.runs) ? data.runs : []);
+      resetDetail();
+      const purge = data && data.purge && typeof data.purge === 'object' ? data.purge : {};
+      const removed = [
+        Number(purge.deletedAutomationRuns || 0),
+        Number(purge.deletedBookings || 0),
+        Number(purge.deletedEventClaims || 0),
+        Number(purge.deletedPointEntries || 0),
+        Number(purge.deletedPointTickets || 0),
+        Number(purge.deletedPointBalances || 0),
+        Number(purge.deletedServiceTimeEntries || 0),
+        Number(purge.deletedFixedTicketGrants || 0),
+        Number(purge.deletedBirthdayBenefitGrants || 0),
+        Number(purge.deletedQaArtifacts || 0)
+      ].reduce((sum, value) => sum + value, 0);
+      setMessage(
+        '測試資料已移除，共清除 ' + removed + ' 筆主要測試資料；' +
+        Number(purge.testAccountCount || 0) + ' 個測試帳號已保留。測試用戶端請重新登入。'
+      );
+      window.dispatchEvent(new CustomEvent('test-data-purged', { detail: purge }));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -150,6 +198,7 @@
     busy = Boolean(value);
     els.runQuickAutomationTestButton.disabled = busy;
     els.runFullAutomationTestButton.disabled = busy;
+    if (els.purgeTestDataButton) els.purgeTestDataButton.disabled = busy;
   }
 
   function statusText(status) {
@@ -205,10 +254,31 @@
     }
   }
 
+  function resetDetail() {
+    els.automationTestRunCode.textContent = '尚未執行';
+    els.automationTestRunStatus.textContent = '等待執行';
+    els.automationTestRunStatus.className = 'test-control-run-status is-queued';
+    els.automationTestRunSuite.textContent = '—';
+    els.automationTestPassedCount.textContent = '0';
+    els.automationTestFailedCount.textContent = '0';
+    els.automationTestTotalCount.textContent = '0';
+    els.automationTestProgressBar.style.width = '0%';
+    els.automationTestProgressText.textContent = '0% · 0 / 0';
+    els.automationTestProgress.setAttribute('aria-valuenow', '0');
+    els.automationTestProgress.setAttribute('aria-valuetext', '0%');
+    els.automationTestRunnerBadge.textContent = 'Runner：待命';
+    els.automationTestRunnerBadge.className = 'test-mode-status-badge is-off';
+    els.automationTestCaseList.replaceChildren();
+    els.automationTestCaseEmpty.classList.remove('hidden');
+  }
+
   function renderDetail(data) {
     const run = data && data.run ? data.run : null;
     const cases = Array.isArray(data && data.cases) ? data.cases : [];
-    if (!run) return;
+    if (!run) {
+      resetDetail();
+      return;
+    }
 
     currentRunId = String(run.id || currentRunId);
     const total = Number(run.totalCases || cases.length || 0);
