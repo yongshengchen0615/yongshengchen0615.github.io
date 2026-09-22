@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.12';
+  const VERSION = '2026-09-23.1';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -479,6 +479,7 @@
         key: testCase.key || '',
         name: testCase.name,
         domain: testCase.domain,
+        humanRequired: testCase.humanRequired === true,
         status: 'running',
         message: '執行中…',
         expected: null,
@@ -490,7 +491,25 @@
 
       const started = performance.now();
       try {
-        const outcome = await testCase.run();
+        let outcome;
+        if (testCase.humanRequired === true) {
+          const captured = await captureHumanInteraction(testCase.run);
+          outcome = captured.outcome;
+          const mergedActual = outcome?.actual && typeof outcome.actual === 'object' && !Array.isArray(outcome.actual)
+            ? { ...outcome.actual, humanInteraction: captured.evidence }
+            : { value: outcome?.actual ?? null, humanInteraction: captured.evidence };
+          if (outcome?.status === 'passed' && Number(captured.evidence.eventCount || 0) < 1) {
+            outcome = fail(
+              '案例邏輯完成，但沒有觀察到任何真人 UI 互動事件；完整 E2E 不接受只走 API／內部函式。',
+              { humanInteractionEventsAtLeast: 1 },
+              mergedActual
+            );
+          } else {
+            outcome = { ...outcome, actual: safeJson(mergedActual) };
+          }
+        } else {
+          outcome = await testCase.run();
+        }
         Object.assign(running, outcome, { durationMs: elapsed(started) });
       } catch (error) {
         Object.assign(running, fail(
@@ -547,8 +566,15 @@
 
     const passed = state.results.filter((item) => item.status === 'passed').length;
     const skipped = state.results.filter((item) => item.status === 'skipped').length;
+    const humanRows = state.results.filter((item) => item.humanRequired === true);
+    const humanMissingEvidence = humanRows.filter((item) => Number(item?.actual?.humanInteraction?.eventCount || 0) < 1);
     return {
       ok: !cancelled && failed === 0,
+      humanInteraction: {
+        requiredCases: humanRows.length,
+        passedCases: humanRows.filter((item) => item.status === 'passed').length,
+        missingEvidenceKeys: humanMissingEvidence.map((item) => item.key || item.name || 'human-case')
+      },
       cancelled,
       surface,
       suite: state.currentSuite,
@@ -559,6 +585,7 @@
         key: item.key || '',
         name: item.name || '',
         domain: item.domain || '',
+        humanRequired: item.humanRequired === true,
         status: item.status || '',
         message: item.message || '',
         expected: safeJson(item.expected),
@@ -654,7 +681,13 @@
   }
 
   function caseDef(name, domain, run, key) {
-    return { name, domain, run, key: String(key || '') };
+    return {
+      name,
+      domain,
+      run,
+      key: String(key || ''),
+      humanRequired: domain === 'Human E2E'
+    };
   }
 
   async function testSessionCase() {
@@ -876,6 +909,48 @@
     }
     if (lastError) throw lastError;
     return null;
+  }
+
+  function humanTargetLabel(node) {
+    if (!node || node.nodeType !== 1) return 'unknown';
+    const id = String(node.id || '').trim();
+    if (id) return '#' + id;
+    const action = String(node.getAttribute?.('data-action') || node.getAttribute?.('data-booking-admin-action') || '').trim();
+    if (action) return '[action=' + action + ']';
+    const cls = String(node.className || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.');
+    const tag = String(node.tagName || 'element').toLowerCase();
+    return cls ? tag + '.' + cls : tag;
+  }
+
+  async function captureHumanInteraction(run) {
+    const events = [];
+    const types = ['click', 'input', 'change', 'submit'];
+    const handler = (event) => {
+      const target = event?.target;
+      if (!target || state.panel?.contains(target) || target.id === LAUNCHER_ID) return;
+      events.push({
+        type: String(event.type || ''),
+        target: humanTargetLabel(target),
+        trusted: event.isTrusted === true
+      });
+      if (events.length > 80) events.shift();
+    };
+    types.forEach((type) => document.addEventListener(type, handler, true));
+    try {
+      await wait(randomInt(80, 260));
+      const outcome = await run();
+      await wait(randomInt(70, 220));
+      return {
+        outcome,
+        evidence: {
+          eventCount: events.length,
+          eventTypes: [...new Set(events.map((item) => item.type))],
+          targets: [...new Set(events.map((item) => item.target))].slice(0, 20)
+        }
+      };
+    } finally {
+      types.forEach((type) => document.removeEventListener(type, handler, true));
+    }
   }
 
   function setFieldValue(element, value) {
