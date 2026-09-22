@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.11';
+  const VERSION = '2026-09-22.12';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -1696,6 +1696,7 @@
         }, actual);
   }
 
+
   async function adminBookingControlsCase() {
     const tab = await waitFor(() => document.getElementById('bookingTab'), 6000);
     if (!tab) return fail('預約管理分頁未載入。', { bookingTab: true }, { bookingTab: false });
@@ -1711,6 +1712,7 @@
       document.getElementById(id)?.click();
       actual[id] = Boolean(await waitFor(() => !document.getElementById(panelId)?.classList.contains('hidden'), 2500));
     }
+
     document.getElementById('bookingAdminServicesSubtab')?.click();
     for (const [key, buttonId] of [['newType', 'bookingAdminNewTypeButton'], ['newService', 'bookingAdminNewServiceButton']]) {
       document.getElementById(buttonId)?.click();
@@ -1719,12 +1721,46 @@
       document.getElementById('bookingAdminCrudModalClose')?.click();
       await waitFor(() => document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'), 2500);
     }
+
+    document.getElementById('bookingAdminQueueSubtab')?.click();
+    actual.bookingQueueReady = Boolean(await waitFor(() => !document.getElementById('bookingAdminQueuePanel')?.classList.contains('hidden'), 4000));
+    const statusTabs = [
+      ['pending', () => document.querySelector('[data-booking-filter="pending"]'), false],
+      ['confirmed', () => document.querySelector('[data-booking-filter="confirmed"]'), false],
+      ['cancellationRequest', () => document.getElementById('bookingCancellationRequestFilter'), true],
+      ['cancelled', () => document.getElementById('bookingCancelledFilter'), true],
+      ['completed', () => document.querySelector('[data-booking-filter="completed"]'), false],
+      ['all', () => document.querySelector('[data-booking-filter="all"]'), false]
+    ];
+    for (const [key, getButton, cancellationMode] of statusTabs) {
+      const button = await waitFor(getButton, 6000);
+      if (!button) {
+        actual['status_' + key] = false;
+        continue;
+      }
+      button.click();
+      actual['status_' + key] = Boolean(await waitFor(() => {
+        const coreQueue = document.getElementById('bookingAdminQueue');
+        const review = document.getElementById('bookingCancellationReview');
+        if (!button.classList.contains('active')) return false;
+        if (cancellationMode) {
+          return Boolean(review && !review.classList.contains('hidden') && coreQueue?.classList.contains('hidden'));
+        }
+        return Boolean(coreQueue && !coreQueue.classList.contains('hidden') && (!review || review.classList.contains('hidden')));
+      }, 5000));
+    }
+
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('預約管理四個子分頁與新增類型／項目視窗皆可操作。', { allBookingControls: true }, actual)
-      : fail('至少一個預約管理控制異常。', { allBookingControls: true }, actual);
+      ? pass('預約管理四個子分頁、新增視窗與待確認／已確認／取消申請／已取消／已完成／全部六個狀態分頁皆可真人操作。', {
+          allBookingControls: true,
+          allBookingStatusTabs: true
+        }, actual)
+      : fail('至少一個預約管理控制或狀態分頁異常。', {
+          allBookingControls: true,
+          allBookingStatusTabs: true
+        }, actual);
   }
-
 
   async function adminBookingBootstrapSnapshot() {
     const session = await adminSession();
@@ -1780,6 +1816,58 @@
 
   function bookingActionButton(card, label) {
     return Array.from(card?.querySelectorAll('button') || []).find((button) => String(button.textContent || '').trim() === label) || null;
+  }
+
+
+  async function verifyDetectedBookingInCoreFilter(bookingId, filter) {
+    await openAdminBookingQueue(filter);
+    const button = document.querySelector('[data-booking-filter="' + filter + '"]');
+    const card = await waitFor(() => document.querySelector(
+      '#bookingAdminQueue .booking-admin-booking[data-booking-id="' + CSS.escape(String(bookingId || '')) + '"]'
+    ), 10000, 100);
+    const review = document.getElementById('bookingCancellationReview');
+    const actual = {
+      bookingId: String(bookingId || ''),
+      filter,
+      buttonActive: Boolean(button?.classList.contains('active')),
+      coreQueueVisible: Boolean(document.getElementById('bookingAdminQueue') && !document.getElementById('bookingAdminQueue').classList.contains('hidden')),
+      cancellationReviewHidden: Boolean(!review || review.classList.contains('hidden')),
+      bookingVisible: Boolean(card)
+    };
+    actual.ok = actual.buttonActive && actual.coreQueueVisible && actual.cancellationReviewHidden && actual.bookingVisible;
+    return actual;
+  }
+
+  async function verifyDetectedBookingInCancellationFilter(bookingId, mode) {
+    await openAdminBookingQueue('pending');
+    const isCancelled = mode === 'cancelled';
+    const buttonId = isCancelled ? 'bookingCancelledFilter' : 'bookingCancellationRequestFilter';
+    const button = await waitFor(() => document.getElementById(buttonId), 8000, 100);
+    if (!button) {
+      return { bookingId: String(bookingId || ''), mode, buttonFound: false, ok: false };
+    }
+    button.click();
+    const reviewVisible = Boolean(await waitFor(() => {
+      const review = document.getElementById('bookingCancellationReview');
+      const coreQueue = document.getElementById('bookingAdminQueue');
+      return button.classList.contains('active')
+        && review
+        && !review.classList.contains('hidden')
+        && coreQueue?.classList.contains('hidden');
+    }, 6000, 100));
+    const card = await waitFor(() => document.querySelector(
+      '#bookingCancellationReviewList .booking-admin-booking[data-booking-id="' + CSS.escape(String(bookingId || '')) + '"]'
+    ), 12000, 120);
+    const actual = {
+      bookingId: String(bookingId || ''),
+      mode,
+      buttonFound: true,
+      buttonActive: Boolean(button.classList.contains('active')),
+      reviewVisible,
+      bookingVisible: Boolean(card)
+    };
+    actual.ok = actual.buttonActive && actual.reviewVisible && actual.bookingVisible;
+    return actual;
   }
 
   async function mutateDetectedBooking(booking) {
@@ -1913,6 +2001,7 @@
     };
   }
 
+
   async function pairedAdminBookingFollowupCase(participant) {
     const account = participant?.account || {};
     const bookingSurfaceResult = state.results.find((item) => item.key === 'PAIRED_' + participant.index + '_BOOKING');
@@ -1931,8 +2020,6 @@
       String(booking.bookingId || '') !== String(mutable?.bookingId || '')
       && booking.cancellationRequestedAt
       && !booking.cancellationReviewedAt
-    ) || candidates.find((booking) =>
-      String(booking.bookingId || '') !== String(mutable?.bookingId || '')
       && ['pending', 'confirmed'].includes(String(booking.status || ''))
     );
 
@@ -1948,6 +2035,15 @@
         cancellationPending: Boolean(booking.cancellationRequestedAt && !booking.cancellationReviewedAt),
         createdAt: booking.createdAt || null
       })),
+      statusTabs: {
+        pending: null,
+        confirmed: null,
+        cancellationRequest: null,
+        cancelled: null,
+        completed: null,
+        allCompleted: null,
+        allCancelled: null
+      },
       modified: null,
       confirmed: null,
       completed: null,
@@ -1963,8 +2059,14 @@
       return fail('已偵測到用戶端 E2E 預約，但沒有可供管理端修改、確認與完成的 pending 預約。', { mutablePendingBooking: true }, actual);
     }
     if (!cancellationTarget) {
-      return fail('管理端預約 E2E 需要另一筆可取消的用戶端預約，才能同時覆蓋完成與取消兩條終態。', { cancellableBookingSeparateFromCompletion: true }, actual);
+      return fail('管理端預約 E2E 沒有偵測到本次用戶端真人流程產生的取消申請，因此無法真實覆蓋「取消申請 → 已取消」。', {
+        cancellationRequestDetected: true,
+        cancellableBookingSeparateFromCompletion: true
+      }, actual);
     }
+
+    actual.statusTabs.pending = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'pending');
+    actual.statusTabs.cancellationRequest = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'request');
 
     actual.modified = await mutateDetectedBooking(mutable);
     actual.confirmed = await setDetectedBookingStatus(
@@ -1976,6 +2078,7 @@
     );
 
     if (actual.confirmed?.ok) {
+      actual.statusTabs.confirmed = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'confirmed');
       actual.completed = await setDetectedBookingStatus(
         mutable.bookingId,
         '確認服務完成',
@@ -1985,29 +2088,68 @@
       );
     }
 
-    actual.cancelled = await cancelDetectedBooking(cancellationTarget);
+    if (actual.completed?.ok) {
+      actual.statusTabs.completed = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'completed');
+    }
 
+    actual.cancelled = await cancelDetectedBooking(cancellationTarget);
+    if (actual.cancelled?.ok) {
+      actual.statusTabs.cancelled = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'cancelled');
+    }
+
+    if (actual.completed?.ok) {
+      actual.statusTabs.allCompleted = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'all');
+    }
+    if (actual.cancelled?.ok) {
+      actual.statusTabs.allCancelled = await verifyDetectedBookingInCoreFilter(cancellationTarget.bookingId, 'all');
+    }
+
+    const requiredStatusTabs = [
+      'pending',
+      'confirmed',
+      'cancellationRequest',
+      'cancelled',
+      'completed',
+      'allCompleted',
+      'allCancelled'
+    ];
+    const statusTabsOk = requiredStatusTabs.every((key) => actual.statusTabs[key]?.ok === true);
     const ok = Boolean(
       actual.modified?.updatedAtChanged
       && actual.confirmed?.ok
       && actual.completed?.ok
       && actual.cancelled?.ok
+      && statusTabsOk
     );
     return ok
-      ? pass('管理端已自動偵測用戶端 E2E 預約：一筆完成修改 → 確認 → 完成，另一筆完成取消審核／取消；資料保留供測試人員觀察。', {
+      ? pass('管理端已自動偵測用戶端 E2E 預約：完成修改 → 確認 → 完成，以及取消申請 → 已取消；待確認／已確認／取消申請／已取消／已完成／全部六個分頁均以真實資料驗證，紀錄保留供測試人員觀察。', {
           detectedFromUserE2E: true,
           modified: true,
           confirmed: true,
           completed: true,
+          cancellationRequest: true,
           cancelled: true,
+          pendingTab: true,
+          confirmedTab: true,
+          cancellationRequestTab: true,
+          cancelledTab: true,
+          completedTab: true,
+          allTab: true,
           recordsPreserved: true
         }, actual)
-      : fail('管理端接手用戶端預約的修改／確認／完成／取消流程至少一個階段失敗。', {
+      : fail('管理端接手用戶端預約的修改／確認／完成／取消流程或六個狀態分頁覆蓋至少一個階段失敗。', {
           detectedFromUserE2E: true,
           modified: true,
           confirmed: true,
           completed: true,
+          cancellationRequest: true,
           cancelled: true,
+          pendingTab: true,
+          confirmedTab: true,
+          cancellationRequestTab: true,
+          cancelledTab: true,
+          completedTab: true,
+          allTab: true,
           recordsPreserved: true
         }, actual);
   }
