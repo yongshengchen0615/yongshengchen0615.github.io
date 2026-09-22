@@ -9,8 +9,8 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('admin loads dedicated browser E2E controls', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260922-\d+/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260922-\d+/);
+  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-\d+/);
   assert.match(runner, /runAdminQuickE2EButton/);
   assert.match(runner, /runAdminFullE2EButton/);
   assert.match(runner, /runPairedFullE2EButton/);
@@ -59,7 +59,7 @@ test('paired E2E account pool is server-filtered to test users and real-user mut
 
 test('user E2E returns structured results to the paired admin runner', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-09-22\.\d+'/);
+  assert.match(runner, /const VERSION = '2026-09-23\\.\\d+'/);
   assert.match(runner, /browserRun: state\.browserRun \|\| null/);
   assert.match(runner, /stop: \(\) => requestStop\(\)/);
   assert.match(runner, /pairedLaneIndex/);
