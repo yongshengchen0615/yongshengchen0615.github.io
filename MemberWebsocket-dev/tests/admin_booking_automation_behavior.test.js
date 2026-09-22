@@ -323,6 +323,16 @@ test('large paired reports retain every case within the server limit of 80 per r
 });
 
 
+test('booking client exposes a read-only realtime E2E probe without forcing refresh', () => {
+  const bookingSource = fs.readFileSync(path.join(__dirname, '../booking/app.js'), 'utf8');
+  const bookingIndex = fs.readFileSync(path.join(__dirname, '../booking/index.html'), 'utf8');
+  assert.match(bookingSource, /bookingRenderCount/);
+  assert.match(bookingSource, /getRenderCount/);
+  assert.match(bookingSource, /getBookingSnapshot/);
+  assert.match(bookingSource, /booking:bookings-rendered/);
+  assert.match(bookingIndex, /app\.js\?v=booking-realtime-e2e-probe-20260922-1/);
+});
+
 test('full booking E2E requires human-style admin UI actions and per-action realtime member sync', () => {
   assert.match(source, /adminHumanClick/);
   assert.match(source, /adminHumanSelect/);
