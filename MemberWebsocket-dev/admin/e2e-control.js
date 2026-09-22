@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.2';
+  const VERSION = '2026-09-22.3';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -13,6 +13,8 @@
   ]);
   const state = {
     running: false,
+    cancelled: false,
+    runSequence: 0,
     results: [],
     section: null,
     list: null,
@@ -52,6 +54,7 @@
           <button id="runAdminQuickE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">管理端快速 E2E</button>
           <button id="runAdminFullE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">管理端完整 E2E</button>
           <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">管理端 ↔ 用戶端完整 E2E</button>
+          <button id="stopAdminE2EButton" class="button button-danger hidden" type="button" data-admin-e2e-stop="true">停止 E2E</button>
         </div>
       </div>
       <div class="admin-e2e-paired-config">
@@ -83,6 +86,7 @@
     section.querySelector('#runAdminQuickE2EButton')?.addEventListener('click', () => runAdmin('quick'));
     section.querySelector('#runAdminFullE2EButton')?.addEventListener('click', () => runAdmin('full'));
     section.querySelector('#runPairedFullE2EButton')?.addEventListener('click', () => runPaired());
+    section.querySelector('#stopAdminE2EButton')?.addEventListener('click', requestStop);
   }
 
   function sleep(ms) {
@@ -142,18 +146,42 @@
     state.section?.querySelectorAll('button[data-admin-e2e-control]').forEach((button) => {
       button.disabled = state.running;
     });
+    const stopButton = state.section?.querySelector('#stopAdminE2EButton');
+    if (stopButton) {
+      stopButton.disabled = !state.running;
+      stopButton.classList.toggle('hidden', !state.running);
+    }
     const countInput = state.section?.querySelector('#pairedE2EAccountCount');
     if (countInput) countInput.disabled = state.running;
     if (state.badge) {
-      state.badge.textContent = state.running ? 'Browser Runner：執行中' : 'Browser Runner：待命';
+      state.badge.textContent = state.running ? (state.cancelled ? 'Browser Runner：停止中' : 'Browser Runner：執行中') : 'Browser Runner：待命';
       state.badge.classList.toggle('is-on', state.running);
       state.badge.classList.toggle('is-off', !state.running);
     }
     if (state.floating) {
       state.floating.classList.toggle('hidden', !state.running);
-      state.floating.textContent = state.running ? ('E2E 執行中' + (label ? ' · ' + label : '')) : '';
+      state.floating.textContent = state.running ? ((state.cancelled ? 'E2E 停止中' : 'E2E 執行中') + (label ? ' · ' + label : '')) : '';
     }
   }
+
+  function requestStop() {
+    if (!state.running || state.cancelled) return false;
+    state.cancelled = true;
+    if (state.badge) state.badge.textContent = 'Browser Runner：停止中';
+    if (state.floating) state.floating.textContent = 'E2E 停止中 · 目前案例完成安全清理後停止';
+    for (const participant of state.participants) {
+      participant.status = '停止中';
+      try {
+        const child = participant.window;
+        if (child && !child.closed && typeof child.MemberUserTestControl?.stop === 'function') child.MemberUserTestControl.stop();
+      } catch {}
+    }
+    renderParticipants();
+    setMessage('已要求停止 E2E；目前正在執行的案例會先完成安全清理，之後不再啟動下一個案例。');
+    return true;
+  }
+
+  
 
   function setMessage(message, error = false) {
     if (!state.message) return;
@@ -204,6 +232,7 @@
 
   async function executeCases(defs, phaseLabel) {
     for (const def of defs) {
+      if (state.cancelled) break;
       const row = {
         key: def.key,
         name: def.name,
@@ -225,9 +254,12 @@
       }
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
+      if (state.cancelled) break;
       await sleep(50);
     }
   }
+
+  
 
   async function adminSession() {
     const session = await window.MemberAdminSession?.wait?.();
@@ -305,20 +337,31 @@
     if (state.running) return;
     state.results = [];
     state.participants = [];
+    state.cancelled = false;
+    state.runSequence += 1;
     renderParticipants();
     setBusy(true, '管理端');
     setMessage(suite === 'full' ? '正在以測試用戶執行管理端完整真人 E2E…' : '正在以測試用戶執行管理端快速 E2E…');
     try {
       const accounts = await prepareTestAccounts(1);
       state.adminTestAccount = accounts[0];
-      await executeCases(adminDefinitions(suite), '管理端 · 測試用戶');
-      const recorded = await recordRun('admin-browser', suite);
+      if (!state.cancelled) await executeCases(adminDefinitions(suite), '管理端 · 測試用戶');
+      const cancelled = state.cancelled;
+      const recorded = !cancelled && state.results.length ? await recordRun('admin-browser', suite) : null;
       const failed = state.results.filter((item) => item.status === 'failed').length;
-      setMessage(failed ? `管理端 E2E 完成，發現 ${failed} 個異常。` : '管理端 E2E 完成；所有會員操作皆鎖定測試用戶，結果已寫入 Test Control Center。', failed > 0);
-      return { recorded, account: safe(state.adminTestAccount), results: safe(state.results) };
+      setMessage(
+        cancelled
+          ? '管理端 E2E 已停止；已完成案例保留，未開始的案例不再執行。'
+          : failed
+            ? '管理端 E2E 完成，發現 ' + failed + ' 個異常。'
+            : '管理端 E2E 完成；所有會員操作皆鎖定測試用戶，結果已寫入 Test Control Center。',
+        !cancelled && failed > 0
+      );
+      return { cancelled, recorded, account: safe(state.adminTestAccount), results: safe(state.results) };
     } catch (error) {
-      setMessage(error?.message || '管理端 E2E 未能完整執行。', true);
-      return { error: plainError(error), results: safe(state.results) };
+      const cancelled = state.cancelled;
+      setMessage(cancelled ? '管理端 E2E 已停止。' : (error?.message || '管理端 E2E 未能完整執行。'), !cancelled);
+      return { cancelled, error: cancelled ? null : plainError(error), results: safe(state.results) };
     } finally {
       state.adminTestAccount = null;
       setBusy(false);
@@ -328,6 +371,8 @@
 
   async function runPaired() {
     if (state.running) return;
+    state.cancelled = false;
+    state.runSequence += 1;
     let participantCount = 1;
     let openedWindows = [];
     try {
@@ -342,7 +387,7 @@
     state.results = [];
     state.participants = [];
     setBusy(true, '協同');
-    setMessage(`正在準備 ${participantCount} 位測試用戶的管理端 ↔ 用戶端完整協同 E2E。`);
+    setMessage('正在準備 ' + participantCount + ' 位測試用戶；所有用戶端就緒後會同時開始完整 E2E。');
     try {
       const accounts = await prepareTestAccounts(participantCount);
       state.adminTestAccount = accounts[0];
@@ -352,19 +397,21 @@
         window: openedWindows[index],
         status: '準備登入',
         surface: '準備中',
-        runCodes: []
+        runCodes: [],
+        startedAt: 0
       }));
       renderParticipants();
 
-      for (const participant of state.participants) {
+      await Promise.all(state.participants.map(async (participant) => {
+        if (state.cancelled) return;
         const login = await createPairedSession(participant.account);
         seedParticipantSession(participant, login);
         participant.status = '已登入';
         participant.surface = '會員卡';
         navigateParticipant(participant, 'member');
         state.results.push({
-          key: `PAIRED_${participant.index}_TEST_SESSION`,
-          name: `測試用戶 ${participant.index}：建立獨立 Session`,
+          key: 'PAIRED_' + participant.index + '_TEST_SESSION',
+          name: '測試用戶 ' + participant.index + '：建立獨立 Session',
           domain: 'Authentication',
           status: 'passed',
           message: '已建立短效測試會員 Session，並寫入該測試用戶自己的新視窗；未使用正式用戶、管理員權限或 service role。',
@@ -374,97 +421,76 @@
         });
         renderParticipants();
         render();
+      }));
+
+      if (!state.cancelled) {
+        setMessage('所有 ' + participantCount + ' 個用戶端視窗已就緒；現在同時啟動用戶端 E2E，管理端 E2E 也同步執行。');
+        const clientTasks = state.participants.map((participant) => runParticipantSurfaces(participant));
+        const adminTask = executeCases(adminDefinitions('full'), '管理端 · 測試用戶');
+        await Promise.all([adminTask, ...clientTasks]);
       }
 
-      await executeCases(adminDefinitions('full'), '管理端 · 測試用戶');
-
-      for (const participant of state.participants) {
-        for (const [surface, label] of PAIRED_SURFACES) {
-          const started = performance.now();
-          const row = {
-            key: `PAIRED_${participant.index}_${surface.toUpperCase()}`,
-            name: `測試用戶 ${participant.index}：${label}真人 E2E`,
-            domain: 'Paired E2E / ' + surface,
-            status: 'running',
-            message: '正在獨立用戶端視窗執行…',
-            expected: { memberCode: participant.account?.memberCode || null, failedCases: 0 },
-            actual: {},
-            durationMs: null
-          };
-          state.results.push(row);
-          participant.status = '執行中';
-          participant.surface = label;
+      if (!state.cancelled) {
+        for (const participant of state.participants) {
+          participant.status = '同步驗證';
+          participant.surface = '管理端紀錄';
           renderParticipants();
-          render();
-          if (state.floating) state.floating.textContent = `E2E 執行中 · 測試用戶 ${participant.index} · ${label}`;
-          try {
-            const child = await runUserSurface(participant, surface, label);
-            const summary = child?.summary || {};
-            const childMemberId = child?.account?.memberId || '';
-            const runCode = String(child?.browserRun?.runCode || '');
-            if (runCode) participant.runCodes.push(runCode);
-            row.actual = {
-              memberCode: participant.account?.memberCode || null,
-              sameTestMember: childMemberId === participant.account?.memberId,
-              passed: Number(summary.passed || 0),
-              failed: Number(summary.failed || 0),
-              skipped: Number(summary.skipped || 0),
-              total: Number(summary.total || 0),
-              runCode: runCode || null
-            };
-            const sameMember = childMemberId === participant.account?.memberId;
-            const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember;
-            Object.assign(row, ok
-              ? pass(label + '真人 E2E 通過，且仍為指定測試用戶。', row.expected, row.actual)
-              : fail(label + '真人 E2E 或測試用戶一致性驗證失敗。', row.expected, row.actual));
-          } catch (error) {
-            Object.assign(row, fail(label + '獨立用戶端 E2E 發生錯誤。', row.expected, plainError(error)));
-          }
-          row.durationMs = Math.max(0, Math.round(performance.now() - started));
-          render();
+          await executeCases([
+            caseDef(
+              'PAIRED_' + participant.index + '_ADMIN_RECORD_SYNC',
+              '測試用戶 ' + participant.index + '：用戶端測試紀錄同步回管理端',
+              'Paired E2E / Audit',
+              () => verifyUserRunsVisibleInAdmin(participant.account, participant.runCodes)
+            )
+          ], '同步驗證 · 測試用戶 ' + participant.index);
+          participant.status = state.results[state.results.length - 1]?.status === 'passed' ? '完成' : '有異常';
+          participant.surface = '完成';
+          renderParticipants();
+          if (state.cancelled) break;
         }
-
-        participant.status = '同步驗證';
-        participant.surface = '管理端紀錄';
-        renderParticipants();
-        await executeCases([
-          caseDef(
-            `PAIRED_${participant.index}_ADMIN_RECORD_SYNC`,
-            `測試用戶 ${participant.index}：用戶端測試紀錄同步回管理端`,
-            'Paired E2E / Audit',
-            () => verifyUserRunsVisibleInAdmin(participant.account, participant.runCodes)
-          )
-        ], `同步驗證 · 測試用戶 ${participant.index}`);
-        participant.status = state.results[state.results.length - 1]?.status === 'passed' ? '完成' : '有異常';
-        participant.surface = '完成';
-        renderParticipants();
       }
 
-      const recorded = await recordRun('paired-browser', 'full');
+      const cancelled = state.cancelled;
+      const recorded = !cancelled && state.results.length ? await recordRun('paired-browser', 'full') : null;
       const failed = state.results.filter((item) => item.status === 'failed').length;
+      if (cancelled) {
+        for (const participant of state.participants) {
+          if (participant.status !== '完成') {
+            participant.status = '已停止';
+            participant.surface = '停止';
+          }
+        }
+        renderParticipants();
+      }
       setMessage(
-        failed
-          ? `${participantCount} 位測試用戶協同 E2E 完成，發現 ${failed} 個異常；用戶端視窗保留供檢查。`
-          : `${participantCount} 位測試用戶的管理端 ↔ 用戶端協同 E2E 全部通過；用戶端視窗保留供檢查。`,
-        failed > 0
+        cancelled
+          ? '協同 E2E 已停止；已完成案例保留，用戶端視窗保留供檢查。'
+          : failed
+            ? participantCount + ' 位測試用戶協同 E2E 完成，發現 ' + failed + ' 個異常；用戶端視窗保留供檢查。'
+            : participantCount + ' 位測試用戶已同步並行完成管理端 ↔ 用戶端協同 E2E；用戶端視窗保留供檢查。',
+        !cancelled && failed > 0
       );
-      return { recorded, participants: safe(state.participants.map((item) => item.account)), results: safe(state.results) };
+      return { cancelled, recorded, participants: safe(state.participants.map((item) => item.account)), results: safe(state.results) };
     } catch (error) {
-      state.results.push({
-        key: 'PAIRED_RUNNER_FATAL',
-        name: '協同 Runner 啟動',
-        domain: 'Paired E2E',
-        status: 'failed',
-        message: error?.message || '協同 Runner 無法啟動。',
-        expected: { runnable: true, testAccountsOnly: true },
-        actual: plainError(error),
-        durationMs: 0
-      });
-      setMessage(error?.message || '協同 E2E 無法啟動。請確認系統維護、目前裝置測試登入與彈出式視窗權限。', true);
+      if (!state.cancelled) {
+        state.results.push({
+          key: 'PAIRED_RUNNER_FATAL',
+          name: '協同 Runner 啟動',
+          domain: 'Paired E2E',
+          status: 'failed',
+          message: error?.message || '協同 Runner 無法啟動。',
+          expected: { runnable: true, testAccountsOnly: true },
+          actual: plainError(error),
+          durationMs: 0
+        });
+      }
+      setMessage(state.cancelled ? '協同 E2E 已停止。' : (error?.message || '協同 E2E 無法啟動。請確認系統維護、目前裝置測試登入與彈出式視窗權限。'), !state.cancelled);
       render();
-      try { await recordRun('paired-browser', 'full'); } catch {}
-      closeClientWindows();
-      return { error: plainError(error), results: safe(state.results) };
+      if (!state.cancelled) {
+        try { await recordRun('paired-browser', 'full'); } catch {}
+        closeClientWindows();
+      }
+      return { cancelled: state.cancelled, error: state.cancelled ? null : plainError(error), results: safe(state.results) };
     } finally {
       state.adminTestAccount = null;
       setBusy(false);
@@ -472,6 +498,71 @@
       renderParticipants();
     }
   }
+
+  async function runParticipantSurfaces(participant) {
+    participant.startedAt = Date.now();
+    participant.status = '執行中';
+    renderParticipants();
+
+    for (const [surface, label] of PAIRED_SURFACES) {
+      if (state.cancelled) break;
+      const started = performance.now();
+      const row = {
+        key: 'PAIRED_' + participant.index + '_' + surface.toUpperCase(),
+        name: '測試用戶 ' + participant.index + '：' + label + '真人 E2E',
+        domain: 'Paired E2E / ' + surface,
+        status: 'running',
+        message: '正在獨立用戶端視窗執行…',
+        expected: { memberCode: participant.account?.memberCode || null, failedCases: 0 },
+        actual: {},
+        durationMs: null
+      };
+      state.results.push(row);
+      participant.status = '執行中';
+      participant.surface = label;
+      renderParticipants();
+      render();
+      if (state.floating) state.floating.textContent = 'E2E 執行中 · 多用戶並行 · 測試用戶 ' + participant.index + ' · ' + label;
+      try {
+        const child = await runUserSurface(participant, surface, label);
+        const summary = child?.summary || {};
+        const childMemberId = child?.account?.memberId || '';
+        const runCode = String(child?.browserRun?.runCode || '');
+        if (runCode) participant.runCodes.push(runCode);
+        row.actual = {
+          memberCode: participant.account?.memberCode || null,
+          sameTestMember: childMemberId === participant.account?.memberId,
+          passed: Number(summary.passed || 0),
+          failed: Number(summary.failed || 0),
+          skipped: Number(summary.skipped || 0),
+          total: Number(summary.total || 0),
+          runCode: runCode || null,
+          cancelled: Boolean(child?.cancelled)
+        };
+        if (state.cancelled || child?.cancelled) {
+          Object.assign(row, skip(label + ' E2E 已依停止要求中止。', { stoppedSafely: true }, row.actual));
+        } else {
+          const sameMember = childMemberId === participant.account?.memberId;
+          const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember;
+          Object.assign(row, ok
+            ? pass(label + '真人 E2E 通過，且仍為指定測試用戶。', row.expected, row.actual)
+            : fail(label + '真人 E2E 或測試用戶一致性驗證失敗。', row.expected, row.actual));
+        }
+      } catch (error) {
+        Object.assign(row, state.cancelled
+          ? skip(label + ' E2E 已停止。', { stoppedSafely: true }, { stoppedSafely: true })
+          : fail(label + '獨立用戶端 E2E 發生錯誤。', row.expected, plainError(error)));
+      }
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      render();
+    }
+
+    participant.status = state.cancelled ? '已停止' : '用戶端完成';
+    participant.surface = state.cancelled ? '停止' : '等待同步驗證';
+    renderParticipants();
+  }
+
+  
 
   async function adminReadyCase() {
     const session = await adminSession();
@@ -947,28 +1038,34 @@
 
   async function runUserSurface(participant, surface, label) {
     const child = participant?.window;
-    if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的用戶端視窗已被關閉。`);
+    if (!child || child.closed) throw new Error('測試用戶 ' + (participant?.index || '?') + ' 的用戶端視窗已被關閉。');
     participant.surface = label;
     renderParticipants();
     navigateParticipant(participant, surface);
 
     const control = await waitFor(() => {
+      if (state.cancelled) return { cancelled: true };
       try {
         if (child.closed) return null;
         return child.MemberUserTestControl?.surface === surface ? child.MemberUserTestControl : null;
       } catch { return null; }
     }, 25000, 120);
+    if (control?.cancelled || state.cancelled) {
+      return { ok: false, cancelled: true, surface, account: participant.account, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
+    }
     if (!control) throw new Error(label + ' E2E 控制器未在獨立用戶端視窗就緒。');
 
     const result = await control.runFull();
     if (!result || typeof result !== 'object') throw new Error(label + ' E2E 未回傳結構化結果。');
-    if (result?.account?.memberId !== participant.account?.memberId) {
+    if (!result.cancelled && result?.account?.memberId !== participant.account?.memberId) {
       const error = new Error(label + ' E2E 使用者與指定測試用戶不一致。');
       error.code = 'E2E_TEST_ACCOUNT_MISMATCH';
       throw error;
     }
     return safe(result);
   }
+
+  
 
   async function verifyUserRunsVisibleInAdmin(account, runCodes) {
     const latestRunCode = String(runCodes.filter(Boolean).slice(-1)[0] || '');
@@ -1001,6 +1098,7 @@
     runQuick: () => runAdmin('quick'),
     runFull: () => runAdmin('full'),
     runPairedFull: () => runPaired(),
+    stop: () => requestStop(),
     maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
   });
 })();
