@@ -64,7 +64,7 @@
       </div>
       <div class="admin-e2e-paired-config">
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
-        <small>1–10 人。預約完整協同 E2E 由管理端一鍵啟動：自動開啟測試用戶端，以真人方式新增／修改／多人預約／申請取消；再由管理端像真人切分頁、開視窗、修改項目與技師、確認／拒絕／完成／審核取消，且每一步都要求用戶端透過 Realtime 自動同步，最後做終態、競態、越權與資料遺漏風險掃描。待確認／取消申請 E2E 僅供單點診斷。正式用戶不會被選入。</small>
+        <small>1–10 人。預約完整協同 E2E 由管理端一鍵啟動：測試用戶端保持開啟並以真人方式新增／修改／多人預約／申請取消；管理端同步監看本輪測試資料，只要待確認或取消申請等可安全接手資料出現，就依狀態排入單一管理員操作佇列，真人式執行拒絕／保留／確認／修改項目與技師／完成／確認取消，不等待用戶端關閉。每一步都驗證 Realtime，最後再以完整 handoff 做漏單、競態、越權與終態掃描。正式用戶不會被選入。</small>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
@@ -701,8 +701,17 @@
 
       setMessage('管理端前置資料已完整建立；現在隨機啟動 ' + participantCount + ' 位測試用戶，管理端會同步監看預約資料，資料一出現在管理端就開始模擬審核，不等待用戶端關閉。');
       if (!state.cancelled) {
+        // A human administrator has one management UI. Keep admin DOM actions single-threaded
+        // while member clients may generate data concurrently.
+        const allAdminDefinitions = adminDefinitions('full');
+        const preflightKeys = new Set(['ADMIN_AUTH_READY', 'ADMIN_BOOKING_CONTROLS']);
+        const preflightDefinitions = allAdminDefinitions.filter((def) => preflightKeys.has(def.key));
+        await executeCases(preflightDefinitions, '管理端 · 預約即時接手前置');
+
+        let adminChain = Promise.resolve();
         const liveAdminTasks = state.participants.map((participant) => {
-          const task = runPairedAdminBookingLive(participant);
+          const task = adminChain.then(() => runPairedAdminBookingLive(participant));
+          adminChain = task.catch(() => null);
           participant.adminBookingTask = task;
           return task;
         });
@@ -710,11 +719,12 @@
           await sleep(randomInt(80, 1200));
           return runParticipantSurfaces(participant);
         });
-        const definitions = bookingOnly && !includeAdminSuite
-          ? adminDefinitions('full').filter((def) => ['ADMIN_AUTH_READY', 'ADMIN_BOOKING_CONTROLS'].includes(def.key))
-          : adminDefinitions('full');
-        const adminTask = executeCases(definitions, '管理端 · 完整資料已建立');
-        await Promise.all([adminTask, ...clientTasks, ...liveAdminTasks]);
+        await Promise.all([...clientTasks, ...liveAdminTasks]);
+
+        if (!state.cancelled && (!bookingOnly || includeAdminSuite)) {
+          const remainingAdminDefinitions = allAdminDefinitions.filter((def) => !preflightKeys.has(def.key));
+          await executeCases(remainingAdminDefinitions, '管理端 · 其餘完整 E2E');
+        }
       }
 
       if (!state.cancelled) {
