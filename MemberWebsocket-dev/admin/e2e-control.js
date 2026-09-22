@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.16';
+  const VERSION = '2026-09-23.1';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -166,8 +166,21 @@
     return outcome('skipped', message, expected, actual);
   }
 
+  function adminHumanRequired(key, name, domain) {
+    const normalizedKey = String(key || '');
+    const normalizedName = String(name || '');
+    const normalizedDomain = String(domain || '');
+    if (normalizedKey === 'PAIRED_HUMAN_INTERACTION_COVERAGE' || normalizedDomain === 'Coverage') return false;
+    if (/真人/.test(normalizedName)) return true;
+    if (normalizedDomain === 'Admin CRUD E2E') return true;
+    if (/^Booking Queue E2E \/ (?:Pending|Cancellation)$/.test(normalizedDomain)) return true;
+    if (/^Booking \/ (?:Confirm|Modify Items|Modify Technician|Complete|Reject|Cancellation Keep|Cancellation Approve)$/.test(normalizedDomain)) return true;
+    if (/^Paired E2E \/ (?:Membership|Points)$/.test(normalizedDomain)) return true;
+    return /^PAIRED_\d+_ADMIN_BOOKING_(?:CONFIRM|MODIFY|MODIFY_TECHNICIAN|COMPLETE|REJECT|KEEP_CANCELLATION|CANCEL)$/.test(normalizedKey);
+  }
+
   function caseDef(key, name, domain, run) {
-    return { key, name, domain, run };
+    return { key, name, domain, run, humanRequired: adminHumanRequired(key, name, domain) };
   }
 
   function setBusy(running, label = '') {
@@ -259,6 +272,48 @@
     return box;
   }
 
+  function adminHumanTargetLabel(node) {
+    if (!node || node.nodeType !== 1) return 'unknown';
+    const id = String(node.id || '').trim();
+    if (id) return '#' + id;
+    const action = String(node.getAttribute?.('data-action') || node.getAttribute?.('data-booking-admin-action') || '').trim();
+    if (action) return '[action=' + action + ']';
+    const cls = String(node.className || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.');
+    const tag = String(node.tagName || 'element').toLowerCase();
+    return cls ? tag + '.' + cls : tag;
+  }
+
+  async function captureAdminHumanInteraction(run) {
+    const events = [];
+    const types = ['click', 'input', 'change', 'submit'];
+    const handler = (event) => {
+      const target = event?.target;
+      if (!target || state.section?.contains(target)) return;
+      events.push({
+        type: String(event.type || ''),
+        target: adminHumanTargetLabel(target),
+        trusted: event.isTrusted === true
+      });
+      if (events.length > 100) events.shift();
+    };
+    types.forEach((type) => document.addEventListener(type, handler, true));
+    try {
+      await sleep(randomInt(80, 260));
+      const outcome = await run();
+      await sleep(randomInt(70, 220));
+      return {
+        outcome,
+        evidence: {
+          eventCount: events.length,
+          eventTypes: [...new Set(events.map((item) => item.type))],
+          targets: [...new Set(events.map((item) => item.target))].slice(0, 24)
+        }
+      };
+    } finally {
+      types.forEach((type) => document.removeEventListener(type, handler, true));
+    }
+  }
+
   async function executeCases(defs, phaseLabel) {
     for (const def of defs) {
       if (state.cancelled) break;
@@ -266,6 +321,7 @@
         key: def.key,
         name: def.name,
         domain: def.domain,
+        humanRequired: def.humanRequired === true,
         status: 'running',
         message: '執行中…',
         expected: {},
@@ -277,7 +333,26 @@
       render();
       const started = performance.now();
       try {
-        Object.assign(row, await def.run());
+        let outcome;
+        if (def.humanRequired === true) {
+          const captured = await captureAdminHumanInteraction(def.run);
+          outcome = captured.outcome;
+          const mergedActual = outcome?.actual && typeof outcome.actual === 'object' && !Array.isArray(outcome.actual)
+            ? { ...outcome.actual, humanInteraction: captured.evidence }
+            : { value: outcome?.actual ?? null, humanInteraction: captured.evidence };
+          if (outcome?.status === 'passed' && Number(captured.evidence.eventCount || 0) < 1) {
+            outcome = fail(
+              '案例邏輯完成，但沒有觀察到管理端真人 UI 互動事件；完整 E2E 不接受只走 API／內部函式。',
+              { humanInteractionEventsAtLeast: 1 },
+              mergedActual
+            );
+          } else {
+            outcome = { ...outcome, actual: safe(mergedActual) };
+          }
+        } else {
+          outcome = await def.run();
+        }
+        Object.assign(row, outcome);
       } catch (error) {
         Object.assign(row, fail('案例執行發生未預期錯誤。', { noUnhandledError: true }, plainError(error)));
       }
@@ -653,6 +728,17 @@
         await runDeepPairedSuite(state.participants[randomInt(0, state.participants.length - 1)]);
       }
 
+      if (!state.cancelled && !bookingOnly) {
+        await executeCases([
+          caseDef(
+            'PAIRED_HUMAN_INTERACTION_COVERAGE',
+            '管理端 ↔ 用戶端真人互動完整覆蓋',
+            'Coverage',
+            pairedHumanInteractionCoverageCase
+          )
+        ], '真人互動覆蓋驗證');
+      }
+
       const cancelled = state.cancelled;
       const recorded = !cancelled && state.results.length ? await recordRun('paired-browser', 'full') : null;
       const failed = state.results.filter((item) => item.status === 'failed').length;
@@ -729,7 +815,7 @@
         domain: 'Paired E2E / ' + surface,
         status: 'running',
         message: '正在建立此用戶端專屬 Session，並於獨立視窗執行隨機化真人操作…',
-        expected: { memberCode: participant.account?.memberCode || null, failedCases: 0, sessionSurface: surface },
+        expected: { memberCode: participant.account?.memberCode || null, failedCases: 0, sessionSurface: surface, humanInteractionVerified: true },
         actual: {},
         durationMs: null
       };
@@ -751,10 +837,17 @@
         const childMemberId = child?.account?.memberId || '';
         const runCode = String(child?.browserRun?.runCode || '');
         if (runCode) participant.runCodes.push(runCode);
+        const humanInteraction = child?.humanInteraction || {};
+        const humanInteractionVerified = Number(humanInteraction.requiredCases || 0) > 0
+          && Number(humanInteraction.passedCases || 0) === Number(humanInteraction.requiredCases || 0)
+          && Array.isArray(humanInteraction.missingEvidenceKeys)
+          && humanInteraction.missingEvidenceKeys.length === 0;
         row.actual = {
           memberCode: participant.account?.memberCode || null,
           sessionSurface: surface,
           sameTestMember: childMemberId === participant.account?.memberId,
+          humanInteractionVerified,
+          humanInteraction: safe(humanInteraction),
           passed: Number(summary.passed || 0),
           failed: Number(summary.failed || 0),
           skipped: Number(summary.skipped || 0),
@@ -767,7 +860,7 @@
           Object.assign(row, skip(label + ' E2E 已依停止要求中止。', { stoppedSafely: true }, row.actual));
         } else {
           const sameMember = childMemberId === participant.account?.memberId;
-          const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember;
+          const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember && humanInteractionVerified;
           Object.assign(row, ok
             ? pass(label + '隨機真人 E2E 通過，且使用的是該用戶端專屬測試 Session。', row.expected, row.actual)
             : fail(label + '真人 E2E、Session surface 或測試用戶一致性驗證失敗。', row.expected, row.actual));
@@ -784,6 +877,52 @@
     participant.status = state.cancelled ? '已停止' : '用戶端完成';
     participant.surface = state.cancelled ? '停止' : '等待同步驗證';
     renderParticipants();
+  }
+
+  async function pairedHumanInteractionCoverageCase() {
+    const expectedSurfaces = PAIRED_SURFACES.map(([key]) => key);
+    const clientCoverage = [];
+    for (const participant of state.participants) {
+      for (const surfaceKey of expectedSurfaces) {
+        const row = state.results.find((item) => item.key === 'PAIRED_' + participant.index + '_' + surfaceKey.toUpperCase());
+        clientCoverage.push({
+          participant: participant.index,
+          surface: surfaceKey,
+          passed: row?.status === 'passed',
+          humanInteractionVerified: row?.actual?.humanInteractionVerified === true
+        });
+      }
+    }
+
+    const adminRows = state.results.filter((item) => item.humanRequired === true && !/^PAIRED_\d+_(?:MEMBER|POINTS|EVENT|CALENDAR|BOOKING)$/.test(String(item.key || '')));
+    const adminCoverage = adminRows.map((item) => ({
+      key: item.key,
+      status: item.status,
+      eventCount: Number(item?.actual?.humanInteraction?.eventCount || 0)
+    }));
+    const missingClients = clientCoverage.filter((item) => !item.passed || !item.humanInteractionVerified);
+    const missingAdmin = adminCoverage.filter((item) => item.status !== 'passed' || item.eventCount < 1);
+    const ok = clientCoverage.length === state.participants.length * expectedSurfaces.length
+      && missingClients.length === 0
+      && adminCoverage.length > 0
+      && missingAdmin.length === 0;
+    const actual = {
+      expectedSurfaceCountPerParticipant: expectedSurfaces.length,
+      clientCoverage,
+      adminHumanCaseCount: adminCoverage.length,
+      adminCoverage,
+      missingClients,
+      missingAdmin
+    };
+    return ok
+      ? pass('五種用戶端與管理端所有真人案例都有實際 UI 互動證據。', {
+          allClientSurfacesHumanDriven: true,
+          allAdminHumanCasesObserved: true
+        }, actual)
+      : fail('完整協同 E2E 仍有 surface 或管理端案例缺少真人 UI 互動證據。', {
+          allClientSurfacesHumanDriven: true,
+          allAdminHumanCasesObserved: true
+        }, actual);
   }
 
   async function adminReadyCase() {

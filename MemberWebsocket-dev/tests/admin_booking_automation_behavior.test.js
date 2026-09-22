@@ -62,9 +62,22 @@ function harness(bookings = [], extra = {}) {
       adminSession = async () => ({ idToken: 'test-stub' });
       postFunction = post;
     };
+    window.qa.stubHumanEvidence = () => {
+      captureAdminHumanInteraction = async (run) => ({
+        outcome: await run(),
+        evidence: { eventCount: 1, eventTypes: ['unit-test'], targets: ['unit-harness'] }
+      });
+    };
+    window.qa.stubHumanEvidence = () => {
+      captureAdminHumanInteraction = async (run) => ({
+        outcome: await run(),
+        evidence: { eventCount: 1, eventTypes: ['unit-test'], targets: ['unit-harness'] }
+      });
+    };
   `;
   vm.runInContext(source.replace('  window.MemberAdminE2EControl =', expose + '\n  window.MemberAdminE2EControl ='), context);
   const qa = window.qa;
+  qa.stubHumanEvidence();
   qa.state.runStartedAt = startedAt;
   const io = {
     bootstrap: async () => ({ bookings }),
