@@ -170,6 +170,7 @@
     const normalizedKey = String(key || '');
     const normalizedName = String(name || '');
     const normalizedDomain = String(domain || '');
+    if (normalizedKey === 'PAIRED_HUMAN_INTERACTION_COVERAGE' || normalizedDomain === 'Coverage') return false;
     if (/真人/.test(normalizedName)) return true;
     if (normalizedDomain === 'Admin CRUD E2E') return true;
     if (/^Booking Queue E2E \/ (?:Pending|Cancellation)$/.test(normalizedDomain)) return true;
@@ -727,7 +728,7 @@
         await runDeepPairedSuite(state.participants[randomInt(0, state.participants.length - 1)]);
       }
 
-      if (!state.cancelled) {
+      if (!state.cancelled && !bookingOnly) {
         await executeCases([
           caseDef(
             'PAIRED_HUMAN_INTERACTION_COVERAGE',
