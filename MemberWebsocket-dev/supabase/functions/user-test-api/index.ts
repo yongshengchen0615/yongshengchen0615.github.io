@@ -205,7 +205,7 @@ async function memberProfileWrite(s: any, identity: any, token: string): Promise
 
 async function pointTicketWrite(s: any, identity: any, token: string): Promise<QaCase> {
   const key = "POINT_TICKET_WRITE";
-  const expected = { singleRedeem: true, batchRedeem: true, finalBalance: 0, cleanup: true };
+  const expected = { singleRedeem: true, batchRedeem: true, finalBalance: 0, preserved: true };
   const tag = suffix();
   let cardId = "";
   let ticket1 = "";
@@ -213,7 +213,7 @@ async function pointTicketWrite(s: any, identity: any, token: string): Promise<Q
   let singleRedeem = false;
   let batchRedeem = false;
   let finalBalance = -1;
-  let cleanup = false;
+  let preserved = false;
   let errorCode = "";
 
   try {
@@ -299,31 +299,24 @@ async function pointTicketWrite(s: any, identity: any, token: string): Promise<Q
   } catch (error) {
     errorCode = error instanceof ApiError ? error.code : "QA_POINT_WRITE_ERROR";
   } finally {
-    if (cardId) {
-      await s.from("point_tickets").delete().eq("point_card_id", cardId).eq("member_id", identity.memberId);
-      await s.from("point_entries").delete().eq("point_card_id", cardId).eq("member_id", identity.memberId);
-      await s.from("point_balances").delete().eq("point_card_id", cardId).eq("member_id", identity.memberId);
-      await s.from("point_cards").delete().eq("id", cardId);
-      const check = await s.from("point_cards").select("id").eq("id", cardId).maybeSingle();
-      cleanup = !check.error && !check.data;
-    }
+    preserved = Boolean(cardId);
   }
 
-  const actual = { singleRedeem, batchRedeem, finalBalance, cleanup, errorCode };
-  return singleRedeem && batchRedeem && finalBalance === 0 && cleanup
-    ? passed(key, "臨時集點票券已走過單筆與批次正式核銷流程，並完整清理。", expected, actual)
-    : failed(key, "集點票券成功核銷或清理驗證失敗。", expected, actual);
+  const actual = { singleRedeem, batchRedeem, finalBalance, preserved, errorCode };
+  return singleRedeem && batchRedeem && finalBalance === 0 && preserved
+    ? passed(key, "臨時集點票券已走過單筆與批次正式核銷流程，資料保留供管理端檢查。", expected, actual)
+    : failed(key, "集點票券成功核銷或資料保留驗證失敗。", expected, actual);
 }
 
 async function eventTicketWrite(s: any, identity: any, token: string): Promise<QaCase> {
   const key = "EVENT_TICKET_WRITE";
-  const expected = { claimed: true, redeemed: true, cleanup: true };
+  const expected = { claimed: true, redeemed: true, preserved: true };
   const tag = suffix();
   let rowId = "";
   let claimId = "";
   let claimed = false;
   let redeemed = false;
-  let cleanup = false;
+  let preserved = false;
   let errorCode = "";
 
   try {
@@ -380,19 +373,13 @@ async function eventTicketWrite(s: any, identity: any, token: string): Promise<Q
   } catch (error) {
     errorCode = error instanceof ApiError ? error.code : "QA_EVENT_WRITE_ERROR";
   } finally {
-    if (rowId) {
-      await s.from("event_ticket_claims").delete().eq("event_ticket_id", rowId).eq("member_id", identity.memberId);
-      await s.from("calendar_items").delete().eq("source_event_ticket_id", rowId);
-      await s.from("event_tickets").delete().eq("id", rowId);
-      const check = await s.from("event_tickets").select("id").eq("id", rowId).maybeSingle();
-      cleanup = !check.error && !check.data;
-    }
+    preserved = Boolean(rowId);
   }
 
-  const actual = { claimed, redeemed, cleanup, errorCode };
-  return claimed && redeemed && cleanup
-    ? passed(key, "臨時活動票券已完成正式領取、核銷並清理。", expected, actual)
-    : failed(key, "活動票券領取、核銷或清理驗證失敗。", expected, actual);
+  const actual = { claimed, redeemed, preserved, errorCode };
+  return claimed && redeemed && preserved
+    ? passed(key, "臨時活動票券已完成正式領取與核銷，資料保留供管理端檢查。", expected, actual)
+    : failed(key, "活動票券領取、核銷或資料保留驗證失敗。", expected, actual);
 }
 
 async function calendarReadOnly(s: any, identity: any, token: string): Promise<QaCase> {
@@ -457,12 +444,12 @@ async function findBookingSlot(token: string, slug: string, action: string, item
 
 async function bookingWrite(s: any, identity: any, token: string): Promise<QaCase> {
   const key = "BOOKING_WRITE";
-  const expected = { created: true, updated: true, cancellationRequested: true, cleanup: true };
+  const expected = { created: true, updated: true, cancellationRequested: true, preserved: true };
   let bookingId = "";
   let created = false;
   let updated = false;
   let cancellationRequested = false;
-  let cleanup = false;
+  let preserved = false;
   let errorCode = "";
 
   try {
@@ -474,7 +461,7 @@ async function bookingWrite(s: any, identity: any, token: string): Promise<QaCas
     const services = Array.isArray((bootstrap.data as any).services) ? (bootstrap.data as any).services : [];
     const setup = bookingItems(services);
     if (!setup.normal || !setup.items.length) {
-      return skipped(key, "目前沒有可供自動化測試的主要預約項目。", expected, { created: false, updated: false, cancellationRequested: false, cleanup: true });
+      return skipped(key, "目前沒有可供自動化測試的主要預約項目。", expected, { created: false, updated: false, cancellationRequested: false, preserved: true });
     }
     const settings: any = (bootstrap.data as any).settings || {};
     const today = asText((bootstrap.data as any).today, 10);
@@ -530,22 +517,22 @@ async function bookingWrite(s: any, identity: any, token: string): Promise<QaCas
   } catch (error) {
     errorCode = error instanceof ApiError ? error.code : "QA_BOOKING_WRITE_ERROR";
   } finally {
-    cleanup = await cleanupBooking(s, bookingId);
+    preserved = Boolean(bookingId);
   }
 
-  const actual = { created, updated, cancellationRequested, cleanup, errorCode };
-  return created && updated && cancellationRequested && cleanup
-    ? passed(key, "預約已走過正式新增、修改、取消申請流程，並清除 QA 資料。", expected, actual)
-    : failed(key, "預約新增、修改、取消申請或清理驗證失敗。", expected, actual);
+  const actual = { created, updated, cancellationRequested, preserved, errorCode };
+  return created && updated && cancellationRequested && preserved
+    ? passed(key, "預約已走過正式新增、修改與取消申請流程，資料保留供管理端檢查。", expected, actual)
+    : failed(key, "預約新增、修改、取消申請或資料保留驗證失敗。", expected, actual);
 }
 
 async function bookingGroupWrite(s: any, identity: any, token: string): Promise<QaCase> {
   const key = "BOOKING_GROUP_WRITE";
-  const expected = { created: true, updated: true, cleanup: true };
+  const expected = { created: true, updated: true, preserved: true };
   let bookingId = "";
   let created = false;
   let updated = false;
-  let cleanup = false;
+  let preserved = false;
   let errorCode = "";
 
   try {
@@ -563,10 +550,10 @@ async function bookingGroupWrite(s: any, identity: any, token: string): Promise<
     const maxPartySize = Number(groupSettings.maxPartySize || 1);
     const primaryId = asText(groupSettings.primaryTechnicianId, 80);
     if (maxPartySize < 2) {
-      return skipped(key, "目前多人預約上限為 1 人，依設定略過多人成功寫入測試。", expected, { maxPartySize, cleanup: true });
+      return skipped(key, "目前多人預約上限為 1 人，依設定略過多人成功寫入測試。", expected, { maxPartySize, preserved: true });
     }
     if (!normal || !primaryId || !technicians.some((item: any) => item.technicianId === primaryId && item.isActive !== false)) {
-      return failed(key, "多人預約已開啟，但主要技師或可測試項目設定不完整。", expected, { maxPartySize, primaryTechnicianConfigured: Boolean(primaryId), normalServiceAvailable: Boolean(normal), cleanup: true });
+      return failed(key, "多人預約已開啟，但主要技師或可測試項目設定不完整。", expected, { maxPartySize, primaryTechnicianConfigured: Boolean(primaryId), normalServiceAvailable: Boolean(normal), preserved: true });
     }
 
     const participants = [
@@ -620,13 +607,13 @@ async function bookingGroupWrite(s: any, identity: any, token: string): Promise<
   } catch (error) {
     errorCode = error instanceof ApiError ? error.code : "QA_GROUP_WRITE_ERROR";
   } finally {
-    cleanup = await cleanupBooking(s, bookingId);
+    preserved = Boolean(bookingId);
   }
 
-  const actual = { created, updated, cleanup, errorCode };
-  return created && updated && cleanup
-    ? passed(key, "多人預約已走過正式新增與修改流程，並清除 QA 資料。", expected, actual)
-    : failed(key, "多人預約新增、修改或清理驗證失敗。", expected, actual);
+  const actual = { created, updated, preserved, errorCode };
+  return created && updated && preserved
+    ? passed(key, "多人預約已走過正式新增與修改流程，資料保留供管理端檢查。", expected, actual)
+    : failed(key, "多人預約新增、修改或資料保留驗證失敗。", expected, actual);
 }
 
 async function lineSuppression(s: any): Promise<QaCase> {
