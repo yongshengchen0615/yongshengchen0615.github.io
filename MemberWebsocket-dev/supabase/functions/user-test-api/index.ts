@@ -1549,10 +1549,9 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       surface,
       skippedCases: skippedCount,
       memberId: identity.memberId,
-      durationMs,
     },
-    started_at: startedAt,
-    completed_at: completedAt,
+    started_at: now,
+    completed_at: now,
     updated_at: now,
   }).select("id").single();
   if (run.error || !run.data) throw new ApiError(503, "QA_RECORD_WRITE_FAILED", "無法建立真人操作測試紀錄。");
