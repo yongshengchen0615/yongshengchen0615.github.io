@@ -169,4 +169,6 @@ test('browser E2E recording stays bounded as case detail grows', () => {
   assert.match(runner, /compactRecordSnapshot/);
   assert.match(runner, /bytes > 320000/);
   assert.match(api, /MAX_REQUEST_BYTES = 384_000/);
+  assert.match(api, /STANDARD_REQUEST_BYTES = 20_000/);
+  assert.match(api, /action !== "admin\.test-control\.record-browser-run"/);
 });
