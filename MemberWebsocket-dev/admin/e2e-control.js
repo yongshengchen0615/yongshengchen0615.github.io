@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.6';
+  const VERSION = '2026-09-22.7';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -316,26 +316,51 @@
     return parsed.data || {};
   }
 
+  function compactRecordSnapshot(value, maxChars = 1600) {
+    const normalized = safe(value);
+    let serialized = '';
+    try { serialized = JSON.stringify(normalized); } catch { return { serializationFailed: true }; }
+    if (serialized.length <= maxChars) return normalized;
+    return {
+      truncated: true,
+      originalChars: serialized.length,
+      preview: serialized.slice(0, Math.max(200, maxChars - 120))
+    };
+  }
+
   async function recordRun(runnerKind, suite, memberId = '') {
     const session = await adminSession();
-    return postFunction('test-control-api', {
+    const cases = state.results.map((item) => {
+      const detailLimit = item.status === 'failed' ? 3600 : 1400;
+      return {
+        key: item.key,
+        name: item.name,
+        domain: item.domain,
+        status: item.status,
+        message: String(item.message || '').slice(0, 1000),
+        expected: compactRecordSnapshot(item.expected, detailLimit),
+        actual: compactRecordSnapshot(item.actual, detailLimit),
+        durationMs: Number(item.durationMs || 0)
+      };
+    });
+    const payload = {
       action: 'admin.test-control.record-browser-run',
       clientType: 'admin',
       idToken: session.idToken,
       runnerKind,
       suite,
       memberId: memberId || undefined,
-      cases: state.results.map((item) => ({
-        key: item.key,
-        name: item.name,
-        domain: item.domain,
-        status: item.status,
-        message: item.message,
-        expected: safe(item.expected),
-        actual: safe(item.actual),
-        durationMs: Number(item.durationMs || 0)
-      }))
-    });
+      cases
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
+    if (bytes > 320000) {
+      payload.cases = cases.map((item) => ({
+        ...item,
+        expected: compactRecordSnapshot(item.expected, 500),
+        actual: compactRecordSnapshot(item.actual, 900)
+      }));
+    }
+    return postFunction('test-control-api', payload);
   }
 
   function adminDefinitions(suite) {
