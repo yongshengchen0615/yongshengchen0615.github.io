@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.10';
+  const VERSION = '2026-09-22.11';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1395,6 +1395,7 @@
         bookingId = String(recovered?.bookingId || '').trim();
       }
       if (bookingId) {
+        actual.bookingId = bookingId;
         actual.preserved = true;
         await refreshRealClient().catch(() => {});
       }
@@ -1446,6 +1447,7 @@
         bookingId = String(recovered?.bookingId || '').trim();
       }
       if (bookingId) {
+        actual.bookingId = bookingId;
         actual.preserved = true;
         await refreshRealClient().catch(() => {});
       }
