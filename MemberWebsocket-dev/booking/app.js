@@ -730,9 +730,10 @@
         summaryRow('時間', `${booking.startTime}–${booking.endTime}`),
       );
 
+      const statusKey = bookingDisplayStatus(booking);
       const status = document.createElement('span');
-      status.className = `status-badge status-${booking.status}`;
-      status.textContent = STATUS_LABELS[booking.status] || booking.status;
+      status.className = `status-badge status-${statusKey}`;
+      status.textContent = STATUS_LABELS[statusKey] || statusKey;
       top.append(titleBox, status);
       item.appendChild(top);
 
@@ -833,6 +834,11 @@
       if (Number.isFinite(elapsed) && elapsed >= 0) return state.serverClockEpochMs + elapsed;
     }
     return Date.now() + Number(state.serverClockOffsetMs || 0);
+  }
+
+  function bookingDisplayStatus(booking) {
+    const cancellationPending = Boolean(booking?.cancellationRequestedAt && !booking?.cancellationReviewedAt);
+    return cancellationPending ? 'cancel_requested' : String(booking?.status || '');
   }
 
   function canCancel(booking) {
