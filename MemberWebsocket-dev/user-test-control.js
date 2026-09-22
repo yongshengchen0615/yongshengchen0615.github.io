@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.1';
+  const VERSION = '2026-09-22.2';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1114,8 +1114,75 @@
       : fail('預約控制項真人操作至少一個步驟異常。', { allSteps: true }, actual);
   }
 
-  async function waitForBookingCardByNote(note, timeoutMs = 8000) {
-    return waitFor(() => Array.from(document.querySelectorAll('#bookingList .booking-item')).find((card) => (card.textContent || '').includes(note)), timeoutMs);
+  async function waitForBookingCardByNote(note, timeoutMs = 8000, requireBookingId = false) {
+    return waitFor(() => Array.from(document.querySelectorAll('#bookingList .booking-item')).find((card) => {
+      const noteMatches = (card.textContent || '').includes(note);
+      const bookingId = String(card.dataset.bookingId || '').trim();
+      return noteMatches && (!requireBookingId || Boolean(bookingId));
+    }), timeoutMs);
+  }
+
+  async function waitForBookingCardById(bookingId, timeoutMs = 5000) {
+    const id = String(bookingId || '').trim();
+    if (!id) return null;
+    return waitFor(() => Array.from(document.querySelectorAll('#bookingList .booking-item'))
+      .find((card) => String(card.dataset.bookingId || '').trim() === id), timeoutMs);
+  }
+
+  function waitForBookingCreatedEvent(note, timeoutMs = 12000) {
+    const expectedNote = String(note || '').trim();
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener('booking:created', onCreated);
+        window.clearTimeout(timer);
+        resolve(value || null);
+      };
+      const onCreated = (event) => {
+        const booking = event?.detail?.booking;
+        if (!booking) return;
+        if (expectedNote && String(booking.memberNote || '').trim() !== expectedNote) return;
+        finish(booking);
+      };
+      const timer = window.setTimeout(() => finish(null), Math.max(500, Number(timeoutMs) || 12000));
+      window.addEventListener('booking:created', onCreated);
+    });
+  }
+
+  async function resolveBookingByNote(note) {
+    const expectedNote = String(note || '').trim();
+    if (!expectedNote) return null;
+    const fresh = await requestCore('user.booking.bootstrap', {});
+    return (Array.isArray(fresh?.bookings) ? fresh.bookings : []).find((booking) => (
+      String(booking?.memberNote || '').trim() === expectedNote
+      && Boolean(String(booking?.bookingId || '').trim())
+    )) || null;
+  }
+
+  async function reconcileBookingIdentity(note, createdBooking, timeoutMs = 10000) {
+    let bookingId = String(createdBooking?.bookingId || '').trim();
+    let card = bookingId ? await waitForBookingCardById(bookingId, Math.min(timeoutMs, 3500)) : null;
+
+    if (!card) {
+      const byNote = await waitForBookingCardByNote(note, Math.min(timeoutMs, 4500), true);
+      if (byNote) {
+        card = byNote;
+        if (!bookingId) bookingId = String(byNote.dataset.bookingId || '').trim();
+      }
+    }
+
+    if (!bookingId) {
+      const serverBooking = await resolveBookingByNote(note).catch(() => null);
+      bookingId = String(serverBooking?.bookingId || '').trim();
+      if (bookingId) {
+        await refreshRealClient().catch(() => {});
+        card = await waitForBookingCardById(bookingId, Math.min(timeoutMs, 3500));
+      }
+    }
+
+    return { bookingId, card };
   }
 
   async function chooseAvailableSlot() {
@@ -1157,11 +1224,19 @@
 
       submit?.click();
       await waitFor(() => confirmModal && !confirmModal.classList.contains('hidden'), 1500);
+      const createdEventPromise = waitForBookingCreatedEvent(note, 12000);
       document.getElementById('confirmBookingButton')?.click();
-      let card = await waitForBookingCardByNote(note, 10000);
-      actual.created = Boolean(card);
-      bookingId = String(card?.dataset.bookingId || '');
-      if (!bookingId) throw new Error('真人送出預約後找不到 Booking ID。');
+      const createdBooking = await createdEventPromise;
+      const createdIdentity = await reconcileBookingIdentity(note, createdBooking, 10000);
+      let card = createdIdentity.card;
+      bookingId = createdIdentity.bookingId;
+      actual.created = Boolean(card && bookingId);
+      if (!bookingId) throw new Error('真人送出預約後，建立事件、畫面與 Bootstrap 都找不到 Booking ID。');
+      if (!card) {
+        await refreshRealClient().catch(() => {});
+        card = await waitForBookingCardById(bookingId, 3500);
+      }
+      if (!card) throw new Error('真人送出預約已取得 Booking ID，但預約卡片尚未同步。');
 
       card?.querySelector('.booking-item-top')?.click();
       await wait(80);
@@ -1204,6 +1279,10 @@
         actual.cancelRequested = Boolean(await waitFor(() => /取消待確認/.test(document.querySelector('#bookingList .booking-item[data-booking-id="' + bookingId + '"] .status-badge')?.textContent || ''), 7000));
       }
     } finally {
+      if (!bookingId) {
+        const recovered = await resolveBookingByNote(note).catch(() => null);
+        bookingId = String(recovered?.bookingId || '').trim();
+      }
       if (bookingId) {
         const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { bookingId }).catch(() => null);
         actual.cleaned = Boolean(cleaned && cleaned.cleaned);
@@ -1244,11 +1323,18 @@
       actual.slotSelected = slot.getAttribute('aria-pressed') === 'true';
       document.getElementById('submitBookingButton')?.click();
       await waitFor(() => !document.getElementById('bookingConfirmModal')?.classList.contains('hidden'), 1800);
+      const createdEventPromise = waitForBookingCreatedEvent(note, 12000);
       document.getElementById('confirmBookingButton')?.click();
-      const card = await waitForBookingCardByNote(note, 12000);
-      actual.created = Boolean(card && card.dataset.participantDetails === '1');
-      bookingId = String(card?.dataset.bookingId || '');
+      const createdBooking = await createdEventPromise;
+      const createdIdentity = await reconcileBookingIdentity(note, createdBooking, 12000);
+      const card = createdIdentity.card;
+      bookingId = createdIdentity.bookingId;
+      actual.created = Boolean(card && bookingId && card.dataset.participantDetails === '1');
     } finally {
+      if (!bookingId) {
+        const recovered = await resolveBookingByNote(note).catch(() => null);
+        bookingId = String(recovered?.bookingId || '').trim();
+      }
       if (bookingId) {
         const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { bookingId }).catch(() => null);
         actual.cleaned = Boolean(cleaned && cleaned.cleaned);
