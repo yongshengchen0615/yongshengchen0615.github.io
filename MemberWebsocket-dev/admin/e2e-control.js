@@ -1,8 +1,9 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.1';
+  const VERSION = '2026-09-22.2';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
+  const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
     ['member', '會員卡'],
     ['points', '集點卡'],
@@ -13,18 +14,21 @@
   const state = {
     running: false,
     results: [],
-    frame: null,
     section: null,
     list: null,
     message: null,
     badge: null,
     summary: null,
-    viewport: null,
-    floating: null
+    participantList: null,
+    floating: null,
+    clientWindows: [],
+    participants: [],
+    adminTestAccount: null
   };
 
   window.addEventListener('DOMContentLoaded', mount);
   window.addEventListener('member-admin-ready', mount);
+  window.addEventListener('pagehide', closeClientWindows);
 
   function mount() {
     if (document.getElementById('adminBrowserE2ESection')) return;
@@ -41,7 +45,7 @@
         <div>
           <span class="test-mode-eyebrow">Browser E2E</span>
           <h4 id="adminBrowserE2ETitle">管理端真人 E2E / 管理端 ↔ 用戶端協同測試</h4>
-          <p>真的切換管理分頁、開啟視窗、修改並還原測試會員資料；協同模式會依序載入五個用戶端，執行各自的真人 E2E，再回管理端確認測試紀錄已同步。</p>
+          <p>管理端會員操作只允許測試用戶。協同模式會依設定人數開啟獨立用戶端視窗，每位測試用戶都在自己的視窗依序執行會員卡、集點卡、活動票券、日曆與預約真人 E2E，再回管理端確認測試紀錄已同步。</p>
         </div>
         <div class="admin-e2e-actions">
           <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">Browser Runner：待命</span>
@@ -50,12 +54,13 @@
           <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">管理端 ↔ 用戶端完整 E2E</button>
         </div>
       </div>
+      <div class="admin-e2e-paired-config">
+        <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
+        <small>1–10 人。若啟用中的測試用戶不足，系統會自動補建；每位測試用戶會使用獨立的新用戶端視窗，正式用戶不會被選入。</small>
+      </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
-      <div id="adminBrowserE2EViewport" class="admin-e2e-viewport hidden">
-        <div class="admin-e2e-viewport-head"><strong>用戶端真人操作視窗</strong><span id="adminBrowserE2EViewportLabel">—</span></div>
-        <iframe id="adminBrowserE2EFrame" title="用戶端 E2E 測試視窗" loading="eager"></iframe>
-      </div>
+      <div id="adminE2EParticipantList" class="admin-e2e-participant-list hidden" aria-live="polite"></div>
       <div id="adminBrowserE2ECaseList" class="test-control-case-list admin-e2e-case-list"></div>
     `;
     host.insertBefore(section, layout);
@@ -72,8 +77,7 @@
     state.message = section.querySelector('#adminBrowserE2EMessage');
     state.badge = section.querySelector('#adminBrowserE2EBadge');
     state.summary = section.querySelector('#adminBrowserE2ESummary');
-    state.viewport = section.querySelector('#adminBrowserE2EViewport');
-    state.frame = section.querySelector('#adminBrowserE2EFrame');
+    state.participantList = section.querySelector('#adminE2EParticipantList');
     state.floating = floating;
 
     section.querySelector('#runAdminQuickE2EButton')?.addEventListener('click', () => runAdmin('quick'));
@@ -138,6 +142,8 @@
     state.section?.querySelectorAll('button[data-admin-e2e-control]').forEach((button) => {
       button.disabled = state.running;
     });
+    const countInput = state.section?.querySelector('#pairedE2EAccountCount');
+    if (countInput) countInput.disabled = state.running;
     if (state.badge) {
       state.badge.textContent = state.running ? 'Browser Runner：執行中' : 'Browser Runner：待命';
       state.badge.classList.toggle('is-on', state.running);
@@ -298,18 +304,23 @@
   async function runAdmin(suite) {
     if (state.running) return;
     state.results = [];
+    state.participants = [];
+    renderParticipants();
     setBusy(true, '管理端');
-    setMessage(suite === 'full' ? '正在執行管理端完整真人 E2E…' : '正在執行管理端快速 E2E…');
+    setMessage(suite === 'full' ? '正在以測試用戶執行管理端完整真人 E2E…' : '正在以測試用戶執行管理端快速 E2E…');
     try {
-      await executeCases(adminDefinitions(suite), '管理端');
+      const accounts = await prepareTestAccounts(1);
+      state.adminTestAccount = accounts[0];
+      await executeCases(adminDefinitions(suite), '管理端 · 測試用戶');
       const recorded = await recordRun('admin-browser', suite);
       const failed = state.results.filter((item) => item.status === 'failed').length;
-      setMessage(failed ? `管理端 E2E 完成，發現 ${failed} 個異常。` : '管理端 E2E 完成，結果已寫入 Test Control Center。', failed > 0);
-      return { recorded, results: safe(state.results) };
+      setMessage(failed ? `管理端 E2E 完成，發現 ${failed} 個異常。` : '管理端 E2E 完成；所有會員操作皆鎖定測試用戶，結果已寫入 Test Control Center。', failed > 0);
+      return { recorded, account: safe(state.adminTestAccount), results: safe(state.results) };
     } catch (error) {
       setMessage(error?.message || '管理端 E2E 未能完整執行。', true);
       return { error: plainError(error), results: safe(state.results) };
     } finally {
+      state.adminTestAccount = null;
       setBusy(false);
       render();
     }
@@ -317,77 +328,127 @@
 
   async function runPaired() {
     if (state.running) return;
-    state.results = [];
-    setBusy(true, '協同');
-    setMessage('正在執行管理端 ↔ 用戶端完整協同 E2E。');
-    let account = null;
+    let participantCount = 1;
+    let openedWindows = [];
     try {
-      await executeCases(adminDefinitions('full'), '管理端');
-      const login = await createPairedSession();
-      account = login.account;
-      state.results.push({
-        key: 'PAIRED_TEST_SESSION',
-        name: '建立協同測試會員 Session',
-        domain: 'Authentication',
-        status: 'passed',
-        message: '已建立短效測試會員 Session；未使用管理員權限或 service role。',
-        expected: { activeTestAccount: true },
-        actual: { memberId: account?.memberId || null, memberCode: account?.memberCode || null },
-        durationMs: 0
-      });
-      render();
+      participantCount = selectedParticipantCount();
+      closeClientWindows();
+      openedWindows = openClientWindows(participantCount);
+    } catch (error) {
+      setMessage(error?.message || '無法開啟用戶端測試視窗。請允許此網站開啟彈出式視窗後重試。', true);
+      return { error: plainError(error), results: [] };
+    }
 
-      const runCodes = [];
-      for (const [surface, label] of PAIRED_SURFACES) {
-        const started = performance.now();
-        const row = {
-          key: 'PAIRED_' + surface.toUpperCase(),
-          name: label + '真人 E2E（由管理端協同啟動）',
-          domain: 'Paired E2E / ' + surface,
-          status: 'running',
-          message: '正在載入用戶端…',
-          expected: { selectedMemberId: account?.memberId || null, failedCases: 0 },
-          actual: {},
-          durationMs: null
-        };
-        state.results.push(row);
-        render();
-        if (state.floating) state.floating.textContent = 'E2E 執行中 · 用戶端 · ' + label;
-        try {
-          const child = await runUserSurface(surface, label);
-          const summary = child?.summary || {};
-          const childMemberId = child?.account?.memberId || '';
-          const runCode = String(child?.browserRun?.runCode || '');
-          if (runCode) runCodes.push(runCode);
-          row.actual = {
-            memberId: childMemberId || null,
-            passed: Number(summary.passed || 0),
-            failed: Number(summary.failed || 0),
-            skipped: Number(summary.skipped || 0),
-            total: Number(summary.total || 0),
-            runCode: runCode || null
-          };
-          const sameMember = childMemberId === account?.memberId;
-          const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember;
-          Object.assign(row, ok
-            ? pass(label + '真人 E2E 通過，且使用同一個協同測試會員。', row.expected, row.actual)
-            : fail(label + '真人 E2E 或協同會員一致性驗證失敗。', row.expected, row.actual));
-        } catch (error) {
-          Object.assign(row, fail(label + '協同 E2E 發生錯誤。', row.expected, plainError(error)));
-        }
-        row.durationMs = Math.max(0, Math.round(performance.now() - started));
+    state.results = [];
+    state.participants = [];
+    setBusy(true, '協同');
+    setMessage(`正在準備 ${participantCount} 位測試用戶的管理端 ↔ 用戶端完整協同 E2E。`);
+    try {
+      const accounts = await prepareTestAccounts(participantCount);
+      state.adminTestAccount = accounts[0];
+      state.participants = accounts.map((account, index) => ({
+        index: index + 1,
+        account,
+        window: openedWindows[index],
+        status: '準備登入',
+        surface: '準備中',
+        runCodes: []
+      }));
+      renderParticipants();
+
+      for (const participant of state.participants) {
+        const login = await createPairedSession(participant.account);
+        seedParticipantSession(participant, login);
+        participant.status = '已登入';
+        participant.surface = '會員卡';
+        navigateParticipant(participant, 'member');
+        state.results.push({
+          key: `PAIRED_${participant.index}_TEST_SESSION`,
+          name: `測試用戶 ${participant.index}：建立獨立 Session`,
+          domain: 'Authentication',
+          status: 'passed',
+          message: '已建立短效測試會員 Session，並寫入該測試用戶自己的新視窗；未使用正式用戶、管理員權限或 service role。',
+          expected: { isTestAccount: true, isolatedClientWindow: true },
+          actual: { memberCode: participant.account?.memberCode || null, isolatedClientWindow: true },
+          durationMs: 0
+        });
+        renderParticipants();
         render();
       }
 
-      await executeCases([
-        caseDef('PAIRED_ADMIN_RECORD_SYNC', '用戶端測試紀錄同步回管理端', 'Paired E2E / Audit', () =>
-          verifyUserRunsVisibleInAdmin(account, runCodes))
-      ], '同步驗證');
+      await executeCases(adminDefinitions('full'), '管理端 · 測試用戶');
 
-      const recorded = await recordRun('paired-browser', 'full', account?.memberId || '');
+      for (const participant of state.participants) {
+        for (const [surface, label] of PAIRED_SURFACES) {
+          const started = performance.now();
+          const row = {
+            key: `PAIRED_${participant.index}_${surface.toUpperCase()}`,
+            name: `測試用戶 ${participant.index}：${label}真人 E2E`,
+            domain: 'Paired E2E / ' + surface,
+            status: 'running',
+            message: '正在獨立用戶端視窗執行…',
+            expected: { memberCode: participant.account?.memberCode || null, failedCases: 0 },
+            actual: {},
+            durationMs: null
+          };
+          state.results.push(row);
+          participant.status = '執行中';
+          participant.surface = label;
+          renderParticipants();
+          render();
+          if (state.floating) state.floating.textContent = `E2E 執行中 · 測試用戶 ${participant.index} · ${label}`;
+          try {
+            const child = await runUserSurface(participant, surface, label);
+            const summary = child?.summary || {};
+            const childMemberId = child?.account?.memberId || '';
+            const runCode = String(child?.browserRun?.runCode || '');
+            if (runCode) participant.runCodes.push(runCode);
+            row.actual = {
+              memberCode: participant.account?.memberCode || null,
+              sameTestMember: childMemberId === participant.account?.memberId,
+              passed: Number(summary.passed || 0),
+              failed: Number(summary.failed || 0),
+              skipped: Number(summary.skipped || 0),
+              total: Number(summary.total || 0),
+              runCode: runCode || null
+            };
+            const sameMember = childMemberId === participant.account?.memberId;
+            const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember;
+            Object.assign(row, ok
+              ? pass(label + '真人 E2E 通過，且仍為指定測試用戶。', row.expected, row.actual)
+              : fail(label + '真人 E2E 或測試用戶一致性驗證失敗。', row.expected, row.actual));
+          } catch (error) {
+            Object.assign(row, fail(label + '獨立用戶端 E2E 發生錯誤。', row.expected, plainError(error)));
+          }
+          row.durationMs = Math.max(0, Math.round(performance.now() - started));
+          render();
+        }
+
+        participant.status = '同步驗證';
+        participant.surface = '管理端紀錄';
+        renderParticipants();
+        await executeCases([
+          caseDef(
+            `PAIRED_${participant.index}_ADMIN_RECORD_SYNC`,
+            `測試用戶 ${participant.index}：用戶端測試紀錄同步回管理端`,
+            'Paired E2E / Audit',
+            () => verifyUserRunsVisibleInAdmin(participant.account, participant.runCodes)
+          )
+        ], `同步驗證 · 測試用戶 ${participant.index}`);
+        participant.status = state.results[state.results.length - 1]?.status === 'passed' ? '完成' : '有異常';
+        participant.surface = '完成';
+        renderParticipants();
+      }
+
+      const recorded = await recordRun('paired-browser', 'full');
       const failed = state.results.filter((item) => item.status === 'failed').length;
-      setMessage(failed ? `協同 E2E 完成，發現 ${failed} 個異常。` : '管理端 ↔ 用戶端協同 E2E 全部通過，結果已集中記錄。', failed > 0);
-      return { recorded, account, results: safe(state.results) };
+      setMessage(
+        failed
+          ? `${participantCount} 位測試用戶協同 E2E 完成，發現 ${failed} 個異常；用戶端視窗保留供檢查。`
+          : `${participantCount} 位測試用戶的管理端 ↔ 用戶端協同 E2E 全部通過；用戶端視窗保留供檢查。`,
+        failed > 0
+      );
+      return { recorded, participants: safe(state.participants.map((item) => item.account)), results: safe(state.results) };
     } catch (error) {
       state.results.push({
         key: 'PAIRED_RUNNER_FATAL',
@@ -395,18 +456,20 @@
         domain: 'Paired E2E',
         status: 'failed',
         message: error?.message || '協同 Runner 無法啟動。',
-        expected: { runnable: true },
+        expected: { runnable: true, testAccountsOnly: true },
         actual: plainError(error),
         durationMs: 0
       });
-      setMessage(error?.message || '協同 E2E 無法啟動。請確認系統維護與此裝置的測試登入開關已啟用。', true);
+      setMessage(error?.message || '協同 E2E 無法啟動。請確認系統維護、目前裝置測試登入與彈出式視窗權限。', true);
       render();
-      try { await recordRun('paired-browser', 'full', account?.memberId || ''); } catch {}
+      try { await recordRun('paired-browser', 'full'); } catch {}
+      closeClientWindows();
       return { error: plainError(error), results: safe(state.results) };
     } finally {
-      cleanupPairedSession();
+      state.adminTestAccount = null;
       setBusy(false);
       render();
+      renderParticipants();
     }
   }
 
@@ -444,21 +507,39 @@
       : fail('至少一個主要管理分頁無法正常切換。', { allPrimaryTabsOpen: true }, actual);
   }
 
-  async function ensureTestRoster() {
+  async function ensureTestRoster(account = state.adminTestAccount) {
     document.getElementById('membersTab')?.click();
     await waitFor(() => !document.getElementById('membersPanel')?.classList.contains('hidden'), 3000);
     document.getElementById('testMembersSubtab')?.click();
-    const edit = await waitFor(() => document.querySelector('#memberTableBody button[data-action="edit-member"]'), 8000);
-    if (!edit) throw new Error('測試會員名冊未載入可操作帳號。');
+    const selected = await waitFor(
+      () => document.getElementById('testMembersSubtab')?.getAttribute('aria-selected') === 'true',
+      3000
+    );
+    if (!selected) {
+      const error = new Error('E2E 安全邊界：無法切換到測試用戶名冊，已停止會員操作。');
+      error.code = 'E2E_TEST_ROSTER_REQUIRED';
+      throw error;
+    }
+    const memberCode = String(account?.memberCode || '');
+    const edit = await waitFor(() => {
+      const rows = Array.from(document.querySelectorAll('#memberTableBody tr'));
+      const row = memberCode
+        ? rows.find((item) => item.textContent?.includes(memberCode))
+        : rows[0];
+      return row?.querySelector('button[data-action="edit-member"]') || null;
+    }, 10000, 100);
+    if (!edit) throw new Error(memberCode ? '找不到本次指定的測試用戶：' + memberCode : '測試會員名冊未載入可操作帳號。');
     return edit;
   }
 
   async function adminTestRosterCase() {
     const edit = await ensureTestRoster();
     const rows = document.querySelectorAll('#memberTableBody tr').length;
-    return rows > 0
-      ? pass('已真人切換到測試用戶名冊，且至少存在一位可操作測試會員。', { rowsAtLeast: 1 }, { rows, firstAction: edit.dataset.action })
-      : fail('測試用戶名冊沒有可操作資料。', { rowsAtLeast: 1 }, { rows });
+    const testRosterSelected = document.getElementById('testMembersSubtab')?.getAttribute('aria-selected') === 'true';
+    const targetCode = String(state.adminTestAccount?.memberCode || '');
+    return rows > 0 && testRosterSelected
+      ? pass('已真人切換到測試用戶名冊，且本次 E2E 指定測試用戶可操作。', { rowsAtLeast: 1, testRosterSelected: true, targetTestAccount: true }, { rows, testRosterSelected, targetCode, firstAction: edit.dataset.action })
+      : fail('測試用戶名冊或指定測試用戶載入異常。', { rowsAtLeast: 1, testRosterSelected: true, targetTestAccount: true }, { rows, testRosterSelected, targetCode });
   }
 
   async function clickRowAction(action, lineUserId) {
@@ -476,6 +557,12 @@
 
     await clickRowAction('edit-member', lineUserId);
     actual.edit = Boolean(await waitFor(() => !document.getElementById('memberModal')?.classList.contains('hidden'), 3000));
+    if (document.getElementById('memberIsTestAccount')?.value !== 'true') {
+      document.getElementById('cancelMemberButton')?.click();
+      const error = new Error('E2E 安全邊界：管理端會員測試只能操作測試用戶，已阻擋正式用戶。');
+      error.code = 'E2E_REAL_MEMBER_BLOCKED';
+      throw error;
+    }
     document.getElementById('cancelMemberButton')?.click();
     await waitFor(() => document.getElementById('memberModal')?.classList.contains('hidden'), 3000);
 
@@ -507,7 +594,15 @@
   async function openTestMember(lineUserId) {
     await ensureTestRoster();
     await clickRowAction('edit-member', lineUserId);
-    return Boolean(await waitFor(() => !document.getElementById('memberModal')?.classList.contains('hidden'), 4000));
+    const opened = Boolean(await waitFor(() => !document.getElementById('memberModal')?.classList.contains('hidden'), 4000));
+    if (!opened) return false;
+    if (document.getElementById('memberIsTestAccount')?.value !== 'true') {
+      document.getElementById('cancelMemberButton')?.click();
+      const error = new Error('E2E 安全邊界：偵測到正式用戶，已禁止修改並停止測試。');
+      error.code = 'E2E_REAL_MEMBER_BLOCKED';
+      throw error;
+    }
+    return true;
   }
 
   async function submitMemberAndWait() {
@@ -660,7 +755,7 @@
       'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'runQuickAutomationTestButton',
       'runFullAutomationTestButton', 'runAdminQuickE2EButton', 'runAdminFullE2EButton',
-      'runPairedFullE2EButton'
+      'runPairedFullE2EButton', 'pairedE2EAccountCount'
     ];
     const actual = Object.fromEntries(ids.map((id) => [id, Boolean(document.getElementById(id))]));
     const ok = Object.values(actual).every(Boolean);
@@ -690,26 +785,144 @@
       : fail('發現尚未納入管理端 E2E 覆蓋分類的新控制。', { unmapped: [] }, actual);
   }
 
-  async function createPairedSession() {
+  function selectedParticipantCount() {
+    const input = state.section?.querySelector('#pairedE2EAccountCount');
+    const count = Number(input?.value || 1);
+    if (!Number.isInteger(count) || count < 1 || count > MAX_PAIRED_PARTICIPANTS) {
+      const error = new Error(`協同測試人數必須是 1–${MAX_PAIRED_PARTICIPANTS} 的整數。`);
+      error.code = 'INVALID_PAIRED_PARTICIPANT_COUNT';
+      throw error;
+    }
+    return count;
+  }
+
+  function closeClientWindows() {
+    for (const item of state.clientWindows) {
+      try { if (item && !item.closed) item.close(); } catch {}
+    }
+    state.clientWindows = [];
+  }
+
+  function openClientWindows(count) {
+    const opened = [];
+    const stamp = Date.now();
+    for (let index = 0; index < count; index += 1) {
+      const child = window.open('about:blank', `member-e2e-${stamp}-${index + 1}`);
+      if (!child) {
+        for (const existing of opened) {
+          try { existing.close(); } catch {}
+        }
+        const error = new Error(`瀏覽器阻擋了第 ${index + 1} 個用戶端視窗。請允許此網站開啟彈出式視窗後重試。`);
+        error.code = 'E2E_POPUP_BLOCKED';
+        throw error;
+      }
+      try {
+        child.document.title = `Lumen Club E2E · 測試用戶 ${index + 1}`;
+        child.document.body.innerHTML = '<main style="font-family:system-ui,sans-serif;padding:32px;line-height:1.7"><h1>用戶端 E2E 準備中</h1><p>正在建立獨立測試 Session，完成後會自動進入會員頁面。</p></main>';
+      } catch {}
+      opened.push(child);
+    }
+    state.clientWindows = opened;
+    return opened;
+  }
+
+  function renderParticipants() {
+    if (!state.participantList) return;
+    const participants = Array.isArray(state.participants) ? state.participants : [];
+    state.participantList.classList.toggle('hidden', participants.length === 0);
+    state.participantList.replaceChildren(...participants.map((participant) => {
+      const card = document.createElement('div');
+      card.className = 'admin-e2e-participant';
+      const identity = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = `測試用戶 ${participant.index}`;
+      const code = document.createElement('small');
+      code.textContent = String(participant.account?.memberCode || '準備中');
+      identity.append(title, code);
+      const status = document.createElement('span');
+      status.textContent = `${participant.status || '準備中'} · ${participant.surface || '—'}`;
+      card.append(identity, status);
+      return card;
+    }));
+  }
+
+  async function postAdminTestMode(action, payload = {}) {
     const session = await adminSession();
+    return postFunction('test-mode-api', {
+      ...payload,
+      action,
+      clientType: 'admin',
+      idToken: session.idToken
+    });
+  }
+
+  function activeTestAccounts(data) {
+    return (Array.isArray(data?.accounts) ? data.accounts : []).filter((account) =>
+      account?.status === 'active' && account?.membershipStatus === 'active' && account?.memberId
+    );
+  }
+
+  async function prepareTestAccounts(count) {
+    let data = await postAdminTestMode('admin.test-mode.bootstrap');
+    let accounts = activeTestAccounts(data);
+    if (accounts.length < count) {
+      const shortage = count - accounts.length;
+      const settings = data?.settings || {};
+      data = await postAdminTestMode('admin.test-mode.save', {
+        maintenanceEnabled: Boolean(settings.maintenanceEnabled),
+        allowPcTestLogin: Boolean(settings.allowPcTestLogin),
+        allowMobileTestLogin: Boolean(settings.allowMobileTestLogin),
+        maintenanceMessage: String(settings.maintenanceMessage || ''),
+        addAccountCount: shortage
+      });
+      accounts = activeTestAccounts(data);
+    }
+    if (accounts.length < count) {
+      throw new Error(`啟用中的測試用戶不足：需要 ${count} 位，目前只有 ${accounts.length} 位。`);
+    }
+    return accounts.slice(0, count);
+  }
+
+  async function createPairedSession(account) {
+    const session = await adminSession();
+    if (!account?.memberId) throw new Error('測試用戶識別不完整。');
     const common = { clientType: 'member' };
     const status = await postPublicTestMode(session, { action: 'public.status', ...common });
     if (!status.maintenanceEnabled) {
-      const error = new Error('協同 E2E 需要先啟用「系統維護」，以確保只有測試帳號走測試登入。');
+      const error = new Error('協同 E2E 需要先啟用「系統維護」，以確保正式用戶不會進入測試流程。');
       error.code = 'TEST_MAINTENANCE_REQUIRED';
       throw error;
     }
-    const accountsData = await postPublicTestMode(session, { action: 'test-mode.accounts', ...common });
-    const accounts = Array.isArray(accountsData.accounts) ? accountsData.accounts : [];
-    if (!accounts.length) throw new Error('目前沒有可用的測試會員。');
-    const chosen = accounts[0];
-    const login = await postPublicTestMode(session, { action: 'test-mode.login', ...common, memberId: chosen.memberId });
-    if (!login.testSessionToken || !login.account?.memberId) throw new Error('測試會員 Session 建立不完整。');
-    window.sessionStorage.setItem(TEST_SESSION_STORAGE_KEY, JSON.stringify({
-      token: String(login.testSessionToken),
-      expiresAt: new Date(login.expiresAt).getTime()
-    }));
+    const login = await postPublicTestMode(session, {
+      action: 'test-mode.login',
+      ...common,
+      memberId: account.memberId
+    });
+    if (!login.testSessionToken || login.account?.memberId !== account.memberId) {
+      throw new Error('指定測試用戶 Session 建立不完整或帳號不一致。');
+    }
     return login;
+  }
+
+  function seedParticipantSession(participant, login) {
+    const child = participant?.window;
+    if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的用戶端視窗已關閉。`);
+    try {
+      child.sessionStorage.setItem(TEST_SESSION_STORAGE_KEY, JSON.stringify({
+        token: String(login.testSessionToken),
+        expiresAt: new Date(login.expiresAt).getTime()
+      }));
+    } catch {
+      throw new Error('無法把測試 Session 寫入獨立用戶端視窗。');
+    }
+  }
+
+  function navigateParticipant(participant, surface) {
+    const child = participant?.window;
+    if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的用戶端視窗已關閉。`);
+    const url = new URL('../' + surface + '/', window.location.href);
+    url.searchParams.set('qaPair', `${Date.now()}-${participant.index}`);
+    child.location.href = url.href;
   }
 
   async function postPublicTestMode(session, body) {
@@ -732,32 +945,28 @@
     return parsed.data || {};
   }
 
-  async function runUserSurface(surface, label) {
-    if (!state.frame || !state.viewport) throw new Error('協同 E2E iframe 尚未建立。');
-    state.viewport.classList.remove('hidden');
-    const labelNode = state.section?.querySelector('#adminBrowserE2EViewportLabel');
-    if (labelNode) labelNode.textContent = label + ' · 真人操作中';
-    const frame = state.frame;
-    const url = new URL('../' + surface + '/', window.location.href);
-    url.searchParams.set('qaPair', String(Date.now()));
-
-    const loaded = new Promise((resolve, reject) => {
-      const timer = window.setTimeout(() => reject(new Error(label + '頁面載入逾時。')), 20000);
-      frame.onload = () => { window.clearTimeout(timer); resolve(true); };
-    });
-    frame.src = url.href;
-    await loaded;
+  async function runUserSurface(participant, surface, label) {
+    const child = participant?.window;
+    if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的用戶端視窗已被關閉。`);
+    participant.surface = label;
+    renderParticipants();
+    navigateParticipant(participant, surface);
 
     const control = await waitFor(() => {
       try {
-        const win = frame.contentWindow;
-        return win?.MemberUserTestControl?.surface === surface ? win.MemberUserTestControl : null;
+        if (child.closed) return null;
+        return child.MemberUserTestControl?.surface === surface ? child.MemberUserTestControl : null;
       } catch { return null; }
-    }, 20000, 100);
-    if (!control) throw new Error(label + ' E2E 控制器未就緒。');
+    }, 25000, 120);
+    if (!control) throw new Error(label + ' E2E 控制器未在獨立用戶端視窗就緒。');
 
     const result = await control.runFull();
     if (!result || typeof result !== 'object') throw new Error(label + ' E2E 未回傳結構化結果。');
+    if (result?.account?.memberId !== participant.account?.memberId) {
+      const error = new Error(label + ' E2E 使用者與指定測試用戶不一致。');
+      error.code = 'E2E_TEST_ACCOUNT_MISMATCH';
+      throw error;
+    }
     return safe(result);
   }
 
@@ -766,7 +975,7 @@
     if (!account?.memberCode || !latestRunCode) {
       return fail('沒有足夠資料驗證用戶端測試紀錄同步。', { memberCode: true, runCode: true }, { memberCode: account?.memberCode || null, runCode: latestRunCode || null });
     }
-    await ensureTestRoster();
+    await ensureTestRoster(account);
     const rows = Array.from(document.querySelectorAll('#memberTableBody tr'));
     const row = rows.find((item) => item.textContent?.includes(String(account.memberCode)));
     if (!row) return fail('管理端名冊找不到協同測試會員。', { memberCode: account.memberCode }, { found: false });
@@ -787,20 +996,11 @@
       : fail('用戶端 E2E 已完成，但管理端會員紀錄尚未看見該 run code。', { runCodeVisible: true }, { runCodeVisible: false, runCode: latestRunCode });
   }
 
-  function cleanupPairedSession() {
-    try { window.sessionStorage.removeItem(TEST_SESSION_STORAGE_KEY); } catch {}
-    if (state.frame) {
-      try { state.frame.src = 'about:blank'; } catch {}
-    }
-    state.viewport?.classList.add('hidden');
-    const labelNode = state.section?.querySelector('#adminBrowserE2EViewportLabel');
-    if (labelNode) labelNode.textContent = '—';
-  }
-
   window.MemberAdminE2EControl = Object.freeze({
     version: VERSION,
     runQuick: () => runAdmin('quick'),
     runFull: () => runAdmin('full'),
-    runPairedFull: () => runPaired()
+    runPairedFull: () => runPaired(),
+    maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
   });
 })();
