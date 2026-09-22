@@ -395,6 +395,7 @@
     const copyButton = document.createElement('button');
     copyButton.type = 'button';
     copyButton.className = 'booking-copy-button';
+    copyButton.dataset.bookingAdminAction = 'copy-booking';
     copyButton.textContent = '複製預約內容';
     copyButton.setAttribute('aria-label', `複製 ${bookingContactName(row)} 的預約內容`);
     copyButton.addEventListener('click', () => copyBooking(copyButton, row));
@@ -412,10 +413,12 @@
       const keep = document.createElement('button');
       keep.type = 'button';
       keep.className = 'button button-outline';
+      keep.dataset.bookingAdminAction = 'reject-cancellation';
       keep.textContent = '保留預約';
       const approve = document.createElement('button');
       approve.type = 'button';
       approve.className = 'button button-danger';
+      approve.dataset.bookingAdminAction = 'approve-cancellation';
       approve.textContent = '確認取消';
       keep.addEventListener('click', () => review(row, 'admin.reject', actions));
       approve.addEventListener('click', () => review(row, 'admin.approve', actions));
