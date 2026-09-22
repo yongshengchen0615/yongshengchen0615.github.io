@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.15';
+  const VERSION = '2026-09-22.16';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -1909,18 +1909,65 @@
     return last;
   }
 
+  async function adminHumanPause(minMs = 90, maxMs = 260) {
+    if (state.cancelled) throw new Error('E2E 已停止。');
+    await sleep(randomInt(minMs, maxMs));
+  }
+
+  async function adminHumanClick(node, label = '控制項') {
+    if (!node) throw new Error('找不到可操作的' + label + '。');
+    if (node.disabled) throw new Error(label + '目前不可操作。');
+    try { node.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'auto' }); } catch {}
+    try { node.focus?.({ preventScroll: true }); } catch { try { node.focus?.(); } catch {} }
+    await adminHumanPause(70, 220);
+    node.click();
+    await adminHumanPause(80, 260);
+    return true;
+  }
+
+  async function adminHumanSelect(select, value, label = '下拉選單') {
+    if (!select) throw new Error('找不到' + label + '。');
+    try { select.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'auto' }); } catch {}
+    try { select.focus?.({ preventScroll: true }); } catch { try { select.focus?.(); } catch {} }
+    await adminHumanPause(60, 180);
+    select.value = String(value ?? '');
+    select.dispatchEvent(new Event('input', { bubbles: true }));
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await adminHumanPause(80, 240);
+    return true;
+  }
+
+  async function adminHumanTextInput(input, value, label = '文字欄位') {
+    if (!input) return false;
+    try { input.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'auto' }); } catch {}
+    try { input.focus?.({ preventScroll: true }); } catch { try { input.focus?.(); } catch {} }
+    await adminHumanPause(50, 150);
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const text = String(value || '');
+    const chunks = text.match(/.{1,8}/g) || [''];
+    for (const chunk of chunks) {
+      input.value += chunk;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await adminHumanPause(18, 55);
+    }
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await adminHumanPause(60, 180);
+    return true;
+  }
+
   async function openAdminBookingQueue(filter = 'pending') {
     const tab = await waitFor(() => document.getElementById('bookingTab'), 6000);
     if (!tab) throw new Error('預約管理分頁未載入。');
-    tab.click();
+    await adminHumanClick(tab, '預約管理分頁');
     const queueSubtab = await waitFor(() => document.getElementById('bookingAdminQueueSubtab'), 6000);
-    queueSubtab?.click();
+    await adminHumanClick(queueSubtab, '用戶預約分頁');
     if (!await waitFor(() => !document.getElementById('bookingAdminQueuePanel')?.classList.contains('hidden'), 5000)) {
       throw new Error('用戶預約管理分頁未開啟。');
     }
     if (!await waitBookingAdminReady()) throw new Error('預約管理資料尚未同步完成。');
     const filterButton = await waitFor(() => document.querySelector('[data-booking-filter="' + filter + '"]'), 3000);
-    filterButton?.click();
+    await adminHumanClick(filterButton, '預約狀態篩選');
     await sleep(100);
     return true;
   }
@@ -1957,7 +2004,7 @@
     if (!button) {
       return { bookingId: String(bookingId || ''), mode, buttonFound: false, ok: false };
     }
-    button.click();
+    await adminHumanClick(button, isCancelled ? '已取消分頁' : '取消申請分頁');
     const reviewVisible = Boolean(await waitFor(() => {
       const review = document.getElementById('bookingCancellationReview');
       const coreQueue = document.getElementById('bookingAdminQueue');
@@ -1989,7 +2036,7 @@
 
     const editButton = bookingActionButton(card, '修改此位項目') || bookingActionButton(card, '修改服務項目');
     if (!editButton) throw new Error('這筆預約沒有可供管理端 E2E 操作的修改項目按鈕。');
-    editButton.click();
+    await adminHumanClick(editButton, '修改此位項目');
 
     const modal = await waitFor(() => {
       const node = document.getElementById('bookingAdminCrudModal');
@@ -2006,14 +2053,13 @@
     const afterQuantity = beforeQuantity === 2 ? 1 : 2;
     const serviceId = String(checked.dataset?.bookingService || checked.value || '');
     const participantEditor = Boolean(form.querySelector('[data-participant-item-rows]'));
-    quantity.value = String(afterQuantity);
-    quantity.dispatchEvent(new Event('change', { bubbles: true }));
+    await adminHumanSelect(quantity, String(afterQuantity), '服務數量');
     const beforeUpdatedAt = String(booking?.updatedAt || '');
 
     if (state.cancelled) throw new Error('E2E 已停止，未送出修改。');
     const submit = form.querySelector('button[type="submit"]');
     if (!submit || submit.disabled) throw new Error('修改預約送出按鈕尚未就緒。');
-    submit.click();
+    await adminHumanClick(submit, '儲存預約項目');
     const closed = Boolean(await waitFor(() => document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'), 18000, 100));
     if (!closed) {
       const message = form.querySelector('[data-modal-message]')?.textContent || '';
@@ -2042,6 +2088,7 @@
       persistedQuantity,
       updatedAtChanged,
       updatedAt: updated?.updatedAt || null,
+      participantPosition: participantEditor ? 1 : null,
       ok: updatedAtChanged && persistedQuantity === afterQuantity
     };
   }
@@ -2087,7 +2134,7 @@
     const targetBlock = blocks[targetIndex];
     const editButton = bookingActionButton(targetBlock, '修改此位技師');
     if (!editButton) throw new Error('這筆多人預約缺少「修改此位技師」操作。');
-    editButton.click();
+    await adminHumanClick(editButton, '修改此位技師');
 
     const modal = await waitFor(() => {
       const node = document.getElementById('bookingAdminCrudModal');
@@ -2113,13 +2160,12 @@
     }
 
     const nextTechnicianId = String(replacement.value || '');
-    select.value = nextTechnicianId;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await adminHumanSelect(select, nextTechnicianId, '預約技師');
     const beforeUpdatedAt = String(booking?.updatedAt || '');
     if (state.cancelled) throw new Error('E2E 已停止，未送出技師修改。');
     const submit = form.querySelector('button[type="submit"]');
     if (!submit || submit.disabled) throw new Error('修改技師送出按鈕尚未就緒。');
-    submit.click();
+    await adminHumanClick(submit, '儲存預約技師');
 
     const closed = Boolean(await waitFor(
       () => document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'),
@@ -2162,18 +2208,15 @@
     const card = await waitFor(() => document.querySelector('#bookingAdminQueue .booking-admin-booking[data-booking-id="' + CSS.escape(String(bookingId || '')) + '"]'), 9000, 100);
     if (!card) throw new Error('管理端找不到待審核的用戶端 E2E 預約。');
     const textarea = card.querySelector('.booking-admin-note-field textarea');
-    if (textarea) {
-      textarea.value = String(adminNote || '');
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    }
+    if (textarea) await adminHumanTextInput(textarea, String(adminNote || ''), '管理端說明');
     const action = bookingActionButton(card, label);
     if (!action) throw new Error('管理端預約缺少「' + label + '」操作。');
     if (!await waitFor(() => !action.disabled, 5000)) throw new Error('管理端預約操作尚未就緒。');
     if (state.cancelled) throw new Error('E2E 已停止，未送出狀態變更。');
     if (expectedStatus === 'completed') {
-      await withAutoConfirm(async () => { action.click(); });
+      await withAutoConfirm(async () => { await adminHumanClick(action, label); });
     } else {
-      action.click();
+      await adminHumanClick(action, label);
     }
     const updated = await waitAdminBookingSnapshot(bookingId, (row) => String(row.status || '') === expectedStatus, 18000);
     return {
@@ -2209,7 +2252,7 @@
     }
     if (state.cancelled) throw new Error('E2E 已停止，未送出取消審核。');
 
-    await withAutoConfirm(async () => { action.click(); });
+    await withAutoConfirm(async () => { await adminHumanClick(action, label); });
     const reviewed = await waitAdminBookingSnapshot(id, (row) => {
       if (!row?.cancellationReviewedAt || String(row.cancellationDecision || '') !== decision) return false;
       if (keeping) {
