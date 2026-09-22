@@ -9,7 +9,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('full user E2E prepares complex usage state before building cases', () => {
   const runner = read('user-test-control.js');
   const prepareIndex = runner.indexOf("qaServiceRequest('user.qa.usage-state.prepare'");
-  const buildIndex = runner.indexOf('const cases = buildCases(state.currentSuite)');
+  const buildIndex = runner.indexOf('buildCases(state.currentSuite)');
   assert.ok(prepareIndex >= 0, 'usage-state prepare action must be called');
   assert.ok(buildIndex > prepareIndex, 'usage-state pack must exist before test cases are built');
   assert.match(runner, /COMMON_USAGE_STATE_COMPLEXITY/);

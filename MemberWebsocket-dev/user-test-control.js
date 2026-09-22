@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.10';
+  const VERSION = '2026-09-22.12';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -57,6 +57,8 @@
     browserRun: null,
     usageState: null,
     usageStateError: null,
+    bookingBaseline: null,
+    bookingHandoff: null,
     availabilitySync: null,
     bookingLaneDayCount: 1,
     runStartedAt: '',
@@ -434,6 +436,8 @@
     state.browserRun = null;
     state.usageState = null;
     state.usageStateError = null;
+    state.bookingBaseline = null;
+    state.bookingHandoff = null;
     state.cancelled = false;
     state.runStartedAt = new Date().toISOString();
     setRunning(true);
@@ -441,7 +445,20 @@
     setMessage(state.currentSuite === 'full' ? '正在以隨機案例順序、隨機操作間隔執行完整用戶端測試…' : '正在執行快速健康檢查…');
     renderResults();
 
-    if (state.currentSuite === 'full') {
+    let bookingBaselineFailed = false;
+    if (surface === 'booking' && state.currentSuite === 'full') {
+      try {
+        const before = await requestCore('user.booking.bootstrap', {});
+        if (!Array.isArray(before?.bookings)) throw new Error('預約基準資料不完整。');
+        state.bookingBaseline = before.bookings.map((row) => String(row.bookingId || '')).filter(Boolean);
+      } catch (error) {
+        bookingBaselineFailed = true;
+        state.results.push({ key: 'BOOKING_HANDOFF_BASELINE', name: '預約接手基準', domain: 'Booking / Handoff',
+          ...fail('無法建立本輪預約基準，未開始新增測試資料。', { baselineReady: true }, plainError(error)), durationMs: 0 });
+      }
+    }
+
+    if (state.currentSuite === 'full' && !bookingBaselineFailed) {
       try {
         setMessage('正在建立高複雜度會員使用狀態：歷史、可用、已使用、過期、受限與進行中資料…');
         state.usageState = await qaServiceRequest('user.qa.usage-state.prepare', {}, 60000);
@@ -452,7 +469,7 @@
       setMessage('使用狀態前置完成，正在以隨機案例順序與隨機操作間隔執行完整用戶端測試…', Boolean(state.usageStateError));
     }
 
-    const cases = buildCases(state.currentSuite);
+    const cases = bookingBaselineFailed ? [] : buildCases(state.currentSuite);
     updateSummary(0, cases.length);
 
     for (let index = 0; index < cases.length; index += 1) {
@@ -487,6 +504,17 @@
       await (state.currentSuite === 'full' ? randomInteractionPause() : wait(40));
     }
 
+    if (surface === 'booking' && state.currentSuite === 'full' && !bookingBaselineFailed) {
+      try {
+        const after = await requestCore('user.booking.bootstrap', {});
+        state.bookingHandoff = buildBookingHandoff(state.bookingBaseline, after?.bookings, state.session.account.memberId, state.runStartedAt);
+        state.results.push({ key: 'BOOKING_ADMIN_HANDOFF', name: '本輪全部 QA 預約接手清單', domain: 'Booking / Handoff',
+          ...pass('已收集真人操作與使用狀態資料的全部新建 QA 預約，交由管理端處理。', { completeManifest: true }, state.bookingHandoff), durationMs: 0 });
+      } catch (error) {
+        state.results.push({ key: 'BOOKING_ADMIN_HANDOFF', name: '本輪全部 QA 預約接手清單', domain: 'Booking / Handoff',
+          ...fail('預約接手清單讀取失敗，不能宣告完整流程通過。', { completeManifest: true }, plainError(error)), durationMs: 0 });
+      }
+    }
     const cancelled = state.cancelled;
     if (!cancelled) {
       try {
@@ -526,6 +554,7 @@
       suite: state.currentSuite,
       account: state.session && state.session.account || null,
       browserRun: state.browserRun || null,
+      bookingHandoff: safeJson(state.bookingHandoff),
       results: state.results.map((item) => ({
         key: item.key || '',
         name: item.name || '',
@@ -543,6 +572,14 @@
         total: state.results.length
       }
     };
+  }
+
+  function buildBookingHandoff(baselineIds, bookings, memberId, startedAt) {
+    if (!Array.isArray(baselineIds) || !Array.isArray(bookings) || !memberId) throw new Error('預約接手基準或回讀資料不完整。');
+    const baseline = new Set(baselineIds);
+    const rows = bookings.filter((row) => row?.bookingId && !baseline.has(String(row.bookingId)))
+      .filter((row) => /^(?:QA HUMAN E2E(?: GROUP)? |QA STATE PACK |QA automated (?:group )?(?:create|update)$)/i.test(String(row.memberNote || '')));
+    return { ready: true, memberId, startedAt, bookingIds: [...new Set(rows.map((row) => String(row.bookingId)))] };
   }
 
   function buildCases(suite) {
@@ -1395,6 +1432,7 @@
         bookingId = String(recovered?.bookingId || '').trim();
       }
       if (bookingId) {
+        actual.bookingId = bookingId;
         actual.preserved = true;
         await refreshRealClient().catch(() => {});
       }
@@ -1411,7 +1449,7 @@
       return skip('目前多人預約上限不足 2 人。', { partySizeAtLeast: 2 }, { partySize: party ? party.options.length : 0 });
     }
     const note = 'QA HUMAN E2E GROUP ' + Date.now().toString(36);
-    const actual = { partyTwo: false, firstAdded: false, secondAdded: false, slotSelected: false, created: false, preserved: false };
+    const actual = { partyTwo: false, firstAdded: false, firstQuantityTwo: false, secondAdded: false, slotSelected: false, created: false, preserved: false };
     let bookingId = '';
     try {
       await openBookingForSafeDate();
@@ -1421,6 +1459,10 @@
       const firstAdd = chooseNormalServiceButton(cards[0] || document);
       firstAdd?.click();
       actual.firstAdded = Boolean(await waitFor(() => cards[0]?.querySelector('.selected-service-remove') || document.querySelector('#participantCardList .participant-card[data-participant-index="0"] .selected-service-remove'), 1200));
+      // Reserve two units up front so the admin can test a real 2 → 1 edit
+      // without extending into another participant's reserved slot.
+      chooseNormalServiceButton(document.querySelector('#participantCardList .participant-card[data-participant-index="0"]') || document)?.click();
+      actual.firstQuantityTwo = Boolean(await waitFor(() => document.querySelectorAll('#participantCardList .participant-card[data-participant-index="0"] .selected-service-remove').length >= 2, 1200));
       const secondCard = document.querySelector('#participantCardList .participant-card[data-participant-index="1"]');
       if (secondCard && !secondCard.open) secondCard.querySelector('summary')?.click();
       const secondAdd = chooseNormalServiceButton(secondCard || document);
@@ -1446,6 +1488,7 @@
         bookingId = String(recovered?.bookingId || '').trim();
       }
       if (bookingId) {
+        actual.bookingId = bookingId;
         actual.preserved = true;
         await refreshRealClient().catch(() => {});
       }
