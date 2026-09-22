@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.3';
+  const VERSION = '2026-09-22.4';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -47,7 +47,7 @@
         <div>
           <span class="test-mode-eyebrow">Browser E2E</span>
           <h4 id="adminBrowserE2ETitle">管理端真人 E2E / 管理端 ↔ 用戶端協同測試</h4>
-          <p>管理端會員操作只允許測試用戶。協同模式會依設定人數開啟獨立用戶端視窗，每位測試用戶都在自己的視窗依序執行會員卡、集點卡、活動票券、日曆與預約真人 E2E，再回管理端確認測試紀錄已同步。</p>
+          <p>管理端會員操作只允許測試用戶。協同模式會依設定人數開啟獨立用戶端視窗，每位測試用戶都在自己的視窗依序執行會員卡、集點卡、活動票券、日曆與預約真人 E2E；最後再以臨時測試會員執行票券、會員階級、點數與服務時數的跨端 Realtime、併發重送與非常規操作驗證。</p>
         </div>
         <div class="admin-e2e-actions">
           <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">Browser Runner：待命</span>
@@ -327,6 +327,7 @@
     return common.concat([
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
       caseDef('ADMIN_RESOURCE_EDITORS', '集點卡／票券／活動票券／日曆編輯視窗', 'Human E2E', adminResourceEditorsCase),
+      caseDef('ADMIN_TICKET_CRUD', '票券：新增／修改／封存／清理', 'Admin CRUD E2E', adminTicketCrudCase),
       caseDef('ADMIN_POINT_CARD_CRUD', '集點卡：新增／修改／刪除', 'Admin CRUD E2E', adminPointCardCrudCase),
       caseDef('ADMIN_EVENT_TICKET_CRUD', '活動票券：新增／修改／刪除', 'Admin CRUD E2E', adminEventTicketCrudCase),
       caseDef('ADMIN_CALENDAR_CRUD', '日曆：新增／修改／刪除', 'Admin CRUD E2E', adminCalendarCrudCase),
@@ -409,6 +410,7 @@
       await Promise.all(state.participants.map(async (participant) => {
         if (state.cancelled) return;
         const login = await createPairedSession(participant.account);
+        participant.login = login;
         seedParticipantSession(participant, login);
         participant.status = '已登入';
         participant.surface = '會員卡';
@@ -452,6 +454,10 @@
           renderParticipants();
           if (state.cancelled) break;
         }
+      }
+
+      if (!state.cancelled && state.participants[0]) {
+        await runDeepPairedSuite(state.participants[0]);
       }
 
       const cancelled = state.cancelled;
@@ -858,12 +864,96 @@
     return true;
   }
 
+
+  async function cleanupQaTicketTemplate(ticketTemplateId) {
+    if (!ticketTemplateId) return { deleted: true, alreadyMissing: true };
+    const session = await adminSession();
+    return postFunction('test-control-api', {
+      action: 'admin.test-control.cleanup-ticket-template',
+      clientType: 'admin',
+      idToken: session.idToken,
+      ticketTemplateId
+    });
+  }
+
+  async function createQaTicketTemplate(title, options = {}) {
+    document.getElementById('cardsTab')?.click();
+    document.getElementById('ticketSettingsTab')?.click();
+    document.getElementById('newTicketButton')?.click();
+    const modal = await waitEditorOpen('ticketEditorModal', 5000);
+    if (!modal) throw new Error('票券新增編輯器未開啟。');
+
+    setField('ticketTitle', title);
+    setField('ticketType', 'coupon');
+    setField('ticketDescription', options.description || 'E2E QA 深度測試票券，完成後由 Test Control 清理。');
+    setField('ticketUsageMethod', options.usageMethod || '僅供自動化 E2E');
+    setField('ticketUsageInstructions', options.usageInstructions || '不可供正式會員使用；測試完成後自動清理。');
+    setField('ticketStatus', options.status || 'active');
+    document.getElementById('saveTicketButton')?.click();
+
+    const ticketTemplateId = String(await waitFor(() => document.getElementById('ticketTemplateId')?.value || null, 15000) || '');
+    if (!ticketTemplateId) {
+      closeEditorModalById('ticketEditorModal');
+      throw new Error('票券儲存後沒有取得 Ticket Template ID。');
+    }
+    const listed = Boolean(await waitFor(() => textIncludes('#ticketListItems', title), 10000));
+    if (!listed) {
+      closeEditorModalById('ticketEditorModal');
+      throw new Error('票券儲存後沒有出現在管理端票券清單。');
+    }
+    return { ticketTemplateId, title, modal };
+  }
+
+  async function adminTicketCrudCase() {
+    const stamp = qaCrudStamp();
+    const createdTitle = 'E2E QA 深度票券 ' + stamp;
+    const updatedTitle = createdTitle + ' 修改';
+    const actual = { created: false, updated: false, archived: false, cleaned: false };
+    let ticketTemplateId = '';
+
+    try {
+      const fixture = await createQaTicketTemplate(createdTitle, { status: 'active' });
+      ticketTemplateId = fixture.ticketTemplateId;
+      actual.created = Boolean(ticketTemplateId);
+
+      setField('ticketTitle', updatedTitle);
+      setField('ticketDescription', 'E2E QA 深度票券已完成修改驗證。');
+      document.getElementById('saveTicketButton')?.click();
+      actual.updated = Boolean(await waitFor(() =>
+        String(document.getElementById('ticketTemplateId')?.value || '') === ticketTemplateId &&
+        String(document.getElementById('ticketTitle')?.value || '') === updatedTitle &&
+        textIncludes('#ticketListItems', updatedTitle)
+      , 15000));
+
+      setField('ticketStatus', 'archived');
+      document.getElementById('saveTicketButton')?.click();
+      actual.archived = Boolean(await waitFor(() =>
+        String(document.getElementById('ticketTemplateId')?.value || '') === ticketTemplateId &&
+        String(document.getElementById('ticketStatus')?.value || '') === 'archived'
+      , 15000));
+    } finally {
+      closeEditorModalById('ticketEditorModal');
+      if (ticketTemplateId) {
+        try {
+          const result = await cleanupQaTicketTemplate(ticketTemplateId);
+          actual.cleaned = Boolean(result?.deleted);
+        } catch {}
+      }
+    }
+
+    const ok = actual.created && actual.updated && actual.archived && actual.cleaned;
+    return ok
+      ? pass('已透過管理端 UI 完成票券新增、修改與封存，並由受管理員授權的 QA 清理路徑移除測試範本。', { created: true, updated: true, archived: true, cleaned: true }, actual)
+      : fail('票券 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, archived: true, cleaned: true }, actual);
+  }
+
   async function adminPointCardCrudCase() {
     const stamp = qaCrudStamp();
     const createdTitle = 'E2E 集點卡 ' + stamp;
     const updatedTitle = createdTitle + ' 修改';
-    const actual = { created: false, updated: false, deleted: false, cleaned: false, usedExistingTicket: false };
+    const actual = { created: false, updated: false, deleted: false, cleaned: false, usedExistingTicket: false, seededTicket: false, ticketCleaned: true };
     let createdId = '';
+    let qaTicketTemplateId = '';
 
     document.getElementById('cardsTab')?.click();
     document.getElementById('cardSettingsTab')?.click();
@@ -879,10 +969,28 @@
       setField('cardStatus', 'draft');
       setField('cardExpiryMode', 'unlimited');
 
-      const rewardSelect = await waitFor(() => document.querySelector('#rewardRows [data-field="ticketTemplateId"]'), 3000);
-      const ticketOption = rewardSelect ? Array.from(rewardSelect.options).find((option) => option.value && !option.disabled) : null;
+      let rewardSelect = await waitFor(() => document.querySelector('#rewardRows [data-field="ticketTemplateId"]'), 3000);
+      let ticketOption = rewardSelect ? Array.from(rewardSelect.options).find((option) => option.value && !option.disabled) : null;
       if (!rewardSelect || !ticketOption) {
-        return fail('集點卡 CRUD 需要至少一張既有票券作為兌換節點。', { activeTicketAvailable: true }, { activeTicketAvailable: false });
+        closeEditorModalById('cardEditorModal');
+        const fixture = await createQaTicketTemplate('E2E QA 深度票券 卡片前置 ' + stamp, { status: 'active' });
+        qaTicketTemplateId = fixture.ticketTemplateId;
+        actual.seededTicket = true;
+        closeEditorModalById('ticketEditorModal');
+        document.getElementById('cardSettingsTab')?.click();
+        document.getElementById('newCardButton')?.click();
+        if (!await waitEditorOpen('cardEditorModal', 5000)) throw new Error('建立 QA 票券後無法重新開啟集點卡編輯器。');
+        setField('cardTitle', createdTitle);
+        setField('cardUsageMethod', 'E2E 測試用集點方式');
+        setField('cardUsageInstructions', '此資料由管理端 E2E 建立，測試完成後自動刪除。');
+        setField('cardBenefitDescription', '管理端 CRUD E2E');
+        setField('cardStatus', 'draft');
+        setField('cardExpiryMode', 'unlimited');
+        rewardSelect = await waitFor(() => document.querySelector('#rewardRows [data-field="ticketTemplateId"]'), 5000);
+        ticketOption = rewardSelect ? Array.from(rewardSelect.options).find((option) => option.value === qaTicketTemplateId && !option.disabled) : null;
+      }
+      if (!rewardSelect || !ticketOption) {
+        return fail('集點卡 CRUD 無法取得可用票券；自動建立 QA 前置資料後仍失敗。', { activeTicketAvailable: true }, { activeTicketAvailable: false, seededTicket: actual.seededTicket });
       }
       const threshold = document.querySelector('#rewardRows [data-field="thresholdStamps"]');
       if (threshold) {
@@ -930,9 +1038,17 @@
         } catch {}
       }
       closeEditorModalById('cardEditorModal');
+      if (qaTicketTemplateId) {
+        try {
+          const result = await cleanupQaTicketTemplate(qaTicketTemplateId);
+          actual.ticketCleaned = Boolean(result?.deleted);
+        } catch {
+          actual.ticketCleaned = false;
+        }
+      }
     }
 
-    const ok = actual.created && actual.updated && actual.deleted && actual.cleaned && actual.usedExistingTicket;
+    const ok = actual.created && actual.updated && actual.deleted && actual.cleaned && actual.usedExistingTicket && actual.ticketCleaned;
     return ok
       ? pass('已透過管理端 UI 完成集點卡新增、修改、永久刪除，QA 資料已清理。', { created: true, updated: true, deleted: true, cleaned: true }, actual)
       : fail('集點卡 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, deleted: true, cleaned: true }, actual);
@@ -1495,6 +1611,546 @@
     return visible
       ? pass('用戶端真人 E2E 的 run code 已同步出現在同一位測試會員的管理端紀錄。', { runCodeVisible: true }, { runCodeVisible: true, runCode: latestRunCode })
       : fail('用戶端 E2E 已完成，但管理端會員紀錄尚未看見該 run code。', { runCodeVisible: true }, { runCodeVisible: false, runCode: latestRunCode });
+  }
+
+
+  async function createEphemeralTestAccount() {
+    const before = await postAdminTestMode('admin.test-mode.bootstrap');
+    const beforeIds = new Set(activeTestAccounts(before).map((account) => String(account.memberId || '')));
+    const settings = before?.settings || {};
+    const after = await postAdminTestMode('admin.test-mode.save', {
+      maintenanceEnabled: Boolean(settings.maintenanceEnabled),
+      allowPcTestLogin: Boolean(settings.allowPcTestLogin),
+      allowMobileTestLogin: Boolean(settings.allowMobileTestLogin),
+      maintenanceMessage: String(settings.maintenanceMessage || ''),
+      addAccountCount: 1
+    });
+    const created = activeTestAccounts(after).find((account) => !beforeIds.has(String(account.memberId || '')));
+    if (!created?.memberId || !created?.lineUserId) throw new Error('無法建立深度 E2E 專用臨時測試會員。');
+    return created;
+  }
+
+  async function removeEphemeralTestAccount(account) {
+    if (!account?.memberId) return false;
+    const result = await postAdminTestMode('admin.test-mode.delete-accounts', { memberIds: [account.memberId] });
+    return Number(result?.deletedAccountCount || 0) >= 1;
+  }
+
+  async function waitParticipantSurface(participant, surface, rootId, timeoutMs = 25000) {
+    navigateParticipant(participant, surface);
+    const child = participant.window;
+    const ready = await waitFor(() => {
+      try {
+        if (!child || child.closed) return null;
+        if (child.MemberUserTestControl?.surface !== surface) return null;
+        const root = child.document.getElementById(rootId);
+        const error = child.document.getElementById('errorView');
+        if (error && !error.classList.contains('hidden')) return { error: String(error.textContent || '').trim() };
+        return root && !root.classList.contains('hidden') ? root : null;
+      } catch { return null; }
+    }, timeoutMs, 120);
+    if (!ready || ready.error) throw new Error(ready?.error || surface + ' 用戶端沒有進入可操作狀態。');
+    return child;
+  }
+
+  function childMembership(child) {
+    const root = child?.document?.getElementById('membershipProgress');
+    return {
+      currentTier: String(root?.querySelector('[data-membership-current-tier]')?.textContent || '').trim(),
+      summary: String(root?.querySelector('[data-membership-summary]')?.textContent || '').trim(),
+      remaining: String(root?.querySelector('[data-membership-remaining]')?.textContent || '').trim(),
+      styleKey: String(root?.getAttribute('data-membership-tier-style') || '')
+    };
+  }
+
+  async function adminMemberSnapshot(account) {
+    const session = await adminSession();
+    const result = await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.members.list', {
+      memberPage: 1,
+      memberPageSize: 100,
+      memberQuery: String(account?.memberCode || ''),
+      memberKind: 'test'
+    });
+    const members = Array.isArray(result?.members) ? result.members : [];
+    return members.find((member) => String(member.lineUserId || '') === String(account?.lineUserId || '')) || null;
+  }
+
+  async function waitAdminMember(account, predicate, timeoutMs = 12000) {
+    return waitFor(async () => {
+      const member = await adminMemberSnapshot(account);
+      return member && predicate(member) ? member : null;
+    }, timeoutMs, 180);
+  }
+
+  async function openGrantForAccount(account) {
+    await ensureTestRoster(account);
+    const row = Array.from(document.querySelectorAll('#memberTableBody tr')).find((item) => item.textContent?.includes(String(account.memberCode || '')));
+    const button = row?.querySelector('button[data-action="add-grant"]');
+    if (!button) throw new Error('深度 E2E 測試會員沒有發放按鈕。');
+    button.click();
+    const modal = await waitFor(() => {
+      const node = document.getElementById('grantModal');
+      return node && !node.classList.contains('hidden') ? node : null;
+    }, 6000);
+    if (!modal) throw new Error('發放視窗沒有開啟。');
+    if (String(document.getElementById('grantMemberId')?.value || '') !== String(account.lineUserId || '')) {
+      throw new Error('發放視窗綁定的測試會員不一致。');
+    }
+    return modal;
+  }
+
+  function toggleCheckbox(id, checked) {
+    const input = document.getElementById(id);
+    if (!input) throw new Error('找不到控制欄位：' + id);
+    input.checked = Boolean(checked);
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return input;
+  }
+
+  async function submitServiceGrant(account, minutes, doubleClick = false) {
+    await openGrantForAccount(account);
+    toggleCheckbox('grantStampsEnabled', false);
+    toggleCheckbox('grantServiceTimeEnabled', true);
+    setField('grantServiceTimeMinutes', String(minutes));
+    const button = document.getElementById('saveGrantButton');
+    button?.click();
+    if (doubleClick) button?.click();
+    const closed = Boolean(await waitFor(() => document.getElementById('grantModal')?.classList.contains('hidden'), 15000));
+    if (!closed) throw new Error('服務時數發放後視窗沒有關閉。');
+    return true;
+  }
+
+  async function submitPointGrant(account, cardId, amount, doubleClick = false) {
+    await openGrantForAccount(account);
+    toggleCheckbox('grantStampsEnabled', true);
+    toggleCheckbox('grantServiceTimeEnabled', false);
+    const row = await waitFor(() => document.querySelector('#grantPointRows [data-grant-point-row]'), 3000);
+    const select = row?.querySelector('[data-grant-point-field="cardId"]');
+    const input = row?.querySelector('[data-grant-point-field="amount"]');
+    if (!select || !input) throw new Error('發放集點欄位沒有建立。');
+    select.value = String(cardId);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    input.value = String(amount);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const button = document.getElementById('saveGrantButton');
+    button?.click();
+    if (doubleClick) button?.click();
+    const closed = Boolean(await waitFor(() => document.getElementById('grantModal')?.classList.contains('hidden'), 15000));
+    if (!closed) throw new Error('點數發放後視窗沒有關閉。');
+    return true;
+  }
+
+  async function invalidGrantBoundaryCase(account) {
+    const before = await adminMemberSnapshot(account);
+    await openGrantForAccount(account);
+    toggleCheckbox('grantStampsEnabled', false);
+    toggleCheckbox('grantServiceTimeEnabled', true);
+    setField('grantServiceTimeMinutes', '0');
+    document.getElementById('saveGrantButton')?.click();
+    const zeroRejected = Boolean(await waitFor(() => /1–1440/.test(String(document.getElementById('grantFormMessage')?.textContent || '')), 1500));
+    setField('grantServiceTimeMinutes', '1441');
+    document.getElementById('saveGrantButton')?.click();
+    const tooLargeRejected = Boolean(await waitFor(() => /1–1440/.test(String(document.getElementById('grantFormMessage')?.textContent || '')), 1500));
+    toggleCheckbox('grantServiceTimeEnabled', false);
+    document.getElementById('saveGrantButton')?.click();
+    const emptyRejected = Boolean(await waitFor(() => /至少勾選/.test(String(document.getElementById('grantFormMessage')?.textContent || '')), 1500));
+    document.getElementById('cancelGrantButton')?.click();
+    const after = await adminMemberSnapshot(account);
+    const unchanged = Number(after?.serviceMinutesTotal || 0) === Number(before?.serviceMinutesTotal || 0);
+    return { zeroRejected, tooLargeRejected, emptyRejected, unchanged };
+  }
+
+  function currentTierSettingsFromDom() {
+    return [
+      ['general', 'tierGeneralMinutes', 'tierGeneralStyle'],
+      ['silver', 'tierSilverMinutes', 'tierSilverStyle'],
+      ['gold', 'tierGoldMinutes', 'tierGoldStyle'],
+      ['platinum', 'tierPlatinumMinutes', 'tierPlatinumStyle']
+    ].map(([tierKey, minutesId, styleId]) => ({
+      tierKey,
+      requiredServiceMinutes: Number(document.getElementById(minutesId)?.value || 0),
+      styleKey: String(document.getElementById(styleId)?.value || 'forest')
+    }));
+  }
+
+  async function saveTierSettingsViaUi(settings) {
+    const map = Object.fromEntries(settings.map((item) => [item.tierKey, item]));
+    setField('tierSilverMinutes', String(map.silver.requiredServiceMinutes));
+    setField('tierGoldMinutes', String(map.gold.requiredServiceMinutes));
+    setField('tierPlatinumMinutes', String(map.platinum.requiredServiceMinutes));
+    setField('tierGeneralStyle', map.general.styleKey);
+    setField('tierSilverStyle', map.silver.styleKey);
+    setField('tierGoldStyle', map.gold.styleKey);
+    setField('tierPlatinumStyle', map.platinum.styleKey);
+    document.getElementById('saveTierSettingsButton')?.click();
+    const saved = Boolean(await waitFor(() => /已儲存/.test(String(document.getElementById('tierSettingsFormMessage')?.textContent || '')), 15000));
+    if (!saved) throw new Error('會員階級門檻沒有完成儲存。');
+  }
+
+  async function deepServiceTierRealtimeCase(ctx) {
+    const account = ctx.account;
+    const participant = ctx.participant;
+    await ensureTestRoster(account);
+    ctx.originalTierSettings = currentTierSettingsFromDom();
+
+    const invalid = ctx.originalTierSettings.map((item) => ({ ...item }));
+    invalid.find((item) => item.tierKey === 'silver').requiredServiceMinutes = 2;
+    invalid.find((item) => item.tierKey === 'gold').requiredServiceMinutes = 2;
+    invalid.find((item) => item.tierKey === 'platinum').requiredServiceMinutes = 4;
+    setField('tierSilverMinutes', '2');
+    setField('tierGoldMinutes', '2');
+    setField('tierPlatinumMinutes', '4');
+    document.getElementById('saveTierSettingsButton')?.click();
+    const invalidTierRejected = Boolean(await waitFor(() => /依序遞增/.test(String(document.getElementById('tierSettingsFormMessage')?.textContent || '')), 1600));
+
+    const testSettings = ctx.originalTierSettings.map((item) => ({ ...item }));
+    testSettings.find((item) => item.tierKey === 'silver').requiredServiceMinutes = 2;
+    testSettings.find((item) => item.tierKey === 'gold').requiredServiceMinutes = 3;
+    testSettings.find((item) => item.tierKey === 'platinum').requiredServiceMinutes = 4;
+    await saveTierSettingsViaUi(testSettings);
+    ctx.tierSettingsChanged = true;
+
+    const child = await waitParticipantSurface(participant, 'member', 'memberView');
+    const before = await adminMemberSnapshot(account);
+    const beforeMinutes = Number(before?.serviceMinutesTotal || 0);
+    if (beforeMinutes !== 0) throw new Error('深度 E2E 臨時會員初始服務時數不是 0。');
+
+    const invalidGrant = await invalidGrantBoundaryCase(account);
+
+    const session = await adminSession();
+    const requestId = 'E2E-SVC-' + qaCrudStamp();
+    const payload = {
+      lineUserId: account.lineUserId,
+      requestId,
+      messagePresetId: '',
+      serviceTime: { minutes: 1 }
+    };
+    const replayResults = await Promise.allSettled([
+      window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.member-grants.add', payload),
+      window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.member-grants.add', payload)
+    ]);
+    const afterReplay = await waitAdminMember(account, (member) => Number(member.serviceMinutesTotal || 0) >= 1, 15000);
+    const replayDeltaOne = Number(afterReplay?.serviceMinutesTotal || 0) === 1;
+    const replayRealtime = Boolean(await waitFor(() => childMembership(child).summary.includes('累積 1 分鐘'), 12000, 120));
+
+    await submitServiceGrant(account, 1, true);
+    const silverMember = await waitAdminMember(account, (member) => Number(member.serviceMinutesTotal || 0) === 2, 15000);
+    const doubleSubmitDeltaOne = Number(silverMember?.serviceMinutesTotal || 0) === 2;
+    const silverRealtime = Boolean(await waitFor(() => /銀級/.test(childMembership(child).currentTier) && childMembership(child).summary.includes('累積 2 分鐘'), 12000, 120));
+
+    await submitServiceGrant(account, 1, false);
+    const goldRealtime = Boolean(await waitFor(() => /金級/.test(childMembership(child).currentTier) && childMembership(child).summary.includes('累積 3 分鐘'), 12000, 120));
+
+    await submitServiceGrant(account, 1, false);
+    const platinumRealtime = Boolean(await waitFor(() => /白金/.test(childMembership(child).currentTier) && childMembership(child).summary.includes('累積 4 分鐘'), 12000, 120));
+    const finalMember = await adminMemberSnapshot(account);
+
+    const actual = {
+      invalidTierRejected,
+      invalidGrant,
+      replayRequests: replayResults.map((item) => item.status),
+      replayDeltaOne,
+      replayRealtime,
+      doubleSubmitDeltaOne,
+      silverRealtime,
+      goldRealtime,
+      platinumRealtime,
+      finalServiceMinutes: Number(finalMember?.serviceMinutesTotal || 0),
+      finalTier: finalMember?.tier || null
+    };
+    const ok = invalidTierRejected && Object.values(invalidGrant).every(Boolean) && replayDeltaOne && replayRealtime &&
+      doubleSubmitDeltaOne && silverRealtime && goldRealtime && platinumRealtime && actual.finalServiceMinutes === 4;
+    return ok
+      ? pass('會員階級與服務時數已完成非法輸入、同 requestId 併發重送、UI 連點及跨級 Realtime 驗證；管理端與用戶端最終狀態一致。', {
+          invalidRejected: true, idempotentReplayDelta: 1, doubleSubmitDelta: 1, finalServiceMinutes: 4,
+          realtimeTiers: ['銀級', '金級', '白金']
+        }, actual)
+      : fail('會員階級／服務時數深度協同 E2E 發現狀態不一致。', {
+          invalidRejected: true, idempotentReplayDelta: 1, doubleSubmitDelta: 1, finalServiceMinutes: 4,
+          realtimeTiers: ['銀級', '金級', '白金']
+        }, actual);
+  }
+
+  async function createDeepPointCard(ctx) {
+    const stamp = qaCrudStamp();
+    ctx.ticketTitle = 'E2E QA 深度票券 點數 ' + stamp;
+    const ticket = await createQaTicketTemplate(ctx.ticketTitle, { status: 'active' });
+    ctx.ticketTemplateId = ticket.ticketTemplateId;
+    closeEditorModalById('ticketEditorModal');
+
+    document.getElementById('cardSettingsTab')?.click();
+    document.getElementById('newCardButton')?.click();
+    if (!await waitEditorOpen('cardEditorModal', 5000)) throw new Error('深度 E2E 集點卡編輯器未開啟。');
+    ctx.cardTitle = 'E2E QA 深度集點卡 ' + stamp;
+    setField('cardTitle', ctx.cardTitle);
+    setField('cardUsageMethod', '深度 E2E 自動集點');
+    setField('cardUsageInstructions', '測試管理端發點、票券產生與用戶端即時更新。');
+    setField('cardBenefitDescription', '2 點取得深度 E2E 測試票券');
+    setField('cardStatus', 'active');
+    setField('cardExpiryMode', 'unlimited');
+
+    const threshold = await waitFor(() => document.querySelector('#rewardRows [data-field="thresholdStamps"]'), 3000);
+    const select = document.querySelector('#rewardRows [data-field="ticketTemplateId"]');
+    if (!threshold || !select) throw new Error('集點卡兌換節點欄位未建立。');
+    threshold.value = '2';
+    threshold.dispatchEvent(new Event('input', { bubbles: true }));
+    select.value = String(ctx.ticketTemplateId);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('saveCardButton')?.click();
+    ctx.cardId = String(await waitFor(() => document.getElementById('cardId')?.value || null, 15000) || '');
+    if (!ctx.cardId) throw new Error('深度 E2E 集點卡沒有取得 Card ID。');
+    if (!await waitFor(() => textIncludes('#cardListItems', ctx.cardTitle), 10000)) throw new Error('深度 E2E 集點卡沒有出現在管理端。');
+    closeEditorModalById('cardEditorModal');
+    return ctx.cardId;
+  }
+
+  async function invalidPointGrantCase(account, cardId) {
+    await openGrantForAccount(account);
+    toggleCheckbox('grantStampsEnabled', true);
+    toggleCheckbox('grantServiceTimeEnabled', false);
+    const row = await waitFor(() => document.querySelector('#grantPointRows [data-grant-point-row]'), 3000);
+    const select = row?.querySelector('[data-grant-point-field="cardId"]');
+    const input = row?.querySelector('[data-grant-point-field="amount"]');
+    select.value = String(cardId);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    input.value = '0';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('saveGrantButton')?.click();
+    const zeroRejected = Boolean(await waitFor(() => /1–100/.test(String(document.getElementById('grantFormMessage')?.textContent || '')), 1500));
+    input.value = '101';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('saveGrantButton')?.click();
+    const tooLargeRejected = Boolean(await waitFor(() => /1–100/.test(String(document.getElementById('grantFormMessage')?.textContent || '')), 1500));
+    document.getElementById('cancelGrantButton')?.click();
+    return { zeroRejected, tooLargeRejected };
+  }
+
+  function childPointState(child, cardId, cardTitle, ticketTitle) {
+    const tabs = Array.from(child?.document?.querySelectorAll('#cardTabs [data-card-id]') || []);
+    const tab = tabs.find((node) => String(node.dataset.cardId || '') === String(cardId || '')) || null;
+    return {
+      cardVisible: Boolean(tab && String(tab.textContent || '').includes(cardTitle)),
+      activeTitle: String(child?.document?.getElementById('activeCardTitle')?.textContent || '').trim(),
+      points: Number(String(child?.document?.getElementById('progressCount')?.textContent || '0').replace(/[^0-9-]/g, '') || 0),
+      ticketVisible: String(child?.document?.getElementById('ticketList')?.textContent || '').includes(ticketTitle),
+      ticketHistoryVisible: String(child?.document?.getElementById('ticketHistoryList')?.textContent || '').includes(ticketTitle)
+    };
+  }
+
+  async function selectChildCard(child, cardId) {
+    const tab = await waitFor(() => {
+      try { return Array.from(child.document.querySelectorAll('#cardTabs [data-card-id]')).find((node) => String(node.dataset.cardId || '') === String(cardId || '')) || null; }
+      catch { return null; }
+    }, 12000, 120);
+    if (!tab) return false;
+    tab.click();
+    return Boolean(await waitFor(() => String(child.document.getElementById('activeCardTitle')?.textContent || '').trim() !== '', 3000));
+  }
+
+  async function redeemDeepTicketInChild(child, ticketTitle) {
+    const checkbox = await waitFor(() => {
+      try {
+        return Array.from(child.document.querySelectorAll('#ticketList [data-ticket-select]')).find((node) => {
+          const host = node.closest('article,li,section,div');
+          return String(host?.textContent || '').includes(ticketTitle);
+        }) || null;
+      } catch { return null; }
+    }, 10000, 120);
+    if (!checkbox) return { selected: false, cancelledOnce: false, redeemed: false, history: false };
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new child.Event('change', { bubbles: true }));
+    const useButton = await waitFor(() => {
+      try {
+        const button = child.document.querySelector('.ticket-overview-use');
+        return button && !button.disabled ? button : null;
+      } catch { return null; }
+    }, 3000);
+    if (!useButton) return { selected: true, cancelledOnce: false, redeemed: false, history: false };
+    useButton.click();
+    const modal = await waitFor(() => {
+      try {
+        const node = child.document.getElementById('ticketBatchModal');
+        return node && !node.classList.contains('hidden') ? node : null;
+      } catch { return null; }
+    }, 3000);
+    if (!modal) return { selected: true, cancelledOnce: false, redeemed: false, history: false };
+    modal.querySelector('.ticket-batch-cancel')?.click();
+    const cancelledOnce = Boolean(await waitFor(() => modal.classList.contains('hidden'), 1800));
+    useButton.click();
+    await waitFor(() => !modal.classList.contains('hidden'), 1800);
+    modal.querySelector('.ticket-batch-confirm')?.click();
+    const completed = await waitFor(() => {
+      const confirm = modal.querySelector('.ticket-batch-confirm');
+      return confirm && confirm.dataset.mode === 'close' && !confirm.disabled ? confirm : null;
+    }, 12000, 120);
+    const redeemed = Boolean(completed);
+    completed?.click();
+    const history = Boolean(await waitFor(() => String(child.document.getElementById('ticketHistoryList')?.textContent || '').includes(ticketTitle), 12000, 120));
+    return { selected: true, cancelledOnce, redeemed, history };
+  }
+
+  async function verifyPointRecordInAdmin(account, expectedText) {
+    await ensureTestRoster(account);
+    const row = Array.from(document.querySelectorAll('#memberTableBody tr')).find((item) => item.textContent?.includes(String(account.memberCode || '')));
+    const button = row?.querySelector('button[data-action="view-records"]');
+    if (!button) return false;
+    button.click();
+    const modal = await waitFor(() => {
+      const node = document.getElementById('memberRecordsModal');
+      return node && !node.classList.contains('hidden') ? node : null;
+    }, 7000);
+    if (!modal) return false;
+    modal.querySelector('[data-record-filter="pointCards"]')?.click();
+    const visible = Boolean(await waitFor(() => String(modal.querySelector('#memberRecordsList')?.textContent || '').includes(expectedText), 10000, 120));
+    document.getElementById('closeMemberRecordsModal')?.click();
+    return visible;
+  }
+
+  async function deleteDeepPointCard(ctx) {
+    if (!ctx.cardId) return true;
+    document.getElementById('cardsTab')?.click();
+    document.getElementById('cardSettingsTab')?.click();
+    const row = document.querySelector('#cardListItems [data-card-id="' + CSS.escape(ctx.cardId) + '"]');
+    row?.click();
+    if (!await waitFor(() => String(document.getElementById('cardId')?.value || '') === String(ctx.cardId), 5000)) return false;
+    return withAutoConfirm(async () => {
+      document.getElementById('deleteCardButton')?.click();
+      const deleted = Boolean(await waitFor(() => !String(document.getElementById('cardId')?.value || ''), 15000));
+      closeEditorModalById('cardEditorModal');
+      return deleted;
+    });
+  }
+
+  async function deepPointTicketRealtimeCase(ctx) {
+    const account = ctx.account;
+    const participant = ctx.participant;
+    const child = await waitParticipantSurface(participant, 'points', 'pointsView');
+    const baselineTabs = String(child.document.getElementById('cardTabs')?.textContent || '');
+
+    await createDeepPointCard(ctx);
+    const cardRealtime = Boolean(await waitFor(() => {
+      try { return Array.from(child.document.querySelectorAll('#cardTabs [data-card-id]')).some((node) => String(node.dataset.cardId || '') === String(ctx.cardId)); }
+      catch { return false; }
+    }, 12000, 120));
+    await selectChildCard(child, ctx.cardId);
+    const invalid = await invalidPointGrantCase(account, ctx.cardId);
+
+    const session = await adminSession();
+    const requestId = 'E2E-PTS-' + qaCrudStamp();
+    const payload = {
+      lineUserId: account.lineUserId,
+      requestId,
+      messagePresetId: '',
+      points: [{ cardId: ctx.cardId, amount: 1 }]
+    };
+    const replay = await Promise.allSettled([
+      window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.member-grants.add', payload),
+      window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.member-grants.add', payload)
+    ]);
+    const replayRealtime = Boolean(await waitFor(() => childPointState(child, ctx.cardId, ctx.cardTitle, ctx.ticketTitle).points === 1, 12000, 120));
+
+    await submitPointGrant(account, ctx.cardId, 1, true);
+    const awarded = Boolean(await waitFor(() => {
+      const snapshot = childPointState(child, ctx.cardId, ctx.cardTitle, ctx.ticketTitle);
+      return snapshot.points === 2 && snapshot.ticketVisible;
+    }, 15000, 120));
+    const beforeRedeem = childPointState(child, ctx.cardId, ctx.cardTitle, ctx.ticketTitle);
+    const userRedeem = await redeemDeepTicketInChild(child, ctx.ticketTitle);
+    const adminRecordVisible = await verifyPointRecordInAdmin(account, ctx.cardTitle);
+
+    const deleted = await deleteDeepPointCard(ctx);
+    ctx.cardDeleted = deleted;
+    const cardRemovedRealtime = Boolean(await waitFor(() => {
+      try { return !Array.from(child.document.querySelectorAll('#cardTabs [data-card-id]')).some((node) => String(node.dataset.cardId || '') === String(ctx.cardId)); }
+      catch { return false; }
+    }, 12000, 120));
+
+    const actual = {
+      baselineHadQaCard: baselineTabs.includes(ctx.cardTitle || '---'),
+      cardRealtime,
+      invalid,
+      replayRequests: replay.map((item) => item.status),
+      replayRealtime,
+      doubleSubmitResult: beforeRedeem,
+      awarded,
+      userRedeem,
+      adminRecordVisible,
+      cardDeleted: deleted,
+      cardRemovedRealtime
+    };
+    const ok = cardRealtime && Object.values(invalid).every(Boolean) && replayRealtime && awarded &&
+      beforeRedeem.points === 2 && userRedeem.selected && userRedeem.cancelledOnce && userRedeem.redeemed &&
+      userRedeem.history && adminRecordVisible && deleted && cardRemovedRealtime;
+    return ok
+      ? pass('票券／點數已完成管理端建立、非法輸入、同 requestId 併發重送、UI 連點發放、用戶端即時出票與真人核銷，再反向同步到管理端紀錄並清理。', {
+          cardRealtime: true, invalidRejected: true, replayPoints: 1, finalPointsBeforeRedeem: 2,
+          ticketRealtime: true, userRedeemed: true, adminRecordVisible: true, cleanupRealtime: true
+        }, actual)
+      : fail('票券／點數深度協同 E2E 發現狀態不一致。', {
+          cardRealtime: true, invalidRejected: true, replayPoints: 1, finalPointsBeforeRedeem: 2,
+          ticketRealtime: true, userRedeemed: true, adminRecordVisible: true, cleanupRealtime: true
+        }, actual);
+  }
+
+  async function cleanupDeepContext(ctx) {
+    const result = { tierRestored: !ctx.tierSettingsChanged, cardCleaned: !ctx.cardId || Boolean(ctx.cardDeleted), ticketCleaned: !ctx.ticketTemplateId, accountDeleted: false, originalSessionRestored: false };
+    if (ctx.cardId && !ctx.cardDeleted) {
+      try { result.cardCleaned = await deleteDeepPointCard(ctx); } catch {}
+    }
+    if (ctx.ticketTemplateId) {
+      try { result.ticketCleaned = Boolean((await cleanupQaTicketTemplate(ctx.ticketTemplateId))?.deleted); } catch {}
+    }
+    if (ctx.tierSettingsChanged && Array.isArray(ctx.originalTierSettings)) {
+      try {
+        await ensureTestRoster(ctx.account);
+        await saveTierSettingsViaUi(ctx.originalTierSettings);
+        result.tierRestored = true;
+      } catch {}
+    }
+    try { result.accountDeleted = await removeEphemeralTestAccount(ctx.account); } catch {}
+    if (ctx.originalLogin && ctx.participant?.window && !ctx.participant.window.closed) {
+      try {
+        seedParticipantSession(ctx.participant, ctx.originalLogin);
+        navigateParticipant(ctx.participant, 'member');
+        result.originalSessionRestored = true;
+      } catch {}
+    }
+    return result;
+  }
+
+  async function runDeepPairedSuite(participant) {
+    const previousAdminAccount = state.adminTestAccount;
+    const ctx = { participant, originalLogin: participant.login || null, account: null, originalTierSettings: null, tierSettingsChanged: false, cardId: '', ticketTemplateId: '', cardDeleted: false };
+    participant.status = '深度互動';
+    participant.surface = '票券／階級／點數／時數';
+    renderParticipants();
+    try {
+      ctx.account = await createEphemeralTestAccount();
+      state.adminTestAccount = ctx.account;
+      const login = await createPairedSession(ctx.account);
+      seedParticipantSession(participant, login);
+      await executeCases([
+        caseDef('PAIRED_DEEP_SERVICE_TIER_REALTIME', '深度：會員階級／服務時數跨端 Realtime + 冪等 + 連點', 'Paired E2E / Membership', () => deepServiceTierRealtimeCase(ctx)),
+        caseDef('PAIRED_DEEP_POINT_TICKET_REALTIME', '深度：票券／發放點數跨端 Realtime + 核銷回寫', 'Paired E2E / Points', () => deepPointTicketRealtimeCase(ctx))
+      ], '深度協同 · 臨時測試會員');
+    } finally {
+      const cleanup = ctx.account ? await cleanupDeepContext(ctx) : { accountDeleted: false };
+      state.results.push({
+        key: 'PAIRED_DEEP_CLEANUP',
+        name: '深度 E2E：測試資料與原始設定還原',
+        domain: 'Paired E2E / Cleanup',
+        status: Object.values(cleanup).every(Boolean) ? 'passed' : 'failed',
+        message: Object.values(cleanup).every(Boolean) ? '臨時會員、集點卡、票券與會員階級設定已清理／還原。' : '深度 E2E 清理有未完成項目，請依 Actual 檢查。',
+        expected: { tierRestored: true, cardCleaned: true, ticketCleaned: true, accountDeleted: true, originalSessionRestored: true },
+        actual: cleanup,
+        durationMs: 0
+      });
+      state.adminTestAccount = previousAdminAccount;
+      participant.status = '完成';
+      participant.surface = '完成';
+      renderParticipants();
+      render();
+    }
   }
 
   window.MemberAdminE2EControl = Object.freeze({
