@@ -30,9 +30,10 @@ test('paired admin booking E2E covers every admin booking action using user-crea
   assert.match(e2e, /separatePendingBooking/);
   assert.match(e2e, /participant\.account\?\.memberId/);
 
-  const clientJoin = e2e.indexOf('await Promise.all([adminTask, ...clientTasks]);');
-  const followup = e2e.indexOf("'_ADMIN_BOOKING_FOLLOWUP'");
-  assert.ok(clientJoin >= 0 && followup > clientJoin, 'admin booking follow-up must execute only after all user surfaces finish');
+  assert.match(e2e, /waitForLivePairedBookingTarget\(participant, 'any'\)/);
+  assert.match(e2e, /let adminChain = Promise\.resolve\(\)/);
+  assert.match(e2e, /Promise\.all\(\[\.\.\.clientTasks, \.\.\.liveAdminTasks\]\)/);
+  assert.doesNotMatch(e2e, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
 });
 
 
@@ -65,7 +66,7 @@ test('standalone admin booking queue E2E actively mutates pending and cancellati
 
   assert.match(e2e, /runBookingPending:/);
   assert.match(e2e, /runBookingCancellation:/);
-  assert.match(adminIndex, /e2e-control\.js\?v=admin-e2e-20260923-2/);
+  assert.match(adminIndex, /e2e-control\.js\?v=admin-e2e-20260923-3/);
 });
 
 test('admin full E2E covers standalone lottery ticket and event lottery ticket persistence', () => {

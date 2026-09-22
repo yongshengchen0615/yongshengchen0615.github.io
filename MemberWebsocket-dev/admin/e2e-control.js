@@ -1,9 +1,10 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.1';
+  const VERSION = '2026-09-23.2';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
+  const PAIRED_BOOKING_LIVE_TIMEOUT_MS = 10 * 60 * 1000;
   const PAIRED_SURFACES = Object.freeze([
     ['member', '會員卡'],
     ['points', '集點卡'],
@@ -63,7 +64,7 @@
       </div>
       <div class="admin-e2e-paired-config">
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
-        <small>1–10 人。預約完整協同 E2E 由管理端一鍵啟動：自動開啟測試用戶端，以真人方式新增／修改／多人預約／申請取消；再由管理端像真人切分頁、開視窗、修改項目與技師、確認／拒絕／完成／審核取消，且每一步都要求用戶端透過 Realtime 自動同步，最後做終態、競態、越權與資料遺漏風險掃描。待確認／取消申請 E2E 僅供單點診斷。正式用戶不會被選入。</small>
+        <small>1–10 人。預約完整協同 E2E 由管理端一鍵啟動：測試用戶端保持開啟並以真人方式新增／修改／多人預約／申請取消；管理端同步監看本輪測試資料，只要待確認或取消申請等可安全接手資料出現，就依狀態排入單一管理員操作佇列，真人式執行拒絕／保留／確認／修改項目與技師／完成／確認取消，不等待用戶端關閉。每一步都驗證 Realtime，最後再以完整 handoff 做漏單、競態、越權與終態掃描。正式用戶不會被選入。</small>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
@@ -597,6 +598,56 @@
     }
   }
 
+  async function runPairedAdminBookingLive(participant) {
+    const wrapperKey = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_FOLLOWUP';
+    const rowPrefix = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_';
+    participant.adminStatus = '即時監看管理端預約資料';
+    renderParticipants();
+    await executeCases([
+      caseDef(
+        wrapperKey,
+        '測試用戶 ' + participant.index + '：管理端資料出現即接手預約',
+        'Paired E2E / Booking Admin',
+        () => pairedAdminBookingFollowupCase(participant)
+      )
+    ], '管理端即時監看 · 測試用戶 ' + participant.index);
+
+    const wrapperRow = state.results.find((row) => row.key === wrapperKey);
+    participant.adminStatus = wrapperRow?.status === 'passed' ? '預約接手完成' : state.cancelled ? '已停止' : '預約接手有異常';
+    renderParticipants();
+
+    const followupRows = state.results.filter((row) =>
+      row.key === wrapperKey || String(row.key || '').startsWith(rowPrefix)
+    );
+    if (!state.cancelled && followupRows.length) {
+      try {
+        const recordedFollowup = await recordResultRows(
+          followupRows,
+          'paired-browser',
+          'full',
+          String(participant.account?.memberId || ''),
+          participant.startedAt ? new Date(participant.startedAt).toISOString() : state.runStartedAt
+        );
+        const followupRunCode = String(recordedFollowup?.run?.runCode || '');
+        if (followupRunCode) participant.runCodes.push(followupRunCode);
+      } catch (error) {
+        state.results.push({
+          key: 'PAIRED_' + participant.index + '_ADMIN_BOOKING_RECORD',
+          name: '測試用戶 ' + participant.index + '：管理端預約 E2E 紀錄寫入',
+          domain: 'Paired E2E / Audit',
+          status: 'failed',
+          message: '管理端預約接手流程已執行，但無法綁定回該測試會員的 Test Automation 紀錄。',
+          expected: { recordedToMember: true },
+          actual: plainError(error),
+          durationMs: 0
+        });
+        render();
+      }
+    }
+    return wrapperRow || null;
+  }
+
+
   async function runPaired({ bookingOnly = false, includeAdminSuite = false } = {}) {
     if (state.running) return;
     state.cancelled = false;
@@ -639,67 +690,48 @@
         surface: '前置資料完成',
         surfacePlan: bookingOnly ? PAIRED_SURFACES.filter(([key]) => key === 'booking') : shuffled(PAIRED_SURFACES),
         runCodes: [],
-        startedAt: 0,
+        startedAt: Date.now(),
         login: null,
-        lastSurfaceKey: ''
+        lastSurfaceKey: '',
+        adminStatus: '監看預約資料',
+        liveBookingIds: [],
+        adminBookingTask: null
       }));
       renderParticipants();
 
-      setMessage('管理端前置資料已完整建立；現在隨機啟動 ' + participantCount + ' 位測試用戶，各自以不同用戶端順序與操作間隔開始 E2E。');
+      setMessage('管理端前置資料已完整建立；現在隨機啟動 ' + participantCount + ' 位測試用戶，管理端會同步監看預約資料，資料一出現在管理端就開始模擬審核，不等待用戶端關閉。');
       if (!state.cancelled) {
+        // A human administrator has one management UI. Keep admin DOM actions single-threaded
+        // while member clients may generate data concurrently.
+        const allAdminDefinitions = adminDefinitions('full');
+        const preflightKeys = new Set(['ADMIN_AUTH_READY', 'ADMIN_BOOKING_CONTROLS']);
+        const preflightDefinitions = allAdminDefinitions.filter((def) => preflightKeys.has(def.key));
+        await executeCases(preflightDefinitions, '管理端 · 預約即時接手前置');
+
+        let adminChain = Promise.resolve();
+        const liveAdminTasks = state.participants.map((participant) => {
+          const task = (async () => {
+            participant.adminStatus = '即時監看管理端預約資料';
+            renderParticipants();
+            // Every participant starts watching immediately. Only the shared admin DOM
+            // operation is serialized after that participant's first eligible row appears.
+            await waitForLivePairedBookingTarget(participant, 'any');
+            const queued = adminChain.then(() => runPairedAdminBookingLive(participant));
+            adminChain = queued.catch(() => null);
+            return queued;
+          })();
+          participant.adminBookingTask = task;
+          return task;
+        });
         const clientTasks = state.participants.map(async (participant) => {
           await sleep(randomInt(80, 1200));
           return runParticipantSurfaces(participant);
         });
-        const definitions = bookingOnly && !includeAdminSuite
-          ? adminDefinitions('full').filter((def) => ['ADMIN_AUTH_READY', 'ADMIN_BOOKING_CONTROLS'].includes(def.key))
-          : adminDefinitions('full');
-        const adminTask = executeCases(definitions, '管理端 · 完整資料已建立');
-        await Promise.all([adminTask, ...clientTasks]);
-      }
+        await Promise.all([...clientTasks, ...liveAdminTasks]);
 
-      if (!state.cancelled) {
-        for (const participant of shuffled(state.participants)) {
-          participant.status = '管理端接手';
-          participant.surface = '預約確認／項目／技師／不通過／取消審核／完成';
-          renderParticipants();
-          const beforeCount = state.results.length;
-          await executeCases([
-            caseDef(
-              'PAIRED_' + participant.index + '_ADMIN_BOOKING_FOLLOWUP',
-              '測試用戶 ' + participant.index + '：管理端完整預約動作自動化',
-              'Paired E2E / Booking Admin',
-              () => pairedAdminBookingFollowupCase(participant)
-            )
-          ], '管理端接手 · 測試用戶 ' + participant.index);
-          const followupRows = state.results.slice(beforeCount);
-          if (!state.cancelled && followupRows.length) {
-            try {
-              const recordedFollowup = await recordResultRows(
-                followupRows,
-                'paired-browser',
-                'full',
-                String(participant.account?.memberId || ''),
-                participant.startedAt ? new Date(participant.startedAt).toISOString() : state.runStartedAt
-              );
-              const followupRunCode = String(recordedFollowup?.run?.runCode || '');
-              if (followupRunCode) participant.runCodes.push(followupRunCode);
-            } catch (error) {
-              state.results.push({
-                key: 'PAIRED_' + participant.index + '_ADMIN_BOOKING_RECORD',
-                name: '測試用戶 ' + participant.index + '：管理端預約 E2E 紀錄寫入',
-                domain: 'Paired E2E / Audit',
-                status: 'failed',
-                message: '管理端預約接手流程已執行，但無法綁定回該測試會員的 Test Automation 紀錄。',
-                expected: { recordedToMember: true },
-                actual: plainError(error),
-                durationMs: 0
-              });
-              render();
-            }
-          }
-          if (state.cancelled) break;
-          await sleep(randomInt(60, 300));
+        if (!state.cancelled && (!bookingOnly || includeAdminSuite)) {
+          const remainingAdminDefinitions = allAdminDefinitions.filter((def) => !preflightKeys.has(def.key));
+          await executeCases(remainingAdminDefinitions, '管理端 · 其餘完整 E2E');
         }
       }
 
@@ -798,7 +830,7 @@
   }
 
   async function runParticipantSurfaces(participant) {
-    participant.startedAt = Date.now();
+    participant.startedAt = Number(participant.startedAt || 0) || Date.now();
     participant.status = '執行中';
     participant.surfacePlan = Array.isArray(participant.surfacePlan) && participant.surfacePlan.length
       ? participant.surfacePlan
@@ -832,7 +864,12 @@
         seedParticipantSession(participant, login);
         await sleep(randomInt(80, 520));
         const child = await runUserSurface(participant, surface, label);
-        if (surface === 'booking') participant.bookingResult = child;
+        if (surface === 'booking') {
+          participant.bookingResult = child;
+          participant.adminStatus = '已取得完整接手清單';
+          renderParticipants();
+          if (participant.adminBookingTask) await participant.adminBookingTask;
+        }
         const summary = child?.summary || {};
         const childMemberId = child?.account?.memberId || '';
         const runCode = String(child?.browserRun?.runCode || '');
@@ -2019,24 +2056,134 @@
     return Number.isFinite(updated) ? updated : 0;
   }
 
-  function pairedBookingCandidates(data, participant) {
+  function pairedBookingCandidates(data, participant, options = {}) {
+    const live = options?.live === true;
     const account = participant?.account || {};
     const memberCode = String(account.memberCode || '');
     const runStartedMs = Date.parse(String(state.runStartedAt || ''));
     const result = participant?.bookingResult;
     const handoff = result?.bookingHandoff;
-    if (!account.memberId || !memberCode || !Number.isFinite(runStartedMs)
-        || result?.account?.memberId !== account.memberId || handoff?.ready !== true
-        || handoff.memberId !== account.memberId || !Array.isArray(handoff.bookingIds)) return [];
-    const bookingIds = new Set(handoff.bookingIds.map(String).filter(Boolean));
+    if (!account.memberId || !memberCode || !Number.isFinite(runStartedMs)) return [];
+
+    let bookingIds = null;
+    if (!live) {
+      if (result?.account?.memberId !== account.memberId || handoff?.ready !== true
+          || handoff.memberId !== account.memberId || !Array.isArray(handoff.bookingIds)) return [];
+      bookingIds = new Set(handoff.bookingIds.map(String).filter(Boolean));
+    } else if (handoff?.ready === true && handoff.memberId === account.memberId && Array.isArray(handoff.bookingIds)) {
+      bookingIds = new Set(handoff.bookingIds.map(String).filter(Boolean));
+    }
+
     return (Array.isArray(data?.bookings) ? data.bookings : [])
-      .filter((booking) => bookingIds.has(String(booking?.bookingId || '')))
+      .filter((booking) => !bookingIds || bookingIds.has(String(booking?.bookingId || '')))
       .filter((booking) => String(booking?.memberCode || '') === memberCode)
       .filter((booking) => String(booking?.memberId || '') === String(account.memberId))
       .filter((booking) => /^(?:QA HUMAN E2E(?: GROUP)? |QA STATE PACK |QA automated (?:group )?(?:create|update)$)/i.test(String(booking?.memberNote || '')))
       .filter((booking) => bookingCreatedMs(booking) >= runStartedMs - 2 * 60 * 1000)
       .slice()
       .sort((a, b) => bookingCreatedMs(b) - bookingCreatedMs(a));
+  }
+
+  function livePairedBookingSet(candidates) {
+    const rows = Array.isArray(candidates) ? candidates : [];
+    const mutable = rows.find((booking) =>
+      /^QA HUMAN E2E GROUP /i.test(String(booking.memberNote || ''))
+      && String(booking.status || '') === 'pending'
+      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+    ) || null;
+    const rejectTarget = rows.find((booking) =>
+      /^QA STATE PACK pending /i.test(String(booking.memberNote || ''))
+      && String(booking.status || '') === 'pending'
+      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+      && String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+    ) || null;
+    const cancellationTarget = rows.find((booking) =>
+      /^QA STATE PACK cancel_requested /i.test(String(booking.memberNote || ''))
+      && booking.cancellationRequestedAt && !booking.cancellationReviewedAt
+      && ['pending', 'confirmed'].includes(String(booking.status || ''))
+      && String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+      && String(booking.bookingId || '') !== String(rejectTarget?.bookingId || '')
+    ) || null;
+    return {
+      mutable,
+      rejectTarget,
+      cancellationTarget,
+      ready: Boolean(mutable && rejectTarget && cancellationTarget)
+    };
+  }
+
+  async function waitForLivePairedBookingTarget(participant, targetKey = 'any', timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
+    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    let candidates = [];
+    let detected = livePairedBookingSet(candidates);
+    while (Date.now() < deadline) {
+      if (state.cancelled) return { booking: null, ...detected, candidates, stopped: true };
+      const data = await adminBookingBootstrapSnapshot();
+      candidates = pairedBookingCandidates(data, participant, { live: true });
+      participant.liveBookingIds = [...new Set([
+        ...(Array.isArray(participant.liveBookingIds) ? participant.liveBookingIds : []),
+        ...candidates.map((booking) => String(booking?.bookingId || '')).filter(Boolean)
+      ])];
+      detected = livePairedBookingSet(candidates);
+      const booking = targetKey === 'any' ? (candidates[0] || null) : (detected?.[targetKey] || null);
+      if (booking) {
+        participant.adminStatus = targetKey === 'any'
+          ? '管理端已偵測本輪預約'
+          : '依資料狀態執行管理員操作';
+        renderParticipants();
+        return { booking, ...detected, candidates, handoffReady: false };
+      }
+      const handoff = participant?.bookingResult?.bookingHandoff;
+      if (handoff?.ready === true && handoff.memberId === participant?.account?.memberId) {
+        return { booking: null, ...detected, candidates, handoffReady: true };
+      }
+      participant.adminStatus = candidates.length
+        ? '已看到預約，等待對應管理動作資料'
+        : '等待管理端出現本輪預約';
+      renderParticipants();
+      await sleep(300);
+    }
+    return { booking: null, ...detected, candidates, timedOut: true };
+  }
+
+  async function waitForLivePairedBookingSet(participant, timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
+    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    let candidates = [];
+    let detected = livePairedBookingSet(candidates);
+    while (Date.now() < deadline) {
+      if (state.cancelled) return { ...detected, candidates, stopped: true };
+      const data = await adminBookingBootstrapSnapshot();
+      candidates = pairedBookingCandidates(data, participant, { live: true });
+      participant.liveBookingIds = [...new Set([
+        ...(Array.isArray(participant.liveBookingIds) ? participant.liveBookingIds : []),
+        ...candidates.map((booking) => String(booking?.bookingId || '')).filter(Boolean)
+      ])];
+      detected = livePairedBookingSet(candidates);
+      if (detected.ready) return { ...detected, candidates, handoffReady: false };
+      const handoff = participant?.bookingResult?.bookingHandoff;
+      if (handoff?.ready === true && handoff.memberId === participant?.account?.memberId) {
+        return { ...detected, candidates, handoffReady: true };
+      }
+      participant.adminStatus = candidates.length
+        ? '已看到預約，等待可安全接手狀態'
+        : '等待管理端出現本輪預約';
+      renderParticipants();
+      await sleep(350);
+    }
+    return { ...detected, candidates, timedOut: true };
+  }
+
+  async function waitForPairedBookingHandoff(participant, timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
+    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    while (Date.now() < deadline) {
+      if (state.cancelled) return null;
+      const handoff = participant?.bookingResult?.bookingHandoff;
+      if (handoff?.ready === true
+          && handoff.memberId === participant?.account?.memberId
+          && Array.isArray(handoff.bookingIds)) return handoff;
+      await sleep(250);
+    }
+    return null;
   }
 
   async function waitAdminBookingSnapshot(bookingId, predicate, timeoutMs = 15000) {
@@ -2690,33 +2837,43 @@
 
   async function pairedAdminBookingFollowupCase(participant) {
     const account = participant?.account || {};
-    const bootstrap = await adminBookingBootstrapSnapshot();
-    const candidates = pairedBookingCandidates(bootstrap, participant);
-    const mutable = candidates.find((booking) =>
-      /^QA HUMAN E2E GROUP /i.test(String(booking.memberNote || ''))
-      && String(booking.status || '') === 'pending'
-      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
-    ) || candidates.find((booking) =>
-      String(booking.status || '') === 'pending'
-      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
-    );
-    const cancellationTarget = candidates.find((booking) =>
-      String(booking.bookingId || '') !== String(mutable?.bookingId || '')
-      && booking.cancellationRequestedAt && !booking.cancellationReviewedAt
-      && ['pending', 'confirmed'].includes(String(booking.status || ''))
-    );
-    const rejectTarget = candidates.find((booking) =>
-      String(booking.bookingId || '') !== String(mutable?.bookingId || '')
-      && String(booking.bookingId || '') !== String(cancellationTarget?.bookingId || '')
-      && /^QA STATE PACK pending /i.test(String(booking.memberNote || ''))
-      && String(booking.status || '') === 'pending'
-      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
-    ) || candidates.find((booking) =>
-      String(booking.bookingId || '') !== String(mutable?.bookingId || '')
-      && String(booking.bookingId || '') !== String(cancellationTarget?.bookingId || '')
-      && String(booking.status || '') === 'pending'
-      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
-    );
+    const liveSet = await waitForLivePairedBookingTarget(participant, 'any');
+    let candidates = Array.isArray(liveSet?.candidates) ? liveSet.candidates : [];
+    let mutable = liveSet?.mutable || null;
+    let cancellationTarget = liveSet?.cancellationTarget || null;
+    let rejectTarget = liveSet?.rejectTarget || null;
+
+    // Backward-compatible fallback is allowed only after the user's complete handoff exists.
+    // Before handoff, live processing is restricted to explicit QA state markers to avoid
+    // racing the member's still-running single-booking edit/cancel flow.
+    if (liveSet?.handoffReady) {
+      mutable = mutable || candidates.find((booking) =>
+        /^QA HUMAN E2E GROUP /i.test(String(booking.memberNote || ''))
+        && String(booking.status || '') === 'pending'
+        && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+      ) || candidates.find((booking) =>
+        String(booking.status || '') === 'pending'
+        && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+      );
+      cancellationTarget = cancellationTarget || candidates.find((booking) =>
+        String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+        && booking.cancellationRequestedAt && !booking.cancellationReviewedAt
+        && ['pending', 'confirmed'].includes(String(booking.status || ''))
+      );
+      rejectTarget = rejectTarget || candidates.find((booking) =>
+        String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+        && String(booking.bookingId || '') !== String(cancellationTarget?.bookingId || '')
+        && String(booking.status || '') === 'pending'
+        && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+      );
+    }
+
+    participant.adminStatus = liveSet?.booking
+      ? '管理端已看到資料，開始模擬管理員'
+      : liveSet?.handoffReady
+        ? '用戶端完成，接手現有預約'
+        : '預約監看逾時';
+    renderParticipants();
 
     const actual = {
       memberCode: account.memberCode || null,
@@ -2739,7 +2896,14 @@
       realtime: {},
       remainingProcessed: [],
       terminal: null,
-      riskScan: null
+      riskScan: null,
+      liveWatcher: {
+        startedBeforeClientCompletion: !liveSet?.handoffReady,
+        readyFromAdminData: Boolean(liveSet?.booking),
+        timedOut: Boolean(liveSet?.timedOut),
+        liveBookingIds: Array.isArray(participant.liveBookingIds) ? participant.liveBookingIds.slice() : []
+      },
+      handoffReady: false
     };
     const expected = {
       detectedFromUserE2E: true,
@@ -2757,8 +2921,137 @@
     };
     const prefix = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_';
 
+    const updateDetectedSnapshot = () => {
+      actual.detectedCount = candidates.length;
+      actual.detectedBookings = candidates.map((booking) => ({
+        bookingId: booking.bookingId,
+        status: booking.status,
+        memberNote: booking.memberNote || '',
+        cancellationPending: Boolean(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+      }));
+      actual.liveWatcher.liveBookingIds = Array.isArray(participant.liveBookingIds)
+        ? participant.liveBookingIds.slice()
+        : [];
+    };
+
+    const acquireLiveTarget = async (targetKey) => {
+      const found = await waitForLivePairedBookingTarget(participant, targetKey);
+      if (Array.isArray(found?.candidates) && found.candidates.length) {
+        candidates = found.candidates;
+        updateDetectedSnapshot();
+      }
+      if (found?.booking) return found.booking;
+      if (found?.handoffReady) {
+        const strictData = await adminBookingBootstrapSnapshot();
+        const strictCandidates = pairedBookingCandidates(strictData, participant);
+        if (strictCandidates.length) {
+          candidates = strictCandidates;
+          updateDetectedSnapshot();
+        }
+        const set = livePairedBookingSet(candidates);
+        if (set?.[targetKey]) return set[targetKey];
+        if (targetKey === 'mutable') {
+          return candidates.find((booking) =>
+            String(booking.bookingId || '') !== String(cancellationTarget?.bookingId || '')
+            && String(booking.bookingId || '') !== String(rejectTarget?.bookingId || '')
+            && String(booking.status || '') === 'pending'
+            && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+          ) || null;
+        }
+        if (targetKey === 'cancellationTarget') {
+          return candidates.find((booking) =>
+            String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+            && booking.cancellationRequestedAt && !booking.cancellationReviewedAt
+            && ['pending', 'confirmed'].includes(String(booking.status || ''))
+          ) || null;
+        }
+        if (targetKey === 'rejectTarget') {
+          return candidates.find((booking) =>
+            String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+            && String(booking.bookingId || '') !== String(cancellationTarget?.bookingId || '')
+            && String(booking.status || '') === 'pending'
+            && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+          ) || null;
+        }
+      }
+      return null;
+    };
+
     await executeCases([
+      caseDef(prefix + 'REJECT', '預約：不通過', 'Booking / Reject', async () => {
+        rejectTarget = rejectTarget || await acquireLiveTarget('rejectTarget');
+        if (!rejectTarget) {
+          return fail('本輪缺少可供「不通過」的獨立待確認預約；不可重用完成流程的同一筆資料。', {
+            separatePendingBooking: true
+          }, actual.detectedBookings);
+        }
+        actual.statusTabs.rejectPending = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'pending');
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, rejectTarget.bookingId);
+        actual.rejected = await setDetectedBookingStatus(
+          rejectTarget.bookingId,
+          '不通過',
+          'QA ADMIN E2E REJECT ' + qaCrudStamp(),
+          'rejected',
+          'pending'
+        );
+        if (actual.rejected.ok) {
+          actual.realtime.rejected = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => String(snapshot.status || '') === 'rejected',
+            'rejected'
+          );
+          actual.statusTabs.allRejected = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'all');
+        }
+        const detail = {
+          ...actual.rejected,
+          pendingTab: actual.statusTabs.rejectPending,
+          allTab: actual.statusTabs.allRejected,
+          realtimeSync: actual.realtime.rejected
+        };
+        return actual.rejected.ok && detail.pendingTab?.ok && detail.allTab?.ok && detail.realtimeSync?.ok
+          ? pass('已像真人點擊「不通過」，且用戶端 Realtime 自動更新為未通過。', { status: 'rejected', realtime: true }, detail)
+          : fail('不通過操作、全部分頁或用戶端 Realtime 同步失敗。', { status: 'rejected', realtime: true }, detail);
+      }),
+
+      caseDef(prefix + 'KEEP_CANCELLATION', '預約：保留預約', 'Booking / Cancellation Keep', async () => {
+        cancellationTarget = cancellationTarget || await acquireLiveTarget('cancellationTarget');
+        if (!cancellationTarget) {
+          return fail('本輪沒有可供審核的取消申請。', { cancellationRequestDetected: true }, actual.detectedBookings);
+        }
+        actual.statusTabs.cancellationRequestKeep = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'request');
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, cancellationTarget.bookingId);
+        actual.keptCancellation = await rejectDetectedCancellation(cancellationTarget.bookingId);
+        if (actual.keptCancellation.ok) {
+          actual.realtime.keptCancellation = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => String(snapshot.status || '') === String(actual.keptCancellation.sourceStatus || '')
+              && !snapshot.cancellationRequestedAt,
+            String(actual.keptCancellation.sourceStatus || '')
+          );
+          actual.statusTabs.keptSource = await verifyDetectedBookingInCoreFilter(
+            cancellationTarget.bookingId,
+            actual.keptCancellation.sourceStatus
+          );
+        }
+        const detail = {
+          ...actual.keptCancellation,
+          requestTab: actual.statusTabs.cancellationRequestKeep,
+          sourceTab: actual.statusTabs.keptSource,
+          realtimeSync: actual.realtime.keptCancellation
+        };
+        return actual.keptCancellation.ok && detail.requestTab?.ok && detail.sourceTab?.ok && detail.realtimeSync?.ok
+          ? pass('已像真人點擊「保留預約」，且用戶端 Realtime 自動移除取消待確認狀態。', {
+              decision: 'rejected', cancellationPending: false, realtime: true
+            }, detail)
+          : fail('保留預約、狀態回讀或用戶端 Realtime 同步失敗。', {
+              decision: 'rejected', cancellationPending: false, realtime: true
+            }, detail);
+      }),
+
       caseDef(prefix + 'CONFIRM', '預約：確認預約', 'Booking / Confirm', async () => {
+        mutable = mutable || await acquireLiveTarget('mutable');
         if (!mutable) return fail('本輪用戶端未留下可確認的預約。', { mutablePendingBooking: true }, actual.detectedBookings);
         actual.statusTabs.pending = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'pending');
         const realtimeProbe = await beginBookingRealtimeProbe(participant, mutable.bookingId);
@@ -2872,77 +3165,8 @@
           : fail('完成預約、狀態分頁或用戶端 Realtime 同步失敗。', { status: 'completed', realtime: true }, detail);
       }),
 
-      caseDef(prefix + 'REJECT', '預約：不通過', 'Booking / Reject', async () => {
-        if (!rejectTarget) {
-          return fail('本輪缺少可供「不通過」的獨立待確認預約；不可重用完成流程的同一筆資料。', {
-            separatePendingBooking: true
-          }, actual.detectedBookings);
-        }
-        actual.statusTabs.rejectPending = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'pending');
-        const realtimeProbe = await beginBookingRealtimeProbe(participant, rejectTarget.bookingId);
-        actual.rejected = await setDetectedBookingStatus(
-          rejectTarget.bookingId,
-          '不通過',
-          'QA ADMIN E2E REJECT ' + qaCrudStamp(),
-          'rejected',
-          'pending'
-        );
-        if (actual.rejected.ok) {
-          actual.realtime.rejected = await verifyBookingRealtimeSync(
-            participant,
-            realtimeProbe,
-            (snapshot) => String(snapshot.status || '') === 'rejected',
-            'rejected'
-          );
-          actual.statusTabs.allRejected = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'all');
-        }
-        const detail = {
-          ...actual.rejected,
-          pendingTab: actual.statusTabs.rejectPending,
-          allTab: actual.statusTabs.allRejected,
-          realtimeSync: actual.realtime.rejected
-        };
-        return actual.rejected.ok && detail.pendingTab?.ok && detail.allTab?.ok && detail.realtimeSync?.ok
-          ? pass('已像真人點擊「不通過」，且用戶端 Realtime 自動更新為未通過。', { status: 'rejected', realtime: true }, detail)
-          : fail('不通過操作、全部分頁或用戶端 Realtime 同步失敗。', { status: 'rejected', realtime: true }, detail);
-      }),
-
-      caseDef(prefix + 'KEEP_CANCELLATION', '預約：保留預約', 'Booking / Cancellation Keep', async () => {
-        if (!cancellationTarget) {
-          return fail('本輪沒有可供審核的取消申請。', { cancellationRequestDetected: true }, actual.detectedBookings);
-        }
-        actual.statusTabs.cancellationRequestKeep = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'request');
-        const realtimeProbe = await beginBookingRealtimeProbe(participant, cancellationTarget.bookingId);
-        actual.keptCancellation = await rejectDetectedCancellation(cancellationTarget.bookingId);
-        if (actual.keptCancellation.ok) {
-          actual.realtime.keptCancellation = await verifyBookingRealtimeSync(
-            participant,
-            realtimeProbe,
-            (snapshot) => String(snapshot.status || '') === String(actual.keptCancellation.sourceStatus || '')
-              && !snapshot.cancellationRequestedAt,
-            String(actual.keptCancellation.sourceStatus || '')
-          );
-          actual.statusTabs.keptSource = await verifyDetectedBookingInCoreFilter(
-            cancellationTarget.bookingId,
-            actual.keptCancellation.sourceStatus
-          );
-        }
-        const detail = {
-          ...actual.keptCancellation,
-          requestTab: actual.statusTabs.cancellationRequestKeep,
-          sourceTab: actual.statusTabs.keptSource,
-          realtimeSync: actual.realtime.keptCancellation
-        };
-        return actual.keptCancellation.ok && detail.requestTab?.ok && detail.sourceTab?.ok && detail.realtimeSync?.ok
-          ? pass('已像真人點擊「保留預約」，且用戶端 Realtime 自動移除取消待確認狀態。', {
-              decision: 'rejected', cancellationPending: false, realtime: true
-            }, detail)
-          : fail('保留預約、狀態回讀或用戶端 Realtime 同步失敗。', {
-              decision: 'rejected', cancellationPending: false, realtime: true
-            }, detail);
-      }),
-
       caseDef(prefix + 'CANCEL', '預約：確認取消', 'Booking / Cancellation Approve', async () => {
+        cancellationTarget = cancellationTarget || await acquireLiveTarget('cancellationTarget');
         if (!cancellationTarget) {
           return fail('本輪沒有可供再次申請取消的預約。', { cancellationRequestDetected: true }, actual.detectedBookings);
         }
@@ -2950,6 +3174,15 @@
           return fail('保留預約步驟未成功，不能以同一筆資料建立第二次獨立取消申請。', {
             cancellationKept: true
           }, { dependencyFailed: 'KEEP_CANCELLATION' });
+        }
+        if (!actual.handoffReady) {
+          const handoff = await waitForPairedBookingHandoff(participant);
+          actual.handoffReady = Boolean(handoff);
+        }
+        if (!actual.handoffReady) {
+          return fail('用戶端完整預約案例尚未交接完成，為避免與真人操作競態，不執行第二次取消申請。', {
+            completeHandoffBeforeMemberUiReuse: true
+          }, { handoffReady: false });
         }
         actual.cancellationRerequest = await requestDetectedCancellationFromClient(participant, cancellationTarget.bookingId);
         if (!actual.cancellationRerequest.ok) {
@@ -2985,6 +3218,23 @@
             }, detail);
       })
     ], '預約完整自動處理 · 測試用戶 ' + participant.index);
+
+    const finalHandoff = await waitForPairedBookingHandoff(participant);
+    actual.handoffReady = Boolean(finalHandoff);
+    if (finalHandoff) {
+      const fresh = await adminBookingBootstrapSnapshot();
+      const finalCandidates = pairedBookingCandidates(fresh, participant);
+      if (finalCandidates.length) candidates = finalCandidates;
+      actual.detectedCount = candidates.length;
+      actual.detectedBookings = candidates.map((booking) => ({
+        bookingId: booking.bookingId,
+        status: booking.status,
+        memberNote: booking.memberNote || '',
+        cancellationPending: Boolean(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+      }));
+    }
+    participant.adminStatus = finalHandoff ? '完整接手清單已同步' : '接手清單未完成';
+    renderParticipants();
 
     const primaryIds = new Set([
       mutable?.bookingId,
@@ -3093,7 +3343,7 @@
     })], '預約風險掃描 · 測試用戶 ' + participant.index);
 
     if (state.cancelled) return skip('預約 E2E 已停止，已完成的動作與資料保留。', expected, actual);
-    const steps = ['CONFIRM', 'MODIFY', 'MODIFY_TECHNICIAN', 'COMPLETE', 'REJECT', 'KEEP_CANCELLATION', 'CANCEL', 'TERMINAL', 'RISK_SCAN']
+    const steps = ['REJECT', 'KEEP_CANCELLATION', 'CONFIRM', 'MODIFY', 'MODIFY_TECHNICIAN', 'COMPLETE', 'CANCEL', 'TERMINAL', 'RISK_SCAN']
       .map((key) => state.results.find((row) => row.key === prefix + key));
     return steps.every((row) => row?.status === 'passed')
       && actual.remainingProcessed.length === remaining.length
@@ -3197,7 +3447,8 @@
       code.textContent = String(participant.account?.memberCode || '準備中');
       identity.append(title, code);
       const status = document.createElement('span');
-      status.textContent = `${participant.status || '準備中'} · ${participant.surface || '—'}`;
+      status.textContent = `${participant.status || '準備中'} · ${participant.surface || '—'}` +
+        (participant.adminStatus ? ` · 管理端：${participant.adminStatus}` : '');
       card.append(identity, status);
       return card;
     }));
