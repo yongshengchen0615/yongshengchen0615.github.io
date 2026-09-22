@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.9';
+  const VERSION = '2026-09-22.10';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -1024,12 +1024,26 @@
     const modal = await waitEditorOpen('ticketEditorModal', 5000);
     if (!modal) throw new Error('票券新增編輯器未開啟。');
 
+    const ticketType = String(options.ticketType || 'coupon');
     setField('ticketTitle', title);
-    setField('ticketType', 'coupon');
+    setField('ticketType', ticketType);
     setField('ticketDescription', options.description || 'E2E QA 深度測試票券，完成後由 Test Control 清理。');
     setField('ticketUsageMethod', options.usageMethod || '僅供自動化 E2E');
     setField('ticketUsageInstructions', options.usageInstructions || '不可供正式會員使用；測試完成後自動清理。');
     setField('ticketStatus', options.status || 'active');
+    if (ticketType === 'lottery') {
+      const lottery = await configureLotteryPrizeEditor('ticket', Array.isArray(options.prizes) && options.prizes.length
+        ? options.prizes
+        : [
+            { title: 'E2E 頭獎', rate: 50, description: '管理端 E2E 抽獎券頭獎' },
+            { title: 'E2E 二獎', rate: 35, description: '管理端 E2E 抽獎券二獎' },
+            { title: 'E2E 參加獎', rate: 15, description: '管理端 E2E 抽獎券參加獎' }
+          ]);
+      if (!lottery.editorVisible || !lottery.totalIs100) {
+        closeEditorModalById('ticketEditorModal');
+        throw new Error('抽獎券獎項機率未完成 100% 設定。');
+      }
+    }
     document.getElementById('saveTicketButton')?.click();
 
     const ticketTemplateId = String(await waitFor(() => document.getElementById('ticketTemplateId')?.value || null, 15000) || '');
@@ -1266,55 +1280,61 @@
     const stamp = qaCrudStamp();
     const createdTitle = 'E2E 集點卡 ' + stamp;
     const updatedTitle = createdTitle + ' 修改';
-    const actual = { created: false, updated: false, deleted: false, cleaned: false, usedExistingTicket: false, seededTicket: false, ticketCleaned: true };
+    const actual = {
+      lotteryTicketCreated: false,
+      lotteryTicketLinked: false,
+      lotteryRewardReloaded: false,
+      created: false,
+      updated: false,
+      deleted: false,
+      cleaned: false,
+      ticketCleaned: true
+    };
     let createdId = '';
     let qaTicketTemplateId = '';
 
-    document.getElementById('cardsTab')?.click();
-    document.getElementById('cardSettingsTab')?.click();
-    document.getElementById('newCardButton')?.click();
-    const modal = await waitEditorOpen('cardEditorModal');
-    if (!modal) return fail('集點卡新增編輯器未開啟。', { editorOpen: true }, { editorOpen: false });
-
     try {
+      const lotteryFixture = await createQaTicketTemplate('E2E QA 集點卡抽獎券 ' + stamp, {
+        status: 'active',
+        ticketType: 'lottery',
+        description: '管理端 E2E：集點卡兌換節點專用抽獎券',
+        usageMethod: '集滿指定點數後使用並抽獎',
+        usageInstructions: '僅供自動化 E2E；測試完成後清理。',
+        prizes: [
+          { title: '集點頭獎', rate: 55, description: '集點卡抽獎券頭獎' },
+          { title: '集點二獎', rate: 30, description: '集點卡抽獎券二獎' },
+          { title: '集點參加獎', rate: 15, description: '集點卡抽獎券參加獎' }
+        ]
+      });
+      qaTicketTemplateId = lotteryFixture.ticketTemplateId;
+      actual.lotteryTicketCreated = Boolean(qaTicketTemplateId);
+      closeEditorModalById('ticketEditorModal');
+
+      document.getElementById('cardsTab')?.click();
+      document.getElementById('cardSettingsTab')?.click();
+      document.getElementById('newCardButton')?.click();
+      if (!await waitEditorOpen('cardEditorModal')) throw new Error('集點卡新增編輯器未開啟。');
+
       setField('cardTitle', createdTitle);
       setField('cardUsageMethod', 'E2E 測試用集點方式');
       setField('cardUsageInstructions', '此資料由管理端 E2E 建立，測試完成後自動刪除。');
-      setField('cardBenefitDescription', '管理端 CRUD E2E');
+      setField('cardBenefitDescription', '97 點兌換管理端 E2E 抽獎券');
       setField('cardStatus', 'draft');
       setField('cardExpiryMode', 'unlimited');
 
-      let rewardSelect = await waitFor(() => document.querySelector('#rewardRows [data-field="ticketTemplateId"]'), 3000);
-      let ticketOption = rewardSelect ? Array.from(rewardSelect.options).find((option) => option.value && !option.disabled) : null;
-      if (!rewardSelect || !ticketOption) {
-        closeEditorModalById('cardEditorModal');
-        const fixture = await createQaTicketTemplate('E2E QA 深度票券 卡片前置 ' + stamp, { status: 'active' });
-        qaTicketTemplateId = fixture.ticketTemplateId;
-        actual.seededTicket = true;
-        closeEditorModalById('ticketEditorModal');
-        document.getElementById('cardSettingsTab')?.click();
-        document.getElementById('newCardButton')?.click();
-        if (!await waitEditorOpen('cardEditorModal', 5000)) throw new Error('建立 QA 票券後無法重新開啟集點卡編輯器。');
-        setField('cardTitle', createdTitle);
-        setField('cardUsageMethod', 'E2E 測試用集點方式');
-        setField('cardUsageInstructions', '此資料由管理端 E2E 建立，測試完成後自動刪除。');
-        setField('cardBenefitDescription', '管理端 CRUD E2E');
-        setField('cardStatus', 'draft');
-        setField('cardExpiryMode', 'unlimited');
-        rewardSelect = await waitFor(() => document.querySelector('#rewardRows [data-field="ticketTemplateId"]'), 5000);
-        ticketOption = rewardSelect ? Array.from(rewardSelect.options).find((option) => option.value === qaTicketTemplateId && !option.disabled) : null;
-      }
-      if (!rewardSelect || !ticketOption) {
-        return fail('集點卡 CRUD 無法取得可用票券；自動建立 QA 前置資料後仍失敗。', { activeTicketAvailable: true }, { activeTicketAvailable: false, seededTicket: actual.seededTicket });
-      }
+      const rewardSelect = await waitFor(() => document.querySelector('#rewardRows [data-field="ticketTemplateId"]'), 5000);
       const threshold = document.querySelector('#rewardRows [data-field="thresholdStamps"]');
-      if (threshold) {
-        threshold.value = '97';
-        threshold.dispatchEvent(new Event('input', { bubbles: true }));
+      const lotteryOption = rewardSelect
+        ? Array.from(rewardSelect.options).find((option) => String(option.value || '') === qaTicketTemplateId && !option.disabled)
+        : null;
+      if (!rewardSelect || !threshold || !lotteryOption) {
+        throw new Error('集點卡無法選取剛建立的抽獎券兌換節點。');
       }
-      rewardSelect.value = ticketOption.value;
+      threshold.value = '97';
+      threshold.dispatchEvent(new Event('input', { bubbles: true }));
+      rewardSelect.value = qaTicketTemplateId;
       rewardSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      actual.usedExistingTicket = true;
+      actual.lotteryTicketLinked = String(rewardSelect.value || '') === qaTicketTemplateId;
 
       document.getElementById('saveCardButton')?.click();
       createdId = String(await waitFor(() => document.getElementById('cardId')?.value || null, 15000) || '');
@@ -1323,7 +1343,7 @@
 
       if (actual.created) {
         setField('cardTitle', updatedTitle);
-        setField('cardBenefitDescription', '管理端 CRUD E2E 已完成修改');
+        setField('cardBenefitDescription', '管理端 CRUD E2E 已完成抽獎券節點修改驗證');
         document.getElementById('saveCardButton')?.click();
         await waitAdminWriteSettled('saveCardButton');
         await clickResourceRow('#cardListItems [data-card-id]', 'cardId', createdId);
@@ -1332,6 +1352,10 @@
             String(document.getElementById('cardTitle')?.value || '') === updatedTitle &&
             textIncludes('#cardListItems', updatedTitle);
         }, 8000));
+        actual.lotteryRewardReloaded = Boolean(await waitFor(() => {
+          const persisted = document.querySelector('#rewardRows [data-field="ticketTemplateId"]');
+          return persisted && String(persisted.value || '') === qaTicketTemplateId;
+        }, 5000));
       }
 
       if (actual.created) {
@@ -1366,10 +1390,27 @@
       }
     }
 
-    const ok = actual.created && actual.updated && actual.deleted && actual.cleaned && actual.usedExistingTicket && actual.ticketCleaned;
+    const ok = actual.lotteryTicketCreated && actual.lotteryTicketLinked && actual.lotteryRewardReloaded &&
+      actual.created && actual.updated && actual.deleted && actual.cleaned && actual.ticketCleaned;
     return ok
-      ? pass('已透過管理端 UI 完成集點卡新增、修改、永久刪除，QA 資料已清理。', { created: true, updated: true, deleted: true, cleaned: true }, actual)
-      : fail('集點卡 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, deleted: true, cleaned: true }, actual);
+      ? pass('已透過管理端 UI 建立抽獎券並綁定集點卡兌換節點，完成儲存回讀、修改、永久刪除與 QA 清理。', {
+          lotteryTicketCreated: true,
+          lotteryTicketLinked: true,
+          lotteryRewardReloaded: true,
+          created: true,
+          updated: true,
+          deleted: true,
+          cleaned: true
+        }, actual)
+      : fail('集點卡抽獎券 CRUD E2E 至少一個階段失敗。', {
+          lotteryTicketCreated: true,
+          lotteryTicketLinked: true,
+          lotteryRewardReloaded: true,
+          created: true,
+          updated: true,
+          deleted: true,
+          cleaned: true
+        }, actual);
   }
 
   async function adminEventTicketCrudCase() {
@@ -1782,8 +1823,8 @@
     };
   }
 
-  async function setDetectedBookingStatus(bookingId, label, adminNote, expectedStatus) {
-    await openAdminBookingQueue('pending');
+  async function setDetectedBookingStatus(bookingId, label, adminNote, expectedStatus, sourceFilter = 'pending') {
+    await openAdminBookingQueue(sourceFilter);
     const card = await waitFor(() => document.querySelector('#bookingAdminQueue .booking-admin-booking[data-booking-id="' + CSS.escape(String(bookingId || '')) + '"]'), 9000, 100);
     if (!card) throw new Error('管理端找不到待審核的用戶端 E2E 預約。');
     const textarea = card.querySelector('.booking-admin-note-field textarea');
@@ -1793,8 +1834,12 @@
     }
     const action = bookingActionButton(card, label);
     if (!action) throw new Error('管理端預約缺少「' + label + '」操作。');
-    action.click();
-    const updated = await waitAdminBookingSnapshot(bookingId, (row) => String(row.status || '') === expectedStatus, 16000);
+    if (expectedStatus === 'completed') {
+      await withAutoConfirm(async () => { action.click(); });
+    } else {
+      action.click();
+    }
+    const updated = await waitAdminBookingSnapshot(bookingId, (row) => String(row.status || '') === expectedStatus, 18000);
     return {
       bookingId: String(bookingId || ''),
       expectedStatus,
@@ -1805,27 +1850,66 @@
     };
   }
 
-  async function keepDetectedCancellation(bookingId) {
+  async function approveDetectedCancellation(bookingId) {
     await openAdminBookingQueue('pending');
     const requestFilter = await waitFor(() => document.getElementById('bookingCancellationRequestFilter'), 8000, 100);
     if (!requestFilter) throw new Error('取消申請審核分頁未載入。');
     requestFilter.click();
     const card = await waitFor(() => document.querySelector('#bookingCancellationReviewList .booking-admin-booking[data-booking-id="' + CSS.escape(String(bookingId || '')) + '"]'), 10000, 100);
     if (!card) throw new Error('管理端取消申請分頁找不到用戶端 E2E 預約。');
-    const keep = card.querySelector('[data-booking-admin-action="reject-cancellation"]') || bookingActionButton(card, '保留預約');
-    if (!keep) throw new Error('取消申請缺少「保留預約」審核操作。');
-    await withAutoConfirm(async () => { keep.click(); });
+    const approve = card.querySelector('[data-booking-admin-action="approve-cancellation"]') || bookingActionButton(card, '確認取消');
+    if (!approve) throw new Error('取消申請缺少「確認取消」審核操作。');
+    await withAutoConfirm(async () => { approve.click(); });
     const reviewed = await waitAdminBookingSnapshot(
       bookingId,
-      (row) => Boolean(row.cancellationReviewedAt) && !row.cancellationRequestedAt ? true : Boolean(row.cancellationReviewedAt),
-      16000
+      (row) => Boolean(row.cancellationReviewedAt) && String(row.status || '') === 'cancelled',
+      18000
     );
     return {
       bookingId: String(bookingId || ''),
+      mode: 'cancellation-request',
       status: String(reviewed?.status || ''),
       cancellationReviewedAt: reviewed?.cancellationReviewedAt || null,
       cancellationDecision: reviewed?.cancellationDecision || null,
-      ok: Boolean(reviewed?.cancellationReviewedAt && String(reviewed?.status || '') === 'pending')
+      cancelledAt: reviewed?.cancelledAt || null,
+      ok: Boolean(reviewed?.cancellationReviewedAt && String(reviewed?.status || '') === 'cancelled')
+    };
+  }
+
+  async function cancelDetectedBooking(booking) {
+    const bookingId = String(booking?.bookingId || '');
+    if (booking?.cancellationRequestedAt && !booking?.cancellationReviewedAt) {
+      return approveDetectedCancellation(bookingId);
+    }
+
+    let confirmed = null;
+    const startingStatus = String(booking?.status || '');
+    if (startingStatus === 'pending') {
+      confirmed = await setDetectedBookingStatus(
+        bookingId,
+        '確認預約',
+        'QA ADMIN E2E PREPARE CANCEL ' + qaCrudStamp(),
+        'confirmed',
+        'pending'
+      );
+      if (!confirmed.ok) return { bookingId, mode: 'direct', confirmed, cancelled: null, ok: false };
+    } else if (startingStatus !== 'confirmed') {
+      return { bookingId, mode: 'direct', startingStatus, confirmed: null, cancelled: null, ok: false };
+    }
+
+    const cancelled = await setDetectedBookingStatus(
+      bookingId,
+      '取消預約',
+      'QA ADMIN E2E CANCEL ' + qaCrudStamp(),
+      'cancelled',
+      'confirmed'
+    );
+    return {
+      bookingId,
+      mode: 'direct',
+      confirmed,
+      cancelled,
+      ok: Boolean(cancelled?.ok)
     };
   }
 
@@ -1843,7 +1927,15 @@
       String(booking.status || '') === 'pending'
       && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
     );
-    const cancellation = candidates.find((booking) => booking.cancellationRequestedAt && !booking.cancellationReviewedAt);
+    const cancellationTarget = candidates.find((booking) =>
+      String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+      && booking.cancellationRequestedAt
+      && !booking.cancellationReviewedAt
+    ) || candidates.find((booking) =>
+      String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+      && ['pending', 'confirmed'].includes(String(booking.status || ''))
+    );
+
     const actual = {
       memberCode: account.memberCode || null,
       bookingSurfacePassed,
@@ -1858,8 +1950,8 @@
       })),
       modified: null,
       confirmed: null,
-      cancellationReview: null,
-      rejected: null
+      completed: null,
+      cancelled: null
     };
 
     if (!candidates.length) {
@@ -1868,53 +1960,54 @@
         : skip('本次用戶端預約 E2E 未產生可接手的預約資料，管理端接手案例略過。', { freshUserBookingDetectedWhenUserBookingPasses: true }, actual);
     }
     if (!mutable) {
-      return fail('已偵測到用戶端 E2E 預約，但沒有可供管理端修改與確認的 pending 預約。', { mutablePendingBooking: true }, actual);
+      return fail('已偵測到用戶端 E2E 預約，但沒有可供管理端修改、確認與完成的 pending 預約。', { mutablePendingBooking: true }, actual);
+    }
+    if (!cancellationTarget) {
+      return fail('管理端預約 E2E 需要另一筆可取消的用戶端預約，才能同時覆蓋完成與取消兩條終態。', { cancellableBookingSeparateFromCompletion: true }, actual);
     }
 
-    const mutation = await mutateDetectedBooking(mutable);
-    actual.modified = mutation;
-    const confirmNote = 'QA ADMIN E2E CONFIRM ' + qaCrudStamp();
-    const confirmed = await setDetectedBookingStatus(mutable.bookingId, '確認預約', confirmNote, 'confirmed');
-    actual.confirmed = confirmed;
+    actual.modified = await mutateDetectedBooking(mutable);
+    actual.confirmed = await setDetectedBookingStatus(
+      mutable.bookingId,
+      '確認預約',
+      'QA ADMIN E2E CONFIRM ' + qaCrudStamp(),
+      'confirmed',
+      'pending'
+    );
 
-    let rejectionTarget = null;
-    if (cancellation) {
-      const reviewed = await keepDetectedCancellation(cancellation.bookingId);
-      actual.cancellationReview = reviewed;
-      if (reviewed.ok) rejectionTarget = cancellation;
-    } else {
-      rejectionTarget = candidates.find((booking) =>
-        String(booking.bookingId || '') !== String(mutable.bookingId || '')
-        && String(booking.status || '') === 'pending'
-        && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
-      ) || null;
+    if (actual.confirmed?.ok) {
+      actual.completed = await setDetectedBookingStatus(
+        mutable.bookingId,
+        '確認服務完成',
+        'QA ADMIN E2E COMPLETE ' + qaCrudStamp(),
+        'completed',
+        'confirmed'
+      );
     }
 
-    if (rejectionTarget) {
-      const rejectNote = 'QA ADMIN E2E REJECT ' + qaCrudStamp();
-      actual.rejected = await setDetectedBookingStatus(rejectionTarget.bookingId, '不通過', rejectNote, 'rejected');
-    }
+    actual.cancelled = await cancelDetectedBooking(cancellationTarget);
 
     const ok = Boolean(
       actual.modified?.updatedAtChanged
       && actual.confirmed?.ok
-      && actual.rejected?.ok
-      && (!cancellation || actual.cancellationReview?.ok)
+      && actual.completed?.ok
+      && actual.cancelled?.ok
     );
     return ok
-      ? pass('管理端已自動偵測用戶端 E2E 建立的預約，完成修改、確認、取消申請保留審核與不通過；資料保留供測試人員觀察。', {
+      ? pass('管理端已自動偵測用戶端 E2E 預約：一筆完成修改 → 確認 → 完成，另一筆完成取消審核／取消；資料保留供測試人員觀察。', {
           detectedFromUserE2E: true,
           modified: true,
           confirmed: true,
-          cancellationReview: cancellation ? true : 'not-required',
-          rejected: true,
+          completed: true,
+          cancelled: true,
           recordsPreserved: true
         }, actual)
-      : fail('管理端接手用戶端預約資料的修改／審核流程至少一個階段失敗。', {
+      : fail('管理端接手用戶端預約的修改／確認／完成／取消流程至少一個階段失敗。', {
           detectedFromUserE2E: true,
           modified: true,
           confirmed: true,
-          rejected: true,
+          completed: true,
+          cancelled: true,
           recordsPreserved: true
         }, actual);
   }
@@ -2526,8 +2619,19 @@
 
   async function createDeepPointCard(ctx) {
     const stamp = qaCrudStamp();
-    ctx.ticketTitle = 'E2E QA 深度票券 點數 ' + stamp;
-    const ticket = await createQaTicketTemplate(ctx.ticketTitle, { status: 'active' });
+    ctx.ticketTitle = 'E2E QA 深度集點抽獎券 ' + stamp;
+    const ticket = await createQaTicketTemplate(ctx.ticketTitle, {
+      status: 'active',
+      ticketType: 'lottery',
+      description: '深度協同 E2E：集點卡兌換後執行抽獎並驗證結果。',
+      usageMethod: '集滿 2 點後使用並抽獎',
+      usageInstructions: '僅供深度協同 E2E。',
+      prizes: [
+        { title: '深度頭獎', rate: 50, description: '深度協同 E2E 頭獎' },
+        { title: '深度二獎', rate: 35, description: '深度協同 E2E 二獎' },
+        { title: '深度參加獎', rate: 15, description: '深度協同 E2E 參加獎' }
+      ]
+    });
     ctx.ticketTemplateId = ticket.ticketTemplateId;
     closeEditorModalById('ticketEditorModal');
 
@@ -2601,7 +2705,7 @@
     return Boolean(await waitFor(() => String(child.document.getElementById('activeCardTitle')?.textContent || '').trim() !== '', 3000));
   }
 
-  async function redeemDeepTicketInChild(child, ticketTitle) {
+  async function redeemDeepTicketInChild(child, ticketTitle, expectLottery = false) {
     const checkbox = await waitFor(() => {
       try {
         return Array.from(child.document.querySelectorAll('#ticketList [data-ticket-select]')).find((node) => {
@@ -2610,7 +2714,7 @@
         }) || null;
       } catch { return null; }
     }, 10000, 120);
-    if (!checkbox) return { selected: false, cancelledOnce: false, redeemed: false, history: false };
+    if (!checkbox) return { selected: false, cancelledOnce: false, redeemed: false, lotteryResultVisible: false, history: false };
     checkbox.checked = true;
     checkbox.dispatchEvent(new child.Event('change', { bubbles: true }));
     const useButton = await waitFor(() => {
@@ -2619,7 +2723,7 @@
         return button && !button.disabled ? button : null;
       } catch { return null; }
     }, 3000);
-    if (!useButton) return { selected: true, cancelledOnce: false, redeemed: false, history: false };
+    if (!useButton) return { selected: true, cancelledOnce: false, redeemed: false, lotteryResultVisible: false, history: false };
     useButton.click();
     const modal = await waitFor(() => {
       try {
@@ -2627,7 +2731,7 @@
         return node && !node.classList.contains('hidden') ? node : null;
       } catch { return null; }
     }, 3000);
-    if (!modal) return { selected: true, cancelledOnce: false, redeemed: false, history: false };
+    if (!modal) return { selected: true, cancelledOnce: false, redeemed: false, lotteryResultVisible: false, history: false };
     modal.querySelector('.ticket-batch-cancel')?.click();
     const cancelledOnce = Boolean(await waitFor(() => modal.classList.contains('hidden'), 1800));
     useButton.click();
@@ -2638,9 +2742,11 @@
       return confirm && confirm.dataset.mode === 'close' && !confirm.disabled ? confirm : null;
     }, 12000, 120);
     const redeemed = Boolean(completed);
+    const resultText = String(modal.querySelector('[data-batch-list]')?.textContent || '');
+    const lotteryResultVisible = expectLottery ? /抽中：/.test(resultText) : true;
     completed?.click();
     const history = Boolean(await waitFor(() => String(child.document.getElementById('ticketHistoryList')?.textContent || '').includes(ticketTitle), 12000, 120));
-    return { selected: true, cancelledOnce, redeemed, history };
+    return { selected: true, cancelledOnce, redeemed, lotteryResultVisible, resultText, history };
   }
 
   async function verifyPointRecordInAdmin(account, expectedText) {
@@ -2711,7 +2817,7 @@
       return snapshot.points === 2 && snapshot.ticketVisible;
     }, 15000, 120));
     const beforeRedeem = childPointState(child, ctx.cardId, ctx.cardTitle, ctx.ticketTitle);
-    const userRedeem = await redeemDeepTicketInChild(child, ctx.ticketTitle);
+    const userRedeem = await redeemDeepTicketInChild(child, ctx.ticketTitle, true);
     const adminRecordVisible = await verifyPointRecordInAdmin(account, ctx.cardTitle);
 
     const deleted = await deleteDeepPointCard(ctx);
@@ -2737,15 +2843,15 @@
     };
     const ok = cardRealtime && Object.values(invalid).every(Boolean) && replayRealtime && awarded &&
       beforeRedeem.points === 2 && userRedeem.selected && userRedeem.cancelledOnce && userRedeem.redeemed &&
-      userRedeem.history && adminRecordVisible && deleted && cardRemovedRealtime;
+      userRedeem.lotteryResultVisible && userRedeem.history && adminRecordVisible && deleted && cardRemovedRealtime;
     return ok
       ? pass('票券／點數已完成 points 專屬 Session、管理端建立、非法輸入、同 requestId 併發重送、UI 連點發放、用戶端即時出票與真人核銷，再反向同步到管理端紀錄並清理。', {
           sessionSurface: 'points', cardRealtime: true, invalidRejected: true, replayPoints: 1, finalPointsBeforeRedeem: 2,
-          ticketRealtime: true, userRedeemed: true, adminRecordVisible: true, cleanupRealtime: true
+          ticketRealtime: true, lotteryResultVisible: true, userRedeemed: true, adminRecordVisible: true, cleanupRealtime: true
         }, actual)
       : fail('票券／點數深度協同 E2E 發現狀態不一致。', {
           sessionSurface: 'points', cardRealtime: true, invalidRejected: true, replayPoints: 1, finalPointsBeforeRedeem: 2,
-          ticketRealtime: true, userRedeemed: true, adminRecordVisible: true, cleanupRealtime: true
+          ticketRealtime: true, lotteryResultVisible: true, userRedeemed: true, adminRecordVisible: true, cleanupRealtime: true
         }, actual);
   }
 
