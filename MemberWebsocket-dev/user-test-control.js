@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.9';
+  const VERSION = '2026-09-22.10';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -55,6 +55,8 @@
     bootstrap: null,
     mutationSuite: null,
     browserRun: null,
+    usageState: null,
+    usageStateError: null,
     availabilitySync: null,
     bookingLaneDayCount: 1,
     launcher: null,
@@ -429,11 +431,24 @@
     state.bootstrap = null;
     state.mutationSuite = null;
     state.browserRun = null;
+    state.usageState = null;
+    state.usageStateError = null;
     state.cancelled = false;
     setRunning(true);
     setStatus('執行中');
     setMessage(state.currentSuite === 'full' ? '正在以隨機案例順序、隨機操作間隔執行完整用戶端測試…' : '正在執行快速健康檢查…');
     renderResults();
+
+    if (state.currentSuite === 'full') {
+      try {
+        setMessage('正在建立高複雜度會員使用狀態：歷史、可用、已使用、過期、受限與進行中資料…');
+        state.usageState = await qaServiceRequest('user.qa.usage-state.prepare', {}, 60000);
+        await refreshRealClient().catch(() => {});
+      } catch (error) {
+        state.usageStateError = plainError(error);
+      }
+      setMessage('使用狀態前置完成，正在以隨機案例順序與隨機操作間隔執行完整用戶端測試…', Boolean(state.usageStateError));
+    }
 
     const cases = buildCases(state.currentSuite);
     updateSummary(0, cases.length);
@@ -539,6 +554,7 @@
     if (suite !== 'full') return common;
 
     const fullCommon = [
+      caseDef('高複雜度使用狀態前置', 'Usage State', usageStateComplexityCase, 'COMMON_USAGE_STATE_COMPLEXITY'),
       caseDef('無測試 Session 必須被拒絕', 'Security', negativeSessionCase),
       caseDef('Realtime 訂閱能力', 'Realtime', realtimeCase, 'COMMON_REALTIME')
     ];
@@ -1511,6 +1527,50 @@
           '會員資料寫入驗證沒有完整拒絕無效輸入。',
           { contactRejected: true, honorificRejected: true },
           { contact, honorific }
+        );
+  }
+
+
+  async function usageStateComplexityCase() {
+    if (state.usageStateError) {
+      return fail(
+        '高複雜度使用狀態建立失敗；其餘案例仍繼續執行以保留診斷資訊。',
+        { prepared: true, complexStateKinds: true },
+        { prepared: false, error: state.usageStateError }
+      );
+    }
+    const data = state.usageState || {};
+    const kinds = Array.isArray(data.stateKinds) ? data.stateKinds.filter(Boolean) : [];
+    const recordsCreated = Number(data.recordsCreated || 0);
+    const minimumRecords = surface === 'points' ? 8 : surface === 'event' ? 6 : surface === 'calendar' ? 5 : surface === 'member' ? 2 : 1;
+    const minimumKinds = surface === 'points' ? 6 : surface === 'event' ? 5 : surface === 'calendar' ? 5 : surface === 'member' ? 3 : 1;
+    if (data.skipped === true && surface === 'booking') {
+      return skip(
+        '預約頁目前沒有足夠可預約資源建立前置生命週期；後續真人新增／修改／取消案例仍會繼續。',
+        { preparedOrSafelySkipped: true },
+        { scenario: data.scenario || '', recordsCreated, stateKinds: kinds }
+      );
+    }
+    const ok = data.prepared === true && recordsCreated >= minimumRecords && kinds.length >= minimumKinds;
+    const actual = {
+      scenario: data.scenario || '',
+      recordsCreated,
+      stateKinds: kinds,
+      usageStateTag: data.usageStateTag || '',
+      serviceMinutesAdded: Number(data.serviceMinutesAdded || 0),
+      cardIds: Array.isArray(data.cardIds) ? data.cardIds : [],
+      bookings: Array.isArray(data.bookings) ? data.bookings : []
+    };
+    return ok
+      ? pass(
+          'E2E 已在真人操作前建立混合使用狀態，不再從乾淨空白帳號開始。',
+          { prepared: true, minimumRecords, minimumKinds },
+          actual
+        )
+      : fail(
+          '使用狀態前置資料量或狀態種類不足。',
+          { prepared: true, minimumRecords, minimumKinds },
+          actual
         );
   }
 
