@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.8';
+  const VERSION = '2026-09-22.9';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -70,6 +70,15 @@
   window.addEventListener('pageshow', () => {
     void synchronizeAvailability();
   });
+  window.addEventListener('member-test-session-revoked', () => {
+    state.cancelled = true;
+    state.session = null;
+    if (state.running) {
+      setStatus('已停止');
+      setMessage('測試資料或測試帳號已被管理端移除，本次 E2E 已立即停止。', true);
+    }
+    removeUi();
+  });
 
   function detectSurface() {
     const match = String(window.location.pathname || '').match(/\/MemberWebsocket-dev\/(member|points|event|calendar|booking)\/?/i);
@@ -82,6 +91,32 @@
 
   function elapsed(start) {
     return Math.max(0, Math.round(performance.now() - start));
+  }
+
+  function randomInt(min, max) {
+    const low = Math.ceil(Number(min) || 0);
+    const high = Math.floor(Number(max) || low);
+    if (high <= low) return low;
+    try {
+      const value = new Uint32Array(1);
+      crypto.getRandomValues(value);
+      return low + (value[0] % (high - low + 1));
+    } catch (_) {
+      return low + Math.floor(Math.random() * (high - low + 1));
+    }
+  }
+
+  function shuffled(items) {
+    const copy = Array.isArray(items) ? items.slice() : [];
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swap = randomInt(0, index);
+      [copy[index], copy[swap]] = [copy[swap], copy[index]];
+    }
+    return copy;
+  }
+
+  function randomInteractionPause() {
+    return wait(randomInt(90, 720));
   }
 
   function plainError(error) {
@@ -152,7 +187,7 @@
           return;
         }
         const config = await loadConfig();
-        const session = await window.TestModeClient.sessionStatus(config);
+        const session = await window.TestModeClient.sessionStatus(config, surface);
         const active = Boolean(session && session.active && session.account && session.account.memberId);
         if (!active) {
           state.session = null;
@@ -378,7 +413,7 @@
       return { ok: false, busy: true, surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
     }
     try {
-      const session = await window.TestModeClient.sessionStatus(await loadConfig());
+      const session = await window.TestModeClient.sessionStatus(await loadConfig(), surface);
       if (!session || !session.active || !session.account || !session.account.memberId) {
         removeUi();
         return { ok: false, skipped: true, reason: 'inactive-session', surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 1, total: 0 } };
@@ -397,7 +432,7 @@
     state.cancelled = false;
     setRunning(true);
     setStatus('執行中');
-    setMessage(state.currentSuite === 'full' ? '正在執行完整用戶端測試…' : '正在執行快速健康檢查…');
+    setMessage(state.currentSuite === 'full' ? '正在以隨機案例順序、隨機操作間隔執行完整用戶端測試…' : '正在執行快速健康檢查…');
     renderResults();
 
     const cases = buildCases(state.currentSuite);
@@ -432,7 +467,7 @@
       }
       renderResults();
       updateSummary(index + 1, cases.length);
-      await wait(40);
+      await (state.currentSuite === 'full' ? randomInteractionPause() : wait(40));
     }
 
     const cancelled = state.cancelled;
@@ -556,9 +591,9 @@
         caseDef('測試帳號 LINE 通知抑制', 'Notification', () => mutationQaCase('LINE_SUPPRESSION'), (surface || 'surface').toUpperCase() + '_LINE_SUPPRESSION')
       );
     }
+    const randomizedMiddle = shuffled(fullCommon.concat(surfaceCases[surface] || []));
     return common.concat(
-      fullCommon,
-      surfaceCases[surface] || [],
+      randomizedMiddle,
       trailingCases
     );
   }
