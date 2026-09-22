@@ -757,6 +757,520 @@ async function persistUserQaRun(
 }
 
 
+
+function randomChoice<T>(items: T[]): T {
+  if (!items.length) throw new ApiError(500, "QA_RANDOM_EMPTY", "測試狀態候選集合不可為空。");
+  const bytes = new Uint32Array(1);
+  crypto.getRandomValues(bytes);
+  return items[bytes[0] % items.length];
+}
+
+async function prepareUsageState(s: any, identity: any, token: string, surface: Surface): Promise<Json> {
+  const tag = suffix();
+  const actor = "qa-state:" + identity.memberId + ":" + tag;
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (surface === "member") {
+    const pattern = randomChoice([[7, 13], [18, 42], [30, 75], [55, 125]]);
+    const rows = pattern.map((minutes, index) => ({
+      entry_id: "QA-STATE-SVC-" + tag + "-" + (index + 1),
+      member_id: identity.memberId,
+      minutes,
+      note: index === 0 ? "QA STATE PACK 歷史服務" : "QA STATE PACK 近期服務",
+      created_by: actor,
+      created_at: new Date(Date.now() - (index === 0 ? 21 : 3) * 86400000).toISOString(),
+      request_id: "QA-STATE-SVC-" + tag + "-" + (index + 1),
+    }));
+    const inserted = await s.from("service_time_entries").insert(rows);
+    if (inserted.error) throw new ApiError(500, "QA_USAGE_MEMBER_STATE_FAILED", "無法建立會員使用狀態。", inserted.error.message);
+    return {
+      usageStateTag: tag,
+      prepared: true,
+      scenario: "service-history-mixed",
+      recordsCreated: rows.length,
+      stateKinds: ["historical-service", "recent-service", "membership-progress"],
+      serviceMinutesAdded: pattern.reduce((sum, value) => sum + value, 0),
+    };
+  }
+
+  if (surface === "points") {
+    const templates = await s.from("ticket_templates").insert([
+      {
+        ticket_template_id: "QA-STATE-TPL-C-" + tag,
+        title: "QA 狀態優惠券 " + tag.slice(0, 4),
+        ticket_type: "coupon",
+        description: "State-pack coupon",
+        usage_method: "QA",
+        usage_instructions: "Test account state complexity",
+        prizes: [],
+        status: "active",
+        created_by: actor,
+        updated_by: actor,
+      },
+      {
+        ticket_template_id: "QA-STATE-TPL-L-" + tag,
+        title: "QA 狀態抽獎券 " + tag.slice(0, 4),
+        ticket_type: "lottery",
+        description: "State-pack lottery",
+        usage_method: "QA",
+        usage_instructions: "Test account state complexity",
+        prizes: [
+          { prizeTitle: "狀態獎 A", prizeDescription: "QA", winRate: 65 },
+          { prizeTitle: "狀態獎 B", prizeDescription: "QA", winRate: 35 },
+        ],
+        status: "active",
+        created_by: actor,
+        updated_by: actor,
+      },
+    ]).select("id,ticket_type");
+    if (templates.error || !templates.data || templates.data.length !== 2) {
+      throw new ApiError(500, "QA_USAGE_POINT_TEMPLATE_FAILED", "無法建立複雜票券狀態。", templates.error?.message || null);
+    }
+    const coupon = templates.data.find((row: any) => row.ticket_type === "coupon");
+    const lottery = templates.data.find((row: any) => row.ticket_type === "lottery");
+    if (!coupon || !lottery) throw new ApiError(500, "QA_USAGE_POINT_TEMPLATE_MISSING", "複雜票券樣板建立不完整。");
+
+    const cards = await s.from("point_cards").insert([
+      {
+        card_id: "QA-STATE-PC-A-" + tag,
+        title: "QA 狀態集點卡 A",
+        description: "Mixed available/used/expired ticket state",
+        status: "active",
+        accent: "#5f7769",
+        style_key: "forest",
+        expiry_mode: "unlimited",
+        sort_order: 999910,
+        usage_method: "QA",
+        usage_instructions: "Test account state complexity",
+        benefit_description: "多狀態票券",
+        created_by: actor,
+        updated_by: actor,
+      },
+      {
+        card_id: "QA-STATE-PC-B-" + tag,
+        title: "QA 狀態集點卡 B",
+        description: "Date-limited low balance state",
+        status: "active",
+        accent: "#7b6d8d",
+        style_key: "ocean",
+        expiry_mode: "date",
+        expires_on: isoDateAdd(today, randomChoice([9, 17, 31])),
+        sort_order: 999911,
+        usage_method: "QA",
+        usage_instructions: "Test account state complexity",
+        benefit_description: "低餘額與日期限制",
+        created_by: actor,
+        updated_by: actor,
+      },
+    ]).select("id,card_id");
+    if (cards.error || !cards.data || cards.data.length !== 2) {
+      throw new ApiError(500, "QA_USAGE_POINT_CARD_FAILED", "無法建立多集點卡使用狀態。", cards.error?.message || null);
+    }
+    const cardA = cards.data.find((row: any) => String(row.card_id).includes("-A-"));
+    const cardB = cards.data.find((row: any) => String(row.card_id).includes("-B-"));
+    if (!cardA || !cardB) throw new ApiError(500, "QA_USAGE_POINT_CARD_MISSING", "多集點卡狀態建立不完整。");
+
+    const rewards = await s.from("point_card_rewards").insert([
+      { reward_id: "QA-STATE-RWD-A1-" + tag, point_card_id: cardA.id, threshold_stamps: 2, ticket_template_id: coupon.id },
+      { reward_id: "QA-STATE-RWD-A2-" + tag, point_card_id: cardA.id, threshold_stamps: 5, ticket_template_id: lottery.id },
+      { reward_id: "QA-STATE-RWD-B1-" + tag, point_card_id: cardB.id, threshold_stamps: 3, ticket_template_id: lottery.id },
+    ]).select("id,reward_id,ticket_template_id,point_card_id,threshold_stamps");
+    if (rewards.error || !rewards.data || rewards.data.length !== 3) {
+      throw new ApiError(500, "QA_USAGE_POINT_REWARD_FAILED", "無法建立多節點使用狀態。", rewards.error?.message || null);
+    }
+    const rewardA1 = rewards.data.find((row: any) => String(row.reward_id).includes("-A1-"));
+    const rewardA2 = rewards.data.find((row: any) => String(row.reward_id).includes("-A2-"));
+    const rewardB1 = rewards.data.find((row: any) => String(row.reward_id).includes("-B1-"));
+
+    const balances = await s.from("point_balances").insert([
+      { member_id: identity.memberId, point_card_id: cardA.id, stamps: randomChoice([4, 6, 9]) },
+      { member_id: identity.memberId, point_card_id: cardB.id, stamps: randomChoice([1, 2]) },
+    ]);
+    if (balances.error) throw new ApiError(500, "QA_USAGE_POINT_BALANCE_FAILED", "無法建立不同點數餘額。", balances.error.message);
+
+    const usedAt = new Date(Date.now() - 2 * 86400000).toISOString();
+    const tickets = await s.from("point_tickets").insert([
+      {
+        ticket_id: "QA-STATE-PT-AVAILABLE-" + tag,
+        member_id: identity.memberId,
+        point_card_id: cardA.id,
+        reward_id: rewardA1?.id || null,
+        ticket_template_id: coupon.id,
+        threshold_stamps: 2,
+        ticket_type: "coupon",
+        ticket_title: "QA 可用優惠券",
+        ticket_description: "available state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "available",
+      },
+      {
+        ticket_id: "QA-STATE-PT-USED-" + tag,
+        member_id: identity.memberId,
+        point_card_id: cardA.id,
+        reward_id: rewardA1?.id || null,
+        ticket_template_id: coupon.id,
+        threshold_stamps: 2,
+        ticket_type: "coupon",
+        ticket_title: "QA 已使用優惠券",
+        ticket_description: "used state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "used",
+        used_at: usedAt,
+        result: { source: "qa-state-pack", outcome: "used" },
+      },
+      {
+        ticket_id: "QA-STATE-PT-EXPIRED-" + tag,
+        member_id: identity.memberId,
+        point_card_id: cardA.id,
+        reward_id: rewardA2?.id || null,
+        ticket_template_id: lottery.id,
+        threshold_stamps: 5,
+        ticket_type: "lottery",
+        ticket_title: "QA 已過期抽獎券",
+        ticket_description: "expired state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [
+          { prizeTitle: "狀態獎 A", prizeDescription: "QA", winRate: 65 },
+          { prizeTitle: "狀態獎 B", prizeDescription: "QA", winRate: 35 },
+        ],
+        status: "expired",
+      },
+      {
+        ticket_id: "QA-STATE-PT-LOTTERY-" + tag,
+        member_id: identity.memberId,
+        point_card_id: cardB.id,
+        reward_id: rewardB1?.id || null,
+        ticket_template_id: lottery.id,
+        threshold_stamps: 3,
+        ticket_type: "lottery",
+        ticket_title: "QA 可用抽獎券",
+        ticket_description: "available lottery state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [
+          { prizeTitle: "狀態獎 A", prizeDescription: "QA", winRate: 65 },
+          { prizeTitle: "狀態獎 B", prizeDescription: "QA", winRate: 35 },
+        ],
+        status: "available",
+      },
+    ]);
+    if (tickets.error) throw new ApiError(500, "QA_USAGE_POINT_TICKETS_FAILED", "無法建立可用／已用／過期票券狀態。", tickets.error.message);
+
+    return {
+      usageStateTag: tag,
+      prepared: true,
+      scenario: "mixed-point-ticket-lifecycle",
+      recordsCreated: 11,
+      stateKinds: ["multi-card", "high-balance", "low-balance", "available-ticket", "used-ticket", "expired-ticket", "lottery-ticket", "date-limited-card"],
+      cardIds: [cardA.card_id, cardB.card_id],
+    };
+  }
+
+  if (surface === "event") {
+    const eventRows = [
+      {
+        event_ticket_id: "QA-STATE-EVT-OPEN-" + tag,
+        title: "QA 可領活動票券",
+        ticket_type: "coupon",
+        description: "claimable state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "active",
+        starts_on: isoDateAdd(today, -2),
+        ends_on: isoDateAdd(today, 8),
+        quota: 8,
+        accent: "#5f7769",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        created_by: actor,
+        updated_by: actor,
+      },
+      {
+        event_ticket_id: "QA-STATE-EVT-CLAIMED-" + tag,
+        title: "QA 已領待使用活動票券",
+        ticket_type: "coupon",
+        description: "claimed state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "active",
+        starts_on: isoDateAdd(today, -3),
+        ends_on: isoDateAdd(today, 6),
+        quota: 9,
+        accent: "#4f7189",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        created_by: actor,
+        updated_by: actor,
+      },
+      {
+        event_ticket_id: "QA-STATE-EVT-USED-" + tag,
+        title: "QA 已使用活動票券",
+        ticket_type: "coupon",
+        description: "used state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "active",
+        starts_on: isoDateAdd(today, -12),
+        ends_on: isoDateAdd(today, 3),
+        quota: 0,
+        accent: "#7d6a91",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        created_by: actor,
+        updated_by: actor,
+      },
+      {
+        event_ticket_id: "QA-STATE-EVT-FUTURE-" + tag,
+        title: "QA 尚未開始活動票券",
+        ticket_type: "lottery",
+        description: "future state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [
+          { prizeTitle: "未來獎", prizeDescription: "QA", winRate: 100 },
+        ],
+        status: "active",
+        starts_on: isoDateAdd(today, 5),
+        ends_on: isoDateAdd(today, 20),
+        quota: 3,
+        accent: "#9b7a49",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        created_by: actor,
+        updated_by: actor,
+      },
+      {
+        event_ticket_id: "QA-STATE-EVT-PAST-" + tag,
+        title: "QA 已結束活動票券",
+        ticket_type: "coupon",
+        description: "past state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "active",
+        starts_on: isoDateAdd(today, -20),
+        ends_on: isoDateAdd(today, -1),
+        quota: 2,
+        accent: "#666666",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        created_by: actor,
+        updated_by: actor,
+      },
+    ];
+    const inserted = await s.from("event_tickets").insert(eventRows).select("id,event_ticket_id,ticket_type,title");
+    if (inserted.error || !inserted.data || inserted.data.length !== eventRows.length) {
+      throw new ApiError(500, "QA_USAGE_EVENT_FAILED", "無法建立活動票券多生命週期狀態。", inserted.error?.message || null);
+    }
+    const claimed = inserted.data.find((row: any) => String(row.event_ticket_id).includes("-CLAIMED-"));
+    const used = inserted.data.find((row: any) => String(row.event_ticket_id).includes("-USED-"));
+    if (!claimed || !used) throw new ApiError(500, "QA_USAGE_EVENT_STATE_MISSING", "活動票券狀態建立不完整。");
+    const claims = await s.from("event_ticket_claims").insert([
+      {
+        claim_id: "QA-STATE-CLAIM-OPEN-" + tag,
+        event_ticket_id: claimed.id,
+        member_id: identity.memberId,
+        ticket_type: claimed.ticket_type,
+        ticket_title: claimed.title,
+        ticket_description: "claimed state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "claimed",
+      },
+      {
+        claim_id: "QA-STATE-CLAIM-USED-" + tag,
+        event_ticket_id: used.id,
+        member_id: identity.memberId,
+        ticket_type: used.ticket_type,
+        ticket_title: used.title,
+        ticket_description: "used state",
+        usage_method: "QA",
+        usage_instructions: "QA",
+        prizes: [],
+        status: "used",
+        used_at: new Date(Date.now() - 86400000).toISOString(),
+        result: { source: "qa-state-pack", outcome: "used" },
+      },
+    ]);
+    if (claims.error) throw new ApiError(500, "QA_USAGE_EVENT_CLAIMS_FAILED", "無法建立已領／已使用活動票券狀態。", claims.error.message);
+    return {
+      usageStateTag: tag,
+      prepared: true,
+      scenario: "mixed-event-ticket-lifecycle",
+      recordsCreated: 7,
+      stateKinds: ["claimable", "claimed", "used", "future", "past", "limited-quota", "lottery"],
+    };
+  }
+
+  if (surface === "calendar") {
+    const items = [
+      {
+        calendar_item_id: "QA-STATE-CAL-TODAY-" + tag,
+        title: "QA 今日活動",
+        item_type: "event",
+        description: "today event",
+        starts_on: today,
+        ends_on: today,
+        status: "active",
+        accent: "#5f7769",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        link_label: "",
+        link_url: "",
+        created_by: actor,
+        updated_by: actor,
+        audience_type: "all",
+      },
+      {
+        calendar_item_id: "QA-STATE-CAL-HOL-" + tag,
+        title: "QA 測試公休日",
+        item_type: "holiday",
+        description: "holiday state",
+        starts_on: isoDateAdd(today, 1),
+        ends_on: isoDateAdd(today, 1),
+        status: "active",
+        accent: "#b15d5d",
+        allowed_tier_keys: [],
+        link_label: "",
+        link_url: "",
+        created_by: actor,
+        updated_by: actor,
+        audience_type: "all",
+      },
+      {
+        calendar_item_id: "QA-STATE-CAL-MULTI-" + tag,
+        title: "QA 多日活動",
+        item_type: "event",
+        description: "multi-day state",
+        starts_on: isoDateAdd(today, 2),
+        ends_on: isoDateAdd(today, 5),
+        status: "active",
+        accent: "#6d6793",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        link_label: "QA 詳情",
+        link_url: "https://example.com/qa-state",
+        created_by: actor,
+        updated_by: actor,
+        audience_type: "all",
+      },
+      {
+        calendar_item_id: "QA-STATE-CAL-FUTURE-" + tag,
+        title: "QA 未來活動",
+        item_type: "event",
+        description: "future state",
+        starts_on: isoDateAdd(today, 14),
+        ends_on: isoDateAdd(today, 14),
+        status: "active",
+        accent: "#9a7848",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        link_label: "",
+        link_url: "",
+        created_by: actor,
+        updated_by: actor,
+        audience_type: "all",
+      },
+      {
+        calendar_item_id: "QA-STATE-CAL-ARCHIVED-" + tag,
+        title: "QA 歷史封存活動",
+        item_type: "event",
+        description: "archived state",
+        starts_on: isoDateAdd(today, -18),
+        ends_on: isoDateAdd(today, -17),
+        status: "archived",
+        accent: "#777777",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        link_label: "",
+        link_url: "",
+        created_by: actor,
+        updated_by: actor,
+        audience_type: "all",
+      },
+    ];
+    const inserted = await s.from("calendar_items").insert(items);
+    if (inserted.error) throw new ApiError(500, "QA_USAGE_CALENDAR_FAILED", "無法建立日曆多狀態資料。", inserted.error.message);
+    return {
+      usageStateTag: tag,
+      prepared: true,
+      scenario: "mixed-calendar-state",
+      recordsCreated: items.length,
+      stateKinds: ["today", "holiday", "multi-day", "future", "archived"],
+      focusDate: today,
+    };
+  }
+
+  const bootstrap = await callFunction("booking-api", token, {
+    action: "user.booking.bootstrap",
+    clientType: "member",
+  });
+  if (!bootstrap.ok) throw functionError(bootstrap, "無法建立預約使用狀態：Bootstrap 失敗。");
+  const services = Array.isArray((bootstrap.data as any).services) ? (bootstrap.data as any).services : [];
+  const setup = bookingItems(services);
+  if (!setup.normal || !setup.items.length) {
+    return {
+      usageStateTag: tag,
+      prepared: true,
+      scenario: "booking-no-resource",
+      recordsCreated: 0,
+      stateKinds: ["no-bookable-resource"],
+      skipped: true,
+    };
+  }
+  const settings: any = (bootstrap.data as any).settings || {};
+  const bootstrapToday = asText((bootstrap.data as any).today, 10);
+  const createdStates: Json[] = [];
+  for (const targetState of ["pending", "cancel_requested"]) {
+    try {
+      const slot = await findBookingSlot(
+        token,
+        "booking-api",
+        "user.booking.slots",
+        { items: setup.items },
+        bootstrapToday,
+        Number(settings.minAdvanceDays || 0),
+        Number(settings.maxAdvanceDays || 0),
+      );
+      const create = await callFunction("booking-api", token, {
+        action: "user.booking.create",
+        clientType: "member",
+        requestId: "BOOK-STATE-" + suffix(),
+        bookingDate: slot.date,
+        startTime: slot.startTime,
+        items: setup.items,
+        memberNote: "QA STATE PACK " + targetState + " " + tag,
+      });
+      if (!create.ok) continue;
+      const booking: any = (create.data as any).booking || {};
+      const bookingId = asText(booking.bookingId, 80);
+      if (!bookingId) continue;
+      if (targetState === "cancel_requested") {
+        const cancelled = await callFunction("booking-api", token, {
+          action: "user.booking.cancel",
+          clientType: "member",
+          bookingId,
+        });
+        if (cancelled.ok) createdStates.push({ bookingId, state: "cancel_requested" });
+        else createdStates.push({ bookingId, state: "pending" });
+      } else {
+        createdStates.push({ bookingId, state: "pending" });
+      }
+    } catch {
+      // 個別狀態若因當下時段不足無法建立，保留其他已建立狀態。
+    }
+  }
+  return {
+    usageStateTag: tag,
+    prepared: true,
+    scenario: "mixed-booking-lifecycle",
+    recordsCreated: createdStates.length,
+    stateKinds: createdStates.map((row: any) => asText(row.state, 40)),
+    bookings: createdStates,
+    skipped: createdStates.length === 0,
+  };
+}
+
 function requireFixtureTag(value: unknown): string {
   const tag = asText(value, 32).toUpperCase();
   if (!/^[A-F0-9]{16}$/.test(tag)) throw new ApiError(400, "INVALID_QA_FIXTURE", "測試 Fixture 識別碼不正確。");
@@ -1064,7 +1578,7 @@ Deno.serve(async (request: Request) => {
   try {
     const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
     const action = asText(body.action, 80);
-    if (!["user.qa.mutations","user.qa.fixture.prepare","user.qa.fixture.cleanup","user.qa.browser-run.record"].includes(action)) {
+    if (!["user.qa.mutations","user.qa.usage-state.prepare","user.qa.fixture.prepare","user.qa.fixture.cleanup","user.qa.browser-run.record"].includes(action)) {
       throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的 QA 操作。");
     }
     const surface = asText(body.surface, 20) as Surface;
@@ -1083,6 +1597,10 @@ Deno.serve(async (request: Request) => {
     }
     if (identity.isTestAccount !== true) throw new ApiError(403, "TEST_ACCOUNT_REQUIRED", "此功能只允許測試帳號使用。");
 
+    if (action === "user.qa.usage-state.prepare") {
+      const usageState = await prepareUsageState(s, identity, token, surface);
+      return reply(origin, { ok: true, status: 200, data: { surface, ...usageState } });
+    }
     if (action === "user.qa.fixture.prepare") {
       const fixture = await prepareHumanFixture(s, identity, surface);
       return reply(origin, { ok: true, status: 200, data: { surface, ...fixture } });
