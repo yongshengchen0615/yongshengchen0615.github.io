@@ -147,6 +147,29 @@ async function authorizeAdmin(supabase: any, identity: { lineUserId: string }): 
   }
 }
 
+async function audit(
+  supabase: any,
+  identity: { lineUserId: string },
+  action: string,
+  targetType: string,
+  targetId: string,
+  detail: Json = {},
+): Promise<void> {
+  const result = await supabase.from("audit_logs").insert({
+    audit_id: "TST-" + crypto.randomUUID(),
+    actor_line_user_id: identity.lineUserId,
+    actor_role: "admin",
+    action,
+    target_type: targetType,
+    target_id: targetId,
+    result: "success",
+    detail,
+  });
+  if (result.error) {
+    throw new ApiError(503, "TEST_AUDIT_WRITE_FAILED", "測試資料已操作，但稽核紀錄寫入失敗。");
+  }
+}
+
 function runCode(): string {
   const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
@@ -1114,6 +1137,42 @@ Deno.serve(async (request: Request) => {
         status: 200,
         data: {
           ...executed,
+          runs: await recentRuns(supabase),
+        },
+      });
+    }
+
+    if (action === "admin.test-control.purge-test-data") {
+      const running = await supabase
+        .from("automation_test_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("environment", "MemberWebsocket-dev")
+        .eq("status", "running");
+      if (running.error) {
+        throw new ApiError(503, "TEST_RUN_CHECK_FAILED", "目前無法確認是否仍有測試執行中。");
+      }
+      if (Number(running.count || 0) > 0) {
+        throw new ApiError(409, "TEST_RUN_ACTIVE", "仍有測試執行中，請先停止或等待測試完成後再移除測試資料。");
+      }
+
+      const purge = await supabase.rpc("admin_purge_test_data");
+      if (purge.error) {
+        throw new ApiError(503, "TEST_DATA_PURGE_FAILED", "目前無法移除測試資料。", purge.error.message || null);
+      }
+      const summary = purge.data && typeof purge.data === "object" ? purge.data : {};
+      await audit(
+        supabase,
+        identity,
+        "test_control.data.purge",
+        "test_data",
+        "MemberWebsocket-dev",
+        summary as Json,
+      );
+      return response(origin, {
+        ok: true,
+        status: 200,
+        data: {
+          purge: summary,
           runs: await recentRuns(supabase),
         },
       });
