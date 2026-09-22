@@ -439,3 +439,12 @@ for (const grouped of [false, true]) {
     assert.equal(passed.ok, true);
   });
 }
+
+
+test('admin item mutation avoids extending a booked technician when a safer participant exists', () => {
+  assert.match(source, /Number\(item\?\.quantity \|\| 0\) >= 2/);
+  assert.match(source, /!participant\?\.technicianId/);
+  assert.match(source, /decrease-existing-quantity/);
+  assert.match(source, /increase-unassigned-participant/);
+  assert.match(source, /避免擴張已指定技師的預約時段/);
+});
