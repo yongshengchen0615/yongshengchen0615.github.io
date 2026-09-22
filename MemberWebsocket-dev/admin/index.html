@@ -201,11 +201,16 @@
             </div>
             <div class="test-control-heading-actions">
               <span id="automationTestRunnerBadge" class="test-mode-status-badge is-off">Runner：待命</span>
+              <button id="purgeTestDataButton" class="button button-danger" type="button">移除測試資料</button>
               <button id="runQuickAutomationTestButton" class="button button-outline" type="button">▶ 快速測試</button>
               <button id="runFullAutomationTestButton" class="button button-dark" type="button">▶ 完整測試</button>
             </div>
           </div>
 
+          <div class="test-mode-safety-note test-control-retention-note" role="note">
+            <span class="test-mode-safety-icon" aria-hidden="true">i</span>
+            <p><strong>測試資料會保留</strong><span>自動化與真人 E2E 完成後，測試帳號產生的資料預設保留，方便檢查管理端與用戶端狀態。確認不再需要時，再使用「移除測試資料」一次清除；測試帳號與環境設定不會被刪除。</span></p>
+          </div>
           <div id="automationTestMessage" class="form-message hidden" role="status" aria-live="polite"></div>
 
           <div class="test-control-layout">
