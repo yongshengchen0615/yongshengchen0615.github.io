@@ -143,3 +143,30 @@ test('paired E2E creates complex admin fixtures before randomized user clients s
   assert.match(migration, /jsonb_build_array\(2,3,5,8,13,21\)/);
   assert.match(migration, /requires_companion_service/);
 });
+
+
+test('paired booking E2E requires a configured primary technician before clients start', () => {
+  const runner = read('admin/e2e-control.js');
+  const migration = read('supabase/migrations/20260922072102_fix_e2e_booking_primary_technician.sql');
+
+  assert.match(runner, /primaryTechnicianId/);
+  assert.match(runner, /maxPartySize >= 2/);
+  assert.match(runner, /primaryTechnicianConfigured: true/);
+  assert.match(runner, /maxPartySizeAtLeast: 2/);
+  assert.match(runner, /E2E_SURFACE_TIMEOUT/);
+  assert.match(runner, /control\.stop\?\.\(\)/);
+
+  assert.match(migration, /E2E QA 技師甲/);
+  assert.match(migration, /primary_technician_id = v_primary_technician_id/);
+  assert.match(migration, /max_party_size = greatest\(max_party_size,2\)/);
+  assert.match(migration, /'primaryTechnicianId'/);
+  assert.match(migration, /'maxPartySize'/);
+});
+
+test('browser E2E recording stays bounded as case detail grows', () => {
+  const runner = read('admin/e2e-control.js');
+  const api = read('supabase/functions/test-control-api/index.ts');
+  assert.match(runner, /compactRecordSnapshot/);
+  assert.match(runner, /bytes > 320000/);
+  assert.match(api, /MAX_REQUEST_BYTES = 384_000/);
+});
