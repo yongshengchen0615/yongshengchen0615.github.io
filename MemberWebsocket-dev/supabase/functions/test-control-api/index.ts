@@ -810,6 +810,146 @@ async function refreshCounters(supabase: any, runId: string): Promise<{ total: n
   return counters;
 }
 
+
+function safeBrowserSnapshot(value: unknown, maxChars = 5000): unknown {
+  if (value === undefined) return {};
+  let serialized = "";
+  try { serialized = JSON.stringify(value ?? {}); }
+  catch { throw new ApiError(400, "INVALID_BROWSER_SNAPSHOT", "E2E 測試資料必須可安全序列化。"); }
+  if (serialized.length > maxChars) {
+    throw new ApiError(413, "BROWSER_SNAPSHOT_TOO_LARGE", "單一 E2E 測試快照過大。");
+  }
+  try { return JSON.parse(serialized); }
+  catch { return {}; }
+}
+
+async function recordBrowserRun(
+  supabase: any,
+  identity: { lineUserId: string },
+  body: Json,
+): Promise<Json> {
+  const suite = asText(body.suite, 20);
+  if (!["quick", "full"].includes(suite)) {
+    throw new ApiError(400, "INVALID_TEST_SUITE", "瀏覽器 E2E 測試類型必須是 quick 或 full。");
+  }
+  const runnerKind = asText(body.runnerKind, 40);
+  if (!["admin-browser", "paired-browser"].includes(runnerKind)) {
+    throw new ApiError(400, "INVALID_RUNNER_KIND", "不支援的瀏覽器 E2E Runner。");
+  }
+
+  const rawCases = Array.isArray(body.cases) ? body.cases : [];
+  if (!rawCases.length || rawCases.length > 80) {
+    throw new ApiError(400, "INVALID_BROWSER_CASES", "瀏覽器 E2E 案例數量必須介於 1–80。");
+  }
+
+  let memberId: string | null = null;
+  const requestedMemberId = asText(body.memberId, 80);
+  if (requestedMemberId) {
+    if (!UUID_RE.test(requestedMemberId)) throw new ApiError(400, "INVALID_MEMBER_ID", "測試會員識別不正確。");
+    const member = await supabase
+      .from("members")
+      .select("id,is_test_account,status,membership_status")
+      .eq("id", requestedMemberId)
+      .maybeSingle();
+    if (member.error) throw new ApiError(503, "TEST_MEMBER_READ_FAILED", "目前無法確認協同測試會員。");
+    if (!member.data || member.data.is_test_account !== true || member.data.status !== "active" || member.data.membership_status !== "active") {
+      throw new ApiError(403, "TEST_ACCOUNT_UNAVAILABLE", "協同測試只能綁定啟用中的測試會員。");
+    }
+    memberId = String(member.data.id);
+  }
+
+  const normalized = rawCases.map((raw: any, index: number) => {
+    const status = asText(raw?.status, 20);
+    if (!["passed", "failed", "skipped"].includes(status)) {
+      throw new ApiError(400, "INVALID_BROWSER_CASE_STATUS", "瀏覽器 E2E 案例狀態不正確。");
+    }
+    const key = asText(raw?.key, 100) || "BROWSER_CASE_" + String(index + 1);
+    const name = asText(raw?.name, 180) || key;
+    const domain = asText(raw?.domain, 120) || "Browser E2E";
+    const message = asText(raw?.message, 1000);
+    const durationMs = Math.max(0, Math.min(600000, Math.trunc(Number(raw?.durationMs) || 0)));
+    return {
+      key, name, domain, status, message, durationMs,
+      expected: safeBrowserSnapshot(raw?.expected),
+      actual: safeBrowserSnapshot(raw?.actual),
+    };
+  });
+
+  const passed = normalized.filter((item) => item.status === "passed").length;
+  const failed = normalized.filter((item) => item.status === "failed").length;
+  const skipped = normalized.filter((item) => item.status === "skipped").length;
+  const now = new Date().toISOString();
+  const runInsert = await supabase.from("automation_test_runs").insert({
+    run_code: runCode(),
+    suite,
+    environment: "MemberWebsocket-dev",
+    status: failed ? "failed" : "passed",
+    triggered_by: identity.lineUserId,
+    total_cases: normalized.length,
+    passed_cases: passed,
+    failed_cases: failed,
+    summary: {
+      runnerVersion: "admin-browser-e2e-20260922-1",
+      runnerKind,
+      skippedCases: skipped,
+      memberId,
+    },
+    started_at: now,
+    completed_at: now,
+    updated_at: now,
+  }).select("id").single();
+  if (runInsert.error || !runInsert.data) {
+    throw new ApiError(503, "BROWSER_RUN_CREATE_FAILED", "目前無法建立瀏覽器 E2E 測試紀錄。");
+  }
+
+  const runId = String(runInsert.data.id);
+  try {
+    const caseRows = normalized.map((item, index) => ({
+      run_id: runId,
+      case_order: index + 1,
+      case_key: item.key,
+      name: item.name,
+      domain: item.domain,
+      member_id: memberId,
+      status: item.status,
+      failure_code: item.status === "failed" ? "BROWSER_E2E_FAILED" : null,
+      failure_message: item.status === "failed" ? item.message : null,
+      started_at: now,
+      completed_at: now,
+      duration_ms: item.durationMs,
+      updated_at: now,
+    }));
+    const inserted = await supabase.from("automation_test_cases").insert(caseRows).select("id,case_order");
+    if (inserted.error || (inserted.data || []).length !== normalized.length) {
+      throw new ApiError(503, "BROWSER_CASE_WRITE_FAILED", "無法完整寫入瀏覽器 E2E 案例。");
+    }
+    const caseIds = new Map((inserted.data || []).map((row: any) => [Number(row.case_order), String(row.id)]));
+    const stepRows = normalized.map((item, index) => ({
+      case_id: caseIds.get(index + 1),
+      step_order: 1,
+      step_key: "browser",
+      name: "瀏覽器真人操作驗證",
+      status: item.status,
+      expected: item.expected,
+      actual: item.actual,
+      message: item.message,
+      started_at: now,
+      completed_at: now,
+      duration_ms: item.durationMs,
+      updated_at: now,
+    }));
+    if (stepRows.some((row) => !row.case_id)) {
+      throw new ApiError(503, "BROWSER_CASE_ID_MISMATCH", "瀏覽器 E2E 案例紀錄對應失敗。");
+    }
+    const steps = await supabase.from("automation_test_steps").insert(stepRows);
+    if (steps.error) throw new ApiError(503, "BROWSER_STEP_WRITE_FAILED", "無法寫入瀏覽器 E2E 步驟。");
+  } catch (error) {
+    await supabase.from("automation_test_runs").delete().eq("id", runId);
+    throw error;
+  }
+  return runView(supabase, runId);
+}
+
 async function createRun(supabase: any, identity: { lineUserId: string }, suite: string): Promise<Json> {
   if (!["quick", "full"].includes(suite)) {
     throw new ApiError(400, "INVALID_TEST_SUITE", "測試類型必須是 quick 或 full。");
@@ -949,6 +1089,18 @@ Deno.serve(async (request: Request) => {
         status: 201,
         data: {
           ...created,
+          runs: await recentRuns(supabase),
+        },
+      }, 201);
+    }
+
+    if (action === "admin.test-control.record-browser-run") {
+      const recorded = await recordBrowserRun(supabase, identity, body);
+      return response(origin, {
+        ok: true,
+        status: 201,
+        data: {
+          ...recorded,
           runs: await recentRuns(supabase),
         },
       }, 201);
