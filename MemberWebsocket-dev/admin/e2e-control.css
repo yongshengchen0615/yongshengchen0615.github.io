@@ -86,35 +86,77 @@
   line-height: 1.5;
 }
 
-.admin-e2e-viewport {
-  margin: 14px 0;
-  border: 1px solid rgba(27, 47, 40, .14);
-  border-radius: 16px;
-  background: #fff;
-  overflow: hidden;
+.admin-e2e-paired-config {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 14px 0 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(27, 47, 40, .12);
+  border-radius: 14px;
+  background: rgba(247, 249, 247, .82);
 }
 
-.admin-e2e-viewport.hidden {
+.admin-e2e-paired-config label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.admin-e2e-paired-config input {
+  width: 84px;
+  min-width: 0;
+}
+
+.admin-e2e-paired-config small {
+  color: var(--muted, #647069);
+  line-height: 1.5;
+}
+
+.admin-e2e-participant-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.admin-e2e-participant-list.hidden {
   display: none;
 }
 
-.admin-e2e-viewport-head {
+.admin-e2e-participant {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(27, 47, 40, .1);
-  background: rgba(247, 249, 247, .95);
-  font-size: .82rem;
+  border: 1px solid rgba(27, 47, 40, .1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .88);
 }
 
-.admin-e2e-viewport iframe {
+.admin-e2e-participant > div {
+  min-width: 0;
+}
+
+.admin-e2e-participant strong,
+.admin-e2e-participant small {
   display: block;
-  width: 100%;
-  height: min(660px, 72vh);
-  border: 0;
-  background: #f7f8f6;
+}
+
+.admin-e2e-participant small {
+  margin-top: 2px;
+  color: var(--muted, #647069);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-e2e-participant > span {
+  flex: 0 0 auto;
+  font-size: .78rem;
+  color: var(--muted, #647069);
+  text-align: right;
 }
 
 .admin-e2e-floating {
@@ -163,7 +205,12 @@
     grid-template-columns: 1fr;
   }
 
-  .admin-e2e-viewport iframe {
-    height: 62vh;
+  .admin-e2e-paired-config {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-e2e-participant {
+    align-items: flex-start;
   }
 }
