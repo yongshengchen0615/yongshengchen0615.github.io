@@ -87,9 +87,11 @@
 }
 
 .admin-e2e-paired-config {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: minmax(190px, max-content) minmax(0, 1fr);
+  align-items: start;
+  gap: 10px 16px;
+  min-width: 0;
   margin: 14px 0 10px;
   padding: 12px 14px;
   border: 1px solid rgba(27, 47, 40, .12);
@@ -98,20 +100,34 @@
 }
 
 .admin-e2e-paired-config label {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, auto) 84px;
   align-items: center;
   gap: 10px;
-  white-space: nowrap;
+  min-width: 0;
+  margin: 0;
+  white-space: normal;
+}
+
+.admin-e2e-paired-config label > strong {
+  min-width: 0;
+  line-height: 1.35;
 }
 
 .admin-e2e-paired-config input {
   width: 84px;
+  max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
 }
 
 .admin-e2e-paired-config small {
+  display: block;
+  min-width: 0;
   color: var(--muted, #647069);
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .admin-e2e-participant-list {
@@ -206,8 +222,12 @@
   }
 
   .admin-e2e-paired-config {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-e2e-paired-config label {
+    grid-template-columns: minmax(0, 1fr) 84px;
+    width: 100%;
   }
 
   .admin-e2e-participant {
