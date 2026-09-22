@@ -25,7 +25,7 @@ function harness(bookings = [], extra = {}) {
   const window = { addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0) };
   const context = vm.createContext({ window, document: {}, performance, TextEncoder, CSS: { escape: (x) => x }, ...extra });
   const expose = `
-    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runAdmin, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal, beginBookingRealtimeProbe, verifyBookingRealtimeSync };
+    window.qa = { state, pairedBookingCandidates, livePairedBookingSet, waitForLivePairedBookingTarget, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runAdmin, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal, beginBookingRealtimeProbe, verifyBookingRealtimeSync };
     window.qa.install = (io) => {
       adminBookingBootstrapSnapshot = io.bootstrap;
       verifyDetectedBookingInCoreFilter = io.core;
@@ -157,7 +157,7 @@ test('covers every admin booking action with independent observable results', as
   const { qa, calls } = harness([booking('complete'), cancellation(), rejection()]);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
   assert.equal(result.status, 'passed');
-  assert.deepEqual(calls, ['confirmed', 'modify', 'technician', 'completed', 'rejected', 'keep', 'rerequest', 'approve']);
+  assert.deepEqual(calls, ['rejected', 'keep', 'confirmed', 'modify', 'technician', 'completed', 'rerequest', 'approve']);
   assert.equal(qa.state.results.length, 9);
   assert.ok(qa.state.results.every((row) => row.status === 'passed' && row.durationMs >= 0));
   for (const suffix of ['_CONFIRM', '_MODIFY', '_MODIFY_TECHNICIAN', '_COMPLETE', '_REJECT', '_KEEP_CANCELLATION', '_CANCEL', '_TERMINAL', '_RISK_SCAN']) {
@@ -191,7 +191,7 @@ test('a modification error blocks completion, preserves confirmation and still t
   io.modify = async () => { calls.push('modify'); throw new Error('conflict'); };
   qa.install(io);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
-  assert.deepEqual(calls, ['confirmed', 'modify', 'rejected', 'keep', 'rerequest', 'approve']);
+  assert.deepEqual(calls, ['rejected', 'keep', 'confirmed', 'modify', 'rerequest', 'approve']);
   assert.equal(result.actual.confirmed.ok, true);
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_MODIFY')).actual.message, 'conflict');
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_COMPLETE')).actual.dependencyFailed, 'CONFIRM_OR_MODIFY');
@@ -208,7 +208,7 @@ test('a failed confirmation must not modify or complete the booking', async () =
   };
   qa.install(io);
   await qa.pairedAdminBookingFollowupCase(participant());
-  assert.deepEqual(calls, ['confirm-failed', 'rejected', 'keep', 'rerequest', 'approve']);
+  assert.deepEqual(calls, ['rejected', 'keep', 'confirm-failed', 'rerequest', 'approve']);
 });
 
 test('stop after confirmation prevents all subsequent writes', async () => {
@@ -217,7 +217,7 @@ test('stop after confirmation prevents all subsequent writes', async () => {
   qa.install(io);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
   assert.equal(result.status, 'skipped');
-  assert.deepEqual(calls, ['confirmed']);
+  assert.deepEqual(calls, ['keep', 'confirmed']);
 });
 
 test('only exact user-run booking IDs belonging to the same test member are selected', () => {
@@ -230,6 +230,36 @@ test('only exact user-run booking IDs belonging to the same test member are sele
   assert.equal(qa.pairedBookingCandidates(data, participant()).length, 1);
   assert.equal(qa.pairedBookingCandidates(data, { ...participant(), bookingResult: { account: { memberId: 'other' } } }).length, 0);
   assert.equal(qa.pairedBookingCandidates(data, { ...participant(), account: {} }).length, 0);
+});
+
+test('live admin discovery can see same-run QA rows before the user handoff is complete', () => {
+  const { qa } = harness();
+  const p = participant();
+  p.bookingResult = null;
+  const rows = [
+    booking('group-live', { memberNote: 'QA HUMAN E2E GROUP live' }),
+    booking('pending-live', { memberNote: 'QA STATE PACK pending live' }),
+    booking('cancel-live', { memberNote: 'QA STATE PACK cancel_requested live', cancellationRequestedAt: startedAt }),
+    booking('foreign-live', { memberId: 'other', memberNote: 'QA STATE PACK pending foreign' }),
+    booking('manual-live', { memberNote: 'ordinary booking' }),
+    booking('old-live', { memberNote: 'QA STATE PACK pending old', createdAt: '2026-09-21T00:00:00Z' })
+  ];
+  assert.equal(qa.pairedBookingCandidates({ bookings: rows }, p).length, 0);
+  const live = qa.pairedBookingCandidates({ bookings: rows }, p, { live: true });
+  assert.deepEqual(Array.from(live, (row) => row.bookingId), ['group-live', 'pending-live', 'cancel-live']);
+  const set = qa.livePairedBookingSet(live);
+  assert.equal(set.ready, true);
+  assert.equal(set.mutable.bookingId, 'group-live');
+  assert.equal(set.rejectTarget.bookingId, 'pending-live');
+  assert.equal(set.cancellationTarget.bookingId, 'cancel-live');
+});
+
+test('live admin runner no longer waits for every client task to finish before booking handling starts', () => {
+  assert.match(source, /waitForLivePairedBookingTarget\(participant, 'any'\)/);
+  assert.match(source, /let adminChain = Promise\.resolve\(\)/);
+  assert.match(source, /Promise\.all\(\[\.\.\.clientTasks, \.\.\.liveAdminTasks\]\)/);
+  assert.doesNotMatch(source, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
+  assert.match(source, /completeHandoffBeforeMemberUiReuse/);
 });
 
 test('admin full E2E opens a booking client and includes the existing admin suite', async () => {
