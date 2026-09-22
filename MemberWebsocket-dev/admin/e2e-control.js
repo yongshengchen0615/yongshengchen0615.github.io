@@ -2944,7 +2944,9 @@
         if (set?.[targetKey]) return set[targetKey];
         if (targetKey === 'mutable') {
           return candidates.find((booking) =>
-            String(booking.status || '') === 'pending'
+            String(booking.bookingId || '') !== String(cancellationTarget?.bookingId || '')
+            && String(booking.bookingId || '') !== String(rejectTarget?.bookingId || '')
+            && String(booking.status || '') === 'pending'
             && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
           ) || null;
         }
