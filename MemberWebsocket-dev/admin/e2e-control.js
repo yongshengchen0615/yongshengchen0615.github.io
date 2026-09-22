@@ -384,6 +384,7 @@
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
       caseDef('ADMIN_RESOURCE_EDITORS', '集點卡／票券／活動票券／日曆編輯視窗', 'Human E2E', adminResourceEditorsCase),
       caseDef('ADMIN_TICKET_CRUD', '票券：新增／修改／封存／清理', 'Admin CRUD E2E', adminTicketCrudCase),
+      caseDef('ADMIN_LOTTERY_TICKET_CRUD', '抽獎券：一般票券＋活動票券建立／機率／回讀／清理', 'Admin CRUD E2E', adminLotteryTicketCrudCase),
       caseDef('ADMIN_POINT_CARD_CRUD', '集點卡：新增／修改／刪除', 'Admin CRUD E2E', adminPointCardCrudCase),
       caseDef('ADMIN_EVENT_TICKET_CRUD', '活動票券：新增／修改／刪除', 'Admin CRUD E2E', adminEventTicketCrudCase),
       caseDef('ADMIN_CALENDAR_CRUD', '日曆：新增／修改／刪除', 'Admin CRUD E2E', adminCalendarCrudCase),
@@ -1090,6 +1091,175 @@
     return ok
       ? pass('已透過管理端 UI 完成票券新增、修改與封存，並由受管理員授權的 QA 清理路徑移除測試範本。', { created: true, updated: true, archived: true, cleaned: true }, actual)
       : fail('票券 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, archived: true, cleaned: true }, actual);
+  }
+
+
+  async function configureLotteryPrizeEditor(kind, prizes) {
+    const isEvent = kind === 'event';
+    const typeId = isEvent ? 'eventTicketType' : 'ticketType';
+    const editorId = isEvent ? 'eventTicketPrizeEditor' : 'ticketPrizeEditor';
+    const rowsId = isEvent ? 'eventTicketPrizeRows' : 'ticketPrizeRows';
+    const addId = isEvent ? 'addEventTicketPrizeButton' : 'addTicketPrizeButton';
+    const totalId = isEvent ? 'eventTicketPrizeTotal' : 'ticketPrizeTotal';
+    const rowSelector = isEvent ? '[data-event-ticket-prize-row]' : '[data-ticket-prize-row]';
+    const titleField = isEvent ? 'eventTicketPrizeTitle' : 'ticketPrizeTitle';
+    const rateField = isEvent ? 'eventTicketPrizeRate' : 'ticketPrizeRate';
+    const descriptionField = isEvent ? 'eventTicketPrizeDescription' : 'ticketPrizeDescription';
+
+    setField(typeId, 'lottery');
+    if (!await waitFor(() => !document.getElementById(editorId)?.classList.contains('hidden'), 2500)) {
+      throw new Error('抽獎券獎項編輯器未開啟。');
+    }
+    while (document.querySelectorAll('#' + rowsId + ' ' + rowSelector).length < prizes.length) {
+      document.getElementById(addId)?.click();
+      await sleep(20);
+    }
+    const rows = Array.from(document.querySelectorAll('#' + rowsId + ' ' + rowSelector));
+    if (rows.length < prizes.length) throw new Error('抽獎券獎項列建立不完整。');
+
+    prizes.forEach((prize, index) => {
+      const row = rows[index];
+      const title = row?.querySelector('[data-field="' + titleField + '"]');
+      const rate = row?.querySelector('[data-field="' + rateField + '"]');
+      const description = row?.querySelector('[data-field="' + descriptionField + '"]');
+      if (!title || !rate || !description) throw new Error('抽獎券獎項欄位不完整。');
+      title.value = String(prize.title || '');
+      rate.value = String(prize.rate);
+      description.value = String(prize.description || '');
+      [title, rate, description].forEach((input) => {
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+    const totalText = String(document.getElementById(totalId)?.textContent || '');
+    return {
+      editorVisible: !document.getElementById(editorId)?.classList.contains('hidden'),
+      rowCount: document.querySelectorAll('#' + rowsId + ' ' + rowSelector).length,
+      totalText,
+      totalIs100: /機率合計\s*100(?:\.0+)?%\s*✓/.test(totalText)
+    };
+  }
+
+  async function adminLotteryTicketCrudCase() {
+    const stamp = qaCrudStamp();
+    const ticketTitle = 'E2E QA 抽獎券 ' + stamp;
+    const eventTitle = 'E2E QA 活動抽獎券 ' + stamp;
+    const actual = {
+      ticket: { editorVisible: false, probability100: false, created: false, reloaded: false, cleaned: false },
+      event: { editorVisible: false, probability100: false, created: false, reloaded: false, deleted: false, cleaned: false }
+    };
+    let ticketTemplateId = '';
+    let eventTicketId = '';
+
+    try {
+      document.getElementById('cardsTab')?.click();
+      document.getElementById('ticketSettingsTab')?.click();
+      document.getElementById('newTicketButton')?.click();
+      if (!await waitEditorOpen('ticketEditorModal', 5000)) throw new Error('抽獎券新增編輯器未開啟。');
+      setField('ticketTitle', ticketTitle);
+      setField('ticketDescription', '管理端 E2E 多獎項抽獎券');
+      setField('ticketUsageMethod', '開啟後執行抽獎');
+      setField('ticketUsageInstructions', '僅供測試帳號與自動化測試使用。');
+      setField('ticketStatus', 'active');
+      const ticketEditor = await configureLotteryPrizeEditor('ticket', [
+        { title: '頭獎', rate: 55, description: 'E2E 頭獎' },
+        { title: '二獎', rate: 30, description: 'E2E 二獎' },
+        { title: '參加獎', rate: 15, description: 'E2E 參加獎' }
+      ]);
+      actual.ticket.editorVisible = ticketEditor.editorVisible;
+      actual.ticket.probability100 = ticketEditor.totalIs100 && ticketEditor.rowCount >= 3;
+      document.getElementById('saveTicketButton')?.click();
+      ticketTemplateId = String(await waitFor(() => document.getElementById('ticketTemplateId')?.value || null, 15000) || '');
+      await waitAdminWriteSettled('saveTicketButton');
+      actual.ticket.created = Boolean(ticketTemplateId && textIncludes('#ticketListItems', ticketTitle));
+      if (ticketTemplateId) {
+        await clickResourceRow('#ticketListItems [data-ticket-template-id]', 'ticketTemplateId', ticketTemplateId);
+        actual.ticket.reloaded = Boolean(await waitFor(() =>
+          String(document.getElementById('ticketTemplateId')?.value || '') === ticketTemplateId
+          && String(document.getElementById('ticketType')?.value || '') === 'lottery'
+          && document.querySelectorAll('#ticketPrizeRows [data-ticket-prize-row]').length >= 3
+          && /100(?:\.0+)?%\s*✓/.test(String(document.getElementById('ticketPrizeTotal')?.textContent || ''))
+        , 8000));
+      }
+      closeEditorModalById('ticketEditorModal');
+
+      document.getElementById('eventsTab')?.click();
+      document.getElementById('newEventTicketButton')?.click();
+      if (!await waitEditorOpen('eventTicketEditorModal', 5000)) throw new Error('活動抽獎券新增編輯器未開啟。');
+      setField('eventTicketTitle', eventTitle);
+      setField('eventTicketDescription', '管理端 E2E 活動抽獎券');
+      setField('eventTicketUsageMethod', '領取後執行抽獎');
+      setField('eventTicketUsageInstructions', '測試完成後由 E2E 自動清理。');
+      setField('eventTicketStatus', 'draft');
+      setField('eventTicketStartsOn', '');
+      setField('eventTicketEndsOn', '');
+      setField('eventTicketQuota', '12');
+      const eventEditor = await configureLotteryPrizeEditor('event', [
+        { title: 'VIP A', rate: 61, description: 'E2E VIP A' },
+        { title: 'VIP B', rate: 29, description: 'E2E VIP B' },
+        { title: 'VIP C', rate: 10, description: 'E2E VIP C' }
+      ]);
+      actual.event.editorVisible = eventEditor.editorVisible;
+      actual.event.probability100 = eventEditor.totalIs100 && eventEditor.rowCount >= 3;
+      document.getElementById('saveEventTicketButton')?.click();
+      eventTicketId = String(await waitFor(() => document.getElementById('eventTicketId')?.value || null, 15000) || '');
+      await waitAdminWriteSettled('saveEventTicketButton');
+      actual.event.created = Boolean(eventTicketId && textIncludes('#eventTicketListItems', eventTitle));
+      if (eventTicketId) {
+        await clickResourceRow('#eventTicketListItems [data-event-ticket-id]', 'eventTicketId', eventTicketId);
+        actual.event.reloaded = Boolean(await waitFor(() =>
+          String(document.getElementById('eventTicketId')?.value || '') === eventTicketId
+          && String(document.getElementById('eventTicketType')?.value || '') === 'lottery'
+          && document.querySelectorAll('#eventTicketPrizeRows [data-event-ticket-prize-row]').length >= 3
+          && /100(?:\.0+)?%\s*✓/.test(String(document.getElementById('eventTicketPrizeTotal')?.textContent || ''))
+        , 8000));
+        await withAutoConfirm(async () => {
+          document.getElementById('deleteEventTicketButton')?.click();
+          actual.event.deleted = Boolean(await waitFor(() => !String(document.getElementById('eventTicketId')?.value || ''), 15000));
+        });
+        actual.event.cleaned = actual.event.deleted;
+      }
+    } finally {
+      closeEditorModalById('eventTicketEditorModal');
+      closeEditorModalById('ticketEditorModal');
+      if (eventTicketId && !actual.event.cleaned) {
+        try {
+          document.getElementById('eventsTab')?.click();
+          const row = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+          row?.click();
+          await waitFor(() => String(document.getElementById('eventTicketId')?.value || '') === eventTicketId, 3000);
+          await withAutoConfirm(async () => {
+            document.getElementById('deleteEventTicketButton')?.click();
+            actual.event.cleaned = Boolean(await waitFor(() => !String(document.getElementById('eventTicketId')?.value || ''), 12000));
+          });
+        } catch {}
+      }
+      if (ticketTemplateId) {
+        try {
+          const result = await cleanupQaTicketTemplate(ticketTemplateId);
+          actual.ticket.cleaned = Boolean(result?.deleted);
+        } catch {
+          actual.ticket.cleaned = false;
+        }
+      }
+    }
+
+    const ok = Object.values(actual.ticket).every(Boolean) && Object.values(actual.event).every(Boolean);
+    return ok
+      ? pass('一般抽獎券與活動抽獎券都已完成多獎項機率 100%、儲存、回讀與清理驗證。', {
+          ticketLottery: true,
+          eventLottery: true,
+          prizeProbabilityTotal: 100,
+          persistedAndReloaded: true,
+          cleaned: true
+        }, actual)
+      : fail('抽獎券 E2E 至少一個階段失敗。', {
+          ticketLottery: true,
+          eventLottery: true,
+          prizeProbabilityTotal: 100,
+          persistedAndReloaded: true,
+          cleaned: true
+        }, actual);
   }
 
   async function adminPointCardCrudCase() {
