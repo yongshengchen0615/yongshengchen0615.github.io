@@ -327,6 +327,10 @@
     return common.concat([
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
       caseDef('ADMIN_RESOURCE_EDITORS', '集點卡／票券／活動票券／日曆編輯視窗', 'Human E2E', adminResourceEditorsCase),
+      caseDef('ADMIN_POINT_CARD_CRUD', '集點卡：新增／修改／刪除', 'Admin CRUD E2E', adminPointCardCrudCase),
+      caseDef('ADMIN_EVENT_TICKET_CRUD', '活動票券：新增／修改／刪除', 'Admin CRUD E2E', adminEventTicketCrudCase),
+      caseDef('ADMIN_CALENDAR_CRUD', '日曆：新增／修改／刪除', 'Admin CRUD E2E', adminCalendarCrudCase),
+      caseDef('ADMIN_BOOKING_CRUD', '預約：類型與項目新增／修改／刪除', 'Admin CRUD E2E', adminBookingCrudCase),
       caseDef('ADMIN_BOOKING_CONTROLS', '預約管理分頁與新增視窗', 'Human E2E', adminBookingControlsCase),
       caseDef('ADMIN_TEST_MODE_CONTROLS', '測試環境控制元件', 'UI', adminTestModeControlsCase),
       caseDef('ADMIN_BUTTON_COVERAGE', '所有按鈕／動態控制覆蓋清單', 'Coverage', adminButtonCoverageCase)
@@ -809,6 +813,406 @@
     return ok
       ? pass('四種資源編輯視窗與管理日曆切換皆可真人操作。', { allEditors: true, calendarNavigation: true }, actual)
       : fail('至少一個資源編輯視窗或日曆切換異常。', { allEditors: true, calendarNavigation: true }, actual);
+  }
+
+  function qaCrudStamp() {
+    return Date.now().toString(36).slice(-7) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function textIncludes(selector, value) {
+    return String(document.querySelector(selector)?.textContent || '').includes(String(value || ''));
+  }
+
+  async function withAutoConfirm(task) {
+    const original = window.confirm;
+    window.confirm = () => true;
+    try { return await task(); }
+    finally { window.confirm = original; }
+  }
+
+  function closeEditorModalById(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal || modal.classList.contains('hidden')) return;
+    modal.querySelector('.editor-modal-close')?.click();
+  }
+
+  async function waitEditorOpen(modalId, timeoutMs = 4000) {
+    return waitFor(() => {
+      const modal = document.getElementById(modalId);
+      return modal && !modal.classList.contains('hidden') ? modal : null;
+    }, timeoutMs);
+  }
+
+  function findBookingRow(containerId, title) {
+    return Array.from(document.querySelectorAll('#' + containerId + ' .booking-admin-service-row')).find((row) => {
+      return String(row.querySelector('strong')?.textContent || '').trim() === String(title || '').trim();
+    }) || null;
+  }
+
+  function clickBookingRowAction(containerId, title, actionLabel) {
+    const row = findBookingRow(containerId, title);
+    if (!row) return false;
+    const button = Array.from(row.querySelectorAll('button')).find((item) => String(item.textContent || '').trim() === actionLabel);
+    if (!button) return false;
+    button.click();
+    return true;
+  }
+
+  async function adminPointCardCrudCase() {
+    const stamp = qaCrudStamp();
+    const createdTitle = 'E2E 集點卡 ' + stamp;
+    const updatedTitle = createdTitle + ' 修改';
+    const actual = { created: false, updated: false, deleted: false, cleaned: false, usedExistingTicket: false };
+    let createdId = '';
+
+    document.getElementById('cardsTab')?.click();
+    document.getElementById('cardSettingsTab')?.click();
+    document.getElementById('newCardButton')?.click();
+    const modal = await waitEditorOpen('cardEditorModal');
+    if (!modal) return fail('集點卡新增編輯器未開啟。', { editorOpen: true }, { editorOpen: false });
+
+    try {
+      setField('cardTitle', createdTitle);
+      setField('cardUsageMethod', 'E2E 測試用集點方式');
+      setField('cardUsageInstructions', '此資料由管理端 E2E 建立，測試完成後自動刪除。');
+      setField('cardBenefitDescription', '管理端 CRUD E2E');
+      setField('cardStatus', 'draft');
+      setField('cardExpiryMode', 'unlimited');
+
+      const rewardSelect = await waitFor(() => document.querySelector('#rewardRows [data-field="ticketTemplateId"]'), 3000);
+      const ticketOption = rewardSelect ? Array.from(rewardSelect.options).find((option) => option.value && !option.disabled) : null;
+      if (!rewardSelect || !ticketOption) {
+        return fail('集點卡 CRUD 需要至少一張既有票券作為兌換節點。', { activeTicketAvailable: true }, { activeTicketAvailable: false });
+      }
+      const threshold = document.querySelector('#rewardRows [data-field="thresholdStamps"]');
+      if (threshold) {
+        threshold.value = '97';
+        threshold.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      rewardSelect.value = ticketOption.value;
+      rewardSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      actual.usedExistingTicket = true;
+
+      document.getElementById('saveCardButton')?.click();
+      createdId = String(await waitFor(() => document.getElementById('cardId')?.value || null, 15000) || '');
+      actual.created = Boolean(createdId && await waitFor(() => textIncludes('#cardListItems', createdTitle), 10000));
+
+      if (actual.created) {
+        setField('cardTitle', updatedTitle);
+        setField('cardBenefitDescription', '管理端 CRUD E2E 已完成修改');
+        document.getElementById('saveCardButton')?.click();
+        actual.updated = Boolean(await waitFor(() => {
+          return String(document.getElementById('cardId')?.value || '') === createdId &&
+            String(document.getElementById('cardTitle')?.value || '') === updatedTitle &&
+            textIncludes('#cardListItems', updatedTitle);
+        }, 15000));
+      }
+
+      if (actual.created) {
+        await withAutoConfirm(async () => {
+          document.getElementById('deleteCardButton')?.click();
+          actual.deleted = Boolean(await waitFor(() => {
+            return !String(document.getElementById('cardId')?.value || '') && !textIncludes('#cardListItems', updatedTitle);
+          }, 15000));
+        });
+      }
+      actual.cleaned = actual.deleted;
+    } finally {
+      if (!actual.deleted && createdId) {
+        try {
+          const row = document.querySelector('#cardListItems [data-card-id="' + CSS.escape(createdId) + '"]');
+          row?.click();
+          await waitFor(() => String(document.getElementById('cardId')?.value || '') === createdId, 3000);
+          await withAutoConfirm(async () => {
+            document.getElementById('deleteCardButton')?.click();
+            actual.cleaned = Boolean(await waitFor(() => !String(document.getElementById('cardId')?.value || ''), 12000));
+          });
+        } catch {}
+      }
+      closeEditorModalById('cardEditorModal');
+    }
+
+    const ok = actual.created && actual.updated && actual.deleted && actual.cleaned && actual.usedExistingTicket;
+    return ok
+      ? pass('已透過管理端 UI 完成集點卡新增、修改、永久刪除，QA 資料已清理。', { created: true, updated: true, deleted: true, cleaned: true }, actual)
+      : fail('集點卡 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, deleted: true, cleaned: true }, actual);
+  }
+
+  async function adminEventTicketCrudCase() {
+    const stamp = qaCrudStamp();
+    const createdTitle = 'E2E 活動票券 ' + stamp;
+    const updatedTitle = createdTitle + ' 修改';
+    const actual = { created: false, updated: false, deleted: false, cleaned: false };
+    let createdId = '';
+
+    document.getElementById('eventsTab')?.click();
+    document.getElementById('newEventTicketButton')?.click();
+    const modal = await waitEditorOpen('eventTicketEditorModal');
+    if (!modal) return fail('活動票券新增編輯器未開啟。', { editorOpen: true }, { editorOpen: false });
+
+    try {
+      setField('eventTicketTitle', createdTitle);
+      setField('eventTicketType', 'coupon');
+      setField('eventTicketDescription', '管理端 CRUD E2E 測試票券');
+      setField('eventTicketUsageMethod', '僅供自動化 E2E');
+      setField('eventTicketUsageInstructions', '測試完成後自動刪除，不提供正式會員使用。');
+      setField('eventTicketStatus', 'draft');
+      setField('eventTicketStartsOn', '');
+      setField('eventTicketEndsOn', '');
+      setField('eventTicketQuota', '0');
+
+      document.getElementById('saveEventTicketButton')?.click();
+      createdId = String(await waitFor(() => document.getElementById('eventTicketId')?.value || null, 15000) || '');
+      actual.created = Boolean(createdId && await waitFor(() => textIncludes('#eventTicketListItems', createdTitle), 10000));
+
+      if (actual.created) {
+        setField('eventTicketTitle', updatedTitle);
+        setField('eventTicketDescription', '管理端 CRUD E2E 已完成修改');
+        document.getElementById('saveEventTicketButton')?.click();
+        actual.updated = Boolean(await waitFor(() => {
+          return String(document.getElementById('eventTicketId')?.value || '') === createdId &&
+            String(document.getElementById('eventTicketTitle')?.value || '') === updatedTitle &&
+            textIncludes('#eventTicketListItems', updatedTitle);
+        }, 15000));
+      }
+
+      if (actual.created) {
+        await withAutoConfirm(async () => {
+          document.getElementById('deleteEventTicketButton')?.click();
+          actual.deleted = Boolean(await waitFor(() => {
+            return !String(document.getElementById('eventTicketId')?.value || '') && !textIncludes('#eventTicketListItems', updatedTitle);
+          }, 15000));
+        });
+      }
+      actual.cleaned = actual.deleted;
+    } finally {
+      if (!actual.deleted && createdId) {
+        try {
+          const row = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(createdId) + '"]');
+          row?.click();
+          await waitFor(() => String(document.getElementById('eventTicketId')?.value || '') === createdId, 3000);
+          await withAutoConfirm(async () => {
+            document.getElementById('deleteEventTicketButton')?.click();
+            actual.cleaned = Boolean(await waitFor(() => !String(document.getElementById('eventTicketId')?.value || ''), 12000));
+          });
+        } catch {}
+      }
+      closeEditorModalById('eventTicketEditorModal');
+    }
+
+    const ok = actual.created && actual.updated && actual.deleted && actual.cleaned;
+    return ok
+      ? pass('已透過管理端 UI 完成活動票券新增、修改、刪除，QA 資料已清理。', { created: true, updated: true, deleted: true, cleaned: true }, actual)
+      : fail('活動票券 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, deleted: true, cleaned: true }, actual);
+  }
+
+  async function adminCalendarCrudCase() {
+    const stamp = qaCrudStamp();
+    const createdTitle = 'E2E 日曆 ' + stamp;
+    const updatedTitle = createdTitle + ' 修改';
+    const actual = { created: false, updated: false, deleted: false, cleaned: false };
+    let createdId = '';
+
+    document.getElementById('calendarTab')?.click();
+    document.getElementById('newCalendarItemButton')?.click();
+    const modal = await waitEditorOpen('calendarEditorModal');
+    if (!modal) return fail('日曆新增編輯器未開啟。', { editorOpen: true }, { editorOpen: false });
+
+    try {
+      setField('calendarItemTitle', createdTitle);
+      setField('calendarItemType', 'holiday');
+      setField('calendarItemDescription', '管理端 CRUD E2E 測試日期');
+      setField('calendarItemStatus', 'draft');
+      const startInput = document.getElementById('calendarItemStartsOn');
+      if (!startInput?.value) {
+        const today = new Date();
+        const local = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+        setField('calendarItemStartsOn', local);
+      }
+      setField('calendarItemEndsOn', '');
+
+      document.getElementById('saveCalendarItemButton')?.click();
+      createdId = String(await waitFor(() => document.getElementById('calendarItemId')?.value || null, 15000) || '');
+      actual.created = Boolean(createdId);
+
+      if (actual.created) {
+        setField('calendarItemTitle', updatedTitle);
+        setField('calendarItemDescription', '管理端 CRUD E2E 已完成修改');
+        document.getElementById('saveCalendarItemButton')?.click();
+        actual.updated = Boolean(await waitFor(() => {
+          return String(document.getElementById('calendarItemId')?.value || '') === createdId &&
+            String(document.getElementById('calendarItemTitle')?.value || '') === updatedTitle;
+        }, 15000));
+      }
+
+      if (actual.created) {
+        await withAutoConfirm(async () => {
+          document.getElementById('deleteCalendarItemButton')?.click();
+          actual.deleted = Boolean(await waitFor(() => !String(document.getElementById('calendarItemId')?.value || ''), 15000));
+        });
+      }
+      actual.cleaned = actual.deleted;
+    } finally {
+      if (!actual.deleted && createdId) {
+        try {
+          const itemButton = document.querySelector('#adminCalendarGrid [data-admin-calendar-item-id="' + CSS.escape(createdId) + '"]');
+          itemButton?.click();
+          await waitFor(() => String(document.getElementById('calendarItemId')?.value || '') === createdId, 3000);
+          await withAutoConfirm(async () => {
+            document.getElementById('deleteCalendarItemButton')?.click();
+            actual.cleaned = Boolean(await waitFor(() => !String(document.getElementById('calendarItemId')?.value || ''), 12000));
+          });
+        } catch {}
+      }
+      closeEditorModalById('calendarEditorModal');
+    }
+
+    const ok = actual.created && actual.updated && actual.deleted && actual.cleaned;
+    return ok
+      ? pass('已透過管理端 UI 完成日曆項目新增、修改、刪除，QA 資料已清理。', { created: true, updated: true, deleted: true, cleaned: true }, actual)
+      : fail('日曆 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, deleted: true, cleaned: true }, actual);
+  }
+
+  async function adminBookingCrudCase() {
+    const stamp = qaCrudStamp();
+    const typeCreated = 'E2E類型' + stamp;
+    const typeUpdated = typeCreated + '改';
+    const serviceCreated = 'E2E預約' + stamp;
+    const serviceUpdated = serviceCreated + '改';
+    const actual = {
+      typeCreated: false, typeUpdated: false, serviceCreated: false,
+      serviceUpdated: false, serviceDeleted: false, typeDeleted: false, cleaned: false
+    };
+
+    const tab = await waitFor(() => document.getElementById('bookingTab'), 6000);
+    if (!tab) return fail('預約管理分頁未載入。', { bookingTab: true }, { bookingTab: false });
+    tab.click();
+    document.getElementById('bookingAdminServicesSubtab')?.click();
+    await waitFor(() => !document.getElementById('bookingAdminServicesPanel')?.classList.contains('hidden'), 4000);
+
+    try {
+      document.getElementById('bookingAdminNewTypeButton')?.click();
+      let modal = await waitFor(() => {
+        const node = document.getElementById('bookingAdminCrudModal');
+        return node && !node.classList.contains('hidden') ? node : null;
+      }, 4000);
+      if (!modal) throw new Error('新增預約類型視窗未開啟。');
+      const typeInput = modal.querySelector('[data-type-name]');
+      if (!typeInput) throw new Error('預約類型名稱欄位不存在。');
+      typeInput.value = typeCreated;
+      typeInput.dispatchEvent(new Event('input', { bubbles: true }));
+      modal.querySelector('form button[type="submit"]')?.click();
+      actual.typeCreated = Boolean(await waitFor(() => findBookingRow('bookingAdminTypeList', typeCreated), 15000));
+
+      if (actual.typeCreated && clickBookingRowAction('bookingAdminTypeList', typeCreated, '修改')) {
+        modal = await waitFor(() => {
+          const node = document.getElementById('bookingAdminCrudModal');
+          return node && !node.classList.contains('hidden') ? node : null;
+        }, 4000);
+        const editInput = modal?.querySelector('[data-type-name]');
+        if (editInput) {
+          editInput.value = typeUpdated;
+          editInput.dispatchEvent(new Event('input', { bubbles: true }));
+          modal.querySelector('form button[type="submit"]')?.click();
+          actual.typeUpdated = Boolean(await waitFor(() => findBookingRow('bookingAdminTypeList', typeUpdated), 15000));
+        }
+      }
+
+      if (actual.typeUpdated) {
+        document.getElementById('bookingAdminNewServiceButton')?.click();
+        modal = await waitFor(() => {
+          const node = document.getElementById('bookingAdminCrudModal');
+          return node && !node.classList.contains('hidden') ? node : null;
+        }, 4000);
+        const form = modal?.querySelector('form');
+        if (!form) throw new Error('新增預約項目表單未開啟。');
+        const title = form.querySelector('[data-field="title"]');
+        const type = form.querySelector('[data-field="serviceType"]');
+        const duration = form.querySelector('[data-field="durationMinutes"]');
+        const price = form.querySelector('[data-field="priceAmount"]');
+        if (!title || !type || !duration || !price) throw new Error('預約項目表單欄位不完整。');
+        title.value = serviceCreated;
+        type.value = typeUpdated;
+        duration.value = '35';
+        price.value = '123';
+        [title, type, duration, price].forEach((input) => input.dispatchEvent(new Event('change', { bubbles: true })));
+        form.querySelector('button[type="submit"]')?.click();
+        actual.serviceCreated = Boolean(await waitFor(() => findBookingRow('bookingAdminServiceList', serviceCreated), 15000));
+      }
+
+      if (actual.serviceCreated && clickBookingRowAction('bookingAdminServiceList', serviceCreated, '修改')) {
+        modal = await waitFor(() => {
+          const node = document.getElementById('bookingAdminCrudModal');
+          return node && !node.classList.contains('hidden') ? node : null;
+        }, 4000);
+        const form = modal?.querySelector('form');
+        const title = form?.querySelector('[data-field="title"]');
+        const duration = form?.querySelector('[data-field="durationMinutes"]');
+        if (title && duration) {
+          title.value = serviceUpdated;
+          duration.value = '40';
+          title.dispatchEvent(new Event('input', { bubbles: true }));
+          duration.dispatchEvent(new Event('change', { bubbles: true }));
+          form.querySelector('button[type="submit"]')?.click();
+          actual.serviceUpdated = Boolean(await waitFor(() => findBookingRow('bookingAdminServiceList', serviceUpdated), 15000));
+        }
+      }
+
+      if (actual.serviceUpdated) {
+        await withAutoConfirm(async () => {
+          clickBookingRowAction('bookingAdminServiceList', serviceUpdated, '刪除');
+          actual.serviceDeleted = Boolean(await waitFor(() => !findBookingRow('bookingAdminServiceList', serviceUpdated), 15000));
+        });
+      }
+
+      if (actual.typeUpdated) {
+        await withAutoConfirm(async () => {
+          clickBookingRowAction('bookingAdminTypeList', typeUpdated, '刪除');
+          actual.typeDeleted = Boolean(await waitFor(() => !findBookingRow('bookingAdminTypeList', typeUpdated), 15000));
+        });
+      }
+      actual.cleaned = actual.serviceDeleted && actual.typeDeleted;
+    } finally {
+      document.getElementById('bookingAdminCrudModalClose')?.click();
+      if (!actual.serviceDeleted) {
+        for (const title of [serviceUpdated, serviceCreated]) {
+          if (!findBookingRow('bookingAdminServiceList', title)) continue;
+          try {
+            await withAutoConfirm(async () => {
+              clickBookingRowAction('bookingAdminServiceList', title, '刪除');
+              await waitFor(() => !findBookingRow('bookingAdminServiceList', title), 12000);
+            });
+          } catch {}
+        }
+      }
+      if (!actual.typeDeleted) {
+        for (const title of [typeUpdated, typeCreated]) {
+          if (!findBookingRow('bookingAdminTypeList', title)) continue;
+          try {
+            await withAutoConfirm(async () => {
+              clickBookingRowAction('bookingAdminTypeList', title, '刪除');
+              await waitFor(() => !findBookingRow('bookingAdminTypeList', title), 12000);
+            });
+          } catch {}
+        }
+      }
+      actual.cleaned = !findBookingRow('bookingAdminServiceList', serviceUpdated) &&
+        !findBookingRow('bookingAdminServiceList', serviceCreated) &&
+        !findBookingRow('bookingAdminTypeList', typeUpdated) &&
+        !findBookingRow('bookingAdminTypeList', typeCreated);
+    }
+
+    const ok = actual.typeCreated && actual.typeUpdated && actual.serviceCreated && actual.serviceUpdated &&
+      actual.serviceDeleted && actual.typeDeleted && actual.cleaned;
+    return ok
+      ? pass('已透過管理端 UI 完成預約類型與預約項目的新增、修改、刪除，QA 資料已清理。', {
+          typeCreated: true, typeUpdated: true, serviceCreated: true, serviceUpdated: true,
+          serviceDeleted: true, typeDeleted: true, cleaned: true
+        }, actual)
+      : fail('預約 CRUD E2E 至少一個階段失敗。', {
+          typeCreated: true, typeUpdated: true, serviceCreated: true, serviceUpdated: true,
+          serviceDeleted: true, typeDeleted: true, cleaned: true
+        }, actual);
   }
 
   async function adminBookingControlsCase() {
