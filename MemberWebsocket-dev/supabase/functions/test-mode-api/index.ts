@@ -72,6 +72,8 @@ function errorReply(origin: string | null, error: unknown): Response {
       apiError = new ApiError(409, "INVALID_TEST_ACCOUNT_SELECTION", "只能移除目前仍存在的測試帳號，請重新整理後再試。");
     } else if (message.includes("TEST_ACCOUNT_DELETE_MISMATCH")) {
       apiError = new ApiError(409, "TEST_ACCOUNT_DELETE_MISMATCH", "測試帳號資料已變更，請重新整理後再試。");
+    } else if (message.includes("TEST_SURFACE_ALREADY_ACTIVE")) {
+      apiError = new ApiError(409, "TEST_SURFACE_ALREADY_ACTIVE", "此測試帳號已在相同用戶端登入，請改用其他測試帳號或先關閉原本視窗。");
     } else {
       apiError = new ApiError(500, "TEST_MODE_ERROR", "測試模式服務暫時無法完成操作。");
     }
@@ -203,6 +205,61 @@ async function testAccounts(supabase: any): Promise<any[]> {
   }));
 }
 
+
+async function activeSurfaceMap(supabase: any, memberIds: string[]): Promise<Map<string, Set<string>>> {
+  const map = new Map<string, Set<string>>();
+  if (!memberIds.length) return map;
+
+  const staleCutoff = new Date(Date.now() - 90_000).toISOString();
+  const recentSessionCutoff = new Date(Date.now() - 15_000).toISOString();
+  const [presenceResult, sessionResult] = await Promise.all([
+    supabase.from("member_presence_sessions")
+      .select("member_id,surface,last_seen_at,offline_at")
+      .in("member_id", memberIds)
+      .is("offline_at", null)
+      .gte("last_seen_at", staleCutoff),
+    supabase.from("test_login_sessions")
+      .select("member_id,surface,created_at,expires_at,revoked_at")
+      .in("member_id", memberIds)
+      .is("revoked_at", null)
+      .gte("created_at", recentSessionCutoff)
+      .gt("expires_at", new Date().toISOString()),
+  ]);
+  if (presenceResult.error || sessionResult.error) {
+    throw new ApiError(503, "TEST_ACCOUNT_PRESENCE_FAILED", "目前無法確認測試帳號登入狀態。");
+  }
+  for (const row of [...(presenceResult.data || []), ...(sessionResult.data || [])]) {
+    const memberId = asText(row.member_id, 80);
+    const surface = asText(row.surface, 20);
+    if (!memberId || !USER_SURFACES.has(surface as Surface)) continue;
+    const set = map.get(memberId) || new Set<string>();
+    set.add(surface);
+    map.set(memberId, set);
+  }
+  return map;
+}
+
+function accountsWithAvailability(accounts: any[], surfaceMap: Map<string, Set<string>>, clientType: Surface): any[] {
+  return accounts.map((account) => {
+    const activeSurfaces = Array.from(surfaceMap.get(String(account.memberId)) || []).sort();
+    return {
+      ...account,
+      activeSurfaces,
+      currentSurfaceInUse: activeSurfaces.includes(clientType),
+    };
+  });
+}
+
+async function emitTestModeEvent(supabase: any, eventType: string): Promise<void> {
+  const result = await supabase.from("realtime_events").insert({
+    scope: "all",
+    event_type: asText(eventType, 120),
+  });
+  if (result.error) {
+    throw new ApiError(503, "TEST_MODE_REALTIME_FAILED", "測試模式已更新，但即時同步事件建立失敗。");
+  }
+}
+
 async function audit(
   supabase: any,
   identity: Identity,
@@ -326,6 +383,9 @@ Deno.serve(async (request: Request) => {
 
     if (action === "session.status") {
       const identity = await resolveTestSession(supabase, asText(body.testSessionToken, 200));
+      if (USER_SURFACES.has(clientType) && identity.surface && identity.surface !== clientType) {
+        throw new ApiError(409, "TEST_SESSION_SURFACE_MISMATCH", "此測試登入屬於其他用戶端，請重新選擇測試帳號。");
+      }
       const memberResult = await supabase.from("members")
         .select("id,display_name,member_code")
         .eq("id", identity.memberId)
@@ -339,6 +399,7 @@ Deno.serve(async (request: Request) => {
             displayName: memberResult.data.display_name,
             memberCode: memberResult.data.member_code,
           },
+          surface: identity.surface,
         },
       });
     }
@@ -353,7 +414,8 @@ Deno.serve(async (request: Request) => {
       const accounts = (await testAccounts(supabase)).filter((account) =>
         account.status === "active" && account.membershipStatus === "active"
       );
-      return reply(origin, { ok: true, status: 200, data: { accounts } });
+      const surfaceMap = await activeSurfaceMap(supabase, accounts.map((account) => String(account.memberId)));
+      return reply(origin, { ok: true, status: 200, data: { accounts: accountsWithAvailability(accounts, surfaceMap, clientType) } });
     }
 
     if (action === "test-mode.login") {
@@ -376,13 +438,21 @@ Deno.serve(async (request: Request) => {
       const tokenHash = await sha256Hex(token);
       const expiresAt = new Date(Date.now() + TEST_SESSION_HOURS * 60 * 60 * 1000).toISOString();
 
-      const sessionResult = await supabase.from("test_login_sessions").insert({
-        token_hash: tokenHash,
-        member_id: member.id,
-        device_class: deviceClass,
-        expires_at: expiresAt,
-      }).select("id").single();
-      if (sessionResult.error) throw new ApiError(503, "TEST_SESSION_CREATE_FAILED", "目前無法建立測試登入。");
+      const sessionResult = await supabase.rpc("create_test_login_session_v2", {
+        p_token_hash: tokenHash,
+        p_member_id: member.id,
+        p_surface: clientType,
+        p_device_class: deviceClass,
+        p_expires_at: expiresAt,
+      });
+      if (sessionResult.error) {
+        const message = String(sessionResult.error.message || "");
+        if (message.includes("TEST_SURFACE_ALREADY_ACTIVE")) {
+          throw new ApiError(409, "TEST_SURFACE_ALREADY_ACTIVE", "此測試帳號已在相同用戶端登入，請改用其他測試帳號或先關閉原本視窗。");
+        }
+        throw new ApiError(503, "TEST_SESSION_CREATE_FAILED", "目前無法建立測試登入。");
+      }
+      await emitTestModeEvent(supabase, "test_mode.session.started");
 
       await auditTestAccount(supabase, member, "test_mode.session.start", "member", member.id, {
         memberCode: member.member_code,
@@ -400,6 +470,7 @@ Deno.serve(async (request: Request) => {
             displayName: member.display_name,
             memberCode: member.member_code,
           },
+          surface: clientType,
         },
       });
     }
@@ -447,6 +518,7 @@ Deno.serve(async (request: Request) => {
         { deletedAccountCount, batch: memberIds.length > 1 },
       );
 
+      await emitTestModeEvent(supabase, "test_mode.account.deleted");
       const [row, accounts] = await Promise.all([settings(supabase), testAccounts(supabase)]);
       return reply(origin, {
         ok: true,
@@ -481,6 +553,7 @@ Deno.serve(async (request: Request) => {
         allowMobileTestLogin: asBoolean(body.allowMobileTestLogin),
         addAccountCount,
       });
+      await emitTestModeEvent(supabase, "test_mode.settings.changed");
       const [row, accounts] = await Promise.all([settings(supabase), testAccounts(supabase)]);
       return reply(origin, {
         ok: true, status: 200, data: {
