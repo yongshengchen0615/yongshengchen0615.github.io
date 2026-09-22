@@ -961,7 +961,7 @@
 
   async function pointsHumanRedeemCase() {
     const fixture = await qaServiceRequest('user.qa.fixture.prepare');
-    const actual = { selected: false, cancelClosed: false, reopened: false, redeemed: false, historyVisible: false, cleaned: false };
+    const actual = { selected: false, cancelClosed: false, reopened: false, redeemed: false, historyVisible: false, preserved: false };
     try {
       await refreshRealClient();
       const snapshot = await requestCore('user.pointcard.bootstrap', { compact: false });
@@ -995,19 +995,18 @@
       await refreshRealClient();
       actual.historyVisible = String(document.getElementById('ticketHistoryList')?.textContent || '').includes('QA 真人操作票券');
     } finally {
-      const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { fixtureTag: fixture.fixtureTag }).catch(() => null);
-      actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+      actual.preserved = true;
       await refreshRealClient().catch(() => {});
     }
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('已真人勾選票券、開啟確認、取消一次、再次確認核銷並看到使用紀錄，最後清理 QA 資料。', { allSteps: true }, actual)
+      ? pass('已真人勾選票券、開啟確認、取消一次、再次確認核銷並看到使用紀錄；QA 資料已保留供管理端檢查。', { allSteps: true }, actual)
       : fail('集點卡真人票券流程至少一個步驟異常。', { allSteps: true }, actual);
   }
 
   async function eventHumanTicketLifecycleCase() {
     const fixture = await qaServiceRequest('user.qa.fixture.prepare');
-    const actual = { opened: false, closeWorked: false, claimed: false, redeemed: false, historyOpened: false, cleaned: false };
+    const actual = { opened: false, closeWorked: false, claimed: false, redeemed: false, historyOpened: false, preserved: false };
     try {
       await refreshRealClient();
       const selector = '[data-event-ticket-id="' + fixture.eventTicketId + '"]';
@@ -1035,19 +1034,18 @@
       actual.historyOpened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
       document.getElementById('closeTicketModal')?.click();
     } finally {
-      const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { fixtureTag: fixture.fixtureTag }).catch(() => null);
-      actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+      actual.preserved = true;
       await refreshRealClient().catch(() => {});
     }
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('已真人完成活動票券開啟、關閉、領取、核銷、查看使用紀錄並清理 QA 資料。', { allSteps: true }, actual)
+      ? pass('已真人完成活動票券開啟、關閉、領取、核銷與查看使用紀錄；QA 資料已保留供管理端檢查。', { allSteps: true }, actual)
       : fail('活動票券真人流程至少一個步驟異常。', { allSteps: true }, actual);
   }
 
   async function calendarHumanDetailCase() {
     const fixture = await qaServiceRequest('user.qa.fixture.prepare');
-    const actual = { dateVisible: false, opened: false, closeWorked: false, overlayCloseWorked: false, cleaned: false };
+    const actual = { dateVisible: false, opened: false, closeWorked: false, overlayCloseWorked: false, preserved: false };
     try {
       await refreshRealClient();
       const selector = '[data-calendar-date="' + fixture.date + '"]';
@@ -1064,13 +1062,12 @@
       modal?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       actual.overlayCloseWorked = Boolean(await waitFor(() => modal?.classList.contains('hidden'), 1500));
     } finally {
-      const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { fixtureTag: fixture.fixtureTag }).catch(() => null);
-      actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+      actual.preserved = true;
       await refreshRealClient().catch(() => {});
     }
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('已真人點擊含活動的日期、開啟明細、使用關閉鍵與背景關閉並清理 QA 日期。', { allSteps: true }, actual)
+      ? pass('已真人點擊含活動的日期、開啟明細、使用關閉鍵與背景關閉；QA 日期已保留供管理端檢查。', { allSteps: true }, actual)
       : fail('日曆真人明細流程至少一個步驟異常。', { allSteps: true }, actual);
   }
 
@@ -1249,7 +1246,7 @@
     const actual = {
       added: false, slotSelected: false, confirmBack: false, confirmClose: false,
       created: false, historyExpanded: false, editOpened: false, editCancelled: false,
-      editSlotRestored: false, updated: false, cancelRequested: false, cleaned: false
+      editSlotRestored: false, updated: false, cancelRequested: false, preserved: false
     };
     let bookingId = '';
     try {
@@ -1338,14 +1335,13 @@
         bookingId = String(recovered?.bookingId || '').trim();
       }
       if (bookingId) {
-        const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { bookingId }).catch(() => null);
-        actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+        actual.preserved = true;
         await refreshRealClient().catch(() => {});
       }
     }
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('已真人完成單人預約增加項目、選時段、返回修改、關閉確認、新增、修改、取消申請與清理。', { allSteps: true }, actual)
+      ? pass('已真人完成單人預約增加項目、選時段、返回修改、關閉確認、新增、修改與取消申請；預約資料已保留供管理端檢查。', { allSteps: true }, actual)
       : fail('單人預約真人生命週期至少一個步驟異常。', { allSteps: true }, actual);
   }
 
@@ -1355,7 +1351,7 @@
       return skip('目前多人預約上限不足 2 人。', { partySizeAtLeast: 2 }, { partySize: party ? party.options.length : 0 });
     }
     const note = 'QA HUMAN E2E GROUP ' + Date.now().toString(36);
-    const actual = { partyTwo: false, firstAdded: false, secondAdded: false, slotSelected: false, created: false, cleaned: false };
+    const actual = { partyTwo: false, firstAdded: false, secondAdded: false, slotSelected: false, created: false, preserved: false };
     let bookingId = '';
     try {
       await openBookingForSafeDate();
@@ -1390,15 +1386,14 @@
         bookingId = String(recovered?.bookingId || '').trim();
       }
       if (bookingId) {
-        const cleaned = await qaServiceRequest('user.qa.fixture.cleanup', { bookingId }).catch(() => null);
-        actual.cleaned = Boolean(cleaned && cleaned.cleaned);
+        actual.preserved = true;
         await refreshRealClient().catch(() => {});
       }
       setFieldValue(document.getElementById('bookingPartySize'), '1');
     }
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('已真人操作兩位預約：設定人數、兩位各加項目、選時段、確認送出並清理。', { allSteps: true }, actual)
+      ? pass('已真人操作兩位預約：設定人數、兩位各加項目、選時段並確認送出；預約資料已保留供管理端檢查。', { allSteps: true }, actual)
       : fail('多人預約真人流程至少一個步驟異常。', { allSteps: true }, actual);
   }
 
