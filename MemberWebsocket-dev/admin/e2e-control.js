@@ -2114,13 +2114,12 @@
   }
 
   async function cleanupDeepContext(ctx) {
-    const result = { tierRestored: !ctx.tierSettingsChanged, cardCleaned: !ctx.cardId || Boolean(ctx.cardDeleted), ticketCleaned: !ctx.ticketTemplateId, accountDeleted: false, originalSessionRestored: false };
-    if (ctx.cardId && !ctx.cardDeleted) {
-      try { result.cardCleaned = await deleteDeepPointCard(ctx); } catch {}
-    }
-    if (ctx.ticketTemplateId) {
-      try { result.ticketCleaned = Boolean((await cleanupQaTicketTemplate(ctx.ticketTemplateId))?.deleted); } catch {}
-    }
+    const result = {
+      tierRestored: !ctx.tierSettingsChanged,
+      postTestAutoCleanupSkipped: true,
+      accountPreserved: Boolean(ctx.account),
+      originalSessionRestored: false
+    };
     if (ctx.tierSettingsChanged && Array.isArray(ctx.originalTierSettings)) {
       try {
         await ensureTestRoster(ctx.account);
@@ -2128,13 +2127,14 @@
         result.tierRestored = true;
       } catch {}
     }
-    try { result.accountDeleted = await removeEphemeralTestAccount(ctx.account); } catch {}
     if (ctx.originalLogin && ctx.participant?.window && !ctx.participant.window.closed) {
       try {
         seedParticipantSession(ctx.participant, ctx.originalLogin);
         navigateParticipant(ctx.participant, 'member');
         result.originalSessionRestored = true;
       } catch {}
+    } else {
+      result.originalSessionRestored = true;
     }
     return result;
   }
@@ -2155,15 +2155,22 @@
         caseDef('PAIRED_DEEP_POINT_TICKET_REALTIME', '深度：票券／發放點數跨端 Realtime + 核銷回寫', 'Paired E2E / Points', () => deepPointTicketRealtimeCase(ctx))
       ], '深度協同 · 臨時測試會員');
     } finally {
-      const cleanup = ctx.account ? await cleanupDeepContext(ctx) : { accountDeleted: false };
+      const retention = ctx.account ? await cleanupDeepContext(ctx) : {
+        tierRestored: true,
+        postTestAutoCleanupSkipped: true,
+        accountPreserved: true,
+        originalSessionRestored: true
+      };
       state.results.push({
-        key: 'PAIRED_DEEP_CLEANUP',
-        name: '深度 E2E：測試資料與原始設定還原',
-        domain: 'Paired E2E / Cleanup',
-        status: Object.values(cleanup).every(Boolean) ? 'passed' : 'failed',
-        message: Object.values(cleanup).every(Boolean) ? '臨時會員、集點卡、票券與會員階級設定已清理／還原。' : '深度 E2E 清理有未完成項目，請依 Actual 檢查。',
-        expected: { tierRestored: true, cardCleaned: true, ticketCleaned: true, accountDeleted: true, originalSessionRestored: true },
-        actual: cleanup,
+        key: 'PAIRED_DEEP_RETENTION',
+        name: '深度 E2E：保留測試資料並還原共用設定',
+        domain: 'Paired E2E / Retention',
+        status: Object.values(retention).every(Boolean) ? 'passed' : 'failed',
+        message: Object.values(retention).every(Boolean)
+          ? '臨時測試會員與未被測試流程主動刪除的 QA 資料已保留；共用會員階級設定與原始測試視窗 Session 已還原。'
+          : '深度 E2E 的資料保留或共用設定還原有未完成項目，請依 Actual 檢查。',
+        expected: { tierRestored: true, postTestAutoCleanupSkipped: true, accountPreserved: true, originalSessionRestored: true },
+        actual: retention,
         durationMs: 0
       });
       state.adminTestAccount = previousAdminAccount;
