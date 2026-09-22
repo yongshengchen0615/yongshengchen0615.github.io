@@ -695,9 +695,10 @@ async function persistUserQaRun(
       surface,
       skippedCases: skippedCount,
       memberId: identity.memberId,
+      durationMs,
     },
-    started_at: now,
-    completed_at: now,
+    started_at: startedAt,
+    completed_at: completedAt,
     updated_at: now,
   }).select("id").single();
   if (runInsert.error || !runInsert.data) {
@@ -1486,7 +1487,33 @@ async function cleanupHumanFixture(s: any, identity: any, surface: Surface, body
   return { cleaned: true };
 }
 
-async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawCases: unknown): Promise<Json> {
+function browserRunWindow(body: Json): { startedAt: string; completedAt: string; durationMs: number } {
+  const requestedStartedAt = asText(body.startedAt, 50);
+  const requestedCompletedAt = asText(body.completedAt, 50);
+  if (!requestedStartedAt && !requestedCompletedAt) {
+    const now = new Date().toISOString();
+    return { startedAt: now, completedAt: now, durationMs: 0 };
+  }
+  const startedMs = Date.parse(requestedStartedAt);
+  const completedMs = Date.parse(requestedCompletedAt);
+  const nowMs = Date.now();
+  if (
+    !Number.isFinite(startedMs)
+    || !Number.isFinite(completedMs)
+    || completedMs < startedMs
+    || completedMs > nowMs + 60_000
+    || startedMs < nowMs - 6 * 60 * 60 * 1000
+  ) {
+    throw new ApiError(400, "INVALID_BROWSER_RUN_WINDOW", "瀏覽器 E2E 執行時間範圍不正確。");
+  }
+  return {
+    startedAt: new Date(startedMs).toISOString(),
+    completedAt: new Date(completedMs).toISOString(),
+    durationMs: completedMs - startedMs,
+  };
+}
+
+async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawCases: unknown, timing: Json = {}): Promise<Json> {
   const cases = Array.isArray(rawCases) ? rawCases.slice(0, 60) : [];
   if (!cases.length) throw new ApiError(400, "QA_BROWSER_CASES_REQUIRED", "沒有可記錄的瀏覽器測試案例。");
   const normalized = cases.map((raw: any, index: number) => {
@@ -1502,7 +1529,8 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       durationMs: Math.max(0, Math.min(300000, Number(raw?.durationMs || 0))),
     };
   });
-  const now = new Date().toISOString();
+  const { startedAt, completedAt, durationMs } = browserRunWindow(timing);
+  const now = completedAt;
   const failedCount = normalized.filter((item) => item.status === "failed").length;
   const passedCount = normalized.filter((item) => item.status === "passed").length;
   const skippedCount = normalized.filter((item) => item.status === "skipped").length;
@@ -1625,7 +1653,7 @@ Deno.serve(async (request: Request) => {
       return reply(origin, { ok: true, status: 200, data: { surface, ...cleanup } });
     }
     if (action === "user.qa.browser-run.record") {
-      const record = await persistBrowserQaRun(s, identity, surface, body.cases);
+      const record = await persistBrowserQaRun(s, identity, surface, body.cases, body);
       return reply(origin, { ok: true, status: 200, data: { surface, ...record } });
     }
 
