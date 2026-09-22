@@ -69,8 +69,8 @@ test('all member-facing surfaces load the direct test-account client before app 
   assert.match(client, /mode\.allowMobileTestLogin/);
   assert.match(client, /mode\.allowPcTestLogin/);
   assert.match(client, /isMobileDevice\(\)/);
-  assert.match(client, /selector\(accounts\)/);
-  assert.doesNotMatch(client, /selector\(accounts, mode\.maintenanceMessage\)/);
+  assert.match(client, /selector\(config, surface, accounts\)/);
+  assert.match(client, /renderAccountOptions\(select, currentAccounts, surface\)/);
   assert.match(core, /TestModeClient\.prepare/);
   assert.match(core, /TestModeClient\.payload/);
   assert.match(core, /TestModeClient\.clearSession/);
@@ -101,13 +101,14 @@ test('test sessions are short-lived, hashed at rest and support direct sessions'
   const schema = read('supabase/migrations/20260920054312_test_mode_virtual_accounts.sql');
   const directMigration = read('supabase/migrations/20260920081507_test_mode_direct_login_sessions.sql');
   const deviceMigration = read('supabase/migrations/20260920092340_bind_test_sessions_to_device_class.sql');
+  const surfaceMigration = read('supabase/migrations/20260922063942_enhance_e2e_fixture_and_test_surface_sessions_v2.sql');
 
   assert.match(api, /const TEST_SESSION_HOURS = 2/);
-  assert.match(api, /token_hash: tokenHash/);
+  assert.match(api, /p_token_hash: tokenHash/);
   assert.match(api, /sha256Hex\(token\)/);
-  assert.doesNotMatch(api, /test_login_sessions"\)\.insert\(\{[^}]*\btoken:/s);
+  assert.match(api, /create_test_login_session_v2/);
   assert.doesNotMatch(api, /admin_line_user_id: identity\.lineUserId/);
-  assert.match(api, /device_class: deviceClass/);
+  assert.match(api, /p_device_class: deviceClass/);
 
   assert.match(auth, /member\.is_test_account !== true/);
   assert.match(auth, /SYSTEM_MAINTENANCE/);
@@ -124,6 +125,10 @@ test('test sessions are short-lived, hashed at rest and support direct sessions'
   assert.match(directMigration, /alter column admin_line_user_id drop not null/);
   assert.match(deviceMigration, /add column if not exists device_class text/);
   assert.match(deviceMigration, /device_class in \('pc', 'mobile'\)/);
+  assert.match(surfaceMigration, /add column if not exists surface text/);
+  assert.match(surfaceMigration, /create_test_login_session_v2/);
+  assert.match(surfaceMigration, /TEST_SURFACE_ALREADY_ACTIVE/);
+  assert.match(surfaceMigration, /pg_advisory_xact_lock/);
 });
 
 test('test members use an isolated roster while staying out of formal KPI counts', () => {
