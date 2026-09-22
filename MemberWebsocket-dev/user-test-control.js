@@ -522,14 +522,12 @@
         caseDef('集點卡切換互動', 'UI', pointsInteractionCase, 'POINTS_CARD_SWITCH'),
         caseDef('真人操作：勾選票券／取消／確認核銷', 'Human E2E', pointsHumanRedeemCase, 'POINTS_HUMAN_REDEEM'),
         caseDef('票券核銷輸入驗證', 'Validation', pointsInvalidWriteCase, 'POINTS_INVALID_WRITE'),
-        caseDef('集點票券單筆／批次核銷成功與清理', 'Mutation QA', () => mutationQaCase('POINT_TICKET_WRITE'), 'POINTS_SERVER_MUTATION')
       ],
       event: [
         caseDef('活動票券領取／使用狀態', 'Tickets', eventDataCase, 'EVENT_DATA'),
         caseDef('票券詳情 Modal', 'UI', eventModalCase, 'EVENT_MODAL'),
         caseDef('真人操作：開啟／領取／核銷／查看紀錄', 'Human E2E', eventHumanTicketLifecycleCase, 'EVENT_HUMAN_LIFECYCLE'),
         caseDef('領券與核銷輸入驗證', 'Validation', eventInvalidWriteCase, 'EVENT_INVALID_WRITE'),
-        caseDef('活動票券領取／核銷成功與清理', 'Mutation QA', () => mutationQaCase('EVENT_TICKET_WRITE'), 'EVENT_SERVER_MUTATION')
       ],
       calendar: [
         caseDef('指定日期明細 API', 'Calendar', calendarDetailApiCase, 'CALENDAR_DETAIL_API'),
@@ -544,19 +542,24 @@
         caseDef('預約表單安全初始狀態', 'UI', bookingFormCase, 'BOOKING_FORM_INITIAL'),
         caseDef('真人操作：日期／視窗／項目／多人控制', 'Human E2E', bookingHumanControlsCase, 'BOOKING_HUMAN_CONTROLS'),
         caseDef('真人操作：新增／修改／取消預約', 'Human E2E', bookingHumanLifecycleCase, 'BOOKING_HUMAN_LIFECYCLE'),
-        caseDef('真人操作：多人預約新增與清理', 'Human E2E', bookingHumanGroupLifecycleCase, 'BOOKING_HUMAN_GROUP'),
+        caseDef('真人操作：多人預約新增並保留資料', 'Human E2E', bookingHumanGroupLifecycleCase, 'BOOKING_HUMAN_GROUP'),
         caseDef('新增／修改／取消輸入驗證', 'Validation', bookingInvalidWriteCase, 'BOOKING_INVALID_WRITE'),
-        caseDef('預約新增／修改／取消成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_WRITE'), 'BOOKING_SERVER_MUTATION'),
-        caseDef('多人預約新增／修改成功與清理', 'Mutation QA', () => mutationQaCase('BOOKING_GROUP_WRITE'), 'BOOKING_GROUP_SERVER_MUTATION')
       ]
     };
+    const trailingCases = [
+      caseDef('所有按鈕／動態控制覆蓋清單', 'Coverage', buttonCoverageCase, (surface || 'surface').toUpperCase() + '_BUTTON_COVERAGE')
+    ];
+    // user.qa.mutations 的 points/event/booking 寫入案例會自帶清理流程。
+    // 這三個頁面改由真人 E2E 覆蓋成功寫入，確保資料能留在管理端供人工檢查。
+    if (surface === 'member' || surface === 'calendar') {
+      trailingCases.push(
+        caseDef('測試帳號 LINE 通知抑制', 'Notification', () => mutationQaCase('LINE_SUPPRESSION'), (surface || 'surface').toUpperCase() + '_LINE_SUPPRESSION')
+      );
+    }
     return common.concat(
       fullCommon,
       surfaceCases[surface] || [],
-      [
-        caseDef('所有按鈕／動態控制覆蓋清單', 'Coverage', buttonCoverageCase, (surface || 'surface').toUpperCase() + '_BUTTON_COVERAGE'),
-        caseDef('測試帳號 LINE 通知抑制', 'Notification', () => mutationQaCase('LINE_SUPPRESSION'), (surface || 'surface').toUpperCase() + '_LINE_SUPPRESSION')
-      ]
+      trailingCases
     );
   }
 
