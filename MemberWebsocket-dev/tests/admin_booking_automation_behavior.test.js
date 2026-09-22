@@ -25,7 +25,7 @@ function harness(bookings = [], extra = {}) {
   const window = { addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0) };
   const context = vm.createContext({ window, document: {}, performance, TextEncoder, CSS: { escape: (x) => x }, ...extra });
   const expose = `
-    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runAdmin, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal };
+    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runAdmin, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal, beginBookingRealtimeProbe, verifyBookingRealtimeSync };
     window.qa.install = (io) => {
       adminBookingBootstrapSnapshot = io.bootstrap;
       verifyDetectedBookingInCoreFilter = io.core;
@@ -38,6 +38,8 @@ function harness(bookings = [], extra = {}) {
       requestDetectedCancellationFromClient = io.rerequestCancellation;
       cancelDetectedBooking = io.cancel;
       waitAdminBookingSnapshot = io.snapshot;
+      beginBookingRealtimeProbe = io.beginRealtime;
+      verifyBookingRealtimeSync = io.realtime;
       verifyPairedBookingTerminalState = io.terminal;
       verifyBookingClientTerminal = io.clientTerminal;
     };
@@ -108,7 +110,17 @@ function harness(bookings = [], extra = {}) {
     },
     cancel: async (row) => { calls.push('cancel'); row.status = 'cancelled'; row.cancellationReviewedAt = startedAt; return { ok: true, status: 'cancelled' }; },
     snapshot: async (id) => bookings.find((row) => row.bookingId === id),
-    terminal: async () => ({ ok: true }),
+    beginRealtime: async (_participant, id) => ({ bookingId: id, beforeRenderCount: 1 }),
+    realtime: async (_participant, probe, _validator, expectedDisplayStatus) => ({
+      ok: true, bookingId: probe.bookingId, beforeRenderCount: 1, afterRenderCount: 2,
+      renderAdvanced: true, expectedDisplayStatus, actualDisplayStatus: expectedDisplayStatus,
+      badgeMatches: true, dataMatches: true, manualRefreshUsed: false
+    }),
+    terminal: async () => ({
+      ok: true,
+      admin: { unresolved: [], missingIds: [] },
+      client: { ok: true, uiSynchronized: true }
+    }),
     clientTerminal: async () => ({ ok: true, uiSynchronized: true })
   };
   qa.install(io);
@@ -123,9 +135,9 @@ test('covers every admin booking action with independent observable results', as
   const result = await qa.pairedAdminBookingFollowupCase(participant());
   assert.equal(result.status, 'passed');
   assert.deepEqual(calls, ['confirmed', 'modify', 'technician', 'completed', 'rejected', 'keep', 'rerequest', 'approve']);
-  assert.equal(qa.state.results.length, 8);
+  assert.equal(qa.state.results.length, 9);
   assert.ok(qa.state.results.every((row) => row.status === 'passed' && row.durationMs >= 0));
-  for (const suffix of ['_CONFIRM', '_MODIFY', '_MODIFY_TECHNICIAN', '_COMPLETE', '_REJECT', '_KEEP_CANCELLATION', '_CANCEL', '_TERMINAL']) {
+  for (const suffix of ['_CONFIRM', '_MODIFY', '_MODIFY_TECHNICIAN', '_COMPLETE', '_REJECT', '_KEEP_CANCELLATION', '_CANCEL', '_TERMINAL', '_RISK_SCAN']) {
     assert.equal(qa.state.results.find((row) => row.key.endsWith(suffix)).status, 'passed');
   }
   assert.equal(result.actual.rejected.actualStatus, 'rejected');
@@ -310,6 +322,29 @@ test('large paired reports retain every case within the server limit of 80 per r
   assert.equal(result.runs.length, 3);
 });
 
+
+test('booking client exposes a read-only realtime E2E probe without forcing refresh', () => {
+  const bookingSource = fs.readFileSync(path.join(__dirname, '../booking/app.js'), 'utf8');
+  const bookingIndex = fs.readFileSync(path.join(__dirname, '../booking/index.html'), 'utf8');
+  assert.match(bookingSource, /bookingRenderCount/);
+  assert.match(bookingSource, /getRenderCount/);
+  assert.match(bookingSource, /getBookingSnapshot/);
+  assert.match(bookingSource, /booking:bookings-rendered/);
+  assert.match(bookingIndex, /app\.js\?v=booking-realtime-e2e-probe-20260922-1/);
+});
+
+test('full booking E2E requires human-style admin UI actions and per-action realtime member sync', () => {
+  assert.match(source, /adminHumanClick/);
+  assert.match(source, /adminHumanSelect/);
+  assert.match(source, /adminHumanTextInput/);
+  assert.match(source, /beginBookingRealtimeProbe/);
+  assert.match(source, /verifyBookingRealtimeSync/);
+  assert.match(source, /manualRefreshUsed: false/);
+  assert.match(source, /RISK_SCAN/);
+  assert.match(source, /realtimeEveryAdminAction: true/);
+  assert.match(source, /risksDetected/);
+  assert.match(source, /humanUiAction: true/);
+});
 
 test('runner wires the actual technician and cancellation-review controls', () => {
   assert.match(source, /修改此位技師/);

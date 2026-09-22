@@ -17,6 +17,7 @@
     pendingBookingWrite: null,
     editing: null,
     realtimeUnsubscribe: null,
+    bookingRenderCount: 0,
     serverClockEpochMs: 0,
     serverClockMonotonicMs: 0,
     serverClockOffsetMs: 0,
@@ -802,7 +803,8 @@
     }
 
     window.BookingMemberUI?.organizeBookingHistory?.();
-    window.dispatchEvent(new CustomEvent('booking:bookings-rendered'));
+    state.bookingRenderCount += 1;
+    window.dispatchEvent(new CustomEvent('booking:bookings-rendered', { detail: { renderCount: state.bookingRenderCount } }));
   }
 
   function summaryRow(label, value) {
@@ -952,5 +954,19 @@
     els.retryButton.classList.toggle('hidden', membershipRequired);
     showView('error');
   }
-  window.MemberClientQaHooks = Object.freeze({ surface: 'booking', refresh: () => refresh(false) });
+  function qaBookingSnapshot(bookingId) {
+    const id = String(bookingId || '');
+    const booking = (Array.isArray(state.data?.bookings) ? state.data.bookings : [])
+      .find((row) => String(row?.bookingId || '') === id);
+    if (!booking) return null;
+    try { return JSON.parse(JSON.stringify(booking)); }
+    catch { return null; }
+  }
+
+  window.MemberClientQaHooks = Object.freeze({
+    surface: 'booking',
+    refresh: () => refresh(false),
+    getRenderCount: () => Number(state.bookingRenderCount || 0),
+    getBookingSnapshot: (bookingId) => qaBookingSnapshot(bookingId)
+  });
 })();

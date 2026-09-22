@@ -60,7 +60,7 @@ test('member booking entry loads only the current single render pipeline', () =>
   assert.ok(html.includes('service-type-color.js?v=booking-shared-type-color-map-20260918-4'));
   assert.ok(html.includes('group-booking.js?v=async-architecture-20260921-1'));
   assert.ok(html.includes('member-ui.js?v=test-mode-20260920-1'));
-  assert.ok(html.includes('app.js?v=human-e2e-hooks-20260922-1'));
+  assert.ok(html.includes('app.js?v=booking-realtime-e2e-probe-20260922-1'));
   assert.ok(html.includes('contact-details.js?v=test-mode-20260920-1'));
   assert.ok(html.includes('calendar-flow.js?v=test-mode-20260920-1'));
 
@@ -110,7 +110,7 @@ test('member-facing pages load the current human E2E controller and refresh hook
     'points/index.html': './app.js?v=human-e2e-hooks-20260921-1',
     'event/index.html': './app.js?v=human-e2e-hooks-20260921-1',
     'calendar/index.html': './app.js?v=human-e2e-hooks-20260921-1',
-    'booking/index.html': './app.js?v=human-e2e-hooks-20260922-1',
+    'booking/index.html': './app.js?v=booking-realtime-e2e-probe-20260922-1',
   };
   for (const [relative, asset] of Object.entries(appVersions)) {
     const html = read(relative);

@@ -127,7 +127,9 @@ jobs:
           grep -q 'ensureSeparateTierTargets' MemberWebsocket-dev/booking/membership-progress.js
           grep -q '目前會員階級：' MemberWebsocket-dev/booking/membership-progress.js
           grep -q 'member-ui.js?v=test-mode-20260920-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'app.js?v=human-e2e-hooks-20260922-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'app.js?v=booking-realtime-e2e-probe-20260922-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'getRenderCount' MemberWebsocket-dev/booking/app.js
+          grep -q 'getBookingSnapshot' MemberWebsocket-dev/booking/app.js
           grep -q 'group-booking.js?v=async-architecture-20260921-1' MemberWebsocket-dev/booking/index.html
           grep -q 'common.js?v=async-architecture-20260921-1' MemberWebsocket-dev/booking/index.html
           grep -q 'liff-fresh-login.js?v=member-presence-20260920-1' MemberWebsocket-dev/booking/index.html
