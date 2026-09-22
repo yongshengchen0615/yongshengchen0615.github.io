@@ -9,7 +9,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('admin loads dedicated browser E2E controls', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260922-\d+/);
+  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
   assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-\d+/);
   assert.match(runner, /runAdminQuickE2EButton/);
   assert.match(runner, /runAdminFullE2EButton/);
@@ -39,6 +39,11 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.match(runner, /MAX_PAIRED_PARTICIPANTS = 10/);
   assert.match(runner, /window\.open\('about:blank'/);
   assert.match(runner, /pairedE2EAccountCount/);
+  const e2eCss = read('admin/e2e-control.css');
+  assert.match(e2eCss, /\.admin-e2e-paired-config\s*\{[\s\S]*display:\s*grid/);
+  assert.match(e2eCss, /grid-template-columns:\s*minmax\(190px, max-content\) minmax\(0, 1fr\)/);
+  assert.match(e2eCss, /\.admin-e2e-paired-config small\s*\{[\s\S]*overflow-wrap:\s*anywhere/);
+  assert.match(e2eCss, /@media \(max-width: 860px\)[\s\S]*\.admin-e2e-paired-config\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   assert.match(runner, /admin\.test-mode\.bootstrap/);
   assert.match(runner, /admin\.test-mode\.save/);
   assert.match(runner, /E2E_REAL_MEMBER_BLOCKED/);
