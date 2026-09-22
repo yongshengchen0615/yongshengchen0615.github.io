@@ -9,12 +9,18 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('admin loads dedicated browser E2E controls', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260922-2/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260922-2/);
+  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260922-3/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260922-3/);
   assert.match(runner, /runAdminQuickE2EButton/);
   assert.match(runner, /runAdminFullE2EButton/);
   assert.match(runner, /runPairedFullE2EButton/);
+  assert.match(runner, /stopAdminE2EButton/);
+  assert.match(runner, /requestStop/);
   assert.match(runner, /ADMIN_TEST_MEMBER_PROFILE_EDIT/);
+  assert.match(runner, /ADMIN_POINT_CARD_CRUD/);
+  assert.match(runner, /ADMIN_EVENT_TICKET_CRUD/);
+  assert.match(runner, /ADMIN_CALENDAR_CRUD/);
+  assert.match(runner, /ADMIN_BOOKING_CRUD/);
   assert.match(runner, /ADMIN_BUTTON_COVERAGE/);
 });
 
@@ -25,6 +31,8 @@ test('paired runner covers every member-facing surface and verifies admin record
   }
   assert.match(runner, /MemberUserTestControl/);
   assert.match(runner, /runFull\(\)/);
+  assert.match(runner, /runParticipantSurfaces/);
+  assert.match(runner, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
   assert.match(runner, /_ADMIN_RECORD_SYNC/);
   assert.match(runner, /data-record-filter="testAutomation"/);
   assert.match(runner, /member-test-session-v1/);
@@ -51,8 +59,9 @@ test('paired E2E account pool is server-filtered to test users and real-user mut
 
 test('user E2E returns structured results to the paired admin runner', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-09-22\.4'/);
+  assert.match(runner, /const VERSION = '2026-09-22\\.5'/);
   assert.match(runner, /browserRun: state\.browserRun \|\| null/);
+  assert.match(runner, /stop: \(\) => requestStop\(\)/);
   assert.match(runner, /summary: \{/);
   assert.match(runner, /results: state\.results\.map/);
 });
