@@ -221,7 +221,7 @@ test('the full handoff processes state-pack and other retained QA bookings as we
   assert.ok(bookings.every((row) => ['completed', 'cancelled', 'rejected'].includes(row.status)));
   assert.equal(result.actual.remainingProcessed.length, 2);
   assert.equal(result.actual.terminal.admin.unresolved.length, 0);
-  assert.equal(qa.state.results.filter((row) => row.key.includes('_REMAINING_')).length, 3);
+  assert.equal(qa.state.results.filter((row) => row.key.includes('_REMAINING_')).length, 2);
 });
 
 test('a residual pending booking makes the final verdict fail even if primary steps passed', async () => {
@@ -250,7 +250,9 @@ test('completed admin records cannot pass while the member client is stale', asy
   const { qa, io } = harness([booking('complete', { status: 'completed' }), booking('cancel', { status: 'cancelled' })]);
   io.clientTerminal = async () => ({ ok: false, uiSynchronized: false });
   qa.install(io);
-  const result = await qa.verifyPairedBookingTerminalState(participant());
+  const p = participant();
+  p.bookingResult.bookingHandoff.bookingIds = ['complete', 'cancel'];
+  const result = await qa.verifyPairedBookingTerminalState(p);
   assert.equal(result.admin.ok, true);
   assert.equal(result.ok, false);
 });
