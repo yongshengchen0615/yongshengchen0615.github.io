@@ -56,14 +56,14 @@
           <button id="runAdminFullE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">管理端完整 E2E</button>
           <button id="runBookingPendingE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">待確認 E2E</button>
           <button id="runBookingCancellationE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">取消申請 E2E</button>
-          <button id="runBookingFullE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">預約完整 E2E</button>
+          <button id="runBookingFullE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">預約完整協同 E2E</button>
           <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">管理端 ↔ 用戶端完整 E2E</button>
           <button id="stopAdminE2EButton" class="button button-danger hidden" type="button" data-admin-e2e-stop="true">停止 E2E</button>
         </div>
       </div>
       <div class="admin-e2e-paired-config">
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
-        <small>1–10 人。預約完整 E2E 會自動建立預約，再由管理端確認、修改、完成及審核取消。管理端完整 E2E 也會開啟一個預約用戶端視窗；需要啟用系統維護、裝置測試登入並允許彈出式視窗。正式用戶不會被選入。</small>
+        <small>1–10 人。預約完整協同 E2E 由管理端一鍵啟動：自動開啟測試用戶端，以真人方式新增／修改／多人預約／申請取消；再由管理端像真人切分頁、開視窗、修改項目與技師、確認／拒絕／完成／審核取消，且每一步都要求用戶端透過 Realtime 自動同步，最後做終態、競態、越權與資料遺漏風險掃描。待確認／取消申請 E2E 僅供單點診斷。正式用戶不會被選入。</small>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
@@ -2968,6 +2968,7 @@
       'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'runQuickAutomationTestButton',
       'runFullAutomationTestButton', 'runAdminQuickE2EButton', 'runAdminFullE2EButton',
+      'runBookingPendingE2EButton', 'runBookingCancellationE2EButton', 'runBookingFullE2EButton',
       'runPairedFullE2EButton', 'pairedE2EAccountCount'
     ];
     const actual = Object.fromEntries(ids.map((id) => [id, Boolean(document.getElementById(id))]));
