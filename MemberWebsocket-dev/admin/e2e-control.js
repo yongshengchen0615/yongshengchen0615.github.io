@@ -932,6 +932,18 @@
     }) || null;
   }
 
+  async function waitBookingAdminReady(timeoutMs = 15000) {
+    return Boolean(await waitFor(() => {
+      const status = document.getElementById('bookingAdminSyncStatus');
+      const text = String(status?.textContent || '');
+      if (!status || /同步預約資料中/.test(text) || status.classList.contains('error')) return null;
+      return document.getElementById('bookingAdminNewTypeButton')
+        && document.getElementById('bookingAdminNewServiceButton')
+        && document.getElementById('bookingAdminTypeList')
+        && document.getElementById('bookingAdminServiceList');
+    }, timeoutMs, 100));
+  }
+
   function clickBookingRowAction(containerId, title, actionLabel) {
     const row = findBookingRow(containerId, title);
     if (!row) return false;
@@ -1293,6 +1305,9 @@
     tab.click();
     document.getElementById('bookingAdminServicesSubtab')?.click();
     await waitFor(() => !document.getElementById('bookingAdminServicesPanel')?.classList.contains('hidden'), 4000);
+    if (!await waitBookingAdminReady()) {
+      return fail('預約管理資料尚未同步完成。', { bookingAdminReady: true }, { bookingAdminReady: false });
+    }
 
     try {
       document.getElementById('bookingAdminNewTypeButton')?.click();
