@@ -2297,25 +2297,47 @@
       seedParticipantSession(participant, login);
       child = await waitParticipantSurface(participant, 'booking', 'bookingView');
     }
-    if (!child.BookingSystem?.loadConfig || !child.BookingSystem?.request) {
-      throw new Error('預約用戶端 API 尚未就緒，無法再次提出取消申請。');
+    const card = await waitFor(() => child.document.querySelector(
+      '#bookingList .booking-item[data-booking-id="' + CSS.escape(id) + '"]'
+    ), 8000, 100);
+    if (!card) throw new Error('預約用戶端找不到要再次取消的預約卡片。');
+    const cancelButton = Array.from(card.querySelectorAll('button'))
+      .find((button) => String(button.textContent || '').trim() === '申請取消');
+    if (!cancelButton) throw new Error('預約用戶端沒有可操作的「申請取消」按鈕。');
+
+    try { cancelButton.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'auto' }); } catch {}
+    try { cancelButton.focus?.({ preventScroll: true }); } catch { try { cancelButton.focus?.(); } catch {} }
+    await adminHumanPause(80, 240);
+    const originalConfirm = child.confirm;
+    try {
+      child.confirm = () => true;
+      cancelButton.click();
+    } finally {
+      child.confirm = originalConfirm;
     }
-    const config = await child.BookingSystem.loadConfig();
-    await child.BookingSystem.request(config, 'member', '', 'user.booking.cancel', { bookingId: id });
+
+    const clientPending = Boolean(await waitFor(() => {
+      const snapshot = child.MemberClientQaHooks?.getBookingSnapshot?.(id);
+      const badge = child.document.querySelector(
+        '#bookingList .booking-item[data-booking-id="' + CSS.escape(id) + '"] .status-badge'
+      );
+      return snapshot?.cancellationRequestedAt
+        && !snapshot?.cancellationReviewedAt
+        && badge?.classList.contains('status-cancel_requested');
+    }, 12000, 120));
     const requested = await waitAdminBookingSnapshot(
       id,
       (row) => Boolean(row?.cancellationRequestedAt) && !row?.cancellationReviewedAt,
       18000
     );
-    if (typeof child.MemberClientQaHooks?.refresh === 'function') {
-      await child.MemberClientQaHooks.refresh().catch(() => {});
-    }
     return {
       bookingId: id,
       status: String(requested?.status || ''),
       cancellationRequestedAt: requested?.cancellationRequestedAt || null,
       cancellationReviewedAt: requested?.cancellationReviewedAt || null,
-      ok: Boolean(requested?.cancellationRequestedAt && !requested?.cancellationReviewedAt)
+      clientPending,
+      humanUiAction: true,
+      ok: Boolean(clientPending && requested?.cancellationRequestedAt && !requested?.cancellationReviewedAt)
     };
   }
 
