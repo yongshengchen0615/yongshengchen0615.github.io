@@ -9,8 +9,8 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('admin loads dedicated browser E2E controls', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260922-1/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260922-1/);
+  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260922-2/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260922-2/);
   assert.match(runner, /runAdminQuickE2EButton/);
   assert.match(runner, /runAdminFullE2EButton/);
   assert.match(runner, /runPairedFullE2EButton/);
@@ -28,6 +28,14 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.match(runner, /PAIRED_ADMIN_RECORD_SYNC/);
   assert.match(runner, /data-record-filter="testAutomation"/);
   assert.match(runner, /member-test-session-v1/);
+  assert.match(runner, /MAX_PAIRED_PARTICIPANTS = 10/);
+  assert.match(runner, /window\.open\('about:blank'/);
+  assert.match(runner, /pairedE2EAccountCount/);
+  assert.match(runner, /admin\.test-mode\.bootstrap/);
+  assert.match(runner, /admin\.test-mode\.save/);
+  assert.match(runner, /E2E_REAL_MEMBER_BLOCKED/);
+  assert.match(runner, /memberIsTestAccount/);
+  assert.doesNotMatch(runner, /<iframe|adminBrowserE2EFrame|state\.frame|state\.viewport/);
   assert.doesNotMatch(runner, /service_role|SUPABASE_SERVICE_ROLE_KEY/);
 });
 
