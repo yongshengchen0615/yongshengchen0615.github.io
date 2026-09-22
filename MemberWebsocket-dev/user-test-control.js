@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.5';
+  const VERSION = '2026-09-22.6';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -56,6 +56,7 @@
     mutationSuite: null,
     browserRun: null,
     availabilitySync: null,
+    bookingLaneDayCount: 1,
     launcher: null,
     panel: null
   };
@@ -1080,9 +1081,19 @@
     }) || null;
   }
 
+  function pairedLaneIndex() {
+    const raw = new URLSearchParams(window.location.search).get('qaPair') || '';
+    const match = raw.match(/-(\d+)(?:$|[^\d])/);
+    const index = match ? Number(match[1]) : 1;
+    return Number.isInteger(index) && index > 0 ? index - 1 : 0;
+  }
+
   function firstEnabledBookingDate() {
-    return Array.from(document.querySelectorAll('#calendarGrid button.calendar-day:not(:disabled)'))
-      .find((button) => !button.classList.contains('holiday-disabled')) || null;
+    const days = Array.from(document.querySelectorAll('#calendarGrid button.calendar-day:not(:disabled)'))
+      .filter((button) => !button.classList.contains('holiday-disabled'));
+    state.bookingLaneDayCount = Math.max(1, days.length);
+    if (!days.length) return null;
+    return days[pairedLaneIndex() % days.length] || days[0] || null;
   }
 
   async function openBookingForSafeDate() {
@@ -1223,7 +1234,13 @@
   }
 
   async function chooseAvailableSlot() {
-    return waitFor(() => Array.from(document.querySelectorAll('#slotGrid .slot-button')).find((button) => !button.disabled), 7000);
+    return waitFor(() => {
+      const slots = Array.from(document.querySelectorAll('#slotGrid .slot-button')).filter((button) => !button.disabled);
+      if (!slots.length) return null;
+      const dayCount = Math.max(1, Number(state.bookingLaneDayCount || 1));
+      const slotLane = Math.floor(pairedLaneIndex() / dayCount);
+      return slots[slotLane % slots.length] || slots[0] || null;
+    }, 7000);
   }
 
   async function bookingHumanLifecycleCase() {
