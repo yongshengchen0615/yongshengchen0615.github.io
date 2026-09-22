@@ -82,3 +82,35 @@ test('test control API records browser results only behind admin authorization',
   assert.match(api, /automation_test_cases/);
   assert.match(api, /automation_test_steps/);
 });
+
+
+test('test data is retained until an admin manually purges it', () => {
+  const html = read('admin/index.html');
+  const control = read('admin/test-control.js');
+  const api = read('supabase/functions/test-control-api/index.ts');
+  const userRunner = read('user-test-control.js');
+  const adminRunner = read('admin/e2e-control.js');
+  const migration = read('supabase/migrations/20260922055500_preserve_test_data_manual_purge.sql');
+
+  assert.match(html, /id="purgeTestDataButton"/);
+  assert.match(html, /測試資料會保留/);
+  assert.match(control, /admin\.test-control\.purge-test-data/);
+  assert.match(control, /測試帳號與測試模式環境設定會保留/);
+  assert.match(api, /action === "admin\.test-control\.purge-test-data"/);
+  assert.match(api, /await authorizeAdmin\(supabase, identity\)/);
+  assert.match(api, /admin_purge_test_data/);
+
+  assert.doesNotMatch(userRunner, /user\.qa\.fixture\.cleanup/);
+  assert.doesNotMatch(userRunner, /mutationQaCase\('POINT_TICKET_WRITE'\)/);
+  assert.doesNotMatch(userRunner, /mutationQaCase\('EVENT_TICKET_WRITE'\)/);
+  assert.doesNotMatch(userRunner, /mutationQaCase\('BOOKING_WRITE'\)/);
+  assert.doesNotMatch(userRunner, /mutationQaCase\('BOOKING_GROUP_WRITE'\)/);
+  assert.match(adminRunner, /PAIRED_DEEP_RETENTION/);
+  assert.match(adminRunner, /postTestAutoCleanupSkipped: true/);
+
+  assert.match(migration, /create or replace function public\.admin_purge_test_data\(\)/);
+  assert.match(migration, /where is_test_account = true/);
+  assert.match(migration, /delete from public\.automation_test_runs/);
+  assert.doesNotMatch(migration, /delete from public\.members/);
+  assert.match(migration, /grant execute on function public\.admin_purge_test_data\(\)\s+to service_role/);
+});
