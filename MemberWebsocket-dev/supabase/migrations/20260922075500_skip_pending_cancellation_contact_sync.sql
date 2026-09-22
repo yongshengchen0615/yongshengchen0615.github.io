@@ -5,7 +5,7 @@ set search_path to 'public'
 as $function$
 declare
   v_surname text := btrim(coalesce(new.surname, ''));
-  v_salutation text := lower(btrim(coalesce(new.salutation, ''));
+  v_salutation text := lower(btrim(coalesce(new.salutation, '')));
   v_phone text := regexp_replace(btrim(coalesce(new.phone, '')), '[()[:space:]-]', '', 'g');
 begin
   if new.surname is not distinct from old.surname
