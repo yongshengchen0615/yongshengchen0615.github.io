@@ -32,7 +32,13 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.match(runner, /MemberUserTestControl/);
   assert.match(runner, /runFull\(\)/);
   assert.match(runner, /runParticipantSurfaces/);
-  assert.match(runner, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
+  assert.match(runner, /runPairedAdminBookingLive/);
+  assert.match(runner, /waitForLivePairedBookingTarget/);
+  assert.match(runner, /pairedBookingCandidates\(data, participant, \{ live: true \}\)/);
+  assert.match(runner, /let adminChain = Promise\.resolve\(\)/);
+  assert.match(runner, /Promise\.all\(\[\.\.\.clientTasks, \.\.\.liveAdminTasks\]\)/);
+  assert.match(runner, /waitForPairedBookingHandoff/);
+  assert.doesNotMatch(runner, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
   assert.match(runner, /_ADMIN_RECORD_SYNC/);
   assert.match(runner, /data-record-filter="testAutomation"/);
   assert.match(runner, /member-test-session-v1/);
