@@ -10,6 +10,7 @@ type CaseResult = {
 };
 
 const MAX_REQUEST_BYTES = 384_000;
+const STANDARD_REQUEST_BYTES = 20_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 class ApiError extends Error {
@@ -1110,6 +1111,13 @@ Deno.serve(async (request: Request) => {
       throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端使用自動化測試。");
     }
     const action = asText(body.action, 80);
+    if (action !== "admin.test-control.record-browser-run") {
+      let requestBytes = 0;
+      try { requestBytes = new TextEncoder().encode(JSON.stringify(body)).byteLength; } catch {}
+      if (requestBytes > STANDARD_REQUEST_BYTES) {
+        throw new ApiError(413, "REQUEST_TOO_LARGE", "請求內容過大。");
+      }
+    }
     const supabase = dbClient();
     const identity = await verifyAdminIdentity(asText(body.idToken, 10_000));
     await authorizeAdmin(supabase, identity);
