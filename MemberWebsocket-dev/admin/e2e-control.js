@@ -2593,8 +2593,10 @@
       keptCancellation: null,
       cancellationRerequest: null,
       cancelled: null,
+      realtime: {},
       remainingProcessed: [],
-      terminal: null
+      terminal: null,
+      riskScan: null
     };
     const expected = {
       detectedFromUserE2E: true,
@@ -2606,6 +2608,8 @@
       cancellationKept: true,
       cancellationApproved: true,
       allStatusTabs: true,
+      realtimeEveryAdminAction: true,
+      riskScanPassed: true,
       recordsPreserved: true
     };
     const prefix = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_';
@@ -2614,6 +2618,7 @@
       caseDef(prefix + 'CONFIRM', '預約：確認預約', 'Booking / Confirm', async () => {
         if (!mutable) return fail('本輪用戶端未留下可確認的預約。', { mutablePendingBooking: true }, actual.detectedBookings);
         actual.statusTabs.pending = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'pending');
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, mutable.bookingId);
         actual.confirmed = await setDetectedBookingStatus(
           mutable.bookingId,
           '確認預約',
@@ -2621,21 +2626,48 @@
           'confirmed',
           'pending'
         );
-        if (actual.confirmed.ok) actual.statusTabs.confirmed = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'confirmed');
-        const detail = { ...actual.confirmed, pendingTab: actual.statusTabs.pending, confirmedTab: actual.statusTabs.confirmed };
-        return actual.confirmed.ok && detail.pendingTab?.ok && detail.confirmedTab?.ok
-          ? pass('已實際點擊「確認預約」，並回讀待確認 → 已確認狀態。', { status: 'confirmed' }, detail)
-          : fail('確認預約或狀態分頁驗證失敗。', { status: 'confirmed' }, detail);
+        if (actual.confirmed.ok) {
+          actual.realtime.confirmed = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => String(snapshot.status || '') === 'confirmed',
+            'confirmed'
+          );
+          actual.statusTabs.confirmed = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'confirmed');
+        }
+        const detail = {
+          ...actual.confirmed,
+          pendingTab: actual.statusTabs.pending,
+          confirmedTab: actual.statusTabs.confirmed,
+          realtimeSync: actual.realtime.confirmed
+        };
+        return actual.confirmed.ok && detail.pendingTab?.ok && detail.confirmedTab?.ok && detail.realtimeSync?.ok
+          ? pass('已像真人點擊「確認預約」，且用戶端未手動重新整理就由 Realtime 更新為已確認。', { status: 'confirmed', realtime: true }, detail)
+          : fail('確認預約、狀態分頁或用戶端 Realtime 同步失敗。', { status: 'confirmed', realtime: true }, detail);
       }),
 
       caseDef(prefix + 'MODIFY', '預約：修改此位項目', 'Booking / Modify Items', async () => {
         if (!actual.confirmed?.ok) return fail('確認步驟未成功，未送出項目修改。', { confirmed: true }, { dependencyFailed: 'CONFIRM' });
         const current = await waitAdminBookingSnapshot(mutable.bookingId, (row) => row.status === 'confirmed');
         if (!current || current.status !== 'confirmed') return fail('修改項目前預約狀態已改變。', { status: 'confirmed' }, { status: current?.status });
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, mutable.bookingId);
         actual.modified = await mutateDetectedBooking(current);
-        return actual.modified.ok
-          ? pass('已實際點擊「修改此位項目」，並回讀儲存後服務數量。', { quantityPersisted: true }, actual.modified)
-          : fail('修改此位項目未正確儲存，時間戳變更不能視為通過。', { quantityPersisted: true }, actual.modified);
+        if (actual.modified.ok) {
+          actual.realtime.modifiedItems = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => memberBookingQuantity(
+              snapshot,
+              actual.modified.serviceId,
+              actual.modified.participantPosition
+            ) === Number(actual.modified.afterQuantity),
+            'confirmed'
+          );
+        }
+        const detail = { ...actual.modified, realtimeSync: actual.realtime.modifiedItems };
+        return actual.modified.ok && detail.realtimeSync?.ok
+          ? pass('已像真人修改預約項目，且用戶端 Realtime 同步顯示新的項目數量。', { quantityPersisted: true, realtime: true }, detail)
+          : fail('修改此位項目持久化或用戶端 Realtime 同步失敗。', { quantityPersisted: true, realtime: true }, detail);
       }),
 
       caseDef(prefix + 'MODIFY_TECHNICIAN', '預約：修改此位技師', 'Booking / Modify Technician', async () => {
@@ -2643,10 +2675,23 @@
           return fail('確認或項目修改未成功，未送出技師修改。', { confirmed: true, modifiedItems: true }, { dependencyFailed: 'CONFIRM_OR_MODIFY' });
         }
         const current = await waitAdminBookingSnapshot(mutable.bookingId, (row) => row.status === 'confirmed');
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, mutable.bookingId);
         actual.modifiedTechnician = await mutateDetectedBookingTechnician(current || mutable);
-        return actual.modifiedTechnician.ok
-          ? pass('已實際點擊「修改此位技師」，並回讀逐位技師資料確認持久化。', { technicianPersisted: true }, actual.modifiedTechnician)
-          : fail('修改此位技師未正確持久化。', { technicianPersisted: true }, actual.modifiedTechnician);
+        if (actual.modifiedTechnician.ok) {
+          actual.realtime.modifiedTechnician = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => memberBookingTechnician(
+              snapshot,
+              actual.modifiedTechnician.participantPosition
+            ) === String(actual.modifiedTechnician.afterTechnicianId || ''),
+            'confirmed'
+          );
+        }
+        const detail = { ...actual.modifiedTechnician, realtimeSync: actual.realtime.modifiedTechnician };
+        return actual.modifiedTechnician.ok && detail.realtimeSync?.ok
+          ? pass('已像真人修改預約技師，且用戶端 Realtime 同步顯示新的技師資料。', { technicianPersisted: true, realtime: true }, detail)
+          : fail('修改此位技師持久化或用戶端 Realtime 同步失敗。', { technicianPersisted: true, realtime: true }, detail);
       }),
 
       caseDef(prefix + 'COMPLETE', '預約：完成預約', 'Booking / Complete', async () => {
@@ -2655,6 +2700,7 @@
             confirmed: true, modifiedItems: true, modifiedTechnician: true
           }, { dependencyFailed: 'CONFIRM_OR_MODIFY' });
         }
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, mutable.bookingId);
         actual.completed = await setDetectedBookingStatus(
           mutable.bookingId,
           '確認服務完成',
@@ -2663,13 +2709,24 @@
           'confirmed'
         );
         if (actual.completed.ok) {
+          actual.realtime.completed = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => String(snapshot.status || '') === 'completed',
+            'completed'
+          );
           actual.statusTabs.completed = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'completed');
           actual.statusTabs.allCompleted = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'all');
         }
-        const detail = { ...actual.completed, completedTab: actual.statusTabs.completed, allTab: actual.statusTabs.allCompleted };
-        return actual.completed.ok && detail.completedTab?.ok && detail.allTab?.ok
-          ? pass('已完成預約，並驗證已完成與全部分頁。', { status: 'completed' }, detail)
-          : fail('完成預約或狀態分頁驗證失敗。', { status: 'completed' }, detail);
+        const detail = {
+          ...actual.completed,
+          completedTab: actual.statusTabs.completed,
+          allTab: actual.statusTabs.allCompleted,
+          realtimeSync: actual.realtime.completed
+        };
+        return actual.completed.ok && detail.completedTab?.ok && detail.allTab?.ok && detail.realtimeSync?.ok
+          ? pass('已像真人完成預約，且用戶端 Realtime 自動更新為服務已完成。', { status: 'completed', realtime: true }, detail)
+          : fail('完成預約、狀態分頁或用戶端 Realtime 同步失敗。', { status: 'completed', realtime: true }, detail);
       }),
 
       caseDef(prefix + 'REJECT', '預約：不通過', 'Booking / Reject', async () => {
@@ -2679,6 +2736,7 @@
           }, actual.detectedBookings);
         }
         actual.statusTabs.rejectPending = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'pending');
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, rejectTarget.bookingId);
         actual.rejected = await setDetectedBookingStatus(
           rejectTarget.bookingId,
           '不通過',
@@ -2686,11 +2744,24 @@
           'rejected',
           'pending'
         );
-        if (actual.rejected.ok) actual.statusTabs.allRejected = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'all');
-        const detail = { ...actual.rejected, pendingTab: actual.statusTabs.rejectPending, allTab: actual.statusTabs.allRejected };
-        return actual.rejected.ok && detail.pendingTab?.ok && detail.allTab?.ok
-          ? pass('已實際點擊「不通過」，並回讀 rejected 終態。', { status: 'rejected' }, detail)
-          : fail('不通過操作或全部分頁驗證失敗。', { status: 'rejected' }, detail);
+        if (actual.rejected.ok) {
+          actual.realtime.rejected = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => String(snapshot.status || '') === 'rejected',
+            'rejected'
+          );
+          actual.statusTabs.allRejected = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'all');
+        }
+        const detail = {
+          ...actual.rejected,
+          pendingTab: actual.statusTabs.rejectPending,
+          allTab: actual.statusTabs.allRejected,
+          realtimeSync: actual.realtime.rejected
+        };
+        return actual.rejected.ok && detail.pendingTab?.ok && detail.allTab?.ok && detail.realtimeSync?.ok
+          ? pass('已像真人點擊「不通過」，且用戶端 Realtime 自動更新為未通過。', { status: 'rejected', realtime: true }, detail)
+          : fail('不通過操作、全部分頁或用戶端 Realtime 同步失敗。', { status: 'rejected', realtime: true }, detail);
       }),
 
       caseDef(prefix + 'KEEP_CANCELLATION', '預約：保留預約', 'Booking / Cancellation Keep', async () => {
@@ -2698,8 +2769,16 @@
           return fail('本輪沒有可供審核的取消申請。', { cancellationRequestDetected: true }, actual.detectedBookings);
         }
         actual.statusTabs.cancellationRequestKeep = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'request');
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, cancellationTarget.bookingId);
         actual.keptCancellation = await rejectDetectedCancellation(cancellationTarget.bookingId);
         if (actual.keptCancellation.ok) {
+          actual.realtime.keptCancellation = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => String(snapshot.status || '') === String(actual.keptCancellation.sourceStatus || '')
+              && !snapshot.cancellationRequestedAt,
+            String(actual.keptCancellation.sourceStatus || '')
+          );
           actual.statusTabs.keptSource = await verifyDetectedBookingInCoreFilter(
             cancellationTarget.bookingId,
             actual.keptCancellation.sourceStatus
@@ -2708,13 +2787,16 @@
         const detail = {
           ...actual.keptCancellation,
           requestTab: actual.statusTabs.cancellationRequestKeep,
-          sourceTab: actual.statusTabs.keptSource
+          sourceTab: actual.statusTabs.keptSource,
+          realtimeSync: actual.realtime.keptCancellation
         };
-        return actual.keptCancellation.ok && detail.requestTab?.ok && detail.sourceTab?.ok
-          ? pass('已實際點擊「保留預約」，取消申請結束且原預約狀態保留。', {
-              decision: 'rejected', cancellationPending: false
+        return actual.keptCancellation.ok && detail.requestTab?.ok && detail.sourceTab?.ok && detail.realtimeSync?.ok
+          ? pass('已像真人點擊「保留預約」，且用戶端 Realtime 自動移除取消待確認狀態。', {
+              decision: 'rejected', cancellationPending: false, realtime: true
             }, detail)
-          : fail('保留預約或狀態回讀失敗。', { decision: 'rejected', cancellationPending: false }, detail);
+          : fail('保留預約、狀態回讀或用戶端 Realtime 同步失敗。', {
+              decision: 'rejected', cancellationPending: false, realtime: true
+            }, detail);
       }),
 
       caseDef(prefix + 'CANCEL', '預約：確認取消', 'Booking / Cancellation Approve', async () => {
@@ -2731,8 +2813,15 @@
           return fail('會員端未能再次提出取消申請。', { cancellationRequestedAgain: true }, actual.cancellationRerequest);
         }
         actual.statusTabs.cancellationRequestApprove = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'request');
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, cancellationTarget.bookingId);
         actual.cancelled = await approveDetectedCancellation(cancellationTarget.bookingId);
         if (actual.cancelled.ok) {
+          actual.realtime.cancelled = await verifyBookingRealtimeSync(
+            participant,
+            realtimeProbe,
+            (snapshot) => String(snapshot.status || '') === 'cancelled',
+            'cancelled'
+          );
           actual.statusTabs.cancelled = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'cancelled');
           actual.statusTabs.allCancelled = await verifyDetectedBookingInCoreFilter(cancellationTarget.bookingId, 'all');
         }
@@ -2741,13 +2830,16 @@
           rerequest: actual.cancellationRerequest,
           requestTab: actual.statusTabs.cancellationRequestApprove,
           cancelledTab: actual.statusTabs.cancelled,
-          allTab: actual.statusTabs.allCancelled
+          allTab: actual.statusTabs.allCancelled,
+          realtimeSync: actual.realtime.cancelled
         };
-        return actual.cancelled.ok && detail.requestTab?.ok && detail.cancelledTab?.ok && detail.allTab?.ok
-          ? pass('會員再次申請取消後，已實際點擊「確認取消」，並驗證已取消與全部分頁。', {
-              decision: 'approved', status: 'cancelled'
+        return actual.cancelled.ok && detail.requestTab?.ok && detail.cancelledTab?.ok && detail.allTab?.ok && detail.realtimeSync?.ok
+          ? pass('會員再次申請取消後，管理端像真人確認取消，用戶端 Realtime 自動更新為已取消。', {
+              decision: 'approved', status: 'cancelled', realtime: true
             }, detail)
-          : fail('確認取消或狀態分頁驗證失敗。', { decision: 'approved', status: 'cancelled' }, detail);
+          : fail('確認取消、狀態分頁或用戶端 Realtime 同步失敗。', {
+              decision: 'approved', status: 'cancelled', realtime: true
+            }, detail);
       })
     ], '預約完整自動處理 · 測試用戶 ' + participant.index);
 
