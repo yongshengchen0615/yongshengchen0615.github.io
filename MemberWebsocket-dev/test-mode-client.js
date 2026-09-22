@@ -3,10 +3,105 @@
 
   const STORAGE_KEY = 'member-test-session-v1';
   const SESSION_READY_EVENT = 'member-test-session-ready';
+  const AVAILABILITY_EVENT = 'member-test-account-availability-changed';
+  const SESSION_REVOKED_EVENT = 'member-test-session-revoked';
   let activeSessionToken = '';
+  let realtimeWatcher = null;
+  let realtimeWatcherKey = '';
+  let realtimeSurface = '';
 
   function announceSessionReady() {
     try { window.dispatchEvent(new Event(SESSION_READY_EVENT)); } catch (_) {}
+  }
+
+
+  function dispatchAvailabilityChanged() {
+    try { window.dispatchEvent(new Event(AVAILABILITY_EVENT)); } catch (_) {}
+  }
+
+  function dispatchSessionRevoked(reason) {
+    try {
+      window.dispatchEvent(new CustomEvent(SESSION_REVOKED_EVENT, {
+        detail: { reason: String(reason || 'revoked') }
+      }));
+    } catch (_) {}
+  }
+
+  function surfaceInUse(account, surface) {
+    if (!account) return false;
+    if (account.currentSurfaceInUse === true) return true;
+    return Array.isArray(account.activeSurfaces) && account.activeSurfaces.includes(surface);
+  }
+
+  function renderAccountOptions(select, accounts, surface) {
+    const previous = String(select.value || '');
+    const enabledIds = [];
+    select.replaceChildren();
+    for (const account of accounts) {
+      const option = document.createElement('option');
+      option.value = String(account.memberId || '');
+      const inUse = surfaceInUse(account, surface);
+      option.disabled = inUse;
+      option.textContent = [account.displayName, account.memberCode, inUse ? '此用戶端已登入' : '可登入'].filter(Boolean).join('｜');
+      select.append(option);
+      if (!inUse && option.value) enabledIds.push(option.value);
+    }
+    if (previous && enabledIds.includes(previous)) select.value = previous;
+    else if (enabledIds.length) select.value = enabledIds[0];
+    select.disabled = enabledIds.length === 0;
+    return enabledIds.length;
+  }
+
+  function stopRealtimeWatcher() {
+    const watcher = realtimeWatcher;
+    realtimeWatcher = null;
+    realtimeWatcherKey = '';
+    realtimeSurface = '';
+    if (!watcher) return;
+    try { Promise.resolve(watcher.client.removeChannel(watcher.channel)).catch(() => {}); } catch (_) {}
+  }
+
+  function ensureRealtimeWatcher(config, surface) {
+    if (config?.realtimeEnabled === false || !window.supabase || typeof window.supabase.createClient !== 'function') return;
+    const key = String(config.supabaseUrl || '') + '|' + String(config.supabasePublishableKey || '');
+    if (!key || realtimeWatcherKey === key && realtimeWatcher) {
+      realtimeSurface = surface || realtimeSurface;
+      return;
+    }
+    stopRealtimeWatcher();
+    const client = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
+      auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+    });
+    realtimeWatcherKey = key;
+    realtimeSurface = surface;
+    const channel = client
+      .channel('test-mode-client-' + Math.random().toString(36).slice(2, 10))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
+        const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
+        const eventType = String(row.event_type || '');
+        if (!eventType.startsWith('test_mode.')) return;
+        dispatchAvailabilityChanged();
+        if (eventType === 'test_mode.data.purged') {
+          const hadSession = Boolean(getSessionToken());
+          clearSession();
+          dispatchSessionRevoked('test-data-purged');
+          if (hadSession) window.setTimeout(() => window.location.reload(), 50);
+          return;
+        }
+        if (eventType === 'test_mode.account.deleted' && getSessionToken()) {
+          void validateStoredSession(config, realtimeSurface).then((session) => {
+            if (session && session.active) return;
+            dispatchSessionRevoked('test-account-deleted');
+            window.setTimeout(() => window.location.reload(), 50);
+          }).catch(() => {
+            clearSession();
+            dispatchSessionRevoked('test-account-deleted');
+            window.setTimeout(() => window.location.reload(), 50);
+          });
+        }
+      })
+      .subscribe();
+    realtimeWatcher = { client, channel };
   }
 
   function clientError(code, message, status = 0) {
@@ -93,11 +188,11 @@
     return post(config, { action: 'public.status' });
   }
 
-  async function validateStoredSession(config) {
+  async function validateStoredSession(config, surface = '') {
     const token = getSessionToken();
     if (!token) return null;
     try {
-      const result = await post(config, { action: 'session.status', testSessionToken: token });
+      const result = await post(config, { action: 'session.status', clientType: surface || undefined, testSessionToken: token });
       activeSessionToken = token;
       announceSessionReady();
       return result;
@@ -107,10 +202,10 @@
     }
   }
 
-  async function sessionStatus(config) {
+  async function sessionStatus(config, surface = '') {
     const token = getSessionToken();
     if (!token) return null;
-    const result = await post(config, { action: 'session.status', testSessionToken: token });
+    const result = await post(config, { action: 'session.status', clientType: surface || undefined, testSessionToken: token });
     activeSessionToken = token;
     announceSessionReady();
     return result;
@@ -128,7 +223,7 @@
     return String(navigator.platform || '') === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1;
   }
 
-  function selector(accounts) {
+  function selector(config, surface, accounts) {
     return new Promise((resolve) => {
       const existing = document.getElementById('testModeAccountModal');
       if (existing) existing.remove();
@@ -161,16 +256,13 @@
       const select = document.createElement('select');
       select.id = 'testModeAccountSelect';
       select.setAttribute('aria-label', '選擇測試帳號');
-      for (const account of accounts) {
-        const option = document.createElement('option');
-        option.value = String(account.memberId || '');
-        option.textContent = [account.displayName, account.memberCode].filter(Boolean).join('｜');
-        select.append(option);
-      }
+      let currentAccounts = Array.isArray(accounts) ? accounts.slice() : [];
+      const enabledCount = renderAccountOptions(select, currentAccounts, surface);
       label.append(select);
 
       const message = document.createElement('p');
       message.className = 'test-mode-message';
+      if (!enabledCount) message.textContent = '目前所有測試帳號都已在此用戶端登入；關閉既有視窗後會自動恢復可選。';
       message.setAttribute('role', 'status');
       message.setAttribute('aria-live', 'polite');
 
@@ -183,15 +275,44 @@
       modal.append(card);
       document.body.append(modal);
 
+      let refreshing = false;
+      const refreshAvailability = async () => {
+        if (refreshing || !document.body.contains(modal)) return;
+        refreshing = true;
+        try {
+          const result = await post(config, { action: 'test-mode.accounts', clientType: surface });
+          currentAccounts = Array.isArray(result.accounts) ? result.accounts : [];
+          const count = renderAccountOptions(select, currentAccounts, surface);
+          if (!count) message.textContent = '目前所有測試帳號都已在此用戶端登入；關閉既有視窗後會自動恢復可選。';
+          else if (/所有測試帳號/.test(message.textContent || '')) message.textContent = '';
+        } catch (_) {
+          // 保留目前列表；下一個 Realtime 訊號或視窗 focus 會再嘗試。
+        } finally {
+          refreshing = false;
+        }
+      };
+      const onAvailability = () => { void refreshAvailability(); };
+      const onFocus = () => { void refreshAvailability(); };
+      window.addEventListener(AVAILABILITY_EVENT, onAvailability);
+      window.addEventListener('focus', onFocus);
+
+      const cleanupSelector = () => {
+        window.removeEventListener(AVAILABILITY_EVENT, onAvailability);
+        window.removeEventListener('focus', onFocus);
+      };
+
       const finish = () => {
         const memberId = String(select.value || '');
-        if (!memberId) {
-          message.textContent = '請先選擇測試帳號。';
+        const selectedOption = select.selectedOptions && select.selectedOptions[0];
+        if (!memberId || selectedOption?.disabled) {
+          message.textContent = selectedOption?.disabled ? '此測試帳號已在目前用戶端登入，請選擇其他帳號。' : '請先選擇測試帳號。';
+          void refreshAvailability();
           return;
         }
         button.disabled = true;
         select.disabled = true;
         message.textContent = '正在建立測試登入…';
+        cleanupSelector();
         resolve({ memberId, modal, button, select, message });
       };
       button.addEventListener('click', finish);
@@ -206,6 +327,7 @@
   }
 
   async function prepare(config, surface, normalSignIn) {
+    ensureRealtimeWatcher(config, surface);
     if (surface === 'admin') {
       clearSession();
       return { idToken: await normalSignIn(), testSessionToken: '', testAccount: null };
@@ -225,7 +347,7 @@
       throw maintenanceError(mode.maintenanceMessage);
     }
 
-    const existing = await validateStoredSession(config);
+    const existing = await validateStoredSession(config, surface);
     if (existing && existing.active) {
       return {
         idToken: '',
@@ -246,7 +368,7 @@
       throw clientError('NO_TEST_ACCOUNTS', '目前尚未建立可登入的測試帳號。', 409);
     }
 
-    const selection = await selector(accounts);
+    const selection = await selector(config, surface, accounts);
     try {
       const login = await post(config, {
         action: 'test-mode.login',
@@ -264,6 +386,11 @@
       selection.button.disabled = false;
       selection.select.disabled = false;
       selection.message.textContent = error && error.message ? error.message : '測試登入失敗，請重試。';
+      if (error && error.code === 'TEST_SURFACE_ALREADY_ACTIVE') {
+        selection.modal.remove();
+        dispatchAvailabilityChanged();
+        return prepare(config, surface, normalSignIn);
+      }
       throw error;
     }
   }
@@ -280,6 +407,7 @@
     clearSession,
     status,
     sessionStatus,
-    isMobileDevice
+    isMobileDevice,
+    ensureRealtimeWatcher
   });
 })();
