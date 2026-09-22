@@ -2353,8 +2353,13 @@
     ), 8000, 100);
     if (!card) throw new Error('管理端找不到要修改的用戶端 E2E 預約。');
 
-    const blocks = Array.from(card.querySelectorAll('.booking-group-admin-participant'));
-    const targetContainer = participants.length ? (blocks[targetIndex] || null) : card;
+    const blocks = typeof card.querySelectorAll === 'function'
+      ? Array.from(card.querySelectorAll('.booking-group-admin-participant'))
+      : [];
+    const candidateBlock = participants.length ? (blocks[targetIndex] || null) : null;
+    const targetContainer = participants.length
+      ? (candidateBlock && typeof candidateBlock.querySelectorAll === 'function' ? candidateBlock : card)
+      : card;
     if (!targetContainer) throw new Error('管理端找不到可安全修改的預約人項目區塊。');
     const editButton = bookingActionButton(targetContainer, '修改此位項目')
       || bookingActionButton(targetContainer, '修改服務項目');
@@ -2369,7 +2374,9 @@
     const form = modal.querySelector('form');
     if (!form) throw new Error('管理端修改預約表單不存在。');
 
-    const checkedInputs = Array.from(form.querySelectorAll('input[type="checkbox"]:checked'));
+    const checkedInputs = typeof form.querySelectorAll === 'function'
+      ? Array.from(form.querySelectorAll('input[type="checkbox"]:checked'))
+      : [form.querySelector('input[type="checkbox"]:checked')].filter(Boolean);
     const checked = checkedInputs.find((input) =>
       preferredServiceId
       && String(input.dataset?.bookingService || input.value || '') === preferredServiceId
