@@ -1341,30 +1341,45 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
       throw new ApiError(500, "QA_FIXTURE_BALANCE_FAILED", "無法建立測試會員點數。");
     }
 
-    const ticket = await s.from("point_tickets").insert({
-      ticket_id: "QA-UI-PT-" + tag,
-      member_id: identity.memberId,
-      point_card_id: card.data.id,
-      reward_id: reward.data.id,
-      ticket_template_id: template.data.id,
-      threshold_stamps: 1,
-      ticket_type: "coupon",
-      ticket_title: "QA 真人操作票券",
-      ticket_description: "Human-like E2E fixture",
-      usage_method: "QA UI",
-      usage_instructions: "Only for test account human-like E2E",
-      prizes: [],
-      status: "available",
-    }).select("ticket_id").single();
-    if (ticket.error || !ticket.data) {
+    // Use the same eligibility issuance path as the real client instead of racing
+    // the client's automatic issuance with a second direct INSERT.
+    const issuance = await s.rpc("issue_eligible_point_tickets", {
+      p_member_id: identity.memberId,
+      p_point_card_id: card.data.id,
+    });
+
+    let ticket: any = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const lookup = await s.from("point_tickets")
+        .select("ticket_id")
+        .eq("member_id", identity.memberId)
+        .eq("point_card_id", card.data.id)
+        .eq("reward_id", reward.data.id)
+        .eq("status", "available")
+        .maybeSingle();
+      if (!lookup.error && lookup.data) {
+        ticket = lookup.data;
+        break;
+      }
+      if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+
+    if (!ticket) {
+      // Cleanup in FK-safe order; automatic issuance may already have created a ticket.
+      await s.from("point_tickets").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
       await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
       await s.from("point_card_rewards").delete().eq("id", reward.data.id);
       await s.from("point_cards").delete().eq("id", card.data.id);
       await s.from("ticket_templates").delete().eq("id", template.data.id);
-      throw new ApiError(500, "QA_FIXTURE_POINT_TICKET_FAILED", "無法建立可操作的測試票券。");
+      throw new ApiError(
+        500,
+        "QA_FIXTURE_POINT_TICKET_FAILED",
+        "無法建立可操作的測試票券。",
+        { issueCode: asText(issuance.error?.code, 40) || null },
+      );
     }
 
-    return { fixtureTag: tag, cardId: card.data.card_id, ticketId: ticket.data.ticket_id, expectedStamps: 2 };
+    return { fixtureTag: tag, cardId: card.data.card_id, ticketId: ticket.ticket_id, expectedStamps: 2 };
   }
 
   if (surface === "event") {
