@@ -508,13 +508,13 @@
       if (!state.cancelled) {
         for (const participant of shuffled(state.participants)) {
           participant.status = '管理端接手';
-          participant.surface = '預約確認／修改／完成';
+          participant.surface = '預約確認／項目／技師／不通過／取消審核／完成';
           renderParticipants();
           const beforeCount = state.results.length;
           await executeCases([
             caseDef(
               'PAIRED_' + participant.index + '_ADMIN_BOOKING_FOLLOWUP',
-              '測試用戶 ' + participant.index + '：管理端自動確認／修改／完成預約',
+              '測試用戶 ' + participant.index + '：管理端完整預約動作自動化',
               'Paired E2E / Booking Admin',
               () => pairedAdminBookingFollowupCase(participant)
             )
@@ -1968,6 +1968,117 @@
     };
   }
 
+
+  async function detectedBookingGroupDetails(bookingId) {
+    const id = String(bookingId || '');
+    const session = await adminSession();
+    const details = await postFunction('booking-group-details-api', {
+      action: 'admin.booking.group.details',
+      clientType: 'admin',
+      idToken: session.idToken,
+      bookingIds: [id]
+    });
+    return {
+      group: details?.bookingGroups?.[id] || null,
+      primaryTechnicianId: String(details?.primaryTechnicianId || '')
+    };
+  }
+
+  async function mutateDetectedBookingTechnician(booking) {
+    await openAdminBookingQueue(String(booking?.status || 'pending'));
+    const bookingId = String(booking?.bookingId || '');
+    const beforeDetails = await detectedBookingGroupDetails(bookingId);
+    const participants = Array.isArray(beforeDetails.group?.participants) ? beforeDetails.group.participants : [];
+    if (participants.length < 2) throw new Error('修改技師 E2E 需要至少兩位預約人，避免移除唯一主要技師。');
+
+    const targetIndex = participants.findIndex((participant) => participant?.isPrimaryTechnician !== true);
+    if (targetIndex < 0) throw new Error('找不到可安全修改的非主要技師預約人。');
+    const targetBefore = participants[targetIndex];
+    const targetPosition = Number(targetBefore?.position || targetIndex + 1);
+    const currentTechnicianId = String(targetBefore?.technicianId || '');
+    const otherTechnicianIds = new Set(participants
+      .filter((_, index) => index !== targetIndex)
+      .map((participant) => String(participant?.technicianId || ''))
+      .filter(Boolean));
+
+    const card = await waitFor(() => document.querySelector(
+      '#bookingAdminQueue .booking-admin-booking[data-booking-id="' + CSS.escape(bookingId) + '"]'
+    ), 8000, 100);
+    if (!card) throw new Error('管理端找不到要修改技師的用戶端 E2E 預約。');
+    const blocks = Array.from(card.querySelectorAll('.booking-group-admin-participant'));
+    const targetBlock = blocks[targetIndex];
+    const editButton = bookingActionButton(targetBlock, '修改此位技師');
+    if (!editButton) throw new Error('這筆多人預約缺少「修改此位技師」操作。');
+    editButton.click();
+
+    const modal = await waitFor(() => {
+      const node = document.getElementById('bookingAdminCrudModal');
+      return node && !node.classList.contains('hidden') ? node : null;
+    }, 5000);
+    if (!modal) throw new Error('管理端修改技師視窗未開啟。');
+    const form = modal.querySelector('form');
+    const select = form?.querySelector('[data-participant-technician]');
+    if (!form || !select) throw new Error('管理端修改技師表單不完整。');
+
+    const options = Array.from(select.options || []).filter((option) => {
+      const value = String(option.value || '');
+      return option.disabled !== true
+        && value !== currentTechnicianId
+        && (!value || !otherTechnicianIds.has(value));
+    });
+    const replacement = currentTechnicianId
+      ? (options.find((option) => String(option.value || '') === '') || options[0])
+      : options.find((option) => String(option.value || '') !== '');
+    if (!replacement) {
+      document.getElementById('bookingAdminCrudModalClose')?.click();
+      throw new Error('目前沒有可安全切換且不重複的替代技師。');
+    }
+
+    const nextTechnicianId = String(replacement.value || '');
+    select.value = nextTechnicianId;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const beforeUpdatedAt = String(booking?.updatedAt || '');
+    if (state.cancelled) throw new Error('E2E 已停止，未送出技師修改。');
+    const submit = form.querySelector('button[type="submit"]');
+    if (!submit || submit.disabled) throw new Error('修改技師送出按鈕尚未就緒。');
+    submit.click();
+
+    const closed = Boolean(await waitFor(
+      () => document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'),
+      18000,
+      100
+    ));
+    if (!closed) {
+      const message = form.querySelector('[data-modal-message]')?.textContent || '';
+      document.getElementById('bookingAdminCrudModalClose')?.click();
+      throw new Error(message || '管理端修改技師送出後視窗未關閉。');
+    }
+
+    const updated = await waitAdminBookingSnapshot(
+      bookingId,
+      (row) => String(row.updatedAt || '') !== beforeUpdatedAt,
+      16000
+    );
+    const afterDetails = await detectedBookingGroupDetails(bookingId);
+    const afterParticipants = Array.isArray(afterDetails.group?.participants) ? afterDetails.group.participants : [];
+    const targetAfter = afterParticipants.find((participant) => Number(participant?.position || 0) === targetPosition)
+      || afterParticipants[targetIndex]
+      || null;
+    const persistedTechnicianId = String(targetAfter?.technicianId || '');
+    const updatedAtChanged = Boolean(updated && String(updated.updatedAt || '') !== beforeUpdatedAt);
+    return {
+      bookingId,
+      participantPosition: targetPosition,
+      beforeTechnicianId: currentTechnicianId,
+      afterTechnicianId: nextTechnicianId,
+      persistedTechnicianId,
+      primaryTechnicianId: beforeDetails.primaryTechnicianId,
+      updatedAtChanged,
+      updatedAt: updated?.updatedAt || null,
+      ok: updatedAtChanged && persistedTechnicianId === nextTechnicianId
+    };
+  }
+
   async function setDetectedBookingStatus(bookingId, label, adminNote, expectedStatus, sourceFilter = 'pending') {
     await openAdminBookingQueue(sourceFilter);
     const card = await waitFor(() => document.querySelector('#bookingAdminQueue .booking-admin-booking[data-booking-id="' + CSS.escape(String(bookingId || '')) + '"]'), 9000, 100);
@@ -1997,30 +2108,93 @@
     };
   }
 
-  async function approveDetectedCancellation(bookingId) {
+  async function reviewDetectedCancellation(bookingId, decision) {
     await openAdminBookingQueue('pending');
+    const id = String(bookingId || '');
     const requestFilter = await waitFor(() => document.getElementById('bookingCancellationRequestFilter'), 8000, 100);
     if (!requestFilter) throw new Error('取消申請審核分頁未載入。');
     requestFilter.click();
-    const card = await waitFor(() => document.querySelector('#bookingCancellationReviewList .booking-admin-booking[data-booking-id="' + CSS.escape(String(bookingId || '')) + '"]'), 10000, 100);
+    const card = await waitFor(() => document.querySelector(
+      '#bookingCancellationReviewList .booking-admin-booking[data-booking-id="' + CSS.escape(id) + '"]'
+    ), 10000, 100);
     if (!card) throw new Error('管理端取消申請分頁找不到用戶端 E2E 預約。');
-    const approve = card.querySelector('[data-booking-admin-action="approve-cancellation"]') || bookingActionButton(card, '確認取消');
-    if (!approve) throw new Error('取消申請缺少「確認取消」審核操作。');
+
+    const keeping = decision === 'rejected';
+    const actionKey = keeping ? 'reject-cancellation' : 'approve-cancellation';
+    const label = keeping ? '保留預約' : '確認取消';
+    const action = card.querySelector('[data-booking-admin-action="' + actionKey + '"]') || bookingActionButton(card, label);
+    if (!action) throw new Error('取消申請缺少「' + label + '」審核操作。');
+    const before = await waitAdminBookingSnapshot(id);
+    const sourceStatus = String(before?.status || '');
+    if (!['pending', 'confirmed'].includes(sourceStatus)) {
+      throw new Error('取消申請來源狀態不是可審核的 pending / confirmed。');
+    }
     if (state.cancelled) throw new Error('E2E 已停止，未送出取消審核。');
-    await withAutoConfirm(async () => { approve.click(); });
-    const reviewed = await waitAdminBookingSnapshot(
-      bookingId,
-      (row) => Boolean(row.cancellationReviewedAt) && String(row.status || '') === 'cancelled',
-      18000
-    );
+
+    await withAutoConfirm(async () => { action.click(); });
+    const reviewed = await waitAdminBookingSnapshot(id, (row) => {
+      if (!row?.cancellationReviewedAt || String(row.cancellationDecision || '') !== decision) return false;
+      if (keeping) {
+        return !row.cancellationRequestedAt && String(row.status || '') === sourceStatus;
+      }
+      return String(row.status || '') === 'cancelled';
+    }, 18000);
+
     return {
-      bookingId: String(bookingId || ''),
-      mode: 'cancellation-request',
+      bookingId: id,
+      decision,
+      sourceStatus,
       status: String(reviewed?.status || ''),
+      cancellationRequestedAt: reviewed?.cancellationRequestedAt || null,
       cancellationReviewedAt: reviewed?.cancellationReviewedAt || null,
       cancellationDecision: reviewed?.cancellationDecision || null,
       cancelledAt: reviewed?.cancelledAt || null,
-      ok: Boolean(reviewed?.cancellationReviewedAt && String(reviewed?.status || '') === 'cancelled')
+      ok: Boolean(reviewed
+        && String(reviewed.cancellationDecision || '') === decision
+        && (keeping
+          ? !reviewed.cancellationRequestedAt && String(reviewed.status || '') === sourceStatus
+          : String(reviewed.status || '') === 'cancelled'))
+    };
+  }
+
+  async function approveDetectedCancellation(bookingId) {
+    return reviewDetectedCancellation(bookingId, 'approved');
+  }
+
+  async function rejectDetectedCancellation(bookingId) {
+    return reviewDetectedCancellation(bookingId, 'rejected');
+  }
+
+  async function requestDetectedCancellationFromClient(participant, bookingId) {
+    const id = String(bookingId || '');
+    let child = participant?.window;
+    if (!child || child.closed) throw new Error('預約用戶端視窗已關閉，無法再次提出取消申請。');
+    if (participant.lastSurfaceKey !== 'booking' || child.MemberUserTestControl?.surface !== 'booking') {
+      const login = await createPairedSession(participant.account, 'booking');
+      participant.login = login;
+      participant.lastSurfaceKey = 'booking';
+      seedParticipantSession(participant, login);
+      child = await waitParticipantSurface(participant, 'booking', 'bookingView');
+    }
+    if (!child.BookingSystem?.loadConfig || !child.BookingSystem?.request) {
+      throw new Error('預約用戶端 API 尚未就緒，無法再次提出取消申請。');
+    }
+    const config = await child.BookingSystem.loadConfig();
+    await child.BookingSystem.request(config, 'member', '', 'user.booking.cancel', { bookingId: id });
+    const requested = await waitAdminBookingSnapshot(
+      id,
+      (row) => Boolean(row?.cancellationRequestedAt) && !row?.cancellationReviewedAt,
+      18000
+    );
+    if (typeof child.MemberClientQaHooks?.refresh === 'function') {
+      await child.MemberClientQaHooks.refresh().catch(() => {});
+    }
+    return {
+      bookingId: id,
+      status: String(requested?.status || ''),
+      cancellationRequestedAt: requested?.cancellationRequestedAt || null,
+      cancellationReviewedAt: requested?.cancellationReviewedAt || null,
+      ok: Boolean(requested?.cancellationRequestedAt && !requested?.cancellationReviewedAt)
     };
   }
 
@@ -2069,7 +2243,7 @@
       .map((row) => [String(row.bookingId || ''), row]));
     const missingIds = ids.filter((id) => !byId.has(id));
     const unresolved = ids.map((id) => byId.get(id)).filter(Boolean)
-      .filter((row) => !['completed', 'cancelled'].includes(row.status)
+      .filter((row) => !['completed', 'cancelled', 'rejected'].includes(row.status)
         || (row.cancellationRequestedAt && !row.cancellationReviewedAt))
       .map((row) => ({ bookingId: row.bookingId, status: row.status, cancellationPending: Boolean(row.cancellationRequestedAt && !row.cancellationReviewedAt) }));
     return { total: ids.length, missingIds, unresolved, ok: ids.length > 0 && !missingIds.length && !unresolved.length };
@@ -2081,7 +2255,7 @@
     if (!current || current.memberId !== booking.memberId) return { bookingId, ok: false, reason: 'booking-missing-or-owner-changed' };
     if (state.cancelled) return { bookingId, ok: false, reason: 'stopped' };
     if (current.cancellationRequestedAt && !current.cancellationReviewedAt) return cancelDetectedBooking(current);
-    if (['completed', 'cancelled'].includes(current.status)) return { bookingId, status: current.status, alreadyTerminal: true, ok: true };
+    if (['completed', 'cancelled', 'rejected'].includes(current.status)) return { bookingId, status: current.status, alreadyTerminal: true, ok: true };
     let confirmed = null;
     if (current.status === 'pending') {
       confirmed = await setDetectedBookingStatus(bookingId, '確認預約', 'QA ADMIN E2E CONFIRM ' + qaCrudStamp(), 'confirmed', 'pending');
@@ -2144,46 +2318,105 @@
       && booking.cancellationRequestedAt && !booking.cancellationReviewedAt
       && ['pending', 'confirmed'].includes(String(booking.status || ''))
     );
+    const rejectTarget = candidates.find((booking) =>
+      String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+      && String(booking.bookingId || '') !== String(cancellationTarget?.bookingId || '')
+      && /^QA STATE PACK pending /i.test(String(booking.memberNote || ''))
+      && String(booking.status || '') === 'pending'
+      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+    ) || candidates.find((booking) =>
+      String(booking.bookingId || '') !== String(mutable?.bookingId || '')
+      && String(booking.bookingId || '') !== String(cancellationTarget?.bookingId || '')
+      && String(booking.status || '') === 'pending'
+      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+    );
+
     const actual = {
       memberCode: account.memberCode || null,
       detectedCount: candidates.length,
-      detectedBookings: candidates.map((booking) => ({ bookingId: booking.bookingId, status: booking.status })),
-      statusTabs: {}, confirmed: null, modified: null, completed: null, cancelled: null,
-      remainingProcessed: [], terminal: null
+      detectedBookings: candidates.map((booking) => ({
+        bookingId: booking.bookingId,
+        status: booking.status,
+        memberNote: booking.memberNote || '',
+        cancellationPending: Boolean(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+      })),
+      statusTabs: {},
+      confirmed: null,
+      modified: null,
+      modifiedTechnician: null,
+      completed: null,
+      rejected: null,
+      keptCancellation: null,
+      cancellationRerequest: null,
+      cancelled: null,
+      remainingProcessed: [],
+      terminal: null
     };
     const expected = {
-      detectedFromUserE2E: true, confirmed: true, modified: true, completed: true,
-      cancellationRequest: true, cancelled: true, allStatusTabs: true, recordsPreserved: true
+      detectedFromUserE2E: true,
+      confirmed: true,
+      modifiedItems: true,
+      modifiedTechnician: true,
+      completed: true,
+      rejected: true,
+      cancellationKept: true,
+      cancellationApproved: true,
+      allStatusTabs: true,
+      recordsPreserved: true
     };
     const prefix = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_';
-    // Each transition is independently observable and persisted by recordResultRows.
-    // A missing cancellation request must never prevent the completion branch.
+
     await executeCases([
-      caseDef(prefix + 'CONFIRM', '預約：自動確認', 'Booking / Confirm', async () => {
+      caseDef(prefix + 'CONFIRM', '預約：確認預約', 'Booking / Confirm', async () => {
         if (!mutable) return fail('本輪用戶端未留下可確認的預約。', { mutablePendingBooking: true }, actual.detectedBookings);
         actual.statusTabs.pending = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'pending');
         actual.confirmed = await setDetectedBookingStatus(
-          mutable.bookingId, '確認預約', 'QA ADMIN E2E CONFIRM ' + qaCrudStamp(), 'confirmed', 'pending'
+          mutable.bookingId,
+          '確認預約',
+          'QA ADMIN E2E CONFIRM ' + qaCrudStamp(),
+          'confirmed',
+          'pending'
         );
         if (actual.confirmed.ok) actual.statusTabs.confirmed = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'confirmed');
         const detail = { ...actual.confirmed, pendingTab: actual.statusTabs.pending, confirmedTab: actual.statusTabs.confirmed };
         return actual.confirmed.ok && detail.pendingTab?.ok && detail.confirmedTab?.ok
-          ? pass('已自動確認預約，並驗證待確認 → 已確認分頁。', { status: 'confirmed' }, detail)
+          ? pass('已實際點擊「確認預約」，並回讀待確認 → 已確認狀態。', { status: 'confirmed' }, detail)
           : fail('確認預約或狀態分頁驗證失敗。', { status: 'confirmed' }, detail);
       }),
-      caseDef(prefix + 'MODIFY', '預約：自動修改並回讀服務數量', 'Booking / Modify', async () => {
-        if (!actual.confirmed?.ok) return fail('確認步驟未成功，未送出修改。', { confirmed: true }, { dependencyFailed: 'CONFIRM' });
+
+      caseDef(prefix + 'MODIFY', '預約：修改此位項目', 'Booking / Modify Items', async () => {
+        if (!actual.confirmed?.ok) return fail('確認步驟未成功，未送出項目修改。', { confirmed: true }, { dependencyFailed: 'CONFIRM' });
         const current = await waitAdminBookingSnapshot(mutable.bookingId, (row) => row.status === 'confirmed');
-        if (!current || current.status !== 'confirmed') return fail('修改前預約狀態已改變。', { status: 'confirmed' }, { status: current?.status });
+        if (!current || current.status !== 'confirmed') return fail('修改項目前預約狀態已改變。', { status: 'confirmed' }, { status: current?.status });
         actual.modified = await mutateDetectedBooking(current);
         return actual.modified.ok
-          ? pass('已透過管理端修改項目數量，並回讀實際儲存的服務與數量。', { quantityPersisted: true }, actual.modified)
-          : fail('修改內容未正確儲存，時間戳變更不能視為通過。', { quantityPersisted: true }, actual.modified);
+          ? pass('已實際點擊「修改此位項目」，並回讀儲存後服務數量。', { quantityPersisted: true }, actual.modified)
+          : fail('修改此位項目未正確儲存，時間戳變更不能視為通過。', { quantityPersisted: true }, actual.modified);
       }),
-      caseDef(prefix + 'COMPLETE', '預約：自動完成服務', 'Booking / Complete', async () => {
-        if (!actual.confirmed?.ok || !actual.modified?.ok) return fail('確認或修改步驟未成功，未送出完成。', { confirmed: true, modified: true }, { dependencyFailed: 'CONFIRM_OR_MODIFY' });
+
+      caseDef(prefix + 'MODIFY_TECHNICIAN', '預約：修改此位技師', 'Booking / Modify Technician', async () => {
+        if (!actual.confirmed?.ok || !actual.modified?.ok) {
+          return fail('確認或項目修改未成功，未送出技師修改。', { confirmed: true, modifiedItems: true }, { dependencyFailed: 'CONFIRM_OR_MODIFY' });
+        }
+        const current = await waitAdminBookingSnapshot(mutable.bookingId, (row) => row.status === 'confirmed');
+        actual.modifiedTechnician = await mutateDetectedBookingTechnician(current || mutable);
+        return actual.modifiedTechnician.ok
+          ? pass('已實際點擊「修改此位技師」，並回讀逐位技師資料確認持久化。', { technicianPersisted: true }, actual.modifiedTechnician)
+          : fail('修改此位技師未正確持久化。', { technicianPersisted: true }, actual.modifiedTechnician);
+      }),
+
+      caseDef(prefix + 'COMPLETE', '預約：完成預約', 'Booking / Complete', async () => {
+        if (!actual.confirmed?.ok || !actual.modified?.ok || !actual.modifiedTechnician?.ok) {
+          return fail('確認、項目或技師修改未成功，未送出完成。', {
+            confirmed: true, modifiedItems: true, modifiedTechnician: true
+          }, { dependencyFailed: 'CONFIRM_OR_MODIFY' });
+        }
         actual.completed = await setDetectedBookingStatus(
-          mutable.bookingId, '確認服務完成', 'QA ADMIN E2E COMPLETE ' + qaCrudStamp(), 'completed', 'confirmed'
+          mutable.bookingId,
+          '確認服務完成',
+          'QA ADMIN E2E COMPLETE ' + qaCrudStamp(),
+          'completed',
+          'confirmed'
         );
         if (actual.completed.ok) {
           actual.statusTabs.completed = await verifyDetectedBookingInCoreFilter(mutable.bookingId, 'completed');
@@ -2191,35 +2424,104 @@
         }
         const detail = { ...actual.completed, completedTab: actual.statusTabs.completed, allTab: actual.statusTabs.allCompleted };
         return actual.completed.ok && detail.completedTab?.ok && detail.allTab?.ok
-          ? pass('已自動完成服務，並驗證已完成與全部分頁。', { status: 'completed' }, detail)
+          ? pass('已完成預約，並驗證已完成與全部分頁。', { status: 'completed' }, detail)
           : fail('完成預約或狀態分頁驗證失敗。', { status: 'completed' }, detail);
       }),
-      caseDef(prefix + 'CANCEL', '預約：自動審核取消申請', 'Booking / Cancellation', async () => {
-        if (!cancellationTarget) return fail('本輪沒有另一筆取消申請；確認／修改／完成分支仍獨立執行。', {
-          cancellationRequestDetected: true, cancellableBookingSeparateFromCompletion: true
-        }, actual.detectedBookings);
-        actual.statusTabs.cancellationRequest = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'request');
-        actual.cancelled = await cancelDetectedBooking(cancellationTarget);
+
+      caseDef(prefix + 'REJECT', '預約：不通過', 'Booking / Reject', async () => {
+        if (!rejectTarget) {
+          return fail('本輪缺少可供「不通過」的獨立待確認預約；不可重用完成流程的同一筆資料。', {
+            separatePendingBooking: true
+          }, actual.detectedBookings);
+        }
+        actual.statusTabs.rejectPending = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'pending');
+        actual.rejected = await setDetectedBookingStatus(
+          rejectTarget.bookingId,
+          '不通過',
+          'QA ADMIN E2E REJECT ' + qaCrudStamp(),
+          'rejected',
+          'pending'
+        );
+        if (actual.rejected.ok) actual.statusTabs.allRejected = await verifyDetectedBookingInCoreFilter(rejectTarget.bookingId, 'all');
+        const detail = { ...actual.rejected, pendingTab: actual.statusTabs.rejectPending, allTab: actual.statusTabs.allRejected };
+        return actual.rejected.ok && detail.pendingTab?.ok && detail.allTab?.ok
+          ? pass('已實際點擊「不通過」，並回讀 rejected 終態。', { status: 'rejected' }, detail)
+          : fail('不通過操作或全部分頁驗證失敗。', { status: 'rejected' }, detail);
+      }),
+
+      caseDef(prefix + 'KEEP_CANCELLATION', '預約：保留預約', 'Booking / Cancellation Keep', async () => {
+        if (!cancellationTarget) {
+          return fail('本輪沒有可供審核的取消申請。', { cancellationRequestDetected: true }, actual.detectedBookings);
+        }
+        actual.statusTabs.cancellationRequestKeep = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'request');
+        actual.keptCancellation = await rejectDetectedCancellation(cancellationTarget.bookingId);
+        if (actual.keptCancellation.ok) {
+          actual.statusTabs.keptSource = await verifyDetectedBookingInCoreFilter(
+            cancellationTarget.bookingId,
+            actual.keptCancellation.sourceStatus
+          );
+        }
+        const detail = {
+          ...actual.keptCancellation,
+          requestTab: actual.statusTabs.cancellationRequestKeep,
+          sourceTab: actual.statusTabs.keptSource
+        };
+        return actual.keptCancellation.ok && detail.requestTab?.ok && detail.sourceTab?.ok
+          ? pass('已實際點擊「保留預約」，取消申請結束且原預約狀態保留。', {
+              decision: 'rejected', cancellationPending: false
+            }, detail)
+          : fail('保留預約或狀態回讀失敗。', { decision: 'rejected', cancellationPending: false }, detail);
+      }),
+
+      caseDef(prefix + 'CANCEL', '預約：確認取消', 'Booking / Cancellation Approve', async () => {
+        if (!cancellationTarget) {
+          return fail('本輪沒有可供再次申請取消的預約。', { cancellationRequestDetected: true }, actual.detectedBookings);
+        }
+        if (!actual.keptCancellation?.ok) {
+          return fail('保留預約步驟未成功，不能以同一筆資料建立第二次獨立取消申請。', {
+            cancellationKept: true
+          }, { dependencyFailed: 'KEEP_CANCELLATION' });
+        }
+        actual.cancellationRerequest = await requestDetectedCancellationFromClient(participant, cancellationTarget.bookingId);
+        if (!actual.cancellationRerequest.ok) {
+          return fail('會員端未能再次提出取消申請。', { cancellationRequestedAgain: true }, actual.cancellationRerequest);
+        }
+        actual.statusTabs.cancellationRequestApprove = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'request');
+        actual.cancelled = await approveDetectedCancellation(cancellationTarget.bookingId);
         if (actual.cancelled.ok) {
           actual.statusTabs.cancelled = await verifyDetectedBookingInCancellationFilter(cancellationTarget.bookingId, 'cancelled');
           actual.statusTabs.allCancelled = await verifyDetectedBookingInCoreFilter(cancellationTarget.bookingId, 'all');
         }
-        const detail = { ...actual.cancelled, requestTab: actual.statusTabs.cancellationRequest, cancelledTab: actual.statusTabs.cancelled, allTab: actual.statusTabs.allCancelled };
+        const detail = {
+          ...actual.cancelled,
+          rerequest: actual.cancellationRerequest,
+          requestTab: actual.statusTabs.cancellationRequestApprove,
+          cancelledTab: actual.statusTabs.cancelled,
+          allTab: actual.statusTabs.allCancelled
+        };
         return actual.cancelled.ok && detail.requestTab?.ok && detail.cancelledTab?.ok && detail.allTab?.ok
-          ? pass('已審核取消申請，並驗證取消申請、已取消與全部分頁。', { status: 'cancelled' }, detail)
-          : fail('取消審核或狀態分頁驗證失敗。', { status: 'cancelled' }, detail);
+          ? pass('會員再次申請取消後，已實際點擊「確認取消」，並驗證已取消與全部分頁。', {
+              decision: 'approved', status: 'cancelled'
+            }, detail)
+          : fail('確認取消或狀態分頁驗證失敗。', { decision: 'approved', status: 'cancelled' }, detail);
       })
-    ], '預約自動處理 · 測試用戶 ' + participant.index);
+    ], '預約完整自動處理 · 測試用戶 ' + participant.index);
 
-    const primaryIds = new Set([mutable?.bookingId, cancellationTarget?.bookingId].filter(Boolean));
+    const primaryIds = new Set([
+      mutable?.bookingId,
+      rejectTarget?.bookingId,
+      cancellationTarget?.bookingId
+    ].filter(Boolean));
     const remaining = candidates.filter((booking) => !primaryIds.has(booking.bookingId));
     await executeCases(remaining.map((booking, index) => caseDef(
       prefix + 'REMAINING_' + (index + 1),
-      '預約：接手其餘本輪 QA 資料 ' + (index + 1), 'Booking / Remaining', async () => {
+      '預約：接手其餘本輪 QA 資料 ' + (index + 1),
+      'Booking / Remaining',
+      async () => {
         const detail = await finishRemainingBooking(booking);
         actual.remainingProcessed.push(detail);
         return detail.ok
-          ? pass('本輪額外建立的 QA 預約已完成或取消，資料保留。', { terminal: true }, detail)
+          ? pass('本輪額外建立的 QA 預約已進入 completed / cancelled / rejected 終態，資料保留。', { terminal: true }, detail)
           : fail('仍有本輪 QA 預約未處理完成。', { terminal: true }, detail);
       }
     )), '預約剩餘資料 · 測試用戶 ' + participant.index);
@@ -2227,18 +2529,22 @@
     await executeCases([caseDef(prefix + 'TERMINAL', '預約：兩端皆無本輪未完成資料', 'Booking / Terminal', async () => {
       actual.terminal = await verifyPairedBookingTerminalState(participant);
       return actual.terminal.ok
-        ? pass('管理端與用戶端均已回讀並顯示本輪預約終態，沒有待確認或待審核取消。', { unresolved: 0, clientSynchronized: true }, actual.terminal)
-        : fail('本輪仍有預約未完成、未審核取消、資料遺失或用戶端未同步，不能判定通過。', { unresolved: 0, clientSynchronized: true }, actual.terminal);
+        ? pass('管理端與用戶端均已回讀本輪預約終態，沒有待確認或待審核取消。', {
+            unresolved: 0, clientSynchronized: true
+          }, actual.terminal)
+        : fail('本輪仍有預約未完成、未拒絕、未審核取消、資料遺失或用戶端未同步。', {
+            unresolved: 0, clientSynchronized: true
+          }, actual.terminal);
     })], '預約終態驗證 · 測試用戶 ' + participant.index);
 
     if (state.cancelled) return skip('預約 E2E 已停止，已完成的動作與資料保留。', expected, actual);
-    const steps = ['CONFIRM', 'MODIFY', 'COMPLETE', 'CANCEL'].map((key) =>
-      state.results.find((row) => row.key === prefix + key)
-    );
+    const steps = ['CONFIRM', 'MODIFY', 'MODIFY_TECHNICIAN', 'COMPLETE', 'REJECT', 'KEEP_CANCELLATION', 'CANCEL']
+      .map((key) => state.results.find((row) => row.key === prefix + key));
     return steps.every((row) => row?.status === 'passed')
       && actual.remainingProcessed.length === remaining.length
-      && actual.remainingProcessed.every((row) => row.ok) && actual.terminal?.ok
-      ? pass('已自動確認 → 修改 → 完成預約，並獨立審核取消申請；六個狀態分頁均已驗證，資料保留供觀察。', expected, actual)
+      && actual.remainingProcessed.every((row) => row.ok)
+      && actual.terminal?.ok
+      ? pass('已覆蓋確認預約、修改此位項目、修改此位技師、不通過、保留預約、確認取消與完成預約，且全部回讀驗證通過。', expected, actual)
       : fail('預約 E2E 有未通過步驟，請查看各動作的獨立結果。', expected, actual);
   }
 
