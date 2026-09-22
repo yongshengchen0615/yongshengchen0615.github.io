@@ -23,9 +23,9 @@ const participant = () => ({
 function harness(bookings = [], extra = {}) {
   const calls = [];
   const window = { addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0) };
-  const context = vm.createContext({ window, document: {}, performance, CSS: { escape: (x) => x }, ...extra });
+  const context = vm.createContext({ window, document: {}, performance, TextEncoder, CSS: { escape: (x) => x }, ...extra });
   const expose = `
-    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, runAdmin, runPaired };
+    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, runAdmin, runPaired, recordResultRows };
     window.qa.install = (io) => {
       adminBookingBootstrapSnapshot = io.bootstrap;
       verifyDetectedBookingInCoreFilter = io.core;
@@ -49,6 +49,10 @@ function harness(bookings = [], extra = {}) {
       postPublicTestMode = async () => ({ maintenanceEnabled: false });
       prepareComplexE2EFixtures = fixture;
       recordRun = async () => null;
+    };
+    window.qa.recordIO = (post) => {
+      adminSession = async () => ({ idToken: 'test-stub' });
+      postFunction = post;
     };
   `;
   vm.runInContext(source.replace('  window.MemberAdminE2EControl =', expose + '\n  window.MemberAdminE2EControl ='), context);
@@ -157,6 +161,25 @@ test('maintenance must be enabled before any fixtures or accounts are created', 
   const result = await qa.runPaired({ bookingOnly: true });
   assert.equal(result.error.code, 'TEST_MAINTENANCE_REQUIRED');
   assert.equal(created, false);
+});
+
+test('large paired reports retain every case within the server limit of 80 per run', async () => {
+  const { qa } = harness();
+  const payloads = [];
+  qa.recordIO(async (slug, payload) => {
+    assert.equal(slug, 'test-control-api');
+    payloads.push(payload);
+    return { run: { runCode: 'batch-' + payloads.length } };
+  });
+  const rows = Array.from({ length: 185 }, (_, index) => ({
+    key: 'case-' + index, status: index === 184 ? 'failed' : 'passed', actual: { index }
+  }));
+  const result = await qa.recordResultRows(rows, 'paired-browser', 'full', account.memberId, startedAt);
+  assert.deepEqual(payloads.map((payload) => payload.cases.length), [80, 80, 25]);
+  assert.deepEqual(payloads.flatMap((payload) => Array.from(payload.cases, (row) => row.key)), rows.map((row) => row.key));
+  assert.ok(payloads.every((payload) => payload.memberId === account.memberId && payload.startedAt === startedAt));
+  assert.equal(payloads[2].cases[24].status, 'failed');
+  assert.equal(result.runs.length, 3);
 });
 
 for (const grouped of [false, true]) {

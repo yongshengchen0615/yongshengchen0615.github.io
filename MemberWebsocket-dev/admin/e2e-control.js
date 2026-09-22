@@ -332,9 +332,17 @@
   }
 
   async function recordResultRows(rows, runnerKind, suite, memberId = '', startedAt = '') {
-    const session = await adminSession();
     const sourceRows = Array.isArray(rows) ? rows : [];
     if (!sourceRows.length) return null;
+    // test-control-api accepts at most 80 cases per browser run.
+    if (sourceRows.length > 80) {
+      const batches = [];
+      for (let offset = 0; offset < sourceRows.length; offset += 80) {
+        batches.push(await recordResultRows(sourceRows.slice(offset, offset + 80), runnerKind, suite, memberId, startedAt));
+      }
+      return { ...batches[batches.length - 1], runs: batches.map((batch) => batch?.run).filter(Boolean) };
+    }
+    const session = await adminSession();
     const cases = sourceRows.map((item) => {
       const detailLimit = item.status === 'failed' ? 3600 : 1400;
       return {
