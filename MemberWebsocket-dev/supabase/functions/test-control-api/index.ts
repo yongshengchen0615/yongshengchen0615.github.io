@@ -170,6 +170,37 @@ async function audit(
   }
 }
 
+
+async function emitRealtimeEvent(supabase: any, eventType: string): Promise<void> {
+  const result = await supabase.from("realtime_events").insert({
+    scope: "all",
+    event_type: asText(eventType, 120),
+  });
+  if (result.error) {
+    throw new ApiError(503, "TEST_REALTIME_EVENT_FAILED", "測試資料已更新，但即時同步事件建立失敗。");
+  }
+}
+
+async function prepareComplexFixtures(
+  supabase: any,
+  identity: { lineUserId: string },
+  body: Json,
+): Promise<Json> {
+  const requestedTag = asText(body.runTag, 40).replace(/[^A-Za-z0-9_-]/g, "");
+  const runTag = requestedTag || (new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + crypto.randomUUID().replaceAll("-", "").slice(0, 8));
+  const rpc = await supabase.rpc("admin_prepare_complex_e2e_fixtures", {
+    p_run_tag: runTag,
+    p_actor: identity.lineUserId,
+  });
+  if (rpc.error) {
+    throw new ApiError(503, "E2E_FIXTURE_PREPARE_FAILED", "目前無法建立完整 E2E 前置資料。", rpc.error.message || null);
+  }
+  const fixture = rpc.data && typeof rpc.data === "object" ? rpc.data : {};
+  await audit(supabase, identity, "test_control.fixture.prepare", "e2e_fixture", runTag, fixture as Json);
+  await emitRealtimeEvent(supabase, "test_mode.fixture.prepared");
+  return fixture as Json;
+}
+
 function runCode(): string {
   const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
@@ -1083,6 +1114,43 @@ Deno.serve(async (request: Request) => {
     const identity = await verifyAdminIdentity(asText(body.idToken, 10_000));
     await authorizeAdmin(supabase, identity);
 
+    if (action === "admin.test-control.prepare-e2e-fixtures") {
+      const fixture = await prepareComplexFixtures(supabase, identity, body);
+      return response(origin, {
+        ok: true,
+        status: 201,
+        data: { fixture, runs: await recentRuns(supabase) },
+      }, 201);
+    }
+
+    if (action === "admin.test-control.cleanup-ticket-template") {
+      const ticketTemplateId = asText(body.ticketTemplateId, 120);
+      if (!ticketTemplateId) throw new ApiError(400, "INVALID_TICKET_TEMPLATE_ID", "票券識別不正確。");
+      const lookup = await supabase.from("ticket_templates")
+        .select("id,ticket_template_id,title,created_by")
+        .eq("ticket_template_id", ticketTemplateId)
+        .maybeSingle();
+      if (lookup.error) throw new ApiError(503, "QA_TICKET_READ_FAILED", "目前無法確認 QA 票券。");
+      if (!lookup.data) {
+        return response(origin, { ok: true, status: 200, data: { deleted: true, alreadyMissing: true } });
+      }
+      const qaOwned = String(lookup.data.created_by || "").startsWith("qa:")
+        || String(lookup.data.title || "").startsWith("E2E QA ")
+        || String(lookup.data.title || "").startsWith("QA ");
+      if (!qaOwned) throw new ApiError(403, "QA_TICKET_REQUIRED", "只允許清理 E2E QA 票券。");
+      const refs = await Promise.all([
+        supabase.from("point_card_rewards").select("id", { count: "exact", head: true }).eq("ticket_template_id", lookup.data.id),
+        supabase.from("point_tickets").select("id", { count: "exact", head: true }).eq("ticket_template_id", lookup.data.id),
+      ]);
+      if (refs.some((item: any) => item.error)) throw new ApiError(503, "QA_TICKET_REFERENCE_CHECK_FAILED", "目前無法確認 QA 票券關聯。");
+      if (refs.some((item: any) => Number(item.count || 0) > 0)) {
+        return response(origin, { ok: true, status: 200, data: { deleted: false, referenced: true } });
+      }
+      const deleted = await supabase.from("ticket_templates").delete().eq("id", lookup.data.id);
+      if (deleted.error) throw new ApiError(503, "QA_TICKET_DELETE_FAILED", "目前無法清理 QA 票券。");
+      return response(origin, { ok: true, status: 200, data: { deleted: true, alreadyMissing: false } });
+    }
+
     if (action === "admin.test-control.list") {
       return response(origin, {
         ok: true,
@@ -1159,7 +1227,13 @@ Deno.serve(async (request: Request) => {
       if (purge.error) {
         throw new ApiError(503, "TEST_DATA_PURGE_FAILED", "目前無法移除測試資料。", purge.error.message || null);
       }
-      const summary = purge.data && typeof purge.data === "object" ? purge.data : {};
+      const extended = await supabase.rpc("admin_purge_extended_qa_artifacts");
+      if (extended.error) {
+        throw new ApiError(503, "TEST_EXTENDED_PURGE_FAILED", "測試會員資料已清理，但延伸 E2E 資源清理失敗。", extended.error.message || null);
+      }
+      const baseSummary = purge.data && typeof purge.data === "object" ? purge.data : {};
+      const extendedSummary = extended.data && typeof extended.data === "object" ? extended.data : {};
+      const summary = { ...(baseSummary as Json), ...(extendedSummary as Json) };
       await audit(
         supabase,
         identity,
@@ -1168,6 +1242,7 @@ Deno.serve(async (request: Request) => {
         "MemberWebsocket-dev",
         summary as Json,
       );
+      await emitRealtimeEvent(supabase, "test_mode.data.purged");
       return response(origin, {
         ok: true,
         status: 200,
