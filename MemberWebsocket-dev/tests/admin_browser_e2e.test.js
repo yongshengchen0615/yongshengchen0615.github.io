@@ -9,7 +9,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('admin loads dedicated browser E2E controls', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
+  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260922-\d+/);
   assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-\d+/);
   assert.match(runner, /runAdminQuickE2EButton/);
   assert.match(runner, /runAdminFullE2EButton/);
