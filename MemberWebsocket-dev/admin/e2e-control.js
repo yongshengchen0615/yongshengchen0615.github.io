@@ -2854,11 +2854,35 @@
       '預約：接手其餘本輪 QA 資料 ' + (index + 1),
       'Booking / Remaining',
       async () => {
+        const realtimeProbe = await beginBookingRealtimeProbe(participant, booking.bookingId);
         const detail = await finishRemainingBooking(booking);
+        if (detail.ok && !detail.alreadyTerminal) {
+          const finalRow = await waitAdminBookingSnapshot(
+            booking.bookingId,
+            (row) => ['completed', 'cancelled', 'rejected'].includes(String(row?.status || ''))
+              && !(row?.cancellationRequestedAt && !row?.cancellationReviewedAt),
+            12000
+          );
+          detail.realtimeSync = finalRow
+            ? await verifyBookingRealtimeSync(
+                participant,
+                realtimeProbe,
+                (snapshot) => String(snapshot.status || '') === String(finalRow.status || '')
+                  && !(snapshot.cancellationRequestedAt && !snapshot.cancellationReviewedAt),
+                String(finalRow.status || '')
+              )
+            : { ok: false, reason: 'admin-terminal-state-not-found' };
+        } else if (detail.ok) {
+          detail.realtimeSync = { ok: true, notRequired: true, reason: 'already-terminal' };
+        }
         actual.remainingProcessed.push(detail);
-        return detail.ok
-          ? pass('本輪額外建立的 QA 預約已進入 completed / cancelled / rejected 終態，資料保留。', { terminal: true }, detail)
-          : fail('仍有本輪 QA 預約未處理完成。', { terminal: true }, detail);
+        return detail.ok && detail.realtimeSync?.ok
+          ? pass('本輪額外 QA 預約已由管理端處理至終態，且用戶端同步完成。', {
+              terminal: true, clientSynchronized: true
+            }, detail)
+          : fail('本輪額外 QA 預約未處理完成或用戶端同步失敗。', {
+              terminal: true, clientSynchronized: true
+            }, detail);
       }
     )), '預約剩餘資料 · 測試用戶 ' + participant.index);
 
@@ -2873,14 +2897,67 @@
           }, actual.terminal);
     })], '預約終態驗證 · 測試用戶 ' + participant.index);
 
+    await executeCases([caseDef(prefix + 'RISK_SCAN', '預約：同步／競態／越權風險掃描', 'Booking / Risk Scan', async () => {
+      const handoffIds = Array.isArray(participant.bookingResult?.bookingHandoff?.bookingIds)
+        ? participant.bookingResult.bookingHandoff.bookingIds.map(String).filter(Boolean)
+        : [];
+      const uniqueHandoffIds = [...new Set(handoffIds)];
+      const fresh = await adminBookingBootstrapSnapshot();
+      const allRows = Array.isArray(fresh?.bookings) ? fresh.bookings : [];
+      const handoffRows = allRows.filter((row) => uniqueHandoffIds.includes(String(row?.bookingId || '')));
+      const foreignOwnerRows = handoffRows.filter((row) => String(row?.memberId || '') !== String(account.memberId || ''));
+      const candidateOutsideHandoff = candidates
+        .filter((row) => !uniqueHandoffIds.includes(String(row?.bookingId || '')))
+        .map((row) => String(row?.bookingId || ''));
+      const realtimeRows = Object.entries(actual.realtime).map(([name, value]) => ({ name, ...(value || {}) }));
+      const realtimeFailures = realtimeRows.filter((row) => row.ok !== true);
+      const manualRefreshViolations = realtimeRows.filter((row) => row.manualRefreshUsed === true);
+      const remainingSyncFailures = actual.remainingProcessed.filter((row) => row?.realtimeSync?.ok !== true);
+      const unresolved = Array.isArray(actual.terminal?.admin?.unresolved) ? actual.terminal.admin.unresolved : [];
+      const missingIds = Array.isArray(actual.terminal?.admin?.missingIds) ? actual.terminal.admin.missingIds : [];
+      const cancellationPending = unresolved.filter((row) => row.cancellationPending);
+      actual.riskScan = {
+        handoffCount: handoffIds.length,
+        duplicateHandoffIds: handoffIds.length - uniqueHandoffIds.length,
+        foreignOwnerBookingIds: foreignOwnerRows.map((row) => String(row?.bookingId || '')),
+        candidateOutsideHandoff,
+        realtimeChecks: realtimeRows.length,
+        realtimeFailures,
+        manualRefreshViolations,
+        remainingSyncFailures: remainingSyncFailures.map((row) => row.bookingId),
+        unresolved,
+        missingIds,
+        cancellationPending,
+        terminalClientSynchronized: Boolean(actual.terminal?.client?.uiSynchronized),
+        risksDetected: []
+      };
+      if (actual.riskScan.duplicateHandoffIds) actual.riskScan.risksDetected.push('duplicate-handoff');
+      if (foreignOwnerRows.length || candidateOutsideHandoff.length) actual.riskScan.risksDetected.push('cross-account-or-out-of-scope');
+      if (realtimeFailures.length || manualRefreshViolations.length || remainingSyncFailures.length) actual.riskScan.risksDetected.push('realtime-or-stale-client');
+      if (unresolved.length || missingIds.length || cancellationPending.length) actual.riskScan.risksDetected.push('unfinished-or-cancellation-race');
+      if (!actual.terminal?.client?.uiSynchronized) actual.riskScan.risksDetected.push('backend-ui-divergence');
+      const ok = actual.riskScan.risksDetected.length === 0
+        && realtimeRows.length >= 7
+        && uniqueHandoffIds.length > 0;
+      actual.riskScan.ok = ok;
+      return ok
+        ? pass('完整預約 E2E 未發現跨會員誤操作、Realtime 靜默失效、UI 落後、取消競態或未處理預約。', {
+            risksDetected: 0, realtimeChecksAtLeast: 7, unresolved: 0
+          }, actual.riskScan)
+        : fail('完整預約 E2E 偵測到同步、競態、資料範圍或終態風險。', {
+            risksDetected: 0, realtimeChecksAtLeast: 7, unresolved: 0
+          }, actual.riskScan);
+    })], '預約風險掃描 · 測試用戶 ' + participant.index);
+
     if (state.cancelled) return skip('預約 E2E 已停止，已完成的動作與資料保留。', expected, actual);
-    const steps = ['CONFIRM', 'MODIFY', 'MODIFY_TECHNICIAN', 'COMPLETE', 'REJECT', 'KEEP_CANCELLATION', 'CANCEL']
+    const steps = ['CONFIRM', 'MODIFY', 'MODIFY_TECHNICIAN', 'COMPLETE', 'REJECT', 'KEEP_CANCELLATION', 'CANCEL', 'TERMINAL', 'RISK_SCAN']
       .map((key) => state.results.find((row) => row.key === prefix + key));
     return steps.every((row) => row?.status === 'passed')
       && actual.remainingProcessed.length === remaining.length
-      && actual.remainingProcessed.every((row) => row.ok)
+      && actual.remainingProcessed.every((row) => row.ok && row.realtimeSync?.ok)
       && actual.terminal?.ok
-      ? pass('已覆蓋確認預約、修改此位項目、修改此位技師、不通過、保留預約、確認取消與完成預約，且全部回讀驗證通過。', expected, actual)
+      && actual.riskScan?.ok
+      ? pass('管理端已像真人接手所有本輪預約，逐步驗證用戶端 Realtime，同時完成終態與風險掃描。', expected, actual)
       : fail('預約 E2E 有未通過步驟，請查看各動作的獨立結果。', expected, actual);
   }
 
