@@ -1221,43 +1221,78 @@ async function prepareUsageState(s: any, identity: any, token: string, surface: 
   const settings: any = (bootstrap.data as any).settings || {};
   const bootstrapToday = asText((bootstrap.data as any).today, 10);
   const createdStates: Json[] = [];
+  const stateFailures: Json[] = [];
   for (const targetState of ["pending", "cancel_requested"]) {
-    try {
-      const slot = await findBookingSlot(
-        token,
-        "booking-api",
-        "user.booking.slots",
-        { items: setup.items },
-        bootstrapToday,
-        Number(settings.minAdvanceDays || 0),
-        Number(settings.maxAdvanceDays || 0),
-      );
-      const create = await callFunction("booking-api", token, {
-        action: "user.booking.create",
-        clientType: "member",
-        requestId: "BOOK-STATE-" + suffix(),
-        bookingDate: slot.date,
-        startTime: slot.startTime,
-        items: setup.items,
-        memberNote: "QA STATE PACK " + targetState + " " + tag,
-      });
-      if (!create.ok) continue;
-      const booking: any = (create.data as any).booking || {};
-      const bookingId = asText(booking.bookingId, 80);
-      if (!bookingId) continue;
-      if (targetState === "cancel_requested") {
-        const cancelled = await callFunction("booking-api", token, {
-          action: "user.booking.cancel",
+    let stateCreated = false;
+    for (let attempt = 0; attempt < 8 && !stateCreated; attempt += 1) {
+      let bookingId = "";
+      try {
+        const slot = await findBookingSlot(
+          token,
+          "booking-api",
+          "user.booking.slots",
+          { items: setup.items },
+          bootstrapToday,
+          Number(settings.minAdvanceDays || 0),
+          Number(settings.maxAdvanceDays || 0),
+        );
+        const create = await callFunction("booking-api", token, {
+          action: "user.booking.create",
           clientType: "member",
-          bookingId,
+          requestId: "BOOK-STATE-" + suffix(),
+          bookingDate: slot.date,
+          startTime: slot.startTime,
+          items: setup.items,
+          memberNote: "QA STATE PACK " + targetState + " " + tag,
         });
-        if (cancelled.ok) createdStates.push({ bookingId, state: "cancel_requested" });
-        else createdStates.push({ bookingId, state: "pending" });
-      } else {
-        createdStates.push({ bookingId, state: "pending" });
+        if (!create.ok) {
+          stateFailures.push({
+            state: targetState,
+            attempt: attempt + 1,
+            stage: "create",
+            code: asText(create.error.code, 120),
+          });
+        } else {
+          const booking: any = (create.data as any).booking || {};
+          bookingId = asText(booking.bookingId, 80);
+          if (!bookingId) {
+            stateFailures.push({ state: targetState, attempt: attempt + 1, stage: "identity" });
+          } else if (targetState === "cancel_requested") {
+            const cancelled = await callFunction("booking-api", token, {
+              action: "user.booking.cancel",
+              clientType: "member",
+              bookingId,
+            });
+            if (cancelled.ok) {
+              createdStates.push({ bookingId, state: "cancel_requested" });
+              stateCreated = true;
+            } else {
+              stateFailures.push({
+                state: targetState,
+                attempt: attempt + 1,
+                stage: "cancel",
+                code: asText(cancelled.error.code, 120),
+              });
+              await cleanupBooking(s, bookingId);
+              bookingId = "";
+            }
+          } else {
+            createdStates.push({ bookingId, state: "pending" });
+            stateCreated = true;
+          }
+        }
+      } catch (error) {
+        if (bookingId) await cleanupBooking(s, bookingId);
+        stateFailures.push({
+          state: targetState,
+          attempt: attempt + 1,
+          stage: "slot-or-create",
+          code: error instanceof ApiError ? error.code : "QA_STATE_PACK_RETRY",
+        });
       }
-    } catch {
-      // 個別狀態若因當下時段不足無法建立，保留其他已建立狀態。
+      if (!stateCreated && attempt < 7) {
+        await new Promise((resolve) => setTimeout(resolve, 120 + attempt * 80));
+      }
     }
   }
   return {
@@ -1267,6 +1302,7 @@ async function prepareUsageState(s: any, identity: any, token: string, surface: 
     recordsCreated: createdStates.length,
     stateKinds: createdStates.map((row: any) => asText(row.state, 40)),
     bookings: createdStates,
+    failures: stateFailures.slice(-8),
     skipped: createdStates.length === 0,
   };
 }
