@@ -82,6 +82,10 @@ function harness() {
     drainTimers,
     flush,
     pendingTimers: () => timers.size,
+    setHidden(hidden = true) { document.visibilityState = hidden ? 'hidden' : 'visible'; },
+    enableTestSession() {
+      window.TestModeClient = { getSessionToken() { return 'qa-test-session'; } };
+    },
   };
 }
 
@@ -137,4 +141,26 @@ test('booking realtime coalesces an event storm while one refresh is in flight',
   await h.drainTimers();
   assert.equal(calls, 2);
   assert.equal(maxActive, 1);
+});
+
+
+test('booking realtime defers hidden production windows', async () => {
+  const h = harness();
+  let calls = 0;
+  h.BookingSystem.subscribeRealtime(config, () => { calls += 1; }, 'member');
+  h.setHidden(true);
+  h.emit();
+  await h.drainTimers();
+  assert.equal(calls, 0);
+});
+
+test('booking realtime keeps background test-session windows synchronized', async () => {
+  const h = harness();
+  let calls = 0;
+  h.enableTestSession();
+  h.BookingSystem.subscribeRealtime(config, () => { calls += 1; }, 'member');
+  h.setHidden(true);
+  h.emit();
+  await h.drainTimers();
+  assert.equal(calls, 1);
 });
