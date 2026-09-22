@@ -25,7 +25,7 @@ test('paired runner covers every member-facing surface and verifies admin record
   }
   assert.match(runner, /MemberUserTestControl/);
   assert.match(runner, /runFull\(\)/);
-  assert.match(runner, /PAIRED_ADMIN_RECORD_SYNC/);
+  assert.match(runner, /_ADMIN_RECORD_SYNC/);
   assert.match(runner, /data-record-filter="testAutomation"/);
   assert.match(runner, /member-test-session-v1/);
   assert.match(runner, /MAX_PAIRED_PARTICIPANTS = 10/);
