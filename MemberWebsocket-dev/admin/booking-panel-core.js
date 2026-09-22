@@ -807,6 +807,7 @@
     const copyButton = document.createElement('button');
     copyButton.type = 'button';
     copyButton.className = 'booking-copy-button';
+    copyButton.dataset.bookingAdminAction = 'copy-booking';
     copyButton.textContent = '複製預約內容';
     copyButton.setAttribute('aria-label', `複製 ${bookingContactName(booking)} 的預約內容`);
     summary.appendChild(copyButton);
@@ -1059,7 +1060,7 @@
     state.realtimeChannel = null;
   }
 
-  function actionButton(label, className, handler) { const button = document.createElement('button'); button.type = 'button'; button.className = className; button.textContent = label; button.addEventListener('click', handler); return button; }
+  function actionButton(label, className, handler) { const button = document.createElement('button'); button.type = 'button'; button.className = className; button.textContent = label; button.dataset.bookingAdminAction = String(label || 'action'); button.addEventListener('click', handler); return button; }
   function appendNote(card, text, admin) { const note = document.createElement('p'); note.className = `booking-admin-note${admin ? ' admin' : ''}`; note.textContent = text; card.appendChild(note); }
   function showModal() { els.bookingAdminCrudModal.classList.remove('hidden'); }
   function closeModal() { if (!state.busy) els.bookingAdminCrudModal.classList.add('hidden'); }

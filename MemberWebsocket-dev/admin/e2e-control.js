@@ -907,10 +907,41 @@
     }, timeoutMs);
   }
 
+  async function waitAdminWriteSettled(buttonId, timeoutMs = 22000) {
+    return Boolean(await waitFor(() => {
+      const button = document.getElementById(buttonId);
+      if (!button) return null;
+      return !button.disabled ? button : null;
+    }, timeoutMs, 80));
+  }
+
+  async function clickResourceRow(selector, dataKey, value, timeoutMs = 6000) {
+    const row = await waitFor(() => {
+      return Array.from(document.querySelectorAll(selector)).find((item) =>
+        String(item.dataset?.[dataKey] || '') === String(value || '')
+      ) || null;
+    }, timeoutMs, 80);
+    if (!row) return false;
+    row.click();
+    return true;
+  }
+
   function findBookingRow(containerId, title) {
     return Array.from(document.querySelectorAll('#' + containerId + ' .booking-admin-service-row')).find((row) => {
       return String(row.querySelector('strong')?.textContent || '').trim() === String(title || '').trim();
     }) || null;
+  }
+
+  async function waitBookingAdminReady(timeoutMs = 15000) {
+    return Boolean(await waitFor(() => {
+      const status = document.getElementById('bookingAdminSyncStatus');
+      const text = String(status?.textContent || '');
+      if (!status || /同步預約資料中/.test(text) || status.classList.contains('error')) return null;
+      return document.getElementById('bookingAdminNewTypeButton')
+        && document.getElementById('bookingAdminNewServiceButton')
+        && document.getElementById('bookingAdminTypeList')
+        && document.getElementById('bookingAdminServiceList');
+    }, timeoutMs, 100));
   }
 
   function clickBookingRowAction(containerId, title, actionLabel) {
@@ -950,6 +981,7 @@
     document.getElementById('saveTicketButton')?.click();
 
     const ticketTemplateId = String(await waitFor(() => document.getElementById('ticketTemplateId')?.value || null, 15000) || '');
+    await waitAdminWriteSettled('saveTicketButton');
     if (!ticketTemplateId) {
       closeEditorModalById('ticketEditorModal');
       throw new Error('票券儲存後沒有取得 Ticket Template ID。');
@@ -977,18 +1009,22 @@
       setField('ticketTitle', updatedTitle);
       setField('ticketDescription', 'E2E QA 深度票券已完成修改驗證。');
       document.getElementById('saveTicketButton')?.click();
+      await waitAdminWriteSettled('saveTicketButton');
+      await clickResourceRow('#ticketListItems [data-ticket-template-id]', 'ticketTemplateId', ticketTemplateId);
       actual.updated = Boolean(await waitFor(() =>
         String(document.getElementById('ticketTemplateId')?.value || '') === ticketTemplateId &&
         String(document.getElementById('ticketTitle')?.value || '') === updatedTitle &&
         textIncludes('#ticketListItems', updatedTitle)
-      , 15000));
+      , 8000));
 
       setField('ticketStatus', 'archived');
       document.getElementById('saveTicketButton')?.click();
+      await waitAdminWriteSettled('saveTicketButton');
+      await clickResourceRow('#ticketListItems [data-ticket-template-id]', 'ticketTemplateId', ticketTemplateId);
       actual.archived = Boolean(await waitFor(() =>
         String(document.getElementById('ticketTemplateId')?.value || '') === ticketTemplateId &&
         String(document.getElementById('ticketStatus')?.value || '') === 'archived'
-      , 15000));
+      , 8000));
     } finally {
       closeEditorModalById('ticketEditorModal');
       if (ticketTemplateId) {
@@ -1061,17 +1097,20 @@
 
       document.getElementById('saveCardButton')?.click();
       createdId = String(await waitFor(() => document.getElementById('cardId')?.value || null, 15000) || '');
+      await waitAdminWriteSettled('saveCardButton');
       actual.created = Boolean(createdId && await waitFor(() => textIncludes('#cardListItems', createdTitle), 10000));
 
       if (actual.created) {
         setField('cardTitle', updatedTitle);
         setField('cardBenefitDescription', '管理端 CRUD E2E 已完成修改');
         document.getElementById('saveCardButton')?.click();
+        await waitAdminWriteSettled('saveCardButton');
+        await clickResourceRow('#cardListItems [data-card-id]', 'cardId', createdId);
         actual.updated = Boolean(await waitFor(() => {
           return String(document.getElementById('cardId')?.value || '') === createdId &&
             String(document.getElementById('cardTitle')?.value || '') === updatedTitle &&
             textIncludes('#cardListItems', updatedTitle);
-        }, 15000));
+        }, 8000));
       }
 
       if (actual.created) {
@@ -1137,17 +1176,20 @@
 
       document.getElementById('saveEventTicketButton')?.click();
       createdId = String(await waitFor(() => document.getElementById('eventTicketId')?.value || null, 15000) || '');
+      await waitAdminWriteSettled('saveEventTicketButton');
       actual.created = Boolean(createdId && await waitFor(() => textIncludes('#eventTicketListItems', createdTitle), 10000));
 
       if (actual.created) {
         setField('eventTicketTitle', updatedTitle);
         setField('eventTicketDescription', '管理端 CRUD E2E 已完成修改');
         document.getElementById('saveEventTicketButton')?.click();
+        await waitAdminWriteSettled('saveEventTicketButton');
+        await clickResourceRow('#eventTicketListItems [data-event-ticket-id]', 'eventTicketId', createdId);
         actual.updated = Boolean(await waitFor(() => {
           return String(document.getElementById('eventTicketId')?.value || '') === createdId &&
             String(document.getElementById('eventTicketTitle')?.value || '') === updatedTitle &&
             textIncludes('#eventTicketListItems', updatedTitle);
-        }, 15000));
+        }, 8000));
       }
 
       if (actual.created) {
@@ -1263,6 +1305,9 @@
     tab.click();
     document.getElementById('bookingAdminServicesSubtab')?.click();
     await waitFor(() => !document.getElementById('bookingAdminServicesPanel')?.classList.contains('hidden'), 4000);
+    if (!await waitBookingAdminReady()) {
+      return fail('預約管理資料尚未同步完成。', { bookingAdminReady: true }, { bookingAdminReady: false });
+    }
 
     try {
       document.getElementById('bookingAdminNewTypeButton')?.click();
@@ -1441,7 +1486,7 @@
       const id = String(button.id || '');
       const datasets = Object.keys(button.dataset || {});
       const accepted =
-        Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|runQuickAutomation|runFullAutomation|close|cancel|save|grant|messagePreset|booking|runAdmin|runPaired|add|queue|delete|clear|new|reset|archive|balance)/i.test(id)) ||
+        Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|runQuickAutomation|runFullAutomation|close|cancel|save|grant|messagePreset|booking|runAdmin|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
         datasets.length > 0 ||
         button.classList.contains('editor-modal-close') ||
         button.classList.contains('close-button');
@@ -2050,6 +2095,7 @@
     select.dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('saveCardButton')?.click();
     ctx.cardId = String(await waitFor(() => document.getElementById('cardId')?.value || null, 15000) || '');
+    await waitAdminWriteSettled('saveCardButton');
     if (!ctx.cardId) throw new Error('深度 E2E 集點卡沒有取得 Card ID。');
     if (!await waitFor(() => textIncludes('#cardListItems', ctx.cardTitle), 10000)) throw new Error('深度 E2E 集點卡沒有出現在管理端。');
     closeEditorModalById('cardEditorModal');

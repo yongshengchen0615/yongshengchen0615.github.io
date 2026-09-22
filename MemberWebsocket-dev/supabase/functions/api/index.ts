@@ -1963,19 +1963,60 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       if (!presetResult.data) throw new ApiError(400,"MESSAGE_PRESET_NOT_AVAILABLE","選擇的預設訊息目前無法使用。");
       selectedMessagePreset = presetResult.data;
     }
-    let points: unknown = body.points;
-    let serviceMinutes = 0;
-    if (action === "admin.stamps.add") points = [{ cardId:body.cardId,amount:Number(body.amount) }];
-    if (action === "admin.service_minutes.add") serviceMinutes = Number(body.minutes || (body.serviceTime as Json)?.minutes || 0);
-    if (action === "admin.member-grants.add") serviceMinutes = Number((body.serviceTime as Json)?.minutes || 0);
+    let normalizedPoints: Json[] = [];
+    let serviceMinutes: number | null = null;
 
-    const normalizedPoints = Array.isArray(points) ? points : [];
+    if (action === "admin.stamps.add") {
+      const amount = Number(body.amount);
+      const cardId = asText(body.cardId,120);
+      if (!cardId || !Number.isInteger(amount) || amount < 1 || amount > 100) {
+        throw new ApiError(400,"INVALID_POINT_AMOUNT","點數必須是 1–100 的整數。");
+      }
+      normalizedPoints = [{ cardId, amount }];
+    } else if (action === "admin.service_minutes.add") {
+      const minutes = Number(body.minutes ?? (body.serviceTime as Json)?.minutes);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+        throw new ApiError(400,"INVALID_SERVICE_MINUTES","服務時間必須是 1–1440 分鐘。");
+      }
+      serviceMinutes = minutes;
+    } else {
+      if (body.points !== undefined) {
+        if (!Array.isArray(body.points)) {
+          throw new ApiError(400,"INVALID_POINT_AMOUNT","點數發放格式不正確。");
+        }
+        const seenCards = new Set<string>();
+        normalizedPoints = body.points.map((raw:any) => {
+          const cardId = asText(raw?.cardId,120);
+          const amount = Number(raw?.amount);
+          if (!cardId || !Number.isInteger(amount) || amount < 1 || amount > 100 || seenCards.has(cardId)) {
+            throw new ApiError(400,"INVALID_POINT_AMOUNT","每張集點卡只能出現一次，點數必須是 1–100 的整數。");
+          }
+          seenCards.add(cardId);
+          return { cardId, amount };
+        });
+      }
+
+      const hasServiceTime = Boolean(body.serviceTime && typeof body.serviceTime === "object"
+        && Object.prototype.hasOwnProperty.call(body.serviceTime as Json,"minutes"));
+      if (hasServiceTime) {
+        const minutes = Number((body.serviceTime as Json).minutes);
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+          throw new ApiError(400,"INVALID_SERVICE_MINUTES","服務時間必須是 1–1440 分鐘。");
+        }
+        serviceMinutes = minutes;
+      }
+
+      if (!normalizedPoints.length && serviceMinutes === null) {
+        throw new ApiError(400,"EMPTY_GRANT","請至少發放一項點數或服務時間。");
+      }
+    }
+
     const rpc = await supabase.rpc("grant_member_benefits",{
       p_actor_line_user_id:identity.lineUserId,
       p_member_line_user_id:lineUserId,
       p_request_id:req,
-      p_points:normalizedPoints,
-      p_service_minutes:serviceMinutes || 0,
+      p_points:normalizedPoints.length ? normalizedPoints : null,
+      p_service_minutes:serviceMinutes,
       p_note:"",
     });
     if (rpc.error) throw mapDatabaseError(rpc.error);
@@ -1999,7 +2040,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
           memberRow.data.id,
           req,
           normalizedPoints,
-          serviceMinutes,
+          serviceMinutes || 0,
           selectedMessagePreset?.message || "",
           minutes,
           tier.tier_key,

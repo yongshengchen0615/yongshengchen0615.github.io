@@ -392,6 +392,7 @@
       const edit = document.createElement('button');
       edit.type = 'button';
       edit.className = 'booking-admin-technician-row-main';
+      edit.dataset.bookingAdminAction = 'edit-technician';
       edit.setAttribute('aria-label', `編輯技師 ${technician.name || ''}`);
 
       const copy = document.createElement('span');
@@ -414,6 +415,7 @@
       const statusAction = document.createElement('button');
       statusAction.type = 'button';
       statusAction.className = 'button button-outline booking-admin-technician-status-action';
+      statusAction.dataset.bookingAdminAction = technician.isActive ? 'disable-technician' : 'restore-technician';
 
       if (technician.isActive) {
         const isPrimary = technician.technicianId === primaryId;

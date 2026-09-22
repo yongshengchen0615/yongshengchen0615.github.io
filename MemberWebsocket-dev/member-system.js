@@ -510,7 +510,18 @@
     let queued = false;
     let lastRefreshAt = -Infinity;
     let subscribedOnce = false;
-    const isPaused = () => document.visibilityState === 'hidden'
+    const hasActiveTestSession = () => {
+      try {
+        return Boolean(window.TestModeClient
+          && typeof window.TestModeClient.getSessionToken === 'function'
+          && window.TestModeClient.getSessionToken());
+      } catch (_) {
+        return false;
+      }
+    };
+    // Production clients pause background refreshes to control traffic. Paired E2E
+    // uses real background windows, so test sessions must keep consuming Realtime.
+    const isPaused = () => (document.visibilityState === 'hidden' && !hasActiveTestSession())
       || (typeof navigator !== 'undefined' && navigator.onLine === false);
 
     // Realtime, reconnect and page-resume signals share one refresh queue.
