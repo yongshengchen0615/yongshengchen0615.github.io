@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.3';
+  const VERSION = '2026-09-22.4';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -367,23 +367,27 @@
   }
 
   async function runSuite(suite) {
-    if (state.running) return;
+    const requestedSuite = suite === 'full' ? 'full' : 'quick';
+    if (state.running) {
+      return { ok: false, busy: true, surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
+    }
     try {
       const session = await window.TestModeClient.sessionStatus(await loadConfig());
       if (!session || !session.active || !session.account || !session.account.memberId) {
         removeUi();
-        return;
+        return { ok: false, skipped: true, reason: 'inactive-session', surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 1, total: 0 } };
       }
       state.session = session;
     } catch (error) {
       removeUi();
-      return;
+      return { ok: false, skipped: true, reason: 'session-check-failed', error: plainError(error), surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 1, total: 0 } };
     }
 
-    state.currentSuite = suite === 'full' ? 'full' : 'quick';
+    state.currentSuite = requestedSuite;
     state.results = [];
     state.bootstrap = null;
     state.mutationSuite = null;
+    state.browserRun = null;
     state.cancelled = false;
     setRunning(true);
     setStatus('執行中');
@@ -454,6 +458,33 @@
     );
     saveHistory();
     renderHistory();
+
+    const passed = state.results.filter((item) => item.status === 'passed').length;
+    const skipped = state.results.filter((item) => item.status === 'skipped').length;
+    return {
+      ok: !cancelled && failed === 0,
+      cancelled,
+      surface,
+      suite: state.currentSuite,
+      account: state.session && state.session.account || null,
+      browserRun: state.browserRun || null,
+      results: state.results.map((item) => ({
+        key: item.key || '',
+        name: item.name || '',
+        domain: item.domain || '',
+        status: item.status || '',
+        message: item.message || '',
+        expected: safeJson(item.expected),
+        actual: safeJson(item.actual),
+        durationMs: Number(item.durationMs || 0)
+      })),
+      summary: {
+        passed,
+        failed,
+        skipped,
+        total: state.results.length
+      }
+    };
   }
 
   function buildCases(suite) {
