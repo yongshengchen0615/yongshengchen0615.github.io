@@ -2379,6 +2379,107 @@
   }
 
 
+
+  async function ensureBookingRealtimeClient(participant) {
+    let child = participant?.window;
+    if (!child || child.closed) throw new Error('預約用戶端視窗已關閉，無法驗證 Realtime。');
+    if (participant.lastSurfaceKey !== 'booking' || child.MemberUserTestControl?.surface !== 'booking') {
+      const login = await createPairedSession(participant.account, 'booking');
+      participant.login = login;
+      participant.lastSurfaceKey = 'booking';
+      seedParticipantSession(participant, login);
+      child = await waitParticipantSurface(participant, 'booking', 'bookingView');
+    }
+    const hooks = child.MemberClientQaHooks;
+    if (hooks?.surface !== 'booking'
+      || typeof hooks.getRenderCount !== 'function'
+      || typeof hooks.getBookingSnapshot !== 'function') {
+      throw new Error('預約用戶端 Realtime QA probe 尚未就緒。');
+    }
+    return { child, hooks };
+  }
+
+  async function beginBookingRealtimeProbe(participant, bookingId) {
+    const { child, hooks } = await ensureBookingRealtimeClient(participant);
+    const id = String(bookingId || '');
+    return {
+      bookingId: id,
+      beforeRenderCount: Number(hooks.getRenderCount() || 0),
+      beforeSnapshot: safe(hooks.getBookingSnapshot(id)),
+      clientUrl: String(child.location?.href || '')
+    };
+  }
+
+  function memberBookingItems(snapshot, participantPosition = null) {
+    if (participantPosition && Array.isArray(snapshot?.participants)) {
+      const participant = snapshot.participants.find((item, index) =>
+        Number(item?.position || index + 1) === Number(participantPosition)
+      );
+      if (participant) return Array.isArray(participant.items) ? participant.items : [];
+    }
+    return Array.isArray(snapshot?.items) ? snapshot.items : [];
+  }
+
+  function memberBookingQuantity(snapshot, serviceId, participantPosition = null) {
+    const item = memberBookingItems(snapshot, participantPosition)
+      .find((row) => String(row?.serviceId || '') === String(serviceId || ''));
+    return Number(item?.quantity || 0);
+  }
+
+  function memberBookingTechnician(snapshot, participantPosition) {
+    const participants = Array.isArray(snapshot?.participants) ? snapshot.participants : [];
+    const participant = participants.find((item, index) =>
+      Number(item?.position || index + 1) === Number(participantPosition)
+    );
+    return String(participant?.technicianId || '');
+  }
+
+  function memberDisplayStatus(snapshot) {
+    return snapshot?.cancellationRequestedAt && !snapshot?.cancellationReviewedAt
+      ? 'cancel_requested'
+      : String(snapshot?.status || '');
+  }
+
+  async function verifyBookingRealtimeSync(participant, probe, validator, expectedDisplayStatus = '', timeoutMs = 15000) {
+    const { child, hooks } = await ensureBookingRealtimeClient(participant);
+    const started = performance.now();
+    let latest = null;
+    const synchronized = Boolean(await waitFor(() => {
+      const renderCount = Number(hooks.getRenderCount() || 0);
+      const snapshot = hooks.getBookingSnapshot(probe.bookingId);
+      const card = child.document.querySelector(
+        '#bookingList .booking-item[data-booking-id="' + CSS.escape(probe.bookingId) + '"]'
+      );
+      const displayStatus = memberDisplayStatus(snapshot);
+      const badgeMatches = !expectedDisplayStatus
+        || Boolean(card?.querySelector('.status-badge')?.classList.contains('status-' + expectedDisplayStatus));
+      let dataMatches = false;
+      try { dataMatches = Boolean(snapshot && validator(snapshot)); } catch { dataMatches = false; }
+      latest = {
+        renderCount,
+        renderAdvanced: renderCount > Number(probe.beforeRenderCount || 0),
+        displayStatus,
+        badgeMatches,
+        dataMatches,
+        snapshot: safe(snapshot)
+      };
+      return latest.renderAdvanced && latest.badgeMatches && latest.dataMatches ? true : null;
+    }, timeoutMs, 120));
+    return {
+      bookingId: probe.bookingId,
+      beforeRenderCount: probe.beforeRenderCount,
+      afterRenderCount: Number(latest?.renderCount || 0),
+      renderAdvanced: Boolean(latest?.renderAdvanced),
+      expectedDisplayStatus: expectedDisplayStatus || null,
+      actualDisplayStatus: latest?.displayStatus || null,
+      badgeMatches: Boolean(latest?.badgeMatches),
+      dataMatches: Boolean(latest?.dataMatches),
+      elapsedMs: Math.max(0, Math.round(performance.now() - started)),
+      manualRefreshUsed: false,
+      ok: synchronized
+    };
+  }
+
   function bookingTerminalSnapshot(bookings, bookingIds, memberId) {
     const ids = [...new Set((bookingIds || []).map(String).filter(Boolean))];
     const byId = new Map((Array.isArray(bookings) ? bookings : [])
