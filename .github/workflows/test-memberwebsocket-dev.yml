@@ -40,6 +40,7 @@ jobs:
           node --check MemberWebsocket-dev/admin/admin-session.js
           node --check MemberWebsocket-dev/admin/test-mode.js
           node --check MemberWebsocket-dev/admin/test-control.js
+          node --check MemberWebsocket-dev/admin/e2e-control.js
           node --check MemberWebsocket-dev/admin/app.js
           node --check MemberWebsocket-dev/admin/grant-automation.js
           node --check MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js
