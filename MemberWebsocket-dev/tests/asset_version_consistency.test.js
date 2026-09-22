@@ -25,6 +25,11 @@ test('all application entry pages reference the current shared responsive asset'
   }
 });
 
+test('admin entry does not render escaped newline text', () => {
+  const html = read('admin/index.html');
+  assert.equal(html.includes('\\n'), false);
+});
+
 test('admin entry references current booking assets', () => {
   const html = read('admin/index.html');
   assert.ok(html.includes('calendar-responsive.css?v=calendar-responsive-20260914-mobile-fit-2'));
