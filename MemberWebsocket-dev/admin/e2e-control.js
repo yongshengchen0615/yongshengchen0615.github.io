@@ -25,7 +25,8 @@
     floating: null,
     clientWindows: [],
     participants: [],
-    adminTestAccount: null
+    adminTestAccount: null,
+    runStartedAt: ''
   };
 
   window.addEventListener('DOMContentLoaded', mount);
@@ -350,6 +351,8 @@
       runnerKind,
       suite,
       memberId: memberId || undefined,
+      startedAt: state.runStartedAt || undefined,
+      completedAt: new Date().toISOString(),
       cases
     };
     const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
@@ -391,6 +394,7 @@
     state.participants = [];
     state.cancelled = false;
     state.runSequence += 1;
+    state.runStartedAt = new Date().toISOString();
     renderParticipants();
     setBusy(true, '管理端');
     setMessage(suite === 'full' ? '正在以測試用戶執行管理端完整真人 E2E…' : '正在以測試用戶執行管理端快速 E2E…');
@@ -438,6 +442,7 @@
 
     state.results = [];
     state.participants = [];
+    state.runStartedAt = new Date().toISOString();
     setBusy(true, '協同');
     setMessage('管理端正在先建立完整高複雜度測試資料；用戶端視窗目前只保持待命，不會提前開始。');
     try {
