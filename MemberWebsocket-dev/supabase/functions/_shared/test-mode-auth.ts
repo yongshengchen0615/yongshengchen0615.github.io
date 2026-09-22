@@ -3,6 +3,7 @@ export type TestModeIdentity = {
   displayName: string;
   memberId: string;
   isTestAccount: true;
+  surface: string;
 };
 
 export type TestDeviceClass = "pc" | "mobile";
@@ -52,7 +53,7 @@ export async function resolveTestSession(
       .maybeSingle(),
     supabase
       .from("test_login_sessions")
-      .select("id,member_id,device_class,expires_at,revoked_at")
+      .select("id,member_id,device_class,surface,expires_at,revoked_at")
       .eq("token_hash", tokenHash)
       .maybeSingle(),
   ]);
@@ -116,6 +117,7 @@ export async function resolveTestSession(
     displayName: String(member.display_name || "測試會員"),
     memberId: String(member.id),
     isTestAccount: true,
+    surface: String(session.surface || ""),
   };
 }
 
