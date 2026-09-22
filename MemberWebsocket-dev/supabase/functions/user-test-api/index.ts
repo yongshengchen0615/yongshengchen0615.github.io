@@ -695,10 +695,9 @@ async function persistUserQaRun(
       surface,
       skippedCases: skippedCount,
       memberId: identity.memberId,
-      durationMs,
     },
-    started_at: startedAt,
-    completed_at: completedAt,
+    started_at: now,
+    completed_at: now,
     updated_at: now,
   }).select("id").single();
   if (runInsert.error || !runInsert.data) {
