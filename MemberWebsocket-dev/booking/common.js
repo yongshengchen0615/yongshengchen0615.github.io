@@ -333,6 +333,20 @@
     let subscribedOnce = false;
     let realtimeTimer = null;
 
+    const backgroundResyncAllowed = () => {
+      try {
+        return Boolean(
+          window.TestModeClient
+          && typeof window.TestModeClient.getSessionToken === 'function'
+          && window.TestModeClient.getSessionToken()
+        );
+      } catch (_) {
+        return false;
+      }
+    };
+    const shouldDeferResync = () => !navigator.onLine
+      || (document.visibilityState === 'hidden' && !backgroundResyncAllowed());
+
     const clearScheduledResync = () => {
       if (realtimeTimer !== null) window.clearTimeout(realtimeTimer);
       realtimeTimer = null;
@@ -341,7 +355,7 @@
     const schedule = (delayMs = 450) => {
       if (disposed) return;
       resyncQueued = true;
-      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+      if (shouldDeferResync()) return;
       if (realtimeTimer !== null) return;
       realtimeTimer = window.setTimeout(() => {
         realtimeTimer = null;
@@ -351,7 +365,7 @@
 
     const runResync = () => {
       if (disposed) return;
-      if (document.visibilityState === 'hidden' || !navigator.onLine) {
+      if (shouldDeferResync()) {
         resyncQueued = true;
         return;
       }

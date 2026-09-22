@@ -2321,10 +2321,48 @@
   async function mutateDetectedBooking(booking) {
     await openAdminBookingQueue(String(booking?.status || 'pending'));
     const bookingId = String(booking?.bookingId || '');
-    let card = await waitFor(() => document.querySelector('#bookingAdminQueue .booking-admin-booking[data-booking-id="' + CSS.escape(bookingId) + '"]'), 8000, 100);
+    const beforeDetails = await detectedBookingGroupDetails(bookingId).catch(() => ({ group: null, primaryTechnicianId: '' }));
+    const participants = Array.isArray(beforeDetails.group?.participants) ? beforeDetails.group.participants : [];
+
+    let targetIndex = 0;
+    let targetPosition = null;
+    let preferredServiceId = '';
+    if (participants.length) {
+      targetIndex = participants.findIndex((participant) =>
+        (Array.isArray(participant?.items) ? participant.items : [])
+          .some((item) => Number(item?.quantity || 0) >= 2)
+      );
+      if (targetIndex < 0) {
+        targetIndex = participants.findIndex((participant) =>
+          !participant?.technicianId
+          && (Array.isArray(participant?.items) ? participant.items : []).length > 0
+        );
+      }
+      if (targetIndex < 0) {
+        throw new Error('目前多人預約沒有可安全調整的項目：避免擴張已指定技師的預約時段。');
+      }
+      const target = participants[targetIndex];
+      targetPosition = Number(target?.position || targetIndex + 1);
+      const targetItems = Array.isArray(target?.items) ? target.items : [];
+      const preferred = targetItems.find((item) => Number(item?.quantity || 0) >= 2) || targetItems[0] || null;
+      preferredServiceId = String(preferred?.serviceId || '');
+    }
+
+    const card = await waitFor(() => document.querySelector(
+      '#bookingAdminQueue .booking-admin-booking[data-booking-id="' + CSS.escape(bookingId) + '"]'
+    ), 8000, 100);
     if (!card) throw new Error('管理端找不到要修改的用戶端 E2E 預約。');
 
-    const editButton = bookingActionButton(card, '修改此位項目') || bookingActionButton(card, '修改服務項目');
+    const blocks = typeof card.querySelectorAll === 'function'
+      ? Array.from(card.querySelectorAll('.booking-group-admin-participant'))
+      : [];
+    const candidateBlock = participants.length ? (blocks[targetIndex] || null) : null;
+    const targetContainer = participants.length
+      ? (candidateBlock && typeof candidateBlock.querySelectorAll === 'function' ? candidateBlock : card)
+      : card;
+    if (!targetContainer) throw new Error('管理端找不到可安全修改的預約人項目區塊。');
+    const editButton = bookingActionButton(targetContainer, '修改此位項目')
+      || bookingActionButton(targetContainer, '修改服務項目');
     if (!editButton) throw new Error('這筆預約沒有可供管理端 E2E 操作的修改項目按鈕。');
     await adminHumanClick(editButton, '修改此位項目');
 
@@ -2336,11 +2374,17 @@
     const form = modal.querySelector('form');
     if (!form) throw new Error('管理端修改預約表單不存在。');
 
-    const checked = form.querySelector('input[type="checkbox"]:checked');
+    const checkedInputs = typeof form.querySelectorAll === 'function'
+      ? Array.from(form.querySelectorAll('input[type="checkbox"]:checked'))
+      : [form.querySelector('input[type="checkbox"]:checked')].filter(Boolean);
+    const checked = checkedInputs.find((input) =>
+      preferredServiceId
+      && String(input.dataset?.bookingService || input.value || '') === preferredServiceId
+    ) || checkedInputs[0] || null;
     const quantity = checked?.closest('label')?.querySelector('select');
     if (!checked || !quantity) throw new Error('管理端修改預約沒有可調整的已選服務項目。');
     const beforeQuantity = Number(quantity.value || 1);
-    const afterQuantity = beforeQuantity === 2 ? 1 : 2;
+    const afterQuantity = beforeQuantity >= 2 ? beforeQuantity - 1 : beforeQuantity + 1;
     const serviceId = String(checked.dataset?.bookingService || checked.value || '');
     const participantEditor = Boolean(form.querySelector('[data-participant-item-rows]'));
     await adminHumanSelect(quantity, String(afterQuantity), '服務數量');
@@ -2360,13 +2404,12 @@
     const updated = await waitAdminBookingSnapshot(bookingId, (row) => String(row.updatedAt || '') !== beforeUpdatedAt, 16000);
     let items = updated?.items || [];
     if (participantEditor && updated) {
-      const session = await adminSession();
-      const details = await postFunction('booking-group-details-api', {
-        action: 'admin.booking.group.details', clientType: 'admin', idToken: session.idToken,
-        bookingIds: [bookingId]
-      });
-      // The first edit button belongs to the first participant displayed by the UI.
-      items = details?.bookingGroups?.[bookingId]?.participants?.[0]?.items || [];
+      const afterDetails = await detectedBookingGroupDetails(bookingId);
+      const afterParticipants = Array.isArray(afterDetails.group?.participants) ? afterDetails.group.participants : [];
+      const targetAfter = afterParticipants.find((participant) => Number(participant?.position || 0) === targetPosition)
+        || afterParticipants[targetIndex]
+        || null;
+      items = Array.isArray(targetAfter?.items) ? targetAfter.items : [];
     }
     const persistedQuantity = Number(items.find((item) => String(item.serviceId || '') === serviceId)?.quantity || 0);
     const updatedAtChanged = Boolean(updated && String(updated.updatedAt || '') !== beforeUpdatedAt);
@@ -2378,11 +2421,11 @@
       persistedQuantity,
       updatedAtChanged,
       updatedAt: updated?.updatedAt || null,
-      participantPosition: participantEditor ? 1 : null,
+      participantPosition: participantEditor ? targetPosition : null,
+      safeMutation: beforeQuantity >= 2 ? 'decrease-existing-quantity' : 'increase-unassigned-participant',
       ok: updatedAtChanged && persistedQuantity === afterQuantity
     };
   }
-
 
   async function detectedBookingGroupDetails(bookingId) {
     const id = String(bookingId || '');

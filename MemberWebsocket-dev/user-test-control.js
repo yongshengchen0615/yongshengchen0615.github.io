@@ -1534,8 +1534,8 @@
       const firstAdd = chooseNormalServiceButton(cards[0] || document);
       firstAdd?.click();
       actual.firstAdded = Boolean(await waitFor(() => cards[0]?.querySelector('.selected-service-remove') || document.querySelector('#participantCardList .participant-card[data-participant-index="0"] .selected-service-remove'), 1200));
-      // Reserve two units up front so the admin can test a real 2 → 1 edit
-      // without extending into another participant's reserved slot.
+      // Add a second distinct item so the group fixture has a non-trivial item set.
+      // Quantity changes are exercised by the admin against the safest participant at runtime.
       chooseNormalServiceButton(document.querySelector('#participantCardList .participant-card[data-participant-index="0"]') || document)?.click();
       actual.firstQuantityTwo = Boolean(await waitFor(() => document.querySelectorAll('#participantCardList .participant-card[data-participant-index="0"] .selected-service-remove').length >= 2, 1200));
       const secondCard = document.querySelector('#participantCardList .participant-card[data-participant-index="1"]');
@@ -1666,15 +1666,8 @@
     const data = state.usageState || {};
     const kinds = Array.isArray(data.stateKinds) ? data.stateKinds.filter(Boolean) : [];
     const recordsCreated = Number(data.recordsCreated || 0);
-    const minimumRecords = surface === 'points' ? 8 : surface === 'event' ? 6 : surface === 'calendar' ? 5 : surface === 'member' ? 2 : 1;
-    const minimumKinds = surface === 'points' ? 6 : surface === 'event' ? 5 : surface === 'calendar' ? 5 : surface === 'member' ? 3 : 1;
-    if (data.skipped === true && surface === 'booking') {
-      return skip(
-        '預約頁目前沒有足夠可預約資源建立前置生命週期；後續真人新增／修改／取消案例仍會繼續。',
-        { preparedOrSafelySkipped: true },
-        { scenario: data.scenario || '', recordsCreated, stateKinds: kinds }
-      );
-    }
+    const minimumRecords = surface === 'points' ? 8 : surface === 'event' ? 6 : surface === 'calendar' ? 5 : surface === 'member' ? 2 : surface === 'booking' ? 2 : 1;
+    const minimumKinds = surface === 'points' ? 6 : surface === 'event' ? 5 : surface === 'calendar' ? 5 : surface === 'member' ? 3 : surface === 'booking' ? 2 : 1;
     const ok = data.prepared === true && recordsCreated >= minimumRecords && kinds.length >= minimumKinds;
     const actual = {
       scenario: data.scenario || '',

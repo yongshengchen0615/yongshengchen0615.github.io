@@ -86,3 +86,15 @@ test('booking state pack seeds existing lifecycle before human booking actions',
   assert.match(api, /action: "user\.booking\.cancel"/);
   assert.match(api, /QA STATE PACK/);
 });
+
+
+test('booking state pack retries slot races and requires both admin lifecycle fixtures', () => {
+  const api = read('supabase/functions/user-test-api/index.ts');
+  const runner = read('user-test-control.js');
+  assert.match(api, /attempt < 8/);
+  assert.match(api, /stage: "create"/);
+  assert.match(api, /await cleanupBooking\(s, bookingId\)/);
+  assert.match(api, /failures: stateFailures\.slice\(-8\)/);
+  assert.match(runner, /surface === 'booking' \? 2 : 1/);
+  assert.doesNotMatch(runner, /preparedOrSafelySkipped/);
+});
