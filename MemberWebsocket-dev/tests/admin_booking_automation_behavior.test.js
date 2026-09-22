@@ -143,6 +143,16 @@ function harness(bookings = [], extra = {}) {
 const cancellation = () => booking('cancel', { memberNote: 'QA HUMAN E2E run', cancellationRequestedAt: startedAt });
 const rejection = () => booking('reject', { memberNote: 'QA STATE PACK pending tag' });
 
+test('admin booking bootstrap snapshot uses the booking API endpoint', () => {
+  const start = source.indexOf('async function adminBookingBootstrapSnapshot()');
+  const end = source.indexOf('\n  function bookingCreatedMs', start);
+  assert.ok(start >= 0 && end > start);
+  const body = source.slice(start, end);
+  assert.match(body, /postFunction\('booking-api',\s*\{/);
+  assert.match(body, /action:\s*'admin\.booking\.bootstrap'/);
+  assert.doesNotMatch(body, /MemberSystem\.request/);
+});
+
 test('covers every admin booking action with independent observable results', async () => {
   const { qa, calls } = harness([booking('complete'), cancellation(), rejection()]);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
