@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.7';
+  const VERSION = '2026-09-22.8';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -1558,6 +1558,8 @@
       runTag
     });
     const fixture = data?.fixture || {};
+    const primaryTechnicianId = String(fixture.primaryTechnicianId || '').trim();
+    const maxPartySize = Number(fixture.maxPartySize || 0);
     const ready = Number(fixture.ticketTemplates || 0) >= 4 &&
       Number(fixture.pointCards || 0) >= 3 &&
       Number(fixture.pointRewardNodes || 0) >= 6 &&
@@ -1565,9 +1567,11 @@
       Number(fixture.calendarItems || 0) >= 5 &&
       Number(fixture.fixedTickets || 0) >= 4 &&
       Number(fixture.bookingServices || 0) >= 4 &&
-      Number(fixture.bookingTechnicians || 0) >= 3;
+      Number(fixture.bookingTechnicians || 0) >= 3 &&
+      Boolean(primaryTechnicianId) &&
+      maxPartySize >= 2;
     if (!ready) {
-      const error = new Error('管理端高複雜度 E2E 前置資料建立不完整，已禁止用戶端開始測試。');
+      const error = new Error('管理端高複雜度 E2E 前置資料建立不完整（包含主要技師／多人預約設定），已禁止用戶端開始測試。');
       error.code = 'E2E_FIXTURE_INCOMPLETE';
       error.fixture = fixture;
       throw error;
@@ -1583,7 +1587,9 @@
         fixedSchedules: ['birthday_month', 'yearly', 'monthly', 'weekly'],
         eventDateStates: ['past', 'today', 'active-window', 'future'],
         membershipTiers: ['general', 'silver', 'gold', 'platinum'],
-        minimumPointNodes: 6
+        minimumPointNodes: 6,
+        primaryTechnicianConfigured: true,
+        maxPartySizeAtLeast: 2
       },
       actual: safe(fixture),
       durationMs: 0
@@ -1674,7 +1680,28 @@
     }
     if (!control) throw new Error(label + ' E2E 控制器未在獨立用戶端視窗就緒。');
 
-    const result = await control.runFull();
+    const surfaceTimeoutMs = surface === 'booking' ? 180000 : 150000;
+    let result;
+    let timeoutId = 0;
+    try {
+      result = await Promise.race([
+        control.runFull(),
+        new Promise((_, reject) => {
+          timeoutId = window.setTimeout(() => {
+            const error = new Error(label + ' E2E 超過允許執行時間，已自動停止以避免協同測試卡住。');
+            error.code = 'E2E_SURFACE_TIMEOUT';
+            reject(error);
+          }, surfaceTimeoutMs);
+        })
+      ]);
+    } catch (error) {
+      if (error?.code === 'E2E_SURFACE_TIMEOUT') {
+        try { control.stop?.(); } catch {}
+      }
+      throw error;
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    }
     if (!result || typeof result !== 'object') throw new Error(label + ' E2E 未回傳結構化結果。');
     if (!result.cancelled && result?.account?.memberId !== participant.account?.memberId) {
       const error = new Error(label + ' E2E 使用者與指定測試用戶不一致。');
