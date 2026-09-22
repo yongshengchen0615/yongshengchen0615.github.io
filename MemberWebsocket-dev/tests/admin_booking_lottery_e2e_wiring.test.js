@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('paired admin booking E2E takes over user-created booking data after client runs', () => {
+test('paired admin booking E2E covers modify, confirm, complete and cancel using user-created bookings', () => {
   const e2e = read('admin/e2e-control.js');
 
   assert.match(e2e, /recordResultRows/);
@@ -16,9 +16,12 @@ test('paired admin booking E2E takes over user-created booking data after client
   assert.match(e2e, /修改此位項目/);
   assert.match(e2e, /修改服務項目/);
   assert.match(e2e, /確認預約/);
-  assert.match(e2e, /不通過/);
-  assert.match(e2e, /bookingCancellationRequestFilter/);
-  assert.match(e2e, /reject-cancellation/);
+  assert.match(e2e, /確認服務完成/);
+  assert.match(e2e, /取消預約/);
+  assert.match(e2e, /approve-cancellation/);
+  assert.match(e2e, /確認取消/);
+  assert.match(e2e, /expectedStatus === 'completed'/);
+  assert.match(e2e, /cancellableBookingSeparateFromCompletion/);
   assert.match(e2e, /participant\.account\?\.memberId/);
 
   const clientJoin = e2e.indexOf('await Promise.all([adminTask, ...clientTasks]);');
@@ -26,7 +29,7 @@ test('paired admin booking E2E takes over user-created booking data after client
   assert.ok(clientJoin >= 0 && followup > clientJoin, 'admin booking follow-up must execute only after all user surfaces finish');
 });
 
-test('admin full E2E covers lottery ticket and lottery event ticket persistence', () => {
+test('admin full E2E covers standalone lottery ticket and event lottery ticket persistence', () => {
   const e2e = read('admin/e2e-control.js');
 
   assert.match(e2e, /ADMIN_LOTTERY_TICKET_CRUD/);
@@ -38,7 +41,19 @@ test('admin full E2E covers lottery ticket and lottery event ticket persistence'
   assert.match(e2e, /eventTicketType/);
   assert.match(e2e, /ticketPrizeRows/);
   assert.match(e2e, /eventTicketPrizeRows/);
-  assert.match(e2e, /機率合計/);
   assert.match(e2e, /probability100/);
   assert.match(e2e, /persistedAndReloaded/);
+});
+
+test('point-card E2E links a lottery ticket and deep paired flow verifies the draw result', () => {
+  const e2e = read('admin/e2e-control.js');
+
+  assert.match(e2e, /E2E QA 集點卡抽獎券/);
+  assert.match(e2e, /ticketType: 'lottery'/);
+  assert.match(e2e, /lotteryTicketLinked/);
+  assert.match(e2e, /lotteryRewardReloaded/);
+  assert.match(e2e, /E2E QA 深度集點抽獎券/);
+  assert.match(e2e, /redeemDeepTicketInChild\(child, ctx\.ticketTitle, true\)/);
+  assert.match(e2e, /lotteryResultVisible/);
+  assert.match(e2e, /抽中：/);
 });
