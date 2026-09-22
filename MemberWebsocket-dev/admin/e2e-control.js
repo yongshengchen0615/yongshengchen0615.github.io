@@ -1627,9 +1627,14 @@
     });
     const created = activeTestAccounts(after).find((account) => !beforeIds.has(String(account.memberId || '')));
     if (!created?.memberId || !created?.memberCode) throw new Error('無法建立深度 E2E 專用臨時測試會員。');
-    const member = await adminMemberSnapshot(created);
-    if (!member?.lineUserId) throw new Error('深度 E2E 臨時測試會員缺少管理端身分對應。');
-    return { ...created, lineUserId: member.lineUserId };
+    try {
+      const member = await adminMemberSnapshot(created);
+      if (!member?.lineUserId) throw new Error('深度 E2E 臨時測試會員缺少管理端身分對應。');
+      return { ...created, lineUserId: member.lineUserId };
+    } catch (error) {
+      await postAdminTestMode('admin.test-mode.delete-accounts', { memberIds: [created.memberId] }).catch(() => {});
+      throw error;
+    }
   }
 
   async function removeEphemeralTestAccount(account) {
