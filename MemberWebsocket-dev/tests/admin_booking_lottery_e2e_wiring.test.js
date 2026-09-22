@@ -32,7 +32,9 @@ test('admin full E2E covers lottery ticket and lottery event ticket persistence'
   assert.match(e2e, /ADMIN_LOTTERY_TICKET_CRUD/);
   assert.match(e2e, /adminLotteryTicketCrudCase/);
   assert.match(e2e, /configureLotteryPrizeEditor/);
-  assert.match(e2e, /ticketType', 'lottery'/);
+  assert.match(e2e, /setField\(typeId, 'lottery'\)/);
+  assert.match(e2e, /configureLotteryPrizeEditor\('ticket'/);
+  assert.match(e2e, /configureLotteryPrizeEditor\('event'/);
   assert.match(e2e, /eventTicketType/);
   assert.match(e2e, /ticketPrizeRows/);
   assert.match(e2e, /eventTicketPrizeRows/);
