@@ -1,0 +1,83 @@
+.test-workspace-tabs{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:18px 0 20px;
+  padding:6px;
+  overflow-x:auto;
+  border:1px solid rgba(35,54,42,.1);
+  border-radius:14px;
+  background:#f5f8f5;
+  scrollbar-width:none;
+}
+.test-workspace-tabs::-webkit-scrollbar{display:none}
+.test-workspace-tab{
+  flex:0 0 auto;
+  min-height:38px;
+  padding:9px 14px;
+  border:1px solid transparent;
+  border-radius:10px;
+  background:transparent;
+  color:#66736b;
+  cursor:pointer;
+  font:inherit;
+  font-size:11px;
+  font-weight:850;
+  letter-spacing:.01em;
+  white-space:nowrap;
+  transition:background .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease;
+}
+.test-workspace-tab:hover{color:#355044;background:rgba(255,255,255,.7)}
+.test-workspace-tab:focus-visible{outline:3px solid rgba(47,155,104,.18);outline-offset:1px}
+.test-workspace-tab[aria-selected="true"]{
+  color:var(--ink,#263b31);
+  border-color:rgba(35,54,42,.1);
+  background:#fff;
+  box-shadow:0 4px 12px rgba(35,54,42,.06);
+}
+.test-workspace-panel[hidden]{display:none!important}
+.test-workspace-panel{min-width:0}
+.test-workspace-panel>.test-mode-panel-grid{margin-top:0}
+.test-workspace-panel>.test-control-center{margin-top:0}
+.test-workspace-panel .test-control-layout.is-runner-only{grid-template-columns:minmax(0,1fr)}
+.test-workspace-history-shell{
+  min-width:0;
+  padding:22px;
+  border:1px solid rgba(35,54,42,.11);
+  border-radius:20px;
+  background:var(--surface,#fff);
+  box-shadow:0 12px 28px rgba(35,54,42,.035);
+}
+.test-workspace-history-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:14px;
+  padding-bottom:16px;
+  border-bottom:1px solid rgba(35,54,42,.08);
+}
+.test-workspace-history-heading h3{margin:0;color:var(--ink,#263b31);font-size:20px;letter-spacing:-.035em}
+.test-workspace-history-heading p{max-width:620px;margin:6px 0 0;color:#6a766e;font-size:11px;line-height:1.6}
+.test-workspace-history-shell>.test-control-history-card{
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  overflow:visible;
+}
+.test-workspace-history-shell>.test-control-history-card>h4,
+.test-workspace-history-shell>.test-control-history-card>p{display:none}
+.test-workspace-history-shell .test-control-history-list{
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:9px;
+}
+.test-workspace-history-shell .test-control-history-item{height:100%}
+
+@media(max-width:680px){
+  .test-workspace-tabs{margin:14px -2px 16px;padding:5px}
+  .test-workspace-tab{min-height:36px;padding:8px 12px}
+  .test-workspace-history-shell{padding:16px;border-radius:17px}
+  .test-workspace-history-heading{display:grid}
+  .test-workspace-history-shell .test-control-history-list{grid-template-columns:1fr}
+}
