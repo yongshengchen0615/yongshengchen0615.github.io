@@ -1626,8 +1626,10 @@
       addAccountCount: 1
     });
     const created = activeTestAccounts(after).find((account) => !beforeIds.has(String(account.memberId || '')));
-    if (!created?.memberId || !created?.lineUserId) throw new Error('無法建立深度 E2E 專用臨時測試會員。');
-    return created;
+    if (!created?.memberId || !created?.memberCode) throw new Error('無法建立深度 E2E 專用臨時測試會員。');
+    const member = await adminMemberSnapshot(created);
+    if (!member?.lineUserId) throw new Error('深度 E2E 臨時測試會員缺少管理端身分對應。');
+    return { ...created, lineUserId: member.lineUserId };
   }
 
   async function removeEphemeralTestAccount(account) {
@@ -1672,14 +1674,28 @@
       memberKind: 'test'
     });
     const members = Array.isArray(result?.members) ? result.members : [];
-    return members.find((member) => String(member.lineUserId || '') === String(account?.lineUserId || '')) || null;
+    const lineUserId = String(account?.lineUserId || '');
+    const memberCode = String(account?.memberCode || '');
+    return members.find((member) =>
+      (lineUserId && String(member.lineUserId || '') === lineUserId) ||
+      (memberCode && String(member.memberCode || '') === memberCode)
+    ) || null;
   }
 
   async function waitAdminMember(account, predicate, timeoutMs = 12000) {
-    return waitFor(async () => {
-      const member = await adminMemberSnapshot(account);
-      return member && predicate(member) ? member : null;
-    }, timeoutMs, 180);
+    const deadline = Date.now() + Math.max(100, Number(timeoutMs) || 12000);
+    let lastError = null;
+    while (Date.now() < deadline) {
+      try {
+        const member = await adminMemberSnapshot(account);
+        if (member && predicate(member)) return member;
+      } catch (error) {
+        lastError = error;
+      }
+      await sleep(180);
+    }
+    if (lastError) throw lastError;
+    return null;
   }
 
   async function openGrantForAccount(account) {
