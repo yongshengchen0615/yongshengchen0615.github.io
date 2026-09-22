@@ -13,7 +13,7 @@ const booking = (id, fields = {}) => ({
 });
 const participant = () => ({
   index: 1, account,
-  bookingResult: { account, bookingHandoff: { ready: true, memberId: account.memberId, bookingIds: ['complete', 'cancel'] }, results: [
+  bookingResult: { account, bookingHandoff: { ready: true, memberId: account.memberId, bookingIds: ['complete', 'cancel', 'reject'] }, results: [
     { key: 'BOOKING_HUMAN_GROUP', actual: { bookingId: 'complete' } },
     { key: 'BOOKING_HUMAN_LIFECYCLE', actual: { bookingId: 'cancel' } }
   ] }
@@ -25,13 +25,17 @@ function harness(bookings = [], extra = {}) {
   const window = { addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0) };
   const context = vm.createContext({ window, document: {}, performance, TextEncoder, CSS: { escape: (x) => x }, ...extra });
   const expose = `
-    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, runAdmin, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal };
+    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runAdmin, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal };
     window.qa.install = (io) => {
       adminBookingBootstrapSnapshot = io.bootstrap;
       verifyDetectedBookingInCoreFilter = io.core;
       verifyDetectedBookingInCancellationFilter = io.cancellation;
       setDetectedBookingStatus = io.status;
       mutateDetectedBooking = io.modify;
+      mutateDetectedBookingTechnician = io.modifyTechnician;
+      rejectDetectedCancellation = io.keepCancellation;
+      approveDetectedCancellation = io.approveCancellation;
+      requestDetectedCancellationFromClient = io.rerequestCancellation;
       cancelDetectedBooking = io.cancel;
       waitAdminBookingSnapshot = io.snapshot;
       verifyPairedBookingTerminalState = io.terminal;
@@ -71,6 +75,37 @@ function harness(bookings = [], extra = {}) {
       return { ok: true, bookingId: id, actualStatus: status };
     },
     modify: async () => { calls.push('modify'); return { ok: true, persistedQuantity: 2 }; },
+    modifyTechnician: async () => { calls.push('technician'); return { ok: true, persistedTechnicianId: 'tech-b' }; },
+    keepCancellation: async (id) => {
+      calls.push('keep');
+      const row = bookings.find((item) => item.bookingId === id);
+      if (row) {
+        row.cancellationRequestedAt = null;
+        row.cancellationReviewedAt = startedAt;
+        row.cancellationDecision = 'rejected';
+      }
+      return { ok: true, bookingId: id, sourceStatus: row?.status || 'pending', status: row?.status || 'pending', cancellationDecision: 'rejected' };
+    },
+    rerequestCancellation: async (_participant, id) => {
+      calls.push('rerequest');
+      const row = bookings.find((item) => item.bookingId === id);
+      if (row) {
+        row.cancellationRequestedAt = startedAt;
+        row.cancellationReviewedAt = null;
+        row.cancellationDecision = null;
+      }
+      return { ok: true, bookingId: id, cancellationRequestedAt: startedAt };
+    },
+    approveCancellation: async (id) => {
+      calls.push('approve');
+      const row = bookings.find((item) => item.bookingId === id);
+      if (row) {
+        row.status = 'cancelled';
+        row.cancellationReviewedAt = startedAt;
+        row.cancellationDecision = 'approved';
+      }
+      return { ok: true, bookingId: id, status: 'cancelled', cancellationDecision: 'approved' };
+    },
     cancel: async (row) => { calls.push('cancel'); row.status = 'cancelled'; row.cancellationReviewedAt = startedAt; return { ok: true, status: 'cancelled' }; },
     snapshot: async (id) => bookings.find((row) => row.bookingId === id),
     terminal: async () => ({ ok: true }),
@@ -80,24 +115,28 @@ function harness(bookings = [], extra = {}) {
   return { qa, calls, io, context, window };
 }
 
-const cancellation = () => booking('cancel', { cancellationRequestedAt: startedAt });
+const cancellation = () => booking('cancel', { memberNote: 'QA HUMAN E2E run', cancellationRequestedAt: startedAt });
+const rejection = () => booking('reject', { memberNote: 'QA STATE PACK pending tag' });
 
-test('confirms, modifies, completes and cancels with independent observable results', async () => {
-  const { qa, calls } = harness([booking('complete'), cancellation()]);
+test('covers every admin booking action with independent observable results', async () => {
+  const { qa, calls } = harness([booking('complete'), cancellation(), rejection()]);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
   assert.equal(result.status, 'passed');
-  assert.deepEqual(calls, ['confirmed', 'modify', 'completed', 'cancel']);
-  assert.equal(qa.state.results.length, 5);
+  assert.deepEqual(calls, ['confirmed', 'modify', 'technician', 'completed', 'rejected', 'keep', 'rerequest', 'approve']);
+  assert.equal(qa.state.results.length, 8);
   assert.ok(qa.state.results.every((row) => row.status === 'passed' && row.durationMs >= 0));
-  assert.deepEqual(Object.keys(result.actual.statusTabs).sort(), [
-    'pending', 'confirmed', 'completed', 'allCompleted', 'cancellationRequest', 'cancelled', 'allCancelled'
-  ].sort());
+  for (const suffix of ['_CONFIRM', '_MODIFY', '_MODIFY_TECHNICIAN', '_COMPLETE', '_REJECT', '_KEEP_CANCELLATION', '_CANCEL', '_TERMINAL']) {
+    assert.equal(qa.state.results.find((row) => row.key.endsWith(suffix)).status, 'passed');
+  }
+  assert.equal(result.actual.rejected.actualStatus, 'rejected');
+  assert.equal(result.actual.keptCancellation.cancellationDecision, 'rejected');
+  assert.equal(result.actual.cancelled.cancellationDecision, 'approved');
 });
 
 test('missing cancellation request does not block confirm, modify or complete', async () => {
   const { qa, calls } = harness([booking('complete')]);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
-  assert.deepEqual(calls, ['confirmed', 'modify', 'completed']);
+  assert.deepEqual(calls, ['confirmed', 'modify', 'technician', 'completed']);
   assert.equal(result.status, 'failed');
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_CANCEL')).status, 'failed');
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_COMPLETE')).status, 'passed');
@@ -106,28 +145,35 @@ test('missing cancellation request does not block confirm, modify or complete', 
 test('missing completion booking still permits independent cancellation review', async () => {
   const { qa, calls } = harness([cancellation()]);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
-  assert.deepEqual(calls, ['cancel']);
+  assert.deepEqual(calls, ['keep', 'rerequest', 'approve']);
   assert.equal(result.status, 'failed');
+  assert.equal(qa.state.results.find((row) => row.key.endsWith('_KEEP_CANCELLATION')).status, 'passed');
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_CANCEL')).status, 'passed');
 });
 
 test('a modification error blocks completion, preserves confirmation and still tests cancellation', async () => {
-  const { qa, calls, io } = harness([booking('complete'), cancellation()]);
+  const { qa, calls, io } = harness([booking('complete'), cancellation(), rejection()]);
   io.modify = async () => { calls.push('modify'); throw new Error('conflict'); };
   qa.install(io);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
-  assert.deepEqual(calls, ['confirmed', 'modify', 'cancel']);
+  assert.deepEqual(calls, ['confirmed', 'modify', 'rejected', 'keep', 'rerequest', 'approve']);
   assert.equal(result.actual.confirmed.ok, true);
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_MODIFY')).actual.message, 'conflict');
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_COMPLETE')).actual.dependencyFailed, 'CONFIRM_OR_MODIFY');
 });
 
 test('a failed confirmation must not modify or complete the booking', async () => {
-  const { qa, calls, io } = harness([booking('complete'), cancellation()]);
-  io.status = async () => { calls.push('confirm-failed'); return { ok: false }; };
+  const { qa, calls, io } = harness([booking('complete'), cancellation(), rejection()]);
+  io.status = async (id, label, note, status) => {
+    if (status === 'confirmed') { calls.push('confirm-failed'); return { ok: false }; }
+    calls.push(status);
+    const row = [booking('noop')].find(() => false);
+    void row;
+    return { ok: true, bookingId: id, actualStatus: status };
+  };
   qa.install(io);
   await qa.pairedAdminBookingFollowupCase(participant());
-  assert.deepEqual(calls, ['confirm-failed', 'cancel']);
+  assert.deepEqual(calls, ['confirm-failed', 'rejected', 'keep', 'rerequest', 'approve']);
 });
 
 test('stop after confirmation prevents all subsequent writes', async () => {
@@ -172,8 +218,8 @@ test('the full handoff processes state-pack and other retained QA bookings as we
   qa.install(io);
   const result = await qa.pairedAdminBookingFollowupCase(p);
   assert.equal(result.status, 'passed');
-  assert.ok(bookings.every((row) => ['completed', 'cancelled'].includes(row.status)));
-  assert.equal(result.actual.remainingProcessed.length, 3);
+  assert.ok(bookings.every((row) => ['completed', 'cancelled', 'rejected'].includes(row.status)));
+  assert.equal(result.actual.remainingProcessed.length, 2);
   assert.equal(result.actual.terminal.admin.unresolved.length, 0);
   assert.equal(qa.state.results.filter((row) => row.key.includes('_REMAINING_')).length, 3);
 });
@@ -195,6 +241,7 @@ test('terminal verification rejects unresolved, missing, wrong-owner and unrevie
   assert.equal(qa.bookingTerminalSnapshot([], ['a'], account.memberId).ok, false);
   assert.equal(qa.bookingTerminalSnapshot([], [], account.memberId).ok, false);
   assert.equal(qa.bookingTerminalSnapshot([booking('a', { status: 'completed', memberId: 'other' })], ['a'], account.memberId).ok, false);
+  assert.equal(qa.bookingTerminalSnapshot([booking('r', { status: 'rejected' })], ['r'], account.memberId).ok, true);
   const rows = [booking('a', { status: 'completed' }), booking('b', { status: 'cancelled', cancellationRequestedAt: startedAt, cancellationReviewedAt: startedAt })];
   assert.equal(qa.bookingTerminalSnapshot(rows, ['a', 'b'], account.memberId).ok, true);
 });
@@ -259,6 +306,16 @@ test('large paired reports retain every case within the server limit of 80 per r
   assert.ok(payloads.every((payload) => payload.memberId === account.memberId && payload.startedAt === startedAt));
   assert.equal(payloads[2].cases[24].status, 'failed');
   assert.equal(result.runs.length, 3);
+});
+
+
+test('runner wires the actual technician and cancellation-review controls', () => {
+  assert.match(source, /修改此位技師/);
+  assert.match(source, /data-participant-technician/);
+  assert.match(source, /persistedTechnicianId/);
+  assert.match(source, /reject-cancellation/);
+  assert.match(source, /approve-cancellation/);
+  assert.match(source, /requestDetectedCancellationFromClient/);
 });
 
 for (const grouped of [false, true]) {
