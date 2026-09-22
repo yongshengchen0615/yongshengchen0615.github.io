@@ -8,12 +8,12 @@ const source = fs.readFileSync(path.join(__dirname, '../admin/e2e-control.js'), 
 const startedAt = '2026-09-22T12:00:00.000Z';
 const account = { memberId: 'test-member', memberCode: 'TEST-001' };
 const booking = (id, fields = {}) => ({
-  bookingId: id, memberCode: account.memberCode, memberNote: 'QA HUMAN E2E GROUP run',
+  bookingId: id, memberId: account.memberId, memberCode: account.memberCode, memberNote: 'QA HUMAN E2E GROUP run',
   createdAt: startedAt, updatedAt: startedAt, status: 'pending', ...fields
 });
 const participant = () => ({
   index: 1, account,
-  bookingResult: { account, results: [
+  bookingResult: { account, bookingHandoff: { ready: true, memberId: account.memberId, bookingIds: ['complete', 'cancel'] }, results: [
     { key: 'BOOKING_HUMAN_GROUP', actual: { bookingId: 'complete' } },
     { key: 'BOOKING_HUMAN_LIFECYCLE', actual: { bookingId: 'cancel' } }
   ] }
@@ -25,7 +25,7 @@ function harness(bookings = [], extra = {}) {
   const window = { addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0) };
   const context = vm.createContext({ window, document: {}, performance, TextEncoder, CSS: { escape: (x) => x }, ...extra });
   const expose = `
-    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, runAdmin, runPaired, recordResultRows };
+    window.qa = { state, pairedBookingCandidates, pairedAdminBookingFollowupCase, mutateDetectedBooking, runAdmin, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal };
     window.qa.install = (io) => {
       adminBookingBootstrapSnapshot = io.bootstrap;
       verifyDetectedBookingInCoreFilter = io.core;
@@ -34,6 +34,8 @@ function harness(bookings = [], extra = {}) {
       mutateDetectedBooking = io.modify;
       cancelDetectedBooking = io.cancel;
       waitAdminBookingSnapshot = io.snapshot;
+      verifyPairedBookingTerminalState = io.terminal;
+      verifyBookingClientTerminal = io.clientTerminal;
     };
     window.qa.mutationIO = (io) => {
       openAdminBookingQueue = async () => {};
@@ -64,11 +66,15 @@ function harness(bookings = [], extra = {}) {
     cancellation: async (id, mode) => ({ ok: true, bookingId: id, mode }),
     status: async (id, label, note, status) => {
       calls.push(status);
+      const row = bookings.find((row) => row.bookingId === id);
+      if (row) row.status = status;
       return { ok: true, bookingId: id, actualStatus: status };
     },
     modify: async () => { calls.push('modify'); return { ok: true, persistedQuantity: 2 }; },
-    cancel: async () => { calls.push('cancel'); return { ok: true, status: 'cancelled' }; },
-    snapshot: async (id) => booking(id, { status: 'confirmed' })
+    cancel: async (row) => { calls.push('cancel'); row.status = 'cancelled'; row.cancellationReviewedAt = startedAt; return { ok: true, status: 'cancelled' }; },
+    snapshot: async (id) => bookings.find((row) => row.bookingId === id),
+    terminal: async () => ({ ok: true }),
+    clientTerminal: async () => ({ ok: true, uiSynchronized: true })
   };
   qa.install(io);
   return { qa, calls, io, context, window };
@@ -81,7 +87,7 @@ test('confirms, modifies, completes and cancels with independent observable resu
   const result = await qa.pairedAdminBookingFollowupCase(participant());
   assert.equal(result.status, 'passed');
   assert.deepEqual(calls, ['confirmed', 'modify', 'completed', 'cancel']);
-  assert.equal(qa.state.results.length, 4);
+  assert.equal(qa.state.results.length, 5);
   assert.ok(qa.state.results.every((row) => row.status === 'passed' && row.durationMs >= 0));
   assert.deepEqual(Object.keys(result.actual.statusTabs).sort(), [
     'pending', 'confirmed', 'completed', 'allCompleted', 'cancellationRequest', 'cancelled', 'allCancelled'
@@ -154,6 +160,79 @@ test('admin full E2E opens a booking client and includes the existing admin suit
   assert.equal(options.includeAdminSuite, true);
 });
 
+test('the full handoff processes state-pack and other retained QA bookings as well as human bookings', async () => {
+  const bookings = [booking('complete'), cancellation(),
+    booking('state-pending', { memberNote: 'QA STATE PACK pending tag' }),
+    booking('state-cancel', { memberNote: 'QA STATE PACK cancel_requested tag', cancellationRequestedAt: startedAt }),
+    booking('api-group', { memberNote: 'QA automated group update' })];
+  const p = participant();
+  p.bookingResult.bookingHandoff.bookingIds = bookings.map((row) => row.bookingId);
+  const { qa, io } = harness(bookings);
+  io.terminal = () => qa.verifyPairedBookingTerminalState(p);
+  qa.install(io);
+  const result = await qa.pairedAdminBookingFollowupCase(p);
+  assert.equal(result.status, 'passed');
+  assert.ok(bookings.every((row) => ['completed', 'cancelled'].includes(row.status)));
+  assert.equal(result.actual.remainingProcessed.length, 3);
+  assert.equal(result.actual.terminal.admin.unresolved.length, 0);
+  assert.equal(qa.state.results.filter((row) => row.key.includes('_REMAINING_')).length, 3);
+});
+
+test('a residual pending booking makes the final verdict fail even if primary steps passed', async () => {
+  const { qa, io } = harness([booking('complete'), cancellation()]);
+  io.terminal = async () => ({ ok: false, admin: { unresolved: [{ bookingId: 'leftover', status: 'pending' }] } });
+  qa.install(io);
+  const result = await qa.pairedAdminBookingFollowupCase(participant());
+  assert.equal(result.status, 'failed');
+  assert.equal(qa.state.results.find((row) => row.key.endsWith('_TERMINAL')).status, 'failed');
+});
+
+test('terminal verification rejects unresolved, missing, wrong-owner and unreviewed cancellation records', () => {
+  const { qa } = harness();
+  for (const fields of [{ status: 'pending' }, { status: 'confirmed' }, { status: 'cancelled', cancellationRequestedAt: startedAt }]) {
+    assert.equal(qa.bookingTerminalSnapshot([booking('a', fields)], ['a'], account.memberId).ok, false);
+  }
+  assert.equal(qa.bookingTerminalSnapshot([], ['a'], account.memberId).ok, false);
+  assert.equal(qa.bookingTerminalSnapshot([], [], account.memberId).ok, false);
+  assert.equal(qa.bookingTerminalSnapshot([booking('a', { status: 'completed', memberId: 'other' })], ['a'], account.memberId).ok, false);
+  const rows = [booking('a', { status: 'completed' }), booking('b', { status: 'cancelled', cancellationRequestedAt: startedAt, cancellationReviewedAt: startedAt })];
+  assert.equal(qa.bookingTerminalSnapshot(rows, ['a', 'b'], account.memberId).ok, true);
+});
+
+test('completed admin records cannot pass while the member client is stale', async () => {
+  const { qa, io } = harness([booking('complete', { status: 'completed' }), booking('cancel', { status: 'cancelled' })]);
+  io.clientTerminal = async () => ({ ok: false, uiSynchronized: false });
+  qa.install(io);
+  const result = await qa.verifyPairedBookingTerminalState(participant());
+  assert.equal(result.admin.ok, true);
+  assert.equal(result.ok, false);
+});
+
+test('an old client without a complete handoff cannot produce a passing terminal verdict', async () => {
+  const { qa } = harness();
+  const p = participant();
+  delete p.bookingResult.bookingHandoff;
+  const result = await qa.verifyPairedBookingTerminalState(p);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'complete-handoff-required');
+});
+
+test('client handoff includes all newly created QA sources and excludes previous or manual bookings', () => {
+  const userSource = fs.readFileSync(path.join(__dirname, '../user-test-control.js'), 'utf8');
+  const window = { location: { pathname: '/MemberWebsocket-dev/booking/' }, addEventListener() {} };
+  vm.runInNewContext(userSource.replace('  window.MemberUserTestControl =',
+    '  window.buildBookingHandoff = buildBookingHandoff;\n  window.MemberUserTestControl ='), { window });
+  const rows = [booking('old'), booking('human'),
+    booking('state', { memberNote: 'QA STATE PACK pending tag' }),
+    booking('api', { memberNote: 'QA automated group create' }),
+    booking('manual', { memberNote: 'ordinary appointment' })];
+  const handoff = window.buildBookingHandoff(['old'], rows, account.memberId, startedAt);
+  assert.deepEqual(Array.from(handoff.bookingIds), ['human', 'state', 'api']);
+  assert.equal(handoff.ready, true);
+  assert.throws(() => window.buildBookingHandoff(null, rows, account.memberId, startedAt));
+  assert.throws(() => window.buildBookingHandoff([], null, account.memberId, startedAt));
+});
+
 test('maintenance must be enabled before any fixtures or accounts are created', async () => {
   const { qa } = harness();
   let created = false;
@@ -187,7 +266,7 @@ for (const grouped of [false, true]) {
     let closed = false;
     let persistedQuantity = 1;
     const quantity = { value: '1', dispatchEvent() {} };
-    const checked = { value: 'service', closest: () => ({ querySelector: () => quantity }) };
+    const checked = { value: grouped ? 'service' : 'on', dataset: grouped ? {} : { bookingService: 'service' }, closest: () => ({ querySelector: () => quantity }) };
     const form = { querySelector: (selector) => {
       if (selector.includes(':checked')) return checked;
       if (selector === '[data-participant-item-rows]') return grouped ? {} : null;

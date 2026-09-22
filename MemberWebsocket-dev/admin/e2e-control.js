@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.13';
+  const VERSION = '2026-09-22.14';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -1803,15 +1803,16 @@
     const memberCode = String(account.memberCode || '');
     const runStartedMs = Date.parse(String(state.runStartedAt || ''));
     const result = participant?.bookingResult;
+    const handoff = result?.bookingHandoff;
     if (!account.memberId || !memberCode || !Number.isFinite(runStartedMs)
-        || result?.account?.memberId !== account.memberId) return [];
-    const bookingIds = new Set((result.results || [])
-      .filter((row) => ['BOOKING_HUMAN_LIFECYCLE', 'BOOKING_HUMAN_GROUP'].includes(row.key))
-      .map((row) => String(row.actual?.bookingId || '')).filter(Boolean));
+        || result?.account?.memberId !== account.memberId || handoff?.ready !== true
+        || handoff.memberId !== account.memberId || !Array.isArray(handoff.bookingIds)) return [];
+    const bookingIds = new Set(handoff.bookingIds.map(String).filter(Boolean));
     return (Array.isArray(data?.bookings) ? data.bookings : [])
       .filter((booking) => bookingIds.has(String(booking?.bookingId || '')))
       .filter((booking) => String(booking?.memberCode || '') === memberCode)
-      .filter((booking) => /^QA HUMAN E2E(?: GROUP)? /i.test(String(booking?.memberNote || '')))
+      .filter((booking) => String(booking?.memberId || '') === String(account.memberId))
+      .filter((booking) => /^(?:QA HUMAN E2E(?: GROUP)? |QA STATE PACK |QA automated (?:group )?(?:create|update)$)/i.test(String(booking?.memberNote || '')))
       .filter((booking) => bookingCreatedMs(booking) >= runStartedMs - 2 * 60 * 1000)
       .slice()
       .sort((a, b) => bookingCreatedMs(b) - bookingCreatedMs(a));
@@ -1925,7 +1926,7 @@
     if (!checked || !quantity) throw new Error('管理端修改預約沒有可調整的已選服務項目。');
     const beforeQuantity = Number(quantity.value || 1);
     const afterQuantity = beforeQuantity === 2 ? 1 : 2;
-    const serviceId = String(checked.value || '');
+    const serviceId = String(checked.dataset?.bookingService || checked.value || '');
     const participantEditor = Boolean(form.querySelector('[data-participant-item-rows]'));
     quantity.value = String(afterQuantity);
     quantity.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2061,11 +2062,80 @@
   }
 
 
+  function bookingTerminalSnapshot(bookings, bookingIds, memberId) {
+    const ids = [...new Set((bookingIds || []).map(String).filter(Boolean))];
+    const byId = new Map((Array.isArray(bookings) ? bookings : [])
+      .filter((row) => String(row.memberId || '') === String(memberId || ''))
+      .map((row) => [String(row.bookingId || ''), row]));
+    const missingIds = ids.filter((id) => !byId.has(id));
+    const unresolved = ids.map((id) => byId.get(id)).filter(Boolean)
+      .filter((row) => !['completed', 'cancelled'].includes(row.status)
+        || (row.cancellationRequestedAt && !row.cancellationReviewedAt))
+      .map((row) => ({ bookingId: row.bookingId, status: row.status, cancellationPending: Boolean(row.cancellationRequestedAt && !row.cancellationReviewedAt) }));
+    return { total: ids.length, missingIds, unresolved, ok: ids.length > 0 && !missingIds.length && !unresolved.length };
+  }
+
+  async function finishRemainingBooking(booking) {
+    const bookingId = String(booking.bookingId || '');
+    const current = await waitAdminBookingSnapshot(bookingId);
+    if (!current || current.memberId !== booking.memberId) return { bookingId, ok: false, reason: 'booking-missing-or-owner-changed' };
+    if (state.cancelled) return { bookingId, ok: false, reason: 'stopped' };
+    if (current.cancellationRequestedAt && !current.cancellationReviewedAt) return cancelDetectedBooking(current);
+    if (['completed', 'cancelled'].includes(current.status)) return { bookingId, status: current.status, alreadyTerminal: true, ok: true };
+    let confirmed = null;
+    if (current.status === 'pending') {
+      confirmed = await setDetectedBookingStatus(bookingId, '確認預約', 'QA ADMIN E2E CONFIRM ' + qaCrudStamp(), 'confirmed', 'pending');
+      if (!confirmed.ok) return { bookingId, confirmed, ok: false };
+    } else if (current.status !== 'confirmed') return { bookingId, status: current.status, ok: false };
+    if (state.cancelled) return { bookingId, confirmed, ok: false, reason: 'stopped' };
+    const completed = await setDetectedBookingStatus(bookingId, '確認服務完成', 'QA ADMIN E2E COMPLETE ' + qaCrudStamp(), 'completed', 'confirmed');
+    return { bookingId, confirmed, completed, ok: completed.ok };
+  }
+
+  async function verifyBookingClientTerminal(participant, bookingIds) {
+    if (state.cancelled) return { ok: false, stopped: true };
+    let child = participant.window;
+    if (!child || child.closed) throw new Error('預約用戶端視窗已關閉，無法驗證終態。');
+    if (participant.lastSurfaceKey !== 'booking' || child.MemberUserTestControl?.surface !== 'booking') {
+      const login = await createPairedSession(participant.account, 'booking');
+      participant.login = login;
+      participant.lastSurfaceKey = 'booking';
+      seedParticipantSession(participant, login);
+      child = await waitParticipantSurface(participant, 'booking', 'bookingView');
+    }
+    if (typeof child.MemberClientQaHooks?.refresh !== 'function') throw new Error('預約用戶端同步入口尚未就緒。');
+    await child.MemberClientQaHooks.refresh();
+    const config = await child.BookingSystem.loadConfig();
+    const data = await child.BookingSystem.request(config, 'member', '', 'user.booking.bootstrap', {});
+    const snapshot = bookingTerminalSnapshot(data?.bookings, bookingIds, participant.account.memberId);
+    const uiSynchronized = snapshot.ok && Boolean(await waitFor(() => bookingIds.every((id) => {
+      const row = data.bookings.find((item) => String(item.bookingId) === id);
+      const card = child.document.querySelector('#bookingList .booking-item[data-booking-id="' + CSS.escape(id) + '"]');
+      return card?.querySelector('.status-badge')?.classList.contains('status-' + row.status);
+    }), 10000, 150));
+    return { ...snapshot, refreshed: true, uiSynchronized, ok: snapshot.ok && uiSynchronized };
+  }
+
+  async function verifyPairedBookingTerminalState(participant) {
+    const handoff = participant.bookingResult?.bookingHandoff;
+    if (handoff?.ready !== true || handoff.memberId !== participant.account?.memberId || !Array.isArray(handoff.bookingIds)) {
+      return { ok: false, reason: 'complete-handoff-required' };
+    }
+    const data = await adminBookingBootstrapSnapshot();
+    const admin = bookingTerminalSnapshot(data?.bookings, handoff.bookingIds, participant.account.memberId);
+    const client = admin.ok ? await verifyBookingClientTerminal(participant, handoff.bookingIds) : { ok: false, checked: false };
+    return { admin, client, ok: admin.ok && client.ok };
+  }
+
   async function pairedAdminBookingFollowupCase(participant) {
     const account = participant?.account || {};
     const bootstrap = await adminBookingBootstrapSnapshot();
     const candidates = pairedBookingCandidates(bootstrap, participant);
     const mutable = candidates.find((booking) =>
+      /^QA HUMAN E2E GROUP /i.test(String(booking.memberNote || ''))
+      && String(booking.status || '') === 'pending'
+      && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
+    ) || candidates.find((booking) =>
       String(booking.status || '') === 'pending'
       && !(booking.cancellationRequestedAt && !booking.cancellationReviewedAt)
     );
@@ -2078,7 +2148,8 @@
       memberCode: account.memberCode || null,
       detectedCount: candidates.length,
       detectedBookings: candidates.map((booking) => ({ bookingId: booking.bookingId, status: booking.status })),
-      statusTabs: {}, confirmed: null, modified: null, completed: null, cancelled: null
+      statusTabs: {}, confirmed: null, modified: null, completed: null, cancelled: null,
+      remainingProcessed: [], terminal: null
     };
     const expected = {
       detectedFromUserE2E: true, confirmed: true, modified: true, completed: true,
@@ -2140,11 +2211,33 @@
       })
     ], '預約自動處理 · 測試用戶 ' + participant.index);
 
+    const primaryIds = new Set([mutable?.bookingId, cancellationTarget?.bookingId].filter(Boolean));
+    const remaining = candidates.filter((booking) => !primaryIds.has(booking.bookingId));
+    await executeCases(remaining.map((booking, index) => caseDef(
+      prefix + 'REMAINING_' + (index + 1),
+      '預約：接手其餘本輪 QA 資料 ' + (index + 1), 'Booking / Remaining', async () => {
+        const detail = await finishRemainingBooking(booking);
+        actual.remainingProcessed.push(detail);
+        return detail.ok
+          ? pass('本輪額外建立的 QA 預約已完成或取消，資料保留。', { terminal: true }, detail)
+          : fail('仍有本輪 QA 預約未處理完成。', { terminal: true }, detail);
+      }
+    )), '預約剩餘資料 · 測試用戶 ' + participant.index);
+
+    await executeCases([caseDef(prefix + 'TERMINAL', '預約：兩端皆無本輪未完成資料', 'Booking / Terminal', async () => {
+      actual.terminal = await verifyPairedBookingTerminalState(participant);
+      return actual.terminal.ok
+        ? pass('管理端與用戶端均已回讀並顯示本輪預約終態，沒有待確認或待審核取消。', { unresolved: 0, clientSynchronized: true }, actual.terminal)
+        : fail('本輪仍有預約未完成、未審核取消、資料遺失或用戶端未同步，不能判定通過。', { unresolved: 0, clientSynchronized: true }, actual.terminal);
+    })], '預約終態驗證 · 測試用戶 ' + participant.index);
+
     if (state.cancelled) return skip('預約 E2E 已停止，已完成的動作與資料保留。', expected, actual);
     const steps = ['CONFIRM', 'MODIFY', 'COMPLETE', 'CANCEL'].map((key) =>
       state.results.find((row) => row.key === prefix + key)
     );
     return steps.every((row) => row?.status === 'passed')
+      && actual.remainingProcessed.length === remaining.length
+      && actual.remainingProcessed.every((row) => row.ok) && actual.terminal?.ok
       ? pass('已自動確認 → 修改 → 完成預約，並獨立審核取消申請；六個狀態分頁均已驗證，資料保留供觀察。', expected, actual)
       : fail('預約 E2E 有未通過步驟，請查看各動作的獨立結果。', expected, actual);
   }
