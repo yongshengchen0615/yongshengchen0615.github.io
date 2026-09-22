@@ -710,8 +710,16 @@
 
         let adminChain = Promise.resolve();
         const liveAdminTasks = state.participants.map((participant) => {
-          const task = adminChain.then(() => runPairedAdminBookingLive(participant));
-          adminChain = task.catch(() => null);
+          const task = (async () => {
+            participant.adminStatus = '即時監看管理端預約資料';
+            renderParticipants();
+            // Every participant starts watching immediately. Only the shared admin DOM
+            // operation is serialized after that participant's first eligible row appears.
+            await waitForLivePairedBookingTarget(participant, 'any');
+            const queued = adminChain.then(() => runPairedAdminBookingLive(participant));
+            adminChain = queued.catch(() => null);
+            return queued;
+          })();
           participant.adminBookingTask = task;
           return task;
         });
