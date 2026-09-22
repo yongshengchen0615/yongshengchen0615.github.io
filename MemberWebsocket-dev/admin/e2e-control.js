@@ -2005,7 +2005,11 @@
 
   async function adminBookingBootstrapSnapshot() {
     const session = await adminSession();
-    return window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.booking.bootstrap', {});
+    return postFunction('booking-api', {
+      action: 'admin.booking.bootstrap',
+      clientType: 'admin',
+      idToken: session.idToken
+    });
   }
 
   function bookingCreatedMs(booking) {
