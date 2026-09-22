@@ -412,6 +412,60 @@
     })[char]);
   }
 
+  async function prepareUsageStateForFullRun() {
+    if (surface !== 'booking') {
+      return await qaServiceRequest('user.qa.usage-state.prepare', {}, 60000);
+    }
+
+    const bookingsById = new Map();
+    const stateKinds = new Set();
+    const attempts = [];
+    let aggregate = null;
+    const maxAttempts = 4;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const current = await qaServiceRequest('user.qa.usage-state.prepare', {}, 60000);
+      aggregate = aggregate ? { ...aggregate, ...current } : { ...current };
+
+      const currentBookings = Array.isArray(current?.bookings) ? current.bookings : [];
+      currentBookings.forEach((row) => {
+        const bookingId = String(row?.bookingId || '');
+        const state = String(row?.state || '');
+        if (bookingId) bookingsById.set(bookingId, row);
+        if (state) stateKinds.add(state);
+      });
+      (Array.isArray(current?.stateKinds) ? current.stateKinds : []).forEach((state) => {
+        const value = String(state || '');
+        if (value === 'pending' || value === 'cancel_requested') stateKinds.add(value);
+      });
+
+      attempts.push({
+        attempt: attempt + 1,
+        recordsCreated: currentBookings.length,
+        stateKinds: Array.from(stateKinds)
+      });
+
+      aggregate.bookings = Array.from(bookingsById.values());
+      aggregate.recordsCreated = aggregate.bookings.length;
+      aggregate.stateKinds = Array.from(stateKinds);
+      aggregate.prepared = aggregate.prepared === true || current?.prepared === true;
+      aggregate.skipped = aggregate.recordsCreated === 0;
+      aggregate.usageStateAttempts = attempts.slice();
+
+      if (stateKinds.has('pending') && stateKinds.has('cancel_requested')) break;
+      if (attempt < maxAttempts - 1) await wait(250 + attempt * 180);
+    }
+
+    return aggregate || {
+      prepared: false,
+      scenario: 'mixed-booking-lifecycle',
+      recordsCreated: 0,
+      stateKinds: [],
+      bookings: [],
+      usageStateAttempts: attempts
+    };
+  }
+
   async function runSuite(suite) {
     const requestedSuite = suite === 'full' ? 'full' : 'quick';
     if (state.running) {
@@ -461,7 +515,7 @@
     if (state.currentSuite === 'full' && !bookingBaselineFailed) {
       try {
         setMessage('正在建立高複雜度會員使用狀態：歷史、可用、已使用、過期、受限與進行中資料…');
-        state.usageState = await qaServiceRequest('user.qa.usage-state.prepare', {}, 60000);
+        state.usageState = await prepareUsageStateForFullRun();
         await refreshRealClient().catch(() => {});
       } catch (error) {
         state.usageStateError = plainError(error);
@@ -1668,7 +1722,13 @@
     const recordsCreated = Number(data.recordsCreated || 0);
     const minimumRecords = surface === 'points' ? 8 : surface === 'event' ? 6 : surface === 'calendar' ? 5 : surface === 'member' ? 2 : surface === 'booking' ? 2 : 1;
     const minimumKinds = surface === 'points' ? 6 : surface === 'event' ? 5 : surface === 'calendar' ? 5 : surface === 'member' ? 3 : surface === 'booking' ? 2 : 1;
-    const ok = data.prepared === true && recordsCreated >= minimumRecords && kinds.length >= minimumKinds;
+    const requiredBookingStates = ['pending', 'cancel_requested'];
+    const bookingStatesReady = surface !== 'booking'
+      || requiredBookingStates.every((stateName) => kinds.includes(stateName));
+    const ok = data.prepared === true
+      && recordsCreated >= minimumRecords
+      && kinds.length >= minimumKinds
+      && bookingStatesReady;
     const actual = {
       scenario: data.scenario || '',
       recordsCreated,
@@ -1676,17 +1736,20 @@
       usageStateTag: data.usageStateTag || '',
       serviceMinutesAdded: Number(data.serviceMinutesAdded || 0),
       cardIds: Array.isArray(data.cardIds) ? data.cardIds : [],
-      bookings: Array.isArray(data.bookings) ? data.bookings : []
+      bookings: Array.isArray(data.bookings) ? data.bookings : [],
+      requiredBookingStates: surface === 'booking' ? requiredBookingStates : [],
+      bookingStatesReady,
+      usageStateAttempts: Array.isArray(data.usageStateAttempts) ? data.usageStateAttempts : []
     };
     return ok
       ? pass(
           'E2E 已在真人操作前建立混合使用狀態，不再從乾淨空白帳號開始。',
-          { prepared: true, minimumRecords, minimumKinds },
+          { prepared: true, minimumRecords, minimumKinds, requiredBookingStates: surface === 'booking' ? requiredBookingStates : [] },
           actual
         )
       : fail(
           '使用狀態前置資料量或狀態種類不足。',
-          { prepared: true, minimumRecords, minimumKinds },
+          { prepared: true, minimumRecords, minimumKinds, requiredBookingStates: surface === 'booking' ? requiredBookingStates : [] },
           actual
         );
   }
