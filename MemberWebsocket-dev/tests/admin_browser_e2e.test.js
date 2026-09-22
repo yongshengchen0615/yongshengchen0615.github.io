@@ -39,6 +39,16 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.doesNotMatch(runner, /service_role|SUPABASE_SERVICE_ROLE_KEY/);
 });
 
+test('paired E2E account pool is server-filtered to test users and real-user mutation is blocked', () => {
+  const runner = read('admin/e2e-control.js');
+  const testModeApi = read('supabase/functions/test-mode-api/index.ts');
+  assert.match(testModeApi, /\.eq\("is_test_account", true\)/);
+  assert.match(runner, /E2E_TEST_ROSTER_REQUIRED/);
+  assert.match(runner, /E2E_REAL_MEMBER_BLOCKED/);
+  assert.match(runner, /memberIsTestAccount/);
+  assert.match(runner, /prepareTestAccounts\(participantCount\)/);
+});
+
 test('user E2E returns structured results to the paired admin runner', () => {
   const runner = read('user-test-control.js');
   assert.match(runner, /const VERSION = '2026-09-22\.4'/);
