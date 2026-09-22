@@ -392,3 +392,33 @@ test('calendar E2E invalid-date boundary is backed by semantic ISO date validati
   assert.match(api, /if \(!parseIsoDate\(date\)\)/);
   assert.doesNotMatch(api, /if \(!\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(date\)\)/);
 });
+
+
+test('same test account cannot open the same member surface twice and the selector reflects live occupancy', () => {
+  const client = read('test-mode-client.js');
+  const api = read('supabase/functions/test-mode-api/index.ts');
+  const migration = read('supabase/migrations/20260922063942_enhance_e2e_fixture_and_test_surface_sessions_v2.sql');
+
+  assert.match(client, /option\.disabled = inUse/);
+  assert.match(client, /activeSurfaces/);
+  assert.match(client, /currentSurfaceInUse/);
+  assert.match(client, /member-test-account-availability-changed/);
+  assert.match(api, /activeSurfaceMap/);
+  assert.match(api, /accountsWithAvailability/);
+  assert.match(api, /create_test_login_session_v2/);
+  assert.match(api, /TEST_SURFACE_ALREADY_ACTIVE/);
+  assert.match(api, /p_surface: clientType/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /member_id = p_member_id[\s\S]*surface = p_surface/);
+});
+
+test('manual test-data purge immediately revokes user test clients through realtime', () => {
+  const client = read('test-mode-client.js');
+  const api = read('supabase/functions/test-control-api/index.ts');
+  assert.match(api, /test_mode\.data\.purged/);
+  assert.match(api, /emitRealtimeEvent/);
+  assert.match(client, /eventType === 'test_mode\.data\.purged'/);
+  assert.match(client, /clearSession\(\)/);
+  assert.match(client, /member-test-session-revoked/);
+  assert.match(client, /window\.location\.reload\(\)/);
+});
