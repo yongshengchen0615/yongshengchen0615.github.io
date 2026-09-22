@@ -2267,3 +2267,14 @@
       render();
     }
   }
+
+
+  window.MemberAdminE2EControl = Object.freeze({
+    version: VERSION,
+    runQuick: () => runAdmin('quick'),
+    runFull: () => runAdmin('full'),
+    runPairedFull: () => runPaired(),
+    stop: () => requestStop(),
+    maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
+  });
+})();
