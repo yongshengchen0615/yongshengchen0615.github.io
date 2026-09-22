@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.4';
+  const VERSION = '2026-09-22.5';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_SURFACES = Object.freeze([
@@ -47,7 +47,7 @@
         <div>
           <span class="test-mode-eyebrow">Browser E2E</span>
           <h4 id="adminBrowserE2ETitle">管理端真人 E2E / 管理端 ↔ 用戶端協同測試</h4>
-          <p>管理端會員操作只允許測試用戶。協同模式會依設定人數開啟獨立用戶端視窗，每位測試用戶都在自己的視窗依序執行會員卡、集點卡、活動票券、日曆與預約真人 E2E；最後再以臨時測試會員執行票券、會員階級、點數與服務時數的跨端 Realtime、併發重送與非常規操作驗證。</p>
+          <p>協同模式會先由管理端建立高複雜度完整測試資料（優惠券／抽獎券／固定票券、不同集點節點、日期區間、會員階級、日曆與預約資源），確認完成後才讓測試用戶端開始。測試帳號與五種用戶端執行順序都會隨機化，並加入隨機操作間隔、Realtime、併發重送與非常規操作驗證。</p>
         </div>
         <div class="admin-e2e-actions">
           <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">Browser Runner：待命</span>
@@ -91,6 +91,28 @@
 
   function sleep(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function randomInt(min, max) {
+    const low = Math.ceil(Number(min) || 0);
+    const high = Math.floor(Number(max) || low);
+    if (high <= low) return low;
+    try {
+      const value = new Uint32Array(1);
+      crypto.getRandomValues(value);
+      return low + (value[0] % (high - low + 1));
+    } catch (_) {
+      return low + Math.floor(Math.random() * (high - low + 1));
+    }
+  }
+
+  function shuffled(items) {
+    const copy = Array.isArray(items) ? items.slice() : [];
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swap = randomInt(0, index);
+      [copy[index], copy[swap]] = [copy[swap], copy[index]];
+    }
+    return copy;
   }
 
   async function waitFor(predicate, timeoutMs = 7000, intervalMs = 60) {
@@ -392,52 +414,39 @@
     state.results = [];
     state.participants = [];
     setBusy(true, '協同');
-    setMessage('正在準備 ' + participantCount + ' 位測試用戶；所有用戶端就緒後會同時開始完整 E2E。');
+    setMessage('管理端正在先建立完整高複雜度測試資料；用戶端視窗目前只保持待命，不會提前開始。');
     try {
+      const fixture = await prepareComplexE2EFixtures();
+      if (state.cancelled) return { cancelled: true, results: safe(state.results) };
+
       const accounts = await prepareTestAccounts(participantCount);
       state.adminTestAccount = accounts[0];
       state.participants = accounts.map((account, index) => ({
         index: index + 1,
         account,
         window: openedWindows[index],
-        status: '準備登入',
-        surface: '準備中',
+        status: '等待隨機啟動',
+        surface: '前置資料完成',
+        surfacePlan: shuffled(PAIRED_SURFACES),
         runCodes: [],
-        startedAt: 0
+        startedAt: 0,
+        login: null,
+        lastSurfaceKey: ''
       }));
       renderParticipants();
 
-      await Promise.all(state.participants.map(async (participant) => {
-        if (state.cancelled) return;
-        const login = await createPairedSession(participant.account);
-        participant.login = login;
-        seedParticipantSession(participant, login);
-        participant.status = '已登入';
-        participant.surface = '會員卡';
-        navigateParticipant(participant, 'member');
-        state.results.push({
-          key: 'PAIRED_' + participant.index + '_TEST_SESSION',
-          name: '測試用戶 ' + participant.index + '：建立獨立 Session',
-          domain: 'Authentication',
-          status: 'passed',
-          message: '已建立短效測試會員 Session，並寫入該測試用戶自己的新視窗；未使用正式用戶、管理員權限或 service role。',
-          expected: { isTestAccount: true, isolatedClientWindow: true },
-          actual: { memberCode: participant.account?.memberCode || null, isolatedClientWindow: true },
-          durationMs: 0
-        });
-        renderParticipants();
-        render();
-      }));
-
+      setMessage('管理端前置資料已完整建立；現在隨機啟動 ' + participantCount + ' 位測試用戶，各自以不同用戶端順序與操作間隔開始 E2E。');
       if (!state.cancelled) {
-        setMessage('所有 ' + participantCount + ' 個用戶端視窗已就緒；現在同時啟動用戶端 E2E，管理端 E2E 也同步執行。');
-        const clientTasks = state.participants.map((participant) => runParticipantSurfaces(participant));
-        const adminTask = executeCases(adminDefinitions('full'), '管理端 · 測試用戶');
+        const clientTasks = state.participants.map(async (participant) => {
+          await sleep(randomInt(80, 1200));
+          return runParticipantSurfaces(participant);
+        });
+        const adminTask = executeCases(adminDefinitions('full'), '管理端 · 完整資料已建立');
         await Promise.all([adminTask, ...clientTasks]);
       }
 
       if (!state.cancelled) {
-        for (const participant of state.participants) {
+        for (const participant of shuffled(state.participants)) {
           participant.status = '同步驗證';
           participant.surface = '管理端紀錄';
           renderParticipants();
@@ -453,11 +462,12 @@
           participant.surface = '完成';
           renderParticipants();
           if (state.cancelled) break;
+          await sleep(randomInt(60, 360));
         }
       }
 
       if (!state.cancelled && state.participants[0]) {
-        await runDeepPairedSuite(state.participants[0]);
+        await runDeepPairedSuite(state.participants[randomInt(0, state.participants.length - 1)]);
       }
 
       const cancelled = state.cancelled;
@@ -474,13 +484,22 @@
       }
       setMessage(
         cancelled
-          ? '協同 E2E 已停止；已完成案例保留，用戶端視窗保留供檢查。'
+          ? '協同 E2E 已停止；已完成案例與管理端建立的測試資料均保留，用戶端視窗保留供檢查。'
           : failed
-            ? participantCount + ' 位測試用戶協同 E2E 完成，發現 ' + failed + ' 個異常；用戶端視窗保留供檢查。'
-            : participantCount + ' 位測試用戶已同步並行完成管理端 ↔ 用戶端協同 E2E；用戶端視窗保留供檢查。',
+            ? participantCount + ' 位測試用戶隨機協同 E2E 完成，發現 ' + failed + ' 個異常；高複雜度測試資料保留供檢查。'
+            : participantCount + ' 位測試用戶已完成隨機多路徑管理端 ↔ 用戶端協同 E2E；高複雜度測試資料保留，需由「移除測試資料」統一清理。',
         !cancelled && failed > 0
       );
-      return { cancelled, recorded, participants: safe(state.participants.map((item) => item.account)), results: safe(state.results) };
+      return {
+        cancelled,
+        recorded,
+        fixture: safe(fixture),
+        participants: safe(state.participants.map((item) => ({
+          account: item.account,
+          surfacePlan: item.surfacePlan?.map(([key]) => key) || []
+        }))),
+        results: safe(state.results)
+      };
     } catch (error) {
       if (!state.cancelled) {
         state.results.push({
@@ -489,8 +508,8 @@
           domain: 'Paired E2E',
           status: 'failed',
           message: error?.message || '協同 Runner 無法啟動。',
-          expected: { runnable: true, testAccountsOnly: true },
-          actual: plainError(error),
+          expected: { runnable: true, testAccountsOnly: true, complexFixtureReadyBeforeClients: true },
+          actual: { ...plainError(error), fixture: safe(error?.fixture || {}) },
           durationMs: 0
         });
       }
@@ -512,18 +531,22 @@
   async function runParticipantSurfaces(participant) {
     participant.startedAt = Date.now();
     participant.status = '執行中';
+    participant.surfacePlan = Array.isArray(participant.surfacePlan) && participant.surfacePlan.length
+      ? participant.surfacePlan
+      : shuffled(PAIRED_SURFACES);
     renderParticipants();
 
-    for (const [surface, label] of PAIRED_SURFACES) {
+    for (const [surface, label] of participant.surfacePlan) {
       if (state.cancelled) break;
+      await sleep(randomInt(120, 950));
       const started = performance.now();
       const row = {
         key: 'PAIRED_' + participant.index + '_' + surface.toUpperCase(),
-        name: '測試用戶 ' + participant.index + '：' + label + '真人 E2E',
+        name: '測試用戶 ' + participant.index + '：' + label + '隨機真人 E2E',
         domain: 'Paired E2E / ' + surface,
         status: 'running',
-        message: '正在獨立用戶端視窗執行…',
-        expected: { memberCode: participant.account?.memberCode || null, failedCases: 0 },
+        message: '正在建立此用戶端專屬 Session，並於獨立視窗執行隨機化真人操作…',
+        expected: { memberCode: participant.account?.memberCode || null, failedCases: 0, sessionSurface: surface },
         actual: {},
         durationMs: null
       };
@@ -532,8 +555,13 @@
       participant.surface = label;
       renderParticipants();
       render();
-      if (state.floating) state.floating.textContent = 'E2E 執行中 · 多用戶並行 · 測試用戶 ' + participant.index + ' · ' + label;
+      if (state.floating) state.floating.textContent = 'E2E 執行中 · 多用戶隨機並行 · 測試用戶 ' + participant.index + ' · ' + label;
       try {
+        const login = await createPairedSession(participant.account, surface);
+        participant.login = login;
+        participant.lastSurfaceKey = surface;
+        seedParticipantSession(participant, login);
+        await sleep(randomInt(80, 520));
         const child = await runUserSurface(participant, surface, label);
         const summary = child?.summary || {};
         const childMemberId = child?.account?.memberId || '';
@@ -541,13 +569,15 @@
         if (runCode) participant.runCodes.push(runCode);
         row.actual = {
           memberCode: participant.account?.memberCode || null,
+          sessionSurface: surface,
           sameTestMember: childMemberId === participant.account?.memberId,
           passed: Number(summary.passed || 0),
           failed: Number(summary.failed || 0),
           skipped: Number(summary.skipped || 0),
           total: Number(summary.total || 0),
           runCode: runCode || null,
-          cancelled: Boolean(child?.cancelled)
+          cancelled: Boolean(child?.cancelled),
+          surfacePlan: participant.surfacePlan.map(([key]) => key)
         };
         if (state.cancelled || child?.cancelled) {
           Object.assign(row, skip(label + ' E2E 已依停止要求中止。', { stoppedSafely: true }, row.actual));
@@ -555,8 +585,8 @@
           const sameMember = childMemberId === participant.account?.memberId;
           const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember;
           Object.assign(row, ok
-            ? pass(label + '真人 E2E 通過，且仍為指定測試用戶。', row.expected, row.actual)
-            : fail(label + '真人 E2E 或測試用戶一致性驗證失敗。', row.expected, row.actual));
+            ? pass(label + '隨機真人 E2E 通過，且使用的是該用戶端專屬測試 Session。', row.expected, row.actual)
+            : fail(label + '真人 E2E、Session surface 或測試用戶一致性驗證失敗。', row.expected, row.actual));
         }
       } catch (error) {
         Object.assign(row, state.cancelled
@@ -571,8 +601,6 @@
     participant.surface = state.cancelled ? '停止' : '等待同步驗證';
     renderParticipants();
   }
-
-  
 
   async function adminReadyCase() {
     const session = await adminSession();
@@ -1475,29 +1503,75 @@
 
   async function prepareTestAccounts(count) {
     let data = await postAdminTestMode('admin.test-mode.bootstrap');
-    let accounts = activeTestAccounts(data);
+    let accounts = activeTestAccounts(data).filter((account) => !Array.isArray(account.activeSurfaces) || account.activeSurfaces.length === 0);
     if (accounts.length < count) {
       const shortage = count - accounts.length;
       const settings = data?.settings || {};
-      data = await postAdminTestMode('admin.test-mode.save', {
+      await postAdminTestMode('admin.test-mode.save', {
         maintenanceEnabled: Boolean(settings.maintenanceEnabled),
         allowPcTestLogin: Boolean(settings.allowPcTestLogin),
         allowMobileTestLogin: Boolean(settings.allowMobileTestLogin),
         maintenanceMessage: String(settings.maintenanceMessage || ''),
         addAccountCount: shortage
       });
-      accounts = activeTestAccounts(data);
+      data = await postAdminTestMode('admin.test-mode.bootstrap');
+      accounts = activeTestAccounts(data).filter((account) => !Array.isArray(account.activeSurfaces) || account.activeSurfaces.length === 0);
     }
     if (accounts.length < count) {
-      throw new Error(`啟用中的測試用戶不足：需要 ${count} 位，目前只有 ${accounts.length} 位。`);
+      throw new Error(`可供協同測試且尚未登入任何用戶端的測試用戶不足：需要 ${count} 位，目前只有 ${accounts.length} 位。`);
     }
-    return accounts.slice(0, count);
+    return shuffled(accounts).slice(0, count);
   }
 
-  async function createPairedSession(account) {
+  async function prepareComplexE2EFixtures() {
+    const session = await adminSession();
+    const runTag = 'PAIR-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
+    const data = await postFunction('test-control-api', {
+      action: 'admin.test-control.prepare-e2e-fixtures',
+      clientType: 'admin',
+      idToken: session.idToken,
+      runTag
+    });
+    const fixture = data?.fixture || {};
+    const ready = Number(fixture.ticketTemplates || 0) >= 4 &&
+      Number(fixture.pointCards || 0) >= 3 &&
+      Number(fixture.pointRewardNodes || 0) >= 6 &&
+      Number(fixture.eventTickets || 0) >= 6 &&
+      Number(fixture.calendarItems || 0) >= 5 &&
+      Number(fixture.fixedTickets || 0) >= 4 &&
+      Number(fixture.bookingServices || 0) >= 4 &&
+      Number(fixture.bookingTechnicians || 0) >= 3;
+    if (!ready) {
+      const error = new Error('管理端高複雜度 E2E 前置資料建立不完整，已禁止用戶端開始測試。');
+      error.code = 'E2E_FIXTURE_INCOMPLETE';
+      error.fixture = fixture;
+      throw error;
+    }
+    state.results.push({
+      key: 'PAIRED_COMPLEX_FIXTURE_PREPARE',
+      name: '管理端：建立完整高複雜度測試資料',
+      domain: 'Paired E2E / Fixture',
+      status: 'passed',
+      message: '已完成票券種類、固定票券週期與效期、集點節點、活動日期、會員階級、日曆與預約資源前置資料；現在才允許用戶端開始。',
+      expected: {
+        ticketTypes: ['coupon', 'lottery', 'fixed'],
+        fixedSchedules: ['birthday_month', 'yearly', 'monthly', 'weekly'],
+        eventDateStates: ['past', 'today', 'active-window', 'future'],
+        membershipTiers: ['general', 'silver', 'gold', 'platinum'],
+        minimumPointNodes: 6
+      },
+      actual: safe(fixture),
+      durationMs: 0
+    });
+    render();
+    return fixture;
+  }
+
+  async function createPairedSession(account, surface = 'member') {
     const session = await adminSession();
     if (!account?.memberId) throw new Error('測試用戶識別不完整。');
-    const common = { clientType: 'member' };
+    if (!PAIRED_SURFACES.some(([key]) => key === surface)) throw new Error('協同 E2E 用戶端類型不正確。');
+    const common = { clientType: surface };
     const status = await postPublicTestMode(session, { action: 'public.status', ...common });
     if (!status.maintenanceEnabled) {
       const error = new Error('協同 E2E 需要先啟用「系統維護」，以確保正式用戶不會進入測試流程。');
@@ -1509,8 +1583,8 @@
       ...common,
       memberId: account.memberId
     });
-    if (!login.testSessionToken || login.account?.memberId !== account.memberId) {
-      throw new Error('指定測試用戶 Session 建立不完整或帳號不一致。');
+    if (!login.testSessionToken || login.account?.memberId !== account.memberId || String(login.surface || surface) !== surface) {
+      throw new Error('指定測試用戶 Session 建立不完整、帳號不一致或用戶端類型不一致。');
     }
     return login;
   }
@@ -2045,6 +2119,8 @@
   async function deepPointTicketRealtimeCase(ctx) {
     const account = ctx.account;
     const participant = ctx.participant;
+    const pointsLogin = await createPairedSession(account, 'points');
+    seedParticipantSession(participant, pointsLogin);
     const child = await waitParticipantSurface(participant, 'points', 'pointsView');
     const baselineTabs = String(child.document.getElementById('cardTabs')?.textContent || '');
 
@@ -2088,6 +2164,7 @@
 
     const actual = {
       baselineHadQaCard: baselineTabs.includes(ctx.cardTitle || '---'),
+      sessionSurface: 'points',
       cardRealtime,
       invalid,
       replayRequests: replay.map((item) => item.status),
@@ -2103,12 +2180,12 @@
       beforeRedeem.points === 2 && userRedeem.selected && userRedeem.cancelledOnce && userRedeem.redeemed &&
       userRedeem.history && adminRecordVisible && deleted && cardRemovedRealtime;
     return ok
-      ? pass('票券／點數已完成管理端建立、非法輸入、同 requestId 併發重送、UI 連點發放、用戶端即時出票與真人核銷，再反向同步到管理端紀錄並清理。', {
-          cardRealtime: true, invalidRejected: true, replayPoints: 1, finalPointsBeforeRedeem: 2,
+      ? pass('票券／點數已完成 points 專屬 Session、管理端建立、非法輸入、同 requestId 併發重送、UI 連點發放、用戶端即時出票與真人核銷，再反向同步到管理端紀錄並清理。', {
+          sessionSurface: 'points', cardRealtime: true, invalidRejected: true, replayPoints: 1, finalPointsBeforeRedeem: 2,
           ticketRealtime: true, userRedeemed: true, adminRecordVisible: true, cleanupRealtime: true
         }, actual)
       : fail('票券／點數深度協同 E2E 發現狀態不一致。', {
-          cardRealtime: true, invalidRejected: true, replayPoints: 1, finalPointsBeforeRedeem: 2,
+          sessionSurface: 'points', cardRealtime: true, invalidRejected: true, replayPoints: 1, finalPointsBeforeRedeem: 2,
           ticketRealtime: true, userRedeemed: true, adminRecordVisible: true, cleanupRealtime: true
         }, actual);
   }
@@ -2130,7 +2207,7 @@
     if (ctx.originalLogin && ctx.participant?.window && !ctx.participant.window.closed) {
       try {
         seedParticipantSession(ctx.participant, ctx.originalLogin);
-        navigateParticipant(ctx.participant, 'member');
+        navigateParticipant(ctx.participant, ctx.originalSurface || 'member');
         result.originalSessionRestored = true;
       } catch {}
     } else {
@@ -2141,14 +2218,24 @@
 
   async function runDeepPairedSuite(participant) {
     const previousAdminAccount = state.adminTestAccount;
-    const ctx = { participant, originalLogin: participant.login || null, account: null, originalTierSettings: null, tierSettingsChanged: false, cardId: '', ticketTemplateId: '', cardDeleted: false };
+    const ctx = {
+      participant,
+      originalLogin: participant.login || null,
+      originalSurface: participant.lastSurfaceKey || 'member',
+      account: null,
+      originalTierSettings: null,
+      tierSettingsChanged: false,
+      cardId: '',
+      ticketTemplateId: '',
+      cardDeleted: false
+    };
     participant.status = '深度互動';
     participant.surface = '票券／階級／點數／時數';
     renderParticipants();
     try {
       ctx.account = await createEphemeralTestAccount();
       state.adminTestAccount = ctx.account;
-      const login = await createPairedSession(ctx.account);
+      const login = await createPairedSession(ctx.account, 'member');
       seedParticipantSession(participant, login);
       await executeCases([
         caseDef('PAIRED_DEEP_SERVICE_TIER_REALTIME', '深度：會員階級／服務時數跨端 Realtime + 冪等 + 連點', 'Paired E2E / Membership', () => deepServiceTierRealtimeCase(ctx)),
@@ -2180,13 +2267,3 @@
       render();
     }
   }
-
-  window.MemberAdminE2EControl = Object.freeze({
-    version: VERSION,
-    runQuick: () => runAdmin('quick'),
-    runFull: () => runAdmin('full'),
-    runPairedFull: () => runPaired(),
-    stop: () => requestStop(),
-    maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
-  });
-})();
