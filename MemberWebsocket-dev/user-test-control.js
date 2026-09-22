@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-22.2';
+  const VERSION = '2026-09-22.3';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1176,10 +1176,11 @@
     if (!bookingId) {
       const serverBooking = await resolveBookingByNote(note).catch(() => null);
       bookingId = String(serverBooking?.bookingId || '').trim();
-      if (bookingId) {
-        await refreshRealClient().catch(() => {});
-        card = await waitForBookingCardById(bookingId, Math.min(timeoutMs, 3500));
-      }
+    }
+
+    if (bookingId && !card) {
+      await refreshRealClient().catch(() => {});
+      card = await waitForBookingCardById(bookingId, Math.min(timeoutMs, 3500));
     }
 
     return { bookingId, card };
@@ -1230,13 +1231,13 @@
       const createdIdentity = await reconcileBookingIdentity(note, createdBooking, 10000);
       let card = createdIdentity.card;
       bookingId = createdIdentity.bookingId;
-      actual.created = Boolean(card && bookingId);
       if (!bookingId) throw new Error('真人送出預約後，建立事件、畫面與 Bootstrap 都找不到 Booking ID。');
       if (!card) {
         await refreshRealClient().catch(() => {});
         card = await waitForBookingCardById(bookingId, 3500);
       }
       if (!card) throw new Error('真人送出預約已取得 Booking ID，但預約卡片尚未同步。');
+      actual.created = true;
 
       card?.querySelector('.booking-item-top')?.click();
       await wait(80);
