@@ -59,6 +59,7 @@
     usageStateError: null,
     availabilitySync: null,
     bookingLaneDayCount: 1,
+    runStartedAt: '',
     launcher: null,
     panel: null
   };
@@ -434,6 +435,7 @@
     state.usageState = null;
     state.usageStateError = null;
     state.cancelled = false;
+    state.runStartedAt = new Date().toISOString();
     setRunning(true);
     setStatus('執行中');
     setMessage(state.currentSuite === 'full' ? '正在以隨機案例順序、隨機操作間隔執行完整用戶端測試…' : '正在執行快速健康檢查…');
@@ -893,7 +895,11 @@
       actual: item.actual && typeof item.actual === 'object' ? item.actual : {},
       durationMs: Number(item.durationMs || 0)
     }));
-    return qaServiceRequest('user.qa.browser-run.record', { cases }, 30000);
+    return qaServiceRequest('user.qa.browser-run.record', {
+      cases,
+      startedAt: state.runStartedAt || undefined,
+      completedAt: new Date().toISOString()
+    }, 30000);
   }
 
   async function memberHumanProfileEditCase() {
