@@ -114,3 +114,32 @@ test('test data is retained until an admin manually purges it', () => {
   assert.doesNotMatch(migration, /delete from public\.members/);
   assert.match(migration, /grant execute on function public\.admin_purge_test_data\(\)\s+to service_role/);
 });
+
+
+test('paired E2E creates complex admin fixtures before randomized user clients start', () => {
+  const runner = read('admin/e2e-control.js');
+  const migration = read('supabase/migrations/20260922063942_enhance_e2e_fixture_and_test_surface_sessions_v2.sql');
+
+  const fixtureCall = runner.indexOf('await prepareComplexE2EFixtures()');
+  const accountCall = runner.indexOf('await prepareTestAccounts(participantCount)');
+  const clientStart = runner.indexOf('runParticipantSurfaces(participant)');
+  assert.ok(fixtureCall >= 0 && accountCall > fixtureCall && clientStart > fixtureCall);
+
+  assert.match(runner, /shuffled\(PAIRED_SURFACES\)/);
+  assert.match(runner, /randomInt\(80, 1200\)/);
+  assert.match(runner, /createPairedSession\(participant\.account, surface\)/);
+  assert.match(runner, /admin\.test-control\.prepare-e2e-fixtures/);
+
+  assert.match(migration, /admin_prepare_complex_e2e_fixtures/);
+  assert.match(migration, /birthday_month/);
+  assert.match(migration, /yearly/);
+  assert.match(migration, /monthly/);
+  assert.match(migration, /weekly/);
+  assert.match(migration, /month_end/);
+  assert.match(migration, /week_end/);
+  assert.match(migration, /days_after_issue/);
+  assert.match(migration, /fixed_date/);
+  assert.match(migration, /array\['general','silver','gold','platinum'\]/);
+  assert.match(migration, /jsonb_build_array\(2,3,5,8,13,21\)/);
+  assert.match(migration, /requires_companion_service/);
+});
