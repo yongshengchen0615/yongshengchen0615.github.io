@@ -481,7 +481,12 @@ Deno.serve(async (request: Request) => {
     if (action === "admin.test-mode.bootstrap") {
       if (clientType !== "admin") throw new ApiError(403, "ADMIN_SURFACE_REQUIRED", "請從管理端操作系統維護設定。");
       const [row, accounts] = await Promise.all([settings(supabase), testAccounts(supabase)]);
-      return reply(origin, { ok: true, status: 200, data: { settings: settingsClient(row), accounts } });
+      const surfaceMap = await activeSurfaceMap(supabase, accounts.map((account) => String(account.memberId)));
+      const enriched = accounts.map((account) => ({
+        ...account,
+        activeSurfaces: Array.from(surfaceMap.get(String(account.memberId)) || []).sort(),
+      }));
+      return reply(origin, { ok: true, status: 200, data: { settings: settingsClient(row), accounts: enriched } });
     }
 
     if (action === "admin.test-mode.delete-accounts") {
