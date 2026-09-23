@@ -538,6 +538,7 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'test-control-history-item' + (String(run.id || '') === currentRunId ? ' active' : '');
+      button.dataset.testRunId = String(run.id || '');
       button.addEventListener('click', async () => {
         if (busy) return;
         currentRunId = String(run.id || '');
