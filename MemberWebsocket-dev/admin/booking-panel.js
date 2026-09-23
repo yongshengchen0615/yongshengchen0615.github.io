@@ -91,7 +91,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-tab-navigation-20260920-1');
+      return load('booking-panel-core.js', 'booking-rate-budget-20260923-1');
     })
     .then(() => {
       openLegacyBookingRouteWhenReady();
