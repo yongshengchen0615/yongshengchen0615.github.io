@@ -55,8 +55,8 @@ test('E2E evolution state survives ordinary test-data purge', () => {
 });
 
 test('adaptive E2E asset versions are aligned across all surfaces', () => {
-  assert.match(read('admin/index.html'), /e2e-control\.js\?v=admin-e2e-20260923-19/);
+  assert.match(read('admin/index.html'), /e2e-control\.js\?v=admin-e2e-20260923-20/);
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
-    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=human-e2e-20260923-7/);
+    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=human-e2e-20260923-8/);
   }
 });

@@ -418,7 +418,7 @@ test('booking client exposes a read-only realtime E2E probe without forcing refr
   assert.match(bookingSource, /getRenderCount/);
   assert.match(bookingSource, /getBookingSnapshot/);
   assert.match(bookingSource, /booking:bookings-rendered/);
-  assert.match(bookingIndex, /app\.js\?v=booking-realtime-e2e-probe-20260922-1/);
+  assert.match(bookingIndex, /app\.js\?v=booking-realtime-e2e-probe-20260923-2/);
 });
 
 test('full booking E2E requires human-style admin UI actions and per-action realtime member sync', () => {

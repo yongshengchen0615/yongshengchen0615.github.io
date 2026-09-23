@@ -39,5 +39,5 @@ test('background admin runner does not place the admin token in URL or persisten
 test('background runner asset versions force the session-handoff fix to load', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=background-e2e-rate-budget-20260923-1/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-19/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-20/);
 });
