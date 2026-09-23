@@ -977,6 +977,7 @@
 
   async function runUnifiedServerFullPhase() {
     const started = performance.now();
+    const traceMarker = adminDiagnosticMarker();
     const row = {
       key: 'UNIFIED_SERVER_FULL_E2E',
       name: '後端完整 QA：Test Control Center full suite',
@@ -1014,6 +1015,7 @@
       Object.assign(row, failedCases === 0 && String(run.status || '') !== 'failed'
         ? pass('後端完整 QA 已完成且沒有失敗案例；繼續執行 Browser 協同 E2E。', row.expected, row.actual)
         : fail('後端完整 QA 有失敗案例；Browser 協同 E2E 仍會繼續，以收集完整錯誤範圍。', row.expected, row.actual));
+      if (row.status === 'failed') row.trace = buildAdminFailureTrace(traceMarker, row);
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
       return data;
@@ -1024,6 +1026,7 @@
         row.expected,
         plainError(error)
       ));
+      row.trace = buildAdminFailureTrace(traceMarker, row, error);
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
       return { error: plainError(error) };
