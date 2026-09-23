@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.17';
+  const VERSION = '2026-09-23.18';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -71,7 +71,10 @@
         <div>
           <span class="test-mode-eyebrow">Unified Background E2E</span>
           <h4 id="adminBrowserE2ETitle">完整 E2E · 後端 QA + 管理端 ↔ 用戶端協同</h4>
-          <p>單一入口會先執行 Test Control Center 的後端完整 QA，再執行完整管理端與五種用戶端真人協同 E2E。管理端使用獨立背景 Runner；每位測試用戶只使用 1 個獨立背景視窗，並在同一視窗依序切換會員卡／集點卡／活動票券／活動日曆／預約，因此不同測試帳號彼此隔離，但同一帳號不會額外開 5 個視窗。預約仍會即時接手拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並驗證 Realtime、終態與風險掃描。</p>
+          <p>單一入口會先執行後端完整 QA，再由背景 Runner 驗證管理端與五種用戶端真人流程、Realtime、預約終態與風險掃描。</p>
+          <div class="admin-e2e-flow" aria-label="完整 E2E 流程">
+            <span>後端 QA</span><b aria-hidden="true">→</b><span>管理端</span><b aria-hidden="true">→</b><span>會員卡</span><b aria-hidden="true">→</b><span>集點卡</span><b aria-hidden="true">→</b><span>活動票券</span><b aria-hidden="true">→</b><span>日曆</span><b aria-hidden="true">→</b><span>預約</span>
+          </div>
         </div>
         <div class="admin-e2e-actions">
           <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">完整 E2E：待命</span>
@@ -85,7 +88,10 @@
           <span><strong>用戶端手機大小</strong><small>勾選後，每個測試帳號的單一背景視窗會以 430×932 開啟；只測 viewport，不偽造手機 User-Agent。</small></span>
           <input id="pairedE2EMobileViewport" type="checkbox">
         </label>
-        <small class="admin-e2e-config-note">1–10 人。每位測試用戶只開啟 1 個獨立背景視窗，該帳號會在同一視窗依序執行會員卡／集點卡／活動票券／活動日曆／預約；另開 1 個獨立背景管理端 Runner。10 人最多為 10 個用戶端視窗 + 1 個管理端 Runner。正式用戶不會被選入；背景 Runner／測試視窗不可關閉，否則該次 E2E 會失敗或停止。</small>
+        <details class="admin-e2e-config-note">
+          <summary>執行方式與視窗規則</summary>
+          <p>1–10 人。每位測試用戶只開啟 1 個獨立背景視窗，並在同一視窗依序執行五種用戶端；另開 1 個管理端 Runner。10 人最多 11 個 E2E 視窗。正式用戶不會被選入；執行中請勿關閉背景 Runner 或測試視窗。</p>
+        </details>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
