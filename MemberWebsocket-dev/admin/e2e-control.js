@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.11';
+  const VERSION = '2026-09-23.12';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -603,6 +603,7 @@
       const grid = document.createElement('div');
       grid.className = 'admin-e2e-data-grid';
       grid.append(dataBox('Expected', item.expected), dataBox('Actual', item.actual));
+      if (item.status === 'failed' && item.trace) grid.append(dataBox('Diagnostics', item.trace));
       body.append(message, grid);
       details.append(summary, body);
       return details;
@@ -681,6 +682,7 @@
       if (state.floating) state.floating.textContent = 'E2E 執行中 · ' + phaseLabel + ' · ' + def.name;
       render();
       const started = performance.now();
+      const traceMarker = adminDiagnosticMarker();
       try {
         let outcome;
         if (def.humanRequired === true) {
@@ -702,8 +704,10 @@
           outcome = await def.run();
         }
         Object.assign(row, outcome);
+        if (row.status === 'failed') row.trace = buildAdminFailureTrace(traceMarker, row);
       } catch (error) {
         Object.assign(row, fail('案例執行發生未預期錯誤。', { noUnhandledError: true }, plainError(error)));
+        row.trace = buildAdminFailureTrace(traceMarker, row, error);
       }
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
@@ -759,6 +763,66 @@
     };
   }
 
+  function diagnosticPath(value) {
+    try {
+      const parsed = new URL(String(value || ''), window.location.href);
+      return parsed.pathname || '/';
+    } catch {
+      return String(value || '').split('?')[0].slice(0, 240);
+    }
+  }
+
+  function adminDiagnosticMarker() {
+    return {
+      resourceIndex: performance.getEntriesByType('resource').length,
+      startedAtMs: Date.now()
+    };
+  }
+
+  function adminResourceTimingsSince(index) {
+    return performance.getEntriesByType('resource')
+      .slice(Math.max(0, Number(index || 0)))
+      .filter((entry) => ['fetch', 'xmlhttprequest'].includes(String(entry.initiatorType || '').toLowerCase()))
+      .slice(-24)
+      .map((entry) => ({
+        path: diagnosticPath(entry.name),
+        initiatorType: String(entry.initiatorType || ''),
+        durationMs: Math.max(0, Math.round(Number(entry.duration || 0))),
+        transferSize: Math.max(0, Number(entry.transferSize || 0))
+      }));
+  }
+
+  function buildAdminFailureTrace(marker, row, error = null, extra = {}) {
+    return safe({
+      artifactVersion: 1,
+      seed: state.randomSeed,
+      complexityLevel: state.complexityLevel,
+      rootRunId: state.rootRunId,
+      clientConcurrency: state.clientConcurrency,
+      backgroundExecution: state.backgroundExecution,
+      caseKey: row?.key || '',
+      domain: row?.domain || '',
+      page: {
+        path: diagnosticPath(window.location.href),
+        readyState: document.readyState,
+        visibilityState: document.visibilityState,
+        online: navigator.onLine !== false
+      },
+      elapsedMs: Math.max(0, Date.now() - Number(marker?.startedAtMs || Date.now())),
+      apiTimings: adminResourceTimingsSince(marker?.resourceIndex),
+      realtimeSummary: row?.actual?.realtime || row?.actual?.realtimeSync || null,
+      participants: state.participants.slice(0, 10).map((participant) => ({
+        index: participant.index,
+        status: participant.status,
+        surface: participant.surface,
+        adminStatus: participant.adminStatus,
+        lastSurfaceKey: participant.lastSurfaceKey
+      })),
+      error: error ? plainError(error) : null,
+      ...safe(extra)
+    });
+  }
+
   async function recordResultRows(rows, runnerKind, suite, memberId = '', startedAt = '', recordMeta = {}) {
     const sourceRows = Array.isArray(rows) ? rows : [];
     if (!sourceRows.length) return null;
@@ -789,6 +853,7 @@
         message: String(item.message || '').slice(0, 1000),
         expected: compactRecordSnapshot(item.expected, detailLimit),
         actual: compactRecordSnapshot(item.actual, detailLimit),
+        trace: item.status === 'failed' ? compactRecordSnapshot(item.trace || {}, 9000) : undefined,
         durationMs: Number(item.durationMs || 0)
       };
     });
@@ -813,7 +878,8 @@
       payload.cases = cases.map((item) => ({
         ...item,
         expected: compactRecordSnapshot(item.expected, 500),
-        actual: compactRecordSnapshot(item.actual, 900)
+        actual: compactRecordSnapshot(item.actual, 900),
+        trace: item.status === 'failed' ? compactRecordSnapshot(item.trace || {}, 1600) : undefined
       }));
     }
     return postFunction('test-control-api', payload);
@@ -1004,6 +1070,7 @@
     state.results = [];
     state.participants = [];
     state.runStartedAt = new Date().toISOString();
+    const runTraceMarker = adminDiagnosticMarker();
     setBusy(true, state.backgroundExecution ? '背景完整 E2E' : '完整 E2E');
     setMessage('完整 E2E 已開始：先驗證維護模式，再執行後端 full QA，之後進入管理端 ↔ 五種用戶端真人協同。');
     try {
@@ -1175,7 +1242,8 @@
           message: error?.message || '協同 Runner 無法啟動。',
           expected: { runnable: true, testAccountsOnly: true, complexFixtureReadyBeforeClients: true },
           actual: { ...plainError(error), fixture: safe(error?.fixture || {}) },
-          durationMs: 0
+          durationMs: 0,
+          trace: buildAdminFailureTrace(runTraceMarker, { key: 'PAIRED_RUNNER_FATAL', domain: 'Paired E2E', actual: {} }, error)
         });
       }
       setMessage(state.cancelled ? '協同 E2E 已停止。' : (error?.message || '協同 E2E 無法啟動。請確認系統維護、目前裝置測試登入與彈出式視窗權限。'), !state.cancelled);
@@ -1205,6 +1273,7 @@
       if (state.cancelled) break;
       await sleep(randomInt(120, 950));
       const started = performance.now();
+      const traceMarker = adminDiagnosticMarker();
       const row = {
         key: 'PAIRED_' + participant.index + '_' + surface.toUpperCase(),
         name: '測試用戶 ' + participant.index + '：' + label + '隨機真人 E2E',
@@ -1265,11 +1334,32 @@
           Object.assign(row, ok
             ? pass(label + '隨機真人 E2E 通過，且使用的是該用戶端專屬測試 Session。', row.expected, row.actual)
             : fail(label + '真人 E2E、Session surface 或測試用戶一致性驗證失敗。', row.expected, row.actual));
+          if (!ok) {
+            const childFailures = Array.isArray(child?.results)
+              ? child.results.filter((item) => item?.status === 'failed').slice(0, 8).map((item) => ({
+                  key: item.key,
+                  domain: item.domain,
+                  message: item.message,
+                  trace: item.trace || null
+                }))
+              : [];
+            row.trace = buildAdminFailureTrace(traceMarker, row, null, {
+              participantIndex: participant.index,
+              surface,
+              childFailures
+            });
+          }
         }
       } catch (error) {
         Object.assign(row, state.cancelled
           ? skip(label + ' E2E 已停止。', { stoppedSafely: true }, { stoppedSafely: true })
           : fail(label + '獨立用戶端 E2E 發生錯誤。', row.expected, plainError(error)));
+        if (!state.cancelled) {
+          row.trace = buildAdminFailureTrace(traceMarker, row, error, {
+            participantIndex: participant.index,
+            surface
+          });
+        }
       }
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
