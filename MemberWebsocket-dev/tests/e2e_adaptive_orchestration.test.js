@@ -37,6 +37,16 @@ test('test control API persists root-run evolution metadata', () => {
   assert.match(api, /rootRun: body\.rootRun === true/);
   assert.match(api, /e2eSeed/);
   assert.match(api, /clientConcurrency/);
+  assert.match(api, /e2e_evolution_state/);
+  assert.match(api, /admin_advance_e2e_evolution/);
+});
+
+test('E2E evolution state survives ordinary test-data purge', () => {
+  const migration = read('supabase/migrations/20260923081500_persist_e2e_evolution_state.sql');
+  assert.match(migration, /create table if not exists public\.e2e_evolution_state/);
+  assert.match(migration, /admin_advance_e2e_evolution/);
+  assert.match(migration, /last_root_run_id/);
+  assert.match(migration, /grant select, insert, update on table public\.e2e_evolution_state to service_role/);
 });
 
 test('adaptive E2E asset versions are aligned across all surfaces', () => {
