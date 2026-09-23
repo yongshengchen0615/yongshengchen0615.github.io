@@ -136,7 +136,9 @@
     const prizes = claim ? claim.prizes : ticket.prizes; renderPrizes(ticket.ticketType, prizes);
     const eligible = !history && eventTicketTierEligible(offer); const fixedPending = isFixedOffer(offer) && !claim; const canAct = !state.actionLocked && !history && eligible && !fixedPending && ((claim && offer.canUse) || (!claim && offer.canClaim));
     els.ticketModalStatus.textContent = modalStatusText(offer); els.ticketModalAction.textContent = state.actionLocked ? '請重新整理確認' : history ? '這張票券已使用' : !eligible ? '目前等級無法使用' : fixedPending ? '由系統自動發放' : claim ? offer.canUse ? '確認使用這張票券' : '這張票券已使用' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !canAct; els.ticketModalAction.classList.toggle('hidden', history || Boolean(claim && !offer.canUse && eligible) && !state.actionLocked); els.refreshTicketButton.classList.toggle('hidden', !state.actionLocked);
-    if (history && claim && claim.ticketType === 'lottery' && claim.result) renderRedeemedResult(claim);
+    if (history && claim && ticket.ticketType === 'lottery' && claim.result) {
+      renderRedeemedResult({ ...claim, ticketType: 'lottery' });
+    }
   }
 
   function renderPrizes(ticketType, prizes) {
