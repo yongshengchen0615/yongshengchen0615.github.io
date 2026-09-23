@@ -66,6 +66,9 @@
     complexityLevel: 1,
     participantIndex: 1,
     runStartedAt: '',
+    traceEvents: [],
+    traceResourceStart: 0,
+    traceCleanup: null,
     launcher: null,
     panel: null
   };
@@ -173,6 +176,102 @@
       out[key] = safeJson(item);
     });
     return out;
+  }
+
+  function diagnosticPath(value) {
+    try {
+      const parsed = new URL(String(value || ''), window.location.href);
+      return parsed.pathname || '/';
+    } catch {
+      return String(value || '').split('?')[0].slice(0, 240);
+    }
+  }
+
+  function pushDiagnosticEvent(type, detail = {}) {
+    state.traceEvents.push({
+      atMs: Date.now(),
+      type: String(type || 'event').slice(0, 80),
+      detail: safeJson(detail)
+    });
+    if (state.traceEvents.length > 80) state.traceEvents.shift();
+  }
+
+  function startDiagnosticTrace() {
+    if (typeof state.traceCleanup === 'function') state.traceCleanup();
+    state.traceEvents = [];
+    state.traceResourceStart = performance.getEntriesByType('resource').length;
+    const listeners = [];
+    const on = (target, type, handler) => {
+      target?.addEventListener?.(type, handler, true);
+      listeners.push(() => target?.removeEventListener?.(type, handler, true));
+    };
+    on(window, 'error', (event) => pushDiagnosticEvent('window.error', {
+      message: String(event?.message || '').slice(0, 300),
+      source: diagnosticPath(event?.filename || ''),
+      line: Number(event?.lineno || 0)
+    }));
+    on(window, 'unhandledrejection', (event) => pushDiagnosticEvent('window.unhandledrejection', plainError(event?.reason)));
+    on(window, 'online', () => pushDiagnosticEvent('network.online', {}));
+    on(window, 'offline', () => pushDiagnosticEvent('network.offline', {}));
+    on(window, 'pageshow', () => pushDiagnosticEvent('page.show', { persisted: false }));
+    on(document, 'visibilitychange', () => pushDiagnosticEvent('page.visibility', { visibilityState: document.visibilityState }));
+    for (const type of ['booking:created', 'booking:bookings-rendered', 'booking:settings-updated', 'booking:selection-changed']) {
+      on(window, type, (event) => pushDiagnosticEvent(type, event?.detail || {}));
+    }
+    state.traceCleanup = () => {
+      while (listeners.length) {
+        try { listeners.pop()(); } catch {}
+      }
+      state.traceCleanup = null;
+    };
+  }
+
+  function stopDiagnosticTrace() {
+    if (typeof state.traceCleanup === 'function') state.traceCleanup();
+  }
+
+  function diagnosticMarker() {
+    return {
+      eventIndex: state.traceEvents.length,
+      resourceIndex: performance.getEntriesByType('resource').length,
+      startedAtMs: Date.now()
+    };
+  }
+
+  function resourceTimingsSince(index) {
+    return performance.getEntriesByType('resource')
+      .slice(Math.max(0, Number(index || 0)))
+      .filter((entry) => ['fetch', 'xmlhttprequest'].includes(String(entry.initiatorType || '').toLowerCase()))
+      .slice(-20)
+      .map((entry) => ({
+        path: diagnosticPath(entry.name),
+        initiatorType: String(entry.initiatorType || ''),
+        durationMs: Math.max(0, Math.round(Number(entry.duration || 0))),
+        transferSize: Math.max(0, Number(entry.transferSize || 0))
+      }));
+  }
+
+  function buildFailureTrace(marker, row, error = null) {
+    const startEventIndex = Math.max(0, Number(marker?.eventIndex || 0));
+    return safeJson({
+      artifactVersion: 1,
+      seed: state.randomSeed,
+      complexityLevel: state.complexityLevel,
+      participantIndex: state.participantIndex,
+      surface,
+      caseKey: row?.key || '',
+      domain: row?.domain || '',
+      page: {
+        path: diagnosticPath(window.location.href),
+        readyState: document.readyState,
+        visibilityState: document.visibilityState,
+        online: navigator.onLine !== false
+      },
+      elapsedMs: Math.max(0, Date.now() - Number(marker?.startedAtMs || Date.now())),
+      events: state.traceEvents.slice(startEventIndex).slice(-24),
+      apiTimings: resourceTimingsSince(marker?.resourceIndex),
+      error: error ? plainError(error) : null
+    });
   }
 
   function result(status, message, expected, actual) {
@@ -447,6 +546,7 @@
     state.bookingHandoff = null;
     state.cancelled = false;
     state.runStartedAt = new Date().toISOString();
+    startDiagnosticTrace();
     setRunning(true);
     setStatus('執行中');
     setMessage(state.currentSuite === 'full'
@@ -499,6 +599,7 @@
       renderResults();
 
       const started = performance.now();
+      const traceMarker = diagnosticMarker();
       try {
         let outcome;
         if (testCase.humanRequired === true) {
@@ -520,12 +621,14 @@
           outcome = await testCase.run();
         }
         Object.assign(running, outcome, { durationMs: elapsed(started) });
+        if (running.status === 'failed') running.trace = buildFailureTrace(traceMarker, running);
       } catch (error) {
         Object.assign(running, fail(
           '案例執行發生未預期錯誤。',
           { noUnhandledError: true },
           plainError(error)
         ), { durationMs: elapsed(started) });
+        running.trace = buildFailureTrace(traceMarker, running, error);
       }
       renderResults();
       updateSummary(index + 1, cases.length);
@@ -577,6 +680,7 @@
     const skipped = state.results.filter((item) => item.status === 'skipped').length;
     const humanRows = state.results.filter((item) => item.humanRequired === true);
     const humanMissingEvidence = humanRows.filter((item) => Number(item?.actual?.humanInteraction?.eventCount || 0) < 1);
+    stopDiagnosticTrace();
     return {
       ok: !cancelled && failed === 0,
       humanInteraction: {
@@ -599,6 +703,7 @@
         message: item.message || '',
         expected: safeJson(item.expected),
         actual: safeJson(item.actual),
+        trace: item.status === 'failed' ? safeJson(item.trace) : undefined,
         durationMs: Number(item.durationMs || 0)
       })),
       summary: {
@@ -1031,6 +1136,9 @@
       message: item.message,
       expected: item.expected && typeof item.expected === 'object' ? item.expected : {},
       actual: item.actual && typeof item.actual === 'object' ? item.actual : {},
+      trace: item.status === 'failed'
+        ? (item.trace || buildFailureTrace({ eventIndex: 0, resourceIndex: state.traceResourceStart, startedAtMs: Date.parse(state.runStartedAt) || Date.now() }, item))
+        : undefined,
       durationMs: Number(item.durationMs || 0)
     }));
     return qaServiceRequest('user.qa.browser-run.record', {
