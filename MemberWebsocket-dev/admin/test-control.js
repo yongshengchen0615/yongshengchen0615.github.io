@@ -158,7 +158,9 @@
         Number(purge.deletedServiceTimeEntries || 0),
         Number(purge.deletedFixedTicketGrants || 0),
         Number(purge.deletedBirthdayBenefitGrants || 0),
-        Number(purge.deletedQaArtifacts || 0)
+        Number(purge.deletedQaArtifacts || 0),
+        Number(purge.deletedExtendedQaArtifacts || 0),
+        Number(purge.deletedStorageObjects || 0)
       ].reduce((sum, value) => sum + value, 0);
       setMessage(
         '測試資料已移除，共清除 ' + removed + ' 筆主要測試資料；' +
