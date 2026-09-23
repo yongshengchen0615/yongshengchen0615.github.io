@@ -66,3 +66,26 @@
 .test-mode-status-badge.is-error{color:#a13b30;background:#fbe9e7;border-color:#efc2bd}
 @media(max-width:980px){.test-control-layout{grid-template-columns:1fr}.test-control-history-card{order:2}}
 @media(max-width:680px){.test-control-center{padding:16px;border-radius:17px}.test-control-heading{display:grid}.test-control-heading-actions{justify-content:stretch}.test-control-heading-actions .button{flex:1}.test-control-data-grid{grid-template-columns:1fr}.test-control-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.test-control-progress-shell{align-items:stretch;flex-direction:column}.test-control-progress-text{text-align:left}}
+
+
+/* Focused runner workspace */
+.test-workspace-panel--runner .test-control-center{padding:20px}
+.test-workspace-panel--runner .test-control-heading{padding-bottom:16px}
+.test-workspace-panel--runner .test-control-heading h3{font-size:20px}
+.test-workspace-panel--runner .test-control-retention-note{margin-top:14px}
+.test-workspace-panel--runner .test-control-run-card{border-radius:18px}
+.test-workspace-panel--runner .test-control-run-head{padding:15px 16px}
+.test-workspace-panel--runner .test-control-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 18px;align-items:center}
+.test-workspace-panel--runner .test-control-meta-row{grid-column:1/-1;margin-bottom:0}
+.test-workspace-panel--runner .test-control-progress-shell{grid-column:1/2}
+.test-workspace-panel--runner .test-control-stat-grid{grid-column:2/3;grid-row:2;margin-top:0;min-width:245px}
+.test-workspace-panel--runner .test-control-stat{text-align:center}
+.test-workspace-panel--runner .test-control-case-list{padding:12px}
+@media(max-width:760px){
+  .test-workspace-panel--runner .test-control-center{padding:15px}
+  .test-workspace-panel--runner .test-control-summary{grid-template-columns:1fr}
+  .test-workspace-panel--runner .test-control-meta-row,
+  .test-workspace-panel--runner .test-control-progress-shell,
+  .test-workspace-panel--runner .test-control-stat-grid{grid-column:1;grid-row:auto}
+  .test-workspace-panel--runner .test-control-stat-grid{min-width:0}
+}
