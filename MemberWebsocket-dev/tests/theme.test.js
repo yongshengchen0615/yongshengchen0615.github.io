@@ -13,8 +13,8 @@ function read(relativePath) {
 test('all admin and member surfaces load the shared theme controller and stylesheet', () => {
   for (const entry of entries) {
     const html = read(path.join(entry, 'index.html'));
-    assert.match(html, /\.\.\/theme\.css\?v=theme-toggle-20260924-1/, entry + ' should load theme.css');
-    assert.match(html, /\.\.\/theme\.js\?v=theme-toggle-20260924-1/, entry + ' should load theme.js');
+    assert.match(html, /\.\.\/theme\.css\?v=theme-render-20260924-2/, entry + ' should load theme.css');
+    assert.match(html, /\.\.\/theme\.js\?v=theme-render-20260924-2/, entry + ' should load theme.js');
   }
 });
 
@@ -34,4 +34,21 @@ test('dark theme styles and E2E button coverage are wired', () => {
   assert.match(css, /html\[data-theme="dark"\]/);
   assert.match(css, /\.theme-toggle-button/);
   assert.match(qa, /button\.dataset\?\.uiThemeControl === 'true'/);
+});
+
+
+test('optimized theme avoids expensive theme paint effects and redundant DOM writes', () => {
+  const css = read('theme.css');
+  const source = read('theme.js');
+
+  assert.match(css, /background-image:\s*none/);
+  assert.match(css, /backdrop-filter:\s*none/);
+  assert.match(css, /-webkit-backdrop-filter:\s*none/);
+  assert.doesNotMatch(css, /color-mix\(/);
+  assert.match(css, /@media \(hover: none\)/);
+  assert.match(css, /animation:\s*none !important/);
+
+  assert.match(source, /const changed = currentTheme !== next \|\| root\.dataset\.theme !== next/);
+  assert.match(source, /themeMeta\.content !== next/);
+  assert.match(source, /window\.localStorage\.getItem\(STORAGE_KEY\) !== theme/);
 });
