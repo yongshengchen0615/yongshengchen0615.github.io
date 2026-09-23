@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.7';
+  const VERSION = '2026-09-23.8';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -703,14 +703,22 @@
     };
   }
 
-  async function recordResultRows(rows, runnerKind, suite, memberId = '', startedAt = '') {
+  async function recordResultRows(rows, runnerKind, suite, memberId = '', startedAt = '', recordMeta = {}) {
     const sourceRows = Array.isArray(rows) ? rows : [];
     if (!sourceRows.length) return null;
     // test-control-api accepts at most 80 cases per browser run.
     if (sourceRows.length > 80) {
       const batches = [];
       for (let offset = 0; offset < sourceRows.length; offset += 80) {
-        batches.push(await recordResultRows(sourceRows.slice(offset, offset + 80), runnerKind, suite, memberId, startedAt));
+        const isLastBatch = offset + 80 >= sourceRows.length;
+        batches.push(await recordResultRows(
+          sourceRows.slice(offset, offset + 80),
+          runnerKind,
+          suite,
+          memberId,
+          startedAt,
+          isLastBatch ? recordMeta : { ...recordMeta, rootRun: false }
+        ));
       }
       return { ...batches[batches.length - 1], runs: batches.map((batch) => batch?.run).filter(Boolean) };
     }
@@ -738,10 +746,11 @@
       startedAt: startedAt || state.runStartedAt || new Date(Date.now() - 1000).toISOString(),
       completedAt: new Date().toISOString(),
       cases,
-      rootRun: false,
-      e2eSeed: String(state.randomSeed || ''),
-      complexityLevel: Number(state.complexityLevel || 1),
-      rootRunId: String(state.rootRunId || '')
+      rootRun: recordMeta?.rootRun === true,
+      e2eSeed: String(recordMeta?.e2eSeed || state.randomSeed || ''),
+      complexityLevel: Number(recordMeta?.complexityLevel || state.complexityLevel || 1),
+      rootRunId: String(recordMeta?.rootRunId || state.rootRunId || ''),
+      clientConcurrency: Number(recordMeta?.clientConcurrency || state.clientConcurrency || 1)
     };
     const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
     if (bytes > 320000) {
@@ -755,8 +764,20 @@
   }
 
   async function recordRun(runnerKind, suite, memberId = '') {
-    const recorded = await recordResultRows(state.results, runnerKind, suite, memberId, state.runStartedAt || '');
-    return recorded;
+    return recordResultRows(
+      state.results,
+      runnerKind,
+      suite,
+      memberId,
+      state.runStartedAt || '',
+      {
+        rootRun: true,
+        e2eSeed: state.randomSeed,
+        complexityLevel: state.complexityLevel,
+        rootRunId: state.rootRunId,
+        clientConcurrency: state.clientConcurrency
+      }
+    );
   }
 
   function adminDefinitions(suite) {
@@ -1056,39 +1077,9 @@
       }
 
       const cancelled = state.cancelled;
-      let recorded = null;
-      if (!cancelled && state.results.length) {
-        const originalRecordRows = recordResultRows;
-        recorded = await (async () => {
-          const session = await adminSession();
-          const sourceRows = state.results;
-          const cases = sourceRows.map((item) => {
-            const detailLimit = item.status === 'failed' ? 3600 : 1400;
-            return {
-              key: item.key, name: item.name, domain: item.domain, status: item.status,
-              message: String(item.message || '').slice(0, 1000),
-              expected: compactRecordSnapshot(item.expected, detailLimit),
-              actual: compactRecordSnapshot(item.actual, detailLimit),
-              durationMs: Number(item.durationMs || 0)
-            };
-          });
-          return postFunction('test-control-api', {
-            action: 'admin.test-control.record-browser-run',
-            clientType: 'admin',
-            idToken: session.idToken,
-            runnerKind: 'paired-browser',
-            suite: 'full',
-            startedAt: state.runStartedAt || new Date(Date.now() - 1000).toISOString(),
-            completedAt: new Date().toISOString(),
-            cases: cases.slice(0, 80),
-            rootRun: true,
-            e2eSeed: String(state.randomSeed || ''),
-            complexityLevel: Number(state.complexityLevel || 1),
-            rootRunId: String(state.rootRunId || ''),
-            clientConcurrency: Number(state.clientConcurrency || 1)
-          });
-        })();
-      }
+      const recorded = !cancelled && state.results.length
+        ? await recordRun('paired-browser', 'full')
+        : null;
       const failed = state.results.filter((item) => item.status === 'failed').length;
       if (cancelled) {
         for (const participant of state.participants) {
