@@ -376,6 +376,19 @@ test('large paired reports retain every case within the server limit of 80 per r
 });
 
 
+test('live admin realtime probe waits for the existing booking client and never hijacks another surface', () => {
+  const start = source.indexOf('async function ensureBookingRealtimeClient(participant');
+  const end = source.indexOf('\n  async function beginBookingRealtimeProbe', start);
+  assert.ok(start >= 0 && end > start);
+  const body = source.slice(start, end);
+  assert.match(body, /participant\.lastSurfaceKey !== 'booking'/);
+  assert.match(body, /E2E_BOOKING_CLIENT_NOT_READY/);
+  assert.doesNotMatch(body, /createPairedSession/);
+  assert.doesNotMatch(body, /seedParticipantSession/);
+  assert.doesNotMatch(body, /waitParticipantSurface/);
+});
+
+
 test('booking client exposes a read-only realtime E2E probe without forcing refresh', () => {
   const bookingSource = fs.readFileSync(path.join(__dirname, '../booking/app.js'), 'utf8');
   const bookingIndex = fs.readFileSync(path.join(__dirname, '../booking/index.html'), 'utf8');
