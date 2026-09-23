@@ -2336,7 +2336,7 @@
   }
 
   async function waitForLivePairedBookingTarget(participant, targetKey = 'any', timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
-    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    const deadline = Date.now() + backgroundAwareTimeout(Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS), 20 * 60 * 1000);
     let candidates = [];
     let detected = livePairedBookingSet(candidates);
     while (Date.now() < deadline) {
@@ -2370,7 +2370,7 @@
   }
 
   async function waitForLivePairedBookingSet(participant, timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
-    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    const deadline = Date.now() + backgroundAwareTimeout(Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS), 20 * 60 * 1000);
     let candidates = [];
     let detected = livePairedBookingSet(candidates);
     while (Date.now() < deadline) {
@@ -2397,7 +2397,7 @@
   }
 
   async function waitForPairedBookingHandoff(participant, timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
-    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    const deadline = Date.now() + backgroundAwareTimeout(Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS), 20 * 60 * 1000);
     while (Date.now() < deadline) {
       if (state.cancelled) return null;
       const handoff = participant?.bookingResult?.bookingHandoff;
@@ -2949,7 +2949,7 @@
         || typeof hooks.getRenderCount !== 'function'
         || typeof hooks.getBookingSnapshot !== 'function') return null;
       return { child, hooks };
-    }, timeoutMs, 100);
+    }, backgroundAwareTimeout(timeoutMs, 90000), 100);
 
     if (ready) return ready;
     const error = new Error('預約用戶端尚未停在預約頁；管理端不會強制切換用戶端，以免中斷正在進行的真人 E2E。');
@@ -3627,13 +3627,13 @@
     document.getElementById('testModeTab')?.click();
     const ids = [
       'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
-      'testModeAddAccountCount', 'saveTestModeButton', 'runQuickAutomationTestButton',
-      'runFullAutomationTestButton', 'runPairedFullE2EButton', 'pairedE2EAccountCount'
+      'testModeAddAccountCount', 'saveTestModeButton', 'purgeTestDataButton',
+      'runPairedFullE2EButton', 'pairedE2EAccountCount'
     ];
     const actual = Object.fromEntries(ids.map((id) => [id, Boolean(document.getElementById(id))]));
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('管理端測試環境與唯一完整協同 Runner 控制元件皆存在。', { allControls: true }, actual)
+      ? pass('管理端測試環境、測試資料清理與唯一背景完整 E2E Runner 控制元件皆存在。', { allControls: true }, actual)
       : fail('測試環境控制元件不完整。', { allControls: true }, actual);
   }
 
@@ -3645,7 +3645,7 @@
       const id = String(button.id || '');
       const datasets = Object.keys(button.dataset || {});
       const accepted =
-        Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|runQuickAutomation|runFullAutomation|close|cancel|save|grant|messagePreset|booking|runAdmin|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
+        Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|close|cancel|save|grant|messagePreset|booking|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
         datasets.length > 0 ||
         button.classList.contains('editor-modal-close') ||
         button.classList.contains('close-button');
@@ -3676,7 +3676,7 @@
     state.clientWindows = [];
   }
 
-  function openClientWindows(count) {
+  function openClientWindows(count, track = true) {
     const opened = [];
     const stamp = Date.now();
     for (let index = 0; index < count; index += 1) {
@@ -3695,7 +3695,7 @@
       } catch {}
       opened.push(child);
     }
-    state.clientWindows = opened;
+    if (track) state.clientWindows = opened;
     return opened;
   }
 
@@ -3885,13 +3885,13 @@
         if (child.closed) return null;
         return child.MemberUserTestControl?.surface === surface ? child.MemberUserTestControl : null;
       } catch { return null; }
-    }, 25000, 120);
+    }, backgroundAwareTimeout(25000, 90000), 120);
     if (control?.cancelled || state.cancelled) {
       return { ok: false, cancelled: true, surface, account: participant.account, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
     }
     if (!control) throw new Error(label + ' E2E 控制器未在獨立用戶端視窗就緒。');
 
-    const surfaceTimeoutMs = surface === 'booking' ? 180000 : 150000;
+    const surfaceTimeoutMs = backgroundAwareTimeout(surface === 'booking' ? 180000 : 150000, 12 * 60 * 1000);
     let result;
     let timeoutId = 0;
     try {
@@ -3992,7 +3992,7 @@
         if (error && !error.classList.contains('hidden')) return { error: String(error.textContent || '').trim() };
         return root && !root.classList.contains('hidden') ? root : null;
       } catch { return null; }
-    }, timeoutMs, 120);
+    }, backgroundAwareTimeout(timeoutMs, 90000), 120);
     if (!ready || ready.error) throw new Error(ready?.error || surface + ' 用戶端沒有進入可操作狀態。');
     return child;
   }
