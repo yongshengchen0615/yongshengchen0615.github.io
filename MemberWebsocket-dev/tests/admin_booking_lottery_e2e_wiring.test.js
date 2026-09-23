@@ -37,36 +37,35 @@ test('paired admin booking E2E covers every admin booking action using user-crea
 });
 
 
-test('standalone admin booking queue E2E actively mutates pending and cancellation-request states for test members only', () => {
+test('standalone booking queue and booking-only E2E entrypoints are removed after consolidation', () => {
   const e2e = read('admin/e2e-control.js');
   const adminIndex = read('admin/index.html');
 
-  assert.match(e2e, /runBookingPendingE2EButton/);
-  assert.match(e2e, /runBookingCancellationE2EButton/);
-  assert.match(e2e, /runAdminBookingQueueE2E\('pending'\)/);
-  assert.match(e2e, /runAdminBookingQueueE2E\('cancellation'\)/);
-  assert.match(e2e, /prepareAdminBookingQueueScenario/);
-  assert.match(e2e, /prepareTestAccounts\(1\)/);
-  assert.match(e2e, /user\.qa\.usage-state\.prepare/);
-  assert.match(e2e, /testSessionToken/);
-  assert.match(e2e, /waitStandaloneBookingRows/);
-  assert.match(e2e, /String\(booking\?\.memberId \|\| ''\) === String\(memberId \|\| ''\)/);
+  for (const removed of [
+    'runBookingPendingE2EButton',
+    'runBookingCancellationE2EButton',
+    'runBookingFullE2EButton',
+    'runAdminQuickE2EButton',
+    'runAdminFullE2EButton',
+    'runAdminBookingQueueE2E',
+    'prepareAdminBookingQueueScenario',
+    'runBookingPending:',
+    'runBookingCancellation:',
+    'runBookingFull:',
+    'runQuick:',
+    'runFull:'
+  ]) assert.doesNotMatch(e2e, new RegExp(removed));
 
-  assert.match(e2e, /ADMIN_BOOKING_PENDING_CONFIRM/);
-  assert.match(e2e, /ADMIN_BOOKING_PENDING_REJECT/);
-  assert.match(e2e, /確認預約/);
-  assert.match(e2e, /不通過/);
-
-  assert.match(e2e, /ADMIN_BOOKING_CANCELLATION_KEEP/);
-  assert.match(e2e, /ADMIN_BOOKING_CANCELLATION_APPROVE/);
+  assert.match(e2e, /runPairedFullE2EButton/);
+  assert.match(e2e, /runPairedAdminBookingLive\(participant\)/);
+  assert.match(e2e, /PAIRED_' \+ participant\.index \+ '_ADMIN_BOOKING_FOLLOWUP/);
+  assert.match(e2e, /拒絕|不通過/);
   assert.match(e2e, /保留預約/);
+  assert.match(e2e, /確認預約/);
+  assert.match(e2e, /修改此位技師/);
+  assert.match(e2e, /確認服務完成/);
   assert.match(e2e, /確認取消/);
-  assert.match(e2e, /requestDetectedCancellationWithTestSession/);
-  assert.match(e2e, /user\.booking\.cancel/);
-
-  assert.match(e2e, /runBookingPending:/);
-  assert.match(e2e, /runBookingCancellation:/);
-  assert.match(adminIndex, /e2e-control\.js\?v=admin-e2e-20260923-5/);
+  assert.match(adminIndex, /e2e-control\.js\?v=admin-e2e-20260923-6/);
 });
 
 test('admin full E2E covers standalone lottery ticket and event lottery ticket persistence', () => {

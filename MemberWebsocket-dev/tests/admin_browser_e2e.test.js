@@ -6,16 +6,27 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 
-test('admin loads dedicated browser E2E controls', () => {
+test('admin exposes only the consolidated paired full browser E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-\d+/);
-  assert.match(runner, /runAdminQuickE2EButton/);
-  assert.match(runner, /runAdminFullE2EButton/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-6/);
   assert.match(runner, /runPairedFullE2EButton/);
+  assert.match(runner, /管理端 ↔ 用戶端完整 E2E/);
   assert.match(runner, /stopAdminE2EButton/);
   assert.match(runner, /requestStop/);
+  for (const removed of [
+    'runAdminQuickE2EButton',
+    'runAdminFullE2EButton',
+    'runBookingPendingE2EButton',
+    'runBookingCancellationE2EButton',
+    'runBookingFullE2EButton',
+    '管理端快速 E2E',
+    '管理端完整 E2E',
+    '待確認 E2E',
+    '取消申請 E2E',
+    '預約完整協同 E2E'
+  ]) assert.doesNotMatch(runner, new RegExp(removed));
   assert.match(runner, /ADMIN_TEST_MEMBER_PROFILE_EDIT/);
   assert.match(runner, /ADMIN_POINT_CARD_CRUD/);
   assert.match(runner, /ADMIN_EVENT_TICKET_CRUD/);
