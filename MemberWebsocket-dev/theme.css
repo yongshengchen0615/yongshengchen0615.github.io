@@ -1,74 +1,117 @@
 :root {
   color-scheme: light;
+  --theme-bg: #f3f5f2;
+  --theme-surface: #fcfdfb;
+  --theme-surface-raised: #ffffff;
+  --theme-surface-muted: #edf1ed;
+  --theme-text: #18241f;
+  --theme-text-muted: #68776f;
+  --theme-border: rgba(24, 36, 31, .12);
+  --theme-border-strong: rgba(24, 36, 31, .18);
+  --theme-accent: #bf5b43;
+  --theme-accent-soft: #f7e5de;
+  --theme-positive: #2f7b55;
+  --theme-danger: #a94635;
+  --theme-overlay: rgba(9, 18, 14, .56);
+  --theme-shadow: 0 1px 2px rgba(18, 35, 27, .05);
+  --theme-modal-shadow: 0 18px 48px rgba(18, 35, 27, .18);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --ink: var(--theme-text);
+  --muted: var(--theme-text-muted);
+  --paper: var(--theme-surface);
+  --cream: var(--theme-bg);
+  --sand: var(--theme-bg);
+  --line: var(--theme-border);
+  --coral: var(--theme-accent);
+  --orange: #c46536;
+  --yellow: #d29b3f;
+  --gold: #c89236;
+  --green: var(--theme-positive);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --theme-bg: #0d1411;
+  --theme-surface: #131d19;
+  --theme-surface-raised: #18241f;
+  --theme-surface-muted: #101915;
+  --theme-text: #e8efeb;
+  --theme-text-muted: #98a79f;
+  --theme-border: rgba(232, 239, 235, .12);
+  --theme-border-strong: rgba(232, 239, 235, .18);
+  --theme-accent: #ef8968;
+  --theme-accent-soft: #36211b;
+  --theme-positive: #62c790;
+  --theme-danger: #f08a76;
+  --theme-overlay: rgba(3, 8, 6, .72);
+  --theme-shadow: none;
+  --theme-modal-shadow: 0 18px 48px rgba(0, 0, 0, .34);
+  --ink: var(--theme-text);
+  --muted: var(--theme-text-muted);
+  --paper: var(--theme-surface);
+  --cream: var(--theme-bg);
+  --sand: var(--theme-bg);
+  --line: var(--theme-border);
+  --coral: var(--theme-accent);
+  --orange: #e77c50;
+  --yellow: #e0ae59;
+  --gold: #d9a451;
+  --green: var(--theme-positive);
+}
+
+html[data-theme],
+html[data-theme] body {
+  background-color: var(--theme-bg);
+}
+
+html[data-theme] body {
+  color: var(--theme-text);
+  background-image: none;
 }
 
 .theme-toggle-button {
+  contain: layout paint style;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
   min-height: 30px;
-  padding: 5px 9px;
-  border: 1px solid rgba(23, 53, 46, .16);
+  padding: 5px 10px;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 999px;
-  color: #17352e;
-  background: rgba(255, 255, 255, .68);
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  box-shadow: var(--theme-shadow);
   cursor: pointer;
   font: inherit;
   font-size: 11px;
   font-weight: 850;
   line-height: 1;
   white-space: nowrap;
-  transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
 }
 
 .theme-toggle-button:hover {
-  transform: translateY(-1px);
+  background: var(--theme-surface-muted);
+  border-color: color-mix(in srgb, var(--theme-accent) 42%, var(--theme-border-strong));
 }
 
 .theme-toggle-button:focus-visible {
-  outline: 3px solid rgba(223, 107, 77, .3);
+  outline: 3px solid color-mix(in srgb, var(--theme-accent) 34%, transparent);
   outline-offset: 2px;
 }
 
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --ink: #e8f0eb;
-  --muted: #9cacA4;
-  --paper: #15211c;
-  --cream: #0f1714;
-  --sand: #0f1714;
-  --line: rgba(225, 238, 230, .14);
-  --green: #58c58a;
-}
-
-html[data-theme="dark"],
-html[data-theme="dark"] body {
-  background-color: #0f1714 !important;
-}
-
-html[data-theme="dark"] body {
-  color: #e8f0eb !important;
-  background-image:
-    radial-gradient(circle at 88% 2%, rgba(223, 107, 77, .11), transparent 28%),
-    radial-gradient(circle at 4% 62%, rgba(74, 132, 104, .09), transparent 30%) !important;
-}
-
-html[data-theme="dark"] .theme-toggle-button {
-  color: #e8f0eb;
-  border-color: rgba(232, 240, 235, .18);
-  background: rgba(255, 255, 255, .07);
-}
-
-html[data-theme="dark"] :where(
+/* Shared neutral surfaces: one palette across admin and member applications. */
+html[data-theme] :where(
   .panel,
   .stats-row > div,
   .tier-settings,
   .reward-editor,
   .auto-tier-note,
   .grant-point-row,
-  .modal-card,
-  .editor-modal-card,
   .card-settings-nav,
   .search-box,
   .membership-progress,
@@ -77,8 +120,6 @@ html[data-theme="dark"] :where(
   .ticket-history-panel,
   .event-ticket,
   .event-history-button,
-  .ticket-modal-card,
-  .instructions,
   .calendar-toolbar,
   .calendar-day,
   .calendar-detail-card,
@@ -88,34 +129,42 @@ html[data-theme="dark"] :where(
   .member-summary,
   .service-choice,
   .selected-service-item,
-  .booking-modal-card,
   .booking-confirm-summary,
-  .profile-form,
-  .profile-date-modal-card
+  .profile-form
 ) {
-  background-color: #15211c !important;
-  border-color: rgba(225, 238, 230, .13) !important;
-  box-shadow: none;
+  background-color: var(--theme-surface);
+  border-color: var(--theme-border);
+  box-shadow: var(--theme-shadow);
 }
 
-html[data-theme="dark"] :where(
+html[data-theme] :where(
+  .modal-card,
+  .editor-modal-card,
+  .ticket-modal-card,
+  .booking-modal-card,
+  .profile-date-modal-card
+) {
+  background-color: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+  box-shadow: var(--theme-modal-shadow);
+}
+
+html[data-theme] :where(
   .weekday,
   .calendar-day.outside,
   .service-info,
   .slot-unit,
-  .booking-confirm-summary,
   .selected-service-item,
   .editor-status,
   .card-list-item[aria-selected="true"],
   .member-directory-tab[aria-selected="true"],
-  .card-settings-tab[aria-selected="true"],
-  .surface-tab[aria-selected="true"]
+  .card-settings-tab[aria-selected="true"]
 ) {
-  background-color: #111b17 !important;
-  border-color: rgba(225, 238, 230, .12) !important;
+  background-color: var(--theme-surface-muted);
+  border-color: var(--theme-border);
 }
 
-html[data-theme="dark"] :where(
+html[data-theme] :where(
   input,
   select,
   textarea,
@@ -127,19 +176,16 @@ html[data-theme="dark"] :where(
   .button-light,
   .date-picker-trigger
 ) {
-  color: #e8f0eb !important;
-  background-color: #101915 !important;
-  border-color: rgba(225, 238, 230, .17) !important;
+  color: var(--theme-text);
+  background-color: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
 }
 
-html[data-theme="dark"] :where(
-  input::placeholder,
-  textarea::placeholder
-) {
-  color: #74867d;
+html[data-theme] :where(input::placeholder, textarea::placeholder) {
+  color: color-mix(in srgb, var(--theme-text-muted) 76%, transparent);
 }
 
-html[data-theme="dark"] :where(
+html[data-theme] :where(
   .topbar h1,
   .state-view h1,
   .panel-heading h2,
@@ -164,10 +210,10 @@ html[data-theme="dark"] :where(
   .member-summary strong,
   label
 ) {
-  color: #e8f0eb !important;
+  color: var(--theme-text);
 }
 
-html[data-theme="dark"] :where(
+html[data-theme] :where(
   .account-menu,
   .state-view p:not(.kicker),
   .panel-heading p:not(.kicker),
@@ -192,10 +238,10 @@ html[data-theme="dark"] :where(
   .result-count,
   .sync-status
 ) {
-  color: #9caca4 !important;
+  color: var(--theme-text-muted);
 }
 
-html[data-theme="dark"] :where(
+html[data-theme] :where(
   .table-wrap th,
   .table-wrap td,
   .table-wrap,
@@ -204,51 +250,68 @@ html[data-theme="dark"] :where(
   .card-list,
   .calendar-grid
 ) {
-  border-color: rgba(225, 238, 230, .12) !important;
+  border-color: var(--theme-border);
 }
 
-html[data-theme="dark"] .table-wrap td {
-  color: #c6d2cc !important;
+html[data-theme] .table-wrap td {
+  color: color-mix(in srgb, var(--theme-text) 82%, var(--theme-text-muted));
+}
+
+html[data-theme] :where(.button-dark, .ticket-button, .service-add-button, .slot-button.selected) {
+  color: #ffffff;
+  background-color: #234a3d;
+  border-color: #234a3d;
 }
 
 html[data-theme="dark"] :where(.button-dark, .ticket-button, .service-add-button, .slot-button.selected) {
-  color: #0f1714 !important;
-  background: #dce8e1 !important;
-  border-color: #dce8e1 !important;
+  color: #0b1511;
+  background-color: #d8e6df;
+  border-color: #d8e6df;
 }
 
-html[data-theme="dark"] .calendar-grid {
-  background: rgba(225, 238, 230, .10) !important;
+html[data-theme] .calendar-grid {
+  background-color: var(--theme-border);
 }
 
-html[data-theme="dark"] .today .day-number {
-  color: #fff !important;
-  background: #df6b4d !important;
+html[data-theme] .today .day-number {
+  color: #ffffff;
+  background-color: var(--theme-accent);
 }
 
-html[data-theme="dark"] :where(
+html[data-theme] :where(
   .form-message.error,
   .modal-message,
   .calendar-range-notice,
   .error-mark
 ) {
-  background-color: #2a1714 !important;
+  color: var(--theme-danger);
+  background-color: color-mix(in srgb, var(--theme-danger) 12%, var(--theme-surface));
 }
 
-html[data-theme="dark"] :where(
-  .form-message.success,
-  .ticket-result
-) {
-  background-color: #14261c !important;
+html[data-theme] :where(.form-message.success, .ticket-result) {
+  color: var(--theme-positive);
+  background-color: color-mix(in srgb, var(--theme-positive) 12%, var(--theme-surface));
 }
 
-html[data-theme="dark"] :where(
-  .booking-modal,
+/*
+ * Rendering budget:
+ * modal backdrop blur and fixed full-viewport gradients are intentionally avoided.
+ * Both trigger expensive compositing/repainting on lower-end mobile WebViews.
+ */
+html[data-theme] :where(
+  .modal,
   .ticket-modal,
+  .booking-modal,
   .calendar-detail-modal,
-  .modal
+  .profile-date-modal
 ) {
-  background-color: rgba(4, 9, 7, .68) !important;
+  background-color: var(--theme-overlay);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] :where(.event-ticket, .booking-card, .panel, .calendar-detail-card) {
+  isolation: isolate;
 }
 
 @media (max-width: 700px) {
@@ -256,14 +319,21 @@ html[data-theme="dark"] :where(
     min-height: 32px;
     padding: 6px 10px;
   }
+
+  html[data-theme] :where(
+    .panel,
+    .booking-card,
+    .event-ticket,
+    .calendar-detail-card,
+    .ticket-modal-card,
+    .booking-modal-card
+  ) {
+    box-shadow: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .theme-toggle-button {
     transition: none;
-  }
-
-  .theme-toggle-button:hover {
-    transform: none;
   }
 }
