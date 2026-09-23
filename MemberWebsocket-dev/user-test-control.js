@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.5';
+  const VERSION = '2026-09-23.6';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1338,41 +1338,128 @@
 
   async function eventHumanTicketLifecycleCase() {
     const fixture = await qaServiceRequest('user.qa.fixture.prepare');
-    const actual = { opened: false, closeWorked: false, claimed: false, redeemed: false, historyOpened: false, preserved: false };
+    const actual = {
+      couponOpened: false,
+      couponCloseWorked: false,
+      couponClaimed: false,
+      couponRedeemed: false,
+      couponHistoryOpened: false,
+      lotteryOpened: false,
+      lotteryPrizeListVisible: false,
+      lotteryClaimed: false,
+      lotteryRedeemed: false,
+      lotteryResultVisible: false,
+      lotteryPrizeTitle: '',
+      lotteryHistoryOpened: false,
+      lotteryHistoryResultVisible: false,
+      preserved: false
+    };
+    const modal = document.getElementById('ticketModal');
+    const action = document.getElementById('ticketModalAction');
+
+    async function openFixtureTicket(eventTicketId, label) {
+      const selector = '[data-event-ticket-id="' + eventTicketId + '"]';
+      const button = await waitFor(() => document.querySelector('#eventList ' + selector), 5000);
+      if (!button) throw new Error('QA ' + label + '沒有出現在活動票券頁面。');
+      button.click();
+      if (!await waitFor(() => modal && !modal.classList.contains('hidden'), 1800)) {
+        throw new Error('QA ' + label + '詳情沒有開啟。');
+      }
+      return selector;
+    }
+
+    async function claimAndRedeem(label) {
+      if (!action || action.disabled) throw new Error(label + '領取按鈕不可操作。');
+      action.click();
+      const claimed = Boolean(await waitFor(() => !action.disabled && /確認使用/.test(action.textContent || ''), 7000));
+      if (!claimed) throw new Error(label + '領券後 UI 未切換成可使用狀態。');
+      action.click();
+      const redeemed = Boolean(await waitFor(() => !document.getElementById('ticketModalResult')?.classList.contains('hidden'), 8000));
+      if (!redeemed) throw new Error(label + '核銷結果沒有顯示。');
+      return { claimed, redeemed };
+    }
+
     try {
       await refreshRealClient();
-      const selector = '[data-event-ticket-id="' + fixture.eventTicketId + '"]';
-      let button = await waitFor(() => document.querySelector('#eventList ' + selector), 4000);
-      if (!button) throw new Error('QA 活動票券沒有出現在活動票券頁面。');
-      button.click();
-      const modal = document.getElementById('ticketModal');
-      actual.opened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
+
+      const couponSelector = await openFixtureTicket(fixture.eventTicketId, '活動優惠券');
+      actual.couponOpened = true;
       document.getElementById('closeTicketModal')?.click();
-      actual.closeWorked = Boolean(await waitFor(() => modal?.classList.contains('hidden'), 1500));
-      button = document.querySelector('#eventList ' + selector);
-      button?.click();
+      actual.couponCloseWorked = Boolean(await waitFor(() => modal?.classList.contains('hidden'), 1500));
+      document.querySelector('#eventList ' + couponSelector)?.click();
       await waitFor(() => modal && !modal.classList.contains('hidden'), 1500);
-      const action = document.getElementById('ticketModalAction');
-      if (!action || action.disabled) throw new Error('活動票券領取按鈕不可操作。');
-      action.click();
-      actual.claimed = Boolean(await waitFor(() => !action.disabled && /確認使用/.test(action.textContent || ''), 6000));
-      if (!actual.claimed) throw new Error('領券後 UI 未切換成可核銷狀態。');
-      action.click();
-      actual.redeemed = Boolean(await waitFor(() => !document.getElementById('ticketModalResult')?.classList.contains('hidden'), 6000));
+      const couponResult = await claimAndRedeem('活動優惠券');
+      actual.couponClaimed = couponResult.claimed;
+      actual.couponRedeemed = couponResult.redeemed;
       document.getElementById('closeTicketModal')?.click();
+
       await refreshRealClient();
-      const history = await waitFor(() => document.querySelector('#usedTicketList ' + selector), 3500);
-      history?.click();
-      actual.historyOpened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
+      const couponHistory = await waitFor(() => document.querySelector('#usedTicketList ' + couponSelector), 4000);
+      couponHistory?.click();
+      actual.couponHistoryOpened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
+      document.getElementById('closeTicketModal')?.click();
+
+      if (!fixture.lotteryEventTicketId) throw new Error('活動抽獎券 Fixture 識別缺失。');
+      await refreshRealClient();
+      const lotterySelector = await openFixtureTicket(fixture.lotteryEventTicketId, '活動抽獎券');
+      actual.lotteryOpened = true;
+      actual.lotteryPrizeListVisible = document.querySelectorAll('#ticketModalPrizes li').length >= Number(fixture.lotteryPrizeCount || 1);
+      if (!actual.lotteryPrizeListVisible) throw new Error('活動抽獎券沒有顯示預期獎項清單。');
+
+      const lotteryResult = await claimAndRedeem('活動抽獎券');
+      actual.lotteryClaimed = lotteryResult.claimed;
+      actual.lotteryRedeemed = lotteryResult.redeemed;
+      actual.lotteryResultVisible = Boolean(await waitFor(() => {
+        const result = document.querySelector('#ticketModalResult .lottery-result strong');
+        const value = String(result?.textContent || '').trim();
+        if (!value) return null;
+        actual.lotteryPrizeTitle = value;
+        return result;
+      }, 5000));
+      if (!actual.lotteryResultVisible) throw new Error('活動抽獎券開獎後沒有顯示獎項結果。');
+      document.getElementById('closeTicketModal')?.click();
+
+      await refreshRealClient();
+      const lotteryHistory = await waitFor(() => document.querySelector('#usedTicketList ' + lotterySelector), 4000);
+      lotteryHistory?.click();
+      actual.lotteryHistoryOpened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
+      actual.lotteryHistoryResultVisible = Boolean(
+        document.querySelector('#ticketModalResult .lottery-result strong')
+        && String(document.getElementById('ticketModalResult')?.textContent || '').includes(actual.lotteryPrizeTitle)
+      );
       document.getElementById('closeTicketModal')?.click();
     } finally {
       actual.preserved = true;
       await refreshRealClient().catch(() => {});
     }
-    const ok = Object.values(actual).every(Boolean);
+    const requiredBooleans = [
+      actual.couponOpened,
+      actual.couponCloseWorked,
+      actual.couponClaimed,
+      actual.couponRedeemed,
+      actual.couponHistoryOpened,
+      actual.lotteryOpened,
+      actual.lotteryPrizeListVisible,
+      actual.lotteryClaimed,
+      actual.lotteryRedeemed,
+      actual.lotteryResultVisible,
+      Boolean(actual.lotteryPrizeTitle),
+      actual.lotteryHistoryOpened,
+      actual.lotteryHistoryResultVisible,
+      actual.preserved
+    ];
+    const ok = requiredBooleans.every(Boolean);
     return ok
-      ? pass('已真人完成活動票券開啟、關閉、領取、核銷與查看使用紀錄；QA 資料已保留供管理端檢查。', { allSteps: true }, actual)
-      : fail('活動票券真人流程至少一個步驟異常。', { allSteps: true }, actual);
+      ? pass('已真人完成活動優惠券與活動抽獎券的開啟、領取、核銷／開獎、結果顯示與歷史紀錄驗證；QA 資料保留供管理端檢查。', {
+          couponLifecycle: true,
+          lotteryLifecycle: true,
+          lotteryResultPersistedInUi: true
+        }, actual)
+      : fail('活動票券真人流程未完整覆蓋優惠券與抽獎券生命週期。', {
+          couponLifecycle: true,
+          lotteryLifecycle: true,
+          lotteryResultPersistedInUi: true
+        }, actual);
   }
 
   async function calendarHumanDetailCase() {

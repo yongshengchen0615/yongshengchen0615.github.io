@@ -755,21 +755,33 @@ async function evaluatePresence(supabase: any): Promise<CaseResult> {
   if (result.error) throw new ApiError(503, "PRESENCE_READ_FAILED", "無法讀取測試會員上線狀態。");
 
   const rows = result.data || [];
-  const staleThresholdMs = 3 * 60 * 1000;
+  // Presence is lease/heartbeat based. A pagehide keepalive request is best-effort and
+  // may be dropped by the browser, so offline_at=null alone must not mean "online".
+  // Keep this threshold aligned with the active-presence semantics used by test-mode-api.
+  const activeThresholdMs = 90 * 1000;
+  const now = Date.now();
+  const invalidTimestampRows = rows.filter((row: any) => !Number.isFinite(new Date(row.last_seen_at).getTime()));
+  const fresh = rows.filter((row: any) => {
+    const lastSeen = new Date(row.last_seen_at).getTime();
+    return Number.isFinite(lastSeen) && now - lastSeen <= activeThresholdMs;
+  });
   const stale = rows.filter((row: any) => {
     const lastSeen = new Date(row.last_seen_at).getTime();
-    return !Number.isFinite(lastSeen) || Date.now() - lastSeen > staleThresholdMs;
+    return Number.isFinite(lastSeen) && now - lastSeen > activeThresholdMs;
   });
   const actual = {
-    openPresenceSessions: rows.length,
-    stalePresenceSessions: stale.length,
-    staleThresholdSeconds: staleThresholdMs / 1000,
-    surfaces: [...new Set(rows.map((row: any) => asText(row.surface, 30)).filter(Boolean))],
+    openStorageRows: rows.length,
+    effectiveActivePresenceSessions: fresh.length,
+    staleStorageRows: stale.length,
+    invalidTimestampRows: invalidTimestampRows.length,
+    activeThresholdSeconds: activeThresholdMs / 1000,
+    activeSurfaces: [...new Set(fresh.map((row: any) => asText(row.surface, 30)).filter(Boolean))],
+    note: "staleStorageRows are expired heartbeat leases and are not treated as online",
   };
-  const expected = { stalePresenceSessions: 0 };
-  return stale.length === 0
-    ? pass("目前開啟的 Presence session 都在心跳容許範圍內。", expected, actual)
-    : fail("STALE_PRESENCE_SESSION", "發現已超過心跳期限但仍標示在線的測試會員 session。", expected, actual);
+  const expected = { invalidTimestampRows: 0 };
+  return invalidTimestampRows.length === 0
+    ? pass("Presence 以 90 秒心跳租約判定；過期但尚未寫 offline_at 的殘留 row 不再誤判為在線。", expected, actual)
+    : fail("PRESENCE_TIMESTAMP_INVALID", "Presence session 存在無法解析的心跳時間。", expected, actual);
 }
 
 async function evaluateLineSuppression(supabase: any): Promise<CaseResult> {

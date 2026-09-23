@@ -318,25 +318,30 @@ async function pointTicketWrite(s: any, identity: any, token: string): Promise<Q
 
 async function eventTicketWrite(s: any, identity: any, token: string): Promise<QaCase> {
   const key = "EVENT_TICKET_WRITE";
-  const expected = { claimed: true, redeemed: true, cleanup: true };
+  const expected = { claimed: true, redeemed: true, lotteryResultPersisted: true, cleanup: true };
   const tag = suffix();
   let rowId = "";
   let claimId = "";
   let claimed = false;
   let redeemed = false;
+  let lotteryResultPersisted = false;
+  let prizeTitle = "";
   let cleanup = false;
   let errorCode = "";
 
   try {
     const today = new Date().toISOString().slice(0, 10);
     const inserted = await s.from("event_tickets").insert({
-      event_ticket_id: "QA-EVT-" + tag,
-      title: "QA 自動化活動票券",
-      ticket_type: "coupon",
-      description: "Temporary automated QA ticket",
+      event_ticket_id: "QA-EVT-LOT-" + tag,
+      title: "QA 自動化活動抽獎券",
+      ticket_type: "lottery",
+      description: "Temporary automated QA lottery ticket",
       usage_method: "QA",
-      usage_instructions: "Temporary automated QA record",
-      prizes: [],
+      usage_instructions: "Temporary automated QA lottery record",
+      prizes: [
+        { prizeTitle: "QA 抽獎 A", prizeDescription: "QA lottery prize A", winRate: 70 },
+        { prizeTitle: "QA 抽獎 B", prizeDescription: "QA lottery prize B", winRate: 30 },
+      ],
       status: "active",
       starts_on: isoDateAdd(today, -1),
       ends_on: isoDateAdd(today, 1),
@@ -346,7 +351,7 @@ async function eventTicketWrite(s: any, identity: any, token: string): Promise<Q
       created_by: "qa:" + identity.lineUserId,
       updated_by: "qa:" + identity.lineUserId,
     }).select("id,event_ticket_id").single();
-    if (inserted.error || !inserted.data) throw new ApiError(500, "QA_EVENT_CREATE_FAILED", "無法建立臨時 QA 活動票券。");
+    if (inserted.error || !inserted.data) throw new ApiError(500, "QA_EVENT_CREATE_FAILED", "無法建立臨時 QA 活動抽獎券。");
     rowId = String(inserted.data.id);
 
     const claim = await callFunction("api", token, {
@@ -355,15 +360,16 @@ async function eventTicketWrite(s: any, identity: any, token: string): Promise<Q
       eventTicketId: inserted.data.event_ticket_id,
     });
     claimed = claim.ok;
-    if (!claim.ok) throw functionError(claim, "活動票券領取失敗。");
+    if (!claim.ok) throw functionError(claim, "活動抽獎券領取失敗。");
 
     const claimRow = await s.from("event_ticket_claims")
-      .select("claim_id,status")
+      .select("claim_id,status,ticket_type")
       .eq("event_ticket_id", rowId)
       .eq("member_id", identity.memberId)
       .maybeSingle();
-    if (claimRow.error || !claimRow.data) throw new ApiError(500, "QA_EVENT_CLAIM_MISSING", "領券後找不到 Claim。");
+    if (claimRow.error || !claimRow.data) throw new ApiError(500, "QA_EVENT_CLAIM_MISSING", "領券後找不到活動抽獎 Claim。");
     claimId = String(claimRow.data.claim_id);
+    if (claimRow.data.ticket_type !== "lottery") throw new ApiError(500, "QA_EVENT_LOTTERY_TYPE_LOST", "活動抽獎券 Claim 類型不正確。");
 
     const redeem = await callFunction("api", token, {
       action: "user.event.ticket.redeem",
@@ -371,13 +377,15 @@ async function eventTicketWrite(s: any, identity: any, token: string): Promise<Q
       claimId,
     });
     redeemed = redeem.ok;
-    if (!redeem.ok) throw functionError(redeem, "活動票券核銷失敗。");
+    if (!redeem.ok) throw functionError(redeem, "活動抽獎券開獎失敗。");
 
     const verify = await s.from("event_ticket_claims")
-      .select("status,used_at")
+      .select("status,used_at,ticket_type,result")
       .eq("claim_id", claimId)
       .maybeSingle();
+    prizeTitle = asText((verify.data?.result as any)?.prizeTitle, 180);
     redeemed = redeemed && !verify.error && verify.data?.status === "used" && Boolean(verify.data?.used_at);
+    lotteryResultPersisted = redeemed && verify.data?.ticket_type === "lottery" && Boolean(prizeTitle);
   } catch (error) {
     errorCode = error instanceof ApiError ? error.code : "QA_EVENT_WRITE_ERROR";
   } finally {
@@ -390,10 +398,10 @@ async function eventTicketWrite(s: any, identity: any, token: string): Promise<Q
     }
   }
 
-  const actual = { claimed, redeemed, cleanup, errorCode };
-  return claimed && redeemed && cleanup
-    ? passed(key, "臨時活動票券已完成正式領取、核銷並清理。", expected, actual)
-    : failed(key, "活動票券領取、核銷或清理驗證失敗。", expected, actual);
+  const actual = { claimed, redeemed, lotteryResultPersisted, prizeTitle, cleanup, errorCode };
+  return claimed && redeemed && lotteryResultPersisted && cleanup
+    ? passed(key, "臨時活動抽獎券已完成正式領取、開獎、結果持久化並清理。", expected, actual)
+    : failed(key, "活動抽獎券領取、開獎、結果保存或清理驗證失敗。", expected, actual);
 }
 
 async function calendarReadOnly(s: any, identity: any, token: string): Promise<QaCase> {
@@ -888,11 +896,40 @@ async function prepareUsageState(s: any, identity: any, token: string, surface: 
     const rewardA2 = rewards.data.find((row: any) => String(row.reward_id).includes("-A2-"));
     const rewardB1 = rewards.data.find((row: any) => String(row.reward_id).includes("-B1-"));
 
+    const cardAStamps = randomChoice([4, 6, 9]);
+    const cardBStamps = randomChoice([1, 2]);
     const balances = await s.from("point_balances").insert([
-      { member_id: identity.memberId, point_card_id: cardA.id, stamps: randomChoice([4, 6, 9]) },
-      { member_id: identity.memberId, point_card_id: cardB.id, stamps: randomChoice([1, 2]) },
+      { member_id: identity.memberId, point_card_id: cardA.id, stamps: cardAStamps },
+      { member_id: identity.memberId, point_card_id: cardB.id, stamps: cardBStamps },
     ]);
     if (balances.error) throw new ApiError(500, "QA_USAGE_POINT_BALANCE_FAILED", "無法建立不同點數餘額。", balances.error.message);
+    const balanceEntries = await s.from("point_entries").insert([
+      {
+        entry_id: "QA-STATE-PTS-A-" + tag,
+        member_id: identity.memberId,
+        point_card_id: cardA.id,
+        amount: cardAStamps,
+        note: "QA STATE PACK 初始點數",
+        created_by: actor,
+        request_id: "QA-STATE-PTS-A-" + tag,
+        entry_type: "grant",
+        reference_type: "qa-state-pack",
+        reference_id: tag,
+      },
+      {
+        entry_id: "QA-STATE-PTS-B-" + tag,
+        member_id: identity.memberId,
+        point_card_id: cardB.id,
+        amount: cardBStamps,
+        note: "QA STATE PACK 初始點數",
+        created_by: actor,
+        request_id: "QA-STATE-PTS-B-" + tag,
+        entry_type: "grant",
+        reference_type: "qa-state-pack",
+        reference_id: tag,
+      },
+    ]);
+    if (balanceEntries.error) throw new ApiError(500, "QA_USAGE_POINT_ENTRY_FAILED", "無法建立與測試點數餘額一致的流水。", balanceEntries.error.message);
 
     const usedAt = new Date(Date.now() - 2 * 86400000).toISOString();
     const tickets = await s.from("point_tickets").insert([
@@ -1382,6 +1419,25 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
       await s.from("ticket_templates").delete().eq("id", template.data.id);
       throw new ApiError(500, "QA_FIXTURE_BALANCE_FAILED", "無法建立測試會員點數。");
     }
+    const balanceEntry = await s.from("point_entries").insert({
+      entry_id: "QA-UI-PTS-" + tag,
+      member_id: identity.memberId,
+      point_card_id: card.data.id,
+      amount: 2,
+      note: "QA 真人操作初始點數",
+      created_by: actor,
+      request_id: "QA-UI-PTS-" + tag,
+      entry_type: "grant",
+      reference_type: "qa-ui-fixture",
+      reference_id: tag,
+    });
+    if (balanceEntry.error) {
+      await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_POINT_ENTRY_FAILED", "無法建立與測試點數餘額一致的流水。");
+    }
 
     // Use the same eligibility issuance path as the real client instead of racing
     // the client's automatic issuance with a second direct INSERT.
@@ -1425,25 +1481,58 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
   }
 
   if (surface === "event") {
-    const event = await s.from("event_tickets").insert({
-      event_ticket_id: "QA-UI-EVT-" + tag,
-      title: "QA 真人操作活動票券",
-      ticket_type: "coupon",
-      description: "Human-like E2E fixture",
-      usage_method: "QA UI",
-      usage_instructions: "Only for test account human-like E2E",
-      prizes: [],
-      status: "active",
-      starts_on: isoDateAdd(today, -1),
-      ends_on: isoDateAdd(today, 1),
-      quota: 10,
-      accent: "#5f7769",
-      allowed_tier_keys: ["general","silver","gold","platinum"],
-      created_by: actor,
-      updated_by: actor,
-    }).select("id,event_ticket_id").single();
-    if (event.error || !event.data) throw new ApiError(500, "QA_FIXTURE_EVENT_FAILED", "無法建立活動票券測試資料。");
-    return { fixtureTag: tag, eventTicketId: event.data.event_ticket_id };
+    const events = await s.from("event_tickets").insert([
+      {
+        event_ticket_id: "QA-UI-EVT-" + tag,
+        title: "QA 真人操作活動優惠券",
+        ticket_type: "coupon",
+        description: "Human-like E2E coupon fixture",
+        usage_method: "QA UI",
+        usage_instructions: "Only for test account human-like E2E",
+        prizes: [],
+        status: "active",
+        starts_on: isoDateAdd(today, -1),
+        ends_on: isoDateAdd(today, 1),
+        quota: 10,
+        accent: "#5f7769",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        created_by: actor,
+        updated_by: actor,
+      },
+      {
+        event_ticket_id: "QA-UI-EVT-LOT-" + tag,
+        title: "QA 真人操作活動抽獎券",
+        ticket_type: "lottery",
+        description: "Human-like E2E lottery fixture",
+        usage_method: "QA UI 開獎",
+        usage_instructions: "Only for test account human-like E2E",
+        prizes: [
+          { prizeTitle: "QA 頭獎", prizeDescription: "活動抽獎券 E2E 頭獎", winRate: 60 },
+          { prizeTitle: "QA 二獎", prizeDescription: "活動抽獎券 E2E 二獎", winRate: 30 },
+          { prizeTitle: "QA 參加獎", prizeDescription: "活動抽獎券 E2E 參加獎", winRate: 10 },
+        ],
+        status: "active",
+        starts_on: isoDateAdd(today, -1),
+        ends_on: isoDateAdd(today, 1),
+        quota: 10,
+        accent: "#7d6a91",
+        allowed_tier_keys: ["general","silver","gold","platinum"],
+        created_by: actor,
+        updated_by: actor,
+      },
+    ]).select("id,event_ticket_id,ticket_type");
+    if (events.error || !events.data || events.data.length !== 2) {
+      throw new ApiError(500, "QA_FIXTURE_EVENT_FAILED", "無法建立活動優惠券與活動抽獎券測試資料。", events.error?.message || null);
+    }
+    const coupon = events.data.find((row: any) => row.ticket_type === "coupon");
+    const lottery = events.data.find((row: any) => row.ticket_type === "lottery");
+    if (!coupon || !lottery) throw new ApiError(500, "QA_FIXTURE_EVENT_TYPE_MISSING", "活動票券測試資料類型建立不完整。");
+    return {
+      fixtureTag: tag,
+      eventTicketId: coupon.event_ticket_id,
+      lotteryEventTicketId: lottery.event_ticket_id,
+      lotteryPrizeCount: 3,
+    };
   }
 
   if (surface === "calendar") {
@@ -1506,14 +1595,21 @@ async function cleanupHumanFixture(s: any, identity: any, surface: Surface, body
   }
 
   if (surface === "event") {
-    const event = await s.from("event_tickets").select("id,created_by").eq("event_ticket_id", "QA-UI-EVT-" + tag).maybeSingle();
-    if (event.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認活動票券測試資料。");
-    if (!event.data) return { cleaned: true };
-    if (String(event.data.created_by) !== actorPrefix) throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "測試資料不屬於目前測試會員。");
-    await s.from("event_ticket_claims").delete().eq("event_ticket_id", event.data.id).eq("member_id", identity.memberId);
-    await s.from("calendar_items").delete().eq("source_event_ticket_id", event.data.id);
-    await s.from("event_tickets").delete().eq("id", event.data.id);
-    return { cleaned: true };
+    const expectedIds = ["QA-UI-EVT-" + tag, "QA-UI-EVT-LOT-" + tag];
+    const events = await s.from("event_tickets").select("id,event_ticket_id,created_by").in("event_ticket_id", expectedIds);
+    if (events.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認活動票券測試資料。");
+    const rows = events.data || [];
+    if (!rows.length) return { cleaned: true };
+    if (rows.some((row: any) => String(row.created_by) !== actorPrefix)) {
+      throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "測試資料不屬於目前測試會員。");
+    }
+    const rowIds = rows.map((row: any) => row.id);
+    await s.from("event_ticket_claims").delete().in("event_ticket_id", rowIds).eq("member_id", identity.memberId);
+    await s.from("calendar_items").delete().in("source_event_ticket_id", rowIds);
+    await s.from("event_tickets").delete().in("id", rowIds);
+    const remaining = await s.from("event_tickets").select("id", { count: "exact", head: true }).in("id", rowIds);
+    if (remaining.error || Number(remaining.count || 0) !== 0) throw new ApiError(500, "QA_FIXTURE_CLEANUP_FAILED", "活動票券測試資料清理失敗。");
+    return { cleaned: true, cleanedEventTickets: rows.length };
   }
 
   if (surface === "calendar") {

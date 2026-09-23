@@ -1987,7 +1987,22 @@
         , 8000));
         await withAutoConfirm(async () => {
           document.getElementById('deleteEventTicketButton')?.click();
-          actual.event.deleted = Boolean(await waitFor(() => !String(document.getElementById('eventTicketId')?.value || ''), 15000));
+          actual.event.deleted = Boolean(await waitFor(() => {
+            const currentId = String(document.getElementById('eventTicketId')?.value || '');
+            const row = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+            return !currentId && !row;
+          }, 15000));
+          if (!actual.event.deleted) {
+            const row = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+            row?.click();
+            await waitFor(() => String(document.getElementById('eventTicketId')?.value || '') === eventTicketId, 2500);
+            document.getElementById('deleteEventTicketButton')?.click();
+            actual.event.deleted = Boolean(await waitFor(() => {
+              const currentId = String(document.getElementById('eventTicketId')?.value || '');
+              const remaining = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+              return !currentId && !remaining;
+            }, 12000));
+          }
         });
         actual.event.cleaned = actual.event.deleted;
       }

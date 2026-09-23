@@ -55,6 +55,9 @@ test('points state pack contains multi-card balances and ticket lifecycle varian
   assert.match(api, /status: "used"/);
   assert.match(api, /status: "expired"/);
   assert.match(api, /ticket_type: "lottery"/);
+  assert.match(api, /QA-STATE-PTS-A-/);
+  assert.match(api, /QA-STATE-PTS-B-/);
+  assert.match(api, /point_entries/);
 });
 
 test('event state pack contains claimable claimed used future and past states', () => {
@@ -67,6 +70,10 @@ test('event state pack contains claimable claimed used future and past states', 
   assert.match(api, /QA-STATE-EVT-USED-/);
   assert.match(api, /QA-STATE-EVT-FUTURE-/);
   assert.match(api, /QA-STATE-EVT-PAST-/);
+  assert.match(api, /QA-UI-EVT-LOT-/);
+  assert.match(api, /QA 真人操作活動抽獎券/);
+  assert.match(api, /lotteryEventTicketId/);
+  assert.match(api, /lotteryPrizeCount: 3/);
 });
 
 test('calendar state pack covers day types and archived history', () => {

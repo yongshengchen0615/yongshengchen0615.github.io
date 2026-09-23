@@ -61,6 +61,10 @@ test('test control API requires admin identity and records observable cases', ()
   assert.match(api, /維護模式與裝置測試登入開關可為關閉/);
   assert.match(api, /automation_test_notification_snapshot/);
   assert.match(api, /derivedBalanceMismatches/);
+  assert.match(api, /effectiveActivePresenceSessions/);
+  assert.match(api, /staleStorageRows/);
+  assert.match(api, /activeThresholdMs = 90 \* 1000/);
+  assert.doesNotMatch(api, /STALE_PRESENCE_SESSION/);
   assert.match(api, /overlappingTechnicianReservations/);
   assert.doesNotMatch(api, /actual:\s*\{[^}]*token_hash/s);
 });
