@@ -13,7 +13,7 @@ test('admin test control center is a result surface for the unified full E2E', (
   const css = read('admin/test-control.css');
 
   assert.match(html, /test-control\.css\?v=test-control-20260923-3/);
-  assert.match(html, /test-control\.js\?v=test-control-20260923-4/);
+  assert.match(html, /test-control\.js\?v=test-control-20260923-5/);
   assert.match(html, /id="automationTestTitle"/);
   assert.doesNotMatch(html, /id="runQuickAutomationTestButton"/);
   assert.doesNotMatch(html, /id="runFullAutomationTestButton"/);
