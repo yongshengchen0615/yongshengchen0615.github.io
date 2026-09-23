@@ -18,6 +18,7 @@
     editing: null,
     realtimeUnsubscribe: null,
     bookingRenderCount: 0,
+    refreshSequence: 0,
     serverClockEpochMs: 0,
     serverClockMonotonicMs: 0,
     serverClockOffsetMs: 0,
@@ -99,11 +100,15 @@
   }
 
   async function refresh(showMessage = true) {
+    const refreshSequence = ++state.refreshSequence;
     try {
       const [bookingData, profile] = await Promise.all([
         window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap'),
         window.BookingSystem.memberProfile(state.config, state.idToken),
       ]);
+      // Realtime、手動刷新與 QA refresh 可能同時進行；只允許最後發出的 refresh
+      // 寫回畫面，避免較舊的 Bootstrap 回應覆蓋較新的預約狀態。
+      if (refreshSequence !== state.refreshSequence) return false;
       state.data = bookingData || state.data;
       syncServerClock(state.data.serverNow);
       state.profile = profile || {};
@@ -115,12 +120,16 @@
       applySelectionConstraints(false);
       window.dispatchEvent(new CustomEvent('booking:settings-updated', { detail: { settings: state.data.settings, today: state.data.today } }));
       if (selectedItems().length && els.bookingDate.value) await loadSlots();
+      if (refreshSequence !== state.refreshSequence) return false;
       if (showMessage) showFormMessage('資料已更新。', 'success');
+      return true;
     } catch (error) {
+      if (refreshSequence !== state.refreshSequence) return false;
       // Let boot own initial failures; otherwise it would reveal an empty booking
       // view and subscribe to realtime immediately after showError returned.
       if (!state.data.today) throw error;
       showFormMessage(error?.message || '資料暫時無法更新。', 'error');
+      return false;
     }
   }
 
