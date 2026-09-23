@@ -1,4 +1,5 @@
-import { createClient } from "npm:@supabase/supabase-js@2.57.0";\nimport { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
+import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 
