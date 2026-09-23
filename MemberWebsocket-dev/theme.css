@@ -49,8 +49,8 @@ html[data-theme="dark"] {
   --theme-surface: #131d19;
   --theme-surface-raised: #18241f;
   --theme-surface-muted: #101915;
-  --theme-text: #e8efeb;
-  --theme-text-muted: #98a79f;
+  --theme-text: #f0f4f1;
+  --theme-text-muted: #b6c1bb;
   --theme-border: rgba(232, 239, 235, .12);
   --theme-border-strong: rgba(232, 239, 235, .18);
   --theme-accent: #ef8968;
@@ -61,8 +61,8 @@ html[data-theme="dark"] {
   --theme-shadow: none;
   --theme-modal-shadow: 0 18px 48px rgba(0, 0, 0, .34);
   --theme-focus-ring: rgba(239, 137, 104, .34);
-  --theme-placeholder: #78877f;
-  --theme-table-text: #c8d2cd;
+  --theme-placeholder: #9aa8a1;
+  --theme-table-text: #d7dfda;
   --theme-danger-soft: #2b1915;
   --theme-positive-soft: #14261c;
   --theme-text-subtle: #9eaca5;
