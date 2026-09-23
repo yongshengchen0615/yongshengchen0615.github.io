@@ -59,19 +59,19 @@
     section.innerHTML = `
       <div class="admin-e2e-heading">
         <div>
-          <span class="test-mode-eyebrow">Browser E2E</span>
-          <h4 id="adminBrowserE2ETitle">管理端真人 E2E / 管理端 ↔ 用戶端協同測試</h4>
-          <p>唯一完整 E2E 會先由管理端建立高複雜度完整測試資料（優惠券／抽獎券／固定票券、不同集點節點、日期區間、會員階級、日曆與預約資源），確認完成後才讓測試用戶端開始。五種用戶端會隨機化執行；預約流程同時整合管理端即時接手，完整覆蓋拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並逐步驗證 Realtime、終態與風險掃描。</p>
+          <span class="test-mode-eyebrow">Unified Background E2E</span>
+          <h4 id="adminBrowserE2ETitle">完整 E2E · 後端 QA + 管理端 ↔ 用戶端協同</h4>
+          <p>單一入口會先執行 Test Control Center 的後端完整 QA，再執行完整管理端與五種用戶端真人協同 E2E。實際 Runner 使用獨立管理端視窗，因此啟動後可回到原管理端繼續操作；預約仍會即時接手拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並驗證 Realtime、終態與風險掃描。</p>
         </div>
         <div class="admin-e2e-actions">
-          <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">Browser Runner：待命</span>
-          <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">管理端 ↔ 用戶端完整 E2E</button>
+          <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">完整 E2E：待命</span>
+          <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">▶ 開始完整 E2E（背景執行）</button>
           <button id="stopAdminE2EButton" class="button button-danger hidden" type="button" data-admin-e2e-stop="true">停止 E2E</button>
         </div>
       </div>
       <div class="admin-e2e-paired-config">
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
-        <small>1–10 人。按下「管理端 ↔ 用戶端完整 E2E」後，五種用戶端與完整管理端案例會一起執行；其中預約完整協同流程是必要階段，不再提供獨立入口。測試用戶端保持開啟並以真人方式新增／修改／多人預約／申請取消；管理端只要偵測到本輪預約資料就立即依狀態接手，不等待用戶端關閉。正式用戶不會被選入。</small>
+        <small>1–10 人。開始後會預先開啟獨立背景管理端 Runner 與測試用戶端視窗，主管理頁不再承擔 E2E 的 DOM 操作，因此可以切換管理功能或讓主管理頁失焦。後端完整 QA、五種用戶端 full E2E、完整管理端案例、預約即時協同、深度互動與風險掃描全部納入同一次執行；正式用戶不會被選入。背景 Runner／測試視窗不可關閉，否則該次 E2E 會失敗或停止。</small>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
@@ -95,7 +95,17 @@
     state.participantList = section.querySelector('#adminE2EParticipantList');
     state.floating = floating;
 
-    section.querySelector('#runPairedFullE2EButton')?.addEventListener('click', () => runPaired());
+    const runButton = section.querySelector('#runPairedFullE2EButton');
+    const config = section.querySelector('.admin-e2e-paired-config');
+    if (isBackgroundRunnerWindow()) {
+      document.documentElement.dataset.e2eBackgroundRunner = 'true';
+      document.title = 'Lumen Club · Background E2E Runner';
+      runButton?.classList.add('hidden');
+      config?.classList.add('hidden');
+      setMessage('背景 E2E Runner 已就緒，等待主管理頁移交完整測試。');
+    } else {
+      runButton?.addEventListener('click', startUnifiedBackgroundE2E);
+    }
     section.querySelector('#stopAdminE2EButton')?.addEventListener('click', requestStop);
   }
 
