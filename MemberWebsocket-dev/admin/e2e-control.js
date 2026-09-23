@@ -1,11 +1,13 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.15';
+  const VERSION = '2026-09-23.16';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
   const MAX_PAIRED_PARTICIPANTS = 10;
+  const CLIENT_MOBILE_VIEWPORT = Object.freeze({ width: 430, height: 932 });
+  const CLIENT_DESKTOP_POPUP = Object.freeze({ width: 1100, height: 820 });
   const PAIRED_BOOKING_LIVE_TIMEOUT_MS = 10 * 60 * 1000;
   const ADMIN_BOOKING_BOOTSTRAP_BASE_INTERVAL_MS = 3500;
   const ADMIN_BOOKING_BOOTSTRAP_MAX_INTERVAL_MS = 8000;
@@ -38,6 +40,8 @@
     participantList: null,
     floating: null,
     clientWindows: [],
+    clientWindowGroups: [],
+    clientMobileViewport: false,
     participants: [],
     adminTestAccount: null,
     runStartedAt: '',
@@ -68,7 +72,7 @@
         <div>
           <span class="test-mode-eyebrow">Unified Background E2E</span>
           <h4 id="adminBrowserE2ETitle">完整 E2E · 後端 QA + 管理端 ↔ 用戶端協同</h4>
-          <p>單一入口會先執行 Test Control Center 的後端完整 QA，再執行完整管理端與五種用戶端真人協同 E2E。實際 Runner 使用獨立管理端視窗，因此啟動後可回到原管理端繼續操作；預約仍會即時接手拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並驗證 Realtime、終態與風險掃描。</p>
+          <p>單一入口會先執行 Test Control Center 的後端完整 QA，再執行完整管理端與五種用戶端真人協同 E2E。管理端使用獨立背景 Runner，每位測試用戶的會員卡／集點卡／活動票券／活動日曆／預約也各自使用固定背景頁，因此啟動後可回到原管理端繼續操作；預約仍會即時接手拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並驗證 Realtime、終態與風險掃描。</p>
         </div>
         <div class="admin-e2e-actions">
           <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">完整 E2E：待命</span>
@@ -78,7 +82,11 @@
       </div>
       <div class="admin-e2e-paired-config">
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
-        <small>1–10 人。開始後會預先開啟獨立背景管理端 Runner 與測試用戶端視窗，主管理頁不再承擔 E2E 的 DOM 操作，因此可以切換管理功能或讓主管理頁失焦。後端完整 QA、五種用戶端 full E2E、完整管理端案例、預約即時協同、深度互動與風險掃描全部納入同一次執行；正式用戶不會被選入。背景 Runner／測試視窗不可關閉，否則該次 E2E 會失敗或停止。</small>
+        <label class="admin-e2e-mobile-option" for="pairedE2EMobileViewport">
+          <span><strong>用戶端手機大小</strong><small>勾選後，5 種用戶端背景 Runner 會以 430×932 視窗尺寸開啟；只測 viewport，不偽造手機 User-Agent。</small></span>
+          <input id="pairedE2EMobileViewport" type="checkbox">
+        </label>
+        <small class="admin-e2e-config-note">1–10 人。每位測試用戶會預先開啟 5 個固定背景用戶端 Runner（會員卡／集點卡／活動票券／活動日曆／預約），不再共用同一個分頁反覆跳轉；另開 1 個獨立背景管理端 Runner。10 人最多會開啟 51 個測試視窗，請依測試機資源調整人數。正式用戶不會被選入；背景 Runner／測試視窗不可關閉，否則該次 E2E 會失敗或停止。</small>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
@@ -349,7 +357,9 @@
         index: Number(participant?.index || 0),
         status: String(participant?.status || ''),
         surface: String(participant?.surface || ''),
-        adminStatus: String(participant?.adminStatus || '')
+        adminStatus: String(participant?.adminStatus || ''),
+        mobileViewport: participant?.mobileViewport === true,
+        runnerCount: participantWindowList(participant).length
       }))
     };
   }
@@ -426,20 +436,23 @@
   }
 
 
+
   function startUnifiedBackgroundE2E() {
     if (state.running) return { started: false, reason: 'already-running' };
 
     let participantCount = 1;
     let runnerWindow = null;
-    let clientWindows = [];
+    let clientWindowGroups = [];
+    let mobileViewport = false;
     const runId = 'BG-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
     state.backgroundRunId = runId;
     try {
       participantCount = selectedParticipantCount();
+      mobileViewport = selectedClientMobileViewport();
       runnerWindow = openBackgroundRunnerWindow(runId);
-      clientWindows = openClientWindows(participantCount, false);
+      clientWindowGroups = openClientWindowGroups(participantCount, false, mobileViewport);
     } catch (error) {
-      closeWindowList(clientWindows);
+      closeWindowList(flattenClientWindowGroups(clientWindowGroups));
       try { if (runnerWindow && !runnerWindow.closed) runnerWindow.close(); } catch {}
       state.backgroundRunId = '';
       setMessage(error?.message || '無法啟動背景完整 E2E。', true);
@@ -451,7 +464,8 @@
     state.participants = [];
     state.backgroundRunnerWindow = runnerWindow;
     state.backgroundRunId = runId;
-    state.lastMessage = '背景 E2E Runner 啟動中；完成移交後可繼續操作此管理端視窗。';
+    state.clientMobileViewport = mobileViewport;
+    state.lastMessage = '背景 E2E Runner 啟動中；5 種用戶端已各自預開固定背景執行頁。';
     state.lastMessageError = false;
     setBusy(true, '背景 Runner 啟動');
     setMessage(state.lastMessage);
@@ -461,12 +475,13 @@
     const completion = (async () => {
       const control = await waitForBackgroundRunnerControl(runnerWindow);
 
-      setMessage('完整 E2E 已移交背景 Runner；你可以繼續操作原本管理端。測試視窗請保持開啟。');
+      setMessage('完整 E2E 已移交背景 Runner；所有用戶端使用獨立 surface 背景頁執行。測試視窗請保持開啟。');
       try { runnerWindow.blur?.(); window.focus?.(); } catch {}
 
       const result = await control.runUnifiedBackground({
         participantCount,
-        clientWindows,
+        clientWindowGroups,
+        mobileViewport,
         runId
       });
 
@@ -478,12 +493,12 @@
           ? '背景完整 E2E 已停止；已完成資料與測試紀錄保留。'
           : failed
             ? '背景完整 E2E 已完成，發現 ' + failed + ' 個異常。'
-            : '背景完整 E2E 已完成；後端 QA、管理端與五種用戶端協同測試均已執行。',
+            : '背景完整 E2E 已完成；後端 QA、管理端與五種獨立用戶端背景 Runner 協同測試均已執行。',
         !result?.cancelled && failed > 0
       );
       return result;
     })().catch((error) => {
-      closeWindowList(clientWindows);
+      closeWindowList(flattenClientWindowGroups(clientWindowGroups));
       setMessage(error?.message || '背景完整 E2E 執行失敗。', true);
       return { error: plainError(error), results: state.results.slice() };
     }).finally(() => {
@@ -494,7 +509,7 @@
     });
 
     state.backgroundCompletion = completion;
-    return { started: true, runId, participantCount, completion };
+    return { started: true, runId, participantCount, mobileViewport, completion };
   }
 
   async function runUnifiedBackground(options = {}) {
@@ -507,11 +522,11 @@
     state.backgroundRunId = String(options?.runId || new URLSearchParams(window.location.search).get('e2eRunId') || '');
     return runPaired({
       participantCount: Number(options?.participantCount || 0),
-      clientWindows: Array.isArray(options?.clientWindows) ? options.clientWindows : [],
+      clientWindowGroups: Array.isArray(options?.clientWindowGroups) ? options.clientWindowGroups : [],
+      mobileViewport: options?.mobileViewport === true,
       backgroundExecution: true
     });
   }
-
   function setBusy(running, label = '') {
     state.running = Boolean(running);
     state.section?.querySelectorAll('button[data-admin-e2e-control]').forEach((button) => {
@@ -524,6 +539,8 @@
     }
     const countInput = state.section?.querySelector('#pairedE2EAccountCount');
     if (countInput) countInput.disabled = state.running;
+    const mobileViewportInput = state.section?.querySelector('#pairedE2EMobileViewport');
+    if (mobileViewportInput) mobileViewportInput.disabled = state.running;
     if (state.badge) {
       state.badge.textContent = state.running
         ? (state.cancelled ? '完整 E2E：停止中' : (state.backgroundExecution || state.backgroundRunnerWindow ? '完整 E2E：背景執行中' : '完整 E2E：執行中'))
@@ -555,10 +572,11 @@
     if (state.floating) state.floating.textContent = 'E2E 停止中 · 目前案例完成安全清理後停止';
     for (const participant of state.participants) {
       participant.status = '停止中';
-      try {
-        const child = participant.window;
-        if (child && !child.closed && typeof child.MemberUserTestControl?.stop === 'function') child.MemberUserTestControl.stop();
-      } catch {}
+      for (const child of participantWindowList(participant)) {
+        try {
+          if (child && !child.closed && typeof child.MemberUserTestControl?.stop === 'function') child.MemberUserTestControl.stop();
+        } catch {}
+      }
     }
     renderParticipants();
     setMessage('已要求停止 E2E；目前正在執行的案例會先完成安全清理，之後不再啟動下一個案例。');
@@ -1041,8 +1059,10 @@
     state.backgroundExecution = options?.backgroundExecution === true || isBackgroundRunnerWindow();
     state.runSequence += 1;
     let participantCount = 1;
-    let openedWindows = [];
+    let openedWindowGroups = [];
     let backendRun = null;
+    const mobileViewport = options?.mobileViewport === true || (!isBackgroundRunnerWindow() && selectedClientMobileViewport());
+    state.clientMobileViewport = mobileViewport;
     try {
       const requestedCount = Number(options?.participantCount || 0);
       participantCount = Number.isInteger(requestedCount) && requestedCount > 0 ? requestedCount : selectedParticipantCount();
@@ -1052,23 +1072,24 @@
         throw error;
       }
 
-      const providedWindows = Array.isArray(options?.clientWindows)
-        ? options.clientWindows.filter((item) => item && !item.closed)
+      const providedGroups = Array.isArray(options?.clientWindowGroups)
+        ? options.clientWindowGroups.slice(0, participantCount)
         : [];
       closeClientWindows();
-      if (providedWindows.length) {
-        if (providedWindows.length < participantCount) {
-          const error = new Error('背景 Runner 收到的測試用戶端視窗數量不足。');
+      if (providedGroups.length) {
+        if (providedGroups.length < participantCount || !providedGroups.every(clientWindowGroupReady)) {
+          const error = new Error('背景 Runner 收到的 5-surface 測試用戶端背景視窗不完整。');
           error.code = 'E2E_BACKGROUND_CLIENT_WINDOWS_INCOMPLETE';
           throw error;
         }
-        openedWindows = providedWindows.slice(0, participantCount);
-        state.clientWindows = openedWindows;
+        openedWindowGroups = providedGroups;
+        state.clientWindowGroups = openedWindowGroups;
+        state.clientWindows = flattenClientWindowGroups(openedWindowGroups);
       } else {
-        openedWindows = openClientWindows(participantCount);
+        openedWindowGroups = openClientWindowGroups(participantCount, true, mobileViewport);
       }
     } catch (error) {
-      setMessage(error?.message || '無法開啟用戶端測試視窗。請允許此網站開啟彈出式視窗後重試。', true);
+      setMessage(error?.message || '無法開啟用戶端背景測試視窗。請允許此網站開啟彈出式視窗後重試。', true);
       return { error: plainError(error), results: [] };
     }
 
@@ -1112,7 +1133,9 @@
       state.participants = accounts.map((account, index) => ({
         index: index + 1,
         account,
-        window: openedWindows[index],
+        windows: openedWindowGroups[index],
+        window: openedWindowGroups[index]?.member || Object.values(openedWindowGroups[index] || {})[0] || null,
+        mobileViewport,
         status: '等待隨機啟動',
         surface: '前置資料完成',
         surfacePlan: weightedSurfacePlan(profile, index + 1),
@@ -1233,7 +1256,9 @@
         fixture: safe(fixture),
         participants: safe(state.participants.map((item) => ({
           account: item.account,
-          surfacePlan: item.surfacePlan?.map(([key]) => key) || []
+          surfacePlan: item.surfacePlan?.map(([key]) => key) || [],
+          mobileViewport: item.mobileViewport === true,
+          dedicatedSurfaceRunners: Object.keys(item.windows || {}).sort()
         }))),
         results: safe(state.results)
       };
@@ -1299,7 +1324,7 @@
         const login = await createPairedSession(participant.account, surface);
         participant.login = login;
         participant.lastSurfaceKey = surface;
-        seedParticipantSession(participant, login);
+        seedParticipantSession(participant, login, surface);
         await sleep(randomInt(80, 520));
         const child = await runUserSurface(participant, surface, label);
         if (surface === 'booking') {
@@ -3128,13 +3153,13 @@
 
   async function requestDetectedCancellationFromClient(participant, bookingId) {
     const id = String(bookingId || '');
-    let child = participant?.window;
-    if (!child || child.closed) throw new Error('預約用戶端視窗已關閉，無法再次提出取消申請。');
-    if (participant.lastSurfaceKey !== 'booking' || child.MemberUserTestControl?.surface !== 'booking') {
+    let child = participantWindow(participant, 'booking');
+    if (!child || child.closed) throw new Error('預約用戶端背景視窗已關閉，無法再次提出取消申請。');
+    if (child.MemberUserTestControl?.surface !== 'booking') {
       const login = await createPairedSession(participant.account, 'booking');
       participant.login = login;
       participant.lastSurfaceKey = 'booking';
-      seedParticipantSession(participant, login);
+      seedParticipantSession(participant, login, 'booking');
       child = await waitParticipantSurface(participant, 'booking', 'bookingView');
     }
     const card = await waitFor(() => child.document.querySelector(
@@ -3221,12 +3246,11 @@
 
 
   async function ensureBookingRealtimeClient(participant, timeoutMs = 20000) {
-    const child = participant?.window;
-    if (!child || child.closed) throw new Error('預約用戶端視窗已關閉，無法驗證 Realtime。');
+    const child = participantWindow(participant, 'booking');
+    if (!child || child.closed) throw new Error('預約用戶端背景視窗已關閉，無法驗證 Realtime。');
 
     const ready = await waitFor(() => {
       if (state.cancelled) return null;
-      if (participant.lastSurfaceKey !== 'booking') return null;
       if (child.MemberUserTestControl?.surface !== 'booking') return null;
       const hooks = child.MemberClientQaHooks;
       if (hooks?.surface !== 'booking'
@@ -3354,13 +3378,13 @@
 
   async function verifyBookingClientTerminal(participant, bookingIds) {
     if (state.cancelled) return { ok: false, stopped: true };
-    let child = participant.window;
-    if (!child || child.closed) throw new Error('預約用戶端視窗已關閉，無法驗證終態。');
-    if (participant.lastSurfaceKey !== 'booking' || child.MemberUserTestControl?.surface !== 'booking') {
+    let child = participantWindow(participant, 'booking');
+    if (!child || child.closed) throw new Error('預約用戶端背景視窗已關閉，無法驗證終態。');
+    if (child.MemberUserTestControl?.surface !== 'booking') {
       const login = await createPairedSession(participant.account, 'booking');
       participant.login = login;
       participant.lastSurfaceKey = 'booking';
-      seedParticipantSession(participant, login);
+      seedParticipantSession(participant, login, 'booking');
       child = await waitParticipantSurface(participant, 'booking', 'bookingView');
     }
     if (typeof child.MemberClientQaHooks?.refresh !== 'function') throw new Error('預約用戶端同步入口尚未就緒。');
@@ -3953,34 +3977,119 @@
     return count;
   }
 
-  function closeClientWindows() {
-    for (const item of state.clientWindows) {
-      try { if (item && !item.closed) item.close(); } catch {}
-    }
-    state.clientWindows = [];
+  function selectedClientMobileViewport() {
+    return Boolean(state.section?.querySelector('#pairedE2EMobileViewport')?.checked);
   }
 
-  function openClientWindows(count, track = true) {
+  function clientWindowFeatureString(mobileViewport, participantIndex, surfaceIndex) {
+    const size = mobileViewport ? CLIENT_MOBILE_VIEWPORT : CLIENT_DESKTOP_POPUP;
+    const left = 36 + (((Math.max(1, Number(participantIndex || 1)) - 1) * 38 + Number(surfaceIndex || 0) * 22) % 260);
+    const top = 42 + (((Math.max(1, Number(participantIndex || 1)) - 1) * 28 + Number(surfaceIndex || 0) * 18) % 220);
+    return [
+      'popup=yes',
+      'width=' + size.width,
+      'height=' + size.height,
+      'left=' + left,
+      'top=' + top,
+      'resizable=yes',
+      'scrollbars=yes'
+    ].join(',');
+  }
+
+  function applyClientWindowSize(child, mobileViewport) {
+    if (!mobileViewport || !child || child.closed) return;
+    try { child.resizeTo(CLIENT_MOBILE_VIEWPORT.width, CLIENT_MOBILE_VIEWPORT.height); } catch {}
+  }
+
+  function flattenClientWindowGroups(groups) {
+    const windows = [];
+    const seen = new Set();
+    for (const group of Array.isArray(groups) ? groups : []) {
+      for (const [surface] of PAIRED_SURFACES) {
+        const child = group?.[surface];
+        if (!child || seen.has(child)) continue;
+        seen.add(child);
+        windows.push(child);
+      }
+    }
+    return windows;
+  }
+
+  function clientWindowGroupReady(group) {
+    return Boolean(group && PAIRED_SURFACES.every(([surface]) => {
+      const child = group[surface];
+      return child && !child.closed;
+    }));
+  }
+
+  function participantWindowList(participant) {
+    const windows = [];
+    const seen = new Set();
+    for (const [surface] of PAIRED_SURFACES) {
+      const child = participant?.windows?.[surface];
+      if (!child || seen.has(child)) continue;
+      seen.add(child);
+      windows.push(child);
+    }
+    if (participant?.window && !seen.has(participant.window)) windows.push(participant.window);
+    return windows;
+  }
+
+  function participantWindow(participant, surface = '') {
+    const surfaceKey = String(surface || participant?.lastSurfaceKey || 'member');
+    const child = participant?.windows?.[surfaceKey] || participant?.window || null;
+    if (child && !child.closed && participant) participant.window = child;
+    return child;
+  }
+
+  function closeClientWindows() {
+    closeWindowList(state.clientWindows);
+    state.clientWindows = [];
+    state.clientWindowGroups = [];
+  }
+
+  function openClientWindowGroups(count, track = true, mobileViewport = false) {
+    const groups = [];
     const opened = [];
     const stamp = Date.now();
-    for (let index = 0; index < count; index += 1) {
-      const child = window.open('about:blank', `member-e2e-${stamp}-${index + 1}`);
-      if (!child) {
-        for (const existing of opened) {
-          try { existing.close(); } catch {}
+    for (let participantIndex = 0; participantIndex < count; participantIndex += 1) {
+      const group = {};
+      for (let surfaceIndex = 0; surfaceIndex < PAIRED_SURFACES.length; surfaceIndex += 1) {
+        const [surface, label] = PAIRED_SURFACES[surfaceIndex];
+        const child = window.open(
+          'about:blank',
+          `member-e2e-${stamp}-${participantIndex + 1}-${surface}`,
+          clientWindowFeatureString(mobileViewport, participantIndex + 1, surfaceIndex)
+        );
+        if (!child) {
+          closeWindowList(opened);
+          const error = new Error(
+            `瀏覽器阻擋了第 ${participantIndex + 1} 位測試用戶的「${label}」背景視窗。請允許此網站開啟彈出式視窗後重試。`
+          );
+          error.code = 'E2E_POPUP_BLOCKED';
+          throw error;
         }
-        const error = new Error(`瀏覽器阻擋了第 ${index + 1} 個用戶端視窗。請允許此網站開啟彈出式視窗後重試。`);
-        error.code = 'E2E_POPUP_BLOCKED';
-        throw error;
+        try {
+          child.document.title = `Lumen Club E2E · 測試用戶 ${participantIndex + 1} · ${label}`;
+          child.document.body.innerHTML =
+            '<main style="font-family:system-ui,sans-serif;padding:28px;line-height:1.7">' +
+            '<h1>用戶端背景 E2E 準備中</h1>' +
+            '<p>此視窗固定執行「' + label + '」，不會與其他用戶端共用分頁。</p>' +
+            (mobileViewport ? '<p>Viewport 目標：430×932。</p>' : '') +
+            '</main>';
+        } catch {}
+        applyClientWindowSize(child, mobileViewport);
+        group[surface] = child;
+        opened.push(child);
       }
-      try {
-        child.document.title = `Lumen Club E2E · 測試用戶 ${index + 1}`;
-        child.document.body.innerHTML = '<main style="font-family:system-ui,sans-serif;padding:32px;line-height:1.7"><h1>用戶端 E2E 準備中</h1><p>正在建立獨立測試 Session，完成後會自動進入會員頁面。</p></main>';
-      } catch {}
-      opened.push(child);
+      groups.push(group);
     }
-    if (track) state.clientWindows = opened;
-    return opened;
+    if (track) {
+      state.clientWindowGroups = groups;
+      state.clientWindows = opened;
+      state.clientMobileViewport = Boolean(mobileViewport);
+    }
+    return groups;
   }
 
   function renderParticipants() {
@@ -3997,7 +4106,8 @@
       code.textContent = String(participant.account?.memberCode || '準備中');
       identity.append(title, code);
       const status = document.createElement('span');
-      status.textContent = `${participant.status || '準備中'} · ${participant.surface || '—'}` +
+      const viewport = participant.mobileViewport ? '手機 430×932' : '桌面';
+      status.textContent = `${participant.status || '準備中'} · ${participant.surface || '—'} · 5 Runner · ${viewport}` +
         (participant.adminStatus ? ` · 管理端：${participant.adminStatus}` : '');
       card.append(identity, status);
       return card;
@@ -4117,30 +4227,34 @@
     return login;
   }
 
-  function seedParticipantSession(participant, login) {
-    const child = participant?.window;
-    if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的用戶端視窗已關閉。`);
+
+  function seedParticipantSession(participant, login, surface = '') {
+    const surfaceKey = String(surface || login?.surface || participant?.lastSurfaceKey || 'member');
+    const child = participantWindow(participant, surfaceKey);
+    if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的 ${surfaceKey} 背景視窗已關閉。`);
     try {
       child.sessionStorage.setItem(TEST_SESSION_STORAGE_KEY, JSON.stringify({
         token: String(login.testSessionToken),
         expiresAt: new Date(login.expiresAt).getTime()
       }));
     } catch {
-      throw new Error('無法把測試 Session 寫入獨立用戶端視窗。');
+      throw new Error('無法把測試 Session 寫入指定用戶端背景視窗。');
     }
   }
 
   function navigateParticipant(participant, surface) {
-    const child = participant?.window;
-    if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的用戶端視窗已關閉。`);
+    const child = participantWindow(participant, surface);
+    if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的 ${surface} 背景視窗已關閉。`);
     const url = new URL('../' + surface + '/', window.location.href);
-    url.searchParams.set('qaPair', `${Date.now()}-${participant.index}`);
+    url.searchParams.set('qaPair', `${Date.now()}-${participant.index}-${surface}`);
     url.searchParams.set('e2eSeed', String(participant.seed || state.randomSeed || ''));
     url.searchParams.set('e2eComplexity', String(participant.complexityLevel || state.complexityLevel || 1));
     url.searchParams.set('e2eParticipant', String(participant.index || 1));
+    url.searchParams.set('e2eViewport', participant?.mobileViewport ? 'mobile' : 'desktop');
     child.location.href = url.href;
+    if (participant?.mobileViewport) window.setTimeout(() => applyClientWindowSize(child, true), 0);
+    return child;
   }
-
   async function postPublicTestMode(session, body) {
     const response = await fetch(functionUrl(session.config, 'test-mode-api'), {
       method: 'POST',
@@ -4161,9 +4275,10 @@
     return parsed.data || {};
   }
 
+
   async function runUserSurface(participant, surface, label) {
-    const child = participant?.window;
-    if (!child || child.closed) throw new Error('測試用戶 ' + (participant?.index || '?') + ' 的用戶端視窗已被關閉。');
+    const child = participantWindow(participant, surface);
+    if (!child || child.closed) throw new Error('測試用戶 ' + (participant?.index || '?') + ' 的「' + label + '」背景視窗已被關閉。');
     participant.surface = label;
     renderParticipants();
     navigateParticipant(participant, surface);
@@ -4178,7 +4293,7 @@
     if (control?.cancelled || state.cancelled) {
       return { ok: false, cancelled: true, surface, account: participant.account, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
     }
-    if (!control) throw new Error(label + ' E2E 控制器未在獨立用戶端視窗就緒。');
+    if (!control) throw new Error(label + ' E2E 控制器未在專屬背景視窗就緒。');
 
     const surfaceTimeoutMs = backgroundAwareTimeout(surface === 'booking' ? 180000 : 150000, 12 * 60 * 1000);
     let result;
@@ -4210,9 +4325,6 @@
     }
     return safe(result);
   }
-
-  
-
   async function verifyUserRunsVisibleInAdmin(account, runCodes) {
     const latestRunCode = String(runCodes.filter(Boolean).slice(-1)[0] || '');
     if (!account?.memberCode || !latestRunCode) {
@@ -4269,9 +4381,9 @@
     return Number(result?.deletedAccountCount || 0) >= 1;
   }
 
+
   async function waitParticipantSurface(participant, surface, rootId, timeoutMs = 25000) {
-    navigateParticipant(participant, surface);
-    const child = participant.window;
+    const child = navigateParticipant(participant, surface);
     const ready = await waitFor(() => {
       try {
         if (!child || child.closed) return null;
@@ -4282,10 +4394,9 @@
         return root && !root.classList.contains('hidden') ? root : null;
       } catch { return null; }
     }, backgroundAwareTimeout(timeoutMs, 90000), 120);
-    if (!ready || ready.error) throw new Error(ready?.error || surface + ' 用戶端沒有進入可操作狀態。');
+    if (!ready || ready.error) throw new Error(ready?.error || surface + ' 用戶端背景頁沒有進入可操作狀態。');
     return child;
   }
-
   function childMembership(child) {
     const root = child?.document?.getElementById('membershipProgress');
     return {
@@ -4770,9 +4881,10 @@
         result.tierRestored = true;
       } catch {}
     }
-    if (ctx.originalLogin && ctx.participant?.window && !ctx.participant.window.closed) {
+    const originalWindow = participantWindow(ctx.participant, ctx.originalSurface || 'member');
+    if (ctx.originalLogin && originalWindow && !originalWindow.closed) {
       try {
-        seedParticipantSession(ctx.participant, ctx.originalLogin);
+        seedParticipantSession(ctx.participant, ctx.originalLogin, ctx.originalSurface || 'member');
         navigateParticipant(ctx.participant, ctx.originalSurface || 'member');
         result.originalSessionRestored = true;
       } catch {}
