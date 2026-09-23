@@ -1646,13 +1646,28 @@
       throw error;
     }
     const memberCode = String(account?.memberCode || '');
-    const edit = await waitFor(() => {
+    const findEdit = () => {
       const rows = Array.from(document.querySelectorAll('#memberTableBody tr'));
       const row = memberCode
         ? rows.find((item) => item.textContent?.includes(memberCode))
         : rows[0];
       return row?.querySelector('button[data-action="edit-member"]') || null;
-    }, 10000, 100);
+    };
+
+    let edit = await waitFor(findEdit, 1200, 100);
+    if (!edit && memberCode) {
+      // 新增測試帳號後，test subtab 可能已處於 selected 狀態而不會觸發重新載入。
+      // 強制變更搜尋條件，讓管理端從後端重新取得指定 memberCode，而不是信任舊 DOM。
+      const search = document.getElementById('memberSearch');
+      if (search) {
+        search.value = '';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        await wait(380);
+        search.value = memberCode;
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      edit = await waitFor(findEdit, 10000, 100);
+    }
     if (!edit) throw new Error(memberCode ? '找不到本次指定的測試用戶：' + memberCode : '測試會員名冊未載入可操作帳號。');
     return edit;
   }
@@ -1731,8 +1746,16 @@
   }
 
   async function submitMemberAndWait() {
-    document.getElementById('saveMemberButton')?.click();
-    return Boolean(await waitFor(() => document.getElementById('memberModal')?.classList.contains('hidden'), 10000));
+    const button = document.getElementById('saveMemberButton');
+    if (!await waitFor(() => button && !button.disabled ? button : null, 10000)) return false;
+    button.click();
+    const closed = Boolean(await waitFor(() => document.getElementById('memberModal')?.classList.contains('hidden'), 10000));
+    if (closed) {
+      // saveMember 會先關閉 modal，再完成 refreshAfterSuccessfulWrite / finally。
+      // 等按鈕解除 busy 後才允許下一次修改，避免連續還原時 click 被靜默忽略。
+      await waitFor(() => !button.disabled, 10000);
+    }
+    return closed;
   }
 
   async function adminProfileMutationCase() {
@@ -2513,6 +2536,7 @@
       typeInput.dispatchEvent(new Event('input', { bubbles: true }));
       modal.querySelector('form button[type="submit"]')?.click();
       actual.typeCreated = Boolean(await waitFor(() => findBookingRow('bookingAdminTypeList', typeCreated), 15000));
+      if (actual.typeCreated) { await waitBookingAdminReady(15000); await wait(120); }
 
       if (actual.typeCreated && clickBookingRowAction('bookingAdminTypeList', typeCreated, '修改')) {
         modal = await waitFor(() => {
@@ -2525,6 +2549,7 @@
           editInput.dispatchEvent(new Event('input', { bubbles: true }));
           modal.querySelector('form button[type="submit"]')?.click();
           actual.typeUpdated = Boolean(await waitFor(() => findBookingRow('bookingAdminTypeList', typeUpdated), 15000));
+          if (actual.typeUpdated) { await waitBookingAdminReady(15000); await wait(120); }
         }
       }
 
@@ -2548,6 +2573,7 @@
         [title, type, duration, price].forEach((input) => input.dispatchEvent(new Event('change', { bubbles: true })));
         form.querySelector('button[type="submit"]')?.click();
         actual.serviceCreated = Boolean(await waitFor(() => findBookingRow('bookingAdminServiceList', serviceCreated), 15000));
+        if (actual.serviceCreated) { await waitBookingAdminReady(15000); await wait(120); }
       }
 
       if (actual.serviceCreated && clickBookingRowAction('bookingAdminServiceList', serviceCreated, '修改')) {
@@ -2565,6 +2591,7 @@
           duration.dispatchEvent(new Event('change', { bubbles: true }));
           form.querySelector('button[type="submit"]')?.click();
           actual.serviceUpdated = Boolean(await waitFor(() => findBookingRow('bookingAdminServiceList', serviceUpdated), 15000));
+          if (actual.serviceUpdated) { await waitBookingAdminReady(15000); await wait(120); }
         }
       }
 
@@ -2573,6 +2600,7 @@
           clickBookingRowAction('bookingAdminServiceList', serviceUpdated, '刪除');
           actual.serviceDeleted = Boolean(await waitFor(() => !findBookingRow('bookingAdminServiceList', serviceUpdated), 15000));
         });
+        if (actual.serviceDeleted) { await waitBookingAdminReady(15000); await wait(120); }
       }
 
       if (actual.typeUpdated) {
@@ -2643,6 +2671,12 @@
     }
 
     document.getElementById('bookingAdminServicesSubtab')?.click();
+    actual.servicesReady = Boolean(await waitBookingAdminReady(15000));
+    if (actual.servicesReady) {
+      // Fixture 會建立服務類型；等實際列表完成 render，避免 state.catalog 尚未載入時
+      // 「新增預約項目」因 serviceTypes 為空而只跳 alert。
+      await waitFor(() => document.getElementById('bookingAdminTypeList')?.children.length > 0, 10000);
+    }
     for (const [key, buttonId] of [['newType', 'bookingAdminNewTypeButton'], ['newService', 'bookingAdminNewServiceButton']]) {
       document.getElementById(buttonId)?.click();
       const opened = Boolean(await waitFor(() => !document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'), 3000));
@@ -4792,10 +4826,12 @@
     select.value = String(ctx.ticketTemplateId);
     select.dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('saveCardButton')?.click();
-    ctx.cardId = String(await waitFor(() => document.getElementById('cardId')?.value || null, 15000) || '');
     await waitAdminWriteSettled('saveCardButton');
+    const savedCard = await waitFor(() => Array.from(document.querySelectorAll('#cardListItems [data-card-id]'))
+      .find((node) => String(node.textContent || '').includes(ctx.cardTitle)) || null, 15000);
+    ctx.cardId = String(document.getElementById('cardId')?.value || savedCard?.dataset.cardId || '');
     if (!ctx.cardId) throw new Error('深度 E2E 集點卡沒有取得 Card ID。');
-    if (!await waitFor(() => textIncludes('#cardListItems', ctx.cardTitle), 10000)) throw new Error('深度 E2E 集點卡沒有出現在管理端。');
+    if (!savedCard && !await waitFor(() => textIncludes('#cardListItems', ctx.cardTitle), 10000)) throw new Error('深度 E2E 集點卡沒有出現在管理端。');
     closeEditorModalById('cardEditorModal');
     return ctx.cardId;
   }
