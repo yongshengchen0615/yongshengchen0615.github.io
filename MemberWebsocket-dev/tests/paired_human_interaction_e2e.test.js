@@ -65,3 +65,19 @@ test('fixture and assertion APIs remain separate from the human UI gate', () => 
   assert.match(admin, /recordResultRows/);
   assert.match(admin, /pairedHumanInteractionCoverageCase/);
 });
+
+
+test('event human E2E exercises a deterministic activity lottery and persists its result', () => {
+  const runner = read('user-test-control.js');
+  const api = read('supabase/functions/user-test-api/index.ts');
+  assert.match(api, /QA-UI-EVT-LOT-/);
+  assert.match(api, /ticket_type: "lottery"/);
+  assert.match(api, /prizeTitle: "E2E 必中獎"/);
+  assert.match(api, /winRate: 100/);
+  assert.match(api, /lotteryEventTicketId/);
+  assert.match(runner, /fixture\.lotteryEventTicketId/);
+  assert.match(runner, /#ticketModalResult \.lottery-result strong/);
+  assert.match(runner, /resultVisible/);
+  assert.match(runner, /resultPersisted/);
+  assert.match(runner, /lotteryResultPersisted: true/);
+});
