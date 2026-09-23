@@ -15,7 +15,7 @@ test('all five user surfaces load the human-evidence E2E runner asset', () => {
 
 test('user full E2E requires observable UI events for Human E2E cases', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-09-23\.3'/);
+  assert.match(runner, /const VERSION = '2026-09-23\.4'/);
   assert.match(runner, /captureHumanInteraction/);
   assert.match(runner, /\['click', 'input', 'change', 'submit'\]/);
   assert.match(runner, /humanRequired: domain === 'Human E2E'/);
