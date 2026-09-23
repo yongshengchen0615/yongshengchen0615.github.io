@@ -1,8 +1,10 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.5';
+  const VERSION = '2026-09-23.6';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
+  const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
+  const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_BOOKING_LIVE_TIMEOUT_MS = 10 * 60 * 1000;
   const ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS = 1500;
@@ -31,7 +33,13 @@
     clientWindows: [],
     participants: [],
     adminTestAccount: null,
-    runStartedAt: ''
+    runStartedAt: '',
+    backgroundExecution: false,
+    backgroundRunnerWindow: null,
+    backgroundCompletion: null,
+    backgroundRunId: '',
+    lastMessage: '',
+    lastMessageError: false
   };
 
   window.addEventListener('DOMContentLoaded', mount);
@@ -89,6 +97,16 @@
 
     section.querySelector('#runPairedFullE2EButton')?.addEventListener('click', () => runPaired());
     section.querySelector('#stopAdminE2EButton')?.addEventListener('click', requestStop);
+  }
+
+  function isBackgroundRunnerWindow() {
+    try { return new URLSearchParams(window.location.search).get(BACKGROUND_RUNNER_PARAM) === '1'; }
+    catch (_) { return false; }
+  }
+
+  function backgroundAwareTimeout(timeoutMs, minimumMs = 0) {
+    const base = Math.max(1, Number(timeoutMs) || 1);
+    return state.backgroundExecution ? Math.max(base * 2, Number(minimumMs) || 0) : base;
   }
 
   function sleep(ms) {
