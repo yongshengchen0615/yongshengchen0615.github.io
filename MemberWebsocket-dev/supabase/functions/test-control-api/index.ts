@@ -13,6 +13,7 @@ type CaseResult = {
 const MAX_REQUEST_BYTES = 384_000;
 const STANDARD_REQUEST_BYTES = 20_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const E2E_ARTIFACT_BUCKET = "e2e-failure-artifacts";
 
 class ApiError extends Error {
   status: number;
@@ -89,6 +90,33 @@ async function readBody(request: Request): Promise<Json> {
   } catch {
     throw new ApiError(400, "INVALID_JSON", "請求內容必須是有效 JSON。");
   }
+}
+
+async function purgeE2EArtifactStorage(supabase: any): Promise<number> {
+  let count = 0;
+  let offset = 0;
+  const pageSize = 1000;
+
+  for (let page = 0; page < 100; page += 1) {
+    const listed = await supabase.storage.from(E2E_ARTIFACT_BUCKET).list("runs", {
+      limit: pageSize,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    });
+    if (listed.error) {
+      throw new ApiError(503, "TEST_ARTIFACT_LIST_FAILED", "目前無法盤點 E2E 失敗快照。", listed.error.message || null);
+    }
+    const rows = Array.isArray(listed.data) ? listed.data : [];
+    count += rows.filter((item: any) => item?.id && String(item?.name || "").endsWith(".webp")).length;
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  const emptied = await supabase.storage.emptyBucket(E2E_ARTIFACT_BUCKET);
+  if (emptied.error) {
+    throw new ApiError(503, "TEST_ARTIFACT_PURGE_FAILED", "測試資料已清理，但 E2E 失敗快照清除失敗。", emptied.error.message || null);
+  }
+  return count;
 }
 
 function dbClient(): any {
@@ -1453,9 +1481,14 @@ Deno.serve(async (request: Request) => {
       if (extended.error) {
         throw new ApiError(503, "TEST_EXTENDED_PURGE_FAILED", "測試會員資料已清理，但延伸 E2E 資源清理失敗。", extended.error.message || null);
       }
+      const deletedStorageObjects = await purgeE2EArtifactStorage(supabase);
       const baseSummary = purge.data && typeof purge.data === "object" ? purge.data : {};
       const extendedSummary = extended.data && typeof extended.data === "object" ? extended.data : {};
-      const summary = { ...(baseSummary as Json), ...(extendedSummary as Json) };
+      const summary = {
+        ...(baseSummary as Json),
+        ...(extendedSummary as Json),
+        deletedStorageObjects,
+      };
       await audit(
         supabase,
         identity,
