@@ -12,7 +12,7 @@ test('admin test control center is a result surface for the unified full E2E', (
   const e2e = read('admin/e2e-control.js');
   const css = read('admin/test-control.css');
 
-  assert.match(html, /test-control\.css\?v=test-control-20260921-1/);
+  assert.match(html, /test-control\.css\?v=test-control-20260923-2/);
   assert.match(html, /test-control\.js\?v=test-control-20260923-3/);
   assert.match(html, /id="automationTestTitle"/);
   assert.doesNotMatch(html, /id="runQuickAutomationTestButton"/);
@@ -23,6 +23,19 @@ test('admin test control center is a result surface for the unified full E2E', (
   assert.match(html, /Expected/);
   assert.match(html, /Actual/);
   assert.match(css, /\.test-control-data-grid/);
+  const workspace = read('admin/test-workspace-tabs.js');
+  const workspaceCss = read('admin/test-workspace-tabs.css');
+  for (const key of ['environment', 'accounts', 'runner', 'history']) {
+    assert.match(workspace, new RegExp("key: '" + key + "'"));
+  }
+  assert.match(workspace, /環境設定/);
+  assert.match(workspace, /測試帳號/);
+  assert.match(workspace, /E2E 執行/);
+  assert.match(workspace, /測試紀錄/);
+  assert.match(workspace, /settingsCard/);
+  assert.match(workspace, /accountsCard/);
+  assert.match(workspaceCss, /grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(workspaceCss, /test-workspace-panel--accounts/);
 
   assert.match(client, /\/functions\/v1\/test-control-api/);
   assert.match(client, /admin\.test-control\.create/);
