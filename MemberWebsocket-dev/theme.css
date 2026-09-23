@@ -20,6 +20,12 @@
   --theme-table-text: #46534d;
   --theme-danger-soft: #f8e8e3;
   --theme-positive-soft: #e7f2eb;
+  --theme-text-subtle: #7a8780;
+  --theme-link: #a94834;
+  --theme-positive-text: #276947;
+  --theme-warning-text: #765817;
+  --theme-danger-text: #9c3d31;
+  --theme-disabled-text: #8b9690;
 }
 
 html[data-theme="light"] {
@@ -59,6 +65,12 @@ html[data-theme="dark"] {
   --theme-table-text: #c8d2cd;
   --theme-danger-soft: #2b1915;
   --theme-positive-soft: #14261c;
+  --theme-text-subtle: #9eaca5;
+  --theme-link: #ff9a78;
+  --theme-positive-text: #8bd7ad;
+  --theme-warning-text: #e5c675;
+  --theme-danger-text: #ff9f90;
+  --theme-disabled-text: #84918a;
   --ink: var(--theme-text);
   --muted: var(--theme-text-muted);
   --paper: var(--theme-surface);
@@ -361,4 +373,310 @@ html[data-theme] :where(
   .theme-toggle-button {
     transition: none;
   }
+}
+
+
+/* Text hierarchy and component contrast */
+html[data-theme] :where(
+  #bookingPanel .booking-admin-form > label,
+  #bookingPanel .booking-admin-form-grid > label,
+  #bookingPanel .booking-admin-note-field,
+  #bookingPanel .booking-admin-service-row,
+  #bookingPanel .booking-admin-settings-block h4,
+  #bookingPanel .booking-admin-settings-field,
+  #bookingPanel .booking-admin-settings-actions > p strong,
+  .booking-admin-modal .booking-admin-form > label,
+  .booking-admin-modal .booking-admin-form-grid > label,
+  .booking-admin-modal-close,
+  .test-control-step-heading strong,
+  .test-control-data-grid pre,
+  .test-control-history-top strong,
+  .booking-service-group-heading h3,
+  .booking-item .member-booking-format-value,
+  .booking-item .member-booking-format-services-label,
+  .booking-confirm-summary .member-booking-format-value,
+  .booking-confirm-summary .member-booking-format-services-label,
+  .booking-confirm-summary .booking-confirm-contact-title,
+  .booking-contact-fieldset legend,
+  .booking-contact-option strong,
+  .booking-contact-option:has(input:checked),
+  .booking-selection-modal-close,
+  #bookingHolidayModal .booking-holiday-detail strong,
+  .profile-edit-modal-fields label
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme] :where(
+  #bookingPanel .booking-admin-stats span,
+  #bookingPanel .booking-admin-stats small,
+  #bookingPanel .booking-admin-section-heading p:not(.kicker),
+  #bookingPanel .booking-admin-form label small,
+  #bookingPanel .booking-admin-service-row small,
+  #bookingPanel .booking-admin-booking-heading small,
+  #bookingPanel .booking-admin-time,
+  #bookingPanel .booking-admin-note,
+  #bookingPanel .booking-admin-item-list,
+  #bookingPanel .booking-admin-settings-eyebrow,
+  #bookingPanel .booking-admin-settings-field > small,
+  #bookingPanel .booking-admin-number-field > span,
+  #bookingPanel .booking-admin-settings-actions > p,
+  .booking-admin-modal .booking-admin-form label small,
+  .test-control-heading p,
+  .test-control-run-head small,
+  .test-control-meta-chip,
+  .test-control-progress-text,
+  .test-control-stat span,
+  .test-control-case-identity small,
+  .test-control-step-heading span,
+  .test-control-step-message,
+  .test-control-step-empty,
+  .test-control-data-grid > div > span,
+  .test-control-history-card > p,
+  .test-control-history-item small,
+  .test-control-screenshot-heading small,
+  .test-control-screenshot-status,
+  .admin-e2e-flow span,
+  .admin-e2e-flow b,
+  .admin-e2e-config-note summary,
+  .test-workspace-tab,
+  .test-workspace-tab-index,
+  .test-workspace-tab-copy small,
+  .test-workspace-tab-description,
+  .test-workspace-history-heading p,
+  .profile-detail-list dt,
+  .ticket-batch-ticket-badge,
+  .calendar-weekdays span,
+  .calendar-legend,
+  .booking-service-group-heading p,
+  .booking-service-group-count,
+  .booking-service-group-empty,
+  .booking-item.booking-history-collapsible > .booking-item-top::after,
+  .booking-confirm-summary .booking-confirm-format-services,
+  .booking-confirm-summary .booking-confirm-contact-formatted .member-booking-format-label,
+  .booking-contact-option small,
+  #bookingHolidayModal .booking-holiday-detail p
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] :where(
+  .test-control-case-mark,
+  .test-control-empty,
+  .test-control-run-status.is-queued,
+  .test-control-case-state.is-queued,
+  .test-control-history-status.is-queued,
+  .test-control-case-state.is-skipped,
+  .test-control-history-status.is-skipped,
+  .test-control-run-status.is-cancelled,
+  .test-control-history-status.is-cancelled,
+  #bookingPanel .booking-admin-service-status.inactive,
+  #bookingPanel .booking-admin-status.status-rejected,
+  #bookingPanel .booking-admin-status.status-cancelled,
+  .booking-service-group-cancelled .booking-service-group-count
+) {
+  color: var(--theme-text-subtle);
+}
+
+html[data-theme] :where(
+  .text-button,
+  .profile-inline-edit-button,
+  .calendar-day:not(:disabled):hover,
+  .calendar-day.today:disabled
+) {
+  color: var(--theme-link);
+}
+
+html[data-theme] :where(
+  .test-control-run-status.is-passed,
+  .test-control-case-state.is-passed,
+  .test-control-history-status.is-passed,
+  .test-control-case.is-passed .test-control-case-mark,
+  #bookingPanel .booking-admin-service-status.active,
+  #bookingPanel .booking-admin-status.status-confirmed,
+  #bookingPanel .booking-admin-status.status-completed,
+  .booking-admin-resource-status,
+  .booking-service-group-completed .booking-service-group-count,
+  .form-message.success,
+  .ticket-result
+) {
+  color: var(--theme-positive-text);
+}
+
+html[data-theme] :where(
+  .test-control-run-status.is-running,
+  .test-control-case-state.is-running,
+  .test-control-history-status.is-running,
+  .test-control-case.is-running .test-control-case-mark,
+  #bookingPanel .booking-admin-status.status-pending,
+  .calendar-booking-times small
+) {
+  color: var(--theme-warning-text);
+}
+
+html[data-theme] :where(
+  .test-control-run-status.is-failed,
+  .test-control-case-state.is-failed,
+  .test-control-history-status.is-failed,
+  .test-control-case.is-failed .test-control-case-mark,
+  .test-control-failure,
+  .test-mode-status-badge.is-error,
+  .profile-booking-help,
+  .profile-modal-message,
+  .ticket-overview-error,
+  .ticket-batch-card .ticket-batch-warning,
+  .group-booking-rule.error,
+  .booking-contact-help,
+  .form-message.error,
+  .modal-message,
+  .status-cancel_requested
+) {
+  color: var(--theme-danger-text);
+}
+
+html[data-theme] :where(
+  .calendar-day:disabled,
+  .calendar-day.past-disabled,
+  .calendar-day.advance-disabled,
+  .calendar-day.advance-disabled .calendar-booking-times small,
+  .calendar-day.past-disabled .calendar-booking-times small,
+  .slot-button:disabled
+) {
+  color: var(--theme-disabled-text);
+}
+
+/* Dark mode surfaces that previously kept light-only hard-coded colors. */
+html[data-theme="dark"] :where(
+  #bookingPanel .booking-admin-stats > div,
+  #bookingPanel .booking-admin-card,
+  #bookingPanel .booking-admin-toggle,
+  #bookingPanel .booking-admin-service-row,
+  #bookingPanel .booking-admin-filter-button,
+  #bookingPanel .booking-admin-booking,
+  #bookingPanel .booking-admin-subtabs,
+  #bookingPanel .booking-admin-settings-block,
+  #bookingPanel .booking-admin-settings-notice,
+  #bookingPanel .booking-admin-number-field > span,
+  .booking-admin-modal-card,
+  .booking-admin-modal-close,
+  .test-control-center,
+  .test-control-run-card,
+  .test-control-history-card,
+  .test-control-run-head,
+  .test-control-meta-chip,
+  .test-control-progress,
+  .test-control-stat,
+  .test-control-case,
+  .test-control-case-mark,
+  .test-control-step,
+  .test-control-data-grid pre,
+  .test-control-history-item,
+  .admin-e2e-section,
+  .admin-e2e-data-box,
+  .admin-e2e-paired-config,
+  .admin-e2e-participant,
+  .admin-e2e-flow span,
+  .admin-e2e-summary,
+  .booking-contact-option,
+  .booking-contact-custom input,
+  .booking-contact-custom select,
+  .booking-confirm-summary .booking-confirm-contact-formatted
+) {
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  #bookingPanel .booking-admin-form input,
+  #bookingPanel .booking-admin-form select,
+  #bookingPanel .booking-admin-form textarea,
+  #bookingPanel .booking-admin-note-field textarea,
+  .booking-admin-modal .booking-admin-form input,
+  .booking-admin-modal .booking-admin-form select,
+  .booking-admin-modal .booking-admin-form textarea
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] .booking-contact-fieldset {
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  .booking-contact-summary,
+  .booking-confirm-contact,
+  .booking-contact-option:has(input:checked)
+) {
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] :where(
+  [class*="service-type-color-"] .service-choice,
+  [class*="service-type-color-"] .selected-service-item,
+  [class*="service-type-color-"]
+) {
+  background: var(--theme-surface-muted) !important;
+  border-color: var(--theme-border) !important;
+}
+
+html[data-theme="dark"] [class*="service-type-color-"] > strong {
+  color: inherit !important;
+}
+
+html[data-theme="dark"] :where(
+  .test-control-run-status.is-queued,
+  .test-control-case-state.is-queued,
+  .test-control-history-status.is-queued,
+  .test-control-case-state.is-skipped,
+  .test-control-history-status.is-skipped,
+  .test-control-run-status.is-cancelled,
+  .test-control-history-status.is-cancelled
+) {
+  background: #1b2520;
+}
+
+html[data-theme="dark"] :where(
+  .test-control-run-status.is-running,
+  .test-control-case-state.is-running,
+  .test-control-history-status.is-running,
+  .test-control-case.is-running .test-control-case-mark,
+  #bookingPanel .booking-admin-status.status-pending
+) {
+  background: #2b2617;
+}
+
+html[data-theme="dark"] :where(
+  .test-control-run-status.is-passed,
+  .test-control-case-state.is-passed,
+  .test-control-history-status.is-passed,
+  .test-control-case.is-passed .test-control-case-mark,
+  #bookingPanel .booking-admin-service-status.active,
+  #bookingPanel .booking-admin-status.status-confirmed,
+  #bookingPanel .booking-admin-status.status-completed
+) {
+  background: #14271d;
+}
+
+html[data-theme="dark"] :where(
+  .test-control-run-status.is-failed,
+  .test-control-case-state.is-failed,
+  .test-control-history-status.is-failed,
+  .test-control-case.is-failed .test-control-case-mark,
+  .test-mode-status-badge.is-error,
+  .test-control-failure
+) {
+  background: #2d1b18;
+}
+
+html[data-theme="dark"] :where(
+  #calendarGrid .calendar-day.holiday-disabled,
+  #calendarGrid .calendar-day.holiday-disabled .calendar-day-number,
+  .calendar-nav-button,
+  .calendar-day,
+  .calendar-day.selected
+) {
+  color: var(--theme-text);
 }
