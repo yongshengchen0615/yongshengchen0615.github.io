@@ -326,26 +326,39 @@ async function runView(supabase: any, runId: string): Promise<Json> {
 }
 
 async function e2eProfile(supabase: any): Promise<Json> {
-  const result = await supabase
-    .from("automation_test_runs")
-    .select("summary,created_at,status")
-    .eq("environment", "MemberWebsocket-dev")
-    .eq("suite", "full")
-    .order("created_at", { ascending: false })
-    .limit(200);
-  if (result.error) throw new ApiError(503, "E2E_PROFILE_READ_FAILED", "目前無法讀取 E2E 複雜度歷史。");
+  const [stateResult, historyResult] = await Promise.all([
+    supabase
+      .from("e2e_evolution_state")
+      .select("run_count,last_complexity_level,last_seed,last_root_run_id,updated_at")
+      .eq("id", true)
+      .maybeSingle(),
+    supabase
+      .from("automation_test_runs")
+      .select("summary,created_at,status")
+      .eq("environment", "MemberWebsocket-dev")
+      .eq("suite", "full")
+      .order("created_at", { ascending: false })
+      .limit(200),
+  ]);
+  if (stateResult.error || historyResult.error) {
+    throw new ApiError(503, "E2E_PROFILE_READ_FAILED", "目前無法讀取 E2E 複雜度歷史。");
+  }
 
-  const rootRuns = (result.data || []).filter((row: any) => row?.summary?.rootRun === true);
-  const completedRootRuns = rootRuns.length;
+  const rootRuns = (historyResult.data || []).filter((row: any) => row?.summary?.rootRun === true);
+  const durableRunCount = Math.max(0, Number(stateResult.data?.run_count || 0) || 0);
+  const completedRootRuns = Math.max(durableRunCount, rootRuns.length);
   const last = rootRuns[0] || null;
   const nextComplexityLevel = Math.max(1, Math.min(8, completedRootRuns + 1));
   return {
     completedRootRuns,
+    durableRunCount,
     nextComplexityLevel,
     maxComplexityLevel: 8,
-    previousSeed: asText(last?.summary?.e2eSeed, 160),
-    previousComplexityLevel: Math.max(0, Number(last?.summary?.complexityLevel || 0) || 0),
+    previousSeed: asText(stateResult.data?.last_seed || last?.summary?.e2eSeed, 160),
+    previousComplexityLevel: Math.max(0, Number(stateResult.data?.last_complexity_level || last?.summary?.complexityLevel || 0) || 0),
+    previousRootRunId: asText(stateResult.data?.last_root_run_id, 80),
     previousStatus: asText(last?.status, 40),
+    evolutionUpdatedAt: stateResult.data?.updated_at || null,
   };
 }
 
@@ -1066,6 +1079,21 @@ async function recordBrowserRun(
     await supabase.from("automation_test_runs").delete().eq("id", runId);
     throw error;
   }
+
+  if (body.rootRun === true) {
+    const rootRunId = asText(body.rootRunId, 80);
+    if (rootRunId) {
+      const evolution = await supabase.rpc("admin_advance_e2e_evolution", {
+        p_seed: asText(body.e2eSeed, 160),
+        p_complexity_level: Math.max(1, Math.min(8, Number(body.complexityLevel || 1) || 1)),
+        p_root_run_id: rootRunId,
+      });
+      if (evolution.error) {
+        console.error("E2E evolution state update failed", evolution.error.message);
+      }
+    }
+  }
+
   return runView(supabase, runId);
 }
 
