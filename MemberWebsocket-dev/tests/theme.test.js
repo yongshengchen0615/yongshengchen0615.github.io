@@ -13,8 +13,8 @@ function read(relativePath) {
 test('all admin and member surfaces load the shared theme controller and stylesheet', () => {
   for (const entry of entries) {
     const html = read(path.join(entry, 'index.html'));
-    assert.match(html, /\.\.\/theme\.css\?v=theme-contrast-20260924-3/, entry + ' should load theme.css');
-    assert.match(html, /\.\.\/theme\.js\?v=theme-contrast-20260924-3/, entry + ' should load theme.js');
+    assert.match(html, /\.\.\/theme\.css\?v=theme-contrast-20260924-4/, entry + ' should load theme.css');
+    assert.match(html, /\.\.\/theme\.js\?v=theme-contrast-20260924-4/, entry + ' should load theme.js');
   }
 });
 
