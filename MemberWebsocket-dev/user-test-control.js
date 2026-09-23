@@ -1653,20 +1653,21 @@
     return Number.isInteger(index) && index > 0 ? index - 1 : 0;
   }
 
-  function firstEnabledBookingDate() {
+  function firstEnabledBookingDate(offset = 0) {
     const days = Array.from(document.querySelectorAll('#calendarGrid button.calendar-day:not(:disabled)'))
       .filter((button) => !button.classList.contains('holiday-disabled'));
     state.bookingLaneDayCount = Math.max(1, days.length);
     if (!days.length) return null;
-    return days[pairedLaneIndex() % days.length] || days[0] || null;
+    const lane = pairedLaneIndex() + Math.max(0, Number(offset) || 0);
+    return days[lane % days.length] || days[0] || null;
   }
 
-  async function openBookingForSafeDate() {
-    let day = firstEnabledBookingDate();
+  async function openBookingForSafeDate(offset = 0) {
+    let day = firstEnabledBookingDate(offset);
     if (!day) {
       document.getElementById('nextMonthButton')?.click();
       await wait(120);
-      day = firstEnabledBookingDate();
+      day = firstEnabledBookingDate(offset);
     }
     if (!day) throw new Error('目前找不到可開啟預約的安全日期。');
     day.click();
@@ -1818,14 +1819,37 @@
     };
     let bookingId = '';
     try {
-      const panel = await openBookingForSafeDate();
-      const add = chooseNormalServiceButton(panel);
-      if (!add) return skip('目前沒有可供真人 E2E 的一般預約項目。', { normalService: true }, { normalService: false });
-      add.click();
-      actual.added = Boolean(await waitFor(() => document.querySelector('#selectedServiceList .selected-service-remove'), 1200));
-      setFieldValue(document.getElementById('memberNote'), note);
-      const slot = await chooseAvailableSlot();
-      if (!slot) return skip('目前找不到可供真人 E2E 的預約時段。', { availableSlot: true }, { availableSlot: false });
+      let panel = null;
+      let slot = null;
+      const enabledDateCount = document.querySelectorAll('#calendarGrid button.calendar-day:not(:disabled):not(.holiday-disabled)').length;
+      const maxDateAttempts = Math.max(1, Math.min(5, enabledDateCount || 1));
+      for (let attempt = 0; attempt < maxDateAttempts && !slot; attempt += 1) {
+        panel = await openBookingForSafeDate(attempt);
+        const add = chooseNormalServiceButton(panel);
+        if (!add) return skip('目前沒有可供真人 E2E 的一般預約項目。', { normalService: true }, { normalService: false });
+        add.click();
+        const added = Boolean(await waitFor(() => document.querySelector('#selectedServiceList .selected-service-remove'), 1200));
+        actual.added = actual.added || added;
+        setFieldValue(document.getElementById('memberNote'), note);
+        slot = await chooseAvailableSlot();
+        if (slot) break;
+
+        // 同一日期沒有空檔時，不應把必要的 Human E2E 直接略過；
+        // 清掉本次選擇後改試下一個可預約日期，降低多 lane 並行造成的假失敗。
+        document.querySelectorAll('#selectedServiceList .selected-service-remove').forEach((button) => button.click());
+        await waitFor(() => !document.querySelector('#selectedServiceList .selected-service-remove'), 1200);
+        document.getElementById('closeAppointmentButton')?.click();
+        await waitFor(() => panel?.classList.contains('hidden'), 1200);
+        await wait(80);
+      }
+      if (!slot) {
+        return fail('已嘗試多個可預約日期，仍找不到可供真人 E2E 的預約時段。', {
+          availableSlot: true
+        }, {
+          availableSlot: false,
+          attemptedDates: maxDateAttempts
+        });
+      }
       slot.click();
       actual.slotSelected = slot.getAttribute('aria-pressed') === 'true';
 
