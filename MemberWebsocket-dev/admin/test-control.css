@@ -89,3 +89,56 @@
   .test-workspace-panel--runner .test-control-stat-grid{grid-column:1;grid-row:auto}
   .test-workspace-panel--runner .test-control-stat-grid{min-width:0}
 }
+
+
+.test-control-screenshot {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(49, 93, 80, 0.18);
+  border-radius: 12px;
+  background: rgba(49, 93, 80, 0.04);
+}
+
+.test-control-screenshot-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.test-control-screenshot-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.test-control-screenshot-heading small,
+.test-control-screenshot-status {
+  color: #66736d;
+  font-size: 12px;
+}
+
+.test-control-screenshot-status {
+  margin: 8px 0;
+}
+
+.test-control-screenshot-image {
+  display: block;
+  width: min(100%, 980px);
+  max-height: 70vh;
+  margin-top: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  object-fit: contain;
+  background: #fff;
+}
+
+.test-control-screenshot-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.test-control-screenshot-image.hidden,
+.test-control-screenshot-link.hidden {
+  display: none;
+}
