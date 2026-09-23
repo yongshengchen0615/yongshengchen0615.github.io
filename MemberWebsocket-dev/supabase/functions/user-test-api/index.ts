@@ -699,6 +699,7 @@ async function persistUserQaRun(
       surface,
       skippedCases: skippedCount,
       memberId: identity.memberId,
+      failureArtifactCases: failedCount,
     },
     started_at: now,
     completed_at: now,
@@ -1552,6 +1553,36 @@ function browserRunWindow(body: Json): { startedAt: string; completedAt: string;
   };
 }
 
+function safeDiagnosticSnapshot(value: unknown, maxChars = 7000): Json {
+  const redact = (input: unknown, depth = 0): unknown => {
+    if (depth > 6) return "[max-depth]";
+    if (input == null || typeof input === "number" || typeof input === "boolean") return input;
+    if (typeof input === "string") {
+      return input
+        .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, "Bearer [redacted]")
+        .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, "[redacted-jwt]")
+        .slice(0, 1200);
+    }
+    if (Array.isArray(input)) return input.slice(0, 30).map((item) => redact(item, depth + 1));
+    if (typeof input !== "object") return String(input).slice(0, 300);
+    const blocked = /token|secret|password|phone|birthday|line.?user.?id|surname|display.?name/i;
+    const out: Json = {};
+    for (const [key, item] of Object.entries(input as Record<string, unknown>).slice(0, 60)) {
+      out[key] = blocked.test(key) ? "[redacted]" : redact(item, depth + 1) as any;
+    }
+    return out;
+  };
+  const sanitized = redact(value) as Json;
+  let serialized = "";
+  try { serialized = JSON.stringify(sanitized ?? {}); } catch { return { serializationFailed: true }; }
+  if (serialized.length <= maxChars) return sanitized ?? {};
+  return {
+    truncated: true,
+    originalChars: serialized.length,
+    preview: serialized.slice(0, Math.max(300, maxChars - 120)),
+  };
+}
+
 async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawCases: unknown, timing: Json = {}): Promise<Json> {
   const cases = Array.isArray(rawCases) ? rawCases.slice(0, 60) : [];
   if (!cases.length) throw new ApiError(400, "QA_BROWSER_CASES_REQUIRED", "沒有可記錄的瀏覽器測試案例。");
@@ -1565,6 +1596,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       message: asText(raw?.message, 1000),
       expected: raw?.expected && typeof raw.expected === "object" ? raw.expected : {},
       actual: raw?.actual && typeof raw.actual === "object" ? raw.actual : {},
+      trace: status === "failed" ? safeDiagnosticSnapshot(raw?.trace) : {},
       durationMs: Math.max(0, Math.min(300000, Number(raw?.durationMs || 0))),
     };
   });
@@ -1584,7 +1616,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
     passed_cases: passedCount,
     failed_cases: failedCount,
     summary: {
-      runnerVersion: "user-test-control-human-e2e-20260921",
+      runnerVersion: "user-test-control-human-e2e-20260923-trace1",
       source: "member-client-browser",
       surface,
       skippedCases: skippedCount,
@@ -1614,20 +1646,41 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
     }))).select("id,case_key");
     if (inserted.error) throw new ApiError(503, "QA_RECORD_CASE_WRITE_FAILED", "無法寫入真人操作測試案例。");
     const ids = new Map((inserted.data || []).map((row: any) => [String(row.case_key), String(row.id)]));
-    const steps = normalized.map((item) => ({
-      case_id: ids.get(item.key),
-      step_order: 1,
-      step_key: "human-ui",
-      name: "模擬真人 UI 操作",
-      status: item.status,
-      expected: item.expected,
-      actual: item.actual,
-      message: item.message,
-      started_at: now,
-      completed_at: now,
-      duration_ms: Math.trunc(item.durationMs),
-      updated_at: now,
-    })).filter((row) => Boolean(row.case_id));
+    const steps = normalized.flatMap((item) => {
+      const caseId = ids.get(item.key);
+      if (!caseId) return [];
+      const rows: any[] = [{
+        case_id: caseId,
+        step_order: 1,
+        step_key: "human-ui",
+        name: "模擬真人 UI 操作",
+        status: item.status,
+        expected: item.expected,
+        actual: item.actual,
+        message: item.message,
+        started_at: now,
+        completed_at: now,
+        duration_ms: Math.trunc(item.durationMs),
+        updated_at: now,
+      }];
+      if (item.status === "failed") {
+        rows.push({
+          case_id: caseId,
+          step_order: 2,
+          step_key: "failure-trace",
+          name: "失敗診斷 Artifact",
+          status: "failed",
+          expected: { diagnosticsCaptured: true },
+          actual: item.trace,
+          message: "僅失敗案例保留 seed、surface、browser lifecycle、Realtime signal 與 API timing。",
+          started_at: now,
+          completed_at: now,
+          duration_ms: 0,
+          updated_at: now,
+        });
+      }
+      return rows;
+    });
     const stepInsert = await s.from("automation_test_steps").insert(steps);
     if (stepInsert.error) throw new ApiError(503, "QA_RECORD_STEP_WRITE_FAILED", "無法寫入真人操作測試步驟。");
   } catch (error) {
