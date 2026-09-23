@@ -1045,6 +1045,7 @@ async function recordBrowserRun(
       key, name, domain, status, message, durationMs,
       expected: safeBrowserSnapshot(raw?.expected),
       actual: safeBrowserSnapshot(raw?.actual),
+      trace: status === "failed" ? safeBrowserSnapshot(raw?.trace, 12_000) : {},
     };
   });
 
@@ -1063,7 +1064,7 @@ async function recordBrowserRun(
     passed_cases: passed,
     failed_cases: failed,
     summary: {
-      runnerVersion: "admin-browser-e2e-20260923-2",
+      runnerVersion: "admin-browser-e2e-20260923-trace1",
       runnerKind,
       skippedCases: skipped,
       memberId,
@@ -1073,6 +1074,7 @@ async function recordBrowserRun(
       e2eSeed: asText(body.e2eSeed, 160),
       complexityLevel: Math.max(1, Math.min(8, Number(body.complexityLevel || 1) || 1)),
       clientConcurrency: Math.max(1, Math.min(4, Number(body.clientConcurrency || 1) || 1)),
+      failureArtifactCases: failed,
     },
     started_at: startedAt,
     completed_at: completedAt,
@@ -1104,21 +1106,42 @@ async function recordBrowserRun(
       throw new ApiError(503, "BROWSER_CASE_WRITE_FAILED", "無法完整寫入瀏覽器 E2E 案例。");
     }
     const caseIds = new Map((inserted.data || []).map((row: any) => [Number(row.case_order), String(row.id)]));
-    const stepRows = normalized.map((item, index) => ({
-      case_id: caseIds.get(index + 1),
-      step_order: 1,
-      step_key: "browser",
-      name: "瀏覽器真人操作驗證",
-      status: item.status,
-      expected: item.expected,
-      actual: item.actual,
-      message: item.message,
-      started_at: now,
-      completed_at: now,
-      duration_ms: item.durationMs,
-      updated_at: now,
-    }));
-    if (stepRows.some((row) => !row.case_id)) {
+    const stepRows = normalized.flatMap((item, index) => {
+      const caseId = caseIds.get(index + 1);
+      if (!caseId) return [];
+      const rows: any[] = [{
+        case_id: caseId,
+        step_order: 1,
+        step_key: "browser",
+        name: "瀏覽器真人操作驗證",
+        status: item.status,
+        expected: item.expected,
+        actual: item.actual,
+        message: item.message,
+        started_at: now,
+        completed_at: now,
+        duration_ms: item.durationMs,
+        updated_at: now,
+      }];
+      if (item.status === "failed") {
+        rows.push({
+          case_id: caseId,
+          step_order: 2,
+          step_key: "failure-trace",
+          name: "失敗診斷 Artifact",
+          status: "failed",
+          expected: { diagnosticsCaptured: true },
+          actual: item.trace,
+          message: "僅失敗案例保留 seed、複雜度、participant、Realtime 摘要與 API timing。",
+          started_at: now,
+          completed_at: now,
+          duration_ms: 0,
+          updated_at: now,
+        });
+      }
+      return rows;
+    });
+    if (stepRows.length < normalized.length) {
       throw new ApiError(503, "BROWSER_CASE_ID_MISMATCH", "瀏覽器 E2E 案例紀錄對應失敗。");
     }
     const steps = await supabase.from("automation_test_steps").insert(stepRows);
