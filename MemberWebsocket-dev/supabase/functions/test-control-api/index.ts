@@ -996,6 +996,28 @@ function safeBrowserSnapshot(value: unknown, maxChars = 5000): unknown {
   catch { return {}; }
 }
 
+function safeBrowserTraceSnapshot(value: unknown, maxChars = 12_000): unknown {
+  const redact = (input: unknown, depth = 0): unknown => {
+    if (depth > 6) return "[max-depth]";
+    if (input == null || typeof input === "number" || typeof input === "boolean") return input;
+    if (typeof input === "string") {
+      return input
+        .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, "Bearer [redacted]")
+        .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, "[redacted-jwt]")
+        .slice(0, 1200);
+    }
+    if (Array.isArray(input)) return input.slice(0, 30).map((item) => redact(item, depth + 1));
+    if (typeof input !== "object") return String(input).slice(0, 300);
+    const blocked = /token|secret|password|phone|birthday|line.?user.?id|surname|display.?name/i;
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(input as Record<string, unknown>).slice(0, 60)) {
+      out[key] = blocked.test(key) ? "[redacted]" : redact(item, depth + 1);
+    }
+    return out;
+  };
+  return safeBrowserSnapshot(redact(value), maxChars);
+}
+
 async function recordBrowserRun(
   supabase: any,
   identity: { lineUserId: string },
@@ -1045,7 +1067,7 @@ async function recordBrowserRun(
       key, name, domain, status, message, durationMs,
       expected: safeBrowserSnapshot(raw?.expected),
       actual: safeBrowserSnapshot(raw?.actual),
-      trace: status === "failed" ? safeBrowserSnapshot(raw?.trace, 12_000) : {},
+      trace: status === "failed" ? safeBrowserTraceSnapshot(raw?.trace) : {},
     };
   });
 
