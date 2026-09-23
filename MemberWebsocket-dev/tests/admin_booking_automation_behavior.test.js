@@ -382,7 +382,11 @@ test('admin booking bootstrap polling is globally coalesced below the backend re
   const end = source.indexOf('\n  function bookingCreatedMs', start);
   assert.ok(start >= 0 && end > start);
   const body = source.slice(start, end);
-  assert.match(source, /const ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS = 1500/);
+  assert.match(source, /const ADMIN_BOOKING_BOOTSTRAP_BASE_INTERVAL_MS = 3500/);
+  assert.match(source, /const ADMIN_BOOKING_BOOTSTRAP_MAX_INTERVAL_MS = 8000/);
+  assert.match(source, /function adminBookingBootstrapIntervalMs\(/);
+  assert.match(source, /error\?\.code \|\| ''\) !== 'RATE_LIMITED'/);
+  assert.match(source, /Math\.floor\(Date\.now\(\) \/ 60000\) \+ 1/);
   assert.match(source, /let adminBookingBootstrapInFlight = null/);
   assert.match(source, /let adminBookingBootstrapLastData = null/);
   assert.match(body, /if \(adminBookingBootstrapInFlight\) return adminBookingBootstrapInFlight/);
