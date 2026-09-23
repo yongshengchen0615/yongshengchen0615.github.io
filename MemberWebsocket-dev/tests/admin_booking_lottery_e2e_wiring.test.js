@@ -32,7 +32,7 @@ test('paired admin booking E2E covers every admin booking action using user-crea
 
   assert.match(e2e, /waitForLivePairedBookingTarget\(participant, 'any'\)/);
   assert.match(e2e, /let adminChain = Promise\.resolve\(\)/);
-  assert.match(e2e, /Promise\.all\(\[\.\.\.clientTasks, \.\.\.liveAdminTasks\]\)/);
+  assert.match(e2e, /Promise\.all\(\[clientExecution, \.\.\.liveAdminTasks\]\)/);
   assert.doesNotMatch(e2e, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
 });
 
@@ -65,7 +65,7 @@ test('standalone booking queue and booking-only E2E entrypoints are removed afte
   assert.match(e2e, /修改此位技師/);
   assert.match(e2e, /確認服務完成/);
   assert.match(e2e, /確認取消/);
-  assert.match(adminIndex, /e2e-control\.js\?v=admin-e2e-20260923-7/);
+  assert.match(adminIndex, /e2e-control\.js\?v=admin-e2e-20260923-11/);
 });
 
 test('admin full E2E covers standalone lottery ticket and event lottery ticket persistence', () => {
