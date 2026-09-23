@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.6';
+  const VERSION = '2026-09-23.7';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -39,7 +39,8 @@
     backgroundCompletion: null,
     backgroundRunId: '',
     lastMessage: '',
-    lastMessageError: false
+    lastMessageError: false,
+    evolution: null
   };
 
   window.addEventListener('DOMContentLoaded', mount);
@@ -143,6 +144,86 @@
       [copy[index], copy[swap]] = [copy[swap], copy[index]];
     }
     return copy;
+  }
+
+  function normalizeEvolutionProfile(input) {
+    const raw = input && typeof input === 'object' ? input : {};
+    const integer = (key, fallback, min, max) => {
+      const value = Math.trunc(Number(raw[key]));
+      return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+    };
+    const number = (key, fallback, min, max) => {
+      const value = Number(raw[key]);
+      return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+    };
+    return Object.freeze({
+      engineVersion: String(raw.engineVersion || 'adaptive-e2e-1').slice(0, 80),
+      generation: integer('generation', 1, 1, 1000000),
+      difficulty: integer('difficulty', 1, 1, 10),
+      seed: String(raw.seed || ('LOCAL-' + Date.now().toString(36))).slice(0, 120),
+      variant: String(raw.variant || 'balanced').slice(0, 60),
+      challengeRounds: integer('challengeRounds', 0, 0, 4),
+      deepParticipants: integer('deepParticipants', 1, 1, 3),
+      participantStartJitterMs: integer('participantStartJitterMs', 900, 100, 4000),
+      interactionPauseMinMs: integer('interactionPauseMinMs', 60, 20, 1500),
+      interactionPauseMaxMs: integer('interactionPauseMaxMs', 480, 60, 3000),
+      bookingPollMs: integer('bookingPollMs', 750, 300, 3000),
+      bookingNetworkMinIntervalMs: integer('bookingNetworkMinIntervalMs', ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS, 1200, 5000),
+      bookingStateMaxAttempts: integer('bookingStateMaxAttempts', 3, 2, 5),
+      recentFailureRate: number('recentFailureRate', 0, 0, 1),
+      ratePressure: ['low', 'medium', 'high'].includes(String(raw.ratePressure || '')) ? String(raw.ratePressure) : 'low',
+      priorPairedRuns: integer('priorPairedRuns', 0, 0, 1000000)
+    });
+  }
+
+  function evolutionNumber(key, fallback) {
+    const value = Number(state.evolution?.[key]);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function seededGenerator(scope) {
+    const text = String(state.evolution?.seed || 'local') + '|' + String(scope || 'global');
+    let seed = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      seed ^= text.charCodeAt(index);
+      seed = Math.imul(seed, 16777619);
+    }
+    let value = seed >>> 0 || 0x9e3779b9;
+    return () => {
+      value += 0x6D2B79F5;
+      let next = value;
+      next = Math.imul(next ^ (next >>> 15), next | 1);
+      next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
+      return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function scenarioRandomInt(min, max, scope) {
+    const low = Math.ceil(Number(min) || 0);
+    const high = Math.floor(Number(max) || low);
+    if (high <= low) return low;
+    const next = seededGenerator(scope);
+    return low + Math.floor(next() * (high - low + 1));
+  }
+
+  function scenarioShuffled(items, scope) {
+    const copy = Array.isArray(items) ? items.slice() : [];
+    const next = seededGenerator(scope);
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(next() * (index + 1));
+      [copy[index], copy[swap]] = [copy[swap], copy[index]];
+    }
+    return copy;
+  }
+
+  function participantEvolution(participant, surface) {
+    const base = state.evolution || normalizeEvolutionProfile(null);
+    return {
+      ...base,
+      seed: base.seed + ':P' + Number(participant?.index || 0) + ':' + String(surface || ''),
+      participantIndex: Number(participant?.index || 0),
+      surface: String(surface || '')
+    };
   }
 
   async function waitFor(predicate, timeoutMs = 7000, intervalMs = 60) {
@@ -674,6 +755,7 @@
       idToken: session.idToken,
       runnerKind,
       suite,
+      evolution: runnerKind === 'paired-browser' ? safe(state.evolution || {}) : undefined,
       memberId: memberId || undefined,
       startedAt: startedAt || state.runStartedAt || new Date(Date.now() - 1000).toISOString(),
       completedAt: new Date().toISOString(),
@@ -861,6 +943,9 @@
 
     state.results = [];
     state.participants = [];
+    state.evolution = null;
+    adminBookingBootstrapLastAt = 0;
+    adminBookingBootstrapLastData = null;
     state.runStartedAt = new Date().toISOString();
     setBusy(true, state.backgroundExecution ? '背景完整 E2E' : '完整 E2E');
     setMessage('完整 E2E 已開始：先驗證維護模式，再執行後端 full QA，之後進入管理端 ↔ 五種用戶端真人協同。');
@@ -888,7 +973,7 @@
         window: openedWindows[index],
         status: '等待隨機啟動',
         surface: '前置資料完成',
-        surfacePlan: shuffled(PAIRED_SURFACES),
+        surfacePlan: scenarioShuffled(PAIRED_SURFACES, 'surface-plan-' + (index + 1)),
         runCodes: [],
         startedAt: Date.now(),
         login: null,
@@ -899,7 +984,7 @@
       }));
       renderParticipants();
 
-      setMessage('管理端前置資料已完整建立；現在隨機啟動 ' + participantCount + ' 位測試用戶，管理端會同步監看預約資料，資料一出現在管理端就開始模擬審核，不等待用戶端關閉。');
+      setMessage('管理端前置資料已完整建立；E2E 第 ' + state.evolution.generation + ' 代／難度 ' + state.evolution.difficulty + '／' + state.evolution.variant + ' 正在啟動 ' + participantCount + ' 位測試用戶。管理端同步監看預約資料，並依目前負載自適應節流。');
       if (!state.cancelled) {
         // A human administrator has one management UI. Keep admin DOM actions single-threaded
         // while member clients may generate data concurrently.
@@ -924,7 +1009,8 @@
           return task;
         });
         const clientTasks = state.participants.map(async (participant) => {
-          await sleep(randomInt(80, 1200));
+          const jitterMax = Math.max(100, evolutionNumber('participantStartJitterMs', 900));
+          await sleep(scenarioRandomInt(50, jitterMax, 'participant-start-' + participant.index));
           return runParticipantSurfaces(participant);
         });
         await Promise.all([...clientTasks, ...liveAdminTasks]);
@@ -957,7 +1043,15 @@
       }
 
       if (!state.cancelled && state.participants[0]) {
-        await runDeepPairedSuite(state.participants[randomInt(0, state.participants.length - 1)]);
+        const deepCount = Math.min(
+          state.participants.length,
+          Math.max(1, Math.trunc(evolutionNumber('deepParticipants', 1)))
+        );
+        const deepTargets = scenarioShuffled(state.participants, 'deep-targets').slice(0, deepCount);
+        for (const participant of deepTargets) {
+          if (state.cancelled) break;
+          await runDeepPairedSuite(participant);
+        }
       }
 
       if (!state.cancelled) {
@@ -996,6 +1090,7 @@
         recorded,
         backendRun: safe(backendRun?.run || {}),
         fixture: safe(fixture),
+        evolution: safe(state.evolution || {}),
         participants: safe(state.participants.map((item) => ({
           account: item.account,
           surfacePlan: item.surfacePlan?.map(([key]) => key) || []
@@ -1040,7 +1135,9 @@
 
     for (const [surface, label] of participant.surfacePlan) {
       if (state.cancelled) break;
-      await sleep(randomInt(120, 950));
+      const pauseMin = Math.max(20, evolutionNumber('interactionPauseMinMs', 60));
+      const pauseMax = Math.max(pauseMin, evolutionNumber('interactionPauseMaxMs', 480));
+      await sleep(scenarioRandomInt(pauseMin, pauseMax, 'surface-gap-' + participant.index + '-' + surface));
       const started = performance.now();
       const row = {
         key: 'PAIRED_' + participant.index + '_' + surface.toUpperCase(),
@@ -1063,7 +1160,7 @@
         participant.login = login;
         participant.lastSurfaceKey = surface;
         seedParticipantSession(participant, login);
-        await sleep(randomInt(80, 520));
+        await sleep(scenarioRandomInt(40, Math.max(80, Math.round(pauseMax * 0.65)), 'session-gap-' + participant.index + '-' + surface));
         const child = await runUserSurface(participant, surface, label);
         if (surface === 'booking') {
           participant.bookingResult = child;
@@ -2243,15 +2340,16 @@
 
   async function adminBookingBootstrapSnapshot() {
     const now = Date.now();
+    const minIntervalMs = Math.max(ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS, evolutionNumber('bookingNetworkMinIntervalMs', ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS));
     if (adminBookingBootstrapLastData
-        && now - adminBookingBootstrapLastAt < ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS) {
+        && now - adminBookingBootstrapLastAt < minIntervalMs) {
       return adminBookingBootstrapLastData;
     }
     if (adminBookingBootstrapInFlight) return adminBookingBootstrapInFlight;
 
     const waitMs = Math.max(
       0,
-      ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS - (now - adminBookingBootstrapLastAt)
+      minIntervalMs - (now - adminBookingBootstrapLastAt)
     );
     adminBookingBootstrapInFlight = (async () => {
       if (waitMs > 0) await sleep(waitMs);
@@ -2363,7 +2461,7 @@
         ? '已看到預約，等待對應管理動作資料'
         : '等待管理端出現本輪預約';
       renderParticipants();
-      await sleep(300);
+      await sleep(Math.max(300, evolutionNumber('bookingPollMs', 750)));
     }
     return { booking: null, ...detected, candidates, timedOut: true };
   }
@@ -3768,6 +3866,7 @@
       runTag
     });
     const fixture = data?.fixture || {};
+    state.evolution = normalizeEvolutionProfile(data?.evolution);
     const primaryTechnicianId = String(fixture.primaryTechnicianId || '').trim();
     const maxPartySize = Number(fixture.maxPartySize || 0);
     const ready = Number(fixture.ticketTemplates || 0) >= 4 &&
@@ -3786,6 +3885,16 @@
       error.fixture = fixture;
       throw error;
     }
+    state.results.push({
+      key: 'PAIRED_EVOLUTION_PLAN',
+      name: 'E2E 演進情境：第 ' + state.evolution.generation + ' 代 / 難度 ' + state.evolution.difficulty,
+      domain: 'Paired E2E / Evolution',
+      status: 'passed',
+      message: '本輪使用可重現 seed 與自適應負載預算；複雜度會依歷史世代增加，但網路節奏會依 rate pressure 自動退讓。',
+      expected: { progressiveDifficulty: true, deterministicReplay: true, adaptiveBackpressure: true },
+      actual: safe(state.evolution),
+      durationMs: 0
+    });
     state.results.push({
       key: 'PAIRED_COMPLEX_FIXTURE_PREPARE',
       name: '管理端：建立完整高複雜度測試資料',
@@ -3895,7 +4004,7 @@
     let timeoutId = 0;
     try {
       result = await Promise.race([
-        control.runFull(),
+        control.runFull({ evolution: participantEvolution(participant, surface) }),
         new Promise((_, reject) => {
           timeoutId = window.setTimeout(() => {
             const error = new Error(label + ' E2E 超過允許執行時間，已自動停止以避免協同測試卡住。');

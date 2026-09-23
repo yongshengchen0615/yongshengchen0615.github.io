@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.2';
+  const VERSION = '2026-09-23.3';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -62,6 +62,8 @@
     availabilitySync: null,
     bookingLaneDayCount: 1,
     runStartedAt: '',
+    scenario: null,
+    scenarioCounter: 0,
     launcher: null,
     panel: null
   };
@@ -120,8 +122,66 @@
     return copy;
   }
 
+  function normalizeEvolution(input) {
+    const raw = input && typeof input === 'object' ? input : {};
+    const integer = (key, fallback, min, max) => {
+      const value = Math.trunc(Number(raw[key]));
+      return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+    };
+    return Object.freeze({
+      engineVersion: String(raw.engineVersion || 'adaptive-e2e-1').slice(0, 80),
+      generation: integer('generation', 1, 1, 1000000),
+      difficulty: integer('difficulty', 1, 1, 10),
+      seed: String(raw.seed || ('LOCAL-' + Date.now().toString(36))).slice(0, 160),
+      variant: String(raw.variant || 'balanced').slice(0, 60),
+      challengeRounds: integer('challengeRounds', 0, 0, 4),
+      interactionPauseMinMs: integer('interactionPauseMinMs', 60, 20, 1500),
+      interactionPauseMaxMs: integer('interactionPauseMaxMs', 480, 60, 3000),
+      bookingStateMaxAttempts: integer('bookingStateMaxAttempts', 3, 2, 5),
+      ratePressure: ['low', 'medium', 'high'].includes(String(raw.ratePressure || '')) ? String(raw.ratePressure) : 'low'
+    });
+  }
+
+  function scenarioGenerator(scope) {
+    const text = String(state.scenario?.seed || 'local') + '|' + String(scope || 'global');
+    let seed = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      seed ^= text.charCodeAt(index);
+      seed = Math.imul(seed, 16777619);
+    }
+    let value = seed >>> 0 || 0x9e3779b9;
+    return () => {
+      value += 0x6D2B79F5;
+      let next = value;
+      next = Math.imul(next ^ (next >>> 15), next | 1);
+      next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
+      return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function scenarioRandomInt(min, max, scope = '') {
+    const low = Math.ceil(Number(min) || 0);
+    const high = Math.floor(Number(max) || low);
+    if (high <= low) return low;
+    state.scenarioCounter += 1;
+    const next = scenarioGenerator(String(scope || 'random') + ':' + state.scenarioCounter);
+    return low + Math.floor(next() * (high - low + 1));
+  }
+
+  function scenarioShuffled(items, scope) {
+    const copy = Array.isArray(items) ? items.slice() : [];
+    const next = scenarioGenerator(scope);
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(next() * (index + 1));
+      [copy[index], copy[swap]] = [copy[swap], copy[index]];
+    }
+    return copy;
+  }
+
   function randomInteractionPause() {
-    return wait(randomInt(90, 720));
+    const min = Number(state.scenario?.interactionPauseMinMs || 60);
+    const max = Math.max(min, Number(state.scenario?.interactionPauseMaxMs || 480));
+    return wait(scenarioRandomInt(min, max, 'interaction-pause'));
   }
 
   function plainError(error) {
@@ -347,7 +407,7 @@
     const stateKinds = new Set();
     const attempts = [];
     let aggregate = null;
-    const maxAttempts = 4;
+    const maxAttempts = Math.max(2, Math.min(5, Number(state.scenario?.bookingStateMaxAttempts || 3)));
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const current = await qaServiceRequest('user.qa.usage-state.prepare', {}, 60000);
@@ -379,7 +439,7 @@
       aggregate.usageStateAttempts = attempts.slice();
 
       if (stateKinds.has('pending') && stateKinds.has('cancel_requested')) break;
-      if (attempt < maxAttempts - 1) await wait(250 + attempt * 180);
+      if (attempt < maxAttempts - 1) await wait(scenarioRandomInt(180 + attempt * 120, 420 + attempt * 180, 'booking-state-retry-' + attempt));
     }
 
     return aggregate || {
@@ -392,7 +452,7 @@
     };
   }
 
-  async function runSuite(suite) {
+  async function runSuite(suite, options = {}) {
     const requestedSuite = suite === 'full' ? 'full' : 'quick';
     if (state.running) {
       return { ok: false, busy: true, surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
@@ -410,6 +470,8 @@
     }
 
     state.currentSuite = requestedSuite;
+    state.scenario = normalizeEvolution(requestedSuite === 'full' ? options?.evolution : null);
+    state.scenarioCounter = 0;
     state.results = [];
     state.bootstrap = null;
     state.mutationSuite = null;
@@ -561,6 +623,7 @@
       account: state.session && state.session.account || null,
       browserRun: state.browserRun || null,
       bookingHandoff: safeJson(state.bookingHandoff),
+      evolution: safeJson(state.scenario),
       results: state.results.map((item) => ({
         key: item.key || '',
         name: item.name || '',
@@ -643,6 +706,41 @@
         caseDef('新增／修改／取消輸入驗證', 'Validation', bookingInvalidWriteCase, 'BOOKING_INVALID_WRITE'),
       ]
     };
+    const challengePools = {
+      member: [
+        caseDef('演進：會員資料邊界重驗', 'Validation', memberInvalidWriteCase, 'EVOLUTION_MEMBER_INVALID'),
+        caseDef('演進：會員頁狀態重驗', 'UI', surfaceReadyCase, 'EVOLUTION_MEMBER_UI')
+      ],
+      points: [
+        caseDef('演進：集點核銷邊界重驗', 'Validation', pointsInvalidWriteCase, 'EVOLUTION_POINTS_INVALID'),
+        caseDef('演進：票券設定重讀', 'Points', pointSettingsCase, 'EVOLUTION_POINTS_SETTINGS')
+      ],
+      event: [
+        caseDef('演進：活動票券邊界重驗', 'Validation', eventInvalidWriteCase, 'EVOLUTION_EVENT_INVALID'),
+        caseDef('演進：活動票券視窗重驗', 'UI', eventModalCase, 'EVOLUTION_EVENT_MODAL')
+      ],
+      calendar: [
+        caseDef('演進：日期邊界重驗', 'Validation', calendarInvalidDateCase, 'EVOLUTION_CALENDAR_INVALID'),
+        caseDef('演進：日曆明細重讀', 'Calendar', calendarDetailApiCase, 'EVOLUTION_CALENDAR_DETAIL')
+      ],
+      booking: [
+        caseDef('演進：預約輸入邊界重驗', 'Validation', bookingInvalidWriteCase, 'EVOLUTION_BOOKING_INVALID'),
+        caseDef('演進：多人預約資源重讀', 'Booking', bookingGroupBootstrapCase, 'EVOLUTION_BOOKING_GROUP'),
+        caseDef('演進：預約表單狀態重驗', 'UI', bookingFormCase, 'EVOLUTION_BOOKING_FORM')
+      ]
+    };
+    const challengeRounds = Math.max(0, Math.min(4, Number(state.scenario?.challengeRounds || 0)));
+    const challengePool = scenarioShuffled(challengePools[surface] || [], 'challenge-pool-' + surface);
+    const challengeCases = [];
+    for (let round = 0; round < challengeRounds && challengePool.length; round += 1) {
+      const base = challengePool[round % challengePool.length];
+      challengeCases.push({
+        ...base,
+        key: 'EVOLUTION_CHALLENGE_' + (round + 1) + '_' + String(base.key || surface).replace(/^EVOLUTION_/, ''),
+        name: '演進挑戰 ' + (round + 1) + '：' + base.name
+      });
+    }
+
     const trailingCases = [
       caseDef('所有按鈕／動態控制覆蓋清單', 'Coverage', buttonCoverageCase, (surface || 'surface').toUpperCase() + '_BUTTON_COVERAGE')
     ];
@@ -653,9 +751,10 @@
         caseDef('測試帳號 LINE 通知抑制', 'Notification', () => mutationQaCase('LINE_SUPPRESSION'), (surface || 'surface').toUpperCase() + '_LINE_SUPPRESSION')
       );
     }
-    const randomizedMiddle = shuffled(fullCommon.concat(surfaceCases[surface] || []));
+    const randomizedMiddle = scenarioShuffled(fullCommon.concat(surfaceCases[surface] || []), 'middle-' + surface);
     return common.concat(
       randomizedMiddle,
+      challengeCases,
       trailingCases
     );
   }
@@ -2017,7 +2116,10 @@
       passed: state.results.filter((item) => item.status === 'passed').length,
       failed: state.results.filter((item) => item.status === 'failed').length,
       skipped: state.results.filter((item) => item.status === 'skipped').length,
-      total: state.results.length
+      total: state.results.length,
+      generation: Number(state.scenario?.generation || 1),
+      difficulty: Number(state.scenario?.difficulty || 1),
+      variant: String(state.scenario?.variant || 'balanced')
     };
     try {
       const existing = JSON.parse(window.sessionStorage.getItem(HISTORY_KEY) || '[]');
@@ -2046,7 +2148,8 @@
       const date = new Date(item.at);
       time.textContent = Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
       const meta = document.createElement('span');
-      meta.textContent = (item.suite === 'full' ? '完整' : '快速') + ' · ' + item.passed + ' 通過 · ' + item.failed + ' 失敗 · ' + item.skipped + ' 略過';
+      const evolutionMeta = item.suite === 'full' ? ' · E' + Number(item.generation || 1) + '/L' + Number(item.difficulty || 1) + ' · ' + String(item.variant || 'balanced') : '';
+      meta.textContent = (item.suite === 'full' ? '完整' : '快速') + evolutionMeta + ' · ' + item.passed + ' 通過 · ' + item.failed + ' 失敗 · ' + item.skipped + ' 略過';
       row.append(time, meta);
       return row;
     }));
@@ -2055,7 +2158,7 @@
   window.MemberUserTestControl = Object.freeze({
     version: VERSION,
     surface,
-    runFull: () => runSuite('full'),
+    runFull: (options = {}) => runSuite('full', options),
     stop: () => requestStop(),
     isRunning: () => state.running
   });

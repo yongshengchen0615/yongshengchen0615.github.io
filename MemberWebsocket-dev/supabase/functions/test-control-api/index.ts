@@ -328,6 +328,79 @@ async function recentRuns(supabase: any): Promise<Json[]> {
   return (result.data || []).map(runClient);
 }
 
+async function buildEvolutionProfile(supabase: any): Promise<Json> {
+  const historyResult = await supabase
+    .from("automation_test_runs")
+    .select("status,failed_cases,summary,created_at")
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  const history = historyResult.error ? [] : (historyResult.data || []);
+  const paired = history.filter((row: any) => {
+    const summary = row?.summary && typeof row.summary === "object" ? row.summary : {};
+    return asText((summary as any).runnerKind, 40) === "paired-browser";
+  });
+  const generations = paired.map((row: any) => {
+    const summary = row?.summary && typeof row.summary === "object" ? row.summary : {};
+    const evolution = (summary as any).evolution && typeof (summary as any).evolution === "object"
+      ? (summary as any).evolution
+      : {};
+    return Math.max(0, Math.trunc(Number(evolution.generation) || 0));
+  });
+  const generation = Math.max(0, ...generations) + 1;
+  const difficulty = Math.min(10, Math.max(1, generation));
+  const recent = paired.slice(0, 8);
+  const recentFailures = recent.filter((row: any) => String(row?.status || "") === "failed" || Number(row?.failed_cases || 0) > 0).length;
+  const recentFailureRate = recent.length ? recentFailures / recent.length : 0;
+
+  const rateSince = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const rateResult = await supabase
+    .from("api_rate_limits")
+    .select("request_count,bucket_type,bucket_at")
+    .gte("bucket_at", rateSince);
+  const rateRows = rateResult.error ? [] : (rateResult.data || []);
+  const recentRequestCount = rateRows.reduce((sum: number, row: any) => sum + Math.max(0, Number(row?.request_count || 0)), 0);
+  const maxRateBucket = rateRows.reduce((max: number, row: any) => Math.max(max, Number(row?.request_count || 0)), 0);
+  const ratePressure = maxRateBucket >= 45 || recentRequestCount >= 300
+    ? "high"
+    : maxRateBucket >= 30 || recentRequestCount >= 180
+      ? "medium"
+      : "low";
+
+  const variants = ["balanced", "boundary-heavy", "realtime-heavy", "race-window"];
+  const variant = variants[(generation - 1) % variants.length];
+  const seed = "EVO-" + generation + "-" + crypto.randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase();
+
+  const pressureTiming = ratePressure === "high"
+    ? { start: 1800, min: 120, max: 650, poll: 1200, network: 2500, attempts: 3 }
+    : ratePressure === "medium"
+      ? { start: 1300, min: 80, max: 520, poll: 900, network: 1900, attempts: 4 }
+      : { start: Math.max(450, 1000 - difficulty * 55), min: 45, max: Math.max(300, 500 - difficulty * 18), poll: 650, network: 1500, attempts: Math.min(5, 2 + Math.ceil(difficulty / 3)) };
+
+  return {
+    engineVersion: "adaptive-e2e-20260923-1",
+    generation,
+    difficulty,
+    seed,
+    variant,
+    challengeRounds: Math.min(4, Math.max(0, difficulty - 1)),
+    deepParticipants: Math.min(3, 1 + Math.floor((difficulty - 1) / 3)),
+    participantStartJitterMs: pressureTiming.start,
+    interactionPauseMinMs: pressureTiming.min,
+    interactionPauseMaxMs: pressureTiming.max,
+    bookingPollMs: pressureTiming.poll,
+    bookingNetworkMinIntervalMs: pressureTiming.network,
+    bookingStateMaxAttempts: pressureTiming.attempts,
+    recentFailureRate: Number(recentFailureRate.toFixed(3)),
+    ratePressure,
+    recentRequestCount,
+    maxRateBucket,
+    priorPairedRuns: paired.length,
+    historyAvailable: !historyResult.error,
+    rateTelemetryAvailable: !rateResult.error,
+  };
+}
+
 async function testMembers(supabase: any): Promise<any[]> {
   const result = await supabase
     .from("members")
@@ -939,6 +1012,8 @@ async function recordBrowserRun(
     memberId = String(member.data.id);
   }
 
+  const evolution = runnerKind === "paired-browser" ? safeBrowserSnapshot(body.evolution, 3000) : {};
+
   const normalized = rawCases.map((raw: any, index: number) => {
     const status = asText(raw?.status, 20);
     if (!["passed", "failed", "skipped"].includes(status)) {
@@ -976,6 +1051,7 @@ async function recordBrowserRun(
       skippedCases: skipped,
       memberId,
       durationMs,
+      evolution,
     },
     started_at: startedAt,
     completed_at: completedAt,
@@ -1151,11 +1227,12 @@ Deno.serve(async (request: Request) => {
     await authorizeAdmin(supabase, identity);
 
     if (action === "admin.test-control.prepare-e2e-fixtures") {
+      const evolution = await buildEvolutionProfile(supabase);
       const fixture = await prepareComplexFixtures(supabase, identity, body);
       return response(origin, {
         ok: true,
         status: 201,
-        data: { fixture, runs: await recentRuns(supabase) },
+        data: { fixture, evolution, runs: await recentRuns(supabase) },
       }, 201);
     }
 

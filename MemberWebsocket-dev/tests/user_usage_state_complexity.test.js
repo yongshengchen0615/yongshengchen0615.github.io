@@ -103,7 +103,8 @@ test('booking state pack retries slot races and requires both admin lifecycle fi
 test('booking client retries incomplete state packs until pending and cancel-requested both exist', () => {
   const runner = read('user-test-control.js');
   assert.match(runner, /async function prepareUsageStateForFullRun\(\)/);
-  assert.match(runner, /const maxAttempts = 4/);
+  assert.match(runner, /bookingStateMaxAttempts/);
+  assert.match(runner, /Math\.max\(2, Math\.min\(5,/);
   assert.match(runner, /stateKinds\.has\('pending'\) && stateKinds\.has\('cancel_requested'\)/);
   assert.match(runner, /requiredBookingStates = \['pending', 'cancel_requested'\]/);
   assert.match(runner, /usageStateAttempts/);
