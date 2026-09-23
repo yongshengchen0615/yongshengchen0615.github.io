@@ -27,6 +27,6 @@ test('group booking endpoints consume the shared per-identity rate limit before 
 });
 
 test('CI type-checks both group booking Edge Functions', () => {
-  assert.match(workflow, /deno check MemberWebsocket-dev\/supabase\/functions\/booking-group-api\/index\.ts/);
-  assert.match(workflow, /deno check MemberWebsocket-dev\/supabase\/functions\/booking-group-slots-api\/index\.ts/);
+  assert.match(workflow, /deno check[\s\\]+[\s\S]*MemberWebsocket-dev\/supabase\/functions\/booking-group-api\/index\.ts/);
+  assert.match(workflow, /deno check[\s\\]+[\s\S]*MemberWebsocket-dev\/supabase\/functions\/booking-group-slots-api\/index\.ts/);
 });
