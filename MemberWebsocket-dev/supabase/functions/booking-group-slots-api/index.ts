@@ -128,6 +128,19 @@ async function activeMember(supabase: ReturnType<typeof db>, lineUserId: string)
   return result.data;
 }
 
+async function isActiveBookingHoliday(supabase: ReturnType<typeof db>, date: string): Promise<boolean> {
+  const result = await supabase.from("calendar_items")
+    .select("id,starts_on,ends_on")
+    .eq("item_type", "holiday")
+    .eq("status", "active")
+    .lte("starts_on", date);
+  if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法確認公休日。");
+  return (result.data || []).some((row: any) =>
+    String(row.starts_on || "") <= date
+    && String(row.ends_on || row.starts_on || "") >= date
+  );
+}
+
 async function normalizeGroup(supabase: ReturnType<typeof db>, body: Json) {
   const settingsResult = await supabase.from("booking_settings").select("*").eq("id", 1).single();
   if (settingsResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取預約設定。");
@@ -219,6 +232,15 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
       settings: { maxPartySize: Number(group.settings.max_party_size || 1), primaryTechnicianId: group.primaryId, maxAdvanceDays },
       totalDurationMinutes: group.totalDurationMinutes,
       totalAmount: group.totalAmount,
+      slots: [],
+    };
+  }
+  if (await isActiveBookingHoliday(supabase, bookingDate)) {
+    return {
+      settings: { maxPartySize: Number(group.settings.max_party_size || 1), primaryTechnicianId: group.primaryId, maxAdvanceDays },
+      totalDurationMinutes: group.totalDurationMinutes,
+      totalAmount: group.totalAmount,
+      holidayBlocked: true,
       slots: [],
     };
   }
