@@ -28,8 +28,8 @@
   <script src="./pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1" defer></script>
   <script src="./app.js?v=member-qa-records-20260921-1" defer></script>
   <script src="./test-mode.js?v=maintenance-device-login-20260920-4" defer></script>
-  <script src="./test-control.js?v=test-control-20260922-2" defer></script>
-  <script src="./e2e-control.js?v=admin-e2e-20260923-6" defer></script>
+  <script src="./test-control.js?v=test-control-20260923-3" defer></script>
+  <script src="./e2e-control.js?v=admin-e2e-20260923-7" defer></script>
   <script src="./test-workspace-tabs.js?v=test-workspace-tabs-20260922-1" defer></script>
   <script src="./grant-automation.js?v=grant-automation-20260910" defer></script>
   <script src="../booking-copy-format.js?v=booking-single-renderer-copy-20260918-1" defer></script>
@@ -197,15 +197,13 @@
         <section class="test-control-center" aria-labelledby="automationTestTitle">
           <div class="test-control-heading">
             <div>
-              <span class="test-mode-eyebrow">Automated QA</span>
+              <span class="test-mode-eyebrow">Unified E2E Results</span>
               <h3 id="automationTestTitle">Test Control Center</h3>
-              <p>直接檢查目前測試環境、測試會員、Session、集點、票券、預約、Presence 與 LINE 通知邊界。執行中會持續顯示每個案例的測試步驟、Expected 與 Actual 數據。</p>
+              <p>後端完整 QA 已整合進下方「完整 E2E」單一入口。此區專門顯示環境、測試會員、Session、集點、票券、預約、Presence 與 LINE 通知邊界的執行紀錄、Expected 與 Actual 數據。</p>
             </div>
             <div class="test-control-heading-actions">
               <span id="automationTestRunnerBadge" class="test-mode-status-badge is-off">Runner：待命</span>
               <button id="purgeTestDataButton" class="button button-danger" type="button">移除測試資料</button>
-              <button id="runQuickAutomationTestButton" class="button button-outline" type="button">▶ 快速測試</button>
-              <button id="runFullAutomationTestButton" class="button button-dark" type="button">▶ 完整測試</button>
             </div>
           </div>
 
@@ -244,7 +242,7 @@
               </div>
 
               <div id="automationTestCaseList" class="test-control-case-list"></div>
-              <div id="automationTestCaseEmpty" class="test-control-empty">尚未建立測試案例。按下快速測試或完整測試後，執行過程會顯示在這裡。</div>
+              <div id="automationTestCaseEmpty" class="test-control-empty">尚未建立測試案例。啟動下方「完整 E2E」後，後端 QA 執行過程與結果會顯示在這裡。</div>
             </section>
 
             <aside class="test-control-history-card" aria-labelledby="automationHistoryTitle">
