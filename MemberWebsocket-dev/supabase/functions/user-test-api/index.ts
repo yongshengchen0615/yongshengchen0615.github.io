@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { createClient } from "npm:@supabase/supabase-js@2.57.0";\nimport { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 
@@ -1588,15 +1588,19 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
   if (!cases.length) throw new ApiError(400, "QA_BROWSER_CASES_REQUIRED", "沒有可記錄的瀏覽器測試案例。");
   const normalized = cases.map((raw: any, index: number) => {
     const status = ["passed","failed","skipped"].includes(String(raw?.status)) ? String(raw.status) : "failed";
+    const key = asText(raw?.key, 100) || ("BROWSER_" + String(index + 1).padStart(2, "0"));
+    const name = asText(raw?.name, 180) || "真人操作測試";
+    const domain = asText(raw?.domain, 100) || "UI";
+    const message = asText(raw?.message, 1000);
+    const expected = raw?.expected && typeof raw.expected === "object" ? raw.expected : {};
+    const actual = raw?.actual && typeof raw.actual === "object" ? raw.actual : {};
+    const trace = status === "failed" ? safeDiagnosticSnapshot(raw?.trace) : {};
+    const diagnosis = status === "failed"
+      ? diagnoseE2EFailure({ caseKey: key, domain, message, actual, trace })
+      : null;
     return {
-      key: asText(raw?.key, 100) || ("BROWSER_" + String(index + 1).padStart(2, "0")),
-      name: asText(raw?.name, 180) || "真人操作測試",
-      domain: asText(raw?.domain, 100) || "UI",
-      status,
-      message: asText(raw?.message, 1000),
-      expected: raw?.expected && typeof raw.expected === "object" ? raw.expected : {},
-      actual: raw?.actual && typeof raw.actual === "object" ? raw.actual : {},
-      trace: status === "failed" ? safeDiagnosticSnapshot(raw?.trace) : {},
+      key, name, domain, status, message, expected, actual, diagnosis,
+      trace: diagnosis ? attachE2EDiagnosis(trace, diagnosis) : trace,
       durationMs: Math.max(0, Math.min(300000, Number(raw?.durationMs || 0))),
     };
   });
@@ -1621,6 +1625,10 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       surface,
       skippedCases: skippedCount,
       memberId: identity.memberId,
+      diagnosticsVersion: 2,
+      failureDiagnostics: summarizeE2EFailureDiagnoses(
+        normalized.map((item) => item.diagnosis).filter(Boolean),
+      ),
     },
     started_at: now,
     completed_at: now,
@@ -1637,7 +1645,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       domain: "Human E2E / " + surface + " / " + item.domain,
       member_id: identity.memberId,
       status: item.status,
-      failure_code: item.status === "failed" ? "UI_E2E_FAILED" : null,
+      failure_code: item.status === "failed" ? item.diagnosis?.code || "UI_E2E_FAILED" : null,
       failure_message: item.status === "failed" ? item.message : null,
       started_at: now,
       completed_at: now,
@@ -1672,7 +1680,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
           status: "failed",
           expected: { diagnosticsCaptured: true },
           actual: item.trace,
-          message: "僅失敗案例保留 seed、surface、browser lifecycle、Realtime signal 與 API timing。",
+          message: "失敗案例保留診斷分類、穩定指紋、seed、surface、browser lifecycle、Realtime signal 與 API timing。",
           started_at: now,
           completed_at: now,
           duration_ms: 0,
