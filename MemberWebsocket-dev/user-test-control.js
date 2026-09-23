@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.3';
+  const VERSION = '2026-09-23.4';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1127,6 +1127,18 @@
     return false;
   }
 
+  function compactFailureTrace(value, maxChars = 5000) {
+    const normalized = safeJson(value) || {};
+    let serialized = '';
+    try { serialized = JSON.stringify(normalized); } catch { return { serializationFailed: true }; }
+    if (serialized.length <= maxChars) return normalized;
+    return {
+      truncated: true,
+      originalChars: serialized.length,
+      preview: serialized.slice(0, Math.max(300, maxChars - 120))
+    };
+  }
+
   async function recordBrowserRun() {
     const cases = state.results.map((item) => ({
       key: item.key || '',
@@ -1137,15 +1149,29 @@
       expected: item.expected && typeof item.expected === 'object' ? item.expected : {},
       actual: item.actual && typeof item.actual === 'object' ? item.actual : {},
       trace: item.status === 'failed'
-        ? (item.trace || buildFailureTrace({ eventIndex: 0, resourceIndex: state.traceResourceStart, startedAtMs: Date.parse(state.runStartedAt) || Date.now() }, item))
+        ? compactFailureTrace(
+            item.trace || buildFailureTrace(
+              { eventIndex: 0, resourceIndex: state.traceResourceStart, startedAtMs: Date.parse(state.runStartedAt) || Date.now() },
+              item
+            ),
+            5000
+          )
         : undefined,
       durationMs: Number(item.durationMs || 0)
     }));
-    return qaServiceRequest('user.qa.browser-run.record', {
+    const payload = {
       cases,
       startedAt: state.runStartedAt || undefined,
       completedAt: new Date().toISOString()
-    }, 30000);
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
+    if (bytes > 60_000) {
+      payload.cases = cases.map((item) => ({
+        ...item,
+        trace: item.status === 'failed' ? compactFailureTrace(item.trace || {}, 1200) : undefined
+      }));
+    }
+    return qaServiceRequest('user.qa.browser-run.record', payload, 30000);
   }
 
   async function memberHumanProfileEditCase() {
