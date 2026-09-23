@@ -161,6 +161,12 @@ async function activeTechs(s: SupabaseClient) {
   const r = await s.from("booking_technicians").select("*").eq("is_active",true).order("sort_order",{ascending:true}).order("created_at",{ascending:true}); if (r.error) throw mapDbError(r.error); return r.data || [];
 }
 
+async function isActiveBookingHoliday(s: SupabaseClient, date: string) {
+  const r=await s.from("calendar_items").select("id,starts_on,ends_on").eq("item_type","holiday").eq("status","active").lte("starts_on",date);
+  if (r.error) throw mapDbError(r.error);
+  return (r.data||[]).some((row:any)=>String(row.starts_on||"")<=date && String(row.ends_on||row.starts_on||"")>=date);
+}
+
 async function groupData(s: SupabaseClient, bookingIds: string[]) {
   if (!bookingIds.length) return new Map<string,Json>();
   const [bookings, parts] = await Promise.all([
@@ -253,6 +259,7 @@ async function memberBootstrap(s: SupabaseClient, m: any) {
 async function slots(s: SupabaseClient, m: any, body: Json) {
   const g=await normalizeGroup(s,body), date=dateValue(body.bookingDate), cfg=g.cfg, today=taipeiDate(), earliest=addDays(today,Number(cfg.min_advance_days||0)), max=Number(cfg.max_advance_days||0), latest=max>0?addDays(today,max):"";
   if (date < earliest || (latest && date > latest)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:[] };
+  if (await isActiveBookingHoliday(s,date)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, holidayBlocked:true, slots:[] };
   let excluded="";
   if (body.bookingId) {
     excluded=uuid(body.bookingId,"預約"); const r=await s.from("bookings").select("id,status").eq("id",excluded).eq("member_id",m.id).maybeSingle();
