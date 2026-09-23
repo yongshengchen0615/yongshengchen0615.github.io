@@ -256,14 +256,14 @@ test('live admin discovery can see same-run QA rows before the user handoff is c
 test('live admin runner no longer waits for every client task to finish before booking handling starts', () => {
   assert.match(source, /waitForLivePairedBookingTarget\(participant, 'any'\)/);
   assert.match(source, /let adminChain = Promise\.resolve\(\)/);
-  assert.match(source, /Promise\.all\(\[\.\.\.clientTasks, \.\.\.liveAdminTasks\]\)/);
+  assert.match(source, /Promise\.all\(\[clientExecution, \.\.\.liveAdminTasks\]\)/);
   assert.doesNotMatch(source, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
   assert.match(source, /completeHandoffBeforeMemberUiReuse/);
 });
 
 test('the only paired full E2E always includes booking collaboration and the complete admin suite', () => {
   assert.match(source, /async function runPaired\(options = \{\}\)/);
-  assert.match(source, /surfacePlan: shuffled\(PAIRED_SURFACES\)/);
+  assert.match(source, /surfacePlan: weightedSurfacePlan\(profile, index \+ 1\)/);
   assert.match(source, /const allAdminDefinitions = adminDefinitions\('full'\)/);
   assert.match(source, /runPairedAdminBookingLive\(participant\)/);
   assert.match(source, /await executeCases\(remainingAdminDefinitions, '管理端 · 其餘完整 E2E'\)/);
