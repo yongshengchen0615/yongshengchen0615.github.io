@@ -59,37 +59,39 @@ jobs:
           node-version: '24'
       - name: Check browser JavaScript syntax
         run: |
-          node --check MemberWebsocket-dev/test-mode-client.js
-          node --check MemberWebsocket-dev/user-test-control.js
-          node --check MemberWebsocket-dev/member-system.js
-          node --check MemberWebsocket-dev/admin/admin-session.js
-          node --check MemberWebsocket-dev/admin/test-mode.js
-          node --check MemberWebsocket-dev/admin/test-control.js
-          node --check MemberWebsocket-dev/admin/e2e-control.js
-          node --check MemberWebsocket-dev/admin/app.js
-          node --check MemberWebsocket-dev/admin/grant-automation.js
-          node --check MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js
-          node --check MemberWebsocket-dev/admin/fixed-ticket-calendar-option.js
-          node --check MemberWebsocket-dev/admin/fixed-ticket-admin.js
-          node --check MemberWebsocket-dev/admin/pointcard-redemption-limit.js
-          node --check MemberWebsocket-dev/admin/booking-panel.js
-          node --check MemberWebsocket-dev/admin/booking-panel-core.js
-          node --check MemberWebsocket-dev/admin/booking-resources.js
-          node --check MemberWebsocket-dev/admin/booking-cancellation-sync.js
-          node --check MemberWebsocket-dev/member/app.js
-          node --check MemberWebsocket-dev/member/profile-extension.js
-          node --check MemberWebsocket-dev/member/profile-birthday-edit.js
-          node --check MemberWebsocket-dev/points/pointcard-ticket-overview.js
-          node --check MemberWebsocket-dev/points/app.js
-          node --check MemberWebsocket-dev/event/app.js
-          node --check MemberWebsocket-dev/calendar/app.js
-          node --check MemberWebsocket-dev/booking/common.js
-          node --check MemberWebsocket-dev/booking/membership-progress.js
-          node --check MemberWebsocket-dev/booking/member-ui.js
-          node --check MemberWebsocket-dev/booking/group-booking.js
-          node --check MemberWebsocket-dev/booking/contact-details.js
-          node --check MemberWebsocket-dev/booking/app.js
-          node --check MemberWebsocket-dev/booking/calendar-flow.js
+          printf '%s\n' \
+            MemberWebsocket-dev/test-mode-client.js \
+            MemberWebsocket-dev/user-test-control.js \
+            MemberWebsocket-dev/member-system.js \
+            MemberWebsocket-dev/admin/admin-session.js \
+            MemberWebsocket-dev/admin/test-mode.js \
+            MemberWebsocket-dev/admin/test-control.js \
+            MemberWebsocket-dev/admin/e2e-control.js \
+            MemberWebsocket-dev/admin/app.js \
+            MemberWebsocket-dev/admin/grant-automation.js \
+            MemberWebsocket-dev/admin/fixed-ticket-admin-integration.js \
+            MemberWebsocket-dev/admin/fixed-ticket-calendar-option.js \
+            MemberWebsocket-dev/admin/fixed-ticket-admin.js \
+            MemberWebsocket-dev/admin/pointcard-redemption-limit.js \
+            MemberWebsocket-dev/admin/booking-panel.js \
+            MemberWebsocket-dev/admin/booking-panel-core.js \
+            MemberWebsocket-dev/admin/booking-resources.js \
+            MemberWebsocket-dev/admin/booking-cancellation-sync.js \
+            MemberWebsocket-dev/member/app.js \
+            MemberWebsocket-dev/member/profile-extension.js \
+            MemberWebsocket-dev/member/profile-birthday-edit.js \
+            MemberWebsocket-dev/points/pointcard-ticket-overview.js \
+            MemberWebsocket-dev/points/app.js \
+            MemberWebsocket-dev/event/app.js \
+            MemberWebsocket-dev/calendar/app.js \
+            MemberWebsocket-dev/booking/common.js \
+            MemberWebsocket-dev/booking/membership-progress.js \
+            MemberWebsocket-dev/booking/member-ui.js \
+            MemberWebsocket-dev/booking/group-booking.js \
+            MemberWebsocket-dev/booking/contact-details.js \
+            MemberWebsocket-dev/booking/app.js \
+            MemberWebsocket-dev/booking/calendar-flow.js \
+          | xargs -n1 -P4 node --check
 
   edge-functions:
     name: Supabase Edge Function typecheck
@@ -102,26 +104,27 @@ jobs:
           deno-version: v2.x
       - name: Check Edge Functions
         run: |
-          deno check MemberWebsocket-dev/supabase/functions/api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/test-mode-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/test-control-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/user-test-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/pointcard-extension-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/member-profile-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/booking-contact-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/grant-automation/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/event-ticket-links/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/booking-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/booking-admin-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/booking-group-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/booking-group-slots-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/booking-cancellation-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/calendar-system-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/calendar-member-api/index.ts
-          deno check MemberWebsocket-dev/supabase/functions/point-ticket-batch-api/index.ts
+          deno check \
+            MemberWebsocket-dev/supabase/functions/api/index.ts \
+            MemberWebsocket-dev/supabase/functions/test-mode-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/test-control-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/user-test-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/pointcard-extension-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/member-profile-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-contact-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/grant-automation/index.ts \
+            MemberWebsocket-dev/supabase/functions/event-ticket-links/index.ts \
+            MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-admin-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-group-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-group-slots-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-cancellation-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/calendar-system-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/calendar-member-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/point-ticket-batch-api/index.ts
 
   wiring:
     name: Static wiring and architecture checks
