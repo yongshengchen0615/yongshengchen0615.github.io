@@ -10,7 +10,7 @@ test('admin exposes only the unified background full E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-15/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-16/);
   assert.match(runner, /runPairedFullE2EButton/);
   assert.match(runner, /完整 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
   assert.match(runner, /stopAdminE2EButton/);
@@ -37,7 +37,7 @@ test('admin exposes only the unified background full E2E entrypoint', () => {
   assert.match(runner, /runUnifiedBackground/);
   assert.match(runner, /e2eBackgroundRunner/);
   assert.match(runner, /openBackgroundRunnerWindow/);
-  assert.match(runner, /openClientWindows\(participantCount, false\)/);
+  assert.match(runner, /openClientWindowGroups\(participantCount, false, mobileViewport\)/);
   assert.match(runner, /receiveBackgroundStatus/);
   assert.match(runner, /backgroundAwareTimeout/);
   assert.doesNotMatch(html, /id="runQuickAutomationTestButton"/);
@@ -63,7 +63,13 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.match(runner, /data-record-filter="testAutomation"/);
   assert.match(runner, /member-test-session-v1/);
   assert.match(runner, /MAX_PAIRED_PARTICIPANTS = 10/);
-  assert.match(runner, /window\.open\('about:blank'/);
+  assert.match(runner, /function openClientWindowGroups\(/);
+  assert.match(runner, /member-e2e-\$\{stamp\}-\$\{participantIndex \+ 1\}-\$\{surface\}/);
+  assert.match(runner, /popup=yes/);
+  assert.match(runner, /CLIENT_MOBILE_VIEWPORT = Object\.freeze\(\{ width: 430, height: 932 \}\)/);
+  assert.match(runner, /pairedE2EMobileViewport/);
+  assert.match(runner, /clientWindowGroupReady/);
+  assert.match(runner, /participantWindow\(participant, 'booking'\)/);
   assert.match(runner, /pairedE2EAccountCount/);
   const e2eCss = read('admin/e2e-control.css');
   assert.match(e2eCss, /\.admin-e2e-paired-config\s*\{[\s\S]*display:\s*grid/);
@@ -75,6 +81,7 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.match(runner, /E2E_REAL_MEMBER_BLOCKED/);
   assert.match(runner, /memberIsTestAccount/);
   assert.doesNotMatch(runner, /<iframe|adminBrowserE2EFrame|state\.frame|state\.viewport/);
+  assert.match(runner, /e2eViewport/);
   assert.doesNotMatch(runner, /service_role|SUPABASE_SERVICE_ROLE_KEY/);
 });
 
