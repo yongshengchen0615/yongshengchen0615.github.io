@@ -109,6 +109,8 @@ jobs:
             MemberWebsocket-dev/supabase/functions/test-mode-api/index.ts \
             MemberWebsocket-dev/supabase/functions/test-control-api/index.ts \
             MemberWebsocket-dev/supabase/functions/user-test-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/e2e-artifact-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/e2e-artifact-retention/index.ts \
             MemberWebsocket-dev/supabase/functions/pointcard-extension-api/index.ts \
             MemberWebsocket-dev/supabase/functions/member-profile-api/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-contact-api/index.ts \
