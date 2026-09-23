@@ -61,6 +61,10 @@
     bookingHandoff: null,
     availabilitySync: null,
     bookingLaneDayCount: 1,
+    randomSeed: '',
+    randomState: 0,
+    complexityLevel: 1,
+    participantIndex: 1,
     runStartedAt: '',
     launcher: null,
     panel: null
@@ -98,17 +102,38 @@
     return Math.max(0, Math.round(performance.now() - start));
   }
 
+  function hashSeed(value) {
+    let hash = 2166136261;
+    for (const char of String(value || '')) {
+      hash ^= char.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0 || 0x9e3779b9;
+  }
+
+  function configureRunProfile() {
+    const params = new URLSearchParams(window.location.search);
+    state.randomSeed = String(params.get('e2eSeed') || ('USER-' + surface + '-' + Date.now().toString(36)));
+    state.randomState = hashSeed(state.randomSeed);
+    state.complexityLevel = Math.max(1, Math.min(8, Number(params.get('e2eComplexity') || 1) || 1));
+    state.participantIndex = Math.max(1, Number(params.get('e2eParticipant') || 1) || 1);
+  }
+
+  function nextRandomUnit() {
+    if (!state.randomState) configureRunProfile();
+    let x = state.randomState >>> 0;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    state.randomState = x >>> 0;
+    return (state.randomState >>> 0) / 4294967296;
+  }
+
   function randomInt(min, max) {
     const low = Math.ceil(Number(min) || 0);
     const high = Math.floor(Number(max) || low);
     if (high <= low) return low;
-    try {
-      const value = new Uint32Array(1);
-      crypto.getRandomValues(value);
-      return low + (value[0] % (high - low + 1));
-    } catch (_) {
-      return low + Math.floor(Math.random() * (high - low + 1));
-    }
+    return low + Math.floor(nextRandomUnit() * (high - low + 1));
   }
 
   function shuffled(items) {
@@ -121,7 +146,8 @@
   }
 
   function randomInteractionPause() {
-    return wait(randomInt(90, 720));
+    const level = Math.max(1, Number(state.complexityLevel || 1));
+    return wait(randomInt(70, 260 + level * 90));
   }
 
   function plainError(error) {
@@ -347,7 +373,7 @@
     const stateKinds = new Set();
     const attempts = [];
     let aggregate = null;
-    const maxAttempts = 4;
+    const maxAttempts = Math.max(3, Math.min(7, 2 + Number(state.complexityLevel || 1)));
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const current = await qaServiceRequest('user.qa.usage-state.prepare', {}, 60000);
@@ -409,6 +435,7 @@
       return { ok: false, skipped: true, reason: 'session-check-failed', error: plainError(error), surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 1, total: 0 } };
     }
 
+    configureRunProfile();
     state.currentSuite = requestedSuite;
     state.results = [];
     state.bootstrap = null;
@@ -422,7 +449,9 @@
     state.runStartedAt = new Date().toISOString();
     setRunning(true);
     setStatus('執行中');
-    setMessage(state.currentSuite === 'full' ? '正在以隨機案例順序、隨機操作間隔執行完整用戶端測試…' : '正在執行快速健康檢查…');
+    setMessage(state.currentSuite === 'full'
+      ? '正在以可重現 seed=' + state.randomSeed + '、難度 L' + state.complexityLevel + ' 執行隨機案例與自適應壓力重播…'
+      : '正在執行快速健康檢查…');
     renderResults();
 
     let bookingBaselineFailed = false;
@@ -576,7 +605,10 @@
         passed,
         failed,
         skipped,
-        total: state.results.length
+        total: state.results.length,
+        e2eSeed: state.randomSeed,
+        complexityLevel: state.complexityLevel,
+        participantIndex: state.participantIndex
       }
     };
   }
@@ -654,8 +686,22 @@
       );
     }
     const randomizedMiddle = shuffled(fullCommon.concat(surfaceCases[surface] || []));
+    const replayPool = randomizedMiddle.filter((item) =>
+      ['UI', 'Validation', 'Realtime', 'API', 'Configuration', 'Member', 'Points', 'Tickets', 'Calendar', 'Booking'].includes(String(item.domain || ''))
+      && item.humanRequired !== true
+    );
+    const replayCount = Math.max(0, Math.min(3, Number(state.complexityLevel || 1) - 1));
+    const adaptiveReplays = shuffled(replayPool).slice(0, replayCount).map((item, index) =>
+      caseDef(
+        '自適應壓力重播 ' + (index + 1) + '：' + item.name,
+        item.domain,
+        item.run,
+        String(item.key || ('ADAPTIVE_' + index)) + '_REPLAY_' + (index + 1)
+      )
+    );
     return common.concat(
       randomizedMiddle,
+      adaptiveReplays,
       trailingCases
     );
   }
