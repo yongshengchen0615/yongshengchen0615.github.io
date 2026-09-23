@@ -36,9 +36,9 @@ test('admin entry references current booking assets', () => {
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
   assert.ok(html.includes('../member-system.js?v=async-architecture-20260921-1'));
   assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
-  assert.ok(html.includes('app.js?v=background-session-handoff-20260923-1'));
+  assert.ok(html.includes('app.js?v=background-e2e-rate-budget-20260923-1'));
   assert.ok(html.includes('booking-panel.css?v=booking-settings-layout-20260918-1'));
-  assert.ok(html.includes('booking-panel.js?v=booking-tab-navigation-20260920-1'));
+  assert.ok(html.includes('booking-panel.js?v=booking-rate-budget-20260923-1'));
   assert.equal((html.match(/booking-panel\.js/g) || []).length, 1);
   assert.ok(html.includes('fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1'));
   assert.ok(html.includes('pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1'));
