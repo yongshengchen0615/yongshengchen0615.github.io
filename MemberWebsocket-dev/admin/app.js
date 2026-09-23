@@ -285,6 +285,15 @@
 
   function closeEditorModals() { Object.keys(state.editorModals).forEach(closeEditorModal); }
 
+  function isBackgroundE2ERunner() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('e2eBackgroundRunner') === '1' && Boolean(params.get('e2eRunId'));
+    } catch {
+      return false;
+    }
+  }
+
   function backgroundE2ERunId() {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -338,12 +347,18 @@
       setView('admin');
       document.documentElement.dataset.memberAdminReady = 'true';
       window.dispatchEvent(new Event('member-admin-ready'));
-      stopAdminRealtime = window.MemberSystem.subscribeRealtime(state.config, 'admin', handleAdminRealtimeUpdate);
-      startMemberPresencePolling();
+      if (!isBackgroundE2ERunner()) {
+        stopAdminRealtime = window.MemberSystem.subscribeRealtime(state.config, 'admin', handleAdminRealtimeUpdate);
+        startMemberPresencePolling();
+      } else {
+        stopAdminRealtime = null;
+        stopMemberPresencePolling();
+      }
     } catch (error) { stopLoginProgress(); handleBootError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
 
   async function handleAdminRealtimeUpdate() {
+    if (isBackgroundE2ERunner()) return;
     const tasks = [refreshData(false), refreshOpenMemberRecords()];
     await Promise.allSettled(tasks);
     if (state.memberKind === 'test') await loadMembersPage(state.memberPage.page, state.memberPage.query).catch(() => {});
@@ -352,6 +367,7 @@
 
   function startMemberPresencePolling() {
     stopMemberPresencePolling();
+    if (isBackgroundE2ERunner()) return;
     const tick = async () => {
       if (!state.idToken) return;
       if (document.visibilityState === 'visible') await refreshMemberPresence().catch(() => {});
