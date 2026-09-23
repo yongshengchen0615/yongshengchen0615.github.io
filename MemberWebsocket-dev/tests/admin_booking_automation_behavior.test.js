@@ -51,7 +51,7 @@ function harness(bookings = [], extra = {}) {
     };
     window.qa.preflightIO = (fixture) => {
       selectedParticipantCount = () => 1;
-      openClientWindowGroups = () => [];
+      openClientWindows = () => [];
       adminSession = async () => ({});
       postPublicTestMode = async () => ({ maintenanceEnabled: false });
       prepareComplexE2EFixtures = fixture;
@@ -396,12 +396,13 @@ test('admin booking bootstrap polling is globally coalesced below the backend re
 });
 
 
-test('live admin realtime probe uses the dedicated booking client and never hijacks another surface', () => {
+test('live admin realtime probe waits for the same account window to be on booking and never hijacks another surface', () => {
   const start = source.indexOf('async function ensureBookingRealtimeClient(participant');
   const end = source.indexOf('\n  async function beginBookingRealtimeProbe', start);
   assert.ok(start >= 0 && end > start);
   const body = source.slice(start, end);
-  assert.match(body, /participantWindow\(participant, 'booking'\)/);
+  assert.match(body, /participant\.lastSurfaceKey !== 'booking'/);
+  assert.match(body, /const child = participant\?\.window/);
   assert.match(body, /E2E_BOOKING_CLIENT_NOT_READY/);
   assert.doesNotMatch(body, /createPairedSession/);
   assert.doesNotMatch(body, /seedParticipantSession/);
