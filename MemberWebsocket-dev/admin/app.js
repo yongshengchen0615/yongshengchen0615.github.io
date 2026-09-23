@@ -285,13 +285,53 @@
 
   function closeEditorModals() { Object.keys(state.editorModals).forEach(closeEditorModal); }
 
+  function backgroundE2ERunId() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('e2eBackgroundRunner') === '1'
+        ? String(params.get('e2eRunId') || '')
+        : '';
+    } catch {
+      return '';
+    }
+  }
+
+  async function waitForBackgroundAdminSession(timeoutMs = 8000) {
+    const runId = backgroundE2ERunId();
+    if (!runId) return null;
+    const deadline = Date.now() + Math.max(1000, Number(timeoutMs) || 8000);
+    while (Date.now() < deadline) {
+      try {
+        if (!window.opener || window.opener.closed) break;
+        const session = window.opener.MemberAdminE2EControl?.provideBackgroundSession?.(runId);
+        if (session?.idToken && session?.config && String(session.runId || '') === runId) {
+          return {
+            idToken: String(session.idToken),
+            config: { ...session.config }
+          };
+        }
+      } catch {}
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
+    }
+    const error = new Error('背景管理端 Runner 無法取得原管理端的已驗證 Session。');
+    error.code = 'E2E_BACKGROUND_SESSION_HANDOFF_FAILED';
+    throw error;
+  }
+
   async function boot() {
     setView('loading');
     try {
       startLoginProgress('正在取得開啟設定…', 18);
-      state.config = await window.MemberSystem.loadConfig();
-      startLoginProgress('正在驗證 LINE 身分…', 48);
-      state.idToken = await window.MemberSystem.signIn(state.config, 'admin');
+      const backgroundSession = await waitForBackgroundAdminSession();
+      if (backgroundSession) {
+        state.config = backgroundSession.config;
+        state.idToken = backgroundSession.idToken;
+        startLoginProgress('已安全沿用原管理端 Session…', 64);
+      } else {
+        state.config = await window.MemberSystem.loadConfig();
+        startLoginProgress('正在驗證 LINE 身分…', 48);
+        state.idToken = await window.MemberSystem.signIn(state.config, 'admin');
+      }
       startLoginProgress('正在完整同步管理資料…', 96);
       await refreshData(false);
       await completeLoginProgress('完整管理資料已準備完成');
