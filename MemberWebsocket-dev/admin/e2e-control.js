@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.10';
+  const VERSION = '2026-09-23.11';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -180,7 +180,38 @@
     state.clientConcurrency = Math.max(1, Math.min(4, 1 + Math.ceil(level / 2)));
     state.rootRunId = 'ROOT-' + Date.now().toString(36).toUpperCase();
     configureRandom(seed);
-    return { completedRootRuns, complexityLevel: level, seed, clientConcurrency: state.clientConcurrency, rootRunId: state.rootRunId };
+    const surfaceWeightsMs = data?.surfaceWeightsMs && typeof data.surfaceWeightsMs === 'object'
+      ? { ...data.surfaceWeightsMs }
+      : {};
+    const surfaceSamples = data?.surfaceSamples && typeof data.surfaceSamples === 'object'
+      ? { ...data.surfaceSamples }
+      : {};
+    return {
+      completedRootRuns,
+      complexityLevel: level,
+      seed,
+      clientConcurrency: state.clientConcurrency,
+      rootRunId: state.rootRunId,
+      surfaceWeightsMs,
+      surfaceSamples
+    };
+  }
+
+  function weightedSurfacePlan(profile, participantIndex) {
+    const weights = profile?.surfaceWeightsMs && typeof profile.surfaceWeightsMs === 'object'
+      ? profile.surfaceWeightsMs
+      : {};
+    const ranked = shuffled(PAIRED_SURFACES).sort((left, right) => {
+      const leftWeight = Math.max(1, Number(weights[left[0]] || 1));
+      const rightWeight = Math.max(1, Number(weights[right[0]] || 1));
+      return rightWeight - leftWeight;
+    });
+    if (ranked.length < 2) return ranked;
+    const offset = Math.abs(Number(participantIndex || 1) - 1) % ranked.length;
+    const rotated = ranked.slice(offset).concat(ranked.slice(0, offset));
+    return Number(participantIndex || 1) % 2 === 0
+      ? [rotated[0]].concat(rotated.slice(1).reverse())
+      : rotated;
   }
 
   async function runWithConcurrency(items, limit, worker) {
@@ -993,8 +1024,8 @@
         name: 'E2E 自適應複雜度與可重現 Seed',
         domain: 'Paired E2E / Orchestration',
         status: 'passed',
-        message: '本輪已依歷史完整 E2E 次數提升難度，並建立可重播 seed 與受控併發。',
-        expected: { deterministicSeed: true, boundedConcurrency: true, iterativeComplexity: true },
+        message: '本輪已依歷史完整 E2E 次數提升難度，並以歷史 surface 耗時做 weighted staggering，建立可重播 seed 與受控併發。',
+        expected: { deterministicSeed: true, boundedConcurrency: true, iterativeComplexity: true, weightedSurfaceScheduling: true },
         actual: safe(profile),
         durationMs: 0
       });
@@ -1012,7 +1043,7 @@
         window: openedWindows[index],
         status: '等待隨機啟動',
         surface: '前置資料完成',
-        surfacePlan: shuffled(PAIRED_SURFACES),
+        surfacePlan: weightedSurfacePlan(profile, index + 1),
         runCodes: [],
         startedAt: Date.now(),
         login: null,
@@ -1025,7 +1056,7 @@
       }));
       renderParticipants();
 
-      setMessage('管理端前置資料已完整建立；現在隨機啟動 ' + participantCount + ' 位測試用戶，管理端會同步監看預約資料，資料一出現在管理端就開始模擬審核，不等待用戶端關閉。');
+      setMessage('管理端前置資料已完整建立；現在以歷史耗時權重錯開 ' + participantCount + ' 位測試用戶的 surface 順序，管理端同步監看預約資料並即時接手審核。');
       if (!state.cancelled) {
         // A human administrator has one management UI. Keep admin DOM actions single-threaded
         // while member clients may generate data concurrently.
