@@ -77,7 +77,7 @@
   // optional feature from blocking every feature loaded after it.
   const preloadExtensions = [
     ['booking-always-open.js', 'booking-always-open-20260917-2'],
-    ['booking-cancellation-sync.js', 'booking-latest-first-20260919-1'],
+    ['booking-cancellation-sync.js', 'booking-background-e2e-20260923-1'],
     // Resource controls are independent required modules. They wait for the
     // booking host themselves, so they cannot disappear because another
     // decorator or the core load chain failed.
