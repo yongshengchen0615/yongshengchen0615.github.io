@@ -1,0 +1,47 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.resolve(__dirname, '..');
+const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
+
+test('admin E2E uses deterministic seed and bounded participant concurrency', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /function hashSeed\(/);
+  assert.match(runner, /function nextRandomUnit\(/);
+  assert.match(runner, /async function loadE2EProfile\(/);
+  assert.match(runner, /async function runWithConcurrency\(/);
+  assert.match(runner, /state\.clientConcurrency/);
+  assert.match(runner, /admin\.test-control\.e2e-profile/);
+  assert.match(runner, /e2eSeed/);
+  assert.match(runner, /e2eComplexity/);
+  assert.match(runner, /rootRun: true/);
+});
+
+test('user E2E consumes adaptive profile and adds deterministic safe replays', () => {
+  const runner = read('user-test-control.js');
+  assert.match(runner, /function configureRunProfile\(/);
+  assert.match(runner, /e2eSeed/);
+  assert.match(runner, /e2eComplexity/);
+  assert.match(runner, /adaptiveReplays/);
+  assert.match(runner, /_REPLAY_/);
+  assert.match(runner, /Math\.max\(3, Math\.min\(7, 2 \+ Number\(state\.complexityLevel/);
+});
+
+test('test control API persists root-run evolution metadata', () => {
+  const api = read('supabase/functions/test-control-api/index.ts');
+  assert.match(api, /async function e2eProfile\(/);
+  assert.match(api, /completedRootRuns/);
+  assert.match(api, /nextComplexityLevel/);
+  assert.match(api, /rootRun: body\.rootRun === true/);
+  assert.match(api, /e2eSeed/);
+  assert.match(api, /clientConcurrency/);
+});
+
+test('adaptive E2E asset versions are aligned across all surfaces', () => {
+  assert.match(read('admin/index.html'), /e2e-control\.js\?v=admin-e2e-20260923-8/);
+  for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
+    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=human-e2e-20260923-3/);
+  }
+});
