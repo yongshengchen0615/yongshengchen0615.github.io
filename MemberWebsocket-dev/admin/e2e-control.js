@@ -408,20 +408,33 @@
     const countInput = state.section?.querySelector('#pairedE2EAccountCount');
     if (countInput) countInput.disabled = state.running;
     if (state.badge) {
-      state.badge.textContent = state.running ? (state.cancelled ? 'Browser Runner：停止中' : 'Browser Runner：執行中') : 'Browser Runner：待命';
+      state.badge.textContent = state.running
+        ? (state.cancelled ? '完整 E2E：停止中' : (state.backgroundExecution || state.backgroundRunnerWindow ? '完整 E2E：背景執行中' : '完整 E2E：執行中'))
+        : '完整 E2E：待命';
       state.badge.classList.toggle('is-on', state.running);
       state.badge.classList.toggle('is-off', !state.running);
     }
     if (state.floating) {
       state.floating.classList.toggle('hidden', !state.running);
-      state.floating.textContent = state.running ? ((state.cancelled ? 'E2E 停止中' : 'E2E 執行中') + (label ? ' · ' + label : '')) : '';
+      state.floating.textContent = state.running ? ((state.cancelled ? 'E2E 停止中' : 'E2E 背景執行中') + (label ? ' · ' + label : '')) : '';
     }
+    publishBackgroundStatus();
   }
 
   function requestStop() {
     if (!state.running || state.cancelled) return false;
+
+    if (!isBackgroundRunnerWindow() && state.backgroundRunnerWindow && !state.backgroundRunnerWindow.closed) {
+      state.cancelled = true;
+      try { state.backgroundRunnerWindow.MemberAdminE2EControl?.stop?.(); } catch {}
+      if (state.badge) state.badge.textContent = '完整 E2E：停止中';
+      if (state.floating) state.floating.textContent = 'E2E 停止中 · 已傳送到背景 Runner';
+      setMessage('已要求背景 E2E 停止；背景 Runner 會在目前案例完成安全清理後停止。');
+      return true;
+    }
+
     state.cancelled = true;
-    if (state.badge) state.badge.textContent = 'Browser Runner：停止中';
+    if (state.badge) state.badge.textContent = '完整 E2E：停止中';
     if (state.floating) state.floating.textContent = 'E2E 停止中 · 目前案例完成安全清理後停止';
     for (const participant of state.participants) {
       participant.status = '停止中';
@@ -432,23 +445,31 @@
     }
     renderParticipants();
     setMessage('已要求停止 E2E；目前正在執行的案例會先完成安全清理，之後不再啟動下一個案例。');
+    publishBackgroundStatus();
     return true;
   }
 
   
 
   function setMessage(message, error = false) {
-    if (!state.message) return;
-    state.message.textContent = message;
-    state.message.classList.remove('hidden');
-    state.message.classList.toggle('success', !error);
+    state.lastMessage = String(message || '');
+    state.lastMessageError = Boolean(error);
+    if (state.message) {
+      state.message.textContent = state.lastMessage;
+      state.message.classList.toggle('hidden', !state.lastMessage);
+      state.message.classList.toggle('success', !error);
+    }
+    publishBackgroundStatus();
   }
 
   function render() {
-    if (!state.list || !state.summary) return;
     const passed = state.results.filter((r) => r.status === 'passed').length;
     const failed = state.results.filter((r) => r.status === 'failed').length;
     const skipped = state.results.filter((r) => r.status === 'skipped').length;
+    if (!state.list || !state.summary) {
+      publishBackgroundStatus();
+      return;
+    }
     state.summary.textContent = `共 ${state.results.length} 案例 · ${passed} 通過 · ${failed} 失敗 · ${skipped} 略過`;
     state.list.replaceChildren(...state.results.map((item, index) => {
       const details = document.createElement('details');
@@ -471,6 +492,7 @@
       details.append(summary, body);
       return details;
     }));
+    publishBackgroundStatus();
   }
 
   function dataBox(label, value) {
