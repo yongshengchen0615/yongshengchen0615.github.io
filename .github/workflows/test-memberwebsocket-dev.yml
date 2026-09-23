@@ -13,8 +13,14 @@ on:
 permissions:
   contents: read
 
+# Playwright-style stale-run cancellation: newer pushes on the same branch supersede old CI work.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
+  regression:
+    name: Regression tests
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -22,16 +28,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
       - name: Run application regression tests
         run: node --test MemberWebsocket-dev/tests/*.test.js
+
+  integration:
+    name: DOM integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Install DOM integration test dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: MemberWebsocket-dev/tests/integration
       - name: Check admin startup and observer responsiveness
         run: node --test MemberWebsocket-dev/tests/integration/admin_startup.cjs MemberWebsocket-dev/tests/integration/booking_startup.cjs MemberWebsocket-dev/tests/integration/booking_copy.cjs
+
+  browser-syntax:
+    name: Browser JavaScript syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Check browser JavaScript syntax
         run: |
           node --check MemberWebsocket-dev/test-mode-client.js
@@ -65,6 +88,16 @@ jobs:
           node --check MemberWebsocket-dev/booking/contact-details.js
           node --check MemberWebsocket-dev/booking/app.js
           node --check MemberWebsocket-dev/booking/calendar-flow.js
+
+  edge-functions:
+    name: Supabase Edge Function typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
       - name: Check Edge Functions
         run: |
           deno check MemberWebsocket-dev/supabase/functions/api/index.ts
@@ -87,6 +120,16 @@ jobs:
           deno check MemberWebsocket-dev/supabase/functions/calendar-system-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/calendar-member-api/index.ts
           deno check MemberWebsocket-dev/supabase/functions/point-ticket-batch-api/index.ts
+
+  wiring:
+    name: Static wiring and architecture checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Check grant automation wiring
         run: |
           grep -q 'grant-automation.js' MemberWebsocket-dev/admin/index.html
@@ -246,3 +289,26 @@ jobs:
           grep -q "addEventListener('online'" MemberWebsocket-dev/member-system.js
           grep -q 'notify_admin_config_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
           grep -q 'notify_admin_grant_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_transactional_realtime_invalidation.sql
+
+  validate:
+    name: Validate MemberWebsocket Dev
+    if: always()
+    needs: [regression, integration, browser-syntax, edge-functions, wiring]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every test lane to pass
+        env:
+          REGRESSION: ${{ needs.regression.result }}
+          INTEGRATION: ${{ needs.integration.result }}
+          BROWSER_SYNTAX: ${{ needs.browser-syntax.result }}
+          EDGE_FUNCTIONS: ${{ needs.edge-functions.result }}
+          WIRING: ${{ needs.wiring.result }}
+        run: |
+          printf 'regression=%s\nintegration=%s\nbrowser-syntax=%s\nedge-functions=%s\nwiring=%s\n' \
+            "$REGRESSION" "$INTEGRATION" "$BROWSER_SYNTAX" "$EDGE_FUNCTIONS" "$WIRING"
+          test "$REGRESSION" = success
+          test "$INTEGRATION" = success
+          test "$BROWSER_SYNTAX" = success
+          test "$EDGE_FUNCTIONS" = success
+          test "$WIRING" = success
