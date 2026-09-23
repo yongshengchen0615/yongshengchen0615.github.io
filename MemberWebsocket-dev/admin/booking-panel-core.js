@@ -281,6 +281,15 @@
   const resourceRequest = (action, payload = {}) => requestFunction('booking-group-api', action, payload, false);
   function clientError(code, message) { const error = new Error(message); error.code = code; return error; }
 
+  function isBackgroundE2ERunner() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('e2eBackgroundRunner') === '1' && Boolean(params.get('e2eRunId'));
+    } catch {
+      return false;
+    }
+  }
+
   async function refreshAll(showSuccess) {
     if (state.loading) return;
     state.loading = true;
@@ -1042,6 +1051,7 @@
   }
 
   function setupRealtime() {
+    if (isBackgroundE2ERunner()) return;
     if (state.realtimeChannel || state.config?.realtimeEnabled === false || !window.supabase?.createClient) return;
     state.realtimeClient = window.supabase.createClient(state.config.supabaseUrl, state.config.supabasePublishableKey, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
     const schedule = () => {
