@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.8';
+  const VERSION = '2026-09-23.9';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -363,6 +363,7 @@
     let runnerWindow = null;
     let clientWindows = [];
     const runId = 'BG-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
+    state.backgroundRunId = runId;
     try {
       participantCount = selectedParticipantCount();
       runnerWindow = openBackgroundRunnerWindow(runId);
@@ -433,6 +434,7 @@
       setBusy(false);
       state.backgroundRunnerWindow = null;
       state.backgroundCompletion = null;
+      if (!state.running) state.backgroundRunId = '';
     });
 
     state.backgroundCompletion = completion;
@@ -4657,6 +4659,20 @@
   }
 
 
+  function provideBackgroundSession(requestedRunId) {
+    if (isBackgroundRunnerWindow()) return null;
+    const runId = String(requestedRunId || '');
+    if (!runId || runId !== String(state.backgroundRunId || '')) return null;
+    const session = window.MemberAdminSession?.get?.();
+    if (!session?.idToken || !session?.config) return null;
+    return {
+      idToken: String(session.idToken),
+      config: safe(session.config),
+      runId
+    };
+  }
+
+
   window.MemberAdminE2EControl = Object.freeze({
     version: VERSION,
     runPairedFull: () => isBackgroundRunnerWindow()
@@ -4664,6 +4680,7 @@
       : startUnifiedBackgroundE2E(),
     runUnifiedBackground: (options) => runUnifiedBackground(options),
     receiveBackgroundStatus: (snapshot) => receiveBackgroundStatus(snapshot),
+    provideBackgroundSession: (runId) => provideBackgroundSession(runId),
     getStatus: () => backgroundStatusSnapshot(),
     stop: () => requestStop(),
     maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
