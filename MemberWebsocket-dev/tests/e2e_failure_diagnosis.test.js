@@ -1,0 +1,112 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.resolve(__dirname, '..');
+
+async function diagnosticsModule() {
+  const source = fs.readFileSync(
+    path.join(ROOT, 'supabase/functions/_shared/e2e-diagnostics.js'),
+    'utf8'
+  );
+  const url = 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
+  return import(url);
+}
+
+test('E2E diagnostics classifies rate limits and timeouts into queryable failure codes', async () => {
+  const { diagnoseE2EFailure } = await diagnosticsModule();
+  const rate = diagnoseE2EFailure({
+    caseKey: 'BOOKING_SYNC',
+    domain: 'Booking',
+    message: '請求過於密集，請稍後再試。',
+    actual: { statusCode: 429 }
+  });
+  assert.equal(rate.code, 'E2E_RATE_LIMIT');
+  assert.equal(rate.category, 'rate-limit');
+  assert.equal(rate.retryable, true);
+
+  const timeout = diagnoseE2EFailure({
+    caseKey: 'BACKGROUND_RUNNER_LOGIN',
+    domain: 'Admin',
+    message: '背景管理端 Runner 未能在允許時間內完成登入與初始化。'
+  });
+  assert.equal(timeout.code, 'E2E_TIMEOUT');
+  assert.equal(timeout.category, 'timeout');
+  assert.equal(timeout.retryable, true);
+});
+
+test('E2E diagnostics distinguishes auth, realtime, backend and client failures', async () => {
+  const { diagnoseE2EFailure } = await diagnosticsModule();
+  assert.equal(diagnoseE2EFailure({
+    caseKey: 'AUTHZ',
+    actual: { httpStatus: 403, code: 'FORBIDDEN' }
+  }).code, 'E2E_AUTHORIZATION');
+
+  assert.equal(diagnoseE2EFailure({
+    caseKey: 'AUTHN',
+    actual: { httpStatus: 401, code: 'SESSION_EXPIRED' }
+  }).code, 'E2E_AUTHENTICATION');
+
+  assert.equal(diagnoseE2EFailure({
+    caseKey: 'REALTIME',
+    message: 'Realtime channel disconnected before booking sync'
+  }).code, 'E2E_REALTIME');
+
+  assert.equal(diagnoseE2EFailure({
+    caseKey: 'BACKEND',
+    actual: { httpStatus: 503 }
+  }).code, 'E2E_BACKEND');
+
+  assert.equal(diagnoseE2EFailure({
+    caseKey: 'CLIENT',
+    trace: { events: [{ type: 'window.error', detail: { message: 'TypeError' } }] }
+  }).code, 'E2E_CLIENT_ERROR');
+});
+
+test('E2E failure fingerprints are stable and avoid raw messages', async () => {
+  const { diagnoseE2EFailure, attachE2EDiagnosis, summarizeE2EFailureDiagnoses } = await diagnosticsModule();
+  const input = {
+    caseKey: 'BOOKING_SYNC',
+    domain: 'Booking',
+    message: '請求過於密集，請稍後再試。',
+    trace: { apiTimings: [{ path: '/functions/v1/booking-api' }] }
+  };
+  const first = diagnoseE2EFailure(input);
+  const second = diagnoseE2EFailure({ ...input, message: '429 too many requests' });
+  assert.equal(first.fingerprint, second.fingerprint);
+  assert.doesNotMatch(JSON.stringify(first), /請求過於密集|too many requests/i);
+
+  const attached = attachE2EDiagnosis({ artifactVersion: 1, seed: 'qa-seed' }, first);
+  assert.equal(attached.artifactVersion, 2);
+  assert.equal(attached.diagnosis.code, 'E2E_RATE_LIMIT');
+
+  const summary = summarizeE2EFailureDiagnoses([first, second]);
+  assert.equal(summary.total, 2);
+  assert.equal(summary.byCategory['rate-limit'], 2);
+  assert.equal(summary.fingerprints[first.fingerprint], 2);
+});
+
+test('admin and user browser E2E persist classified failure codes and v2 diagnostics', () => {
+  const adminApi = fs.readFileSync(path.join(ROOT, 'supabase/functions/test-control-api/index.ts'), 'utf8');
+  const userApi = fs.readFileSync(path.join(ROOT, 'supabase/functions/user-test-api/index.ts'), 'utf8');
+  for (const source of [adminApi, userApi]) {
+    assert.match(source, /e2e-diagnostics\.js/);
+    assert.match(source, /diagnoseE2EFailure/);
+    assert.match(source, /attachE2EDiagnosis/);
+    assert.match(source, /summarizeE2EFailureDiagnoses/);
+    assert.match(source, /diagnosticsVersion:\s*2/);
+    assert.match(source, /failureDiagnostics:/);
+    assert.match(source, /diagnosis\?\.code/);
+  }
+});
+
+test('failure diagnostics have a partial database index for fast triage queries', () => {
+  const migration = fs.readFileSync(
+    path.join(ROOT, 'supabase/migrations/20260923114000_add_e2e_failure_diagnostic_index.sql'),
+    'utf8'
+  );
+  assert.match(migration, /automation_test_cases_failure_diagnostics_idx/);
+  assert.match(migration, /failure_code, created_at desc/);
+  assert.match(migration, /where status = 'failed'/);
+});

@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
 
 type Json = Record<string, unknown>;
 type CaseResult = {
@@ -1063,11 +1064,15 @@ async function recordBrowserRun(
     const domain = asText(raw?.domain, 120) || "Browser E2E";
     const message = asText(raw?.message, 1000);
     const durationMs = Math.max(0, Math.min(600000, Math.trunc(Number(raw?.durationMs) || 0)));
+    const expected = safeBrowserSnapshot(raw?.expected);
+    const actual = safeBrowserSnapshot(raw?.actual);
+    const trace = status === "failed" ? safeBrowserTraceSnapshot(raw?.trace) : {};
+    const diagnosis = status === "failed"
+      ? diagnoseE2EFailure({ caseKey: key, domain, message, actual, trace })
+      : null;
     return {
-      key, name, domain, status, message, durationMs,
-      expected: safeBrowserSnapshot(raw?.expected),
-      actual: safeBrowserSnapshot(raw?.actual),
-      trace: status === "failed" ? safeBrowserTraceSnapshot(raw?.trace) : {},
+      key, name, domain, status, message, durationMs, expected, actual, diagnosis,
+      trace: diagnosis ? attachE2EDiagnosis(trace, diagnosis) : trace,
     };
   });
 
@@ -1097,6 +1102,10 @@ async function recordBrowserRun(
       complexityLevel: Math.max(1, Math.min(8, Number(body.complexityLevel || 1) || 1)),
       clientConcurrency: Math.max(1, Math.min(4, Number(body.clientConcurrency || 1) || 1)),
       failureArtifactCases: failed,
+      diagnosticsVersion: 2,
+      failureDiagnostics: summarizeE2EFailureDiagnoses(
+        normalized.map((item) => item.diagnosis).filter(Boolean),
+      ),
     },
     started_at: startedAt,
     completed_at: completedAt,
@@ -1116,7 +1125,7 @@ async function recordBrowserRun(
       domain: item.domain,
       member_id: memberId,
       status: item.status,
-      failure_code: item.status === "failed" ? "BROWSER_E2E_FAILED" : null,
+      failure_code: item.status === "failed" ? item.diagnosis?.code || "BROWSER_E2E_FAILED" : null,
       failure_message: item.status === "failed" ? item.message : null,
       started_at: now,
       completed_at: now,
@@ -1154,7 +1163,7 @@ async function recordBrowserRun(
           status: "failed",
           expected: { diagnosticsCaptured: true },
           actual: item.trace,
-          message: "僅失敗案例保留 seed、複雜度、participant、Realtime 摘要與 API timing。",
+          message: "失敗案例保留診斷分類、穩定指紋、seed、複雜度、participant、Realtime 摘要與 API timing。",
           started_at: now,
           completed_at: now,
           duration_ms: 0,
