@@ -25,7 +25,7 @@ function harness(bookings = [], extra = {}) {
   const window = { addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0) };
   const context = vm.createContext({ window, document: {}, performance, TextEncoder, CSS: { escape: (x) => x }, ...extra });
   const expose = `
-    window.qa = { state, pairedBookingCandidates, livePairedBookingSet, waitForLivePairedBookingTarget, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runAdmin, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal, beginBookingRealtimeProbe, verifyBookingRealtimeSync };
+    window.qa = { state, pairedBookingCandidates, livePairedBookingSet, waitForLivePairedBookingTarget, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal, beginBookingRealtimeProbe, verifyBookingRealtimeSync };
     window.qa.install = (io) => {
       adminBookingBootstrapSnapshot = io.bootstrap;
       verifyDetectedBookingInCoreFilter = io.core;
@@ -49,7 +49,6 @@ function harness(bookings = [], extra = {}) {
       adminSession = async () => ({ idToken: 'test-stub' });
       postFunction = io.details;
     };
-    window.qa.replacePaired = (run) => { runPaired = run; };
     window.qa.preflightIO = (fixture) => {
       selectedParticipantCount = () => 1;
       openClientWindows = () => [];
@@ -262,13 +261,15 @@ test('live admin runner no longer waits for every client task to finish before b
   assert.match(source, /completeHandoffBeforeMemberUiReuse/);
 });
 
-test('admin full E2E opens a booking client and includes the existing admin suite', async () => {
-  const { qa } = harness();
-  let options;
-  qa.replacePaired(async (value) => { options = value; });
-  await qa.runAdmin('full');
-  assert.equal(options.bookingOnly, true);
-  assert.equal(options.includeAdminSuite, true);
+test('the only paired full E2E always includes booking collaboration and the complete admin suite', () => {
+  assert.match(source, /async function runPaired\(\)/);
+  assert.match(source, /surfacePlan: shuffled\(PAIRED_SURFACES\)/);
+  assert.match(source, /const allAdminDefinitions = adminDefinitions\('full'\)/);
+  assert.match(source, /runPairedAdminBookingLive\(participant\)/);
+  assert.match(source, /await executeCases\(remainingAdminDefinitions, '管理端 · 其餘完整 E2E'\)/);
+  assert.match(source, /await runDeepPairedSuite/);
+  assert.match(source, /PAIRED_HUMAN_INTERACTION_COVERAGE/);
+  assert.doesNotMatch(source, /bookingOnly|includeAdminSuite/);
 });
 
 test('the full handoff processes state-pack and other retained QA bookings as well as human bookings', async () => {
