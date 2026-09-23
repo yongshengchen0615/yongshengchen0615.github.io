@@ -387,7 +387,6 @@
     }
     state.backgroundExecution = true;
     state.backgroundRunId = String(options?.runId || new URLSearchParams(window.location.search).get('e2eRunId') || '');
-    publishBackgroundStatus();
     return runPaired({
       participantCount: Number(options?.participantCount || 0),
       clientWindows: Array.isArray(options?.clientWindows) ? options.clientWindows : [],
@@ -4548,7 +4547,12 @@
 
   window.MemberAdminE2EControl = Object.freeze({
     version: VERSION,
-    runPairedFull: () => runPaired(),
+    runPairedFull: () => isBackgroundRunnerWindow()
+      ? runPaired({ backgroundExecution: true })
+      : startUnifiedBackgroundE2E(),
+    runUnifiedBackground: (options) => runUnifiedBackground(options),
+    receiveBackgroundStatus: (snapshot) => receiveBackgroundStatus(snapshot),
+    getStatus: () => backgroundStatusSnapshot(),
     stop: () => requestStop(),
     maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
   });
