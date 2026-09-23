@@ -1443,7 +1443,39 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
       updated_by: actor,
     }).select("id,event_ticket_id").single();
     if (event.error || !event.data) throw new ApiError(500, "QA_FIXTURE_EVENT_FAILED", "無法建立活動票券測試資料。");
-    return { fixtureTag: tag, eventTicketId: event.data.event_ticket_id };
+
+    const lottery = await s.from("event_tickets").insert({
+      event_ticket_id: "QA-UI-EVT-LOT-" + tag,
+      title: "QA 真人操作活動抽獎券",
+      ticket_type: "lottery",
+      description: "Human-like lottery E2E fixture",
+      usage_method: "QA UI lottery",
+      usage_instructions: "Only for test account lottery E2E",
+      prizes: [{
+        prizeTitle: "E2E 必中獎",
+        prizeDescription: "100% deterministic event lottery E2E prize",
+        winRate: 100,
+      }],
+      status: "active",
+      starts_on: isoDateAdd(today, -1),
+      ends_on: isoDateAdd(today, 1),
+      quota: 10,
+      accent: "#5f7769",
+      allowed_tier_keys: ["general","silver","gold","platinum"],
+      created_by: actor,
+      updated_by: actor,
+    }).select("id,event_ticket_id").single();
+    if (lottery.error || !lottery.data) {
+      await s.from("event_tickets").delete().eq("id", event.data.id);
+      throw new ApiError(500, "QA_FIXTURE_EVENT_LOTTERY_FAILED", "無法建立活動抽獎券測試資料。");
+    }
+
+    return {
+      fixtureTag: tag,
+      eventTicketId: event.data.event_ticket_id,
+      lotteryEventTicketId: lottery.data.event_ticket_id,
+      lotteryPrizeTitle: "E2E 必中獎",
+    };
   }
 
   if (surface === "calendar") {
@@ -1506,14 +1538,19 @@ async function cleanupHumanFixture(s: any, identity: any, surface: Surface, body
   }
 
   if (surface === "event") {
-    const event = await s.from("event_tickets").select("id,created_by").eq("event_ticket_id", "QA-UI-EVT-" + tag).maybeSingle();
-    if (event.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認活動票券測試資料。");
-    if (!event.data) return { cleaned: true };
-    if (String(event.data.created_by) !== actorPrefix) throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "測試資料不屬於目前測試會員。");
-    await s.from("event_ticket_claims").delete().eq("event_ticket_id", event.data.id).eq("member_id", identity.memberId);
-    await s.from("calendar_items").delete().eq("source_event_ticket_id", event.data.id);
-    await s.from("event_tickets").delete().eq("id", event.data.id);
-    return { cleaned: true };
+    const ids = ["QA-UI-EVT-" + tag, "QA-UI-EVT-LOT-" + tag];
+    const events = await s.from("event_tickets").select("id,event_ticket_id,created_by").in("event_ticket_id", ids);
+    if (events.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認活動票券測試資料。");
+    const rows = Array.isArray(events.data) ? events.data : [];
+    if (rows.some((row: any) => String(row.created_by) !== actorPrefix)) {
+      throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "測試資料不屬於目前測試會員。");
+    }
+    for (const row of rows) {
+      await s.from("event_ticket_claims").delete().eq("event_ticket_id", row.id).eq("member_id", identity.memberId);
+      await s.from("calendar_items").delete().eq("source_event_ticket_id", row.id);
+      await s.from("event_tickets").delete().eq("id", row.id);
+    }
+    return { cleaned: true, cleanedEventTicketCount: rows.length };
   }
 
   if (surface === "calendar") {
