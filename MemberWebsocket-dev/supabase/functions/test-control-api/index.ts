@@ -187,6 +187,8 @@ async function prepareComplexFixtures(
   identity: { lineUserId: string },
   body: Json,
 ): Promise<Json> {
+  const complexityLevel = Math.max(1, Math.min(8, Number(body.complexityLevel || 1) || 1));
+  const seed = asText(body.seed, 160);
   const requestedTag = asText(body.runTag, 40).replace(/[^A-Za-z0-9_-]/g, "");
   const runTag = requestedTag || (new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + crypto.randomUUID().replaceAll("-", "").slice(0, 8));
   const rpc = await supabase.rpc("admin_prepare_complex_e2e_fixtures", {
@@ -196,7 +198,12 @@ async function prepareComplexFixtures(
   if (rpc.error) {
     throw new ApiError(503, "E2E_FIXTURE_PREPARE_FAILED", "目前無法建立完整 E2E 前置資料。", rpc.error.message || null);
   }
-  const fixture = rpc.data && typeof rpc.data === "object" ? rpc.data : {};
+  const fixtureBase = rpc.data && typeof rpc.data === "object" ? rpc.data : {};
+  const fixture = {
+    ...(fixtureBase as Json),
+    complexityLevel,
+    seed,
+  };
   await audit(supabase, identity, "test_control.fixture.prepare", "e2e_fixture", runTag, fixture as Json);
   await emitRealtimeEvent(supabase, "test_mode.fixture.prepared");
   return fixture as Json;
@@ -315,6 +322,30 @@ async function runView(supabase: any, runId: string): Promise<Json> {
   return {
     run: runClient(runResult.data),
     cases: cases.map((row: any) => caseClient(row, byCase.get(row.id) || [])),
+  };
+}
+
+async function e2eProfile(supabase: any): Promise<Json> {
+  const result = await supabase
+    .from("automation_test_runs")
+    .select("summary,created_at,status")
+    .eq("environment", "MemberWebsocket-dev")
+    .eq("suite", "full")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (result.error) throw new ApiError(503, "E2E_PROFILE_READ_FAILED", "目前無法讀取 E2E 複雜度歷史。");
+
+  const rootRuns = (result.data || []).filter((row: any) => row?.summary?.rootRun === true);
+  const completedRootRuns = rootRuns.length;
+  const last = rootRuns[0] || null;
+  const nextComplexityLevel = Math.max(1, Math.min(8, completedRootRuns + 1));
+  return {
+    completedRootRuns,
+    nextComplexityLevel,
+    maxComplexityLevel: 8,
+    previousSeed: asText(last?.summary?.e2eSeed, 160),
+    previousComplexityLevel: Math.max(0, Number(last?.summary?.complexityLevel || 0) || 0),
+    previousStatus: asText(last?.status, 40),
   };
 }
 
@@ -971,11 +1002,16 @@ async function recordBrowserRun(
     passed_cases: passed,
     failed_cases: failed,
     summary: {
-      runnerVersion: "admin-browser-e2e-20260922-1",
+      runnerVersion: "admin-browser-e2e-20260923-2",
       runnerKind,
       skippedCases: skipped,
       memberId,
       durationMs,
+      rootRun: body.rootRun === true,
+      rootRunId: asText(body.rootRunId, 80),
+      e2eSeed: asText(body.e2eSeed, 160),
+      complexityLevel: Math.max(1, Math.min(8, Number(body.complexityLevel || 1) || 1)),
+      clientConcurrency: Math.max(1, Math.min(4, Number(body.clientConcurrency || 1) || 1)),
     },
     started_at: startedAt,
     completed_at: completedAt,
@@ -1149,6 +1185,14 @@ Deno.serve(async (request: Request) => {
     const supabase = dbClient();
     const identity = await verifyAdminIdentity(asText(body.idToken, 10_000));
     await authorizeAdmin(supabase, identity);
+
+    if (action === "admin.test-control.e2e-profile") {
+      return response(origin, {
+        ok: true,
+        status: 200,
+        data: await e2eProfile(supabase),
+      });
+    }
 
     if (action === "admin.test-control.prepare-e2e-fixtures") {
       const fixture = await prepareComplexFixtures(supabase, identity, body);
