@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.9';
+  const VERSION = '2026-09-23.10';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -356,6 +356,43 @@
     return true;
   }
 
+  async function waitForBackgroundRunnerControl(runnerWindow) {
+    const deadline = Date.now() + BACKGROUND_RUNNER_READY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (!runnerWindow || runnerWindow.closed) {
+        const error = new Error('背景管理端 Runner 視窗已關閉。');
+        error.code = 'E2E_BACKGROUND_RUNNER_CLOSED';
+        throw error;
+      }
+      try {
+        const doc = runnerWindow.document;
+        const errorView = doc?.getElementById?.('errorView');
+        const errorVisible = Boolean(errorView && !errorView.classList.contains('hidden'));
+        if (errorVisible) {
+          const detail = String(
+            doc.getElementById('errorMessage')?.textContent
+            || doc.getElementById('errorTitle')?.textContent
+            || '背景管理端 Runner 初始化失敗。'
+          ).trim();
+          const error = new Error(detail || '背景管理端 Runner 初始化失敗。');
+          error.code = 'E2E_BACKGROUND_RUNNER_BOOT_FAILED';
+          throw error;
+        }
+        if (doc?.documentElement?.dataset?.memberAdminReady === 'true') {
+          const candidate = runnerWindow.MemberAdminE2EControl;
+          if (typeof candidate?.runUnifiedBackground === 'function') return candidate;
+        }
+      } catch (error) {
+        if (error?.code === 'E2E_BACKGROUND_RUNNER_BOOT_FAILED') throw error;
+      }
+      await sleep(150);
+    }
+    const error = new Error('背景管理端 Runner 未能在允許時間內完成登入與初始化。');
+    error.code = 'E2E_BACKGROUND_RUNNER_NOT_READY';
+    throw error;
+  }
+
+
   function startUnifiedBackgroundE2E() {
     if (state.running) return { started: false, reason: 'already-running' };
 
@@ -389,22 +426,7 @@
     try { runnerWindow.blur?.(); window.focus?.(); } catch {}
 
     const completion = (async () => {
-      const control = await waitFor(() => {
-        try {
-          if (!runnerWindow || runnerWindow.closed) return null;
-          if (runnerWindow.document?.documentElement?.dataset?.memberAdminReady !== 'true') return null;
-          const candidate = runnerWindow.MemberAdminE2EControl;
-          return typeof candidate?.runUnifiedBackground === 'function' ? candidate : null;
-        } catch {
-          return null;
-        }
-      }, BACKGROUND_RUNNER_READY_TIMEOUT_MS, 150);
-
-      if (!control) {
-        const error = new Error('背景管理端 Runner 未能在允許時間內完成登入與初始化。');
-        error.code = 'E2E_BACKGROUND_RUNNER_NOT_READY';
-        throw error;
-      }
+      const control = await waitForBackgroundRunnerControl(runnerWindow);
 
       setMessage('完整 E2E 已移交背景 Runner；你可以繼續操作原本管理端。測試視窗請保持開啟。');
       try { runnerWindow.blur?.(); window.focus?.(); } catch {}
