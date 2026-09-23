@@ -66,7 +66,7 @@ test('standalone admin booking queue E2E actively mutates pending and cancellati
 
   assert.match(e2e, /runBookingPending:/);
   assert.match(e2e, /runBookingCancellation:/);
-  assert.match(adminIndex, /e2e-control\.js\?v=admin-e2e-20260923-3/);
+  assert.match(adminIndex, /e2e-control\.js\?v=admin-e2e-20260923-4/);
 });
 
 test('admin full E2E covers standalone lottery ticket and event lottery ticket persistence', () => {

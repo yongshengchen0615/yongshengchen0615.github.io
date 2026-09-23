@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.2';
+  const VERSION = '2026-09-23.3';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_BOOKING_LIVE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -2713,23 +2713,25 @@
 
 
 
-  async function ensureBookingRealtimeClient(participant) {
-    let child = participant?.window;
+  async function ensureBookingRealtimeClient(participant, timeoutMs = 20000) {
+    const child = participant?.window;
     if (!child || child.closed) throw new Error('預約用戶端視窗已關閉，無法驗證 Realtime。');
-    if (participant.lastSurfaceKey !== 'booking' || child.MemberUserTestControl?.surface !== 'booking') {
-      const login = await createPairedSession(participant.account, 'booking');
-      participant.login = login;
-      participant.lastSurfaceKey = 'booking';
-      seedParticipantSession(participant, login);
-      child = await waitParticipantSurface(participant, 'booking', 'bookingView');
-    }
-    const hooks = child.MemberClientQaHooks;
-    if (hooks?.surface !== 'booking'
-      || typeof hooks.getRenderCount !== 'function'
-      || typeof hooks.getBookingSnapshot !== 'function') {
-      throw new Error('預約用戶端 Realtime QA probe 尚未就緒。');
-    }
-    return { child, hooks };
+
+    const ready = await waitFor(() => {
+      if (state.cancelled) return null;
+      if (participant.lastSurfaceKey !== 'booking') return null;
+      if (child.MemberUserTestControl?.surface !== 'booking') return null;
+      const hooks = child.MemberClientQaHooks;
+      if (hooks?.surface !== 'booking'
+        || typeof hooks.getRenderCount !== 'function'
+        || typeof hooks.getBookingSnapshot !== 'function') return null;
+      return { child, hooks };
+    }, timeoutMs, 100);
+
+    if (ready) return ready;
+    const error = new Error('預約用戶端尚未停在預約頁；管理端不會強制切換用戶端，以免中斷正在進行的真人 E2E。');
+    error.code = 'E2E_BOOKING_CLIENT_NOT_READY';
+    throw error;
   }
 
   async function beginBookingRealtimeProbe(participant, bookingId) {
