@@ -376,6 +376,21 @@ test('large paired reports retain every case within the server limit of 80 per r
 });
 
 
+test('admin booking bootstrap polling is globally coalesced below the backend read limit', () => {
+  const start = source.indexOf('async function adminBookingBootstrapSnapshot()');
+  const end = source.indexOf('\n  function bookingCreatedMs', start);
+  assert.ok(start >= 0 && end > start);
+  const body = source.slice(start, end);
+  assert.match(source, /const ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS = 1500/);
+  assert.match(source, /let adminBookingBootstrapInFlight = null/);
+  assert.match(source, /let adminBookingBootstrapLastData = null/);
+  assert.match(body, /if \(adminBookingBootstrapInFlight\) return adminBookingBootstrapInFlight/);
+  assert.match(body, /await sleep\(waitMs\)/);
+  assert.match(body, /adminBookingBootstrapLastData = data/);
+  assert.match(body, /adminBookingBootstrapLastAt = Date\.now\(\)/);
+});
+
+
 test('live admin realtime probe waits for the existing booking client and never hijacks another surface', () => {
   const start = source.indexOf('async function ensureBookingRealtimeClient(participant');
   const end = source.indexOf('\n  async function beginBookingRealtimeProbe', start);
