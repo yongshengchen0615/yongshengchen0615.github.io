@@ -206,6 +206,195 @@
     return { key, name, domain, run, humanRequired: adminHumanRequired(key, name, domain) };
   }
 
+  function backgroundRunnerUrl(runId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(BACKGROUND_RUNNER_PARAM, '1');
+    url.searchParams.set('e2eRunId', String(runId || Date.now()));
+    return url.href;
+  }
+
+  function closeWindowList(windows) {
+    for (const item of Array.isArray(windows) ? windows : []) {
+      try { if (item && !item.closed) item.close(); } catch {}
+    }
+  }
+
+  function openBackgroundRunnerWindow(runId) {
+    const child = window.open(
+      backgroundRunnerUrl(runId),
+      'admin-e2e-background-' + String(runId || Date.now()),
+      'popup=yes,width=1280,height=900,resizable=yes,scrollbars=yes'
+    );
+    if (!child) {
+      const error = new Error('瀏覽器阻擋了背景管理端 E2E Runner。請允許此網站開啟彈出式視窗後重試。');
+      error.code = 'E2E_BACKGROUND_POPUP_BLOCKED';
+      throw error;
+    }
+    return child;
+  }
+
+  function backgroundStatusSnapshot() {
+    const passed = state.results.filter((row) => row.status === 'passed').length;
+    const failed = state.results.filter((row) => row.status === 'failed').length;
+    const skipped = state.results.filter((row) => row.status === 'skipped').length;
+    return {
+      runId: state.backgroundRunId,
+      running: state.running,
+      cancelled: state.cancelled,
+      message: state.lastMessage,
+      messageError: state.lastMessageError,
+      summary: { total: state.results.length, passed, failed, skipped },
+      results: state.results.slice(-200).map((row) => ({
+        key: String(row?.key || ''),
+        name: String(row?.name || ''),
+        domain: String(row?.domain || ''),
+        status: String(row?.status || 'queued'),
+        durationMs: row?.durationMs == null ? null : Number(row.durationMs || 0),
+        message: String(row?.message || '')
+      })),
+      participants: state.participants.map((participant) => ({
+        index: Number(participant?.index || 0),
+        status: String(participant?.status || ''),
+        surface: String(participant?.surface || ''),
+        adminStatus: String(participant?.adminStatus || '')
+      }))
+    };
+  }
+
+  function publishBackgroundStatus() {
+    if (!state.backgroundExecution || !isBackgroundRunnerWindow()) return;
+    const snapshot = backgroundStatusSnapshot();
+    try {
+      const opener = window.opener;
+      if (opener && !opener.closed && typeof opener.MemberAdminE2EControl?.receiveBackgroundStatus === 'function') {
+        opener.MemberAdminE2EControl.receiveBackgroundStatus(snapshot);
+      }
+    } catch {}
+  }
+
+  function receiveBackgroundStatus(snapshot) {
+    if (isBackgroundRunnerWindow() || !snapshot || typeof snapshot !== 'object') return false;
+    if (state.backgroundRunId && snapshot.runId && String(snapshot.runId) !== String(state.backgroundRunId)) return false;
+    if (!state.backgroundRunId && snapshot.runId) state.backgroundRunId = String(snapshot.runId);
+    state.cancelled = Boolean(snapshot.cancelled);
+    state.lastMessage = String(snapshot.message || '');
+    state.lastMessageError = Boolean(snapshot.messageError);
+    state.results = Array.isArray(snapshot.results) ? snapshot.results.map((row) => ({ ...row })) : state.results;
+    state.participants = Array.isArray(snapshot.participants)
+      ? snapshot.participants.map((participant) => ({ ...participant }))
+      : state.participants;
+
+    if (snapshot.running && !state.running) setBusy(true, '背景執行');
+    if (!snapshot.running && state.running) setBusy(false);
+    if (state.message && state.lastMessage) {
+      state.message.textContent = state.lastMessage;
+      state.message.classList.remove('hidden');
+      state.message.classList.toggle('success', !state.lastMessageError);
+    }
+    render();
+    renderParticipants();
+    return true;
+  }
+
+  function startUnifiedBackgroundE2E() {
+    if (state.running) return { started: false, reason: 'already-running' };
+
+    let participantCount = 1;
+    let runnerWindow = null;
+    let clientWindows = [];
+    const runId = 'BG-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
+    try {
+      participantCount = selectedParticipantCount();
+      runnerWindow = openBackgroundRunnerWindow(runId);
+      clientWindows = openClientWindows(participantCount, false);
+    } catch (error) {
+      closeWindowList(clientWindows);
+      try { if (runnerWindow && !runnerWindow.closed) runnerWindow.close(); } catch {}
+      setMessage(error?.message || '無法啟動背景完整 E2E。', true);
+      return { started: false, error: plainError(error) };
+    }
+
+    state.cancelled = false;
+    state.results = [];
+    state.participants = [];
+    state.backgroundRunnerWindow = runnerWindow;
+    state.backgroundRunId = runId;
+    state.lastMessage = '背景 E2E Runner 啟動中；完成移交後可繼續操作此管理端視窗。';
+    state.lastMessageError = false;
+    setBusy(true, '背景 Runner 啟動');
+    setMessage(state.lastMessage);
+    render();
+    try { runnerWindow.blur?.(); window.focus?.(); } catch {}
+
+    const completion = (async () => {
+      const control = await waitFor(() => {
+        try {
+          if (!runnerWindow || runnerWindow.closed) return null;
+          if (runnerWindow.document?.documentElement?.dataset?.memberAdminReady !== 'true') return null;
+          const candidate = runnerWindow.MemberAdminE2EControl;
+          return typeof candidate?.runUnifiedBackground === 'function' ? candidate : null;
+        } catch {
+          return null;
+        }
+      }, BACKGROUND_RUNNER_READY_TIMEOUT_MS, 150);
+
+      if (!control) {
+        const error = new Error('背景管理端 Runner 未能在允許時間內完成登入與初始化。');
+        error.code = 'E2E_BACKGROUND_RUNNER_NOT_READY';
+        throw error;
+      }
+
+      setMessage('完整 E2E 已移交背景 Runner；你可以繼續操作原本管理端。測試視窗請保持開啟。');
+      try { runnerWindow.blur?.(); window.focus?.(); } catch {}
+
+      const result = await control.runUnifiedBackground({
+        participantCount,
+        clientWindows,
+        runId
+      });
+
+      if (Array.isArray(result?.results)) state.results = result.results.map((row) => ({ ...row }));
+      render();
+      const failed = state.results.filter((row) => row.status === 'failed').length;
+      setMessage(
+        result?.cancelled
+          ? '背景完整 E2E 已停止；已完成資料與測試紀錄保留。'
+          : failed
+            ? '背景完整 E2E 已完成，發現 ' + failed + ' 個異常。'
+            : '背景完整 E2E 已完成；後端 QA、管理端與五種用戶端協同測試均已執行。',
+        !result?.cancelled && failed > 0
+      );
+      return result;
+    })().catch((error) => {
+      closeWindowList(clientWindows);
+      setMessage(error?.message || '背景完整 E2E 執行失敗。', true);
+      return { error: plainError(error), results: state.results.slice() };
+    }).finally(() => {
+      setBusy(false);
+      state.backgroundRunnerWindow = null;
+      state.backgroundCompletion = null;
+    });
+
+    state.backgroundCompletion = completion;
+    return { started: true, runId, participantCount, completion };
+  }
+
+  async function runUnifiedBackground(options = {}) {
+    if (!isBackgroundRunnerWindow()) {
+      const error = new Error('完整 E2E 的背景執行只能在隔離 Runner 視窗啟動。');
+      error.code = 'E2E_BACKGROUND_RUNNER_REQUIRED';
+      throw error;
+    }
+    state.backgroundExecution = true;
+    state.backgroundRunId = String(options?.runId || new URLSearchParams(window.location.search).get('e2eRunId') || '');
+    publishBackgroundStatus();
+    return runPaired({
+      participantCount: Number(options?.participantCount || 0),
+      clientWindows: Array.isArray(options?.clientWindows) ? options.clientWindows : [],
+      backgroundExecution: true
+    });
+  }
+
   function setBusy(running, label = '') {
     state.running = Boolean(running);
     state.section?.querySelectorAll('button[data-admin-e2e-control]').forEach((button) => {
