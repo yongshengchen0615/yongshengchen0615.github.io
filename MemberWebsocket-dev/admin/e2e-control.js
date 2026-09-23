@@ -371,6 +371,7 @@
     } catch (error) {
       closeWindowList(clientWindows);
       try { if (runnerWindow && !runnerWindow.closed) runnerWindow.close(); } catch {}
+      state.backgroundRunId = '';
       setMessage(error?.message || '無法啟動背景完整 E2E。', true);
       return { started: false, error: plainError(error) };
     }
