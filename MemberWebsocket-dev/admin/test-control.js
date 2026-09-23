@@ -1,6 +1,7 @@
 (() => {
   'use strict';
 
+  const VERSION = '2026-09-23.1';
   const els = {};
   let currentRunId = '';
   let pollTimer = 0;
@@ -10,8 +11,6 @@
     [
       'testModeTab',
       'automationTestRunnerBadge',
-      'runQuickAutomationTestButton',
-      'runFullAutomationTestButton',
       'purgeTestDataButton',
       'automationTestMessage',
       'automationTestRunCode',
@@ -29,10 +28,8 @@
       'automationTestHistoryEmpty'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
-    if (!els.testModeTab || !els.runQuickAutomationTestButton) return;
+    if (!els.testModeTab) return;
 
-    els.runQuickAutomationTestButton.addEventListener('click', () => startRun('quick'));
-    els.runFullAutomationTestButton.addEventListener('click', () => startRun('full'));
     els.purgeTestDataButton?.addEventListener('click', () => purgeTestData().catch(showError));
     els.testModeTab.addEventListener('click', () => loadHistory().catch(showError));
 
@@ -96,6 +93,7 @@
       if (currentRunId) {
         const detail = await request('admin.test-control.status', { runId: currentRunId });
         renderDetail(detail);
+        if (String(detail.run?.status || '') === 'running') beginPolling();
       }
     }
   }
@@ -140,8 +138,13 @@
     }
   }
 
-  async function startRun(suite) {
-    if (busy) return;
+  async function startRun(suite, options = {}) {
+    if (busy) {
+      const error = new Error('自動化測試目前正在執行。');
+      error.code = 'TEST_CONTROL_BUSY';
+      throw error;
+    }
+    const rethrow = options?.rethrow === true;
     setBusy(true);
     setMessage(suite === 'full' ? '正在建立完整測試…' : '正在建立快速測試…');
     try {
@@ -151,24 +154,26 @@
       renderHistory(Array.isArray(created.runs) ? created.runs : []);
       if (!currentRunId) throw new Error('自動化測試建立成功，但未取得執行識別。');
 
-      setMessage('測試執行中；畫面會持續更新每個案例與測試數據。');
+      setMessage('完整 E2E 後端階段執行中；畫面會持續更新每個案例與測試數據。');
       beginPolling();
 
-      const executePromise = request('admin.test-control.execute', { runId: currentRunId });
-      const finalData = await executePromise;
+      const finalData = await request('admin.test-control.execute', { runId: currentRunId });
       stopPolling();
       renderDetail(finalData);
       renderHistory(Array.isArray(finalData.runs) ? finalData.runs : []);
       const failed = Number(finalData.run?.failedCases || 0);
       setMessage(
         failed > 0
-          ? '測試完成：有 ' + failed + ' 個案例失敗，請展開失敗案例查看 Expected / Actual。'
-          : '測試完成：所有案例通過。',
+          ? '後端完整 E2E 完成：有 ' + failed + ' 個案例失敗，Browser 協同階段仍會繼續收集結果。'
+          : '後端完整 E2E 完成：所有案例通過。',
         failed > 0
       );
+      return finalData;
     } catch (error) {
       stopPolling();
       showError(error);
+      if (rethrow) throw error;
+      return { error: { code: String(error?.code || error?.name || 'ERROR'), message: String(error?.message || '未知錯誤') } };
     } finally {
       setBusy(false);
     }
@@ -196,9 +201,12 @@
 
   function setBusy(value) {
     busy = Boolean(value);
-    els.runQuickAutomationTestButton.disabled = busy;
-    els.runFullAutomationTestButton.disabled = busy;
     if (els.purgeTestDataButton) els.purgeTestDataButton.disabled = busy;
+    if (els.automationTestRunnerBadge) {
+      els.automationTestRunnerBadge.textContent = busy ? 'Runner：完整 E2E 執行中' : 'Runner：待命';
+      els.automationTestRunnerBadge.classList.toggle('is-on', busy);
+      els.automationTestRunnerBadge.classList.toggle('is-off', !busy);
+    }
   }
 
   function statusText(status) {
@@ -466,4 +474,12 @@
   function showError(error) {
     setMessage(error && error.message ? error.message : '自動化測試操作失敗，請稍後再試。', true);
   }
+
+  window.MemberAdminTestControl = Object.freeze({
+    version: VERSION,
+    runFull: () => startRun('full', { rethrow: true }),
+    refresh: () => loadHistory(),
+    isRunning: () => busy,
+    currentRunId: () => currentRunId
+  });
 })();
