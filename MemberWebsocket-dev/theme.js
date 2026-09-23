@@ -2,58 +2,94 @@
   'use strict';
 
   const STORAGE_KEY = 'lumen-color-theme-v1';
-  const THEMES = new Set(['light', 'dark']);
+  const DARK = 'dark';
+  const LIGHT = 'light';
+  const root = document.documentElement;
   const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  let toggleButton = null;
+  let currentTheme = '';
+
+  function isTheme(value) {
+    return value === LIGHT || value === DARK;
+  }
 
   function readStoredTheme() {
     try {
       const value = window.localStorage.getItem(STORAGE_KEY);
-      return THEMES.has(value) ? value : '';
+      return isTheme(value) ? value : '';
     } catch {
       return '';
     }
   }
 
   function preferredTheme() {
-    return readStoredTheme() || (media?.matches ? 'dark' : 'light');
+    return readStoredTheme() || (media?.matches ? DARK : LIGHT);
   }
 
-  function updateThemeMeta(theme) {
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f1714' : '#f6f1e8');
+  function syncThemeMeta(theme) {
+    if (!themeMeta) return;
+    const next = theme === DARK ? '#0d1411' : '#f3f5f2';
+    if (themeMeta.content !== next) themeMeta.content = next;
   }
 
-  function updateButton(theme) {
-    const button = document.getElementById('themeToggleButton');
+  function syncToggle(theme) {
+    const button = toggleButton || document.getElementById('themeToggleButton');
     if (!button) return;
-    const isDark = theme === 'dark';
-    button.setAttribute('aria-pressed', String(isDark));
-    button.setAttribute('aria-label', isDark ? '切換為亮色調' : '切換為暗色調');
-    button.setAttribute('title', isDark ? '切換為亮色調' : '切換為暗色調');
-    button.textContent = isDark ? '☀ 亮色' : '☾ 暗色';
+    toggleButton = button;
+
+    const isDark = theme === DARK;
+    const pressed = String(isDark);
+    const label = isDark ? '切換為亮色調' : '切換為暗色調';
+    const text = isDark ? '☀ 亮色' : '☾ 暗色';
+
+    if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
+    if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+    if (button.title !== label) button.title = label;
+    if (button.textContent !== text) button.textContent = text;
+  }
+
+  function persistTheme(theme) {
+    try {
+      if (window.localStorage.getItem(STORAGE_KEY) !== theme) {
+        window.localStorage.setItem(STORAGE_KEY, theme);
+      }
+    } catch {}
   }
 
   function applyTheme(theme, options = {}) {
-    const next = THEMES.has(theme) ? theme : preferredTheme();
-    document.documentElement.dataset.theme = next;
-    document.documentElement.style.colorScheme = next;
-    updateThemeMeta(next);
-    updateButton(next);
+    const next = isTheme(theme) ? theme : preferredTheme();
+    const changed = currentTheme !== next || root.dataset.theme !== next;
 
-    if (options.persist === true) {
-      try { window.localStorage.setItem(STORAGE_KEY, next); } catch {}
+    if (changed) {
+      root.dataset.theme = next;
+      currentTheme = next;
+      syncThemeMeta(next);
+      syncToggle(next);
+
+      if (options.emit !== false) {
+        window.dispatchEvent(new CustomEvent('lumen:themechange', { detail: { theme: next } }));
+      }
+    } else {
+      syncToggle(next);
     }
 
-    if (options.emit !== false) {
-      window.dispatchEvent(new CustomEvent('lumen:themechange', { detail: { theme: next } }));
-    }
+    if (options.persist === true) persistTheme(next);
     return next;
   }
 
   function createToggle() {
-    if (document.getElementById('themeToggleButton')) return;
+    if (toggleButton?.isConnected) return toggleButton;
+
+    const existing = document.getElementById('themeToggleButton');
+    if (existing) {
+      toggleButton = existing;
+      syncToggle(currentTheme || preferredTheme());
+      return existing;
+    }
+
     const host = document.querySelector('.account-menu');
-    if (!host) return;
+    if (!host) return null;
 
     const button = document.createElement('button');
     button.id = 'themeToggleButton';
@@ -65,12 +101,15 @@
     if (logout) host.insertBefore(button, logout);
     else host.appendChild(button);
 
+    toggleButton = button;
+    syncToggle(currentTheme || preferredTheme());
+
     button.addEventListener('click', () => {
-      const current = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-      applyTheme(current === 'dark' ? 'light' : 'dark', { persist: true });
+      const next = currentTheme === DARK ? LIGHT : DARK;
+      applyTheme(next, { persist: true });
     });
 
-    updateButton(document.documentElement.dataset.theme || preferredTheme());
+    return button;
   }
 
   applyTheme(preferredTheme(), { emit: false });
@@ -83,20 +122,23 @@
 
   window.addEventListener('storage', (event) => {
     if (event.key !== STORAGE_KEY) return;
-    applyTheme(THEMES.has(event.newValue) ? event.newValue : preferredTheme(), { emit: false });
+    const next = isTheme(event.newValue)
+      ? event.newValue
+      : (media?.matches ? DARK : LIGHT);
+    applyTheme(next, { emit: false });
   });
 
   media?.addEventListener?.('change', (event) => {
     if (readStoredTheme()) return;
-    applyTheme(event.matches ? 'dark' : 'light');
+    applyTheme(event.matches ? DARK : LIGHT);
   });
 
   window.LumenTheme = Object.freeze({
-    get: () => document.documentElement.dataset.theme || preferredTheme(),
+    get: () => currentTheme || preferredTheme(),
     set: (theme) => applyTheme(theme, { persist: true }),
     reset: () => {
       try { window.localStorage.removeItem(STORAGE_KEY); } catch {}
-      return applyTheme(media?.matches ? 'dark' : 'light');
+      return applyTheme(media?.matches ? DARK : LIGHT);
     }
   });
 })();
