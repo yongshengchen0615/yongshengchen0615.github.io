@@ -60,6 +60,7 @@ jobs:
       - name: Check browser JavaScript syntax
         run: |
           printf '%s\n' \
+            MemberWebsocket-dev/theme.js \
             MemberWebsocket-dev/test-mode-client.js \
             MemberWebsocket-dev/user-test-control.js \
             MemberWebsocket-dev/member-system.js \
