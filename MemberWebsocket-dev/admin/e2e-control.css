@@ -114,6 +114,34 @@
   line-height: 1.35;
 }
 
+.admin-e2e-mobile-option {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+.admin-e2e-mobile-option > span {
+  min-width: 0;
+}
+
+.admin-e2e-mobile-option > span > strong,
+.admin-e2e-mobile-option > span > small {
+  display: block;
+}
+
+.admin-e2e-mobile-option > span > small {
+  margin-top: 3px;
+}
+
+.admin-e2e-paired-config .admin-e2e-mobile-option input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  accent-color: currentColor;
+}
+
+.admin-e2e-config-note {
+  grid-column: 1 / -1;
+}
+
 .admin-e2e-paired-config input {
   width: 84px;
   max-width: 100%;
