@@ -116,6 +116,15 @@
 
   function clientError(code, message) { const error = new Error(message); error.code = code; return error; }
 
+  function isBackgroundE2ERunner() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('e2eBackgroundRunner') === '1' && Boolean(params.get('e2eRunId'));
+    } catch {
+      return false;
+    }
+  }
+
   async function requestFunction(functionName, action, payload = {}) {
     const ctx = await context();
     const endpoint = `${String(ctx.config.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/${functionName}`;
@@ -221,7 +230,7 @@
   }
 
   async function refresh(showSuccess, includeBookings) {
-    if (loading || document.visibilityState === 'hidden') return;
+    if (loading || (document.visibilityState === 'hidden' && !isBackgroundE2ERunner())) return;
     loading = true;
     const errors = [];
     try {
