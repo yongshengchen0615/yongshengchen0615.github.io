@@ -10,7 +10,7 @@ test('admin exposes only the unified background full E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-7/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-11/);
   assert.match(runner, /runPairedFullE2EButton/);
   assert.match(runner, /完整 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
   assert.match(runner, /stopAdminE2EButton/);
@@ -56,7 +56,7 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.match(runner, /waitForLivePairedBookingTarget/);
   assert.match(runner, /pairedBookingCandidates\(data, participant, \{ live: true \}\)/);
   assert.match(runner, /let adminChain = Promise\.resolve\(\)/);
-  assert.match(runner, /Promise\.all\(\[\.\.\.clientTasks, \.\.\.liveAdminTasks\]\)/);
+  assert.match(runner, /Promise\.all\(\[clientExecution, \.\.\.liveAdminTasks\]\)/);
   assert.match(runner, /waitForPairedBookingHandoff/);
   assert.doesNotMatch(runner, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
   assert.match(runner, /_ADMIN_RECORD_SYNC/);
@@ -151,13 +151,14 @@ test('paired E2E creates complex admin fixtures before randomized user clients s
   const runner = read('admin/e2e-control.js');
   const migration = read('supabase/migrations/20260922063942_enhance_e2e_fixture_and_test_surface_sessions_v2.sql');
 
-  const fixtureCall = runner.indexOf('await prepareComplexE2EFixtures()');
+  const fixtureCall = runner.indexOf('await prepareComplexE2EFixtures(profile)');
   const accountCall = runner.indexOf('await prepareTestAccounts(participantCount)');
   const clientStart = runner.indexOf('runParticipantSurfaces(participant)');
   assert.ok(fixtureCall >= 0 && accountCall > fixtureCall && clientStart > fixtureCall);
 
-  assert.match(runner, /shuffled\(PAIRED_SURFACES\)/);
-  assert.match(runner, /randomInt\(80, 1200\)/);
+  assert.match(runner, /weightedSurfacePlan\(profile, index \+ 1\)/);
+  assert.match(runner, /runWithConcurrency/);
+  assert.match(runner, /randomInt\(60, 420 \+ state\.complexityLevel \* 80\)/);
   assert.match(runner, /createPairedSession\(participant\.account, surface\)/);
   assert.match(runner, /admin\.test-control\.prepare-e2e-fixtures/);
 
