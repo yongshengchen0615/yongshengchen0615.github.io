@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.1';
+  const VERSION = '2026-09-23.2';
   const els = {};
   let currentRunId = '';
   let pollTimer = 0;
@@ -48,6 +48,38 @@
       throw new Error('自動化測試服務設定不完整。');
     }
     return base + '/functions/v1/test-control-api';
+  }
+
+  function artifactApiUrl(config) {
+    const base = String(config && config.supabaseUrl || '').replace(/\/$/, '');
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(base)) {
+      throw new Error('E2E 快照服務設定不完整。');
+    }
+    return base + '/functions/v1/e2e-artifact-api';
+  }
+
+  async function requestArtifactSignedUrl(path) {
+    const session = await window.MemberAdminSession.wait();
+    const response = await fetch(artifactApiUrl(session.config), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: String(session.config.supabasePublishableKey || '')
+      },
+      cache: 'no-store',
+      body: JSON.stringify({
+        action: 'admin.e2e-artifact.signed-url',
+        idToken: session.idToken,
+        path: String(path || '')
+      })
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body || body.ok !== true || !body.data?.signedUrl) {
+      const error = new Error(body?.error?.message || '目前無法取得 E2E 失敗快照。');
+      error.code = body?.error?.code || 'E2E_ARTIFACT_VIEW_FAILED';
+      throw error;
+    }
+    return body.data;
   }
 
   async function request(action, payload = {}) {
@@ -381,6 +413,77 @@
     return details;
   }
 
+  function renderScreenshotArtifact(step) {
+    const screenshot = step?.actual?.screenshot;
+    const path = String(screenshot?.path || '');
+    if (!/^runs\/[A-Za-z0-9._-]{1,240}\.webp$/.test(path)) return null;
+
+    const box = document.createElement('section');
+    box.className = 'test-control-screenshot';
+    const top = document.createElement('div');
+    top.className = 'test-control-screenshot-heading';
+
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = '失敗螢幕快照';
+    const meta = document.createElement('small');
+    const sizeKb = Math.max(1, Math.round(Number(screenshot.size || 0) / 1024));
+    const dimensions = Number(screenshot.width || 0) && Number(screenshot.height || 0)
+      ? String(screenshot.width) + '×' + String(screenshot.height)
+      : '';
+    meta.textContent = [
+      dimensions,
+      sizeKb + ' KB',
+      screenshot.capturedAt ? formatTime(screenshot.capturedAt) : '',
+      'Private · 30 天保留'
+    ].filter(Boolean).join(' · ');
+    copy.append(title, meta);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'button button-small';
+    button.textContent = '查看快照';
+    top.append(copy, button);
+
+    const status = document.createElement('p');
+    status.className = 'test-control-screenshot-status';
+    status.textContent = '圖片儲存在 Private Storage；點擊後才產生 5 分鐘 Signed URL。';
+
+    const image = document.createElement('img');
+    image.className = 'test-control-screenshot-image hidden';
+    image.alt = 'E2E 失敗螢幕快照';
+    image.loading = 'lazy';
+    image.referrerPolicy = 'no-referrer';
+
+    const link = document.createElement('a');
+    link.className = 'test-control-screenshot-link hidden';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = '在新分頁開啟';
+
+    button.addEventListener('click', async () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      status.textContent = '正在產生短效 Signed URL…';
+      try {
+        const data = await requestArtifactSignedUrl(path);
+        image.src = data.signedUrl;
+        image.classList.remove('hidden');
+        link.href = data.signedUrl;
+        link.classList.remove('hidden');
+        button.textContent = '重新取得連結';
+        status.textContent = 'Signed URL 已產生，約 5 分鐘後失效。';
+      } catch (error) {
+        status.textContent = error?.message || '快照讀取失敗；可能已超過 30 天保留期限。';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    box.append(top, status, image, link);
+    return box;
+  }
+
   function renderStep(step) {
     const row = document.createElement('section');
     row.className = 'test-control-step' + statusClass(String(step.status || 'queued'));
@@ -422,6 +525,8 @@
 
     data.append(expected, actual);
     row.append(data);
+    const screenshot = renderScreenshotArtifact(step);
+    if (screenshot) row.append(screenshot);
     return row;
   }
 
