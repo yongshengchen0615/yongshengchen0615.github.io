@@ -1,16 +1,18 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.14';
+  const VERSION = '2026-09-23.15';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_BOOKING_LIVE_TIMEOUT_MS = 10 * 60 * 1000;
-  const ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS = 1500;
+  const ADMIN_BOOKING_BOOTSTRAP_BASE_INTERVAL_MS = 3500;
+  const ADMIN_BOOKING_BOOTSTRAP_MAX_INTERVAL_MS = 8000;
   let adminBookingBootstrapInFlight = null;
   let adminBookingBootstrapLastAt = 0;
   let adminBookingBootstrapLastData = null;
+  let adminBookingBootstrapBackoffUntil = 0;
   const PAIRED_SURFACES = Object.freeze([
     ['member', '會員卡'],
     ['points', '集點卡'],
@@ -2497,26 +2499,53 @@
         }, actual);
   }
 
+  function adminBookingBootstrapIntervalMs() {
+    const participantCount = Math.max(1, Number(state.participants?.length || 1));
+    return Math.max(
+      ADMIN_BOOKING_BOOTSTRAP_BASE_INTERVAL_MS,
+      Math.min(
+        ADMIN_BOOKING_BOOTSTRAP_MAX_INTERVAL_MS,
+        ADMIN_BOOKING_BOOTSTRAP_BASE_INTERVAL_MS + (participantCount - 1) * 500
+      )
+    );
+  }
+
   async function adminBookingBootstrapSnapshot() {
     const now = Date.now();
+    const minIntervalMs = adminBookingBootstrapIntervalMs();
     if (adminBookingBootstrapLastData
-        && now - adminBookingBootstrapLastAt < ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS) {
+        && now - adminBookingBootstrapLastAt < minIntervalMs
+        && now >= adminBookingBootstrapBackoffUntil) {
       return adminBookingBootstrapLastData;
     }
     if (adminBookingBootstrapInFlight) return adminBookingBootstrapInFlight;
 
     const waitMs = Math.max(
       0,
-      ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS - (now - adminBookingBootstrapLastAt)
+      minIntervalMs - (now - adminBookingBootstrapLastAt),
+      adminBookingBootstrapBackoffUntil - now
     );
     adminBookingBootstrapInFlight = (async () => {
       if (waitMs > 0) await sleep(waitMs);
-      const session = await adminSession();
-      const data = await postFunction('booking-api', {
-        action: 'admin.booking.bootstrap',
-        clientType: 'admin',
-        idToken: session.idToken
-      });
+      const request = async () => {
+        const session = await adminSession();
+        return postFunction('booking-api', {
+          action: 'admin.booking.bootstrap',
+          clientType: 'admin',
+          idToken: session.idToken
+        });
+      };
+      let data;
+      try {
+        data = await request();
+      } catch (error) {
+        if (String(error?.code || '') !== 'RATE_LIMITED') throw error;
+        const nextBucketAt = (Math.floor(Date.now() / 60000) + 1) * 60000 + randomInt(700, 1700);
+        adminBookingBootstrapBackoffUntil = nextBucketAt;
+        await sleep(Math.max(0, nextBucketAt - Date.now()));
+        data = await request();
+      }
+      adminBookingBootstrapBackoffUntil = 0;
       adminBookingBootstrapLastData = data;
       adminBookingBootstrapLastAt = Date.now();
       return data;
