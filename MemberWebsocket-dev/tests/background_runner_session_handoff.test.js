@@ -21,6 +21,8 @@ test('background admin runner inherits the already-verified admin session in mem
   assert.match(runner, /runId !== String\(state\.backgroundRunId/);
   assert.match(runner, /window\.MemberAdminSession\?\.get\?\.\(\)/);
   assert.match(runner, /provideBackgroundSession: \(runId\) => provideBackgroundSession\(runId\)/);
+  assert.match(runner, /async function waitForBackgroundRunnerControl\(/);
+  assert.match(runner, /E2E_BACKGROUND_RUNNER_BOOT_FAILED/);
 });
 
 test('background admin runner does not place the admin token in URL or persistent browser storage', () => {
@@ -37,5 +39,5 @@ test('background admin runner does not place the admin token in URL or persisten
 test('background runner asset versions force the session-handoff fix to load', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=background-session-handoff-20260923-1/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-9/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-10/);
 });
