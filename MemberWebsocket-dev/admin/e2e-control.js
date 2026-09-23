@@ -1,8 +1,10 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.5';
+  const VERSION = '2026-09-23.6';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
+  const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
+  const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_BOOKING_LIVE_TIMEOUT_MS = 10 * 60 * 1000;
   const ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS = 1500;
@@ -31,7 +33,13 @@
     clientWindows: [],
     participants: [],
     adminTestAccount: null,
-    runStartedAt: ''
+    runStartedAt: '',
+    backgroundExecution: false,
+    backgroundRunnerWindow: null,
+    backgroundCompletion: null,
+    backgroundRunId: '',
+    lastMessage: '',
+    lastMessageError: false
   };
 
   window.addEventListener('DOMContentLoaded', mount);
@@ -51,19 +59,19 @@
     section.innerHTML = `
       <div class="admin-e2e-heading">
         <div>
-          <span class="test-mode-eyebrow">Browser E2E</span>
-          <h4 id="adminBrowserE2ETitle">管理端真人 E2E / 管理端 ↔ 用戶端協同測試</h4>
-          <p>唯一完整 E2E 會先由管理端建立高複雜度完整測試資料（優惠券／抽獎券／固定票券、不同集點節點、日期區間、會員階級、日曆與預約資源），確認完成後才讓測試用戶端開始。五種用戶端會隨機化執行；預約流程同時整合管理端即時接手，完整覆蓋拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並逐步驗證 Realtime、終態與風險掃描。</p>
+          <span class="test-mode-eyebrow">Unified Background E2E</span>
+          <h4 id="adminBrowserE2ETitle">完整 E2E · 後端 QA + 管理端 ↔ 用戶端協同</h4>
+          <p>單一入口會先執行 Test Control Center 的後端完整 QA，再執行完整管理端與五種用戶端真人協同 E2E。實際 Runner 使用獨立管理端視窗，因此啟動後可回到原管理端繼續操作；預約仍會即時接手拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並驗證 Realtime、終態與風險掃描。</p>
         </div>
         <div class="admin-e2e-actions">
-          <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">Browser Runner：待命</span>
-          <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">管理端 ↔ 用戶端完整 E2E</button>
+          <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">完整 E2E：待命</span>
+          <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">▶ 開始完整 E2E（背景執行）</button>
           <button id="stopAdminE2EButton" class="button button-danger hidden" type="button" data-admin-e2e-stop="true">停止 E2E</button>
         </div>
       </div>
       <div class="admin-e2e-paired-config">
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
-        <small>1–10 人。按下「管理端 ↔ 用戶端完整 E2E」後，五種用戶端與完整管理端案例會一起執行；其中預約完整協同流程是必要階段，不再提供獨立入口。測試用戶端保持開啟並以真人方式新增／修改／多人預約／申請取消；管理端只要偵測到本輪預約資料就立即依狀態接手，不等待用戶端關閉。正式用戶不會被選入。</small>
+        <small>1–10 人。開始後會預先開啟獨立背景管理端 Runner 與測試用戶端視窗，主管理頁不再承擔 E2E 的 DOM 操作，因此可以切換管理功能或讓主管理頁失焦。後端完整 QA、五種用戶端 full E2E、完整管理端案例、預約即時協同、深度互動與風險掃描全部納入同一次執行；正式用戶不會被選入。背景 Runner／測試視窗不可關閉，否則該次 E2E 會失敗或停止。</small>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
@@ -87,8 +95,28 @@
     state.participantList = section.querySelector('#adminE2EParticipantList');
     state.floating = floating;
 
-    section.querySelector('#runPairedFullE2EButton')?.addEventListener('click', () => runPaired());
+    const runButton = section.querySelector('#runPairedFullE2EButton');
+    const config = section.querySelector('.admin-e2e-paired-config');
+    if (isBackgroundRunnerWindow()) {
+      document.documentElement.dataset.e2eBackgroundRunner = 'true';
+      document.title = 'Lumen Club · Background E2E Runner';
+      runButton?.classList.add('hidden');
+      config?.classList.add('hidden');
+      setMessage('背景 E2E Runner 已就緒，等待主管理頁移交完整測試。');
+    } else {
+      runButton?.addEventListener('click', startUnifiedBackgroundE2E);
+    }
     section.querySelector('#stopAdminE2EButton')?.addEventListener('click', requestStop);
+  }
+
+  function isBackgroundRunnerWindow() {
+    try { return new URLSearchParams(window.location.search).get(BACKGROUND_RUNNER_PARAM) === '1'; }
+    catch (_) { return false; }
+  }
+
+  function backgroundAwareTimeout(timeoutMs, minimumMs = 0) {
+    const base = Math.max(1, Number(timeoutMs) || 1);
+    return state.backgroundExecution ? Math.max(base * 2, Number(minimumMs) || 0) : base;
   }
 
   function sleep(ms) {
@@ -178,6 +206,194 @@
     return { key, name, domain, run, humanRequired: adminHumanRequired(key, name, domain) };
   }
 
+  function backgroundRunnerUrl(runId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(BACKGROUND_RUNNER_PARAM, '1');
+    url.searchParams.set('e2eRunId', String(runId || Date.now()));
+    return url.href;
+  }
+
+  function closeWindowList(windows) {
+    for (const item of Array.isArray(windows) ? windows : []) {
+      try { if (item && !item.closed) item.close(); } catch {}
+    }
+  }
+
+  function openBackgroundRunnerWindow(runId) {
+    const child = window.open(
+      backgroundRunnerUrl(runId),
+      'admin-e2e-background-' + String(runId || Date.now()),
+      'popup=yes,width=1280,height=900,resizable=yes,scrollbars=yes'
+    );
+    if (!child) {
+      const error = new Error('瀏覽器阻擋了背景管理端 E2E Runner。請允許此網站開啟彈出式視窗後重試。');
+      error.code = 'E2E_BACKGROUND_POPUP_BLOCKED';
+      throw error;
+    }
+    return child;
+  }
+
+  function backgroundStatusSnapshot() {
+    const passed = state.results.filter((row) => row.status === 'passed').length;
+    const failed = state.results.filter((row) => row.status === 'failed').length;
+    const skipped = state.results.filter((row) => row.status === 'skipped').length;
+    return {
+      runId: state.backgroundRunId,
+      running: state.running,
+      cancelled: state.cancelled,
+      message: state.lastMessage,
+      messageError: state.lastMessageError,
+      summary: { total: state.results.length, passed, failed, skipped },
+      results: state.results.slice(-200).map((row) => ({
+        key: String(row?.key || ''),
+        name: String(row?.name || ''),
+        domain: String(row?.domain || ''),
+        status: String(row?.status || 'queued'),
+        durationMs: row?.durationMs == null ? null : Number(row.durationMs || 0),
+        message: String(row?.message || '')
+      })),
+      participants: state.participants.map((participant) => ({
+        index: Number(participant?.index || 0),
+        status: String(participant?.status || ''),
+        surface: String(participant?.surface || ''),
+        adminStatus: String(participant?.adminStatus || '')
+      }))
+    };
+  }
+
+  function publishBackgroundStatus() {
+    if (!state.backgroundExecution || !isBackgroundRunnerWindow()) return;
+    const snapshot = backgroundStatusSnapshot();
+    try {
+      const opener = window.opener;
+      if (opener && !opener.closed && typeof opener.MemberAdminE2EControl?.receiveBackgroundStatus === 'function') {
+        opener.MemberAdminE2EControl.receiveBackgroundStatus(snapshot);
+      }
+    } catch {}
+  }
+
+  function receiveBackgroundStatus(snapshot) {
+    if (isBackgroundRunnerWindow() || !snapshot || typeof snapshot !== 'object') return false;
+    if (state.backgroundRunId && snapshot.runId && String(snapshot.runId) !== String(state.backgroundRunId)) return false;
+    if (!state.backgroundRunId && snapshot.runId) state.backgroundRunId = String(snapshot.runId);
+    state.cancelled = Boolean(snapshot.cancelled);
+    state.lastMessage = String(snapshot.message || '');
+    state.lastMessageError = Boolean(snapshot.messageError);
+    state.results = Array.isArray(snapshot.results) ? snapshot.results.map((row) => ({ ...row })) : state.results;
+    state.participants = Array.isArray(snapshot.participants)
+      ? snapshot.participants.map((participant) => ({ ...participant }))
+      : state.participants;
+
+    if (snapshot.running && !state.running) setBusy(true, '背景執行');
+    if (!snapshot.running && state.running) setBusy(false);
+    if (state.message && state.lastMessage) {
+      state.message.textContent = state.lastMessage;
+      state.message.classList.remove('hidden');
+      state.message.classList.toggle('success', !state.lastMessageError);
+    }
+    render();
+    renderParticipants();
+    return true;
+  }
+
+  function startUnifiedBackgroundE2E() {
+    if (state.running) return { started: false, reason: 'already-running' };
+
+    let participantCount = 1;
+    let runnerWindow = null;
+    let clientWindows = [];
+    const runId = 'BG-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
+    try {
+      participantCount = selectedParticipantCount();
+      runnerWindow = openBackgroundRunnerWindow(runId);
+      clientWindows = openClientWindows(participantCount, false);
+    } catch (error) {
+      closeWindowList(clientWindows);
+      try { if (runnerWindow && !runnerWindow.closed) runnerWindow.close(); } catch {}
+      setMessage(error?.message || '無法啟動背景完整 E2E。', true);
+      return { started: false, error: plainError(error) };
+    }
+
+    state.cancelled = false;
+    state.results = [];
+    state.participants = [];
+    state.backgroundRunnerWindow = runnerWindow;
+    state.backgroundRunId = runId;
+    state.lastMessage = '背景 E2E Runner 啟動中；完成移交後可繼續操作此管理端視窗。';
+    state.lastMessageError = false;
+    setBusy(true, '背景 Runner 啟動');
+    setMessage(state.lastMessage);
+    render();
+    try { runnerWindow.blur?.(); window.focus?.(); } catch {}
+
+    const completion = (async () => {
+      const control = await waitFor(() => {
+        try {
+          if (!runnerWindow || runnerWindow.closed) return null;
+          if (runnerWindow.document?.documentElement?.dataset?.memberAdminReady !== 'true') return null;
+          const candidate = runnerWindow.MemberAdminE2EControl;
+          return typeof candidate?.runUnifiedBackground === 'function' ? candidate : null;
+        } catch {
+          return null;
+        }
+      }, BACKGROUND_RUNNER_READY_TIMEOUT_MS, 150);
+
+      if (!control) {
+        const error = new Error('背景管理端 Runner 未能在允許時間內完成登入與初始化。');
+        error.code = 'E2E_BACKGROUND_RUNNER_NOT_READY';
+        throw error;
+      }
+
+      setMessage('完整 E2E 已移交背景 Runner；你可以繼續操作原本管理端。測試視窗請保持開啟。');
+      try { runnerWindow.blur?.(); window.focus?.(); } catch {}
+
+      const result = await control.runUnifiedBackground({
+        participantCount,
+        clientWindows,
+        runId
+      });
+
+      if (Array.isArray(result?.results)) state.results = result.results.map((row) => ({ ...row }));
+      render();
+      const failed = state.results.filter((row) => row.status === 'failed').length;
+      setMessage(
+        result?.cancelled
+          ? '背景完整 E2E 已停止；已完成資料與測試紀錄保留。'
+          : failed
+            ? '背景完整 E2E 已完成，發現 ' + failed + ' 個異常。'
+            : '背景完整 E2E 已完成；後端 QA、管理端與五種用戶端協同測試均已執行。',
+        !result?.cancelled && failed > 0
+      );
+      return result;
+    })().catch((error) => {
+      closeWindowList(clientWindows);
+      setMessage(error?.message || '背景完整 E2E 執行失敗。', true);
+      return { error: plainError(error), results: state.results.slice() };
+    }).finally(() => {
+      setBusy(false);
+      state.backgroundRunnerWindow = null;
+      state.backgroundCompletion = null;
+    });
+
+    state.backgroundCompletion = completion;
+    return { started: true, runId, participantCount, completion };
+  }
+
+  async function runUnifiedBackground(options = {}) {
+    if (!isBackgroundRunnerWindow()) {
+      const error = new Error('完整 E2E 的背景執行只能在隔離 Runner 視窗啟動。');
+      error.code = 'E2E_BACKGROUND_RUNNER_REQUIRED';
+      throw error;
+    }
+    state.backgroundExecution = true;
+    state.backgroundRunId = String(options?.runId || new URLSearchParams(window.location.search).get('e2eRunId') || '');
+    return runPaired({
+      participantCount: Number(options?.participantCount || 0),
+      clientWindows: Array.isArray(options?.clientWindows) ? options.clientWindows : [],
+      backgroundExecution: true
+    });
+  }
+
   function setBusy(running, label = '') {
     state.running = Boolean(running);
     state.section?.querySelectorAll('button[data-admin-e2e-control]').forEach((button) => {
@@ -191,20 +407,33 @@
     const countInput = state.section?.querySelector('#pairedE2EAccountCount');
     if (countInput) countInput.disabled = state.running;
     if (state.badge) {
-      state.badge.textContent = state.running ? (state.cancelled ? 'Browser Runner：停止中' : 'Browser Runner：執行中') : 'Browser Runner：待命';
+      state.badge.textContent = state.running
+        ? (state.cancelled ? '完整 E2E：停止中' : (state.backgroundExecution || state.backgroundRunnerWindow ? '完整 E2E：背景執行中' : '完整 E2E：執行中'))
+        : '完整 E2E：待命';
       state.badge.classList.toggle('is-on', state.running);
       state.badge.classList.toggle('is-off', !state.running);
     }
     if (state.floating) {
       state.floating.classList.toggle('hidden', !state.running);
-      state.floating.textContent = state.running ? ((state.cancelled ? 'E2E 停止中' : 'E2E 執行中') + (label ? ' · ' + label : '')) : '';
+      state.floating.textContent = state.running ? ((state.cancelled ? 'E2E 停止中' : 'E2E 背景執行中') + (label ? ' · ' + label : '')) : '';
     }
+    publishBackgroundStatus();
   }
 
   function requestStop() {
     if (!state.running || state.cancelled) return false;
+
+    if (!isBackgroundRunnerWindow() && state.backgroundRunnerWindow && !state.backgroundRunnerWindow.closed) {
+      state.cancelled = true;
+      try { state.backgroundRunnerWindow.MemberAdminE2EControl?.stop?.(); } catch {}
+      if (state.badge) state.badge.textContent = '完整 E2E：停止中';
+      if (state.floating) state.floating.textContent = 'E2E 停止中 · 已傳送到背景 Runner';
+      setMessage('已要求背景 E2E 停止；背景 Runner 會在目前案例完成安全清理後停止。');
+      return true;
+    }
+
     state.cancelled = true;
-    if (state.badge) state.badge.textContent = 'Browser Runner：停止中';
+    if (state.badge) state.badge.textContent = '完整 E2E：停止中';
     if (state.floating) state.floating.textContent = 'E2E 停止中 · 目前案例完成安全清理後停止';
     for (const participant of state.participants) {
       participant.status = '停止中';
@@ -215,23 +444,31 @@
     }
     renderParticipants();
     setMessage('已要求停止 E2E；目前正在執行的案例會先完成安全清理，之後不再啟動下一個案例。');
+    publishBackgroundStatus();
     return true;
   }
 
   
 
   function setMessage(message, error = false) {
-    if (!state.message) return;
-    state.message.textContent = message;
-    state.message.classList.remove('hidden');
-    state.message.classList.toggle('success', !error);
+    state.lastMessage = String(message || '');
+    state.lastMessageError = Boolean(error);
+    if (state.message) {
+      state.message.textContent = state.lastMessage;
+      state.message.classList.toggle('hidden', !state.lastMessage);
+      state.message.classList.toggle('success', !error);
+    }
+    publishBackgroundStatus();
   }
 
   function render() {
-    if (!state.list || !state.summary) return;
     const passed = state.results.filter((r) => r.status === 'passed').length;
     const failed = state.results.filter((r) => r.status === 'failed').length;
     const skipped = state.results.filter((r) => r.status === 'skipped').length;
+    if (!state.list || !state.summary) {
+      publishBackgroundStatus();
+      return;
+    }
     state.summary.textContent = `共 ${state.results.length} 案例 · ${passed} 通過 · ${failed} 失敗 · ${skipped} 略過`;
     state.list.replaceChildren(...state.results.map((item, index) => {
       const details = document.createElement('details');
@@ -254,6 +491,7 @@
       details.append(summary, body);
       return details;
     }));
+    publishBackgroundStatus();
   }
 
   function dataBox(label, value) {
@@ -529,16 +767,93 @@
   }
 
 
-  async function runPaired() {
-    if (state.running) return;
+  async function runUnifiedServerFullPhase() {
+    const started = performance.now();
+    const row = {
+      key: 'UNIFIED_SERVER_FULL_E2E',
+      name: '後端完整 QA：Test Control Center full suite',
+      domain: 'Unified E2E / Backend',
+      status: 'running',
+      message: '正在執行環境、測試帳號、Session、點數、票券、預約、Presence 與通知邊界完整 QA。',
+      expected: { suite: 'full', failedCases: 0 },
+      actual: {},
+      durationMs: null
+    };
+    state.results.push(row);
+    render();
+
+    try {
+      const control = window.MemberAdminTestControl;
+      if (!control || typeof control.runFull !== 'function') {
+        const error = new Error('Test Control Center 完整測試控制器未載入。');
+        error.code = 'UNIFIED_BACKEND_CONTROL_NOT_READY';
+        throw error;
+      }
+      const data = await control.runFull();
+      const run = data?.run || {};
+      const failedCases = Number(run.failedCases || 0);
+      row.actual = {
+        runId: String(run.id || ''),
+        runCode: String(run.runCode || ''),
+        suite: String(run.suite || 'full'),
+        status: String(run.status || ''),
+        totalCases: Number(run.totalCases || 0),
+        passedCases: Number(run.passedCases || 0),
+        failedCases,
+        skippedCases: Number(run.skippedCases || 0)
+      };
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      Object.assign(row, failedCases === 0 && String(run.status || '') !== 'failed'
+        ? pass('後端完整 QA 已完成且沒有失敗案例；繼續執行 Browser 協同 E2E。', row.expected, row.actual)
+        : fail('後端完整 QA 有失敗案例；Browser 協同 E2E 仍會繼續，以收集完整錯誤範圍。', row.expected, row.actual));
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      render();
+      return data;
+    } catch (error) {
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      Object.assign(row, fail(
+        '後端完整 QA 無法完成；Browser 協同 E2E 仍會繼續，以避免只取得單一路徑結果。',
+        row.expected,
+        plainError(error)
+      ));
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      render();
+      return { error: plainError(error) };
+    }
+  }
+
+  async function runPaired(options = {}) {
+    if (state.running) return { error: { code: 'E2E_ALREADY_RUNNING', message: '完整 E2E 已在執行中。' }, results: safe(state.results) };
     state.cancelled = false;
+    state.backgroundExecution = options?.backgroundExecution === true || isBackgroundRunnerWindow();
     state.runSequence += 1;
     let participantCount = 1;
     let openedWindows = [];
+    let backendRun = null;
     try {
-      participantCount = selectedParticipantCount();
+      const requestedCount = Number(options?.participantCount || 0);
+      participantCount = Number.isInteger(requestedCount) && requestedCount > 0 ? requestedCount : selectedParticipantCount();
+      if (participantCount < 1 || participantCount > MAX_PAIRED_PARTICIPANTS) {
+        const error = new Error(`協同測試人數必須是 1–${MAX_PAIRED_PARTICIPANTS} 的整數。`);
+        error.code = 'INVALID_PAIRED_PARTICIPANT_COUNT';
+        throw error;
+      }
+
+      const providedWindows = Array.isArray(options?.clientWindows)
+        ? options.clientWindows.filter((item) => item && !item.closed)
+        : [];
       closeClientWindows();
-      openedWindows = openClientWindows(participantCount);
+      if (providedWindows.length) {
+        if (providedWindows.length < participantCount) {
+          const error = new Error('背景 Runner 收到的測試用戶端視窗數量不足。');
+          error.code = 'E2E_BACKGROUND_CLIENT_WINDOWS_INCOMPLETE';
+          throw error;
+        }
+        openedWindows = providedWindows.slice(0, participantCount);
+        state.clientWindows = openedWindows;
+      } else {
+        openedWindows = openClientWindows(participantCount);
+      }
     } catch (error) {
       setMessage(error?.message || '無法開啟用戶端測試視窗。請允許此網站開啟彈出式視窗後重試。', true);
       return { error: plainError(error), results: [] };
@@ -547,8 +862,8 @@
     state.results = [];
     state.participants = [];
     state.runStartedAt = new Date().toISOString();
-    setBusy(true, '協同');
-    setMessage('管理端正在先建立完整高複雜度測試資料；用戶端視窗目前只保持待命，不會提前開始。');
+    setBusy(true, state.backgroundExecution ? '背景完整 E2E' : '完整 E2E');
+    setMessage('完整 E2E 已開始：先驗證維護模式，再執行後端 full QA，之後進入管理端 ↔ 五種用戶端真人協同。');
     try {
       const session = await adminSession();
       const mode = await postPublicTestMode(session, { action: 'public.status', clientType: 'booking' });
@@ -557,7 +872,11 @@
         error.code = 'TEST_MAINTENANCE_REQUIRED';
         throw error;
       }
-      if (state.cancelled) return { cancelled: true, results: safe(state.results) };
+
+      backendRun = await runUnifiedServerFullPhase();
+      if (state.cancelled) return { cancelled: true, backendRun: safe(backendRun?.run || {}), results: safe(state.results) };
+
+      setMessage('後端完整 QA 階段已完成；正在建立 Browser 協同 E2E 的高複雜度測試資料。');
       const fixture = await prepareComplexE2EFixtures();
       if (state.cancelled) return { cancelled: true, results: safe(state.results) };
 
@@ -675,6 +994,7 @@
       return {
         cancelled,
         recorded,
+        backendRun: safe(backendRun?.run || {}),
         fixture: safe(fixture),
         participants: safe(state.participants.map((item) => ({
           account: item.account,
@@ -2015,7 +2335,7 @@
   }
 
   async function waitForLivePairedBookingTarget(participant, targetKey = 'any', timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
-    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    const deadline = Date.now() + backgroundAwareTimeout(Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS), 20 * 60 * 1000);
     let candidates = [];
     let detected = livePairedBookingSet(candidates);
     while (Date.now() < deadline) {
@@ -2049,7 +2369,7 @@
   }
 
   async function waitForLivePairedBookingSet(participant, timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
-    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    const deadline = Date.now() + backgroundAwareTimeout(Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS), 20 * 60 * 1000);
     let candidates = [];
     let detected = livePairedBookingSet(candidates);
     while (Date.now() < deadline) {
@@ -2076,7 +2396,7 @@
   }
 
   async function waitForPairedBookingHandoff(participant, timeoutMs = PAIRED_BOOKING_LIVE_TIMEOUT_MS) {
-    const deadline = Date.now() + Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS);
+    const deadline = Date.now() + backgroundAwareTimeout(Math.max(5000, Number(timeoutMs) || PAIRED_BOOKING_LIVE_TIMEOUT_MS), 20 * 60 * 1000);
     while (Date.now() < deadline) {
       if (state.cancelled) return null;
       const handoff = participant?.bookingResult?.bookingHandoff;
@@ -2628,7 +2948,7 @@
         || typeof hooks.getRenderCount !== 'function'
         || typeof hooks.getBookingSnapshot !== 'function') return null;
       return { child, hooks };
-    }, timeoutMs, 100);
+    }, backgroundAwareTimeout(timeoutMs, 90000), 100);
 
     if (ready) return ready;
     const error = new Error('預約用戶端尚未停在預約頁；管理端不會強制切換用戶端，以免中斷正在進行的真人 E2E。');
@@ -3306,13 +3626,13 @@
     document.getElementById('testModeTab')?.click();
     const ids = [
       'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
-      'testModeAddAccountCount', 'saveTestModeButton', 'runQuickAutomationTestButton',
-      'runFullAutomationTestButton', 'runPairedFullE2EButton', 'pairedE2EAccountCount'
+      'testModeAddAccountCount', 'saveTestModeButton', 'purgeTestDataButton',
+      'runPairedFullE2EButton', 'pairedE2EAccountCount'
     ];
     const actual = Object.fromEntries(ids.map((id) => [id, Boolean(document.getElementById(id))]));
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('管理端測試環境與唯一完整協同 Runner 控制元件皆存在。', { allControls: true }, actual)
+      ? pass('管理端測試環境、測試資料清理與唯一背景完整 E2E Runner 控制元件皆存在。', { allControls: true }, actual)
       : fail('測試環境控制元件不完整。', { allControls: true }, actual);
   }
 
@@ -3324,7 +3644,7 @@
       const id = String(button.id || '');
       const datasets = Object.keys(button.dataset || {});
       const accepted =
-        Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|runQuickAutomation|runFullAutomation|close|cancel|save|grant|messagePreset|booking|runAdmin|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
+        Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|close|cancel|save|grant|messagePreset|booking|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
         datasets.length > 0 ||
         button.classList.contains('editor-modal-close') ||
         button.classList.contains('close-button');
@@ -3355,7 +3675,7 @@
     state.clientWindows = [];
   }
 
-  function openClientWindows(count) {
+  function openClientWindows(count, track = true) {
     const opened = [];
     const stamp = Date.now();
     for (let index = 0; index < count; index += 1) {
@@ -3374,7 +3694,7 @@
       } catch {}
       opened.push(child);
     }
-    state.clientWindows = opened;
+    if (track) state.clientWindows = opened;
     return opened;
   }
 
@@ -3564,13 +3884,13 @@
         if (child.closed) return null;
         return child.MemberUserTestControl?.surface === surface ? child.MemberUserTestControl : null;
       } catch { return null; }
-    }, 25000, 120);
+    }, backgroundAwareTimeout(25000, 90000), 120);
     if (control?.cancelled || state.cancelled) {
       return { ok: false, cancelled: true, surface, account: participant.account, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
     }
     if (!control) throw new Error(label + ' E2E 控制器未在獨立用戶端視窗就緒。');
 
-    const surfaceTimeoutMs = surface === 'booking' ? 180000 : 150000;
+    const surfaceTimeoutMs = backgroundAwareTimeout(surface === 'booking' ? 180000 : 150000, 12 * 60 * 1000);
     let result;
     let timeoutId = 0;
     try {
@@ -3671,7 +3991,7 @@
         if (error && !error.classList.contains('hidden')) return { error: String(error.textContent || '').trim() };
         return root && !root.classList.contains('hidden') ? root : null;
       } catch { return null; }
-    }, timeoutMs, 120);
+    }, backgroundAwareTimeout(timeoutMs, 90000), 120);
     if (!ready || ready.error) throw new Error(ready?.error || surface + ' 用戶端沒有進入可操作狀態。');
     return child;
   }
@@ -4227,7 +4547,12 @@
 
   window.MemberAdminE2EControl = Object.freeze({
     version: VERSION,
-    runPairedFull: () => runPaired(),
+    runPairedFull: () => isBackgroundRunnerWindow()
+      ? runPaired({ backgroundExecution: true })
+      : startUnifiedBackgroundE2E(),
+    runUnifiedBackground: (options) => runUnifiedBackground(options),
+    receiveBackgroundStatus: (snapshot) => receiveBackgroundStatus(snapshot),
+    getStatus: () => backgroundStatusSnapshot(),
     stop: () => requestStop(),
     maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
   });

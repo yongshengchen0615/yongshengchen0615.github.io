@@ -6,13 +6,13 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 
-test('admin exposes only the consolidated paired full browser E2E entrypoint', () => {
+test('admin exposes only the unified background full E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-6/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-7/);
   assert.match(runner, /runPairedFullE2EButton/);
-  assert.match(runner, /管理端 ↔ 用戶端完整 E2E/);
+  assert.match(runner, /完整 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
   assert.match(runner, /stopAdminE2EButton/);
   assert.match(runner, /requestStop/);
   for (const removed of [
@@ -33,6 +33,15 @@ test('admin exposes only the consolidated paired full browser E2E entrypoint', (
   assert.match(runner, /ADMIN_CALENDAR_CRUD/);
   assert.match(runner, /ADMIN_BOOKING_CRUD/);
   assert.match(runner, /ADMIN_BUTTON_COVERAGE/);
+  assert.match(runner, /startUnifiedBackgroundE2E/);
+  assert.match(runner, /runUnifiedBackground/);
+  assert.match(runner, /e2eBackgroundRunner/);
+  assert.match(runner, /openBackgroundRunnerWindow/);
+  assert.match(runner, /openClientWindows\(participantCount, false\)/);
+  assert.match(runner, /receiveBackgroundStatus/);
+  assert.match(runner, /backgroundAwareTimeout/);
+  assert.doesNotMatch(html, /id="runQuickAutomationTestButton"/);
+  assert.doesNotMatch(html, /id="runFullAutomationTestButton"/);
 });
 
 test('paired runner covers every member-facing surface and verifies admin record sync', () => {

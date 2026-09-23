@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.1';
+  const VERSION = '2026-09-23.2';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -200,7 +200,9 @@
           return;
         }
         state.session = session;
-        ensureUi();
+        // All visible E2E launchers are centralized in the admin workspace.
+        // The user runner remains headless and is invoked only by the unified admin orchestrator.
+        removeUi();
       } catch (_) {
         state.session = null;
         removeUi();
@@ -226,82 +228,6 @@
     document.documentElement.classList.remove('user-qa-open');
   }
 
-  function ensureUi() {
-    if (document.getElementById(LAUNCHER_ID) && document.getElementById(PANEL_ID)) return;
-
-    const launcher = document.createElement('button');
-    launcher.id = LAUNCHER_ID;
-    launcher.type = 'button';
-    launcher.className = 'user-qa-launcher';
-    launcher.innerHTML = '<span aria-hidden="true">✓</span><span>自動化測試</span>';
-    launcher.addEventListener('click', () => togglePanel(true));
-
-    const panel = document.createElement('aside');
-    panel.id = PANEL_ID;
-    panel.className = 'user-qa-panel hidden';
-    panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-modal', 'false');
-    panel.setAttribute('aria-labelledby', 'userQaTitle');
-    panel.innerHTML =
-      '<div class="user-qa-shell">' +
-        '<header class="user-qa-head">' +
-          '<div><p class="user-qa-kicker">Test account QA</p><h2 id="userQaTitle">' + escapeHtml(definition.label) + '自動化測試</h2>' +
-          '<p>只在後端驗證通過的測試帳號顯示。測試帳號會走與真人相同的登入、API、權限與前端互動流程；測試產生的點數、票券、預約與 QA 紀錄會保留，方便管理端檢查，直到管理員在測試頁面按下「移除測試資料」。會員基本資料與共用設定仍會在案例結束時還原。</p></div>' +
-          '<div class="user-qa-head-actions"><button type="button" class="user-qa-minimize" data-qa-minimize aria-expanded="true">縮小</button><button type="button" class="user-qa-close" data-qa-close aria-label="關閉">×</button></div>' +
-        '</header>' +
-        '<div class="user-qa-account"><span>測試帳號</span><strong data-qa-account>—</strong><small data-qa-version>Runner ' + VERSION + '</small></div>' +
-        '<div class="user-qa-actions">' +
-          '<button type="button" class="user-qa-button secondary" data-qa-run="quick">快速測試</button>' +
-          '<button type="button" class="user-qa-button primary" data-qa-run="full">完整測試</button>' +
-          '<button type="button" class="user-qa-button danger hidden" data-qa-cancel>停止</button>' +
-        '</div>' +
-        '<div class="user-qa-summary" aria-live="polite">' +
-          '<div><span>狀態</span><strong data-qa-status>待命</strong></div>' +
-          '<div><span>通過</span><strong data-qa-passed>0</strong></div>' +
-          '<div><span>失敗</span><strong data-qa-failed>0</strong></div>' +
-          '<div><span>略過</span><strong data-qa-skipped>0</strong></div>' +
-        '</div>' +
-        '<div class="user-qa-progress" role="progressbar" aria-label="自動化測試進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-qa-progress></span></div>' +
-        '<p class="user-qa-message" data-qa-message>可執行快速或完整測試。</p>' +
-        '<div class="user-qa-results" data-qa-results></div>' +
-        '<details class="user-qa-history"><summary>最近測試紀錄</summary><div data-qa-history></div></details>' +
-      '</div>';
-
-    panel.querySelector('[data-qa-close]').addEventListener('click', () => togglePanel(false));
-    panel.querySelector('[data-qa-minimize]').addEventListener('click', togglePanelMinimized);
-    panel.querySelectorAll('[data-qa-run]').forEach((button) => {
-      button.addEventListener('click', () => void runSuite(button.dataset.qaRun || 'quick'));
-    });
-    panel.querySelector('[data-qa-cancel]').addEventListener('click', requestStop);
-
-    document.body.append(launcher, panel);
-    state.launcher = launcher;
-    state.panel = panel;
-    const account = state.session && state.session.account || {};
-    panel.querySelector('[data-qa-account]').textContent = String(account.memberCode || '測試會員');
-    renderHistory();
-  }
-
-  function togglePanel(open) {
-    if (!state.panel) return;
-    state.visible = Boolean(open);
-    state.panel.classList.toggle('hidden', !state.visible);
-    if (state.visible) {
-      const close = state.panel.querySelector('[data-qa-close]');
-      if (close) close.focus();
-    }
-  }
-
-  function togglePanelMinimized() {
-    if (!state.panel) return;
-    const minimized = !state.panel.classList.contains('is-minimized');
-    state.panel.classList.toggle('is-minimized', minimized);
-    const button = state.panel.querySelector('[data-qa-minimize]');
-    if (button) {
-      button.textContent = minimized ? '展開' : '縮小';
-      button.setAttribute('aria-expanded', minimized ? 'false' : 'true');
-    }
-  }
 
   function setMessage(message, isError) {
     if (!state.panel) return;
@@ -2129,7 +2055,6 @@
   window.MemberUserTestControl = Object.freeze({
     version: VERSION,
     surface,
-    runQuick: () => runSuite('quick'),
     runFull: () => runSuite('full'),
     stop: () => requestStop(),
     isRunning: () => state.running

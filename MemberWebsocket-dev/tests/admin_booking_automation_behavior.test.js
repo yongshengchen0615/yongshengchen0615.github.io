@@ -262,7 +262,7 @@ test('live admin runner no longer waits for every client task to finish before b
 });
 
 test('the only paired full E2E always includes booking collaboration and the complete admin suite', () => {
-  assert.match(source, /async function runPaired\(\)/);
+  assert.match(source, /async function runPaired\(options = \{\}\)/);
   assert.match(source, /surfacePlan: shuffled\(PAIRED_SURFACES\)/);
   assert.match(source, /const allAdminDefinitions = adminDefinitions\('full'\)/);
   assert.match(source, /runPairedAdminBookingLive\(participant\)/);
@@ -352,7 +352,7 @@ test('maintenance must be enabled before any fixtures or accounts are created', 
   const { qa } = harness();
   let created = false;
   qa.preflightIO(async () => { created = true; });
-  const result = await qa.runPaired({ bookingOnly: true });
+  const result = await qa.runPaired();
   assert.equal(result.error.code, 'TEST_MAINTENANCE_REQUIRED');
   assert.equal(created, false);
 });

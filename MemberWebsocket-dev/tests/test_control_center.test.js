@@ -6,18 +6,20 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('admin exposes the visible automated test control center', () => {
+test('admin test control center is a result surface for the unified full E2E', () => {
   const html = read('admin/index.html');
   const client = read('admin/test-control.js');
+  const e2e = read('admin/e2e-control.js');
   const css = read('admin/test-control.css');
 
   assert.match(html, /test-control\.css\?v=test-control-20260921-1/);
-  assert.match(html, /test-control\.js\?v=test-control-20260922-\d+/);
+  assert.match(html, /test-control\.js\?v=test-control-20260923-3/);
   assert.match(html, /id="automationTestTitle"/);
-  assert.match(html, /id="runQuickAutomationTestButton"/);
-  assert.match(html, /id="runFullAutomationTestButton"/);
+  assert.doesNotMatch(html, /id="runQuickAutomationTestButton"/);
+  assert.doesNotMatch(html, /id="runFullAutomationTestButton"/);
   assert.match(html, /id="automationTestCaseList"/);
   assert.match(html, /id="automationTestHistoryList"/);
+  assert.match(html, /後端完整 QA 已整合/);
   assert.match(html, /Expected/);
   assert.match(html, /Actual/);
   assert.match(css, /\.test-control-data-grid/);
@@ -26,7 +28,12 @@ test('admin exposes the visible automated test control center', () => {
   assert.match(client, /admin\.test-control\.create/);
   assert.match(client, /admin\.test-control\.execute/);
   assert.match(client, /admin\.test-control\.status/);
+  assert.match(client, /window\.MemberAdminTestControl = Object\.freeze/);
+  assert.match(client, /runFull: \(\) => startRun\('full', \{ rethrow: true \}\)/);
   assert.match(client, /window\.setInterval\(tick, 900\)/);
+  assert.match(e2e, /runUnifiedServerFullPhase/);
+  assert.match(e2e, /window\.MemberAdminTestControl/);
+  assert.match(e2e, /await control\.runFull\(\)/);
   assert.doesNotMatch(client, /service[_-]?role/i);
 });
 
