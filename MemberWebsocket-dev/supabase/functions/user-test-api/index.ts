@@ -424,11 +424,15 @@ async function calendarReadOnly(s: any, identity: any, token: string): Promise<Q
 }
 
 function bookingItems(services: any[]): { items: Json[]; normal: any | null } {
-  const normal = services.find((service: any) =>
+  const regular = services.filter((service: any) =>
     String(service?.serviceId || "") !== STORE_SERVICE_ID
     && service?.requiresCompanionService !== true
     && Number(service?.durationMinutes || 0) > 0
-  ) || null;
+  );
+  const qaRegular = regular
+    .filter((service: any) => String(service?.title || "").startsWith("E2E QA 標準主服務 "))
+    .sort((a: any, b: any) => Date.parse(String(b?.createdAt || "")) - Date.parse(String(a?.createdAt || "")));
+  const normal = qaRegular[0] || regular[0] || null;
   const store = services.find((service: any) => String(service?.serviceId || "") === STORE_SERVICE_ID) || null;
   const items: Json[] = [];
   if (normal) items.push({ serviceId: normal.serviceId, quantity: 1 });
