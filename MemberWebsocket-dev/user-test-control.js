@@ -5,7 +5,7 @@
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-23.7';
+  const VERSION = '2026-09-23.8';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
