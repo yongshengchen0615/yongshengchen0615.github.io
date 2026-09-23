@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.4';
+  const VERSION = '2026-09-23.5';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_BOOKING_LIVE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -53,22 +53,17 @@
         <div>
           <span class="test-mode-eyebrow">Browser E2E</span>
           <h4 id="adminBrowserE2ETitle">管理端真人 E2E / 管理端 ↔ 用戶端協同測試</h4>
-          <p>協同模式會先由管理端建立高複雜度完整測試資料（優惠券／抽獎券／固定票券、不同集點節點、日期區間、會員階級、日曆與預約資源），確認完成後才讓測試用戶端開始。測試帳號與五種用戶端執行順序都會隨機化，並加入隨機操作間隔、Realtime、併發重送與非常規操作驗證。</p>
+          <p>唯一完整 E2E 會先由管理端建立高複雜度完整測試資料（優惠券／抽獎券／固定票券、不同集點節點、日期區間、會員階級、日曆與預約資源），確認完成後才讓測試用戶端開始。五種用戶端會隨機化執行；預約流程同時整合管理端即時接手，完整覆蓋拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並逐步驗證 Realtime、終態與風險掃描。</p>
         </div>
         <div class="admin-e2e-actions">
           <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">Browser Runner：待命</span>
-          <button id="runAdminQuickE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">管理端快速 E2E</button>
-          <button id="runAdminFullE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">管理端完整 E2E</button>
-          <button id="runBookingPendingE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">待確認 E2E</button>
-          <button id="runBookingCancellationE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">取消申請 E2E</button>
-          <button id="runBookingFullE2EButton" class="button button-outline" type="button" data-admin-e2e-control="true">預約完整協同 E2E</button>
           <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">管理端 ↔ 用戶端完整 E2E</button>
           <button id="stopAdminE2EButton" class="button button-danger hidden" type="button" data-admin-e2e-stop="true">停止 E2E</button>
         </div>
       </div>
       <div class="admin-e2e-paired-config">
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
-        <small>1–10 人。預約完整協同 E2E 由管理端一鍵啟動：測試用戶端保持開啟並以真人方式新增／修改／多人預約／申請取消；管理端同步監看本輪測試資料，只要待確認或取消申請等可安全接手資料出現，就依狀態排入單一管理員操作佇列，真人式執行拒絕／保留／確認／修改項目與技師／完成／確認取消，不等待用戶端關閉。每一步都驗證 Realtime，最後再以完整 handoff 做漏單、競態、越權與終態掃描。正式用戶不會被選入。</small>
+        <small>1–10 人。按下「管理端 ↔ 用戶端完整 E2E」後，五種用戶端與完整管理端案例會一起執行；其中預約完整協同流程是必要階段，不再提供獨立入口。測試用戶端保持開啟並以真人方式新增／修改／多人預約／申請取消；管理端只要偵測到本輪預約資料就立即依狀態接手，不等待用戶端關閉。正式用戶不會被選入。</small>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
       <div id="adminBrowserE2ESummary" class="admin-e2e-summary">尚未執行瀏覽器 E2E。</div>
@@ -92,11 +87,6 @@
     state.participantList = section.querySelector('#adminE2EParticipantList');
     state.floating = floating;
 
-    section.querySelector('#runAdminQuickE2EButton')?.addEventListener('click', () => runAdmin('quick'));
-    section.querySelector('#runAdminFullE2EButton')?.addEventListener('click', () => runAdmin('full'));
-    section.querySelector('#runBookingPendingE2EButton')?.addEventListener('click', () => runAdminBookingQueueE2E('pending'));
-    section.querySelector('#runBookingCancellationE2EButton')?.addEventListener('click', () => runAdminBookingQueueE2E('cancellation'));
-    section.querySelector('#runBookingFullE2EButton')?.addEventListener('click', () => runPaired({ bookingOnly: true }));
     section.querySelector('#runPairedFullE2EButton')?.addEventListener('click', () => runPaired());
     section.querySelector('#stopAdminE2EButton')?.addEventListener('click', requestStop);
   }
@@ -489,119 +479,6 @@
     ]);
   }
 
-  async function runAdmin(suite) {
-    if (state.running) return;
-    // Open the child synchronously within the user's click, before any await.
-    if (suite === 'full') return runPaired({ bookingOnly: true, includeAdminSuite: true });
-    state.results = [];
-    state.participants = [];
-    state.cancelled = false;
-    state.runSequence += 1;
-    state.runStartedAt = new Date().toISOString();
-    renderParticipants();
-    setBusy(true, '管理端');
-    setMessage(suite === 'full' ? '正在以測試用戶執行管理端完整真人 E2E…' : '正在以測試用戶執行管理端快速 E2E…');
-    try {
-      const accounts = await prepareTestAccounts(1);
-      state.adminTestAccount = accounts[0];
-      if (!state.cancelled) await executeCases(adminDefinitions(suite), '管理端 · 測試用戶');
-      const cancelled = state.cancelled;
-      const recorded = !cancelled && state.results.length ? await recordRun('admin-browser', suite) : null;
-      const failed = state.results.filter((item) => item.status === 'failed').length;
-      setMessage(
-        cancelled
-          ? '管理端 E2E 已停止；已完成案例保留，未開始的案例不再執行。'
-          : failed
-            ? '管理端 E2E 完成，發現 ' + failed + ' 個異常。'
-            : '管理端 E2E 完成；所有會員操作皆鎖定測試用戶，結果已寫入 Test Control Center。',
-        !cancelled && failed > 0
-      );
-      return { cancelled, recorded, account: safe(state.adminTestAccount), results: safe(state.results) };
-    } catch (error) {
-      const cancelled = state.cancelled;
-      setMessage(cancelled ? '管理端 E2E 已停止。' : (error?.message || '管理端 E2E 未能完整執行。'), !cancelled);
-      return { cancelled, error: cancelled ? null : plainError(error), results: safe(state.results) };
-    } finally {
-      state.adminTestAccount = null;
-      setBusy(false);
-      render();
-    }
-  }
-
-
-  async function runAdminBookingQueueE2E(mode) {
-    if (state.running) return;
-    const queueMode = mode === 'cancellation' ? 'cancellation' : 'pending';
-    state.results = [];
-    state.participants = [];
-    state.cancelled = false;
-    state.runSequence += 1;
-    state.runStartedAt = new Date().toISOString();
-    renderParticipants();
-    setBusy(true, queueMode === 'pending' ? '預約待確認' : '預約取消申請');
-    setMessage(queueMode === 'pending'
-      ? '正在建立測試會員待確認預約，接著會實際執行確認預約與不通過。'
-      : '正在建立測試會員取消申請，接著會實際執行保留預約與確認取消。');
-    try {
-      const scenario = await prepareAdminBookingQueueScenario(queueMode);
-      state.adminTestAccount = scenario.account;
-      state.results.push({
-        key: queueMode === 'pending' ? 'ADMIN_BOOKING_PENDING_FIXTURE' : 'ADMIN_BOOKING_CANCELLATION_FIXTURE',
-        name: queueMode === 'pending' ? '預約：建立待確認 E2E 資料' : '預約：建立取消申請 E2E 資料',
-        domain: 'Booking Queue E2E / Fixture',
-        status: 'passed',
-        message: '只使用測試會員建立本輪預約資料；正式會員不在自動化操作範圍。',
-        expected: { testAccountOnly: true, fixtureReady: true },
-        actual: {
-          memberId: scenario.account.memberId,
-          memberCode: scenario.account.memberCode,
-          bookingIds: scenario.bookingIds,
-          pendingCount: scenario.pending.length,
-          cancellationCount: scenario.cancellations.length
-        },
-        durationMs: 0
-      });
-      render();
-
-      if (queueMode === 'pending') {
-        await executeCases([
-          caseDef('ADMIN_BOOKING_PENDING_CONFIRM', '待確認：確認預約', 'Booking Queue E2E / Pending', () => adminPendingConfirmCase(scenario)),
-          caseDef('ADMIN_BOOKING_PENDING_REJECT', '待確認：不通過', 'Booking Queue E2E / Pending', () => adminPendingRejectCase(scenario))
-        ], '預約待確認');
-      } else {
-        await executeCases([
-          caseDef('ADMIN_BOOKING_CANCELLATION_KEEP', '取消申請：保留預約', 'Booking Queue E2E / Cancellation', () => adminCancellationKeepCase(scenario)),
-          caseDef('ADMIN_BOOKING_CANCELLATION_APPROVE', '取消申請：確認取消', 'Booking Queue E2E / Cancellation', () => adminCancellationApproveCase(scenario))
-        ], '預約取消申請');
-      }
-
-      const cancelled = state.cancelled;
-      const recorded = !cancelled && state.results.length
-        ? await recordResultRows(state.results, 'admin-booking-queue', 'full', String(scenario.account.memberId || ''), state.runStartedAt)
-        : null;
-      const failed = state.results.filter((item) => item.status === 'failed').length;
-      setMessage(
-        cancelled
-          ? '預約佇列 E2E 已停止；已完成動作保留。'
-          : failed
-            ? '預約佇列 E2E 完成，但有 ' + failed + ' 個動作失敗。'
-            : queueMode === 'pending'
-              ? '待確認 E2E 完成：確認預約與不通過都已實際執行並回讀。'
-              : '取消申請 E2E 完成：保留預約、再次申請取消與確認取消都已實際執行並回讀。',
-        !cancelled && failed > 0
-      );
-      return { cancelled, recorded, account: safe(scenario.account), results: safe(state.results) };
-    } catch (error) {
-      const cancelled = state.cancelled;
-      setMessage(cancelled ? '預約佇列 E2E 已停止。' : (error?.message || '預約佇列 E2E 未能執行。'), !cancelled);
-      return { cancelled, error: cancelled ? null : plainError(error), results: safe(state.results) };
-    } finally {
-      state.adminTestAccount = null;
-      setBusy(false);
-      render();
-    }
-  }
-
   async function runPairedAdminBookingLive(participant) {
     const wrapperKey = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_FOLLOWUP';
     const rowPrefix = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_';
@@ -652,14 +529,14 @@
   }
 
 
-  async function runPaired({ bookingOnly = false, includeAdminSuite = false } = {}) {
+  async function runPaired() {
     if (state.running) return;
     state.cancelled = false;
     state.runSequence += 1;
     let participantCount = 1;
     let openedWindows = [];
     try {
-      participantCount = includeAdminSuite ? 1 : selectedParticipantCount();
+      participantCount = selectedParticipantCount();
       closeClientWindows();
       openedWindows = openClientWindows(participantCount);
     } catch (error) {
@@ -692,7 +569,7 @@
         window: openedWindows[index],
         status: '等待隨機啟動',
         surface: '前置資料完成',
-        surfacePlan: bookingOnly ? PAIRED_SURFACES.filter(([key]) => key === 'booking') : shuffled(PAIRED_SURFACES),
+        surfacePlan: shuffled(PAIRED_SURFACES),
         runCodes: [],
         startedAt: Date.now(),
         login: null,
@@ -733,7 +610,7 @@
         });
         await Promise.all([...clientTasks, ...liveAdminTasks]);
 
-        if (!state.cancelled && (!bookingOnly || includeAdminSuite)) {
+        if (!state.cancelled) {
           const remainingAdminDefinitions = allAdminDefinitions.filter((def) => !preflightKeys.has(def.key));
           await executeCases(remainingAdminDefinitions, '管理端 · 其餘完整 E2E');
         }
@@ -760,11 +637,11 @@
         }
       }
 
-      if (!state.cancelled && !bookingOnly && state.participants[0]) {
+      if (!state.cancelled && state.participants[0]) {
         await runDeepPairedSuite(state.participants[randomInt(0, state.participants.length - 1)]);
       }
 
-      if (!state.cancelled && !bookingOnly) {
+      if (!state.cancelled) {
         await executeCases([
           caseDef(
             'PAIRED_HUMAN_INTERACTION_COVERAGE',
@@ -3430,14 +3307,12 @@
     const ids = [
       'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'runQuickAutomationTestButton',
-      'runFullAutomationTestButton', 'runAdminQuickE2EButton', 'runAdminFullE2EButton',
-      'runBookingPendingE2EButton', 'runBookingCancellationE2EButton', 'runBookingFullE2EButton',
-      'runPairedFullE2EButton', 'pairedE2EAccountCount'
+      'runFullAutomationTestButton', 'runPairedFullE2EButton', 'pairedE2EAccountCount'
     ];
     const actual = Object.fromEntries(ids.map((id) => [id, Boolean(document.getElementById(id))]));
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('管理端測試環境與兩類 Runner 控制元件皆存在。', { allControls: true }, actual)
+      ? pass('管理端測試環境與唯一完整協同 Runner 控制元件皆存在。', { allControls: true }, actual)
       : fail('測試環境控制元件不完整。', { allControls: true }, actual);
   }
 
@@ -3562,170 +3437,6 @@
     return shuffled(accounts).slice(0, count);
   }
 
-
-  async function waitStandaloneBookingRows(bookingIds, memberId, timeoutMs = 20000) {
-    const ids = [...new Set((bookingIds || []).map(String).filter(Boolean))];
-    const deadline = Date.now() + Math.max(3000, Number(timeoutMs) || 20000);
-    let rows = [];
-    while (Date.now() < deadline) {
-      const data = await adminBookingBootstrapSnapshot();
-      rows = (Array.isArray(data?.bookings) ? data.bookings : [])
-        .filter((booking) => ids.includes(String(booking?.bookingId || '')))
-        .filter((booking) => String(booking?.memberId || '') === String(memberId || ''));
-      if (rows.length === ids.length) return rows;
-      await sleep(500);
-    }
-    return rows;
-  }
-
-  async function prepareAdminBookingQueueScenario(mode) {
-    const queueMode = mode === 'cancellation' ? 'cancellation' : 'pending';
-    const accounts = await prepareTestAccounts(1);
-    const account = accounts[0];
-    if (!account?.memberId) throw new Error('找不到可供預約佇列 E2E 使用的測試會員。');
-
-    const login = await createPairedSession(account, 'booking');
-    const targetPending = queueMode === 'pending' ? 2 : 1;
-    const targetCancellation = 1;
-    const bookingIds = [];
-    const stateRows = [];
-
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const usage = await postFunction('user-test-api', {
-        action: 'user.qa.usage-state.prepare',
-        surface: 'booking',
-        testSessionToken: login.testSessionToken
-      });
-      for (const item of Array.isArray(usage?.bookings) ? usage.bookings : []) {
-        const bookingId = String(item?.bookingId || '');
-        if (bookingId && !bookingIds.includes(bookingId)) bookingIds.push(bookingId);
-        if (bookingId) stateRows.push({ bookingId, state: String(item?.state || '') });
-      }
-
-      const knownPending = stateRows.filter((item) => item.state === 'pending').length;
-      const knownCancellation = stateRows.filter((item) => item.state === 'cancel_requested').length;
-      if (knownPending >= targetPending && knownCancellation >= targetCancellation) break;
-    }
-
-    if (!bookingIds.length) throw new Error('測試會員無法建立預約 E2E 資料，請確認預約資源與可預約時段。');
-    const rows = await waitStandaloneBookingRows(bookingIds, account.memberId);
-    const pending = rows.filter((booking) =>
-      String(booking?.status || '') === 'pending'
-      && !(booking?.cancellationRequestedAt && !booking?.cancellationReviewedAt)
-    );
-    const cancellations = rows.filter((booking) =>
-      ['pending', 'confirmed'].includes(String(booking?.status || ''))
-      && Boolean(booking?.cancellationRequestedAt)
-      && !booking?.cancellationReviewedAt
-    );
-
-    if (queueMode === 'pending' && pending.length < 2) {
-      throw new Error('待確認 E2E 需要兩筆獨立測試預約（確認／不通過各一筆），目前建立不足。');
-    }
-    if (queueMode === 'cancellation' && cancellations.length < 1) {
-      throw new Error('取消申請 E2E 未建立出待審核取消資料。');
-    }
-
-    return {
-      mode: queueMode,
-      account,
-      login,
-      bookingIds,
-      pending: pending.slice(0, 2),
-      cancellations: cancellations.slice(0, 1)
-    };
-  }
-
-  async function requestDetectedCancellationWithTestSession(testSessionToken, bookingId) {
-    const id = String(bookingId || '');
-    const result = await postFunction('booking-api', {
-      action: 'user.booking.cancel',
-      clientType: 'member',
-      testSessionToken: String(testSessionToken || ''),
-      bookingId: id
-    });
-    document.getElementById('bookingAdminRefreshButton')?.click();
-    const requested = await waitAdminBookingSnapshot(
-      id,
-      (row) => Boolean(row?.cancellationRequestedAt) && !row?.cancellationReviewedAt,
-      18000
-    );
-    return {
-      bookingId: id,
-      responseStatus: String(result?.booking?.status || ''),
-      status: String(requested?.status || ''),
-      cancellationRequestedAt: requested?.cancellationRequestedAt || null,
-      cancellationReviewedAt: requested?.cancellationReviewedAt || null,
-      ok: Boolean(requested?.cancellationRequestedAt && !requested?.cancellationReviewedAt)
-    };
-  }
-
-  async function adminPendingConfirmCase(scenario) {
-    const target = scenario?.pending?.[0];
-    if (!target) return fail('缺少可供確認的測試會員待確認預約。', { pendingTarget: true }, { pendingTarget: false });
-    const pendingTab = await verifyDetectedBookingInCoreFilter(target.bookingId, 'pending');
-    const confirmed = await setDetectedBookingStatus(
-      target.bookingId,
-      '確認預約',
-      'QA ADMIN PENDING E2E CONFIRM ' + qaCrudStamp(),
-      'confirmed',
-      'pending'
-    );
-    const confirmedTab = confirmed.ok ? await verifyDetectedBookingInCoreFilter(target.bookingId, 'confirmed') : null;
-    const actual = { bookingId: target.bookingId, pendingTab, confirmed, confirmedTab };
-    return pendingTab.ok && confirmed.ok && confirmedTab?.ok
-      ? pass('待確認分頁已實際點擊「確認預約」，並回讀 confirmed。', { status: 'confirmed' }, actual)
-      : fail('待確認「確認預約」沒有完整執行或回讀失敗。', { status: 'confirmed' }, actual);
-  }
-
-  async function adminPendingRejectCase(scenario) {
-    const target = scenario?.pending?.[1];
-    if (!target) return fail('缺少第二筆可供不通過的測試會員待確認預約。', { secondPendingTarget: true }, { secondPendingTarget: false });
-    const pendingTab = await verifyDetectedBookingInCoreFilter(target.bookingId, 'pending');
-    const rejected = await setDetectedBookingStatus(
-      target.bookingId,
-      '不通過',
-      'QA ADMIN PENDING E2E REJECT ' + qaCrudStamp(),
-      'rejected',
-      'pending'
-    );
-    const allTab = rejected.ok ? await verifyDetectedBookingInCoreFilter(target.bookingId, 'all') : null;
-    const actual = { bookingId: target.bookingId, pendingTab, rejected, allTab };
-    return pendingTab.ok && rejected.ok && allTab?.ok
-      ? pass('待確認分頁已實際點擊「不通過」，並回讀 rejected。', { status: 'rejected' }, actual)
-      : fail('待確認「不通過」沒有完整執行或回讀失敗。', { status: 'rejected' }, actual);
-  }
-
-  async function adminCancellationKeepCase(scenario) {
-    const target = scenario?.cancellations?.[0];
-    if (!target) return fail('缺少可供保留預約的測試會員取消申請。', { cancellationTarget: true }, { cancellationTarget: false });
-    const requestTab = await verifyDetectedBookingInCancellationFilter(target.bookingId, 'request');
-    const kept = await rejectDetectedCancellation(target.bookingId);
-    const sourceTab = kept.ok ? await verifyDetectedBookingInCoreFilter(target.bookingId, kept.sourceStatus) : null;
-    scenario.keptBookingId = target.bookingId;
-    scenario.keepResult = kept;
-    const actual = { bookingId: target.bookingId, requestTab, kept, sourceTab };
-    return requestTab.ok && kept.ok && sourceTab?.ok
-      ? pass('取消申請分頁已實際點擊「保留預約」，取消申請已結束且原狀態保留。', { decision: 'rejected' }, actual)
-      : fail('取消申請「保留預約」沒有完整執行或回讀失敗。', { decision: 'rejected' }, actual);
-  }
-
-  async function adminCancellationApproveCase(scenario) {
-    const bookingId = String(scenario?.keptBookingId || scenario?.cancellations?.[0]?.bookingId || '');
-    if (!bookingId || !scenario?.keepResult?.ok) {
-      return fail('保留預約未成功，不能安全建立第二次取消申請。', { keepSucceeded: true }, { keepSucceeded: false, bookingId });
-    }
-    const rerequest = await requestDetectedCancellationWithTestSession(scenario.login?.testSessionToken, bookingId);
-    if (!rerequest.ok) return fail('測試會員重新提出取消申請失敗。', { cancellationRequestedAgain: true }, rerequest);
-    const requestTab = await verifyDetectedBookingInCancellationFilter(bookingId, 'request');
-    const approved = await approveDetectedCancellation(bookingId);
-    const cancelledTab = approved.ok ? await verifyDetectedBookingInCancellationFilter(bookingId, 'cancelled') : null;
-    const allTab = approved.ok ? await verifyDetectedBookingInCoreFilter(bookingId, 'all') : null;
-    const actual = { bookingId, rerequest, requestTab, approved, cancelledTab, allTab };
-    return rerequest.ok && requestTab.ok && approved.ok && cancelledTab?.ok && allTab?.ok
-      ? pass('測試會員再次申請取消後，管理端已實際點擊「確認取消」並回讀 cancelled。', { decision: 'approved', status: 'cancelled' }, actual)
-      : fail('取消申請「確認取消」沒有完整執行或回讀失敗。', { decision: 'approved', status: 'cancelled' }, actual);
-  }
 
   async function prepareComplexE2EFixtures() {
     const session = await adminSession();
@@ -4516,11 +4227,6 @@
 
   window.MemberAdminE2EControl = Object.freeze({
     version: VERSION,
-    runQuick: () => runAdmin('quick'),
-    runFull: () => runAdmin('full'),
-    runBookingPending: () => runAdminBookingQueueE2E('pending'),
-    runBookingCancellation: () => runAdminBookingQueueE2E('cancellation'),
-    runBookingFull: () => runPaired({ bookingOnly: true }),
     runPairedFull: () => runPaired(),
     stop: () => requestStop(),
     maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
