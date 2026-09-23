@@ -326,7 +326,7 @@ async function runView(supabase: any, runId: string): Promise<Json> {
 }
 
 async function e2eProfile(supabase: any): Promise<Json> {
-  const [stateResult, historyResult] = await Promise.all([
+  const [stateResult, historyResult, surfaceCaseResult] = await Promise.all([
     supabase
       .from("e2e_evolution_state")
       .select("run_count,last_complexity_level,last_seed,last_root_run_id,updated_at")
@@ -339,9 +339,55 @@ async function e2eProfile(supabase: any): Promise<Json> {
       .eq("suite", "full")
       .order("created_at", { ascending: false })
       .limit(200),
+    supabase
+      .from("automation_test_cases")
+      .select("case_key,duration_ms,status,created_at")
+      .like("case_key", "PAIRED_%")
+      .eq("status", "passed")
+      .not("duration_ms", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(500),
   ]);
   if (stateResult.error || historyResult.error) {
     throw new ApiError(503, "E2E_PROFILE_READ_FAILED", "目前無法讀取 E2E 複雜度歷史。");
+  }
+
+  const fallbackWeights: Record<string, number> = {
+    member: 1000,
+    points: 1300,
+    event: 1200,
+    calendar: 1100,
+    booking: 2200,
+  };
+  const durationBuckets: Record<string, number[]> = {
+    member: [],
+    points: [],
+    event: [],
+    calendar: [],
+    booking: [],
+  };
+  if (!surfaceCaseResult.error) {
+    for (const row of surfaceCaseResult.data || []) {
+      const match = /^PAIRED_\d+_(MEMBER|POINTS|EVENT|CALENDAR|BOOKING)$/.exec(asText(row?.case_key, 120));
+      if (!match) continue;
+      const key = match[1].toLowerCase();
+      const duration = Math.max(1, Number(row?.duration_ms || 0) || 0);
+      if (duration > 0 && durationBuckets[key].length < 80) durationBuckets[key].push(duration);
+    }
+  }
+  const surfaceWeightsMs: Record<string, number> = {};
+  const surfaceSamples: Record<string, number> = {};
+  for (const [key, fallback] of Object.entries(fallbackWeights)) {
+    const values = durationBuckets[key].slice().sort((a, b) => a - b);
+    surfaceSamples[key] = values.length;
+    if (!values.length) {
+      surfaceWeightsMs[key] = fallback;
+      continue;
+    }
+    const middle = Math.floor(values.length / 2);
+    surfaceWeightsMs[key] = Math.round(
+      values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2,
+    );
   }
 
   const rootRuns = (historyResult.data || []).filter((row: any) => row?.summary?.rootRun === true);
@@ -359,6 +405,8 @@ async function e2eProfile(supabase: any): Promise<Json> {
     previousRootRunId: asText(stateResult.data?.last_root_run_id, 80),
     previousStatus: asText(last?.status, 40),
     evolutionUpdatedAt: stateResult.data?.updated_at || null,
+    surfaceWeightsMs,
+    surfaceSamples,
   };
 }
 
