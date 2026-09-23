@@ -411,6 +411,19 @@ async function activeServices(supabase: SupabaseClient): Promise<any[]> {
   return result.data || [];
 }
 
+async function isActiveBookingHoliday(supabase: SupabaseClient, date: string): Promise<boolean> {
+  const result = await supabase.from("calendar_items")
+    .select("id,starts_on,ends_on")
+    .eq("item_type", "holiday")
+    .eq("status", "active")
+    .lte("starts_on", date);
+  if (result.error) throw mapDatabaseError(result.error);
+  return (result.data || []).some((row: any) =>
+    String(row.starts_on || "") <= date
+    && String(row.ends_on || row.starts_on || "") >= date
+  );
+}
+
 async function bookingServiceTypeRewards(supabase: SupabaseClient): Promise<Json[]> {
   const [rewardResult, typeResult, cardResult] = await Promise.all([
     supabase.from("booking_service_type_rewards").select("service_type_id,point_card_id,minutes_per_point"),
@@ -495,6 +508,18 @@ async function generateSlots(supabase: SupabaseClient, body: Json, member: any):
       totalAmount: totalAmount(items),
       earliestBookingDate,
       latestBookingDate: latestBookingDate || null,
+      slots: [],
+    };
+  }
+  if (await isActiveBookingHoliday(supabase, date)) {
+    return {
+      serverNow: new Date().toISOString(),
+      settings: settingsClient(settings),
+      totalDurationMinutes: duration,
+      totalAmount: totalAmount(items),
+      earliestBookingDate,
+      latestBookingDate: latestBookingDate || null,
+      holidayBlocked: true,
       slots: [],
     };
   }
