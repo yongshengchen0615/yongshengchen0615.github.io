@@ -828,6 +828,16 @@
     cloneDocument.querySelectorAll('[data-line-user-id], [data-phone], [data-birthday], [data-email]').forEach((node) => {
       node.textContent = '[redacted]';
     });
+    cloneDocument.querySelectorAll('#memberIdentity, #memberRecordsIdentity').forEach((node) => {
+      node.textContent = '[redacted member identity]';
+    });
+    if (cloneDocument.querySelector('#realMembersSubtab[aria-selected="true"]')) {
+      const memberTable = cloneDocument.querySelector('#memberTableBody');
+      if (memberTable) memberTable.textContent = '[redacted real member directory]';
+    }
+    cloneDocument.querySelectorAll('#bookingAdminQueue [data-member-id], #bookingAdminQueue [data-line-user-id]').forEach((node) => {
+      node.textContent = '[redacted member]';
+    });
     cloneDocument.querySelectorAll('img').forEach((image) => {
       try {
         const url = new URL(String(image.src || ''), window.location.href);
