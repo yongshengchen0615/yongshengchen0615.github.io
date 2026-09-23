@@ -1997,6 +1997,7 @@
 
   function matchesButtonCoverage(button, pattern) {
     if (!button || !pattern) return false;
+    if (button.dataset?.uiThemeControl === 'true') return true;
     const candidates = [
       String(button.id || ''),
       String(button.getAttribute?.('class') || ''),
