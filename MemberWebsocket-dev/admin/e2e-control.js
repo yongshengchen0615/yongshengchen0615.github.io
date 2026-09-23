@@ -72,7 +72,7 @@
         <div>
           <span class="test-mode-eyebrow">Unified Background E2E</span>
           <h4 id="adminBrowserE2ETitle">完整 E2E · 後端 QA + 管理端 ↔ 用戶端協同</h4>
-          <p>單一入口會先執行 Test Control Center 的後端完整 QA，再執行完整管理端與五種用戶端真人協同 E2E。實際 Runner 使用獨立管理端視窗，因此啟動後可回到原管理端繼續操作；預約仍會即時接手拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並驗證 Realtime、終態與風險掃描。</p>
+          <p>單一入口會先執行 Test Control Center 的後端完整 QA，再執行完整管理端與五種用戶端真人協同 E2E。管理端使用獨立背景 Runner，每位測試用戶的會員卡／集點卡／活動票券／活動日曆／預約也各自使用固定背景頁，因此啟動後可回到原管理端繼續操作；預約仍會即時接手拒絕、保留取消、確認、修改項目、修改技師、完成、再次取消與確認取消，並驗證 Realtime、終態與風險掃描。</p>
         </div>
         <div class="admin-e2e-actions">
           <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">完整 E2E：待命</span>
