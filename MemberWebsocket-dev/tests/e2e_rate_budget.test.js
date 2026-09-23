@@ -19,7 +19,7 @@ test('background booking panel does not subscribe to duplicate booking realtime 
   const loader = read('admin/booking-panel.js');
   assert.match(core, /function isBackgroundE2ERunner\(/);
   assert.match(core, /function setupRealtime\(\) \{\s*if \(isBackgroundE2ERunner\(\)\) return;/);
-  assert.match(loader, /booking-panel-core\.js', 'booking-rate-budget-20260923-1'/);
+  assert.match(loader, /booking-panel-core\.js', 'booking-e2e-refresh-20260923-2'/);
 });
 
 test('paired E2E uses adaptive booking read budget and next-bucket backoff', () => {
@@ -36,6 +36,6 @@ test('paired E2E uses adaptive booking read budget and next-bucket backoff', () 
 test('admin rate-budget assets are cache-busted', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=background-e2e-rate-budget-20260923-1/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-17/);
-  assert.match(html, /booking-panel\.js\?v=booking-rate-budget-20260923-1/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-18/);
+  assert.match(html, /booking-panel\.js\?v=booking-e2e-refresh-20260923-2/);
 });
