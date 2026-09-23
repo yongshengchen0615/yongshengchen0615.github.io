@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.13';
+  const VERSION = '2026-09-23.14';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
