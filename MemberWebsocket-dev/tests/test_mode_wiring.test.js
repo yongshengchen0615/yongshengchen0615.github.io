@@ -304,7 +304,7 @@ test('user QA runner is headless and can only be started by the unified admin or
   assert.doesNotMatch(controller, /document\.createElement\('button'\)[\s\S]*user-qa-launcher/);
   assert.doesNotMatch(controller, /data-qa-run="quick"|data-qa-run="full"/);
   assert.doesNotMatch(controller, /runQuick: \(\) => runSuite\('quick'\)/);
-  assert.match(controller, /runFull: \(\) => runSuite\('full'\)/);
+  assert.match(controller, /runFull: \(options = \{\}\) => runSuite\('full', options\)/);
   assert.match(controller, /stop: \(\) => requestStop\(\)/);
 });
 

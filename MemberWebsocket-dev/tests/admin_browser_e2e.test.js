@@ -10,7 +10,7 @@ test('admin exposes only the unified background full E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-7/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-8/);
   assert.match(runner, /runPairedFullE2EButton/);
   assert.match(runner, /完整 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
   assert.match(runner, /stopAdminE2EButton/);
@@ -156,8 +156,8 @@ test('paired E2E creates complex admin fixtures before randomized user clients s
   const clientStart = runner.indexOf('runParticipantSurfaces(participant)');
   assert.ok(fixtureCall >= 0 && accountCall > fixtureCall && clientStart > fixtureCall);
 
-  assert.match(runner, /shuffled\(PAIRED_SURFACES\)/);
-  assert.match(runner, /randomInt\(80, 1200\)/);
+  assert.match(runner, /scenarioShuffled\(PAIRED_SURFACES/);
+  assert.match(runner, /scenarioRandomInt\(50, jitterMax, 'participant-start-'/);
   assert.match(runner, /createPairedSession\(participant\.account, surface\)/);
   assert.match(runner, /admin\.test-control\.prepare-e2e-fixtures/);
 

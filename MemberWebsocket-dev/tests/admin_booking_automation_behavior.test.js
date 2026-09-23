@@ -263,7 +263,7 @@ test('live admin runner no longer waits for every client task to finish before b
 
 test('the only paired full E2E always includes booking collaboration and the complete admin suite', () => {
   assert.match(source, /async function runPaired\(options = \{\}\)/);
-  assert.match(source, /surfacePlan: shuffled\(PAIRED_SURFACES\)/);
+  assert.match(source, /surfacePlan: scenarioShuffled\(PAIRED_SURFACES/);
   assert.match(source, /const allAdminDefinitions = adminDefinitions\('full'\)/);
   assert.match(source, /runPairedAdminBookingLive\(participant\)/);
   assert.match(source, /await executeCases\(remainingAdminDefinitions, '管理端 · 其餘完整 E2E'\)/);
