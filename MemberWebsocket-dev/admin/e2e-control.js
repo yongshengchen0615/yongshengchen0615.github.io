@@ -1,7 +1,10 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.18';
+  const VERSION = '2026-09-23.19';
+  const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+  const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
+  let html2canvasLoader = null;
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -728,10 +731,14 @@
           outcome = await def.run();
         }
         Object.assign(row, outcome);
-        if (row.status === 'failed') row.trace = buildAdminFailureTrace(traceMarker, row);
+        if (row.status === 'failed') {
+          row.trace = buildAdminFailureTrace(traceMarker, row);
+          await attachFailureScreenshot(row);
+        }
       } catch (error) {
         Object.assign(row, fail('案例執行發生未預期錯誤。', { noUnhandledError: true }, plainError(error)));
         row.trace = buildAdminFailureTrace(traceMarker, row, error);
+        await attachFailureScreenshot(row);
       }
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
@@ -775,15 +782,148 @@
     return parsed.data || {};
   }
 
+  async function ensureHtml2Canvas() {
+    if (typeof window.html2canvas === 'function') return window.html2canvas;
+    if (html2canvasLoader) return html2canvasLoader;
+    html2canvasLoader = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-e2e-html2canvas="true"]');
+      const script = existing || document.createElement('script');
+      if (!existing) {
+        script.src = HTML2CANVAS_URL;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        script.referrerPolicy = 'no-referrer';
+        script.dataset.e2eHtml2canvas = 'true';
+        document.head.appendChild(script);
+      }
+      const done = () => typeof window.html2canvas === 'function'
+        ? resolve(window.html2canvas)
+        : reject(new Error('html2canvas 載入後仍不可用。'));
+      script.addEventListener('load', done, { once: true });
+      script.addEventListener('error', () => reject(new Error('html2canvas 載入失敗。')), { once: true });
+      if (existing && typeof window.html2canvas === 'function') done();
+    }).catch((error) => {
+      html2canvasLoader = null;
+      throw error;
+    });
+    return html2canvasLoader;
+  }
+
+  function redactScreenshotClone(cloneDocument) {
+    const sensitive = /(token|secret|password|phone|birthday|email|line.?user|surname|display.?name)/i;
+    cloneDocument.querySelectorAll('input, textarea, [data-e2e-redact]').forEach((node) => {
+      const signature = [
+        node.id,
+        node.getAttribute?.('name'),
+        node.getAttribute?.('autocomplete'),
+        node.getAttribute?.('placeholder'),
+        node.className
+      ].filter(Boolean).join(' ');
+      if (node.hasAttribute?.('data-e2e-redact') || sensitive.test(signature)) {
+        if ('value' in node) node.value = '[redacted]';
+        node.setAttribute?.('value', '[redacted]');
+        if (!('value' in node)) node.textContent = '[redacted]';
+      }
+    });
+    cloneDocument.querySelectorAll('[data-line-user-id], [data-phone], [data-birthday], [data-email]').forEach((node) => {
+      node.textContent = '[redacted]';
+    });
+    cloneDocument.querySelectorAll('img').forEach((image) => {
+      try {
+        const url = new URL(String(image.src || ''), window.location.href);
+        if (url.origin !== window.location.origin) image.style.visibility = 'hidden';
+      } catch {
+        image.style.visibility = 'hidden';
+      }
+    });
+  }
+
+  function canvasToWebp(canvas, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('WebP 編碼失敗。')), 'image/webp', quality);
+    });
+  }
+
+  async function captureFailureScreenshotBlob() {
+    const renderScreenshot = await ensureHtml2Canvas();
+    const width = Math.max(320, Number(window.innerWidth || document.documentElement.clientWidth || 1280));
+    const height = Math.max(320, Number(window.innerHeight || document.documentElement.clientHeight || 900));
+    const canvas = await renderScreenshot(document.body, {
+      backgroundColor: '#ffffff',
+      logging: false,
+      useCORS: true,
+      allowTaint: false,
+      scale: 0.8,
+      width,
+      height,
+      windowWidth: width,
+      windowHeight: height,
+      x: window.scrollX || 0,
+      y: window.scrollY || 0,
+      onclone: redactScreenshotClone
+    });
+    let blob = await canvasToWebp(canvas, 0.72);
+    if (blob.size > FAILURE_SCREENSHOT_MAX_BYTES) blob = await canvasToWebp(canvas, 0.5);
+    if (blob.size > FAILURE_SCREENSHOT_MAX_BYTES) throw new Error('WebP 失敗快照超過 1.9 MB，已略過上傳。');
+    return { blob, width: canvas.width, height: canvas.height };
+  }
+
+  async function uploadFailureScreenshot(row) {
+    const session = await adminSession();
+    const captured = await captureFailureScreenshotBlob();
+    const form = new FormData();
+    form.set('actorType', 'admin');
+    form.set('idToken', session.idToken);
+    form.set('surface', 'admin');
+    form.set('caseKey', String(row?.key || row?.name || 'case'));
+    form.set('rootRunId', String(state.rootRunId || state.backgroundRunId || ('ADMIN-' + Date.now().toString(36))));
+    form.set('width', String(captured.width));
+    form.set('height', String(captured.height));
+    form.set('file', captured.blob, 'failure.webp');
+
+    const response = await fetch(functionUrl(session.config, 'e2e-artifact-api'), {
+      method: 'POST',
+      headers: { apikey: String(session.config.supabasePublishableKey || '') },
+      cache: 'no-store',
+      body: form
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload || payload.ok !== true || !payload.data?.screenshot?.path) {
+      const error = new Error(payload?.error?.message || '失敗快照上傳失敗。');
+      error.code = payload?.error?.code || 'E2E_SCREENSHOT_UPLOAD_FAILED';
+      throw error;
+    }
+    return payload.data.screenshot;
+  }
+
+  async function attachFailureScreenshot(row) {
+    if (!row || row.status !== 'failed') return;
+    try {
+      const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('失敗快照擷取逾時。')), 12000));
+      const screenshot = await Promise.race([uploadFailureScreenshot(row), timeout]);
+      row.trace = safe({ ...(row.trace || {}), artifactVersion: 3, screenshot });
+    } catch (error) {
+      row.trace = safe({
+        ...(row.trace || {}),
+        artifactVersion: Math.max(2, Number(row?.trace?.artifactVersion || 0)),
+        screenshotCapture: { status: 'failed', error: plainError(error) }
+      });
+    }
+  }
+
   function compactRecordSnapshot(value, maxChars = 1600) {
     const normalized = safe(value);
     let serialized = '';
     try { serialized = JSON.stringify(normalized); } catch { return { serializationFailed: true }; }
     if (serialized.length <= maxChars) return normalized;
+    const screenshot = normalized?.screenshot && typeof normalized.screenshot === 'object'
+      ? safe(normalized.screenshot)
+      : null;
     return {
       truncated: true,
       originalChars: serialized.length,
-      preview: serialized.slice(0, Math.max(200, maxChars - 120))
+      preview: serialized.slice(0, Math.max(200, maxChars - 120)),
+      ...(screenshot ? { screenshot } : {})
     };
   }
 
