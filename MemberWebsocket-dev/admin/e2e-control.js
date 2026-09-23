@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.6';
+  const VERSION = '2026-09-23.7';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -22,6 +22,11 @@
     running: false,
     cancelled: false,
     runSequence: 0,
+    randomSeed: '',
+    randomState: 0,
+    complexityLevel: 1,
+    clientConcurrency: 2,
+    rootRunId: '',
     results: [],
     section: null,
     list: null,
@@ -123,10 +128,35 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
+  function hashSeed(value) {
+    let hash = 2166136261;
+    for (const char of String(value || '')) {
+      hash ^= char.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0 || 0x9e3779b9;
+  }
+
+  function configureRandom(seed) {
+    state.randomSeed = String(seed || ('E2E-' + Date.now().toString(36)));
+    state.randomState = hashSeed(state.randomSeed);
+  }
+
+  function nextRandomUnit() {
+    if (!state.randomState) configureRandom(state.randomSeed);
+    let x = state.randomState >>> 0;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    state.randomState = x >>> 0;
+    return (state.randomState >>> 0) / 4294967296;
+  }
+
   function randomInt(min, max) {
     const low = Math.ceil(Number(min) || 0);
     const high = Math.floor(Number(max) || low);
     if (high <= low) return low;
+    if (state.randomSeed) return low + Math.floor(nextRandomUnit() * (high - low + 1));
     try {
       const value = new Uint32Array(1);
       crypto.getRandomValues(value);
@@ -134,6 +164,36 @@
     } catch (_) {
       return low + Math.floor(Math.random() * (high - low + 1));
     }
+  }
+
+  async function loadE2EProfile() {
+    const session = await adminSession();
+    const data = await postFunction('test-control-api', {
+      action: 'admin.test-control.e2e-profile',
+      clientType: 'admin',
+      idToken: session.idToken
+    });
+    const completedRootRuns = Math.max(0, Number(data?.completedRootRuns || 0));
+    const level = Math.max(1, Math.min(8, Number(data?.nextComplexityLevel || completedRootRuns + 1) || 1));
+    const seed = 'E2E-L' + level + '-' + Date.now().toString(36).toUpperCase() + '-' + String(completedRootRuns + 1);
+    state.complexityLevel = level;
+    state.clientConcurrency = Math.max(1, Math.min(4, 1 + Math.ceil(level / 2)));
+    state.rootRunId = 'ROOT-' + Date.now().toString(36).toUpperCase();
+    configureRandom(seed);
+    return { completedRootRuns, complexityLevel: level, seed, clientConcurrency: state.clientConcurrency, rootRunId: state.rootRunId };
+  }
+
+  async function runWithConcurrency(items, limit, worker) {
+    const source = Array.isArray(items) ? items.slice() : [];
+    const width = Math.max(1, Math.min(source.length || 1, Number(limit) || 1));
+    let cursor = 0;
+    const workers = Array.from({ length: width }, async () => {
+      while (cursor < source.length && !state.cancelled) {
+        const index = cursor++;
+        await worker(source[index], index);
+      }
+    });
+    await Promise.all(workers);
   }
 
   function shuffled(items) {
@@ -677,7 +737,11 @@
       memberId: memberId || undefined,
       startedAt: startedAt || state.runStartedAt || new Date(Date.now() - 1000).toISOString(),
       completedAt: new Date().toISOString(),
-      cases
+      cases,
+      rootRun: false,
+      e2eSeed: String(state.randomSeed || ''),
+      complexityLevel: Number(state.complexityLevel || 1),
+      rootRunId: String(state.rootRunId || '')
     };
     const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
     if (bytes > 320000) {
@@ -691,7 +755,8 @@
   }
 
   async function recordRun(runnerKind, suite, memberId = '') {
-    return recordResultRows(state.results, runnerKind, suite, memberId, state.runStartedAt || '');
+    const recorded = await recordResultRows(state.results, runnerKind, suite, memberId, state.runStartedAt || '');
+    return recorded;
   }
 
   function adminDefinitions(suite) {
@@ -876,8 +941,21 @@
       backendRun = await runUnifiedServerFullPhase();
       if (state.cancelled) return { cancelled: true, backendRun: safe(backendRun?.run || {}), results: safe(state.results) };
 
+      const profile = await loadE2EProfile();
+      state.results.push({
+        key: 'PAIRED_ADAPTIVE_PROFILE',
+        name: 'E2E 自適應複雜度與可重現 Seed',
+        domain: 'Paired E2E / Orchestration',
+        status: 'passed',
+        message: '本輪已依歷史完整 E2E 次數提升難度，並建立可重播 seed 與受控併發。',
+        expected: { deterministicSeed: true, boundedConcurrency: true, iterativeComplexity: true },
+        actual: safe(profile),
+        durationMs: 0
+      });
+      render();
+
       setMessage('後端完整 QA 階段已完成；正在建立 Browser 協同 E2E 的高複雜度測試資料。');
-      const fixture = await prepareComplexE2EFixtures();
+      const fixture = await prepareComplexE2EFixtures(profile);
       if (state.cancelled) return { cancelled: true, results: safe(state.results) };
 
       const accounts = await prepareTestAccounts(participantCount);
@@ -895,7 +973,9 @@
         lastSurfaceKey: '',
         adminStatus: '監看預約資料',
         liveBookingIds: [],
-        adminBookingTask: null
+        adminBookingTask: null,
+        seed: state.randomSeed + '-P' + (index + 1),
+        complexityLevel: state.complexityLevel
       }));
       renderParticipants();
 
@@ -923,11 +1003,15 @@
           participant.adminBookingTask = task;
           return task;
         });
-        const clientTasks = state.participants.map(async (participant) => {
-          await sleep(randomInt(80, 1200));
-          return runParticipantSurfaces(participant);
-        });
-        await Promise.all([...clientTasks, ...liveAdminTasks]);
+        const clientExecution = runWithConcurrency(
+          shuffled(state.participants),
+          state.clientConcurrency,
+          async (participant) => {
+            await sleep(randomInt(60, 420 + state.complexityLevel * 80));
+            return runParticipantSurfaces(participant);
+          }
+        );
+        await Promise.all([clientExecution, ...liveAdminTasks]);
 
         if (!state.cancelled) {
           const remainingAdminDefinitions = allAdminDefinitions.filter((def) => !preflightKeys.has(def.key));
@@ -972,7 +1056,39 @@
       }
 
       const cancelled = state.cancelled;
-      const recorded = !cancelled && state.results.length ? await recordRun('paired-browser', 'full') : null;
+      let recorded = null;
+      if (!cancelled && state.results.length) {
+        const originalRecordRows = recordResultRows;
+        recorded = await (async () => {
+          const session = await adminSession();
+          const sourceRows = state.results;
+          const cases = sourceRows.map((item) => {
+            const detailLimit = item.status === 'failed' ? 3600 : 1400;
+            return {
+              key: item.key, name: item.name, domain: item.domain, status: item.status,
+              message: String(item.message || '').slice(0, 1000),
+              expected: compactRecordSnapshot(item.expected, detailLimit),
+              actual: compactRecordSnapshot(item.actual, detailLimit),
+              durationMs: Number(item.durationMs || 0)
+            };
+          });
+          return postFunction('test-control-api', {
+            action: 'admin.test-control.record-browser-run',
+            clientType: 'admin',
+            idToken: session.idToken,
+            runnerKind: 'paired-browser',
+            suite: 'full',
+            startedAt: state.runStartedAt || new Date(Date.now() - 1000).toISOString(),
+            completedAt: new Date().toISOString(),
+            cases: cases.slice(0, 80),
+            rootRun: true,
+            e2eSeed: String(state.randomSeed || ''),
+            complexityLevel: Number(state.complexityLevel || 1),
+            rootRunId: String(state.rootRunId || ''),
+            clientConcurrency: Number(state.clientConcurrency || 1)
+          });
+        })();
+      }
       const failed = state.results.filter((item) => item.status === 'failed').length;
       if (cancelled) {
         for (const participant of state.participants) {
@@ -3758,14 +3874,16 @@
   }
 
 
-  async function prepareComplexE2EFixtures() {
+  async function prepareComplexE2EFixtures(profile = {}) {
     const session = await adminSession();
     const runTag = 'PAIR-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
     const data = await postFunction('test-control-api', {
       action: 'admin.test-control.prepare-e2e-fixtures',
       clientType: 'admin',
       idToken: session.idToken,
-      runTag
+      runTag,
+      complexityLevel: Number(profile.complexityLevel || state.complexityLevel || 1),
+      seed: String(profile.seed || state.randomSeed || '')
     });
     const fixture = data?.fixture || {};
     const primaryTechnicianId = String(fixture.primaryTechnicianId || '').trim();
@@ -3848,6 +3966,9 @@
     if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的用戶端視窗已關閉。`);
     const url = new URL('../' + surface + '/', window.location.href);
     url.searchParams.set('qaPair', `${Date.now()}-${participant.index}`);
+    url.searchParams.set('e2eSeed', String(participant.seed || state.randomSeed || ''));
+    url.searchParams.set('e2eComplexity', String(participant.complexityLevel || state.complexityLevel || 1));
+    url.searchParams.set('e2eParticipant', String(participant.index || 1));
     child.location.href = url.href;
   }
 
