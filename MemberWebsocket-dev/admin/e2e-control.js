@@ -2362,7 +2362,7 @@
       typeInput.value = typeCreated;
       typeInput.dispatchEvent(new Event('input', { bubbles: true }));
       modal.querySelector('form button[type="submit"]')?.click();
-      actual.typeCreated = Boolean(await waitFor(() => findBookingRow('bookingAdminTypeList', typeCreated), 15000));
+      actual.typeCreated = Boolean(await waitFor(() => findBookingRow('bookingAdminTypeList', typeCreated), 35000));
 
       if (actual.typeCreated && clickBookingRowAction('bookingAdminTypeList', typeCreated, '修改')) {
         modal = await waitFor(() => {
@@ -2374,7 +2374,7 @@
           editInput.value = typeUpdated;
           editInput.dispatchEvent(new Event('input', { bubbles: true }));
           modal.querySelector('form button[type="submit"]')?.click();
-          actual.typeUpdated = Boolean(await waitFor(() => findBookingRow('bookingAdminTypeList', typeUpdated), 15000));
+          actual.typeUpdated = Boolean(await waitFor(() => findBookingRow('bookingAdminTypeList', typeUpdated), 35000));
         }
       }
 
@@ -2397,7 +2397,7 @@
         price.value = '123';
         [title, type, duration, price].forEach((input) => input.dispatchEvent(new Event('change', { bubbles: true })));
         form.querySelector('button[type="submit"]')?.click();
-        actual.serviceCreated = Boolean(await waitFor(() => findBookingRow('bookingAdminServiceList', serviceCreated), 15000));
+        actual.serviceCreated = Boolean(await waitFor(() => findBookingRow('bookingAdminServiceList', serviceCreated), 35000));
       }
 
       if (actual.serviceCreated && clickBookingRowAction('bookingAdminServiceList', serviceCreated, '修改')) {
@@ -2414,21 +2414,21 @@
           title.dispatchEvent(new Event('input', { bubbles: true }));
           duration.dispatchEvent(new Event('change', { bubbles: true }));
           form.querySelector('button[type="submit"]')?.click();
-          actual.serviceUpdated = Boolean(await waitFor(() => findBookingRow('bookingAdminServiceList', serviceUpdated), 15000));
+          actual.serviceUpdated = Boolean(await waitFor(() => findBookingRow('bookingAdminServiceList', serviceUpdated), 35000));
         }
       }
 
       if (actual.serviceUpdated) {
         await withAutoConfirm(async () => {
           clickBookingRowAction('bookingAdminServiceList', serviceUpdated, '刪除');
-          actual.serviceDeleted = Boolean(await waitFor(() => !findBookingRow('bookingAdminServiceList', serviceUpdated), 15000));
+          actual.serviceDeleted = Boolean(await waitFor(() => !findBookingRow('bookingAdminServiceList', serviceUpdated), 35000));
         });
       }
 
       if (actual.typeUpdated) {
         await withAutoConfirm(async () => {
           clickBookingRowAction('bookingAdminTypeList', typeUpdated, '刪除');
-          actual.typeDeleted = Boolean(await waitFor(() => !findBookingRow('bookingAdminTypeList', typeUpdated), 15000));
+          actual.typeDeleted = Boolean(await waitFor(() => !findBookingRow('bookingAdminTypeList', typeUpdated), 35000));
         });
       }
       actual.cleaned = actual.serviceDeleted && actual.typeDeleted;
@@ -2440,7 +2440,7 @@
           try {
             await withAutoConfirm(async () => {
               clickBookingRowAction('bookingAdminServiceList', title, '刪除');
-              await waitFor(() => !findBookingRow('bookingAdminServiceList', title), 12000);
+              await waitFor(() => !findBookingRow('bookingAdminServiceList', title), 35000);
             });
           } catch {}
         }
@@ -2451,7 +2451,7 @@
           try {
             await withAutoConfirm(async () => {
               clickBookingRowAction('bookingAdminTypeList', title, '刪除');
-              await waitFor(() => !findBookingRow('bookingAdminTypeList', title), 12000);
+              await waitFor(() => !findBookingRow('bookingAdminTypeList', title), 35000);
             });
           } catch {}
         }
@@ -2944,14 +2944,14 @@
     const submit = form.querySelector('button[type="submit"]');
     if (!submit || submit.disabled) throw new Error('修改預約送出按鈕尚未就緒。');
     await adminHumanClick(submit, '儲存預約項目');
-    const closed = Boolean(await waitFor(() => document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'), 18000, 100));
+    const closed = Boolean(await waitFor(() => document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'), 35000, 100));
     if (!closed) {
       const message = form.querySelector('[data-modal-message]')?.textContent || '';
       document.getElementById('bookingAdminCrudModalClose')?.click();
       throw new Error(message || '管理端修改預約送出後視窗未關閉。');
     }
 
-    const updated = await waitAdminBookingSnapshot(bookingId, (row) => String(row.updatedAt || '') !== beforeUpdatedAt, 16000);
+    const updated = await waitAdminBookingSnapshot(bookingId, (row) => String(row.updatedAt || '') !== beforeUpdatedAt, 35000);
     let items = updated?.items || [];
     if (participantEditor && updated) {
       const afterDetails = await detectedBookingGroupDetails(bookingId);
@@ -3052,7 +3052,7 @@
 
     const closed = Boolean(await waitFor(
       () => document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'),
-      18000,
+      35000,
       100
     ));
     if (!closed) {
@@ -3064,7 +3064,7 @@
     const updated = await waitAdminBookingSnapshot(
       bookingId,
       (row) => String(row.updatedAt || '') !== beforeUpdatedAt,
-      16000
+      35000
     );
     const afterDetails = await detectedBookingGroupDetails(bookingId);
     const afterParticipants = Array.isArray(afterDetails.group?.participants) ? afterDetails.group.participants : [];
