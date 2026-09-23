@@ -803,10 +803,10 @@
       caseKey: row?.key || '',
       domain: row?.domain || '',
       page: {
-        path: diagnosticPath(window.location.href),
-        readyState: document.readyState,
-        visibilityState: document.visibilityState,
-        online: navigator.onLine !== false
+        path: diagnosticPath(window.location?.href || ''),
+        readyState: String(document?.readyState || ''),
+        visibilityState: String(document?.visibilityState || ''),
+        online: window.navigator?.onLine !== false
       },
       elapsedMs: Math.max(0, Date.now() - Number(marker?.startedAtMs || Date.now())),
       apiTimings: adminResourceTimingsSince(marker?.resourceIndex),
