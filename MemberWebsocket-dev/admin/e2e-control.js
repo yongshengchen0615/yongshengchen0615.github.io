@@ -768,16 +768,93 @@
   }
 
 
-  async function runPaired() {
-    if (state.running) return;
+  async function runUnifiedServerFullPhase() {
+    const started = performance.now();
+    const row = {
+      key: 'UNIFIED_SERVER_FULL_E2E',
+      name: '後端完整 QA：Test Control Center full suite',
+      domain: 'Unified E2E / Backend',
+      status: 'running',
+      message: '正在執行環境、測試帳號、Session、點數、票券、預約、Presence 與通知邊界完整 QA。',
+      expected: { suite: 'full', failedCases: 0 },
+      actual: {},
+      durationMs: null
+    };
+    state.results.push(row);
+    render();
+
+    try {
+      const control = window.MemberAdminTestControl;
+      if (!control || typeof control.runFull !== 'function') {
+        const error = new Error('Test Control Center 完整測試控制器未載入。');
+        error.code = 'UNIFIED_BACKEND_CONTROL_NOT_READY';
+        throw error;
+      }
+      const data = await control.runFull();
+      const run = data?.run || {};
+      const failedCases = Number(run.failedCases || 0);
+      row.actual = {
+        runId: String(run.id || ''),
+        runCode: String(run.runCode || ''),
+        suite: String(run.suite || 'full'),
+        status: String(run.status || ''),
+        totalCases: Number(run.totalCases || 0),
+        passedCases: Number(run.passedCases || 0),
+        failedCases,
+        skippedCases: Number(run.skippedCases || 0)
+      };
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      Object.assign(row, failedCases === 0 && String(run.status || '') !== 'failed'
+        ? pass('後端完整 QA 已完成且沒有失敗案例；繼續執行 Browser 協同 E2E。', row.expected, row.actual)
+        : fail('後端完整 QA 有失敗案例；Browser 協同 E2E 仍會繼續，以收集完整錯誤範圍。', row.expected, row.actual));
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      render();
+      return data;
+    } catch (error) {
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      Object.assign(row, fail(
+        '後端完整 QA 無法完成；Browser 協同 E2E 仍會繼續，以避免只取得單一路徑結果。',
+        row.expected,
+        plainError(error)
+      ));
+      row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      render();
+      return { error: plainError(error) };
+    }
+  }
+
+  async function runPaired(options = {}) {
+    if (state.running) return { error: { code: 'E2E_ALREADY_RUNNING', message: '完整 E2E 已在執行中。' }, results: safe(state.results) };
     state.cancelled = false;
+    state.backgroundExecution = options?.backgroundExecution === true || isBackgroundRunnerWindow();
     state.runSequence += 1;
     let participantCount = 1;
     let openedWindows = [];
+    let backendRun = null;
     try {
-      participantCount = selectedParticipantCount();
+      const requestedCount = Number(options?.participantCount || 0);
+      participantCount = Number.isInteger(requestedCount) && requestedCount > 0 ? requestedCount : selectedParticipantCount();
+      if (participantCount < 1 || participantCount > MAX_PAIRED_PARTICIPANTS) {
+        const error = new Error(`協同測試人數必須是 1–${MAX_PAIRED_PARTICIPANTS} 的整數。`);
+        error.code = 'INVALID_PAIRED_PARTICIPANT_COUNT';
+        throw error;
+      }
+
+      const providedWindows = Array.isArray(options?.clientWindows)
+        ? options.clientWindows.filter((item) => item && !item.closed)
+        : [];
       closeClientWindows();
-      openedWindows = openClientWindows(participantCount);
+      if (providedWindows.length) {
+        if (providedWindows.length < participantCount) {
+          const error = new Error('背景 Runner 收到的測試用戶端視窗數量不足。');
+          error.code = 'E2E_BACKGROUND_CLIENT_WINDOWS_INCOMPLETE';
+          throw error;
+        }
+        openedWindows = providedWindows.slice(0, participantCount);
+        state.clientWindows = openedWindows;
+      } else {
+        openedWindows = openClientWindows(participantCount);
+      }
     } catch (error) {
       setMessage(error?.message || '無法開啟用戶端測試視窗。請允許此網站開啟彈出式視窗後重試。', true);
       return { error: plainError(error), results: [] };
@@ -786,8 +863,8 @@
     state.results = [];
     state.participants = [];
     state.runStartedAt = new Date().toISOString();
-    setBusy(true, '協同');
-    setMessage('管理端正在先建立完整高複雜度測試資料；用戶端視窗目前只保持待命，不會提前開始。');
+    setBusy(true, state.backgroundExecution ? '背景完整 E2E' : '完整 E2E');
+    setMessage('完整 E2E 已開始：先驗證維護模式，再執行後端 full QA，之後進入管理端 ↔ 五種用戶端真人協同。');
     try {
       const session = await adminSession();
       const mode = await postPublicTestMode(session, { action: 'public.status', clientType: 'booking' });
@@ -796,7 +873,11 @@
         error.code = 'TEST_MAINTENANCE_REQUIRED';
         throw error;
       }
-      if (state.cancelled) return { cancelled: true, results: safe(state.results) };
+
+      backendRun = await runUnifiedServerFullPhase();
+      if (state.cancelled) return { cancelled: true, backendRun: safe(backendRun?.run || {}), results: safe(state.results) };
+
+      setMessage('後端完整 QA 階段已完成；正在建立 Browser 協同 E2E 的高複雜度測試資料。');
       const fixture = await prepareComplexE2EFixtures();
       if (state.cancelled) return { cancelled: true, results: safe(state.results) };
 
@@ -914,6 +995,7 @@
       return {
         cancelled,
         recorded,
+        backendRun: safe(backendRun?.run || {}),
         fixture: safe(fixture),
         participants: safe(state.participants.map((item) => ({
           account: item.account,
