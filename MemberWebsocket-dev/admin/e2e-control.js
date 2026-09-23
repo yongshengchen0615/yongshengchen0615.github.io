@@ -1,10 +1,14 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.3';
+  const VERSION = '2026-09-23.4';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const MAX_PAIRED_PARTICIPANTS = 10;
   const PAIRED_BOOKING_LIVE_TIMEOUT_MS = 10 * 60 * 1000;
+  const ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS = 1500;
+  let adminBookingBootstrapInFlight = null;
+  let adminBookingBootstrapLastAt = 0;
+  let adminBookingBootstrapLastData = null;
   const PAIRED_SURFACES = Object.freeze([
     ['member', '會員卡'],
     ['points', '集點卡'],
@@ -2041,12 +2045,33 @@
   }
 
   async function adminBookingBootstrapSnapshot() {
-    const session = await adminSession();
-    return postFunction('booking-api', {
-      action: 'admin.booking.bootstrap',
-      clientType: 'admin',
-      idToken: session.idToken
+    const now = Date.now();
+    if (adminBookingBootstrapLastData
+        && now - adminBookingBootstrapLastAt < ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS) {
+      return adminBookingBootstrapLastData;
+    }
+    if (adminBookingBootstrapInFlight) return adminBookingBootstrapInFlight;
+
+    const waitMs = Math.max(
+      0,
+      ADMIN_BOOKING_BOOTSTRAP_MIN_INTERVAL_MS - (now - adminBookingBootstrapLastAt)
+    );
+    adminBookingBootstrapInFlight = (async () => {
+      if (waitMs > 0) await sleep(waitMs);
+      const session = await adminSession();
+      const data = await postFunction('booking-api', {
+        action: 'admin.booking.bootstrap',
+        clientType: 'admin',
+        idToken: session.idToken
+      });
+      adminBookingBootstrapLastData = data;
+      adminBookingBootstrapLastAt = Date.now();
+      return data;
+    })().finally(() => {
+      adminBookingBootstrapInFlight = null;
     });
+
+    return adminBookingBootstrapInFlight;
   }
 
   function bookingCreatedMs(booking) {
