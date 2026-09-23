@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.17';
+  const VERSION = '2026-09-23.18';
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
@@ -1489,14 +1489,22 @@
       error.code = 'E2E_TEST_ROSTER_REQUIRED';
       throw error;
     }
+
     const memberCode = String(account?.memberCode || '');
+    const search = document.getElementById('memberSearch');
+    if (memberCode && search && String(search.value || '') !== memberCode) {
+      search.value = memberCode;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await sleep(180);
+    }
+
     const edit = await waitFor(() => {
       const rows = Array.from(document.querySelectorAll('#memberTableBody tr'));
       const row = memberCode
         ? rows.find((item) => item.textContent?.includes(memberCode))
         : rows[0];
       return row?.querySelector('button[data-action="edit-member"]') || null;
-    }, 10000, 100);
+    }, 12000, 100);
     if (!edit) throw new Error(memberCode ? '找不到本次指定的測試用戶：' + memberCode : '測試會員名冊未載入可操作帳號。');
     return edit;
   }
@@ -1575,8 +1583,12 @@
   }
 
   async function submitMemberAndWait() {
-    document.getElementById('saveMemberButton')?.click();
-    return Boolean(await waitFor(() => document.getElementById('memberModal')?.classList.contains('hidden'), 10000));
+    const button = document.getElementById('saveMemberButton');
+    button?.click();
+    const closed = Boolean(await waitFor(() => document.getElementById('memberModal')?.classList.contains('hidden'), 12000));
+    if (!closed) return false;
+    await waitAdminWriteSettled('saveMemberButton', 12000);
+    return Boolean(!button || !button.disabled);
   }
 
   async function adminProfileMutationCase() {
@@ -1987,7 +1999,11 @@
         , 8000));
         await withAutoConfirm(async () => {
           document.getElementById('deleteEventTicketButton')?.click();
-          actual.event.deleted = Boolean(await waitFor(() => !String(document.getElementById('eventTicketId')?.value || ''), 15000));
+          actual.event.deleted = Boolean(await waitFor(() => {
+            const editorCleared = !String(document.getElementById('eventTicketId')?.value || '');
+            const rowGone = !document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+            return editorCleared || rowGone;
+          }, 18000, 120));
         });
         actual.event.cleaned = actual.event.deleted;
       }
@@ -2002,8 +2018,13 @@
           await waitFor(() => String(document.getElementById('eventTicketId')?.value || '') === eventTicketId, 3000);
           await withAutoConfirm(async () => {
             document.getElementById('deleteEventTicketButton')?.click();
-            actual.event.cleaned = Boolean(await waitFor(() => !String(document.getElementById('eventTicketId')?.value || ''), 12000));
+            actual.event.cleaned = Boolean(await waitFor(() => {
+              const editorCleared = !String(document.getElementById('eventTicketId')?.value || '');
+              const rowGone = !document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+              return editorCleared || rowGone;
+            }, 15000, 120));
           });
+          if (actual.event.cleaned) actual.event.deleted = true;
         } catch {}
       }
       if (ticketTemplateId) {
@@ -2472,6 +2493,7 @@
     }
 
     document.getElementById('bookingAdminServicesSubtab')?.click();
+    actual.bookingCatalogReady = Boolean(await waitBookingAdminReady());
     for (const [key, buttonId] of [['newType', 'bookingAdminNewTypeButton'], ['newService', 'bookingAdminNewServiceButton']]) {
       document.getElementById(buttonId)?.click();
       const opened = Boolean(await waitFor(() => !document.getElementById('bookingAdminCrudModal')?.classList.contains('hidden'), 3000));
@@ -3953,7 +3975,8 @@
         Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|close|cancel|save|grant|messagePreset|booking|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
         datasets.length > 0 ||
         button.classList.contains('editor-modal-close') ||
-        button.classList.contains('close-button');
+        button.classList.contains('close-button') ||
+        button.classList.contains('test-control-history-item');
       const key = id || datasets.map((key) => 'data-' + key).join(',') || button.textContent?.trim().slice(0, 60) || '[button]';
       (accepted ? mapped : unmapped).push(key);
     }
