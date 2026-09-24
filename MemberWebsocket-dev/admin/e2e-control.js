@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.22';
+  const VERSION = '2026-09-24.23';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -1100,7 +1100,7 @@
       caseDef('ADMIN_CALENDAR_CRUD', '日曆：新增／修改／刪除', 'Admin CRUD E2E', adminCalendarCrudCase),
       caseDef('ADMIN_BOOKING_CRUD', '預約：類型與項目新增／修改／刪除', 'Admin CRUD E2E', adminBookingCrudCase),
       caseDef('ADMIN_BOOKING_CONTROLS', '預約管理分頁與新增視窗', 'Human E2E', adminBookingControlsCase),
-      caseDef('ADMIN_BOOKING_SHARED_SETTINGS', '預約：共用設定驗證／儲存／回讀', 'Admin Settings E2E', adminBookingSharedSettingsCase),
+      caseDef('ADMIN_BOOKING_SHARED_SETTINGS', '預約：共用設定複雜修改／跨端同步／衝突／還原', 'Admin Settings E2E', adminBookingSharedSettingsCase),
       caseDef('ADMIN_THEME_TOGGLE', '亮／暗主題切換與偏好還原', 'UI', adminThemeToggleCase),
       caseDef('ADMIN_MEMBER_DIRECTORY_CONTROLS', '會員搜尋／分頁／紀錄篩選', 'UI', adminMemberDirectoryControlsCase),
       caseDef('ADMIN_MESSAGE_PRESET_EDITOR', '預設訊息管理視窗與驗證', 'UI', adminMessagePresetEditorCase),
@@ -2765,11 +2765,26 @@
       panelVisible,
       missing,
       bootstrapMatched: false,
+      invalidWorkHoursRejected: false,
       invalidAdvanceRejected: false,
       invalidStoreMinutesRejected: false,
-      roundTripSaved: false,
-      persistedReadback: false,
-      semanticValuesUnchanged: false
+      invalidNoticeRejected: false,
+      userWatcherPrepared: false,
+      userBaselineMatched: false,
+      validMutationSaved: false,
+      mutatedReadback: false,
+      updatedAtChanged: false,
+      staleVersionRejected: false,
+      userRealtimeSettingsSynced: false,
+      userRealtimeNoticeSynced: false,
+      userBootstrapMatched: false,
+      userStoreMinutesMatched: false,
+      userDateWindowEnforced: false,
+      restoredViaUi: false,
+      restoreReadback: false,
+      userRestoreSynced: false,
+      clientSessionRestored: false,
+      restoreFallbackUsed: false
     };
     if (!ready || !panelVisible || missing.length) {
       return fail('預約共用設定控制項未完整載入。', {
@@ -2777,37 +2792,127 @@
       }, actual);
     }
 
-    const snapshot = {
-      workStartTime: String(controls.bookingAdminStartTime.value || ''),
-      workEndTime: String(controls.bookingAdminEndTime.value || ''),
-      minAdvanceDays: Number(controls.bookingAdminAdvanceDays.value),
-      maxAdvanceDays: Number(controls.bookingAdminMaxAdvanceDays.value),
-      storeServiceMinutes: Number(controls.bookingAdminStoreServiceMinutes.value),
-      bookingNotice: String(controls.bookingAdminNotice.value || '')
-    };
-    const sameSemanticSettings = (settings) =>
-      String(settings?.workStartTime || '') === snapshot.workStartTime &&
-      String(settings?.workEndTime || '') === snapshot.workEndTime &&
-      Number(settings?.minAdvanceDays) === snapshot.minAdvanceDays &&
-      Number(settings?.maxAdvanceDays) === snapshot.maxAdvanceDays &&
-      Number(settings?.storeServiceMinutes) === snapshot.storeServiceMinutes &&
-      String(settings?.bookingNotice || '') === snapshot.bookingNotice;
-
+    const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
     const session = await adminSession();
     const before = await postFunction('booking-admin-api', {
       action: 'admin.booking.manage.bootstrap',
       clientType: 'admin',
       idToken: session.idToken
     });
-    actual.bootstrapMatched = sameSemanticSettings(before?.settings);
+    const snapshot = {
+      workStartTime: String(controls.bookingAdminStartTime.value || ''),
+      workEndTime: String(controls.bookingAdminEndTime.value || ''),
+      minAdvanceDays: Number(controls.bookingAdminAdvanceDays.value),
+      maxAdvanceDays: Number(controls.bookingAdminMaxAdvanceDays.value),
+      storeServiceMinutes: Number(controls.bookingAdminStoreServiceMinutes.value),
+      bookingNotice: String(controls.bookingAdminNotice.value || ''),
+      updatedAt: String(before?.settings?.updatedAt || '')
+    };
+    const semanticSettings = (settings) => ({
+      workStartTime: String(settings?.workStartTime || ''),
+      workEndTime: String(settings?.workEndTime || ''),
+      minAdvanceDays: Number(settings?.minAdvanceDays),
+      maxAdvanceDays: Number(settings?.maxAdvanceDays),
+      storeServiceMinutes: Number(settings?.storeServiceMinutes),
+      bookingNotice: String(settings?.bookingNotice || '')
+    });
+    const sameSettings = (settings, expected) => {
+      const normalized = semanticSettings(settings);
+      return normalized.workStartTime === expected.workStartTime &&
+        normalized.workEndTime === expected.workEndTime &&
+        normalized.minAdvanceDays === expected.minAdvanceDays &&
+        normalized.maxAdvanceDays === expected.maxAdvanceDays &&
+        normalized.storeServiceMinutes === expected.storeServiceMinutes &&
+        normalized.bookingNotice === expected.bookingNotice;
+    };
+    const setSettingsFields = (settings) => {
+      setField('bookingAdminStartTime', settings.workStartTime);
+      setField('bookingAdminEndTime', settings.workEndTime);
+      setField('bookingAdminAdvanceDays', String(settings.minAdvanceDays));
+      setField('bookingAdminMaxAdvanceDays', String(settings.maxAdvanceDays));
+      setField('bookingAdminStoreServiceMinutes', String(settings.storeServiceMinutes));
+      setField('bookingAdminNotice', settings.bookingNotice);
+    };
+    const addIsoDays = (dateText, days) => {
+      const date = new Date(String(dateText || '') + 'T00:00:00Z');
+      date.setUTCDate(date.getUTCDate() + Number(days || 0));
+      return date.toISOString().slice(0, 10);
+    };
+    const childNoticeText = (child) => {
+      try {
+        const card = child?.document?.querySelector('.booking-card[aria-labelledby="bookingTitle"]');
+        if (!card) return '';
+        const notice = Array.from(card.children || []).find((node) =>
+          node.classList?.contains('service-info') && node.getAttribute('role') === 'note'
+        );
+        return String(notice?.textContent || '').trim();
+      } catch {
+        return '';
+      }
+    };
+    actual.bootstrapMatched = sameSettings(before?.settings, snapshot);
+
+    const workCandidates = [
+      ['08:30', '19:00'],
+      ['09:30', '18:30'],
+      ['10:00', '17:30']
+    ];
+    const selectedHours = workCandidates.find(([startTime, endTime]) =>
+      startTime !== snapshot.workStartTime || endTime !== snapshot.workEndTime
+    ) || ['08:00', '20:00'];
+    const mutatedMin = snapshot.minAdvanceDays >= 365
+      ? 364
+      : Math.max(1, snapshot.minAdvanceDays + 1);
+    let mutatedMax;
+    if (snapshot.maxAdvanceDays <= 0) {
+      mutatedMax = Math.min(365, Math.max(mutatedMin + 7, 30));
+    } else if (snapshot.maxAdvanceDays >= 365) {
+      mutatedMax = Math.max(mutatedMin, 364);
+    } else {
+      mutatedMax = Math.max(mutatedMin, snapshot.maxAdvanceDays + 1);
+    }
+    if (mutatedMax === snapshot.maxAdvanceDays) {
+      mutatedMax = mutatedMax < 365 ? mutatedMax + 1 : Math.max(mutatedMin, mutatedMax - 1);
+    }
+    const mutatedStoreMinutes = snapshot.storeServiceMinutes <= 705
+      ? snapshot.storeServiceMinutes + 15
+      : Math.max(1, snapshot.storeServiceMinutes - 15);
+    const qaMarker = '[QA E2E SHARED ' + qaCrudStamp() + ']';
+    const noticeSuffix = snapshot.bookingNotice ? '\n' + snapshot.bookingNotice : '';
+    const mutation = {
+      workStartTime: selectedHours[0],
+      workEndTime: selectedHours[1],
+      minAdvanceDays: mutatedMin,
+      maxAdvanceDays: mutatedMax,
+      storeServiceMinutes: mutatedStoreMinutes,
+      bookingNotice: (qaMarker + noticeSuffix).slice(0, 2000)
+    };
+
+    let participant = null;
+    let child = null;
+    let previousLogin = null;
+    let previousSurface = '';
+    let restoreCompleted = false;
 
     try {
+      setField('bookingAdminStartTime', '10:00');
+      setField('bookingAdminEndTime', '09:30');
+      controls.bookingAdminSaveSettingsButton.click();
+      actual.invalidWorkHoursRejected = Boolean(await waitFor(() =>
+        /結束工作時間必須晚於開始工作時間至少 30 分鐘/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        8000,
+        100
+      ));
+
+      setField('bookingAdminStartTime', snapshot.workStartTime);
+      setField('bookingAdminEndTime', snapshot.workEndTime);
       setField('bookingAdminAdvanceDays', '5');
       setField('bookingAdminMaxAdvanceDays', '4');
       controls.bookingAdminSaveSettingsButton.click();
       actual.invalidAdvanceRejected = Boolean(await waitFor(() =>
         /最遠可預約天數不可小於需要提前的天數/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
-        1200
+        2000,
+        80
       ));
 
       setField('bookingAdminAdvanceDays', String(snapshot.minAdvanceDays));
@@ -2816,58 +2921,293 @@
       controls.bookingAdminSaveSettingsButton.click();
       actual.invalidStoreMinutesRejected = Boolean(await waitFor(() =>
         /店內服務分鐘必須介於 1–720 分鐘/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
-        1200
+        2000,
+        80
       ));
 
-      setField('bookingAdminStartTime', snapshot.workStartTime);
-      setField('bookingAdminEndTime', snapshot.workEndTime);
-      setField('bookingAdminAdvanceDays', String(snapshot.minAdvanceDays));
-      setField('bookingAdminMaxAdvanceDays', String(snapshot.maxAdvanceDays));
       setField('bookingAdminStoreServiceMinutes', String(snapshot.storeServiceMinutes));
-      setField('bookingAdminNotice', snapshot.bookingNotice);
-
+      setField('bookingAdminNotice', 'X'.repeat(2001));
       controls.bookingAdminSaveSettingsButton.click();
-      actual.roundTripSaved = Boolean(await waitFor(() =>
+      actual.invalidNoticeRejected = Boolean(await waitFor(() =>
+        /預約說明不可超過 2,000 字/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        2000,
+        80
+      ));
+
+      setSettingsFields(snapshot);
+
+      participant = state.participants.find((item) =>
+        item?.account?.memberId && item?.window && !item.window.closed
+      ) || null;
+      if (participant) {
+        previousLogin = participant.login || null;
+        previousSurface = participant.lastSurfaceKey || 'member';
+        const bookingLogin = await createPairedSession(participant.account, 'booking');
+        participant.login = bookingLogin;
+        participant.lastSurfaceKey = 'booking';
+        seedParticipantSession(participant, bookingLogin, 'booking');
+        child = await waitParticipantSurface(participant, 'booking', 'bookingView');
+        actual.userWatcherPrepared = Boolean(child && child.BookingSystem && child.MemberClientQaHooks);
+        if (actual.userWatcherPrepared) {
+          const config = await child.BookingSystem.loadConfig();
+          const baseline = await child.BookingSystem.request(config, 'member', '', 'user.booking.bootstrap', {});
+          const baselineStore = (baseline?.services || []).find((service) => String(service?.serviceId || '') === STORE_SERVICE_ID);
+          actual.userBaselineMatched =
+            String(baseline?.settings?.workStartTime || '') === snapshot.workStartTime &&
+            String(baseline?.settings?.workEndTime || '') === snapshot.workEndTime &&
+            Number(baseline?.settings?.minAdvanceDays) === snapshot.minAdvanceDays &&
+            Number(baseline?.settings?.maxAdvanceDays) === snapshot.maxAdvanceDays &&
+            Number(baselineStore?.durationMinutes) === snapshot.storeServiceMinutes;
+        }
+      }
+
+      setSettingsFields(mutation);
+      controls.bookingAdminSaveSettingsButton.click();
+      actual.validMutationSaved = Boolean(await waitFor(() =>
         /預約共用設定已儲存/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
         15000,
         100
       ));
 
-      const after = await postFunction('booking-admin-api', {
+      const mutated = await postFunction('booking-admin-api', {
         action: 'admin.booking.manage.bootstrap',
         clientType: 'admin',
         idToken: session.idToken
       });
-      actual.persistedReadback = sameSemanticSettings(after?.settings);
-      actual.semanticValuesUnchanged = sameSemanticSettings(before?.settings) && sameSemanticSettings(after?.settings);
+      actual.mutatedReadback = sameSettings(mutated?.settings, mutation);
+      actual.updatedAtChanged = Boolean(
+        snapshot.updatedAt &&
+        mutated?.settings?.updatedAt &&
+        String(mutated.settings.updatedAt) !== snapshot.updatedAt
+      );
+
+      if (actual.mutatedReadback && actual.updatedAtChanged) {
+        try {
+          await postFunction('booking-admin-api', {
+            action: 'admin.booking.settings.save',
+            clientType: 'admin',
+            idToken: session.idToken,
+            workStartTime: mutation.workStartTime,
+            workEndTime: mutation.workEndTime,
+            minAdvanceDays: mutation.minAdvanceDays,
+            maxAdvanceDays: mutation.maxAdvanceDays,
+            storeServiceMinutes: mutation.storeServiceMinutes,
+            bookingNotice: mutation.bookingNotice,
+            expectedUpdatedAt: snapshot.updatedAt
+          });
+        } catch (error) {
+          actual.staleVersionRejected = String(error?.code || '') === 'BOOKING_SETTINGS_CONFLICT';
+        }
+      }
+
+      if (child && actual.userWatcherPrepared) {
+        const expectedMinDate = addIsoDays(new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date()), mutation.minAdvanceDays);
+        const expectedMaxDate = addIsoDays(new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date()), mutation.maxAdvanceDays);
+        actual.userRealtimeSettingsSynced = Boolean(await waitFor(() => {
+          try {
+            const badge = String(child.document.getElementById('workHoursBadge')?.textContent || '');
+            const dateInput = child.document.getElementById('bookingDate');
+            return badge.includes(mutation.workStartTime + '–' + mutation.workEndTime) &&
+              badge.includes('提前 ' + mutation.minAdvanceDays + ' 天') &&
+              badge.includes('可預約 ' + mutation.maxAdvanceDays + ' 天內') &&
+              String(dateInput?.min || '') === expectedMinDate &&
+              String(dateInput?.max || '') === expectedMaxDate;
+          } catch {
+            return false;
+          }
+        }, backgroundAwareTimeout(15000, 45000), 150));
+        actual.userRealtimeNoticeSynced = Boolean(await waitFor(() =>
+          childNoticeText(child).includes(qaMarker),
+          backgroundAwareTimeout(15000, 45000),
+          150
+        ));
+
+        const config = await child.BookingSystem.loadConfig();
+        const userData = await child.BookingSystem.request(config, 'member', '', 'user.booking.bootstrap', {});
+        const userStore = (userData?.services || []).find((service) => String(service?.serviceId || '') === STORE_SERVICE_ID);
+        actual.userBootstrapMatched =
+          String(userData?.settings?.workStartTime || '') === mutation.workStartTime &&
+          String(userData?.settings?.workEndTime || '') === mutation.workEndTime &&
+          Number(userData?.settings?.minAdvanceDays) === mutation.minAdvanceDays &&
+          Number(userData?.settings?.maxAdvanceDays) === mutation.maxAdvanceDays;
+        actual.userStoreMinutesMatched = Number(userStore?.durationMinutes) === mutation.storeServiceMinutes;
+
+        const normalService = (userData?.services || []).find((service) =>
+          String(service?.serviceId || '') !== STORE_SERVICE_ID &&
+          service?.isActive !== false &&
+          service?.requiresCompanionService !== true
+        );
+        if (normalService?.serviceId && userData?.today) {
+          const tooEarlyDate = addIsoDays(userData.today, mutation.minAdvanceDays - 1);
+          const tooFarDate = addIsoDays(userData.today, mutation.maxAdvanceDays + 1);
+          const [tooEarly, tooFar] = await Promise.all([
+            child.BookingSystem.request(config, 'member', '', 'user.booking.slots', {
+              bookingDate: tooEarlyDate,
+              items: [{ serviceId: normalService.serviceId, quantity: 1 }]
+            }),
+            child.BookingSystem.request(config, 'member', '', 'user.booking.slots', {
+              bookingDate: tooFarDate,
+              items: [{ serviceId: normalService.serviceId, quantity: 1 }]
+            })
+          ]);
+          actual.userDateWindowEnforced =
+            Array.isArray(tooEarly?.slots) && tooEarly.slots.length === 0 &&
+            String(tooEarly?.earliestBookingDate || '') === addIsoDays(userData.today, mutation.minAdvanceDays) &&
+            Array.isArray(tooFar?.slots) && tooFar.slots.length === 0 &&
+            String(tooFar?.latestBookingDate || '') === addIsoDays(userData.today, mutation.maxAdvanceDays);
+        }
+      }
+
+      setSettingsFields(snapshot);
+      controls.bookingAdminSaveSettingsButton.click();
+      actual.restoredViaUi = Boolean(await waitFor(() =>
+        /預約共用設定已儲存/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        15000,
+        100
+      ));
+
+      const restored = await postFunction('booking-admin-api', {
+        action: 'admin.booking.manage.bootstrap',
+        clientType: 'admin',
+        idToken: session.idToken
+      });
+      actual.restoreReadback = sameSettings(restored?.settings, snapshot);
+      restoreCompleted = actual.restoreReadback;
+
+      if (child && actual.userWatcherPrepared) {
+        const expectedMinDate = addIsoDays(new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date()), snapshot.minAdvanceDays);
+        const expectedMaxDate = snapshot.maxAdvanceDays > 0
+          ? addIsoDays(new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+            }).format(new Date()), snapshot.maxAdvanceDays)
+          : '';
+        actual.userRestoreSynced = Boolean(await waitFor(() => {
+          try {
+            const badge = String(child.document.getElementById('workHoursBadge')?.textContent || '');
+            const dateInput = child.document.getElementById('bookingDate');
+            const notice = childNoticeText(child);
+            const noticeRestored = snapshot.bookingNotice
+              ? notice.includes(snapshot.bookingNotice.slice(0, 120))
+              : !notice.includes(qaMarker);
+            return badge.includes(snapshot.workStartTime + '–' + snapshot.workEndTime) &&
+              String(dateInput?.min || '') === expectedMinDate &&
+              String(dateInput?.max || '') === expectedMaxDate &&
+              noticeRestored;
+          } catch {
+            return false;
+          }
+        }, backgroundAwareTimeout(15000, 45000), 150));
+      }
+
+      if (participant) {
+        try {
+          if (previousLogin) {
+            participant.login = previousLogin;
+            participant.lastSurfaceKey = previousSurface || 'member';
+            seedParticipantSession(participant, previousLogin, previousSurface || 'member');
+            navigateParticipant(participant, previousSurface || 'member');
+          }
+          actual.clientSessionRestored = true;
+        } catch {
+          actual.clientSessionRestored = false;
+        }
+      }
     } finally {
-      setField('bookingAdminStartTime', snapshot.workStartTime);
-      setField('bookingAdminEndTime', snapshot.workEndTime);
-      setField('bookingAdminAdvanceDays', String(snapshot.minAdvanceDays));
-      setField('bookingAdminMaxAdvanceDays', String(snapshot.maxAdvanceDays));
-      setField('bookingAdminStoreServiceMinutes', String(snapshot.storeServiceMinutes));
-      setField('bookingAdminNotice', snapshot.bookingNotice);
+      if (!restoreCompleted) {
+        try {
+          const latest = await postFunction('booking-admin-api', {
+            action: 'admin.booking.manage.bootstrap',
+            clientType: 'admin',
+            idToken: session.idToken
+          });
+          await postFunction('booking-admin-api', {
+            action: 'admin.booking.settings.save',
+            clientType: 'admin',
+            idToken: session.idToken,
+            workStartTime: snapshot.workStartTime,
+            workEndTime: snapshot.workEndTime,
+            minAdvanceDays: snapshot.minAdvanceDays,
+            maxAdvanceDays: snapshot.maxAdvanceDays,
+            storeServiceMinutes: snapshot.storeServiceMinutes,
+            bookingNotice: snapshot.bookingNotice,
+            expectedUpdatedAt: String(latest?.settings?.updatedAt || '')
+          });
+          actual.restoreFallbackUsed = true;
+          restoreCompleted = true;
+        } catch {}
+      }
+      setSettingsFields(snapshot);
+      if (participant && !actual.clientSessionRestored) {
+        try {
+          if (previousLogin) {
+            participant.login = previousLogin;
+            participant.lastSurfaceKey = previousSurface || 'member';
+            seedParticipantSession(participant, previousLogin, previousSurface || 'member');
+            navigateParticipant(participant, previousSurface || 'member');
+          }
+          actual.clientSessionRestored = true;
+        } catch {}
+      }
     }
 
     const ok = actual.ready && actual.panelVisible && actual.missing.length === 0 &&
-      actual.bootstrapMatched && actual.invalidAdvanceRejected && actual.invalidStoreMinutesRejected &&
-      actual.roundTripSaved && actual.persistedReadback && actual.semanticValuesUnchanged;
+      actual.bootstrapMatched &&
+      actual.invalidWorkHoursRejected &&
+      actual.invalidAdvanceRejected &&
+      actual.invalidStoreMinutesRejected &&
+      actual.invalidNoticeRejected &&
+      actual.userWatcherPrepared &&
+      actual.userBaselineMatched &&
+      actual.validMutationSaved &&
+      actual.mutatedReadback &&
+      actual.updatedAtChanged &&
+      actual.staleVersionRejected &&
+      actual.userRealtimeSettingsSynced &&
+      actual.userRealtimeNoticeSynced &&
+      actual.userBootstrapMatched &&
+      actual.userStoreMinutesMatched &&
+      actual.userDateWindowEnforced &&
+      actual.restoredViaUi &&
+      actual.restoreReadback &&
+      actual.userRestoreSynced &&
+      actual.clientSessionRestored;
+
     return ok
-      ? pass('預約共用設定已完成真人欄位驗證、非破壞儲存與後端回讀；測試前後語意設定保持一致。', {
-          controls: true,
+      ? pass('預約共用設定已完成非法邊界、合法變更、版本衝突、管理端回讀、用戶端 Realtime／日期範圍同步與原值還原。', {
+          invalidWorkHoursRejected: true,
           invalidAdvanceRejected: true,
           invalidStoreMinutesRejected: true,
-          roundTripSaved: true,
-          persistedReadback: true,
-          semanticValuesUnchanged: true
+          invalidNoticeRejected: true,
+          validMutationSaved: true,
+          mutatedReadback: true,
+          staleVersionRejected: true,
+          userRealtimeSettingsSynced: true,
+          userRealtimeNoticeSynced: true,
+          userDateWindowEnforced: true,
+          restoredViaUi: true,
+          restoreReadback: true,
+          userRestoreSynced: true
         }, actual)
-      : fail('預約共用設定 E2E 至少一個驗證、儲存或回讀階段失敗。', {
-          controls: true,
+      : fail('預約共用設定複雜 E2E 至少一個驗證、跨端同步、競態或還原階段失敗。', {
+          invalidWorkHoursRejected: true,
           invalidAdvanceRejected: true,
           invalidStoreMinutesRejected: true,
-          roundTripSaved: true,
-          persistedReadback: true,
-          semanticValuesUnchanged: true
+          invalidNoticeRejected: true,
+          validMutationSaved: true,
+          mutatedReadback: true,
+          staleVersionRejected: true,
+          userRealtimeSettingsSynced: true,
+          userRealtimeNoticeSynced: true,
+          userDateWindowEnforced: true,
+          restoredViaUi: true,
+          restoreReadback: true,
+          userRestoreSynced: true
         }, actual);
   }
 
