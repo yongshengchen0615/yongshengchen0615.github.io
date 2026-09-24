@@ -109,6 +109,33 @@ test('diagnosis points to the failing request after successful bootstrap traffic
   assert.equal(realtime.code, 'E2E_REALTIME');
 });
 
+test('a date-window assertion does not inherit an expected conflict or a successful Realtime label', async () => {
+  const { diagnoseE2EFailure } = await diagnosticsModule();
+  const result = diagnoseE2EFailure({
+    caseKey: 'ADMIN_BOOKING_SHARED_SETTINGS',
+    domain: 'Admin Settings E2E',
+    message: '預約設定 Realtime／日期範圍同步失敗',
+    expected: { userRealtimeSettingsSynced: true, userRealtimeNoticeSynced: true, userDateWindowEnforced: true },
+    actual: {
+      userRealtimeSettingsSynced: true, userRealtimeNoticeSynced: true, userDateWindowEnforced: false,
+      userDateWindowProbe: { endpoint: 'booking-group-slots-api', tooEarly: { slots: 0, earliestBookingDate: '' } }
+    },
+    trace: { apiTimings: [{ path: '/functions/v1/booking-admin-api', responseStatus: 409 }] }
+  });
+  assert.equal(result.code, 'E2E_API_CONTRACT');
+  assert.equal(result.category, 'api-contract');
+  assert.equal(result.signal.httpStatus, null);
+  assert.equal(result.signal.path, '/functions/v1/booking-group-slots-api');
+
+  const realSyncFailure = diagnoseE2EFailure({
+    caseKey: 'ADMIN_BOOKING_SHARED_SETTINGS',
+    message: '預約設定 Realtime／日期範圍同步失敗',
+    expected: { userRealtimeSettingsSynced: true, userDateWindowEnforced: true },
+    actual: { userRealtimeSettingsSynced: false, userDateWindowEnforced: true }
+  });
+  assert.equal(realSyncFailure.code, 'E2E_REALTIME');
+});
+
 test('admin and user browser E2E persist classified failure codes and v3 diagnostics', () => {
   const adminApi = fs.readFileSync(path.join(ROOT, 'supabase/functions/test-control-api/index.ts'), 'utf8');
   const userApi = fs.readFileSync(path.join(ROOT, 'supabase/functions/user-test-api/index.ts'), 'utf8');

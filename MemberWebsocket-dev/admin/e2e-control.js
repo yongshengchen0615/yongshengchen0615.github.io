@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.29';
+  const VERSION = '2026-09-24.30';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -2808,6 +2808,7 @@
       userBootstrapMatched: false,
       userStoreMinutesMatched: false,
       userDateWindowEnforced: false,
+      userDateWindowProbe: null,
       finalMutationReadback: false,
       mutationRetainedForInspection: false,
       retainedSettings: null,
@@ -3079,24 +3080,47 @@
           service?.isActive !== false &&
           service?.requiresCompanionService !== true
         );
-        if (normalService?.serviceId && userData?.today) {
+        const primaryTechnicianId = String(userData?.settings?.primaryTechnicianId || '');
+        const bookingToken = String(participant?.surfaceLogins?.booking?.testSessionToken || '');
+        if (normalService?.serviceId && userData?.today && primaryTechnicianId && bookingToken) {
           const tooEarlyDate = addIsoDays(userData.today, mutation.minAdvanceDays - 1);
           const tooFarDate = addIsoDays(userData.today, mutation.maxAdvanceDays + 1);
+          const probe = (bookingDate) => postFunction('booking-group-slots-api', {
+            action: 'user.booking.group.slots', clientType: 'member', idToken: '',
+            testSessionToken: bookingToken, bookingDate,
+            participants: [{
+              technicianId: primaryTechnicianId,
+              items: [{ serviceId: normalService.serviceId, quantity: 1 }]
+            }]
+          });
           const [tooEarly, tooFar] = await Promise.all([
-            child.BookingSystem.request(config, 'member', '', 'user.booking.slots', {
-              bookingDate: tooEarlyDate,
-              items: [{ serviceId: normalService.serviceId, quantity: 1 }]
-            }),
-            child.BookingSystem.request(config, 'member', '', 'user.booking.slots', {
-              bookingDate: tooFarDate,
-              items: [{ serviceId: normalService.serviceId, quantity: 1 }]
-            })
+            probe(tooEarlyDate), probe(tooFarDate)
           ]);
+          const earliestExpected = addIsoDays(userData.today, mutation.minAdvanceDays);
+          const latestExpected = addIsoDays(userData.today, mutation.maxAdvanceDays);
+          actual.userDateWindowProbe = {
+            endpoint: 'booking-group-slots-api',
+            tooEarly: { date: tooEarlyDate, slots: Array.isArray(tooEarly?.slots) ? tooEarly.slots.length : null,
+              earliestBookingDate: String(tooEarly?.earliestBookingDate || ''), latestBookingDate: String(tooEarly?.latestBookingDate || '') },
+            tooFar: { date: tooFarDate, slots: Array.isArray(tooFar?.slots) ? tooFar.slots.length : null,
+              earliestBookingDate: String(tooFar?.earliestBookingDate || ''), latestBookingDate: String(tooFar?.latestBookingDate || '') },
+            expected: { earliestBookingDate: earliestExpected, latestBookingDate: latestExpected }
+          };
           actual.userDateWindowEnforced =
             Array.isArray(tooEarly?.slots) && tooEarly.slots.length === 0 &&
-            String(tooEarly?.earliestBookingDate || '') === addIsoDays(userData.today, mutation.minAdvanceDays) &&
+            String(tooEarly?.earliestBookingDate || '') === earliestExpected &&
+            String(tooEarly?.latestBookingDate || '') === latestExpected &&
             Array.isArray(tooFar?.slots) && tooFar.slots.length === 0 &&
-            String(tooFar?.latestBookingDate || '') === addIsoDays(userData.today, mutation.maxAdvanceDays);
+            String(tooFar?.earliestBookingDate || '') === earliestExpected &&
+            String(tooFar?.latestBookingDate || '') === latestExpected;
+        } else {
+          actual.userDateWindowProbe = {
+            endpoint: 'booking-group-slots-api',
+            missingService: !normalService?.serviceId,
+            missingToday: !userData?.today,
+            missingPrimaryTechnician: !primaryTechnicianId,
+            missingBookingSession: !bookingToken
+          };
         }
       }
 

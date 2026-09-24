@@ -227,11 +227,13 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
   const earliestDate = addDays(today, Number(group.settings.min_advance_days || 0));
   const maxAdvanceDays = Number(group.settings.max_advance_days || 0);
   const latestDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : "";
+  const dateWindow = { earliestBookingDate: earliestDate, latestBookingDate: latestDate || null };
   if (bookingDate < earliestDate || (latestDate && bookingDate > latestDate)) {
     return {
       settings: { maxPartySize: Number(group.settings.max_party_size || 1), primaryTechnicianId: group.primaryId, maxAdvanceDays },
       totalDurationMinutes: group.totalDurationMinutes,
       totalAmount: group.totalAmount,
+      ...dateWindow,
       slots: [],
     };
   }
@@ -240,6 +242,7 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
       settings: { maxPartySize: Number(group.settings.max_party_size || 1), primaryTechnicianId: group.primaryId, maxAdvanceDays },
       totalDurationMinutes: group.totalDurationMinutes,
       totalAmount: group.totalAmount,
+      ...dateWindow,
       holidayBlocked: true,
       slots: [],
     };
@@ -303,6 +306,7 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
     settings: { maxPartySize: Number(group.settings.max_party_size || 1), primaryTechnicianId: group.primaryId, maxAdvanceDays },
     totalDurationMinutes: group.totalDurationMinutes,
     totalAmount: group.totalAmount,
+    ...dateWindow,
     slots: output,
   };
 }

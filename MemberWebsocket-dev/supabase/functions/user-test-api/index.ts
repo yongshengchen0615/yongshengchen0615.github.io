@@ -1693,7 +1693,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
     const actual = raw?.actual && typeof raw.actual === "object" ? raw.actual : {};
     const trace = status === "failed" ? safeDiagnosticSnapshot(raw?.trace) : {};
     const diagnosis = status === "failed"
-      ? diagnoseE2EFailure({ caseKey: key, domain, message, actual, trace })
+      ? diagnoseE2EFailure({ caseKey: key, domain, message, expected, actual, trace })
       : null;
     return {
       key, name, domain, status, message, expected, actual, diagnosis,

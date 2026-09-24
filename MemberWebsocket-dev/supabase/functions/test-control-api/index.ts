@@ -1108,7 +1108,7 @@ async function recordBrowserRun(
     const actual = safeBrowserSnapshot(raw?.actual);
     const trace = status === "failed" ? safeBrowserTraceSnapshot(raw?.trace) : {};
     const diagnosis = status === "failed"
-      ? diagnoseE2EFailure({ caseKey: key, domain, message, actual, trace })
+      ? diagnoseE2EFailure({ caseKey: key, domain, message, expected, actual, trace })
       : null;
     return {
       key, name, domain, status, message, durationMs, expected, actual, diagnosis,
