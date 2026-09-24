@@ -13,7 +13,7 @@ function read(relativePath) {
 test('all admin and member surfaces load the shared theme controller and stylesheet', () => {
   for (const entry of entries) {
     const html = read(path.join(entry, 'index.html'));
-    assert.match(html, /\.\.\/theme\.css\?v=ui-refresh-20260924-1/, entry + ' should load theme.css');
+    assert.match(html, /\.\.\/theme\.css\?v=membership-tier-surface-20260924-2/, entry + ' should load theme.css');
     assert.match(html, /\.\.\/theme\.js\?v=theme-contrast-20260924-4/, entry + ' should load theme.js');
   }
 });
@@ -34,6 +34,19 @@ test('dark theme styles and E2E button coverage are wired', () => {
   assert.match(css, /html\[data-theme="dark"\]/);
   assert.match(css, /\.theme-toggle-button/);
   assert.match(qa, /button\.dataset\?\.uiThemeControl === 'true'/);
+});
+
+
+test('membership tier surface keeps its semantic palette in light and dark modes', () => {
+  const css = read('theme.css');
+
+  assert.match(css, /html\[data-theme\] \.membership-progress\[data-membership-tier-style\][\s\S]*?background:\s*var\(--membership-card-background\)/);
+  assert.match(css, /html\[data-theme="dark"\] \.membership-progress\[data-membership-tier-style\][\s\S]*?box-shadow:\s*0 18px 42px rgba\(0, 0, 0, \.30\)/);
+  assert.match(css, /\.membership-progress\[data-membership-tier-style\] \.membership-progress-track span[\s\S]*?var\(--membership-card-accent\)[\s\S]*?var\(--membership-card-soft\)/);
+
+  const neutralCardSurface = css.match(/html\[data-theme\] :where\(\n\s*\.profile-details,[\s\S]*?\) \{\n\s*border-radius:\s*var\(--ui-radius-lg\);\n\s*background:\s*var\(--theme-surface\);/);
+  assert.ok(neutralCardSurface, 'shared neutral card surface rule should exist');
+  assert.doesNotMatch(neutralCardSurface[0], /\.membership-progress/, 'membership tier surface must not inherit the neutral card background');
 });
 
 
