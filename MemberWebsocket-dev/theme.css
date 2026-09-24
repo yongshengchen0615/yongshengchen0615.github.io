@@ -1697,3 +1697,521 @@ html[data-theme] :where(.event-ticket h3, .booking-item-top strong, .service-cho
     transition: none !important;
   }
 }
+
+
+/* Client dark-mode parity 2026-09-24
+ * Every member-facing LIFF surface loads theme.css last. This layer converts
+ * remaining light-only component colors while preserving semantic card/ticket colors.
+ */
+html[data-theme="dark"] :where(
+  .login-loading h1
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] :where(
+  .login-status,
+  .state-view.login-loading .login-progress-value
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] .login-status::before {
+  border-color: var(--theme-border-strong);
+  border-top-color: var(--theme-accent);
+}
+
+html[data-theme="dark"] .login-progress {
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] .login-progress-bar {
+  background: var(--theme-accent);
+}
+
+html[data-theme="dark"] :where(.loader-mark) {
+  color: #0b1511;
+  background: #d8e6df;
+}
+
+html[data-theme="dark"] :where(.loader) {
+  border-color: var(--theme-border-strong);
+  border-top-color: var(--theme-accent);
+}
+
+/* Member profile */
+html[data-theme="dark"] :where(
+  .profile-detail-list > div,
+  .profile-detail-list .profile-editable-row,
+  .profile-edit-modal-card,
+  .date-input-shell
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] :where(
+  .profile-detail-list > div:hover
+) {
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] :where(
+  .profile-details > div:first-child
+) {
+  background: transparent;
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  .profile-inline-edit-button
+) {
+  color: var(--theme-link);
+  background: var(--theme-accent-soft);
+  border-color: rgba(239, 137, 104, .28);
+}
+
+html[data-theme="dark"] :where(
+  .profile-edit-modal-close
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  .profile-modal-message
+) {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+}
+
+html[data-theme="dark"] :where(
+  .profile-edit-modal
+) {
+  background: var(--theme-overlay);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Points and ticket client */
+html[data-theme="dark"] #pointsView :where(
+  .card-tab:not([aria-selected="true"]),
+  .milestone-item,
+  .member-ticket:not([data-card-style]),
+  .ticket-overview-toolbar,
+  .ticket-history-item,
+  .card-guidance-grid article
+),
+html[data-theme="dark"] :where(
+  .ticket-batch-card,
+  .ticket-batch-line
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .milestone-item.reached
+) {
+  background: #2b2617;
+  border-color: rgba(229, 198, 117, .24);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-checkbox-action,
+  .ticket-choice,
+  .ticket-processing
+) {
+  color: var(--theme-link);
+  background: var(--theme-accent-soft);
+  border-color: rgba(239, 137, 104, .28);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-checkbox-action:has(input:disabled),
+  .member-ticket.locked .ticket-checkbox-action,
+  .ticket-choice.loading
+) {
+  color: var(--theme-disabled-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .member-ticket.locked
+) {
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .member-ticket-type,
+  .ticket-batch-ticket-badge
+) {
+  color: var(--theme-link);
+  background: var(--theme-accent-soft);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .member-ticket.locked .member-ticket-type
+) {
+  color: var(--theme-disabled-text);
+  background: #1b2520;
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-instructions
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-history-summary::after
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-history-summary-title strong
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-history-description
+) {
+  color: var(--theme-text-muted);
+}
+
+/* Point-card and styled ticket colors are semantic and must not inherit --paper/--ink. */
+html[data-theme="dark"] #pointsView .active-card {
+  color: #fffaf3;
+  background: var(--card-style-background, var(--card-style-surface, #282016));
+}
+
+html[data-theme="dark"] #pointsView .active-card :where(
+  .progress-numbers b,
+  .reward-row strong
+) {
+  color: #fffaf3;
+}
+
+html[data-theme="dark"] #pointsView .reward-icon {
+  color: #17231f;
+}
+
+html[data-theme="dark"] #pointsView .card-tab[aria-selected="true"] {
+  color: #fffaf3;
+  background: var(--card-style-background, var(--card-style-surface, #282016));
+  border-color: var(--card-style-accent, var(--theme-border-strong));
+}
+
+html[data-theme="dark"] #pointsView .ticket-overview-group .member-ticket[data-card-style] {
+  color: #fffaf3;
+  background: var(--card-style-background, var(--card-style-surface, #282016));
+}
+
+html[data-theme="dark"] #pointsView .ticket-overview-group .member-ticket[data-card-style] :where(
+  h3,
+  .ticket-cost-card dd,
+  .ticket-checkbox-action
+) {
+  color: #fffaf3;
+}
+
+/* Event client */
+html[data-theme="dark"] #eventView :where(
+  .event-history-button,
+  .instructions
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #eventView :where(
+  .event-history-button:hover
+) {
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] #eventView :where(
+  .event-ticket-type,
+  .ticket-type,
+  .event-ticket-state.tier-locked,
+  .processing,
+  .lottery-reveal
+) {
+  color: var(--theme-link);
+  background: var(--theme-accent-soft);
+}
+
+html[data-theme="dark"] #eventView :where(
+  .event-ticket-state
+) {
+  color: var(--theme-text-muted);
+  background: #1b2520;
+}
+
+html[data-theme="dark"] #eventView :where(
+  .event-ticket-state.open,
+  .ticket-result,
+  .modal-message.success,
+  .ticket-success,
+  .lottery-result
+) {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+}
+
+html[data-theme="dark"] #eventView :where(
+  .event-ticket-state.scheduled,
+  .modal-prizes
+) {
+  color: var(--theme-warning-text);
+  background: #2b2617;
+}
+
+html[data-theme="dark"] #eventView :where(
+  .modal-message
+) {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+}
+
+html[data-theme="dark"] #eventView :where(
+  .history-summary::after
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+/* Calendar clients */
+html[data-theme="dark"] #calendarView :where(
+  .month-button,
+  .calendar-day,
+  .calendar-day.outside,
+  .empty-view
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #calendarView :where(
+  .weekday
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] #calendarView :where(
+  .calendar-day.outside .day-number
+) {
+  color: var(--theme-disabled-text);
+}
+
+html[data-theme="dark"] #calendarView :where(
+  .calendar-range-notice
+) {
+  color: var(--theme-warning-text);
+  background: #2b2617;
+  border-color: rgba(229, 198, 117, .24);
+}
+
+/* Booking client */
+html[data-theme="dark"] #bookingView :where(
+  .calendar-nav-button,
+  .calendar-day,
+  .booking-selection-modal-card,
+  .group-booking-fieldset,
+  .participant-card-body,
+  .booking-service-group-empty
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .calendar-day.selected
+) {
+  color: var(--theme-text);
+  background: #1c2923;
+  border-color: var(--theme-accent);
+  box-shadow: inset 0 0 0 1px var(--theme-accent);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .calendar-day.has-booking
+) {
+  background: #2b2617;
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .calendar-day:disabled,
+  .calendar-day.past-disabled,
+  .calendar-day.advance-disabled,
+  .slot-button:disabled
+) {
+  color: var(--theme-disabled-text);
+  background: #101915;
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .calendar-booking-times small
+) {
+  color: var(--theme-warning-text);
+  background: #2b2617;
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .booking-confirm-summary .booking-confirm-contact-formatted,
+  .group-booking-rule,
+  .group-confirm-summary,
+  .group-history-summary,
+  .service-info.service-type-group
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .participant-heading > span,
+  .group-selection-totals > strong span,
+  .booking-item .member-booking-format-label,
+  .booking-confirm-summary .member-booking-format-label,
+  .booking-confirm-summary .booking-confirm-format-services
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .booking-item .member-booking-format-value,
+  .booking-confirm-summary .member-booking-format-value,
+  .booking-item .member-booking-format-services-label,
+  .booking-confirm-summary .member-booking-format-services-label,
+  .booking-confirm-summary .booking-confirm-contact-title
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .selected-service-remove
+) {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+  border-color: rgba(240, 138, 118, .24);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .booking-service-group-count
+) {
+  color: var(--theme-text-muted);
+  background: #1b2520;
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .booking-service-group-completed .booking-service-group-count
+) {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .booking-service-group-cancelled .booking-service-group-count,
+  .status-rejected,
+  .status-cancelled
+) {
+  color: var(--theme-text-subtle) !important;
+  background: #1b2520;
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .status-pending,
+  .status-cancel_requested
+) {
+  color: var(--theme-warning-text) !important;
+  background: #2b2617 !important;
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .status-confirmed
+) {
+  color: var(--theme-positive-text) !important;
+  background: var(--theme-positive-soft) !important;
+}
+
+html[data-theme="dark"] #calendarGrid .calendar-day.holiday-disabled {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #calendarGrid .calendar-day.holiday-disabled:hover {
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] #bookingHolidayModal .booking-holiday-detail {
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] :where(
+  .small-ticket-button,
+  .ticket-overview-use,
+  .ticket-confirm-button,
+  .ticket-batch-confirm,
+  .modal-action
+) {
+  color: #0b1511;
+  background: var(--theme-accent);
+}
+
+/* Keep all 12 booking service categories distinguishable on dark surfaces. */
+html[data-theme="dark"] .service-type-color-0 { --service-type-dark-accent: #6fb5c3; }
+html[data-theme="dark"] .service-type-color-1 { --service-type-dark-accent: #e5a075; }
+html[data-theme="dark"] .service-type-color-2 { --service-type-dark-accent: #9fa9ee; }
+html[data-theme="dark"] .service-type-color-3 { --service-type-dark-accent: #77c894; }
+html[data-theme="dark"] .service-type-color-4 { --service-type-dark-accent: #d9b25c; }
+html[data-theme="dark"] .service-type-color-5 { --service-type-dark-accent: #d28ab8; }
+html[data-theme="dark"] .service-type-color-6 { --service-type-dark-accent: #78a9dc; }
+html[data-theme="dark"] .service-type-color-7 { --service-type-dark-accent: #df898b; }
+html[data-theme="dark"] .service-type-color-8 { --service-type-dark-accent: #9fbd82; }
+html[data-theme="dark"] .service-type-color-9 { --service-type-dark-accent: #b597d5; }
+html[data-theme="dark"] .service-type-color-10 { --service-type-dark-accent: #70c0b8; }
+html[data-theme="dark"] .service-type-color-11 { --service-type-dark-accent: #d194a8; }
+
+html[data-theme="dark"] [class*="service-type-color-"] {
+  border-left-color: var(--service-type-dark-accent, var(--theme-border-strong)) !important;
+}
+
+html[data-theme="dark"] [class*="service-type-color-"] > strong {
+  color: var(--service-type-dark-accent, var(--theme-text)) !important;
+}
+
+html[data-theme="dark"] [class*="service-type-color-"] > strong::before {
+  background: var(--service-type-dark-accent, var(--theme-accent)) !important;
+  box-shadow: 0 0 0 3px rgba(232, 239, 235, .08) !important;
+}
+
+html[data-theme="dark"] [class*="service-type-color-"] :where(
+  .service-choice,
+  .selected-service-item
+) {
+  background: var(--theme-surface-muted) !important;
+  border-color: var(--theme-border) !important;
+  border-left-color: var(--service-type-dark-accent, var(--theme-border-strong)) !important;
+}
