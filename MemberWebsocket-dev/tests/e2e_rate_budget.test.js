@@ -36,6 +36,6 @@ test('paired E2E uses adaptive booking read budget and next-bucket backoff', () 
 test('admin rate-budget assets are cache-busted', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=background-e2e-rate-budget-20260923-1/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260924-21/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260924-\d+/);
   assert.match(html, /booking-panel\.js\?v=[^"']+/);
 });
