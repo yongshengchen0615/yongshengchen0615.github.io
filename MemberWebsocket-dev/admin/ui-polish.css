@@ -647,8 +647,8 @@ textarea:focus {
 
 .close-button:hover,
 .booking-admin-modal-close:hover {
-  border-color: #b9c8bf;
-  background: #f4f7f3;
+  border-color: var(--admin-border-strong);
+  background: var(--admin-surface-soft);
 }
 
 .operation-notice {
@@ -667,7 +667,7 @@ textarea:focus {
 #bookingPanel .booking-admin-booking,
 #bookingPanel .booking-cancellation-card {
   border-color: var(--admin-border);
-  background: #fff;
+  background: var(--admin-surface);
   box-shadow: 0 5px 18px rgba(31, 61, 48, .035);
 }
 
@@ -691,8 +691,8 @@ textarea:focus {
 }
 
 #bookingPanel .booking-admin-service-row:hover {
-  border-color: #c5d5ca;
-  background: #fafcf9;
+  border-color: var(--admin-border-strong);
+  background: var(--admin-surface-soft);
   transform: translateY(-1px);
 }
 
