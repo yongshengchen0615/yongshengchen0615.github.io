@@ -4250,7 +4250,7 @@
     }, 7000);
     actual.recordModalOpened = Boolean(modal);
     if (modal) {
-      const filters = ['all', 'presence', 'pointCards', 'eventTickets', 'calendar', 'booking', 'testAutomation'];
+      const filters = ['all', 'presence', 'pointCards', 'eventTickets', 'calendar', 'bookings', 'testAutomation'];
       for (const filter of filters) {
         const tab = modal.querySelector('[data-record-filter="' + filter + '"]');
         if (!tab) {
@@ -4291,10 +4291,14 @@
       count.dispatchEvent(new Event('input', { bubbles: true }));
       save.click();
 
-      created = await waitFor(async () => {
-        const data = await postAdminTestMode('admin.test-mode.bootstrap').catch(() => null);
-        return activeTestAccounts(data).find((account) => !beforeIds.has(String(account.memberId || ''))) || null;
-      }, 12000, 250);
+      {
+        const deadline = Date.now() + 12000;
+        while (Date.now() < deadline && !created) {
+          const data = await postAdminTestMode('admin.test-mode.bootstrap').catch(() => null);
+          created = activeTestAccounts(data).find((account) => !beforeIds.has(String(account.memberId || ''))) || null;
+          if (!created) await sleep(250);
+        }
+      }
       actual.created = Boolean(created?.memberId);
       if (!created?.memberId) throw new Error('透過測試環境表單新增帳號後沒有取得新測試會員。');
 
@@ -4319,10 +4323,14 @@
       } finally {
         window.confirm = originalConfirm;
       }
-      actual.deleted = Boolean(await waitFor(async () => {
-        const data = await postAdminTestMode('admin.test-mode.bootstrap').catch(() => null);
-        return data && !activeTestAccounts(data).some((account) => String(account.memberId || '') === String(created.memberId)) ? true : null;
-      }, 12000, 250));
+      {
+        const deadline = Date.now() + 12000;
+        while (Date.now() < deadline && !actual.deleted) {
+          const data = await postAdminTestMode('admin.test-mode.bootstrap').catch(() => null);
+          actual.deleted = Boolean(data && !activeTestAccounts(data).some((account) => String(account.memberId || '') === String(created.memberId)));
+          if (!actual.deleted) await sleep(250);
+        }
+      }
     } finally {
       if (created?.memberId && !actual.deleted) {
         actual.cleanupFallback = await removeEphemeralTestAccount(created).catch(() => false);
@@ -4415,7 +4423,8 @@
         }, actual);
   }
 
-  function adminFeatureContractCoverageCase() {
+  async function adminFeatureContractCoverageCase() {
+    await waitFor(() => document.getElementById('bookingPanel'), 6000);
     const contracts = [
       ['themeToggle', '#themeToggleButton'],
       ['opsOverview', '#opsOverviewTitle'],
