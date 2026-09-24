@@ -138,7 +138,8 @@ test('test data is retained until an admin manually purges it', () => {
   assert.match(api, /await authorizeAdmin\(supabase, identity\)/);
   assert.match(api, /admin_purge_test_data/);
 
-  assert.doesNotMatch(userRunner, /user\.qa\.fixture\.cleanup/);
+  assert.match(userRunner, /action: 'user\.qa\.fixture\.cleanup', surface: otherSurface, testSessionToken: token/);
+  assert.doesNotMatch(userRunner, /qaServiceRequest\('user\.qa\.fixture\.cleanup'/);
   assert.doesNotMatch(userRunner, /mutationQaCase\('POINT_TICKET_WRITE'\)/);
   assert.doesNotMatch(userRunner, /mutationQaCase\('EVENT_TICKET_WRITE'\)/);
   assert.doesNotMatch(userRunner, /mutationQaCase\('BOOKING_WRITE'\)/);
