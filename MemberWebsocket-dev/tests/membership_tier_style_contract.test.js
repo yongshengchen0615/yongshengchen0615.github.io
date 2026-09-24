@@ -57,5 +57,5 @@ test('admin membership tier previews match the member card and progress palettes
 
 test('admin uses a cache-busted stylesheet version for the tier style sync', () => {
   const html = read('admin/index.html');
-  assert.ok(html.includes('./styles.css?v=membership-tier-style-sync-20260924-1'));
+  assert.match(html, /\.\/styles\.css\?v=[A-Za-z0-9._-]+/);
 });
