@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('admin full E2E mutates booking shared settings, verifies cross-end behavior, conflicts and restoration', () => {
+test('admin full E2E mutates booking shared settings, verifies cross-end behavior, conflicts and preserves the final mutation', () => {
   const source = read('admin/e2e-control.js');
 
   assert.match(source, /ADMIN_BOOKING_SHARED_SETTINGS/);
@@ -42,10 +42,13 @@ test('admin full E2E mutates booking shared settings, verifies cross-end behavio
   assert.match(source, /userBootstrapMatched/);
   assert.match(source, /userStoreMinutesMatched/);
   assert.match(source, /userDateWindowEnforced/);
-  assert.match(source, /restoredViaUi/);
-  assert.match(source, /restoreReadback/);
-  assert.match(source, /userRestoreSynced/);
-  assert.match(source, /restoreFallbackUsed/);
+  assert.match(source, /finalMutationReadback/);
+  assert.match(source, /mutationRetainedForInspection/);
+  assert.match(source, /retainedSettings/);
+  assert.doesNotMatch(source, /restoreFallbackUsed/);
+  assert.doesNotMatch(source, /actual\.restoredViaUi/);
+  assert.doesNotMatch(source, /actual\.restoreReadback/);
+  assert.doesNotMatch(source, /actual\.userRestoreSynced/);
   assert.match(source, /createPairedSession/);
   assert.match(source, /surfaceLogins/);
   assert.match(source, /cachedBookingLogin/);
@@ -75,5 +78,5 @@ test('booking admin refresh merges the richer admin settings contract', () => {
 
 test('admin entrypoint cache-busts the shared-settings E2E controller', () => {
   const html = read('admin/index.html');
-  assert.match(html, /\.\/e2e-control\.js\?v=admin-e2e-20260924-24/);
+  assert.match(html, /\.\/e2e-control\.js\?v=admin-e2e-20260924-25/);
 });
