@@ -1142,7 +1142,7 @@ async function recordBrowserRun(
       complexityLevel: Math.max(1, Math.min(8, Number(body.complexityLevel || 1) || 1)),
       clientConcurrency: Math.max(1, Math.min(4, Number(body.clientConcurrency || 1) || 1)),
       failureArtifactCases: failed,
-      diagnosticsVersion: 2,
+      diagnosticsVersion: 3,
       failureDiagnostics: summarizeE2EFailureDiagnoses(
         normalized.map((item) => item.diagnosis).filter(Boolean),
       ),

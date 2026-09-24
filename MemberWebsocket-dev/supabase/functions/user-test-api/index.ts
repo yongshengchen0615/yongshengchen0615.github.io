@@ -1722,7 +1722,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       surface,
       skippedCases: skippedCount,
       memberId: identity.memberId,
-      diagnosticsVersion: 2,
+      diagnosticsVersion: 3,
       failureDiagnostics: summarizeE2EFailureDiagnoses(
         normalized.map((item) => item.diagnosis).filter(Boolean),
       ),

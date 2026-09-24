@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.27';
+  const VERSION = '2026-09-24.28';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -968,6 +968,7 @@
       .map((entry) => ({
         path: diagnosticPath(entry.name),
         initiatorType: String(entry.initiatorType || ''),
+        responseStatus: Number(entry.responseStatus || 0) || null,
         durationMs: Math.max(0, Math.round(Number(entry.duration || 0))),
         transferSize: Math.max(0, Number(entry.transferSize || 0))
       }));
@@ -1200,7 +1201,11 @@
         skippedCases: Number(run.skippedCases || 0)
       };
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
-      Object.assign(row, failedCases === 0 && String(run.status || '') !== 'failed'
+      const completeBackendRun = Number(run.totalCases || 0) > 0 &&
+        Number(run.passedCases || 0) === Number(run.totalCases || 0) &&
+        failedCases === 0 && Number(run.skippedCases || 0) === 0 &&
+        String(run.status || '') === 'passed';
+      Object.assign(row, completeBackendRun
         ? pass('後端完整 QA 已完成且沒有失敗案例；繼續執行 Browser 協同 E2E。', row.expected, row.actual)
         : fail('後端完整 QA 有失敗案例；Browser 協同 E2E 仍會繼續，以收集完整錯誤範圍。', row.expected, row.actual));
       if (row.status === 'failed') row.trace = buildAdminFailureTrace(traceMarker, row);
@@ -1329,6 +1334,16 @@
         ]);
         const preflightDefinitions = allAdminDefinitions.filter((def) => preflightKeys.has(def.key));
         await executeCases(preflightDefinitions, '管理端 · 預約共用設定與即時接手前置');
+        if (state.cancelled) return { cancelled: true, results: safe(state.results) };
+        const incompletePreflight = preflightDefinitions.filter((def) =>
+          !state.results.some((row) => row.key === def.key && row.status === 'passed')
+        );
+        if (incompletePreflight.length) {
+          const error = new Error('管理端前置案例未全部通過，已停止用戶端協同測試：' +
+            incompletePreflight.map((def) => def.name).join('、'));
+          error.code = 'E2E_ADMIN_PREFLIGHT_FAILED';
+          throw error;
+        }
 
         let adminChain = Promise.resolve();
         const liveAdminTasks = state.participants.map((participant) => {

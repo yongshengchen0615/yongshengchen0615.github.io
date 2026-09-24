@@ -15,7 +15,7 @@ test('all five user surfaces load the human-evidence E2E runner asset', () => {
 
 test('user full E2E requires observable UI events for Human E2E cases', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-09-24\.9'/);
+  assert.match(runner, /const VERSION = '2026-09-24\.10'/);
   assert.match(runner, /captureHumanInteraction/);
   assert.match(runner, /\['click', 'input', 'change', 'submit'\]/);
   assert.match(runner, /humanRequired: domain === 'Human E2E'/);
@@ -39,7 +39,7 @@ test('admin paired full E2E requires human UI evidence and covers every client s
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.js\?v=admin-e2e-20260924-\d+/);
-  assert.match(runner, /const VERSION = '2026-09-24\.27'/);
+  assert.match(runner, /const VERSION = '2026-09-24\.28'/);
   assert.match(runner, /captureAdminHumanInteraction/);
   assert.match(runner, /adminHumanRequired/);
   assert.match(runner, /humanInteractionEventsAtLeast: 1/);
