@@ -13,7 +13,7 @@ function read(relativePath) {
 test('all admin and member surfaces load the shared theme controller and stylesheet', () => {
   for (const entry of entries) {
     const html = read(path.join(entry, 'index.html'));
-    assert.match(html, /\.\.\/theme\.css\?v=theme-contrast-20260924-4/, entry + ' should load theme.css');
+    assert.match(html, /\.\.\/theme\.css\?v=ui-refresh-20260924-1/, entry + ' should load theme.css');
     assert.match(html, /\.\.\/theme\.js\?v=theme-contrast-20260924-4/, entry + ' should load theme.js');
   }
 });
@@ -70,11 +70,11 @@ function contrastRatio(foreground, background) {
 }
 
 test('semantic text palette keeps readable contrast in light and dark modes', () => {
-  const lightBackground = '#f3f5f2';
+  const lightBackground = '#f2f5f3';
   const darkBackground = '#0d1411';
 
-  const lightText = ['#18241f', '#627168', '#65736c', '#a94834', '#276947', '#765817', '#9c3d31'];
-  const darkText = ['#f0f4f1', '#b6c1bb', '#9eaca5', '#ff9a78', '#8bd7ad', '#e5c675', '#ff9f90'];
+  const lightText = ['#17231f', '#637169', '#65736c', '#b64f39', '#276947', '#765817', '#9c3d31'];
+  const darkText = ['#edf4ef', '#afbeb6', '#9eaca5', '#ff9f80', '#8bd7ad', '#e5c675', '#ff9f90'];
 
   for (const color of lightText) {
     assert.ok(contrastRatio(color, lightBackground) >= 4.5, color + ' should meet AA on the light theme background');

@@ -993,3 +993,395 @@ textarea:focus {
     transform: none;
   }
 }
+
+
+/* Lumen admin refresh 2026-09-24 */
+html[data-theme] {
+  --admin-surface: var(--theme-surface-raised);
+  --admin-surface-muted: var(--theme-surface);
+  --admin-surface-soft: var(--theme-surface-muted);
+  --admin-border: var(--theme-border);
+  --admin-border-strong: var(--theme-border-strong);
+  --admin-text: var(--theme-text);
+  --admin-text-soft: var(--theme-text-muted);
+  --admin-text-muted: var(--theme-text-subtle);
+  --admin-radius-sm: 10px;
+  --admin-radius-md: 14px;
+  --admin-radius-lg: 18px;
+  --admin-shadow: var(--ui-shadow-card);
+  --admin-shadow-strong: var(--theme-modal-shadow);
+}
+
+html[data-theme] {
+  background: var(--theme-bg);
+}
+
+html[data-theme] body {
+  color: var(--theme-text);
+  background: var(--theme-bg);
+}
+
+html[data-theme] .app-shell {
+  width: min(100%, 1280px);
+  padding-right: clamp(14px, 2.5vw, 30px);
+  padding-left: clamp(14px, 2.5vw, 30px);
+}
+
+html[data-theme] .topbar {
+  margin-bottom: 14px;
+  padding: 17px 18px;
+  border-color: var(--theme-border);
+  background: var(--theme-surface);
+  box-shadow: var(--ui-shadow-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] .topbar h1 {
+  font-size: clamp(30px, 4vw, 42px);
+  letter-spacing: -.05em;
+}
+
+html[data-theme] .account-menu {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] .role-label {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] .surface-nav {
+  gap: 5px;
+  margin-bottom: 14px;
+  padding: 5px;
+  border: 1px solid var(--theme-border);
+  border-radius: 13px;
+  background: var(--theme-surface-muted);
+  box-shadow: none;
+}
+
+html[data-theme] .surface-tab {
+  min-height: 42px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  color: var(--theme-text-muted);
+  font-size: 12.5px;
+  transition: background-color .14s ease, color .14s ease, box-shadow .14s ease;
+}
+
+html[data-theme] .surface-tab:hover {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+}
+
+html[data-theme] .surface-tab[aria-selected="true"] {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  box-shadow: 0 2px 8px rgba(24, 48, 38, .07);
+}
+
+html[data-theme="dark"] .surface-tab[aria-selected="true"] {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .24);
+}
+
+html[data-theme] .stats-row {
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+html[data-theme] .stats-row > div {
+  min-height: 98px;
+  padding: 15px;
+  border: 1px solid var(--theme-border);
+  border-radius: 13px;
+  background: var(--theme-surface);
+  box-shadow: none;
+}
+
+html[data-theme] .stat-label,
+html[data-theme] .stats-row small {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] .stats-row strong {
+  color: var(--theme-text);
+  font-size: clamp(26px, 3vw, 31px);
+}
+
+html[data-theme] .panel {
+  padding: clamp(18px, 2.4vw, 26px);
+  border-color: var(--theme-border);
+  border-radius: 18px;
+  background: var(--theme-surface);
+  box-shadow: var(--ui-shadow-card);
+}
+
+html[data-theme] .panel-heading {
+  margin-bottom: 20px;
+}
+
+html[data-theme] .panel-heading h2,
+html[data-theme] .workspace-heading h3,
+html[data-theme] .editor-heading h3,
+html[data-theme] .tier-settings h3 {
+  color: var(--theme-text);
+}
+
+html[data-theme] .panel-heading p:not(.kicker),
+html[data-theme] .section-heading p:not(.kicker),
+html[data-theme] .tier-settings p,
+html[data-theme] .workspace-heading p {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] :where(
+  .button-outline,
+  .small-button,
+  .date-picker-button,
+  .date-chip,
+  .admin-calendar-month-button,
+  .booking-admin-filter-button
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] :where(
+  .button-outline:hover:not(:disabled),
+  .small-button:hover:not(:disabled),
+  .date-picker-button:hover:not(:disabled),
+  .date-chip:hover:not(:disabled)
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] .search-box {
+  min-height: 42px;
+  border-color: var(--theme-border);
+  border-radius: 10px;
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] .search-box:focus-within {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 3px var(--theme-focus-ring);
+}
+
+html[data-theme] .search-box input {
+  min-height: 40px;
+  color: var(--theme-text);
+  background: transparent;
+}
+
+html[data-theme] .table-wrap {
+  border: 1px solid var(--theme-border);
+  border-radius: 13px;
+  background: var(--theme-surface-raised);
+}
+
+html[data-theme] .table-wrap th {
+  color: var(--theme-text-subtle);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] .table-wrap td {
+  color: var(--theme-table-text);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] .table-wrap tbody tr:hover {
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] .member-cell strong,
+html[data-theme] .tier-text {
+  color: var(--theme-text);
+}
+
+html[data-theme] .member-cell small {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] :where(
+  .tier-settings,
+  .reward-editor,
+  .calendar-batch-editor,
+  .date-range-control,
+  .event-ticket-tier-access,
+  .grant-option,
+  .editor
+) {
+  border-color: var(--theme-border);
+  background: var(--theme-surface-muted);
+  box-shadow: none;
+}
+
+html[data-theme] .tier-settings-grid label {
+  border-color: var(--theme-border);
+  background: var(--theme-surface-raised);
+}
+
+html[data-theme] .card-settings-nav {
+  border-color: var(--theme-border);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] .card-settings-tab {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] .card-settings-tab[aria-selected="true"] {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  box-shadow: 0 2px 7px rgba(24, 48, 38, .06);
+}
+
+html[data-theme] .card-list {
+  border-color: var(--theme-border);
+}
+
+html[data-theme] .list-heading {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] .card-list-item {
+  color: var(--theme-text);
+}
+
+html[data-theme] .card-list-item:hover {
+  border-color: var(--theme-border);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] .card-list-item[aria-selected="true"] {
+  border-color: var(--theme-border-strong);
+  background: var(--theme-surface-muted);
+  box-shadow: inset 3px 0 0 var(--theme-positive);
+}
+
+html[data-theme] .card-list-item small,
+html[data-theme] .editor-hint,
+html[data-theme] .field-help,
+html[data-theme] .date-range-message,
+html[data-theme] .card-sort-hint {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] .editor {
+  border: 1px solid var(--theme-border);
+  border-radius: 13px;
+}
+
+html[data-theme] .editor-heading {
+  border-color: var(--theme-border);
+}
+
+html[data-theme] label,
+html[data-theme] .calendar-batch-field {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] input,
+html[data-theme] select,
+html[data-theme] textarea {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] input:hover,
+html[data-theme] select:hover,
+html[data-theme] textarea:hover {
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] input:focus,
+html[data-theme] select:focus,
+html[data-theme] textarea:focus {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 3px var(--theme-focus-ring);
+}
+
+html[data-theme] :where(
+  .reward-row-editor,
+  .calendar-batch-row,
+  .grant-point-row,
+  .prize-row
+) {
+  border-color: var(--theme-border);
+  background: var(--theme-surface-raised);
+  box-shadow: none;
+}
+
+html[data-theme] :where(
+  .editor-status,
+  .status-pill,
+  .test-mode-status-badge,
+  .test-control-meta-chip,
+  .test-workspace-tab-index
+) {
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  .table-wrap,
+  .tier-settings-grid label,
+  .reward-row-editor,
+  .calendar-batch-row,
+  .grant-point-row,
+  .prize-row,
+  .editor
+) {
+  background: var(--theme-surface);
+}
+
+html[data-theme="dark"] .surface-tab[aria-selected="true"],
+html[data-theme="dark"] .card-settings-tab[aria-selected="true"] {
+  background: var(--theme-surface-raised);
+}
+
+@media (max-width: 760px) {
+  html[data-theme] .surface-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  html[data-theme] .surface-tab {
+    width: 100%;
+    min-width: 0;
+  }
+
+  html[data-theme] .stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  html[data-theme] .stats-row > div {
+    min-height: 88px;
+  }
+
+  html[data-theme] .panel {
+    padding: 16px;
+    border-radius: 14px;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 520px) {
+  html[data-theme] .surface-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  html[data-theme] .stats-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  html[data-theme] .stats-row > div:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}

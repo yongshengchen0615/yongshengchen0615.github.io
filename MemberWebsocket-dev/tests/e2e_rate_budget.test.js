@@ -37,5 +37,5 @@ test('admin rate-budget assets are cache-busted', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=background-e2e-rate-budget-20260923-1/);
   assert.match(html, /e2e-control\.js\?v=admin-e2e-20260924-21/);
-  assert.match(html, /booking-panel\.js\?v=booking-refresh-coalesce-20260924-1/);
+  assert.match(html, /booking-panel\.js\?v=ui-refresh-20260924-1/);
 });
