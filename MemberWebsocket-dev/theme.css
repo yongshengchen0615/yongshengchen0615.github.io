@@ -937,7 +937,6 @@ html[data-theme] :where(
 html[data-theme] :where(
   .profile-details,
   .profile-form,
-  .membership-progress,
   .tickets-panel,
   .ticket-history-panel,
   .used-ticket-history-disclosure,
@@ -1542,6 +1541,11 @@ html[data-theme] .membership-progress[data-membership-tier-style] {
   background-color: var(--membership-card-background);
   border-color: rgba(253, 247, 237, .28);
   box-shadow: 0 16px 36px rgba(23, 53, 46, .16);
+}
+
+html[data-theme="dark"] .membership-progress[data-membership-tier-style] {
+  border-color: rgba(253, 247, 237, .18);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .30);
 }
 
 html[data-theme] .membership-progress[data-membership-tier-style] h2 {
