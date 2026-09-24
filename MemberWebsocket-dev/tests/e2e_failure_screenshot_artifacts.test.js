@@ -42,10 +42,16 @@ test('artifact storage is private and has a scheduled 30 day retention worker', 
   assert.match(retention, /storage\.from\(BUCKET\)\.remove/);
 });
 
-test('admin history renders screenshots only after requesting an admin signed URL', () => {
+test('admin history renders screenshots inline only after requesting an admin signed URL', () => {
   const source = read('admin/test-control.js');
+  const html = read('admin/index.html');
   assert.match(source, /requestArtifactSignedUrl/);
   assert.match(source, /admin\.e2e-artifact\.signed-url/);
+  assert.match(source, /loadInlinePreview/);
+  assert.match(source, /image\.onload/);
+  assert.match(source, /image\.onerror/);
+  assert.match(source, /快照已直接載入管理端/);
   assert.match(source, /Private · 30 天保留/);
   assert.match(source, /約 5 分鐘後失效/);
+  assert.match(html, /img-src[^;]*https:\/\/dbuquirnaskrwcamdxki\.supabase\.co/);
 });
