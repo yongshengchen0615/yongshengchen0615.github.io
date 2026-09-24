@@ -14,6 +14,8 @@
     subtab: 'technicians',
     selected: new Set(),
     loading: false,
+    refreshQueued: false,
+    refreshQueuedShowSuccess: false,
     busy: false,
     realtimeClient: null,
     realtimeChannel: null,
@@ -291,7 +293,11 @@
   }
 
   async function refreshAll(showSuccess) {
-    if (state.loading) return;
+    if (state.loading) {
+      state.refreshQueued = true;
+      state.refreshQueuedShowSuccess = state.refreshQueuedShowSuccess || Boolean(showSuccess);
+      return false;
+    }
     state.loading = true;
     setSyncStatus('同步預約資料中…');
     try {
@@ -331,7 +337,14 @@
       showMessage(els.bookingAdminServiceMessage, error?.message || '預約資料同步失敗', 'error');
     } finally {
       state.loading = false;
+      if (state.refreshQueued) {
+        const queuedShowSuccess = state.refreshQueuedShowSuccess;
+        state.refreshQueued = false;
+        state.refreshQueuedShowSuccess = false;
+        window.setTimeout(() => { refreshAll(queuedShowSuccess); }, 0);
+      }
     }
+    return true;
   }
   function renderAll() { renderSettings(); renderTypes(); renderServices(); renderStats(); renderBookings(); }
   function renderSettings() {
