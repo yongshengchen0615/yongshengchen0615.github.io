@@ -747,7 +747,10 @@
     const fullCommon = [
       caseDef('高複雜度使用狀態前置', 'Usage State', usageStateComplexityCase, 'COMMON_USAGE_STATE_COMPLEXITY'),
       caseDef('無測試 Session 必須被拒絕', 'Security', negativeSessionCase),
-      caseDef('Realtime 訂閱能力', 'Realtime', realtimeCase, 'COMMON_REALTIME')
+      caseDef('Realtime 訂閱能力', 'Realtime', realtimeCase, 'COMMON_REALTIME'),
+      caseDef('亮／暗主題切換與偏好還原', 'UI', themeToggleCase, 'COMMON_THEME_TOGGLE'),
+      caseDef('會員階級 milestone 與進度同步', 'UI', membershipMilestoneCase, 'COMMON_MEMBERSHIP_MILESTONE'),
+      caseDef('非按鈕功能契約覆蓋清單', 'Coverage', featureContractCoverageCase, 'COMMON_FEATURE_CONTRACT_COVERAGE')
     ];
 
     const surfaceCases = {
@@ -762,12 +765,14 @@
         caseDef('集點卡／票券資料結構', 'Points', pointsDataCase, 'POINTS_DATA'),
         caseDef('票券使用共用設定', 'Points', pointSettingsCase, 'POINTS_SETTINGS'),
         caseDef('集點卡切換互動', 'UI', pointsInteractionCase, 'POINTS_CARD_SWITCH'),
+        caseDef('票券使用紀錄展開／收合', 'UI', pointsHistoryDisclosureCase, 'POINTS_HISTORY_DISCLOSURE'),
         caseDef('真人操作：勾選票券／取消／確認核銷', 'Human E2E', pointsHumanRedeemCase, 'POINTS_HUMAN_REDEEM'),
         caseDef('票券核銷輸入驗證', 'Validation', pointsInvalidWriteCase, 'POINTS_INVALID_WRITE'),
       ],
       event: [
         caseDef('活動票券領取／使用狀態', 'Tickets', eventDataCase, 'EVENT_DATA'),
         caseDef('票券詳情 Modal', 'UI', eventModalCase, 'EVENT_MODAL'),
+        caseDef('已使用票券紀錄展開／收合', 'UI', eventHistoryDisclosureCase, 'EVENT_HISTORY_DISCLOSURE'),
         caseDef('真人操作：開啟／領取／核銷／查看紀錄', 'Human E2E', eventHumanTicketLifecycleCase, 'EVENT_HUMAN_LIFECYCLE'),
         caseDef('領券與核銷輸入驗證', 'Validation', eventInvalidWriteCase, 'EVENT_INVALID_WRITE'),
       ],
@@ -782,6 +787,7 @@
         caseDef('會員與預約 Bootstrap 一致性', 'Booking', bookingDataCase, 'BOOKING_DATA'),
         caseDef('多人預約資源 Bootstrap', 'Booking', bookingGroupBootstrapCase, 'BOOKING_GROUP_DATA'),
         caseDef('預約表單安全初始狀態', 'UI', bookingFormCase, 'BOOKING_FORM_INITIAL'),
+        caseDef('預約 stepper 狀態同步', 'UI', bookingFlowStepperCase, 'BOOKING_FLOW_STEPPER'),
         caseDef('真人操作：日期／視窗／項目／多人控制', 'Human E2E', bookingHumanControlsCase, 'BOOKING_HUMAN_CONTROLS'),
         caseDef('真人操作：新增／修改／取消預約', 'Human E2E', bookingHumanLifecycleCase, 'BOOKING_HUMAN_LIFECYCLE'),
         caseDef('真人操作：多人預約新增並保留資料', 'Human E2E', bookingHumanGroupLifecycleCase, 'BOOKING_HUMAN_GROUP'),
@@ -2010,6 +2016,190 @@
     });
   }
 
+  async function themeToggleCase() {
+    const button = await waitFor(() => document.getElementById('themeToggleButton'), 2500);
+    const root = document.documentElement;
+    const storageKey = 'lumen-color-theme-v1';
+    const original = String(root.dataset.theme || window.LumenTheme?.get?.() || '');
+    if (!button || !/^(light|dark)$/.test(original)) {
+      return fail('主題切換控制器未完整初始化。', { togglePresent: true, initialTheme: 'light|dark' }, {
+        togglePresent: Boolean(button),
+        initialTheme: original || null
+      });
+    }
+
+    button.click();
+    const changedTheme = original === 'dark' ? 'light' : 'dark';
+    const changed = Boolean(await waitFor(() => root.dataset.theme === changedTheme, 1200));
+    const persisted = (() => {
+      try { return localStorage.getItem(storageKey) === changedTheme; } catch { return false; }
+    })();
+    const ariaChanged = button.getAttribute('aria-pressed') === (changedTheme === 'dark' ? 'true' : 'false');
+
+    button.click();
+    const restored = Boolean(await waitFor(() => root.dataset.theme === original, 1200));
+    const restoredPersisted = (() => {
+      try { return localStorage.getItem(storageKey) === original; } catch { return false; }
+    })();
+
+    const actual = { original, changedTheme, changed, persisted, ariaChanged, restored, restoredPersisted };
+    return changed && persisted && ariaChanged && restored && restoredPersisted
+      ? pass('亮／暗主題可真人切換、ARIA 同步、偏好可儲存並還原原狀。', {
+          changed: true, persisted: true, ariaChanged: true, restored: true, restoredPersisted: true
+        }, actual)
+      : fail('主題切換、儲存或還原至少一項異常。', {
+          changed: true, persisted: true, ariaChanged: true, restored: true, restoredPersisted: true
+        }, actual);
+  }
+
+  function membershipMilestoneCase() {
+    const root = document.getElementById('membershipProgress');
+    const rail = root?.querySelector('[data-membership-milestones]');
+    const items = Array.from(rail?.querySelectorAll('[data-membership-milestone]') || []);
+    const current = items.filter((item) => item.getAttribute('aria-current') === 'step');
+    const track = root?.querySelector('[data-membership-progress-track]');
+    const valueNow = Number(track?.getAttribute('aria-valuenow'));
+    const labels = items.map((item) => String(item.textContent || '').trim());
+    const actual = {
+      rootPresent: Boolean(root),
+      milestoneCount: items.length,
+      currentCount: current.length,
+      labels,
+      progressValue: valueNow,
+      styleKey: String(root?.getAttribute('data-membership-tier-style') || '')
+    };
+    const ok = Boolean(root && rail) &&
+      items.length === 4 &&
+      current.length === 1 &&
+      Number.isFinite(valueNow) && valueNow >= 0 && valueNow <= 100 &&
+      ['一般', '銀級', '金級', '白金'].every((label) => labels.includes(label));
+
+    return ok
+      ? pass('會員階級進度與四階段 milestone 已同步目前會員狀態。', {
+          milestoneCount: 4, currentCount: 1, progressRange: '0-100'
+        }, actual)
+      : fail('會員階級 milestone 或進度 ARIA 狀態不完整。', {
+          milestoneCount: 4, currentCount: 1, progressRange: '0-100'
+        }, actual);
+  }
+
+  async function detailsDisclosureCase(detailsId, label) {
+    const details = document.getElementById(detailsId);
+    const summary = details?.querySelector('summary');
+    if (!details || !summary) {
+      return fail(label + '展開控制不存在。', { present: true }, { present: false });
+    }
+    const original = details.open;
+    summary.click();
+    const toggled = Boolean(await waitFor(() => details.open !== original, 800));
+    summary.click();
+    const restored = Boolean(await waitFor(() => details.open === original, 800));
+    return toggled && restored
+      ? pass(label + '可真人展開並還原。', { toggled: true, restored: true }, { toggled, restored })
+      : fail(label + '展開／收合互動異常。', { toggled: true, restored: true }, { toggled, restored });
+  }
+
+  async function pointsHistoryDisclosureCase() {
+    return detailsDisclosureCase('ticketHistoryDisclosure', '票券使用紀錄');
+  }
+
+  async function eventHistoryDisclosureCase() {
+    return detailsDisclosureCase('usedTicketHistoryDisclosure', '已使用活動票券紀錄');
+  }
+
+  async function bookingFlowStepperCase() {
+    document.getElementById('closeBookingConfirmButton')?.click();
+    document.getElementById('closeAppointmentButton')?.click();
+    const flow = await waitFor(() => document.querySelector('[data-booking-flow]'), 2500);
+    const steps = Array.from(flow?.querySelectorAll('[data-booking-flow-step]') || []);
+    const actual = {
+      stepCount: steps.length,
+      initialStep: String(flow?.dataset.currentStep || ''),
+      openedStep: '',
+      serviceStep: '',
+      slotStep: '',
+      restoredStep: ''
+    };
+    if (!flow || steps.length !== 4) {
+      return fail('預約 stepper 未完整載入四個階段。', { stepCount: 4 }, actual);
+    }
+
+    try {
+      const panel = await openBookingForSafeDate();
+      actual.openedStep = String(flow.dataset.currentStep || '');
+      const add = chooseNormalServiceButton(panel);
+      if (!add) return skip('目前沒有可供 stepper E2E 使用的一般預約項目。', { normalService: true }, { normalService: false });
+      add.click();
+      await waitFor(() => flow.dataset.currentStep === '3', 1800);
+      actual.serviceStep = String(flow.dataset.currentStep || '');
+      const slot = await chooseAvailableSlot();
+      if (!slot) return skip('目前沒有可供 stepper E2E 使用的安全時段。', { availableSlot: true }, { availableSlot: false });
+      slot.click();
+      await waitFor(() => flow.dataset.currentStep === '4', 1200);
+      actual.slotStep = String(flow.dataset.currentStep || '');
+    } finally {
+      document.querySelectorAll('#selectedServiceList .selected-service-remove').forEach((button) => button.click());
+      document.getElementById('closeAppointmentButton')?.click();
+      try { await waitFor(() => flow.dataset.currentStep === '1', 1200); } catch {}
+      actual.restoredStep = String(flow.dataset.currentStep || '');
+    }
+
+    const ok = actual.openedStep === '2' && actual.serviceStep === '3' && actual.slotStep === '4' && actual.restoredStep === '1';
+    return ok
+      ? pass('預約 stepper 會依日期、項目、時段與關閉狀態依序更新。', {
+          openedStep: '2', serviceStep: '3', slotStep: '4', restoredStep: '1'
+        }, actual)
+      : fail('預約 stepper 與實際表單狀態不同步。', {
+          openedStep: '2', serviceStep: '3', slotStep: '4', restoredStep: '1'
+        }, actual);
+  }
+
+  function featureContractCoverageCase() {
+    const common = [
+      ['themeToggle', '#themeToggleButton'],
+      ['membershipProgress', '#membershipProgress'],
+      ['membershipMilestones', '#membershipProgress [data-membership-milestones]']
+    ];
+    const surfaceContracts = {
+      member: [
+        ['profileDetails', '#profileDetailsTitle'],
+        ['honorificDialog', '#honorificEditModal'],
+        ['birthdayDialog', '#birthdayEditModal'],
+        ['phoneDialog', '#phoneEditModal']
+      ],
+      points: [
+        ['cardTabs', '#cardTabs'],
+        ['ticketOverview', '#ticketList'],
+        ['ticketHistory', '#ticketHistoryDisclosure']
+      ],
+      event: [
+        ['eventList', '#eventList'],
+        ['ticketDialog', '#ticketModal'],
+        ['usedHistory', '#usedTicketHistoryDisclosure']
+      ],
+      calendar: [
+        ['calendarGrid', '#calendarGrid'],
+        ['calendarDetailDialog', '#calendarDetailModal'],
+        ['todayControl', '#todayButton']
+      ],
+      booking: [
+        ['bookingCalendar', '#calendarGrid'],
+        ['appointmentDialog', '#appointmentPanel'],
+        ['bookingConfirmDialog', '#bookingConfirmModal'],
+        ['bookingHistory', '#bookingList'],
+        ['bookingFlow', '[data-booking-flow]']
+      ]
+    };
+    const contracts = common.concat(surfaceContracts[surface] || []);
+    const missing = contracts
+      .filter(([, selector]) => !document.querySelector(selector))
+      .map(([key, selector]) => ({ key, selector }));
+    const actual = { surface, contractCount: contracts.length, missing };
+    return missing.length === 0
+      ? pass('此頁面的非按鈕功能契約也已納入完整 E2E 覆蓋。', { missing: [] }, actual)
+      : fail('發現尚未掛入 E2E 的功能區塊或互動契約。', { missing: [] }, actual);
+  }
+
   async function buttonCoverageCase() {
     const qaPanel = state.panel;
     const qaInfrastructureControls = [LAUNCHER_ID].filter((id) => document.getElementById(id));
@@ -2268,9 +2458,15 @@
     const restored = title.textContent;
     const changed = before !== after;
     const returned = restored === before;
-    return changed && returned
-      ? pass('下一月／上一月導覽可變更並恢復月份。', { changed: true, restored: true }, { changed, restored: returned })
-      : fail('月曆月份切換未依預期運作。', { changed: true, restored: true }, { changed, restored: returned });
+
+    next.click();
+    await wait(90);
+    document.getElementById('todayButton')?.click();
+    await wait(90);
+    const todayRestored = title.textContent === before;
+    return changed && returned && todayRestored
+      ? pass('下一月／上一月／回到本月皆可變更並恢復月份。', { changed: true, restored: true, todayRestored: true }, { changed, restored: returned, todayRestored })
+      : fail('月曆月份切換或回到本月未依預期運作。', { changed: true, restored: true, todayRestored: true }, { changed, restored: returned, todayRestored });
   }
 
   async function calendarInvalidDateCase() {

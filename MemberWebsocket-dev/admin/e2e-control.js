@@ -1100,7 +1100,13 @@
       caseDef('ADMIN_CALENDAR_CRUD', '日曆：新增／修改／刪除', 'Admin CRUD E2E', adminCalendarCrudCase),
       caseDef('ADMIN_BOOKING_CRUD', '預約：類型與項目新增／修改／刪除', 'Admin CRUD E2E', adminBookingCrudCase),
       caseDef('ADMIN_BOOKING_CONTROLS', '預約管理分頁與新增視窗', 'Human E2E', adminBookingControlsCase),
+      caseDef('ADMIN_THEME_TOGGLE', '亮／暗主題切換與偏好還原', 'UI', adminThemeToggleCase),
+      caseDef('ADMIN_MEMBER_DIRECTORY_CONTROLS', '會員搜尋／分頁／紀錄篩選', 'UI', adminMemberDirectoryControlsCase),
+      caseDef('ADMIN_MESSAGE_PRESET_EDITOR', '預設訊息管理視窗與驗證', 'UI', adminMessagePresetEditorCase),
+      caseDef('ADMIN_CALENDAR_BATCH_CONTROLS', '日曆批次新增／驗證／清除', 'UI', adminCalendarBatchControlsCase),
       caseDef('ADMIN_TEST_MODE_CONTROLS', '測試環境控制元件', 'UI', adminTestModeControlsCase),
+      caseDef('ADMIN_TEST_ACCOUNT_LIFECYCLE', '測試帳號新增／選取／移除', 'Test Account E2E', adminTestAccountLifecycleCase),
+      caseDef('ADMIN_FEATURE_CONTRACT_COVERAGE', '主要功能區塊 E2E 契約清單', 'Coverage', adminFeatureContractCoverageCase),
       caseDef('ADMIN_BUTTON_COVERAGE', '所有按鈕／動態控制覆蓋清單', 'Coverage', adminButtonCoverageCase)
     ]);
   }
@@ -4166,8 +4172,8 @@
   async function adminTestModeControlsCase() {
     document.getElementById('testModeTab')?.click();
     const ids = [
-      'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
-      'testModeAddAccountCount', 'saveTestModeButton', 'purgeTestDataButton',
+      'systemMaintenanceEnabled', 'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
+      'testModeAddAccountCount', 'testModeSelectAllAccounts', 'deleteSelectedTestAccountsButton', 'saveTestModeButton', 'purgeTestDataButton',
       'runPairedFullE2EButton', 'pairedE2EAccountCount'
     ];
     const actual = Object.fromEntries(ids.map((id) => [id, Boolean(document.getElementById(id))]));
@@ -4175,6 +4181,272 @@
     return ok
       ? pass('管理端測試環境、測試資料清理與唯一背景完整 E2E Runner 控制元件皆存在。', { allControls: true }, actual)
       : fail('測試環境控制元件不完整。', { allControls: true }, actual);
+  }
+
+  async function adminThemeToggleCase() {
+    const button = await waitFor(() => document.getElementById('themeToggleButton'), 2500);
+    const root = document.documentElement;
+    const storageKey = 'lumen-color-theme-v1';
+    const original = String(root.dataset.theme || window.LumenTheme?.get?.() || '');
+    if (!button || !/^(light|dark)$/.test(original)) {
+      return fail('管理端主題控制器未完整初始化。', { togglePresent: true, initialTheme: 'light|dark' }, {
+        togglePresent: Boolean(button), initialTheme: original || null
+      });
+    }
+    button.click();
+    const changedTheme = original === 'dark' ? 'light' : 'dark';
+    const changed = Boolean(await waitFor(() => root.dataset.theme === changedTheme, 1200));
+    const persisted = (() => {
+      try { return localStorage.getItem(storageKey) === changedTheme; } catch { return false; }
+    })();
+    button.click();
+    const restored = Boolean(await waitFor(() => root.dataset.theme === original, 1200));
+    const restoredPersisted = (() => {
+      try { return localStorage.getItem(storageKey) === original; } catch { return false; }
+    })();
+    const actual = { original, changedTheme, changed, persisted, restored, restoredPersisted };
+    return changed && persisted && restored && restoredPersisted
+      ? pass('管理端亮／暗主題可切換、儲存並還原。', {
+          changed: true, persisted: true, restored: true, restoredPersisted: true
+        }, actual)
+      : fail('管理端主題切換或還原異常。', {
+          changed: true, persisted: true, restored: true, restoredPersisted: true
+        }, actual);
+  }
+
+  async function adminMemberDirectoryControlsCase() {
+    const edit = await ensureTestRoster();
+    const targetCode = String(state.adminTestAccount?.memberCode || '');
+    const search = document.getElementById('memberSearch');
+    const prev = document.getElementById('memberPrevPageButton');
+    const next = document.getElementById('memberNextPageButton');
+    const actual = {
+      searchPresent: Boolean(search),
+      searchMatched: false,
+      paginationControls: Boolean(prev && next),
+      recordFilters: {},
+      recordModalOpened: false,
+      restoredSearch: false
+    };
+    if (!search || !targetCode) {
+      return fail('會員搜尋或指定測試會員資料不存在。', { searchPresent: true, targetCode: true }, {
+        searchPresent: Boolean(search), targetCode: Boolean(targetCode)
+      });
+    }
+
+    search.value = targetCode;
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    actual.searchMatched = Boolean(await waitFor(() =>
+      Array.from(document.querySelectorAll('#memberTableBody tr')).some((row) => String(row.textContent || '').includes(targetCode)),
+      8000,
+      100
+    ));
+
+    const lineUserId = String(edit.dataset.value || '');
+    await clickRowAction('view-records', lineUserId);
+    const modal = await waitFor(() => {
+      const node = document.getElementById('memberRecordsModal');
+      return node && !node.classList.contains('hidden') ? node : null;
+    }, 7000);
+    actual.recordModalOpened = Boolean(modal);
+    if (modal) {
+      const filters = ['all', 'presence', 'pointCards', 'eventTickets', 'calendar', 'bookings', 'testAutomation'];
+      for (const filter of filters) {
+        const tab = modal.querySelector('[data-record-filter="' + filter + '"]');
+        if (!tab) {
+          actual.recordFilters[filter] = false;
+          continue;
+        }
+        tab.click();
+        actual.recordFilters[filter] = Boolean(await waitFor(() => tab.classList.contains('active'), 1200));
+      }
+      document.getElementById('closeMemberRecordsModal')?.click();
+    }
+
+    search.value = '';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    actual.restoredSearch = Boolean(await waitFor(() => document.getElementById('memberTableBody')?.children.length > 0, 8000, 100));
+    const filtersOk = Object.values(actual.recordFilters).length === 7 && Object.values(actual.recordFilters).every(Boolean);
+    const ok = actual.searchPresent && actual.searchMatched && actual.paginationControls && actual.recordModalOpened && filtersOk && actual.restoredSearch;
+    return ok
+      ? pass('會員搜尋、分頁控制與七種會員紀錄篩選皆已納入 E2E。', {
+          searchMatched: true, paginationControls: true, allRecordFilters: true, restoredSearch: true
+        }, actual)
+      : fail('會員名冊搜尋、分頁或紀錄篩選至少一項異常。', {
+          searchMatched: true, paginationControls: true, allRecordFilters: true, restoredSearch: true
+        }, actual);
+  }
+
+  async function adminTestAccountLifecycleCase() {
+    document.getElementById('testModeTab')?.click();
+    const before = await postAdminTestMode('admin.test-mode.bootstrap');
+    const beforeIds = new Set(activeTestAccounts(before).map((account) => String(account.memberId || '')));
+    let created = null;
+    const actual = { created: false, rendered: false, checkboxSelectable: false, deleted: false, cleanupFallback: false };
+    try {
+      const count = await waitFor(() => document.getElementById('testModeAddAccountCount'), 3000);
+      const save = await waitFor(() => {
+        const button = document.getElementById('saveTestModeButton');
+        return button && !button.disabled ? button : null;
+      }, 6000);
+      if (!count || !save) throw new Error('測試帳號新增控制不存在或尚未可操作。');
+      count.value = '1';
+      count.dispatchEvent(new Event('input', { bubbles: true }));
+      save.click();
+
+      {
+        const deadline = Date.now() + 12000;
+        while (Date.now() < deadline && !created) {
+          const data = await postAdminTestMode('admin.test-mode.bootstrap').catch(() => null);
+          created = activeTestAccounts(data).find((account) => !beforeIds.has(String(account.memberId || ''))) || null;
+          if (!created) await sleep(250);
+        }
+      }
+      actual.created = Boolean(created?.memberId);
+      if (!created?.memberId) throw new Error('透過測試環境表單新增帳號後沒有取得新測試會員。');
+
+      const row = await waitFor(() => {
+        const button = document.querySelector('[data-test-account-delete="' + CSS.escape(String(created.memberId)) + '"]');
+        return button?.closest('.test-account-row') || null;
+      }, 8000, 100);
+      actual.rendered = Boolean(row);
+      const checkbox = row?.querySelector('.test-account-checkbox');
+      if (checkbox) {
+        checkbox.click();
+        actual.checkboxSelectable = checkbox.checked === true;
+        if (checkbox.checked) checkbox.click();
+      }
+
+      const remove = row?.querySelector('[data-test-account-delete]');
+      if (!remove) throw new Error('新增測試會員沒有移除控制。');
+      const originalConfirm = window.confirm;
+      try {
+        window.confirm = () => true;
+        remove.click();
+      } finally {
+        window.confirm = originalConfirm;
+      }
+      {
+        const deadline = Date.now() + 12000;
+        while (Date.now() < deadline && !actual.deleted) {
+          const data = await postAdminTestMode('admin.test-mode.bootstrap').catch(() => null);
+          actual.deleted = Boolean(data && !activeTestAccounts(data).some((account) => String(account.memberId || '') === String(created.memberId)));
+          if (!actual.deleted) await sleep(250);
+        }
+      }
+    } finally {
+      if (created?.memberId && !actual.deleted) {
+        actual.cleanupFallback = await removeEphemeralTestAccount(created).catch(() => false);
+      } else {
+        actual.cleanupFallback = true;
+      }
+      const count = document.getElementById('testModeAddAccountCount');
+      if (count) count.value = '0';
+    }
+    const ok = actual.created && actual.rendered && actual.checkboxSelectable && actual.deleted && actual.cleanupFallback;
+    return ok
+      ? pass('測試帳號已透過管理 UI 新增、選取、移除並確認後端清理。', {
+          created: true, rendered: true, checkboxSelectable: true, deleted: true
+        }, actual)
+      : fail('測試帳號新增／選取／移除生命週期至少一項異常。', {
+          created: true, rendered: true, checkboxSelectable: true, deleted: true
+        }, actual);
+  }
+
+  async function adminMessagePresetEditorCase() {
+    document.getElementById('membersTab')?.click();
+    const open = document.getElementById('manageGrantMessagesButton');
+    open?.click();
+    const modal = await waitFor(() => {
+      const node = document.getElementById('messagePresetModal');
+      return node && !node.classList.contains('hidden') ? node : null;
+    }, 2500);
+    const actual = {
+      opened: Boolean(modal),
+      newReset: false,
+      titleValidation: false,
+      bodyValidation: false,
+      closed: false
+    };
+    if (!modal) return fail('預設訊息管理視窗無法開啟。', { opened: true }, actual);
+
+    document.getElementById('newMessagePresetButton')?.click();
+    actual.newReset =
+      String(document.getElementById('messagePresetId')?.value || '') === '' &&
+      String(document.getElementById('messagePresetTitle')?.value || '') === '' &&
+      String(document.getElementById('messagePresetBody')?.value || '') === '';
+
+    document.getElementById('saveMessagePresetButton')?.click();
+    actual.titleValidation = Boolean(await waitFor(() =>
+      /預設訊息名稱/.test(String(document.getElementById('messagePresetFormMessage')?.textContent || '')),
+      1000
+    ));
+    setField('messagePresetTitle', 'E2E 驗證用名稱');
+    document.getElementById('saveMessagePresetButton')?.click();
+    actual.bodyValidation = Boolean(await waitFor(() =>
+      /預設訊息內容/.test(String(document.getElementById('messagePresetFormMessage')?.textContent || '')),
+      1000
+    ));
+    document.getElementById('closeMessagePresetModal')?.click();
+    actual.closed = Boolean(await waitFor(() => modal.classList.contains('hidden'), 1000));
+
+    return Object.values(actual).every(Boolean)
+      ? pass('預設訊息管理的開啟、新增重置、名稱／內容驗證與關閉皆正常；未修改正式預設訊息。', {
+          opened: true, newReset: true, titleValidation: true, bodyValidation: true, closed: true
+        }, actual)
+      : fail('預設訊息管理至少一項互動或驗證異常。', {
+          opened: true, newReset: true, titleValidation: true, bodyValidation: true, closed: true
+        }, actual);
+  }
+
+  async function adminCalendarBatchControlsCase() {
+    document.getElementById('calendarTab')?.click();
+    const add = await waitFor(() => document.getElementById('addCalendarBatchItemButton'), 3000);
+    const rows = document.getElementById('calendarBatchRows');
+    const message = document.getElementById('calendarBatchMessage');
+    const actual = { added: false, invalidSaveRejected: false, cleared: false };
+    if (!add || !rows) return fail('日曆批次編輯控制不存在。', { controls: true }, { controls: false });
+
+    add.click();
+    actual.added = Boolean(await waitFor(() => rows.children.length >= 1, 1200));
+    document.getElementById('saveCalendarBatchButton')?.click();
+    actual.invalidSaveRejected = Boolean(await waitFor(() => {
+      const text = String(message?.textContent || '').trim();
+      return text && !message?.classList.contains('hidden') ? true : null;
+    }, 1200));
+    document.getElementById('clearCalendarBatchButton')?.click();
+    actual.cleared = Boolean(await waitFor(() => rows.children.length === 0, 1200));
+
+    return Object.values(actual).every(Boolean)
+      ? pass('日曆批次新增列、送出驗證與清除批次皆可真人操作。', {
+          added: true, invalidSaveRejected: true, cleared: true
+        }, actual)
+      : fail('日曆批次操作至少一項異常。', {
+          added: true, invalidSaveRejected: true, cleared: true
+        }, actual);
+  }
+
+  async function adminFeatureContractCoverageCase() {
+    await waitFor(() => document.getElementById('bookingPanel'), 6000);
+    const contracts = [
+      ['themeToggle', '#themeToggleButton'],
+      ['opsOverview', '#opsOverviewTitle'],
+      ['tierSettings', '#tierSettingsForm'],
+      ['memberSearch', '#memberSearch'],
+      ['memberPagination', '#memberPagination'],
+      ['messagePresetDialog', '#messagePresetModal'],
+      ['grantDialog', '#grantModal'],
+      ['calendarBatch', '#calendarBatchRows'],
+      ['testEnvironment', '#testModeForm'],
+      ['testAccounts', '#testModeAccountList'],
+      ['testControlCenter', '.test-control-center'],
+      ['bookingWorkspace', '#bookingPanel']
+    ];
+    const missing = contracts.filter(([, selector]) => !document.querySelector(selector)).map(([key, selector]) => ({ key, selector }));
+    const actual = { contractCount: contracts.length, missing };
+    return missing.length === 0
+      ? pass('管理端主要非按鈕功能區塊均已納入完整 E2E 契約清單。', { missing: [] }, actual)
+      : fail('管理端發現未掛入 E2E 的功能區塊。', { missing: [] }, actual);
   }
 
   async function adminButtonCoverageCase() {
