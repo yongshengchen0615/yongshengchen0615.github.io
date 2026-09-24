@@ -2755,3 +2755,220 @@ html[data-theme="dark"] .booking-group-admin-edit-primary {
 html[data-theme="dark"] .booking-group-admin-edit-message {
   color: var(--theme-danger-text);
 }
+
+
+/* Client neutral surface hardening 2026-09-24 */
+/* Remove remaining light-only neutral surfaces from member-facing pages.
+   Brand/tier cards and semantic status colors remain intentionally distinct. */
+html[data-theme="dark"] :where(
+  .error-mark
+) {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .card-guidance-panel,
+  .ticket-overview-toolbar,
+  .ticket-batch-line,
+  .ticket-history-panel
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-batch-ticket-badge
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-batch-card .ticket-batch-warning,
+  .ticket-modal-message:not(.success),
+  .sync-notice.is-error
+) {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+  border-color: rgba(240, 138, 118, .24);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .ticket-modal-message.success
+) {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+  border-color: rgba(114, 211, 156, .20);
+}
+
+html[data-theme="dark"] #pointsView :where(
+  .sync-notice
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #eventView :where(
+  .sync-notice
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #eventView .sync-notice.is-error {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+  border-color: rgba(240, 138, 118, .24);
+}
+
+html[data-theme="dark"] #bookingView :where(
+  .service-info:not([class*="service-type-color-"])
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+/* Test-account entry modal shared by all member-facing clients. */
+html[data-theme="dark"] :where(
+  .test-mode-modal-card
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+  box-shadow: var(--theme-modal-shadow);
+}
+
+html[data-theme="dark"] :where(
+  .test-mode-kicker,
+  .test-mode-modal-card > p:not(.test-mode-kicker):not(.test-mode-message),
+  .test-mode-message
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] .test-mode-field select {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] .test-mode-primary-button {
+  color: #0b1511;
+  background: var(--theme-accent);
+}
+
+/* Visible user E2E observer shared by all clients. */
+html[data-theme="dark"] :where(
+  .user-qa-shell,
+  .user-qa-head,
+  .user-qa-account,
+  .user-qa-summary > div,
+  .user-qa-case,
+  .user-qa-data section
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] :where(
+  .user-qa-head,
+  .user-qa-summary > div,
+  .user-qa-case
+) {
+  background: var(--theme-surface-raised);
+}
+
+html[data-theme="dark"] :where(
+  .user-qa-head p:not(.user-qa-kicker),
+  .user-qa-account span,
+  .user-qa-account small,
+  .user-qa-summary span,
+  .user-qa-case-title small,
+  .user-qa-case-message,
+  .user-qa-data span,
+  .user-qa-history > summary,
+  .user-qa-history-row span,
+  .user-qa-history-empty
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] :where(
+  .user-qa-head,
+  .user-qa-account,
+  .user-qa-history,
+  .user-qa-history-row
+) {
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  .user-qa-minimize,
+  .user-qa-close,
+  .user-qa-button.secondary,
+  .user-qa-case-title > b,
+  .user-qa-case-badge
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] .user-qa-progress {
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] .user-qa-message {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] :where(
+  .user-qa-button.danger,
+  .user-qa-message.is-error,
+  .user-qa-case.is-failed .user-qa-case-title > b,
+  .user-qa-case.is-failed .user-qa-case-badge
+) {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+}
+
+html[data-theme="dark"] :where(
+  .user-qa-case.is-passed .user-qa-case-title > b,
+  .user-qa-case.is-passed .user-qa-case-badge
+) {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+}
+
+html[data-theme="dark"] :where(
+  .user-qa-case.is-running .user-qa-case-title > b,
+  .user-qa-case.is-running .user-qa-case-badge
+) {
+  color: var(--theme-warning-text);
+  background: #2b2617;
+}
+
+html[data-theme="dark"] .user-qa-data pre {
+  color: var(--theme-table-text);
+}
+
+html[data-theme="dark"] .user-qa-kicker {
+  color: var(--theme-positive-text);
+}
+
+html[data-theme="dark"] .user-qa-launcher {
+  color: #0b1511;
+  background: var(--theme-accent);
+  border-color: rgba(255, 152, 118, .28);
+}
