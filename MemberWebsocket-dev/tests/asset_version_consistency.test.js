@@ -108,7 +108,7 @@ test('member-facing pages load the current human E2E controller and refresh hook
   }
   const appVersions = {
     'points/index.html': './app.js?v=human-e2e-hooks-20260921-1',
-    'event/index.html': './app.js?v=human-e2e-hooks-20260923-2',
+    'event/index.html': './app.js?v=human-e2e-hooks-20260924-3',
     'calendar/index.html': './app.js?v=human-e2e-hooks-20260921-1',
     'booking/index.html': './app.js?v=booking-realtime-e2e-probe-20260923-2',
   };
