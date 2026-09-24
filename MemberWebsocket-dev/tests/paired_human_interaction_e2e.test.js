@@ -39,7 +39,7 @@ test('admin paired full E2E requires human UI evidence and covers every client s
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.js\?v=admin-e2e-20260924-\d+/);
-  assert.match(runner, /const VERSION = '2026-09-24\.26'/);
+  assert.match(runner, /const VERSION = '2026-09-24\.27'/);
   assert.match(runner, /captureAdminHumanInteraction/);
   assert.match(runner, /adminHumanRequired/);
   assert.match(runner, /humanInteractionEventsAtLeast: 1/);
