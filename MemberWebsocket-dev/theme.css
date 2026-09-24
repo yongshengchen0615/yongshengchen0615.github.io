@@ -2597,3 +2597,161 @@ html[data-theme="dark"] #calendarEditorModal input[type="date"] {
     background: var(--theme-surface-raised);
   }
 }
+
+
+/* Booking admin deep dark parity 2026-09-24 */
+/* Booking extensions are loaded dynamically. Keep every neutral booking surface on the
+   shared dark palette, while preserving semantic status colors. */
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-resource-box,
+  .booking-admin-technician-row,
+  .booking-admin-technician-tab,
+  .booking-admin-booking .booking-received-summary,
+  .booking-admin-booking .booking-member-meta-item,
+  .booking-admin-booking .booking-copy-button,
+  .booking-group-admin-details
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-resource-settings,
+  .booking-admin-resource-list-heading,
+  .booking-admin-booking .booking-member-meta,
+  .booking-group-admin-participant,
+  .booking-group-admin-totals
+) {
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-resource-box small,
+  .booking-admin-technician-row small,
+  .booking-admin-booking .booking-member-meta-label,
+  .booking-admin-booking .booking-received-datetime,
+  .booking-admin-booking .booking-received-phone,
+  .booking-group-admin-totals span
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-resource-heading h4,
+  .booking-admin-resource-box-heading,
+  .booking-admin-resource-list-heading,
+  .booking-admin-technician-row-main,
+  .booking-admin-booking .booking-received-name,
+  .booking-admin-booking .booking-member-meta-item strong,
+  .booking-admin-booking .booking-received-services-label,
+  .booking-group-admin-title,
+  .booking-group-admin-participant > strong,
+  .booking-group-admin-totals strong
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-resource-box select,
+  .booking-admin-resource-box input[type="text"],
+  .booking-admin-resource-box input[type="number"]
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-technician-tab:hover:not(.active),
+html[data-theme="dark"] #bookingPanel .booking-admin-technician-row:hover,
+html[data-theme="dark"] #bookingPanel .booking-admin-technician-row:focus-within,
+html[data-theme="dark"] #bookingPanel .booking-admin-booking .booking-copy-button:hover:not(:disabled) {
+  color: var(--theme-text);
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-technician-tab > span {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-technician-tab.active,
+html[data-theme="dark"] #bookingPanel .booking-admin-filter-button.active,
+html[data-theme="dark"] #bookingPanel .booking-admin-subtabs .booking-admin-filter-button.active {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-accent);
+  box-shadow: inset 0 0 0 1px rgba(255, 152, 118, .12);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-technician-tab.active > span {
+  color: var(--theme-text);
+  background: var(--theme-accent-soft);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-resource-status {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+  border-color: rgba(114, 211, 156, .20);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-resource-status.inactive {
+  color: var(--theme-text-subtle);
+  background: #1b2520;
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-booking .booking-received-summary {
+  background: linear-gradient(180deg, rgba(114, 211, 156, .055), var(--theme-surface-raised));
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-booking .booking-received-services span {
+  color: var(--theme-text);
+}
+
+/* Group-booking editor is mounted outside #bookingPanel, so cover it explicitly. */
+html[data-theme="dark"] :where(
+  .booking-group-admin-edit-panel,
+  .booking-group-admin-edit-row,
+  .booking-group-admin-edit-button,
+  .booking-group-admin-edit-secondary
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  .booking-group-admin-edit-heading small,
+  .booking-group-admin-edit-hint,
+  .booking-group-admin-edit-copy small
+) {
+  color: var(--theme-text-muted);
+  opacity: 1;
+}
+
+html[data-theme="dark"] :where(
+  .booking-group-admin-edit-row select,
+  .booking-group-admin-technician-field select
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] .booking-group-admin-edit-button:hover {
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] .booking-group-admin-edit-primary {
+  color: #0b1511;
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
+}
+
+html[data-theme="dark"] .booking-group-admin-edit-message {
+  color: var(--theme-danger-text);
+}
