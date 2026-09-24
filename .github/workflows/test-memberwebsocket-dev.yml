@@ -61,6 +61,7 @@ jobs:
         run: |
           printf '%s\n' \
             MemberWebsocket-dev/theme.js \
+            MemberWebsocket-dev/membership-milestones.js \
             MemberWebsocket-dev/test-mode-client.js \
             MemberWebsocket-dev/user-test-control.js \
             MemberWebsocket-dev/member-system.js \
@@ -87,6 +88,7 @@ jobs:
             MemberWebsocket-dev/calendar/app.js \
             MemberWebsocket-dev/booking/common.js \
             MemberWebsocket-dev/booking/membership-progress.js \
+            MemberWebsocket-dev/booking/booking-flow.js \
             MemberWebsocket-dev/booking/member-ui.js \
             MemberWebsocket-dev/booking/group-booking.js \
             MemberWebsocket-dev/booking/contact-details.js \
