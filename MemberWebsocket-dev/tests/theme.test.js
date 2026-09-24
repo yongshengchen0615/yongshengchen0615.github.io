@@ -40,6 +40,25 @@ test('core booking, calendar and admin surfaces consume semantic theme tokens', 
   assert.doesNotMatch(adminPolish, /backdrop-filter:\s*blur\(/);
 });
 
+test('admin member records use semantic theme surfaces in dark mode', () => {
+  const css = read('admin/styles.css');
+  const start = css.indexOf('/* Member activity history modal */');
+  const end = css.indexOf('@media (max-width: 620px)', start);
+  assert.ok(start >= 0 && end > start, 'member records style block should exist');
+  const records = css.slice(start, end);
+
+  assert.match(records, /\.member-record-summary-pill[^}]*background:\s*var\(--theme-surface-muted/);
+  assert.match(records, /\.member-record-tab\.active[^}]*background:\s*var\(--theme-positive-soft/);
+  assert.match(records, /\.member-record-item\s*\{[^}]*background:\s*var\(--theme-surface-raised/);
+  assert.match(records, /category-eventTickets[^}]*background:\s*var\(--theme-accent-soft/);
+  assert.match(records, /category-bookings[^}]*background:\s*var\(--theme-warning-soft/);
+  assert.match(records, /\.member-record-summary[^}]*color:\s*var\(--theme-table-text/);
+  assert.match(records, /\.member-records-loading, \.member-records-empty[^}]*background:\s*var\(--theme-surface-muted/);
+
+  assert.doesNotMatch(records, /background:\s*#fff(?:fff)?\b/i);
+  assert.doesNotMatch(records, /background:\s*#(?:f7faf7|eef7f0|eef5f0|eaf4fb|fff1ec|eef1fb|f8f3e5|f2edfb|fbfcfa)\b/i);
+});
+
 test('theme controller persists preference and synchronizes browser tabs', () => {
   const source = read('theme.js');
   assert.match(source, /lumen-color-theme-v1/);
