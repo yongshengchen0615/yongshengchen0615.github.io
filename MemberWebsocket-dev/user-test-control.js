@@ -5,7 +5,7 @@
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-24.10';
+  const VERSION = '2026-09-24.11';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -766,6 +766,9 @@
     const fullCommon = [
       caseDef('高複雜度使用狀態前置', 'Usage State', usageStateComplexityCase, 'COMMON_USAGE_STATE_COMPLEXITY'),
       caseDef('無測試 Session 必須被拒絕', 'Security', negativeSessionCase),
+      caseDef('竄改測試 Session 必須被拒絕', 'Security', tamperedSessionCase, 'SECURITY_TAMPERED_SESSION'),
+      caseDef('跨頁面 QA 寫入必須被拒絕', 'Security', crossSurfaceQaCase, 'SECURITY_QA_SURFACE_BOUNDARY'),
+      caseDef('用戶 Session 不可冒用管理員', 'Security', adminImpersonationCase, 'SECURITY_ADMIN_BOUNDARY'),
       caseDef('Realtime 訂閱能力', 'Realtime', realtimeCase, 'COMMON_REALTIME'),
       caseDef('亮／暗主題切換與偏好還原', 'UI', themeToggleCase, 'COMMON_THEME_TOGGLE'),
       caseDef('會員階級 milestone 與進度同步', 'UI', membershipMilestoneCase, 'COMMON_MEMBERSHIP_MILESTONE'),
@@ -961,6 +964,69 @@
     return ok
       ? pass('沒有測試 Session token 時，後端會拒絕取得測試身分。', { httpStatus: 401, errorPrefix: 'TEST_SESSION_' }, { httpStatus: response.status, errorCode: code })
       : fail('測試 Session 的拒絕邊界不符合預期。', { httpStatus: 401, errorPrefix: 'TEST_SESSION_' }, { httpStatus: response.status, errorCode: code });
+  }
+
+  async function securityRequest(slug, body) {
+    const config = await loadConfig();
+    const endpoint = String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/' + slug;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: String(config.supabasePublishableKey || '') },
+        cache: 'no-store',
+        signal: controller.signal,
+        body: JSON.stringify(body)
+      });
+      const parsed = await response.json().catch(() => ({}));
+      // Never retain the request body or session token in an E2E trace.
+      return { httpStatus: response.status, errorCode: String(parsed?.error?.code || '').slice(0, 80) };
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  async function tamperedSessionCase() {
+    const token = window.TestModeClient?.getSessionToken?.();
+    if (!token || token.length < 16) return fail('無法取得有效測試 Session 作為竄改基準。', { sessionReady: true }, { sessionReady: false });
+    const last = token.slice(-1);
+    const altered = token.slice(0, -1) + (last === 'a' ? 'b' : 'a');
+    const actual = await securityRequest('test-mode-api', {
+      action: 'session.status', clientType: surface, testSessionToken: altered
+    });
+    const expected = { httpStatus: 401, errorCode: 'TEST_SESSION_INVALID' };
+    return actual.httpStatus === expected.httpStatus && actual.errorCode === expected.errorCode
+      ? pass('竄改後的測試憑證無法取得原帳號身分。', expected, actual)
+      : fail('竄改後的測試憑證沒有被正確拒絕。', expected, actual);
+  }
+
+  async function crossSurfaceQaCase() {
+    const token = window.TestModeClient?.getSessionToken?.();
+    if (!token) return fail('缺少跨頁面測試所需的 Session。', { sessionReady: true }, { sessionReady: false });
+    const otherSurface = surface === 'booking' ? 'points' : 'booking';
+    const actual = await securityRequest('user-test-api', {
+      action: 'user.qa.fixture.cleanup', surface: otherSurface, testSessionToken: token,
+      // An absent booking ID and a nonexistent points fixture are harmless even
+      // if a regression lets the request reach the cleanup handler.
+      fixtureTag: '0000000000000000'
+    });
+    const expected = { httpStatus: 409, errorCode: 'TEST_SESSION_SURFACE_MISMATCH' };
+    return actual.httpStatus === expected.httpStatus && actual.errorCode === expected.errorCode
+      ? pass('用戶測試 Session 無法操作其他頁面的 QA 資料。', expected, { ...actual, requestedSurface: otherSurface })
+      : fail('跨頁面 QA 請求未在寫入前被 Session 邊界拒絕。', expected, { ...actual, requestedSurface: otherSurface });
+  }
+
+  async function adminImpersonationCase() {
+    const token = window.TestModeClient?.getSessionToken?.();
+    if (!token) return fail('缺少權限測試所需的用戶 Session。', { sessionReady: true }, { sessionReady: false });
+    const actual = await securityRequest('booking-admin-api', {
+      action: 'admin.booking.manage.bootstrap', clientType: 'admin', idToken: '', testSessionToken: token
+    });
+    const expected = { httpStatus: 401, errorCode: 'AUTH_REQUIRED' };
+    return actual.httpStatus === expected.httpStatus && actual.errorCode === expected.errorCode
+      ? pass('用戶端測試憑證不能讀取管理端預約資料。', expected, actual)
+      : fail('用戶端憑證取得了異常的管理端回應。', expected, actual);
   }
 
   async function realtimeCase() {

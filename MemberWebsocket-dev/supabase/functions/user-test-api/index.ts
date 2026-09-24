@@ -1836,6 +1836,11 @@ Deno.serve(async (request: Request) => {
       throw error;
     }
     if (identity.isTestAccount !== true) throw new ApiError(403, "TEST_ACCOUNT_REQUIRED", "此功能只允許測試帳號使用。");
+    // QA actions can create and remove fixtures. Bind the requested surface to
+    // the authenticated test session before dispatching any action.
+    if (identity.surface !== surface) {
+      throw new ApiError(409, "TEST_SESSION_SURFACE_MISMATCH", "此測試登入屬於其他用戶端，請重新選擇測試帳號。");
+    }
 
     if (action === "user.qa.usage-state.prepare") {
       const usageState = await prepareUsageState(s, identity, token, surface);
