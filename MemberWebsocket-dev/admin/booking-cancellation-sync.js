@@ -7,6 +7,9 @@
   const MODE_CANCELLED = 'cancelled';
   let config = null;
   let loading = false;
+  let refreshQueued = false;
+  let refreshQueuedIncludeBookings = false;
+  let refreshQueuedShowSuccess = false;
   let mounted = false;
   let realtimeClient = null;
   let realtimeChannel = null;
@@ -172,10 +175,21 @@
     } catch (_) {}
   }
 
+  function isBackgroundE2ERunner() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('e2eBackgroundRunner') === '1' && Boolean(params.get('e2eRunId'));
+    } catch {
+      return false;
+    }
+  }
+
   function setupPolling() {
     if (pollTimer !== null) return;
     pollTimer = window.setInterval(() => {
-      if (document.visibilityState === 'visible' && navigator.onLine) refresh(false, activeMode !== MODE_CORE);
+      if ((document.visibilityState === 'visible' || isBackgroundE2ERunner()) && navigator.onLine) {
+        refresh(false, activeMode !== MODE_CORE);
+      }
     }, POLL_MS);
   }
 
@@ -221,7 +235,13 @@
   }
 
   async function refresh(showSuccess, includeBookings) {
-    if (loading || document.visibilityState === 'hidden') return;
+    if (loading) {
+      refreshQueued = true;
+      refreshQueuedIncludeBookings = refreshQueuedIncludeBookings || Boolean(includeBookings);
+      refreshQueuedShowSuccess = refreshQueuedShowSuccess || Boolean(showSuccess);
+      return false;
+    }
+    if (document.visibilityState === 'hidden' && !isBackgroundE2ERunner()) return false;
     loading = true;
     const errors = [];
     try {
@@ -270,7 +290,18 @@
       if (errors.length) showMessage(errors.join(' '), 'error');
       else if (showSuccess) showMessage('取消預約資料已更新。', 'success');
       else clearMessage();
-    } finally { loading = false; }
+    } finally {
+      loading = false;
+      if (refreshQueued) {
+        const queuedIncludeBookings = refreshQueuedIncludeBookings;
+        const queuedShowSuccess = refreshQueuedShowSuccess;
+        refreshQueued = false;
+        refreshQueuedIncludeBookings = false;
+        refreshQueuedShowSuccess = false;
+        window.setTimeout(() => { refresh(queuedShowSuccess, queuedIncludeBookings); }, 0);
+      }
+    }
+    return true;
   }
 
   function updateFilterLabels() {
