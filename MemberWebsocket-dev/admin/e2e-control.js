@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.26';
+  const VERSION = '2026-09-24.27';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -311,6 +311,7 @@
     if (normalizedKey === 'PAIRED_HUMAN_INTERACTION_COVERAGE' || normalizedDomain === 'Coverage') return false;
     if (/真人/.test(normalizedName)) return true;
     if (normalizedDomain === 'Admin CRUD E2E') return true;
+    if (normalizedDomain === 'Admin Settings E2E') return true;
     if (/^Booking Queue E2E \/ (?:Pending|Cancellation)$/.test(normalizedDomain)) return true;
     if (/^Booking \/ (?:Confirm|Modify Items|Modify Technician|Complete|Reject|Cancellation Keep|Cancellation Approve)$/.test(normalizedDomain)) return true;
     if (/^Paired E2E \/ (?:Membership|Points)$/.test(normalizedDomain)) return true;
@@ -1321,9 +1322,13 @@
         // A human administrator has one management UI. Keep admin DOM actions single-threaded
         // while member clients may generate data concurrently.
         const allAdminDefinitions = adminDefinitions('full');
-        const preflightKeys = new Set(['ADMIN_AUTH_READY', 'ADMIN_BOOKING_CONTROLS']);
+        const preflightKeys = new Set([
+          'ADMIN_AUTH_READY',
+          'ADMIN_BOOKING_CONTROLS',
+          'ADMIN_BOOKING_SHARED_SETTINGS'
+        ]);
         const preflightDefinitions = allAdminDefinitions.filter((def) => preflightKeys.has(def.key));
-        await executeCases(preflightDefinitions, '管理端 · 預約即時接手前置');
+        await executeCases(preflightDefinitions, '管理端 · 預約共用設定與即時接手前置');
 
         let adminChain = Promise.resolve();
         const liveAdminTasks = state.participants.map((participant) => {
