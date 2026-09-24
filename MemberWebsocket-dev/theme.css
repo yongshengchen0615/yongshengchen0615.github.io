@@ -1740,6 +1740,15 @@ html[data-theme="dark"] :where(.loader) {
 }
 
 /* Member profile */
+html[data-theme="dark"] #memberView :where(
+  .profile-details,
+  .profile-form
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+}
+
 html[data-theme="dark"] :where(
   .profile-detail-list > div,
   .profile-detail-list .profile-editable-row,
