@@ -31,9 +31,9 @@
   align-content: start;
   min-width: 0;
   padding: 16px;
-  border: 1px solid rgba(36, 49, 41, 0.12);
+  border: 1px solid var(--theme-border, rgba(36, 49, 41, 0.12));
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--theme-surface-raised, rgba(255, 255, 255, 0.72));
 }
 
 .booking-admin-resource-box > div:first-child,
@@ -44,7 +44,7 @@
 
 .booking-admin-resource-box small,
 .booking-admin-technician-row small {
-  color: var(--muted, #6f786f);
+  color: var(--theme-text-muted, var(--muted, #6f786f));
   line-height: 1.45;
 }
 
@@ -79,9 +79,9 @@
 .booking-admin-resource-box select {
   min-height: 42px;
   padding: 9px 11px;
-  border: 1px solid rgba(36, 49, 41, 0.18);
+  border: 1px solid var(--theme-border-strong, rgba(36, 49, 41, 0.18));
   border-radius: 10px;
-  background: #fff;
+  background: var(--theme-surface-raised, #fff);
   color: inherit;
   font: inherit;
 }
@@ -128,9 +128,9 @@
   gap: 7px;
   min-height: 38px;
   padding: 7px 12px;
-  border: 1px solid rgba(36, 49, 41, 0.14);
+  border: 1px solid var(--theme-border, rgba(36, 49, 41, 0.14));
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--theme-surface-raised, rgba(255, 255, 255, 0.72));
   color: inherit;
   font: inherit;
   font-size: 0.9rem;
@@ -172,9 +172,9 @@
 
 .booking-admin-technician-row {
   width: 100%;
-  border: 1px solid rgba(36, 49, 41, 0.12);
+  border: 1px solid var(--theme-border, rgba(36, 49, 41, 0.12));
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--theme-surface-raised, rgba(255, 255, 255, 0.78));
   display: flex;
   align-items: center;
   gap: 10px;
