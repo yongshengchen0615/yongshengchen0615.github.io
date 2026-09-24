@@ -4285,8 +4285,11 @@
     const actual = { created: false, rendered: false, checkboxSelectable: false, deleted: false, cleanupFallback: false };
     try {
       const count = await waitFor(() => document.getElementById('testModeAddAccountCount'), 3000);
-      const save = document.getElementById('saveTestModeButton');
-      if (!count || !save) throw new Error('測試帳號新增控制不存在。');
+      const save = await waitFor(() => {
+        const button = document.getElementById('saveTestModeButton');
+        return button && !button.disabled ? button : null;
+      }, 6000);
+      if (!count || !save) throw new Error('測試帳號新增控制不存在或尚未可操作。');
       count.value = '1';
       count.dispatchEvent(new Event('input', { bubbles: true }));
       save.click();
