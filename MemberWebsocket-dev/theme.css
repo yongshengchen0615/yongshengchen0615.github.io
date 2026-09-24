@@ -1162,3 +1162,501 @@ html[data-theme="dark"] :where(
     transform: none !important;
   }
 }
+
+
+/* Lumen dashboard system refresh 2026-09-24 v2 */
+:root {
+  --ui-page-max: 1240px;
+  --ui-page-gutter: clamp(16px, 3vw, 32px);
+  --ui-section-gap: clamp(16px, 2.2vw, 24px);
+  --ui-radius-panel: 20px;
+  --ui-radius-control: 11px;
+  --ui-nav-height: 48px;
+  --ui-shadow-soft: 0 1px 2px rgba(18, 35, 27, .04), 0 10px 28px rgba(18, 35, 27, .055);
+}
+
+html[data-theme="dark"] {
+  --ui-shadow-soft: 0 1px 2px rgba(0, 0, 0, .18), 0 14px 34px rgba(0, 0, 0, .19);
+}
+
+/* Page shell: denser, calmer, dashboard-like without changing DOM or app logic. */
+html[data-theme] :where(.app-shell) {
+  width: 100%;
+  max-width: none;
+  padding-inline: var(--ui-page-gutter);
+}
+
+html[data-theme] :where(#adminView, .member-app, .points-app, .event-app, .calendar-app, .booking-app) {
+  width: min(100%, var(--ui-page-max));
+  margin-inline: auto;
+}
+
+html[data-theme] :where(.topbar) {
+  position: relative;
+  overflow: hidden;
+  min-height: 92px;
+  padding: 18px 20px;
+  border-radius: var(--ui-radius-panel);
+  background: var(--theme-surface);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+html[data-theme] :where(.topbar)::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--theme-accent);
+  pointer-events: none;
+}
+
+html[data-theme] :where(.topbar h1) {
+  max-width: 760px;
+  font-size: clamp(30px, 4vw, 46px);
+  letter-spacing: -.05em;
+}
+
+html[data-theme] :where(.topbar .kicker) {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+html[data-theme] :where(.account-menu) {
+  padding: 5px;
+  border: 1px solid var(--theme-border);
+  border-radius: 999px;
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] :where(.account-menu .role-label) {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 9px;
+  border-radius: 999px;
+  background: var(--theme-surface-raised);
+}
+
+/* Admin primary navigation — inspired by modern shadcn dashboard tabs, preserved as native buttons. */
+html[data-theme] :where(.surface-nav) {
+  position: sticky;
+  top: max(8px, env(safe-area-inset-top, 0px));
+  z-index: 20;
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 var(--ui-section-gap);
+  padding: 6px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  border: 1px solid var(--theme-border);
+  border-radius: 15px;
+  background: var(--theme-surface);
+  box-shadow: 0 8px 22px rgba(18, 35, 27, .055);
+}
+
+html[data-theme="dark"] :where(.surface-nav) {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+
+html[data-theme] :where(.surface-nav)::-webkit-scrollbar {
+  display: none;
+}
+
+html[data-theme] :where(.surface-tab) {
+  min-height: 38px;
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--theme-text-muted);
+  background: transparent;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: color .14s ease, background-color .14s ease, border-color .14s ease;
+}
+
+html[data-theme] :where(.surface-tab:hover) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] :where(.surface-tab[aria-selected="true"]) {
+  color: var(--ui-primary-contrast);
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+}
+
+/* KPI cards */
+html[data-theme] :where(.stats-row) {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: var(--ui-section-gap);
+  padding: 0;
+  border: 0;
+}
+
+html[data-theme] :where(.stats-row > div) {
+  position: relative;
+  min-width: 0;
+  min-height: 116px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 15px 16px;
+  border: 1px solid var(--theme-border);
+  border-radius: 16px;
+  background: var(--theme-surface);
+  box-shadow: none;
+}
+
+html[data-theme] :where(.stats-row > div)::before {
+  content: "";
+  width: 26px;
+  height: 3px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  background: var(--theme-accent);
+  opacity: .8;
+}
+
+html[data-theme] :where(.stats-row strong) {
+  color: var(--theme-text);
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1;
+  letter-spacing: -.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-theme] :where(.stats-row .stat-label) {
+  color: var(--theme-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+html[data-theme] :where(.stats-row small) {
+  color: var(--theme-text-subtle);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* Main panels and section hierarchy */
+html[data-theme] :where(.panel) {
+  padding: clamp(18px, 2.6vw, 28px);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--ui-radius-panel);
+  background: var(--theme-surface);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+html[data-theme] :where(.panel-heading, .workspace-heading, .section-heading) {
+  gap: 16px;
+}
+
+html[data-theme] :where(.panel-heading) {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+html[data-theme] :where(.panel-heading h2, .workspace-heading h3, .section-heading h3) {
+  margin-block: 3px 0;
+  color: var(--theme-text);
+  letter-spacing: -.04em;
+}
+
+html[data-theme] :where(.panel-heading p:not(.kicker), .workspace-heading p, .section-heading p) {
+  max-width: 760px;
+  margin-top: 7px;
+  color: var(--theme-text-muted);
+}
+
+/* Toolbars, subtabs and filters */
+html[data-theme] :where(.toolbar, .heading-actions, .member-directory-tabs, .card-settings-nav) {
+  gap: 8px;
+}
+
+html[data-theme] :where(.member-directory-tabs, .card-settings-nav) {
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--theme-border);
+  border-radius: 13px;
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] :where(.member-directory-tab, .card-settings-tab) {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--theme-text-muted);
+  background: transparent;
+  font-weight: 800;
+}
+
+html[data-theme] :where(.member-directory-tab[aria-selected="true"], .card-settings-tab[aria-selected="true"]) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  box-shadow: 0 1px 2px rgba(18, 35, 27, .08);
+}
+
+html[data-theme] :where(.toolbar) {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--theme-border);
+  border-radius: 14px;
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme] :where(.search-box) {
+  min-height: 36px;
+  flex: 1 1 320px;
+  max-width: 520px;
+  border: 1px solid var(--theme-border);
+  border-radius: 10px;
+  background: var(--theme-surface-raised);
+}
+
+/* Tables: more legible scanning, less visual noise */
+html[data-theme] :where(.table-wrap) {
+  overflow: auto;
+  border: 1px solid var(--theme-border);
+  border-radius: 15px;
+  background: var(--theme-surface-raised);
+}
+
+html[data-theme] :where(.table-wrap table) {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+html[data-theme] :where(.table-wrap th) {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block: 11px;
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+html[data-theme] :where(.table-wrap td) {
+  padding-block: 13px;
+  border-top: 1px solid var(--theme-border);
+  vertical-align: middle;
+}
+
+@media (hover: hover) {
+  html[data-theme] :where(.table-wrap tbody tr:hover td) {
+    background: var(--theme-surface-muted);
+  }
+}
+
+/* Editors: visually separate selection/list from active form. */
+html[data-theme] :where(.card-workspace) {
+  gap: 14px;
+}
+
+html[data-theme] :where(.card-list, .editor, .tier-settings, .reward-editor, .calendar-batch-editor) {
+  border: 1px solid var(--theme-border);
+  border-radius: 16px;
+  background: var(--theme-surface-raised);
+}
+
+html[data-theme] :where(.card-list) {
+  overflow: hidden;
+}
+
+html[data-theme] :where(.list-heading) {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-surface-muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+html[data-theme] :where(.editor) {
+  padding: clamp(16px, 2vw, 22px);
+}
+
+html[data-theme] :where(.editor-actions, .modal-actions, .booking-actions) {
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--theme-border);
+}
+
+/* Inputs use one visual language across admin/member. */
+html[data-theme] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  select,
+  textarea
+) {
+  border-width: 1px;
+  border-style: solid;
+  border-radius: var(--ui-radius-control);
+  box-shadow: none;
+}
+
+html[data-theme] :where(textarea) {
+  line-height: 1.6;
+}
+
+html[data-theme] :where(label) {
+  color: var(--theme-text);
+  font-weight: 750;
+}
+
+html[data-theme] :where(label small, .field-help, .editor-hint) {
+  color: var(--theme-text-muted);
+  font-weight: 500;
+}
+
+/* Dialogs: stronger separation while keeping cheap rendering. */
+html[data-theme] :where(.modal-card, .editor-modal-card, .ticket-modal-card, .booking-modal-card, .profile-date-modal-card) {
+  border-radius: 22px;
+  box-shadow: var(--theme-modal-shadow);
+}
+
+html[data-theme] :where(.modal-heading, .ticket-modal-heading, .profile-edit-modal-heading, .booking-admin-modal-heading) {
+  padding-bottom: 13px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+/* Client pages: make information feel like a cohesive member product. */
+html[data-theme] :where(.membership-progress, .tickets-panel, .ticket-history-panel, .booking-card, .member-summary, .calendar-toolbar) {
+  border-radius: 18px;
+}
+
+html[data-theme] :where(.event-ticket, .booking-item, .service-choice, .selected-service-item) {
+  border-radius: 14px;
+}
+
+html[data-theme] :where(.event-ticket h3, .booking-item-top strong, .service-choice-main strong) {
+  letter-spacing: -.025em;
+}
+
+/* Responsive density: preserve scrollable controls and 44px coarse-pointer target. */
+@media (max-width: 1020px) {
+  html[data-theme] :where(.stats-row) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --ui-page-gutter: 12px;
+    --ui-section-gap: 14px;
+  }
+
+  html[data-theme] :where(.app-shell) {
+    padding-inline: var(--ui-page-gutter);
+  }
+
+  html[data-theme] :where(.topbar) {
+    min-height: 0;
+    padding: 15px 16px;
+    border-radius: 16px;
+  }
+
+  html[data-theme] :where(.topbar)::after {
+    width: 3px;
+  }
+
+  html[data-theme] :where(.account-menu) {
+    width: auto;
+    max-width: 100%;
+    padding: 4px;
+    border-radius: 12px;
+  }
+
+  html[data-theme] :where(.surface-nav) {
+    top: max(6px, env(safe-area-inset-top, 0px));
+    margin-inline: -2px;
+    padding: 5px;
+    border-radius: 13px;
+  }
+
+  html[data-theme] :where(.surface-tab) {
+    min-height: 40px;
+    padding-inline: 13px;
+  }
+
+  html[data-theme] :where(.stats-row) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  html[data-theme] :where(.stats-row > div) {
+    min-height: 104px;
+    padding: 13px;
+    border-radius: 14px;
+  }
+
+  html[data-theme] :where(.panel) {
+    padding: 15px;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  html[data-theme] :where(.panel-heading) {
+    margin-bottom: 15px;
+    padding-bottom: 13px;
+  }
+
+  html[data-theme] :where(.toolbar) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  html[data-theme] :where(.search-box) {
+    flex-basis: auto;
+    max-width: none;
+    width: 100%;
+  }
+
+  html[data-theme] :where(.member-directory-tabs, .card-settings-nav) {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  html[data-theme] :where(.member-directory-tab, .card-settings-tab) {
+    flex: 1 0 auto;
+  }
+}
+
+@media (max-width: 420px) {
+  html[data-theme] :where(.stats-row) {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  html[data-theme] :where(.stats-row > div:last-child:nth-child(odd)) {
+    grid-column: 1 / -1;
+  }
+
+  html[data-theme] :where(.stats-row strong) {
+    font-size: 26px;
+  }
+
+  html[data-theme] :where(.panel) {
+    padding: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] :where(.surface-tab, .table-wrap tbody tr td) {
+    transition: none !important;
+  }
+}
