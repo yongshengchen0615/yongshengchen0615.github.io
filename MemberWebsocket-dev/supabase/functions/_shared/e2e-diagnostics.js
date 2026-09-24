@@ -105,11 +105,13 @@ export function diagnoseE2EFailure(input = {}) {
   const sourceCode = firstSourceCode(actual, trace);
   const explicitStatus = findField({ actual, error: trace?.error },
     new Set(["httpstatus", "http_status", "statuscode", "status_code"]));
+  const observedStatus = firstHttpStatus(actual, trace);
   // A successful negative test can leave an intentional 4xx in apiTimings.
   // For a boolean assertion mismatch, classify the failing fields instead of
   // attributing that unrelated request or the generic case title as the cause.
-  const assertionOnly = unmetFields.length > 0 && !sourceCode && explicitStatus == null && !trace?.error;
-  const httpStatus = assertionOnly ? null : firstHttpStatus(actual, trace);
+  const assertionOnly = unmetFields.length > 0 && !sourceCode && explicitStatus == null
+    && !trace?.error && observedStatus !== 429 && !(observedStatus >= 500);
+  const httpStatus = assertionOnly ? null : observedStatus;
   const probeEndpoint = asText(actual?.userDateWindowProbe?.endpoint, 80);
   const path = assertionOnly && /^[a-z0-9-]+$/.test(probeEndpoint)
     ? "/functions/v1/" + probeEndpoint : assertionOnly ? "" : firstPath(trace, httpStatus);

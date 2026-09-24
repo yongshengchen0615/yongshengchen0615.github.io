@@ -134,6 +134,14 @@ test('a date-window assertion does not inherit an expected conflict or a success
     actual: { userRealtimeSettingsSynced: false, userDateWindowEnforced: true }
   });
   assert.equal(realSyncFailure.code, 'E2E_REALTIME');
+
+  const rateLimited = diagnoseE2EFailure({
+    caseKey: 'ADMIN_BOOKING_SHARED_SETTINGS',
+    expected: { userDateWindowEnforced: true },
+    actual: { userDateWindowEnforced: false },
+    trace: { apiTimings: [{ path: '/functions/v1/booking-group-slots-api', responseStatus: 429 }] }
+  });
+  assert.equal(rateLimited.code, 'E2E_RATE_LIMIT');
 });
 
 test('admin and user browser E2E persist classified failure codes and v3 diagnostics', () => {
