@@ -3,6 +3,11 @@
 
   const VERSION = '2026-09-23.3';
   const els = {};
+  const artifactPreviewCache = new Map();
+  const artifactPrefetchQueue = [];
+  const ARTIFACT_URL_MIN_TTL_MS = 45_000;
+  const ARTIFACT_PREFETCH_CONCURRENCY = 2;
+  let artifactPrefetchActive = 0;
   let currentRunId = '';
   let pollTimer = 0;
   let busy = false;
@@ -80,6 +85,78 @@
       throw error;
     }
     return body.data;
+  }
+
+  function artifactCacheEntryFresh(entry) {
+    const expiresAt = Date.parse(String(entry?.expiresAt || ''));
+    return Boolean(entry?.signedUrl) &&
+      Number.isFinite(expiresAt) &&
+      expiresAt - Date.now() > ARTIFACT_URL_MIN_TTL_MS;
+  }
+
+  function preloadArtifactImage(signedUrl) {
+    return new Promise((resolve, reject) => {
+      const probe = new Image();
+      probe.decoding = 'async';
+      probe.fetchPriority = 'high';
+      probe.onload = () => resolve(true);
+      probe.onerror = () => reject(new Error('快照連結已建立，但圖片預載失敗。'));
+      probe.src = signedUrl;
+    });
+  }
+
+  async function prepareArtifactPreview(path) {
+    const key = String(path || '');
+    const cached = artifactPreviewCache.get(key);
+    if (cached?.pendingPromise) return cached.pendingPromise;
+    if (artifactCacheEntryFresh(cached)) {
+      if (cached.readyPromise) await cached.readyPromise;
+      return cached;
+    }
+
+    const pendingPromise = (async () => {
+      const data = await requestArtifactSignedUrl(key);
+      const entry = {
+        signedUrl: String(data.signedUrl || ''),
+        expiresAt: String(data.expiresAt || ''),
+        readyPromise: null,
+        pendingPromise: null
+      };
+      entry.readyPromise = preloadArtifactImage(entry.signedUrl);
+      artifactPreviewCache.set(key, entry);
+      await entry.readyPromise;
+      return entry;
+    })().catch((error) => {
+      artifactPreviewCache.delete(key);
+      throw error;
+    });
+
+    artifactPreviewCache.set(key, { pendingPromise });
+    return pendingPromise;
+  }
+
+  function drainArtifactPrefetchQueue() {
+    while (artifactPrefetchActive < ARTIFACT_PREFETCH_CONCURRENCY && artifactPrefetchQueue.length) {
+      const job = artifactPrefetchQueue.shift();
+      artifactPrefetchActive += 1;
+      prepareArtifactPreview(job.path)
+        .then(job.resolve, job.reject)
+        .finally(() => {
+          artifactPrefetchActive = Math.max(0, artifactPrefetchActive - 1);
+          drainArtifactPrefetchQueue();
+        });
+    }
+  }
+
+  function queueArtifactPrefetch(path) {
+    const cached = artifactPreviewCache.get(String(path || ''));
+    if (cached?.pendingPromise || artifactCacheEntryFresh(cached)) {
+      return prepareArtifactPreview(path);
+    }
+    return new Promise((resolve, reject) => {
+      artifactPrefetchQueue.push({ path, resolve, reject });
+      drainArtifactPrefetchQueue();
+    });
   }
 
   async function request(action, payload = {}) {
@@ -449,12 +526,14 @@
 
     const status = document.createElement('p');
     status.className = 'test-control-screenshot-status';
-    status.textContent = '圖片儲存在 Private Storage；點擊後才產生 5 分鐘 Signed URL。';
+    status.textContent = '圖片儲存在 Private Storage；接近畫面時會安全預載。';
 
     const image = document.createElement('img');
     image.className = 'test-control-screenshot-image hidden';
     image.alt = 'E2E 失敗螢幕快照';
-    image.loading = 'lazy';
+    image.loading = 'eager';
+    image.decoding = 'async';
+    image.fetchPriority = 'high';
     image.referrerPolicy = 'no-referrer';
 
     const link = document.createElement('a');
@@ -464,6 +543,9 @@
     link.textContent = '在新分頁開啟';
 
     function loadInlinePreview(signedUrl) {
+      if (image.src === signedUrl && image.complete && image.naturalWidth > 0) {
+        return Promise.resolve(true);
+      }
       return new Promise((resolve, reject) => {
         image.onload = () => {
           image.onload = null;
@@ -479,19 +561,43 @@
       });
     }
 
+    let prefetchStarted = false;
+    const prefetch = () => {
+      if (prefetchStarted) return;
+      prefetchStarted = true;
+      status.textContent = '正在預先準備失敗快照…';
+      queueArtifactPrefetch(path)
+        .then((data) => {
+          link.href = data.signedUrl;
+          link.classList.remove('hidden');
+          status.textContent = '快照已預載，可直接查看。';
+        })
+        .catch(() => {
+          prefetchStarted = false;
+          status.textContent = '快照尚未預載；點擊「查看快照」可立即重試。';
+        });
+    };
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        prefetch();
+      }, { rootMargin: '320px 0px' });
+      observer.observe(box);
+    }
+
     button.addEventListener('click', async () => {
       if (button.disabled) return;
       button.disabled = true;
-      image.classList.add('hidden');
-      status.textContent = '正在產生短效 Signed URL…';
+      status.textContent = '正在準備失敗快照…';
       try {
-        const data = await requestArtifactSignedUrl(path);
+        const data = await prepareArtifactPreview(path);
         link.href = data.signedUrl;
         link.classList.remove('hidden');
-        status.textContent = '正在管理端載入失敗快照…';
         await loadInlinePreview(data.signedUrl);
         image.classList.remove('hidden');
-        button.textContent = '重新取得快照';
+        button.textContent = '重新整理快照';
         status.textContent = '快照已直接載入管理端；Signed URL 約 5 分鐘後失效。';
       } catch (error) {
         image.removeAttribute('src');

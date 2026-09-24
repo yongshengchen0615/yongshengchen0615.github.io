@@ -48,8 +48,17 @@ test('admin history renders screenshots inline only after requesting an admin si
   assert.match(source, /requestArtifactSignedUrl/);
   assert.match(source, /admin\.e2e-artifact\.signed-url/);
   assert.match(source, /loadInlinePreview/);
+  assert.match(source, /prepareArtifactPreview/);
+  assert.match(source, /artifactPreviewCache/);
+  assert.match(source, /ARTIFACT_PREFETCH_CONCURRENCY = 2/);
+  assert.match(source, /IntersectionObserver/);
+  assert.match(source, /rootMargin: '320px 0px'/);
+  assert.match(source, /image\.loading = 'eager'/);
+  assert.match(source, /image\.fetchPriority = 'high'/);
+  assert.doesNotMatch(source, /image\.loading = 'lazy'/);
   assert.match(source, /image\.onload/);
   assert.match(source, /image\.onerror/);
+  assert.match(source, /快照已預載，可直接查看/);
   assert.match(source, /快照已直接載入管理端/);
   assert.match(source, /Private · 30 天保留/);
   assert.match(source, /約 5 分鐘後失效/);
