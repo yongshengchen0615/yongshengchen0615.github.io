@@ -10,7 +10,7 @@ test('admin exposes only the unified background full E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
-  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260923-20/);
+  assert.match(html, /e2e-control\.js\?v=admin-e2e-20260924-21/);
   assert.match(runner, /runPairedFullE2EButton/);
   assert.match(runner, /完整 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
   assert.match(runner, /stopAdminE2EButton/);
@@ -97,7 +97,7 @@ test('paired E2E account pool is server-filtered to test users and real-user mut
 
 test('user E2E returns structured results to the paired admin runner', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-09-23\.\d+'/);
+  assert.match(runner, /const VERSION = '2026-09-24\.\d+'/);
   assert.match(runner, /browserRun: state\.browserRun \|\| null/);
   assert.match(runner, /stop: \(\) => requestStop\(\)/);
   assert.match(runner, /pairedLaneIndex/);

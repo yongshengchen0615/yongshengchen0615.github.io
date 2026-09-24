@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.20';
+  const VERSION = '2026-09-24.21';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -144,6 +144,12 @@
 
   function sleep(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  // Legacy E2E call sites use `wait(ms)`; keep one canonical delay implementation
+  // so missing helper regressions fail neither CRUD nor deep Realtime cases.
+  function wait(ms) {
+    return sleep(ms);
   }
 
   function hashSeed(value) {
@@ -3060,7 +3066,12 @@
     let targetIndex = 0;
     let targetPosition = null;
     let preferredServiceId = '';
+    let mutationMode = 'quantity';
     if (participants.length) {
+      // Prefer mutations that can only shorten an occupied schedule. If no quantity
+      // can be decreased, an unassigned participant may safely grow. As a final
+      // safe fallback, remove one of multiple items from an already-assigned
+      // participant instead of extending that technician's occupied time.
       targetIndex = participants.findIndex((participant) =>
         (Array.isArray(participant?.items) ? participant.items : [])
           .some((item) => Number(item?.quantity || 0) >= 2)
@@ -3072,12 +3083,20 @@
         );
       }
       if (targetIndex < 0) {
-        throw new Error('目前多人預約沒有可安全調整的項目：避免擴張已指定技師的預約時段。');
+        targetIndex = participants.findIndex((participant) =>
+          (Array.isArray(participant?.items) ? participant.items : []).length >= 2
+        );
+        if (targetIndex >= 0) mutationMode = 'remove-item';
+      }
+      if (targetIndex < 0) {
+        throw new Error('目前多人預約沒有可安全調整的項目：避免擴張已指定技師的預約時段，且沒有可安全移除的次要項目。');
       }
       const target = participants[targetIndex];
       targetPosition = Number(target?.position || targetIndex + 1);
       const targetItems = Array.isArray(target?.items) ? target.items : [];
-      const preferred = targetItems.find((item) => Number(item?.quantity || 0) >= 2) || targetItems[0] || null;
+      const preferred = targetItems.find((item) => Number(item?.quantity || 0) >= 2)
+        || (mutationMode === 'remove-item' ? targetItems[targetItems.length - 1] : targetItems[0])
+        || null;
       preferredServiceId = String(preferred?.serviceId || '');
     }
 
@@ -3115,12 +3134,21 @@
       && String(input.dataset?.bookingService || input.value || '') === preferredServiceId
     ) || checkedInputs[0] || null;
     const quantity = checked?.closest('label')?.querySelector('select');
-    if (!checked || !quantity) throw new Error('管理端修改預約沒有可調整的已選服務項目。');
-    const beforeQuantity = Number(quantity.value || 1);
-    const afterQuantity = beforeQuantity >= 2 ? beforeQuantity - 1 : beforeQuantity + 1;
+    if (!checked) throw new Error('管理端修改預約沒有可調整的已選服務項目。');
+    const beforeQuantity = Number(quantity?.value || 1);
+    const removingItem = mutationMode === 'remove-item';
+    if (!removingItem && !quantity) throw new Error('管理端修改預約沒有可調整的服務數量。');
+    const afterQuantity = removingItem ? 0 : (beforeQuantity >= 2 ? beforeQuantity - 1 : beforeQuantity + 1);
     const serviceId = String(checked.dataset?.bookingService || checked.value || '');
     const participantEditor = Boolean(form.querySelector('[data-participant-item-rows]'));
-    await adminHumanSelect(quantity, String(afterQuantity), '服務數量');
+    if (removingItem) {
+      checked.checked = false;
+      checked.dispatchEvent(new Event('input', { bubbles: true }));
+      checked.dispatchEvent(new Event('change', { bubbles: true }));
+      await adminHumanPause(80, 220);
+    } else {
+      await adminHumanSelect(quantity, String(afterQuantity), '服務數量');
+    }
     const beforeUpdatedAt = String(booking?.updatedAt || '');
 
     if (state.cancelled) throw new Error('E2E 已停止，未送出修改。');
@@ -3155,7 +3183,9 @@
       updatedAtChanged,
       updatedAt: updated?.updatedAt || null,
       participantPosition: participantEditor ? targetPosition : null,
-      safeMutation: beforeQuantity >= 2 ? 'decrease-existing-quantity' : 'increase-unassigned-participant',
+      safeMutation: removingItem
+        ? 'remove-existing-item'
+        : (beforeQuantity >= 2 ? 'decrease-existing-quantity' : 'increase-unassigned-participant'),
       ok: updatedAtChanged && persistedQuantity === afterQuantity
     };
   }

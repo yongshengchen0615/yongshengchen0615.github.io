@@ -38,7 +38,7 @@ test('admin entry references current booking assets', () => {
   assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
   assert.ok(html.includes('app.js?v=background-e2e-rate-budget-20260923-1'));
   assert.ok(html.includes('booking-panel.css?v=booking-settings-layout-20260918-1'));
-  assert.ok(html.includes('booking-panel.js?v=booking-rate-budget-20260923-1'));
+  assert.ok(html.includes('booking-panel.js?v=booking-refresh-coalesce-20260924-1'));
   assert.equal((html.match(/booking-panel\.js/g) || []).length, 1);
   assert.ok(html.includes('fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1'));
   assert.ok(html.includes('pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1'));
@@ -104,7 +104,7 @@ test('calendar date fix keeps native date inputs shrinkable in LINE WebView', ()
 test('member-facing pages load the current human E2E controller and refresh hooks', () => {
   for (const relative of ['member/index.html','points/index.html','event/index.html','calendar/index.html','booking/index.html']) {
     const html = read(relative);
-    assert.match(html, /\.\.\/user-test-control\.js\?v=human-e2e-20260923-\d+/, relative);
+    assert.match(html, /\.\.\/user-test-control\.js\?v=human-e2e-20260924-\d+/, relative);
   }
   const appVersions = {
     'points/index.html': './app.js?v=human-e2e-hooks-20260921-1',

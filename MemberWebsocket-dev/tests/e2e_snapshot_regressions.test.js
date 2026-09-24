@@ -51,6 +51,36 @@ test('admin booking controls and CRUD wait for authoritative panel state between
   assert.match(runner, /if \(actual\.serviceUpdated\) \{ await waitBookingAdminReady\(15000\); await wait\(120\); \}/);
 });
 
+
+test('admin E2E delay helper is defined for CRUD and deep realtime call sites', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /function wait\(ms\) \{\s*return sleep\(ms\);\s*\}/);
+});
+
+test('event lottery history waits for asynchronous result rendering', () => {
+  const runner = read('user-test-control.js');
+  assert.match(
+    runner,
+    /lotteryHistoryResultVisible = Boolean\(await waitFor\(\(\) => \{[\s\S]*#ticketModalResult \.lottery-result strong[\s\S]*actual\.lotteryPrizeTitle[\s\S]*\}, 4000, 100\)\)/
+  );
+});
+
+test('booking admin refreshes coalesce instead of dropping updates', () => {
+  const core = read('admin/booking-panel-core.js');
+  const cancellation = read('admin/booking-cancellation-sync.js');
+  assert.match(core, /state\.refreshQueued = true/);
+  assert.match(core, /window\.setTimeout\(\(\) => \{ refreshAll\(queuedShowSuccess\); \}, 0\)/);
+  assert.match(cancellation, /refreshQueuedIncludeBookings = refreshQueuedIncludeBookings \|\| Boolean\(includeBookings\)/);
+  assert.match(cancellation, /document\.visibilityState === 'hidden' && !isBackgroundE2ERunner\(\)/);
+});
+
+test('group booking item mutation has a non-expanding fallback for assigned technicians', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /mutationMode = 'remove-item'/);
+  assert.match(runner, /safeMutation: removingItem\s*\? 'remove-existing-item'/);
+  assert.match(runner, /const afterQuantity = removingItem \? 0/);
+});
+
 test('dynamic test-history buttons expose stable metadata for coverage classification', () => {
   const client = read('admin/test-control.js');
   assert.match(client, /button\.dataset\.testRunId = String\(run\.id \|\| ''\)/);
@@ -58,10 +88,10 @@ test('dynamic test-history buttons expose stable metadata for coverage classific
 
 test('all affected entrypoints bust caches for the fixed controllers', () => {
   for (const surface of ['member','points','event','calendar','booking']) {
-    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=human-e2e-20260923-8/);
+    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=human-e2e-20260924-9/);
   }
   assert.match(read('booking/index.html'), /app\.js\?v=booking-realtime-e2e-probe-20260923-2/);
   assert.match(read('event/index.html'), /app\.js\?v=human-e2e-hooks-20260923-2/);
   assert.match(read('admin/index.html'), /test-control\.js\?v=test-control-20260923-5/);
-  assert.match(read('admin/index.html'), /e2e-control\.js\?v=admin-e2e-20260923-20/);
+  assert.match(read('admin/index.html'), /e2e-control\.js\?v=admin-e2e-20260924-21/);
 });

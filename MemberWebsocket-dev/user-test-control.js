@@ -5,7 +5,7 @@
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-23.8';
+  const VERSION = '2026-09-24.9';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1572,10 +1572,11 @@
       const lotteryHistory = await waitFor(() => document.querySelector('#usedTicketList ' + lotterySelector), 4000);
       lotteryHistory?.click();
       actual.lotteryHistoryOpened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
-      actual.lotteryHistoryResultVisible = Boolean(
-        document.querySelector('#ticketModalResult .lottery-result strong')
-        && String(document.getElementById('ticketModalResult')?.textContent || '').includes(actual.lotteryPrizeTitle)
-      );
+      actual.lotteryHistoryResultVisible = Boolean(await waitFor(() => {
+        const result = document.querySelector('#ticketModalResult .lottery-result strong');
+        const content = String(document.getElementById('ticketModalResult')?.textContent || '');
+        return result && content.includes(actual.lotteryPrizeTitle) ? result : null;
+      }, 4000, 100));
       document.getElementById('closeTicketModal')?.click();
     } finally {
       actual.preserved = true;
