@@ -162,7 +162,7 @@
 }
 
 .booking-admin-technician-tab.active > span {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--theme-accent-soft, rgba(255, 255, 255, 0.18));
 }
 
 .booking-admin-technician-list {
