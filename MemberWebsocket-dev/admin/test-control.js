@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-23.3';
+  const VERSION = '2026-09-24.8';
   const els = {};
   const artifactPreviewCache = new Map();
   const artifactPrefetchQueue = [];
@@ -478,6 +478,21 @@
     }
 
     const steps = Array.isArray(testCase.steps) ? testCase.steps : [];
+    const diagnosis = steps.find((step) => step?.key === 'failure-trace')?.actual?.diagnosis;
+    if (diagnosis && typeof diagnosis === 'object') {
+      const box = document.createElement('div');
+      box.className = 'test-control-diagnosis';
+      const label = document.createElement('strong');
+      label.textContent = ['診斷', diagnosis.category, diagnosis.layer, diagnosis.fingerprint].filter(Boolean).join(' · ');
+      const signal = document.createElement('span');
+      const fields = [diagnosis.signal?.sourceCode, diagnosis.signal?.httpStatus,
+        diagnosis.signal?.path].filter((value) => value != null && value !== '');
+      signal.textContent = fields.length ? fields.join(' · ') : '無明確 API 錯誤訊號';
+      const next = document.createElement('span');
+      next.textContent = String(diagnosis.nextCheck || '比對 Expected／Actual 與失敗診斷資料。');
+      box.append(label, signal, next);
+      details.append(box);
+    }
     const stepList = document.createElement('div');
     stepList.className = 'test-control-step-list';
     if (!steps.length) {
@@ -687,11 +702,17 @@
       top.append(code, status);
 
       const meta = document.createElement('small');
+      const failureCodes = Object.entries(run.summary?.failureDiagnostics?.byCode || {})
+        .filter(([, count]) => Number(count) > 0)
+        .sort((a, b) => Number(b[1]) - Number(a[1]))
+        .slice(0, 2)
+        .map(([code, count]) => String(code) + ' ×' + Number(count));
       meta.textContent = [
         suiteText(run.suite),
         formatTime(run.createdAt),
-        Number(run.passedCases || 0) + '/' + Number(run.totalCases || 0) + ' 通過'
-      ].join(' · ');
+        Number(run.passedCases || 0) + '/' + Number(run.totalCases || 0) + ' 通過',
+        failureCodes.join('、')
+      ].filter(Boolean).join(' · ');
 
       button.append(top, meta);
       return button;

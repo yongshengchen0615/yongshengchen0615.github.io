@@ -5,7 +5,7 @@
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-24.9';
+  const VERSION = '2026-09-24.10';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -250,6 +250,7 @@
       .map((entry) => ({
         path: diagnosticPath(entry.name),
         initiatorType: String(entry.initiatorType || ''),
+        responseStatus: Number(entry.responseStatus || 0) || null,
         durationMs: Math.max(0, Math.round(Number(entry.duration || 0))),
         transferSize: Math.max(0, Number(entry.transferSize || 0))
       }));
@@ -652,6 +653,24 @@
       } catch (error) {
         state.results.push({ key: 'BOOKING_ADMIN_HANDOFF', name: '本輪全部 QA 預約接手清單', domain: 'Booking / Handoff',
           ...fail('預約接手清單讀取失敗，不能宣告完整流程通過。', { completeManifest: true }, plainError(error)), durationMs: 0 });
+      }
+    }
+    if (!state.cancelled && state.currentSuite === 'full') {
+      const requiredHumanCases = cases.filter((item) => item.humanRequired === true);
+      const incompleteHumanCases = requiredHumanCases.filter((item) =>
+        !state.results.some((row) => row.key === item.key && row.status === 'passed')
+      );
+      if (incompleteHumanCases.length) {
+        state.results.push({
+          key: 'QA_REQUIRED_HUMAN_COVERAGE',
+          name: '完整 E2E 真人操作必要案例',
+          domain: 'Coverage',
+          ...fail('必要的真人操作案例未全部通過，完整 E2E 不可宣告成功。',
+            { requiredCases: requiredHumanCases.map((item) => item.key), incompleteCases: [] },
+            { incompleteCases: incompleteHumanCases.map((item) => item.key) }),
+          durationMs: 0
+        });
+        renderResults();
       }
     }
     const cancelled = state.cancelled;

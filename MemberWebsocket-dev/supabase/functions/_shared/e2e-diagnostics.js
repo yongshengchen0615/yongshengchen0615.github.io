@@ -1,4 +1,4 @@
-const DIAGNOSTIC_VERSION = 2;
+const DIAGNOSTIC_VERSION = 3;
 
 function asText(value, max = 2000) {
   return String(value ?? "").trim().slice(0, max);
@@ -34,11 +34,13 @@ function findField(value, keys, depth = 0) {
 
 function firstHttpStatus(actual, trace) {
   const keys = new Set(["httpstatus", "http_status", "statuscode", "status_code"]);
-  for (const source of [actual, trace]) {
+  for (const source of [actual, trace?.error]) {
     const raw = findField(source, keys);
     const value = Number(raw);
     if (Number.isInteger(value) && value >= 100 && value <= 599) return value;
   }
+  const failedRequest = requestEntries(trace).filter((item) => requestStatus(item) >= 400).at(-1);
+  if (failedRequest) return requestStatus(failedRequest);
   const generic = findField(actual, new Set(["status"]));
   const value = Number(generic);
   return Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
@@ -52,10 +54,22 @@ function firstSourceCode(actual, trace) {
   return asText(raw, 120).replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 120);
 }
 
-function firstPath(trace) {
+function requestEntries(trace) {
   const timings = Array.isArray(trace?.apiTimings) ? trace.apiTimings : [];
   const requests = Array.isArray(trace?.networkRequests) ? trace.networkRequests : [];
-  const candidate = [...requests, ...timings].find((item) => item && typeof item === "object" && item.path);
+  return [...timings, ...requests].filter((item) => item && typeof item === "object" && item.path);
+}
+
+function requestStatus(item) {
+  const status = Number(item?.httpStatus ?? item?.responseStatus ?? item?.statusCode ?? item?.status);
+  return Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+}
+
+function firstPath(trace, httpStatus) {
+  const entries = requestEntries(trace);
+  const candidate = (httpStatus == null ? null : entries.filter((item) => requestStatus(item) === httpStatus).at(-1))
+    || entries.filter((item) => requestStatus(item) >= 400).at(-1)
+    || entries.at(-1);
   const path = asText(candidate?.path, 240);
   return path.startsWith("/") ? path : "";
 }
@@ -81,7 +95,7 @@ export function diagnoseE2EFailure(input = {}) {
   const trace = input.trace && typeof input.trace === "object" ? input.trace : {};
   const sourceCode = firstSourceCode(actual, trace);
   const httpStatus = firstHttpStatus(actual, trace);
-  const path = firstPath(trace);
+  const path = firstPath(trace, httpStatus);
   const signal = [
     message,
     sourceCode,
@@ -102,6 +116,13 @@ export function diagnoseE2EFailure(input = {}) {
     category = "rate-limit";
     code = "E2E_RATE_LIMIT";
     layer = "edge-function";
+    retryable = true;
+  } else if (
+    includesAny(signal, ["realtime", "websocket", "channel error", "subscribe", "subscription", "即時同步", "同步逾時"])
+  ) {
+    category = "realtime";
+    code = "E2E_REALTIME";
+    layer = "realtime";
     retryable = true;
   } else if (
     includesAny(signal, ["timeout", "timed out", "time out", "逾時", "超時", "允許時間", "deadline exceeded"])
@@ -127,13 +148,6 @@ export function diagnoseE2EFailure(input = {}) {
     category = "authentication";
     code = "E2E_AUTHENTICATION";
     layer = "authentication";
-  } else if (
-    includesAny(signal, ["realtime", "websocket", "channel error", "subscribe", "subscription", "即時同步", "同步逾時"])
-  ) {
-    category = "realtime";
-    code = "E2E_REALTIME";
-    layer = "realtime";
-    retryable = true;
   } else if (
     includesAny(signal, ["failed to fetch", "networkerror", "network error", "offline", "connection reset", "connection refused", "網路"])
   ) {
@@ -166,12 +180,25 @@ export function diagnoseE2EFailure(input = {}) {
     path || "-",
   ].join("|");
 
+  const nextCheck = {
+    "rate-limit": "檢查失敗 API 的 429 紀錄及同帳號並行請求數。",
+    realtime: "比對訂閱狀態、資料更新時間與用戶端畫面更新事件。",
+    timeout: "檢查最後一筆 API 耗時及 Runner 頁面可見性，定位等待的步驟。",
+    authorization: "檢查管理員權限、測試帳號所有權及受保護 API 的拒絕紀錄。",
+    authentication: "檢查測試 Session 是否有效，以及登入或續期是否完成。",
+    network: "檢查瀏覽器網路狀態及最後一筆 API 請求。",
+    backend: "對照 API 狀態碼與 Edge Function／資料庫錯誤紀錄。",
+    "client-error": "檢查瀏覽器錯誤事件與對應操作前後的畫面狀態。",
+    assertion: "比對 Expected／Actual，確認資料寫入、回讀及畫面呈現的第一個差異。",
+  }[category];
+
   return {
     version: DIAGNOSTIC_VERSION,
     code,
     category,
     layer,
     retryable,
+    nextCheck,
     fingerprint: "E2E-" + fnv1a(fingerprintBasis),
     signal: {
       caseKey,

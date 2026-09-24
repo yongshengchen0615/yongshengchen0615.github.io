@@ -78,7 +78,7 @@ test('E2E failure fingerprints are stable and avoid raw messages', async () => {
   assert.doesNotMatch(JSON.stringify(first), /請求過於密集|too many requests/i);
 
   const attached = attachE2EDiagnosis({ artifactVersion: 1, seed: 'qa-seed' }, first);
-  assert.equal(attached.artifactVersion, 2);
+  assert.equal(attached.artifactVersion, 3);
   assert.equal(attached.diagnosis.code, 'E2E_RATE_LIMIT');
 
   const summary = summarizeE2EFailureDiagnoses([first, second]);
@@ -87,7 +87,29 @@ test('E2E failure fingerprints are stable and avoid raw messages', async () => {
   assert.equal(summary.fingerprints[first.fingerprint], 2);
 });
 
-test('admin and user browser E2E persist classified failure codes and v2 diagnostics', () => {
+test('diagnosis points to the failing request after successful bootstrap traffic', async () => {
+  const { diagnoseE2EFailure } = await diagnosticsModule();
+  const diagnosis = diagnoseE2EFailure({
+    caseKey: 'BOOKING_SYNC',
+    message: '預約狀態沒有更新',
+    trace: { apiTimings: [
+      { path: '/functions/v1/test-mode-api', responseStatus: 200 },
+      { path: '/functions/v1/booking-api', responseStatus: 503 },
+      { path: '/functions/v1/test-control-api', responseStatus: 200 }
+    ] }
+  });
+  assert.equal(diagnosis.code, 'E2E_BACKEND');
+  assert.equal(diagnosis.signal.httpStatus, 503);
+  assert.equal(diagnosis.signal.path, '/functions/v1/booking-api');
+  assert.match(diagnosis.nextCheck, /Edge Function/);
+
+  const realtime = diagnoseE2EFailure({
+    caseKey: 'BOOKING_REALTIME', message: 'Realtime 同步逾時'
+  });
+  assert.equal(realtime.code, 'E2E_REALTIME');
+});
+
+test('admin and user browser E2E persist classified failure codes and v3 diagnostics', () => {
   const adminApi = fs.readFileSync(path.join(ROOT, 'supabase/functions/test-control-api/index.ts'), 'utf8');
   const userApi = fs.readFileSync(path.join(ROOT, 'supabase/functions/user-test-api/index.ts'), 'utf8');
   for (const source of [adminApi, userApi]) {
@@ -95,7 +117,7 @@ test('admin and user browser E2E persist classified failure codes and v2 diagnos
     assert.match(source, /diagnoseE2EFailure/);
     assert.match(source, /attachE2EDiagnosis/);
     assert.match(source, /summarizeE2EFailureDiagnoses/);
-    assert.match(source, /diagnosticsVersion:\s*2/);
+    assert.match(source, /diagnosticsVersion:\s*3/);
     assert.match(source, /failureDiagnostics:/);
     assert.match(source, /diagnosis\?\.code/);
   }
