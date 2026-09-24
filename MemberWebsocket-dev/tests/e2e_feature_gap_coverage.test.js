@@ -38,6 +38,7 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
     'ADMIN_MESSAGE_PRESET_EDITOR',
     'ADMIN_CALENDAR_BATCH_CONTROLS',
     'ADMIN_TEST_ACCOUNT_LIFECYCLE',
+    'ADMIN_BOOKING_SHARED_SETTINGS',
     'ADMIN_FEATURE_CONTRACT_COVERAGE',
     'ADMIN_BUTTON_COVERAGE'
   ]) {
@@ -49,6 +50,12 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
   assert.match(source, /deleteSelectedTestAccountsButton/);
   assert.match(source, /data-record-filter/);
   assert.match(source, /admin\.test-mode\.delete-accounts/);
+  assert.match(source, /adminBookingSharedSettingsCase/);
+  assert.match(source, /bookingAdminSaveSettingsButton/);
+  assert.match(source, /bookingAdminStoreServiceMinutes/);
+  assert.match(source, /bookingAdminNotice/);
+  assert.match(source, /bookingSharedSettings/);
+  assert.match(source, /explicitCaseByButtonId/);
   assert.doesNotMatch(source, /waitFor\(async \(\) =>/);
 });
 
@@ -58,5 +65,5 @@ test('all member clients and admin load the latest expanded E2E controllers', ()
     assert.match(html, /\.\.\/user-test-control\.js\?v=human-e2e-20260924-10/);
   }
   const admin = read('admin/index.html');
-  assert.match(admin, /\.\/e2e-control\.js\?v=admin-e2e-20260924-22/);
+  assert.match(admin, /\.\/e2e-control\.js\?v=admin-e2e-20260924-23/);
 });
