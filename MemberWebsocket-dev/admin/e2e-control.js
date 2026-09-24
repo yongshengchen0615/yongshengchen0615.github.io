@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.25';
+  const VERSION = '2026-09-24.26';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -2879,7 +2879,10 @@
       ? snapshot.storeServiceMinutes + 15
       : Math.max(1, snapshot.storeServiceMinutes - 15);
     const qaMarker = '[QA E2E SHARED ' + qaCrudStamp() + ']';
-    const noticeSuffix = snapshot.bookingNotice ? '\n' + snapshot.bookingNotice : '';
+    const retainedBaseNotice = String(snapshot.bookingNotice || '')
+      .replace(/^(?:\[QA E2E SHARED [^\]]+\]\s*)+/g, '')
+      .trim();
+    const noticeSuffix = retainedBaseNotice ? '\n' + retainedBaseNotice : '';
     const mutation = {
       workStartTime: selectedHours[0],
       workEndTime: selectedHours[1],
