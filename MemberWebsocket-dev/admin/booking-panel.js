@@ -2,22 +2,37 @@
   'use strict';
 
   const current = document.currentScript?.src || new URL('./booking-panel.js', window.location.href).toString();
+  const insertStyleBeforeTheme = (link) => {
+    const themeLink = document.querySelector('link[rel="stylesheet"][href*="theme.css"]');
+    if (themeLink?.parentNode === document.head) {
+      document.head.insertBefore(link, themeLink);
+      return;
+    }
+    document.head.appendChild(link);
+  };
+
   const loadStyle = (name, version) => {
     if (document.querySelector(`link[data-booking-panel-style="${name}"]`)) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = new URL(`./${name}?v=${version}`, current).toString();
     link.dataset.bookingPanelStyle = name;
-    document.head.appendChild(link);
+    insertStyleBeforeTheme(link);
   };
   const loadSharedResponsive = () => {
     const href = new URL('../responsive.css?v=20260914-time-input-1', current).toString();
-    if ([...document.querySelectorAll('link[rel="stylesheet"]')].some((link) => link.href === href)) return;
+    if ([...document.querySelectorAll('link[rel="stylesheet"]')].some((link) => {
+      try {
+        return new URL(link.href, window.location.href).pathname === new URL(href).pathname;
+      } catch (_) {
+        return link.href === href;
+      }
+    })) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = href;
     link.dataset.bookingPanelStyle = 'shared-responsive-time-input';
-    document.head.appendChild(link);
+    insertStyleBeforeTheme(link);
   };
   const load = (name, version) => new Promise((resolve, reject) => {
     const script = document.createElement('script');
