@@ -24,6 +24,7 @@
   --theme-link: #a94834;
   --theme-positive-text: #276947;
   --theme-warning-text: #765817;
+  --theme-warning-soft: #fff4d9;
   --theme-danger-text: #9c3d31;
   --theme-disabled-text: #8b9690;
 }
@@ -69,6 +70,7 @@ html[data-theme="dark"] {
   --theme-link: #ff9a78;
   --theme-positive-text: #8bd7ad;
   --theme-warning-text: #e5c675;
+  --theme-warning-soft: #2b2617;
   --theme-danger-text: #ff9f90;
   --theme-disabled-text: #84918a;
   --ink: var(--theme-text);
