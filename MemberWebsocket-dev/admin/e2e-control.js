@@ -3089,7 +3089,7 @@
         if (targetIndex >= 0) mutationMode = 'remove-item';
       }
       if (targetIndex < 0) {
-        throw new Error('目前多人預約沒有可安全調整的項目：不能擴張已指定技師的預約時段，也沒有可安全移除的次要項目。');
+        throw new Error('目前多人預約沒有可安全調整的項目：避免擴張已指定技師的預約時段，且沒有可安全移除的次要項目。');
       }
       const target = participants[targetIndex];
       targetPosition = Number(target?.position || targetIndex + 1);
