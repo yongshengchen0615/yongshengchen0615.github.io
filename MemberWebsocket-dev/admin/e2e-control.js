@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.23';
+  const VERSION = '2026-09-24.24';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -1488,6 +1488,8 @@
       try {
         const login = await createPairedSession(participant.account, surface);
         participant.login = login;
+        participant.surfaceLogins = participant.surfaceLogins || {};
+        participant.surfaceLogins[surface] = login;
         participant.lastSurfaceKey = surface;
         seedParticipantSession(participant, login, surface);
         await sleep(randomInt(80, 520));
@@ -2892,6 +2894,7 @@
     let child = null;
     let previousLogin = null;
     let previousSurface = '';
+    let userToday = '';
     let restoreCompleted = false;
 
     try {
@@ -2942,7 +2945,14 @@
       if (participant) {
         previousLogin = participant.login || null;
         previousSurface = participant.lastSurfaceKey || 'member';
-        const bookingLogin = await createPairedSession(participant.account, 'booking');
+        const cachedBookingLogin = participant.surfaceLogins?.booking || (
+          previousSurface === 'booking' ? previousLogin : null
+        );
+        const bookingLogin = cachedBookingLogin?.testSessionToken
+          ? cachedBookingLogin
+          : await createPairedSession(participant.account, 'booking');
+        participant.surfaceLogins = participant.surfaceLogins || {};
+        participant.surfaceLogins.booking = bookingLogin;
         participant.login = bookingLogin;
         participant.lastSurfaceKey = 'booking';
         seedParticipantSession(participant, bookingLogin, 'booking');
@@ -2951,6 +2961,7 @@
         if (actual.userWatcherPrepared) {
           const config = await child.BookingSystem.loadConfig();
           const baseline = await child.BookingSystem.request(config, 'member', '', 'user.booking.bootstrap', {});
+          userToday = String(baseline?.today || '');
           const baselineStore = (baseline?.services || []).find((service) => String(service?.serviceId || '') === STORE_SERVICE_ID);
           actual.userBaselineMatched =
             String(baseline?.settings?.workStartTime || '') === snapshot.workStartTime &&
@@ -3001,12 +3012,11 @@
       }
 
       if (child && actual.userWatcherPrepared) {
-        const expectedMinDate = addIsoDays(new Intl.DateTimeFormat('en-CA', {
+        const userBaseDate = userToday || new Intl.DateTimeFormat('en-CA', {
           timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
-        }).format(new Date()), mutation.minAdvanceDays);
-        const expectedMaxDate = addIsoDays(new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
-        }).format(new Date()), mutation.maxAdvanceDays);
+        }).format(new Date());
+        const expectedMinDate = addIsoDays(userBaseDate, mutation.minAdvanceDays);
+        const expectedMaxDate = addIsoDays(userBaseDate, mutation.maxAdvanceDays);
         actual.userRealtimeSettingsSynced = Boolean(await waitFor(() => {
           try {
             const badge = String(child.document.getElementById('workHoursBadge')?.textContent || '');
