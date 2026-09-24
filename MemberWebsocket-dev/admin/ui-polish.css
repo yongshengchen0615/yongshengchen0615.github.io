@@ -3,23 +3,23 @@
  */
 
 :root {
-  --admin-surface: #fffefa;
-  --admin-surface-muted: #f7faf7;
-  --admin-surface-soft: #f1f6f2;
-  --admin-border: #dce6df;
-  --admin-border-strong: #cbd9cf;
-  --admin-text: #17352e;
-  --admin-text-soft: #5f7168;
-  --admin-text-muted: #7f8d85;
-  --admin-radius-sm: 10px;
-  --admin-radius-md: 14px;
-  --admin-radius-lg: 18px;
-  --admin-shadow: 0 14px 34px rgba(31, 61, 48, .07);
-  --admin-shadow-strong: 0 24px 60px rgba(24, 48, 38, .16);
+  --admin-surface: var(--theme-surface);
+  --admin-surface-muted: var(--theme-surface-muted);
+  --admin-surface-soft: var(--theme-surface-muted);
+  --admin-border: var(--theme-border);
+  --admin-border-strong: var(--theme-border-strong);
+  --admin-text: var(--theme-text);
+  --admin-text-soft: var(--theme-text-muted);
+  --admin-text-muted: var(--theme-text-subtle);
+  --admin-radius-sm: var(--ui-radius-sm, 10px);
+  --admin-radius-md: var(--ui-radius-md, 14px);
+  --admin-radius-lg: var(--ui-radius-lg, 18px);
+  --admin-shadow: var(--ui-shadow-card);
+  --admin-shadow-strong: var(--theme-modal-shadow);
 }
 
 html {
-  background: #f4f7f3;
+  background: var(--theme-bg);
 }
 
 body {
@@ -36,7 +36,7 @@ body {
 }
 
 .kicker {
-  color: #c85f46;
+  color: var(--theme-accent);
   font-size: 10px;
   line-height: 1.3;
   letter-spacing: .13em;
@@ -50,7 +50,8 @@ body {
   border-radius: var(--admin-radius-lg);
   background: rgba(255, 254, 250, .88);
   box-shadow: 0 8px 28px rgba(31, 61, 48, .045);
-  backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .topbar h1 {
@@ -78,7 +79,7 @@ body {
   flex: 0 0 auto;
   padding: 5px 8px;
   border-radius: 999px;
-  background: #eaf6ed;
+  background: var(--theme-positive-soft);
   letter-spacing: .08em;
 }
 
@@ -253,13 +254,13 @@ body {
 }
 
 .button-outline:hover:not(:disabled) {
-  border-color: #a9bdb0;
-  background: #fff;
+  border-color: var(--theme-border-strong);
+  background: var(--theme-surface-raised);
 }
 
 .button-danger:hover:not(:disabled) {
-  border-color: #e1a89c;
-  background: #ffe7e2;
+  border-color: var(--theme-danger);
+  background: var(--theme-danger-soft);
 }
 
 .small-button {
@@ -299,7 +300,7 @@ body {
 }
 
 .search-box:focus-within {
-  border-color: #91bfa0;
+  border-color: var(--theme-positive);
   box-shadow: 0 0 0 3px rgba(47, 155, 104, .09);
 }
 
@@ -311,20 +312,20 @@ body {
   overflow: auto;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-md);
-  background: #fff;
+  background: var(--theme-surface-raised);
 }
 
 .table-wrap th {
   padding: 12px;
-  background: #f7faf7;
-  color: #75867d;
+  background: var(--theme-surface-muted);
+  color: var(--theme-text-muted);
   font-size: 10px;
   letter-spacing: .09em;
 }
 
 .table-wrap td {
   padding: 14px 12px;
-  color: #3d554a;
+  color: var(--theme-text);
   font-size: 13px;
 }
 
@@ -333,7 +334,7 @@ body {
 }
 
 .table-wrap tbody tr:hover {
-  background: #fafcf9;
+  background: var(--theme-surface-muted);
 }
 
 .member-cell strong {
@@ -382,7 +383,7 @@ body {
   padding: 12px;
   border: 1px solid var(--admin-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--theme-surface-raised);
 }
 
 .tier-settings-grid small {
@@ -423,13 +424,13 @@ body {
 
 .card-list-item:hover {
   border-color: var(--admin-border);
-  background: #f8faf7;
+  background: var(--theme-surface-muted);
   transform: translateY(-1px);
 }
 
 .card-list-item[aria-selected="true"] {
-  border-color: #c8d9cc;
-  background: #edf5ef;
+  border-color: var(--theme-border-strong);
+  background: var(--theme-surface-muted);
   box-shadow: inset 3px 0 0 #5d9f72;
 }
 
@@ -447,14 +448,14 @@ body {
   padding: 18px;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-md);
-  background: #fcfdfb;
+  background: var(--theme-surface);
 }
 
 .editor-heading {
   align-items: center;
   margin-bottom: 18px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #e8eee9;
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .editor-status {
@@ -475,7 +476,7 @@ label,
 #bookingPanel .booking-admin-form-grid > label,
 .booking-admin-modal .booking-admin-form > label,
 .booking-admin-modal .booking-admin-form-grid > label {
-  color: #52665c;
+  color: var(--theme-text-muted);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -497,19 +498,19 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: #a0aaa4;
+  color: var(--theme-disabled-text);
 }
 
 input:hover,
 select:hover,
 textarea:hover {
-  border-color: #b8c8bd;
+  border-color: var(--theme-border-strong);
 }
 
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #6aaa7f;
+  border-color: var(--theme-positive);
   box-shadow: 0 0 0 3px rgba(47, 155, 104, .09);
 }
 
@@ -577,13 +578,13 @@ textarea:focus {
   padding: 9px 11px;
   border: 1px solid var(--admin-border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--theme-surface-raised);
 }
 
 .date-control {
   border-color: var(--admin-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--theme-surface-raised);
 }
 
 .date-chip {
@@ -597,16 +598,16 @@ textarea:focus {
 
 .admin-calendar {
   border-color: var(--admin-border);
-  background: #f8faf7;
+  background: var(--theme-surface-muted);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
 }
 
 .admin-calendar-day {
-  border-color: #dfe7e1;
+  border-color: var(--theme-border);
 }
 
 .admin-calendar-day:hover:not(.admin-calendar-day-empty) {
-  background: #fbfdfb;
+  background: var(--theme-surface);
 }
 
 .modal {
@@ -868,7 +869,7 @@ textarea:focus {
     padding: 12px;
     border-color: var(--admin-border);
     border-radius: 12px;
-    background: #fff;
+    background: var(--theme-surface-raised);
     box-shadow: 0 4px 16px rgba(31, 61, 48, .04);
   }
 

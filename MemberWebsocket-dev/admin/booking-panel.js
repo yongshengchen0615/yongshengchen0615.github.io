@@ -75,7 +75,7 @@
   loadStyle('booking-summary.css', 'booking-theme-tokens-20260924-1');
   loadStyle('booking-resources.css', 'booking-theme-tokens-20260924-1');
   loadStyle('../booking-admin-group-details.css', 'booking-theme-tokens-20260924-1');
-  loadStyle('ui-polish.css', 'booking-theme-tokens-20260924-1');
+  loadStyle('ui-polish.css', 'lumen-design-system-20260924-1');
   loadStyle('ui-polish-responsive.css', 'ui-refresh-20260924-1');
 
   document.addEventListener('click', (event) => {

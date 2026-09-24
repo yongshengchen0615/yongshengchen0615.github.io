@@ -13,9 +13,31 @@ function read(relativePath) {
 test('all admin and member surfaces load the shared theme controller and stylesheet', () => {
   for (const entry of entries) {
     const html = read(path.join(entry, 'index.html'));
-    assert.match(html, /\.\.\/theme\.css\?v=client-dark-parity-20260924-1/, entry + ' should load theme.css');
+    assert.match(html, /\.\.\/theme\.css\?v=[^"'<>]+/, entry + ' should load versioned theme.css');
     assert.match(html, /\.\.\/theme\.js\?v=theme-contrast-20260924-4/, entry + ' should load theme.js');
   }
+});
+
+test('core booking, calendar and admin surfaces consume semantic theme tokens', () => {
+  const booking = read('booking/styles.css');
+  const calendar = read('calendar/styles.css');
+  const testControl = read('admin/test-control.css');
+  const adminPolish = read('admin/ui-polish.css');
+
+  assert.match(booking, /\.booking-card\{[^}]*background:var\(--theme-surface\)/);
+  assert.match(booking, /select,input,textarea\{[^}]*background:var\(--theme-surface-raised\)/);
+  assert.doesNotMatch(booking, /backdrop-filter:blur\(/);
+
+  assert.match(calendar, /\.calendar-toolbar[^}]*background:\s*var\(--theme-surface\)/);
+  assert.match(calendar, /\.calendar-day[^}]*background:\s*var\(--theme-surface\)/);
+
+  assert.match(testControl, /var\(--theme-surface-raised\)/);
+  assert.match(testControl, /var\(--theme-warning-soft\)/);
+  assert.match(testControl, /var\(--theme-danger-soft\)/);
+
+  assert.match(adminPolish, /--admin-surface:\s*var\(--theme-surface\)/);
+  assert.match(adminPolish, /--admin-text:\s*var\(--theme-text\)/);
+  assert.doesNotMatch(adminPolish, /backdrop-filter:\s*blur\(/);
 });
 
 test('theme controller persists preference and synchronizes browser tabs', () => {
