@@ -13,7 +13,7 @@ function read(relativePath) {
 test('all admin and member surfaces load the shared theme controller and stylesheet', () => {
   for (const entry of entries) {
     const html = read(path.join(entry, 'index.html'));
-    assert.match(html, /\.\.\/theme\.css\?v=membership-tier-surface-20260924-2/, entry + ' should load theme.css');
+    assert.match(html, /\.\.\/theme\.css\?v=client-dark-parity-20260924-1/, entry + ' should load theme.css');
     assert.match(html, /\.\.\/theme\.js\?v=theme-contrast-20260924-4/, entry + ' should load theme.js');
   }
 });
@@ -36,6 +36,28 @@ test('dark theme styles and E2E button coverage are wired', () => {
   assert.match(qa, /button\.dataset\?\.uiThemeControl === 'true'/);
 });
 
+
+
+test('all member-facing clients have dark-mode surface parity without flattening semantic colors', () => {
+  const css = read('theme.css');
+
+  assert.match(css, /Client dark-mode parity 2026-09-24/);
+
+  for (const clientRoot of ['#memberView', '#pointsView', '#eventView', '#calendarView', '#bookingView']) {
+    assert.ok(css.includes('html[data-theme="dark"] ' + clientRoot), clientRoot + ' should have explicit dark-mode coverage');
+  }
+
+  assert.match(css, /#pointsView \.active-card[\s\S]*?color:\s*#fffaf3[\s\S]*?--card-style-background/);
+  assert.match(css, /#pointsView \.ticket-overview-group \.member-ticket\[data-card-style\][\s\S]*?color:\s*#fffaf3/);
+  assert.match(css, /#bookingView :where\([\s\S]*?\.calendar-day\.selected[\s\S]*?background:\s*#1c2923/);
+  assert.match(css, /#calendarGrid \.calendar-day\.holiday-disabled[\s\S]*?background:\s*var\(--theme-surface-raised\)/);
+
+  const serviceAccentRules = css.match(/html\[data-theme="dark"\] \.service-type-color-\d+ \{ --service-type-dark-accent: #[0-9a-f]{6}; \}/gi) || [];
+  assert.equal(serviceAccentRules.length, 12, 'all 12 booking service categories should retain a dark-mode accent');
+
+  assert.match(css, /\[class\*="service-type-color-"\] > strong[\s\S]*?var\(--service-type-dark-accent/);
+  assert.match(css, /\[class\*="service-type-color-"\] :where\([\s\S]*?\.service-choice,[\s\S]*?\.selected-service-item[\s\S]*?border-left-color:\s*var\(--service-type-dark-accent/);
+});
 
 test('membership tier surface keeps its semantic palette in light and dark modes', () => {
   const css = read('theme.css');
