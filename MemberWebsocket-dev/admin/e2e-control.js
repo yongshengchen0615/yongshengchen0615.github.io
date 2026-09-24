@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.24';
+  const VERSION = '2026-09-24.25';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -1100,7 +1100,7 @@
       caseDef('ADMIN_CALENDAR_CRUD', '日曆：新增／修改／刪除', 'Admin CRUD E2E', adminCalendarCrudCase),
       caseDef('ADMIN_BOOKING_CRUD', '預約：類型與項目新增／修改／刪除', 'Admin CRUD E2E', adminBookingCrudCase),
       caseDef('ADMIN_BOOKING_CONTROLS', '預約管理分頁與新增視窗', 'Human E2E', adminBookingControlsCase),
-      caseDef('ADMIN_BOOKING_SHARED_SETTINGS', '預約：共用設定複雜修改／跨端同步／衝突／還原', 'Admin Settings E2E', adminBookingSharedSettingsCase),
+      caseDef('ADMIN_BOOKING_SHARED_SETTINGS', '預約：共用設定複雜修改／跨端同步／衝突／保留修改', 'Admin Settings E2E', adminBookingSharedSettingsCase),
       caseDef('ADMIN_THEME_TOGGLE', '亮／暗主題切換與偏好還原', 'UI', adminThemeToggleCase),
       caseDef('ADMIN_MEMBER_DIRECTORY_CONTROLS', '會員搜尋／分頁／紀錄篩選', 'UI', adminMemberDirectoryControlsCase),
       caseDef('ADMIN_MESSAGE_PRESET_EDITOR', '預設訊息管理視窗與驗證', 'UI', adminMessagePresetEditorCase),
@@ -2782,11 +2782,10 @@
       userBootstrapMatched: false,
       userStoreMinutesMatched: false,
       userDateWindowEnforced: false,
-      restoredViaUi: false,
-      restoreReadback: false,
-      userRestoreSynced: false,
-      clientSessionRestored: false,
-      restoreFallbackUsed: false
+      finalMutationReadback: false,
+      mutationRetainedForInspection: false,
+      retainedSettings: null,
+      clientSessionRestored: false
     };
     if (!ready || !panelVisible || missing.length) {
       return fail('預約共用設定控制項未完整載入。', {
@@ -2889,13 +2888,13 @@
       storeServiceMinutes: mutatedStoreMinutes,
       bookingNotice: (qaMarker + noticeSuffix).slice(0, 2000)
     };
+    actual.retainedSettings = safe(mutation);
 
     let participant = null;
     let child = null;
     let previousLogin = null;
     let previousSurface = '';
     let userToday = '';
-    let restoreCompleted = false;
 
     try {
       setField('bookingAdminStartTime', '10:00');
@@ -3072,48 +3071,14 @@
         }
       }
 
-      setSettingsFields(snapshot);
-      controls.bookingAdminSaveSettingsButton.click();
-      actual.restoredViaUi = Boolean(await waitFor(() =>
-        /預約共用設定已儲存/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
-        15000,
-        100
-      ));
-
-      const restored = await postFunction('booking-admin-api', {
+      const finalSettings = await postFunction('booking-admin-api', {
         action: 'admin.booking.manage.bootstrap',
         clientType: 'admin',
         idToken: session.idToken
       });
-      actual.restoreReadback = sameSettings(restored?.settings, snapshot);
-      restoreCompleted = actual.restoreReadback;
-
-      if (child && actual.userWatcherPrepared) {
-        const expectedMinDate = addIsoDays(new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
-        }).format(new Date()), snapshot.minAdvanceDays);
-        const expectedMaxDate = snapshot.maxAdvanceDays > 0
-          ? addIsoDays(new Intl.DateTimeFormat('en-CA', {
-              timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
-            }).format(new Date()), snapshot.maxAdvanceDays)
-          : '';
-        actual.userRestoreSynced = Boolean(await waitFor(() => {
-          try {
-            const badge = String(child.document.getElementById('workHoursBadge')?.textContent || '');
-            const dateInput = child.document.getElementById('bookingDate');
-            const notice = childNoticeText(child);
-            const noticeRestored = snapshot.bookingNotice
-              ? notice.includes(snapshot.bookingNotice.slice(0, 120))
-              : !notice.includes(qaMarker);
-            return badge.includes(snapshot.workStartTime + '–' + snapshot.workEndTime) &&
-              String(dateInput?.min || '') === expectedMinDate &&
-              String(dateInput?.max || '') === expectedMaxDate &&
-              noticeRestored;
-          } catch {
-            return false;
-          }
-        }, backgroundAwareTimeout(15000, 45000), 150));
-      }
+      actual.finalMutationReadback = sameSettings(finalSettings?.settings, mutation);
+      actual.mutationRetainedForInspection = actual.finalMutationReadback;
+      if (actual.validMutationSaved) setSettingsFields(mutation);
 
       if (participant) {
         try {
@@ -3129,30 +3094,8 @@
         }
       }
     } finally {
-      if (!restoreCompleted) {
-        try {
-          const latest = await postFunction('booking-admin-api', {
-            action: 'admin.booking.manage.bootstrap',
-            clientType: 'admin',
-            idToken: session.idToken
-          });
-          await postFunction('booking-admin-api', {
-            action: 'admin.booking.settings.save',
-            clientType: 'admin',
-            idToken: session.idToken,
-            workStartTime: snapshot.workStartTime,
-            workEndTime: snapshot.workEndTime,
-            minAdvanceDays: snapshot.minAdvanceDays,
-            maxAdvanceDays: snapshot.maxAdvanceDays,
-            storeServiceMinutes: snapshot.storeServiceMinutes,
-            bookingNotice: snapshot.bookingNotice,
-            expectedUpdatedAt: String(latest?.settings?.updatedAt || '')
-          });
-          actual.restoreFallbackUsed = true;
-          restoreCompleted = true;
-        } catch {}
-      }
-      setSettingsFields(snapshot);
+      // 預約共用設定是測試觀察資料：成功寫入後保留 E2E 修改值，不做 UI 或 API 還原。
+      if (actual.validMutationSaved) setSettingsFields(mutation);
       if (participant && !actual.clientSessionRestored) {
         try {
           if (previousLogin) {
@@ -3183,13 +3126,12 @@
       actual.userBootstrapMatched &&
       actual.userStoreMinutesMatched &&
       actual.userDateWindowEnforced &&
-      actual.restoredViaUi &&
-      actual.restoreReadback &&
-      actual.userRestoreSynced &&
+      actual.finalMutationReadback &&
+      actual.mutationRetainedForInspection &&
       actual.clientSessionRestored;
 
     return ok
-      ? pass('預約共用設定已完成非法邊界、合法變更、版本衝突、管理端回讀、用戶端 Realtime／日期範圍同步與原值還原。', {
+      ? pass('預約共用設定已完成非法邊界、合法變更、版本衝突、管理端回讀、用戶端 Realtime／日期範圍同步，並保留本輪修改值供測試人員檢視。', {
           invalidWorkHoursRejected: true,
           invalidAdvanceRejected: true,
           invalidStoreMinutesRejected: true,
@@ -3200,11 +3142,10 @@
           userRealtimeSettingsSynced: true,
           userRealtimeNoticeSynced: true,
           userDateWindowEnforced: true,
-          restoredViaUi: true,
-          restoreReadback: true,
-          userRestoreSynced: true
+          finalMutationReadback: true,
+          mutationRetainedForInspection: true
         }, actual)
-      : fail('預約共用設定複雜 E2E 至少一個驗證、跨端同步、競態或還原階段失敗。', {
+      : fail('預約共用設定複雜 E2E 至少一個驗證、跨端同步、競態或保留修改驗證失敗；已成功寫入的修改值不會自動還原。', {
           invalidWorkHoursRejected: true,
           invalidAdvanceRejected: true,
           invalidStoreMinutesRejected: true,
@@ -3215,9 +3156,8 @@
           userRealtimeSettingsSynced: true,
           userRealtimeNoticeSynced: true,
           userDateWindowEnforced: true,
-          restoredViaUi: true,
-          restoreReadback: true,
-          userRestoreSynced: true
+          finalMutationReadback: true,
+          mutationRetainedForInspection: true
         }, actual);
   }
 
