@@ -50,7 +50,8 @@ body {
   border-radius: var(--admin-radius-lg);
   background: rgba(255, 254, 250, .88);
   box-shadow: 0 8px 28px rgba(31, 61, 48, .045);
-  backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .topbar h1 {
