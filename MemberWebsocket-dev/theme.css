@@ -136,7 +136,6 @@ html[data-theme] :where(
   .grant-point-row,
   .card-settings-nav,
   .search-box,
-  .membership-progress,
   .milestones-panel,
   .tickets-panel,
   .ticket-history-panel,
@@ -918,7 +917,6 @@ html[data-theme] :where(input:focus, select:focus, textarea:focus, .date-input-s
 html[data-theme] :where(
   .profile-details,
   .profile-form,
-  .membership-progress,
   .tickets-panel,
   .ticket-history-panel,
   .event-ticket,
@@ -1533,6 +1531,41 @@ html[data-theme] :where(.modal-heading, .ticket-modal-heading, .profile-edit-mod
   padding-bottom: 13px;
   margin-bottom: 14px;
   border-bottom: 1px solid var(--theme-border);
+}
+
+/* Membership progress is a semantic tier surface, not a neutral theme card.
+   theme.css loads after member/membership-progress.css, so preserve the server-derived
+   tier palette explicitly in both light and dark modes. */
+html[data-theme] .membership-progress[data-membership-tier-style] {
+  color: #fdf7ed;
+  background: var(--membership-card-background);
+  background-color: var(--membership-card-background);
+  border-color: rgba(253, 247, 237, .28);
+  box-shadow: 0 16px 36px rgba(23, 53, 46, .16);
+}
+
+html[data-theme] .membership-progress[data-membership-tier-style] h2 {
+  color: #fdf7ed;
+}
+
+html[data-theme] .membership-progress[data-membership-tier-style] :where(
+  .membership-progress-kicker,
+  .membership-progress-current,
+  .membership-progress-remaining
+) {
+  color: var(--membership-card-soft);
+}
+
+html[data-theme] .membership-progress[data-membership-tier-style] .membership-progress-summary {
+  color: rgba(253, 247, 237, .74);
+}
+
+html[data-theme] .membership-progress[data-membership-tier-style] .membership-progress-track {
+  background: rgba(253, 247, 237, .2);
+}
+
+html[data-theme] .membership-progress[data-membership-tier-style] .membership-progress-track span {
+  background: linear-gradient(90deg, var(--membership-card-accent), var(--membership-card-soft));
 }
 
 /* Client pages: make information feel like a cohesive member product. */
