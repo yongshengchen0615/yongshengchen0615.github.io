@@ -87,21 +87,36 @@ function includesAny(haystack, patterns) {
   return patterns.some((pattern) => haystack.includes(pattern));
 }
 
+function unmetBooleanAssertions(expected, actual) {
+  if (!expected || typeof expected !== "object" || Array.isArray(expected)) return [];
+  return Object.entries(expected).filter(([key, value]) =>
+    typeof value === "boolean" && actual?.[key] !== value
+  ).map(([key]) => key).slice(0, 20);
+}
+
 export function diagnoseE2EFailure(input = {}) {
   const caseKey = asText(input.caseKey, 100) || "UNKNOWN_CASE";
   const domain = asText(input.domain, 120);
   const message = asText(input.message, 1600);
+  const expected = input.expected && typeof input.expected === "object" ? input.expected : {};
   const actual = input.actual && typeof input.actual === "object" ? input.actual : {};
   const trace = input.trace && typeof input.trace === "object" ? input.trace : {};
+  const unmetFields = unmetBooleanAssertions(expected, actual);
   const sourceCode = firstSourceCode(actual, trace);
-  const httpStatus = firstHttpStatus(actual, trace);
-  const path = firstPath(trace, httpStatus);
-  const signal = [
-    message,
-    sourceCode,
-    safeStringify(actual),
-    safeStringify(trace?.error),
-    safeStringify(trace?.events),
+  const explicitStatus = findField({ actual, error: trace?.error },
+    new Set(["httpstatus", "http_status", "statuscode", "status_code"]));
+  const observedStatus = firstHttpStatus(actual, trace);
+  // A successful negative test can leave an intentional 4xx in apiTimings.
+  // For a boolean assertion mismatch, classify the failing fields instead of
+  // attributing that unrelated request or the generic case title as the cause.
+  const assertionOnly = unmetFields.length > 0 && !sourceCode && explicitStatus == null
+    && !trace?.error && observedStatus !== 429 && !(observedStatus >= 500);
+  const httpStatus = assertionOnly ? null : observedStatus;
+  const probeEndpoint = asText(actual?.userDateWindowProbe?.endpoint, 80);
+  const path = assertionOnly && /^[a-z0-9-]+$/.test(probeEndpoint)
+    ? "/functions/v1/" + probeEndpoint : assertionOnly ? "" : firstPath(trace, httpStatus);
+  const signal = assertionOnly ? unmetFields.join(" ").toLowerCase() : [
+    message, sourceCode, safeStringify(actual), safeStringify(trace?.error), safeStringify(trace?.events),
   ].join(" ").toLowerCase();
 
   let category = "assertion";
@@ -109,7 +124,11 @@ export function diagnoseE2EFailure(input = {}) {
   let layer = "test-assertion";
   let retryable = false;
 
-  if (
+  if (assertionOnly && includesAny(signal, ["datewindow", "bookingdatewindow"])) {
+    category = "api-contract";
+    code = "E2E_API_CONTRACT";
+    layer = "edge-function";
+  } else if (
     httpStatus === 429
     || includesAny(signal, ["rate_limit", "rate-limited", "rate limited", "too many requests", "429", "過於密集", "稍後再試"])
   ) {
@@ -189,6 +208,7 @@ export function diagnoseE2EFailure(input = {}) {
     network: "檢查瀏覽器網路狀態及最後一筆 API 請求。",
     backend: "對照 API 狀態碼與 Edge Function／資料庫錯誤紀錄。",
     "client-error": "檢查瀏覽器錯誤事件與對應操作前後的畫面狀態。",
+    "api-contract": "比對失敗案例的日期範圍探測值、後端時段回應與預約共用設定。",
     assertion: "比對 Expected／Actual，確認資料寫入、回讀及畫面呈現的第一個差異。",
   }[category];
 
