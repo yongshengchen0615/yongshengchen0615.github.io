@@ -5308,7 +5308,7 @@
       && participant.bookingResult.bookingHandoff.memberId === participant.account?.memberId
       && participant.bookingResult.bookingHandoff.bookingIds?.length
     );
-    const expected = { httpStatus: 404, errorCode: 'BOOKING_NOT_FOUND', victimUnchanged: true };
+    const expected = { foreignBookingHidden: true, httpStatus: 404, errorCode: 'BOOKING_NOT_FOUND', victimUnchanged: true };
     if (!victim) return fail('本輪沒有可驗證的測試帳號預約，無法檢查跨帳號存取。', expected, { victimBookingFound: false });
 
     const session = await adminSession();
@@ -5322,27 +5322,35 @@
     const attacker = await createEphemeralTestAccount();
     if (attacker.memberId === victim.account.memberId) throw new Error('安全測試的兩個會員不可相同。');
     const login = await createPairedSession(attacker, 'booking');
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 12000);
-    let response;
-    let parsed;
-    try {
-      response = await fetch(functionUrl(session.config, 'booking-api'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: String(session.config.supabasePublishableKey || '')
-        },
-        cache: 'no-store', signal: controller.signal,
-        body: JSON.stringify({
-          action: 'user.booking.cancel', clientType: 'member', idToken: '',
-          testSessionToken: login.testSessionToken, bookingId: target.bookingId
-        })
-      });
-      parsed = await response.json().catch(() => ({}));
-    } finally {
-      window.clearTimeout(timer);
-    }
+    const attackRequest = async (action, payload = {}) => {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 12000);
+      try {
+        const response = await fetch(functionUrl(session.config, 'booking-api'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: String(session.config.supabasePublishableKey || '')
+          },
+          cache: 'no-store', signal: controller.signal,
+          body: JSON.stringify({
+            action, clientType: 'member', idToken: '',
+            testSessionToken: login.testSessionToken, ...payload
+          })
+        });
+        return { status: response.status, body: await response.json().catch(() => ({})) };
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+    const read = await attackRequest('user.booking.bootstrap');
+    const attackerBookings = read.body?.data?.bookings;
+    const foreignBookingHidden = read.status === 200 && Array.isArray(attackerBookings)
+      && attackerBookings.every((booking) =>
+        String(booking.memberId) === String(attacker.memberId)
+        && String(booking.bookingId) !== String(target.bookingId)
+      );
+    const cancellation = await attackRequest('user.booking.cancel', { bookingId: target.bookingId });
     adminBookingBootstrapLastData = null;
     const after = await adminBookingBootstrapSnapshot();
     const readback = (after.bookings || []).find((booking) => String(booking.bookingId) === String(target.bookingId));
@@ -5352,16 +5360,19 @@
       cancellationReviewedAt: booking?.cancellationReviewedAt
     });
     const actual = {
-      httpStatus: response.status,
-      errorCode: String(parsed?.error?.code || '').slice(0, 80),
+      foreignBookingHidden,
+      readHttpStatus: read.status,
+      httpStatus: cancellation.status,
+      errorCode: String(cancellation.body?.error?.code || '').slice(0, 80),
       victimUnchanged: Boolean(readback) && protectedFields(readback) === protectedFields(target),
       separateTestAccounts: attacker.memberId !== victim.account.memberId,
       attackerMemberCode: attacker.memberCode,
       victimBookingId: target.bookingId
     };
-    return actual.httpStatus === expected.httpStatus && actual.errorCode === expected.errorCode && actual.victimUnchanged
-      ? pass('另一測試會員無法取消此預約，管理端回讀確認狀態不變。', expected, actual)
-      : fail('跨帳號預約取消的拒絕或資料不變驗證失敗。', expected, actual);
+    return actual.foreignBookingHidden && actual.httpStatus === expected.httpStatus
+      && actual.errorCode === expected.errorCode && actual.victimUnchanged
+      ? pass('另一測試會員無法讀取或取消此預約，管理端回讀確認狀態不變。', expected, actual)
+      : fail('跨帳號預約讀取、取消拒絕或資料不變驗證失敗。', expected, actual);
   }
 
   async function removeEphemeralTestAccount(account) {
