@@ -45,6 +45,8 @@ test('admin full E2E mutates booking shared settings, verifies cross-end behavio
   assert.match(source, /finalMutationReadback/);
   assert.match(source, /mutationRetainedForInspection/);
   assert.match(source, /retainedSettings/);
+  assert.match(source, /retainedBaseNotice/);
+  assert.match(source, /QA E2E SHARED/);
   assert.doesNotMatch(source, /restoreFallbackUsed/);
   assert.doesNotMatch(source, /actual\.restoredViaUi/);
   assert.doesNotMatch(source, /actual\.restoreReadback/);
@@ -78,5 +80,5 @@ test('booking admin refresh merges the richer admin settings contract', () => {
 
 test('admin entrypoint cache-busts the shared-settings E2E controller', () => {
   const html = read('admin/index.html');
-  assert.match(html, /\.\/e2e-control\.js\?v=admin-e2e-20260924-25/);
+  assert.match(html, /\.\/e2e-control\.js\?v=admin-e2e-20260924-26/);
 });
