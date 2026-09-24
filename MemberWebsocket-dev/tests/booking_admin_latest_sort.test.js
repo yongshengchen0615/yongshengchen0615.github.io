@@ -25,5 +25,5 @@ test('cancellation request and cancelled lists are newest first', () => {
 
 test('admin loader versions force clients to receive the latest sorting code', () => {
   assert.match(loader, /booking-e2e-refresh-20260924-1/);
-  assert.match(adminHtml, /booking-panel\.js\?v=booking-refresh-coalesce-20260924-1/);
+  assert.match(adminHtml, /booking-panel\.js\?v=ui-refresh-20260924-1/);
 });
