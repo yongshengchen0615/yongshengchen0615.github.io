@@ -2224,3 +2224,376 @@ html[data-theme="dark"] [class*="service-type-color-"] :where(
   border-color: var(--theme-border) !important;
   border-left-color: var(--service-type-dark-accent, var(--theme-border-strong)) !important;
 }
+
+
+/* Admin calendar / booking / test dark-mode parity 2026-09-24 */
+/* Match the neutral, layered dark surfaces used by member card / points / event-ticket screens.
+   These selectors intentionally live in theme.css (loaded last) so admin feature CSS can keep
+   its light-theme defaults without duplicating a second component stylesheet. */
+
+/* Calendar management */
+html[data-theme="dark"] #calendarPanel :where(
+  .admin-calendar,
+  .calendar-batch-editor,
+  .calendar-batch-row,
+  .calendar-event-link-fields,
+  .date-range-control
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] #calendarPanel :where(
+  .admin-calendar-toolbar,
+  .admin-calendar-weekdays
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-raised);
+}
+
+html[data-theme="dark"] #calendarPanel :where(
+  .admin-calendar-toolbar h3,
+  .calendar-batch-editor h3,
+  .calendar-batch-row-heading strong,
+  .calendar-batch-field,
+  .admin-calendar-day-button
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] #calendarPanel :where(
+  .admin-calendar-toolbar p,
+  .calendar-batch-editor .section-heading p:not(.kicker),
+  .calendar-weekdays,
+  .admin-calendar-weekdays
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] #calendarPanel :where(
+  .admin-calendar-day,
+  .admin-calendar-month-button
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #calendarPanel .admin-calendar-day-empty {
+  background: var(--theme-surface-muted);
+  opacity: .72;
+}
+
+html[data-theme="dark"] #calendarPanel .admin-calendar-day:hover:not(.admin-calendar-day-empty),
+html[data-theme="dark"] #calendarPanel .admin-calendar-day-button:hover,
+html[data-theme="dark"] #calendarPanel .admin-calendar-month-button:hover {
+  color: var(--theme-text);
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] #calendarPanel :where(
+  .admin-calendar-item,
+  .admin-calendar-item.holiday,
+  .admin-calendar-item.event
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #calendarPanel :where(
+  .admin-calendar-day.is-today,
+  .admin-calendar-day.is-selected-for-batch
+) {
+  border-color: rgba(114, 211, 156, .52);
+  box-shadow: inset 0 0 0 1px rgba(114, 211, 156, .24);
+}
+
+html[data-theme="dark"] #calendarPanel .admin-calendar-item-row.is-selected-for-batch .admin-calendar-item {
+  box-shadow: inset 0 0 0 1px var(--theme-accent);
+}
+
+html[data-theme="dark"] :where(
+  #calendarEditorModal .editor-modal-card,
+  #eventTicketCalendarInfoModal .editor-modal-card
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #eventTicketCalendarInfoContent > p {
+  color: var(--theme-text-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #eventTicketCalendarInfoContent > p strong {
+  color: var(--theme-text);
+}
+
+/* Booking management */
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-section-heading h3,
+  .booking-admin-booking h4,
+  .booking-admin-service-row strong,
+  .booking-admin-settings-block h4,
+  .booking-admin-settings-field,
+  .booking-admin-list-heading
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-section-heading p:not(.kicker),
+  .booking-admin-service-row small,
+  .booking-admin-booking-heading small,
+  .booking-admin-time,
+  .booking-admin-note,
+  .booking-admin-item-list,
+  .booking-admin-settings-eyebrow,
+  .booking-admin-settings-field > small,
+  .booking-admin-settings-actions > p
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-list-heading,
+  .booking-admin-settings-actions,
+  .booking-admin-hours-card .booking-admin-inline-actions
+) {
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-settings-badge,
+  .booking-admin-number-field > span
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-filter-button {
+  color: var(--theme-text-muted);
+  background: transparent;
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-filter-button:hover:not(.active) {
+  color: var(--theme-text);
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-filter-button.active,
+html[data-theme="dark"] #bookingPanel .booking-admin-subtabs .booking-admin-filter-button.active {
+  color: var(--ui-primary-contrast);
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-note.admin {
+  color: var(--theme-accent);
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-service-status.active,
+  .booking-admin-status.status-confirmed,
+  .booking-admin-status.status-completed
+) {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+}
+
+html[data-theme="dark"] #bookingPanel .booking-admin-status.status-pending {
+  color: var(--theme-warning-text);
+  background: #2b2617;
+}
+
+html[data-theme="dark"] #bookingPanel :where(
+  .booking-admin-service-status.inactive,
+  .booking-admin-status.status-rejected,
+  .booking-admin-status.status-cancelled
+) {
+  color: var(--theme-text-subtle);
+  background: #1b2520;
+}
+
+/* Test center shell, environment, accounts and runner */
+html[data-theme="dark"] :where(
+  .test-workspace-nav-shell,
+  .test-workspace-history-shell,
+  .test-mode-settings-card,
+  .test-mode-accounts-card,
+  .test-mode-form-section,
+  .test-mode-toggle,
+  .test-mode-account-selection-toolbar,
+  .test-account-row,
+  .test-control-screenshot
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] :where(
+  .test-workspace-tab:hover,
+  .test-control-history-item:hover,
+  .test-control-history-item.active,
+  .test-mode-toggle:hover,
+  .test-mode-count-chip:hover
+) {
+  color: var(--theme-text);
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] .test-workspace-tab[aria-selected="true"] {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] :where(
+  .test-workspace-tab-index,
+  .test-mode-count-chip,
+  .test-account-avatar
+) {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] .test-workspace-tab[aria-selected="true"] .test-workspace-tab-index {
+  color: var(--ui-primary-contrast);
+  background: var(--ui-primary);
+}
+
+html[data-theme="dark"] :where(
+  .test-mode-settings-card p,
+  .test-mode-accounts-card p,
+  .test-mode-section-heading small,
+  .test-mode-field-meta,
+  .test-mode-toggle-copy small,
+  .test-mode-account-create-hint,
+  .test-mode-actions p,
+  .test-mode-select-all,
+  .test-mode-selected-count,
+  .test-account-row small,
+  .test-mode-account-empty small
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] :where(
+  .test-mode-settings-card h3,
+  .test-mode-accounts-card h3,
+  .test-mode-section-heading strong,
+  .test-mode-toggle-copy strong,
+  .test-account-row strong,
+  .test-mode-account-empty strong
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] .test-mode-settings-card textarea {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] :where(
+  .test-mode-status-badge.is-loading,
+  .test-mode-status-badge.is-off
+) {
+  color: var(--theme-text-subtle);
+  background: #1b2520;
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  .test-mode-status-badge.is-active,
+  .test-mode-account-count,
+  .test-account-status
+) {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+  border-color: rgba(114, 211, 156, .2);
+}
+
+html[data-theme="dark"] :where(
+  .test-mode-status-badge.is-warning,
+  .test-mode-safety-note
+) {
+  color: var(--theme-warning-text);
+  background: #2b2617;
+  border-color: rgba(229, 198, 117, .24);
+}
+
+html[data-theme="dark"] .test-mode-safety-note p {
+  color: var(--theme-warning-text);
+}
+
+html[data-theme="dark"] :where(
+  .test-account-status.is-disabled
+) {
+  color: var(--theme-text-subtle);
+  background: #1b2520;
+}
+
+html[data-theme="dark"] :where(
+  .admin-e2e-heading h4,
+  .admin-e2e-data-box > strong,
+  .admin-e2e-participant strong,
+  .test-control-heading h3,
+  .test-control-run-head strong,
+  .test-control-history-card h4
+) {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] :where(
+  .admin-e2e-heading p,
+  .admin-e2e-summary,
+  .admin-e2e-paired-config small,
+  .admin-e2e-participant small,
+  .admin-e2e-participant > span,
+  .admin-e2e-config-note summary,
+  .admin-e2e-config-note p
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] :where(
+  .admin-e2e-data-box pre,
+  .test-control-data-grid pre
+) {
+  color: var(--theme-table-text);
+  background: var(--theme-surface-muted);
+}
+
+/* Keep native controls/icons readable on the dark admin surfaces. */
+html[data-theme="dark"] #calendarPanel input[type="date"],
+html[data-theme="dark"] #calendarEditorModal input[type="date"] {
+  color-scheme: dark;
+}
+
+@media (max-width: 760px) {
+  html[data-theme="dark"] #calendarPanel :where(
+    .admin-calendar-toolbar,
+    .admin-calendar-weekdays
+  ) {
+    background: var(--theme-surface-raised);
+  }
+
+  html[data-theme="dark"] #calendarPanel .admin-calendar > .calendar-batch-editor {
+    background: var(--theme-surface-raised);
+  }
+}
