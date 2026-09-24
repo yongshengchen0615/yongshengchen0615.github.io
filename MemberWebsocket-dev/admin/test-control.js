@@ -463,19 +463,39 @@
     link.rel = 'noopener noreferrer';
     link.textContent = '在新分頁開啟';
 
+    function loadInlinePreview(signedUrl) {
+      return new Promise((resolve, reject) => {
+        image.onload = () => {
+          image.onload = null;
+          image.onerror = null;
+          resolve(true);
+        };
+        image.onerror = () => {
+          image.onload = null;
+          image.onerror = null;
+          reject(new Error('快照連結已建立，但管理端無法載入圖片。'));
+        };
+        image.src = signedUrl;
+      });
+    }
+
     button.addEventListener('click', async () => {
       if (button.disabled) return;
       button.disabled = true;
+      image.classList.add('hidden');
       status.textContent = '正在產生短效 Signed URL…';
       try {
         const data = await requestArtifactSignedUrl(path);
-        image.src = data.signedUrl;
-        image.classList.remove('hidden');
         link.href = data.signedUrl;
         link.classList.remove('hidden');
-        button.textContent = '重新取得連結';
-        status.textContent = 'Signed URL 已產生，約 5 分鐘後失效。';
+        status.textContent = '正在管理端載入失敗快照…';
+        await loadInlinePreview(data.signedUrl);
+        image.classList.remove('hidden');
+        button.textContent = '重新取得快照';
+        status.textContent = '快照已直接載入管理端；Signed URL 約 5 分鐘後失效。';
       } catch (error) {
+        image.removeAttribute('src');
+        image.classList.add('hidden');
         status.textContent = error?.message || '快照讀取失敗；可能已超過 30 天保留期限。';
       } finally {
         button.disabled = false;
