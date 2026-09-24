@@ -37,6 +37,7 @@
   <link rel="stylesheet" href="../responsive.css?v=20260914-line-form-1">
   <script src="../dialog-accessibility.js?v=20260913" defer></script>
   <link rel="stylesheet" href="../theme.css?v=admin-booking-dark-20260924-4">
+  <link rel="stylesheet" href="../experience.css?v=lumen-experience-20260924-1">
   <script src="../theme.js?v=theme-contrast-20260924-4"></script>
 </head>
 <body>
@@ -47,6 +48,11 @@
     <main id="adminView" class="hidden">
       <header class="topbar"><div><p class="kicker">Lumen Club / Operations</p><h1>管理工作台</h1></div><div class="account-menu"><span id="displayName">管理員</span><span id="roleLabel" class="role-label">Admin</span><button id="logoutButton" class="text-button" type="button">登出</button></div></header>
       <nav class="surface-nav" role="tablist" aria-label="管理功能"><button id="membersTab" class="surface-tab" type="button" role="tab" aria-selected="true" aria-controls="membersPanel">會員卡</button><button id="cardsTab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="cardsPanel">集點卡</button><button id="eventsTab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="eventsPanel">活動票券</button><button id="calendarTab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="calendarPanel">日曆</button><button id="testModeTab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="testModePanel">測試</button></nav>
+
+      <section class="ops-overview" aria-labelledby="opsOverviewTitle">
+        <div><p class="kicker">Live operations</p><h2 id="opsOverviewTitle">營運概況</h2></div>
+        <p>先看會員、集點、票券與今日異動，再進入下方工作區處理細節；數字維持既有即時同步來源。</p>
+      </section>
 
       <section class="stats-row" aria-label="目前概況"><div><span class="stat-label">會員總數</span><strong id="memberCount">0</strong><small>已建立會員資料</small></div><div><span class="stat-label">啟用會員</span><strong id="activeMemberCount">0</strong><small>可使用會員權益</small></div><div><span class="stat-label">進行中集點卡</span><strong id="activeCardCount">0</strong><small>正在對外開放</small></div><div><span class="stat-label">進行中活動票券</span><strong id="activeEventTicketCount">0</strong><small>目前可供會員領取</small></div><div><span class="stat-label">今日新增點數</span><strong id="todayEntryCount">0</strong><small>本日登錄紀錄</small></div></section>
 
