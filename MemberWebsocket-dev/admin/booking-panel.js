@@ -72,10 +72,10 @@
 
   loadSharedResponsive();
   loadStyle('booking-panel-responsive.css', 'booking-settings-layout-20260918-1');
-  loadStyle('booking-summary.css', 'booking-summary-20260918-participants-1');
-  loadStyle('booking-resources.css', 'booking-technician-disable-action-20260920-1');
-  loadStyle('../booking-admin-group-details.css', 'booking-group-details-20260918-admin-edit-1');
-  loadStyle('ui-polish.css', 'ui-refresh-20260924-1');
+  loadStyle('booking-summary.css', 'booking-theme-tokens-20260924-1');
+  loadStyle('booking-resources.css', 'booking-theme-tokens-20260924-1');
+  loadStyle('../booking-admin-group-details.css', 'booking-theme-tokens-20260924-1');
+  loadStyle('ui-polish.css', 'booking-theme-tokens-20260924-1');
   loadStyle('ui-polish-responsive.css', 'ui-refresh-20260924-1');
 
   document.addEventListener('click', (event) => {
