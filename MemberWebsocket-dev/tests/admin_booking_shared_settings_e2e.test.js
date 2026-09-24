@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('admin full E2E performs a non-destructive booking shared-settings round trip', () => {
+test('admin full E2E mutates booking shared settings, verifies cross-end behavior, conflicts and restoration', () => {
   const source = read('admin/e2e-control.js');
 
   assert.match(source, /ADMIN_BOOKING_SHARED_SETTINGS/);
@@ -25,12 +25,31 @@ test('admin full E2E performs a non-destructive booking shared-settings round tr
   }
 
   assert.match(source, /admin\.booking\.manage\.bootstrap/);
+  assert.match(source, /admin\.booking\.settings\.save/);
+  assert.match(source, /user\.booking\.bootstrap/);
+  assert.match(source, /user\.booking\.slots/);
+  assert.match(source, /invalidWorkHoursRejected/);
   assert.match(source, /invalidAdvanceRejected/);
   assert.match(source, /invalidStoreMinutesRejected/);
-  assert.match(source, /roundTripSaved/);
-  assert.match(source, /persistedReadback/);
-  assert.match(source, /semanticValuesUnchanged/);
-  assert.match(source, /sameSemanticSettings/);
+  assert.match(source, /invalidNoticeRejected/);
+  assert.match(source, /validMutationSaved/);
+  assert.match(source, /mutatedReadback/);
+  assert.match(source, /updatedAtChanged/);
+  assert.match(source, /staleVersionRejected/);
+  assert.match(source, /BOOKING_SETTINGS_CONFLICT/);
+  assert.match(source, /userRealtimeSettingsSynced/);
+  assert.match(source, /userRealtimeNoticeSynced/);
+  assert.match(source, /userBootstrapMatched/);
+  assert.match(source, /userStoreMinutesMatched/);
+  assert.match(source, /userDateWindowEnforced/);
+  assert.match(source, /restoredViaUi/);
+  assert.match(source, /restoreReadback/);
+  assert.match(source, /userRestoreSynced/);
+  assert.match(source, /restoreFallbackUsed/);
+  assert.match(source, /createPairedSession/);
+  assert.match(source, /waitParticipantSurface/);
+  assert.match(source, /expectedUpdatedAt/);
+  assert.doesNotMatch(source, /semanticValuesUnchanged/);
 });
 
 test('booking shared-settings controls are explicit feature and button coverage contracts', () => {
