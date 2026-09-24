@@ -11,6 +11,9 @@ test('admin full E2E mutates booking shared settings, verifies cross-end behavio
 
   assert.match(source, /ADMIN_BOOKING_SHARED_SETTINGS/);
   assert.match(source, /adminBookingSharedSettingsCase/);
+  assert.match(source, /if \(normalizedDomain === 'Admin Settings E2E'\) return true;/);
+  assert.match(source, /const preflightKeys = new Set\(\[\s*'ADMIN_AUTH_READY',\s*'ADMIN_BOOKING_CONTROLS',\s*'ADMIN_BOOKING_SHARED_SETTINGS'\s*\]\)/);
+  assert.match(source, /remainingAdminDefinitions = allAdminDefinitions\.filter\(\(def\) => !preflightKeys\.has\(def\.key\)\)/);
   for (const id of [
     'bookingAdminSettingsForm',
     'bookingAdminStartTime',
@@ -80,5 +83,5 @@ test('booking admin refresh merges the richer admin settings contract', () => {
 
 test('admin entrypoint cache-busts the shared-settings E2E controller', () => {
   const html = read('admin/index.html');
-  assert.match(html, /\.\/e2e-control\.js\?v=admin-e2e-20260924-26/);
+  assert.match(html, /\.\/e2e-control\.js\?v=admin-e2e-20260924-27/);
 });
