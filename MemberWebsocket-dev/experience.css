@@ -186,6 +186,64 @@ html[data-theme] #bookingView .calendar-legend {
   border-top: 1px solid var(--theme-border);
 }
 
+html[data-theme] #bookingView :where(.calendar-nav-button, .calendar-day) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] #bookingView .calendar-day:not(:disabled):hover {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-focus-ring);
+}
+
+html[data-theme] #bookingView .calendar-day.selected {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--ui-primary);
+  box-shadow: inset 0 0 0 1px var(--ui-primary);
+}
+
+html[data-theme] #bookingView .calendar-day.has-booking {
+  background: var(--theme-warning-soft);
+}
+
+html[data-theme] #bookingView :where(
+  .calendar-day:disabled,
+  .calendar-day.past-disabled,
+  .calendar-day.advance-disabled,
+  .slot-button:disabled
+) {
+  color: var(--theme-disabled-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] #bookingView .calendar-booking-times small {
+  color: var(--theme-warning-text);
+  background: var(--theme-warning-soft);
+}
+
+html[data-theme] #bookingView .booking-selection-modal {
+  background: var(--theme-overlay);
+}
+
+html[data-theme] #bookingView .booking-selection-modal-card,
+html[data-theme] #bookingView .booking-selection-modal-close {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] #bookingView .booking-selection-modal-close {
+  background: var(--theme-surface-raised);
+}
+
+html[data-theme] #bookingView .booking-selection-modal-heading strong,
+html[data-theme] #bookingView .calendar-legend {
+  color: var(--theme-text-muted);
+}
+
 /* Membership milestone rail */
 html[data-theme] .membership-milestones {
   position: relative;
@@ -255,6 +313,11 @@ html[data-theme] .membership-milestone.is-current::before {
 html[data-theme] #eventView .event-ticket {
   --ticket-notch-offset: -34px;
   border-radius: 18px;
+}
+
+html[data-theme] #eventView .event-ticket-meta {
+  padding-top: 0;
+  border-top: 0;
 }
 
 html[data-theme] #eventView .event-ticket-action {
