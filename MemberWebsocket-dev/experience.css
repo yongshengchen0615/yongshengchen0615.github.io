@@ -177,7 +177,7 @@ html[data-theme] #bookingView .selected-service-fieldset {
   background: var(--theme-surface-muted);
 }
 
-html[data-theme] #bookingView .selection-summary {
+html[data-theme] #bookingView #selectionSummary {
   border: 1px solid var(--theme-border);
 }
 
@@ -297,8 +297,18 @@ html[data-theme] #pointsView .member-ticket-footer {
   border-top: 1px dashed var(--theme-border-strong);
 }
 
+html[data-theme] #pointsView .member-ticket[data-card-style] .member-ticket-footer {
+  border-top-color: rgba(255, 250, 243, .28);
+}
+
 html[data-theme] #pointsView .member-ticket.is-ready {
   box-shadow: var(--ui-shadow-card);
+}
+
+html[data-theme] .ticket-modal,
+html[data-theme] .booking-selection-modal {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* Common interaction polish */
