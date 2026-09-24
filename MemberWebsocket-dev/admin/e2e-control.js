@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.21';
+  const VERSION = '2026-09-24.22';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -1100,6 +1100,7 @@
       caseDef('ADMIN_CALENDAR_CRUD', '日曆：新增／修改／刪除', 'Admin CRUD E2E', adminCalendarCrudCase),
       caseDef('ADMIN_BOOKING_CRUD', '預約：類型與項目新增／修改／刪除', 'Admin CRUD E2E', adminBookingCrudCase),
       caseDef('ADMIN_BOOKING_CONTROLS', '預約管理分頁與新增視窗', 'Human E2E', adminBookingControlsCase),
+      caseDef('ADMIN_BOOKING_SHARED_SETTINGS', '預約：共用設定驗證／儲存／回讀', 'Admin Settings E2E', adminBookingSharedSettingsCase),
       caseDef('ADMIN_THEME_TOGGLE', '亮／暗主題切換與偏好還原', 'UI', adminThemeToggleCase),
       caseDef('ADMIN_MEMBER_DIRECTORY_CONTROLS', '會員搜尋／分頁／紀錄篩選', 'UI', adminMemberDirectoryControlsCase),
       caseDef('ADMIN_MESSAGE_PRESET_EDITOR', '預設訊息管理視窗與驗證', 'UI', adminMessagePresetEditorCase),
@@ -2734,6 +2735,139 @@
       : fail('至少一個預約管理控制或狀態分頁異常。', {
           allBookingControls: true,
           allBookingStatusTabs: true
+        }, actual);
+  }
+
+  async function adminBookingSharedSettingsCase() {
+    document.getElementById('bookingTab')?.click();
+    const ready = await waitBookingAdminReady(15000);
+    document.getElementById('bookingAdminSettingsSubtab')?.click();
+    const panelVisible = Boolean(await waitFor(() => {
+      const panel = document.getElementById('bookingAdminSettingsPanel');
+      return panel && !panel.classList.contains('hidden') ? panel : null;
+    }, 4000));
+
+    const ids = [
+      'bookingAdminSettingsForm',
+      'bookingAdminStartTime',
+      'bookingAdminEndTime',
+      'bookingAdminAdvanceDays',
+      'bookingAdminMaxAdvanceDays',
+      'bookingAdminStoreServiceMinutes',
+      'bookingAdminNotice',
+      'bookingAdminSettingsMessage',
+      'bookingAdminSaveSettingsButton'
+    ];
+    const controls = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
+    const missing = ids.filter((id) => !controls[id]);
+    const actual = {
+      ready,
+      panelVisible,
+      missing,
+      bootstrapMatched: false,
+      invalidAdvanceRejected: false,
+      invalidStoreMinutesRejected: false,
+      roundTripSaved: false,
+      persistedReadback: false,
+      semanticValuesUnchanged: false
+    };
+    if (!ready || !panelVisible || missing.length) {
+      return fail('預約共用設定控制項未完整載入。', {
+        ready: true, panelVisible: true, missing: []
+      }, actual);
+    }
+
+    const snapshot = {
+      workStartTime: String(controls.bookingAdminStartTime.value || ''),
+      workEndTime: String(controls.bookingAdminEndTime.value || ''),
+      minAdvanceDays: Number(controls.bookingAdminAdvanceDays.value),
+      maxAdvanceDays: Number(controls.bookingAdminMaxAdvanceDays.value),
+      storeServiceMinutes: Number(controls.bookingAdminStoreServiceMinutes.value),
+      bookingNotice: String(controls.bookingAdminNotice.value || '')
+    };
+    const sameSemanticSettings = (settings) =>
+      String(settings?.workStartTime || '') === snapshot.workStartTime &&
+      String(settings?.workEndTime || '') === snapshot.workEndTime &&
+      Number(settings?.minAdvanceDays) === snapshot.minAdvanceDays &&
+      Number(settings?.maxAdvanceDays) === snapshot.maxAdvanceDays &&
+      Number(settings?.storeServiceMinutes) === snapshot.storeServiceMinutes &&
+      String(settings?.bookingNotice || '') === snapshot.bookingNotice;
+
+    const session = await adminSession();
+    const before = await postFunction('booking-admin-api', {
+      action: 'admin.booking.manage.bootstrap',
+      clientType: 'admin',
+      idToken: session.idToken
+    });
+    actual.bootstrapMatched = sameSemanticSettings(before?.settings);
+
+    try {
+      setField('bookingAdminAdvanceDays', '5');
+      setField('bookingAdminMaxAdvanceDays', '4');
+      controls.bookingAdminSaveSettingsButton.click();
+      actual.invalidAdvanceRejected = Boolean(await waitFor(() =>
+        /最遠可預約天數不可小於需要提前的天數/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        1200
+      ));
+
+      setField('bookingAdminAdvanceDays', String(snapshot.minAdvanceDays));
+      setField('bookingAdminMaxAdvanceDays', String(snapshot.maxAdvanceDays));
+      setField('bookingAdminStoreServiceMinutes', '0');
+      controls.bookingAdminSaveSettingsButton.click();
+      actual.invalidStoreMinutesRejected = Boolean(await waitFor(() =>
+        /店內服務分鐘必須介於 1–720 分鐘/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        1200
+      ));
+
+      setField('bookingAdminStartTime', snapshot.workStartTime);
+      setField('bookingAdminEndTime', snapshot.workEndTime);
+      setField('bookingAdminAdvanceDays', String(snapshot.minAdvanceDays));
+      setField('bookingAdminMaxAdvanceDays', String(snapshot.maxAdvanceDays));
+      setField('bookingAdminStoreServiceMinutes', String(snapshot.storeServiceMinutes));
+      setField('bookingAdminNotice', snapshot.bookingNotice);
+
+      controls.bookingAdminSaveSettingsButton.click();
+      actual.roundTripSaved = Boolean(await waitFor(() =>
+        /預約共用設定已儲存/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        15000,
+        100
+      ));
+
+      const after = await postFunction('booking-admin-api', {
+        action: 'admin.booking.manage.bootstrap',
+        clientType: 'admin',
+        idToken: session.idToken
+      });
+      actual.persistedReadback = sameSemanticSettings(after?.settings);
+      actual.semanticValuesUnchanged = sameSemanticSettings(before?.settings) && sameSemanticSettings(after?.settings);
+    } finally {
+      setField('bookingAdminStartTime', snapshot.workStartTime);
+      setField('bookingAdminEndTime', snapshot.workEndTime);
+      setField('bookingAdminAdvanceDays', String(snapshot.minAdvanceDays));
+      setField('bookingAdminMaxAdvanceDays', String(snapshot.maxAdvanceDays));
+      setField('bookingAdminStoreServiceMinutes', String(snapshot.storeServiceMinutes));
+      setField('bookingAdminNotice', snapshot.bookingNotice);
+    }
+
+    const ok = actual.ready && actual.panelVisible && actual.missing.length === 0 &&
+      actual.bootstrapMatched && actual.invalidAdvanceRejected && actual.invalidStoreMinutesRejected &&
+      actual.roundTripSaved && actual.persistedReadback && actual.semanticValuesUnchanged;
+    return ok
+      ? pass('預約共用設定已完成真人欄位驗證、非破壞儲存與後端回讀；測試前後語意設定保持一致。', {
+          controls: true,
+          invalidAdvanceRejected: true,
+          invalidStoreMinutesRejected: true,
+          roundTripSaved: true,
+          persistedReadback: true,
+          semanticValuesUnchanged: true
+        }, actual)
+      : fail('預約共用設定 E2E 至少一個驗證、儲存或回讀階段失敗。', {
+          controls: true,
+          invalidAdvanceRejected: true,
+          invalidStoreMinutesRejected: true,
+          roundTripSaved: true,
+          persistedReadback: true,
+          semanticValuesUnchanged: true
         }, actual);
   }
 
@@ -4440,7 +4574,13 @@
       ['testEnvironment', '#testModeForm'],
       ['testAccounts', '#testModeAccountList'],
       ['testControlCenter', '.test-control-center'],
-      ['bookingWorkspace', '#bookingPanel']
+      ['bookingWorkspace', '#bookingPanel'],
+      ['bookingSharedSettings', '#bookingAdminSettingsForm'],
+      ['bookingWorkingHours', '#bookingAdminStartTime'],
+      ['bookingAdvanceMinimum', '#bookingAdminAdvanceDays'],
+      ['bookingAdvanceMaximum', '#bookingAdminMaxAdvanceDays'],
+      ['bookingStoreServiceMinutes', '#bookingAdminStoreServiceMinutes'],
+      ['bookingNotice', '#bookingAdminNotice']
     ];
     const missing = contracts.filter(([, selector]) => !document.querySelector(selector)).map(([key, selector]) => ({ key, selector }));
     const actual = { contractCount: contracts.length, missing };
@@ -4451,16 +4591,22 @@
 
   async function adminButtonCoverageCase() {
     const buttons = Array.from(document.querySelectorAll('#adminView button, body > .modal button, #bookingPanel button'));
+    const explicitCaseByButtonId = new Map([
+      ['bookingAdminSaveSettingsButton', 'ADMIN_BOOKING_SHARED_SETTINGS']
+    ]);
+    const registeredCaseKeys = new Set(adminDefinitions('full').map((item) => item.key));
     const unmapped = [];
     const mapped = [];
     for (const button of buttons) {
       const id = String(button.id || '');
       const datasets = Object.keys(button.dataset || {});
-      const accepted =
-        Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|close|cancel|save|grant|messagePreset|booking|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
-        datasets.length > 0 ||
-        button.classList.contains('editor-modal-close') ||
-        button.classList.contains('close-button');
+      const explicitCase = explicitCaseByButtonId.get(id) || '';
+      const accepted = explicitCase
+        ? registeredCaseKeys.has(explicitCase)
+        : Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|close|cancel|save|grant|messagePreset|booking|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
+          datasets.length > 0 ||
+          button.classList.contains('editor-modal-close') ||
+          button.classList.contains('close-button');
       const key = id || datasets.map((key) => 'data-' + key).join(',') || button.textContent?.trim().slice(0, 60) || '[button]';
       (accepted ? mapped : unmapped).push(key);
     }
