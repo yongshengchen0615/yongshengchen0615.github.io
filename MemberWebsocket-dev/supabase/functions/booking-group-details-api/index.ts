@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
 const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
@@ -41,35 +42,6 @@ function db() {
   const key = env("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !key) throw new ApiError(503, "SUPABASE_CONFIG_MISSING", "預約資料服務設定尚未完成。");
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
-async function verifyAdmin(idToken: string) {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入管理端。");
-  const channelId = env("LINE_ADMIN_CHANNEL_ID") || "2010791619";
-  let response: Response;
-  try {
-    response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: channelId }),
-    });
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證暫時無法使用。");
-  }
-  const payload = await response.json().catch(() => ({}));
-  const exp = Number(payload.exp || 0);
-  if (!response.ok || !payload.sub || payload.aud !== channelId || payload.iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) {
-    throw new ApiError(401, "AUTH_INVALID", "LINE 管理端登入已失效，請重新登入。");
-  }
-  return String(payload.sub);
-}
-
-async function authorizeAdmin(supabase: ReturnType<typeof db>, lineUserId: string) {
-  const result = await supabase.from("admins").select("id,role,status").eq("line_user_id", lineUserId).maybeSingle();
-  if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法確認管理員權限。");
-  if (!result.data || result.data.role !== "admin" || result.data.status !== "active") {
-    throw new ApiError(403, "ADMIN_PENDING", "管理端帳號尚未授權。");
-  }
 }
 
 async function sha256(value: string): Promise<string> {
@@ -190,10 +162,18 @@ Deno.serve(async (request: Request) => {
     if (asText(body.action, 100) !== "admin.booking.group.details" || asText(body.clientType, 20) !== "admin") {
       throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     }
-    const lineUserId = await verifyAdmin(asText(body.idToken, 5000));
+    const identity = await verifyLineIdTokenContract({
+      idToken: asText(body.idToken, 5000),
+      expectedChannelId: env("LINE_ADMIN_CHANNEL_ID") || "2010791619",
+      createError: (status, code, message, details) => new ApiError(status, code, message, details),
+    });
     const supabase = db();
-    await authorizeAdmin(supabase, lineUserId);
-    await consumeRateLimit(supabase, lineUserId);
+    await requireActiveAdminContract({
+      supabase,
+      identity,
+      createError: (status, code, message, details) => new ApiError(status, code, message, details),
+    });
+    await consumeRateLimit(supabase, identity.lineUserId);
     const data = await groupDetails(supabase, body);
     return reply(origin, { ok: true, data });
   } catch (error) {
