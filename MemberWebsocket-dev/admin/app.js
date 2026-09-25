@@ -70,6 +70,7 @@
     if (eventTicketTierAccess && eventTicketTitleField) {
       els.eventTicketForm.insertBefore(eventTicketTierAccess, eventTicketTitleField);
       eventTicketTierAccess.addEventListener('change', updateEventTicketTierSummary);
+      eventTicketTierAccess.addEventListener('click', handleAudiencePresetClick);
       updateEventTicketTierSummary();
     }
     ensureCalendarItemTierAccess();
@@ -1554,8 +1555,56 @@
   }
 
   function collectEventTicketAllowedTiers() { return Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.value || '').trim()).filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)); }
-  function setEventTicketAllowedTiers(tierKeys) { const allowed = Array.isArray(tierKeys) ? tierKeys.filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)) : tierKeys === undefined || tierKeys === null ? EVENT_TICKET_TIER_KEYS : []; document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]').forEach((input) => { input.checked = allowed.includes(input.value); }); updateEventTicketTierSummary(); }
-  function updateEventTicketTierSummary() { const summary = document.getElementById('eventTicketTierSummary'); if (!summary) return; const selected = Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.parentElement && input.parentElement.textContent || '').trim()).filter(Boolean); summary.textContent = selected.length === EVENT_TICKET_TIER_KEYS.length ? '已選擇：所有會員等級' : selected.length ? `已選擇：${selected.join('、')}` : '尚未選擇可使用的會員等級'; }
+  function setEventTicketAllowedTiers(tierKeys) {
+    const allowed = Array.isArray(tierKeys) ? tierKeys.filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)) : tierKeys === undefined || tierKeys === null ? EVENT_TICKET_TIER_KEYS : [];
+    document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]').forEach((input) => { input.checked = allowed.includes(input.value); });
+    updateEventTicketTierSummary();
+  }
+  function audiencePresetTierKeys(preset) {
+    const presets = {
+      all: EVENT_TICKET_TIER_KEYS,
+      general: ['general'],
+      'silver-plus': ['silver', 'gold', 'platinum'],
+      'gold-plus': ['gold', 'platinum'],
+      platinum: ['platinum'],
+    };
+    return presets[String(preset || '')] || null;
+  }
+  function handleAudiencePresetClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-audience-preset]') : null;
+    if (!button) return;
+    const tiers = audiencePresetTierKeys(button.dataset.audiencePreset);
+    if (!tiers) return;
+    setEventTicketAllowedTiers(tiers);
+    button.focus({ preventScroll: true });
+  }
+  function audiencePresetForTierKeys(tierKeys) {
+    const selected = EVENT_TICKET_TIER_KEYS.filter((tierKey) => tierKeys.includes(tierKey));
+    for (const preset of ['all', 'general', 'silver-plus', 'gold-plus', 'platinum']) {
+      const values = audiencePresetTierKeys(preset) || [];
+      if (values.length === selected.length && values.every((value) => selected.includes(value))) return preset;
+    }
+    return '';
+  }
+  function updateEventTicketTierSummary() {
+    const root = document.getElementById('eventTicketAllowedTiers');
+    const summary = document.getElementById('eventTicketTierSummary');
+    if (!root || !summary) return;
+    const selectedKeys = collectEventTicketAllowedTiers();
+    const labels = selectedKeys.map((tierKey) => CALENDAR_ITEM_TIER_LABELS[tierKey] || tierKey);
+    summary.textContent = selectedKeys.length === EVENT_TICKET_TIER_KEYS.length
+      ? `所有會員等級 · ${selectedKeys.length} / ${EVENT_TICKET_TIER_KEYS.length}`
+      : selectedKeys.length
+        ? `${labels.join('、')} · ${selectedKeys.length} / ${EVENT_TICKET_TIER_KEYS.length}`
+        : '尚未選擇適用會員 · 0 / 4';
+    const activePreset = audiencePresetForTierKeys(selectedKeys);
+    root.querySelectorAll('[data-audience-preset]').forEach((button) => {
+      const active = String(button.dataset.audiencePreset || '') === activePreset;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    root.classList.toggle('has-no-audience', selectedKeys.length === 0);
+  }
   function updateEventTicketTypeUI() { const lottery = els.eventTicketType.value === 'lottery'; els.eventTicketPrizeEditor.classList.toggle('hidden', !lottery); if (lottery && !els.eventTicketPrizeRows.children.length) renderEventTicketPrizeRows([defaultPrize()]); }
   function renderEventTicketPrizeRows(prizes) { els.eventTicketPrizeRows.replaceChildren(...prizes.map((prize, index) => { const row = document.createElement('div'); row.className = 'prize-row'; row.dataset.eventTicketPrizeRow = 'true'; row.append(fieldLabel(`獎項 ${index + 1} 名稱`, 'text', prize.prizeTitle, { field: 'eventTicketPrizeTitle', maxlength: '100', placeholder: '例如：免費蛋糕' }), fieldLabel('中獎機率', 'number', prize.winRate, { field: 'eventTicketPrizeRate', min: '0', max: '100', step: '0.01', suffix: '%' })); const description = fieldLabel('獎項說明（選填）', 'text', prize.prizeDescription, { field: 'eventTicketPrizeDescription', maxlength: '240', placeholder: '例如：可兌換任一蛋糕' }); description.classList.add('prize-description-field'); const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button remove-prize'; remove.dataset.removeEventTicketPrize = 'true'; remove.textContent = '刪除'; row.append(description, remove); return row; })); updateEventTicketPrizeTotal(); }
   function collectEventTicketPrizes() { return Array.from(els.eventTicketPrizeRows.querySelectorAll('[data-event-ticket-prize-row]')).map((row) => ({ prizeTitle: String(row.querySelector('[data-field="eventTicketPrizeTitle"]')?.value || '').trim(), prizeDescription: String(row.querySelector('[data-field="eventTicketPrizeDescription"]')?.value || '').trim(), winRate: Number(row.querySelector('[data-field="eventTicketPrizeRate"]')?.value) })); }
