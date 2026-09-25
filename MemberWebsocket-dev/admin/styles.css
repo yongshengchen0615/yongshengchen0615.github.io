@@ -428,3 +428,90 @@ button, input, select, textarea { line-height: 1.35; }
 .member-test-profile-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .grant-test-notification-note { margin: 0; padding: 10px 12px; border: 1px solid #eadbc3; border-radius: 10px; color: #806d52; background: #fffaf0; font-size: 11px; font-weight: 750; line-height: 1.55; }
 @media (max-width: 480px) { .member-directory-tabs { width: 100%; } .member-directory-tab { flex: 1; min-width: 0; } }
+
+
+/* admin operations integration 2026-09-25 */
+.member-records-overview {
+  display: grid;
+  grid-template-columns: minmax(140px, .8fr) minmax(280px, 1.5fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin: 14px 0 10px;
+  padding: 14px;
+  border: 1px solid var(--theme-border, var(--line));
+  border-radius: 14px;
+  background: var(--theme-surface-muted, #f6f8f5);
+}
+.member-records-overview-copy { display: grid; gap: 4px; min-width: 0; }
+.member-records-overview-copy strong { color: var(--theme-text, var(--ink)); font-size: 16px; }
+.member-records-overview-copy span { color: var(--theme-text-muted, var(--muted)); font-size: 11px; }
+.member-records-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.member-records-overview-metrics > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--theme-border, var(--line));
+  border-radius: 10px;
+  background: var(--theme-surface, var(--paper));
+}
+.member-records-overview-metrics small { color: var(--theme-text-muted, var(--muted)); font-size: 9px; }
+.member-records-overview-metrics strong {
+  overflow: hidden;
+  color: var(--theme-text, var(--ink));
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-records-overview-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.member-records-overview-actions .button { min-height: 36px; padding: 8px 11px; font-size: 11px; }
+
+.admin-calendar-bookings {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding-top: 2px;
+  border-top: 1px dashed var(--theme-border, var(--line));
+}
+.admin-calendar-booking {
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 5px;
+  border: 0;
+  border-left: 3px solid var(--theme-accent, var(--green));
+  border-radius: 5px;
+  color: var(--theme-text, var(--ink));
+  background: var(--theme-surface-muted, #eef4ef);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.admin-calendar-booking.status-pending { border-left-style: dashed; }
+.admin-calendar-booking.status-completed { opacity: .72; }
+.admin-calendar-booking.has-cancellation-request { border-left-color: var(--theme-danger, #a84d42); }
+.admin-calendar-booking:hover,
+.admin-calendar-booking:focus-visible { filter: brightness(.97); outline: 2px solid var(--theme-focus, var(--theme-accent, var(--green))); outline-offset: 1px; }
+.admin-calendar-booking-more { color: var(--theme-text-muted, var(--muted)); font-size: 9px; font-weight: 750; }
+.booking-admin-booking.is-calendar-target {
+  outline: 2px solid var(--theme-accent, var(--green));
+  outline-offset: 3px;
+  scroll-margin-block: 96px;
+}
+
+@media (max-width: 900px) {
+  .member-records-overview { grid-template-columns: 1fr; align-items: stretch; }
+  .member-records-overview-actions { justify-content: stretch; }
+  .member-records-overview-actions .button { flex: 1 1 140px; }
+}
+@media (max-width: 640px) {
+  .member-records-overview { padding: 11px; }
+  .member-records-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-calendar-booking { padding: 3px 4px; font-size: 8.5px; }
+}

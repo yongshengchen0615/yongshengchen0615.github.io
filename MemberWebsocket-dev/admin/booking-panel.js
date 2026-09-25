@@ -106,7 +106,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-refresh-coalesce-20260924-1');
+      return load('booking-panel-core.js', 'admin-operations-integration-20260925-1');
     })
     .then(() => {
       openLegacyBookingRouteWhenReady();
