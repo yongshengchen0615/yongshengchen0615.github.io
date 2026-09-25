@@ -45,8 +45,15 @@ jobs:
       - name: Install DOM integration test dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: MemberWebsocket-dev/tests/integration
-      - name: Check admin startup and observer responsiveness
-        run: node --test MemberWebsocket-dev/tests/integration/admin_startup.cjs MemberWebsocket-dev/tests/integration/booking_startup.cjs MemberWebsocket-dev/tests/integration/booking_copy.cjs
+      - name: Check DOM, accessibility, and booking integration behavior
+        run: |
+          node --test \
+            MemberWebsocket-dev/tests/integration/admin_startup.cjs \
+            MemberWebsocket-dev/tests/integration/booking_startup.cjs \
+            MemberWebsocket-dev/tests/integration/booking_copy.cjs \
+            MemberWebsocket-dev/tests/integration/dialog_accessibility.cjs
+          node MemberWebsocket-dev/tests/integration/booking_ui.cjs
+          node MemberWebsocket-dev/tests/integration/booking_sql.cjs
 
   browser-syntax:
     name: Browser JavaScript syntax
@@ -109,6 +116,7 @@ jobs:
         run: |
           deno check \
             MemberWebsocket-dev/supabase/functions/api/index.ts \
+            MemberWebsocket-dev/supabase/functions/birthday-benefits/index.ts \
             MemberWebsocket-dev/supabase/functions/test-mode-api/index.ts \
             MemberWebsocket-dev/supabase/functions/test-control-api/index.ts \
             MemberWebsocket-dev/supabase/functions/user-test-api/index.ts \
@@ -122,10 +130,15 @@ jobs:
             MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-api/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-admin-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-admin-operations/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-group-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-group-details-api/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-group-slots-api/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-calendar-api/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-cancellation-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-line-notifications/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-technician-delete/index.ts \
+            MemberWebsocket-dev/supabase/functions/fixed-ticket-automation/index.ts \
             MemberWebsocket-dev/supabase/functions/member-calendar-api/index.ts \
             MemberWebsocket-dev/supabase/functions/calendar-system-api/index.ts \
             MemberWebsocket-dev/supabase/functions/calendar-member-api/index.ts \

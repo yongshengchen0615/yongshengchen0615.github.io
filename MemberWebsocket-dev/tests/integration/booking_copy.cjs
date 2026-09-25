@@ -44,6 +44,8 @@ for (const entry of ['admin']) {
         ],
       };
       else if (action === 'admin.booking.contacts') data = { contacts: [booking] };
+      else if (action === 'admin.booking.summary') data = { pendingCount: 1, unreadCount: 1, latestNotificationId: 1 };
+      else if (action === 'admin.booking.notifications.read') data = { unreadCount: 0, latestNotificationId: 1 };
       else {
         assert.equal(action, 'admin.booking.group.details');
         assert.deepEqual(bookingIds, [bookingId]);
