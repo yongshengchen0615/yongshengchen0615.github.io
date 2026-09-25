@@ -53,8 +53,8 @@ test('admin test control center is a result surface for the unified full E2E', (
 test('test control API requires admin identity and records observable cases', () => {
   const api = read('supabase/functions/test-control-api/index.ts');
 
-  assert.match(api, /verifyAdminIdentity/);
-  assert.match(api, /authorizeAdmin/);
+  assert.match(api, /verifyLineIdTokenContract/);
+  assert.match(api, /requireActiveAdminContract/);
   assert.match(api, /LINE_ADMIN_CHANNEL_ID/);
   assert.match(api, /automation_test_runs/);
   assert.match(api, /automation_test_cases/);
