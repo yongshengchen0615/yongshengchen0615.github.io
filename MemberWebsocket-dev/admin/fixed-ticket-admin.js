@@ -2,6 +2,7 @@
   'use strict';
 
   const TIER_KEYS = ['general', 'silver', 'gold', 'platinum'];
+  const TIER_LABELS = Object.freeze({ general: '一般會員', silver: '銀級會員', gold: '金級會員', platinum: '白金會員' });
   const WEEKDAYS = { 1: '星期一', 2: '星期二', 3: '星期三', 4: '星期四', 5: '星期五', 6: '星期六', 7: '星期日' };
   const EXPIRY_MODES = ['month_end', 'week_end', 'days_after_issue', 'fixed_date'];
   let config = null;
@@ -228,7 +229,11 @@
         const title = document.createElement('strong');
         title.textContent = String(template.title || '未命名固定票券');
         const meta = document.createElement('small');
-        meta.textContent = `固定票券 · ${scheduleLabel(template)} · ${expiryLabel(template)} · ${statusLabel(template.status)}`;
+        const allowed = Array.isArray(template.allowedTierKeys) && template.allowedTierKeys.length
+          ? template.allowedTierKeys.map((key) => TIER_LABELS[key]).filter(Boolean)
+          : TIER_KEYS.map((key) => TIER_LABELS[key]);
+        const audience = allowed.length === TIER_KEYS.length ? '全部等級' : allowed.join('、') || '未設定受眾';
+        meta.textContent = `自動發放 · ${audience} · ${scheduleLabel(template)} · ${expiryLabel(template)} · ${statusLabel(template.status)}`;
         button.append(title, meta);
         return button;
       });
