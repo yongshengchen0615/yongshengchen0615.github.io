@@ -801,7 +801,7 @@ async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
   return await hydrateBookings(supabase, sorted);
 }
 
-async function adminBookingSummary(supabase: SupabaseClient): Promise<Json> {
+async function adminBookingSummary(supabase: SupabaseClient, identity: Identity): Promise<Json> {
   const [pendingResult, cancellationResult, notificationResult] = await Promise.all([
     supabase.from("bookings")
       .select("id", { count: "exact", head: true })
