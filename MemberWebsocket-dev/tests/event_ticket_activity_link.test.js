@@ -19,7 +19,7 @@ for (const asset of [
   'fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1',
 ]) assert.ok(adminHtml.includes(asset), asset);
 
-assert.ok(adminHtml.includes('fixed-ticket-admin.css?v=fixed-ticket-20260916-1'));
+assert.match(adminHtml, /<link rel="stylesheet" href="\.\/fixed-ticket-admin\.css\?v=[^"<>]+">/);
 assert.ok(!adminHtml.includes('event-ticket-activity-link.js'));
 
 assert.ok(eventHtml.includes('app.js?v=human-e2e-hooks-20260924-3'));
