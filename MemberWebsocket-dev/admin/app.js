@@ -1521,7 +1521,7 @@
       const limit = Number(ticket.quota || 0) > 0 ? `${Number(ticket.claimedCount || 0)} / ${Number(ticket.quota)} 張` : `${Number(ticket.claimedCount || 0)} 張已領取`;
       const dates = ticket.startsOn || ticket.endsOn ? `${ticket.startsOn ? formatAdminDateCompact(ticket.startsOn) : '即日起'}–${ticket.endsOn ? formatAdminDateCompact(ticket.endsOn) : '不限期'}` : '不限期';
       const allowedTiers = Array.isArray(ticket.allowedTierLabels) && ticket.allowedTierLabels.length ? ticket.allowedTierLabels.join('、') : '全部等級';
-      const meta = document.createElement('small'); meta.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'} · ${allowedTiers} · ${dates} · ${limit} · ${statusLabel(ticket.status)}`;
+      const meta = document.createElement('small'); meta.textContent = `活動領取 · ${ticket.ticketType === 'lottery' ? '抽獎券' : '優惠券'} · ${allowedTiers} · ${dates} · ${limit} · ${statusLabel(ticket.status)}`;
       button.append(title, meta); return button;
     }));
     window.dispatchEvent(new Event('member-admin-event-ticket-list-rendered'));
