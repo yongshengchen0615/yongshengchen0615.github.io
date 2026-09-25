@@ -33,7 +33,11 @@ const identity = fixtureIdentity;
 
 function db(booking, admin = { role: 'admin', status: 'active', display_name: 'Fixture' }) {
   const writes = [];
-  return { writes, from(table) {
+  const rpcs = [];
+  return { writes, rpcs, rpc(name, args) {
+    rpcs.push({ name, args });
+    return Promise.resolve({ data: { alreadyRequested: false }, error: null });
+  }, from(table) {
     const result = {
       data: table === 'bookings' ? booking
         : table === 'admins' ? admin
@@ -127,9 +131,11 @@ test('legacy member cancel action creates a cancellation request instead of canc
   const result = await context.userCancel(client, identity, { id }, { bookingId: id });
   assert.equal(result.booking.status, 'cancel_requested');
   assert.equal(result.booking.baseStatus, 'confirmed');
-  assert.equal(client.writes[0].patch.status, undefined);
-  assert.ok(client.writes[0].patch.cancellation_requested_at);
-  assert.equal(client.writes[0].patch.cancellation_source_status, 'confirmed');
+  assert.equal(client.writes.length, 0, 'cancellation request must not mutate booking status directly');
+  assert.equal(client.rpcs[0].name, 'request_booking_cancellation');
+  assert.equal(client.rpcs[0].args.p_booking_id, id);
+  assert.equal(client.rpcs[0].args.p_member_id, id);
+  assert.equal(client.rpcs[0].args.p_actor, identity.lineUserId);
 });
 
 test('member cannot reach admin status action', async () => {
