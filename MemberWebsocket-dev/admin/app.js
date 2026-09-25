@@ -9,7 +9,7 @@
   const POINT_CARD_STYLE_KEYS = Object.freeze(['citrus', 'coral', 'lagoon', 'skyline', 'violet', 'berry', 'cocoa', 'lime', 'denim', 'peach']);
   const POINT_CARD_STYLE_LABELS = Object.freeze({ citrus: '柑橘氣泡', coral: '珊瑚蘇打', lagoon: '潟湖水光', skyline: '晴空城市', violet: '電光紫', berry: '莓果霓虹', cocoa: '可可拿鐵', lime: '萊姆汽水', denim: '丹寧晴藍', peach: '蜜桃冰沙' });
   const LEGACY_POINT_CARD_STYLE_MAP = Object.freeze({ forest: 'lagoon', midnight: 'skyline', ocean: 'denim', sunset: 'coral', lavender: 'violet', rose: 'berry', gold: 'citrus', platinum: 'cocoa', mint: 'lime', cherry: 'peach' });
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberKind: 'real', memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false, testMode: true }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false, memberRecords: { lineUserId: '', filter: 'all', data: null, requestVersion: 0 } };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberKind: 'real', memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false, testMode: true }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false, memberRecords: { lineUserId: '', filter: 'all', data: null, member: null, requestVersion: 0 }, operationalBookings: [] };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   const MEMBER_PRESENCE_POLL_MS = 15_000;
@@ -34,7 +34,7 @@
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton',
       'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIsTestAccount', 'memberIdentity', 'memberTier', 'memberTestProfileFields', 'memberDisplayName', 'memberSurname', 'memberSalutation', 'memberBirthday', 'memberPhone', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
-      'memberRecordsModal', 'closeMemberRecordsModal', 'memberRecordsIdentity', 'memberRecordsSummary', 'memberRecordsTabs', 'memberRecordsList', 'memberRecordsEmpty', 'memberRecordsMessage',
+      'memberRecordsModal', 'closeMemberRecordsModal', 'memberRecordsIdentity', 'memberRecordsOverview', 'memberRecordsSummary', 'memberRecordsTabs', 'memberRecordsList', 'memberRecordsEmpty', 'memberRecordsMessage',
       'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantMessageSection', 'grantMessagePreset', 'grantMessagePreview', 'grantTestNotificationNote', 'manageGrantMessagesButton', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice',
       'messagePresetModal', 'closeMessagePresetModal', 'messagePresetForm', 'messagePresetList', 'messagePresetId', 'messagePresetExpectedUpdatedAt', 'messagePresetTitle', 'messagePresetBody', 'messagePresetStatus', 'messagePresetFormMessage', 'newMessagePresetButton', 'saveMessagePresetButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -79,7 +79,7 @@
     els.membersTab.addEventListener('click', () => switchPanel('members'));
     els.cardsTab.addEventListener('click', () => switchPanel('cards'));
     els.eventsTab.addEventListener('click', () => switchPanel('events'));
-    els.calendarTab.addEventListener('click', () => switchPanel('calendar'));
+    els.calendarTab.addEventListener('click', () => { switchPanel('calendar'); requestOperationalBookingSnapshot(); });
     els.testModeTab.addEventListener('click', () => switchPanel('testMode'));
     els.cardSettingsTab.addEventListener('click', () => switchCardWorkspace('cards'));
     els.ticketSettingsTab.addEventListener('click', () => switchCardWorkspace('tickets'));
@@ -132,6 +132,7 @@
     els.adminCalendarTodayButton.addEventListener('click', () => { state.adminCalendarMonth = ''; renderAdminCalendar(); });
     els.adminCalendarGrid.addEventListener('click', handleAdminCalendarGridClick);
     els.adminCalendarGrid.addEventListener('change', handleAdminCalendarGridChange);
+    window.addEventListener('member-admin:booking-snapshot', handleOperationalBookingSnapshot);
     els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
     els.calendarItemForm.addEventListener('change', handleCalendarItemFormChange);
     els.calendarItemForm.addEventListener('submit', saveCalendarItem);
@@ -552,7 +553,7 @@
       }
       const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
       const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
-      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true), actionButton('紀錄', 'view-records', member.lineUserId)); actionsCell.append(actions);
+      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true), actionButton('會員 360', 'view-records', member.lineUserId)); actionsCell.append(actions);
       row.append(memberCell, tierCell, statusCell, presenceCell, serviceTimeCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
@@ -690,6 +691,7 @@
     state.memberRecords.lineUserId = String(member.lineUserId || '');
     state.memberRecords.filter = 'all';
     state.memberRecords.data = null;
+    state.memberRecords.member = member;
     els.memberRecordsIdentity.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`;
     els.memberRecordsSummary.replaceChildren();
     els.memberRecordsList.replaceChildren();
@@ -741,6 +743,7 @@
     state.memberRecords.requestVersion += 1;
     state.memberRecords.lineUserId = '';
     state.memberRecords.data = null;
+    state.memberRecords.member = null;
     els.memberRecordsModal.classList.add('hidden');
   }
 
@@ -782,6 +785,7 @@
 
   function renderMemberRecords() {
     hideMessage(els.memberRecordsMessage);
+    renderMemberRecordsOverview();
     const counts = memberRecordCounts();
     const summary = [
       ['上／下線', counts.presence],
@@ -803,6 +807,53 @@
     }));
     renderMemberRecordTabs();
     renderMemberRecordList();
+  }
+
+
+  function renderMemberRecordsOverview() {
+    if (!els.memberRecordsOverview) return;
+    const member = state.memberRecords.member;
+    if (!member) { els.memberRecordsOverview.replaceChildren(); return; }
+    const counts = memberRecordCounts();
+    const metrics = [
+      ['會員等級', String(member.tier || '一般會員')],
+      ['累積服務時間', formatServiceMinutes(Number(member.serviceMinutesTotal || 0))],
+      ['使用紀錄', String(counts.all || 0) + ' 筆'],
+      ['預約紀錄', String(counts.bookings || 0) + ' 筆'],
+    ];
+    const copy = document.createElement('div');
+    copy.className = 'member-records-overview-copy';
+    const title = document.createElement('strong');
+    title.textContent = String(member.displayName || 'LINE 使用者');
+    const meta = document.createElement('span');
+    meta.textContent = `${member.memberCode || '尚未建立'} · ${member.status === 'disabled' ? '已停用' : '啟用中'}`;
+    copy.append(title, meta);
+
+    const metricGrid = document.createElement('div');
+    metricGrid.className = 'member-records-overview-metrics';
+    metrics.forEach(([label, value]) => {
+      const item = document.createElement('span');
+      const small = document.createElement('small'); small.textContent = label;
+      const strong = document.createElement('strong'); strong.textContent = value;
+      item.append(small, strong); metricGrid.append(item);
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'member-records-overview-actions';
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.className = 'button button-outline'; edit.textContent = '編輯會員';
+    edit.addEventListener('click', () => { closeMemberRecordsModal(); openMemberModal(member); });
+    const grant = document.createElement('button');
+    grant.type = 'button'; grant.className = 'button button-dark'; grant.textContent = '發放權益';
+    grant.addEventListener('click', async () => {
+      closeMemberRecordsModal();
+      if (state.loadedPanels.cards) return openGrantModal(member);
+      grant.disabled = true;
+      try { await ensureAdminPanelData('cards'); openGrantModal(member); }
+      catch (error) { setSyncStatus(error && error.message || '無法載入集點卡，請稍後再試。', true); }
+    });
+    actions.append(edit, grant);
+    els.memberRecordsOverview.replaceChildren(copy, metricGrid, actions);
   }
 
   function memberRecordsForFilter() {
@@ -1512,6 +1563,54 @@
     els.deleteSelectedCalendarItemsButton.textContent = '刪除選取項目';
   }
 
+
+  function requestOperationalBookingSnapshot() {
+    window.dispatchEvent(new CustomEvent('member-admin:booking-snapshot-request'));
+  }
+
+  function handleOperationalBookingSnapshot(event) {
+    const raw = Array.isArray(event?.detail?.bookings) ? event.detail.bookings : [];
+    state.operationalBookings = raw.map((booking) => ({
+      bookingId: String(booking.bookingId || ''),
+      bookingDate: String(booking.bookingDate || ''),
+      startTime: String(booking.startTime || '').slice(0, 5),
+      endTime: String(booking.endTime || '').slice(0, 5),
+      status: String(booking.status || ''),
+      memberDisplayName: String(booking.memberDisplayName || '會員'),
+      memberCode: String(booking.memberCode || ''),
+      technicianName: String(booking.technicianName || ''),
+      partySize: Math.max(1, Number(booking.partySize || 1)),
+      cancellationRequestedAt: booking.cancellationRequestedAt || null,
+    })).filter((booking) => booking.bookingId && /^\d{4}-\d{2}-\d{2}$/.test(booking.bookingDate));
+    if (state.activePanel === 'calendar') renderAdminCalendar();
+  }
+
+  function adminOperationalBookingsForDate(dateValue) {
+    return state.operationalBookings
+      .filter((booking) => booking.bookingDate === dateValue && ['pending', 'confirmed', 'completed'].includes(booking.status))
+      .slice()
+      .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
+  }
+
+  function operationalBookingStatusLabel(booking) {
+    if (booking.cancellationRequestedAt && booking.status !== 'completed') return '取消申請';
+    return ({ pending:'待確認', confirmed:'已確認', completed:'已完成' })[booking.status] || booking.status;
+  }
+
+  function createOperationalBookingCalendarButton(booking) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `admin-calendar-booking status-${booking.status}`;
+    if (booking.cancellationRequestedAt && booking.status !== 'completed') button.classList.add('has-cancellation-request');
+    button.dataset.adminBookingId = booking.bookingId;
+    const time = booking.startTime || '—';
+    button.textContent = `${time} ${booking.memberDisplayName || booking.memberCode || '會員'}`;
+    const details = [operationalBookingStatusLabel(booking), booking.technicianName, booking.partySize > 1 ? booking.partySize + ' 人' : ''].filter(Boolean);
+    button.title = details.join(' · ');
+    button.setAttribute('aria-label', `${time} ${booking.memberDisplayName || '會員'}，${details.join('，')}；前往預約管理`);
+    return button;
+  }
+
   function renderAdminCalendar() {
     const month = currentAdminCalendarMonth();
     state.adminCalendarMonth = toAdminIsoDate(month);
@@ -1531,9 +1630,11 @@
       const date = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), day));
       const dateValue = toAdminIsoDate(date);
       const entries = adminCalendarItemsForDate(dateValue);
+      const bookings = adminOperationalBookingsForDate(dateValue);
       const cell = document.createElement('article'); cell.className = 'admin-calendar-day';
       if (dateValue === today) cell.classList.add('is-today');
-      if (entries.length) cell.classList.add('has-items');
+      if (entries.length || bookings.length) cell.classList.add('has-items');
+      if (bookings.length) cell.classList.add('has-bookings');
       if (state.selectedCalendarDates.has(dateValue)) cell.classList.add('is-selected-for-batch');
       const dayHeader = document.createElement('div'); dayHeader.className = 'admin-calendar-day-header';
       const dateSelect = document.createElement('input'); dateSelect.type = 'checkbox'; dateSelect.className = 'admin-calendar-selection admin-calendar-date-select'; dateSelect.dataset.adminCalendarDateSelect = dateValue; dateSelect.checked = state.selectedCalendarDates.has(dateValue); dateSelect.disabled = state.writeConfirmationRequired; dateSelect.setAttribute('aria-label', `選取${formatAdminDateValue(dateValue, true)}以批次新增`);
@@ -1547,7 +1648,16 @@
         const itemSelect = document.createElement('input'); itemSelect.type = 'checkbox'; itemSelect.className = 'admin-calendar-selection admin-calendar-item-select'; itemSelect.dataset.adminCalendarItemSelect = calendarItemId; itemSelect.checked = state.selectedCalendarItemIds.has(calendarItemId); itemSelect.disabled = state.writeConfirmationRequired; itemSelect.setAttribute('aria-label', `選取${String(item.title || '日曆項目')}進行批次修改或刪除`);
         const itemButton = document.createElement('button'); itemButton.type = 'button'; itemButton.className = `admin-calendar-item ${item.itemType === 'holiday' ? 'holiday' : 'event'}`; itemButton.dataset.adminCalendarItemId = calendarItemId; itemButton.style.setProperty('--calendar-item-accent', safeAccent(item.accent)); itemButton.setAttribute('aria-label', `編輯${item.itemType === 'holiday' ? '休假日' : '活動'}：${String(item.title || '未命名日期')}`); itemButton.textContent = String(item.title || '未命名日期'); itemRow.append(itemSelect, itemButton); entryList.append(itemRow);
       });
-      dayHeader.append(dateSelect, dateButton); cell.append(dayHeader, entryList); cells.push(cell);
+      const bookingList = document.createElement('div');
+      bookingList.className = 'admin-calendar-bookings';
+      bookings.slice(0, 3).forEach((booking) => bookingList.append(createOperationalBookingCalendarButton(booking)));
+      if (bookings.length > 3) {
+        const more = document.createElement('span');
+        more.className = 'admin-calendar-booking-more';
+        more.textContent = `另有 ${bookings.length - 3} 筆預約`;
+        bookingList.append(more);
+      }
+      dayHeader.append(dateSelect, dateButton); cell.append(dayHeader, entryList, bookingList); cells.push(cell);
     }
     els.adminCalendarGrid.replaceChildren(...cells);
   }
@@ -1577,6 +1687,12 @@
   function handleAdminCalendarGridClick(event) {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
+    const bookingButton = target.closest('[data-admin-booking-id]');
+    if (bookingButton) {
+      document.getElementById('bookingTab')?.click();
+      window.setTimeout(() => window.dispatchEvent(new CustomEvent('member-admin:booking-focus', { detail: { bookingId: String(bookingButton.dataset.adminBookingId || '') } })), 0);
+      return;
+    }
     const itemButton = target.closest('[data-admin-calendar-item-id]');
     if (itemButton) { loadCalendarItemForm(itemButton.dataset.adminCalendarItemId, false); openEditorModal('calendar', itemButton); return; }
     const dateButton = target.closest('[data-admin-calendar-date]');
