@@ -43,7 +43,9 @@ for (const entry of ['admin']) {
           { technicianId: '20000000-0000-4000-8000-000000000002', name: '乙', isActive: true, sortOrder: 1 },
         ],
       };
-      else if (action === 'admin.booking.contacts') data = { contacts: [booking] };\n      else if (action === 'admin.booking.summary') data = { pendingCount: 1, unreadCount: 1, latestNotificationId: 1 };\n      else if (action === 'admin.booking.notifications.read') data = { unreadCount: 0, latestNotificationId: 1 };
+      else if (action === 'admin.booking.contacts') data = { contacts: [booking] };
+      else if (action === 'admin.booking.summary') data = { pendingCount: 1, unreadCount: 1, latestNotificationId: 1 };
+      else if (action === 'admin.booking.notifications.read') data = { unreadCount: 0, latestNotificationId: 1 };
       else {
         assert.equal(action, 'admin.booking.group.details');
         assert.deepEqual(bookingIds, [bookingId]);
