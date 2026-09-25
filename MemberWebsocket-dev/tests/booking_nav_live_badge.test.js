@@ -9,6 +9,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 const core = read('admin/booking-panel-core.js');
 const loader = read('admin/booking-panel.js');
 const html = read('admin/index.html');
+const api = read('supabase/functions/booking-api/index.ts');
 
 test('booking nav badge starts syncing after admin session without opening booking page', () => {
   const mountStart = core.indexOf('function mount()');
@@ -21,12 +22,12 @@ test('booking nav badge starts syncing after admin session without opening booki
   assert.match(core, /await refreshBookingBadge\(\)/);
 });
 
-test('background badge sync is lightweight and does not load booking detail dependencies', () => {
+test('background badge sync uses the count-only booking summary endpoint', () => {
   const start = core.indexOf('async function refreshBookingBadge()');
   const end = core.indexOf('function startBookingBadgeSync()', start);
   const section = core.slice(start, end);
-  assert.match(section, /bookingRequest\('admin\.booking\.bootstrap'\)/);
-  assert.doesNotMatch(section, /manageRequest|resourceRequest|contactRequest|groupDetailsRequest/);
+  assert.match(section, /bookingRequest\('admin\.booking\.summary'\)/);
+  assert.doesNotMatch(section, /admin\.booking\.bootstrap|manageRequest|resourceRequest|contactRequest|groupDetailsRequest/);
 });
 
 test('booking badge renders pending count and accessible label', () => {
@@ -52,4 +53,18 @@ test('booking realtime refreshes only the badge while booking panel is hidden', 
 test('current booking loader cache-busts the live badge implementation', () => {
   assert.match(loader, /booking-panel-core\.js', 'booking-nav-live-badge-20260925-1'/);
   assert.match(html, /booking-panel\.js\?v=booking-nav-live-badge-20260925-1/);
+});
+
+
+test('booking summary endpoint counts pending rows only after admin authorization', () => {
+  const auth = api.indexOf('await authorizeAdmin(supabase, identity);');
+  const route = api.indexOf('action === "admin.booking.summary"', auth);
+  assert.ok(auth >= 0 && route > auth);
+  const start = api.indexOf('async function adminBookingSummary');
+  const end = api.indexOf('async function adminBootstrap', start);
+  const section = api.slice(start, end);
+  assert.match(section, /select\("id", \{ count: "exact", head: true \}\)/);
+  assert.match(section, /\.eq\("status", "pending"\)/);
+  assert.match(section, /pendingCount/);
+  assert.doesNotMatch(section, /members\(|hydrateBookings|booking_items/);
 });
