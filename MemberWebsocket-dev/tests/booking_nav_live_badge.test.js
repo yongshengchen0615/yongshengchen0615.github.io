@@ -36,11 +36,13 @@ test('booking badge renders unread and pending counts with accessible labels', (
   const start = core.indexOf('function renderBookingPendingBadge');
   const end = core.indexOf('async function refreshBookingBadge', start);
   const section = core.slice(start, end);
-  assert.match(section, /bookingTab\.dataset\.unreadCount/);\n  assert.match(section, /bookingTab\.dataset\.pendingCount/);
+  assert.match(section, /bookingTab\.dataset\.unreadCount/);
+  assert.match(section, /bookingTab\.dataset\.pendingCount/);
   assert.match(section, /bookingAdminPendingCount\.textContent/);
   assert.match(section, /bookingAdminQueueSubtabCount\.textContent/);
   assert.match(section, /setAttribute\('aria-label'/);
-  assert.match(section, /筆未讀更新/);\n  assert.match(section, /筆待確認/);
+  assert.match(section, /筆未讀更新/);
+  assert.match(section, /筆待確認/);
 });
 
 test('booking realtime refreshes only the badge while booking panel is hidden', () => {
@@ -52,11 +54,10 @@ test('booking realtime refreshes only the badge while booking panel is hidden', 
   assert.match(section, /else refreshAll\(false, true\)/);
 });
 
-test('current booking loader cache-busts the live badge implementation', () => {
+test('current booking loader cache-busts the unread cursor implementation', () => {
   assert.match(loader, /booking-panel-core\.js', 'booking-unread-cursor-20260925-2'/);
   assert.match(html, /booking-panel\.js\?v=booking-unread-cursor-20260925-2/);
 });
-
 
 test('booking summary endpoint counts pending rows only after admin authorization', () => {
   const auth = api.indexOf('await authorizeAdmin(supabase, identity);');
@@ -71,10 +72,9 @@ test('booking summary endpoint counts pending rows only after admin authorizatio
   assert.doesNotMatch(section, /members\(|hydrateBookings|booking_items/);
 });
 
-
-test('booking badge uses a separate pseudo-element from the surface-tab active underline', () => {
+test('booking unread badge uses a separate pseudo-element from the surface-tab active underline', () => {
   assert.match(baseCss, /\.surface-tab::after[\s\S]*transform:\s*scaleX\(0\)/);
-  assert.match(bookingCss, /#bookingTab\\[data-unread-count\\]:not\\(\\[data-unread-count="0"\\]\\)::before/);
-  assert.doesNotMatch(bookingCss, /#bookingTab\\[data-unread-count\\]:not\\(\\[data-unread-count="0"\\]\\)::after/);
+  assert.match(bookingCss, /#bookingTab\[data-unread-count\]:not\(\[data-unread-count="0"\]\)::before/);
+  assert.doesNotMatch(bookingCss, /#bookingTab\[data-unread-count\]:not\(\[data-unread-count="0"\]\)::after/);
   assert.match(html, /booking-panel\.css\?v=booking-unread-cursor-20260925-2/);
 });
