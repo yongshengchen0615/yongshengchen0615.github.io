@@ -165,13 +165,13 @@ Deno.serve(async (request: Request) => {
     const identity = await verifyLineIdTokenContract({
       idToken: asText(body.idToken, 5000),
       expectedChannelId: env("LINE_ADMIN_CHANNEL_ID") || "2010791619",
-      createError: (status, code, message, details) => new ApiError(status, code, message, details),
+      createError: (status, code, message) => new ApiError(status, code, message),
     });
     const supabase = db();
     await requireActiveAdminContract({
       supabase,
       identity,
-      createError: (status, code, message, details) => new ApiError(status, code, message, details),
+      createError: (status, code, message) => new ApiError(status, code, message),
     });
     await consumeRateLimit(supabase, identity.lineUserId);
     const data = await groupDetails(supabase, body);
