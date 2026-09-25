@@ -10,9 +10,11 @@ const css = fs.readFileSync(path.join(root, 'admin', 'styles.css'), 'utf8');
 const api = fs.readFileSync(path.join(root, 'supabase', 'functions', 'api', 'index.ts'), 'utf8');
 
 test('member directory exposes a records action beside existing actions', () => {
-  assert.match(app, /actionButton\('紀錄', 'view-records'/);
+  assert.match(app, /actionButton\('會員 360', 'view-records'/);
   assert.match(app, /button\.dataset\.action === 'view-records'/);
   assert.match(html, /id="memberRecordsModal"/);
+  assert.match(html, /id="memberRecordsOverview"/);
+  assert.match(html, /id="memberRecordsModalTitle">會員 360</);
 });
 
 test('member records modal contains all requested activity categories', () => {
