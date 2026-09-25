@@ -1094,12 +1094,96 @@
     return `${month}/${day}（${weekday}）`;
   }
 
-  async function updateBookingStatus(booking, status, adminNote) {
-    if (status === 'completed' && !window.confirm(`確認 ${booking.memberDisplayName || '此會員'} 的服務已完成？\n完成後會自動累積服務時間、依項目類型發放集點並發送 LINE 通知；店內服務分鐘不列入服務時間與集點計算。\n系統不再要求等待原預約結束時間；完成後不可修改或取消。`)) return;
-    await runPageAction(els.bookingAdminServiceMessage, async () => {
-      if (status === 'completed') {
-        return operationsRequest('admin.booking.status.complete', { bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt, adminNote }, true);
+  function completionPreviewData(booking) {
+    const typeByName = new Map((state.catalog.serviceTypes || []).map((type) => [String(type.name || ''), type]));
+    const serviceById = new Map((state.catalog.services || []).map((service) => [String(service.serviceId || ''), service]));
+    const typeMinutes = new Map();
+    let serviceMinutes = 0;
+    const items = bookingVisibleItems(booking).map((item) => {
+      const fallback = serviceById.get(String(item.serviceId || ''));
+      const countsTowardMembership = item.countsTowardMembership !== undefined
+        ? Boolean(item.countsTowardMembership)
+        : fallback?.countsTowardMembership !== false;
+      const quantity = Math.max(1, Number(item.quantity || 1));
+      const unitMinutes = Math.max(0, Number(item.unitDurationMinutes || fallback?.durationMinutes || 0));
+      const subtotalMinutes = Math.max(0, Number(item.subtotalMinutes || unitMinutes * quantity));
+      const serviceType = String(item.serviceType || fallback?.serviceType || '');
+      if (countsTowardMembership) {
+        serviceMinutes += subtotalMinutes;
+        if (serviceType) typeMinutes.set(serviceType, (typeMinutes.get(serviceType) || 0) + subtotalMinutes);
       }
+      return {
+        title: String(item.serviceTitle || fallback?.title || '預約項目'),
+        serviceType,
+        quantity,
+        subtotalMinutes,
+        countsTowardMembership,
+      };
+    });
+    const rewards = [];
+    let totalRewardPoints = 0;
+    typeMinutes.forEach((minutes, typeName) => {
+      const type = typeByName.get(typeName);
+      const perPoint = Number(type?.rewardMinutesPerPoint || 0);
+      const cardId = String(type?.rewardPointCardId || '');
+      if (!perPoint || !cardId) return;
+      const points = Math.floor(Number(minutes || 0) / perPoint);
+      if (points < 1) return;
+      totalRewardPoints += points;
+      rewards.push({
+        typeName,
+        minutes:Number(minutes || 0),
+        perPoint,
+        points,
+        pointCardTitle:String(type?.rewardPointCardTitle || '指定集點卡'),
+      });
+    });
+    return { items,serviceMinutes,rewards,totalRewardPoints };
+  }
+
+  function openCompletionPreview(booking, adminNote) {
+    const preview = completionPreviewData(booking);
+    els.bookingAdminCrudModalTitle.textContent = `完成結算預覽｜${booking.memberDisplayName || '會員'}`;
+    const itemRows = preview.items.map((item) => `
+      <div class="booking-completion-preview-item">
+        <div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.serviceType || '未分類')} · ${item.quantity} 份 · ${item.subtotalMinutes} 分鐘</p></div>
+        <span class="integration-status ${item.countsTowardMembership ? 'is-active' : 'is-attention'}">${item.countsTowardMembership ? '計入' : '不計入'}</span>
+      </div>`).join('');
+    const rewardRows = preview.rewards.length
+      ? preview.rewards.map((reward) => `<div class="booking-completion-preview-item"><div><strong>${escapeHtml(reward.pointCardTitle)}</strong><p>${escapeHtml(reward.typeName)}：${reward.minutes} 分鐘 ÷ ${reward.perPoint}</p></div><strong>+${reward.points} 點</strong></div>`).join('')
+      : '<p class="integration-empty">依目前項目類型規則，本次沒有自動集點。</p>';
+    els.bookingAdminCrudModalBody.innerHTML = `
+      <form class="booking-admin-form booking-completion-preview">
+        <div class="booking-completion-preview-summary">
+          <div><span>會員</span><strong>${escapeHtml(booking.memberDisplayName || '會員')}</strong></div>
+          <div><span>將計入服務時間</span><strong>${preview.serviceMinutes} 分鐘</strong></div>
+          <div><span>預估自動集點</span><strong>${preview.totalRewardPoints} 點</strong></div>
+        </div>
+        <section><p class="kicker">Service settlement</p><div class="booking-completion-preview-list">${itemRows || '<p class="integration-empty">沒有可結算的服務項目。</p>'}</div></section>
+        <section><p class="kicker">Point rewards</p><div class="booking-completion-preview-list">${rewardRows}</div></section>
+        <p class="booking-completion-preview-note">此畫面為送出前預覽。真正的服務時間、集點、LINE 通知與重複請求判斷仍由 Server-side 完成結算流程決定；送出後預約不可修改或取消。</p>
+        <div data-modal-message class="form-message hidden"></div>
+        <div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">返回</button><button class="button button-dark" type="submit">確認完成並結算</button></div>
+      </form>`;
+    const form = els.bookingAdminCrudModalBody.querySelector('form');
+    form.querySelector('[data-cancel]').addEventListener('click', closeModal);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await runModalAction(async () => operationsRequest('admin.booking.status.complete', {
+        bookingId: booking.bookingId,
+        expectedUpdatedAt: booking.updatedAt,
+        adminNote,
+      }, true));
+    });
+    showModal();
+  }
+
+  async function updateBookingStatus(booking, status, adminNote) {
+    if (status === 'completed') {
+      openCompletionPreview(booking, adminNote);
+      return;
+    }
+    await runPageAction(els.bookingAdminServiceMessage, async () => {
       return bookingRequest('admin.booking.status.update', { bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt, status, adminNote }, true);
     });
   }

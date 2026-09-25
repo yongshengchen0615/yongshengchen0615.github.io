@@ -19,7 +19,7 @@ test('background booking panel does not subscribe to duplicate booking realtime 
   const loader = read('admin/booking-panel.js');
   assert.match(core, /function isBackgroundE2ERunner\(/);
   assert.match(core, /function setupRealtime\(\) \{\s*if \(isBackgroundE2ERunner\(\)\) return;/);
-  assert.match(loader, /booking-panel-core\.js', 'admin-operations-integration-20260925-1'/);
+  assert.match(loader, /booking-panel-core\.js', 'admin-integration-center-20260925-1'/);
 });
 
 test('paired E2E uses adaptive booking read budget and next-bucket backoff', () => {

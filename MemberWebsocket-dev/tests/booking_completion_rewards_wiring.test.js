@@ -13,7 +13,9 @@ test('booking service type UI exposes completion reward settings', () => {
   assert.match(source, /data-type-reward-minutes/);
   assert.match(source, /data-type-reward-card/);
   assert.match(source, /店內服務時間不計入/);
-  assert.match(source, /自動累積服務時間、依項目類型發放集點並發送 LINE 通知/);
+  assert.match(source, /完成結算預覽/);
+  assert.match(source, /真正的服務時間、集點、LINE 通知與重複請求判斷仍由 Server-side 完成結算流程決定/);
+  assert.match(source, /確認完成並結算/);
 });
 
 test('booking admin API persists service type reward settings server-side', () => {

@@ -1547,6 +1547,261 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   return { eventTicket:eventTicketClient(row,claims.count || 0) };
 }
 
+
+async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json> {
+  const [
+    stats,
+    pointCardsRes,
+    serviceTypesRes,
+    serviceRewardsRes,
+    fixedTicketsRes,
+    birthdayRes,
+    calendarRes,
+    eventTicketsRes,
+    scheduledRes,
+    auditRes,
+    bookingAuditRes,
+    settlementsRes,
+  ] = await Promise.all([
+    summaryStats(supabase),
+    supabase.from("point_cards").select("id,card_id,title,status").order("sort_order",{ ascending:true }),
+    supabase.from("booking_service_types").select("id,name,sort_order,updated_at").order("sort_order",{ ascending:true }),
+    supabase.from("booking_service_type_rewards").select("service_type_id,point_card_id,minutes_per_point,updated_at"),
+    supabase.from("fixed_ticket_templates")
+      .select("fixed_ticket_id,title,status,schedule_type,schedule_month,schedule_day,schedule_weekday,quota,allowed_tier_keys,notify_line,expiry_mode,expiry_date,expiry_days,calendar_enabled,updated_at")
+      .is("deleted_at",null)
+      .order("updated_at",{ ascending:false })
+      .limit(40),
+    supabase.from("birthday_benefit_settings")
+      .select("enabled,title_template,allowed_tier_keys,notify_line,updated_at")
+      .eq("singleton",true)
+      .maybeSingle(),
+    supabase.from("calendar_items")
+      .select("calendar_item_id,title,item_type,status,starts_on,ends_on,allowed_tier_keys,bonus_points_enabled,bonus_points,source_event_ticket_id,updated_at")
+      .order("starts_on",{ ascending:false })
+      .limit(100),
+    supabase.from("event_tickets")
+      .select("id,event_ticket_id,title,status,starts_on,ends_on,allowed_tier_keys,fixed_ticket_template_id,updated_at")
+      .is("deleted_at",null)
+      .order("updated_at",{ ascending:false })
+      .limit(60),
+    supabase.from("scheduled_grant_messages")
+      .select("schedule_id,member_id,scheduled_for,status,attempt_count,last_error,created_at,sent_at")
+      .order("created_at",{ ascending:false })
+      .limit(60),
+    supabase.from("audit_logs")
+      .select("audit_id,actor_role,action,target_type,target_id,result,created_at")
+      .order("created_at",{ ascending:false })
+      .limit(80),
+    supabase.from("booking_audit_events")
+      .select("id,actor_role,action,target_type,target_id,result,created_at")
+      .order("created_at",{ ascending:false })
+      .limit(60),
+    supabase.from("booking_completion_settlements")
+      .select("booking_id,member_id,service_minutes,reward_details,created_at")
+      .order("created_at",{ ascending:false })
+      .limit(40),
+  ]);
+
+  for (const result of [
+    pointCardsRes,serviceTypesRes,serviceRewardsRes,fixedTicketsRes,birthdayRes,calendarRes,
+    eventTicketsRes,scheduledRes,auditRes,bookingAuditRes,settlementsRes,
+  ]) {
+    if (result.error) throw mapDatabaseError(result.error);
+  }
+
+  const pointCards = pointCardsRes.data || [];
+  const serviceTypes = serviceTypesRes.data || [];
+  const serviceRewards = serviceRewardsRes.data || [];
+  const fixedTickets = fixedTicketsRes.data || [];
+  const calendarRows = calendarRes.data || [];
+  const eventTickets = eventTicketsRes.data || [];
+  const scheduledRows = scheduledRes.data || [];
+  const auditRows = auditRes.data || [];
+  const bookingAuditRows = bookingAuditRes.data || [];
+  const settlements = settlementsRes.data || [];
+
+  const memberIds = [...new Set([
+    ...scheduledRows.map((row:any) => row.member_id),
+    ...settlements.map((row:any) => row.member_id),
+  ].filter(Boolean))];
+  const memberTargetLineIds = [...new Set(
+    auditRows
+      .filter((row:any) => row.target_type === "member" && row.target_id)
+      .map((row:any) => String(row.target_id))
+  )];
+
+  const [membersByIdRes,membersByLineRes] = await Promise.all([
+    memberIds.length
+      ? supabase.from("members").select("id,display_name,member_code,is_test_account").in("id",memberIds)
+      : Promise.resolve({ data:[],error:null }),
+    memberTargetLineIds.length
+      ? supabase.from("members").select("line_user_id,display_name,member_code,is_test_account").in("line_user_id",memberTargetLineIds)
+      : Promise.resolve({ data:[],error:null }),
+  ]);
+  if (membersByIdRes.error) throw mapDatabaseError(membersByIdRes.error);
+  if (membersByLineRes.error) throw mapDatabaseError(membersByLineRes.error);
+
+  const memberById = new Map((membersByIdRes.data || []).map((row:any) => [row.id,row]));
+  const memberByLine = new Map((membersByLineRes.data || []).map((row:any) => [row.line_user_id,row]));
+  const cardById = new Map(pointCards.map((row:any) => [row.id,row]));
+  const typeById = new Map(serviceTypes.map((row:any) => [row.id,row]));
+  const calendarByEventTicketId = new Map<string,any>();
+  for (const row of calendarRows) {
+    if (row.source_event_ticket_id) calendarByEventTicketId.set(String(row.source_event_ticket_id),row);
+  }
+
+  const pointSources:any[] = [];
+  for (const reward of serviceRewards) {
+    const type = typeById.get(reward.service_type_id);
+    const card = cardById.get(reward.point_card_id);
+    pointSources.push({
+      sourceType:"booking",
+      sourceId:String(reward.service_type_id || ""),
+      title:String(type?.name || "預約項目類型"),
+      detail:`每 ${Number(reward.minutes_per_point || 0)} 分鐘 +1 點`,
+      pointCardId:String(card?.card_id || ""),
+      pointCardTitle:String(card?.title || "指定集點卡"),
+      status:card?.status === "active" ? "active" : "attention",
+      updatedAt:reward.updated_at || type?.updated_at || "",
+    });
+  }
+  for (const item of calendarRows) {
+    if (item.item_type !== "event" || item.bonus_points_enabled !== true || Number(item.bonus_points || 0) <= 0) continue;
+    pointSources.push({
+      sourceType:"calendar",
+      sourceId:String(item.calendar_item_id || ""),
+      title:String(item.title || "日曆活動"),
+      detail:`會員發放操作搭配此活動時，每張集點卡 +${Number(item.bonus_points || 0)} 點`,
+      pointCardId:"",
+      pointCardTitle:"依本次發放集點卡",
+      status:item.status === "active" ? "active" : "attention",
+      updatedAt:item.updated_at || "",
+    });
+  }
+  pointSources.push({
+    sourceType:"manual",
+    sourceId:"admin-member-grant",
+    title:"管理員手動發放",
+    detail:"會員 360／會員名冊可發放多張集點卡點數與服務時間",
+    pointCardId:"",
+    pointCardTitle:"操作時選擇",
+    status:"active",
+    updatedAt:"",
+  });
+
+  const campaignRows = eventTickets.map((row:any) => {
+    const linked = calendarByEventTicketId.get(String(row.id || ""));
+    return {
+      eventTicketId:String(row.event_ticket_id || ""),
+      title:String(row.title || "活動票券"),
+      status:String(row.status || "draft"),
+      startsOn:row.starts_on || "",
+      endsOn:row.ends_on || "",
+      allowedTierKeys:Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [],
+      fixedTicketManaged:Boolean(row.fixed_ticket_template_id),
+      calendarLinked:Boolean(linked),
+      calendarItemId:String(linked?.calendar_item_id || ""),
+    };
+  });
+
+  const notifications = scheduledRows.map((row:any) => {
+    const member = memberById.get(row.member_id);
+    return {
+      scheduleId:String(row.schedule_id || ""),
+      memberDisplayName:String(member?.display_name || "會員"),
+      memberCode:String(member?.member_code || ""),
+      isTestAccount:member?.is_test_account === true,
+      scheduledFor:row.scheduled_for || "",
+      status:String(row.status || "pending"),
+      attemptCount:Number(row.attempt_count || 0),
+      lastError:String(row.last_error || ""),
+      createdAt:row.created_at || "",
+      sentAt:row.sent_at || "",
+    };
+  });
+
+  const auditTimeline = [
+    ...auditRows.map((row:any) => {
+      const member = row.target_type === "member" ? memberByLine.get(String(row.target_id || "")) : null;
+      return {
+        auditId:String(row.audit_id || ""),
+        domain:String(row.target_type || "system"),
+        actorRole:String(row.actor_role || ""),
+        action:String(row.action || ""),
+        targetLabel:member
+          ? `${String(member.display_name || "會員")} · ${String(member.member_code || "未編號")}`
+          : String(row.target_id || row.target_type || ""),
+        result:String(row.result || ""),
+        createdAt:row.created_at || "",
+      };
+    }),
+    ...bookingAuditRows.map((row:any) => ({
+      auditId:`BOOKING-${String(row.id || "")}`,
+      domain:"booking",
+      actorRole:String(row.actor_role || ""),
+      action:String(row.action || ""),
+      targetLabel:String(row.target_id || "預約"),
+      result:String(row.result || ""),
+      createdAt:row.created_at || "",
+    })),
+  ].sort((a:any,b:any) => Date.parse(String(b.createdAt || "")) - Date.parse(String(a.createdAt || ""))).slice(0,100);
+
+  const settlementRows = settlements.map((row:any) => {
+    const member = memberById.get(row.member_id);
+    const rewards = Array.isArray(row.reward_details)
+      ? row.reward_details
+      : row.reward_details && typeof row.reward_details === "object"
+        ? Object.values(row.reward_details as Record<string,unknown>)
+        : [];
+    return {
+      bookingId:String(row.booking_id || ""),
+      memberDisplayName:String(member?.display_name || "會員"),
+      memberCode:String(member?.member_code || ""),
+      serviceMinutes:Number(row.service_minutes || 0),
+      rewardCount:rewards.length,
+      rewardDetails:row.reward_details || null,
+      createdAt:row.created_at || "",
+    };
+  });
+
+  return {
+    stats,
+    pointSources,
+    automation:{
+      fixedTickets:fixedTickets.map((row:any) => ({
+        fixedTicketId:String(row.fixed_ticket_id || ""),
+        title:String(row.title || "固定票券"),
+        status:String(row.status || "draft"),
+        scheduleType:String(row.schedule_type || ""),
+        scheduleMonth:row.schedule_month,
+        scheduleDay:row.schedule_day,
+        scheduleWeekday:row.schedule_weekday,
+        quota:Number(row.quota || 0),
+        allowedTierKeys:Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [],
+        notifyLine:row.notify_line === true,
+        expiryMode:String(row.expiry_mode || ""),
+        expiryDate:row.expiry_date || "",
+        expiryDays:row.expiry_days,
+        calendarEnabled:row.calendar_enabled === true,
+        updatedAt:row.updated_at || "",
+      })),
+      birthday:birthdayRes.data ? {
+        enabled:birthdayRes.data.enabled === true,
+        titleTemplate:String(birthdayRes.data.title_template || ""),
+        allowedTierKeys:Array.isArray(birthdayRes.data.allowed_tier_keys) ? birthdayRes.data.allowed_tier_keys : [],
+        notifyLine:birthdayRes.data.notify_line === true,
+        updatedAt:birthdayRes.data.updated_at || "",
+      } : null,
+    },
+    campaigns:campaignRows,
+    notifications,
+    auditTimeline,
+    settlements:settlementRows,
+    generatedAt:new Date().toISOString(),
+  };
+}
+
 async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string }, action: string, body: Json): Promise<Json> {
   const presence = presenceActionInfo(action);
   if (presence) {
@@ -1766,6 +2021,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   if (action === "admin.event-tickets.list") return { eventTickets:await adminEventTickets(supabase),stats:await summaryStats(supabase) };
   if (action === "admin.calendar-items.list") return { calendarItems:await calendarItems(supabase,false) };
   if (action === "admin.summary") return { stats:await summaryStats(supabase) };
+  if (action === "admin.integration-overview") return await adminIntegrationOverview(supabase);
 
   if (action === "admin.grant-message-presets.save") {
     const preset = body.messagePreset && typeof body.messagePreset === "object" ? body.messagePreset as Json : {};
