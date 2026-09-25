@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.30';
+  const VERSION = '2026-09-25.31';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -1095,6 +1095,8 @@
     return common.concat([
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
       caseDef('ADMIN_RESOURCE_EDITORS', '集點卡／票券／活動票券／日曆編輯視窗', 'Human E2E', adminResourceEditorsCase),
+      caseDef('ADMIN_INTEGRATION_CENTER', '真人操作：整合中心總覽／權益／通知／Audit', 'Human E2E', adminIntegrationCenterCase),
+      caseDef('ADMIN_INTEGRATION_NAVIGATION', '真人操作：整合中心跨模組快速導向', 'Human E2E', adminIntegrationNavigationCase),
       caseDef('ADMIN_TICKET_CRUD', '票券：新增／修改／封存／清理', 'Admin CRUD E2E', adminTicketCrudCase),
       caseDef('ADMIN_LOTTERY_TICKET_CRUD', '抽獎券：一般票券＋活動票券建立／機率／回讀／清理', 'Admin CRUD E2E', adminLotteryTicketCrudCase),
       caseDef('ADMIN_POINT_CARD_CRUD', '集點卡：新增／修改／刪除', 'Admin CRUD E2E', adminPointCardCrudCase),
@@ -1655,6 +1657,7 @@
       ['eventsTab', 'eventsPanel'],
       ['calendarTab', 'calendarPanel'],
       ['bookingTab', 'bookingPanel'],
+      ['operationsHubTab', 'operationsHubPanel'],
       ['testModeTab', 'testModePanel']
     ];
     const actual = {};
@@ -1908,6 +1911,226 @@
       ? pass('四種資源編輯視窗與管理日曆切換皆可真人操作。', { allEditors: true, calendarNavigation: true }, actual)
       : fail('至少一個資源編輯視窗或日曆切換異常。', { allEditors: true, calendarNavigation: true }, actual);
   }
+
+  async function openIntegrationCenter(timeoutMs = 15000) {
+    const tab = await waitFor(() => document.getElementById('operationsHubTab'), 6000, 80);
+    if (!tab) throw new Error('整合中心分頁未載入。');
+    await adminHumanClick(tab, '整合中心');
+    const panel = await waitFor(() => {
+      const node = document.getElementById('operationsHubPanel');
+      return node && !node.classList.contains('hidden') ? node : null;
+    }, 5000, 80);
+    if (!panel) throw new Error('整合中心無法開啟。');
+
+    const loaded = Boolean(await waitFor(() => {
+      const freshness = String(document.getElementById('integrationHubFreshness')?.textContent || '');
+      const message = document.getElementById('integrationHubMessage');
+      if (message && !message.classList.contains('hidden') && String(message.textContent || '').trim()) return null;
+      return freshness && !/尚未同步/.test(freshness)
+        && document.querySelectorAll('#integrationMetricGrid .integration-metric').length >= 6
+        ? true
+        : null;
+    }, timeoutMs, 120));
+    if (!loaded) throw new Error('整合中心讀模型在允許時間內沒有完成載入。');
+    return panel;
+  }
+
+  function integrationViewVisible(view) {
+    const section = document.querySelector('[data-integration-view="' + CSS.escape(String(view || '')) + '"]');
+    return Boolean(section && !section.classList.contains('hidden'));
+  }
+
+  async function switchIntegrationView(view) {
+    const button = document.querySelector('[data-integration-view-tab="' + CSS.escape(String(view || '')) + '"]');
+    if (!button) return false;
+    await adminHumanClick(button, '整合中心 ' + view);
+    return Boolean(await waitFor(() => integrationViewVisible(view) ? true : null, 2500, 80));
+  }
+
+  async function adminIntegrationCenterCase() {
+    const actual = {
+      opened: false,
+      metrics: 0,
+      overview: false,
+      benefits: false,
+      notifications: false,
+      audit: false,
+      pointSourcesRendered: false,
+      campaignContainerReady: false,
+      settlementContainerReady: false,
+      benefitSummaryReady: false,
+      notificationFilterWorked: false,
+      auditFilterWorked: false,
+      noReadModelError: false
+    };
+
+    try {
+      await openIntegrationCenter();
+      actual.opened = true;
+      actual.metrics = document.querySelectorAll('#integrationMetricGrid .integration-metric').length;
+      actual.overview = integrationViewVisible('overview');
+      actual.pointSourcesRendered = Boolean(document.getElementById('integrationPointSources')?.children.length);
+      actual.campaignContainerReady = Boolean(document.getElementById('integrationCampaigns'));
+      actual.settlementContainerReady = Boolean(document.getElementById('integrationSettlements'));
+
+      actual.benefits = await switchIntegrationView('benefits');
+      actual.benefitSummaryReady = Boolean(document.getElementById('integrationBenefitSummary')?.children.length);
+
+      actual.notifications = await switchIntegrationView('notifications');
+      const notificationFilter = document.getElementById('integrationNotificationFilter');
+      if (notificationFilter) {
+        notificationFilter.value = 'pending';
+        notificationFilter.dispatchEvent(new Event('change', { bubbles: true }));
+        await adminHumanPause(50, 130);
+        notificationFilter.value = 'all';
+        notificationFilter.dispatchEvent(new Event('change', { bubbles: true }));
+        actual.notificationFilterWorked = String(notificationFilter.value) === 'all'
+          && Boolean(document.getElementById('integrationNotifications'));
+      }
+
+      actual.audit = await switchIntegrationView('audit');
+      const auditFilter = document.getElementById('integrationAuditFilter');
+      const auditSearch = document.getElementById('integrationAuditSearch');
+      if (auditFilter && auditSearch) {
+        auditFilter.value = 'booking';
+        auditFilter.dispatchEvent(new Event('change', { bubbles: true }));
+        await adminHumanTextInput(auditSearch, 'BOOKING', 'Audit 搜尋');
+        await adminHumanPause(50, 130);
+        await adminHumanTextInput(auditSearch, '', 'Audit 搜尋清除');
+        auditFilter.value = 'all';
+        auditFilter.dispatchEvent(new Event('change', { bubbles: true }));
+        actual.auditFilterWorked = auditFilter.value === 'all' && auditSearch.value === ''
+          && Boolean(document.getElementById('integrationAuditTimeline'));
+      }
+
+      const message = document.getElementById('integrationHubMessage');
+      actual.noReadModelError = !message || message.classList.contains('hidden') || !String(message.textContent || '').trim();
+
+      await switchIntegrationView('overview');
+    } catch (error) {
+      return fail('整合中心 E2E 無法完成。', {
+        opened: true,
+        metricsAtLeast: 6,
+        allViews: true,
+        filtersInteractive: true,
+        noReadModelError: true
+      }, { ...actual, error: plainError(error) });
+    }
+
+    const ok = actual.opened
+      && actual.metrics >= 6
+      && actual.overview
+      && actual.benefits
+      && actual.notifications
+      && actual.audit
+      && actual.pointSourcesRendered
+      && actual.campaignContainerReady
+      && actual.settlementContainerReady
+      && actual.benefitSummaryReady
+      && actual.notificationFilterWorked
+      && actual.auditFilterWorked
+      && actual.noReadModelError;
+
+    return ok
+      ? pass('整合中心總覽、權益自動化、通知中心與 Audit Timeline 已以真人 UI 操作完成，讀模型與篩選互動正常。', {
+          opened: true,
+          metricsAtLeast: 6,
+          allViews: true,
+          filtersInteractive: true,
+          noReadModelError: true
+        }, actual)
+      : fail('整合中心至少一個視圖或篩選互動異常。', {
+          opened: true,
+          metricsAtLeast: 6,
+          allViews: true,
+          filtersInteractive: true,
+          noReadModelError: true
+        }, actual);
+  }
+
+  async function adminIntegrationNavigationCase() {
+    const actual = {
+      bookingServices: false,
+      events: false,
+      calendarBatch: false,
+      members: false,
+      returnedToHub: 0
+    };
+
+    const reopen = async () => {
+      await openIntegrationCenter();
+      actual.returnedToHub += 1;
+    };
+
+    try {
+      await reopen();
+
+      const bookingServices = document.querySelector('[data-integration-target="booking-services"]');
+      if (bookingServices) {
+        await adminHumanClick(bookingServices, '點數來源設定');
+        actual.bookingServices = Boolean(await waitFor(() => {
+          const panel = document.getElementById('bookingPanel');
+          const tab = document.getElementById('bookingAdminServicesSubtab');
+          return panel && !panel.classList.contains('hidden') && tab?.getAttribute('aria-selected') === 'true' ? true : null;
+        }, 5000, 80));
+      }
+
+      await reopen();
+      const events = document.querySelector('[data-integration-target="events"]');
+      if (events) {
+        await adminHumanClick(events, '自動權益');
+        actual.events = Boolean(await waitFor(() => {
+          const panel = document.getElementById('eventsPanel');
+          return panel && !panel.classList.contains('hidden') ? true : null;
+        }, 3500, 80));
+      }
+
+      await reopen();
+      const calendar = document.querySelector('[data-integration-target="calendar-batch"]');
+      if (calendar) {
+        await adminHumanClick(calendar, '日曆批次');
+        actual.calendarBatch = Boolean(await waitFor(() => {
+          const panel = document.getElementById('calendarPanel');
+          return panel && !panel.classList.contains('hidden') && document.getElementById('calendarBatchRows') ? true : null;
+        }, 3500, 80));
+      }
+
+      await reopen();
+      const members = document.querySelector('[data-integration-target="member-grant"]');
+      if (members) {
+        await adminHumanClick(members, '會員發放');
+        actual.members = Boolean(await waitFor(() => {
+          const panel = document.getElementById('membersPanel');
+          return panel && !panel.classList.contains('hidden') && document.getElementById('memberSearch') ? true : null;
+        }, 3500, 80));
+      }
+
+      await reopen();
+    } catch (error) {
+      return fail('整合中心跨模組導向無法完成。', {
+        bookingServices: true,
+        events: true,
+        calendarBatch: true,
+        members: true
+      }, { ...actual, error: plainError(error) });
+    }
+
+    const ok = actual.bookingServices && actual.events && actual.calendarBatch && actual.members && actual.returnedToHub >= 5;
+    return ok
+      ? pass('整合中心可真人導向預約點數來源、活動權益、日曆批次與會員發放，且可回到整合中心繼續操作。', {
+          bookingServices: true,
+          events: true,
+          calendarBatch: true,
+          members: true
+        }, actual)
+      : fail('整合中心至少一個跨模組快速導向異常。', {
+          bookingServices: true,
+          events: true,
+          calendarBatch: true,
+          members: true
+        }, actual);
+  }
+
 
   function qaCrudStamp() {
     return Date.now().toString(36).slice(-7) + Math.random().toString(36).slice(2, 6);
@@ -3792,8 +4015,34 @@
     if (!action) throw new Error('管理端預約缺少「' + label + '」操作。');
     if (!await waitFor(() => !action.disabled, 5000)) throw new Error('管理端預約操作尚未就緒。');
     if (state.cancelled) throw new Error('E2E 已停止，未送出狀態變更。');
+    let settlementPreview = null;
     if (expectedStatus === 'completed') {
-      await withAutoConfirm(async () => { await adminHumanClick(action, label); });
+      await adminHumanClick(action, label);
+      const previewModal = await waitFor(() => {
+        const modal = document.getElementById('bookingAdminCrudModal');
+        const title = String(document.getElementById('bookingAdminCrudModalTitle')?.textContent || '');
+        return modal && !modal.classList.contains('hidden') && /完成結算預覽/.test(title) ? modal : null;
+      }, 5000, 80);
+      if (!previewModal) throw new Error('確認服務完成後沒有開啟完成結算預覽。');
+
+      const beforeSubmit = await waitAdminBookingSnapshot(bookingId);
+      const bodyText = String(document.getElementById('bookingAdminCrudModalBody')?.textContent || '');
+      const confirmButton = Array.from(previewModal.querySelectorAll('button')).find((button) =>
+        String(button.textContent || '').trim() === '確認完成並結算'
+      );
+      settlementPreview = {
+        opened: true,
+        serverAuthoritativeNotice: /Server-side/.test(bodyText),
+        serviceMinutesVisible: /將計入服務時間/.test(bodyText),
+        rewardPreviewVisible: /預估自動集點/.test(bodyText),
+        stayedConfirmedBeforeSubmit: String(beforeSubmit?.status || '') === 'confirmed',
+        confirmButtonReady: Boolean(confirmButton && !confirmButton.disabled)
+      };
+      if (!Object.values(settlementPreview).every(Boolean)) {
+        throw new Error('完成結算預覽缺少必要資訊或在送出前已提前改變預約狀態。');
+      }
+      await adminHumanClick(confirmButton, '確認完成並結算');
+      await waitFor(() => previewModal.classList.contains('hidden') ? true : null, 10000, 80);
     } else {
       await adminHumanClick(action, label);
     }
@@ -3804,6 +4053,7 @@
       actualStatus: String(updated?.status || ''),
       adminNote: String(updated?.adminNote || ''),
       updatedAt: updated?.updatedAt || null,
+      settlementPreview,
       ok: Boolean(updated && String(updated.status || '') === expectedStatus)
     };
   }
@@ -4923,7 +5173,13 @@
       ['bookingAdvanceMinimum', '#bookingAdminAdvanceDays'],
       ['bookingAdvanceMaximum', '#bookingAdminMaxAdvanceDays'],
       ['bookingStoreServiceMinutes', '#bookingAdminStoreServiceMinutes'],
-      ['bookingNotice', '#bookingAdminNotice']
+      ['bookingNotice', '#bookingAdminNotice'],
+      ['integrationCenter', '#operationsHubPanel'],
+      ['integrationMetrics', '#integrationMetricGrid'],
+      ['integrationPointSources', '#integrationPointSources'],
+      ['integrationBenefits', '#integrationBenefitSummary'],
+      ['integrationNotifications', '#integrationNotifications'],
+      ['integrationAuditTimeline', '#integrationAuditTimeline']
     ];
     const missing = contracts.filter(([, selector]) => !document.querySelector(selector)).map(([key, selector]) => ({ key, selector }));
     const actual = { contractCount: contracts.length, missing };

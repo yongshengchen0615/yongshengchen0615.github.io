@@ -39,6 +39,8 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
     'ADMIN_CALENDAR_BATCH_CONTROLS',
     'ADMIN_TEST_ACCOUNT_LIFECYCLE',
     'ADMIN_BOOKING_SHARED_SETTINGS',
+    'ADMIN_INTEGRATION_CENTER',
+    'ADMIN_INTEGRATION_NAVIGATION',
     'ADMIN_FEATURE_CONTRACT_COVERAGE',
     'ADMIN_BUTTON_COVERAGE'
   ]) {
@@ -55,6 +57,14 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
   assert.match(source, /bookingAdminStoreServiceMinutes/);
   assert.match(source, /bookingAdminNotice/);
   assert.match(source, /bookingSharedSettings/);
+  assert.match(source, /adminIntegrationCenterCase/);
+  assert.match(source, /adminIntegrationNavigationCase/);
+  assert.match(source, /integrationMetricGrid/);
+  assert.match(source, /integrationNotifications/);
+  assert.match(source, /integrationAuditTimeline/);
+  assert.match(source, /完成結算預覽/);
+  assert.match(source, /stayedConfirmedBeforeSubmit/);
+  assert.match(source, /確認完成並結算/);
   assert.match(source, /explicitCaseByButtonId/);
   assert.doesNotMatch(source, /waitFor\(async \(\) =>/);
 });
@@ -65,5 +75,5 @@ test('all member clients and admin load the latest expanded E2E controllers', ()
     assert.match(html, /\.\.\/user-test-control\.js\?v=human-e2e-20260924-12/);
   }
   const admin = read('admin/index.html');
-  assert.match(admin, /\.\/e2e-control\.js\?v=admin-e2e-20260924-30/);
+  assert.match(admin, /\.\/e2e-control\.js\?v=admin-e2e-20260925-31/);
 });
