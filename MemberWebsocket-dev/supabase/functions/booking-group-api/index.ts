@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
@@ -109,14 +110,13 @@ function channelId(clientType: ClientType) {
   if (!/^\d{5,30}$/.test(value)) throw new ApiError(503, "AUTH_CONFIG_MISSING", "LINE 驗證設定尚未完成。"); return value;
 }
 async function verifyLine(idToken: string, clientType: ClientType): Promise<Identity> {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
-  const expected = channelId(clientType); let res: Response;
-  try { res = await fetch("https://api.line.me/oauth2/v2.1/verify", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams({ id_token:idToken, client_id:expected }) }); }
-  catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證暫時無法使用。"); }
-  const p = await res.json().catch(() => ({})); const exp = Number(p.exp || 0);
-  if (!res.ok || !p.sub || p.aud !== expected || p.iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-  return { lineUserId:String(p.sub), displayName:String(p.name || "LINE 使用者").slice(0,120) };
+  return await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: channelId(clientType),
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  }) as Identity;
 }
+
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -139,9 +139,13 @@ async function member(s: SupabaseClient, i: Identity) {
   if (r.data.status !== "active") throw new ApiError(403, "MEMBER_DISABLED", "會員目前已停用。"); return r.data;
 }
 async function admin(s: SupabaseClient, i: Identity) {
-  const r = await s.from("admins").select("*").eq("line_user_id", i.lineUserId).maybeSingle(); if (r.error) throw mapDbError(r.error);
-  if (!r.data || r.data.role !== "admin" || r.data.status !== "active") throw new ApiError(403, "ADMIN_PENDING", "管理端帳號尚未授權。"); return r.data;
+  return await requireActiveAdminContract({
+    supabase: s,
+    identity: i,
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
+
 async function audit(s: SupabaseClient, i: Identity, role: string, action: string, targetType: string, targetId: string, metadata: Json = {}) {
   const r = await s.from("booking_audit_events").insert({ actor_line_user_id:i.lineUserId, actor_role:role, action, target_type:targetType, target_id:targetId, result:"success", metadata });
   if (r.error) console.error("audit failed", r.error.message);
