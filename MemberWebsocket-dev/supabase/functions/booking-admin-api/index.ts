@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -104,32 +105,21 @@ function timeToMinutes(value: string): number {
   return hour * 60 + minute;
 }
 async function verifyLineIdToken(idToken: string): Promise<Identity> {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。" );
-  const channelId = env("LINE_ADMIN_CHANNEL_ID") || "2010791619";
-  let verifyResponse: Response;
-  try {
-    verifyResponse = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: channelId }),
-    });
-  } catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。" ); }
-  let payload: Json;
-  try { payload = await verifyResponse.json(); } catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。" ); }
-  const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
-  const aud = typeof payload.aud === "string" ? payload.aud.trim() : "";
-  const iss = typeof payload.iss === "string" ? payload.iss.trim() : "";
-  const exp = Number(payload.exp || 0);
-  if (!verifyResponse.ok || !sub || aud !== channelId || iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) {
-    throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。" );
-  }
-  return { lineUserId: sub, displayName: String(payload.name || "LINE 使用者").slice(0, 120) };
+  return await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: env("LINE_ADMIN_CHANNEL_ID") || "2010791619",
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  }) as Identity;
 }
+
 async function authorizeAdmin(supabase: SupabaseClient, identity: Identity): Promise<void> {
-  const result = await supabase.from("admins").select("role,status").eq("line_user_id", identity.lineUserId).maybeSingle();
-  if (result.error) throw mapDatabaseError(result.error);
-  if (!result.data || result.data.role !== "admin" || result.data.status !== "active") throw new ApiError(403, "ADMIN_REQUIRED", "管理端帳號尚未授權。" );
+  await requireActiveAdminContract({
+    supabase,
+    identity,
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
+
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
