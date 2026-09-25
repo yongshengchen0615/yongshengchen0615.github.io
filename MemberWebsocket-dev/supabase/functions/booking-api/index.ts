@@ -836,6 +836,26 @@ async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
   return await hydrateBookings(supabase, sorted);
 }
 
+async function adminBookingSummary(supabase: SupabaseClient): Promise<Json> {
+  const [pendingResult, cancellationResult] = await Promise.all([
+    supabase.from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending"),
+    supabase.from("bookings")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["pending", "confirmed"])
+      .not("cancellation_requested_at", "is", null)
+      .is("cancellation_reviewed_at", null),
+  ]);
+  if (pendingResult.error) throw mapDatabaseError(pendingResult.error);
+  if (cancellationResult.error) throw mapDatabaseError(cancellationResult.error);
+  return {
+    pendingCount: Math.max(0, Number(pendingResult.count || 0)),
+    cancellationRequestCount: Math.max(0, Number(cancellationResult.count || 0)),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 async function adminBootstrap(supabase: SupabaseClient): Promise<Json> {
   const [settings, servicesResult, bookings, serviceTypes] = await Promise.all([
     bookingSettings(supabase),
@@ -912,6 +932,7 @@ async function route(supabase: SupabaseClient, identity: Identity, clientType: C
   }
 
   await authorizeAdmin(supabase, identity);
+  if (action === "admin.booking.summary") return await adminBookingSummary(supabase);
   if (action === "admin.booking.bootstrap") return await adminBootstrap(supabase);
   if (action === "admin.booking.settings.save") return await adminSettingsSave(supabase, identity, body);
   if (action === "admin.booking.service.save") return await adminServiceSave(supabase, identity, body);
