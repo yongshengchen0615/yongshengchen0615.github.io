@@ -23,6 +23,9 @@
     badgeLoading: false,
     badgeQueued: false,
     badgeStartPromise: null,
+    unreadCount: 0,
+    pendingCount: 0,
+    latestNotificationId: 0,
   };
   const els = {};
 
@@ -243,7 +246,7 @@
     els.bookingTab.setAttribute('aria-selected', 'true');
     els.bookingPanel.classList.remove('hidden');
     setSubtab(state.subtab);
-    if (!state.loading) refreshAll(false);
+    if (!state.loading) refreshAll(false, true);
   }
 
   function deactivateBookingPanel() {
@@ -260,13 +263,21 @@
     return { config: session.config, idToken: session.idToken };
   }
 
-  function renderBookingPendingBadge(pendingCount) {
+  function renderBookingPendingBadge(unreadCount, pendingCount) {
+    const unread = Math.max(0, Number(unreadCount || 0));
     const pending = Math.max(0, Number(pendingCount || 0));
+    state.unreadCount = unread;
+    state.pendingCount = pending;
     els.bookingAdminPendingCount.textContent = String(pending);
     els.bookingAdminQueueSubtabCount.textContent = pending ? `（${pending}）` : '';
+    els.bookingTab.dataset.unreadCount = String(unread);
     els.bookingTab.dataset.pendingCount = String(pending);
-    els.bookingTab.setAttribute('aria-label', pending ? `預約，${pending} 筆待確認` : '預約');
-    els.bookingTab.title = pending ? `${pending} 筆新預約待確認` : '';
+    els.bookingTab.setAttribute('aria-label', unread
+      ? `預約，${unread} 筆未讀更新，${pending} 筆待確認`
+      : (pending ? `預約，${pending} 筆待確認` : '預約'));
+    els.bookingTab.title = unread
+      ? `${unread} 筆新的預約更新尚未查看`
+      : (pending ? `${pending} 筆預約待確認` : '');
   }
 
   async function refreshBookingBadge() {
@@ -278,7 +289,11 @@
     state.badgeLoading = true;
     try {
       const summary = await bookingRequest('admin.booking.summary');
-      renderBookingPendingBadge(Number(summary?.pendingCount || 0));
+      state.latestNotificationId = Math.max(0, Number(summary?.latestNotificationId || 0));
+      renderBookingPendingBadge(
+        Number(summary?.unreadCount || 0),
+        Number(summary?.pendingCount || 0),
+      );
       return true;
     } catch (error) {
       console.warn('booking nav badge refresh failed', error);
@@ -289,6 +304,27 @@
         state.badgeQueued = false;
         window.setTimeout(() => { refreshBookingBadge(); }, 0);
       }
+    }
+  }
+
+  async function markBookingNotificationsRead() {
+    if (isBackgroundE2ERunner()) return false;
+    try {
+      const result = await bookingRequest('admin.booking.notifications.read', {
+        throughNotificationId: state.latestNotificationId || null,
+      }, true);
+      state.latestNotificationId = Math.max(
+        state.latestNotificationId,
+        Number(result?.latestNotificationId || 0),
+      );
+      const pending = Array.isArray(state.booking?.bookings)
+        ? state.booking.bookings.filter((booking) => booking.status === 'pending').length
+        : state.pendingCount;
+      renderBookingPendingBadge(Number(result?.unreadCount || 0), pending);
+      return true;
+    } catch (error) {
+      console.warn('booking notification cursor update failed', error);
+      return false;
     }
   }
 
@@ -349,7 +385,7 @@
     }
   }
 
-  async function refreshAll(showSuccess) {
+  async function refreshAll(showSuccess, markNotificationsRead = false) {
     if (state.loading) {
       state.refreshQueued = true;
       state.refreshQueuedShowSuccess = state.refreshQueuedShowSuccess || Boolean(showSuccess);
@@ -389,6 +425,9 @@
       renderAll();
       publishOperationalBookingSnapshot();
       setupRealtime();
+      if (markNotificationsRead && !els.bookingPanel?.classList.contains('hidden')) {
+        await markBookingNotificationsRead();
+      }
       setSyncStatus(showSuccess ? '預約資料已更新' : `已同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`);
     } catch (error) {
       setSyncStatus(error?.message || '預約資料同步失敗', true);
@@ -1256,7 +1295,7 @@
         state.realtimeTimer = null;
         if (state.loading || state.busy) return;
         if (els.bookingPanel?.classList.contains('hidden')) refreshBookingBadge();
-        else refreshAll(false);
+        else refreshAll(false, true);
       }, 500);
     };
     state.realtimeChannel = state.realtimeClient.channel('booking-admin-sync-v2').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
