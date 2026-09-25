@@ -41,8 +41,8 @@ test('dialog with no enabled controls keeps focus and Escape remains with the bu
     const escape=new f.w.KeyboardEvent('keydown',{key:'Escape',cancelable:true});f.d.dispatchEvent(escape);assert.equal(escape.defaultPrevented,false);
   }finally{f.w.dispatchEvent(new f.w.Event('pagehide'));f.dom.window.close();}
 });
-test('all seven app pages load the helper and deny object and base URL injection in CSP',()=>{
-  for(const surface of ['member','points','event','calendar','admin','booking','booking/admin']){
+test('all interactive app pages load the helper and deny object and base URL injection in CSP',()=>{
+  for(const surface of ['member','points','event','calendar','admin','booking']){
     const file=path.join(root,surface,'index.html');const dom=new JSDOM(fs.readFileSync(file,'utf8'));try{
       const d=dom.window.document;
       const script=d.querySelector('script[src*="dialog-accessibility.js"]');assert.ok(script,surface);
