@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 
 type Json = Record<string, unknown>;
@@ -124,40 +125,19 @@ function channelIdFor(surface: Surface): string {
 }
 
 async function verifyLineIdToken(idToken: string, surface: Surface): Promise<Identity> {
-  const token = asText(idToken, 10_000);
-  if (!token) throw new ApiError(401, "AUTH_REQUIRED", "需要 LINE 登入。");
-
-  let response: Response;
-  try {
-    response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: token, client_id: channelIdFor(surface) }),
-    });
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。");
-  }
-
-  let payload: Json = {};
-  try { payload = await response.json(); } catch {}
-  if (!response.ok) throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-
-  const sub = asText(payload.sub, 120);
-  if (!sub) throw new ApiError(401, "AUTH_INVALID", "無法確認 LINE 使用者身分。");
-  return { lineUserId: sub, displayName: asText(payload.name || "LINE 使用者", 120) };
+  return await verifyLineIdTokenContract({
+    idToken: asText(idToken, 10_000),
+    expectedChannelId: channelIdFor(surface),
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  }) as Identity;
 }
 
 async function authorizeAdmin(supabase: any, identity: Identity): Promise<any> {
-  const result = await supabase.from("admins")
-    .select("id,line_user_id,display_name,role,status")
-    .eq("line_user_id", identity.lineUserId)
-    .maybeSingle();
-  if (result.error) throw new ApiError(503, "ADMIN_CHECK_FAILED", "目前無法確認管理員權限。");
-  const admin = result.data;
-  if (!admin || admin.role !== "admin" || admin.status !== "active") {
-    throw new ApiError(403, "ADMIN_REQUIRED", "此 LINE 帳號沒有管理員權限。");
-  }
-  return admin;
+  return await requireActiveAdminContract({
+    supabase,
+    identity,
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
 
 async function settings(supabase: any): Promise<any> {
