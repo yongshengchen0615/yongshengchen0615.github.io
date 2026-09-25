@@ -210,6 +210,8 @@
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeModal(); });
     document.querySelectorAll('[data-booking-filter]').forEach((button) => button.addEventListener('click', () => setFilter(button.dataset.bookingFilter || 'pending')));
     window.addEventListener('beforeunload', teardownRealtime);
+    window.addEventListener('member-admin:booking-snapshot-request', handleOperationalSnapshotRequest);
+    window.addEventListener('member-admin:booking-focus', handleOperationalBookingFocus);
   }
 
   function setSubtab(subtab) {
@@ -330,6 +332,7 @@
       state.catalog = { serviceTypes: Array.isArray(catalog.serviceTypes) ? catalog.serviceTypes : [], services: Array.isArray(catalog.services) ? catalog.services : [], pointCards: Array.isArray(catalog.pointCards) ? catalog.pointCards : [] };
       state.selected = new Set([...state.selected].filter((id) => state.catalog.services.some((service) => service.serviceId === id)));
       renderAll();
+      publishOperationalBookingSnapshot();
       setupRealtime();
       setSyncStatus(showSuccess ? '預約資料已更新' : `已同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`);
     } catch (error) {
@@ -346,6 +349,49 @@
     }
     return true;
   }
+  function publishOperationalBookingSnapshot() {
+    const bookings = (state.booking.bookings || []).map((booking) => ({
+      bookingId: String(booking.bookingId || ''),
+      bookingDate: String(booking.bookingDate || ''),
+      startTime: String(booking.startTime || '').slice(0, 5),
+      endTime: String(booking.endTime || '').slice(0, 5),
+      status: String(booking.status || ''),
+      memberDisplayName: String(booking.memberDisplayName || ''),
+      memberCode: String(booking.memberCode || ''),
+      technicianName: String(booking.technicianName || ''),
+      partySize: Math.max(1, Number(booking.partySize || 1)),
+      cancellationRequestedAt: booking.cancellationRequestedAt || null,
+    })).filter((booking) => booking.bookingId && booking.bookingDate);
+    window.dispatchEvent(new CustomEvent('member-admin:booking-snapshot', { detail: { bookings } }));
+  }
+
+  function handleOperationalSnapshotRequest() {
+    if (state.booking.bookings.length) publishOperationalBookingSnapshot();
+    if (state.loading) {
+      state.refreshQueued = true;
+      return;
+    }
+    refreshAll(false);
+  }
+
+  function handleOperationalBookingFocus(event) {
+    const bookingId = String(event?.detail?.bookingId || '');
+    if (!bookingId) return;
+    setSubtab('queue');
+    setFilter('all');
+    window.requestAnimationFrame(() => {
+      const card = Array.from(els.bookingAdminQueue.querySelectorAll('[data-booking-id]'))
+        .find((item) => String(item.dataset.bookingId || '') === bookingId);
+      if (!card) return;
+      els.bookingAdminQueue.querySelectorAll('.is-calendar-target').forEach((item) => item.classList.remove('is-calendar-target'));
+      card.classList.add('is-calendar-target');
+      card.tabIndex = -1;
+      try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+      try { card.focus({ preventScroll: true }); } catch (_) { card.focus(); }
+      window.setTimeout(() => card.classList.remove('is-calendar-target'), 3600);
+    });
+  }
+
   function renderAll() { renderSettings(); renderTypes(); renderServices(); renderStats(); renderBookings(); }
   function renderSettings() {
     const settings = state.booking.settings || {};
