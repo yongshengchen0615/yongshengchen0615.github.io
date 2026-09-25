@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
@@ -84,24 +85,12 @@ function db() {
 }
 
 async function verifyMember(idToken: string) {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
-  const channelId = env("LINE_MEMBER_CHANNEL_ID") || "2010787602";
-  let response: Response;
-  try {
-    response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: channelId }),
-    });
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證暫時無法使用。");
-  }
-  const payload = await response.json().catch(() => ({}));
-  const exp = Number(payload.exp || 0);
-  if (!response.ok || !payload.sub || payload.aud !== channelId || payload.iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) {
-    throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-  }
-  return String(payload.sub);
+  const identity = await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: env("LINE_MEMBER_CHANNEL_ID") || "2010787602",
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
+  return identity.lineUserId;
 }
 
 async function sha256(value: string): Promise<string> {

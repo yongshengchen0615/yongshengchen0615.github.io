@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
@@ -20,6 +21,7 @@ const WRITE_ACTIONS = new Set([
   "admin.booking.settings.save",
   "admin.booking.service.save",
   "admin.booking.status.update",
+  "admin.booking.notifications.read",
 ]);
 
 class ApiError extends Error {
@@ -78,6 +80,9 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_CONFLICT", 409, "BOOKING_CONFLICT", "預約已被更新，請重新整理後再操作。"],
     ["BOOKING_NOT_EDITABLE", 409, "BOOKING_NOT_EDITABLE", "這筆預約已開始或狀態已變更，無法修改。"],
     ["BOOKING_CANCELLATION_PENDING", 409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核後再變更預約。"],
+    ["BOOKING_NOT_CANCELLABLE", 409, "BOOKING_NOT_CANCELLABLE", "這筆預約目前無法申請取消。"],
+    ["CANCELLATION_NOT_PENDING", 409, "CANCELLATION_NOT_PENDING", "這筆預約目前沒有待確認的取消申請。"],
+    ["BOOKING_COMPLETION_REQUIRES_SETTLEMENT", 409, "BOOKING_COMPLETION_CANONICAL_REQUIRED", "完成預約必須使用結算流程。"],
     ["BOOKING_HOLIDAY", 409, "BOOKING_HOLIDAY", "這一天為休假日，請選擇其他日期。"],
     ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "這段時間剛剛已被其他會員預約，請選擇其他時間。"],
     ["BOOKING_TOO_EARLY", 409, "BOOKING_TOO_EARLY", "尚未符合提前預約天數，請選擇較晚的日期。"],
@@ -128,31 +133,11 @@ function channelIdFor(clientType: ClientType): string {
 }
 
 async function verifyLineIdToken(idToken: string, clientType: ClientType): Promise<Identity> {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
-  const expectedChannelId = channelIdFor(clientType);
-  let verifyResponse: Response;
-  try {
-    verifyResponse = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: expectedChannelId }),
-    });
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。");
-  }
-
-  let payload: Json;
-  try { payload = await verifyResponse.json(); }
-  catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。"); }
-
-  const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
-  const aud = typeof payload.aud === "string" ? payload.aud.trim() : "";
-  const iss = typeof payload.iss === "string" ? payload.iss.trim() : "";
-  const exp = Number(payload.exp || 0);
-  if (!verifyResponse.ok || !sub || aud !== expectedChannelId || iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) {
-    throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-  }
-  return { lineUserId: sub, displayName: String(payload.name || "LINE 使用者").slice(0, 120) };
+  return await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: channelIdFor(clientType),
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  }) as Identity;
 }
 
 async function sha256(value: string): Promise<string> {
@@ -184,29 +169,11 @@ async function requireJoinedMember(supabase: SupabaseClient, identity: Identity)
 }
 
 async function authorizeAdmin(supabase: SupabaseClient, identity: Identity): Promise<any> {
-  let result = await supabase.from("admins").select("*").eq("line_user_id", identity.lineUserId).maybeSingle();
-  if (result.error) throw mapDatabaseError(result.error);
-  let admin = result.data;
-  if (!admin) {
-    const inserted = await supabase.from("admins").insert({
-      line_user_id: identity.lineUserId,
-      display_name: identity.displayName,
-      role: "none",
-      status: "pending",
-    }).select("*").single();
-    if (inserted.error) {
-      result = await supabase.from("admins").select("*").eq("line_user_id", identity.lineUserId).single();
-      if (result.error) throw mapDatabaseError(inserted.error);
-      admin = result.data;
-    } else admin = inserted.data;
-  }
-  if (admin.role !== "admin" || admin.status !== "active") {
-    throw new ApiError(403, "ADMIN_PENDING", "管理端帳號尚未授權。", { lineUserId: identity.lineUserId });
-  }
-  if (identity.displayName && admin.display_name !== identity.displayName) {
-    await supabase.from("admins").update({ display_name: identity.displayName, updated_at: new Date().toISOString() }).eq("id", admin.id);
-  }
-  return admin;
+  return await requireActiveAdminContract({
+    supabase,
+    identity,
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
 
 function asText(value: unknown, max = 1000): string {
@@ -660,34 +627,32 @@ async function userUpdate(supabase: SupabaseClient, identity: Identity, member: 
 
 async function userCancel(supabase: SupabaseClient, identity: Identity, member: any, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
-  const existing = await supabase.from("bookings").select("*").eq("id", bookingId).eq("member_id", member.id).maybeSingle();
-  if (existing.error) throw mapDatabaseError(existing.error);
-  const booking = existing.data;
-  if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
-  if (booking.cancellation_requested_at && !booking.cancellation_reviewed_at) {
-    const hydrated = (await hydrateBookings(supabase, [booking]))[0];
-    return { booking: { ...hydrated, baseStatus: booking.status, status: "cancel_requested" }, alreadyRequested: true };
-  }
-  if (!["pending", "confirmed"].includes(booking.status)) throw new ApiError(409, "BOOKING_NOT_CANCELLABLE", "這筆預約目前無法申請取消。");
-  const today = taipeiDate();
-  if (booking.booking_date < today || (booking.booking_date === today && timeToMinutes(String(booking.start_time).slice(0, 5)) <= taipeiMinutes())) {
-    throw new ApiError(409, "BOOKING_TIME_PASSED", "預約時間已經開始或經過，無法申請取消。");
-  }
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  const result = await supabase.rpc("request_booking_cancellation", {
+    p_booking_id: bookingId,
+    p_member_id: member.id,
+    p_actor: identity.lineUserId,
+    p_expected_updated_at: expectedUpdatedAt || null,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
 
-  const now = new Date().toISOString();
-  const updated = await supabase.from("bookings").update({
-    cancellation_requested_at: now,
-    cancellation_requested_by: identity.lineUserId,
-    cancellation_source_status: booking.status,
-    cancellation_reviewed_at: null,
-    cancellation_reviewed_by: null,
-    cancellation_decision: null,
-  }).eq("id", bookingId).eq("member_id", member.id).eq("status", booking.status).eq("updated_at", booking.updated_at).select("*").maybeSingle();
-  if (updated.error) throw mapDatabaseError(updated.error);
-  if (!updated.data) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再申請取消。");
-  const hydrated = (await hydrateBookings(supabase, [updated.data]))[0];
-  await audit(supabase, identity, "member", "BOOKING_CANCELLATION_REQUESTED", "booking", bookingId, { sourceStatus: booking.status });
-  return { booking: { ...hydrated, baseStatus: booking.status, status: "cancel_requested" }, alreadyRequested: false };
+  const current = await supabase.from("bookings").select("*").eq("id", bookingId).eq("member_id", member.id).maybeSingle();
+  if (current.error) throw mapDatabaseError(current.error);
+  if (!current.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
+
+  const rpcResult = result.data && typeof result.data === "object" ? result.data as Json : {};
+  const alreadyRequested = rpcResult.alreadyRequested === true;
+  const hydrated = (await hydrateBookings(supabase, [current.data]))[0];
+  if (!alreadyRequested) {
+    await audit(supabase, identity, "member", "BOOKING_CANCELLATION_REQUESTED", "booking", bookingId, {
+      sourceStatus: current.data.status,
+      canonicalCommand: "request_booking_cancellation",
+    });
+  }
+  return {
+    booking: { ...hydrated, baseStatus: current.data.status, status: "cancel_requested" },
+    alreadyRequested,
+  };
 }
 
 async function adminSettingsSave(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
@@ -836,8 +801,8 @@ async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
   return await hydrateBookings(supabase, sorted);
 }
 
-async function adminBookingSummary(supabase: SupabaseClient): Promise<Json> {
-  const [pendingResult, cancellationResult] = await Promise.all([
+async function adminBookingSummary(supabase: SupabaseClient, identity: Identity): Promise<Json> {
+  const [pendingResult, cancellationResult, notificationResult] = await Promise.all([
     supabase.from("bookings")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending"),
@@ -846,14 +811,40 @@ async function adminBookingSummary(supabase: SupabaseClient): Promise<Json> {
       .in("status", ["pending", "confirmed"])
       .not("cancellation_requested_at", "is", null)
       .is("cancellation_reviewed_at", null),
+    supabase.rpc("admin_booking_notification_summary", {
+      p_admin_line_user_id: identity.lineUserId,
+    }),
   ]);
   if (pendingResult.error) throw mapDatabaseError(pendingResult.error);
   if (cancellationResult.error) throw mapDatabaseError(cancellationResult.error);
+  if (notificationResult.error) throw mapDatabaseError(notificationResult.error);
+  const notifications = notificationResult.data && typeof notificationResult.data === "object"
+    ? notificationResult.data as Json
+    : {};
   return {
     pendingCount: Math.max(0, Number(pendingResult.count || 0)),
     cancellationRequestCount: Math.max(0, Number(cancellationResult.count || 0)),
+    unreadCount: Math.max(0, Number(notifications.unreadCount || 0)),
+    unreadBookingCount: Math.max(0, Number(notifications.unreadBookingCount || 0)),
+    unreadCancellationCount: Math.max(0, Number(notifications.unreadCancellationCount || 0)),
+    latestNotificationId: Math.max(0, Number(notifications.latestNotificationId || 0)),
+    lastReadNotificationId: Math.max(0, Number(notifications.lastReadNotificationId || 0)),
     generatedAt: new Date().toISOString(),
   };
+}
+
+async function adminMarkBookingNotificationsRead(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
+  const raw = body.throughNotificationId;
+  const parsed = raw === undefined || raw === null || raw === "" ? null : Number(raw);
+  if (parsed !== null && (!Number.isSafeInteger(parsed) || parsed < 0)) {
+    throw new ApiError(400, "INVALID_NOTIFICATION_CURSOR", "通知讀取位置不正確。");
+  }
+  const result = await supabase.rpc("mark_admin_booking_notifications_read", {
+    p_admin_line_user_id: identity.lineUserId,
+    p_through_notification_id: parsed,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
+  return result.data && typeof result.data === "object" ? result.data as Json : {};
 }
 
 async function adminBootstrap(supabase: SupabaseClient): Promise<Json> {
@@ -875,7 +866,10 @@ async function adminBootstrap(supabase: SupabaseClient): Promise<Json> {
 async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
   const nextStatus = asText(body.status, 20);
-  if (!["confirmed", "rejected", "cancelled", "completed"].includes(nextStatus)) {
+  if (nextStatus === "completed") {
+    throw new ApiError(409, "BOOKING_COMPLETION_CANONICAL_REQUIRED", "完成預約必須使用結算流程，請重新整理後再試。");
+  }
+  if (!["confirmed", "rejected", "cancelled"].includes(nextStatus)) {
     throw new ApiError(400, "INVALID_BOOKING_STATUS", "不支援的預約狀態。");
   }
   const adminNote = asText(body.adminNote, 500);
@@ -891,7 +885,7 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
   }
   const allowed = booking.status === "pending"
     ? ["confirmed", "rejected", "cancelled"]
-    : booking.status === "confirmed" ? ["cancelled", "completed"] : [];
+    : booking.status === "confirmed" ? ["cancelled"] : [];
   if (!allowed.includes(nextStatus)) {
     throw new ApiError(409, "INVALID_BOOKING_TRANSITION", `目前狀態 ${booking.status} 無法變更為 ${nextStatus}。`);
   }
@@ -901,9 +895,6 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
   if (nextStatus === "confirmed") {
     patch.confirmed_by = identity.lineUserId;
     patch.confirmed_at = now;
-  } else if (nextStatus === "completed") {
-    patch.completed_by = identity.lineUserId;
-    patch.completed_at = now;
   } else if (nextStatus === "rejected") {
     patch.rejected_by = identity.lineUserId;
     patch.rejected_at = now;
@@ -932,7 +923,8 @@ async function route(supabase: SupabaseClient, identity: Identity, clientType: C
   }
 
   await authorizeAdmin(supabase, identity);
-  if (action === "admin.booking.summary") return await adminBookingSummary(supabase);
+  if (action === "admin.booking.summary") return await adminBookingSummary(supabase, identity);
+  if (action === "admin.booking.notifications.read") return await adminMarkBookingNotificationsRead(supabase, identity, body);
   if (action === "admin.booking.bootstrap") return await adminBootstrap(supabase);
   if (action === "admin.booking.settings.save") return await adminSettingsSave(supabase, identity, body);
   if (action === "admin.booking.service.save") return await adminServiceSave(supabase, identity, body);

@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -50,6 +51,7 @@ function mapDatabaseError(error: unknown): ApiError {
   const raw = error as { message?: string; details?: string; code?: string };
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
+    ["BOOKING_COMPLETION_REQUIRES_SETTLEMENT",409,"BOOKING_COMPLETION_CANONICAL_REQUIRED","完成預約必須使用完整結算流程。"],
     ["ADMIN_REQUIRED", 403, "ADMIN_REQUIRED", "管理端帳號尚未授權。"],
     ["BOOKING_PARTICIPANT_EDIT_REQUIRED", 409, "BOOKING_PARTICIPANT_EDIT_REQUIRED", "請重新整理並使用逐位修改服務項目。"],
     ["INVALID_BOOKING_PARTICIPANTS", 400, "INVALID_BOOKING_PARTICIPANTS", "請完整提供每一位預約人的項目，且不可重複。"],
@@ -92,37 +94,26 @@ function dbClient(): SupabaseClient {
   if (!url || !key) throw new ApiError(503, "SUPABASE_CONFIG_MISSING", "Supabase server 設定尚未完成。");
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
+function channelId(): string {
+  const value = env("LINE_ADMIN_CHANNEL_ID") || "2010791619";
+  if (!/^\d{5,30}$/.test(value)) {
+    throw new ApiError(503, "AUTH_CONFIG_MISSING", "LINE 驗證設定尚未完成。");
+  }
+  return value;
+}
 async function verifyLineIdToken(idToken: string): Promise<Identity> {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
-  const channelId = env("LINE_ADMIN_CHANNEL_ID") || "2010791619";
-  let verifyResponse: Response;
-  try {
-    verifyResponse = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: channelId }),
-    });
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。");
-  }
-  let payload: Json;
-  try { payload = await verifyResponse.json(); }
-  catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。"); }
-  const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
-  const aud = typeof payload.aud === "string" ? payload.aud.trim() : "";
-  const iss = typeof payload.iss === "string" ? payload.iss.trim() : "";
-  const exp = Number(payload.exp || 0);
-  if (!verifyResponse.ok || !sub || aud !== channelId || iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) {
-    throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-  }
-  return { lineUserId: sub, displayName: String(payload.name || "LINE 使用者").slice(0, 120) };
+  return await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: channelId(),
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  }) as Identity;
 }
 async function authorizeAdmin(supabase: SupabaseClient, identity: Identity): Promise<void> {
-  const result = await supabase.from("admins").select("role,status").eq("line_user_id", identity.lineUserId).maybeSingle();
-  if (result.error) throw mapDatabaseError(result.error);
-  if (!result.data || result.data.role !== "admin" || result.data.status !== "active") {
-    throw new ApiError(403, "ADMIN_REQUIRED", "管理端帳號尚未授權。");
-  }
+  return await requireActiveAdminContract({
+    supabase,
+    identity,
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));

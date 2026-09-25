@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
@@ -80,25 +81,11 @@ function channelIdFor(clientType: ClientType): string {
   return value;
 }
 async function verifyLineIdToken(idToken: string, clientType: ClientType): Promise<Identity> {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
-  const expectedChannelId = channelIdFor(clientType);
-  let result: Response;
-  try {
-    result = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: expectedChannelId }),
-    });
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。");
-  }
-  const payload = await result.json().catch(() => null) as any;
-  const sub = String(payload?.sub || "").trim();
-  const aud = String(payload?.aud || "").trim();
-  const iss = String(payload?.iss || "").trim();
-  const exp = Number(payload?.exp || 0);
-  if (!result.ok || !sub || aud !== expectedChannelId || iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-  return { lineUserId: sub, displayName: String(payload?.name || "LINE 使用者").slice(0, 120) };
+  return await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: channelIdFor(clientType),
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  }) as Identity;
 }
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
@@ -120,10 +107,11 @@ async function requireMember(supabase: SupabaseClient, identity: Identity): Prom
   return result.data;
 }
 async function requireAdmin(supabase: SupabaseClient, identity: Identity): Promise<any> {
-  const result = await supabase.from("admins").select("id,role,status").eq("line_user_id", identity.lineUserId).maybeSingle();
-  if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法確認管理員權限。");
-  if (!result.data || result.data.role !== "admin" || result.data.status !== "active") throw new ApiError(403, "ADMIN_REQUIRED", "管理端帳號尚未授權。");
-  return result.data;
+  return await requireActiveAdminContract({
+    supabase,
+    identity,
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
 async function audit(supabase: SupabaseClient, identity: Identity, role: "member" | "admin", action: string, bookingId: string, metadata: Json = {}): Promise<void> {
   const result = await supabase.from("booking_audit_events").insert({ actor_line_user_id: identity.lineUserId, actor_role: role, action, target_type: "booking", target_id: bookingId, result: "success", metadata });
@@ -148,29 +136,40 @@ async function memberList(supabase: SupabaseClient, member: any): Promise<Json> 
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請狀態。");
   return { requests: (result.data || []).map(cancellationClient) };
 }
+function canonicalCancellationError(error: unknown): ApiError {
+  const message = String((error as { message?: string; details?: string })?.message || "") + " " + String((error as { details?: string })?.details || "");
+  if (message.includes("BOOKING_NOT_FOUND")) return new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
+  if (message.includes("BOOKING_NOT_CANCELLABLE")) return new ApiError(409, "BOOKING_NOT_CANCELLABLE", "這筆預約目前無法申請取消。");
+  if (message.includes("BOOKING_TIME_PASSED")) return new ApiError(409, "BOOKING_TIME_PASSED", "預約時間已經開始或經過，無法申請取消。");
+  if (message.includes("CANCELLATION_NOT_PENDING")) return new ApiError(409, "CANCELLATION_NOT_PENDING", "這筆預約目前沒有待確認的取消申請。");
+  if (message.includes("BOOKING_CONFLICT")) return new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再操作。");
+  return new ApiError(500, "DATABASE_ERROR", "取消申請服務暫時無法完成操作。");
+}
+
 async function memberRequest(supabase: SupabaseClient, identity: Identity, member: any, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
-  const existing = await supabase.from("bookings").select("*").eq("id", bookingId).eq("member_id", member.id).maybeSingle();
-  if (existing.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取預約資料。");
-  const booking = existing.data;
-  if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
-  if (booking.cancellation_requested_at && !booking.cancellation_reviewed_at) return { request: cancellationClient(booking), alreadyRequested: true };
-  if (!["pending", "confirmed"].includes(booking.status)) throw new ApiError(409, "BOOKING_NOT_CANCELLABLE", "這筆預約目前無法申請取消。");
-  const today = taipeiDate();
-  if (booking.booking_date < today || (booking.booking_date === today && timeToMinutes(String(booking.start_time).slice(0, 5)) <= taipeiMinutes())) throw new ApiError(409, "BOOKING_TIME_PASSED", "預約時間已經開始或經過，無法申請取消。");
-  const now = new Date().toISOString();
-  const updated = await supabase.from("bookings").update({
-    cancellation_requested_at: now,
-    cancellation_requested_by: identity.lineUserId,
-    cancellation_source_status: booking.status,
-    cancellation_reviewed_at: null,
-    cancellation_reviewed_by: null,
-    cancellation_decision: null,
-  }).eq("id", bookingId).eq("member_id", member.id).eq("status", booking.status).eq("updated_at", booking.updated_at).select("*").maybeSingle();
-  if (updated.error) throw new ApiError(500, "DATABASE_ERROR", "取消申請送出失敗。");
-  if (!updated.data) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再申請取消。");
-  await audit(supabase, identity, "member", "BOOKING_CANCELLATION_REQUESTED", bookingId, { sourceStatus: booking.status });
-  return { request: cancellationClient(updated.data), alreadyRequested: false };
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  const result = await supabase.rpc("request_booking_cancellation", {
+    p_booking_id: bookingId,
+    p_member_id: member.id,
+    p_actor: identity.lineUserId,
+    p_expected_updated_at: expectedUpdatedAt || null,
+  });
+  if (result.error) throw canonicalCancellationError(result.error);
+
+  const current = await supabase.from("bookings").select("*").eq("id", bookingId).eq("member_id", member.id).maybeSingle();
+  if (current.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取預約資料。");
+  if (!current.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
+
+  const rpcResult = result.data && typeof result.data === "object" ? result.data as Json : {};
+  const alreadyRequested = rpcResult.alreadyRequested === true;
+  if (!alreadyRequested) {
+    await audit(supabase, identity, "member", "BOOKING_CANCELLATION_REQUESTED", bookingId, {
+      sourceStatus: current.data.status,
+      canonicalCommand: "request_booking_cancellation",
+    });
+  }
+  return { request: cancellationClient(current.data), alreadyRequested };
 }
 async function adminList(supabase: SupabaseClient): Promise<Json> {
   const result = await supabase.from("bookings")
@@ -299,34 +298,43 @@ async function loadPendingRequest(supabase: SupabaseClient, bookingId: string): 
 }
 async function adminApprove(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
-  const booking = await loadPendingRequest(supabase, bookingId);
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
-  if (expectedUpdatedAt && expectedUpdatedAt !== booking.updated_at) throw new ApiError(409, "BOOKING_CONFLICT", "取消申請已更新，請重新整理後再確認。");
-  const now = new Date().toISOString();
-  const updated = await supabase.from("bookings").update({
-    status: "cancelled", cancelled_by: identity.lineUserId, cancelled_at: now,
-    cancellation_reviewed_at: now, cancellation_reviewed_by: identity.lineUserId, cancellation_decision: "approved",
-  }).eq("id", bookingId).eq("status", booking.status).eq("updated_at", booking.updated_at).select("*").maybeSingle();
-  if (updated.error) throw new ApiError(500, "DATABASE_ERROR", "確認取消失敗。");
-  if (!updated.data) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再確認。");
-  await audit(supabase, identity, "admin", "BOOKING_CANCELLATION_APPROVED", bookingId, { previousStatus: booking.status });
-  return { booking: cancellationClient(updated.data) };
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    throw new ApiError(400, "INVALID_INPUT", "缺少取消申請版本，請重新整理。");
+  }
+  const result = await supabase.rpc("review_booking_cancellation", {
+    p_booking_id: bookingId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_actor: identity.lineUserId,
+    p_decision: "approved",
+  });
+  if (result.error) throw canonicalCancellationError(result.error);
+  const current = await supabase.from("bookings").select("*").eq("id", bookingId).single();
+  if (current.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取取消結果。");
+  await audit(supabase, identity, "admin", "BOOKING_CANCELLATION_APPROVED", bookingId, {
+    canonicalCommand: "review_booking_cancellation",
+  });
+  return { booking: cancellationClient(current.data) };
 }
 async function adminReject(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
-  const booking = await loadPendingRequest(supabase, bookingId);
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
-  if (expectedUpdatedAt && expectedUpdatedAt !== booking.updated_at) throw new ApiError(409, "BOOKING_CONFLICT", "取消申請已更新，請重新整理後再處理。");
-  const sourceStatus = booking.cancellation_source_status;
-  const now = new Date().toISOString();
-  const updated = await supabase.from("bookings").update({
-    cancellation_requested_at: null, cancellation_requested_by: null, cancellation_source_status: null,
-    cancellation_reviewed_at: now, cancellation_reviewed_by: identity.lineUserId, cancellation_decision: "rejected",
-  }).eq("id", bookingId).eq("status", booking.status).eq("updated_at", booking.updated_at).select("*").maybeSingle();
-  if (updated.error) throw new ApiError(500, "DATABASE_ERROR", "保留預約失敗。");
-  if (!updated.data) throw new ApiError(409, "BOOKING_CONFLICT", "預約已更新，請重新整理後再處理。");
-  await audit(supabase, identity, "admin", "BOOKING_CANCELLATION_REJECTED", bookingId, { sourceStatus });
-  return { booking: cancellationClient(updated.data) };
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    throw new ApiError(400, "INVALID_INPUT", "缺少取消申請版本，請重新整理。");
+  }
+  const result = await supabase.rpc("review_booking_cancellation", {
+    p_booking_id: bookingId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_actor: identity.lineUserId,
+    p_decision: "rejected",
+  });
+  if (result.error) throw canonicalCancellationError(result.error);
+  const current = await supabase.from("bookings").select("*").eq("id", bookingId).single();
+  if (current.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取保留預約結果。");
+  await audit(supabase, identity, "admin", "BOOKING_CANCELLATION_REJECTED", bookingId, {
+    canonicalCommand: "review_booking_cancellation",
+  });
+  return { booking: cancellationClient(current.data) };
 }
 async function route(supabase: SupabaseClient, identity: Identity, clientType: ClientType, action: string, body: Json): Promise<Json> {
   if (clientType === "member") {

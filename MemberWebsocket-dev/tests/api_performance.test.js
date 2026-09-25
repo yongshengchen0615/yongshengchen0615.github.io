@@ -7,7 +7,23 @@ const { stripTypeScriptTypes } = require('node:module');
 const source = fs.readFileSync(path.join(__dirname, '../supabase/functions/api/index.ts'), 'utf8')
   .replace(/^import .*\n/gm, '').replace(/^export default .*;\s*$/gm, '');
 function api() {
-  const context = vm.createContext({ Deno: { serve() {}, env: { get() { return ''; } } }, Date, Intl, Set, Map, console, crypto: require('node:crypto').webcrypto, TextEncoder });
+  const requireActiveAdminContract = async ({ supabase, identity, createError }) => {
+    const result = await supabase.from('admins').select('*').eq('line_user_id', identity.lineUserId).maybeSingle();
+    if (result.error) throw createError(500, 'DATABASE_ERROR', 'admin lookup failed');
+    if (!result.data || result.data.role !== 'admin' || result.data.status !== 'active') {
+      throw createError(403, 'ADMIN_PENDING', 'admin authorization required');
+    }
+    return result.data;
+  };
+  const verifyLineIdTokenContract = async ({ idToken, createError }) => {
+    if (!idToken) throw createError(401, 'AUTH_REQUIRED', 'login required');
+    return identity;
+  };
+  const context = vm.createContext({
+    Deno: { serve() {}, env: { get() { return ''; } } },
+    Date, Intl, Set, Map, console, crypto: require('node:crypto').webcrypto, TextEncoder,
+    requireActiveAdminContract, verifyLineIdTokenContract,
+  });
   vm.runInContext(stripTypeScriptTypes(source), context); return context;
 }
 const member = { id: 'member-A', line_user_id: 'line-A', display_name: 'Fixture', membership_status: 'active', status: 'active', is_test_account: false };

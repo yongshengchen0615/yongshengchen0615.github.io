@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -114,33 +115,11 @@ function expectedChannelId(clientType: ClientType): string {
 }
 
 async function verifyLineIdToken(idToken: string, clientType: ClientType): Promise<{ lineUserId: string; displayName: string }> {
-  const clientId = expectedChannelId(clientType);
-  let response: Response;
-  try {
-    response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: clientId }),
-    });
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。");
-  }
-
-  let payload: Json;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。");
-  }
-
-  const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
-  const aud = typeof payload.aud === "string" ? payload.aud.trim() : "";
-  const iss = typeof payload.iss === "string" ? payload.iss.trim() : "";
-  const exp = Number(payload.exp || 0);
-  if (!response.ok || !sub || aud !== clientId || iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) {
-    throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-  }
-  return { lineUserId: sub, displayName: asText(payload.name, 120) || "LINE 使用者" };
+  return await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: expectedChannelId(clientType),
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
 
 async function consumeRateLimit(supabase: SupabaseClient, principal: string, isWrite: boolean): Promise<void> {
@@ -157,12 +136,11 @@ async function consumeRateLimit(supabase: SupabaseClient, principal: string, isW
 }
 
 async function authorizeAdmin(supabase: SupabaseClient, lineUserId: string): Promise<any> {
-  const result = await supabase.from("admins").select("id,line_user_id,role,status").eq("line_user_id", lineUserId).maybeSingle();
-  if (result.error) throw new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
-  if (!result.data || result.data.role !== "admin" || result.data.status !== "active") {
-    throw new ApiError(403, "ADMIN_PENDING", "管理端帳號尚未授權。");
-  }
-  return result.data;
+  return await requireActiveAdminContract({
+    supabase,
+    identity: { lineUserId, displayName: "" },
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
 
 async function requireMember(supabase: SupabaseClient, lineUserId: string): Promise<any> {

@@ -109,7 +109,7 @@ test('user E2E returns structured results to the paired admin runner', () => {
 
 test('test control API records browser results only behind admin authorization', () => {
   const api = read('supabase/functions/test-control-api/index.ts');
-  const authIndex = api.indexOf('await authorizeAdmin(supabase, identity)');
+  const authIndex = api.indexOf('await requireActiveAdminContract({');
   const actionIndex = api.indexOf('if (action === "admin.test-control.record-browser-run")', authIndex);
   assert.ok(authIndex >= 0 && actionIndex > authIndex);
   assert.match(api, /\["admin-browser", "paired-browser"\]\.includes\(runnerKind\)/);
@@ -135,7 +135,7 @@ test('test data is retained until an admin manually purges it', () => {
   assert.match(control, /admin\.test-control\.purge-test-data/);
   assert.match(control, /測試帳號與測試模式環境設定會保留/);
   assert.match(api, /action === "admin\.test-control\.purge-test-data"/);
-  assert.match(api, /await authorizeAdmin\(supabase, identity\)/);
+  assert.match(api, /await requireActiveAdminContract\(\{/);
   assert.match(api, /admin_purge_test_data/);
 
   assert.match(userRunner, /action: 'user\.qa\.fixture\.cleanup', surface: otherSurface, testSessionToken: token/);
