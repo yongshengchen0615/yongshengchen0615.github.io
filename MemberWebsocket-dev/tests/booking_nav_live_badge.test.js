@@ -10,6 +10,8 @@ const core = read('admin/booking-panel-core.js');
 const loader = read('admin/booking-panel.js');
 const html = read('admin/index.html');
 const api = read('supabase/functions/booking-api/index.ts');
+const bookingCss = read('admin/booking-panel.css');
+const baseCss = read('admin/styles.css');
 
 test('booking nav badge starts syncing after admin session without opening booking page', () => {
   const mountStart = core.indexOf('function mount()');
@@ -67,4 +69,12 @@ test('booking summary endpoint counts pending rows only after admin authorizatio
   assert.match(section, /\.eq\("status", "pending"\)/);
   assert.match(section, /pendingCount/);
   assert.doesNotMatch(section, /members\(|hydrateBookings|booking_items/);
+});
+
+
+test('booking badge uses a separate pseudo-element from the surface-tab active underline', () => {
+  assert.match(baseCss, /\.surface-tab::after[\s\S]*transform:\s*scaleX\(0\)/);
+  assert.match(bookingCss, /#bookingTab\[data-pending-count\]:not\(\[data-pending-count="0"\]\)::before/);
+  assert.doesNotMatch(bookingCss, /#bookingTab\[data-pending-count\]:not\(\[data-pending-count="0"\]\)::after/);
+  assert.match(html, /booking-panel\.css\?v=booking-nav-badge-visual-20260925-1/);
 });
