@@ -763,7 +763,7 @@ button, input, select, textarea { line-height: 1.35; }
   padding: 13px 14px 13px 15px;
   border-left: 3px solid var(--member-record-accent);
   border-radius: 13px;
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--theme-border, var(--line)) 75%, transparent);
+  box-shadow: 0 1px 0 var(--theme-border, var(--line));
 }
 .member-record-item::before {
   content: "";
