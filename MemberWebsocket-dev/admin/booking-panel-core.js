@@ -277,9 +277,8 @@
     }
     state.badgeLoading = true;
     try {
-      const booking = await bookingRequest('admin.booking.bootstrap');
-      const rows = Array.isArray(booking?.bookings) ? booking.bookings : [];
-      renderBookingPendingBadge(rows.filter((item) => String(item?.status || '') === 'pending').length);
+      const summary = await bookingRequest('admin.booking.summary');
+      renderBookingPendingBadge(Number(summary?.pendingCount || 0));
       return true;
     } catch (error) {
       console.warn('booking nav badge refresh failed', error);
