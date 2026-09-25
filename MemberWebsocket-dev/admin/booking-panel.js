@@ -106,7 +106,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'admin-integration-center-20260925-1');
+      return load('booking-panel-core.js', 'booking-nav-live-badge-20260925-1');
     })
     .then(() => {
       openLegacyBookingRouteWhenReady();
