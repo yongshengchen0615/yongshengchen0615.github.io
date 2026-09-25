@@ -38,6 +38,6 @@ test('background admin runner does not place the admin token in URL or persisten
 
 test('background runner asset versions force the session-handoff fix to load', () => {
   const html = read('admin/index.html');
-  assert.match(html, /app\.js\?v=admin-operations-integration-20260925-1/);
+  assert.match(html, /app\.js\?v=member360-ui-polish-20260925-1/);
   assert.match(html, /e2e-control\.js\?v=admin-e2e-20260924-\d+/);
 });
