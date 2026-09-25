@@ -69,6 +69,8 @@ test('booking summary endpoint counts pending rows only after admin authorizatio
   assert.match(section, /select\("id", \{ count: "exact", head: true \}\)/);
   assert.match(section, /\.eq\("status", "pending"\)/);
   assert.match(section, /pendingCount/);
+  assert.match(section, /identity\.lineUserId/);
+  assert.match(api, /adminBookingSummary\(supabase: SupabaseClient, identity: Identity\)/);
   assert.doesNotMatch(section, /members\(|hydrateBookings|booking_items/);
 });
 
