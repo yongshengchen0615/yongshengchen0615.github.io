@@ -32,15 +32,15 @@ test('background badge sync uses the count-only booking summary endpoint', () =>
   assert.doesNotMatch(section, /admin\.booking\.bootstrap|manageRequest|resourceRequest|contactRequest|groupDetailsRequest/);
 });
 
-test('booking badge renders pending count and accessible label', () => {
+test('booking badge renders unread and pending counts with accessible labels', () => {
   const start = core.indexOf('function renderBookingPendingBadge');
   const end = core.indexOf('async function refreshBookingBadge', start);
   const section = core.slice(start, end);
-  assert.match(section, /bookingTab\.dataset\.pendingCount/);
+  assert.match(section, /bookingTab\.dataset\.unreadCount/);\n  assert.match(section, /bookingTab\.dataset\.pendingCount/);
   assert.match(section, /bookingAdminPendingCount\.textContent/);
   assert.match(section, /bookingAdminQueueSubtabCount\.textContent/);
   assert.match(section, /setAttribute\('aria-label'/);
-  assert.match(section, /筆新預約待確認/);
+  assert.match(section, /筆未讀更新/);\n  assert.match(section, /筆待確認/);
 });
 
 test('booking realtime refreshes only the badge while booking panel is hidden', () => {
@@ -49,12 +49,12 @@ test('booking realtime refreshes only the badge while booking panel is hidden', 
   const section = core.slice(start, end);
   assert.match(section, /bookingPanel\?\.classList\.contains\('hidden'\)/);
   assert.match(section, /refreshBookingBadge\(\)/);
-  assert.match(section, /else refreshAll\(false\)/);
+  assert.match(section, /else refreshAll\(false, true\)/);
 });
 
 test('current booking loader cache-busts the live badge implementation', () => {
-  assert.match(loader, /booking-panel-core\.js', 'booking-nav-live-badge-20260925-1'/);
-  assert.match(html, /booking-panel\.js\?v=booking-nav-live-badge-20260925-1/);
+  assert.match(loader, /booking-panel-core\.js', 'booking-unread-cursor-20260925-2'/);
+  assert.match(html, /booking-panel\.js\?v=booking-unread-cursor-20260925-2/);
 });
 
 
@@ -74,7 +74,7 @@ test('booking summary endpoint counts pending rows only after admin authorizatio
 
 test('booking badge uses a separate pseudo-element from the surface-tab active underline', () => {
   assert.match(baseCss, /\.surface-tab::after[\s\S]*transform:\s*scaleX\(0\)/);
-  assert.match(bookingCss, /#bookingTab\[data-pending-count\]:not\(\[data-pending-count="0"\]\)::before/);
-  assert.doesNotMatch(bookingCss, /#bookingTab\[data-pending-count\]:not\(\[data-pending-count="0"\]\)::after/);
-  assert.match(html, /booking-panel\.css\?v=booking-nav-badge-visual-20260925-1/);
+  assert.match(bookingCss, /#bookingTab\\[data-unread-count\\]:not\\(\\[data-unread-count="0"\\]\\)::before/);
+  assert.doesNotMatch(bookingCss, /#bookingTab\\[data-unread-count\\]:not\\(\\[data-unread-count="0"\\]\\)::after/);
+  assert.match(html, /booking-panel\.css\?v=booking-unread-cursor-20260925-2/);
 });
