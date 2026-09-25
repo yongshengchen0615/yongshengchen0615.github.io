@@ -1938,6 +1938,25 @@ html[data-theme="dark"] #pointsView .ticket-overview-group .member-ticket[data-c
   color: #fffaf3;
 }
 
+/* The points batch confirmation is appended directly to body. */
+html[data-theme="dark"] .ticket-batch-modal {
+  background: var(--theme-overlay);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme="dark"] .ticket-batch-card .ticket-batch-ticket-badge {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] .ticket-batch-card .ticket-batch-warning {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+  border-color: rgba(240, 138, 118, .24);
+}
+
 /* Event client */
 html[data-theme="dark"] #eventView :where(
   .event-history-button,
@@ -2007,6 +2026,51 @@ html[data-theme="dark"] #eventView :where(
   border-color: var(--theme-border);
 }
 
+/* The event ticket dialog sits beside #eventView, so its badges and messages
+   need their own scope. */
+html[data-theme="dark"] #ticketModal :where(
+  .instructions,
+  .ticket-type,
+  .processing,
+  .lottery-reveal
+) {
+  color: var(--theme-link);
+  background: var(--theme-accent-soft);
+}
+
+html[data-theme="dark"] #ticketModal .instructions {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+}
+
+html[data-theme="dark"] #ticketModal .instructions p {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] #ticketModal .modal-prizes {
+  color: var(--theme-warning-text);
+  background: var(--theme-warning-soft);
+}
+
+html[data-theme="dark"] #ticketModal .modal-prizes li {
+  color: var(--theme-warning-text);
+}
+
+html[data-theme="dark"] #ticketModal :where(
+  .ticket-result,
+  .ticket-success,
+  .lottery-result,
+  .modal-message.success
+) {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+}
+
+html[data-theme="dark"] #ticketModal .modal-message:not(.success) {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+}
+
 /* Calendar clients */
 html[data-theme="dark"] #calendarView :where(
   .month-button,
@@ -2038,6 +2102,14 @@ html[data-theme="dark"] #calendarView :where(
   color: var(--theme-warning-text);
   background: #2b2617;
   border-color: rgba(229, 198, 117, .24);
+}
+
+html[data-theme="dark"] #calendarDetailModal .calendar-detail-tier-access {
+  color: var(--theme-positive-text);
+}
+
+html[data-theme="dark"] #calendarDetailModal .calendar-detail-tier-access.ineligible {
+  color: var(--theme-warning-text);
 }
 
 /* Booking client */
@@ -2334,6 +2406,106 @@ html[data-theme="dark"] #eventTicketCalendarInfoContent > p {
 
 html[data-theme="dark"] #eventTicketCalendarInfoContent > p strong {
   color: var(--theme-text);
+}
+
+/* Calendar and ticket dialogs are mounted under body, outside their panels. */
+html[data-theme="dark"] :where(
+  #calendarEditorModal .calendar-event-link-fields,
+  #eventTicketCalendarInfoContent,
+  #eventTicketEditorModal .date-range-control,
+  #eventTicketEditorModal .date-control,
+  #cardEditorModal .date-control
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  #calendarPanel .event-ticket-tier-access,
+  #eventsPanel .event-ticket-tier-access,
+  #calendarEditorModal .event-ticket-tier-access,
+  #eventTicketEditorModal .event-ticket-tier-access,
+  #eventTicketEditorModal .lottery-prize-editor,
+  #ticketEditorModal .lottery-prize-editor,
+  #eventTicketEditorModal .event-ticket-note
+) {
+  color: var(--theme-warning-text);
+  background: var(--theme-warning-soft);
+  border-color: rgba(229, 198, 117, .24);
+}
+
+html[data-theme="dark"] :where(
+  #calendarPanel .event-ticket-tier-access p,
+  #calendarPanel .event-ticket-tier-summary,
+  #eventsPanel .event-ticket-tier-access p,
+  #eventsPanel .event-ticket-tier-summary,
+  #calendarEditorModal .event-ticket-tier-access p,
+  #calendarEditorModal .event-ticket-tier-summary,
+  #eventTicketEditorModal .event-ticket-tier-access p,
+  #eventTicketEditorModal .event-ticket-tier-summary,
+  #eventTicketEditorModal .event-ticket-note
+) {
+  color: var(--theme-warning-text);
+}
+
+html[data-theme="dark"] :where(
+  #calendarPanel .event-ticket-tier-options label,
+  #eventsPanel .event-ticket-tier-options label,
+  #calendarEditorModal .event-ticket-tier-options label,
+  #eventTicketEditorModal .event-ticket-tier-options label,
+  #eventTicketEditorModal .prize-row,
+  #ticketEditorModal .prize-row
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  #cardEditorModal .date-control.invalid,
+  #eventTicketEditorModal .date-control.invalid
+) {
+  background: var(--theme-danger-soft);
+  border-color: rgba(240, 138, 118, .35);
+}
+
+html[data-theme="dark"] :where(
+  #calendarEditorModal .date-chip,
+  #cardEditorModal .date-chip,
+  #eventTicketEditorModal .date-chip
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] :where(
+  #calendarEditorModal .date-chip:hover,
+  #cardEditorModal .date-chip:hover,
+  #eventTicketEditorModal .date-chip:hover,
+  #eventTicketEditorModal .date-picker-button:hover
+) {
+  background: #1c2923;
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] :where(
+  #calendarEditorModal .date-picker-button,
+  #cardEditorModal .date-picker-button,
+  #eventTicketEditorModal .date-picker-button
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme="dark"] :where(
+  #calendarEditorModal input[type="date"],
+  #cardEditorModal input[type="date"],
+  #eventTicketEditorModal input[type="date"]
+) {
+  color-scheme: dark;
 }
 
 /* Booking management */
