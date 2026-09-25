@@ -44,7 +44,7 @@ async function verifyLineIdToken(idToken: string, kind: "points" | "admin") {
   return await verifyLineIdTokenContract({
     idToken,
     expectedChannelId: channelId(kind),
-    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+    createError: (status, code, message) => new ApiError(status, code, message),
   });
 }
 
@@ -75,7 +75,7 @@ async function requireAdmin(supabase: ReturnType<typeof db>, lineUserId: string)
   await requireActiveAdminContract({
     supabase,
     identity: { lineUserId, displayName: "" },
-    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+    createError: (status, code, message) => new ApiError(status, code, message),
   });
 }
 
