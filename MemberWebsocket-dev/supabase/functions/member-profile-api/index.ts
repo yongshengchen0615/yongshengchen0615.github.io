@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { verifyLineIdTokenContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
@@ -40,18 +41,13 @@ async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 async function verifyLineIdToken(idToken: string): Promise<Identity> {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
-  const channelId = env("LINE_MEMBER_CHANNEL_ID") || "2010787602";
-  let verifyResponse: Response;
-  try {
-    verifyResponse = await fetch("https://api.line.me/oauth2/v2.1/verify", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ id_token: idToken, client_id: channelId }) });
-  } catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。"); }
-  let payload: Json;
-  try { payload = await verifyResponse.json(); } catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。"); }
-  const sub = asText(payload.sub, 120); const aud = asText(payload.aud, 60); const iss = asText(payload.iss, 100); const exp = Number(payload.exp || 0);
-  if (!verifyResponse.ok || !sub || aud !== channelId || iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-  return { lineUserId: sub, displayName: asText(payload.name || "LINE 使用者", 120) };
+  return await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: env("LINE_MEMBER_CHANNEL_ID") || "2010787602",
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  }) as Identity;
 }
+
 async function consumeRateLimit(supabase: SupabaseClient, identity: Identity, write: boolean): Promise<void> {
   const { data, error } = await supabase.rpc("consume_api_rate_limit", { p_principal_hash: await sha256(identity.lineUserId), p_is_write: write, p_cost: 1, p_read_limit: READ_LIMIT, p_write_limit: WRITE_LIMIT });
   if (error) throw new ApiError(503, "RATE_LIMIT_UNAVAILABLE", "無法確認請求頻率限制。");
