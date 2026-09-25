@@ -16,7 +16,7 @@ test('member 360 consolidates member summary and cross-domain actions', () => {
   assert.match(app, /function renderMemberRecordsOverview\(\)/);
   assert.match(app, /\['會員等級'/);
   assert.match(app, /\['累積服務時間'/);
-  assert.match(app, /grant\.textContent = '發放權益'/);
+  assert.match(app, /grant\.textContent = '＋ 發放權益'/);
   assert.match(app, /edit\.textContent = '編輯會員'/);
 });
 
