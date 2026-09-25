@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 
 type Json = Record<string, unknown>;
@@ -40,23 +41,11 @@ function channelId(kind: "points" | "admin"): string {
   return value;
 }
 async function verifyLineIdToken(idToken: string, kind: "points" | "admin") {
-  if (!idToken) throw new ApiError(401, "AUTH_REQUIRED", "需要 LINE 登入。");
-  let response: Response;
-  try {
-    response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: channelId(kind) }),
-    });
-  } catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。"); }
-  let payload: Json = {};
-  try { payload = await response.json(); } catch { throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。"); }
-  const sub = asText(payload.sub, 160);
-  const exp = Number(payload.exp || 0);
-  if (!response.ok || !sub || asText(payload.aud, 40) !== channelId(kind) || asText(payload.iss, 80) !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) {
-    throw new ApiError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
-  }
-  return { lineUserId: sub, displayName: asText(payload.name, 120) || "LINE 使用者" };
+  return await verifyLineIdTokenContract({
+    idToken,
+    expectedChannelId: channelId(kind),
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
 
 async function memberIdentity(supabase: ReturnType<typeof db>, body: Json) {
@@ -83,10 +72,13 @@ async function consumeRateLimit(supabase: ReturnType<typeof db>, principal: stri
   if (!result.data) throw new ApiError(429, "RATE_LIMITED", "請求過於密集，請稍後再試。");
 }
 async function requireAdmin(supabase: ReturnType<typeof db>, lineUserId: string) {
-  const result = await supabase.from("admins").select("role,status").eq("line_user_id", lineUserId).maybeSingle();
-  if (result.error) throw new ApiError(503, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
-  if (!result.data || result.data.role !== "admin" || result.data.status !== "active") throw new ApiError(403, "ADMIN_REQUIRED", "管理端帳號尚未授權。");
+  await requireActiveAdminContract({
+    supabase,
+    identity: { lineUserId, displayName: "" },
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
+
 async function globalSetting(supabase: ReturnType<typeof db>) {
   const result = await supabase.from("point_card_settings").select("max_tickets_per_redemption,updated_at").eq("id", 1).maybeSingle();
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取集點卡設定。");
