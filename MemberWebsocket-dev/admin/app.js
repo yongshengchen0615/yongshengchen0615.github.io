@@ -152,6 +152,7 @@
     els.closeMemberRecordsModal.addEventListener('click', closeMemberRecordsModal);
     els.memberRecordsModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.memberRecordsModal)) closeMemberRecordsModal(); });
     els.memberRecordsTabs.addEventListener('click', handleMemberRecordsTabClick);
+    els.memberRecordsSummary.addEventListener('click', handleMemberRecordsSummaryClick);
     els.grantForm.addEventListener('submit', saveGrant);
     els.cancelGrantButton.addEventListener('click', closeGrantModal);
     els.closeGrantModal.addEventListener('click', closeGrantModal);
@@ -757,6 +758,18 @@
     renderMemberRecordList();
   }
 
+  function handleMemberRecordsSummaryClick(event) {
+    const button = event.target instanceof Element ? event.target.closest('[data-record-summary-filter]') : null;
+    if (!button || !state.memberRecords.data) return;
+    const filter = String(button.dataset.recordSummaryFilter || '');
+    if (!MEMBER_RECORD_FILTERS.some(([value]) => value === filter)) return;
+    state.memberRecords.filter = filter;
+    renderMemberRecordTabs();
+    renderMemberRecords();
+    const activeTab = els.memberRecordsTabs.querySelector('[data-record-filter="' + filter + '"]');
+    try { activeTab?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); } catch (_) {}
+  }
+
   function memberRecordCounts() {
     const data = state.memberRecords.data || {};
     const records = data.records && typeof data.records === 'object' ? data.records : {};
@@ -795,14 +808,23 @@
       ['預約', counts.bookings],
       ['測試操作', counts.testAutomation],
     ];
-    els.memberRecordsSummary.replaceChildren(...summary.map(([label, count]) => {
-      const pill = document.createElement('span');
+    const summaryFilters = ['presence', 'pointCards', 'eventTickets', 'calendar', 'bookings', 'testAutomation'];
+    els.memberRecordsSummary.replaceChildren(...summary.map(([label, count], index) => {
+      const filter = summaryFilters[index] || 'all';
+      const pill = document.createElement('button');
+      pill.type = 'button';
       pill.className = 'member-record-summary-pill';
+      pill.dataset.recordSummaryFilter = filter;
+      const selected = state.memberRecords.filter === filter;
+      pill.classList.toggle('active', selected);
+      pill.setAttribute('aria-pressed', selected ? 'true' : 'false');
       const name = document.createElement('span');
       name.textContent = String(label);
       const value = document.createElement('strong');
       value.textContent = String(count || 0);
-      pill.append(name, value);
+      const hint = document.createElement('small');
+      hint.textContent = '查看';
+      pill.append(name, value, hint);
       return pill;
     }));
     renderMemberRecordTabs();
@@ -818,21 +840,40 @@
     const metrics = [
       ['會員等級', String(member.tier || '一般會員')],
       ['累積服務時間', formatServiceMinutes(Number(member.serviceMinutesTotal || 0))],
-      ['使用紀錄', String(counts.all || 0) + ' 筆'],
+      ['全部紀錄', String(counts.all || 0) + ' 筆'],
       ['預約紀錄', String(counts.bookings || 0) + ' 筆'],
     ];
+
+    const hero = document.createElement('div');
+    hero.className = 'member-records-overview-hero';
+    const avatar = document.createElement('span');
+    avatar.className = 'member-records-avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = window.MemberSystem.initials(member.displayName || 'LINE 使用者');
+
     const copy = document.createElement('div');
     copy.className = 'member-records-overview-copy';
+    const eyebrow = document.createElement('span');
+    eyebrow.className = 'member-records-overview-eyebrow';
+    eyebrow.textContent = member.isTestAccount ? '測試會員' : '正式會員';
     const title = document.createElement('strong');
     title.textContent = String(member.displayName || 'LINE 使用者');
-    const meta = document.createElement('span');
-    meta.textContent = `${member.memberCode || '尚未建立'} · ${member.status === 'disabled' ? '已停用' : '啟用中'}`;
-    copy.append(title, meta);
+    const meta = document.createElement('div');
+    meta.className = 'member-records-overview-meta';
+    const code = document.createElement('span');
+    code.textContent = String(member.memberCode || '尚未建立會員編號');
+    const status = document.createElement('span');
+    status.className = `member-records-status ${member.status === 'disabled' ? 'is-disabled' : 'is-active'}`;
+    status.textContent = member.status === 'disabled' ? '已停用' : '啟用中';
+    meta.append(code, status);
+    copy.append(eyebrow, title, meta);
+    hero.append(avatar, copy);
 
     const metricGrid = document.createElement('div');
     metricGrid.className = 'member-records-overview-metrics';
-    metrics.forEach(([label, value]) => {
+    metrics.forEach(([label, value], index) => {
       const item = document.createElement('span');
+      item.className = index < 2 ? 'is-primary' : '';
       const small = document.createElement('small'); small.textContent = label;
       const strong = document.createElement('strong'); strong.textContent = value;
       item.append(small, strong); metricGrid.append(item);
@@ -841,10 +882,14 @@
     const actions = document.createElement('div');
     actions.className = 'member-records-overview-actions';
     const edit = document.createElement('button');
-    edit.type = 'button'; edit.className = 'button button-outline'; edit.textContent = '編輯會員';
+    edit.type = 'button';
+    edit.className = 'button button-outline member-records-action-secondary';
+    edit.textContent = '編輯會員';
     edit.addEventListener('click', () => { closeMemberRecordsModal(); openMemberModal(member); });
     const grant = document.createElement('button');
-    grant.type = 'button'; grant.className = 'button button-dark'; grant.textContent = '發放權益';
+    grant.type = 'button';
+    grant.className = 'button button-dark member-records-action-primary';
+    grant.textContent = '＋ 發放權益';
     grant.addEventListener('click', async () => {
       closeMemberRecordsModal();
       if (state.loadedPanels.cards) return openGrantModal(member);
@@ -853,7 +898,8 @@
       catch (error) { setSyncStatus(error && error.message || '無法載入集點卡，請稍後再試。', true); }
     });
     actions.append(edit, grant);
-    els.memberRecordsOverview.replaceChildren(copy, metricGrid, actions);
+
+    els.memberRecordsOverview.replaceChildren(hero, metricGrid, actions);
   }
 
   function memberRecordsForFilter() {

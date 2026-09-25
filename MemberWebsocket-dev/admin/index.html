@@ -9,7 +9,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net https://dbuquirnaskrwcamdxki.supabase.co; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>管理端｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./styles.css?v=admin-operations-integration-20260925-1">
+  <link rel="stylesheet" href="./styles.css?v=member360-ui-polish-20260925-1">
   <link rel="stylesheet" href="./calendar-responsive.css?v=calendar-responsive-20260914-mobile-fit-2">
   <link rel="stylesheet" href="./calendar-date-fix.css?v=20260914-line-date-1">
   <link rel="stylesheet" href="./booking-panel.css?v=booking-theme-tokens-20260924-1" data-booking-admin-panel-style>
@@ -26,7 +26,7 @@
   <script src="./fixed-ticket-calendar-option.js?v=fixed-ticket-calendar-20260917-4" defer></script>
   <script src="./fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1" defer></script>
   <script src="./pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1" defer></script>
-  <script src="./app.js?v=admin-operations-integration-20260925-1" defer></script>
+  <script src="./app.js?v=member360-ui-polish-20260925-1" defer></script>
   <script src="./test-mode.js?v=maintenance-device-login-20260920-4" defer></script>
   <script src="./test-control.js?v=test-control-20260924-8" defer></script>
   <script src="./e2e-control.js?v=admin-e2e-20260924-30" defer></script>
@@ -267,13 +267,17 @@
 
   <div id="memberModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="memberModalTitle"><div class="modal-card"><div class="modal-heading"><div><p class="kicker">Member profile</p><h2 id="memberModalTitle">會員資料</h2></div><button id="closeMemberModal" class="close-button" type="button" aria-label="關閉">×</button></div><form id="memberForm"><input id="memberLineUserId" type="hidden"><input id="memberExpectedUpdatedAt" type="hidden"><input id="memberIsTestAccount" type="hidden"><p id="memberIdentity" class="identity-line"></p><p class="auto-tier-note"><span>目前等級</span><strong id="memberTier">一般會員</strong><small>依累積消費服務時間自動計算</small></p><div id="memberTestProfileFields" class="member-test-profile-fields hidden"><p class="member-test-profile-note">測試用戶使用虛擬個人資料，可由管理員修改；會員編號與測試身分不可手動變更。</p><label>顯示名稱<input id="memberDisplayName" type="text" maxlength="80" autocomplete="off"></label><div class="form-grid"><label>姓氏<input id="memberSurname" type="text" maxlength="40" autocomplete="family-name"></label><label>稱謂<select id="memberSalutation"><option value="mr">先生</option><option value="ms">小姐</option></select></label></div><div class="form-grid"><label>生日<input id="memberBirthday" type="date"></label><label>電話<input id="memberPhone" type="tel" maxlength="30" autocomplete="tel"></label></div></div><label>會員狀態<select id="memberStatus"><option value="active">啟用中</option><option value="disabled">已停用</option></select></label><div id="memberFormMessage" class="form-message hidden" role="alert"></div><div class="modal-actions"><button id="cancelMemberButton" class="button button-outline" type="button">取消</button><button id="saveMemberButton" class="button button-dark" type="submit">儲存會員資料</button></div></form></div></div>
   <div id="memberRecordsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="memberRecordsModalTitle">
-    <div class="modal-card member-records-modal-card">
-      <div class="modal-heading">
-        <div><p class="kicker">Member 360</p><h2 id="memberRecordsModalTitle">會員 360</h2></div>
+    <div class="modal-card member-records-modal-card" data-member-360-surface>
+      <div class="modal-heading member-records-modal-heading">
+        <div><p class="kicker">Member 360</p><h2 id="memberRecordsModalTitle">會員 360</h2><p class="member-records-modal-subtitle">集中查看會員狀態、權益與跨模組活動紀錄。</p></div>
         <button id="closeMemberRecordsModal" class="close-button" type="button" aria-label="關閉">×</button>
       </div>
-      <p id="memberRecordsIdentity" class="identity-line"></p>
+      <p id="memberRecordsIdentity" class="identity-line member-records-identity"></p>
       <section id="memberRecordsOverview" class="member-records-overview" aria-label="會員整合概況"></section>
+      <div class="member-records-section-heading">
+        <div><p class="kicker">Activity timeline</p><h3>會員活動歷程</h3></div>
+        <span>最新紀錄優先</span>
+      </div>
       <div id="memberRecordsSummary" class="member-records-summary" aria-label="紀錄數量"></div>
       <div id="memberRecordsTabs" class="member-records-tabs" role="tablist" aria-label="會員紀錄分類">
         <button class="member-record-tab active" type="button" role="tab" aria-selected="true" data-record-filter="all">全部 0</button>
