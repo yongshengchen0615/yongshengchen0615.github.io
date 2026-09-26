@@ -56,7 +56,7 @@ test('booking realtime refreshes only the badge while booking panel is hidden', 
 
 test('current booking loader cache-busts the unread cursor implementation', () => {
   assert.match(loader, /booking-panel-core\.js', 'booking-unread-cursor-20260925-2'/);
-  assert.match(html, /booking-panel\.js\?v=booking-unread-cursor-20260925-2/);
+  assert.match(html, /booking-panel\.js\?v=booking-realtime-fallback-20260926-1/);
 });
 
 test('booking summary endpoint counts pending rows only after admin authorization', () => {

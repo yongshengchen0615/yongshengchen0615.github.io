@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const POLL_MS = 12000;
+  const FALLBACK_POLL_MS = 12000;
+  const REALTIME_RECONCILE_MS = 120000;
   const MODE_CORE = 'core';
   const MODE_REQUESTS = 'requests';
   const MODE_CANCELLED = 'cancelled';
@@ -13,6 +14,7 @@
   let mounted = false;
   let realtimeClient = null;
   let realtimeChannel = null;
+  let realtimeConnected = false;
   let realtimeTimer = null;
   let pollTimer = null;
   let activeMode = MODE_CORE;
@@ -90,6 +92,7 @@
     document.getElementById('bookingAdminRefreshButton')?.addEventListener('click', () => window.setTimeout(() => refresh(false, true), 150));
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
     window.addEventListener('beforeunload', teardown);
     waitForAdmin();
   }
@@ -171,7 +174,11 @@
           const type = String(row.event_type || '');
           if ((scope === 'admin' || scope === 'all') && (type.startsWith('booking.cancellation.') || type.startsWith('booking.'))) scheduleRefresh();
         })
-        .subscribe((status) => { if (status === 'SUBSCRIBED') scheduleRefresh(); });
+        .subscribe((status) => {
+          realtimeConnected = status === 'SUBSCRIBED';
+          setupPolling();
+          if (realtimeConnected) scheduleRefresh();
+        });
     } catch (_) {}
   }
 
@@ -185,12 +192,15 @@
   }
 
   function setupPolling() {
-    if (pollTimer !== null) return;
-    pollTimer = window.setInterval(() => {
+    if (pollTimer !== null) window.clearTimeout(pollTimer);
+    const interval = realtimeConnected && !isBackgroundE2ERunner() ? REALTIME_RECONCILE_MS : FALLBACK_POLL_MS;
+    pollTimer = window.setTimeout(() => {
+      pollTimer = null;
       if ((document.visibilityState === 'visible' || isBackgroundE2ERunner()) && navigator.onLine) {
         refresh(false, activeMode !== MODE_CORE);
       }
-    }, POLL_MS);
+      setupPolling();
+    }, interval);
   }
 
   function scheduleRefresh() {
@@ -201,15 +211,18 @@
     }, 350);
   }
 
-  function onVisibilityChange() { if (document.visibilityState === 'visible') refresh(false, activeMode !== MODE_CORE); }
-  function onFocus() { if (document.visibilityState === 'visible') refresh(false, activeMode !== MODE_CORE); }
+  function onVisibilityChange() { if (document.visibilityState === 'visible') { scheduleRefresh(); setupPolling(); } }
+  function onFocus() { if (document.visibilityState === 'visible') { scheduleRefresh(); setupPolling(); } }
+  function onOnline() { scheduleRefresh(); setupPolling(); }
 
   function teardown() {
     document.removeEventListener('visibilitychange', onVisibilityChange);
     window.removeEventListener('focus', onFocus);
+    window.removeEventListener('online', onOnline);
     if (realtimeTimer !== null) window.clearTimeout(realtimeTimer);
-    if (pollTimer !== null) window.clearInterval(pollTimer);
+    if (pollTimer !== null) window.clearTimeout(pollTimer);
     realtimeTimer = null; pollTimer = null;
+    realtimeConnected = false;
     if (realtimeClient && realtimeChannel) { try { Promise.resolve(realtimeClient.removeChannel(realtimeChannel)).catch(() => {}); } catch (_) {} }
     realtimeChannel = null; realtimeClient = null;
   }
