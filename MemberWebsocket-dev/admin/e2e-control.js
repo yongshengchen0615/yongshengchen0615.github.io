@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-26.1';
+  const VERSION = '2026-09-26.2';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -46,6 +46,37 @@
     integration: 'ADMIN_INTEGRATION_CENTER',
     booking: 'ADMIN_BOOKING_CONTROLS'
   });
+  const ADMIN_NODE_META = Object.freeze({
+    ADMIN_AUTH_READY: { module: 'shared', phase: 0, required: true, risk: 'auth' },
+    ADMIN_PRIMARY_NAVIGATION: { module: 'shared', phase: 1, required: true, dependencies: ['ADMIN_AUTH_READY'] },
+    ADMIN_TEST_MEMBER_ROSTER: { module: 'member', phase: 2, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
+    ADMIN_MEMBER_MODALS: { module: 'member', phase: 3, dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
+    ADMIN_TEST_MEMBER_PROFILE_EDIT: { module: 'member', phase: 4, risk: 'mutation', dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
+    ADMIN_MEMBER_DIRECTORY_CONTROLS: { module: 'member', phase: 3, dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
+    ADMIN_MESSAGE_PRESET_EDITOR: { module: 'member', phase: 3, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
+    ADMIN_THEME_TOGGLE: { module: 'member', phase: 2, dependencies: ['ADMIN_AUTH_READY'] },
+
+    ADMIN_RESOURCE_EDITORS: { module: 'resource', phase: 2, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
+    ADMIN_TICKET_CRUD: { module: 'points', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
+    ADMIN_LOTTERY_TICKET_CRUD: { module: 'ticket', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
+    ADMIN_POINT_CARD_CRUD: { module: 'points', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
+    ADMIN_EVENT_TICKET_CRUD: { module: 'event', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
+    ADMIN_CALENDAR_CRUD: { module: 'calendar', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
+    ADMIN_CALENDAR_BATCH_CONTROLS: { module: 'calendar', phase: 5, dependencies: ['ADMIN_CALENDAR_CRUD'] },
+
+    ADMIN_BOOKING_CONTROLS: { module: 'booking', phase: 2, required: true, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
+    ADMIN_BOOKING_SHARED_SETTINGS: { module: 'booking', phase: 3, required: true, risk: 'mutation', dependencies: ['ADMIN_BOOKING_CONTROLS'] },
+    ADMIN_BOOKING_CRUD: { module: 'booking', phase: 4, risk: 'mutation', dependencies: ['ADMIN_BOOKING_CONTROLS'] },
+
+    ADMIN_INTEGRATION_CENTER: { module: 'integration', phase: 2, required: true, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
+    ADMIN_INTEGRATION_NAVIGATION: { module: 'integration', phase: 3, dependencies: ['ADMIN_INTEGRATION_CENTER'] },
+
+    ADMIN_TEST_MODE_CONTROLS: { module: 'shared', phase: 2, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
+    ADMIN_TEST_ACCOUNT_LIFECYCLE: { module: 'shared', phase: 4, risk: 'mutation', dependencies: ['ADMIN_TEST_MODE_CONTROLS'] },
+    ADMIN_FEATURE_CONTRACT_COVERAGE: { module: 'shared', phase: 6 },
+    ADMIN_BUTTON_COVERAGE: { module: 'shared', phase: 6 }
+  });
+
   const state = {
     running: false,
     cancelled: false,
@@ -55,6 +86,7 @@
     complexityLevel: 1,
     clientConcurrency: 2,
     rootRunId: '',
+    adminScenarioPlan: null,
     results: [],
     section: null,
     list: null,
@@ -527,6 +559,7 @@
     state.cancelled = false;
     state.results = [];
     state.participants = [];
+    state.adminScenarioPlan = null;
     state.backgroundRunnerWindow = runnerWindow;
     state.backgroundRunId = runId;
     state.clientMobileViewport = mobileViewport;
@@ -1174,6 +1207,45 @@
     });
   }
 
+  function planAdminDefinitions(suite, modules = state.selectedModules) {
+    const catalog = adminDefinitions(suite, modules);
+    if (suite !== 'full') {
+      state.adminScenarioPlan = null;
+      return catalog;
+    }
+    const planner = window.MemberE2EScenarioGraph;
+    if (!planner || typeof planner.planScenario !== 'function') {
+      state.adminScenarioPlan = {
+        version: 1,
+        seed: state.randomSeed,
+        complexityLevel: state.complexityLevel,
+        fingerprint: 'SG1-admin-fallback',
+        keys: catalog.map((item) => item.key),
+        path: catalog.map((item, index) => ({ order: index + 1, key: item.key, name: item.name, domain: item.domain, module: 'fallback', phase: 0 }))
+      };
+      return catalog;
+    }
+    const requiredKeys = [
+      'ADMIN_AUTH_READY',
+      'ADMIN_PRIMARY_NAVIGATION',
+      ...modules.map((module) => MODULE_HUMAN_EVIDENCE[module]).filter(Boolean)
+    ];
+    if (modules.includes('booking')) requiredKeys.push('ADMIN_BOOKING_SHARED_SETTINGS');
+    const plan = planner.planScenario({
+      nodes: catalog,
+      metaByKey: ADMIN_NODE_META,
+      randomUnit: nextRandomUnit,
+      seed: state.randomSeed + '-ADMIN',
+      complexityLevel: state.complexityLevel,
+      minNodes: Math.min(10, catalog.length),
+      maxNodes: Math.min(18, catalog.length),
+      requiredKeys
+    });
+    const byKey = new Map(catalog.map((item) => [item.key, item]));
+    state.adminScenarioPlan = plan;
+    return plan.keys.map((key) => byKey.get(key)).filter(Boolean);
+  }
+
   async function runPairedAdminBookingLive(participant) {
     const wrapperKey = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_FOLLOWUP';
     const rowPrefix = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_';
@@ -1395,7 +1467,18 @@
       if (!state.cancelled) {
         // A human administrator has one management UI. Keep admin DOM actions single-threaded
         // while member clients may generate data concurrently.
-        const allAdminDefinitions = adminDefinitions('full', selectedModules);
+        const allAdminDefinitions = planAdminDefinitions('full', selectedModules);
+        state.results.push({
+          key: 'PAIRED_ADMIN_SCENARIO_PATH',
+          name: '本輪管理端 E2E 節點路徑',
+          domain: 'Paired E2E / Orchestration',
+          status: 'passed',
+          message: '管理端已依 dependency graph、seed 與 complexity 產生本輪合法節點路徑。',
+          expected: { dependencyAware: true, replayable: true, fixedFlow: false },
+          actual: safe(state.adminScenarioPlan || {}),
+          durationMs: 0
+        });
+        render();
         const preflightKeys = new Set(['ADMIN_AUTH_READY']);
         if (selectedModules.includes('booking')) {
           preflightKeys.add('ADMIN_BOOKING_CONTROLS');
@@ -1514,6 +1597,7 @@
         recorded,
         backendRun: safe(backendRun?.run || {}),
         selectedModules: safe(selectedModules),
+        adminScenario: safe(state.adminScenarioPlan),
         fixture: safe(fixture),
         participants: safe(state.participants.map((item) => ({
           account: item.account,

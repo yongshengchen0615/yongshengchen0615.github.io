@@ -5,7 +5,7 @@
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-24.11';
+  const VERSION = '2026-09-26.1';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -44,6 +44,64 @@
     }
   });
 
+  const USER_NODE_META = Object.freeze({
+    COMMON_TEST_SESSION: { module: 'shared', phase: 0, required: true, risk: 'auth' },
+    COMMON_CONFIG: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TEST_SESSION'] },
+    COMMON_SURFACE_READY: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_CONFIG'] },
+    COMMON_BOOTSTRAP: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_SURFACE_READY'] },
+    COMMON_ESSENTIAL_DOM: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_SURFACE_READY'] },
+    COMMON_USAGE_STATE_COMPLEXITY: { module: 'shared', phase: 2, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    SECURITY_MISSING_SESSION: { module: 'shared', phase: 2, required: true, risk: 'security', dependencies: ['COMMON_BOOTSTRAP'] },
+    SECURITY_TAMPERED_SESSION: { module: 'shared', phase: 2, required: true, risk: 'security', dependencies: ['COMMON_BOOTSTRAP'] },
+    SECURITY_QA_SURFACE_BOUNDARY: { module: 'shared', phase: 2, required: true, risk: 'security', dependencies: ['COMMON_BOOTSTRAP'] },
+    SECURITY_ADMIN_BOUNDARY: { module: 'shared', phase: 2, required: true, risk: 'security', dependencies: ['COMMON_BOOTSTRAP'] },
+    COMMON_REALTIME: { module: 'shared', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    COMMON_THEME_TOGGLE: { module: 'shared', phase: 3 },
+    COMMON_MEMBERSHIP_MILESTONE: { module: 'shared', phase: 3 },
+    COMMON_FEATURE_CONTRACT_COVERAGE: { module: 'shared', phase: 6 },
+
+    MEMBER_PROFILE_DATA: { module: 'member', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    MEMBER_MODAL_OPEN_CLOSE: { module: 'member', phase: 3, dependencies: ['MEMBER_PROFILE_DATA'] },
+    MEMBER_HUMAN_PROFILE_EDIT: { module: 'member', phase: 4, required: true, risk: 'mutation', dependencies: ['MEMBER_PROFILE_DATA', 'MEMBER_MODAL_OPEN_CLOSE'] },
+    MEMBER_INVALID_WRITE: { module: 'member', phase: 4, dependencies: ['MEMBER_PROFILE_DATA'] },
+    MEMBER_SERVER_MUTATION: { module: 'member', phase: 4, dependencies: ['MEMBER_PROFILE_DATA'] },
+    MEMBER_LINE_SUPPRESSION: { module: 'member', phase: 5, required: true, risk: 'notification' },
+    MEMBER_BUTTON_COVERAGE: { module: 'member', phase: 6 },
+
+    POINTS_DATA: { module: 'points', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    POINTS_SETTINGS: { module: 'points', phase: 3, required: true, dependencies: ['POINTS_DATA'] },
+    POINTS_CARD_SWITCH: { module: 'points', phase: 3, dependencies: ['POINTS_DATA'] },
+    POINTS_HISTORY_DISCLOSURE: { module: 'points', phase: 3, dependencies: ['POINTS_DATA'] },
+    POINTS_HUMAN_REDEEM: { module: 'points', phase: 4, required: true, risk: 'mutation', dependencies: ['POINTS_DATA', 'POINTS_SETTINGS', 'POINTS_CARD_SWITCH'] },
+    POINTS_INVALID_WRITE: { module: 'points', phase: 4, dependencies: ['POINTS_DATA'] },
+    POINTS_BUTTON_COVERAGE: { module: 'points', phase: 6 },
+
+    EVENT_DATA: { module: 'event', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    EVENT_MODAL: { module: 'event', phase: 3, dependencies: ['EVENT_DATA'] },
+    EVENT_HISTORY_DISCLOSURE: { module: 'event', phase: 3, dependencies: ['EVENT_DATA'] },
+    EVENT_HUMAN_LIFECYCLE: { module: 'event', phase: 4, required: true, risk: 'mutation', dependencies: ['EVENT_DATA', 'EVENT_MODAL'] },
+    EVENT_INVALID_WRITE: { module: 'event', phase: 4, dependencies: ['EVENT_DATA'] },
+    EVENT_BUTTON_COVERAGE: { module: 'event', phase: 6 },
+
+    CALENDAR_DETAIL_API: { module: 'calendar', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    CALENDAR_NAVIGATION: { module: 'calendar', phase: 3, dependencies: ['COMMON_SURFACE_READY'] },
+    CALENDAR_HUMAN_DETAIL: { module: 'calendar', phase: 4, required: true, dependencies: ['CALENDAR_DETAIL_API', 'CALENDAR_NAVIGATION'] },
+    CALENDAR_INVALID_DATE: { module: 'calendar', phase: 4, dependencies: ['CALENDAR_DETAIL_API'] },
+    CALENDAR_SERVER_BOUNDARY: { module: 'calendar', phase: 4, risk: 'security', dependencies: ['CALENDAR_DETAIL_API'] },
+    CALENDAR_LINE_SUPPRESSION: { module: 'calendar', phase: 5, required: true, risk: 'notification' },
+    CALENDAR_BUTTON_COVERAGE: { module: 'calendar', phase: 6 },
+
+    BOOKING_DATA: { module: 'booking', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    BOOKING_GROUP_DATA: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
+    BOOKING_FORM_INITIAL: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
+    BOOKING_FLOW_STEPPER: { module: 'booking', phase: 3, dependencies: ['BOOKING_FORM_INITIAL'] },
+    BOOKING_HUMAN_CONTROLS: { module: 'booking', phase: 4, required: true, dependencies: ['BOOKING_FORM_INITIAL', 'BOOKING_FLOW_STEPPER'] },
+    BOOKING_HUMAN_LIFECYCLE: { module: 'booking', phase: 4, required: true, risk: 'mutation', dependencies: ['BOOKING_HUMAN_CONTROLS'] },
+    BOOKING_HUMAN_GROUP: { module: 'booking', phase: 4, required: true, risk: 'mutation', dependencies: ['BOOKING_GROUP_DATA', 'BOOKING_HUMAN_CONTROLS'] },
+    BOOKING_INVALID_WRITE: { module: 'booking', phase: 4, dependencies: ['BOOKING_DATA'] },
+    BOOKING_BUTTON_COVERAGE: { module: 'booking', phase: 6 }
+  });
+
   const surface = detectSurface();
   const definition = SURFACES[surface];
   if (!definition) return;
@@ -69,6 +127,7 @@
     randomState: 0,
     complexityLevel: 1,
     participantIndex: 1,
+    scenarioPlan: null,
     runStartedAt: '',
     traceEvents: [],
     traceResourceStart: 0,
@@ -155,6 +214,43 @@
   function randomInteractionPause() {
     const level = Math.max(1, Number(state.complexityLevel || 1));
     return wait(randomInt(70, 260 + level * 90));
+  }
+
+  function planUserScenario(nodes) {
+    const planner = window.MemberE2EScenarioGraph;
+    if (!planner || typeof planner.planScenario !== 'function') {
+      const fallback = {
+        version: 1,
+        seed: state.randomSeed,
+        complexityLevel: state.complexityLevel,
+        fingerprint: 'SG1-fallback',
+        keys: nodes.map((item) => String(item.key || '')),
+        path: nodes.map((item, index) => ({
+          order: index + 1,
+          key: String(item.key || ''),
+          name: String(item.name || ''),
+          domain: String(item.domain || ''),
+          module: 'fallback',
+          phase: 0,
+          risk: 'normal',
+          required: true
+        }))
+      };
+      return { plan: fallback, nodes: nodes.slice() };
+    }
+    const requiredKeys = nodes.filter((item) => item.humanRequired === true).map((item) => item.key);
+    const plan = planner.planScenario({
+      nodes,
+      metaByKey: USER_NODE_META,
+      randomUnit: nextRandomUnit,
+      seed: state.randomSeed,
+      complexityLevel: state.complexityLevel,
+      minNodes: Math.min(12, nodes.length),
+      maxNodes: Math.min(18, nodes.length),
+      requiredKeys
+    });
+    const byKey = new Map(nodes.map((item) => [String(item.key || ''), item]));
+    return { plan, nodes: plan.keys.map((key) => byKey.get(key)).filter(Boolean) };
   }
 
   function plainError(error) {
@@ -549,6 +645,7 @@
     state.usageStateError = null;
     state.bookingBaseline = null;
     state.bookingHandoff = null;
+    state.scenarioPlan = null;
     state.cancelled = false;
     state.runStartedAt = new Date().toISOString();
     startDiagnosticTrace();
@@ -721,6 +818,7 @@
       account: state.session && state.session.account || null,
       browserRun: state.browserRun || null,
       bookingHandoff: safeJson(state.bookingHandoff),
+      scenario: safeJson(state.scenarioPlan),
       results: state.results.map((item) => ({
         key: item.key || '',
         name: item.name || '',
@@ -740,7 +838,9 @@
         total: state.results.length,
         e2eSeed: state.randomSeed,
         complexityLevel: state.complexityLevel,
-        participantIndex: state.participantIndex
+        participantIndex: state.participantIndex,
+        scenarioFingerprint: state.scenarioPlan?.fingerprint || '',
+        scenarioPath: Array.isArray(state.scenarioPlan?.keys) ? state.scenarioPlan.keys.slice() : []
       }
     };
   }
@@ -755,17 +855,27 @@
 
   function buildCases(suite) {
     const common = [
-      caseDef('測試帳號授權邊界', 'Authentication', testSessionCase),
-      caseDef('公開設定與 Client 設定', 'Configuration', configCase),
-      caseDef('目前頁面載入狀態', 'UI', surfaceReadyCase),
-      caseDef(definition.label + ' Bootstrap API', 'API', bootstrapCase),
-      caseDef(definition.label + ' 核心 UI 元件', 'UI', essentialDomCase)
+      caseDef('測試帳號授權邊界', 'Authentication', testSessionCase, 'COMMON_TEST_SESSION'),
+      caseDef('公開設定與 Client 設定', 'Configuration', configCase, 'COMMON_CONFIG'),
+      caseDef('目前頁面載入狀態', 'UI', surfaceReadyCase, 'COMMON_SURFACE_READY'),
+      caseDef(definition.label + ' Bootstrap API', 'API', bootstrapCase, 'COMMON_BOOTSTRAP'),
+      caseDef(definition.label + ' 核心 UI 元件', 'UI', essentialDomCase, 'COMMON_ESSENTIAL_DOM')
     ];
-    if (suite !== 'full') return common;
+    if (suite !== 'full') {
+      state.scenarioPlan = {
+        version: 1,
+        seed: state.randomSeed,
+        complexityLevel: state.complexityLevel,
+        fingerprint: 'SG1-quick-' + surface,
+        keys: common.map((item) => item.key),
+        path: common.map((item, index) => ({ order: index + 1, key: item.key, name: item.name, domain: item.domain, module: 'shared', phase: index }))
+      };
+      return common;
+    }
 
     const fullCommon = [
       caseDef('高複雜度使用狀態前置', 'Usage State', usageStateComplexityCase, 'COMMON_USAGE_STATE_COMPLEXITY'),
-      caseDef('無測試 Session 必須被拒絕', 'Security', negativeSessionCase),
+      caseDef('無測試 Session 必須被拒絕', 'Security', negativeSessionCase, 'SECURITY_MISSING_SESSION'),
       caseDef('竄改測試 Session 必須被拒絕', 'Security', tamperedSessionCase, 'SECURITY_TAMPERED_SESSION'),
       caseDef('跨頁面 QA 寫入必須被拒絕', 'Security', crossSurfaceQaCase, 'SECURITY_QA_SURFACE_BOUNDARY'),
       caseDef('用戶 Session 不可冒用管理員', 'Security', adminImpersonationCase, 'SECURITY_ADMIN_BOUNDARY'),
@@ -789,14 +899,14 @@
         caseDef('集點卡切換互動', 'UI', pointsInteractionCase, 'POINTS_CARD_SWITCH'),
         caseDef('票券使用紀錄展開／收合', 'UI', pointsHistoryDisclosureCase, 'POINTS_HISTORY_DISCLOSURE'),
         caseDef('真人操作：勾選票券／取消／確認核銷', 'Human E2E', pointsHumanRedeemCase, 'POINTS_HUMAN_REDEEM'),
-        caseDef('票券核銷輸入驗證', 'Validation', pointsInvalidWriteCase, 'POINTS_INVALID_WRITE'),
+        caseDef('票券核銷輸入驗證', 'Validation', pointsInvalidWriteCase, 'POINTS_INVALID_WRITE')
       ],
       event: [
         caseDef('活動票券領取／使用狀態', 'Tickets', eventDataCase, 'EVENT_DATA'),
         caseDef('票券詳情 Modal', 'UI', eventModalCase, 'EVENT_MODAL'),
         caseDef('已使用票券紀錄展開／收合', 'UI', eventHistoryDisclosureCase, 'EVENT_HISTORY_DISCLOSURE'),
         caseDef('真人操作：開啟／領取／核銷／查看紀錄', 'Human E2E', eventHumanTicketLifecycleCase, 'EVENT_HUMAN_LIFECYCLE'),
-        caseDef('領券與核銷輸入驗證', 'Validation', eventInvalidWriteCase, 'EVENT_INVALID_WRITE'),
+        caseDef('領券與核銷輸入驗證', 'Validation', eventInvalidWriteCase, 'EVENT_INVALID_WRITE')
       ],
       calendar: [
         caseDef('指定日期明細 API', 'Calendar', calendarDetailApiCase, 'CALENDAR_DETAIL_API'),
@@ -813,21 +923,43 @@
         caseDef('真人操作：日期／視窗／項目／多人控制', 'Human E2E', bookingHumanControlsCase, 'BOOKING_HUMAN_CONTROLS'),
         caseDef('真人操作：新增／修改／取消預約', 'Human E2E', bookingHumanLifecycleCase, 'BOOKING_HUMAN_LIFECYCLE'),
         caseDef('真人操作：多人預約新增並保留資料', 'Human E2E', bookingHumanGroupLifecycleCase, 'BOOKING_HUMAN_GROUP'),
-        caseDef('新增／修改／取消輸入驗證', 'Validation', bookingInvalidWriteCase, 'BOOKING_INVALID_WRITE'),
+        caseDef('新增／修改／取消輸入驗證', 'Validation', bookingInvalidWriteCase, 'BOOKING_INVALID_WRITE')
       ]
     };
+
     const trailingCases = [
       caseDef('所有按鈕／動態控制覆蓋清單', 'Coverage', buttonCoverageCase, (surface || 'surface').toUpperCase() + '_BUTTON_COVERAGE')
     ];
-    // user.qa.mutations 的 points/event/booking 寫入案例會自帶清理流程。
-    // 這三個頁面改由真人 E2E 覆蓋成功寫入，確保資料能留在管理端供人工檢查。
     if (surface === 'member' || surface === 'calendar') {
       trailingCases.push(
-        caseDef('測試帳號 LINE 通知抑制', 'Notification', () => mutationQaCase('LINE_SUPPRESSION'), (surface || 'surface').toUpperCase() + '_LINE_SUPPRESSION')
+        caseDef(
+          '測試帳號 LINE 通知抑制',
+          'Notification',
+          () => mutationQaCase('LINE_SUPPRESSION'),
+          (surface || 'surface').toUpperCase() + '_LINE_SUPPRESSION'
+        )
       );
     }
-    const randomizedMiddle = shuffled(fullCommon.concat(surfaceCases[surface] || []));
-    const replayPool = randomizedMiddle.filter((item) =>
+
+    const planned = planUserScenario(common.concat(fullCommon, surfaceCases[surface] || [], trailingCases));
+    state.scenarioPlan = planned.plan;
+    const scenarioCase = caseDef(
+      '本輪 E2E 節點路徑',
+      'Orchestration',
+      () => pass(
+        '本輪已依 seed 與 dependency graph 產生可重播但非固定的合法測試路徑。',
+        { dependencyAware: true, replayable: true, fixedFlow: false },
+        {
+          seed: state.randomSeed,
+          complexityLevel: state.complexityLevel,
+          fingerprint: state.scenarioPlan?.fingerprint || '',
+          path: state.scenarioPlan?.path || []
+        }
+      ),
+      'QA_SCENARIO_PATH'
+    );
+
+    const replayPool = planned.nodes.filter((item) =>
       ['UI', 'Validation', 'Realtime', 'API', 'Configuration', 'Member', 'Points', 'Tickets', 'Calendar', 'Booking'].includes(String(item.domain || ''))
       && item.humanRequired !== true
     );
@@ -840,11 +972,7 @@
         String(item.key || ('ADAPTIVE_' + index)) + '_REPLAY_' + (index + 1)
       )
     );
-    return common.concat(
-      randomizedMiddle,
-      adaptiveReplays,
-      trailingCases
-    );
+    return [scenarioCase].concat(planned.nodes, adaptiveReplays);
   }
 
   function caseDef(name, domain, run, key) {
