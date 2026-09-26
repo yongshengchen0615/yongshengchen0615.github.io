@@ -69,7 +69,7 @@ jobs:
           printf '%s\n' \
             MemberWebsocket-dev/theme.js \
             MemberWebsocket-dev/e2e-scenario-graph.js \
-            MemberWebsocket-dev/membership-milestones.js \
+            # Shared E2E scenario graph is syntax-checked with the browser controllers.\n            MemberWebsocket-dev/membership-milestones.js \
             MemberWebsocket-dev/test-mode-client.js \
             MemberWebsocket-dev/user-test-control.js \
             MemberWebsocket-dev/member-system.js \
