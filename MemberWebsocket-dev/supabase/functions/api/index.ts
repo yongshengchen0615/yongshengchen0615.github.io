@@ -1471,7 +1471,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   if (endsOn && !/^\d{4}-\d{2}-\d{2}$/.test(endsOn)) throw new ApiError(400,"INVALID_DATE","活動結束日格式不正確。");
   if (startsOn && endsOn && endsOn < startsOn) throw new ApiError(400,"INVALID_DATE_RANGE","活動結束日不可早於開始日。");
   const quota = Number(input.quota || 0);
-  if (!Number.isInteger(quota) || quota < 0 || quota > 1_000_000) throw new ApiError(400,"INVALID_QUOTA","發放上限必須是 0–1,000,000。");
+  if (!Number.isInteger(quota) || quota < 0 || quota > 1_000_000) throw new ApiError(400,"INVALID_QUOTA","限量張數必須是 0–1,000,000。");
   const payload = {
     title: requireText(input.title,"活動票券名稱",100),
     ticket_type: ticketType,
