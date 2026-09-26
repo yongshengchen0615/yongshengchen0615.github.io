@@ -261,10 +261,11 @@ test('live admin runner no longer waits for every client task to finish before b
   assert.match(source, /completeHandoffBeforeMemberUiReuse/);
 });
 
-test('the only paired full E2E always includes booking collaboration and the complete admin suite', () => {
+test('the paired E2E runs the selected modules and gates booking collaboration', () => {
   assert.match(source, /async function runPaired\(options = \{\}\)/);
   assert.match(source, /surfacePlan: weightedSurfacePlan\(profile, index \+ 1\)/);
-  assert.match(source, /const allAdminDefinitions = adminDefinitions\('full'\)/);
+  assert.match(source, /const allAdminDefinitions = adminDefinitions\('full', selectedModules\)/);
+  assert.match(source, /selectedModules\.includes\('booking'\) \? state\.participants\.map/);
   assert.match(source, /runPairedAdminBookingLive\(participant\)/);
   assert.match(source, /await executeCases\(remainingAdminDefinitions, '管理端 · 其餘完整 E2E'\)/);
   assert.match(source, /await runDeepPairedSuite/);

@@ -12,7 +12,7 @@ test('admin exposes only the unified background full E2E entrypoint', () => {
   assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
   assert.match(html, /e2e-control\.js\?v=admin-e2e-20260925-\d+/);
   assert.match(runner, /runPairedFullE2EButton/);
-  assert.match(runner, /完整 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
+  assert.match(runner, /模組 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
   assert.match(runner, /stopAdminE2EButton/);
   assert.match(runner, /requestStop/);
   for (const removed of [
@@ -37,7 +37,7 @@ test('admin exposes only the unified background full E2E entrypoint', () => {
   assert.match(runner, /runUnifiedBackground/);
   assert.match(runner, /e2eBackgroundRunner/);
   assert.match(runner, /openBackgroundRunnerWindow/);
-  assert.match(runner, /openClientWindows\(participantCount, false, mobileViewport\)/);
+  assert.match(runner, /openClientWindows\(selectedClientSurfaces\(selectedModules\)\.length \? participantCount : 0, false, mobileViewport\)/);
   assert.match(runner, /receiveBackgroundStatus/);
   assert.match(runner, /backgroundAwareTimeout/);
   assert.doesNotMatch(html, /id="runQuickAutomationTestButton"/);

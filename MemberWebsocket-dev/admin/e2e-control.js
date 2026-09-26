@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-25.31';
+  const VERSION = '2026-09-26.1';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -22,9 +22,30 @@
     ['member', '會員卡'],
     ['points', '集點卡'],
     ['event', '活動票券'],
-    ['calendar', '活動日曆'],
+    ['calendar', '營運日曆'],
     ['booking', '預約']
   ]);
+  const E2E_MODULES = Object.freeze([...PAIRED_SURFACES.slice(0, 4), ['integration', '整合中心'], PAIRED_SURFACES[4]]);
+  const ADMIN_CASE_MODULES = Object.freeze({
+    ADMIN_TEST_MEMBER_ROSTER: ['member'], ADMIN_MEMBER_MODALS: ['member'],
+    ADMIN_TEST_MEMBER_PROFILE_EDIT: ['member'], ADMIN_MEMBER_DIRECTORY_CONTROLS: ['member'],
+    ADMIN_MESSAGE_PRESET_EDITOR: ['member'], ADMIN_THEME_TOGGLE: ['member'],
+    ADMIN_RESOURCE_EDITORS: ['points', 'event', 'calendar'],
+    ADMIN_TICKET_CRUD: ['points'], ADMIN_LOTTERY_TICKET_CRUD: ['points', 'event'],
+    ADMIN_POINT_CARD_CRUD: ['points'], ADMIN_EVENT_TICKET_CRUD: ['event'],
+    ADMIN_CALENDAR_CRUD: ['calendar'], ADMIN_CALENDAR_BATCH_CONTROLS: ['calendar'],
+    ADMIN_BOOKING_CRUD: ['booking'], ADMIN_BOOKING_CONTROLS: ['booking'],
+    ADMIN_BOOKING_SHARED_SETTINGS: ['booking'],
+    ADMIN_INTEGRATION_CENTER: ['integration'], ADMIN_INTEGRATION_NAVIGATION: ['integration']
+  });
+  const MODULE_HUMAN_EVIDENCE = Object.freeze({
+    member: 'ADMIN_TEST_MEMBER_PROFILE_EDIT',
+    points: 'ADMIN_POINT_CARD_CRUD',
+    event: 'ADMIN_EVENT_TICKET_CRUD',
+    calendar: 'ADMIN_CALENDAR_CRUD',
+    integration: 'ADMIN_INTEGRATION_CENTER',
+    booking: 'ADMIN_BOOKING_CONTROLS'
+  });
   const state = {
     running: false,
     cancelled: false,
@@ -45,6 +66,7 @@
     clientWindows: [],
     clientMobileViewport: false,
     participants: [],
+    selectedModules: E2E_MODULES.map(([key]) => key),
     adminTestAccount: null,
     runStartedAt: '',
     backgroundExecution: false,
@@ -73,19 +95,23 @@
       <div class="admin-e2e-heading">
         <div>
           <span class="test-mode-eyebrow">Unified Background E2E</span>
-          <h4 id="adminBrowserE2ETitle">完整 E2E · 後端 QA + 管理端 ↔ 用戶端協同</h4>
-          <p>單一入口會先執行後端完整 QA，再由背景 Runner 驗證管理端與五種用戶端真人流程、Realtime、預約終態與風險掃描。</p>
-          <div class="admin-e2e-flow" aria-label="完整 E2E 流程">
-            <span>後端 QA</span><b aria-hidden="true">→</b><span>管理端</span><b aria-hidden="true">→</b><span>會員卡</span><b aria-hidden="true">→</b><span>集點卡</span><b aria-hidden="true">→</b><span>活動票券</span><b aria-hidden="true">→</b><span>日曆</span><b aria-hidden="true">→</b><span>預約</span>
-          </div>
+          <h4 id="adminBrowserE2ETitle">模組 E2E · 後端 QA + 管理端 ↔ 用戶端協同</h4>
+          <p>先執行共用後端安全 QA，再由背景 Runner 針對勾選模組驗證管理端真人操作與對應用戶端流程。</p>
         </div>
         <div class="admin-e2e-actions">
-          <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">完整 E2E：待命</span>
-          <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">▶ 開始完整 E2E（背景執行）</button>
+          <span id="adminBrowserE2EBadge" class="test-mode-status-badge is-off">模組 E2E：待命</span>
+          <button id="runPairedFullE2EButton" class="button button-dark" type="button" data-admin-e2e-control="true">▶ 開始所選模組 E2E（背景執行）</button>
           <button id="stopAdminE2EButton" class="button button-danger hidden" type="button" data-admin-e2e-stop="true">停止 E2E</button>
         </div>
       </div>
       <div class="admin-e2e-paired-config">
+        <fieldset class="admin-e2e-module-picker" aria-describedby="adminE2EModuleHint">
+          <legend>勾選本輪 E2E 範圍</legend>
+          <div class="admin-e2e-module-grid">
+            ${E2E_MODULES.map(([key, label]) => `<label><input type="checkbox" data-e2e-module="${key}" checked><span>${label}</span></label>`).join('')}
+          </div>
+          <small id="adminE2EModuleHint">至少勾選一項。後端共用安全 QA 加上所選模組檢查；測試資料準備仍會建立跨模組共用資料。整合中心為管理端案例，不開啟額外用戶端。</small>
+        </fieldset>
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
         <label class="admin-e2e-mobile-option" for="pairedE2EMobileViewport">
           <span><strong>用戶端手機大小</strong><small>勾選後，每個測試帳號的單一背景視窗會以 430×932 開啟；只測 viewport，不偽造手機 User-Agent。</small></span>
@@ -93,7 +119,7 @@
         </label>
         <details class="admin-e2e-config-note">
           <summary>執行方式與視窗規則</summary>
-          <p>1–10 人。每位測試用戶只開啟 1 個獨立背景視窗，並在同一視窗依序執行五種用戶端；另開 1 個管理端 Runner。10 人最多 11 個 E2E 視窗。正式用戶不會被選入；執行中請勿關閉背景 Runner 或測試視窗。</p>
+          <p>1–10 人。勾選用戶端模組時，每位測試用戶只開啟 1 個獨立背景視窗，並在同一視窗依序執行所選模組；另開 1 個管理端 Runner。只選整合中心則不開用戶端視窗。正式用戶不會被選入；執行中請勿關閉背景 Runner 或測試視窗。</p>
         </details>
       </div>
       <div id="adminBrowserE2EMessage" class="form-message hidden" role="status" aria-live="polite"></div>
@@ -221,11 +247,32 @@
     };
   }
 
-  function weightedSurfacePlan(profile, participantIndex) {
+  function normalizeSelectedModules(value) {
+    const requested = Array.isArray(value) ? value : [];
+    const allowed = E2E_MODULES.map(([key]) => key);
+    if (!requested.length || requested.some((key) => !allowed.includes(key))) {
+      const error = new Error('請至少勾選一個有效的 E2E 模組。');
+      error.code = 'INVALID_E2E_MODULE_SELECTION';
+      throw error;
+    }
+    return allowed.filter((key) => requested.includes(key));
+  }
+
+  function selectedModulesFromUi() {
+    const checked = Array.from(state.section?.querySelectorAll('[data-e2e-module]:checked') || [])
+      .map((input) => String(input.dataset.e2eModule || ''));
+    return normalizeSelectedModules(checked);
+  }
+
+  function selectedClientSurfaces(modules = state.selectedModules) {
+    return PAIRED_SURFACES.filter(([key]) => modules.includes(key));
+  }
+
+  function weightedSurfacePlan(profile, participantIndex, modules = state.selectedModules) {
     const weights = profile?.surfaceWeightsMs && typeof profile.surfaceWeightsMs === 'object'
       ? profile.surfaceWeightsMs
       : {};
-    const ranked = shuffled(PAIRED_SURFACES).sort((left, right) => {
+    const ranked = shuffled(selectedClientSurfaces(modules)).sort((left, right) => {
       const leftWeight = Math.max(1, Number(weights[left[0]] || 1));
       const rightWeight = Math.max(1, Number(weights[right[0]] || 1));
       return rightWeight - leftWeight;
@@ -460,13 +507,15 @@
     let runnerWindow = null;
     let clientWindows = [];
     let mobileViewport = false;
+    let selectedModules = [];
     const runId = 'BG-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
     state.backgroundRunId = runId;
     try {
       participantCount = selectedParticipantCount();
       mobileViewport = selectedClientMobileViewport();
+      selectedModules = selectedModulesFromUi();
       runnerWindow = openBackgroundRunnerWindow(runId);
-      clientWindows = openClientWindows(participantCount, false, mobileViewport);
+      clientWindows = openClientWindows(selectedClientSurfaces(selectedModules).length ? participantCount : 0, false, mobileViewport);
     } catch (error) {
       closeWindowList(clientWindows);
       try { if (runnerWindow && !runnerWindow.closed) runnerWindow.close(); } catch {}
@@ -481,7 +530,8 @@
     state.backgroundRunnerWindow = runnerWindow;
     state.backgroundRunId = runId;
     state.clientMobileViewport = mobileViewport;
-    state.lastMessage = '背景 E2E Runner 啟動中；每個測試帳號已各自預開 1 個獨立背景視窗。';
+    state.selectedModules = selectedModules;
+    state.lastMessage = '背景 E2E Runner 啟動中；範圍：' + selectedModules.map((key) => E2E_MODULES.find(([item]) => item === key)?.[1]).join('、') + '。';
     state.lastMessageError = false;
     setBusy(true, '背景 Runner 啟動');
     setMessage(state.lastMessage);
@@ -490,13 +540,14 @@
 
     const completion = (async () => {
       const control = await waitForBackgroundRunnerControl(runnerWindow);
-      setMessage('完整 E2E 已移交背景 Runner；每個測試帳號使用自己的單一背景視窗依序跑五種用戶端。測試視窗請保持開啟。');
+      setMessage('E2E 已移交背景 Runner；只執行勾選模組的 Browser 案例。測試視窗請保持開啟。');
       try { runnerWindow.blur?.(); window.focus?.(); } catch {}
 
       const result = await control.runUnifiedBackground({
         participantCount,
         clientWindows,
         mobileViewport,
+        selectedModules,
         runId
       });
 
@@ -508,7 +559,7 @@
           ? '背景完整 E2E 已停止；已完成資料與測試紀錄保留。'
           : failed
             ? '背景完整 E2E 已完成，發現 ' + failed + ' 個異常。'
-            : '背景完整 E2E 已完成；後端 QA、管理端與測試帳號單視窗協同測試均已執行。',
+            : '所選模組 E2E 已完成；後端 QA、管理端與所選用戶端案例均已執行。',
         !result?.cancelled && failed > 0
       );
       return result;
@@ -539,6 +590,7 @@
       participantCount: Number(options?.participantCount || 0),
       clientWindows: Array.isArray(options?.clientWindows) ? options.clientWindows : [],
       mobileViewport: options?.mobileViewport === true,
+      selectedModules: options?.selectedModules,
       backgroundExecution: true
     });
   }
@@ -556,10 +608,11 @@
     if (countInput) countInput.disabled = state.running;
     const mobileViewportInput = state.section?.querySelector('#pairedE2EMobileViewport');
     if (mobileViewportInput) mobileViewportInput.disabled = state.running;
+    state.section?.querySelectorAll('[data-e2e-module]').forEach((input) => { input.disabled = state.running; });
     if (state.badge) {
       state.badge.textContent = state.running
-        ? (state.cancelled ? '完整 E2E：停止中' : (state.backgroundExecution || state.backgroundRunnerWindow ? '完整 E2E：背景執行中' : '完整 E2E：執行中'))
-        : '完整 E2E：待命';
+        ? (state.cancelled ? '模組 E2E：停止中' : (state.backgroundExecution || state.backgroundRunnerWindow ? '模組 E2E：背景執行中' : '模組 E2E：執行中'))
+        : '模組 E2E：待命';
       state.badge.classList.toggle('is-on', state.running);
       state.badge.classList.toggle('is-off', !state.running);
     }
@@ -576,14 +629,14 @@
     if (!isBackgroundRunnerWindow() && state.backgroundRunnerWindow && !state.backgroundRunnerWindow.closed) {
       state.cancelled = true;
       try { state.backgroundRunnerWindow.MemberAdminE2EControl?.stop?.(); } catch {}
-      if (state.badge) state.badge.textContent = '完整 E2E：停止中';
+      if (state.badge) state.badge.textContent = '模組 E2E：停止中';
       if (state.floating) state.floating.textContent = 'E2E 停止中 · 已傳送到背景 Runner';
       setMessage('已要求背景 E2E 停止；背景 Runner 會在目前案例完成安全清理後停止。');
       return true;
     }
 
     state.cancelled = true;
-    if (state.badge) state.badge.textContent = '完整 E2E：停止中';
+    if (state.badge) state.badge.textContent = '模組 E2E：停止中';
     if (state.floating) state.floating.textContent = 'E2E 停止中 · 目前案例完成安全清理後停止';
     for (const participant of state.participants) {
       participant.status = '停止中';
@@ -1084,7 +1137,7 @@
     );
   }
 
-  function adminDefinitions(suite) {
+  function adminDefinitions(suite, modules = state.selectedModules) {
     const common = [
       caseDef('ADMIN_AUTH_READY', '管理端授權與頁面就緒', 'Authentication', adminReadyCase),
       caseDef('ADMIN_PRIMARY_NAVIGATION', '管理端主要分頁真人切換', 'UI', adminNavigationCase),
@@ -1092,6 +1145,7 @@
       caseDef('ADMIN_MEMBER_MODALS', '會員狀態／紀錄／發放視窗真人操作', 'UI', adminMemberModalCase)
     ];
     if (suite !== 'full') return common;
+    const allSelected = modules.length === E2E_MODULES.length;
     return common.concat([
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
       caseDef('ADMIN_RESOURCE_EDITORS', '集點卡／票券／活動票券／日曆編輯視窗', 'Human E2E', adminResourceEditorsCase),
@@ -1113,7 +1167,11 @@
       caseDef('ADMIN_TEST_ACCOUNT_LIFECYCLE', '測試帳號新增／選取／移除', 'Test Account E2E', adminTestAccountLifecycleCase),
       caseDef('ADMIN_FEATURE_CONTRACT_COVERAGE', '主要功能區塊 E2E 契約清單', 'Coverage', adminFeatureContractCoverageCase),
       caseDef('ADMIN_BUTTON_COVERAGE', '所有按鈕／動態控制覆蓋清單', 'Coverage', adminButtonCoverageCase)
-    ]);
+    ]).filter((definition) => {
+      if (definition.key === 'ADMIN_AUTH_READY' || definition.key === 'ADMIN_PRIMARY_NAVIGATION') return true;
+      const owners = ADMIN_CASE_MODULES[definition.key];
+      return owners ? owners.some((key) => modules.includes(key)) : allSelected;
+    });
   }
 
   async function runPairedAdminBookingLive(participant) {
@@ -1166,15 +1224,15 @@
   }
 
 
-  async function runUnifiedServerFullPhase() {
+  async function runUnifiedServerFullPhase(selectedModules = state.selectedModules) {
     const started = performance.now();
     const traceMarker = adminDiagnosticMarker();
     const row = {
       key: 'UNIFIED_SERVER_FULL_E2E',
-      name: '後端完整 QA：Test Control Center full suite',
+      name: '後端共用安全與所選模組 QA：Test Control Center',
       domain: 'Unified E2E / Backend',
       status: 'running',
-      message: '正在執行環境、測試帳號、Session、點數、票券、預約、Presence 與通知邊界完整 QA。',
+      message: '正在執行共用安全檢查與所選模組的資料一致性 QA。',
       expected: { suite: 'full', failedCases: 0 },
       actual: {},
       durationMs: null
@@ -1189,7 +1247,7 @@
         error.code = 'UNIFIED_BACKEND_CONTROL_NOT_READY';
         throw error;
       }
-      const data = await control.runFull();
+      const data = await control.runFull(selectedModules);
       const run = data?.run || {};
       const failedCases = Number(run.failedCases || 0);
       row.actual = {
@@ -1208,8 +1266,8 @@
         failedCases === 0 && Number(run.skippedCases || 0) === 0 &&
         String(run.status || '') === 'passed';
       Object.assign(row, completeBackendRun
-        ? pass('後端完整 QA 已完成且沒有失敗案例；繼續執行 Browser 協同 E2E。', row.expected, row.actual)
-        : fail('後端完整 QA 有失敗案例；Browser 協同 E2E 仍會繼續，以收集完整錯誤範圍。', row.expected, row.actual));
+        ? pass('後端共用安全與所選模組 QA 已完成；繼續執行 Browser 協同 E2E。', row.expected, row.actual)
+        : fail('後端共用安全或所選模組 QA 有失敗案例；Browser 協同 E2E 仍會繼續收集結果。', row.expected, row.actual));
       if (row.status === 'failed') row.trace = buildAdminFailureTrace(traceMarker, row);
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
@@ -1236,22 +1294,31 @@
     let participantCount = 1;
     let openedWindows = [];
     let backendRun = null;
+    let selectedModules = [];
     const mobileViewport = options?.mobileViewport === true || (!isBackgroundRunnerWindow() && selectedClientMobileViewport());
     state.clientMobileViewport = mobileViewport;
     try {
       const requestedCount = Number(options?.participantCount || 0);
       participantCount = Number.isInteger(requestedCount) && requestedCount > 0 ? requestedCount : selectedParticipantCount();
+      selectedModules = normalizeSelectedModules(options?.selectedModules ||
+        (state.section ? selectedModulesFromUi() : E2E_MODULES.map(([key]) => key)));
+      state.selectedModules = selectedModules;
       if (participantCount < 1 || participantCount > MAX_PAIRED_PARTICIPANTS) {
         const error = new Error(`協同測試人數必須是 1–${MAX_PAIRED_PARTICIPANTS} 的整數。`);
         error.code = 'INVALID_PAIRED_PARTICIPANT_COUNT';
         throw error;
       }
 
+      const needsClientWindows = selectedClientSurfaces(selectedModules).length > 0;
       const providedWindows = Array.isArray(options?.clientWindows)
         ? options.clientWindows.filter((item) => item && !item.closed).slice(0, participantCount)
         : [];
       closeClientWindows();
-      if (providedWindows.length) {
+      if (!needsClientWindows) {
+        closeWindowList(providedWindows);
+        openedWindows = [];
+        state.clientWindows = [];
+      } else if (providedWindows.length) {
         if (providedWindows.length < participantCount) {
           const error = new Error('背景 Runner 收到的測試用戶端視窗數量不足。');
           error.code = 'E2E_BACKGROUND_CLIENT_WINDOWS_INCOMPLETE';
@@ -1272,7 +1339,7 @@
     state.runStartedAt = new Date().toISOString();
     const runTraceMarker = adminDiagnosticMarker();
     setBusy(true, state.backgroundExecution ? '背景完整 E2E' : '完整 E2E');
-    setMessage('完整 E2E 已開始：先驗證維護模式，再執行後端 full QA，之後進入管理端 ↔ 五種用戶端真人協同。');
+    setMessage('所選模組 E2E 已開始：先驗證維護模式與共用後端 QA，再執行所選 Browser 案例。');
     try {
       const session = await adminSession();
       const mode = await postPublicTestMode(session, { action: 'public.status', clientType: 'booking' });
@@ -1282,7 +1349,7 @@
         throw error;
       }
 
-      backendRun = await runUnifiedServerFullPhase();
+      backendRun = await runUnifiedServerFullPhase(selectedModules);
       if (state.cancelled) return { cancelled: true, backendRun: safe(backendRun?.run || {}), results: safe(state.results) };
 
       const profile = await loadE2EProfile();
@@ -1293,7 +1360,7 @@
         status: 'passed',
         message: '本輪已依歷史完整 E2E 次數提升難度，並以歷史 surface 耗時做 weighted staggering，建立可重播 seed 與受控併發。',
         expected: { deterministicSeed: true, boundedConcurrency: true, iterativeComplexity: true, weightedSurfaceScheduling: true },
-        actual: safe(profile),
+        actual: safe({ ...profile, selectedModules }),
         durationMs: 0
       });
       render();
@@ -1304,7 +1371,7 @@
 
       const accounts = await prepareTestAccounts(participantCount);
       state.adminTestAccount = accounts[0];
-      state.participants = accounts.map((account, index) => ({
+      state.participants = (selectedClientSurfaces(selectedModules).length ? accounts : []).map((account, index) => ({
         index: index + 1,
         account,
         window: openedWindows[index],
@@ -1316,7 +1383,7 @@
         startedAt: Date.now(),
         login: null,
         lastSurfaceKey: '',
-        adminStatus: '監看預約資料',
+        adminStatus: selectedModules.includes('booking') ? '監看預約資料' : '依所選模組測試',
         liveBookingIds: [],
         adminBookingTask: null,
         seed: state.randomSeed + '-P' + (index + 1),
@@ -1324,18 +1391,18 @@
       }));
       renderParticipants();
 
-      setMessage('管理端前置資料已完整建立；現在以歷史耗時權重錯開 ' + participantCount + ' 位測試用戶的 surface 順序，管理端同步監看預約資料並即時接手審核。');
+      setMessage('管理端前置資料已建立；正在執行 ' + selectedModules.map((key) => E2E_MODULES.find(([item]) => item === key)?.[1]).join('、') + ' 的真人 Browser E2E。');
       if (!state.cancelled) {
         // A human administrator has one management UI. Keep admin DOM actions single-threaded
         // while member clients may generate data concurrently.
-        const allAdminDefinitions = adminDefinitions('full');
-        const preflightKeys = new Set([
-          'ADMIN_AUTH_READY',
-          'ADMIN_BOOKING_CONTROLS',
-          'ADMIN_BOOKING_SHARED_SETTINGS'
-        ]);
+        const allAdminDefinitions = adminDefinitions('full', selectedModules);
+        const preflightKeys = new Set(['ADMIN_AUTH_READY']);
+        if (selectedModules.includes('booking')) {
+          preflightKeys.add('ADMIN_BOOKING_CONTROLS');
+          preflightKeys.add('ADMIN_BOOKING_SHARED_SETTINGS');
+        }
         const preflightDefinitions = allAdminDefinitions.filter((def) => preflightKeys.has(def.key));
-        await executeCases(preflightDefinitions, '管理端 · 預約共用設定與即時接手前置');
+        await executeCases(preflightDefinitions, selectedModules.includes('booking') ? '管理端 · 預約接手前置' : '管理端 · 授權前置');
         if (state.cancelled) return { cancelled: true, results: safe(state.results) };
         const incompletePreflight = preflightDefinitions.filter((def) =>
           !state.results.some((row) => row.key === def.key && row.status === 'passed')
@@ -1348,7 +1415,7 @@
         }
 
         let adminChain = Promise.resolve();
-        const liveAdminTasks = state.participants.map((participant) => {
+        const liveAdminTasks = selectedModules.includes('booking') ? state.participants.map((participant) => {
           const task = (async () => {
             participant.adminStatus = '即時監看管理端預約資料';
             renderParticipants();
@@ -1361,7 +1428,7 @@
           })();
           participant.adminBookingTask = task;
           return task;
-        });
+        }) : [];
         const clientExecution = runWithConcurrency(
           shuffled(state.participants),
           state.clientConcurrency,
@@ -1372,7 +1439,7 @@
         );
         await Promise.all([clientExecution, ...liveAdminTasks]);
 
-        if (!state.cancelled) {
+        if (!state.cancelled && selectedModules.includes('booking')) {
           await executeCases([
             caseDef('PAIRED_SECURITY_BOOKING_IDOR', '跨測試帳號取消預約必須拒絕且資料不變', 'Paired E2E / Security', bookingOwnershipBoundaryCase)
           ], '協同安全邊界');
@@ -1405,7 +1472,7 @@
         }
       }
 
-      if (!state.cancelled && state.participants[0]) {
+      if (!state.cancelled && state.participants[0] && (selectedModules.includes('member') || selectedModules.includes('points'))) {
         await runDeepPairedSuite(state.participants[randomInt(0, state.participants.length - 1)]);
       }
 
@@ -1446,6 +1513,7 @@
         cancelled,
         recorded,
         backendRun: safe(backendRun?.run || {}),
+        selectedModules: safe(selectedModules),
         fixture: safe(fixture),
         participants: safe(state.participants.map((item) => ({
           account: item.account,
@@ -1489,7 +1557,7 @@
     participant.status = '執行中';
     participant.surfacePlan = Array.isArray(participant.surfacePlan) && participant.surfacePlan.length
       ? participant.surfacePlan
-      : shuffled(PAIRED_SURFACES);
+      : shuffled(selectedClientSurfaces());
     renderParticipants();
 
     for (const [surface, label] of participant.surfacePlan) {
@@ -1596,7 +1664,7 @@
   }
 
   async function pairedHumanInteractionCoverageCase() {
-    const expectedSurfaces = PAIRED_SURFACES.map(([key]) => key);
+    const expectedSurfaces = selectedClientSurfaces().map(([key]) => key);
     const clientCoverage = [];
     for (const participant of state.participants) {
       for (const surfaceKey of expectedSurfaces) {
@@ -1618,26 +1686,38 @@
     }));
     const missingClients = clientCoverage.filter((item) => !item.passed || !item.humanInteractionVerified);
     const missingAdmin = adminCoverage.filter((item) => item.status !== 'passed' || item.eventCount < 1);
+    const moduleEvidence = state.selectedModules.map((module) => {
+      const key = MODULE_HUMAN_EVIDENCE[module];
+      const row = adminCoverage.find((item) => item.key === key);
+      return { module, key, passed: row?.status === 'passed' && row.eventCount > 0 };
+    });
+    const missingModules = moduleEvidence.filter((item) => !item.passed);
     const ok = clientCoverage.length === state.participants.length * expectedSurfaces.length
       && missingClients.length === 0
       && adminCoverage.length > 0
-      && missingAdmin.length === 0;
+      && missingAdmin.length === 0
+      && missingModules.length === 0;
     const actual = {
+      selectedModules: state.selectedModules,
       expectedSurfaceCountPerParticipant: expectedSurfaces.length,
       clientCoverage,
       adminHumanCaseCount: adminCoverage.length,
       adminCoverage,
+      moduleEvidence,
       missingClients,
-      missingAdmin
+      missingAdmin,
+      missingModules
     };
     return ok
-      ? pass('五種用戶端與管理端所有真人案例都有實際 UI 互動證據。', {
+      ? pass('所選用戶端與管理端模組皆有實際 UI 互動證據。', {
           allClientSurfacesHumanDriven: true,
-          allAdminHumanCasesObserved: true
+          allAdminHumanCasesObserved: true,
+          selectedModulesCovered: true
         }, actual)
-      : fail('完整協同 E2E 仍有 surface 或管理端案例缺少真人 UI 互動證據。', {
+      : fail('所選模組仍有用戶端或管理端案例缺少真人 UI 互動證據。', {
           allClientSurfacesHumanDriven: true,
-          allAdminHumanCasesObserved: true
+          allAdminHumanCasesObserved: true,
+          selectedModulesCovered: true
         }, actual);
   }
 
@@ -1652,16 +1732,16 @@
 
   async function adminNavigationCase() {
     const pairs = [
-      ['membersTab', 'membersPanel'],
-      ['cardsTab', 'cardsPanel'],
-      ['eventsTab', 'eventsPanel'],
-      ['calendarTab', 'calendarPanel'],
-      ['bookingTab', 'bookingPanel'],
-      ['operationsHubTab', 'operationsHubPanel'],
-      ['testModeTab', 'testModePanel']
-    ];
+      ['member', 'membersTab', 'membersPanel'],
+      ['points', 'cardsTab', 'cardsPanel'],
+      ['event', 'eventsTab', 'eventsPanel'],
+      ['calendar', 'calendarTab', 'calendarPanel'],
+      ['booking', 'bookingTab', 'bookingPanel'],
+      ['integration', 'operationsHubTab', 'operationsHubPanel']
+    ].filter(([key]) => state.selectedModules.includes(key));
+    pairs.push(['runner', 'testModeTab', 'testModePanel']);
     const actual = {};
-    for (const [tabId, panelId] of pairs) {
+    for (const [, tabId, panelId] of pairs) {
       const tab = await waitFor(() => document.getElementById(tabId), 6000);
       if (!tab) { actual[tabId] = false; continue; }
       tab.click();
@@ -1672,8 +1752,8 @@
     }
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('所有主要管理分頁皆以真人點擊方式成功切換。', { allPrimaryTabsOpen: true }, actual)
-      : fail('至少一個主要管理分頁無法正常切換。', { allPrimaryTabsOpen: true }, actual);
+      ? pass('所選管理模組與測試中心皆以真人點擊方式成功切換。', { selectedTabsOpen: true }, actual)
+      : fail('至少一個所選管理分頁無法正常切換。', { selectedTabsOpen: true }, actual);
   }
 
   async function ensureTestRoster(account = state.adminTestAccount) {
@@ -1890,26 +1970,30 @@
 
   async function adminResourceEditorsCase() {
     const actual = {};
-    document.getElementById('cardsTab')?.click();
-    await sleep(50);
-    actual.card = await openEditor('newCardButton', 'cardEditorModal', async () => document.getElementById('cardSettingsTab')?.click());
-    actual.ticket = await openEditor('newTicketButton', 'ticketEditorModal', async () => document.getElementById('ticketSettingsTab')?.click());
-    document.getElementById('eventsTab')?.click();
-    actual.eventTicket = await openEditor('newEventTicketButton', 'eventTicketEditorModal');
-    document.getElementById('calendarTab')?.click();
-    actual.calendar = await openEditor('newCalendarItemButton', 'calendarEditorModal');
-
-    const prev = document.getElementById('adminCalendarMonthTitle')?.textContent || '';
-    document.getElementById('adminCalendarNextMonthButton')?.click();
-    await sleep(80);
-    const moved = document.getElementById('adminCalendarMonthTitle')?.textContent || '';
-    document.getElementById('adminCalendarTodayButton')?.click();
-    actual.calendarNavigation = Boolean(prev && moved && prev !== moved);
+    if (state.selectedModules.includes('points')) {
+      await adminHumanClick(document.getElementById('cardsTab'), '集點卡');
+      actual.card = await openEditor('newCardButton', 'cardEditorModal', async () => document.getElementById('cardSettingsTab')?.click());
+      actual.ticket = await openEditor('newTicketButton', 'ticketEditorModal', async () => document.getElementById('ticketSettingsTab')?.click());
+    }
+    if (state.selectedModules.includes('event')) {
+      await adminHumanClick(document.getElementById('eventsTab'), '活動票券');
+      actual.eventTicket = await openEditor('newEventTicketButton', 'eventTicketEditorModal');
+    }
+    if (state.selectedModules.includes('calendar')) {
+      await adminHumanClick(document.getElementById('calendarTab'), '營運日曆');
+      actual.calendar = await openEditor('newCalendarItemButton', 'calendarEditorModal');
+      const prev = document.getElementById('adminCalendarMonthTitle')?.textContent || '';
+      document.getElementById('adminCalendarNextMonthButton')?.click();
+      await sleep(80);
+      const moved = document.getElementById('adminCalendarMonthTitle')?.textContent || '';
+      document.getElementById('adminCalendarTodayButton')?.click();
+      actual.calendarNavigation = Boolean(prev && moved && prev !== moved);
+    }
 
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('四種資源編輯視窗與管理日曆切換皆可真人操作。', { allEditors: true, calendarNavigation: true }, actual)
-      : fail('至少一個資源編輯視窗或日曆切換異常。', { allEditors: true, calendarNavigation: true }, actual);
+      ? pass('所選資源的管理端編輯視窗與日曆操作皆已通過真人點擊。', { selectedEditors: true }, actual)
+      : fail('至少一個所選資源編輯視窗或日曆切換異常。', { selectedEditors: true }, actual);
   }
 
   async function openIntegrationCenter(timeoutMs = 15000) {
@@ -2356,6 +2440,8 @@
   }
 
   async function adminLotteryTicketCrudCase() {
+    const testTicket = state.selectedModules.includes('points');
+    const testEvent = state.selectedModules.includes('event');
     const stamp = qaCrudStamp();
     const ticketTitle = 'E2E QA 抽獎券 ' + stamp;
     const eventTitle = 'E2E QA 活動抽獎券 ' + stamp;
@@ -2367,87 +2453,91 @@
     let eventTicketId = '';
 
     try {
-      document.getElementById('cardsTab')?.click();
-      document.getElementById('ticketSettingsTab')?.click();
-      document.getElementById('newTicketButton')?.click();
-      if (!await waitEditorOpen('ticketEditorModal', 5000)) throw new Error('抽獎券新增編輯器未開啟。');
-      setField('ticketTitle', ticketTitle);
-      setField('ticketDescription', '管理端 E2E 多獎項抽獎券');
-      setField('ticketUsageMethod', '開啟後執行抽獎');
-      setField('ticketUsageInstructions', '僅供測試帳號與自動化測試使用。');
-      setField('ticketStatus', 'active');
-      const ticketEditor = await configureLotteryPrizeEditor('ticket', [
-        { title: '頭獎', rate: 55, description: 'E2E 頭獎' },
-        { title: '二獎', rate: 30, description: 'E2E 二獎' },
-        { title: '參加獎', rate: 15, description: 'E2E 參加獎' }
-      ]);
-      actual.ticket.editorVisible = ticketEditor.editorVisible;
-      actual.ticket.probability100 = ticketEditor.totalIs100 && ticketEditor.rowCount >= 3;
-      document.getElementById('saveTicketButton')?.click();
-      ticketTemplateId = String(await waitFor(() => document.getElementById('ticketTemplateId')?.value || null, 15000) || '');
-      await waitAdminWriteSettled('saveTicketButton');
-      actual.ticket.created = Boolean(ticketTemplateId && textIncludes('#ticketListItems', ticketTitle));
-      if (ticketTemplateId) {
-        await clickResourceRow('#ticketListItems [data-ticket-template-id]', 'ticketTemplateId', ticketTemplateId);
-        actual.ticket.reloaded = Boolean(await waitFor(() =>
-          String(document.getElementById('ticketTemplateId')?.value || '') === ticketTemplateId
-          && String(document.getElementById('ticketType')?.value || '') === 'lottery'
-          && document.querySelectorAll('#ticketPrizeRows [data-ticket-prize-row]').length >= 3
-          && /100(?:\.0+)?%\s*✓/.test(String(document.getElementById('ticketPrizeTotal')?.textContent || ''))
-        , 8000));
+      if (testTicket) {
+        document.getElementById('cardsTab')?.click();
+        document.getElementById('ticketSettingsTab')?.click();
+        document.getElementById('newTicketButton')?.click();
+        if (!await waitEditorOpen('ticketEditorModal', 5000)) throw new Error('抽獎券新增編輯器未開啟。');
+        setField('ticketTitle', ticketTitle);
+        setField('ticketDescription', '管理端 E2E 多獎項抽獎券');
+        setField('ticketUsageMethod', '開啟後執行抽獎');
+        setField('ticketUsageInstructions', '僅供測試帳號與自動化測試使用。');
+        setField('ticketStatus', 'active');
+        const ticketEditor = await configureLotteryPrizeEditor('ticket', [
+          { title: '頭獎', rate: 55, description: 'E2E 頭獎' },
+          { title: '二獎', rate: 30, description: 'E2E 二獎' },
+          { title: '參加獎', rate: 15, description: 'E2E 參加獎' }
+        ]);
+        actual.ticket.editorVisible = ticketEditor.editorVisible;
+        actual.ticket.probability100 = ticketEditor.totalIs100 && ticketEditor.rowCount >= 3;
+        document.getElementById('saveTicketButton')?.click();
+        ticketTemplateId = String(await waitFor(() => document.getElementById('ticketTemplateId')?.value || null, 15000) || '');
+        await waitAdminWriteSettled('saveTicketButton');
+        actual.ticket.created = Boolean(ticketTemplateId && textIncludes('#ticketListItems', ticketTitle));
+        if (ticketTemplateId) {
+          await clickResourceRow('#ticketListItems [data-ticket-template-id]', 'ticketTemplateId', ticketTemplateId);
+          actual.ticket.reloaded = Boolean(await waitFor(() =>
+            String(document.getElementById('ticketTemplateId')?.value || '') === ticketTemplateId
+            && String(document.getElementById('ticketType')?.value || '') === 'lottery'
+            && document.querySelectorAll('#ticketPrizeRows [data-ticket-prize-row]').length >= 3
+            && /100(?:\.0+)?%\s*✓/.test(String(document.getElementById('ticketPrizeTotal')?.textContent || ''))
+          , 8000));
+        }
+        closeEditorModalById('ticketEditorModal');
       }
-      closeEditorModalById('ticketEditorModal');
 
-      document.getElementById('eventsTab')?.click();
-      document.getElementById('newEventTicketButton')?.click();
-      if (!await waitEditorOpen('eventTicketEditorModal', 5000)) throw new Error('活動抽獎券新增編輯器未開啟。');
-      setField('eventTicketTitle', eventTitle);
-      setField('eventTicketDescription', '管理端 E2E 活動抽獎券');
-      setField('eventTicketUsageMethod', '領取後執行抽獎');
-      setField('eventTicketUsageInstructions', '測試完成後由 E2E 自動清理。');
-      setField('eventTicketStatus', 'draft');
-      setField('eventTicketStartsOn', '');
-      setField('eventTicketEndsOn', '');
-      setField('eventTicketQuota', '12');
-      const eventEditor = await configureLotteryPrizeEditor('event', [
-        { title: 'VIP A', rate: 61, description: 'E2E VIP A' },
-        { title: 'VIP B', rate: 29, description: 'E2E VIP B' },
-        { title: 'VIP C', rate: 10, description: 'E2E VIP C' }
-      ]);
-      actual.event.editorVisible = eventEditor.editorVisible;
-      actual.event.probability100 = eventEditor.totalIs100 && eventEditor.rowCount >= 3;
-      document.getElementById('saveEventTicketButton')?.click();
-      eventTicketId = String(await waitFor(() => document.getElementById('eventTicketId')?.value || null, 15000) || '');
-      await waitAdminWriteSettled('saveEventTicketButton');
-      actual.event.created = Boolean(eventTicketId && textIncludes('#eventTicketListItems', eventTitle));
-      if (eventTicketId) {
-        await clickResourceRow('#eventTicketListItems [data-event-ticket-id]', 'eventTicketId', eventTicketId);
-        actual.event.reloaded = Boolean(await waitFor(() =>
-          String(document.getElementById('eventTicketId')?.value || '') === eventTicketId
-          && String(document.getElementById('eventTicketType')?.value || '') === 'lottery'
-          && document.querySelectorAll('#eventTicketPrizeRows [data-event-ticket-prize-row]').length >= 3
-          && /100(?:\.0+)?%\s*✓/.test(String(document.getElementById('eventTicketPrizeTotal')?.textContent || ''))
-        , 8000));
-        await withAutoConfirm(async () => {
-          document.getElementById('deleteEventTicketButton')?.click();
-          actual.event.deleted = Boolean(await waitFor(() => {
-            const currentId = String(document.getElementById('eventTicketId')?.value || '');
-            const row = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
-            return !currentId && !row;
-          }, 15000));
-          if (!actual.event.deleted) {
-            const row = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
-            row?.click();
-            await waitFor(() => String(document.getElementById('eventTicketId')?.value || '') === eventTicketId, 2500);
+      if (testEvent) {
+        document.getElementById('eventsTab')?.click();
+        document.getElementById('newEventTicketButton')?.click();
+        if (!await waitEditorOpen('eventTicketEditorModal', 5000)) throw new Error('活動抽獎券新增編輯器未開啟。');
+        setField('eventTicketTitle', eventTitle);
+        setField('eventTicketDescription', '管理端 E2E 活動抽獎券');
+        setField('eventTicketUsageMethod', '領取後執行抽獎');
+        setField('eventTicketUsageInstructions', '測試完成後由 E2E 自動清理。');
+        setField('eventTicketStatus', 'draft');
+        setField('eventTicketStartsOn', '');
+        setField('eventTicketEndsOn', '');
+        setField('eventTicketQuota', '12');
+        const eventEditor = await configureLotteryPrizeEditor('event', [
+          { title: 'VIP A', rate: 61, description: 'E2E VIP A' },
+          { title: 'VIP B', rate: 29, description: 'E2E VIP B' },
+          { title: 'VIP C', rate: 10, description: 'E2E VIP C' }
+        ]);
+        actual.event.editorVisible = eventEditor.editorVisible;
+        actual.event.probability100 = eventEditor.totalIs100 && eventEditor.rowCount >= 3;
+        document.getElementById('saveEventTicketButton')?.click();
+        eventTicketId = String(await waitFor(() => document.getElementById('eventTicketId')?.value || null, 15000) || '');
+        await waitAdminWriteSettled('saveEventTicketButton');
+        actual.event.created = Boolean(eventTicketId && textIncludes('#eventTicketListItems', eventTitle));
+        if (eventTicketId) {
+          await clickResourceRow('#eventTicketListItems [data-event-ticket-id]', 'eventTicketId', eventTicketId);
+          actual.event.reloaded = Boolean(await waitFor(() =>
+            String(document.getElementById('eventTicketId')?.value || '') === eventTicketId
+            && String(document.getElementById('eventTicketType')?.value || '') === 'lottery'
+            && document.querySelectorAll('#eventTicketPrizeRows [data-event-ticket-prize-row]').length >= 3
+            && /100(?:\.0+)?%\s*✓/.test(String(document.getElementById('eventTicketPrizeTotal')?.textContent || ''))
+          , 8000));
+          await withAutoConfirm(async () => {
             document.getElementById('deleteEventTicketButton')?.click();
             actual.event.deleted = Boolean(await waitFor(() => {
               const currentId = String(document.getElementById('eventTicketId')?.value || '');
-              const remaining = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
-              return !currentId && !remaining;
-            }, 12000));
-          }
-        });
-        actual.event.cleaned = actual.event.deleted;
+              const row = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+              return !currentId && !row;
+            }, 15000));
+            if (!actual.event.deleted) {
+              const row = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+              row?.click();
+              await waitFor(() => String(document.getElementById('eventTicketId')?.value || '') === eventTicketId, 2500);
+              document.getElementById('deleteEventTicketButton')?.click();
+              actual.event.deleted = Boolean(await waitFor(() => {
+                const currentId = String(document.getElementById('eventTicketId')?.value || '');
+                const remaining = document.querySelector('#eventTicketListItems [data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]');
+                return !currentId && !remaining;
+              }, 12000));
+            }
+          });
+          actual.event.cleaned = actual.event.deleted;
+        }
       }
     } finally {
       closeEditorModalById('eventTicketEditorModal');
@@ -2474,22 +2564,18 @@
       }
     }
 
-    const ok = Object.values(actual.ticket).every(Boolean) && Object.values(actual.event).every(Boolean);
+    const ok = (!testTicket || Object.values(actual.ticket).every(Boolean)) &&
+      (!testEvent || Object.values(actual.event).every(Boolean));
+    const expected = {
+      ticketLottery: testTicket,
+      eventLottery: testEvent,
+      prizeProbabilityTotal: 100,
+      persistedAndReloaded: true,
+      cleaned: true
+    };
     return ok
-      ? pass('一般抽獎券與活動抽獎券都已完成多獎項機率 100%、儲存、回讀與清理驗證。', {
-          ticketLottery: true,
-          eventLottery: true,
-          prizeProbabilityTotal: 100,
-          persistedAndReloaded: true,
-          cleaned: true
-        }, actual)
-      : fail('抽獎券 E2E 至少一個階段失敗。', {
-          ticketLottery: true,
-          eventLottery: true,
-          prizeProbabilityTotal: 100,
-          persistedAndReloaded: true,
-          cleaned: true
-        }, actual);
+      ? pass('所選抽獎券模組已完成機率 100%、儲存、回讀與清理驗證。', expected, actual)
+      : fail('所選抽獎券 E2E 至少一個階段失敗。', expected, actual);
   }
 
   async function adminPointCardCrudCase() {
@@ -6190,17 +6276,23 @@
       cardDeleted: false
     };
     participant.status = '深度互動';
-    participant.surface = '票券／階級／點數／時數';
+    participant.surface = state.selectedModules.includes('points') ? '票券／點數' : '會員階級／時數';
     renderParticipants();
     try {
       ctx.account = await createEphemeralTestAccount();
       state.adminTestAccount = ctx.account;
-      const login = await createPairedSession(ctx.account, 'member');
-      seedParticipantSession(participant, login);
-      await executeCases([
-        caseDef('PAIRED_DEEP_SERVICE_TIER_REALTIME', '深度：會員階級／服務時數跨端 Realtime + 冪等 + 連點', 'Paired E2E / Membership', () => deepServiceTierRealtimeCase(ctx)),
-        caseDef('PAIRED_DEEP_POINT_TICKET_REALTIME', '深度：票券／發放點數跨端 Realtime + 核銷回寫', 'Paired E2E / Points', () => deepPointTicketRealtimeCase(ctx))
-      ], '深度協同 · 臨時測試會員');
+      if (state.selectedModules.includes('member')) {
+        const login = await createPairedSession(ctx.account, 'member');
+        seedParticipantSession(participant, login);
+      }
+      const definitions = [];
+      if (state.selectedModules.includes('member')) {
+        definitions.push(caseDef('PAIRED_DEEP_SERVICE_TIER_REALTIME', '深度：會員階級／服務時數跨端 Realtime + 冪等 + 連點', 'Paired E2E / Membership', () => deepServiceTierRealtimeCase(ctx)));
+      }
+      if (state.selectedModules.includes('points')) {
+        definitions.push(caseDef('PAIRED_DEEP_POINT_TICKET_REALTIME', '深度：票券／發放點數跨端 Realtime + 核銷回寫', 'Paired E2E / Points', () => deepPointTicketRealtimeCase(ctx)));
+      }
+      await executeCases(definitions, '深度協同 · 臨時測試會員');
     } finally {
       const retention = ctx.account ? await cleanupDeepContext(ctx) : {
         tierRestored: true,

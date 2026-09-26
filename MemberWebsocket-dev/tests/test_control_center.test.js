@@ -42,11 +42,11 @@ test('admin test control center is a result surface for the unified full E2E', (
   assert.match(client, /admin\.test-control\.execute/);
   assert.match(client, /admin\.test-control\.status/);
   assert.match(client, /window\.MemberAdminTestControl = Object\.freeze/);
-  assert.match(client, /runFull: \(\) => startRun\('full', \{ rethrow: true \}\)/);
+  assert.match(client, /runFull: \(selectedModules\) => startRun\('full', \{ rethrow: true, selectedModules \}\)/);
   assert.match(client, /window\.setInterval\(tick, 900\)/);
   assert.match(e2e, /runUnifiedServerFullPhase/);
   assert.match(e2e, /window\.MemberAdminTestControl/);
-  assert.match(e2e, /await control\.runFull\(\)/);
+  assert.match(e2e, /await control\.runFull\(selectedModules\)/);
   assert.doesNotMatch(client, /service[_-]?role/i);
 });
 
