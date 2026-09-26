@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-24.8';
+  const VERSION = '2026-09-26.1';
   const els = {};
   const artifactPreviewCache = new Map();
   const artifactPrefetchQueue = [];
@@ -259,7 +259,7 @@
     setBusy(true);
     setMessage(suite === 'full' ? '正在建立完整測試…' : '正在建立快速測試…');
     try {
-      const created = await request('admin.test-control.create', { suite });
+      const created = await request('admin.test-control.create', { suite, selectedModules: options?.selectedModules });
       currentRunId = String(created.run?.id || '');
       renderDetail(created);
       renderHistory(Array.isArray(created.runs) ? created.runs : []);
@@ -732,7 +732,7 @@
 
   window.MemberAdminTestControl = Object.freeze({
     version: VERSION,
-    runFull: () => startRun('full', { rethrow: true }),
+    runFull: (selectedModules) => startRun('full', { rethrow: true, selectedModules }),
     refresh: () => loadHistory(),
     isRunning: () => busy,
     currentRunId: () => currentRunId

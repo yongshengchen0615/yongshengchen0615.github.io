@@ -206,7 +206,17 @@ function runCode(): string {
   return "QA-" + date + "-" + suffix;
 }
 
-function caseDefinitions(suite: string): Array<{ key: string; name: string; domain: string }> {
+const E2E_MODULE_KEYS = ["member", "points", "event", "calendar", "integration", "booking"] as const;
+
+function selectedE2EModules(value: unknown): string[] | null {
+  if (value == null) return null;
+  if (!Array.isArray(value) || !value.length || value.some((key) => typeof key !== "string" || !E2E_MODULE_KEYS.includes(key as typeof E2E_MODULE_KEYS[number]))) {
+    throw new ApiError(400, "INVALID_E2E_MODULE_SELECTION", "請至少勾選一個有效的 E2E 模組。");
+  }
+  return E2E_MODULE_KEYS.filter((key) => value.includes(key));
+}
+
+function caseDefinitions(suite: string, selectedModules: string[] | null = null): Array<{ key: string; name: string; domain: string }> {
   const quick = [
     { key: "ENVIRONMENT_ACCESS", name: "測試環境可用性", domain: "Environment" },
     { key: "TEST_ACCOUNT_INTEGRITY", name: "測試會員資料完整性", domain: "Member" },
@@ -215,11 +225,18 @@ function caseDefinitions(suite: string): Array<{ key: string; name: string; doma
     { key: "FIXED_TICKET_INTEGRITY", name: "固定／活動票券一致性", domain: "Tickets" },
     { key: "LINE_SUPPRESSION", name: "測試會員 LINE 通知阻擋", domain: "Notification" },
   ];
-  if (suite === "quick") return quick;
-  return quick.concat([
+  const definitions = suite === "quick" ? quick : quick.concat([
     { key: "BOOKING_INTEGRITY", name: "預約與技師時段一致性", domain: "Booking" },
     { key: "PRESENCE_INTEGRITY", name: "會員上線狀態一致性", domain: "Presence" },
   ]);
+  if (!selectedModules) return definitions;
+  const owners: Record<string, string[]> = {
+    POINTS_INTEGRITY: ["points"],
+    FIXED_TICKET_INTEGRITY: ["points", "event"],
+    BOOKING_INTEGRITY: ["booking"],
+    PRESENCE_INTEGRITY: ["member"],
+  };
+  return definitions.filter((definition) => !owners[definition.key] || owners[definition.key].some((key) => selectedModules.includes(key)));
 }
 
 function runClient(row: any): Json {
@@ -1201,11 +1218,12 @@ async function recordBrowserRun(
   return runView(supabase, runId);
 }
 
-async function createRun(supabase: any, identity: { lineUserId: string }, suite: string): Promise<Json> {
+async function createRun(supabase: any, identity: { lineUserId: string }, suite: string, rawSelectedModules: unknown = null): Promise<Json> {
   if (!["quick", "full"].includes(suite)) {
     throw new ApiError(400, "INVALID_TEST_SUITE", "測試類型必須是 quick 或 full。");
   }
-  const defs = caseDefinitions(suite);
+  const selectedModules = selectedE2EModules(rawSelectedModules);
+  const defs = caseDefinitions(suite, selectedModules);
   const runInsert = await supabase
     .from("automation_test_runs")
     .insert({
@@ -1217,7 +1235,7 @@ async function createRun(supabase: any, identity: { lineUserId: string }, suite:
       total_cases: defs.length,
       passed_cases: 0,
       failed_cases: 0,
-      summary: { runnerVersion: "test-control-20260921-2" },
+      summary: { runnerVersion: "test-control-20260926-1", selectedModules },
     })
     .select("id")
     .single();
@@ -1394,7 +1412,7 @@ Deno.serve(async (request: Request) => {
 
     if (action === "admin.test-control.create") {
       const suite = asText(body.suite, 20);
-      const created = await createRun(supabase, identity, suite);
+      const created = await createRun(supabase, identity, suite, body.selectedModules);
       return response(origin, {
         ok: true,
         status: 201,
