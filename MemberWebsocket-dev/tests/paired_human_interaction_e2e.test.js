@@ -9,7 +9,8 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('all five user surfaces load the human-evidence E2E runner asset', () => {
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(surface + '/index.html');
-    assert.match(html, /e2e-scenario-graph\.js\?v=e2e-graph-20260926-\d+/);\n    assert.match(html, /user-test-control\.js\?v=human-e2e-20260926-\d+/);
+    assert.match(html, /e2e-scenario-graph\.js\?v=e2e-graph-20260926-\d+/);
+    assert.match(html, /user-test-control\.js\?v=human-e2e-20260926-\d+/);
   }
 });
 
