@@ -68,6 +68,7 @@ jobs:
         run: |
           printf '%s\n' \
             MemberWebsocket-dev/theme.js \
+            MemberWebsocket-dev/e2e-scenario-graph.js \
             MemberWebsocket-dev/membership-milestones.js \
             MemberWebsocket-dev/test-mode-client.js \
             MemberWebsocket-dev/user-test-control.js \
