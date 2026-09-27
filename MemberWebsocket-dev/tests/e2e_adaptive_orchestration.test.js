@@ -18,7 +18,7 @@ test('admin E2E uses deterministic seed and bounded participant concurrency', ()
   assert.match(runner, /e2eComplexity/);
   assert.match(runner, /rootRun: true/);
   assert.match(runner, /function weightedSurfacePlan\(/);
-  assert.match(runner, /surfacePlan: weightedSurfacePlan\(profile, index \+ 1\)/);
+  assert.match(runner, /surfacePlan:replaySource\?replaySurfacePlan\(replaySource\.surfacePlan,selectedModules\):weightedSurfacePlan\(profile,index\+1\)/);
 });
 
 test('user E2E consumes adaptive profile and adds deterministic safe replays', () => {
