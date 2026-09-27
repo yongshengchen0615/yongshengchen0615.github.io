@@ -124,6 +124,7 @@ test('spotlight leaves the original UI visible and moves the dialog away from it
   target.getBoundingClientRect = () => ({ left: 700, right: 900, top, bottom: top + 100 });
   dialog.getBoundingClientRect = () => ({ left: 614, right: 1004, height: 280 });
   await ready();
+  for (let attempt = 0; attempt < 8 && !dialog.classList.contains('member-tour-dialog-top'); attempt += 1) await tick();
   assert.equal(dialog.classList.contains('member-tour-dialog-top'), true);
   assert.equal(w.document.getElementById('memberTourFocus').style.left, '695px');
   top = 60;
