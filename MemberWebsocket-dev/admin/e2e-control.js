@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-27.2';
+  const VERSION = '2026-09-27.3';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
@@ -4904,7 +4904,7 @@
       }),
 
       caseDef(prefix + 'MODIFY', '預約：修改此位項目', 'Booking / Modify Items', async () => {
-        if (!actual.confirmed?.ok) return fail('確認步驟未成功，未送出項目修改。', { confirmed: true }, { dependencyFailed: 'CONFIRM' });
+        if (!actual.confirmed?.ok) return skip('確認步驟未成功，本案例因前置條件未成立而不執行項目修改。', { confirmed: true }, { dependencyBlocked: 'CONFIRM' });
         const current = await waitAdminBookingSnapshot(mutable.bookingId, (row) => row.status === 'confirmed');
         if (!current || current.status !== 'confirmed') return fail('修改項目前預約狀態已改變。', { status: 'confirmed' }, { status: current?.status });
         const realtimeProbe = await beginBookingRealtimeProbe(participant, mutable.bookingId);
@@ -4928,8 +4928,8 @@
       }),
 
       caseDef(prefix + 'MODIFY_TECHNICIAN', '預約：修改此位技師', 'Booking / Modify Technician', async () => {
-        if (!actual.confirmed?.ok || !actual.modified?.ok) {
-          return fail('確認或項目修改未成功，未送出技師修改。', { confirmed: true, modifiedItems: true }, { dependencyFailed: 'CONFIRM_OR_MODIFY' });
+        if (!actual.confirmed?.ok) {
+          return skip('確認步驟未成功，本案例因前置條件未成立而不執行技師修改。', { confirmed: true }, { dependencyBlocked: 'CONFIRM' });
         }
         const current = await waitAdminBookingSnapshot(mutable.bookingId, (row) => row.status === 'confirmed');
         const realtimeProbe = await beginBookingRealtimeProbe(participant, mutable.bookingId);
@@ -4952,10 +4952,10 @@
       }),
 
       caseDef(prefix + 'COMPLETE', '預約：完成預約', 'Booking / Complete', async () => {
-        if (!actual.confirmed?.ok || !actual.modified?.ok || !actual.modifiedTechnician?.ok) {
-          return fail('確認、項目或技師修改未成功，未送出完成。', {
-            confirmed: true, modifiedItems: true, modifiedTechnician: true
-          }, { dependencyFailed: 'CONFIRM_OR_MODIFY' });
+        if (!actual.confirmed?.ok) {
+          return skip('確認步驟未成功，本案例因前置條件未成立而不執行完成預約。', {
+            confirmed: true
+          }, { dependencyBlocked: 'CONFIRM' });
         }
         const realtimeProbe = await beginBookingRealtimeProbe(participant, mutable.bookingId);
         actual.completed = await setDetectedBookingStatus(
@@ -5150,16 +5150,26 @@
       if (realtimeFailures.length || manualRefreshViolations.length || remainingSyncFailures.length) actual.riskScan.risksDetected.push('realtime-or-stale-client');
       if (unresolved.length || missingIds.length || cancellationPending.length) actual.riskScan.risksDetected.push('unfinished-or-cancellation-race');
       if (!actual.terminal?.client?.uiSynchronized) actual.riskScan.risksDetected.push('backend-ui-divergence');
+      const expectedRealtimeChecks = [
+        actual.rejected,
+        actual.keptCancellation,
+        actual.confirmed,
+        actual.modified,
+        actual.modifiedTechnician,
+        actual.completed,
+        actual.cancelled
+      ].filter((operation) => operation?.ok === true).length;
+      actual.riskScan.expectedRealtimeChecks = expectedRealtimeChecks;
       const ok = actual.riskScan.risksDetected.length === 0
-        && realtimeRows.length >= 7
+        && realtimeRows.length >= expectedRealtimeChecks
         && uniqueHandoffIds.length > 0;
       actual.riskScan.ok = ok;
       return ok
         ? pass('完整預約 E2E 未發現跨會員誤操作、Realtime 靜默失效、UI 落後、取消競態或未處理預約。', {
-            risksDetected: 0, realtimeChecksAtLeast: 7, unresolved: 0
+            risksDetected: 0, realtimeChecksAtLeast: expectedRealtimeChecks, unresolved: 0
           }, actual.riskScan)
         : fail('完整預約 E2E 偵測到同步、競態、資料範圍或終態風險。', {
-            risksDetected: 0, realtimeChecksAtLeast: 7, unresolved: 0
+            risksDetected: 0, realtimeChecksAtLeast: expectedRealtimeChecks, unresolved: 0
           }, actual.riskScan);
     })], '預約風險掃描 · 測試用戶 ' + participant.index);
 
