@@ -153,7 +153,7 @@ test('admin and user browser E2E persist classified failure codes and v3 diagnos
     assert.match(source, /attachE2EDiagnosis/);
     assert.match(source, /summarizeE2EFailureDiagnoses/);
     assert.match(source, /diagnosticsVersion:\s*3/);
-    assert.match(source, /failureDiagnostics:/);
+    assert.match(source, /failureDiagnostics(?:\s*:|\s*,)/);
     assert.match(source, /diagnosis\?\.code/);
   }
 });
