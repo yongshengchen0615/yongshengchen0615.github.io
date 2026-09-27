@@ -164,7 +164,7 @@ test('paired E2E creates complex admin fixtures before randomized user clients s
   const clientStart = runner.indexOf('runParticipantSurfaces(participant)');
   assert.ok(fixtureCall >= 0 && accountCall > fixtureCall && clientStart > fixtureCall);
 
-  assert.match(runner, /weightedSurfacePlan\(profile, index \+ 1\)/);
+  assert.match(runner, /replaySource\?replaySurfacePlan\(replaySource\.surfacePlan,selectedModules\):weightedSurfacePlan\(profile,index\+1\)/);
   assert.match(runner, /runWithConcurrency/);
   assert.match(runner, /randomInt\(60, 420 \+ state\.complexityLevel \* 80\)/);
   assert.match(runner, /createPairedSession\(participant\.account, surface\)/);
