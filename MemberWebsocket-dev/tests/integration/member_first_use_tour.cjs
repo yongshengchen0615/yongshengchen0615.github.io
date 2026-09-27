@@ -158,6 +158,7 @@ test('empty event data skips absent ticket targets, and an existing dialog is no
   current.w.document.getElementById('memberTourNext').click();
   current.w.document.getElementById('memberTourNext').click();
   assert.match(current.dialog.textContent, /尚無開放活動/);
+  assert.equal(current.w.document.getElementById('memberTourProgress').textContent, '使用教學 3 / 3');
   current.w.document.getElementById('memberTourSkip').click();
   current.dom.window.close();
 

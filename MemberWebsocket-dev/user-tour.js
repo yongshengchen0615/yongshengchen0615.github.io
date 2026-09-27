@@ -200,7 +200,8 @@
       return;
     }
     const step = STEPS[stepIndex];
-    ui.memberTourProgress.textContent = `使用教學 ${stepIndex + 1} / ${STEPS.length}`;
+    const visibleSteps = STEPS.map((_, index) => index).filter((index) => available(index));
+    ui.memberTourProgress.textContent = `使用教學 ${visibleSteps.indexOf(stepIndex) + 1} / ${visibleSteps.length}`;
     ui.memberTourTitle.textContent = step.title;
     ui.memberTourDescription.textContent = step.description;
     ui.memberTourBack.disabled = findStep(stepIndex - 1, -1) < 0;
