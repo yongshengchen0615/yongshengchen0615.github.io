@@ -37,6 +37,7 @@
       await loadCalendar();
       await completeLoginProgress('月曆資料已準備完成');
       setView('calendar');
+      window.dispatchEvent(new CustomEvent('user-tour:ready', { detail: { surface: 'calendar', profile: state.profile } }));
       window.MemberSystem.subscribeRealtime(state.config, 'calendar', loadCalendar);
     } catch (error) {
       stopLoginProgress();

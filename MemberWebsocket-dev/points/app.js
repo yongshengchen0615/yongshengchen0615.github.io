@@ -91,6 +91,7 @@
       await loadCards(false);
       await completeLoginProgress('集點卡資料已準備完成');
       setView('points');
+      window.dispatchEvent(new CustomEvent('user-tour:ready', { detail: { surface: 'points', profile: state.profile } }));
 
       window.MemberSystem.subscribeRealtime(state.config, 'points', async () => {
         const results = await Promise.allSettled([

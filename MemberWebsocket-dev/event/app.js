@@ -36,6 +36,7 @@
       await loadOffers(false);
       await completeLoginProgress('活動票券已準備完成');
       setView('event');
+      window.dispatchEvent(new CustomEvent('user-tour:ready', { detail: { surface: 'event', profile: state.profile } }));
       window.MemberSystem.subscribeRealtime(state.config, 'event', () => loadOffers(false));
     } catch (error) { stopLoginProgress(); showError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }

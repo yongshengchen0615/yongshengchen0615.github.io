@@ -6,25 +6,28 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '../..');
-const html = fs.readFileSync(path.join(root, 'member/index.html'), 'utf8');
-const script = fs.readFileSync(path.join(root, 'member/first-use-tour.js'), 'utf8');
+const script = fs.readFileSync(path.join(root, 'user-tour.js'), 'utf8');
 const profile = (id = 'LINE_TEST_A') => ({ lineUserId: id, profileComplete: true, membershipRequired: false });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 40));
 
-async function page({ saved = {}, version = 1, missing = '' } = {}) {
-  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://example.test/member/' });
+async function page({ surface = 'member', saved = {}, version = 1, missing = '', testSession = false } = {}) {
+  const html = fs.readFileSync(path.join(root, surface, 'index.html'), 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: `https://example.test/${surface}/` });
   const w = dom.window;
   await new Promise((resolve) => w.addEventListener('load', resolve, { once: true }));
   Object.defineProperty(w.crypto, 'subtle', { value: webcrypto.subtle });
   w.TextEncoder = TextEncoder;
+  if (testSession) w.TestModeClient = { getSessionToken: () => 'test-session' };
   w.HTMLElement.prototype.scrollIntoView = function () {};
-  w.document.getElementById('memberView').classList.remove('hidden');
+  const view = w.document.querySelector('main[data-user-tour]');
+  view.classList.remove('hidden');
   if (missing) w.document.querySelector(missing)?.remove();
   for (const [key, value] of Object.entries(saved)) w.localStorage.setItem(key, value);
   w.eval(version === 1 ? script : script.replace('const VERSION = 1;', `const VERSION = ${version};`));
   w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
   const ready = async (id = 'LINE_TEST_A') => {
-    w.dispatchEvent(new w.CustomEvent('member-profile-ready', { detail: { profile: profile(id) } }));
+    const eventName = surface === 'member' ? 'member-profile-ready' : 'user-tour:ready';
+    w.dispatchEvent(new w.CustomEvent(eventName, { detail: { surface, profile: profile(id) } }));
     await tick();
   };
   return { dom, w, ready, dialog: w.document.getElementById('memberTourDialog') };
@@ -90,10 +93,10 @@ test('account isolation, missing anchor, keyboard escape and focus return', asyn
 
 test('tour only opens after member view is visible and verified profile is ready', async () => {
   const { dom, w, ready, dialog } = await page();
-  w.document.getElementById('memberView').classList.add('hidden');
+  w.document.querySelector('main[data-user-tour]').classList.add('hidden');
   await ready();
   assert.equal(dialog.classList.contains('hidden'), true);
-  w.document.getElementById('memberView').classList.remove('hidden');
+  w.document.querySelector('main[data-user-tour]').classList.remove('hidden');
   await tick();
   assert.equal(dialog.classList.contains('hidden'), false);
   dom.window.close();
@@ -120,4 +123,59 @@ test('refresh during the tour restarts safely, and absent anchors leave the page
   assert.notEqual(noAnchors.w.document.getElementById('app').inert, true);
   assert.equal(noAnchors.w.localStorage.length, 0);
   noAnchors.dom.window.close();
+});
+
+test('every member client has its own first-use tour and replay button', async () => {
+  let saved = {};
+  const titles = {
+    member: '這是你的會員卡',
+    points: '查看會員階級',
+    event: '確認會員資格',
+    calendar: '確認會員階級',
+    booking: '確認會員階級',
+  };
+  for (const surface of Object.keys(titles)) {
+    const current = await page({ surface, saved });
+    await current.ready();
+    assert.equal(current.dialog.classList.contains('hidden'), false, surface);
+    assert.match(current.dialog.textContent, new RegExp(titles[surface]));
+    assert.equal(current.w.document.getElementById('openMemberTour').getAttribute('aria-controls'), 'memberTourDialog');
+    current.w.document.getElementById('memberTourSkip').click();
+    assert.equal(current.dialog.classList.contains('hidden'), true);
+    current.w.document.getElementById('openMemberTour').click();
+    assert.equal(current.dialog.classList.contains('hidden'), false, `${surface} replay`);
+    current.w.document.getElementById('memberTourSkip').click();
+    saved = Object.fromEntries(Object.entries(current.w.localStorage));
+    current.dom.window.close();
+  }
+  assert.equal(Object.keys(saved).length, 5);
+});
+
+test('empty event data skips absent ticket targets, and an existing dialog is not covered', async () => {
+  const current = await page({ surface: 'event' });
+  current.w.document.getElementById('emptyView').classList.remove('hidden');
+  await current.ready();
+  current.w.document.getElementById('memberTourNext').click();
+  current.w.document.getElementById('memberTourNext').click();
+  assert.match(current.dialog.textContent, /尚無開放活動/);
+  current.w.document.getElementById('memberTourSkip').click();
+  current.dom.window.close();
+
+  const blocked = await page({ surface: 'event' });
+  blocked.w.document.getElementById('ticketModal').classList.remove('hidden');
+  await blocked.ready();
+  assert.equal(blocked.dialog.classList.contains('hidden'), true);
+  blocked.w.document.getElementById('ticketModal').classList.add('hidden');
+  await tick();
+  assert.equal(blocked.dialog.classList.contains('hidden'), false);
+  blocked.dom.window.close();
+});
+
+test('automated test sessions retain manual help without blocking test actions', async () => {
+  const current = await page({ surface: 'booking', testSession: true });
+  await current.ready();
+  assert.equal(current.dialog.classList.contains('hidden'), true);
+  current.w.document.getElementById('openMemberTour').click();
+  assert.equal(current.dialog.classList.contains('hidden'), false);
+  current.dom.window.close();
 });

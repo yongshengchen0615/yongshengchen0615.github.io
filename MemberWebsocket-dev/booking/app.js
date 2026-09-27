@@ -93,6 +93,7 @@
       els.memberProfileName.textContent = fallbackName;
       await refresh(false);
       showView('booking');
+      window.dispatchEvent(new CustomEvent('user-tour:ready', { detail: { surface: 'booking', profile: state.profile } }));
       state.realtimeUnsubscribe = window.BookingSystem.subscribeRealtime(state.config, () => refresh(false));
     } catch (error) {
       showError(error);
