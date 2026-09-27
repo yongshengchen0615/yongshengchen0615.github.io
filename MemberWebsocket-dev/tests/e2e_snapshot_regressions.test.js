@@ -29,6 +29,31 @@ test('required booking Human E2E searches multiple enabled dates before failing'
   assert.match(runner, /已嘗試多個可預約日期，仍找不到可供真人 E2E 的預約時段/);
 });
 
+test('booking edit lifecycle falls back to an available slot when the original slot is not restored', () => {
+  const runner = read('user-test-control.js');
+  assert.match(runner, /let editableSlot = await waitFor/);
+  assert.match(runner, /editableSlot = await chooseAvailableSlot\(\)/);
+  assert.match(runner, /actual\.editSlotRestored = Boolean\(editableSlot\)/);
+});
+
+test('group booking Human E2E searches multiple dates and keeps a safely mutable quantity', () => {
+  const runner = read('user-test-control.js');
+  assert.match(runner, /for \(let attempt = 0; attempt < maxDateAttempts && !slot; attempt \+= 1\)/);
+  assert.match(runner, /openBookingForSafeDate\(attempt\)/);
+  assert.match(runner, /actual\.firstQuantityTwo = actual\.firstQuantityTwo \|\| Boolean/);
+  assert.match(runner, /已嘗試多個可預約日期，仍找不到可容納兩位的安全時段/);
+  assert.match(runner, /attemptedDates: maxDateAttempts/);
+});
+
+test('required Human E2E coverage reports missing execution without duplicating case failures', () => {
+  const runner = read('user-test-control.js');
+  assert.match(runner, /const missingHumanCases = requiredHumanCases\.filter/);
+  assert.match(runner, /const failedHumanCases = requiredHumanCases\.filter/);
+  assert.match(runner, /const blockedHumanCases = requiredHumanCases\.filter/);
+  assert.match(runner, /Coverage 僅彙總，不重複製造第二個 failure/);
+  assert.match(runner, /\.\.\.skip\('真人操作案例已有各自的失敗或環境阻擋結果/);
+});
+
 test('admin E2E refreshes stale test roster and waits for member write completion', () => {
   const runner = read('admin/e2e-control.js');
   assert.match(runner, /search\.value = memberCode/);
