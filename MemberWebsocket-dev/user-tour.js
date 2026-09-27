@@ -45,6 +45,7 @@
   let checkedKey = '';
   let opener = null;
   let identityGeneration = 0;
+  let autoOpenObserver = null;
 
   document.addEventListener('DOMContentLoaded', () => {
     ui.view = document.querySelector('main[data-user-tour]');
@@ -142,15 +143,30 @@
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { /* storage blocked */ }
     const skippedAt = saved?.skippedAt || (saved?.outcome === 'skip' ? saved.completedAt : null);
-    if (saved?.outcome === 'skip' && skippedAt && taipeiDay(new Date(skippedAt)) === taipeiDay(new Date())) return;
+    const explicitSkip = saved?.outcome === 'skip' && saved?.source === 'explicit';
+    if (explicitSkip && skippedAt && taipeiDay(new Date(skippedAt)) === taipeiDay(new Date())) return;
     // Automated test sessions keep the entry point, but the tour must not cover their test actions.
     if (window.TestModeClient?.getSessionToken?.()) return;
-    const openWhenReady = (remainingFrames) => {
-      if (generation !== identityGeneration || storageKey !== key) return;
-      if (!ui.view.classList.contains('hidden') && !otherDialogOpen()) return open(null);
-      if (remainingFrames > 0) requestAnimationFrame(() => openWhenReady(remainingFrames - 1));
+    queueAutoOpen(generation, key);
+  }
+
+  function queueAutoOpen(generation, key) {
+    if (autoOpenObserver) autoOpenObserver.disconnect();
+    const attempt = () => {
+      if (generation !== identityGeneration || storageKey !== key) {
+        autoOpenObserver?.disconnect();
+        autoOpenObserver = null;
+        return;
+      }
+      if (ui.view.classList.contains('hidden') || otherDialogOpen()) return;
+      if (open(null)) {
+        autoOpenObserver?.disconnect();
+        autoOpenObserver = null;
+      }
     };
-    requestAnimationFrame(() => openWhenReady(30));
+    autoOpenObserver = new MutationObserver(attempt);
+    autoOpenObserver.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden'] });
+    requestAnimationFrame(attempt);
   }
 
   function available(index) {
@@ -176,9 +192,10 @@
   }
 
   function open(trigger) {
-    if (active || ui.view.classList.contains('hidden') || otherDialogOpen()) return;
+    if (active) return true;
+    if (ui.view.classList.contains('hidden') || otherDialogOpen()) return false;
     const first = findStep(0, 1);
-    if (first < 0) return; // DOM may still be loading: leave the version unrecorded.
+    if (first < 0) return false; // DOM may still be loading: wait for the next mutation.
     opener = trigger;
     stepIndex = first;
     active = true;
@@ -186,6 +203,7 @@
     ui.memberTourDialog.classList.remove('hidden');
     ui.app.inert = true;
     renderStep();
+    return true;
   }
 
   function move(direction) {
@@ -256,7 +274,7 @@
     ui.app.inert = false;
     if (storageKey) {
       try {
-        if (outcome === 'skip') localStorage.setItem(storageKey, JSON.stringify({ skippedAt: new Date().toISOString(), outcome }));
+        if (outcome === 'skip') localStorage.setItem(storageKey, JSON.stringify({ skippedAt: new Date().toISOString(), outcome, source: 'explicit' }));
         if (outcome === 'complete') localStorage.removeItem(storageKey);
       } catch (_) { /* optional UX state */ }
     }

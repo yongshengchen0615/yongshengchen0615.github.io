@@ -8,6 +8,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '../..');
 const script = fs.readFileSync(path.join(root, 'user-tour.js'), 'utf8');
 const styles = fs.readFileSync(path.join(root, 'user-tour.css'), 'utf8');
+const memberApp = fs.readFileSync(path.join(root, 'member/app.js'), 'utf8');
 const profile = (id = 'LINE_TEST_A') => ({ lineUserId: id, profileComplete: true, membershipRequired: false });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 40));
 
@@ -55,6 +56,7 @@ test('tour opens on every visit; today skip ends at Taipei midnight; manual comp
   const entries = Object.fromEntries(Object.entries(first.w.localStorage));
   assert.equal(Object.keys(entries).length, 1);
   assert.equal(JSON.parse(Object.values(entries)[0]).outcome, 'skip');
+  assert.equal(JSON.parse(Object.values(entries)[0]).source, 'explicit');
   assert.equal(JSON.parse(Object.values(entries)[0]).skippedAt, '2026-09-27T15:59:00.000Z');
   first.dom.window.close();
 
@@ -85,7 +87,7 @@ test('tour opens on every visit; today skip ends at Taipei midnight; manual comp
   tomorrow.dom.window.close();
 });
 
-test('legacy completed tour does not suppress opening, and legacy skip lasts only through today', async () => {
+test('only an explicit current-format daily skip suppresses auto-start', async () => {
   const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode('LINE_TEST_A'))).toString('hex');
   const key = `member-tour:${hash}`;
   const completed = await page({ saved: { [key]: JSON.stringify({ version: 1, outcome: 'complete', completedAt: '2026-09-27T15:59:00Z' }) } });
@@ -93,13 +95,19 @@ test('legacy completed tour does not suppress opening, and legacy skip lasts onl
   assert.equal(completed.dialog.classList.contains('hidden'), false);
   completed.dom.window.close();
 
-  const oldSkip = { [key]: JSON.stringify({ version: 1, outcome: 'skip', completedAt: '2026-09-27T15:59:00Z' }) };
-  const today = await page({ saved: oldSkip });
+  const ambiguousOldSkip = { [key]: JSON.stringify({ version: 1, outcome: 'skip', completedAt: '2026-09-27T15:59:00Z' }) };
+  const legacy = await page({ saved: ambiguousOldSkip });
+  await legacy.ready();
+  assert.equal(legacy.dialog.classList.contains('hidden'), false);
+  legacy.dom.window.close();
+
+  const explicitSkip = { [key]: JSON.stringify({ outcome: 'skip', source: 'explicit', skippedAt: '2026-09-27T15:59:00Z' }) };
+  const today = await page({ saved: explicitSkip });
   await today.ready();
   assert.equal(today.dialog.classList.contains('hidden'), true);
   today.dom.window.close();
 
-  const tomorrow = await page({ saved: oldSkip, now: '2026-09-27T16:00:00Z' });
+  const tomorrow = await page({ saved: explicitSkip, now: '2026-09-27T16:00:00Z' });
   await tomorrow.ready();
   assert.equal(tomorrow.dialog.classList.contains('hidden'), false);
   tomorrow.dom.window.close();
@@ -147,15 +155,23 @@ test('account isolation, missing anchor, keyboard escape and focus return', asyn
   dom.window.close();
 });
 
-test('tour only opens after member view is visible and verified profile is ready', async () => {
+test('tour keeps waiting until the member view becomes visible, even after a slow login transition', async () => {
   const { dom, w, ready, dialog } = await page();
   w.document.querySelector('main[data-user-tour]').classList.add('hidden');
   await ready();
+  await new Promise((resolve) => setTimeout(resolve, 700));
   assert.equal(dialog.classList.contains('hidden'), true);
   w.document.querySelector('main[data-user-tour]').classList.remove('hidden');
   await tick();
   assert.equal(dialog.classList.contains('hidden'), false);
   dom.window.close();
+});
+
+test('member app announces tour readiness only after the member view is shown', () => {
+  assert.match(memberApp, /setView\('member'\);\s*announceTourReady\(state\.profile\);/);
+  assert.match(memberApp, /renderProfile\(profile\);\s*setView\('member'\);\s*announceTourReady\(profile\);/);
+  const renderProfileBody = memberApp.match(/function renderProfile\(profile\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+  assert.doesNotMatch(renderProfileBody, /member-profile-ready/);
 });
 
 test('refresh during the tour restarts safely, and absent anchors leave the page usable', async () => {

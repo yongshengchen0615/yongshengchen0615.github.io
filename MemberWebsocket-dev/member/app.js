@@ -50,6 +50,7 @@
       renderProfile(state.profile);
       await completeLoginProgress('會員資料已準備完成');
       setView('member');
+      announceTourReady(state.profile);
       window.MemberSystem.subscribeRealtime(state.config, 'member', async () => {
         const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
         const profile = result && result.profile && typeof result.profile === 'object' ? result.profile : null;
@@ -73,6 +74,7 @@
     if (profile.profileComplete && !profile.membershipRequired) {
       renderProfile(profile);
       setView('member');
+      announceTourReady(profile);
     }
   }
 
@@ -133,10 +135,13 @@
     if (honorificDisplay) honorificDisplay.textContent = honorificName || '未填寫';
     els.memberBirthday.textContent = String(profile.birthday || '未填寫');
     els.memberPhone.textContent = String(profile.phone || '未填寫');
-    try { window.dispatchEvent(new CustomEvent('member-profile-ready', { detail: { profile } })); } catch (_) {}
     window.MembershipProgress.render(els.membershipProgress, profile);
     els.memberStatus.textContent = isActive ? '使用中' : '暫停';
     els.memberStatus.parentElement.classList.toggle('inactive', !isActive);
+  }
+
+  function announceTourReady(profile) {
+    try { window.dispatchEvent(new CustomEvent('member-profile-ready', { detail: { profile } })); } catch (_) {}
   }
 
   function renderMemberAvatar(pictureUrl, displayName) {
