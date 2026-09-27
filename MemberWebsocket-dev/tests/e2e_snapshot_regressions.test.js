@@ -99,6 +99,15 @@ test('booking admin refreshes coalesce instead of dropping updates', () => {
   assert.match(cancellation, /document\.visibilityState === 'hidden' && !isBackgroundE2ERunner\(\)/);
 });
 
+test('booking admin actions do not cascade one item-mutation failure into technician and completion failures', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /caseDef\(prefix \+ 'MODIFY_TECHNICIAN'[\s\S]*if \(!actual\.confirmed\?\.ok\)/);
+  assert.doesNotMatch(runner, /caseDef\(prefix \+ 'MODIFY_TECHNICIAN'[\s\S]{0,500}!actual\.modified\?\.ok/);
+  assert.match(runner, /caseDef\(prefix \+ 'COMPLETE'[\s\S]*if \(!actual\.confirmed\?\.ok\)/);
+  assert.match(runner, /expectedRealtimeChecks/);
+  assert.match(runner, /realtimeRows\.length >= expectedRealtimeChecks/);
+});
+
 test('group booking item mutation has a non-expanding fallback for assigned technicians', () => {
   const runner = read('admin/e2e-control.js');
   assert.match(runner, /mutationMode = 'remove-item'/);
