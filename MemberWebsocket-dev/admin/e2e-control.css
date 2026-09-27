@@ -332,3 +332,70 @@
   .admin-e2e-flow{gap:5px}
   .admin-e2e-flow span{padding:5px 7px}
 }
+
+
+/* Theme integration: E2E scope picker and test-center surfaces */
+html[data-theme] .admin-e2e-section {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] .admin-e2e-paired-config,
+html[data-theme] .admin-e2e-data-box,
+html[data-theme] .admin-e2e-summary {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] .admin-e2e-module-picker {
+  border-color: var(--theme-border);
+}
+
+html[data-theme] .admin-e2e-module-picker legend {
+  color: var(--theme-text);
+}
+
+html[data-theme] .admin-e2e-paired-config .admin-e2e-module-grid label,
+html[data-theme] .admin-e2e-participant {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] .admin-e2e-paired-config .admin-e2e-module-grid label:hover {
+  background: var(--theme-surface);
+}
+
+html[data-theme] .admin-e2e-paired-config .admin-e2e-module-grid input[type="checkbox"],
+html[data-theme] .admin-e2e-paired-config .admin-e2e-mobile-option input[type="checkbox"] {
+  accent-color: var(--theme-positive);
+}
+
+html[data-theme] .admin-e2e-data-box > strong,
+html[data-theme] .admin-e2e-config-note {
+  border-color: var(--theme-border);
+}
+
+html[data-theme] .admin-e2e-flow span {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border: 1px solid var(--theme-border);
+}
+
+html[data-theme] .admin-e2e-flow b,
+html[data-theme] .admin-e2e-heading p,
+html[data-theme] .admin-e2e-summary,
+html[data-theme] .admin-e2e-paired-config small,
+html[data-theme] .admin-e2e-config-note summary,
+html[data-theme] .admin-e2e-config-note p,
+html[data-theme] .admin-e2e-participant small,
+html[data-theme] .admin-e2e-participant > span {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] .admin-e2e-paired-config .admin-e2e-module-grid label:has(input:checked) {
+  background: color-mix(in srgb, var(--theme-positive) 12%, var(--theme-surface-raised));
+  border-color: color-mix(in srgb, var(--theme-positive) 42%, var(--theme-border-strong));
+}
