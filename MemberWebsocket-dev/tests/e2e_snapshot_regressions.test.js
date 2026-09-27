@@ -83,7 +83,7 @@ test('group booking item mutation has a non-expanding fallback for assigned tech
 
 test('dynamic test-history buttons expose stable metadata for coverage classification', () => {
   const client = read('admin/test-control.js');
-  assert.match(client, /button\.dataset\.testRunId = String\(run\.id \|\| ''\)/);
+  assert.match(client, /button\.dataset\.testRunId\s*=\s*String\(run\.id\s*\|\|\s*''\)/);
 });
 
 test('all affected entrypoints bust caches for the fixed controllers', () => {
