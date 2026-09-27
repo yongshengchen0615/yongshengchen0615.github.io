@@ -2411,6 +2411,7 @@ html[data-theme="dark"] #eventTicketCalendarInfoContent > p strong {
 /* Calendar and ticket dialogs are mounted under body, outside their panels. */
 html[data-theme="dark"] :where(
   #calendarEditorModal .calendar-event-link-fields,
+  #eventTicketEditorModal .calendar-event-link-fields,
   #eventTicketCalendarInfoContent,
   #eventTicketEditorModal .date-range-control,
   #eventTicketEditorModal .date-control,
@@ -3145,4 +3146,33 @@ html[data-theme="dark"] .user-qa-launcher {
   color: #0b1511;
   background: var(--theme-accent);
   border-color: rgba(255, 152, 118, .28);
+}
+
+
+/* Event ticket Calendar sync dark-mode parity 2026-09-27 */
+html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarControls {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarControls h4,
+html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarControls .grant-toggle {
+  color: var(--theme-text);
+}
+
+html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarControls p:not(.kicker),
+html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarStatus {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarControls .grant-toggle {
+  padding: 9px 11px;
+  border: 1px solid var(--theme-border-strong);
+  border-radius: 10px;
+  background: var(--theme-surface-raised);
+}
+
+html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarControls .grant-toggle input[type="checkbox"] {
+  accent-color: var(--theme-positive);
 }
