@@ -144,3 +144,10 @@
 .test-control-screenshot-link.hidden {
   display: none;
 }
+
+.test-control-history-entry{border-bottom:1px solid var(--theme-border);background:var(--theme-surface)}
+.test-control-history-entry:last-child{border-bottom:0}
+.test-control-history-entry.active{background:var(--theme-surface-raised)}
+.test-control-history-entry .test-control-history-item{border-bottom:0}
+.test-control-replay-button{margin:0 12px 12px;width:calc(100% - 24px);justify-content:center}
+.test-control-replay-button:disabled{opacity:.55;cursor:not-allowed}

@@ -1,11 +1,12 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-26.2';
+  const VERSION = '2026-09-27.2';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
+  const REPLAY_STORAGE_KEY = 'member-e2e-replay-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
   const MAX_PAIRED_PARTICIPANTS = 10;
@@ -87,6 +88,13 @@
     clientConcurrency: 2,
     rootRunId: '',
     adminScenarioPlan: null,
+    adminRandomStateAfterPlan: 0,
+    replayContext: null,
+    replayManifest: null,
+    participantCount: 1,
+    participantExecutionOrder: [],
+    syncOrder: [],
+    deepParticipantIndex: null,
     results: [],
     section: null,
     list: null,
@@ -531,8 +539,70 @@
 
 
 
+  function normalizeReplayContext(value) {
+    if (!value) return null;
+    const manifest = value.manifest;
+    if (!manifest || Number(manifest.version) !== 1 || !Array.isArray(manifest.selectedModules)) throw new Error('Replay Manifest 格式不完整。');
+    return { sourceRunId:String(value.sourceRunId||''), sourceRunCode:String(value.sourceRunCode||''), manifest:safe(manifest) };
+  }
+  function replaySurfacePlan(keys, modules) {
+    const byKey = new Map(PAIRED_SURFACES);
+    const result = (Array.isArray(keys)?keys:[]).map((key)=>[String(key||''),byKey.get(String(key||''))]).filter((item)=>item[1]&&modules.includes(item[0]));
+    const expected = selectedClientSurfaces(modules);
+    if (result.length!==expected.length || new Set(result.map(([key])=>key)).size!==result.length) throw new Error('Replay Manifest 的用戶端 Surface 路徑與目前所選模組不相容。');
+    return result;
+  }
+  function orderedParticipants(participants, order) {
+    const source=Array.isArray(participants)?participants:[];
+    const byIndex=new Map(source.map((item)=>[Number(item.index),item]));
+    const requested=Array.isArray(order)?order.map(Number):[];
+    if(requested.length===source.length && new Set(requested).size===source.length && requested.every((index)=>byIndex.has(index))) return requested.map((index)=>byIndex.get(index));
+    return shuffled(source);
+  }
+  function replayParticipant(index) {
+    return state.replayContext?.manifest?.participants?.find((item)=>Number(item?.index)===Number(index)) || null;
+  }
+  function buildReplayManifest() {
+    return {
+      version:1, runnerVersion:VERSION, scenarioGraphVersion:Number(state.adminScenarioPlan?.version||1),
+      rootSeed:String(state.randomSeed||''), complexityLevel:Number(state.complexityLevel||1),
+      selectedModules:state.selectedModules.slice(), participantCount:Number(state.participantCount||1),
+      clientConcurrency:Number(state.clientConcurrency||1), mobileViewport:state.clientMobileViewport===true,
+      participantExecutionOrder:state.participantExecutionOrder.slice(), syncOrder:state.syncOrder.slice(),
+      deepParticipantIndex:state.deepParticipantIndex==null?null:Number(state.deepParticipantIndex),
+      adminScenario:{
+        scenarioFingerprint:String(state.adminScenarioPlan?.fingerprint||''),
+        scenarioPath:Array.isArray(state.adminScenarioPlan?.keys)?state.adminScenarioPlan.keys.slice():[],
+        randomStateAfterPlan:state.adminRandomStateAfterPlan>>>0
+      },
+      participants:state.participants.map((participant)=>({
+        index:Number(participant.index||0), preferredMemberId:String(participant.account?.memberId||''),
+        seed:String(participant.seed||''), surfacePlan:Array.isArray(participant.surfacePlan)?participant.surfacePlan.map(([key])=>key):[],
+        surfaces:safe(participant.surfaceReplayResults||{})
+      }))
+    };
+  }
+  async function fetchReplayManifest(runId) {
+    const session=await adminSession();
+    return postFunction('test-control-api',{action:'admin.test-control.replay-manifest',clientType:'admin',idToken:session.idToken,runId:String(runId||'')});
+  }
+  function applyReplayControls(manifest) {
+    const selected=new Set(Array.isArray(manifest?.selectedModules)?manifest.selectedModules:[]);
+    state.section?.querySelectorAll('[data-e2e-module]').forEach((input)=>{input.checked=selected.has(String(input.dataset.e2eModule||''));});
+    const countInput=state.section?.querySelector('#pairedE2EAccountCount'); if(countInput) countInput.value=String(Math.max(1,Number(manifest?.participantCount||1)));
+    const mobile=state.section?.querySelector('#pairedE2EMobileViewport'); if(mobile) mobile.checked=manifest?.mobileViewport===true;
+  }
+  async function replayFailedRun(runId) {
+    if(isBackgroundRunnerWindow()) throw new Error('請從主管理頁啟動失敗重播。');
+    if(state.running) return {started:false,reason:'already-running'};
+    const data=await fetchReplayManifest(runId);
+    const context=normalizeReplayContext({sourceRunId:data?.sourceRun?.id||runId,sourceRunCode:data?.sourceRun?.runCode||'',manifest:data?.manifest});
+    applyReplayControls(context.manifest);
+    setMessage('正在鎖定 '+(context.sourceRunCode||'失敗 E2E')+' 的原始路徑並建立全新測試 Session…');
+    return startUnifiedBackgroundE2E({replay:context});
+  }
 
-  function startUnifiedBackgroundE2E() {
+  function startUnifiedBackgroundE2E(options = {}) {
     if (state.running) return { started: false, reason: 'already-running' };
 
     let participantCount = 1;
@@ -540,12 +610,13 @@
     let clientWindows = [];
     let mobileViewport = false;
     let selectedModules = [];
+    const replay = normalizeReplayContext(options?.replay);
     const runId = 'BG-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
     state.backgroundRunId = runId;
     try {
-      participantCount = selectedParticipantCount();
-      mobileViewport = selectedClientMobileViewport();
-      selectedModules = selectedModulesFromUi();
+      participantCount = replay ? Math.max(1, Number(replay.manifest.participantCount || 1)) : selectedParticipantCount();
+      mobileViewport = replay ? replay.manifest.mobileViewport === true : selectedClientMobileViewport();
+      selectedModules = replay ? normalizeSelectedModules(replay.manifest.selectedModules) : selectedModulesFromUi();
       runnerWindow = openBackgroundRunnerWindow(runId);
       clientWindows = openClientWindows(selectedClientSurfaces(selectedModules).length ? participantCount : 0, false, mobileViewport);
     } catch (error) {
@@ -564,7 +635,8 @@
     state.backgroundRunId = runId;
     state.clientMobileViewport = mobileViewport;
     state.selectedModules = selectedModules;
-    state.lastMessage = '背景 E2E Runner 啟動中；範圍：' + selectedModules.map((key) => E2E_MODULES.find(([item]) => item === key)?.[1]).join('、') + '。';
+    state.replayContext = replay;
+    state.lastMessage = (replay ? '失敗重播 Runner 啟動中；來源：' + (replay.sourceRunCode || replay.sourceRunId) + '；範圍：' : '背景 E2E Runner 啟動中；範圍：') + selectedModules.map((key) => E2E_MODULES.find(([item]) => item === key)?.[1]).join('、') + '。';
     state.lastMessageError = false;
     setBusy(true, '背景 Runner 啟動');
     setMessage(state.lastMessage);
@@ -581,11 +653,13 @@
         clientWindows,
         mobileViewport,
         selectedModules,
-        runId
+        runId,
+        replay
       });
 
       if (Array.isArray(result?.results)) state.results = result.results.map((row) => ({ ...row }));
       render();
+      try { await window.MemberAdminTestControl?.refresh?.(); } catch {}
       const failed = state.results.filter((row) => row.status === 'failed').length;
       setMessage(
         result?.cancelled
@@ -624,6 +698,7 @@
       clientWindows: Array.isArray(options?.clientWindows) ? options.clientWindows : [],
       mobileViewport: options?.mobileViewport === true,
       selectedModules: options?.selectedModules,
+      replay: options?.replay,
       backgroundExecution: true
     });
   }
@@ -1096,19 +1171,22 @@
     if (!sourceRows.length) return null;
     // test-control-api accepts at most 80 cases per browser run.
     if (sourceRows.length > 80) {
+      const chunks = [];
+      for (let offset = 0; offset < sourceRows.length; offset += 80) chunks.push(sourceRows.slice(offset, offset + 80));
+      let rootBatchIndex = chunks.length - 1;
+      if (recordMeta?.rootRun === true) {
+        const failedIndex = chunks.map((chunk) => chunk.some((row) => row?.status === 'failed')).lastIndexOf(true);
+        if (failedIndex >= 0) rootBatchIndex = failedIndex;
+      }
       const batches = [];
-      for (let offset = 0; offset < sourceRows.length; offset += 80) {
-        const isLastBatch = offset + 80 >= sourceRows.length;
+      for (let index = 0; index < chunks.length; index += 1) {
         batches.push(await recordResultRows(
-          sourceRows.slice(offset, offset + 80),
-          runnerKind,
-          suite,
-          memberId,
-          startedAt,
-          isLastBatch ? recordMeta : { ...recordMeta, rootRun: false }
+          chunks[index], runnerKind, suite, memberId, startedAt,
+          index === rootBatchIndex ? recordMeta : { ...recordMeta, rootRun: false, replayManifest: undefined, replayOfRunId: undefined }
         ));
       }
-      return { ...batches[batches.length - 1], runs: batches.map((batch) => batch?.run).filter(Boolean) };
+      const rootBatch = batches[rootBatchIndex] || batches[batches.length - 1];
+      return { ...rootBatch, runs: batches.map((batch) => batch?.run).filter(Boolean) };
     }
     const session = await adminSession();
     const cases = sourceRows.map((item) => {
@@ -1139,7 +1217,9 @@
       e2eSeed: String(recordMeta?.e2eSeed || state.randomSeed || ''),
       complexityLevel: Number(recordMeta?.complexityLevel || state.complexityLevel || 1),
       rootRunId: String(recordMeta?.rootRunId || state.rootRunId || ''),
-      clientConcurrency: Number(recordMeta?.clientConcurrency || state.clientConcurrency || 1)
+      clientConcurrency: Number(recordMeta?.clientConcurrency || state.clientConcurrency || 1),
+      replayManifest: recordMeta?.replayManifest || undefined,
+      replayOfRunId: String(recordMeta?.replayOfRunId || '') || undefined
     };
     const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
     if (bytes > 320000) {
@@ -1153,19 +1233,14 @@
     return postFunction('test-control-api', payload);
   }
 
-  async function recordRun(runnerKind, suite, memberId = '') {
+  async function recordRun(runnerKind, suite, memberId = '', extraMeta = {}) {
     return recordResultRows(
-      state.results,
-      runnerKind,
-      suite,
-      memberId,
-      state.runStartedAt || '',
+      state.results, runnerKind, suite, memberId, state.runStartedAt || '',
       {
-        rootRun: true,
-        e2eSeed: state.randomSeed,
-        complexityLevel: state.complexityLevel,
-        rootRunId: state.rootRunId,
-        clientConcurrency: state.clientConcurrency
+        rootRun: true, e2eSeed: state.randomSeed, complexityLevel: state.complexityLevel,
+        rootRunId: state.rootRunId, clientConcurrency: state.clientConcurrency,
+        replayManifest: extraMeta?.replayManifest || undefined,
+        replayOfRunId: String(extraMeta?.replayOfRunId || '') || undefined
       }
     );
   }
@@ -1209,42 +1284,45 @@
 
   function planAdminDefinitions(suite, modules = state.selectedModules) {
     const catalog = adminDefinitions(suite, modules);
-    if (suite !== 'full') {
-      state.adminScenarioPlan = null;
-      return catalog;
-    }
+    if (suite !== 'full') { state.adminScenarioPlan = null; return catalog; }
     const planner = window.MemberE2EScenarioGraph;
+    const requiredKeys = ['ADMIN_AUTH_READY','ADMIN_PRIMARY_NAVIGATION', ...modules.map((module) => MODULE_HUMAN_EVIDENCE[module]).filter(Boolean)];
+    if (modules.includes('booking')) requiredKeys.push('ADMIN_BOOKING_SHARED_SETTINGS');
+    const replayAdmin = state.replayContext?.manifest?.adminScenario;
+    if (replayAdmin) {
+      if (!planner || typeof planner.replayScenario !== 'function') throw new Error('目前版本缺少管理端 locked-path replay planner，已停止重播。');
+      const plan = planner.replayScenario({
+        nodes: catalog, metaByKey: ADMIN_NODE_META, seed: state.randomSeed + '-ADMIN',
+        complexityLevel: state.complexityLevel, requiredKeys,
+        keys: replayAdmin.scenarioPath, expectedFingerprint: replayAdmin.scenarioFingerprint
+      });
+      const byKey = new Map(catalog.map((item) => [item.key, item]));
+      state.adminScenarioPlan = plan;
+      if (Number.isInteger(Number(replayAdmin.randomStateAfterPlan))) state.randomState = Number(replayAdmin.randomStateAfterPlan) >>> 0;
+      state.adminRandomStateAfterPlan = state.randomState >>> 0;
+      return plan.keys.map((key) => byKey.get(key)).filter(Boolean);
+    }
     if (!planner || typeof planner.planScenario !== 'function') {
       state.adminScenarioPlan = {
-        version: 1,
-        seed: state.randomSeed,
-        complexityLevel: state.complexityLevel,
-        fingerprint: 'SG1-admin-fallback',
+        version: 1, seed: state.randomSeed, complexityLevel: state.complexityLevel, fingerprint: 'SG1-admin-fallback',
         keys: catalog.map((item) => item.key),
-        path: catalog.map((item, index) => ({ order: index + 1, key: item.key, name: item.name, domain: item.domain, module: 'fallback', phase: 0 }))
+        path: catalog.map((item, index) => ({ order:index+1,key:item.key,name:item.name,domain:item.domain,module:'fallback',phase:0 }))
       };
+      state.adminRandomStateAfterPlan = state.randomState >>> 0;
       return catalog;
     }
-    const requiredKeys = [
-      'ADMIN_AUTH_READY',
-      'ADMIN_PRIMARY_NAVIGATION',
-      ...modules.map((module) => MODULE_HUMAN_EVIDENCE[module]).filter(Boolean)
-    ];
-    if (modules.includes('booking')) requiredKeys.push('ADMIN_BOOKING_SHARED_SETTINGS');
     const plan = planner.planScenario({
-      nodes: catalog,
-      metaByKey: ADMIN_NODE_META,
-      randomUnit: nextRandomUnit,
-      seed: state.randomSeed + '-ADMIN',
-      complexityLevel: state.complexityLevel,
-      minNodes: Math.min(10, catalog.length),
-      maxNodes: Math.min(18, catalog.length),
-      requiredKeys
+      nodes: catalog, metaByKey: ADMIN_NODE_META, randomUnit: nextRandomUnit,
+      seed: state.randomSeed + '-ADMIN', complexityLevel: state.complexityLevel,
+      minNodes: Math.min(10,catalog.length), maxNodes: Math.min(18,catalog.length), requiredKeys
     });
-    const byKey = new Map(catalog.map((item) => [item.key, item]));
+    const byKey = new Map(catalog.map((item) => [item.key,item]));
     state.adminScenarioPlan = plan;
-    return plan.keys.map((key) => byKey.get(key)).filter(Boolean);
+    state.adminRandomStateAfterPlan = state.randomState >>> 0;
+    return plan.keys.map((key)=>byKey.get(key)).filter(Boolean);
   }
+
+  async function runPairedAdminBookingLive(participant) {
 
   async function runPairedAdminBookingLive(participant) {
     const wrapperKey = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_FOLLOWUP';
@@ -1363,6 +1441,11 @@
     state.cancelled = false;
     state.backgroundExecution = options?.backgroundExecution === true || isBackgroundRunnerWindow();
     state.runSequence += 1;
+    state.replayContext = normalizeReplayContext(options?.replay);
+    state.replayManifest = null;
+    state.participantExecutionOrder = [];
+    state.syncOrder = [];
+    state.deepParticipantIndex = null;
     let participantCount = 1;
     let openedWindows = [];
     let backendRun = null;
@@ -1424,13 +1507,24 @@
       backendRun = await runUnifiedServerFullPhase(selectedModules);
       if (state.cancelled) return { cancelled: true, backendRun: safe(backendRun?.run || {}), results: safe(state.results) };
 
-      const profile = await loadE2EProfile();
+      const profile = state.replayContext
+        ? (() => {
+            const manifest=state.replayContext.manifest;
+            state.complexityLevel=Math.max(1,Math.min(8,Number(manifest.complexityLevel||1)||1));
+            state.clientConcurrency=Math.max(1,Math.min(4,Number(manifest.clientConcurrency||1)||1));
+            state.rootRunId='REPLAY-'+Date.now().toString(36).toUpperCase();
+            configureRandom(String(manifest.rootSeed||''));
+            return {completedRootRuns:0,complexityLevel:state.complexityLevel,seed:state.randomSeed,clientConcurrency:state.clientConcurrency,rootRunId:state.rootRunId,surfaceWeightsMs:{},surfaceSamples:{},replayOfRunId:state.replayContext.sourceRunId};
+          })()
+        : await loadE2EProfile();
       state.results.push({
         key: 'PAIRED_ADAPTIVE_PROFILE',
         name: 'E2E 自適應複雜度與可重現 Seed',
         domain: 'Paired E2E / Orchestration',
         status: 'passed',
-        message: '本輪已依歷史完整 E2E 次數提升難度，並以歷史 surface 耗時做 weighted staggering，建立可重播 seed 與受控併發。',
+        message: state.replayContext
+          ? '本輪為 locked-path failure replay：沿用原始 seed、難度、Surface 順序與節點路徑，不推進演化難度。'
+          : '本輪已依歷史完整 E2E 次數提升難度，並以歷史 surface 耗時做 weighted staggering，建立可重播 seed 與受控併發。',
         expected: { deterministicSeed: true, boundedConcurrency: true, iterativeComplexity: true, weightedSurfaceScheduling: true },
         actual: safe({ ...profile, selectedModules }),
         durationMs: 0
@@ -1441,26 +1535,22 @@
       const fixture = await prepareComplexE2EFixtures(profile);
       if (state.cancelled) return { cancelled: true, results: safe(state.results) };
 
-      const accounts = await prepareTestAccounts(participantCount);
+      const preferredMemberIds = state.replayContext ? state.replayContext.manifest.participants.map((item)=>String(item.preferredMemberId||'')).filter(Boolean) : [];
+      const accounts = await prepareTestAccounts(participantCount, preferredMemberIds);
+      state.participantCount = participantCount;
       state.adminTestAccount = accounts[0];
-      state.participants = (selectedClientSurfaces(selectedModules).length ? accounts : []).map((account, index) => ({
-        index: index + 1,
-        account,
-        window: openedWindows[index],
-        mobileViewport,
-        status: '等待隨機啟動',
-        surface: '前置資料完成',
-        surfacePlan: weightedSurfacePlan(profile, index + 1),
-        runCodes: [],
-        startedAt: Date.now(),
-        login: null,
-        lastSurfaceKey: '',
-        adminStatus: selectedModules.includes('booking') ? '監看預約資料' : '依所選模組測試',
-        liveBookingIds: [],
-        adminBookingTask: null,
-        seed: state.randomSeed + '-P' + (index + 1),
-        complexityLevel: state.complexityLevel
-      }));
+      state.participants = (selectedClientSurfaces(selectedModules).length ? accounts : []).map((account,index)=>{
+        const replaySource=replayParticipant(index+1);
+        return {
+          index:index+1, account, window:openedWindows[index], mobileViewport, status:'等待隨機啟動', surface:'前置資料完成',
+          surfacePlan:replaySource?replaySurfacePlan(replaySource.surfacePlan,selectedModules):weightedSurfacePlan(profile,index+1),
+          runCodes:[], startedAt:Date.now(), login:null, lastSurfaceKey:'',
+          adminStatus:selectedModules.includes('booking')?'監看預約資料':'依所選模組測試',
+          liveBookingIds:[], adminBookingTask:null,
+          seed:String(replaySource?.seed||(state.randomSeed+'-P'+(index+1))), complexityLevel:state.complexityLevel,
+          replaySurfaceConfig:safe(replaySource?.surfaces||{}), surfaceReplayResults:{}
+        };
+      });
       renderParticipants();
 
       setMessage('管理端前置資料已建立；正在執行 ' + selectedModules.map((key) => E2E_MODULES.find(([item]) => item === key)?.[1]).join('、') + ' 的真人 Browser E2E。');
@@ -1512,8 +1602,12 @@
           participant.adminBookingTask = task;
           return task;
         }) : [];
+        const executionParticipants = state.replayContext
+          ? orderedParticipants(state.participants, state.replayContext.manifest.participantExecutionOrder)
+          : shuffled(state.participants);
+        state.participantExecutionOrder = executionParticipants.map((participant)=>Number(participant.index));
         const clientExecution = runWithConcurrency(
-          shuffled(state.participants),
+          executionParticipants,
           state.clientConcurrency,
           async (participant) => {
             await sleep(randomInt(60, 420 + state.complexityLevel * 80));
@@ -1535,7 +1629,11 @@
       }
 
       if (!state.cancelled) {
-        for (const participant of shuffled(state.participants)) {
+        const syncParticipants = state.replayContext
+          ? orderedParticipants(state.participants, state.replayContext.manifest.syncOrder)
+          : shuffled(state.participants);
+        state.syncOrder = syncParticipants.map((participant)=>Number(participant.index));
+        for (const participant of syncParticipants) {
           participant.status = '同步驗證';
           participant.surface = '管理端紀錄';
           renderParticipants();
@@ -1556,7 +1654,9 @@
       }
 
       if (!state.cancelled && state.participants[0] && (selectedModules.includes('member') || selectedModules.includes('points'))) {
-        await runDeepPairedSuite(state.participants[randomInt(0, state.participants.length - 1)]);
+        const requestedDeepIndex=Number(state.replayContext?.manifest?.deepParticipantIndex||0);
+        const deepParticipant=requestedDeepIndex?state.participants.find((item)=>Number(item.index)===requestedDeepIndex):state.participants[randomInt(0,state.participants.length-1)];
+        if(deepParticipant){state.deepParticipantIndex=Number(deepParticipant.index);await runDeepPairedSuite(deepParticipant);}
       }
 
       if (!state.cancelled) {
@@ -1571,8 +1671,9 @@
       }
 
       const cancelled = state.cancelled;
+      state.replayManifest = !cancelled ? buildReplayManifest() : null;
       const recorded = !cancelled && state.results.length
-        ? await recordRun('paired-browser', 'full')
+        ? await recordRun('paired-browser','full','',{replayManifest:state.replayManifest,replayOfRunId:state.replayContext?.sourceRunId||''})
         : null;
       const failed = state.results.filter((item) => item.status === 'failed').length;
       if (cancelled) {
@@ -1598,6 +1699,9 @@
         backendRun: safe(backendRun?.run || {}),
         selectedModules: safe(selectedModules),
         adminScenario: safe(state.adminScenarioPlan),
+        replayManifest: safe(state.replayManifest),
+        replayOfRunId: String(state.replayContext?.sourceRunId || ''),
+        replayComparison: safe(recorded?.run?.summary?.replayComparison || {}),
         fixture: safe(fixture),
         participants: safe(state.participants.map((item) => ({
           account: item.account,
@@ -1681,6 +1785,14 @@
           if (participant.adminBookingTask) await participant.adminBookingTask;
         }
         const summary = child?.summary || {};
+        participant.surfaceReplayResults = participant.surfaceReplayResults || {};
+        participant.surfaceReplayResults[surface] = {
+          scenarioFingerprint: String(summary.scenarioFingerprint || ''),
+          scenarioPath: Array.isArray(summary.scenarioPath) ? summary.scenarioPath.slice() : [],
+          adaptiveReplaySourceKeys: Array.isArray(summary.adaptiveReplaySourceKeys) ? summary.adaptiveReplaySourceKeys.slice(0, 3) : [],
+          randomStateAfterBuild: Number(summary.randomStateAfterBuild || 0) >>> 0,
+          runnerVersion: String(summary.runnerVersion || '')
+        };
         const childMemberId = child?.account?.memberId || '';
         const runCode = String(child?.browserRun?.runCode || '');
         if (runCode) participant.runCodes.push(runCode);
@@ -5505,7 +5617,7 @@
     );
   }
 
-  async function prepareTestAccounts(count) {
+  async function prepareTestAccounts(count, preferredMemberIds = []) {
     let data = await postAdminTestMode('admin.test-mode.bootstrap');
     let accounts = activeTestAccounts(data).filter((account) => !Array.isArray(account.activeSurfaces) || account.activeSurfaces.length === 0);
     if (accounts.length < count) {
@@ -5521,12 +5633,18 @@
       data = await postAdminTestMode('admin.test-mode.bootstrap');
       accounts = activeTestAccounts(data).filter((account) => !Array.isArray(account.activeSurfaces) || account.activeSurfaces.length === 0);
     }
-    if (accounts.length < count) {
-      throw new Error(`可供協同測試且尚未登入任何用戶端的測試用戶不足：需要 ${count} 位，目前只有 ${accounts.length} 位。`);
+    if (accounts.length < count) throw new Error(`可供協同測試且尚未登入任何用戶端的測試用戶不足：需要 ${count} 位，目前只有 ${accounts.length} 位。`);
+    const byId = new Map(accounts.map((account) => [String(account.memberId || ''), account]));
+    const preferred = [];
+    for (const memberId of Array.isArray(preferredMemberIds) ? preferredMemberIds : []) {
+      const account = byId.get(String(memberId || ''));
+      if (account && !preferred.includes(account)) preferred.push(account);
     }
-    return shuffled(accounts).slice(0, count);
+    const preferredSet = new Set(preferred.map((account) => String(account.memberId || '')));
+    return preferred.concat(shuffled(accounts.filter((account) => !preferredSet.has(String(account.memberId || ''))))).slice(0, count);
   }
 
+  async function prepareComplexE2EFixtures(profile = {}) {
 
   async function prepareComplexE2EFixtures(profile = {}) {
     const session = await adminSession();
@@ -5627,6 +5745,21 @@
     url.searchParams.set('e2eComplexity', String(participant.complexityLevel || state.complexityLevel || 1));
     url.searchParams.set('e2eParticipant', String(participant.index || 1));
     url.searchParams.set('e2eViewport', participant?.mobileViewport ? 'mobile' : 'desktop');
+    const replaySurface = participant?.replaySurfaceConfig && participant.replaySurfaceConfig[surface];
+    try {
+      if (replaySurface && state.replayContext) {
+        child.sessionStorage.setItem(REPLAY_STORAGE_KEY, JSON.stringify({
+          version: 1, surface, participantIndex: Number(participant.index || 1),
+          seed: String(participant.seed || ''), complexityLevel: Number(participant.complexityLevel || 1),
+          scenarioFingerprint: String(replaySurface.scenarioFingerprint || ''),
+          scenarioPath: Array.isArray(replaySurface.scenarioPath) ? replaySurface.scenarioPath : [],
+          adaptiveReplaySourceKeys: Array.isArray(replaySurface.adaptiveReplaySourceKeys) ? replaySurface.adaptiveReplaySourceKeys : [],
+          randomStateAfterBuild: Number(replaySurface.randomStateAfterBuild || 0) >>> 0
+        }));
+      } else child.sessionStorage.removeItem(REPLAY_STORAGE_KEY);
+    } catch {
+      if (state.replayContext) throw new Error('無法把 locked replay descriptor 寫入測試用戶視窗。');
+    }
     child.location.href = url.href;
     if (participant?.mobileViewport) window.setTimeout(() => applyClientWindowSize(child, true), 0);
     return child;
@@ -6425,6 +6558,8 @@
       ? runPaired({ backgroundExecution: true })
       : startUnifiedBackgroundE2E(),
     runUnifiedBackground: (options) => runUnifiedBackground(options),
+    replayFailedRun: (runId) => replayFailedRun(runId),
+    isRunning: () => state.running,
     receiveBackgroundStatus: (snapshot) => receiveBackgroundStatus(snapshot),
     provideBackgroundSession: (runId) => provideBackgroundSession(runId),
     getStatus: () => backgroundStatusSnapshot(),

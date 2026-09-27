@@ -216,6 +216,90 @@ function selectedE2EModules(value: unknown): string[] | null {
   return E2E_MODULE_KEYS.filter((key) => value.includes(key));
 }
 
+const REPLAY_SURFACES = ["member", "points", "event", "calendar", "booking"] as const;
+function replayKeyList(value: unknown, label: string, max = 80): string[] {
+  if (!Array.isArray(value) || !value.length || value.length > max) throw new ApiError(400,"INVALID_REPLAY_MANIFEST",label+" 節點清單不正確。");
+  const keys=value.map((item)=>asText(item,120));
+  if(keys.some((key)=>!/^[A-Z0-9_]+$/.test(key)) || new Set(keys).size!==keys.length) throw new ApiError(400,"INVALID_REPLAY_MANIFEST",label+" 節點識別不正確。");
+  return keys;
+}
+function replayOrder(value: unknown, participantCount: number, label: string): number[] {
+  if(value==null) return [];
+  if(!Array.isArray(value)||value.length>participantCount) throw new ApiError(400,"INVALID_REPLAY_MANIFEST",label+" 順序不正確。");
+  const order=value.map((item)=>Math.trunc(Number(item)));
+  if(new Set(order).size!==order.length||order.some((index)=>index<1||index>participantCount)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST",label+" 順序不正確。");
+  return order;
+}
+function normalizeReplayManifest(value: unknown): Json {
+  if(!value||typeof value!=="object"||Array.isArray(value)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay Manifest 不完整。");
+  const input=value as Record<string,any>;
+  if(Number(input.version)!==1) throw new ApiError(409,"REPLAY_VERSION_UNSUPPORTED","此失敗紀錄的 Replay Manifest 版本已不支援。");
+  const rootSeed=asText(input.rootSeed,160); if(!rootSeed) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay Seed 不可為空。");
+  const complexityLevel=Math.trunc(Number(input.complexityLevel||0)); if(complexityLevel<1||complexityLevel>8) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 難度不正確。");
+  const selectedModules=selectedE2EModules(input.selectedModules); if(!selectedModules) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 模組不完整。");
+  const participantCount=Math.trunc(Number(input.participantCount||0)); if(participantCount<1||participantCount>10) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 測試人數不正確。");
+  const clientConcurrency=Math.trunc(Number(input.clientConcurrency||0)); if(clientConcurrency<1||clientConcurrency>4) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 併發設定不正確。");
+  const admin=input.adminScenario&&typeof input.adminScenario==="object"?input.adminScenario:{};
+  const adminFingerprint=asText(admin.scenarioFingerprint,40); if(!/^SG1-[0-9a-f]{8}$/i.test(adminFingerprint)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","管理端 Scenario Fingerprint 不正確。");
+  const adminScenario={scenarioFingerprint:adminFingerprint,scenarioPath:replayKeyList(admin.scenarioPath,"管理端 Scenario"),randomStateAfterPlan:Number(admin.randomStateAfterPlan||0)>>>0};
+  const rawParticipants=Array.isArray(input.participants)?input.participants:[];
+  const clientSurfaceKeys=REPLAY_SURFACES.filter((surface)=>selectedModules.includes(surface));
+  if(clientSurfaceKeys.length&&rawParticipants.length!==participantCount) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay Participant 數量與用戶端模組不一致。");
+  if(!clientSurfaceKeys.length&&rawParticipants.length!==0) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","純管理端 Replay 不應包含用戶端 Participant。");
+  const seen=new Set<number>();
+  const participants=rawParticipants.map((raw:any)=>{
+    const index=Math.trunc(Number(raw?.index||0)); if(index<1||index>participantCount||seen.has(index)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay Participant 識別不正確。"); seen.add(index);
+    const preferredMemberId=asText(raw?.preferredMemberId,80); if(preferredMemberId&&!UUID_RE.test(preferredMemberId)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 測試會員識別不正確。");
+    const seed=asText(raw?.seed,160); if(!seed) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay Participant Seed 不可為空。");
+    const surfacePlan=Array.isArray(raw?.surfacePlan)?raw.surfacePlan.map((item:unknown)=>asText(item,20)):[];
+    if(surfacePlan.length!==clientSurfaceKeys.length||new Set(surfacePlan).size!==surfacePlan.length||surfacePlan.some((surface:string)=>!clientSurfaceKeys.includes(surface as any))) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay Surface 路徑不正確。");
+    const surfaceSource=raw?.surfaces&&typeof raw.surfaces==="object"?raw.surfaces:{};
+    const surfaces:Record<string,unknown>={};
+    for(const surface of surfacePlan){
+      const descriptor=surfaceSource[surface]; if(!descriptor||typeof descriptor!=="object") throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 缺少 "+surface+" Scenario。");
+      const fingerprint=asText(descriptor.scenarioFingerprint,40); if(!/^SG1-[0-9a-f]{8}$/i.test(fingerprint)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST",surface+" Scenario Fingerprint 不正確。");
+      const adaptive=descriptor.adaptiveReplaySourceKeys==null?[]:(Array.isArray(descriptor.adaptiveReplaySourceKeys)?descriptor.adaptiveReplaySourceKeys.map((item:unknown)=>asText(item,120)):[]);
+      if(adaptive.length>3||adaptive.some((key:string)=>!/^[A-Z0-9_]+$/.test(key))) throw new ApiError(400,"INVALID_REPLAY_MANIFEST",surface+" Adaptive Replay 不正確。");
+      surfaces[surface]={scenarioFingerprint:fingerprint,scenarioPath:replayKeyList(descriptor.scenarioPath,surface+" Scenario"),adaptiveReplaySourceKeys:adaptive,randomStateAfterBuild:Number(descriptor.randomStateAfterBuild||0)>>>0,runnerVersion:asText(descriptor.runnerVersion,60)};
+    }
+    return {index,preferredMemberId,seed,surfacePlan,surfaces};
+  });
+  const participantExecutionOrder=replayOrder(input.participantExecutionOrder,participantCount,"Participant Execution");
+  const syncOrder=replayOrder(input.syncOrder,participantCount,"Participant Sync");
+  if(rawParticipants.length&&(participantExecutionOrder.length!==rawParticipants.length||syncOrder.length!==rawParticipants.length)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay Participant 執行順序不完整。");
+  const deepParticipantIndex=input.deepParticipantIndex==null?null:Math.trunc(Number(input.deepParticipantIndex));
+  if(deepParticipantIndex!=null&&(deepParticipantIndex<1||deepParticipantIndex>participantCount)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 深度測試 Participant 不正確。");
+  return {version:1,runnerVersion:asText(input.runnerVersion,60),scenarioGraphVersion:Math.max(1,Math.trunc(Number(input.scenarioGraphVersion||1))),rootSeed,complexityLevel,selectedModules,participantCount,clientConcurrency,mobileViewport:input.mobileViewport===true,participantExecutionOrder,syncOrder,deepParticipantIndex,adminScenario,participants};
+}
+function replaySettingsMatch(source:any,current:any):boolean {
+  return String(source?.rootSeed||"")===String(current?.rootSeed||"") &&
+    Number(source?.complexityLevel||0)===Number(current?.complexityLevel||0) &&
+    Number(source?.participantCount||0)===Number(current?.participantCount||0) &&
+    Number(source?.clientConcurrency||0)===Number(current?.clientConcurrency||0) &&
+    Boolean(source?.mobileViewport)===Boolean(current?.mobileViewport) &&
+    JSON.stringify(source?.selectedModules||[])===JSON.stringify(current?.selectedModules||[]) &&
+    JSON.stringify(source?.adminScenario?.scenarioPath||[])===JSON.stringify(current?.adminScenario?.scenarioPath||[]);
+}
+async function replaySourceRun(supabase:any,runId:string):Promise<{row:any;manifest:Json}> {
+  if(!UUID_RE.test(runId)) throw new ApiError(400,"INVALID_RUN_ID","測試執行識別不正確。");
+  const result=await supabase.from("automation_test_runs").select("*").eq("id",runId).maybeSingle();
+  if(result.error) throw new ApiError(503,"TEST_RUN_READ_FAILED","目前無法讀取失敗測試紀錄。");
+  const row=result.data; if(!row) throw new ApiError(404,"TEST_RUN_NOT_FOUND","找不到指定的失敗測試紀錄。");
+  const summary=row.summary&&typeof row.summary==="object"?row.summary:{};
+  if(row.environment!=="MemberWebsocket-dev"||row.suite!=="full"||row.status!=="failed"||summary.rootRun!==true||summary.runnerKind!=="paired-browser") throw new ApiError(409,"RUN_NOT_REPLAYABLE","只有失敗的完整管理端 ↔ 用戶端 Root E2E 可以一鍵重播。");
+  if(!summary.replayManifest) throw new ApiError(409,"REPLAY_MANIFEST_MISSING","此舊測試紀錄尚未保存 Replay Manifest，無法精準一鍵重播。");
+  return {row,manifest:normalizeReplayManifest(summary.replayManifest)};
+}
+function replayComparison(sourceRow:any,currentDiagnostics:any):Json {
+  const source=Object.keys(sourceRow?.summary?.failureDiagnostics?.fingerprints||{}).sort();
+  const current=Object.keys(currentDiagnostics?.fingerprints||{}).sort();
+  const sourceSet=new Set(source), currentSet=new Set(current);
+  const reproduced=source.filter((item)=>currentSet.has(item));
+  const resolved=source.filter((item)=>!currentSet.has(item));
+  const introduced=current.filter((item)=>!sourceSet.has(item));
+  return {version:1,verdict:current.length===0?"resolved":reproduced.length?"reproduced":"changed",sourceFingerprints:source,currentFingerprints:current,reproduced,resolved,introduced};
+}
+
 function caseDefinitions(suite: string, selectedModules: string[] | null = null): Array<{ key: string; name: string; domain: string }> {
   const quick = [
     { key: "ENVIRONMENT_ACCESS", name: "測試環境可用性", domain: "Environment" },
@@ -1098,6 +1182,16 @@ async function recordBrowserRun(
   const passed = normalized.filter((item) => item.status === "passed").length;
   const failed = normalized.filter((item) => item.status === "failed").length;
   const skipped = normalized.filter((item) => item.status === "skipped").length;
+  const failureDiagnostics = summarizeE2EFailureDiagnoses(normalized.map((item)=>item.diagnosis).filter(Boolean));
+  const shouldPersistReplayManifest = body.rootRun === true && runnerKind === "paired-browser" && suite === "full";
+  const replayManifest = shouldPersistReplayManifest ? normalizeReplayManifest(body.replayManifest) : null;
+  const replayOfRunId = asText(body.replayOfRunId,80);
+  let sourceReplay:{row:any;manifest:Json}|null=null;
+  if(replayOfRunId){
+    if(!shouldPersistReplayManifest||!replayManifest) throw new ApiError(400,"INVALID_REPLAY_REQUEST","失敗重播只能建立完整 Root E2E 紀錄。");
+    sourceReplay=await replaySourceRun(supabase,replayOfRunId);
+    if(!replaySettingsMatch(sourceReplay.manifest,replayManifest)) throw new ApiError(409,"REPLAY_MANIFEST_DRIFT","本輪重播設定已偏離原始失敗流程，拒絕寫入為精準重播。");
+  }
   const { startedAt, completedAt, durationMs } = browserRunWindow(body);
   const now = completedAt;
   const runInsert = await supabase.from("automation_test_runs").insert({
@@ -1110,7 +1204,7 @@ async function recordBrowserRun(
     passed_cases: passed,
     failed_cases: failed,
     summary: {
-      runnerVersion: "admin-browser-e2e-20260923-trace1",
+      runnerVersion: "admin-browser-e2e-20260927-replay1",
       runnerKind,
       skippedCases: skipped,
       memberId,
@@ -1122,9 +1216,11 @@ async function recordBrowserRun(
       clientConcurrency: Math.max(1, Math.min(4, Number(body.clientConcurrency || 1) || 1)),
       failureArtifactCases: failed,
       diagnosticsVersion: 3,
-      failureDiagnostics: summarizeE2EFailureDiagnoses(
-        normalized.map((item) => item.diagnosis).filter(Boolean),
-      ),
+      failureDiagnostics,
+      replayManifest,
+      replayOfRunId: sourceReplay ? String(sourceReplay.row.id) : null,
+      replayOfRunCode: sourceReplay ? String(sourceReplay.row.run_code || "") : null,
+      replayComparison: sourceReplay ? replayComparison(sourceReplay.row, failureDiagnostics) : null,
     },
     started_at: startedAt,
     completed_at: completedAt,
@@ -1201,7 +1297,7 @@ async function recordBrowserRun(
     throw error;
   }
 
-  if (body.rootRun === true) {
+  if (body.rootRun === true && !sourceReplay) {
     const rootRunId = asText(body.rootRunId, 80);
     if (rootRunId) {
       const evolution = await supabase.rpc("admin_advance_e2e_evolution", {
@@ -1350,6 +1446,13 @@ Deno.serve(async (request: Request) => {
         status: 200,
         data: await e2eProfile(supabase),
       });
+    }
+
+    if (action === "admin.test-control.replay-manifest") {
+      const runId=asText(body.runId,80);
+      const source=await replaySourceRun(supabase,runId);
+      await audit(supabase,identity,"test_control.replay.prepare","automation_test_run",runId,{sourceRunCode:asText(source.row.run_code,80),complexityLevel:Number((source.manifest as any).complexityLevel||1)});
+      return response(origin,{ok:true,status:200,data:{sourceRun:{id:source.row.id,runCode:source.row.run_code,status:source.row.status,failedCases:Number(source.row.failed_cases||0),createdAt:source.row.created_at},manifest:source.manifest}});
     }
 
     if (action === "admin.test-control.prepare-e2e-fixtures") {

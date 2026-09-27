@@ -143,5 +143,67 @@
     };
   }
 
-  return { planScenario, hashText };
+  function replayScenario(options) {
+    const source = Array.isArray(options?.nodes) ? options.nodes : [];
+    if (!source.length) throw new Error('E2E replay requires a non-empty scenario catalog.');
+    const nodes = source.map((node, index) => normalizeNode(node, index, options?.metaByKey || {}));
+    const byKey = new Map();
+    for (const node of nodes) {
+      if (byKey.has(node.key)) throw new Error('Duplicate E2E scenario node: ' + node.key);
+      byKey.set(node.key, node);
+    }
+    for (const node of nodes) {
+      for (const dependency of node.dependencies) {
+        if (!byKey.has(dependency)) throw new Error('Unknown E2E dependency ' + dependency + ' for ' + node.key);
+      }
+    }
+    const keys = Array.isArray(options?.keys) ? options.keys.map((key) => String(key || '').trim()).filter(Boolean) : [];
+    if (!keys.length) throw new Error('E2E replay path is empty.');
+    if (new Set(keys).size !== keys.length) throw new Error('E2E replay path contains duplicate nodes.');
+    for (const key of keys) if (!byKey.has(key)) throw new Error('E2E replay node is unavailable in the current build: ' + key);
+
+    const selected = new Set(keys);
+    const requiredKeys = new Set(
+      nodes.filter((node) => node.required).map((node) => node.key)
+        .concat(Array.isArray(options?.requiredKeys) ? options.requiredKeys.map((key) => String(key || '')) : [])
+        .filter(Boolean)
+    );
+    for (const key of requiredKeys) if (!selected.has(key)) throw new Error('E2E replay path is missing required node: ' + key);
+
+    const position = new Map(keys.map((key, index) => [key, index]));
+    for (const key of keys) {
+      const node = byKey.get(key);
+      for (const dependency of node.dependencies) {
+        if (!selected.has(dependency)) throw new Error('E2E replay path is missing dependency ' + dependency + ' for ' + key);
+        if (position.get(dependency) >= position.get(key)) {
+          throw new Error('E2E replay dependency order is invalid: ' + dependency + ' must precede ' + key);
+        }
+      }
+    }
+
+    const seed = String(options?.seed || '');
+    const fingerprint = 'SG1-' + hashText(seed + '|' + keys.join('>'));
+    const expectedFingerprint = String(options?.expectedFingerprint || '');
+    if (expectedFingerprint && fingerprint !== expectedFingerprint) {
+      throw new Error('E2E replay fingerprint mismatch: expected ' + expectedFingerprint + ', got ' + fingerprint);
+    }
+    const level = clamp(options?.complexityLevel || 1, 1, 8);
+    return {
+      version: 1,
+      replay: true,
+      seed,
+      complexityLevel: level,
+      fingerprint,
+      keys,
+      path: keys.map((key, index) => {
+        const node = byKey.get(key);
+        return {
+          order: index + 1, key: node.key, name: node.name, domain: node.domain,
+          module: node.module, phase: node.phase, risk: node.risk, required: node.required
+        };
+      })
+    };
+  }
+
+  return { planScenario, replayScenario, hashText };
 });

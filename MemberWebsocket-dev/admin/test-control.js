@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-26.1';
+  const VERSION = '2026-09-27.1';
   const els = {};
   const artifactPreviewCache = new Map();
   const artifactPrefetchQueue = [];
@@ -673,52 +673,50 @@
     return row;
   }
 
-  function renderHistory(runs) {
-    const list = Array.isArray(runs) ? runs : [];
-    els.automationTestHistoryList.replaceChildren(...list.map((run) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'test-control-history-item' + (String(run.id || '') === currentRunId ? ' active' : '');
-      button.dataset.testRunId = String(run.id || '');
-      button.addEventListener('click', async () => {
-        if (busy) return;
-        currentRunId = String(run.id || '');
-        renderHistory(list);
-        try {
-          const data = await request('admin.test-control.status', { runId: currentRunId });
-          renderDetail(data);
-        } catch (error) {
-          showError(error);
-        }
-      });
-
-      const top = document.createElement('span');
-      top.className = 'test-control-history-top';
-      const code = document.createElement('strong');
-      code.textContent = String(run.runCode || 'Test run');
-      const status = document.createElement('span');
-      status.className = 'test-control-history-status' + statusClass(String(run.status || 'queued'));
-      status.textContent = statusText(String(run.status || 'queued'));
-      top.append(code, status);
-
-      const meta = document.createElement('small');
-      const failureCodes = Object.entries(run.summary?.failureDiagnostics?.byCode || {})
-        .filter(([, count]) => Number(count) > 0)
-        .sort((a, b) => Number(b[1]) - Number(a[1]))
-        .slice(0, 2)
-        .map(([code, count]) => String(code) + ' ×' + Number(count));
-      meta.textContent = [
-        suiteText(run.suite),
-        formatTime(run.createdAt),
-        Number(run.passedCases || 0) + '/' + Number(run.totalCases || 0) + ' 通過',
-        failureCodes.join('、')
-      ].filter(Boolean).join(' · ');
-
-      button.append(top, meta);
-      return button;
-    }));
-    els.automationTestHistoryEmpty.classList.toggle('hidden', list.length !== 0);
+  function replayVerdictText(value) {
+    return value === 'resolved' ? '重播：原錯誤已消失'
+      : value === 'reproduced' ? '重播：已重現原錯誤'
+      : value === 'changed' ? '重播：錯誤型態已改變' : '';
   }
+  function renderHistory(runs) {
+    const list=Array.isArray(runs)?runs:[];
+    els.automationTestHistoryList.replaceChildren(...list.map((run)=>{
+      const entry=document.createElement('div');
+      entry.className='test-control-history-entry'+(String(run.id||'')===currentRunId?' active':'');
+      const button=document.createElement('button'); button.type='button'; button.className='test-control-history-item'; button.dataset.testRunId=String(run.id||'');
+      button.addEventListener('click',async()=>{
+        if(busy)return; currentRunId=String(run.id||''); renderHistory(list);
+        try{const data=await request('admin.test-control.status',{runId:currentRunId});renderDetail(data);}catch(error){showError(error);}
+      });
+      const top=document.createElement('span'); top.className='test-control-history-top';
+      const code=document.createElement('strong'); code.textContent=String(run.runCode||'Test run');
+      const status=document.createElement('span'); status.className='test-control-history-status'+statusClass(String(run.status||'queued')); status.textContent=statusText(String(run.status||'queued'));
+      top.append(code,status);
+      const meta=document.createElement('small');
+      const failureCodes=Object.entries(run.summary?.failureDiagnostics?.byCode||{}).filter(([,count])=>Number(count)>0).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,2).map(([code,count])=>String(code)+' ×'+Number(count));
+      meta.textContent=[suiteText(run.suite),formatTime(run.createdAt),Number(run.passedCases||0)+'/'+Number(run.totalCases||0)+' 通過',failureCodes.join('、'),replayVerdictText(String(run.summary?.replayComparison?.verdict||''))].filter(Boolean).join(' · ');
+      button.append(top,meta); entry.append(button);
+      const replayable=String(run.status||'')==='failed'&&run.suite==='full'&&run.summary?.rootRun===true&&run.summary?.runnerKind==='paired-browser'&&run.summary?.replayManifest;
+      if(replayable){
+        const replay=document.createElement('button'); replay.type='button'; replay.className='button button-small test-control-replay-button'; replay.textContent='↻ 重播失敗流程';
+        replay.addEventListener('click',async()=>{
+          if(busy)return; const control=window.MemberAdminE2EControl;
+          if(!control||typeof control.replayFailedRun!=='function'){showError(new Error('失敗重播控制器尚未載入。'));return;}
+          replay.disabled=true; setMessage('正在讀取 '+String(run.runCode||'失敗 E2E')+' 的 Replay Manifest…');
+          try{
+            const result=await control.replayFailedRun(String(run.id||''));
+            if(!result?.started) throw new Error(result?.reason==='already-running'?'目前已有 E2E 執行中。':'無法啟動失敗重播。');
+            setMessage('已啟動 '+String(run.runCode||'失敗 E2E')+' 的 locked-path 重播；完成後會自動更新歷史結果。');
+          }catch(error){showError(error);}finally{replay.disabled=false;}
+        });
+        entry.append(replay);
+      }
+      return entry;
+    }));
+    els.automationTestHistoryEmpty.classList.toggle('hidden',list.length!==0);
+  }
+
+  function setMessage(message, error = false) {
 
   function setMessage(message, error = false) {
     els.automationTestMessage.textContent = String(message || '');

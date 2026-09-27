@@ -5,11 +5,12 @@
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-26.1';
+  const VERSION = '2026-09-27.1';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
   const MAX_HISTORY = 5;
+  const REPLAY_STORAGE_KEY = 'member-e2e-replay-v1';
 
   const SURFACES = Object.freeze({
     member: {
@@ -128,6 +129,9 @@
     complexityLevel: 1,
     participantIndex: 1,
     scenarioPlan: null,
+    replayConfig: null,
+    adaptiveReplaySourceKeys: [],
+    randomStateAfterBuild: 0,
     runStartedAt: '',
     traceEvents: [],
     traceResourceStart: 0,
@@ -177,15 +181,46 @@
     return hash >>> 0 || 0x9e3779b9;
   }
 
-  function configureRunProfile() {
-    const params = new URLSearchParams(window.location.search);
-    state.randomSeed = String(params.get('e2eSeed') || ('USER-' + surface + '-' + Date.now().toString(36)));
-    state.randomState = hashSeed(state.randomSeed);
-    state.complexityLevel = Math.max(1, Math.min(8, Number(params.get('e2eComplexity') || 1) || 1));
-    state.participantIndex = Math.max(1, Number(params.get('e2eParticipant') || 1) || 1);
+  function readReplayConfig() {
+    let raw = '';
+    try {
+      raw = String(sessionStorage.getItem(REPLAY_STORAGE_KEY) || '');
+      if (raw) sessionStorage.removeItem(REPLAY_STORAGE_KEY);
+    } catch (_) {}
+    if (!raw) return null;
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch { throw new Error('E2E replay descriptor is not valid JSON.'); }
+    if (!parsed || Number(parsed.version) !== 1 || String(parsed.surface || '') !== surface) {
+      throw new Error('E2E replay descriptor does not match the current user surface.');
+    }
+    if (!Array.isArray(parsed.scenarioPath) || !parsed.scenarioPath.length) {
+      throw new Error('E2E replay descriptor is missing its locked scenario path.');
+    }
+    return {
+      version: 1,
+      surface,
+      participantIndex: Math.max(1, Number(parsed.participantIndex || 1) || 1),
+      seed: String(parsed.seed || ''),
+      complexityLevel: Math.max(1, Math.min(8, Number(parsed.complexityLevel || 1) || 1)),
+      scenarioFingerprint: String(parsed.scenarioFingerprint || ''),
+      scenarioPath: parsed.scenarioPath.map((key) => String(key || '')).filter(Boolean),
+      adaptiveReplaySourceKeys: Array.isArray(parsed.adaptiveReplaySourceKeys)
+        ? parsed.adaptiveReplaySourceKeys.map((key) => String(key || '')).filter(Boolean).slice(0, 3) : [],
+      randomStateAfterBuild: Number.isInteger(Number(parsed.randomStateAfterBuild))
+        ? (Number(parsed.randomStateAfterBuild) >>> 0) : null
+    };
   }
 
-  function nextRandomUnit() {
+  function configureRunProfile() {
+    const params = new URLSearchParams(window.location.search);
+    state.replayConfig = readReplayConfig();
+    state.randomSeed = String(state.replayConfig?.seed || params.get('e2eSeed') || ('USER-' + surface + '-' + Date.now().toString(36)));
+    state.randomState = hashSeed(state.randomSeed);
+    state.complexityLevel = Math.max(1, Math.min(8, Number(state.replayConfig?.complexityLevel || params.get('e2eComplexity') || 1) || 1));
+    state.participantIndex = Math.max(1, Number(state.replayConfig?.participantIndex || params.get('e2eParticipant') || 1) || 1);
+  }
+
+  function nextRandomUnit() {  function nextRandomUnit() {
     if (!state.randomState) configureRunProfile();
     let x = state.randomState >>> 0;
     x ^= x << 13;
@@ -218,42 +253,39 @@
 
   function planUserScenario(nodes) {
     const planner = window.MemberE2EScenarioGraph;
+    const requiredKeys = nodes.filter((item) => item.humanRequired === true).map((item) => item.key);
+    if (state.replayConfig) {
+      if (!planner || typeof planner.replayScenario !== 'function') throw new Error('目前版本缺少 E2E locked-path replay planner，已停止重播。');
+      const plan = planner.replayScenario({
+        nodes, metaByKey: USER_NODE_META, seed: state.randomSeed,
+        complexityLevel: state.complexityLevel, requiredKeys,
+        keys: state.replayConfig.scenarioPath,
+        expectedFingerprint: state.replayConfig.scenarioFingerprint
+      });
+      const byKey = new Map(nodes.map((item) => [String(item.key || ''), item]));
+      return { plan, nodes: plan.keys.map((key) => byKey.get(key)).filter(Boolean) };
+    }
     if (!planner || typeof planner.planScenario !== 'function') {
       const fallback = {
-        version: 1,
-        seed: state.randomSeed,
-        complexityLevel: state.complexityLevel,
-        fingerprint: 'SG1-fallback',
-        keys: nodes.map((item) => String(item.key || '')),
+        version: 1, seed: state.randomSeed, complexityLevel: state.complexityLevel,
+        fingerprint: 'SG1-fallback', keys: nodes.map((item) => String(item.key || '')),
         path: nodes.map((item, index) => ({
-          order: index + 1,
-          key: String(item.key || ''),
-          name: String(item.name || ''),
-          domain: String(item.domain || ''),
-          module: 'fallback',
-          phase: 0,
-          risk: 'normal',
-          required: true
+          order: index + 1, key: String(item.key || ''), name: String(item.name || ''),
+          domain: String(item.domain || ''), module: 'fallback', phase: 0, risk: 'normal', required: true
         }))
       };
       return { plan: fallback, nodes: nodes.slice() };
     }
-    const requiredKeys = nodes.filter((item) => item.humanRequired === true).map((item) => item.key);
     const plan = planner.planScenario({
-      nodes,
-      metaByKey: USER_NODE_META,
-      randomUnit: nextRandomUnit,
-      seed: state.randomSeed,
-      complexityLevel: state.complexityLevel,
-      minNodes: Math.min(12, nodes.length),
-      maxNodes: Math.min(18, nodes.length),
-      requiredKeys
+      nodes, metaByKey: USER_NODE_META, randomUnit: nextRandomUnit,
+      seed: state.randomSeed, complexityLevel: state.complexityLevel,
+      minNodes: Math.min(12, nodes.length), maxNodes: Math.min(18, nodes.length), requiredKeys
     });
     const byKey = new Map(nodes.map((item) => [String(item.key || ''), item]));
     return { plan, nodes: plan.keys.map((key) => byKey.get(key)).filter(Boolean) };
   }
 
-  function plainError(error) {
+  function plainError(error) {  function plainError(error) {
     return {
       code: String(error && error.code || error && error.name || 'ERROR').slice(0, 120),
       message: String(error && error.message || '未知錯誤').slice(0, 500)
@@ -646,6 +678,8 @@
     state.bookingBaseline = null;
     state.bookingHandoff = null;
     state.scenarioPlan = null;
+    state.adaptiveReplaySourceKeys = [];
+    state.randomStateAfterBuild = 0;
     state.cancelled = false;
     state.runStartedAt = new Date().toISOString();
     startDiagnosticTrace();
@@ -840,7 +874,11 @@
         complexityLevel: state.complexityLevel,
         participantIndex: state.participantIndex,
         scenarioFingerprint: state.scenarioPlan?.fingerprint || '',
-        scenarioPath: Array.isArray(state.scenarioPlan?.keys) ? state.scenarioPlan.keys.slice() : []
+        scenarioPath: Array.isArray(state.scenarioPlan?.keys) ? state.scenarioPlan.keys.slice() : [],
+        replayMode: Boolean(state.replayConfig),
+        adaptiveReplaySourceKeys: state.adaptiveReplaySourceKeys.slice(),
+        randomStateAfterBuild: state.randomStateAfterBuild >>> 0,
+        runnerVersion: VERSION
       }
     };
   }
@@ -964,7 +1002,19 @@
       && item.humanRequired !== true
     );
     const replayCount = Math.max(0, Math.min(3, Number(state.complexityLevel || 1) - 1));
-    const adaptiveReplays = shuffled(replayPool).slice(0, replayCount).map((item, index) =>
+    let replaySources = [];
+    if (state.replayConfig) {
+      const byKey = new Map(replayPool.map((item) => [String(item.key || ''), item]));
+      replaySources = state.replayConfig.adaptiveReplaySourceKeys.map((key) => {
+        const item = byKey.get(key);
+        if (!item) throw new Error('Stored adaptive replay node is unavailable or unsafe: ' + key);
+        return item;
+      });
+    } else {
+      replaySources = shuffled(replayPool).slice(0, replayCount);
+    }
+    state.adaptiveReplaySourceKeys = replaySources.map((item) => String(item.key || ''));
+    const adaptiveReplays = replaySources.map((item, index) =>
       caseDef(
         '自適應壓力重播 ' + (index + 1) + '：' + item.name,
         item.domain,
@@ -972,6 +1022,11 @@
         String(item.key || ('ADAPTIVE_' + index)) + '_REPLAY_' + (index + 1)
       )
     );
+    state.randomStateAfterBuild = state.randomState >>> 0;
+    if (state.replayConfig && state.replayConfig.randomStateAfterBuild != null) {
+      state.randomState = state.replayConfig.randomStateAfterBuild >>> 0;
+      state.randomStateAfterBuild = state.randomState;
+    }
     return [scenarioCase].concat(planned.nodes, adaptiveReplays);
   }
 
