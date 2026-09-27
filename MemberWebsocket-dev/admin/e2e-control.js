@@ -5643,8 +5643,6 @@
   }
 
   async function prepareComplexE2EFixtures(profile = {}) {
-
-  async function prepareComplexE2EFixtures(profile = {}) {
     const session = await adminSession();
     const runTag = 'PAIR-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
     const data = await postFunction('test-control-api', {
