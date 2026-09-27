@@ -717,8 +717,6 @@
   }
 
   function setMessage(message, error = false) {
-
-  function setMessage(message, error = false) {
     els.automationTestMessage.textContent = String(message || '');
     els.automationTestMessage.classList.toggle('hidden', !message);
     els.automationTestMessage.classList.toggle('error', Boolean(error));

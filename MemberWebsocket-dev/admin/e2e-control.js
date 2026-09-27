@@ -1323,8 +1323,6 @@
   }
 
   async function runPairedAdminBookingLive(participant) {
-
-  async function runPairedAdminBookingLive(participant) {
     const wrapperKey = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_FOLLOWUP';
     const rowPrefix = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_';
     participant.adminStatus = '即時監看管理端預約資料';

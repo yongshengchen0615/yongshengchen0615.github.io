@@ -220,7 +220,7 @@
     state.participantIndex = Math.max(1, Number(state.replayConfig?.participantIndex || params.get('e2eParticipant') || 1) || 1);
   }
 
-  function nextRandomUnit() {  function nextRandomUnit() {
+  function nextRandomUnit() {
     if (!state.randomState) configureRunProfile();
     let x = state.randomState >>> 0;
     x ^= x << 13;
@@ -285,7 +285,7 @@
     return { plan, nodes: plan.keys.map((key) => byKey.get(key)).filter(Boolean) };
   }
 
-  function plainError(error) {  function plainError(error) {
+  function plainError(error) {
     return {
       code: String(error && error.code || error && error.name || 'ERROR').slice(0, 120),
       message: String(error && error.message || '未知錯誤').slice(0, 500)
