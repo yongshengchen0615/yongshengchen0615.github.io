@@ -185,15 +185,16 @@ test('missing completion booking still permits independent cancellation review',
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_CANCEL')).status, 'passed');
 });
 
-test('a modification error blocks completion, preserves confirmation and still tests cancellation', async () => {
+test('a modification error remains the root failure while technician, completion and cancellation stay independently testable', async () => {
   const { qa, calls, io } = harness([booking('complete'), cancellation(), rejection()]);
   io.modify = async () => { calls.push('modify'); throw new Error('conflict'); };
   qa.install(io);
   const result = await qa.pairedAdminBookingFollowupCase(participant());
-  assert.deepEqual(calls, ['rejected', 'keep', 'confirmed', 'modify', 'rerequest', 'approve']);
+  assert.deepEqual(calls, ['rejected', 'keep', 'confirmed', 'modify', 'technician', 'completed', 'rerequest', 'approve']);
   assert.equal(result.actual.confirmed.ok, true);
   assert.equal(qa.state.results.find((row) => row.key.endsWith('_MODIFY')).actual.message, 'conflict');
-  assert.equal(qa.state.results.find((row) => row.key.endsWith('_COMPLETE')).actual.dependencyFailed, 'CONFIRM_OR_MODIFY');
+  assert.equal(qa.state.results.find((row) => row.key.endsWith('_MODIFY_TECHNICIAN')).status, 'passed');
+  assert.equal(qa.state.results.find((row) => row.key.endsWith('_COMPLETE')).status, 'passed');
 });
 
 test('a failed confirmation must not modify or complete the booking', async () => {
