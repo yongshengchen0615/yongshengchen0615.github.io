@@ -16,11 +16,13 @@ test('all five user surfaces load the human-evidence E2E runner asset', () => {
 
 test('user full E2E requires observable UI events for Human E2E cases', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-09-27\.2'/);
+  assert.match(runner, /const VERSION = '2026-09-27\.3'/);
   assert.match(runner, /captureHumanInteraction/);
   assert.match(runner, /\['click', 'input', 'change', 'submit'\]/);
   assert.match(runner, /humanRequired: domain === 'Human E2E'/);
   assert.match(runner, /humanInteractionEventsAtLeast: 1/);
+  assert.match(runner, /COMMON_TOUR_AUTOSTART/);
+  assert.match(runner, /測試帳號自動教學啟動/);
   assert.match(runner, /missingEvidenceKeys/);
   assert.match(runner, /MEMBER_HUMAN_PROFILE_EDIT/);
   assert.match(runner, /POINTS_HUMAN_REDEEM/);
