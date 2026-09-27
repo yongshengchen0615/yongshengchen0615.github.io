@@ -20,10 +20,12 @@ function plan() {
 }
 
 function backendPlan() {
-  const start = serverSource.indexOf('const E2E_MODULE_KEYS =');
-  const end = serverSource.indexOf('\nfunction runClient(', start);
-  assert.ok(start >= 0 && end > start);
-  const executable = serverSource.slice(start, end)
+  const modulesStart = serverSource.indexOf('const E2E_MODULE_KEYS =');
+  const replayStart = serverSource.indexOf('\nconst REPLAY_SURFACES =', modulesStart);
+  const casesStart = serverSource.indexOf('function caseDefinitions(', replayStart);
+  const runClientStart = serverSource.indexOf('\nfunction runClient(', casesStart);
+  assert.ok(modulesStart >= 0 && replayStart > modulesStart && casesStart > replayStart && runClientStart > casesStart);
+  const executable = (serverSource.slice(modulesStart, replayStart) + '\n' + serverSource.slice(casesStart, runClientStart))
     .replace(' as const;', ';')
     .replace('value: unknown): string[] | null', 'value)')
     .replace('key as typeof E2E_MODULE_KEYS[number]', 'key')
