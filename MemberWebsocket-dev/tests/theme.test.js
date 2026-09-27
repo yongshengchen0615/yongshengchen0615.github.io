@@ -169,3 +169,12 @@ test('semantic text palette keeps readable contrast in light and dark modes', ()
   assert.match(css, /\.test-control-step-heading strong/);
   assert.match(css, /\.booking-contact-option strong/);
 });
+
+
+test('event ticket Calendar sync modal has explicit dark-mode coverage', () => {
+  const css = read('theme.css');
+  assert.match(css, /#eventTicketEditorModal \.calendar-event-link-fields/);
+  assert.match(css, /#eventTicketEditorModal #eventTicketCalendarControls/);
+  assert.match(css, /#eventTicketEditorModal #eventTicketCalendarControls \.grant-toggle/);
+  assert.match(css, /#eventTicketEditorModal #eventTicketCalendarStatus/);
+});
