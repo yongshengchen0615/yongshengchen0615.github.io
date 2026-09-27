@@ -84,6 +84,8 @@
     });
     window.addEventListener('resize', positionFocus);
     window.addEventListener('scroll', positionFocus, true);
+    window.addEventListener('pagehide', stopAutoOpenObserver, { once: true });
+    window.addEventListener('beforeunload', stopAutoOpenObserver, { once: true });
     window.addEventListener('member-profile-ready', (event) => { void considerProfile(event.detail?.profile); });
     window.addEventListener('user-tour:ready', (event) => { if (event.detail?.surface === surface) void considerProfile(event.detail.profile); });
   });
@@ -150,18 +152,21 @@
     queueAutoOpen(generation, key);
   }
 
-  function queueAutoOpen(generation, key) {
+  function stopAutoOpenObserver() {
     if (autoOpenObserver) autoOpenObserver.disconnect();
+    autoOpenObserver = null;
+  }
+
+  function queueAutoOpen(generation, key) {
+    stopAutoOpenObserver();
     const attempt = () => {
       if (generation !== identityGeneration || storageKey !== key) {
-        autoOpenObserver?.disconnect();
-        autoOpenObserver = null;
+        stopAutoOpenObserver();
         return;
       }
       if (ui.view.classList.contains('hidden') || otherDialogOpen()) return;
       if (open(null)) {
-        autoOpenObserver?.disconnect();
-        autoOpenObserver = null;
+        stopAutoOpenObserver();
       }
     };
     autoOpenObserver = new MutationObserver(attempt);
@@ -179,7 +184,9 @@
   }
 
   function otherDialogOpen() {
-    return Array.from(document.querySelectorAll('[aria-modal="true"]')).some((dialog) =>
+    const doc = window.document;
+    if (!doc || typeof doc.querySelectorAll !== 'function') return false;
+    return Array.from(doc.querySelectorAll('[aria-modal="true"]')).some((dialog) =>
       dialog !== ui.memberTourDialog && !dialog.closest('.hidden,[hidden]')
     );
   }
