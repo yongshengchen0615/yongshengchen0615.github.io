@@ -5,7 +5,7 @@
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-27.2';
+  const VERSION = '2026-09-27.3';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -47,7 +47,8 @@
 
   const USER_NODE_META = Object.freeze({
     COMMON_TEST_SESSION: { module: 'shared', phase: 0, required: true, risk: 'auth' },
-    COMMON_CONFIG: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TEST_SESSION'] },
+    COMMON_TOUR_AUTOSTART: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TEST_SESSION'] },
+    COMMON_CONFIG: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TOUR_AUTOSTART'] },
     COMMON_SURFACE_READY: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_CONFIG'] },
     COMMON_BOOTSTRAP: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_SURFACE_READY'] },
     COMMON_ESSENTIAL_DOM: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_SURFACE_READY'] },
@@ -906,6 +907,7 @@
   function buildCases(suite) {
     const common = [
       caseDef('測試帳號授權邊界', 'Authentication', testSessionCase, 'COMMON_TEST_SESSION'),
+      caseDef('測試帳號自動教學啟動', 'UI', tourAutoStartCase, 'COMMON_TOUR_AUTOSTART'),
       caseDef('公開設定與 Client 設定', 'Configuration', configCase, 'COMMON_CONFIG'),
       caseDef('目前頁面載入狀態', 'UI', surfaceReadyCase, 'COMMON_SURFACE_READY'),
       caseDef(definition.label + ' Bootstrap API', 'API', bootstrapCase, 'COMMON_BOOTSTRAP'),
@@ -1059,6 +1061,47 @@
     return ok
       ? pass('後端確認目前為有效測試帳號 Session。', { active: true, memberId: true, memberCode: true }, { active: true, memberId: Boolean(account.memberId), memberCode: account.memberCode || '' })
       : fail('後端未確認目前測試 Session。', { active: true }, { active: Boolean(session && session.active) });
+  }
+
+  async function tourAutoStartCase() {
+    const dialog = document.getElementById('memberTourDialog');
+    const app = document.getElementById('app') || document.querySelector('.app-shell');
+    const pairedRunner = new URLSearchParams(window.location.search).has('qaPair');
+    const opened = Boolean(await waitFor(
+      () => dialog && !dialog.classList.contains('hidden') ? dialog : null,
+      8000,
+      80
+    ));
+    if (!opened) {
+      return fail(
+        '測試帳號主畫面完成登入後沒有自動啟動使用教學。',
+        { autoOpened: true, pairedRunner },
+        { autoOpened: false, pairedRunner, dialogExists: Boolean(dialog) }
+      );
+    }
+
+    dialog.dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true
+    }));
+    const dismissed = Boolean(await waitFor(
+      () => dialog.classList.contains('hidden') ? dialog : null,
+      1200,
+      40
+    ));
+    const appInteractive = !app || app.inert !== true;
+    return dismissed && appInteractive
+      ? pass(
+          '測試帳號與正式帳號一致：進入頁面會自動啟動教學；E2E 以非持久 dismiss 關閉後繼續案例。',
+          { autoOpened: true, dismissedWithoutDailySkip: true, appInteractive: true, pairedRunner },
+          { autoOpened: true, dismissedWithoutDailySkip: true, appInteractive, pairedRunner }
+        )
+      : fail(
+          '教學已自動出現，但 E2E 無法安全關閉教學並恢復主畫面互動。',
+          { autoOpened: true, dismissedWithoutDailySkip: true, appInteractive: true, pairedRunner },
+          { autoOpened: true, dismissedWithoutDailySkip: dismissed, appInteractive, pairedRunner }
+        );
   }
 
   async function configCase() {
