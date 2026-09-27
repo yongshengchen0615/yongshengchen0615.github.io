@@ -12,9 +12,10 @@ const memberApp = fs.readFileSync(path.join(root, 'member/app.js'), 'utf8');
 const profile = (id = 'LINE_TEST_A') => ({ lineUserId: id, profileComplete: true, membershipRequired: false });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 40));
 
-async function page({ surface = 'member', saved = {}, now = '2026-09-27T15:59:00Z', missing = '', testSession = false } = {}) {
+async function page({ surface = 'member', saved = {}, now = '2026-09-27T15:59:00Z', missing = '', testSession = false, query = '' } = {}) {
   const html = fs.readFileSync(path.join(root, surface, 'index.html'), 'utf8');
-  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: `https://example.test/${surface}/` });
+  const suffix = query ? `?${String(query).replace(/^\?/, '')}` : '';
+  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: `https://example.test/${surface}/${suffix}` });
   const w = dom.window;
   await new Promise((resolve) => w.addEventListener('load', resolve, { once: true }));
   Object.defineProperty(w.crypto, 'subtle', { value: webcrypto.subtle });
@@ -123,6 +124,7 @@ test('spotlight leaves the original UI visible and moves the dialog away from it
   target.getBoundingClientRect = () => ({ left: 700, right: 900, top, bottom: top + 100 });
   dialog.getBoundingClientRect = () => ({ left: 614, right: 1004, height: 280 });
   await ready();
+  for (let attempt = 0; attempt < 8 && !dialog.classList.contains('member-tour-dialog-top'); attempt += 1) await tick();
   assert.equal(dialog.classList.contains('member-tour-dialog-top'), true);
   assert.equal(w.document.getElementById('memberTourFocus').style.left, '695px');
   top = 60;
@@ -253,11 +255,30 @@ test('empty event data skips absent ticket targets, and an existing dialog is no
   blocked.dom.window.close();
 });
 
-test('automated test sessions retain manual help without blocking test actions', async () => {
+test('test accounts auto-start the same tutorial as real members', async () => {
   const current = await page({ surface: 'booking', testSession: true });
   await current.ready();
-  assert.equal(current.dialog.classList.contains('hidden'), true);
-  current.w.document.getElementById('openMemberTour').click();
   assert.equal(current.dialog.classList.contains('hidden'), false);
+  assert.match(current.dialog.textContent, /確認會員階級/);
+  current.dom.window.close();
+});
+
+test('paired E2E always receives the tutorial so the runner can validate and dismiss it without persisting a skip', async () => {
+  const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode('LINE_TEST_A'))).toString('hex');
+  const key = `user-tour:booking:${hash}`;
+  const current = await page({
+    surface: 'booking',
+    testSession: true,
+    query: 'qaPair=run-1&e2eParticipant=1',
+    saved: {
+      [key]: JSON.stringify({ outcome: 'skip', source: 'explicit', skippedAt: '2026-09-27T15:59:00Z' })
+    }
+  });
+  await current.ready();
+  assert.equal(current.dialog.classList.contains('hidden'), false);
+  current.dialog.dispatchEvent(new current.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  await tick();
+  assert.equal(current.dialog.classList.contains('hidden'), true);
+  assert.equal(JSON.parse(current.w.localStorage.getItem(key)).source, 'explicit');
   current.dom.window.close();
 });

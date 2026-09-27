@@ -84,6 +84,8 @@
     });
     window.addEventListener('resize', positionFocus);
     window.addEventListener('scroll', positionFocus, true);
+    window.addEventListener('pagehide', stopAutoOpenObserver, { once: true });
+    window.addEventListener('beforeunload', stopAutoOpenObserver, { once: true });
     window.addEventListener('member-profile-ready', (event) => { void considerProfile(event.detail?.profile); });
     window.addEventListener('user-tour:ready', (event) => { if (event.detail?.surface === surface) void considerProfile(event.detail.profile); });
   });
@@ -144,24 +146,27 @@
     try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { /* storage blocked */ }
     const skippedAt = saved?.skippedAt || (saved?.outcome === 'skip' ? saved.completedAt : null);
     const explicitSkip = saved?.outcome === 'skip' && saved?.source === 'explicit';
-    if (explicitSkip && skippedAt && taipeiDay(new Date(skippedAt)) === taipeiDay(new Date())) return;
-    // Automated test sessions keep the entry point, but the tour must not cover their test actions.
-    if (window.TestModeClient?.getSessionToken?.()) return;
+    const isPairedE2ERunner = new URLSearchParams(window.location.search).has('qaPair');
+    if (!isPairedE2ERunner && explicitSkip && skippedAt && taipeiDay(new Date(skippedAt)) === taipeiDay(new Date())) return;
+    // Test accounts follow the same tutorial rules as real members. Paired E2E explicitly validates and dismisses the tour.
     queueAutoOpen(generation, key);
   }
 
-  function queueAutoOpen(generation, key) {
+  function stopAutoOpenObserver() {
     if (autoOpenObserver) autoOpenObserver.disconnect();
+    autoOpenObserver = null;
+  }
+
+  function queueAutoOpen(generation, key) {
+    stopAutoOpenObserver();
     const attempt = () => {
       if (generation !== identityGeneration || storageKey !== key) {
-        autoOpenObserver?.disconnect();
-        autoOpenObserver = null;
+        stopAutoOpenObserver();
         return;
       }
       if (ui.view.classList.contains('hidden') || otherDialogOpen()) return;
       if (open(null)) {
-        autoOpenObserver?.disconnect();
-        autoOpenObserver = null;
+        stopAutoOpenObserver();
       }
     };
     autoOpenObserver = new MutationObserver(attempt);
@@ -179,7 +184,9 @@
   }
 
   function otherDialogOpen() {
-    return Array.from(document.querySelectorAll('[aria-modal="true"]')).some((dialog) =>
+    const doc = window.document;
+    if (!doc || typeof doc.querySelectorAll !== 'function') return false;
+    return Array.from(doc.querySelectorAll('[aria-modal="true"]')).some((dialog) =>
       dialog !== ui.memberTourDialog && !dialog.closest('.hidden,[hidden]')
     );
   }
