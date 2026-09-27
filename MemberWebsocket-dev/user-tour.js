@@ -58,7 +58,11 @@
     }
     if (Object.values(ui).some((element) => !element)) return;
     ui.openMemberTour.addEventListener('click', () => open(ui.openMemberTour));
-    ui.memberTourOverlay.addEventListener('click', () => close('skip'));
+    ui.memberTourOverlay.addEventListener('click', (event) => {
+      event.preventDefault();
+      // A background tap is not consent to skip the tour for the day.
+      ui.memberTourTitle.focus();
+    });
     ui.memberTourSkip.addEventListener('click', () => close('skip'));
     ui.memberTourBack.addEventListener('click', () => move(-1));
     ui.memberTourNext.addEventListener('click', () => {
@@ -66,7 +70,7 @@
       else move(1);
     });
     ui.memberTourDialog.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close('skip'); }
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close('dismiss'); }
       if (event.key !== 'Tab') return;
       const focusable = [ui.memberTourSkip, ui.memberTourBack, ui.memberTourNext].filter((button) => !button.disabled);
       const first = focusable[0];
@@ -206,7 +210,9 @@
     }
     const step = STEPS[stepIndex];
     const visibleSteps = STEPS.map((_, index) => index).filter((index) => available(index));
-    ui.memberTourProgress.textContent = `使用教學 ${visibleSteps.indexOf(stepIndex) + 1} / ${visibleSteps.length}`;
+    const visiblePosition = visibleSteps.indexOf(stepIndex) + 1;
+    ui.memberTourProgress.textContent = `使用教學 ${visiblePosition} / ${visibleSteps.length}`;
+    ui.memberTourDialog.style.setProperty('--member-tour-progress', `${Math.round((visiblePosition / visibleSteps.length) * 100)}%`);
     ui.memberTourTitle.textContent = step.title;
     ui.memberTourDescription.textContent = step.description;
     ui.memberTourBack.disabled = findStep(stepIndex - 1, -1) < 0;
@@ -246,6 +252,7 @@
     ui.memberTourFocus.classList.add('hidden');
     ui.memberTourDialog.classList.add('hidden');
     ui.memberTourDialog.classList.remove('member-tour-dialog-top');
+    ui.memberTourDialog.style.removeProperty('--member-tour-progress');
     ui.app.inert = false;
     if (storageKey) {
       try {

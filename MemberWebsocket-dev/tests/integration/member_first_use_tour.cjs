@@ -107,7 +107,8 @@ test('legacy completed tour does not suppress opening, and legacy skip lasts onl
 
 test('spotlight leaves the original UI visible and moves the dialog away from its target', async () => {
   assert.match(styles, /\.member-tour-overlay\s*\{[^}]*background:\s*transparent/);
-  assert.match(styles, /\.member-tour-focus\s*\{[^}]*200vmax\s+var\(--theme-overlay/);
+  assert.doesNotMatch(styles, /200vmax/);
+  assert.match(styles, /#memberTourSkip[^{]*\{[^}]*background:\s*transparent/);
   const { dom, w, ready, dialog } = await page();
   const target = w.document.getElementById('memberPass');
   let top = 600;
@@ -127,18 +128,22 @@ test('account isolation, missing anchor, keyboard escape and focus return', asyn
   await ready();
   w.document.getElementById('memberTourNext').click();
   assert.match(dialog.textContent, /確認個人資料/);
+  w.document.getElementById('memberTourOverlay').click();
+  assert.equal(dialog.classList.contains('hidden'), false);
+  assert.equal(w.localStorage.length, 0);
   const escape = new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
   dialog.dispatchEvent(escape);
   assert.equal(dialog.classList.contains('hidden'), true);
+  assert.equal(w.localStorage.length, 0);
   assert.equal(w.document.activeElement.id, 'openMemberTour');
   await ready('LINE_TEST_B');
   assert.equal(dialog.classList.contains('hidden'), false);
-  assert.equal(Object.keys(w.localStorage).length, 1);
+  assert.equal(Object.keys(w.localStorage).length, 0);
   const backwardsTab = new w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
   dialog.dispatchEvent(backwardsTab);
   assert.equal(w.document.activeElement.id, 'memberTourNext');
   w.document.getElementById('memberTourSkip').click();
-  assert.equal(Object.keys(w.localStorage).length, 2);
+  assert.equal(Object.keys(w.localStorage).length, 1);
   dom.window.close();
 });
 

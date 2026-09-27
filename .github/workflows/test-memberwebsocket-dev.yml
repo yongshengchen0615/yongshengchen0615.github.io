@@ -51,7 +51,8 @@ jobs:
             MemberWebsocket-dev/tests/integration/admin_startup.cjs \
             MemberWebsocket-dev/tests/integration/booking_startup.cjs \
             MemberWebsocket-dev/tests/integration/booking_copy.cjs \
-            MemberWebsocket-dev/tests/integration/dialog_accessibility.cjs
+            MemberWebsocket-dev/tests/integration/dialog_accessibility.cjs \
+            MemberWebsocket-dev/tests/integration/member_first_use_tour.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
 
@@ -68,6 +69,7 @@ jobs:
         run: |
           printf '%s\n' \
             MemberWebsocket-dev/theme.js \
+            MemberWebsocket-dev/user-tour.js \
             MemberWebsocket-dev/e2e-scenario-graph.js \
             MemberWebsocket-dev/membership-milestones.js \
             MemberWebsocket-dev/test-mode-client.js \

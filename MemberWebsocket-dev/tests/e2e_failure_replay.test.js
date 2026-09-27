@@ -87,10 +87,10 @@ test('admin, user and server expose one-click failure replay contracts', () => {
 });
 
 test('all E2E entry points use replay-capable cache versions', () => {
-  assert.match(fs.readFileSync(path.join(root, 'admin/index.html'), 'utf8'), /e2e-control\.js\?v=admin-e2e-20260927-2/);
+  assert.match(fs.readFileSync(path.join(root, 'admin/index.html'), 'utf8'), /e2e-control\.js\?v=admin-e2e-20260927-3/);
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = fs.readFileSync(path.join(root, surface, 'index.html'), 'utf8');
     assert.match(html, /e2e-scenario-graph\.js\?v=e2e-graph-20260927-1/);
-    assert.match(html, /user-test-control\.js\?v=human-e2e-20260927-1/);
+    assert.match(html, /user-test-control\.js\?v=human-e2e-20260927-2/);
   }
 });
