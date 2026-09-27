@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="./styles.css?v=loading-center-all-20260910">
   <link rel="stylesheet" href="./profile-extension.css?v=profile-personal-polish-20260912-5">
   <link rel="stylesheet" href="./membership-progress.css?v=member-tier-style-20260908">
+  <link rel="stylesheet" href="./first-use-tour.css?v=first-use-tour-20260927-1">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="../test-mode-client.js?v=test-session-surface-20260922-2" defer></script>
@@ -20,6 +21,7 @@
   <script src="./profile-birthday-edit.js?v=async-architecture-20260921-1" defer></script>
   <script src="./membership-progress.js?v=member-tier-style-20260908" defer></script>
   <script src="./app.js?v=async-architecture-20260921-1" defer></script>
+  <script src="./first-use-tour.js?v=first-use-tour-20260927-1" defer></script>
   <link rel="stylesheet" href="../test-mode.css?v=test-mode-20260920-1">
   <link rel="stylesheet" href="../user-test-control.css?v=user-qa-observer-20260921-2">
   <link rel="stylesheet" href="../responsive.css?v=20260914-line-form-1">
@@ -121,6 +123,7 @@
         </div>
         <div class="account-menu">
           <span id="displayName">LINE 使用者</span>
+          <button id="openMemberTour" class="text-button" type="button" aria-haspopup="dialog" aria-controls="memberTourDialog">使用教學</button>
           <button id="logoutButton" class="text-button" type="button">登出</button>
         </div>
       </header>
@@ -178,6 +181,16 @@
           </div>
         </dl>
       </section>
+
+      <nav id="memberFeatureLinks" class="member-feature-links" aria-label="會員功能入口">
+        <h2>探索會員功能</h2>
+        <div>
+          <a href="../points/">集點卡</a>
+          <a href="../event/">活動票券</a>
+          <a href="../calendar/">活動日曆</a>
+          <a href="../booking/">預約服務</a>
+        </div>
+      </nav>
 
       <div id="honorificEditModal" class="profile-edit-modal hidden" role="dialog" aria-modal="true" aria-labelledby="honorificEditTitle">
         <section class="profile-edit-modal-card" tabindex="-1">
@@ -256,5 +269,17 @@
       </div>
     </main>
   </div>
+  <div id="memberTourOverlay" class="member-tour-overlay hidden" aria-hidden="true"></div>
+  <div id="memberTourFocus" class="member-tour-focus hidden" aria-hidden="true"></div>
+  <section id="memberTourDialog" class="member-tour-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="memberTourTitle" aria-describedby="memberTourDescription" tabindex="-1">
+    <p id="memberTourProgress" class="member-tour-progress" aria-live="polite"></p>
+    <h2 id="memberTourTitle" tabindex="-1"></h2>
+    <p id="memberTourDescription"></p>
+    <div class="member-tour-actions">
+      <button id="memberTourSkip" type="button">略過教學</button>
+      <button id="memberTourBack" type="button">上一步</button>
+      <button id="memberTourNext" type="button">下一步</button>
+    </div>
+  </section>
 </body>
 </html>
