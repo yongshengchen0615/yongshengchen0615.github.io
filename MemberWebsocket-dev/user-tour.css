@@ -22,13 +22,14 @@
 .member-feature-links a:hover { border-color: var(--theme-accent, #b14f39); }
 .member-feature-links a:focus-visible { outline: 3px solid var(--theme-focus-ring, #df6b4d); outline-offset: 2px; }
 
-.member-tour-overlay { position: fixed; inset: 0; z-index: 999; background: var(--theme-overlay, rgba(9, 18, 14, .56)); }
+.member-tour-overlay { position: fixed; inset: 0; z-index: 999; background: transparent; }
 .member-tour-focus {
   position: fixed;
   z-index: 1000;
   border: 3px solid var(--theme-accent, #df6b4d);
   border-radius: 16px;
-  box-shadow: 0 0 0 4px var(--theme-focus-ring, rgba(223, 107, 77, .42));
+  /* The shadow dims the page around the target while leaving its UI visible. */
+  box-shadow: 0 0 0 4px var(--theme-focus-ring, rgba(223, 107, 77, .42)), 0 0 0 200vmax var(--theme-overlay, rgba(9, 18, 14, .56));
   pointer-events: none;
 }
 .member-tour-dialog {
@@ -46,6 +47,7 @@
   background: var(--theme-surface-raised, #fffdf8);
   box-shadow: var(--theme-modal-shadow, 0 18px 48px rgba(18, 35, 27, .18));
 }
+.member-tour-dialog.member-tour-dialog-top { top: max(20px, env(safe-area-inset-top)); bottom: auto; }
 .member-tour-progress { margin: 0 0 10px; color: var(--theme-accent, #b14f39); font-size: 12px; font-weight: 800; }
 .member-tour-dialog h2 { margin: 0; color: var(--theme-text, #17352e); font-size: 23px; line-height: 1.25; }
 .member-tour-dialog > p:not(.member-tour-progress) { margin: 12px 0 20px; color: var(--theme-text-muted, #627168); line-height: 1.65; }
@@ -68,6 +70,7 @@
 @media (max-width: 620px) {
   .member-feature-links > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .member-tour-dialog { right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); left: 10px; width: auto; max-height: min(48dvh, 380px); padding: 18px; }
+  .member-tour-dialog.member-tour-dialog-top { top: max(10px, env(safe-area-inset-top)); bottom: auto; }
 }
 @media (max-width: 370px) {
   .member-tour-actions button { flex: 1 1 auto; }

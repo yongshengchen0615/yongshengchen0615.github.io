@@ -7,23 +7,28 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '../..');
 const script = fs.readFileSync(path.join(root, 'user-tour.js'), 'utf8');
+const styles = fs.readFileSync(path.join(root, 'user-tour.css'), 'utf8');
 const profile = (id = 'LINE_TEST_A') => ({ lineUserId: id, profileComplete: true, membershipRequired: false });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 40));
 
-async function page({ surface = 'member', saved = {}, version = 1, missing = '', testSession = false } = {}) {
+async function page({ surface = 'member', saved = {}, now = '2026-09-27T15:59:00Z', missing = '', testSession = false } = {}) {
   const html = fs.readFileSync(path.join(root, surface, 'index.html'), 'utf8');
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: `https://example.test/${surface}/` });
   const w = dom.window;
   await new Promise((resolve) => w.addEventListener('load', resolve, { once: true }));
   Object.defineProperty(w.crypto, 'subtle', { value: webcrypto.subtle });
   w.TextEncoder = TextEncoder;
+  w.Date = class extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return new Date(now).getTime(); }
+  };
   if (testSession) w.TestModeClient = { getSessionToken: () => 'test-session' };
   w.HTMLElement.prototype.scrollIntoView = function () {};
   const view = w.document.querySelector('main[data-user-tour]');
   view.classList.remove('hidden');
   if (missing) w.document.querySelector(missing)?.remove();
   for (const [key, value] of Object.entries(saved)) w.localStorage.setItem(key, value);
-  w.eval(version === 1 ? script : script.replace('const VERSION = 1;', `const VERSION = ${version};`));
+  w.eval(script);
   w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
   const ready = async (id = 'LINE_TEST_A') => {
     const eventName = surface === 'member' ? 'member-profile-ready' : 'user-tour:ready';
@@ -33,11 +38,12 @@ async function page({ surface = 'member', saved = {}, version = 1, missing = '',
   return { dom, w, ready, dialog: w.document.getElementById('memberTourDialog') };
 }
 
-test('first login, back, skip, refresh, manual replay and version change', async () => {
+test('tour opens on every visit; today skip ends at Taipei midnight; manual completion clears skip', async () => {
   const first = await page();
   await first.ready();
   assert.equal(first.dialog.classList.contains('hidden'), false);
   assert.equal(first.w.document.getElementById('app').inert, true);
+  assert.equal(first.w.document.getElementById('memberTourSkip').textContent, '今日略過');
   assert.match(first.dialog.textContent, /這是你的會員卡/);
   first.w.document.getElementById('memberTourNext').click();
   assert.match(first.dialog.textContent, /查看升等進度/);
@@ -49,6 +55,7 @@ test('first login, back, skip, refresh, manual replay and version change', async
   const entries = Object.fromEntries(Object.entries(first.w.localStorage));
   assert.equal(Object.keys(entries).length, 1);
   assert.equal(JSON.parse(Object.values(entries)[0]).outcome, 'skip');
+  assert.equal(JSON.parse(Object.values(entries)[0]).skippedAt, '2026-09-27T15:59:00.000Z');
   first.dom.window.close();
 
   const refreshed = await page({ saved: entries });
@@ -62,13 +69,57 @@ test('first login, back, skip, refresh, manual replay and version change', async
   refreshed.w.document.getElementById('memberTourNext').click();
   assert.equal(refreshed.dialog.classList.contains('hidden'), true);
   const completed = Object.fromEntries(Object.entries(refreshed.w.localStorage));
-  assert.equal(JSON.parse(Object.values(completed)[0]).outcome, 'complete');
+  assert.equal(Object.keys(completed).length, 0);
   refreshed.dom.window.close();
 
-  const upgraded = await page({ saved: completed, version: 2 });
-  await upgraded.ready();
-  assert.equal(upgraded.dialog.classList.contains('hidden'), false);
-  upgraded.dom.window.close();
+  const reopened = await page({ saved: completed });
+  await reopened.ready();
+  assert.equal(reopened.dialog.classList.contains('hidden'), false);
+  reopened.w.document.getElementById('memberTourSkip').click();
+  const skipBeforeMidnight = Object.fromEntries(Object.entries(reopened.w.localStorage));
+  reopened.dom.window.close();
+
+  const tomorrow = await page({ saved: skipBeforeMidnight, now: '2026-09-27T16:00:00Z' });
+  await tomorrow.ready();
+  assert.equal(tomorrow.dialog.classList.contains('hidden'), false);
+  tomorrow.dom.window.close();
+});
+
+test('legacy completed tour does not suppress opening, and legacy skip lasts only through today', async () => {
+  const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode('LINE_TEST_A'))).toString('hex');
+  const key = `member-tour:${hash}`;
+  const completed = await page({ saved: { [key]: JSON.stringify({ version: 1, outcome: 'complete', completedAt: '2026-09-27T15:59:00Z' }) } });
+  await completed.ready();
+  assert.equal(completed.dialog.classList.contains('hidden'), false);
+  completed.dom.window.close();
+
+  const oldSkip = { [key]: JSON.stringify({ version: 1, outcome: 'skip', completedAt: '2026-09-27T15:59:00Z' }) };
+  const today = await page({ saved: oldSkip });
+  await today.ready();
+  assert.equal(today.dialog.classList.contains('hidden'), true);
+  today.dom.window.close();
+
+  const tomorrow = await page({ saved: oldSkip, now: '2026-09-27T16:00:00Z' });
+  await tomorrow.ready();
+  assert.equal(tomorrow.dialog.classList.contains('hidden'), false);
+  tomorrow.dom.window.close();
+});
+
+test('spotlight leaves the original UI visible and moves the dialog away from its target', async () => {
+  assert.match(styles, /\.member-tour-overlay\s*\{[^}]*background:\s*transparent/);
+  assert.match(styles, /\.member-tour-focus\s*\{[^}]*200vmax\s+var\(--theme-overlay/);
+  const { dom, w, ready, dialog } = await page();
+  const target = w.document.getElementById('memberPass');
+  let top = 600;
+  target.getBoundingClientRect = () => ({ left: 700, right: 900, top, bottom: top + 100 });
+  dialog.getBoundingClientRect = () => ({ left: 614, right: 1004, height: 280 });
+  await ready();
+  assert.equal(dialog.classList.contains('member-tour-dialog-top'), true);
+  assert.equal(w.document.getElementById('memberTourFocus').style.left, '695px');
+  top = 60;
+  w.dispatchEvent(new w.Event('scroll'));
+  assert.equal(dialog.classList.contains('member-tour-dialog-top'), false);
+  dom.window.close();
 });
 
 test('account isolation, missing anchor, keyboard escape and focus return', async () => {
@@ -125,7 +176,7 @@ test('refresh during the tour restarts safely, and absent anchors leave the page
   noAnchors.dom.window.close();
 });
 
-test('every member client has its own first-use tour and replay button', async () => {
+test('every member client has a daily skip and manual replay button', async () => {
   let saved = {};
   const titles = {
     member: '這是你的會員卡',
@@ -139,6 +190,7 @@ test('every member client has its own first-use tour and replay button', async (
     await current.ready();
     assert.equal(current.dialog.classList.contains('hidden'), false, surface);
     assert.match(current.dialog.textContent, new RegExp(titles[surface]));
+    assert.equal(current.w.document.getElementById('memberTourSkip').textContent, '今日略過');
     assert.equal(current.w.document.getElementById('openMemberTour').getAttribute('aria-controls'), 'memberTourDialog');
     current.w.document.getElementById('memberTourSkip').click();
     assert.equal(current.dialog.classList.contains('hidden'), true);
@@ -149,6 +201,14 @@ test('every member client has its own first-use tour and replay button', async (
     current.dom.window.close();
   }
   assert.equal(Object.keys(saved).length, 5);
+  const sameDay = await page({ surface: 'booking', saved });
+  await sameDay.ready();
+  assert.equal(sameDay.dialog.classList.contains('hidden'), true);
+  sameDay.dom.window.close();
+  const nextDay = await page({ surface: 'booking', saved, now: '2026-09-27T16:00:00Z' });
+  await nextDay.ready();
+  assert.equal(nextDay.dialog.classList.contains('hidden'), false);
+  nextDay.dom.window.close();
 });
 
 test('empty event data skips absent ticket targets, and an existing dialog is not covered', async () => {

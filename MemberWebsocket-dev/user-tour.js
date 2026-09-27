@@ -2,7 +2,7 @@
   'use strict';
 
   // Presentation state only. Authentication and permissions stay on the server.
-  const VERSION = 1;
+  const TAIPEI_DATE = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
   const SURFACES = {
     member: [
       { selector: '#memberPass', title: '這是你的會員卡', description: '在這裡確認會員狀態、姓名與目前階級。' },
@@ -112,7 +112,7 @@
     dialog.setAttribute('aria-labelledby', 'memberTourTitle');
     dialog.setAttribute('aria-describedby', 'memberTourDescription');
     dialog.tabIndex = -1;
-    dialog.innerHTML = '<p id="memberTourProgress" class="member-tour-progress" aria-live="polite"></p><h2 id="memberTourTitle" tabindex="-1"></h2><p id="memberTourDescription"></p><div class="member-tour-actions"><button id="memberTourSkip" type="button">略過教學</button><button id="memberTourBack" type="button">上一步</button><button id="memberTourNext" type="button">下一步</button></div>';
+    dialog.innerHTML = '<p id="memberTourProgress" class="member-tour-progress" aria-live="polite"></p><h2 id="memberTourTitle" tabindex="-1"></h2><p id="memberTourDescription"></p><div class="member-tour-actions"><button id="memberTourSkip" type="button">今日略過</button><button id="memberTourBack" type="button">上一步</button><button id="memberTourNext" type="button">下一步</button></div>';
     document.body.append(overlay, focus, dialog);
   }
 
@@ -124,7 +124,7 @@
     try {
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(lineUserId));
       const identityHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-      // Keep the already published member tour completion state on that surface.
+      // Keep the published storage keys so today's earlier skip still applies.
       key = surface === 'member' ? `member-tour:${identityHash}` : `user-tour:${surface}:${identityHash}`;
     } catch (_) {
       // Storage and Web Crypto can be unavailable in embedded browsers; the tour still works manually.
@@ -137,7 +137,8 @@
     checkedKey = key;
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { /* storage blocked */ }
-    if (saved?.version === VERSION && saved?.completedAt) return;
+    const skippedAt = saved?.skippedAt || (saved?.outcome === 'skip' ? saved.completedAt : null);
+    if (saved?.outcome === 'skip' && skippedAt && taipeiDay(new Date(skippedAt)) === taipeiDay(new Date())) return;
     // Automated test sessions keep the entry point, but the tour must not cover their test actions.
     if (window.TestModeClient?.getSessionToken?.()) return;
     const openWhenReady = (remainingFrames) => {
@@ -151,6 +152,10 @@
   function available(index) {
     const element = document.querySelector(STEPS[index].selector);
     return element && element.isConnected && !element.closest('.hidden,[hidden]') ? element : null;
+  }
+
+  function taipeiDay(date) {
+    return Number.isNaN(date.getTime()) ? '' : TAIPEI_DATE.format(date);
   }
 
   function otherDialogOpen() {
@@ -216,6 +221,12 @@
     const target = available(stepIndex);
     if (!target) { ui.memberTourFocus.classList.add('hidden'); return; }
     const box = target.getBoundingClientRect();
+    const dialog = ui.memberTourDialog.getBoundingClientRect();
+    const edge = innerWidth <= 620 ? 10 : 20;
+    const overlap = (top) => Math.max(0, Math.min(box.right, dialog.right) - Math.max(box.left, dialog.left))
+      * Math.max(0, Math.min(box.bottom, top + dialog.height) - Math.max(box.top, top));
+    const bottomTop = innerHeight - edge - dialog.height;
+    ui.memberTourDialog.classList.toggle('member-tour-dialog-top', overlap(edge) < overlap(bottomTop));
     if (box.bottom <= 0 || box.top >= innerHeight || box.right <= 0 || box.left >= innerWidth) {
       ui.memberTourFocus.classList.add('hidden');
       return;
@@ -234,9 +245,13 @@
     ui.memberTourOverlay.classList.add('hidden');
     ui.memberTourFocus.classList.add('hidden');
     ui.memberTourDialog.classList.add('hidden');
+    ui.memberTourDialog.classList.remove('member-tour-dialog-top');
     ui.app.inert = false;
-    if ((outcome === 'skip' || outcome === 'complete') && storageKey) {
-      try { localStorage.setItem(storageKey, JSON.stringify({ version: VERSION, completedAt: new Date().toISOString(), outcome })); } catch (_) { /* optional UX state */ }
+    if (storageKey) {
+      try {
+        if (outcome === 'skip') localStorage.setItem(storageKey, JSON.stringify({ skippedAt: new Date().toISOString(), outcome }));
+        if (outcome === 'complete') localStorage.removeItem(storageKey);
+      } catch (_) { /* optional UX state */ }
     }
     const focusTarget = opener?.isConnected ? opener : ui.openMemberTour;
     opener = null;
