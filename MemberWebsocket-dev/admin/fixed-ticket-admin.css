@@ -94,3 +94,50 @@
     width: 100%;
   }
 }
+
+
+/* Theme integration: fixed-ticket calendar option */
+html[data-theme] .fixed-ticket-schedule {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] .fixed-ticket-schedule-heading h4,
+html[data-theme] .fixed-ticket-schedule-grid label,
+html[data-theme] .fixed-ticket-notify {
+  color: var(--theme-text);
+}
+
+html[data-theme] .fixed-ticket-schedule-heading p:last-child,
+html[data-theme] .fixed-ticket-schedule-summary {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] .fixed-ticket-notify {
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] .fixed-ticket-notify:hover {
+  background: var(--theme-surface);
+}
+
+html[data-theme] .fixed-ticket-notify input[type="checkbox"] {
+  accent-color: var(--theme-positive);
+}
+
+html[data-theme] .fixed-ticket-schedule-summary {
+  background: var(--theme-surface);
+  border: 1px solid var(--theme-border);
+}
+
+html[data-theme="dark"] .fixed-ticket-notify:has(input:checked) {
+  background: color-mix(in srgb, var(--theme-positive) 12%, var(--theme-surface-raised));
+  border-color: color-mix(in srgb, var(--theme-positive) 42%, var(--theme-border-strong));
+}
+
+html[data-theme="dark"] #fixedTicketCalendarSummary {
+  background: var(--theme-surface);
+  color: var(--theme-text-muted);
+}
