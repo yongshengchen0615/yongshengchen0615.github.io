@@ -92,7 +92,7 @@ test('paired E2E account pool is server-filtered to test users and real-user mut
   assert.match(runner, /E2E_TEST_ROSTER_REQUIRED/);
   assert.match(runner, /E2E_REAL_MEMBER_BLOCKED/);
   assert.match(runner, /memberIsTestAccount/);
-  assert.match(runner, /prepareTestAccounts\(participantCount\)/);
+  assert.match(runner, /prepareTestAccounts\(participantCount, preferredMemberIds\)/);
 });
 
 test('user E2E returns structured results to the paired admin runner', () => {
@@ -160,7 +160,7 @@ test('paired E2E creates complex admin fixtures before randomized user clients s
   const migration = read('supabase/migrations/20260922063942_enhance_e2e_fixture_and_test_surface_sessions_v2.sql');
 
   const fixtureCall = runner.indexOf('await prepareComplexE2EFixtures(profile)');
-  const accountCall = runner.indexOf('await prepareTestAccounts(participantCount)');
+  const accountCall = runner.indexOf('await prepareTestAccounts(participantCount, preferredMemberIds)');
   const clientStart = runner.indexOf('runParticipantSurfaces(participant)');
   assert.ok(fixtureCall >= 0 && accountCall > fixtureCall && clientStart > fixtureCall);
 
