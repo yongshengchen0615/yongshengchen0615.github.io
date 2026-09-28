@@ -72,7 +72,7 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
 test('all member clients and admin load the latest expanded E2E controllers', () => {
   for (const entry of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(entry + '/index.html');
-    assert.match(html, /\.\.\/user-test-control\.js\?v=human-e2e-20260928-1/);
+    assert.match(html, /\.\.\/user-test-control\.js\?v=human-e2e-20260928-2/);
   }
   const admin = read('admin/index.html');
   assert.match(admin, /\.\/e2e-control\.js\?v=event-coupon-location-20260928-1/);

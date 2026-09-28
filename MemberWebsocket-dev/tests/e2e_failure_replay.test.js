@@ -91,6 +91,6 @@ test('all E2E entry points use replay-capable cache versions', () => {
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = fs.readFileSync(path.join(root, surface, 'index.html'), 'utf8');
     assert.match(html, /e2e-scenario-graph\.js\?v=e2e-graph-20260927-1/);
-    assert.match(html, /user-test-control\.js\?v=human-e2e-20260928-1/);
+    assert.match(html, /user-test-control\.js\?v=human-e2e-20260928-2/);
   }
 });

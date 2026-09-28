@@ -56,6 +56,7 @@ jobs:
             MemberWebsocket-dev/tests/integration/member_terms_startup.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
+          node MemberWebsocket-dev/tests/integration/event_coupon_sql.cjs
 
   browser-syntax:
     name: Browser JavaScript syntax
