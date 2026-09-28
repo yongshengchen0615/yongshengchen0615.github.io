@@ -103,17 +103,14 @@
       const menu = ui.view.querySelector('.account-menu');
       menu?.insertBefore(button, menu.querySelector('#logoutButton'));
     }
+    const existingOverlay = document.getElementById('memberTourOverlay');
+    if (existingOverlay) ensureTourMasks(existingOverlay);
     if (document.getElementById('memberTourDialog')) return;
     const overlay = document.createElement('div');
     overlay.id = 'memberTourOverlay';
     overlay.className = 'member-tour-overlay hidden';
     overlay.setAttribute('aria-hidden', 'true');
-    for (const region of ['top', 'right', 'bottom', 'left']) {
-      const mask = document.createElement('span');
-      mask.className = 'member-tour-mask';
-      mask.dataset.memberTourMask = region;
-      overlay.append(mask);
-    }
+    ensureTourMasks(overlay);
     const focus = document.createElement('div');
     focus.id = 'memberTourFocus';
     focus.className = 'member-tour-focus hidden';
@@ -128,6 +125,18 @@
     dialog.tabIndex = -1;
     dialog.innerHTML = '<p id="memberTourProgress" class="member-tour-progress" aria-live="polite"></p><h2 id="memberTourTitle" tabindex="-1"></h2><p id="memberTourDescription"></p><div class="member-tour-actions"><button id="memberTourSkip" type="button">今日略過</button><button id="memberTourBack" type="button">上一步</button><button id="memberTourNext" type="button">下一步</button></div>';
     document.body.append(overlay, focus, dialog);
+  }
+
+  function ensureTourMasks(overlay) {
+    if (!overlay) return;
+    const existing = new Set(Array.from(overlay.querySelectorAll('[data-member-tour-mask]')).map((mask) => mask.dataset.memberTourMask));
+    for (const region of ['top', 'right', 'bottom', 'left']) {
+      if (existing.has(region)) continue;
+      const mask = document.createElement('span');
+      mask.className = 'member-tour-mask';
+      mask.dataset.memberTourMask = region;
+      overlay.append(mask);
+    }
   }
 
   async function considerProfile(profile) {
@@ -182,7 +191,9 @@
   }
 
   function available(index) {
-    const element = document.querySelector(STEPS[index].selector);
+    const doc = window.document;
+    if (!doc || typeof doc.querySelector !== 'function') return null;
+    const element = doc.querySelector(STEPS[index].selector);
     return element && element.isConnected && !element.closest('.hidden,[hidden]') ? element : null;
   }
 
