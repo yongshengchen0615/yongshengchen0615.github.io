@@ -114,8 +114,9 @@ test('only an explicit current-format daily skip suppresses auto-start', async (
   tomorrow.dom.window.close();
 });
 
-test('spotlight leaves the original UI visible and moves the dialog away from its target', async () => {
+test('spotlight dims only outside the selected UI and moves the dialog away from its target', async () => {
   assert.match(styles, /\.member-tour-overlay\s*\{[^}]*background:\s*transparent/);
+  assert.match(styles, /\.member-tour-mask\s*\{[^}]*background:\s*var\(--theme-overlay,\s*rgba\(7,\s*18,\s*14,\s*\.48\)\)/);
   assert.doesNotMatch(styles, /200vmax/);
   assert.match(styles, /#memberTourSkip[^{]*\{[^}]*background:\s*transparent/);
   const { dom, w, ready, dialog } = await page();
@@ -127,9 +128,22 @@ test('spotlight leaves the original UI visible and moves the dialog away from it
   for (let attempt = 0; attempt < 8 && !dialog.classList.contains('member-tour-dialog-top'); attempt += 1) await tick();
   assert.equal(dialog.classList.contains('member-tour-dialog-top'), true);
   assert.equal(w.document.getElementById('memberTourFocus').style.left, '695px');
+  const masks = Object.fromEntries(
+    Array.from(w.document.querySelectorAll('[data-member-tour-mask]'))
+      .map((mask) => [mask.dataset.memberTourMask, mask])
+  );
+  assert.deepEqual(Object.keys(masks).sort(), ['bottom', 'left', 'right', 'top']);
+  assert.equal(masks.top.style.height, '585px');
+  assert.equal(masks.bottom.style.top, '715px');
+  assert.equal(masks.left.style.width, '685px');
+  assert.equal(masks.left.style.height, '130px');
+  assert.equal(masks.right.style.left, '915px');
+  assert.equal(masks.right.style.height, '130px');
   top = 60;
   w.dispatchEvent(new w.Event('scroll'));
   assert.equal(dialog.classList.contains('member-tour-dialog-top'), false);
+  assert.equal(masks.top.style.height, '45px');
+  assert.equal(masks.bottom.style.top, '175px');
   dom.window.close();
 });
 

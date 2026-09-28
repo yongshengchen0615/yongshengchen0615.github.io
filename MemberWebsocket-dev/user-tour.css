@@ -26,7 +26,15 @@
   position: fixed;
   inset: 0;
   z-index: 999;
+  overflow: hidden;
   background: transparent;
+}
+.member-tour-mask {
+  position: absolute;
+  z-index: 0;
+  background: var(--theme-overlay, rgba(7, 18, 14, .48));
+  pointer-events: none;
+  transition: left 140ms ease, top 140ms ease, right 140ms ease, bottom 140ms ease, width 140ms ease, height 140ms ease;
 }
 .member-tour-focus {
   position: fixed;
@@ -178,6 +186,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .member-tour-focus,
+  .member-tour-mask,
   .member-tour-dialog::before {
     transition: none;
   }
