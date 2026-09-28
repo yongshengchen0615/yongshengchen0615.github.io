@@ -1,3 +1,4 @@
+import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
@@ -150,6 +151,7 @@ async function requireMember(supabase: SupabaseClient, lineUserId: string): Prom
     throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入後再使用此功能。");
   }
   if (result.data.status !== "active") throw new ApiError(403, "MEMBER_DISABLED", "此會員目前已停用。");
+  if (!(await hasCurrentTermsConsent(supabase, result.data.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
   return result.data;
 }
 

@@ -1,3 +1,4 @@
+import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
@@ -120,6 +121,9 @@ async function redeemTickets(origin: string | null, body: Json) {
     throw new ApiError(409, "TICKET_BATCH_LIMIT_EXCEEDED", `單次最多可使用 ${setting.maxTicketsPerRedemption} 張票券。`);
   }
   await consumeRateLimit(supabase, identity.lineUserId, true, ticketIds.length);
+  const memberRow = await supabase.from("members").select("id,status,membership_status").eq("line_user_id", identity.lineUserId).single();
+  if (memberRow.error || memberRow.data?.status !== "active" || memberRow.data?.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入。");
+  if (!(await hasCurrentTermsConsent(supabase, memberRow.data.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
   const rpc = await supabase.rpc("redeem_point_tickets", { p_line_user_id: identity.lineUserId, p_ticket_ids: ticketIds, p_request_id: requestId });
   if (rpc.error) throw mapRpcError(rpc.error);
 

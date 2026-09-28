@@ -1,3 +1,4 @@
+import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
@@ -137,7 +138,9 @@ async function consumeRateLimit(s: SupabaseClient, i: Identity, action: string):
 async function member(s: SupabaseClient, i: Identity) {
   const r = await s.from("members").select("*").eq("line_user_id", i.lineUserId).maybeSingle(); if (r.error) throw mapDbError(r.error);
   if (!r.data || r.data.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先加入會員。");
-  if (r.data.status !== "active") throw new ApiError(403, "MEMBER_DISABLED", "會員目前已停用。"); return r.data;
+  if (r.data.status !== "active") throw new ApiError(403, "MEMBER_DISABLED", "會員目前已停用。");
+  if (!(await hasCurrentTermsConsent(s, r.data.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
+  return r.data;
 }
 async function admin(s: SupabaseClient, i: Identity) {
   return await requireActiveAdminContract({

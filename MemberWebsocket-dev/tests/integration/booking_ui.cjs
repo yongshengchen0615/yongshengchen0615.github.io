@@ -10,7 +10,7 @@ const data={today:'2026-09-11',settings:{minAdvanceDays:0,workStartTime:'09:00',
 w.BookingSystem={loadConfig:async()=>({}),signIn:async()=>'fixture-token',subscribeRealtime:()=>()=>{},memberProfile:async()=>({}),addDays:(d,n)=>new Date(Date.parse(d+'T00:00:00Z')+n*86400000).toISOString().slice(0,10),formatDate:x=>x,request:async(c,t,token,action,payload)=>{
  calls.push({action,payload});
  if(action==='user.booking.bootstrap')return structuredClone(data);
- if(action==='user.booking.slots')return {slots:[{startTime:'10:00',endTime:'11:10',available:true}]};
+ if(action==='user.booking.slots')return {slots:[{startTime:'10:00',endTime:'11:10',startAt:'2099-01-01T10:00:00+08:00',endAt:'2099-01-01T11:10:00+08:00',available:true}]};
  if(action==='user.booking.update')return {booking:{...booking,...payload,status:'pending'}};
  throw Error(action);
 }};

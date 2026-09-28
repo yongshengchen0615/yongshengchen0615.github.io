@@ -45,6 +45,9 @@
     'user.booking.presence.offline',
     'user.booking.presence.heartbeat',
     'user.member.profile.save',
+    'user.member.terms.accept',
+    'admin.terms.draft.save',
+    'admin.terms.activate',
     'admin.member.update',
     'admin.member-tiers.save',
     'admin.pointcards.save',
@@ -411,7 +414,7 @@
   }
 
   function requestEndpoint(config, clientType, action) {
-    if (clientType === 'member' && (action === 'user.member.bootstrap' || action === 'user.member.profile.save')) {
+    if (clientType === 'member' && (action === 'user.member.bootstrap' || action === 'user.member.profile.save' || action === 'user.member.terms.accept')) {
       return String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/member-profile-api';
     }
     if (clientType === 'calendar' && (action === 'user.calendar.bootstrap' || action === 'user.calendar.date.details')) {

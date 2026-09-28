@@ -23,6 +23,7 @@ function api() {
     Deno: { serve() {}, env: { get() { return ''; } } },
     Date, Intl, Set, Map, console, crypto: require('node:crypto').webcrypto, TextEncoder,
     requireActiveAdminContract, verifyLineIdTokenContract,
+    hasCurrentTermsConsent: async () => true,
   });
   vm.runInContext(stripTypeScriptTypes(source), context); return context;
 }
