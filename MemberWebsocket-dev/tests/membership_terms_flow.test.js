@@ -46,7 +46,7 @@ function harness() {
     const response=await handler(new Request('https://example.invalid',{ method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,clientType:'member',testSessionToken:'fixture',...payload}) }));
     return { status:response.status,body:await response.json() };
   }
-  return { call, member, consents, setTestAccount() { member.is_test_account=true; }, switchTerms() { terms={...terms,id:'terms-2',version:'v2',activated_at:'2026-09-28T01:00:00Z',reconsent_existing:true}; } };
+  return { call, member, consents, setTestAccount() { member.is_test_account=true; }, setJoinedAt(value) { member.joined_at=value; }, switchTerms() { terms={...terms,id:'terms-2',version:'v2',activated_at:'2026-09-28T01:00:00Z',reconsent_existing:true}; } };
 }
 
 test('registration rejects missing and stale consent, then records consent with activation', async () => {
@@ -90,6 +90,9 @@ test('test accounts follow the same active terms consent gate', async () => {
   await h.call('user.member.profile.save',profile);
   h.setTestAccount();
   h.switchTerms();
+  // Test accounts are provisioned directly as active records. Even if they were
+  // created after the terms activation timestamp, they still need an explicit consent row.
+  h.setJoinedAt('2026-09-29T00:00:00Z');
 
   const boot=await h.call('user.member.bootstrap');
   assert.equal(boot.status,200);
