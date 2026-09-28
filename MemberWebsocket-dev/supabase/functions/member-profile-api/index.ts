@@ -123,7 +123,7 @@ async function termsForMember(supabase: SupabaseClient, member: any): Promise<{ 
   if (result.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法讀取會員條款。");
   const terms = result.data && new Date(result.data.effective_at).getTime() <= Date.now() ? result.data : null;
   if (member.membership_status !== "active") return { terms, consentRequired: true };
-  if (!terms?.reconsent_existing || new Date(member.joined_at || member.created_at).getTime() >= new Date(terms.activated_at).getTime()) return { terms, consentRequired: false };
+  if (!terms?.reconsent_existing || (member.is_test_account !== true && new Date(member.joined_at || member.created_at).getTime() >= new Date(terms.activated_at).getTime())) return { terms, consentRequired: false };
   const consent = await supabase.from("membership_consents").select("id").eq("member_id", member.id).eq("terms_id", terms.id).maybeSingle();
   if (consent.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法確認條款同意紀錄。");
   return { terms, consentRequired: !consent.data };
