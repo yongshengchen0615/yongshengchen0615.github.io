@@ -54,6 +54,7 @@
     if (!STEPS.length) return;
     installControls();
     ui.app = document.getElementById('app') || document.querySelector('.app-shell');
+    ui.memberTourMasks = Array.from(document.querySelectorAll('[data-member-tour-mask]'));
     for (const id of ['openMemberTour', 'memberTourOverlay', 'memberTourFocus', 'memberTourDialog', 'memberTourTitle', 'memberTourDescription', 'memberTourProgress', 'memberTourSkip', 'memberTourBack', 'memberTourNext']) {
       ui[id] = document.getElementById(id);
     }
@@ -107,6 +108,12 @@
     overlay.id = 'memberTourOverlay';
     overlay.className = 'member-tour-overlay hidden';
     overlay.setAttribute('aria-hidden', 'true');
+    for (const region of ['top', 'right', 'bottom', 'left']) {
+      const mask = document.createElement('span');
+      mask.className = 'member-tour-mask';
+      mask.dataset.memberTourMask = region;
+      overlay.append(mask);
+    }
     const focus = document.createElement('div');
     focus.id = 'memberTourFocus';
     focus.className = 'member-tour-focus hidden';
@@ -250,7 +257,11 @@
   function positionFocus() {
     if (!active) return;
     const target = available(stepIndex);
-    if (!target) { ui.memberTourFocus.classList.add('hidden'); return; }
+    if (!target) {
+      ui.memberTourFocus.classList.add('hidden');
+      positionMasks(null);
+      return;
+    }
     const box = target.getBoundingClientRect();
     const dialog = ui.memberTourDialog.getBoundingClientRect();
     const edge = innerWidth <= 620 ? 10 : 20;
@@ -260,14 +271,43 @@
     ui.memberTourDialog.classList.toggle('member-tour-dialog-top', overlap(edge) < overlap(bottomTop));
     if (box.bottom <= 0 || box.top >= innerHeight || box.right <= 0 || box.left >= innerWidth) {
       ui.memberTourFocus.classList.add('hidden');
+      positionMasks(null);
       return;
     }
+    const focusBox = {
+      left: Math.max(4, box.left - 5),
+      top: Math.max(4, box.top - 5),
+      right: Math.min(innerWidth - 4, box.right + 5),
+      bottom: Math.min(innerHeight - 4, box.bottom + 5),
+    };
     const frame = ui.memberTourFocus.style;
-    frame.left = `${Math.max(4, box.left - 5)}px`;
-    frame.top = `${Math.max(4, box.top - 5)}px`;
-    frame.width = `${Math.max(0, Math.min(innerWidth - 8, box.right + 5) - Math.max(4, box.left - 5))}px`;
-    frame.height = `${Math.max(0, Math.min(innerHeight - 8, box.bottom + 5) - Math.max(4, box.top - 5))}px`;
+    frame.left = `${focusBox.left}px`;
+    frame.top = `${focusBox.top}px`;
+    frame.width = `${Math.max(0, focusBox.right - focusBox.left)}px`;
+    frame.height = `${Math.max(0, focusBox.bottom - focusBox.top)}px`;
+    positionMasks(focusBox);
     ui.memberTourFocus.classList.remove('hidden');
+  }
+
+  function positionMasks(focusBox) {
+    const masks = Array.isArray(ui.memberTourMasks) ? ui.memberTourMasks : [];
+    if (masks.length !== 4) return;
+    const byRegion = Object.fromEntries(masks.map((mask) => [mask.dataset.memberTourMask, mask]));
+    if (!focusBox) {
+      byRegion.top.style.cssText = 'left:0;top:0;right:0;bottom:0';
+      for (const region of ['right', 'bottom', 'left']) byRegion[region].style.cssText = 'display:none';
+      return;
+    }
+    const gap = innerWidth <= 620 ? 7 : 10;
+    const left = Math.max(0, focusBox.left - gap);
+    const top = Math.max(0, focusBox.top - gap);
+    const right = Math.min(innerWidth, focusBox.right + gap);
+    const bottom = Math.min(innerHeight, focusBox.bottom + gap);
+    const height = Math.max(0, bottom - top);
+    byRegion.top.style.cssText = `display:block;left:0;top:0;right:0;height:${top}px`;
+    byRegion.bottom.style.cssText = `display:block;left:0;top:${bottom}px;right:0;bottom:0`;
+    byRegion.left.style.cssText = `display:block;left:0;top:${top}px;width:${left}px;height:${height}px`;
+    byRegion.right.style.cssText = `display:block;left:${right}px;top:${top}px;right:0;height:${height}px`;
   }
 
   function close(outcome) {
@@ -275,6 +315,7 @@
     active = false;
     ui.memberTourOverlay.classList.add('hidden');
     ui.memberTourFocus.classList.add('hidden');
+    positionMasks(null);
     ui.memberTourDialog.classList.add('hidden');
     ui.memberTourDialog.classList.remove('member-tour-dialog-top');
     ui.memberTourDialog.style.removeProperty('--member-tour-progress');
