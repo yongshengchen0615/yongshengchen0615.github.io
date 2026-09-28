@@ -135,6 +135,9 @@ function mapDatabaseError(error: unknown): ApiError {
     ["TIER_NOT_ALLOWED",403,"TIER_NOT_ALLOWED","目前會員等級不適用這張票券。"],
     ["CLAIM_NOT_FOUND",404,"CLAIM_NOT_FOUND","找不到已領取的活動票券。"],
     ["CLAIM_NOT_AVAILABLE",409,"CLAIM_NOT_AVAILABLE","這張活動票券目前無法使用。"],
+    ["LOCATION_REQUIRED",400,"LOCATION_REQUIRED","核銷前請允許定位並取得目前位置。"],
+    ["LOCATION_INVALID",400,"LOCATION_INVALID","定位精度不足或資料已過期，請重新定位。"],
+    ["LOCATION_OUT_OF_RANGE",403,"LOCATION_OUT_OF_RANGE","目前不在此票券的核銷範圍內。"],
     ["INVALID_REQUEST_ID",400,"INVALID_REQUEST_ID","操作識別碼格式不正確。"],
     ["INVALID_POINT_AMOUNT",400,"INVALID_POINT_AMOUNT","點數必須是 1–100 的整數。"],
     ["INVALID_SERVICE_MINUTES",400,"INVALID_SERVICE_MINUTES","服務時間必須是 1–1440 分鐘。"],
@@ -962,7 +965,7 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   return { profile, cards, cardDetails, history, historyTotal: history.length };
 }
 
-function eventTicketClient(row: any, claimedCount = 0): Json {
+function eventTicketClient(row: any, claimedCount = 0, admin = false): Json {
   return {
     eventTicketId: row.event_ticket_id,
     title: row.title,
@@ -976,6 +979,12 @@ function eventTicketClient(row: any, claimedCount = 0): Json {
     endsOn: row.ends_on || "",
     quota: Number(row.quota || 0),
     claimedCount,
+    requiresLocation: Boolean(row.requires_location),
+    ...(admin ? {
+      redemptionLatitude: row.redemption_latitude == null ? null : Number(row.redemption_latitude),
+      redemptionLongitude: row.redemption_longitude == null ? null : Number(row.redemption_longitude),
+      redemptionRadiusMeters: row.redemption_radius_meters == null ? null : Number(row.redemption_radius_meters),
+    } : {}),
     accent: row.accent,
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
     allowedTierLabels: (Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS]).map((key:string) => TIER_LABELS[key]).filter(Boolean),
@@ -1007,11 +1016,11 @@ async function adminEventTickets(supabase: SupabaseClient): Promise<any[]> {
   const ids = (rows || []).map((row:any) => row.id);
   const counts = new Map<string,number>();
   if (ids.length) {
-    const claims = await supabase.from("event_ticket_claims").select("event_ticket_id").in("event_ticket_id",ids);
+    const claims = await supabase.rpc("event_ticket_claim_counts",{ p_event_ids:ids });
     if (claims.error) throw mapDatabaseError(claims.error);
-    for (const claim of claims.data || []) counts.set(claim.event_ticket_id,(counts.get(claim.event_ticket_id)||0)+1);
+    for (const claim of claims.data || []) counts.set(claim.event_ticket_id,Number(claim.claimed_count));
   }
-  return (rows || []).map((row:any) => eventTicketClient(row,counts.get(row.id)||0));
+  return (rows || []).map((row:any) => eventTicketClient(row,counts.get(row.id)||0,true));
 }
 
 async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
@@ -1026,7 +1035,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   const [claimsRes,countRes] = ids.length
     ? await Promise.all([
       supabase.from("event_ticket_claims").select("*").eq("member_id",member.id).in("event_ticket_id",ids).order("created_at",{ ascending:false }),
-      supabase.from("event_ticket_claims").select("event_ticket_id").in("event_ticket_id",ids),
+      supabase.rpc("event_ticket_claim_counts",{ p_event_ids:ids }),
     ])
     : [{ data:[], error:null },{ data:[], error:null }];
   if (claimsRes.error) throw mapDatabaseError(claimsRes.error);
@@ -1034,7 +1043,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
 
   const claimByEvent = new Map((claimsRes.data || []).map((row:any) => [row.event_ticket_id,row]));
   const counts = new Map<string,number>();
-  for (const row of countRes.data || []) counts.set(row.event_ticket_id,(counts.get(row.event_ticket_id)||0)+1);
+  for (const row of countRes.data || []) counts.set(row.event_ticket_id,Number(row.claimed_count));
   const today = taipeiDate();
   const offers = (eventRows || []).flatMap((row:any) => {
     const claimRow = claimByEvent.get(row.id);
@@ -1485,6 +1494,16 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   if (startsOn && endsOn && endsOn < startsOn) throw new ApiError(400,"INVALID_DATE_RANGE","活動結束日不可早於開始日。");
   const quota = Number(input.quota || 0);
   if (!Number.isInteger(quota) || quota < 0 || quota > 1_000_000) throw new ApiError(400,"INVALID_QUOTA","限量張數必須是 0–1,000,000。");
+  const requiresLocation = input.requiresLocation === true;
+  const latitude = requiresLocation ? Number(input.redemptionLatitude) : null;
+  const longitude = requiresLocation ? Number(input.redemptionLongitude) : null;
+  const radius = requiresLocation ? Number(input.redemptionRadiusMeters) : null;
+  if (requiresLocation && (ticketType !== "coupon" || input.redemptionLatitude == null || input.redemptionLongitude == null
+    || input.redemptionLatitude === "" || input.redemptionLongitude === ""
+    || !Number.isFinite(latitude) || latitude! < -90 || latitude! > 90
+    || !Number.isFinite(longitude) || longitude! < -180 || longitude! > 180
+    || !Number.isInteger(radius) || radius! < 50 || radius! > 2000))
+    throw new ApiError(400,"INVALID_LOCATION_RULE","優惠券核銷定位需要有效座標與 50–2000 公尺範圍。");
   const payload = {
     title: requireText(input.title,"活動票券名稱",100),
     ticket_type: ticketType,
@@ -1496,6 +1515,10 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     starts_on: startsOn || null,
     ends_on: endsOn || null,
     quota,
+    requires_location: requiresLocation,
+    redemption_latitude: latitude,
+    redemption_longitude: longitude,
+    redemption_radius_meters: radius,
     accent: requireAccent(input.accent),
     allowed_tier_keys: normalizeTierKeys(input.allowedTierKeys),
     updated_by: actor,
@@ -1522,7 +1545,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   }
   const claims = await supabase.from("event_ticket_claims").select("*",{ count:"exact",head:true }).eq("event_ticket_id",row.id);
   if (claims.error) throw mapDatabaseError(claims.error);
-  return { eventTicket:eventTicketClient(row,claims.count || 0) };
+  return { eventTicket:eventTicketClient(row,claims.count || 0,true) };
 }
 
 
@@ -1940,7 +1963,11 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     }
     if (action === "user.event.ticket.redeem") {
       const claimId = requireText(body.claimId,"已領取票券識別",120);
-      const rpc = await supabase.rpc("redeem_event_ticket",{ p_line_user_id:identity.lineUserId,p_claim_id:claimId });
+      const location = body.location && typeof body.location === "object" && !Array.isArray(body.location)
+        ? body.location as Json : null;
+      const rpc = await supabase.rpc("redeem_event_ticket",{
+        p_line_user_id:identity.lineUserId,p_claim_id:claimId,p_location:location,
+      });
       if (rpc.error) throw mapDatabaseError(rpc.error);
       const claimRes = await supabase.from("event_ticket_claims").select("*,event_tickets(event_ticket_id)").eq("claim_id",claimId).single();
       if (claimRes.error) throw mapDatabaseError(claimRes.error);

@@ -65,6 +65,13 @@ function database({ rows = {}, errorTable, hold = () => false } = {}) {
     return q;
   }, rpc(name, args) {
     calls.push({ table: name, args });
+    if (name === 'event_ticket_claim_counts') {
+      const counts = new Map();
+      for (const claim of data.event_ticket_claims || []) {
+        if (args.p_event_ids.includes(claim.event_ticket_id)) counts.set(claim.event_ticket_id, (counts.get(claim.event_ticket_id) || 0) + 1);
+      }
+      return Promise.resolve({ data: [...counts].map(([event_ticket_id, claimed_count]) => ({ event_ticket_id, claimed_count })), error: null });
+    }
     return hold(name) ? new Promise(resolve => releases.push(() => resolve({ error: null }))) : Promise.resolve({ error: null });
   } }; return client;
 }

@@ -1963,8 +1963,15 @@
       action.click();
       const claimed = Boolean(await waitFor(() => !action.disabled && /確認使用/.test(action.textContent || ''), 7000));
       if (!claimed) throw new Error(label + '領券後 UI 未切換成可使用狀態。');
-      action.click();
-      const redeemed = Boolean(await waitFor(() => !document.getElementById('ticketModalResult')?.classList.contains('hidden'), 8000));
+      const originalConfirm = window.confirm;
+      let redeemed;
+      try {
+        window.confirm = () => true;
+        action.click();
+        redeemed = Boolean(await waitFor(() => !document.getElementById('ticketModalResult')?.classList.contains('hidden'), 8000));
+      } finally {
+        window.confirm = originalConfirm;
+      }
       if (!redeemed) throw new Error(label + '核銷結果沒有顯示。');
       return { claimed, redeemed };
     }

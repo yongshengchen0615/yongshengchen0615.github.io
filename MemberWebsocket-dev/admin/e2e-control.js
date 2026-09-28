@@ -2913,7 +2913,7 @@
     const stamp = qaCrudStamp();
     const createdTitle = 'E2E 活動票券 ' + stamp;
     const updatedTitle = createdTitle + ' 修改';
-    const actual = { created: false, updated: false, deleted: false, cleaned: false };
+    const actual = { created: false, updated: false, locationSaved: false, deleted: false, cleaned: false };
     let createdId = '';
 
     document.getElementById('eventsTab')?.click();
@@ -2931,6 +2931,10 @@
       setField('eventTicketStartsOn', '');
       setField('eventTicketEndsOn', '');
       setField('eventTicketQuota', '0');
+      document.getElementById('eventTicketRequiresLocation').checked = true;
+      setField('eventTicketLatitude', '25.033964');
+      setField('eventTicketLongitude', '121.564468');
+      setField('eventTicketRadius', '150');
 
       document.getElementById('saveEventTicketButton')?.click();
       createdId = String(await waitFor(() => document.getElementById('eventTicketId')?.value || null, 15000) || '');
@@ -2948,6 +2952,10 @@
             String(document.getElementById('eventTicketTitle')?.value || '') === updatedTitle &&
             textIncludes('#eventTicketListItems', updatedTitle);
         }, 8000));
+        actual.locationSaved = document.getElementById('eventTicketRequiresLocation')?.checked === true
+          && String(document.getElementById('eventTicketLatitude')?.value || '') === '25.033964'
+          && String(document.getElementById('eventTicketLongitude')?.value || '') === '121.564468'
+          && String(document.getElementById('eventTicketRadius')?.value || '') === '150';
       }
 
       if (actual.created) {
@@ -2974,10 +2982,10 @@
       closeEditorModalById('eventTicketEditorModal');
     }
 
-    const ok = actual.created && actual.updated && actual.deleted && actual.cleaned;
+    const ok = actual.created && actual.updated && actual.locationSaved && actual.deleted && actual.cleaned;
     return ok
-      ? pass('已透過管理端 UI 完成活動票券新增、修改、刪除，QA 資料已清理。', { created: true, updated: true, deleted: true, cleaned: true }, actual)
-      : fail('活動票券 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, deleted: true, cleaned: true }, actual);
+      ? pass('已透過管理端 UI 完成活動票券與定位規則新增、回讀、刪除，QA 資料已清理。', { created: true, updated: true, locationSaved: true, deleted: true, cleaned: true }, actual)
+      : fail('活動票券 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, locationSaved: true, deleted: true, cleaned: true }, actual);
   }
 
   async function adminCalendarCrudCase() {
