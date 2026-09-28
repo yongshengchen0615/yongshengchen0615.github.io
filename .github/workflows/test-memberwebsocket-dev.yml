@@ -52,7 +52,8 @@ jobs:
             MemberWebsocket-dev/tests/integration/booking_startup.cjs \
             MemberWebsocket-dev/tests/integration/booking_copy.cjs \
             MemberWebsocket-dev/tests/integration/dialog_accessibility.cjs \
-            MemberWebsocket-dev/tests/integration/member_first_use_tour.cjs
+            MemberWebsocket-dev/tests/integration/member_first_use_tour.cjs \
+            MemberWebsocket-dev/tests/integration/member_terms_startup.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
 
