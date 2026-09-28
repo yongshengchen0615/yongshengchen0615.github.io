@@ -10,13 +10,13 @@ test('all five user surfaces load the human-evidence E2E runner asset', () => {
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(surface + '/index.html');
     assert.match(html, /e2e-scenario-graph\.js\?v=e2e-graph-20260927-\d+/);
-    assert.match(html, /user-test-control\.js\?v=human-e2e-20260927-\d+/);
+    assert.match(html, /user-test-control\.js\?v=human-e2e-20260928-\d+/);
   }
 });
 
 test('user full E2E requires observable UI events for Human E2E cases', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-09-27\.3'/);
+  assert.match(runner, /const VERSION = '2026-09-28\.1'/);
   assert.match(runner, /captureHumanInteraction/);
   assert.match(runner, /\['click', 'input', 'change', 'submit'\]/);
   assert.match(runner, /humanRequired: domain === 'Human E2E'/);

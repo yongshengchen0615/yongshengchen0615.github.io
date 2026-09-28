@@ -5,7 +5,7 @@
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-27.3';
+  const VERSION = '2026-09-28.1';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -48,7 +48,8 @@
   const USER_NODE_META = Object.freeze({
     COMMON_TEST_SESSION: { module: 'shared', phase: 0, required: true, risk: 'auth' },
     COMMON_TOUR_AUTOSTART: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TEST_SESSION'] },
-    COMMON_CONFIG: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TOUR_AUTOSTART'] },
+    COMMON_TOUR_JOURNEY: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TOUR_AUTOSTART'] },
+    COMMON_CONFIG: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TOUR_JOURNEY'] },
     COMMON_SURFACE_READY: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_CONFIG'] },
     COMMON_BOOTSTRAP: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_SURFACE_READY'] },
     COMMON_ESSENTIAL_DOM: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_SURFACE_READY'] },
@@ -908,6 +909,7 @@
     const common = [
       caseDef('測試帳號授權邊界', 'Authentication', testSessionCase, 'COMMON_TEST_SESSION'),
       caseDef('測試帳號自動教學啟動', 'UI', tourAutoStartCase, 'COMMON_TOUR_AUTOSTART'),
+      caseDef('使用教學：遮罩、步驟、今日略過與重播', 'UI', tourJourneyCase, 'COMMON_TOUR_JOURNEY'),
       caseDef('公開設定與 Client 設定', 'Configuration', configCase, 'COMMON_CONFIG'),
       caseDef('目前頁面載入狀態', 'UI', surfaceReadyCase, 'COMMON_SURFACE_READY'),
       caseDef(definition.label + ' Bootstrap API', 'API', bootstrapCase, 'COMMON_BOOTSTRAP'),
@@ -1102,6 +1104,116 @@
           { autoOpened: true, dismissedWithoutDailySkip: true, appInteractive: true, pairedRunner },
           { autoOpened: true, dismissedWithoutDailySkip: dismissed, appInteractive, pairedRunner }
         );
+  }
+
+  async function tourJourneyCase() {
+    const dialog = document.getElementById('memberTourDialog');
+    const launcher = document.getElementById('openMemberTour');
+    const overlay = document.getElementById('memberTourOverlay');
+    const focus = document.getElementById('memberTourFocus');
+    const app = document.getElementById('app') || document.querySelector('.app-shell');
+    const next = document.getElementById('memberTourNext');
+    const back = document.getElementById('memberTourBack');
+    const skip = document.getElementById('memberTourSkip');
+    const progress = document.getElementById('memberTourProgress');
+    const masks = Array.from(document.querySelectorAll('[data-member-tour-mask]'));
+    const prefix = surface === 'member' ? 'member-tour:' : `user-tour:${surface}:`;
+    const evidence = { surface, maskRegions: masks.map((mask) => mask.dataset.memberTourMask), steps: [], skippedToday: false, replayed: false, completed: false, stateRestored: false };
+    const expected = { overlayOutsideTarget: true, stepsNavigable: true, explicitDailySkip: true, manualReplay: true, completionClearsSkip: true, stateRestored: true };
+    if (![dialog, launcher, overlay, focus, app, next, back, skip, progress].every(Boolean)) {
+      return fail('使用教學必要控制項缺失。', expected, evidence);
+    }
+
+    const tourKeys = () => Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+      .filter((key) => key && key.startsWith(prefix));
+    let before;
+    let touchedKey = '';
+    let outcome;
+    try {
+      before = new Map(tourKeys().map((key) => [key, localStorage.getItem(key)]));
+      launcher.click();
+      if (dialog.classList.contains('hidden') || !app.inert) throw new Error('手動開啟教學後，對話框未顯示或主畫面仍可操作。');
+      if (skip.textContent.trim() !== '今日略過') throw new Error('略過按鈕文案不正確。');
+      overlay.click();
+      if (dialog.classList.contains('hidden')) throw new Error('點擊遮罩意外略過教學。');
+      const regions = new Set(masks.map((mask) => mask.dataset.memberTourMask));
+      if (regions.size !== 4 || !['top', 'right', 'bottom', 'left'].every((region) => regions.has(region))) {
+        throw new Error('高亮範圍外缺少四片遮罩。');
+      }
+      const spotlight = await waitFor(() => !focus.classList.contains('hidden') && Number.parseFloat(focus.style.width) > 0
+        && Number.parseFloat(focus.style.height) > 0 ? focus : null, 1500, 40);
+      if (!spotlight || overlay.classList.contains('hidden')) throw new Error('教學開啟後沒有顯示高亮區域或遮罩。');
+      const overlayColor = getComputedStyle(overlay).backgroundColor;
+      const maskColors = masks.map((mask) => getComputedStyle(mask).backgroundColor);
+      evidence.overlayColor = overlayColor;
+      evidence.maskColors = maskColors;
+      if (!/^(?:transparent|rgba?\(0,\s*0,\s*0,\s*0\))$/.test(overlayColor)
+        || maskColors.some((color) => !color || color === 'transparent' || /,\s*0\)$/.test(color))) {
+        throw new Error('遮罩沒有維持外側變暗、中心透明的樣式。');
+      }
+      if (masks.some((mask) => mask.style.display === 'none')
+        || !Number.parseFloat(masks.find((mask) => mask.dataset.memberTourMask === 'top').style.height)) {
+        throw new Error('高亮範圍外的遮罩未覆蓋畫面。');
+      }
+
+      skip.click();
+      if (!dialog.classList.contains('hidden') || app.inert) throw new Error('今日略過後未關閉教學或恢復主畫面。');
+      const changed = tourKeys().filter((key) => localStorage.getItem(key) !== before.get(key));
+      if (changed.length !== 1) throw new Error('今日略過未寫入單一用戶的教學狀態。');
+      touchedKey = changed[0];
+      const saved = JSON.parse(localStorage.getItem(touchedKey) || 'null');
+      const today = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
+      if (saved?.outcome !== 'skip' || saved?.source !== 'explicit'
+        || today.format(new Date(saved.skippedAt)) !== today.format(new Date())) {
+        throw new Error('今日略過狀態沒有依台北日期正確記錄。');
+      }
+      evidence.skippedToday = true;
+
+      launcher.click();
+      if (dialog.classList.contains('hidden') || !app.inert) throw new Error('今日略過後無法手動重播教學。');
+      evidence.replayed = true;
+      const first = progress.textContent.trim();
+      if (!/^使用教學 1 \/ \d+$/.test(first)) throw new Error('重播未從第一步開始。');
+      next.click();
+      if (!dialog.classList.contains('hidden')) {
+        const second = progress.textContent.trim();
+        if (second === first || back.disabled) throw new Error('下一步未更新內容或上一步無法操作。');
+        back.click();
+        if (progress.textContent.trim() !== first) throw new Error('上一步未回到第一步。');
+      } else {
+        throw new Error('教學第一步之後未顯示其餘步驟。');
+      }
+      for (let index = 0; index < 12 && !dialog.classList.contains('hidden'); index += 1) {
+        evidence.steps.push(progress.textContent.trim());
+        next.click();
+      }
+      if (!dialog.classList.contains('hidden') || app.inert || evidence.steps.length < 2) {
+        throw new Error('教學未能逐步完成並恢復主畫面。');
+      }
+      if (localStorage.getItem(touchedKey) !== null) throw new Error('完成教學後未清除今日略過狀態。');
+      evidence.completed = true;
+      outcome = pass('五個用戶端共用教學已完成遮罩、導覽、今日略過、重播與狀態驗證。', expected, evidence);
+    } catch (error) {
+      outcome = fail(String(error?.message || error), expected, evidence);
+    } finally {
+      if (!dialog.classList.contains('hidden')) {
+        dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      }
+      try {
+        if (!before) throw new Error('教學狀態快照不可用。');
+        for (const key of new Set([...before.keys(), ...tourKeys()])) {
+          if (before.has(key) && localStorage.getItem(key) !== before.get(key)) localStorage.setItem(key, before.get(key));
+          else if (!before.has(key)) localStorage.removeItem(key);
+        }
+        evidence.stateRestored = tourKeys().length === before.size
+          && [...before].every(([key, value]) => localStorage.getItem(key) === value);
+      } catch (_) { evidence.stateRestored = false; }
+      if (!evidence.stateRestored || app.inert || !dialog.classList.contains('hidden')) {
+        outcome = fail('教學 E2E 結束後未能還原本機狀態或主畫面互動。', expected, evidence);
+      }
+    }
+    outcome.actual = safeJson(evidence);
+    return outcome;
   }
 
   async function configCase() {

@@ -9,6 +9,8 @@ const root = path.join(__dirname, '../..');
 const script = fs.readFileSync(path.join(root, 'user-tour.js'), 'utf8');
 const styles = fs.readFileSync(path.join(root, 'user-tour.css'), 'utf8');
 const memberApp = fs.readFileSync(path.join(root, 'member/app.js'), 'utf8');
+const userQa = fs.readFileSync(path.join(root, 'user-test-control.js'), 'utf8');
+const scenarioGraph = require(path.join(root, 'e2e-scenario-graph.js'));
 const profile = (id = 'LINE_TEST_A') => ({ lineUserId: id, profileComplete: true, membershipRequired: false });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 40));
 
@@ -295,4 +297,44 @@ test('paired E2E always receives the tutorial so the runner can validate and dis
   assert.equal(current.dialog.classList.contains('hidden'), true);
   assert.equal(JSON.parse(current.w.localStorage.getItem(key)).source, 'explicit');
   current.dom.window.close();
+});
+
+test('the unified E2E runner completes the tutorial journey on all five client surfaces and restores daily state', async () => {
+  const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode('LINE_TEST_A'))).toString('hex');
+  const priorSkip = { [`user-tour:booking:${hash}`]: JSON.stringify({ outcome: 'skip', source: 'explicit', skippedAt: '2026-09-27T15:59:00Z' }) };
+  const fixtures = ['member', 'points', 'event', 'calendar', 'booking'].map((surface) => ({ surface, saved: {} }));
+  fixtures.push({ surface: 'booking', saved: priorSkip });
+  for (const { surface, saved } of fixtures) {
+    const current = await page({ surface, saved, query: 'qaPair=tour-e2e' });
+    const { w, dialog } = current;
+    w.history.replaceState(null, '', `https://example.test/MemberWebsocket-dev/${surface}/?qaPair=tour-e2e`);
+    const style = w.document.createElement('style');
+    style.textContent = '.member-tour-overlay { background: transparent; } .member-tour-mask { background: rgba(7, 18, 14, .48); }';
+    w.document.head.append(style);
+    w.HTMLElement.prototype.getBoundingClientRect = function () {
+      return this.id === 'memberTourDialog'
+        ? { left: 10, right: 400, top: 600, bottom: 880, width: 390, height: 280 }
+        : { left: 100, right: 300, top: 160, bottom: 240, width: 200, height: 80 };
+    };
+    w.MemberE2EScenarioGraph = scenarioGraph;
+    const exposed = userQa.replace(/\}\)\(\);\s*$/, 'globalThis.__tourQa = { tourAutoStartCase, tourJourneyCase, buildCases };})();');
+    assert.notEqual(exposed, userQa);
+    w.eval(exposed);
+    for (const suite of ['quick', 'full']) {
+      const keys = Array.from(w.__tourQa.buildCases(suite), ({ key }) => key);
+      assert.ok(keys.indexOf('COMMON_TOUR_AUTOSTART') >= 0, `${surface} ${suite}`);
+      assert.ok(keys.indexOf('COMMON_TOUR_AUTOSTART') < keys.indexOf('COMMON_TOUR_JOURNEY'), `${surface} ${suite}`);
+      assert.ok(keys.indexOf('COMMON_TOUR_JOURNEY') < keys.indexOf('COMMON_CONFIG'), `${surface} ${suite}`);
+    }
+    await current.ready();
+    const auto = await w.__tourQa.tourAutoStartCase();
+    assert.equal(auto.status, 'passed', `${surface}: ${auto.message}`);
+    assert.equal(dialog.classList.contains('hidden'), true);
+    const journey = await w.__tourQa.tourJourneyCase();
+    assert.equal(journey.status, 'passed', `${surface}: ${journey.message}`);
+    assert.ok(journey.actual.steps.length >= 2, surface);
+    assert.equal(journey.actual.stateRestored, true, surface);
+    assert.deepEqual(Object.fromEntries(Object.entries(w.localStorage)), saved, surface);
+    current.dom.window.close();
+  }
 });
