@@ -12,7 +12,7 @@
     window.MemberSystem.bindDialogKeyboard();
     [
       'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'eventView', 'displayName', 'membershipProgress', 'logoutButton', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketHistorySummary', 'usedTicketList',
-      'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage'
+      'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage', 'ticketModalLocationStatus'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
@@ -93,7 +93,7 @@
   function createOfferCard(offer) {
     const ticket = ticketForOffer(offer); const history = Boolean(offer.history); const fixed = isFixedOffer(offer);
     const eligible = !history && eventTicketTierEligible(offer);
-    const stateLabel = history ? '已使用' : !eligible ? '等級不適用' : fixed && !offer.claim ? '尚未取得' : availabilityLabel(offer.availability);
+    const stateLabel = history ? '已使用' : !eligible ? '等級不適用' : offer.claim ? '已領取' : offer.soldOut ? '額滿' : fixed ? '尚未取得' : availabilityLabel(offer.availability);
     const item = document.createElement('article'); item.className = `event-ticket${history ? ' used-ticket' : ''}`; item.style.setProperty('--ticket-accent', safeAccent(ticket.accent));
     const head = document.createElement('div'); head.className = 'event-ticket-head'; const type = document.createElement('span'); type.className = 'event-ticket-type'; type.textContent = fixed ? '固定票券' : ticket.ticketType === 'lottery' ? '活動抽獎券' : '活動優惠券'; const stateBadge = document.createElement('span'); stateBadge.className = `event-ticket-state ${history ? 'used' : eligible ? offer.availability : 'tier-locked'}`; stateBadge.textContent = stateLabel; head.append(type, stateBadge);
     const title = document.createElement('h3'); title.textContent = String(ticket.title || '活動票券');
@@ -135,6 +135,8 @@
     const ticket = ticketForOffer(offer); const claim = offer.claim; const history = Boolean(offer.history);
     els.ticketModalType.textContent = isFixedOffer(offer) ? '固定票券' : ticket.ticketType === 'lottery' ? '活動抽獎券' : '活動優惠券'; els.ticketModalTitle.textContent = String(ticket.title || '活動票券'); els.ticketModalDate.textContent = history ? `已使用：${eventTicketTimestamp(claim && claim.usedAt)}` : `${eventDates(ticket)}${isFixedOffer(offer) ? '' : ` · 限量張數：${eventTicketQuotaText(ticket)}`}`; els.ticketModalDescription.textContent = String(claim ? claim.ticketDescription : ticket.description || '查看活動內容與使用說明。'); els.ticketModalUsageMethod.textContent = `使用方式：${String(claim ? claim.usageMethod : ticket.usageMethod || '請依活動現場指示使用')}`; els.ticketModalUsageInstructions.textContent = String(claim ? claim.usageInstructions : ticket.usageInstructions || '領取後請在活動期間出示本券。');
     const prizes = claim ? claim.prizes : ticket.prizes; renderPrizes(ticket.ticketType, prizes);
+    els.ticketModalLocationStatus.classList.toggle('hidden', !claim || !ticket.requiresLocation || history);
+    if (claim && ticket.requiresLocation && !history) els.ticketModalLocationStatus.textContent = '核銷時須允許定位，確認在指定地點後再送出。領取時不需定位。';
     const eligible = !history && eventTicketTierEligible(offer); const fixedPending = isFixedOffer(offer) && !claim; const canAct = !state.actionLocked && !history && eligible && !fixedPending && ((claim && offer.canUse) || (!claim && offer.canClaim));
     els.ticketModalStatus.textContent = modalStatusText(offer); els.ticketModalAction.textContent = state.actionLocked ? '請重新整理確認' : history ? '這張票券已使用' : !eligible ? '目前等級無法使用' : fixedPending ? '由系統自動發放' : claim ? offer.canUse ? '確認使用這張票券' : '這張票券已使用' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !canAct; els.ticketModalAction.classList.toggle('hidden', history || Boolean(claim && !offer.canUse && eligible) && !state.actionLocked); els.refreshTicketButton.classList.toggle('hidden', !state.actionLocked);
     if (history && claim && ticket.ticketType === 'lottery' && claim.result) {
@@ -161,16 +163,34 @@
     state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '領取中…'; els.ticketModalProcessingText.textContent = '正在確認活動名額，請稍候…'; setProcessing(true); hideMessage();
     try {
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.claim', { eventTicketId: offer.ticket.eventTicketId });
-      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); renderTicketModal(findOffer(offer.ticket.eventTicketId)); showMessage(result.alreadyClaimed ? '你已經領取過這張活動票券。' : '活動票券已領取，請在活動期間使用。', true); }
+      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); await loadOffers(true); renderOffers(); const current = findOffer(offer.ticket.eventTicketId); if (current) renderTicketModal(current); showMessage(result.alreadyClaimed ? '你已經領取過這張活動票券。' : '活動票券已領取，請在活動期間使用。', true); }
     } catch (error) { handleTicketError(error, '領取票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; const current = findOffer(offer.ticket.eventTicketId); if (current) renderTicketModal(current); }
   }
 
   async function redeemTicket(offer) {
-    state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '使用中…'; els.ticketModalProcessingText.textContent = '正在確認票券與活動期限，請稍候…'; setProcessing(true); hideMessage();
+    state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '確認中…'; els.ticketModalProcessingText.textContent = '正在確認核銷條件…'; setProcessing(true); hideMessage();
+    let redeemed = false;
     try {
-      const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.redeem', { claimId: offer.claim.claimId });
-      if (result.ticket) { updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); await showRedeemedResult(result.ticket); }
-    } catch (error) { handleTicketError(error, '使用票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; }
+      const location = offer.ticket.requiresLocation ? await currentRedemptionLocation() : null;
+      if (offer.ticket.requiresLocation) els.ticketModalLocationStatus.textContent = `定位完成，精度約 ${Math.round(location.accuracy)} 公尺。請確認核銷。`;
+      if (!window.confirm(`確定現在使用「${String(offer.ticket.title || '活動票券')}」？確認後將立即核銷且無法復原。`)) return;
+      els.ticketModalProcessingText.textContent = '正在核銷票券，請稍候…';
+      const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.redeem', { claimId: offer.claim.claimId, location });
+      if (result.ticket) { redeemed = true; updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); await showRedeemedResult(result.ticket); }
+    } catch (error) { handleTicketError(error, '使用票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; if (!redeemed && !state.actionLocked) renderTicketModal(offer); }
+  }
+
+  function currentRedemptionLocation() {
+    if (!navigator.geolocation) return Promise.reject(new Error('此裝置無法定位，票券尚未核銷。'));
+    els.ticketModalLocationStatus.classList.remove('hidden');
+    els.ticketModalLocationStatus.textContent = '正在取得目前位置，請允許定位…';
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy, observedAt: new Date(position.timestamp).toISOString() }),
+        () => reject(new Error('定位遭拒或逾時，票券尚未核銷。請允許定位後重試。')),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+    });
   }
 
   async function showRedeemedResult(claim) {

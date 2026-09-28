@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 82454)
+Total output lines: 6603
+
 (() => {
   'use strict';
 
@@ -2913,7 +2916,7 @@
     const stamp = qaCrudStamp();
     const createdTitle = 'E2E 活動票券 ' + stamp;
     const updatedTitle = createdTitle + ' 修改';
-    const actual = { created: false, updated: false, deleted: false, cleaned: false };
+    const actual = { created: false, updated: false, locationSaved: false, deleted: false, cleaned: false };
     let createdId = '';
 
     document.getElementById('eventsTab')?.click();
@@ -2931,6 +2934,10 @@
       setField('eventTicketStartsOn', '');
       setField('eventTicketEndsOn', '');
       setField('eventTicketQuota', '0');
+      document.getElementById('eventTicketRequiresLocation').checked = true;
+      setField('eventTicketLatitude', '25.033964');
+      setField('eventTicketLongitude', '121.564468');
+      setField('eventTicketRadius', '150');
 
       document.getElementById('saveEventTicketButton')?.click();
       createdId = String(await waitFor(() => document.getElementById('eventTicketId')?.value || null, 15000) || '');
@@ -2948,6 +2955,10 @@
             String(document.getElementById('eventTicketTitle')?.value || '') === updatedTitle &&
             textIncludes('#eventTicketListItems', updatedTitle);
         }, 8000));
+        actual.locationSaved = document.getElementById('eventTicketRequiresLocation')?.checked === true
+          && String(document.getElementById('eventTicketLatitude')?.value || '') === '25.033964'
+          && String(document.getElementById('eventTicketLongitude')?.value || '') === '121.564468'
+          && String(document.getElementById('eventTicketRadius')?.value || '') === '150';
       }
 
       if (actual.created) {
@@ -2974,10 +2985,10 @@
       closeEditorModalById('eventTicketEditorModal');
     }
 
-    const ok = actual.created && actual.updated && actual.deleted && actual.cleaned;
+    const ok = actual.created && actual.updated && actual.locationSaved && actual.deleted && actual.cleaned;
     return ok
-      ? pass('已透過管理端 UI 完成活動票券新增、修改、刪除，QA 資料已清理。', { created: true, updated: true, deleted: true, cleaned: true }, actual)
-      : fail('活動票券 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, deleted: true, cleaned: true }, actual);
+      ? pass('已透過管理端 UI 完成活動票券與定位規則新增、回讀、刪除，QA 資料已清理。', { created: true, updated: true, locationSaved: true, deleted: true, cleaned: true }, actual)
+      : fail('活動票券 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, locationSaved: true, deleted: true, cleaned: true }, actual);
   }
 
   async function adminCalendarCrudCase() {
@@ -3251,232 +3262,7 @@
         const review = document.getElementById('bookingCancellationReview');
         if (!button.classList.contains('active')) return false;
         if (cancellationMode) {
-          return Boolean(review && !review.classList.contains('hidden') && coreQueue?.classList.contains('hidden'));
-        }
-        return Boolean(coreQueue && !coreQueue.classList.contains('hidden') && (!review || review.classList.contains('hidden')));
-      }, 5000));
-    }
-
-    const ok = Object.values(actual).every(Boolean);
-    return ok
-      ? pass('預約管理四個子分頁、新增視窗與待確認／已確認／取消申請／已取消／已完成／全部六個狀態分頁皆可真人操作。', {
-          allBookingControls: true,
-          allBookingStatusTabs: true
-        }, actual)
-      : fail('至少一個預約管理控制或狀態分頁異常。', {
-          allBookingControls: true,
-          allBookingStatusTabs: true
-        }, actual);
-  }
-
-  async function adminBookingSharedSettingsCase() {
-    document.getElementById('bookingTab')?.click();
-    const ready = await waitBookingAdminReady(15000);
-    document.getElementById('bookingAdminSettingsSubtab')?.click();
-    const panelVisible = Boolean(await waitFor(() => {
-      const panel = document.getElementById('bookingAdminSettingsPanel');
-      return panel && !panel.classList.contains('hidden') ? panel : null;
-    }, 4000));
-
-    const ids = [
-      'bookingAdminSettingsForm',
-      'bookingAdminStartTime',
-      'bookingAdminEndTime',
-      'bookingAdminSlotInterval',
-      'bookingAdminAdvanceDays',
-      'bookingAdminMaxAdvanceDays',
-      'bookingAdminStoreServiceMinutes',
-      'bookingAdminNotice',
-      'bookingAdminSettingsMessage',
-      'bookingAdminSaveSettingsButton'
-    ];
-    const controls = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
-    const missing = ids.filter((id) => !controls[id]);
-    const actual = {
-      ready,
-      panelVisible,
-      missing,
-      bootstrapMatched: false,
-      invalidWorkHoursRejected: false,
-      invalidSlotIntervalRejected: false,
-      invalidAdvanceRejected: false,
-      invalidStoreMinutesRejected: false,
-      invalidNoticeRejected: false,
-      userWatcherPrepared: false,
-      userBaselineMatched: false,
-      validMutationSaved: false,
-      mutatedReadback: false,
-      updatedAtChanged: false,
-      staleVersionRejected: false,
-      userRealtimeSettingsSynced: false,
-      userRealtimeNoticeSynced: false,
-      userBootstrapMatched: false,
-      userStoreMinutesMatched: false,
-      userDateWindowEnforced: false,
-      userDateWindowProbe: null,
-      finalMutationReadback: false,
-      mutationRetainedForInspection: false,
-      retainedSettings: null,
-      clientSessionRestored: false
-    };
-    if (!ready || !panelVisible || missing.length) {
-      return fail('預約共用設定控制項未完整載入。', {
-        ready: true, panelVisible: true, missing: []
-      }, actual);
-    }
-
-    const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
-    const session = await adminSession();
-    const before = await postFunction('booking-admin-api', {
-      action: 'admin.booking.manage.bootstrap',
-      clientType: 'admin',
-      idToken: session.idToken
-    });
-    const snapshot = {
-      workStartTime: String(controls.bookingAdminStartTime.value || ''),
-      workEndTime: String(controls.bookingAdminEndTime.value || ''),
-      slotIntervalMinutes: Number(controls.bookingAdminSlotInterval.value),
-      minAdvanceDays: Number(controls.bookingAdminAdvanceDays.value),
-      maxAdvanceDays: Number(controls.bookingAdminMaxAdvanceDays.value),
-      storeServiceMinutes: Number(controls.bookingAdminStoreServiceMinutes.value),
-      bookingNotice: String(controls.bookingAdminNotice.value || ''),
-      updatedAt: String(before?.settings?.updatedAt || '')
-    };
-    const semanticSettings = (settings) => ({
-      workStartTime: String(settings?.workStartTime || ''),
-      workEndTime: String(settings?.workEndTime || ''),
-      slotIntervalMinutes: Number(settings?.slotIntervalMinutes),
-      minAdvanceDays: Number(settings?.minAdvanceDays),
-      maxAdvanceDays: Number(settings?.maxAdvanceDays),
-      storeServiceMinutes: Number(settings?.storeServiceMinutes),
-      bookingNotice: String(settings?.bookingNotice || '')
-    });
-    const sameSettings = (settings, expected) => {
-      const normalized = semanticSettings(settings);
-      return normalized.workStartTime === expected.workStartTime &&
-        normalized.workEndTime === expected.workEndTime &&
-        normalized.slotIntervalMinutes === expected.slotIntervalMinutes &&
-        normalized.minAdvanceDays === expected.minAdvanceDays &&
-        normalized.maxAdvanceDays === expected.maxAdvanceDays &&
-        normalized.storeServiceMinutes === expected.storeServiceMinutes &&
-        normalized.bookingNotice === expected.bookingNotice;
-    };
-    const setSettingsFields = (settings) => {
-      setField('bookingAdminStartTime', settings.workStartTime);
-      setField('bookingAdminEndTime', settings.workEndTime);
-      setField('bookingAdminSlotInterval', String(settings.slotIntervalMinutes));
-      setField('bookingAdminAdvanceDays', String(settings.minAdvanceDays));
-      setField('bookingAdminMaxAdvanceDays', String(settings.maxAdvanceDays));
-      setField('bookingAdminStoreServiceMinutes', String(settings.storeServiceMinutes));
-      setField('bookingAdminNotice', settings.bookingNotice);
-    };
-    const addIsoDays = (dateText, days) => {
-      const date = new Date(String(dateText || '') + 'T00:00:00Z');
-      date.setUTCDate(date.getUTCDate() + Number(days || 0));
-      return date.toISOString().slice(0, 10);
-    };
-    const childNoticeText = (child) => {
-      try {
-        const card = child?.document?.querySelector('.booking-card[aria-labelledby="bookingTitle"]');
-        if (!card) return '';
-        const notice = Array.from(card.children || []).find((node) =>
-          node.classList?.contains('service-info') && node.getAttribute('role') === 'note'
-        );
-        return String(notice?.textContent || '').trim();
-      } catch {
-        return '';
-      }
-    };
-    actual.bootstrapMatched = sameSettings(before?.settings, snapshot);
-
-    const workCandidates = [
-      ['08:30', '19:00'],
-      ['09:30', '18:30'],
-      ['10:00', '17:30']
-    ];
-    const selectedHours = workCandidates.find(([startTime, endTime]) =>
-      startTime !== snapshot.workStartTime || endTime !== snapshot.workEndTime
-    ) || ['08:00', '20:00'];
-    const mutatedMin = snapshot.minAdvanceDays >= 365
-      ? 364
-      : Math.max(1, snapshot.minAdvanceDays + 1);
-    let mutatedMax;
-    if (snapshot.maxAdvanceDays <= 0) {
-      mutatedMax = Math.min(365, Math.max(mutatedMin + 7, 30));
-    } else if (snapshot.maxAdvanceDays >= 365) {
-      mutatedMax = Math.max(mutatedMin, 364);
-    } else {
-      mutatedMax = Math.max(mutatedMin, snapshot.maxAdvanceDays + 1);
-    }
-    if (mutatedMax === snapshot.maxAdvanceDays) {
-      mutatedMax = mutatedMax < 365 ? mutatedMax + 1 : Math.max(mutatedMin, mutatedMax - 1);
-    }
-    const mutatedStoreMinutes = snapshot.storeServiceMinutes <= 705
-      ? snapshot.storeServiceMinutes + 15
-      : Math.max(1, snapshot.storeServiceMinutes - 15);
-    const qaMarker = '[QA E2E SHARED ' + qaCrudStamp() + ']';
-    const retainedBaseNotice = String(snapshot.bookingNotice || '')
-      .replace(/^(?:\[QA E2E SHARED [^\]]+\]\s*)+/g, '')
-      .trim();
-    const noticeSuffix = retainedBaseNotice ? '\n' + retainedBaseNotice : '';
-    const mutation = {
-      workStartTime: selectedHours[0],
-      workEndTime: selectedHours[1],
-      slotIntervalMinutes: snapshot.slotIntervalMinutes === 30 ? 15 : 30,
-      minAdvanceDays: mutatedMin,
-      maxAdvanceDays: mutatedMax,
-      storeServiceMinutes: mutatedStoreMinutes,
-      bookingNotice: (qaMarker + noticeSuffix).slice(0, 2000)
-    };
-    actual.retainedSettings = safe(mutation);
-
-    let participant = null;
-    let child = null;
-    let previousLogin = null;
-    let previousSurface = '';
-    let userToday = '';
-
-    try {
-      setField('bookingAdminStartTime', '10:00');
-      setField('bookingAdminEndTime', '10:00');
-      controls.bookingAdminSaveSettingsButton.click();
-      actual.invalidWorkHoursRejected = Boolean(await waitFor(() =>
-        /工作時間格式錯誤或時段長度為零/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
-        8000,
-        100
-      ));
-
-      setField('bookingAdminStartTime', snapshot.workStartTime);
-      setField('bookingAdminEndTime', snapshot.workEndTime);
-      setField('bookingAdminSlotInterval', String(snapshot.slotIntervalMinutes));
-      setField('bookingAdminSlotInterval', '0');
-      controls.bookingAdminSaveSettingsButton.click();
-      actual.invalidSlotIntervalRejected = Boolean(await waitFor(() =>
-        /切分間隔須為 5–120 分鐘/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
-        2000,
-        80
-      ));
-      setField('bookingAdminSlotInterval', String(snapshot.slotIntervalMinutes));
-      setField('bookingAdminAdvanceDays', '5');
-      setField('bookingAdminMaxAdvanceDays', '4');
-      controls.bookingAdminSaveSettingsButton.click();
-      actual.invalidAdvanceRejected = Boolean(await waitFor(() =>
-        /最遠可預約天數不可小於需要提前的天數/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
-        2000,
-        80
-      ));
-
-      setField('bookingAdminAdvanceDays', String(snapshot.minAdvanceDays));
-      setField('bookingAdminMaxAdvanceDays', String(snapshot.maxAdvanceDays));
-      setField('bookingAdminStoreServiceMinutes', '0');
-      controls.bookingAdminSaveSettingsButton.click();
-      actual.invalidStoreMinutesRejected = Boolean(await waitFor(() =>
-        /店內服務分鐘必須介於 1–720 分鐘/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
-        2000,
-        80
-      ));
-
-      setField('bookingAdminStoreServiceMinutes', String(snapshot.storeServiceMinutes));
+          return Boolean(review && !review.clas…2454 tokens truncated…inStoreServiceMinutes', String(snapshot.storeServiceMinutes));
       setField('bookingAdminNotice', 'X'.repeat(2001));
       controls.bookingAdminSaveSettingsButton.click();
       actual.invalidNoticeRejected = Boolean(await waitFor(() =>

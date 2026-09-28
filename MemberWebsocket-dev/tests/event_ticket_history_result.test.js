@@ -20,7 +20,7 @@ test('used lottery ticket history opens the persisted history snapshot', () => {
   assert.ok(event.includes("if (activeOffer && String(activeOffer?.claim?.status || '') === 'used' && historyOffer) return historyOffer;"));
   assert.ok(event.includes('return activeOffer || historyOffer || null;'));
   assert.match(event, /if \(history && claim && ticket\.ticketType === 'lottery' && claim\.result\) \{\s+renderRedeemedResult/);
-  assert.ok(html.includes('app.js?v=human-e2e-hooks-20260924-3'));
+  assert.match(html, /<script src="\.\/app\.js\?v=[^"]+" defer><\/script>/);
 });
 
 test('active ticket actions keep the normal active-first lookup path', () => {

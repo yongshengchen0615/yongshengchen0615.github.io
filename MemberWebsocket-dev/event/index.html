@@ -17,7 +17,7 @@
   <script src="../test-mode-client.js?v=test-session-surface-20260922-2" defer></script>
   <script src="../member-system.js?v=async-architecture-20260921-1" defer></script>
   <script src="./membership-progress.js?v=event-tier-style-20260908" defer></script>
-  <script src="./app.js?v=human-e2e-hooks-20260924-3" defer></script>
+  <script src="./app.js?v=event-coupon-location-20260928-1" defer></script>
   <script src="../user-tour.js?v=user-tour-20260928-10" defer></script>
   <link rel="stylesheet" href="../test-mode.css?v=test-mode-20260920-1">
   <link rel="stylesheet" href="../user-test-control.css?v=user-qa-observer-20260921-2">
@@ -58,6 +58,7 @@
       <p id="ticketModalStatus" class="ticket-status-message"></p>
       <div id="ticketModalProcessing" class="processing hidden" role="status" aria-live="polite"><span class="processing-spinner" aria-hidden="true"></span><span id="ticketModalProcessingText">正在處理，請稍候…</span></div>
       <div id="ticketModalResult" class="ticket-result hidden"></div>
+      <p id="ticketModalLocationStatus" class="ticket-status-message hidden" role="status" aria-live="polite"></p>
       <button id="ticketModalAction" class="modal-action" type="button">領取活動票券</button>
       <button id="refreshTicketButton" class="modal-action modal-refresh-button hidden" type="button">重新整理確認</button>
       <div id="ticketModalMessage" class="modal-message hidden" role="status"></div>

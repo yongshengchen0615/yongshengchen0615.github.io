@@ -36,7 +36,7 @@ test('admin entry references current booking assets', () => {
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
   assert.ok(html.includes('../member-system.js?v=async-architecture-20260921-1'));
   assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
-  assert.ok(html.includes('app.js?v=booking-overnight-20260928-1'));
+  assert.ok(html.includes('app.js?v=event-coupon-location-20260928-1'));
   assert.match(html, /booking-panel\.css\?v=[^"']+/);
   assert.match(html, /booking-panel\.js\?v=[^"']+/);
   assert.equal((html.match(/booking-panel\.js/g) || []).length, 1);
@@ -108,7 +108,7 @@ test('member-facing pages load the current human E2E controller and refresh hook
   }
   const appVersions = {
     'points/index.html': './app.js?v=human-e2e-hooks-20260921-1',
-    'event/index.html': './app.js?v=human-e2e-hooks-20260924-3',
+    'event/index.html': './app.js?v=event-coupon-location-20260928-1',
     'calendar/index.html': './app.js?v=human-e2e-hooks-20260921-1',
     'booking/index.html': './app.js?v=booking-overnight-20260928-1',
   };
