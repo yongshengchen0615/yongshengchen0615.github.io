@@ -1,3 +1,4 @@
+import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 export type Json = Record<string, unknown>;
@@ -127,6 +128,7 @@ export async function requireJoinedMember(supabase: SupabaseClient, identity: Id
     throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先加入會員並完成會員資料後再使用預約功能。");
   }
   if (member.status !== "active") throw new ApiError(403, "MEMBER_DISABLED", "此會員目前已停用，無法預約。");
+  if (!(await hasCurrentTermsConsent(supabase, member.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
   return member;
 }
 

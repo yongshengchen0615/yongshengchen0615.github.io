@@ -10,6 +10,7 @@
   <title>會員卡｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=loading-center-all-20260910">
+  <link rel="stylesheet" href="./terms.css?v=membership-terms-20260928-1">
   <link rel="stylesheet" href="./profile-extension.css?v=profile-personal-polish-20260912-5">
   <link rel="stylesheet" href="./membership-progress.css?v=member-tier-style-20260908">
   <link rel="stylesheet" href="../user-tour.css?v=user-tour-20260928-10">
@@ -20,7 +21,7 @@
   <script src="./profile-extension.js?v=async-architecture-20260921-1" defer></script>
   <script src="./profile-birthday-edit.js?v=async-architecture-20260921-1" defer></script>
   <script src="./membership-progress.js?v=member-tier-style-20260908" defer></script>
-  <script src="./app.js?v=member-tour-autostart-20260927-1" defer></script>
+  <script src="./app.js?v=membership-terms-20260928-1" defer></script>
   <script src="../user-tour.js?v=user-tour-20260928-10" defer></script>
   <link rel="stylesheet" href="../test-mode.css?v=test-mode-20260920-1">
   <link rel="stylesheet" href="../user-test-control.css?v=user-qa-observer-20260921-2">
@@ -86,6 +87,12 @@
           <label for="profilePhone">電話</label>
           <input id="profilePhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="例如：0912-345-678" required>
         </div>
+        <section class="terms-box" aria-labelledby="joinTermsHeading">
+          <h2 id="joinTermsHeading">使用同意與免責聲明</h2>
+          <p id="joinTermsSummary">正在讀取管理員發佈的條款…</p>
+          <details open><summary id="joinTermsTitle">查看完整條款</summary><div id="joinTermsBody" class="terms-body"></div></details>
+          <label class="terms-consent"><input id="joinTermsAccepted" type="checkbox" required>我已閱讀並同意上述版本的條款</label>
+        </section>
         <button id="saveProfileButton" class="button button-dark" type="submit">加入會員並開啟會員卡</button>
         <button id="refreshProfileButton" class="button button-refresh hidden" type="button">重新整理確認</button>
       </form>

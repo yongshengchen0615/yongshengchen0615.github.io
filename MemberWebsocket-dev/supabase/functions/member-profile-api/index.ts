@@ -118,7 +118,26 @@ async function profileFor(supabase: SupabaseClient, member: any): Promise<Json> 
     },
   };
 }
+async function termsForMember(supabase: SupabaseClient, member: any): Promise<{ terms: any; consentRequired: boolean }> {
+  const result = await supabase.from("membership_terms").select("id,version,title,summary,body,required,effective_at,reconsent_existing,activated_at").eq("status", "active").maybeSingle();
+  if (result.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法讀取會員條款。");
+  const terms = result.data && new Date(result.data.effective_at).getTime() <= Date.now() ? result.data : null;
+  if (member.membership_status !== "active") return { terms, consentRequired: true };
+  if (!terms?.reconsent_existing || member.is_test_account || new Date(member.joined_at || member.created_at).getTime() >= new Date(terms.activated_at).getTime()) return { terms, consentRequired: false };
+  const consent = await supabase.from("membership_consents").select("id").eq("member_id", member.id).eq("terms_id", terms.id).maybeSingle();
+  if (consent.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法確認條款同意紀錄。");
+  return { terms, consentRequired: !consent.data };
+}
 function normalizePhone(value: unknown): string { return asText(value, 30).replace(/[()\s-]/g, ""); }
+
+function termsError(error: { message?: string }): ApiError {
+  const message = String(error.message || "");
+  if (message.includes("TERMS_CONSENT_REQUIRED")) return new ApiError(400, "TERMS_CONSENT_REQUIRED", "請閱讀並勾選同意會員條款。");
+  if (message.includes("TERMS_VERSION_STALE")) return new ApiError(409, "TERMS_VERSION_STALE", "會員條款已更新，請重新閱讀並確認。");
+  if (message.includes("TERMS_UNAVAILABLE")) return new ApiError(503, "TERMS_UNAVAILABLE", "目前尚無有效會員條款，請聯繫管理員。");
+  if (message.includes("INVALID_PROFILE")) return new ApiError(400, "INVALID_PROFILE", "會員資料不完整或格式不正確。");
+  return new ApiError(500, "DATABASE_ERROR", "會員資料暫時無法儲存。");
+}
 
 Deno.serve(async (request: Request) => {
   const origin = request.headers.get("Origin");
@@ -129,7 +148,7 @@ Deno.serve(async (request: Request) => {
     const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
 
     const action = asText(body.action, 80);
-    if (!["user.member.bootstrap", "user.member.profile.save"].includes(action) || asText(body.clientType, 20) !== "member") throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
+    if (!["user.member.bootstrap", "user.member.profile.save", "user.member.terms.accept"].includes(action) || asText(body.clientType, 20) !== "member") throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     const supabase = dbClient();
     let identity: Identity;
     try {
@@ -141,10 +160,22 @@ Deno.serve(async (request: Request) => {
       if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
       throw error;
     }
-    await consumeRateLimit(supabase, identity, action === "user.member.profile.save");
+    await consumeRateLimit(supabase, identity, action !== "user.member.bootstrap");
     const member = await ensureMember(supabase, identity);
-    if (action === "user.member.bootstrap") return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member) } });
+    if (action === "user.member.bootstrap") return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member), ...await termsForMember(supabase, member) } });
+    if (action === "user.member.terms.accept") {
+      if (member.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員申請。");
+      const accepted = await supabase.rpc("accept_membership_terms", {
+        p_line_user_id: identity.lineUserId, p_terms_id: body.termsId, p_version: body.termsVersion,
+        p_accepted: body.accepted === true
+      });
+      if (accepted.error) throw termsError(accepted.error);
+      return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member), ...await termsForMember(supabase, member) } });
+    }
 
+    if (member.membership_status === "active" && (await termsForMember(supabase, member)).consentRequired) {
+      throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先同意更新後的會員條款。");
+    }
     const hasBirthday = Object.prototype.hasOwnProperty.call(body, "birthday");
     const hasPhone = Object.prototype.hasOwnProperty.call(body, "phone");
     const hasSurname = Object.prototype.hasOwnProperty.call(body, "surname");
@@ -188,6 +219,18 @@ Deno.serve(async (request: Request) => {
       patch.joined_at = member.joined_at || new Date().toISOString();
     }
 
+    if (member.membership_status !== "active") {
+      if (!mergedComplete) throw new ApiError(400, "PROFILE_FIELDS_REQUIRED", "請填妥完整資料再申請會員。");
+      const joined = await supabase.rpc("accept_membership_terms", {
+        p_line_user_id: identity.lineUserId, p_terms_id: body.termsId, p_version: body.termsVersion,
+        p_accepted: body.accepted === true, p_birthday: birthday, p_phone: phone,
+        p_surname: surname, p_salutation: salutation
+      });
+      if (joined.error) throw termsError(joined.error);
+      const refreshed = await supabase.from("members").select("*").eq("id", member.id).single();
+      if (refreshed.error) throw new ApiError(500, "DATABASE_ERROR", "會員資料暫時無法讀取。");
+      return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, refreshed.data) } });
+    }
     const updated = await supabase.from("members").update(patch).eq("id", member.id).select("*").single();
     if (updated.error) throw new ApiError(500, "DATABASE_ERROR", "會員資料暫時無法儲存。");
     await supabase.from("audit_logs").insert({ audit_id: "AUD-" + crypto.randomUUID().replaceAll("-", ""), actor_line_user_id: identity.lineUserId, actor_role:"member", action, target_type:"member", target_id:identity.lineUserId, result:"success", detail:{ profileFields } });

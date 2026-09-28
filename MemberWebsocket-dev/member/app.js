@@ -2,7 +2,7 @@
   'use strict';
 
   const MEMBER_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', profile: null, lineProfile: null, profileSaveLocked: false, birthdayPicker: { opener: null } };
+  const state = { config: null, idToken: '', profile: null, lineProfile: null, profileSaveLocked: false, terms: null, birthdayPicker: { opener: null } };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -10,11 +10,12 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
-    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profileBirthdayDisplay', 'profileBirthdayPickerButton', 'profileBirthdayPickerModal', 'profileBirthdayPickerTitle', 'closeProfileBirthdayPicker', 'cancelProfileBirthdayPicker', 'confirmProfileBirthdayPicker', 'profileBirthdayPickerMessage', 'profileBirthdayYear', 'profileBirthdayMonth', 'profileBirthdayDay', 'profilePhone', 'profileFormMessage', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'memberPass', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'membershipProgress'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profileBirthdayDisplay', 'profileBirthdayPickerButton', 'profileBirthdayPickerModal', 'profileBirthdayPickerTitle', 'closeProfileBirthdayPicker', 'cancelProfileBirthdayPicker', 'confirmProfileBirthdayPicker', 'profileBirthdayPickerMessage', 'profileBirthdayYear', 'profileBirthdayMonth', 'profileBirthdayDay', 'profilePhone', 'profileFormMessage', 'joinTermsSummary', 'joinTermsTitle', 'joinTermsBody', 'joinTermsAccepted', 'termsRenewView', 'renewTermsForm', 'renewTermsSummary', 'renewTermsTitle', 'renewTermsBody', 'renewTermsAccepted', 'renewTermsMessage', 'renewTermsButton', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'memberPass', 'brandName', 'displayName', 'logoutButton', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'membershipProgress'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.refreshProfileButton.addEventListener('click', () => window.location.reload());
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.profileForm.addEventListener('submit', saveProfile);
+    els.renewTermsForm.addEventListener('submit', acceptRenewedTerms);
     prepareBirthdayPicker();
     els.profileBirthdayPickerButton.addEventListener('click', openBirthdayPicker);
     els.closeProfileBirthdayPicker.addEventListener('click', closeBirthdayPicker);
@@ -43,6 +44,11 @@
       startLoginProgress('正在同步會員資料…', 92);
       const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
       state.profile = result.profile || {};
+      updateTerms(result.terms);
+      if (result.consentRequired && state.profile.profileComplete) {
+        await completeLoginProgress('請確認更新後的條款');
+        return setView('termsRenew');
+      }
       if (!state.profile.profileComplete || state.profile.membershipRequired) {
         await completeLoginProgress('會員資料已準備完成');
         return setView('profileSetup');
@@ -181,9 +187,11 @@
     const phone = String(els.profilePhone.value || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showMessage('請填寫正確的生日。');
     if (!/^\+?\d{8,15}$/.test(phone.replace(/[()\s-]/g, ''))) return showMessage('請填寫正確的電話。');
+    if (!state.terms) return showMessage('目前尚無有效會員條款，請稍後再試或聯繫管理員。');
+    if (!els.joinTermsAccepted.checked) return showMessage('請閱讀並勾選同意會員條款。');
     setSaving(true);
     try {
-      const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.profile.save', { birthday, phone });
+      const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.profile.save', { birthday, phone, surname: String(document.getElementById('profileSurname').value || '').trim(), salutation: document.getElementById('profileSalutation').value, termsId: state.terms.id, termsVersion: state.terms.version, accepted: true });
       state.profile = result.profile || {};
       renderProfile(state.profile);
       setView('member');
@@ -196,11 +204,54 @@
         state.profileSaveLocked = true;
         showUncertainSaveMessage();
       } else {
+        if (error?.code === 'TERMS_VERSION_STALE') await refreshTerms();
         showMessage(error && error.message || '資料暫時無法儲存，請稍後再試。');
       }
     } finally {
       setSaving(false);
     }
+  }
+
+  function updateTerms(terms) {
+    state.terms = terms || null;
+    for (const prefix of ['join', 'renew']) {
+      els[prefix + 'TermsSummary'].textContent = terms ? `${terms.summary || terms.title}（版本 ${terms.version}）` : '目前尚無有效會員條款，請聯繫管理員。';
+      els[prefix + 'TermsTitle'].textContent = terms ? `${terms.title} · v${terms.version}（完整內容）` : '條款尚未發佈';
+      els[prefix + 'TermsBody'].textContent = terms?.body || '';
+      els[prefix + 'TermsAccepted'].checked = false;
+    }
+    els.saveProfileButton.disabled = !terms;
+    els.renewTermsButton.disabled = !terms;
+  }
+
+  async function refreshTerms() {
+    const fresh = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
+    updateTerms(fresh.terms);
+  }
+
+  async function acceptRenewedTerms(event) {
+    event.preventDefault();
+    els.renewTermsMessage.classList.add('hidden');
+    if (!state.terms || !els.renewTermsAccepted.checked) {
+      els.renewTermsMessage.textContent = '請閱讀並同意目前有效條款。';
+      els.renewTermsMessage.classList.remove('hidden');
+      return;
+    }
+    els.renewTermsButton.disabled = true;
+    try {
+      const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.terms.accept', {
+        termsId:state.terms.id, termsVersion:state.terms.version, accepted:true
+      });
+      updateTerms(result.terms);
+      state.profile = result.profile || state.profile;
+      renderProfile(state.profile);
+      setView('member');
+      announceTourReady(state.profile);
+    } catch (error) {
+      if (error?.code === 'TERMS_VERSION_STALE') await refreshTerms();
+      els.renewTermsMessage.textContent = error?.message || '同意紀錄暫時無法儲存。';
+      els.renewTermsMessage.classList.remove('hidden');
+    } finally { els.renewTermsButton.disabled = !state.terms; }
   }
 
   function setSaving(saving) { els.saveProfileButton.disabled = saving || state.profileSaveLocked; els.saveProfileButton.textContent = saving ? '加入中…' : state.profileSaveLocked ? '請重新整理確認' : '加入會員並開啟會員卡'; }
@@ -287,6 +338,7 @@
     els.loadingView.classList.toggle('hidden', view !== 'loading');
     els.errorView.classList.toggle('hidden', view !== 'error');
     els.profileSetupView.classList.toggle('hidden', view !== 'profileSetup');
+    els.termsRenewView.classList.toggle('hidden', view !== 'termsRenew');
     els.memberView.classList.toggle('hidden', view !== 'member');
   }
 

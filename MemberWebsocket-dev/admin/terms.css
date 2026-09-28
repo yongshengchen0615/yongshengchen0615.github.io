@@ -1,0 +1,13 @@
+.terms-admin { margin-top: 24px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); }
+.terms-admin .panel-heading { margin-bottom: 16px; }
+.terms-admin-grid { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(0, 2fr); gap: 18px; }
+.terms-version-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.terms-version-list button { display: block; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.terms-version-list button[aria-current="true"] { border-color: var(--coral); }
+.terms-draft-form { display: grid; gap: 12px; min-width: 0; }
+.terms-draft-form label { display: grid; gap: 5px; color: var(--muted); font-weight: 750; }
+.terms-draft-form input:not([type="checkbox"]), .terms-draft-form textarea { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font: inherit; }
+.terms-draft-form .terms-check { display: flex; align-items: center; gap: 8px; }
+.terms-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 700px) { .terms-admin-grid { grid-template-columns: 1fr; } }
+html[data-theme="dark"] .terms-admin, html[data-theme="dark"] .terms-draft-form input:not([type="checkbox"]), html[data-theme="dark"] .terms-draft-form textarea { background: var(--theme-surface, #253831); color: var(--theme-text, #f5f8f2); }

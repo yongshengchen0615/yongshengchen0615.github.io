@@ -1,3 +1,4 @@
+import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
@@ -104,6 +105,7 @@ async function requireMember(supabase: SupabaseClient, identity: Identity): Prom
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法確認會員資料。");
   if (!result.data || result.data.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先加入會員並完成會員資料後再使用預約功能。");
   if (result.data.status !== "active") throw new ApiError(403, "MEMBER_DISABLED", "此會員目前已停用。");
+  if (!(await hasCurrentTermsConsent(supabase, result.data.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
   return result.data;
 }
 async function requireAdmin(supabase: SupabaseClient, identity: Identity): Promise<any> {

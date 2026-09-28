@@ -1,3 +1,4 @@
+import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { buildLineFlexNotice } from "../_shared/line-flex.ts";
@@ -34,6 +35,8 @@ const WRITE_ACTIONS = new Set([
   ...PRESENCE_ACTIONS,
   ...PRESENCE_HEARTBEAT_ACTIONS,
   "user.member.profile.save",
+  "admin.terms.draft.save",
+  "admin.terms.activate",
   "admin.member.update",
   "admin.member-tiers.save",
   "admin.pointcards.save",
@@ -108,6 +111,13 @@ function errorResponse(origin: string | null, error: unknown): Response {
 function mapDatabaseError(error: unknown): ApiError {
   const message = String((error as { message?: string })?.message || "");
   const rules: Array<[string, number, string, string]> = [
+    ["TERMS_CONSENT_REQUIRED",400,"TERMS_CONSENT_REQUIRED","請閱讀並同意會員條款。"],
+    ["TERMS_VERSION_STALE",409,"TERMS_VERSION_STALE","會員條款已更新，請重新閱讀並確認。"],
+    ["TERMS_UNAVAILABLE",503,"TERMS_UNAVAILABLE","目前尚無有效會員條款。"],
+    ["TERMS_IMMUTABLE",409,"TERMS_IMMUTABLE","已發佈條款不可修改。"],
+    ["TERMS_NOT_EFFECTIVE",400,"TERMS_NOT_EFFECTIVE","條款尚未生效或未設為必須同意。"],
+    ["ADMIN_REQUIRED",403,"ADMIN_REQUIRED","管理員權限不足。"],
+    ["INVALID_TERMS",400,"INVALID_TERMS","條款內容不完整或格式不正確。"],
     ["CONFLICT",409,"CONFLICT","資料已被其他操作更新，請重新整理後再試。"],
     ["MEMBERSHIP_REQUIRED",403,"MEMBERSHIP_REQUIRED","請先完成會員加入後再使用此功能。"],
     ["MEMBER_NOT_FOUND",404,"MEMBER_NOT_FOUND","找不到指定會員。"],
@@ -158,7 +168,7 @@ function presenceActionInfo(action: string): { clientType: ClientType; surface: 
 function clientTypeForAction(action: string): ClientType {
   const presence = presenceActionInfo(action);
   if (presence) return presence.clientType;
-  if (action === "user.member.bootstrap" || action === "user.member.profile.save") return "member";
+  if (action === "user.member.bootstrap" || action === "user.member.profile.save" || action === "user.member.terms.accept") return "member";
   if (action === "user.pointcard.bootstrap" || action === "user.pointcard.detail" || action.startsWith("user.pointcard.ticket.")) return "points";
   if (action === "user.event.bootstrap" || action === "user.event.ticket.detail" || action.startsWith("user.event.ticket.")) return "event";
   if (action === "user.calendar.bootstrap" || action === "user.calendar.date.details") return "calendar";
@@ -305,6 +315,7 @@ async function requireJoinedMember(supabase: SupabaseClient, identity: { lineUse
   const member = await ensureMember(supabase,identity);
   if (member.membership_status !== "active") throw new ApiError(403,"MEMBERSHIP_REQUIRED","請先完成會員加入後再使用此功能。");
   if (member.status !== "active") throw new ApiError(403,"MEMBER_DISABLED","此會員目前已停用。");
+  if (!(await hasCurrentTermsConsent(supabase, member.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
   return member;
 }
 
@@ -1854,6 +1865,12 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     const phone = asText(body.phone,30).replace(/[()\s-]/g,"");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) throw new ApiError(400,"INVALID_BIRTHDAY","請填寫正確的生日。");
     if (!/^\+?\d{8,15}$/.test(phone)) throw new ApiError(400,"INVALID_PHONE","請填寫正確的電話。");
+    const joined = await supabase.rpc("accept_membership_terms",{
+      p_line_user_id:identity.lineUserId,p_terms_id:body.termsId,p_version:body.termsVersion,
+      p_accepted:body.accepted === true,p_birthday:birthday,p_phone:phone,
+      p_surname:asText(body.surname,40),p_salutation:asText(body.salutation,10),
+    });
+    if (joined.error) throw mapDatabaseError(joined.error);
     const result = await supabase.from("members").update({
       birthday,
       phone,
@@ -1970,6 +1987,28 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       messagePresets,
       stats,
     };
+  }
+  if (action === "admin.terms.list") {
+    const result = await supabase.from("membership_terms").select("*").order("created_at",{ ascending:false });
+    if (result.error) throw mapDatabaseError(result.error);
+    return { terms:result.data || [] };
+  }
+  if (action === "admin.terms.draft.save") {
+    const result = await supabase.rpc("save_membership_terms_draft",{
+      p_actor:identity.lineUserId,p_id:body.id || null,p_version:body.version,
+      p_title:body.title,p_summary:body.summary,p_body:body.body,
+      p_required:body.required === true,p_effective_at:body.effectiveAt,
+      p_reconsent_existing:body.reconsentExisting === true,
+    });
+    if (result.error) throw mapDatabaseError(result.error);
+    return { id:result.data };
+  }
+  if (action === "admin.terms.activate") {
+    const result = await supabase.rpc("activate_membership_terms",{
+      p_actor:identity.lineUserId,p_id:body.id,
+    });
+    if (result.error) throw mapDatabaseError(result.error);
+    return { id:result.data };
   }
   if (action === "admin.members.list") {
     return await membersPage(supabase,Number(body.memberPage || 1),Number(body.memberPageSize || 100),asText(body.memberQuery,100),asText(body.memberKind,10));
