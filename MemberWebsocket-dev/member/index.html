@@ -120,6 +120,22 @@
       </div>
     </section>
 
+    <section id="termsRenewView" class="state-view hidden" aria-labelledby="termsRenewHeading">
+      <p class="kicker">Membership terms</p>
+      <h1 id="termsRenewHeading">請確認新版會員條款</h1>
+      <p>管理員已更新條款。請閱讀目前版本並同意後繼續使用會員服務。</p>
+      <form id="renewTermsForm" class="profile-form" novalidate>
+        <section class="terms-box" aria-labelledby="renewTermsHeading">
+          <h2 id="renewTermsHeading">使用同意與免責聲明</h2>
+          <p id="renewTermsSummary">正在讀取管理員發佈的條款…</p>
+          <details open><summary id="renewTermsTitle">查看完整條款</summary><div id="renewTermsBody" class="terms-body"></div></details>
+          <label class="terms-consent"><input id="renewTermsAccepted" type="checkbox" required>我已閱讀並同意上述版本的條款</label>
+        </section>
+        <p id="renewTermsMessage" class="form-message hidden" role="alert"></p>
+        <button id="renewTermsButton" class="button button-dark" type="submit">同意並繼續</button>
+      </form>
+    </section>
+
     <div id="profileFormMessage" class="form-message hidden" role="alert"></div>
 
     <main id="memberView" class="hidden" data-user-tour="member">
