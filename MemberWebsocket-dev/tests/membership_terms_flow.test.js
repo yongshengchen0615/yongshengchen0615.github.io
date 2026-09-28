@@ -46,7 +46,7 @@ function harness() {
     const response=await handler(new Request('https://example.invalid',{ method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,clientType:'member',testSessionToken:'fixture',...payload}) }));
     return { status:response.status,body:await response.json() };
   }
-  return { call, member, consents, switchTerms() { terms={...terms,id:'terms-2',version:'v2',activated_at:'2026-09-28T01:00:00Z',reconsent_existing:true}; } };
+  return { call, member, consents, setTestAccount() { member.is_test_account=true; }, setJoinedAt(value) { member.joined_at=value; }, switchTerms() { terms={...terms,id:'terms-2',version:'v2',activated_at:'2026-09-28T01:00:00Z',reconsent_existing:true}; } };
 }
 
 test('registration rejects missing and stale consent, then records consent with activation', async () => {
@@ -77,6 +77,27 @@ test('active version replacement requires existing member to accept v2', async (
   assert.equal(boot.body.data.consentRequired,true);
   const stale=await h.call('user.member.terms.accept',{termsId:'terms-1',termsVersion:'v1',accepted:true});
   assert.equal(stale.status,409);
+  const renewed=await h.call('user.member.terms.accept',{termsId:'terms-2',termsVersion:'v2',accepted:true});
+  assert.equal(renewed.status,200);
+  assert.equal(renewed.body.data.consentRequired,false);
+  assert.deepEqual([...h.consents],['terms-1','terms-2']);
+});
+
+
+test('test accounts follow the same active terms consent gate', async () => {
+  const h=harness();
+  const profile={ birthday:'1990-01-01',phone:'0912345678',surname:'林',salutation:'mr',termsId:'terms-1',termsVersion:'v1',accepted:true };
+  await h.call('user.member.profile.save',profile);
+  h.setTestAccount();
+  h.switchTerms();
+  // Test accounts are provisioned directly as active records. Even if they were
+  // created after the terms activation timestamp, they still need an explicit consent row.
+  h.setJoinedAt('2026-09-29T00:00:00Z');
+
+  const boot=await h.call('user.member.bootstrap');
+  assert.equal(boot.status,200);
+  assert.equal(boot.body.data.consentRequired,true);
+
   const renewed=await h.call('user.member.terms.accept',{termsId:'terms-2',termsVersion:'v2',accepted:true});
   assert.equal(renewed.status,200);
   assert.equal(renewed.body.data.consentRequired,false);
