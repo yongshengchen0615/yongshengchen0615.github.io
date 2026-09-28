@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const db = new PGlite();
 const migration = readFileSync(join(__dirname, '../../supabase/migrations/20260928101903_event_coupon_inventory_location.sql'), 'utf8');
+const retryMigration = readFileSync(join(__dirname, '../../supabase/migrations/20260928102644_event_coupon_idempotent_retry.sql'), 'utf8');
 
 async function run() {
   await db.exec(`
@@ -47,6 +48,7 @@ async function run() {
       ('10000000-0000-0000-0000-000000000005','EXPIRED','coupon',1);
   `);
   await db.exec(migration);
+  await db.exec(retryMigration);
   const claim = async (member, ticket) => (await db.query(
     'select public.claim_event_ticket($1,$2) as value', [member, ticket]
   )).rows[0].value;
@@ -58,6 +60,11 @@ async function run() {
   assert.equal(first.alreadyClaimed, false);
   assert.equal((await claim('member-1', 'LAST')).alreadyClaimed, true, 'full stock must not break retries');
   await assert.rejects(claim('member-2', 'LAST'), /EVENT_QUOTA_REACHED/);
+  await db.exec("update public.event_tickets set ends_on=current_date-1 where event_ticket_id='LAST'");
+  assert.equal((await claim('member-1', 'LAST')).claimId, first.claimId, 'an ended campaign must retain the same claim');
+  await db.exec("update public.event_tickets set deleted_at=now() where event_ticket_id='LAST'");
+  assert.equal((await claim('member-1', 'LAST')).claimId, first.claimId, 'an archived campaign must retain the same claim');
+  await assert.rejects(claim('member-2', 'LAST'), /EVENT_TICKET_NOT_AVAILABLE/);
   const race = await Promise.allSettled([claim('member-1','RACE'),claim('member-2','RACE')]);
   assert.equal(race.filter((result) => result.status === 'fulfilled').length, 1);
   assert.equal(race.filter((result) => result.status === 'rejected' && /EVENT_QUOTA_REACHED/.test(String(result.reason))).length, 1);
