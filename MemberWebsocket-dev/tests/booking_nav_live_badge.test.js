@@ -55,8 +55,8 @@ test('booking realtime refreshes only the badge while booking panel is hidden', 
 });
 
 test('current booking loader cache-busts the unread cursor implementation', () => {
-  assert.match(loader, /booking-panel-core\.js', 'booking-unread-cursor-20260925-2'/);
-  assert.match(html, /booking-panel\.js\?v=booking-realtime-fallback-20260926-1/);
+  assert.match(loader, /booking-panel-core\.js', 'booking-overnight-20260928-1'/);
+  assert.match(html, /booking-panel\.js\?v=booking-overnight-20260928-1/);
 });
 
 test('booking summary endpoint counts pending rows only after admin authorization', () => {
@@ -78,5 +78,5 @@ test('booking unread badge uses a separate pseudo-element from the surface-tab a
   assert.match(baseCss, /\.surface-tab::after[\s\S]*transform:\s*scaleX\(0\)/);
   assert.match(bookingCss, /#bookingTab\[data-unread-count\]:not\(\[data-unread-count="0"\]\)::before/);
   assert.doesNotMatch(bookingCss, /#bookingTab\[data-unread-count\]:not\(\[data-unread-count="0"\]\)::after/);
-  assert.match(html, /booking-panel\.css\?v=booking-unread-cursor-20260925-2/);
+  assert.match(html, /booking-panel\.css\?v=booking-overnight-20260928-1/);
 });

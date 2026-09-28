@@ -123,6 +123,8 @@ function cancellationClient(row: any): Json {
     status: row.status,
     sourceStatus: row.cancellation_source_status || row.status,
     bookingDate: row.booking_date,
+    startAt: row.start_at,
+    endAt: row.end_at,
     startTime: String(row.start_time || "").slice(0, 5),
     endTime: String(row.end_time || "").slice(0, 5),
     cancellationRequestedAt: row.cancellation_requested_at || null,
@@ -131,7 +133,7 @@ function cancellationClient(row: any): Json {
 }
 async function memberList(supabase: SupabaseClient, member: any): Promise<Json> {
   const result = await supabase.from("bookings")
-    .select("id,status,booking_date,start_time,end_time,cancellation_source_status,cancellation_requested_at,updated_at")
+    .select("id,status,booking_date,start_time,end_time,start_at,end_at,cancellation_source_status,cancellation_requested_at,updated_at")
     .eq("member_id", member.id).in("status", ["pending", "confirmed"]).not("cancellation_requested_at", "is", null).is("cancellation_reviewed_at", null);
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法取得取消申請狀態。");
   return { requests: (result.data || []).map(cancellationClient) };
@@ -173,7 +175,7 @@ async function memberRequest(supabase: SupabaseClient, identity: Identity, membe
 }
 async function adminList(supabase: SupabaseClient): Promise<Json> {
   const result = await supabase.from("bookings")
-    .select("id,status,member_id,booking_date,start_time,end_time,total_duration_minutes,member_note,admin_note,cancellation_source_status,cancellation_requested_at,updated_at,contact_source,contact_surname,contact_salutation,contact_phone,technician_id,party_size,members(display_name,member_code,surname,salutation,phone),booking_technicians(name)")
+    .select("id,status,member_id,booking_date,start_time,end_time,start_at,end_at,total_duration_minutes,member_note,admin_note,cancellation_source_status,cancellation_requested_at,updated_at,contact_source,contact_surname,contact_salutation,contact_phone,technician_id,party_size,members(display_name,member_code,surname,salutation,phone),booking_technicians(name)")
     .in("status", ["pending", "confirmed"])
     .not("cancellation_requested_at", "is", null).is("cancellation_reviewed_at", null)
     .order("cancellation_requested_at", { ascending: true }).limit(250);
@@ -388,4 +390,3 @@ Deno.serve(async (request: Request) => {
     return errorResponse(origin, error);
   }
 });
-

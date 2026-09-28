@@ -421,7 +421,7 @@
 
     const dateTime = document.createElement('p');
     dateTime.className = 'booking-received-datetime';
-    dateTime.textContent = `${formatBookingDate(row.bookingDate)} ${String(row.startTime || '—').slice(0, 5)}`;
+    dateTime.textContent = bookingDateTime(row);
     summary.appendChild(dateTime);
 
     const name = document.createElement('p');
@@ -554,7 +554,7 @@
 
   function buildBookingCopyText(booking) {
     const lines = [
-      `${formatBookingDate(booking.bookingDate)} ${String(booking.startTime || '—').slice(0, 5)}`,
+      bookingDateTime(booking),
       bookingContactName(booking),
       `電話：${String(booking.contactPhone || '—')}`,
       '服務項目：',
@@ -595,7 +595,7 @@
   async function review(row, action, actions) {
     const approving = action === 'admin.approve';
     const message = approving
-      ? `確認取消 ${row.memberDisplayName || '此會員'} ${formatDate(row.bookingDate)} ${row.startTime} 的預約？\n\n確認後原時段會重新開放。`
+      ? `確認取消 ${row.memberDisplayName || '此會員'} ${bookingDateTime(row)} 的預約？\n\n確認後原時段會重新開放。`
       : `確定保留 ${row.memberDisplayName || '此會員'} 的原預約？`;
     if (!window.confirm(message)) return;
     actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
@@ -621,6 +621,11 @@
     return `${month}/${day}（${weekday}）`;
   }
   function formatDate(value) { return formatBookingDate(value); }
+  function bookingDateTime(row) {
+    const startDate = String(row.startAt || '').slice(0, 10) || row.bookingDate;
+    const endDate = String(row.endAt || '').slice(0, 10) || row.bookingDate;
+    return `營業日 ${row.bookingDate}｜${startDate} ${String(row.startTime || '—').slice(0, 5)}–${endDate} ${String(row.endTime || '—').slice(0, 5)}`;
+  }
   function formatDateTime(value) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-Hant-TW', { timeZone: 'Asia/Taipei', hour12: false }); }
   function formatMoney(value) { const amount = Number(value || 0); return Number.isFinite(amount) ? `NT$${Math.round(amount).toLocaleString('zh-Hant-TW')}` : ''; }
 })();

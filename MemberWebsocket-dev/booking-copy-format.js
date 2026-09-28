@@ -101,7 +101,10 @@
 
   function buildCopyText(card, group) {
     const lines = [];
-    lines.push(`${formatShortDate(card.dataset.bookingDate)} ${startTime(card)}`);
+    const startDate = String(card.dataset.bookingStartAt || '').slice(0, 10) || card.dataset.bookingDate;
+    const endDate = String(card.dataset.bookingEndAt || '').slice(0, 10) || card.dataset.bookingDate;
+    const endTime = String(card.dataset.bookingEndTime || '').slice(0, 5);
+    lines.push(`營業日 ${card.dataset.bookingDate}｜${startDate} ${startTime(card)}–${endDate} ${endTime || '—'}`);
     lines.push(contactName(card));
     lines.push(`電話：${contactPhone(card)}`);
 

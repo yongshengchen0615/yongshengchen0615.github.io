@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const { stripTypeScriptTypes } = require('node:module');
+const { localTimestamp } = require('../supabase/functions/_shared/booking-hours.ts');
 
 const source = fs.readFileSync(require('node:path').join(__dirname, '../supabase/functions/booking-api/index.ts'), 'utf8')
   .replace(/^import .*\n/gm, '');
@@ -23,7 +24,7 @@ const verifyLineIdTokenContract = async ({ idToken, createError }) => {
 const context = vm.createContext({
   Deno: { serve() {}, env: { get() { return ''; } } },
   Date, Intl, Set, Map, console, crypto: require('node:crypto').webcrypto, TextEncoder,
-  requireActiveAdminContract, verifyLineIdTokenContract,
+  requireActiveAdminContract, verifyLineIdTokenContract, localTimestamp,
 });
 vm.runInContext(stripTypeScriptTypes(source), context);
 

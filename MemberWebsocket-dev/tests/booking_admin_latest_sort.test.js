@@ -24,6 +24,6 @@ test('cancellation request and cancelled lists are newest first', () => {
 });
 
 test('admin loader versions force clients to receive the latest sorting code', () => {
-  assert.match(loader, /booking-realtime-fallback-20260926-1/);
+  assert.match(loader, /booking-overnight-20260928-1/);
   assert.match(adminHtml, /booking-panel\.js\?v=[^"']+/);
 });

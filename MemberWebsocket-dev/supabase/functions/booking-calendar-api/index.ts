@@ -2,6 +2,7 @@ import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
+import { currentBusinessDate } from "../_shared/booking-hours.ts";
 
 type Json = Record<string, unknown>;
 type Identity = { lineUserId: string };
@@ -155,7 +156,7 @@ function addDays(date: string, days: number): string {
 
 async function loadCalendar(supabase: SupabaseClient, month: string, memberId: string): Promise<Json> {
   const settingsResult = await supabase.from("booking_settings")
-    .select("min_advance_days,max_advance_days,booking_notice")
+    .select("min_advance_days,max_advance_days,booking_notice,work_start_time,work_end_time")
     .eq("id", 1)
     .maybeSingle();
   if (settingsResult.error || !settingsResult.data) {
@@ -172,7 +173,7 @@ async function loadCalendar(supabase: SupabaseClient, month: string, memberId: s
 
   const startDate = `${month}-01`;
   const endDate = nextMonthStart(month);
-  const rows: Array<{ booking_date: string; start_time: string; end_time: string }> = [];
+  const rows: Array<{ booking_date: string; start_time: string; end_time: string; start_at: string; end_at: string }> = [];
 
   const holidaysResult = await supabase.from("calendar_items")
     .select("calendar_item_id,title,description,starts_on,ends_on,accent")
@@ -191,7 +192,7 @@ async function loadCalendar(supabase: SupabaseClient, month: string, memberId: s
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
     const result = await supabase.from("bookings")
-      .select("booking_date,start_time,end_time")
+      .select("booking_date,start_time,end_time,start_at,end_at")
       .eq("member_id", memberId)
       .gte("booking_date", startDate)
       .lt("booking_date", endDate)
@@ -201,20 +202,20 @@ async function loadCalendar(supabase: SupabaseClient, month: string, memberId: s
       .range(from, to);
 
     if (result.error) throw new ApiError(503, "DATABASE_ERROR", "預約日曆暫時無法載入。");
-    const pageRows = (result.data || []) as Array<{ booking_date: string; start_time: string; end_time: string }>;
+    const pageRows = (result.data || []) as Array<{ booking_date: string; start_time: string; end_time: string; start_at: string; end_at: string }>;
     rows.push(...pageRows);
     if (pageRows.length < PAGE_SIZE) break;
     if (page === MAX_PAGES - 1) throw new ApiError(503, "CALENDAR_RESULT_LIMIT", "本月預約資料量過大，請稍後再試。");
   }
 
-  const grouped = new Map<string, Array<{ startTime: string; endTime: string }>>();
+  const grouped = new Map<string, Array<{ startTime: string; endTime: string; startAt: string; endAt: string }>>();
   for (const row of rows) {
     const date = String(row.booking_date || "").slice(0, 10);
     const startTime = String(row.start_time || "").slice(0, 5);
     const endTime = String(row.end_time || "").slice(0, 5);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) continue;
     const intervals = grouped.get(date) || [];
-    intervals.push({ startTime, endTime });
+    intervals.push({ startTime, endTime, startAt: String(row.start_at || '').slice(0, 10), endAt: String(row.end_at || '').slice(0, 10) });
     grouped.set(date, intervals);
   }
 
@@ -227,7 +228,10 @@ async function loadCalendar(supabase: SupabaseClient, month: string, memberId: s
     accent: String(row.accent || ""),
   })).filter((row: any) => /^\d{4}-\d{2}-\d{2}$/.test(row.startsOn) && /^\d{4}-\d{2}-\d{2}$/.test(row.endsOn));
 
-  const today = taipeiDate();
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+  const hours = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minutes = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  const today = currentBusinessDate(taipeiDate(), hours * 60 + minutes, settingsResult.data.work_start_time, settingsResult.data.work_end_time);
   const latestBookingDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : null;
   return {
     month,

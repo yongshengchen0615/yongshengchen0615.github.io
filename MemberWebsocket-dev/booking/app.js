@@ -160,6 +160,8 @@
     const advanceDays = Number(settings.minAdvanceDays || 0);
     const maxAdvanceDays = Number(settings.maxAdvanceDays || 0);
     const labels = [hours];
+    if (settings.workStartTime && settings.workEndTime && settings.workEndTime < settings.workStartTime) labels.push('隔日結束');
+    labels.push(`每 ${Number(settings.slotIntervalMinutes || 30)} 分鐘切分`);
     if (advanceDays > 0) labels.push(`提前 ${advanceDays} 天`);
     if (maxAdvanceDays > 0) labels.push(`可預約 ${maxAdvanceDays} 天內`);
     els.workHoursBadge.textContent = labels.join(' · ');
@@ -528,7 +530,7 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'slot-button';
-      button.textContent = `${slot.startTime}–${slot.endTime}`;
+      button.textContent = `${slot.startAt?.slice(0, 10) !== els.bookingDate.value ? '隔日 ' : ''}${slot.startTime}–${slot.endTime}${slot.endAt?.slice(0, 10) !== els.bookingDate.value ? '（隔日結束）' : ''}`;
       button.disabled = !slot.available;
       button.setAttribute('aria-pressed', 'false');
       if (!slot.available) button.title = '這段時間與其他預約重疊、已經過期或超出上班時間';
@@ -539,7 +541,7 @@
   }
 
   function selectSlot(button, slot) {
-    state.selectedSlot = { startTime: slot.startTime, endTime: slot.endTime };
+    state.selectedSlot = { startTime: slot.startTime, endTime: slot.endTime, startAt: slot.startAt, endAt: slot.endAt };
     els.slotGrid.querySelectorAll('.slot-button').forEach((item) => {
       const selected = item === button;
       item.classList.toggle('selected', selected);
@@ -573,7 +575,7 @@
 
     const time = document.createElement('p');
     time.className = 'booking-confirm-time';
-    time.textContent = `${window.BookingSystem.formatDate(els.bookingDate.value)} ${state.selectedSlot.startTime}–${state.selectedSlot.endTime}`;
+    time.textContent = `${window.BookingSystem.formatDate(els.bookingDate.value)} 營業班次：${state.selectedSlot.startAt?.slice(0, 10) || els.bookingDate.value} ${state.selectedSlot.startTime}–${state.selectedSlot.endAt?.slice(0, 10) || els.bookingDate.value} ${state.selectedSlot.endTime}`;
     box.appendChild(time);
 
     const card = document.createElement('div');
@@ -738,7 +740,7 @@
       const titleBox = document.createElement('div');
       titleBox.append(
         summaryRow('日期', window.BookingSystem.formatDate(booking.bookingDate)),
-        summaryRow('時間', `${booking.startTime}–${booking.endTime}`),
+        summaryRow('時間', `${booking.startAt?.slice(0, 10) || booking.bookingDate} ${booking.startTime}–${booking.endAt?.slice(0, 10) || booking.bookingDate} ${booking.endTime}`),
       );
 
       const statusKey = bookingDisplayStatus(booking);
@@ -855,7 +857,7 @@
 
   function canCancel(booking) {
     const cancellationPending = Boolean(booking?.cancellationRequestedAt && !booking?.cancellationReviewedAt);
-    const startsAt = Date.parse(`${booking.bookingDate}T${booking.startTime}:00+08:00`);
+    const startsAt = Date.parse(booking.startAt || `${booking.bookingDate}T${booking.startTime}:00+08:00`);
     return ['pending', 'confirmed'].includes(booking.status)
       && !cancellationPending
       && Number.isFinite(startsAt)
@@ -898,7 +900,7 @@
     renderServices();
     applySelectionConstraints(false);
     state.selectedSlot = booking.startTime
-      ? { startTime: String(booking.startTime), endTime: String(booking.endTime || '') }
+      ? { startTime: String(booking.startTime), endTime: String(booking.endTime || ''), startAt: booking.startAt, endAt: booking.endAt }
       : null;
     updateEditingLabel();
     window.dispatchEvent(new CustomEvent('booking:edit', { detail: { date: els.bookingDate.value } }));
@@ -907,7 +909,7 @@
   }
 
   async function cancelBooking(booking, button) {
-    if (!window.confirm(`確定取消 ${bookingDisplayTitle(booking)} ${booking.bookingDate} ${booking.startTime}–${booking.endTime} 的預約嗎？`)) return;
+    if (!window.confirm(`確定取消 ${bookingDisplayTitle(booking)} ${booking.startAt?.slice(0, 10) || booking.bookingDate} ${booking.startTime}–${booking.endAt?.slice(0, 10) || booking.bookingDate} ${booking.endTime} 的預約嗎？`)) return;
     button.disabled = true;
     try {
       const result = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.cancel', { bookingId: booking.bookingId });

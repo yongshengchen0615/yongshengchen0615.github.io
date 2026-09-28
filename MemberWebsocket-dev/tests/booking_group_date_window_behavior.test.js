@@ -4,6 +4,7 @@ const { stripTypeScriptTypes } = require('node:module');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const hours = require('../supabase/functions/_shared/booking-hours.ts');
 
 const source = fs.readFileSync(path.join(__dirname, '../supabase/functions/booking-group-slots-api/index.ts'), 'utf8');
 const slotSource = stripTypeScriptTypes(source.slice(
@@ -18,9 +19,9 @@ const group = {
   primaryId: 'primary-technician', assignments: [], totalDurationMinutes: 30, totalAmount: 0
 };
 
-function buildSlots(holiday = false) {
+function buildSlots(holiday = false, configuredGroup = group) {
   const context = {
-    normalizeGroup: async () => group,
+    normalizeGroup: async () => configuredGroup,
     SLOT_INTERVAL: 30,
     dateValue: (value) => String(value),
     taipeiDate: () => today,
@@ -33,6 +34,13 @@ function buildSlots(holiday = false) {
     isActiveBookingHoliday: async () => holiday,
     toMinutes: (value) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5)),
     toTime: (value) => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`,
+    workWindow: hours.workWindow,
+    currentBusinessDate: hours.currentBusinessDate,
+    clockTime: hours.clockTime,
+    occupiedRange: hours.occupiedRange,
+    localRange: hours.localRange,
+    slotHasPassed: hours.slotHasPassed,
+    timeOnBusinessDate: hours.timeOnBusinessDate,
   };
   return vm.runInNewContext(slotSource + '\nslots', context);
 }
@@ -58,11 +66,26 @@ test('group slots retain booking limits for a holiday', async () => {
 });
 
 test('group slots retain booking limits on a normally available date', async () => {
-  const builder = { select() { return this; }, eq() { return this; }, in() { return this; },
+  const builder = { select() { return this; }, eq() { return this; }, gte() { return this; }, lte() { return this; }, in() { return this; },
     then(resolve) { return Promise.resolve({ data: [], error: null }).then(resolve); } };
   const supabase = { from() { return builder; } };
   const result = await buildSlots()(supabase, null, { bookingDate: '2026-10-01' });
   assert.equal(result.earliestBookingDate, range.earliestBookingDate);
   assert.equal(result.latestBookingDate, range.latestBookingDate);
   assert.ok(result.slots.length > 0);
+});
+
+test('overnight slots carry the prior business date and reject midnight overlap', async () => {
+  const bookingDate = '2026-09-30';
+  const overnight = { ...group, settings: { ...group.settings, work_start_time: '14:00:00', work_end_time: '02:00:00', slot_interval_minutes: 15 } };
+  const occupied = { id: 'another-booking', start_at: '2026-10-01T00:15:00', end_at: '2026-10-01T01:15:00' };
+  const builder = { select() { return this; }, eq() { return this; }, gte() { return this; }, lte() { return this; }, in() { return this; },
+    then(resolve) { return Promise.resolve({ data: [occupied], error: null }).then(resolve); } };
+  const result = await buildSlots(false, overnight)({ from() { return builder; } }, null, { bookingDate });
+  const midnight = result.slots.find((slot) => slot.startTime === '00:30');
+  assert.equal(midnight.startAt, '2026-10-01T00:30:00+08:00');
+  assert.equal(midnight.endAt, '2026-10-01T01:00:00+08:00');
+  assert.equal(midnight.available, false);
+  assert.equal(result.slots.find((slot) => slot.startTime === '01:30').available, true);
+  assert.equal(result.slots.some((slot) => slot.startTime === '01:45'), false);
 });

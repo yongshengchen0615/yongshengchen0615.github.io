@@ -2,6 +2,7 @@ import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
+import { workWindow, clockTime, occupiedRange, localRange, slotHasPassed, timeOnBusinessDate, localTimestamp, currentBusinessDate } from "../_shared/booking-hours.ts";
 
 type Json = Record<string, any>;
 type Identity = { lineUserId: string; displayName: string };
@@ -97,7 +98,7 @@ function dateValue(value: unknown) {
 }
 function timeValue(value: unknown) {
   const v = asText(value, 8); const m = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(v);
-  if (!m || Number(m[1]) > 23 || ![0, 30].includes(Number(m[2]))) throw new ApiError(400, "INVALID_TIME", "時間必須以 30 分鐘為起始單位。");
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59 || Number(m[2]) % 5 !== 0 || (v.length === 8 && !v.endsWith(":00"))) throw new ApiError(400, "INVALID_TIME", "時間必須以 5 分鐘為起始單位。");
   return `${m[1]}:${m[2]}`;
 }
 const toMinutes = (v: string) => { const [h, m] = v.slice(0, 5).split(":").map(Number); return h * 60 + m; };
@@ -157,7 +158,7 @@ async function settings(s: SupabaseClient) {
   const r = await s.from("booking_settings").select("*").eq("id",1).single(); if (r.error) throw mapDbError(r.error); return r.data;
 }
 function assertBookingDateWindow(cfg: any, date: string) {
-  const today=taipeiDate(), earliest=addDays(today,Number(cfg.min_advance_days||0)), max=Number(cfg.max_advance_days||0), latest=max>0?addDays(today,max):"";
+  const today=currentBusinessDate(taipeiDate(),taipeiMinutes(),cfg.work_start_time,cfg.work_end_time), earliest=addDays(today,Number(cfg.min_advance_days||0)), max=Number(cfg.max_advance_days||0), latest=max>0?addDays(today,max):"";
   if (date < earliest) throw new ApiError(409,"BOOKING_TOO_EARLY","尚未符合提前預約天數。");
   if (latest && date > latest) throw new ApiError(409,"BOOKING_TOO_FAR","此日期超過可預約範圍。");
 }
@@ -200,7 +201,7 @@ async function fullBooking(s: SupabaseClient, id: string) {
   const br = await s.from("bookings").select("*, members(display_name,member_code), booking_technicians(name)").eq("id",id).single(); if (br.error) throw mapDbError(br.error);
   const ir = await s.from("booking_items").select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity").eq("booking_id",id).order("created_at",{ascending:true}); if (ir.error) throw mapDbError(ir.error);
   const items=(ir.data||[]).map(itemClient), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
-  return { bookingId:r.id, requestId:r.request_id, serviceId:r.service_id, serviceTitle:items.map((x:any)=>x.serviceTitle).join(" + ")||"預約項目", items, totalDurationMinutes:Number(r.total_duration_minutes||30), totalAmount:items.reduce((sum:number,x:any)=>sum+Number(x.subtotalAmount||0),0), memberId:r.member_id, memberDisplayName:r.members?.display_name||"", memberCode:r.members?.member_code||"", bookingDate:r.booking_date, startTime:String(r.start_time||"").slice(0,5), endTime:String(r.end_time||"").slice(0,5), status:r.status, memberNote:r.member_note||"", adminNote:r.admin_note||"", completedAt:r.completed_at||null, confirmedAt:r.confirmed_at, rejectedAt:r.rejected_at, cancelledAt:r.cancelled_at, createdAt:r.created_at, updatedAt:r.updated_at, contactSource:r.contact_source||"member", contactSurname:r.contact_surname||"", contactSalutation:r.contact_salutation||"", contactPhone:r.contact_phone||"", ...g };
+  return { bookingId:r.id, requestId:r.request_id, serviceId:r.service_id, serviceTitle:items.map((x:any)=>x.serviceTitle).join(" + ")||"預約項目", items, totalDurationMinutes:Number(r.total_duration_minutes||30), totalAmount:items.reduce((sum:number,x:any)=>sum+Number(x.subtotalAmount||0),0), memberId:r.member_id, memberDisplayName:r.members?.display_name||"", memberCode:r.members?.member_code||"", bookingDate:r.booking_date, startTime:String(r.start_time||"").slice(0,5), endTime:String(r.end_time||"").slice(0,5), startAt:localTimestamp(r.start_at), endAt:localTimestamp(r.end_at), status:r.status, memberNote:r.member_note||"", adminNote:r.admin_note||"", completedAt:r.completed_at||null, confirmedAt:r.confirmed_at, rejectedAt:r.rejected_at, cancelledAt:r.cancelled_at, createdAt:r.created_at, updatedAt:r.updated_at, contactSource:r.contact_source||"member", contactSurname:r.contact_surname||"", contactSalutation:r.contact_salutation||"", contactPhone:r.contact_phone||"", ...g };
 }
 
 async function normalizeGroup(s: SupabaseClient, body: Json) {
@@ -261,7 +262,7 @@ async function memberBootstrap(s: SupabaseClient, m: any) {
 }
 
 async function slots(s: SupabaseClient, m: any, body: Json) {
-  const g=await normalizeGroup(s,body), date=dateValue(body.bookingDate), cfg=g.cfg, today=taipeiDate(), earliest=addDays(today,Number(cfg.min_advance_days||0)), max=Number(cfg.max_advance_days||0), latest=max>0?addDays(today,max):"";
+  const g=await normalizeGroup(s,body), date=dateValue(body.bookingDate), cfg=g.cfg, today=currentBusinessDate(taipeiDate(),taipeiMinutes(),cfg.work_start_time,cfg.work_end_time), earliest=addDays(today,Number(cfg.min_advance_days||0)), max=Number(cfg.max_advance_days||0), latest=max>0?addDays(today,max):"";
   if (date < earliest || (latest && date > latest)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:[] };
   if (await isActiveBookingHoliday(s,date)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, holidayBlocked:true, slots:[] };
   let excluded="";
@@ -269,25 +270,26 @@ async function slots(s: SupabaseClient, m: any, body: Json) {
     excluded=uuid(body.bookingId,"預約"); const r=await s.from("bookings").select("id,status").eq("id",excluded).eq("member_id",m.id).maybeSingle();
     if (r.error) throw mapDbError(r.error); if (!r.data || !["pending","confirmed"].includes(r.data.status)) throw new ApiError(409,"BOOKING_NOT_EDITABLE","找不到可修改的預約。");
   }
-  const primaryRows=await s.from("bookings").select("id,start_time,end_time").eq("booking_date",date).eq("technician_id",g.primaryId).eq("party_size",1).in("status",["pending","confirmed"]);
+  const primaryRows=await s.from("bookings").select("id,start_at,end_at").gte("booking_date",addDays(date,-1)).lte("booking_date",addDays(date,1)).eq("technician_id",g.primaryId).eq("party_size",1).in("status",["pending","confirmed"]);
   if (primaryRows.error) throw mapDbError(primaryRows.error);
-  const primaryOccupied=(primaryRows.data||[]).filter((x:any)=>x.id!==excluded).map((x:any)=>({start:toMinutes(x.start_time),end:toMinutes(x.end_time)}));
+  const primaryOccupied=(primaryRows.data||[]).filter((x:any)=>x.id!==excluded).map(occupiedRange);
 
   const techIds=[...new Set(g.assignments.map((x:any)=>x.technicianId))]; let reservationRows:any[]=[];
   if (techIds.length) {
-    const rr=await s.from("booking_participant_reservations").select("booking_id,technician_id,start_time,end_time").eq("booking_date",date).eq("is_active",true).in("technician_id",techIds);
+    const rr=await s.from("booking_participant_reservations").select("booking_id,technician_id,start_at,end_at").gte("booking_date",addDays(date,-1)).lte("booking_date",addDays(date,1)).eq("is_active",true).in("technician_id",techIds);
     if (rr.error) throw mapDbError(rr.error); reservationRows=(rr.data||[]).filter((x:any)=>x.booking_id!==excluded);
   }
   const occupiedByTech=new Map<string,any[]>();
-  for (const row of reservationRows) { const a=occupiedByTech.get(row.technician_id)||[]; a.push({start:toMinutes(row.start_time),end:toMinutes(row.end_time)}); occupiedByTech.set(row.technician_id,a); }
+  for (const row of reservationRows) { const a=occupiedByTech.get(row.technician_id)||[]; a.push(occupiedRange(row)); occupiedByTech.set(row.technician_id,a); }
 
-  const workStart=toMinutes(cfg.work_start_time), workEnd=toMinutes(cfg.work_end_time), now=taipeiMinutes(), out:Json[]=[];
-  for (let cursor=workStart; cursor+g.duration<=workEnd; cursor+=SLOT_INTERVAL) {
+  const workStart=toMinutes(cfg.work_start_time), workEnd=workWindow(cfg.work_start_time,cfg.work_end_time).end, interval=Number(cfg.slot_interval_minutes||SLOT_INTERVAL), out:Json[]=[];
+  for (let cursor=workStart; cursor+g.duration<=workEnd; cursor+=interval) {
     const groupEnd=cursor+g.duration;
-    const mainOverlap=primaryOccupied.some((x:any)=>cursor<x.end && groupEnd>x.start);
-    const assignmentOverlap=g.assignments.some((a:any)=>(occupiedByTech.get(a.technicianId)||[]).some((x:any)=>cursor<x.end && cursor+Number(a.durationMinutes||0)>x.start));
-    const passed=date===today && cursor<=now;
-    out.push({startTime:toTime(cursor),endTime:toTime(groupEnd),available:!mainOverlap&&!assignmentOverlap&&!passed});
+    const candidate=localRange(date,cursor,g.duration);
+    const mainOverlap=primaryOccupied.some((x:any)=>candidate.start<x.end && candidate.end>x.start);
+    const assignmentOverlap=g.assignments.some((a:any)=>(occupiedByTech.get(a.technicianId)||[]).some((x:any)=>candidate.start<x.end && localRange(date,cursor,Number(a.durationMinutes||0)).end>x.start));
+    const passed=slotHasPassed(date,cursor);
+    out.push({startTime:clockTime(cursor),endTime:clockTime(groupEnd),startAt:timeOnBusinessDate(date,cursor),endAt:timeOnBusinessDate(date,groupEnd),available:!mainOverlap&&!assignmentOverlap&&!passed});
   }
   return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:out };
 }

@@ -284,7 +284,7 @@
         list.className = 'calendar-booking-times';
         intervals.slice(0, 2).forEach((interval) => {
           const label = document.createElement('small');
-          label.textContent = `${interval.startTime}–${interval.endTime}`;
+          label.textContent = `${interval.startAt && interval.startAt !== date ? '隔日 ' : ''}${interval.startTime}–${interval.endTime}${interval.endAt && interval.endAt !== date ? '（隔日結束）' : ''}`;
           list.appendChild(label);
         });
         if (intervals.length > 2) {
@@ -355,6 +355,8 @@
           ? item.intervals.map((interval) => ({
               startTime: String(interval?.startTime || '').slice(0, 5),
               endTime: String(interval?.endTime || '').slice(0, 5),
+              startAt: String(interval?.startAt || '').slice(0, 10),
+              endAt: String(interval?.endAt || '').slice(0, 10),
             })).filter((interval) => /^\d{2}:\d{2}$/.test(interval.startTime) && /^\d{2}:\d{2}$/.test(interval.endTime))
           : [];
         if (intervals.length) state.occupiedByDate.set(date, intervals);

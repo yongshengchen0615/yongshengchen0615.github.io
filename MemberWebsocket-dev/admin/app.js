@@ -1001,8 +1001,10 @@
     }
     if (category === 'bookings') {
       const date = record.bookingDate ? window.MemberSystem.formatDate(record.bookingDate) : '日期未設定';
-      const time = formatMemberRecordTimeRange(record.startTime, record.endTime);
-      return `${date}${time ? ' · ' + time : ''} · ${memberRecordStatusLabel(record.status, 'booking')}`;
+      const startDate = String(record.startAt || '').slice(0, 10) || record.bookingDate;
+      const endDate = String(record.endAt || '').slice(0, 10) || record.bookingDate;
+      const time = `${startDate} ${String(record.startTime || '').slice(0, 5)}–${endDate} ${String(record.endTime || '').slice(0, 5)}`;
+      return `營業日 ${date} · ${time} · ${memberRecordStatusLabel(record.status, 'booking')}`;
     }
     if (category === 'testAutomation') {
       const surface = memberRecordPresenceSurfaceLabel(record.surface);

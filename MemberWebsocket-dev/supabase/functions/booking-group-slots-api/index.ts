@@ -2,6 +2,7 @@ import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { workWindow, clockTime, occupiedRange, localRange, slotHasPassed, timeOnBusinessDate, currentBusinessDate } from "../_shared/booking-hours.ts";
 
 type Json = Record<string, any>;
 const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
@@ -212,7 +213,7 @@ async function normalizeGroup(supabase: ReturnType<typeof db>, body: Json) {
 async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
   const group = await normalizeGroup(supabase, body);
   const bookingDate = dateValue(body.bookingDate);
-  const today = taipeiDate();
+  const today = currentBusinessDate(taipeiDate(), taipeiMinutes(), group.settings.work_start_time, group.settings.work_end_time);
   const earliestDate = addDays(today, Number(group.settings.min_advance_days || 0));
   const maxAdvanceDays = Number(group.settings.max_advance_days || 0);
   const latestDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : "";
@@ -246,22 +247,22 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
   }
 
   const primaryRows = await supabase.from("bookings")
-    .select("id,start_time,end_time")
-    .eq("booking_date", bookingDate)
+    .select("id,start_at,end_at")
+    .gte("booking_date", addDays(bookingDate, -1)).lte("booking_date", addDays(bookingDate, 1))
     .eq("technician_id", group.primaryId)
     .eq("party_size", 1)
     .in("status", ["pending", "confirmed"]);
   if (primaryRows.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取主要技師時段。");
   const primaryOccupied = (primaryRows.data || [])
     .filter((row: any) => String(row.id) !== excludedBookingId)
-    .map((row: any) => ({ start: toMinutes(row.start_time), end: toMinutes(row.end_time) }));
+    .map(occupiedRange);
 
   const technicianIds = [...new Set(group.assignments.map((assignment: any) => String(assignment.technicianId)))];
   let reservationRows: any[] = [];
   if (technicianIds.length) {
     const reservationResult = await supabase.from("booking_participant_reservations")
-      .select("booking_id,technician_id,start_time,end_time")
-      .eq("booking_date", bookingDate)
+      .select("booking_id,technician_id,start_at,end_at")
+      .gte("booking_date", addDays(bookingDate, -1)).lte("booking_date", addDays(bookingDate, 1))
       .eq("is_active", true)
       .in("technician_id", technicianIds);
     if (reservationResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取技師預約時段。");
@@ -271,24 +272,25 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
   for (const row of reservationRows) {
     const key = String(row.technician_id || "");
     const list = occupiedByTechnician.get(key) || [];
-    list.push({ start: toMinutes(row.start_time), end: toMinutes(row.end_time) });
+    list.push(occupiedRange(row));
     occupiedByTechnician.set(key, list);
   }
 
   const workStart = toMinutes(group.settings.work_start_time);
-  const workEnd = toMinutes(group.settings.work_end_time);
-  const nowMinutes = taipeiMinutes();
+  const workEnd = workWindow(group.settings.work_start_time, group.settings.work_end_time).end;
+  const interval = Number(group.settings.slot_interval_minutes || SLOT_INTERVAL);
   const output: Json[] = [];
-  for (let start = workStart; start + group.totalDurationMinutes <= workEnd; start += SLOT_INTERVAL) {
+  for (let start = workStart; start + group.totalDurationMinutes <= workEnd; start += interval) {
     const groupEnd = start + group.totalDurationMinutes;
-    const primaryOverlap = primaryOccupied.some((occupied: any) => start < occupied.end && groupEnd > occupied.start);
+    const candidate = localRange(bookingDate, start, group.totalDurationMinutes);
+    const primaryOverlap = primaryOccupied.some((occupied: any) => candidate.start < occupied.end && candidate.end > occupied.start);
     const assignmentOverlap = group.assignments.some((assignment: any) => {
-      const participantEnd = start + Number(assignment.durationMinutes || 0);
+      const participantEnd = localRange(bookingDate, start, Number(assignment.durationMinutes || 0)).end;
       return (occupiedByTechnician.get(String(assignment.technicianId)) || [])
-        .some((occupied: any) => start < occupied.end && participantEnd > occupied.start);
+        .some((occupied: any) => candidate.start < occupied.end && participantEnd > occupied.start);
     });
-    const passed = bookingDate === today && start <= nowMinutes;
-    output.push({ startTime: toTime(start), endTime: toTime(groupEnd), available: !primaryOverlap && !assignmentOverlap && !passed });
+    const passed = slotHasPassed(bookingDate, start);
+    output.push({ startTime: clockTime(start), endTime: clockTime(groupEnd), startAt: timeOnBusinessDate(bookingDate, start), endAt: timeOnBusinessDate(bookingDate, groupEnd), available: !primaryOverlap && !assignmentOverlap && !passed });
   }
 
   return {

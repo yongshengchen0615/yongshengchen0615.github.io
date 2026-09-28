@@ -37,5 +37,5 @@ test('booking admin publishes a least-privilege calendar snapshot and supports f
   assert.doesNotMatch(booking.slice(booking.indexOf('function publishOperationalBookingSnapshot'), booking.indexOf('function handleOperationalSnapshotRequest')), /contactPhone|memberNote|adminNote|idToken/);
   assert.match(booking, /member-admin:booking-focus/);
   assert.match(booking, /card\.classList\.add\('is-calendar-target'\)/);
-  assert.match(loader, /booking-unread-cursor-20260925-2/);
+  assert.match(loader, /booking-overnight-20260928-1/);
 });

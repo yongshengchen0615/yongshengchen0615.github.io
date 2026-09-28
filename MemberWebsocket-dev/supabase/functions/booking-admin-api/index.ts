@@ -1,6 +1,7 @@
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
+import { workWindow, timeOnBusinessDate, clockTime } from "../_shared/booking-hours.ts";
 
 type Json = Record<string, unknown>;
 type Identity = { lineUserId: string; displayName: string };
@@ -49,7 +50,8 @@ function mapDatabaseError(error: unknown): ApiError {
   const rules: Array<[string, number, string, string]> = [
     ["BOOKING_SETTINGS_CONFLICT", 409, "BOOKING_SETTINGS_CONFLICT", "預約共用設定已被其他操作更新，請重新整理後再試。"],
     ["BOOKING_SETTINGS_MISSING", 503, "BOOKING_SETTINGS_MISSING", "預約共用設定尚未完成。"],
-    ["INVALID_WORK_HOURS", 400, "INVALID_WORK_HOURS", "結束工作時間必須晚於開始工作時間至少 30 分鐘。"],
+    ["INVALID_WORK_HOURS", 400, "INVALID_WORK_HOURS", "工作時段至少 5 分鐘，且不可為零長度。"],
+    ["INVALID_SLOT_INTERVAL", 400, "INVALID_SLOT_INTERVAL", "切分間隔須為 5–120 分鐘的 5 分鐘倍數。"],
     ["INVALID_ADVANCE_DAYS", 400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。"],
     ["INVALID_MAX_ADVANCE_DAYS", 400, "INVALID_MAX_ADVANCE_DAYS", "最遠可預約天數必須介於 0–365 天；0 代表不限制。"],
     ["INVALID_ADVANCE_WINDOW", 400, "INVALID_ADVANCE_WINDOW", "最遠可預約天數不可小於需要提前的天數。"],
@@ -97,7 +99,7 @@ function normalizeTime(value: unknown): string {
   if (!match) throw new ApiError(400, "INVALID_WORK_HOURS", "時間格式不正確。" );
   const hour = Number(match[1]);
   const minute = Number(match[2]);
-  if (hour < 0 || hour > 23 || ![0, 30].includes(minute)) throw new ApiError(400, "INVALID_WORK_HOURS", "工作時間必須以 30 分鐘為單位。" );
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || minute % 5 !== 0 || (text.length === 8 && !text.endsWith(":00"))) throw new ApiError(400, "INVALID_WORK_HOURS", "工作時間必須以 5 分鐘為單位。" );
   return `${match[1]}:${match[2]}`;
 }
 function timeToMinutes(value: string): number {
@@ -135,6 +137,7 @@ function settingsClient(row: any, storeService?: any): Json {
   return {
     workStartTime: String(row?.work_start_time || "09:00:00").slice(0, 5),
     workEndTime: String(row?.work_end_time || "17:00:00").slice(0, 5),
+    slotIntervalMinutes: Number(row?.slot_interval_minutes || 30),
     minAdvanceDays: Number(row?.min_advance_days || 0),
     maxAdvanceDays: Number(row?.max_advance_days || 0),
     storeServiceMinutes: Number(storeService?.duration_minutes || 10),
@@ -207,20 +210,28 @@ async function bootstrap(supabase: SupabaseClient): Promise<Json> {
 async function settingsSave(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const workStartTime = normalizeTime(body.workStartTime);
   const workEndTime = normalizeTime(body.workEndTime);
+  let slotIntervalMinutes = Number(body.slotIntervalMinutes);
+  if (body.slotIntervalMinutes === undefined) {
+    const current = await supabase.from("booking_settings").select("slot_interval_minutes").eq("id", 1).single();
+    if (current.error) throw mapDatabaseError(current.error);
+    slotIntervalMinutes = Number(current.data.slot_interval_minutes);
+  }
   const minAdvanceDays = Number(body.minAdvanceDays);
   const maxAdvanceDays = Number(body.maxAdvanceDays);
   const storeServiceMinutes = Number(body.storeServiceMinutes);
   const bookingNotice = preserveText(body.bookingNotice, 2001);
-  if (timeToMinutes(workEndTime) - timeToMinutes(workStartTime) < 30) throw new ApiError(400, "INVALID_WORK_HOURS", "結束工作時間必須晚於開始工作時間至少 30 分鐘。" );
+  if (workStartTime === workEndTime || workWindow(workStartTime, workEndTime).end - timeToMinutes(workStartTime) < 5) throw new ApiError(400, "INVALID_WORK_HOURS", "工作時段不可為零長度。" );
+  if (!Number.isInteger(slotIntervalMinutes) || slotIntervalMinutes < 5 || slotIntervalMinutes > 120 || slotIntervalMinutes % 5 !== 0) throw new ApiError(400, "INVALID_SLOT_INTERVAL", "切分間隔須為 5–120 分鐘的 5 分鐘倍數。" );
   if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) throw new ApiError(400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。" );
   if (!Number.isInteger(maxAdvanceDays) || maxAdvanceDays < 0 || maxAdvanceDays > 365) throw new ApiError(400, "INVALID_MAX_ADVANCE_DAYS", "最遠可預約天數必須介於 0–365 天；0 代表不限制。" );
   if (maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays) throw new ApiError(400, "INVALID_ADVANCE_WINDOW", "最遠可預約天數不可小於需要提前的天數。" );
   if (!Number.isInteger(storeServiceMinutes) || storeServiceMinutes < 1 || storeServiceMinutes > 720) throw new ApiError(400, "INVALID_STORE_SERVICE_MINUTES", "店內服務分鐘必須介於 1–720 分鐘。" );
   if (bookingNotice.length > 2000) throw new ApiError(400, "INVALID_BOOKING_NOTICE", "預約說明不可超過 2,000 字。" );
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
-  const result = await supabase.rpc("save_booking_shared_settings_v2", {
+  const result = await supabase.rpc("save_booking_shared_settings_v3", {
     p_work_start_time: `${workStartTime}:00`,
     p_work_end_time: `${workEndTime}:00`,
+    p_slot_interval_minutes: slotIntervalMinutes,
     p_min_advance_days: minAdvanceDays,
     p_max_advance_days: maxAdvanceDays,
     p_booking_notice: bookingNotice,
@@ -229,8 +240,10 @@ async function settingsSave(supabase: SupabaseClient, identity: Identity, body: 
     p_actor: identity.lineUserId,
   });
   if (result.error) throw mapDatabaseError(result.error);
-  await audit(supabase, identity, "BOOKING_SETTINGS_UPDATED", "booking_settings", "1", { workStartTime, workEndTime, minAdvanceDays, maxAdvanceDays, storeServiceMinutes, bookingNoticeLength: bookingNotice.length });
-  return { settings: settingsClient(result.data, { duration_minutes: storeServiceMinutes }) };
+  const settings = settingsClient(result.data, { duration_minutes: storeServiceMinutes });
+  const previewDate = taipeiDateText();
+  const window = workWindow(workStartTime, workEndTime);
+  return { settings, preview: { businessDate: previewDate, startAt: timeOnBusinessDate(previewDate, window.start), endAt: timeOnBusinessDate(previewDate, window.end), firstSlots: Array.from({ length: Math.min(4, Math.ceil((window.end - window.start) / slotIntervalMinutes)) }, (_, n) => clockTime(window.start + n * slotIntervalMinutes)) } };
 }
 function normalizeRewardRule(body: Json): { provided: boolean; minutes: number | null; pointCardId: string | null } {
   const provided = Object.prototype.hasOwnProperty.call(body, "rewardMinutesPerPoint")
@@ -401,4 +414,3 @@ Deno.serve(async (request: Request) => {
     return response(origin, { ok: true, status: 200, data });
   } catch (error) { return errorResponse(origin, error); }
 });
-

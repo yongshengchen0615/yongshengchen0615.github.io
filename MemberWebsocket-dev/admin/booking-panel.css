@@ -27,7 +27,8 @@
 #bookingPanel .booking-admin-settings-badge{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-height:26px;padding:4px 8px;border-radius:999px;background:var(--theme-surface-muted,#e8f0eb);color:var(--theme-text-muted,#476158);font-size:11px;font-weight:800;white-space:nowrap}
 #bookingPanel .booking-admin-settings-field{display:grid;gap:7px;min-width:0;color:var(--theme-text,#31483f);font-size:13px;font-weight:800}
 #bookingPanel .booking-admin-settings-field>small{color:var(--theme-text-muted,#7d8983);font-weight:500;line-height:1.5}
-#bookingPanel .booking-admin-time-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#bookingPanel .booking-admin-time-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+#bookingPanel .booking-admin-hours-preview{margin:12px 0 0;color:var(--theme-text-muted,#60766c);font-size:13px;line-height:1.5}
 #bookingPanel .booking-admin-number-field{display:grid;grid-template-columns:minmax(0,1fr) 46px;min-width:0}
 #bookingPanel .booking-admin-number-field>input{min-width:0;border-radius:11px 0 0 11px}
 #bookingPanel .booking-admin-number-field>span{display:grid;place-items:center;border:1px solid rgba(23,53,46,.16);border-left:0;border-radius:0 11px 11px 0;background:var(--theme-surface-muted,#f1f4f0);color:var(--theme-text-muted,#607068);font-size:13px;font-weight:800}

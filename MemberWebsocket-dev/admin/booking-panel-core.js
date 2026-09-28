@@ -110,9 +110,11 @@
                   <span class="booking-admin-settings-badge">每日共用</span>
                 </div>
                 <div class="booking-admin-form-grid booking-admin-global-settings-grid booking-admin-time-grid">
-                  <label class="booking-admin-settings-field"><span>開始工作時間</span><input id="bookingAdminStartTime" type="time" step="1800" value="09:00" required><small>會員端可選擇的第一個開始時段。</small></label>
-                  <label class="booking-admin-settings-field"><span>結束工作時間</span><input id="bookingAdminEndTime" type="time" step="1800" value="17:00" required><small>最後可安排服務的工作時間上限。</small></label>
+                  <label class="booking-admin-settings-field"><span>開始工作時間</span><input id="bookingAdminStartTime" type="time" step="300" value="09:00" required><small>會員端可選擇的第一個開始時段。</small></label>
+                  <label class="booking-admin-settings-field"><span>結束工作時間</span><input id="bookingAdminEndTime" type="time" step="300" value="17:00" required><small>早於開始時間代表隔日結束，例如 14:00–02:00。</small></label>
+                  <label class="booking-admin-settings-field"><span>時段切分間隔</span><div class="booking-admin-number-field"><input id="bookingAdminSlotInterval" type="number" min="5" max="120" step="5" value="30" required><span aria-hidden="true">分鐘</span></div><small>可設 5–120 分鐘，服務長度仍依各項目計算。</small></label>
                 </div>
+                <p id="bookingAdminHoursPreview" class="booking-admin-hours-preview" role="status" aria-live="polite"></p>
               </section>
 
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminAdvanceRuleHeading">
@@ -192,7 +194,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -203,6 +205,7 @@
     els.bookingTab.addEventListener('click', activateBookingPanel);
     PRIMARY_TAB_IDS.forEach((id) => document.getElementById(id)?.addEventListener('click', deactivateBookingPanel));
     els.bookingAdminSettingsForm.addEventListener('submit', saveSettings);
+    ['bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval'].forEach((id) => els[id].addEventListener('input', renderHoursPreview));
     els.bookingAdminNewTypeButton.addEventListener('click', () => openTypeModal(null));
     els.bookingAdminTechniciansSubtab.addEventListener('click', () => setSubtab('technicians'));
     els.bookingAdminServicesSubtab.addEventListener('click', () => setSubtab('services'));
@@ -491,10 +494,32 @@
     const settings = state.booking.settings || {};
     els.bookingAdminStartTime.value = String(settings.workStartTime || '09:00');
     els.bookingAdminEndTime.value = String(settings.workEndTime || '17:00');
+    els.bookingAdminSlotInterval.value = String(Number(settings.slotIntervalMinutes || 30));
     els.bookingAdminAdvanceDays.value = String(Number(settings.minAdvanceDays || 0));
     els.bookingAdminMaxAdvanceDays.value = String(Number(settings.maxAdvanceDays || 0));
     els.bookingAdminStoreServiceMinutes.value = String(Number(settings.storeServiceMinutes || 10));
     els.bookingAdminNotice.value = String(settings.bookingNotice || '');
+    renderHoursPreview();
+  }
+  function renderHoursPreview() {
+    const start = els.bookingAdminStartTime.value;
+    const end = els.bookingAdminEndTime.value;
+    const step = Number(els.bookingAdminSlotInterval.value);
+    const valid = /^\d{2}:\d{2}$/.test(start) && /^\d{2}:\d{2}$/.test(end) && start !== end
+      && [start, end].every((time) => Number(time.slice(0, 2)) < 24 && Number(time.slice(3)) < 60 && Number(time.slice(3)) % 5 === 0)
+      && Number.isInteger(step) && step >= 5 && step <= 120 && step % 5 === 0;
+    if (!valid) { els.bookingAdminHoursPreview.textContent = '請輸入不同的開始／結束時間，以及 5–120 分鐘的切分間隔。'; return; }
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const next = new Date(`${today}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    const overnight = end < start;
+    const opening = Number(start.slice(0, 2)) * 60 + Number(start.slice(3));
+    const closing = Number(end.slice(0, 2)) * 60 + Number(end.slice(3)) + (overnight ? 1440 : 0);
+    const first = Array.from({ length: Math.min(4, Math.ceil((closing - opening) / step)) }, (_, index) => {
+      const minute = (opening + index * step) % 1440;
+      return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+    });
+    els.bookingAdminHoursPreview.textContent = `${today} 營業班次：${today} ${start} → ${overnight ? next.toISOString().slice(0, 10) : today} ${end}。切分起點：${first.join('、')}${closing - opening > step * 4 ? '…' : ''}`;
   }
   function renderStats() {
     const bookings = state.booking.bookings || [];
@@ -561,17 +586,23 @@
     const minAdvanceDays = Number(els.bookingAdminAdvanceDays.value);
     const maxAdvanceDays = Number(els.bookingAdminMaxAdvanceDays.value);
     const storeServiceMinutes = Number(els.bookingAdminStoreServiceMinutes.value);
+    const slotIntervalMinutes = Number(els.bookingAdminSlotInterval.value);
+    const workStartTime = els.bookingAdminStartTime.value;
+    const workEndTime = els.bookingAdminEndTime.value;
     const bookingNotice = String(els.bookingAdminNotice.value || '').replace(/\r\n?/g, '\n');
     if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) return showMessage(els.bookingAdminSettingsMessage, '提前預約天數必須介於 0–365 天。', 'error');
     if (!Number.isInteger(maxAdvanceDays) || maxAdvanceDays < 0 || maxAdvanceDays > 365) return showMessage(els.bookingAdminSettingsMessage, '最遠可預約天數必須介於 0–365 天；0 代表不限制。', 'error');
     if (maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays) return showMessage(els.bookingAdminSettingsMessage, '最遠可預約天數不可小於需要提前的天數。', 'error');
     if (!Number.isInteger(storeServiceMinutes) || storeServiceMinutes < 1 || storeServiceMinutes > 720) return showMessage(els.bookingAdminSettingsMessage, '店內服務分鐘必須介於 1–720 分鐘。', 'error');
+    if (!/^\d{2}:\d{2}$/.test(workStartTime) || !/^\d{2}:\d{2}$/.test(workEndTime) || workStartTime === workEndTime || [workStartTime, workEndTime].some((time) => Number(time.slice(0, 2)) > 23 || Number(time.slice(3)) > 59 || Number(time.slice(3)) % 5 !== 0)) return showMessage(els.bookingAdminSettingsMessage, '工作時間格式錯誤或時段長度為零。', 'error');
+    if (!Number.isInteger(slotIntervalMinutes) || slotIntervalMinutes < 5 || slotIntervalMinutes > 120 || slotIntervalMinutes % 5 !== 0) return showMessage(els.bookingAdminSettingsMessage, '切分間隔須為 5–120 分鐘的 5 分鐘倍數。', 'error');
     if (bookingNotice.length > 2000) return showMessage(els.bookingAdminSettingsMessage, '預約說明不可超過 2,000 字。', 'error');
     state.busy = true; clearMessage(els.bookingAdminSettingsMessage);
     try {
       const result = await manageRequest('admin.booking.settings.save', {
         workStartTime: els.bookingAdminStartTime.value,
         workEndTime: els.bookingAdminEndTime.value,
+        slotIntervalMinutes,
         minAdvanceDays,
         maxAdvanceDays,
         storeServiceMinutes,
@@ -761,7 +792,7 @@
     if (Number.isFinite(createdAt)) return createdAt;
     const updatedAt = Date.parse(String(booking?.updatedAt || ''));
     if (Number.isFinite(updatedAt)) return updatedAt;
-    const fallback = Date.parse(`${String(booking?.bookingDate || '')}T${String(booking?.startTime || '00:00').slice(0, 5)}:00+08:00`);
+    const fallback = Date.parse(booking?.startAt || `${String(booking?.bookingDate || '')}T${String(booking?.startTime || '00:00').slice(0, 5)}:00+08:00`);
     return Number.isFinite(fallback) ? fallback : 0;
   }
 
@@ -842,6 +873,9 @@
       card.dataset.bookingMemberName = String(booking.memberDisplayName || '');
       card.dataset.bookingDate = String(booking.bookingDate || '');
       card.dataset.bookingStartTime = String(booking.startTime || '').slice(0, 5);
+      card.dataset.bookingEndTime = String(booking.endTime || '').slice(0, 5);
+      card.dataset.bookingStartAt = String(booking.startAt || '');
+      card.dataset.bookingEndAt = String(booking.endAt || '');
       card.dataset.bookingCopyItems = JSON.stringify(bookingVisibleItems(booking).map((item) => ({
         serviceTitle: String(item?.serviceTitle || '預約項目').trim(),
         quantity: Math.max(1, Number(item?.quantity || 1)),
@@ -949,7 +983,7 @@
 
     const dateTime = document.createElement('p');
     dateTime.className = 'booking-received-datetime';
-    dateTime.textContent = `${formatBookingDateSummary(booking.bookingDate)} ${String(booking.startTime || '—').slice(0, 5)}`;
+    dateTime.textContent = `${formatBookingDateSummary(booking.bookingDate)} 營業班次 · ${String(booking.startAt || '').slice(0, 10) || booking.bookingDate} ${String(booking.startTime || '—').slice(0, 5)}–${String(booking.endAt || '').slice(0, 10) || booking.bookingDate} ${String(booking.endTime || '—').slice(0, 5)}`;
     summary.appendChild(dateTime);
 
     const contactName = document.createElement('p');

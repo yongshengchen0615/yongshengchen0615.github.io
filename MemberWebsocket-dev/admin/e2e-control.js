@@ -3282,6 +3282,7 @@
       'bookingAdminSettingsForm',
       'bookingAdminStartTime',
       'bookingAdminEndTime',
+      'bookingAdminSlotInterval',
       'bookingAdminAdvanceDays',
       'bookingAdminMaxAdvanceDays',
       'bookingAdminStoreServiceMinutes',
@@ -3297,6 +3298,7 @@
       missing,
       bootstrapMatched: false,
       invalidWorkHoursRejected: false,
+      invalidSlotIntervalRejected: false,
       invalidAdvanceRejected: false,
       invalidStoreMinutesRejected: false,
       invalidNoticeRejected: false,
@@ -3333,6 +3335,7 @@
     const snapshot = {
       workStartTime: String(controls.bookingAdminStartTime.value || ''),
       workEndTime: String(controls.bookingAdminEndTime.value || ''),
+      slotIntervalMinutes: Number(controls.bookingAdminSlotInterval.value),
       minAdvanceDays: Number(controls.bookingAdminAdvanceDays.value),
       maxAdvanceDays: Number(controls.bookingAdminMaxAdvanceDays.value),
       storeServiceMinutes: Number(controls.bookingAdminStoreServiceMinutes.value),
@@ -3342,6 +3345,7 @@
     const semanticSettings = (settings) => ({
       workStartTime: String(settings?.workStartTime || ''),
       workEndTime: String(settings?.workEndTime || ''),
+      slotIntervalMinutes: Number(settings?.slotIntervalMinutes),
       minAdvanceDays: Number(settings?.minAdvanceDays),
       maxAdvanceDays: Number(settings?.maxAdvanceDays),
       storeServiceMinutes: Number(settings?.storeServiceMinutes),
@@ -3351,6 +3355,7 @@
       const normalized = semanticSettings(settings);
       return normalized.workStartTime === expected.workStartTime &&
         normalized.workEndTime === expected.workEndTime &&
+        normalized.slotIntervalMinutes === expected.slotIntervalMinutes &&
         normalized.minAdvanceDays === expected.minAdvanceDays &&
         normalized.maxAdvanceDays === expected.maxAdvanceDays &&
         normalized.storeServiceMinutes === expected.storeServiceMinutes &&
@@ -3359,6 +3364,7 @@
     const setSettingsFields = (settings) => {
       setField('bookingAdminStartTime', settings.workStartTime);
       setField('bookingAdminEndTime', settings.workEndTime);
+      setField('bookingAdminSlotInterval', String(settings.slotIntervalMinutes));
       setField('bookingAdminAdvanceDays', String(settings.minAdvanceDays));
       setField('bookingAdminMaxAdvanceDays', String(settings.maxAdvanceDays));
       setField('bookingAdminStoreServiceMinutes', String(settings.storeServiceMinutes));
@@ -3416,6 +3422,7 @@
     const mutation = {
       workStartTime: selectedHours[0],
       workEndTime: selectedHours[1],
+      slotIntervalMinutes: snapshot.slotIntervalMinutes === 30 ? 15 : 30,
       minAdvanceDays: mutatedMin,
       maxAdvanceDays: mutatedMax,
       storeServiceMinutes: mutatedStoreMinutes,
@@ -3431,16 +3438,25 @@
 
     try {
       setField('bookingAdminStartTime', '10:00');
-      setField('bookingAdminEndTime', '09:30');
+      setField('bookingAdminEndTime', '10:00');
       controls.bookingAdminSaveSettingsButton.click();
       actual.invalidWorkHoursRejected = Boolean(await waitFor(() =>
-        /結束工作時間必須晚於開始工作時間至少 30 分鐘/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        /工作時間格式錯誤或時段長度為零/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
         8000,
         100
       ));
 
       setField('bookingAdminStartTime', snapshot.workStartTime);
       setField('bookingAdminEndTime', snapshot.workEndTime);
+      setField('bookingAdminSlotInterval', String(snapshot.slotIntervalMinutes));
+      setField('bookingAdminSlotInterval', '0');
+      controls.bookingAdminSaveSettingsButton.click();
+      actual.invalidSlotIntervalRejected = Boolean(await waitFor(() =>
+        /切分間隔須為 5–120 分鐘/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        2000,
+        80
+      ));
+      setField('bookingAdminSlotInterval', String(snapshot.slotIntervalMinutes));
       setField('bookingAdminAdvanceDays', '5');
       setField('bookingAdminMaxAdvanceDays', '4');
       controls.bookingAdminSaveSettingsButton.click();
@@ -3498,6 +3514,7 @@
           actual.userBaselineMatched =
             String(baseline?.settings?.workStartTime || '') === snapshot.workStartTime &&
             String(baseline?.settings?.workEndTime || '') === snapshot.workEndTime &&
+            Number(baseline?.settings?.slotIntervalMinutes) === snapshot.slotIntervalMinutes &&
             Number(baseline?.settings?.minAdvanceDays) === snapshot.minAdvanceDays &&
             Number(baseline?.settings?.maxAdvanceDays) === snapshot.maxAdvanceDays &&
             Number(baselineStore?.durationMinutes) === snapshot.storeServiceMinutes;
@@ -3532,6 +3549,7 @@
             idToken: session.idToken,
             workStartTime: mutation.workStartTime,
             workEndTime: mutation.workEndTime,
+            slotIntervalMinutes: mutation.slotIntervalMinutes,
             minAdvanceDays: mutation.minAdvanceDays,
             maxAdvanceDays: mutation.maxAdvanceDays,
             storeServiceMinutes: mutation.storeServiceMinutes,
@@ -3576,6 +3594,7 @@
           String(userData?.settings?.workEndTime || '') === mutation.workEndTime &&
           Number(userData?.settings?.minAdvanceDays) === mutation.minAdvanceDays &&
           Number(userData?.settings?.maxAdvanceDays) === mutation.maxAdvanceDays;
+        actual.userBootstrapMatched = actual.userBootstrapMatched && Number(userData?.settings?.slotIntervalMinutes) === mutation.slotIntervalMinutes;
         actual.userStoreMinutesMatched = Number(userStore?.durationMinutes) === mutation.storeServiceMinutes;
 
         const normalService = (userData?.services || []).find((service) =>
@@ -3668,6 +3687,7 @@
     const ok = actual.ready && actual.panelVisible && actual.missing.length === 0 &&
       actual.bootstrapMatched &&
       actual.invalidWorkHoursRejected &&
+      actual.invalidSlotIntervalRejected &&
       actual.invalidAdvanceRejected &&
       actual.invalidStoreMinutesRejected &&
       actual.invalidNoticeRejected &&

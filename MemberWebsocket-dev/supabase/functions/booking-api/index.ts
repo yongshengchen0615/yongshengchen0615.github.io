@@ -2,6 +2,7 @@ import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
+import { workWindow, clockTime, occupiedRange, localRange, slotHasPassed, timeOnBusinessDate, localTimestamp, currentBusinessDate } from "../_shared/booking-hours.ts";
 
 type Json = Record<string, unknown>;
 type Identity = { lineUserId: string; displayName: string };
@@ -202,7 +203,7 @@ function normalizeTime(value: unknown): string {
   if (!match) throw new ApiError(400, "INVALID_TIME", "時間格式不正確。");
   const hour = Number(match[1]);
   const minute = Number(match[2]);
-  if (hour < 0 || hour > 23 || ![0, 30].includes(minute)) throw new ApiError(400, "INVALID_TIME", "時間必須以 30 分鐘為起始邊界。");
+  if (hour < 0 || hour > 23 || minute > 59 || minute % 5 !== 0 || (text.length === 8 && !text.endsWith(":00"))) throw new ApiError(400, "INVALID_TIME", "時間必須以 5 分鐘為起始邊界。");
   return `${match[1]}:${match[2]}`;
 }
 
@@ -263,6 +264,7 @@ function settingsClient(row: any): Json {
   return {
     workStartTime: String(row?.work_start_time || "09:00:00").slice(0, 5),
     workEndTime: String(row?.work_end_time || "17:00:00").slice(0, 5),
+    slotIntervalMinutes: Number(row?.slot_interval_minutes || 30),
     minAdvanceDays: Number(row?.min_advance_days || 0),
     maxAdvanceDays: Number(row?.max_advance_days || 0),
     updatedAt: row?.updated_at || null,
@@ -315,6 +317,8 @@ function bookingClient(row: any, items: any[] = []): Json {
     bookingDate: row.booking_date,
     startTime: String(row.start_time || "").slice(0, 5),
     endTime: String(row.end_time || "").slice(0, 5),
+    startAt: localTimestamp(row.start_at),
+    endAt: localTimestamp(row.end_at),
     status: row.status,
     memberNote: row.member_note || "",
     adminNote: row.admin_note || "",
@@ -355,7 +359,7 @@ async function bookingSettings(supabase: SupabaseClient): Promise<any> {
 }
 
 function assertBookingDateWindow(date: string, settings: any): void {
-  const today = taipeiDate();
+  const today = currentBusinessDate(taipeiDate(), taipeiMinutes(), settings.work_start_time, settings.work_end_time);
   const earliestBookingDate = addDays(today, Number(settings?.min_advance_days || 0));
   const maxAdvanceDays = Number(settings?.max_advance_days || 0);
   const latestBookingDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : "";
@@ -463,7 +467,7 @@ async function generateSlots(supabase: SupabaseClient, body: Json, member: any):
   const duration = totalDuration(items);
   if (duration < 1 || duration > 1440) throw new ApiError(400, "INVALID_BOOKING_DURATION", "預約服務總時間不正確。");
 
-  const today = taipeiDate();
+  const today = currentBusinessDate(taipeiDate(), taipeiMinutes(), settings.work_start_time, settings.work_end_time);
   const earliestBookingDate = addDays(today, Number(settings.min_advance_days || 0));
   const maxAdvanceDays = Number(settings.max_advance_days || 0);
   const latestBookingDate = maxAdvanceDays > 0 ? addDays(today, maxAdvanceDays) : "";
@@ -499,26 +503,26 @@ async function generateSlots(supabase: SupabaseClient, body: Json, member: any):
     if (!owned.data || !["pending", "confirmed"].includes(owned.data.status)) throw new ApiError(409, "BOOKING_NOT_EDITABLE", "找不到可修改的預約。");
   }
   const bookings = await supabase.from("bookings")
-    .select("id,start_time,end_time")
-    .eq("booking_date", date)
+    .select("id,start_at,end_at")
+    .gte("booking_date", addDays(date, -1)).lte("booking_date", addDays(date, 1))
     .in("status", ["pending", "confirmed"]);
   if (bookings.error) throw mapDatabaseError(bookings.error);
-  const occupied = (bookings.data || []).filter((row: any) => row.id !== excludedId).map((row: any) => ({
-    start: timeToMinutes(row.start_time),
-    end: timeToMinutes(row.end_time),
-  }));
+  const occupied = (bookings.data || []).filter((row: any) => row.id !== excludedId).map(occupiedRange);
 
   const workStart = timeToMinutes(settings.work_start_time);
-  const workEnd = timeToMinutes(settings.work_end_time);
-  const nowMinutes = taipeiMinutes();
+  const workEnd = workWindow(settings.work_start_time, settings.work_end_time).end;
+  const interval = Number(settings.slot_interval_minutes || SLOT_START_INTERVAL_MINUTES);
   const slots: Json[] = [];
-  for (let cursor = workStart; cursor + duration <= workEnd; cursor += SLOT_START_INTERVAL_MINUTES) {
+  for (let cursor = workStart; cursor + duration <= workEnd; cursor += interval) {
     const candidateEnd = cursor + duration;
-    const overlap = occupied.some((range: any) => cursor < range.end && candidateEnd > range.start);
-    const passed = date === today && cursor <= nowMinutes;
+    const candidate = localRange(date, cursor, duration);
+    const overlap = occupied.some((range: any) => candidate.start < range.end && candidate.end > range.start);
+    const passed = slotHasPassed(date, cursor);
     slots.push({
-      startTime: minutesToTime(cursor),
-      endTime: minutesToTime(candidateEnd),
+      startTime: clockTime(cursor),
+      endTime: clockTime(candidateEnd),
+      startAt: timeOnBusinessDate(date, cursor),
+      endAt: timeOnBusinessDate(date, candidateEnd),
       available: !overlap && !passed,
     });
   }
@@ -562,7 +566,7 @@ async function userBootstrap(supabase: SupabaseClient, member: any): Promise<Jso
   if ((bookingResult as any).error) throw mapDatabaseError((bookingResult as any).error);
   return {
     serverNow: new Date().toISOString(),
-    today: taipeiDate(),
+    today: currentBusinessDate(taipeiDate(), taipeiMinutes(), settings.work_start_time, settings.work_end_time),
     settings: { ...settingsClient(settings), serviceTypeRewards },
     services: services.map(serviceClient),
     bookings: await hydrateBookings(supabase, ((bookingResult as any).data || []) as any[]),
@@ -988,4 +992,3 @@ Deno.serve(async (request: Request) => {
     return errorResponse(origin, error);
   }
 });
-
