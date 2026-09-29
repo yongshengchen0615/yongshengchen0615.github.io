@@ -29,7 +29,7 @@
 
   function syncThemeMeta(theme) {
     if (!themeMeta) return;
-    const next = theme === DARK ? '#0d1411' : '#f3f5f2';
+    const next = theme === DARK ? '#101512' : '#f9fbf9';
     if (themeMeta.content !== next) themeMeta.content = next;
   }
 
