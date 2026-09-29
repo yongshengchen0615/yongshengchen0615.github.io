@@ -28,6 +28,13 @@ test('admin editors expose GPS and explicit address search for event and point-t
     assert.match(html, new RegExp('id="' + id + '"'));
   }
   assert.match(editor, /nominatim\.openstreetmap\.org\/search/);
+  assert.match(editor, /relaxedAddressQuery/);
+  assert.match(editor, /countrycodes: 'tw'/);
+  assert.match(editor, /params\.set\('viewbox'/);
+  assert.match(editor, /waitForGeocoderSlot/);
+  assert.match(editor, /geocodeCache/);
+  assert.match(editor, /sortCandidatesByMapDistance/);
+  assert.match(html, /coupon-location-editor\.js\?v=ticket-address-nearest-fallback-20260929-1/);
   assert.match(editor, /navigator\.geolocation\.getCurrentPosition/);
   assert.match(editor, /window\.TicketLocationEditors/);
   assert.match(editor, /window\.L\.circle/);
