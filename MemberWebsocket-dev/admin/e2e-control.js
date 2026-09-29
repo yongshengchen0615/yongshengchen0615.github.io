@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-29.5';
+  const VERSION = '2026-09-29.6';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -740,7 +740,18 @@
         key: 'E2E_BACKGROUND_RUNNER_FAILURE', name: '背景 Runner 存活與進度',
         domain: 'Paired E2E / Orchestration', status: 'failed',
         message: String(error?.message || '背景 Runner 中斷。'),
-        expected: { runnerResponding: true }, actual: plainError(error), durationMs: 0
+        expected: { runnerResponding: true },
+        actual: {
+          ...plainError(error),
+          runnerVersion: VERSION,
+          runId,
+          runnerClosed: !runnerWindow || runnerWindow.closed,
+          lastStatusAgeMs: state.backgroundLastStatusAt
+            ? Math.max(0, Date.now() - state.backgroundLastStatusAt)
+            : null,
+          lastCompletedCaseKey: String([...state.results].reverse().find((item) => item.status !== 'running')?.key || '')
+        },
+        durationMs: 0
       });
       render();
       try { await recordResultRows(state.results, 'paired-browser', 'full', '', state.runStartedAt, { rootRun: false }); } catch {}
@@ -1327,6 +1338,7 @@
       clientType: 'admin',
       idToken: session.idToken,
       runnerKind,
+      runnerVersion: VERSION,
       suite,
       memberId: memberId || undefined,
       startedAt: startedAt || state.runStartedAt || new Date(Date.now() - 1000).toISOString(),

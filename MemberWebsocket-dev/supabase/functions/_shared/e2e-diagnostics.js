@@ -124,7 +124,21 @@ export function diagnoseE2EFailure(input = {}) {
   let layer = "test-assertion";
   let retryable = false;
 
-  if (assertionOnly && includesAny(signal, ["datewindow", "bookingdatewindow"])) {
+  const popupBlocked = new Set(["E2E_BACKGROUND_POPUP_BLOCKED", "E2E_POPUP_BLOCKED"]).has(sourceCode);
+  const runnerLifecycle = sourceCode === "E2E_BACKGROUND_INTERRUPTED"
+    || sourceCode.startsWith("E2E_BACKGROUND_RUNNER_")
+    || includesAny(signal, ["背景 runner 視窗已關閉", "背景 runner 中斷", "background runner closed", "background runner stalled"]);
+
+  if (popupBlocked) {
+    category = "browser-policy";
+    code = "E2E_BROWSER_POLICY";
+    layer = "browser";
+  } else if (runnerLifecycle) {
+    category = "runner-lifecycle";
+    code = "E2E_RUNNER_LIFECYCLE";
+    layer = "orchestration";
+    retryable = true;
+  } else if (assertionOnly && includesAny(signal, ["datewindow", "bookingdatewindow"])) {
     category = "api-contract";
     code = "E2E_API_CONTRACT";
     layer = "edge-function";
@@ -209,6 +223,8 @@ export function diagnoseE2EFailure(input = {}) {
     backend: "對照 API 狀態碼與 Edge Function／資料庫錯誤紀錄。",
     "client-error": "檢查瀏覽器錯誤事件與對應操作前後的畫面狀態。",
     "api-contract": "比對失敗案例的日期範圍探測值、後端時段回應與預約共用設定。",
+    "browser-policy": "確認管理端網站已允許彈出式視窗，再由使用者操作重新啟動 E2E。",
+    "runner-lifecycle": "檢查 Runner 是否被關閉、最後心跳時間與最後完成案例，再重播相同 seed。",
     assertion: "比對 Expected／Actual，確認資料寫入、回讀及畫面呈現的第一個差異。",
   }[category];
 

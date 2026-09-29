@@ -1285,7 +1285,7 @@ async function recordBrowserRun(
     passed_cases: passed,
     failed_cases: failed,
     summary: {
-      runnerVersion: "admin-browser-e2e-20260927-replay1",
+      runnerVersion: asText(body.runnerVersion, 80) || "admin-browser-e2e-legacy",
       runnerKind,
       skippedCases: skipped,
       memberId,

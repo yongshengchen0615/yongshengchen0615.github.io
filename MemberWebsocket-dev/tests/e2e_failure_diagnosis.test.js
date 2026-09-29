@@ -167,3 +167,37 @@ test('failure diagnostics have a partial database index for fast triage queries'
   assert.match(migration, /failure_code, created_at desc/);
   assert.match(migration, /where status = 'failed'/);
 });
+
+
+test('E2E diagnostics classifies browser policy and background Runner lifecycle failures', async () => {
+  const { diagnoseE2EFailure } = await diagnosticsModule();
+  const popup = diagnoseE2EFailure({
+    caseKey: 'PAIRED_RUNNER_FATAL',
+    actual: { code: 'E2E_BACKGROUND_POPUP_BLOCKED' }
+  });
+  assert.equal(popup.code, 'E2E_BROWSER_POLICY');
+  assert.equal(popup.category, 'browser-policy');
+  assert.equal(popup.retryable, false);
+  assert.match(popup.nextCheck, /彈出式視窗/);
+
+  const closed = diagnoseE2EFailure({
+    caseKey: 'E2E_BACKGROUND_RUNNER_FAILURE',
+    actual: { code: 'E2E_BACKGROUND_RUNNER_CLOSED' },
+    message: '背景 Runner 視窗已關閉。'
+  });
+  assert.equal(closed.code, 'E2E_RUNNER_LIFECYCLE');
+  assert.equal(closed.category, 'runner-lifecycle');
+  assert.equal(closed.layer, 'orchestration');
+  assert.equal(closed.retryable, true);
+  assert.match(closed.nextCheck, /最後心跳/);
+});
+
+test('paired browser records the actual controller version and Runner lifecycle context', () => {
+  const controller = fs.readFileSync(path.join(ROOT, 'admin/e2e-control.js'), 'utf8');
+  const api = fs.readFileSync(path.join(ROOT, 'supabase/functions/test-control-api/index.ts'), 'utf8');
+  assert.match(controller, /runnerVersion: VERSION/);
+  assert.match(controller, /lastStatusAgeMs/);
+  assert.match(controller, /lastCompletedCaseKey/);
+  assert.match(api, /runnerVersion: asText\(body\.runnerVersion, 80\) \|\| "admin-browser-e2e-legacy"/);
+  assert.doesNotMatch(api, /runnerVersion: "admin-browser-e2e-20260927-replay1"/);
+});
