@@ -339,7 +339,7 @@ function participantsCard(participants: ParsedBookingParticipant[], accent: stri
 function entitlementCard(title: string, items: string[], accent: string): Record<string, unknown> {
   const visible = items.slice(0, 6);
   const hidden = Math.max(0, items.length - visible.length);
-  const rows = visible.length
+  const rows: Array<Record<string, unknown>> = visible.length
     ? visible.map((item) => ({
         type: 'box',
         layout: 'horizontal',
@@ -365,7 +365,7 @@ function entitlementCard(title: string, items: string[], accent: string): Record
       size: 'xs',
       color: MUTED_COLOR,
       wrap: true,
-    } as Record<string, unknown>);
+    });
   }
 
   return {

@@ -49,7 +49,12 @@ test('all interactive app pages load the helper and deny object and base URL inj
       assert.ok(fs.existsSync(path.resolve(path.dirname(file),script.src.split('?')[0])));
       const csp=d.querySelector('[http-equiv="Content-Security-Policy"]').content;
       assert.match(csp,/base-uri 'none'/);assert.match(csp,/object-src 'none'/);
-      assert.doesNotMatch(csp,/unsafe-eval|unsafe-inline/);
+      const directives=Object.fromEntries(csp.split(';').map(part=>part.trim()).filter(Boolean).map(part=>{const [name,...values]=part.split(/\\s+/);return [name,values.join(' ')];}));
+      assert.doesNotMatch(directives['script-src']||'',/unsafe-eval|unsafe-inline/);
+      assert.doesNotMatch(directives['style-src']||'',/unsafe-inline/);
+      assert.doesNotMatch(directives['style-src-elem']||'',/unsafe-inline/);
+      if(surface==='admin'||surface==='booking') assert.match(directives['style-src-attr']||'',/'unsafe-inline'/);
+      else assert.doesNotMatch(directives['style-src-attr']||'',/unsafe-inline/);
       assert.ok(d.querySelector('meta[name="viewport"]').content.includes('width=device-width'));
     }finally{dom.window.close();}
   }

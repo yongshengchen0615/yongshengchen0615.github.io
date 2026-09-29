@@ -113,11 +113,11 @@ test('backend QA accepts the chosen modules and keeps shared safety checks', () 
   assert.throws(() => backend.selectedE2EModules([]), /至少勾選/);
   assert.throws(() => backend.selectedE2EModules(['integration', 'unknown']), /有效的 E2E 模組/);
   const allCases = Array.from(backend.caseDefinitions('full'), ({ key }) => key);
-  assert.equal(allCases.length, 9);
+  assert.equal(allCases.length, 10);
   const shared = ['ENVIRONMENT_ACCESS', 'TEST_ACCOUNT_INTEGRITY', 'SESSION_SECURITY', 'LINE_SUPPRESSION'];
   const owned = {
     POINTS_INTEGRITY: ['points'], FIXED_TICKET_INTEGRITY: ['points', 'event'],
-    MEMBERSHIP_TERMS_READY: ['member'], BOOKING_INTEGRITY: ['booking'], PRESENCE_INTEGRITY: ['member']
+    MEMBERSHIP_TERMS_READY: ['member'], BOOKING_INTEGRITY: ['booking'], BOOKING_CONFIRMATION_LINE: ['booking'], PRESENCE_INTEGRITY: ['member']
   };
   const modules = ['member', 'points', 'event', 'calendar', 'integration', 'booking'];
   for (let mask = 1; mask < (1 << modules.length); mask += 1) {
