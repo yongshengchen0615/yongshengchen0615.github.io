@@ -118,3 +118,85 @@ Deno.test('delivery preserves LINE retry idempotency while sending Flex', async 
   assert(retryKey === sampleJob.id, 'outbox UUID must remain the LINE retry key');
   assert(Array.isArray(messages) && messages[0]?.type === 'flex', 'push payload must contain a Flex Message');
 });
+
+
+Deno.test('delivery marks 500 and 429 as retryable without changing the LINE retry key', async () => {
+  const seenRetryKeys: string[] = [];
+  const statuses = [500, 429];
+  let call = 0;
+
+  const send = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    seenRetryKeys.push(new Headers(init?.headers).get('X-Line-Retry-Key') || '');
+    const status = statuses[call++] ?? 500;
+    return new Response('', { status, headers: { 'x-line-request-id': 'req-' + status } });
+  }) as typeof fetch;
+
+  const first = await deliver(sampleJob, 'test-channel-access-token', send);
+  const second = await deliver(sampleJob, 'test-channel-access-token', send);
+
+  assert(first.accepted === false && first.retryable === true && first.status === 500,
+    'HTTP 500 must remain retryable and unaccepted');
+  assert(second.accepted === false && second.retryable === true && second.status === 429,
+    'HTTP 429 must remain retryable and unaccepted');
+  assert(seenRetryKeys.length === 2 && seenRetryKeys.every((value) => value === sampleJob.id),
+    'every retry must reuse the same outbox UUID as X-Line-Retry-Key');
+});
+
+Deno.test('delivery can retry the same job after a transient failure and succeed exactly once', async () => {
+  const seenRetryKeys: string[] = [];
+  let attempt = 0;
+
+  const send = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    seenRetryKeys.push(new Headers(init?.headers).get('X-Line-Retry-Key') || '');
+    attempt += 1;
+    return attempt === 1
+      ? new Response('', { status: 503, headers: { 'x-line-request-id': 'req-failed' } })
+      : new Response('', { status: 200, headers: { 'x-line-request-id': 'req-ok' } });
+  }) as typeof fetch;
+
+  const failed = await deliver(sampleJob, 'test-channel-access-token', send);
+  const retried = await deliver(sampleJob, 'test-channel-access-token', send);
+
+  assert(failed.accepted === false && failed.retryable === true && failed.status === 503,
+    'transient failure must be eligible for retry');
+  assert(retried.accepted === true && retried.retryable === false && retried.status === 200,
+    'retry must be accepted when LINE recovers');
+  assert(retried.lineRequestId === 'req-ok', 'successful retry must retain the final LINE request id');
+  assert(seenRetryKeys.length === 2 && seenRetryKeys[0] === sampleJob.id && seenRetryKeys[1] === sampleJob.id,
+    'failure and retry must use the identical LINE retry key');
+});
+
+Deno.test('LINE duplicate retry acknowledgement 409 is treated as accepted only with accepted request id', async () => {
+  const accepted409 = (async () =>
+    new Response('', {
+      status: 409,
+      headers: { 'x-line-accepted-request-id': 'accepted-original' },
+    })) as typeof fetch;
+  const plain409 = (async () =>
+    new Response('', {
+      status: 409,
+      headers: { 'x-line-request-id': 'duplicate-without-acceptance' },
+    })) as typeof fetch;
+
+  const deduplicated = await deliver(sampleJob, 'test-channel-access-token', accepted409);
+  const rejectedDuplicate = await deliver(sampleJob, 'test-channel-access-token', plain409);
+
+  assert(deduplicated.accepted === true && deduplicated.retryable === false && deduplicated.status === 409,
+    'LINE 409 with accepted-request-id must count as the original push having been accepted');
+  assert(deduplicated.lineRequestId === 'accepted-original',
+    'deduplicated retry must keep the accepted request id for audit');
+  assert(rejectedDuplicate.accepted === false && rejectedDuplicate.retryable === false && rejectedDuplicate.status === 409,
+    'plain 409 without accepted-request-id must not be reported as delivered');
+});
+
+Deno.test('transport exception stays retryable and never exposes the channel access token', async () => {
+  const send = (async () => {
+    throw new Error('simulated network failure');
+  }) as typeof fetch;
+
+  const result = await deliver(sampleJob, 'test-channel-access-token', send);
+
+  assert(result.accepted === false && result.retryable === true && result.status === null,
+    'network failure must be retryable without a fake HTTP status');
+  assert(result.lineRequestId === '', 'network failure must not fabricate a LINE request id');
+});
