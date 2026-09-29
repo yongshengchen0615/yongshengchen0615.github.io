@@ -299,6 +299,34 @@ test('paired E2E always receives the tutorial so the runner can validate and dis
   current.dom.window.close();
 });
 
+test('paired E2E tutorial stays functional when a hidden tab stops animation frames', async () => {
+  const current = await page({
+    surface: 'event',
+    testSession: true,
+    query: 'qaPair=hidden-tab&e2eParticipant=1'
+  });
+  const { w, dialog } = current;
+  Object.defineProperty(w.document, 'visibilityState', { configurable: true, value: 'hidden' });
+  w.requestAnimationFrame = () => 1;
+  w.cancelAnimationFrame = () => {};
+  w.HTMLElement.prototype.getBoundingClientRect = function () {
+    return this.id === 'memberTourDialog'
+      ? { left: 10, right: 400, top: 600, bottom: 880, width: 390, height: 280 }
+      : { left: 100, right: 300, top: 160, bottom: 240, width: 200, height: 80 };
+  };
+
+  await current.ready();
+  assert.equal(dialog.classList.contains('hidden'), false, 'auto-start must not depend on requestAnimationFrame');
+  const focus = w.document.getElementById('memberTourFocus');
+  assert.equal(focus.classList.contains('hidden'), false, 'spotlight geometry must be available without requestAnimationFrame');
+  assert.equal(focus.style.left, '95px');
+  assert.equal(focus.style.width, '210px');
+
+  dialog.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  assert.equal(w.document.getElementById('app').inert, false);
+  current.dom.window.close();
+});
+
 test('the unified E2E runner completes the tutorial journey on all five client surfaces and restores daily state', async () => {
   const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode('LINE_TEST_A'))).toString('hex');
   const priorSkip = { [`user-tour:booking:${hash}`]: JSON.stringify({ outcome: 'skip', source: 'explicit', skippedAt: '2026-09-27T15:59:00Z' }) };
