@@ -2,7 +2,7 @@
   'use strict';
 
   const MEMBER_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
-  const state = { config: null, idToken: '', profile: null, lineProfile: null, profileSaveLocked: false, terms: null, birthdayPicker: { opener: null } };
+  const state = { config: null, idToken: '', profile: null, lineProfile: null, profileSaveLocked: false, terms: null, termsCheckPromise: null, birthdayPicker: { opener: null } };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
@@ -16,6 +16,12 @@
     els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
     els.profileForm.addEventListener('submit', saveProfile);
     els.renewTermsForm.addEventListener('submit', acceptRenewedTerms);
+    els.joinTermsAccepted.addEventListener('change', () => {
+      if (els.joinTermsAccepted.checked) void verifyTermsSelection('join');
+    });
+    els.renewTermsAccepted.addEventListener('change', () => {
+      if (els.renewTermsAccepted.checked) void verifyTermsSelection('renew');
+    });
     prepareBirthdayPicker();
     els.profileBirthdayPickerButton.addEventListener('click', openBirthdayPicker);
     els.closeProfileBirthdayPicker.addEventListener('click', closeBirthdayPicker);
@@ -189,6 +195,10 @@
     if (!/^\+?\d{8,15}$/.test(phone.replace(/[()\s-]/g, ''))) return showMessage('請填寫正確的電話。');
     if (!state.terms) return showMessage('目前尚無有效會員條款，請稍後再試或聯繫管理員。');
     if (!els.joinTermsAccepted.checked) return showMessage('請閱讀並勾選同意會員條款。');
+    if (state.termsCheckPromise) {
+      const stillCurrent = await state.termsCheckPromise;
+      if (!stillCurrent || !els.joinTermsAccepted.checked) return;
+    }
     setSaving(true);
     try {
       const preflight = await preflightTermsForWrite();
@@ -212,7 +222,7 @@
         showUncertainSaveMessage();
       } else if (error?.code === 'TERMS_VERSION_STALE') {
         try {
-          const fresh = await refreshTerms();
+          const fresh = await recoverLatestTerms(error);
           showMessage(fresh?.terms
             ? '會員條款已更新，已載入最新版本。請重新閱讀並勾選同意後再送出。'
             : '目前尚無有效會員條款，請稍後再試或聯繫管理員。');
@@ -263,10 +273,59 @@
     return { changed, terms: latest, consentRequired: Boolean(fresh.consentRequired) };
   }
 
+  function termsMessageElement(kind) {
+    return kind === 'renew' ? els.renewTermsMessage : els.profileFormMessage;
+  }
+
+  function showTermsSyncMessage(kind, message) {
+    const target = termsMessageElement(kind);
+    target.textContent = message;
+    target.classList.remove('hidden');
+  }
+
+  async function verifyTermsSelection(kind) {
+    const checkbox = kind === 'renew' ? els.renewTermsAccepted : els.joinTermsAccepted;
+    if (!checkbox.checked || !state.terms) return false;
+    const selectedTerms = state.terms;
+    const pending = (async () => {
+      try {
+        const fresh = await fetchLatestTermsSnapshot();
+        const latest = fresh.terms || null;
+        if (!sameTermsVersion(selectedTerms, latest)) {
+          updateTerms(latest);
+          showTermsSyncMessage(kind, latest
+            ? '會員條款剛剛更新，已切換到最新版本。請重新閱讀後再次勾選同意。'
+            : '目前尚無有效會員條款，請稍後再試或聯繫管理員。');
+          return false;
+        }
+        return true;
+      } catch (_) {
+        checkbox.checked = false;
+        showTermsSyncMessage(kind, '目前無法確認最新會員條款，請檢查網路後再試。');
+        return false;
+      }
+    })();
+    state.termsCheckPromise = pending;
+    try {
+      return await pending;
+    } finally {
+      if (state.termsCheckPromise === pending) state.termsCheckPromise = null;
+    }
+  }
+
   async function refreshTerms() {
     const fresh = await fetchLatestTermsSnapshot();
     updateTerms(fresh.terms);
     return fresh;
+  }
+
+  async function recoverLatestTerms(error) {
+    const latest = error?.details?.terms;
+    if (latest && typeof latest === 'object') {
+      updateTerms(latest);
+      return { terms: latest, consentRequired: Boolean(error?.details?.consentRequired) };
+    }
+    return await refreshTerms();
   }
 
   async function acceptRenewedTerms(event) {
@@ -276,6 +335,10 @@
       els.renewTermsMessage.textContent = '請閱讀並同意目前有效條款。';
       els.renewTermsMessage.classList.remove('hidden');
       return;
+    }
+    if (state.termsCheckPromise) {
+      const stillCurrent = await state.termsCheckPromise;
+      if (!stillCurrent || !els.renewTermsAccepted.checked) return;
     }
     els.renewTermsButton.disabled = true;
     try {
@@ -298,7 +361,7 @@
     } catch (error) {
       if (error?.code === 'TERMS_VERSION_STALE') {
         try {
-          const fresh = await refreshTerms();
+          const fresh = await recoverLatestTerms(error);
           els.renewTermsMessage.textContent = fresh?.terms
             ? '會員條款已更新，已載入最新版本。請重新閱讀並勾選同意後再送出。'
             : '目前尚無有效會員條款，請聯繫管理員。';

@@ -72,6 +72,9 @@ test('registration rejects missing and stale consent, then records consent with 
   const stale=await h.call('user.member.profile.save',{...profile,termsId:'terms-1',termsVersion:'old',accepted:true});
   assert.equal(stale.status,409);
   assert.equal(stale.body.error.code,'TERMS_VERSION_STALE');
+  assert.equal(stale.body.error.details.terms.id,'terms-1');
+  assert.equal(stale.body.error.details.terms.version,'v1');
+  assert.equal(stale.body.error.details.consentRequired,true);
   assert.equal(h.consents.size,0);
   const joined=await h.call('user.member.profile.save',{...profile,termsId:'terms-1',termsVersion:'v1',accepted:true});
   assert.equal(joined.status,200);
@@ -88,6 +91,8 @@ test('active version replacement requires existing member to accept v2', async (
   assert.equal(boot.body.data.consentRequired,true);
   const stale=await h.call('user.member.terms.accept',{termsId:'terms-1',termsVersion:'v1',accepted:true});
   assert.equal(stale.status,409);
+  assert.equal(stale.body.error.details.terms.id,'terms-2');
+  assert.equal(stale.body.error.details.terms.version,'v2');
   const renewed=await h.call('user.member.terms.accept',{termsId:'terms-2',termsVersion:'v2',accepted:true});
   assert.equal(renewed.status,200);
   assert.equal(renewed.body.data.consentRequired,false);
