@@ -33,9 +33,21 @@ test('paired E2E uses adaptive booking read budget and next-bucket backoff', () 
   assert.match(runner, /adminBookingBootstrapBackoffUntil/);
 });
 
+test('paired E2E protects workstation CPU and screenshot budget', () => {
+  const runner = read('admin/e2e-control.js');
+  const userRunner = read('user-test-control.js');
+  assert.match(runner, /const DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP = 2/);
+  assert.match(runner, /navigator\?\.hardwareConcurrency|navigator\.hardwareConcurrency/);
+  assert.match(runner, /deviceMemory/);
+  assert.match(runner, /const FAILURE_SCREENSHOT_BUDGET = 2/);
+  assert.match(runner, /reason: 'run-budget'/);
+  assert.match(userRunner, /const FAILURE_SCREENSHOT_BUDGET = 1/);
+  assert.match(userRunner, /reason: 'surface-budget'/);
+});
+
 test('admin rate-budget assets are cache-busted', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=ticket-map-visible-20260929-1/);
-  assert.match(html, /e2e-control\.js\?v=event-coupon-location-20260928-1/);
+  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260929-1/);
   assert.match(html, /booking-panel\.js\?v=[^"']+/);
 });

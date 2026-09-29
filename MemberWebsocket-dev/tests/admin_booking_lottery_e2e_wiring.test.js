@@ -65,7 +65,7 @@ test('standalone booking queue and booking-only E2E entrypoints are removed afte
   assert.match(e2e, /修改此位技師/);
   assert.match(e2e, /確認服務完成/);
   assert.match(e2e, /確認取消/);
-  assert.match(adminIndex, /e2e-control\.js\?v=event-coupon-location-20260928-\d+/);
+  assert.match(adminIndex, /e2e-control\.js\?v=qa-e2e-20260929-\d+/);
 });
 
 test('admin full E2E covers standalone lottery ticket and event lottery ticket persistence', () => {

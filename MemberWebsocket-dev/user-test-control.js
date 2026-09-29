@@ -3,9 +3,10 @@
 
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
+  const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-28.1';
+  const VERSION = '2026-09-29.1';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -64,6 +65,7 @@
     COMMON_FEATURE_CONTRACT_COVERAGE: { module: 'shared', phase: 6 },
 
     MEMBER_PROFILE_DATA: { module: 'member', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    MEMBER_TERMS_CONSENT: { module: 'member', phase: 3, required: true, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_MODAL_OPEN_CLOSE: { module: 'member', phase: 3, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_HUMAN_PROFILE_EDIT: { module: 'member', phase: 4, required: true, risk: 'mutation', dependencies: ['MEMBER_PROFILE_DATA', 'MEMBER_MODAL_OPEN_CLOSE'] },
     MEMBER_INVALID_WRITE: { module: 'member', phase: 4, dependencies: ['MEMBER_PROFILE_DATA'] },
@@ -80,6 +82,7 @@
     POINTS_BUTTON_COVERAGE: { module: 'points', phase: 6 },
 
     EVENT_DATA: { module: 'event', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
+    EVENT_BOUNDARY_STATES: { module: 'event', phase: 3, required: true, dependencies: ['EVENT_DATA', 'COMMON_USAGE_STATE_COMPLEXITY'] },
     EVENT_MODAL: { module: 'event', phase: 3, dependencies: ['EVENT_DATA'] },
     EVENT_HISTORY_DISCLOSURE: { module: 'event', phase: 3, dependencies: ['EVENT_DATA'] },
     EVENT_HUMAN_LIFECYCLE: { module: 'event', phase: 4, required: true, risk: 'mutation', dependencies: ['EVENT_DATA', 'EVENT_MODAL'] },
@@ -137,6 +140,7 @@
     runStartedAt: '',
     traceEvents: [],
     traceResourceStart: 0,
+    failureScreenshotsCaptured: 0,
     traceCleanup: null,
     launcher: null,
     panel: null
@@ -682,6 +686,7 @@
     state.scenarioPlan = null;
     state.adaptiveReplaySourceKeys = [];
     state.randomStateAfterBuild = 0;
+    state.failureScreenshotsCaptured = 0;
     state.cancelled = false;
     state.runStartedAt = new Date().toISOString();
     startDiagnosticTrace();
@@ -942,6 +947,7 @@
     const surfaceCases = {
       member: [
         caseDef('會員資料完整性', 'Member', memberProfileCase, 'MEMBER_PROFILE_DATA'),
+        caseDef('會員條款：有效版本與拒絕邊界', 'Member / Legal', membershipTermsConsentCase, 'MEMBER_TERMS_CONSENT'),
         caseDef('稱呼／生日／電話編輯視窗', 'UI', memberModalCase, 'MEMBER_MODAL_OPEN_CLOSE'),
         caseDef('真人操作：修改並還原稱呼／生日／電話', 'Human E2E', memberHumanProfileEditCase, 'MEMBER_HUMAN_PROFILE_EDIT'),
         caseDef('會員資料寫入驗證邊界', 'Validation', memberInvalidWriteCase, 'MEMBER_INVALID_WRITE'),
@@ -957,6 +963,7 @@
       ],
       event: [
         caseDef('活動票券領取／使用狀態', 'Tickets', eventDataCase, 'EVENT_DATA'),
+        caseDef('活動票券：尚未開始／已結束 HTTP→UI 邊界', 'Tickets / Boundary', eventBoundaryStatesCase, 'EVENT_BOUNDARY_STATES'),
         caseDef('票券詳情 Modal', 'UI', eventModalCase, 'EVENT_MODAL'),
         caseDef('已使用票券紀錄展開／收合', 'UI', eventHistoryDisclosureCase, 'EVENT_HISTORY_DISCLOSURE'),
         caseDef('真人操作：開啟／領取／核銷／查看紀錄', 'Human E2E', eventHumanTicketLifecycleCase, 'EVENT_HUMAN_LIFECYCLE'),
@@ -1691,6 +1698,15 @@
 
   async function attachFailureScreenshot(row) {
     if (!row || row.status !== 'failed') return;
+    if (state.failureScreenshotsCaptured >= FAILURE_SCREENSHOT_BUDGET) {
+      row.trace = safeJson({
+        ...(row.trace || {}),
+        artifactVersion: Math.max(2, Number(row?.trace?.artifactVersion || 0)),
+        screenshotCapture: { status: 'skipped', reason: 'surface-budget', budget: FAILURE_SCREENSHOT_BUDGET }
+      });
+      return;
+    }
+    state.failureScreenshotsCaptured += 1;
     try {
       const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('失敗快照擷取逾時。')), 12000));
       const screenshot = await Promise.race([uploadFailureScreenshot(row), timeout]);
@@ -1924,6 +1940,52 @@
     return ok
       ? pass('已真人勾選票券、開啟確認、取消一次、再次確認核銷並看到使用紀錄；QA 資料已保留供管理端檢查。', { allSteps: true }, actual)
       : fail('集點卡真人票券流程至少一個步驟異常。', { allSteps: true }, actual);
+  }
+
+  async function eventBoundaryStatesCase() {
+    const tag = String(state.usageState?.usageStateTag || '');
+    if (!tag) return fail('活動票券邊界測試缺少 usage-state fixture。', { usageStateTag: true }, { usageStateTag: false });
+    const futureId = 'QA-STATE-EVT-FUTURE-' + tag;
+    const endedId = 'QA-STATE-EVT-PAST-' + tag;
+    await refreshRealClient();
+
+    const inspectCard = async (eventTicketId, expectedText) => {
+      const button = await waitFor(() => document.querySelector('[data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]'), 5000);
+      const card = button?.closest('.event-ticket') || null;
+      const text = String(card?.textContent || '');
+      const stateText = String(card?.querySelector('.event-ticket-state')?.textContent || '');
+      button?.click();
+      const modal = document.getElementById('ticketModal');
+      const opened = Boolean(await waitFor(() => modal && !modal.classList.contains('hidden'), 1500));
+      const actionDisabled = document.getElementById('ticketModalAction')?.disabled === true;
+      const modalStatus = String(document.getElementById('ticketModalStatus')?.textContent || '');
+      document.getElementById('closeTicketModal')?.click();
+      return {
+        found: Boolean(card),
+        listStateMatched: stateText.includes(expectedText) || text.includes(expectedText),
+        opened,
+        actionDisabled,
+        modalStatusMatched: modalStatus.includes(expectedText)
+      };
+    };
+
+    const futureUi = await inspectCard(futureId, '尚未開始');
+    const endedUi = await inspectCard(endedId, '已結束');
+    const futureApi = await expectApiError('user.event.ticket.claim', { eventTicketId: futureId }, ['EVENT_NOT_STARTED']);
+    const endedApi = await expectApiError('user.event.ticket.claim', { eventTicketId: endedId }, ['EVENT_ENDED']);
+    const actual = {
+      futureUi, endedUi,
+      futureApi: { rejected: futureApi.ok, code: futureApi.code },
+      endedApi: { rejected: endedApi.ok, code: endedApi.code }
+    };
+    const ok = Object.values(futureUi).every(Boolean) && Object.values(endedUi).every(Boolean) && futureApi.ok && endedApi.ok;
+    return ok
+      ? pass('尚未開始與已結束活動票券已完成真實 Bootstrap→UI→領券 API 拒絕的端到端驗證。', {
+          futureBlocked: true, endedBlocked: true, uiDisabled: true
+        }, actual)
+      : fail('活動票券尚未開始／已結束的 HTTP→UI 邊界有不一致。', {
+          futureBlocked: true, endedBlocked: true, uiDisabled: true
+        }, actual);
   }
 
   async function eventHumanTicketLifecycleCase() {
@@ -2711,6 +2773,49 @@
       const code = String(error && error.code || '');
       return { ok: !codes.length || codes.includes(code) || codes.some((item) => code.startsWith(item)), code, message: String(error && error.message || '').slice(0, 180) };
     }
+  }
+
+  async function membershipTermsConsentCase() {
+    const data = state.bootstrap || await requestCore('user.member.bootstrap', {});
+    const terms = data?.terms || null;
+    const domIds = [
+      'joinTermsSummary','joinTermsTitle','joinTermsBody','joinTermsAccepted',
+      'termsRenewView','renewTermsForm','renewTermsAccepted','renewTermsButton'
+    ];
+    const missing = domIds.filter((id) => !document.getElementById(id));
+    if (!terms?.id || !terms?.version) {
+      return fail('目前沒有可供 Browser E2E 驗證的已啟用會員條款。', {
+        activeTerms: true, requiredConsentDom: true
+      }, { activeTerms: false, missing });
+    }
+    const unchecked = await expectApiError(
+      'user.member.terms.accept',
+      { termsId: terms.id, termsVersion: terms.version, accepted: false },
+      ['TERMS_CONSENT_REQUIRED']
+    );
+    const stale = await expectApiError(
+      'user.member.terms.accept',
+      { termsId: terms.id, termsVersion: String(terms.version) + '-E2E-STALE', accepted: true },
+      ['TERMS_VERSION_STALE']
+    );
+    const actual = {
+      activeTerms: true,
+      version: terms.version,
+      required: terms.required === true,
+      missing,
+      uncheckedRejected: unchecked.ok,
+      uncheckedCode: unchecked.code,
+      staleRejected: stale.ok,
+      staleCode: stale.code
+    };
+    const ok = terms.required === true && missing.length === 0 && unchecked.ok && stale.ok;
+    return ok
+      ? pass('會員條款 Browser E2E 已確認有效版本渲染，且 Server 會拒絕未同意與過期版本，不修改正式條款內容。', {
+          activeTerms: true, required: true, missing: [], uncheckedRejected: true, staleRejected: true
+        }, actual)
+      : fail('會員條款版本、DOM 或 Server-side 同意邊界至少一項不符合預期。', {
+          activeTerms: true, required: true, missing: [], uncheckedRejected: true, staleRejected: true
+        }, actual);
   }
 
   async function memberInvalidWriteCase() {
