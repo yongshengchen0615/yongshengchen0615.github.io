@@ -1259,3 +1259,20 @@ button, input, select, textarea { line-height: 1.35; }
     min-height: 50px;
   }
 }
+
+/* Coupon redemption sites */
+.coupon-location-controls { display: grid; gap: 12px; min-width: 0; }
+.coupon-map-search > label { display: block; font-weight: 750; margin-bottom: 5px; }
+.coupon-map-search > div { display: flex; gap: 8px; }
+.coupon-map-search input { min-width: 0; flex: 1; }
+.coupon-map-results { display: grid; gap: 5px; }
+.coupon-map-results button { text-align: left; white-space: normal; }
+.coupon-location-map { width: 100%; height: 300px; border: 1px solid var(--line, #c8d6c8); border-radius: 12px; overflow: hidden; z-index: 0; background: #e5e9e2; }
+.coupon-location-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.coupon-location-heading span { margin-inline-start: auto; font-size: 12px; }
+.coupon-location-rows { display: grid; gap: 10px; }
+.coupon-location-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px; border: 1px solid var(--line, #c8d6c8); border-radius: 10px; background: var(--paper, #fff); color: var(--ink, #243627); }
+.coupon-location-row strong, .coupon-location-row label:first-of-type, .coupon-location-actions { grid-column: 1 / -1; }
+.coupon-location-row input { width: 100%; min-width: 0; }
+.coupon-location-actions { display: flex; justify-content: flex-end; gap: 12px; }
+@media (max-width: 580px) { .coupon-map-search > div { flex-wrap: wrap; } .coupon-location-row { grid-template-columns: minmax(0, 1fr); } }

@@ -2932,9 +2932,10 @@
       setField('eventTicketEndsOn', '');
       setField('eventTicketQuota', '0');
       document.getElementById('eventTicketRequiresLocation').checked = true;
-      setField('eventTicketLatitude', '25.033964');
-      setField('eventTicketLongitude', '121.564468');
-      setField('eventTicketRadius', '150');
+      window.CouponLocationEditor.set([
+        { name: 'E2E 台北', latitude: 25.033964, longitude: 121.564468, radiusMeters: 150 },
+        { name: 'E2E 台中', latitude: 24.147736, longitude: 120.673648, radiusMeters: 150 },
+      ]);
 
       document.getElementById('saveEventTicketButton')?.click();
       createdId = String(await waitFor(() => document.getElementById('eventTicketId')?.value || null, 15000) || '');
@@ -2953,9 +2954,8 @@
             textIncludes('#eventTicketListItems', updatedTitle);
         }, 8000));
         actual.locationSaved = document.getElementById('eventTicketRequiresLocation')?.checked === true
-          && String(document.getElementById('eventTicketLatitude')?.value || '') === '25.033964'
-          && String(document.getElementById('eventTicketLongitude')?.value || '') === '121.564468'
-          && String(document.getElementById('eventTicketRadius')?.value || '') === '150';
+          && window.CouponLocationEditor.get().length === 2
+          && window.CouponLocationEditor.get()[1].name === 'E2E 台中';
       }
 
       if (actual.created) {

@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const db = new PGlite();
 const migration = readFileSync(join(__dirname, '../../supabase/migrations/20260928101903_event_coupon_inventory_location.sql'), 'utf8');
 const retryMigration = readFileSync(join(__dirname, '../../supabase/migrations/20260928102644_event_coupon_idempotent_retry.sql'), 'utf8');
+const multiLocationMigration = readFileSync(join(__dirname, '../../supabase/migrations/20260929012256_event_coupon_multiple_redemption_locations.sql'), 'utf8');
 
 async function run() {
   await db.exec(`
@@ -74,18 +75,29 @@ async function run() {
   assert.equal(Number(count), 1);
 
   await db.exec("update public.event_tickets set requires_location=true, redemption_latitude=25.033964, redemption_longitude=121.564468, redemption_radius_meters=150 where event_ticket_id='GEO'");
+  await db.exec(multiLocationMigration);
+  const backfilled = (await db.query("select redemption_locations from public.event_tickets where event_ticket_id='GEO'")).rows[0].redemption_locations;
+  assert.equal(backfilled.length, 1, 'old location must migrate without losing the rule');
+  await db.exec(`update public.event_tickets set redemption_locations='[
+    {"name":"遠端據點","latitude":24.000000,"longitude":120.000000,"radiusMeters":100},
+    {"name":"台北據點","latitude":25.033964,"longitude":121.564468,"radiusMeters":150}
+  ]'::jsonb where event_ticket_id='GEO'`);
   const geo = await claim('member-1', 'GEO');
   assert.ok(geo.claimId, 'claim must work without location');
   await assert.rejects(redeem('member-1', geo.claimId, null), /LOCATION_REQUIRED/);
   await assert.rejects(redeem('member-2', geo.claimId, null), /CLAIM_NOT_FOUND/);
   const near = { latitude:25.033964, longitude:121.564468, accuracy:10, observedAt:new Date().toISOString() };
   await assert.rejects(redeem('member-1', geo.claimId, { ...near, latitude:25.1 }), /LOCATION_OUT_OF_RANGE/);
+  await assert.rejects(db.exec("update public.event_tickets set redemption_locations='[{\"name\":\"\",\"latitude\":25,\"longitude\":121,\"radiusMeters\":100}]'::jsonb where event_ticket_id='GEO'"), /event_tickets_redemption_locations_valid/);
   await assert.rejects(redeem('member-1', geo.claimId, { ...near, accuracy:200 }), /LOCATION_INVALID/);
   await assert.rejects(redeem('member-1', geo.claimId, { ...near, observedAt:new Date(Date.now()-300000).toISOString() }), /LOCATION_INVALID/);
   assert.equal((await redeem('member-1', geo.claimId, near)).alreadyUsed, false);
   assert.equal((await redeem('member-1', geo.claimId, null)).alreadyUsed, true, 'replay must not consume again');
   assert.equal((await db.query('select count(*)::int as n from public.audit_logs where action=$1', ['user.event.ticket.redeem'])).rows[0].n, 1);
   await assert.rejects(db.exec("update public.event_tickets set requires_location=true where event_ticket_id='OLD'"), /event_tickets_redemption_location_valid/);
+  await db.exec("update public.event_tickets set requires_location=true, redemption_latitude=25.033964, redemption_longitude=121.564468, redemption_radius_meters=100 where event_ticket_id='OLD'");
+  assert.equal((await db.query("select jsonb_array_length(redemption_locations) as n from public.event_tickets where event_ticket_id='OLD'")).rows[0].n, 1,
+    'legacy admin save must remain compatible during rollout');
   await db.close();
 }
 
