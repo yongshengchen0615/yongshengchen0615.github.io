@@ -36,6 +36,8 @@ async function run() {
   assert.ok($('ticketForm').contains($('ticketLocationMap')), 'template map must stay inside ticket form');
   assert.ok($('eventTicketAddressSearch'), 'event ticket address search must exist');
   assert.ok($('ticketAddressSearch'), 'point-ticket template address search must exist');
+  assert.ok($('eventTicketLocationDraft'), 'event ticket confirmation panel must exist');
+  assert.ok($('ticketLocationDraft'), 'point-ticket confirmation panel must exist');
 
   $('eventTicketRequiresLocation').checked = true;
   $('eventTicketRequiresLocation').dispatchEvent(new window.Event('change'));
@@ -47,6 +49,10 @@ async function run() {
   ]);
   assert.equal(editor.get().length, 2);
   assert.equal($('eventTicketLocationRows').querySelectorAll('.coupon-location-row').length, 2);
+  assert.equal($('eventTicketLocationRows').textContent.includes('緯度'), false, 'latitude must not be shown in admin UI');
+  assert.equal($('eventTicketLocationRows').textContent.includes('經度'), false, 'longitude must not be shown in admin UI');
+  assert.match($('eventTicketLocationRows').textContent, /150 公尺/, 'saved radius must be visible');
+
   $('eventTicketLocationRows').querySelector('input').value = '台北門市';
   $('eventTicketLocationRows').querySelector('input').dispatchEvent(new window.Event('input'));
   assert.equal(editor.get()[0].name, '台北門市');
@@ -55,8 +61,15 @@ async function run() {
 
   editor.set([]);
   $('eventTicketUseCurrentLocationButton').click();
-  assert.equal(editor.get().length, 1, 'GPS button must add the current position');
+  assert.equal(editor.get().length, 0, 'GPS selection must not add before confirmation');
+  assert.equal($('eventTicketLocationDraft').classList.contains('hidden'), false);
+  assert.equal($('eventTicketLocationDraftName').value, '目前 GPS 位置');
+  $('eventTicketLocationDraftRadius').value = '180';
+  $('eventTicketLocationDraftRadius').dispatchEvent(new window.Event('input'));
+  $('addEventTicketLocationButton').click();
+  assert.equal(editor.get().length, 1, 'confirmed GPS candidate must be added');
   assert.equal(editor.get()[0].name, '目前 GPS 位置');
+  assert.equal(editor.get()[0].radiusMeters, 180);
 
   editor.set([]);
   $('eventTicketAddressSearch').value = '台南火車站';
@@ -64,8 +77,19 @@ async function run() {
   const searchResult = $('eventTicketAddressResults').querySelector('button');
   assert.ok(searchResult, 'address search must render a selectable result');
   searchResult.click();
+  assert.equal(editor.get().length, 0, 'address result must remain a candidate until confirmation');
+  assert.match($('eventTicketLocationDraftName').value, /台南火車站/);
+  $('addEventTicketLocationButton').click();
   assert.equal(editor.get().length, 1);
   assert.match(editor.get()[0].name, /台南火車站/);
+
+  editor.set([]);
+  editor.setDraft(22.99, 120.21, '候選地點', { radiusMeters: 300 });
+  assert.equal(editor.get().length, 0, 'map-like candidate selection must not mutate saved locations');
+  assert.equal($('eventTicketLocationDraftRadius').value, '300');
+  $('clearEventTicketLocationDraftButton').click();
+  assert.equal(editor.get().length, 0);
+  assert.equal($('eventTicketLocationDraft').classList.contains('hidden'), true);
 
   $('ticketRequiresLocation').checked = true;
   $('ticketRequiresLocation').dispatchEvent(new window.Event('change'));
@@ -73,6 +97,8 @@ async function run() {
   assert.equal(templateEditor.get().length, 1);
   assert.equal($('ticketLocationControls').classList.contains('hidden'), false);
   assert.equal($('ticketLocationCount').textContent, '1 / 20 個使用地點');
+  assert.equal($('ticketLocationRows').textContent.includes('緯度'), false);
+  assert.equal($('ticketLocationRows').textContent.includes('經度'), false);
 
   console.log('all-ticket location editor: passed');
 }
