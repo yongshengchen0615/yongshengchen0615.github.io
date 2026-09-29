@@ -195,6 +195,7 @@
         });
         radius.input.addEventListener('input', () => {
           locations[index].radiusMeters = Number(radius.input.value);
+          scope.textContent = `地圖圓圈顯示目前 ${locations[index].radiusMeters} 公尺的核銷範圍。`;
           renderMapLayers();
         });
 
