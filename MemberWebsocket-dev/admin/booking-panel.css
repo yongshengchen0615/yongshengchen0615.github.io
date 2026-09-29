@@ -37,3 +37,10 @@
 #bookingPanel .booking-admin-settings-actions>p{display:grid;gap:2px;margin:0;min-width:0;color:var(--theme-text-muted,#75827b);font-size:12px;line-height:1.5}
 #bookingPanel .booking-admin-settings-actions>p strong{color:var(--theme-text,#31483f);font-size:13px}
 #bookingPanel .booking-admin-settings-actions .button{flex:0 0 auto;min-width:148px}
+
+/* CSP-safe cancellation review layout; previously injected by booking-cancellation-sync.js. */
+#bookingPanel .booking-admin-cancellation-review{display:block;margin:0;padding:0;border:0;background:transparent}
+#bookingPanel .booking-admin-cancellation-review.hidden{display:none!important}
+#bookingPanel .booking-admin-cancellation-review .booking-cancellation-heading{display:none!important}
+#bookingPanel .booking-admin-cancellation-review .booking-admin-queue{display:grid;gap:10px}
+#bookingPanel .booking-admin-cancellation-review .booking-admin-booking{margin:0}
