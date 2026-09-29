@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const E2E_CONTROL_SRC = './e2e-control.js?v=qa-e2e-20260929-8';
+  const E2E_CONTROL_SRC = './e2e-control.js?v=qa-e2e-20260929-7&lazy=20260929-1';
   let loadPromise = null;
 
   function showLoadError() {
