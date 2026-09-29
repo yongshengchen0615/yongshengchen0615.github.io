@@ -1636,6 +1636,12 @@
         );
         await Promise.all([clientExecution, ...liveAdminTasks]);
 
+        if (!state.cancelled && selectedModules.includes('event')) {
+          await executeCases([
+            caseDef('PAIRED_EVENT_LAST_TICKET_RACE', '活動優惠券：兩測試會員競爭最後一張', 'Paired E2E / Event Concurrency', pairedEventLastTicketRaceCase)
+          ], '協同活動優惠券併發');
+        }
+
         if (!state.cancelled && selectedModules.includes('booking')) {
           await executeCases([
             caseDef('PAIRED_SECURITY_BOOKING_IDOR', '跨測試帳號取消預約必須拒絕且資料不變', 'Paired E2E / Security', bookingOwnershipBoundaryCase)
@@ -3316,6 +3322,8 @@
       'bookingAdminAdvanceDays',
       'bookingAdminMaxAdvanceDays',
       'bookingAdminStoreServiceMinutes',
+      'bookingAdminReminderEnabled',
+      'bookingAdminReminderTime',
       'bookingAdminNotice',
       'bookingAdminSettingsMessage',
       'bookingAdminSaveSettingsButton'
@@ -3331,10 +3339,13 @@
       invalidSlotIntervalRejected: false,
       invalidAdvanceRejected: false,
       invalidStoreMinutesRejected: false,
+      invalidReminderRejected: false,
       invalidNoticeRejected: false,
       userWatcherPrepared: false,
       userBaselineMatched: false,
       validMutationSaved: false,
+      overnightSettingsSaved: false,
+      reminderSettingsSaved: false,
       mutatedReadback: false,
       updatedAtChanged: false,
       staleVersionRejected: false,
@@ -3369,6 +3380,8 @@
       minAdvanceDays: Number(controls.bookingAdminAdvanceDays.value),
       maxAdvanceDays: Number(controls.bookingAdminMaxAdvanceDays.value),
       storeServiceMinutes: Number(controls.bookingAdminStoreServiceMinutes.value),
+      reminderEnabled: controls.bookingAdminReminderEnabled.checked === true,
+      reminderTime: String(controls.bookingAdminReminderTime.value || ''),
       bookingNotice: String(controls.bookingAdminNotice.value || ''),
       updatedAt: String(before?.settings?.updatedAt || '')
     };
@@ -3379,6 +3392,8 @@
       minAdvanceDays: Number(settings?.minAdvanceDays),
       maxAdvanceDays: Number(settings?.maxAdvanceDays),
       storeServiceMinutes: Number(settings?.storeServiceMinutes),
+      reminderEnabled: settings?.reminderEnabled === true,
+      reminderTime: String(settings?.reminderTime || ''),
       bookingNotice: String(settings?.bookingNotice || '')
     });
     const sameSettings = (settings, expected) => {
@@ -3389,6 +3404,8 @@
         normalized.minAdvanceDays === expected.minAdvanceDays &&
         normalized.maxAdvanceDays === expected.maxAdvanceDays &&
         normalized.storeServiceMinutes === expected.storeServiceMinutes &&
+        normalized.reminderEnabled === expected.reminderEnabled &&
+        normalized.reminderTime === expected.reminderTime &&
         normalized.bookingNotice === expected.bookingNotice;
     };
     const setSettingsFields = (settings) => {
@@ -3398,6 +3415,8 @@
       setField('bookingAdminAdvanceDays', String(settings.minAdvanceDays));
       setField('bookingAdminMaxAdvanceDays', String(settings.maxAdvanceDays));
       setField('bookingAdminStoreServiceMinutes', String(settings.storeServiceMinutes));
+      controls.bookingAdminReminderEnabled.checked = settings.reminderEnabled === true;
+      setField('bookingAdminReminderTime', settings.reminderTime);
       setField('bookingAdminNotice', settings.bookingNotice);
     };
     const addIsoDays = (dateText, days) => {
@@ -3420,9 +3439,9 @@
     actual.bootstrapMatched = sameSettings(before?.settings, snapshot);
 
     const workCandidates = [
-      ['08:30', '19:00'],
-      ['09:30', '18:30'],
-      ['10:00', '17:30']
+      ['14:00', '02:00'],
+      ['15:30', '03:00'],
+      ['18:00', '01:30']
     ];
     const selectedHours = workCandidates.find(([startTime, endTime]) =>
       startTime !== snapshot.workStartTime || endTime !== snapshot.workEndTime
@@ -3444,6 +3463,8 @@
     const mutatedStoreMinutes = snapshot.storeServiceMinutes <= 705
       ? snapshot.storeServiceMinutes + 15
       : Math.max(1, snapshot.storeServiceMinutes - 15);
+    const reminderCandidates = ['17:30', '19:15', '08:45'];
+    const mutatedReminderTime = reminderCandidates.find((value) => value !== snapshot.reminderTime) || '18:30';
     const qaMarker = '[QA E2E SHARED ' + qaCrudStamp() + ']';
     const retainedBaseNotice = String(snapshot.bookingNotice || '')
       .replace(/^(?:\[QA E2E SHARED [^\]]+\]\s*)+/g, '')
@@ -3456,6 +3477,8 @@
       minAdvanceDays: mutatedMin,
       maxAdvanceDays: mutatedMax,
       storeServiceMinutes: mutatedStoreMinutes,
+      reminderEnabled: !snapshot.reminderEnabled,
+      reminderTime: mutatedReminderTime,
       bookingNotice: (qaMarker + noticeSuffix).slice(0, 2000)
     };
     actual.retainedSettings = safe(mutation);
@@ -3507,6 +3530,15 @@
       ));
 
       setField('bookingAdminStoreServiceMinutes', String(snapshot.storeServiceMinutes));
+      setField('bookingAdminReminderTime', '');
+      controls.bookingAdminSaveSettingsButton.click();
+      actual.invalidReminderRejected = Boolean(await waitFor(() =>
+        /有效的前一天提醒時間/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        2000,
+        80
+      ));
+
+      setField('bookingAdminReminderTime', snapshot.reminderTime);
       setField('bookingAdminNotice', 'X'.repeat(2001));
       controls.bookingAdminSaveSettingsButton.click();
       actual.invalidNoticeRejected = Boolean(await waitFor(() =>
@@ -3565,6 +3597,11 @@
         idToken: session.idToken
       });
       actual.mutatedReadback = sameSettings(mutated?.settings, mutation);
+      actual.overnightSettingsSaved = mutation.workEndTime < mutation.workStartTime &&
+        String(mutated?.settings?.workStartTime || '') === mutation.workStartTime &&
+        String(mutated?.settings?.workEndTime || '') === mutation.workEndTime;
+      actual.reminderSettingsSaved = mutated?.settings?.reminderEnabled === mutation.reminderEnabled &&
+        String(mutated?.settings?.reminderTime || '') === mutation.reminderTime;
       actual.updatedAtChanged = Boolean(
         snapshot.updatedAt &&
         mutated?.settings?.updatedAt &&
@@ -3583,6 +3620,8 @@
             minAdvanceDays: mutation.minAdvanceDays,
             maxAdvanceDays: mutation.maxAdvanceDays,
             storeServiceMinutes: mutation.storeServiceMinutes,
+            reminderEnabled: mutation.reminderEnabled,
+            reminderTime: mutation.reminderTime,
             bookingNotice: mutation.bookingNotice,
             expectedUpdatedAt: snapshot.updatedAt
           });
@@ -3720,10 +3759,13 @@
       actual.invalidSlotIntervalRejected &&
       actual.invalidAdvanceRejected &&
       actual.invalidStoreMinutesRejected &&
+      actual.invalidReminderRejected &&
       actual.invalidNoticeRejected &&
       actual.userWatcherPrepared &&
       actual.userBaselineMatched &&
       actual.validMutationSaved &&
+      actual.overnightSettingsSaved &&
+      actual.reminderSettingsSaved &&
       actual.mutatedReadback &&
       actual.updatedAtChanged &&
       actual.staleVersionRejected &&
@@ -5972,6 +6014,127 @@
     } catch (error) {
       await postAdminTestMode('admin.test-mode.delete-accounts', { memberIds: [created.memberId] }).catch(() => {});
       throw error;
+    }
+  }
+
+  async function pairedEventLastTicketRaceCase() {
+    const candidates = state.participants.filter((participant) =>
+      participant?.account?.memberId && participant?.window && !participant.window.closed
+    ).slice(0, 2);
+    if (candidates.length < 2) {
+      return skip('最後一張併發 E2E 需要至少 2 位協同測試用戶；本輪只有 1 位時不額外開啟重型瀏覽器視窗。', {
+        participantsAtLeast: 2
+      }, { participants: candidates.length, resourceProtection: true });
+    }
+
+    const session = await adminSession();
+    const stamp = qaCrudStamp();
+    const created = await postFunction('api', {
+      action: 'admin.event-tickets.save',
+      clientType: 'admin',
+      idToken: session.idToken,
+      eventTicket: {
+        title: 'E2E 最後一張競爭 ' + stamp,
+        ticketType: 'coupon',
+        description: '兩個獨立測試會員同時競爭 quota=1',
+        usageMethod: 'QA',
+        usageInstructions: '只用於併發 E2E',
+        prizes: [],
+        status: 'active',
+        startsOn: '',
+        endsOn: '',
+        quota: 1,
+        requiresLocation: false,
+        redemptionLocations: [],
+        accent: '#5f7769',
+        allowedTierKeys: ['general','silver','gold','platinum']
+      }
+    });
+    const eventTicketId = String(created?.eventTicket?.eventTicketId || '');
+    if (!eventTicketId) return fail('無法建立 quota=1 的活動優惠券測試資料。', { created: true }, { created: false });
+
+    const previous = candidates.map((participant) => ({
+      participant,
+      login: participant.login || null,
+      surface: participant.lastSurfaceKey || 'member'
+    }));
+    let race = [];
+    let ui = [];
+    try {
+      const logins = [];
+      for (const participant of candidates) {
+        const cached = participant.surfaceLogins?.event;
+        const login = cached?.testSessionToken ? cached : await createPairedSession(participant.account, 'event');
+        participant.surfaceLogins = participant.surfaceLogins || {};
+        participant.surfaceLogins.event = login;
+        logins.push(login);
+      }
+      const settled = await Promise.allSettled(logins.map((login) => postFunction('api', {
+        action: 'user.event.ticket.claim',
+        clientType: 'event',
+        idToken: '',
+        testSessionToken: login.testSessionToken,
+        eventTicketId
+      })));
+      race = settled.map((result, index) => ({
+        participantIndex: Number(candidates[index].index),
+        status: result.status,
+        errorCode: result.status === 'rejected' ? String(result.reason?.code || '') : '',
+        claimId: result.status === 'fulfilled' ? String(result.value?.ticket?.claimId || '') : ''
+      }));
+      const winner = race.find((row) => row.status === 'fulfilled');
+      const loser = race.find((row) => row.status === 'rejected');
+
+      for (let index = 0; index < candidates.length; index += 1) {
+        const participant = candidates[index];
+        const login = logins[index];
+        participant.login = login;
+        participant.lastSurfaceKey = 'event';
+        seedParticipantSession(participant, login, 'event');
+        const child = await waitParticipantSurface(participant, 'event', 'eventView');
+        await child.MemberClientQaHooks?.refresh?.();
+        const card = await waitFor(() => {
+          try {
+            return child.document.querySelector('[data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]')?.closest('.event-ticket') || null;
+          } catch { return null; }
+        }, backgroundAwareTimeout(8000, 30000), 120);
+        const text = String(card?.textContent || '');
+        ui.push({
+          participantIndex: Number(participant.index),
+          found: Boolean(card),
+          winnerState: Number(participant.index) === Number(winner?.participantIndex) && /已領取/.test(text),
+          loserState: Number(participant.index) === Number(loser?.participantIndex) && /額滿|限量張數已領完/.test(text)
+        });
+      }
+
+      const successCount = race.filter((row) => row.status === 'fulfilled').length;
+      const quotaRejectedCount = race.filter((row) => row.errorCode === 'EVENT_QUOTA_REACHED').length;
+      const winnerUi = ui.some((row) => row.winnerState);
+      const loserUi = ui.some((row) => row.loserState);
+      const actual = { eventTicketId, race, ui, successCount, quotaRejectedCount, winnerUi, loserUi };
+      return successCount === 1 && quotaRejectedCount === 1 && winnerUi && loserUi
+        ? pass('兩個獨立測試會員同時競爭最後一張時只有一人成功，另一人收到額滿，兩個瀏覽器 UI 亦同步成已領取／額滿。', {
+            successCount: 1, quotaRejectedCount: 1, winnerUi: true, loserUi: true
+          }, actual)
+        : fail('最後一張併發領券沒有維持 quota 原子性，或其中一個瀏覽器 UI 未同步。', {
+            successCount: 1, quotaRejectedCount: 1, winnerUi: true, loserUi: true
+          }, actual);
+    } finally {
+      await postFunction('api', {
+        action: 'admin.event-tickets.delete',
+        clientType: 'admin',
+        idToken: session.idToken,
+        eventTicketId
+      }).catch(() => {});
+      for (const snapshot of previous) {
+        try {
+          if (!snapshot.login) continue;
+          snapshot.participant.login = snapshot.login;
+          snapshot.participant.lastSurfaceKey = snapshot.surface;
+          seedParticipantSession(snapshot.participant, snapshot.login, snapshot.surface);
+          navigateParticipant(snapshot.participant, snapshot.surface);
+        } catch {}
+      }
     }
   }
 
