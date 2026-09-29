@@ -10,7 +10,7 @@ const app = fs.readFileSync(path.join(root, 'member/app.js'), 'utf8');
 const terms = { id: 'terms-2', version: '2026-10-v2', title: '新版條款', summary: '請閱讀', body: '完整條款內容' };
 const profile = { profileComplete: true, membershipRequired: false, joinedAt: '2026-01-01' };
 
-async function start(consentRequired) {
+async function start(consentRequired, options = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/member/' });
   const w = dom.window;
   await new Promise((resolve) => w.addEventListener('load', resolve, { once: true }));
@@ -24,8 +24,15 @@ async function start(consentRequired) {
     subscribeRealtime: () => () => {},
     request: async (_config, _surface, _token, action, payload) => {
       calls.push({ action, payload });
-      if (action === 'user.member.bootstrap') return { profile, terms, consentRequired };
-      if (action === 'user.member.terms.accept') return { profile, terms };
+      if (action === 'user.member.bootstrap') {
+        const bootstrapCount = calls.filter((call) => call.action === 'user.member.bootstrap').length;
+        if (typeof options.bootstrapResult === 'function') return options.bootstrapResult(bootstrapCount);
+        return { profile, terms, consentRequired };
+      }
+      if (action === 'user.member.terms.accept') {
+        if (typeof options.termsAcceptResult === 'function') return options.termsAcceptResult(payload);
+        return { profile, terms };
+      }
       throw new Error(`Unexpected action: ${action}`);
     },
   };
@@ -55,6 +62,46 @@ test('member page initializes and shows the latest terms to members who must rec
     assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), {
       action: 'user.member.terms.accept',
       payload: { termsId: 'terms-2', termsVersion: '2026-10-v2', accepted: true },
+    });
+    assert.equal(get('memberView').classList.contains('hidden'), false);
+  } finally { dom.window.close(); }
+});
+
+test('reconsent preflight refreshes changed terms without silently accepting them', async () => {
+  const latestTerms = {
+    id: 'terms-3',
+    version: '2026-11-v3',
+    title: '最新條款',
+    summary: '條款再次更新',
+    body: '最新完整條款內容',
+  };
+  const { dom, w, calls } = await start(true, {
+    bootstrapResult: (count) => count === 1
+      ? { profile, terms, consentRequired: true }
+      : { profile, terms: latestTerms, consentRequired: true },
+    termsAcceptResult: () => ({ profile, terms: latestTerms, consentRequired: false }),
+  });
+  try {
+    const get = (id) => w.document.getElementById(id);
+    get('renewTermsAccepted').checked = true;
+    get('renewTermsForm').dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(calls.filter((call) => call.action === 'user.member.terms.accept').length, 0);
+    assert.match(get('renewTermsSummary').textContent, /2026-11-v3/);
+    assert.equal(get('renewTermsAccepted').checked, false);
+    assert.match(get('renewTermsMessage').textContent, /已載入最新版本/);
+
+    get('renewTermsAccepted').checked = true;
+    get('renewTermsForm').dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const accepts = calls.filter((call) => call.action === 'user.member.terms.accept');
+    assert.equal(accepts.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(accepts[0].payload)), {
+      termsId: 'terms-3',
+      termsVersion: '2026-11-v3',
+      accepted: true,
     });
     assert.equal(get('memberView').classList.contains('hidden'), false);
   } finally { dom.window.close(); }
