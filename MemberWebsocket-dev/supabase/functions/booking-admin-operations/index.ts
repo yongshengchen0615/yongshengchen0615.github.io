@@ -23,6 +23,10 @@ class ApiError extends Error {
 }
 
 function env(name: string): string { return (Deno.env.get(name) || "").trim(); }
+function createRequestId(): string {
+  return globalThis.crypto?.randomUUID?.()
+    || `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 function asText(value: unknown, max = 1000): string { return String(value ?? "").trim().slice(0, max); }
 function requireUuid(value: unknown, label: string): string {
   const text = asText(value, 60);
@@ -337,7 +341,7 @@ Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
   if (request.method !== "POST") return response(origin, { ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "只支援 POST。" } }, 405);
   if (origin && !allowedOrigins().has(origin)) return response(origin, { ok: false, error: { code: "ORIGIN_DENIED", message: "不允許的來源。" } }, 403);
-  const requestId = crypto.randomUUID();
+  const requestId = createRequestId();
   let action = "unknown";
   try {
     const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);

@@ -9,7 +9,7 @@ const source = fs.readFileSync(
 );
 
 test('booking admin failures expose a safe correlation id', () => {
-  assert.match(source, /const requestId = crypto\.randomUUID\(\)/);
+  assert.match(source, /const requestId = createRequestId\(\)/);
   assert.match(source, /requestId,/);
   assert.match(source, /return errorResponse\(origin, apiError, requestId\)/);
 });
