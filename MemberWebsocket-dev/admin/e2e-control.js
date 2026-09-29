@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-29.6';
+  const VERSION = '2026-09-29.7';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -404,9 +404,13 @@
   }
 
   function plainError(error) {
+    const api = error?.apiDiagnostic && typeof error.apiDiagnostic === 'object'
+      ? safe(error.apiDiagnostic)
+      : null;
     return {
       code: String(error?.code || error?.name || 'Error').slice(0, 120),
-      message: String(error?.message || error || '未知錯誤').slice(0, 500)
+      message: String(error?.message || error || '未知錯誤').slice(0, 500),
+      ...(api ? { api } : {})
     };
   }
 
@@ -1038,6 +1042,15 @@
     const session = await adminSession();
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 120000);
+    const startedAt = performance.now();
+    const action = String(body?.action || '').slice(0, 120);
+    const diagnostic = (phase, extra = {}) => ({
+      functionSlug: String(slug || '').slice(0, 80),
+      action,
+      phase,
+      durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      ...extra
+    });
     let response;
     let parsed;
     try {
@@ -1057,15 +1070,23 @@
       if (controller.signal.aborted) {
         const timeout = new Error('E2E 後端請求逾時：' + slug);
         timeout.code = 'E2E_API_TIMEOUT';
+        timeout.apiDiagnostic = diagnostic('timeout', { aborted: true });
         throw timeout;
       }
-      throw error;
+      const transport = error instanceof Error ? error : new Error(String(error || 'E2E network error'));
+      transport.apiDiagnostic = diagnostic('transport');
+      throw transport;
     } finally {
       window.clearTimeout(timer);
     }
     if (!response.ok || !parsed || parsed.ok !== true) {
       const error = new Error(parsed?.error?.message || 'E2E 後端服務拒絕操作。');
       error.code = parsed?.error?.code || 'E2E_API_ERROR';
+      error.apiDiagnostic = diagnostic('http', {
+        httpStatus: Number(response.status || 0),
+        responseParsed: Boolean(parsed),
+        serverCode: String(parsed?.error?.code || '').slice(0, 120)
+      });
       throw error;
     }
     return parsed.data || {};
