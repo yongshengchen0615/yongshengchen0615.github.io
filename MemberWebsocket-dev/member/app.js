@@ -191,6 +191,13 @@
     if (!els.joinTermsAccepted.checked) return showMessage('請閱讀並勾選同意會員條款。');
     setSaving(true);
     try {
+      const preflight = await preflightTermsForWrite();
+      if (preflight.changed) {
+        showMessage(preflight.terms
+          ? '會員條款已更新，已載入最新版本。請重新閱讀並勾選同意後再送出。'
+          : '目前尚無有效會員條款，請稍後再試或聯繫管理員。');
+        return;
+      }
       const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.profile.save', { birthday, phone, surname: String(document.getElementById('profileSurname').value || '').trim(), salutation: document.getElementById('profileSalutation').value, termsId: state.terms.id, termsVersion: state.terms.version, accepted: true });
       state.profile = result.profile || {};
       renderProfile(state.profile);
@@ -203,8 +210,16 @@
       if (error && error.code === 'API_RESPONSE_UNCERTAIN') {
         state.profileSaveLocked = true;
         showUncertainSaveMessage();
+      } else if (error?.code === 'TERMS_VERSION_STALE') {
+        try {
+          const fresh = await refreshTerms();
+          showMessage(fresh?.terms
+            ? '會員條款已更新，已載入最新版本。請重新閱讀並勾選同意後再送出。'
+            : '目前尚無有效會員條款，請稍後再試或聯繫管理員。');
+        } catch (_) {
+          showMessage('會員條款已更新，但最新內容載入失敗，請重新整理後再試。');
+        }
       } else {
-        if (error?.code === 'TERMS_VERSION_STALE') await refreshTerms();
         showMessage(error && error.message || '資料暫時無法儲存，請稍後再試。');
       }
     } finally {
@@ -224,9 +239,34 @@
     els.renewTermsButton.disabled = !terms;
   }
 
-  async function refreshTerms() {
+  function sameTermsVersion(left, right) {
+    return Boolean(
+      left
+      && right
+      && String(left.id || '') === String(right.id || '')
+      && String(left.version || '') === String(right.version || '')
+    );
+  }
+
+  async function fetchLatestTermsSnapshot() {
     const fresh = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
+    if (fresh?.profile && typeof fresh.profile === 'object') state.profile = fresh.profile;
+    return fresh || {};
+  }
+
+  async function preflightTermsForWrite() {
+    const previous = state.terms;
+    const fresh = await fetchLatestTermsSnapshot();
+    const latest = fresh.terms || null;
+    const changed = !sameTermsVersion(previous, latest);
+    if (changed) updateTerms(latest);
+    return { changed, terms: latest, consentRequired: Boolean(fresh.consentRequired) };
+  }
+
+  async function refreshTerms() {
+    const fresh = await fetchLatestTermsSnapshot();
     updateTerms(fresh.terms);
+    return fresh;
   }
 
   async function acceptRenewedTerms(event) {
@@ -239,6 +279,14 @@
     }
     els.renewTermsButton.disabled = true;
     try {
+      const preflight = await preflightTermsForWrite();
+      if (preflight.changed) {
+        els.renewTermsMessage.textContent = preflight.terms
+          ? '會員條款已更新，已載入最新版本。請重新閱讀並勾選同意後再送出。'
+          : '目前尚無有效會員條款，請聯繫管理員。';
+        els.renewTermsMessage.classList.remove('hidden');
+        return;
+      }
       const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.terms.accept', {
         termsId:state.terms.id, termsVersion:state.terms.version, accepted:true
       });
@@ -248,13 +296,23 @@
       setView('member');
       announceTourReady(state.profile);
     } catch (error) {
-      if (error?.code === 'TERMS_VERSION_STALE') await refreshTerms();
-      els.renewTermsMessage.textContent = error?.message || '同意紀錄暫時無法儲存。';
+      if (error?.code === 'TERMS_VERSION_STALE') {
+        try {
+          const fresh = await refreshTerms();
+          els.renewTermsMessage.textContent = fresh?.terms
+            ? '會員條款已更新，已載入最新版本。請重新閱讀並勾選同意後再送出。'
+            : '目前尚無有效會員條款，請聯繫管理員。';
+        } catch (_) {
+          els.renewTermsMessage.textContent = '會員條款已更新，但最新內容載入失敗，請重新整理後再試。';
+        }
+      } else {
+        els.renewTermsMessage.textContent = error?.message || '同意紀錄暫時無法儲存。';
+      }
       els.renewTermsMessage.classList.remove('hidden');
     } finally { els.renewTermsButton.disabled = !state.terms; }
   }
 
-  function setSaving(saving) { els.saveProfileButton.disabled = saving || state.profileSaveLocked; els.saveProfileButton.textContent = saving ? '加入中…' : state.profileSaveLocked ? '請重新整理確認' : '加入會員並開啟會員卡'; }
+  function setSaving(saving) { els.saveProfileButton.disabled = saving || state.profileSaveLocked || !state.terms; els.saveProfileButton.textContent = saving ? '加入中…' : state.profileSaveLocked ? '請重新整理確認' : '加入會員並開啟會員卡'; }
   function showUncertainSaveMessage() { showMessage('無法確認資料是否已儲存。請先重新整理確認；在確認前請勿再次送出。'); els.refreshProfileButton.classList.remove('hidden'); els.saveProfileButton.disabled = true; els.saveProfileButton.textContent = '請重新整理確認'; }
   function showMessage(message) { els.profileFormMessage.textContent = message; els.profileFormMessage.classList.remove('hidden'); }
   function hideMessage() { els.profileFormMessage.textContent = ''; els.profileFormMessage.classList.add('hidden'); if (!state.profileSaveLocked) els.refreshProfileButton.classList.add('hidden'); }
