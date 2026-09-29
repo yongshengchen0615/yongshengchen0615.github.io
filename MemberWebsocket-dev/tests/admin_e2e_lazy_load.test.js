@@ -23,5 +23,5 @@ test('admin browser E2E controller is lazy-loaded outside normal startup', () =>
 
   assert.match(controller, /if \(document\.readyState === 'loading'\)/);
   assert.match(controller, /window\.addEventListener\('DOMContentLoaded', mount, \{ once: true \}\)/);
-  assert.match(controller, /else \{\s*mount\(\);\s*\}/s);
+  assert.match(controller, /document\.readyState === 'interactive' \|\| document\.readyState === 'complete'/);
 });
