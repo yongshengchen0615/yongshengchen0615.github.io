@@ -512,6 +512,48 @@ async function recentRuns(supabase: any): Promise<Json[]> {
   return (result.data || []).map(runClient);
 }
 
+// Edge requests have a bounded lifetime. If a worker exits during a backend
+// suite, its database rows otherwise remain "running" and block QA cleanup.
+// Five minutes is longer than a single Edge request, and no active run can be
+// mistaken for an abandoned one merely because the browser polling paused.
+async function expireAbandonedRuns(supabase: any): Promise<void> {
+  const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const candidates = await supabase.from("automation_test_runs")
+    .select("id,status,summary,started_at,updated_at")
+    .eq("environment", "MemberWebsocket-dev")
+    .in("status", ["queued", "running"])
+    .lt("updated_at", cutoff)
+    .limit(20);
+  if (candidates.error) throw new ApiError(503, "STALE_RUN_READ_FAILED", "無法檢查逾時測試紀錄。");
+
+  for (const run of candidates.data || []) {
+    const now = new Date().toISOString();
+    const pending = await supabase.from("automation_test_cases").update({
+      status: "failed",
+      failure_code: "E2E_RUN_ABANDONED",
+      failure_message: "後端 Runner 中斷或逾時；此案例未能完成驗證。",
+      completed_at: now,
+      updated_at: now,
+    }).eq("run_id", run.id).in("status", ["queued", "running"]);
+    if (pending.error) throw new ApiError(503, "STALE_CASE_RECOVERY_FAILED", "無法標記中斷測試案例。");
+
+    const cases = await supabase.from("automation_test_cases").select("status").eq("run_id", run.id);
+    if (cases.error) throw new ApiError(503, "STALE_RUN_COUNT_FAILED", "無法統計中斷測試結果。");
+    const rows = cases.data || [];
+    const summary = run.summary && typeof run.summary === "object" ? run.summary : {};
+    const completed = await supabase.from("automation_test_runs").update({
+      status: "failed",
+      total_cases: rows.length,
+      passed_cases: rows.filter((row: any) => row.status === "passed").length,
+      failed_cases: rows.filter((row: any) => row.status === "failed").length,
+      summary: { ...summary, abandoned: true, failureCode: "E2E_RUN_ABANDONED" },
+      completed_at: now,
+      updated_at: now,
+    }).eq("id", run.id).in("status", ["queued", "running"]).lt("updated_at", cutoff);
+    if (completed.error) throw new ApiError(503, "STALE_RUN_RECOVERY_FAILED", "無法結束中斷測試紀錄。");
+  }
+}
+
 async function testMembers(supabase: any): Promise<any[]> {
   const result = await supabase
     .from("members")
@@ -1439,6 +1481,10 @@ Deno.serve(async (request: Request) => {
       identity,
       createError: (status, code, message, details) => new ApiError(status, code, message, details),
     });
+
+    if (["admin.test-control.list", "admin.test-control.status", "admin.test-control.create", "admin.test-control.purge-test-data"].includes(action)) {
+      await expireAbandonedRuns(supabase);
+    }
 
     if (action === "admin.test-control.e2e-profile") {
       return response(origin, {

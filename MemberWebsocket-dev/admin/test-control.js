@@ -10,6 +10,7 @@
   let artifactPrefetchActive = 0;
   let currentRunId = '';
   let pollTimer = 0;
+  let pollInFlight = false;
   let busy = false;
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -160,25 +161,42 @@
   }
 
   async function request(action, payload = {}) {
-    const session = await window.MemberAdminSession.wait();
-    const response = await fetch(apiUrl(session.config), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: String(session.config.supabasePublishableKey || '')
-      },
-      cache: 'no-store',
-      body: JSON.stringify({
-        ...payload,
-        action,
-        clientType: 'admin',
-        idToken: session.idToken
-      })
-    });
-
+    const session = await window.MemberE2EScenarioGraph.runWithDeadline(
+      () => window.MemberAdminSession.wait(), 30000, 'TEST_CONTROL_SESSION'
+    );
+    const controller = new AbortController();
+    const timeoutMs = action === 'admin.test-control.execute' ? 140000 : 30000;
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    let response;
     let body;
-    try { body = await response.json(); }
-    catch { throw new Error('自動化測試服務暫時未正常回應。'); }
+    try {
+      response = await fetch(apiUrl(session.config), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: String(session.config.supabasePublishableKey || '')
+        },
+        cache: 'no-store',
+        signal: controller.signal,
+        body: JSON.stringify({
+          ...payload,
+          action,
+          clientType: 'admin',
+          idToken: session.idToken
+        })
+      });
+      body = await response.json().catch(() => null);
+      if (controller.signal.aborted) throw new Error('request-aborted');
+    } catch (error) {
+      if (controller.signal.aborted) {
+        const timeout = new Error('後端 QA 請求逾時：' + action);
+        timeout.code = 'TEST_CONTROL_REQUEST_TIMEOUT';
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
 
     if (!response.ok || !body || body.ok !== true) {
       const error = new Error(body?.error?.message || '自動化測試服務拒絕此操作。');
@@ -293,14 +311,17 @@
   function beginPolling() {
     stopPolling();
     const tick = async () => {
-      if (!currentRunId) return;
+      if (!currentRunId || pollInFlight) return;
+      pollInFlight = true;
       try {
         const data = await request('admin.test-control.status', { runId: currentRunId });
         renderDetail(data);
         renderHistory(Array.isArray(data.runs) ? data.runs : []);
         const status = String(data.run?.status || '');
         if (['passed', 'failed', 'cancelled'].includes(status)) stopPolling();
-      } catch (_) {}
+      } catch (_) {
+        // The execute request owns the terminal error; polling is observational.
+      } finally { pollInFlight = false; }
     };
     pollTimer = window.setInterval(tick, 900);
   }

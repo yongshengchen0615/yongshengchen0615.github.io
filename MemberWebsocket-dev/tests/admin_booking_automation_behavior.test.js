@@ -22,7 +22,10 @@ const participant = () => ({
 // Execute the real runner with IO substituted; no live accounts or database writes.
 function harness(bookings = [], extra = {}) {
   const calls = [];
-  const window = { addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0) };
+  const window = {
+    addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0),
+    MemberE2EScenarioGraph: require('../e2e-scenario-graph.js')
+  };
   const context = vm.createContext({ window, document: {}, performance, TextEncoder, CSS: { escape: (x) => x }, ...extra });
   const expose = `
     window.qa = { state, pairedBookingCandidates, livePairedBookingSet, waitForLivePairedBookingTarget, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal, beginBookingRealtimeProbe, verifyBookingRealtimeSync };

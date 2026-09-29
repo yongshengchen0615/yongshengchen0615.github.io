@@ -6,7 +6,9 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-29.2';
+  const VERSION = '2026-09-29.3';
+  const USER_NODE_TIMEOUT_MS = 75000;
+  const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -141,6 +143,7 @@
     traceEvents: [],
     traceResourceStart: 0,
     failureScreenshotsCaptured: 0,
+    activeHumanCaptureCleanup: null,
     traceCleanup: null,
     launcher: null,
     panel: null
@@ -698,6 +701,7 @@
     renderResults();
 
     let bookingBaselineFailed = false;
+    let timedOutCase = false;
     if (surface === 'booking' && state.currentSuite === 'full') {
       try {
         const before = await requestCore('user.booking.bootstrap', {});
@@ -744,31 +748,39 @@
       const started = performance.now();
       const traceMarker = diagnosticMarker();
       try {
-        let outcome;
-        if (testCase.humanRequired === true) {
-          const captured = await captureHumanInteraction(testCase.run);
-          outcome = captured.outcome;
-          const mergedActual = outcome?.actual && typeof outcome.actual === 'object' && !Array.isArray(outcome.actual)
-            ? { ...outcome.actual, humanInteraction: captured.evidence }
-            : { value: outcome?.actual ?? null, humanInteraction: captured.evidence };
-          if (outcome?.status === 'passed' && Number(captured.evidence.eventCount || 0) < 1) {
-            outcome = fail(
-              '案例邏輯完成，但沒有觀察到任何真人 UI 互動事件；完整 E2E 不接受只走 API／內部函式。',
-              { humanInteractionEventsAtLeast: 1 },
-              mergedActual
-            );
+        const outcome = await window.MemberE2EScenarioGraph.runWithDeadline(async () => {
+          let result;
+          if (testCase.humanRequired === true) {
+            const captured = await captureHumanInteraction(testCase.run);
+            result = captured.outcome;
+            const mergedActual = result?.actual && typeof result.actual === 'object' && !Array.isArray(result.actual)
+              ? { ...result.actual, humanInteraction: captured.evidence }
+              : { value: result?.actual ?? null, humanInteraction: captured.evidence };
+            if (result?.status === 'passed' && Number(captured.evidence.eventCount || 0) < 1) {
+              result = fail(
+                '案例邏輯完成，但沒有觀察到任何真人 UI 互動事件；完整 E2E 不接受只走 API／內部函式。',
+                { humanInteractionEventsAtLeast: 1 }, mergedActual
+              );
+            } else {
+              result = { ...result, actual: safeJson(mergedActual) };
+            }
           } else {
-            outcome = { ...outcome, actual: safeJson(mergedActual) };
+            result = await testCase.run();
           }
-        } else {
-          outcome = await testCase.run();
-        }
+          return result;
+        }, surface === 'booking' ? USER_BOOKING_NODE_TIMEOUT_MS : USER_NODE_TIMEOUT_MS,
+        testCase.key, () => {
+          state.cancelled = true;
+          state.activeHumanCaptureCleanup?.();
+          state.activeHumanCaptureCleanup = null;
+        });
         Object.assign(running, outcome, { durationMs: elapsed(started) });
         if (running.status === 'failed') {
           running.trace = buildFailureTrace(traceMarker, running);
           await attachFailureScreenshot(running);
         }
       } catch (error) {
+        timedOutCase = error?.code === 'E2E_NODE_TIMEOUT';
         Object.assign(running, fail(
           '案例執行發生未預期錯誤。',
           { noUnhandledError: true },
@@ -779,10 +791,11 @@
       }
       renderResults();
       updateSummary(index + 1, cases.length);
+      if (timedOutCase) break; // Pending DOM work may still settle; never start another node here.
       await (state.currentSuite === 'full' ? randomInteractionPause() : wait(40));
     }
 
-    if (surface === 'booking' && state.currentSuite === 'full' && !bookingBaselineFailed) {
+    if (surface === 'booking' && state.currentSuite === 'full' && !bookingBaselineFailed && !timedOutCase) {
       try {
         const after = await requestCore('user.booking.bootstrap', {});
         state.bookingHandoff = buildBookingHandoff(state.bookingBaseline, after?.bookings, state.session.account.memberId, state.runStartedAt);
@@ -823,7 +836,8 @@
         renderResults();
       }
     }
-    const cancelled = state.cancelled;
+    // A node deadline is a failed run, not a user cancellation: persist its trace.
+    const cancelled = state.cancelled && !timedOutCase;
     if (!cancelled) {
       try {
         state.browserRun = await recordBrowserRun();
@@ -1584,6 +1598,8 @@
       if (events.length > 80) events.shift();
     };
     types.forEach((type) => document.addEventListener(type, handler, true));
+    const cleanup = () => types.forEach((type) => document.removeEventListener(type, handler, true));
+    state.activeHumanCaptureCleanup = cleanup;
     try {
       await wait(randomInt(80, 260));
       const outcome = await run();
@@ -1597,7 +1613,8 @@
         }
       };
     } finally {
-      types.forEach((type) => document.removeEventListener(type, handler, true));
+      cleanup();
+      if (state.activeHumanCaptureCleanup === cleanup) state.activeHumanCaptureCleanup = null;
     }
   }
 

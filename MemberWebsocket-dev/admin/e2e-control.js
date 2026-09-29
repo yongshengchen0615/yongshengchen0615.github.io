@@ -1,16 +1,19 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-29.1';
+  const VERSION = '2026-09-29.3';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
   const DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP = 2;
+  const ADMIN_NODE_TIMEOUT_MS = 90000;
+  const ADMIN_BOOKING_NODE_TIMEOUT_MS = 7 * 60 * 1000;
   let html2canvasLoader = null;
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const REPLAY_STORAGE_KEY = 'member-e2e-replay-v1';
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
+  const BACKGROUND_RUNNER_STALE_MS = 8 * 60 * 1000;
   const MAX_PAIRED_PARTICIPANTS = 10;
   const CLIENT_MOBILE_VIEWPORT = Object.freeze({ width: 430, height: 932 });
   const CLIENT_DESKTOP_POPUP = Object.freeze({ width: 1100, height: 820 });
@@ -91,6 +94,7 @@
     complexityLevel: 1,
     clientConcurrency: 2,
     failureScreenshotsCaptured: 0,
+    activeHumanCaptureCleanup: null,
     rootRunId: '',
     adminScenarioPlan: null,
     adminRandomStateAfterPlan: 0,
@@ -118,6 +122,7 @@
     backgroundRunnerWindow: null,
     backgroundCompletion: null,
     backgroundRunId: '',
+    backgroundLastStatusAt: 0,
     lastMessage: '',
     lastMessageError: false
   };
@@ -492,6 +497,7 @@
     if (isBackgroundRunnerWindow() || !snapshot || typeof snapshot !== 'object') return false;
     if (state.backgroundRunId && snapshot.runId && String(snapshot.runId) !== String(state.backgroundRunId)) return false;
     if (!state.backgroundRunId && snapshot.runId) state.backgroundRunId = String(snapshot.runId);
+    state.backgroundLastStatusAt = Date.now();
     state.cancelled = Boolean(snapshot.cancelled);
     state.lastMessage = String(snapshot.message || '');
     state.lastMessageError = Boolean(snapshot.messageError);
@@ -546,6 +552,24 @@
     const error = new Error('背景管理端 Runner 未能在允許時間內完成登入與初始化。');
     error.code = 'E2E_BACKGROUND_RUNNER_NOT_READY';
     throw error;
+  }
+
+  function watchBackgroundCompletion(completion, runnerWindow) {
+    let interval;
+    const watchdog = new Promise((_, reject) => {
+      interval = window.setInterval(() => {
+        let code = '';
+        if (!runnerWindow || runnerWindow.closed) code = 'E2E_BACKGROUND_RUNNER_CLOSED';
+        else if (Date.now() - state.backgroundLastStatusAt > BACKGROUND_RUNNER_STALE_MS) code = 'E2E_BACKGROUND_RUNNER_STALLED';
+        if (!code) return;
+        const error = new Error(code === 'E2E_BACKGROUND_RUNNER_CLOSED'
+          ? '背景 Runner 視窗已關閉；已停止等待並保留最後測試進度。'
+          : '背景 Runner 長時間沒有回報進度；已停止等待並保留最後測試進度。');
+        error.code = code;
+        reject(error);
+      }, 5000);
+    });
+    return Promise.race([completion, watchdog]).finally(() => window.clearInterval(interval));
   }
 
 
@@ -624,6 +648,7 @@
     const replay = normalizeReplayContext(options?.replay);
     const runId = 'BG-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
     state.backgroundRunId = runId;
+    state.backgroundLastStatusAt = Date.now();
     try {
       participantCount = replay ? Math.max(1, Number(replay.manifest.participantCount || 1)) : selectedParticipantCount();
       mobileViewport = replay ? replay.manifest.mobileViewport === true : selectedClientMobileViewport();
@@ -641,6 +666,7 @@
     state.cancelled = false;
     state.results = [];
     state.participants = [];
+    state.runStartedAt = new Date().toISOString();
     state.adminScenarioPlan = null;
     state.backgroundRunnerWindow = runnerWindow;
     state.backgroundRunId = runId;
@@ -659,14 +685,14 @@
       setMessage('E2E 已移交背景 Runner；只執行勾選模組的 Browser 案例。測試視窗請保持開啟。');
       try { runnerWindow.blur?.(); window.focus?.(); } catch {}
 
-      const result = await control.runUnifiedBackground({
+      const result = await watchBackgroundCompletion(control.runUnifiedBackground({
         participantCount,
         clientWindows,
         mobileViewport,
         selectedModules,
         runId,
         replay
-      });
+      }), runnerWindow);
 
       if (Array.isArray(result?.results)) state.results = result.results.map((row) => ({ ...row }));
       render();
@@ -681,8 +707,24 @@
         !result?.cancelled && failed > 0
       );
       return result;
-    })().catch((error) => {
+    })().catch(async (error) => {
+      try { runnerWindow?.MemberAdminE2EControl?.stop?.(); } catch {}
+      try { if (runnerWindow && !runnerWindow.closed) runnerWindow.close(); } catch {}
       closeWindowList(clientWindows);
+      for (const row of state.results.filter((item) => item.status === 'running')) {
+        row.status = 'failed';
+        row.message = '背景 Runner 中斷，節點未能完成驗證。';
+        row.actual = { code: 'E2E_BACKGROUND_INTERRUPTED' };
+        row.durationMs = Math.max(0, Date.now() - Date.parse(state.runStartedAt || new Date().toISOString()));
+      }
+      state.results.push({
+        key: 'E2E_BACKGROUND_RUNNER_FAILURE', name: '背景 Runner 存活與進度',
+        domain: 'Paired E2E / Orchestration', status: 'failed',
+        message: String(error?.message || '背景 Runner 中斷。'),
+        expected: { runnerResponding: true }, actual: plainError(error), durationMs: 0
+      });
+      render();
+      try { await recordResultRows(state.results, 'paired-browser', 'full', '', state.runStartedAt, { rootRun: false }); } catch {}
       setMessage(error?.message || '背景完整 E2E 執行失敗。', true);
       return { error: plainError(error), results: state.results.slice() };
     }).finally(() => {
@@ -704,14 +746,16 @@
     }
     state.backgroundExecution = true;
     state.backgroundRunId = String(options?.runId || new URLSearchParams(window.location.search).get('e2eRunId') || '');
-    return runPaired({
+    const heartbeat = window.setInterval(publishBackgroundStatus, 10000);
+    try { return await runPaired({
       participantCount: Number(options?.participantCount || 0),
       clientWindows: Array.isArray(options?.clientWindows) ? options.clientWindows : [],
       mobileViewport: options?.mobileViewport === true,
       selectedModules: options?.selectedModules,
       replay: options?.replay,
       backgroundExecution: true
-    });
+    }); }
+    finally { window.clearInterval(heartbeat); }
   }
   function setBusy(running, label = '') {
     state.running = Boolean(running);
@@ -853,6 +897,8 @@
       if (events.length > 100) events.shift();
     };
     types.forEach((type) => document.addEventListener(type, handler, true));
+    const cleanup = () => types.forEach((type) => document.removeEventListener(type, handler, true));
+    state.activeHumanCaptureCleanup = cleanup;
     try {
       await sleep(randomInt(80, 260));
       const outcome = await run();
@@ -866,7 +912,8 @@
         }
       };
     } finally {
-      types.forEach((type) => document.removeEventListener(type, handler, true));
+      cleanup();
+      if (state.activeHumanCaptureCleanup === cleanup) state.activeHumanCaptureCleanup = null;
     }
   }
 
@@ -889,38 +936,53 @@
       render();
       const started = performance.now();
       const traceMarker = adminDiagnosticMarker();
+      let timedOut = false;
       try {
-        let outcome;
-        if (def.humanRequired === true) {
-          const captured = await captureAdminHumanInteraction(def.run);
-          outcome = captured.outcome;
-          const mergedActual = outcome?.actual && typeof outcome.actual === 'object' && !Array.isArray(outcome.actual)
-            ? { ...outcome.actual, humanInteraction: captured.evidence }
-            : { value: outcome?.actual ?? null, humanInteraction: captured.evidence };
-          if (outcome?.status === 'passed' && Number(captured.evidence.eventCount || 0) < 1) {
-            outcome = fail(
-              '案例邏輯完成，但沒有觀察到管理端真人 UI 互動事件；完整 E2E 不接受只走 API／內部函式。',
-              { humanInteractionEventsAtLeast: 1 },
-              mergedActual
-            );
+        const outcome = await window.MemberE2EScenarioGraph.runWithDeadline(async () => {
+          let result;
+          if (def.humanRequired === true) {
+            const captured = await captureAdminHumanInteraction(def.run);
+            result = captured.outcome;
+            const mergedActual = result?.actual && typeof result.actual === 'object' && !Array.isArray(result.actual)
+              ? { ...result.actual, humanInteraction: captured.evidence }
+              : { value: result?.actual ?? null, humanInteraction: captured.evidence };
+            if (result?.status === 'passed' && Number(captured.evidence.eventCount || 0) < 1) {
+              result = fail(
+                '案例邏輯完成，但沒有觀察到管理端真人 UI 互動事件；完整 E2E 不接受只走 API／內部函式。',
+                { humanInteractionEventsAtLeast: 1 }, mergedActual
+              );
+            } else {
+              result = { ...result, actual: safe(mergedActual) };
+            }
           } else {
-            outcome = { ...outcome, actual: safe(mergedActual) };
+            result = await def.run();
           }
-        } else {
-          outcome = await def.run();
-        }
+          return result;
+        }, /^ADMIN_BOOKING_|^PAIRED_.*BOOKING/.test(def.key) ? ADMIN_BOOKING_NODE_TIMEOUT_MS : ADMIN_NODE_TIMEOUT_MS,
+        def.key, () => {
+          state.cancelled = true;
+          state.activeHumanCaptureCleanup?.();
+          state.activeHumanCaptureCleanup = null;
+        });
         Object.assign(row, outcome);
         if (row.status === 'failed') {
           row.trace = buildAdminFailureTrace(traceMarker, row);
           await attachFailureScreenshot(row);
         }
       } catch (error) {
+        timedOut = error?.code === 'E2E_NODE_TIMEOUT';
         Object.assign(row, fail('案例執行發生未預期錯誤。', { noUnhandledError: true }, plainError(error)));
         row.trace = buildAdminFailureTrace(traceMarker, row, error);
         await attachFailureScreenshot(row);
       }
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
+      if (timedOut) {
+        // The original action might still be active; do not start another DOM mutation.
+        const error = new Error(def.key + ' 逾時；已停止此輪 E2E 並保留失敗快照。');
+        error.code = 'E2E_NODE_TIMEOUT';
+        throw error;
+      }
       if (state.cancelled) break;
       await sleep(50);
     }
@@ -929,7 +991,9 @@
   
 
   async function adminSession() {
-    const session = await window.MemberAdminSession?.wait?.();
+    const session = await window.MemberE2EScenarioGraph.runWithDeadline(
+      () => window.MemberAdminSession?.wait?.(), 30000, 'ADMIN_SESSION'
+    );
     if (!session?.idToken || !session?.config?.supabaseUrl) throw new Error('管理端 Session 尚未準備完成。');
     return session;
   }
@@ -942,17 +1006,33 @@
 
   async function postFunction(slug, body) {
     const session = await adminSession();
-    const response = await fetch(functionUrl(session.config, slug), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: String(session.config.supabasePublishableKey || '')
-      },
-      cache: 'no-store',
-      body: JSON.stringify(body)
-    });
-    let parsed = null;
-    try { parsed = await response.json(); } catch {}
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 120000);
+    let response;
+    let parsed;
+    try {
+      response = await fetch(functionUrl(session.config, slug), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: String(session.config.supabasePublishableKey || '')
+        },
+        cache: 'no-store',
+        signal: controller.signal,
+        body: JSON.stringify(body)
+      });
+      parsed = await response.json().catch(() => null);
+      if (controller.signal.aborted) throw new Error('request-aborted');
+    } catch (error) {
+      if (controller.signal.aborted) {
+        const timeout = new Error('E2E 後端請求逾時：' + slug);
+        timeout.code = 'E2E_API_TIMEOUT';
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
     if (!response.ok || !parsed || parsed.ok !== true) {
       const error = new Error(parsed?.error?.message || 'E2E 後端服務拒絕操作。');
       error.code = parsed?.error?.code || 'E2E_API_ERROR';
@@ -1738,7 +1818,16 @@
         results: safe(state.results)
       };
     } catch (error) {
-      if (!state.cancelled) {
+      const stoppedByUser = state.cancelled && error?.code !== 'E2E_NODE_TIMEOUT';
+      state.cancelled = true; // Ask any concurrent client or booking waiter to stop.
+      if (!stoppedByUser) {
+        for (const row of state.results.filter((item) => item.status === 'running')) {
+          row.status = 'failed';
+          row.message = '其他節點失敗後中止，原操作未能安全完成。';
+          row.actual = { code: 'E2E_INTERRUPTED', cause: plainError(error) };
+          row.durationMs = Math.max(0, Date.now() - Number(runTraceMarker.startedAtMs || Date.now()));
+          row.trace = buildAdminFailureTrace(runTraceMarker, row, error);
+        }
         state.results.push({
           key: 'PAIRED_RUNNER_FATAL',
           name: '協同 Runner 啟動',
@@ -1751,13 +1840,15 @@
           trace: buildAdminFailureTrace(runTraceMarker, { key: 'PAIRED_RUNNER_FATAL', domain: 'Paired E2E', actual: {} }, error)
         });
       }
-      setMessage(state.cancelled ? '協同 E2E 已停止。' : (error?.message || '協同 E2E 無法啟動。請確認系統維護、目前裝置測試登入與彈出式視窗權限。'), !state.cancelled);
+      setMessage(stoppedByUser ? '協同 E2E 已停止。' : (error?.message || '協同 E2E 無法啟動。請確認系統維護、目前裝置測試登入與彈出式視窗權限。'), !stoppedByUser);
       render();
-      if (!state.cancelled) {
-        try { await recordRun('paired-browser', 'full'); } catch {}
+      if (!stoppedByUser) {
+        // Partial paths cannot pass replay-manifest validation. Persist the failure
+        // as a diagnostic browser run without claiming it is exactly replayable.
+        try { await recordResultRows(state.results, 'paired-browser', 'full', '', state.runStartedAt, { rootRun: false }); } catch {}
         closeClientWindows();
       }
-      return { cancelled: state.cancelled, error: state.cancelled ? null : plainError(error), results: safe(state.results) };
+      return { cancelled: stoppedByUser, error: stoppedByUser ? null : plainError(error), results: safe(state.results) };
     } finally {
       state.adminTestAccount = null;
       setBusy(false);
