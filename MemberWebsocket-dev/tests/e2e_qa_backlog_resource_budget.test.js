@@ -15,6 +15,8 @@ test('QA backlog has browser E2E contracts for legal, booking reminder and overn
   assert.match(user, /MEMBER_TERMS_CONSENT/);
   assert.match(user, /TERMS_CONSENT_REQUIRED/);
   assert.match(user, /TERMS_VERSION_STALE/);
+  assert.match(user, /MEMBERSHIP_TERMS_NOT_CONFIGURED/);
+  assert.match(user, /會員條款尚未由管理端啟用/);
 
   assert.match(admin, /bookingAdminReminderEnabled/);
   assert.match(admin, /bookingAdminReminderTime/);
@@ -48,7 +50,7 @@ test('tour E2E remains explicit across all user surfaces', () => {
 test('all user surfaces load the same QA E2E runner cache version', () => {
   for (const surface of ['member','points','event','calendar','booking']) {
     const html = read(surface + '/index.html');
-    assert.match(html, /user-test-control\.js\?v=qa-e2e-20260929-4/);
+    assert.match(html, /user-test-control\.js\?v=qa-e2e-20260929-5/);
   }
 });
 

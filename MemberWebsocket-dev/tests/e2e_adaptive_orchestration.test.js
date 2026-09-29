@@ -13,6 +13,10 @@ test('admin E2E uses deterministic seed and bounded participant concurrency', ()
   assert.match(runner, /async function loadE2EProfile\(/);
   assert.match(runner, /async function runWithConcurrency\(/);
   assert.match(runner, /state\.clientConcurrency/);
+  assert.match(runner, /async function loadE2EProfile\(participantCount = 1, modules = state\.selectedModules\)/);
+  assert.match(runner, /participantFanout/);
+  assert.match(runner, /participantConcurrencyCap/);
+  assert.match(runner, /loadE2EProfile\(participantCount, selectedModules\)/);
   assert.match(runner, /admin\.test-control\.e2e-profile/);
   assert.match(runner, /e2eSeed/);
   assert.match(runner, /e2eComplexity/);

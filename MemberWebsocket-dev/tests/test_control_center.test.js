@@ -61,6 +61,9 @@ test('test control API requires admin identity and records observable cases', ()
   assert.match(api, /automation_test_steps/);
   assert.match(api, /ENVIRONMENT_ACCESS/);
   assert.match(api, /TEST_ACCOUNT_INTEGRITY/);
+  assert.match(api, /MEMBERSHIP_TERMS_READY/);
+  assert.match(api, /MEMBERSHIP_TERMS_NOT_CONFIGURED/);
+  assert.match(api, /activeRequiredTermsAtLeast: 1/);
   assert.match(api, /SESSION_SECURITY/);
   assert.match(api, /POINTS_INTEGRITY/);
   assert.match(api, /FIXED_TICKET_INTEGRITY/);

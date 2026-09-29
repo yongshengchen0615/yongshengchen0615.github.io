@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-29.4';
+  const VERSION = '2026-09-29.5';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -267,7 +267,7 @@
     }
   }
 
-  async function loadE2EProfile() {
+  async function loadE2EProfile(participantCount = 1, modules = state.selectedModules) {
     const session = await adminSession();
     const data = await postFunction('test-control-api', {
       action: 'admin.test-control.e2e-profile',
@@ -282,7 +282,15 @@
     const hardwareConcurrency = Math.max(0, Number(window.navigator?.hardwareConcurrency || 0));
     const deviceMemory = Math.max(0, Number(window.navigator?.deviceMemory || 0));
     const constrainedDevice = (hardwareConcurrency > 0 && hardwareConcurrency <= 4) || (deviceMemory > 0 && deviceMemory <= 4);
-    const localResourceCap = constrainedDevice ? 1 : DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP;
+    const selectedSurfaceCount = selectedClientSurfaces(modules).length;
+    const normalizedParticipantCount = Math.max(1, Number(participantCount || 1));
+    const participantFanout = normalizedParticipantCount * Math.max(1, selectedSurfaceCount);
+    const participantConcurrencyCap = normalizedParticipantCount >= 3 || participantFanout >= 8
+      ? 1
+      : DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP;
+    const localResourceCap = constrainedDevice
+      ? 1
+      : Math.min(DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP, participantConcurrencyCap);
     state.clientConcurrency = Math.max(1, Math.min(adaptiveConcurrency, localResourceCap));
     state.rootRunId = 'ROOT-' + Date.now().toString(36).toUpperCase();
     configureRandom(seed);
@@ -297,7 +305,17 @@
       complexityLevel: level,
       seed,
       clientConcurrency: state.clientConcurrency,
-      resourceProfile: { hardwareConcurrency, deviceMemory, constrainedDevice, activeClientConcurrencyCap: localResourceCap, adaptiveConcurrency },
+      resourceProfile: {
+        hardwareConcurrency,
+        deviceMemory,
+        constrainedDevice,
+        participantCount: normalizedParticipantCount,
+        selectedSurfaceCount,
+        participantFanout,
+        participantConcurrencyCap,
+        activeClientConcurrencyCap: localResourceCap,
+        adaptiveConcurrency
+      },
       rootRunId: state.rootRunId,
       surfaceWeightsMs,
       surfaceSamples
@@ -1617,7 +1635,7 @@
             configureRandom(String(manifest.rootSeed||''));
             return {completedRootRuns:0,complexityLevel:state.complexityLevel,seed:state.randomSeed,clientConcurrency:state.clientConcurrency,rootRunId:state.rootRunId,surfaceWeightsMs:{},surfaceSamples:{},replayOfRunId:state.replayContext.sourceRunId};
           })()
-        : await loadE2EProfile();
+        : await loadE2EProfile(participantCount, selectedModules);
       state.results.push({
         key: 'PAIRED_ADAPTIVE_PROFILE',
         name: 'E2E 自適應複雜度與可重現 Seed',

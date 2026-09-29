@@ -39,6 +39,9 @@ test('paired E2E protects workstation CPU and screenshot budget', () => {
   assert.match(runner, /const DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP = 2/);
   assert.match(runner, /navigator\?\.hardwareConcurrency|navigator\.hardwareConcurrency/);
   assert.match(runner, /deviceMemory/);
+  assert.match(runner, /participantFanout >= 8/);
+  assert.match(runner, /normalizedParticipantCount >= 3/);
+  assert.match(runner, /participantConcurrencyCap/);
   assert.match(runner, /const FAILURE_SCREENSHOT_BUDGET = 2/);
   assert.match(runner, /reason: 'run-budget'/);
   assert.match(userRunner, /const FAILURE_SCREENSHOT_BUDGET = 1/);
@@ -48,6 +51,6 @@ test('paired E2E protects workstation CPU and screenshot budget', () => {
 test('admin rate-budget assets are cache-busted', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=ticket-map-visible-20260929-1/);
-  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260929-4/);
+  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260929-5/);
   assert.match(html, /booking-panel\.js\?v=[^"']+/);
 });

@@ -310,11 +310,13 @@ function caseDefinitions(suite: string, selectedModules: string[] | null = null)
     { key: "LINE_SUPPRESSION", name: "測試會員 LINE 通知阻擋", domain: "Notification" },
   ];
   const definitions = suite === "quick" ? quick : quick.concat([
+    { key: "MEMBERSHIP_TERMS_READY", name: "會員條款 E2E 前置狀態", domain: "Member / Legal" },
     { key: "BOOKING_INTEGRITY", name: "預約與技師時段一致性", domain: "Booking" },
     { key: "PRESENCE_INTEGRITY", name: "會員上線狀態一致性", domain: "Presence" },
   ]);
   if (!selectedModules) return definitions;
   const owners: Record<string, string[]> = {
+    MEMBERSHIP_TERMS_READY: ["member"],
     POINTS_INTEGRITY: ["points"],
     FIXED_TICKET_INTEGRITY: ["points", "event"],
     BOOKING_INTEGRITY: ["booking"],
@@ -617,6 +619,42 @@ async function evaluateEnvironment(supabase: any): Promise<CaseResult> {
   return ok
     ? pass("測試設定可讀，且存在可用測試會員；維護模式與裝置登入開關不影響 server-side 自動化測試。", expected, actual)
     : fail("TEST_ENVIRONMENT_NOT_READY", "測試設定不存在、欄位格式異常，或沒有可用測試會員。", expected, actual);
+}
+
+async function evaluateMembershipTerms(supabase: any): Promise<CaseResult> {
+  const nowMs = Date.now();
+  const result = await supabase
+    .from("membership_terms")
+    .select("id,version,title,status,required,effective_at,activated_at")
+    .eq("status", "active")
+    .eq("required", true)
+    .order("activated_at", { ascending: false, nullsFirst: false })
+    .limit(5);
+  if (result.error) throw new ApiError(503, "MEMBERSHIP_TERMS_READ_FAILED", "目前無法讀取會員條款前置狀態。");
+
+  const configured = result.data || [];
+  const eligible = configured.filter((row: any) => {
+    if (!row.effective_at) return true;
+    const effectiveMs = new Date(row.effective_at).getTime();
+    return Number.isFinite(effectiveMs) && effectiveMs <= nowMs;
+  });
+  const active = eligible[0] || null;
+  const actual = {
+    configuredActiveRequiredTerms: configured.length,
+    activeRequiredTerms: eligible.length,
+    activeVersion: active?.version || null,
+    effectiveAt: active?.effective_at || null,
+    activatedAt: active?.activated_at || null,
+  };
+  const expected = { activeRequiredTermsAtLeast: 1 };
+  return active
+    ? pass("會員模組 E2E 已確認存在目前生效且需同意的會員條款。", expected, actual)
+    : fail(
+        "MEMBERSHIP_TERMS_NOT_CONFIGURED",
+        "目前沒有已啟用且已生效的必須同意會員條款；會員條款案例將視為環境阻擋，而不是功能回歸。",
+        expected,
+        actual,
+      );
 }
 
 async function evaluateTestAccounts(supabase: any): Promise<CaseResult> {
@@ -943,6 +981,7 @@ async function evaluateLineSuppression(supabase: any): Promise<CaseResult> {
 async function evaluateCase(supabase: any, caseKey: string): Promise<CaseResult> {
   if (caseKey === "ENVIRONMENT_ACCESS") return evaluateEnvironment(supabase);
   if (caseKey === "TEST_ACCOUNT_INTEGRITY") return evaluateTestAccounts(supabase);
+  if (caseKey === "MEMBERSHIP_TERMS_READY") return evaluateMembershipTerms(supabase);
   if (caseKey === "SESSION_SECURITY") return evaluateSessions(supabase);
   if (caseKey === "POINTS_INTEGRITY") return evaluatePoints(supabase);
   if (caseKey === "FIXED_TICKET_INTEGRITY") return evaluateTickets(supabase);

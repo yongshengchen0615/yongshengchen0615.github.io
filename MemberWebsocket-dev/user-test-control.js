@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-29.4';
+  const VERSION = '2026-09-29.5';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -2862,9 +2862,11 @@
     ];
     const missing = domIds.filter((id) => !document.getElementById(id));
     if (!terms?.id || !terms?.version) {
-      return fail('目前沒有可供 Browser E2E 驗證的已啟用會員條款。', {
-        activeTerms: true, requiredConsentDom: true
-      }, { activeTerms: false, missing });
+      return skip(
+        '會員條款尚未由管理端啟用；此案例標記為環境阻擋，避免誤判為功能失敗。',
+        { activeTerms: true, requiredConsentDom: true },
+        { activeTerms: false, missing, blockerCode: 'MEMBERSHIP_TERMS_NOT_CONFIGURED' }
+      );
     }
     const unchecked = await expectApiError(
       'user.member.terms.accept',
