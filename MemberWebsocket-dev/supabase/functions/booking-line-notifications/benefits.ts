@@ -12,7 +12,7 @@ function text(value: unknown, max = 240): string {
   return Array.from(normalized).slice(0, max).join('');
 }
 
-function taipeiDate(): string {
+export function taipeiDate(): string {
   const parts: Record<string, string> = {};
   new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Taipei',
@@ -60,6 +60,22 @@ function usage(row: any): string {
   return text(row?.usage_method || row?.usage_instructions || '', 120);
 }
 
+export function isUsablePointCard(card: any, today: string): boolean {
+  if (!card || card.status !== 'active') return false;
+  return card.expiry_mode !== 'date'
+    || !card.expires_on
+    || String(card.expires_on) >= today;
+}
+
+export function isUsableEventClaim(claim: any, currentTier: string, today: string): boolean {
+  if (!claim || claim.status !== 'claimed') return false;
+  const event = claim.event_tickets || {};
+  if (event.status !== 'active' || event.deleted_at) return false;
+  if (event.starts_on && today < String(event.starts_on)) return false;
+  if (event.ends_on && today > String(event.ends_on)) return false;
+  return allowedTierKeys(event.allowed_tier_keys).includes(currentTier);
+}
+
 function ensureNoError(result: any): any {
   if (result?.error) throw new Error('BENEFIT_QUERY_FAILED');
   return result?.data;
@@ -101,7 +117,7 @@ export async function loadBookingConfirmationBenefits(db: any, job: any): Promis
     .eq('status', 'active')
     .order('sort_order', { ascending: true });
   const activeCards = (ensureNoError(cardsResult) || []).filter((card: any) =>
-    card.expiry_mode !== 'date' || !card.expires_on || String(card.expires_on) >= today
+    isUsablePointCard(card, today)
   );
   const pointCardIds = activeCards.map((card: any) => card.id).filter(Boolean);
 
@@ -138,10 +154,7 @@ export async function loadBookingConfirmationBenefits(db: any, job: any): Promis
   const eventClaims = ensureNoError(eventClaimsResult) || [];
   const eventTicketLines = eventClaims.flatMap((claim: any) => {
     const event = claim.event_tickets || {};
-    if (event.status !== 'active' || event.deleted_at) return [];
-    if (event.starts_on && today < String(event.starts_on)) return [];
-    if (event.ends_on && today > String(event.ends_on)) return [];
-    if (!allowedTierKeys(event.allowed_tier_keys).includes(currentTier)) return [];
+    if (!isUsableEventClaim(claim, currentTier, today)) return [];
     return [line([
       claim.ticket_title || event.title,
       dateRange(event.starts_on, event.ends_on),
