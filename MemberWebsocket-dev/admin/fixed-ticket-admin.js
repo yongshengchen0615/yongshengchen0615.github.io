@@ -295,6 +295,8 @@
     document.getElementById('eventTicketStartsOn').value = '';
     document.getElementById('eventTicketEndsOn').value = '';
     document.getElementById('eventTicketQuota').value = String(Number(template.quota || 0));
+    document.getElementById('eventTicketRequiresLocation').checked = Boolean(template.requiresLocation);
+    window.TicketLocationEditors?.event?.set(Array.isArray(template.redemptionLocations) ? template.redemptionLocations : []);
     document.getElementById('eventTicketAccent').value = /^#[0-9a-f]{6}$/i.test(String(template.accent || '')) ? template.accent : '#df6b4d';
     document.getElementById('eventTicketAccentValue').textContent = String(document.getElementById('eventTicketAccent').value || '#df6b4d').toUpperCase();
     document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]').forEach((input) => {
@@ -353,6 +355,7 @@
       : '已領取的會員會保留當下的票券說明；之後修改設定只影響新領取的票券。';
 
     document.getElementById('fixedTicketRunButton').disabled = busy || !selectedFixedTicketId;
+    window.TicketLocationEditors?.event?.refresh();
     updateFixedScheduleUI();
     updateFixedExpiryUI();
   }
@@ -427,6 +430,8 @@
       quota: Number(document.getElementById('eventTicketQuota').value || 0),
       accent: String(document.getElementById('eventTicketAccent').value || '#df6b4d'),
       allowedTierKeys: Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => input.value),
+      requiresLocation: document.getElementById('eventTicketRequiresLocation').checked,
+      redemptionLocations: window.TicketLocationEditors?.event?.get() || [],
       notifyLine: document.getElementById('fixedTicketNotifyLine').checked,
     };
   }
@@ -439,6 +444,7 @@
     if (!['active', 'draft', 'archived'].includes(template.status)) return '請選擇公開狀態。';
     if (!template.allowedTierKeys.length) return '請至少選擇一個適用會員等級。';
     if (!Number.isInteger(template.quota) || template.quota < 0 || template.quota > 1000000) return '總發放上限必須是 0–1,000,000 的整數。';
+    if (template.requiresLocation && (!template.redemptionLocations.length || template.redemptionLocations.length > 20 || template.redemptionLocations.some((location) => !location.name?.trim() || location.name.length > 100 || !Number.isFinite(Number(location.latitude)) || Math.abs(Number(location.latitude)) > 90 || !Number.isFinite(Number(location.longitude)) || Math.abs(Number(location.longitude)) > 180 || !Number.isInteger(Number(location.radiusMeters)) || Number(location.radiusMeters) < 50 || Number(location.radiusMeters) > 2000))) return '請設定 1–20 個有效地點（名稱、座標、50–2000 公尺半徑）。';
     if (template.scheduleType === 'yearly' && (!Number.isInteger(template.scheduleMonth) || template.scheduleMonth < 1 || template.scheduleMonth > 12)) return '請選擇每年發放月份。';
     if (['yearly', 'monthly'].includes(template.scheduleType) && (!Number.isInteger(template.scheduleDay) || template.scheduleDay < 1 || template.scheduleDay > 31)) return '發放日期必須是 1–31。';
     if (template.scheduleType === 'weekly' && (!Number.isInteger(template.scheduleWeekday) || template.scheduleWeekday < 1 || template.scheduleWeekday > 7)) return '請選擇每週發放日。';

@@ -50,6 +50,41 @@
     return `PTR-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
   }
 
+
+  function currentRedemptionLocation() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        const error = new Error('此裝置不支援 GPS 定位，無法使用需要定位的票券。');
+        error.code = 'LOCATION_UNAVAILABLE';
+        reject(error);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition((position) => {
+        const latitude = Number(position.coords.latitude);
+        const longitude = Number(position.coords.longitude);
+        const accuracy = Number(position.coords.accuracy);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) {
+          const error = new Error('目前 GPS 精度不足（需在 100 公尺內），請移至較空曠處重新定位。');
+          error.code = 'LOCATION_INVALID';
+          reject(error);
+          return;
+        }
+        resolve({
+          latitude,
+          longitude,
+          accuracy,
+          observedAt: new Date(Number(position.timestamp) || Date.now()).toISOString()
+        });
+      }, (cause) => {
+        const error = new Error(cause && cause.code === 1
+          ? '請允許位置權限後再使用需要 GPS 定位的票券。'
+          : '暫時無法取得目前 GPS 位置，請稍後再試。');
+        error.code = 'LOCATION_REQUIRED';
+        reject(error);
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    });
+  }
+
   function hasMemberAuth() {
     const testSessionToken = window.TestModeClient && typeof window.TestModeClient.getSessionToken === 'function'
       ? String(window.TestModeClient.getSessionToken() || '')
@@ -190,6 +225,7 @@
           usageMethod: String(ticket ? ticket.usageMethod : reward.usageMethod || ''),
           usageInstructions: String(ticket ? ticket.usageInstructions : reward.usageInstructions || ''),
           prizes: Array.isArray(ticket ? ticket.prizes : reward.prizes) ? (ticket ? ticket.prizes : reward.prizes) : [],
+          requiresLocation: Boolean(ticket && ticket.requiresLocation),
           shortage,
           baseCanUse: Boolean(ticketId) && !expired && active && shortage === 0,
           statusText
@@ -394,7 +430,7 @@
 
         const type = document.createElement('span');
         type.className = 'member-ticket-type';
-        type.textContent = offer.ticketType === 'lottery' ? '抽獎券' : '優惠券';
+        type.textContent = `${offer.ticketType === 'lottery' ? '抽獎券' : '優惠券'}${offer.requiresLocation ? ' · GPS 定位' : ''}`;
 
         const name = document.createElement('h3');
         name.textContent = text(offer.ticketTitle || '票券');
@@ -526,7 +562,10 @@
     modal.querySelector('[data-batch-title]').textContent = tickets.length > 1
       ? `確認同時使用 ${tickets.length} 張票券`
       : '確認使用票券';
-    modal.querySelector('[data-batch-message]').textContent = '送出後將立即完成扣點與票券核銷，此操作無法取消或復原。';
+    const needsLocation = tickets.some((ticket) => ticket.requiresLocation);
+    modal.querySelector('[data-batch-message]').textContent = needsLocation
+      ? '此選取包含需 GPS 定位的票券。確認後會讀取目前位置；位置符合指定地點後才會立即扣點與核銷。'
+      : '送出後將立即完成扣點與票券核銷，此操作無法取消或復原。';
 
     const list = modal.querySelector('[data-batch-list]');
     list.replaceChildren(...tickets.map((ticket) => {
@@ -590,6 +629,7 @@
     const cancel = modal.querySelector('.ticket-batch-cancel');
     let redeemed = false;
     let synced = false;
+    const needsLocation = tickets.some((ticket) => ticket.requiresLocation);
 
     state.busy = true;
     confirm.disabled = true;
@@ -599,9 +639,18 @@
     render();
 
     try {
+      let location = null;
+      if (needsLocation) {
+        confirm.textContent = '取得 GPS 中…';
+        message.textContent = '正在取得目前位置並確認定位精度…';
+        location = await currentRedemptionLocation();
+        confirm.textContent = '使用中…';
+        message.textContent = 'GPS 已取得，正在確認使用地點並核銷票券…';
+      }
       const result = await extensionRequest('member.redeem', {
         ticketIds: tickets.map((ticket) => ticket.ticketId),
-        requestId: newRequestId()
+        requestId: newRequestId(),
+        ...(location ? { location } : {})
       });
       redeemed = true;
 

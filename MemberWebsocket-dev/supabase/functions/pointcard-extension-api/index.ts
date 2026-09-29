@@ -97,6 +97,9 @@ function mapRpcError(error: unknown): ApiError {
   if (message.includes("POINT_CARD_NOT_AVAILABLE")) return new ApiError(409, "POINT_CARD_NOT_AVAILABLE", "其中一張集點卡目前無法使用。");
   if (message.includes("INVALID_TICKET_BATCH")) return new ApiError(400, "INVALID_TICKET_BATCH", "請選擇 1–50 張不同的票券。");
   if (message.includes("INVALID_REQUEST_ID")) return new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
+  if (message.includes("LOCATION_REQUIRED")) return new ApiError(400, "LOCATION_REQUIRED", "核銷前請允許定位並取得目前位置。");
+  if (message.includes("LOCATION_INVALID")) return new ApiError(400, "LOCATION_INVALID", "定位精度不足或資料已過期，請重新定位。");
+  if (message.includes("LOCATION_OUT_OF_RANGE")) return new ApiError(403, "LOCATION_OUT_OF_RANGE", "目前不在其中一張票券的核銷範圍內。");
   return new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
 }
 
@@ -114,6 +117,7 @@ async function redeemTickets(origin: string | null, body: Json) {
   }
   const requestId = asText(body.requestId, 120);
   if (!/^[A-Za-z0-9_-]{8,120}$/.test(requestId)) throw new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
+  const location = body.location && typeof body.location === "object" && !Array.isArray(body.location) ? body.location as Json : null;
   const supabase = db();
   const identity = await memberIdentity(supabase, body);
   const setting = await globalSetting(supabase);
@@ -124,7 +128,12 @@ async function redeemTickets(origin: string | null, body: Json) {
   const memberRow = await supabase.from("members").select("id,status,membership_status").eq("line_user_id", identity.lineUserId).single();
   if (memberRow.error || memberRow.data?.status !== "active" || memberRow.data?.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入。");
   if (!(await hasCurrentTermsConsent(supabase, memberRow.data.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
-  const rpc = await supabase.rpc("redeem_point_tickets", { p_line_user_id: identity.lineUserId, p_ticket_ids: ticketIds, p_request_id: requestId });
+  const rpc = await supabase.rpc("redeem_point_tickets_with_location", {
+    p_line_user_id: identity.lineUserId,
+    p_ticket_ids: ticketIds,
+    p_request_id: requestId,
+    p_location: location,
+  });
   if (rpc.error) throw mapRpcError(rpc.error);
 
   const member = await supabase.from("members").select("id").eq("line_user_id", identity.lineUserId).single();
