@@ -50,7 +50,7 @@ test('tour E2E remains explicit across all user surfaces', () => {
 test('all user surfaces load the same QA E2E runner cache version', () => {
   for (const surface of ['member','points','event','calendar','booking']) {
     const html = read(surface + '/index.html');
-    assert.match(html, /user-test-control\.js\?v=qa-e2e-20260929-5/);
+    assert.match(html, /user-test-control\.js\?v=qa-e2e-20260929-6/);
   }
 });
 
