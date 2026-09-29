@@ -128,6 +128,14 @@ test('tutorial journey keeps the skipped-result helper callable', () => {
   assert.match(runner, /pairedRunner && state\.participantIndex > 1[\s\S]*?\? skip\(/);
 });
 
+test('paired runner reuses a valid same-run surface session instead of creating a conflicting login', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /function reusablePairedSession\(participant, surface\)/);
+  assert.match(runner, /expiresAt <= Date\.now\(\) \+ 30000/);
+  assert.match(runner, /const login = reusablePairedSession\(participant, surface\) \|\|[\s\S]*?createPairedSession\(participant\.account, surface\)/);
+  assert.match(runner, /const bookingLogin = reusablePairedSession\(participant, 'booking'\) \|\|[\s\S]*?createPairedSession\(participant\.account, 'booking'\)/);
+});
+
 test('paired booking admin mutations wait for the completed user handoff', () => {
   const runner = read('admin/e2e-control.js');
   assert.doesNotMatch(runner, /const liveAdminTasks = selectedModules\.includes\('booking'\)/);
