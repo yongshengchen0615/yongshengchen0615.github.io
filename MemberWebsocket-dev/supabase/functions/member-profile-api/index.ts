@@ -130,6 +130,52 @@ async function termsForMember(supabase: SupabaseClient, member: any): Promise<{ 
 }
 function normalizePhone(value: unknown): string { return asText(value, 30).replace(/[()\s-]/g, ""); }
 
+async function requireCurrentSubmittedTerms(
+  supabase: SupabaseClient,
+  member: any,
+  body: Json,
+): Promise<{ terms: any; consentRequired: boolean }> {
+  const snapshot = await termsForMember(supabase, member);
+  if (!snapshot.terms) {
+    throw new ApiError(503, "TERMS_UNAVAILABLE", "目前尚無有效會員條款，請聯繫管理員。");
+  }
+  const submittedId = asText(body.termsId, 100);
+  const submittedVersion = asText(body.termsVersion, 200);
+  if (
+    submittedId !== String(snapshot.terms.id || "")
+    || submittedVersion !== String(snapshot.terms.version || "")
+  ) {
+    throw new ApiError(
+      409,
+      "TERMS_VERSION_STALE",
+      "會員條款已更新，請重新閱讀並確認。",
+      { terms: snapshot.terms, consentRequired: snapshot.consentRequired },
+    );
+  }
+  return snapshot;
+}
+
+async function throwTermsOperationError(
+  supabase: SupabaseClient,
+  member: any,
+  error: { code?: string; message?: string; details?: string; hint?: string },
+): Promise<never> {
+  const mapped = termsError(error);
+  if (mapped.code !== "TERMS_VERSION_STALE") throw mapped;
+  try {
+    const snapshot = await termsForMember(supabase, member);
+    throw new ApiError(
+      409,
+      "TERMS_VERSION_STALE",
+      "會員條款已更新，請重新閱讀並確認。",
+      { terms: snapshot.terms, consentRequired: snapshot.consentRequired },
+    );
+  } catch (snapshotError) {
+    if (snapshotError instanceof ApiError && snapshotError.code === "TERMS_VERSION_STALE") throw snapshotError;
+    throw mapped;
+  }
+}
+
 function termsError(error: { code?: string; message?: string; details?: string; hint?: string }): ApiError {
   const code = asText(error.code, 40).toUpperCase();
   const message = String(error.message || "");
@@ -179,6 +225,7 @@ Deno.serve(async (request: Request) => {
     if (action === "user.member.bootstrap") return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member), ...await termsForMember(supabase, member) } });
     if (action === "user.member.terms.accept") {
       if (member.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員申請。");
+      await requireCurrentSubmittedTerms(supabase, member, body);
       const accepted = await supabase.rpc("accept_membership_terms_api", {
         p_payload: {
           lineUserId: identity.lineUserId,
@@ -187,7 +234,7 @@ Deno.serve(async (request: Request) => {
           accepted: body.accepted === true,
         }
       });
-      if (accepted.error) throw termsError(accepted.error);
+      if (accepted.error) await throwTermsOperationError(supabase, member, accepted.error);
       return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member), ...await termsForMember(supabase, member) } });
     }
 
@@ -239,6 +286,7 @@ Deno.serve(async (request: Request) => {
 
     if (member.membership_status !== "active") {
       if (!mergedComplete) throw new ApiError(400, "PROFILE_FIELDS_REQUIRED", "請填妥完整資料再申請會員。");
+      await requireCurrentSubmittedTerms(supabase, member, body);
       const joined = await supabase.rpc("accept_membership_terms_api", {
         p_payload: {
           lineUserId: identity.lineUserId,
@@ -251,7 +299,7 @@ Deno.serve(async (request: Request) => {
           salutation,
         }
       });
-      if (joined.error) throw termsError(joined.error);
+      if (joined.error) await throwTermsOperationError(supabase, member, joined.error);
       const refreshed = await supabase.from("members").select("*").eq("id", member.id).single();
       if (refreshed.error) throw new ApiError(500, "DATABASE_ERROR", "會員資料暫時無法讀取。");
       return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, refreshed.data) } });
