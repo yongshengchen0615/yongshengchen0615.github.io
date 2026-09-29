@@ -75,5 +75,5 @@ test('all member clients and admin load the latest expanded E2E controllers', ()
     assert.match(html, /\.\.\/user-test-control\.js\?v=qa-e2e-20260929-2/);
   }
   const admin = read('admin/index.html');
-  assert.match(admin, /\.\/e2e-control\\.js\\?v=qa-e2e-20260929-1/);
+  assert.match(admin, /\.\/e2e-control\.js\?v=qa-e2e-20260929-1/);
 });
