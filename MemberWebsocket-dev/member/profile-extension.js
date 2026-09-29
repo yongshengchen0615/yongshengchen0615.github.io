@@ -5,9 +5,9 @@
   let modalOpener = null;
 
   window.addEventListener('DOMContentLoaded', () => {
-    const form = document.getElementById('profileForm');
-    if (form) form.addEventListener('submit', saveExtendedProfile, true);
-
+    // Initial membership registration is owned by member/app.js because it
+    // must submit profile fields and the exact membership terms consent in one
+    // canonical write. Do not intercept #profileForm here.
     document.getElementById('editHonorificButton')?.addEventListener('click', openHonorificModal);
     document.getElementById('closeHonorificEditButton')?.addEventListener('click', () => closeProfileModal('honorific'));
     document.getElementById('cancelHonorificEditButton')?.addEventListener('click', () => closeProfileModal('honorific'));
