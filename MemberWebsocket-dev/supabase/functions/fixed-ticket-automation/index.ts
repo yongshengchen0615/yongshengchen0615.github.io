@@ -114,6 +114,27 @@ function requireDate(value: unknown, label: string): string {
   return text;
 }
 
+
+function normalizeRedemptionLocations(value: unknown, requiresLocation: boolean): Array<{ name: string; latitude: number; longitude: number; radiusMeters: number }> {
+  if (!requiresLocation) return [];
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20) {
+    throw new ApiError(400, "INVALID_LOCATION_RULE", "請設定 1–20 個核銷地點。");
+  }
+  return value.map((raw) => {
+    const item = raw && typeof raw === "object" ? raw as Json : {};
+    const name = asText(item.name, 100);
+    const latitude = item.latitude === "" || item.latitude == null ? NaN : Number(item.latitude);
+    const longitude = item.longitude === "" || item.longitude == null ? NaN : Number(item.longitude);
+    const radiusMeters = item.radiusMeters === "" || item.radiusMeters == null ? NaN : Number(item.radiusMeters);
+    if (!name || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+      || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+      || !Number.isInteger(radiusMeters) || radiusMeters < 50 || radiusMeters > 2000) {
+      throw new ApiError(400, "INVALID_LOCATION_RULE", "每個地點需有名稱、有效座標與 50–2000 公尺半徑。");
+    }
+    return { name, latitude, longitude, radiusMeters };
+  });
+}
+
 function validateTemplate(value: unknown): Json {
   const input = value && typeof value === "object" ? value as Json : {};
   const title = asText(input.title, 100);
@@ -126,6 +147,8 @@ function validateTemplate(value: unknown): Json {
   const accent = asText(input.accent, 20).toLowerCase();
   const allowedTierKeys = normalizeTiers(input.allowedTierKeys);
   const quota = requireInteger(input.quota ?? 0, 0, 1_000_000, "總發放上限");
+  const requiresLocation = input.requiresLocation === true;
+  const redemptionLocations = normalizeRedemptionLocations(input.redemptionLocations, requiresLocation);
 
   if (!title) throw new ApiError(400, "INVALID_INPUT", "請填寫固定票券名稱。");
   if (!description) throw new ApiError(400, "INVALID_INPUT", "請填寫固定票券說明。");
@@ -175,6 +198,8 @@ function validateTemplate(value: unknown): Json {
     quota,
     accent,
     allowed_tier_keys: allowedTierKeys,
+    requires_location: requiresLocation,
+    redemption_locations: redemptionLocations,
     notify_line: Boolean(input.notifyLine),
     calendar_enabled: Boolean(input.calendarEnabled),
   };
@@ -198,6 +223,8 @@ function clientTemplate(row: any): Json {
     quota: Number(row.quota || 0),
     accent: row.accent || "#df6b4d",
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
+    requiresLocation: Boolean(row.requires_location),
+    redemptionLocations: Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
     notifyLine: Boolean(row.notify_line),
     calendarEnabled: Boolean(row.calendar_enabled),
     createdAt: row.created_at,
@@ -295,6 +322,8 @@ Deno.serve(async (request: Request) => {
         expiryDate: row.expiry_date,
         expiryDays: row.expiry_days,
         calendarEnabled: Boolean(row.calendar_enabled),
+        requiresLocation: Boolean(row.requires_location),
+        redemptionLocationCount: Array.isArray(row.redemption_locations) ? row.redemption_locations.length : 0,
         run,
       });
       return reply(origin, { ok: true, data: { template: clientTemplate(row), run, templates: await listTemplates(supabase) } });
