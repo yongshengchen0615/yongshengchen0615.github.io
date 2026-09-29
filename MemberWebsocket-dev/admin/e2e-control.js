@@ -130,7 +130,7 @@
 
   if (document.readyState === 'loading') {
     window.addEventListener('DOMContentLoaded', mount, { once: true });
-  } else {
+  } else if (document.readyState === 'interactive' || document.readyState === 'complete') {
     mount();
   }
   window.addEventListener('member-admin-ready', mount);
