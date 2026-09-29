@@ -17,12 +17,13 @@ function harness() {
   const db = {
     rpc(name, args) {
       if (name === 'consume_api_rate_limit') return Promise.resolve({ data:true, error:null });
-      assert.equal(name, 'accept_membership_terms');
+      assert.equal(name, 'accept_membership_terms_api');
+      const payload=args.p_payload || {};
       if (forcedTermsRpcError) return Promise.resolve({ data:null, error:forcedTermsRpcError });
-      if (args.p_accepted !== true) return Promise.resolve({ data:null, error:{ message:'TERMS_CONSENT_REQUIRED' } });
-      if (args.p_terms_id !== terms.id || args.p_version !== terms.version) return Promise.resolve({ data:null, error:{ message:'TERMS_VERSION_STALE' } });
+      if (payload.accepted !== true) return Promise.resolve({ data:null, error:{ message:'TERMS_CONSENT_REQUIRED' } });
+      if (payload.termsId !== terms.id || payload.termsVersion !== terms.version) return Promise.resolve({ data:null, error:{ message:'TERMS_VERSION_STALE' } });
       consents.add(terms.id);
-      if (member.membership_status === 'pending') Object.assign(member, { membership_status:'active', birthday:args.p_birthday, phone:args.p_phone, surname:args.p_surname, salutation:args.p_salutation, joined_at:'2026-09-27T00:00:00Z' });
+      if (member.membership_status === 'pending') Object.assign(member, { membership_status:'active', birthday:payload.birthday, phone:payload.phone, surname:payload.surname, salutation:payload.salutation, joined_at:'2026-09-27T00:00:00Z' });
       return Promise.resolve({ data:true, error:null });
     },
     from(table) {
@@ -119,7 +120,7 @@ test('PostgREST stale RPC schema is surfaced as a retryable membership service e
   const h=harness();
   h.forceTermsRpcError({
     code:'PGRST202',
-    message:'Could not find the function public.accept_membership_terms in the schema cache',
+    message:'Could not find the function public.accept_membership_terms_api in the schema cache',
   });
   const result=await h.call('user.member.profile.save',{
     birthday:'1990-01-01',
