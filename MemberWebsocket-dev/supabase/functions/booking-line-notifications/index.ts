@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.0';
 import { deliver, secureEqual } from './delivery.ts';
+import { loadBookingConfirmationBenefits } from './benefits.ts';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
@@ -81,6 +82,18 @@ Deno.serve(async (request: Request) => {
             deliveryJob = { ...job, message_text: `${base.slice(0, maxBaseLength)}\n${suffix}` };
           }
         }
+        if (job.channel === 'member' && String(job.event_key || '').includes(':confirmed:') && job.booking_id) {
+          try {
+            const benefits = await loadBookingConfirmationBenefits(db, job);
+            deliveryJob = { ...deliveryJob, benefits };
+          } catch {
+            // Booking is already committed. Keep the leased notification retryable instead of
+            // sending a confirmation whose entitlement sections may be stale or incomplete.
+            failed++;
+            return;
+          }
+        }
+
         const result = await deliver(deliveryJob, token || '');
         const finish = await db.rpc('finish_booking_notification', {
           p_id: job.id, p_attempt: job.attempt_count, p_accepted: result.accepted,
