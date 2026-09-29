@@ -58,7 +58,7 @@ test('admin full E2E mutates booking shared settings, verifies cross-end behavio
   assert.doesNotMatch(source, /actual\.userRestoreSynced/);
   assert.match(source, /createPairedSession/);
   assert.match(source, /surfaceLogins/);
-  assert.match(source, /cachedBookingLogin/);
+  assert.match(source, /reusablePairedSession\(participant, 'booking'\)/);
   assert.match(source, /waitParticipantSurface/);
   assert.match(source, /expectedUpdatedAt/);
   assert.doesNotMatch(source, /semanticValuesUnchanged/);
