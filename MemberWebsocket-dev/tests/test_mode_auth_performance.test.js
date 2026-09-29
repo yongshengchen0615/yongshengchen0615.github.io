@@ -35,3 +35,13 @@ test('direct test-session verification keeps an independent settings lookup', ()
   assert.match(body, /allow_pc_test_login/);
   assert.match(body, /allow_mobile_test_login/);
 });
+
+
+test('test session activity writes are rate-limited without weakening expiry checks', () => {
+  assert.match(source, /const SESSION_TOUCH_INTERVAL_MS = 60_000/);
+  assert.match(source, /expires_at,revoked_at,last_used_at/);
+  assert.match(source, /now - lastUsedAt >= SESSION_TOUCH_INTERVAL_MS/);
+  assert.match(source, /\.lt\("last_used_at", staleBefore\)/);
+  assert.match(source, /session\.revoked_at/);
+  assert.match(source, /expiresAt <= Date\.now\(\)/);
+});
