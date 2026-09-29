@@ -12,11 +12,13 @@ function harness() {
   const member = { id:'member-1', line_user_id:'line-1', display_name:'Member', member_code:'M0001', status:'active', membership_status:'pending', created_at:'2026-01-01T00:00:00Z', is_test_account:false };
   let terms = { id:'terms-1', version:'v1', title:'會員條款', summary:'摘要', body:'條款全文', status:'active', required:true, effective_at:'2020-01-01T00:00:00Z', activated_at:'2026-09-28T00:00:00Z', reconsent_existing:false };
   const consents = new Set();
+  let forcedTermsRpcError = null;
   let handler;
   const db = {
     rpc(name, args) {
       if (name === 'consume_api_rate_limit') return Promise.resolve({ data:true, error:null });
       assert.equal(name, 'accept_membership_terms');
+      if (forcedTermsRpcError) return Promise.resolve({ data:null, error:forcedTermsRpcError });
       if (args.p_accepted !== true) return Promise.resolve({ data:null, error:{ message:'TERMS_CONSENT_REQUIRED' } });
       if (args.p_terms_id !== terms.id || args.p_version !== terms.version) return Promise.resolve({ data:null, error:{ message:'TERMS_VERSION_STALE' } });
       consents.add(terms.id);
@@ -46,7 +48,15 @@ function harness() {
     const response=await handler(new Request('https://example.invalid',{ method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,clientType:'member',testSessionToken:'fixture',...payload}) }));
     return { status:response.status,body:await response.json() };
   }
-  return { call, member, consents, setTestAccount() { member.is_test_account=true; }, setJoinedAt(value) { member.joined_at=value; }, switchTerms() { terms={...terms,id:'terms-2',version:'v2',activated_at:'2026-09-28T01:00:00Z',reconsent_existing:true}; } };
+  return {
+    call,
+    member,
+    consents,
+    forceTermsRpcError(error) { forcedTermsRpcError=error; },
+    setTestAccount() { member.is_test_account=true; },
+    setJoinedAt(value) { member.joined_at=value; },
+    switchTerms() { terms={...terms,id:'terms-2',version:'v2',activated_at:'2026-09-28T01:00:00Z',reconsent_existing:true}; },
+  };
 }
 
 test('registration rejects missing and stale consent, then records consent with activation', async () => {
@@ -102,4 +112,27 @@ test('test accounts follow the same active terms consent gate', async () => {
   assert.equal(renewed.status,200);
   assert.equal(renewed.body.data.consentRequired,false);
   assert.deepEqual([...h.consents],['terms-1','terms-2']);
+});
+
+
+test('PostgREST stale RPC schema is surfaced as a retryable membership service error', async () => {
+  const h=harness();
+  h.forceTermsRpcError({
+    code:'PGRST202',
+    message:'Could not find the function public.accept_membership_terms in the schema cache',
+  });
+  const result=await h.call('user.member.profile.save',{
+    birthday:'1990-01-01',
+    phone:'0912345678',
+    surname:'林',
+    salutation:'mr',
+    termsId:'terms-1',
+    termsVersion:'v1',
+    accepted:true,
+  });
+  assert.equal(result.status,503);
+  assert.equal(result.body.error.code,'MEMBERSHIP_RPC_UNAVAILABLE');
+  assert.match(result.body.error.message,/重新送出/);
+  assert.equal(h.member.membership_status,'pending');
+  assert.equal(h.consents.size,0);
 });
