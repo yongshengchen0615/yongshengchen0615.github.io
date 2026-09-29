@@ -39,5 +39,5 @@ test('background admin runner does not place the admin token in URL or persisten
 test('background runner asset versions force the session-handoff fix to load', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=ticket-map-visible-20260929-1/);
-  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260929-4/);
+  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260929-5/);
 });
