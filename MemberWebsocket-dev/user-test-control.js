@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-29.3';
+  const VERSION = '2026-09-29.4';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -1173,14 +1173,14 @@
     const app = document.getElementById('app') || document.querySelector('.app-shell');
     const next = document.getElementById('memberTourNext');
     const back = document.getElementById('memberTourBack');
-    const skip = document.getElementById('memberTourSkip');
+    const skipButton = document.getElementById('memberTourSkip');
     const progress = document.getElementById('memberTourProgress');
     const masks = Array.from(document.querySelectorAll('[data-member-tour-mask]'));
     const prefix = surface === 'member' ? 'member-tour:' : `user-tour:${surface}:`;
     const pairedRunner = new URLSearchParams(window.location.search).has('qaPair');
     const evidence = { surface, participantIndex: state.participantIndex, maskRegions: masks.map((mask) => mask.dataset.memberTourMask), steps: [], skippedToday: false, replayed: false, completed: false, stateRestored: false, forcedCleanup: false };
     const expected = { overlayOutsideTarget: true, stepsNavigable: true, explicitDailySkip: true, manualReplay: true, completionClearsSkip: true, stateRestored: true };
-    if (![dialog, launcher, overlay, focus, app, next, back, skip, progress].every(Boolean)) {
+    if (![dialog, launcher, overlay, focus, app, next, back, skipButton, progress].every(Boolean)) {
       return fail('使用教學必要控制項缺失。', expected, evidence);
     }
 
@@ -1210,7 +1210,7 @@
       before = new Map(tourKeys().map((key) => [key, localStorage.getItem(key)]));
       launcher.click();
       if (dialog.classList.contains('hidden') || !app.inert) throw new Error('手動開啟教學後，對話框未顯示或主畫面仍可操作。');
-      if (skip.textContent.trim() !== '今日略過') throw new Error('略過按鈕文案不正確。');
+      if (skipButton.textContent.trim() !== '今日略過') throw new Error('略過按鈕文案不正確。');
       overlay.click();
       if (dialog.classList.contains('hidden')) throw new Error('點擊遮罩意外略過教學。');
       const regions = new Set(masks.map((mask) => mask.dataset.memberTourMask));
@@ -1233,7 +1233,7 @@
         throw new Error('高亮範圍外的遮罩未覆蓋畫面。');
       }
 
-      skip.click();
+      skipButton.click();
       if (!dialog.classList.contains('hidden') || app.inert) throw new Error('今日略過後未關閉教學或恢復主畫面。');
       const changed = tourKeys().filter((key) => localStorage.getItem(key) !== before.get(key));
       if (changed.length !== 1) throw new Error('今日略過未寫入單一用戶的教學狀態。');
