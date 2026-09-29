@@ -55,8 +55,12 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.match(runner, /runPairedAdminBookingLive/);
   assert.match(runner, /waitForLivePairedBookingTarget/);
   assert.match(runner, /pairedBookingCandidates\(data, participant, \{ live: true \}\)/);
-  assert.match(runner, /let adminChain = Promise\.resolve\(\)/);
-  assert.match(runner, /Promise\.all\(\[clientExecution, \.\.\.liveAdminTasks\]\)/);
+  assert.match(runner, /let pairedAdminBookingChain = Promise\.resolve\(\)/);
+  assert.match(runner, /participant\.bookingResult = child/);
+  assert.match(runner, /pairedAdminBookingChain = queued\.catch\(\(\) => null\)/);
+  assert.match(runner, /await participant\.adminBookingTask/);
+  assert.match(runner, /await clientExecution;/);
+  assert.doesNotMatch(runner, /liveAdminTasks/);
   assert.match(runner, /waitForPairedBookingHandoff/);
   assert.doesNotMatch(runner, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
   assert.match(runner, /_ADMIN_RECORD_SYNC/);
