@@ -51,6 +51,19 @@ test('paired E2E protects workstation CPU and screenshot budget', () => {
 test('admin rate-budget assets are cache-busted', () => {
   const html = read('admin/index.html');
   assert.match(html, /app\.js\?v=ticket-map-visible-20260929-1/);
-  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260929-7/);
+  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260929-8/);
   assert.match(html, /booking-panel\.js\?v=[^"']+/);
+});
+
+
+test('browser E2E backs off high-frequency DOM polling to protect workstation CPU', () => {
+  const admin = read('admin/e2e-control.js');
+  const user = read('user-test-control.js');
+  for (const source of [admin, user]) {
+    assert.match(source, /const E2E_POLL_FAST_WINDOW_MS = 500/);
+    assert.match(source, /const E2E_POLL_MEDIUM_WINDOW_MS = 2000/);
+    assert.match(source, /const E2E_POLL_IDLE_INTERVAL_MS = 220/);
+    assert.match(source, /function adaptivePollInterval\(/);
+    assert.match(source, /Math\.min\(adaptivePollInterval\(intervalMs,/);
+  }
 });
