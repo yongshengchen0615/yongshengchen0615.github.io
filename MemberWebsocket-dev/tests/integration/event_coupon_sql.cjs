@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const db = new PGlite();
 const migration = readFileSync(join(__dirname, '../../supabase/migrations/20260928101903_event_coupon_inventory_location.sql'), 'utf8');
 const retryMigration = readFileSync(join(__dirname, '../../supabase/migrations/20260928102644_event_coupon_idempotent_retry.sql'), 'utf8');
-const multiLocationMigration = readFileSync(join(__dirname, '../../supabase/migrations/20260929012000_event_coupon_multiple_redemption_locations.sql'), 'utf8');
+const multiLocationMigration = readFileSync(join(__dirname, '../../supabase/migrations/20260929012256_event_coupon_multiple_redemption_locations.sql'), 'utf8');
 
 async function run() {
   await db.exec(`
