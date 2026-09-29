@@ -275,6 +275,28 @@ function normalizePrizes(value: unknown, required: boolean): Array<{ prizeTitle:
   return prizes;
 }
 
+
+function normalizeTicketLocations(value: unknown, requiresLocation: boolean): Array<{ name: string; latitude: number; longitude: number; radiusMeters: number }> {
+  if (!requiresLocation) return [];
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20) {
+    throw new ApiError(400,"INVALID_LOCATION_RULE","請設定 1–20 個核銷地點。");
+  }
+  const locations = value.map((raw) => {
+    const item = raw && typeof raw === "object" ? raw as Json : {};
+    const name = asText(item.name,100);
+    const latitude = item.latitude === "" || item.latitude == null ? NaN : Number(item.latitude);
+    const longitude = item.longitude === "" || item.longitude == null ? NaN : Number(item.longitude);
+    const radiusMeters = item.radiusMeters === "" || item.radiusMeters == null ? NaN : Number(item.radiusMeters);
+    if (!name || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+      || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+      || !Number.isInteger(radiusMeters) || radiusMeters < 50 || radiusMeters > 2000) {
+      throw new ApiError(400,"INVALID_LOCATION_RULE","每個地點需有名稱、有效座標與 50–2000 公尺半徑。");
+    }
+    return { name, latitude, longitude, radiusMeters };
+  });
+  return locations;
+}
+
 async function consumeRateLimit(supabase: SupabaseClient, principal: string, action: string, body: Json): Promise<void> {
   const cost = action === "admin.calendar-items.batch" && Array.isArray(body.calendarItemOperations)
     ? Math.max(1,Math.min(20,body.calendarItemOperations.length)) : 1;
@@ -824,6 +846,8 @@ function mapTicketTemplate(row: any): Json {
     usageInstructions: row.usage_instructions || "",
     prizes: Array.isArray(row.prizes) ? row.prizes : [],
     status: row.status,
+    requiresLocation: Boolean(row.requires_location),
+    redemptionLocations: Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -896,6 +920,7 @@ function pointTicketClient(row: any, cardId = ""): Json {
     usageInstructions: row.usage_instructions || "",
     prizes: Array.isArray(row.prizes) ? row.prizes : [],
     status: row.status,
+    requiresLocation: Boolean(row.requires_location),
     earnedAt: row.earned_at,
     usedAt: row.used_at || "",
     result: row.result || null,
@@ -1453,6 +1478,8 @@ async function saveTicketTemplate(supabase: SupabaseClient, actor: string, body:
   const ticketType = asText(ticket.ticketType,20);
   if (!["coupon","lottery"].includes(ticketType)) throw new ApiError(400,"INVALID_TICKET_TYPE","票券類型不合法。");
   const prizes = normalizePrizes(ticket.prizes,ticketType === "lottery");
+  const requiresLocation = ticket.requiresLocation === true;
+  const redemptionLocations = normalizeTicketLocations(ticket.redemptionLocations,requiresLocation);
   const payload = {
     title,
     ticket_type: ticketType,
@@ -1461,6 +1488,8 @@ async function saveTicketTemplate(supabase: SupabaseClient, actor: string, body:
     usage_instructions: requireText(ticket.usageInstructions,"使用說明",500),
     prizes,
     status: requireStatus(ticket.status),
+    requires_location: requiresLocation,
+    redemption_locations: redemptionLocations,
     updated_by: actor,
     updated_at: new Date().toISOString(),
   };
@@ -1502,8 +1531,8 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   const rawLocations = Array.isArray(input.redemptionLocations) ? input.redemptionLocations
     : requiresLocation ? [{ name: "原核銷地點", latitude: input.redemptionLatitude,
       longitude: input.redemptionLongitude, radiusMeters: input.redemptionRadiusMeters }] : [];
-  if (requiresLocation && (ticketType !== "coupon" || !Array.isArray(rawLocations) || rawLocations.length < 1 || rawLocations.length > 20))
-    throw new ApiError(400,"INVALID_LOCATION_RULE","請為優惠券設定 1–20 個核銷地點。");
+  if (requiresLocation && (!Array.isArray(rawLocations) || rawLocations.length < 1 || rawLocations.length > 20))
+    throw new ApiError(400,"INVALID_LOCATION_RULE","請為票券設定 1–20 個核銷地點。");
   const locations = requiresLocation ? rawLocations.map((location:any) => ({
     name: typeof location?.name === "string" ? location.name.trim() : "",
     latitude: location?.latitude === "" || location?.latitude == null ? NaN : Number(location.latitude),
@@ -1932,7 +1961,9 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     }
     if (action === "user.pointcard.ticket.redeem") {
       const ticketId = requireText(body.ticketId,"票券識別",120);
-      const rpc = await supabase.rpc("redeem_point_ticket",{ p_line_user_id:identity.lineUserId,p_ticket_id:ticketId });
+      const location = body.location && typeof body.location === "object" && !Array.isArray(body.location)
+        ? body.location as Json : null;
+      const rpc = await supabase.rpc("redeem_point_ticket_with_location",{ p_line_user_id:identity.lineUserId,p_ticket_id:ticketId,p_location:location });
       if (rpc.error) throw mapDatabaseError(rpc.error);
       const ticketRes = await supabase.from("point_tickets").select("*,point_cards(card_id,title)").eq("ticket_id",ticketId).single();
       if (ticketRes.error) throw mapDatabaseError(ticketRes.error);
