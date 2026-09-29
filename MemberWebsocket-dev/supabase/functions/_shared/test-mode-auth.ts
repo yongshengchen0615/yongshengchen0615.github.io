@@ -38,6 +38,7 @@ async function sha256Hex(value: string): Promise<string> {
 export async function resolveTestSession(
   supabase: any,
   rawToken: string,
+  prefetchedSettings: any = null,
 ): Promise<TestModeIdentity> {
   const token = String(rawToken || "").trim();
   if (!/^[A-Za-z0-9_-]{40,100}$/.test(token)) {
@@ -45,12 +46,15 @@ export async function resolveTestSession(
   }
 
   const tokenHash = await sha256Hex(token);
-  const [settingsResult, sessionResult] = await Promise.all([
-    supabase
+  const settingsPromise = prefetchedSettings
+    ? Promise.resolve({ data: prefetchedSettings, error: null })
+    : supabase
       .from("test_mode_settings")
       .select("maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message")
       .eq("id", true)
-      .maybeSingle(),
+      .maybeSingle();
+  const [settingsResult, sessionResult] = await Promise.all([
+    settingsPromise,
     supabase
       .from("test_login_sessions")
       .select("id,member_id,device_class,surface,expires_at,revoked_at")
@@ -142,5 +146,5 @@ export async function resolveUserTestIdentity(
     throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
   }
 
-  return await resolveTestSession(supabase, token);
+  return await resolveTestSession(supabase, token, settingsResult.data);
 }
