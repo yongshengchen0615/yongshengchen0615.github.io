@@ -179,9 +179,13 @@ Deno.serve(async (request: Request) => {
     if (action === "user.member.bootstrap") return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member), ...await termsForMember(supabase, member) } });
     if (action === "user.member.terms.accept") {
       if (member.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員申請。");
-      const accepted = await supabase.rpc("accept_membership_terms", {
-        p_line_user_id: identity.lineUserId, p_terms_id: body.termsId, p_version: body.termsVersion,
-        p_accepted: body.accepted === true
+      const accepted = await supabase.rpc("accept_membership_terms_api", {
+        p_payload: {
+          lineUserId: identity.lineUserId,
+          termsId: body.termsId,
+          termsVersion: body.termsVersion,
+          accepted: body.accepted === true,
+        }
       });
       if (accepted.error) throw termsError(accepted.error);
       return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member), ...await termsForMember(supabase, member) } });
@@ -235,10 +239,17 @@ Deno.serve(async (request: Request) => {
 
     if (member.membership_status !== "active") {
       if (!mergedComplete) throw new ApiError(400, "PROFILE_FIELDS_REQUIRED", "請填妥完整資料再申請會員。");
-      const joined = await supabase.rpc("accept_membership_terms", {
-        p_line_user_id: identity.lineUserId, p_terms_id: body.termsId, p_version: body.termsVersion,
-        p_accepted: body.accepted === true, p_birthday: birthday, p_phone: phone,
-        p_surname: surname, p_salutation: salutation
+      const joined = await supabase.rpc("accept_membership_terms_api", {
+        p_payload: {
+          lineUserId: identity.lineUserId,
+          termsId: body.termsId,
+          termsVersion: body.termsVersion,
+          accepted: body.accepted === true,
+          birthday,
+          phone,
+          surname,
+          salutation,
+        }
       });
       if (joined.error) throw termsError(joined.error);
       const refreshed = await supabase.from("members").select("*").eq("id", member.id).single();
