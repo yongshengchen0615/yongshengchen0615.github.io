@@ -24,12 +24,17 @@ test('admin editors expose GPS and explicit address search for event and point-t
   const app = read('admin/app.js');
   const fixed = read('admin/fixed-ticket-admin.js');
 
-  for (const id of ['eventTicketAddressSearch', 'ticketAddressSearch', 'eventTicketRequiresLocation', 'ticketRequiresLocation']) {
+  for (const id of ['eventTicketAddressSearch', 'ticketAddressSearch', 'eventTicketRequiresLocation', 'ticketRequiresLocation', 'eventTicketLocationDraft', 'ticketLocationDraft', 'eventTicketLocationDraftRadius', 'ticketLocationDraftRadius']) {
     assert.match(html, new RegExp('id="' + id + '"'));
   }
   assert.match(editor, /nominatim\.openstreetmap\.org\/search/);
   assert.match(editor, /navigator\.geolocation\.getCurrentPosition/);
   assert.match(editor, /window\.TicketLocationEditors/);
+  assert.match(editor, /window\.L\.circle/);
+  assert.match(editor, /setDraft\(event\.latlng\.lat, event\.latlng\.lng/);
+  assert.match(editor, /confirmButton\(\)\?\.addEventListener\('click', commitDraft\)/);
+  assert.doesNotMatch(editor, /field\('緯度'/);
+  assert.doesNotMatch(editor, /field\('經度'/);
   assert.match(app, /redemptionLocations: window\.TicketLocationEditors\.template\.get\(\)/);
   assert.doesNotMatch(app, /checked && els\.eventTicketType\.value === 'coupon'/);
   assert.match(fixed, /redemptionLocations: window\.TicketLocationEditors\?\.event\?\.get\(\)/);
