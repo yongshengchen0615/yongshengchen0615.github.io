@@ -80,5 +80,5 @@ test('booking unread badge uses a separate pseudo-element from the surface-tab a
   assert.match(baseCss, /\.surface-tab::after[\s\S]*transform:\s*scaleX\(0\)/);
   assert.match(bookingCss, /#bookingTab\[data-unread-count\]:not\(\[data-unread-count="0"\]\)::before/);
   assert.doesNotMatch(bookingCss, /#bookingTab\[data-unread-count\]:not\(\[data-unread-count="0"\]\)::after/);
-  assert.match(html, /booking-panel\.css\?v=booking-overnight-20260928-1/);
+  assert.match(html, /booking-panel\.css\?v=csp-hardening-20260929-1/);
 });
