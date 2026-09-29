@@ -51,3 +51,15 @@ test('all user surfaces load the same QA E2E runner cache version', () => {
     assert.match(html, /user-test-control\.js\?v=qa-e2e-20260929-2/);
   }
 });
+
+
+test('paired E2E tutorial cannot block the remaining suite', () => {
+  const user = read('user-test-control.js');
+
+  assert.match(user, /async function dismissTourForE2E/);
+  assert.match(user, /state\.participantIndex > 1/);
+  assert.match(user, /協同 E2E 僅由第一位測試會員完整走教學/);
+  assert.match(user, /A broken tutorial must fail its own case, not lock the rest of the E2E run behind app\.inert/);
+  assert.match(user, /app\.inert = false/);
+  assert.match(user, /forcedCleanup/);
+});
