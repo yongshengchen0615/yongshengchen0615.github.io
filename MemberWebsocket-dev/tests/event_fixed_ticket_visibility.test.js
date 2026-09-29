@@ -15,5 +15,5 @@ test('fixed tickets are visible only after server-side issuance to the member', 
   assert.match(api, /const offers = \(eventRows \|\| \[\]\)\.flatMap/);
   assert.match(event, /return offers\.filter\(\(offer\) => !isFixedOffer\(offer\) \|\| Boolean\(offer\?\.claim\)\);/);
   assert.doesNotMatch(event, /isBirthdayFixedOffer|birthdayMonth\(profile\)/);
-  assert.ok(html.includes('app.js?v=coupon-multi-map-20260929-1'));
+  assert.ok(html.includes('app.js?v=event-result-hidden-20260929-2'));
 });

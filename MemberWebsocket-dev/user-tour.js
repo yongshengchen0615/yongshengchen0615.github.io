@@ -187,7 +187,10 @@
     };
     autoOpenObserver = new MutationObserver(attempt);
     autoOpenObserver.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden'] });
-    requestAnimationFrame(attempt);
+    // Hidden/background tabs may pause requestAnimationFrame. Auto-start is functional state,
+    // so attempt synchronously and keep rAF only as a visual/lifecycle refinement.
+    attempt();
+    if (autoOpenObserver) requestAnimationFrame(attempt);
   }
 
   function available(index) {
@@ -261,6 +264,8 @@
     ui.memberTourBack.disabled = findStep(stepIndex - 1, -1) < 0;
     ui.memberTourNext.textContent = findStep(stepIndex + 1, 1) < 0 ? '完成' : '下一步';
     target.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+    // Geometry must exist even when the page is backgrounded and rAF is throttled.
+    positionFocus();
     requestAnimationFrame(positionFocus);
     ui.memberTourTitle.focus();
   }

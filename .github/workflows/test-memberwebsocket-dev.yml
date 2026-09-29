@@ -168,7 +168,7 @@ jobs:
           grep -q 'fixed-ticket-admin.js?v=fixed-ticket-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
           grep -q 'pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
-          grep -q 'app.js?v=coupon-multi-map-20260929-1' MemberWebsocket-dev/event/index.html
+          grep -q 'app.js?v=event-result-hidden-20260929-2' MemberWebsocket-dev/event/index.html
           ! grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
           test ! -e MemberWebsocket-dev/admin/event-ticket-activity-link.js
           test ! -e MemberWebsocket-dev/event/activity-link.js

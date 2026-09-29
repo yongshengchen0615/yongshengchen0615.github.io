@@ -176,7 +176,15 @@
       if (!window.confirm(`確定現在使用「${String(offer.ticket.title || '活動票券')}」？確認後將立即核銷且無法復原。`)) return;
       els.ticketModalProcessingText.textContent = '正在核銷票券，請稍候…';
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.redeem', { claimId: offer.claim.claimId, location });
-      if (result.ticket) { redeemed = true; updateOfferClaim(offer.ticket.eventTicketId, result.ticket); renderOffers(); setProcessing(false); await showRedeemedResult(result.ticket); }
+      if (result.ticket) {
+        redeemed = true;
+        updateOfferClaim(offer.ticket.eventTicketId, result.ticket);
+        setProcessing(false);
+        // The redeem mutation is already durable at this point. Show that result before
+        // non-critical list rendering so a render race cannot hide a successful mutation.
+        await showRedeemedResult(result.ticket);
+        renderOffers();
+      }
     } catch (error) { handleTicketError(error, '使用票券失敗，請稍後再試。'); } finally { setProcessing(false); state.processing = false; if (!redeemed && !state.actionLocked) renderTicketModal(offer); }
   }
 
@@ -196,12 +204,14 @@
   async function showRedeemedResult(claim) {
     els.ticketModalAction.classList.add('hidden');
     els.ticketModalResult.classList.remove('hidden');
-    if (claim.ticketType === 'lottery' && claim.result) {
+    if (claim.ticketType === 'lottery' && claim.result && document.visibilityState === 'visible') {
       els.ticketModalStatus.textContent = '開獎中，請稍候…';
       const reveal = document.createElement('div'); reveal.className = 'lottery-reveal'; reveal.textContent = '✦ 抽獎中 ✦';
       els.ticketModalResult.replaceChildren(reveal);
       await new Promise((resolve) => window.setTimeout(resolve, 1350));
     }
+    // Background tabs heavily throttle timers; the animation is decorative, while the
+    // persisted prize result is functional state and must be rendered immediately.
     renderRedeemedResult(claim);
     showMessage(claim.ticketType === 'lottery' ? '票券已完成核銷；抽獎結果已保存到使用紀錄。' : '活動票券已完成核銷，使用紀錄已保存。', true);
   }
