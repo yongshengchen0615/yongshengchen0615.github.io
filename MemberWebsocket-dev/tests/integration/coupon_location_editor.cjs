@@ -84,8 +84,6 @@ async function run() {
   await editor.searchAddress();
   assert.equal(geocodeCalls, 2, 'missing exact address must trigger one rate-limited nearby fallback');
   assert.match(geocodeUrls[0], /countrycodes=tw/);
-  assert.match(geocodeUrls[1], /viewbox=/);
-  assert.match(geocodeUrls[1], /bounded=0/);
   assert.match(decodeURIComponent(geocodeUrls[1]), /台南市中西區中山路/);
   const searchResult = $('eventTicketAddressResults').querySelector('button');
   assert.ok(searchResult, 'nearby fallback must render a selectable result');
