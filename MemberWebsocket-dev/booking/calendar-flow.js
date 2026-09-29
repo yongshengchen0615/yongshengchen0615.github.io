@@ -119,22 +119,6 @@
       els.closeHolidayButton = document.getElementById('closeBookingHolidayButton');
     }
 
-    if (!document.getElementById('bookingHolidayStyles')) {
-      const style = document.createElement('style');
-      style.id = 'bookingHolidayStyles';
-      style.textContent = `
-        .calendar-day.holiday-disabled{--holiday-accent:#df6b4d;--holiday-foreground:#000000;border-color:var(--holiday-accent);background:#fff;color:#17352e;cursor:pointer;box-shadow:inset 0 3px 0 var(--holiday-accent)}
-        .calendar-day.holiday-disabled:hover{border-color:var(--holiday-accent);background:#f8faf7}
-        .calendar-day.holiday-disabled .calendar-day-number{color:#17352e}
-        .calendar-holiday-label{display:block;margin-top:5px;padding:3px 5px;border-radius:4px;background:var(--holiday-accent);color:var(--holiday-foreground);font-size:10px;font-weight:850;line-height:1.25}
-        .calendar-legend .holiday-dot{background:#df6b4d}
-        .booking-holiday-date{margin:0 0 12px;color:#66746d;font-weight:700}
-        .booking-holiday-details{display:grid;gap:10px;margin:0}
-        .booking-holiday-detail{padding:12px;border-radius:12px;background:#f5f7f2;border:1px solid rgba(23,53,46,.1);border-left:4px solid var(--holiday-accent,#df6b4d)}
-        .booking-holiday-detail strong{display:block;color:#17352e}.booking-holiday-detail p{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:#5d6b65;line-height:1.55}
-      `;
-      document.head.appendChild(style);
-    }
   }
 
   function taipeiDate() {

@@ -85,7 +85,6 @@
     els.cancelledButton = cancelledButton;
     ['bookingCancellationReview','bookingCancellationReviewKicker','bookingCancellationReviewTitle','bookingCancellationReviewDescription','bookingCancellationReviewCount','bookingCancellationReviewMessage','bookingCancellationReviewList','bookingCancellationReviewEmpty'].forEach((id) => { els[id] = document.getElementById(id); });
 
-    injectStyles();
     requestButton.addEventListener('click', () => activateMode(MODE_REQUESTS));
     cancelledButton.addEventListener('click', () => activateMode(MODE_CANCELLED));
     filter.querySelectorAll('[data-booking-filter]').forEach((button) => button.addEventListener('click', () => activateMode(MODE_CORE)));
@@ -97,19 +96,6 @@
     waitForAdmin();
   }
 
-  function injectStyles() {
-    if (document.getElementById('bookingCancellationReviewStyles')) return;
-    const style = document.createElement('style');
-    style.id = 'bookingCancellationReviewStyles';
-    style.textContent = `
-      .booking-admin-cancellation-review{display:block;margin:0;padding:0;border:0;background:transparent}
-      .booking-admin-cancellation-review.hidden{display:none!important}
-      .booking-admin-cancellation-review .booking-cancellation-heading{display:none!important}
-      .booking-admin-cancellation-review .booking-admin-queue{display:grid;gap:10px}
-      .booking-admin-cancellation-review .booking-admin-booking{margin:0}
-    `;
-    document.head.appendChild(style);
-  }
 
   async function context() {
     if (!window.MemberAdminSession || typeof window.MemberAdminSession.wait !== 'function') {
@@ -581,9 +567,7 @@
     const textarea = document.createElement('textarea');
     textarea.value = text;
     textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    textarea.style.pointerEvents = 'none';
+    textarea.className = 'booking-cancellation-copy-buffer';
     document.body.appendChild(textarea);
     textarea.select();
     textarea.setSelectionRange(0, textarea.value.length);
