@@ -609,7 +609,7 @@
     if (!Number.isInteger(slotIntervalMinutes) || slotIntervalMinutes < 5 || slotIntervalMinutes > 120 || slotIntervalMinutes % 5 !== 0) return showMessage(els.bookingAdminSettingsMessage, '切分間隔須為 5–120 分鐘的 5 分鐘倍數。', 'error');
     if (bookingNotice.length > 2000) return showMessage(els.bookingAdminSettingsMessage, '預約說明不可超過 2,000 字。', 'error');
     const reminderTime = els.bookingAdminReminderTime.value;
-    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(reminderTime)) return showMessage(els.bookingAdminSettingsMessage, '請設定有效的前一天提醒時間。', 'error');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(reminderTime)) return showMessage(els.bookingAdminSettingsMessage, '請設定有效的前一天提醒時間。', 'error');
     state.busy = true; clearMessage(els.bookingAdminSettingsMessage);
     try {
       const result = await manageRequest('admin.booking.settings.save', {
