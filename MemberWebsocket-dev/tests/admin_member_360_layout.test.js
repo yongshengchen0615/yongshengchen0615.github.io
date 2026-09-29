@@ -27,5 +27,5 @@ test('member 360 mobile overrides global bottom-sheet geometry', () => {
   assert.match(correction, /@media \(max-width: 480px\)[\s\S]*#memberRecordsModal[\s\S]*align-items:\s*stretch/);
   assert.match(correction, /min-height:\s*100dvh/);
   assert.match(correction, /border-radius:\s*0/);
-  assert.match(html, /styles\.css\?v=coupon-multi-map-20260929-1/);
+  assert.match(html, /styles\.css\?v=ticket-location-radius-confirm-20260929-1/);
 });
