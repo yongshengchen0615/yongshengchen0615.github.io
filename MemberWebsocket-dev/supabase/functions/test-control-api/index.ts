@@ -312,6 +312,7 @@ function caseDefinitions(suite: string, selectedModules: string[] | null = null)
   const definitions = suite === "quick" ? quick : quick.concat([
     { key: "MEMBERSHIP_TERMS_READY", name: "會員條款 E2E 前置狀態", domain: "Member / Legal" },
     { key: "BOOKING_INTEGRITY", name: "預約與技師時段一致性", domain: "Booking" },
+    { key: "BOOKING_CONFIRMATION_LINE", name: "正式會員預約確認 LINE 權益通知", domain: "Booking / Notification" },
     { key: "PRESENCE_INTEGRITY", name: "會員上線狀態一致性", domain: "Presence" },
   ]);
   if (!selectedModules) return definitions;
@@ -320,6 +321,7 @@ function caseDefinitions(suite: string, selectedModules: string[] | null = null)
     POINTS_INTEGRITY: ["points"],
     FIXED_TICKET_INTEGRITY: ["points", "event"],
     BOOKING_INTEGRITY: ["booking"],
+    BOOKING_CONFIRMATION_LINE: ["booking"],
     PRESENCE_INTEGRITY: ["member"],
   };
   return definitions.filter((definition) => !owners[definition.key] || owners[definition.key].some((key) => selectedModules.includes(key)));
@@ -955,6 +957,93 @@ async function evaluatePresence(supabase: any): Promise<CaseResult> {
     : fail("PRESENCE_TIMESTAMP_INVALID", "Presence session 存在無法解析的心跳時間。", expected, actual);
 }
 
+async function evaluateBookingConfirmationLine(supabase: any): Promise<CaseResult> {
+  const config = await supabase.rpc("booking_notification_config");
+  if (config.error) {
+    throw new ApiError(503, "BOOKING_NOTIFICATION_CONFIG_FAILED", "無法讀取預約通知測試設定。");
+  }
+  const secret = asText(config.data?.BOOKING_NOTIFICATION_DISPATCH_SECRET, 200);
+  const baseUrl = env("SUPABASE_URL");
+  if (!baseUrl || !secret) {
+    throw new ApiError(503, "BOOKING_NOTIFICATION_CONFIG_MISSING", "預約通知測試設定尚未完成。");
+  }
+
+  let remote: Response;
+  try {
+    remote = await fetch(baseUrl + "/functions/v1/booking-line-notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-dispatch-secret": secret,
+      },
+      body: JSON.stringify({ action: "self-test-confirmation" }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new ApiError(503, "BOOKING_NOTIFICATION_SELF_TEST_UNAVAILABLE", "預約確認 LINE self-test 暫時無法連線。");
+  }
+
+  let payload: any = {};
+  try {
+    payload = await remote.json();
+  } catch {
+    throw new ApiError(503, "BOOKING_NOTIFICATION_SELF_TEST_INVALID", "預約確認 LINE self-test 回應格式不正確。");
+  }
+
+  const data = payload?.data || {};
+  const actual = {
+    httpStatus: remote.status,
+    productionMember: data.productionMember === true,
+    flexType: asText(data.productionPreview?.flexType, 20),
+    altTextPresent: data.productionPreview?.altTextPresent === true,
+    pointTicketCount: Number(data.productionPreview?.pointTicketCount || 0),
+    eventTicketCount: Number(data.productionPreview?.eventTicketCount || 0),
+    tierActivityCount: Number(data.productionPreview?.tierActivityCount || 0),
+    tierLabel: asText(data.productionPreview?.tierLabel, 40),
+    emptyEntitlementSections: Number(data.emptyEntitlements?.emptyStateSections || 0),
+    emptyEntitlementsPassed: data.emptyEntitlements?.passed === true,
+    expiredExclusionPassed: data.expiredExclusion?.passed === true,
+    retryFirstRetryable: data.retrySemantics?.firstRetryable === true,
+    retryAccepted: data.retrySemantics?.retryAccepted === true,
+    retryKeyStable: data.retrySemantics?.retryKeyStable === true,
+    retrySemanticsPassed: data.retrySemantics?.passed === true,
+  };
+  const expected = {
+    httpStatus: 200,
+    productionMember: true,
+    flexType: "flex",
+    altTextPresent: true,
+    emptyEntitlementSections: 3,
+    emptyEntitlementsPassed: true,
+    expiredExclusionPassed: true,
+    retryFirstRetryable: true,
+    retryAccepted: true,
+    retryKeyStable: true,
+    retrySemanticsPassed: true,
+  };
+  const ok = remote.ok
+    && payload?.ok === true
+    && actual.productionMember
+    && actual.flexType === "flex"
+    && actual.altTextPresent
+    && actual.emptyEntitlementSections === 3
+    && actual.emptyEntitlementsPassed
+    && actual.expiredExclusionPassed
+    && actual.retryFirstRetryable
+    && actual.retryAccepted
+    && actual.retryKeyStable
+    && actual.retrySemanticsPassed;
+
+  return ok
+    ? pass("正式會員預約確認 LINE 權益、空狀態、過期排除與冪等重試皆通過 production self-test。", expected, actual)
+    : fail(
+        "BOOKING_CONFIRMATION_LINE_FAILED",
+        "正式會員預約確認 LINE production self-test 未通過。",
+        expected,
+        actual,
+      );
+}
+
 async function evaluateLineSuppression(supabase: any): Promise<CaseResult> {
   const rpc = await supabase.rpc("automation_test_notification_snapshot");
   if (rpc.error) throw new ApiError(503, "NOTIFICATION_SNAPSHOT_FAILED", "無法讀取測試會員通知佇列。");
@@ -987,6 +1076,7 @@ async function evaluateCase(supabase: any, caseKey: string): Promise<CaseResult>
   if (caseKey === "FIXED_TICKET_INTEGRITY") return evaluateTickets(supabase);
   if (caseKey === "LINE_SUPPRESSION") return evaluateLineSuppression(supabase);
   if (caseKey === "BOOKING_INTEGRITY") return evaluateBooking(supabase);
+  if (caseKey === "BOOKING_CONFIRMATION_LINE") return evaluateBookingConfirmationLine(supabase);
   if (caseKey === "PRESENCE_INTEGRITY") return evaluatePresence(supabase);
   throw new ApiError(500, "UNKNOWN_TEST_CASE", "自動化測試案例未註冊。");
 }
@@ -1285,7 +1375,7 @@ async function recordBrowserRun(
     passed_cases: passed,
     failed_cases: failed,
     summary: {
-      runnerVersion: asText(body.runnerVersion, 80) || "admin-browser-e2e-legacy",
+      runnerVersion: "admin-browser-e2e-20260927-replay1",
       runnerKind,
       skippedCases: skipped,
       memberId,
