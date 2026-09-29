@@ -3176,3 +3176,582 @@ html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarControls .gr
 html[data-theme="dark"] #eventTicketEditorModal #eventTicketCalendarControls .grant-toggle input[type="checkbox"] {
   accent-color: var(--theme-positive);
 }
+
+/* Material 3 convergence layer 2026-09-29 */
+:root {
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-large-increased: 20px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 999px;
+
+  --md-sys-elevation-level0: none;
+  --md-sys-elevation-level1: 0 1px 2px rgba(18, 35, 27, .08), 0 2px 8px rgba(18, 35, 27, .04);
+  --md-sys-elevation-level2: 0 2px 6px rgba(18, 35, 27, .10), 0 8px 24px rgba(18, 35, 27, .06);
+  --md-sys-elevation-level3: 0 6px 12px rgba(18, 35, 27, .10), 0 16px 36px rgba(18, 35, 27, .08);
+
+  --md-sys-motion-duration-short2: 100ms;
+  --md-sys-motion-duration-short4: 200ms;
+  --md-sys-motion-duration-medium2: 300ms;
+  --md-sys-motion-easing-standard: cubic-bezier(.2, 0, 0, 1);
+
+  --md-sys-typescale-display-small-size: 36px;
+  --md-sys-typescale-headline-medium-size: 28px;
+  --md-sys-typescale-headline-small-size: 24px;
+  --md-sys-typescale-title-large-size: 22px;
+  --md-sys-typescale-title-medium-size: 16px;
+  --md-sys-typescale-body-large-size: 16px;
+  --md-sys-typescale-body-medium-size: 14px;
+  --md-sys-typescale-label-large-size: 14px;
+  --md-sys-typescale-label-medium-size: 12px;
+
+  --ui-radius-sm: var(--md-sys-shape-corner-small);
+  --ui-radius-md: var(--md-sys-shape-corner-medium);
+  --ui-radius-lg: var(--md-sys-shape-corner-large);
+  --ui-radius-xl: var(--md-sys-shape-corner-extra-large);
+  --ui-radius-panel: var(--md-sys-shape-corner-large);
+  --ui-radius-control: var(--md-sys-shape-corner-small);
+  --ui-control-height: 44px;
+}
+
+html[data-theme="light"] {
+  --md-sys-color-primary: #1d4a3b;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #d7ebe1;
+  --md-sys-color-on-primary-container: #0a3126;
+  --md-sys-color-secondary: #51665c;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #d4e8dd;
+  --md-sys-color-on-secondary-container: #102a22;
+  --md-sys-color-tertiary: #9f432f;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #ffdbd0;
+  --md-sys-color-on-tertiary-container: #3b0900;
+  --md-sys-color-error: #b3261e;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #f9dedc;
+  --md-sys-color-on-error-container: #410e0b;
+  --md-sys-color-surface: #f9fbf9;
+  --md-sys-color-surface-dim: #d9e1dc;
+  --md-sys-color-surface-bright: #f9fbf9;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f3f6f4;
+  --md-sys-color-surface-container: #edf1ee;
+  --md-sys-color-surface-container-high: #e7ece9;
+  --md-sys-color-surface-container-highest: #e1e7e3;
+  --md-sys-color-on-surface: #17201c;
+  --md-sys-color-on-surface-variant: #414944;
+  --md-sys-color-outline: #717a75;
+  --md-sys-color-outline-variant: #c0c9c3;
+  --md-sys-color-inverse-surface: #2c322f;
+  --md-sys-color-inverse-on-surface: #eef1ef;
+  --md-sys-color-inverse-primary: #a5d0bd;
+  --md-sys-color-scrim: #000000;
+  --md-sys-color-shadow: #000000;
+
+  --theme-bg: var(--md-sys-color-surface);
+  --theme-surface: var(--md-sys-color-surface-container-low);
+  --theme-surface-raised: var(--md-sys-color-surface-container-lowest);
+  --theme-surface-muted: var(--md-sys-color-surface-container);
+  --theme-text: var(--md-sys-color-on-surface);
+  --theme-text-muted: var(--md-sys-color-on-surface-variant);
+  --theme-text-subtle: #5d6761;
+  --theme-border: rgba(65, 73, 68, .14);
+  --theme-border-strong: rgba(65, 73, 68, .24);
+  --theme-accent: var(--md-sys-color-tertiary);
+  --theme-accent-soft: var(--md-sys-color-tertiary-container);
+  --theme-danger: var(--md-sys-color-error);
+  --theme-danger-soft: var(--md-sys-color-error-container);
+  --theme-link: #7d3525;
+  --theme-focus-ring: rgba(29, 74, 59, .28);
+  --theme-overlay: rgba(0, 0, 0, .44);
+  --theme-shadow: var(--md-sys-elevation-level1);
+  --theme-modal-shadow: var(--md-sys-elevation-level3);
+  --ui-primary: var(--md-sys-color-primary);
+  --ui-primary-hover: #173d31;
+  --ui-primary-contrast: var(--md-sys-color-on-primary);
+  --ui-info-soft: var(--md-sys-color-secondary-container);
+  --ui-shadow-card: var(--md-sys-elevation-level1);
+  --ui-shadow-hover: var(--md-sys-elevation-level2);
+  --ui-shadow-soft: var(--md-sys-elevation-level1);
+}
+
+html[data-theme="dark"] {
+  --md-sys-color-primary: #a5d0bd;
+  --md-sys-color-on-primary: #07372a;
+  --md-sys-color-primary-container: #244f40;
+  --md-sys-color-on-primary-container: #c0ecda;
+  --md-sys-color-secondary: #b7ccbF;
+  --md-sys-color-on-secondary: #22352d;
+  --md-sys-color-secondary-container: #384b43;
+  --md-sys-color-on-secondary-container: #d3e8dd;
+  --md-sys-color-tertiary: #ffb4a0;
+  --md-sys-color-on-tertiary: #5f1608;
+  --md-sys-color-tertiary-container: #7d2c1b;
+  --md-sys-color-on-tertiary-container: #ffdbd0;
+  --md-sys-color-error: #f2b8b5;
+  --md-sys-color-on-error: #601410;
+  --md-sys-color-error-container: #8c1d18;
+  --md-sys-color-on-error-container: #f9dedc;
+  --md-sys-color-surface: #101512;
+  --md-sys-color-surface-dim: #101512;
+  --md-sys-color-surface-bright: #363c38;
+  --md-sys-color-surface-container-lowest: #0b0f0d;
+  --md-sys-color-surface-container-low: #151b17;
+  --md-sys-color-surface-container: #1b211d;
+  --md-sys-color-surface-container-high: #252b27;
+  --md-sys-color-surface-container-highest: #303632;
+  --md-sys-color-on-surface: #e1e9e4;
+  --md-sys-color-on-surface-variant: #c0c9c3;
+  --md-sys-color-outline: #8a938e;
+  --md-sys-color-outline-variant: #414944;
+  --md-sys-color-inverse-surface: #e1e9e4;
+  --md-sys-color-inverse-on-surface: #2c322f;
+  --md-sys-color-inverse-primary: #1d4a3b;
+  --md-sys-color-scrim: #000000;
+  --md-sys-color-shadow: #000000;
+
+  --theme-bg: var(--md-sys-color-surface);
+  --theme-surface: var(--md-sys-color-surface-container-low);
+  --theme-surface-raised: var(--md-sys-color-surface-container);
+  --theme-surface-muted: var(--md-sys-color-surface-container-high);
+  --theme-text: var(--md-sys-color-on-surface);
+  --theme-text-muted: var(--md-sys-color-on-surface-variant);
+  --theme-text-subtle: #9ca7a1;
+  --theme-border: rgba(192, 201, 195, .14);
+  --theme-border-strong: rgba(192, 201, 195, .24);
+  --theme-accent: var(--md-sys-color-tertiary);
+  --theme-accent-soft: var(--md-sys-color-tertiary-container);
+  --theme-danger: var(--md-sys-color-error);
+  --theme-danger-soft: #3b1916;
+  --theme-link: #ffc3b3;
+  --theme-focus-ring: rgba(165, 208, 189, .30);
+  --theme-overlay: rgba(0, 0, 0, .60);
+  --theme-shadow: 0 1px 2px rgba(0, 0, 0, .28), 0 3px 10px rgba(0, 0, 0, .20);
+  --theme-modal-shadow: 0 8px 20px rgba(0, 0, 0, .36), 0 24px 56px rgba(0, 0, 0, .32);
+  --ui-primary: var(--md-sys-color-primary);
+  --ui-primary-hover: #c0ecda;
+  --ui-primary-contrast: var(--md-sys-color-on-primary);
+  --ui-info-soft: var(--md-sys-color-secondary-container);
+  --ui-shadow-card: var(--theme-shadow);
+  --ui-shadow-hover: 0 4px 12px rgba(0, 0, 0, .30), 0 12px 28px rgba(0, 0, 0, .24);
+  --ui-shadow-soft: var(--theme-shadow);
+}
+
+html[data-theme] body {
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+}
+
+html[data-theme] :where(h1) {
+  font-weight: 700;
+  letter-spacing: -.035em;
+}
+
+html[data-theme] :where(h2) {
+  font-weight: 700;
+  letter-spacing: -.025em;
+}
+
+html[data-theme] :where(h3, h4) {
+  font-weight: 650;
+  letter-spacing: -.015em;
+}
+
+html[data-theme] :where(.kicker, .eyebrow, .stat-label, .membership-progress-kicker) {
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+html[data-theme] :where(
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: 3px solid var(--theme-focus-ring);
+  outline-offset: 2px;
+}
+
+html[data-theme] :where(
+  .button,
+  .small-button,
+  .refresh-button,
+  .theme-toggle-button,
+  .month-button,
+  .calendar-nav-button,
+  .service-add-button,
+  .selected-service-remove,
+  .modal-action,
+  .close-button,
+  .booking-modal-close,
+  .booking-selection-modal-close,
+  .calendar-detail-close
+) {
+  min-height: 40px;
+  border-radius: var(--md-sys-shape-corner-full);
+  transition:
+    background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+    border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+    color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+    box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+    transform var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+html[data-theme] :where(
+  .button-dark,
+  .ticket-button,
+  .service-add-button,
+  .slot-button.selected,
+  .modal-action:not(.modal-refresh-button)
+) {
+  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-primary);
+  border-color: transparent;
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+html[data-theme] :where(
+  .button-outline,
+  .button-light,
+  .small-button,
+  .refresh-button,
+  .modal-refresh-button,
+  .month-button,
+  .calendar-nav-button
+) {
+  color: var(--md-sys-color-primary);
+  background: transparent;
+  border-color: var(--md-sys-color-outline);
+  box-shadow: none;
+}
+
+html[data-theme] :where(.text-button) {
+  min-height: 40px;
+  padding-inline: 12px;
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-primary);
+}
+
+@media (hover: hover) {
+  html[data-theme] :where(.button-dark, .ticket-button, .service-add-button, .modal-action:not(.modal-refresh-button)):hover:not(:disabled) {
+    background: var(--ui-primary-hover);
+    box-shadow: var(--md-sys-elevation-level2);
+  }
+
+  html[data-theme] :where(.button-outline, .button-light, .small-button, .refresh-button, .month-button, .calendar-nav-button):hover:not(:disabled) {
+    color: var(--md-sys-color-on-primary-container);
+    background: var(--md-sys-color-primary-container);
+    border-color: var(--md-sys-color-outline);
+  }
+
+  html[data-theme] :where(.text-button):hover:not(:disabled) {
+    color: var(--md-sys-color-on-primary-container);
+    background: var(--md-sys-color-primary-container);
+  }
+}
+
+html[data-theme] :where(
+  .button,
+  .small-button,
+  .refresh-button,
+  .service-add-button,
+  .selected-service-remove,
+  .modal-action,
+  .slot-button
+):disabled {
+  opacity: .38;
+  box-shadow: none;
+  transform: none;
+}
+
+html[data-theme] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  select,
+  textarea,
+  .date-input-shell
+) {
+  min-height: 48px;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+  caret-color: var(--md-sys-color-primary);
+}
+
+html[data-theme="dark"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  select,
+  textarea,
+  .date-input-shell
+) {
+  background: var(--md-sys-color-surface-container);
+}
+
+html[data-theme] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):focus,
+  select:focus,
+  textarea:focus,
+  .date-input-shell:focus-within
+) {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
+}
+
+html[data-theme] :where(
+  .topbar,
+  .panel,
+  .profile-details,
+  .profile-form,
+  .tickets-panel,
+  .ticket-history-panel,
+  .calendar-toolbar,
+  .booking-card,
+  .member-summary
+) {
+  border-color: transparent;
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+html[data-theme] :where(.topbar) {
+  overflow: visible;
+  min-height: 88px;
+  border-radius: var(--md-sys-shape-corner-large);
+}
+
+html[data-theme] :where(.topbar)::after {
+  display: none;
+}
+
+html[data-theme] :where(.account-menu) {
+  border-color: transparent;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container);
+}
+
+html[data-theme] :where(.surface-nav) {
+  border-color: transparent;
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background: var(--md-sys-color-surface-container);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+html[data-theme] :where(.surface-tab) {
+  min-height: 40px;
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+html[data-theme] :where(.surface-tab[aria-selected="true"]) {
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html[data-theme] :where(
+  .member-workspace-tab,
+  .member-directory-tab,
+  .card-settings-tab,
+  .card-tab,
+  .test-workspace-tab
+) {
+  border-radius: var(--md-sys-shape-corner-medium);
+}
+
+html[data-theme] :where(
+  .member-directory-tabs,
+  .card-settings-nav,
+  .card-tabs
+) {
+  border-color: transparent;
+  background: var(--md-sys-color-surface-container);
+}
+
+html[data-theme] :where(
+  .member-directory-tab[aria-selected="true"],
+  .card-settings-tab[aria-selected="true"],
+  .card-tab[aria-selected="true"]
+) {
+  color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-secondary-container);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html[data-theme] :where(.stats-row > div) {
+  border-color: transparent;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+html[data-theme] :where(.stats-row > div)::before {
+  width: 32px;
+  height: 4px;
+  background: var(--md-sys-color-tertiary);
+}
+
+html[data-theme] :where(
+  .event-ticket,
+  .booking-item,
+  .service-choice,
+  .selected-service-item,
+  .card-list,
+  .editor,
+  .tier-settings,
+  .reward-editor,
+  .calendar-batch-editor
+) {
+  border-color: var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-lowest);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] :where(
+  .event-ticket,
+  .booking-item,
+  .service-choice,
+  .selected-service-item,
+  .card-list,
+  .editor,
+  .tier-settings,
+  .reward-editor,
+  .calendar-batch-editor
+) {
+  background: var(--md-sys-color-surface-container);
+}
+
+html[data-theme] :where(
+  .status-badge,
+  .status-pill,
+  .status-tag,
+  .role-label,
+  .editor-status,
+  .slot-unit
+) {
+  border-radius: var(--md-sys-shape-corner-full);
+}
+
+html[data-theme] :where(
+  .modal-card,
+  .editor-modal-card,
+  .ticket-modal-card,
+  .booking-modal-card,
+  .profile-date-modal-card,
+  .calendar-detail-card,
+  .booking-selection-modal-card
+) {
+  border-color: transparent;
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level3);
+}
+
+html[data-theme] :where(.table-wrap) {
+  border-color: var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+html[data-theme="dark"] :where(.table-wrap) {
+  background: var(--md-sys-color-surface-container-low);
+}
+
+html[data-theme] :where(.table-wrap th) {
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container);
+}
+
+html[data-theme] :where(.toolbar) {
+  border-color: transparent;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container);
+}
+
+html[data-theme] :where(.privacy-note, .points-note, .service-info, .sync-notice) {
+  border-color: transparent;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+html[data-theme] :where(.form-message.success, .ticket-result, .status-confirmed) {
+  color: var(--theme-positive-text);
+  background: var(--theme-positive-soft);
+}
+
+html[data-theme] :where(.form-message.error, .modal-message, .error-mark, .status-cancelled, .status-rejected) {
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft);
+}
+
+@media (max-width: 760px) {
+  html[data-theme] :where(.topbar, .panel, .booking-card, .profile-details, .profile-form) {
+    border-radius: var(--md-sys-shape-corner-large);
+    box-shadow: none;
+  }
+
+  html[data-theme] :where(.surface-nav) {
+    border-radius: var(--md-sys-shape-corner-large);
+  }
+
+  html[data-theme] :where(
+    .booking-modal-card,
+    .booking-selection-modal-card,
+    .ticket-modal-card,
+    .editor-modal-card,
+    .profile-date-modal-card
+  ) {
+    border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
+  }
+}
+
+@media (pointer: coarse) {
+  html[data-theme] :where(
+    button,
+    a,
+    input,
+    select,
+    .button,
+    .small-button,
+    .text-button,
+    .surface-tab,
+    .member-directory-tab,
+    .card-settings-tab,
+    .card-tab,
+    .month-button,
+    .calendar-nav-button,
+    .slot-button
+  ) {
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] :where(
+    .button,
+    .small-button,
+    .refresh-button,
+    .theme-toggle-button,
+    .surface-tab,
+    .member-workspace-tab,
+    .member-directory-tab,
+    .card-settings-tab,
+    .card-tab,
+    .event-ticket,
+    .booking-item,
+    .service-choice,
+    .selected-service-item
+  ) {
+    transition: none !important;
+  }
+}
