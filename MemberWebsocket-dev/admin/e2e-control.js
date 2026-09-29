@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-29.3';
+  const VERSION = '2026-09-29.4';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -24,6 +24,7 @@
   let adminBookingBootstrapLastAt = 0;
   let adminBookingBootstrapLastData = null;
   let adminBookingBootstrapBackoffUntil = 0;
+  let pairedAdminBookingChain = Promise.resolve();
   const PAIRED_SURFACES = Object.freeze([
     ['member', '會員卡'],
     ['points', '集點卡'],
@@ -1426,12 +1427,12 @@
   async function runPairedAdminBookingLive(participant) {
     const wrapperKey = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_FOLLOWUP';
     const rowPrefix = 'PAIRED_' + participant.index + '_ADMIN_BOOKING_';
-    participant.adminStatus = '即時監看管理端預約資料';
+    participant.adminStatus = '完整接手清單已就緒，管理端開始處理';
     renderParticipants();
     await executeCases([
       caseDef(
         wrapperKey,
-        '測試用戶 ' + participant.index + '：管理端資料出現即接手預約',
+        '測試用戶 ' + participant.index + '：完整 handoff 後管理端接手預約',
         'Paired E2E / Booking Admin',
         () => pairedAdminBookingFollowupCase(participant)
       )
@@ -1687,21 +1688,11 @@
           throw error;
         }
 
-        let adminChain = Promise.resolve();
-        const liveAdminTasks = selectedModules.includes('booking') ? state.participants.map((participant) => {
-          const task = (async () => {
-            participant.adminStatus = '即時監看管理端預約資料';
-            renderParticipants();
-            // Every participant starts watching immediately. Only the shared admin DOM
-            // operation is serialized after that participant's first eligible row appears.
-            await waitForLivePairedBookingTarget(participant, 'any');
-            const queued = adminChain.then(() => runPairedAdminBookingLive(participant));
-            adminChain = queued.catch(() => null);
-            return queued;
-          })();
-          participant.adminBookingTask = task;
-          return task;
-        }) : [];
+        // Booking admin mutations start only after the member-side full run has produced
+        // its authoritative handoff manifest. Realtime creation/badge behavior is covered by
+        // dedicated tests; mixing it into the mutation handoff caused long polling races and
+        // could let an inner wait outlive the booking node deadline.
+        pairedAdminBookingChain = Promise.resolve();
         const executionParticipants = state.replayContext
           ? orderedParticipants(state.participants, state.replayContext.manifest.participantExecutionOrder)
           : shuffled(state.participants);
@@ -1714,7 +1705,7 @@
             return runParticipantSurfaces(participant);
           }
         );
-        await Promise.all([clientExecution, ...liveAdminTasks]);
+        await clientExecution;
 
         if (!state.cancelled && selectedModules.includes('event')) {
           await executeCases([
@@ -1897,9 +1888,14 @@
         const child = await runUserSurface(participant, surface, label);
         if (surface === 'booking') {
           participant.bookingResult = child;
-          participant.adminStatus = '已取得完整接手清單';
+          participant.adminStatus = '已取得完整接手清單，等待管理端接手';
           renderParticipants();
-          if (participant.adminBookingTask) await participant.adminBookingTask;
+          if (!participant.adminBookingTask) {
+            const queued = pairedAdminBookingChain.then(() => runPairedAdminBookingLive(participant));
+            pairedAdminBookingChain = queued.catch(() => null);
+            participant.adminBookingTask = queued;
+          }
+          await participant.adminBookingTask;
         }
         const summary = child?.summary || {};
         participant.surfaceReplayResults = participant.surfaceReplayResults || {};
