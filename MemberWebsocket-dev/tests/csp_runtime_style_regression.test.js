@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const read = (relative) => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const cspMeta = (relative) => read(relative).split('\n').find((line) => line.includes('Content-Security-Policy')) || '';
 
 test('booking calendar and cancellation sync do not inject runtime style elements', () => {
   const calendar = read('booking/calendar-flow.js');
@@ -15,9 +16,19 @@ test('booking calendar and cancellation sync do not inject runtime style element
   assert.match(read('admin/booking-panel.css'), /CSP-safe cancellation review styles/);
 });
 
-test('admin CSP permits the already-trusted jsDelivr origin for Leaflet source maps without unsafe-inline styles', () => {
-  const html = read('admin/index.html');
-  const meta = html.split('\n').find((line) => line.includes('Content-Security-Policy')) || '';
+test('admin CSP allows Leaflet and sanitized runtime style attributes without allowing inline style elements', () => {
+  const meta = cspMeta('admin/index.html');
+  assert.match(meta, /style-src 'self' https:\/\/cdn\.jsdelivr\.net;/);
+  assert.match(meta, /style-src-elem 'self' https:\/\/cdn\.jsdelivr\.net;/);
+  assert.match(meta, /style-src-attr 'unsafe-inline';/);
   assert.match(meta, /connect-src[^;]*https:\/\/cdn\.jsdelivr\.net/);
-  assert.doesNotMatch(meta, /style-src[^;]*'unsafe-inline'/);
+  assert.doesNotMatch(meta, /script-src[^;]*'unsafe-inline'/);
+});
+
+test('booking CSP permits only style attributes needed for runtime holiday accents', () => {
+  const meta = cspMeta('booking/index.html');
+  assert.match(meta, /style-src 'self';/);
+  assert.match(meta, /style-src-elem 'self';/);
+  assert.match(meta, /style-src-attr 'unsafe-inline';/);
+  assert.doesNotMatch(meta, /script-src[^;]*'unsafe-inline'/);
 });
