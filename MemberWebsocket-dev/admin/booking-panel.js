@@ -106,7 +106,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-reminder-20260929-1');
+      return load('booking-panel-core.js', 'booking-reminder-20260929-2');
     })
     .then(() => {
       openLegacyBookingRouteWhenReady();
