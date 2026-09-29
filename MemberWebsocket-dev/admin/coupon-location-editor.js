@@ -403,6 +403,24 @@
       return `${west},${north},${east},${south}`;
     }
 
+    function sortCandidatesByMapDistance(candidates) {
+      const center = map?.getCenter?.();
+      const centerLat = Number(center?.lat);
+      const centerLng = Number(center?.lng);
+      if (!validCoordinate(centerLat, centerLng)) return candidates;
+
+      const latitudeScale = Math.cos(centerLat * Math.PI / 180);
+      return [...candidates].sort((left, right) => {
+        const leftLat = Number(left?.lat);
+        const leftLng = Number(left?.lon);
+        const rightLat = Number(right?.lat);
+        const rightLng = Number(right?.lon);
+        const leftDistance = ((leftLat - centerLat) ** 2) + (((leftLng - centerLng) * latitudeScale) ** 2);
+        const rightDistance = ((rightLat - centerLat) ** 2) + (((rightLng - centerLng) * latitudeScale) ** 2);
+        return leftDistance - rightDistance;
+      });
+    }
+
     async function waitForGeocoderSlot() {
       const waitMs = Math.max(0, SEARCH_MIN_INTERVAL_MS - (Date.now() - lastGeocoderRequestAt));
       if (waitMs > 0) await new Promise((resolve) => window.setTimeout(resolve, waitMs));
@@ -493,7 +511,9 @@
         if (!candidates.length) {
           const relaxedQuery = relaxedAddressQuery(query);
           setStatus('找不到精確地址，正在搜尋最接近的地址／地標…');
-          candidates = await fetchGeocoder(relaxedQuery || query, { preferMapArea: true });
+          candidates = sortCandidatesByMapDistance(
+            await fetchGeocoder(relaxedQuery || query, { preferMapArea: true })
+          );
           isNearbyFallback = true;
         }
 
