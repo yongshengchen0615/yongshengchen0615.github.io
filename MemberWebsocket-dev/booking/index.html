@@ -6,12 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#f6f1e8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co; img-src 'self' data: https://profile.line-scdn.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>預約｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
   <link rel="stylesheet" href="./styles.css?v=lumen-design-system-20260924-1">
   <link rel="stylesheet" href="./calendar-flow.css?v=booking-remove-date-bar-20260919-1">
-  <link rel="stylesheet" href="./calendar-holiday-theme.css?v=booking-calendar-holiday-theme-20260916-2">
+  <link rel="stylesheet" href="./calendar-holiday-theme.css?v=booking-csp-20260929-1">
   <link rel="stylesheet" href="./membership-progress.css?v=booking-tier-style-20260910-1">
   <link rel="stylesheet" href="./booking-history.css?v=booking-history-accordion-20260918-1">
   <link rel="stylesheet" href="./member-booking-format.css?v=booking-service-type-colors-webview-20260918-2">
@@ -30,7 +30,7 @@
   <script src="./member-ui.js?v=test-mode-20260920-1" defer></script>
   <script src="./app.js?v=booking-overnight-20260928-1" defer></script>
   <script src="../user-tour.js?v=user-tour-20260929-11" defer></script>
-  <script src="./calendar-flow.js?v=booking-overnight-20260928-1" defer></script>
+  <script src="./calendar-flow.js?v=booking-csp-20260929-1" defer></script>
   <script src="./booking-flow.js?v=lumen-experience-20260924-1" defer></script>
   <link rel="stylesheet" href="./booking-typography.css?v=booking-typography-20260919-contact-render-1">
   <link rel="stylesheet" href="./contact-details.css?v=booking-contact-top-ui-20260919-2">
