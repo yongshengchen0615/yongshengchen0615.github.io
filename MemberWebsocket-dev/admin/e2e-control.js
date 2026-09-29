@@ -1,9 +1,11 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-27.3';
+  const VERSION = '2026-09-29.1';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
+  const FAILURE_SCREENSHOT_BUDGET = 2;
+  const DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP = 2;
   let html2canvasLoader = null;
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const REPLAY_STORAGE_KEY = 'member-e2e-replay-v1';
@@ -30,6 +32,7 @@
   const ADMIN_CASE_MODULES = Object.freeze({
     ADMIN_TEST_MEMBER_ROSTER: ['member'], ADMIN_MEMBER_MODALS: ['member'],
     ADMIN_TEST_MEMBER_PROFILE_EDIT: ['member'], ADMIN_MEMBER_DIRECTORY_CONTROLS: ['member'],
+    ADMIN_MEMBERSHIP_TERMS: ['member'],
     ADMIN_MESSAGE_PRESET_EDITOR: ['member'], ADMIN_THEME_TOGGLE: ['member'],
     ADMIN_RESOURCE_EDITORS: ['points', 'event', 'calendar'],
     ADMIN_TICKET_CRUD: ['points'], ADMIN_LOTTERY_TICKET_CRUD: ['points', 'event'],
@@ -54,6 +57,7 @@
     ADMIN_MEMBER_MODALS: { module: 'member', phase: 3, dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
     ADMIN_TEST_MEMBER_PROFILE_EDIT: { module: 'member', phase: 4, risk: 'mutation', dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
     ADMIN_MEMBER_DIRECTORY_CONTROLS: { module: 'member', phase: 3, dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
+    ADMIN_MEMBERSHIP_TERMS: { module: 'member', phase: 3, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
     ADMIN_MESSAGE_PRESET_EDITOR: { module: 'member', phase: 3, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
     ADMIN_THEME_TOGGLE: { module: 'member', phase: 2, dependencies: ['ADMIN_AUTH_READY'] },
 
@@ -86,6 +90,7 @@
     randomState: 0,
     complexityLevel: 1,
     clientConcurrency: 2,
+    failureScreenshotsCaptured: 0,
     rootRunId: '',
     adminScenarioPlan: null,
     adminRandomStateAfterPlan: 0,
@@ -267,7 +272,12 @@
     const level = Math.max(1, Math.min(8, Number(data?.nextComplexityLevel || completedRootRuns + 1) || 1));
     const seed = 'E2E-L' + level + '-' + Date.now().toString(36).toUpperCase() + '-' + String(completedRootRuns + 1);
     state.complexityLevel = level;
-    state.clientConcurrency = Math.max(1, Math.min(4, 1 + Math.ceil(level / 2)));
+    const adaptiveConcurrency = Math.max(1, Math.min(4, 1 + Math.ceil(level / 2)));
+    const hardwareConcurrency = Math.max(0, Number(window.navigator?.hardwareConcurrency || 0));
+    const deviceMemory = Math.max(0, Number(window.navigator?.deviceMemory || 0));
+    const constrainedDevice = (hardwareConcurrency > 0 && hardwareConcurrency <= 4) || (deviceMemory > 0 && deviceMemory <= 4);
+    const localResourceCap = constrainedDevice ? 1 : DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP;
+    state.clientConcurrency = Math.max(1, Math.min(adaptiveConcurrency, localResourceCap));
     state.rootRunId = 'ROOT-' + Date.now().toString(36).toUpperCase();
     configureRandom(seed);
     const surfaceWeightsMs = data?.surfaceWeightsMs && typeof data.surfaceWeightsMs === 'object'
@@ -281,6 +291,7 @@
       complexityLevel: level,
       seed,
       clientConcurrency: state.clientConcurrency,
+      resourceProfile: { hardwareConcurrency, deviceMemory, constrainedDevice, activeClientConcurrencyCap: localResourceCap, adaptiveConcurrency },
       rootRunId: state.rootRunId,
       surfaceWeightsMs,
       surfaceSamples
@@ -1076,6 +1087,15 @@
 
   async function attachFailureScreenshot(row) {
     if (!row || row.status !== 'failed') return;
+    if (state.failureScreenshotsCaptured >= FAILURE_SCREENSHOT_BUDGET) {
+      row.trace = safe({
+        ...(row.trace || {}),
+        artifactVersion: Math.max(2, Number(row?.trace?.artifactVersion || 0)),
+        screenshotCapture: { status: 'skipped', reason: 'run-budget', budget: FAILURE_SCREENSHOT_BUDGET }
+      });
+      return;
+    }
+    state.failureScreenshotsCaptured += 1;
     try {
       const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('失敗快照擷取逾時。')), 12000));
       const screenshot = await Promise.race([uploadFailureScreenshot(row), timeout]);
@@ -1256,6 +1276,7 @@
     const allSelected = modules.length === E2E_MODULES.length;
     return common.concat([
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
+      caseDef('ADMIN_MEMBERSHIP_TERMS', '會員條款：管理端版本清單與啟用版本契約', 'Legal E2E', adminMembershipTermsCase),
       caseDef('ADMIN_RESOURCE_EDITORS', '集點卡／票券／活動票券／日曆編輯視窗', 'Human E2E', adminResourceEditorsCase),
       caseDef('ADMIN_INTEGRATION_CENTER', '真人操作：整合中心總覽／權益／通知／Audit', 'Human E2E', adminIntegrationCenterCase),
       caseDef('ADMIN_INTEGRATION_NAVIGATION', '真人操作：整合中心跨模組快速導向', 'Human E2E', adminIntegrationNavigationCase),
@@ -1437,6 +1458,7 @@
   async function runPaired(options = {}) {
     if (state.running) return { error: { code: 'E2E_ALREADY_RUNNING', message: '完整 E2E 已在執行中。' }, results: safe(state.results) };
     state.cancelled = false;
+    state.failureScreenshotsCaptured = 0;
     state.backgroundExecution = options?.backgroundExecution === true || isBackgroundRunnerWindow();
     state.runSequence += 1;
     state.replayContext = normalizeReplayContext(options?.replay);
@@ -5226,6 +5248,40 @@
     return ok
       ? pass('管理端測試環境、測試資料清理與唯一背景完整 E2E Runner 控制元件皆存在。', { allControls: true }, actual)
       : fail('測試環境控制元件不完整。', { allControls: true }, actual);
+  }
+
+  async function adminMembershipTermsCase() {
+    document.getElementById('membersTab')?.click();
+    const ids = [
+      'termsReload','termsVersionList','termsNewDraft','termsDraftForm','termsVersion','termsTitle',
+      'termsSummary','termsBody','termsEffectiveAt','termsRequired','termsReconsent','termsSave','termsActivate'
+    ];
+    const missing = ids.filter((id) => !document.getElementById(id));
+    const session = await adminSession();
+    const data = await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.terms.list', {});
+    const terms = Array.isArray(data?.terms) ? data.terms : [];
+    const active = terms.find((row) => String(row?.status || '') === 'active') || null;
+    const listReady = Boolean(await waitFor(() => {
+      const node = document.getElementById('termsVersionList');
+      if (!node) return null;
+      return terms.length ? node.querySelector('button') : String(node.textContent || '').includes('尚無條款');
+    }, 5000, 100));
+    const actual = {
+      missing,
+      backendList: Array.isArray(data?.terms),
+      versionCount: terms.length,
+      activeVersion: active?.version || null,
+      activeRequired: active?.required === true,
+      listReady
+    };
+    const ok = missing.length === 0 && actual.backendList && Boolean(active?.id && active?.version) && active?.required === true && listReady;
+    return ok
+      ? pass('管理端會員條款控制、版本清單與目前強制同意版本均可由 Browser E2E 回讀。', {
+          missing: [], activeVersion: true, activeRequired: true, listReady: true
+        }, actual)
+      : fail('會員條款管理 UI、後端版本清單或目前啟用的強制同意版本不完整。', {
+          missing: [], activeVersion: true, activeRequired: true, listReady: true
+        }, actual);
   }
 
   async function adminThemeToggleCase() {
