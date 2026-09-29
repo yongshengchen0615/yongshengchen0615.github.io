@@ -280,7 +280,10 @@
       if (key === 'ticket') window.TicketLocationEditors?.template?.refresh();
       if (key === 'eventTicket') window.TicketLocationEditors?.event?.refresh();
     };
-    window.requestAnimationFrame(() => {
+    const scheduleFrame = typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame.bind(window)
+      : (callback) => window.setTimeout(callback, 0);
+    scheduleFrame(() => {
       refreshTicketMap();
       window.setTimeout(refreshTicketMap, 80);
     });
