@@ -120,6 +120,33 @@ test('dynamic test-history buttons expose stable metadata for coverage classific
   assert.match(client, /button\.dataset\.testRunId\s*=\s*String\(run\.id\s*\|\|\s*''\)/);
 });
 
+
+test('tutorial journey keeps the skipped-result helper callable', () => {
+  const runner = read('user-test-control.js');
+  assert.match(runner, /const skipButton = document\.getElementById\('memberTourSkip'\)/);
+  assert.doesNotMatch(runner, /const skip = document\.getElementById\('memberTourSkip'\)/);
+  assert.match(runner, /pairedRunner && state\.participantIndex > 1[\s\S]*?\? skip\(/);
+});
+
+test('paired runner reuses a valid same-run surface session instead of creating a conflicting login', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /function reusablePairedSession\(participant, surface\)/);
+  assert.match(runner, /expiresAt <= Date\.now\(\) \+ 30000/);
+  assert.match(runner, /const login = reusablePairedSession\(participant, surface\) \|\|[\s\S]*?createPairedSession\(participant\.account, surface\)/);
+  assert.match(runner, /const bookingLogin = reusablePairedSession\(participant, 'booking'\) \|\|[\s\S]*?createPairedSession\(participant\.account, 'booking'\)/);
+});
+
+test('paired booking admin mutations wait for the completed user handoff', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.doesNotMatch(runner, /const liveAdminTasks = selectedModules\.includes\('booking'\)/);
+  assert.match(runner, /pairedAdminBookingChain = Promise\.resolve\(\)/);
+  assert.match(
+    runner,
+    /if \(surface === 'booking'\) \{[\s\S]*?participant\.bookingResult = child;[\s\S]*?runPairedAdminBookingLive\(participant\)[\s\S]*?await participant\.adminBookingTask;/
+  );
+  assert.match(runner, /await clientExecution;/);
+});
+
 test('all affected entrypoints bust caches for the fixed controllers', () => {
   for (const surface of ['member','points','event','calendar','booking']) {
     assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=qa-e2e-20260929-\d+/);
@@ -127,5 +154,5 @@ test('all affected entrypoints bust caches for the fixed controllers', () => {
   assert.match(read('booking/index.html'), /app\.js\?v=booking-overnight-20260928-1/);
   assert.match(read('event/index.html'), /app\.js\?v=event-result-hidden-20260929-2/);
   assert.match(read('admin/index.html'), /test-control\.js\?v=test-control-[A-Za-z0-9._-]+/);
-  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20260929-3/);
+  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20260929-4/);
 });

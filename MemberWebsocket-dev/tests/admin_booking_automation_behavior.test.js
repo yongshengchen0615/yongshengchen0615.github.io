@@ -257,11 +257,14 @@ test('live admin discovery can see same-run QA rows before the user handoff is c
   assert.equal(set.cancellationTarget.bookingId, 'cancel-live');
 });
 
-test('live admin runner no longer waits for every client task to finish before booking handling starts', () => {
-  assert.match(source, /waitForLivePairedBookingTarget\(participant, 'any'\)/);
-  assert.match(source, /let adminChain = Promise\.resolve\(\)/);
-  assert.match(source, /Promise\.all\(\[clientExecution, \.\.\.liveAdminTasks\]\)/);
-  assert.doesNotMatch(source, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
+test('paired booking admin waits for the completed member handoff before mutation processing', () => {
+  const handoffIndex = source.indexOf('participant.bookingResult = child;');
+  const adminMutationIndex = source.indexOf('runPairedAdminBookingLive(participant)', handoffIndex);
+  assert.ok(handoffIndex >= 0 && adminMutationIndex > handoffIndex);
+  assert.match(source, /let pairedAdminBookingChain = Promise\.resolve\(\)/);
+  assert.match(source, /pairedAdminBookingChain = Promise\.resolve\(\);/);
+  assert.match(source, /await clientExecution;/);
+  assert.doesNotMatch(source, /liveAdminTasks/);
   assert.match(source, /completeHandoffBeforeMemberUiReuse/);
 });
 
@@ -269,7 +272,7 @@ test('the paired E2E runs the selected modules and gates booking collaboration',
   assert.match(source, /async function runPaired\(options = \{\}\)/);
   assert.match(source, /surfacePlan:replaySource\?replaySurfacePlan\(replaySource\.surfacePlan,selectedModules\):weightedSurfacePlan\(profile,index\+1\)/);
   assert.match(source, /const allAdminDefinitions = planAdminDefinitions\('full', selectedModules\)/);
-  assert.match(source, /selectedModules\.includes\('booking'\) \? state\.participants\.map/);
+  assert.match(source, /if \(surface === 'booking'\) \{[\s\S]*participant\.bookingResult = child;/);
   assert.match(source, /runPairedAdminBookingLive\(participant\)/);
   assert.match(source, /await executeCases\(remainingAdminDefinitions, '管理端 · 其餘完整 E2E'\)/);
   assert.match(source, /await runDeepPairedSuite/);

@@ -30,10 +30,12 @@ test('paired admin booking E2E covers every admin booking action using user-crea
   assert.match(e2e, /separatePendingBooking/);
   assert.match(e2e, /participant\.account\?\.memberId/);
 
-  assert.match(e2e, /waitForLivePairedBookingTarget\(participant, 'any'\)/);
-  assert.match(e2e, /let adminChain = Promise\.resolve\(\)/);
-  assert.match(e2e, /Promise\.all\(\[clientExecution, \.\.\.liveAdminTasks\]\)/);
-  assert.doesNotMatch(e2e, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
+  assert.match(e2e, /participant\.bookingResult = child/);
+  assert.match(e2e, /let pairedAdminBookingChain = Promise\.resolve\(\)/);
+  assert.match(e2e, /pairedAdminBookingChain\.then\(\(\) => runPairedAdminBookingLive\(participant\)\)/);
+  assert.match(e2e, /await participant\.adminBookingTask/);
+  assert.match(e2e, /await clientExecution;/);
+  assert.doesNotMatch(e2e, /liveAdminTasks/);
 });
 
 
