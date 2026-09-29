@@ -41,6 +41,20 @@ Deno.serve(async (request: Request) => {
           return;
         }
 
+        // Recheck current booking state and the actual start immediately before LINE delivery.
+        const reminderGuard = await db.rpc('skip_invalid_booking_reminder', {
+          p_id: job.id,
+          p_attempt: job.attempt_count,
+        });
+        if (reminderGuard.error) {
+          failed++;
+          return;
+        }
+        if (reminderGuard.data === true) {
+          skipped++;
+          return;
+        }
+
         const token = job.channel === 'admin' ? config.data.LINE_BOOKING_ADMIN_CHANNEL_ACCESS_TOKEN : config.data.LINE_BOOKING_MEMBER_CHANNEL_ACCESS_TOKEN;
         let deliveryJob = job;
         if (job.channel === 'member' && String(job.event_key || '').includes(':completed:') && job.booking_id) {

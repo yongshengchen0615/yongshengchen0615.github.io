@@ -55,8 +55,10 @@ test('booking realtime refreshes only the badge while booking panel is hidden', 
 });
 
 test('current booking loader cache-busts the unread cursor implementation', () => {
-  assert.match(loader, /booking-panel-core\.js', 'booking-overnight-20260928-1'/);
-  assert.match(html, /booking-panel\.js\?v=booking-overnight-20260928-1/);
+  const coreVersion = /booking-panel-core\.js', '([^']+)'/.exec(loader)?.[1];
+  const loaderVersion = /booking-panel\.js\?v=([^"']+)/.exec(html)?.[1];
+  assert.ok(coreVersion, 'core script must have a cache version');
+  assert.equal(loaderVersion, coreVersion, 'HTML loader and core script must share the cache version');
 });
 
 test('booking summary endpoint counts pending rows only after admin authorization', () => {

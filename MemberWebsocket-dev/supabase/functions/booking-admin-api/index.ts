@@ -142,6 +142,8 @@ function settingsClient(row: any, storeService?: any): Json {
     maxAdvanceDays: Number(row?.max_advance_days || 0),
     storeServiceMinutes: Number(storeService?.duration_minutes || 10),
     bookingNotice: String(row?.booking_notice || ""),
+    reminderEnabled: row?.reminder_enabled === true,
+    reminderTime: String(row?.reminder_time || "18:00:00").slice(0, 5),
     updatedAt: row?.updated_at || null,
   };
 }
@@ -220,6 +222,8 @@ async function settingsSave(supabase: SupabaseClient, identity: Identity, body: 
   const maxAdvanceDays = Number(body.maxAdvanceDays);
   const storeServiceMinutes = Number(body.storeServiceMinutes);
   const bookingNotice = preserveText(body.bookingNotice, 2001);
+  if (typeof body.reminderEnabled !== "boolean") throw new ApiError(400, "INVALID_REMINDER_ENABLED", "請選擇是否啟用預約提醒。");
+  const reminderTime = normalizeTime(body.reminderTime);
   if (workStartTime === workEndTime || workWindow(workStartTime, workEndTime).end - timeToMinutes(workStartTime) < 5) throw new ApiError(400, "INVALID_WORK_HOURS", "工作時段不可為零長度。" );
   if (!Number.isInteger(slotIntervalMinutes) || slotIntervalMinutes < 5 || slotIntervalMinutes > 120 || slotIntervalMinutes % 5 !== 0) throw new ApiError(400, "INVALID_SLOT_INTERVAL", "切分間隔須為 5–120 分鐘的 5 分鐘倍數。" );
   if (!Number.isInteger(minAdvanceDays) || minAdvanceDays < 0 || minAdvanceDays > 365) throw new ApiError(400, "INVALID_ADVANCE_DAYS", "提前預約天數必須介於 0–365 天。" );
@@ -228,7 +232,7 @@ async function settingsSave(supabase: SupabaseClient, identity: Identity, body: 
   if (!Number.isInteger(storeServiceMinutes) || storeServiceMinutes < 1 || storeServiceMinutes > 720) throw new ApiError(400, "INVALID_STORE_SERVICE_MINUTES", "店內服務分鐘必須介於 1–720 分鐘。" );
   if (bookingNotice.length > 2000) throw new ApiError(400, "INVALID_BOOKING_NOTICE", "預約說明不可超過 2,000 字。" );
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
-  const result = await supabase.rpc("save_booking_shared_settings_v3", {
+  const result = await supabase.rpc("save_booking_shared_settings_v4", {
     p_work_start_time: `${workStartTime}:00`,
     p_work_end_time: `${workEndTime}:00`,
     p_slot_interval_minutes: slotIntervalMinutes,
@@ -236,6 +240,8 @@ async function settingsSave(supabase: SupabaseClient, identity: Identity, body: 
     p_max_advance_days: maxAdvanceDays,
     p_booking_notice: bookingNotice,
     p_store_service_minutes: storeServiceMinutes,
+    p_reminder_enabled: body.reminderEnabled,
+    p_reminder_time: `${reminderTime}:00`,
     p_expected_updated_at: expectedUpdatedAt || null,
     p_actor: identity.lineUserId,
   });

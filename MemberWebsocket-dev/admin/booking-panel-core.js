@@ -145,6 +145,15 @@
                 </label>
               </section>
 
+              <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminReminderHeading">
+                <div class="booking-admin-settings-block-heading">
+                  <div><span class="booking-admin-settings-eyebrow">營運通知</span><h4 id="bookingAdminReminderHeading">預約前一天提醒</h4></div>
+                  <span class="booking-admin-settings-badge">台北時間</span>
+                </div>
+                <label class="booking-admin-toggle"><input id="bookingAdminReminderEnabled" type="checkbox"><span><strong>啟用前一天 LINE 提醒</strong><small>僅提醒已確認且仍有效的預約；測試會員不會收到 LINE 訊息。</small></span></label>
+                <label class="booking-admin-settings-field"><span>前一天提醒時間</span><input id="bookingAdminReminderTime" type="time" step="60" value="18:00" required><small>依實際預約開始日期的前一天計算，包含跨夜營業時段。</small></label>
+              </section>
+
               <section class="booking-admin-settings-block booking-admin-settings-notice" aria-labelledby="bookingAdminNoticeHeading">
                 <div class="booking-admin-settings-block-heading">
                   <div><span class="booking-admin-settings-eyebrow">會員端內容</span><h4 id="bookingAdminNoticeHeading">預約說明</h4></div>
@@ -194,7 +203,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -499,6 +508,8 @@
     els.bookingAdminMaxAdvanceDays.value = String(Number(settings.maxAdvanceDays || 0));
     els.bookingAdminStoreServiceMinutes.value = String(Number(settings.storeServiceMinutes || 10));
     els.bookingAdminNotice.value = String(settings.bookingNotice || '');
+    els.bookingAdminReminderEnabled.checked = settings.reminderEnabled === true;
+    els.bookingAdminReminderTime.value = String(settings.reminderTime || '18:00');
     renderHoursPreview();
   }
   function renderHoursPreview() {
@@ -597,6 +608,8 @@
     if (!/^\d{2}:\d{2}$/.test(workStartTime) || !/^\d{2}:\d{2}$/.test(workEndTime) || workStartTime === workEndTime || [workStartTime, workEndTime].some((time) => Number(time.slice(0, 2)) > 23 || Number(time.slice(3)) > 59 || Number(time.slice(3)) % 5 !== 0)) return showMessage(els.bookingAdminSettingsMessage, '工作時間格式錯誤或時段長度為零。', 'error');
     if (!Number.isInteger(slotIntervalMinutes) || slotIntervalMinutes < 5 || slotIntervalMinutes > 120 || slotIntervalMinutes % 5 !== 0) return showMessage(els.bookingAdminSettingsMessage, '切分間隔須為 5–120 分鐘的 5 分鐘倍數。', 'error');
     if (bookingNotice.length > 2000) return showMessage(els.bookingAdminSettingsMessage, '預約說明不可超過 2,000 字。', 'error');
+    const reminderTime = els.bookingAdminReminderTime.value;
+    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(reminderTime)) return showMessage(els.bookingAdminSettingsMessage, '請設定有效的前一天提醒時間。', 'error');
     state.busy = true; clearMessage(els.bookingAdminSettingsMessage);
     try {
       const result = await manageRequest('admin.booking.settings.save', {
@@ -607,6 +620,8 @@
         maxAdvanceDays,
         storeServiceMinutes,
         bookingNotice,
+        reminderEnabled: els.bookingAdminReminderEnabled.checked,
+        reminderTime,
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',
       }, true);
       state.booking.settings = result.settings || state.booking.settings;
