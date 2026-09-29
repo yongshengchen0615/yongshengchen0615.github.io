@@ -7,6 +7,7 @@ const { JSDOM } = require('jsdom');
 const root = path.join(__dirname, '../..');
 const html = fs.readFileSync(path.join(root, 'member/index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'member/app.js'), 'utf8');
+const profileExtension = fs.readFileSync(path.join(root, 'member/profile-extension.js'), 'utf8');
 const terms = { id: 'terms-2', version: '2026-10-v2', title: '新版條款', summary: '請閱讀', body: '完整條款內容' };
 const profile = { profileComplete: true, membershipRequired: false, joinedAt: '2026-01-01' };
 
@@ -42,6 +43,7 @@ async function start(consentRequired, options = {}) {
     },
   };
   w.MembershipProgress = { render() {} };
+  if (options.loadProfileExtension) w.eval(profileExtension);
   w.eval(app);
   w.dispatchEvent(new w.Event('DOMContentLoaded'));
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -140,11 +142,12 @@ test('pending member verifies the latest terms when checking consent before regi
   } finally { dom.window.close(); }
 });
 
-test('pending member submits the verified current terms and completes registration', async () => {
+test('pending member submits terms through canonical app flow even with profile extension loaded', async () => {
   const pendingProfile = { profileComplete: false, membershipRequired: true, joinedAt: '' };
   const joinedProfile = { profileComplete: true, membershipRequired: false, joinedAt: '2026-09-29' };
   const { dom, w, calls } = await start(true, {
     profile: pendingProfile,
+    loadProfileExtension: true,
     bootstrapResult: () => ({ profile: pendingProfile, terms, consentRequired: true }),
     profileSaveResult: () => ({ profile: joinedProfile }),
   });
