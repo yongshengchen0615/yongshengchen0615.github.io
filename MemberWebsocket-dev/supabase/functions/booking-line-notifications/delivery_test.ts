@@ -71,6 +71,36 @@ Deno.test('booking notification builds a structured mobile-friendly Flex Message
   assert(components.some((item) => item.text === 'Lumen Club 預約系統'), 'Flex footer must identify the booking system');
 });
 
+Deno.test('confirmed member notification renders current entitlement sections', () => {
+  const message = buildBookingFlexMessage({
+    ...sampleJob,
+    benefits: {
+      pointTickets: ['滿 10 點兌換券｜有效至 2026/10/31｜現場出示'],
+      eventTickets: [],
+      tierActivities: ['金級限定體驗日｜2026/10/05–2026/10/06'],
+      tierLabel: '金級會員',
+    },
+  });
+
+  const body = message.contents.body as Record<string, unknown>;
+  const cards = body.contents as Array<Record<string, unknown>>;
+  assert(cards.length === 6, 'booking confirmation should append three entitlement cards');
+
+  const components = collectComponents(message.contents);
+  assert(components.some((item) => item.text === '可用集點卡票券'),
+    'confirmation must include the point-ticket entitlement section');
+  assert(components.some((item) => item.text === '可用活動票券'),
+    'confirmation must include the event-ticket entitlement section');
+  assert(components.some((item) => item.text === '會員階級活動（金級會員）'),
+    'confirmation must identify the current membership tier');
+  assert(components.some((item) => item.text === '滿 10 點兌換券｜有效至 2026/10/31｜現場出示'),
+    'confirmation must render current usable point tickets');
+  assert(components.some((item) => item.text === '金級限定體驗日｜2026/10/05–2026/10/06'),
+    'confirmation must render tier-eligible activities');
+  assert(components.some((item) => item.text === '目前無可用項目'),
+    'an empty entitlement category must render the explicit empty state');
+});
+
 Deno.test('legacy aggregate service notification remains compatible', () => {
   const message = buildBookingFlexMessage({
     ...sampleJob,
