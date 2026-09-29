@@ -21,10 +21,18 @@ async function run() {
       },
     },
   });
-  window.fetch = async () => ({
-    ok: true,
-    json: async () => [{ display_name: '台南火車站, 台南市', lat: '22.9971', lon: '120.2123' }],
-  });
+  let geocodeCalls = 0;
+  const geocodeUrls = [];
+  window.fetch = async (url) => {
+    geocodeCalls += 1;
+    geocodeUrls.push(String(url));
+    return {
+      ok: true,
+      json: async () => geocodeCalls === 1
+        ? []
+        : [{ display_name: '中山路, 台南市', lat: '22.9968', lon: '120.2131' }],
+    };
+  };
 
   window.eval(readFileSync(join(root, 'admin/coupon-location-editor.js'), 'utf8'));
   window.TicketLocationEditors.init();
@@ -72,16 +80,21 @@ async function run() {
   assert.equal(editor.get()[0].radiusMeters, 180);
 
   editor.set([]);
-  $('eventTicketAddressSearch').value = '台南火車站';
+  $('eventTicketAddressSearch').value = '台南市中西區中山路999號8樓';
   await editor.searchAddress();
+  assert.equal(geocodeCalls, 2, 'missing exact address must trigger one rate-limited nearby fallback');
+  assert.match(geocodeUrls[0], /countrycodes=tw/);
+  assert.match(decodeURIComponent(geocodeUrls[1]), /台南市中西區中山路/);
   const searchResult = $('eventTicketAddressResults').querySelector('button');
-  assert.ok(searchResult, 'address search must render a selectable result');
+  assert.ok(searchResult, 'nearby fallback must render a selectable result');
+  assert.match(searchResult.textContent, /附近候選/);
+  assert.match($('eventTicketMapStatus').textContent, /最接近/);
   searchResult.click();
-  assert.equal(editor.get().length, 0, 'address result must remain a candidate until confirmation');
-  assert.match($('eventTicketLocationDraftName').value, /台南火車站/);
+  assert.equal(editor.get().length, 0, 'nearby address result must remain a candidate until confirmation');
+  assert.match($('eventTicketLocationDraftName').value, /中山路/);
   $('addEventTicketLocationButton').click();
   assert.equal(editor.get().length, 1);
-  assert.match(editor.get()[0].name, /台南火車站/);
+  assert.match(editor.get()[0].name, /中山路/);
 
   editor.set([]);
   editor.setDraft(22.99, 120.21, '候選地點', { radiusMeters: 300 });

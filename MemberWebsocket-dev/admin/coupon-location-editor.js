@@ -40,7 +40,9 @@
     let initialized = false;
     let searchBusy = false;
     let lastSearchAt = 0;
+    let lastGeocoderRequestAt = 0;
     let searchController = null;
+    const geocodeCache = new Map();
 
     const byId = (id) => document.getElementById(id);
     const checkbox = () => byId(config.checkboxId);
@@ -367,6 +369,122 @@
       searchResults()?.replaceChildren();
     }
 
+    function geocoderCandidates(result) {
+      return Array.isArray(result)
+        ? result.filter((item) => validCoordinate(Number(item?.lat), Number(item?.lon))).slice(0, 5)
+        : [];
+    }
+
+    function relaxedAddressQuery(query) {
+      const normalized = String(query || '')
+        .replace(/[，、]/g, ',')
+        .replace(/臺/g, '台')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const roadMatch = normalized.match(/^(.+?[縣市].+?[區鄉鎮市].+?(?:路|街|大道))/u);
+      if (roadMatch?.[1]?.length >= 4) return roadMatch[1].trim();
+
+      return normalized
+        .replace(/\d+\s*樓(?:之\s*\d+)?(?:\s*\d+\s*室)?.*$/u, '')
+        .replace(/\d+(?:[-之]\d+)?\s*號.*$/u, '')
+        .replace(/[\s,]+$/g, '')
+        .trim();
+    }
+
+    function mapViewbox() {
+      const bounds = map?.getBounds?.();
+      if (!bounds) return '';
+      const west = Number(bounds.getWest?.());
+      const north = Number(bounds.getNorth?.());
+      const east = Number(bounds.getEast?.());
+      const south = Number(bounds.getSouth?.());
+      if (![west, north, east, south].every(Number.isFinite)) return '';
+      return `${west},${north},${east},${south}`;
+    }
+
+    function sortCandidatesByMapDistance(candidates) {
+      const center = map?.getCenter?.();
+      const centerLat = Number(center?.lat);
+      const centerLng = Number(center?.lng);
+      if (!validCoordinate(centerLat, centerLng)) return candidates;
+
+      const latitudeScale = Math.cos(centerLat * Math.PI / 180);
+      return [...candidates].sort((left, right) => {
+        const leftLat = Number(left?.lat);
+        const leftLng = Number(left?.lon);
+        const rightLat = Number(right?.lat);
+        const rightLng = Number(right?.lon);
+        const leftDistance = ((leftLat - centerLat) ** 2) + (((leftLng - centerLng) * latitudeScale) ** 2);
+        const rightDistance = ((rightLat - centerLat) ** 2) + (((rightLng - centerLng) * latitudeScale) ** 2);
+        return leftDistance - rightDistance;
+      });
+    }
+
+    async function waitForGeocoderSlot() {
+      const waitMs = Math.max(0, SEARCH_MIN_INTERVAL_MS - (Date.now() - lastGeocoderRequestAt));
+      if (waitMs > 0) await new Promise((resolve) => window.setTimeout(resolve, waitMs));
+      if (searchController?.signal?.aborted) {
+        const error = new Error('ABORTED');
+        error.name = 'AbortError';
+        throw error;
+      }
+    }
+
+    async function fetchGeocoder(query, options = {}) {
+      const params = new URLSearchParams({
+        q: query,
+        format: 'jsonv2',
+        limit: '5',
+        addressdetails: '1',
+        countrycodes: 'tw',
+        'accept-language': 'zh-TW',
+      });
+      if (options.preferMapArea) {
+        const viewbox = mapViewbox();
+        if (viewbox) {
+          params.set('viewbox', viewbox);
+          params.set('bounded', '0');
+        }
+      }
+
+      const cacheKey = params.toString();
+      if (geocodeCache.has(cacheKey)) return geocodeCache.get(cacheKey);
+
+      await waitForGeocoderSlot();
+      lastGeocoderRequestAt = Date.now();
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        headers: { Accept: 'application/json' },
+        signal: searchController?.signal,
+        referrerPolicy: 'strict-origin-when-cross-origin',
+      });
+      if (!response.ok) throw new Error('GEOCODER_HTTP_ERROR');
+
+      const result = await response.json();
+      const candidates = geocoderCandidates(result);
+      geocodeCache.set(cacheKey, candidates);
+      if (geocodeCache.size > 30) geocodeCache.delete(geocodeCache.keys().next().value);
+      return candidates;
+    }
+
+    function renderAddressCandidates(candidates, query, isNearbyFallback = false) {
+      const container = searchResults();
+      if (!container) return;
+      container.replaceChildren(...candidates.map((candidate) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'button button-outline';
+        const label = String(candidate.display_name || query).trim();
+        button.textContent = isNearbyFallback ? `附近候選：${label.slice(0, 220)}` : label.slice(0, 240);
+        button.addEventListener('click', () => {
+          setDraft(Number(candidate.lat), Number(candidate.lon), label.slice(0, 100));
+          if (searchInput()) searchInput().value = label;
+          clearSearchResults();
+        });
+        return button;
+      }));
+    }
+
     async function searchAddress() {
       const query = String(searchInput()?.value || '').trim();
       if (query.length < 2) return setStatus('請輸入至少 2 個字的地址或地標。', true);
@@ -376,47 +494,38 @@
         setStatus('地址搜尋請稍候 1 秒再試。', true);
         return;
       }
+
       searchBusy = true;
       lastSearchAt = Date.now();
       if (searchButton()) searchButton().disabled = true;
       searchController?.abort();
       searchController = typeof AbortController === 'function' ? new AbortController() : null;
-      const timeout = window.setTimeout(() => searchController?.abort(), 8000);
+      const timeout = window.setTimeout(() => searchController?.abort(), 12000);
       setStatus('正在搜尋地址…');
       clearSearchResults();
+
       try {
-        const params = new URLSearchParams({ q: query, format: 'jsonv2', limit: '5', 'accept-language': 'zh-TW' });
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-          headers: { Accept: 'application/json' },
-          signal: searchController?.signal,
-          referrerPolicy: 'strict-origin-when-cross-origin',
-        });
-        if (!response.ok) throw new Error('GEOCODER_HTTP_ERROR');
-        const result = await response.json();
-        const candidates = Array.isArray(result)
-          ? result.filter((item) => validCoordinate(Number(item?.lat), Number(item?.lon))).slice(0, 5)
-          : [];
+        let candidates = await fetchGeocoder(query);
+        let isNearbyFallback = false;
+
         if (!candidates.length) {
-          setStatus('找不到相符地址，請換更完整的地址或地標名稱。', true);
+          const relaxedQuery = relaxedAddressQuery(query);
+          setStatus('找不到精確地址，正在搜尋最接近的地址／地標…');
+          candidates = sortCandidatesByMapDistance(
+            await fetchGeocoder(relaxedQuery || query, { preferMapArea: true })
+          );
+          isNearbyFallback = true;
+        }
+
+        if (!candidates.length) {
+          setStatus('仍找不到接近的地址。可先把地圖移到附近區域，再點選地圖位置。', true);
           return;
         }
-        const container = searchResults();
-        if (container) {
-          container.replaceChildren(...candidates.map((candidate) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'button button-outline';
-            button.textContent = String(candidate.display_name || query).slice(0, 240);
-            button.addEventListener('click', () => {
-              const label = String(candidate.display_name || query).trim();
-              setDraft(Number(candidate.lat), Number(candidate.lon), label.slice(0, 100));
-              if (searchInput()) searchInput().value = label;
-              clearSearchResults();
-            });
-            return button;
-          }));
-        }
-        setStatus(`找到 ${candidates.length} 個結果。選擇其中一個後，再確認半徑並新增。`);
+
+        renderAddressCandidates(candidates, query, isNearbyFallback);
+        setStatus(isNearbyFallback
+          ? `找不到精確地址，已顯示 ${candidates.length} 個最接近的候選位置；請確認後再新增。`
+          : `找到 ${candidates.length} 個結果。選擇其中一個後，再確認半徑並新增。`);
       } catch (error) {
         if (error?.name !== 'AbortError') setStatus('地址搜尋暫時無法使用，請稍後再試或直接使用 GPS／地圖選點。', true);
         else setStatus('地址搜尋逾時，請重試。', true);
