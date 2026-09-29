@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-29.1';
+  const VERSION = '2026-09-29.2';
   const HISTORY_KEY = 'member-user-qa-history-v1';
   const PANEL_ID = 'userAutomationTestPanel';
   const LAUNCHER_ID = 'userAutomationTestLauncher';
@@ -1072,6 +1072,52 @@
       : fail('後端未確認目前測試 Session。', { active: true }, { active: Boolean(session && session.active) });
   }
 
+  async function dismissTourForE2E() {
+    const dialog = document.getElementById('memberTourDialog');
+    const overlay = document.getElementById('memberTourOverlay');
+    const focus = document.getElementById('memberTourFocus');
+    const app = document.getElementById('app') || document.querySelector('.app-shell');
+    const masks = Array.from(document.querySelectorAll('[data-member-tour-mask]'));
+    if (!dialog) {
+      if (app) app.inert = false;
+      return { dismissed: true, forced: false, dialogExists: false };
+    }
+    if (dialog.classList.contains('hidden')) {
+      if (app) app.inert = false;
+      return { dismissed: true, forced: false, dialogExists: true };
+    }
+
+    dialog.dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true
+    }));
+    const dismissedNormally = Boolean(await waitFor(
+      () => dialog.classList.contains('hidden') && (!app || app.inert !== true) ? dialog : null,
+      700,
+      40
+    ));
+    if (dismissedNormally) return { dismissed: true, forced: false, dialogExists: true };
+
+    // A broken tutorial must fail its own case, not lock the rest of the E2E run behind app.inert.
+    dialog.classList.add('hidden');
+    dialog.classList.remove('member-tour-dialog-top');
+    dialog.style.removeProperty('--member-tour-progress');
+    overlay?.classList.add('hidden');
+    focus?.classList.add('hidden');
+    for (const mask of masks) {
+      mask.style.cssText = mask.dataset.memberTourMask === 'top'
+        ? 'left:0;top:0;right:0;bottom:0'
+        : 'display:none';
+    }
+    if (app) app.inert = false;
+    return {
+      dismissed: dialog.classList.contains('hidden') && (!app || app.inert !== true),
+      forced: true,
+      dialogExists: true
+    };
+  }
+
   async function tourAutoStartCase() {
     const dialog = document.getElementById('memberTourDialog');
     const app = document.getElementById('app') || document.querySelector('.app-shell');
@@ -1089,27 +1135,19 @@
       );
     }
 
-    dialog.dispatchEvent(new window.KeyboardEvent('keydown', {
-      key: 'Escape',
-      bubbles: true,
-      cancelable: true
-    }));
-    const dismissed = Boolean(await waitFor(
-      () => dialog.classList.contains('hidden') ? dialog : null,
-      1200,
-      40
-    ));
+    const cleanup = await dismissTourForE2E();
+    const dismissed = cleanup.dismissed;
     const appInteractive = !app || app.inert !== true;
-    return dismissed && appInteractive
+    return dismissed && appInteractive && !cleanup.forced
       ? pass(
           '測試帳號與正式帳號一致：進入頁面會自動啟動教學；E2E 以非持久 dismiss 關閉後繼續案例。',
           { autoOpened: true, dismissedWithoutDailySkip: true, appInteractive: true, pairedRunner },
-          { autoOpened: true, dismissedWithoutDailySkip: true, appInteractive, pairedRunner }
+          { autoOpened: true, dismissedWithoutDailySkip: true, appInteractive, pairedRunner, forcedCleanup: false }
         )
       : fail(
           '教學已自動出現，但 E2E 無法安全關閉教學並恢復主畫面互動。',
           { autoOpened: true, dismissedWithoutDailySkip: true, appInteractive: true, pairedRunner },
-          { autoOpened: true, dismissedWithoutDailySkip: dismissed, appInteractive, pairedRunner }
+          { autoOpened: true, dismissedWithoutDailySkip: dismissed, appInteractive, pairedRunner, forcedCleanup: cleanup.forced }
         );
   }
 
@@ -1125,10 +1163,28 @@
     const progress = document.getElementById('memberTourProgress');
     const masks = Array.from(document.querySelectorAll('[data-member-tour-mask]'));
     const prefix = surface === 'member' ? 'member-tour:' : `user-tour:${surface}:`;
-    const evidence = { surface, maskRegions: masks.map((mask) => mask.dataset.memberTourMask), steps: [], skippedToday: false, replayed: false, completed: false, stateRestored: false };
+    const pairedRunner = new URLSearchParams(window.location.search).has('qaPair');
+    const evidence = { surface, participantIndex: state.participantIndex, maskRegions: masks.map((mask) => mask.dataset.memberTourMask), steps: [], skippedToday: false, replayed: false, completed: false, stateRestored: false, forcedCleanup: false };
     const expected = { overlayOutsideTarget: true, stepsNavigable: true, explicitDailySkip: true, manualReplay: true, completionClearsSkip: true, stateRestored: true };
     if (![dialog, launcher, overlay, focus, app, next, back, skip, progress].every(Boolean)) {
       return fail('使用教學必要控制項缺失。', expected, evidence);
+    }
+
+    if (pairedRunner && state.participantIndex > 1) {
+      const cleanup = await dismissTourForE2E();
+      evidence.forcedCleanup = cleanup.forced;
+      evidence.stateRestored = true;
+      return cleanup.dismissed && !cleanup.forced
+        ? skip(
+            '協同 E2E 僅由第一位測試會員完整走教學；其他會員已驗證自動啟動並安全關閉，避免重複導覽拖慢整輪診斷。',
+            { fullJourneyParticipant: 1, blockerCleared: true },
+            { ...evidence, blockerCleared: true }
+          )
+        : fail(
+            '次要測試會員的教學無法解除，可能阻塞後續 E2E。',
+            { blockerCleared: true },
+            { ...evidence, blockerCleared: cleanup.dismissed }
+          );
     }
 
     const tourKeys = () => Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
@@ -1203,9 +1259,8 @@
     } catch (error) {
       outcome = fail(String(error?.message || error), expected, evidence);
     } finally {
-      if (!dialog.classList.contains('hidden')) {
-        dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-      }
+      const cleanup = await dismissTourForE2E();
+      evidence.forcedCleanup = cleanup.forced;
       try {
         if (!before) throw new Error('教學狀態快照不可用。');
         for (const key of new Set([...before.keys(), ...tourKeys()])) {
@@ -1215,8 +1270,14 @@
         evidence.stateRestored = tourKeys().length === before.size
           && [...before].every(([key, value]) => localStorage.getItem(key) === value);
       } catch (_) { evidence.stateRestored = false; }
-      if (!evidence.stateRestored || app.inert || !dialog.classList.contains('hidden')) {
-        outcome = fail('教學 E2E 結束後未能還原本機狀態或主畫面互動。', expected, evidence);
+      if (!evidence.stateRestored || app.inert || !dialog.classList.contains('hidden') || cleanup.forced) {
+        outcome = fail(
+          cleanup.forced
+            ? '教學關閉事件失效；E2E 已強制解除遮罩與 inert 以避免阻塞後續案例。'
+            : '教學 E2E 結束後未能還原本機狀態或主畫面互動。',
+          expected,
+          evidence
+        );
       }
     }
     outcome.actual = safeJson(evidence);
