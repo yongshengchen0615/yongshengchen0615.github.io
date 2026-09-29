@@ -84,9 +84,26 @@ function mapDatabaseError(error: unknown): ApiError {
   for (const [needle, status, code, userMessage] of rules) if (message.includes(needle)) return new ApiError(status, code, userMessage);
   return new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成預約操作。");
 }
-function errorResponse(origin: string | null, error: unknown): Response {
-  const apiError = error instanceof ApiError ? error : mapDatabaseError(error);
-  return response(origin, { ok: false, status: apiError.status, error: { code: apiError.code, message: apiError.message, details: apiError.details } }, apiError.status);
+function normalizeError(error: unknown): ApiError {
+  return error instanceof ApiError ? error : mapDatabaseError(error);
+}
+function reportServerError(apiError: ApiError, action: string, requestId: string): void {
+  if (apiError.status < 500) return;
+  console.error(JSON.stringify({
+    event: "booking_admin_operation_failed",
+    request_id: requestId,
+    action: action || "unknown",
+    status: apiError.status,
+    code: apiError.code,
+  }));
+}
+function errorResponse(origin: string | null, apiError: ApiError, requestId: string): Response {
+  return response(origin, {
+    ok: false,
+    status: apiError.status,
+    requestId,
+    error: { code: apiError.code, message: apiError.message, details: apiError.details },
+  }, apiError.status);
 }
 function dbClient(): SupabaseClient {
   const url = env("SUPABASE_URL");
@@ -320,10 +337,12 @@ Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
   if (request.method !== "POST") return response(origin, { ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "只支援 POST。" } }, 405);
   if (origin && !allowedOrigins().has(origin)) return response(origin, { ok: false, error: { code: "ORIGIN_DENIED", message: "不允許的來源。" } }, 403);
+  const requestId = crypto.randomUUID();
+  let action = "unknown";
   try {
     const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
 
-    const action = asText(body.action, 100);
+    action = asText(body.action, 100);
     if (!action.startsWith("admin.booking.")) throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     const identity = await verifyLineIdToken(asText(body.idToken, 5000));
     const supabase = dbClient();
@@ -332,7 +351,9 @@ Deno.serve(async (request: Request) => {
     const data = await route(supabase, identity, action, body);
     return response(origin, { ok: true, status: 200, data });
   } catch (error) {
-    return errorResponse(origin, error);
+    const apiError = normalizeError(error);
+    reportServerError(apiError, action, requestId);
+    return errorResponse(origin, apiError, requestId);
   }
 });
 
