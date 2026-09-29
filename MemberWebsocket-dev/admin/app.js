@@ -276,6 +276,14 @@
     const entry = state.editorModals[key]; if (!entry) return;
     entry.opener = opener instanceof HTMLElement ? opener : document.activeElement;
     entry.modal.classList.remove('hidden');
+    const refreshTicketMap = () => {
+      if (key === 'ticket') window.TicketLocationEditors?.template?.refresh();
+      if (key === 'eventTicket') window.TicketLocationEditors?.event?.refresh();
+    };
+    window.requestAnimationFrame(() => {
+      refreshTicketMap();
+      window.setTimeout(refreshTicketMap, 80);
+    });
     const focusTarget = entry.modal.querySelector('input:not([type="hidden"]), select, textarea, button:not(.editor-modal-close)');
     (focusTarget || entry.close).focus();
   }
