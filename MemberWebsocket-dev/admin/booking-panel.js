@@ -106,7 +106,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'csp-hardening-20260929-1');
+      return load('booking-panel-core.js', 'booking-csp-hardening-20260929-1');
     })
     .then(() => {
       openLegacyBookingRouteWhenReady();
