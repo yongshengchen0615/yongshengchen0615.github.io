@@ -3755,3 +3755,50 @@ html[data-theme] :where(.form-message.error, .modal-message, .error-mark, .statu
     transition: none !important;
   }
 }
+
+
+/* Material 3 entry surface 2026-09-29 */
+html[data-theme][data-ui-system="material-3"] body > main .links {
+  gap: 12px;
+}
+
+html[data-theme][data-ui-system="material-3"] body > main .links a {
+  min-height: 104px;
+  padding: 18px 20px;
+  border: 1px solid transparent;
+  border-radius: var(--md-sys-shape-corner-large);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: var(--md-sys-elevation-level1);
+  transition:
+    background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+    box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+    transform var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+}
+
+html[data-theme][data-ui-system="material-3"] body > main .links a .arrow {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+}
+
+@media (hover: hover) {
+  html[data-theme][data-ui-system="material-3"] body > main .links a:hover {
+    border-color: transparent;
+    background: var(--md-sys-color-surface-container);
+    box-shadow: var(--md-sys-elevation-level2);
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 680px) {
+  html[data-theme][data-ui-system="material-3"] body > main .links a {
+    min-height: 88px;
+    border-radius: var(--md-sys-shape-corner-medium);
+    box-shadow: none;
+  }
+}
