@@ -118,3 +118,15 @@
     line-height: 0;
   }
 }
+
+
+/* CSP-safe holiday details that were previously injected by calendar-flow.js. */
+.calendar-legend .holiday-dot {
+  background: #df6b4d;
+}
+
+.booking-holiday-date {
+  margin: 0 0 12px;
+  color: #66746d;
+  font-weight: 700;
+}
