@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-29.5';
+  const VERSION = '2026-09-29.6';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -1557,8 +1557,21 @@
   }
 
 
-  async function waitFor(predicate, timeoutMs = 5000, intervalMs = 40) {
-    const deadline = performance.now() + Math.max(100, Number(timeoutMs) || 5000);
+  const E2E_POLL_FAST_WINDOW_MS = 500;
+  const E2E_POLL_MEDIUM_WINDOW_MS = 2000;
+  const E2E_POLL_MEDIUM_INTERVAL_MS = 120;
+  const E2E_POLL_IDLE_INTERVAL_MS = 220;
+
+  function adaptivePollInterval(baseIntervalMs, elapsedMs) {
+    const base = Math.max(50, Number(baseIntervalMs) || 60);
+    if (elapsedMs < E2E_POLL_FAST_WINDOW_MS) return base;
+    if (elapsedMs < E2E_POLL_MEDIUM_WINDOW_MS) return Math.max(base, E2E_POLL_MEDIUM_INTERVAL_MS);
+    return Math.max(base, E2E_POLL_IDLE_INTERVAL_MS);
+  }
+
+  async function waitFor(predicate, timeoutMs = 5000, intervalMs = 60) {
+    const startedAt = performance.now();
+    const deadline = startedAt + Math.max(100, Number(timeoutMs) || 5000);
     let lastError = null;
     while (performance.now() < deadline) {
       try {
@@ -1567,7 +1580,10 @@
       } catch (error) {
         lastError = error;
       }
-      await wait(intervalMs);
+      const now = performance.now();
+      const remainingMs = Math.max(0, deadline - now);
+      if (!remainingMs) break;
+      await wait(Math.min(adaptivePollInterval(intervalMs, now - startedAt), remainingMs));
     }
     if (lastError) throw lastError;
     return null;
