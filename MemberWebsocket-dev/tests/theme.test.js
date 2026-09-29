@@ -14,7 +14,7 @@ test('all admin and member surfaces load the shared theme controller and stylesh
   for (const entry of entries) {
     const html = read(path.join(entry, 'index.html'));
     assert.match(html, /\.\.\/theme\.css\?v=[^"'<>]+/, entry + ' should load versioned theme.css');
-    assert.match(html, /\.\.\/theme\.js\?v=theme-contrast-20260924-4/, entry + ' should load theme.js');
+    assert.match(html, /\.\.\/theme\.js\?v=m3-ui-20260929-1/, entry + ' should load M3 theme.js');
   }
 });
 
