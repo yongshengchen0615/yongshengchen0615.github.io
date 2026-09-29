@@ -1878,7 +1878,8 @@
       render();
       if (state.floating) state.floating.textContent = 'E2E 執行中 · 多用戶隨機並行 · 測試用戶 ' + participant.index + ' · ' + label;
       try {
-        const login = await createPairedSession(participant.account, surface);
+        const login = reusablePairedSession(participant, surface) ||
+          await createPairedSession(participant.account, surface);
         participant.login = login;
         participant.surfaceLogins = participant.surfaceLogins || {};
         participant.surfaceLogins[surface] = login;
@@ -3642,12 +3643,8 @@
       if (participant) {
         previousLogin = participant.login || null;
         previousSurface = participant.lastSurfaceKey || 'member';
-        const cachedBookingLogin = participant.surfaceLogins?.booking || (
-          previousSurface === 'booking' ? previousLogin : null
-        );
-        const bookingLogin = cachedBookingLogin?.testSessionToken
-          ? cachedBookingLogin
-          : await createPairedSession(participant.account, 'booking');
+        const bookingLogin = reusablePairedSession(participant, 'booking') ||
+          await createPairedSession(participant.account, 'booking');
         participant.surfaceLogins = participant.surfaceLogins || {};
         participant.surfaceLogins.booking = bookingLogin;
         participant.login = bookingLogin;
@@ -5915,6 +5912,19 @@
     });
     render();
     return fixture;
+  }
+
+  function reusablePairedSession(participant, surface) {
+    const cached = participant?.surfaceLogins?.[surface] || (
+      participant?.lastSurfaceKey === surface ? participant?.login : null
+    );
+    if (!cached?.testSessionToken) return null;
+    if (cached?.account?.memberId &&
+        String(cached.account.memberId) !== String(participant?.account?.memberId || '')) return null;
+    if (String(cached.surface || surface) !== String(surface || '')) return null;
+    const expiresAt = new Date(cached.expiresAt || 0).getTime();
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30000) return null;
+    return cached;
   }
 
   async function createPairedSession(account, surface = 'member') {
