@@ -980,7 +980,10 @@ function eventTicketClient(row: any, claimedCount = 0, admin = false): Json {
     quota: Number(row.quota || 0),
     claimedCount,
     requiresLocation: Boolean(row.requires_location),
+    redemptionLocationNames: Boolean(row.requires_location) && Array.isArray(row.redemption_locations)
+      ? row.redemption_locations.map((location:any) => String(location.name || "")).filter(Boolean) : [],
     ...(admin ? {
+      redemptionLocations: Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
       redemptionLatitude: row.redemption_latitude == null ? null : Number(row.redemption_latitude),
       redemptionLongitude: row.redemption_longitude == null ? null : Number(row.redemption_longitude),
       redemptionRadiusMeters: row.redemption_radius_meters == null ? null : Number(row.redemption_radius_meters),
@@ -1495,15 +1498,24 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   const quota = Number(input.quota || 0);
   if (!Number.isInteger(quota) || quota < 0 || quota > 1_000_000) throw new ApiError(400,"INVALID_QUOTA","限量張數必須是 0–1,000,000。");
   const requiresLocation = input.requiresLocation === true;
-  const latitude = requiresLocation ? Number(input.redemptionLatitude) : null;
-  const longitude = requiresLocation ? Number(input.redemptionLongitude) : null;
-  const radius = requiresLocation ? Number(input.redemptionRadiusMeters) : null;
-  if (requiresLocation && (ticketType !== "coupon" || input.redemptionLatitude == null || input.redemptionLongitude == null
-    || input.redemptionLatitude === "" || input.redemptionLongitude === ""
-    || !Number.isFinite(latitude) || latitude! < -90 || latitude! > 90
-    || !Number.isFinite(longitude) || longitude! < -180 || longitude! > 180
-    || !Number.isInteger(radius) || radius! < 50 || radius! > 2000))
-    throw new ApiError(400,"INVALID_LOCATION_RULE","優惠券核銷定位需要有效座標與 50–2000 公尺範圍。");
+  // Older admin tabs still send the original single-site fields during rollout.
+  const rawLocations = Array.isArray(input.redemptionLocations) ? input.redemptionLocations
+    : requiresLocation ? [{ name: "原核銷地點", latitude: input.redemptionLatitude,
+      longitude: input.redemptionLongitude, radiusMeters: input.redemptionRadiusMeters }] : [];
+  if (requiresLocation && (ticketType !== "coupon" || !Array.isArray(rawLocations) || rawLocations.length < 1 || rawLocations.length > 20))
+    throw new ApiError(400,"INVALID_LOCATION_RULE","請為優惠券設定 1–20 個核銷地點。");
+  const locations = requiresLocation ? rawLocations.map((location:any) => ({
+    name: typeof location?.name === "string" ? location.name.trim() : "",
+    latitude: location?.latitude === "" || location?.latitude == null ? NaN : Number(location.latitude),
+    longitude: location?.longitude === "" || location?.longitude == null ? NaN : Number(location.longitude),
+    radiusMeters: location?.radiusMeters === "" || location?.radiusMeters == null ? NaN : Number(location.radiusMeters),
+  })) : [];
+  if (locations.some((location:any) => !location.name || location.name.length > 100
+    || !Number.isFinite(location.latitude) || location.latitude < -90 || location.latitude > 90
+    || !Number.isFinite(location.longitude) || location.longitude < -180 || location.longitude > 180
+    || !Number.isInteger(location.radiusMeters) || location.radiusMeters < 50 || location.radiusMeters > 2000))
+    throw new ApiError(400,"INVALID_LOCATION_RULE","每個地點需有名稱、有效座標與 50–2000 公尺半徑。");
+  const [firstLocation] = locations;
   const payload = {
     title: requireText(input.title,"活動票券名稱",100),
     ticket_type: ticketType,
@@ -1516,9 +1528,10 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     ends_on: endsOn || null,
     quota,
     requires_location: requiresLocation,
-    redemption_latitude: latitude,
-    redemption_longitude: longitude,
-    redemption_radius_meters: radius,
+    redemption_locations: locations,
+    redemption_latitude: firstLocation?.latitude ?? null,
+    redemption_longitude: firstLocation?.longitude ?? null,
+    redemption_radius_meters: firstLocation?.radiusMeters ?? null,
     accent: requireAccent(input.accent),
     allowed_tier_keys: normalizeTierKeys(input.allowedTierKeys),
     updated_by: actor,
