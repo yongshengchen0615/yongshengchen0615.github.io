@@ -1,3 +1,10 @@
+export type BookingBenefits = {
+  pointTickets: string[];
+  eventTickets: string[];
+  tierActivities: string[];
+  tierLabel: string;
+};
+
 export type Job = {
   id: string;
   recipient: string;
@@ -6,6 +13,7 @@ export type Job = {
   attempt_count: number;
   booking_id?: string;
   event_key?: string;
+  benefits?: BookingBenefits;
 };
 export type Delivery = { accepted: boolean; retryable: boolean; status: number | null; lineRequestId: string };
 
@@ -328,6 +336,52 @@ function participantsCard(participants: ParsedBookingParticipant[], accent: stri
   };
 }
 
+function entitlementCard(title: string, items: string[], accent: string): Record<string, unknown> {
+  const visible = items.slice(0, 6);
+  const hidden = Math.max(0, items.length - visible.length);
+  const rows = visible.length
+    ? visible.map((item) => ({
+        type: 'box',
+        layout: 'horizontal',
+        spacing: 'sm',
+        alignItems: 'flex-start',
+        contents: [
+          { type: 'text', text: '•', size: 'sm', color: accent, flex: 0 },
+          { type: 'text', text: truncate(item, 320), size: 'sm', color: TEXT_COLOR, flex: 1, wrap: true },
+        ],
+      }))
+    : [{
+        type: 'text',
+        text: '目前無可用項目',
+        size: 'sm',
+        color: MUTED_COLOR,
+        wrap: true,
+      }];
+
+  if (hidden > 0) {
+    rows.push({
+      type: 'text',
+      text: `另有 ${hidden} 項，請至會員頁查看完整內容。`,
+      size: 'xs',
+      color: MUTED_COLOR,
+      wrap: true,
+    } as Record<string, unknown>);
+  }
+
+  return {
+    type: 'box',
+    layout: 'vertical',
+    paddingAll: '14px',
+    backgroundColor: SURFACE_COLOR,
+    cornerRadius: '12px',
+    contents: [
+      { type: 'text', text: truncate(title, 80), size: 'sm', weight: 'bold', color: accent, wrap: true },
+      { type: 'separator', margin: 'sm', color: '#E5EAE7' },
+      { type: 'box', layout: 'vertical', spacing: 'sm', margin: 'sm', contents: rows },
+    ],
+  };
+}
+
 function fallbackCard(text: string): Record<string, unknown> {
   return {
     type: 'box',
@@ -370,6 +424,18 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
   if (participants) bodyContents.push(participants);
   else if (services) bodyContents.push(services);
   if (!bodyContents.length) bodyContents.push(fallbackCard(parsed.fallbackText));
+
+  if (parsed.title === '預約確認' && job.channel === 'member' && job.benefits) {
+    bodyContents.push(
+      entitlementCard('可用集點卡票券', job.benefits.pointTickets, style.color),
+      entitlementCard('可用活動票券', job.benefits.eventTickets, style.color),
+      entitlementCard(
+        job.benefits.tierLabel ? `會員階級活動（${job.benefits.tierLabel}）` : '會員階級活動',
+        job.benefits.tierActivities,
+        style.color,
+      ),
+    );
+  }
 
   const headerContents: FlexText[] = [
     {
