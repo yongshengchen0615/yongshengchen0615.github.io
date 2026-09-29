@@ -6,18 +6,18 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 
-test('CSP keeps style elements restricted while allowing required runtime style attributes', () => {
+test('CSP keeps unsafe inline styles disabled while externalized booking styles remain allowed', () => {
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(surface + '/index.html');
-    assert.match(html, /style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline';/);
+    assert.match(html, /style-src 'self';/);
     assert.match(html, /connect-src[^"]*https:\/\/cdn\.jsdelivr\.net;/);
-    assert.doesNotMatch(html, /style-src 'self' 'unsafe-inline'/);
+    assert.doesNotMatch(html, /unsafe-inline/);
   }
 
   const admin = read('admin/index.html');
-  assert.match(admin, /style-src 'self' https:\/\/cdn\.jsdelivr\.net; style-src-elem 'self' https:\/\/cdn\.jsdelivr\.net; style-src-attr 'unsafe-inline';/);
+  assert.match(admin, /style-src 'self' https:\/\/cdn\.jsdelivr\.net;/);
   assert.match(admin, /connect-src[^"]*https:\/\/nominatim\.openstreetmap\.org https:\/\/cdn\.jsdelivr\.net;/);
-  assert.doesNotMatch(admin, /style-src[^;]*'unsafe-inline'/);
+  assert.doesNotMatch(admin, /unsafe-inline/);
 });
 
 test('booking holiday and cancellation review no longer inject style elements at runtime', () => {
