@@ -61,6 +61,17 @@ test('admin membership terms UI is theme-aware and responsive', () => {
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
+test('main admin panels stay outside the member workspace after terms UI restructuring', () => {
+  const membersStart = html.indexOf('<section id="membersPanel"');
+  const cardsStart = html.indexOf('<section id="cardsPanel"');
+  assert.ok(membersStart > -1 && cardsStart > membersStart);
+
+  const memberWorkspace = html.slice(membersStart, cardsStart);
+  const opens = (memberWorkspace.match(/<section\\b/g) || []).length;
+  const closes = (memberWorkspace.match(/<\\/section>/g) || []).length;
+  assert.equal(opens, closes, 'membersPanel must close before cardsPanel begins');
+});
+
 test('admin terms assets use the same UI cache version', () => {
   assert.match(html, /terms\.css\?v=membership-terms-ui-20260930-1/);
   assert.match(html, /terms\.js\?v=membership-terms-ui-20260930-1/);
