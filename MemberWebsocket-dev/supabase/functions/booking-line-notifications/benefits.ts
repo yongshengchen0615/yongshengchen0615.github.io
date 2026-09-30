@@ -101,6 +101,9 @@ export async function loadBookingConfirmationBenefits(db: any, job: any): Promis
   if (text(member.line_user_id, 120) !== text(job?.recipient, 120)) {
     throw new Error('BOOKING_RECIPIENT_MISMATCH');
   }
+  if (member.status !== 'active' || member.membership_status !== 'active') {
+    return { pointTickets: [], eventTickets: [], tierActivities: [], tierLabel: '會員資格未啟用' };
+  }
 
   const tierResult = await db.rpc('current_tier_key', { p_member_id: memberId });
   const currentTier = text(ensureNoError(tierResult) || 'general', 30) || 'general';

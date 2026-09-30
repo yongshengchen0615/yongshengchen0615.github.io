@@ -6,6 +6,17 @@
     const el = Object.fromEntries(ids.map((id) => [id, $(id)]));
     let rows = [];
     let busy = false;
+    let selectedRow = null;
+    function updateControls() {
+      const editable = !selectedRow || selectedRow.status === 'draft';
+      for (const control of el.termsDraftForm.querySelectorAll('input:not([type="hidden"]),textarea')) control.disabled = busy || !editable;
+      el.termsSave.disabled = busy || !editable;
+      el.termsActivate.disabled = busy || !selectedRow || selectedRow.status !== 'draft';
+      el.termsReload.disabled = busy;
+      el.termsNewDraft.disabled = busy;
+      el.termsDraftForm.setAttribute('aria-busy', String(busy));
+      for (const button of el.termsVersionList.querySelectorAll('button')) button.disabled = busy;
+    }
     function message(value) { el.termsAdminMessage.textContent = value; el.termsAdminMessage.classList.toggle('hidden', !value); }
     function session() {
       const value = window.MemberSystem.getSession('admin');
@@ -17,6 +28,7 @@
       return window.MemberSystem.request(config, 'admin', idToken, action, payload);
     }
     function show(row) {
+      selectedRow = row || null;
       el.termsId.value = row?.id || '';
       el.termsVersion.value = row?.version || '';
       el.termsTitle.value = row?.title || '';
@@ -26,10 +38,7 @@
       el.termsEffectiveAt.value = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
       el.termsRequired.checked = row ? row.required === true : true;
       el.termsReconsent.checked = row?.reconsent_existing === true;
-      const editable = !row || row.status === 'draft';
-      for (const control of el.termsDraftForm.querySelectorAll('input:not([type="hidden"]),textarea')) control.disabled = !editable;
-      el.termsSave.disabled = !editable;
-      el.termsActivate.disabled = !row || row.status !== 'draft';
+      updateControls();
       for (const button of el.termsVersionList.querySelectorAll('button')) button.setAttribute('aria-current', String(button.dataset.id === row?.id));
     }
     async function reload(selectedId) {
@@ -48,20 +57,23 @@
     }
     async function run(task) {
       if (busy) return;
-      busy = true; message('');
+      busy = true; updateControls(); message('');
       try { await task(); }
       catch (error) { message(error?.code === 'API_RESPONSE_UNCERTAIN' ? '無法確認是否儲存成功，請先重新載入版本確認。' : error?.message || '操作失敗。'); }
-      finally { busy = false; }
+      finally { busy = false; updateControls(); }
     }
     el.termsReload.addEventListener('click', () => run(() => reload(el.termsId.value)));
-    el.termsNewDraft.addEventListener('click', () => { show(null); message(''); });
+    el.termsNewDraft.addEventListener('click', () => { if (!busy) { show(null); message(''); } });
     el.termsDraftForm.addEventListener('submit', (event) => {
       event.preventDefault();
+      if (busy) return;
+      const effectiveAt = new Date(el.termsEffectiveAt.value);
+      if (!Number.isFinite(effectiveAt.getTime())) { message('請設定有效的條款生效時間。'); el.termsEffectiveAt.focus(); return; }
       run(async () => {
         const result = await request('admin.terms.draft.save', {
           id: el.termsId.value || null, version: el.termsVersion.value.trim(), title: el.termsTitle.value.trim(),
           summary: el.termsSummary.value.trim(), body: el.termsBody.value.trim(),
-          effectiveAt: new Date(el.termsEffectiveAt.value).toISOString(), required: el.termsRequired.checked,
+          effectiveAt: effectiveAt.toISOString(), required: el.termsRequired.checked,
           reconsentExisting: el.termsReconsent.checked
         });
         await reload(result.id); message('草稿已儲存。確認內容後再啟用。');

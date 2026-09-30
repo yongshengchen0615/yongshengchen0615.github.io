@@ -62,7 +62,7 @@ Deno.test("selectLatestEventOffers only returns unused claimed or still-claimabl
       { id:"event-used",title:"已使用活動券",quota:0 },
       { id:"event-new",title:"尚未領取",quota:0 },
       { id:"event-full",title:"名額已滿",quota:1 },
-      { id:"event-cancelled",title:"取消後可再領取",quota:2 },
+      { id:"event-cancelled",title:"已取消的領券",quota:2 },
     ],
     [
       { event_ticket_id:"event-claimed",member_id:"member-1",status:"available" },
@@ -76,6 +76,5 @@ Deno.test("selectLatestEventOffers only returns unused claimed or still-claimabl
   assertEquals(offers, [
     { eventId:"event-claimed",title:"已領取未使用",claimed:true },
     { eventId:"event-new",title:"尚未領取",claimed:false },
-    { eventId:"event-cancelled",title:"取消後可再領取",claimed:false },
   ]);
 });

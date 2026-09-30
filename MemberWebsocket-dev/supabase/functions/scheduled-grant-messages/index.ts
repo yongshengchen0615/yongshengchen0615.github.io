@@ -6,7 +6,7 @@ import { buildLatestAvailableOffersSection } from "../_shared/latest-available-o
 type Json = Record<string, unknown>;
 
 const TIER_LABELS: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
-const EVENT_LIFF_URL = "https://liff.line.me/2010787602-tuapstY3";
+const DEFAULT_EVENT_LIFF_URL = "https://liff.line.me/2010787602-tuapstY3";
 
 function env(name: string): string { return (Deno.env.get(name) || "").trim(); }
 function asText(value: unknown, max = 5000): string { return String(value ?? "").trim().slice(0,max); }
@@ -46,13 +46,13 @@ function removeUriButtons(node: any, uri: string): void {
   if (node.body) removeUriButtons(node.body, uri);
   if (node.footer) removeUriButtons(node.footer, uri);
 }
-function addEventTicketAction(message: any): void {
+function addEventTicketAction(message: any, eventLiffUrl: string): void {
   const bubble = message?.contents;
   const footer = bubble?.footer;
   if (!bubble || !footer || footer.type !== "box" || !Array.isArray(footer.contents)) return;
 
-  removeUriButtons(bubble.body, EVENT_LIFF_URL);
-  removeUriButtons(footer, EVENT_LIFF_URL);
+  removeUriButtons(bubble.body, eventLiffUrl);
+  removeUriButtons(footer, eventLiffUrl);
 
   const accent = /^#[0-9a-f]{6}$/i.test(String(bubble?.header?.backgroundColor || ""))
     ? String(bubble.header.backgroundColor)
@@ -66,13 +66,18 @@ function addEventTicketAction(message: any): void {
     action:{
       type:"uri",
       label:"開啟活動票券",
-      uri:EVENT_LIFF_URL,
+      uri:eventLiffUrl,
     },
   });
 }
 async function lineToken(supabase: SupabaseClient): Promise<string> {
   const result = await supabase.rpc("get_line_messaging_token");
   return result.error ? "" : asText(result.data,10000);
+}
+async function lineSetting(supabase: SupabaseClient, key: string, fallback = ""): Promise<string> {
+  const result = await supabase.rpc("get_line_setting", { p_key: key });
+  if (result.error) return fallback;
+  return asText(result.data,2000) || fallback;
 }
 async function dispatchSecret(supabase: SupabaseClient): Promise<string> {
   const result = await supabase.rpc("get_grant_dispatch_secret");
@@ -117,26 +122,28 @@ async function writeAudit(supabase: SupabaseClient, row: any, result: string, de
     detail:{ requestId:row.request_id,scheduleId:row.schedule_id,...detail },
   });
 }
-async function dispatchOne(supabase: SupabaseClient, token: string, row: any): Promise<{ sent:boolean;lineRequestId:string;error:string }> {
+async function dispatchOne(supabase: SupabaseClient, token: string, row: any, eventLiffUrl: string): Promise<{ sent:boolean;lineRequestId:string;error:string }> {
   try {
     const refreshedText = await refreshScheduledMessage(supabase,row);
     const message = buildLineFlexNotice(refreshedText,{
       title:"會員權益通知",
       eyebrow:"MEMBER BENEFITS",
     });
-    if (isFixedTicketNotification(row)) addEventTicketAction(message);
+    if (isFixedTicketNotification(row)) addEventTicketAction(message, eventLiffUrl);
 
     const response = await fetch("https://api.line.me/v2/bot/message/push",{
       method:"POST",
       headers:{
         "Authorization":"Bearer " + token,
         "Content-Type":"application/json",
-        "X-Line-Retry-Key":crypto.randomUUID(),
+        "X-Line-Retry-Key":String(row.id),
       },
       body:JSON.stringify({ to:String(row.line_user_id),messages:[message] }),
+      signal:AbortSignal.timeout(10000),
     });
-    const lineRequestId = response.headers.get("x-line-request-id") || "";
-    if (response.ok) return { sent:true,lineRequestId,error:"" };
+    const acceptedId = response.headers.get("x-line-accepted-request-id") || "";
+    const lineRequestId = acceptedId || response.headers.get("x-line-request-id") || "";
+    if (response.ok || response.status === 409 && acceptedId) return { sent:true,lineRequestId,error:"" };
     return { sent:false,lineRequestId,error:"LINE HTTP " + response.status };
   } catch (error) {
     return { sent:false,lineRequestId:"",error:asText((error as Error)?.message || "dynamic_refresh_error",500) };
@@ -159,6 +166,7 @@ Deno.serve(async (request: Request) => {
   if (!rows.length) return new Response(JSON.stringify({ ok:true,claimed:0,sent:0,failed:0 }),{ status:200,headers:{ "Content-Type":"application/json","Cache-Control":"no-store" } });
 
   const token = await lineToken(supabase);
+  const eventLiffUrl = await lineSetting(supabase, "event_ticket_liff_url", DEFAULT_EVENT_LIFF_URL);
   let sent = 0;
   let failed = 0;
 
@@ -198,7 +206,7 @@ Deno.serve(async (request: Request) => {
       continue;
     }
 
-    const result = await dispatchOne(supabase,token,row);
+    const result = await dispatchOne(supabase,token,row,eventLiffUrl);
     if (result.sent) {
       await supabase.from("scheduled_grant_messages").update({
         status:"sent",sent_at:new Date().toISOString(),line_request_id:result.lineRequestId,last_error:"",updated_at:new Date().toISOString(),
