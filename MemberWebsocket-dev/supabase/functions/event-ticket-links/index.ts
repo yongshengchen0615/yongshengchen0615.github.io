@@ -1,6 +1,6 @@
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
-import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract, requireMemberAccessContract } from "../_shared/auth-contract.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -115,7 +115,7 @@ function expectedChannelId(clientType: ClientType): string {
   return value;
 }
 
-async function verifyLineIdToken(idToken: string, clientType: ClientType): Promise<{ lineUserId: string; displayName: string }> {
+async function verifyLineIdToken(idToken: string, clientType: ClientType): Promise<{ lineUserId: string; displayName: string; issuedAt: number }> {
   return await verifyLineIdTokenContract({
     idToken,
     expectedChannelId: expectedChannelId(clientType),
@@ -295,6 +295,13 @@ async function handleRequest(request: Request): Promise<Response> {
 
     const identity = await verifyLineIdToken(idToken, clientType);
     const supabase = dbClient();
+    if (clientType === "event") {
+      await requireMemberAccessContract({
+        supabase,
+        identity,
+        createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+      });
+    }
     const isWrite = action === "admin.event-ticket-links.save";
     await consumeRateLimit(supabase, identity.lineUserId, isWrite);
 
