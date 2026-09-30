@@ -67,7 +67,9 @@
     'admin.grant-message-presets.save',
     'user.pointcard.ticket.redeem',
     'user.event.ticket.claim',
-    'user.event.ticket.redeem'
+    'user.event.ticket.redeem',
+    'member.referral.bind',
+    'points.transfer.create'
   ]);
 
   function clientError(code, message) {
@@ -414,6 +416,12 @@
   }
 
   function requestEndpoint(config, clientType, action) {
+    if (['event.today-usable','member.referral.bind','points.transfer.options','points.transfer.receiver','points.transfer.create'].includes(action)) {
+      return String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/member-growth-api';
+    }
+    if (clientType === 'admin' && String(action || '').startsWith('admin.booking.receipt.')) {
+      return String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/booking-receipt-api';
+    }
     if (clientType === 'member' && (action === 'user.member.bootstrap' || action === 'user.member.profile.save' || action === 'user.member.terms.accept')) {
       return String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/member-profile-api';
     }
