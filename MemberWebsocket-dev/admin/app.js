@@ -683,7 +683,7 @@
       try {
         await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.force-logout', { lineUserId: member.lineUserId });
         setSyncStatus('已強制結束該會員的所有登入工作階段。');
-        await refreshMembers();
+        await loadMembersPage(state.memberPage.page, state.memberPage.query);
       } catch (error) {
         setSyncStatus(error && error.message || '強制下線失敗，請稍後再試。', true);
       } finally {
