@@ -56,3 +56,12 @@ test('test users map revoked sessions to forced logout and close immediately', (
   assert.match(client, /window\.liff\.closeWindow\(\)/);
   assert.match(client, /window\.close\(\)/);
 });
+
+
+test('test client revalidates a test session after Realtime reconnect', () => {
+  const client = read('test-mode-client.js');
+  assert.match(client, /subscribe\(\(status\) =>/);
+  assert.match(client, /status !== 'SUBSCRIBED'/);
+  assert.match(client, /sessionStatus\(config, realtimeSurface\)/);
+  assert.match(client, /SESSION_REVOKED/);
+});
