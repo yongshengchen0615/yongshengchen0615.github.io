@@ -57,7 +57,9 @@
       }
       if (!state.profile.profileComplete || state.profile.membershipRequired) {
         await completeLoginProgress('會員資料已準備完成');
-        return setView('profileSetup');
+        setView('profileSetup');
+        announceTourReady(state.profile);
+        return;
       }
       renderProfile(state.profile);
       await completeLoginProgress('會員資料已準備完成');
@@ -212,6 +214,7 @@
       state.profile = result.profile || {};
       renderProfile(state.profile);
       setView('member');
+      announceTourReady(state.profile);
       window.MemberSystem.subscribeRealtime(state.config, 'member', async () => {
         const fresh = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
         if (fresh && fresh.profile && fresh.profile.profileComplete) { state.profile = fresh.profile; renderProfile(state.profile); }
