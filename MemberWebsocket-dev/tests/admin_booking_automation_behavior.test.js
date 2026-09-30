@@ -23,10 +23,10 @@ const participant = () => ({
 function harness(bookings = [], extra = {}) {
   const calls = [];
   const window = {
-    addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0),
+    addEventListener() {}, setTimeout: (callback) => setTimeout(callback, 0), clearTimeout,
     MemberE2EScenarioGraph: require('../e2e-scenario-graph.js')
   };
-  const context = vm.createContext({ window, document: {}, performance, TextEncoder, CSS: { escape: (x) => x }, ...extra });
+  const context = vm.createContext({ window, document: {}, performance, TextEncoder, AbortController, CSS: { escape: (x) => x }, ...extra });
   const expose = `
     window.qa = { state, pairedBookingCandidates, livePairedBookingSet, waitForLivePairedBookingTarget, pairedAdminBookingFollowupCase, mutateDetectedBooking, mutateDetectedBookingTechnician, rejectDetectedCancellation, approveDetectedCancellation, requestDetectedCancellationFromClient, runPaired, recordResultRows, bookingTerminalSnapshot, verifyPairedBookingTerminalState, verifyBookingClientTerminal, beginBookingRealtimeProbe, verifyBookingRealtimeSync };
     window.qa.install = (io) => {

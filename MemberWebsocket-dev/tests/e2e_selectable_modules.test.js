@@ -81,18 +81,19 @@ test('background handoff freezes the checked scope and avoids client windows for
     const runner = {
       closed: false, blur() {},
       document: { getElementById: () => null, documentElement: { dataset: { memberAdminReady: 'true' } } },
-      MemberAdminE2EControl: { runUnifiedBackground: async (options) => { forwarded = options; return { results: [] }; } }
+      MemberAdminE2EControl: { version: source.match(/const VERSION = '([^']+)'/)[1], runUnifiedBackground: async (options) => { forwarded = options; return { results: [] }; } }
     };
     const window = {
       location: { href: 'https://example.test/MemberWebsocket-dev/admin/', search: '' },
       addEventListener() {}, focus() {},
+      setInterval, clearInterval, setTimeout, clearTimeout,
       open(url) {
         if (url !== 'about:blank') return runner;
         clientWindowCount += 1;
         return { closed: false, document: { body: {} }, blur() {}, close() {} };
       }
     };
-    const context = { window, document: {}, URL, URLSearchParams, console, Math };
+    const context = { window, document: {}, URL, URLSearchParams, console, Math, performance: { getEntriesByType: () => [] } };
     vm.runInNewContext(exposed, context);
     const e2e = context.e2ePlan;
     const inputs = selected.map((key) => ({ dataset: { e2eModule: key }, disabled: false }));
