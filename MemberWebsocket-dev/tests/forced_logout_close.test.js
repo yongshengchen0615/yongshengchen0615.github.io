@@ -42,3 +42,17 @@ test('force logout admin handler refreshes the current member page without an un
   assert.doesNotMatch(source, /refreshMembers\(\)/);
   assert.match(source, /loadMembersPage\(state\.memberPage\.page, state\.memberPage\.query\)/);
 });
+
+
+test('test users map revoked sessions to forced logout and close immediately', () => {
+  const auth = read('supabase/functions/_shared/test-mode-auth.ts');
+  const client = read('test-mode-client.js');
+  assert.match(auth, /session\.revoked_at/);
+  assert.match(auth, /SESSION_REVOKED/);
+  assert.match(client, /eventType === 'admin\.member\.force-logout'/);
+  assert.match(client, /sessionStatus\(config, realtimeSurface\)/);
+  assert.match(client, /terminateForcedTestSession\(error\.message\)/);
+  assert.match(client, /window\.alert\(notice\)/);
+  assert.match(client, /window\.liff\.closeWindow\(\)/);
+  assert.match(client, /window\.close\(\)/);
+});
