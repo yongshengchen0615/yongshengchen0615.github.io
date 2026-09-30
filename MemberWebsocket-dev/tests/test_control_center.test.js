@@ -85,6 +85,32 @@ test('test control API requires admin identity and records observable cases', ()
   assert.doesNotMatch(api, /actual:\s*\{[^}]*token_hash/s);
 });
 
+test('E2E test-account consent fixture cannot target production members', () => {
+  const api = read('supabase/functions/test-control-api/index.ts');
+  assert.match(api, /admin\.test-control\.prepare-test-account-consents/);
+  assert.match(api, /prepareTestAccountConsents/);
+  assert.match(api, /row\.is_test_account === true/);
+  assert.match(api, /TEST_MEMBER_SELECTION_FORBIDDEN/);
+  assert.match(api, /membership_consents/);
+  assert.match(api, /test_control\.test_consent\.prepare/);
+  assert.match(api, /member_id,terms_id/);
+});
+
+test('booking LINE self-test validates production code without requiring a production booking fixture', () => {
+  const api = read('supabase/functions/test-control-api/index.ts');
+  const edge = read('supabase/functions/booking-line-notifications/index.ts');
+  assert.match(edge, /contractSource = 'synthetic-contract'/);
+  assert.match(edge, /contractSource = 'live-preview'/);
+  assert.match(edge, /productionContract: true/);
+  assert.match(edge, /【預約確認】/);
+  assert.match(edge, /Clean\/reset environments intentionally have no production booking rows/);
+  assert.match(edge, /const failed = await deliver/);
+  assert.match(edge, /const retried = await deliver/);
+  assert.match(api, /productionContract: data\.productionContract === true/);
+  assert.match(api, /\["live-preview", "synthetic-contract"\]\.includes\(actual\.contractSource\)/);
+  assert.doesNotMatch(api, /&& actual\.productionMember\s*&& actual\.flexType/);
+});
+
 test('test control persistence is service-role only with RLS enabled', () => {
   const schema = read('supabase/migrations/20260921012651_automation_test_control_center.sql');
   const notification = read('supabase/migrations/20260921012739_automation_test_notification_snapshot.sql');

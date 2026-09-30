@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-30.1';
+  const VERSION = '2026-09-30.2';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -5979,7 +5979,21 @@
       if (account && !preferred.includes(account)) preferred.push(account);
     }
     const preferredSet = new Set(preferred.map((account) => String(account.memberId || '')));
-    return preferred.concat(shuffled(accounts.filter((account) => !preferredSet.has(String(account.memberId || ''))))).slice(0, count);
+    const selected = preferred.concat(shuffled(accounts.filter((account) => !preferredSet.has(String(account.memberId || ''))))).slice(0, count);
+    const session = await adminSession();
+    const consent = await postFunction('test-control-api', {
+      action: 'admin.test-control.prepare-test-account-consents',
+      clientType: 'admin',
+      idToken: session.idToken,
+      memberIds: selected.map((account) => String(account.memberId || '')).filter(Boolean)
+    });
+    const currentConsentCount = Number(consent?.currentConsentCount || 0);
+    if (currentConsentCount !== selected.length) {
+      const error = new Error('測試會員條款前置未完成：需要 ' + selected.length + ' 位，目前 ' + currentConsentCount + ' 位。');
+      error.code = 'E2E_TEST_MEMBER_CONSENT_NOT_READY';
+      throw error;
+    }
+    return selected;
   }
 
   async function prepareComplexE2EFixtures(profile = {}) {

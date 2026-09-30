@@ -173,6 +173,79 @@ async function emitRealtimeEvent(supabase: any, eventType: string): Promise<void
   }
 }
 
+async function prepareTestAccountConsents(
+  supabase: any,
+  identity: { lineUserId: string },
+  body: Json,
+): Promise<Json> {
+  const requested = Array.isArray(body.memberIds) ? body.memberIds : [];
+  const memberIds = [...new Set(requested.map((value) => asText(value, 80)).filter(Boolean))];
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!memberIds.length || memberIds.length > 10 || memberIds.some((id) => !uuidPattern.test(id))) {
+    throw new ApiError(400, "INVALID_TEST_MEMBER_SELECTION", "E2E 測試會員清單不正確。");
+  }
+
+  const termsResult = await supabase
+    .from("membership_terms")
+    .select("id,version,status,required,effective_at,activated_at")
+    .eq("status", "active")
+    .eq("required", true)
+    .order("activated_at", { ascending: false, nullsFirst: false })
+    .limit(5);
+  if (termsResult.error) throw new ApiError(503, "MEMBERSHIP_TERMS_READ_FAILED", "目前無法讀取 E2E 會員條款前置狀態。");
+  const nowMs = Date.now();
+  const activeTerms = (termsResult.data || []).find((row: any) => {
+    if (!row.effective_at) return true;
+    const effectiveMs = new Date(row.effective_at).getTime();
+    return Number.isFinite(effectiveMs) && effectiveMs <= nowMs;
+  });
+  if (!activeTerms?.id) throw new ApiError(409, "MEMBERSHIP_TERMS_NOT_CONFIGURED", "目前沒有可供 E2E 使用的生效必同意會員條款。");
+
+  const membersResult = await supabase
+    .from("members")
+    .select("id,is_test_account,status,membership_status")
+    .in("id", memberIds);
+  if (membersResult.error) throw new ApiError(503, "TEST_MEMBER_READ_FAILED", "目前無法確認 E2E 測試會員。");
+  const eligibleIds = new Set(
+    (membersResult.data || [])
+      .filter((row: any) => row.is_test_account === true && row.status === "active" && row.membership_status === "active")
+      .map((row: any) => String(row.id)),
+  );
+  if (eligibleIds.size !== memberIds.length || memberIds.some((id) => !eligibleIds.has(id))) {
+    throw new ApiError(403, "TEST_MEMBER_SELECTION_FORBIDDEN", "E2E 條款前置只能套用到啟用中的測試會員。");
+  }
+
+  const existingResult = await supabase
+    .from("membership_consents")
+    .select("member_id")
+    .eq("terms_id", activeTerms.id)
+    .in("member_id", memberIds);
+  if (existingResult.error) throw new ApiError(503, "MEMBERSHIP_CONSENT_READ_FAILED", "目前無法確認測試會員條款同意狀態。");
+  const existing = new Set((existingResult.data || []).map((row: any) => String(row.member_id)));
+  const missing = memberIds.filter((id) => !existing.has(id));
+  if (missing.length) {
+    const insertResult = await supabase.from("membership_consents").upsert(
+      missing.map((memberId) => ({ member_id: memberId, terms_id: activeTerms.id, result: "accepted" })),
+      { onConflict: "member_id,terms_id", ignoreDuplicates: true },
+    );
+    if (insertResult.error) throw new ApiError(503, "MEMBERSHIP_CONSENT_FIXTURE_FAILED", "目前無法建立測試會員條款前置資料。");
+  }
+
+  const verifyResult = await supabase
+    .from("membership_consents")
+    .select("member_id")
+    .eq("terms_id", activeTerms.id)
+    .in("member_id", memberIds);
+  if (verifyResult.error) throw new ApiError(503, "MEMBERSHIP_CONSENT_READ_FAILED", "目前無法驗證測試會員條款前置資料。");
+  const currentConsentCount = new Set((verifyResult.data || []).map((row: any) => String(row.member_id))).size;
+  if (currentConsentCount !== memberIds.length) throw new ApiError(503, "MEMBERSHIP_CONSENT_FIXTURE_INCOMPLETE", "測試會員條款前置資料未完整建立。");
+
+  const detail = { testMemberCount: memberIds.length, insertedCount: missing.length, currentConsentCount, termsVersion: asText(activeTerms.version, 80) };
+  await audit(supabase, identity, "test_control.test_consent.prepare", "membership_terms", String(activeTerms.id), detail);
+  await emitRealtimeEvent(supabase, "test_mode.membership_consent.prepared");
+  return detail;
+}
+
 async function prepareComplexFixtures(
   supabase: any,
   identity: { lineUserId: string },
@@ -312,7 +385,7 @@ function caseDefinitions(suite: string, selectedModules: string[] | null = null)
   const definitions = suite === "quick" ? quick : quick.concat([
     { key: "MEMBERSHIP_TERMS_READY", name: "會員條款 E2E 前置狀態", domain: "Member / Legal" },
     { key: "BOOKING_INTEGRITY", name: "預約與技師時段一致性", domain: "Booking" },
-    { key: "BOOKING_CONFIRMATION_LINE", name: "正式會員預約確認 LINE 權益通知", domain: "Booking / Notification" },
+    { key: "BOOKING_CONFIRMATION_LINE", name: "預約確認 LINE production contract／正式預約 preview", domain: "Booking / Notification" },
     { key: "PRESENCE_INTEGRITY", name: "會員上線狀態一致性", domain: "Presence" },
   ]);
   if (!selectedModules) return definitions;
@@ -993,6 +1066,8 @@ async function evaluateBookingConfirmationLine(supabase: any): Promise<CaseResul
   const data = payload?.data || {};
   const actual = {
     httpStatus: remote.status,
+    productionContract: data.productionContract === true,
+    contractSource: asText(data.contractSource, 40),
     productionMember: data.productionMember === true,
     flexType: asText(data.productionPreview?.flexType, 20),
     altTextPresent: data.productionPreview?.altTextPresent === true,
@@ -1010,7 +1085,8 @@ async function evaluateBookingConfirmationLine(supabase: any): Promise<CaseResul
   };
   const expected = {
     httpStatus: 200,
-    productionMember: true,
+    productionContract: true,
+    contractSource: "live-preview | synthetic-contract",
     flexType: "flex",
     altTextPresent: true,
     emptyEntitlementSections: 3,
@@ -1023,7 +1099,8 @@ async function evaluateBookingConfirmationLine(supabase: any): Promise<CaseResul
   };
   const ok = remote.ok
     && payload?.ok === true
-    && actual.productionMember
+    && actual.productionContract
+    && ["live-preview", "synthetic-contract"].includes(actual.contractSource)
     && actual.flexType === "flex"
     && actual.altTextPresent
     && actual.emptyEntitlementSections === 3
@@ -1035,13 +1112,14 @@ async function evaluateBookingConfirmationLine(supabase: any): Promise<CaseResul
     && actual.retrySemanticsPassed;
 
   return ok
-    ? pass("正式會員預約確認 LINE 權益、空狀態、過期排除與冪等重試皆通過 production self-test。", expected, actual)
-    : fail(
-        "BOOKING_CONFIRMATION_LINE_FAILED",
-        "正式會員預約確認 LINE production self-test 未通過。",
+    ? pass(
+        actual.productionMember
+          ? "正式預約 preview 與 LINE production contract、空狀態、過期排除及冪等重試皆通過。"
+          : "目前沒有正式預約 preview；已用無副作用 synthetic contract 驗證 LINE production renderer、空狀態、過期排除與冪等重試。",
         expected,
         actual,
-      );
+      )
+    : fail("BOOKING_CONFIRMATION_LINE_FAILED", "預約確認 LINE production contract self-test 未通過。", expected, actual);
 }
 
 async function evaluateLineSuppression(supabase: any): Promise<CaseResult> {
@@ -1628,6 +1706,10 @@ Deno.serve(async (request: Request) => {
       const source=await replaySourceRun(supabase,runId);
       await audit(supabase,identity,"test_control.replay.prepare","automation_test_run",runId,{sourceRunCode:asText(source.row.run_code,80),complexityLevel:Number((source.manifest as any).complexityLevel||1)});
       return response(origin,{ok:true,status:200,data:{sourceRun:{id:source.row.id,runCode:source.row.run_code,status:source.row.status,failedCases:Number(source.row.failed_cases||0),createdAt:source.row.created_at},manifest:source.manifest}});
+    }
+
+    if (action === "admin.test-control.prepare-test-account-consents") {
+      return response(origin, { ok: true, status: 200, data: await prepareTestAccountConsents(supabase, identity, body) });
     }
 
     if (action === "admin.test-control.prepare-e2e-fixtures") {

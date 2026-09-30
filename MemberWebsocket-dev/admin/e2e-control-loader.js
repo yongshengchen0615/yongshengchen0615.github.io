@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const E2E_CONTROL_SRC = './e2e-control.js?v=qa-e2e-20260930-1&lazy=20260930-1';
+  const E2E_CONTROL_SRC = './e2e-control.js?v=qa-e2e-20260930-2&lazy=20260930-2';
   let loadPromise = null;
   let phase = 'idle';
   let errorCode = '';

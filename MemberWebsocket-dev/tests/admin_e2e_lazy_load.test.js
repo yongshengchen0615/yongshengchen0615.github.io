@@ -14,7 +14,7 @@ test('admin browser E2E controller is lazy-loaded outside normal startup', () =>
   assert.match(html, /e2e-control-loader\.js\?v=qa-e2e-lazy-20260930-1/);
   assert.doesNotMatch(html, /<script src="\.\/e2e-control\.js\?/);
 
-  assert.match(loader, /const E2E_CONTROL_SRC = '\.\/e2e-control\.js\?v=qa-e2e-20260930-1&lazy=20260930-1'/);
+  assert.match(loader, /const E2E_CONTROL_SRC = '\.\/e2e-control\.js\?v=qa-e2e-20260930-2&lazy=20260930-1'/);
   assert.match(loader, /getElementById\('testModeTab'\)/);
   assert.match(loader, /addEventListener\('pointerenter'/);
   assert.match(loader, /addEventListener\('focus'/);

@@ -69,38 +69,46 @@ Deno.serve(async (request: Request) => {
     if (body && typeof body === 'object' && !Array.isArray(body) && body.action === 'self-test-confirmation') {
       const preview = await db.rpc('booking_notification_confirmation_preview_job', { p_booking_id: null });
       if (preview.error) return json({ ok: false }, 503);
-      const job = preview.data;
-      if (!job?.id || !job?.booking_id) {
-        return json({ ok: false, error: { code: 'PREVIEW_JOB_NOT_FOUND' } }, 404);
+
+      let productionMember = false;
+      let contractSource = 'synthetic-contract';
+      let job: any = preview.data;
+      let benefits: { pointTickets: string[]; eventTickets: string[]; tierActivities: string[]; tierLabel: string };
+
+      if (job?.id && job?.booking_id) {
+        productionMember = true;
+        contractSource = 'live-preview';
+        benefits = await loadBookingConfirmationBenefits(db, job);
+      } else {
+        // Clean/reset environments intentionally have no production booking rows.
+        // Keep the self-test meaningful without writing fake production data or sending LINE.
+        job = {
+          id: '00000000-0000-4000-8000-000000000001',
+          booking_id: '00000000-0000-4000-8000-000000000002',
+          recipient: 'U00000000000000000000000000000000',
+          message_text: ['【預約確認】', '日期：2099/01/01', '時段：10:00', '服務：E2E production contract'].join('\n'),
+          channel: 'member',
+          attempt_count: 1,
+          event_key: 'self-test:confirmed:contract',
+        };
+        benefits = {
+          pointTickets: ['E2E 集點券｜有效至 2099/01/31'],
+          eventTickets: ['E2E 活動券｜2099/01/01'],
+          tierActivities: ['E2E 階級活動｜2099/01/01'],
+          tierLabel: 'E2E 測試階級',
+        };
       }
 
-      const benefits = await loadBookingConfirmationBenefits(db, job);
       const realFlex = buildBookingFlexMessage({ ...job, benefits });
-      const emptyFlex = buildBookingFlexMessage({
-        ...job,
-        benefits: { pointTickets: [], eventTickets: [], tierActivities: [], tierLabel: benefits.tierLabel },
-      });
+      const emptyFlex = buildBookingFlexMessage({ ...job, benefits: { pointTickets: [], eventTickets: [], tierActivities: [], tierLabel: benefits.tierLabel } });
       const emptySerialized = JSON.stringify(emptyFlex);
       const emptyStateMatches = emptySerialized.match(/目前無可用項目/g)?.length || 0;
       const today = taipeiDate();
-      const expiredPointExcluded = !isUsablePointCard(
-        { status: 'active', expiry_mode: 'date', expires_on: '2000-01-01' },
-        today,
-      );
-      const expiredEventExcluded = !isUsableEventClaim(
-        {
-          status: 'claimed',
-          event_tickets: {
-            status: 'active',
-            deleted_at: null,
-            starts_on: '1999-01-01',
-            ends_on: '2000-01-01',
-            allowed_tier_keys: ['general', 'silver', 'gold', 'platinum'],
-          },
-        },
-        'silver',
-        today,
-      );
+      const expiredPointExcluded = !isUsablePointCard({ status: 'active', expiry_mode: 'date', expires_on: '2000-01-01' }, today);
+      const expiredEventExcluded = !isUsableEventClaim({
+        status: 'claimed',
+        event_tickets: { status: 'active', deleted_at: null, starts_on: '1999-01-01', ends_on: '2000-01-01', allowed_tier_keys: ['general', 'silver', 'gold', 'platinum'] },
+      }, 'silver', today);
 
       const retryKeys: string[] = [];
       let sendAttempt = 0;
@@ -114,14 +122,14 @@ Deno.serve(async (request: Request) => {
 
       const failed = await deliver({ ...job, benefits }, 'self-test-token', fakeSend);
       const retried = await deliver({ ...job, benefits }, 'self-test-token', fakeSend);
-      const retryKeyStable = retryKeys.length === 2
-        && retryKeys[0] === job.id
-        && retryKeys[1] === job.id;
+      const retryKeyStable = retryKeys.length === 2 && retryKeys[0] === job.id && retryKeys[1] === job.id;
 
       return json({
         ok: true,
         data: {
-          productionMember: true,
+          productionContract: true,
+          contractSource,
+          productionMember,
           productionPreview: {
             flexType: realFlex.type,
             altTextPresent: Boolean(realFlex.altText),
@@ -130,26 +138,14 @@ Deno.serve(async (request: Request) => {
             tierActivityCount: benefits.tierActivities.length,
             tierLabel: benefits.tierLabel,
           },
-          emptyEntitlements: {
-            emptyStateSections: emptyStateMatches,
-            passed: emptyStateMatches === 3,
-          },
-          expiredExclusion: {
-            pointTicketPassed: expiredPointExcluded,
-            eventTicketPassed: expiredEventExcluded,
-            passed: expiredPointExcluded && expiredEventExcluded,
-          },
+          emptyEntitlements: { emptyStateSections: emptyStateMatches, passed: emptyStateMatches === 3 },
+          expiredExclusion: { pointTicketPassed: expiredPointExcluded, eventTicketPassed: expiredEventExcluded, passed: expiredPointExcluded && expiredEventExcluded },
           retrySemantics: {
             firstRetryable: failed.accepted === false && failed.retryable === true && failed.status === 500,
             retryAccepted: retried.accepted === true && retried.status === 200,
             retryKeyStable,
-            passed:
-              failed.accepted === false
-              && failed.retryable === true
-              && failed.status === 500
-              && retried.accepted === true
-              && retried.status === 200
-              && retryKeyStable,
+            passed: failed.accepted === false && failed.retryable === true && failed.status === 500
+              && retried.accepted === true && retried.status === 200 && retryKeyStable,
           },
         },
       });
