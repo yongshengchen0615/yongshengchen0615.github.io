@@ -232,7 +232,66 @@ test('tour keeps waiting until the member view becomes visible, even after a slo
   dom.window.close();
 });
 
-test('member app announces tour readiness only after the member view is shown', () => {
+test('member onboarding tour starts before profile completion and hands off to the member-card tour', async () => {
+  const current = await page({ surface: 'member' });
+  const { w, dialog } = current;
+  const memberView = w.document.querySelector('main[data-user-tour]');
+  const setupView = w.document.getElementById('profileSetupView');
+
+  memberView.classList.add('hidden');
+  setupView.classList.remove('hidden');
+  w.dispatchEvent(new w.CustomEvent('member-profile-ready', {
+    detail: { profile: { lineUserId: 'LINE_TEST_A', profileComplete: false, membershipRequired: true } }
+  }));
+  await tick();
+
+  assert.equal(dialog.classList.contains('hidden'), false);
+  assert.match(dialog.textContent, /先完成會員資料/);
+  assert.equal(w.document.getElementById('memberTourProgress').textContent, '使用教學 1 / 7');
+  w.document.getElementById('memberTourNext').click();
+  assert.match(dialog.textContent, /填寫姓氏/);
+  w.document.getElementById('memberTourSkip').click();
+
+  const setupKeys = Object.keys(w.localStorage);
+  assert.equal(setupKeys.length, 1);
+  assert.match(setupKeys[0], /^member-setup-tour:/);
+
+  setupView.classList.add('hidden');
+  memberView.classList.remove('hidden');
+  w.dispatchEvent(new w.CustomEvent('member-profile-ready', {
+    detail: { profile: profile('LINE_TEST_A') }
+  }));
+  await tick();
+
+  assert.equal(dialog.classList.contains('hidden'), false);
+  assert.match(dialog.textContent, /這是你的會員卡/);
+  assert.equal(Object.keys(w.localStorage).length, 1, 'setup daily skip must not suppress the member-card tour');
+  current.dom.window.close();
+});
+
+test('test-account onboarding can auto-start before a lineUserId exists without storing the session token', async () => {
+  const current = await page({ surface: 'member', testSession: true });
+  const { w, dialog } = current;
+  w.document.querySelector('main[data-user-tour]').classList.add('hidden');
+  w.document.getElementById('profileSetupView').classList.remove('hidden');
+
+  w.dispatchEvent(new w.CustomEvent('member-profile-ready', {
+    detail: { profile: { profileComplete: false, membershipRequired: true } }
+  }));
+  await tick();
+
+  assert.equal(dialog.classList.contains('hidden'), false);
+  assert.match(dialog.textContent, /先完成會員資料/);
+  w.document.getElementById('memberTourSkip').click();
+  const keys = Object.keys(w.localStorage);
+  assert.equal(keys.length, 1);
+  assert.match(keys[0], /^member-setup-tour:/);
+  assert.doesNotMatch(keys[0], /test-session/);
+  current.dom.window.close();
+});
+
+test('member app announces tour readiness after setup and member views are shown', () => {
+  assert.match(memberApp, /setView\('profileSetup'\);\s*announceTourReady\(state\.profile\);\s*return;/);
   assert.match(memberApp, /setView\('member'\);\s*announceTourReady\(state\.profile\);/);
   assert.match(memberApp, /renderProfile\(profile\);\s*setView\('member'\);\s*announceTourReady\(profile\);/);
   const renderProfileBody = memberApp.match(/function renderProfile\(profile\) \{([\s\S]*?)\n  \}/)?.[1] || '';
