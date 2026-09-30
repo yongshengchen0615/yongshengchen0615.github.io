@@ -3,6 +3,8 @@
 
   const REQUEST_TIMEOUT_MS = 15000;
   const MIN_RESYNC_INTERVAL_MS = 1500;
+  const SECURITY_NOTICE_KEY = 'booking_security_notice_v1';
+  const SECURITY_TERMINATION_CODES = new Set(['SESSION_REVOKED','SYSTEM_MAINTENANCE','TEST_SESSION_EXPIRED','TEST_SESSION_INVALID','TEST_ACCOUNT_UNAVAILABLE','TEST_LOGIN_DISABLED']);
   const WRITE_ACTIONS = new Set([
     'user.booking.create',
     'user.booking.update',
@@ -28,6 +30,37 @@
     return error;
   }
 
+  function rememberSecurityNotice(error) {
+    try {
+      window.sessionStorage.setItem(SECURITY_NOTICE_KEY, JSON.stringify({
+        code: String(error?.code || 'SESSION_REVOKED'),
+        message: String(error?.message || '登入工作階段已結束，請重新登入。').slice(0, 500),
+        createdAt: Date.now(),
+      }));
+    } catch (_) {}
+  }
+
+  function consumeSecurityNotice() {
+    try {
+      const raw = window.sessionStorage.getItem(SECURITY_NOTICE_KEY);
+      window.sessionStorage.removeItem(SECURITY_NOTICE_KEY);
+      if (!raw) return null;
+      const notice = JSON.parse(raw);
+      const age = Date.now() - Number(notice?.createdAt);
+      return notice && SECURITY_TERMINATION_CODES.has(String(notice.code || '')) && Number.isFinite(age) && age >= 0 && age <= 10 * 60 * 1000 ? notice : null;
+    } catch (_) { return null; }
+  }
+
+  function terminateSecuritySession(error) {
+    if (!error || !SECURITY_TERMINATION_CODES.has(String(error.code || ''))) return;
+    rememberSecurityNotice(error);
+    clearPresenceHeartbeat();
+    if (presenceContext) presenceContext.closed = true;
+    try { if (window.TestModeClient?.clearSession) window.TestModeClient.clearSession(); } catch (_) {}
+    try { if (window.liff?.isLoggedIn?.()) window.liff.logout(); } catch (_) {}
+    window.setTimeout(() => window.location.reload(), 50);
+  }
+
   async function loadConfig() {
     const depth = window.location.pathname.includes('/booking/admin/') ? '../../config.json' : '../config.json';
     const response = await fetch(`${depth}?v=booking-20260910-3`, { cache: 'no-store' });
@@ -39,6 +72,10 @@
 
   async function signIn(config, clientType) {
     const isAdmin = clientType === 'admin';
+    if (!isAdmin) {
+      const notice = consumeSecurityNotice();
+      if (notice) throw clientError(String(notice.code), String(notice.message || '登入工作階段已結束，請重新登入。'));
+    }
     const isBooking = clientType === 'booking';
     const liffId = isAdmin ? config.adminLiffId : isBooking ? config.bookingLiffId : config.memberLiffId;
     const label = isAdmin ? '管理端' : isBooking ? '預約' : '會員';
@@ -312,7 +349,9 @@
       }
       if (!response.ok || !data || data.ok !== true) {
         const apiError = data && data.error || {};
-        throw clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || `${serviceLabel}暫時無法完成操作。`), apiError.details || null);
+        const error = clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || `${serviceLabel}暫時無法完成操作。`), apiError.details || null);
+        if (String(body?.clientType || '') !== 'admin' && SECURITY_TERMINATION_CODES.has(String(error.code || ''))) terminateSecuritySession(error);
+        throw error;
       }
       return data.data || {};
     } catch (error) {
@@ -501,5 +540,5 @@
     return parsed.toISOString().slice(0, 10);
   }
 
-  window.BookingSystem = { loadConfig, signIn, startPresence, request, memberProfile, bookingBenefits, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
+  window.BookingSystem = { loadConfig, signIn, startPresence, request, memberProfile, bookingBenefits, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError, terminateSecuritySession };
 })();
