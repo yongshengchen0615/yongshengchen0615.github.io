@@ -1,12 +1,12 @@
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
-import { verifyLineIdTokenContract } from "../_shared/auth-contract.ts";
+import { verifyLineIdTokenContract, requireMemberAccessContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 import { currentBusinessDate } from "../_shared/booking-hours.ts";
 
 type Json = Record<string, unknown>;
-type Identity = { lineUserId: string };
+type Identity = { lineUserId: string; displayName?: string; issuedAt?: number };
 
 const MAX_REQUEST_BYTES = 10_000;
 const READ_LIMIT = 90;
@@ -82,12 +82,11 @@ function memberChannelId(): string {
 }
 
 async function verifyLineIdToken(idToken: string): Promise<Identity> {
-  const identity = await verifyLineIdTokenContract({
+  return await verifyLineIdTokenContract({
     idToken,
     expectedChannelId: memberChannelId(),
     createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
   });
-  return { lineUserId: identity.lineUserId };
 }
 
 async function sha256(value: string): Promise<string> {
@@ -266,14 +265,23 @@ Deno.serve(async (request) => {
     const month = requireMonth(body.month);
     const supabase = dbClient();
     let identity: Identity;
+    let isTestSession = false;
     try {
       const testIdentity = await resolveUserTestIdentity(supabase, typeof body.testSessionToken === "string" ? body.testSessionToken : "");
+      isTestSession = Boolean(testIdentity);
       identity = testIdentity
-        ? { lineUserId:testIdentity.lineUserId }
+        ? { lineUserId:testIdentity.lineUserId, displayName:testIdentity.displayName }
         : await verifyLineIdToken(idToken);
     } catch (error) {
       if (error instanceof TestModeAuthError) throw new ApiError(error.status,error.code,error.message);
       throw error;
+    }
+    if (!isTestSession) {
+      await requireMemberAccessContract({
+        supabase,
+        identity: identity as { lineUserId: string; displayName: string; issuedAt: number },
+        createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+      });
     }
     await consumeRateLimit(supabase, identity);
     const member = await requireJoinedMember(supabase, identity);
