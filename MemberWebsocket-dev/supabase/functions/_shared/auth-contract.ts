@@ -1,4 +1,4 @@
-export type ContractIdentity = { lineUserId: string; displayName: string };
+export type ContractIdentity = { lineUserId: string; displayName: string; issuedAt: number };
 
 type ErrorFactory = (status: number, code: string, message: string, details?: unknown) => Error;
 
@@ -32,13 +32,26 @@ export async function verifyLineIdTokenContract(args: {
   const aud = typeof payload.aud === "string" ? payload.aud.trim() : "";
   const iss = typeof payload.iss === "string" ? payload.iss.trim() : "";
   const exp = Number(payload.exp || 0);
-  if (!response.ok || !sub || aud !== expectedChannelId || iss !== "https://access.line.me" || !Number.isFinite(exp) || exp * 1000 <= Date.now()) {
+  const iat = Number(payload.iat || 0);
+  const now = Date.now();
+  if (
+    !response.ok
+    || !sub
+    || aud !== expectedChannelId
+    || iss !== "https://access.line.me"
+    || !Number.isFinite(exp)
+    || exp * 1000 <= now
+    || !Number.isFinite(iat)
+    || iat <= 0
+    || iat * 1000 > now + 5 * 60 * 1000
+  ) {
     throw createError(401, "AUTH_INVALID", "LINE 登入已失效，請重新登入。");
   }
 
   return {
     lineUserId: sub,
     displayName: String(payload.name || "LINE 使用者").slice(0, 120),
+    issuedAt: iat,
   };
 }
 
@@ -82,4 +95,50 @@ export async function requireActiveAdminContract(args: {
     admin.display_name = identity.displayName;
   }
   return admin;
+}
+
+
+export async function requireMemberAccessContract(args: {
+  supabase: any;
+  identity: ContractIdentity;
+  createError: ErrorFactory;
+}): Promise<any | null> {
+  const { supabase, identity, createError } = args;
+  const [settingsResult, memberResult] = await Promise.all([
+    supabase
+      .from("test_mode_settings")
+      .select("maintenance_enabled,maintenance_message")
+      .eq("id", true)
+      .maybeSingle(),
+    supabase
+      .from("members")
+      .select("id,line_user_id,session_revoked_before")
+      .eq("line_user_id", identity.lineUserId)
+      .maybeSingle(),
+  ]);
+
+  if (settingsResult.error || memberResult.error) {
+    throw createError(503, "MEMBER_ACCESS_UNAVAILABLE", "目前無法確認會員存取狀態。");
+  }
+
+  if (settingsResult.data?.maintenance_enabled === true) {
+    const message = String(settingsResult.data.maintenance_message || "").trim().slice(0, 500);
+    throw createError(503, "SYSTEM_MAINTENANCE", message || "系統維護中，請稍後再試。");
+  }
+
+  const member = memberResult.data;
+  const revokedBefore = member?.session_revoked_before
+    ? new Date(member.session_revoked_before).getTime()
+    : 0;
+  const issuedAtMs = Number(identity.issuedAt || 0) * 1000;
+  if (
+    member
+    && Number.isFinite(revokedBefore)
+    && revokedBefore > 0
+    && (!Number.isFinite(issuedAtMs) || issuedAtMs <= revokedBefore)
+  ) {
+    throw createError(401, "SESSION_REVOKED", "您的登入工作階段已由管理員結束，請重新登入。");
+  }
+
+  return member || null;
 }
