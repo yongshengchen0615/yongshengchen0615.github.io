@@ -164,22 +164,8 @@
   }
 
   function resolveIdentitySeed(profile) {
-    const profileIdentity = String(profile?.lineUserId || '').trim();
-    if (profileIdentity) return profileIdentity;
-    if (surface !== 'member') return '';
-
-    try {
-      const decoded = window.liff?.getDecodedIDToken?.();
-      const lineUserId = String(decoded?.sub || '').trim();
-      if (lineUserId) return lineUserId;
-    } catch (_) { /* LIFF identity fallback is optional */ }
-
-    try {
-      const testSessionToken = String(window.TestModeClient?.getSessionToken?.() || '').trim();
-      if (testSessionToken) return `test-session:${testSessionToken}`;
-    } catch (_) { /* test-mode fallback is optional */ }
-
-    return '';
+    // Identity comes from the server-resolved profile. Do not derive tutorial persistence from client credentials or session tokens.
+    return String(profile?.lineUserId || '').trim();
   }
 
   function activateTourSurface(nextSurface) {
