@@ -178,6 +178,7 @@
         const error = new Error(String(data?.error?.message || '多人預約服務暫時無法完成操作。'));
         error.code = String(data?.error?.code || 'API_ERROR');
         error.details = data?.error?.details || null;
+        if (typeof system.terminateSecuritySession === 'function') system.terminateSecuritySession(error);
         throw error;
       }
       return data.data || {};
