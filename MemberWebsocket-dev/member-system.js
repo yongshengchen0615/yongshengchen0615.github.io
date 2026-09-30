@@ -463,14 +463,7 @@
           error.status = Number(data && data.status || fetched.response.status || 0);
           error.details = data && data.error && data.error.details || null;
           if (error.code === 'SESSION_REVOKED' || error.code === 'SYSTEM_MAINTENANCE') {
-            pendingReads.clear();
-            sessions.clear();
-            clearPresenceHeartbeat();
-            if (presenceContext) presenceContext.closed = true;
-            if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
-            if (window.liff && window.liff.isLoggedIn()) {
-              try { window.liff.logout(); } catch (_) {}
-            }
+            terminateAccessSession(error.code, error.message);
           }
           throw error;
         }
@@ -644,6 +637,41 @@
     // 保留既有呼叫介面；焦點管理統一由共用 dialog-accessibility.js 初始化。
   }
 
+  function terminateAccessSession(code, message) {
+    pendingReads.clear();
+    sessions.clear();
+    clearPresenceHeartbeat();
+    if (presenceContext) presenceContext.closed = true;
+    if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') {
+      try { window.TestModeClient.clearSession(); } catch (_) {}
+    }
+
+    const isRevoked = code === 'SESSION_REVOKED';
+    const notice = isRevoked
+      ? (String(message || '').trim() || '您的登入工作階段已由管理員強制結束，請重新登入。')
+      : (String(message || '').trim() || '系統目前維護中，將關閉此頁面。');
+
+    try { window.alert(notice); } catch (_) {}
+
+    if (window.liff && typeof window.liff.isLoggedIn === 'function' && window.liff.isLoggedIn()) {
+      try { window.liff.logout(); } catch (_) {}
+    }
+
+    if (window.liff && typeof window.liff.closeWindow === 'function') {
+      try {
+        window.liff.closeWindow();
+        return;
+      } catch (_) {}
+    }
+
+    try { window.close(); } catch (_) {}
+    try {
+      if (!window.closed && window.location && typeof window.location.replace === 'function') {
+        window.location.replace('about:blank');
+      }
+    } catch (_) {}
+  }
+
   async function logout() {
     try {
       try { await withTimeout(stopPresence('logout', true), 1200, '上下線紀錄逾時。'); } catch (_) {}
@@ -691,6 +719,6 @@
 
   window.MemberSystem = Object.freeze({
     bindDialogKeyboard, clientError, loadConfig, validateConfig, signIn, getSession, request,
-    subscribeRealtime, logout, openMemberJoin, formatDate, formatDateTime, initials
+    subscribeRealtime, logout, terminateAccessSession, openMemberJoin, formatDate, formatDateTime, initials
   });
 })();
