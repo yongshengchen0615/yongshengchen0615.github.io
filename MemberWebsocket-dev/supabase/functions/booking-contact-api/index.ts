@@ -1,4 +1,5 @@
 import { readJsonObject } from "../_shared/request-body.ts";
+import { requireMemberAccessContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import {
   ApiError,
@@ -124,9 +125,11 @@ Deno.serve(async (request: Request) => {
 
     const supabase = dbClient();
     let identity: Identity;
+    let isTestSession = false;
     if (clientType === "member") {
       try {
         const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken, 200));
+        isTestSession = Boolean(testIdentity);
         identity = testIdentity
           ? { lineUserId: testIdentity.lineUserId, displayName: testIdentity.displayName }
           : await verifyLineIdToken(asText(body.idToken, 10_000), clientType);
@@ -136,6 +139,13 @@ Deno.serve(async (request: Request) => {
       }
     } else {
       identity = await verifyLineIdToken(asText(body.idToken, 10_000), clientType);
+    }
+    if (clientType === "member" && !isTestSession) {
+      await requireMemberAccessContract({
+        supabase,
+        identity: identity as { lineUserId: string; displayName: string; issuedAt: number },
+        createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+      });
     }
     await consumeRateLimit(supabase, identity, action);
 
