@@ -78,7 +78,7 @@ export async function verifyLineIdTokenContract(args: {
 
 export async function requireActiveAdminContract(args: {
   supabase: any;
-  identity: ContractIdentity;
+  identity: { lineUserId: string; displayName?: string };
   createError: ErrorFactory;
 }): Promise<any> {
   const { supabase, identity, createError } = args;
