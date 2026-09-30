@@ -85,7 +85,13 @@ export async function resolveTestSession(
     throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
   }
   const expiresAt = session?.expires_at ? new Date(session.expires_at).getTime() : 0;
-  if (!session || session.revoked_at || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+  if (!session) {
+    throw new TestModeAuthError(401, "TEST_SESSION_INVALID", "測試登入已失效，請重新選擇測試帳號。");
+  }
+  if (session.revoked_at) {
+    throw new TestModeAuthError(401, "SESSION_REVOKED", "您的測試登入工作階段已由管理員結束。");
+  }
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
     throw new TestModeAuthError(401, "TEST_SESSION_EXPIRED", "測試登入已過期，請重新選擇測試帳號。");
   }
 
