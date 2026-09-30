@@ -61,6 +61,19 @@ test('admin membership terms UI is theme-aware and responsive', () => {
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
+test('terms policy controls render as accessible switch cards', () => {
+  assert.match(html, /id="termsRequired" class="terms-policy-input" type="checkbox" checked/);
+  assert.match(html, /id="termsReconsent" class="terms-policy-input" type="checkbox"/);
+  assert.match(html, /申請會員必須同意/);
+  assert.match(html, /要求既有會員同意新版/);
+  assert.match(html, /啟用必選/);
+  assert.match(html, /影響既有會員/);
+  assert.match(css, /\.terms-policy-switch/);
+  assert.match(css, /\.terms-policy-input:checked ~ \.terms-policy-switch/);
+  assert.match(css, /\.terms-policy-card:has\(\.terms-policy-input:focus-visible\)/);
+});
+
+
 test('main admin panels stay outside the member workspace after terms UI restructuring', () => {
   const membersStart = html.indexOf('<section id="membersPanel"');
   const cardsStart = html.indexOf('<section id="cardsPanel"');
