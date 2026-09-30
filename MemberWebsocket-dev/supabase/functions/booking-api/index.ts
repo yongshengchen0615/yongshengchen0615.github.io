@@ -1,12 +1,12 @@
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
-import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract, requireMemberAccessContract } from "../_shared/auth-contract.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 import { workWindow, clockTime, occupiedRange, localRange, slotHasPassed, timeOnBusinessDate, localTimestamp, currentBusinessDate } from "../_shared/booking-hours.ts";
 
 type Json = Record<string, unknown>;
-type Identity = { lineUserId: string; displayName: string };
+type Identity = { lineUserId: string; displayName: string; issuedAt?: number };
 type ClientType = "member" | "admin";
 type RequestedItem = { serviceId: string; quantity: number; service: any };
 
@@ -985,6 +985,14 @@ Deno.serve(async (request: Request) => {
       }
     } else {
       identity = await verifyLineIdToken(idToken, clientType);
+    }
+
+    if (clientType === "member" && !testSessionToken) {
+      await requireMemberAccessContract({
+        supabase,
+        identity: identity as { lineUserId: string; displayName: string; issuedAt: number },
+        createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+      });
     }
 
     await consumeRateLimit(supabase, identity, action);
