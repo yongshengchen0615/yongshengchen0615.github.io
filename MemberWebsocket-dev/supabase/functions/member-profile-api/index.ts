@@ -94,6 +94,7 @@ async function profileFor(supabase: SupabaseClient, member: any): Promise<Json> 
     lineUserId: member.line_user_id,
     displayName: member.display_name || "LINE 使用者",
     memberCode: member.member_code,
+    inviteCode: member.invite_code || "",
     status: member.status,
     joinedAt: member.joined_at || member.created_at,
     birthday: member.birthday || "",
