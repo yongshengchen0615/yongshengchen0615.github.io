@@ -1,6 +1,6 @@
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
-import { verifyLineIdTokenContract } from "../_shared/auth-contract.ts";
+import { verifyLineIdTokenContract, requireMemberAccessContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { workWindow, clockTime, occupiedRange, localRange, slotHasPassed, timeOnBusinessDate, currentBusinessDate } from "../_shared/booking-hours.ts";
@@ -87,12 +87,11 @@ function db() {
 }
 
 async function verifyMember(idToken: string) {
-  const identity = await verifyLineIdTokenContract({
+  return await verifyLineIdTokenContract({
     idToken,
     expectedChannelId: env("LINE_MEMBER_CHANNEL_ID") || "2010787602",
     createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
   });
-  return identity.lineUserId;
 }
 
 async function sha256(value: string): Promise<string> {
@@ -316,9 +315,21 @@ Deno.serve(async (request: Request) => {
     }
     const supabase = db();
     let lineUserId: string;
+    let isTestSession = false;
     try {
       const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken, 200));
-      lineUserId = testIdentity ? testIdentity.lineUserId : await verifyMember(asText(body.idToken, 5000));
+      isTestSession = Boolean(testIdentity);
+      if (testIdentity) {
+        lineUserId = testIdentity.lineUserId;
+      } else {
+        const identity = await verifyMember(asText(body.idToken, 5000));
+        await requireMemberAccessContract({
+          supabase,
+          identity,
+          createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+        });
+        lineUserId = identity.lineUserId;
+      }
     } catch (error) {
       if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
       throw error;
