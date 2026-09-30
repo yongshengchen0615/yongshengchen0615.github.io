@@ -269,14 +269,14 @@ test('member onboarding tour starts before profile completion and hands off to t
   current.dom.window.close();
 });
 
-test('test-account onboarding can auto-start before a lineUserId exists without storing the session token', async () => {
+test('test-account onboarding uses the same server-resolved member identity as real accounts', async () => {
   const current = await page({ surface: 'member', testSession: true });
   const { w, dialog } = current;
   w.document.querySelector('main[data-user-tour]').classList.add('hidden');
   w.document.getElementById('profileSetupView').classList.remove('hidden');
 
   w.dispatchEvent(new w.CustomEvent('member-profile-ready', {
-    detail: { profile: { profileComplete: false, membershipRequired: true } }
+    detail: { profile: { lineUserId: 'LINE_TEST_A', profileComplete: false, membershipRequired: true } }
   }));
   await tick();
 
@@ -286,7 +286,7 @@ test('test-account onboarding can auto-start before a lineUserId exists without 
   const keys = Object.keys(w.localStorage);
   assert.equal(keys.length, 1);
   assert.match(keys[0], /^member-setup-tour:/);
-  assert.doesNotMatch(keys[0], /test-session/);
+  assert.doesNotMatch(keys[0], /LINE_TEST_A|test-session/);
   current.dom.window.close();
 });
 
