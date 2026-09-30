@@ -24,3 +24,14 @@ for (const [label, relative] of [
     assert.ok(helper.includes('window.close()'));
   });
 }
+
+
+test('admin force logout keeps admin surface but revokes the same identity on user surfaces', () => {
+  const auth = read('supabase/functions/_shared/auth-contract.ts');
+  const api = read('supabase/functions/api/index.ts');
+  assert.match(auth, /const adminChannelId =/);
+  assert.match(auth, /const canBypassUserRestrictions = isActiveAdmin && expectedChannelId === adminChannelId/);
+  assert.match(auth, /if \(!canBypassUserRestrictions && revokedAtMs > 0/);
+  assert.doesNotMatch(api, /SELF_FORCE_LOGOUT_BLOCKED/);
+  assert.match(api, /\["member","points","event","calendar","booking","admin"\]/);
+});
