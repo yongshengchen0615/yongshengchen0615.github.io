@@ -27,6 +27,29 @@
     } catch (_) {}
   }
 
+  let forcedLogoutTerminating = false;
+
+  function terminateForcedTestSession(message) {
+    if (forcedLogoutTerminating) return;
+    forcedLogoutTerminating = true;
+    clearSession();
+    dispatchSessionRevoked('admin-force-logout');
+    const notice = String(message || '').trim() || '您的測試登入工作階段已由管理員強制結束。';
+    try { window.alert(notice); } catch (_) {}
+    if (window.liff && typeof window.liff.closeWindow === 'function') {
+      try {
+        window.liff.closeWindow();
+        return;
+      } catch (_) {}
+    }
+    try { window.close(); } catch (_) {}
+    try {
+      if (!window.closed && window.location && typeof window.location.replace === 'function') {
+        window.location.replace('about:blank');
+      }
+    } catch (_) {}
+  }
+
   function surfaceInUse(account, surface) {
     if (!account) return false;
     if (account.currentSurfaceInUse === true) return true;
@@ -79,6 +102,12 @@
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
         const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
         const eventType = String(row.event_type || '');
+        if (eventType === 'admin.member.force-logout' && getSessionToken()) {
+          void sessionStatus(config, realtimeSurface).catch((error) => {
+            if (error && error.code === 'SESSION_REVOKED') terminateForcedTestSession(error.message);
+          });
+          return;
+        }
         if (!eventType.startsWith('test_mode.')) return;
         dispatchAvailabilityChanged();
         if (eventType === 'test_mode.data.purged') {
@@ -139,6 +168,7 @@
         Number(payload?.status || response.status || 0)
       );
       error.details = payload?.error?.details || null;
+      if (error.code === 'SESSION_REVOKED') terminateForcedTestSession(error.message);
       throw error;
     }
     return payload.data || {};
