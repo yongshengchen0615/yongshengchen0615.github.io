@@ -567,7 +567,7 @@
       }
       const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
       const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
-      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true), actionButton('會員 360', 'view-records', member.lineUserId)); actionsCell.append(actions);
+      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('強制下線', 'force-logout', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true), actionButton('會員 360', 'view-records', member.lineUserId)); actionsCell.append(actions);
       row.append(memberCell, tierCell, statusCell, presenceCell, serviceTimeCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
@@ -676,6 +676,21 @@
     const member = state.members.find((item) => item.lineUserId === button.dataset.value);
     if (!member) return;
     if (button.dataset.action === 'edit-member') return openMemberModal(member);
+    if (button.dataset.action === 'force-logout') {
+      const confirmed = window.confirm(`確定要強制結束「${member.displayName || member.memberCode || '此會員'}」目前所有登入工作階段嗎？\n\n此操作不會停用或刪除會員，會員之後可重新登入。`);
+      if (!confirmed) return;
+      button.disabled = true;
+      try {
+        await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.force-logout', { lineUserId: member.lineUserId });
+        setSyncStatus('已強制結束該會員的所有登入工作階段。');
+        await refreshMembers();
+      } catch (error) {
+        setSyncStatus(error && error.message || '強制下線失敗，請稍後再試。', true);
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
     if (button.dataset.action === 'view-records') {
       button.disabled = true;
       try { await openMemberRecordsModal(member); } finally { button.disabled = false; }
