@@ -3802,3 +3802,111 @@ html[data-theme][data-ui-system="material-3"] body > main .links a .arrow {
     box-shadow: none;
   }
 }
+
+
+/* Member profile onboarding/edit theme parity 2026-09-30 */
+html[data-theme] #profileSetupView .profile-form {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+  box-shadow: var(--ui-shadow-card);
+}
+
+html[data-theme] #profileSetupView :where(
+  .profile-form label,
+  .profile-field-help,
+  .date-picker-fields label,
+  .date-picker-message
+) {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] #profileSetupView :where(
+  .profile-form input,
+  .profile-field select,
+  .date-input-shell,
+  .date-picker-fields select
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] #profileSetupView .date-input-display {
+  color: var(--theme-text-subtle);
+}
+
+html[data-theme] #profileSetupView .date-input-display.has-value {
+  color: var(--theme-text);
+}
+
+html[data-theme] #profileSetupView .profile-date-modal {
+  background: var(--theme-overlay);
+}
+
+html[data-theme] #memberView .profile-details > div:first-child {
+  color: var(--theme-text);
+  background: var(--theme-surface-muted);
+  border-bottom-color: var(--theme-border);
+}
+
+html[data-theme] #memberView .profile-detail-list > div,
+html[data-theme] #memberView .profile-detail-list > div:nth-child(n + 3),
+html[data-theme] #memberView .profile-detail-list .profile-editable-row {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .06);
+}
+
+html[data-theme] #memberView .profile-detail-list > div:hover {
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] #memberView .profile-detail-list dt {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] #memberView .profile-detail-list dd {
+  color: var(--theme-text);
+}
+
+html[data-theme] #memberView .profile-edit-modal {
+  background: var(--theme-overlay);
+}
+
+html[data-theme] #memberView .profile-edit-modal-card {
+  color: var(--theme-text);
+  background: var(--theme-surface-raised);
+  border-color: var(--theme-border);
+  box-shadow: var(--theme-modal-shadow);
+}
+
+html[data-theme] #memberView .profile-edit-modal-heading h2,
+html[data-theme] #memberView .profile-edit-modal-fields label {
+  color: var(--theme-text);
+}
+
+html[data-theme] #memberView .profile-edit-modal-heading p:last-child {
+  color: var(--theme-text-muted);
+}
+
+html[data-theme] #memberView .profile-edit-modal-close {
+  color: var(--theme-text-muted);
+  background: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+}
+
+html[data-theme] #memberView :where(
+  .profile-edit-modal input,
+  .profile-edit-modal select
+) {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-color: var(--theme-border-strong);
+}
+
+html[data-theme] #memberView .profile-edit-modal-actions {
+  border-top-color: var(--theme-border);
+}
