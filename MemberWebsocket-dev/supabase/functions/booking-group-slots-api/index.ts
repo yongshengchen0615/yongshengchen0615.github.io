@@ -315,10 +315,8 @@ Deno.serve(async (request: Request) => {
     }
     const supabase = db();
     let lineUserId: string;
-    let isTestSession = false;
     try {
       const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken, 200));
-      isTestSession = Boolean(testIdentity);
       if (testIdentity) {
         lineUserId = testIdentity.lineUserId;
       } else {
