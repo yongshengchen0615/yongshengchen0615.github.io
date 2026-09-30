@@ -102,7 +102,8 @@
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
         const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
         const eventType = String(row.event_type || '');
-        if (eventType === 'admin.member.force-logout' && getSessionToken()) {
+        const scope = String(row.scope || '');
+        if (eventType === 'admin.member.force-logout' && (scope === 'all' || scope === realtimeSurface) && getSessionToken()) {
           void sessionStatus(config, realtimeSurface).catch((error) => {
             if (error && error.code === 'SESSION_REVOKED') terminateForcedTestSession(error.message);
           });
