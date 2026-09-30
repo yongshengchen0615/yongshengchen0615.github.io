@@ -5,6 +5,15 @@
   const SUPABASE_FUNCTION_PATTERN = /^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1\/[A-Za-z0-9_-]+$/i;
   const FRESH_LOGIN_QUERY = 'member_system_reauth';
   const FRESH_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
+  const SECURITY_NOTICE_KEY = 'member_system_security_notice_v1';
+  const SECURITY_TERMINATION_CODES = new Set([
+    'SESSION_REVOKED',
+    'SYSTEM_MAINTENANCE',
+    'TEST_SESSION_EXPIRED',
+    'TEST_SESSION_INVALID',
+    'TEST_ACCOUNT_UNAVAILABLE',
+    'TEST_LOGIN_DISABLED'
+  ]);
   const READ_RETRY_DELAY_MS = 400;
   const READ_TIMEOUT_MS = 12000;
   const BOOTSTRAP_TIMEOUT_MS = 30000;
@@ -49,6 +58,7 @@
     'admin.terms.draft.save',
     'admin.terms.activate',
     'admin.member.update',
+    'admin.member.force-logout',
     'admin.member-tiers.save',
     'admin.pointcards.save',
     'admin.pointcards.reorder',
@@ -74,6 +84,46 @@
     const error = new Error(message);
     error.code = code;
     return error;
+  }
+
+  function rememberSecurityNotice(error) {
+    try {
+      window.sessionStorage.setItem(SECURITY_NOTICE_KEY, JSON.stringify({
+        code: String(error && error.code || 'SESSION_REVOKED'),
+        message: String(error && error.message || '登入工作階段已結束，請重新登入。').slice(0, 500),
+        createdAt: Date.now()
+      }));
+    } catch (_) {}
+  }
+
+  function consumeSecurityNotice() {
+    try {
+      const raw = window.sessionStorage.getItem(SECURITY_NOTICE_KEY);
+      window.sessionStorage.removeItem(SECURITY_NOTICE_KEY);
+      if (!raw) return null;
+      const notice = JSON.parse(raw);
+      const age = Date.now() - Number(notice && notice.createdAt);
+      if (!notice || !SECURITY_TERMINATION_CODES.has(String(notice.code || '')) || !Number.isFinite(age) || age < 0 || age > 10 * 60 * 1000) return null;
+      return { code: String(notice.code), message: String(notice.message || '登入工作階段已結束，請重新登入。') };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function terminateSecuritySession(error) {
+    if (!error || !SECURITY_TERMINATION_CODES.has(String(error.code || ''))) return;
+    rememberSecurityNotice(error);
+    pendingReads.clear();
+    sessions.clear();
+    try { clearPresenceHeartbeat(); } catch (_) {}
+    if (presenceContext) presenceContext.closed = true;
+    try {
+      if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
+    } catch (_) {}
+    try {
+      if (window.liff && typeof window.liff.isLoggedIn === 'function' && window.liff.isLoggedIn()) window.liff.logout();
+    } catch (_) {}
+    window.setTimeout(() => window.location.reload(), 50);
   }
 
   async function loadConfig() {
@@ -128,6 +178,10 @@
   }
 
   async function signIn(config, surface) {
+    if (surface !== 'admin') {
+      const notice = consumeSecurityNotice();
+      if (notice) throw clientError(notice.code, notice.message);
+    }
     let idToken;
     if (surface !== 'admin' && window.TestModeClient && typeof window.TestModeClient.prepare === 'function') {
       const prepared = await window.TestModeClient.prepare(config, surface, () => lineSignIn(config, surface));
@@ -462,6 +516,7 @@
           const error = clientError(data && data.error && data.error.code || 'API_ERROR', data && data.error && data.error.message || '資料服務拒絕此請求。');
           error.status = Number(data && data.status || fetched.response.status || 0);
           error.details = data && data.error && data.error.details || null;
+          if (clientType !== 'admin' && SECURITY_TERMINATION_CODES.has(String(error.code || ''))) terminateSecuritySession(error);
           throw error;
         }
         return data.data || {};
