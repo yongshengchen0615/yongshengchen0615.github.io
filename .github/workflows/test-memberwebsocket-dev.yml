@@ -206,8 +206,8 @@ jobs:
           grep -q 'app.js?v=booking-overnight-20260928-1' MemberWebsocket-dev/booking/index.html
           grep -q 'getRenderCount' MemberWebsocket-dev/booking/app.js
           grep -q 'getBookingSnapshot' MemberWebsocket-dev/booking/app.js
-          grep -q 'group-booking.js?v=member-security-20260930-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'common.js?v=member-security-20260930-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'group-booking.js?v=async-architecture-20260921-1' MemberWebsocket-dev/booking/index.html
+          grep -q 'common.js?v=async-architecture-20260921-1-benefits-20260930-1' MemberWebsocket-dev/booking/index.html
           grep -q 'liff-fresh-login.js?v=member-presence-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'id="bookingNoticeModal"' MemberWebsocket-dev/booking/index.html
           grep -q 'confirmBookingNoticeButton' MemberWebsocket-dev/booking/index.html
