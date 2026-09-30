@@ -1,7 +1,7 @@
 import { loadBookingBenefits } from "../_shared/booking-benefits.ts";
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
-import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract, requireMemberAccessContract } from "../_shared/auth-contract.ts";
 import { buildLineFlexNotice } from "../_shared/line-flex.ts";
 import { resolveTestSession, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
@@ -39,6 +39,7 @@ const WRITE_ACTIONS = new Set([
   "admin.terms.draft.save",
   "admin.terms.activate",
   "admin.member.update",
+  "admin.member.force-logout",
   "admin.member-tiers.save",
   "admin.pointcards.save",
   "admin.pointcards.reorder",
@@ -118,6 +119,7 @@ function mapDatabaseError(error: unknown): ApiError {
     ["TERMS_IMMUTABLE",409,"TERMS_IMMUTABLE","已發佈條款不可修改。"],
     ["TERMS_NOT_EFFECTIVE",400,"TERMS_NOT_EFFECTIVE","條款尚未生效或未設為必須同意。"],
     ["ADMIN_REQUIRED",403,"ADMIN_REQUIRED","管理員權限不足。"],
+    ["ADMIN_FORCE_LOGOUT_ADMIN_FORBIDDEN",403,"ADMIN_FORCE_LOGOUT_ADMIN_FORBIDDEN","管理員帳號不可由會員強制下線功能結束工作階段。"],
     ["INVALID_TERMS",400,"INVALID_TERMS","條款內容不完整或格式不正確。"],
     ["CONFLICT",409,"CONFLICT","資料已被其他操作更新，請重新整理後再試。"],
     ["MEMBERSHIP_REQUIRED",403,"MEMBERSHIP_REQUIRED","請先完成會員加入後再使用此功能。"],
@@ -203,7 +205,7 @@ function channelIdFor(clientType: ClientType): string {
   return value;
 }
 
-async function verifyLineIdToken(idToken: string, clientType: ClientType): Promise<{ lineUserId: string; displayName: string }> {
+async function verifyLineIdToken(idToken: string, clientType: ClientType): Promise<{ lineUserId: string; displayName: string; issuedAt: number }> {
   return await verifyLineIdTokenContract({
     idToken,
     expectedChannelId: channelIdFor(clientType),
@@ -1166,7 +1168,7 @@ async function summaryStats(supabase: SupabaseClient): Promise<Json> {
 }
 
 async function emitRealtime(supabase: SupabaseClient, action: string): Promise<void> {
-  if (!WRITE_ACTIONS.has(action)) return;
+  if (!WRITE_ACTIONS.has(action) || action === "admin.member.force-logout") return;
   const presence = presenceActionInfo(action);
   if (presence) {
     if (presence.event === "heartbeat") return;
@@ -2150,6 +2152,22 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     return { messagePreset:messagePresets.find((item:any) => item.presetId === savedPresetId) || null,messagePresets };
   }
 
+  if (action === "admin.member.force-logout") {
+    const lineUserId = requireText(body.lineUserId,"會員識別",120);
+    const forced = await supabase.rpc("admin_force_logout_member", {
+      p_member_line_user_id: lineUserId,
+      p_actor: identity.lineUserId,
+    });
+    if (forced.error) throw mapDatabaseError(forced.error);
+    const result = Array.isArray(forced.data) ? forced.data[0] : forced.data;
+    return {
+      lineUserId,
+      revokedAt: result?.revoked_at || null,
+      revokedTestSessions: Number(result?.revoked_test_sessions || 0),
+      closedPresenceSessions: Number(result?.closed_presence_sessions || 0),
+    };
+  }
+
   if (action === "admin.member.update") {
     const lineUserId = requireText(body.lineUserId,"會員識別",120);
     const status = asText(body.status,20);
@@ -2433,7 +2451,7 @@ async function handleRequest(request: Request): Promise<Response> {
       }
     }
 
-    let identity: { lineUserId: string; displayName: string };
+    let identity: { lineUserId: string; displayName: string; issuedAt?: number };
     if (clientType !== "admin" && testSessionToken) {
       try {
         const testIdentity = await resolveTestSession(supabase,testSessionToken);
@@ -2444,6 +2462,13 @@ async function handleRequest(request: Request): Promise<Response> {
       }
     } else {
       identity = await verifyLineIdToken(idToken,clientType);
+    }
+    if (clientType !== "admin" && !testSessionToken) {
+      await requireMemberAccessContract({
+        supabase,
+        identity: identity as { lineUserId: string; displayName: string; issuedAt: number },
+        createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+      });
     }
     await consumeRateLimit(supabase,identity.lineUserId,action,body);
     const data = await handleAction(supabase,identity,action,body);
