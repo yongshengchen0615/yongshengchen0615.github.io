@@ -35,3 +35,10 @@ test('admin force logout keeps admin surface but revokes the same identity on us
   assert.doesNotMatch(api, /SELF_FORCE_LOGOUT_BLOCKED/);
   assert.match(api, /\["member","points","event","calendar","booking","admin"\]/);
 });
+
+
+test('force logout admin handler refreshes the current member page without an undefined helper', () => {
+  const source = read('admin/app.js');
+  assert.doesNotMatch(source, /refreshMembers\(\)/);
+  assert.match(source, /loadMembersPage\(state\.memberPage\.page, state\.memberPage\.query\)/);
+});
