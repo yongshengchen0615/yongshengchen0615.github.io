@@ -1,12 +1,12 @@
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
-import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
+import { verifyLineIdTokenContract, requireActiveAdminContract, requireMemberAccessContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 import { workWindow, clockTime, occupiedRange, localRange, slotHasPassed, timeOnBusinessDate, localTimestamp, currentBusinessDate } from "../_shared/booking-hours.ts";
 
 type Json = Record<string, any>;
-type Identity = { lineUserId: string; displayName: string };
+type Identity = { lineUserId: string; displayName: string; issuedAt?: number };
 type ClientType = "member" | "admin";
 const STORE_SERVICE_ID = "00000000-0000-4000-8000-000000000010";
 const SLOT_INTERVAL = 30;
@@ -376,9 +376,11 @@ Deno.serve(async (req: Request) => {
     if (clientType==="admin" && !action.startsWith("admin.booking.resources.")) throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
     const supabase=db();
     let identity: Identity;
+    let isTestSession = false;
     if (clientType === "member") {
       try {
         const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken,200));
+        isTestSession = Boolean(testIdentity);
         identity = testIdentity
           ? { lineUserId:testIdentity.lineUserId, displayName:testIdentity.displayName }
           : await verifyLine(asText(body.idToken,5000),clientType);
@@ -388,6 +390,13 @@ Deno.serve(async (req: Request) => {
       }
     } else {
       identity = await verifyLine(asText(body.idToken,5000),clientType);
+    }
+    if (clientType === "member" && !isTestSession) {
+      await requireMemberAccessContract({
+        supabase,
+        identity: identity as { lineUserId: string; displayName: string; issuedAt: number },
+        createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+      });
     }
     await consumeRateLimit(supabase,identity,action);
     const data=await route(supabase,identity,clientType,action,body);
