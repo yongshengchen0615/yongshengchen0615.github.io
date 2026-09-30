@@ -39,6 +39,7 @@ const WRITE_ACTIONS = new Set([
   "admin.terms.draft.save",
   "admin.terms.activate",
   "admin.member.update",
+  "admin.member.force-logout",
   "admin.member-tiers.save",
   "admin.pointcards.save",
   "admin.pointcards.reorder",
@@ -2098,6 +2099,51 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   }
   if (action === "admin.member-records.list") {
     return await adminMemberRecords(supabase,requireText(body.lineUserId,"會員識別",120));
+  }
+  if (action === "admin.member.force-logout") {
+    const lineUserId = requireText(body.lineUserId,"會員識別",120);
+    if (lineUserId === identity.lineUserId) {
+      throw new ApiError(409,"SELF_FORCE_LOGOUT_BLOCKED","不可從管理端強制結束自己的管理工作階段。");
+    }
+    const target = await supabase.from("members").select("id,line_user_id,display_name").eq("line_user_id",lineUserId).maybeSingle();
+    if (target.error) throw mapDatabaseError(target.error);
+    if (!target.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
+
+    const revokedAt = new Date().toISOString();
+    const updated = await supabase.from("members")
+      .update({ force_logout_after:revokedAt,updated_at:revokedAt })
+      .eq("id",target.data.id);
+    if (updated.error) throw mapDatabaseError(updated.error);
+
+    const [presenceResult,testSessionResult] = await Promise.all([
+      supabase.from("member_presence_sessions")
+        .update({ last_seen_at:revokedAt,offline_at:revokedAt,offline_reason:"admin_force_logout",updated_at:revokedAt })
+        .eq("member_id",target.data.id)
+        .is("offline_at",null),
+      supabase.from("test_login_sessions")
+        .update({ revoked_at:revokedAt,last_used_at:revokedAt })
+        .eq("member_id",target.data.id)
+        .is("revoked_at",null),
+    ]);
+    if (presenceResult.error) throw mapDatabaseError(presenceResult.error);
+    if (testSessionResult.error) throw mapDatabaseError(testSessionResult.error);
+
+    const auditResult = await supabase.from("audit_logs").insert({
+      audit_id:requestId("AUD"),
+      actor_line_user_id:identity.lineUserId,
+      actor_role:admin.role || "admin",
+      action:"MEMBER_FORCE_LOGOUT",
+      target_type:"member",
+      target_id:lineUserId,
+      result:"success",
+      detail:{ revokedAt },
+    });
+    if (auditResult.error) throw mapDatabaseError(auditResult.error);
+
+    await supabase.from("realtime_events").insert(
+      ["member","points","event","calendar","admin"].map((scope) => ({ scope,event_type:"admin.member.force-logout" })),
+    );
+    return { lineUserId,revokedAt };
   }
   if (action === "admin.pointcards.list") {
     const data = await adminCards(supabase);
