@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-29.7';
+  const VERSION = '2026-09-30.1';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -548,6 +548,11 @@
   async function waitForBackgroundRunnerControl(runnerWindow) {
     const deadline = Date.now() + BACKGROUND_RUNNER_READY_TIMEOUT_MS;
     while (Date.now() < deadline) {
+      if (state.cancelled) {
+        const error = new Error('背景 Runner 啟動已取消，未開始後續 E2E 流程。');
+        error.code = 'E2E_BACKGROUND_RUNNER_START_CANCELLED';
+        throw error;
+      }
       if (!runnerWindow || runnerWindow.closed) {
         const error = new Error('背景管理端 Runner 視窗已關閉。');
         error.code = 'E2E_BACKGROUND_RUNNER_CLOSED';
@@ -555,6 +560,11 @@
       }
       try {
         const doc = runnerWindow.document;
+        if (runnerWindow.AdminE2EControlLoader?.getStatus?.().phase === 'failed') {
+          const error = new Error('背景管理端 E2E 控制器載入失敗，請確認腳本資源與網路後重試。');
+          error.code = 'E2E_BACKGROUND_RUNNER_CONTROL_LOAD_FAILED';
+          throw error;
+        }
         const errorView = doc?.getElementById?.('errorView');
         const errorVisible = Boolean(errorView && !errorView.classList.contains('hidden'));
         if (errorVisible) {
@@ -569,16 +579,50 @@
         }
         if (doc?.documentElement?.dataset?.memberAdminReady === 'true') {
           const candidate = runnerWindow.MemberAdminE2EControl;
-          if (typeof candidate?.runUnifiedBackground === 'function') return candidate;
+          if (typeof candidate?.runUnifiedBackground === 'function') {
+            if (candidate.version !== VERSION) {
+              const error = new Error('背景 Runner 與主管理頁版本不同，請重新整理管理端後重試。');
+              error.code = 'E2E_BACKGROUND_RUNNER_VERSION_MISMATCH';
+              throw error;
+            }
+            return candidate;
+          }
         }
       } catch (error) {
-        if (error?.code === 'E2E_BACKGROUND_RUNNER_BOOT_FAILED') throw error;
+        if (String(error?.code || '').startsWith('E2E_BACKGROUND_RUNNER_')) throw error;
       }
       await sleep(150);
     }
     const error = new Error('背景管理端 Runner 未能在允許時間內完成登入與初始化。');
     error.code = 'E2E_BACKGROUND_RUNNER_NOT_READY';
     throw error;
+  }
+
+  function backgroundRunnerSnapshot(runnerWindow) {
+    const snapshot = { closed: Boolean(!runnerWindow || runnerWindow.closed), accessible: false };
+    if (snapshot.closed) return snapshot;
+    try {
+      const doc = runnerWindow.document;
+      snapshot.accessible = true;
+      snapshot.page = {
+        path: diagnosticPath(runnerWindow.location.href),
+        readyState: String(doc.readyState || ''),
+        visibilityState: String(doc.visibilityState || ''),
+        online: runnerWindow.navigator?.onLine !== false
+      };
+      snapshot.adminReady = doc.documentElement?.dataset?.memberAdminReady === 'true';
+      snapshot.loader = runnerWindow.AdminE2EControlLoader?.getStatus?.() || { phase: 'unavailable' };
+      snapshot.controllerReady = typeof runnerWindow.MemberAdminE2EControl?.runUnifiedBackground === 'function';
+      snapshot.controllerVersion = String(runnerWindow.MemberAdminE2EControl?.version || '');
+      snapshot.errorVisible = Boolean(doc.getElementById('errorView') && !doc.getElementById('errorView').classList.contains('hidden'));
+      snapshot.resources = runnerWindow.performance.getEntriesByType('resource').slice(-24).map((entry) => ({
+        path: diagnosticPath(entry.name),
+        initiatorType: String(entry.initiatorType || ''),
+        responseStatus: Number(entry.responseStatus || 0) || null,
+        durationMs: Math.max(0, Math.round(Number(entry.duration || 0)))
+      }));
+    } catch { /* An inaccessible window still has a useful lifecycle snapshot. */ }
+    return snapshot;
   }
 
   function watchBackgroundCompletion(completion, runnerWindow) {
@@ -691,6 +735,7 @@
     }
 
     state.cancelled = false;
+    state.failureScreenshotsCaptured = 0;
     state.results = [];
     state.participants = [];
     state.runStartedAt = new Date().toISOString();
@@ -707,6 +752,7 @@
     render();
     try { runnerWindow.blur?.(); window.focus?.(); } catch {}
 
+    const marker = adminDiagnosticMarker();
     const completion = (async () => {
       const control = await waitForBackgroundRunnerControl(runnerWindow);
       setMessage('E2E 已移交背景 Runner；只執行勾選模組的 Browser 案例。測試視窗請保持開啟。');
@@ -735,36 +781,45 @@
       );
       return result;
     })().catch(async (error) => {
+      const startCancelled = error?.code === 'E2E_BACKGROUND_RUNNER_START_CANCELLED';
+      const runnerSnapshot = backgroundRunnerSnapshot(runnerWindow);
       try { runnerWindow?.MemberAdminE2EControl?.stop?.(); } catch {}
-      try { if (runnerWindow && !runnerWindow.closed) runnerWindow.close(); } catch {}
-      closeWindowList(clientWindows);
       for (const row of state.results.filter((item) => item.status === 'running')) {
         row.status = 'failed';
         row.message = '背景 Runner 中斷，節點未能完成驗證。';
         row.actual = { code: 'E2E_BACKGROUND_INTERRUPTED' };
         row.durationMs = Math.max(0, Date.now() - Date.parse(state.runStartedAt || new Date().toISOString()));
       }
-      state.results.push({
+      const failure = {
         key: 'E2E_BACKGROUND_RUNNER_FAILURE', name: '背景 Runner 存活與進度',
-        domain: 'Paired E2E / Orchestration', status: 'failed',
+        domain: 'Paired E2E / Orchestration', status: startCancelled ? 'skipped' : 'failed',
         message: String(error?.message || '背景 Runner 中斷。'),
         expected: { runnerResponding: true },
         actual: {
           ...plainError(error),
           runnerVersion: VERSION,
           runId,
-          runnerClosed: !runnerWindow || runnerWindow.closed,
+          runnerClosed: runnerSnapshot.closed,
+          runnerSnapshot,
           lastStatusAgeMs: state.backgroundLastStatusAt
             ? Math.max(0, Date.now() - state.backgroundLastStatusAt)
             : null,
           lastCompletedCaseKey: String([...state.results].reverse().find((item) => item.status !== 'running')?.key || '')
         },
-        durationMs: 0
-      });
+        durationMs: Math.max(0, Date.now() - marker.startedAtMs)
+      };
+      failure.trace = buildAdminFailureTrace(marker, failure, error, { runnerSnapshot, selectedModules });
+      // Capture before closing the failing window; label a parent-page fallback explicitly.
+      const captureWindow = runnerSnapshot.accessible ? runnerWindow : window;
+      failure.trace.screenshotSurface = captureWindow === runnerWindow ? 'background-runner' : 'parent-admin';
+      if (!startCancelled) await attachFailureScreenshot(failure, captureWindow);
+      try { if (runnerWindow && !runnerWindow.closed) runnerWindow.close(); } catch {}
+      closeWindowList(clientWindows);
+      state.results.push(failure);
       render();
       try { await recordResultRows(state.results, 'paired-browser', 'full', '', state.runStartedAt, { rootRun: false }); } catch {}
-      setMessage(error?.message || '背景完整 E2E 執行失敗。', true);
-      return { error: plainError(error), results: state.results.slice() };
+      setMessage(error?.message || '背景完整 E2E 執行失敗。', !startCancelled);
+      return { cancelled: startCancelled, error: plainError(error), results: state.results.slice() };
     }).finally(() => {
       setBusy(false);
       state.backgroundRunnerWindow = null;
@@ -1142,7 +1197,7 @@
     cloneDocument.querySelectorAll('[data-line-user-id], [data-phone], [data-birthday], [data-email]').forEach((node) => {
       node.textContent = '[redacted]';
     });
-    cloneDocument.querySelectorAll('#memberIdentity, #memberRecordsIdentity').forEach((node) => {
+    cloneDocument.querySelectorAll('#adminName, #memberIdentity, #memberRecordsIdentity').forEach((node) => {
       node.textContent = '[redacted member identity]';
     });
     if (cloneDocument.querySelector('#realMembersSubtab[aria-selected="true"]')) {
@@ -1168,11 +1223,12 @@
     });
   }
 
-  async function captureFailureScreenshotBlob() {
+  async function captureFailureScreenshotBlob(captureWindow = window) {
     const renderScreenshot = await ensureHtml2Canvas();
-    const width = Math.max(320, Number(window.innerWidth || document.documentElement.clientWidth || 1280));
-    const height = Math.max(320, Number(window.innerHeight || document.documentElement.clientHeight || 900));
-    const canvas = await renderScreenshot(document.body, {
+    const captureDocument = captureWindow.document;
+    const width = Math.max(320, Number(captureWindow.innerWidth || captureDocument.documentElement.clientWidth || 1280));
+    const height = Math.max(320, Number(captureWindow.innerHeight || captureDocument.documentElement.clientHeight || 900));
+    const canvas = await renderScreenshot(captureDocument.body, {
       backgroundColor: '#ffffff',
       logging: false,
       useCORS: true,
@@ -1182,8 +1238,8 @@
       height,
       windowWidth: width,
       windowHeight: height,
-      x: window.scrollX || 0,
-      y: window.scrollY || 0,
+      x: captureWindow.scrollX || 0,
+      y: captureWindow.scrollY || 0,
       onclone: redactScreenshotClone
     });
     let blob = await canvasToWebp(canvas, 0.72);
@@ -1192,9 +1248,10 @@
     return { blob, width: canvas.width, height: canvas.height };
   }
 
-  async function uploadFailureScreenshot(row) {
+  async function uploadFailureScreenshot(row, captureWindow = window, signal) {
     const session = await adminSession();
-    const captured = await captureFailureScreenshotBlob();
+    const captured = await captureFailureScreenshotBlob(captureWindow);
+    if (signal?.aborted) throw new Error('失敗快照擷取逾時。');
     const form = new FormData();
     form.set('actorType', 'admin');
     form.set('idToken', session.idToken);
@@ -1209,6 +1266,7 @@
       method: 'POST',
       headers: { apikey: String(session.config.supabasePublishableKey || '') },
       cache: 'no-store',
+      signal,
       body: form
     });
     const payload = await response.json().catch(() => null);
@@ -1220,7 +1278,7 @@
     return payload.data.screenshot;
   }
 
-  async function attachFailureScreenshot(row) {
+  async function attachFailureScreenshot(row, captureWindow = window) {
     if (!row || row.status !== 'failed') return;
     if (state.failureScreenshotsCaptured >= FAILURE_SCREENSHOT_BUDGET) {
       row.trace = safe({
@@ -1231,9 +1289,16 @@
       return;
     }
     state.failureScreenshotsCaptured += 1;
+    let timer;
     try {
-      const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('失敗快照擷取逾時。')), 12000));
-      const screenshot = await Promise.race([uploadFailureScreenshot(row), timeout]);
+      const controller = new AbortController();
+      const timeout = new Promise((_, reject) => {
+        timer = window.setTimeout(() => {
+          controller.abort();
+          reject(new Error('失敗快照擷取逾時。'));
+        }, 12000);
+      });
+      const screenshot = await Promise.race([uploadFailureScreenshot(row, captureWindow, controller.signal), timeout]);
       row.trace = safe({ ...(row.trace || {}), artifactVersion: 3, screenshot });
     } catch (error) {
       row.trace = safe({
@@ -1241,7 +1306,7 @@
         artifactVersion: Math.max(2, Number(row?.trace?.artifactVersion || 0)),
         screenshotCapture: { status: 'failed', error: plainError(error) }
       });
-    }
+    } finally { window.clearTimeout(timer); }
   }
 
   function compactRecordSnapshot(value, maxChars = 1600) {

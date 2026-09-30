@@ -213,7 +213,13 @@ export function diagnoseE2EFailure(input = {}) {
     path || "-",
   ].join("|");
 
-  const nextCheck = {
+  const runnerNextCheck = {
+    E2E_BACKGROUND_RUNNER_CONTROL_LOAD_FAILED: "檢查 Runner 的 loader 狀態、控制器腳本 HTTP 狀態與失敗快照；修正載入後再啟動。",
+    E2E_BACKGROUND_RUNNER_VERSION_MISMATCH: "比對主管理頁與 Runner 的 controllerVersion，重新整理管理端以載入同一版本。",
+    E2E_BACKGROUND_RUNNER_NOT_READY: "比對 Runner 快照的 adminReady、loader.phase、controllerReady 及資源耗時，定位未完成的啟動階段。",
+    E2E_BACKGROUND_RUNNER_BOOT_FAILED: "檢查 Runner 的登入／初始化錯誤畫面、adminReady 與 API 耗時；先修復啟動失敗。",
+  }[sourceCode];
+  const nextCheck = runnerNextCheck || {
     "rate-limit": "檢查失敗 API 的 429 紀錄及同帳號並行請求數。",
     realtime: "比對訂閱狀態、資料更新時間與用戶端畫面更新事件。",
     timeout: "檢查最後一筆 API 耗時及 Runner 頁面可見性，定位等待的步驟。",

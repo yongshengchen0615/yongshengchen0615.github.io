@@ -201,3 +201,22 @@ test('paired browser records the actual controller version and Runner lifecycle 
   assert.match(api, /runnerVersion: asText\(body\.runnerVersion, 80\) \|\| "admin-browser-e2e-legacy"/);
   assert.doesNotMatch(api, /runnerVersion: "admin-browser-e2e-20260927-replay1"/);
 });
+
+test('startup failure codes point to the precise Runner stage instead of a generic timeout', async () => {
+  const { diagnoseE2EFailure } = await diagnosticsModule();
+  for (const [sourceCode, nextCheck] of [
+    ['E2E_BACKGROUND_RUNNER_CONTROL_LOAD_FAILED', /loader.*HTTP/],
+    ['E2E_BACKGROUND_RUNNER_VERSION_MISMATCH', /controllerVersion/],
+    ['E2E_BACKGROUND_RUNNER_NOT_READY', /adminReady.*controllerReady/],
+    ['E2E_BACKGROUND_RUNNER_BOOT_FAILED', /登入／初始化/],
+  ]) {
+    const diagnosis = diagnoseE2EFailure({
+      caseKey: 'E2E_BACKGROUND_RUNNER_FAILURE',
+      message: '背景管理端 Runner 未能在允許時間內完成登入與初始化。',
+      actual: { code: sourceCode },
+    });
+    assert.equal(diagnosis.code, 'E2E_RUNNER_LIFECYCLE');
+    assert.equal(diagnosis.signal.sourceCode, sourceCode);
+    assert.match(diagnosis.nextCheck, nextCheck);
+  }
+});
