@@ -195,19 +195,27 @@
 
                     <div class="terms-policy-grid">
                       <label class="terms-policy-card">
-                        <input id="termsRequired" type="checkbox" checked>
-                        <span>
-                          <strong>申請會員必須同意</strong>
-                          <small>正式啟用版本必須維持勾選，會員完成同意後才可加入。</small>
+                        <input id="termsRequired" class="terms-policy-input" type="checkbox" checked>
+                        <span class="terms-policy-copy">
+                          <span class="terms-policy-title-row">
+                            <strong>申請會員必須同意</strong>
+                            <span class="terms-policy-badge">啟用必選</span>
+                          </span>
+                          <small>啟用正式版本時必須開啟；新會員完成同意後才能加入會員。</small>
                         </span>
+                        <span class="terms-policy-switch" aria-hidden="true"><span class="terms-policy-switch-knob"></span></span>
                       </label>
 
                       <label class="terms-policy-card">
-                        <input id="termsReconsent" type="checkbox">
-                        <span>
-                          <strong>要求既有會員重新同意</strong>
-                          <small>適合重大條款變更；啟用後，既有會員也會進入新版同意流程。</small>
+                        <input id="termsReconsent" class="terms-policy-input" type="checkbox">
+                        <span class="terms-policy-copy">
+                          <span class="terms-policy-title-row">
+                            <strong>要求既有會員同意新版</strong>
+                            <span class="terms-policy-badge is-impact">影響既有會員</span>
+                          </span>
+                          <small>重大條款變更時再開啟；啟用後，既有會員會重新進入條款同意流程。</small>
                         </span>
+                        <span class="terms-policy-switch" aria-hidden="true"><span class="terms-policy-switch-knob"></span></span>
                       </label>
                     </div>
 
