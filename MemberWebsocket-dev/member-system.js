@@ -462,6 +462,16 @@
           const error = clientError(data && data.error && data.error.code || 'API_ERROR', data && data.error && data.error.message || '資料服務拒絕此請求。');
           error.status = Number(data && data.status || fetched.response.status || 0);
           error.details = data && data.error && data.error.details || null;
+          if (error.code === 'SESSION_REVOKED' || error.code === 'SYSTEM_MAINTENANCE') {
+            pendingReads.clear();
+            sessions.clear();
+            clearPresenceHeartbeat();
+            if (presenceContext) presenceContext.closed = true;
+            if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
+            if (window.liff && window.liff.isLoggedIn()) {
+              try { window.liff.logout(); } catch (_) {}
+            }
+          }
           throw error;
         }
         return data.data || {};
