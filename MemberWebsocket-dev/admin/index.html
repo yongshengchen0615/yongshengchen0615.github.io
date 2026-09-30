@@ -9,7 +9,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' https://static.line-scdn.net https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net; style-src-elem 'self' https://cdn.jsdelivr.net; style-src-attr 'unsafe-inline'; connect-src 'self' https://api.line.me https://access.line.me https://liff.line.me https://*.line-scdn.net https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://cdn.jsdelivr.net; img-src 'self' data: https://profile.line-scdn.net https://dbuquirnaskrwcamdxki.supabase.co https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://cdn.jsdelivr.net; frame-src https://liff-subwindow.line.me https://access.line.me; form-action https://liff-subwindow.line.me https://access.line.me">
   <title>管理端｜Lumen Club</title>
   <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
-  <link rel="stylesheet" href="./terms.css?v=membership-terms-20260928-1">
+  <link rel="stylesheet" href="./terms.css?v=membership-terms-ui-20260930-1">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
   <link rel="stylesheet" href="./styles.css?v=ticket-location-radius-confirm-20260929-1">
   <link rel="stylesheet" href="./member-workspace-tabs.css?v=member-workspace-tabs-20260929-1">
@@ -34,7 +34,7 @@
   <script src="./coupon-location-editor.js?v=ticket-address-nearest-fallback-20260929-1" defer></script>
   <script src="./app.js?v=ticket-map-visible-20260929-1" defer></script>
   <script src="./member-workspace-tabs.js?v=member-workspace-tabs-20260929-1" defer></script>
-  <script src="./terms.js?v=qa-terms-20260930-1" defer></script>
+  <script src="./terms.js?v=membership-terms-ui-20260930-1" defer></script>
   <script src="./test-mode.js?v=maintenance-device-login-20260920-4" defer></script>
   <script src="./test-control.js?v=test-control-20260929-3" defer></script>
   <script src="../e2e-scenario-graph.js?v=e2e-graph-20260929-3" defer></script>
@@ -90,27 +90,142 @@
         <section class="tier-settings" aria-labelledby="tierSettingsTitle"><div><p class="kicker">Automatic membership tiers</p><h3 id="tierSettingsTitle">會員等級門檻與卡面樣式</h3><p>系統會以每位會員累積的消費服務時間自動判定等級，不可個別手動指定；每個等級可選擇一種會員卡樣式。</p></div><form id="tierSettingsForm" novalidate><div class="tier-settings-grid"><label>一般會員<input id="tierGeneralMinutes" type="number" min="0" step="1" value="0" readonly aria-describedby="tierGeneralHint"><small id="tierGeneralHint">從 0 分鐘開始</small><select id="tierGeneralStyle" aria-label="一般會員卡面樣式"><option value="forest">森林綠</option><option value="midnight">午夜藍</option><option value="ocean">海灣青</option><option value="sunset">夕陽橘</option><option value="lavender">薰衣草紫</option><option value="rose">玫瑰粉</option><option value="gold">金曜棕</option><option value="platinum">鉑金灰</option><option value="mint">薄荷綠</option><option value="cherry">櫻桃紅</option></select><small>會員卡樣式</small></label><label>銀級會員<input id="tierSilverMinutes" type="number" min="1" max="10000000" step="1" value="600" required><small>達到此累積分鐘數</small><select id="tierSilverStyle" aria-label="銀級會員卡面樣式"><option value="forest">森林綠</option><option value="midnight">午夜藍</option><option value="ocean">海灣青</option><option value="sunset">夕陽橘</option><option value="lavender">薰衣草紫</option><option value="rose">玫瑰粉</option><option value="gold">金曜棕</option><option value="platinum">鉑金灰</option><option value="mint">薄荷綠</option><option value="cherry">櫻桃紅</option></select><small>會員卡樣式</small></label><label>金級會員<input id="tierGoldMinutes" type="number" min="1" max="10000000" step="1" value="1800" required><small>達到此累積分鐘數</small><select id="tierGoldStyle" aria-label="金級會員卡面樣式"><option value="forest">森林綠</option><option value="midnight">午夜藍</option><option value="ocean">海灣青</option><option value="sunset">夕陽橘</option><option value="lavender">薰衣草紫</option><option value="rose">玫瑰粉</option><option value="gold">金曜棕</option><option value="platinum">鉑金灰</option><option value="mint">薄荷綠</option><option value="cherry">櫻桃紅</option></select><small>會員卡樣式</small></label><label>白金會員<input id="tierPlatinumMinutes" type="number" min="1" max="10000000" step="1" value="3600" required><small>達到此累積分鐘數</small><select id="tierPlatinumStyle" aria-label="白金會員卡面樣式"><option value="forest">森林綠</option><option value="midnight">午夜藍</option><option value="ocean">海灣青</option><option value="sunset">夕陽橘</option><option value="lavender">薰衣草紫</option><option value="rose">玫瑰粉</option><option value="gold">金曜棕</option><option value="platinum">鉑金灰</option><option value="mint">薄荷綠</option><option value="cherry">櫻桃紅</option></select><small>會員卡樣式</small></label></div><div id="tierSettingsFormMessage" class="form-message hidden" role="alert"></div><div class="tier-settings-actions"><button id="saveTierSettingsButton" class="button button-dark" type="submit">儲存等級與樣式</button></div></form></section>
         </section>
         <section id="memberTermsPanel" class="member-workspace-panel hidden" role="tabpanel" aria-labelledby="memberTermsTab">
-        <section class="terms-admin" aria-labelledby="termsAdminHeading">
-          <div class="panel-heading"><div><p class="kicker">Membership legal</p><h3 id="termsAdminHeading">會員申請條款</h3><p>先儲存草稿，再啟用。發佈後內容不可修改；新版請建立新的版本。</p></div><button id="termsReload" class="button button-outline" type="button">載入版本</button></div>
-          <p id="termsAdminMessage" class="form-message hidden" role="alert"></p>
-          <div class="terms-admin-grid">
-            <div><h4>版本歷史</h4><div id="termsVersionList" class="terms-version-list" aria-live="polite"></div><button id="termsNewDraft" class="button button-outline" type="button">＋ 建立新版本</button></div>
-            <form id="termsDraftForm" class="terms-draft-form">
-              <input id="termsId" type="hidden">
-              <label>版本識別 <input id="termsVersion" maxlength="40" required placeholder="例如：2026-10-v1"></label>
-              <label>標題 <input id="termsTitle" maxlength="120" required placeholder="使用同意與免責聲明"></label>
-              <label>簡述 <textarea id="termsSummary" maxlength="500" rows="2"></textarea></label>
-              <label>條款全文 <textarea id="termsBody" maxlength="20000" rows="12" required></textarea></label>
-              <label>生效時間 <input id="termsEffectiveAt" type="datetime-local" required></label>
-              <label class="terms-check"><input id="termsRequired" type="checkbox" checked>申請會員必須同意（啟用時必須勾選）</label>
-              <label class="terms-check"><input id="termsReconsent" type="checkbox">要求既有會員同意新版</label>
-              <div class="terms-actions"><button id="termsSave" class="button button-dark" type="submit">儲存草稿</button><button id="termsActivate" class="button button-outline" type="button" disabled>啟用此版本</button></div>
-            </form>
-          </div>
-        </section>
-        </section>
-      </section>
+          <section class="terms-admin" aria-labelledby="termsAdminHeading">
+            <div class="panel-heading">
+              <div>
+                <p class="kicker">Membership legal</p>
+                <h3 id="termsAdminHeading">會員申請條款</h3>
+                <p>以版本方式管理會員申請條款。先建立草稿、確認內容與同意政策，再啟用成為正式版本；已啟用與歷史版本維持唯讀。</p>
+              </div>
+              <button id="termsReload" class="button button-outline" type="button">重新載入版本</button>
+            </div>
 
+            <p id="termsAdminMessage" class="form-message hidden" role="status" aria-live="polite"></p>
+
+            <section class="terms-status-overview" aria-label="條款版本概況">
+              <div class="terms-status-card">
+                <span>目前啟用</span>
+                <strong id="termsActiveVersion">讀取中</strong>
+                <small id="termsActiveTitle">正在同步條款狀態</small>
+              </div>
+              <div class="terms-status-card">
+                <span>草稿版本</span>
+                <strong id="termsDraftCount">0</strong>
+                <small>可繼續編輯與發佈</small>
+              </div>
+              <div class="terms-status-card">
+                <span>全部版本</span>
+                <strong id="termsVersionCount">0</strong>
+                <small>包含啟用、草稿與歷史版本</small>
+              </div>
+            </section>
+
+            <div class="terms-admin-grid">
+              <aside class="terms-version-sidebar" aria-labelledby="termsVersionHistoryHeading">
+                <div class="terms-version-sidebar-heading">
+                  <div>
+                    <span class="terms-section-label">Version history</span>
+                    <h4 id="termsVersionHistoryHeading">版本歷史</h4>
+                  </div>
+                  <button id="termsNewDraft" class="button button-outline" type="button">＋ 新版本</button>
+                </div>
+                <div id="termsVersionList" class="terms-version-list" aria-live="polite"></div>
+              </aside>
+
+              <section class="terms-editor" aria-labelledby="termsEditorHeading">
+                <div class="terms-editor-heading">
+                  <div>
+                    <span class="terms-section-label">Terms editor</span>
+                    <h4 id="termsEditorHeading">條款內容與發佈設定</h4>
+                    <p id="termsEditorHint">建立新版本並儲存成草稿；確認內容後才能啟用。</p>
+                  </div>
+                  <span id="termsEditorState" class="terms-editor-status is-new">新草稿</span>
+                </div>
+
+                <div id="termsReadonlyNote" class="terms-readonly-note hidden" role="note"></div>
+
+                <form id="termsDraftForm" class="terms-draft-form">
+                  <input id="termsId" type="hidden">
+
+                  <section class="terms-form-section" aria-labelledby="termsBasicInfoHeading">
+                    <div class="terms-form-section-heading">
+                      <h5 id="termsBasicInfoHeading">基本資訊</h5>
+                      <p>版本識別用於追蹤會員同意紀錄；標題與簡述會提供給會員閱讀。</p>
+                    </div>
+                    <div class="terms-form-grid">
+                      <label class="terms-field">
+                        <span>版本識別</span>
+                        <input id="termsVersion" maxlength="40" required placeholder="例如：2026-10-v1" autocomplete="off">
+                        <small>建議使用日期＋版本號，啟用後不可重寫。</small>
+                      </label>
+                      <label class="terms-field">
+                        <span>條款標題</span>
+                        <input id="termsTitle" maxlength="120" required placeholder="使用同意與免責聲明" autocomplete="off">
+                        <small>會員申請與重新同意時會看到此標題。</small>
+                      </label>
+                    </div>
+                    <label class="terms-field">
+                      <span class="terms-field-head"><span>簡述</span><small id="termsSummaryCount" class="terms-char-count">0 / 500</small></span>
+                      <textarea id="termsSummary" maxlength="500" rows="3" placeholder="用幾句話說明本版條款的重點或變更內容。"></textarea>
+                    </label>
+                  </section>
+
+                  <section class="terms-form-section" aria-labelledby="termsContentHeading">
+                    <div class="terms-form-section-heading">
+                      <h5 id="termsContentHeading">條款全文</h5>
+                      <p>請放入會員實際需要閱讀與同意的完整內容。啟用後會鎖定，日後修改請建立新版本。</p>
+                    </div>
+                    <label class="terms-field">
+                      <span class="terms-field-head"><span>完整條款內容</span><small id="termsBodyCount" class="terms-char-count">0 / 20,000</small></span>
+                      <textarea id="termsBody" maxlength="20000" rows="14" required placeholder="輸入會員申請時需要閱讀的完整條款內容。"></textarea>
+                    </label>
+                  </section>
+
+                  <section class="terms-form-section" aria-labelledby="termsPublishHeading">
+                    <div class="terms-form-section-heading">
+                      <h5 id="termsPublishHeading">生效與同意政策</h5>
+                      <p>啟用前確認生效時間與同意範圍；「既有會員重新同意」會直接影響已加入的會員。</p>
+                    </div>
+
+                    <label class="terms-field">
+                      <span>生效時間</span>
+                      <input id="termsEffectiveAt" type="datetime-local" required>
+                      <small>啟用後，新會員申請會依目前有效版本判斷。</small>
+                    </label>
+
+                    <div class="terms-policy-grid">
+                      <label class="terms-policy-card">
+                        <input id="termsRequired" type="checkbox" checked>
+                        <span>
+                          <strong>申請會員必須同意</strong>
+                          <small>正式啟用版本必須維持勾選，會員完成同意後才可加入。</small>
+                        </span>
+                      </label>
+
+                      <label class="terms-policy-card">
+                        <input id="termsReconsent" type="checkbox">
+                        <span>
+                          <strong>要求既有會員重新同意</strong>
+                          <small>適合重大條款變更；啟用後，既有會員也會進入新版同意流程。</small>
+                        </span>
+                      </label>
+                    </div>
+
+                    <div id="termsReconsentNote" class="terms-reconsent-note hidden" role="note">
+                      啟用這個版本後，既有會員下次進入系統時會被要求重新閱讀並同意。請確認本次變更確實需要重新取得同意。
+                    </div>
+                  </section>
+
+                  <div class="terms-actions">
+                    <p class="terms-actions-copy">建議流程：儲存草稿 → 重新檢查內容與生效時間 → 確認同意政策 → 啟用版本。</p>
+                    <button id="termsSave" class="button button-dark" type="submit">建立草稿</button>
+                    <button id="termsActivate" class="button button-outline terms-activate-button" type="button" disabled>啟用此版本</button>
+                  </div>
+                </form>
+              </section>
+            </div>
+          </section>
+        </section>
       <section id="cardsPanel" class="panel hidden" role="tabpanel" aria-labelledby="cardsTab">
         <div class="panel-heading"><div><p class="kicker">Reward programs</p><h2>集點卡管理</h2><p>集中管理集點卡活動與票券庫，再以集點節點選擇要發放的票券。</p></div></div>
         <nav class="card-settings-nav" role="tablist" aria-label="集點卡管理功能"><button id="cardSettingsTab" class="card-settings-tab" type="button" role="tab" aria-selected="true" aria-controls="cardSettingsPanel">集點卡</button><button id="ticketSettingsTab" class="card-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="ticketSettingsPanel">票券</button></nav>
