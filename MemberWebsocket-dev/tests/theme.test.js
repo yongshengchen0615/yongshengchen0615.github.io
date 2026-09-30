@@ -77,6 +77,18 @@ test('dark theme styles and E2E button coverage are wired', () => {
   assert.match(qa, /button\.dataset\?\.uiThemeControl === 'true'/);
 });
 
+test('member onboarding and editable profile surfaces use semantic theme tokens', () => {
+  const css = read('theme.css');
+
+  assert.match(css, /Member profile onboarding\/edit theme parity 2026-09-30/);
+  assert.match(css, /#profileSetupView \.profile-form[\s\S]*?background:\s*var\(--theme-surface\)/);
+  assert.match(css, /#profileSetupView :where\([\s\S]*?\.profile-form input,[\s\S]*?\.profile-field select,[\s\S]*?\.date-input-shell,[\s\S]*?\.date-picker-fields select[\s\S]*?background:\s*var\(--theme-surface-raised\)/);
+  assert.match(css, /#memberView \.profile-detail-list > div[\s\S]*?background:\s*var\(--theme-surface-raised\)/);
+  assert.match(css, /#memberView \.profile-edit-modal-card[\s\S]*?background:\s*var\(--theme-surface-raised\)/);
+  assert.match(css, /#memberView :where\([\s\S]*?\.profile-edit-modal input,[\s\S]*?\.profile-edit-modal select[\s\S]*?background:\s*var\(--theme-surface\)/);
+  assert.match(css, /#memberView \.profile-edit-modal\s*\{[\s\S]*?background:\s*var\(--theme-overlay\)/);
+});
+
 
 
 test('all member-facing clients have dark-mode surface parity without flattening semantic colors', () => {
