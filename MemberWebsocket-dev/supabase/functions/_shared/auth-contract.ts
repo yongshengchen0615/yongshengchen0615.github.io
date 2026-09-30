@@ -59,7 +59,9 @@ export async function verifyLineIdTokenContract(args: {
   }
 
   const isActiveAdmin = adminResult.data?.role === "admin" && adminResult.data?.status === "active";
-  if (!isActiveAdmin && settingsResult.data?.maintenance_enabled === true) {
+  const adminChannelId = (Deno.env.get("LINE_ADMIN_CHANNEL_ID") || "2010791619").trim();
+  const canBypassUserRestrictions = isActiveAdmin && expectedChannelId === adminChannelId;
+  if (!canBypassUserRestrictions && settingsResult.data?.maintenance_enabled === true) {
     throw createError(503, "SYSTEM_MAINTENANCE", String(settingsResult.data?.maintenance_message || "").trim() || "系統維護中，請稍後再試。");
   }
 
@@ -69,7 +71,7 @@ export async function verifyLineIdTokenContract(args: {
     Number.isFinite(memberRevokedAtMs) ? memberRevokedAtMs : 0,
     Number.isFinite(maintenanceRevokedAtMs) ? maintenanceRevokedAtMs : 0,
   );
-  if (!isActiveAdmin && revokedAtMs > 0 && identity.issuedAtMs <= revokedAtMs) {
+  if (!canBypassUserRestrictions && revokedAtMs > 0 && identity.issuedAtMs <= revokedAtMs) {
     throw createError(401, "SESSION_REVOKED", "您的登入工作階段已結束，請重新登入。");
   }
 
