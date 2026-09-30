@@ -10,6 +10,8 @@
     'admin.booking.settings.save',
     'admin.booking.service.save',
     'admin.booking.status.update',
+    'user.booking.receipt.prepare',
+    'user.booking.receipt.finalize',
   ]);
   let realtimeClient = null;
   let realtimeChannel = null;
@@ -253,7 +255,8 @@
   }
 
   async function request(config, clientType, idToken, action, payload = {}) {
-    const endpoint = `${String(config.supabaseUrl).replace(/\/$/, '')}/functions/v1/booking-api`;
+    const receiptAction = String(action || '').startsWith('user.booking.receipt.');
+    const endpoint = `${String(config.supabaseUrl).replace(/\/$/, '')}/functions/v1/${receiptAction ? 'booking-receipt-api' : 'booking-api'}`;
     const body = window.TestModeClient && typeof window.TestModeClient.payload === 'function'
       ? window.TestModeClient.payload({ ...payload, action, clientType, idToken })
       : { ...payload, action, clientType, idToken };
@@ -536,5 +539,10 @@
     return parsed.toISOString().slice(0, 10);
   }
 
-  window.BookingSystem = { loadConfig, signIn, startPresence, request, memberProfile, bookingBenefits, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
+  function getSession() {
+    if (!presenceContext || presenceContext.closed) return null;
+    return { config: presenceContext.config, idToken: currentPresenceIdToken(presenceContext) };
+  }
+
+  window.BookingSystem = { loadConfig, signIn, startPresence, getSession, request, memberProfile, bookingBenefits, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
 })();
