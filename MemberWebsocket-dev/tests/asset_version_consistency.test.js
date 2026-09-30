@@ -34,9 +34,9 @@ test('admin entry references current booking assets', () => {
   const html = read('admin/index.html');
   assert.ok(html.includes('calendar-responsive.css?v=calendar-responsive-20260914-mobile-fit-2'));
   assert.ok(html.includes('calendar-date-fix.css?v=20260914-line-date-1'));
-  assert.ok(html.includes('../member-system.js?v=async-architecture-20260921-1'));
+  assert.ok(html.includes('../member-system.js?v=member-security-20260930-1'));
   assert.ok(html.includes('admin-session.js?v=admin-session-20260919-1'));
-  assert.ok(html.includes('app.js?v=ticket-map-visible-20260929-1'));
+  assert.ok(html.includes('app.js?v=member-security-20260930-1'));
   assert.match(html, /booking-panel\.css\?v=[^"']+/);
   assert.match(html, /booking-panel\.js\?v=[^"']+/);
   assert.equal((html.match(/booking-panel\.js/g) || []).length, 1);
@@ -52,13 +52,13 @@ test('member booking entry loads only the current single render pipeline', () =>
   const loader = read('admin/booking-panel.js');
 
   assert.match(html, /styles\.css\?v=[^"']+/);
-  assert.ok(html.includes('common.js?v=async-architecture-20260921-1'));
+  assert.ok(html.includes('common.js?v=member-security-20260930-1'));
   assert.ok(html.includes('liff-fresh-login.js?v=member-presence-20260920-1'));
   assert.ok(html.includes('group-booking.css?v=booking-participant-colors-20260918-1'));
   assert.ok(html.includes('booking-history.css?v=booking-history-accordion-20260918-1'));
   assert.ok(html.includes('member-booking-format.css?v=booking-service-type-colors-webview-20260918-2'));
   assert.ok(html.includes('service-type-color.js?v=booking-shared-type-color-map-20260918-4'));
-  assert.ok(html.includes('group-booking.js?v=async-architecture-20260921-1'));
+  assert.ok(html.includes('group-booking.js?v=member-security-20260930-1'));
   assert.ok(html.includes('member-ui.js?v=test-mode-20260920-1'));
   assert.ok(html.includes('app.js?v=booking-overnight-20260928-1'));
   assert.ok(html.includes('contact-details.js?v=test-mode-20260920-1'));
