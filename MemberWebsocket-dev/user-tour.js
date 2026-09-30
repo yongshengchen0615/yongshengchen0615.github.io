@@ -4,6 +4,15 @@
   // Presentation state only. Authentication and permissions stay on the server.
   const TAIPEI_DATE = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
   const SURFACES = {
+    memberSetup: [
+      { selector: '#profileForm', title: '先完成會員資料', description: '首次加入會員需要填寫基本資料並同意目前版本的會員條款。這些資料會用於會員識別、聯絡與預約。' },
+      { selector: '#profileSurname', title: '填寫姓氏', description: '姓氏會和稱謂組合成預約稱呼，例如「王先生」。' },
+      { selector: '#profileSalutation', title: '選擇稱謂', description: '請選擇先生或小姐；之後仍可在會員卡的個人資料中修改。' },
+      { selector: '#profileBirthdayPickerButton', title: '設定生日', description: '點擊生日欄位後，在同一個視窗選擇完整的年月日。' },
+      { selector: '#profilePhone', title: '填寫聯絡電話', description: '電話會作為會員聯絡與預約資料，送出前請再次確認。' },
+      { selector: '#profileSetupView .terms-box', title: '閱讀並同意會員條款', description: '請先閱讀管理員目前發佈的使用同意與免責聲明，再勾選同意。' },
+      { selector: '#saveProfileButton', title: '完成加入會員', description: '資料確認無誤後送出。加入成功後會開啟會員卡，並接續會員卡功能教學。' },
+    ],
     member: [
       { selector: '#memberPass', title: '這是你的會員卡', description: '在這裡確認會員狀態、姓名與目前階級。' },
       { selector: '#membershipProgress', title: '查看升等進度', description: '服務時間會累積在這裡，下一個會員階級也會顯示在此。' },
@@ -37,7 +46,9 @@
     ],
   };
   let surface = '';
+  let activeSurface = '';
   let STEPS = [];
+  let setupView = null;
   const ui = {};
   let active = false;
   let stepIndex = 0;
@@ -52,10 +63,13 @@
   document.addEventListener('DOMContentLoaded', () => {
     ui.view = document.querySelector('main[data-user-tour]');
     surface = ui.view?.dataset.userTour || '';
+    activeSurface = surface;
     STEPS = SURFACES[surface] || [];
     if (!STEPS.length) return;
     installControls();
+    ui.surfaceView = ui.view;
     ui.app = document.getElementById('app') || document.querySelector('.app-shell');
+    setupView = surface === 'member' ? document.getElementById('profileSetupView') : null;
     ui.memberTourMasks = Array.from(document.querySelectorAll('[data-member-tour-mask]'));
     for (const id of ['openMemberTour', 'memberTourOverlay', 'memberTourFocus', 'memberTourDialog', 'memberTourTitle', 'memberTourDescription', 'memberTourProgress', 'memberTourSkip', 'memberTourBack', 'memberTourNext']) {
       ui[id] = document.getElementById(id);
@@ -142,18 +156,62 @@
     }
   }
 
+  function resolveTourSurface(profile) {
+    if (surface === 'member' && setupView && (!profile?.profileComplete || profile?.membershipRequired)) {
+      return 'memberSetup';
+    }
+    return surface;
+  }
+
+  function resolveIdentitySeed(profile) {
+    const profileIdentity = String(profile?.lineUserId || '').trim();
+    if (profileIdentity) return profileIdentity;
+    if (surface !== 'member') return '';
+
+    try {
+      const decoded = window.liff?.getDecodedIDToken?.();
+      const lineUserId = String(decoded?.sub || '').trim();
+      if (lineUserId) return lineUserId;
+    } catch (_) { /* LIFF identity fallback is optional */ }
+
+    try {
+      const testSessionToken = String(window.TestModeClient?.getSessionToken?.() || '').trim();
+      if (testSessionToken) return `test-session:${testSessionToken}`;
+    } catch (_) { /* test-mode fallback is optional */ }
+
+    return '';
+  }
+
+  function activateTourSurface(nextSurface) {
+    const nextSteps = SURFACES[nextSurface] || [];
+    const nextView = nextSurface === 'memberSetup' ? setupView : ui.surfaceView;
+    if (!nextSteps.length || !nextView) return false;
+    if (active && activeSurface !== nextSurface) close('switch');
+    activeSurface = nextSurface;
+    STEPS = nextSteps;
+    ui.view = nextView;
+    return true;
+  }
+
   async function considerProfile(profile) {
-    const lineUserId = String(profile?.lineUserId || '');
-    if (!lineUserId || !profile.profileComplete || profile.membershipRequired) return;
+    const nextSurface = resolveTourSurface(profile);
+    if (!activateTourSurface(nextSurface)) return;
+
+    const identitySeed = resolveIdentitySeed(profile);
+    if (!identitySeed) return;
     const generation = ++identityGeneration;
     let key = '';
     try {
-      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(lineUserId));
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identitySeed));
       const identityHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-      // Keep the published storage keys so today's earlier skip still applies.
-      key = surface === 'member' ? `member-tour:${identityHash}` : `user-tour:${surface}:${identityHash}`;
+      // Keep the published member key so today's earlier skip still applies; onboarding uses an independent key.
+      key = nextSurface === 'memberSetup'
+        ? `member-setup-tour:${identityHash}`
+        : nextSurface === 'member'
+          ? `member-tour:${identityHash}`
+          : `user-tour:${nextSurface}:${identityHash}`;
     } catch (_) {
-      // Storage and Web Crypto can be unavailable in embedded browsers; the tour still works manually.
+      // Web Crypto can be unavailable in some embedded browsers. Manual replay remains available after setup.
       return;
     }
     if (generation !== identityGeneration) return;
@@ -363,8 +421,12 @@
         if (outcome === 'complete') localStorage.removeItem(storageKey);
       } catch (_) { /* optional UX state */ }
     }
-    const focusTarget = opener?.isConnected ? opener : ui.openMemberTour;
+    const focusTarget = opener?.isConnected
+      ? opener
+      : activeSurface === 'memberSetup'
+        ? ui.view.querySelector('input:not([type="hidden"]), select, button:not([disabled])')
+        : ui.openMemberTour;
     opener = null;
-    focusTarget.focus();
+    focusTarget?.focus();
   }
 })();
