@@ -20,7 +20,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="../test-mode-client.js?v=test-session-surface-20260922-2" defer></script>
-  <script src="./common.js?v=async-architecture-20260921-1" defer></script>
+  <script src="./common.js?v=async-architecture-20260921-1-benefits-20260930-1" defer></script>
   <script src="./booking-date-display.js?v=booking-weekday-20260912-1" defer></script>
   <script src="./contact-details.js?v=test-mode-20260920-1" defer></script>
   <script src="./service-type-color.js?v=booking-shared-type-color-map-20260918-4" defer></script>
@@ -28,10 +28,12 @@
   <script src="./liff-fresh-login.js?v=member-presence-20260920-1" defer></script>
   <script src="./membership-progress.js?v=booking-tier-member-parity-20260914-2" defer></script>
   <script src="./member-ui.js?v=test-mode-20260920-1" defer></script>
-  <script src="./app.js?v=booking-overnight-20260928-1" defer></script>
+  <script src="./booking-benefits.js?v=booking-benefits-20260930-1" defer></script>
+  <script src="./app.js?v=booking-overnight-20260928-1-benefits-20260930-1" defer></script>
   <script src="../user-tour.js?v=user-tour-20260930-1" defer></script>
   <script src="./calendar-flow.js?v=csp-hardening-20260929-1" defer></script>
   <script src="./booking-flow.js?v=lumen-experience-20260924-1" defer></script>
+  <link rel="stylesheet" href="./booking-benefits.css?v=booking-benefits-20260930-1">
   <link rel="stylesheet" href="./booking-typography.css?v=booking-typography-20260919-contact-render-1">
   <link rel="stylesheet" href="./contact-details.css?v=booking-contact-top-ui-20260919-2">
   <link rel="stylesheet" href="../test-mode.css?v=test-mode-20260920-1">
@@ -69,6 +71,14 @@
       </header>
       <span id="memberProfileName" class="hidden" aria-hidden="true"></span>
       <span id="memberCode" class="hidden" aria-hidden="true"></span>
+
+      <section id="bookingBenefits" class="booking-benefits" aria-labelledby="bookingBenefitsTitle" data-state="loading">
+        <div class="booking-benefits-heading">
+          <div><h2 id="bookingBenefitsTitle">可用活動與票券</h2><p id="bookingBenefitsStatus" role="status" aria-live="polite">正在確認你的可用權益…</p></div>
+          <button id="bookingBenefitsRetry" class="text-button hidden" type="button">重新載入</button>
+        </div>
+        <div id="bookingBenefitsList" class="booking-benefits-list" aria-label="可用活動與票券" aria-busy="true"></div>
+      </section>
 
       <section id="membershipProgress" class="membership-progress" aria-labelledby="membershipProgressTitle" aria-live="polite">
         <div>

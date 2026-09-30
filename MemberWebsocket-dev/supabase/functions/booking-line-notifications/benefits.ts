@@ -1,3 +1,5 @@
+import { isEligibleTierActivity } from "../_shared/activity-eligibility.ts";
+
 const TIER_KEYS = ['general', 'silver', 'gold', 'platinum'] as const;
 
 type Benefits = {
@@ -23,13 +25,6 @@ export function taipeiDate(): string {
     if (part.type !== 'literal') parts[part.type] = part.value;
   });
   return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
-function monthOfBirthday(value: unknown): number {
-  const birthday = String(value || '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return 0;
-  const month = Number(birthday.slice(5, 7));
-  return Number.isInteger(month) && month >= 1 && month <= 12 ? month : 0;
 }
 
 function formatDate(value: unknown): string {
@@ -181,7 +176,7 @@ export async function loadBookingConfirmationBenefits(db: any, job: any): Promis
         .in('id', sourceEventIds)
     : { data: [], error: null };
   const sourceEvents = ensureNoError(sourceEventsResult) || [];
-  const sourceEventById = new Map(sourceEvents.map((row: any) => [String(row.id), row]));
+  const sourceEventById = new Map<string, any>(sourceEvents.map((row: any) => [String(row.id), row]));
 
   const countsResult = sourceEventIds.length
     ? await db.rpc('event_ticket_claim_counts', { p_event_ids: sourceEventIds })
@@ -191,29 +186,8 @@ export async function loadBookingConfirmationBenefits(db: any, job: any): Promis
     claimCounts.set(String(row.event_ticket_id), Number(row.claimed_count || 0));
   }
 
-  const birthdayMonth = monthOfBirthday(member.birthday);
   const tierActivityLines = calendarItems.flatMap((item: any) => {
-    const audienceType = text(item.audience_type || 'all', 30);
-    if (item.status === 'targeted') {
-      if (audienceType !== 'birthday_month') return [];
-      if (!birthdayMonth || Number(item.audience_month || 0) !== birthdayMonth) return [];
-    } else if (item.status !== 'active') {
-      return [];
-    }
-
-    if (!allowedTierKeys(item.allowed_tier_keys, true).includes(currentTier)) return [];
-    const effectiveEnd = String(item.ends_on || item.starts_on || '');
-    if (effectiveEnd && effectiveEnd < today) return [];
-
-    if (item.source_event_ticket_id) {
-      const sourceId = String(item.source_event_ticket_id);
-      const event = sourceEventById.get(sourceId) as any;
-      if (!event || event.status !== 'active' || event.deleted_at) return [];
-      if (event.ends_on && today > String(event.ends_on)) return [];
-      if (!allowedTierKeys(event.allowed_tier_keys).includes(currentTier)) return [];
-      const quota = Number(event.quota || 0);
-      if (quota > 0 && (claimCounts.get(sourceId) || 0) >= quota) return [];
-    }
+    if (!isEligibleTierActivity(item, currentTier, today, member.birthday, sourceEventById, claimCounts)) return [];
 
     return [line([item.title, dateRange(item.starts_on, item.ends_on), item.description])];
   }).filter(Boolean);

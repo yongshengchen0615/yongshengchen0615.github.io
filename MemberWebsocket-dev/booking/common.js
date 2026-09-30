@@ -267,6 +267,12 @@
     return data;
   }
 
+  async function bookingBenefits(config, idToken) {
+    const body = { action: 'user.booking.benefits', clientType: 'booking', idToken };
+    return postJson(String(config.supabaseFunctionUrl || '').trim(), config,
+      window.TestModeClient?.payload ? window.TestModeClient.payload(body) : body, '可用活動與票券');
+  }
+
   async function memberProfile(config, idToken) {
     const endpoint = String(config.supabaseFunctionUrl || '').trim();
     if (!endpoint) throw clientError('CONFIG_INVALID', '會員資料服務設定不完整。');
@@ -322,7 +328,7 @@
     }
   }
 
-  function subscribeRealtime(config, onUpdate, scope = 'member') {
+  function subscribeRealtime(config, onUpdate, scope = 'member', onBenefitsUpdate = null) {
     if (typeof onUpdate !== 'function') return () => {};
     const targetScope = scope === 'admin' ? 'admin' : 'member';
 
@@ -414,6 +420,7 @@
             const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
             const scope = String(row.scope || '');
             if (scope === 'all' || scope === targetScope) schedule();
+            if (typeof onBenefitsUpdate === 'function' && ['all', 'member', 'points', 'event', 'calendar'].includes(scope)) onBenefitsUpdate();
           })
           .subscribe((status) => {
             if (status !== 'SUBSCRIBED') return;
@@ -494,5 +501,5 @@
     return parsed.toISOString().slice(0, 10);
   }
 
-  window.BookingSystem = { loadConfig, signIn, startPresence, request, memberProfile, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
+  window.BookingSystem = { loadConfig, signIn, startPresence, request, memberProfile, bookingBenefits, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
 })();

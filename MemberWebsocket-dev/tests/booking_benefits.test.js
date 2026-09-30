@@ -1,0 +1,104 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { stripTypeScriptTypes } = require('node:module');
+const { pathToFileURL } = require('node:url');
+const root = path.resolve(__dirname, '..');
+const modulePromise = import(pathToFileURL(path.join(root, 'supabase/functions/_shared/booking-benefits.ts')));
+const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+const member = { id: 'member-1', line_user_id: 'line-1', display_name: '會員', status: 'active', membership_status: 'active', birthday: '1990-01-01' };
+
+function database(overrides = {}, fail = '') {
+  const data = {
+    members: [member], membership_tier_settings: [{ tier_key: 'silver', tier_label: '銀級會員', required_service_minutes: 0 }], service_time_entries: [],
+    point_cards: [{ id: 'card', card_id: 'CARD', title: '集點卡', status: 'active', expiry_mode: 'unlimited' }],
+    point_card_rewards: [{ id: 'reward', point_card_id: 'card', ticket_template_id: 'template', threshold_stamps: 5 }],
+    ticket_templates: [{ id: 'template', title: '最新優惠', status: 'active' }],
+    point_tickets: [{ member_id: member.id, status: 'available', reward_id: 'reward', point_card_id: 'card', ticket_template_id: 'template', threshold_stamps: 5 }],
+    event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', title: '活動票券', status: 'active', allowed_tier_keys: ['silver'], quota: 2 }],
+    event_ticket_claims: [],
+    calendar_items: [{ calendar_item_id: 'CAL', title: '會員活動', item_type: 'event', status: 'active', starts_on: today, ends_on: today, allowed_tier_keys: ['silver'] }],
+    ...overrides,
+  };
+  const calls = [];
+  return { calls, from(table) {
+    let rows = data[table] || [], single = false;
+    const q = {
+      select() { return q; }, order() { return q; }, update() { return q; }, single() { single = true; return q; },
+      eq(key, value) { calls.push({ table, key, value }); rows = rows.filter(row => row[key] === value); return q; },
+      is(key, value) { rows = rows.filter(row => (row[key] ?? null) === value); return q; },
+      in(key, values) { rows = rows.filter(row => values.includes(row[key])); return q; },
+      lte(key, value) { rows = rows.filter(row => row[key] <= value); return q; },
+      limit(value) { rows = rows.slice(0, value); return q; },
+      maybeSingle() { single = true; return q; },
+      then(resolve, reject) {
+        calls.push({ table, read: true });
+        return Promise.resolve({ data: single ? rows[0] || null : rows, error: fail === table ? new Error('fixture failure') : null }).then(resolve, reject);
+      },
+    };
+    return q;
+  }, async rpc(name, args) {
+    calls.push({ rpc: name, args });
+    assert.equal(name, 'event_ticket_claim_counts', 'recommendation must never issue, claim or consume tickets');
+    return { error: fail === name ? new Error('fixture failure') : null, data: args.p_event_ids.map(id => ({ event_ticket_id: id, claimed_count: data.event_ticket_claims.filter(row => row.event_ticket_id === id).length })) };
+  } };
+}
+
+test('booking recommendations cover 0/1/N and return only display fields', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  for (const [overrides, count] of [[{}, 3], [{ point_tickets: [], calendar_items: [] }, 1], [{ point_tickets: [], calendar_items: [], event_tickets: [] }, 0]]) {
+    const result = await loadBookingBenefits(database(overrides), member, 'silver', today);
+    assert.equal(result.items.length, count);
+    const serialized = JSON.stringify(result);
+    assert.doesNotMatch(serialized, /member_id|line_user_id|allowed_tier|birthday|fixed_ticket_template|claim_id/);
+  }
+});
+
+test('expired/inactive/used/ineligible/future/full benefits are excluded', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const patches = [
+    { point_cards: [{ id: 'card', status: 'active', expiry_mode: 'date', expires_on: '2000-01-01' }], event_tickets: [], calendar_items: [] },
+    { ticket_templates: [{ id: 'template', status: 'inactive' }], event_tickets: [], calendar_items: [] },
+    { point_tickets: [{ member_id: member.id, status: 'used' }], event_tickets: [], calendar_items: [] },
+    { point_tickets: [], event_tickets: [{ id: 'event', status: 'active', allowed_tier_keys: ['gold'] }], calendar_items: [] },
+    { point_tickets: [], event_tickets: [{ id: 'event', status: 'active', allowed_tier_keys: ['silver'], starts_on: '9999-01-01' }], calendar_items: [] },
+    { point_tickets: [], event_tickets: [{ id: 'event', status: 'active', allowed_tier_keys: ['silver'], ends_on: '2000-01-01' }], calendar_items: [] },
+    { point_tickets: [], event_tickets: [{ id: 'event', status: 'active', allowed_tier_keys: ['silver'], quota: 1 }], event_ticket_claims: [{ member_id: 'other', event_ticket_id: 'event', status: 'claimed' }], calendar_items: [] },
+    { point_tickets: [], event_ticket_claims: [{ member_id: member.id, event_ticket_id: 'event', status: 'used' }], calendar_items: [] },
+    { point_tickets: [], event_tickets: [{ id: 'event', status: 'active', allowed_tier_keys: ['silver'], fixed_ticket_template_id: 'fixed' }], event_ticket_claims: [{ member_id: 'other', event_ticket_id: 'event', status: 'claimed' }], calendar_items: [] },
+    { point_tickets: [], event_tickets: [], calendar_items: [{ calendar_item_id: 'CAL', item_type: 'event', status: 'active', starts_on: today, ends_on: today, allowed_tier_keys: ['gold'] }] },
+  ];
+  for (const patch of patches) assert.deepEqual((await loadBookingBenefits(database(patch), member, 'silver', today)).items, []);
+});
+
+test('birthday activities and claimed inventory preserve existing eligibility rules', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const birthdayActivity = { calendar_item_id: 'CAL', item_type: 'event', status: 'targeted', audience_type: 'birthday_month', audience_month: 1, starts_on: today, ends_on: today };
+  const result = await loadBookingBenefits(database({ calendar_items: [birthdayActivity], event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', status: 'active', allowed_tier_keys: ['silver'], quota: 1 }], event_ticket_claims: [{ member_id: member.id, event_ticket_id: 'event', status: 'claimed' }] }), member, 'silver', today);
+  assert.equal(result.items.find(item => item.kind === 'event').statusLabel, '可使用');
+  assert.ok(result.items.some(item => item.kind === 'calendar'));
+  assert.equal((await loadBookingBenefits(database({ calendar_items: [birthdayActivity], event_tickets: [], point_tickets: [] }), { ...member, birthday: '1990-02-01' }, 'silver', today)).items.length, 0);
+});
+
+test('reads are member-scoped, batched and strict on backend failure', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const db = database();
+  await loadBookingBenefits(db, member, 'silver', today);
+  for (const table of ['point_tickets', 'event_ticket_claims']) assert.ok(db.calls.some(call => call.table === table && call.key === 'member_id' && call.value === member.id));
+  assert.equal(db.calls.filter(call => call.read).length, 7);
+  for (const fail of ['point_tickets', 'event_ticket_claim_counts', 'calendar_items']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
+});
+
+test('API authorization resolves membership/tier from identity and rejects disabled/unjoined/stale-consent members', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const source = fs.readFileSync(path.join(root, 'supabase/functions/api/index.ts'), 'utf8').replace(/^import .*\n/gm, '').replace(/^export default .*;\s*$/gm, '');
+  for (const [patch, consent, code] of [[{}, true, ''], [{ status: 'disabled' }, true, 'MEMBER_DISABLED'], [{ membership_status: 'pending' }, true, 'MEMBERSHIP_REQUIRED'], [{}, false, 'TERMS_RECONSENT_REQUIRED']]) {
+    const context = vm.createContext({ Deno: { env: { get: () => '' } }, Date, Intl, Set, Map, console, loadBookingBenefits, hasCurrentTermsConsent: async () => consent });
+    vm.runInContext(stripTypeScriptTypes(source), context);
+    const pending = context.handleAction(database({ members: [{ ...member, ...patch }] }), { lineUserId: member.line_user_id }, 'user.booking.benefits', { memberId: 'other', tierKey: 'platinum' });
+    if (code) await assert.rejects(pending, error => error.code === code);
+    else assert.equal((await pending).items.length, 3);
+  }
+});

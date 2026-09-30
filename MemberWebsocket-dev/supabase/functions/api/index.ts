@@ -1,3 +1,4 @@
+import { loadBookingBenefits } from "../_shared/booking-benefits.ts";
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
@@ -175,6 +176,7 @@ function clientTypeForAction(action: string): ClientType {
   if (action === "user.pointcard.bootstrap" || action === "user.pointcard.detail" || action.startsWith("user.pointcard.ticket.")) return "points";
   if (action === "user.event.bootstrap" || action === "user.event.ticket.detail" || action.startsWith("user.event.ticket.")) return "event";
   if (action === "user.calendar.bootstrap" || action === "user.calendar.date.details") return "calendar";
+  if (action === "user.booking.benefits") return "booking";
   if (action.startsWith("admin.")) return "admin";
   throw new ApiError(404,"ACTION_NOT_FOUND","不支援的 API action。");
 }
@@ -1949,6 +1951,12 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       action,target_type:"member",target_id:identity.lineUserId,result:"success",
     });
     return { profile: await profileFor(supabase,result.data) };
+  }
+
+  if (action === "user.booking.benefits") {
+    const member = await requireJoinedMember(supabase, identity);
+    const profile = await profileFor(supabase, member);
+    return await loadBookingBenefits(supabase, member, String(profile.tierKey || "general"), taipeiDate());
   }
 
   if (action.startsWith("user.pointcard.")) {

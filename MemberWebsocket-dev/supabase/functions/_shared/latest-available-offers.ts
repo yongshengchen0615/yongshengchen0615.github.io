@@ -150,11 +150,11 @@ export function selectLatestEventOffers(
   return offers;
 }
 
-async function pointOfferLines(
+export async function loadLatestPointOffers(
   supabase: SupabaseClient,
   memberId: string,
   strict: boolean,
-): Promise<string[]> {
+): Promise<Array<CurrentPointOffer & { cardId: string; expiresOn: string }>> {
   const ticketsResult = await supabase
     .from("point_tickets")
     .select("reward_id,point_card_id,ticket_template_id,threshold_stamps")
@@ -184,7 +184,7 @@ async function pointOfferLines(
 
   const templateIds = [...new Set(rewards.map((row: any) => text(row.ticket_template_id)).filter(Boolean))];
   const [cardsResult, templatesResult] = await Promise.all([
-    supabase.from("point_cards").select("id,title,status,expiry_mode,expires_on,sort_order").in("id", cardIds),
+    supabase.from("point_cards").select("id,card_id,title,status,expiry_mode,expires_on,sort_order").in("id", cardIds),
     templateIds.length
       ? supabase.from("ticket_templates").select("id,title,status").in("id", templateIds)
       : Promise.resolve({ data: [], error: null }),
@@ -198,27 +198,30 @@ async function pointOfferLines(
     return [];
   }
 
+  const cards = cardsResult.data || [];
+  const cardById = new Map(cards.map((row: any) => [text(row.id), row]));
   return selectLatestPointOffers(
     rewards,
     cardsResult.data || [],
     templatesResult.data || [],
     tickets,
     taipeiDate(),
-  ).slice(0, 12).map((offer) =>
-    `・${offer.cardTitle}｜${offer.ticketTitle}｜消耗 ${offer.thresholdStamps} 點`
-  );
+  ).slice(0, 12).map((offer) => {
+    const card: any = cardById.get(offer.pointCardId);
+    return { ...offer, cardId: text(card?.card_id), expiresOn: text(card?.expiry_mode) === "date" ? text(card?.expires_on) : "" };
+  });
 }
 
-async function eventOfferLines(
+export async function loadLatestEventOffers(
   supabase: SupabaseClient,
   memberId: string,
   tierKey: string,
   strict: boolean,
-): Promise<string[]> {
+): Promise<Array<CurrentEventOffer & { eventTicketId: string; startsOn: string; endsOn: string }>> {
   const today = taipeiDate();
   const eventsResult = await supabase
     .from("event_tickets")
-    .select("id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id")
+    .select("id,event_ticket_id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id")
     .eq("status", "active")
     .is("deleted_at", null);
   if (eventsResult.error) {
@@ -247,14 +250,16 @@ async function eventOfferLines(
     return [];
   }
 
+  const eventById = new Map(eligible.map((row: any) => [text(row.id), row]));
   return selectLatestEventOffers(
     eligible,
     claimsResult.data || [],
     memberId,
     countsResult.data || [],
-  ).slice(0, 8).map((offer) =>
-    `・${offer.title}${offer.claimed ? "（已領取）" : "（可領取）"}`
-  );
+  ).slice(0, 8).map((offer) => {
+    const event: any = eventById.get(offer.eventId);
+    return { ...offer, eventTicketId: text(event?.event_ticket_id), startsOn: text(event?.starts_on), endsOn: text(event?.ends_on) };
+  });
 }
 
 export async function buildLatestAvailableOffersSection(
@@ -264,10 +269,12 @@ export async function buildLatestAvailableOffersSection(
   options: { strict?: boolean } = {},
 ): Promise<string> {
   const strict = options.strict === true;
-  const [pointLines, eventLines] = await Promise.all([
-    pointOfferLines(supabase, memberId, strict),
-    eventOfferLines(supabase, memberId, tierKey, strict),
+  const [points, events] = await Promise.all([
+    loadLatestPointOffers(supabase, memberId, strict),
+    loadLatestEventOffers(supabase, memberId, tierKey, strict),
   ]);
+  const pointLines = points.map((offer) => `・${offer.cardTitle}｜${offer.ticketTitle}｜消耗 ${offer.thresholdStamps} 點`);
+  const eventLines = events.map((offer) => `・${offer.title}${offer.claimed ? "（已領取）" : "（可領取）"}`);
 
   const blocks: string[] = [];
   if (pointLines.length) blocks.push("集點卡優惠（目前設定）\n" + pointLines.join("\n"));

@@ -95,6 +95,22 @@ const config = {
   supabasePublishableKey: 'fixture',
 };
 
+test('ticket and calendar signals refresh recommendations without reloading booking slots', async () => {
+  const h = harness();
+  let core = 0, benefits = 0;
+  h.BookingSystem.subscribeRealtime(config, () => { core++; }, 'member', () => { benefits++; });
+  for (const scope of ['points', 'event', 'calendar']) h.emit(scope);
+  await h.drainTimers();
+  assert.equal(core, 0);
+  assert.equal(benefits, 3);
+  h.emit('admin');
+  assert.equal(benefits, 3);
+  h.emit('member');
+  await h.drainTimers();
+  assert.equal(core, 1);
+  assert.equal(benefits, 4);
+});
+
 test('booking realtime recovers after a synchronous refresh exception', async () => {
   const h = harness();
   let calls = 0;
