@@ -24,7 +24,7 @@ declare
 begin
   if new.membership_status = 'active' and nullif(btrim(coalesce(new.invite_code, '')), '') is null then
     loop
-      v_candidate := upper(encode(gen_random_bytes(5), 'hex'));
+      v_candidate := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10));
       exit when not exists (
         select 1 from public.members where invite_code = v_candidate and id <> new.id
       );
