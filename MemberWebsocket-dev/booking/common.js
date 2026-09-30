@@ -312,7 +312,12 @@
       }
       if (!response.ok || !data || data.ok !== true) {
         const apiError = data && data.error || {};
-        throw clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || `${serviceLabel}暫時無法完成操作。`), apiError.details || null);
+        const apiErrorCode = String(apiError.code || 'API_ERROR');
+        const error = clientError(apiErrorCode, String(apiError.message || `${serviceLabel}暫時無法完成操作。`), apiError.details || null);
+        if (apiErrorCode === 'SESSION_REVOKED' || apiErrorCode === 'SYSTEM_MAINTENANCE') {
+          terminateAccessSession(apiErrorCode, error.message);
+        }
+        throw error;
       }
       return data.data || {};
     } catch (error) {
@@ -453,6 +458,36 @@
     }
     window.location.href = url;
     return true;
+  }
+
+  function terminateAccessSession(code, message) {
+    clearPresenceHeartbeat();
+    if (presenceContext) presenceContext.closed = true;
+    if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') {
+      try { window.TestModeClient.clearSession(); } catch (_) {}
+    }
+
+    const notice = code === 'SESSION_REVOKED'
+      ? (String(message || '').trim() || '您的登入工作階段已由管理員強制結束，請重新登入。')
+      : (String(message || '').trim() || '系統目前維護中，將關閉此頁面。');
+
+    try { window.alert(notice); } catch (_) {}
+
+    if (window.liff && typeof window.liff.isLoggedIn === 'function' && window.liff.isLoggedIn()) {
+      try { window.liff.logout(); } catch (_) {}
+    }
+    if (window.liff && typeof window.liff.closeWindow === 'function') {
+      try {
+        window.liff.closeWindow();
+        return;
+      } catch (_) {}
+    }
+    try { window.close(); } catch (_) {}
+    try {
+      if (!window.closed && window.location && typeof window.location.replace === 'function') {
+        window.location.replace('about:blank');
+      }
+    } catch (_) {}
   }
 
   async function logout() {
