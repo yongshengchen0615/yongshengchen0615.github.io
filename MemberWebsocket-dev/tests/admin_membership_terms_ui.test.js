@@ -80,8 +80,8 @@ test('main admin panels stay outside the member workspace after terms UI restruc
   assert.ok(membersStart > -1 && cardsStart > membersStart);
 
   const memberWorkspace = html.slice(membersStart, cardsStart);
-  const opens = (memberWorkspace.match(/<section\\b/g) || []).length;
-  const closes = (memberWorkspace.match(/<\\/section>/g) || []).length;
+  const opens = (memberWorkspace.match(/<section\b/g) || []).length;
+  const closes = (memberWorkspace.match(/<\/section>/g) || []).length;
   assert.equal(opens, closes, 'membersPanel must close before cardsPanel begins');
 });
 
