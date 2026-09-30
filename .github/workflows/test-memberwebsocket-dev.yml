@@ -81,6 +81,7 @@ jobs:
             MemberWebsocket-dev/admin/admin-session.js \
             MemberWebsocket-dev/admin/test-mode.js \
             MemberWebsocket-dev/admin/test-control.js \
+            MemberWebsocket-dev/admin/e2e-control-loader.js \
             MemberWebsocket-dev/admin/e2e-control.js \
             MemberWebsocket-dev/admin/app.js \
             MemberWebsocket-dev/admin/grant-automation.js \

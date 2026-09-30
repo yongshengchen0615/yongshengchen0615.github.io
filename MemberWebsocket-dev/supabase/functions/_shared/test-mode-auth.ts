@@ -8,6 +8,8 @@ export type TestModeIdentity = {
 
 export type TestDeviceClass = "pc" | "mobile";
 
+const SESSION_TOUCH_INTERVAL_MS = 60_000;
+
 function maintenanceMessage(settings: any): string {
   return String(settings?.maintenance_message || "").trim() || "系統維護中，請稍後再試。";
 }
@@ -38,6 +40,7 @@ async function sha256Hex(value: string): Promise<string> {
 export async function resolveTestSession(
   supabase: any,
   rawToken: string,
+  prefetchedSettings: any = null,
 ): Promise<TestModeIdentity> {
   const token = String(rawToken || "").trim();
   if (!/^[A-Za-z0-9_-]{40,100}$/.test(token)) {
@@ -45,15 +48,18 @@ export async function resolveTestSession(
   }
 
   const tokenHash = await sha256Hex(token);
-  const [settingsResult, sessionResult] = await Promise.all([
-    supabase
+  const settingsPromise = prefetchedSettings
+    ? Promise.resolve({ data: prefetchedSettings, error: null })
+    : supabase
       .from("test_mode_settings")
       .select("maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message")
       .eq("id", true)
-      .maybeSingle(),
+      .maybeSingle();
+  const [settingsResult, sessionResult] = await Promise.all([
+    settingsPromise,
     supabase
       .from("test_login_sessions")
-      .select("id,member_id,device_class,surface,expires_at,revoked_at")
+      .select("id,member_id,device_class,surface,expires_at,revoked_at,last_used_at")
       .eq("token_hash", tokenHash)
       .maybeSingle(),
   ]);
@@ -103,13 +109,19 @@ export async function resolveTestSession(
     throw new TestModeAuthError(403, "TEST_ACCOUNT_UNAVAILABLE", "選擇的測試帳號目前無法使用。");
   }
 
-  const touch = await supabase
-    .from("test_login_sessions")
-    .update({ last_used_at: new Date().toISOString() })
-    .eq("id", session.id)
-    .is("revoked_at", null);
-  if (touch.error) {
-    throw new TestModeAuthError(503, "TEST_SESSION_UNAVAILABLE", "目前無法更新測試登入狀態。");
+  const now = Date.now();
+  const lastUsedAt = session.last_used_at ? new Date(session.last_used_at).getTime() : 0;
+  if (!Number.isFinite(lastUsedAt) || now - lastUsedAt >= SESSION_TOUCH_INTERVAL_MS) {
+    const staleBefore = new Date(now - SESSION_TOUCH_INTERVAL_MS).toISOString();
+    const touch = await supabase
+      .from("test_login_sessions")
+      .update({ last_used_at: new Date(now).toISOString() })
+      .eq("id", session.id)
+      .is("revoked_at", null)
+      .lt("last_used_at", staleBefore);
+    if (touch.error) {
+      throw new TestModeAuthError(503, "TEST_SESSION_UNAVAILABLE", "目前無法更新測試登入狀態。");
+    }
   }
 
   return {
@@ -142,5 +154,5 @@ export async function resolveUserTestIdentity(
     throw new TestModeAuthError(503, "SYSTEM_MAINTENANCE", maintenanceMessage(settingsResult.data));
   }
 
-  return await resolveTestSession(supabase, token);
+  return await resolveTestSession(supabase, token, settingsResult.data);
 }

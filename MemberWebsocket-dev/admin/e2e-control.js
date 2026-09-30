@@ -128,7 +128,11 @@
     lastMessageError: false
   };
 
-  window.addEventListener('DOMContentLoaded', mount);
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', mount, { once: true });
+  } else if (document.readyState === 'interactive' || document.readyState === 'complete') {
+    mount();
+  }
   window.addEventListener('member-admin-ready', mount);
   window.addEventListener('pagehide', closeClientWindows);
 
