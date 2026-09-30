@@ -324,7 +324,10 @@
   }
 
   function queuePositionFocus() {
-    if (!active || positionFrame !== null) return;
+    if (!active) return;
+    // Keep only the newest geometry request. Cancelling a stale frame also makes
+    // resize/scroll recovery deterministic when the browser throttles rAF.
+    if (positionFrame !== null) cancelAnimationFrame(positionFrame);
     positionFrame = requestAnimationFrame(() => {
       positionFrame = null;
       positionFocus();
