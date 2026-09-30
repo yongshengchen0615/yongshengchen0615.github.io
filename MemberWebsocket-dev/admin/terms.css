@@ -449,42 +449,149 @@
 }
 
 .terms-policy-card {
+  position: relative;
   min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  color: var(--ink);
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 15px;
+  border: 1px solid var(--theme-border, var(--line));
+  border-radius: 14px;
+  color: var(--theme-text, var(--ink));
   background: var(--theme-surface, var(--paper));
   cursor: pointer;
+  box-shadow: 0 1px 0 rgba(37, 60, 49, .03);
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease;
 }
 
-.terms-policy-card input {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  margin: 1px 0 0;
-  accent-color: var(--theme-accent, var(--coral));
+.terms-policy-card:hover {
+  border-color: var(--theme-border-strong, var(--line));
+  background: var(--theme-surface-raised, #f7faf7);
+  transform: translateY(-1px);
 }
 
-.terms-policy-card > span {
+.terms-policy-card:has(.terms-policy-input:focus-visible) {
+  outline: 3px solid var(--theme-focus-ring, rgba(177, 79, 57, .28));
+  outline-offset: 2px;
+}
+
+.terms-policy-card:has(.terms-policy-input:checked) {
+  border-color: color-mix(in srgb, var(--theme-accent, var(--coral)) 54%, var(--theme-border, var(--line)));
+  background: color-mix(in srgb, var(--theme-accent-soft, #f7e5de) 62%, var(--theme-surface, var(--paper)));
+  box-shadow: 0 7px 20px rgba(37, 60, 49, .07);
+}
+
+.terms-policy-card:has(.terms-policy-input:disabled) {
+  cursor: not-allowed;
+  opacity: .68;
+  transform: none;
+}
+
+.terms-policy-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.terms-policy-copy {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 6px;
+}
+
+.terms-policy-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
 }
 
 .terms-policy-card strong {
-  color: var(--ink);
-  font-size: 11px;
+  color: var(--theme-text, var(--ink));
+  font-size: 11.5px;
+  font-weight: 900;
   line-height: 1.4;
 }
 
 .terms-policy-card small {
-  color: var(--muted);
+  color: var(--theme-text-subtle, var(--muted));
   font-size: 9.5px;
-  line-height: 1.5;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.terms-policy-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, var(--coral)) 28%, transparent);
+  border-radius: 999px;
+  color: var(--theme-accent, var(--coral));
+  background: var(--theme-accent-soft, #f7e5de);
+  font-size: 8.5px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.terms-policy-badge.is-impact {
+  border-color: color-mix(in srgb, var(--theme-warning-text, #765817) 30%, transparent);
+  color: var(--theme-warning-text, #765817);
+  background: var(--theme-warning-soft, #fff4d9);
+}
+
+.terms-policy-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--theme-border-strong, var(--line));
+  border-radius: 999px;
+  background: var(--theme-surface-muted, #dfe6df);
+  box-sizing: border-box;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+
+.terms-policy-switch-knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--theme-surface-raised, #fff);
+  box-shadow: 0 1px 3px rgba(24, 39, 31, .24);
+  transform: translateX(0);
+  transition: transform .16s ease, background-color .16s ease;
+}
+
+.terms-policy-input:checked ~ .terms-policy-switch {
+  border-color: var(--theme-accent, var(--coral));
+  background: var(--theme-accent, var(--coral));
+}
+
+.terms-policy-input:checked ~ .terms-policy-switch .terms-policy-switch-knob {
+  background: var(--theme-on-accent, #fff);
+  transform: translateX(18px);
+}
+
+html[data-theme="dark"] .terms-policy-card:has(.terms-policy-input:checked) {
+  box-shadow: 0 7px 20px rgba(0, 0, 0, .2);
+}
+
+html[data-theme="dark"] .terms-policy-switch-knob {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .38);
 }
 
 .terms-reconsent-note {
