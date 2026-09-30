@@ -2102,9 +2102,6 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   }
   if (action === "admin.member.force-logout") {
     const lineUserId = requireText(body.lineUserId,"會員識別",120);
-    if (lineUserId === identity.lineUserId) {
-      throw new ApiError(409,"SELF_FORCE_LOGOUT_BLOCKED","不可從管理端強制結束自己的管理工作階段。");
-    }
     const target = await supabase.from("members").select("id,line_user_id,display_name").eq("line_user_id",lineUserId).maybeSingle();
     if (target.error) throw mapDatabaseError(target.error);
     if (!target.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
@@ -2141,7 +2138,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     if (auditResult.error) throw mapDatabaseError(auditResult.error);
 
     await supabase.from("realtime_events").insert(
-      ["member","points","event","calendar","admin"].map((scope) => ({ scope,event_type:"admin.member.force-logout" })),
+      ["member","points","event","calendar","booking","admin"].map((scope) => ({ scope,event_type:"admin.member.force-logout" })),
     );
     return { lineUserId,revokedAt };
   }
