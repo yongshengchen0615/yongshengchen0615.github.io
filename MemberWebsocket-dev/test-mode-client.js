@@ -129,7 +129,12 @@
           });
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status !== 'SUBSCRIBED' || !getSessionToken()) return;
+        void sessionStatus(config, realtimeSurface).catch((error) => {
+          if (error && error.code === 'SESSION_REVOKED') terminateForcedTestSession(error.message);
+        });
+      });
     realtimeWatcher = { client, channel };
   }
 
