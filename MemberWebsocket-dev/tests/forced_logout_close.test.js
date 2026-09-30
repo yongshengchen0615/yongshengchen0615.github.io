@@ -65,3 +65,10 @@ test('test client revalidates a test session after Realtime reconnect', () => {
   assert.match(client, /sessionStatus\(config, realtimeSurface\)/);
   assert.match(client, /SESSION_REVOKED/);
 });
+
+
+test('test client filters forced logout realtime events to the active test surface', () => {
+  const client = read('test-mode-client.js');
+  assert.match(client, /const scope = String\(row\.scope \|\| ''\)/);
+  assert.match(client, /scope === 'all' \|\| scope === realtimeSurface/);
+});
