@@ -50,7 +50,7 @@ export async function verifyLineIdTokenContract(args: {
   const { createClient } = await import("npm:@supabase/supabase-js@2.57.0");
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const [settingsResult, adminResult, memberResult] = await Promise.all([
-    supabase.from("test_mode_settings").select("maintenance_enabled,maintenance_message").eq("id", true).maybeSingle(),
+    supabase.from("test_mode_settings").select("maintenance_enabled,maintenance_message,maintenance_revoked_after").eq("id", true).maybeSingle(),
     supabase.from("admins").select("role,status").eq("line_user_id", sub).maybeSingle(),
     supabase.from("members").select("force_logout_after").eq("line_user_id", sub).maybeSingle(),
   ]);
@@ -63,9 +63,14 @@ export async function verifyLineIdTokenContract(args: {
     throw createError(503, "SYSTEM_MAINTENANCE", String(settingsResult.data?.maintenance_message || "").trim() || "系統維護中，請稍後再試。");
   }
 
-  const revokedAtMs = memberResult.data?.force_logout_after ? new Date(memberResult.data.force_logout_after).getTime() : 0;
-  if (!isActiveAdmin && Number.isFinite(revokedAtMs) && revokedAtMs > 0 && identity.issuedAtMs <= revokedAtMs) {
-    throw createError(401, "SESSION_REVOKED", "您的登入工作階段已由管理員結束，請重新登入。");
+  const memberRevokedAtMs = memberResult.data?.force_logout_after ? new Date(memberResult.data.force_logout_after).getTime() : 0;
+  const maintenanceRevokedAtMs = settingsResult.data?.maintenance_revoked_after ? new Date(settingsResult.data.maintenance_revoked_after).getTime() : 0;
+  const revokedAtMs = Math.max(
+    Number.isFinite(memberRevokedAtMs) ? memberRevokedAtMs : 0,
+    Number.isFinite(maintenanceRevokedAtMs) ? maintenanceRevokedAtMs : 0,
+  );
+  if (!isActiveAdmin && revokedAtMs > 0 && identity.issuedAtMs <= revokedAtMs) {
+    throw createError(401, "SESSION_REVOKED", "您的登入工作階段已結束，請重新登入。");
   }
 
   return identity;
