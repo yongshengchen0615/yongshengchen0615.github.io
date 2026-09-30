@@ -46,6 +46,8 @@
   let opener = null;
   let identityGeneration = 0;
   let autoOpenObserver = null;
+  let activeObserver = null;
+  let positionFrame = null;
 
   document.addEventListener('DOMContentLoaded', () => {
     ui.view = document.querySelector('main[data-user-tour]');
@@ -83,8 +85,9 @@
         event.preventDefault(); first.focus();
       }
     });
-    window.addEventListener('resize', positionFocus);
-    window.addEventListener('scroll', positionFocus, true);
+    window.addEventListener('resize', queuePositionFocus);
+    window.addEventListener('scroll', queuePositionFocus, true);
+    window.addEventListener('pagehide', () => close('dismiss'));
     window.addEventListener('pagehide', stopAutoOpenObserver, { once: true });
     window.addEventListener('beforeunload', stopAutoOpenObserver, { once: true });
     window.addEventListener('member-profile-ready', (event) => { void considerProfile(event.detail?.profile); });
@@ -230,6 +233,12 @@
     ui.memberTourOverlay.classList.remove('hidden');
     ui.memberTourDialog.classList.remove('hidden');
     ui.app.inert = true;
+    activeObserver = new MutationObserver(() => {
+      if (!active) return;
+      if (ui.view.classList.contains('hidden')) close('missing');
+      else if (!available(stepIndex)) renderStep();
+    });
+    activeObserver.observe(ui.view, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden'] });
     renderStep();
     return true;
   }
@@ -266,16 +275,24 @@
     target.scrollIntoView?.({ block: 'center', behavior: 'instant' });
     // Geometry must exist even when the page is backgrounded and rAF is throttled.
     positionFocus();
-    requestAnimationFrame(positionFocus);
+    queuePositionFocus();
     ui.memberTourTitle.focus();
+  }
+
+  function queuePositionFocus() {
+    if (!active || positionFrame !== null) return;
+    positionFrame = requestAnimationFrame(() => {
+      positionFrame = null;
+      positionFocus();
+    });
   }
 
   function positionFocus() {
     if (!active) return;
+    if (ui.view.classList.contains('hidden')) { close('missing'); return; }
     const target = available(stepIndex);
     if (!target) {
-      ui.memberTourFocus.classList.add('hidden');
-      positionMasks(null);
+      renderStep();
       return;
     }
     const box = target.getBoundingClientRect();
@@ -329,6 +346,10 @@
   function close(outcome) {
     if (!active) return;
     active = false;
+    activeObserver?.disconnect();
+    activeObserver = null;
+    if (positionFrame !== null) cancelAnimationFrame(positionFrame);
+    positionFrame = null;
     ui.memberTourOverlay.classList.add('hidden');
     ui.memberTourFocus.classList.add('hidden');
     positionMasks(null);

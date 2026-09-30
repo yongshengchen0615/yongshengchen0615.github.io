@@ -143,10 +143,57 @@ test('spotlight dims only outside the selected UI and moves the dialog away from
   assert.equal(masks.right.style.height, '130px');
   top = 60;
   w.dispatchEvent(new w.Event('scroll'));
+  await tick();
   assert.equal(dialog.classList.contains('member-tour-dialog-top'), false);
   assert.equal(masks.top.style.height, '45px');
   assert.equal(masks.bottom.style.top, '175px');
   dom.window.close();
+});
+
+test('tour advances when its current anchor disappears and releases the page if no anchors remain', async () => {
+  const { dom, w, ready, dialog } = await page();
+  try {
+    await ready();
+    w.document.querySelector('#memberPass').remove();
+    await tick();
+    assert.match(dialog.textContent, /查看升等進度/);
+    for (const selector of ['#membershipProgress', '.profile-details', '#memberFeatureLinks']) {
+      w.document.querySelector(selector)?.remove();
+    }
+    await tick();
+    assert.equal(dialog.classList.contains('hidden'), true);
+    assert.equal(w.document.getElementById('app').inert, false);
+    assert.equal(w.localStorage.length, 0);
+  } finally { dom.window.close(); }
+});
+
+test('tour restores interaction when its view becomes hidden during a realtime refresh', async () => {
+  const { dom, w, ready, dialog } = await page();
+  try {
+    await ready();
+    w.document.querySelector('main[data-user-tour]').classList.add('hidden');
+    await tick();
+    assert.equal(dialog.classList.contains('hidden'), true);
+    assert.equal(w.document.getElementById('app').inert, false);
+  } finally { dom.window.close(); }
+});
+
+test('tour batches scroll geometry and cancels pending layout work on close/pagehide', async () => {
+  const { dom, w, ready, dialog } = await page();
+  try {
+    await ready();
+    const callbacks = new Map();
+    let frames = 0;
+    w.requestAnimationFrame = (callback) => { callbacks.set(++frames, callback); return frames; };
+    w.cancelAnimationFrame = (id) => callbacks.delete(id);
+    for (let index = 0; index < 20; index++) w.dispatchEvent(new w.Event('scroll'));
+    assert.equal(callbacks.size, 1);
+    w.dispatchEvent(new w.PageTransitionEvent('pagehide'));
+    assert.equal(callbacks.size, 0);
+    assert.equal(dialog.classList.contains('hidden'), true);
+    assert.equal(w.document.getElementById('app').inert, false);
+    assert.equal(w.localStorage.length, 0);
+  } finally { dom.window.close(); }
 });
 
 test('account isolation, missing anchor, keyboard escape and focus return', async () => {

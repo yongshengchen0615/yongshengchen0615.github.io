@@ -108,20 +108,24 @@ export function selectLatestEventOffers(
   events: JsonRow[],
   claims: JsonRow[],
   memberId: string,
+  counts?: JsonRow[],
 ): CurrentEventOffer[] {
-  const claimCounts = new Map<string, number>();
+  const claimCounts = new Map<string, number>(
+    (counts || []).map((row) => [text(row.event_ticket_id), number(row.claimed_count)]),
+  );
   const memberAvailableClaims = new Set<string>();
   const memberUnavailableClaims = new Set<string>();
 
   for (const claim of claims) {
     const eventId = text(claim.event_ticket_id);
     const status = text(claim.status);
-    if (!eventId || status === "cancelled") continue;
+    if (!eventId) continue;
 
-    claimCounts.set(eventId, (claimCounts.get(eventId) || 0) + 1);
+    // Inventory counts every issued claim, including used/cancelled claims, just like the DB.
+    if (!counts) claimCounts.set(eventId, (claimCounts.get(eventId) || 0) + 1);
     if (text(claim.member_id) !== memberId) continue;
 
-    if (status === "available") memberAvailableClaims.add(eventId);
+    if (status === "claimed" || status === "available") memberAvailableClaims.add(eventId);
     else memberUnavailableClaims.add(eventId);
   }
 
@@ -131,6 +135,7 @@ export function selectLatestEventOffers(
     if (!eventId || memberUnavailableClaims.has(eventId)) continue;
 
     const claimed = memberAvailableClaims.has(eventId);
+    if (row.fixed_ticket_template_id && !claimed) continue;
     const quota = number(row.quota);
     const hasQuota = quota === 0 || (claimCounts.get(eventId) || 0) < quota;
     if (!claimed && !hasQuota) continue;
@@ -213,8 +218,9 @@ async function eventOfferLines(
   const today = taipeiDate();
   const eventsResult = await supabase
     .from("event_tickets")
-    .select("id,title,status,starts_on,ends_on,quota,allowed_tier_keys")
-    .eq("status", "active");
+    .select("id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id")
+    .eq("status", "active")
+    .is("deleted_at", null);
   if (eventsResult.error) {
     if (strict) throw eventsResult.error;
     return [];
@@ -224,17 +230,20 @@ async function eventOfferLines(
     const allowed = Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [];
     return (!row.starts_on || text(row.starts_on) <= today) &&
       (!row.ends_on || text(row.ends_on) >= today) &&
-      (!allowed.length || allowed.includes(tierKey));
+      allowed.includes(tierKey);
   });
   const ids = eligible.map((row: any) => row.id);
   if (!ids.length) return [];
 
-  const claimsResult = await supabase
-    .from("event_ticket_claims")
-    .select("event_ticket_id,member_id,status")
-    .in("event_ticket_id", ids);
-  if (claimsResult.error) {
-    if (strict) throw claimsResult.error;
+  const [claimsResult, countsResult] = await Promise.all([
+    supabase.from("event_ticket_claims")
+      .select("event_ticket_id,member_id,status")
+      .eq("member_id", memberId)
+      .in("event_ticket_id", ids),
+    supabase.rpc("event_ticket_claim_counts", { p_event_ids: ids }),
+  ]);
+  if (claimsResult.error || countsResult.error) {
+    if (strict) throw claimsResult.error || countsResult.error;
     return [];
   }
 
@@ -242,6 +251,7 @@ async function eventOfferLines(
     eligible,
     claimsResult.data || [],
     memberId,
+    countsResult.data || [],
   ).slice(0, 8).map((offer) =>
     `・${offer.title}${offer.claimed ? "（已領取）" : "（可領取）"}`
   );
