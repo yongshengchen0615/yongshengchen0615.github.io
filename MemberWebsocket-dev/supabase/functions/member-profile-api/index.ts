@@ -1,10 +1,10 @@
 import { readJsonObject } from "../_shared/request-body.ts";
-import { verifyLineIdTokenContract } from "../_shared/auth-contract.ts";
+import { verifyLineIdTokenContract, requireMemberAccessContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
-type Identity = { lineUserId: string; displayName: string };
+type Identity = { lineUserId: string; displayName: string; issuedAt?: number };
 
 const MAX_REQUEST_BYTES = 20_000;
 const READ_LIMIT = 90;
@@ -211,14 +211,23 @@ Deno.serve(async (request: Request) => {
     if (!["user.member.bootstrap", "user.member.profile.save", "user.member.terms.accept"].includes(action) || asText(body.clientType, 20) !== "member") throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     const supabase = dbClient();
     let identity: Identity;
+    let isTestSession = false;
     try {
       const testIdentity = await resolveUserTestIdentity(supabase, asText(body.testSessionToken, 200));
+      isTestSession = Boolean(testIdentity);
       identity = testIdentity
         ? { lineUserId: testIdentity.lineUserId, displayName: testIdentity.displayName }
         : await verifyLineIdToken(asText(body.idToken, 10_000));
     } catch (error) {
       if (error instanceof TestModeAuthError) throw new ApiError(error.status, error.code, error.message);
       throw error;
+    }
+    if (!isTestSession) {
+      await requireMemberAccessContract({
+        supabase,
+        identity: identity as { lineUserId: string; displayName: string; issuedAt: number },
+        createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+      });
     }
     await consumeRateLimit(supabase, identity, action !== "user.member.bootstrap");
     const member = await ensureMember(supabase, identity);
