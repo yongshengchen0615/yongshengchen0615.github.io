@@ -7,6 +7,7 @@
   let busy = false;
   let currentAccounts = [];
   let selectedAccountIds = new Set();
+  let currentMaintenanceEnabled = false;
 
   window.addEventListener('DOMContentLoaded', () => {
     [
@@ -107,6 +108,14 @@
       return setMessage('系統維護訊息不可超過 500 字。', true);
     }
 
+    const nextMaintenanceEnabled = Boolean(els.systemMaintenanceEnabled.checked);
+    if (nextMaintenanceEnabled !== currentMaintenanceEnabled) {
+      const scope = nextMaintenanceEnabled
+        ? '開啟維護後，所有非管理員的既有正式登入將立即失效並被要求重新登入；目前已授權的 QA 測試登入也會被撤銷，必須重新從測試登入入口建立。管理端仍保留復原權限。'
+        : '關閉維護只會恢復登入入口；先前已撤銷的正式會員與測試 Session 不會自動恢復，使用者必須重新登入。';
+      if (!window.confirm((nextMaintenanceEnabled ? '確定開啟系統維護？' : '確定關閉系統維護？') + '\n\n' + scope)) return;
+    }
+
     setBusy(true);
     setMessage('正在儲存並建立測試帳號…');
     try {
@@ -135,6 +144,7 @@
     const availableIds = new Set(accounts.map((account) => String(account.memberId || '')).filter(Boolean));
     selectedAccountIds = new Set([...selectedAccountIds].filter((id) => availableIds.has(id)));
     const maintenanceEnabled = Boolean(settings.maintenanceEnabled);
+    currentMaintenanceEnabled = maintenanceEnabled;
     const allowPcTestLogin = Boolean(settings.allowPcTestLogin);
     const allowMobileTestLogin = Boolean(settings.allowMobileTestLogin);
 
