@@ -41,6 +41,26 @@ test('booking realtime no longer drives admin refresh through a button click', (
   assert.match(common, /table: 'realtime_events'/);
 });
 
+
+test('admin booking modules reuse the single MemberSystem realtime feed', () => {
+  const memberSystem = read('member-system.js');
+  const bookingAdmin = read('admin/booking-panel-core.js');
+  const cancellation = read('admin/booking-cancellation-sync.js');
+
+  assert.match(memberSystem, /member-system:realtime-invalidation/);
+  assert.match(memberSystem, /member-system:realtime-status/);
+  assert.match(memberSystem, /getRealtimeStatus/);
+
+  assert.match(bookingAdmin, /member-system:realtime-invalidation/);
+  assert.doesNotMatch(bookingAdmin, /supabase\.createClient/);
+  assert.doesNotMatch(bookingAdmin, /\.channel\(/);
+
+  assert.match(cancellation, /member-system:realtime-invalidation/);
+  assert.match(cancellation, /member-system:realtime-status/);
+  assert.doesNotMatch(cancellation, /supabase\.createClient/);
+  assert.doesNotMatch(cancellation, /\.channel\(/);
+});
+
 test('booking child tables have statement-level realtime invalidation triggers', () => {
   const migration = read('supabase/migrations/20260919062515_complete_realtime_invalidation_coverage.sql');
   for (const table of [

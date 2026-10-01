@@ -191,7 +191,7 @@ jobs:
           grep -q 'claim_due_grant_messages' MemberWebsocket-dev/supabase/migrations/20260910_add_grant_notification_schedule_calendar_bonus.sql
       - name: Check unified calendar backend wiring
         run: |
-          grep -q 'member-system.js?v=member-security-close-20260930-2' MemberWebsocket-dev/calendar/index.html
+          grep -q 'member-system.js?v=layout-stability-20261001-1' MemberWebsocket-dev/calendar/index.html
           ! grep -q 'tier-sync.js' MemberWebsocket-dev/calendar/index.html
           ! grep -q 'realtime-resync.js' MemberWebsocket-dev/calendar/index.html
           grep -q 'memberCalendarFunctionUrl' MemberWebsocket-dev/config.json
@@ -309,7 +309,7 @@ jobs:
       - name: Check realtime sync wiring
         run: |
           grep -q "table: 'realtime_events'" MemberWebsocket-dev/member-system.js
-          grep -q "scope === 'all' || scope === clientType" MemberWebsocket-dev/member-system.js
+          grep -q "scope !== 'all' && scope !== clientType" MemberWebsocket-dev/member-system.js
           for file in \
             MemberWebsocket-dev/member/index.html \
             MemberWebsocket-dev/points/index.html \
@@ -326,10 +326,13 @@ jobs:
           grep -q "addEventListener('pageshow'" MemberWebsocket-dev/booking/common.js
           grep -q "addEventListener('online'" MemberWebsocket-dev/booking/common.js
           grep -q "status !== 'SUBSCRIBED'" MemberWebsocket-dev/booking/common.js
-          grep -q "table: 'realtime_events'" MemberWebsocket-dev/admin/booking-panel-core.js
+          grep -q "member-system:realtime-invalidation" MemberWebsocket-dev/admin/booking-panel-core.js
           grep -q "type.startsWith('booking.')" MemberWebsocket-dev/admin/booking-panel-core.js
-          grep -q "table: 'realtime_events'" MemberWebsocket-dev/admin/booking-cancellation-sync.js
-          grep -q "type.startsWith('booking.cancellation.')" MemberWebsocket-dev/admin/booking-cancellation-sync.js
+          ! grep -q "supabase.createClient" MemberWebsocket-dev/admin/booking-panel-core.js
+          grep -q "member-system:realtime-invalidation" MemberWebsocket-dev/admin/booking-cancellation-sync.js
+          grep -q "member-system:realtime-status" MemberWebsocket-dev/admin/booking-cancellation-sync.js
+          grep -q "type.startsWith('booking.')" MemberWebsocket-dev/admin/booking-cancellation-sync.js
+          ! grep -q "supabase.createClient" MemberWebsocket-dev/admin/booking-cancellation-sync.js
           grep -q 'notify_booking_cancellation_realtime_change' MemberWebsocket-dev/supabase/migrations/20260911123000_booking_cancellation_realtime_sync.sql
           grep -q 'notify_booking_realtime_change' MemberWebsocket-dev/supabase/migrations/20260910_booking_global_hours_multi_service_realtime.sql
           grep -q 'realtime_booking_service_types_change' MemberWebsocket-dev/supabase/migrations/20260910233100_booking_service_type_realtime.sql

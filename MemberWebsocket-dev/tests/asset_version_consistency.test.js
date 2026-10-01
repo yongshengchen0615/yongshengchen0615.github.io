@@ -25,9 +25,24 @@ test('all application entry pages reference the current shared responsive asset'
   }
 });
 
-test('admin entry does not render escaped newline text', () => {
-  const html = read('admin/index.html');
-  assert.equal(html.includes('\\n'), false);
+test('application entry pages do not render escaped newline text', () => {
+  for (const relativePath of entryPages) {
+    const html = read(relativePath);
+    assert.equal(html.includes('\\n'), false, relativePath);
+  }
+});
+
+test('shared membership assets use one cache version across every client entry', () => {
+  const memberSystemPages = ['admin/index.html', 'member/index.html', 'points/index.html', 'event/index.html', 'calendar/index.html'];
+  for (const relativePath of memberSystemPages) {
+    const html = read(relativePath);
+    assert.ok(html.includes('member-system.js?v=layout-stability-20261001-1'), relativePath);
+  }
+  const userTourPages = ['member/index.html', 'points/index.html', 'event/index.html', 'calendar/index.html', 'booking/index.html'];
+  for (const relativePath of userTourPages) {
+    const html = read(relativePath);
+    assert.ok(html.includes('user-tour.js?v=layout-stability-20261001-1'), relativePath);
+  }
 });
 
 test('admin entry references current booking assets', () => {
@@ -43,6 +58,16 @@ test('admin entry references current booking assets', () => {
   assert.ok(html.includes('fixed-ticket-admin.js?v=all-ticket-gps-search-20260929-1'));
   assert.ok(html.includes('pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1'));
   assert.ok(html.includes('../booking-copy-format.js?v=booking-overnight-20260928-1'));
+  for (const asset of [
+    './booking-panel-responsive.css?v=booking-settings-layout-20260918-1',
+    './booking-summary.css?v=booking-theme-tokens-20260924-1',
+    './booking-resources.css?v=booking-theme-tokens-20260924-1',
+    '../booking-admin-group-details.css?v=booking-theme-tokens-20260924-1',
+    './ui-polish.css?v=lumen-design-system-20260924-1',
+    './ui-polish-responsive.css?v=ui-refresh-20260924-1',
+  ]) {
+    assert.ok(html.includes(asset), asset);
+  }
 });
 
 test('member booking entry loads only the current single render pipeline', () => {
@@ -70,7 +95,8 @@ test('member booking entry loads only the current single render pipeline', () =>
 
   assert.ok(group.includes('window.BookingGroupUI = Object.freeze'));
   assert.ok(app.includes('window.BookingMemberUI?.organizeBookingHistory?.()'));
-  assert.ok(loader.includes("loadStyle('../booking-admin-group-details.css'"));
+  assert.ok(!loader.includes('loadStyle('));
+  assert.ok(!loader.includes('loadSharedResponsive'));
   assert.ok(!loader.includes('booking-admin-group-details.js'));
 });
 

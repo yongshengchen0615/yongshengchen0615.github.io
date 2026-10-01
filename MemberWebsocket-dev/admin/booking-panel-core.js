@@ -17,8 +17,7 @@
     refreshQueued: false,
     refreshQueuedShowSuccess: false,
     busy: false,
-    realtimeClient: null,
-    realtimeChannel: null,
+    realtimeListening: false,
     realtimeTimer: null,
     badgeLoading: false,
     badgeQueued: false,
@@ -199,6 +198,19 @@
     bindEvents();
     setSubtab('technicians');
     startBookingBadgeSync();
+    openInitialBookingPanel();
+  }
+
+  function handleAdminSessionReady() {
+    startBookingBadgeSync();
+    openInitialBookingPanel();
+  }
+
+  function openInitialBookingPanel() {
+    if (window.MemberAdminInitialPanel !== 'booking' || !window.MemberAdminSession?.isReady?.()) return false;
+    window.MemberAdminInitialPanel = '';
+    activateBookingPanel();
+    return true;
   }
 
   function cacheElements() {
@@ -229,7 +241,7 @@
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeModal(); });
     document.querySelectorAll('[data-booking-filter]').forEach((button) => button.addEventListener('click', () => setFilter(button.dataset.bookingFilter || 'pending')));
     window.addEventListener('beforeunload', teardownRealtime);
-    window.addEventListener('member-admin-session-ready', startBookingBadgeSync);
+    window.addEventListener('member-admin-session-ready', handleAdminSessionReady);
     window.addEventListener('member-admin:booking-snapshot-request', handleOperationalSnapshotRequest);
     window.addEventListener('member-admin:booking-focus', handleOperationalBookingFocus);
   }
@@ -1334,33 +1346,56 @@
     renderBookings();
   }
 
-  function setupRealtime() {
-    if (isBackgroundE2ERunner()) return;
-    if (state.realtimeChannel || state.config?.realtimeEnabled === false || !window.supabase?.createClient) return;
-    state.realtimeClient = window.supabase.createClient(state.config.supabaseUrl, state.config.supabasePublishableKey, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
-    const schedule = () => {
-      if (state.realtimeTimer !== null) return;
-      state.realtimeTimer = window.setTimeout(() => {
-        state.realtimeTimer = null;
-        if (state.loading || state.busy) return;
-        if (els.bookingPanel?.classList.contains('hidden')) refreshBookingBadge();
-        else refreshAll(false, true);
-      }, 500);
-    };
-    state.realtimeChannel = state.realtimeClient.channel('booking-admin-sync-v2').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
-      const row = payload?.new || {}; const scope = String(row.scope || ''); const type = String(row.event_type || '');
-      if ((scope === 'all' || scope === 'admin') && type.startsWith('booking.')) schedule();
-    }).subscribe();
+  function handleSharedRealtimeInvalidation(event) {
+    const detail = event?.detail || {};
+    if (String(detail.clientType || '') !== 'admin') return;
+    const scope = String(detail.scope || '');
+    const type = String(detail.eventType || '');
+    if ((scope !== 'all' && scope !== 'admin') || !type.startsWith('booking.')) return;
+    if (state.realtimeTimer !== null) return;
+    state.realtimeTimer = window.setTimeout(() => {
+      state.realtimeTimer = null;
+      if (state.loading || state.busy) {
+        state.refreshQueued = true;
+        return;
+      }
+      if (els.bookingPanel?.classList.contains('hidden')) refreshBookingBadge();
+      else refreshAll(false, true);
+    }, 500);
   }
+
+  function setupRealtime() {
+    if (isBackgroundE2ERunner() || state.realtimeListening) return;
+    window.addEventListener('member-system:realtime-invalidation', handleSharedRealtimeInvalidation);
+    state.realtimeListening = true;
+  }
+
   function teardownRealtime() {
     if (state.realtimeTimer !== null) window.clearTimeout(state.realtimeTimer);
     state.realtimeTimer = null;
-    if (state.realtimeClient && state.realtimeChannel) { try { Promise.resolve(state.realtimeClient.removeChannel(state.realtimeChannel)).catch(() => {}); } catch (_) {} }
-    state.realtimeChannel = null;
+    if (state.realtimeListening) {
+      window.removeEventListener('member-system:realtime-invalidation', handleSharedRealtimeInvalidation);
+      state.realtimeListening = false;
+    }
   }
 
-  function actionButton(label, className, handler) { const button = document.createElement('button'); button.type = 'button'; button.className = className; button.textContent = label; button.dataset.bookingAdminAction = String(label || 'action'); button.addEventListener('click', handler); return button; }
-  function appendNote(card, text, admin) { const note = document.createElement('p'); note.className = `booking-admin-note${admin ? ' admin' : ''}`; note.textContent = text; card.appendChild(note); }
+  function actionButton(label, className, handler) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.textContent = label;
+    button.dataset.bookingAdminAction = String(label || 'action');
+    button.addEventListener('click', handler);
+    return button;
+  }
+
+  function appendNote(card, text, admin) {
+    const note = document.createElement('p');
+    note.className = `booking-admin-note${admin ? ' admin' : ''}`;
+    note.textContent = text;
+    card.appendChild(note);
+  }
+
   function showModal() { els.bookingAdminCrudModal.classList.remove('hidden'); }
   function closeModal() { if (!state.busy) els.bookingAdminCrudModal.classList.add('hidden'); }
   function setSyncStatus(message, error) { els.bookingAdminSyncStatus.textContent = message; els.bookingAdminSyncStatus.classList.toggle('error', Boolean(error)); }

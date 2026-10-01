@@ -28,11 +28,13 @@ assert.match(core, /booking-admin-settings-notice/);
 assert.doesNotMatch(core, /label style="grid-column:1\/-1"/);
 assert.match(css, /booking shared settings layout 20260918/);
 assert.match(css, /booking-admin-settings-actions/);
+assert.match(core, /function actionButton\(label, className, handler\)/);
+assert.match(core, /function appendNote\(card, text, admin\)/);
 assert.match(core, /const PRIMARY_TAB_IDS = \['membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'testModeTab'\]/);
 assert.match(core, /const PRIMARY_PANEL_IDS = \['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'testModePanel'\]/);
 assert.match(core, /nav\.insertBefore\(tab, testModeTab\)/);
 assert.doesNotMatch(core, /#booking/);
-assert.match(loader, /legacyBookingRouteRequested/);
-assert.doesNotMatch(loader, /restoreBookingHashAndOpen/);
+assert.match(loader, /MemberAdminInitialPanel = 'booking'/);
+assert.doesNotMatch(loader, /restoreBookingHashAndOpen|setInterval\(/);
 
 console.log('booking admin four-tab layout OK');

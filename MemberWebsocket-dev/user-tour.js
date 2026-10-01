@@ -280,10 +280,10 @@
     activeObserver = new MutationObserver(() => {
       if (!active) return;
       if (ui.view.classList.contains('hidden')) close('missing');
-      else if (!available(stepIndex)) renderStep();
+      else if (!available(stepIndex)) renderStep({ scroll: false });
     });
     activeObserver.observe(ui.view, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden'] });
-    renderStep();
+    renderStep({ scroll: Boolean(trigger) });
     return true;
   }
 
@@ -294,17 +294,17 @@
       return;
     }
     stepIndex = next;
-    renderStep();
+    renderStep({ scroll: true });
   }
 
-  function renderStep() {
+  function renderStep(options = {}) {
     if (!active) return;
     const target = available(stepIndex);
     if (!target) {
       const next = findStep(stepIndex + 1, 1);
       if (next < 0) { close('missing'); return; }
       stepIndex = next;
-      renderStep();
+      renderStep(options);
       return;
     }
     const step = STEPS[stepIndex];
@@ -316,7 +316,7 @@
     ui.memberTourDescription.textContent = step.description;
     ui.memberTourBack.disabled = findStep(stepIndex - 1, -1) < 0;
     ui.memberTourNext.textContent = findStep(stepIndex + 1, 1) < 0 ? '完成' : '下一步';
-    target.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+    if (options.scroll === true) target.scrollIntoView?.({ block: 'center', behavior: 'instant' });
     // Geometry must exist even when the page is backgrounded and rAF is throttled.
     positionFocus();
     queuePositionFocus();
@@ -339,7 +339,7 @@
     if (ui.view.classList.contains('hidden')) { close('missing'); return; }
     const target = available(stepIndex);
     if (!target) {
-      renderStep();
+      renderStep({ scroll: false });
       return;
     }
     const box = target.getBoundingClientRect();

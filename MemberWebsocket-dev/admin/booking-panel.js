@@ -2,38 +2,6 @@
   'use strict';
 
   const current = document.currentScript?.src || new URL('./booking-panel.js', window.location.href).toString();
-  const insertStyleBeforeTheme = (link) => {
-    const themeLink = document.querySelector('link[rel="stylesheet"][href*="theme.css"]');
-    if (themeLink?.parentNode === document.head) {
-      document.head.insertBefore(link, themeLink);
-      return;
-    }
-    document.head.appendChild(link);
-  };
-
-  const loadStyle = (name, version) => {
-    if (document.querySelector(`link[data-booking-panel-style="${name}"]`)) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = new URL(`./${name}?v=${version}`, current).toString();
-    link.dataset.bookingPanelStyle = name;
-    insertStyleBeforeTheme(link);
-  };
-  const loadSharedResponsive = () => {
-    const href = new URL('../responsive.css?v=20260914-time-input-1', current).toString();
-    if ([...document.querySelectorAll('link[rel="stylesheet"]')].some((link) => {
-      try {
-        return new URL(link.href, window.location.href).pathname === new URL(href).pathname;
-      } catch (_) {
-        return link.href === href;
-      }
-    })) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = href;
-    link.dataset.bookingPanelStyle = 'shared-responsive-time-input';
-    insertStyleBeforeTheme(link);
-  };
   const load = (name, version) => new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = new URL(`./${name}?v=${version}`, current).toString();
@@ -43,40 +11,12 @@
     document.head.appendChild(script);
   });
 
-  // Backward compatibility for the legacy /booking/admin/ redirect only.
-  // Normal tab navigation no longer writes or depends on URL hashes.
-  const legacyBookingRouteRequested = window.location.hash === '#booking';
-  if (legacyBookingRouteRequested) {
+  // Preserve compatibility with the retired /booking/admin/ route without
+  // waiting for the visible admin UI and clicking a tab after first paint.
+  if (window.location.hash === '#booking') {
+    window.MemberAdminInitialPanel = 'booking';
     window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
   }
-
-  function openLegacyBookingRouteWhenReady() {
-    if (!legacyBookingRouteRequested) return;
-    let attempts = 0;
-    const tryOpen = () => {
-      attempts += 1;
-      const adminView = document.getElementById('adminView');
-      const bookingTab = document.getElementById('bookingTab');
-      const authenticated = Boolean(window.MemberAdminSession?.isReady?.());
-      if (adminView && bookingTab && !adminView.classList.contains('hidden') && authenticated) {
-        bookingTab.click();
-        return true;
-      }
-      return attempts >= 300;
-    };
-    if (tryOpen()) return;
-    const timer = window.setInterval(() => {
-      if (tryOpen()) window.clearInterval(timer);
-    }, 100);
-  }
-
-  loadSharedResponsive();
-  loadStyle('booking-panel-responsive.css', 'booking-settings-layout-20260918-1');
-  loadStyle('booking-summary.css', 'booking-theme-tokens-20260924-1');
-  loadStyle('booking-resources.css', 'booking-theme-tokens-20260924-1');
-  loadStyle('../booking-admin-group-details.css', 'booking-theme-tokens-20260924-1');
-  loadStyle('ui-polish.css', 'lumen-design-system-20260924-1');
-  loadStyle('ui-polish-responsive.css', 'ui-refresh-20260924-1');
 
   document.addEventListener('click', (event) => {
     if (!window.matchMedia('(max-width: 768px)').matches) return;
@@ -87,15 +27,12 @@
     });
   });
 
-  // Preload DOM decorators before the core panel is mounted. Each decorator is
-  // responsible for waiting for its own host element. allSettled prevents one
-  // optional feature from blocking every feature loaded after it.
+  // Layout CSS is loaded statically from admin/index.html before first paint.
+  // Only behavior modules remain lazy so opening the admin shell cannot cause
+  // a late stylesheet-driven layout shift.
   const preloadExtensions = [
     ['booking-always-open.js', 'booking-always-open-20260917-2'],
-    ['booking-cancellation-sync.js', 'csp-hardening-20260929-1'],
-    // Resource controls are independent required modules. They wait for the
-    // booking host themselves, so they cannot disappear because another
-    // decorator or the core load chain failed.
+    ['booking-cancellation-sync.js', 'layout-stability-20261001-1'],
     ['booking-resources.js', 'booking-technician-disable-action-20260920-1'],
   ];
 
@@ -106,10 +43,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      return load('booking-panel-core.js', 'booking-csp-hardening-20260929-1');
-    })
-    .then(() => {
-      openLegacyBookingRouteWhenReady();
+      return load('booking-panel-core.js', 'layout-stability-20261001-1');
     })
     .catch((error) => console.error('booking admin core load failed', error));
 })();

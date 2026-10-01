@@ -43,6 +43,7 @@ async function runFixture(mode) {
   const errors = [];
   let subscriptions = 0;
   let stoppedSubscriptions = 0;
+  let adminRequests = 0;
   w.addEventListener('error', (event) => errors.push(event.message));
   w.Request = Request;
   w.fetch = async (url, init) => {
@@ -55,6 +56,7 @@ async function runFixture(mode) {
     loadConfig: async () => ({ supabaseUrl: 'https://fixture.supabase.co' }),
     signIn: async () => 'fixture-token',
     request: async () => {
+      adminRequests += 1;
       if (mode === 'forbidden') throw Object.assign(new Error('Access denied'), { code: 'ADMIN_FORBIDDEN' });
       return {
         profile: { displayName: 'Fixture Admin' }, role: 'Admin',
@@ -159,8 +161,15 @@ async function runFixture(mode) {
     assert.equal(el('adminView').classList.contains('hidden'), true);
     assert.equal(el('eventTicketEditorModal').classList.contains('hidden'), true);
     assert.equal(stoppedSubscriptions, 1);
+    const requestsBeforeResume = adminRequests;
     w.dispatchEvent(new w.PageTransitionEvent('pageshow', { persisted: true }));
-    assert.equal(navigationAttempts.length, 1, 'Back/Forward cache restore must start a fresh document login');
+    await tick();
+    await tick();
+    assert.equal(navigationAttempts.length, 0, 'Back/Forward cache restore must not hard reload');
+    assert.ok(adminRequests > requestsBeforeResume, 'Back/Forward cache restore must revalidate through the server');
+    assert.equal(el('adminView').classList.contains('hidden'), false);
+    assert.equal(el('errorView').classList.contains('hidden'), true);
+    assert.equal(subscriptions, 2, 'Realtime must be re-established only after BFCache revalidation');
   } finally {
     w.close();
   }

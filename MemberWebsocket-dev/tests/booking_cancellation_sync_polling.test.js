@@ -8,23 +8,28 @@ const source = fs.readFileSync(path.join(__dirname, '../admin/booking-cancellati
 
 function createHarness(search = '') {
   const timers = new Map();
+  const listeners = new Map();
   let nextId = 0;
-  let subscriptionStatus;
-  const channel = {
-    on() { return this; },
-    subscribe(callback) { subscriptionStatus = callback; return this; },
+  let realtimeStatus = '';
+  const add = (type, fn) => {
+    if (!listeners.has(type)) listeners.set(type, new Set());
+    listeners.get(type).add(fn);
+  };
+  const remove = (type, fn) => listeners.get(type)?.delete(fn);
+  const emit = (type, detail) => {
+    for (const fn of listeners.get(type) || []) fn({ detail });
   };
   const window = {
     location: { search },
     setTimeout(callback, delay) { const id = ++nextId; timers.set(id, { callback, delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
-    addEventListener() {},
-    removeEventListener() {},
+    addEventListener(type, fn) { add(type, fn); },
+    removeEventListener(type, fn) { remove(type, fn); },
     MemberAdminSession: { wait: async () => ({
       config: { supabaseUrl: 'https://example.supabase.co', supabasePublishableKey: 'public-key' },
       idToken: 'test-token',
     }) },
-    supabase: { createClient: () => ({ channel: () => channel, removeChannel: async () => {} }) },
+    MemberSystem: { getRealtimeStatus: () => realtimeStatus },
   };
   const document = { readyState: 'loading', addEventListener() {}, removeEventListener() {}, visibilityState: 'visible' };
   const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.pollingUnderTest = { setupPolling, setupRealtime, teardown };\n})();');
@@ -34,7 +39,10 @@ function createHarness(search = '') {
   return {
     api: context.pollingUnderTest,
     timers,
-    status: (value) => subscriptionStatus(value),
+    status: (value) => {
+      realtimeStatus = value;
+      emit('member-system:realtime-status', { clientType: 'admin', status: value });
+    },
     delays: () => [...timers.values()].map(({ delay }) => delay),
   };
 }
