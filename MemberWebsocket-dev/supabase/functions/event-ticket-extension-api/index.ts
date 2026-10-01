@@ -150,6 +150,13 @@ async function redeemTickets(origin: string | null, body: Json) {
     p_location: location,
   });
   if (rpc.error) throw mapRpcError(rpc.error);
+  const realtime = await supabase.from("realtime_events").insert([
+    { scope: "event", event_type: "user.event.tickets.redeem" },
+    { scope: "admin", event_type: "user.event.tickets.redeem" },
+  ]);
+  if (realtime.error) {
+    console.error(JSON.stringify({ event: "event_ticket_batch_realtime_failed", code: realtime.error.code || "" }));
+  }
   const data = rpc.data && typeof rpc.data === "object" ? rpc.data as Json : {};
   return json(origin, { ok: true, status: 200, data: {
     ...data,
@@ -192,6 +199,13 @@ async function saveAdminSetting(origin: string | null, body: Json) {
     result: "success",
     detail: { maxTicketsPerRedemption: maxTickets },
   });
+  const realtime = await supabase.from("realtime_events").insert([
+    { scope: "event", event_type: "admin.event-ticket.settings.save" },
+    { scope: "admin", event_type: "admin.event-ticket.settings.save" },
+  ]);
+  if (realtime.error) {
+    console.error(JSON.stringify({ event: "event_ticket_setting_realtime_failed", code: realtime.error.code || "" }));
+  }
   return json(origin, { ok: true, status: 200, data: {
     maxTicketsPerRedemption: Number(saved.data.max_tickets_per_redemption || 1),
     updatedAt: String(saved.data.updated_at || ""),
