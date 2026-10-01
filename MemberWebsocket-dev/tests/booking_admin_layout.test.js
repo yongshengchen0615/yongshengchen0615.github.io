@@ -32,7 +32,7 @@ assert.match(core, /const PRIMARY_TAB_IDS = \['membersTab', 'cardsTab', 'eventsT
 assert.match(core, /const PRIMARY_PANEL_IDS = \['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'testModePanel'\]/);
 assert.match(core, /nav\.insertBefore\(tab, testModeTab\)/);
 assert.doesNotMatch(core, /#booking/);
-assert.match(loader, /legacyBookingRouteRequested/);
-assert.doesNotMatch(loader, /restoreBookingHashAndOpen/);
+assert.match(loader, /MemberAdminInitialPanel = 'booking'/);
+assert.doesNotMatch(loader, /restoreBookingHashAndOpen|setInterval\(/);
 
 console.log('booking admin four-tab layout OK');
