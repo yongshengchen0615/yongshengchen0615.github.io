@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { receiptByBooking: new Map(), loading: false, currentBooking: null, confirming: false };
+  const state = { receiptByBooking: new Map(), loading: false, currentBooking: null, confirming: false, queueObserver: null, queueObserverTarget: null };
 
   function session() {
     return window.MemberSystem?.getSession?.('admin') || null;
@@ -236,6 +236,21 @@
     });
   }
 
+  function ensureQueueObserver() {
+    const queue = document.getElementById('bookingAdminQueue');
+    if (!queue || state.queueObserverTarget === queue || typeof MutationObserver !== 'function') return;
+
+    state.queueObserver?.disconnect();
+    state.queueObserverTarget = queue;
+    state.queueObserver = new MutationObserver(() => {
+      window.setTimeout(decorateCards, 0);
+    });
+    // Observe only direct booking-card replacement. Receipt controls are added inside
+    // each card, so subtree=false prevents the observer from triggering itself.
+    state.queueObserver.observe(queue, { childList: true });
+    decorateCards();
+  }
+
   async function refresh() {
     if (state.loading) return;
     const currentSession = session();
@@ -260,9 +275,24 @@
     }
   }
 
-  window.addEventListener('DOMContentLoaded', ensureViewer);
-  window.addEventListener('member-admin-ready', () => { void refresh(); });
-  window.addEventListener('member-admin-data-refreshed', () => { void refresh(); });
-  window.addEventListener('member-admin:booking-snapshot', () => { void refresh(); });
-  window.addEventListener('member-admin:booking-focus', () => { window.setTimeout(decorateCards, 0); });
+  window.addEventListener('DOMContentLoaded', () => {
+    ensureViewer();
+    ensureQueueObserver();
+  });
+  window.addEventListener('member-admin-ready', () => {
+    ensureQueueObserver();
+    void refresh();
+  });
+  window.addEventListener('member-admin-data-refreshed', () => {
+    ensureQueueObserver();
+    void refresh();
+  });
+  window.addEventListener('member-admin:booking-snapshot', () => {
+    ensureQueueObserver();
+    void refresh();
+  });
+  window.addEventListener('member-admin:booking-focus', () => {
+    ensureQueueObserver();
+    window.setTimeout(decorateCards, 0);
+  });
 })();
