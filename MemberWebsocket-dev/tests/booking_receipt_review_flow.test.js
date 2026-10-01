@@ -41,3 +41,19 @@ test('only admin confirmation completes and settles a receipt-backed booking', (
   assert.match(migration, /complete_booking_with_rewards_request/);
   assert.match(migration, /nextReceiptStatus','bound'/);
 });
+
+test('completed bookings keep their secure receipt snapshot viewer after admin queue re-renders', () => {
+  const admin = read('admin/booking-receipt-admin.js');
+  const panel = read('admin/booking-panel-core.js');
+  const edge = read('supabase/functions/booking-receipt-api/index.ts');
+
+  assert.match(panel, /data-booking-filter="completed"/);
+  assert.match(admin, /\['awaiting_review', 'bound'\]\.includes/);
+  assert.match(admin, /查看收據快照/);
+  assert.match(admin, /new MutationObserver/);
+  assert.match(admin, /queueObserver\.observe\(queue, \{ childList: true \}\)/);
+  assert.match(admin, /admin\.booking\.receipt\.url/);
+  assert.match(edge, /\.in\("status",\["awaiting_review","bound"\]\)/);
+  assert.match(edge, /createSignedUrl\(String\(result\.data\.object_path\),120\)/);
+});
+
