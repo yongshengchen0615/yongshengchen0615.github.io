@@ -211,26 +211,13 @@
       const receipt = state.receiptByBooking.get(bookingId);
       const actions = card.querySelector('.booking-admin-actions');
 
-      if (actions) {
-        Array.from(actions.querySelectorAll('button')).forEach((button) => {
-          if (button.dataset.bookingReceiptComplete === '1' || button.textContent?.includes('確認服務完成')) {
-            button.dataset.bookingReceiptComplete = '1';
-            button.disabled = true;
-            button.textContent = receipt?.status === 'awaiting_review' ? '請先查看收據確認' : '等待會員上傳收據';
-            button.title = receipt?.status === 'awaiting_review'
-              ? '請先查看會員拍攝的收據，確認內容正確後再完成預約。'
-              : '會員尚未送出收據，管理端不可直接完成預約。';
-          }
-        });
-      }
-
       if (!receipt || !['awaiting_review', 'bound'].includes(String(receipt.status || ''))) return;
       const host = actions || card;
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.adminBookingReceiptControl = '1';
       button.className = 'button button-outline';
-      button.textContent = receipt.status === 'awaiting_review' ? '查看收據並確認' : '查看收據快照';
+      button.textContent = '查看收據快照';
       button.addEventListener('click', () => openViewer(bookingId));
       host.append(button);
     });
