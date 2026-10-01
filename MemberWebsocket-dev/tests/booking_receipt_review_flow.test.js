@@ -31,13 +31,18 @@ test('member receipt submission waits for admin review', () => {
   assert.doesNotMatch(edge, /p_reason:"booking-completion-failed"/);
 });
 
-test('admin can complete a booking with or without a receipt snapshot', () => {
+test('admin completes bookings through the canonical booking flow while the receipt snapshot stays view-only', () => {
   const admin = read('admin/booking-receipt-admin.js');
+  const panel = read('admin/booking-panel-core.js');
   const operations = read('supabase/functions/booking-admin-operations/index.ts');
   const migration = read('supabase/migrations/20261001125500_booking_receipt_admin_confirmation.sql');
 
-  assert.match(admin, /確認收據並完成預約/);
   assert.match(admin, /查看收據快照/);
+  assert.doesNotMatch(admin, /確認收據並完成預約/);
+  assert.doesNotMatch(admin, /admin\.booking\.status\.complete/);
+  assert.match(panel, /確認服務完成/);
+  assert.match(panel, /確認完成並結算/);
+  assert.match(panel, /admin\.booking\.status\.complete/);
   assert.doesNotMatch(admin, /等待會員上傳收據/);
   assert.doesNotMatch(admin, /管理端不可直接完成預約/);
   assert.match(operations, /admin_confirm_booking_receipt_request/);
