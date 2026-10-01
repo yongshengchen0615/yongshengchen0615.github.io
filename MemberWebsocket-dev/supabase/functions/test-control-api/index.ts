@@ -15,6 +15,7 @@ const MAX_REQUEST_BYTES = 384_000;
 const STANDARD_REQUEST_BYTES = 20_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const E2E_ARTIFACT_BUCKET = "e2e-failure-artifacts";
+const BOOKING_RECEIPT_BUCKET = "booking-receipts";
 
 class ApiError extends Error {
   status: number;
@@ -118,6 +119,37 @@ async function purgeE2EArtifactStorage(supabase: any): Promise<number> {
     throw new ApiError(503, "TEST_ARTIFACT_PURGE_FAILED", "測試資料已清理，但 E2E 失敗快照清除失敗。", emptied.error.message || null);
   }
   return count;
+}
+
+async function purgeBookingReceiptCleanupQueue(supabase: any): Promise<number> {
+  let deleted = 0;
+  for (let batch = 0; batch < 50; batch += 1) {
+    const queued = await supabase
+      .from("booking_receipt_cleanup_queue")
+      .select("id,object_path")
+      .order("id", { ascending: true })
+      .limit(100);
+    if (queued.error) {
+      throw new ApiError(503, "RECEIPT_CLEANUP_READ_FAILED", "測試資料已清理，但收據快照清理佇列讀取失敗。");
+    }
+    const rows = Array.isArray(queued.data) ? queued.data : [];
+    if (!rows.length) break;
+
+    const paths = rows.map((row: any) => String(row.object_path || "")).filter(Boolean);
+    if (paths.length) {
+      const removed = await supabase.storage.from(BOOKING_RECEIPT_BUCKET).remove(paths);
+      if (removed.error) {
+        throw new ApiError(503, "RECEIPT_STORAGE_PURGE_FAILED", "測試資料已清理，但收據快照檔案清除失敗。", removed.error.message || null);
+      }
+      deleted += paths.length;
+    }
+    const ids = rows.map((row: any) => row.id);
+    const cleared = await supabase.from("booking_receipt_cleanup_queue").delete().in("id", ids);
+    if (cleared.error) {
+      throw new ApiError(503, "RECEIPT_CLEANUP_QUEUE_FAILED", "收據快照已刪除，但清理佇列更新失敗。");
+    }
+  }
+  return deleted;
 }
 
 function dbClient(): any {
@@ -1829,6 +1861,7 @@ Deno.serve(async (request: Request) => {
       if (extended.error) {
         throw new ApiError(503, "TEST_EXTENDED_PURGE_FAILED", "測試會員資料已清理，但延伸 E2E 資源清理失敗。", extended.error.message || null);
       }
+      const deletedReceiptObjects = await purgeBookingReceiptCleanupQueue(supabase);
       const deletedStorageObjects = await purgeE2EArtifactStorage(supabase);
       const baseSummary = purge.data && typeof purge.data === "object" ? purge.data : {};
       const extendedSummary = extended.data && typeof extended.data === "object" ? extended.data : {};
@@ -1836,6 +1869,7 @@ Deno.serve(async (request: Request) => {
         ...(baseSummary as Json),
         ...(extendedSummary as Json),
         deletedStorageObjects,
+        deletedReceiptObjects,
       };
       await audit(
         supabase,
