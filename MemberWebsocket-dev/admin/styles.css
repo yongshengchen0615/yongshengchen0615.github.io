@@ -279,6 +279,17 @@ input, select, textarea, button { min-width: 0; max-width: 100%; }
 .style-preview[data-style="platinum"] { --tier-preview-background: #38414e; --tier-preview-accent: #b8cadc; --tier-preview-soft: #e9eff5; }
 .style-preview[data-style="mint"] { --tier-preview-background: #1e4039; --tier-preview-accent: #6bd0a0; --tier-preview-soft: #d1f4de; }
 .style-preview[data-style="cherry"] { --tier-preview-background: #4a1721; --tier-preview-accent: #ec6973; --tier-preview-soft: #ffd0d4; }
+/* Keep point-card style previews aligned with the member-facing point-card presets. */
+.style-preview[data-point-card-style-preview][data-style="citrus"] { --tier-preview-background: #6f2f0e; --tier-preview-accent: #a84e13; --tier-preview-soft: #ffd29a; }
+.style-preview[data-point-card-style-preview][data-style="coral"] { --tier-preview-background: #7a2630; --tier-preview-accent: #b24c3b; --tier-preview-soft: #ffc0ad; }
+.style-preview[data-point-card-style-preview][data-style="lagoon"] { --tier-preview-background: #07505b; --tier-preview-accent: #0b7380; --tier-preview-soft: #9ee9df; }
+.style-preview[data-point-card-style-preview][data-style="skyline"] { --tier-preview-background: #1b3f72; --tier-preview-accent: #2567a7; --tier-preview-soft: #b9dbff; }
+.style-preview[data-point-card-style-preview][data-style="violet"] { --tier-preview-background: #3d286c; --tier-preview-accent: #6d4aa0; --tier-preview-soft: #ddc5ff; }
+.style-preview[data-point-card-style-preview][data-style="berry"] { --tier-preview-background: #662445; --tier-preview-accent: #9a3b6e; --tier-preview-soft: #ffc4df; }
+.style-preview[data-point-card-style-preview][data-style="cocoa"] { --tier-preview-background: #523328; --tier-preview-accent: #80503b; --tier-preview-soft: #f3c8a6; }
+.style-preview[data-point-card-style-preview][data-style="lime"] { --tier-preview-background: #315422; --tier-preview-accent: #5d7e28; --tier-preview-soft: #d9ef9c; }
+.style-preview[data-point-card-style-preview][data-style="denim"] { --tier-preview-background: #314658; --tier-preview-accent: #52718b; --tier-preview-soft: #c5dbea; }
+.style-preview[data-point-card-style-preview][data-style="peach"] { --tier-preview-background: #78383b; --tier-preview-accent: #b75f4f; --tier-preview-soft: #ffd0bd; }
 .card-style-field { min-width: 0; }
 @media (max-width: 480px) {
   .style-preview { grid-template-columns: 70px minmax(0, 1fr); }
