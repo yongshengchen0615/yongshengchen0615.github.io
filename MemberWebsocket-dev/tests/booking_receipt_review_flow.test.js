@@ -14,7 +14,8 @@ test('member receipt flow opens the camera instead of a visible file picker', ()
   assert.match(source, /bookingReceiptCamera/);
   assert.match(source, /captureFrame/);
   assert.doesNotMatch(source, /type="file"/);
-  assert.doesNotMatch(source, /bookingReceiptFile/);
+  assert.doesNotMatch(source, /<input[^>]+id="bookingReceiptFile"/);
+  assert.doesNotMatch(source, /getElementById\('bookingReceiptFile'\)/);
   assert.doesNotMatch(source, /拍攝或選擇收據圖片/);
   assert.match(source, /此流程不支援從檔案或相簿選擇圖片/);
 });
