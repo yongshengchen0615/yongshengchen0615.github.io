@@ -10,7 +10,7 @@ test('background admin E2E disables duplicate general realtime and presence poll
   const app = read('admin/app.js');
   assert.match(app, /function isBackgroundE2ERunner\(/);
   assert.match(app, /if \(!isBackgroundE2ERunner\(\)\) \{[\s\S]*subscribeRealtime/);
-  assert.match(app, /async function handleAdminRealtimeUpdate\(\) \{\s*if \(isBackgroundE2ERunner\(\)\) return;/);
+  assert.match(app, /async function handleAdminRealtimeUpdate\(context = \{\}\) \{\s*if \(isBackgroundE2ERunner\(\)\) return;/);
   assert.match(app, /function startMemberPresencePolling\(\) \{[\s\S]*if \(isBackgroundE2ERunner\(\)\) return;/);
 });
 
@@ -18,7 +18,7 @@ test('background booking panel does not subscribe to duplicate booking realtime 
   const core = read('admin/booking-panel-core.js');
   const loader = read('admin/booking-panel.js');
   assert.match(core, /function isBackgroundE2ERunner\(/);
-  assert.match(core, /function setupRealtime\(\) \{\s*if \(isBackgroundE2ERunner\(\)\) return;/);
+  assert.match(core, /function setupRealtime\(\) \{\s*if \(isBackgroundE2ERunner\(\) \|\| state\.realtimeListening\) return;/);
   assert.match(loader, /booking-panel-core\.js', 'booking-[^']+'/);
 });
 
