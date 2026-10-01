@@ -85,17 +85,22 @@ async function requireActiveMember(supabase: ReturnType<typeof db>, lineUserId: 
   return result.data;
 }
 async function globalSetting(supabase: ReturnType<typeof db>) {
-  const result = await supabase.from("event_ticket_settings").select("max_tickets_per_redemption,updated_at").eq("id", 1).maybeSingle();
+  const result = await supabase.from("event_ticket_settings").select("max_tickets_per_day,max_tickets_per_redemption,updated_at").eq("id", 1).maybeSingle();
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取活動票券設定。");
-  const maxTicketsPerRedemption = Number(result.data?.max_tickets_per_redemption || 1);
-  return { maxTicketsPerRedemption, updatedAt: String(result.data?.updated_at || "") };
+  const maxTicketsPerDay = Number(result.data?.max_tickets_per_day || result.data?.max_tickets_per_redemption || 1);
+  return {
+    maxTicketsPerDay,
+    maxTicketsPerRedemption: maxTicketsPerDay,
+    updatedAt: String(result.data?.updated_at || ""),
+  };
 }
 function mapRpcError(error: unknown): ApiError {
   const message = String((error as { message?: string })?.message || "");
   if (message.includes("MEMBERSHIP_REQUIRED")) return new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入後再使用此功能。");
   if (message.includes("CLAIM_NOT_FOUND")) return new ApiError(404, "CLAIM_NOT_FOUND", "找不到其中一張已領取票券。");
   if (message.includes("CLAIM_NOT_AVAILABLE")) return new ApiError(409, "CLAIM_NOT_AVAILABLE", "其中一張活動票券目前已無法使用，請更新後再試。");
-  if (message.includes("EVENT_TICKET_BATCH_LIMIT_EXCEEDED")) return new ApiError(409, "EVENT_TICKET_BATCH_LIMIT_EXCEEDED", "選取票券數超過活動票券設定的單次使用上限。");
+  if (message.includes("EVENT_TICKET_DAILY_LIMIT_REACHED")) return new ApiError(409, "EVENT_TICKET_DAILY_LIMIT_REACHED", "今日活動票券使用張數已達上限，請於明日再使用。");
+  if (message.includes("EVENT_TICKET_BATCH_LIMIT_EXCEEDED")) return new ApiError(409, "EVENT_TICKET_BATCH_LIMIT_EXCEEDED", "活動票券使用張數超過目前允許範圍。");
   if (message.includes("INVALID_EVENT_TICKET_BATCH")) return new ApiError(400, "INVALID_EVENT_TICKET_BATCH", "請選擇 1–50 張不同的活動票券。");
   if (message.includes("INVALID_REQUEST_ID")) return new ApiError(400, "INVALID_REQUEST_ID", "操作識別碼格式不正確。");
   if (message.includes("EVENT_TICKET_NOT_AVAILABLE")) return new ApiError(409, "EVENT_TICKET_NOT_AVAILABLE", "其中一張活動票券目前無法使用。");
@@ -136,9 +141,6 @@ async function redeemTickets(origin: string | null, body: Json) {
   const identity = await memberIdentity(supabase, body);
   const member = await requireActiveMember(supabase, identity.lineUserId);
   const setting = await globalSetting(supabase);
-  if (claimIds.length > setting.maxTicketsPerRedemption) {
-    throw new ApiError(409, "EVENT_TICKET_BATCH_LIMIT_EXCEEDED", `單次最多可使用 ${setting.maxTicketsPerRedemption} 張活動票券。`);
-  }
   if (!(await hasCurrentTermsConsent(supabase, member.id))) {
     throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意最新版會員條款。");
   }
@@ -160,7 +162,7 @@ async function redeemTickets(origin: string | null, body: Json) {
   const data = rpc.data && typeof rpc.data === "object" ? rpc.data as Json : {};
   return json(origin, { ok: true, status: 200, data: {
     ...data,
-    maxTicketsPerRedemption: setting.maxTicketsPerRedemption,
+    maxTicketsPerDay: setting.maxTicketsPerDay,
   } });
 }
 async function adminSetting(origin: string | null, body: Json) {
@@ -175,18 +177,19 @@ async function saveAdminSetting(origin: string | null, body: Json) {
   const supabase = db();
   await consumeRateLimit(supabase, identity.lineUserId, true, 1);
   await requireAdmin(supabase, identity.lineUserId);
-  const maxTickets = Number(body.maxTicketsPerRedemption);
+  const maxTickets = Number(body.maxTicketsPerDay ?? body.maxTicketsPerRedemption);
   if (!Number.isInteger(maxTickets) || maxTickets < 1 || maxTickets > 50) {
-    throw new ApiError(400, "INVALID_TICKET_USE_LIMIT", "單次最多使用活動票券數必須是 1–50 的整數。");
+    throw new ApiError(400, "INVALID_TICKET_USE_LIMIT", "每日最多使用活動票券數必須是 1–50 的整數。");
   }
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 100);
   let query = supabase.from("event_ticket_settings").update({
+    max_tickets_per_day: maxTickets,
     max_tickets_per_redemption: maxTickets,
     updated_by: identity.lineUserId,
     updated_at: new Date().toISOString(),
   }).eq("id", 1);
   if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
-  const saved = await query.select("max_tickets_per_redemption,updated_at").maybeSingle();
+  const saved = await query.select("max_tickets_per_day,max_tickets_per_redemption,updated_at").maybeSingle();
   if (saved.error) throw new ApiError(500, "DATABASE_ERROR", "無法儲存活動票券設定。");
   if (!saved.data) throw new ApiError(409, "CONFLICT", "活動票券設定已被其他管理者更新，請重新整理後再試。");
   await supabase.from("audit_logs").insert({
@@ -197,7 +200,7 @@ async function saveAdminSetting(origin: string | null, body: Json) {
     target_type: "event_ticket_settings",
     target_id: "global",
     result: "success",
-    detail: { maxTicketsPerRedemption: maxTickets },
+    detail: { maxTicketsPerDay: maxTickets },
   });
   const realtime = await supabase.from("realtime_events").insert([
     { scope: "event", event_type: "admin.event-ticket.settings.save" },
@@ -207,7 +210,8 @@ async function saveAdminSetting(origin: string | null, body: Json) {
     console.error(JSON.stringify({ event: "event_ticket_setting_realtime_failed", code: realtime.error.code || "" }));
   }
   return json(origin, { ok: true, status: 200, data: {
-    maxTicketsPerRedemption: Number(saved.data.max_tickets_per_redemption || 1),
+    maxTicketsPerDay: Number(saved.data.max_tickets_per_day || saved.data.max_tickets_per_redemption || 1),
+    maxTicketsPerRedemption: Number(saved.data.max_tickets_per_day || saved.data.max_tickets_per_redemption || 1),
     updatedAt: String(saved.data.updated_at || ""),
   } });
 }
