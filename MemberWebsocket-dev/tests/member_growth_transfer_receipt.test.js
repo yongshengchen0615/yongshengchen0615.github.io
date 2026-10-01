@@ -31,18 +31,19 @@ test('member growth API keeps referral and point transfer writes behind server R
 });
 
 
-test('member LINE follow-up uses direct LIFF send and a fixed-host browser fallback without claiming delivery', () => {
-  const api = read('supabase/functions/member-growth-api/index.ts');
+test('member join completion sends the LINE message automatically without a member-card send action', () => {
   const ui = read('member/member-growth.js');
 
-  assert.match(api, /member\.line\.official-account/);
-  assert.match(api, /https:\/\/api\.line\.me\/v2\/bot\/info/);
-  assert.match(api, /https:\/\/line\.me\/R\/oaMessage\//);
+  assert.match(ui, /joinSubmitted:\s*false/);
+  assert.match(ui, /profileForm/);
+  assert.match(ui, /member-profile-ready/);
+  assert.match(ui, /liff\.isInClient/);
+  assert.match(ui, /context\.type\s*!==\s*'utou'/);
   assert.match(ui, /liff\.sendMessages/);
-  assert.match(ui, /member\.line\.official-account/);
-  assert.match(ui, /\^https:\\\/\\\/line\\\.me\\\/R\\\/oaMessage\\\//);
-  assert.match(ui, /仍需由你按下傳送/);
-  assert.match(ui, /window\.location\.assign/);
+  assert.match(ui, /我已完成 Lumen Club 會員註冊/);
+  assert.doesNotMatch(ui, /member\.line\.official-account/);
+  assert.doesNotMatch(ui, /仍需由你按下傳送/);
+  assert.doesNotMatch(ui, /window\.location\.assign/);
 });
 
 test('booking receipt uses private upload, waits for admin review, then settles canonically', () => {
