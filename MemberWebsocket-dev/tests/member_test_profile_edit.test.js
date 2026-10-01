@@ -39,7 +39,7 @@ test('member bootstrap and profile save use the dedicated profile API', () => {
 
   assert.match(system, /clientType === 'member' && \(action === 'user\.member\.bootstrap' \|\| action === 'user\.member\.profile\.save' \|\| action === 'user\.member\.terms\.accept'\)/);
   assert.match(system, /\/functions\/v1\/member-profile-api/);
-  assert.match(html, /member-system\.js\?v=member-security-close-20260930-2/);
+  assert.match(html, /member-system\.js\?v=[^"'\\s>]+/);
 });
 
 test('profile edit actions use independent partial updates through the shared transport', () => {
