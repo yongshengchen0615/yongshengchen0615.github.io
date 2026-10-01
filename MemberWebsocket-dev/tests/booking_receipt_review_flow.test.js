@@ -62,3 +62,25 @@ test('completed bookings keep their secure receipt snapshot viewer after admin q
   assert.match(edge, /createSignedUrl\(String\(result\.data\.object_path\),120\)/);
 });
 
+
+test('member and admin receipt snapshot UI follow shared dark theme tokens', () => {
+  const memberCss = read('booking/booking-receipt.css');
+  const adminCss = read('admin/booking-receipt-admin.css');
+
+  for (const css of [memberCss, adminCss]) {
+    assert.match(css, /var\(--theme-overlay/);
+    assert.match(css, /var\(--theme-surface-raised/);
+    assert.match(css, /var\(--theme-surface-muted/);
+    assert.match(css, /var\(--theme-text/);
+    assert.match(css, /var\(--theme-text-muted/);
+    assert.match(css, /var\(--theme-border/);
+    assert.match(css, /var\(--theme-modal-shadow/);
+    assert.doesNotMatch(css, /var\(--surface,/);
+    assert.doesNotMatch(css, /var\(--surface-container/);
+  }
+
+  assert.match(memberCss, /var\(--theme-danger-soft/);
+  assert.match(memberCss, /var\(--theme-positive-soft/);
+  assert.match(memberCss, /html\[data-theme="dark"\] \.booking-receipt-modal-card/);
+  assert.match(adminCss, /html\[data-theme="dark"\] \.admin-booking-receipt-card/);
+});
