@@ -26,9 +26,12 @@ test('booking admin API persists service type reward settings server-side', () =
   assert.match(source, /rewardPointCardId/);
 });
 
-test('booking completion uses one transactional database settlement', () => {
+test('booking completion requires admin receipt confirmation and keeps settlement transactional', () => {
   const source = read('supabase/functions/booking-admin-operations/index.ts');
-  assert.match(source, /complete_booking_with_rewards_request/);
+  const migration = read('supabase/migrations/20261001125500_booking_receipt_admin_confirmation.sql');
+  assert.match(source, /admin_confirm_booking_receipt_request/);
+  assert.match(migration, /complete_booking_with_rewards_request/);
+  assert.match(migration, /status='awaiting_review'/);
   assert.doesNotMatch(source, /status:\s*"completed"[\s\S]*\.from\("bookings"\)\.update/);
 });
 
