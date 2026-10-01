@@ -33,6 +33,7 @@ for (const entry of ['admin']) {
       constructor(callback) { super(callback); observers.push(this); }
     };
     const copied = [];
+    const actions = [];
     let mode = 'group';
     const system = { loadConfig: async () => ({ supabaseUrl: 'https://fixture.supabase.co', supabasePublishableKey: 'fixture-key' }), request: async () => ({ bookings: [structuredClone(booking)], services: [] }) };
     w.MemberSystem = system;
@@ -41,6 +42,7 @@ for (const entry of ['admin']) {
     w.navigator.clipboard = { writeText: async text => copied.push(text) };
     w.fetch = async (url, init) => {
       const { action, clientType, idToken, bookingIds } = JSON.parse(init.body);
+      actions.push(action);
       assert.equal(clientType, 'admin');
       assert.equal(idToken, 'fixture-token');
       let data;
@@ -92,7 +94,13 @@ for (const entry of ['admin']) {
       load('booking-copy-format.js');
       load('booking-copy-format.js'); // Cached dynamic loader must not install twice.
       const button = await waitFor(() => queue.querySelector('.booking-copy-button'));
-      assert.ok(button, 'booking copy control should render after the authoritative booking bootstrap');
+      assert.ok(button, [
+        'booking copy control should render after the authoritative booking bootstrap',
+        'actions=' + actions.join(','),
+        'sync=' + (w.document.getElementById('bookingAdminSyncStatus')?.textContent || ''),
+        'message=' + (w.document.getElementById('bookingAdminServiceMessage')?.textContent || ''),
+        'queue=' + String(queue.innerHTML || '').slice(0, 500),
+      ].join(' | '));
       button.click();
       button.click();
       await tick(20);
