@@ -164,7 +164,7 @@ test('all affected entrypoints bust caches for the fixed controllers', () => {
   assert.match(read('booking/index.html'), /app\.js\?v=booking-overnight-20260928-1/);
   assert.match(read('event/index.html'), /app\.js\?v=[^" ]+/);
   assert.match(read('admin/index.html'), /test-control\.js\?v=test-control-[A-Za-z0-9._-]+/);
-  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261001-1/);
+  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261001-\d+/);
 });
 
 
@@ -188,4 +188,19 @@ test('missing membership terms are an environment skip instead of a duplicated E
 
   assert.match(admin, /passed \+ failed \+ skipped/);
   assert.match(admin, /個環境條件未配置而略過/);
+});
+
+
+test('browser run artifact metrics count persisted screenshots instead of failed cases', () => {
+  const api = read('supabase/functions/test-control-api/index.ts');
+  const runner = read('admin/e2e-control.js');
+
+  assert.match(api, /failureArtifactCases = normalized\.filter/);
+  assert.match(api, /screenshot\?\.path/);
+  assert.match(api, /failureDiagnosticCases: failed/);
+  assert.match(api, /failureScreenshotCases: failureArtifactCases/);
+  assert.doesNotMatch(api, /failureArtifactCases: failed/);
+
+  assert.match(runner, /const fatalFailure = \{/);
+  assert.match(runner, /await attachFailureScreenshot\(fatalFailure, window\)/);
 });
