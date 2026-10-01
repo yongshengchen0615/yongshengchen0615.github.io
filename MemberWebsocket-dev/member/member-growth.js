@@ -262,57 +262,19 @@
     if (copy) copy.disabled = !/^[A-F0-9]{10}$/.test(code);
   }
 
-  function renderLineFollowup() {
-    if (!state.joinSubmitted || document.getElementById('memberLineFollowupPanel')) return;
-    const memberView = document.getElementById('memberView');
-    const pass = document.getElementById('memberPass');
-    if (!memberView || !pass) return;
+  async function sendJoinCompletionMessage() {
+    if (!state.joinSubmitted) return;
+    state.joinSubmitted = false;
 
-    const panel = document.createElement('section');
-    panel.id = 'memberLineFollowupPanel';
-    panel.className = 'member-growth-card member-line-followup';
-    const title = document.createElement('strong');
-    title.textContent = '加入完成後傳訊至 LINE 官方帳號';
-    const preview = document.createElement('p');
     const message = '我已完成 Lumen Club 會員註冊，想開始使用會員服務。';
-    preview.textContent = '建議訊息：' + message;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'button button-dark';
-    button.textContent = '由我傳送這則 LINE 訊息';
-    const result = document.createElement('p');
-    result.className = 'member-line-result';
-
-    button.addEventListener('click', async () => {
-      button.disabled = true;
-      result.textContent = '正在開啟 LINE 傳訊能力…';
-      try {
-        if (window.liff && typeof window.liff.sendMessages === 'function' && window.liff.isInClient?.()) {
-          await window.liff.sendMessages([{ type: 'text', text: message }]);
-          result.textContent = '訊息已由你的 LINE 帳號送出。';
-          return;
-        }
-        const session = window.MemberSystem?.getSession?.('member');
-        if (!session) {
-          result.textContent = '登入狀態已失效。會員資格不受影響；請重新整理後再開啟 LINE 官方帳號。';
-          return;
-        }
-        const account = await window.MemberSystem.request(
-          session.config, 'member', session.idToken, 'member.line.official-account'
-        );
-        const baseUrl = String(account?.chatUrl || '');
-        if (!/^https:\/\/line\.me\/R\/oaMessage\//.test(baseUrl)) throw new Error('LINE 官方帳號入口無效。');
-        result.textContent = '正在開啟 LINE 官方帳號，訊息會先填入輸入框，仍需由你按下傳送。';
-        window.location.assign(baseUrl.replace(/\/$/, '') + '/?' + encodeURIComponent(message));
-      } catch (_) {
-        result.textContent = '這個畫面目前無法直接送出訊息。會員資格不受影響；請返回 LINE 官方帳號聊天室後再試。';
-      } finally {
-        button.disabled = false;
-      }
-    });
-
-    panel.append(title, preview, button, result);
-    pass.insertAdjacentElement('afterend', panel);
+    try {
+      if (!window.liff || typeof window.liff.sendMessages !== 'function' || !window.liff.isInClient?.()) return;
+      const context = typeof window.liff.getContext === 'function' ? window.liff.getContext() : null;
+      if (!context || context.type !== 'utou') return;
+      await window.liff.sendMessages([{ type: 'text', text: message }]);
+    } catch (error) {
+      console.warn('automatic membership completion LINE message failed', error);
+    }
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -323,6 +285,6 @@
   window.addEventListener('member-profile-ready', (event) => {
     state.profile = event?.detail?.profile || {};
     renderInviteCode(state.profile);
-    renderLineFollowup();
+    void sendJoinCompletionMessage();
   });
 })();
