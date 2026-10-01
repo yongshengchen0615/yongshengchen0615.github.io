@@ -120,12 +120,26 @@
       button.disabled = true;
       result.textContent = '正在開啟 LINE 傳訊能力…';
       try {
-        if (!window.liff || typeof window.liff.sendMessages !== 'function' || !window.liff.isInClient?.()) {
-          result.textContent = '目前不是可直接傳訊的 LINE LIFF 聊天情境。請返回開啟會員註冊的 LINE 官方帳號聊天室後再操作。';
+        if (window.liff && typeof window.liff.sendMessages === 'function' && window.liff.isInClient?.()) {
+          await window.liff.sendMessages([{ type: 'text', text: message }]);
+          result.textContent = '訊息已由你的 LINE 帳號送出。';
           return;
         }
-        await window.liff.sendMessages([{ type: 'text', text: message }]);
-        result.textContent = '訊息已由你的 LINE 帳號送出。';
+
+        const session = window.MemberSystem?.getSession?.('member');
+        if (!session) {
+          result.textContent = '登入狀態已失效。會員資格不受影響；請重新整理後再開啟 LINE 官方帳號。';
+          return;
+        }
+        const account = await window.MemberSystem.request(
+          session.config, 'member', session.idToken, 'member.line.official-account'
+        );
+        const baseUrl = String(account?.chatUrl || '');
+        if (!/^https:\/\/line\.me\/R\/oaMessage\//.test(baseUrl)) {
+          throw new Error('LINE 官方帳號入口無效。');
+        }
+        result.textContent = '正在開啟 LINE 官方帳號，訊息會先填入輸入框，仍需由你按下傳送。';
+        window.location.assign(baseUrl.replace(/\/$/, '') + '/?' + encodeURIComponent(message));
       } catch (_) {
         result.textContent = '這個畫面目前無法直接送出訊息。會員資格不受影響；請返回 LINE 官方帳號聊天室後再試。';
       } finally {
