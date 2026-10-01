@@ -107,6 +107,8 @@ function dbError(error:unknown):ApiError{
     ["BOOKING_NOT_FINISHED_YET",409,"BOOKING_NOT_FINISHED_YET","預約服務時間尚未結束。"],
     ["BOOKING_ALREADY_COMPLETED_WITH_RECEIPT",409,"BOOKING_ALREADY_COMPLETED_WITH_RECEIPT","此預約已完成並綁定收據。"],
     ["RECEIPT_UPLOAD_IN_PROGRESS",409,"RECEIPT_UPLOAD_IN_PROGRESS","已有收據正在上傳，請稍後再試。"],
+    ["RECEIPT_AWAITING_REVIEW",409,"RECEIPT_AWAITING_REVIEW","收據已送出，請等待管理端確認。"],
+    ["RECEIPT_AWAITING_REVIEW_REQUIRED",409,"RECEIPT_AWAITING_REVIEW_REQUIRED","尚無待確認的收據。"],
     ["RECEIPT_INVALID_MIME",400,"RECEIPT_INVALID_MIME","請拍攝或選擇支援的圖片格式。"],
     ["RECEIPT_FILE_TOO_LARGE",413,"RECEIPT_FILE_TOO_LARGE","收據圖片不可超過 5 MB。"],
     ["RECEIPT_INVALID_PATH",400,"RECEIPT_INVALID_PATH","收據上傳位置無效。"],
@@ -183,6 +185,7 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
       bookingId:String(row.id),
       status:String(row.status||""),
       updatedAt:row.updated_at,
+      canSubmitReceipt:row.status==="confirmed"&&!cancellationPending&&Number.isFinite(endMs)&&now>=endMs,
       canComplete:row.status==="confirmed"&&!cancellationPending&&Number.isFinite(endMs)&&now>=endMs,
       receipt:receipt?{
         receiptId:String(receipt.receipt_id||""),
@@ -235,8 +238,8 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
   const receipt=receiptResult.data;
   if(!receipt) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到這筆收據上傳。");
   if(String(receipt.member_id)!==String(member.id)) throw new ApiError(403,"RECEIPT_NOT_OWNED","不可操作其他會員的收據。");
-  if(receipt.status==="bound"){
-    const repeat=await supabase.rpc("complete_booking_with_receipt_request",{
+  if(receipt.status==="bound"||receipt.status==="awaiting_review"){
+    const repeat=await supabase.rpc("finalize_booking_receipt_request",{
       p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,
       p_expected_booking_updated_at:expectedUpdatedAt,p_actual_mime_type:receipt.declared_mime_type,
       p_actual_size_bytes:receipt.declared_size_bytes,p_sha256_hex:"0".repeat(64)
@@ -271,23 +274,23 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
     throw new ApiError(400,"RECEIPT_SIZE_MISMATCH","收據圖片大小與上傳資料不一致。");
   }
   const hash=await fileSha256Hex(bytes);
-  const completed=await supabase.rpc("complete_booking_with_receipt_request",{
+  const finalized=await supabase.rpc("finalize_booking_receipt_request",{
     p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,
     p_expected_booking_updated_at:expectedUpdatedAt,p_actual_mime_type:declared,
     p_actual_size_bytes:downloaded.data.size,p_sha256_hex:hash
   });
-  if(completed.error){
-    await supabase.rpc("fail_booking_receipt_request",{p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,p_reason:"booking-completion-failed"});
+  if(finalized.error){
+    await supabase.rpc("fail_booking_receipt_request",{p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,p_reason:"receipt-finalize-failed"});
     await drainCleanupQueue(supabase);
-    throw dbError(completed.error);
+    throw dbError(finalized.error);
   }
-  return (completed.data||{}) as Json;
+  return (finalized.data||{}) as Json;
 }
 async function adminList(supabase:SupabaseClient):Promise<Json>{
   const result=await supabase.from("booking_receipts")
-    .select("receipt_id,booking_id,status,bound_at,actual_mime_type,actual_size_bytes")
-    .eq("status","bound")
-    .order("bound_at",{ascending:false})
+    .select("receipt_id,booking_id,status,created_at,bound_at,actual_mime_type,actual_size_bytes")
+    .in("status",["awaiting_review","bound"])
+    .order("created_at",{ascending:false})
     .limit(200);
   if(result.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
   return {receipts:(result.data||[]).map((row:any)=>({
@@ -297,13 +300,14 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
 }
 async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
   const bookingId=asText(body.bookingId,80);
-  const result=await supabase.from("booking_receipts").select("receipt_id,object_path,bound_at")
-    .eq("booking_id",bookingId).eq("status","bound").maybeSingle();
+  const result=await supabase.from("booking_receipts").select("receipt_id,object_path,status,created_at,bound_at")
+    .eq("booking_id",bookingId).in("status",["awaiting_review","bound"])
+    .order("created_at",{ascending:false}).limit(1).maybeSingle();
   if(result.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
   if(!result.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","此預約沒有可查看的收據快照。");
 
   const bookingResult=await supabase.from("bookings")
-    .select("id,member_id,booking_date,start_time,end_time,starts_next_day,status,completed_at")
+    .select("id,member_id,booking_date,start_time,end_time,starts_next_day,status,completed_at,updated_at")
     .eq("id",bookingId).maybeSingle();
   if(bookingResult.error||!bookingResult.data) throw new ApiError(500,"DATABASE_ERROR","預約核對資料暫時無法讀取。");
 
@@ -330,6 +334,7 @@ async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
       startsNextDay:Boolean(bookingResult.data.starts_next_day),
       status:String(bookingResult.data.status||""),
       completedAt:bookingResult.data.completed_at,
+      updatedAt:bookingResult.data.updated_at,
       member:{
         memberCode:String(member.member_code||""),
         displayName:String(member.display_name||""),
