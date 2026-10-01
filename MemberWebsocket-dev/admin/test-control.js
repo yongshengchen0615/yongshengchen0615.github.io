@@ -451,7 +451,7 @@
     els.automationTestRunnerBadge.textContent = status === 'running'
       ? 'Runner：執行中'
       : status === 'passed'
-        ? 'Runner：全部通過'
+        ? (skipped > 0 ? 'Runner：完成（含略過）' : 'Runner：全部通過')
         : status === 'failed'
           ? 'Runner：發現異常'
           : 'Runner：待命';
