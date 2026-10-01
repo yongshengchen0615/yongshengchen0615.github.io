@@ -9,7 +9,9 @@
     activeCardId: '',
     activeCardTitle: '',
     options: new Map(),
-    loaded: false
+    loaded: false,
+    refreshPromise: null,
+    refreshQueued: false
   };
 
   function newRequestId() {
@@ -155,27 +157,66 @@
   }
 
   async function loadOptions() {
-    const s = session();
-    if (!s) return;
-    try {
-      const data = await window.MemberSystem.request(s.config, 'points', s.idToken, 'points.transfer.options');
-      const cards = Array.isArray(data.cards) ? data.cards : [];
-      state.options = new Map(cards.map((card) => [String(card.cardId || ''), {
-        cardId: String(card.cardId || ''),
-        title: String(card.title || '集點卡'),
-        balance: Number(card.balance || 0),
-        expiresOn: String(card.expiresOn || '')
-      }]));
-      state.loaded = true;
-      updateOpenButton();
-    } catch (error) {
-      state.options = new Map();
-      state.loaded = true;
-      updateOpenButton();
-      if (!document.getElementById('pointTransferModal')?.classList.contains('hidden')) {
-        setMessage(error?.message || '目前無法讀取可轉贈點數。', true);
-      }
+    if (state.refreshPromise) {
+      state.refreshQueued = true;
+      return state.refreshPromise;
     }
+
+    const s = session();
+    if (!s) {
+      updateOpenButton();
+      return;
+    }
+
+    state.refreshPromise = (async () => {
+      try {
+        const data = await window.MemberSystem.request(s.config, 'points', s.idToken, 'points.transfer.options');
+        const cards = Array.isArray(data.cards) ? data.cards : [];
+        state.options = new Map(cards.map((card) => [String(card.cardId || ''), {
+          cardId: String(card.cardId || ''),
+          title: String(card.title || '集點卡'),
+          balance: Number(card.balance || 0),
+          expiresOn: String(card.expiresOn || '')
+        }]));
+        state.loaded = true;
+        updateOpenButton();
+      } catch (error) {
+        state.options = new Map();
+        state.loaded = true;
+        updateOpenButton();
+        if (!document.getElementById('pointTransferModal')?.classList.contains('hidden')) {
+          setMessage(error?.message || '目前無法讀取可轉贈點數。', true);
+        }
+      } finally {
+        state.refreshPromise = null;
+        if (state.refreshQueued) {
+          state.refreshQueued = false;
+          void loadOptions();
+        }
+      }
+    })();
+
+    return state.refreshPromise;
+  }
+
+  function syncActiveCard(detail) {
+    const cardId = String(detail?.cardId || '');
+    const title = String(detail?.title || '');
+    const stamps = Math.max(0, Number(detail?.stamps || 0));
+
+    state.activeCardId = cardId;
+    state.activeCardTitle = title;
+
+    const current = state.options.get(cardId);
+    if (current) {
+      state.options.set(cardId, { ...current, title: title || current.title, balance: stamps });
+    }
+    updateOpenButton();
+
+    // renderCards() is also the endpoint of the points realtime refresh path.
+    // Re-fetch transfer eligibility/balance here so the transfer button never
+    // requires a full-page reload after an admin grant, redemption, or transfer.
+    void loadOptions();
   }
 
   async function lookupReceiver() {
@@ -274,9 +315,7 @@
   }
 
   window.addEventListener('pointcard:active-changed', (event) => {
-    state.activeCardId = String(event?.detail?.cardId || '');
-    state.activeCardTitle = String(event?.detail?.title || '');
-    updateOpenButton();
+    syncActiveCard(event?.detail);
   });
 
   window.addEventListener('user-tour:ready', (event) => {
@@ -287,6 +326,15 @@
 
   window.addEventListener('pageshow', () => {
     bind();
+    if (!document.getElementById('pointsView')?.classList.contains('hidden')) void loadOptions();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!document.getElementById('pointsView')?.classList.contains('hidden')) void loadOptions();
+  });
+
+  window.addEventListener('online', () => {
     if (!document.getElementById('pointsView')?.classList.contains('hidden')) void loadOptions();
   });
 })();
