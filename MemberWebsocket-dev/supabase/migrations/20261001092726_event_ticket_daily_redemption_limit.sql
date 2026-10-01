@@ -90,7 +90,7 @@ begin
     'todayUsableCount',least(v_available_count,v_remaining_today)
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.redeem_event_ticket(p_line_user_id text, p_claim_id text)
  RETURNS jsonb
@@ -99,7 +99,7 @@ CREATE OR REPLACE FUNCTION public.redeem_event_ticket(p_line_user_id text, p_cla
  SET search_path TO 'public', 'pg_temp'
 AS $function$
   select public.redeem_event_ticket(p_line_user_id,p_claim_id,null::jsonb);
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.redeem_event_ticket(p_line_user_id text, p_claim_id text, p_location jsonb)
  RETURNS jsonb
@@ -209,7 +209,7 @@ begin
     'remainingTodayCount',greatest(v_max_tickets - (v_used_today_count + 1),0)
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.redeem_event_tickets_with_location(p_line_user_id text, p_claim_ids text[], p_request_id text, p_location jsonb DEFAULT NULL::jsonb)
  RETURNS jsonb
