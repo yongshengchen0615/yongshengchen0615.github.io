@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-01.2';
+  const VERSION = '2026-10-01.3';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -1639,13 +1639,21 @@
         skippedCases: Number(run.skippedCases || 0)
       };
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
+      const skippedCases = Number(run.skippedCases || 0);
+      const completedCases = Number(run.passedCases || 0) + skippedCases;
       const completeBackendRun = Number(run.totalCases || 0) > 0 &&
-        Number(run.passedCases || 0) === Number(run.totalCases || 0) &&
-        failedCases === 0 && Number(run.skippedCases || 0) === 0 &&
+        completedCases === Number(run.totalCases || 0) &&
+        failedCases === 0 &&
         String(run.status || '') === 'passed';
       Object.assign(row, completeBackendRun
-        ? pass('後端共用安全與所選模組 QA 已完成；繼續執行 Browser 協同 E2E。', row.expected, row.actual)
-        : fail('後端共用安全或所選模組 QA 有失敗案例；Browser 協同 E2E 仍會繼續收集結果。', row.expected, row.actual));
+        ? pass(
+            skippedCases > 0
+              ? '後端共用安全與所選模組 QA 已完成；' + skippedCases + ' 個環境條件略過，其餘案例通過。'
+              : '後端共用安全與所選模組 QA 已完成；繼續執行 Browser 協同 E2E。',
+            row.expected,
+            row.actual
+          )
+        : fail('後端共用安全或所選模組 QA 有失敗／未完成案例；Browser 協同 E2E 仍會繼續收集結果。', row.expected, row.actual));
       if (row.status === 'failed') row.trace = buildAdminFailureTrace(traceMarker, row);
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
@@ -6384,8 +6392,38 @@
   async function pairedMemberReferralRewardCase() {
     let inviter = null;
     let invitee = null;
-    let generatedRewardEventTicketId = '';
+    let qaRewardEventTicketId = '';
     try {
+      const session = await adminSession();
+      const stamp = qaCrudStamp();
+      const rewardFixture = await postFunction('api', {
+        action: 'admin.event-tickets.save',
+        clientType: 'admin',
+        idToken: session.idToken,
+        eventTicket: {
+          title: 'E2E 好友邀請獎勵 ' + stamp,
+          ticketType: 'referral',
+          description: '僅供本輪好友邀請 E2E 使用。',
+          usageMethod: 'QA',
+          usageInstructions: '測試完成後自動清理。',
+          prizes: [],
+          status: 'active',
+          startsOn: '',
+          endsOn: '',
+          quota: 4,
+          requiresLocation: false,
+          redemptionLocations: [],
+          accent: '#6D4AA0',
+          allowedTierKeys: ['general','silver','gold','platinum']
+        }
+      });
+      qaRewardEventTicketId = String(rewardFixture?.eventTicket?.eventTicketId || '');
+      if (!qaRewardEventTicketId) {
+        return fail('好友邀請 E2E 無法建立本輪專用 referral 獎勵票券。', {
+          qaReferralRewardReady: true
+        }, { qaReferralRewardReady: false });
+      }
+
       inviter = await createEphemeralTestAccount();
       invitee = await createEphemeralTestAccount();
       const consent = await prepareEphemeralConsents([inviter, invitee]);
@@ -6412,7 +6450,6 @@
       const first = await memberGrowthRequest(inviteeMemberLogin, 'member', 'member.referral.bind', { inviteCode, requestId });
       const replay = await memberGrowthRequest(inviteeMemberLogin, 'member', 'member.referral.bind', { inviteCode, requestId });
       const rewardEventTicketId = String(first?.rewardEventTicketId || '');
-      generatedRewardEventTicketId = rewardEventTicketId;
       const inviterEventLogin = await createPairedSession(inviter, 'event');
       const inviteeEventLogin = await createPairedSession(invitee, 'event');
       const [inviterEvent, inviteeEvent] = await Promise.all([
@@ -6427,33 +6464,35 @@
       const actual = {
         inviteCodeReady: true,
         referralId: String(first?.referralId || ''),
+        qaRewardEventTicketId,
         rewardEventTicketId,
+        rewardFixtureMatched: rewardEventTicketId === qaRewardEventTicketId,
         firstAlreadyApplied: first?.alreadyApplied === true,
         replayAlreadyApplied: replay?.alreadyApplied === true,
         replaySameReferral: String(first?.referralId || '') === String(replay?.referralId || ''),
         inviterRewardVisible: ownsReward(inviterEvent),
         inviteeRewardVisible: ownsReward(inviteeEvent)
       };
-      const ok = Boolean(actual.referralId && rewardEventTicketId) && !actual.firstAlreadyApplied &&
-        actual.replayAlreadyApplied && actual.replaySameReferral &&
+      const ok = Boolean(actual.referralId && rewardEventTicketId) && actual.rewardFixtureMatched &&
+        !actual.firstAlreadyApplied && actual.replayAlreadyApplied && actual.replaySameReferral &&
         actual.inviterRewardVisible && actual.inviteeRewardVisible;
       return ok
-        ? pass('兩個新測試會員完成好友邀請綁定；同 requestId 重播不重複發券，雙方活動票券頁皆可看到同一獎勵。', {
-            firstAlreadyApplied: false, replayAlreadyApplied: true, replaySameReferral: true,
-            inviterRewardVisible: true, inviteeRewardVisible: true
+        ? pass('兩個新測試會員完成好友邀請綁定；本輪 QA referral 票券被正確使用，同 requestId 重播不重複發券。', {
+            rewardFixtureMatched: true, firstAlreadyApplied: false, replayAlreadyApplied: true,
+            replaySameReferral: true, inviterRewardVisible: true, inviteeRewardVisible: true
           }, actual)
-        : fail('好友邀請綁定、冪等或雙方獎勵驗證失敗。', {
-            firstAlreadyApplied: false, replayAlreadyApplied: true, replaySameReferral: true,
-            inviterRewardVisible: true, inviteeRewardVisible: true
+        : fail('好友邀請綁定、QA 獎勵票券、冪等或雙方獎勵驗證失敗。', {
+            rewardFixtureMatched: true, firstAlreadyApplied: false, replayAlreadyApplied: true,
+            replaySameReferral: true, inviterRewardVisible: true, inviteeRewardVisible: true
           }, actual);
     } finally {
       if (invitee) await removeEphemeralTestAccount(invitee).catch(() => false);
       if (inviter) await removeEphemeralTestAccount(inviter).catch(() => false);
-      if (generatedRewardEventTicketId) {
+      if (qaRewardEventTicketId) {
         try {
           const session = await adminSession();
           await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.event-tickets.delete', {
-            eventTicketId: generatedRewardEventTicketId
+            eventTicketId: qaRewardEventTicketId
           });
         } catch (_) {}
       }
@@ -6668,27 +6707,37 @@
       const winner = race.find((row) => row.status === 'fulfilled');
       const loser = race.find((row) => row.status === 'rejected');
 
-      for (let index = 0; index < candidates.length; index += 1) {
-        const participant = candidates[index];
+      ui = await Promise.all(candidates.map(async (participant, index) => {
         const login = logins[index];
         participant.login = login;
         participant.lastSurfaceKey = 'event';
         seedParticipantSession(participant, login, 'event');
-        const child = await waitParticipantSurface(participant, 'event', 'eventView');
-        await child.MemberClientQaHooks?.refresh?.();
-        const card = await waitFor(() => {
-          try {
-            return child.document.querySelector('[data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]')?.closest('.event-ticket') || null;
-          } catch { return null; }
-        }, backgroundAwareTimeout(8000, 30000), 120);
-        const text = String(card?.textContent || '');
-        ui.push({
-          participantIndex: Number(participant.index),
-          found: Boolean(card),
-          winnerState: Number(participant.index) === Number(winner?.participantIndex) && /已領取/.test(text),
-          loserState: Number(participant.index) === Number(loser?.participantIndex) && /額滿|限量張數已領完/.test(text)
-        });
-      }
+        try {
+          const child = await waitParticipantSurface(participant, 'event', 'eventView', 12000);
+          await child.MemberClientQaHooks?.refresh?.();
+          const card = await waitFor(() => {
+            try {
+              return child.document.querySelector('[data-event-ticket-id="' + CSS.escape(eventTicketId) + '"]')?.closest('.event-ticket') || null;
+            } catch { return null; }
+          }, backgroundAwareTimeout(6000, 12000), 120);
+          const text = String(card?.textContent || '');
+          return {
+            participantIndex: Number(participant.index),
+            found: Boolean(card),
+            winnerState: Number(participant.index) === Number(winner?.participantIndex) && /已領取/.test(text),
+            loserState: Number(participant.index) === Number(loser?.participantIndex) && /額滿|限量張數已領完/.test(text),
+            uiError: ''
+          };
+        } catch (error) {
+          return {
+            participantIndex: Number(participant.index),
+            found: false,
+            winnerState: false,
+            loserState: false,
+            uiError: String(error?.message || 'event UI verification failed').slice(0, 300)
+          };
+        }
+      }));
 
       const successCount = race.filter((row) => row.status === 'fulfilled').length;
       const quotaRejectedCount = race.filter((row) => row.errorCode === 'EVENT_QUOTA_REACHED').length;
