@@ -36,7 +36,7 @@
   window.addEventListener('DOMContentLoaded', () => {
     [
       'loadingView', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'bookingView',
-      'memberName', 'memberProfileName', 'memberCode', 'memberTier', 'logoutButton', 'workHoursBadge',
+      'memberName', 'memberProfileName', 'memberCode', 'memberTier', 'workHoursBadge',
       'bookingForm', 'servicePicker', 'serviceEmpty', 'selectedServiceList', 'selectedServiceEmpty', 'selectionSummary',
       'bookingDate', 'slotHint', 'slotGrid', 'memberNote', 'formMessage', 'submitBookingButton',
       'bookingList', 'bookingEmpty', 'bookingConfirmModal', 'closeBookingConfirmButton', 'cancelBookingConfirmButton',
@@ -45,7 +45,6 @@
 
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.BookingSystem.openMemberJoin(state.config));
-    els.logoutButton.addEventListener('click', () => window.BookingSystem.logout());
     els.bookingDate.addEventListener('change', dateChanged);
     els.bookingForm.addEventListener('submit', openConfirmation);
     document.getElementById('cancelEditBookingButton').addEventListener('click', endEditing);
