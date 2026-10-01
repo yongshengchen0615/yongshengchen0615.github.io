@@ -37,7 +37,7 @@ test('booking receipt completion requires a private upload and canonical settlem
   const adminUi = read('admin/booking-receipt-admin.js');
 
   assert.match(migration, /'booking-receipts'/);
-  assert.match(migration, /public,\s*false/);
+  assert.match(migration, /values\(\s*'booking-receipts',\s*'booking-receipts',\s*false,/);
   assert.match(migration, /BOOKING_NOT_OWNED/);
   assert.match(migration, /BOOKING_NOT_FINISHED_YET/);
   assert.match(migration, /complete_booking_with_rewards_request/);
