@@ -55,7 +55,6 @@
             <button id="bookingReceiptRetake" class="button button-outline hidden" type="button">重新拍攝</button>
           </div>
         </div>
-        <input id="bookingReceiptFile" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture="environment" tabindex="-1" aria-hidden="true">
         <div id="bookingReceiptPreviewWrap" class="booking-receipt-preview hidden">
           <img id="bookingReceiptPreview" alt="本次收據預覽">
           <p id="bookingReceiptFileMeta"></p>
@@ -70,7 +69,6 @@
 
     modal.querySelector('#bookingReceiptClose').addEventListener('click', closeModal);
     modal.querySelector('#bookingReceiptCancel').addEventListener('click', closeModal);
-    modal.querySelector('#bookingReceiptFile').addEventListener('change', fileChanged);
     modal.querySelector('#bookingReceiptCapture').addEventListener('click', captureFrame);
     modal.querySelector('#bookingReceiptRetake').addEventListener('click', retakePhoto);
     modal.querySelector('#bookingReceiptSubmit').addEventListener('click', submitReceipt);
@@ -97,14 +95,12 @@
     cleanupPreview();
     state.selectedFile = null;
     state.cameraReady = false;
-    const input = document.getElementById('bookingReceiptFile');
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
     const preview = document.getElementById('bookingReceiptPreview');
     const meta = document.getElementById('bookingReceiptFileMeta');
     const submit = document.getElementById('bookingReceiptSubmit');
     const capture = document.getElementById('bookingReceiptCapture');
     const retake = document.getElementById('bookingReceiptRetake');
-    if (input) input.value = '';
     if (preview) preview.removeAttribute('src');
     if (meta) meta.textContent = '';
     if (wrap) wrap.classList.add('hidden');
@@ -154,8 +150,8 @@
 
     if (!navigator.mediaDevices?.getUserMedia) {
       capture.disabled = false;
-      capture.textContent = '開啟相機拍攝';
-      setMessage('此瀏覽器無法使用即時相機，請點按按鈕開啟裝置相機。');
+      capture.textContent = '重新嘗試開啟相機';
+      setMessage('此瀏覽器無法使用相機拍攝。請改用支援相機權限的瀏覽器或裝置。', true);
       return;
     }
 
@@ -174,12 +170,12 @@
     } catch (error) {
       console.warn('booking receipt camera unavailable', error);
       capture.disabled = false;
-      capture.textContent = '開啟相機拍攝';
-      setMessage('無法使用即時相機，請點按按鈕開啟裝置相機。');
+      capture.textContent = '重新嘗試開啟相機';
+      setMessage('無法開啟相機。請允許相機權限後再試；此流程不支援從檔案或相簿選擇圖片。', true);
     }
   }
 
-  function acceptFile(file, input = null) {
+  function acceptFile(file) {
     cleanupPreview();
     state.selectedFile = file || null;
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
@@ -198,14 +194,12 @@
     const allowed = new Set(['image/jpeg','image/png','image/webp','image/heic','image/heif']);
     if (!allowed.has(String(file.type || '').toLowerCase())) {
       state.selectedFile = null;
-      if (input) input.value = '';
       setMessage('請使用 JPG、PNG、WebP、HEIC 或 HEIF 圖片。', true);
       if (submit) submit.disabled = true;
       return;
     }
     if (file.size < 1 || file.size > 5 * 1024 * 1024) {
       state.selectedFile = null;
-      if (input) input.value = '';
       setMessage('收據圖片不可超過 5 MB。', true);
       if (submit) submit.disabled = true;
       return;
@@ -225,21 +219,15 @@
     };
     reader.onerror = () => {
       state.selectedFile = null;
-      if (input) input.value = '';
       setMessage('無法讀取這張圖片，請重新拍攝。', true);
       if (submit) submit.disabled = true;
     };
     reader.readAsDataURL(file);
   }
 
-  function fileChanged(event) {
-    acceptFile(event.target.files?.[0] || null, event.target);
-  }
-
   function captureFrame() {
-    const fallback = document.getElementById('bookingReceiptFile');
     if (!state.cameraReady) {
-      fallback?.click();
+      void startCamera();
       return;
     }
 
