@@ -5,6 +5,16 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const root = path.join(__dirname, '../..');
 const tick = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function waitFor(getValue, timeoutMs = 1600) {
+  const deadline = Date.now() + timeoutMs;
+  let value;
+  while (Date.now() < deadline) {
+    value = getValue();
+    if (value) return value;
+    await tick(25);
+  }
+  return getValue();
+}
 const bookingId = '30000000-0000-4000-8000-000000000001';
 const booking = { bookingId, bookingDate: '2026-09-17', startTime: '09:00:00', endTime: '10:00:00', memberDisplayName: '測試會員', memberCode: 'M001', contactSurname: '王', contactSalutation: 'mr', contactPhone: '0912-345-678', items: [{ serviceId: '10000000-0000-4000-8000-000000000001', serviceTitle: '腳底40', quantity: 1, unitDurationMinutes: 40, subtotalAmount: 800 }], totalDurationMinutes: 40, totalAmount: 800, status: 'pending', updatedAt: '2026-09-17T00:00:00.000Z' };
 const group = { partySize: 2, participants: [
@@ -78,13 +88,11 @@ for (const entry of ['admin']) {
       const bookingTab = w.document.getElementById('bookingTab');
       assert.ok(bookingTab);
       bookingTab.click();
-      await tick(350);
       queue = w.document.getElementById('bookingAdminQueue');
       load('booking-copy-format.js');
       load('booking-copy-format.js'); // Cached dynamic loader must not install twice.
-      await tick(300);
-      const button = queue.querySelector('.booking-copy-button');
-      assert.ok(button);
+      const button = await waitFor(() => queue.querySelector('.booking-copy-button'));
+      assert.ok(button, 'booking copy control should render after the authoritative booking bootstrap');
       button.click();
       button.click();
       await tick(20);
