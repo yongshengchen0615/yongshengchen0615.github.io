@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { receiptByBooking: new Map(), loading: false };
+  const state = { receiptByBooking: new Map(), loading: false, currentBooking: null, confirming: false };
 
   function session() {
     return window.MemberSystem?.getSession?.('admin') || null;
@@ -25,11 +25,15 @@
         <p id="adminBookingReceiptMeta" class="admin-booking-receipt-meta"></p>
         <div id="adminBookingReceiptSummary" class="admin-booking-receipt-summary hidden"></div>
         <div id="adminBookingReceiptLoading" class="admin-booking-receipt-loading">正在建立安全檢視連結…</div>
-        <img id="adminBookingReceiptImage" class="admin-booking-receipt-image hidden" alt="預約完成時的收據快照">
+        <img id="adminBookingReceiptImage" class="admin-booking-receipt-image hidden" alt="會員拍攝的預約收據快照">
         <p id="adminBookingReceiptMessage" class="form-message hidden" role="alert"></p>
+        <div class="booking-admin-modal-actions">
+          <button id="adminBookingReceiptConfirm" class="button button-dark hidden" type="button">確認收據並完成預約</button>
+        </div>
       </div>`;
     document.body.append(modal);
     modal.querySelector('#adminBookingReceiptClose').addEventListener('click', closeViewer);
+    modal.querySelector('#adminBookingReceiptConfirm').addEventListener('click', confirmReceipt);
     modal.addEventListener('click', (event) => { if (event.target === modal) closeViewer(); });
     return modal;
   }
@@ -42,6 +46,8 @@
       image.removeAttribute('src');
       image.classList.add('hidden');
     }
+    modal.querySelector('#adminBookingReceiptConfirm')?.classList.add('hidden');
+    state.currentBooking = null;
     modal.classList.add('hidden');
   }
 
@@ -107,15 +113,22 @@
     const message = modal.querySelector('#adminBookingReceiptMessage');
     const meta = modal.querySelector('#adminBookingReceiptMeta');
     const summary = modal.querySelector('#adminBookingReceiptSummary');
+    const confirm = modal.querySelector('#adminBookingReceiptConfirm');
     const receipt = state.receiptByBooking.get(String(bookingId || ''));
 
+    state.currentBooking = null;
+    confirm?.classList.add('hidden');
     modal.classList.remove('hidden');
     loading.classList.remove('hidden');
     image.classList.add('hidden');
     message.classList.add('hidden');
     summary?.classList.add('hidden');
     if (summary) summary.replaceChildren();
-    meta.textContent = receipt?.boundAt ? '完成時間：' + new Date(receipt.boundAt).toLocaleString('zh-Hant-TW') : '';
+    meta.textContent = receipt?.status === 'awaiting_review'
+      ? '狀態：等待管理端確認'
+      : receipt?.boundAt
+        ? '完成時間：' + new Date(receipt.boundAt).toLocaleString('zh-Hant-TW')
+        : '';
 
     try {
       const data = await window.MemberSystem.request(
@@ -127,12 +140,65 @@
       );
       image.src = String(data.signedUrl || '');
       image.classList.remove('hidden');
+      state.currentBooking = data.booking && typeof data.booking === 'object' ? data.booking : null;
       renderBookingSummary(summary, data.booking);
+      if (receipt?.status === 'awaiting_review' && state.currentBooking?.status === 'confirmed') confirm?.classList.remove('hidden');
       loading.classList.add('hidden');
     } catch (error) {
       loading.classList.add('hidden');
       message.textContent = error?.message || '目前無法載入收據快照。';
       message.classList.remove('hidden');
+    }
+  }
+
+  async function confirmReceipt() {
+    if (state.confirming || !state.currentBooking) return;
+    const currentSession = session();
+    if (!currentSession) return;
+    const bookingId = String(state.currentBooking.bookingId || '');
+    const expectedUpdatedAt = String(state.currentBooking.updatedAt || '');
+    if (!bookingId || !expectedUpdatedAt) return;
+
+    const modal = ensureViewer();
+    const button = modal.querySelector('#adminBookingReceiptConfirm');
+    const message = modal.querySelector('#adminBookingReceiptMessage');
+    const card = Array.from(document.querySelectorAll('#bookingAdminQueue [data-booking-id]'))
+      .find((item) => String(item.dataset.bookingId || '') === bookingId);
+    const adminNote = String(card?.querySelector('textarea')?.value || '').slice(0, 500);
+
+    state.confirming = true;
+    if (button) { button.disabled = true; button.textContent = '確認中…'; }
+    message?.classList.add('hidden');
+    try {
+      await window.MemberSystem.request(
+        currentSession.config,
+        'admin',
+        currentSession.idToken,
+        'admin.booking.status.complete',
+        { bookingId, expectedUpdatedAt, adminNote }
+      );
+      const receipt = state.receiptByBooking.get(bookingId);
+      if (receipt) {
+        receipt.status = 'bound';
+        receipt.boundAt = new Date().toISOString();
+      }
+      if (message) {
+        message.textContent = '收據已確認，預約已完成並完成結算。';
+        message.classList.remove('hidden');
+      }
+      button?.classList.add('hidden');
+      window.setTimeout(() => {
+        void refresh();
+        window.dispatchEvent(new CustomEvent('member-admin:booking-focus', { detail: { bookingId } }));
+      }, 250);
+    } catch (error) {
+      if (message) {
+        message.textContent = error?.message || '目前無法確認收據並完成預約。';
+        message.classList.remove('hidden');
+      }
+    } finally {
+      state.confirming = false;
+      if (button) { button.disabled = false; button.textContent = '確認收據並完成預約'; }
     }
   }
 
@@ -147,21 +213,24 @@
 
       if (actions) {
         Array.from(actions.querySelectorAll('button')).forEach((button) => {
-          if (button.textContent?.includes('確認服務完成')) {
+          if (button.dataset.bookingReceiptComplete === '1' || button.textContent?.includes('確認服務完成')) {
+            button.dataset.bookingReceiptComplete = '1';
             button.disabled = true;
-            button.textContent = '由會員拍攝收據完成';
-            button.title = '完成預約需由會員拍攝並安全綁定收據，管理端不可略過此驗證。';
+            button.textContent = receipt?.status === 'awaiting_review' ? '請先查看收據確認' : '等待會員上傳收據';
+            button.title = receipt?.status === 'awaiting_review'
+              ? '請先查看會員拍攝的收據，確認內容正確後再完成預約。'
+              : '會員尚未送出收據，管理端不可直接完成預約。';
           }
         });
       }
 
-      if (!receipt) return;
+      if (!receipt || !['awaiting_review', 'bound'].includes(String(receipt.status || ''))) return;
       const host = actions || card;
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.adminBookingReceiptControl = '1';
       button.className = 'button button-outline';
-      button.textContent = '查看收據快照';
+      button.textContent = receipt.status === 'awaiting_review' ? '查看收據並確認' : '查看收據快照';
       button.addEventListener('click', () => openViewer(bookingId));
       host.append(button);
     });
