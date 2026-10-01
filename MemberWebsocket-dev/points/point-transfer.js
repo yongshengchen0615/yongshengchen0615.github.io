@@ -8,6 +8,7 @@
     busy: false,
     activeCardId: '',
     activeCardTitle: '',
+    memberCode: '',
     options: new Map(),
     loaded: false,
     refreshPromise: null,
@@ -70,6 +71,13 @@
           </div>
           <button id="pointTransferClose" class="point-transfer-close" type="button" aria-label="關閉點數轉贈">×</button>
         </div>
+        <section class="point-transfer-own-code" aria-label="我的會員編號">
+          <div class="point-transfer-own-code-text">
+            <span>我的會員編號</span>
+            <strong id="pointTransferOwnMemberCode">讀取中…</strong>
+          </div>
+          <button id="pointTransferCopyOwnCode" class="point-transfer-copy-button" type="button" disabled>複製會員編號</button>
+        </section>
         <form id="pointTransferForm" class="point-transfer-form">
           <input id="pointTransferCard" type="hidden">
           <label>
@@ -90,6 +98,7 @@
 
     document.body.append(modal);
     modal.querySelector('#pointTransferClose').addEventListener('click', closeModal);
+    modal.querySelector('#pointTransferCopyOwnCode').addEventListener('click', copyOwnMemberCode);
     modal.addEventListener('click', (event) => {
       if (event.target === modal && !state.busy) closeModal();
     });
@@ -103,6 +112,45 @@
     modal.querySelector('#pointTransferLookup').addEventListener('click', lookupReceiver);
     modal.querySelector('#pointTransferForm').addEventListener('submit', submitTransfer);
     return modal;
+  }
+
+  function updateOwnMemberCode() {
+    const output = document.getElementById('pointTransferOwnMemberCode');
+    const button = document.getElementById('pointTransferCopyOwnCode');
+    if (output) output.textContent = state.memberCode || '尚未取得會員編號';
+    if (button) button.disabled = !state.memberCode;
+  }
+
+  async function copyOwnMemberCode() {
+    const code = String(state.memberCode || '').trim();
+    if (!code) return;
+
+    const button = document.getElementById('pointTransferCopyOwnCode');
+    let copied = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(code);
+        copied = true;
+      }
+    } catch (_) {}
+
+    if (!copied) {
+      const proxy = document.createElement('textarea');
+      proxy.className = 'point-transfer-copy-proxy';
+      proxy.value = code;
+      proxy.setAttribute('readonly', '');
+      document.body.append(proxy);
+      proxy.select();
+      try { copied = document.execCommand('copy'); } catch (_) {}
+      proxy.remove();
+    }
+
+    if (!button) return;
+    const original = '複製會員編號';
+    button.textContent = copied ? '已複製' : '複製失敗';
+    window.setTimeout(() => {
+      button.textContent = original;
+    }, 1600);
   }
 
   function currentCardId() {
@@ -208,8 +256,21 @@
     state.activeCardTitle = title;
 
     const current = state.options.get(cardId);
+    const transferEligible = detail?.transferEligible !== false;
     if (current) {
-      state.options.set(cardId, { ...current, title: title || current.title, balance: stamps });
+      state.options.set(cardId, {
+        ...current,
+        title: title || current.title,
+        balance: stamps,
+        expiresOn: String(detail?.expiresOn || current.expiresOn || '')
+      });
+    } else if (cardId && transferEligible && stamps > 0) {
+      state.options.set(cardId, {
+        cardId,
+        title: title || '集點卡',
+        balance: stamps,
+        expiresOn: String(detail?.expiresOn || '')
+      });
     }
     updateOpenButton();
 
@@ -287,9 +348,12 @@
       state.fingerprint = '';
       state.receiver = null;
       renderReceiver();
-      await loadOptions();
+      document.getElementById('pointTransferAmount').value = '';
       window.dispatchEvent(new CustomEvent('pointcard:transfer-completed', { detail: { cardId, senderBalance: Number(result.senderBalance || 0) } }));
-      window.setTimeout(() => window.location.reload(), 700);
+      const refresh = window.PointCardClient && typeof window.PointCardClient.refresh === 'function'
+        ? window.PointCardClient.refresh()
+        : Promise.resolve();
+      await Promise.allSettled([refresh, loadOptions()]);
     } catch (error) {
       setMessage(
         error?.code === 'API_RESPONSE_UNCERTAIN'
@@ -312,6 +376,7 @@
       openButton.addEventListener('click', openModal);
     }
     updateOpenButton();
+    updateOwnMemberCode();
   }
 
   window.addEventListener('pointcard:active-changed', (event) => {
@@ -320,7 +385,9 @@
 
   window.addEventListener('user-tour:ready', (event) => {
     if (event?.detail?.surface !== 'points') return;
+    state.memberCode = String(event?.detail?.profile?.memberCode || '').trim();
     bind();
+    updateOwnMemberCode();
     void loadOptions();
   });
 

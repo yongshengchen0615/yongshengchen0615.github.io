@@ -209,3 +209,74 @@ html[data-theme="dark"] .point-transfer-message{
   .point-transfer-secondary-button,
   .point-transfer-submit{transition:none}
 }
+
+.point-transfer-own-code{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin:0 0 18px;
+  padding:13px 14px;
+  border:1px solid var(--theme-border);
+  border-radius:14px;
+  background:var(--theme-surface-muted);
+}
+.point-transfer-own-code-text{
+  display:grid;
+  gap:3px;
+  min-width:0;
+}
+.point-transfer-own-code-text span{
+  color:var(--theme-text-muted);
+  font-size:12px;
+  font-weight:750;
+}
+.point-transfer-own-code-text strong{
+  color:var(--theme-text);
+  font-size:16px;
+  letter-spacing:.04em;
+  overflow-wrap:anywhere;
+}
+.point-transfer-copy-button{
+  flex:0 0 auto;
+  min-height:40px;
+  border:1px solid var(--theme-border-strong);
+  border-radius:11px;
+  background:var(--theme-surface-raised);
+  color:var(--theme-text);
+  padding:8px 11px;
+  font:inherit;
+  font-size:13px;
+  font-weight:850;
+  cursor:pointer;
+}
+.point-transfer-copy-button:disabled{
+  opacity:.48;
+  cursor:not-allowed;
+}
+.point-transfer-copy-proxy{
+  position:fixed;
+  inset:auto auto 0 -9999px;
+  width:1px;
+  height:1px;
+  opacity:0;
+  pointer-events:none;
+}
+html[data-theme="dark"] .point-transfer-own-code{
+  background:var(--theme-surface-muted);
+  border-color:var(--theme-border-strong);
+}
+html[data-theme="dark"] .point-transfer-copy-button{
+  background:var(--theme-surface-raised);
+  border-color:var(--theme-border-strong);
+  color:var(--theme-text);
+}
+@media(max-width:420px){
+  .point-transfer-own-code{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .point-transfer-copy-button{
+    width:100%;
+  }
+}

@@ -277,7 +277,13 @@
       : '使用期限：無期限';
 
     renderCardGuidance(card);
-    window.dispatchEvent(new CustomEvent('pointcard:active-changed', { detail: { cardId: String(card.cardId || ''), title: String(card.title || '集點卡'), stamps } }));
+    window.dispatchEvent(new CustomEvent('pointcard:active-changed', { detail: {
+      cardId: String(card.cardId || ''),
+      title: String(card.title || '集點卡'),
+      stamps,
+      expiresOn: card.expiryMode === 'date' ? String(card.expiresOn || '') : '',
+      transferEligible: !card.expired && card.status !== 'archived'
+    } }));
   }
 
   function renderCardGuidance(card) {
@@ -454,5 +460,6 @@
     els.retryButton.classList.toggle('hidden', membershipRequired);
     setView('error');
   }
+  window.PointCardClient = Object.freeze({ refresh: () => loadCards(false) });
   window.MemberClientQaHooks = Object.freeze({ surface: 'points', refresh: () => loadCards(false) });
 })();

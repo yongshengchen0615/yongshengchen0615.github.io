@@ -96,3 +96,27 @@ test('points realtime refresh also reloads point ticket policy', () => {
   assert.match(overview, /async function refreshSettings\(\)/);
   assert.match(overview, /Object\.freeze\(\{ initialize, refreshSettings, renderSnapshot \}\)/);
 });
+
+test('point transfer stays synchronized without a full page reload', () => {
+  const app = read('points/app.js');
+  const transfer = read('points/point-transfer.js');
+
+  assert.match(app, /PointCardClient = Object\.freeze\(\{ refresh: \(\) => loadCards\(false\) \}\)/);
+  assert.match(transfer, /pointcard:active-changed/);
+  assert.match(transfer, /visibilitychange/);
+  assert.match(transfer, /window\.addEventListener\('online'/);
+  assert.match(transfer, /PointCardClient\.refresh/);
+  assert.doesNotMatch(transfer, /window\.location\.reload/);
+});
+
+test('point transfer shows and copies the authenticated member code', () => {
+  const transfer = read('points/point-transfer.js');
+  const css = read('points/point-transfer.css');
+
+  assert.match(transfer, /pointTransferOwnMemberCode/);
+  assert.match(transfer, /pointTransferCopyOwnCode/);
+  assert.match(transfer, /profile\?\.memberCode/);
+  assert.match(transfer, /navigator\.clipboard\.writeText\(code\)/);
+  assert.match(css, /\.point-transfer-own-code/);
+  assert.match(css, /html\[data-theme="dark"\] \.point-transfer-own-code/);
+});
