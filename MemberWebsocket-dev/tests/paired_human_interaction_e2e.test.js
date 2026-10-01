@@ -10,13 +10,13 @@ test('all five user surfaces load the human-evidence E2E runner asset', () => {
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(surface + '/index.html');
     assert.match(html, /e2e-scenario-graph\.js\?v=e2e-graph-20260929-\d+/);
-    assert.match(html, /user-test-control\.js\?v=qa-e2e-20260929-\d+/);
+    assert.match(html, /user-test-control\.js\?v=qa-e2e-20261001-\d+/);
   }
 });
 
 test('user full E2E requires observable UI events for Human E2E cases', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-09-29\.5'/);
+  assert.match(runner, /const VERSION = '2026-10-01\.1'/);
   assert.match(runner, /captureHumanInteraction/);
   assert.match(runner, /\['click', 'input', 'change', 'submit'\]/);
   assert.match(runner, /humanRequired: domain === 'Human E2E'/);
@@ -41,8 +41,8 @@ test('user full E2E requires observable UI events for Human E2E cases', () => {
 test('admin paired full E2E requires human UI evidence and covers every client surface', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260930-2/);
-  assert.match(runner, /const VERSION = '2026-09-30\.2'/);
+  assert.match(html, /e2e-control\.js\?v=qa-e2e-20261001-1/);
+  assert.match(runner, /const VERSION = '2026-10-01\.1'/);
   assert.match(runner, /captureAdminHumanInteraction/);
   assert.match(runner, /adminHumanRequired/);
   assert.match(runner, /humanInteractionEventsAtLeast: 1/);
