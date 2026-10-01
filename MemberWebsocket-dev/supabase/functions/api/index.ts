@@ -16,7 +16,9 @@ const READ_LIMIT = 90;
 const WRITE_LIMIT = 30;
 const TIER_KEYS = ["general", "silver", "gold", "platinum"] as const;
 const TIER_LABELS: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
-const STYLE_KEYS = ["forest","midnight","ocean","sunset","lavender","rose","gold","platinum","mint","cherry"] as const;\nconst POINT_CARD_STYLE_KEYS = ["citrus","coral","lagoon","skyline","violet","berry","cocoa","lime","denim","peach"] as const;\nconst LEGACY_POINT_CARD_STYLE_MAP: Record<string,string> = { forest:"lagoon",midnight:"skyline",ocean:"denim",sunset:"coral",lavender:"violet",rose:"berry",gold:"citrus",platinum:"cocoa",mint:"lime",cherry:"peach" };
+const STYLE_KEYS = ["forest","midnight","ocean","sunset","lavender","rose","gold","platinum","mint","cherry"] as const;
+const POINT_CARD_STYLE_KEYS = ["citrus","coral","lagoon","skyline","violet","berry","cocoa","lime","denim","peach"] as const;
+const LEGACY_POINT_CARD_STYLE_MAP: Record<string,string> = { forest:"lagoon",midnight:"skyline",ocean:"denim",sunset:"coral",lavender:"violet",rose:"berry",gold:"citrus",platinum:"cocoa",mint:"lime",cherry:"peach" };
 const PRESENCE_ONLINE_WINDOW_MS = 90_000;
 const PRESENCE_ACTIONS = [
   "user.member.presence.online","user.member.presence.offline",
@@ -255,6 +257,12 @@ function requireAccent(value: unknown): string {
 function safeStyle(value: unknown): string {
   const style = asText(value,30);
   return (STYLE_KEYS as readonly string[]).includes(style) ? style : "forest";
+}
+
+function safePointCardStyle(value: unknown): string {
+  const style = asText(value,30).toLowerCase();
+  if ((POINT_CARD_STYLE_KEYS as readonly string[]).includes(style)) return style;
+  return LEGACY_POINT_CARD_STYLE_MAP[style] || POINT_CARD_STYLE_KEYS[0];
 }
 
 function normalizeTierKeys(value: unknown, allowEmpty = false): string[] {
