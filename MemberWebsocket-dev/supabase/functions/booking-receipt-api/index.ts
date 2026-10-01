@@ -316,7 +316,7 @@ async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
   const signed=await supabase.storage.from(BUCKET).createSignedUrl(String(result.data.object_path),120);
   if(signed.error||!signed.data?.signedUrl) throw new ApiError(503,"RECEIPT_VIEW_UNAVAILABLE","目前無法建立安全檢視連結。");
 
-  const member=memberResult.data||{};
+  const member:any=memberResult.data||{};
   return {
     receiptId:result.data.receipt_id,
     signedUrl:signed.data.signedUrl,
