@@ -175,7 +175,9 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
   const now=localTaipeiNowMs();
   const bookings=(result.data||[]).map((row:any)=>{
     const receipt=Array.isArray(row.booking_receipts)?row.booking_receipts.slice().sort((a:any,b:any)=>String(b.created_at).localeCompare(String(a.created_at)))[0]||null:null;
-    const endMs=row.end_at?Date.parse(row.end_at):Date.parse(`${row.booking_date}T${String(row.end_time||"00:00").slice(0,8)}+08:00`)+(row.starts_next_day?86400000:0);
+    const rawEndAt=String(row.end_at||"").trim().replace(" ","T");
+    const normalizedEndAt=rawEndAt && !/(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(rawEndAt) ? rawEndAt+"+08:00" : rawEndAt;
+    const endMs=normalizedEndAt?Date.parse(normalizedEndAt):Date.parse(`${row.booking_date}T${String(row.end_time||"00:00").slice(0,8)}+08:00`)+(row.starts_next_day?86400000:0);
     const cancellationPending=Boolean(row.cancellation_requested_at&&!row.cancellation_reviewed_at);
     return {
       bookingId:String(row.id),
