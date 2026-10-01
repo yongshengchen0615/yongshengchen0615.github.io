@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-30.2';
+  const VERSION = '2026-10-01.1';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -37,13 +37,15 @@
     ADMIN_TEST_MEMBER_ROSTER: ['member'], ADMIN_MEMBER_MODALS: ['member'],
     ADMIN_TEST_MEMBER_PROFILE_EDIT: ['member'], ADMIN_MEMBER_DIRECTORY_CONTROLS: ['member'],
     ADMIN_MEMBERSHIP_TERMS: ['member'],
+    ADMIN_FORCE_LOGOUT_SECURITY: ['member'],
     ADMIN_MESSAGE_PRESET_EDITOR: ['member'], ADMIN_THEME_TOGGLE: ['member'],
     ADMIN_RESOURCE_EDITORS: ['points', 'event', 'calendar'],
     ADMIN_TICKET_CRUD: ['points'], ADMIN_LOTTERY_TICKET_CRUD: ['points', 'event'],
     ADMIN_POINT_CARD_CRUD: ['points'], ADMIN_EVENT_TICKET_CRUD: ['event'],
+    ADMIN_EVENT_DAILY_LIMIT_SETTINGS: ['event'],
     ADMIN_CALENDAR_CRUD: ['calendar'], ADMIN_CALENDAR_BATCH_CONTROLS: ['calendar'],
     ADMIN_BOOKING_CRUD: ['booking'], ADMIN_BOOKING_CONTROLS: ['booking'],
-    ADMIN_BOOKING_SHARED_SETTINGS: ['booking'],
+    ADMIN_BOOKING_SHARED_SETTINGS: ['booking'], ADMIN_BOOKING_RECEIPT_VIEWER: ['booking'],
     ADMIN_INTEGRATION_CENTER: ['integration'], ADMIN_INTEGRATION_NAVIGATION: ['integration']
   });
   const MODULE_HUMAN_EVIDENCE = Object.freeze({
@@ -62,6 +64,7 @@
     ADMIN_TEST_MEMBER_PROFILE_EDIT: { module: 'member', phase: 4, risk: 'mutation', dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
     ADMIN_MEMBER_DIRECTORY_CONTROLS: { module: 'member', phase: 3, dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
     ADMIN_MEMBERSHIP_TERMS: { module: 'member', phase: 3, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
+    ADMIN_FORCE_LOGOUT_SECURITY: { module: 'member', phase: 5, required: true, risk: 'security', dependencies: ['ADMIN_TEST_MEMBER_ROSTER'] },
     ADMIN_MESSAGE_PRESET_EDITOR: { module: 'member', phase: 3, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
     ADMIN_THEME_TOGGLE: { module: 'member', phase: 2, dependencies: ['ADMIN_AUTH_READY'] },
 
@@ -70,11 +73,13 @@
     ADMIN_LOTTERY_TICKET_CRUD: { module: 'ticket', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
     ADMIN_POINT_CARD_CRUD: { module: 'points', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
     ADMIN_EVENT_TICKET_CRUD: { module: 'event', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
+    ADMIN_EVENT_DAILY_LIMIT_SETTINGS: { module: 'event', phase: 3, required: true, dependencies: ['ADMIN_RESOURCE_EDITORS'] },
     ADMIN_CALENDAR_CRUD: { module: 'calendar', phase: 4, risk: 'mutation', dependencies: ['ADMIN_RESOURCE_EDITORS'] },
     ADMIN_CALENDAR_BATCH_CONTROLS: { module: 'calendar', phase: 5, dependencies: ['ADMIN_CALENDAR_CRUD'] },
 
     ADMIN_BOOKING_CONTROLS: { module: 'booking', phase: 2, required: true, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
     ADMIN_BOOKING_SHARED_SETTINGS: { module: 'booking', phase: 3, required: true, risk: 'mutation', dependencies: ['ADMIN_BOOKING_CONTROLS'] },
+    ADMIN_BOOKING_RECEIPT_VIEWER: { module: 'booking', phase: 5, required: true, dependencies: ['ADMIN_BOOKING_CONTROLS'] },
     ADMIN_BOOKING_CRUD: { module: 'booking', phase: 4, risk: 'mutation', dependencies: ['ADMIN_BOOKING_CONTROLS'] },
 
     ADMIN_INTEGRATION_CENTER: { module: 'integration', phase: 2, required: true, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
@@ -1478,6 +1483,7 @@
     return common.concat([
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
       caseDef('ADMIN_MEMBERSHIP_TERMS', '會員條款：管理端版本清單與啟用版本契約', 'Legal E2E', adminMembershipTermsCase),
+      caseDef('ADMIN_FORCE_LOGOUT_SECURITY', '強制下線：測試會員 Session 撤銷與維護邊界', 'Security E2E', adminForceLogoutSecurityCase),
       caseDef('ADMIN_RESOURCE_EDITORS', '集點卡／票券／活動票券／日曆編輯視窗', 'Human E2E', adminResourceEditorsCase),
       caseDef('ADMIN_INTEGRATION_CENTER', '真人操作：整合中心總覽／權益／通知／Audit', 'Human E2E', adminIntegrationCenterCase),
       caseDef('ADMIN_INTEGRATION_NAVIGATION', '真人操作：整合中心跨模組快速導向', 'Human E2E', adminIntegrationNavigationCase),
@@ -1485,10 +1491,12 @@
       caseDef('ADMIN_LOTTERY_TICKET_CRUD', '抽獎券：一般票券＋活動票券建立／機率／回讀／清理', 'Admin CRUD E2E', adminLotteryTicketCrudCase),
       caseDef('ADMIN_POINT_CARD_CRUD', '集點卡：新增／修改／刪除', 'Admin CRUD E2E', adminPointCardCrudCase),
       caseDef('ADMIN_EVENT_TICKET_CRUD', '活動票券：新增／修改／刪除', 'Admin CRUD E2E', adminEventTicketCrudCase),
+      caseDef('ADMIN_EVENT_DAILY_LIMIT_SETTINGS', '活動票券：每日可使用張數設定與 Server/UI 一致性', 'Admin Settings E2E', adminEventDailyLimitSettingsCase),
       caseDef('ADMIN_CALENDAR_CRUD', '日曆：新增／修改／刪除', 'Admin CRUD E2E', adminCalendarCrudCase),
       caseDef('ADMIN_BOOKING_CRUD', '預約：類型與項目新增／修改／刪除', 'Admin CRUD E2E', adminBookingCrudCase),
       caseDef('ADMIN_BOOKING_CONTROLS', '預約管理分頁與新增視窗', 'Human E2E', adminBookingControlsCase),
       caseDef('ADMIN_BOOKING_SHARED_SETTINGS', '預約：共用設定複雜修改／跨端同步／衝突／保留修改', 'Admin Settings E2E', adminBookingSharedSettingsCase),
+      caseDef('ADMIN_BOOKING_RECEIPT_VIEWER', '預約收據：管理端唯讀快照與安全 URL 契約', 'Booking / Receipt E2E', adminBookingReceiptViewerCase),
       caseDef('ADMIN_THEME_TOGGLE', '亮／暗主題切換與偏好還原', 'UI', adminThemeToggleCase),
       caseDef('ADMIN_MEMBER_DIRECTORY_CONTROLS', '會員搜尋／分頁／紀錄篩選', 'UI', adminMemberDirectoryControlsCase),
       caseDef('ADMIN_MESSAGE_PRESET_EDITOR', '預設訊息管理視窗與驗證', 'UI', adminMessagePresetEditorCase),
@@ -1826,6 +1834,19 @@
           }
         );
         await clientExecution;
+
+        if (!state.cancelled && selectedModules.includes('member')) {
+          await executeCases([
+            caseDef('PAIRED_MEMBER_REFERRAL_REWARD', '好友邀請：兩個臨時測試會員綁定與雙方獎勵', 'Paired E2E / Member Growth', pairedMemberReferralRewardCase),
+            caseDef('PAIRED_SECURITY_FORCE_LOGOUT', '強制下線：臨時測試 Session 撤銷後不可重播', 'Paired E2E / Security', pairedForceLogoutRevocationCase)
+          ], '協同會員成長與安全');
+        }
+
+        if (!state.cancelled && selectedModules.includes('points')) {
+          await executeCases([
+            caseDef('PAIRED_POINT_TRANSFER_ATOMIC', '點數轉贈：雙方餘額守恆／冪等／衝突拒絕', 'Paired E2E / Points Transfer', pairedPointTransferAtomicCase)
+          ], '協同點數轉贈');
+        }
 
         if (!state.cancelled && selectedModules.includes('event')) {
           await executeCases([
@@ -5773,6 +5794,77 @@
         }, actual);
   }
 
+
+  async function adminEventDailyLimitSettingsCase() {
+    document.getElementById('eventsTab')?.click();
+    const input = await waitFor(() => document.getElementById('eventMaxTicketsPerDay'), 4000);
+    const save = document.getElementById('saveEventTicketSettingButton');
+    const session = await adminSession();
+    const server = await postFunction('event-ticket-extension-api', {
+      operation: 'admin.settings.get',
+      idToken: session.idToken
+    });
+    const serverLimit = Number(server?.maxTicketsPerDay || server?.maxTicketsPerRedemption || 0);
+    const uiLimit = Number(input?.value || 0);
+    const actual = {
+      input: Boolean(input),
+      saveButton: Boolean(save),
+      serverLimit,
+      uiLimit,
+      matched: serverLimit === uiLimit,
+      validRange: Number.isInteger(serverLimit) && serverLimit >= 1 && serverLimit <= 50,
+      labelUsesDailySemantics: /每日最多使用活動票券數/.test(String(input?.closest('label')?.textContent || ''))
+    };
+    return Object.values(actual).every(Boolean)
+      ? pass('管理端活動票券每日使用上限與 Server 設定一致，且 UI 使用「每日」語意而非單次勾選。', {
+          input: true, saveButton: true, matched: true, validRange: true, labelUsesDailySemantics: true
+        }, actual)
+      : fail('活動票券每日使用上限的管理端 UI／Server 契約不一致。', {
+          input: true, saveButton: true, matched: true, validRange: true, labelUsesDailySemantics: true
+        }, actual);
+  }
+
+  async function adminBookingReceiptViewerCase() {
+    const tab = await waitFor(() => document.getElementById('bookingTab'), 6000);
+    tab?.click();
+    const modal = await waitFor(() => document.getElementById('adminBookingReceiptModal'), 5000);
+    const session = await adminSession();
+    const data = await postFunction('booking-receipt-api', {
+      action: 'admin.booking.receipt.list',
+      clientType: 'admin',
+      idToken: session.idToken
+    });
+    const receipts = Array.isArray(data?.receipts) ? data.receipts : [];
+    window.dispatchEvent(new CustomEvent('member-admin-data-refreshed'));
+    await sleep(150);
+    const viewerButtons = Array.from(document.querySelectorAll('[data-admin-booking-receipt-control]'));
+    const forbidden = modal ? Array.from(modal.querySelectorAll('button')).filter((button) =>
+      /確認收據並完成預約|確認服務完成|完成並結算/.test(String(button.textContent || ''))
+    ) : [];
+    const actual = {
+      bookingTab: Boolean(tab),
+      modal: Boolean(modal),
+      receiptsArray: Array.isArray(data?.receipts),
+      receiptCount: receipts.length,
+      awaitingOrBound: receipts.filter((row) => ['awaiting_review', 'bound'].includes(String(row?.status || ''))).length,
+      viewerButtons: viewerButtons.length,
+      forbiddenCompletionButtons: forbidden.length,
+      imageElement: Boolean(document.getElementById('adminBookingReceiptImage')),
+      summaryElement: Boolean(document.getElementById('adminBookingReceiptSummary'))
+    };
+    const ok = actual.bookingTab && actual.modal && actual.receiptsArray &&
+      actual.forbiddenCompletionButtons === 0 && actual.imageElement && actual.summaryElement;
+    return ok
+      ? pass('管理端預約收據節點已驗證安全清單與唯讀快照 Viewer；完成預約仍由 canonical 預約流程負責。', {
+          bookingTab: true, modal: true, receiptsArray: true,
+          forbiddenCompletionButtons: 0, imageElement: true, summaryElement: true
+        }, actual)
+      : fail('管理端收據 Viewer 或完成責任邊界不符合目前規格。', {
+          bookingTab: true, modal: true, receiptsArray: true,
+          forbiddenCompletionButtons: 0, imageElement: true, summaryElement: true
+        }, actual);
+  }
+
   async function adminFeatureContractCoverageCase() {
     await waitFor(() => document.getElementById('bookingPanel'), 6000);
     const contracts = [
@@ -5799,7 +5891,9 @@
       ['integrationPointSources', '#integrationPointSources'],
       ['integrationBenefits', '#integrationBenefitSummary'],
       ['integrationNotifications', '#integrationNotifications'],
-      ['integrationAuditTimeline', '#integrationAuditTimeline']
+      ['integrationAuditTimeline', '#integrationAuditTimeline'],
+      ['eventDailyLimit', '#eventMaxTicketsPerDay'],
+      ['bookingReceiptViewer', '#adminBookingReceiptModal']
     ];
     const missing = contracts.filter(([, selector]) => !document.querySelector(selector)).map(([key, selector]) => ({ key, selector }));
     const actual = { contractCount: contracts.length, missing };
@@ -5811,7 +5905,9 @@
   async function adminButtonCoverageCase() {
     const buttons = Array.from(document.querySelectorAll('#adminView button, body > .modal button, #bookingPanel button'));
     const explicitCaseByButtonId = new Map([
-      ['bookingAdminSaveSettingsButton', 'ADMIN_BOOKING_SHARED_SETTINGS']
+      ['bookingAdminSaveSettingsButton', 'ADMIN_BOOKING_SHARED_SETTINGS'],
+      ['saveEventTicketSettingButton', 'ADMIN_EVENT_DAILY_LIMIT_SETTINGS'],
+      ['adminBookingReceiptClose', 'ADMIN_BOOKING_RECEIPT_VIEWER']
     ]);
     const registeredCaseKeys = new Set(adminDefinitions('full').map((item) => item.key));
     const unmapped = [];
@@ -6245,6 +6341,247 @@
     } catch (error) {
       await postAdminTestMode('admin.test-mode.delete-accounts', { memberIds: [created.memberId] }).catch(() => {});
       throw error;
+    }
+  }
+
+
+  async function prepareEphemeralConsents(accounts) {
+    const memberIds = (Array.isArray(accounts) ? accounts : []).map((account) => String(account?.memberId || '')).filter(Boolean);
+    if (!memberIds.length) return { currentConsentCount: 0 };
+    const session = await adminSession();
+    return postFunction('test-control-api', {
+      action: 'admin.test-control.prepare-test-account-consents',
+      clientType: 'admin',
+      idToken: session.idToken,
+      memberIds
+    });
+  }
+
+  async function memberGrowthRequest(login, clientType, action, payload = {}) {
+    return postFunction('member-growth-api', {
+      ...payload,
+      action,
+      clientType,
+      idToken: '',
+      testSessionToken: String(login?.testSessionToken || '')
+    });
+  }
+
+  async function userEventBootstrap(login) {
+    return postFunction('api', {
+      action: 'user.event.bootstrap',
+      clientType: 'event',
+      idToken: '',
+      testSessionToken: String(login?.testSessionToken || '')
+    });
+  }
+
+  async function pairedMemberReferralRewardCase() {
+    let inviter = null;
+    let invitee = null;
+    try {
+      inviter = await createEphemeralTestAccount();
+      invitee = await createEphemeralTestAccount();
+      const consent = await prepareEphemeralConsents([inviter, invitee]);
+      if (Number(consent?.currentConsentCount || 0) !== 2) {
+        return fail('好友邀請 E2E 無法建立兩位已同意條款的臨時測試會員。', {
+          consentCount: 2
+        }, { consentCount: Number(consent?.currentConsentCount || 0) });
+      }
+
+      const inviterMemberLogin = await createPairedSession(inviter, 'member');
+      const inviteeMemberLogin = await createPairedSession(invitee, 'member');
+      const inviterProfile = await postFunction('member-profile-api', {
+        action: 'user.member.bootstrap',
+        clientType: 'member',
+        idToken: '',
+        testSessionToken: inviterMemberLogin.testSessionToken
+      });
+      const inviteCode = String(inviterProfile?.profile?.inviteCode || '').trim().toUpperCase();
+      if (!/^[A-F0-9]{10}$/.test(inviteCode)) {
+        return fail('邀請人沒有取得有效邀請碼。', { inviteCodeReady: true }, { inviteCodeReady: false });
+      }
+
+      const requestId = 'ref-e2e-' + qaCrudStamp();
+      const first = await memberGrowthRequest(inviteeMemberLogin, 'member', 'member.referral.bind', { inviteCode, requestId });
+      const replay = await memberGrowthRequest(inviteeMemberLogin, 'member', 'member.referral.bind', { inviteCode, requestId });
+      const rewardEventTicketId = String(first?.rewardEventTicketId || '');
+      const inviterEventLogin = await createPairedSession(inviter, 'event');
+      const inviteeEventLogin = await createPairedSession(invitee, 'event');
+      const [inviterEvent, inviteeEvent] = await Promise.all([
+        userEventBootstrap(inviterEventLogin),
+        userEventBootstrap(inviteeEventLogin)
+      ]);
+      const ownsReward = (snapshot) => (Array.isArray(snapshot?.offers) ? snapshot.offers : []).some((offer) =>
+        String(offer?.ticket?.eventTicketId || '') === rewardEventTicketId &&
+        String(offer?.claim?.status || '') === 'available' &&
+        offer?.canUse === true
+      );
+      const actual = {
+        inviteCodeReady: true,
+        referralId: String(first?.referralId || ''),
+        rewardEventTicketId,
+        firstAlreadyApplied: first?.alreadyApplied === true,
+        replayAlreadyApplied: replay?.alreadyApplied === true,
+        replaySameReferral: String(first?.referralId || '') === String(replay?.referralId || ''),
+        inviterRewardVisible: ownsReward(inviterEvent),
+        inviteeRewardVisible: ownsReward(inviteeEvent)
+      };
+      const ok = Boolean(actual.referralId && rewardEventTicketId) && !actual.firstAlreadyApplied &&
+        actual.replayAlreadyApplied && actual.replaySameReferral &&
+        actual.inviterRewardVisible && actual.inviteeRewardVisible;
+      return ok
+        ? pass('兩個新測試會員完成好友邀請綁定；同 requestId 重播不重複發券，雙方活動票券頁皆可看到同一獎勵。', {
+            firstAlreadyApplied: false, replayAlreadyApplied: true, replaySameReferral: true,
+            inviterRewardVisible: true, inviteeRewardVisible: true
+          }, actual)
+        : fail('好友邀請綁定、冪等或雙方獎勵驗證失敗。', {
+            firstAlreadyApplied: false, replayAlreadyApplied: true, replaySameReferral: true,
+            inviterRewardVisible: true, inviteeRewardVisible: true
+          }, actual);
+    } finally {
+      if (invitee) await removeEphemeralTestAccount(invitee).catch(() => false);
+      if (inviter) await removeEphemeralTestAccount(inviter).catch(() => false);
+    }
+  }
+
+  async function pairedPointTransferAtomicCase() {
+    let sender = null;
+    let receiver = null;
+    try {
+      sender = await createEphemeralTestAccount();
+      receiver = await createEphemeralTestAccount();
+      const consent = await prepareEphemeralConsents([sender, receiver]);
+      if (Number(consent?.currentConsentCount || 0) !== 2) {
+        return fail('點數轉贈 E2E 無法建立兩位已同意條款的臨時測試會員。', {
+          consentCount: 2
+        }, { consentCount: Number(consent?.currentConsentCount || 0) });
+      }
+
+      const session = await adminSession();
+      const cardsData = await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.pointcards.list', {});
+      const card = (Array.isArray(cardsData?.cards) ? cardsData.cards : []).find((item) =>
+        item?.status === 'active' && item?.expired !== true && item?.cardId
+      );
+      if (!card) return skip('目前沒有可供點數轉贈 E2E 使用的啟用中集點卡。', { activePointCard: true }, { activePointCard: false });
+
+      const grantRequestId = 'E2E-XFER-GRANT-' + qaCrudStamp();
+      await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.member-grants.add', {
+        lineUserId: sender.lineUserId,
+        requestId: grantRequestId,
+        messagePresetId: '',
+        points: [{ cardId: card.cardId, amount: 3 }]
+      });
+
+      const senderLogin = await createPairedSession(sender, 'points');
+      const receiverLogin = await createPairedSession(receiver, 'points');
+      const senderBeforeData = await memberGrowthRequest(senderLogin, 'points', 'points.transfer.options');
+      const receiverBeforeData = await memberGrowthRequest(receiverLogin, 'points', 'points.transfer.options');
+      const balanceFor = (data) => Number((Array.isArray(data?.cards) ? data.cards : []).find((item) =>
+        String(item?.cardId || '') === String(card.cardId)
+      )?.balance || 0);
+      const senderBefore = balanceFor(senderBeforeData);
+      const receiverBefore = balanceFor(receiverBeforeData);
+      const lookup = await memberGrowthRequest(senderLogin, 'points', 'points.transfer.receiver', { memberCode: receiver.memberCode });
+
+      const requestId = 'pt-e2e-' + qaCrudStamp();
+      const first = await memberGrowthRequest(senderLogin, 'points', 'points.transfer.create', {
+        cardId: card.cardId, memberCode: receiver.memberCode, amount: 1, requestId
+      });
+      const replay = await memberGrowthRequest(senderLogin, 'points', 'points.transfer.create', {
+        cardId: card.cardId, memberCode: receiver.memberCode, amount: 1, requestId
+      });
+      let conflictCode = '';
+      try {
+        await memberGrowthRequest(senderLogin, 'points', 'points.transfer.create', {
+          cardId: card.cardId, memberCode: receiver.memberCode, amount: 2, requestId
+        });
+      } catch (error) {
+        conflictCode = String(error?.code || '');
+      }
+      const [senderAfterData, receiverAfterData] = await Promise.all([
+        memberGrowthRequest(senderLogin, 'points', 'points.transfer.options'),
+        memberGrowthRequest(receiverLogin, 'points', 'points.transfer.options')
+      ]);
+      const senderAfter = balanceFor(senderAfterData);
+      const receiverAfter = balanceFor(receiverAfterData);
+      const actual = {
+        cardId: card.cardId,
+        lookupMatched: String(lookup?.memberCode || '').toUpperCase() === String(receiver.memberCode || '').toUpperCase(),
+        senderBefore, senderAfter, receiverBefore, receiverAfter,
+        firstTransferId: String(first?.transferId || ''),
+        replayTransferId: String(replay?.transferId || ''),
+        firstAlreadyApplied: first?.alreadyApplied === true,
+        replayAlreadyApplied: replay?.alreadyApplied === true,
+        conflictCode,
+        totalBefore: senderBefore + receiverBefore,
+        totalAfter: senderAfter + receiverAfter
+      };
+      const ok = actual.lookupMatched && senderBefore >= 3 && senderAfter === senderBefore - 1 &&
+        receiverAfter === receiverBefore + 1 && actual.totalBefore === actual.totalAfter &&
+        Boolean(actual.firstTransferId) && actual.firstTransferId === actual.replayTransferId &&
+        !actual.firstAlreadyApplied && actual.replayAlreadyApplied && conflictCode === 'REQUEST_ID_CONFLICT';
+      return ok
+        ? pass('點數轉贈完成雙方餘額守恆、同 requestId 冪等重播及不同內容衝突拒絕；測試後清理臨時會員。', {
+            senderDelta: -1, receiverDelta: 1, totalConserved: true,
+            replayAlreadyApplied: true, conflictCode: 'REQUEST_ID_CONFLICT'
+          }, actual)
+        : fail('點數轉贈原子性、冪等或衝突保護至少一項不符合預期。', {
+            senderDelta: -1, receiverDelta: 1, totalConserved: true,
+            replayAlreadyApplied: true, conflictCode: 'REQUEST_ID_CONFLICT'
+          }, actual);
+    } finally {
+      if (receiver) await removeEphemeralTestAccount(receiver).catch(() => false);
+      if (sender) await removeEphemeralTestAccount(sender).catch(() => false);
+    }
+  }
+
+  async function pairedForceLogoutRevocationCase() {
+    let account = null;
+    try {
+      account = await createEphemeralTestAccount();
+      const session = await adminSession();
+      const publicStatus = await postPublicTestMode(session, { action: 'public.status', clientType: 'member' });
+      const login = await createPairedSession(account, 'member');
+      const before = await postPublicTestMode(session, {
+        action: 'session.status',
+        clientType: 'member',
+        testSessionToken: login.testSessionToken
+      });
+      await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.member.force-logout', {
+        lineUserId: account.lineUserId
+      });
+
+      const response = await fetch(functionUrl(session.config, 'test-mode-api'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: String(session.config.supabasePublishableKey || '') },
+        cache: 'no-store',
+        body: JSON.stringify({
+          action: 'session.status',
+          clientType: 'member',
+          testSessionToken: login.testSessionToken
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      const actual = {
+        maintenanceEnabled: publicStatus?.maintenanceEnabled === true,
+        sessionActiveBefore: before?.active === true,
+        revokedHttpStatus: response.status,
+        revokedErrorCode: String(payload?.error?.code || '')
+      };
+      const ok = actual.maintenanceEnabled && actual.sessionActiveBefore &&
+        response.status === 401 && actual.revokedErrorCode === 'SESSION_REVOKED';
+      return ok
+        ? pass('維護模式下建立的測試會員 Session 經管理端強制下線後立即撤銷；舊 token 重播被 Server 拒絕。', {
+            maintenanceEnabled: true, sessionActiveBefore: true,
+            revokedHttpStatus: 401, revokedErrorCode: 'SESSION_REVOKED'
+          }, actual)
+        : fail('強制下線後舊測試 Session 仍可使用，或維護模式前置不一致。', {
+            maintenanceEnabled: true, sessionActiveBefore: true,
+            revokedHttpStatus: 401, revokedErrorCode: 'SESSION_REVOKED'
+          }, actual);
+    } finally {
+      if (account) await removeEphemeralTestAccount(account).catch(() => false);
     }
   }
 
