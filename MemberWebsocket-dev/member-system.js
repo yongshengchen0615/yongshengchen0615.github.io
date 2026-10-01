@@ -12,6 +12,7 @@
   const pendingReads = new Map();
   const sessions = new Map();
   const realtimeSubscriptions = new Map();
+  const realtimeStatuses = new Map();
   let realtimeClient = null;
   let realtimeClientKey = '';
   let presenceContext = null;
@@ -510,6 +511,15 @@
     return realtimeClient;
   }
 
+  function emitRealtimeEvent(name, detail) {
+    if (typeof window.CustomEvent !== 'function' || typeof window.dispatchEvent !== 'function') return;
+    try { window.dispatchEvent(new window.CustomEvent(name, { detail: Object.freeze({ ...detail }) })); } catch (_) {}
+  }
+
+  function getRealtimeStatus(clientType) {
+    return String(realtimeStatuses.get(String(clientType || '')) || '');
+  }
+
   function subscribeRealtime(config, clientType, onUpdate) {
     validateConfig(config, clientType);
     if (config.realtimeEnabled === false || typeof onUpdate !== 'function') return () => {};
@@ -524,6 +534,8 @@
     let queued = false;
     let lastRefreshAt = -Infinity;
     let subscribedOnce = false;
+    const queuedEventTypes = new Set();
+    const queuedReasons = new Set();
     const hasActiveTestSession = () => {
       try {
         return Boolean(window.TestModeClient
@@ -540,8 +552,12 @@
 
     // Realtime, reconnect and page-resume signals share one refresh queue.
     // Preserve one trailing refresh when data changes during an active request.
-    const schedule = (delayMs = 650) => {
+    const schedule = (delayMs = 650, context = {}) => {
       if (disposed) return;
+      const eventType = String(context.eventType || '').trim();
+      const reason = String(context.reason || '').trim();
+      if (eventType) queuedEventTypes.add(eventType);
+      if (reason) queuedReasons.add(reason);
       queued = true;
       if (pending || timer !== undefined || isPaused()) return;
       const waitMs = Math.max(delayMs, 1500 - (Date.now() - lastRefreshAt));
@@ -553,18 +569,25 @@
       queued = false;
       pending = true;
       lastRefreshAt = Date.now();
+      const context = Object.freeze({
+        clientType,
+        eventTypes: Object.freeze([...queuedEventTypes]),
+        reasons: Object.freeze([...queuedReasons]),
+      });
+      queuedEventTypes.clear();
+      queuedReasons.clear();
       Promise.resolve().then(() => {
-        if (!disposed) return onUpdate();
+        if (!disposed) return onUpdate(context);
       }).catch(() => {}).finally(() => {
         pending = false;
         if (queued && !disposed) schedule(0);
       });
     };
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') schedule(0);
+      if (document.visibilityState === 'visible') schedule(0, { reason: 'visibility' });
     };
-    const onPageShow = () => schedule(0);
-    const onOnline = () => schedule(0);
+    const onPageShow = (event) => schedule(0, { reason: event && event.persisted ? 'bfcache' : 'pageshow' });
+    const onOnline = () => schedule(0, { reason: 'online' });
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pageshow', onPageShow);
     window.addEventListener('online', onOnline);
@@ -574,11 +597,17 @@
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
         const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
         const scope = String(row.scope || '');
-        if (scope === 'all' || scope === clientType) schedule();
+        if (scope !== 'all' && scope !== clientType) return;
+        const eventType = String(row.event_type || '');
+        emitRealtimeEvent('member-system:realtime-invalidation', { clientType, scope, eventType });
+        schedule(650, { reason: 'realtime', eventType });
       })
       .subscribe((status) => {
+        const nextStatus = String(status || '');
+        realtimeStatuses.set(clientType, nextStatus);
+        emitRealtimeEvent('member-system:realtime-status', { clientType, status: nextStatus });
         if (status !== 'SUBSCRIBED') return;
-        if (subscribedOnce) schedule(0);
+        if (subscribedOnce) schedule(0, { reason: 'reconnect' });
         else subscribedOnce = true;
       });
 
@@ -587,10 +616,14 @@
       disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
       queued = false;
+      queuedEventTypes.clear();
+      queuedReasons.clear();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pageshow', onPageShow);
       window.removeEventListener('online', onOnline);
       realtimeSubscriptions.delete(clientType);
+      realtimeStatuses.delete(clientType);
+      emitRealtimeEvent('member-system:realtime-status', { clientType, status: 'CLOSED' });
       try { Promise.resolve(client.removeChannel(channel)).catch(() => {}); } catch (_) {}
     };
     realtimeSubscriptions.set(clientType, { unsubscribe });
@@ -719,14 +752,25 @@
   }
 
 
-  try {
-    if (window.indexedDB && typeof window.indexedDB.deleteDatabase === 'function') {
-      window.indexedDB.deleteDatabase('MembershipSystemSyncCache');
-    }
-  } catch (_) {}
+  function purgeLegacySyncCache() {
+    const cleanupKey = 'lumen-legacy-sync-cache-cleaned-v1';
+    try {
+      if (window.localStorage?.getItem(cleanupKey) === '1') return;
+      if (!window.indexedDB || typeof window.indexedDB.deleteDatabase !== 'function') {
+        window.localStorage?.setItem(cleanupKey, '1');
+        return;
+      }
+      const request = window.indexedDB.deleteDatabase('MembershipSystemSyncCache');
+      if (request && typeof request === 'object') {
+        request.onsuccess = () => { try { window.localStorage?.setItem(cleanupKey, '1'); } catch (_) {} };
+      }
+    } catch (_) {}
+  }
+
+  purgeLegacySyncCache();
 
   window.MemberSystem = Object.freeze({
     bindDialogKeyboard, clientError, loadConfig, validateConfig, signIn, getSession, request,
-    subscribeRealtime, logout, terminateAccessSession, openMemberJoin, formatDate, formatDateTime, initials
+    subscribeRealtime, getRealtimeStatus, logout, terminateAccessSession, openMemberJoin, formatDate, formatDateTime, initials
   });
 })();
