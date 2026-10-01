@@ -143,6 +143,33 @@ async function todayUsable(supabase: SupabaseClient, identity: Identity): Promis
   if (result.error) throw mapDatabaseError(result.error);
   return (result.data && typeof result.data === "object") ? result.data as Json : { todayUsableCount: 0 };
 }
+async function lineOfficialAccount(supabase: SupabaseClient): Promise<Json> {
+  const tokenResult = await supabase.rpc("get_line_messaging_token");
+  const token = tokenResult.error ? "" : asText(tokenResult.data, 10_000);
+  if (!token) throw new ApiError(503, "LINE_OFFICIAL_ACCOUNT_UNAVAILABLE", "LINE 官方帳號入口尚未設定完成。");
+
+  let infoResponse: Response;
+  try {
+    infoResponse = await fetch("https://api.line.me/v2/bot/info", {
+      headers: { "Authorization": "Bearer " + token },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    throw new ApiError(503, "LINE_OFFICIAL_ACCOUNT_UNAVAILABLE", "目前無法取得 LINE 官方帳號入口。");
+  }
+  if (!infoResponse.ok) throw new ApiError(503, "LINE_OFFICIAL_ACCOUNT_UNAVAILABLE", "目前無法取得 LINE 官方帳號入口。");
+
+  const info = await infoResponse.json().catch(() => ({})) as Json;
+  const basicId = asText(info.basicId, 80);
+  if (!/^@[A-Za-z0-9._-]{2,79}$/.test(basicId)) {
+    throw new ApiError(503, "LINE_OFFICIAL_ACCOUNT_UNAVAILABLE", "LINE 官方帳號識別尚未設定完成。");
+  }
+  return {
+    basicId,
+    chatUrl: "https://line.me/R/oaMessage/" + encodeURIComponent(basicId),
+  };
+}
+
 async function referralBind(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
   const result = await supabase.rpc("bind_member_referral", {
     p_invitee_line_user_id: identity.lineUserId,
@@ -209,7 +236,7 @@ Deno.serve(async (request: Request) => {
     const clientType = asText(body.clientType, 20) as ClientType;
     const action = asText(body.action, 100);
     const allowed: Record<ClientType, Set<string>> = {
-      member: new Set(["member.referral.bind"]),
+      member: new Set(["member.referral.bind","member.line.official-account"]),
       event: new Set(["event.today-usable"]),
       points: new Set(["points.transfer.options","points.transfer.receiver","points.transfer.create"]),
     };
@@ -226,6 +253,7 @@ Deno.serve(async (request: Request) => {
     let data: Json;
     if (action === "event.today-usable") data = await todayUsable(supabase, identity);
     else if (action === "member.referral.bind") data = await referralBind(supabase, identity, body);
+    else if (action === "member.line.official-account") data = await lineOfficialAccount(supabase);
     else if (action === "points.transfer.options") data = await transferOptions(supabase, member);
     else if (action === "points.transfer.receiver") data = await transferReceiver(supabase, identity, body);
     else data = await transferCreate(supabase, identity, body);
