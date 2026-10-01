@@ -132,6 +132,7 @@ function mapDatabaseError(error: unknown): ApiError {
     ["TICKET_NOT_FOUND",404,"TICKET_NOT_FOUND","找不到這張票券。"],
     ["TICKET_NOT_AVAILABLE",409,"TICKET_NOT_AVAILABLE","這張票券目前無法使用。"],
     ["TICKET_TEMPLATE_NOT_FOUND",400,"TICKET_TEMPLATE_NOT_FOUND","選取的票券不存在。"],
+    ["EVENT_TICKET_DAILY_LIMIT_REACHED",409,"EVENT_TICKET_DAILY_LIMIT_REACHED","今日活動票券使用張數已達上限，請於明日再使用。"],
     ["EVENT_TICKET_NOT_AVAILABLE",409,"EVENT_TICKET_NOT_AVAILABLE","這張活動票券目前無法使用。"],
     ["EVENT_NOT_STARTED",409,"EVENT_NOT_STARTED","活動尚未開始。"],
     ["EVENT_ENDED",409,"EVENT_ENDED","活動已結束。"],
@@ -1091,6 +1092,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     // Fixed tickets are server-issued member benefits, not public claimable offers.
     // Never expose a fixed-ticket event to a member unless that member owns its claim.
     if ((row.fixed_ticket_template_id || row.ticket_type === "referral") && !claimRow) return [];
+    if (claimRow && String(claimRow.status || "") === "used") return [];
     const ticket = eventTicketClient(row,counts.get(row.id)||0) as any;
     const claim = claimRow ? claimClient(claimRow,row.event_ticket_id) : null;
     const scheduled = Boolean(row.starts_on && today < row.starts_on);
