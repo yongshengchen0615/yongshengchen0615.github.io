@@ -251,3 +251,12 @@ test('booking participant item migration qualifies formerly ambiguous RPC column
   assert.match(migration, /bi_delete\.booking_id = b\.id/);
   assert.match(migration, /where bk\.id = b\.id/);
 });
+
+
+test('paired participant navigation waits for the newly loaded controller instead of a stale same-surface page', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /participant\.lastNavigationKey = navigationKey/);
+  assert.match(runner, /currentUrl\.searchParams\.get\('qaPair'\)/);
+  assert.match(runner, /child\.document\?\.readyState !== 'complete'/);
+  assert.match(runner, /expectedNavigationKey/);
+});
