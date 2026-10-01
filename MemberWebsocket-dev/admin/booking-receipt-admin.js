@@ -23,6 +23,7 @@
           <button id="adminBookingReceiptClose" class="close-button" type="button" aria-label="關閉">×</button>
         </div>
         <p id="adminBookingReceiptMeta" class="admin-booking-receipt-meta"></p>
+        <div id="adminBookingReceiptSummary" class="admin-booking-receipt-summary hidden"></div>
         <div id="adminBookingReceiptLoading" class="admin-booking-receipt-loading">正在建立安全檢視連結…</div>
         <img id="adminBookingReceiptImage" class="admin-booking-receipt-image hidden" alt="預約完成時的收據快照">
         <p id="adminBookingReceiptMessage" class="form-message hidden" role="alert"></p>
@@ -44,6 +45,59 @@
     modal.classList.add('hidden');
   }
 
+  function renderBookingSummary(host, booking) {
+    if (!host) return;
+    host.replaceChildren();
+    if (!booking || typeof booking !== 'object') {
+      host.classList.add('hidden');
+      return;
+    }
+
+    const member = booking.member && typeof booking.member === 'object' ? booking.member : {};
+    const memberName = String(member.displayName || '').trim()
+      || [String(member.surname || '').trim(), String(member.salutation || '').trim()].filter(Boolean).join('')
+      || '會員';
+    const nextDay = booking.startsNextDay ? '（翌日結束）' : '';
+    const rows = [
+      ['會員', memberName + (member.memberCode ? ' · ' + member.memberCode : '')],
+      ['預約日期', String(booking.bookingDate || '')],
+      ['服務時間', String(booking.startTime || '') + '–' + String(booking.endTime || '') + nextDay],
+      ['預約狀態', String(booking.status || '')],
+    ];
+
+    const list = document.createElement('dl');
+    list.className = 'admin-booking-receipt-facts';
+    rows.forEach(([label, value]) => {
+      const dt = document.createElement('dt');
+      const dd = document.createElement('dd');
+      dt.textContent = label;
+      dd.textContent = value || '—';
+      list.append(dt, dd);
+    });
+    host.append(list);
+
+    const items = Array.isArray(booking.items) ? booking.items : [];
+    const heading = document.createElement('strong');
+    heading.textContent = '預約項目';
+    host.append(heading);
+    if (!items.length) {
+      const empty = document.createElement('p');
+      empty.textContent = '此預約沒有可顯示的項目明細。';
+      host.append(empty);
+    } else {
+      const ul = document.createElement('ul');
+      ul.className = 'admin-booking-receipt-items';
+      items.forEach((item) => {
+        const li = document.createElement('li');
+        const qty = Math.max(1, Number(item?.quantity || 1));
+        li.textContent = String(item?.title || '預約項目') + (qty > 1 ? ' ×' + qty : '');
+        ul.append(li);
+      });
+      host.append(ul);
+    }
+    host.classList.remove('hidden');
+  }
+
   async function openViewer(bookingId) {
     const currentSession = session();
     if (!currentSession) return;
@@ -52,12 +106,15 @@
     const image = modal.querySelector('#adminBookingReceiptImage');
     const message = modal.querySelector('#adminBookingReceiptMessage');
     const meta = modal.querySelector('#adminBookingReceiptMeta');
+    const summary = modal.querySelector('#adminBookingReceiptSummary');
     const receipt = state.receiptByBooking.get(String(bookingId || ''));
 
     modal.classList.remove('hidden');
     loading.classList.remove('hidden');
     image.classList.add('hidden');
     message.classList.add('hidden');
+    summary?.classList.add('hidden');
+    if (summary) summary.replaceChildren();
     meta.textContent = receipt?.boundAt ? '完成時間：' + new Date(receipt.boundAt).toLocaleString('zh-Hant-TW') : '';
 
     try {
@@ -70,6 +127,7 @@
       );
       image.src = String(data.signedUrl || '');
       image.classList.remove('hidden');
+      renderBookingSummary(summary, data.booking);
       loading.classList.add('hidden');
     } catch (error) {
       loading.classList.add('hidden');
