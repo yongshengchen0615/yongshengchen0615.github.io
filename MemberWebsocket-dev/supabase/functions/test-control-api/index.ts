@@ -5,6 +5,7 @@ import { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } 
 type Json = Record<string, unknown>;
 type CaseResult = {
   passed: boolean;
+  skipped?: boolean;
   code: string;
   message: string;
   expected: unknown;
@@ -217,6 +218,23 @@ async function prepareTestAccountConsents(
     throw new ApiError(400, "INVALID_TEST_MEMBER_SELECTION", "E2E 測試會員清單不正確。");
   }
 
+  // Validate the selected identities before deciding whether consent preparation is
+  // needed. A missing legal document must never turn this admin-only fixture
+  // helper into a way to bless arbitrary member ids.
+  const membersResult = await supabase
+    .from("members")
+    .select("id,is_test_account,status,membership_status")
+    .in("id", memberIds);
+  if (membersResult.error) throw new ApiError(503, "TEST_MEMBER_READ_FAILED", "目前無法確認 E2E 測試會員。");
+  const eligibleIds = new Set(
+    (membersResult.data || [])
+      .filter((row: any) => row.is_test_account === true && row.status === "active" && row.membership_status === "active")
+      .map((row: any) => String(row.id)),
+  );
+  if (eligibleIds.size !== memberIds.length || memberIds.some((id) => !eligibleIds.has(id))) {
+    throw new ApiError(403, "TEST_MEMBER_SELECTION_FORBIDDEN", "E2E 條款前置只能套用到啟用中的測試會員。");
+  }
+
   const termsResult = await supabase
     .from("membership_terms")
     .select("id,version,status,required,effective_at,activated_at")
@@ -231,20 +249,20 @@ async function prepareTestAccountConsents(
     const effectiveMs = new Date(row.effective_at).getTime();
     return Number.isFinite(effectiveMs) && effectiveMs <= nowMs;
   });
-  if (!activeTerms?.id) throw new ApiError(409, "MEMBERSHIP_TERMS_NOT_CONFIGURED", "目前沒有可供 E2E 使用的生效必同意會員條款。");
 
-  const membersResult = await supabase
-    .from("members")
-    .select("id,is_test_account,status,membership_status")
-    .in("id", memberIds);
-  if (membersResult.error) throw new ApiError(503, "TEST_MEMBER_READ_FAILED", "目前無法確認 E2E 測試會員。");
-  const eligibleIds = new Set(
-    (membersResult.data || [])
-      .filter((row: any) => row.is_test_account === true && row.status === "active" && row.membership_status === "active")
-      .map((row: any) => String(row.id)),
-  );
-  if (eligibleIds.size !== memberIds.length || memberIds.some((id) => !eligibleIds.has(id))) {
-    throw new ApiError(403, "TEST_MEMBER_SELECTION_FORBIDDEN", "E2E 條款前置只能套用到啟用中的測試會員。");
+  // No active required terms is a valid environment state. Do not invent legal
+  // copy or create synthetic consent evidence; the consent gate is inactive in
+  // this state, so the paired runner can continue and mark terms coverage skipped.
+  if (!activeTerms?.id) {
+    return {
+      testMemberCount: memberIds.length,
+      insertedCount: 0,
+      currentConsentCount: memberIds.length,
+      termsVersion: null,
+      termsConfigured: false,
+      skipped: true,
+      skipCode: "MEMBERSHIP_TERMS_NOT_CONFIGURED",
+    };
   }
 
   const existingResult = await supabase
@@ -272,7 +290,14 @@ async function prepareTestAccountConsents(
   const currentConsentCount = new Set((verifyResult.data || []).map((row: any) => String(row.member_id))).size;
   if (currentConsentCount !== memberIds.length) throw new ApiError(503, "MEMBERSHIP_CONSENT_FIXTURE_INCOMPLETE", "測試會員條款前置資料未完整建立。");
 
-  const detail = { testMemberCount: memberIds.length, insertedCount: missing.length, currentConsentCount, termsVersion: asText(activeTerms.version, 80) };
+  const detail = {
+    testMemberCount: memberIds.length,
+    insertedCount: missing.length,
+    currentConsentCount,
+    termsVersion: asText(activeTerms.version, 80),
+    termsConfigured: true,
+    skipped: false,
+  };
   await audit(supabase, identity, "test_control.test_consent.prepare", "membership_terms", String(activeTerms.id), detail);
   await emitRealtimeEvent(supabase, "test_mode.membership_consent.prepared");
   return detail;
@@ -442,6 +467,7 @@ function runClient(row: any): Json {
     totalCases: Number(row.total_cases || 0),
     passedCases: Number(row.passed_cases || 0),
     failedCases: Number(row.failed_cases || 0),
+    skippedCases: Number(row.summary?.skippedCases || 0),
     summary: row.summary || {},
     startedAt: row.started_at || null,
     completedAt: row.completed_at || null,
@@ -678,7 +704,11 @@ function pass(message: string, expected: unknown, actual: unknown): CaseResult {
 }
 
 function fail(code: string, message: string, expected: unknown, actual: unknown): CaseResult {
-  return { passed: false, code, message, expected, actual };
+  return { passed: false, skipped: false, code, message, expected, actual };
+}
+
+function skip(code: string, message: string, expected: unknown, actual: unknown): CaseResult {
+  return { passed: false, skipped: true, code, message, expected, actual };
 }
 
 async function evaluateEnvironment(supabase: any): Promise<CaseResult> {
@@ -756,11 +786,11 @@ async function evaluateMembershipTerms(supabase: any): Promise<CaseResult> {
   const expected = { activeRequiredTermsAtLeast: 1 };
   return active
     ? pass("會員模組 E2E 已確認存在目前生效且需同意的會員條款。", expected, actual)
-    : fail(
+    : skip(
         "MEMBERSHIP_TERMS_NOT_CONFIGURED",
-        "目前沒有已啟用且已生效的必須同意會員條款；會員條款案例將視為環境阻擋，而不是功能回歸。",
+        "目前沒有已啟用且已生效的必須同意會員條款；此案例略過，不計為功能回歸。",
         expected,
-        actual,
+        { ...actual, coverageState: "blocked" },
       );
 }
 
@@ -1242,6 +1272,7 @@ async function executeCase(supabase: any, testCase: any): Promise<void> {
     const collectStartedAt = new Date().toISOString();
     const collectMs = Date.now();
     const result = await evaluateCase(supabase, testCase.case_key);
+    const caseStatus = result.skipped ? "skipped" : result.passed ? "passed" : "failed";
     await insertStep(
       supabase,
       testCase.id,
@@ -1261,7 +1292,7 @@ async function executeCase(supabase: any, testCase: any): Promise<void> {
       2,
       "validate",
       "驗證預期條件",
-      result.passed ? "passed" : "failed",
+      caseStatus,
       result.expected,
       result.actual,
       result.message,
@@ -1273,9 +1304,9 @@ async function executeCase(supabase: any, testCase: any): Promise<void> {
     const update = await supabase
       .from("automation_test_cases")
       .update({
-        status: result.passed ? "passed" : "failed",
-        failure_code: result.passed ? null : result.code,
-        failure_message: result.passed ? null : result.message,
+        status: caseStatus,
+        failure_code: caseStatus === "failed" ? result.code : null,
+        failure_message: caseStatus === "failed" ? result.message : null,
         completed_at: completedAt,
         duration_ms: Date.now() - startedMs,
         updated_at: completedAt,
@@ -1316,7 +1347,10 @@ async function executeCase(supabase: any, testCase: any): Promise<void> {
   }
 }
 
-async function refreshCounters(supabase: any, runId: string): Promise<{ total: number; passed: number; failed: number }> {
+async function refreshCounters(
+  supabase: any,
+  runId: string,
+): Promise<{ total: number; passed: number; failed: number; skipped: number }> {
   const result = await supabase
     .from("automation_test_cases")
     .select("status")
@@ -1327,6 +1361,7 @@ async function refreshCounters(supabase: any, runId: string): Promise<{ total: n
     total: rows.length,
     passed: rows.filter((row: any) => row.status === "passed").length,
     failed: rows.filter((row: any) => row.status === "failed").length,
+    skipped: rows.filter((row: any) => row.status === "skipped").length,
   };
   const now = new Date().toISOString();
   const update = await supabase
@@ -1341,7 +1376,6 @@ async function refreshCounters(supabase: any, runId: string): Promise<{ total: n
   if (update.error) throw new ApiError(503, "TEST_COUNTER_WRITE_FAILED", "無法更新測試進度。");
   return counters;
 }
-
 
 function browserRunWindow(body: Json): { startedAt: string; completedAt: string; durationMs: number } {
   const requestedStartedAt = asText(body.startedAt, 50);
@@ -1612,7 +1646,7 @@ async function createRun(supabase: any, identity: { lineUserId: string }, suite:
       total_cases: defs.length,
       passed_cases: 0,
       failed_cases: 0,
-      summary: { runnerVersion: "test-control-20260926-1", selectedModules },
+      summary: { runnerVersion: "test-control-20261001-1", selectedModules, skippedCases: 0 },
     })
     .select("id")
     .single();
@@ -1672,11 +1706,12 @@ async function executeRun(supabase: any, runId: string): Promise<Json> {
       completed_at: completedAt,
       updated_at: completedAt,
       summary: {
-        runnerVersion: "test-control-20260921-2",
-        completedCases: counters.passed + counters.failed,
+        runnerVersion: "test-control-20261001-1",
+        completedCases: counters.passed + counters.failed + counters.skipped,
         totalCases: counters.total,
         passedCases: counters.passed,
         failedCases: counters.failed,
+        skippedCases: counters.skipped,
       },
     })
     .eq("id", runId);
