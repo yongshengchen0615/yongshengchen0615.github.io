@@ -1,5 +1,114 @@
-.booking-receipt-modal{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:18px;background:rgba(18,20,24,.58)}.booking-receipt-modal.hidden{display:none}.booking-receipt-modal-card{width:min(560px,100%);max-height:min(88vh,760px);overflow:auto;padding:20px;border-radius:24px;background:var(--surface,#fff);box-shadow:0 24px 70px rgba(0,0,0,.24)}.booking-receipt-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.booking-receipt-heading h2{margin:.2rem 0}.booking-receipt-help{line-height:1.65}.booking-receipt-file-label{display:grid;gap:8px;margin-top:14px;font-weight:700}.booking-receipt-file-label input{padding:12px;border:1px dashed var(--outline-variant,#cbc8cf);border-radius:14px;background:var(--surface-container-low,#f8f7fb)}.booking-receipt-preview{display:grid;gap:8px;margin-top:14px}.booking-receipt-preview img{width:100%;max-height:48vh;object-fit:contain;border-radius:14px;background:#111}.booking-receipt-preview p{margin:0;font-size:.9rem}.booking-receipt-message,.booking-receipt-status{margin:12px 0 0;padding:10px 12px;border-radius:12px;background:var(--surface-container,#f0eef3);line-height:1.5}.booking-receipt-message.error{background:#fff0f0}.booking-receipt-status.is-bound{background:#edf8f0}.booking-receipt-actions,.booking-receipt-card-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-wrap:wrap}
+.booking-receipt-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: var(--theme-overlay, rgba(18, 20, 24, .58));
+}
 
+.booking-receipt-modal.hidden {
+  display: none;
+}
+
+.booking-receipt-modal-card {
+  width: min(560px, 100%);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--theme-border, rgba(24, 36, 31, .12));
+  border-radius: 24px;
+  color: var(--theme-text, #18241f);
+  background: var(--theme-surface-raised, #fff);
+  box-shadow: var(--theme-modal-shadow, 0 24px 70px rgba(0, 0, 0, .24));
+}
+
+.booking-receipt-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.booking-receipt-heading h2 {
+  margin: .2rem 0;
+  color: var(--theme-text, #18241f);
+}
+
+.booking-receipt-help {
+  color: var(--theme-text-muted, #627168);
+  line-height: 1.65;
+}
+
+.booking-receipt-file-label {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--theme-text, #18241f);
+  font-weight: 700;
+}
+
+.booking-receipt-file-label input {
+  padding: 12px;
+  border: 1px dashed var(--theme-border-strong, rgba(24, 36, 31, .18));
+  border-radius: 14px;
+  color: var(--theme-text, #18241f);
+  background: var(--theme-surface, #fcfdfb);
+}
+
+.booking-receipt-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.booking-receipt-preview img {
+  width: 100%;
+  max-height: 48vh;
+  object-fit: contain;
+  border: 1px solid var(--theme-border, rgba(24, 36, 31, .12));
+  border-radius: 14px;
+  background: #0b0f0d;
+}
+
+.booking-receipt-preview p {
+  margin: 0;
+  color: var(--theme-text-muted, #627168);
+  font-size: .9rem;
+}
+
+.booking-receipt-message,
+.booking-receipt-status {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--theme-border, rgba(24, 36, 31, .12));
+  border-radius: 12px;
+  color: var(--theme-text, #18241f);
+  background: var(--theme-surface-muted, #edf1ed);
+  line-height: 1.5;
+}
+
+.booking-receipt-message.error {
+  border-color: color-mix(in srgb, var(--theme-danger, #a94635) 32%, transparent);
+  color: var(--theme-danger-text, #9c3d31);
+  background: var(--theme-danger-soft, #f8e8e3);
+}
+
+.booking-receipt-status.is-bound {
+  border-color: color-mix(in srgb, var(--theme-positive, #2f7b55) 28%, transparent);
+  color: var(--theme-positive-text, #276947);
+  background: var(--theme-positive-soft, #e7f2eb);
+}
+
+.booking-receipt-actions,
+.booking-receipt-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
 
 .booking-receipt-camera {
   display: grid;
@@ -12,8 +121,9 @@
   max-height: min(52vh, 520px);
   aspect-ratio: 3 / 4;
   object-fit: cover;
+  border: 1px solid var(--theme-border, rgba(24, 36, 31, .12));
   border-radius: 18px;
-  background: #111;
+  background: #0b0f0d;
 }
 
 .booking-receipt-camera-actions {
@@ -24,4 +134,8 @@
 
 .booking-receipt-camera-actions .button {
   flex: 1 1 160px;
+}
+
+html[data-theme="dark"] .booking-receipt-modal-card {
+  scrollbar-color: var(--theme-border-strong) var(--theme-surface-raised);
 }
