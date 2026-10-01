@@ -54,6 +54,7 @@
   window.addEventListener('user-tour:ready',(event)=>{if(event?.detail?.surface==='event')void refresh();});
   window.addEventListener('focus',()=>void refresh());
   window.addEventListener('event-ticket:redeemed',()=>void refresh());
+  window.addEventListener('event:realtime-refresh',()=>void refresh());
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')void refresh();});
   document.addEventListener('click',(event)=>{if(event.target?.closest?.('#ticketModalAction'))window.setTimeout(()=>void refresh(),800);},true);
 })();
