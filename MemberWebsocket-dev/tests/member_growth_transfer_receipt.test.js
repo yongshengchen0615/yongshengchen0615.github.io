@@ -45,24 +45,29 @@ test('member LINE follow-up uses direct LIFF send and a fixed-host browser fallb
   assert.match(ui, /window\.location\.assign/);
 });
 
-test('booking receipt completion requires a private upload and canonical settlement', () => {
+test('booking receipt uses private upload, waits for admin review, then settles canonically', () => {
   const edge = read('supabase/functions/booking-receipt-api/index.ts');
-  const migration = read('supabase/migrations/20260930152500_booking_receipt_completion.sql');
+  const baseMigration = read('supabase/migrations/20260930152500_booking_receipt_completion.sql');
+  const reviewMigration = read('supabase/migrations/20261001125500_booking_receipt_admin_confirmation.sql');
   const retention = read('supabase/migrations/20261001094500_receipt_retention_cleanup.sql');
   const testControl = read('supabase/functions/test-control-api/index.ts');
   const memberUi = read('booking/booking-receipt.js');
   const adminUi = read('admin/booking-receipt-admin.js');
 
-  assert.match(migration, /'booking-receipts'/);
-  assert.match(migration, /values\(\s*'booking-receipts',\s*'booking-receipts',\s*false,/);
-  assert.match(migration, /BOOKING_NOT_OWNED/);
-  assert.match(migration, /BOOKING_NOT_FINISHED_YET/);
-  assert.match(migration, /complete_booking_with_rewards_request/);
-  assert.match(migration, /status='bound'/);
+  assert.match(baseMigration, /'booking-receipts'/);
+  assert.match(baseMigration, /values\(\s*'booking-receipts',\s*'booking-receipts',\s*false,/);
+  assert.match(baseMigration, /BOOKING_NOT_OWNED/);
+  assert.match(baseMigration, /BOOKING_NOT_FINISHED_YET/);
+
+  assert.match(reviewMigration, /status='awaiting_review'/);
+  assert.match(reviewMigration, /admin_confirm_booking_receipt_request/);
+  assert.match(reviewMigration, /complete_booking_with_rewards_request/);
+  assert.match(reviewMigration, /status='bound'/);
 
   assert.match(edge, /createSignedUploadUrl/);
   assert.match(edge, /sniffMime/);
   assert.match(edge, /fileSha256Hex/);
+  assert.match(edge, /finalize_booking_receipt_request/);
   assert.match(edge, /createSignedUrl\(String\(result\.data\.object_path\),120\)/);
   assert.match(edge, /expire_stale_booking_receipts/);
   assert.match(retention, /Pending uploads older than 24 hours/);
@@ -70,13 +75,17 @@ test('booking receipt completion requires a private upload and canonical settlem
   assert.match(testControl, /purgeBookingReceiptCleanupQueue/);
   assert.match(testControl, /BOOKING_RECEIPT_BUCKET = "booking-receipts"/);
 
+  assert.match(memberUi, /navigator\.mediaDevices\?\.getUserMedia/);
   assert.match(memberUi, /capture="environment"/);
   assert.match(memberUi, /uploadToSignedUrl/);
   assert.match(memberUi, /user\.booking\.receipt\.finalize/);
+  assert.match(memberUi, /等待管理端確認/);
   assert.match(adminUi, /admin\.booking\.receipt\.url/);
   assert.match(adminUi, /renderBookingSummary/);
   assert.match(adminUi, /預約項目/);
-  assert.match(adminUi, /由會員拍攝收據完成/);
+  assert.match(adminUi, /確認收據並完成預約/);
+  assert.match(adminUi, /等待會員上傳收據/);
+  assert.doesNotMatch(adminUi, /由會員拍攝收據完成/);
 });
 
 test('today usable count is server-derived and rendered separately from claim inventory', () => {
