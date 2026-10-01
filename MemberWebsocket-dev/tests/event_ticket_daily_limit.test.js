@@ -29,7 +29,8 @@ test('event tickets use a daily server-enforced redemption limit without multi-s
   assert.doesNotMatch(html, /batch-redemption\.(?:js|css)/);
   assert.match(today, /data\.maxTicketsPerDay/);
   assert.match(today, /data\.usedTodayCount/);
-  assert.match(today, /每日上限/);
+  assert.match(today, /今日已使用 \$\{usedTodayCount\} 張 · 每日上限 \$\{maxTickets\} 張/);
+  assert.doesNotMatch(today, /今日可使用 \$\{usableCount\} 張/);
   assert.match(today, /event:realtime-refresh/);
   assert.match(app, /event:realtime-refresh/);
   assert.match(todayCss, /--md-sys-color-surface-container-high/);
