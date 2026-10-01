@@ -26,7 +26,7 @@
     [
       'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus',
       'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'pointsView',
-      'displayName', 'logoutButton', 'membershipProgress', 'cardTabs', 'emptyView',
+      'displayName', 'membershipProgress', 'cardTabs', 'emptyView',
       'activeCardView', 'activeCardTitle', 'activeCardStatus', 'cardGuidancePanel', 'cardUsageMethod',
       'cardUsageInstructions', 'cardBenefitDescription', 'progressCount', 'progressMessage',
       'remainingMessage', 'cardExpiry', 'ticketHistorySummary', 'ticketHistoryList', 'ticketHistoryEmpty'
@@ -36,7 +36,6 @@
 
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
-    els.logoutButton.addEventListener('click', () => window.MemberSystem.logout());
 
     els.cardTabs.addEventListener('click', (event) => {
       const tab = event.target instanceof Element ? event.target.closest('[data-card-id]') : null;
@@ -256,6 +255,7 @@
       : Math.max(0, Number(card.rewardCount || 0));
 
     els.activeCardView.dataset.cardStyle = safeCardStyle(card.styleKey);
+    els.activeCardView.dataset.cardId = String(card.cardId || '');
     els.activeCardView.style.setProperty('--card-accent', safeAccent(card.accent));
     setConfiguredText(els.activeCardTitle, card.title || '集點卡');
     els.activeCardStatus.textContent = card.expired
@@ -277,6 +277,7 @@
       : '使用期限：無期限';
 
     renderCardGuidance(card);
+    window.dispatchEvent(new CustomEvent('pointcard:active-changed', { detail: { cardId: String(card.cardId || ''), title: String(card.title || '集點卡'), stamps } }));
   }
 
   function renderCardGuidance(card) {

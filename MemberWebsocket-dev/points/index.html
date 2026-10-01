@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="./styles.css?v=point-card-presets-20260916-1">
   <link rel="stylesheet" href="./membership-progress.css?v=points-tier-style-20260908">
   <link rel="stylesheet" href="./pointcard-ticket-overview.css?v=point-card-presets-20260916-1">
-  <link rel="stylesheet" href="./point-transfer.css?v=point-transfer-20261001-1">
+  <link rel="stylesheet" href="./point-transfer.css?v=point-transfer-card-modal-dark-20261001-1">
   <link rel="stylesheet" href="../user-tour.css?v=user-tour-20260928-10">
   <link rel="stylesheet" href="../test-mode.css?v=test-mode-20260920-1">
   <link rel="stylesheet" href="../user-test-control.css?v=user-qa-observer-20260921-2">
@@ -23,8 +23,8 @@
   <script src="../member-system.js?v=member-features-20261001-1" defer></script>
   <script src="./membership-progress.js?v=points-tier-style-20260908" defer></script>
   <script src="./pointcard-ticket-overview.js?v=all-ticket-gps-search-20260929-1" defer></script>
-  <script src="./app.js?v=human-e2e-hooks-20260921-1" defer></script>
-  <script src="./point-transfer.js?v=point-transfer-20261001-1" defer></script>
+  <script src="./app.js?v=point-transfer-card-action-20261001-1" defer></script>
+  <script src="./point-transfer.js?v=point-transfer-card-modal-dark-20261001-1" defer></script>
   <script src="../user-tour.js?v=user-tour-20260930-1" defer></script>
   <script src="../dialog-accessibility.js?v=20260913" defer></script>
   <script src="../e2e-scenario-graph.js?v=e2e-graph-20260929-3" defer></script>
@@ -60,7 +60,7 @@
           <p class="kicker">Lumen Club / Rewards</p>
           <h1>集點卡</h1>
         </div>
-        <div class="account-menu"><span id="displayName">LINE 使用者</span><button id="logoutButton" class="text-button" type="button">登出</button></div>
+        <div class="account-menu"><span id="displayName">LINE 使用者</span></div>
       </header>
 
       <section class="workspace-intro">
@@ -86,6 +86,7 @@
           <div class="progress-foot"><span id="progressMessage">點數會持續累積，達標後可於下方票券總覽選擇使用。</span><span id="remainingMessage">尚未設定兌換票券</span></div>
         </div>
         <p id="cardExpiry" class="updated-at card-expiry-only">使用期限：無期限</p>
+        <div class="active-card-actions"><button id="pointTransferButton" class="point-transfer-open-button" type="button" disabled>點數轉贈</button></div>
         <section id="cardGuidancePanel" class="card-guidance-panel hidden" aria-labelledby="cardGuidanceTitle"><div class="card-guidance-heading"><p class="label dark-label">Card details</p><h2 id="cardGuidanceTitle">使用與優惠說明</h2></div><div class="card-guidance-grid"><article data-card-guidance-item><strong>使用方式</strong><p id="cardUsageMethod"></p></article><article data-card-guidance-item><strong>使用說明</strong><p id="cardUsageInstructions"></p></article><article data-card-guidance-item><strong>優惠說明</strong><p id="cardBenefitDescription"></p></article></div></section>
       </section>
 
