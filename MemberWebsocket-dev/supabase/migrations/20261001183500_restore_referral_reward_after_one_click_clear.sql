@@ -36,10 +36,6 @@ begin
   )
   on conflict (fixed_ticket_id) do update
     set deleted_at = null,
-        updated_by = case
-          when public.fixed_ticket_templates.updated_by = 'system' then 'system'
-          else public.fixed_ticket_templates.updated_by
-        end,
         updated_at = clock_timestamp();
 
   if not exists (
