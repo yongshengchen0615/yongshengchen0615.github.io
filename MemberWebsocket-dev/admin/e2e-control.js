@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-01.1';
+  const VERSION = '2026-10-01.2';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -1959,7 +1959,7 @@
           row.durationMs = Math.max(0, Date.now() - Number(runTraceMarker.startedAtMs || Date.now()));
           row.trace = buildAdminFailureTrace(runTraceMarker, row, error);
         }
-        state.results.push({
+        const fatalFailure = {
           key: 'PAIRED_RUNNER_FATAL',
           name: '協同 Runner 啟動',
           domain: 'Paired E2E',
@@ -1969,7 +1969,9 @@
           actual: { ...plainError(error), fixture: safe(error?.fixture || {}) },
           durationMs: 0,
           trace: buildAdminFailureTrace(runTraceMarker, { key: 'PAIRED_RUNNER_FATAL', domain: 'Paired E2E', actual: {} }, error)
-        });
+        };
+        await attachFailureScreenshot(fatalFailure, window);
+        state.results.push(fatalFailure);
       }
       setMessage(stoppedByUser ? '協同 E2E 已停止。' : (error?.message || '協同 E2E 無法啟動。請確認系統維護、目前裝置測試登入與彈出式視窗權限。'), !stoppedByUser);
       render();
