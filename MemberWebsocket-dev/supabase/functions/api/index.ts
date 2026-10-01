@@ -16,7 +16,7 @@ const READ_LIMIT = 90;
 const WRITE_LIMIT = 30;
 const TIER_KEYS = ["general", "silver", "gold", "platinum"] as const;
 const TIER_LABELS: Record<string,string> = { general:"一般會員",silver:"銀級會員",gold:"金級會員",platinum:"白金會員" };
-const STYLE_KEYS = ["forest","midnight","ocean","sunset","lavender","rose","gold","platinum","mint","cherry"] as const;
+const STYLE_KEYS = ["forest","midnight","ocean","sunset","lavender","rose","gold","platinum","mint","cherry"] as const;\nconst POINT_CARD_STYLE_KEYS = ["citrus","coral","lagoon","skyline","violet","berry","cocoa","lime","denim","peach"] as const;\nconst LEGACY_POINT_CARD_STYLE_MAP: Record<string,string> = { forest:"lagoon",midnight:"skyline",ocean:"denim",sunset:"coral",lavender:"violet",rose:"berry",gold:"citrus",platinum:"cocoa",mint:"lime",cherry:"peach" };
 const PRESENCE_ONLINE_WINDOW_MS = 90_000;
 const PRESENCE_ACTIONS = [
   "user.member.presence.online","user.member.presence.offline",
@@ -2275,7 +2275,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       thresholds.add(threshold);
       requireText(reward.ticketTemplateId,"兌換票券",120);
     }
-    const normalized = { ...card,title:asText(card.title,100),status:asText(card.status,20),accent:requireAccent(card.accent),styleKey:safeStyle(card.styleKey),expiryMode,expiresOn:expiryMode === "date" ? asText(card.expiresOn,20) : "",usageMethod:asText(card.usageMethod,120),usageInstructions:asText(card.usageInstructions,500),benefitDescription:asText(card.benefitDescription,500),rewards };
+    const normalized = { ...card,title:asText(card.title,100),status:asText(card.status,20),accent:requireAccent(card.accent),styleKey:safePointCardStyle(card.styleKey),expiryMode,expiresOn:expiryMode === "date" ? asText(card.expiresOn,20) : "",usageMethod:asText(card.usageMethod,120),usageInstructions:asText(card.usageInstructions,500),benefitDescription:asText(card.benefitDescription,500),rewards };
     const rpc = await supabase.rpc("save_point_card",{ p_actor_line_user_id:identity.lineUserId,p_card:normalized,p_expected_updated_at:asText(body.expectedUpdatedAt,100) || null });
     if (rpc.error) throw mapDatabaseError(rpc.error);
     const cards = await adminCards(supabase);
