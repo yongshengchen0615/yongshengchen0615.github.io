@@ -81,10 +81,7 @@
   }
 
   function cleanupPreview() {
-    if (state.previewUrl) {
-      try { URL.revokeObjectURL(state.previewUrl); } catch (_) {}
-      state.previewUrl = '';
-    }
+    state.previewUrl = '';
   }
 
   function resetModalState() {
@@ -151,12 +148,22 @@
       return;
     }
 
-    state.previewUrl = URL.createObjectURL(file);
-    if (preview) preview.src = state.previewUrl;
-    if (meta) meta.textContent = `${file.name || '收據照片'} · ${humanSize(file.size)}`;
-    wrap?.classList.remove('hidden');
-    if (submit) submit.disabled = false;
-    setMessage('請確認照片清楚可辨識，再完成上傳。');
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.previewUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (preview && state.previewUrl) preview.src = state.previewUrl;
+      if (meta) meta.textContent = `${file.name || '收據照片'} · ${humanSize(file.size)}`;
+      wrap?.classList.remove('hidden');
+      if (submit) submit.disabled = false;
+      setMessage('請確認照片清楚可辨識，再完成上傳。');
+    };
+    reader.onerror = () => {
+      state.selectedFile = null;
+      event.target.value = '';
+      setMessage('無法讀取這張圖片，請重新拍攝。', true);
+      if (submit) submit.disabled = true;
+    };
+    reader.readAsDataURL(file);
   }
 
   async function uploadSigned(config, prepared, file) {
