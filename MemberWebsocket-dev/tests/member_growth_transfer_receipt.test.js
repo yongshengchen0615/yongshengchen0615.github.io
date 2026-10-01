@@ -87,7 +87,8 @@ test('booking receipt uses private upload, waits for admin review, then settles 
   assert.match(adminUi, /renderBookingSummary/);
   assert.match(adminUi, /預約項目/);
   assert.match(adminUi, /確認收據並完成預約/);
-  assert.match(adminUi, /等待會員上傳收據/);
+  assert.match(adminUi, /查看收據快照/);
+  assert.doesNotMatch(adminUi, /等待會員上傳收據/);
   assert.doesNotMatch(adminUi, /由會員拍攝收據完成/);
 });
 
