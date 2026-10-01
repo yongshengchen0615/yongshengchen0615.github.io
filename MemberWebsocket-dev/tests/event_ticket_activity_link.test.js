@@ -22,7 +22,9 @@ for (const asset of [
 assert.match(adminHtml, /<link rel="stylesheet" href="\.\/fixed-ticket-admin\.css\?v=[^"<>]+">/);
 assert.ok(!adminHtml.includes('event-ticket-activity-link.js'));
 
-assert.ok(eventHtml.includes('app.js?v=event-result-hidden-20260929-2'));
+assert.match(eventHtml, /<script src="\.\/app\.js\?v=[^"<>]+" defer><\/script>/);
+assert.ok(!eventHtml.includes('batch-redemption.js'));
+assert.ok(!eventHtml.includes('batch-redemption.css'));
 assert.ok(!eventHtml.includes('activity-link.js'));
 assert.ok(eventApp.includes("type.textContent = fixed ? '固定票券'"));
 assert.ok(eventApp.includes("fixed ? '發放方式' : '限量張數'"));
