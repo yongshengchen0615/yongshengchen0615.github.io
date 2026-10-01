@@ -69,7 +69,7 @@
     MEMBER_PROFILE_DATA: { module: 'member', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     MEMBER_TERMS_CONSENT: { module: 'member', phase: 3, required: true, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_REFERRAL_BOUNDARY: { module: 'member', phase: 4, required: true, risk: 'security', dependencies: ['MEMBER_PROFILE_DATA'] },
-    MEMBER_JOIN_LINE_AUTOMATION_CONTRACT: { module: 'member', phase: 5, dependencies: ['MEMBER_PROFILE_DATA'] },
+    MEMBER_JOIN_LINE_AUTOMATION_CONTRACT: { module: 'member', phase: 5, required: true, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_MODAL_OPEN_CLOSE: { module: 'member', phase: 3, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_HUMAN_PROFILE_EDIT: { module: 'member', phase: 4, required: true, risk: 'mutation', dependencies: ['MEMBER_PROFILE_DATA', 'MEMBER_MODAL_OPEN_CLOSE'] },
     MEMBER_INVALID_WRITE: { module: 'member', phase: 4, dependencies: ['MEMBER_PROFILE_DATA'] },
@@ -3066,7 +3066,7 @@
     const actual = {
       optionsArray: Array.isArray(options?.cards),
       modal: Boolean(modal),
-      ownMemberCode: /^M[A-Z0-9_-]+$/i.test(ownCode),
+      ownMemberCode: Boolean(ownCode) && !/尚未|讀取|同步/.test(ownCode),
       copyControl: Boolean(copy),
       lookupControl: Boolean(lookup),
       amountControl: Boolean(amount),
@@ -3115,7 +3115,7 @@
       used,
       remaining,
       limit,
-      domUsable: Number(badge?.dataset?.todayUsableCount || -1),
+      domUsable: /今日可使用\\s+([0-9]+)\\s*張/.test(String(badge?.textContent || '')) ? Number(String(badge.textContent).match(/今日可使用\\s+([0-9]+)\\s*張/)?.[1] || -1) : -1,
       domUsed: Number(badge?.dataset?.usedTodayCount || -1),
       domRemaining: Number(badge?.dataset?.remainingTodayCount || -1),
       domLimit: Number(badge?.dataset?.maxTicketsPerDay || -1)
