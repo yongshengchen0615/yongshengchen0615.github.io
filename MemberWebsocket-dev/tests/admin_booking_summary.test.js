@@ -3,15 +3,19 @@ const assert = require('node:assert/strict');
 
 const read = (path) => fs.readFileSync(path, 'utf8');
 
+const adminHtml = read('MemberWebsocket-dev/admin/index.html');
 const loader = read('MemberWebsocket-dev/admin/booking-panel.js');
 const core = read('MemberWebsocket-dev/admin/booking-panel-core.js');
 const styles = read('MemberWebsocket-dev/admin/booking-summary.css');
 
-assert.match(loader, /booking-summary\.css/);
-assert.match(loader, /booking-admin-group-details\.css/);
+assert.match(adminHtml, /booking-summary\.css\?v=booking-theme-tokens-20260924-1/);
+assert.match(adminHtml, /booking-admin-group-details\.css\?v=booking-theme-tokens-20260924-1/);
+assert.match(adminHtml, /booking-panel-responsive\.css\?v=booking-settings-layout-20260918-1/);
+assert.doesNotMatch(loader, /loadStyle\(/);
+assert.doesNotMatch(loader, /booking-summary\.css/);
+assert.doesNotMatch(loader, /booking-admin-group-details\.css/);
 assert.doesNotMatch(loader, /\['booking-summary\.js'/);
 assert.doesNotMatch(loader, /\['\.\.\/booking-admin-group-details\.js'/);
-assert.match(loader, /booking-settings-layout-20260918-1/);
 
 assert.match(core, /booking-contact-api/);
 assert.match(core, /admin\.booking\.contacts/);
