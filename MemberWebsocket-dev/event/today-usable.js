@@ -8,7 +8,19 @@
     if(!session||!summary)return;
     busy=true;
     try{
-      const data=await window.MemberSystem.request(session.config,'event',session.idToken,'event.today-usable');
+      const response=await fetch(`${String(session.config?.supabaseUrl||'').replace(/\/$/,'')}/functions/v1/event-ticket-extension-api`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json',apikey:String(session.config?.supabasePublishableKey||'')},
+        cache:'no-store',
+        body:JSON.stringify({
+          operation:'member.today-usable',
+          idToken:session.idToken,
+          testSessionToken:String(window.TestModeClient?.getSessionToken?.()||'')
+        })
+      });
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok||!payload||payload.ok!==true)throw new Error(payload?.error?.message||'今日可使用張數暫時無法取得');
+      const data=payload.data||{};
       let badge=document.getElementById('todayUsableTicketCount');
       if(!badge){
         badge=document.createElement('span');
@@ -37,6 +49,7 @@
   }
   window.addEventListener('user-tour:ready',(event)=>{if(event?.detail?.surface==='event')void refresh();});
   window.addEventListener('focus',()=>void refresh());
+  window.addEventListener('event-ticket:batch-redeemed',()=>void refresh());
   window.addEventListener('event-ticket:batch-redeemed',()=>void refresh());
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')void refresh();});
   document.addEventListener('click',(event)=>{if(event.target?.closest?.('#ticketModalAction'))window.setTimeout(()=>void refresh(),800);},true);
