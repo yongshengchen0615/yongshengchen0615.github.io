@@ -6382,6 +6382,7 @@
   async function pairedMemberReferralRewardCase() {
     let inviter = null;
     let invitee = null;
+    let generatedRewardEventTicketId = '';
     try {
       inviter = await createEphemeralTestAccount();
       invitee = await createEphemeralTestAccount();
@@ -6409,6 +6410,7 @@
       const first = await memberGrowthRequest(inviteeMemberLogin, 'member', 'member.referral.bind', { inviteCode, requestId });
       const replay = await memberGrowthRequest(inviteeMemberLogin, 'member', 'member.referral.bind', { inviteCode, requestId });
       const rewardEventTicketId = String(first?.rewardEventTicketId || '');
+      generatedRewardEventTicketId = rewardEventTicketId;
       const inviterEventLogin = await createPairedSession(inviter, 'event');
       const inviteeEventLogin = await createPairedSession(invitee, 'event');
       const [inviterEvent, inviteeEvent] = await Promise.all([
@@ -6445,6 +6447,14 @@
     } finally {
       if (invitee) await removeEphemeralTestAccount(invitee).catch(() => false);
       if (inviter) await removeEphemeralTestAccount(inviter).catch(() => false);
+      if (generatedRewardEventTicketId) {
+        try {
+          const session = await adminSession();
+          await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.event-tickets.delete', {
+            eventTicketId: generatedRewardEventTicketId
+          });
+        } catch (_) {}
+      }
     }
   }
 
