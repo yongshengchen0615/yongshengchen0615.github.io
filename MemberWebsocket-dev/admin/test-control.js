@@ -291,10 +291,17 @@
       renderDetail(finalData);
       renderHistory(Array.isArray(finalData.runs) ? finalData.runs : []);
       const failed = Number(finalData.run?.failedCases || 0);
+      const skipped = Number(
+        finalData.run?.skippedCases
+        || (Array.isArray(finalData.cases) ? finalData.cases.filter((testCase) => testCase?.status === 'skipped').length : 0)
+        || 0
+      );
       setMessage(
         failed > 0
           ? '後端完整 E2E 完成：有 ' + failed + ' 個案例失敗，Browser 協同階段仍會繼續收集結果。'
-          : '後端完整 E2E 完成：所有案例通過。',
+          : skipped > 0
+            ? '後端完整 E2E 完成：' + skipped + ' 個環境條件未配置而略過，其餘案例通過。'
+            : '後端完整 E2E 完成：所有案例通過。',
         failed > 0
       );
       return finalData;
@@ -424,7 +431,8 @@
     const total = Number(run.totalCases || cases.length || 0);
     const passed = Number(run.passedCases || 0);
     const failed = Number(run.failedCases || 0);
-    const complete = Math.min(total, passed + failed);
+    const skipped = Number(run.skippedCases || cases.filter((testCase) => testCase?.status === 'skipped').length || 0);
+    const complete = Math.min(total, passed + failed + skipped);
     const progress = total > 0 ? Math.round((complete / total) * 100) : 0;
     const status = String(run.status || 'queued');
 
@@ -436,7 +444,7 @@
     els.automationTestFailedCount.textContent = String(failed);
     els.automationTestTotalCount.textContent = String(total);
     els.automationTestProgressBar.style.width = progress + '%';
-    els.automationTestProgressText.textContent = progress + '% · ' + complete + ' / ' + total;
+    els.automationTestProgressText.textContent = progress + '% · ' + complete + ' / ' + total + (skipped > 0 ? ' · 略過 ' + skipped : '');
     els.automationTestProgress.setAttribute('aria-valuenow', String(progress));
     els.automationTestProgress.setAttribute('aria-valuetext', progress + '%');
 
