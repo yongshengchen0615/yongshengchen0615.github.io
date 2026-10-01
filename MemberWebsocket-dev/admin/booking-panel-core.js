@@ -1379,6 +1379,23 @@
     }
   }
 
+  function actionButton(label, className, handler) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.textContent = label;
+    button.dataset.bookingAdminAction = String(label || 'action');
+    button.addEventListener('click', handler);
+    return button;
+  }
+
+  function appendNote(card, text, admin) {
+    const note = document.createElement('p');
+    note.className = `booking-admin-note${admin ? ' admin' : ''}`;
+    note.textContent = text;
+    card.appendChild(note);
+  }
+
   function showModal() { els.bookingAdminCrudModal.classList.remove('hidden'); }
   function closeModal() { if (!state.busy) els.bookingAdminCrudModal.classList.add('hidden'); }
   function setSyncStatus(message, error) { els.bookingAdminSyncStatus.textContent = message; els.bookingAdminSyncStatus.classList.toggle('error', Boolean(error)); }
