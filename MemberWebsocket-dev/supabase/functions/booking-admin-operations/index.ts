@@ -56,7 +56,6 @@ function mapDatabaseError(error: unknown): ApiError {
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
     ["BOOKING_COMPLETION_REQUIRES_SETTLEMENT",409,"BOOKING_COMPLETION_CANONICAL_REQUIRED","完成預約必須使用完整結算流程。"],
-    ["RECEIPT_AWAITING_REVIEW_REQUIRED",409,"RECEIPT_AWAITING_REVIEW_REQUIRED","請先等待會員拍攝並送出收據，再由管理端確認完成。"],
     ["ADMIN_REQUIRED", 403, "ADMIN_REQUIRED", "管理端帳號尚未授權。"],
     ["BOOKING_PARTICIPANT_EDIT_REQUIRED", 409, "BOOKING_PARTICIPANT_EDIT_REQUIRED", "請重新整理並使用逐位修改服務項目。"],
     ["INVALID_BOOKING_PARTICIPANTS", 400, "INVALID_BOOKING_PARTICIPANTS", "請完整提供每一位預約人的項目，且不可重複。"],
@@ -312,26 +311,59 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
     throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請重新整理。");
   }
 
-  const result = await supabase.rpc("admin_confirm_booking_receipt_request", {
-    p_booking_id: bookingId,
-    p_expected_booking_updated_at: expectedUpdatedAt,
-    p_actor_line_user_id: identity.lineUserId,
-    p_admin_note: adminNote,
-  });
-  if (result.error) throw mapDatabaseError(result.error);
+  // Receipt snapshots are optional evidence. If one is waiting for review, completing
+  // the booking also binds that receipt. Otherwise, use the canonical settlement RPC
+  // directly so an omitted receipt never blocks service completion.
+  const receiptResult = await supabase
+    .from("booking_receipts")
+    .select("receipt_id")
+    .eq("booking_id", bookingId)
+    .eq("status", "awaiting_review")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (receiptResult.error) {
+    throw new ApiError(500, "DATABASE_ERROR", "目前無法確認預約收據狀態。");
+  }
 
-  const confirmation = result.data && typeof result.data === "object" ? result.data as Json : {};
-  const settlement = confirmation.settlement && typeof confirmation.settlement === "object"
-    ? confirmation.settlement as Json
-    : {};
+  let settlement: Json = {};
+  let receiptId = "";
+  let receiptConfirmed = false;
+
+  if (receiptResult.data) {
+    const result = await supabase.rpc("admin_confirm_booking_receipt_request", {
+      p_booking_id: bookingId,
+      p_expected_booking_updated_at: expectedUpdatedAt,
+      p_actor_line_user_id: identity.lineUserId,
+      p_admin_note: adminNote,
+    });
+    if (result.error) throw mapDatabaseError(result.error);
+
+    const confirmation = result.data && typeof result.data === "object" ? result.data as Json : {};
+    settlement = confirmation.settlement && typeof confirmation.settlement === "object"
+      ? confirmation.settlement as Json
+      : {};
+    receiptId = String(confirmation.receiptId || "");
+    receiptConfirmed = Boolean(receiptId);
+  } else {
+    const result = await supabase.rpc("complete_booking_with_rewards_request", {
+      p_booking_id: bookingId,
+      p_expected_updated_at: expectedUpdatedAt,
+      p_actor: identity.lineUserId,
+      p_admin_note: adminNote,
+    });
+    if (result.error) throw mapDatabaseError(result.error);
+    settlement = result.data && typeof result.data === "object" ? result.data as Json : {};
+  }
+
   await audit(supabase, identity, "BOOKING_COMPLETED", bookingId, {
     previousStatus: "confirmed",
-    receiptConfirmed: true,
-    receiptId: String(confirmation.receiptId || ""),
+    receiptConfirmed,
+    receiptId,
     serviceMinutes: Number(settlement.serviceMinutes || 0),
     rewards: Array.isArray(settlement.rewards) ? settlement.rewards : [],
   });
-  return { booking: await hydrateBooking(supabase, bookingId), settlement, receiptId: confirmation.receiptId || "" };
+  return { booking: await hydrateBooking(supabase, bookingId), settlement, receiptId };
 }
 async function route(supabase: SupabaseClient, identity: Identity, action: string, body: Json): Promise<Json> {
   if (action === "admin.booking.participants.items.update") return await updateParticipantItems(supabase, identity, body);
