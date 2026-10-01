@@ -6212,7 +6212,9 @@
     const child = participant?.window;
     if (!child || child.closed) throw new Error(`測試用戶 ${participant?.index || '?'} 的背景視窗已關閉。`);
     const url = new URL('../' + surface + '/', window.location.href);
-    url.searchParams.set('qaPair', `${Date.now()}-${participant.index}-${surface}`);
+    const navigationKey = `${Date.now()}-${participant.index}-${surface}-${randomInt(1000, 9999)}`;
+    participant.lastNavigationKey = navigationKey;
+    url.searchParams.set('qaPair', navigationKey);
     url.searchParams.set('e2eSeed', String(participant.seed || state.randomSeed || ''));
     url.searchParams.set('e2eComplexity', String(participant.complexityLevel || state.complexityLevel || 1));
     url.searchParams.set('e2eParticipant', String(participant.index || 1));
@@ -6264,11 +6266,15 @@
     participant.surface = label;
     renderParticipants();
     navigateParticipant(participant, surface);
+    const expectedNavigationKey = String(participant.lastNavigationKey || '');
 
     const control = await waitFor(() => {
       if (state.cancelled) return { cancelled: true };
       try {
         if (child.closed) return null;
+        const currentUrl = new URL(child.location.href);
+        if (String(currentUrl.searchParams.get('qaPair') || '') !== expectedNavigationKey) return null;
+        if (child.document?.readyState !== 'complete') return null;
         return child.MemberUserTestControl?.surface === surface ? child.MemberUserTestControl : null;
       } catch { return null; }
     }, backgroundAwareTimeout(25000, 90000), 120);
