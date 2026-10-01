@@ -13,8 +13,14 @@ test('user full E2E covers non-button feature contracts and new experience contr
     'COMMON_THEME_TOGGLE',
     'COMMON_MEMBERSHIP_MILESTONE',
     'COMMON_FEATURE_CONTRACT_COVERAGE',
+    'MEMBER_REFERRAL_BOUNDARY',
+    'MEMBER_JOIN_LINE_AUTOMATION_CONTRACT',
+    'POINTS_TRANSFER_BOUNDARY',
     'POINTS_HISTORY_DISCLOSURE',
+    'EVENT_TODAY_USABLE_LIMIT',
     'EVENT_HISTORY_DISCLOSURE',
+    'BOOKING_BENEFITS_RECOMMENDATIONS',
+    'BOOKING_RECEIPT_REVIEW_CONTRACT',
     'BOOKING_FLOW_STEPPER'
   ]) {
     assert.match(source, new RegExp(key));
@@ -23,6 +29,12 @@ test('user full E2E covers non-button feature contracts and new experience contr
   assert.match(source, /themeToggleCase/);
   assert.match(source, /membershipMilestoneCase/);
   assert.match(source, /featureContractCoverageCase/);
+  assert.match(source, /memberReferralBoundaryCase/);
+  assert.match(source, /memberJoinLineAutomationContractCase/);
+  assert.match(source, /pointsTransferBoundaryCase/);
+  assert.match(source, /eventTodayUsableLimitCase/);
+  assert.match(source, /bookingBenefitsRecommendationsCase/);
+  assert.match(source, /bookingReceiptReviewContractCase/);
   assert.match(source, /pointsHistoryDisclosureCase/);
   assert.match(source, /eventHistoryDisclosureCase/);
   assert.match(source, /bookingFlowStepperCase/);
@@ -39,6 +51,9 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
     'ADMIN_CALENDAR_BATCH_CONTROLS',
     'ADMIN_TEST_ACCOUNT_LIFECYCLE',
     'ADMIN_BOOKING_SHARED_SETTINGS',
+    'ADMIN_BOOKING_RECEIPT_VIEWER',
+    'ADMIN_EVENT_DAILY_LIMIT_SETTINGS',
+    'ADMIN_FORCE_LOGOUT_SECURITY',
     'ADMIN_INTEGRATION_CENTER',
     'ADMIN_INTEGRATION_NAVIGATION',
     'ADMIN_FEATURE_CONTRACT_COVERAGE',
@@ -53,6 +68,14 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
   assert.match(source, /data-record-filter/);
   assert.match(source, /admin\.test-mode\.delete-accounts/);
   assert.match(source, /adminBookingSharedSettingsCase/);
+  assert.match(source, /adminBookingReceiptViewerCase/);
+  assert.match(source, /adminEventDailyLimitSettingsCase/);
+  assert.match(source, /adminForceLogoutSecurityCase/);
+  assert.match(source, /pairedMemberReferralRewardCase/);
+  assert.match(source, /pairedPointTransferAtomicCase/);
+  assert.match(source, /pairedForceLogoutRevocationCase/);
+  assert.match(source, /PAIRED_MEMBER_REFERRAL_REWARD/);
+  assert.match(source, /PAIRED_POINT_TRANSFER_ATOMIC/);
   assert.match(source, /bookingAdminSaveSettingsButton/);
   assert.match(source, /bookingAdminStoreServiceMinutes/);
   assert.match(source, /bookingAdminNotice/);
@@ -72,8 +95,8 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
 test('all member clients and admin load the latest expanded E2E controllers', () => {
   for (const entry of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(entry + '/index.html');
-    assert.match(html, /\.\.\/user-test-control\.js\?v=qa-e2e-20260929-5/);
+    assert.match(html, /\.\.\/user-test-control\.js\?v=qa-e2e-20261001-1/);
   }
   const admin = read('admin/index.html');
-  assert.match(admin, /\.\/e2e-control\.js\?v=qa-e2e-20260930-2/);
+  assert.match(admin, /\.\/e2e-control\.js\?v=qa-e2e-20261001-1/);
 });
