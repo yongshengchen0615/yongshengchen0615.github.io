@@ -90,13 +90,13 @@
 }
 
 .booking-receipt-message.error {
-  border-color: color-mix(in srgb, var(--theme-danger, #a94635) 32%, transparent);
+  border-color: var(--theme-border-strong, rgba(24, 36, 31, .18));
   color: var(--theme-danger-text, #9c3d31);
   background: var(--theme-danger-soft, #f8e8e3);
 }
 
 .booking-receipt-status.is-bound {
-  border-color: color-mix(in srgb, var(--theme-positive, #2f7b55) 28%, transparent);
+  border-color: var(--theme-border-strong, rgba(24, 36, 31, .18));
   color: var(--theme-positive-text, #276947);
   background: var(--theme-positive-soft, #e7f2eb);
 }
