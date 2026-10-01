@@ -260,3 +260,28 @@ test('paired participant navigation waits for the newly loaded controller instea
   assert.match(runner, /child\.document\?\.readyState !== 'complete'/);
   assert.match(runner, /expectedNavigationKey/);
 });
+
+
+test('test-data purge removes transfer and referral dependencies before test members', () => {
+  const migration = read('supabase/migrations/20261001134258_purge_test_growth_transfer_dependencies.sql');
+  const purgeStart = migration.indexOf('CREATE OR REPLACE FUNCTION public.admin_purge_test_data');
+  const deleteAccountsStart = migration.indexOf('CREATE OR REPLACE FUNCTION public.admin_delete_test_accounts');
+  assert.ok(purgeStart >= 0);
+  assert.ok(deleteAccountsStart >= 0);
+
+  const purge = migration.slice(purgeStart);
+  assert.match(purge, /delete from public\.member_referrals[\s\S]*?inviter_member_id = any\(v_test_member_ids\)[\s\S]*?invitee_member_id = any\(v_test_member_ids\)/i);
+  assert.match(purge, /delete from public\.point_transfers[\s\S]*?sender_member_id = any\(v_test_member_ids\)[\s\S]*?receiver_member_id = any\(v_test_member_ids\)/i);
+  assert.match(purge, /deletedPointTransfers/i);
+  assert.match(purge, /deletedMemberReferrals/i);
+  assert.match(purge, /not exists \(select 1 from public\.point_transfers t where t\.point_card_id = pc\.id\)/i);
+  assert.match(purge, /not exists \(select 1 from public\.member_referrals r where r\.reward_event_ticket_id = e\.id\)/i);
+  assert.match(purge, /TEST_DATA_CROSS_BOUNDARY_POINT_TRANSFER/);
+  assert.match(purge, /TEST_DATA_CROSS_BOUNDARY_REFERRAL/);
+
+  const deleteAccounts = migration.slice(deleteAccountsStart);
+  assert.match(deleteAccounts, /delete from public\.member_referrals[\s\S]*?inviter_member_id = any\(p_member_ids\)[\s\S]*?invitee_member_id = any\(p_member_ids\)/i);
+  assert.match(deleteAccounts, /delete from public\.point_transfers[\s\S]*?sender_member_id = any\(p_member_ids\)[\s\S]*?receiver_member_id = any\(p_member_ids\)/i);
+  assert.match(deleteAccounts, /TEST_DATA_CROSS_BOUNDARY_POINT_TRANSFER/);
+  assert.match(deleteAccounts, /TEST_DATA_CROSS_BOUNDARY_REFERRAL/);
+});
