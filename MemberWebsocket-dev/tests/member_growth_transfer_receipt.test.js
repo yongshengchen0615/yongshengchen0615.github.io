@@ -46,7 +46,7 @@ test('member join completion sends the LINE message automatically without a memb
   assert.doesNotMatch(ui, /window\.location\.assign/);
 });
 
-test('booking receipt uses private upload, waits for admin review, then settles canonically', () => {
+test('booking receipt uses private upload, waits for admin review, and keeps the snapshot viewer read-only', () => {
   const edge = read('supabase/functions/booking-receipt-api/index.ts');
   const baseMigration = read('supabase/migrations/20260930152500_booking_receipt_completion.sql');
   const reviewMigration = read('supabase/migrations/20261001125500_booking_receipt_admin_confirmation.sql');
@@ -54,6 +54,7 @@ test('booking receipt uses private upload, waits for admin review, then settles 
   const testControl = read('supabase/functions/test-control-api/index.ts');
   const memberUi = read('booking/booking-receipt.js');
   const adminUi = read('admin/booking-receipt-admin.js');
+  const bookingAdmin = read('admin/booking-panel-core.js');
 
   assert.match(baseMigration, /'booking-receipts'/);
   assert.match(baseMigration, /values\(\s*'booking-receipts',\s*'booking-receipts',\s*false,/);
@@ -86,8 +87,11 @@ test('booking receipt uses private upload, waits for admin review, then settles 
   assert.match(adminUi, /admin\.booking\.receipt\.url/);
   assert.match(adminUi, /renderBookingSummary/);
   assert.match(adminUi, /預約項目/);
-  assert.match(adminUi, /確認收據並完成預約/);
   assert.match(adminUi, /查看收據快照/);
+  assert.doesNotMatch(adminUi, /確認收據並完成預約/);
+  assert.doesNotMatch(adminUi, /admin\.booking\.status\.complete/);
+  assert.match(bookingAdmin, /確認服務完成/);
+  assert.match(bookingAdmin, /admin\.booking\.status\.complete/);
   assert.doesNotMatch(adminUi, /等待會員上傳收據/);
   assert.doesNotMatch(adminUi, /由會員拍攝收據完成/);
 });
