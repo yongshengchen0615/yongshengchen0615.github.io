@@ -1837,8 +1837,7 @@
 
         if (!state.cancelled && selectedModules.includes('member')) {
           await executeCases([
-            caseDef('PAIRED_MEMBER_REFERRAL_REWARD', '好友邀請：兩個臨時測試會員綁定與雙方獎勵', 'Paired E2E / Member Growth', pairedMemberReferralRewardCase),
-            caseDef('PAIRED_SECURITY_FORCE_LOGOUT', '強制下線：臨時測試 Session 撤銷後不可重播', 'Paired E2E / Security', pairedForceLogoutRevocationCase)
+            caseDef('PAIRED_MEMBER_REFERRAL_REWARD', '好友邀請：兩個臨時測試會員綁定與雙方獎勵', 'Paired E2E / Member Growth', pairedMemberReferralRewardCase)
           ], '協同會員成長與安全');
         }
 
@@ -5794,6 +5793,10 @@
         }, actual);
   }
 
+
+  async function adminForceLogoutSecurityCase() {
+    return pairedForceLogoutRevocationCase();
+  }
 
   async function adminEventDailyLimitSettingsCase() {
     document.getElementById('eventsTab')?.click();
