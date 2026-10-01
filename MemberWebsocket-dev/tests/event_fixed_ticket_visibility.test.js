@@ -11,7 +11,7 @@ test('fixed tickets are visible only after server-side issuance to the member', 
   const event = read('event/app.js');
   const html = read('event/index.html');
 
-  assert.match(api, /if \(row\.fixed_ticket_template_id && !claimRow\) return \[\];/);
+  assert.match(api, /if \(\(row\.fixed_ticket_template_id \|\| row\.ticket_type === "referral"\) && !claimRow\) return \[\];/);
   assert.match(api, /const offers = \(eventRows \|\| \[\]\)\.flatMap/);
   assert.match(event, /return offers\.filter\(\(offer\) => !isFixedOffer\(offer\) \|\| Boolean\(offer\?\.claim\)\);/);
   assert.doesNotMatch(event, /isBirthdayFixedOffer|birthdayMonth\(profile\)/);
