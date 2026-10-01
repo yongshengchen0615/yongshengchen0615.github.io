@@ -33,7 +33,7 @@
       const usedTodayCount=Math.max(0,Number(data.usedTodayCount||0));
       const remainingTodayCount=Math.max(0,Number(data.remainingTodayCount ?? usableCount));
       const maxTickets=Math.max(1,Number(data.maxTicketsPerDay||data.maxTicketsPerRedemption||1));
-      badge.textContent=`今日可使用 ${usableCount} 張 · 每日上限 ${maxTickets} 張`;
+      badge.textContent=`今日已使用 ${usedTodayCount} 張 · 每日上限 ${maxTickets} 張`;
       badge.dataset.businessDate=String(data.businessDate||'');
       badge.dataset.availableTodayCount=String(availableCount);
       badge.dataset.usedTodayCount=String(usedTodayCount);
@@ -47,7 +47,7 @@
         badge=document.createElement('span');badge.id='todayUsableTicketCount';badge.className='today-usable-ticket-count';
         summary.parentElement?.append(badge);
       }
-      badge.textContent='今日可使用張數暫時無法取得';
+      badge.textContent='今日使用張數暫時無法取得';
       badge.classList.add('is-error');
     }finally{busy=false;}
   }
