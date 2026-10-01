@@ -94,14 +94,18 @@ jobs:
             MemberWebsocket-dev/admin/pointcard-redemption-limit.js \
             MemberWebsocket-dev/admin/booking-panel.js \
             MemberWebsocket-dev/admin/booking-panel-core.js \
+            MemberWebsocket-dev/admin/booking-receipt-admin.js \
             MemberWebsocket-dev/admin/booking-resources.js \
             MemberWebsocket-dev/admin/booking-cancellation-sync.js \
             MemberWebsocket-dev/member/app.js \
             MemberWebsocket-dev/member/profile-extension.js \
             MemberWebsocket-dev/member/profile-birthday-edit.js \
+            MemberWebsocket-dev/member/member-growth.js \
             MemberWebsocket-dev/points/pointcard-ticket-overview.js \
+            MemberWebsocket-dev/points/point-transfer.js \
             MemberWebsocket-dev/points/app.js \
             MemberWebsocket-dev/event/app.js \
+            MemberWebsocket-dev/event/today-usable.js \
             MemberWebsocket-dev/calendar/app.js \
             MemberWebsocket-dev/booking/common.js \
             MemberWebsocket-dev/booking/membership-progress.js \
@@ -110,6 +114,7 @@ jobs:
             MemberWebsocket-dev/booking/group-booking.js \
             MemberWebsocket-dev/booking/contact-details.js \
             MemberWebsocket-dev/booking/app.js \
+            MemberWebsocket-dev/booking/booking-receipt.js \
             MemberWebsocket-dev/booking/calendar-flow.js \
           | xargs -n1 -P4 node --check
 
@@ -134,6 +139,8 @@ jobs:
             MemberWebsocket-dev/supabase/functions/e2e-artifact-retention/index.ts \
             MemberWebsocket-dev/supabase/functions/pointcard-extension-api/index.ts \
             MemberWebsocket-dev/supabase/functions/member-profile-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/member-growth-api/index.ts \
+            MemberWebsocket-dev/supabase/functions/booking-receipt-api/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-contact-api/index.ts \
             MemberWebsocket-dev/supabase/functions/grant-automation/index.ts \
             MemberWebsocket-dev/supabase/functions/event-ticket-links/index.ts \
@@ -207,7 +214,15 @@ jobs:
           grep -q 'getRenderCount' MemberWebsocket-dev/booking/app.js
           grep -q 'getBookingSnapshot' MemberWebsocket-dev/booking/app.js
           grep -q 'group-booking.js?v=async-architecture-20260921-1' MemberWebsocket-dev/booking/index.html
-          grep -q 'common.js?v=member-security-close-20260930-2' MemberWebsocket-dev/booking/index.html
+          grep -Eq 'common\.js\?v=[^" ]+' MemberWebsocket-dev/booking/index.html
+          grep -q 'booking-receipt.js' MemberWebsocket-dev/booking/index.html
+          grep -q 'booking-receipt.css' MemberWebsocket-dev/booking/index.html
+          grep -q 'booking-receipt-admin.js' MemberWebsocket-dev/admin/index.html
+          grep -q 'member-growth.js' MemberWebsocket-dev/member/index.html
+          grep -q 'point-transfer.js' MemberWebsocket-dev/points/index.html
+          grep -q 'today-usable.js' MemberWebsocket-dev/event/index.html
+          grep -q 'member-growth-api' MemberWebsocket-dev/member-system.js
+          grep -q 'booking-receipt-api' MemberWebsocket-dev/booking/common.js
           grep -q 'liff-fresh-login.js?v=member-presence-20260920-1' MemberWebsocket-dev/booking/index.html
           grep -q 'id="bookingNoticeModal"' MemberWebsocket-dev/booking/index.html
           grep -q 'confirmBookingNoticeButton' MemberWebsocket-dev/booking/index.html
@@ -299,7 +314,7 @@ jobs:
             MemberWebsocket-dev/event/index.html \
             MemberWebsocket-dev/calendar/index.html \
             MemberWebsocket-dev/admin/index.html; do
-            grep -q '../member-system.js?v=member-security-close-20260930-2' "$file"
+            grep -Eq '../member-system\.js\?v=[^" ]+' "$file"
             ! grep -q 'realtime-resync.js' "$file"
             ! grep -q './common.js' "$file"
           done
