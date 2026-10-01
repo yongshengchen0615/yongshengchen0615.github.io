@@ -15,5 +15,6 @@ test('fixed tickets are visible only after server-side issuance to the member', 
   assert.match(api, /const offers = \(eventRows \|\| \[\]\)\.flatMap/);
   assert.match(event, /return offers\.filter\(\(offer\) => !isFixedOffer\(offer\) \|\| Boolean\(offer\?\.claim\)\);/);
   assert.doesNotMatch(event, /isBirthdayFixedOffer|birthdayMonth\(profile\)/);
-  assert.ok(html.includes('app.js?v=event-result-hidden-20260929-2'));
+  assert.match(html, /<script src="\.\/app\.js\?v=[^"<>]+" defer><\/script>/);
+  assert.match(api, /if \(claimRow && String\(claimRow\.status \|\| ""\) === "used"\) return \[\];/);
 });
