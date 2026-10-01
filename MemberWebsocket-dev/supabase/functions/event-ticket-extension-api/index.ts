@@ -182,14 +182,27 @@ async function saveAdminSetting(origin: string | null, body: Json) {
     throw new ApiError(400, "INVALID_TICKET_USE_LIMIT", "每日最多使用活動票券數必須是 1–50 的整數。");
   }
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 100);
-  let query = supabase.from("event_ticket_settings").update({
+  const nextRow = {
+    id: 1,
     max_tickets_per_day: maxTickets,
     max_tickets_per_redemption: maxTickets,
     updated_by: identity.lineUserId,
     updated_at: new Date().toISOString(),
-  }).eq("id", 1);
-  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
-  const saved = await query.select("max_tickets_per_day,max_tickets_per_redemption,updated_at").maybeSingle();
+  };
+  let saved;
+  if (expectedUpdatedAt) {
+    saved = await supabase.from("event_ticket_settings")
+      .update(nextRow)
+      .eq("id", 1)
+      .eq("updated_at", expectedUpdatedAt)
+      .select("max_tickets_per_day,max_tickets_per_redemption,updated_at")
+      .maybeSingle();
+  } else {
+    saved = await supabase.from("event_ticket_settings")
+      .upsert(nextRow, { onConflict: "id" })
+      .select("max_tickets_per_day,max_tickets_per_redemption,updated_at")
+      .single();
+  }
   if (saved.error) throw new ApiError(500, "DATABASE_ERROR", "無法儲存活動票券設定。");
   if (!saved.data) throw new ApiError(409, "CONFLICT", "活動票券設定已被其他管理者更新，請重新整理後再試。");
   await supabase.from("audit_logs").insert({
