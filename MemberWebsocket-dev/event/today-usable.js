@@ -30,12 +30,16 @@
       }
       const usableCount=Math.max(0,Number(data.todayUsableCount||0));
       const availableCount=Math.max(0,Number(data.availableTodayCount ?? usableCount));
-      const maxTickets=Math.max(1,Number(data.maxTicketsPerRedemption||1));
-      badge.textContent=`今日可使用 ${usableCount} 張 · 單次上限 ${maxTickets} 張`;
+      const usedTodayCount=Math.max(0,Number(data.usedTodayCount||0));
+      const remainingTodayCount=Math.max(0,Number(data.remainingTodayCount ?? usableCount));
+      const maxTickets=Math.max(1,Number(data.maxTicketsPerDay||data.maxTicketsPerRedemption||1));
+      badge.textContent=`今日可使用 ${usableCount} 張 · 每日上限 ${maxTickets} 張`;
       badge.dataset.businessDate=String(data.businessDate||'');
       badge.dataset.availableTodayCount=String(availableCount);
-      badge.dataset.maxTicketsPerRedemption=String(maxTickets);
-      badge.title=availableCount>usableCount?`目前共有 ${availableCount} 張可用；單次最多使用 ${maxTickets} 張。`:`目前共有 ${availableCount} 張可用活動票券。`;
+      badge.dataset.usedTodayCount=String(usedTodayCount);
+      badge.dataset.remainingTodayCount=String(remainingTodayCount);
+      badge.dataset.maxTicketsPerDay=String(maxTickets);
+      badge.title=`今日已使用 ${usedTodayCount} 張，每日上限 ${maxTickets} 張，剩餘額度 ${remainingTodayCount} 張；目前持有 ${availableCount} 張可用活動票券。`;
       badge.classList.remove('is-error');
     }catch(error){
       let badge=document.getElementById('todayUsableTicketCount');
@@ -49,7 +53,7 @@
   }
   window.addEventListener('user-tour:ready',(event)=>{if(event?.detail?.surface==='event')void refresh();});
   window.addEventListener('focus',()=>void refresh());
-  window.addEventListener('event-ticket:batch-redeemed',()=>void refresh());
+  window.addEventListener('event-ticket:redeemed',()=>void refresh());
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')void refresh();});
   document.addEventListener('click',(event)=>{if(event.target?.closest?.('#ticketModalAction'))window.setTimeout(()=>void refresh(),800);},true);
 })();
