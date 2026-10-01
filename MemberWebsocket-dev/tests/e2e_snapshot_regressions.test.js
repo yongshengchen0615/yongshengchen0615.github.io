@@ -166,3 +166,26 @@ test('all affected entrypoints bust caches for the fixed controllers', () => {
   assert.match(read('admin/index.html'), /test-control\.js\?v=test-control-[A-Za-z0-9._-]+/);
   assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261001-1/);
 });
+
+
+test('missing membership terms are an environment skip instead of a duplicated E2E regression', () => {
+  const api = read('supabase/functions/test-control-api/index.ts');
+  const admin = read('admin/test-control.js');
+
+  assert.match(api, /function skip\(code: string/);
+  assert.match(api, /: skip\([\s\S]*?"MEMBERSHIP_TERMS_NOT_CONFIGURED"/);
+  assert.match(api, /const caseStatus = result\.skipped \? "skipped" : result\.passed \? "passed" : "failed"/);
+  assert.match(api, /skipped: rows\.filter\(\(row: any\) => row\.status === "skipped"\)\.length/);
+  assert.match(api, /completedCases: counters\.passed \+ counters\.failed \+ counters\.skipped/);
+  assert.match(api, /skippedCases: counters\.skipped/);
+
+  assert.match(api, /termsConfigured: false/);
+  assert.match(api, /currentConsentCount: memberIds\.length/);
+  assert.doesNotMatch(
+    api,
+    /if \(!activeTerms\?\.id\) throw new ApiError\(409, "MEMBERSHIP_TERMS_NOT_CONFIGURED"/
+  );
+
+  assert.match(admin, /passed \+ failed \+ skipped/);
+  assert.match(admin, /個環境條件未配置而略過/);
+});
