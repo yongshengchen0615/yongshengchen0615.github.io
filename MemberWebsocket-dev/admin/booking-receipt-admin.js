@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const state = { receiptByBooking: new Map(), loading: false, currentBooking: null, confirming: false, queueObserver: null, queueObserverTarget: null };
+  const state = { receiptByBooking: new Map(), loading: false, queueObserver: null, queueObserverTarget: null };
 
   function session() {
     return window.MemberSystem?.getSession?.('admin') || null;
@@ -27,13 +27,9 @@
         <div id="adminBookingReceiptLoading" class="admin-booking-receipt-loading">正在建立安全檢視連結…</div>
         <img id="adminBookingReceiptImage" class="admin-booking-receipt-image hidden" alt="會員拍攝的預約收據快照">
         <p id="adminBookingReceiptMessage" class="form-message hidden" role="alert"></p>
-        <div class="booking-admin-modal-actions">
-          <button id="adminBookingReceiptConfirm" class="button button-dark hidden" type="button">確認收據並完成預約</button>
-        </div>
       </div>`;
     document.body.append(modal);
     modal.querySelector('#adminBookingReceiptClose').addEventListener('click', closeViewer);
-    modal.querySelector('#adminBookingReceiptConfirm').addEventListener('click', confirmReceipt);
     modal.addEventListener('click', (event) => { if (event.target === modal) closeViewer(); });
     return modal;
   }
@@ -46,8 +42,6 @@
       image.removeAttribute('src');
       image.classList.add('hidden');
     }
-    modal.querySelector('#adminBookingReceiptConfirm')?.classList.add('hidden');
-    state.currentBooking = null;
     modal.classList.add('hidden');
   }
 
@@ -113,11 +107,8 @@
     const message = modal.querySelector('#adminBookingReceiptMessage');
     const meta = modal.querySelector('#adminBookingReceiptMeta');
     const summary = modal.querySelector('#adminBookingReceiptSummary');
-    const confirm = modal.querySelector('#adminBookingReceiptConfirm');
     const receipt = state.receiptByBooking.get(String(bookingId || ''));
 
-    state.currentBooking = null;
-    confirm?.classList.add('hidden');
     modal.classList.remove('hidden');
     loading.classList.remove('hidden');
     image.classList.add('hidden');
@@ -140,65 +131,12 @@
       );
       image.src = String(data.signedUrl || '');
       image.classList.remove('hidden');
-      state.currentBooking = data.booking && typeof data.booking === 'object' ? data.booking : null;
       renderBookingSummary(summary, data.booking);
-      if (receipt?.status === 'awaiting_review' && state.currentBooking?.status === 'confirmed') confirm?.classList.remove('hidden');
       loading.classList.add('hidden');
     } catch (error) {
       loading.classList.add('hidden');
       message.textContent = error?.message || '目前無法載入收據快照。';
       message.classList.remove('hidden');
-    }
-  }
-
-  async function confirmReceipt() {
-    if (state.confirming || !state.currentBooking) return;
-    const currentSession = session();
-    if (!currentSession) return;
-    const bookingId = String(state.currentBooking.bookingId || '');
-    const expectedUpdatedAt = String(state.currentBooking.updatedAt || '');
-    if (!bookingId || !expectedUpdatedAt) return;
-
-    const modal = ensureViewer();
-    const button = modal.querySelector('#adminBookingReceiptConfirm');
-    const message = modal.querySelector('#adminBookingReceiptMessage');
-    const card = Array.from(document.querySelectorAll('#bookingAdminQueue [data-booking-id]'))
-      .find((item) => String(item.dataset.bookingId || '') === bookingId);
-    const adminNote = String(card?.querySelector('textarea')?.value || '').slice(0, 500);
-
-    state.confirming = true;
-    if (button) { button.disabled = true; button.textContent = '確認中…'; }
-    message?.classList.add('hidden');
-    try {
-      await window.MemberSystem.request(
-        currentSession.config,
-        'admin',
-        currentSession.idToken,
-        'admin.booking.status.complete',
-        { bookingId, expectedUpdatedAt, adminNote }
-      );
-      const receipt = state.receiptByBooking.get(bookingId);
-      if (receipt) {
-        receipt.status = 'bound';
-        receipt.boundAt = new Date().toISOString();
-      }
-      if (message) {
-        message.textContent = '收據已確認，預約已完成並完成結算。';
-        message.classList.remove('hidden');
-      }
-      button?.classList.add('hidden');
-      window.setTimeout(() => {
-        void refresh();
-        window.dispatchEvent(new CustomEvent('member-admin:booking-focus', { detail: { bookingId } }));
-      }, 250);
-    } catch (error) {
-      if (message) {
-        message.textContent = error?.message || '目前無法確認收據並完成預約。';
-        message.classList.remove('hidden');
-      }
-    } finally {
-      state.confirming = false;
-      if (button) { button.disabled = false; button.textContent = '確認收據並完成預約'; }
     }
   }
 
