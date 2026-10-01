@@ -12,8 +12,7 @@
   let refreshQueuedIncludeBookings = false;
   let refreshQueuedShowSuccess = false;
   let mounted = false;
-  let realtimeClient = null;
-  let realtimeChannel = null;
+  let realtimeBound = false;
   let realtimeConnected = false;
   let realtimeTimer = null;
   let pollTimer = null;
@@ -145,27 +144,29 @@
       .catch(() => {});
   }
 
-  async function setupRealtime() {
-    try {
-      const ctx = await context();
-      if (ctx.config.realtimeEnabled === false || !window.supabase?.createClient || realtimeChannel) return;
-      realtimeClient = window.supabase.createClient(ctx.config.supabaseUrl, ctx.config.supabasePublishableKey, {
-        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
-      });
-      realtimeChannel = realtimeClient
-        .channel('booking-cancellation-admin-sync')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
-          const row = payload?.new || {};
-          const scope = String(row.scope || '');
-          const type = String(row.event_type || '');
-          if ((scope === 'admin' || scope === 'all') && (type.startsWith('booking.cancellation.') || type.startsWith('booking.'))) scheduleRefresh();
-        })
-        .subscribe((status) => {
-          realtimeConnected = status === 'SUBSCRIBED';
-          setupPolling();
-          if (realtimeConnected) scheduleRefresh();
-        });
-    } catch (_) {}
+  function onSharedRealtimeInvalidation(event) {
+    const detail = event?.detail || {};
+    if (String(detail.clientType || '') !== 'admin') return;
+    const scope = String(detail.scope || '');
+    const type = String(detail.eventType || '');
+    if ((scope === 'admin' || scope === 'all') && type.startsWith('booking.')) scheduleRefresh();
+  }
+
+  function onSharedRealtimeStatus(event) {
+    const detail = event?.detail || {};
+    if (String(detail.clientType || '') !== 'admin') return;
+    realtimeConnected = String(detail.status || '') === 'SUBSCRIBED';
+    setupPolling();
+    if (realtimeConnected) scheduleRefresh();
+  }
+
+  function setupRealtime() {
+    if (realtimeBound) return;
+    window.addEventListener('member-system:realtime-invalidation', onSharedRealtimeInvalidation);
+    window.addEventListener('member-system:realtime-status', onSharedRealtimeStatus);
+    realtimeBound = true;
+    realtimeConnected = window.MemberSystem?.getRealtimeStatus?.('admin') === 'SUBSCRIBED';
+    setupPolling();
   }
 
   function isBackgroundE2ERunner() {
@@ -205,12 +206,15 @@
     document.removeEventListener('visibilitychange', onVisibilityChange);
     window.removeEventListener('focus', onFocus);
     window.removeEventListener('online', onOnline);
+    if (realtimeBound) {
+      window.removeEventListener('member-system:realtime-invalidation', onSharedRealtimeInvalidation);
+      window.removeEventListener('member-system:realtime-status', onSharedRealtimeStatus);
+      realtimeBound = false;
+    }
     if (realtimeTimer !== null) window.clearTimeout(realtimeTimer);
     if (pollTimer !== null) window.clearTimeout(pollTimer);
     realtimeTimer = null; pollTimer = null;
     realtimeConnected = false;
-    if (realtimeClient && realtimeChannel) { try { Promise.resolve(realtimeClient.removeChannel(realtimeChannel)).catch(() => {}); } catch (_) {} }
-    realtimeChannel = null; realtimeClient = null;
   }
 
   function activateMode(mode) {
