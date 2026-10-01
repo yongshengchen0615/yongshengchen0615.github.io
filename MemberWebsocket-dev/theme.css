@@ -3910,3 +3910,128 @@ html[data-theme] #memberView :where(
 html[data-theme] #memberView .profile-edit-modal-actions {
   border-top-color: var(--theme-border);
 }
+
+
+/* Client mobile topbar responsive unification 2026-10-01 */
+@media (max-width: 700px) {
+  html[data-theme] :where(
+    #memberView > .topbar,
+    #pointsView > .topbar,
+    #eventView > .topbar,
+    #calendarView > .topbar,
+    #bookingView > .topbar
+  ) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 12px;
+    width: 100%;
+    min-height: 0;
+    margin-bottom: 18px;
+    padding: 16px;
+  }
+
+  html[data-theme] :where(
+    #memberView > .topbar > :first-child,
+    #pointsView > .topbar > :first-child,
+    #eventView > .topbar > :first-child,
+    #calendarView > .topbar > :first-child,
+    #bookingView > .topbar > :first-child
+  ) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  html[data-theme] :where(
+    #memberView > .topbar h1,
+    #pointsView > .topbar h1,
+    #eventView > .topbar h1,
+    #calendarView > .topbar h1,
+    #bookingView > .topbar h1
+  ) {
+    max-width: 100%;
+    font-size: clamp(30px, 10vw, 40px);
+    line-height: 1;
+    overflow-wrap: anywhere;
+  }
+
+  html[data-theme] :where(
+    #memberView > .topbar .kicker,
+    #pointsView > .topbar .kicker,
+    #eventView > .topbar .kicker,
+    #calendarView > .topbar .kicker,
+    #bookingView > .topbar .kicker,
+    #calendarView > .topbar p:not(.kicker)
+  ) {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  html[data-theme] :where(
+    #memberView > .topbar .account-menu,
+    #pointsView > .topbar .account-menu,
+    #eventView > .topbar .account-menu,
+    #calendarView > .topbar .account-menu,
+    #bookingView > .topbar .account-menu
+  ) {
+    width: 100%;
+    max-width: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 4px 5px;
+    border-radius: 12px;
+    text-align: left;
+  }
+
+  html[data-theme] :where(
+    #memberView > .topbar .account-menu > span:first-child,
+    #pointsView > .topbar .account-menu > span:first-child,
+    #eventView > .topbar .account-menu > span:first-child,
+    #calendarView > .topbar .account-menu > span:first-child,
+    #bookingView > .topbar .account-menu > span:first-child
+  ) {
+    flex: 1 1 140px;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  html[data-theme] :where(
+    #memberView > .topbar .text-button,
+    #pointsView > .topbar .text-button,
+    #eventView > .topbar .text-button,
+    #calendarView > .topbar .text-button,
+    #bookingView > .topbar .text-button
+  ) {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 420px) {
+  html[data-theme] :where(
+    #memberView > .topbar,
+    #pointsView > .topbar,
+    #eventView > .topbar,
+    #calendarView > .topbar,
+    #bookingView > .topbar
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 14px;
+  }
+
+  html[data-theme] :where(
+    #memberView > .topbar .account-menu,
+    #pointsView > .topbar .account-menu,
+    #eventView > .topbar .account-menu,
+    #calendarView > .topbar .account-menu,
+    #bookingView > .topbar .account-menu
+  ) {
+    max-width: none;
+  }
+}
