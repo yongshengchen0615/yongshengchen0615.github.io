@@ -39,7 +39,7 @@ function buildSlots(holiday = false, configuredGroup = group) {
     clockTime: hours.clockTime,
     occupiedRange: hours.occupiedRange,
     localRange: hours.localRange,
-    slotHasPassed: hours.slotHasPassed,
+    slotHasPassed: (date, start) => hours.slotHasPassed(date, start, Date.parse('2026-09-24T00:00:00+08:00')),
     timeOnBusinessDate: hours.timeOnBusinessDate,
   };
   return vm.runInNewContext(slotSource + '\nslots', context);
