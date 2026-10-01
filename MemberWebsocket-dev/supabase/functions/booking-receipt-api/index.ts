@@ -360,6 +360,8 @@ Deno.serve(async(request:Request)=>{
     if(!userActions.has(action)&&!adminActions.has(action)) throw new ApiError(404,"ACTION_NOT_FOUND","不支援的收據操作。");
 
     const supabase=dbClient();
+    const expiredReceipts=await supabase.rpc("expire_stale_booking_receipts");
+    if(expiredReceipts.error) console.warn("booking receipt stale cleanup failed", expiredReceipts.error.message);
     await drainCleanupQueue(supabase);
 
     let data:Json;
