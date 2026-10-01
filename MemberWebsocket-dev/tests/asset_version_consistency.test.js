@@ -107,7 +107,7 @@ test('member-facing pages load the current human E2E controller and refresh hook
     assert.match(html, /\.\.\/user-test-control\.js\?v=qa-e2e-20260929-\d+/, relative);
   }
   const appVersions = {
-    'points/index.html': './app.js?v=human-e2e-hooks-20260921-1',
+    'points/index.html': './app.js?v=point-transfer-card-action-20261001-1',
     'event/index.html': './app.js?v=event-result-hidden-20260929-2',
     'calendar/index.html': './app.js?v=human-e2e-hooks-20260921-1',
     'booking/index.html': './app.js?v=booking-overnight-20260928-1',

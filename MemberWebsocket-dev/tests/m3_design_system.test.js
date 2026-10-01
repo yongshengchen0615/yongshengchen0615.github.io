@@ -39,12 +39,12 @@ test('all primary surfaces opt into the Material 3 shared layer with cache busti
   for (const entry of ['admin', 'member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(path.join(entry, 'index.html'));
     assert.match(html, /data-ui-system="material-3"/, entry);
-    assert.match(html, /\.\.\/theme\.css\?v=m3-ui-20260930-2/, entry);
+    assert.match(html, /\.\.\/theme\.css\?v=m3-ui-20261001-booking-topbar-parity-3/, entry);
     assert.match(html, /\.\.\/theme\.js\?v=m3-ui-20260929-1/, entry);
   }
 
   const rootHtml = read('index.html');
   assert.match(rootHtml, /data-ui-system="material-3"/);
-  assert.match(rootHtml, /theme\.css\?v=m3-ui-20260930-2/);
+  assert.match(rootHtml, /theme\.css\?v=m3-ui-20261001-booking-topbar-parity-3/);
   assert.match(rootHtml, /theme\.js\?v=m3-ui-20260929-1/);
 });
