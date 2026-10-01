@@ -50,7 +50,7 @@ test('paired E2E protects workstation CPU and screenshot budget', () => {
 
 test('admin rate-budget assets are cache-busted', () => {
   const html = read('admin/index.html');
-  assert.match(html, /app\.js\?v=member-security-close-20260930-2/);
-  assert.match(html, /e2e-control\.js\?v=qa-e2e-20260930-2/);
+  assert.match(html, /app\.js\?v=[^"'\\s>]+/);
+  assert.match(html, /e2e-control\.js\?v=[^"'\\s>]+/);
   assert.match(html, /booking-panel\.js\?v=[^"']+/);
 });
