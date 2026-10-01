@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-10-01.1';
+  const VERSION = '2026-10-01.2';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -3104,21 +3104,40 @@
       });
     }
     const data = payload.data || {};
-    const badge = await waitFor(() => document.getElementById('todayUsableTicketCount'), 3000);
     const usable = Math.max(0, Number(data.todayUsableCount || 0));
     const used = Math.max(0, Number(data.usedTodayCount || 0));
     const remaining = Math.max(0, Number(data.remainingTodayCount ?? usable));
     const limit = Number(data.maxTicketsPerDay || data.maxTicketsPerRedemption || 0);
+
+    // The badge may already exist from a previous focus/realtime refresh. Wait for
+    // this API snapshot to be rendered instead of treating element existence as
+    // proof that its text/datasets are current.
+    const badge = await waitFor(() => {
+      const node = document.getElementById('todayUsableTicketCount');
+      if (!node) return null;
+      const text = String(node.textContent || '');
+      const match = text.match(/今日可使用\s+([0-9]+)\s*張/);
+      const domUsable = match ? Number(match[1]) : -1;
+      const domUsed = Number(node.dataset?.usedTodayCount ?? -1);
+      const domRemaining = Number(node.dataset?.remainingTodayCount ?? -1);
+      const domLimit = Number(node.dataset?.maxTicketsPerDay ?? -1);
+      return domUsable === usable && domUsed === used && domRemaining === remaining && domLimit === limit
+        ? node
+        : null;
+    }, 6000, 100);
+
+    const text = String(badge?.textContent || '');
+    const usableMatch = text.match(/今日可使用\s+([0-9]+)\s*張/);
     const actual = {
       badge: Boolean(badge),
       usable,
       used,
       remaining,
       limit,
-      domUsable: /今日可使用\\s+([0-9]+)\\s*張/.test(String(badge?.textContent || '')) ? Number(String(badge.textContent).match(/今日可使用\\s+([0-9]+)\\s*張/)?.[1] || -1) : -1,
-      domUsed: Number(badge?.dataset?.usedTodayCount || -1),
-      domRemaining: Number(badge?.dataset?.remainingTodayCount || -1),
-      domLimit: Number(badge?.dataset?.maxTicketsPerDay || -1)
+      domUsable: usableMatch ? Number(usableMatch[1]) : -1,
+      domUsed: Number(badge?.dataset?.usedTodayCount ?? -1),
+      domRemaining: Number(badge?.dataset?.remainingTodayCount ?? -1),
+      domLimit: Number(badge?.dataset?.maxTicketsPerDay ?? -1)
     };
     const ok = Boolean(badge) && Number.isInteger(limit) && limit >= 1 && limit <= 50 &&
       actual.domUsable === usable && actual.domUsed === used && actual.domRemaining === remaining &&
@@ -3168,7 +3187,8 @@
   async function bookingReceiptReviewContractCase() {
     const config = await loadConfig();
     const data = await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.list', {});
-    const receipts = Array.isArray(data?.receipts) ? data.receipts : [];
+    const bookings = Array.isArray(data?.bookings) ? data.bookings : [];
+    const receipts = bookings.map((booking) => booking?.receipt).filter(Boolean);
     const modal = await waitFor(() => document.getElementById('bookingReceiptModal'), 2500);
     const camera = document.getElementById('bookingReceiptCamera');
     const capture = document.getElementById('bookingReceiptCapture');
@@ -3178,7 +3198,9 @@
     const awaiting = receipts.filter((receipt) => String(receipt?.status || '') === 'awaiting_review').length;
     const bound = receipts.filter((receipt) => String(receipt?.status || '') === 'bound').length;
     const actual = {
-      receiptsArray: Array.isArray(data?.receipts),
+      bookingsArray: Array.isArray(data?.bookings),
+      bookingCount: bookings.length,
+      receiptCount: receipts.length,
       modal: Boolean(modal),
       camera: Boolean(camera),
       capture: Boolean(capture),
@@ -3190,14 +3212,14 @@
       reviewCopy: /送出審核/.test(String(document.getElementById('bookingReceiptTitle')?.textContent || '')) &&
         /等待管理端|待管理端/.test(String(modal?.textContent || ''))
     };
-    const ok = actual.receiptsArray && actual.modal && actual.camera && actual.capture && actual.retake &&
+    const ok = actual.bookingsArray && actual.modal && actual.camera && actual.capture && actual.retake &&
       actual.submit && fileInputs === 0 && actual.reviewCopy;
     return ok
-      ? pass('預約收據 Browser E2E 已確認私有流程入口為相機拍攝、沒有檔案選擇器，送出後語意為等待管理端審核。', {
-          receiptsArray: true, cameraOnly: true, fileInputs: 0, waitsForAdminReview: true
+      ? pass('預約收據 Browser E2E 已確認 booking-scoped 收據契約、相機拍攝入口、無檔案選擇器，以及等待管理端審核語意。', {
+          bookingsArray: true, cameraOnly: true, fileInputs: 0, waitsForAdminReview: true
         }, actual)
       : fail('預約收據相機／審核 Browser 契約不符合目前規格。', {
-          receiptsArray: true, cameraOnly: true, fileInputs: 0, waitsForAdminReview: true
+          bookingsArray: true, cameraOnly: true, fileInputs: 0, waitsForAdminReview: true
         }, actual);
   }
 
