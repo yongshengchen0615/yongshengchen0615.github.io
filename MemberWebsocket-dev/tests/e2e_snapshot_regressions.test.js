@@ -204,3 +204,50 @@ test('browser run artifact metrics count persisted screenshots instead of failed
   assert.match(runner, /const fatalFailure = \{/);
   assert.match(runner, /await attachFailureScreenshot\(fatalFailure, window\)/);
 });
+
+
+test('skipped backend cases complete the unified server phase without becoming a browser regression', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /const completedCases = Number\(run\.passedCases \|\| 0\) \+ skippedCases/);
+  assert.match(runner, /completedCases === Number\(run\.totalCases \|\| 0\)/);
+  assert.doesNotMatch(runner, /Number\(run\.passedCases \|\| 0\) === Number\(run\.totalCases \|\| 0\)[\s\S]{0,120}skippedCases \|\| 0\) === 0/);
+});
+
+test('event daily-limit E2E waits for the current server snapshot to reach the badge', () => {
+  const runner = read('user-test-control.js');
+  assert.match(runner, /const badge = await waitFor\(\(\) => \{[\s\S]*?domUsable === usable[\s\S]*?domLimit === limit/);
+  assert.match(runner, /6000, 100\)/);
+  assert.doesNotMatch(runner, /const badge = await waitFor\(\(\) => document\.getElementById\('todayUsableTicketCount'\), 3000\)/);
+});
+
+test('booking receipt E2E follows the booking-scoped receipt list contract', () => {
+  const runner = read('user-test-control.js');
+  assert.match(runner, /const bookings = Array\.isArray\(data\?\.bookings\) \? data\.bookings : \[\]/);
+  assert.match(runner, /const receipts = bookings\.map\(\(booking\) => booking\?\.receipt\)\.filter\(Boolean\)/);
+  assert.match(runner, /bookingsArray: Array\.isArray\(data\?\.bookings\)/);
+  assert.doesNotMatch(runner, /receiptsArray: Array\.isArray\(data\?\.receipts\)/);
+});
+
+test('referral E2E owns and cleans only its QA referral reward fixture', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /ticketType: 'referral'/);
+  assert.match(runner, /qaRewardEventTicketId = String\(rewardFixture\?\.eventTicket\?\.eventTicketId \|\| ''\)/);
+  assert.match(runner, /rewardFixtureMatched: rewardEventTicketId === qaRewardEventTicketId/);
+  assert.match(runner, /eventTicketId: qaRewardEventTicketId/);
+  assert.doesNotMatch(runner, /generatedRewardEventTicketId = rewardEventTicketId/);
+});
+
+test('last-ticket race verifies both browser states in parallel with bounded waits', () => {
+  const runner = read('admin/e2e-control.js');
+  assert.match(runner, /ui = await Promise\.all\(candidates\.map\(async \(participant, index\) => \{/);
+  assert.match(runner, /waitParticipantSurface\(participant, 'event', 'eventView', 12000\)/);
+  assert.match(runner, /backgroundAwareTimeout\(6000, 12000\)/);
+});
+
+test('booking participant item migration qualifies formerly ambiguous RPC columns', () => {
+  const migration = read('supabase/migrations/20261001131704_fix_booking_participant_items_ambiguous_columns.sql');
+  assert.match(migration, /bi_store\.booking_id = b\.id/);
+  assert.match(migration, /bpi_delete\.participant_id = participant\.id/);
+  assert.match(migration, /bi_delete\.booking_id = b\.id/);
+  assert.match(migration, /where bk\.id = b\.id/);
+});
