@@ -46,12 +46,14 @@ test('booking badge renders unread and pending counts with accessible labels', (
 });
 
 test('booking realtime refreshes only the badge while booking panel is hidden', () => {
-  const start = core.indexOf('function setupRealtime()');
+  const start = core.indexOf('function handleSharedRealtimeInvalidation');
   const end = core.indexOf('function teardownRealtime()', start);
   const section = core.slice(start, end);
+  assert.match(section, /member-system:realtime-invalidation/);
   assert.match(section, /bookingPanel\?\.classList\.contains\('hidden'\)/);
   assert.match(section, /refreshBookingBadge\(\)/);
   assert.match(section, /else refreshAll\(false, true\)/);
+  assert.doesNotMatch(section, /supabase\.createClient/);
 });
 
 test('current booking loader cache-busts the unread cursor implementation', () => {
