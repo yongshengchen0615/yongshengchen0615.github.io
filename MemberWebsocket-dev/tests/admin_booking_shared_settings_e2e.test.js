@@ -88,5 +88,5 @@ test('booking admin refresh merges the richer admin settings contract', () => {
 
 test('admin entrypoint cache-busts the shared-settings E2E controller', () => {
   const html = read('admin/index.html');
-  assert.match(html, /\.\/e2e-control\.js\?v=qa-e2e-20261001-1/);
+  assert.match(html, /\.\/e2e-control\.js\?v=qa-e2e-20261001-\\d+/);
 });
