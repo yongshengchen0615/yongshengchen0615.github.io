@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-09-29.5';
+  const VERSION = '2026-10-01.1';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -68,6 +68,8 @@
 
     MEMBER_PROFILE_DATA: { module: 'member', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     MEMBER_TERMS_CONSENT: { module: 'member', phase: 3, required: true, dependencies: ['MEMBER_PROFILE_DATA'] },
+    MEMBER_REFERRAL_BOUNDARY: { module: 'member', phase: 4, required: true, risk: 'security', dependencies: ['MEMBER_PROFILE_DATA'] },
+    MEMBER_JOIN_LINE_AUTOMATION_CONTRACT: { module: 'member', phase: 5, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_MODAL_OPEN_CLOSE: { module: 'member', phase: 3, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_HUMAN_PROFILE_EDIT: { module: 'member', phase: 4, required: true, risk: 'mutation', dependencies: ['MEMBER_PROFILE_DATA', 'MEMBER_MODAL_OPEN_CLOSE'] },
     MEMBER_INVALID_WRITE: { module: 'member', phase: 4, dependencies: ['MEMBER_PROFILE_DATA'] },
@@ -77,6 +79,7 @@
 
     POINTS_DATA: { module: 'points', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     POINTS_SETTINGS: { module: 'points', phase: 3, required: true, dependencies: ['POINTS_DATA'] },
+    POINTS_TRANSFER_BOUNDARY: { module: 'points', phase: 4, required: true, risk: 'security', dependencies: ['POINTS_DATA'] },
     POINTS_CARD_SWITCH: { module: 'points', phase: 3, dependencies: ['POINTS_DATA'] },
     POINTS_HISTORY_DISCLOSURE: { module: 'points', phase: 3, dependencies: ['POINTS_DATA'] },
     POINTS_HUMAN_REDEEM: { module: 'points', phase: 4, required: true, risk: 'mutation', dependencies: ['POINTS_DATA', 'POINTS_SETTINGS', 'POINTS_CARD_SWITCH'] },
@@ -85,6 +88,7 @@
 
     EVENT_DATA: { module: 'event', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     EVENT_BOUNDARY_STATES: { module: 'event', phase: 3, required: true, dependencies: ['EVENT_DATA', 'COMMON_USAGE_STATE_COMPLEXITY'] },
+    EVENT_TODAY_USABLE_LIMIT: { module: 'event', phase: 3, required: true, dependencies: ['EVENT_DATA'] },
     EVENT_MODAL: { module: 'event', phase: 3, dependencies: ['EVENT_DATA'] },
     EVENT_HISTORY_DISCLOSURE: { module: 'event', phase: 3, dependencies: ['EVENT_DATA'] },
     EVENT_HUMAN_LIFECYCLE: { module: 'event', phase: 4, required: true, risk: 'mutation', dependencies: ['EVENT_DATA', 'EVENT_MODAL'] },
@@ -102,6 +106,8 @@
     BOOKING_DATA: { module: 'booking', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     BOOKING_GROUP_DATA: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
     BOOKING_FORM_INITIAL: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
+    BOOKING_BENEFITS_RECOMMENDATIONS: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
+    BOOKING_RECEIPT_REVIEW_CONTRACT: { module: 'booking', phase: 5, required: true, dependencies: ['BOOKING_DATA'] },
     BOOKING_FLOW_STEPPER: { module: 'booking', phase: 3, dependencies: ['BOOKING_FORM_INITIAL'] },
     BOOKING_HUMAN_CONTROLS: { module: 'booking', phase: 4, required: true, dependencies: ['BOOKING_FORM_INITIAL', 'BOOKING_FLOW_STEPPER'] },
     BOOKING_HUMAN_LIFECYCLE: { module: 'booking', phase: 4, required: true, risk: 'mutation', dependencies: ['BOOKING_HUMAN_CONTROLS'] },
@@ -962,6 +968,8 @@
       member: [
         caseDef('會員資料完整性', 'Member', memberProfileCase, 'MEMBER_PROFILE_DATA'),
         caseDef('會員條款：有效版本與拒絕邊界', 'Member / Legal', membershipTermsConsentCase, 'MEMBER_TERMS_CONSENT'),
+        caseDef('好友邀請：邀請碼／Modal／自邀前端拒絕', 'Member / Growth', memberReferralBoundaryCase, 'MEMBER_REFERRAL_BOUNDARY'),
+        caseDef('加入會員後 LINE 自動訊息 UI 契約', 'Member / Notification', memberJoinLineAutomationContractCase, 'MEMBER_JOIN_LINE_AUTOMATION_CONTRACT'),
         caseDef('稱呼／生日／電話編輯視窗', 'UI', memberModalCase, 'MEMBER_MODAL_OPEN_CLOSE'),
         caseDef('真人操作：修改並還原稱呼／生日／電話', 'Human E2E', memberHumanProfileEditCase, 'MEMBER_HUMAN_PROFILE_EDIT'),
         caseDef('會員資料寫入驗證邊界', 'Validation', memberInvalidWriteCase, 'MEMBER_INVALID_WRITE'),
@@ -970,6 +978,7 @@
       points: [
         caseDef('集點卡／票券資料結構', 'Points', pointsDataCase, 'POINTS_DATA'),
         caseDef('票券使用共用設定', 'Points', pointSettingsCase, 'POINTS_SETTINGS'),
+        caseDef('點數轉贈：會員編號／查找／輸入拒絕邊界', 'Points / Transfer', pointsTransferBoundaryCase, 'POINTS_TRANSFER_BOUNDARY'),
         caseDef('集點卡切換互動', 'UI', pointsInteractionCase, 'POINTS_CARD_SWITCH'),
         caseDef('票券使用紀錄展開／收合', 'UI', pointsHistoryDisclosureCase, 'POINTS_HISTORY_DISCLOSURE'),
         caseDef('真人操作：勾選票券／取消／確認核銷', 'Human E2E', pointsHumanRedeemCase, 'POINTS_HUMAN_REDEEM'),
@@ -978,6 +987,7 @@
       event: [
         caseDef('活動票券領取／使用狀態', 'Tickets', eventDataCase, 'EVENT_DATA'),
         caseDef('活動票券：尚未開始／已結束 HTTP→UI 邊界', 'Tickets / Boundary', eventBoundaryStatesCase, 'EVENT_BOUNDARY_STATES'),
+        caseDef('今日可使用張數與每日上限一致性', 'Tickets / Daily Limit', eventTodayUsableLimitCase, 'EVENT_TODAY_USABLE_LIMIT'),
         caseDef('票券詳情 Modal', 'UI', eventModalCase, 'EVENT_MODAL'),
         caseDef('已使用票券紀錄展開／收合', 'UI', eventHistoryDisclosureCase, 'EVENT_HISTORY_DISCLOSURE'),
         caseDef('真人操作：開啟／領取／核銷／查看紀錄', 'Human E2E', eventHumanTicketLifecycleCase, 'EVENT_HUMAN_LIFECYCLE'),
@@ -994,6 +1004,8 @@
         caseDef('會員與預約 Bootstrap 一致性', 'Booking', bookingDataCase, 'BOOKING_DATA'),
         caseDef('多人預約資源 Bootstrap', 'Booking', bookingGroupBootstrapCase, 'BOOKING_GROUP_DATA'),
         caseDef('預約表單安全初始狀態', 'UI', bookingFormCase, 'BOOKING_FORM_INITIAL'),
+        caseDef('預約頁可用活動／票券推薦一致性', 'Booking / Benefits', bookingBenefitsRecommendationsCase, 'BOOKING_BENEFITS_RECOMMENDATIONS'),
+        caseDef('預約收據：相機限定／等待管理端審核契約', 'Booking / Receipt', bookingReceiptReviewContractCase, 'BOOKING_RECEIPT_REVIEW_CONTRACT'),
         caseDef('預約 stepper 狀態同步', 'UI', bookingFlowStepperCase, 'BOOKING_FLOW_STEPPER'),
         caseDef('真人操作：日期／視窗／項目／多人控制', 'Human E2E', bookingHumanControlsCase, 'BOOKING_HUMAN_CONTROLS'),
         caseDef('真人操作：新增／修改／取消預約', 'Human E2E', bookingHumanLifecycleCase, 'BOOKING_HUMAN_LIFECYCLE'),
@@ -2777,17 +2789,20 @@
         ['profileDetails', '#profileDetailsTitle'],
         ['honorificDialog', '#honorificEditModal'],
         ['birthdayDialog', '#birthdayEditModal'],
-        ['phoneDialog', '#phoneEditModal']
+        ['phoneDialog', '#phoneEditModal'],
+        ['memberReferral', '#memberReferralModal']
       ],
       points: [
         ['cardTabs', '#cardTabs'],
         ['ticketOverview', '#ticketList'],
-        ['ticketHistory', '#ticketHistoryDisclosure']
+        ['ticketHistory', '#ticketHistoryDisclosure'],
+        ['pointTransfer', '#pointTransferModal']
       ],
       event: [
         ['eventList', '#eventList'],
         ['ticketDialog', '#ticketModal'],
-        ['usedHistory', '#usedTicketHistoryDisclosure']
+        ['usedHistory', '#usedTicketHistoryDisclosure'],
+        ['todayUsableCount', '#todayUsableTicketCount']
       ],
       calendar: [
         ['calendarGrid', '#calendarGrid'],
@@ -2799,7 +2814,9 @@
         ['appointmentDialog', '#appointmentPanel'],
         ['bookingConfirmDialog', '#bookingConfirmModal'],
         ['bookingHistory', '#bookingList'],
-        ['bookingFlow', '[data-booking-flow]']
+        ['bookingFlow', '[data-booking-flow]'],
+        ['bookingBenefits', '#bookingBenefits'],
+        ['bookingReceipt', '#bookingReceiptModal']
       ]
     };
     const contracts = common.concat(surfaceContracts[surface] || []);
@@ -2818,11 +2835,11 @@
     const buttons = Array.from(document.querySelectorAll('button')).filter((button) => !qaPanel?.contains(button) && button.id !== LAUNCHER_ID);
     const navigationIds = new Set(['retryButton','logoutButton','joinMemberButton','refreshProfileButton','refreshTicketButton']);
     const patterns = {
-      member: /^(edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker)/,
-      points: /^(retryButton|joinMemberButton|logoutButton)$|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
+      member: /^(edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|copyMemberInviteCode|bindMemberReferral)/,
+      points: /^(retryButton|joinMemberButton|logoutButton|pointTransferButton|pointTransferClose|pointTransferCopyOwnCode|pointTransferLookup|pointTransferSubmit)$|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
       event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button/,
       calendar: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|todayButton|nextMonthButton|closeCalendarDetailButton)$|calendar-day/,
-      booking: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|nextMonthButton|closeAppointmentButton|cancelEditBookingButton|submitBookingButton|confirmBookingNoticeButton|closeBookingConfirmButton|cancelBookingConfirmButton|confirmBookingButton|closeBookingHolidayButton)$|calendar-day|service-add-button|selected-service-remove|slot-button|text-danger-button|button-light/
+      booking: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|nextMonthButton|closeAppointmentButton|cancelEditBookingButton|submitBookingButton|confirmBookingNoticeButton|closeBookingConfirmButton|cancelBookingConfirmButton|confirmBookingButton|closeBookingHolidayButton|bookingBenefitsRetry|bookingReceiptClose|bookingReceiptCapture|bookingReceiptRetake|bookingReceiptCancel|bookingReceiptSubmit)$|calendar-day|service-add-button|selected-service-remove|slot-button|text-danger-button|button-light|拍攝收據送出審核|收據上傳未完成/
     };
     const mapped = [];
     const unmapped = [];
@@ -2967,6 +2984,220 @@
           { prepared: true, minimumRecords, minimumKinds, requiredBookingStates: surface === 'booking' ? requiredBookingStates : [] },
           actual
         );
+  }
+
+
+  async function memberReferralBoundaryCase() {
+    const profile = state.bootstrap?.profile || (await requestCore('user.member.bootstrap', {}))?.profile || {};
+    const trigger = await waitFor(() => document.getElementById('openMemberReferral'), 3000);
+    if (!trigger) return fail('會員卡沒有好友邀請入口。', { trigger: true }, { trigger: false });
+    trigger.click();
+    const modal = await waitFor(() => {
+      const node = document.getElementById('memberReferralModal');
+      return node && !node.classList.contains('hidden') ? node : null;
+    }, 2000);
+    const ownCode = String(profile.inviteCode || document.getElementById('memberReferralOwnCode')?.textContent || '').trim().toUpperCase();
+    const input = document.getElementById('memberReferralInviteCode');
+    const form = document.getElementById('memberReferralForm');
+    const copy = document.getElementById('copyMemberInviteCode');
+    const status = document.getElementById('memberReferralStatus');
+    const validCode = /^[A-F0-9]{10}$/.test(ownCode);
+    let selfRejected = false;
+    if (modal && input && form && validCode) {
+      input.value = ownCode;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      selfRejected = Boolean(await waitFor(() => /不可使用自己的邀請碼/.test(String(status?.textContent || '')), 1200));
+    }
+    document.getElementById('closeMemberReferral')?.click();
+    const closed = Boolean(!modal || await waitFor(() => modal.classList.contains('hidden'), 1000));
+    const actual = { modal: Boolean(modal), validCode, copyControl: Boolean(copy), selfRejected, closed };
+    return Object.values(actual).every(Boolean)
+      ? pass('好友邀請入口、本人邀請碼、複製控制與自邀前端拒絕皆已納入 Browser E2E；此節點不建立永久邀請關係。', {
+          modal: true, validCode: true, copyControl: true, selfRejected: true, closed: true
+        }, actual)
+      : fail('好友邀請 Browser E2E 契約至少一項不符合預期。', {
+          modal: true, validCode: true, copyControl: true, selfRejected: true, closed: true
+        }, actual);
+  }
+
+  async function memberJoinLineAutomationContractCase() {
+    const manualSendControls = Array.from(document.querySelectorAll('button,a')).filter((node) =>
+      /傳送.*(?:LINE|官方帳號)|LINE.*傳送/.test(String(node.textContent || ''))
+    );
+    const joined = Boolean(state.bootstrap?.profile?.profileComplete);
+    const actual = {
+      joinedTestAccount: joined,
+      manualSendControls: manualSendControls.map((node) => String(node.id || node.textContent || '').trim()).filter(Boolean),
+      liffSendMessagesAvailable: typeof window.liff?.sendMessages === 'function'
+    };
+    return manualSendControls.length === 0
+      ? pass('現行加入會員流程沒有重新出現手動「傳送 LINE」控制；自動 sendMessages 的 join-only 行為由程式回歸測試驗證，既有測試會員不重送訊息。', {
+          manualSendControls: []
+        }, actual)
+      : fail('會員卡重新出現手動 LINE 傳送控制，與現行加入後自動傳送規格衝突。', {
+          manualSendControls: []
+        }, actual);
+  }
+
+  async function pointsTransferBoundaryCase() {
+    const options = await requestCore('points.transfer.options', {});
+    const cards = Array.isArray(options?.cards) ? options.cards : [];
+    const modal = await waitFor(() => document.getElementById('pointTransferModal'), 2500);
+    const ownCode = String(document.getElementById('pointTransferOwnMemberCode')?.textContent || '').trim();
+    const copy = document.getElementById('pointTransferCopyOwnCode');
+    const lookup = document.getElementById('pointTransferLookup');
+    const amount = document.getElementById('pointTransferAmount');
+    const submit = document.getElementById('pointTransferSubmit');
+    const token = window.TestModeClient?.getSessionToken?.() || '';
+    let invalidAmount = { httpStatus: 0, errorCode: '' };
+    if (token) {
+      invalidAmount = await securityRequest('member-growth-api', {
+        action: 'points.transfer.create',
+        clientType: 'points',
+        idToken: '',
+        testSessionToken: token,
+        cardId: cards[0]?.cardId || 'E2E-NO-CARD',
+        memberCode: ownCode || 'E2E-NO-MEMBER',
+        amount: 0,
+        requestId: 'pt-e2e-' + Date.now().toString(36)
+      });
+    }
+    const actual = {
+      optionsArray: Array.isArray(options?.cards),
+      modal: Boolean(modal),
+      ownMemberCode: /^M[A-Z0-9_-]+$/i.test(ownCode),
+      copyControl: Boolean(copy),
+      lookupControl: Boolean(lookup),
+      amountControl: Boolean(amount),
+      submitControl: Boolean(submit),
+      invalidAmountRejected: invalidAmount.httpStatus === 400 && invalidAmount.errorCode === 'INVALID_TRANSFER_AMOUNT',
+      optionCount: cards.length
+    };
+    const ok = actual.optionsArray && actual.modal && actual.ownMemberCode && actual.copyControl &&
+      actual.lookupControl && actual.amountControl && actual.submitControl && actual.invalidAmountRejected;
+    return ok
+      ? pass('點數轉贈已驗證本人會員編號、Modal 控制、Server options 與 0 點寫入拒絕；成功原子轉贈由管理端協同節點覆蓋。', {
+          optionsArray: true, modal: true, ownMemberCode: true, copyControl: true,
+          lookupControl: true, amountControl: true, submitControl: true, invalidAmountRejected: true
+        }, actual)
+      : fail('點數轉贈 Browser／Server 邊界至少一項不符合預期。', {
+          optionsArray: true, modal: true, ownMemberCode: true, copyControl: true,
+          lookupControl: true, amountControl: true, submitControl: true, invalidAmountRejected: true
+        }, actual);
+  }
+
+  async function eventTodayUsableLimitCase() {
+    const token = window.TestModeClient?.getSessionToken?.() || '';
+    const config = await loadConfig();
+    const endpoint = String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/event-ticket-extension-api';
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: String(config.supabasePublishableKey || '') },
+      cache: 'no-store',
+      body: JSON.stringify({ operation: 'member.today-usable', idToken: '', testSessionToken: token })
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload || payload.ok !== true) {
+      return fail('今日可使用張數 API 無法完成 E2E 對照。', { httpStatus: 200 }, {
+        httpStatus: response.status, errorCode: String(payload?.error?.code || '')
+      });
+    }
+    const data = payload.data || {};
+    const badge = await waitFor(() => document.getElementById('todayUsableTicketCount'), 3000);
+    const usable = Math.max(0, Number(data.todayUsableCount || 0));
+    const used = Math.max(0, Number(data.usedTodayCount || 0));
+    const remaining = Math.max(0, Number(data.remainingTodayCount ?? usable));
+    const limit = Number(data.maxTicketsPerDay || data.maxTicketsPerRedemption || 0);
+    const actual = {
+      badge: Boolean(badge),
+      usable,
+      used,
+      remaining,
+      limit,
+      domUsable: Number(badge?.dataset?.todayUsableCount || -1),
+      domUsed: Number(badge?.dataset?.usedTodayCount || -1),
+      domRemaining: Number(badge?.dataset?.remainingTodayCount || -1),
+      domLimit: Number(badge?.dataset?.maxTicketsPerDay || -1)
+    };
+    const ok = Boolean(badge) && Number.isInteger(limit) && limit >= 1 && limit <= 50 &&
+      actual.domUsable === usable && actual.domUsed === used && actual.domRemaining === remaining &&
+      actual.domLimit === limit && usable <= remaining && used <= limit;
+    return ok
+      ? pass('活動票券今日可使用張數、已使用數、剩餘額度與每日上限由同一 Server 結果同步到 UI。', {
+          badge: true, serverUiMatched: true, limitRange: [1, 50]
+        }, actual)
+      : fail('活動票券今日額度的 Server／UI 數字不一致。', {
+          badge: true, serverUiMatched: true, limitRange: [1, 50]
+        }, actual);
+  }
+
+  async function bookingBenefitsRecommendationsCase() {
+    const config = await loadConfig();
+    const result = await window.BookingSystem.bookingBenefits(config, '');
+    const items = Array.isArray(result?.items) ? result.items : [];
+    window.BookingBenefits?.invalidate?.();
+    const settled = await waitFor(() => {
+      const section = document.getElementById('bookingBenefits');
+      const value = String(section?.dataset?.state || '');
+      return value === 'ready' || value === 'empty' || value === 'error' ? value : null;
+    }, 5000);
+    const list = document.getElementById('bookingBenefitsList');
+    const cards = Array.from(list?.querySelectorAll('.booking-benefit') || []);
+    const links = cards.map((card) => card.querySelector('.booking-benefit-link')).filter(Boolean);
+    const allowed = links.every((link) => /\/(?:points|event|calendar)\//.test(new URL(link.href, window.location.href).pathname));
+    const actual = {
+      apiCount: items.length,
+      uiCount: cards.length,
+      settledState: settled || '',
+      allowedDestinations: allowed,
+      bookingFormStillAvailable: Boolean(document.getElementById('bookingForm')),
+      errorDidNotBlockBooking: settled !== 'error' || Boolean(document.getElementById('bookingForm'))
+    };
+    const ok = settled !== null && settled !== 'error' && cards.length === items.length && allowed &&
+      actual.bookingFormStillAvailable && actual.errorDidNotBlockBooking;
+    return ok
+      ? pass('預約頁推薦以 Server 權益清單渲染 0／N 項，連結只導向既有權益頁且不阻塞預約。', {
+          apiUiCountMatched: true, allowedDestinations: true, bookingFormStillAvailable: true
+        }, actual)
+      : fail('預約頁可用活動／票券推薦與 Server 結果或預約可用性不一致。', {
+          apiUiCountMatched: true, allowedDestinations: true, bookingFormStillAvailable: true
+        }, actual);
+  }
+
+  async function bookingReceiptReviewContractCase() {
+    const data = await requestCore('user.booking.receipt.list', {});
+    const receipts = Array.isArray(data?.receipts) ? data.receipts : [];
+    const modal = await waitFor(() => document.getElementById('bookingReceiptModal'), 2500);
+    const camera = document.getElementById('bookingReceiptCamera');
+    const capture = document.getElementById('bookingReceiptCapture');
+    const retake = document.getElementById('bookingReceiptRetake');
+    const submit = document.getElementById('bookingReceiptSubmit');
+    const fileInputs = modal ? modal.querySelectorAll('input[type="file"]').length : -1;
+    const awaiting = receipts.filter((receipt) => String(receipt?.status || '') === 'awaiting_review').length;
+    const bound = receipts.filter((receipt) => String(receipt?.status || '') === 'bound').length;
+    const actual = {
+      receiptsArray: Array.isArray(data?.receipts),
+      modal: Boolean(modal),
+      camera: Boolean(camera),
+      capture: Boolean(capture),
+      retake: Boolean(retake),
+      submit: Boolean(submit),
+      fileInputs,
+      awaitingReviewCount: awaiting,
+      boundCount: bound,
+      reviewCopy: /送出審核/.test(String(document.getElementById('bookingReceiptTitle')?.textContent || '')) &&
+        /等待管理端|待管理端/.test(String(modal?.textContent || ''))
+    };
+    const ok = actual.receiptsArray && actual.modal && actual.camera && actual.capture && actual.retake &&
+      actual.submit && fileInputs === 0 && actual.reviewCopy;
+    return ok
+      ? pass('預約收據 Browser E2E 已確認私有流程入口為相機拍攝、沒有檔案選擇器，送出後語意為等待管理端審核。', {
+          receiptsArray: true, cameraOnly: true, fileInputs: 0, waitsForAdminReview: true
+        }, actual)
+      : fail('預約收據相機／審核 Browser 契約不符合目前規格。', {
+          receiptsArray: true, cameraOnly: true, fileInputs: 0, waitsForAdminReview: true
+        }, actual);
   }
 
   async function pointsDataCase() {
