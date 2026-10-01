@@ -3166,7 +3166,8 @@
   }
 
   async function bookingReceiptReviewContractCase() {
-    const data = await requestCore('user.booking.receipt.list', {});
+    const config = await loadConfig();
+    const data = await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.list', {});
     const receipts = Array.isArray(data?.receipts) ? data.receipts : [];
     const modal = await waitFor(() => document.getElementById('bookingReceiptModal'), 2500);
     const camera = document.getElementById('bookingReceiptCamera');
