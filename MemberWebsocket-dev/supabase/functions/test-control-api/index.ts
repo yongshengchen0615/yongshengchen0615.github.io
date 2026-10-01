@@ -1497,6 +1497,15 @@ async function recordBrowserRun(
   const passed = normalized.filter((item) => item.status === "passed").length;
   const failed = normalized.filter((item) => item.status === "failed").length;
   const skipped = normalized.filter((item) => item.status === "skipped").length;
+  const failureArtifactCases = normalized.filter((item) =>
+    item.status === "failed" && Boolean((item.trace as any)?.screenshot?.path)
+  ).length;
+  const failureArtifactCaptureFailedCases = normalized.filter((item) =>
+    item.status === "failed" && (item.trace as any)?.screenshotCapture?.status === "failed"
+  ).length;
+  const failureArtifactSkippedCases = normalized.filter((item) =>
+    item.status === "failed" && (item.trace as any)?.screenshotCapture?.status === "skipped"
+  ).length;
   const failureDiagnostics = summarizeE2EFailureDiagnoses(normalized.map((item)=>item.diagnosis).filter(Boolean));
   const shouldPersistReplayManifest = body.rootRun === true && runnerKind === "paired-browser" && suite === "full";
   const replayManifest = shouldPersistReplayManifest ? normalizeReplayManifest(body.replayManifest) : null;
@@ -1529,7 +1538,11 @@ async function recordBrowserRun(
       e2eSeed: asText(body.e2eSeed, 160),
       complexityLevel: Math.max(1, Math.min(8, Number(body.complexityLevel || 1) || 1)),
       clientConcurrency: Math.max(1, Math.min(4, Number(body.clientConcurrency || 1) || 1)),
-      failureArtifactCases: failed,
+      failureDiagnosticCases: failed,
+      failureArtifactCases,
+      failureScreenshotCases: failureArtifactCases,
+      failureArtifactCaptureFailedCases,
+      failureArtifactSkippedCases,
       diagnosticsVersion: 3,
       failureDiagnostics,
       replayManifest,
