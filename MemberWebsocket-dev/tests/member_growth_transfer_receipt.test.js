@@ -30,9 +30,26 @@ test('member growth API keeps referral and point transfer writes behind server R
   assert.match(transfer, /point_transfers_sender_request_unique/);
 });
 
+
+test('member LINE follow-up uses direct LIFF send and a fixed-host browser fallback without claiming delivery', () => {
+  const api = read('supabase/functions/member-growth-api/index.ts');
+  const ui = read('member/member-growth.js');
+
+  assert.match(api, /member\.line\.official-account/);
+  assert.match(api, /https:\/\/api\.line\.me\/v2\/bot\/info/);
+  assert.match(api, /https:\/\/line\.me\/R\/oaMessage\//);
+  assert.match(ui, /liff\.sendMessages/);
+  assert.match(ui, /member\.line\.official-account/);
+  assert.match(ui, /\^https:\\\/\\\/line\\\.me\\\/R\\\/oaMessage\\\//);
+  assert.match(ui, /仍需由你按下傳送/);
+  assert.match(ui, /window\.location\.assign/);
+});
+
 test('booking receipt completion requires a private upload and canonical settlement', () => {
   const edge = read('supabase/functions/booking-receipt-api/index.ts');
   const migration = read('supabase/migrations/20260930152500_booking_receipt_completion.sql');
+  const retention = read('supabase/migrations/20261001094500_receipt_retention_cleanup.sql');
+  const testControl = read('supabase/functions/test-control-api/index.ts');
   const memberUi = read('booking/booking-receipt.js');
   const adminUi = read('admin/booking-receipt-admin.js');
 
@@ -47,11 +64,18 @@ test('booking receipt completion requires a private upload and canonical settlem
   assert.match(edge, /sniffMime/);
   assert.match(edge, /fileSha256Hex/);
   assert.match(edge, /createSignedUrl\(String\(result\.data\.object_path\),120\)/);
+  assert.match(edge, /expire_stale_booking_receipts/);
+  assert.match(retention, /Pending uploads older than 24 hours/);
+  assert.match(retention, /status='pending_upload'/);
+  assert.match(testControl, /purgeBookingReceiptCleanupQueue/);
+  assert.match(testControl, /BOOKING_RECEIPT_BUCKET = "booking-receipts"/);
 
   assert.match(memberUi, /capture="environment"/);
   assert.match(memberUi, /uploadToSignedUrl/);
   assert.match(memberUi, /user\.booking\.receipt\.finalize/);
   assert.match(adminUi, /admin\.booking\.receipt\.url/);
+  assert.match(adminUi, /renderBookingSummary/);
+  assert.match(adminUi, /預約項目/);
   assert.match(adminUi, /由會員拍攝收據完成/);
 });
 
