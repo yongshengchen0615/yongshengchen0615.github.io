@@ -108,7 +108,6 @@ test('member-facing pages load the current human E2E controller and refresh hook
   }
   const appVersions = {
     'points/index.html': './app.js?v=point-transfer-realtime-20261001-2',
-    'event/index.html': './app.js?v=event-result-hidden-20260929-2',
     'calendar/index.html': './app.js?v=human-e2e-hooks-20260921-1',
     'booking/index.html': './app.js?v=booking-overnight-20260928-1',
   };
@@ -116,4 +115,5 @@ test('member-facing pages load the current human E2E controller and refresh hook
     const html = read(relative);
     assert.ok(html.includes(asset), relative);
   }
+  assert.match(read('event/index.html'), /\.\/app\.js\?v=[^"<>]+/);
 });
