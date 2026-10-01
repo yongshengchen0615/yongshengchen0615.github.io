@@ -40,10 +40,10 @@
     ].forEach((id) => { els[id] = document.getElementById(id); });
     window.TicketLocationEditors.init();
     bindEvents();
-    window.addEventListener('pagehide', () => {
-      // Hide private views before the browser snapshots this page for Back/Forward.
-      state.idToken = '';
-      window.MemberAdminSession?.clear();
+    window.addEventListener('pagehide', (event) => {
+      // Hide private views before Back/Forward Cache snapshots them. A persisted
+      // page keeps its in-memory credential only until pageshow, where the server
+      // revalidates authorization before the admin UI is shown again.
       delete document.documentElement.dataset.memberAdminReady;
       stopLoginProgress();
       if (typeof stopAdminRealtime === 'function') stopAdminRealtime();
@@ -51,9 +51,13 @@
       stopMemberPresencePolling();
       document.querySelectorAll('.modal').forEach((modal) => modal.classList.add('hidden'));
       setView('loading');
+      if (!event.persisted) {
+        state.idToken = '';
+        window.MemberAdminSession?.clear();
+      }
     });
     window.addEventListener('pageshow', (event) => {
-      if (event.persisted) window.location.reload();
+      if (event.persisted) void resumeAdminFromBfcache();
     });
     boot();
   });
@@ -372,8 +376,48 @@
     } catch (error) { stopLoginProgress(); handleBootError(error); } finally { stopLoginProgress(); els.app.setAttribute('aria-busy', 'false'); }
   }
 
-  async function handleAdminRealtimeUpdate() {
+  async function resumeAdminFromBfcache() {
+    if (!state.config || !state.idToken) {
+      await boot();
+      return;
+    }
+    delete document.documentElement.dataset.memberAdminReady;
+    els.app.setAttribute('aria-busy', 'true');
+    setView('loading');
+    try {
+      startLoginProgress('正在重新驗證管理權限…', 92);
+      await refreshData(false);
+      await completeLoginProgress('管理權限與資料已重新驗證');
+      setView('admin');
+      document.documentElement.dataset.memberAdminReady = 'true';
+      window.dispatchEvent(new Event('member-admin-ready'));
+      if (!isBackgroundE2ERunner()) {
+        stopAdminRealtime = window.MemberSystem.subscribeRealtime(state.config, 'admin', handleAdminRealtimeUpdate);
+        startMemberPresencePolling();
+      }
+    } catch (error) {
+      state.idToken = '';
+      window.MemberAdminSession?.clear();
+      stopLoginProgress();
+      handleBootError(error);
+    } finally {
+      stopLoginProgress();
+      els.app.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  async function handleAdminRealtimeUpdate(context = {}) {
     if (isBackgroundE2ERunner()) return;
+    const eventTypes = Array.isArray(context.eventTypes) ? context.eventTypes.map(String) : [];
+    const reasons = Array.isArray(context.reasons) ? context.reasons.map(String) : [];
+    const bookingRealtimeOnly = eventTypes.length > 0
+      && eventTypes.every((type) => type.startsWith('booking.'))
+      && reasons.length > 0
+      && reasons.every((reason) => reason === 'realtime');
+    if (bookingRealtimeOnly) {
+      await Promise.allSettled([refreshOpenMemberRecords(), refreshMemberPresence()]);
+      return;
+    }
     const tasks = [refreshData(false), refreshOpenMemberRecords()];
     await Promise.allSettled(tasks);
     if (state.memberKind === 'test') await loadMembersPage(state.memberPage.page, state.memberPage.query).catch(() => {});
