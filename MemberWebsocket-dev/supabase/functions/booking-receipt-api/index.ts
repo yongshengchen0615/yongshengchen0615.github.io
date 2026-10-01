@@ -301,9 +301,49 @@ async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
     .eq("booking_id",bookingId).eq("status","bound").maybeSingle();
   if(result.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
   if(!result.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","此預約沒有可查看的收據快照。");
+
+  const bookingResult=await supabase.from("bookings")
+    .select("id,member_id,booking_date,start_time,end_time,starts_next_day,status,completed_at")
+    .eq("id",bookingId).maybeSingle();
+  if(bookingResult.error||!bookingResult.data) throw new ApiError(500,"DATABASE_ERROR","預約核對資料暫時無法讀取。");
+
+  const [memberResult,itemsResult]=await Promise.all([
+    supabase.from("members").select("member_code,display_name,surname,salutation").eq("id",bookingResult.data.member_id).maybeSingle(),
+    supabase.from("booking_items").select("service_title,quantity,unit_price_amount,service_type").eq("booking_id",bookingId).order("created_at",{ascending:true}),
+  ]);
+  if(memberResult.error||itemsResult.error) throw new ApiError(500,"DATABASE_ERROR","預約核對資料暫時無法讀取。");
+
   const signed=await supabase.storage.from(BUCKET).createSignedUrl(String(result.data.object_path),120);
   if(signed.error||!signed.data?.signedUrl) throw new ApiError(503,"RECEIPT_VIEW_UNAVAILABLE","目前無法建立安全檢視連結。");
-  return {receiptId:result.data.receipt_id,signedUrl:signed.data.signedUrl,expiresInSeconds:120,boundAt:result.data.bound_at};
+
+  const member=memberResult.data||{};
+  return {
+    receiptId:result.data.receipt_id,
+    signedUrl:signed.data.signedUrl,
+    expiresInSeconds:120,
+    boundAt:result.data.bound_at,
+    booking:{
+      bookingId:String(bookingResult.data.id||""),
+      bookingDate:String(bookingResult.data.booking_date||""),
+      startTime:String(bookingResult.data.start_time||"").slice(0,5),
+      endTime:String(bookingResult.data.end_time||"").slice(0,5),
+      startsNextDay:Boolean(bookingResult.data.starts_next_day),
+      status:String(bookingResult.data.status||""),
+      completedAt:bookingResult.data.completed_at,
+      member:{
+        memberCode:String(member.member_code||""),
+        displayName:String(member.display_name||""),
+        surname:String(member.surname||""),
+        salutation:String(member.salutation||""),
+      },
+      items:(itemsResult.data||[]).map((item:any)=>({
+        title:String(item.service_title||"預約項目"),
+        quantity:Math.max(1,Number(item.quantity||1)),
+        unitPriceAmount:Math.max(0,Number(item.unit_price_amount||0)),
+        serviceType:String(item.service_type||""),
+      })),
+    },
+  };
 }
 
 Deno.serve(async(request:Request)=>{
