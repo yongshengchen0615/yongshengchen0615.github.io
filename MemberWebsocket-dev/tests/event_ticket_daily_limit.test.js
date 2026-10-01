@@ -14,6 +14,7 @@ test('event tickets use a daily server-enforced redemption limit without multi-s
   const app = read('event/app.js');
   const api = read('supabase/functions/api/index.ts');
   const extension = read('supabase/functions/event-ticket-extension-api/index.ts');
+  const todayCss = read('event/today-usable.css');
 
   assert.match(migration, /max_tickets_per_day/);
   assert.match(migration, /EVENT_TICKET_DAILY_LIMIT_REACHED/);
@@ -29,6 +30,10 @@ test('event tickets use a daily server-enforced redemption limit without multi-s
   assert.match(today, /data\.maxTicketsPerDay/);
   assert.match(today, /data\.usedTodayCount/);
   assert.match(today, /每日上限/);
+  assert.match(today, /event:realtime-refresh/);
+  assert.match(app, /event:realtime-refresh/);
+  assert.match(todayCss, /--md-sys-color-surface-container-high/);
+  assert.match(todayCss, /--theme-danger-soft/);
 
   assert.match(app, /const stateLabel = used \? '已使用'/);
   assert.match(app, /if \(!used \|\| history\) action\.append\(button\)/);
@@ -38,4 +43,5 @@ test('event tickets use a daily server-enforced redemption limit without multi-s
   assert.match(api, /claimRow && String\(claimRow\.status \|\| ""\) === "used"/);
   assert.match(extension, /maxTicketsPerDay/);
   assert.match(extension, /max_tickets_per_day/);
+  assert.match(extension, /\.upsert\(nextRow, \{ onConflict: "id" \}\)/);
 });
