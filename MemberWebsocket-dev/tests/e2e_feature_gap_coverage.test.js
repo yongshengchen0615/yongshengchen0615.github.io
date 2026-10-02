@@ -20,6 +20,7 @@ test('user full E2E covers non-button feature contracts and new experience contr
     'EVENT_TODAY_USABLE_LIMIT',
     'EVENT_HISTORY_DISCLOSURE',
     'BOOKING_BENEFITS_RECOMMENDATIONS',
+    'BOOKING_BENEFIT_REDEMPTION_LIFECYCLE',
     'BOOKING_RECEIPT_REVIEW_CONTRACT',
     'BOOKING_FLOW_STEPPER'
   ]) {
@@ -34,6 +35,7 @@ test('user full E2E covers non-button feature contracts and new experience contr
   assert.match(source, /pointsTransferBoundaryCase/);
   assert.match(source, /eventTodayUsableLimitCase/);
   assert.match(source, /bookingBenefitsRecommendationsCase/);
+  assert.match(source, /bookingBenefitRedemptionLifecycleCase/);
   assert.match(source, /bookingReceiptReviewContractCase/);
   assert.match(source, /pointsHistoryDisclosureCase/);
   assert.match(source, /eventHistoryDisclosureCase/);
@@ -88,6 +90,9 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
   assert.match(source, /完成結算預覽/);
   assert.match(source, /stayedConfirmedBeforeSubmit/);
   assert.match(source, /確認完成並結算/);
+  assert.match(source, /benefitRedemption/);
+  assert.match(source, /pendingAfter/);
+  assert.match(source, /待核銷優惠/);
   assert.match(source, /explicitCaseByButtonId/);
   assert.doesNotMatch(source, /waitFor\(async \(\) =>/);
 });
