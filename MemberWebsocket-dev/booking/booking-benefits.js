@@ -106,6 +106,39 @@
     list?.setAttribute('aria-busy', 'true');
   }
 
+  function reconcileSelectedItems(items) {
+    const byKey = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+      const kind = String(item?.kind || '');
+      const id = String(item?.selectionId || '');
+      if (selectableKinds.has(kind) && id) byKey.set(keyFor(kind, id), item);
+    }
+
+    const pointSpendByCard = new Map();
+    let changed = false;
+    for (const [key, selection] of [...selected.entries()]) {
+      const item = byKey.get(key);
+      if (!item || item.selectable !== true) {
+        selected.delete(key);
+        changed = true;
+        continue;
+      }
+      if (selection.kind !== 'points') continue;
+
+      const cardId = String(item.cardId || '');
+      const balance = Math.max(0, Number(item.pointBalance || 0));
+      const cost = Math.max(0, Number(item.pointCost || 0));
+      const spent = Number(pointSpendByCard.get(cardId) || 0);
+      if (!cardId || cost <= 0 || spent + cost > balance) {
+        selected.delete(key);
+        changed = true;
+        continue;
+      }
+      pointSpendByCard.set(cardId, spent + cost);
+    }
+    return changed;
+  }
+
   async function handleSelectionChange(item, input) {
     const selectionId = String(item.selectionId || '');
     const selectedKey = selectionId ? keyFor(item.kind, selectionId) : '';
@@ -351,20 +384,22 @@
       const nextEventLimit = normalizeLimit(result?.eventTicketMaxPerDay);
       const nextPointLimit = normalizeLimit(result?.pointTicketMaxPerRedemption);
       const nextItems = Array.isArray(result?.items) ? result.items : [];
+      const selectionChanged = reconcileSelectedItems(nextItems);
       const changed = nextEventLimit !== eventTicketMaxPerDay
         || nextPointLimit !== pointTicketMaxPerRedemption
         || JSON.stringify(nextItems) !== JSON.stringify(renderedItems);
       eventTicketMaxPerDay = nextEventLimit;
       pointTicketMaxPerRedemption = nextPointLimit;
-      if (changed) render(nextItems);
+      if (changed || selectionChanged) render(nextItems);
       else updateReadyMessage(renderedItems.length);
+      if (selectionChanged) emitSelectionChange();
     } catch (_) {
       if (current !== sequence || disposed) return;
       if (renderedItems.length) state('ready', '可用權益同步失敗，已保留目前資料；可稍後重試。');
       else state('error', '活動與票券暫時無法載入，仍可正常預約。');
     } finally {
       inFlight = false;
-      if (queued && !disposed) { queued = false; invalidate(); }
+      if (queued && !disposed) { queued = false; syncNow(); }
     }
   }
 
@@ -378,6 +413,16 @@
     if (timer !== null) return;
     setRefreshing('正在背景同步可用權益…');
     timer = window.setTimeout(() => { timer = null; void load(); }, 450);
+  }
+
+  function syncNow() {
+    if (!config || disposed) return;
+    if (timer !== null) {
+      window.clearTimeout(timer);
+      timer = null;
+    }
+    setRefreshing('正在同步最新點數與可用票券…');
+    void load();
   }
 
   function start(nextConfig, token) {
@@ -412,6 +457,7 @@
   window.BookingBenefits = Object.freeze({
     start,
     invalidate,
+    syncNow,
     selectionPayload,
     selectionSummary,
     setSelection,
