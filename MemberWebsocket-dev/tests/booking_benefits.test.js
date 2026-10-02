@@ -19,6 +19,7 @@ function database(overrides = {}, fail = '') {
     point_tickets: [{ ticket_id: 'PT-001', member_id: member.id, status: 'available', reward_id: 'reward', point_card_id: 'card', ticket_template_id: 'template', threshold_stamps: 5 }],
     event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', title: '活動票券', status: 'active', allowed_tier_keys: ['silver'], quota: 2, requires_location: false }],
     event_ticket_claims: [],
+    event_ticket_settings: [{ id: 1, max_tickets_per_day: 2, max_tickets_per_redemption: 2 }],
     calendar_items: [{ calendar_item_id: 'CAL', title: '會員活動', item_type: 'event', status: 'active', starts_on: today, ends_on: today, allowed_tier_keys: ['silver'] }],
     ...overrides,
   };
@@ -54,6 +55,7 @@ test('booking recommendations cover 0/1/N and return only display fields', async
     const serialized = JSON.stringify(result);
     assert.doesNotMatch(serialized, /member_id|line_user_id|allowed_tier|birthday|fixed_ticket_template|claim_id/);
     assert.ok(result.items.every(item => typeof item.conditionLabel === 'string' && item.conditionLabel.length > 0));
+    assert.equal(result.eventTicketMaxPerDay, 2);
   }
 });
 
@@ -72,6 +74,18 @@ test('expired/inactive/used/ineligible/future/full benefits are excluded', async
     { point_tickets: [], event_tickets: [], calendar_items: [{ calendar_item_id: 'CAL', item_type: 'event', status: 'active', starts_on: today, ends_on: today, allowed_tier_keys: ['gold'] }] },
   ];
   for (const patch of patches) assert.deepEqual((await loadBookingBenefits(database(patch), member, 'silver', today)).items, []);
+});
+
+test('unclaimed event tickets are selectable by claiming from the booking surface', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const result = await loadBookingBenefits(database(), member, 'silver', today);
+  const event = result.items.find(item => item.kind === 'event');
+  assert.ok(event);
+  assert.equal(event.selectable, true);
+  assert.equal(event.claimRequired, true);
+  assert.equal(event.selectionId, '');
+  assert.match(event.subtitle, /勾選即代表領取/);
+  assert.match(event.conditionLabel, /每日最多使用 2 張/);
 });
 
 test('birthday activities and claimed inventory preserve existing eligibility rules', async () => {
@@ -93,7 +107,7 @@ test('reads are member-scoped, batched and strict on backend failure', async () 
   const db = database();
   await loadBookingBenefits(db, member, 'silver', today);
   for (const table of ['point_tickets', 'event_ticket_claims']) assert.ok(db.calls.some(call => call.table === table && call.key === 'member_id' && call.value === member.id));
-  assert.equal(db.calls.filter(call => call.read).length, 7);
+  assert.equal(db.calls.filter(call => call.read).length, 8);
   for (const fail of ['point_tickets', 'event_ticket_claim_counts', 'calendar_items']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
 });
 

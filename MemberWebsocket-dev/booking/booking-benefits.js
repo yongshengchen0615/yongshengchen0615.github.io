@@ -8,6 +8,8 @@
   let queued = false;
   let disposed = false;
   let renderedItems = [];
+  let eventTicketMaxPerDay = 1;
+  let claimingEventTicketId = '';
   const selected = new Map();
   const kinds = { points: '集點卡票券', event: '活動票券', calendar: '會員活動' };
   const kindOrder = ['calendar', 'points', 'event'];
@@ -54,6 +56,67 @@
     }));
   }
 
+  function selectedEventCount() {
+    return [...selected.values()].filter((item) => item.kind === 'event').length;
+  }
+
+  async function handleSelectionChange(item, input) {
+    const selectionId = String(item.selectionId || '');
+    const selectedKey = selectionId ? keyFor(item.kind, selectionId) : '';
+    if (!input.checked) {
+      if (selectedKey) selected.delete(selectedKey);
+      render(renderedItems);
+      emitSelectionChange();
+      return;
+    }
+
+    if (item.kind === 'event' && selectedEventCount() >= eventTicketMaxPerDay) {
+      input.checked = false;
+      state('ready', `活動票券每筆預約最多可選 ${eventTicketMaxPerDay} 張。`);
+      render(renderedItems);
+      return;
+    }
+
+    if (item.kind === 'event' && item.claimRequired === true) {
+      const title = String(item.title || '活動票券');
+      if (!window.confirm(`勾選「${title}」即代表領取此活動票券。\n\n領取後會直接加入本次預約使用，是否繼續？`)) {
+        input.checked = false;
+        render(renderedItems);
+        return;
+      }
+      claimingEventTicketId = String(item.id || '');
+      render(renderedItems);
+      try {
+        const result = await window.BookingSystem.claimEventTicket(config, idToken, item.id);
+        const claimId = String(result?.ticket?.claimId || '');
+        if (!claimId) throw new Error('票券已領取，但無法取得票券識別，請重新整理後再試。');
+        renderedItems = renderedItems.map((current) => current?.kind === 'event' && current?.id === item.id
+          ? { ...current, claimRequired: false, selectionId: claimId, selectable: true, statusLabel: '可使用', subtitle: '已領取，尚未使用' }
+          : current);
+        selected.set(keyFor('event', claimId), {
+          kind: 'event', id: claimId, title, status: 'pending',
+        });
+        state('ready', result?.alreadyClaimed ? '這張活動票券已領取，已加入本次預約。' : '活動票券已領取並加入本次預約。');
+        emitSelectionChange();
+      } catch (error) {
+        state('ready', String(error?.message || '活動票券領取失敗，請重新整理後再試。'));
+      } finally {
+        claimingEventTicketId = '';
+        render(renderedItems);
+      }
+      return;
+    }
+
+    if (!selectionId) {
+      input.checked = false;
+      render(renderedItems);
+      return;
+    }
+    selected.set(selectedKey, { kind: item.kind, id: selectionId, title: String(item.title || ''), status: 'pending' });
+    render(renderedItems);
+    emitSelectionChange();
+  }
+
   function updateReadyMessage(cardCount) {
     if (!cardCount) {
       state('empty', '目前沒有可用活動或票券，仍可正常預約。');
@@ -62,7 +125,7 @@
     const count = selected.size;
     state('ready', count
       ? `已選擇 ${count} 張票券；服務完成時由管理端重新驗證並核銷。`
-      : `${cardCount} 項活動／票券 · 活動僅顯示，票券可勾選使用。`);
+      : `${cardCount} 項活動／票券 · 活動僅顯示；活動票券每日最多可選 ${eventTicketMaxPerDay} 張。`);
   }
 
   function render(items = renderedItems) {
@@ -95,9 +158,11 @@
 
       for (const item of groupItems) {
         const selectionId = String(item.selectionId || '');
+        const controlId = selectionId || (item.kind === 'event' && item.claimRequired === true ? String(item.id || '') : '');
         const key = keyFor(item.kind, selectionId);
         const isSelected = Boolean(selectionId && selected.has(key));
-        const selectable = selectableKinds.has(item.kind) && item.selectable === true && Boolean(selectionId);
+        const selectable = selectableKinds.has(item.kind) && item.selectable === true && Boolean(controlId);
+        const claiming = item.kind === 'event' && String(item.id || '') === claimingEventTicketId;
 
         const card = document.createElement('article');
         card.className = `booking-benefit${isSelected ? ' is-selected' : ''}`;
@@ -120,31 +185,32 @@
         condition.className = 'booking-benefit-condition';
         condition.textContent = String(item.conditionLabel || '服務限制：目前未設定');
 
-        if (selectionId && selectableKinds.has(item.kind)) {
+        if (controlId && selectableKinds.has(item.kind)) {
           const choose = document.createElement('label');
           choose.className = 'booking-benefit-select';
           const input = document.createElement('input');
           input.type = 'checkbox';
           input.checked = isSelected;
-          input.disabled = !selectable && !isSelected;
+          input.disabled = claiming
+            || (item.kind === 'event' && Boolean(claimingEventTicketId) && !isSelected)
+            || ((!selectable || (item.kind === 'event' && !isSelected && selectedEventCount() >= eventTicketMaxPerDay)) && !isSelected);
           input.dataset.bookingBenefitKind = item.kind;
-          input.dataset.bookingBenefitId = selectionId;
+          input.dataset.bookingBenefitId = controlId;
+          if (item.kind === 'event' && item.claimRequired === true) input.dataset.bookingBenefitClaimRequired = 'true';
           input.setAttribute('aria-label', `本次預約使用${String(item.title || '此權益')}`);
           const label = document.createElement('span');
-          label.textContent = selectable ? '本次預約使用' : (isSelected ? '已選擇（可取消）' : '目前不可勾選');
+          label.textContent = claiming
+            ? '領取中…'
+            : item.kind === 'event' && item.claimRequired === true
+              ? '勾選並領取'
+              : selectable ? '本次預約使用' : (isSelected ? '已選擇（可取消）' : '目前不可勾選');
           choose.append(input, label);
           input.addEventListener('change', () => {
             if (input.checked && !selectable) {
               input.checked = false;
               return;
             }
-            if (input.checked) {
-              selected.set(key, { kind: item.kind, id: selectionId, title: String(item.title || ''), status: 'pending' });
-            } else {
-              selected.delete(key);
-            }
-            render(renderedItems);
-            emitSelectionChange();
+            void handleSelectionChange(item, input);
           });
           card.append(meta, title, copy, expires, condition, choose);
         } else {
@@ -209,6 +275,8 @@
     try {
       const result = await window.BookingSystem.bookingBenefits(config, idToken);
       if (current !== sequence || disposed) return;
+      const rawLimit = Number(result?.eventTicketMaxPerDay || 1);
+      eventTicketMaxPerDay = Number.isInteger(rawLimit) && rawLimit >= 1 && rawLimit <= 50 ? rawLimit : 1;
       render(Array.isArray(result?.items) ? result.items : []);
     } catch (_) {
       if (current !== sequence || disposed) return;

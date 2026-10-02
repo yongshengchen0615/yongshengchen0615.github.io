@@ -4,9 +4,12 @@
   const state = {
     config: null,
     idToken: '',
-    maxTicketsPerRedemption: 1,
+    maxTicketsPerDay: 1,
+    remainingTodayCount: 1,
+    usedTodayCount: 0,
     offers: [],
     selected: new Set(),
+    claimingEventTickets: new Set(),
     busy: false,
     refreshPromise: null,
     initialized: false
@@ -63,6 +66,15 @@
     return String(offer && offer.claim && offer.claim.claimId || '').trim();
   }
 
+  function selectableOffers() {
+    return state.offers.filter((offer) => Boolean(
+      offer && !offer.history && (
+        (offer.claim && offer.canUse && offerClaimId(offer)) ||
+        (!offer.claim && offer.canClaim)
+      )
+    ));
+  }
+
   function usableOffers() {
     return state.offers.filter((offer) => Boolean(offer && !offer.history && offer.claim && offer.canUse && offerClaimId(offer)));
   }
@@ -72,6 +84,10 @@
     return usableOffers().filter((offer) => ids.has(offerClaimId(offer)));
   }
 
+  function selectionLimit() {
+    return Math.max(0, Math.min(state.maxTicketsPerDay, state.remainingTodayCount));
+  }
+
   function ensureToolbar() {
     if (toolbar && document.contains(toolbar)) return toolbar;
     const eventToolbar = document.querySelector('.event-toolbar');
@@ -79,7 +95,7 @@
     toolbar = document.createElement('section');
     toolbar.className = 'event-batch-toolbar';
     toolbar.setAttribute('aria-label', '活動票券多張使用');
-    toolbar.innerHTML = '<div class="event-batch-copy"><strong data-event-batch-selection>尚未選擇票券</strong><small data-event-batch-hint>勾選已領取且目前可用的活動票券，可一次確認使用。</small></div><button class="event-batch-use-button" type="button" disabled>使用已選票券</button><p class="event-batch-message hidden" role="status" aria-live="polite"></p>';
+    toolbar.innerHTML = '<div class="event-batch-copy"><strong data-event-batch-selection>尚未選擇票券</strong><small data-event-batch-hint>勾選活動票券；尚未領取的票券，確認勾選即代表領取。</small></div><button class="event-batch-use-button" type="button" disabled>使用已選票券</button><p class="event-batch-message hidden" role="status" aria-live="polite"></p>';
     eventToolbar.insertAdjacentElement('afterend', toolbar);
     selectionText = toolbar.querySelector('[data-event-batch-selection]');
     selectionHint = toolbar.querySelector('[data-event-batch-hint]');
@@ -100,15 +116,16 @@
   function updateToolbar() {
     ensureToolbar();
     if (!toolbar) return;
-    const usableCount = usableOffers().length;
+    const selectableCount = selectableOffers().length;
     const selectedCount = state.selected.size;
+    const limit = selectionLimit();
     selectionText.textContent = selectedCount
-      ? `已選 ${selectedCount} / ${state.maxTicketsPerRedemption} 張`
-      : `單次最多可使用 ${state.maxTicketsPerRedemption} 張`;
-    selectionHint.textContent = usableCount
-      ? `目前有 ${usableCount} 張已領取且可使用；最多同時選擇 ${state.maxTicketsPerRedemption} 張。`
-      : '目前沒有已領取且可立即使用的活動票券。';
-    useButton.disabled = state.busy || selectedCount < 1 || selectedCount > state.maxTicketsPerRedemption;
+      ? `已選 ${selectedCount} / ${limit} 張 · 今日已使用 ${state.usedTodayCount} / ${state.maxTicketsPerDay} 張`
+      : `今日還可使用 ${limit} 張 · 每日上限 ${state.maxTicketsPerDay} 張`;
+    selectionHint.textContent = selectableCount
+      ? `目前有 ${selectableCount} 張可勾選；尚未領取的票券，勾選確認後會先完成領取。`
+      : (limit <= 0 ? '今日活動票券使用張數已達上限。' : '目前沒有可勾選的活動票券。');
+    useButton.disabled = state.busy || selectedCount < 1 || selectedCount > limit;
     useButton.textContent = state.busy ? '核銷中…' : selectedCount > 1 ? `使用已選 ${selectedCount} 張` : '使用已選票券';
   }
 
@@ -121,13 +138,14 @@
   }
 
   function decorateCards() {
-    const usable = usableOffers();
-    const usableByEvent = new Map(usable.map((offer) => [offerEventTicketId(offer), offer]));
+    const selectable = selectableOffers();
+    const selectableByEvent = new Map(selectable.map((offer) => [offerEventTicketId(offer), offer]));
+    const limit = selectionLimit();
 
     document.querySelectorAll('#eventList .event-ticket').forEach((card) => {
       const button = card.querySelector('[data-event-ticket-id]');
       const eventTicketId = String(button && button.dataset.eventTicketId || '');
-      const offer = usableByEvent.get(eventTicketId);
+      const offer = selectableByEvent.get(eventTicketId);
       const existing = card.querySelector('[data-event-batch-select]');
       if (!offer) {
         existing && existing.remove();
@@ -140,36 +158,83 @@
         control = document.createElement('label');
         control.className = 'event-batch-select';
         control.dataset.eventBatchSelect = 'true';
-        control.innerHTML = '<input type="checkbox"><span>加入本次使用</span>';
+        control.innerHTML = '<input type="checkbox"><span></span>';
         const action = card.querySelector('.event-ticket-action') || card;
         action.insertBefore(control, action.firstChild);
-        control.querySelector('input').addEventListener('change', handleSelectionChange);
+        control.querySelector('input').addEventListener('change', (event) => { void handleSelectionChange(event); });
       }
       const input = control.querySelector('input');
+      const label = control.querySelector('span');
       input.dataset.claimId = claimId;
-      input.checked = state.selected.has(claimId);
-      input.disabled = state.busy || (!input.checked && state.selected.size >= state.maxTicketsPerRedemption);
+      input.dataset.eventTicketId = eventTicketId;
+      input.checked = Boolean(claimId && state.selected.has(claimId));
+      const claiming = state.claimingEventTickets.has(eventTicketId);
+      input.disabled = state.busy || claiming || (!input.checked && state.selected.size + state.claimingEventTickets.size >= limit);
+      label.textContent = claiming ? '領取中…' : claimId ? '加入本次使用' : '勾選並領取';
     });
     updateToolbar();
   }
 
-  function handleSelectionChange(event) {
+  async function handleSelectionChange(event) {
     const input = event.target;
     if (!(input instanceof HTMLInputElement)) return;
-    const claimId = String(input.dataset.claimId || '');
-    if (!claimId) return;
+    const eventTicketId = String(input.dataset.eventTicketId || '');
+    const offer = state.offers.find((item) => offerEventTicketId(item) === eventTicketId);
+    if (!offer) return;
+    const existingClaimId = offerClaimId(offer);
     showMessage('');
-    if (input.checked) {
-      if (state.selected.size >= state.maxTicketsPerRedemption) {
-        input.checked = false;
-        showMessage(`單次最多可使用 ${state.maxTicketsPerRedemption} 張活動票券。`, true);
+
+    if (!input.checked) {
+      if (existingClaimId) state.selected.delete(existingClaimId);
+      decorateCards();
+      return;
+    }
+
+    const limit = selectionLimit();
+    if (state.selected.size + state.claimingEventTickets.size >= limit) {
+      input.checked = false;
+      showMessage(`今日最多還能選擇 ${limit} 張活動票券；每日上限為 ${state.maxTicketsPerDay} 張。`, true);
+      decorateCards();
+      return;
+    }
+
+    if (existingClaimId) {
+      state.selected.add(existingClaimId);
+      decorateCards();
+      return;
+    }
+
+    const title = String(offer.ticket && offer.ticket.title || '活動票券');
+    if (!window.confirm(`勾選「${title}」即代表領取此活動票券。\n\n領取後會加入本次使用清單，是否繼續？`)) {
+      input.checked = false;
+      decorateCards();
+      return;
+    }
+
+    state.claimingEventTickets.add(eventTicketId);
+    decorateCards();
+    try {
+      const result = await window.MemberSystem.request(
+        state.config, 'event', state.idToken, 'user.event.ticket.claim', { eventTicketId }
+      );
+      await refreshSnapshot();
+      const claimedOffer = state.offers.find((item) => offerEventTicketId(item) === eventTicketId);
+      const claimId = offerClaimId(claimedOffer);
+      if (!claimId) throw new Error('票券已領取，但目前無法取得票券識別，請重新整理後再試。');
+      if (state.selected.size >= selectionLimit()) {
+        showMessage('票券已領取，但今日可使用張數已無剩餘額度，因此未加入本次使用。', true);
       } else {
         state.selected.add(claimId);
+        showMessage(result && result.alreadyClaimed ? '這張票券已領取，已加入本次使用。' : '票券已領取並加入本次使用。');
       }
-    } else {
-      state.selected.delete(claimId);
+      window.dispatchEvent(new CustomEvent('event-ticket:selection-claimed', { detail: { eventTicketId, claimId } }));
+    } catch (error) {
+      input.checked = false;
+      showMessage(error && error.message || '領取活動票券失敗，請稍後再試。', true);
+    } finally {
+      state.claimingEventTickets.delete(eventTicketId);
+      decorateCards();
     }
-    decorateCards();
   }
 
   function currentLocation() {
@@ -197,8 +262,8 @@
     if (state.busy) return;
     const offers = selectedOffers();
     if (!offers.length) return;
-    if (offers.length > state.maxTicketsPerRedemption) {
-      showMessage(`單次最多可使用 ${state.maxTicketsPerRedemption} 張活動票券。`, true);
+    if (offers.length > selectionLimit()) {
+      showMessage(`今日最多還能使用 ${selectionLimit()} 張活動票券；每日上限為 ${state.maxTicketsPerDay} 張。`, true);
       return;
     }
 
@@ -244,14 +309,21 @@
     if (!state.config || !state.idToken) return;
     if (state.refreshPromise) return state.refreshPromise;
     state.refreshPromise = (async () => {
-      const [setting, snapshot] = await Promise.all([
+      const [setting, today, snapshot] = await Promise.all([
         extensionRequest('member.settings.get'),
+        extensionRequest('member.today-usable'),
         window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap', { compact: false })
       ]);
-      state.maxTicketsPerRedemption = normalizeLimit(setting.maxTicketsPerRedemption);
+      state.maxTicketsPerDay = normalizeLimit(setting.maxTicketsPerDay || setting.maxTicketsPerRedemption);
+      state.usedTodayCount = Math.max(0, Number(today.usedTodayCount || 0));
+      state.remainingTodayCount = Math.max(0, Math.min(
+        state.maxTicketsPerDay,
+        Number(today.remainingTodayCount ?? (state.maxTicketsPerDay - state.usedTodayCount))
+      ));
       state.offers = Array.isArray(snapshot && snapshot.offers) ? snapshot.offers : [];
       const validClaims = new Set(usableOffers().map(offerClaimId));
       for (const claimId of [...state.selected]) if (!validClaims.has(claimId)) state.selected.delete(claimId);
+      while (state.selected.size > selectionLimit()) state.selected.delete([...state.selected].pop());
       ensureToolbar();
       decorateCards();
     })();

@@ -181,8 +181,8 @@ jobs:
           grep -q 'pointcard-redemption-limit.js?v=pointcard-unified-session-20260919-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
           grep -Eq 'app\.js\?v=[^" ]+' MemberWebsocket-dev/event/index.html
-          ! grep -q 'batch-redemption.js' MemberWebsocket-dev/event/index.html
-          ! grep -q 'batch-redemption.css' MemberWebsocket-dev/event/index.html
+          grep -q 'batch-redemption.js?v=event-checkbox-claim-20261002-1' MemberWebsocket-dev/event/index.html
+          grep -q 'batch-redemption.css?v=event-checkbox-claim-20261002-1' MemberWebsocket-dev/event/index.html
           ! grep -q 'activity-link.js' MemberWebsocket-dev/event/index.html
           test ! -e MemberWebsocket-dev/admin/event-ticket-activity-link.js
           test ! -e MemberWebsocket-dev/event/activity-link.js

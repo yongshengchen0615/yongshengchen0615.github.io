@@ -57,3 +57,6 @@
   .event-batch-use-button { width: 100%; }
   .event-batch-message { grid-column: 1; }
 }
+
+.event-batch-select span { overflow-wrap: anywhere; }
+.event-batch-select input:focus-visible { outline: 3px solid rgba(231,177,110,.34); outline-offset: 2px; }
