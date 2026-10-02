@@ -169,7 +169,7 @@
       const tickets = Array.isArray(detail.tickets)
         ? detail.tickets.filter((ticket) => ticket && ticket.status !== 'used')
         : [];
-      const cardStamps = points(card.stamps);
+      const cardStamps = points(card.availableStamps ?? card.stamps);
       const matchedTicketIds = new Set();
 
       const offers = rewards.map((reward) => {
@@ -404,7 +404,7 @@
       const title = document.createElement('h3');
       title.textContent = text(card.title || '集點卡');
       const meta = document.createElement('small');
-      meta.textContent = `目前 ${points(card.stamps)} 點・共 ${offers.length} 個票券節點`;
+      meta.textContent = `目前可用 ${points(card.availableStamps ?? card.stamps)} 點・共 ${offers.length} 個票券節點`;
       heading.append(title, meta);
       section.append(heading);
 
@@ -449,7 +449,7 @@
         cost.className = 'ticket-cost-cards';
         cost.append(
           createCostCard('兌換需扣', `${points(offer.thresholdStamps)} 點`, 'is-cost'),
-          createCostCard('目前點數', `${offer.cardStamps} 點`, 'is-balance'),
+          createCostCard('目前可用', `${offer.cardStamps} 點`, 'is-balance'),
           createCostCard('扣點來源', offer.cardTitle, 'is-source')
         );
 
