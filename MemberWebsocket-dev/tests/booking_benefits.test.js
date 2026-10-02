@@ -131,7 +131,7 @@ test('reads are member-scoped, batched and strict on backend failure', async () 
   const db = database();
   await loadBookingBenefits(db, member, 'silver', today);
   for (const table of ['point_tickets', 'point_balances', 'event_ticket_claims']) assert.ok(db.calls.some(call => call.table === table && call.key === 'member_id' && call.value === member.id));
-  assert.equal(db.calls.filter(call => call.read).length, 13);
+  assert.equal(db.calls.filter(call => call.read).length, 11);
   for (const fail of ['point_tickets', 'point_balances', 'booking_benefit_selections', 'event_ticket_claim_counts', 'calendar_items', 'event_ticket_settings', 'point_card_settings']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
 });
 
