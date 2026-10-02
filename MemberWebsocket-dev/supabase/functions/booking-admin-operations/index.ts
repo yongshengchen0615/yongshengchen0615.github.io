@@ -367,6 +367,8 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
     receiptId = String(confirmation.receiptId || "");
     receiptConfirmed = Boolean(receiptId);
   } else {
+    // The benefit-aware wrapper performs the canonical complete_booking_with_rewards_request
+    // inside the same database transaction after revalidating and redeeming selected benefits.
     const result = await supabase.rpc("complete_booking_with_benefits_request", {
       p_booking_id: bookingId,
       p_expected_updated_at: expectedUpdatedAt,
