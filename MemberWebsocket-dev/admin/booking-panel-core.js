@@ -1323,9 +1323,9 @@
         <section><p class="kicker">Service settlement</p><div class="booking-completion-preview-list">${itemRows || '<p class="integration-empty">沒有可結算的服務項目。</p>'}</div></section>
         <section><p class="kicker">Point rewards</p><div class="booking-completion-preview-list">${rewardRows}</div></section>
         <section><p class="kicker">Benefit redemption</p><div class="booking-completion-preview-list">${benefitRows}</div></section>
-        <p class="booking-completion-preview-note">此畫面為送出前預覽。Server-side 會重新驗證票券擁有權、狀態、效期、點數與每日上限，並在同一交易內完成核銷與預約結算；任何一項失敗都不會產生半完成狀態。</p>
+        <p class="booking-completion-preview-note">此畫面為送出前預覽。真正的服務時間、集點、LINE 通知與重複請求判斷仍由 Server-side 完成結算流程決定；同時會重新驗證票券擁有權、狀態、效期、點數與每日上限，並在同一交易內完成核銷與預約結算，任何一項失敗都不會產生半完成狀態。</p>
         <div data-modal-message class="form-message hidden"></div>
-        <div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">返回</button><button class="button button-dark" type="submit">確認完成、核銷並結算</button></div>
+        <div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">返回</button><button class="button button-dark" type="submit">確認完成並結算</button></div>
       </form>`;
     const form = els.bookingAdminCrudModalBody.querySelector('form');
     form.querySelector('[data-cancel]').addEventListener('click', closeModal);
