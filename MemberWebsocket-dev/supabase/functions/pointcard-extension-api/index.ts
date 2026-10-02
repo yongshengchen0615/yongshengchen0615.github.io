@@ -83,7 +83,7 @@ async function requireAdmin(supabase: ReturnType<typeof db>, lineUserId: string)
 async function globalSetting(supabase: ReturnType<typeof db>) {
   const result = await supabase.from("point_card_settings").select("max_tickets_per_redemption,updated_at").eq("id", 1).maybeSingle();
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取集點卡設定。");
-  const maxTicketsPerRedemption = Number(result.data?.max_tickets_per_redemption || 1);
+  const maxTicketsPerRedemption = Number(result.data?.max_tickets_per_redemption ?? 1);
   return { maxTicketsPerRedemption, updatedAt: String(result.data?.updated_at || "") };
 }
 function mapRpcError(error: unknown): ApiError {
@@ -121,7 +121,7 @@ async function redeemTickets(origin: string | null, body: Json) {
   const supabase = db();
   const identity = await memberIdentity(supabase, body);
   const setting = await globalSetting(supabase);
-  if (ticketIds.length > setting.maxTicketsPerRedemption) {
+  if (setting.maxTicketsPerRedemption > 0 && ticketIds.length > setting.maxTicketsPerRedemption) {
     throw new ApiError(409, "TICKET_BATCH_LIMIT_EXCEEDED", `單次最多可使用 ${setting.maxTicketsPerRedemption} 張票券。`);
   }
   await consumeRateLimit(supabase, identity.lineUserId, true, ticketIds.length);
@@ -173,8 +173,8 @@ async function saveAdminSetting(origin: string | null, body: Json) {
   await consumeRateLimit(supabase, identity.lineUserId, true, 1);
   await requireAdmin(supabase, identity.lineUserId);
   const maxTickets = Number(body.maxTicketsPerRedemption);
-  if (!Number.isInteger(maxTickets) || maxTickets < 1 || maxTickets > 50) {
-    throw new ApiError(400, "INVALID_TICKET_USE_LIMIT", "單次最多使用票券數必須是 1–50 的整數。");
+  if (!Number.isInteger(maxTickets) || maxTickets < 0 || maxTickets > 50) {
+    throw new ApiError(400, "INVALID_TICKET_USE_LIMIT", "票券使用設定必須是 0–50 的整數；0 代表不限張數。");
   }
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 100);
   let query = supabase.from("point_card_settings").update({
@@ -197,7 +197,7 @@ async function saveAdminSetting(origin: string | null, body: Json) {
     detail: { maxTicketsPerRedemption: maxTickets },
   });
   return json(origin, { ok: true, status: 200, data: {
-    maxTicketsPerRedemption: Number(saved.data.max_tickets_per_redemption || 1),
+    maxTicketsPerRedemption: Number(saved.data.max_tickets_per_redemption ?? 1),
     updatedAt: String(saved.data.updated_at || ""),
   } });
 }
