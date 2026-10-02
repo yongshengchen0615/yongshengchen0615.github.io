@@ -56,6 +56,7 @@ test('booking benefits calculate spendable points after other booking reservatio
 test('point card bootstrap and UI expose spendable and reserved balances', () => {
   const api = read('supabase/functions/api/index.ts');
   const points = read('points/app.js');
+  const ticketOverview = read('points/pointcard-ticket-overview.js');
 
   assert.match(api, /reservedStampsByCard/);
   assert.match(api, /reservedStamps,/);
@@ -65,6 +66,8 @@ test('point card bootstrap and UI expose spendable and reserved balances', () =>
   assert.match(points, /已預約使用，將於服務完成時自動核銷/);
   assert.match(points, /totalStamps,/);
   assert.match(points, /reservedStamps,/);
+  assert.match(ticketOverview, /card\.availableStamps \?\? card\.stamps/);
+  assert.match(ticketOverview, /目前可用/);
 });
 
 test('updated booking and point assets are cache busted', () => {
@@ -74,4 +77,5 @@ test('updated booking and point assets are cache busted', () => {
   assert.match(booking, /booking-benefits\.js\?v=booking-point-reservation-20261002-3/);
   assert.match(booking, /app\.js\?v=booking-point-reservation-20261002-2/);
   assert.match(points, /app\.js\?v=booking-point-reservation-20261002-1/);
+  assert.match(points, /pointcard-ticket-overview\.js\?v=booking-point-reservation-20261002-2/);
 });
