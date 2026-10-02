@@ -1622,15 +1622,61 @@
   function renderEventTicketList() {
     els.eventTicketResultCount.textContent = String(state.eventTickets.length);
     els.eventTicketEmptyState.classList.toggle('hidden', state.eventTickets.length !== 0);
-    els.eventTicketListItems.replaceChildren(...state.eventTickets.map((ticket) => {
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'card-list-item'; button.dataset.eventTicketId = String(ticket.eventTicketId); button.setAttribute('aria-selected', String(ticket.eventTicketId) === state.selectedEventTicketId ? 'true' : 'false'); button.style.setProperty('--card-accent', safeAccent(ticket.accent));
-      const title = document.createElement('strong'); const dot = document.createElement('i'); title.append(dot, document.createTextNode(String(ticket.title || '未命名活動票券')));
-      const limit = Number(ticket.quota || 0) > 0 ? `已領取 ${Number(ticket.claimedCount || 0)} / 限量 ${Number(ticket.quota)} 張` : `不限量 · 已領取 ${Number(ticket.claimedCount || 0)} 張`;
-      const dates = ticket.startsOn || ticket.endsOn ? `${ticket.startsOn ? formatAdminDateCompact(ticket.startsOn) : '即日起'}–${ticket.endsOn ? formatAdminDateCompact(ticket.endsOn) : '不限期'}` : '不限期';
-      const allowedTiers = Array.isArray(ticket.allowedTierLabels) && ticket.allowedTierLabels.length ? ticket.allowedTierLabels.join('、') : '全部等級';
-      const meta = document.createElement('small'); meta.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : ticket.ticketType === 'referral' ? '好友邀請' : '優惠券'} · ${allowedTiers} · ${dates} · ${limit} · ${statusLabel(ticket.status)}`;
-      button.append(title, meta); return button;
-    }));
+    const existing = new Map(
+      Array.from(els.eventTicketListItems.querySelectorAll('[data-event-ticket-id]'))
+        .map((button) => [String(button.dataset.eventTicketId || ''), button])
+        .filter(([eventTicketId]) => Boolean(eventTicketId))
+    );
+    const retained = new Set();
+
+    state.eventTickets.forEach((ticket) => {
+      const eventTicketId = String(ticket.eventTicketId || '');
+      const selected = eventTicketId === state.selectedEventTicketId;
+      const signature = JSON.stringify([
+        eventTicketId,
+        ticket.title || '',
+        Number(ticket.claimedCount || 0),
+        Number(ticket.quota || 0),
+        ticket.startsOn || '',
+        ticket.endsOn || '',
+        Array.isArray(ticket.allowedTierLabels) ? ticket.allowedTierLabels : [],
+        ticket.ticketType || '',
+        ticket.status || '',
+        safeAccent(ticket.accent),
+        selected,
+      ]);
+      let button = existing.get(eventTicketId);
+      if (!button || button.dataset.eventTicketRenderSignature !== signature) {
+        const next = document.createElement('button');
+        next.type = 'button';
+        next.className = 'card-list-item';
+        next.dataset.eventTicketId = eventTicketId;
+        next.dataset.eventTicketRenderSignature = signature;
+        next.setAttribute('aria-selected', selected ? 'true' : 'false');
+        next.style.setProperty('--card-accent', safeAccent(ticket.accent));
+        const title = document.createElement('strong');
+        const dot = document.createElement('i');
+        title.append(dot, document.createTextNode(String(ticket.title || '未命名活動票券')));
+        const limit = Number(ticket.quota || 0) > 0
+          ? `已領取 ${Number(ticket.claimedCount || 0)} / 限量 ${Number(ticket.quota)} 張`
+          : `不限量 · 已領取 ${Number(ticket.claimedCount || 0)} 張`;
+        const dates = ticket.startsOn || ticket.endsOn
+          ? `${ticket.startsOn ? formatAdminDateCompact(ticket.startsOn) : '即日起'}–${ticket.endsOn ? formatAdminDateCompact(ticket.endsOn) : '不限期'}`
+          : '不限期';
+        const allowedTiers = Array.isArray(ticket.allowedTierLabels) && ticket.allowedTierLabels.length ? ticket.allowedTierLabels.join('、') : '全部等級';
+        const meta = document.createElement('small');
+        meta.textContent = `${ticket.ticketType === 'lottery' ? '抽獎券' : ticket.ticketType === 'referral' ? '好友邀請' : '優惠券'} · ${allowedTiers} · ${dates} · ${limit} · ${statusLabel(ticket.status)}`;
+        next.append(title, meta);
+        if (button) button.remove();
+        button = next;
+      }
+      retained.add(button);
+      els.eventTicketListItems.appendChild(button);
+    });
+
+    Array.from(els.eventTicketListItems.children).forEach((button) => {
+      if (!retained.has(button)) button.remove();
+    });
     window.dispatchEvent(new Event('member-admin-event-ticket-list-rendered'));
   }
 
