@@ -16,8 +16,8 @@ function database(overrides = {}, fail = '') {
     point_cards: [{ id: 'card', card_id: 'CARD', title: '集點卡', status: 'active', expiry_mode: 'unlimited' }],
     point_card_rewards: [{ id: 'reward', point_card_id: 'card', ticket_template_id: 'template', threshold_stamps: 5 }],
     ticket_templates: [{ id: 'template', title: '最新優惠', status: 'active' }],
-    point_tickets: [{ member_id: member.id, status: 'available', reward_id: 'reward', point_card_id: 'card', ticket_template_id: 'template', threshold_stamps: 5 }],
-    event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', title: '活動票券', status: 'active', allowed_tier_keys: ['silver'], quota: 2 }],
+    point_tickets: [{ ticket_id: 'PT-001', member_id: member.id, status: 'available', reward_id: 'reward', point_card_id: 'card', ticket_template_id: 'template', threshold_stamps: 5 }],
+    event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', title: '活動票券', status: 'active', allowed_tier_keys: ['silver'], quota: 2, requires_location: false }],
     event_ticket_claims: [],
     calendar_items: [{ calendar_item_id: 'CAL', title: '會員活動', item_type: 'event', status: 'active', starts_on: today, ends_on: today, allowed_tier_keys: ['silver'] }],
     ...overrides,
@@ -76,8 +76,10 @@ test('expired/inactive/used/ineligible/future/full benefits are excluded', async
 test('birthday activities and claimed inventory preserve existing eligibility rules', async () => {
   const { loadBookingBenefits } = await modulePromise;
   const birthdayActivity = { calendar_item_id: 'CAL', item_type: 'event', status: 'targeted', audience_type: 'birthday_month', audience_month: 1, starts_on: today, ends_on: today };
-  const result = await loadBookingBenefits(database({ calendar_items: [birthdayActivity], event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', status: 'active', allowed_tier_keys: ['silver'], quota: 1 }], event_ticket_claims: [{ member_id: member.id, event_ticket_id: 'event', status: 'claimed' }] }), member, 'silver', today);
+  const result = await loadBookingBenefits(database({ calendar_items: [birthdayActivity], event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', status: 'active', allowed_tier_keys: ['silver'], quota: 1 }], event_ticket_claims: [{ claim_id: 'EC-001', member_id: member.id, event_ticket_id: 'event', status: 'claimed' }] }), member, 'silver', today);
   assert.equal(result.items.find(item => item.kind === 'event').statusLabel, '可使用');
+  assert.equal(result.items.find(item => item.kind === 'event').selectionId, 'EC-001');
+  assert.equal(result.items.find(item => item.kind === 'event').selectable, true);
   assert.ok(result.items.some(item => item.kind === 'calendar'));
   assert.equal((await loadBookingBenefits(database({ calendar_items: [birthdayActivity], event_tickets: [], point_tickets: [] }), { ...member, birthday: '1990-02-01' }, 'silver', today)).items.length, 0);
 });
