@@ -96,3 +96,24 @@ test('booking activities are display-only while point and event tickets remain s
   assert.doesNotMatch(bookingApi, /\["points","event","calendar"\]\.includes\(kind\)/);
   assert.doesNotMatch(groupApi, /\["points","event","calendar"\]\.includes\(kind\)/);
 });
+
+
+test('booking event ticket checkbox can claim and server enforces configured selection cap', () => {
+  const source = read('supabase/functions/_shared/booking-benefits.ts');
+  const common = read('booking/common.js');
+  const ui = read('booking/booking-benefits.js');
+  const api = read('supabase/functions/api/index.ts');
+  const bookingApi = read('supabase/functions/booking-api/index.ts');
+  const groupApi = read('supabase/functions/booking-group-api/index.ts');
+  assert.match(source, /claimRequired: !offer\.claimed/);
+  assert.match(source, /eventTicketMaxPerDay/);
+  assert.match(common, /user\.booking\.event-ticket\.claim/);
+  assert.match(common, /claimEventTicket/);
+  assert.match(ui, /勾選「\$\{title\}」即代表領取此活動票券/);
+  assert.match(ui, /selectedEventCount\(\) >= eventTicketMaxPerDay/);
+  assert.match(api, /user\.booking\.event-ticket\.claim/);
+  assert.match(bookingApi, /validateBookingBenefitSelectionLimit/);
+  assert.match(bookingApi, /EVENT_TICKET_SELECTION_LIMIT_EXCEEDED/);
+  assert.match(groupApi, /validateBookingBenefitSelectionLimit/);
+  assert.match(groupApi, /EVENT_TICKET_SELECTION_LIMIT_EXCEEDED/);
+});
