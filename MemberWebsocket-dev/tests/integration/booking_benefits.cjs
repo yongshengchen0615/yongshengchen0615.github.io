@@ -186,3 +186,51 @@ test('realtime invalidation drops used tickets, coalesces storms and ignores sta
     assert.equal(h.el('bookingBenefits').dataset.state, 'empty');
   } finally { h.close(); }
 });
+
+
+test('service-restricted tickets require a matching booked service and are removed when that service disappears', async () => {
+  const restrictedItems = [
+    {
+      kind: 'points',
+      id: 'body-reward',
+      selectionId: 'PT-BODY',
+      selectable: true,
+      title: '身體集點卡優惠券',
+      cardId: 'BODY-CARD',
+      cardTitle: '身體集點卡',
+      pointCost: 5,
+      pointBalance: 10,
+      requiredServiceTypes: ['身體'],
+      statusLabel: '可使用',
+      conditionLabel: '服務限制：需預約「身體」相關服務 · 本卡可用 10 點 · 此票券需 5 點',
+    },
+  ];
+  const h = fixture(async () => ({ pointTicketMaxPerRedemption: 2, items: restrictedItems }));
+  try {
+    h.start();
+    await tick(10);
+
+    let checkbox = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-BODY"]');
+    assert.ok(checkbox);
+    assert.equal(checkbox.disabled, false, 'restricted ticket remains clickable so the member can receive an explanation');
+    assert.match(checkbox.parentElement.textContent, /需先預約：身體/);
+
+    checkbox.click();
+    assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), []);
+    assert.match(h.el('bookingBenefitsStatus').textContent, /需先預約「身體」相關服務才能使用這張票券/);
+
+    h.w.BookingBenefits.setServiceContext(['身體']);
+    checkbox = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-BODY"]');
+    checkbox.click();
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())),
+      [{ kind: 'points', id: 'PT-BODY' }]
+    );
+
+    h.w.BookingBenefits.setServiceContext(['腳底']);
+    assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), []);
+    assert.match(h.el('bookingBenefitsStatus').textContent, /已自動取消那些票券/);
+  } finally {
+    h.close();
+  }
+});
