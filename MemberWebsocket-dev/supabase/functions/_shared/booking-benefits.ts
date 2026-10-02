@@ -27,16 +27,24 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         kind: 'points', id: offer.rewardId, title: offer.ticketTitle,
         subtitle: `${offer.cardTitle} · 消耗 ${offer.thresholdStamps} 點`,
         statusLabel: '可使用', startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId,
+        selectable: Boolean(offer.ticketId), selectionId: offer.ticketId,
+        disabledReason: offer.ticketId ? '' : '目前沒有可核銷的票券',
       })),
       ...events.map((offer) => ({
         kind: 'event', id: offer.eventTicketId, title: offer.title,
         subtitle: offer.claimed ? '已領取，尚未使用' : '符合資格，可前往領取',
         statusLabel: offer.claimed ? '可使用' : '可領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
+        selectable: Boolean(offer.claimed && offer.claimId && !offer.requiresLocation),
+        selectionId: offer.claimId || '',
+        disabledReason: offer.requiresLocation
+          ? '此票券需於票券頁完成定位核銷'
+          : (offer.claimed ? '' : '請先領取票券後再於預約中選用'),
       })),
       ...activities.map((item: any) => ({
         kind: 'calendar', id: item.calendar_item_id, title: item.title,
         subtitle: '適用於目前會員階級', statusLabel: '活動進行中',
         startsOn: item.starts_on || '', endsOn: item.ends_on || item.starts_on || '',
+        selectable: true, selectionId: item.calendar_item_id, disabledReason: '',
       })),
     ],
   };
