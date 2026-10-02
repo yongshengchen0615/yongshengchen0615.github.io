@@ -127,7 +127,7 @@ test('booking point tickets enforce current balance in UI and database', () => {
   assert.match(source, /點數不足/);
   assert.match(ui, /selectedPointSpend/);
   assert.match(ui, /pointBudget/);
-  assert.match(ui, /budget\.spent \+ budget\.cost/);
+  assert.match(ui, /spent \+ cost <= balance/);
   assert.match(migration, /POINT_TICKET_INSUFFICIENT_POINTS/);
   assert.match(migration, /before insert on public\.booking_benefit_selections/);
   assert.match(migration, /for update/);
