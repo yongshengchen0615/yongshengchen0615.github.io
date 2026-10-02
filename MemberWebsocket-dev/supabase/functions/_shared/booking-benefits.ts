@@ -5,7 +5,7 @@ import { isEligibleTierActivity } from './activity-eligibility.ts';
 export async function loadBookingBenefits(db: SupabaseClient, member: any, tier: string, today: string) {
   // Member and tier are resolved by the authenticated handler, never the body.
   // Fixed-size batched reads; no ticket issuance, claim or redemption occurs here.
-  const [points, events, calendar, eventSettings] = await Promise.all([
+  const [points, events, calendar, eventSettings, pointSettings] = await Promise.all([
     loadLatestPointOffers(db, String(member.id), true),
     loadLatestEventOffers(db, String(member.id), tier, true),
     db.from('calendar_items')
@@ -17,11 +17,18 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       .select('max_tickets_per_day,max_tickets_per_redemption')
       .eq('id', 1)
       .maybeSingle(),
+    db.from('point_card_settings')
+      .select('max_tickets_per_redemption')
+      .eq('id', 1)
+      .maybeSingle(),
   ]);
   if (calendar.error) throw calendar.error;
   if (eventSettings.error) throw eventSettings.error;
+  if (pointSettings.error) throw pointSettings.error;
   const rawEventLimit = Number(eventSettings.data?.max_tickets_per_day || eventSettings.data?.max_tickets_per_redemption || 1);
   const eventTicketMaxPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 1 && rawEventLimit <= 50 ? rawEventLimit : 1;
+  const rawPointLimit = Number(pointSettings.data?.max_tickets_per_redemption || 1);
+  const pointTicketMaxPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 1 && rawPointLimit <= 50 ? rawPointLimit : 1;
   // Ticket-backed calendar activities are represented by the canonical event
   // offer above, so expired/full/used tickets cannot reappear as activities.
   const activities = (calendar.data || []).filter((item: any) =>
@@ -30,13 +37,14 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   return {
     asOf: new Date().toISOString(),
     eventTicketMaxPerDay,
+    pointTicketMaxPerRedemption,
     items: [
       ...points.map((offer) => ({
         kind: 'points', id: offer.rewardId, title: offer.ticketTitle,
         subtitle: `${offer.cardTitle} · 消耗 ${offer.thresholdStamps} 點`,
         statusLabel: '可使用', startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId,
         selectable: Boolean(offer.ticketId), selectionId: offer.ticketId,
-        conditionLabel: '服務限制：目前未設定',
+        conditionLabel: `單次預約最多使用 ${pointTicketMaxPerRedemption} 張 · 服務限制：目前未設定`,
         disabledReason: offer.ticketId ? '' : '目前沒有可核銷的票券',
       })),
       ...events.map((offer) => ({
