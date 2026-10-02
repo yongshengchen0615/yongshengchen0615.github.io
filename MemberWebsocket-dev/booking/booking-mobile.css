@@ -522,7 +522,8 @@
 
 @media (max-width: 360px) {
   .app-shell {
-    padding-inline: max(10px, env(safe-area-inset-left));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
   }
 
   #bookingView .booking-card {
