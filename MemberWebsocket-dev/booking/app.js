@@ -592,6 +592,18 @@
     card.append(title, serviceLine, duration, amount);
     box.appendChild(card);
 
+    const benefits = window.BookingBenefits?.selectionSummary?.() || [];
+    if (benefits.length) {
+      const benefitBox = document.createElement('div');
+      benefitBox.className = 'group-confirm-participant booking-confirm-benefits';
+      const benefitTitle = document.createElement('strong');
+      benefitTitle.textContent = '本次選用優惠';
+      const benefitCopy = document.createElement('p');
+      benefitCopy.textContent = benefits.map((item) => item.title || '可用權益').join('、');
+      benefitBox.append(benefitTitle, benefitCopy);
+      box.appendChild(benefitBox);
+    }
+
     const noteBox = document.createElement('div');
     noteBox.className = 'group-confirm-participant booking-confirm-note';
     const noteTitle = document.createElement('strong');
@@ -619,6 +631,7 @@
       bookingDate,
       startTime,
       memberNote: String(els.memberNote.value || ''),
+      benefits: window.BookingBenefits?.selectionPayload?.() || [],
     });
   }
 
@@ -663,6 +676,7 @@
         bookingDate,
         startTime,
         memberNote: els.memberNote.value,
+        benefits: window.BookingBenefits?.selectionPayload?.() || [],
       });
       state.pendingBookingWrite = null;
       state.data.bookings = [result.booking, ...(state.data.bookings || []).filter((item) => item.bookingId !== result.booking.bookingId)];
@@ -670,6 +684,7 @@
       state.editing = null;
       updateEditingLabel();
       els.memberNote.value = '';
+      window.BookingBenefits?.clearSelection?.();
       state.selections = [];
       state.selectedSlot = null;
       renderServices();
@@ -685,6 +700,7 @@
           els.bookingConfirmModal.classList.add('hidden');
           state.editing = null;
           updateEditingLabel();
+          window.BookingBenefits?.clearSelection?.();
           state.selections = [];
           state.selectedSlot = null;
           renderServices();
@@ -782,6 +798,12 @@
       );
       item.appendChild(totals);
 
+      if (Array.isArray(booking.benefits) && booking.benefits.length) {
+        const benefits = document.createElement('p');
+        benefits.className = 'booking-note booking-benefit-note';
+        benefits.textContent = `本次選用優惠：${booking.benefits.map((benefit) => benefit.title || '可用權益').join('、')}`;
+        item.appendChild(benefits);
+      }
       if (booking.memberNote) {
         const note = document.createElement('p');
         note.className = 'booking-note';
@@ -885,6 +907,7 @@
     state.selectedSlot = null;
     ++state.slotRequestSequence;
     els.memberNote.value = '';
+    window.BookingBenefits?.clearSelection?.();
     updateEditingLabel();
     renderServices();
     applySelectionConstraints(false);
@@ -897,6 +920,7 @@
     state.selections = bookingVisibleItems(booking).filter((item) => activeIds.has(item.serviceId))
       .flatMap((item) => Array.from({ length: Number(item.quantity || 1) }, () => ({ serviceId: item.serviceId, selectionId: crypto.randomUUID() })));
     els.memberNote.value = booking.memberNote || '';
+    window.BookingBenefits?.setSelection?.(booking.benefits || []);
     els.bookingDate.value = booking.bookingDate;
     renderServices();
     applySelectionConstraints(false);
