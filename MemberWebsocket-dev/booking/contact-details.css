@@ -42,7 +42,7 @@
 }
 
 .booking-contact-option:has(input:checked) {
-  border-color: var(--theme-text);
+  border-color: var(--theme-accent);
   background: var(--theme-surface-muted);
   box-shadow: 0 0 0 2px var(--theme-focus-ring);
 }
@@ -58,7 +58,7 @@
   height: 18px;
   margin: 2px 0 0;
   padding: 0;
-  accent-color: var(--theme-text);
+  accent-color: var(--theme-accent);
   box-shadow: none;
 }
 
