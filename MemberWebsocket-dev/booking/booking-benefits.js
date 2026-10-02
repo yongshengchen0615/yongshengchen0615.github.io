@@ -68,7 +68,15 @@
 
   function normalizeLimit(value) {
     const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 50 ? parsed : 1;
+    return Number.isInteger(parsed) && parsed >= 0 && parsed <= 50 ? parsed : 1;
+  }
+
+  function hasLimit(value) {
+    return Number(value) > 0;
+  }
+
+  function limitLabel(value, unitLabel) {
+    return hasLimit(value) ? `${value} 張` : `不限張數${unitLabel ? `（${unitLabel}）` : ''}`;
   }
 
   function pointItemForSelection(selectionId) {
@@ -221,7 +229,7 @@
     const count = selected.size;
     state('ready', count
       ? `已選擇 ${count} 張票券；服務完成時由管理端重新驗證並核銷。`
-      : `${cardCount} 項活動／票券 · 活動僅顯示；集點卡票券單次最多可選 ${pointTicketMaxPerRedemption} 張；活動票券每日最多可選 ${eventTicketMaxPerDay} 張。`);
+      : `${cardCount} 項活動／票券 · 活動僅顯示；集點卡票券單次 ${limitLabel(pointTicketMaxPerRedemption, '0 代表不限')};活動票券每日 ${limitLabel(eventTicketMaxPerDay, '0 代表不限')}。`);
   }
 
   function render(items = renderedItems) {
@@ -259,7 +267,7 @@
         const isSelected = Boolean(selectionId && selected.has(key));
         const selectable = selectableKinds.has(item.kind) && item.selectable === true && Boolean(controlId);
         const claiming = item.kind === 'event' && String(item.id || '') === claimingEventTicketId;
-        const pointLimitBlocked = item.kind === 'points' && !isSelected && selectedPointCount() >= pointTicketMaxPerRedemption;
+        const pointLimitBlocked = item.kind === 'points' && hasLimit(pointTicketMaxPerRedemption) && !isSelected && selectedPointCount() >= pointTicketMaxPerRedemption;
         const pointBudgetBlocked = item.kind === 'points' && !isSelected && !pointBudget(item).affordable;
 
         const card = document.createElement('article');
@@ -292,7 +300,7 @@
           input.disabled = claiming
             || (item.kind === 'event' && Boolean(claimingEventTicketId) && !isSelected)
             || ((!selectable
-              || (item.kind === 'event' && !isSelected && selectedEventCount() >= eventTicketMaxPerDay)
+              || (item.kind === 'event' && hasLimit(eventTicketMaxPerDay) && !isSelected && selectedEventCount() >= eventTicketMaxPerDay)
               || pointLimitBlocked
               || pointBudgetBlocked) && !isSelected);
           input.dataset.bookingBenefitKind = item.kind;
