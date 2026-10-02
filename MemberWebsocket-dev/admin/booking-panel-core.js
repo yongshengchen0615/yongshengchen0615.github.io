@@ -25,6 +25,7 @@
     unreadCount: 0,
     pendingCount: 0,
     latestNotificationId: 0,
+    bookingRenderSignatures: new Map(),
   };
   const els = {};
 
@@ -917,14 +918,29 @@
       .filter((booking) => state.filter === 'all' || booking.status === state.filter)
       .slice()
       .sort(compareBookingsNewestFirst);
-    els.bookingAdminQueue.replaceChildren();
     els.bookingAdminQueueEmpty.classList.toggle('hidden', bookings.length > 0);
+    const existingCards = new Map(
+      Array.from(els.bookingAdminQueue.querySelectorAll('[data-booking-id]'))
+        .map((card) => [String(card.dataset.bookingId || ''), card])
+        .filter(([bookingId]) => Boolean(bookingId))
+    );
+    const nextSignatures = new Map();
+    const retainedCards = new Set();
 
     bookings.forEach((booking) => {
       const bookingId = String(booking.bookingId || '');
       const storedGroup = state.booking.groups?.[bookingId];
       const hasStoredParticipants = Boolean(storedGroup && Array.isArray(storedGroup.participants) && storedGroup.participants.length);
       const group = groupForDisplay(storedGroup, booking);
+      const renderSignature = JSON.stringify({ booking, group, hasStoredParticipants });
+      nextSignatures.set(bookingId, renderSignature);
+      const existingCard = existingCards.get(bookingId);
+      if (existingCard && state.bookingRenderSignatures.get(bookingId) === renderSignature) {
+        retainedCards.add(existingCard);
+        els.bookingAdminQueue.appendChild(existingCard);
+        return;
+      }
+
       const card = document.createElement('article');
       card.className = 'booking-admin-booking booking-summary-normalized';
       card.dataset.bookingId = bookingId;
@@ -1000,8 +1016,15 @@
         card.appendChild(actions);
       }
 
+      if (existingCard) existingCard.remove();
+      retainedCards.add(card);
       els.bookingAdminQueue.appendChild(card);
     });
+
+    Array.from(els.bookingAdminQueue.children).forEach((card) => {
+      if (!retainedCards.has(card)) card.remove();
+    });
+    state.bookingRenderSignatures = nextSignatures;
   }
 
   function canEditBooking(booking) {
