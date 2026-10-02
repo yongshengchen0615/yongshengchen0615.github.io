@@ -40,8 +40,20 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
         const groupKinds = [...h.el('bookingBenefitsList').querySelectorAll('.booking-benefit-group')]
           .map(group => group.dataset.benefitKind);
         assert.deepEqual(groupKinds, ['calendar', 'points', 'event']);
-        const eventLink = [...links].find(link => /eventTicketId=EVENT/.test(link.href));
-        assert.ok(eventLink, 'event benefit keeps its canonical detail link');
+        assert.equal(
+          h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="points"] a'),
+          null,
+          'point tickets stay actionable in booking without a detail link'
+        );
+        assert.equal(
+          h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="event"] a'),
+          null,
+          'event tickets stay actionable in booking without a detail link'
+        );
+        assert.ok(
+          h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="calendar"] a'),
+          'display-only activities may keep their calendar detail link'
+        );
         assert.match(h.el('bookingBenefitsList').textContent, /活動資訊僅供預約參考/);
         assert.equal(h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="calendar"] input[type="checkbox"]'), null);
         const checkboxes = h.el('bookingBenefitsList').querySelectorAll('input[type="checkbox"]');
@@ -101,8 +113,14 @@ test('realtime invalidation drops used tickets, coalesces storms and ignores sta
     assert.equal(h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length, 3);
     h.w.BookingSystem.bookingBenefits = async () => ({ items: [] });
     h.w.BookingBenefits.invalidate();
-    assert.equal(h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length, 0, 'old tickets disappear as soon as invalidated');
+    assert.equal(
+      h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length,
+      3,
+      'current tickets stay visible while a background refresh is pending'
+    );
+    assert.equal(h.el('bookingBenefitsList').getAttribute('aria-busy'), 'true');
     await tick(500);
+    assert.equal(h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length, 0);
     assert.equal(h.el('bookingBenefits').dataset.state, 'empty');
   } finally { h.close(); }
 });
