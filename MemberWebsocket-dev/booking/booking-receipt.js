@@ -46,7 +46,7 @@
           <div><p class="kicker">Receipt verification</p><h2 id="bookingReceiptTitle">拍攝收據並送出審核</h2></div>
           <button id="bookingReceiptClose" class="booking-modal-close" type="button" aria-label="關閉">×</button>
         </div>
-        <p class="booking-receipt-help">請直接使用相機拍攝本次消費收據。上傳後預約仍會維持已確認狀態，待管理端核對收據與預約項目後才完成結算。</p>
+        <p class="booking-receipt-help">請直接使用相機拍攝本次消費收據。預約確認後即可上傳，不需等待服務時間結束；若重新上傳，會覆蓋這筆預約目前的收據快照。管理端確認前，預約仍維持已確認狀態。</p>
         <div class="booking-receipt-camera">
           <video id="bookingReceiptCamera" class="booking-receipt-camera-video" autoplay playsinline muted></video>
           <canvas id="bookingReceiptCanvas" class="hidden"></canvas>
@@ -380,32 +380,31 @@
         return;
       }
 
+      const canSubmitReceipt = Boolean(meta.canSubmitReceipt ?? meta.canComplete);
+
       if (awaitingReview) {
         const note = document.createElement('p');
         note.dataset.bookingReceiptControl = '1';
         note.className = 'booking-receipt-status';
-        note.textContent = '收據已送出 · 等待管理端確認';
+        note.textContent = '收據已送出 · 等待管理端確認；重新拍攝會覆蓋目前快照';
         card.append(note);
-        return;
       }
 
-      if (meta.canSubmitReceipt ?? meta.canComplete) {
+      if (canSubmitReceipt) {
         const actions = document.createElement('div');
         actions.dataset.bookingReceiptControl = '1';
         actions.className = 'booking-actions booking-receipt-card-actions';
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'button button-dark';
-        button.textContent = pending ? '收據上傳未完成，重新拍攝' : '拍攝收據送出審核';
+        button.textContent = awaitingReview
+          ? '重新拍攝並覆蓋收據'
+          : pending
+            ? '收據上傳未完成，重新拍攝'
+            : '拍攝收據送出審核';
         button.addEventListener('click', () => openModal(bookingId, meta.updatedAt));
         actions.append(button);
         card.append(actions);
-      } else if (meta.status === 'confirmed') {
-        const note = document.createElement('p');
-        note.dataset.bookingReceiptControl = '1';
-        note.className = 'booking-receipt-status';
-        note.textContent = '服務時間結束後即可拍攝收據；送出後需等待管理端確認。';
-        card.append(note);
       }
     });
   }
