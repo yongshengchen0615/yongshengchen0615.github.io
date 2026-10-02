@@ -29,13 +29,13 @@
   <script src="./liff-fresh-login.js?v=member-presence-20260920-1" defer></script>
   <script src="./membership-progress.js?v=booking-tier-member-parity-20260914-2" defer></script>
   <script src="./member-ui.js?v=test-mode-20260920-1" defer></script>
-  <script src="./booking-benefits.js?v=booking-ticket-limit-sync-20261002-2" defer></script>
+  <script src="./booking-benefits.js?v=booking-mobile-ticket-ui-20261002-3" defer></script>
   <script src="./app.js?v=booking-overnight-20260928-1-benefit-redemption-20261002-1" defer></script>
   <script src="./booking-receipt.js?v=booking-receipt-20261001-4" defer></script>
   <script src="../user-tour.js?v=layout-stability-20261001-1" defer></script>
   <script src="./calendar-flow.js?v=csp-hardening-20260929-1" defer></script>
   <script src="./booking-flow.js?v=lumen-experience-20260924-1" defer></script>
-  <link rel="stylesheet" href="./booking-benefits.css?v=booking-event-ticket-claim-20261002-1">
+  <link rel="stylesheet" href="./booking-benefits.css?v=booking-mobile-layout-20261002-2">
   <link rel="stylesheet" href="./booking-typography.css?v=booking-typography-20260919-contact-render-1">
   <link rel="stylesheet" href="./contact-details.css?v=booking-contact-top-ui-20260919-2">
   <link rel="stylesheet" href="../test-mode.css?v=test-mode-20260920-1">
@@ -46,6 +46,7 @@
   <script src="../user-test-control.js?v=qa-e2e-20261001-3" defer></script>
   <link rel="stylesheet" href="../theme.css?v=m3-ui-20261001-booking-topbar-parity-3">
   <link rel="stylesheet" href="../experience.css?v=lumen-experience-20260924-1">
+  <link rel="stylesheet" href="./booking-mobile.css?v=booking-mobile-layout-20261002-1">
   <script src="../membership-milestones.js?v=lumen-experience-20260924-1" defer></script>
   <script src="../theme.js?v=m3-ui-20260929-1"></script>
 </head>
@@ -118,6 +119,7 @@
                 <button id="closeAppointmentButton" class="booking-selection-modal-close" type="button" aria-label="關閉預約視窗">×</button>
               </div>
 
+              <div class="booking-selection-modal-body">
               <fieldset class="booking-contact-fieldset">
                 <legend>預約資料</legend>
                 <div class="booking-contact-options" role="radiogroup" aria-label="預約資料來源">
@@ -164,7 +166,7 @@
                   <div><h2 id="bookingBenefitsTitle">本次可使用優惠</h2><p id="bookingBenefitsStatus" role="status" aria-live="polite">正在確認你的可用權益…</p></div>
                   <button id="bookingBenefitsRetry" class="text-button hidden" type="button">重新載入</button>
                 </div>
-                <p class="slot-hint">可勾選集點卡票券、已領取的活動票券或適用活動；真正核銷會在管理端完成服務時再次驗證。</p>
+                <p class="slot-hint">可勾選集點卡票券與活動票券；適用活動僅顯示供預約參考。真正核銷會在管理端完成服務時再次驗證。</p>
                 <div id="bookingBenefitsList" class="booking-benefits-list" aria-label="本次可使用優惠" aria-busy="true"></div>
               </section>
 
@@ -173,8 +175,11 @@
                 <textarea id="memberNote" maxlength="500" rows="3" placeholder="例如：希望安排的服務需求"></textarea>
               </label>
 
-              <div id="formMessage" class="form-message hidden" role="status" aria-live="polite"></div>
-              <button id="submitBookingButton" class="button button-dark button-wide" type="submit" disabled>確認預約內容</button>
+              </div>
+              <div class="booking-selection-modal-footer">
+                <div id="formMessage" class="form-message hidden" role="status" aria-live="polite"></div>
+                <button id="submitBookingButton" class="button button-dark button-wide" type="submit" disabled>確認預約內容</button>
+              </div>
             </div>
           </section>
         </form>
