@@ -191,7 +191,9 @@
           const input = document.createElement('input');
           input.type = 'checkbox';
           input.checked = isSelected;
-          input.disabled = claiming || ((!selectable || (item.kind === 'event' && !isSelected && selectedEventCount() >= eventTicketMaxPerDay)) && !isSelected);
+          input.disabled = claiming
+            || (item.kind === 'event' && Boolean(claimingEventTicketId) && !isSelected)
+            || ((!selectable || (item.kind === 'event' && !isSelected && selectedEventCount() >= eventTicketMaxPerDay)) && !isSelected);
           input.dataset.bookingBenefitKind = item.kind;
           input.dataset.bookingBenefitId = controlId;
           if (item.kind === 'event' && item.claimRequired === true) input.dataset.bookingBenefitClaimRequired = 'true';
