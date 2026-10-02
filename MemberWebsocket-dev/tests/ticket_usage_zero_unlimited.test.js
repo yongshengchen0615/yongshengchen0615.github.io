@@ -15,6 +15,7 @@ test('ticket usage setting zero means unlimited across admin, member, booking, e
   const eventToday = read('event/today-usable.js');
   const booking = read('booking/booking-benefits.js');
   const bookingShared = read('supabase/functions/_shared/booking-benefits.ts');
+  const bookingApi = read('supabase/functions/booking-api/index.ts');
   const pointExtension = read('supabase/functions/pointcard-extension-api/index.ts');
   const eventExtension = read('supabase/functions/event-ticket-extension-api/index.ts');
 
@@ -39,6 +40,13 @@ test('ticket usage setting zero means unlimited across admin, member, booking, e
   assert.match(bookingShared, /rawPointLimit >= 0/);
   assert.match(bookingShared, /每日使用張數不限/);
   assert.match(bookingShared, /單次預約使用張數不限/);
+
+  assert.match(bookingApi, /max_tickets_per_day \?\? eventSetting\.data\?\.max_tickets_per_redemption \?\? 1/);
+  assert.match(bookingApi, /max_tickets_per_redemption \?\? 1/);
+  assert.match(bookingApi, /rawEventLimit >= 0/);
+  assert.match(bookingApi, /rawPointLimit >= 0/);
+  assert.match(bookingApi, /maxTicketsPerDay > 0 && eventCount > maxTicketsPerDay/);
+  assert.match(bookingApi, /maxPointTicketsPerRedemption > 0 && pointCount > maxPointTicketsPerRedemption/);
 
   assert.match(pointExtension, /max_tickets_per_redemption \?\? 1/);
   assert.match(pointExtension, /setting\.maxTicketsPerRedemption > 0/);
