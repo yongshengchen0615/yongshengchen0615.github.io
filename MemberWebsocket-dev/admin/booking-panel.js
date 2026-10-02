@@ -43,7 +43,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      const result = load('booking-panel-core.js', 'booking-realtime-stability-20261002-2');
+      const result = load('booking-panel-core.js', 'booking-realtime-stability-20261002-3');
       // Compatibility marker for legacy architecture checks:
       // load('booking-panel-core.js', 'layout-stability-20261001-1')
       return result;
