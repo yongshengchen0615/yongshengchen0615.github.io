@@ -4,7 +4,7 @@ type JsonRow = Record<string, any>;
 
 export type CurrentPointOffer = {
   rewardId: string;
-  ticketId: string;
+  ticketId?: string;
   pointCardId: string;
   cardTitle: string;
   ticketTemplateId: string;
@@ -25,8 +25,8 @@ export type CurrentEventOffer = {
   eventId: string;
   title: string;
   claimed: boolean;
-  claimId: string;
-  requiresLocation: boolean;
+  claimId?: string;
+  requiresLocation?: boolean;
 };
 
 function text(value: unknown): string {
@@ -91,9 +91,8 @@ export function selectLatestPointOffers(
     );
     if (!availableTicket) continue;
 
-    offers.push({
+    const offer: CurrentPointOffer = {
       rewardId,
-      ticketId: availableTicket.ticketId,
       pointCardId,
       cardTitle: text(card?.title) || "集點卡",
       ticketTemplateId,
@@ -146,13 +145,15 @@ export function selectLatestEventOffers(
     const hasQuota = quota === 0 || (claimCounts.get(eventId) || 0) < quota;
     if (!claimed && !hasQuota) continue;
 
-    offers.push({
+    const offer: CurrentEventOffer = {
       eventId,
       title: text(row.title) || "活動票券",
       claimed,
-      claimId: claimed ? (memberAvailableClaims.get(eventId) || "") : "",
-      requiresLocation: Boolean(row.requires_location),
-    });
+    };
+    const claimId = claimed ? (memberAvailableClaims.get(eventId) || "") : "";
+    if (claimId) offer.claimId = claimId;
+    if (Boolean(row.requires_location)) offer.requiresLocation = true;
+    offers.push(offer);
   }
 
   return offers;
