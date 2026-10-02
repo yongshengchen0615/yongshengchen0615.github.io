@@ -61,6 +61,7 @@ const WRITE_ACTIONS = new Set([
   "user.pointcard.ticket.redeem",
   "user.event.ticket.claim",
   "user.event.ticket.redeem",
+  "user.booking.event-ticket.claim",
 ]);
 
 class ApiError extends Error {
@@ -182,7 +183,7 @@ function clientTypeForAction(action: string): ClientType {
   if (action === "user.pointcard.bootstrap" || action === "user.pointcard.detail" || action.startsWith("user.pointcard.ticket.")) return "points";
   if (action === "user.event.bootstrap" || action === "user.event.ticket.detail" || action.startsWith("user.event.ticket.")) return "event";
   if (action === "user.calendar.bootstrap" || action === "user.calendar.date.details") return "calendar";
-  if (action === "user.booking.benefits") return "booking";
+  if (action === "user.booking.benefits" || action === "user.booking.event-ticket.claim") return "booking";
   if (action.startsWith("admin.")) return "admin";
   throw new ApiError(404,"ACTION_NOT_FOUND","不支援的 API action。");
 }
@@ -1983,6 +1984,26 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     const member = await requireJoinedMember(supabase, identity);
     const profile = await profileFor(supabase, member);
     return await loadBookingBenefits(supabase, member, String(profile.tierKey || "general"), taipeiDate());
+  }
+
+  if (action === "user.booking.event-ticket.claim") {
+    await requireJoinedMember(supabase, identity);
+    const eventTicketId = requireText(body.eventTicketId, "活動票券識別", 120);
+    const rpc = await supabase.rpc("claim_event_ticket", {
+      p_line_user_id: identity.lineUserId,
+      p_event_ticket_id: eventTicketId,
+    });
+    if (rpc.error) throw mapDatabaseError(rpc.error);
+    const claimId = String((rpc.data as Json)?.claimId || "");
+    const claimRes = await supabase.from("event_ticket_claims")
+      .select("*,event_tickets(event_ticket_id)")
+      .eq("claim_id", claimId)
+      .single();
+    if (claimRes.error) throw mapDatabaseError(claimRes.error);
+    return {
+      ticket: claimClient(claimRes.data, claimRes.data.event_tickets?.event_ticket_id || eventTicketId),
+      alreadyClaimed: Boolean((rpc.data as Json)?.alreadyClaimed),
+    };
   }
 
   if (action.startsWith("user.pointcard.")) {
