@@ -4,6 +4,7 @@ type JsonRow = Record<string, any>;
 
 export type CurrentPointOffer = {
   rewardId: string;
+  ticketId: string;
   pointCardId: string;
   cardTitle: string;
   ticketTemplateId: string;
@@ -13,6 +14,7 @@ export type CurrentPointOffer = {
 };
 
 export type AvailablePointTicketRef = {
+  ticketId: string;
   rewardId: string;
   pointCardId: string;
   ticketTemplateId: string;
@@ -23,6 +25,8 @@ export type CurrentEventOffer = {
   eventId: string;
   title: string;
   claimed: boolean;
+  claimId: string;
+  requiresLocation: boolean;
 };
 
 function text(value: unknown): string {
@@ -61,6 +65,7 @@ export function selectLatestPointOffers(
   const cardById = new Map(cards.map((row) => [text(row.id), row]));
   const templateById = new Map(templates.map((row) => [text(row.id), row]));
   const tickets: AvailablePointTicketRef[] = availableTickets.map((row) => ({
+    ticketId: text(row.ticket_id),
     rewardId: text(row.reward_id),
     pointCardId: text(row.point_card_id),
     ticketTemplateId: text(row.ticket_template_id),
@@ -78,16 +83,17 @@ export function selectLatestPointOffers(
     if (!rewardId || !pointCardId || !ticketTemplateId || thresholdStamps <= 0) continue;
     if (!relationActive(card, template, today)) continue;
 
-    const hasAvailableTicket = tickets.some((ticket) =>
+    const availableTicket = tickets.find((ticket) =>
       ticket.pointCardId === pointCardId && (
         ticket.rewardId === rewardId ||
         (ticket.ticketTemplateId === ticketTemplateId && ticket.thresholdStamps === thresholdStamps)
       )
     );
-    if (!hasAvailableTicket) continue;
+    if (!availableTicket) continue;
 
     offers.push({
       rewardId,
+      ticketId: availableTicket.ticketId,
       pointCardId,
       cardTitle: text(card?.title) || "集點卡",
       ticketTemplateId,
@@ -113,7 +119,7 @@ export function selectLatestEventOffers(
   const claimCounts = new Map<string, number>(
     (counts || []).map((row) => [text(row.event_ticket_id), number(row.claimed_count)]),
   );
-  const memberAvailableClaims = new Set<string>();
+  const memberAvailableClaims = new Map<string, string>();
   const memberUnavailableClaims = new Set<string>();
 
   for (const claim of claims) {
@@ -125,7 +131,7 @@ export function selectLatestEventOffers(
     if (!counts) claimCounts.set(eventId, (claimCounts.get(eventId) || 0) + 1);
     if (text(claim.member_id) !== memberId) continue;
 
-    if (status === "claimed" || status === "available") memberAvailableClaims.add(eventId);
+    if (status === "claimed" || status === "available") memberAvailableClaims.set(eventId, text(claim.claim_id));
     else memberUnavailableClaims.add(eventId);
   }
 
@@ -144,6 +150,8 @@ export function selectLatestEventOffers(
       eventId,
       title: text(row.title) || "活動票券",
       claimed,
+      claimId: claimed ? (memberAvailableClaims.get(eventId) || "") : "",
+      requiresLocation: Boolean(row.requires_location),
     });
   }
 
@@ -157,7 +165,7 @@ export async function loadLatestPointOffers(
 ): Promise<Array<CurrentPointOffer & { cardId: string; expiresOn: string }>> {
   const ticketsResult = await supabase
     .from("point_tickets")
-    .select("reward_id,point_card_id,ticket_template_id,threshold_stamps")
+    .select("ticket_id,reward_id,point_card_id,ticket_template_id,threshold_stamps")
     .eq("member_id", memberId)
     .eq("status", "available")
     .limit(200);
@@ -221,7 +229,7 @@ export async function loadLatestEventOffers(
   const today = taipeiDate();
   const eventsResult = await supabase
     .from("event_tickets")
-    .select("id,event_ticket_id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id")
+    .select("id,event_ticket_id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location")
     .eq("status", "active")
     .is("deleted_at", null);
   if (eventsResult.error) {
@@ -240,7 +248,7 @@ export async function loadLatestEventOffers(
 
   const [claimsResult, countsResult] = await Promise.all([
     supabase.from("event_ticket_claims")
-      .select("event_ticket_id,member_id,status")
+      .select("claim_id,event_ticket_id,member_id,status")
       .eq("member_id", memberId)
       .in("event_ticket_id", ids),
     supabase.rpc("event_ticket_claim_counts", { p_event_ids: ids }),
