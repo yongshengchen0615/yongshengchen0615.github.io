@@ -32,7 +32,7 @@ test('member booking entrypoint loads the single render pipeline only', () => {
   for (const asset of [
     'group-booking.js?v=async-architecture-20260921-1',
     'member-ui.js?v=test-mode-20260920-1',
-    'app.js?v=booking-overnight-20260928-1',
+    'app.js?v=ticket-service-requirements-20261002-1',
     'contact-details.js?v=test-mode-20260920-1',
     'calendar-flow.js?v=csp-hardening-20260929-1',
   ]) assert.ok(html.includes(asset), asset);
