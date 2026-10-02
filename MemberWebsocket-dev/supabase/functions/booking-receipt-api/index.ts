@@ -185,7 +185,7 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
       bookingId:String(row.id),
       status:String(row.status||""),
       updatedAt:row.updated_at,
-      canSubmitReceipt:row.status==="confirmed"&&!cancellationPending&&Number.isFinite(endMs)&&now>=endMs,
+      canSubmitReceipt:row.status==="confirmed"&&!cancellationPending,
       canComplete:row.status==="confirmed"&&!cancellationPending&&Number.isFinite(endMs)&&now>=endMs,
       receipt:receipt?{
         receiptId:String(receipt.receipt_id||""),
@@ -215,7 +215,7 @@ async function prepare(supabase:SupabaseClient,identity:Identity,member:any,body
   if(result.error) throw dbError(result.error);
   const prepared=(result.data||{}) as Json;
   const path=asText(prepared.objectPath,500);
-  const signed=await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+  const signed=await supabase.storage.from(BUCKET).createSignedUploadUrl(path,{upsert:true});
   if(signed.error||!signed.data?.token) {
     await supabase.rpc("fail_booking_receipt_request",{p_receipt_id:prepared.receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,p_reason:"signed-upload-url-failed"});
     throw new ApiError(503,"RECEIPT_UPLOAD_UNAVAILABLE","目前無法建立安全上傳連結。");
@@ -288,9 +288,9 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
 }
 async function adminList(supabase:SupabaseClient):Promise<Json>{
   const result=await supabase.from("booking_receipts")
-    .select("receipt_id,booking_id,status,created_at,bound_at,actual_mime_type,actual_size_bytes")
+    .select("receipt_id,booking_id,status,created_at,updated_at,bound_at,actual_mime_type,actual_size_bytes")
     .in("status",["awaiting_review","bound"])
-    .order("created_at",{ascending:false})
+    .order("updated_at",{ascending:false})
     .limit(200);
   if(result.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
   return {receipts:(result.data||[]).map((row:any)=>({
