@@ -2500,9 +2500,10 @@
       actual.historyVisible = Boolean(card && String(card.textContent || '').includes(String(fixture.ticketTitle || 'QA 預約自動核銷票券')));
       actual.preservedForAdmin = true;
     } finally {
-      if (!bookingId && fixture.fixtureTag) {
-        await qaServiceRequest('user.qa.fixture.cleanup', { fixtureTag: fixture.fixtureTag }).catch(() => {});
-      }
+      // Full E2E intentionally retains QA fixtures and bookings for paired-admin
+      // inspection and the existing manual purge workflow.
+      actual.preservedForAdmin = Boolean(actual.preservedForAdmin || fixture.fixtureTag);
+      await refreshRealClient().catch(() => {});
     }
 
     const ok = Object.values(actual).every(Boolean);
