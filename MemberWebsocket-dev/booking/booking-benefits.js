@@ -182,9 +182,9 @@
     if (!serviceRequirementMet(item)) {
       input.checked = false;
       const message = serviceRequirementMessage(item);
-      state('ready', message);
-      window.BookingSystem?.showNotice?.(message, { title: '票券使用條件提醒' });
       render(renderedItems);
+      state('ready', message);
+      el('bookingBenefitsStatus')?.focus?.({ preventScroll: false });
       return;
     }
 
@@ -401,10 +401,7 @@
     render(renderedItems);
     if (changed) {
       emitSelectionChange();
-      window.BookingSystem?.showNotice?.(
-        '目前選取的預約項目不符合部分票券使用條件，已自動取消那些票券。',
-        { title: '票券使用條件提醒' }
-      );
+      state('ready', '目前選取的預約項目不符合部分票券使用條件，已自動取消那些票券。');
     }
   }
 
