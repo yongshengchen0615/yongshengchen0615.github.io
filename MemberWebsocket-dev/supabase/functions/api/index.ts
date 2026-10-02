@@ -888,7 +888,6 @@ function mapTicketTemplate(row: any): Json {
     status: row.status,
     requiresLocation: Boolean(row.requires_location),
     redemptionLocations: Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
-    requiredServiceTypes: Array.isArray(row.required_service_types) ? row.required_service_types : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -919,6 +918,7 @@ async function adminCards(supabase: SupabaseClient): Promise<{ cards: any[]; tic
       usageMethod: template.usage_method || "",
       usageInstructions: template.usage_instructions || "",
       prizes: Array.isArray(template.prizes) ? template.prizes : [],
+      requiredServiceTypes: Array.isArray(reward.required_service_types) ? reward.required_service_types : [],
       updatedAt: reward.updated_at,
     });
     rewardsByCard.set(reward.point_card_id,list);
@@ -1554,7 +1554,6 @@ async function saveTicketTemplate(supabase: SupabaseClient, actor: string, body:
   const prizes = normalizePrizes(ticket.prizes,ticketType === "lottery");
   const requiresLocation = ticket.requiresLocation === true;
   const redemptionLocations = normalizeTicketLocations(ticket.redemptionLocations,requiresLocation);
-  const requiredServiceTypes = await normalizeRequiredServiceTypes(supabase,ticket.requiredServiceTypes);
   const payload = {
     title,
     ticket_type: ticketType,
@@ -1565,7 +1564,6 @@ async function saveTicketTemplate(supabase: SupabaseClient, actor: string, body:
     status: requireStatus(ticket.status),
     requires_location: requiresLocation,
     redemption_locations: redemptionLocations,
-    required_service_types: requiredServiceTypes,
     updated_by: actor,
     updated_at: new Date().toISOString(),
   };
@@ -2406,13 +2404,16 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     if (expiryMode === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(asText(card.expiresOn,20))) throw new ApiError(400,"INVALID_EXPIRY","請選擇有效的到期日。");
     const rewards = Array.isArray(card.rewards) ? card.rewards as Json[] : [];
     const thresholds = new Set<number>();
+    const normalizedRewards: Json[] = [];
     for (const reward of rewards) {
       const threshold = Number(reward.thresholdStamps);
       if (!Number.isInteger(threshold) || threshold < 1 || threshold > 100 || thresholds.has(threshold)) throw new ApiError(400,"INVALID_REWARD","兌換節點必須是 1–100 且不可重複。");
       thresholds.add(threshold);
-      requireText(reward.ticketTemplateId,"兌換票券",120);
+      const ticketTemplateId = requireText(reward.ticketTemplateId,"兌換票券",120);
+      const requiredServiceTypes = await normalizeRequiredServiceTypes(supabase,reward.requiredServiceTypes);
+      normalizedRewards.push({ ...reward,thresholdStamps:threshold,ticketTemplateId,requiredServiceTypes });
     }
-    const normalized = { ...card,title:asText(card.title,100),status:asText(card.status,20),accent:requireAccent(card.accent),styleKey:safePointCardStyle(card.styleKey),expiryMode,expiresOn:expiryMode === "date" ? asText(card.expiresOn,20) : "",usageMethod:asText(card.usageMethod,120),usageInstructions:asText(card.usageInstructions,500),benefitDescription:asText(card.benefitDescription,500),rewards };
+    const normalized = { ...card,title:asText(card.title,100),status:asText(card.status,20),accent:requireAccent(card.accent),styleKey:safePointCardStyle(card.styleKey),expiryMode,expiresOn:expiryMode === "date" ? asText(card.expiresOn,20) : "",usageMethod:asText(card.usageMethod,120),usageInstructions:asText(card.usageInstructions,500),benefitDescription:asText(card.benefitDescription,500),rewards:normalizedRewards };
     const rpc = await supabase.rpc("save_point_card",{ p_actor_line_user_id:identity.lineUserId,p_card:normalized,p_expected_updated_at:asText(body.expectedUpdatedAt,100) || null });
     if (rpc.error) throw mapDatabaseError(rpc.error);
     const cards = await adminCards(supabase);
