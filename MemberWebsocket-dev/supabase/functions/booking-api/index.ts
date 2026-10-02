@@ -88,6 +88,7 @@ function mapDatabaseError(error: unknown): ApiError {
     ["INVALID_BOOKING_BENEFITS", 400, "INVALID_BOOKING_BENEFITS", "選用優惠資料格式不正確。"],
     ["BOOKING_BENEFIT_NOT_AVAILABLE", 409, "BOOKING_BENEFIT_NOT_AVAILABLE", "其中一項優惠目前已不可使用，請重新整理後再選擇。"],
     ["BOOKING_BENEFIT_LOCATION_REQUIRED", 409, "BOOKING_BENEFIT_LOCATION_REQUIRED", "其中一張票券需要定位核銷，無法綁定至預約自動核銷。"],
+    ["POINT_TICKET_INSUFFICIENT_POINTS", 409, "POINT_TICKET_INSUFFICIENT_POINTS", "集點卡點數不足，請取消部分票券後再預約。"],
     ["BOOKING_HOLIDAY", 409, "BOOKING_HOLIDAY", "這一天為休假日，請選擇其他日期。"],
     ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "這段時間剛剛已被其他會員預約，請選擇其他時間。"],
     ["BOOKING_TOO_EARLY", 409, "BOOKING_TOO_EARLY", "尚未符合提前預約天數，請選擇較晚的日期。"],
