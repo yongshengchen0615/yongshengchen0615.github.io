@@ -28,14 +28,10 @@
   }
 
   function destination(item) {
-    const surface = { points: 'points', event: 'event', calendar: 'calendar' }[item.kind];
-    if (!surface) return '';
-    const url = new URL(`../${surface}/`, window.location.href);
-    if (item.kind === 'event') {
-      url.searchParams.set('source', 'event-ticket-calendar');
-      url.searchParams.set('eventTicketId', String(item.id || ''));
-    }
-    return url.href;
+    // Booking is the action surface for tickets: members select/redemption-intent
+    // here, so point/event tickets do not need a secondary "details" navigation.
+    if (item?.kind !== 'calendar') return '';
+    return new URL('../calendar/', window.location.href).href;
   }
 
   function selectionPayload() {
