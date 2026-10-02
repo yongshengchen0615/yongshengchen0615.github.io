@@ -82,3 +82,17 @@ test('full E2E creates an owned booking benefit fixture and hands it to paired a
   assert.match(admin, /pendingAfter/);
   assert.match(admin, /待核銷優惠/);
 });
+
+
+test('booking activities are display-only while point and event tickets remain selectable', () => {
+  const source = read('supabase/functions/_shared/booking-benefits.ts');
+  const ui = read('booking/booking-benefits.js');
+  const bookingApi = read('supabase/functions/booking-api/index.ts');
+  const groupApi = read('supabase/functions/booking-group-api/index.ts');
+  assert.match(source, /kind: 'calendar'[\s\S]*selectable: false, selectionId: ''/);
+  assert.match(source, /活動資訊僅供預約參考/);
+  assert.match(ui, /selectableKinds = new Set\(\['points', 'event'\]\)/);
+  assert.match(ui, /活動僅顯示，票券可勾選使用/);
+  assert.doesNotMatch(bookingApi, /\["points","event","calendar"\]\.includes\(kind\)/);
+  assert.doesNotMatch(groupApi, /\["points","event","calendar"\]\.includes\(kind\)/);
+});
