@@ -21,7 +21,7 @@ test('point-card booking service rules belong to reward nodes, not ticket templa
 
   assert.doesNotMatch(adminHtml, /id="ticketRequiredServiceTypes"/);
   assert.match(adminApp, /此節點的預約項目限制/);
-  assert.match(adminApp, /data\.rewardRequiredServiceTypes = 'true'/);
+  assert.match(adminApp, /dataset\.rewardRequiredServiceTypes = 'true'/);
   assert.match(adminApp, /requiredServiceTypes: collectRequiredServiceTypes\(row\.querySelector\('\[data-reward-required-service-types\]'\)\)/);
 
   assert.match(api, /requiredServiceTypes: Array\.isArray\(reward\.required_service_types\)/);
