@@ -34,7 +34,7 @@
 
   function normalizeLimit(value) {
     const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 50 ? parsed : 1;
+    return Number.isInteger(parsed) && parsed >= 0 && parsed <= 50 ? parsed : 1;
   }
 
   async function extensionRequest(operation, payload = {}) {
@@ -84,8 +84,16 @@
     return usableOffers().filter((offer) => ids.has(offerClaimId(offer)));
   }
 
+  function hasDailyLimit() {
+    return state.maxTicketsPerDay > 0;
+  }
+
   function selectionLimit() {
-    return Math.max(0, Math.min(state.maxTicketsPerDay, state.remainingTodayCount));
+    return hasDailyLimit() ? Math.max(0, Math.min(state.maxTicketsPerDay, state.remainingTodayCount)) : Number.POSITIVE_INFINITY;
+  }
+
+  function dailyLimitLabel() {
+    return hasDailyLimit() ? `${state.maxTicketsPerDay} 張` : '不限張數';
   }
 
   function ensureToolbar() {
@@ -120,11 +128,15 @@
     const selectedCount = state.selected.size;
     const limit = selectionLimit();
     selectionText.textContent = selectedCount
-      ? `已選 ${selectedCount} / ${limit} 張 · 今日已使用 ${state.usedTodayCount} / ${state.maxTicketsPerDay} 張`
-      : `今日還可使用 ${limit} 張 · 每日上限 ${state.maxTicketsPerDay} 張`;
+      ? (hasDailyLimit()
+        ? `已選 ${selectedCount} / ${limit} 張 · 今日已使用 ${state.usedTodayCount} / ${state.maxTicketsPerDay} 張`
+        : `已選 ${selectedCount} 張 · 今日已使用 ${state.usedTodayCount} 張 · 每日上限不限張數`)
+      : (hasDailyLimit()
+        ? `今日還可使用 ${limit} 張 · 每日上限 ${state.maxTicketsPerDay} 張`
+        : `目前可使用 ${selectableCount} 張 · 每日上限不限張數`);
     selectionHint.textContent = selectableCount
       ? `目前有 ${selectableCount} 張可勾選；尚未領取的票券，勾選確認後會先完成領取。`
-      : (limit <= 0 ? '今日活動票券使用張數已達上限。' : '目前沒有可勾選的活動票券。');
+      : (hasDailyLimit() && limit <= 0 ? '今日活動票券使用張數已達上限。' : '目前沒有可勾選的活動票券。');
     useButton.disabled = state.busy || selectedCount < 1 || selectedCount > limit;
     useButton.textContent = state.busy ? '核銷中…' : selectedCount > 1 ? `使用已選 ${selectedCount} 張` : '使用已選票券';
   }
@@ -169,7 +181,7 @@
       input.dataset.eventTicketId = eventTicketId;
       input.checked = Boolean(claimId && state.selected.has(claimId));
       const claiming = state.claimingEventTickets.has(eventTicketId);
-      input.disabled = state.busy || claiming || (!input.checked && state.selected.size + state.claimingEventTickets.size >= limit);
+      input.disabled = state.busy || claiming || (hasDailyLimit() && !input.checked && state.selected.size + state.claimingEventTickets.size >= limit);
       label.textContent = claiming ? '領取中…' : claimId ? '加入本次使用' : '勾選並領取';
     });
     updateToolbar();
@@ -191,7 +203,7 @@
     }
 
     const limit = selectionLimit();
-    if (state.selected.size + state.claimingEventTickets.size >= limit) {
+    if (hasDailyLimit() && state.selected.size + state.claimingEventTickets.size >= limit) {
       input.checked = false;
       showMessage(`今日最多還能選擇 ${limit} 張活動票券；每日上限為 ${state.maxTicketsPerDay} 張。`, true);
       decorateCards();
@@ -221,7 +233,7 @@
       const claimedOffer = state.offers.find((item) => offerEventTicketId(item) === eventTicketId);
       const claimId = offerClaimId(claimedOffer);
       if (!claimId) throw new Error('票券已領取，但目前無法取得票券識別，請重新整理後再試。');
-      if (state.selected.size >= selectionLimit()) {
+      if (hasDailyLimit() && state.selected.size >= selectionLimit()) {
         showMessage('票券已領取，但今日可使用張數已無剩餘額度，因此未加入本次使用。', true);
       } else {
         state.selected.add(claimId);
@@ -262,7 +274,7 @@
     if (state.busy) return;
     const offers = selectedOffers();
     if (!offers.length) return;
-    if (offers.length > selectionLimit()) {
+    if (hasDailyLimit() && offers.length > selectionLimit()) {
       showMessage(`今日最多還能使用 ${selectionLimit()} 張活動票券；每日上限為 ${state.maxTicketsPerDay} 張。`, true);
       return;
     }
@@ -314,16 +326,15 @@
         extensionRequest('member.today-usable'),
         window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.bootstrap', { compact: false })
       ]);
-      state.maxTicketsPerDay = normalizeLimit(setting.maxTicketsPerDay || setting.maxTicketsPerRedemption);
+      state.maxTicketsPerDay = normalizeLimit(setting.maxTicketsPerDay ?? setting.maxTicketsPerRedemption);
       state.usedTodayCount = Math.max(0, Number(today.usedTodayCount || 0));
-      state.remainingTodayCount = Math.max(0, Math.min(
-        state.maxTicketsPerDay,
-        Number(today.remainingTodayCount ?? (state.maxTicketsPerDay - state.usedTodayCount))
-      ));
+      state.remainingTodayCount = hasDailyLimit()
+        ? Math.max(0, Math.min(state.maxTicketsPerDay, Number(today.remainingTodayCount ?? (state.maxTicketsPerDay - state.usedTodayCount))))
+        : Number.POSITIVE_INFINITY;
       state.offers = Array.isArray(snapshot && snapshot.offers) ? snapshot.offers : [];
       const validClaims = new Set(usableOffers().map(offerClaimId));
       for (const claimId of [...state.selected]) if (!validClaims.has(claimId)) state.selected.delete(claimId);
-      while (state.selected.size > selectionLimit()) state.selected.delete([...state.selected].pop());
+      while (hasDailyLimit() && state.selected.size > selectionLimit()) state.selected.delete([...state.selected].pop());
       ensureToolbar();
       decorateCards();
     })();
