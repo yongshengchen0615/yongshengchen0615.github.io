@@ -81,7 +81,10 @@ test('birthday activities and claimed inventory preserve existing eligibility ru
   assert.equal(result.items.find(item => item.kind === 'event').statusLabel, '可使用');
   assert.equal(result.items.find(item => item.kind === 'event').selectionId, 'EC-001');
   assert.equal(result.items.find(item => item.kind === 'event').selectable, true);
-  assert.ok(result.items.some(item => item.kind === 'calendar'));
+  const activity = result.items.find(item => item.kind === 'calendar');
+  assert.ok(activity);
+  assert.equal(activity.selectable, false);
+  assert.equal(activity.selectionId, '');
   assert.equal((await loadBookingBenefits(database({ calendar_items: [birthdayActivity], event_tickets: [], point_tickets: [] }), { ...member, birthday: '1990-02-01' }, 'silver', today)).items.length, 0);
 });
 
