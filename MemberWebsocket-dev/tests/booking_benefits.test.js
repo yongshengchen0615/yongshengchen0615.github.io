@@ -17,6 +17,7 @@ function database(overrides = {}, fail = '') {
     point_card_rewards: [{ id: 'reward', point_card_id: 'card', ticket_template_id: 'template', threshold_stamps: 5 }],
     ticket_templates: [{ id: 'template', title: '最新優惠', status: 'active' }],
     point_tickets: [{ ticket_id: 'PT-001', member_id: member.id, status: 'available', reward_id: 'reward', point_card_id: 'card', ticket_template_id: 'template', threshold_stamps: 5 }],
+    point_balances: [{ member_id: member.id, point_card_id: 'card', stamps: 10 }],
     event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', title: '活動票券', status: 'active', allowed_tier_keys: ['silver'], quota: 2, requires_location: false }],
     event_ticket_claims: [],
     event_ticket_settings: [{ id: 1, max_tickets_per_day: 2, max_tickets_per_redemption: 2 }],
@@ -78,6 +79,27 @@ test('expired/inactive/used/ineligible/future/full benefits are excluded', async
   for (const patch of patches) assert.deepEqual((await loadBookingBenefits(database(patch), member, 'silver', today)).items, []);
 });
 
+test('point tickets expose current balance and disable unaffordable tickets', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const affordable = await loadBookingBenefits(database(), member, 'silver', today);
+  const point = affordable.items.find(item => item.kind === 'points');
+  assert.ok(point);
+  assert.equal(point.pointBalance, 10);
+  assert.equal(point.pointCost, 5);
+  assert.equal(point.selectable, true);
+  assert.match(point.conditionLabel, /本卡目前 10 點/);
+
+  const insufficient = await loadBookingBenefits(database({
+    point_balances: [{ member_id: member.id, point_card_id: 'card', stamps: 4 }],
+  }), member, 'silver', today);
+  const blocked = insufficient.items.find(item => item.kind === 'points');
+  assert.ok(blocked);
+  assert.equal(blocked.selectable, false);
+  assert.equal(blocked.statusLabel, '點數不足');
+  assert.match(blocked.disabledReason, /目前 4 點/);
+  assert.match(blocked.disabledReason, /需要 5 點/);
+});
+
 test('unclaimed event tickets are selectable by claiming from the booking surface', async () => {
   const { loadBookingBenefits } = await modulePromise;
   const result = await loadBookingBenefits(database(), member, 'silver', today);
@@ -108,9 +130,9 @@ test('reads are member-scoped, batched and strict on backend failure', async () 
   const { loadBookingBenefits } = await modulePromise;
   const db = database();
   await loadBookingBenefits(db, member, 'silver', today);
-  for (const table of ['point_tickets', 'event_ticket_claims']) assert.ok(db.calls.some(call => call.table === table && call.key === 'member_id' && call.value === member.id));
-  assert.equal(db.calls.filter(call => call.read).length, 9);
-  for (const fail of ['point_tickets', 'event_ticket_claim_counts', 'calendar_items', 'event_ticket_settings', 'point_card_settings']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
+  for (const table of ['point_tickets', 'point_balances', 'event_ticket_claims']) assert.ok(db.calls.some(call => call.table === table && call.key === 'member_id' && call.value === member.id));
+  assert.equal(db.calls.filter(call => call.read).length, 10);
+  for (const fail of ['point_tickets', 'point_balances', 'event_ticket_claim_counts', 'calendar_items', 'event_ticket_settings', 'point_card_settings']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
 });
 
 test('API authorization resolves membership/tier from identity and rejects disabled/unjoined/stale-consent members', async () => {
