@@ -91,7 +91,9 @@ test('point ticket selection cannot exceed the current balance on the same card'
     assert.equal(refreshedSecond.disabled, true, '6 + 5 points must not exceed a 10 point balance');
     assert.match(refreshedSecond.parentElement.textContent, /點數不足/);
 
-    first.click();
+    const selectedFirst = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-A"]');
+    assert.ok(selectedFirst);
+    selectedFirst.click();
     const enabledAgain = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-B"]');
     assert.equal(enabledAgain.disabled, false, 'removing a ticket restores the available point budget');
   } finally { h.close(); }
