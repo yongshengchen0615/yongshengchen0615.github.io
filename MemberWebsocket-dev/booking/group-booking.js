@@ -117,6 +117,7 @@
 
   window.addEventListener('booking:selection-changed', (event) => {
     syncPrimaryItems(event?.detail?.items);
+    syncBenefitServiceContext();
     updateCardSummaries();
     updateSelectionSummary();
   });
@@ -232,6 +233,7 @@
     ensureParticipantCount(false);
     renderPrimaryRule();
     renderParticipantCards();
+    syncBenefitServiceContext();
   }
 
   function renderPrimaryRule() {
@@ -1004,6 +1006,23 @@
     renderBookingHistoryCard,
     renderControls: renderGroupControls,
   });
+
+  function syncBenefitServiceContext() {
+    const types = [];
+    for (const item of state.primaryItems) {
+      const service = state.services.find((candidate) => candidate.serviceId === item.serviceId);
+      const type = serviceTypeOf(service);
+      if (type) types.push(type);
+    }
+    for (const selections of state.extras) {
+      for (const selection of Array.isArray(selections) ? selections : []) {
+        const service = state.services.find((candidate) => candidate.serviceId === selection.serviceId);
+        const type = serviceTypeOf(service);
+        if (type) types.push(type);
+      }
+    }
+    window.BookingBenefits?.setServiceContext?.([...new Set(types)]);
+  }
 
   function participantServiceNames(index) {
     return participantMetrics(index).labels;
