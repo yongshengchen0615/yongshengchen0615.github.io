@@ -169,7 +169,7 @@
       input.dataset.eventTicketId = eventTicketId;
       input.checked = Boolean(claimId && state.selected.has(claimId));
       const claiming = state.claimingEventTickets.has(eventTicketId);
-      input.disabled = state.busy || claiming || (!input.checked && state.selected.size >= limit);
+      input.disabled = state.busy || claiming || (!input.checked && state.selected.size + state.claimingEventTickets.size >= limit);
       label.textContent = claiming ? '領取中…' : claimId ? '加入本次使用' : '勾選並領取';
     });
     updateToolbar();
@@ -191,7 +191,7 @@
     }
 
     const limit = selectionLimit();
-    if (state.selected.size >= limit) {
+    if (state.selected.size + state.claimingEventTickets.size >= limit) {
       input.checked = false;
       showMessage(`今日最多還能選擇 ${limit} 張活動票券；每日上限為 ${state.maxTicketsPerDay} 張。`, true);
       decorateCards();
