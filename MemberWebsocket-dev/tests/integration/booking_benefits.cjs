@@ -6,24 +6,25 @@ const { JSDOM } = require('jsdom');
 const root = path.join(__dirname, '../..');
 const tick = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-function fixture(load) {
+function fixture(load, claim = async (config, token, eventTicketId) => ({ ticket: { claimId: 'EC-' + eventTicketId }, alreadyClaimed: false })) {
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'booking/index.html'), 'utf8'), { url: 'https://example.test/MemberWebsocket-dev/booking/', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
-  w.BookingSystem = { bookingBenefits: load };
+  w.BookingSystem = { bookingBenefits: load, claimEventTicket: claim };
+  w.confirm = () => true;
   w.eval(fs.readFileSync(path.join(root, 'booking/booking-benefits.js'), 'utf8'));
   const el = id => w.document.getElementById(id);
   return { w, el, close: () => w.close(), start: () => w.BookingBenefits.start({}, 'fixture') };
 }
 const items = [
   { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', statusLabel: '可使用', conditionLabel: '服務限制：目前未設定' },
-  { kind: 'event', id: 'EVENT', selectionId: '', selectable: false, disabledReason: '請先領取票券後再於預約中選用', title: '<img src=x onerror=alert(1)>', statusLabel: '可領取', conditionLabel: '服務限制：目前未設定' },
+  { kind: 'event', id: 'EVENT', selectionId: '', selectable: true, claimRequired: true, title: '<img src=x onerror=alert(1)>', statusLabel: '可勾選並領取', conditionLabel: '每日最多使用 2 張 · 服務限制：目前未設定' },
   { kind: 'calendar', id: 'CAL', selectionId: '', selectable: false, title: '會員活動', statusLabel: '活動進行中', conditionLabel: '會員條件：目前會員階級適用 · 活動資訊僅供預約參考' },
 ];
 
 test('0/1/N benefit cards render safely inside booking form and expose only eligible selectors', async () => {
   for (const count of [0, 1, 3]) {
     let calls = 0;
-    const h = fixture(async () => { calls++; return { items: items.slice(0, count) }; });
+    const h = fixture(async () => { calls++; return { eventTicketMaxPerDay: 2, items: items.slice(0, count) }; });
     try {
       h.start(); await tick(10);
       assert.equal(h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length, count);
@@ -44,11 +45,15 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
         assert.match(h.el('bookingBenefitsList').textContent, /活動資訊僅供預約參考/);
         assert.equal(h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="calendar"] input[type="checkbox"]'), null);
         const checkboxes = h.el('bookingBenefitsList').querySelectorAll('input[type="checkbox"]');
-        assert.equal(checkboxes.length, 1, 'activities are display-only; only selectable tickets get checkboxes');
+        assert.equal(checkboxes.length, 2, 'activities are display-only; point and event tickets get checkboxes');
         const pointCheckbox = h.el('bookingBenefitsList').querySelector(
           'input[data-booking-benefit-kind="points"][data-booking-benefit-id="PT-001"]'
         );
         assert.ok(pointCheckbox);
+        const eventCheckbox = h.el('bookingBenefitsList').querySelector(
+          'input[data-booking-benefit-kind="event"][data-booking-benefit-id="EVENT"][data-booking-benefit-claim-required="true"]'
+        );
+        assert.ok(eventCheckbox, 'unclaimed event ticket exposes a claim-on-check selector');
         pointCheckbox.click();
         assert.equal(JSON.stringify(h.w.BookingBenefits.selectionPayload()), JSON.stringify([{ kind: 'points', id: 'PT-001' }]));
       }
