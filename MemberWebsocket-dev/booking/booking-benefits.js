@@ -10,6 +10,7 @@
   let renderedItems = [];
   let eventTicketMaxPerDay = 1;
   let pointTicketMaxPerRedemption = 1;
+  let currentBookingId = '';
   let claimingEventTicketId = '';
   const selected = new Map();
   const kinds = { points: '集點卡票券', event: '活動票券', calendar: '會員活動' };
@@ -372,6 +373,13 @@
     emitSelectionChange();
   }
 
+  function setBookingContext(bookingId = '') {
+    const nextBookingId = String(bookingId || '');
+    if (nextBookingId === currentBookingId) return;
+    currentBookingId = nextBookingId;
+    if (config && !disposed) syncNow();
+  }
+
   async function load() {
     if (!config || disposed) return;
     if (inFlight) { queued = true; return; }
@@ -379,7 +387,7 @@
     inFlight = true;
     setRefreshing(renderedItems.length ? '正在背景同步可用權益…' : '正在確認你的可用權益…');
     try {
-      const result = await window.BookingSystem.bookingBenefits(config, idToken);
+      const result = await window.BookingSystem.bookingBenefits(config, idToken, currentBookingId);
       if (current !== sequence || disposed) return;
       const nextEventLimit = normalizeLimit(result?.eventTicketMaxPerDay);
       const nextPointLimit = normalizeLimit(result?.pointTicketMaxPerRedemption);
@@ -460,6 +468,7 @@
     syncNow,
     selectionPayload,
     selectionSummary,
+    setBookingContext,
     setSelection,
     clearSelection,
   });
