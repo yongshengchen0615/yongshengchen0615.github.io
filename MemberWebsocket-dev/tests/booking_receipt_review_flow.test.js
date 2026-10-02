@@ -89,3 +89,24 @@ test('member and admin receipt snapshot UI follow shared dark theme tokens', () 
   assert.match(memberCss, /html\[data-theme="dark"\] \.booking-receipt-modal-card/);
   assert.match(adminCss, /html\[data-theme="dark"\] \.admin-booking-receipt-card/);
 });
+
+test('confirmed bookings can upload receipts before service end and reupload overwrites the current snapshot', () => {
+  const source = read('booking/booking-receipt.js');
+  const edge = read('supabase/functions/booking-receipt-api/index.ts');
+  const migration = read('supabase/migrations/20261002160040_booking_receipt_replace_before_service_end.sql');
+
+  assert.match(source, /預約確認後即可上傳，不需等待服務時間結束/);
+  assert.match(source, /重新拍攝並覆蓋收據/);
+  assert.match(source, /重新拍攝會覆蓋目前快照/);
+  assert.doesNotMatch(source, /服務時間結束後即可拍攝收據/);
+
+  assert.match(edge, /canSubmitReceipt:row\.status==="confirmed"&&!cancellationPending,/);
+  assert.match(edge, /createSignedUploadUrl\(path,\{upsert:true\}\)/);
+
+  assert.doesNotMatch(migration, /BOOKING_NOT_FINISHED_YET/);
+  assert.match(migration, /where booking_id=p_booking_id and status='awaiting_review'/);
+  assert.match(migration, /status='pending_upload'/);
+  assert.match(migration, /'objectPath',v_receipt\.object_path/);
+  assert.match(migration, /'replacedExisting',true/);
+  assert.match(migration, /booking\.receipt\.pending_upload/);
+});
