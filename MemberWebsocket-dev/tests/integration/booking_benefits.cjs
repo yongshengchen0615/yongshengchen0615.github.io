@@ -16,7 +16,7 @@ function fixture(load, claim = async (config, token, eventTicketId) => ({ ticket
   return { w, el, close: () => w.close(), start: () => w.BookingBenefits.start({}, 'fixture') };
 }
 const items = [
-  { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', statusLabel: '可使用', conditionLabel: '服務限制：目前未設定' },
+  { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', cardId: 'CARD', cardTitle: '集點卡', pointCost: 5, pointBalance: 10, statusLabel: '可使用', conditionLabel: '本卡目前 10 點 · 此票券需 5 點' },
   { kind: 'event', id: 'EVENT', selectionId: '', selectable: true, claimRequired: true, title: '<img src=x onerror=alert(1)>', statusLabel: '可勾選並領取', conditionLabel: '每日最多使用 2 張 · 服務限制：目前未設定' },
   { kind: 'calendar', id: 'CAL', selectionId: '', selectable: false, title: '會員活動', statusLabel: '活動進行中', conditionLabel: '會員條件：目前會員階級適用 · 活動資訊僅供預約參考' },
 ];
@@ -72,6 +72,29 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
       assert.equal(calls, 1, 'rendering and selection do not claim/redeem or start extra requests');
     } finally { h.close(); }
   }
+});
+
+test('point ticket selection cannot exceed the current balance on the same card', async () => {
+  const pointItems = [
+    { kind: 'points', id: 'reward-a', selectionId: 'PT-A', selectable: true, title: '票券 A', cardId: 'CARD', cardTitle: '集點卡', pointCost: 6, pointBalance: 10, statusLabel: '可使用', conditionLabel: '本卡目前 10 點 · 此票券需 6 點' },
+    { kind: 'points', id: 'reward-b', selectionId: 'PT-B', selectable: true, title: '票券 B', cardId: 'CARD', cardTitle: '集點卡', pointCost: 5, pointBalance: 10, statusLabel: '可使用', conditionLabel: '本卡目前 10 點 · 此票券需 5 點' },
+  ];
+  const h = fixture(async () => ({ pointTicketMaxPerRedemption: 2, items: pointItems }));
+  try {
+    h.start(); await tick(10);
+    const first = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-A"]');
+    const second = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-B"]');
+    assert.ok(first && second);
+    first.click();
+    assert.equal(JSON.stringify(h.w.BookingBenefits.selectionPayload()), JSON.stringify([{ kind: 'points', id: 'PT-A' }]));
+    const refreshedSecond = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-B"]');
+    assert.equal(refreshedSecond.disabled, true, '6 + 5 points must not exceed a 10 point balance');
+    assert.match(refreshedSecond.parentElement.textContent, /點數不足/);
+
+    first.click();
+    const enabledAgain = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-B"]');
+    assert.equal(enabledAgain.disabled, false, 'removing a ticket restores the available point budget');
+  } finally { h.close(); }
 });
 
 test('slow/error recommendation API leaves booking interactions usable and supports retry', async () => {
