@@ -107,6 +107,7 @@
     BOOKING_GROUP_DATA: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
     BOOKING_FORM_INITIAL: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
     BOOKING_BENEFITS_RECOMMENDATIONS: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
+    BOOKING_BENEFIT_REDEMPTION_LIFECYCLE: { module: 'booking', phase: 4, required: true, risk: 'mutation', dependencies: ['BOOKING_BENEFITS_RECOMMENDATIONS', 'BOOKING_HUMAN_CONTROLS'] },
     BOOKING_RECEIPT_REVIEW_CONTRACT: { module: 'booking', phase: 5, required: true, dependencies: ['BOOKING_DATA'] },
     BOOKING_FLOW_STEPPER: { module: 'booking', phase: 3, dependencies: ['BOOKING_FORM_INITIAL'] },
     BOOKING_HUMAN_CONTROLS: { module: 'booking', phase: 4, required: true, dependencies: ['BOOKING_FORM_INITIAL', 'BOOKING_FLOW_STEPPER'] },
@@ -926,7 +927,7 @@
     if (!Array.isArray(baselineIds) || !Array.isArray(bookings) || !memberId) throw new Error('預約接手基準或回讀資料不完整。');
     const baseline = new Set(baselineIds);
     const rows = bookings.filter((row) => row?.bookingId && !baseline.has(String(row.bookingId)))
-      .filter((row) => /^(?:QA HUMAN E2E(?: GROUP)? |QA STATE PACK |QA automated (?:group )?(?:create|update)$)/i.test(String(row.memberNote || '')));
+      .filter((row) => /^(?:QA HUMAN E2E(?: GROUP| BENEFIT)? |QA STATE PACK |QA automated (?:group )?(?:create|update)$)/i.test(String(row.memberNote || '')));
     return { ready: true, memberId, startedAt, bookingIds: [...new Set(rows.map((row) => String(row.bookingId)))] };
   }
 
@@ -1005,6 +1006,7 @@
         caseDef('多人預約資源 Bootstrap', 'Booking', bookingGroupBootstrapCase, 'BOOKING_GROUP_DATA'),
         caseDef('預約表單安全初始狀態', 'UI', bookingFormCase, 'BOOKING_FORM_INITIAL'),
         caseDef('預約頁可用活動／票券推薦一致性', 'Booking / Benefits', bookingBenefitsRecommendationsCase, 'BOOKING_BENEFITS_RECOMMENDATIONS'),
+        caseDef('真人操作：優惠勾選／預約保存／交接核銷', 'Human E2E', bookingBenefitRedemptionLifecycleCase, 'BOOKING_BENEFIT_REDEMPTION_LIFECYCLE'),
         caseDef('預約收據：相機限定／等待管理端審核契約', 'Booking / Receipt', bookingReceiptReviewContractCase, 'BOOKING_RECEIPT_REVIEW_CONTRACT'),
         caseDef('預約 stepper 狀態同步', 'UI', bookingFlowStepperCase, 'BOOKING_FLOW_STEPPER'),
         caseDef('真人操作：日期／視窗／項目／多人控制', 'Human E2E', bookingHumanControlsCase, 'BOOKING_HUMAN_CONTROLS'),
@@ -2408,6 +2410,113 @@
       const slotLane = Math.floor(pairedLaneIndex() / dayCount);
       return slots[slotLane % slots.length] || slots[0] || null;
     }, 7000);
+  }
+
+  async function bookingBenefitRedemptionLifecycleCase() {
+    const fixture = await qaServiceRequest('user.qa.fixture.prepare');
+    const note = 'QA HUMAN E2E BENEFIT ' + String(fixture.fixtureTag || Date.now().toString(36));
+    const actual = {
+      fixtureReady: Boolean(fixture.ticketId && fixture.fixtureTag),
+      groupedSectionVisible: false,
+      benefitSelected: false,
+      serviceAdded: false,
+      slotSelected: false,
+      created: false,
+      persistedPending: false,
+      historyVisible: false,
+      preservedForAdmin: false
+    };
+    let bookingId = '';
+    try {
+      await refreshRealClient();
+      window.BookingBenefits?.invalidate?.();
+      const selector = 'input[data-booking-benefit-kind="points"][data-booking-benefit-id="' +
+        CSS.escape(String(fixture.ticketId || '')) + '"]';
+      const checkbox = await waitFor(() => document.querySelector(selector), 6000, 100);
+      if (!checkbox) throw new Error('QA 預約優惠票券沒有出現在「本次可使用優惠」。');
+      actual.groupedSectionVisible = Boolean(checkbox.closest('.booking-benefit-group[data-benefit-kind="points"]'));
+
+      let panel = null;
+      let slot = null;
+      const enabledDateCount = document.querySelectorAll('#calendarGrid button.calendar-day:not(:disabled):not(.holiday-disabled)').length;
+      const maxDateAttempts = Math.max(1, Math.min(5, enabledDateCount || 1));
+      for (let attempt = 0; attempt < maxDateAttempts && !slot; attempt += 1) {
+        panel = await openBookingForSafeDate(attempt);
+        const add = chooseNormalServiceButton(panel);
+        if (!add) return skip('目前沒有可供預約優惠 E2E 的一般預約項目。', { normalService: true }, { normalService: false });
+        add.click();
+        actual.serviceAdded = actual.serviceAdded || Boolean(await waitFor(() => document.querySelector('#selectedServiceList .selected-service-remove'), 1200));
+
+        const currentCheckbox = await waitFor(() => document.querySelector(selector), 2500, 80);
+        if (!currentCheckbox) throw new Error('開啟預約視窗後找不到 QA 預約優惠票券。');
+        if (!currentCheckbox.checked) currentCheckbox.click();
+        actual.benefitSelected = Boolean(await waitFor(() => {
+          const node = document.querySelector(selector);
+          const payload = window.BookingBenefits?.selectionPayload?.() || [];
+          return node?.checked && payload.some((item) => item.kind === 'points' && item.id === fixture.ticketId);
+        }, 1500, 60));
+
+        setFieldValue(document.getElementById('memberNote'), note);
+        slot = await chooseAvailableSlot();
+        if (slot) break;
+
+        document.querySelectorAll('#selectedServiceList .selected-service-remove').forEach((button) => button.click());
+        document.getElementById('closeAppointmentButton')?.click();
+        await waitFor(() => panel?.classList.contains('hidden'), 1200);
+        await wait(80);
+      }
+      if (!slot) {
+        return fail('預約優惠 E2E 已嘗試多個日期但找不到可用時段。', { availableSlot: true }, { availableSlot: false });
+      }
+      slot.click();
+      actual.slotSelected = slot.getAttribute('aria-pressed') === 'true';
+
+      const submit = await waitFor(() => {
+        const button = document.getElementById('submitBookingButton');
+        return button && !button.disabled ? button : null;
+      }, 5000);
+      if (!submit) throw new Error('預約優惠 E2E 送出按鈕尚未就緒。');
+      submit.click();
+      await waitFor(() => !document.getElementById('bookingConfirmModal')?.classList.contains('hidden'), 1800);
+      const createdEventPromise = waitForBookingCreatedEvent(note, 12000);
+      document.getElementById('confirmBookingButton')?.click();
+      const createdBooking = await createdEventPromise;
+      const identity = await reconcileBookingIdentity(note, createdBooking, 12000);
+      bookingId = identity.bookingId;
+      if (!bookingId) throw new Error('預約優惠 E2E 建立後找不到 Booking ID。');
+      actual.created = true;
+
+      const fresh = await requestCore('user.booking.bootstrap', {});
+      const row = (Array.isArray(fresh?.bookings) ? fresh.bookings : []).find((booking) =>
+        String(booking?.bookingId || '') === bookingId
+      );
+      const persistedBenefit = (Array.isArray(row?.benefits) ? row.benefits : []).find((benefit) =>
+        benefit?.kind === 'points' && String(benefit?.id || '') === String(fixture.ticketId || '')
+      );
+      actual.persistedPending = String(persistedBenefit?.status || '') === 'pending';
+
+      await refreshRealClient().catch(() => {});
+      const card = await waitForBookingCardById(bookingId, 5000);
+      actual.historyVisible = Boolean(card && String(card.textContent || '').includes(String(fixture.ticketTitle || 'QA 預約自動核銷票券')));
+      actual.preservedForAdmin = true;
+    } finally {
+      if (!bookingId && fixture.fixtureTag) {
+        await qaServiceRequest('user.qa.fixture.cleanup', { fixtureTag: fixture.fixtureTag }).catch(() => {});
+      }
+    }
+
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass('已真人勾選專用 QA 優惠、建立預約並由 Bootstrap／歷史卡片回讀 pending 使用意圖；資料保留交由 paired admin 完成服務後核銷。', {
+          selectedThroughUi: true,
+          persistedPending: true,
+          handedOffForAdminRedemption: true
+        }, actual)
+      : fail('預約優惠勾選、保存或管理端交接至少一項失敗。', {
+          selectedThroughUi: true,
+          persistedPending: true,
+          handedOffForAdminRedemption: true
+        }, actual);
   }
 
   async function bookingHumanLifecycleCase() {
