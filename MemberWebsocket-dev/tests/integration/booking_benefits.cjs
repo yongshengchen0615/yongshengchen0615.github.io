@@ -119,6 +119,43 @@ test('slow/error recommendation API leaves booking interactions usable and suppo
   } finally { h.close(); }
 });
 
+test('point realtime sync bypasses debounce and reconciles stale selections', async () => {
+  let calls = 0;
+  const snapshots = [
+    {
+      pointTicketMaxPerRedemption: 2,
+      items: [
+        { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', cardId: 'CARD', cardTitle: '集點卡', pointCost: 5, pointBalance: 10, statusLabel: '可使用', conditionLabel: '本卡目前 10 點 · 此票券需 5 點' },
+      ],
+    },
+    {
+      pointTicketMaxPerRedemption: 2,
+      items: [
+        { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: false, title: '集點券', cardId: 'CARD', cardTitle: '集點卡', pointCost: 5, pointBalance: 4, statusLabel: '點數不足', conditionLabel: '本卡目前 4 點 · 此票券需 5 點', disabledReason: '點數不足' },
+      ],
+    },
+  ];
+  const h = fixture(async () => snapshots[Math.min(calls++, snapshots.length - 1)]);
+  try {
+    h.start(); await tick(10);
+    const point = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-001"]');
+    assert.ok(point);
+    point.click();
+    assert.equal(JSON.stringify(h.w.BookingBenefits.selectionPayload()), JSON.stringify([{ kind: 'points', id: 'PT-001' }]));
+
+    h.w.BookingBenefits.invalidate();
+    assert.equal(calls, 1, 'ordinary invalidation remains debounced');
+    h.w.BookingBenefits.syncNow();
+    await tick(10);
+    assert.equal(calls, 2, 'point realtime sync refetches immediately');
+    assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), [], 'stale selected ticket is removed when the refreshed balance cannot fund it');
+    const refreshed = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-001"]');
+    assert.ok(refreshed);
+    assert.equal(refreshed.disabled, true);
+    assert.match(h.el('bookingBenefitsList').textContent, /點數不足/);
+  } finally { h.close(); }
+});
+
 test('realtime invalidation drops used tickets, coalesces storms and ignores stale responses', async () => {
   let resolveFirst, calls = 0;
   const h = fixture(() => {
