@@ -114,6 +114,29 @@ test('booking confirmation shows the exact selected ticket names for single and 
   }
 });
 
+test('booking point tickets enforce current balance in UI and database', () => {
+  const source = read('supabase/functions/_shared/booking-benefits.ts');
+  const ui = read('booking/booking-benefits.js');
+  const migration = read('supabase/migrations/20261002151000_booking_point_ticket_balance_guard.sql');
+  const bookingApi = read('supabase/functions/booking-api/index.ts');
+  const groupApi = read('supabase/functions/booking-group-api/index.ts');
+
+  assert.match(source, /from\('point_balances'\)/);
+  assert.match(source, /pointBalance/);
+  assert.match(source, /pointCost/);
+  assert.match(source, /點數不足/);
+  assert.match(ui, /selectedPointSpend/);
+  assert.match(ui, /pointBudget/);
+  assert.match(ui, /budget\.spent \+ budget\.cost/);
+  assert.match(migration, /POINT_TICKET_INSUFFICIENT_POINTS/);
+  assert.match(migration, /before insert on public\.booking_benefit_selections/);
+  assert.match(migration, /for update/);
+  assert.match(bookingApi, /POINT_TICKET_INSUFFICIENT_POINTS/);
+  assert.match(groupApi, /POINT_TICKET_INSUFFICIENT_POINTS/);
+  assert.match(groupApi, /POINT_TICKET_SELECTION_LIMIT_EXCEEDED/);
+  assert.match(groupApi, /point_card_settings/);
+});
+
 test('booking event ticket checkbox can claim and server enforces configured selection cap', () => {
   const source = read('supabase/functions/_shared/booking-benefits.ts');
   const common = read('booking/common.js');
