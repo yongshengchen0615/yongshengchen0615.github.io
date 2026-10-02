@@ -31,6 +31,18 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   const pointTicketMaxPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 1 && rawPointLimit <= 50 ? rawPointLimit : 1;
   // Ticket-backed calendar activities are represented by the canonical event
   // offer above, so expired/full/used tickets cannot reappear as activities.
+  const pointCardIds = [...new Set(points.map((offer) => String(offer.pointCardId || '')).filter(Boolean))];
+  const pointBalancesResult = pointCardIds.length
+    ? await db.from('point_balances')
+        .select('point_card_id,stamps')
+        .eq('member_id', String(member.id))
+        .in('point_card_id', pointCardIds)
+    : { data: [], error: null };
+  if (pointBalancesResult.error) throw pointBalancesResult.error;
+  const pointBalanceByCard = new Map(
+    (pointBalancesResult.data || []).map((row: any) => [String(row.point_card_id || ''), Math.max(0, Number(row.stamps || 0))])
+  );
+
   const activities = (calendar.data || []).filter((item: any) =>
     isEligibleTierActivity(item, tier, today, member.birthday, undefined, undefined, true)
   ).slice(0, 8);
@@ -39,14 +51,26 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
     eventTicketMaxPerDay,
     pointTicketMaxPerRedemption,
     items: [
-      ...points.map((offer) => ({
-        kind: 'points', id: offer.rewardId, title: offer.ticketTitle,
-        subtitle: `${offer.cardTitle} · 消耗 ${offer.thresholdStamps} 點`,
-        statusLabel: '可使用', startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId,
-        selectable: Boolean(offer.ticketId), selectionId: offer.ticketId,
-        conditionLabel: `單次預約最多使用 ${pointTicketMaxPerRedemption} 張 · 服務限制：目前未設定`,
-        disabledReason: offer.ticketId ? '' : '目前沒有可核銷的票券',
-      })),
+      ...points.map((offer) => {
+        const pointBalance = pointBalanceByCard.get(String(offer.pointCardId || '')) || 0;
+        const pointCost = Math.max(0, Number(offer.thresholdStamps || 0));
+        const hasTicket = Boolean(offer.ticketId);
+        const hasEnoughPoints = pointCost > 0 && pointBalance >= pointCost;
+        return {
+          kind: 'points', id: offer.rewardId, title: offer.ticketTitle,
+          subtitle: `${offer.cardTitle} · 消耗 ${pointCost} 點`,
+          statusLabel: hasEnoughPoints ? '可使用' : '點數不足',
+          startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId, cardTitle: offer.cardTitle,
+          pointCost, pointBalance,
+          selectable: hasTicket && hasEnoughPoints, selectionId: offer.ticketId,
+          conditionLabel: `本卡目前 ${pointBalance} 點 · 此票券需 ${pointCost} 點 · 單次預約最多使用 ${pointTicketMaxPerRedemption} 張`,
+          disabledReason: !hasTicket
+            ? '目前沒有可核銷的票券'
+            : !hasEnoughPoints
+              ? `點數不足：目前 ${pointBalance} 點，此票券需要 ${pointCost} 點`
+              : '',
+        };
+      }),
       ...events.map((offer) => ({
         kind: 'event', id: offer.eventTicketId, title: offer.title,
         subtitle: offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
