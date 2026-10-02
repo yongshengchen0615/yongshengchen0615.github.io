@@ -15,12 +15,12 @@ function fixture(load) {
   return { w, el, close: () => w.close(), start: () => w.BookingBenefits.start({}, 'fixture') };
 }
 const items = [
-  { kind: 'points', id: 'reward', title: '集點券', statusLabel: '可使用' },
-  { kind: 'event', id: 'EVENT', title: '<img src=x onerror=alert(1)>', statusLabel: '可領取' },
-  { kind: 'calendar', id: 'CAL', title: '會員活動', statusLabel: '活動進行中' },
+  { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', statusLabel: '可使用' },
+  { kind: 'event', id: 'EVENT', selectionId: '', selectable: false, disabledReason: '請先領取票券後再於預約中選用', title: '<img src=x onerror=alert(1)>', statusLabel: '可領取' },
+  { kind: 'calendar', id: 'CAL', selectionId: 'CAL', selectable: true, title: '會員活動', statusLabel: '活動進行中' },
 ];
 
-test('0/1/N recommendation cards render with safe view-only links', async () => {
+test('0/1/N benefit cards render safely inside booking form and expose only eligible selectors', async () => {
   for (const count of [0, 1, 3]) {
     let calls = 0;
     const h = fixture(async () => { calls++; return { items: items.slice(0, count) }; });
@@ -29,12 +29,20 @@ test('0/1/N recommendation cards render with safe view-only links', async () => 
       assert.equal(h.el('bookingBenefitsList').children.length, count);
       assert.equal(h.el('bookingBenefits').dataset.state, count ? 'ready' : 'empty');
       assert.equal(h.el('bookingBenefitsList').getAttribute('aria-busy'), 'false');
-      assert.equal(h.el('bookingBenefits').closest('form'), null);
+      assert.equal(h.el('bookingBenefits').closest('form')?.id, 'bookingForm');
+      const note = h.el('memberNote');
+      assert.ok(h.el('bookingBenefits').compareDocumentPosition(note) & h.w.Node.DOCUMENT_POSITION_FOLLOWING);
       assert.equal(h.el('bookingBenefitsList').querySelector('img'), null);
       const links = h.el('bookingBenefitsList').querySelectorAll('a');
       assert.ok([...links].every(link => link.textContent === '查看詳情' && new URL(link.href).origin === 'https://example.test'));
-      if (count === 3) assert.match(links[1].href, /eventTicketId=EVENT/);
-      assert.equal(calls, 1, 'rendering does not claim/redeem or start extra requests');
+      if (count === 3) {
+        assert.match(links[1].href, /eventTicketId=EVENT/);
+        const checkboxes = h.el('bookingBenefitsList').querySelectorAll('input[type="checkbox"]');
+        assert.equal(checkboxes.length, 2, 'only precise selectable benefit references get checkboxes');
+        checkboxes[0].click();
+        assert.deepEqual(h.w.BookingBenefits.selectionPayload(), [{ kind: 'points', id: 'PT-001' }]);
+      }
+      assert.equal(calls, 1, 'rendering and selection do not claim/redeem or start extra requests');
     } finally { h.close(); }
   }
 });
