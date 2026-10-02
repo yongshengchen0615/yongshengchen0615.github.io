@@ -47,6 +47,9 @@ function mapDbError(error: any): ApiError {
   const text = `${error?.message || ""} ${error?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
     ["BOOKING_SLOT_TAKEN",409,"BOOKING_SLOT_TAKEN","選擇的技師在這段時間剛被預約，請選擇其他時間。"],
+    ["INVALID_BOOKING_BENEFITS",400,"INVALID_BOOKING_BENEFITS","選用優惠資料格式不正確。"],
+    ["BOOKING_BENEFIT_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一項優惠目前已不可使用，請重新整理後再選擇。"],
+    ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法綁定至預約自動核銷。"],
     ["BOOKING_CONFLICT",409,"BOOKING_CONFLICT","預約已被更新，請重新整理後再操作。"],
     ["BOOKING_CANCELLATION_PENDING",409,"BOOKING_CANCELLATION_PENDING","這筆預約已有待確認的取消申請，請先完成取消審核後再修改。"],
     ["BOOKING_NOT_EDITABLE",409,"BOOKING_NOT_EDITABLE","這筆預約目前無法修改。"],
@@ -201,10 +204,16 @@ async function groupData(s: SupabaseClient, bookingIds: string[]) {
 }
 
 async function fullBooking(s: SupabaseClient, id: string) {
-  const br = await s.from("bookings").select("*, members(display_name,member_code), booking_technicians(name)").eq("id",id).single(); if (br.error) throw mapDbError(br.error);
-  const ir = await s.from("booking_items").select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity").eq("booking_id",id).order("created_at",{ascending:true}); if (ir.error) throw mapDbError(ir.error);
-  const items=(ir.data||[]).map(itemClient), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
-  return { bookingId:r.id, requestId:r.request_id, serviceId:r.service_id, serviceTitle:items.map((x:any)=>x.serviceTitle).join(" + ")||"預約項目", items, totalDurationMinutes:Number(r.total_duration_minutes||30), totalAmount:items.reduce((sum:number,x:any)=>sum+Number(x.subtotalAmount||0),0), memberId:r.member_id, memberDisplayName:r.members?.display_name||"", memberCode:r.members?.member_code||"", bookingDate:r.booking_date, startTime:String(r.start_time||"").slice(0,5), endTime:String(r.end_time||"").slice(0,5), startAt:localTimestamp(r.start_at), endAt:localTimestamp(r.end_at), status:r.status, memberNote:r.member_note||"", adminNote:r.admin_note||"", completedAt:r.completed_at||null, confirmedAt:r.confirmed_at, rejectedAt:r.rejected_at, cancelledAt:r.cancelled_at, createdAt:r.created_at, updatedAt:r.updated_at, contactSource:r.contact_source||"member", contactSurname:r.contact_surname||"", contactSalutation:r.contact_salutation||"", contactPhone:r.contact_phone||"", ...g };
+  const [br, ir, benefitResult] = await Promise.all([
+    s.from("bookings").select("*, members(display_name,member_code), booking_technicians(name)").eq("id",id).single(),
+    s.from("booking_items").select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity").eq("booking_id",id).order("created_at",{ascending:true}),
+    s.from("booking_benefit_selections").select("benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at").eq("booking_id",id).order("selected_at",{ascending:true}),
+  ]);
+  if (br.error) throw mapDbError(br.error);
+  if (ir.error) throw mapDbError(ir.error);
+  if (benefitResult.error) throw mapDbError(benefitResult.error);
+  const items=(ir.data||[]).map(itemClient), benefits=(benefitResult.data||[]).map((x:any)=>({kind:x.benefit_kind,id:x.benefit_ref,title:x.title_snapshot||"可用權益",status:x.status||"pending",redeemedAt:x.redeemed_at||null})), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
+  return { bookingId:r.id, requestId:r.request_id, serviceId:r.service_id, serviceTitle:items.map((x:any)=>x.serviceTitle).join(" + ")||"預約項目", items, benefits, totalDurationMinutes:Number(r.total_duration_minutes||30), totalAmount:items.reduce((sum:number,x:any)=>sum+Number(x.subtotalAmount||0),0), memberId:r.member_id, memberDisplayName:r.members?.display_name||"", memberCode:r.members?.member_code||"", bookingDate:r.booking_date, startTime:String(r.start_time||"").slice(0,5), endTime:String(r.end_time||"").slice(0,5), startAt:localTimestamp(r.start_at), endAt:localTimestamp(r.end_at), status:r.status, memberNote:r.member_note||"", adminNote:r.admin_note||"", completedAt:r.completed_at||null, confirmedAt:r.confirmed_at, rejectedAt:r.rejected_at, cancelledAt:r.cancelled_at, createdAt:r.created_at, updatedAt:r.updated_at, contactSource:r.contact_source||"member", contactSurname:r.contact_surname||"", contactSalutation:r.contact_salutation||"", contactPhone:r.contact_phone||"", ...g };
 }
 
 async function normalizeGroup(s: SupabaseClient, body: Json) {
@@ -298,11 +307,22 @@ async function slots(s: SupabaseClient, m: any, body: Json) {
 }
 
 function contact(body: Json) { const source=asText(body.contactSource,20)||"member"; return { source, surname:asText(body.contactSurname,40)||null, salutation:asText(body.contactSalutation,10)||null, phone:asText(body.contactPhone,20)||null }; }
+function normalizeBookingBenefits(value: unknown): Json[] {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 20) throw new ApiError(400,"INVALID_BOOKING_BENEFITS","選用優惠資料格式不正確。");
+  const seen = new Set<string>();
+  return value.map((raw:any) => {
+    const kind=asText(raw?.kind,20).toLowerCase(), id=asText(raw?.id,160), key=`${kind}:${id}`;
+    if (!["points","event","calendar"].includes(kind) || !id || seen.has(key)) throw new ApiError(400,"INVALID_BOOKING_BENEFITS","選用優惠資料格式不正確。");
+    seen.add(key);
+    return {kind,id};
+  });
+}
 async function createBooking(s: SupabaseClient, i: Identity, m: any, body: Json) {
   const g=await normalizeGroup(s,body), c=contact(body), requestId=asText(body.requestId,100), bookingDate=dateValue(body.bookingDate);
   assertBookingDateWindow(g.cfg,bookingDate);
   if (!/^BOOK-[A-Za-z0-9-]{8,95}$/.test(requestId)) throw new ApiError(400,"INVALID_REQUEST_ID","操作識別碼格式不正確。");
-  const r=await s.rpc("create_group_booking_request_v2", { p_request_id:requestId, p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone });
+  const r=await s.rpc("create_group_booking_with_benefits_request_v2", { p_request_id:requestId, p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone, p_benefits:normalizeBookingBenefits(body.benefits) });
   if (r.error) throw mapDbError(r.error); const row=Array.isArray(r.data)?r.data[0]:r.data, booking=await fullBooking(s,row.id);
   await audit(s,i,"member","BOOKING_GROUP_REQUESTED","booking",row.id,{partySize:g.participants.length,primaryTechnicianId:g.primaryId,participantTechnicians:g.participants.map((p:any)=>p.technicianId||null)});
   return {booking};
@@ -311,7 +331,7 @@ async function updateBooking(s: SupabaseClient, i: Identity, m: any, body: Json)
   const g=await normalizeGroup(s,body), c=contact(body), bookingId=uuid(body.bookingId,"預約"), expected=asText(body.expectedUpdatedAt,80), bookingDate=dateValue(body.bookingDate);
   assertBookingDateWindow(g.cfg,bookingDate);
   if (!expected || !Number.isFinite(Date.parse(expected))) throw new ApiError(400,"INVALID_INPUT","缺少預約版本，請重新整理。");
-  const r=await s.rpc("update_group_booking_request_v2", { p_booking_id:bookingId, p_expected_updated_at:expected, p_actor:i.lineUserId, p_request_id:asText(body.requestId,100), p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone });
+  const r=await s.rpc("update_group_booking_with_benefits_request_v2", { p_booking_id:bookingId, p_expected_updated_at:expected, p_actor:i.lineUserId, p_request_id:asText(body.requestId,100), p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone, p_benefits:normalizeBookingBenefits(body.benefits) });
   if (r.error) throw mapDbError(r.error); return {booking:await fullBooking(s,bookingId)};
 }
 

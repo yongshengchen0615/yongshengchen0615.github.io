@@ -108,6 +108,7 @@ jobs:
             MemberWebsocket-dev/event/today-usable.js \
             MemberWebsocket-dev/calendar/app.js \
             MemberWebsocket-dev/booking/common.js \
+            MemberWebsocket-dev/booking/booking-benefits.js \
             MemberWebsocket-dev/booking/membership-progress.js \
             MemberWebsocket-dev/booking/booking-flow.js \
             MemberWebsocket-dev/booking/member-ui.js \
