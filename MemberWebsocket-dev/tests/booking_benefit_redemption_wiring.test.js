@@ -61,7 +61,7 @@ test('benefit UI uses three grouped entitlement sections and exact selection ids
   assert.match(ui, /booking-benefit-group/);
   assert.match(ui, /dataset\.bookingBenefitKind/);
   assert.match(ui, /dataset\.bookingBenefitId/);
-  assert.match(source, /conditionLabel: '服務限制：目前未設定'/);
+  assert.match(source, /單次預約最多使用 \$\{pointTicketMaxPerRedemption\} 張/);
   assert.match(source, /會員條件：目前會員階級適用/);
 });
 
@@ -92,7 +92,9 @@ test('booking activities are display-only while point and event tickets remain s
   assert.match(source, /kind: 'calendar'[\s\S]*selectable: false, selectionId: ''/);
   assert.match(source, /活動資訊僅供預約參考/);
   assert.match(ui, /selectableKinds = new Set\(\['points', 'event'\]\)/);
-  assert.match(ui, /活動僅顯示；活動票券每日最多可選/);
+  assert.match(ui, /活動僅顯示；集點卡票券單次最多可選/);
+  assert.match(ui, /活動票券每日最多可選/);
+  assert.match(ui, /if \(item\?\.kind !== 'calendar'\) return ''/);
   assert.doesNotMatch(bookingApi, /\["points","event","calendar"\]\.includes\(kind\)/);
   assert.doesNotMatch(groupApi, /\["points","event","calendar"\]\.includes\(kind\)/);
 });
