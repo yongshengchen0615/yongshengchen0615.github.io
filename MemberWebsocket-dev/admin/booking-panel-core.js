@@ -913,6 +913,189 @@
     showModal();
   }
 
+  async function openBookingBenefitsModal(booking) {
+    if (!canEditBooking(booking)) return window.alert('這筆預約目前無法修改預約票券。');
+    els.bookingAdminCrudModalTitle.textContent = `修改預約票券｜${booking.memberDisplayName || '會員'}`;
+    els.bookingAdminCrudModalBody.innerHTML = '<div class="booking-admin-form"><p class="booking-admin-time">正在同步會員可用票券…</p></div>';
+    showModal();
+
+    let result;
+    try {
+      result = await operationsRequest('admin.booking.benefits.list', { bookingId: booking.bookingId });
+    } catch (error) {
+      els.bookingAdminCrudModalBody.innerHTML = '<div class="booking-admin-form"><div data-modal-message class="form-message"></div><div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">關閉</button></div></div>';
+      showMessage(els.bookingAdminCrudModalBody.querySelector('[data-modal-message]'), error?.message || '目前無法讀取會員可用票券。', 'error');
+      els.bookingAdminCrudModalBody.querySelector('[data-cancel]')?.addEventListener('click', closeModal);
+      return;
+    }
+
+    const freshBooking = result?.booking && typeof result.booking === 'object' ? result.booking : booking;
+    const catalog = result?.catalog && typeof result.catalog === 'object' ? result.catalog : {};
+    const available = (Array.isArray(catalog.items) ? catalog.items : [])
+      .filter((item) => item?.kind === 'points' || item?.kind === 'event');
+    const current = (Array.isArray(freshBooking.benefits) ? freshBooking.benefits : [])
+      .filter((item) => item?.status === 'pending' && (item?.kind === 'points' || item?.kind === 'event'));
+    const currentKeys = new Set(current.map((item) => `${item.kind}:${item.id}`));
+    const rowsByKey = new Map();
+
+    available.forEach((item) => {
+      const selectionId = String(item?.selectionId || '');
+      const key = selectionId ? `${item.kind}:${selectionId}` : `${item.kind}:offer:${String(item?.id || '')}`;
+      rowsByKey.set(key, { ...item, selectionId });
+    });
+    current.forEach((item) => {
+      const key = `${item.kind}:${item.id}`;
+      if (!rowsByKey.has(key)) {
+        rowsByKey.set(key, {
+          kind: item.kind,
+          selectionId: item.id,
+          title: item.title || '預約票券',
+          subtitle: '目前已選用，但已不在可用票券清單',
+          conditionLabel: '此票券目前已失效或資格已變更；請取消選取後儲存。',
+          selectable: false,
+          disabledReason: '目前不可繼續綁定此票券',
+          invalidCurrent: true,
+        });
+      }
+    });
+
+    const bookingServiceTypes = new Set(
+      (Array.isArray(freshBooking.items) ? freshBooking.items : [])
+        .map((item) => String(item?.serviceType || '').trim().toLocaleLowerCase('zh-Hant-TW'))
+        .filter(Boolean)
+    );
+    const serviceRequirementMet = (item) => {
+      const required = (Array.isArray(item?.requiredServiceTypes) ? item.requiredServiceTypes : [])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+      return !required.length || required.some((value) => bookingServiceTypes.has(value.toLocaleLowerCase('zh-Hant-TW')));
+    };
+    const hasLimit = (value) => Number.isInteger(Number(value)) && Number(value) > 0;
+    const eventLimit = Number(catalog.eventTicketMaxPerDay || 0);
+    const pointLimit = Number(catalog.pointTicketMaxPerRedemption || 0);
+
+    els.bookingAdminCrudModalBody.innerHTML = '<form class="booking-admin-form"><p class="booking-admin-time">可新增、移除或更換這筆預約要使用的票券。管理端只能選擇會員已持有且目前可用的票券；尚未領取的活動票券不會由管理端代領。</p><div data-booking-benefit-summary class="booking-admin-time"></div><div data-booking-benefit-rows style="display:grid;gap:10px"></div><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">取消</button><button class="button button-dark" type="submit">儲存預約票券</button></div></form>';
+    const form = els.bookingAdminCrudModalBody.querySelector('form');
+    const rows = form.querySelector('[data-booking-benefit-rows]');
+    const summary = form.querySelector('[data-booking-benefit-summary]');
+    const kindLabel = { points: '集點卡票券', event: '活動票券' };
+
+    const ordered = [...rowsByKey.values()].sort((left, right) => {
+      const kindDiff = String(left.kind).localeCompare(String(right.kind));
+      return kindDiff || String(left.title || '').localeCompare(String(right.title || ''), 'zh-Hant-TW');
+    });
+
+    if (!ordered.length) {
+      const empty = document.createElement('p');
+      empty.className = 'integration-empty';
+      empty.textContent = '會員目前沒有可調整的預約票券。';
+      rows.appendChild(empty);
+    }
+
+    ordered.forEach((item) => {
+      const selectionId = String(item?.selectionId || '');
+      const key = selectionId ? `${item.kind}:${selectionId}` : '';
+      const isCurrent = Boolean(key && currentKeys.has(key));
+      const serviceBlocked = !serviceRequirementMet(item);
+      const row = document.createElement('label');
+      row.className = 'booking-admin-toggle';
+      row.style.alignItems = 'flex-start';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isCurrent;
+      checkbox.disabled = !isCurrent && (!selectionId || item.selectable !== true || serviceBlocked);
+      if (selectionId) {
+        checkbox.dataset.bookingBenefitKind = String(item.kind || '');
+        checkbox.dataset.bookingBenefitId = selectionId;
+      }
+      if (item.invalidCurrent) checkbox.dataset.bookingBenefitInvalidCurrent = 'true';
+      if (serviceBlocked) checkbox.dataset.bookingBenefitServiceBlocked = 'true';
+      if (item.kind === 'points') {
+        checkbox.dataset.bookingBenefitPointCard = String(item.cardId || item.cardTitle || '');
+        checkbox.dataset.bookingBenefitPointCost = String(Math.max(0, Number(item.pointCost || 0)));
+        checkbox.dataset.bookingBenefitPointBalance = String(Math.max(0, Number(item.pointBalance || 0)));
+      }
+
+      const copy = document.createElement('span');
+      const title = document.createElement('strong');
+      title.textContent = `${kindLabel[item.kind] || '票券'}｜${item.title || '預約票券'}`;
+      const subtitle = document.createElement('small');
+      subtitle.textContent = String(item.subtitle || (isCurrent ? '目前已選用' : ''));
+      const condition = document.createElement('small');
+      condition.textContent = serviceBlocked
+        ? `不符合目前預約項目。 ${String(item.conditionLabel || '')}`.trim()
+        : String(item.conditionLabel || '');
+      copy.append(title);
+      if (subtitle.textContent) copy.appendChild(subtitle);
+      if (condition.textContent) copy.appendChild(condition);
+      const disabledReason = String(item.disabledReason || '');
+      if ((!selectionId || item.selectable !== true || serviceBlocked) && disabledReason) {
+        const reason = document.createElement('small');
+        reason.textContent = disabledReason;
+        copy.appendChild(reason);
+      }
+      row.append(checkbox, copy);
+      rows.appendChild(row);
+    });
+
+    const updateSummary = () => {
+      const checked = [...form.querySelectorAll('[data-booking-benefit-id]:checked')];
+      const pointCount = checked.filter((input) => input.dataset.bookingBenefitKind === 'points').length;
+      const eventCount = checked.filter((input) => input.dataset.bookingBenefitKind === 'event').length;
+      summary.textContent = `目前選擇：集點卡票券 ${pointCount} 張${hasLimit(pointLimit) ? ` / 上限 ${pointLimit}` : ' / 不限張數'}；活動票券 ${eventCount} 張${hasLimit(eventLimit) ? ` / 上限 ${eventLimit}` : ' / 不限張數'}。`;
+    };
+    form.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', updateSummary));
+    updateSummary();
+
+    form.querySelector('[data-cancel]').addEventListener('click', closeModal);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const selectedInputs = [...form.querySelectorAll('[data-booking-benefit-id]:checked')];
+      const invalidCurrent = selectedInputs.find((input) => input.dataset.bookingBenefitInvalidCurrent === 'true');
+      if (invalidCurrent) {
+        return showMessage(form.querySelector('[data-modal-message]'), '目前已選用的其中一張票券已失效，請取消該票券後再儲存。', 'error');
+      }
+      const serviceBlocked = selectedInputs.find((input) => input.dataset.bookingBenefitServiceBlocked === 'true');
+      if (serviceBlocked) {
+        return showMessage(form.querySelector('[data-modal-message]'), '其中一張票券不符合目前預約項目限制，請取消該票券或先修改服務項目。', 'error');
+      }
+
+      const pointInputs = selectedInputs.filter((input) => input.dataset.bookingBenefitKind === 'points');
+      const eventInputs = selectedInputs.filter((input) => input.dataset.bookingBenefitKind === 'event');
+      if (hasLimit(pointLimit) && pointInputs.length > pointLimit) {
+        return showMessage(form.querySelector('[data-modal-message]'), `集點卡票券每筆預約最多可選 ${pointLimit} 張。`, 'error');
+      }
+      if (hasLimit(eventLimit) && eventInputs.length > eventLimit) {
+        return showMessage(form.querySelector('[data-modal-message]'), `活動票券每筆預約最多可選 ${eventLimit} 張。`, 'error');
+      }
+
+      const pointBudget = new Map();
+      pointInputs.forEach((input) => {
+        const card = String(input.dataset.bookingBenefitPointCard || '');
+        const cost = Math.max(0, Number(input.dataset.bookingBenefitPointCost || 0));
+        const balance = Math.max(0, Number(input.dataset.bookingBenefitPointBalance || 0));
+        const currentBudget = pointBudget.get(card) || { required: 0, available: balance };
+        currentBudget.required += cost;
+        currentBudget.available = Math.min(currentBudget.available, balance);
+        pointBudget.set(card, currentBudget);
+      });
+      if ([...pointBudget.values()].some((budget) => budget.required > budget.available)) {
+        return showMessage(form.querySelector('[data-modal-message]'), '會員目前可用點數不足，請取消部分集點卡票券後再儲存。', 'error');
+      }
+
+      const benefits = selectedInputs.map((input) => ({
+        kind: input.dataset.bookingBenefitKind,
+        id: input.dataset.bookingBenefitId,
+      }));
+      await runModalAction(async () => operationsRequest('admin.booking.benefits.update', {
+        bookingId: freshBooking.bookingId,
+        expectedUpdatedAt: freshBooking.updatedAt,
+        benefits,
+      }, true));
+    });
+  }
+
   function renderBookings() {
     const bookings = (state.booking.bookings || [])
       .filter((booking) => state.filter === 'all' || booking.status === state.filter)
@@ -1002,6 +1185,7 @@
         if (!hasStoredParticipants) {
           actions.append(actionButton('修改服務項目', 'button button-outline', () => openBookingItemsModal(booking)));
         }
+        actions.append(actionButton('修改預約票券', 'button button-outline', () => openBookingBenefitsModal(booking)));
         if (booking.status === 'pending') {
           actions.append(
             actionButton('不通過', 'button button-outline', () => updateBookingStatus(booking, 'rejected', textarea.value)),
