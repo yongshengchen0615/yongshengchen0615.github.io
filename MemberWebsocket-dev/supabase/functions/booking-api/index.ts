@@ -332,6 +332,23 @@ function normalizeBookingBenefits(value: unknown): Json[] {
   });
 }
 
+async function validateBookingBenefitSelectionLimit(supabase: SupabaseClient, value: unknown): Promise<Json[]> {
+  const benefits = normalizeBookingBenefits(value);
+  const eventCount = benefits.filter((item) => item.kind === "event").length;
+  if (!eventCount) return benefits;
+  const setting = await supabase.from("event_ticket_settings")
+    .select("max_tickets_per_day,max_tickets_per_redemption")
+    .eq("id", 1)
+    .maybeSingle();
+  if (setting.error) throw mapDatabaseError(setting.error);
+  const rawLimit = Number(setting.data?.max_tickets_per_day || setting.data?.max_tickets_per_redemption || 1);
+  const maxTicketsPerDay = Number.isInteger(rawLimit) && rawLimit >= 1 && rawLimit <= 50 ? rawLimit : 1;
+  if (eventCount > maxTicketsPerDay) {
+    throw new ApiError(409, "EVENT_TICKET_SELECTION_LIMIT_EXCEEDED", `活動票券每筆預約最多可選 ${maxTicketsPerDay} 張。`);
+  }
+  return benefits;
+}
+
 function bookingClient(row: any, items: any[] = [], benefits: any[] = []): Json {
   const member = row.members || row.member || null;
   const mappedItems = items.map(itemClient);
@@ -630,6 +647,7 @@ async function userCreate(supabase: SupabaseClient, identity: Identity, member: 
   const memberNote = asText(body.memberNote, 500);
   const items = await normalizeRequestedItems(supabase, body);
   const rpcItems = items.map((item) => ({ serviceId: item.serviceId, quantity: item.quantity }));
+  const benefits = await validateBookingBenefitSelectionLimit(supabase, body.benefits);
 
   const created = await supabase.rpc("create_booking_bundle_with_benefits_request", {
     p_request_id: requestId,
@@ -638,7 +656,7 @@ async function userCreate(supabase: SupabaseClient, identity: Identity, member: 
     p_start_time: `${startTime}:00`,
     p_items: rpcItems,
     p_member_note: memberNote,
-    p_benefits: normalizeBookingBenefits(body.benefits),
+    p_benefits: benefits,
   });
   if (created.error) throw mapDatabaseError(created.error);
   const row = Array.isArray(created.data) ? created.data[0] : created.data;
@@ -664,13 +682,14 @@ async function userUpdate(supabase: SupabaseClient, identity: Identity, member: 
   const settings = await bookingSettings(supabase);
   assertBookingDateWindow(bookingDate, settings);
   const items = await normalizeRequestedItems(supabase, body);
+  const benefits = await validateBookingBenefitSelectionLimit(supabase, body.benefits);
   const result = await supabase.rpc("update_booking_bundle_with_benefits_request", {
     p_booking_id: bookingId, p_member_id: member.id,
     p_expected_updated_at: expectedUpdatedAt, p_request_id: requestId,
     p_booking_date: bookingDate, p_start_time: `${normalizeTime(body.startTime)}:00`,
     p_items: items.map((item) => ({ serviceId: item.serviceId, quantity: item.quantity })),
     p_member_note: asText(body.memberNote, 500), p_actor: identity.lineUserId,
-    p_benefits: normalizeBookingBenefits(body.benefits),
+    p_benefits: benefits,
   });
   if (result.error) throw mapDatabaseError(result.error);
   const row = Array.isArray(result.data) ? result.data[0] : result.data;
