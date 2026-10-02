@@ -188,13 +188,13 @@
       return;
     }
 
-    if (item.kind === 'event' && selectedEventCount() >= eventTicketMaxPerDay) {
+    if (item.kind === 'event' && hasLimit(eventTicketMaxPerDay) && selectedEventCount() >= eventTicketMaxPerDay) {
       input.checked = false;
       state('ready', `活動票券每日最多可選 ${eventTicketMaxPerDay} 張。`);
       render(renderedItems);
       return;
     }
-    if (item.kind === 'points' && selectedPointCount() >= pointTicketMaxPerRedemption) {
+    if (item.kind === 'points' && hasLimit(pointTicketMaxPerRedemption) && selectedPointCount() >= pointTicketMaxPerRedemption) {
       input.checked = false;
       state('ready', `集點卡票券每筆預約最多可選 ${pointTicketMaxPerRedemption} 張。`);
       render(renderedItems);
