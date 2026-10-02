@@ -99,7 +99,9 @@ export function selectLatestPointOffers(
       ticketTitle: text(template?.title) || "可用優惠",
       thresholdStamps,
       sortOrder: number(card?.sort_order),
-    });
+    };
+    if (availableTicket.ticketId) offer.ticketId = availableTicket.ticketId;
+    offers.push(offer);
   }
 
   return offers.sort((left, right) =>
