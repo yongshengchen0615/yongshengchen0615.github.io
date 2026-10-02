@@ -40,7 +40,7 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
         const checkboxes = h.el('bookingBenefitsList').querySelectorAll('input[type="checkbox"]');
         assert.equal(checkboxes.length, 2, 'only precise selectable benefit references get checkboxes');
         checkboxes[0].click();
-        assert.deepEqual(h.w.BookingBenefits.selectionPayload(), [{ kind: 'points', id: 'PT-001' }]);
+        assert.equal(JSON.stringify(h.w.BookingBenefits.selectionPayload()), JSON.stringify([{ kind: 'points', id: 'PT-001' }]));
       }
       assert.equal(calls, 1, 'rendering and selection do not claim/redeem or start extra requests');
     } finally { h.close(); }
