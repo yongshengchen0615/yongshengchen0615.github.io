@@ -74,9 +74,9 @@ function harness() {
 
   return {
     BookingSystem: window.BookingSystem,
-    emit(scope = 'member') {
+    emit(scope = 'member', eventType = 'fixture.changed') {
       assert.equal(typeof onChange, 'function');
-      onChange({ new: { scope } });
+      onChange({ new: { scope, event_type: eventType } });
     },
     runNextTimer,
     drainTimers,
@@ -97,18 +97,22 @@ const config = {
 
 test('ticket and calendar signals refresh recommendations without reloading booking slots', async () => {
   const h = harness();
-  let core = 0, benefits = 0;
-  h.BookingSystem.subscribeRealtime(config, () => { core++; }, 'member', () => { benefits++; });
-  for (const scope of ['points', 'event', 'calendar']) h.emit(scope);
+  let core = 0;
+  const benefits = [];
+  h.BookingSystem.subscribeRealtime(config, () => { core++; }, 'member', (signal) => { benefits.push(signal); });
+  h.emit('points', 'data.db.point_balances.update');
+  h.emit('event', 'data.db.event_ticket_claims.update');
+  h.emit('calendar', 'data.db.calendar_items.update');
   await h.drainTimers();
   assert.equal(core, 0);
-  assert.equal(benefits, 3);
+  assert.equal(benefits.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(benefits[0])), { scope: 'points', eventType: 'data.db.point_balances.update' });
   h.emit('admin');
-  assert.equal(benefits, 3);
-  h.emit('member');
+  assert.equal(benefits.length, 3);
+  h.emit('member', 'admin.member-grants.add');
   await h.drainTimers();
   assert.equal(core, 1);
-  assert.equal(benefits, 4);
+  assert.equal(benefits.length, 4);
 });
 
 test('booking realtime recovers after a synchronous refresh exception', async () => {
