@@ -2,10 +2,10 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 import { loadLatestPointOffers, loadLatestEventOffers } from './latest-available-offers.ts';
 import { isEligibleTierActivity } from './activity-eligibility.ts';
 
-export async function loadBookingBenefits(db: SupabaseClient, member: any, tier: string, today: string) {
+export async function loadBookingBenefits(db: SupabaseClient, member: any, tier: string, today: string, currentBookingId = '') {
   // Member and tier are resolved by the authenticated handler, never the body.
   // Fixed-size batched reads; no ticket issuance, claim or redemption occurs here.
-  const [points, events, calendar, eventSettings, pointSettings] = await Promise.all([
+  const [points, events, calendar, eventSettings, pointSettings, pendingPointSelections] = await Promise.all([
     loadLatestPointOffers(db, String(member.id), true),
     loadLatestEventOffers(db, String(member.id), tier, true),
     db.from('calendar_items')
@@ -21,10 +21,16 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       .select('max_tickets_per_redemption')
       .eq('id', 1)
       .maybeSingle(),
+    db.from('booking_benefit_selections')
+      .select('booking_id,benefit_ref')
+      .eq('member_id', String(member.id))
+      .eq('benefit_kind', 'points')
+      .eq('status', 'pending'),
   ]);
   if (calendar.error) throw calendar.error;
   if (eventSettings.error) throw eventSettings.error;
   if (pointSettings.error) throw pointSettings.error;
+  if (pendingPointSelections.error) throw pendingPointSelections.error;
   const rawEventLimit = Number(eventSettings.data?.max_tickets_per_day || eventSettings.data?.max_tickets_per_redemption || 1);
   const eventTicketMaxPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 1 && rawEventLimit <= 50 ? rawEventLimit : 1;
   const rawPointLimit = Number(pointSettings.data?.max_tickets_per_redemption || 1);
@@ -32,16 +38,46 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   // Ticket-backed calendar activities are represented by the canonical event
   // offer above, so expired/full/used tickets cannot reappear as activities.
   const pointCardIds = [...new Set(points.map((offer) => String(offer.pointCardId || '')).filter(Boolean))];
-  const pointBalancesResult = pointCardIds.length
-    ? await db.from('point_balances')
-        .select('point_card_id,stamps')
-        .eq('member_id', String(member.id))
-        .in('point_card_id', pointCardIds)
-    : { data: [], error: null };
+  const pendingPointTicketIds = [...new Set(
+    (pendingPointSelections.data || []).map((row: any) => String(row.benefit_ref || '')).filter(Boolean)
+  )];
+  const [pointBalancesResult, reservationTicketsResult] = await Promise.all([
+    pointCardIds.length
+      ? db.from('point_balances')
+          .select('point_card_id,stamps')
+          .eq('member_id', String(member.id))
+          .in('point_card_id', pointCardIds)
+      : Promise.resolve({ data: [], error: null }),
+    pendingPointTicketIds.length
+      ? db.from('point_tickets')
+          .select('ticket_id,point_card_id,threshold_stamps')
+          .eq('member_id', String(member.id))
+          .in('ticket_id', pendingPointTicketIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
   if (pointBalancesResult.error) throw pointBalancesResult.error;
+  if (reservationTicketsResult.error) throw reservationTicketsResult.error;
   const pointBalanceByCard = new Map(
     (pointBalancesResult.data || []).map((row: any) => [String(row.point_card_id || ''), Math.max(0, Number(row.stamps || 0))])
   );
+  const reservationBookingByTicket = new Map(
+    (pendingPointSelections.data || []).map((row: any) => [String(row.benefit_ref || ''), String(row.booking_id || '')])
+  );
+  const reservedPointsByCard = new Map<string, number>();
+  const currentBookingReservedPointsByCard = new Map<string, number>();
+  for (const ticket of reservationTicketsResult.data || []) {
+    const cardId = String(ticket.point_card_id || '');
+    const ticketId = String(ticket.ticket_id || '');
+    const points = Math.max(0, Number(ticket.threshold_stamps || 0));
+    if (!cardId || !ticketId || points <= 0) continue;
+    reservedPointsByCard.set(cardId, Number(reservedPointsByCard.get(cardId) || 0) + points);
+    if (currentBookingId && reservationBookingByTicket.get(ticketId) === currentBookingId) {
+      currentBookingReservedPointsByCard.set(
+        cardId,
+        Number(currentBookingReservedPointsByCard.get(cardId) || 0) + points,
+      );
+    }
+  }
 
   const activities = (calendar.data || []).filter((item: any) =>
     isEligibleTierActivity(item, tier, today, member.birthday, undefined, undefined, true)
@@ -52,23 +88,36 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
     pointTicketMaxPerRedemption,
     items: [
       ...points.map((offer) => {
-        const pointBalance = pointBalanceByCard.get(String(offer.pointCardId || '')) || 0;
+        const pointCardId = String(offer.pointCardId || '');
+        const totalPointBalance = pointBalanceByCard.get(pointCardId) || 0;
+        const reservedPointBalance = Math.max(0, Number(reservedPointsByCard.get(pointCardId) || 0));
+        const currentBookingReserved = Math.max(0, Number(currentBookingReservedPointsByCard.get(pointCardId) || 0));
+        const otherBookingReserved = Math.max(0, reservedPointBalance - currentBookingReserved);
+        const pointBalance = Math.max(0, totalPointBalance - otherBookingReserved);
         const pointCost = Math.max(0, Number(offer.thresholdStamps || 0));
-        const hasTicket = Boolean(offer.ticketId);
+        const ticketId = String(offer.ticketId || '');
+        const reservationBookingId = ticketId ? String(reservationBookingByTicket.get(ticketId) || '') : '';
+        const reservedForOtherBooking = Boolean(reservationBookingId && reservationBookingId !== currentBookingId);
+        const reservedForCurrentBooking = Boolean(reservationBookingId && reservationBookingId === currentBookingId);
+        const hasTicket = Boolean(ticketId);
         const hasEnoughPoints = pointCost > 0 && pointBalance >= pointCost;
         return {
           kind: 'points', id: offer.rewardId, title: offer.ticketTitle,
           subtitle: `${offer.cardTitle} · 消耗 ${pointCost} 點`,
-          statusLabel: hasEnoughPoints ? '可使用' : '點數不足',
+          statusLabel: reservedForOtherBooking ? '已預約使用' : hasEnoughPoints ? '可使用' : '點數不足',
           startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId, cardTitle: offer.cardTitle,
-          pointCost, pointBalance,
-          selectable: hasTicket && hasEnoughPoints, selectionId: offer.ticketId,
-          conditionLabel: `本卡目前 ${pointBalance} 點 · 此票券需 ${pointCost} 點 · 單次預約最多使用 ${pointTicketMaxPerRedemption} 張`,
+          pointCost, pointBalance, totalPointBalance, reservedPointBalance, otherBookingReserved,
+          reservedForBooking: Boolean(reservationBookingId),
+          reservedForCurrentBooking,
+          selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking, selectionId: offer.ticketId,
+          conditionLabel: `本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · 單次預約最多使用 ${pointTicketMaxPerRedemption} 張`,
           disabledReason: !hasTicket
             ? '目前沒有可核銷的票券'
-            : !hasEnoughPoints
-              ? `點數不足：目前 ${pointBalance} 點，此票券需要 ${pointCost} 點`
-              : '',
+            : reservedForOtherBooking
+              ? '此票券已選入另一筆預約，服務完成或取消後才會釋放'
+              : !hasEnoughPoints
+                ? `可用點數不足：目前可用 ${pointBalance} 點，此票券需要 ${pointCost} 點`
+                : '',
         };
       }),
       ...events.map((offer) => ({
