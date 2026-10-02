@@ -9,7 +9,7 @@
 
   function normalizeLimit(value) {
     const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 50 ? parsed : 1;
+    return Number.isInteger(parsed) && parsed >= 0 && parsed <= 50 ? parsed : 1;
   }
 
   async function request(operation, payload = {}) {
@@ -40,7 +40,7 @@
     panel.id = 'eventTicketGlobalUsageSettings';
     panel.className = 'tier-settings event-ticket-global-settings';
     panel.setAttribute('aria-labelledby', 'eventTicketGlobalUsageSettingsTitle');
-    panel.innerHTML = '<div><p class="kicker">Ticket usage policy</p><h3 id="eventTicketGlobalUsageSettingsTitle">活動票券使用設定</h3><p>設定每位會員一天內最多可以使用幾張活動票券。每日用量依 Asia/Taipei 日期計算，實際可使用張數仍會受活動期間、會員等級與持有票券數限制。</p></div><div class="tier-settings-grid"><label>每日最多使用活動票券數<input id="eventMaxTicketsPerDay" type="number" min="1" max="50" step="1" inputmode="numeric" value="1" required aria-describedby="eventMaxTicketsPerDayHint"><small id="eventMaxTicketsPerDayHint">範圍 1–50 張；此每日上限套用活動優惠券、活動抽獎券與好友邀請券。</small></label></div><div id="eventTicketSettingMessage" class="form-message hidden" role="status"></div><div class="tier-settings-actions"><button id="saveEventTicketSettingButton" class="button button-dark" type="button">儲存活動票券使用設定</button></div>';
+    panel.innerHTML = '<div><p class="kicker">Ticket usage policy</p><h3 id="eventTicketGlobalUsageSettingsTitle">活動票券使用設定</h3><p>設定每位會員一天內最多可以使用幾張活動票券。每日用量依 Asia/Taipei 日期計算，實際可使用張數仍會受活動期間、會員等級與持有票券數限制。</p></div><div class="tier-settings-grid"><label>每日最多使用活動票券數<input id="eventMaxTicketsPerDay" type="number" min="0" max="50" step="1" inputmode="numeric" value="1" required aria-describedby="eventMaxTicketsPerDayHint"><small id="eventMaxTicketsPerDayHint">0 代表不限張數；1–50 張則為每日上限，套用活動優惠券、活動抽獎券與好友邀請券。</small></label></div><div id="eventTicketSettingMessage" class="form-message hidden" role="status"></div><div class="tier-settings-actions"><button id="saveEventTicketSettingButton" class="button button-dark" type="button">儲存活動票券使用設定</button></div>';
     eventsPanel.insertBefore(panel, workspace);
 
     const input = panel.querySelector('#eventMaxTicketsPerDay');
@@ -75,7 +75,7 @@
       });
       state.updatedAt = String(result.updatedAt || '');
       input.value = String(normalizeLimit(result.maxTicketsPerDay));
-      showMessage(`已儲存：會員每日最多可使用 ${input.value} 張活動票券。`);
+      showMessage(maxTicketsPerDay === 0 ? '已儲存：活動票券每日使用張數不限。' : `已儲存：會員每日最多可使用 ${input.value} 張活動票券。`);
     } catch (error) {
       showMessage(error && error.message || '儲存失敗，請重新整理後再試。', true);
     } finally {
