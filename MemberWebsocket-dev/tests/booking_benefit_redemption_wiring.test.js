@@ -100,6 +100,20 @@ test('booking activities are display-only while point and event tickets remain s
 });
 
 
+test('booking confirmation shows the exact selected ticket names for single and group bookings', () => {
+  const app = read('booking/app.js');
+  const group = read('booking/group-booking.js');
+  for (const source of [app, group]) {
+    assert.match(source, /BookingBenefits\?\.selectionSummary\?\.\(\)/);
+    assert.match(source, /本次使用票券/);
+    assert.match(source, /集點卡票券/);
+    assert.match(source, /活動票券/);
+    assert.match(source, /本次未使用票券/);
+    assert.match(source, /booking-confirm-ticket-list/);
+    assert.match(source, /item\?\.kind === 'points' \|\| item\?\.kind === 'event'/);
+  }
+});
+
 test('booking event ticket checkbox can claim and server enforces configured selection cap', () => {
   const source = read('supabase/functions/_shared/booking-benefits.ts');
   const common = read('booking/common.js');
