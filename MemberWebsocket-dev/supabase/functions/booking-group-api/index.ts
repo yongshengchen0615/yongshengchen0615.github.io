@@ -334,12 +334,12 @@ async function validateBookingBenefitSelectionLimit(s: SupabaseClient, value: un
   ]);
   if (eventSetting.error) throw mapDbError(eventSetting.error);
   if (pointSetting.error) throw mapDbError(pointSetting.error);
-  const rawEvent=Number(eventSetting.data?.max_tickets_per_day||eventSetting.data?.max_tickets_per_redemption||1);
-  const maxEvent=Number.isInteger(rawEvent)&&rawEvent>=1&&rawEvent<=50?rawEvent:1;
-  const rawPoint=Number(pointSetting.data?.max_tickets_per_redemption||1);
-  const maxPoint=Number.isInteger(rawPoint)&&rawPoint>=1&&rawPoint<=50?rawPoint:1;
-  if (eventCount>maxEvent) throw new ApiError(409,"EVENT_TICKET_SELECTION_LIMIT_EXCEEDED",`活動票券每筆預約最多可選 ${maxEvent} 張。`);
-  if (pointCount>maxPoint) throw new ApiError(409,"POINT_TICKET_SELECTION_LIMIT_EXCEEDED",`集點卡票券每筆預約最多可選 ${maxPoint} 張。`);
+  const rawEvent=Number(eventSetting.data?.max_tickets_per_day??eventSetting.data?.max_tickets_per_redemption??1);
+  const maxEvent=Number.isInteger(rawEvent)&&rawEvent>=0&&rawEvent<=50?rawEvent:1;
+  const rawPoint=Number(pointSetting.data?.max_tickets_per_redemption??1);
+  const maxPoint=Number.isInteger(rawPoint)&&rawPoint>=0&&rawPoint<=50?rawPoint:1;
+  if (maxEvent>0&&eventCount>maxEvent) throw new ApiError(409,"EVENT_TICKET_SELECTION_LIMIT_EXCEEDED",`活動票券每筆預約最多可選 ${maxEvent} 張。`);
+  if (maxPoint>0&&pointCount>maxPoint) throw new ApiError(409,"POINT_TICKET_SELECTION_LIMIT_EXCEEDED",`集點卡票券每筆預約最多可選 ${maxPoint} 張。`);
   return benefits;
 }
 async function createBooking(s: SupabaseClient, i: Identity, m: any, body: Json) {
