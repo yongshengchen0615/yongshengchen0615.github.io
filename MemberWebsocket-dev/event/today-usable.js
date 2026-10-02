@@ -32,14 +32,18 @@
       const availableCount=Math.max(0,Number(data.availableTodayCount ?? usableCount));
       const usedTodayCount=Math.max(0,Number(data.usedTodayCount||0));
       const remainingTodayCount=Math.max(0,Number(data.remainingTodayCount ?? usableCount));
-      const maxTickets=Math.max(1,Number(data.maxTicketsPerDay||data.maxTicketsPerRedemption||1));
-      badge.textContent=`今日已使用 ${usedTodayCount} 張 · 每日上限 ${maxTickets} 張`;
+      const rawMaxTickets=Number(data.maxTicketsPerDay ?? data.maxTicketsPerRedemption ?? 1);
+      const maxTickets=Number.isInteger(rawMaxTickets)&&rawMaxTickets>=0&&rawMaxTickets<=50?rawMaxTickets:1;
+      const maxTicketsLabel=maxTickets===0?'不限張數':`${maxTickets} 張`;
+      badge.textContent=`今日已使用 ${usedTodayCount} 張 · 每日上限 ${maxTicketsLabel}`;
       badge.dataset.businessDate=String(data.businessDate||'');
       badge.dataset.availableTodayCount=String(availableCount);
       badge.dataset.usedTodayCount=String(usedTodayCount);
       badge.dataset.remainingTodayCount=String(remainingTodayCount);
       badge.dataset.maxTicketsPerDay=String(maxTickets);
-      badge.title=`今日已使用 ${usedTodayCount} 張，每日上限 ${maxTickets} 張，剩餘額度 ${remainingTodayCount} 張；目前持有 ${availableCount} 張可用活動票券。`;
+      badge.title=maxTickets===0
+        ? `今日已使用 ${usedTodayCount} 張，每日上限不限；目前持有 ${availableCount} 張可用活動票券。`
+        : `今日已使用 ${usedTodayCount} 張，每日上限 ${maxTickets} 張，剩餘額度 ${remainingTodayCount} 張；目前持有 ${availableCount} 張可用活動票券。`;
       badge.classList.remove('is-error');
     }catch(error){
       let badge=document.getElementById('todayUsableTicketCount');
