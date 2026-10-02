@@ -441,13 +441,20 @@
           .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
             const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
             const scope = String(row.scope || '');
+            const eventType = String(row.event_type || '');
             if (scope === 'all' || scope === targetScope) schedule();
-            if (typeof onBenefitsUpdate === 'function' && ['all', 'member', 'points', 'event', 'calendar'].includes(scope)) onBenefitsUpdate();
+            if (typeof onBenefitsUpdate === 'function' && ['all', 'member', 'points', 'event', 'calendar'].includes(scope)) {
+              onBenefitsUpdate({ scope, eventType });
+            }
           })
           .subscribe((status) => {
             if (status !== 'SUBSCRIBED') return;
-            if (subscribedOnce) schedule(0);
-            else subscribedOnce = true;
+            if (subscribedOnce) {
+              schedule(0);
+              if (typeof onBenefitsUpdate === 'function') onBenefitsUpdate({ scope: 'reconnect', eventType: 'realtime.reconnected' });
+            } else {
+              subscribedOnce = true;
+            }
           });
       }
     }
