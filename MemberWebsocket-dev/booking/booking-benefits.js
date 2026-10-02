@@ -70,6 +70,35 @@
     return Number.isInteger(parsed) && parsed >= 1 && parsed <= 50 ? parsed : 1;
   }
 
+  function pointItemForSelection(selectionId) {
+    const id = String(selectionId || '');
+    return renderedItems.find((item) => item?.kind === 'points' && String(item.selectionId || '') === id) || null;
+  }
+
+  function selectedPointSpend(cardId) {
+    const key = String(cardId || '');
+    let total = 0;
+    for (const item of selected.values()) {
+      if (item.kind !== 'points') continue;
+      const offer = pointItemForSelection(item.id);
+      if (!offer || String(offer.cardId || '') !== key) continue;
+      total += Math.max(0, Number(offer.pointCost || 0));
+    }
+    return total;
+  }
+
+  function pointBudget(item) {
+    const balance = Math.max(0, Number(item?.pointBalance || 0));
+    const cost = Math.max(0, Number(item?.pointCost || 0));
+    const spent = selectedPointSpend(item?.cardId);
+    return {
+      balance,
+      cost,
+      spent,
+      affordable: cost > 0 && spent + cost <= balance,
+    };
+  }
+
   function setRefreshing(message) {
     const list = el('bookingBenefitsList');
     const hasVisibleContent = renderedItems.length > 0 && Boolean(list?.children.length);
@@ -98,6 +127,16 @@
       state('ready', `集點卡票券每筆預約最多可選 ${pointTicketMaxPerRedemption} 張。`);
       render(renderedItems);
       return;
+    }
+    if (item.kind === 'points') {
+      const budget = pointBudget(item);
+      if (!budget.affordable) {
+        input.checked = false;
+        const cardTitle = String(item.cardTitle || '集點卡');
+        state('ready', `${cardTitle}目前 ${budget.balance} 點，本次已選票券需 ${budget.spent} 點，無法再使用需 ${budget.cost} 點的票券。`);
+        render(renderedItems);
+        return;
+      }
     }
 
     if (item.kind === 'event' && item.claimRequired === true) {
@@ -186,6 +225,8 @@
         const isSelected = Boolean(selectionId && selected.has(key));
         const selectable = selectableKinds.has(item.kind) && item.selectable === true && Boolean(controlId);
         const claiming = item.kind === 'event' && String(item.id || '') === claimingEventTicketId;
+        const pointLimitBlocked = item.kind === 'points' && !isSelected && selectedPointCount() >= pointTicketMaxPerRedemption;
+        const pointBudgetBlocked = item.kind === 'points' && !isSelected && !pointBudget(item).affordable;
 
         const card = document.createElement('article');
         card.className = `booking-benefit${isSelected ? ' is-selected' : ''}`;
@@ -218,7 +259,8 @@
             || (item.kind === 'event' && Boolean(claimingEventTicketId) && !isSelected)
             || ((!selectable
               || (item.kind === 'event' && !isSelected && selectedEventCount() >= eventTicketMaxPerDay)
-              || (item.kind === 'points' && !isSelected && selectedPointCount() >= pointTicketMaxPerRedemption)) && !isSelected);
+              || pointLimitBlocked
+              || pointBudgetBlocked) && !isSelected);
           input.dataset.bookingBenefitKind = item.kind;
           input.dataset.bookingBenefitId = controlId;
           if (item.kind === 'event' && item.claimRequired === true) input.dataset.bookingBenefitClaimRequired = 'true';
@@ -228,7 +270,13 @@
             ? '領取中…'
             : item.kind === 'event' && item.claimRequired === true
               ? '勾選並領取'
-              : selectable ? '本次預約使用' : (isSelected ? '已選擇（可取消）' : '目前不可勾選');
+              : isSelected
+                ? '已選擇（可取消）'
+                : pointBudgetBlocked
+                  ? '點數不足'
+                  : pointLimitBlocked
+                    ? '已達單次上限'
+                    : selectable ? '本次預約使用' : '目前不可勾選';
           choose.append(input, label);
           input.addEventListener('change', () => {
             if (input.checked && !selectable) {
