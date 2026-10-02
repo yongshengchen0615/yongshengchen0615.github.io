@@ -87,7 +87,7 @@ async function requireActiveMember(supabase: ReturnType<typeof db>, lineUserId: 
 async function globalSetting(supabase: ReturnType<typeof db>) {
   const result = await supabase.from("event_ticket_settings").select("max_tickets_per_day,max_tickets_per_redemption,updated_at").eq("id", 1).maybeSingle();
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取活動票券設定。");
-  const maxTicketsPerDay = Number(result.data?.max_tickets_per_day || result.data?.max_tickets_per_redemption || 1);
+  const maxTicketsPerDay = Number(result.data?.max_tickets_per_day ?? result.data?.max_tickets_per_redemption ?? 1);
   return {
     maxTicketsPerDay,
     maxTicketsPerRedemption: maxTicketsPerDay,
@@ -182,8 +182,8 @@ async function saveAdminSetting(origin: string | null, body: Json) {
   await consumeRateLimit(supabase, identity.lineUserId, true, 1);
   await requireAdmin(supabase, identity.lineUserId);
   const maxTickets = Number(body.maxTicketsPerDay ?? body.maxTicketsPerRedemption);
-  if (!Number.isInteger(maxTickets) || maxTickets < 1 || maxTickets > 50) {
-    throw new ApiError(400, "INVALID_TICKET_USE_LIMIT", "每日最多使用活動票券數必須是 1–50 的整數。");
+  if (!Number.isInteger(maxTickets) || maxTickets < 0 || maxTickets > 50) {
+    throw new ApiError(400, "INVALID_TICKET_USE_LIMIT", "活動票券使用設定必須是 0–50 的整數；0 代表不限張數。");
   }
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 100);
   const nextRow = {
@@ -227,8 +227,8 @@ async function saveAdminSetting(origin: string | null, body: Json) {
     console.error(JSON.stringify({ event: "event_ticket_setting_realtime_failed", code: realtime.error.code || "" }));
   }
   return json(origin, { ok: true, status: 200, data: {
-    maxTicketsPerDay: Number(saved.data.max_tickets_per_day || saved.data.max_tickets_per_redemption || 1),
-    maxTicketsPerRedemption: Number(saved.data.max_tickets_per_day || saved.data.max_tickets_per_redemption || 1),
+    maxTicketsPerDay: Number(saved.data.max_tickets_per_day ?? saved.data.max_tickets_per_redemption ?? 1),
+    maxTicketsPerRedemption: Number(saved.data.max_tickets_per_day ?? saved.data.max_tickets_per_redemption ?? 1),
     updatedAt: String(saved.data.updated_at || ""),
   } });
 }
