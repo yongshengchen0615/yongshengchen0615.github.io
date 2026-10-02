@@ -40,7 +40,15 @@
 
   function normalizeLimit(value) {
     const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 50 ? parsed : 1;
+    return Number.isInteger(parsed) && parsed >= 0 && parsed <= 50 ? parsed : 1;
+  }
+
+  function hasRedemptionLimit() {
+    return state.maxTicketsPerRedemption > 0;
+  }
+
+  function redemptionLimitLabel() {
+    return hasRedemptionLimit() ? `${state.maxTicketsPerRedemption} 張` : '不限張數';
   }
 
   function newRequestId() {
@@ -295,7 +303,7 @@
     if (input.checked) nextSelected.add(ticketId);
     else nextSelected.delete(ticketId);
 
-    if (nextSelected.size > state.maxTicketsPerRedemption) {
+    if (hasRedemptionLimit() && nextSelected.size > state.maxTicketsPerRedemption) {
       input.checked = false;
       overviewError(`單次最多可使用 ${state.maxTicketsPerRedemption} 張票券，請先取消其他票券再選擇。`);
       return;
@@ -319,7 +327,7 @@
     const ticketSummary = document.getElementById('ticketSummary');
     if (!ticketSummary) return;
     ticketSummary.textContent = totalNodes
-      ? `共 ${totalNodes} 個票券節點・目前 ${currentlyUsable} 個可使用・單次最多 ${state.maxTicketsPerRedemption} 張`
+      ? `共 ${totalNodes} 個票券節點・目前 ${currentlyUsable} 個可使用・單次使用 ${redemptionLimitLabel()}`
       : '目前所有集點卡都尚未設定票券節點。';
   }
 
@@ -366,9 +374,10 @@
     const selectableIds = new Set(
       grouped.flatMap((entry) => entry.offers.filter((offer) => offer.baseCanUse).map((offer) => offer.ticketId))
     );
-    state.selected = new Set(
-      [...state.selected].filter((id) => selectableIds.has(id)).slice(0, state.maxTicketsPerRedemption)
-    );
+    const retainedSelected = [...state.selected].filter((id) => selectableIds.has(id));
+    state.selected = new Set(hasRedemptionLimit()
+      ? retainedSelected.slice(0, state.maxTicketsPerRedemption)
+      : retainedSelected);
 
     for (const item of spendByCard(selectedTickets())) {
       if (item.currentStamps !== null && item.points > item.currentStamps) {
@@ -412,7 +421,7 @@
         const isSelected = Boolean(offer.ticketId && state.selected.has(offer.ticketId));
         const spentOnCard = selectedSpend.get(offer.cardId) || 0;
         const remainingForNewSelection = Math.max(0, offer.cardStamps - spentOnCard);
-        const hitGlobalLimit = !isSelected && state.selected.size >= state.maxTicketsPerRedemption;
+        const hitGlobalLimit = hasRedemptionLimit() && !isSelected && state.selected.size >= state.maxTicketsPerRedemption;
         const insufficientAfterSelection = !isSelected
           && offer.baseCanUse
           && points(offer.thresholdStamps) > remainingForNewSelection;
@@ -498,8 +507,8 @@
     const count = tickets.length;
     if (selectionText) {
       selectionText.textContent = count
-        ? `已選 ${count} / ${state.maxTicketsPerRedemption} 張票券`
-        : `尚未選擇票券・單次最多 ${state.maxTicketsPerRedemption} 張`;
+        ? (hasRedemptionLimit() ? `已選 ${count} / ${state.maxTicketsPerRedemption} 張票券` : `已選 ${count} 張票券・單次不限張數`)
+        : `尚未選擇票券・單次使用 ${redemptionLimitLabel()}`;
     }
     if (selectionHint) {
       selectionHint.textContent = count
@@ -548,7 +557,7 @@
   function openConfirmModal() {
     const tickets = selectedTickets();
     if (!tickets.length) return;
-    if (tickets.length > state.maxTicketsPerRedemption) {
+    if (hasRedemptionLimit() && tickets.length > state.maxTicketsPerRedemption) {
       overviewError(`單次最多可使用 ${state.maxTicketsPerRedemption} 張票券。`);
       return;
     }
@@ -616,7 +625,7 @@
   async function redeemSelected() {
     if (state.busy) return;
     const tickets = selectedTickets();
-    if (!tickets.length || tickets.length > state.maxTicketsPerRedemption) return;
+    if (!tickets.length || (hasRedemptionLimit() && tickets.length > state.maxTicketsPerRedemption)) return;
 
     const insufficient = spendByCard(tickets).find(
       (item) => item.currentStamps !== null && item.points > item.currentStamps
