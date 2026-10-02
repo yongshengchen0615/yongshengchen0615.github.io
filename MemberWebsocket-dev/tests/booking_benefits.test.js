@@ -20,6 +20,7 @@ function database(overrides = {}, fail = '') {
     event_tickets: [{ id: 'event', event_ticket_id: 'EVENT', title: '活動票券', status: 'active', allowed_tier_keys: ['silver'], quota: 2, requires_location: false }],
     event_ticket_claims: [],
     event_ticket_settings: [{ id: 1, max_tickets_per_day: 2, max_tickets_per_redemption: 2 }],
+    point_card_settings: [{ id: 1, max_tickets_per_redemption: 2 }],
     calendar_items: [{ calendar_item_id: 'CAL', title: '會員活動', item_type: 'event', status: 'active', starts_on: today, ends_on: today, allowed_tier_keys: ['silver'] }],
     ...overrides,
   };
@@ -56,6 +57,7 @@ test('booking recommendations cover 0/1/N and return only display fields', async
     assert.doesNotMatch(serialized, /member_id|line_user_id|allowed_tier|birthday|fixed_ticket_template|claim_id/);
     assert.ok(result.items.every(item => typeof item.conditionLabel === 'string' && item.conditionLabel.length > 0));
     assert.equal(result.eventTicketMaxPerDay, 2);
+    assert.equal(result.pointTicketMaxPerRedemption, 2);
   }
 });
 
@@ -107,8 +109,8 @@ test('reads are member-scoped, batched and strict on backend failure', async () 
   const db = database();
   await loadBookingBenefits(db, member, 'silver', today);
   for (const table of ['point_tickets', 'event_ticket_claims']) assert.ok(db.calls.some(call => call.table === table && call.key === 'member_id' && call.value === member.id));
-  assert.equal(db.calls.filter(call => call.read).length, 8);
-  for (const fail of ['point_tickets', 'event_ticket_claim_counts', 'calendar_items']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
+  assert.equal(db.calls.filter(call => call.read).length, 9);
+  for (const fail of ['point_tickets', 'event_ticket_claim_counts', 'calendar_items', 'event_ticket_settings', 'point_card_settings']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
 });
 
 test('API authorization resolves membership/tier from identity and rejects disabled/unjoined/stale-consent members', async () => {
