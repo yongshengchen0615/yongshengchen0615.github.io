@@ -21,6 +21,9 @@
     els.ticketModalAction.addEventListener('click', handleTicketAction);
     els.refreshTicketButton.addEventListener('click', () => window.location.reload());
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !state.processing) closeTicketModal(); });
+    window.addEventListener('event-ticket:selection-claimed', () => {
+      void loadOffers(false).catch(() => {});
+    });
     boot();
   });
 
