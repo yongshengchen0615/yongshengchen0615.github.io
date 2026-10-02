@@ -274,6 +274,31 @@ function normalizeTierKeys(value: unknown, allowEmpty = false): string[] {
   return unique;
 }
 
+async function bookingServiceTypeNames(supabase: SupabaseClient): Promise<string[]> {
+  const result = await supabase.from("booking_service_types")
+    .select("name")
+    .order("sort_order",{ ascending:true })
+    .order("created_at",{ ascending:true });
+  if (result.error) throw mapDatabaseError(result.error);
+  return (result.data || []).map((row:any) => asText(row.name,80)).filter(Boolean);
+}
+
+async function normalizeRequiredServiceTypes(supabase: SupabaseClient, value: unknown): Promise<string[]> {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new ApiError(400,"INVALID_REQUIRED_SERVICE_TYPES","預約項目限制最多可選 20 種項目類型。");
+  }
+  const requested = [...new Set(value.map((item) => asText(item,80)).filter(Boolean))];
+  if (!requested.length) return [];
+  const allowed = await bookingServiceTypeNames(supabase);
+  const canonical = new Map(allowed.map((name) => [name.toLocaleLowerCase("zh-Hant-TW"),name]));
+  const normalized = requested.map((name) => canonical.get(name.toLocaleLowerCase("zh-Hant-TW")) || "");
+  if (normalized.some((name) => !name)) {
+    throw new ApiError(400,"INVALID_REQUIRED_SERVICE_TYPES","票券指定的預約項目類型已不存在，請重新選擇。");
+  }
+  return normalized;
+}
+
 function normalizePrizes(value: unknown, required: boolean): Array<{ prizeTitle: string; prizeDescription: string; winRate: number }> {
   if (!required) return [];
   if (!Array.isArray(value) || !value.length) throw new ApiError(400,"INVALID_PRIZES","抽獎券至少需要一個獎項。");
@@ -863,6 +888,7 @@ function mapTicketTemplate(row: any): Json {
     status: row.status,
     requiresLocation: Boolean(row.requires_location),
     redemptionLocations: Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
+    requiredServiceTypes: Array.isArray(row.required_service_types) ? row.required_service_types : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1056,6 +1082,7 @@ function eventTicketClient(row: any, claimedCount = 0, admin = false): Json {
     accent: row.accent,
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
     allowedTierLabels: (Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS]).map((key:string) => TIER_LABELS[key]).filter(Boolean),
+    requiredServiceTypes: Array.isArray(row.required_service_types) ? row.required_service_types : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1527,6 +1554,7 @@ async function saveTicketTemplate(supabase: SupabaseClient, actor: string, body:
   const prizes = normalizePrizes(ticket.prizes,ticketType === "lottery");
   const requiresLocation = ticket.requiresLocation === true;
   const redemptionLocations = normalizeTicketLocations(ticket.redemptionLocations,requiresLocation);
+  const requiredServiceTypes = await normalizeRequiredServiceTypes(supabase,ticket.requiredServiceTypes);
   const payload = {
     title,
     ticket_type: ticketType,
@@ -1537,6 +1565,7 @@ async function saveTicketTemplate(supabase: SupabaseClient, actor: string, body:
     status: requireStatus(ticket.status),
     requires_location: requiresLocation,
     redemption_locations: redemptionLocations,
+    required_service_types: requiredServiceTypes,
     updated_by: actor,
     updated_at: new Date().toISOString(),
   };
@@ -1594,6 +1623,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     || !Number.isInteger(location.radiusMeters) || location.radiusMeters < 50 || location.radiusMeters > 2000))
     throw new ApiError(400,"INVALID_LOCATION_RULE","每個地點需有名稱、有效座標與 50–2000 公尺半徑。");
   const [firstLocation] = locations;
+  const requiredServiceTypes = await normalizeRequiredServiceTypes(supabase,input.requiredServiceTypes);
   const payload = {
     title: requireText(input.title,"活動票券名稱",100),
     ticket_type: ticketType,
@@ -1612,6 +1642,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     redemption_radius_meters: firstLocation?.radiusMeters ?? null,
     accent: requireAccent(input.accent),
     allowed_tier_keys: normalizeTierKeys(input.allowedTierKeys),
+    required_service_types: requiredServiceTypes,
     updated_by: actor,
     updated_at: new Date().toISOString(),
     deleted_at: null,
@@ -2153,7 +2184,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   if (action === "admin.bootstrap") {
     // Share only within this authorized request; never cache member data globally.
     const settings = tierSettings(supabase);
-    const [members,tierRows,cardData,eventTickets,calendar,stats,messagePresets] = await Promise.all([
+    const [members,tierRows,cardData,eventTickets,calendar,stats,messagePresets,bookingServiceTypes] = await Promise.all([
       membersPage(supabase,1,100,"","real",settings),
       settings,
       adminCards(supabase),
@@ -2161,6 +2192,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       calendarItems(supabase,false),
       summaryStats(supabase),
       grantMessagePresets(supabase,true),
+      bookingServiceTypeNames(supabase),
     ]);
     return {
       profile:{ displayName:admin.display_name || identity.displayName },
@@ -2173,6 +2205,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       eventTickets,
       calendarItems:calendar,
       messagePresets,
+      bookingServiceTypes,
       stats,
     };
   }
@@ -2251,10 +2284,21 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     return { lineUserId,revokedAt };
   }
   if (action === "admin.pointcards.list") {
-    const data = await adminCards(supabase);
-    return { ...data,stats:await summaryStats(supabase) };
+    const [data,bookingServiceTypes,stats] = await Promise.all([
+      adminCards(supabase),
+      bookingServiceTypeNames(supabase),
+      summaryStats(supabase),
+    ]);
+    return { ...data,bookingServiceTypes,stats };
   }
-  if (action === "admin.event-tickets.list") return { eventTickets:await adminEventTickets(supabase),stats:await summaryStats(supabase) };
+  if (action === "admin.event-tickets.list") {
+    const [eventTickets,bookingServiceTypes,stats] = await Promise.all([
+      adminEventTickets(supabase),
+      bookingServiceTypeNames(supabase),
+      summaryStats(supabase),
+    ]);
+    return { eventTickets,bookingServiceTypes,stats };
+  }
   if (action === "admin.calendar-items.list") return { calendarItems:await calendarItems(supabase,false) };
   if (action === "admin.summary") return { stats:await summaryStats(supabase) };
   if (action === "admin.integration-overview") return await adminIntegrationOverview(supabase);
