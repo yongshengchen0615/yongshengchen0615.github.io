@@ -437,17 +437,49 @@
         ...item,
         ...(contactsById.get(String(item.bookingId || '')) || {}),
       }));
-      state.booking = {
+      const nextBooking = {
         settings: { ...(booking.settings || {}), ...(catalog.settings || {}), ...(resources.settings || {}) },
         bookings,
         groups: groupData?.bookingGroups && typeof groupData.bookingGroups === 'object' ? groupData.bookingGroups : {},
         technicians: Array.isArray(resources.technicians) ? resources.technicians : [],
         primaryTechnicianId: String(resources.settings?.primaryTechnicianId || groupData?.primaryTechnicianId || ''),
       };
-      state.catalog = { serviceTypes: Array.isArray(catalog.serviceTypes) ? catalog.serviceTypes : [], services: Array.isArray(catalog.services) ? catalog.services : [], pointCards: Array.isArray(catalog.pointCards) ? catalog.pointCards : [] };
-      state.selected = new Set([...state.selected].filter((id) => state.catalog.services.some((service) => service.serviceId === id)));
-      renderAll();
-      publishOperationalBookingSnapshot();
+      const nextCatalog = {
+        serviceTypes: Array.isArray(catalog.serviceTypes) ? catalog.serviceTypes : [],
+        services: Array.isArray(catalog.services) ? catalog.services : [],
+        pointCards: Array.isArray(catalog.pointCards) ? catalog.pointCards : [],
+      };
+      const nextSelected = new Set([...state.selected].filter((id) => nextCatalog.services.some((service) => service.serviceId === id)));
+      const settingsChanged = JSON.stringify(state.booking.settings || {}) !== JSON.stringify(nextBooking.settings || {});
+      const bookingDataChanged = JSON.stringify({
+        bookings: state.booking.bookings || [],
+        groups: state.booking.groups || {},
+        technicians: state.booking.technicians || [],
+        primaryTechnicianId: state.booking.primaryTechnicianId || '',
+      }) !== JSON.stringify({
+        bookings: nextBooking.bookings,
+        groups: nextBooking.groups,
+        technicians: nextBooking.technicians,
+        primaryTechnicianId: nextBooking.primaryTechnicianId,
+      });
+      const catalogChanged = JSON.stringify(state.catalog || {}) !== JSON.stringify(nextCatalog);
+      const selectionChanged = [...state.selected].sort().join('|') !== [...nextSelected].sort().join('|');
+
+      state.booking = nextBooking;
+      state.catalog = nextCatalog;
+      state.selected = nextSelected;
+
+      // Keep stable DOM for sections whose server data did not change. Replacing
+      // every list on each realtime event caused visible jumps and also reset
+      // in-progress settings inputs while a booking update was syncing.
+      if (settingsChanged) renderSettings();
+      if (catalogChanged) renderTypes();
+      if (catalogChanged || selectionChanged) renderServices();
+      if (bookingDataChanged || catalogChanged) renderStats();
+      if (bookingDataChanged) {
+        renderBookings();
+        publishOperationalBookingSnapshot();
+      }
       setupRealtime();
       if (markNotificationsRead && !els.bookingPanel?.classList.contains('hidden')) {
         await markBookingNotificationsRead();
