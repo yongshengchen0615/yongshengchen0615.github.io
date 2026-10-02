@@ -87,7 +87,7 @@ test('point tickets expose current balance and disable unaffordable tickets', as
   assert.equal(point.pointBalance, 10);
   assert.equal(point.pointCost, 5);
   assert.equal(point.selectable, true);
-  assert.match(point.conditionLabel, /本卡目前 10 點/);
+  assert.match(point.conditionLabel, /本卡可用 10 點/);
 
   const insufficient = await loadBookingBenefits(database({
     point_balances: [{ member_id: member.id, point_card_id: 'card', stamps: 4 }],
@@ -96,7 +96,7 @@ test('point tickets expose current balance and disable unaffordable tickets', as
   assert.ok(blocked);
   assert.equal(blocked.selectable, false);
   assert.equal(blocked.statusLabel, '點數不足');
-  assert.match(blocked.disabledReason, /目前 4 點/);
+  assert.match(blocked.disabledReason, /目前可用 4 點/);
   assert.match(blocked.disabledReason, /需要 5 點/);
 });
 
@@ -131,8 +131,8 @@ test('reads are member-scoped, batched and strict on backend failure', async () 
   const db = database();
   await loadBookingBenefits(db, member, 'silver', today);
   for (const table of ['point_tickets', 'point_balances', 'event_ticket_claims']) assert.ok(db.calls.some(call => call.table === table && call.key === 'member_id' && call.value === member.id));
-  assert.equal(db.calls.filter(call => call.read).length, 10);
-  for (const fail of ['point_tickets', 'point_balances', 'event_ticket_claim_counts', 'calendar_items', 'event_ticket_settings', 'point_card_settings']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
+  assert.equal(db.calls.filter(call => call.read).length, 11);
+  for (const fail of ['point_tickets', 'point_balances', 'booking_benefit_selections', 'event_ticket_claim_counts', 'calendar_items', 'event_ticket_settings', 'point_card_settings']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
 });
 
 test('API authorization resolves membership/tier from identity and rejects disabled/unjoined/stale-consent members', async () => {
