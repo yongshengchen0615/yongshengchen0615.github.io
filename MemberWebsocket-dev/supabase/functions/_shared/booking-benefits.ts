@@ -31,10 +31,10 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   if (eventSettings.error) throw eventSettings.error;
   if (pointSettings.error) throw pointSettings.error;
   if (pendingPointSelections.error) throw pendingPointSelections.error;
-  const rawEventLimit = Number(eventSettings.data?.max_tickets_per_day || eventSettings.data?.max_tickets_per_redemption || 1);
-  const eventTicketMaxPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 1 && rawEventLimit <= 50 ? rawEventLimit : 1;
-  const rawPointLimit = Number(pointSettings.data?.max_tickets_per_redemption || 1);
-  const pointTicketMaxPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 1 && rawPointLimit <= 50 ? rawPointLimit : 1;
+  const rawEventLimit = Number(eventSettings.data?.max_tickets_per_day ?? eventSettings.data?.max_tickets_per_redemption ?? 1);
+  const eventTicketMaxPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 0 && rawEventLimit <= 50 ? rawEventLimit : 1;
+  const rawPointLimit = Number(pointSettings.data?.max_tickets_per_redemption ?? 1);
+  const pointTicketMaxPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 0 && rawPointLimit <= 50 ? rawPointLimit : 1;
   // Ticket-backed calendar activities are represented by the canonical event
   // offer above, so expired/full/used tickets cannot reappear as activities.
   const pointCardIds = [...new Set(points.map((offer) => String(offer.pointCardId || '')).filter(Boolean))];
@@ -110,7 +110,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           reservedForBooking: Boolean(reservationBookingId),
           reservedForCurrentBooking,
           selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking, selectionId: offer.ticketId,
-          conditionLabel: `本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · 單次預約最多使用 ${pointTicketMaxPerRedemption} 張`,
+          conditionLabel: `本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · ${pointTicketMaxPerRedemption === 0 ? '單次預約使用張數不限' : `單次預約最多使用 ${pointTicketMaxPerRedemption} 張`}`,
           disabledReason: !hasTicket
             ? '目前沒有可核銷的票券'
             : reservedForOtherBooking
@@ -127,7 +127,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         selectable: !offer.requiresLocation,
         selectionId: offer.claimId || '',
         claimRequired: !offer.claimed,
-        conditionLabel: `每日最多使用 ${eventTicketMaxPerDay} 張 · 服務限制：目前未設定`,
+        conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · 服務限制：目前未設定`,
         disabledReason: offer.requiresLocation ? '此票券需於票券頁完成定位核銷' : '',
       })),
       ...activities.map((item: any) => ({
