@@ -203,11 +203,13 @@
         const ticketId = String(ticket && ticket.ticketId || '');
         if (ticketId) matchedTicketIds.add(ticketId);
 
+        const reservedForBooking = Boolean(ticket && ticket.reservedForBooking);
         const shortage = Math.max(0, thresholdStamps - cardStamps);
         const expired = Boolean(card.expired);
         const active = String(card.status || 'active') === 'active';
         let statusText = '可勾選使用';
-        if (expired) statusText = '集點卡已超過使用期限';
+        if (reservedForBooking) statusText = '已預約使用';
+        else if (expired) statusText = '集點卡已超過使用期限';
         else if (!active) statusText = '集點卡目前未開放使用';
         else if (shortage > 0) statusText = `點數不足，還差 ${shortage} 點`;
         else if (!ticketId) statusText = '已達兌換點數，但票券尚未可用，請更新後再試';
@@ -226,8 +228,9 @@
           usageInstructions: String(ticket ? ticket.usageInstructions : reward.usageInstructions || ''),
           prizes: Array.isArray(ticket ? ticket.prizes : reward.prizes) ? (ticket ? ticket.prizes : reward.prizes) : [],
           requiresLocation: Boolean(ticket && ticket.requiresLocation),
+          reservedForBooking,
           shortage,
-          baseCanUse: Boolean(ticketId) && !expired && active && shortage === 0,
+          baseCanUse: Boolean(ticketId) && !reservedForBooking && !expired && active && shortage === 0,
           statusText
         };
       });
@@ -425,7 +428,7 @@
         }
 
         const item = document.createElement('article');
-        item.className = `member-ticket${offer.baseCanUse ? ' is-ready' : ' locked'}${isSelected ? ' is-selected' : ''}`;
+        item.className = `member-ticket${offer.baseCanUse ? ' is-ready' : ' locked'}${offer.reservedForBooking ? ' is-reserved' : ''}${isSelected ? ' is-selected' : ''}`;
         item.dataset.cardStyle = safeCardStyle(offer.cardStyleKey);
 
         const type = document.createElement('span');
@@ -466,7 +469,7 @@
         checkbox.disabled = state.busy || !selectable || !offer.ticketId;
         checkbox.setAttribute('aria-label', `${offer.ticketTitle}，${statusText}`);
         const selectText = document.createElement('span');
-        selectText.textContent = isSelected ? '已選' : '選擇';
+        selectText.textContent = offer.reservedForBooking ? '已預約使用' : isSelected ? '已選' : '選擇';
         selectWrap.append(checkbox, selectText);
         footer.append(status, selectWrap);
 
