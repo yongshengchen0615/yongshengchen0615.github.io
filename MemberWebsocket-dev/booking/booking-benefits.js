@@ -193,6 +193,7 @@
     }
     if (timer !== null) return;
     state('loading', '正在更新可用權益…');
+    el('bookingBenefitsList')?.replaceChildren();
     timer = window.setTimeout(() => { timer = null; void load(); }, 450);
   }
 
