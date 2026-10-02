@@ -10,6 +10,7 @@ export type CurrentPointOffer = {
   ticketTemplateId: string;
   ticketTitle: string;
   thresholdStamps: number;
+  requiredServiceTypes: string[];
   sortOrder: number;
 };
 
@@ -27,6 +28,7 @@ export type CurrentEventOffer = {
   claimed: boolean;
   claimId?: string;
   requiresLocation?: boolean;
+  requiredServiceTypes: string[];
 };
 
 function text(value: unknown): string {
@@ -78,6 +80,9 @@ export function selectLatestPointOffers(
     const pointCardId = text(reward.point_card_id);
     const ticketTemplateId = text(reward.ticket_template_id);
     const thresholdStamps = number(reward.threshold_stamps);
+    const requiredServiceTypes = Array.isArray(reward.required_service_types)
+      ? reward.required_service_types.map(text).filter(Boolean)
+      : [];
     const card = cardById.get(pointCardId);
     const template = templateById.get(ticketTemplateId);
     if (!rewardId || !pointCardId || !ticketTemplateId || thresholdStamps <= 0) continue;
@@ -98,6 +103,7 @@ export function selectLatestPointOffers(
       ticketTemplateId,
       ticketTitle: text(template?.title) || "可用優惠",
       thresholdStamps,
+      requiredServiceTypes,
       sortOrder: number(card?.sort_order),
     };
     if (availableTicket.ticketId) offer.ticketId = availableTicket.ticketId;
@@ -184,7 +190,7 @@ export async function loadLatestPointOffers(
 
   const rewardsResult = await supabase
     .from("point_card_rewards")
-    .select("id,point_card_id,threshold_stamps,ticket_template_id")
+    .select("id,point_card_id,threshold_stamps,ticket_template_id,required_service_types")
     .in("point_card_id", cardIds);
   if (rewardsResult.error) {
     if (strict) throw rewardsResult.error;
@@ -232,7 +238,7 @@ export async function loadLatestEventOffers(
   const today = taipeiDate();
   const eventsResult = await supabase
     .from("event_tickets")
-    .select("id,event_ticket_id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location")
+    .select("id,event_ticket_id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location,required_service_types")
     .eq("status", "active")
     .is("deleted_at", null);
   if (eventsResult.error) {
@@ -269,7 +275,15 @@ export async function loadLatestEventOffers(
     countsResult.data || [],
   ).slice(0, 8).map((offer) => {
     const event: any = eventById.get(offer.eventId);
-    return { ...offer, eventTicketId: text(event?.event_ticket_id), startsOn: text(event?.starts_on), endsOn: text(event?.ends_on) };
+    return {
+      ...offer,
+      eventTicketId: text(event?.event_ticket_id),
+      startsOn: text(event?.starts_on),
+      endsOn: text(event?.ends_on),
+      requiredServiceTypes: Array.isArray(event?.required_service_types)
+        ? event.required_service_types.map(text).filter(Boolean)
+        : [],
+    };
   });
 }
 
