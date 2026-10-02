@@ -12,6 +12,7 @@
   let pointTicketMaxPerRedemption = 1;
   let currentBookingId = '';
   let claimingEventTicketId = '';
+  let currentServiceTypes = new Set();
   const selected = new Map();
   const kinds = { points: '集點卡票券', event: '活動票券', calendar: '會員活動' };
   const kindOrder = ['calendar', 'points', 'event'];
@@ -79,6 +80,26 @@
     return hasLimit(value) ? `${value} 張` : `不限張數${unitLabel ? `（${unitLabel}）` : ''}`;
   }
 
+  function requiredServiceTypes(item) {
+    return (Array.isArray(item?.requiredServiceTypes) ? item.requiredServiceTypes : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+  }
+
+  function serviceTypeKey(value) {
+    return String(value || '').trim().toLocaleLowerCase('zh-Hant-TW');
+  }
+
+  function serviceRequirementMet(item) {
+    const required = requiredServiceTypes(item);
+    return !required.length || required.some((serviceType) => currentServiceTypes.has(serviceTypeKey(serviceType)));
+  }
+
+  function serviceRequirementMessage(item) {
+    const required = requiredServiceTypes(item);
+    return required.length ? `需先預約「${required.join('、')}」相關服務才能使用這張票券。` : '';
+  }
+
   function pointItemForSelection(selectionId) {
     const id = String(selectionId || '');
     return renderedItems.find((item) => item?.kind === 'points' && String(item.selectionId || '') === id) || null;
@@ -127,7 +148,7 @@
     let changed = false;
     for (const [key, selection] of [...selected.entries()]) {
       const item = byKey.get(key);
-      if (!item || item.selectable !== true) {
+      if (!item || item.selectable !== true || !serviceRequirementMet(item)) {
         selected.delete(key);
         changed = true;
         continue;
@@ -155,6 +176,15 @@
       if (selectedKey) selected.delete(selectedKey);
       render(renderedItems);
       emitSelectionChange();
+      return;
+    }
+
+    if (!serviceRequirementMet(item)) {
+      input.checked = false;
+      const message = serviceRequirementMessage(item);
+      state('ready', message);
+      window.BookingSystem?.showNotice?.(message, { title: '票券使用條件提醒' });
+      render(renderedItems);
       return;
     }
 
@@ -269,6 +299,7 @@
         const claiming = item.kind === 'event' && String(item.id || '') === claimingEventTicketId;
         const pointLimitBlocked = item.kind === 'points' && hasLimit(pointTicketMaxPerRedemption) && !isSelected && selectedPointCount() >= pointTicketMaxPerRedemption;
         const pointBudgetBlocked = item.kind === 'points' && !isSelected && !pointBudget(item).affordable;
+        const serviceBlocked = selectableKinds.has(item.kind) && !serviceRequirementMet(item);
 
         const card = document.createElement('article');
         card.className = `booking-benefit${isSelected ? ' is-selected' : ''}`;
@@ -318,7 +349,9 @@
                   ? '點數不足'
                   : pointLimitBlocked
                     ? '已達單次上限'
-                    : selectable ? '本次預約使用' : '目前不可勾選';
+                    : serviceBlocked
+                      ? `需先預約：${requiredServiceTypes(item).join('、')}`
+                      : selectable ? '本次預約使用' : '目前不可勾選';
           choose.append(input, label);
           input.addEventListener('change', () => {
             if (input.checked && !selectable) {
@@ -356,6 +389,23 @@
       list.appendChild(group);
     }
     updateReadyMessage(cardCount);
+  }
+
+  function setServiceContext(serviceTypes) {
+    currentServiceTypes = new Set(
+      (Array.isArray(serviceTypes) ? serviceTypes : [])
+        .map(serviceTypeKey)
+        .filter(Boolean)
+    );
+    const changed = reconcileSelectedItems(renderedItems);
+    render(renderedItems);
+    if (changed) {
+      emitSelectionChange();
+      window.BookingSystem?.showNotice?.(
+        '目前選取的預約項目不符合部分票券使用條件，已自動取消那些票券。',
+        { title: '票券使用條件提醒' }
+      );
+    }
   }
 
   function setSelection(items) {
@@ -477,6 +527,7 @@
     selectionPayload,
     selectionSummary,
     setBookingContext,
+    setServiceContext,
     setSelection,
     clearSelection,
   });
