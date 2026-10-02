@@ -410,11 +410,14 @@
     if (isBackgroundE2ERunner()) return;
     const eventTypes = Array.isArray(context.eventTypes) ? context.eventTypes.map(String) : [];
     const reasons = Array.isArray(context.reasons) ? context.reasons.map(String) : [];
+    const realtimeOnly = reasons.length > 0 && reasons.every((reason) => reason === 'realtime');
     const bookingRealtimeOnly = eventTypes.length > 0
       && eventTypes.every((type) => type.startsWith('booking.'))
-      && reasons.length > 0
-      && reasons.every((reason) => reason === 'realtime');
-    if (bookingRealtimeOnly) {
+      && realtimeOnly;
+    const presenceRealtimeOnly = eventTypes.length > 0
+      && eventTypes.every((type) => type.includes('.presence.') || type === 'test_mode.presence.changed')
+      && realtimeOnly;
+    if (bookingRealtimeOnly || presenceRealtimeOnly) {
       await Promise.allSettled([refreshOpenMemberRecords(), refreshMemberPresence()]);
       return;
     }
@@ -580,11 +583,24 @@
   }
 
   function applyAdminEventTickets(result, renderOverview = true) {
-    state.eventTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
+    const previousTickets = state.eventTickets;
+    const nextTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
+    const listChanged = JSON.stringify(previousTickets) !== JSON.stringify(nextTickets);
+    state.eventTickets = nextTickets;
     state.stats = { ...state.stats, ...(result.stats && typeof result.stats === 'object' ? result.stats : {}) };
     if (renderOverview) renderAdminOverview();
-    renderEventTicketList();
-    if (state.selectedEventTicketId && state.eventTickets.some((ticket) => ticket.eventTicketId === state.selectedEventTicketId)) loadEventTicketForm(state.selectedEventTicketId); else resetEventTicketForm();
+    if (listChanged || els.eventTicketListItems.children.length !== nextTickets.length) renderEventTicketList();
+
+    if (state.selectedEventTicketId) {
+      const selected = nextTickets.find((ticket) => ticket.eventTicketId === state.selectedEventTicketId);
+      if (!selected) {
+        resetEventTicketForm(false);
+        return;
+      }
+      const formVersion = String(els.eventTicketExpectedUpdatedAt.value || '');
+      const serverVersion = String(selected.updatedAt || '');
+      if (!formVersion || formVersion !== serverVersion) loadEventTicketForm(state.selectedEventTicketId, false);
+    }
   }
 
   function applyAdminCalendarItems(result) {
@@ -1618,7 +1634,7 @@
     window.dispatchEvent(new Event('member-admin-event-ticket-list-rendered'));
   }
 
-  function loadEventTicketForm(eventTicketId) {
+  function loadEventTicketForm(eventTicketId, renderList = true) {
     const ticket = state.eventTickets.find((item) => item.eventTicketId === eventTicketId); if (!ticket) return;
     state.selectedEventTicketId = eventTicketId;
     els.eventTicketId.value = String(ticket.eventTicketId);
@@ -1639,11 +1655,11 @@
     els.deleteEventTicketButton.disabled = false; els.deleteEventTicketButton.classList.remove('hidden'); els.deleteEventTicketButton.textContent = '刪除目前票券';
     renderEventTicketPrizeRows(ticket.prizes && ticket.prizes.length ? ticket.prizes : [defaultPrize()]);
     updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI();
-    els.eventTicketEditorKicker.textContent = 'Edit event ticket'; els.eventTicketEditorTitle.textContent = String(ticket.title || '編輯活動票券'); updateEditorStatus(els.eventTicketEditorStatus, ticket.status); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
+    els.eventTicketEditorKicker.textContent = 'Edit event ticket'; els.eventTicketEditorTitle.textContent = String(ticket.title || '編輯活動票券'); updateEditorStatus(els.eventTicketEditorStatus, ticket.status); hideMessage(els.eventTicketFormMessage); if (renderList) renderEventTicketList();
   }
 
-  function resetEventTicketForm() {
-    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = ''; els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketRequiresLocation.checked = false; window.CouponLocationEditor.set([]); els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.classList.add('hidden'); els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, ''); hideMessage(els.eventTicketFormMessage); renderEventTicketList();
+  function resetEventTicketForm(renderList = true) {
+    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = ''; els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketRequiresLocation.checked = false; window.CouponLocationEditor.set([]); els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.classList.add('hidden'); els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, ''); hideMessage(els.eventTicketFormMessage); if (renderList) renderEventTicketList();
   }
 
   function collectEventTicketAllowedTiers() { return Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.value || '').trim()).filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)); }
