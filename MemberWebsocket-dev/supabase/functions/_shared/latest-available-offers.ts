@@ -157,6 +157,9 @@ export function selectLatestEventOffers(
       eventId,
       title: text(row.title) || "活動票券",
       claimed,
+      requiredServiceTypes: Array.isArray(row.required_service_types)
+        ? row.required_service_types.map(text).filter(Boolean)
+        : [],
     };
     const claimId = claimed ? (memberAvailableClaims.get(eventId) || "") : "";
     if (claimId) offer.claimId = claimId;
