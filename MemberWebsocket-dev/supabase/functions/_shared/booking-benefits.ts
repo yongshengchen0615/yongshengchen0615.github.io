@@ -35,33 +35,6 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   const eventTicketMaxPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 0 && rawEventLimit <= 50 ? rawEventLimit : 1;
   const rawPointLimit = Number(pointSettings.data?.max_tickets_per_redemption ?? 1);
   const pointTicketMaxPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 0 && rawPointLimit <= 50 ? rawPointLimit : 1;
-  // Resolve booking-service restrictions from the current ticket definitions.
-  // Empty arrays remain backward-compatible and mean "no booking item restriction".
-  const pointTemplateIds = [...new Set(points.map((offer) => String(offer.ticketTemplateId || '')).filter(Boolean))];
-  const eventIds = [...new Set(events.map((offer) => String(offer.eventId || '')).filter(Boolean))];
-  const [pointRequirementResult, eventRequirementResult] = await Promise.all([
-    pointTemplateIds.length
-      ? db.from('ticket_templates').select('id,required_service_types').in('id', pointTemplateIds)
-      : Promise.resolve({ data: [], error: null }),
-    eventIds.length
-      ? db.from('event_tickets').select('id,required_service_types').in('id', eventIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (pointRequirementResult.error) throw pointRequirementResult.error;
-  if (eventRequirementResult.error) throw eventRequirementResult.error;
-  const pointRequiredByTemplate = new Map(
-    (pointRequirementResult.data || []).map((row: any) => [
-      String(row.id || ''),
-      Array.isArray(row.required_service_types) ? row.required_service_types.map((value: unknown) => String(value || '').trim()).filter(Boolean) : [],
-    ])
-  );
-  const eventRequiredByEvent = new Map(
-    (eventRequirementResult.data || []).map((row: any) => [
-      String(row.id || ''),
-      Array.isArray(row.required_service_types) ? row.required_service_types.map((value: unknown) => String(value || '').trim()).filter(Boolean) : [],
-    ])
-  );
-
   // Ticket-backed calendar activities are represented by the canonical event
   // offer above, so expired/full/used tickets cannot reappear as activities.
   const pointCardIds = [...new Set(points.map((offer) => String(offer.pointCardId || '')).filter(Boolean))];
@@ -122,7 +95,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         const otherBookingReserved = Math.max(0, reservedPointBalance - currentBookingReserved);
         const pointBalance = Math.max(0, totalPointBalance - otherBookingReserved);
         const pointCost = Math.max(0, Number(offer.thresholdStamps || 0));
-        const requiredServiceTypes = pointRequiredByTemplate.get(String(offer.ticketTemplateId || '')) || [];
+        const requiredServiceTypes = Array.isArray(offer.requiredServiceTypes) ? offer.requiredServiceTypes : [];
         const ticketId = String(offer.ticketId || '');
         const reservationBookingId = ticketId ? String(reservationBookingByTicket.get(ticketId) || '') : '';
         const reservedForOtherBooking = Boolean(reservationBookingId && reservationBookingId !== currentBookingId);
@@ -150,7 +123,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         };
       }),
       ...events.map((offer) => {
-        const requiredServiceTypes = eventRequiredByEvent.get(String(offer.eventId || '')) || [];
+        const requiredServiceTypes = Array.isArray(offer.requiredServiceTypes) ? offer.requiredServiceTypes : [];
         return {
           kind: 'event', id: offer.eventTicketId, title: offer.title,
           subtitle: offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
