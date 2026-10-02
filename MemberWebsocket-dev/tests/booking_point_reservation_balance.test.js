@@ -75,7 +75,7 @@ test('updated booking and point assets are cache busted', () => {
   const points = read('points/index.html');
   assert.match(booking, /common\.js\?v=booking-point-reservation-20261002-2/);
   assert.match(booking, /booking-benefits\.js\?v=booking-point-reservation-20261002-3/);
-  assert.match(booking, /app\.js\?v=booking-point-reservation-20261002-2/);
+  assert.match(booking, /app\.js\?v=booking-overnight-20260928-1-point-reservation-20261002-2/);
   assert.match(points, /app\.js\?v=booking-point-reservation-20261002-1/);
   assert.match(points, /pointcard-ticket-overview\.js\?v=booking-point-reservation-20261002-2/);
 });
