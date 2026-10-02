@@ -128,6 +128,10 @@ async function redeemTickets(origin: string | null, body: Json) {
   const memberRow = await supabase.from("members").select("id,status,membership_status").eq("line_user_id", identity.lineUserId).single();
   if (memberRow.error || memberRow.data?.status !== "active" || memberRow.data?.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入。");
   if (!(await hasCurrentTermsConsent(supabase, memberRow.data.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
+  const reserved = await supabase.from("booking_benefit_selections").select("benefit_ref")
+    .eq("member_id", memberRow.data.id).eq("benefit_kind", "points").eq("status", "pending").in("benefit_ref", ticketIds).limit(1);
+  if (reserved.error) throw new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
+  if ((reserved.data || []).length) throw new ApiError(409, "BOOKING_BENEFIT_RESERVED", "其中一張票券已預約使用，將於預約服務完成時自動核銷。");
   const rpc = await supabase.rpc("redeem_point_tickets_with_location", {
     p_line_user_id: identity.lineUserId,
     p_ticket_ids: ticketIds,
