@@ -28,7 +28,7 @@ test('event tickets expose checkbox selection with a daily server-enforced redem
   assert.doesNotMatch(admin, /單次最多使用活動票券數/);
 
   assert.match(html, /batch-redemption\.css\?v=event-checkbox-claim-20261002-1/);
-  assert.match(html, /batch-redemption\.js\?v=event-checkbox-claim-20261002-1/);
+  assert.match(html, /batch-redemption\\.js\\?v=ticket-unlimited-zero-20261002-1/);
   assert.match(batch, /勾選「\$\{title\}」即代表領取此活動票券/);
   assert.match(batch, /member\.today-usable/);
   assert.match(batch, /remainingTodayCount/);
@@ -36,7 +36,7 @@ test('event tickets expose checkbox selection with a daily server-enforced redem
   assert.match(batch, /user\.event\.ticket\.claim/);
   assert.match(today, /data\.maxTicketsPerDay/);
   assert.match(today, /data\.usedTodayCount/);
-  assert.match(today, /今日已使用 \$\{usedTodayCount\} 張 · 每日上限 \$\{maxTickets\} 張/);
+  assert.match(today, /每日上限 \$\{maxTicketsLabel\}/);
   assert.doesNotMatch(today, /今日可使用 \$\{usableCount\} 張/);
   assert.match(today, /event:realtime-refresh/);
   assert.match(app, /event:realtime-refresh/);
