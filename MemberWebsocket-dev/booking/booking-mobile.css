@@ -240,7 +240,7 @@
     gap: 8px;
     padding: 10px 14px max(10px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--theme-border);
-    background: color-mix(in srgb, var(--theme-surface) 94%, transparent);
+    background: var(--theme-surface);
     box-shadow: 0 -8px 24px rgba(0, 0, 0, .06);
   }
 
@@ -293,8 +293,25 @@
   #appointmentPanel .booking-contact-option {
     min-height: 0;
     padding: 11px 12px;
+    border-color: var(--theme-border);
     border-radius: 14px;
     background: var(--theme-surface-raised);
+  }
+
+  #appointmentPanel .booking-contact-option strong {
+    color: var(--theme-text);
+  }
+
+  #appointmentPanel .booking-contact-option small,
+  #appointmentPanel .booking-contact-help {
+    color: var(--theme-text-muted);
+  }
+
+  #appointmentPanel .booking-contact-custom input,
+  #appointmentPanel .booking-contact-custom select {
+    border-color: var(--theme-border-strong);
+    background: var(--theme-surface-raised);
+    color: var(--theme-text);
   }
 
   #appointmentPanel .booking-contact-custom {
@@ -504,8 +521,8 @@
 }
 
 @media (max-width: 360px) {
-  #bookingView .app-shell {
-    padding-inline: 10px;
+  .app-shell {
+    padding-inline: max(10px, env(safe-area-inset-left));
   }
 
   #bookingView .booking-card {
