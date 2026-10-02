@@ -318,11 +318,22 @@ function normalizeBookingBenefits(value: unknown): Json[] {
     return {kind,id};
   });
 }
+async function validateBookingBenefitSelectionLimit(s: SupabaseClient, value: unknown): Promise<Json[]> {
+  const benefits=normalizeBookingBenefits(value), eventCount=benefits.filter((item:any)=>item.kind==="event").length;
+  if (!eventCount) return benefits;
+  const setting=await s.from("event_ticket_settings").select("max_tickets_per_day,max_tickets_per_redemption").eq("id",1).maybeSingle();
+  if (setting.error) throw mapDbError(setting.error);
+  const raw=Number(setting.data?.max_tickets_per_day||setting.data?.max_tickets_per_redemption||1);
+  const max=Number.isInteger(raw)&&raw>=1&&raw<=50?raw:1;
+  if (eventCount>max) throw new ApiError(409,"EVENT_TICKET_SELECTION_LIMIT_EXCEEDED",`活動票券每筆預約最多可選 ${max} 張。`);
+  return benefits;
+}
 async function createBooking(s: SupabaseClient, i: Identity, m: any, body: Json) {
   const g=await normalizeGroup(s,body), c=contact(body), requestId=asText(body.requestId,100), bookingDate=dateValue(body.bookingDate);
   assertBookingDateWindow(g.cfg,bookingDate);
   if (!/^BOOK-[A-Za-z0-9-]{8,95}$/.test(requestId)) throw new ApiError(400,"INVALID_REQUEST_ID","操作識別碼格式不正確。");
-  const r=await s.rpc("create_group_booking_with_benefits_request_v2", { p_request_id:requestId, p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone, p_benefits:normalizeBookingBenefits(body.benefits) });
+  const benefits=await validateBookingBenefitSelectionLimit(s,body.benefits);
+  const r=await s.rpc("create_group_booking_with_benefits_request_v2", { p_request_id:requestId, p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone, p_benefits:benefits });
   if (r.error) throw mapDbError(r.error); const row=Array.isArray(r.data)?r.data[0]:r.data, booking=await fullBooking(s,row.id);
   await audit(s,i,"member","BOOKING_GROUP_REQUESTED","booking",row.id,{partySize:g.participants.length,primaryTechnicianId:g.primaryId,participantTechnicians:g.participants.map((p:any)=>p.technicianId||null)});
   return {booking};
@@ -331,7 +342,8 @@ async function updateBooking(s: SupabaseClient, i: Identity, m: any, body: Json)
   const g=await normalizeGroup(s,body), c=contact(body), bookingId=uuid(body.bookingId,"預約"), expected=asText(body.expectedUpdatedAt,80), bookingDate=dateValue(body.bookingDate);
   assertBookingDateWindow(g.cfg,bookingDate);
   if (!expected || !Number.isFinite(Date.parse(expected))) throw new ApiError(400,"INVALID_INPUT","缺少預約版本，請重新整理。");
-  const r=await s.rpc("update_group_booking_with_benefits_request_v2", { p_booking_id:bookingId, p_expected_updated_at:expected, p_actor:i.lineUserId, p_request_id:asText(body.requestId,100), p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone, p_benefits:normalizeBookingBenefits(body.benefits) });
+  const benefits=await validateBookingBenefitSelectionLimit(s,body.benefits);
+  const r=await s.rpc("update_group_booking_with_benefits_request_v2", { p_booking_id:bookingId, p_expected_updated_at:expected, p_actor:i.lineUserId, p_request_id:asText(body.requestId,100), p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone, p_benefits:benefits });
   if (r.error) throw mapDbError(r.error); return {booking:await fullBooking(s,bookingId)};
 }
 
