@@ -231,7 +231,11 @@
       const title = document.createElement('strong');
       title.textContent = String(card.title || '未命名集點卡');
       const meta = document.createElement('span');
-      meta.textContent = `${Number(card.stamps || 0)} 點`;
+      const availableStamps = Math.max(0, Number(card.availableStamps ?? card.stamps ?? 0));
+      const reservedStamps = Math.max(0, Number(card.reservedStamps || 0));
+      meta.textContent = reservedStamps > 0
+        ? `${availableStamps} 點可用 · ${reservedStamps} 點已預約`
+        : `${availableStamps} 點`;
       button.append(title, meta);
       return button;
     }));
@@ -249,7 +253,9 @@
   }
 
   function renderActiveCard(card) {
-    const stamps = Math.max(0, Number(card.stamps || 0));
+    const totalStamps = Math.max(0, Number(card.totalStamps ?? card.stamps ?? 0));
+    const reservedStamps = Math.max(0, Number(card.reservedStamps || 0));
+    const stamps = Math.max(0, Number(card.availableStamps ?? (totalStamps - reservedStamps)));
     const ticketOfferCount = Array.isArray(card.rewards)
       ? card.rewards.length
       : Math.max(0, Number(card.rewardCount || 0));
@@ -268,7 +274,9 @@
       ? '這張集點卡已超過使用期限'
       : card.status === 'archived'
         ? '這張卡已停止集點'
-        : '點數會持續累積，達標後可於下方票券總覽選擇使用。';
+        : reservedStamps > 0
+          ? `目前可用 ${stamps} 點；另有 ${reservedStamps} 點已預約使用，將於服務完成時自動核銷。`
+          : '點數會持續累積，達標後可於下方票券總覽選擇使用。';
     els.remainingMessage.textContent = ticketOfferCount
       ? `已設定 ${ticketOfferCount} 種兌換票券`
       : '尚未設定兌換票券';
@@ -281,6 +289,8 @@
       cardId: String(card.cardId || ''),
       title: String(card.title || '集點卡'),
       stamps,
+      totalStamps,
+      reservedStamps,
       expiresOn: card.expiryMode === 'date' ? String(card.expiresOn || '') : '',
       transferEligible: !card.expired && card.status !== 'archived'
     } }));
