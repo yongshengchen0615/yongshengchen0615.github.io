@@ -16,7 +16,9 @@ test('automatic tutorial open does not scroll the document', () => {
 test('admin booking layout styles are available before the booking loader runs', () => {
   const html = read('admin/index.html');
   const loader = read('admin/booking-panel.js');
-  const scriptIndex = html.indexOf('./booking-panel.js?v=layout-stability-20261001-1');
+  const scriptMatch = html.match(/<script src="\.\/booking-panel\.js\?v=[^"]+"/);
+  assert.ok(scriptMatch, 'booking-panel.js must be cache-versioned');
+  const scriptIndex = html.indexOf(scriptMatch[0]);
   assert.ok(scriptIndex > 0);
   for (const asset of [
     './booking-panel-responsive.css?v=booking-settings-layout-20260918-1',
