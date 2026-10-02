@@ -505,7 +505,7 @@
   }
 
   function assertCompleteAdminBootstrap(result) {
-    const requiredArrays = ['members', 'tierSettings', 'cards', 'tickets', 'bookingServiceTypes', 'eventTickets', 'calendarItems', 'messagePresets'];
+    const requiredArrays = ['members', 'tierSettings', 'cards', 'tickets', 'eventTickets', 'calendarItems', 'messagePresets'];
     const missing = requiredArrays.filter((key) => !Array.isArray(result && result[key]));
     const hasStats = Boolean(result && result.stats && typeof result.stats === 'object' && !Array.isArray(result.stats));
     const hasMemberPage = Boolean(result && result.memberPage && typeof result.memberPage === 'object' && !Array.isArray(result.memberPage));
