@@ -17,7 +17,7 @@ function fixture(load) {
 const items = [
   { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', statusLabel: '可使用', conditionLabel: '服務限制：目前未設定' },
   { kind: 'event', id: 'EVENT', selectionId: '', selectable: false, disabledReason: '請先領取票券後再於預約中選用', title: '<img src=x onerror=alert(1)>', statusLabel: '可領取', conditionLabel: '服務限制：目前未設定' },
-  { kind: 'calendar', id: 'CAL', selectionId: 'CAL', selectable: true, title: '會員活動', statusLabel: '活動進行中', conditionLabel: '會員條件：目前會員階級適用 · 服務限制：目前未設定' },
+  { kind: 'calendar', id: 'CAL', selectionId: '', selectable: false, title: '會員活動', statusLabel: '活動進行中', conditionLabel: '會員條件：目前會員階級適用 · 活動資訊僅供預約參考' },
 ];
 
 test('0/1/N benefit cards render safely inside booking form and expose only eligible selectors', async () => {
@@ -41,9 +41,10 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
         assert.deepEqual(groupKinds, ['calendar', 'points', 'event']);
         const eventLink = [...links].find(link => /eventTicketId=EVENT/.test(link.href));
         assert.ok(eventLink, 'event benefit keeps its canonical detail link');
-        assert.match(h.el('bookingBenefitsList').textContent, /服務限制：目前未設定/);
+        assert.match(h.el('bookingBenefitsList').textContent, /活動資訊僅供預約參考/);
+        assert.equal(h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="calendar"] input[type="checkbox"]'), null);
         const checkboxes = h.el('bookingBenefitsList').querySelectorAll('input[type="checkbox"]');
-        assert.equal(checkboxes.length, 2, 'only precise selectable benefit references get checkboxes');
+        assert.equal(checkboxes.length, 1, 'activities are display-only; only selectable tickets get checkboxes');
         const pointCheckbox = h.el('bookingBenefitsList').querySelector(
           'input[data-booking-benefit-kind="points"][data-booking-benefit-id="PT-001"]'
         );
