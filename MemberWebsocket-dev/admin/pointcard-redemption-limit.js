@@ -10,7 +10,7 @@
 
   function normalizeLimit(value) {
     const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 50 ? parsed : 1;
+    return Number.isInteger(parsed) && parsed >= 0 && parsed <= 50 ? parsed : 1;
   }
 
   async function extensionRequest(operation, payload = {}) {
@@ -41,7 +41,7 @@
     panel.id = 'pointCardGlobalTicketSettings';
     panel.className = 'tier-settings point-card-global-settings';
     panel.setAttribute('aria-labelledby', 'pointCardGlobalTicketSettingsTitle');
-    panel.innerHTML = '<div><p class="kicker">Ticket usage policy</p><h3 id="pointCardGlobalTicketSettingsTitle">集點卡票券使用設定</h3><p>此設定套用所有集點卡票券。會員一次可跨不同集點卡選擇票券，但總張數不可超過這裡設定的上限。</p></div><div class="tier-settings-grid"><label>單次最多使用票券數<input id="globalMaxTicketsPerRedemption" type="number" min="1" max="50" step="1" inputmode="numeric" value="1" required aria-describedby="globalMaxTicketsPerRedemptionHint"><small id="globalMaxTicketsPerRedemptionHint">範圍 1–50 張；這是整次操作的總票券數，不是每張集點卡各自計算。</small></label></div><div id="globalTicketSettingMessage" class="form-message hidden" role="status"></div><div class="tier-settings-actions"><button id="saveGlobalTicketSettingButton" class="button button-dark" type="button">儲存票券使用設定</button></div>';
+    panel.innerHTML = '<div><p class="kicker">Ticket usage policy</p><h3 id="pointCardGlobalTicketSettingsTitle">集點卡票券使用設定</h3><p>此設定套用所有集點卡票券。會員一次可跨不同集點卡選擇票券，但總張數不可超過這裡設定的上限。</p></div><div class="tier-settings-grid"><label>單次最多使用票券數<input id="globalMaxTicketsPerRedemption" type="number" min="0" max="50" step="1" inputmode="numeric" value="1" required aria-describedby="globalMaxTicketsPerRedemptionHint"><small id="globalMaxTicketsPerRedemptionHint">0 代表不限張數；1–50 張則為單次總票券上限，不是每張集點卡各自計算。</small></label></div><div id="globalTicketSettingMessage" class="form-message hidden" role="status"></div><div class="tier-settings-actions"><button id="saveGlobalTicketSettingButton" class="button button-dark" type="button">儲存票券使用設定</button></div>';
     settingsPanel.insertBefore(panel, workspace);
 
     const input = panel.querySelector('#globalMaxTicketsPerRedemption');
@@ -76,7 +76,7 @@
       });
       state.updatedAt = String(result.updatedAt || '');
       input.value = String(normalizeLimit(result.maxTicketsPerRedemption));
-      showMessage(`已儲存：會員單次最多可使用 ${input.value} 張集點卡票券。`);
+      showMessage(maxTicketsPerRedemption === 0 ? '已儲存：集點卡票券單次使用張數不限。' : `已儲存：會員單次最多可使用 ${input.value} 張集點卡票券。`);
     } catch (error) {
       showMessage(error && error.message || '儲存失敗，請重新整理後再試。', true);
     } finally {
