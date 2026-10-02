@@ -390,6 +390,7 @@ async function hydrateBookings(supabase: SupabaseClient, rows: any[]): Promise<J
     grouped.set(item.booking_id, values);
   }
   for (const benefit of benefitResult.data || []) {
+    if (!["points","event"].includes(String(benefit.benefit_kind || ""))) continue;
     const values = benefitGrouped.get(benefit.booking_id) || [];
     values.push(benefit);
     benefitGrouped.set(benefit.booking_id, values);
