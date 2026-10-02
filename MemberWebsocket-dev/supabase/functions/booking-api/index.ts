@@ -335,16 +335,36 @@ function normalizeBookingBenefits(value: unknown): Json[] {
 async function validateBookingBenefitSelectionLimit(supabase: SupabaseClient, value: unknown): Promise<Json[]> {
   const benefits = normalizeBookingBenefits(value);
   const eventCount = benefits.filter((item) => item.kind === "event").length;
-  if (!eventCount) return benefits;
-  const setting = await supabase.from("event_ticket_settings")
-    .select("max_tickets_per_day,max_tickets_per_redemption")
-    .eq("id", 1)
-    .maybeSingle();
-  if (setting.error) throw mapDatabaseError(setting.error);
-  const rawLimit = Number(setting.data?.max_tickets_per_day || setting.data?.max_tickets_per_redemption || 1);
-  const maxTicketsPerDay = Number.isInteger(rawLimit) && rawLimit >= 1 && rawLimit <= 50 ? rawLimit : 1;
+  const pointCount = benefits.filter((item) => item.kind === "points").length;
+  if (!eventCount && !pointCount) return benefits;
+
+  const [eventSetting, pointSetting] = await Promise.all([
+    eventCount
+      ? supabase.from("event_ticket_settings")
+          .select("max_tickets_per_day,max_tickets_per_redemption")
+          .eq("id", 1)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    pointCount
+      ? supabase.from("point_card_settings")
+          .select("max_tickets_per_redemption")
+          .eq("id", 1)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (eventSetting.error) throw mapDatabaseError(eventSetting.error);
+  if (pointSetting.error) throw mapDatabaseError(pointSetting.error);
+
+  const rawEventLimit = Number(eventSetting.data?.max_tickets_per_day || eventSetting.data?.max_tickets_per_redemption || 1);
+  const maxTicketsPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 1 && rawEventLimit <= 50 ? rawEventLimit : 1;
+  const rawPointLimit = Number(pointSetting.data?.max_tickets_per_redemption || 1);
+  const maxPointTicketsPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 1 && rawPointLimit <= 50 ? rawPointLimit : 1;
+
   if (eventCount > maxTicketsPerDay) {
     throw new ApiError(409, "EVENT_TICKET_SELECTION_LIMIT_EXCEEDED", `活動票券每筆預約最多可選 ${maxTicketsPerDay} 張。`);
+  }
+  if (pointCount > maxPointTicketsPerRedemption) {
+    throw new ApiError(409, "POINT_TICKET_SELECTION_LIMIT_EXCEEDED", `集點卡票券每筆預約最多可選 ${maxPointTicketsPerRedemption} 張。`);
   }
   return benefits;
 }
