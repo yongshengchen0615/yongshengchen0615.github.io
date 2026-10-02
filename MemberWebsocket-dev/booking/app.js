@@ -705,6 +705,7 @@
       state.editing = null;
       updateEditingLabel();
       els.memberNote.value = '';
+      window.BookingBenefits?.setBookingContext?.('');
       window.BookingBenefits?.clearSelection?.();
       state.selections = [];
       state.selectedSlot = null;
@@ -721,6 +722,7 @@
           els.bookingConfirmModal.classList.add('hidden');
           state.editing = null;
           updateEditingLabel();
+          window.BookingBenefits?.setBookingContext?.('');
           window.BookingBenefits?.clearSelection?.();
           state.selections = [];
           state.selectedSlot = null;
@@ -928,6 +930,7 @@
     state.selectedSlot = null;
     ++state.slotRequestSequence;
     els.memberNote.value = '';
+    window.BookingBenefits?.setBookingContext?.('');
     window.BookingBenefits?.clearSelection?.();
     updateEditingLabel();
     renderServices();
@@ -941,6 +944,7 @@
     state.selections = bookingVisibleItems(booking).filter((item) => activeIds.has(item.serviceId))
       .flatMap((item) => Array.from({ length: Number(item.quantity || 1) }, () => ({ serviceId: item.serviceId, selectionId: crypto.randomUUID() })));
     els.memberNote.value = booking.memberNote || '';
+    window.BookingBenefits?.setBookingContext?.(booking.bookingId);
     window.BookingBenefits?.setSelection?.(booking.benefits || []);
     els.bookingDate.value = booking.bookingDate;
     renderServices();
