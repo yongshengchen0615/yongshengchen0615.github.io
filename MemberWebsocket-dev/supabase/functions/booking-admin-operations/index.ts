@@ -200,7 +200,9 @@ async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Prom
   if (itemResult.error) throw mapDatabaseError(itemResult.error);
   if (benefitResult.error) throw mapDatabaseError(benefitResult.error);
   const items = (itemResult.data || []).map(itemClient);
-  const benefits = (benefitResult.data || []).map((row: any) => ({
+  const benefits = (benefitResult.data || [])
+    .filter((row: any) => ["points","event"].includes(String(row.benefit_kind || "")))
+    .map((row: any) => ({
     kind: row.benefit_kind,
     id: row.benefit_ref,
     title: row.title_snapshot || "可用權益",

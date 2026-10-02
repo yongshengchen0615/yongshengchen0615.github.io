@@ -212,7 +212,7 @@ async function fullBooking(s: SupabaseClient, id: string) {
   if (br.error) throw mapDbError(br.error);
   if (ir.error) throw mapDbError(ir.error);
   if (benefitResult.error) throw mapDbError(benefitResult.error);
-  const items=(ir.data||[]).map(itemClient), benefits=(benefitResult.data||[]).map((x:any)=>({kind:x.benefit_kind,id:x.benefit_ref,title:x.title_snapshot||"可用權益",status:x.status||"pending",redeemedAt:x.redeemed_at||null})), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
+  const items=(ir.data||[]).map(itemClient), benefits=(benefitResult.data||[]).filter((x:any)=>["points","event"].includes(String(x.benefit_kind||""))).map((x:any)=>({kind:x.benefit_kind,id:x.benefit_ref,title:x.title_snapshot||"可用權益",status:x.status||"pending",redeemedAt:x.redeemed_at||null})), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
   return { bookingId:r.id, requestId:r.request_id, serviceId:r.service_id, serviceTitle:items.map((x:any)=>x.serviceTitle).join(" + ")||"預約項目", items, benefits, totalDurationMinutes:Number(r.total_duration_minutes||30), totalAmount:items.reduce((sum:number,x:any)=>sum+Number(x.subtotalAmount||0),0), memberId:r.member_id, memberDisplayName:r.members?.display_name||"", memberCode:r.members?.member_code||"", bookingDate:r.booking_date, startTime:String(r.start_time||"").slice(0,5), endTime:String(r.end_time||"").slice(0,5), startAt:localTimestamp(r.start_at), endAt:localTimestamp(r.end_at), status:r.status, memberNote:r.member_note||"", adminNote:r.admin_note||"", completedAt:r.completed_at||null, confirmedAt:r.confirmed_at, rejectedAt:r.rejected_at, cancelledAt:r.cancelled_at, createdAt:r.created_at, updatedAt:r.updated_at, contactSource:r.contact_source||"member", contactSurname:r.contact_surname||"", contactSalutation:r.contact_salutation||"", contactPhone:r.contact_phone||"", ...g };
 }
 
@@ -313,7 +313,7 @@ function normalizeBookingBenefits(value: unknown): Json[] {
   const seen = new Set<string>();
   return value.map((raw:any) => {
     const kind=asText(raw?.kind,20).toLowerCase(), id=asText(raw?.id,160), key=`${kind}:${id}`;
-    if (!["points","event","calendar"].includes(kind) || !id || seen.has(key)) throw new ApiError(400,"INVALID_BOOKING_BENEFITS","選用優惠資料格式不正確。");
+    if (!["points","event"].includes(kind) || !id || seen.has(key)) throw new ApiError(400,"INVALID_BOOKING_BENEFITS","選用優惠資料格式不正確。");
     seen.add(key);
     return {kind,id};
   });

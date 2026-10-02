@@ -11,6 +11,7 @@
   const selected = new Map();
   const kinds = { points: '集點卡票券', event: '活動票券', calendar: '會員活動' };
   const kindOrder = ['calendar', 'points', 'event'];
+  const selectableKinds = new Set(['points', 'event']);
   const el = (id) => document.getElementById(id);
   const keyFor = (kind, id) => `${String(kind || '')}:${String(id || '')}`;
 
@@ -60,8 +61,8 @@
     }
     const count = selected.size;
     state('ready', count
-      ? `已選擇 ${count} 項；服務完成時由管理端重新驗證並核銷。`
-      : `${cardCount} 項權益 · 可勾選本次預約要使用的項目。`);
+      ? `已選擇 ${count} 張票券；服務完成時由管理端重新驗證並核銷。`
+      : `${cardCount} 項活動／票券 · 活動僅顯示，票券可勾選使用。`);
   }
 
   function render(items = renderedItems) {
@@ -96,7 +97,7 @@
         const selectionId = String(item.selectionId || '');
         const key = keyFor(item.kind, selectionId);
         const isSelected = Boolean(selectionId && selected.has(key));
-        const selectable = item.selectable === true && Boolean(selectionId);
+        const selectable = selectableKinds.has(item.kind) && item.selectable === true && Boolean(selectionId);
 
         const card = document.createElement('article');
         card.className = `booking-benefit${isSelected ? ' is-selected' : ''}`;
@@ -119,7 +120,7 @@
         condition.className = 'booking-benefit-condition';
         condition.textContent = String(item.conditionLabel || '服務限制：目前未設定');
 
-        if (selectionId) {
+        if (selectionId && selectableKinds.has(item.kind)) {
           const choose = document.createElement('label');
           choose.className = 'booking-benefit-select';
           const input = document.createElement('input');
@@ -181,7 +182,7 @@
     for (const item of Array.isArray(items) ? items : []) {
       const kind = String(item?.kind || item?.benefitKind || '');
       const id = String(item?.id || item?.benefitRef || '');
-      if (!kinds[kind] || !id) continue;
+      if (!selectableKinds.has(kind) || !id) continue;
       selected.set(keyFor(kind, id), {
         kind, id,
         title: String(item?.title || item?.titleSnapshot || ''),
