@@ -930,6 +930,9 @@
       heading.appendChild(status);
       card.appendChild(heading);
 
+      if (Array.isArray(booking.benefits) && booking.benefits.length) {
+        appendNote(card, `待核銷優惠：${booking.benefits.map((benefit) => `${benefit.title || '可用權益'}（${benefit.status === 'pending' ? '待核銷' : benefit.status}）`).join('、')}`, true);
+      }
       if (booking.memberNote) appendNote(card, `會員備註：${booking.memberNote}`, false);
       if (booking.adminNote) appendNote(card, `管理端說明：${booking.adminNote}`, true);
       const cancellationPending = Boolean(booking.cancellationRequestedAt && !booking.cancellationReviewedAt);
@@ -1305,18 +1308,24 @@
     const rewardRows = preview.rewards.length
       ? preview.rewards.map((reward) => `<div class="booking-completion-preview-item"><div><strong>${escapeHtml(reward.pointCardTitle)}</strong><p>${escapeHtml(reward.typeName)}：${reward.minutes} 分鐘 ÷ ${reward.perPoint}</p></div><strong>+${reward.points} 點</strong></div>`).join('')
       : '<p class="integration-empty">依目前項目類型規則，本次沒有自動集點。</p>';
+    const pendingBenefits = Array.isArray(booking.benefits) ? booking.benefits.filter((benefit) => benefit.status === 'pending') : [];
+    const benefitRows = pendingBenefits.length
+      ? pendingBenefits.map((benefit) => `<div class="booking-completion-preview-item"><div><strong>${escapeHtml(benefit.title || '可用權益')}</strong><p>${escapeHtml(({points:'集點卡票券',event:'活動票券',calendar:'會員活動'})[benefit.kind] || '預約優惠')} · 完成服務時重新驗證</p></div><span class="integration-status is-attention">待核銷</span></div>`).join('')
+      : '<p class="integration-empty">會員本次沒有選用優惠。</p>';
     els.bookingAdminCrudModalBody.innerHTML = `
       <form class="booking-admin-form booking-completion-preview">
         <div class="booking-completion-preview-summary">
           <div><span>會員</span><strong>${escapeHtml(booking.memberDisplayName || '會員')}</strong></div>
           <div><span>將計入服務時間</span><strong>${preview.serviceMinutes} 分鐘</strong></div>
           <div><span>預估自動集點</span><strong>${preview.totalRewardPoints} 點</strong></div>
+          <div><span>待核銷優惠</span><strong>${pendingBenefits.length} 項</strong></div>
         </div>
         <section><p class="kicker">Service settlement</p><div class="booking-completion-preview-list">${itemRows || '<p class="integration-empty">沒有可結算的服務項目。</p>'}</div></section>
         <section><p class="kicker">Point rewards</p><div class="booking-completion-preview-list">${rewardRows}</div></section>
-        <p class="booking-completion-preview-note">此畫面為送出前預覽。真正的服務時間、集點、LINE 通知與重複請求判斷仍由 Server-side 完成結算流程決定；送出後預約不可修改或取消。</p>
+        <section><p class="kicker">Benefit redemption</p><div class="booking-completion-preview-list">${benefitRows}</div></section>
+        <p class="booking-completion-preview-note">此畫面為送出前預覽。Server-side 會重新驗證票券擁有權、狀態、效期、點數與每日上限，並在同一交易內完成核銷與預約結算；任何一項失敗都不會產生半完成狀態。</p>
         <div data-modal-message class="form-message hidden"></div>
-        <div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">返回</button><button class="button button-dark" type="submit">確認完成並結算</button></div>
+        <div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">返回</button><button class="button button-dark" type="submit">確認完成、核銷並結算</button></div>
       </form>`;
     const form = els.bookingAdminCrudModalBody.querySelector('form');
     form.querySelector('[data-cancel]').addEventListener('click', closeModal);
