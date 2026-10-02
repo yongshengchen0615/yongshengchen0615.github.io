@@ -592,17 +592,29 @@
     card.append(title, serviceLine, duration, amount);
     box.appendChild(card);
 
-    const benefits = window.BookingBenefits?.selectionSummary?.() || [];
+    const benefits = (window.BookingBenefits?.selectionSummary?.() || [])
+      .filter((item) => item?.kind === 'points' || item?.kind === 'event');
+    const benefitBox = document.createElement('div');
+    benefitBox.className = 'group-confirm-participant booking-confirm-benefits';
+    const benefitTitle = document.createElement('strong');
+    benefitTitle.textContent = '本次使用票券';
+    benefitBox.appendChild(benefitTitle);
     if (benefits.length) {
-      const benefitBox = document.createElement('div');
-      benefitBox.className = 'group-confirm-participant booking-confirm-benefits';
-      const benefitTitle = document.createElement('strong');
-      benefitTitle.textContent = '本次選用優惠';
+      const ticketKinds = { points: '集點卡票券', event: '活動票券' };
+      const ticketList = document.createElement('ul');
+      ticketList.className = 'booking-confirm-ticket-list';
+      benefits.forEach((item) => {
+        const ticket = document.createElement('li');
+        ticket.textContent = `${ticketKinds[item.kind] || '票券'}：${item.title || '未命名票券'}`;
+        ticketList.appendChild(ticket);
+      });
+      benefitBox.appendChild(ticketList);
+    } else {
       const benefitCopy = document.createElement('p');
-      benefitCopy.textContent = benefits.map((item) => item.title || '可用權益').join('、');
-      benefitBox.append(benefitTitle, benefitCopy);
-      box.appendChild(benefitBox);
+      benefitCopy.textContent = '本次未使用票券';
+      benefitBox.appendChild(benefitCopy);
     }
+    box.appendChild(benefitBox);
 
     const noteBox = document.createElement('div');
     noteBox.className = 'group-confirm-participant booking-confirm-note';
