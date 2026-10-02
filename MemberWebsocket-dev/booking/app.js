@@ -94,7 +94,16 @@
       showView('booking');
       window.dispatchEvent(new CustomEvent('user-tour:ready', { detail: { surface: 'booking', profile: state.profile } }));
       window.BookingBenefits?.start(state.config, state.idToken);
-      state.realtimeUnsubscribe = window.BookingSystem.subscribeRealtime(state.config, () => refresh(false), 'member', () => window.BookingBenefits?.invalidate());
+      state.realtimeUnsubscribe = window.BookingSystem.subscribeRealtime(state.config, () => refresh(false), 'member', (signal = {}) => {
+        const scope = String(signal?.scope || '');
+        const eventType = String(signal?.eventType || '');
+        const pointChanged = scope === 'points'
+          || eventType === 'admin.stamps.add'
+          || eventType === 'admin.member-grants.add'
+          || eventType.startsWith('data.db.point_');
+        if (pointChanged || scope === 'reconnect') window.BookingBenefits?.syncNow?.();
+        else window.BookingBenefits?.invalidate?.();
+      });
     } catch (error) {
       showError(error);
     }
