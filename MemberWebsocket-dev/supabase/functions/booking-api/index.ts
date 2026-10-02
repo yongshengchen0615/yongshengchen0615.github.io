@@ -85,6 +85,9 @@ function mapDatabaseError(error: unknown): ApiError {
     ["BOOKING_NOT_CANCELLABLE", 409, "BOOKING_NOT_CANCELLABLE", "這筆預約目前無法申請取消。"],
     ["CANCELLATION_NOT_PENDING", 409, "CANCELLATION_NOT_PENDING", "這筆預約目前沒有待確認的取消申請。"],
     ["BOOKING_COMPLETION_REQUIRES_SETTLEMENT", 409, "BOOKING_COMPLETION_CANONICAL_REQUIRED", "完成預約必須使用結算流程。"],
+    ["INVALID_BOOKING_BENEFITS", 400, "INVALID_BOOKING_BENEFITS", "選用優惠資料格式不正確。"],
+    ["BOOKING_BENEFIT_NOT_AVAILABLE", 409, "BOOKING_BENEFIT_NOT_AVAILABLE", "其中一項優惠目前已不可使用，請重新整理後再選擇。"],
+    ["BOOKING_BENEFIT_LOCATION_REQUIRED", 409, "BOOKING_BENEFIT_LOCATION_REQUIRED", "其中一張票券需要定位核銷，無法綁定至預約自動核銷。"],
     ["BOOKING_HOLIDAY", 409, "BOOKING_HOLIDAY", "這一天為休假日，請選擇其他日期。"],
     ["BOOKING_SLOT_TAKEN", 409, "BOOKING_SLOT_TAKEN", "這段時間剛剛已被其他會員預約，請選擇其他時間。"],
     ["BOOKING_TOO_EARLY", 409, "BOOKING_TOO_EARLY", "尚未符合提前預約天數，請選擇較晚的日期。"],
@@ -302,7 +305,34 @@ function itemClient(row: any): Json {
   };
 }
 
-function bookingClient(row: any, items: any[] = []): Json {
+function benefitClient(row: any): Json {
+  return {
+    kind: row.benefit_kind,
+    id: row.benefit_ref,
+    title: row.title_snapshot || "可用權益",
+    status: row.status || "pending",
+    redeemedAt: row.redeemed_at || null,
+  };
+}
+
+function normalizeBookingBenefits(value: unknown): Json[] {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 20) throw new ApiError(400, "INVALID_BOOKING_BENEFITS", "選用優惠資料格式不正確。");
+  const seen = new Set<string>();
+  return value.map((raw) => {
+    const item = raw && typeof raw === "object" ? raw as Json : {};
+    const kind = asText(item.kind, 20).toLowerCase();
+    const id = asText(item.id, 160);
+    const key = `${kind}:${id}`;
+    if (!["points","event","calendar"].includes(kind) || !id || seen.has(key)) {
+      throw new ApiError(400, "INVALID_BOOKING_BENEFITS", "選用優惠資料格式不正確。");
+    }
+    seen.add(key);
+    return { kind, id };
+  });
+}
+
+function bookingClient(row: any, items: any[] = [], benefits: any[] = []): Json {
   const member = row.members || row.member || null;
   const mappedItems = items.map(itemClient);
   return {
@@ -311,6 +341,7 @@ function bookingClient(row: any, items: any[] = []): Json {
     serviceId: row.service_id,
     serviceTitle: mappedItems.length ? mappedItems.map((item: any) => item.serviceTitle).join(" + ") : "預約項目",
     items: mappedItems,
+    benefits: benefits.map(benefitClient),
     totalDurationMinutes: Number(row.total_duration_minutes || 30),
     totalAmount: mappedItems.reduce((sum, item: any) => sum + Number(item.subtotalAmount || 0), 0),
     memberId: row.member_id,
@@ -339,18 +370,31 @@ function bookingClient(row: any, items: any[] = []): Json {
 async function hydrateBookings(supabase: SupabaseClient, rows: any[]): Promise<Json[]> {
   if (!rows.length) return [];
   const bookingIds = rows.map((row) => row.id);
-  const itemResult = await supabase.from("booking_items")
-    .select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity")
-    .in("booking_id", bookingIds)
-    .order("created_at", { ascending: true });
+  const [itemResult, benefitResult] = await Promise.all([
+    supabase.from("booking_items")
+      .select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity")
+      .in("booking_id", bookingIds)
+      .order("created_at", { ascending: true }),
+    supabase.from("booking_benefit_selections")
+      .select("booking_id,benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at")
+      .in("booking_id", bookingIds)
+      .order("selected_at", { ascending: true }),
+  ]);
   if (itemResult.error) throw mapDatabaseError(itemResult.error);
+  if (benefitResult.error) throw mapDatabaseError(benefitResult.error);
   const grouped = new Map<string, any[]>();
+  const benefitGrouped = new Map<string, any[]>();
   for (const item of itemResult.data || []) {
     const values = grouped.get(item.booking_id) || [];
     values.push(item);
     grouped.set(item.booking_id, values);
   }
-  return rows.map((row) => bookingClient(row, grouped.get(row.id) || []));
+  for (const benefit of benefitResult.data || []) {
+    const values = benefitGrouped.get(benefit.booking_id) || [];
+    values.push(benefit);
+    benefitGrouped.set(benefit.booking_id, values);
+  }
+  return rows.map((row) => bookingClient(row, grouped.get(row.id) || [], benefitGrouped.get(row.id) || []));
 }
 
 async function bookingSettings(supabase: SupabaseClient): Promise<any> {
@@ -586,13 +630,14 @@ async function userCreate(supabase: SupabaseClient, identity: Identity, member: 
   const items = await normalizeRequestedItems(supabase, body);
   const rpcItems = items.map((item) => ({ serviceId: item.serviceId, quantity: item.quantity }));
 
-  const created = await supabase.rpc("create_booking_bundle_request", {
+  const created = await supabase.rpc("create_booking_bundle_with_benefits_request", {
     p_request_id: requestId,
     p_member_id: member.id,
     p_booking_date: bookingDate,
     p_start_time: `${startTime}:00`,
     p_items: rpcItems,
     p_member_note: memberNote,
+    p_benefits: normalizeBookingBenefits(body.benefits),
   });
   if (created.error) throw mapDatabaseError(created.error);
   const row = Array.isArray(created.data) ? created.data[0] : created.data;
@@ -618,12 +663,13 @@ async function userUpdate(supabase: SupabaseClient, identity: Identity, member: 
   const settings = await bookingSettings(supabase);
   assertBookingDateWindow(bookingDate, settings);
   const items = await normalizeRequestedItems(supabase, body);
-  const result = await supabase.rpc("update_booking_bundle_request", {
+  const result = await supabase.rpc("update_booking_bundle_with_benefits_request", {
     p_booking_id: bookingId, p_member_id: member.id,
     p_expected_updated_at: expectedUpdatedAt, p_request_id: requestId,
     p_booking_date: bookingDate, p_start_time: `${normalizeTime(body.startTime)}:00`,
     p_items: items.map((item) => ({ serviceId: item.serviceId, quantity: item.quantity })),
     p_member_note: asText(body.memberNote, 500), p_actor: identity.lineUserId,
+    p_benefits: normalizeBookingBenefits(body.benefits),
   });
   if (result.error) throw mapDatabaseError(result.error);
   const row = Array.isArray(result.data) ? result.data[0] : result.data;
