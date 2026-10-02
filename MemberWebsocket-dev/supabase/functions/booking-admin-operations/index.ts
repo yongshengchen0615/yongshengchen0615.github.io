@@ -56,6 +56,13 @@ function mapDatabaseError(error: unknown): ApiError {
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
     ["BOOKING_COMPLETION_REQUIRES_SETTLEMENT",409,"BOOKING_COMPLETION_CANONICAL_REQUIRED","完成預約必須使用完整結算流程。"],
+    ["BOOKING_BENEFIT_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一項預約優惠目前已不可使用，請先和會員確認。"],
+    ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法由完成預約自動核銷。"],
+    ["EVENT_TICKET_DAILY_LIMIT_REACHED",409,"EVENT_TICKET_DAILY_LIMIT_REACHED","會員今日活動票券使用張數已達上限。"],
+    ["TICKET_BATCH_LIMIT_EXCEEDED",409,"TICKET_BATCH_LIMIT_EXCEEDED","本次選用的集點卡票券超過單次核銷上限。"],
+    ["INSUFFICIENT_POINTS",409,"INSUFFICIENT_POINTS","會員目前點數不足，無法核銷所選集點卡票券。"],
+    ["TICKET_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一張集點卡票券已不可使用。"],
+    ["CLAIM_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一張活動票券已不可使用。"],
     ["ADMIN_REQUIRED", 403, "ADMIN_REQUIRED", "管理端帳號尚未授權。"],
     ["BOOKING_PARTICIPANT_EDIT_REQUIRED", 409, "BOOKING_PARTICIPANT_EDIT_REQUIRED", "請重新整理並使用逐位修改服務項目。"],
     ["INVALID_BOOKING_PARTICIPANTS", 400, "INVALID_BOOKING_PARTICIPANTS", "請完整提供每一位預約人的項目，且不可重複。"],
@@ -182,11 +189,24 @@ async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Prom
   const bookingResult = await supabase.from("bookings").select("*, members(display_name, member_code)").eq("id", bookingId).maybeSingle();
   if (bookingResult.error) throw mapDatabaseError(bookingResult.error);
   if (!bookingResult.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
-  const itemResult = await supabase.from("booking_items")
-    .select("booking_id,service_id,service_title,service_type,counts_toward_membership,unit_duration_minutes,unit_price_amount,quantity,created_at")
-    .eq("booking_id", bookingId).order("created_at", { ascending: true });
+  const [itemResult, benefitResult] = await Promise.all([
+    supabase.from("booking_items")
+      .select("booking_id,service_id,service_title,service_type,counts_toward_membership,unit_duration_minutes,unit_price_amount,quantity,created_at")
+      .eq("booking_id", bookingId).order("created_at", { ascending: true }),
+    supabase.from("booking_benefit_selections")
+      .select("benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at")
+      .eq("booking_id", bookingId).order("selected_at", { ascending: true }),
+  ]);
   if (itemResult.error) throw mapDatabaseError(itemResult.error);
+  if (benefitResult.error) throw mapDatabaseError(benefitResult.error);
   const items = (itemResult.data || []).map(itemClient);
+  const benefits = (benefitResult.data || []).map((row: any) => ({
+    kind: row.benefit_kind,
+    id: row.benefit_ref,
+    title: row.title_snapshot || "可用權益",
+    status: row.status || "pending",
+    redeemedAt: row.redeemed_at || null,
+  }));
   const member = bookingResult.data.members || null;
   return {
     bookingId: bookingResult.data.id,
@@ -194,6 +214,7 @@ async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Prom
     serviceId: bookingResult.data.service_id,
     serviceTitle: items.filter((item: any) => item.serviceId !== STORE_SERVICE_ID).map((item: any) => item.serviceTitle).join(" + ") || "服務項目",
     items,
+    benefits,
     totalDurationMinutes: Number(bookingResult.data.total_duration_minutes || 0),
     actualServiceMinutes: items.filter((item: any) => item.countsTowardMembership).reduce((sum: number, item: any) => sum + Number(item.subtotalMinutes || 0), 0),
     totalAmount: items.reduce((sum: number, item: any) => sum + Number(item.subtotalAmount || 0), 0),
@@ -346,7 +367,7 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
     receiptId = String(confirmation.receiptId || "");
     receiptConfirmed = Boolean(receiptId);
   } else {
-    const result = await supabase.rpc("complete_booking_with_rewards_request", {
+    const result = await supabase.rpc("complete_booking_with_benefits_request", {
       p_booking_id: bookingId,
       p_expected_updated_at: expectedUpdatedAt,
       p_actor: identity.lineUserId,
@@ -362,6 +383,7 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
     receiptId,
     serviceMinutes: Number(settlement.serviceMinutes || 0),
     rewards: Array.isArray(settlement.rewards) ? settlement.rewards : [],
+    redemptions: Array.isArray(settlement.redemptions) ? settlement.redemptions : [],
   });
   return { booking: await hydrateBooking(supabase, bookingId), settlement, receiptId };
 }
