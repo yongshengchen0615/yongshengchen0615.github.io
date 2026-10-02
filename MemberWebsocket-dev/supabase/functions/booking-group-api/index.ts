@@ -313,7 +313,7 @@ function normalizeBookingBenefits(value: unknown): Json[] {
   const seen = new Set<string>();
   return value.map((raw:any) => {
     const kind=asText(raw?.kind,20).toLowerCase(), id=asText(raw?.id,160), key=`${kind}:${id}`;
-    if (!["points","event","calendar"].includes(kind) || !id || seen.has(key)) throw new ApiError(400,"INVALID_BOOKING_BENEFITS","選用優惠資料格式不正確。");
+    if (!["points","event"].includes(kind) || !id || seen.has(key)) throw new ApiError(400,"INVALID_BOOKING_BENEFITS","選用優惠資料格式不正確。");
     seen.add(key);
     return {kind,id};
   });
