@@ -35,6 +35,33 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   const eventTicketMaxPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 0 && rawEventLimit <= 50 ? rawEventLimit : 1;
   const rawPointLimit = Number(pointSettings.data?.max_tickets_per_redemption ?? 1);
   const pointTicketMaxPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 0 && rawPointLimit <= 50 ? rawPointLimit : 1;
+  // Resolve booking-service restrictions from the current ticket definitions.
+  // Empty arrays remain backward-compatible and mean "no booking item restriction".
+  const pointTemplateIds = [...new Set(points.map((offer) => String(offer.ticketTemplateId || '')).filter(Boolean))];
+  const eventIds = [...new Set(events.map((offer) => String(offer.eventId || '')).filter(Boolean))];
+  const [pointRequirementResult, eventRequirementResult] = await Promise.all([
+    pointTemplateIds.length
+      ? db.from('ticket_templates').select('id,required_service_types').in('id', pointTemplateIds)
+      : Promise.resolve({ data: [], error: null }),
+    eventIds.length
+      ? db.from('event_tickets').select('id,required_service_types').in('id', eventIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (pointRequirementResult.error) throw pointRequirementResult.error;
+  if (eventRequirementResult.error) throw eventRequirementResult.error;
+  const pointRequiredByTemplate = new Map(
+    (pointRequirementResult.data || []).map((row: any) => [
+      String(row.id || ''),
+      Array.isArray(row.required_service_types) ? row.required_service_types.map((value: unknown) => String(value || '').trim()).filter(Boolean) : [],
+    ])
+  );
+  const eventRequiredByEvent = new Map(
+    (eventRequirementResult.data || []).map((row: any) => [
+      String(row.id || ''),
+      Array.isArray(row.required_service_types) ? row.required_service_types.map((value: unknown) => String(value || '').trim()).filter(Boolean) : [],
+    ])
+  );
+
   // Ticket-backed calendar activities are represented by the canonical event
   // offer above, so expired/full/used tickets cannot reappear as activities.
   const pointCardIds = [...new Set(points.map((offer) => String(offer.pointCardId || '')).filter(Boolean))];
@@ -95,6 +122,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         const otherBookingReserved = Math.max(0, reservedPointBalance - currentBookingReserved);
         const pointBalance = Math.max(0, totalPointBalance - otherBookingReserved);
         const pointCost = Math.max(0, Number(offer.thresholdStamps || 0));
+        const requiredServiceTypes = pointRequiredByTemplate.get(String(offer.ticketTemplateId || '')) || [];
         const ticketId = String(offer.ticketId || '');
         const reservationBookingId = ticketId ? String(reservationBookingByTicket.get(ticketId) || '') : '';
         const reservedForOtherBooking = Boolean(reservationBookingId && reservationBookingId !== currentBookingId);
@@ -107,10 +135,11 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           statusLabel: reservedForOtherBooking ? '已預約使用' : hasEnoughPoints ? '可使用' : '點數不足',
           startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId, cardTitle: offer.cardTitle,
           pointCost, pointBalance, totalPointBalance, reservedPointBalance, otherBookingReserved,
+          requiredServiceTypes,
           reservedForBooking: Boolean(reservationBookingId),
           reservedForCurrentBooking,
           selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking, selectionId: offer.ticketId,
-          conditionLabel: `本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · ${pointTicketMaxPerRedemption === 0 ? '單次預約使用張數不限' : `單次預約最多使用 ${pointTicketMaxPerRedemption} 張`}`,
+          conditionLabel: `${requiredServiceTypes.length ? `服務限制：需預約「${requiredServiceTypes.join('、')}」相關服務 · ` : '服務限制：不限預約項目 · '}本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · ${pointTicketMaxPerRedemption === 0 ? '單次預約使用張數不限' : `單次預約最多使用 ${pointTicketMaxPerRedemption} 張`}`,
           disabledReason: !hasTicket
             ? '目前沒有可核銷的票券'
             : reservedForOtherBooking
@@ -120,16 +149,20 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
                 : '',
         };
       }),
-      ...events.map((offer) => ({
-        kind: 'event', id: offer.eventTicketId, title: offer.title,
-        subtitle: offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
-        statusLabel: offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
-        selectable: !offer.requiresLocation,
-        selectionId: offer.claimId || '',
-        claimRequired: !offer.claimed,
-        conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · 服務限制：目前未設定`,
-        disabledReason: offer.requiresLocation ? '此票券需於票券頁完成定位核銷' : '',
-      })),
+      ...events.map((offer) => {
+        const requiredServiceTypes = eventRequiredByEvent.get(String(offer.eventId || '')) || [];
+        return {
+          kind: 'event', id: offer.eventTicketId, title: offer.title,
+          subtitle: offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
+          statusLabel: offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
+          selectable: !offer.requiresLocation,
+          selectionId: offer.claimId || '',
+          claimRequired: !offer.claimed,
+          requiredServiceTypes,
+          conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · ${requiredServiceTypes.length ? `服務限制：需預約「${requiredServiceTypes.join('、')}」相關服務` : '服務限制：不限預約項目'}`,
+          disabledReason: offer.requiresLocation ? '此票券需於票券頁完成定位核銷' : '',
+        };
+      }),
       ...activities.map((item: any) => ({
         kind: 'calendar', id: item.calendar_item_id, title: item.title,
         subtitle: '適用於目前會員階級', statusLabel: '活動進行中',
