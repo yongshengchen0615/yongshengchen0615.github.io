@@ -380,6 +380,16 @@ begin
   end loop;
 
   if coalesce(cardinality(v_point_ids),0) > 0 then
+    if exists (
+      select 1
+      from public.point_tickets pt
+      where pt.member_id=v_booking.member_id
+        and pt.ticket_id=any(v_point_ids)
+        and coalesce(pt.requires_location,false)
+    ) then
+      raise exception 'BOOKING_BENEFIT_LOCATION_REQUIRED';
+    end if;
+
     v_point_result := public.redeem_point_tickets(
       v_member.line_user_id,
       v_point_ids,
