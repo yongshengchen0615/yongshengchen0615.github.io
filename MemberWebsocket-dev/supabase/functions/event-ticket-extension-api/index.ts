@@ -144,6 +144,10 @@ async function redeemTickets(origin: string | null, body: Json) {
   if (!(await hasCurrentTermsConsent(supabase, member.id))) {
     throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意最新版會員條款。");
   }
+  const reserved = await supabase.from("booking_benefit_selections").select("benefit_ref")
+    .eq("member_id", member.id).eq("benefit_kind", "event").eq("status", "pending").in("benefit_ref", claimIds).limit(1);
+  if (reserved.error) throw new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
+  if ((reserved.data || []).length) throw new ApiError(409, "BOOKING_BENEFIT_RESERVED", "其中一張活動票券已預約使用，將於預約服務完成時自動核銷。");
   await consumeRateLimit(supabase, identity.lineUserId, true, claimIds.length);
   const rpc = await supabase.rpc("redeem_event_tickets_with_location", {
     p_line_user_id: identity.lineUserId,
