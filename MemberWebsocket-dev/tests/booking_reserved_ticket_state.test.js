@@ -54,7 +54,7 @@ test('member ticket surfaces render booked tickets as 已預約使用', () => {
 });
 
 test('reserved ticket assets use fresh cache versions', () => {
-  assert.match(read('points/index.html'), /pointcard-ticket-overview\.js\?v=booking-point-reservation-20261002-2/);
+  assert.match(read('points/index.html'), /pointcard-ticket-overview\.js\?v=ticket-unlimited-zero-20261002-1/);
   assert.match(read('event/index.html'), /styles\.css\?v=booking-reserved-20261002-1/);
   assert.match(read('event/index.html'), /app\.js\?v=booking-reserved-20261002-1/);
 });
