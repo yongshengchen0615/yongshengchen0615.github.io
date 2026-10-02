@@ -978,6 +978,15 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   const balanceById = new Map((balancesRes.data || []).map((row:any) => [row.point_card_id,row]));
   const availableTickets = (ticketsRes.data || []).filter((row:any) => row.status === "available");
   const usedTickets = (ticketsRes.data || []).filter((row:any) => row.status === "used");
+  const reservedStampsByCard = new Map<string,number>();
+  for (const ticket of ticketsRes.data || []) {
+    if (!reservedPointTicketIds.has(String(ticket.ticket_id || ""))) continue;
+    const pointCardId = String(ticket.point_card_id || "");
+    reservedStampsByCard.set(
+      pointCardId,
+      Number(reservedStampsByCard.get(pointCardId) || 0) + Math.max(0, Number(ticket.threshold_stamps || 0)),
+    );
+  }
   const cardIdByUuid = new Map((rawCards.data || []).map((row:any) => [row.id,row.card_id]));
   const ticketByCard = new Map<string,any[]>();
   for (const ticket of availableTickets) {
@@ -988,8 +997,19 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   }
 
   const cards = activeCards.map((card:any) => {
-    const balance = balanceById.get(idByCard.get(card.cardId));
-    return { ...card, stamps: Number(balance?.stamps || 0), updatedAt: balance?.updated_at || card.updatedAt };
+    const pointCardId = String(idByCard.get(card.cardId) || "");
+    const balance = balanceById.get(pointCardId);
+    const totalStamps = Math.max(0, Number(balance?.stamps || 0));
+    const reservedStamps = Math.max(0, Number(reservedStampsByCard.get(pointCardId) || 0));
+    const availableStamps = Math.max(0, totalStamps - reservedStamps);
+    return {
+      ...card,
+      stamps: totalStamps,
+      totalStamps,
+      reservedStamps,
+      availableStamps,
+      updatedAt: balance?.updated_at || card.updatedAt,
+    };
   });
   const cardDetails: Json = {};
   for (const card of cards) cardDetails[card.cardId] = { card, tickets: ticketByCard.get(card.cardId) || [] };
@@ -1994,7 +2014,30 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   if (action === "user.booking.benefits") {
     const member = await requireJoinedMember(supabase, identity);
     const profile = await profileFor(supabase, member);
-    return await loadBookingBenefits(supabase, member, String(profile.tierKey || "general"), taipeiDate());
+    let currentBookingId = asText(body.bookingId, 60);
+    if (currentBookingId) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentBookingId)) {
+        throw new ApiError(400, "INVALID_BOOKING_ID", "預約識別格式不正確。");
+      }
+      const booking = await supabase.from("bookings")
+        .select("id,status")
+        .eq("id", currentBookingId)
+        .eq("member_id", member.id)
+        .maybeSingle();
+      if (booking.error) throw mapDatabaseError(booking.error);
+      if (!booking.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
+      if (!["pending","confirmed"].includes(String(booking.data.status || ""))) {
+        throw new ApiError(409, "BOOKING_NOT_EDITABLE", "這筆預約目前無法修改票券。");
+      }
+      currentBookingId = String(booking.data.id);
+    }
+    return await loadBookingBenefits(
+      supabase,
+      member,
+      String(profile.tierKey || "general"),
+      taipeiDate(),
+      currentBookingId,
+    );
   }
 
   if (action === "user.booking.event-ticket.claim") {
