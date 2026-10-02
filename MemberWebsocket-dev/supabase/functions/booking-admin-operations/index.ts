@@ -1,5 +1,6 @@
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
+import { loadBookingBenefits } from "../_shared/booking-benefits.ts";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -57,7 +58,11 @@ function mapDatabaseError(error: unknown): ApiError {
   const rules: Array<[string, number, string, string]> = [
     ["BOOKING_COMPLETION_REQUIRES_SETTLEMENT",409,"BOOKING_COMPLETION_CANONICAL_REQUIRED","完成預約必須使用完整結算流程。"],
     ["BOOKING_BENEFIT_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一項預約優惠目前已不可使用，請先和會員確認。"],
-    ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法由完成預約自動核銷。"],
+    ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法綁定至預約自動核銷。"],
+    ["INVALID_BOOKING_BENEFITS",400,"INVALID_BOOKING_BENEFITS","預約票券資料格式不正確。"],
+    ["BOOKING_BENEFIT_SERVICE_REQUIRED",409,"BOOKING_BENEFIT_SERVICE_REQUIRED","其中一張票券不符合目前預約項目限制，請調整預約項目或取消該票券。"],
+    ["booking_benefit_selections_one_pending_ticket_idx",409,"BOOKING_BENEFIT_ALREADY_RESERVED","其中一張票券已被另一筆預約選用，請重新整理後再試。"],
+    ["POINT_TICKET_INSUFFICIENT_POINTS",409,"POINT_TICKET_INSUFFICIENT_POINTS","會員目前可用點數不足，請取消部分集點卡票券後再儲存。"],
     ["EVENT_TICKET_DAILY_LIMIT_REACHED",409,"EVENT_TICKET_DAILY_LIMIT_REACHED","會員今日活動票券使用張數已達上限。"],
     ["TICKET_BATCH_LIMIT_EXCEEDED",409,"TICKET_BATCH_LIMIT_EXCEEDED","本次選用的集點卡票券超過單次核銷上限。"],
     ["INSUFFICIENT_POINTS",409,"INSUFFICIENT_POINTS","會員目前點數不足，無法核銷所選集點卡票券。"],
@@ -169,6 +174,34 @@ function normalizeItems(value: unknown): Array<{ serviceId: string; quantity: nu
     return { serviceId, quantity };
   });
 }
+function normalizeBenefits(value: unknown): Array<{ kind: "points" | "event"; id: string }> {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new ApiError(400, "INVALID_BOOKING_BENEFITS", "預約票券資料格式不正確。");
+  }
+  const seen = new Set<string>();
+  return value.map((raw) => {
+    const item = raw && typeof raw === "object" ? raw as Json : {};
+    const kind = asText(item.kind, 20).toLowerCase();
+    const id = asText(item.id, 160);
+    if ((kind !== "points" && kind !== "event") || !id) {
+      throw new ApiError(400, "INVALID_BOOKING_BENEFITS", "預約票券資料格式不正確。");
+    }
+    const key = `${kind}:${id}`;
+    if (seen.has(key)) throw new ApiError(400, "INVALID_BOOKING_BENEFITS", "同一張票券不可重複選擇。");
+    seen.add(key);
+    return { kind: kind as "points" | "event", id };
+  });
+}
+function selectionLimit(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 50 ? parsed : 1;
+}
+function taipeiDateText(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
 function itemClient(row: any): Json {
   const quantity = Number(row.quantity || 1);
   const unitDurationMinutes = Number(row.unit_duration_minutes || 0);
@@ -276,6 +309,150 @@ async function updateParticipantTechnicians(supabase: SupabaseClient, identity: 
     p_expected_updated_at: expectedUpdatedAt,
     p_actor: identity.lineUserId,
     p_participants: participants,
+  });
+  if (result.error) throw mapDatabaseError(result.error);
+  return { booking: await hydrateBooking(supabase, bookingId) };
+}
+
+async function editableBenefitContext(supabase: SupabaseClient, bookingId: string): Promise<{ booking: Json; member: any; catalog: any }> {
+  const guard = await supabase.from("bookings")
+    .select("id,member_id,status,cancellation_requested_at,cancellation_reviewed_at")
+    .eq("id", bookingId).maybeSingle();
+  if (guard.error) throw mapDatabaseError(guard.error);
+  if (!guard.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
+  if (!["pending","confirmed"].includes(String(guard.data.status || ""))) {
+    throw new ApiError(409, "BOOKING_NOT_EDITABLE", "這筆預約目前無法修改預約票券。");
+  }
+  if (guard.data.cancellation_requested_at && !guard.data.cancellation_reviewed_at) {
+    throw new ApiError(409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核。");
+  }
+
+  const memberResult = await supabase.from("members")
+    .select("id,birthday")
+    .eq("id", guard.data.member_id).maybeSingle();
+  if (memberResult.error) throw mapDatabaseError(memberResult.error);
+  if (!memberResult.data) throw new ApiError(404, "MEMBER_NOT_FOUND", "找不到這筆預約的會員資料。");
+
+  const tierResult = await supabase.rpc("current_tier_key", { p_member_id: memberResult.data.id });
+  if (tierResult.error) throw mapDatabaseError(tierResult.error);
+  const catalog = await loadBookingBenefits(
+    supabase,
+    memberResult.data,
+    String(tierResult.data || "general"),
+    taipeiDateText(),
+    bookingId,
+  );
+  const items = (Array.isArray(catalog?.items) ? catalog.items : [])
+    .filter((item: any) => ["points","event"].includes(String(item?.kind || "")))
+    .map((item: any) => item?.kind === "event" && item?.claimRequired === true
+      ? {
+          ...item,
+          selectable: false,
+          disabledReason: "會員尚未領取此活動票券；管理端不可代替會員領取，請由會員先完成領取。",
+        }
+      : item);
+
+  return {
+    booking: await hydrateBooking(supabase, bookingId),
+    member: memberResult.data,
+    catalog: {
+      asOf: catalog?.asOf || new Date().toISOString(),
+      eventTicketMaxPerDay: selectionLimit(catalog?.eventTicketMaxPerDay),
+      pointTicketMaxPerRedemption: selectionLimit(catalog?.pointTicketMaxPerRedemption),
+      items,
+    },
+  };
+}
+
+async function listBenefits(supabase: SupabaseClient, body: Json): Promise<Json> {
+  const bookingId = requireUuid(body.bookingId, "預約");
+  const context = await editableBenefitContext(supabase, bookingId);
+  return { booking: context.booking, catalog: context.catalog };
+}
+
+async function updateBenefits(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
+  const bookingId = requireUuid(body.bookingId, "預約");
+  const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請重新整理。");
+  }
+  const requested = normalizeBenefits(body.benefits);
+  const context = await editableBenefitContext(supabase, bookingId);
+  const options = Array.isArray(context.catalog?.items) ? context.catalog.items : [];
+  const optionByKey = new Map<string, any>();
+  for (const option of options) {
+    const kind = String(option?.kind || "");
+    const selectionId = String(option?.selectionId || "");
+    if ((kind === "points" || kind === "event") && selectionId) {
+      optionByKey.set(`${kind}:${selectionId}`, option);
+    }
+  }
+
+  const selectedOptions = requested.map((selection) => {
+    const option = optionByKey.get(`${selection.kind}:${selection.id}`);
+    if (!option || option.selectable !== true) {
+      throw new ApiError(
+        409,
+        "BOOKING_BENEFIT_NOT_AVAILABLE",
+        selection.kind === "event"
+          ? "其中一張活動票券尚未領取或目前不可使用，請重新整理後再選擇。"
+          : "其中一張集點卡票券目前不可使用，請重新整理後再選擇。",
+      );
+    }
+    return option;
+  });
+
+  const eventCount = requested.filter((item) => item.kind === "event").length;
+  const pointCount = requested.filter((item) => item.kind === "points").length;
+  const eventLimit = selectionLimit(context.catalog?.eventTicketMaxPerDay);
+  const pointLimit = selectionLimit(context.catalog?.pointTicketMaxPerRedemption);
+  if (eventLimit > 0 && eventCount > eventLimit) {
+    throw new ApiError(409, "EVENT_TICKET_SELECTION_LIMIT_EXCEEDED", `活動票券每筆預約最多可選 ${eventLimit} 張。`);
+  }
+  if (pointLimit > 0 && pointCount > pointLimit) {
+    throw new ApiError(409, "POINT_TICKET_SELECTION_LIMIT_EXCEEDED", `集點卡票券每筆預約最多可選 ${pointLimit} 張。`);
+  }
+
+  const serviceTypes = new Set(
+    (Array.isArray((context.booking as any)?.items) ? (context.booking as any).items : [])
+      .map((item: any) => String(item?.serviceType || "").trim().toLocaleLowerCase("zh-Hant-TW"))
+      .filter(Boolean),
+  );
+  for (const option of selectedOptions) {
+    const required = (Array.isArray(option?.requiredServiceTypes) ? option.requiredServiceTypes : [])
+      .map((value: unknown) => String(value || "").trim())
+      .filter(Boolean);
+    if (required.length && !required.some((value: string) => serviceTypes.has(value.toLocaleLowerCase("zh-Hant-TW")))) {
+      throw new ApiError(
+        409,
+        "BOOKING_BENEFIT_SERVICE_REQUIRED",
+        `票券「${String(option?.title || "預約票券")}」需預約「${required.join("、")}」相關服務才能使用。`,
+      );
+    }
+  }
+
+  const pointBudgetByCard = new Map<string, { required: number; available: number }>();
+  for (const option of selectedOptions.filter((item: any) => item?.kind === "points")) {
+    const cardKey = String(option?.cardId || option?.cardTitle || "");
+    const current = pointBudgetByCard.get(cardKey) || {
+      required: 0,
+      available: Math.max(0, Number(option?.pointBalance || 0)),
+    };
+    current.required += Math.max(0, Number(option?.pointCost || 0));
+    current.available = Math.min(current.available, Math.max(0, Number(option?.pointBalance || 0)));
+    pointBudgetByCard.set(cardKey, current);
+  }
+  for (const budget of pointBudgetByCard.values()) {
+    if (budget.required > budget.available) {
+      throw new ApiError(409, "POINT_TICKET_INSUFFICIENT_POINTS", "會員目前可用點數不足，請取消部分集點卡票券後再儲存。");
+    }
+  }
+
+  const result = await supabase.rpc("admin_replace_booking_benefit_selections_request", {
+    p_booking_id: bookingId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_actor: identity.lineUserId,
+    p_selections: requested,
   });
   if (result.error) throw mapDatabaseError(result.error);
   return { booking: await hydrateBooking(supabase, bookingId) };
@@ -395,6 +572,8 @@ async function route(supabase: SupabaseClient, identity: Identity, action: strin
   if (action === "admin.booking.participants.items.update") return await updateParticipantItems(supabase, identity, body);
   if (action === "admin.booking.participants.technicians.update") return await updateParticipantTechnicians(supabase, identity, body);
   if (action === "admin.booking.items.update") return await updateItems(supabase, identity, body);
+  if (action === "admin.booking.benefits.list") return await listBenefits(supabase, body);
+  if (action === "admin.booking.benefits.update") return await updateBenefits(supabase, identity, body);
   if (action === "admin.booking.status.complete") return await completeBooking(supabase, identity, body);
   throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的管理端預約操作。");
 }
