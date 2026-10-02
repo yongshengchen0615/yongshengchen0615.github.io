@@ -23,7 +23,7 @@ assert.match(adminHtml, /<link rel="stylesheet" href="\.\/fixed-ticket-admin\.cs
 assert.ok(!adminHtml.includes('event-ticket-activity-link.js'));
 
 assert.match(eventHtml, /<script src="\.\/app\.js\?v=[^"<>]+" defer><\/script>/);
-assert.ok(eventHtml.includes('batch-redemption.js?v=event-checkbox-claim-20261002-1'));
+assert.ok(eventHtml.includes('batch-redemption.js?v=ticket-unlimited-zero-20261002-1'));
 assert.ok(eventHtml.includes('batch-redemption.css?v=event-checkbox-claim-20261002-1'));
 assert.ok(!eventHtml.includes('activity-link.js'));
 assert.ok(eventApp.includes("type.textContent = fixed ? '固定票券'"));
