@@ -53,6 +53,7 @@ test('booking recommendations cover 0/1/N and return only display fields', async
     assert.equal(result.items.length, count);
     const serialized = JSON.stringify(result);
     assert.doesNotMatch(serialized, /member_id|line_user_id|allowed_tier|birthday|fixed_ticket_template|claim_id/);
+    assert.ok(result.items.every(item => typeof item.conditionLabel === 'string' && item.conditionLabel.length > 0));
   }
 });
 

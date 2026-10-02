@@ -15,9 +15,9 @@ function fixture(load) {
   return { w, el, close: () => w.close(), start: () => w.BookingBenefits.start({}, 'fixture') };
 }
 const items = [
-  { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', statusLabel: '可使用' },
-  { kind: 'event', id: 'EVENT', selectionId: '', selectable: false, disabledReason: '請先領取票券後再於預約中選用', title: '<img src=x onerror=alert(1)>', statusLabel: '可領取' },
-  { kind: 'calendar', id: 'CAL', selectionId: 'CAL', selectable: true, title: '會員活動', statusLabel: '活動進行中' },
+  { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', statusLabel: '可使用', conditionLabel: '服務限制：目前未設定' },
+  { kind: 'event', id: 'EVENT', selectionId: '', selectable: false, disabledReason: '請先領取票券後再於預約中選用', title: '<img src=x onerror=alert(1)>', statusLabel: '可領取', conditionLabel: '服務限制：目前未設定' },
+  { kind: 'calendar', id: 'CAL', selectionId: 'CAL', selectable: true, title: '會員活動', statusLabel: '活動進行中', conditionLabel: '會員條件：目前會員階級適用 · 服務限制：目前未設定' },
 ];
 
 test('0/1/N benefit cards render safely inside booking form and expose only eligible selectors', async () => {
@@ -26,7 +26,7 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
     const h = fixture(async () => { calls++; return { items: items.slice(0, count) }; });
     try {
       h.start(); await tick(10);
-      assert.equal(h.el('bookingBenefitsList').children.length, count);
+      assert.equal(h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length, count);
       assert.equal(h.el('bookingBenefits').dataset.state, count ? 'ready' : 'empty');
       assert.equal(h.el('bookingBenefitsList').getAttribute('aria-busy'), 'false');
       assert.equal(h.el('bookingBenefits').closest('form')?.id, 'bookingForm');
@@ -36,10 +36,19 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
       const links = h.el('bookingBenefitsList').querySelectorAll('a');
       assert.ok([...links].every(link => link.textContent === '查看詳情' && new URL(link.href).origin === 'https://example.test'));
       if (count === 3) {
-        assert.match(links[1].href, /eventTicketId=EVENT/);
+        const groupKinds = [...h.el('bookingBenefitsList').querySelectorAll('.booking-benefit-group')]
+          .map(group => group.dataset.benefitKind);
+        assert.deepEqual(groupKinds, ['calendar', 'points', 'event']);
+        const eventLink = [...links].find(link => /eventTicketId=EVENT/.test(link.href));
+        assert.ok(eventLink, 'event benefit keeps its canonical detail link');
+        assert.match(h.el('bookingBenefitsList').textContent, /服務限制：目前未設定/);
         const checkboxes = h.el('bookingBenefitsList').querySelectorAll('input[type="checkbox"]');
         assert.equal(checkboxes.length, 2, 'only precise selectable benefit references get checkboxes');
-        checkboxes[0].click();
+        const pointCheckbox = h.el('bookingBenefitsList').querySelector(
+          'input[data-booking-benefit-kind="points"][data-booking-benefit-id="PT-001"]'
+        );
+        assert.ok(pointCheckbox);
+        pointCheckbox.click();
         assert.equal(JSON.stringify(h.w.BookingBenefits.selectionPayload()), JSON.stringify([{ kind: 'points', id: 'PT-001' }]));
       }
       assert.equal(calls, 1, 'rendering and selection do not claim/redeem or start extra requests');
@@ -77,16 +86,16 @@ test('realtime invalidation drops used tickets, coalesces storms and ignores sta
     h.start();
     for (let i = 0; i < 20; i++) h.w.BookingBenefits.invalidate();
     resolveFirst({ items }); await tick(10);
-    assert.equal(h.el('bookingBenefitsList').children.length, 0, 'stale inventory must never render');
+    assert.equal(h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length, 0, 'stale inventory must never render');
     await tick(500);
     assert.equal(calls, 2);
     assert.equal(h.el('bookingBenefits').dataset.state, 'empty');
     h.w.BookingSystem.bookingBenefits = async () => ({ items });
     h.w.BookingBenefits.invalidate(); await tick(500);
-    assert.equal(h.el('bookingBenefitsList').children.length, 3);
+    assert.equal(h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length, 3);
     h.w.BookingSystem.bookingBenefits = async () => ({ items: [] });
     h.w.BookingBenefits.invalidate();
-    assert.equal(h.el('bookingBenefitsList').children.length, 0, 'old tickets disappear as soon as invalidated');
+    assert.equal(h.el('bookingBenefitsList').querySelectorAll('.booking-benefit').length, 0, 'old tickets disappear as soon as invalidated');
     await tick(500);
     assert.equal(h.el('bookingBenefits').dataset.state, 'empty');
   } finally { h.close(); }

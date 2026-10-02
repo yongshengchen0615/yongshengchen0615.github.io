@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-01.4';
+  const VERSION = '2026-10-01.5';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -4129,7 +4129,7 @@
       .filter((booking) => !bookingIds || bookingIds.has(String(booking?.bookingId || '')))
       .filter((booking) => String(booking?.memberCode || '') === memberCode)
       .filter((booking) => String(booking?.memberId || '') === String(account.memberId))
-      .filter((booking) => /^(?:QA HUMAN E2E(?: GROUP)? |QA STATE PACK |QA automated (?:group )?(?:create|update)$)/i.test(String(booking?.memberNote || '')))
+      .filter((booking) => /^(?:QA HUMAN E2E(?: GROUP| BENEFIT)? |QA STATE PACK |QA automated (?:group )?(?:create|update)$)/i.test(String(booking?.memberNote || '')))
       .filter((booking) => bookingCreatedMs(booking) >= runStartedMs - 2 * 60 * 1000)
       .slice()
       .sort((a, b) => bookingCreatedMs(b) - bookingCreatedMs(a));
@@ -4621,8 +4621,22 @@
     if (!action) throw new Error('管理端預約缺少「' + label + '」操作。');
     if (!await waitFor(() => !action.disabled, 5000)) throw new Error('管理端預約操作尚未就緒。');
     if (state.cancelled) throw new Error('E2E 已停止，未送出狀態變更。');
+
     let settlementPreview = null;
+    let benefitBefore = { pendingCount: 0, titles: [], cardPendingVisible: true };
     if (expectedStatus === 'completed') {
+      const beforeAction = await waitAdminBookingSnapshot(bookingId);
+      const pendingBenefits = (Array.isArray(beforeAction?.benefits) ? beforeAction.benefits : [])
+        .filter((benefit) => String(benefit?.status || '') === 'pending');
+      benefitBefore = {
+        pendingCount: pendingBenefits.length,
+        titles: pendingBenefits.map((benefit) => String(benefit?.title || '可用權益')),
+        cardPendingVisible: pendingBenefits.length === 0 || /待核銷優惠/.test(String(card.textContent || ''))
+      };
+      if (!benefitBefore.cardPendingVisible) {
+        throw new Error('預約有待核銷優惠，但管理端預約卡片沒有顯示待核銷資訊。');
+      }
+
       await adminHumanClick(action, label);
       const previewModal = await waitFor(() => {
         const modal = document.getElementById('bookingAdminCrudModal');
@@ -4641,6 +4655,7 @@
         serverAuthoritativeNotice: /Server-side/.test(bodyText),
         serviceMinutesVisible: /將計入服務時間/.test(bodyText),
         rewardPreviewVisible: /預估自動集點/.test(bodyText),
+        benefitPreviewVisible: benefitBefore.pendingCount === 0 || /待核銷優惠|Benefit redemption/.test(bodyText),
         stayedConfirmedBeforeSubmit: String(beforeSubmit?.status || '') === 'confirmed',
         confirmButtonReady: Boolean(confirmButton && !confirmButton.disabled)
       };
@@ -4652,7 +4667,23 @@
     } else {
       await adminHumanClick(action, label);
     }
+
     const updated = await waitAdminBookingSnapshot(bookingId, (row) => String(row.status || '') === expectedStatus, 18000);
+    const afterBenefits = Array.isArray(updated?.benefits) ? updated.benefits : [];
+    const pendingAfter = afterBenefits.filter((benefit) => String(benefit?.status || '') === 'pending');
+    const terminalAfter = afterBenefits.filter((benefit) => ['redeemed', 'applied', 'cancelled'].includes(String(benefit?.status || '')));
+    const benefitRedemption = expectedStatus === 'completed'
+      ? {
+          pendingBefore: benefitBefore.pendingCount,
+          pendingAfter: pendingAfter.length,
+          terminalAfter: terminalAfter.length,
+          titles: benefitBefore.titles,
+          ok: benefitBefore.pendingCount === 0 || (
+            pendingAfter.length === 0 && terminalAfter.length >= benefitBefore.pendingCount
+          )
+        }
+      : { pendingBefore: 0, pendingAfter: 0, terminalAfter: 0, titles: [], ok: true };
+
     return {
       bookingId: String(bookingId || ''),
       expectedStatus,
@@ -4660,7 +4691,8 @@
       adminNote: String(updated?.adminNote || ''),
       updatedAt: updated?.updatedAt || null,
       settlementPreview,
-      ok: Boolean(updated && String(updated.status || '') === expectedStatus)
+      benefitRedemption,
+      ok: Boolean(updated && String(updated.status || '') === expectedStatus && benefitRedemption.ok)
     };
   }
 

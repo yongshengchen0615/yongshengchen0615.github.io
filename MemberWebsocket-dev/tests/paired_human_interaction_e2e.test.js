@@ -33,6 +33,7 @@ test('user full E2E requires observable UI events for Human E2E cases', () => {
   assert.match(runner, /#ticketModalResult \.lottery-result strong/);
   assert.match(runner, /CALENDAR_HUMAN_DETAIL/);
   assert.match(runner, /BOOKING_HUMAN_LIFECYCLE/);
+  assert.match(runner, /BOOKING_BENEFIT_REDEMPTION_LIFECYCLE/);
   assert.match(runner, /BOOKING_HUMAN_GROUP/);
   assert.doesNotMatch(runner, /data-qa-run="quick"|data-qa-run="full"/);
   assert.doesNotMatch(runner, /runQuick: \(\) => runSuite\('quick'\)/);
@@ -50,6 +51,8 @@ test('admin paired full E2E requires human UI evidence and covers every client s
   assert.match(runner, /PAIRED_HUMAN_INTERACTION_COVERAGE/);
   assert.match(runner, /if \(!state\.cancelled\) \{/);
   assert.doesNotMatch(runner, /bookingOnly|includeAdminSuite/);
+  assert.match(runner, /benefitRedemption/);
+  assert.match(runner, /pendingAfter/);
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     assert.match(runner, new RegExp("\\['" + surface + "',"));
   }

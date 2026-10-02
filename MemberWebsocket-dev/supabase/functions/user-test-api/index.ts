@@ -1535,6 +1535,127 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
     };
   }
 
+  if (surface === "booking") {
+    const template = await s.from("ticket_templates").insert({
+      ticket_template_id: "QA-UI-BOOK-TPL-" + tag,
+      title: "QA 預約自動核銷票券",
+      ticket_type: "coupon",
+      description: "Booking benefit human-like E2E fixture",
+      usage_method: "QA booking",
+      usage_instructions: "Only for test account booking benefit E2E",
+      prizes: [],
+      status: "active",
+      created_by: actor,
+      updated_by: actor,
+    }).select("id").single();
+    if (template.error || !template.data) throw new ApiError(500, "QA_FIXTURE_BOOKING_TEMPLATE_FAILED", "無法建立預約優惠測試樣板。");
+
+    const card = await s.from("point_cards").insert({
+      card_id: "QA-UI-BOOK-PC-" + tag,
+      title: "QA 預約核銷集點卡",
+      description: "Booking benefit human-like E2E fixture",
+      status: "active",
+      accent: "#5f7769",
+      style_key: "forest",
+      expiry_mode: "unlimited",
+      sort_order: 999998,
+      usage_method: "QA booking",
+      usage_instructions: "Only for test account booking benefit E2E",
+      benefit_description: "QA booking benefit fixture",
+      created_by: actor,
+      updated_by: actor,
+    }).select("id,card_id").single();
+    if (card.error || !card.data) {
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_BOOKING_CARD_FAILED", "無法建立預約優惠測試集點卡。");
+    }
+
+    const reward = await s.from("point_card_rewards").insert({
+      reward_id: "QA-UI-BOOK-RWD-" + tag,
+      point_card_id: card.data.id,
+      threshold_stamps: 1,
+      ticket_template_id: template.data.id,
+    }).select("id").single();
+    if (reward.error || !reward.data) {
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_BOOKING_REWARD_FAILED", "無法建立預約優惠測試獎勵。");
+    }
+
+    const balance = await s.from("point_balances").insert({
+      member_id: identity.memberId,
+      point_card_id: card.data.id,
+      stamps: 2,
+    });
+    if (balance.error) {
+      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_BOOKING_BALANCE_FAILED", "無法建立預約優惠測試點數。");
+    }
+    const balanceEntry = await s.from("point_entries").insert({
+      entry_id: "QA-UI-BOOK-PTS-" + tag,
+      member_id: identity.memberId,
+      point_card_id: card.data.id,
+      amount: 2,
+      note: "QA 預約優惠初始點數",
+      created_by: actor,
+      request_id: "QA-UI-BOOK-PTS-" + tag,
+      entry_type: "grant",
+      reference_type: "qa-ui-booking-benefit",
+      reference_id: tag,
+    });
+    if (balanceEntry.error) {
+      await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(500, "QA_FIXTURE_BOOKING_POINT_ENTRY_FAILED", "無法建立預約優惠點數流水。");
+    }
+
+    const issuance = await s.rpc("issue_eligible_point_tickets", {
+      p_member_id: identity.memberId,
+      p_point_card_id: card.data.id,
+    });
+    let ticket: any = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const lookup = await s.from("point_tickets")
+        .select("ticket_id,status")
+        .eq("member_id", identity.memberId)
+        .eq("point_card_id", card.data.id)
+        .eq("reward_id", reward.data.id)
+        .eq("status", "available")
+        .maybeSingle();
+      if (!lookup.error && lookup.data) {
+        ticket = lookup.data;
+        break;
+      }
+      if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    if (!ticket) {
+      await s.from("point_tickets").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+      await s.from("point_entries").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+      await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
+      await s.from("point_cards").delete().eq("id", card.data.id);
+      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      throw new ApiError(
+        500,
+        "QA_FIXTURE_BOOKING_TICKET_FAILED",
+        "無法建立預約可勾選的測試票券。",
+        { issueCode: asText(issuance.error?.code, 40) || null },
+      );
+    }
+
+    return {
+      fixtureTag: tag,
+      cardId: card.data.card_id,
+      ticketId: ticket.ticket_id,
+      ticketTitle: "QA 預約自動核銷票券",
+      expectedStamps: 2,
+    };
+  }
+
   if (surface === "calendar") {
     const item = await s.from("calendar_items").insert({
       calendar_item_id: "QA-UI-CAL-" + tag,
@@ -1562,15 +1683,37 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
 async function cleanupHumanFixture(s: any, identity: any, surface: Surface, body: Json): Promise<Json> {
   if (surface === "booking") {
     const bookingId = asText(body.bookingId, 80);
-    if (!bookingId) return { cleaned: true };
-    const booking = await s.from("bookings").select("id,member_id,member_note").eq("id", bookingId).maybeSingle();
-    if (booking.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認預約測試資料。");
-    if (!booking.data) return { cleaned: true };
-    if (String(booking.data.member_id) !== identity.memberId || !String(booking.data.member_note || "").startsWith("QA HUMAN E2E")) {
-      throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "只允許清理由目前測試會員建立的 QA 預約。");
+    if (bookingId) {
+      const booking = await s.from("bookings").select("id,member_id,member_note").eq("id", bookingId).maybeSingle();
+      if (booking.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認預約測試資料。");
+      if (booking.data) {
+        if (String(booking.data.member_id) !== identity.memberId || !String(booking.data.member_note || "").startsWith("QA HUMAN E2E")) {
+          throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "只允許清理由目前測試會員建立的 QA 預約。");
+        }
+        const cleaned = await cleanupBooking(s, bookingId);
+        if (!cleaned) throw new ApiError(500, "QA_FIXTURE_CLEANUP_FAILED", "預約測試資料清理失敗。");
+      }
     }
-    const cleaned = await cleanupBooking(s, bookingId);
-    if (!cleaned) throw new ApiError(500, "QA_FIXTURE_CLEANUP_FAILED", "預約測試資料清理失敗。");
+
+    const rawTag = asText(body.fixtureTag, 32);
+    if (rawTag) {
+      const tag = requireFixtureTag(rawTag);
+      const actorPrefix = "qa-ui:" + identity.memberId + ":" + tag;
+      const card = await s.from("point_cards").select("id,created_by").eq("card_id", "QA-UI-BOOK-PC-" + tag).maybeSingle();
+      if (card.error) throw new ApiError(500, "QA_FIXTURE_LOOKUP_FAILED", "無法確認預約優惠測試資料。");
+      if (card.data) {
+        if (String(card.data.created_by) !== actorPrefix) throw new ApiError(403, "QA_FIXTURE_OWNERSHIP_FAILED", "預約優惠測試資料不屬於目前測試會員。");
+        await s.from("point_tickets").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+        await s.from("point_entries").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+        await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
+        const rewards = await s.from("point_card_rewards").select("ticket_template_id").eq("point_card_id", card.data.id);
+        await s.from("point_card_rewards").delete().eq("point_card_id", card.data.id);
+        await s.from("point_cards").delete().eq("id", card.data.id);
+        for (const row of rewards.data || []) {
+          if (row.ticket_template_id) await s.from("ticket_templates").delete().eq("id", row.ticket_template_id).eq("created_by", actorPrefix);
+        }
+      }
+    }
     return { cleaned: true };
   }
 

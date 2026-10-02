@@ -10,6 +10,7 @@
   let renderedItems = [];
   const selected = new Map();
   const kinds = { points: '集點卡票券', event: '活動票券', calendar: '會員活動' };
+  const kindOrder = ['calendar', 'points', 'event'];
   const el = (id) => document.getElementById(id);
   const keyFor = (kind, id) => `${String(kind || '')}:${String(id || '')}`;
 
@@ -68,78 +69,111 @@
     const list = el('bookingBenefitsList');
     if (!list) return;
     list.replaceChildren();
+    let cardCount = 0;
 
-    for (const item of renderedItems) {
-      if (!kinds[item?.kind]) continue;
-      const selectionId = String(item.selectionId || '');
-      const key = keyFor(item.kind, selectionId);
-      const isSelected = Boolean(selectionId && selected.has(key));
-      const selectable = item.selectable === true && Boolean(selectionId);
+    for (const kind of kindOrder) {
+      const groupItems = renderedItems.filter((item) => item?.kind === kind);
+      if (!groupItems.length) continue;
 
-      const card = document.createElement('article');
-      card.className = `booking-benefit${isSelected ? ' is-selected' : ''}`;
+      const group = document.createElement('section');
+      group.className = 'booking-benefit-group';
+      group.dataset.benefitKind = kind;
 
-      const meta = document.createElement('p');
-      meta.className = 'booking-benefit-meta';
-      meta.textContent = `${kinds[item.kind]} · ${String(item.statusLabel || '')}`;
+      const heading = document.createElement('div');
+      heading.className = 'booking-benefit-group-heading';
+      const groupTitle = document.createElement('h3');
+      groupTitle.className = 'booking-benefit-group-title';
+      groupTitle.textContent = kinds[kind];
+      const groupCount = document.createElement('span');
+      groupCount.className = 'booking-benefit-group-count';
+      groupCount.textContent = String(groupItems.length) + ' 項';
+      heading.append(groupTitle, groupCount);
 
-      const title = document.createElement('h3');
-      title.textContent = String(item.title || '可用權益');
+      const grid = document.createElement('div');
+      grid.className = 'booking-benefit-group-grid';
 
-      const copy = document.createElement('p');
-      copy.textContent = String(item.subtitle || '');
+      for (const item of groupItems) {
+        const selectionId = String(item.selectionId || '');
+        const key = keyFor(item.kind, selectionId);
+        const isSelected = Boolean(selectionId && selected.has(key));
+        const selectable = item.selectable === true && Boolean(selectionId);
 
-      const expires = document.createElement('small');
-      expires.textContent = item.endsOn ? `有效至 ${String(item.endsOn).replaceAll('-', '/')}` : '依使用說明適用';
+        const card = document.createElement('article');
+        card.className = `booking-benefit${isSelected ? ' is-selected' : ''}`;
+        card.dataset.benefitKind = item.kind;
 
-      if (selectionId) {
-        const choose = document.createElement('label');
-        choose.className = 'booking-benefit-select';
-        const input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = isSelected;
-        input.disabled = !selectable && !isSelected;
-        input.setAttribute('aria-label', `本次預約使用${String(item.title || '此權益')}`);
-        const label = document.createElement('span');
-        label.textContent = selectable ? '本次預約使用' : (isSelected ? '已選擇（可取消）' : '目前不可勾選');
-        choose.append(input, label);
-        input.addEventListener('change', () => {
-          if (input.checked && !selectable) {
-            input.checked = false;
-            return;
-          }
-          if (input.checked) {
-            selected.set(key, { kind: item.kind, id: selectionId, title: String(item.title || ''), status: 'pending' });
-          } else {
-            selected.delete(key);
-          }
-          render(renderedItems);
-          emitSelectionChange();
-        });
-        card.append(meta, title, copy, expires, choose);
-      } else {
-        card.append(meta, title, copy, expires);
+        const meta = document.createElement('p');
+        meta.className = 'booking-benefit-meta';
+        meta.textContent = String(item.statusLabel || '');
+
+        const title = document.createElement('h4');
+        title.textContent = String(item.title || '可用權益');
+
+        const copy = document.createElement('p');
+        copy.textContent = String(item.subtitle || '');
+
+        const expires = document.createElement('small');
+        expires.textContent = item.endsOn ? `有效至 ${String(item.endsOn).replaceAll('-', '/')}` : '依使用說明適用';
+
+        const condition = document.createElement('small');
+        condition.className = 'booking-benefit-condition';
+        condition.textContent = String(item.conditionLabel || '服務限制：目前未設定');
+
+        if (selectionId) {
+          const choose = document.createElement('label');
+          choose.className = 'booking-benefit-select';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = isSelected;
+          input.disabled = !selectable && !isSelected;
+          input.dataset.bookingBenefitKind = item.kind;
+          input.dataset.bookingBenefitId = selectionId;
+          input.setAttribute('aria-label', `本次預約使用${String(item.title || '此權益')}`);
+          const label = document.createElement('span');
+          label.textContent = selectable ? '本次預約使用' : (isSelected ? '已選擇（可取消）' : '目前不可勾選');
+          choose.append(input, label);
+          input.addEventListener('change', () => {
+            if (input.checked && !selectable) {
+              input.checked = false;
+              return;
+            }
+            if (input.checked) {
+              selected.set(key, { kind: item.kind, id: selectionId, title: String(item.title || ''), status: 'pending' });
+            } else {
+              selected.delete(key);
+            }
+            render(renderedItems);
+            emitSelectionChange();
+          });
+          card.append(meta, title, copy, expires, condition, choose);
+        } else {
+          card.append(meta, title, copy, expires, condition);
+        }
+
+        if (!selectable && item.disabledReason) {
+          const reason = document.createElement('small');
+          reason.className = 'booking-benefit-disabled-reason';
+          reason.textContent = String(item.disabledReason);
+          card.appendChild(reason);
+        }
+
+        const href = destination(item);
+        if (href) {
+          const link = document.createElement('a');
+          link.className = 'booking-benefit-link';
+          link.href = href;
+          link.textContent = '查看詳情';
+          link.setAttribute('aria-label', `查看${String(item.title || '可用權益')}詳情`);
+          card.appendChild(link);
+        }
+        grid.appendChild(card);
+        cardCount += 1;
       }
 
-      if (!selectable && item.disabledReason) {
-        const reason = document.createElement('small');
-        reason.className = 'booking-benefit-disabled-reason';
-        reason.textContent = String(item.disabledReason);
-        card.appendChild(reason);
-      }
-
-      const href = destination(item);
-      if (href) {
-        const link = document.createElement('a');
-        link.className = 'booking-benefit-link';
-        link.href = href;
-        link.textContent = '查看詳情';
-        link.setAttribute('aria-label', `查看${String(item.title || '可用權益')}詳情`);
-        card.appendChild(link);
-      }
-      list.append(card);
+      group.append(heading, grid);
+      list.appendChild(group);
     }
-    updateReadyMessage(list.children.length);
+    updateReadyMessage(cardCount);
   }
 
   function setSelection(items) {

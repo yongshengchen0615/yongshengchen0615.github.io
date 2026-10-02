@@ -52,3 +52,33 @@ test('location-restricted tickets cannot use booking auto-redemption', () => {
   assert.match(source, /需於票券頁完成定位核銷/);
   assert.match(migration, /BOOKING_BENEFIT_LOCATION_REQUIRED/);
 });
+
+
+test('benefit UI uses three grouped entitlement sections and exact selection ids', () => {
+  const ui = read('booking/booking-benefits.js');
+  const source = read('supabase/functions/_shared/booking-benefits.ts');
+  assert.match(ui, /kindOrder = \['calendar', 'points', 'event'\]/);
+  assert.match(ui, /booking-benefit-group/);
+  assert.match(ui, /dataset\.bookingBenefitKind/);
+  assert.match(ui, /dataset\.bookingBenefitId/);
+  assert.match(source, /conditionLabel: '服務限制：目前未設定'/);
+  assert.match(source, /會員條件：目前會員階級適用/);
+});
+
+test('full E2E creates an owned booking benefit fixture and hands it to paired admin redemption', () => {
+  const user = read('user-test-control.js');
+  const qaApi = read('supabase/functions/user-test-api/index.ts');
+  const admin = read('admin/e2e-control.js');
+  assert.match(user, /BOOKING_BENEFIT_REDEMPTION_LIFECYCLE/);
+  assert.match(user, /bookingBenefitRedemptionLifecycleCase/);
+  assert.match(user, /QA HUMAN E2E BENEFIT/);
+  assert.match(user, /persistedPending/);
+  assert.match(qaApi, /QA-UI-BOOK-PC-/);
+  assert.match(qaApi, /QA 預約自動核銷票券/);
+  assert.match(qaApi, /issue_eligible_point_tickets/);
+  assert.match(admin, /QA HUMAN E2E\(\?: GROUP\| BENEFIT\)/);
+  assert.match(admin, /benefitRedemption/);
+  assert.match(admin, /pendingBefore/);
+  assert.match(admin, /pendingAfter/);
+  assert.match(admin, /待核銷優惠/);
+});

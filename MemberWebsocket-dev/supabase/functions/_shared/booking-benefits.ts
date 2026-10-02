@@ -28,6 +28,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         subtitle: `${offer.cardTitle} · 消耗 ${offer.thresholdStamps} 點`,
         statusLabel: '可使用', startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId,
         selectable: Boolean(offer.ticketId), selectionId: offer.ticketId,
+        conditionLabel: '服務限制：目前未設定',
         disabledReason: offer.ticketId ? '' : '目前沒有可核銷的票券',
       })),
       ...events.map((offer) => ({
@@ -36,6 +37,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         statusLabel: offer.claimed ? '可使用' : '可領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
         selectable: Boolean(offer.claimed && offer.claimId && !offer.requiresLocation),
         selectionId: offer.claimId || '',
+        conditionLabel: '服務限制：目前未設定',
         disabledReason: offer.requiresLocation
           ? '此票券需於票券頁完成定位核銷'
           : (offer.claimed ? '' : '請先領取票券後再於預約中選用'),
@@ -44,7 +46,9 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         kind: 'calendar', id: item.calendar_item_id, title: item.title,
         subtitle: '適用於目前會員階級', statusLabel: '活動進行中',
         startsOn: item.starts_on || '', endsOn: item.ends_on || item.starts_on || '',
-        selectable: true, selectionId: item.calendar_item_id, disabledReason: '',
+        selectable: true, selectionId: item.calendar_item_id,
+        conditionLabel: '會員條件：目前會員階級適用 · 服務限制：目前未設定',
+        disabledReason: '',
       })),
     ],
   };
