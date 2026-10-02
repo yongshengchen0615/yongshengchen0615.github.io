@@ -47,10 +47,15 @@ assert.doesNotMatch(core, /legacyBookingFromCard/);
 assert.doesNotMatch(core, /renderImmediateSummaries/);
 assert.doesNotMatch(core, /booking-summary-provisional/);
 
-const refresh = core.slice(core.indexOf('async function refreshAll'), core.indexOf('function renderAll'));
-assert.ok(refresh.indexOf("contactRequest('admin.booking.contacts'") < refresh.indexOf('renderAll()'));
-assert.ok(refresh.indexOf("groupDetailsRequest('admin.booking.group.details'") < refresh.indexOf('renderAll()'));
-assert.ok(refresh.indexOf("resourceRequest('admin.booking.resources.bootstrap'") < refresh.indexOf('renderAll()'));
+const refresh = core.slice(core.indexOf('async function refreshAll'), core.indexOf('function publishOperationalBookingSnapshot'));
+const hydrationBoundary = refresh.indexOf('const nextBooking = {');
+assert.ok(hydrationBoundary > 0, 'refreshAll builds the normalized snapshot only after hydration');
+assert.ok(refresh.indexOf("contactRequest('admin.booking.contacts'") < hydrationBoundary);
+assert.ok(refresh.indexOf("groupDetailsRequest('admin.booking.group.details'") < hydrationBoundary);
+assert.ok(refresh.indexOf("resourceRequest('admin.booking.resources.bootstrap'") < hydrationBoundary);
+assert.doesNotMatch(refresh, /renderAll\(\)/);
+assert.match(refresh, /if \(bookingDataChanged\) \{/);
+assert.match(refresh, /renderBookings\(\)/);
 
 assert.match(styles, /booking-received-summary/);
 assert.match(styles, /booking-copy-button/);
