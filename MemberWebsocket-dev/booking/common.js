@@ -270,8 +270,13 @@
     return data;
   }
 
-  async function bookingBenefits(config, idToken) {
-    const body = { action: 'user.booking.benefits', clientType: 'booking', idToken };
+  async function bookingBenefits(config, idToken, bookingId = '') {
+    const body = {
+      action: 'user.booking.benefits',
+      clientType: 'booking',
+      idToken,
+      ...(bookingId ? { bookingId: String(bookingId) } : {}),
+    };
     return postJson(String(config.supabaseFunctionUrl || '').trim(), config,
       window.TestModeClient?.payload ? window.TestModeClient.payload(body) : body, '可用活動與票券');
   }
