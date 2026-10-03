@@ -29,7 +29,18 @@ jobs:
         with:
           node-version: '24'
       - name: Run application regression tests
-        run: node --test MemberWebsocket-dev/tests/*.test.js
+        run: >-
+          node --test --test-reporter=spec --test-reporter-destination=stdout
+          --test-reporter=junit --test-reporter-destination=regression-results.xml
+          MemberWebsocket-dev/tests/*.test.js
+      - name: Save regression diagnostics and durations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memberwebsocket-regression-${{ github.run_attempt }}
+          path: regression-results.xml
+          retention-days: 7
+          if-no-files-found: warn
 
   integration:
     name: DOM integration tests
@@ -60,7 +71,8 @@ jobs:
             MemberWebsocket-dev/tests/integration/transaction_lifecycle.cjs \
             MemberWebsocket-dev/tests/integration/receipt_integrity_sql.cjs \
             MemberWebsocket-dev/tests/integration/booking_accessible.cjs \
-            MemberWebsocket-dev/tests/integration/test_account_phone_sql.cjs
+            MemberWebsocket-dev/tests/integration/test_account_phone_sql.cjs \
+            MemberWebsocket-dev/tests/integration/qa_cleanup_boundaries.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
           node MemberWebsocket-dev/tests/integration/event_coupon_sql.cjs
@@ -152,6 +164,7 @@ jobs:
             MemberWebsocket-dev/supabase/functions/booking-contact-api/index.ts \
             MemberWebsocket-dev/supabase/functions/grant-automation/index.ts \
             MemberWebsocket-dev/supabase/functions/event-ticket-links/index.ts \
+            MemberWebsocket-dev/supabase/functions/event-ticket-extension-api/index.ts \
             MemberWebsocket-dev/supabase/functions/scheduled-grant-messages/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-api/index.ts \
             MemberWebsocket-dev/supabase/functions/booking-admin-api/index.ts \

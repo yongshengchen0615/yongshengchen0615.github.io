@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-10-01.3';
+  const VERSION = '2026-10-01.4';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -126,6 +126,7 @@
     session: null,
     visible: false,
     running: false,
+    pendingTimedOutNode: null,
     cancelled: false,
     currentSuite: 'quick',
     results: [],
@@ -513,7 +514,7 @@
   function setRunning(value) {
     state.running = Boolean(value);
     if (!state.panel) return;
-    state.panel.querySelectorAll('[data-qa-run]').forEach((button) => { button.disabled = state.running; });
+    state.panel.querySelectorAll('[data-qa-run]').forEach((button) => { button.disabled = state.running || Boolean(state.pendingTimedOutNode); });
     state.panel.querySelector('[data-qa-cancel]').classList.toggle('hidden', !state.running);
   }
 
@@ -666,19 +667,42 @@
     };
   }
 
+  function retainTimedOutNode(pending) {
+    state.pendingTimedOutNode = pending;
+    const settled = () => {
+      if (state.pendingTimedOutNode !== pending) return;
+      state.pendingTimedOutNode = null;
+      setRunning(state.running);
+    };
+    pending.then(settled, settled);
+  }
+
   async function runSuite(suite) {
     const requestedSuite = suite === 'full' ? 'full' : 'quick';
+    if (state.pendingTimedOutNode) {
+      return { ok: false, busy: true, reason: 'timed-out-node-draining', surface, suite: requestedSuite, results: [] };
+    }
     if (state.running) {
       return { ok: false, busy: true, surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
     }
+    // Reserve the runner before the first async session/config read.
+    state.cancelled = false;
+    setRunning(true);
     try {
       const session = await window.TestModeClient.sessionStatus(await loadConfig(), surface);
       if (!session || !session.active || !session.account || !session.account.memberId) {
+        setRunning(false);
         removeUi();
         return { ok: false, skipped: true, reason: 'inactive-session', surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 1, total: 0 } };
       }
+      if (state.cancelled) {
+        setRunning(false);
+        setStatus('已停止');
+        return { ok: false, cancelled: true, surface, suite: requestedSuite, results: [] };
+      }
       state.session = session;
     } catch (error) {
+      setRunning(false);
       removeUi();
       return { ok: false, skipped: true, reason: 'session-check-failed', error: plainError(error), surface, suite: requestedSuite, results: [], summary: { passed: 0, failed: 0, skipped: 1, total: 0 } };
     }
@@ -776,8 +800,9 @@
           }
           return result;
         }, surface === 'booking' ? USER_BOOKING_NODE_TIMEOUT_MS : USER_NODE_TIMEOUT_MS,
-        testCase.key, () => {
+        testCase.key, (pending) => {
           state.cancelled = true;
+          retainTimedOutNode(pending);
           state.activeHumanCaptureCleanup?.();
           state.activeHumanCaptureCleanup = null;
         });
@@ -1531,6 +1556,9 @@
   async function waitForModalState(modal, shouldBeOpen, timeoutMs) {
     const deadline = performance.now() + Math.max(100, Number(timeoutMs) || 1000);
     while (performance.now() < deadline) {
+      if (state.pendingTimedOutNode) {
+        throw Object.assign(new Error('逾時案例已停止等待。'), { code: 'E2E_NODE_CANCELLED' });
+      }
       const isOpen = !modal.classList.contains('hidden');
       if (isOpen === shouldBeOpen) return true;
       await wait(25);
@@ -1575,6 +1603,9 @@
     const deadline = performance.now() + Math.max(100, Number(timeoutMs) || 5000);
     let lastError = null;
     while (performance.now() < deadline) {
+      if (state.pendingTimedOutNode) {
+        throw Object.assign(new Error('逾時案例已停止等待。'), { code: 'E2E_NODE_CANCELLED' });
+      }
       try {
         const value = predicate();
         if (value) return value;

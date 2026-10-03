@@ -13,21 +13,28 @@ function safeStringify(value, max = 12000) {
 }
 
 function findField(value, keys, depth = 0) {
-  if (depth > 5 || value == null) return null;
-  if (Array.isArray(value)) {
-    for (const item of value.slice(0, 24)) {
-      const found = findField(item, keys, depth + 1);
-      if (found != null) return found;
+  const pending = [{ value, depth }];
+  const seen = new WeakSet();
+  let visited = 0;
+  // Depth alone does not bound work in a wide trace. Share one traversal
+  // budget across all branches and tolerate cyclic browser diagnostics.
+  while (pending.length && visited < 256) {
+    const current = pending.pop();
+    const node = current.value;
+    if (current.depth > 5 || node == null || typeof node !== "object" || seen.has(node)) continue;
+    seen.add(node);
+    visited += 1;
+    const entries = Array.isArray(node)
+      ? node.slice(0, 24).map((item, index) => [String(index), item])
+      : Object.entries(node).slice(0, 80);
+    if (!Array.isArray(node)) {
+      for (const [key, item] of entries) {
+        if (keys.has(key.toLowerCase()) && item != null) return item;
+      }
     }
-    return null;
-  }
-  if (typeof value !== "object") return null;
-  for (const [key, item] of Object.entries(value).slice(0, 80)) {
-    if (keys.has(String(key).toLowerCase()) && item != null) return item;
-  }
-  for (const item of Object.values(value).slice(0, 80)) {
-    const found = findField(item, keys, depth + 1);
-    if (found != null) return found;
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      pending.push({ value: entries[index][1], depth: current.depth + 1 });
+    }
   }
   return null;
 }
@@ -47,10 +54,9 @@ function firstHttpStatus(actual, trace) {
 }
 
 function firstSourceCode(actual, trace) {
-  const raw = findField(
-    { actual, trace },
-    new Set(["errorcode", "error_code", "downstreamcode", "downstream_code", "code"]),
-  );
+  const keys = new Set(["errorcode", "error_code", "downstreamcode", "downstream_code", "code"]);
+  // Keep the explicit error reachable even when the surrounding trace is wide.
+  const raw = findField(actual, keys) ?? findField(trace?.error, keys) ?? findField(trace, keys);
   return asText(raw, 120).replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 120);
 }
 
@@ -70,8 +76,8 @@ function firstPath(trace, httpStatus) {
   const candidate = (httpStatus == null ? null : entries.filter((item) => requestStatus(item) === httpStatus).at(-1))
     || entries.filter((item) => requestStatus(item) >= 400).at(-1)
     || entries.at(-1);
-  const path = asText(candidate?.path, 240);
-  return path.startsWith("/") ? path : "";
+  const path = asText(candidate?.path, 240).split(/[?#]/, 1)[0];
+  return path.startsWith("/") && !path.startsWith("//") ? path : "";
 }
 
 function fnv1a(value) {
@@ -103,8 +109,8 @@ export function diagnoseE2EFailure(input = {}) {
   const trace = input.trace && typeof input.trace === "object" ? input.trace : {};
   const unmetFields = unmetBooleanAssertions(expected, actual);
   const sourceCode = firstSourceCode(actual, trace);
-  const explicitStatus = findField({ actual, error: trace?.error },
-    new Set(["httpstatus", "http_status", "statuscode", "status_code"]));
+  const statusKeys = new Set(["httpstatus", "http_status", "statuscode", "status_code"]);
+  const explicitStatus = findField(actual, statusKeys) ?? findField(trace?.error, statusKeys);
   const observedStatus = firstHttpStatus(actual, trace);
   // A successful negative test can leave an intentional 4xx in apiTimings.
   // For a boolean assertion mismatch, classify the failing fields instead of
@@ -137,6 +143,29 @@ export function diagnoseE2EFailure(input = {}) {
     category = "runner-lifecycle";
     code = "E2E_RUNNER_LIFECYCLE";
     layer = "orchestration";
+    retryable = true;
+  } else if (httpStatus === 401) {
+    category = "authentication";
+    code = "E2E_AUTHENTICATION";
+    layer = "authentication";
+  } else if (httpStatus === 403) {
+    category = "authorization";
+    code = "E2E_AUTHORIZATION";
+    layer = "authorization";
+  } else if (httpStatus === 429) {
+    category = "rate-limit";
+    code = "E2E_RATE_LIMIT";
+    layer = "edge-function";
+    retryable = true;
+  } else if (httpStatus === 404 && /^\/functions\/v1\/[a-z0-9-]+$/.test(path)
+    && ["NOT_FOUND", "FUNCTION_NOT_FOUND"].includes(sourceCode)) {
+    category = "deployment-route";
+    code = "E2E_DEPLOYMENT_ROUTE";
+    layer = "edge-gateway";
+  } else if (httpStatus != null && httpStatus >= 500) {
+    category = "backend";
+    code = "E2E_BACKEND";
+    layer = "backend";
     retryable = true;
   } else if (assertionOnly && includesAny(signal, ["datewindow", "bookingdatewindow"])) {
     category = "api-contract";
@@ -229,6 +258,7 @@ export function diagnoseE2EFailure(input = {}) {
     backend: "對照 API 狀態碼與 Edge Function／資料庫錯誤紀錄。",
     "client-error": "檢查瀏覽器錯誤事件與對應操作前後的畫面狀態。",
     "api-contract": "比對失敗案例的日期範圍探測值、後端時段回應與預約共用設定。",
+    "deployment-route": "核對 Edge Function slug、部署狀態、前端端點與版本；勿將缺少函式路由當成會員資料不存在。",
     "browser-policy": "確認管理端網站已允許彈出式視窗，再由使用者操作重新啟動 E2E。",
     "runner-lifecycle": "檢查 Runner 是否被關閉、最後心跳時間與最後完成案例，再重播相同 seed。",
     assertion: "比對 Expected／Actual，確認資料寫入、回讀及畫面呈現的第一個差異。",

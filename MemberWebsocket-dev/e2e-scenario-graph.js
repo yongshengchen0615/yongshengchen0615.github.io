@@ -27,16 +27,17 @@
       throw new TypeError('E2E node deadline requires a task and a positive timeout.');
     }
     let timer;
+    const action = Promise.resolve().then(task);
     const deadline = new Promise((_, reject) => {
       timer = setTimeout(() => {
-        try { onTimeout?.(); } catch (_) {}
+        try { onTimeout?.(action); } catch (_) {}
         const error = new Error('E2E 節點 ' + String(nodeKey || 'unknown') + ' 逾時（' + Math.round(duration / 1000) + ' 秒）。');
         error.code = 'E2E_NODE_TIMEOUT';
         error.nodeKey = String(nodeKey || 'unknown');
         reject(error);
       }, duration);
     });
-    return Promise.race([Promise.resolve().then(task), deadline]).finally(() => clearTimeout(timer));
+    return Promise.race([action, deadline]).finally(() => clearTimeout(timer));
   }
 
   function shuffled(items, randomUnit) {

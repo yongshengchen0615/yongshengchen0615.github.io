@@ -11,10 +11,13 @@ test('admin browser E2E controller is lazy-loaded outside normal startup', () =>
   const loader = read('admin/e2e-control-loader.js');
   const controller = read('admin/e2e-control.js');
 
-  assert.match(html, /e2e-control-loader\.js\?v=qa-e2e-lazy-20260930-2/);
+  assert.match(html, /e2e-control-loader\.js\?v=[^"'\s]+/);
   assert.doesNotMatch(html, /<script src="\.\/e2e-control\.js\?/);
 
-  assert.match(loader, /const E2E_CONTROL_SRC = '\.\/e2e-control\.js\?v=qa-e2e-20261001-1&lazy=20261001-1'/);
+  assert.match(loader, /const E2E_CONTROL_SRC = '\.\/e2e-control\.js\?v=[^'\s]+&lazy=[^'\s]+'/);
+  const declared = html.match(/data-e2e-control-src="([^"]+)"/)[1];
+  const loaded = loader.match(/const E2E_CONTROL_SRC = '([^']+)'/)[1].split('&lazy=')[0];
+  assert.equal(loaded, declared, 'the declared and requested controller assets must use the same version');
   assert.match(loader, /getElementById\('testModeTab'\)/);
   assert.match(loader, /addEventListener\('pointerenter'/);
   assert.match(loader, /addEventListener\('focus'/);

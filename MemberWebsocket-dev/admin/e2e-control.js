@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-01.5';
+  const VERSION = '2026-10-01.6';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -93,6 +93,7 @@
 
   const state = {
     running: false,
+    pendingTimedOutNode: null,
     cancelled: false,
     runSequence: 0,
     randomSeed: '',
@@ -373,13 +374,22 @@
     const source = Array.isArray(items) ? items.slice() : [];
     const width = Math.max(1, Math.min(source.length || 1, Number(limit) || 1));
     let cursor = 0;
+    let firstFailure = null;
+    let failed = false;
     const workers = Array.from({ length: width }, async () => {
-      while (cursor < source.length && !state.cancelled) {
+      while (cursor < source.length && !state.cancelled && !failed) {
         const index = cursor++;
-        await worker(source[index], index);
+        try {
+          await worker(source[index], index);
+        } catch (error) {
+          if (!failed) firstFailure = error;
+          failed = true;
+        }
       }
     });
-    await Promise.all(workers);
+    // Do not close windows or reuse fixtures while another worker is active.
+    await Promise.allSettled(workers);
+    if (failed) throw firstFailure;
   }
 
   function shuffled(items) {
@@ -392,9 +402,12 @@
   }
 
   async function waitFor(predicate, timeoutMs = 7000, intervalMs = 60) {
-    const deadline = Date.now() + timeoutMs;
+    const deadline = performance.now() + timeoutMs;
     let lastError = null;
-    while (Date.now() < deadline) {
+    while (performance.now() < deadline) {
+      if (state.pendingTimedOutNode) {
+        throw Object.assign(new Error('逾時案例已停止等待。'), { code: 'E2E_NODE_CANCELLED' });
+      }
       try {
         const value = predicate();
         if (value) return value;
@@ -858,7 +871,7 @@
   function setBusy(running, label = '') {
     state.running = Boolean(running);
     state.section?.querySelectorAll('button[data-admin-e2e-control]').forEach((button) => {
-      button.disabled = state.running;
+      button.disabled = state.running || Boolean(state.pendingTimedOutNode);
     });
     const stopButton = state.section?.querySelector('#stopAdminE2EButton');
     if (stopButton) {
@@ -1015,6 +1028,16 @@
     }
   }
 
+  function retainTimedOutNode(pending) {
+    state.pendingTimedOutNode = pending;
+    const settled = () => {
+      if (state.pendingTimedOutNode !== pending) return;
+      state.pendingTimedOutNode = null;
+      setBusy(state.running);
+    };
+    pending.then(settled, settled);
+  }
+
   async function executeCases(defs, phaseLabel) {
     for (const def of defs) {
       if (state.cancelled) break;
@@ -1057,8 +1080,9 @@
           }
           return result;
         }, /^ADMIN_BOOKING_|^PAIRED_.*BOOKING/.test(def.key) ? ADMIN_BOOKING_NODE_TIMEOUT_MS : ADMIN_NODE_TIMEOUT_MS,
-        def.key, () => {
+        def.key, (pending) => {
           state.cancelled = true;
+          retainTimedOutNode(pending);
           state.activeHumanCaptureCleanup?.();
           state.activeHumanCaptureCleanup = null;
         });
@@ -1673,6 +1697,7 @@
   }
 
   async function runPaired(options = {}) {
+    if (state.pendingTimedOutNode) return { error: { code: 'E2E_NODE_DRAINING', message: '前一個逾時案例尚未結束，暫時無法開始新一輪。' }, results: safe(state.results) };
     if (state.running) return { error: { code: 'E2E_ALREADY_RUNNING', message: '完整 E2E 已在執行中。' }, results: safe(state.results) };
     state.cancelled = false;
     state.failureScreenshotsCaptured = 0;
