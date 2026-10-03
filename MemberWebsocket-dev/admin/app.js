@@ -1542,7 +1542,7 @@
   function collectRewards() { return Array.from(els.rewardRows.querySelectorAll('[data-reward-row]')).map((row) => ({ thresholdStamps: Number(row.querySelector('[data-field="thresholdStamps"]')?.value), ticketTemplateId: String(row.querySelector('[data-field="ticketTemplateId"]')?.value || '').trim(), requiredServiceIds: collectRequiredServiceIds(row.querySelector('[data-reward-required-service-ids]')) })); }
   function updateRewardEditorHint() {
     const rewards = collectRewards(); const duplicate = rewards.some((reward, index) => rewards.findIndex((item) => item.thresholdStamps === reward.thresholdStamps) !== index); const missingTicket = rewards.some((reward) => !reward.ticketTemplateId);
-    els.rewardRows.querySelectorAll('[data-reward-row]').forEach((row) => { const threshold = Number(row.querySelector('[data-field="thresholdStamps"]')?.value); const ticket = state.tickets.find((item) => item.ticketTemplateId === row.querySelector('[data-field="ticketTemplateId"]')?.value); const requiredServiceIds = collectRequiredServiceIds(row.querySelector('[data-reward-required-service-ids]')); const serviceSummary = requiredServiceIds.length ? ` · 預約限 ${requiredServiceIds.map((serviceId) => bookingServiceTitle(serviceId)).join('、')}` : ' · 預約不限項目'; const summary = row.querySelector('[data-reward-summary]'); if (summary) summary.textContent = Number.isInteger(threshold) && threshold > 0 ? `集到 ${threshold} 點即可兌換 · ${ticket ? ticket.title : '尚未選擇票券'}${serviceSummary}` : '請先設定點數節點'; });
+    els.rewardRows.querySelectorAll('[data-reward-row]').forEach((row) => { const threshold = Number(row.querySelector('[data-field="thresholdStamps"]')?.value); const ticket = state.tickets.find((item) => item.ticketTemplateId === row.querySelector('[data-field="ticketTemplateId"]')?.value); const requiredServiceIds = collectRequiredServiceIds(row.querySelector('[data-reward-required-service-ids]')); const serviceSummary = ` · ${bookingServiceRequirementLabel(requiredServiceIds)}`; const summary = row.querySelector('[data-reward-summary]'); if (summary) summary.textContent = Number.isInteger(threshold) && threshold > 0 ? `集到 ${threshold} 點即可兌換 · ${ticket ? ticket.title : '尚未選擇票券'}${serviceSummary}` : '請先設定點數節點'; });
     els.rewardEditorHint.textContent = duplicate ? '有節點使用相同點數，請調整後再儲存。' : missingTicket ? '每個節點都要選擇一張已啟用票券。' : `${rewards.length} 個兌換節點 · 兌換時會自動扣除該節點需要集到的點數。`; els.rewardEditorHint.classList.toggle('warning', duplicate || missingTicket);
   }
   function validateRewardEditor(title, rewards) { if (!title || title.length > 80) return '請填寫卡片名稱（最多 80 字）。'; if (!rewards.length || rewards.length > 30) return '請至少設定 1 個兌換節點，最多 30 個節點。'; const thresholds = new Set(); for (const reward of rewards) { if (!Number.isInteger(reward.thresholdStamps) || reward.thresholdStamps < 1 || reward.thresholdStamps > 100) return '需要集到的點數必須是 1–100 的整數。'; if (thresholds.has(reward.thresholdStamps)) return '每個點數只能設定一個節點。'; thresholds.add(reward.thresholdStamps); if (!reward.ticketTemplateId) return '請為每個節點選擇一張票券。'; } return ''; }
@@ -1597,6 +1597,57 @@
   function bookingServiceTitle(serviceId) {
     const service = state.bookingServices.find((item) => String(item?.serviceId || '') === String(serviceId || ''));
     return String(service?.title || serviceId || '').trim();
+  }
+
+  function bookingServiceRequirementLabel(serviceIds) {
+    const selected = new Set((Array.isArray(serviceIds) ? serviceIds : []).map((value) => String(value || '').trim()).filter(Boolean));
+    if (!selected.size) return '預約不限項目';
+
+    const services = state.bookingServices.filter((service) => service && service.serviceId && service.title);
+    const servicesByType = new Map();
+    for (const service of services) {
+      const type = String(service.serviceType || '').trim();
+      if (!type) continue;
+      const group = servicesByType.get(type) || [];
+      group.push(service);
+      servicesByType.set(type, group);
+    }
+
+    const coveredIds = new Set();
+    const fullTypes = [];
+    for (const [type, group] of servicesByType) {
+      if (group.length && group.every((service) => selected.has(String(service.serviceId)))) {
+        fullTypes.push(type);
+        group.forEach((service) => coveredIds.add(String(service.serviceId)));
+      }
+    }
+
+    const individualTitles = services
+      .filter((service) => selected.has(String(service.serviceId)) && !coveredIds.has(String(service.serviceId)))
+      .map((service) => String(service.title || '').trim())
+      .filter(Boolean);
+    const unknownIds = [...selected].filter((serviceId) =>
+      !services.some((service) => String(service.serviceId) === serviceId)
+    );
+    individualTitles.push(...unknownIds);
+
+    if (fullTypes.length && !individualTitles.length) {
+      return fullTypes.length === 1
+        ? `需預約「${fullTypes[0]}」項目類型`
+        : `需預約「${fullTypes.join('、')}」其中一種項目類型`;
+    }
+    if (!fullTypes.length) {
+      return individualTitles.length === 1
+        ? `需預約「${individualTitles[0]}」項目`
+        : `需預約「${individualTitles.join('、')}」其中一個項目`;
+    }
+    const typePart = fullTypes.length === 1
+      ? `「${fullTypes[0]}」項目類型`
+      : `「${fullTypes.join('、')}」其中一種項目類型`;
+    const itemPart = individualTitles.length === 1
+      ? `「${individualTitles[0]}」項目`
+      : `「${individualTitles.join('、')}」其中一個項目`;
+    return `需預約 ${typePart} 或 ${itemPart}`;
   }
 
   function renderRequiredServiceOptions(root, selectedIds = []) {
