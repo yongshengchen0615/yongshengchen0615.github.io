@@ -41,7 +41,7 @@ test('shared membership assets use one cache version across every client entry',
   const userTourPages = ['member/index.html', 'points/index.html', 'event/index.html', 'calendar/index.html', 'booking/index.html'];
   for (const relativePath of userTourPages) {
     const html = read(relativePath);
-    assert.ok(html.includes('user-tour.js?v=layout-stability-20261001-1'), relativePath);
+    assert.ok(html.includes('user-tour.js?v=detached-location-guard-20261003-1'), relativePath);
   }
 });
 
