@@ -51,7 +51,13 @@ test('database claimed tickets stay usable even after inventory sells out', asyn
   const { selectLatestEventOffers } = await offers;
   assert.deepEqual(selectLatestEventOffers([{ id: 'event', title: '已領券', quota: 1 }], [
     { event_ticket_id: 'event', member_id: 'member', status: 'claimed' },
-  ], 'member'), [{ eventId: 'event', title: '已領券', claimed: true, requiredServiceTypes: [] }]);
+  ], 'member'), [{
+    eventId: 'event',
+    title: '已領券',
+    claimed: true,
+    requiredServiceIds: [],
+    requiredServiceMatchMode: 'any',
+  }]);
 });
 
 test('used and cancelled claims cannot be advertised as claimable again', async () => {

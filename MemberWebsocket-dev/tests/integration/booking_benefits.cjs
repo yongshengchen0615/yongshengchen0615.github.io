@@ -200,9 +200,12 @@ test('service-restricted tickets require a matching booked service and are remov
       cardTitle: '身體集點卡',
       pointCost: 5,
       pointBalance: 10,
-      requiredServiceTypes: ['身體'],
+      requiredServiceIds: ['service-body-60'],
+      requiredServiceTitles: ['身體調理 60 分鐘'],
+      requiredServiceMatchMode: 'any',
+      requiredServiceRequirementLabel: '需預約「身體調理 60 分鐘」項目',
       statusLabel: '可使用',
-      conditionLabel: '服務限制：需預約「身體」相關服務 · 本卡可用 10 點 · 此票券需 5 點',
+      conditionLabel: '預約項目限制：需預約「身體調理 60 分鐘」項目 · 本卡可用 10 點 · 此票券需 5 點',
     },
   ];
   const h = fixture(async () => ({ pointTicketMaxPerRedemption: 2, items: restrictedItems }));
@@ -213,13 +216,13 @@ test('service-restricted tickets require a matching booked service and are remov
     let checkbox = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-BODY"]');
     assert.ok(checkbox);
     assert.equal(checkbox.disabled, false, 'restricted ticket remains clickable so the member can receive an explanation');
-    assert.match(checkbox.parentElement.textContent, /需先預約：身體/);
+    assert.match(checkbox.parentElement.textContent, /需先預約：身體調理 60 分鐘/);
 
     checkbox.click();
     assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), []);
-    assert.match(h.el('bookingBenefitsStatus').textContent, /需先預約「身體」相關服務才能使用這張票券/);
+    assert.match(h.el('bookingBenefitsStatus').textContent, /需預約「身體調理 60 分鐘」項目才能使用這張票券/);
 
-    h.w.BookingBenefits.setServiceContext(['身體']);
+    h.w.BookingBenefits.setServiceContext(['service-body-60']);
     checkbox = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-BODY"]');
     checkbox.click();
     assert.deepEqual(
@@ -227,7 +230,7 @@ test('service-restricted tickets require a matching booked service and are remov
       [{ kind: 'points', id: 'PT-BODY' }]
     );
 
-    h.w.BookingBenefits.setServiceContext(['腳底']);
+    h.w.BookingBenefits.setServiceContext(['service-foot-60']);
     assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), []);
     assert.match(h.el('bookingBenefitsStatus').textContent, /已自動取消那些票券/);
   } finally {

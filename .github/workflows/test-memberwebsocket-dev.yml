@@ -98,6 +98,7 @@ jobs:
             MemberWebsocket-dev/admin/booking-resources.js \
             MemberWebsocket-dev/admin/booking-cancellation-sync.js \
             MemberWebsocket-dev/member/app.js \
+            MemberWebsocket-dev/member/member-phone.js \
             MemberWebsocket-dev/member/profile-extension.js \
             MemberWebsocket-dev/member/profile-birthday-edit.js \
             MemberWebsocket-dev/member/member-growth.js \

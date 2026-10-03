@@ -6,6 +6,7 @@ const { JSDOM } = require('jsdom');
 
 const root = path.join(__dirname, '../..');
 const html = fs.readFileSync(path.join(root, 'member/index.html'), 'utf8');
+const memberPhone = fs.readFileSync(path.join(root, 'member/member-phone.js'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'member/app.js'), 'utf8');
 const profileExtension = fs.readFileSync(path.join(root, 'member/profile-extension.js'), 'utf8');
 const terms = { id: 'terms-2', version: '2026-10-v2', title: '新版條款', summary: '請閱讀', body: '完整條款內容' };
@@ -43,6 +44,7 @@ async function start(consentRequired, options = {}) {
     },
   };
   w.MembershipProgress = { render() {} };
+  w.eval(memberPhone);
   if (options.loadProfileExtension) w.eval(profileExtension);
   w.eval(app);
   w.dispatchEvent(new w.Event('DOMContentLoaded'));
@@ -170,7 +172,7 @@ test('pending member submits terms through canonical app flow even with profile 
     assert.equal(saves.length, 1);
     assert.deepEqual(JSON.parse(JSON.stringify(saves[0].payload)), {
       birthday: '1990-01-01',
-      phone: '0912-345-678',
+      phone: '+886912345678',
       surname: '林',
       salutation: 'mr',
       termsId: 'terms-2',

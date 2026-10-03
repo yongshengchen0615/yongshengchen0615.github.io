@@ -44,7 +44,7 @@ test('booking ticket rules belong to reward nodes and use concrete booking servi
   assert.match(adminApp, /勾選的所有項目都需預約/);
   assert.match(adminApp, /strong\.textContent = service\.title/);
   assert.match(adminApp, /bookingServiceRequirementLabel/);
-  assert.match(adminApp, /需預約「\\$\\{fullTypes\[0\]\\}」項目類型/);
+  assert.match(adminApp, /需預約「\$\{fullTypes\[0\]\}」項目類型/);
 
   assert.match(api, /requiredServiceIds: Array\.isArray\(reward\.required_service_ids\)/);
   assert.match(api, /normalizeRequiredServiceIds\(supabase,reward\.requiredServiceIds\)/);
