@@ -103,6 +103,8 @@
   }
 
   function serviceRequirementMessage(item) {
+    const compact = String(item?.requiredServiceRequirementLabel || '').trim();
+    if (compact) return `${compact}才能使用這張票券。`;
     const required = requiredServiceTitles(item);
     return required.length ? `需先預約「${required.join('、')}」其中一個項目才能使用這張票券。` : '';
   }
