@@ -13,6 +13,7 @@
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   const MEMBER_PRESENCE_POLL_MS = 15_000;
+  const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
   let loginProgressTimer = null;
   let loginProgressValue = 8;
   let stopAdminRealtime = null;
@@ -139,6 +140,7 @@
     els.adminCalendarGrid.addEventListener('click', handleAdminCalendarGridClick);
     els.adminCalendarGrid.addEventListener('change', handleAdminCalendarGridChange);
     window.addEventListener('member-admin:booking-snapshot', handleOperationalBookingSnapshot);
+    window.addEventListener('member-admin:booking-services-updated', handleBookingServicesUpdated);
     els.calendarItemAccent.addEventListener('input', updateCalendarItemAccentValue);
     els.calendarItemForm.addEventListener('change', handleCalendarItemFormChange);
     els.calendarItemForm.addEventListener('submit', saveCalendarItem);
@@ -570,8 +572,30 @@
     return load;
   }
 
+  function normalizeBookingServices(services) {
+    return (Array.isArray(services) ? services : [])
+      .map((service) => ({
+        serviceId: String(service?.serviceId || '').trim(),
+        title: String(service?.title || '').trim(),
+        serviceType: String(service?.serviceType || '').trim(),
+        isActive: service?.isActive !== false,
+      }))
+      .filter((service) => service.serviceId && service.title && service.serviceId !== STORE_SERVICE_ID);
+  }
+
+  function handleBookingServicesUpdated(event) {
+    if (!Array.isArray(event?.detail?.services)) return;
+    state.bookingServices = normalizeBookingServices(event.detail.services);
+    document.querySelectorAll('[data-reward-required-service-ids]').forEach((root) => {
+      renderRequiredServiceOptions(root, collectRequiredServiceIds(root));
+    });
+    if (els.eventTicketRequiredServiceIds) {
+      renderRequiredServiceOptions(els.eventTicketRequiredServiceIds, collectRequiredServiceIds(els.eventTicketRequiredServiceIds));
+    }
+  }
+
   function applyAdminCards(result, renderOverview = true) {
-    if (Array.isArray(result.bookingServices)) state.bookingServices = result.bookingServices.map((service) => ({ serviceId: String(service?.serviceId || '').trim(), title: String(service?.title || '').trim(), serviceType: String(service?.serviceType || '').trim(), isActive: service?.isActive !== false })).filter((service) => service.serviceId && service.title);
+    if (Array.isArray(result.bookingServices)) state.bookingServices = normalizeBookingServices(result.bookingServices);
     state.cards = Array.isArray(result.cards) ? result.cards : [];
     state.cardSortOriginalOrder = state.cards.map((card) => String(card.cardId || ''));
     state.cardSortDirty = false;
@@ -584,7 +608,7 @@
   }
 
   function applyAdminEventTickets(result, renderOverview = true) {
-    if (Array.isArray(result.bookingServices)) state.bookingServices = result.bookingServices.map((service) => ({ serviceId: String(service?.serviceId || '').trim(), title: String(service?.title || '').trim(), serviceType: String(service?.serviceType || '').trim(), isActive: service?.isActive !== false })).filter((service) => service.serviceId && service.title);
+    if (Array.isArray(result.bookingServices)) state.bookingServices = normalizeBookingServices(result.bookingServices);
     const previousTickets = state.eventTickets;
     const nextTickets = Array.isArray(result.eventTickets) ? result.eventTickets : [];
     const listChanged = JSON.stringify(previousTickets) !== JSON.stringify(nextTickets);
@@ -1605,7 +1629,7 @@
     const selected = new Set((Array.isArray(serviceIds) ? serviceIds : []).map((value) => String(value || '').trim()).filter(Boolean));
     if (!selected.size) return '預約不限項目';
 
-    const services = state.bookingServices.filter((service) => service && service.serviceId && service.title);
+    const services = state.bookingServices.filter((service) => service && service.serviceId && service.title && service.serviceId !== STORE_SERVICE_ID);
     const servicesByType = new Map();
     for (const service of services) {
       const type = String(service.serviceType || '').trim();
