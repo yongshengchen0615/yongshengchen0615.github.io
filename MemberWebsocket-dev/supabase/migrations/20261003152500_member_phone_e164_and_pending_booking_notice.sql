@@ -34,20 +34,7 @@ begin
  end if;
  v_join := v_member.membership_status <> 'active';
  if v_join and (p_birthday is null or p_birthday > current_date or p_birthday < date '1900-01-01'
-     or p_phone !~ '^\+[1-9][0-9]{7,14} or length(btrim(coalesce(p_surname,''))) not between 1 and 40
-     or p_salutation not in ('mr','ms')) then raise exception 'INVALID_PROFILE'; end if;
- insert into public.membership_consents(member_id,terms_id) values(v_member.id,v_terms.id) on conflict (member_id,terms_id) do nothing;
- if v_join then
-   update public.members set birthday=p_birthday,phone=p_phone,surname=btrim(p_surname),salutation=p_salutation,
-      membership_status='active',joined_at=coalesce(joined_at,now()),updated_at=now() where id=v_member.id;
- end if;
- insert into public.audit_logs(audit_id,actor_line_user_id,actor_role,action,target_type,target_id,result,detail)
- values('AUD-'||replace(gen_random_uuid()::text,'-',''),p_line_user_id,'member',
-        case when v_join then 'MEMBERSHIP_JOIN_CONSENT' else 'MEMBERSHIP_TERMS_RECONSENT' end,
-        'member',v_member.id::text,'success',jsonb_build_object('termsId',v_terms.id,'version',v_terms.version));
- return v_join;
-end $function$
- or length(btrim(coalesce(p_surname,''))) not between 1 and 40
+     or p_phone !~ '^\+[1-9][0-9]{7,14}$' or length(btrim(coalesce(p_surname,''))) not between 1 and 40
      or p_salutation not in ('mr','ms')) then raise exception 'INVALID_PROFILE'; end if;
  insert into public.membership_consents(member_id,terms_id) values(v_member.id,v_terms.id) on conflict (member_id,terms_id) do nothing;
  if v_join then
@@ -329,48 +316,7 @@ begin
         on conflict (event_key,channel,recipient) do nothing;
     end if;
 
-    if event_kind = 'created' and member_record.line_user_id ~ '^U[0-9a-f]{32}
-    if member_record.line_user_id ~ '^U[0-9a-f]{32}$' then
-      member_message := case event_kind
-        when 'confirmed' then '【預約確認】'
-        when 'modified_by_admin' then '【修改預約】'
-        when 'completed' then '【完成服務】'
-        when 'rejected' then '【預約未通過】'
-        when 'cancelled' then '【預約取消】'
-        when 'cancellation_rejected' then '【取消申請未通過】'
-      end || E'\n' || member_details;
-
-      if event_kind = 'modified_by_admin' then
-        insert into booking_notifications.outbox(
-          booking_id,event_key,channel,recipient,message_text,coalesce_key,next_attempt_at
-        ) values(
-          NEW.id,event_id,'member',member_record.line_user_id,left(member_message,2200),notification_coalesce_key,now()+interval '15 seconds'
-        )
-        on conflict (coalesce_key,channel,recipient)
-          where status='pending' and attempt_count=0 and first_attempt_at is null and coalesce_key is not null
-        do update set
-          event_key = excluded.event_key,
-          message_text = excluded.message_text,
-          next_attempt_at = excluded.next_attempt_at,
-          last_error = null;
-      else
-        insert into booking_notifications.outbox(booking_id,event_key,channel,recipient,message_text)
-          values(NEW.id,event_id,'member',member_record.line_user_id,left(member_message,2200))
-          on conflict (event_key,channel,recipient) do nothing;
-      end if;
-    end if;
-  end if;
-
-  begin
-    perform booking_notifications.dispatch(20);
-  exception when others then
-    null;
-  end;
-
-  return null;
-end;
-$function$
- then
+    if event_kind = 'created' and member_record.line_user_id ~ '^U[0-9a-f]{32}$' then
       member_message := '【等待管理員確認預約】' || E'\n' || member_details;
       insert into booking_notifications.outbox(booking_id,event_key,channel,recipient,message_text)
         values(NEW.id,event_id,'member',member_record.line_user_id,left(member_message,2200))
