@@ -75,3 +75,20 @@ test('accessible ticket review calculates aggregate point budgets', () => {
   assert.match(admin, /dataset\.pointBalance/);
   assert.match(admin, /會員目前可用點數不足/);
 });
+
+
+test('accessible review UI separates receipt, workflow and sticky actions', () => {
+  const admin = read('admin/booking-accessible-admin.js');
+  const css = read('admin/booking-accessible-admin.css');
+  const index = read('admin/index.html');
+  assert.match(admin, /無障礙預約審核/);
+  assert.match(admin, /accessible-admin-review-layout/);
+  assert.match(admin, /accessible-admin-receipt-pane/);
+  assert.match(admin, /accessible-admin-step-heading/);
+  assert.match(admin, /accessible-admin-sticky-actions/);
+  assert.match(admin, /需 \$\{cost\} 點 · 可用 \$\{balance\} 點/);
+  assert.match(css, /grid-template-columns:minmax\(280px,.72fr\) minmax\(480px,1.28fr\)/);
+  assert.match(css, /@media\(max-width:640px\)/);
+  assert.match(css, /\.accessible-admin-sticky-actions/);
+  assert.match(index, /accessible-review-ui-20261003-1/);
+});
