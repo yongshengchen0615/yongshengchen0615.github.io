@@ -44,7 +44,7 @@ test('accessible mode remembers preference, exposes eligible tickets safely and 
 
 test('admin receipt queue registers actual minutes with one locked submission and exposes missing reward rules',async()=>{
   const dom=new JSDOM('<section id="bookingAdminQueuePanel"></section>',{url:'https://example.test/admin/',runScripts:'outside-only',pretendToBeVisual:true});
-  const w=dom.window; const registrations=[]; let resolveRegister;
+  const w=dom.window; const registrations=[]; let resolveRegister; let completedRecord=null;
   try {
     const receipt={receiptId:'BR-fixture',updatedAt:'2026-10-03T00:00:00Z',memberName:'Member',memberCode:'M',createdAt:'2026-10-03T00:00:00Z'};
     w.MemberSystem={getSession:()=>({config:{},idToken:'admin-fixture'}),request:async(c,t,token,action,payload)=>{
@@ -62,7 +62,20 @@ test('admin receipt queue registers actual minutes with one locked submission an
         },
         currentBenefits:[],currentBookingServiceIds:[],currentBookingStatus:''
       };
-      if(action.endsWith('.register')) {registrations.push(payload); return new Promise(resolve=>{resolveRegister=resolve;});}
+      if(action.endsWith('.register')) {
+        registrations.push(payload);
+        return new Promise(resolve=>{resolveRegister=value=>{
+          completedRecord={
+            receiptId:'BR-fixture',bookingId:value.bookingId,status:'bound',reviewStatus:'completed',
+            memberName:'Member',memberCode:'M',createdAt:'2026-10-03T00:00:00Z',updatedAt:'2026-10-03T01:00:00Z',completedAt:'2026-10-03T01:00:00Z',
+            bookingDate:'2020-01-01',startTime:'10:03',serviceMinutes:60,points:2,
+            services:[{title:'Body',minutes:60,quantity:1,serviceType:'body'}],
+            benefits:[{kind:'points',title:'Body Ticket',status:'redeemed'}]
+          };
+          resolve(value);
+        };});
+      }
+      if(action.endsWith('.list')) return {submissions:[],accessibleRecords:completedRecord?[completedRecord]:[]};
       return {submissions:[]};
     }};
     w.eval(read('admin/booking-accessible-admin.js')); await tick();
@@ -92,9 +105,15 @@ test('admin receipt queue registers actual minutes with one locked submission an
     assert.deepEqual(JSON.parse(JSON.stringify(registrations[0].benefits)),[{kind:'points',id:'point-ticket'}]);
     assert.equal(w.document.getElementById('accessibleAdminClose').disabled,true);
     resolveRegister({bookingId:'booking',settlement:{serviceMinutes:60,rewards:[{points:2}]}}); await tick();
-    assert.match(w.document.getElementById('accessibleAdminMessage').textContent,/60 分鐘.*2 點/);
-    assert.equal(w.document.getElementById('accessibleAdminSubmit').disabled,true);
-    assert.equal(w.document.getElementById('accessibleAdminQueueList').querySelector('button'),null);
+    assert.equal(w.document.getElementById('accessibleAdminModal').classList.contains('hidden'),true);
+    assert.match(w.document.getElementById('accessibleAdminQueueList').textContent,/Body.*60 分鐘.*新增 2 點.*核銷 1 張票券/);
+    assert.equal(w.document.querySelector('[data-accessible-filter="completed"]').classList.contains('active'),true);
+    const recordButton=w.document.getElementById('accessibleAdminQueueList').querySelector('button');
+    assert.equal(recordButton.textContent,'查看紀錄');
+    recordButton.click(); await tick();
+    assert.match(w.document.getElementById('accessibleAdminRecordStats').textContent,/60 分鐘.*2 點.*1 張/);
+    assert.match(w.document.getElementById('accessibleAdminRecordServices').textContent,/Body/);
+    assert.match(w.document.getElementById('accessibleAdminRecordBenefits').textContent,/Body Ticket.*已核銷/);
   } finally {w.dispatchEvent(new w.Event('pagehide')); w.close();}
 });
 
