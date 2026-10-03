@@ -48,3 +48,18 @@ test('accessible receipt bookings bypass only the normal five-minute start const
   assert.match(receiptApi, /bookings_start_boundary_check/);
   assert.doesNotMatch(receiptApi, /每 5 分鐘的服務開始時間/);
 });
+
+
+test('accessible receipt ticket review uses canonical benefit settlement', () => {
+  const admin = read('admin/booking-accessible-admin.js');
+  const receiptApi = read('supabase/functions/booking-receipt-api/index.ts');
+  const migration = read('supabase/migrations/20261003221000_accessible_receipt_ticket_review.sql');
+  assert.match(admin, /本次票券審核/);
+  assert.match(admin, /benefits,adminNote/);
+  assert.match(receiptApi, /loadBookingBenefits/);
+  assert.match(receiptApi, /validateAccessibleBenefits/);
+  assert.match(receiptApi, /register_accessible_receipt_with_benefits_request/);
+  assert.match(migration, /replace_booking_benefit_selections_request/);
+  assert.match(migration, /admin_confirm_booking_receipt_request/);
+  assert.match(migration, /benefitCount/);
+});
