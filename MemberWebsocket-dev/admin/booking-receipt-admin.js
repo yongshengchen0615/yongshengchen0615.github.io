@@ -199,7 +199,11 @@
         currentSession.idToken,
         'admin.booking.receipt.list'
       );
-      window.dispatchEvent(new CustomEvent('admin:accessible-receipts-updated', { detail: { submissions: Array.isArray(data.submissions) ? data.submissions : [] } }));
+      window.dispatchEvent(new CustomEvent('admin:accessible-receipts-updated', { detail: {
+        submissions: Array.isArray(data.submissions) ? data.submissions : [],
+        records: Array.isArray(data.accessibleRecords) ? data.accessibleRecords : [],
+        counts: data.accessibleCounts || null,
+      } }));
       state.receiptByBooking.clear();
       (Array.isArray(data.receipts) ? data.receipts : []).forEach((receipt) => {
         state.receiptByBooking.set(String(receipt.bookingId || ''), receipt);
