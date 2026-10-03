@@ -8,31 +8,48 @@ const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const offersModule = import(pathToFileURL(path.join(root, 'supabase/functions/_shared/latest-available-offers.ts')));
 
-test('point-card booking service rules belong to reward nodes, not ticket templates', () => {
-  const migration = read('supabase/migrations/20261002152109_move_point_ticket_service_rules_to_reward_nodes.sql');
+test('booking ticket rules belong to reward nodes and use concrete booking service ids', () => {
+  const rewardMigration = read('supabase/migrations/20261002152109_move_point_ticket_service_rules_to_reward_nodes.sql');
+  const serviceItemMigration = read('supabase/migrations/20261003130000_ticket_booking_service_items.sql');
   const adminHtml = read('admin/index.html');
   const adminApp = read('admin/app.js');
   const api = read('supabase/functions/api/index.ts');
   const benefits = read('supabase/functions/_shared/booking-benefits.ts');
+  const bookingBenefitsUi = read('booking/booking-benefits.js');
+  const bookingApp = read('booking/app.js');
 
-  assert.match(migration, /alter table public\.point_card_rewards[\s\S]*required_service_types/);
-  assert.match(migration, /join public\.point_card_rewards r on r\.id = pt\.reward_id/);
-  assert.match(migration, /alter table public\.ticket_templates[\s\S]*drop column if exists required_service_types/);
+  assert.match(rewardMigration, /alter table public\.point_card_rewards[\s\S]*required_service_types/);
+  assert.match(rewardMigration, /join public\.point_card_rewards r on r\.id = pt\.reward_id/);
+  assert.match(rewardMigration, /alter table public\.ticket_templates[\s\S]*drop column if exists required_service_types/);
+
+  assert.match(serviceItemMigration, /alter table public\.point_card_rewards[\s\S]*required_service_ids uuid\[\]/);
+  assert.match(serviceItemMigration, /alter table public\.event_tickets[\s\S]*required_service_ids uuid\[\]/);
+  assert.match(serviceItemMigration, /booking_has_required_service_id[\s\S]*bi\.service_id = any\(p_required_service_ids\)/);
+  assert.match(serviceItemMigration, /booking_participant_items bpi[\s\S]*bpi\.service_id = any\(p_required_service_ids\)/);
+  assert.match(serviceItemMigration, /save_point_card_service_items/);
+  assert.doesNotMatch(serviceItemMigration, /booking_has_required_service_type\(new\.booking_id/);
 
   assert.doesNotMatch(adminHtml, /id="ticketRequiredServiceTypes"/);
+  assert.match(adminHtml, /id="eventTicketRequiredServiceIds"/);
   assert.match(adminApp, /此節點的預約項目限制/);
-  assert.match(adminApp, /dataset\.rewardRequiredServiceTypes = 'true'/);
-  assert.match(adminApp, /requiredServiceTypes: collectRequiredServiceTypes\(row\.querySelector\('\[data-reward-required-service-types\]'\)\)/);
+  assert.match(adminApp, /dataset\.rewardRequiredServiceIds = 'true'/);
+  assert.match(adminApp, /requiredServiceIds: collectRequiredServiceIds\(row\.querySelector\('\[data-reward-required-service-ids\]'\)\)/);
+  assert.match(adminApp, /strong\.textContent = service\.title/);
 
-  assert.match(api, /requiredServiceTypes: Array\.isArray\(reward\.required_service_types\)/);
-  assert.match(api, /normalizeRequiredServiceTypes\(supabase,reward\.requiredServiceTypes\)/);
-  assert.doesNotMatch(api, /normalizeRequiredServiceTypes\(supabase,ticket\.requiredServiceTypes\)/);
+  assert.match(api, /requiredServiceIds: Array\.isArray\(reward\.required_service_ids\)/);
+  assert.match(api, /normalizeRequiredServiceIds\(supabase,reward\.requiredServiceIds\)/);
+  assert.match(api, /save_point_card_service_items/);
+  assert.match(api, /bookingServiceOptions\(supabase\)/);
 
-  assert.match(benefits, /offer\.requiredServiceTypes/);
+  assert.match(benefits, /offer\.requiredServiceIds/);
+  assert.match(benefits, /requiredServiceTitles/);
   assert.doesNotMatch(benefits, /pointRequiredByTemplate/);
+  assert.match(bookingBenefitsUi, /currentServiceIds/);
+  assert.match(bookingBenefitsUi, /required\.some\(\(serviceId\) => currentServiceIds\.has\(serviceIdKey\(serviceId\)\)\)/);
+  assert.match(bookingApp, /item\.service\?\.serviceId/);
 });
 
-test('the same ticket template can have different booking rules at different point nodes', async () => {
+test('the same ticket template can require different concrete booking items at different point nodes', async () => {
   const { selectLatestPointOffers } = await offersModule;
   const rewards = [
     {
@@ -40,14 +57,14 @@ test('the same ticket template can have different booking rules at different poi
       point_card_id: 'card-1',
       threshold_stamps: 5,
       ticket_template_id: 'template-1',
-      required_service_types: ['身體'],
+      required_service_ids: ['service-body-60'],
     },
     {
       id: 'reward-foot',
       point_card_id: 'card-1',
       threshold_stamps: 10,
       ticket_template_id: 'template-1',
-      required_service_types: ['腳底'],
+      required_service_ids: ['service-foot-60'],
     },
   ];
   const cards = [{
@@ -80,9 +97,9 @@ test('the same ticket template can have different booking rules at different poi
     },
   ];
 
-  const offers = selectLatestPointOffers(rewards, cards, templates, tickets, '2026-10-02');
+  const offers = selectLatestPointOffers(rewards, cards, templates, tickets, '2026-10-03');
   assert.equal(offers.length, 2);
-  assert.deepEqual(offers[0].requiredServiceTypes, ['身體']);
-  assert.deepEqual(offers[1].requiredServiceTypes, ['腳底']);
+  assert.deepEqual(offers[0].requiredServiceIds, ['service-body-60']);
+  assert.deepEqual(offers[1].requiredServiceIds, ['service-foot-60']);
   assert.equal(offers[0].ticketTemplateId, offers[1].ticketTemplateId);
 });
