@@ -10,7 +10,7 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
-    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profileBirthdayDisplay', 'profileBirthdayPickerButton', 'profileBirthdayPickerModal', 'profileBirthdayPickerTitle', 'closeProfileBirthdayPicker', 'cancelProfileBirthdayPicker', 'confirmProfileBirthdayPicker', 'profileBirthdayPickerMessage', 'profileBirthdayYear', 'profileBirthdayMonth', 'profileBirthdayDay', 'profilePhone', 'profileFormMessage', 'joinTermsSummary', 'joinTermsTitle', 'joinTermsBody', 'joinTermsAccepted', 'termsRenewView', 'renewTermsForm', 'renewTermsSummary', 'renewTermsTitle', 'renewTermsBody', 'renewTermsAccepted', 'renewTermsMessage', 'renewTermsButton', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'memberPass', 'brandName', 'displayName', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'membershipProgress'].forEach((id) => { els[id] = document.getElementById(id); });
+    ['app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'retryButton', 'profileSetupView', 'profileForm', 'profileBirthday', 'profileBirthdayDisplay', 'profileBirthdayPickerButton', 'profileBirthdayPickerModal', 'profileBirthdayPickerTitle', 'closeProfileBirthdayPicker', 'cancelProfileBirthdayPicker', 'confirmProfileBirthdayPicker', 'profileBirthdayPickerMessage', 'profileBirthdayYear', 'profileBirthdayMonth', 'profileBirthdayDay', 'profileCountryCode', 'profilePhone', 'profileFormMessage', 'joinTermsSummary', 'joinTermsTitle', 'joinTermsBody', 'joinTermsAccepted', 'termsRenewView', 'renewTermsForm', 'renewTermsSummary', 'renewTermsTitle', 'renewTermsBody', 'renewTermsAccepted', 'renewTermsMessage', 'renewTermsButton', 'saveProfileButton', 'refreshProfileButton', 'memberView', 'memberPass', 'brandName', 'displayName', 'memberStatus', 'memberInitial', 'memberName', 'memberTier', 'memberCode', 'joinedAt', 'memberBirthday', 'memberPhone', 'membershipProgress'].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.refreshProfileButton.addEventListener('click', () => window.location.reload());
     els.profileForm.addEventListener('submit', saveProfile);
@@ -191,9 +191,9 @@
     if (state.profileSaveLocked) return showUncertainSaveMessage();
     hideMessage();
     const birthday = String(els.profileBirthday.value || '').trim();
-    const phone = String(els.profilePhone.value || '').trim();
+    const phone = window.MemberPhone?.compose(els.profileCountryCode.value, els.profilePhone.value) || '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showMessage('請填寫正確的生日。');
-    if (!/^\+?\d{8,15}$/.test(phone.replace(/[()\s-]/g, ''))) return showMessage('請填寫正確的電話。');
+    if (!phone) return showMessage('請選擇國碼並填寫正確的電話號碼。');
     if (!state.terms) return showMessage('目前尚無有效會員條款，請稍後再試或聯繫管理員。');
     if (!els.joinTermsAccepted.checked) return showMessage('請閱讀並勾選同意會員條款。');
     if (state.termsCheckPromise) {

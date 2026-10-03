@@ -39,13 +39,12 @@
     const surname = valueOf('profileSurname');
     const salutation = valueOf('profileSalutation');
     const birthday = valueOf('profileBirthday');
-    const rawPhone = valueOf('profilePhone');
-    const phone = normalizePhone(rawPhone);
+    const phone = window.MemberPhone?.compose(valueOf('profileCountryCode'), valueOf('profilePhone')) || '';
 
     if (!surname) return showMessage('請填寫姓氏。');
     if (!['mr', 'ms'].includes(salutation)) return showMessage('請選擇先生或小姐。');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return showMessage('請填寫正確的生日。');
-    if (!/^\+?\d{8,15}$/.test(phone)) return showMessage('請填寫正確的電話。');
+    if (!phone) return showMessage('請選擇國碼並填寫正確的電話號碼。');
 
     const button = document.getElementById('saveProfileButton');
     if (button?.disabled) return;
@@ -57,9 +56,9 @@
         surname,
         salutation,
         birthday,
-        phone: rawPhone,
+        phone,
       });
-      publishProfile(result.profile || { ...(currentProfile || {}), surname, salutation, birthday, phone: rawPhone });
+      publishProfile(result.profile || { ...(currentProfile || {}), surname, salutation, birthday, phone });
       window.location.reload();
     } catch (error) {
       if (error?.code === 'API_RESPONSE_UNCERTAIN') {
@@ -98,7 +97,7 @@
     try {
       const profile = await ensureCurrentProfile();
       hideModalMessage('phone');
-      setValue('phoneEditInput', String(profile.phone || ''));
+      applyPhoneInputs('phoneEditCountryCode', 'phoneEditInput', profile.phone);
       document.getElementById('phoneEditInput')?.focus();
     } catch (error) {
       showModalMessage('phone', error?.message || '會員資料尚在同步，請稍後再試。');
@@ -150,17 +149,16 @@
   }
 
   async function savePhoneProfile() {
-    const rawPhone = valueOf('phoneEditInput');
-    const phone = normalizePhone(rawPhone);
+    const phone = window.MemberPhone?.compose(valueOf('phoneEditCountryCode'), valueOf('phoneEditInput')) || '';
 
-    if (!/^\+?\d{8,15}$/.test(phone)) return showModalMessage('phone', '請填寫正確的電話。');
+    if (!phone) return showModalMessage('phone', '請選擇國碼並填寫正確的電話號碼。');
 
     let uncertain = false;
     setModalSaving('phone', true);
     hideModalMessage('phone');
     try {
-      const result = await saveProfilePayload({ phone: rawPhone });
-      publishProfile(result.profile || { ...(currentProfile || {}), phone: rawPhone });
+      const result = await saveProfilePayload({ phone });
+      publishProfile(result.profile || { ...(currentProfile || {}), phone });
       closeProfileModal('phone');
     } catch (error) {
       uncertain = error?.code === 'API_RESPONSE_UNCERTAIN';
@@ -228,11 +226,11 @@
 
     setValue('profileSurname', surname);
     setValue('profileSalutation', salutation);
-    setValue('profilePhone', phone);
+    applyPhoneInputs('profileCountryCode', 'profilePhone', phone);
     setValue('profileBirthday', String(profile.birthday || ''));
     setValue('honorificSurnameInput', surname);
     setValue('honorificSalutationSelect', salutation);
-    setValue('phoneEditInput', phone);
+    applyPhoneInputs('phoneEditCountryCode', 'phoneEditInput', phone);
 
     const honorificDisplay = document.getElementById('memberHonorificName');
     const phoneDisplay = document.getElementById('memberPhone');
@@ -246,7 +244,7 @@
     const closeButton = document.getElementById(type === 'honorific' ? 'closeHonorificEditButton' : 'closePhoneEditButton');
     const inputs = type === 'honorific'
       ? [document.getElementById('honorificSurnameInput'), document.getElementById('honorificSalutationSelect')]
-      : [document.getElementById('phoneEditInput')];
+      : [document.getElementById('phoneEditCountryCode'), document.getElementById('phoneEditInput')];
 
     if (saveButton) {
       saveButton.disabled = saving;
@@ -284,8 +282,10 @@
     }
   }
 
-  function normalizePhone(value) {
-    return String(value || '').replace(/[()\s-]/g, '');
+  function applyPhoneInputs(countryId, numberId, phone) {
+    const parts = window.MemberPhone?.split(phone) || { countryCode: '+886', localNumber: String(phone || '') };
+    setValue(countryId, parts.countryCode);
+    setValue(numberId, parts.localNumber);
   }
 
   function setSaving(saving) {

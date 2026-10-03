@@ -98,11 +98,11 @@ async function profileFor(supabase: SupabaseClient, member: any): Promise<Json> 
     status: member.status,
     joinedAt: member.joined_at || member.created_at,
     birthday: member.birthday || "",
-    phone: member.phone || "",
+    phone: normalizePhone(member.phone) || member.phone || "",
     surname,
     salutation,
     salutationLabel: salutation === "mr" ? "先生" : salutation === "ms" ? "小姐" : "",
-    profileComplete: member.membership_status === "active" && Boolean(member.birthday && member.phone && surname && ["mr", "ms"].includes(salutation)),
+    profileComplete: member.membership_status === "active" && Boolean(member.birthday && isValidE164(normalizePhone(member.phone)) && surname && ["mr", "ms"].includes(salutation)),
     membershipRequired: member.membership_status !== "active",
     serviceMinutesTotal: total,
     tierKey: current.tier_key,
@@ -129,7 +129,13 @@ async function termsForMember(supabase: SupabaseClient, member: any): Promise<{ 
   if (consent.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法確認條款同意紀錄。");
   return { terms, consentRequired: !consent.data };
 }
-function normalizePhone(value: unknown): string { return asText(value, 30).replace(/[()\s-]/g, ""); }
+function normalizePhone(value: unknown): string {
+  const compact = asText(value, 30).replace(/[()\s.\-]/g, "");
+  if (/^\+[1-9]\d{7,14}$/.test(compact)) return compact;
+  if (/^0\d{8,9}$/.test(compact)) return `+886${compact.slice(1)}`;
+  return compact;
+}
+function isValidE164(value: string): boolean { return /^\+[1-9]\d{7,14}$/.test(value); }
 
 async function requireCurrentSubmittedTerms(
   supabase: SupabaseClient,
@@ -263,7 +269,7 @@ Deno.serve(async (request: Request) => {
         throw new ApiError(400, "INVALID_BIRTHDAY", "請選擇正確的出生年月日，生日不可晚於今天。");
       }
     }
-    if (hasPhone && !/^\+?\d{8,15}$/.test(phone)) throw new ApiError(400, "INVALID_PHONE", "請填寫正確的電話。");
+    if (hasPhone && !isValidE164(phone)) throw new ApiError(400, "INVALID_PHONE", "請選擇國碼並填寫正確的電話號碼。");
     if (hasSurname && (!surname || surname.length > 40)) throw new ApiError(400, "INVALID_SURNAME", "請填寫姓氏。");
     if (hasSalutation && !["mr", "ms"].includes(salutation)) throw new ApiError(400, "INVALID_SALUTATION", "請選擇先生或小姐。");
 
@@ -276,7 +282,7 @@ Deno.serve(async (request: Request) => {
 
     const mergedComplete = Boolean(
       birthday
-      && /^\+?\d{8,15}$/.test(phone)
+      && isValidE164(phone)
       && surname
       && ["mr", "ms"].includes(salutation)
     );
