@@ -1,7 +1,14 @@
 (() => {
   'use strict';
 
-  const state = { receiptByBooking: new Map(), loading: false, queueObserver: null, queueObserverTarget: null };
+  const state = {
+    receiptByBooking: new Map(),
+    loading: false,
+    refreshQueued: false,
+    realtimeTimer: null,
+    queueObserver: null,
+    queueObserverTarget: null,
+  };
 
   function session() {
     return window.MemberSystem?.getSession?.('admin') || null;
@@ -177,10 +184,14 @@
   }
 
   async function refresh() {
-    if (state.loading) return;
+    if (state.loading) {
+      state.refreshQueued = true;
+      return;
+    }
     const currentSession = session();
     if (!currentSession) return;
     state.loading = true;
+    state.refreshQueued = false;
     try {
       const data = await window.MemberSystem.request(
         currentSession.config,
@@ -197,13 +208,33 @@
       console.warn('admin booking receipt list failed', error);
     } finally {
       state.loading = false;
+      if (state.refreshQueued) {
+        state.refreshQueued = false;
+        window.setTimeout(() => { void refresh(); }, 0);
+      }
     }
+  }
+
+  function handleReceiptRealtimeInvalidation(event) {
+    const detail = event?.detail || {};
+    if (String(detail.clientType || '') !== 'admin') return;
+    const scope = String(detail.scope || '');
+    const eventType = String(detail.eventType || '');
+    if ((scope !== 'all' && scope !== 'admin') || !eventType.startsWith('booking.receipt.')) return;
+
+    if (state.realtimeTimer !== null) window.clearTimeout(state.realtimeTimer);
+    state.realtimeTimer = window.setTimeout(() => {
+      state.realtimeTimer = null;
+      ensureQueueObserver();
+      void refresh();
+    }, 80);
   }
 
   window.addEventListener('DOMContentLoaded', () => {
     ensureViewer();
     ensureQueueObserver();
   });
+  window.addEventListener('member-system:realtime-invalidation', handleReceiptRealtimeInvalidation);
   window.addEventListener('member-admin-ready', () => {
     ensureQueueObserver();
     void refresh();

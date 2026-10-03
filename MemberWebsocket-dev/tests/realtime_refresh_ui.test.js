@@ -46,6 +46,7 @@ test('admin booking modules reuse the single MemberSystem realtime feed', () => 
   const memberSystem = read('member-system.js');
   const bookingAdmin = read('admin/booking-panel-core.js');
   const cancellation = read('admin/booking-cancellation-sync.js');
+  const receipts = read('admin/booking-receipt-admin.js');
 
   assert.match(memberSystem, /member-system:realtime-invalidation/);
   assert.match(memberSystem, /member-system:realtime-status/);
@@ -59,6 +60,11 @@ test('admin booking modules reuse the single MemberSystem realtime feed', () => 
   assert.match(cancellation, /member-system:realtime-status/);
   assert.doesNotMatch(cancellation, /supabase\.createClient/);
   assert.doesNotMatch(cancellation, /\.channel\(/);
+
+  assert.match(receipts, /member-system:realtime-invalidation/);
+  assert.match(receipts, /booking\.receipt\./);
+  assert.doesNotMatch(receipts, /supabase\.createClient/);
+  assert.doesNotMatch(receipts, /\.channel\(/);
 });
 
 test('booking child tables have statement-level realtime invalidation triggers', () => {
