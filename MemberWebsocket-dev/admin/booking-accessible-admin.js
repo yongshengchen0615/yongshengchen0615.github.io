@@ -131,16 +131,15 @@
 
     catalogItems.forEach(item => {
       const key = `${item.kind}:${item.selectionId || ''}`;
-      if (!item.selectionId) return;
-      shownKeys.add(key);
+      if (item.selectionId) shownKeys.add(key);
       const required = Array.isArray(item.requiredServiceIds) ? item.requiredServiceIds.map(String).filter(Boolean) : [];
       const matchAll = item.requiredServiceMatchMode === 'all';
       const serviceEligible = !required.length || (matchAll ? required.every(id => selectedServices.has(id)) : required.some(id => selectedServices.has(id)));
       const row = document.createElement('div'); row.className = 'accessible-admin-benefit';
       const label = document.createElement('label');
       const check = document.createElement('input'); check.type = 'checkbox'; check.dataset.benefitCheck = ''; check.dataset.kind = item.kind; check.dataset.selectionId = item.selectionId;
-      check.checked = pendingKeys.has(key) && item.selectable === true && serviceEligible;
-      check.disabled = item.selectable !== true || !serviceEligible;
+      check.checked = Boolean(item.selectionId) && pendingKeys.has(key) && item.selectable === true && serviceEligible;
+      check.disabled = !item.selectionId || item.selectable !== true || !serviceEligible;
       const copy = document.createElement('span');
       const strong = document.createElement('strong'); strong.textContent = item.title || '預約票券';
       const small = document.createElement('small');
