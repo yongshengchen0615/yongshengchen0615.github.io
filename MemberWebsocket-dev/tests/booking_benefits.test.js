@@ -150,6 +150,29 @@ test('selecting every item in a service type displays the service type label', a
   assert.doesNotMatch(point.conditionLabel, /身體60、身體120/);
 });
 
+test('all-mode requires every selected service and labels a full service type accordingly', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const result = await loadBookingBenefits(database({
+    point_card_rewards: [{
+      id: 'reward',
+      point_card_id: 'card',
+      ticket_template_id: 'template',
+      threshold_stamps: 5,
+      required_service_ids: ['service-body-60', 'service-body-120'],
+      required_service_match_mode: 'all',
+    }],
+    booking_services: [
+      { id: 'service-body-60', title: '身體60', service_type: '身體' },
+      { id: 'service-body-120', title: '身體120', service_type: '身體' },
+    ],
+  }), member, 'silver', today);
+  const point = result.items.find(item => item.kind === 'points');
+  assert.ok(point);
+  assert.equal(point.requiredServiceMatchMode, 'all');
+  assert.equal(point.requiredServiceRequirementLabel, '需預約「身體」項目類型的所有項目');
+  assert.match(point.conditionLabel, /需預約「身體」項目類型的所有項目/);
+});
+
 test('unclaimed event tickets are selectable by claiming from the booking surface', async () => {
   const { loadBookingBenefits } = await modulePromise;
   const result = await loadBookingBenefits(database(), member, 'silver', today);
