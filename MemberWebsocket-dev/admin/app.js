@@ -31,7 +31,7 @@
       'realMembersSubtab', 'testMembersSubtab', 'memberSearch', 'memberResultCount', 'memberTableBody', 'memberEmptyState', 'memberPagination', 'memberPrevPageButton', 'memberPageStatus', 'memberNextPageButton',
       'newCardButton', 'cardResultCount', 'cardListItems', 'cardEmptyState', 'editorKicker', 'editorTitle', 'editorStatus', 'cardForm', 'cardId', 'cardExpectedUpdatedAt', 'cardTitle', 'cardUsageMethod', 'cardUsageInstructions', 'cardBenefitDescription', 'cardStatus', 'cardExpiryMode', 'cardExpiresOnField', 'cardExpiresOn', 'cardExpiresOnSummary', 'cardAccent', 'accentValue', 'rewardRows', 'addRewardButton', 'rewardEditorHint', 'cardFormMessage', 'resetCardButton', 'archiveCardButton', 'deleteCardButton', 'saveCardButton',
       'newTicketButton', 'ticketResultCount', 'ticketListItems', 'ticketEmptyState', 'ticketEditorKicker', 'ticketEditorTitle', 'ticketEditorStatus', 'ticketForm', 'ticketTemplateId', 'ticketExpectedUpdatedAt', 'ticketTitle', 'ticketType', 'ticketDescription', 'ticketUsageMethod', 'ticketUsageInstructions', 'ticketStatus', 'ticketPrizeEditor', 'ticketPrizeRows', 'addTicketPrizeButton', 'balanceTicketPrizesButton', 'ticketPrizeTotal', 'ticketFormMessage', 'resetTicketButton', 'saveTicketButton',
-      'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketRequiredServiceIds', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton', 'eventTicketLocationRule', 'eventTicketRequiresLocation', 'eventTicketLatitude', 'eventTicketLongitude', 'eventTicketRadius',
+      'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketRequiredServiceMatchMode', 'eventTicketRequiredServiceIds', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton', 'eventTicketLocationRule', 'eventTicketRequiresLocation', 'eventTicketLatitude', 'eventTicketLongitude', 'eventTicketRadius',
       'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIsTestAccount', 'memberIdentity', 'memberTier', 'memberTestProfileFields', 'memberDisplayName', 'memberSurname', 'memberSalutation', 'memberBirthday', 'memberPhone', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
       'memberRecordsModal', 'closeMemberRecordsModal', 'memberRecordsIdentity', 'memberRecordsOverview', 'memberRecordsSummary', 'memberRecordsTabs', 'memberRecordsList', 'memberRecordsEmpty', 'memberRecordsMessage',
@@ -1505,7 +1505,7 @@
     state.selectedCardId = ''; els.cardForm.reset(); els.cardId.value = ''; els.cardExpectedUpdatedAt.value = ''; els.cardStatus.value = ''; els.cardStyle.value = POINT_CARD_STYLE_KEYS[0]; updatePointCardStylePreview(); els.cardExpiryMode.value = 'unlimited'; els.cardExpiresOn.value = ''; els.cardAccent.value = '#e47845'; updateCardExpiryUI(); updateAccentValue(); renderRewardRows([defaultReward(5)]); els.editorKicker.textContent = 'Create points card'; els.editorTitle.textContent = '新增集點卡'; updateEditorStatus(els.editorStatus, ''); els.archiveCardButton.disabled = true; els.archiveCardButton.textContent = '先儲存後才能封存'; els.deleteCardButton.disabled = true; hideMessage(els.cardFormMessage); renderCardList();
   }
 
-  function defaultReward(thresholdStamps) { return { thresholdStamps, ticketTemplateId: '', requiredServiceIds: [] }; }
+  function defaultReward(thresholdStamps) { return { thresholdStamps, ticketTemplateId: '', requiredServiceIds: [], requiredServiceMatchMode: 'any' }; }
   function updateCardExpiryUI() { const limited = els.cardExpiryMode.value === 'date'; els.cardExpiresOnField.classList.toggle('hidden', !limited); els.cardExpiresOn.required = limited; updateCardExpiryDateUI(); }
   function validatePublicStatus(value, label) { return ['active', 'draft', 'archived'].includes(String(value || '')) ? '' : `請選擇${label}公開狀態。`; }
   function validateCardExpiry(mode, expiresOn) { if (mode === 'unlimited') return ''; if (mode !== 'date' || !/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) return '請選擇有效的集點卡到期日。'; const parts = expiresOn.split('-').map(Number); const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])); return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2] ? '' : '請選擇有效的集點卡到期日。'; }
@@ -1526,11 +1526,13 @@
     const serviceHeading = document.createElement('div'); serviceHeading.className = 'audience-selector-heading';
     const serviceCopy = document.createElement('div'); const kicker = document.createElement('p'); kicker.className = 'kicker'; kicker.textContent = 'Booking rule';
     const serviceTitle = document.createElement('h4'); serviceTitle.textContent = '集到這個節點後，需預約哪些項目才能使用票券？';
-    const serviceHelp = document.createElement('p'); serviceHelp.textContent = '未勾選代表不限預約項目；勾選多種時，本次預約包含其中一種即可使用。';
+    const serviceHelp = document.createElement('p'); serviceHelp.textContent = '未勾選代表不限預約項目；可設定「任一即可」或「全部都要預約」。';
     serviceCopy.append(kicker, serviceTitle, serviceHelp); serviceHeading.append(serviceCopy);
+    const matchModeField = fieldLabel('符合方式', 'select', reward.requiredServiceMatchMode === 'all' ? 'all' : 'any', { field: 'requiredServiceMatchMode', options: [['any', '任一勾選項目有預約即可'], ['all', '勾選的所有項目都需預約']] });
+    matchModeField.classList.add('booking-service-match-mode');
     const serviceOptions = document.createElement('div'); serviceOptions.className = 'event-ticket-tier-options audience-tier-grid'; serviceOptions.dataset.rewardRequiredServiceIds = 'true'; serviceOptions.setAttribute('aria-label', `節點 ${index + 1} 可使用票券的預約項目`);
     renderRequiredServiceOptions(serviceOptions, reward.requiredServiceIds);
-    serviceRule.append(legend, serviceHeading, serviceOptions);
+    serviceRule.append(legend, serviceHeading, matchModeField, serviceOptions);
     row.append(heading, grid, serviceRule); return row;
   }
   function fieldLabel(labelText, type, value, options) {
@@ -1539,10 +1541,10 @@
     input.dataset.field = options.field; if (options.suffix) { const suffix = document.createElement('span'); suffix.className = 'field-suffix'; suffix.textContent = options.suffix; label.append(input, suffix); } else label.append(input); return label;
   }
   function addRewardRow() { const rewards = collectRewards(); const highest = rewards.reduce((max, reward) => Math.max(max, Number(reward.thresholdStamps) || 0), 0); rewards.push(defaultReward(Math.min(100, highest + 5 || 5))); renderRewardRows(rewards); els.rewardRows.querySelector('[data-reward-row]:last-child [data-field="ticketTemplateId"]')?.focus(); }
-  function collectRewards() { return Array.from(els.rewardRows.querySelectorAll('[data-reward-row]')).map((row) => ({ thresholdStamps: Number(row.querySelector('[data-field="thresholdStamps"]')?.value), ticketTemplateId: String(row.querySelector('[data-field="ticketTemplateId"]')?.value || '').trim(), requiredServiceIds: collectRequiredServiceIds(row.querySelector('[data-reward-required-service-ids]')) })); }
+  function collectRewards() { return Array.from(els.rewardRows.querySelectorAll('[data-reward-row]')).map((row) => ({ thresholdStamps: Number(row.querySelector('[data-field="thresholdStamps"]')?.value), ticketTemplateId: String(row.querySelector('[data-field="ticketTemplateId"]')?.value || '').trim(), requiredServiceIds: collectRequiredServiceIds(row.querySelector('[data-reward-required-service-ids]')), requiredServiceMatchMode: row.querySelector('[data-field="requiredServiceMatchMode"]')?.value === 'all' ? 'all' : 'any' })); }
   function updateRewardEditorHint() {
     const rewards = collectRewards(); const duplicate = rewards.some((reward, index) => rewards.findIndex((item) => item.thresholdStamps === reward.thresholdStamps) !== index); const missingTicket = rewards.some((reward) => !reward.ticketTemplateId);
-    els.rewardRows.querySelectorAll('[data-reward-row]').forEach((row) => { const threshold = Number(row.querySelector('[data-field="thresholdStamps"]')?.value); const ticket = state.tickets.find((item) => item.ticketTemplateId === row.querySelector('[data-field="ticketTemplateId"]')?.value); const requiredServiceIds = collectRequiredServiceIds(row.querySelector('[data-reward-required-service-ids]')); const serviceSummary = ` · ${bookingServiceRequirementLabel(requiredServiceIds)}`; const summary = row.querySelector('[data-reward-summary]'); if (summary) summary.textContent = Number.isInteger(threshold) && threshold > 0 ? `集到 ${threshold} 點即可兌換 · ${ticket ? ticket.title : '尚未選擇票券'}${serviceSummary}` : '請先設定點數節點'; });
+    els.rewardRows.querySelectorAll('[data-reward-row]').forEach((row) => { const threshold = Number(row.querySelector('[data-field="thresholdStamps"]')?.value); const ticket = state.tickets.find((item) => item.ticketTemplateId === row.querySelector('[data-field="ticketTemplateId"]')?.value); const requiredServiceIds = collectRequiredServiceIds(row.querySelector('[data-reward-required-service-ids]')); const requiredServiceMatchMode = row.querySelector('[data-field="requiredServiceMatchMode"]')?.value === 'all' ? 'all' : 'any'; const serviceSummary = ` · ${bookingServiceRequirementLabel(requiredServiceIds, requiredServiceMatchMode)}`; const summary = row.querySelector('[data-reward-summary]'); if (summary) summary.textContent = Number.isInteger(threshold) && threshold > 0 ? `集到 ${threshold} 點即可兌換 · ${ticket ? ticket.title : '尚未選擇票券'}${serviceSummary}` : '請先設定點數節點'; });
     els.rewardEditorHint.textContent = duplicate ? '有節點使用相同點數，請調整後再儲存。' : missingTicket ? '每個節點都要選擇一張已啟用票券。' : `${rewards.length} 個兌換節點 · 兌換時會自動扣除該節點需要集到的點數。`; els.rewardEditorHint.classList.toggle('warning', duplicate || missingTicket);
   }
   function validateRewardEditor(title, rewards) { if (!title || title.length > 80) return '請填寫卡片名稱（最多 80 字）。'; if (!rewards.length || rewards.length > 30) return '請至少設定 1 個兌換節點，最多 30 個節點。'; const thresholds = new Set(); for (const reward of rewards) { if (!Number.isInteger(reward.thresholdStamps) || reward.thresholdStamps < 1 || reward.thresholdStamps > 100) return '需要集到的點數必須是 1–100 的整數。'; if (thresholds.has(reward.thresholdStamps)) return '每個點數只能設定一個節點。'; thresholds.add(reward.thresholdStamps); if (!reward.ticketTemplateId) return '請為每個節點選擇一張票券。'; } return ''; }
@@ -1599,7 +1601,7 @@
     return String(service?.title || serviceId || '').trim();
   }
 
-  function bookingServiceRequirementLabel(serviceIds) {
+  function bookingServiceRequirementLabel(serviceIds, matchMode = 'any') {
     const selected = new Set((Array.isArray(serviceIds) ? serviceIds : []).map((value) => String(value || '').trim()).filter(Boolean));
     if (!selected.size) return '預約不限項目';
 
@@ -1631,23 +1633,26 @@
     );
     individualTitles.push(...unknownIds);
 
+    const allRequired = matchMode === 'all';
     if (fullTypes.length && !individualTitles.length) {
+      if (allRequired) return fullTypes.length === 1
+        ? `需預約「${fullTypes[0]}」項目類型的所有項目`
+        : `需預約「${fullTypes.join('、')}」項目類型的所有項目`;
       return fullTypes.length === 1
         ? `需預約「${fullTypes[0]}」項目類型`
         : `需預約「${fullTypes.join('、')}」其中一種項目類型`;
     }
     if (!fullTypes.length) {
+      if (allRequired) return `需預約所有指定項目：「${individualTitles.join('、')}」`;
       return individualTitles.length === 1
         ? `需預約「${individualTitles[0]}」項目`
         : `需預約「${individualTitles.join('、')}」其中一個項目`;
     }
-    const typePart = fullTypes.length === 1
-      ? `「${fullTypes[0]}」項目類型`
-      : `「${fullTypes.join('、')}」其中一種項目類型`;
-    const itemPart = individualTitles.length === 1
-      ? `「${individualTitles[0]}」項目`
-      : `「${individualTitles.join('、')}」其中一個項目`;
-    return `需預約 ${typePart} 或 ${itemPart}`;
+    const typePart = fullTypes.length === 1 ? `「${fullTypes[0]}」項目類型` : `「${fullTypes.join('、')}」項目類型`;
+    const itemPart = individualTitles.length === 1 ? `「${individualTitles[0]}」項目` : `「${individualTitles.join('、')}」項目`;
+    return allRequired
+      ? `需預約 ${typePart}的所有項目，且需包含 ${itemPart}`
+      : `需預約 ${typePart} 或 ${itemPart}`;
   }
 
   function renderRequiredServiceOptions(root, selectedIds = []) {
@@ -1796,6 +1801,7 @@
     els.eventTicketUsageMethod.value = String(ticket.usageMethod || '');
     els.eventTicketUsageInstructions.value = String(ticket.usageInstructions || '');
     els.eventTicketStatus.value = String(ticket.status || 'draft');
+    els.eventTicketRequiredServiceMatchMode.value = ticket.requiredServiceMatchMode === 'all' ? 'all' : 'any';
     renderRequiredServiceOptions(els.eventTicketRequiredServiceIds, ticket.requiredServiceIds);
     els.eventTicketStartsOn.value = String(ticket.startsOn || '');
     els.eventTicketEndsOn.value = String(ticket.endsOn || '');
@@ -1811,7 +1817,7 @@
   }
 
   function resetEventTicketForm(renderList = true) {
-    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = ''; renderRequiredServiceOptions(els.eventTicketRequiredServiceIds, []); els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketRequiresLocation.checked = false; window.CouponLocationEditor.set([]); els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.classList.add('hidden'); els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, ''); hideMessage(els.eventTicketFormMessage); if (renderList) renderEventTicketList();
+    state.selectedEventTicketId = ''; els.eventTicketForm.reset(); els.eventTicketId.value = ''; els.eventTicketExpectedUpdatedAt.value = ''; els.eventTicketType.value = 'coupon'; els.eventTicketStatus.value = ''; els.eventTicketRequiredServiceMatchMode.value = 'any'; renderRequiredServiceOptions(els.eventTicketRequiredServiceIds, []); els.eventTicketStartsOn.value = ''; els.eventTicketEndsOn.value = ''; els.eventTicketQuota.value = '0'; els.eventTicketRequiresLocation.checked = false; window.CouponLocationEditor.set([]); els.eventTicketAccent.value = '#df6b4d'; setEventTicketAllowedTiers(EVENT_TICKET_TIER_KEYS); els.deleteEventTicketButton.disabled = true; els.deleteEventTicketButton.classList.add('hidden'); els.deleteEventTicketButton.textContent = '刪除目前票券'; renderEventTicketPrizeRows([defaultPrize()]); updateEventTicketTypeUI(); updateEventTicketAccentValue(); updateEventTicketDateRangeUI(); els.eventTicketEditorKicker.textContent = 'Create event ticket'; els.eventTicketEditorTitle.textContent = '新增活動票券'; updateEditorStatus(els.eventTicketEditorStatus, ''); hideMessage(els.eventTicketFormMessage); if (renderList) renderEventTicketList();
   }
 
   function collectEventTicketAllowedTiers() { return Array.from(document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]:checked')).map((input) => String(input.value || '').trim()).filter((tierKey) => EVENT_TICKET_TIER_KEYS.includes(tierKey)); }
@@ -1874,7 +1880,7 @@
   function validateEventTicket(ticket) { if (!['coupon', 'lottery', 'referral', 'membership_join'].includes(ticket.ticketType)) return '請選擇有效的票券類型。'; if (ticket.ticketType === 'referral' && ticket.requiresLocation) return '好友邀請票券目前不支援定位核銷。'; if (!['active', 'draft', 'archived'].includes(ticket.status)) return '請選擇活動票券公開狀態。'; if (!ticket.title || ticket.title.length > 100) return '請填寫活動票券名稱（最多 100 字）。'; if (!ticket.description || ticket.description.length > 240) return '請填寫票券說明（最多 240 字）。'; if (!ticket.usageMethod || ticket.usageMethod.length > 120) return '請填寫使用方式（最多 120 字）。'; if (!ticket.usageInstructions || ticket.usageInstructions.length > 500) return '請填寫使用說明（最多 500 字）。'; if (!ticket.allowedTierKeys.length) return '請至少選擇一個可使用的會員等級。'; if (!Number.isInteger(ticket.quota) || ticket.quota < 0 || ticket.quota > 1000000) return '限量張數必須是 0–1,000,000 的整數。'; if (ticket.requiresLocation && (!ticket.redemptionLocations.length || ticket.redemptionLocations.length > 20 || ticket.redemptionLocations.some((location) => !location.name?.trim() || location.name.length > 100 || !Number.isFinite(Number(location.latitude)) || Math.abs(Number(location.latitude)) > 90 || !Number.isFinite(Number(location.longitude)) || Math.abs(Number(location.longitude)) > 180 || !Number.isInteger(Number(location.radiusMeters)) || Number(location.radiusMeters) < 50 || Number(location.radiusMeters) > 2000))) return '請設定 1–20 個有效地點（名稱、座標、50–2000 公尺半徑）。'; const dateMessage = validateEventTicketDates(ticket.startsOn, ticket.endsOn); if (dateMessage) return dateMessage; if (ticket.ticketType !== 'lottery') return ''; if (!ticket.prizes.length || ticket.prizes.length > 30) return '抽獎券至少要設定 1 個獎項，最多 30 個獎項。'; let total = 0; for (const prize of ticket.prizes) { if (!prize.prizeTitle || prize.prizeTitle.length > 100) return '每個抽獎獎項都需要填寫名稱。'; if (prize.prizeDescription.length > 240) return '獎項說明最多 240 字。'; if (!Number.isFinite(prize.winRate) || prize.winRate < 0 || prize.winRate > 100) return '每個獎項機率必須介於 0–100%。'; total += Math.round(prize.winRate * 100); } return total === 10000 ? '' : '同一張抽獎券的獎項機率合計必須正好是 100%。'; }
   async function saveEventTicket(event) {
     event.preventDefault(); if (requireRefreshBeforeWrite(els.eventTicketFormMessage)) return; hideMessage(els.eventTicketFormMessage);
-    const ticket = { eventTicketId: els.eventTicketId.value, title: String(els.eventTicketTitle.value || '').trim(), ticketType: els.eventTicketType.value, description: String(els.eventTicketDescription.value || '').trim(), usageMethod: String(els.eventTicketUsageMethod.value || '').trim(), usageInstructions: String(els.eventTicketUsageInstructions.value || '').trim(), status: els.eventTicketStatus.value, startsOn: String(els.eventTicketStartsOn.value || '').trim(), endsOn: String(els.eventTicketEndsOn.value || '').trim(), quota: Number(els.eventTicketQuota.value), requiresLocation: els.eventTicketRequiresLocation.checked, redemptionLocations: window.CouponLocationEditor.get(), allowedTierKeys: collectEventTicketAllowedTiers(), requiredServiceIds: collectRequiredServiceIds(els.eventTicketRequiredServiceIds), accent: safeAccent(els.eventTicketAccent.value), prizes: els.eventTicketType.value === 'lottery' ? collectEventTicketPrizes() : [] };
+    const ticket = { eventTicketId: els.eventTicketId.value, title: String(els.eventTicketTitle.value || '').trim(), ticketType: els.eventTicketType.value, description: String(els.eventTicketDescription.value || '').trim(), usageMethod: String(els.eventTicketUsageMethod.value || '').trim(), usageInstructions: String(els.eventTicketUsageInstructions.value || '').trim(), status: els.eventTicketStatus.value, startsOn: String(els.eventTicketStartsOn.value || '').trim(), endsOn: String(els.eventTicketEndsOn.value || '').trim(), quota: Number(els.eventTicketQuota.value), requiresLocation: els.eventTicketRequiresLocation.checked, redemptionLocations: window.CouponLocationEditor.get(), allowedTierKeys: collectEventTicketAllowedTiers(), requiredServiceIds: collectRequiredServiceIds(els.eventTicketRequiredServiceIds), requiredServiceMatchMode: els.eventTicketRequiredServiceMatchMode.value === 'all' ? 'all' : 'any', accent: safeAccent(els.eventTicketAccent.value), prizes: els.eventTicketType.value === 'lottery' ? collectEventTicketPrizes() : [] };
     const validationMessage = validateEventTicket(ticket); if (validationMessage) return showMessage(els.eventTicketFormMessage, validationMessage);
     setSaving(els.saveEventTicketButton, true, '正在儲存活動票券…');
     try {
