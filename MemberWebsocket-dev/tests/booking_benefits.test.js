@@ -22,6 +22,7 @@ function database(overrides = {}, fail = '') {
     event_ticket_claims: [],
     event_ticket_settings: [{ id: 1, max_tickets_per_day: 2, max_tickets_per_redemption: 2 }],
     point_card_settings: [{ id: 1, max_tickets_per_redemption: 2 }],
+    booking_services: [],
     calendar_items: [{ calendar_item_id: 'CAL', title: '會員活動', item_type: 'event', status: 'active', starts_on: today, ends_on: today, allowed_tier_keys: ['silver'] }],
     ...overrides,
   };
@@ -98,6 +99,25 @@ test('point tickets expose current balance and disable unaffordable tickets', as
   assert.equal(blocked.statusLabel, '點數不足');
   assert.match(blocked.disabledReason, /目前可用 4 點/);
   assert.match(blocked.disabledReason, /需要 5 點/);
+});
+
+test('ticket booking restrictions expose concrete service ids and service titles', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const result = await loadBookingBenefits(database({
+    point_card_rewards: [{
+      id: 'reward',
+      point_card_id: 'card',
+      ticket_template_id: 'template',
+      threshold_stamps: 5,
+      required_service_ids: ['service-body-60'],
+    }],
+    booking_services: [{ id: 'service-body-60', title: '身體60' }],
+  }), member, 'silver', today);
+  const point = result.items.find(item => item.kind === 'points');
+  assert.ok(point);
+  assert.deepEqual(point.requiredServiceIds, ['service-body-60']);
+  assert.deepEqual(point.requiredServiceTitles, ['身體60']);
+  assert.match(point.conditionLabel, /預約項目限制：需包含「身體60」任一項目/);
 });
 
 test('unclaimed event tickets are selectable by claiming from the booking surface', async () => {
