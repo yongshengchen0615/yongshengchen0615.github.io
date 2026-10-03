@@ -221,10 +221,12 @@
             check.checked = false;
             message(item.kind === 'event' ? `活動票券本次最多可審核 ${limit} 張。` : `集點卡票券本次最多可審核 ${limit} 張。`, true);
           } else if (item.kind === 'points' && pointBudgetExceeded()) {
-            check.checked = false;
-            const available = Math.max(0, Number(check.dataset.pointBalance || 0));
+            const cardKey = String(check.dataset.pointCard || check.dataset.pointCardTitle || '未分類集點卡');
             const cost = Math.max(0, Number(check.dataset.pointCost || 0));
-            message(`會員目前可用點數不足：此票券需 ${cost} 點，目前此集點卡可用 ${available} 點；請取消其他集點卡票券後再選擇。`, true);
+            const overBudget = pointBudgetSnapshot().get(cardKey);
+            const remainingBeforeThisTicket = Math.max(0, Number(overBudget?.available || 0) - Math.max(0, Number(overBudget?.required || 0) - cost));
+            check.checked = false;
+            message(`會員目前可用點數不足：此票券需 ${cost} 點，目前這張集點卡只剩 ${remainingBeforeThisTicket} 點可再使用；請取消其他集點卡票券後再選擇。`, true);
           }
         }
         updatePointBudgetSummary();
