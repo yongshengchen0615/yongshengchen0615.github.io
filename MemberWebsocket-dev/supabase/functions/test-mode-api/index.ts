@@ -167,6 +167,20 @@ function settingsClient(row: any): Json {
   };
 }
 
+async function ensureMembershipJoinTicketForTestAccount(supabase: any, memberId: string): Promise<Json> {
+  const result = await supabase.rpc("issue_membership_join_ticket", {
+    p_member_id: memberId,
+  });
+  if (result.error) {
+    throw new ApiError(
+      503,
+      "TEST_MEMBERSHIP_JOIN_TICKET_SYNC_FAILED",
+      "目前無法同步測試帳號的加入會員票券。",
+    );
+  }
+  return result.data && typeof result.data === "object" ? result.data as Json : {};
+}
+
 async function testAccounts(supabase: any): Promise<any[]> {
   const result = await supabase.from("members")
     .select("id,display_name,member_code,status,membership_status,test_account_sequence,created_at")
@@ -413,6 +427,11 @@ Deno.serve(async (request: Request) => {
       if (!member || member.is_test_account !== true || member.status !== "active" || member.membership_status !== "active") {
         throw new ApiError(403, "TEST_ACCOUNT_UNAVAILABLE", "選擇的測試帳號目前無法使用。");
       }
+
+      // Test accounts are reusable fixtures and may predate the current membership-join
+      // ticket configuration. Re-run the idempotent issuer on login so an active
+      // test account can exercise the same server-issued benefit as a newly joined member.
+      await ensureMembershipJoinTicketForTestAccount(supabase, member.id);
 
       const token = randomToken();
       const tokenHash = await sha256Hex(token);
