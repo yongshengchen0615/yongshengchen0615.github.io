@@ -897,7 +897,7 @@ async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
 }
 
 async function adminBookingSummary(supabase: SupabaseClient, identity: Identity): Promise<Json> {
-  const [pendingResult, cancellationResult, notificationResult] = await Promise.all([
+  const [pendingResult, cancellationResult, accessibleReceiptResult, notificationResult] = await Promise.all([
     supabase.from("bookings")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending"),
@@ -906,12 +906,18 @@ async function adminBookingSummary(supabase: SupabaseClient, identity: Identity)
       .in("status", ["pending", "confirmed"])
       .not("cancellation_requested_at", "is", null)
       .is("cancellation_reviewed_at", null),
+    supabase.from("booking_receipts")
+      .select("id", { count: "exact", head: true })
+      .eq("submission_mode", "accessible")
+      .eq("status", "awaiting_review")
+      .is("booking_id", null),
     supabase.rpc("admin_booking_notification_summary", {
       p_admin_line_user_id: identity.lineUserId,
     }),
   ]);
   if (pendingResult.error) throw mapDatabaseError(pendingResult.error);
   if (cancellationResult.error) throw mapDatabaseError(cancellationResult.error);
+  if (accessibleReceiptResult.error) throw mapDatabaseError(accessibleReceiptResult.error);
   if (notificationResult.error) throw mapDatabaseError(notificationResult.error);
   const notifications = notificationResult.data && typeof notificationResult.data === "object"
     ? notificationResult.data as Json
@@ -919,6 +925,7 @@ async function adminBookingSummary(supabase: SupabaseClient, identity: Identity)
   return {
     pendingCount: Math.max(0, Number(pendingResult.count || 0)),
     cancellationRequestCount: Math.max(0, Number(cancellationResult.count || 0)),
+    accessibleReceiptPendingCount: Math.max(0, Number(accessibleReceiptResult.count || 0)),
     unreadCount: Math.max(0, Number(notifications.unreadCount || 0)),
     unreadBookingCount: Math.max(0, Number(notifications.unreadBookingCount || 0)),
     unreadCancellationCount: Math.max(0, Number(notifications.unreadCancellationCount || 0)),
