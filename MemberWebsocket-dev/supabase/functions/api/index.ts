@@ -947,6 +947,7 @@ async function adminCards(supabase: SupabaseClient): Promise<{ cards: any[]; tic
       usageInstructions: template.usage_instructions || "",
       prizes: Array.isArray(template.prizes) ? template.prizes : [],
       requiredServiceIds: Array.isArray(reward.required_service_ids) ? reward.required_service_ids : [],
+      requiredServiceMatchMode: reward.required_service_match_mode === "all" ? "all" : "any",
       requiredServiceTypes: Array.isArray(reward.required_service_types) ? reward.required_service_types : [],
       updatedAt: reward.updated_at,
     });
@@ -1112,6 +1113,7 @@ function eventTicketClient(row: any, claimedCount = 0, admin = false): Json {
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
     allowedTierLabels: (Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS]).map((key:string) => TIER_LABELS[key]).filter(Boolean),
     requiredServiceIds: Array.isArray(row.required_service_ids) ? row.required_service_ids : [],
+    requiredServiceMatchMode: row.required_service_match_mode === "all" ? "all" : "any",
     requiredServiceTypes: Array.isArray(row.required_service_types) ? row.required_service_types : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1653,6 +1655,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   const requiredServiceIds = input.requiredServiceIds !== undefined
     ? await normalizeRequiredServiceIds(supabase,input.requiredServiceIds)
     : await serviceIdsForLegacyTypes(supabase,input.requiredServiceTypes);
+  const requiredServiceMatchMode = input.requiredServiceMatchMode === "all" ? "all" : "any";
   const payload = {
     title: requireText(input.title,"活動票券名稱",100),
     ticket_type: ticketType,
@@ -1672,6 +1675,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     accent: requireAccent(input.accent),
     allowed_tier_keys: normalizeTierKeys(input.allowedTierKeys),
     required_service_ids: requiredServiceIds,
+    required_service_match_mode: requiredServiceMatchMode,
     updated_by: actor,
     updated_at: new Date().toISOString(),
     deleted_at: null,
@@ -2458,7 +2462,8 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       const requiredServiceIds = reward.requiredServiceIds !== undefined
         ? await normalizeRequiredServiceIds(supabase,reward.requiredServiceIds)
         : await serviceIdsForLegacyTypes(supabase,reward.requiredServiceTypes);
-      normalizedRewards.push({ ...reward,thresholdStamps:threshold,ticketTemplateId,requiredServiceIds });
+      const requiredServiceMatchMode = reward.requiredServiceMatchMode === "all" ? "all" : "any";
+      normalizedRewards.push({ ...reward,thresholdStamps:threshold,ticketTemplateId,requiredServiceIds,requiredServiceMatchMode });
     }
     const normalized = { ...card,title:asText(card.title,100),status:asText(card.status,20),accent:requireAccent(card.accent),styleKey:safePointCardStyle(card.styleKey),expiryMode,expiresOn:expiryMode === "date" ? asText(card.expiresOn,20) : "",usageMethod:asText(card.usageMethod,120),usageInstructions:asText(card.usageInstructions,500),benefitDescription:asText(card.benefitDescription,500),rewards:normalizedRewards };
     const rpc = await supabase.rpc("save_point_card_service_items",{ p_actor_line_user_id:identity.lineUserId,p_card:normalized,p_expected_updated_at:asText(body.expectedUpdatedAt,100) || null });
