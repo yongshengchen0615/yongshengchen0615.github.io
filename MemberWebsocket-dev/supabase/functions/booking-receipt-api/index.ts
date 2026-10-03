@@ -331,16 +331,96 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
     .order("updated_at",{ascending:false})
     .limit(200);
   if(result.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
-  const submissions=await supabase.from("booking_receipts")
-    .select("receipt_id,member_id,status,created_at,updated_at,members(display_name,member_code)")
-    .eq("submission_mode","accessible").is("booking_id",null).eq("status","awaiting_review")
-    .order("created_at",{ascending:true}).limit(100);
-  if(submissions.error) throw new ApiError(500,"DATABASE_ERROR","待補登收據暫時無法讀取。");
-  return {submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,updatedAt:r.updated_at,
-    createdAt:r.created_at,memberName:r.members?.display_name||"會員",memberCode:r.members?.member_code||""})),receipts:(result.data||[]).map((row:any)=>({
-    receiptId:String(row.receipt_id||""),bookingId:String(row.booking_id||""),status:String(row.status||""),
-    boundAt:row.bound_at,mimeType:String(row.actual_mime_type||""),sizeBytes:Number(row.actual_size_bytes||0)
-  }))};
+
+  const accessible=await supabase.from("booking_receipts")
+    .select(`
+      receipt_id,booking_id,status,failure_reason,created_at,updated_at,bound_at,
+      members(display_name,member_code),
+      bookings(
+        id,booking_date,start_time,status,total_duration_minutes,completed_at,
+        booking_items(service_id,service_title,unit_duration_minutes,quantity,service_type),
+        booking_completion_settlements(service_minutes,reward_details,created_at),
+        booking_benefit_selections(benefit_kind,title_snapshot,status,redeemed_at,result)
+      )
+    `)
+    .eq("submission_mode","accessible")
+    .in("status",["awaiting_review","bound","failed"])
+    .order("updated_at",{ascending:false})
+    .limit(200);
+  if(accessible.error) throw new ApiError(500,"DATABASE_ERROR","無障礙審核紀錄暫時無法讀取。");
+
+  const accessibleRecords=(accessible.data||[]).map((row:any)=>{
+    const booking=Array.isArray(row.bookings)?row.bookings[0]||null:row.bookings||null;
+    const settlements=Array.isArray(booking?.booking_completion_settlements)
+      ? booking.booking_completion_settlements
+      : booking?.booking_completion_settlements ? [booking.booking_completion_settlements] : [];
+    const settlement=settlements[0]||null;
+    const rewards=Array.isArray(settlement?.reward_details)?settlement.reward_details:[];
+    const points=rewards.reduce((sum:number,reward:any)=>sum+Math.max(0,Number(reward?.points||0)),0);
+    const services=(Array.isArray(booking?.booking_items)?booking.booking_items:[])
+      .filter((item:any)=>String(item?.service_id||"")!=="00000000-0000-4000-8000-000000000010")
+      .map((item:any)=>({
+        serviceId:String(item?.service_id||""),
+        title:String(item?.service_title||"服務項目"),
+        minutes:Math.max(0,Number(item?.unit_duration_minutes||0)),
+        quantity:Math.max(1,Number(item?.quantity||1)),
+        serviceType:String(item?.service_type||""),
+      }));
+    const benefits=(Array.isArray(booking?.booking_benefit_selections)?booking.booking_benefit_selections:[])
+      .filter((item:any)=>["points","event"].includes(String(item?.benefit_kind||"")))
+      .map((item:any)=>({
+        kind:String(item?.benefit_kind||""),
+        title:String(item?.title_snapshot||"預約票券"),
+        status:String(item?.status||""),
+        redeemedAt:item?.redeemed_at||null,
+      }));
+    const status=String(row.status||"");
+    const dismissed=status==="failed"&&String(row.failure_reason||"")==="admin-dismissed";
+    return {
+      receiptId:String(row.receipt_id||""),
+      bookingId:String(row.booking_id||""),
+      status,
+      reviewStatus:status==="awaiting_review"?"pending":status==="bound"?"completed":dismissed?"dismissed":"failed",
+      failureReason:String(row.failure_reason||""),
+      createdAt:row.created_at,
+      updatedAt:row.updated_at,
+      completedAt:row.bound_at||booking?.completed_at||settlement?.created_at||null,
+      memberName:row.members?.display_name||"會員",
+      memberCode:row.members?.member_code||"",
+      bookingDate:booking?.booking_date||null,
+      startTime:booking?.start_time?String(booking.start_time).slice(0,5):"",
+      bookingStatus:String(booking?.status||""),
+      totalDurationMinutes:Math.max(0,Number(booking?.total_duration_minutes||0)),
+      serviceMinutes:Math.max(0,Number(settlement?.service_minutes||0)),
+      points,
+      services,
+      benefits,
+    };
+  });
+
+  const submissions=accessibleRecords
+    .filter((row:any)=>row.reviewStatus==="pending")
+    .map((row:any)=>({
+      receiptId:row.receiptId,
+      updatedAt:row.updatedAt,
+      createdAt:row.createdAt,
+      memberName:row.memberName,
+      memberCode:row.memberCode,
+    }));
+
+  return {
+    submissions,
+    accessibleRecords,
+    accessibleCounts:{
+      pending:accessibleRecords.filter((row:any)=>row.reviewStatus==="pending").length,
+      completed:accessibleRecords.filter((row:any)=>row.reviewStatus==="completed").length,
+      all:accessibleRecords.length,
+    },
+    receipts:(result.data||[]).map((row:any)=>({
+      receiptId:String(row.receipt_id||""),bookingId:String(row.booking_id||""),status:String(row.status||""),
+      boundAt:row.bound_at,mimeType:String(row.actual_mime_type||""),sizeBytes:Number(row.actual_size_bytes||0)
+    }))
+  };
 }
 async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
   const bookingId=asText(body.bookingId,80);
