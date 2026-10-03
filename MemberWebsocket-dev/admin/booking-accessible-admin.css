@@ -19,3 +19,7 @@
 .accessible-admin-benefit small { opacity: .78; }
 .accessible-admin-benefit-warning { border: 1px solid var(--theme-danger,#b42318); border-radius: 10px; padding: 10px; }
 #accessibleAdminBenefitHint { margin: 0; font-size: .9rem; opacity: .82; }
+
+.accessible-admin-point-summary { display: grid; gap: 6px; padding: 10px 12px; border-radius: 10px; background: var(--theme-surface-soft,rgba(127,127,127,.08)); }
+.accessible-admin-point-summary:empty { display: none; }
+.accessible-admin-point-summary p { margin: 0; font-size: .92rem; }
