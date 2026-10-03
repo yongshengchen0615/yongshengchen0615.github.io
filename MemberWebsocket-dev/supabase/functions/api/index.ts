@@ -139,7 +139,9 @@ function mapDatabaseError(error: unknown): ApiError {
     ["EVENT_ENDED",409,"EVENT_ENDED","活動已結束。"],
     ["EVENT_QUOTA_REACHED",409,"EVENT_QUOTA_REACHED","活動票券已達發放上限。"],
     ["REFERRAL_TICKET_AUTO_ONLY",409,"REFERRAL_TICKET_AUTO_ONLY","好友邀請票券只能在好友邀請綁定成功後由系統發放。"],
+    ["MEMBERSHIP_JOIN_TICKET_AUTO_ONLY",409,"MEMBERSHIP_JOIN_TICKET_AUTO_ONLY","加入會員票券只能在會員完成加入時由系統發放。"],
     ["event_tickets_one_active_referral_idx",409,"REFERRAL_REWARD_ALREADY_ACTIVE","同時間只能啟用一個好友邀請票券。"],
+    ["event_tickets_one_active_membership_join_idx",409,"MEMBERSHIP_JOIN_REWARD_ALREADY_ACTIVE","同時間只能啟用一個加入會員票券。"],
     ["TIER_NOT_ALLOWED",403,"TIER_NOT_ALLOWED","目前會員等級不適用這張票券。"],
     ["CLAIM_NOT_FOUND",404,"CLAIM_NOT_FOUND","找不到已領取的活動票券。"],
     ["CLAIM_NOT_AVAILABLE",409,"CLAIM_NOT_AVAILABLE","這張活動票券目前無法使用。"],
@@ -1148,7 +1150,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     const claimRow = claimByEvent.get(row.id);
     // Fixed tickets are server-issued member benefits, not public claimable offers.
     // Never expose a fixed-ticket event to a member unless that member owns its claim.
-    if ((row.fixed_ticket_template_id || row.ticket_type === "referral") && !claimRow) return [];
+    if ((row.fixed_ticket_template_id || row.ticket_type === "referral" || row.ticket_type === "membership_join") && !claimRow) return [];
     if (claimRow && String(claimRow.status || "") === "used") return [];
     const ticket = eventTicketClient(row,counts.get(row.id)||0) as any;
     const claim = claimRow ? claimClient(claimRow,row.event_ticket_id) : null;
@@ -1163,7 +1165,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       claim,
       availability,
       tierEligible,
-      canClaim: row.ticket_type !== "referral" && !claim && tierEligible && availability === "active" && !soldOut,
+      canClaim: !["referral","membership_join"].includes(String(row.ticket_type || "")) && !claim && tierEligible && availability === "active" && !soldOut,
       canUse: Boolean(claim && claim.status === "available" && tierEligible && availability === "active" && !reservedForBooking),
       reservedForBooking,
       soldOut,
@@ -1592,7 +1594,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   const input = body.eventTicket && typeof body.eventTicket === "object" ? body.eventTicket as Json : {};
   const id = asText(input.eventTicketId,100);
   const ticketType = asText(input.ticketType,20);
-  if (!["coupon","lottery","referral"].includes(ticketType)) throw new ApiError(400,"INVALID_TICKET_TYPE","票券類型不合法。");
+  if (!["coupon","lottery","referral","membership_join"].includes(ticketType)) throw new ApiError(400,"INVALID_TICKET_TYPE","票券類型不合法。");
   const status = requireStatus(input.status);
   const startsOn = asText(input.startsOn,20);
   const endsOn = asText(input.endsOn,20);
@@ -1655,6 +1657,17 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
       .limit(1);
     if (activeReferral.error) throw mapDatabaseError(activeReferral.error);
     if ((activeReferral.data || []).length) throw new ApiError(409,"REFERRAL_REWARD_ALREADY_ACTIVE","同時間只能啟用一個好友邀請票券，請先封存目前啟用中的好友邀請票券。");
+  }
+  if (ticketType === "membership_join" && status === "active") {
+    const activeJoinReward = await supabase.from("event_tickets")
+      .select("event_ticket_id")
+      .eq("ticket_type","membership_join")
+      .eq("status","active")
+      .is("deleted_at",null)
+      .neq("event_ticket_id", id || "__new__")
+      .limit(1);
+    if (activeJoinReward.error) throw mapDatabaseError(activeJoinReward.error);
+    if ((activeJoinReward.data || []).length) throw new ApiError(409,"MEMBERSHIP_JOIN_REWARD_ALREADY_ACTIVE","同時間只能啟用一個加入會員票券，請先封存目前啟用中的加入會員票券。");
   }
   let row;
   if (id) {
