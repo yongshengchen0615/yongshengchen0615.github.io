@@ -32,17 +32,20 @@ test('background badge sync uses the count-only booking summary endpoint', () =>
   assert.doesNotMatch(section, /admin\.booking\.bootstrap|manageRequest|resourceRequest|contactRequest|groupDetailsRequest/);
 });
 
-test('booking badge renders unread and pending counts with accessible labels', () => {
+test('booking badge renders unread, pending, and accessible review counts', () => {
   const start = core.indexOf('function renderBookingPendingBadge');
   const end = core.indexOf('async function refreshBookingBadge', start);
   const section = core.slice(start, end);
   assert.match(section, /bookingTab\.dataset\.unreadCount/);
   assert.match(section, /bookingTab\.dataset\.pendingCount/);
+  assert.match(section, /bookingTab\.dataset\.accessiblePendingCount/);
+  assert.match(section, /bookingTab\.dataset\.badgeCount/);
   assert.match(section, /bookingAdminPendingCount\.textContent/);
   assert.match(section, /bookingAdminQueueSubtabCount\.textContent/);
   assert.match(section, /setAttribute\('aria-label'/);
   assert.match(section, /筆未讀更新/);
-  assert.match(section, /筆待確認/);
+  assert.match(section, /一般預約待確認/);
+  assert.match(section, /無障礙預約待審核/);
 });
 
 test('booking realtime refreshes only the badge while booking panel is hidden', () => {
@@ -73,14 +76,17 @@ test('booking summary endpoint counts pending rows only after admin authorizatio
   assert.match(section, /select\("id", \{ count: "exact", head: true \}\)/);
   assert.match(section, /\.eq\("status", "pending"\)/);
   assert.match(section, /pendingCount/);
+  assert.match(section, /booking_receipts/);
+  assert.match(section, /submission_mode/);
+  assert.match(section, /accessibleReceiptPendingCount/);
   assert.match(section, /identity\.lineUserId/);
   assert.match(api, /adminBookingSummary\(supabase: SupabaseClient, identity: Identity\)/);
   assert.doesNotMatch(section, /members\(|hydrateBookings|booking_items/);
 });
 
-test('booking unread badge uses a separate pseudo-element from the surface-tab active underline', () => {
+test('booking combined badge uses a separate pseudo-element from the surface-tab active underline', () => {
   assert.match(baseCss, /\.surface-tab::after[\s\S]*transform:\s*scaleX\(0\)/);
-  assert.match(bookingCss, /#bookingTab\[data-unread-count\]:not\(\[data-unread-count="0"\]\)::before/);
-  assert.doesNotMatch(bookingCss, /#bookingTab\[data-unread-count\]:not\(\[data-unread-count="0"\]\)::after/);
-  assert.match(html, /booking-panel\.css\?v=csp-hardening-20260929-1/);
+  assert.match(bookingCss, /#bookingTab\[data-badge-count\]:not\(\[data-badge-count="0"\]\)::before/);
+  assert.doesNotMatch(bookingCss, /#bookingTab\[data-badge-count\]:not\(\[data-badge-count="0"\]\)::after/);
+  assert.match(html, /booking-panel\.css\?v=accessible-booking-badge-20261003-1/);
 });
