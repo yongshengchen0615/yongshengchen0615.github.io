@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const state = { submissions: [], selected: null, busy: false, generation: 0, options: null };
+  const state = { submissions: [], records: [], filter: 'pending', selected: null, busy: false, generation: 0, options: null };
   const el = id => document.getElementById(id);
   async function request(action, payload = {}) {
     const session = window.MemberSystem?.getSession?.('admin');
@@ -27,39 +27,205 @@
     section.className = 'accessible-admin-queue hidden';
     section.setAttribute('role','tabpanel');
     section.setAttribute('aria-labelledby','bookingAdminAccessibleMode');
-    section.innerHTML = '<div class="accessible-admin-queue-heading"><div><span class="accessible-admin-eyebrow">Accessible review</span><h3 id="accessibleAdminQueueTitle">無障礙審核</h3><p>核對會員上傳的收據，確認實際服務、票券與點數後完成補登。</p></div><span id="accessibleAdminQueueCount" class="accessible-admin-count-pill">0 筆待審核</span></div><div id="accessibleAdminQueueList" class="accessible-admin-queue-list"></div>';
+    section.innerHTML = `
+      <div class="accessible-admin-queue-heading">
+        <div><span class="accessible-admin-eyebrow">Accessible review</span><h3 id="accessibleAdminQueueTitle">無障礙審核</h3><p>待確認、已完成與歷史紀錄集中管理；完成後仍可回查收據、服務、票券與點數。</p></div>
+        <span id="accessibleAdminQueueCount" class="accessible-admin-count-pill">0 筆待確認</span>
+      </div>
+      <nav class="accessible-admin-history-tabs" role="tablist" aria-label="無障礙預約審核狀態">
+        <button class="accessible-admin-history-tab active" type="button" role="tab" aria-selected="true" data-accessible-filter="pending">待確認 <b id="accessibleAdminPendingFilterCount">0</b></button>
+        <button class="accessible-admin-history-tab" type="button" role="tab" aria-selected="false" data-accessible-filter="completed">已完成 <b id="accessibleAdminCompletedFilterCount">0</b></button>
+        <button class="accessible-admin-history-tab" type="button" role="tab" aria-selected="false" data-accessible-filter="all">全部 <b id="accessibleAdminAllFilterCount">0</b></button>
+      </nav>
+      <div id="accessibleAdminQueueList" class="accessible-admin-queue-list"></div>`;
     panel.append(section);
+    section.querySelectorAll('[data-accessible-filter]').forEach(button => button.addEventListener('click', () => {
+      state.filter = ['pending','completed','all'].includes(button.dataset.accessibleFilter) ? button.dataset.accessibleFilter : 'pending';
+      renderQueue();
+    }));
     syncQueueMode();
     renderQueue();
+  }
+  function normalizedRecords() {
+    if (state.records.length) return state.records;
+    return state.submissions.map(receipt => ({...receipt,status:'awaiting_review',reviewStatus:'pending',services:[],benefits:[],serviceMinutes:0,points:0}));
+  }
+  function recordStatus(record) {
+    if (record.reviewStatus === 'completed') return {label:'已完成',className:'completed'};
+    if (record.reviewStatus === 'dismissed') return {label:'已退回',className:'dismissed'};
+    if (record.reviewStatus === 'failed') return {label:'處理失敗',className:'failed'};
+    return {label:'待確認',className:'pending'};
+  }
+  function formatTaipei(value, options = {}) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',...options});
   }
   function renderQueue() {
     ensureQueue();
     const list = el('accessibleAdminQueueList');
     if (!list) return;
-    list.replaceChildren();
+    const records = normalizedRecords();
+    const pendingCount = records.filter(record => record.reviewStatus === 'pending').length;
+    const completedCount = records.filter(record => record.reviewStatus === 'completed').length;
     const count = el('accessibleAdminQueueCount');
-    if (count) count.textContent = `${state.submissions.length} 筆待審核`;
-    if (!state.submissions.length) {
+    if (count) count.textContent = `${pendingCount} 筆待確認 · ${completedCount} 筆已完成`;
+    if (el('accessibleAdminPendingFilterCount')) el('accessibleAdminPendingFilterCount').textContent = String(pendingCount);
+    if (el('accessibleAdminCompletedFilterCount')) el('accessibleAdminCompletedFilterCount').textContent = String(completedCount);
+    if (el('accessibleAdminAllFilterCount')) el('accessibleAdminAllFilterCount').textContent = String(records.length);
+    document.querySelectorAll('#accessibleAdminQueue [data-accessible-filter]').forEach(button => {
+      const active = button.dataset.accessibleFilter === state.filter;
+      button.classList.toggle('active',active);
+      button.setAttribute('aria-selected',String(active));
+    });
+
+    const filtered = records.filter(record => state.filter === 'all'
+      || (state.filter === 'completed' ? record.reviewStatus === 'completed' : record.reviewStatus === 'pending'));
+    list.replaceChildren();
+    if (!filtered.length) {
       const empty = document.createElement('div'); empty.className = 'accessible-admin-empty';
-      const strong = document.createElement('strong'); strong.textContent = '目前沒有等待審核的無障礙收據';
-      const small = document.createElement('small'); small.textContent = '會員上傳新收據後會自動出現在這裡。';
+      const strong = document.createElement('strong');
+      strong.textContent = state.filter === 'completed' ? '目前沒有已完成的無障礙審核紀錄'
+        : state.filter === 'all' ? '目前沒有無障礙預約紀錄'
+        : '目前沒有等待確認的無障礙收據';
+      const small = document.createElement('small');
+      small.textContent = state.filter === 'pending'
+        ? '會員上傳新收據後會自動出現在這裡。'
+        : '完成審核後，紀錄會保留在這裡供管理端回查。';
       empty.append(strong,small); list.append(empty); return;
     }
-    state.submissions.forEach(receipt => {
-      const card = document.createElement('article'); card.className = 'accessible-admin-queue-card';
+
+    filtered.forEach(receipt => {
+      const statusInfo = recordStatus(receipt);
+      const card = document.createElement('article');
+      card.className = `accessible-admin-queue-card accessible-admin-record-card status-${statusInfo.className}`;
       const info = document.createElement('div'); info.className = 'accessible-admin-queue-info';
       const heading = document.createElement('div'); heading.className = 'accessible-admin-queue-member';
       const name = document.createElement('strong'); name.textContent = receipt.memberName || '會員';
-      const status = document.createElement('span'); status.className = 'accessible-admin-status-pill'; status.textContent = '待審核';
+      const status = document.createElement('span'); status.className = `accessible-admin-status-pill status-${statusInfo.className}`; status.textContent = statusInfo.label;
       heading.append(name,status);
+
       const meta = document.createElement('div'); meta.className = 'accessible-admin-queue-meta';
       const code = document.createElement('span'); code.textContent = receipt.memberCode || '無會員編號';
-      const time = document.createElement('time'); time.textContent = new Date(receipt.createdAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-      meta.append(code,time); info.append(heading,meta);
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'button button-dark accessible-admin-review-button';
-      button.textContent = '開始審核'; button.addEventListener('click', () => { void open(receipt); });
+      const time = document.createElement('time');
+      time.textContent = receipt.reviewStatus === 'completed'
+        ? `完成 ${formatTaipei(receipt.completedAt || receipt.updatedAt)}`
+        : `上傳 ${formatTaipei(receipt.createdAt)}`;
+      meta.append(code,time);
+
+      info.append(heading,meta);
+      if (receipt.reviewStatus === 'completed') {
+        const summary = document.createElement('div'); summary.className = 'accessible-admin-record-summary';
+        const service = document.createElement('span');
+        const serviceTitles = (receipt.services || []).map(item => item.title).filter(Boolean);
+        service.textContent = serviceTitles.length ? serviceTitles.join('、') : '已完成服務';
+        const settlement = document.createElement('small');
+        settlement.textContent = `${Number(receipt.serviceMinutes || 0)} 分鐘 · 新增 ${Number(receipt.points || 0)} 點 · 核銷 ${(receipt.benefits || []).length} 張票券`;
+        summary.append(service,settlement);
+        info.append(summary);
+      } else if (receipt.reviewStatus === 'dismissed' || receipt.reviewStatus === 'failed') {
+        const note = document.createElement('small'); note.className = 'accessible-admin-record-note';
+        note.textContent = receipt.reviewStatus === 'dismissed' ? '此收據已由管理員退回重拍。' : '此收據處理失敗，請確認後續狀態。';
+        info.append(note);
+      }
+
+      const button = document.createElement('button'); button.type = 'button';
+      button.className = receipt.reviewStatus === 'pending' ? 'button button-dark accessible-admin-review-button' : 'button button-outline accessible-admin-review-button';
+      button.textContent = receipt.reviewStatus === 'pending' ? '開始審核' : '查看紀錄';
+      button.addEventListener('click', () => {
+        if (receipt.reviewStatus === 'pending') void open(receipt);
+        else void openRecord(receipt);
+      });
       card.append(info,button); list.append(card);
     });
+  }
+  function ensureRecordModal() {
+    if (el('accessibleAdminRecordModal')) return el('accessibleAdminRecordModal');
+    const modal = document.createElement('section');
+    modal.id = 'accessibleAdminRecordModal';
+    modal.className = 'booking-admin-modal hidden';
+    modal.setAttribute('role','dialog');
+    modal.setAttribute('aria-modal','true');
+    modal.setAttribute('aria-labelledby','accessibleAdminRecordTitle');
+    modal.innerHTML = `<div class="booking-admin-modal-card accessible-admin-card accessible-admin-record-modal-card">
+      <div class="booking-admin-modal-heading accessible-admin-modal-heading">
+        <div><span class="accessible-admin-eyebrow">Review history</span><h2 id="accessibleAdminRecordTitle">無障礙審核紀錄</h2><p>此頁為唯讀紀錄，不會重新核銷票券或異動點數。</p></div>
+        <button id="accessibleAdminRecordClose" class="booking-admin-modal-close" type="button" aria-label="關閉">×</button>
+      </div>
+      <div class="accessible-admin-record-detail">
+        <aside class="accessible-admin-receipt-pane">
+          <div class="accessible-admin-member-card"><span class="accessible-admin-eyebrow">Member</span><strong id="accessibleAdminRecordMember"></strong><small id="accessibleAdminRecordMeta"></small></div>
+          <div class="accessible-admin-receipt-frame"><div id="accessibleAdminRecordImageLoading" class="accessible-admin-image-loading">正在載入收據…</div><img id="accessibleAdminRecordImage" class="hidden" alt="無障礙審核收據快照"></div>
+        </aside>
+        <div class="accessible-admin-record-content">
+          <div id="accessibleAdminRecordStats" class="accessible-admin-record-stats"></div>
+          <section class="accessible-admin-review-section"><div class="accessible-admin-record-section-heading"><strong>實際服務</strong><small id="accessibleAdminRecordBookingTime"></small></div><div id="accessibleAdminRecordServices" class="accessible-admin-record-list"></div></section>
+          <section class="accessible-admin-review-section"><div class="accessible-admin-record-section-heading"><strong>票券核銷</strong><small>完成時的票券紀錄</small></div><div id="accessibleAdminRecordBenefits" class="accessible-admin-record-list"></div></section>
+        </div>
+      </div>
+    </div>`;
+    document.body.append(modal);
+    el('accessibleAdminRecordClose').addEventListener('click',closeRecord);
+    modal.addEventListener('click',event => { if (event.target === modal) closeRecord(); });
+    return modal;
+  }
+  function closeRecord() {
+    el('accessibleAdminRecordModal')?.classList.add('hidden');
+    el('accessibleAdminRecordImage')?.removeAttribute('src');
+  }
+  function appendRecordStat(root,label,value) {
+    const item = document.createElement('div');
+    const small = document.createElement('small'); small.textContent = label;
+    const strong = document.createElement('strong'); strong.textContent = value;
+    item.append(small,strong); root.append(item);
+  }
+  async function openRecord(record) {
+    const modal = ensureRecordModal();
+    const statusInfo = recordStatus(record);
+    el('accessibleAdminRecordMember').textContent = `${record.memberName || '會員'} · ${record.memberCode || '無會員編號'}`;
+    el('accessibleAdminRecordMeta').textContent = `${statusInfo.label} · ${formatTaipei(record.completedAt || record.updatedAt)}`;
+    el('accessibleAdminRecordBookingTime').textContent = record.bookingDate
+      ? `${record.bookingDate} ${record.startTime || ''}`
+      : '未建立完成預約';
+    const stats = el('accessibleAdminRecordStats'); stats.replaceChildren();
+    appendRecordStat(stats,'服務時間',`${Number(record.serviceMinutes || 0)} 分鐘`);
+    appendRecordStat(stats,'新增點數',`${Number(record.points || 0)} 點`);
+    appendRecordStat(stats,'核銷票券',`${(record.benefits || []).length} 張`);
+
+    const services = el('accessibleAdminRecordServices'); services.replaceChildren();
+    if (!(record.services || []).length) {
+      const empty = document.createElement('p'); empty.className = 'accessible-admin-section-note'; empty.textContent = '沒有可顯示的服務項目。'; services.append(empty);
+    } else (record.services || []).forEach(service => {
+      const row = document.createElement('div'); row.className = 'accessible-admin-record-list-row';
+      const strong = document.createElement('strong'); strong.textContent = service.title || '服務項目';
+      const small = document.createElement('small'); small.textContent = `${Number(service.minutes || 0)} 分鐘 × ${Number(service.quantity || 1)}${service.serviceType ? ` · ${service.serviceType}` : ''}`;
+      row.append(strong,small); services.append(row);
+    });
+
+    const benefits = el('accessibleAdminRecordBenefits'); benefits.replaceChildren();
+    if (!(record.benefits || []).length) {
+      const empty = document.createElement('p'); empty.className = 'accessible-admin-section-note'; empty.textContent = '本次沒有核銷票券。'; benefits.append(empty);
+    } else (record.benefits || []).forEach(benefit => {
+      const row = document.createElement('div'); row.className = 'accessible-admin-record-list-row';
+      const strong = document.createElement('strong'); strong.textContent = benefit.title || '預約票券';
+      const small = document.createElement('small'); small.textContent = `${benefit.kind === 'points' ? '集點卡票券' : '活動票券'} · ${benefit.status === 'redeemed' || benefit.status === 'applied' ? '已核銷' : benefit.status || '已記錄'}`;
+      row.append(strong,small); benefits.append(row);
+    });
+
+    el('accessibleAdminRecordImageLoading').classList.remove('hidden');
+    el('accessibleAdminRecordImage').classList.add('hidden');
+    el('accessibleAdminRecordImage').removeAttribute('src');
+    modal.classList.remove('hidden');
+    try {
+      const image = await request('admin.booking.receipt.url',{receiptId:record.receiptId});
+      if (el('accessibleAdminRecordModal')?.classList.contains('hidden')) return;
+      el('accessibleAdminRecordImage').src = image.signedUrl;
+      el('accessibleAdminRecordImage').classList.remove('hidden');
+      el('accessibleAdminRecordImageLoading').classList.add('hidden');
+    } catch {
+      el('accessibleAdminRecordImageLoading').textContent = '目前無法載入收據快照。';
+    }
   }
   function ensureModal() {
     if (el('accessibleAdminModal')) return el('accessibleAdminModal');
@@ -411,8 +577,12 @@
     el('accessibleAdminForm').setAttribute('aria-busy',String(value));
   }
   async function refresh() {
-    try { const data = await request('admin.booking.receipt.list'); state.submissions = data.submissions || []; renderQueue(); }
-    catch { /* Existing receipt refresh reports read errors. */ }
+    try {
+      const data = await request('admin.booking.receipt.list');
+      state.submissions = Array.isArray(data.submissions) ? data.submissions : [];
+      state.records = Array.isArray(data.accessibleRecords) ? data.accessibleRecords : state.submissions.map(receipt => ({...receipt,status:'awaiting_review',reviewStatus:'pending'}));
+      renderQueue();
+    } catch { /* Existing receipt refresh reports read errors. */ }
   }
   async function submit(event) {
     event.preventDefault();
@@ -435,7 +605,10 @@
       const redemptions = Array.isArray(settlement.redemptions) ? settlement.redemptions.length : 0;
       message(`已登記完成：會員服務 ${Number(settlement.serviceMinutes || 0)} 分鐘，獲得 ${points} 點，核銷 ${redemptions} 張票券${result.alreadyApplied ? '（原登記已完成，未重複結算）' : ''}。`);
       state.selected = null;
+      state.filter = 'completed';
       await refresh();
+      el('accessibleAdminModal')?.classList.add('hidden');
+      el('accessibleAdminImage')?.removeAttribute('src');
       window.dispatchEvent(new CustomEvent('member-admin:booking-snapshot-request'));
       window.dispatchEvent(new CustomEvent('member-admin:booking-registration-completed',{detail:{bookingId:result.bookingId}}));
     } catch (error) { message(error.code === 'API_RESPONSE_UNCERTAIN' ? '結果尚未確認。請用同一張收據重試；系統不會重複集點。' : error.message || '登記未完成。',true); }
@@ -444,13 +617,25 @@
   async function dismiss() {
     if (state.busy || !state.selected || !window.confirm('退回這張收據，請會員重新拍攝？本次不會新增點數與服務時間。')) return;
     lock(true);
-    try { await request('admin.booking.receipt.dismiss',{receiptId:state.selected.receiptId,expectedUpdatedAt:state.selected.updatedAt}); state.selected=null; await refresh(); message('已退回收據，會員可重新拍攝。'); }
+    try {
+      await request('admin.booking.receipt.dismiss',{receiptId:state.selected.receiptId,expectedUpdatedAt:state.selected.updatedAt});
+      state.selected=null; state.filter='all'; await refresh();
+      el('accessibleAdminModal')?.classList.add('hidden'); el('accessibleAdminImage')?.removeAttribute('src');
+    }
     catch(error) { message(error.message || '目前無法退回收據。',true); }
     finally { lock(false); if (!state.selected) { el('accessibleAdminSubmit').disabled=true; el('accessibleAdminDismiss').disabled=true; } }
   }
-  window.addEventListener('admin:accessible-receipts-updated', event => { state.submissions=event.detail?.submissions || []; renderQueue(); });
+  window.addEventListener('admin:accessible-receipts-updated', event => {
+    state.submissions = Array.isArray(event.detail?.submissions) ? event.detail.submissions : [];
+    state.records = Array.isArray(event.detail?.records) ? event.detail.records : state.submissions.map(receipt => ({...receipt,status:'awaiting_review',reviewStatus:'pending'}));
+    renderQueue();
+  });
   window.addEventListener('member-admin:booking-queue-mode-changed', syncQueueMode);
-  document.addEventListener('keydown', event => { if (event.key === 'Escape' && !el('accessibleAdminModal')?.classList.contains('hidden')) close(); });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (!el('accessibleAdminRecordModal')?.classList.contains('hidden')) closeRecord();
+    else if (!el('accessibleAdminModal')?.classList.contains('hidden')) close();
+  });
   const observer = new MutationObserver(ensureQueue);
   window.addEventListener('DOMContentLoaded', () => { ensureQueue(); observer.observe(document.body,{childList:true,subtree:true}); });
   window.addEventListener('pagehide', () => observer.disconnect());
