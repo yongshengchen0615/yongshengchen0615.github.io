@@ -102,7 +102,7 @@ async function profileFor(supabase: SupabaseClient, member: any): Promise<Json> 
     surname,
     salutation,
     salutationLabel: salutation === "mr" ? "先生" : salutation === "ms" ? "小姐" : "",
-    profileComplete: member.membership_status === "active" && Boolean(member.birthday && isValidE164(normalizePhone(member.phone)) && surname && ["mr", "ms"].includes(salutation)),
+    profileComplete: member.membership_status === "active" && Boolean(member.birthday && isValidPhone(normalizePhone(member.phone)) && surname && ["mr", "ms"].includes(salutation)),
     membershipRequired: member.membership_status !== "active",
     serviceMinutesTotal: total,
     tierKey: current.tier_key,
@@ -136,6 +136,12 @@ function normalizePhone(value: unknown): string {
   return compact;
 }
 function isValidE164(value: string): boolean { return /^\+[1-9]\d{7,14}$/.test(value); }
+function hasSuspiciousPhoneRepetition(value: string): boolean { return /(\d)\1{6,}/.test(value.replace(/\D/g, "")); }
+function isValidPhone(value: string): boolean {
+  if (!isValidE164(value) || hasSuspiciousPhoneRepetition(value)) return false;
+  if (value.startsWith("+886")) return /^\+886(?:9\d{8}|[2-8]\d{7,8})$/.test(value);
+  return true;
+}
 
 async function requireCurrentSubmittedTerms(
   supabase: SupabaseClient,
@@ -269,7 +275,7 @@ Deno.serve(async (request: Request) => {
         throw new ApiError(400, "INVALID_BIRTHDAY", "請選擇正確的出生年月日，生日不可晚於今天。");
       }
     }
-    if (hasPhone && !isValidE164(phone)) throw new ApiError(400, "INVALID_PHONE", "請選擇國碼並填寫正確的電話號碼。");
+    if (hasPhone && !isValidPhone(phone)) throw new ApiError(400, "INVALID_PHONE", "請選擇國碼並填寫正確的電話號碼。");
     if (hasSurname && (!surname || surname.length > 40)) throw new ApiError(400, "INVALID_SURNAME", "請填寫姓氏。");
     if (hasSalutation && !["mr", "ms"].includes(salutation)) throw new ApiError(400, "INVALID_SALUTATION", "請選擇先生或小姐。");
 
@@ -282,7 +288,7 @@ Deno.serve(async (request: Request) => {
 
     const mergedComplete = Boolean(
       birthday
-      && isValidE164(phone)
+      && isValidPhone(phone)
       && surname
       && ["mr", "ms"].includes(salutation)
     );
