@@ -13,15 +13,23 @@
     target.textContent = text;
     target.classList.toggle('error', error);
   }
+  function syncQueueMode() {
+    const panel = el('bookingAdminQueuePanel');
+    const queue = el('accessibleAdminQueue');
+    if (!panel || !queue) return;
+    queue.classList.toggle('hidden', panel.getAttribute('data-queue-mode') !== 'accessible');
+  }
   function ensureQueue() {
     const panel = el('bookingAdminQueuePanel');
-    if (!panel || el('accessibleAdminQueue')) return;
+    if (!panel || el('accessibleAdminQueue')) { syncQueueMode(); return; }
     const section = document.createElement('section');
     section.id = 'accessibleAdminQueue';
-    section.className = 'accessible-admin-queue';
-    section.setAttribute('aria-labelledby','accessibleAdminQueueTitle');
-    section.innerHTML = '<div class="accessible-admin-queue-heading"><div><span class="accessible-admin-eyebrow">Accessible review</span><h3 id="accessibleAdminQueueTitle">無障礙收據審核</h3><p>依收據核對實際服務、票券與點數後完成補登。</p></div><span id="accessibleAdminQueueCount" class="accessible-admin-count-pill">0 筆待審核</span></div><div id="accessibleAdminQueueList" class="accessible-admin-queue-list"></div>';
-    panel.prepend(section);
+    section.className = 'accessible-admin-queue hidden';
+    section.setAttribute('role','tabpanel');
+    section.setAttribute('aria-labelledby','bookingAdminAccessibleMode');
+    section.innerHTML = '<div class="accessible-admin-queue-heading"><div><span class="accessible-admin-eyebrow">Accessible review</span><h3 id="accessibleAdminQueueTitle">無障礙審核</h3><p>核對會員上傳的收據，確認實際服務、票券與點數後完成補登。</p></div><span id="accessibleAdminQueueCount" class="accessible-admin-count-pill">0 筆待審核</span></div><div id="accessibleAdminQueueList" class="accessible-admin-queue-list"></div>';
+    panel.append(section);
+    syncQueueMode();
     renderQueue();
   }
   function renderQueue() {
@@ -441,6 +449,7 @@
     finally { lock(false); if (!state.selected) { el('accessibleAdminSubmit').disabled=true; el('accessibleAdminDismiss').disabled=true; } }
   }
   window.addEventListener('admin:accessible-receipts-updated', event => { state.submissions=event.detail?.submissions || []; renderQueue(); });
+  window.addEventListener('member-admin:booking-queue-mode-changed', syncQueueMode);
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !el('accessibleAdminModal')?.classList.contains('hidden')) close(); });
   const observer = new MutationObserver(ensureQueue);
   window.addEventListener('DOMContentLoaded', () => { ensureQueue(); observer.observe(document.body,{childList:true,subtree:true}); });
