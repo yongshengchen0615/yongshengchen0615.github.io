@@ -11,6 +11,7 @@ export type CurrentPointOffer = {
   ticketTitle: string;
   thresholdStamps: number;
   requiredServiceIds: string[];
+  requiredServiceMatchMode: 'any' | 'all';
   sortOrder: number;
 };
 
@@ -29,6 +30,7 @@ export type CurrentEventOffer = {
   claimId?: string;
   requiresLocation?: boolean;
   requiredServiceIds: string[];
+  requiredServiceMatchMode: 'any' | 'all';
 };
 
 function text(value: unknown): string {
@@ -83,6 +85,7 @@ export function selectLatestPointOffers(
     const requiredServiceIds = Array.isArray(reward.required_service_ids)
       ? reward.required_service_ids.map(text).filter(Boolean)
       : [];
+    const requiredServiceMatchMode = text(reward.required_service_match_mode) === "all" ? "all" : "any";
     const card = cardById.get(pointCardId);
     const template = templateById.get(ticketTemplateId);
     if (!rewardId || !pointCardId || !ticketTemplateId || thresholdStamps <= 0) continue;
@@ -104,6 +107,7 @@ export function selectLatestPointOffers(
       ticketTitle: text(template?.title) || "可用優惠",
       thresholdStamps,
       requiredServiceIds,
+      requiredServiceMatchMode,
       sortOrder: number(card?.sort_order),
     };
     if (availableTicket.ticketId) offer.ticketId = availableTicket.ticketId;
@@ -160,6 +164,7 @@ export function selectLatestEventOffers(
       requiredServiceIds: Array.isArray(row.required_service_ids)
         ? row.required_service_ids.map(text).filter(Boolean)
         : [],
+      requiredServiceMatchMode: text(row.required_service_match_mode) === "all" ? "all" : "any",
     };
     const claimId = claimed ? (memberAvailableClaims.get(eventId) || "") : "";
     if (claimId) offer.claimId = claimId;
@@ -193,7 +198,7 @@ export async function loadLatestPointOffers(
 
   const rewardsResult = await supabase
     .from("point_card_rewards")
-    .select("id,point_card_id,threshold_stamps,ticket_template_id,required_service_ids")
+    .select("id,point_card_id,threshold_stamps,ticket_template_id,required_service_ids,required_service_match_mode")
     .in("point_card_id", cardIds);
   if (rewardsResult.error) {
     if (strict) throw rewardsResult.error;
@@ -241,7 +246,7 @@ export async function loadLatestEventOffers(
   const today = taipeiDate();
   const eventsResult = await supabase
     .from("event_tickets")
-    .select("id,event_ticket_id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location,required_service_ids")
+    .select("id,event_ticket_id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location,required_service_ids,required_service_match_mode")
     .eq("status", "active")
     .is("deleted_at", null);
   if (eventsResult.error) {
@@ -286,6 +291,7 @@ export async function loadLatestEventOffers(
       requiredServiceIds: Array.isArray(event?.required_service_ids)
         ? event.required_service_ids.map(text).filter(Boolean)
         : [],
+      requiredServiceMatchMode: text(event?.required_service_match_mode) === "all" ? "all" : "any",
     };
   });
 }
