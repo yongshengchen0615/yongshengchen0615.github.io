@@ -12,7 +12,7 @@
   let pointTicketMaxPerRedemption = 1;
   let currentBookingId = '';
   let claimingEventTicketId = '';
-  let currentServiceTypes = new Set();
+  let currentServiceIds = new Set();
   const selected = new Map();
   const kinds = { points: '集點卡票券', event: '活動票券', calendar: '會員活動' };
   const kindOrder = ['calendar', 'points', 'event'];
@@ -80,24 +80,31 @@
     return hasLimit(value) ? `${value} 張` : `不限張數${unitLabel ? `（${unitLabel}）` : ''}`;
   }
 
-  function requiredServiceTypes(item) {
-    return (Array.isArray(item?.requiredServiceTypes) ? item.requiredServiceTypes : [])
+  function requiredServiceIds(item) {
+    return (Array.isArray(item?.requiredServiceIds) ? item.requiredServiceIds : [])
       .map((value) => String(value || '').trim())
       .filter(Boolean);
   }
 
-  function serviceTypeKey(value) {
-    return String(value || '').trim().toLocaleLowerCase('zh-Hant-TW');
+  function requiredServiceTitles(item) {
+    const titles = (Array.isArray(item?.requiredServiceTitles) ? item.requiredServiceTitles : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    return titles.length ? titles : requiredServiceIds(item);
+  }
+
+  function serviceIdKey(value) {
+    return String(value || '').trim();
   }
 
   function serviceRequirementMet(item) {
-    const required = requiredServiceTypes(item);
-    return !required.length || required.some((serviceType) => currentServiceTypes.has(serviceTypeKey(serviceType)));
+    const required = requiredServiceIds(item);
+    return !required.length || required.some((serviceId) => currentServiceIds.has(serviceIdKey(serviceId)));
   }
 
   function serviceRequirementMessage(item) {
-    const required = requiredServiceTypes(item);
-    return required.length ? `需先預約「${required.join('、')}」相關服務才能使用這張票券。` : '';
+    const required = requiredServiceTitles(item);
+    return required.length ? `需先預約「${required.join('、')}」其中一個項目才能使用這張票券。` : '';
   }
 
   function pointItemForSelection(selectionId) {
@@ -350,7 +357,7 @@
                   : pointLimitBlocked
                     ? '已達單次上限'
                     : serviceBlocked
-                      ? `需先預約：${requiredServiceTypes(item).join('、')}`
+                      ? `需先預約：${requiredServiceTitles(item).join('、')}`
                       : selectable ? '本次預約使用' : '目前不可勾選';
           choose.append(input, label);
           input.addEventListener('change', () => {
@@ -391,10 +398,10 @@
     updateReadyMessage(cardCount);
   }
 
-  function setServiceContext(serviceTypes) {
-    currentServiceTypes = new Set(
-      (Array.isArray(serviceTypes) ? serviceTypes : [])
-        .map(serviceTypeKey)
+  function setServiceContext(serviceIds) {
+    currentServiceIds = new Set(
+      (Array.isArray(serviceIds) ? serviceIds : [])
+        .map(serviceIdKey)
         .filter(Boolean)
     );
     const changed = reconcileSelectedItems(renderedItems);
