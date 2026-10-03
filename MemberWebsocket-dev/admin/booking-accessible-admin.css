@@ -154,18 +154,26 @@
   display:grid;
   flex:1 1 auto;
   grid-template-columns:minmax(280px,.72fr) minmax(480px,1.28fr);
+  align-items:start;
   min-width:0;
   min-height:0;
-  overflow:hidden;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
+  scrollbar-gutter:stable;
 }
 .accessible-admin-receipt-pane{
+  position:sticky;
+  top:0;
   display:flex;
   flex-direction:column;
   gap:12px;
   min-width:0;
   min-height:0;
   padding:18px;
-  overflow:auto;
+  overflow:visible;
   border-right:1px solid rgba(23,53,46,.09);
   background:var(--theme-surface-muted,#f6f8f4);
 }
@@ -221,12 +229,7 @@
   min-width:0;
   min-height:0;
   padding:18px 20px 24px;
-  overflow-x:hidden;
-  overflow-y:auto;
-  overscroll-behavior:contain;
-  -webkit-overflow-scrolling:touch;
-  touch-action:pan-y;
-  scrollbar-gutter:stable;
+  overflow:visible;
   align-content:start;
 }
 .accessible-admin-review-section{
@@ -535,8 +538,8 @@
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
   gap:9px;
-  margin:0 -20px -92px;
-  padding:12px 20px;
+  margin:0 -20px -24px;
+  padding:12px 20px calc(12px + env(safe-area-inset-bottom));
   border-top:1px solid rgba(23,53,46,.09);
   background:var(--theme-surface-raised,#fffdf8);
   box-shadow:0 -10px 24px rgba(13,29,24,.06);
@@ -563,6 +566,7 @@
     scrollbar-gutter:stable;
   }
   .accessible-admin-receipt-pane{
+    position:static;
     display:grid;
     grid-template-columns:minmax(0,1fr) minmax(180px,.9fr);
     gap:12px;
@@ -584,7 +588,6 @@
     min-height:auto;
     padding-bottom:18px;
     overflow:visible;
-    touch-action:auto;
   }
 }
 
@@ -709,8 +712,5 @@
 
 .accessible-admin-card .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 
-.booking-admin-modal#accessibleAdminModal{overflow:hidden;overscroll-behavior:none;touch-action:none}
-.booking-admin-modal#accessibleAdminModal .accessible-admin-card,
-.booking-admin-modal#accessibleAdminModal .accessible-admin-review-layout,
-.booking-admin-modal#accessibleAdminModal .accessible-admin-review-form,
-.booking-admin-modal#accessibleAdminModal .accessible-admin-receipt-pane{touch-action:pan-y}
+.booking-admin-modal#accessibleAdminModal{overflow:hidden;overscroll-behavior:none}
+.booking-admin-modal#accessibleAdminModal .accessible-admin-review-layout{touch-action:pan-y}
