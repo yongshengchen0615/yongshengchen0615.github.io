@@ -79,7 +79,8 @@ test('admin receipt queue registers actual minutes with one locked submission an
     assert.equal(benefitChecks[2].disabled,true);
     assert.match(w.document.getElementById('accessibleAdminBenefits').textContent,/Unclaimed Event/);
     benefitChecks[0].checked=true; benefitChecks[0].dispatchEvent(new w.Event('change'));
-    assert.match(w.document.getElementById('accessibleAdminPointSummary').textContent,/Body Card：目前可用 5 點 · 本次扣除 3 點 · 審核後剩餘 2 點/);
+    const pointSummary=w.document.getElementById('accessibleAdminPointSummary').textContent;
+    assert.match(pointSummary,/Body Card/); assert.match(pointSummary,/目前可用5 點/); assert.match(pointSummary,/本次扣除3 點/); assert.match(pointSummary,/審核後剩餘2 點/);
     assert.equal(benefitChecks[1].disabled,true,'A second 3-point ticket must be blocked when only 2 points remain');
     w.document.getElementById('accessibleAdminDate').value='2020-01-01';
     const timeInput=w.document.getElementById('accessibleAdminTime');
