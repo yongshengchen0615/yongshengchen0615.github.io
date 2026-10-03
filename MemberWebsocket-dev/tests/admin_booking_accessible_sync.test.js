@@ -63,3 +63,15 @@ test('accessible receipt ticket review uses canonical benefit settlement', () =>
   assert.match(migration, /admin_confirm_booking_receipt_request/);
   assert.match(migration, /benefitCount/);
 });
+
+
+test('accessible ticket review calculates aggregate point budgets', () => {
+  const admin = read('admin/booking-accessible-admin.js');
+  assert.match(admin, /function pointBudgetSnapshot\(\)/);
+  assert.match(admin, /function pointBudgetExceeded\(\)/);
+  assert.match(admin, /本次扣除/);
+  assert.match(admin, /審核後剩餘/);
+  assert.match(admin, /data\.pointCost/);
+  assert.match(admin, /data\.pointBalance/);
+  assert.match(admin, /會員目前可用點數不足/);
+});
