@@ -24,6 +24,7 @@
     badgeStartPromise: null,
     unreadCount: 0,
     pendingCount: 0,
+    accessiblePendingCount: 0,
     latestNotificationId: 0,
     bookingRenderSignatures: new Map(),
   };
@@ -245,6 +246,7 @@
     window.addEventListener('member-admin-session-ready', handleAdminSessionReady);
     window.addEventListener('member-admin:booking-snapshot-request', handleOperationalSnapshotRequest);
     window.addEventListener('member-admin:booking-focus', handleOperationalBookingFocus);
+    window.addEventListener('admin:accessible-receipts-updated', handleAccessibleReceiptsUpdated);
   }
 
   function setSubtab(subtab) {
@@ -288,21 +290,31 @@
     return { config: session.config, idToken: session.idToken };
   }
 
-  function renderBookingPendingBadge(unreadCount, pendingCount) {
+  function renderBookingPendingBadge(unreadCount, pendingCount, accessiblePendingCount = state.accessiblePendingCount) {
     const unread = Math.max(0, Number(unreadCount || 0));
     const pending = Math.max(0, Number(pendingCount || 0));
+    const accessiblePending = Math.max(0, Number(accessiblePendingCount || 0));
+    const badgeCount = unread + accessiblePending;
     state.unreadCount = unread;
     state.pendingCount = pending;
+    state.accessiblePendingCount = accessiblePending;
     els.bookingAdminPendingCount.textContent = String(pending);
     els.bookingAdminQueueSubtabCount.textContent = pending ? `（${pending}）` : '';
     els.bookingTab.dataset.unreadCount = String(unread);
     els.bookingTab.dataset.pendingCount = String(pending);
-    els.bookingTab.setAttribute('aria-label', unread
-      ? `預約，${unread} 筆未讀更新，${pending} 筆待確認`
-      : (pending ? `預約，${pending} 筆待確認` : '預約'));
-    els.bookingTab.title = unread
-      ? `${unread} 筆新的預約更新尚未查看`
-      : (pending ? `${pending} 筆預約待確認` : '');
+    els.bookingTab.dataset.accessiblePendingCount = String(accessiblePending);
+    els.bookingTab.dataset.badgeCount = String(badgeCount);
+    const labels = [];
+    if (unread) labels.push(`${unread} 筆未讀更新`);
+    if (pending) labels.push(`${pending} 筆一般預約待確認`);
+    if (accessiblePending) labels.push(`${accessiblePending} 筆無障礙預約待審核`);
+    els.bookingTab.setAttribute('aria-label', labels.length ? `預約，${labels.join('，')}` : '預約');
+    els.bookingTab.title = labels.join('；');
+  }
+
+  function handleAccessibleReceiptsUpdated(event) {
+    const submissions = Array.isArray(event?.detail?.submissions) ? event.detail.submissions : [];
+    renderBookingPendingBadge(state.unreadCount, state.pendingCount, submissions.length);
   }
 
   async function refreshBookingBadge() {
@@ -318,6 +330,7 @@
       renderBookingPendingBadge(
         Number(summary?.unreadCount || 0),
         Number(summary?.pendingCount || 0),
+        Number(summary?.accessibleReceiptPendingCount || 0),
       );
       return true;
     } catch (error) {
@@ -345,7 +358,7 @@
       const pending = Array.isArray(state.booking?.bookings)
         ? state.booking.bookings.filter((booking) => booking.status === 'pending').length
         : state.pendingCount;
-      renderBookingPendingBadge(Number(result?.unreadCount || 0), pending);
+      renderBookingPendingBadge(Number(result?.unreadCount || 0), pending, state.accessiblePendingCount);
       return true;
     } catch (error) {
       console.warn('booking notification cursor update failed', error);
@@ -469,6 +482,11 @@
       state.booking = nextBooking;
       state.catalog = nextCatalog;
       state.selected = nextSelected;
+      if (catalogChanged) {
+        window.dispatchEvent(new CustomEvent('member-admin:booking-services-updated', {
+          detail: { services: nextCatalog.services },
+        }));
+      }
 
       // Keep stable DOM for sections whose server data did not change. Replacing
       // every list on each realtime event caused visible jumps and also reset
@@ -581,7 +599,7 @@
     const bookings = state.booking.bookings || [];
     const pending = bookings.filter((booking) => booking.status === 'pending').length;
     els.bookingAdminServiceCount.textContent = String(state.catalog.services.length);
-    renderBookingPendingBadge(pending);
+    renderBookingPendingBadge(state.unreadCount, pending, state.accessiblePendingCount);
     els.bookingAdminConfirmedCount.textContent = String(bookings.filter((booking) => booking.status === 'confirmed').length);
   }
 
@@ -1607,8 +1625,10 @@
         state.refreshQueued = true;
         return;
       }
-      if (els.bookingPanel?.classList.contains('hidden')) refreshBookingBadge();
-      else refreshAll(false, true);
+      const catalogInvalidation = type.startsWith('booking.db.booking_services.')
+        || type.startsWith('booking.db.booking_service_types.');
+      if (els.bookingPanel?.classList.contains('hidden') && !catalogInvalidation) refreshBookingBadge();
+      else refreshAll(false, !els.bookingPanel?.classList.contains('hidden'));
     }, 500);
   }
 
