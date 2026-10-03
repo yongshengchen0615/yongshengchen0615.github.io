@@ -1008,20 +1008,18 @@
   });
 
   function syncBenefitServiceContext() {
-    const types = [];
+    const serviceIds = [];
     for (const item of state.primaryItems) {
-      const service = state.services.find((candidate) => candidate.serviceId === item.serviceId);
-      const type = serviceTypeOf(service);
-      if (type) types.push(type);
+      const serviceId = String(item?.serviceId || '').trim();
+      if (serviceId) serviceIds.push(serviceId);
     }
     for (const selections of state.extras) {
       for (const selection of Array.isArray(selections) ? selections : []) {
-        const service = state.services.find((candidate) => candidate.serviceId === selection.serviceId);
-        const type = serviceTypeOf(service);
-        if (type) types.push(type);
+        const serviceId = String(selection?.serviceId || '').trim();
+        if (serviceId) serviceIds.push(serviceId);
       }
     }
-    window.BookingBenefits?.setServiceContext?.([...new Set(types)]);
+    window.BookingBenefits?.setServiceContext?.([...new Set(serviceIds)]);
   }
 
   function participantServiceNames(index) {
