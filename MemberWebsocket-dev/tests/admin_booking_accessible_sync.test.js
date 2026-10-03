@@ -90,7 +90,7 @@ test('accessible review UI separates receipt, workflow and sticky actions', () =
   assert.match(css, /grid-template-columns:minmax\(280px,.72fr\) minmax\(480px,1.28fr\)/);
   assert.match(css, /@media\(max-width:640px\)/);
   assert.match(css, /\.accessible-admin-sticky-actions/);
-  assert.match(index, /booking-operations-split-20261003-1/);
+  assert.match(index, /accessible-history-20261003-1/);
 });
 
 
@@ -101,7 +101,7 @@ test('accessible review uses one vertical scroll container', () => {
   assert.match(css, /\.accessible-admin-review-form\{[\s\S]*overflow:visible/);
   assert.match(css, /\.accessible-admin-receipt-pane\{[\s\S]*overflow:visible/);
   assert.doesNotMatch(css, /#accessibleAdminModal\{[^}]*touch-action:none/);
-  assert.match(index, /booking-operations-split-20261003-1/);
+  assert.match(index, /accessible-history-20261003-1/);
 });
 
 
@@ -113,4 +113,25 @@ test('accessible review mounts only inside its dedicated queue mode', () => {
   assert.match(admin, /function syncQueueMode\(\)/);
   assert.match(admin, /data-queue-mode/);
   assert.match(admin, /member-admin:booking-queue-mode-changed/);
+});
+
+
+test('accessible review keeps completed records with pending completed and all filters', () => {
+  const admin = read('admin/booking-accessible-admin.js');
+  const receiptAdmin = read('admin/booking-receipt-admin.js');
+  const receiptApi = read('supabase/functions/booking-receipt-api/index.ts');
+  const css = read('admin/booking-accessible-admin.css');
+  assert.match(admin, /data-accessible-filter="pending"/);
+  assert.match(admin, /data-accessible-filter="completed"/);
+  assert.match(admin, /data-accessible-filter="all"/);
+  assert.match(admin, /state\.filter = 'completed'/);
+  assert.match(admin, /查看紀錄/);
+  assert.match(admin, /openRecord\(receipt\)/);
+  assert.match(receiptAdmin, /accessibleRecords/);
+  assert.match(receiptApi, /accessibleRecords/);
+  assert.match(receiptApi, /reviewStatus:status==="awaiting_review"\?"pending":status==="bound"\?"completed"/);
+  assert.match(receiptApi, /booking_completion_settlements/);
+  assert.match(receiptApi, /booking_benefit_selections/);
+  assert.match(css, /accessible-admin-history-tabs/);
+  assert.match(css, /accessible-admin-record-detail/);
 });
