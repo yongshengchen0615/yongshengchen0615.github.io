@@ -61,10 +61,12 @@ test('admin receipt queue registers actual minutes with one locked submission an
     const check=row.querySelector('[data-service-check]'); check.checked=true; check.dispatchEvent(new w.Event('change'));
     row.querySelector('[data-minutes]').value='60';
     w.document.getElementById('accessibleAdminDate').value='2020-01-01';
-    w.document.getElementById('accessibleAdminTime').value='10:00';
+    const timeInput=w.document.getElementById('accessibleAdminTime');
+    assert.equal(timeInput.step,'60');
+    timeInput.value='10:03';
     const form=w.document.getElementById('accessibleAdminForm');
     form.dispatchEvent(new w.Event('submit',{cancelable:true})); form.dispatchEvent(new w.Event('submit',{cancelable:true})); await tick();
-    assert.equal(registrations.length,1); assert.deepEqual(JSON.parse(JSON.stringify(registrations[0].items)),[{serviceId:'service',minutes:60,quantity:1}]);
+    assert.equal(registrations.length,1); assert.equal(registrations[0].startTime,'10:03'); assert.deepEqual(JSON.parse(JSON.stringify(registrations[0].items)),[{serviceId:'service',minutes:60,quantity:1}]);
     assert.equal(w.document.getElementById('accessibleAdminClose').disabled,true);
     resolveRegister({bookingId:'booking',settlement:{serviceMinutes:60,rewards:[{points:2}]}}); await tick();
     assert.match(w.document.getElementById('accessibleAdminMessage').textContent,/60 分鐘.*2 點/);
