@@ -12,6 +12,7 @@
     catalog: { serviceTypes: [], services: [], pointCards: [] },
     filter: 'pending',
     subtab: 'technicians',
+    queueMode: 'standard',
     selected: new Set(),
     loading: false,
     refreshQueued: false,
@@ -63,8 +64,9 @@
 
       <section class="booking-admin-stats" aria-label="預約概況">
         <div><span>預約項目</span><strong id="bookingAdminServiceCount">0</strong><small>目前可管理項目</small></div>
-        <div><span>待確認</span><strong id="bookingAdminPendingCount">0</strong><small>需管理端確認</small></div>
-        <div><span>已確認</span><strong id="bookingAdminConfirmedCount">0</strong><small>完成預約</small></div>
+        <div><span>一般待確認</span><strong id="bookingAdminPendingCount">0</strong><small>會員正常預約流程</small></div>
+        <div><span>無障礙待審核</span><strong id="bookingAdminAccessiblePendingCount">0</strong><small>收據補登審核</small></div>
+        <div><span>已確認</span><strong id="bookingAdminConfirmedCount">0</strong><small>已確認的一般預約</small></div>
       </section>
 
       <nav class="booking-admin-filter booking-admin-subtabs" role="tablist" aria-label="預約管理分類">
@@ -175,15 +177,31 @@
           </form>
         </section>
 
-        <section id="bookingAdminQueuePanel" class="booking-admin-card hidden" role="tabpanel" aria-labelledby="bookingAdminQueueSubtab">
-          <div class="booking-admin-section-heading"><div><p class="kicker">Member bookings</p><h3>用戶預約</h3><p>查看待確認、已確認與已完成預約；管理員可依現場實際服務修改項目與預約狀態。</p></div></div>
-          <div class="booking-admin-filter" role="group" aria-label="預約狀態篩選">
-            <button class="booking-admin-filter-button active" data-booking-filter="pending" type="button">待確認</button>
-            <button class="booking-admin-filter-button" data-booking-filter="confirmed" type="button">已確認</button><button class="booking-admin-filter-button" data-booking-filter="completed" type="button">已完成</button>
-            <button class="booking-admin-filter-button" data-booking-filter="all" type="button">全部</button>
+        <section id="bookingAdminQueuePanel" class="booking-admin-card booking-admin-operations-panel hidden" role="tabpanel" aria-labelledby="bookingAdminQueueSubtab">
+          <div class="booking-admin-section-heading booking-admin-operations-heading">
+            <div><p class="kicker">Booking operations</p><h3>預約處理</h3><p>一般預約與無障礙收據採不同審核流程，請先選擇要處理的工作類型。</p></div>
           </div>
-          <div id="bookingAdminQueue" class="booking-admin-queue"></div>
-          <div id="bookingAdminQueueEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>目前沒有符合條件的預約</p></div>
+          <nav class="booking-admin-queue-modes" role="tablist" aria-label="預約處理模式">
+            <button id="bookingAdminStandardMode" class="booking-admin-queue-mode active" type="button" role="tab" aria-selected="true" aria-controls="bookingAdminStandardQueueView">
+              <span><strong>一般預約</strong><small>確認、修改、完成服務</small></span><b id="bookingAdminStandardModeCount">0</b>
+            </button>
+            <button id="bookingAdminAccessibleMode" class="booking-admin-queue-mode" type="button" role="tab" aria-selected="false" aria-controls="accessibleAdminQueue">
+              <span><strong>無障礙審核</strong><small>核對收據、服務、票券與點數</small></span><b id="bookingAdminAccessibleModeCount">0</b>
+            </button>
+          </nav>
+          <section id="bookingAdminStandardQueueView" class="booking-admin-queue-view" role="tabpanel" aria-labelledby="bookingAdminStandardMode">
+            <div class="booking-admin-queue-toolbar">
+              <div><strong>一般預約</strong><small>依預約狀態篩選需要處理的會員預約。</small></div>
+              <div class="booking-admin-filter" role="group" aria-label="一般預約狀態篩選">
+                <button class="booking-admin-filter-button active" data-booking-filter="pending" type="button">待確認</button>
+                <button class="booking-admin-filter-button" data-booking-filter="confirmed" type="button">已確認</button>
+                <button class="booking-admin-filter-button" data-booking-filter="completed" type="button">已完成</button>
+                <button class="booking-admin-filter-button" data-booking-filter="all" type="button">全部</button>
+              </div>
+            </div>
+            <div id="bookingAdminQueue" class="booking-admin-queue"></div>
+            <div id="bookingAdminQueueEmpty" class="empty-state compact hidden"><span aria-hidden="true">○</span><p>目前沒有符合條件的一般預約</p></div>
+          </section>
         </section>
       </div>`;
     adminView.appendChild(panel);
@@ -218,8 +236,8 @@
   function cacheElements() {
     [
       'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
-      'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminConfirmedCount',
-      'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
+      'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminAccessiblePendingCount','bookingAdminConfirmedCount',
+      'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminStandardMode','bookingAdminAccessibleMode','bookingAdminStandardModeCount','bookingAdminAccessibleModeCount','bookingAdminStandardQueueView','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
@@ -234,6 +252,8 @@
     els.bookingAdminServicesSubtab.addEventListener('click', () => setSubtab('services'));
     els.bookingAdminSettingsSubtab.addEventListener('click', () => setSubtab('settings'));
     els.bookingAdminQueueSubtab.addEventListener('click', () => setSubtab('queue'));
+    els.bookingAdminStandardMode.addEventListener('click', () => setQueueMode('standard'));
+    els.bookingAdminAccessibleMode.addEventListener('click', () => setQueueMode('accessible'));
     els.bookingAdminNewServiceButton.addEventListener('click', () => openServiceModal(null));
     els.bookingAdminBatchAddButton.addEventListener('click', () => openBatchModal('create'));
     els.bookingAdminBatchEditButton.addEventListener('click', () => openBatchModal('update'));
@@ -247,6 +267,20 @@
     window.addEventListener('member-admin:booking-snapshot-request', handleOperationalSnapshotRequest);
     window.addEventListener('member-admin:booking-focus', handleOperationalBookingFocus);
     window.addEventListener('admin:accessible-receipts-updated', handleAccessibleReceiptsUpdated);
+  }
+
+  function setQueueMode(mode) {
+    state.queueMode = mode === 'accessible' ? 'accessible' : 'standard';
+    const standard = state.queueMode === 'standard';
+    els.bookingAdminStandardMode?.classList.toggle('active', standard);
+    els.bookingAdminStandardMode?.setAttribute('aria-selected', String(standard));
+    els.bookingAdminAccessibleMode?.classList.toggle('active', !standard);
+    els.bookingAdminAccessibleMode?.setAttribute('aria-selected', String(!standard));
+    els.bookingAdminStandardQueueView?.classList.toggle('hidden', !standard);
+    const accessible = document.getElementById('accessibleAdminQueue');
+    accessible?.classList.toggle('hidden', standard);
+    els.bookingAdminQueuePanel?.setAttribute('data-queue-mode', state.queueMode);
+    window.dispatchEvent(new CustomEvent('member-admin:booking-queue-mode-changed',{detail:{mode:state.queueMode}}));
   }
 
   function setSubtab(subtab) {
@@ -265,6 +299,7 @@
       tab?.setAttribute('aria-selected', String(active));
       panel?.classList.toggle('hidden', !active);
     });
+    if (state.subtab === 'queue') setQueueMode(state.queueMode);
   }
 
   function activateBookingPanel() {
@@ -298,8 +333,12 @@
     state.unreadCount = unread;
     state.pendingCount = pending;
     state.accessiblePendingCount = accessiblePending;
+    const totalActionable = pending + accessiblePending;
     els.bookingAdminPendingCount.textContent = String(pending);
-    els.bookingAdminQueueSubtabCount.textContent = pending ? `（${pending}）` : '';
+    if (els.bookingAdminAccessiblePendingCount) els.bookingAdminAccessiblePendingCount.textContent = String(accessiblePending);
+    if (els.bookingAdminStandardModeCount) els.bookingAdminStandardModeCount.textContent = String(pending);
+    if (els.bookingAdminAccessibleModeCount) els.bookingAdminAccessibleModeCount.textContent = String(accessiblePending);
+    els.bookingAdminQueueSubtabCount.textContent = totalActionable ? `（${totalActionable}）` : '';
     els.bookingTab.dataset.unreadCount = String(unread);
     els.bookingTab.dataset.pendingCount = String(pending);
     els.bookingTab.dataset.accessiblePendingCount = String(accessiblePending);
