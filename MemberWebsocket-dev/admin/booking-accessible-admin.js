@@ -20,7 +20,7 @@
     section.id = 'accessibleAdminQueue';
     section.className = 'accessible-admin-queue';
     section.setAttribute('aria-labelledby','accessibleAdminQueueTitle');
-    section.innerHTML = '<h3 id="accessibleAdminQueueTitle">無障礙收據・等待補登</h3><p>核對收據後補登實際服務，或連結已有預約，系統會依既有規則記錄點數與服務時間。</p><div id="accessibleAdminQueueList"></div>';
+    section.innerHTML = '<div class="accessible-admin-queue-heading"><div><span class="accessible-admin-eyebrow">Accessible review</span><h3 id="accessibleAdminQueueTitle">無障礙收據審核</h3><p>依收據核對實際服務、票券與點數後完成補登。</p></div><span id="accessibleAdminQueueCount" class="accessible-admin-count-pill">0 筆待審核</span></div><div id="accessibleAdminQueueList" class="accessible-admin-queue-list"></div>';
     panel.prepend(section);
     renderQueue();
   }
@@ -29,14 +29,28 @@
     const list = el('accessibleAdminQueueList');
     if (!list) return;
     list.replaceChildren();
-    if (!state.submissions.length) { const p = document.createElement('p'); p.textContent = '目前沒有等待補登的收據。'; list.append(p); return; }
+    const count = el('accessibleAdminQueueCount');
+    if (count) count.textContent = `${state.submissions.length} 筆待審核`;
+    if (!state.submissions.length) {
+      const empty = document.createElement('div'); empty.className = 'accessible-admin-empty';
+      const strong = document.createElement('strong'); strong.textContent = '目前沒有等待審核的無障礙收據';
+      const small = document.createElement('small'); small.textContent = '會員上傳新收據後會自動出現在這裡。';
+      empty.append(strong,small); list.append(empty); return;
+    }
     state.submissions.forEach(receipt => {
-      const card = document.createElement('article');
-      const copy = document.createElement('p');
-      copy.textContent = `${receipt.memberName} · ${receipt.memberCode} · ${new Date(receipt.createdAt).toLocaleString('zh-TW', { timeZone:'Asia/Taipei' })}`;
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'button button-dark';
-      button.textContent = '核對收據並登記服務'; button.addEventListener('click', () => { void open(receipt); });
-      card.append(copy,button); list.append(card);
+      const card = document.createElement('article'); card.className = 'accessible-admin-queue-card';
+      const info = document.createElement('div'); info.className = 'accessible-admin-queue-info';
+      const heading = document.createElement('div'); heading.className = 'accessible-admin-queue-member';
+      const name = document.createElement('strong'); name.textContent = receipt.memberName || '會員';
+      const status = document.createElement('span'); status.className = 'accessible-admin-status-pill'; status.textContent = '待審核';
+      heading.append(name,status);
+      const meta = document.createElement('div'); meta.className = 'accessible-admin-queue-meta';
+      const code = document.createElement('span'); code.textContent = receipt.memberCode || '無會員編號';
+      const time = document.createElement('time'); time.textContent = new Date(receipt.createdAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      meta.append(code,time); info.append(heading,meta);
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'button button-dark accessible-admin-review-button';
+      button.textContent = '開始審核'; button.addEventListener('click', () => { void open(receipt); });
+      card.append(info,button); list.append(card);
     });
   }
   function ensureModal() {
@@ -45,29 +59,59 @@
     modal.id = 'accessibleAdminModal'; modal.className = 'booking-admin-modal hidden';
     modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true'); modal.setAttribute('aria-labelledby','accessibleAdminTitle');
     modal.innerHTML = `<div class="booking-admin-modal-card accessible-admin-card">
-      <div class="booking-admin-modal-heading"><h2 id="accessibleAdminTitle">收據服務補登</h2><button id="accessibleAdminClose" class="booking-admin-modal-close" type="button" aria-label="關閉">×</button></div>
-      <p id="accessibleAdminMember"></p>
-      <img id="accessibleAdminImage" class="hidden" alt="等待補登的收據快照">
-      <form id="accessibleAdminForm">
-        <label>連結已有預約（避免重複登記）<select id="accessibleAdminExisting"><option value="">新增已完成的服務紀錄</option></select></label>
-        <p>已有預約會沿用原服務項目；已完成的預約只補綁收據，不重複集點。新增紀錄按主要技師的服務項目結算。</p>
-        <fieldset id="accessibleAdminNewFields"><legend>本次實際完成的服務</legend>
-          <label>服務日期（營業日）<input id="accessibleAdminDate" type="date" required></label>
-          <label>開始時間<input id="accessibleAdminTime" type="time" step="60" required></label>
-          <p>僅登記已完成的服務。凌晨時段的營業日依目前跨日營業設定計算。</p>
-          <div id="accessibleAdminItems"></div>
-        </fieldset>
-        <fieldset id="accessibleAdminBenefitFields"><legend>本次票券審核</legend>
-          <p>請核對會員本次要使用的活動票券與集點卡票券。只有已領取、仍可用且符合本次服務項目的票券才能核銷。</p>
-          <div id="accessibleAdminBenefits"></div>
-          <div id="accessibleAdminPointSummary" class="accessible-admin-point-summary" aria-live="polite"></div>
-          <p id="accessibleAdminBenefitHint"></p>
-        </fieldset>
-        <label>核對備註<textarea id="accessibleAdminNote" maxlength="500" rows="2"></textarea></label>
-        <p id="accessibleAdminMessage" role="status" aria-live="polite"></p>
-        <div class="booking-admin-actions"><button id="accessibleAdminSubmit" class="button button-dark" type="submit" disabled>確認收據並補登完成</button>
-          <button id="accessibleAdminDismiss" class="button button-outline" type="button" disabled>退回，請會員重拍</button></div>
-      </form></div>`;
+      <div class="booking-admin-modal-heading accessible-admin-modal-heading">
+        <div><span class="accessible-admin-eyebrow">Receipt review</span><h2 id="accessibleAdminTitle">無障礙預約審核</h2><p>核對收據、服務、票券與點數後一次完成結算。</p></div>
+        <button id="accessibleAdminClose" class="booking-admin-modal-close" type="button" aria-label="關閉">×</button>
+      </div>
+      <div class="accessible-admin-review-layout">
+        <aside class="accessible-admin-receipt-pane" aria-label="收據預覽">
+          <div class="accessible-admin-member-card">
+            <span class="accessible-admin-eyebrow">Member</span>
+            <strong id="accessibleAdminMember"></strong>
+            <small id="accessibleAdminReceiptMeta"></small>
+          </div>
+          <div class="accessible-admin-receipt-frame">
+            <div id="accessibleAdminImageLoading" class="accessible-admin-image-loading">正在載入收據…</div>
+            <img id="accessibleAdminImage" class="hidden" alt="等待補登的收據快照">
+          </div>
+          <p class="accessible-admin-receipt-help">請先確認收據內容與本次服務一致，再進行右側審核。</p>
+        </aside>
+        <form id="accessibleAdminForm" class="accessible-admin-review-form">
+          <section class="accessible-admin-review-section">
+            <div class="accessible-admin-step-heading"><span>1</span><div><strong>確認預約來源</strong><small>可連結既有預約，避免重複登記。</small></div></div>
+            <label class="accessible-admin-field">預約來源<select id="accessibleAdminExisting"><option value="">新增已完成的服務紀錄</option></select></label>
+            <p class="accessible-admin-section-note">既有預約會沿用原服務項目；已完成的預約只補綁收據，不會再次集點或核銷。</p>
+          </section>
+
+          <fieldset id="accessibleAdminNewFields" class="accessible-admin-review-section"><legend class="sr-only">本次實際完成的服務</legend>
+            <div class="accessible-admin-step-heading"><span>2</span><div><strong>核對實際服務</strong><small>填寫實際完成日期、時間與服務分鐘數。</small></div></div>
+            <div class="accessible-admin-date-grid">
+              <label class="accessible-admin-field">服務日期（營業日）<input id="accessibleAdminDate" type="date" required></label>
+              <label class="accessible-admin-field">開始時間<input id="accessibleAdminTime" type="time" step="60" required></label>
+            </div>
+            <div id="accessibleAdminItems" class="accessible-admin-service-list"></div>
+          </fieldset>
+
+          <fieldset id="accessibleAdminBenefitFields" class="accessible-admin-review-section"><legend class="sr-only">本次票券審核</legend>
+            <div class="accessible-admin-step-heading"><span>3</span><div><strong>審核票券與點數</strong><small>只允許仍可用且符合本次服務項目的票券。</small></div></div>
+            <div id="accessibleAdminBenefits" class="accessible-admin-benefit-list"></div>
+            <div id="accessibleAdminPointSummary" class="accessible-admin-point-summary" aria-live="polite"></div>
+            <p id="accessibleAdminBenefitHint" class="accessible-admin-section-note"></p>
+          </fieldset>
+
+          <section class="accessible-admin-review-section accessible-admin-final-section">
+            <div class="accessible-admin-step-heading"><span>4</span><div><strong>確認並完成</strong><small>可加入管理端備註，再送出完整結算。</small></div></div>
+            <label class="accessible-admin-field">核對備註<textarea id="accessibleAdminNote" maxlength="500" rows="2" placeholder="例如：收據已核對、現場補登原因…"></textarea></label>
+            <p id="accessibleAdminMessage" class="accessible-admin-message" role="status" aria-live="polite"></p>
+          </section>
+
+          <div class="booking-admin-actions accessible-admin-sticky-actions">
+            <button id="accessibleAdminSubmit" class="button button-dark" type="submit" disabled>確認並完成審核</button>
+            <button id="accessibleAdminDismiss" class="button button-outline" type="button" disabled>退回重拍</button>
+          </div>
+        </form>
+      </div>
+    </div>`
     document.body.append(modal);
     el('accessibleAdminClose').addEventListener('click', close);
     modal.addEventListener('click', event => { if (event.target === modal) close(); });
@@ -129,10 +173,18 @@
     } else {
       [...budgets.values()].filter(budget => budget.required > 0).forEach(budget => {
         const remaining = Math.max(0, budget.available - budget.required);
-        const p = document.createElement('p');
-        p.textContent = `${budget.cardTitle}：目前可用 ${budget.available} 點 · 本次扣除 ${budget.required} 點 · 審核後剩餘 ${remaining} 點`;
-        if (budget.required > budget.available) p.classList.add('error');
-        summary.append(p);
+        const card = document.createElement('div'); card.className = 'accessible-admin-point-card';
+        const title = document.createElement('strong'); title.textContent = budget.cardTitle;
+        const values = document.createElement('div'); values.className = 'accessible-admin-point-values';
+        [['目前可用',budget.available],['本次扣除',budget.required],['審核後剩餘',remaining]].forEach(([label,value]) => {
+          const item = document.createElement('span');
+          const small = document.createElement('small'); small.textContent = label;
+          const number = document.createElement('b'); number.textContent = `${value} 點`;
+          item.append(small,number); values.append(item);
+        });
+        card.append(title,values);
+        if (budget.required > budget.available) card.classList.add('error');
+        summary.append(card);
       });
     }
 
@@ -205,14 +257,25 @@
         check.dataset.pointCost = String(Math.max(0, Number(item.pointCost || 0)));
         check.dataset.pointBalance = String(Math.max(0, Number(item.pointBalance || 0)));
       }
-      const copy = document.createElement('span');
+      const copy = document.createElement('span'); copy.className = 'accessible-admin-benefit-copy';
+      const top = document.createElement('span'); top.className = 'accessible-admin-benefit-title';
+      const kind = document.createElement('em'); kind.className = `accessible-admin-benefit-kind kind-${item.kind}`; kind.textContent = item.kind === 'points' ? '集點卡' : '活動票券';
       const strong = document.createElement('strong'); strong.textContent = item.title || '預約票券';
+      top.append(kind,strong);
       const small = document.createElement('small');
       const reason = !serviceEligible
         ? (item.requiredServiceRequirementLabel || '本次實際服務項目不符合票券限制')
         : (item.disabledReason || item.conditionLabel || item.subtitle || '');
       small.textContent = [item.subtitle, reason].filter(Boolean).filter((value,index,list)=>list.indexOf(value)===index).join(' · ');
-      copy.append(strong,small); label.append(check,copy); row.append(label); root.append(row);
+      copy.append(top,small);
+      if (item.kind === 'points') {
+        const facts = document.createElement('span'); facts.className = 'accessible-admin-benefit-facts';
+        const cost = Math.max(0,Number(item.pointCost || 0));
+        const balance = Math.max(0,Number(item.pointBalance || 0));
+        facts.textContent = `需 ${cost} 點 · 可用 ${balance} 點`;
+        copy.append(facts);
+      }
+      label.append(check,copy); row.append(label); root.append(row);
       check.addEventListener('change', () => {
         if (check.checked) {
           const limit = benefitLimit(item.kind);
@@ -284,7 +347,9 @@
     state.selected = receipt; state.options = null;
     const generation = ++state.generation;
     modal.classList.remove('hidden');
-    el('accessibleAdminMember').textContent = `${receipt.memberName} · ${receipt.memberCode}`;
+    el('accessibleAdminMember').textContent = `${receipt.memberName || '會員'} · ${receipt.memberCode || '無會員編號'}`;
+    el('accessibleAdminReceiptMeta').textContent = `上傳時間：${new Date(receipt.createdAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})}`;
+    el('accessibleAdminImageLoading').classList.remove('hidden');
     el('accessibleAdminImage').removeAttribute('src'); el('accessibleAdminImage').classList.add('hidden');
     el('accessibleAdminSubmit').disabled = true; el('accessibleAdminDismiss').disabled = true;
     el('accessibleAdminItems').replaceChildren();
@@ -300,15 +365,20 @@
       ]);
       if (generation !== state.generation) return;
       state.options = options;
-      el('accessibleAdminImage').src = image.signedUrl; el('accessibleAdminImage').classList.remove('hidden');
+      el('accessibleAdminImage').src = image.signedUrl; el('accessibleAdminImage').classList.remove('hidden'); el('accessibleAdminImageLoading').classList.add('hidden');
       (options.bookings || []).forEach(booking => {
         el('accessibleAdminExisting').append(new Option(`${booking.bookingDate} ${booking.startTime} ${booking.status === 'completed' ? '已完成' : '已確認'} · ${booking.title}`,booking.bookingId));
       });
       (options.services || []).forEach(service => {
         const row = document.createElement('div'); row.className = 'accessible-admin-item'; row.dataset.serviceId = service.id;
-        const choice = document.createElement('label'); const check = document.createElement('input'); check.type = 'checkbox'; check.dataset.serviceCheck = '';
+        const choice = document.createElement('label'); choice.className = 'accessible-admin-service-choice';
+        const check = document.createElement('input'); check.type = 'checkbox'; check.dataset.serviceCheck = '';
         const rule = (options.rewardRules || []).find(rule => String(rule.serviceType).trim().toLowerCase() === String(service.service_type || '').trim().toLowerCase());
-        choice.append(check, document.createTextNode(`${service.title}（${service.service_type || '未分類'}）${service.counts_toward_membership === false ? '・不累計會員時間與點數' : rule ? `・每 ${rule.minutesPerPoint} 分鐘集 1 點（${rule.cardTitle}）` : '・未設定集點規則，只記錄服務時間'}`));
+        const copy = document.createElement('span'); copy.className = 'accessible-admin-service-copy';
+        const title = document.createElement('strong'); title.textContent = service.title || '服務項目';
+        const meta = document.createElement('small');
+        meta.textContent = `${service.service_type || '未分類'} · ${service.counts_toward_membership === false ? '不累計會員時間與點數' : rule ? `每 ${rule.minutesPerPoint} 分鐘集 1 點 · ${rule.cardTitle}` : '未設定集點規則，只記錄服務時間'}`;
+        copy.append(title,meta); choice.append(check,copy);
         const minutesLabel = document.createElement('label'); minutesLabel.textContent = '每次實際分鐘';
         const minutes = document.createElement('input'); minutes.type='number'; minutes.min='1'; minutes.max='720'; minutes.step='1'; minutes.value=String(service.duration_minutes || 30); minutes.dataset.minutes=''; minutes.disabled=true; minutesLabel.append(minutes);
         const quantityLabel = document.createElement('label'); quantityLabel.textContent = '次數';
@@ -322,7 +392,7 @@
       renderBenefits();
       el('accessibleAdminDate').value = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       el('accessibleAdminSubmit').disabled = false; el('accessibleAdminDismiss').disabled = false;
-      message(options.primaryTechnicianConfigured ? (options.rewardRules?.length ? '請核對收據、服務日期與實際分鐘後送出。' : '目前未設定服務集點規則，這次只記錄服務時間；請先在服務類型設定集點卡與每點分鐘數，才會自動發點。') : '尚未設定主要技師；請先設定，或連結已有預約。',!options.primaryTechnicianConfigured);
+      message(options.primaryTechnicianConfigured ? (options.rewardRules?.length ? '請依序核對收據、實際服務、票券與點數後完成審核。' : '目前未設定服務集點規則，這次只記錄服務時間；請先在服務類型設定集點卡與每點分鐘數，才會自動發點。') : '尚未設定主要技師；請先設定，或連結已有預約。',!options.primaryTechnicianConfigured);
     } catch (error) { if (generation === state.generation) message(error.message || '目前無法載入登記選項。',true); }
   }
   function lock(value) {
