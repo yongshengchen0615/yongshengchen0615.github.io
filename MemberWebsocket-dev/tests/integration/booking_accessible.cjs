@@ -49,7 +49,18 @@ test('admin receipt queue registers actual minutes with one locked submission an
     const receipt={receiptId:'BR-fixture',updatedAt:'2026-10-03T00:00:00Z',memberName:'Member',memberCode:'M',createdAt:'2026-10-03T00:00:00Z'};
     w.MemberSystem={getSession:()=>({config:{},idToken:'admin-fixture'}),request:async(c,t,token,action,payload)=>{
       if(action.endsWith('.url')) return {signedUrl:'https://example.test/receipt.jpg'};
-      if(action.endsWith('.options')) return {services:[{id:'service',title:'Body',service_type:'body',duration_minutes:30}],bookings:[],primaryTechnicianConfigured:true,rewardRules:[]};
+      if(action.endsWith('.options')) return {
+        services:[{id:'service',title:'Body',service_type:'body',duration_minutes:30}],
+        bookings:[],primaryTechnicianConfigured:true,rewardRules:[],
+        benefitCatalog:{
+          eventTicketMaxPerDay:1,pointTicketMaxPerRedemption:1,
+          items:[
+            {kind:'points',selectionId:'point-ticket',selectable:true,title:'Body Ticket',subtitle:'消耗 1 點',pointCost:1,pointBalance:5,cardId:'card',requiredServiceIds:['service'],requiredServiceMatchMode:'any'},
+            {kind:'event',selectionId:'',selectable:false,title:'Unclaimed Event',claimRequired:true,disabledReason:'會員尚未領取此活動票券；管理員不可代替會員領取。'}
+          ]
+        },
+        currentBenefits:[],currentBookingServiceIds:[],currentBookingStatus:''
+      };
       if(action.endsWith('.register')) {registrations.push(payload); return new Promise(resolve=>{resolveRegister=resolve;});}
       return {submissions:[]};
     }};
@@ -60,6 +71,12 @@ test('admin receipt queue registers actual minutes with one locked submission an
     const row=w.document.querySelector('.accessible-admin-item');
     const check=row.querySelector('[data-service-check]'); check.checked=true; check.dispatchEvent(new w.Event('change'));
     row.querySelector('[data-minutes]').value='60';
+    const benefitChecks=w.document.querySelectorAll('[data-benefit-check]');
+    assert.equal(benefitChecks.length,2);
+    assert.equal(benefitChecks[0].disabled,false);
+    assert.equal(benefitChecks[1].disabled,true);
+    assert.match(w.document.getElementById('accessibleAdminBenefits').textContent,/Unclaimed Event/);
+    benefitChecks[0].checked=true; benefitChecks[0].dispatchEvent(new w.Event('change'));
     w.document.getElementById('accessibleAdminDate').value='2020-01-01';
     const timeInput=w.document.getElementById('accessibleAdminTime');
     assert.equal(timeInput.step,'60');
@@ -67,6 +84,7 @@ test('admin receipt queue registers actual minutes with one locked submission an
     const form=w.document.getElementById('accessibleAdminForm');
     form.dispatchEvent(new w.Event('submit',{cancelable:true})); form.dispatchEvent(new w.Event('submit',{cancelable:true})); await tick();
     assert.equal(registrations.length,1); assert.equal(registrations[0].startTime,'10:03'); assert.deepEqual(JSON.parse(JSON.stringify(registrations[0].items)),[{serviceId:'service',minutes:60,quantity:1}]);
+    assert.deepEqual(JSON.parse(JSON.stringify(registrations[0].benefits)),[{kind:'points',id:'point-ticket'}]);
     assert.equal(w.document.getElementById('accessibleAdminClose').disabled,true);
     resolveRegister({bookingId:'booking',settlement:{serviceMinutes:60,rewards:[{points:2}]}}); await tick();
     assert.match(w.document.getElementById('accessibleAdminMessage').textContent,/60 分鐘.*2 點/);
