@@ -243,7 +243,7 @@
         input.disabled = false;
         submit.disabled = false;
         submit.textContent = '確認綁定';
-        showReferralStatus(error?.message || '好友邀請暫時無法完成，請稍後再試。', true);
+        showReferralStatus(error?.code === 'REFERRAL_REWARD_UNAVAILABLE' ? '管理員尚未設定好友邀請票券。' : (error?.message || '好友邀請暫時無法完成，請稍後再試。'), true);
       } finally {
         state.binding = false;
       }
