@@ -10,3 +10,12 @@
 .accessible-admin-card input[type="checkbox"] { width: 24px; height: 24px; flex: none; }
 .accessible-admin-card .error { color: var(--theme-danger,#b42318); }
 @media (max-width: 600px) { .accessible-admin-item { grid-template-columns: 1fr 1fr; } .accessible-admin-item > label:first-child { grid-column: 1/-1; } }
+
+.accessible-admin-benefit { padding: 10px 0; border-top: 1px solid var(--line,#888); }
+.accessible-admin-benefit:first-child { border-top: 0; }
+.accessible-admin-benefit label { display: flex; align-items: flex-start; gap: 10px; }
+.accessible-admin-benefit span { display: grid; gap: 4px; min-width: 0; }
+.accessible-admin-benefit strong,.accessible-admin-benefit small { overflow-wrap: anywhere; }
+.accessible-admin-benefit small { opacity: .78; }
+.accessible-admin-benefit-warning { border: 1px solid var(--theme-danger,#b42318); border-radius: 10px; padding: 10px; }
+#accessibleAdminBenefitHint { margin: 0; font-size: .9rem; opacity: .82; }
