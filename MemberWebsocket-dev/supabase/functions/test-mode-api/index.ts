@@ -380,6 +380,7 @@ Deno.serve(async (request: Request) => {
       if (USER_SURFACES.has(clientType) && identity.surface && identity.surface !== clientType) {
         throw new ApiError(409, "TEST_SESSION_SURFACE_MISMATCH", "此測試登入屬於其他用戶端，請重新選擇測試帳號。");
       }
+      await ensureMembershipJoinTicketForTestAccount(supabase, identity.memberId);
       const memberResult = await supabase.from("members")
         .select("id,display_name,member_code")
         .eq("id", identity.memberId)

@@ -16,6 +16,10 @@ test('test-mode login backfills the configured membership-join ticket idempotent
     testMode,
     /if \(!member \|\| member\.is_test_account !== true[\s\S]*await ensureMembershipJoinTicketForTestAccount\(supabase, member\.id\);[\s\S]*const token = randomToken\(\);/
   );
+  assert.match(
+    testMode,
+    /action === "session\.status"[\s\S]*await ensureMembershipJoinTicketForTestAccount\(supabase, identity\.memberId\);/
+  );
   assert.match(migration, /where id = p_member_id[\s\S]*membership_status <> 'active'/);
   assert.match(migration, /where event_ticket_id = v_event\.id\s*and member_id = v_member\.id[\s\S]*'already_issued'/);
   assert.doesNotMatch(migration, /is_test_account\s*=\s*false/);
