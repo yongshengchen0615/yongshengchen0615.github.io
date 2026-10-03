@@ -11,6 +11,7 @@ const offersModule = import(pathToFileURL(path.join(root, 'supabase/functions/_s
 test('booking ticket rules belong to reward nodes and use concrete booking service ids', () => {
   const rewardMigration = read('supabase/migrations/20261002152109_move_point_ticket_service_rules_to_reward_nodes.sql');
   const serviceItemMigration = read('supabase/migrations/20261003130000_ticket_booking_service_items.sql');
+  const serviceMatchMigration = read('supabase/migrations/20261003143500_ticket_booking_service_match_mode.sql');
   const adminHtml = read('admin/index.html');
   const adminApp = read('admin/app.js');
   const api = read('supabase/functions/api/index.ts');
@@ -28,12 +29,19 @@ test('booking ticket rules belong to reward nodes and use concrete booking servi
   assert.match(serviceItemMigration, /booking_participant_items bpi[\s\S]*bpi\.service_id = any\(p_required_service_ids\)/);
   assert.match(serviceItemMigration, /save_point_card_service_items/);
   assert.doesNotMatch(serviceItemMigration, /booking_has_required_service_type\(new\.booking_id/);
+  assert.match(serviceMatchMigration, /required_service_match_mode text not null default 'any'/);
+  assert.match(serviceMatchMigration, /booking_meets_required_services/);
+  assert.match(serviceMatchMigration, /p_match_mode[\s\S]*= 'all'/);
+  assert.match(serviceMatchMigration, /required_service_match_mode = v_required_service_match_mode/);
 
   assert.doesNotMatch(adminHtml, /id="ticketRequiredServiceTypes"/);
   assert.match(adminHtml, /id="eventTicketRequiredServiceIds"/);
+  assert.match(adminHtml, /id="eventTicketRequiredServiceMatchMode"/);
   assert.match(adminApp, /此節點的預約項目限制/);
   assert.match(adminApp, /dataset\.rewardRequiredServiceIds = 'true'/);
   assert.match(adminApp, /requiredServiceIds: collectRequiredServiceIds\(row\.querySelector\('\[data-reward-required-service-ids\]'\)\)/);
+  assert.match(adminApp, /requiredServiceMatchMode/);
+  assert.match(adminApp, /勾選的所有項目都需預約/);
   assert.match(adminApp, /strong\.textContent = service\.title/);
   assert.match(adminApp, /bookingServiceRequirementLabel/);
   assert.match(adminApp, /需預約「\\$\\{fullTypes\[0\]\\}」項目類型/);
@@ -41,12 +49,18 @@ test('booking ticket rules belong to reward nodes and use concrete booking servi
   assert.match(api, /requiredServiceIds: Array\.isArray\(reward\.required_service_ids\)/);
   assert.match(api, /normalizeRequiredServiceIds\(supabase,reward\.requiredServiceIds\)/);
   assert.match(api, /save_point_card_service_items/);
+  assert.match(api, /requiredServiceMatchMode/);
+  assert.match(api, /required_service_match_mode/);
   assert.match(api, /bookingServiceOptions\(supabase\)/);
 
   assert.match(benefits, /offer\.requiredServiceIds/);
   assert.match(benefits, /requiredServiceTitles/);
+  assert.match(benefits, /requiredServiceMatchMode/);
+  assert.match(benefits, /項目類型的所有項目/);
   assert.doesNotMatch(benefits, /pointRequiredByTemplate/);
   assert.match(bookingBenefitsUi, /currentServiceIds/);
+  assert.match(bookingBenefitsUi, /matchMode === 'all'/);
+  assert.match(bookingBenefitsUi, /required\.every\(\(serviceId\) => currentServiceIds\.has\(serviceIdKey\(serviceId\)\)\)/);
   assert.match(bookingBenefitsUi, /required\.some\(\(serviceId\) => currentServiceIds\.has\(serviceIdKey\(serviceId\)\)\)/);
   assert.match(bookingApp, /item\.service\?\.serviceId/);
 });
