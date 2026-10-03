@@ -209,7 +209,7 @@
     try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { /* storage blocked */ }
     const skippedAt = saved?.skippedAt || (saved?.outcome === 'skip' ? saved.completedAt : null);
     const explicitSkip = saved?.outcome === 'skip' && saved?.source === 'explicit';
-    const isPairedE2ERunner = new URLSearchParams(window.location.search).has('qaPair');
+    const isPairedE2ERunner = new URLSearchParams(window.location?.search || '').has('qaPair');
     if (!isPairedE2ERunner && explicitSkip && skippedAt && taipeiDay(new Date(skippedAt)) === taipeiDay(new Date())) return;
     // Test accounts follow the same tutorial rules as real members. Paired E2E explicitly validates and dismisses the tour.
     queueAutoOpen(generation, key);
