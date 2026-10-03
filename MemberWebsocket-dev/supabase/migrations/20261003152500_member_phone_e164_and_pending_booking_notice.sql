@@ -46,8 +46,7 @@ begin
         case when v_join then 'MEMBERSHIP_JOIN_CONSENT' else 'MEMBERSHIP_TERMS_RECONSENT' end,
         'member',v_member.id::text,'success',jsonb_build_object('termsId',v_terms.id,'version',v_terms.version));
  return v_join;
-end $function$
-
+end $function$;
 
 CREATE OR REPLACE FUNCTION booking_notifications.enqueue()
  RETURNS trigger
@@ -363,5 +362,4 @@ begin
 
   return null;
 end;
-$function$
-
+$function$;
