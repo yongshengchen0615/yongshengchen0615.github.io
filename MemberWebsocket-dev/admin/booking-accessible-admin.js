@@ -53,7 +53,7 @@
         <p>已有預約會沿用原服務項目；已完成的預約只補綁收據，不重複集點。新增紀錄按主要技師的服務項目結算。</p>
         <fieldset id="accessibleAdminNewFields"><legend>本次實際完成的服務</legend>
           <label>服務日期（營業日）<input id="accessibleAdminDate" type="date" required></label>
-          <label>開始時間（每 5 分鐘）<input id="accessibleAdminTime" type="time" step="300" required></label>
+          <label>開始時間<input id="accessibleAdminTime" type="time" step="60" required></label>
           <p>僅登記已完成的服務。凌晨時段的營業日依目前跨日營業設定計算。</p>
           <div id="accessibleAdminItems"></div>
         </fieldset>
