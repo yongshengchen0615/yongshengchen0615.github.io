@@ -116,13 +116,20 @@
 }
 
 .booking-admin-modal-card.accessible-admin-card{
+  display:flex;
+  flex-direction:column;
   width:min(1180px,calc(100vw - 32px));
+  height:min(92vh,900px);
+  height:min(92dvh,900px);
   max-height:min(92vh,900px);
+  max-height:min(92dvh,900px);
+  min-height:0;
   padding:0;
   overflow:hidden;
 }
 .accessible-admin-modal-heading{
-  position:sticky;
+  position:relative;
+  flex:0 0 auto;
   top:0;
   z-index:8;
   margin:0;
@@ -145,9 +152,11 @@
 }
 .accessible-admin-review-layout{
   display:grid;
+  flex:1 1 auto;
   grid-template-columns:minmax(280px,.72fr) minmax(480px,1.28fr);
+  min-width:0;
   min-height:0;
-  max-height:calc(min(92vh,900px) - 92px);
+  overflow:hidden;
 }
 .accessible-admin-receipt-pane{
   display:flex;
@@ -211,8 +220,13 @@
   gap:14px;
   min-width:0;
   min-height:0;
-  padding:18px 20px 92px;
-  overflow:auto;
+  padding:18px 20px 24px;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
+  scrollbar-gutter:stable;
   align-content:start;
 }
 .accessible-admin-review-section{
@@ -539,9 +553,14 @@
     width:min(100%,760px);
   }
   .accessible-admin-review-layout{
-    grid-template-columns:1fr;
-    max-height:calc(min(92vh,900px) - 92px);
-    overflow:auto;
+    display:block;
+    min-height:0;
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+    scrollbar-gutter:stable;
   }
   .accessible-admin-receipt-pane{
     display:grid;
@@ -562,7 +581,10 @@
     min-height:180px;
   }
   .accessible-admin-review-form{
+    min-height:auto;
+    padding-bottom:18px;
     overflow:visible;
+    touch-action:auto;
   }
 }
 
@@ -592,7 +614,10 @@
   }
   .booking-admin-modal-card.accessible-admin-card{
     width:100%;
+    height:96vh;
+    height:96dvh;
     max-height:96vh;
+    max-height:96dvh;
     border-radius:20px 20px 10px 10px;
   }
   .accessible-admin-modal-heading{
@@ -605,7 +630,9 @@
     display:none;
   }
   .accessible-admin-review-layout{
-    max-height:calc(96vh - 78px);
+    flex:1 1 auto;
+    min-height:0;
+    max-height:none;
   }
   .accessible-admin-receipt-pane{
     display:grid;
@@ -630,7 +657,7 @@
   }
   .accessible-admin-review-form{
     gap:11px;
-    padding:12px 12px 82px;
+    padding:12px 12px 16px;
   }
   .accessible-admin-review-section,
   .accessible-admin-card fieldset.accessible-admin-review-section{
@@ -652,7 +679,7 @@
   .accessible-admin-sticky-actions{
     bottom:0;
     grid-template-columns:1fr 1fr;
-    margin:0 -12px -82px;
+    margin:0 -12px -16px;
     padding:10px 12px calc(10px + env(safe-area-inset-bottom));
   }
   .accessible-admin-sticky-actions .button{
@@ -676,8 +703,14 @@
   .accessible-admin-sticky-actions{
     grid-template-columns:1fr;
     bottom:0;
-    margin-bottom:-128px;
+    margin-bottom:-16px;
   }
 }
 
 .accessible-admin-card .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+
+.booking-admin-modal#accessibleAdminModal{overflow:hidden;overscroll-behavior:none;touch-action:none}
+.booking-admin-modal#accessibleAdminModal .accessible-admin-card,
+.booking-admin-modal#accessibleAdminModal .accessible-admin-review-layout,
+.booking-admin-modal#accessibleAdminModal .accessible-admin-review-form,
+.booking-admin-modal#accessibleAdminModal .accessible-admin-receipt-pane{touch-action:pan-y}
