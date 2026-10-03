@@ -37,3 +37,14 @@ test('accessible receipt registration accepts minute-level start times independe
   assert.doesNotMatch(section, /extract\(minute from p_start_time\).*%5/);
   assert.doesNotMatch(section, /slot_interval/i);
 });
+
+
+test('accessible receipt bookings bypass only the normal five-minute start constraint', () => {
+  const constraintMigration = read('supabase/migrations/20261003214500_accessible_booking_start_boundary_exception.sql');
+  const receiptApi = read('supabase/functions/booking-receipt-api/index.ts');
+  assert.match(constraintMigration, /receipt_submission_id is not null/);
+  assert.match(constraintMigration, /request_id like 'receipt-register:%'/);
+  assert.match(constraintMigration, /extract\(minute from start_time\)::integer % 5 = 0/);
+  assert.match(receiptApi, /bookings_start_boundary_check/);
+  assert.doesNotMatch(receiptApi, /每 5 分鐘的服務開始時間/);
+});
