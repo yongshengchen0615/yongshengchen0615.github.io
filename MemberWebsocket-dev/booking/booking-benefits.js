@@ -99,7 +99,11 @@
 
   function serviceRequirementMet(item) {
     const required = requiredServiceIds(item);
-    return !required.length || required.some((serviceId) => currentServiceIds.has(serviceIdKey(serviceId)));
+    if (!required.length) return true;
+    const matchMode = item?.requiredServiceMatchMode === 'all' ? 'all' : 'any';
+    return matchMode === 'all'
+      ? required.every((serviceId) => currentServiceIds.has(serviceIdKey(serviceId)))
+      : required.some((serviceId) => currentServiceIds.has(serviceIdKey(serviceId)));
   }
 
   function serviceRequirementMessage(item) {
