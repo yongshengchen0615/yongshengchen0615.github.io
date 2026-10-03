@@ -83,7 +83,7 @@
     const description = document.createElement('p');
     description.id = 'memberReferralDescription';
     description.className = 'member-referral-description';
-    description.textContent = '分享自己的邀請碼，或輸入好友提供的邀請碼完成綁定。每位會員只能綁定一次。';
+    description.textContent = '分享自己的邀請碼可持續邀請不同好友；每位會員作為被邀請者只能綁定一次，完成後不可改綁。';
 
     const share = document.createElement('section');
     share.className = 'member-referral-section';
@@ -102,7 +102,7 @@
     copy.textContent = '複製';
     shareRow.append(code, copy);
     const shareHelp = document.createElement('small');
-    shareHelp.textContent = '把這組邀請碼傳給好友。好友完成綁定後，符合目前好友邀請活動規則的雙方會取得獎勵票券。';
+    shareHelp.textContent = '把這組邀請碼傳給好友。每成功邀請一位尚未綁定邀請關係的好友，邀請者會獲得 1 張好友邀請票券；被邀請者不會獲得此獎勵票券。';
     share.append(shareTitle, shareRow, shareHelp);
 
     const bind = document.createElement('form');
@@ -235,8 +235,8 @@
           : '';
         showReferralStatus(
           result?.alreadyApplied
-            ? '這組邀請關係已完成，獎勵票券已存在' + expires + '。'
-            : '好友邀請綁定成功，邀請人與你各獲一張好友邀請票券' + expires + '。'
+            ? '這組邀請關係已完成；邀請人的好友邀請票券已發放' + expires + '。'
+            : '好友邀請綁定成功；邀請人已獲得 1 張好友邀請票券，你不會取得此邀請獎勵票券' + expires + '。'
         );
         submit.textContent = '已完成綁定';
       } catch (error) {

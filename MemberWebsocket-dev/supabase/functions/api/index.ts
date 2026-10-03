@@ -1108,7 +1108,7 @@ function claimClient(row: any, eventTicketId = ""): Json {
 }
 
 async function adminEventTickets(supabase: SupabaseClient): Promise<any[]> {
-  const { data: rows, error } = await supabase.from("event_tickets").select("*").is("deleted_at",null).order("created_at",{ ascending:false });
+  const { data: rows, error } = await supabase.from("event_tickets").select("*").is("deleted_at",null).is("referral_source_event_ticket_id",null).order("created_at",{ ascending:false });
   if (error) throw mapDatabaseError(error);
   const ids = (rows || []).map((row:any) => row.id);
   const counts = new Map<string,number>();
@@ -1226,7 +1226,7 @@ async function summaryStats(supabase: SupabaseClient): Promise<Json> {
     supabase.from("members").select("*",{ count:"exact",head:true }).eq("is_test_account",false),
     supabase.from("members").select("*",{ count:"exact",head:true }).eq("is_test_account",false).eq("status","active"),
     supabase.from("point_cards").select("*",{ count:"exact",head:true }).eq("status","active"),
-    supabase.from("event_tickets").select("*",{ count:"exact",head:true }).eq("status","active").is("deleted_at",null),
+    supabase.from("event_tickets").select("*",{ count:"exact",head:true }).eq("status","active").is("deleted_at",null).is("referral_source_event_ticket_id",null),
     supabase.from("point_entries").select("*",{ count:"exact",head:true }).gte("created_at",start).gt("amount",0),
   ]);
   for (const result of [members,activeMembers,cards,events,todayEntries]) if (result.error) throw mapDatabaseError(result.error);
@@ -1603,7 +1603,6 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
   if (startsOn && endsOn && endsOn < startsOn) throw new ApiError(400,"INVALID_DATE_RANGE","活動結束日不可早於開始日。");
   const quota = Number(input.quota || 0);
   if (!Number.isInteger(quota) || quota < 0 || quota > 1_000_000) throw new ApiError(400,"INVALID_QUOTA","限量張數必須是 0–1,000,000。");
-  if (ticketType === "referral" && quota !== 0 && (quota < 2 || quota % 2 !== 0)) throw new ApiError(400,"INVALID_REFERRAL_QUOTA","好友邀請票券每次會發放兩張，限量請設為 0 或至少 2 的偶數。");
   const requiresLocation = ticketType === "referral" ? false : input.requiresLocation === true;
   // Older admin tabs still send the original single-site fields during rollout.
   const rawLocations = Array.isArray(input.redemptionLocations) ? input.redemptionLocations
@@ -1653,6 +1652,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
       .eq("ticket_type","referral")
       .eq("status","active")
       .is("deleted_at",null)
+      .is("referral_source_event_ticket_id",null)
       .neq("event_ticket_id", id || "__new__")
       .limit(1);
     if (activeReferral.error) throw mapDatabaseError(activeReferral.error);
@@ -1728,6 +1728,7 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
     supabase.from("event_tickets")
       .select("id,event_ticket_id,title,status,starts_on,ends_on,allowed_tier_keys,fixed_ticket_template_id,updated_at")
       .is("deleted_at",null)
+      .is("referral_source_event_ticket_id",null)
       .order("updated_at",{ ascending:false })
       .limit(60),
     supabase.from("scheduled_grant_messages")
