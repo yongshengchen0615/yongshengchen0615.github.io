@@ -43,7 +43,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      const result = load('booking-panel-core.js', 'admin-booking-ticket-edit-20261003-1');
+      const result = load('booking-panel-core.js', 'accessible-booking-sync-20261003-1');
       // Compatibility marker for legacy architecture checks:
       // load('booking-panel-core.js', 'layout-stability-20261001-1')
       return result;
