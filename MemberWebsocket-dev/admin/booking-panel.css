@@ -45,3 +45,106 @@
 .booking-admin-cancellation-review .booking-admin-queue{display:grid;gap:10px}
 .booking-admin-cancellation-review .booking-admin-booking{margin:0}
 .booking-cancellation-copy-buffer{position:fixed;opacity:0;pointer-events:none}
+
+
+/* booking operations mode split 20261003 */
+#bookingPanel .booking-admin-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+#bookingPanel .booking-admin-operations-panel{display:grid;gap:16px}
+#bookingPanel .booking-admin-operations-panel>.booking-admin-section-heading{margin-bottom:0}
+#bookingPanel .booking-admin-queue-modes{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  padding:6px;
+  border:1px solid rgba(23,53,46,.09);
+  border-radius:16px;
+  background:var(--theme-surface-muted,#f3f6f2)
+}
+#bookingPanel .booking-admin-queue-mode{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+  min-height:64px;
+  padding:12px 14px;
+  border:1px solid transparent;
+  border-radius:12px;
+  background:transparent;
+  color:var(--theme-text-muted,#53665d);
+  font:inherit;
+  text-align:left;
+  cursor:pointer
+}
+#bookingPanel .booking-admin-queue-mode>span{display:grid;gap:2px;min-width:0}
+#bookingPanel .booking-admin-queue-mode strong{color:inherit;font-size:14px}
+#bookingPanel .booking-admin-queue-mode small{font-size:11px;font-weight:600;line-height:1.35;opacity:.8}
+#bookingPanel .booking-admin-queue-mode>b{
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  min-width:30px;
+  height:30px;
+  padding:0 8px;
+  border-radius:999px;
+  background:rgba(23,53,46,.08);
+  font-size:12px
+}
+#bookingPanel .booking-admin-queue-mode.active{
+  border-color:rgba(23,53,46,.12);
+  background:var(--theme-surface-raised,#fff);
+  color:var(--theme-text,#17352e);
+  box-shadow:0 4px 14px rgba(23,53,46,.08)
+}
+#bookingPanel .booking-admin-queue-mode.active>b{background:var(--theme-accent,#df6b4d);color:#fff}
+#bookingPanel .booking-admin-queue-view{
+  display:grid;
+  gap:12px;
+  min-width:0;
+  padding:16px;
+  border:1px solid rgba(23,53,46,.09);
+  border-radius:16px;
+  background:var(--theme-surface-raised,#fff)
+}
+#bookingPanel .booking-admin-queue-view.hidden{display:none!important}
+#bookingPanel .booking-admin-queue-toolbar{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  padding-bottom:12px;
+  border-bottom:1px solid rgba(23,53,46,.08)
+}
+#bookingPanel .booking-admin-queue-toolbar>div:first-child{display:grid;gap:3px;min-width:0}
+#bookingPanel .booking-admin-queue-toolbar>div:first-child strong{color:var(--theme-text,#17352e);font-size:15px}
+#bookingPanel .booking-admin-queue-toolbar>div:first-child small{color:var(--theme-text-muted,#718078);font-size:11px;line-height:1.45}
+#bookingPanel .booking-admin-queue-toolbar .booking-admin-filter{margin:0;justify-content:flex-end}
+#bookingPanel .booking-admin-operations-panel .booking-admin-booking{
+  padding:16px;
+  border-radius:15px;
+  box-shadow:0 2px 8px rgba(23,53,46,.035)
+}
+#bookingPanel .booking-admin-operations-panel .booking-admin-booking+.booking-admin-booking{margin-top:0}
+#bookingPanel .booking-admin-operations-panel[data-queue-mode="accessible"] .booking-admin-queue-modes{
+  border-color:rgba(223,107,77,.18)
+}
+@media(max-width:900px){
+  #bookingPanel .booking-admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:640px){
+  #bookingPanel .booking-admin-queue-modes{grid-template-columns:1fr}
+  #bookingPanel .booking-admin-queue-mode{min-height:58px}
+  #bookingPanel .booking-admin-queue-toolbar{display:grid}
+  #bookingPanel .booking-admin-queue-toolbar .booking-admin-filter{
+    display:flex;
+    width:100%;
+    overflow-x:auto;
+    justify-content:flex-start;
+    scrollbar-width:none
+  }
+  #bookingPanel .booking-admin-queue-toolbar .booking-admin-filter::-webkit-scrollbar{display:none}
+  #bookingPanel .booking-admin-queue-toolbar .booking-admin-filter-button{flex:0 0 auto}
+}
+@media(max-width:420px){
+  #bookingPanel .booking-admin-stats{grid-template-columns:1fr 1fr}
+}
