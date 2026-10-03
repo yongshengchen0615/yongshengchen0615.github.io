@@ -53,9 +53,10 @@ test('admin receipt queue registers actual minutes with one locked submission an
         services:[{id:'service',title:'Body',service_type:'body',duration_minutes:30}],
         bookings:[],primaryTechnicianConfigured:true,rewardRules:[],
         benefitCatalog:{
-          eventTicketMaxPerDay:1,pointTicketMaxPerRedemption:1,
+          eventTicketMaxPerDay:1,pointTicketMaxPerRedemption:3,
           items:[
-            {kind:'points',selectionId:'point-ticket',selectable:true,title:'Body Ticket',subtitle:'消耗 1 點',pointCost:1,pointBalance:5,cardId:'card',requiredServiceIds:['service'],requiredServiceMatchMode:'any'},
+            {kind:'points',selectionId:'point-ticket',selectable:true,title:'Body Ticket',subtitle:'消耗 3 點',pointCost:3,pointBalance:5,cardId:'card',cardTitle:'Body Card',requiredServiceIds:['service'],requiredServiceMatchMode:'any'},
+            {kind:'points',selectionId:'point-ticket-2',selectable:true,title:'Body Ticket 2',subtitle:'消耗 3 點',pointCost:3,pointBalance:5,cardId:'card',cardTitle:'Body Card',requiredServiceIds:['service'],requiredServiceMatchMode:'any'},
             {kind:'event',selectionId:'',selectable:false,title:'Unclaimed Event',claimRequired:true,disabledReason:'會員尚未領取此活動票券；管理員不可代替會員領取。'}
           ]
         },
@@ -72,11 +73,14 @@ test('admin receipt queue registers actual minutes with one locked submission an
     const check=row.querySelector('[data-service-check]'); check.checked=true; check.dispatchEvent(new w.Event('change'));
     row.querySelector('[data-minutes]').value='60';
     const benefitChecks=w.document.querySelectorAll('[data-benefit-check]');
-    assert.equal(benefitChecks.length,2);
+    assert.equal(benefitChecks.length,3);
     assert.equal(benefitChecks[0].disabled,false);
-    assert.equal(benefitChecks[1].disabled,true);
+    assert.equal(benefitChecks[1].disabled,false);
+    assert.equal(benefitChecks[2].disabled,true);
     assert.match(w.document.getElementById('accessibleAdminBenefits').textContent,/Unclaimed Event/);
     benefitChecks[0].checked=true; benefitChecks[0].dispatchEvent(new w.Event('change'));
+    assert.match(w.document.getElementById('accessibleAdminPointSummary').textContent,/Body Card：目前可用 5 點 · 本次扣除 3 點 · 審核後剩餘 2 點/);
+    assert.equal(benefitChecks[1].disabled,true,'A second 3-point ticket must be blocked when only 2 points remain');
     w.document.getElementById('accessibleAdminDate').value='2020-01-01';
     const timeInput=w.document.getElementById('accessibleAdminTime');
     assert.equal(timeInput.step,'60');
