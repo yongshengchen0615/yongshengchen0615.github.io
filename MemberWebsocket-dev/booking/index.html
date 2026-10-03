@@ -25,13 +25,14 @@
   <script src="./booking-date-display.js?v=booking-weekday-20260912-1" defer></script>
   <script src="./contact-details.js?v=test-mode-20260920-1" defer></script>
   <script src="./service-type-color.js?v=booking-shared-type-color-map-20260918-4" defer></script>
-  <script src="./group-booking.js?v=async-architecture-20260921-1-ticket-service-requirements-20261002-1" defer></script>
+  <script src="./group-booking.js?v=async-architecture-20260921-1-ticket-service-requirements-20261002-1-accessible-1" defer></script>
   <script src="./liff-fresh-login.js?v=member-presence-20260920-1" defer></script>
   <script src="./membership-progress.js?v=booking-tier-member-parity-20260914-2" defer></script>
   <script src="./member-ui.js?v=test-mode-20260920-1" defer></script>
-  <script src="./booking-benefits.js?v=ticket-service-requirements-20261002-1" defer></script>
+  <script src="./booking-benefits.js?v=ticket-service-requirements-20261002-1-accessible-1" defer></script>
   <script src="./app.js?v=booking-member-chat-20261003-1" defer></script>
-  <script src="./booking-receipt.js?v=booking-receipt-replace-20261002-1-integrity-20261003-1" defer></script>
+  <script src="./booking-receipt.js?v=booking-receipt-replace-20261002-1-integrity-20261003-1-accessible-1" defer></script>
+  <script src="./booking-accessible.js?v=accessible-20261003-1" defer></script>
   <script src="../user-tour.js?v=layout-stability-20261001-1" defer></script>
   <script src="./calendar-flow.js?v=csp-hardening-20260929-1" defer></script>
   <script src="./booking-flow.js?v=lumen-experience-20260924-1" defer></script>
@@ -49,6 +50,7 @@
   <link rel="stylesheet" href="./booking-mobile.css?v=booking-mobile-layout-20261002-3">
   <script src="../membership-milestones.js?v=lumen-experience-20260924-1" defer></script>
   <script src="../theme.js?v=m3-ui-20260929-1"></script>
+  <link rel="stylesheet" href="./booking-accessible.css?v=accessible-20261003-1">
 </head>
 <body>
   <div class="app-shell">
@@ -72,6 +74,21 @@
         <div><p class="kicker">Lumen Club / Booking</p><h1>預約服務</h1></div>
         <div class="account-menu"><span id="memberName">LINE 會員</span></div>
       </header>
+      <div class="booking-accessible-switch">
+        <button id="bookingAccessibleToggle" class="button button-outline" type="button" aria-pressed="false" aria-controls="bookingAccessiblePanel">開啟無障礙模式（大字・拍收據）</button>
+      </div>
+      <section id="bookingAccessiblePanel" class="booking-accessible-panel hidden" aria-labelledby="bookingAccessibleTitle">
+        <h2 id="bookingAccessibleTitle">拍收據，讓管理員幫您登記</h2>
+        <p>不必選日期或填寫預約。完成服務後，拍下收據就可以了。</p>
+        <ol><li>拍攝清楚的收據</li><li>送出，等待管理員核對</li><li>核對完成後，記錄點數與服務時間</li></ol>
+        <button id="bookingAccessibleUpload" class="button button-dark" type="button">拍攝收據並上傳</button>
+        <p id="bookingAccessibleStatus" role="status" aria-live="polite">尚未送出收據。</p>
+        <button id="bookingAccessibleRefresh" class="button button-outline" type="button">更新登記狀態與票券</button>
+        <h3>我的可用票券</h3>
+        <p>直接向現場管理員出示。使用條件由管理員核對，這裡不會自動領取或使用票券。</p>
+        <p id="bookingAccessibleTicketsStatus" role="status" aria-live="polite">正在確認可用票券…</p>
+        <div id="bookingAccessibleTickets" class="booking-accessible-tickets"></div>
+      </section>
       <span id="memberProfileName" class="hidden" aria-hidden="true"></span>
       <span id="memberCode" class="hidden" aria-hidden="true"></span>
 
@@ -86,7 +103,7 @@
         <div data-membership-progress-track class="membership-progress-track" role="progressbar" aria-label="會員階級進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-membership-progress-bar></span></div>
       </section>
 
-      <section class="booking-card" aria-labelledby="bookingTitle">
+      <section class="booking-card" data-booking-standard aria-labelledby="bookingTitle">
         <div class="section-heading">
           <div><p class="kicker">New appointment</p><h2 id="bookingTitle">選擇預約日期</h2><p>不可預約的日期會反灰；點選可預約日期後，系統會開啟小視窗讓你選擇預約項目與時間。</p></div>
           <span id="workHoursBadge" class="slot-unit">載入中</span>

@@ -1,0 +1,21 @@
+.booking-accessible-switch { margin: 1rem 0; }
+.booking-accessible-switch .button { min-height: 56px; width: 100%; white-space: normal; }
+.booking-accessible-panel { padding: clamp(18px,4vw,32px); border: 2px solid var(--line,#878787); border-radius: 20px; background: var(--theme-surface-raised,#fff); color: var(--ink,#17201b); font-size: 1.2rem; line-height: 1.65; overflow-wrap: anywhere; }
+.booking-accessible-panel h2 { font-size: 1.65rem; line-height: 1.4; }
+.booking-accessible-panel h3 { font-size: 1.45rem; margin-top: 2rem; }
+.booking-accessible-panel h4 { font-size: 1.25rem; }
+.booking-accessible-panel ol { padding-left: 1.5em; }
+.booking-accessible-panel li { margin: .6rem 0; }
+.booking-accessible-panel .button { width: 100%; min-height: 60px; font-size: 1.2rem; white-space: normal; margin: .6rem 0; }
+.booking-accessible-tickets { display: grid; gap: 16px; }
+.booking-accessible-tickets article { border: 2px solid var(--line,#878787); border-radius: 14px; padding: 18px; }
+.booking-accessible-tickets p { margin: .5rem 0; }
+.booking-accessible-mode [data-booking-standard] { display: none !important; }
+.booking-accessible-mode .booking-receipt-modal-card { font-size: 1.2rem; line-height: 1.65; }
+.booking-accessible-mode .booking-receipt-modal-card .button { min-height: 60px; font-size: 1.15rem; white-space: normal; }
+.booking-accessible-mode .booking-receipt-heading h2 { font-size: 1.5rem; }
+.booking-accessible-mode .booking-receipt-help { font-size: 1.15rem; line-height: 1.7; }
+.booking-accessible-mode .booking-receipt-actions { display: grid; grid-template-columns: 1fr; }
+.booking-accessible-mode .booking-modal-close { min-width: 48px; min-height: 48px; }
+.booking-accessible-panel button:focus-visible,.booking-accessible-switch button:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
+@media (prefers-reduced-motion: reduce) { .booking-accessible-mode * { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }

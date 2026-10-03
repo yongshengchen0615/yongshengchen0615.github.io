@@ -4,6 +4,10 @@
   const state = {
     receiptsByBooking: new Map(),
     metadataByBooking: new Map(),
+    accessible: false,
+    requestId: '',
+    prepared: null,
+    uploaded: false,
     selectedBookingId: '',
     selectedExpectedUpdatedAt: '',
     selectedFile: null,
@@ -97,6 +101,9 @@
     state.photoGeneration += 1;
     cleanupPreview();
     state.selectedFile = null;
+    state.requestId = '';
+    state.prepared = null;
+    state.uploaded = false;
     state.cameraReady = false;
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
     const preview = document.getElementById('bookingReceiptPreview');
@@ -133,9 +140,14 @@
     state.selectedExpectedUpdatedAt = '';
   }
 
-  function openModal(bookingId, expectedUpdatedAt) {
+  function openModal(bookingId, expectedUpdatedAt, accessible = false) {
     const modal = ensureModal();
     resetModalState();
+    state.accessible = accessible;
+    document.getElementById('bookingReceiptTitle').textContent = accessible ? '拍收據，請管理員登記' : '拍攝收據並送出審核';
+    modal.querySelector('.booking-receipt-help').textContent = accessible
+      ? '拍下本次收據並送出即可，不必填寫預約。管理員核對服務項目後，才會登記服務時間與點數。等待登記時重新拍攝，會取代目前收據。'
+      : '預約確認後即可拍攝收據。重新上傳會覆蓋目前快照；管理員核對前不會完成預約。';
     state.selectedBookingId = String(bookingId || '');
     state.selectedExpectedUpdatedAt = String(expectedUpdatedAt || '');
     modal.classList.remove('hidden');
@@ -189,6 +201,7 @@
 
   function acceptFile(file) {
     const generation = ++state.photoGeneration;
+    state.requestId = ''; state.prepared = null; state.uploaded = false;
     cleanupPreview();
     state.selectedFile = file || null;
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
@@ -282,6 +295,7 @@
   function retakePhoto() {
     if (state.busy) return;
     state.photoGeneration += 1;
+    state.requestId = ''; state.prepared = null; state.uploaded = false;
     cleanupPreview();
     state.selectedFile = null;
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
@@ -313,7 +327,7 @@
   }
 
   async function submitReceipt() {
-    if (state.busy || !state.selectedFile || !state.selectedBookingId) return;
+    if (state.busy || !state.selectedFile || (!state.selectedBookingId && !state.accessible)) return;
     const currentSession = session();
     if (!currentSession) return setMessage('登入狀態已失效，請重新整理後再試。', true);
 
@@ -324,27 +338,31 @@
     [submit, cancel, close].forEach((button) => { if (button) button.disabled = true; });
 
     const file = state.selectedFile;
-    const requestId = newRequestId();
+    const requestId = state.requestId || (state.requestId = newRequestId());
     let submitted = false;
     const retake = document.getElementById('bookingReceiptRetake');
     if (retake) retake.disabled = true;
     try {
       setMessage('正在建立安全上傳連結…');
-      const prepared = await window.BookingSystem.request(
+      const prepared = state.prepared || await window.BookingSystem.request(
         currentSession.config,
         'booking',
         currentSession.idToken,
         'user.booking.receipt.prepare',
         {
-          bookingId: state.selectedBookingId,
+          ...(state.accessible ? { accessible: true } : { bookingId: state.selectedBookingId }),
           requestId,
           mimeType: String(file.type || '').toLowerCase(),
           sizeBytes: file.size,
         }
       );
 
-      setMessage('正在上傳收據圖片…');
-      await uploadSigned(currentSession.config, prepared, file);
+      state.prepared = prepared;
+      if (!state.uploaded && prepared.uploadToken) {
+        setMessage('正在上傳收據圖片…');
+        await uploadSigned(currentSession.config, prepared, file);
+        state.uploaded = true;
+      }
 
       setMessage('正在驗證圖片並送交管理端確認…');
       const finalized = await window.BookingSystem.request(
@@ -360,6 +378,7 @@
 
       submitted = true;
       setMessage(finalized.alreadyApplied ? '此收據已送出，正在等待管理端確認。' : '收據已安全送出，請等待管理端核對後完成預約。');
+      if (state.accessible) window.dispatchEvent(new CustomEvent('booking:accessible-receipt-submitted', { detail: finalized }));
       state.receiptsByBooking.set(state.selectedBookingId, {
         receiptId: String(finalized.receiptId || prepared.receiptId || ''),
         status: String(finalized.status || 'awaiting_review'),
@@ -373,6 +392,9 @@
       }, 900);
       return;
     } catch (error) {
+      if (error?.code !== 'API_RESPONSE_UNCERTAIN' && error?.code !== 'RECEIPT_UPLOAD_UNAVAILABLE') {
+        state.requestId = ''; state.prepared = null; state.uploaded = false;
+      }
       setMessage(
         error?.code === 'API_RESPONSE_UNCERTAIN'
           ? '無法確認最後結果。請先重新整理頁面；若已完成，系統不會再次結算。'
@@ -455,13 +477,24 @@
         state.metadataByBooking.set(String(item.bookingId || ''), item);
       });
       decorateCards();
+      window.dispatchEvent(new CustomEvent('booking:receipts-updated', { detail: { submissions: Array.isArray(data.submissions) ? data.submissions : [] } }));
     } catch (error) {
       console.warn('booking receipt list failed', error);
+      window.dispatchEvent(new CustomEvent('booking:receipt-load-error'));
+
     } finally {
       state.listLoading = false;
     }
   }
 
+  window.BookingReceipts = Object.freeze({
+    openAccessible: () => openModal('', '', true),
+    openBooking: openModal,
+    refresh: refreshListAndDecorate,
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !document.getElementById('bookingReceiptModal')?.classList.contains('hidden')) closeModal();
+  });
   window.addEventListener('DOMContentLoaded', ensureModal);
   window.addEventListener('pagehide', () => {
     state.photoGeneration += 1;

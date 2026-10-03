@@ -277,6 +277,7 @@
 
   function render(items = renderedItems) {
     renderedItems = Array.isArray(items) ? items : [];
+    window.dispatchEvent(new CustomEvent('booking:benefits-loaded', { detail: { items: renderedItems } }));
     const list = el('bookingBenefitsList');
     if (!list) return;
     list.replaceChildren();
@@ -532,6 +533,7 @@
 
   window.BookingBenefits = Object.freeze({
     start,
+    getItems: () => renderedItems.map(item => ({ ...item })),
     invalidate,
     syncNow,
     selectionPayload,

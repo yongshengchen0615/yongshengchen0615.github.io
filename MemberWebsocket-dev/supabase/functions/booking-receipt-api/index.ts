@@ -98,8 +98,17 @@ async function requireMember(supabase:SupabaseClient,identity:Identity):Promise<
 }
 function dbError(error:unknown):ApiError{
   const raw=error as {message?:string;details?:string;code?:string};
+  if(raw?.code==="22P02"||raw?.code==="22007"||raw?.code==="22008") return new ApiError(400,"INVALID_INPUT","日期、時間或服務項目格式不正確。");
+  if(raw?.code==="23P01") return new ApiError(409,"BOOKING_SLOT_TAKEN","此時間已有預約，請優先連結該會員已有預約，或核對服務日期與時間。");
   const message=String(raw?.message||"")+" "+String(raw?.details||"");
   const rules:Array<[string,number,string,string]>=[
+    ["ADMIN_REQUIRED",403,"ADMIN_REQUIRED","管理端帳號尚未授權。"],
+    ["MEMBERSHIP_REQUIRED",403,"MEMBERSHIP_REQUIRED","會員目前無法使用此功能。"],
+    ["INVALID_BOOKING_ITEMS",400,"INVALID_BOOKING_ITEMS","請選擇有效服務項目與分鐘數。"],
+    ["INVALID_BOOKING_DURATION",400,"INVALID_BOOKING_DURATION","服務總時間必須少於 24 小時。"],
+    ["INVALID_BOOKING_SLOT",400,"INVALID_BOOKING_SLOT","請填寫日期與每 5 分鐘的服務開始時間。"],
+    ["BOOKING_SERVICE_NOT_FOUND",400,"BOOKING_SERVICE_NOT_FOUND","服務項目已停用，請重新選擇。"],
+    ["BOOKING_PRIMARY_TECHNICIAN_MISSING",409,"BOOKING_PRIMARY_TECHNICIAN_MISSING","請先設定有效的主要技師。"],
     ["BOOKING_NOT_FOUND",404,"BOOKING_NOT_FOUND","找不到這筆預約。"],
     ["BOOKING_NOT_OWNED",403,"BOOKING_NOT_OWNED","不可操作其他會員的預約。"],
     ["INVALID_BOOKING_TRANSITION",409,"INVALID_BOOKING_TRANSITION","此預約目前不能完成。"],
@@ -200,20 +209,29 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
       }:null,
     };
   });
-  return {bookings};
+  const submissions=await supabase.from("booking_receipts")
+    .select("receipt_id,booking_id,status,created_at,updated_at,failure_reason,booking_completion_settlements:bookings(booking_completion_settlements(service_minutes,reward_details))")
+    .eq("member_id",member.id).eq("submission_mode","accessible").in("status",["awaiting_review","bound","failed"])
+    .order("updated_at",{ascending:false}).limit(10);
+  if(submissions.error) throw new ApiError(500,"DATABASE_ERROR","收據登記狀態暫時無法讀取。");
+  return {bookings,submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,bookingId:r.booking_id,
+    status:r.status,createdAt:r.created_at,updatedAt:r.updated_at,
+    dismissed:r.failure_reason==="admin-dismissed",
+    settlement:r.booking_completion_settlements?.booking_completion_settlements||null}))};
 }
 async function prepare(supabase:SupabaseClient,identity:Identity,member:any,body:Json):Promise<Json>{
   const bookingId=asText(body.bookingId,80);
   const requestId=asText(body.requestId,120);
   const mime=asText(body.mimeType,80).toLowerCase();
   const size=Number(body.sizeBytes);
-  if(!/^[0-9a-f-]{36}$/i.test(bookingId)) throw new ApiError(400,"INVALID_BOOKING_ID","預約識別格式不正確。");
+  const accessible=body.accessible===true;
+  if(!accessible&&!/^[0-9a-f-]{36}$/i.test(bookingId)) throw new ApiError(400,"INVALID_BOOKING_ID","預約識別格式不正確。");
   if(!ALLOWED_MIME.has(mime)) throw new ApiError(400,"RECEIPT_INVALID_MIME","請拍攝或選擇支援的圖片格式。");
   if(!Number.isSafeInteger(size)||size<1||size>MAX_FILE_BYTES) throw new ApiError(413,"RECEIPT_FILE_TOO_LARGE","收據圖片不可超過 5 MB。");
 
-  const objectPath=`${member.id}/${bookingId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
-  const result=await supabase.rpc("prepare_booking_receipt_request",{
-    p_booking_id:bookingId,p_member_id:member.id,p_request_id:requestId,
+  const objectPath=`${member.id}/${accessible?"accessible":bookingId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
+  const result=await supabase.rpc(accessible?"prepare_accessible_receipt_request":"prepare_booking_receipt_request",{
+    ...(accessible?{}:{p_booking_id:bookingId}),p_member_id:member.id,p_request_id:requestId,
     p_object_path:objectPath,p_mime_type:mime,p_size_bytes:size
   });
   if(result.error) throw dbError(result.error);
@@ -239,16 +257,17 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
   const receiptId=asText(body.receiptId,80);
   const expectedUpdatedAt=asText(body.expectedUpdatedAt,100);
   const receiptResult=await supabase.from("booking_receipts")
-    .select("receipt_id,booking_id,member_id,object_path,declared_mime_type,declared_size_bytes,status")
+    .select("receipt_id,booking_id,member_id,object_path,declared_mime_type,declared_size_bytes,status,submission_mode")
     .eq("receipt_id",receiptId).maybeSingle();
   if(receiptResult.error) throw new ApiError(500,"DATABASE_ERROR","目前無法確認收據上傳。");
   const receipt=receiptResult.data;
   if(!receipt) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到這筆收據上傳。");
   if(String(receipt.member_id)!==String(member.id)) throw new ApiError(403,"RECEIPT_NOT_OWNED","不可操作其他會員的收據。");
+  const accessible=receipt.submission_mode==="accessible";
   if(receipt.status==="bound"||receipt.status==="awaiting_review"){
-    const repeat=await supabase.rpc("finalize_booking_receipt_request",{
+    const repeat=await supabase.rpc(accessible?"finalize_accessible_receipt_request":"finalize_booking_receipt_request",{
       p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,
-      p_expected_booking_updated_at:expectedUpdatedAt,p_actual_mime_type:receipt.declared_mime_type,
+      ...(accessible?{}:{p_expected_booking_updated_at:expectedUpdatedAt}),p_actual_mime_type:receipt.declared_mime_type,
       p_actual_size_bytes:receipt.declared_size_bytes,p_sha256_hex:"0".repeat(64)
     });
     if(repeat.error) throw dbError(repeat.error);
@@ -281,9 +300,9 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
     throw new ApiError(400,"RECEIPT_SIZE_MISMATCH","收據圖片大小與上傳資料不一致。");
   }
   const hash=await fileSha256Hex(bytes);
-  const finalized=await supabase.rpc("finalize_booking_receipt_request",{
+  const finalized=await supabase.rpc(accessible?"finalize_accessible_receipt_request":"finalize_booking_receipt_request",{
     p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,
-    p_expected_booking_updated_at:expectedUpdatedAt,p_actual_mime_type:declared,
+    ...(accessible?{}:{p_expected_booking_updated_at:expectedUpdatedAt}),p_actual_mime_type:declared,
     p_actual_size_bytes:downloaded.data.size,p_sha256_hex:hash
   });
   if(finalized.error){
@@ -300,13 +319,28 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
     .order("updated_at",{ascending:false})
     .limit(200);
   if(result.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
-  return {receipts:(result.data||[]).map((row:any)=>({
+  const submissions=await supabase.from("booking_receipts")
+    .select("receipt_id,member_id,status,created_at,updated_at,members(display_name,member_code)")
+    .eq("submission_mode","accessible").is("booking_id",null).eq("status","awaiting_review")
+    .order("created_at",{ascending:true}).limit(100);
+  if(submissions.error) throw new ApiError(500,"DATABASE_ERROR","待補登收據暫時無法讀取。");
+  return {submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,updatedAt:r.updated_at,
+    createdAt:r.created_at,memberName:r.members?.display_name||"會員",memberCode:r.members?.member_code||""})),receipts:(result.data||[]).map((row:any)=>({
     receiptId:String(row.receipt_id||""),bookingId:String(row.booking_id||""),status:String(row.status||""),
     boundAt:row.bound_at,mimeType:String(row.actual_mime_type||""),sizeBytes:Number(row.actual_size_bytes||0)
   }))};
 }
 async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
   const bookingId=asText(body.bookingId,80);
+  if(!bookingId&&asText(body.receiptId,80)) {
+    const receipt=await supabase.from("booking_receipts").select("object_path,receipt_id,status")
+      .eq("receipt_id",asText(body.receiptId,80)).eq("submission_mode","accessible").is("booking_id",null).eq("status","awaiting_review").maybeSingle();
+    if(receipt.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
+    if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到待補登收據。");
+    const signed=await supabase.storage.from(BUCKET).createSignedUrl(receipt.data.object_path,120);
+    if(signed.error||!signed.data?.signedUrl) throw new ApiError(503,"RECEIPT_VIEW_UNAVAILABLE","目前無法建立安全檢視連結。");
+    return {receiptId:receipt.data.receipt_id,signedUrl:signed.data.signedUrl,expiresInSeconds:120};
+  }
   const result=await supabase.from("booking_receipts").select("receipt_id,object_path,status,created_at,bound_at")
     .eq("booking_id",bookingId).in("status",["awaiting_review","bound"])
     .order("created_at",{ascending:false}).limit(1).maybeSingle();
@@ -358,6 +392,25 @@ async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
   };
 }
 
+async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Json>{
+  const receipt=await supabase.from("booking_receipts").select("member_id,status,updated_at")
+    .eq("receipt_id",asText(body.receiptId,80)).eq("submission_mode","accessible").maybeSingle();
+  if(receipt.error) throw new ApiError(500,"DATABASE_ERROR","收據資料暫時無法讀取。");
+  if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到這筆收據。");
+  const [services,settings,bookings,rewardRules]=await Promise.all([
+    supabase.from("booking_services").select("id,title,duration_minutes,service_type,counts_toward_membership").eq("is_active",true).is("deleted_at",null).neq("id","00000000-0000-4000-8000-000000000010").order("title"),
+    supabase.from("booking_settings").select("primary_technician_id").eq("id",1).maybeSingle(),
+    supabase.from("bookings").select("id,booking_date,start_time,status,booking_items(service_title),booking_receipts(status)").eq("member_id",receipt.data.member_id)
+      .in("status",["confirmed","completed"]).order("booking_date",{ascending:false}).limit(80),
+    supabase.from("booking_service_type_rewards").select("minutes_per_point,booking_service_types(name),point_cards(title)"),
+  ]);
+  if(services.error||settings.error||bookings.error||rewardRules.error) throw new ApiError(500,"DATABASE_ERROR","服務登記選項暫時無法讀取。");
+  return {rewardRules:(rewardRules.data||[]).map((r:any)=>({serviceType:r.booking_service_types?.name||"",minutesPerPoint:r.minutes_per_point,cardTitle:r.point_cards?.title||""})),services:services.data||[],primaryTechnicianConfigured:Boolean(settings.data?.primary_technician_id),
+    bookings:(bookings.data||[]).filter((b:any)=>!(b.booking_receipts||[]).some((r:any)=>["pending_upload","awaiting_review","bound"].includes(r.status)))
+      .map((b:any)=>({bookingId:b.id,bookingDate:b.booking_date,startTime:String(b.start_time).slice(0,5),status:b.status,
+        title:(b.booking_items||[]).map((i:any)=>i.service_title).join("、")}))};
+}
+
 Deno.serve(async(request:Request)=>{
   const origin=request.headers.get("Origin");
   if(request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(origin)});
@@ -368,7 +421,7 @@ Deno.serve(async(request:Request)=>{
     const body=await readJsonObject(request,MAX_REQUEST_BYTES,ApiError);
     const action=asText(body.action,100);
     const userActions=new Set(["user.booking.receipt.list","user.booking.receipt.prepare","user.booking.receipt.finalize"]);
-    const adminActions=new Set(["admin.booking.receipt.list","admin.booking.receipt.url"]);
+    const adminActions=new Set(["admin.booking.receipt.list","admin.booking.receipt.url","admin.booking.receipt.options","admin.booking.receipt.register","admin.booking.receipt.dismiss"]);
     if(!userActions.has(action)&&!adminActions.has(action)) throw new ApiError(404,"ACTION_NOT_FOUND","不支援的收據操作。");
 
     const supabase=dbClient();
@@ -389,8 +442,21 @@ Deno.serve(async(request:Request)=>{
       if(asText(body.clientType,20)!=="admin") throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
       const identity=await resolveAdminIdentity(body);
       await requireActiveAdminContract({supabase,identity,createError:(status,code,message,details=null)=>new ApiError(status,code,message,details)});
-      await consumeRateLimit(supabase,identity,action==="admin.booking.receipt.url");
-      data=action==="admin.booking.receipt.list"?await adminList(supabase):await adminUrl(supabase,body);
+      await consumeRateLimit(supabase,identity,action!=="admin.booking.receipt.list"&&action!=="admin.booking.receipt.options");
+      if(action==="admin.booking.receipt.list") data=await adminList(supabase);
+      else if(action==="admin.booking.receipt.url") data=await adminUrl(supabase,body);
+      else if(action==="admin.booking.receipt.options") data=await registrationOptions(supabase,body);
+      else {
+        const result=action==="admin.booking.receipt.dismiss"
+          ? await supabase.rpc("dismiss_accessible_receipt_request",{p_receipt_id:asText(body.receiptId,80),p_expected_updated_at:asText(body.expectedUpdatedAt,100)||null,p_actor:identity.lineUserId})
+          : await supabase.rpc("register_accessible_receipt_request",{
+            p_receipt_id:asText(body.receiptId,80),p_expected_receipt_updated_at:asText(body.expectedUpdatedAt,100)||null,p_actor:identity.lineUserId,
+            p_booking_id:asText(body.bookingId,80)||null,p_booking_date:asText(body.bookingDate,10)||null,
+            p_start_time:asText(body.startTime,8)||null,p_items:Array.isArray(body.items)?body.items:[],p_admin_note:asText(body.adminNote,500)
+          });
+        if(result.error) throw dbError(result.error);
+        data=action==="admin.booking.receipt.dismiss"?{dismissed:true}:(result.data||{}) as Json;
+      }
     }
 
     return response(origin,{ok:true,status:200,data});

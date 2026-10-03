@@ -1,0 +1,12 @@
+.accessible-admin-queue { margin-bottom: 24px; padding: 18px; border: 1px solid var(--line,#888); border-radius: 14px; background: var(--theme-surface-raised,#fff); }
+.accessible-admin-queue article { padding: 12px 0; border-top: 1px solid var(--line,#888); }
+.accessible-admin-card img { display: block; width: 100%; max-height: 360px; object-fit: contain; border-radius: 12px; }
+.accessible-admin-card form { display: grid; gap: 16px; }
+.accessible-admin-card label { display: grid; gap: 6px; }
+.accessible-admin-card input,.accessible-admin-card select,.accessible-admin-card textarea { font: inherit; padding: 10px; max-width: 100%; min-width: 0; color: var(--ink,#17201b); background: var(--theme-surface-raised,#fff); border: 1px solid var(--line,#888); border-radius: 8px; }
+.accessible-admin-card fieldset { min-width: 0; display: grid; gap: 12px; border: 1px solid var(--line,#888); border-radius: 12px; padding: 14px; }
+.accessible-admin-item { display: grid; grid-template-columns: minmax(0,1fr) 110px 80px; align-items: center; gap: 10px; padding: 12px 0; }
+.accessible-admin-item > label:first-child { display: flex; align-items: center; gap: 10px; }
+.accessible-admin-card input[type="checkbox"] { width: 24px; height: 24px; flex: none; }
+.accessible-admin-card .error { color: var(--theme-danger,#b42318); }
+@media (max-width: 600px) { .accessible-admin-item { grid-template-columns: 1fr 1fr; } .accessible-admin-item > label:first-child { grid-column: 1/-1; } }

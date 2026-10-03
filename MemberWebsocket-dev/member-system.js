@@ -70,7 +70,9 @@
     'user.event.ticket.claim',
     'user.event.ticket.redeem',
     'member.referral.bind',
-    'points.transfer.create'
+    'points.transfer.create',
+    'admin.booking.receipt.register',
+    'admin.booking.receipt.dismiss'
   ]);
 
   function clientError(code, message) {
