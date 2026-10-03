@@ -92,3 +92,14 @@ test('accessible review UI separates receipt, workflow and sticky actions', () =
   assert.match(css, /\.accessible-admin-sticky-actions/);
   assert.match(index, /accessible-review-ui-20261003-1/);
 });
+
+
+test('accessible review uses one vertical scroll container', () => {
+  const css = read('admin/booking-accessible-admin.css');
+  const index = read('admin/index.html');
+  assert.match(css, /\.accessible-admin-review-layout\{[\s\S]*overflow-y:auto/);
+  assert.match(css, /\.accessible-admin-review-form\{[\s\S]*overflow:visible/);
+  assert.match(css, /\.accessible-admin-receipt-pane\{[\s\S]*overflow:visible/);
+  assert.doesNotMatch(css, /#accessibleAdminModal\{[^}]*touch-action:none/);
+  assert.match(index, /accessible-review-scroll-20261003-1/);
+});
