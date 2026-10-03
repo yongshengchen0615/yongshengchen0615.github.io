@@ -424,14 +424,24 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
 }
 async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
   const bookingId=asText(body.bookingId,80);
-  if(!bookingId&&asText(body.receiptId,80)) {
-    const receipt=await supabase.from("booking_receipts").select("object_path,receipt_id,status")
-      .eq("receipt_id",asText(body.receiptId,80)).eq("submission_mode","accessible").is("booking_id",null).eq("status","awaiting_review").maybeSingle();
+  const receiptId=asText(body.receiptId,80);
+  if(!bookingId&&receiptId) {
+    const receipt=await supabase.from("booking_receipts").select("object_path,receipt_id,booking_id,status")
+      .eq("receipt_id",receiptId)
+      .eq("submission_mode","accessible")
+      .in("status",["awaiting_review","bound"])
+      .maybeSingle();
     if(receipt.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
-    if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到待補登收據。");
+    if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到可查看的無障礙收據快照。");
     const signed=await supabase.storage.from(BUCKET).createSignedUrl(receipt.data.object_path,120);
     if(signed.error||!signed.data?.signedUrl) throw new ApiError(503,"RECEIPT_VIEW_UNAVAILABLE","目前無法建立安全檢視連結。");
-    return {receiptId:receipt.data.receipt_id,signedUrl:signed.data.signedUrl,expiresInSeconds:120};
+    return {
+      receiptId:receipt.data.receipt_id,
+      bookingId:String(receipt.data.booking_id||""),
+      status:String(receipt.data.status||""),
+      signedUrl:signed.data.signedUrl,
+      expiresInSeconds:120
+    };
   }
   const result=await supabase.from("booking_receipts").select("receipt_id,object_path,status,created_at,bound_at")
     .eq("booking_id",bookingId).in("status",["awaiting_review","bound"])
