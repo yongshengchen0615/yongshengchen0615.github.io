@@ -54,7 +54,7 @@ test('accessible receipt ticket review uses canonical benefit settlement', () =>
   const admin = read('admin/booking-accessible-admin.js');
   const receiptApi = read('supabase/functions/booking-receipt-api/index.ts');
   const migration = read('supabase/migrations/20261003221000_accessible_receipt_ticket_review.sql');
-  assert.match(admin, /本次票券審核/);
+  assert.match(admin, /審核票券與點數/);
   assert.match(admin, /benefits,adminNote/);
   assert.match(receiptApi, /loadBookingBenefits/);
   assert.match(receiptApi, /validateAccessibleBenefits/);
@@ -90,7 +90,7 @@ test('accessible review UI separates receipt, workflow and sticky actions', () =
   assert.match(css, /grid-template-columns:minmax\(280px,.72fr\) minmax\(480px,1.28fr\)/);
   assert.match(css, /@media\(max-width:640px\)/);
   assert.match(css, /\.accessible-admin-sticky-actions/);
-  assert.match(index, /accessible-review-ui-20261003-1/);
+  assert.match(index, /booking-operations-split-20261003-1/);
 });
 
 
@@ -101,5 +101,16 @@ test('accessible review uses one vertical scroll container', () => {
   assert.match(css, /\.accessible-admin-review-form\{[\s\S]*overflow:visible/);
   assert.match(css, /\.accessible-admin-receipt-pane\{[\s\S]*overflow:visible/);
   assert.doesNotMatch(css, /#accessibleAdminModal\{[^}]*touch-action:none/);
-  assert.match(index, /accessible-review-scroll-20261003-1/);
+  assert.match(index, /booking-operations-split-20261003-1/);
+});
+
+
+test('accessible review mounts only inside its dedicated queue mode', () => {
+  const admin = read('admin/booking-accessible-admin.js');
+  assert.match(admin, /section\.className = 'accessible-admin-queue hidden'/);
+  assert.match(admin, /panel\.append\(section\)/);
+  assert.doesNotMatch(admin, /panel\.prepend\(section\)/);
+  assert.match(admin, /function syncQueueMode\(\)/);
+  assert.match(admin, /data-queue-mode/);
+  assert.match(admin, /member-admin:booking-queue-mode-changed/);
 });
