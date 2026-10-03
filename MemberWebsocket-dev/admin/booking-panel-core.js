@@ -1627,8 +1627,10 @@
       }
       const catalogInvalidation = type.startsWith('booking.db.booking_services.')
         || type.startsWith('booking.db.booking_service_types.');
-      if (els.bookingPanel?.classList.contains('hidden') && !catalogInvalidation) refreshBookingBadge();
-      else refreshAll(false, !els.bookingPanel?.classList.contains('hidden'));
+      if (els.bookingPanel?.classList.contains('hidden')) {
+        if (catalogInvalidation) refreshAll(false, false);
+        else refreshBookingBadge();
+      } else refreshAll(false, true);
     }, 500);
   }
 
