@@ -97,7 +97,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   );
   const requiredServiceTitlesFor = (serviceIds: string[]) =>
     serviceIds.map((serviceId) => requiredServiceTitleById.get(String(serviceId || '')) || '').filter(Boolean);
-  const requiredServiceRequirementLabelFor = (serviceIds: string[]) => {
+  const requiredServiceRequirementLabelFor = (serviceIds: string[], matchMode: string) => {
     const selected = new Set(serviceIds.map((serviceId) => String(serviceId || '')).filter(Boolean));
     if (!selected.size) return '';
 
@@ -125,23 +125,32 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       !bookingServices.some((service) => service.serviceId === serviceId)
     ));
 
+    const allRequired = matchMode === 'all';
     if (fullTypes.length && !individualTitles.length) {
+      if (allRequired) {
+        return fullTypes.length === 1
+          ? `需預約「${fullTypes[0]}」項目類型的所有項目`
+          : `需預約「${fullTypes.join('、')}」項目類型的所有項目`;
+      }
       return fullTypes.length === 1
         ? `需預約「${fullTypes[0]}」項目類型`
         : `需預約「${fullTypes.join('、')}」其中一種項目類型`;
     }
     if (!fullTypes.length) {
+      if (allRequired) return `需預約所有指定項目：「${individualTitles.join('、')}」`;
       return individualTitles.length === 1
         ? `需預約「${individualTitles[0]}」項目`
         : `需預約「${individualTitles.join('、')}」其中一個項目`;
     }
     const typePart = fullTypes.length === 1
       ? `「${fullTypes[0]}」項目類型`
-      : `「${fullTypes.join('、')}」其中一種項目類型`;
+      : `「${fullTypes.join('、')}」項目類型`;
     const itemPart = individualTitles.length === 1
       ? `「${individualTitles[0]}」項目`
-      : `「${individualTitles.join('、')}」其中一個項目`;
-    return `需預約 ${typePart} 或 ${itemPart}`;
+      : `「${individualTitles.join('、')}」項目`;
+    return allRequired
+      ? `需預約 ${typePart}的所有項目，且需包含 ${itemPart}`
+      : `需預約 ${typePart} 或 ${itemPart}`;
   };
 
   const activities = (calendar.data || []).filter((item: any) =>
@@ -161,8 +170,9 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         const pointBalance = Math.max(0, totalPointBalance - otherBookingReserved);
         const pointCost = Math.max(0, Number(offer.thresholdStamps || 0));
         const requiredServiceIds = Array.isArray(offer.requiredServiceIds) ? offer.requiredServiceIds : [];
+        const requiredServiceMatchMode = offer.requiredServiceMatchMode === 'all' ? 'all' : 'any';
         const requiredServiceTitles = requiredServiceTitlesFor(requiredServiceIds);
-        const requiredServiceRequirementLabel = requiredServiceRequirementLabelFor(requiredServiceIds);
+        const requiredServiceRequirementLabel = requiredServiceRequirementLabelFor(requiredServiceIds, requiredServiceMatchMode);
         const ticketId = String(offer.ticketId || '');
         const reservationBookingId = ticketId ? String(reservationBookingByTicket.get(ticketId) || '') : '';
         const reservedForOtherBooking = Boolean(reservationBookingId && reservationBookingId !== currentBookingId);
@@ -175,7 +185,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           statusLabel: reservedForOtherBooking ? '已預約使用' : hasEnoughPoints ? '可使用' : '點數不足',
           startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId, cardTitle: offer.cardTitle,
           pointCost, pointBalance, totalPointBalance, reservedPointBalance, otherBookingReserved,
-          requiredServiceIds, requiredServiceTitles, requiredServiceRequirementLabel,
+          requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           reservedForBooking: Boolean(reservationBookingId),
           reservedForCurrentBooking,
           selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking, selectionId: offer.ticketId,
@@ -191,8 +201,9 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       }),
       ...events.map((offer) => {
         const requiredServiceIds = Array.isArray(offer.requiredServiceIds) ? offer.requiredServiceIds : [];
+        const requiredServiceMatchMode = offer.requiredServiceMatchMode === 'all' ? 'all' : 'any';
         const requiredServiceTitles = requiredServiceTitlesFor(requiredServiceIds);
-        const requiredServiceRequirementLabel = requiredServiceRequirementLabelFor(requiredServiceIds);
+        const requiredServiceRequirementLabel = requiredServiceRequirementLabelFor(requiredServiceIds, requiredServiceMatchMode);
         return {
           kind: 'event', id: offer.eventTicketId, title: offer.title,
           subtitle: offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
@@ -200,7 +211,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           selectable: !offer.requiresLocation,
           selectionId: offer.claimId || '',
           claimRequired: !offer.claimed,
-          requiredServiceIds, requiredServiceTitles, requiredServiceRequirementLabel,
+          requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · ${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel}` : '預約項目限制：不限'}`,
           disabledReason: offer.requiresLocation ? '此票券需於票券頁完成定位核銷' : '',
         };
