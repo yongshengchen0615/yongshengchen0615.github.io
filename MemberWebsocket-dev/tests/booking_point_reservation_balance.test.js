@@ -73,9 +73,9 @@ test('point card bootstrap and UI expose spendable and reserved balances', () =>
 test('updated booking and point assets are cache busted', () => {
   const booking = read('booking/index.html');
   const points = read('points/index.html');
-  assert.match(booking, /common\.js\?v=booking-point-reservation-20261002-2/);
+  assert.match(booking, /common\.js\?v=booking-member-chat-20261003-1/);
   assert.match(booking, /booking-benefits\.js\?v=ticket-service-requirements-20261002-1/);
-  assert.match(booking, /app\.js\?v=ticket-service-requirements-20261002-1/);
+  assert.match(booking, /app\.js\?v=booking-member-chat-20261003-1/);
   assert.match(points, /app\.js\?v=point-transfer-realtime-20261001-2-booking-point-reservation-20261002-1/);
   assert.match(points, /pointcard-ticket-overview\.js\?v=ticket-unlimited-zero-20261002-1/);
 });
