@@ -209,9 +209,9 @@ async function handleGrant(supabase: SupabaseClient, identity: { lineUserId:stri
   if (grant.error) throw mapError(grant.error);
   const grantResult:any = grant.data && typeof grant.data === "object" ? grant.data : {};
 
-  const service = await supabase.from("service_time_entries").select("minutes").eq("member_id",member.id);
+  const service = await supabase.rpc("member_service_minute_totals",{p_member_ids:[member.id]});
   if (service.error) throw mapError(service.error);
-  const totalMinutes = (service.data || []).reduce((sum,row:any) => sum + Number(row.minutes || 0),0);
+  const totalMinutes = Number(service.data?.[0]?.total_minutes || 0);
   const tiers = await supabase.from("membership_tier_settings").select("*").order("required_service_minutes",{ ascending:true });
   if (tiers.error) throw mapError(tiers.error);
   const tier:any = resolveTier(tiers.data || [],totalMinutes);

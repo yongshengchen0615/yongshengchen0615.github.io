@@ -10,6 +10,8 @@
     previewUrl: '',
     cameraStream: null,
     cameraReady: false,
+    cameraGeneration: 0,
+    photoGeneration: 0,
     busy: false,
     listLoading: false,
   };
@@ -92,6 +94,7 @@
   }
 
   function resetModalState() {
+    state.photoGeneration += 1;
     cleanupPreview();
     state.selectedFile = null;
     state.cameraReady = false;
@@ -111,6 +114,7 @@
   }
 
   function stopCamera() {
+    state.cameraGeneration += 1;
     if (state.cameraStream) {
       state.cameraStream.getTracks().forEach((track) => track.stop());
       state.cameraStream = null;
@@ -140,6 +144,7 @@
 
   async function startCamera() {
     stopCamera();
+    const generation = state.cameraGeneration;
     const video = document.getElementById('bookingReceiptCamera');
     const capture = document.getElementById('bookingReceiptCapture');
     if (!video || !capture) return;
@@ -160,14 +165,21 @@
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
       });
+      if (generation !== state.cameraGeneration) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       state.cameraStream = stream;
       video.srcObject = stream;
       await video.play();
+      if (generation !== state.cameraGeneration) return;
       state.cameraReady = true;
       capture.disabled = false;
       capture.textContent = '拍攝收據';
       setMessage('請將收據完整放入畫面後拍攝。');
     } catch (error) {
+      if (generation !== state.cameraGeneration) return;
+      stopCamera();
       console.warn('booking receipt camera unavailable', error);
       capture.disabled = false;
       capture.textContent = '重新嘗試開啟相機';
@@ -176,6 +188,7 @@
   }
 
   function acceptFile(file) {
+    const generation = ++state.photoGeneration;
     cleanupPreview();
     state.selectedFile = file || null;
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
@@ -207,6 +220,7 @@
 
     const reader = new FileReader();
     reader.onload = () => {
+      if (generation !== state.photoGeneration) return;
       state.previewUrl = typeof reader.result === 'string' ? reader.result : '';
       if (preview && state.previewUrl) preview.src = state.previewUrl;
       if (meta) meta.textContent = `${file.name || '收據照片'} · ${humanSize(file.size)}`;
@@ -218,6 +232,7 @@
       setMessage('照片已拍攝。確認清楚可辨識後送出，管理端核對前預約不會完成。');
     };
     reader.onerror = () => {
+      if (generation !== state.photoGeneration) return;
       state.selectedFile = null;
       setMessage('無法讀取這張圖片，請重新拍攝。', true);
       if (submit) submit.disabled = true;
@@ -226,6 +241,7 @@
   }
 
   function captureFrame() {
+    if (state.busy) return;
     if (!state.cameraReady) {
       void startCamera();
       return;
@@ -248,7 +264,12 @@
       return;
     }
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const generation = ++state.photoGeneration;
+    const capture = document.getElementById('bookingReceiptCapture');
+    if (capture) capture.disabled = true;
     canvas.toBlob((blob) => {
+      if (generation !== state.photoGeneration) return;
+      if (capture) capture.disabled = false;
       if (!blob) {
         setMessage('拍攝失敗，請重新拍攝。', true);
         return;
@@ -259,6 +280,8 @@
   }
 
   function retakePhoto() {
+    if (state.busy) return;
+    state.photoGeneration += 1;
     cleanupPreview();
     state.selectedFile = null;
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
@@ -302,6 +325,9 @@
 
     const file = state.selectedFile;
     const requestId = newRequestId();
+    let submitted = false;
+    const retake = document.getElementById('bookingReceiptRetake');
+    if (retake) retake.disabled = true;
     try {
       setMessage('正在建立安全上傳連結…');
       const prepared = await window.BookingSystem.request(
@@ -332,6 +358,7 @@
         }
       );
 
+      submitted = true;
       setMessage(finalized.alreadyApplied ? '此收據已送出，正在等待管理端確認。' : '收據已安全送出，請等待管理端核對後完成預約。');
       state.receiptsByBooking.set(state.selectedBookingId, {
         receiptId: String(finalized.receiptId || prepared.receiptId || ''),
@@ -340,6 +367,7 @@
       window.setTimeout(() => {
         state.busy = false;
         [submit, cancel, close].forEach((button) => { if (button) button.disabled = false; });
+        if (retake) retake.disabled = false;
         closeModal();
         void refreshListAndDecorate();
       }, 900);
@@ -352,9 +380,10 @@
         true
       );
     } finally {
-      if (state.busy) {
+      if (!submitted) {
         state.busy = false;
         [submit, cancel, close].forEach((button) => { if (button) button.disabled = false; });
+        if (retake) retake.disabled = false;
       }
     }
   }
@@ -434,6 +463,10 @@
   }
 
   window.addEventListener('DOMContentLoaded', ensureModal);
+  window.addEventListener('pagehide', () => {
+    state.photoGeneration += 1;
+    stopCamera();
+  });
   window.addEventListener('booking:bookings-rendered', () => { void refreshListAndDecorate(); });
   window.addEventListener('pageshow', () => {
     if (!document.getElementById('bookingView')?.classList.contains('hidden')) void refreshListAndDecorate();

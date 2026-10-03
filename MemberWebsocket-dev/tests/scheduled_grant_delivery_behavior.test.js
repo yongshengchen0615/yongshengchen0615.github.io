@@ -19,6 +19,7 @@ function fixture({ url = '', status = 200, acceptedId = '', testMember = false, 
       if (name === 'claim_due_grant_messages') return { data: rows, error: null };
       if (name === 'get_line_messaging_token') return { data: 'fixture-channel-token', error: null };
       if (name === 'get_line_setting') return { data: url, error: null };
+      if (name === 'member_service_minute_totals') return { data: [{ member_id:row.member_id,total_minutes:0 }], error:null };
       throw new Error(name);
     },
     from(table) {

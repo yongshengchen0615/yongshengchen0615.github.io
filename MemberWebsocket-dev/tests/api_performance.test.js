@@ -65,6 +65,11 @@ function database({ rows = {}, errorTable, hold = () => false } = {}) {
     return q;
   }, rpc(name, args) {
     calls.push({ table: name, args });
+    if (name === 'member_service_minute_totals') {
+      const totals = args.p_member_ids.map(member_id => ({ member_id, total_minutes: (data.service_time_entries || []).filter(row => row.member_id === member_id).reduce((sum, row) => sum + row.minutes, 0) }));
+      const result = { data: totals, error: name === errorTable ? { message: 'fixture database failure' } : null };
+      return hold(name) ? new Promise(resolve => releases.push(() => resolve(result))) : Promise.resolve(result);
+    }
     if (name === 'event_ticket_claim_counts') {
       const counts = new Map();
       for (const claim of data.event_ticket_claims || []) {
@@ -79,7 +84,7 @@ const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve()
 
 test('profile reads start together, retain member isolation and produce correct totals', async () => {
   const db = database({ hold: () => true }); const pending = api().profileFor(db, member);
-  await flush(); assert.deepEqual(db.calls.map(c => c.table).sort(), ['membership_tier_settings', 'service_time_entries']);
+  await flush(); assert.deepEqual(db.calls.map(c => c.table).sort(), ['member_service_minute_totals', 'membership_tier_settings']);
   db.releases.forEach(release => release()); const profile = await pending;
   assert.equal(profile.serviceMinutesTotal, 50); assert.equal(profile.lineUserId, 'line-A');
 });
@@ -134,7 +139,7 @@ test('no active events still returns historical tickets and skips active-claim q
   assert.equal(result.offers.length, 0); assert.equal(result.usedTicketCount, 1);
   assert.equal(db.calls.filter(c => c.table === 'event_ticket_claims').length, 1);
 });
-for (const [fn, table] of [['profileFor', 'membership_tier_settings'], ['profileFor', 'service_time_entries'], ['pointBootstrap', 'point_balances'], ['pointBootstrap', 'point_tickets'], ['eventBootstrap', 'event_tickets'], ['eventBootstrap', 'event_ticket_claims']]) {
+for (const [fn, table] of [['profileFor', 'membership_tier_settings'], ['profileFor', 'member_service_minute_totals'], ['pointBootstrap', 'point_balances'], ['pointBootstrap', 'point_tickets'], ['eventBootstrap', 'event_tickets'], ['eventBootstrap', 'event_ticket_claims']]) {
   test(`${fn}: ${table} failure rejects instead of returning partial success`, async () => {
     await assert.rejects(api()[fn](database({ errorTable: table }), member), { code: 'DATABASE_ERROR' });
   });

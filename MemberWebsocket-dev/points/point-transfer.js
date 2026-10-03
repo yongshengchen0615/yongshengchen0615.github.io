@@ -5,6 +5,7 @@
     requestId: '',
     fingerprint: '',
     receiver: null,
+    receiverGeneration: 0,
     busy: false,
     activeCardId: '',
     activeCardTitle: '',
@@ -33,6 +34,7 @@
   }
 
   function clearReceiver() {
+    state.receiverGeneration += 1;
     state.receiver = null;
     state.requestId = '';
     state.fingerprint = '';
@@ -171,6 +173,18 @@
     button.title = button.disabled && state.loaded ? '這張集點卡目前沒有可轉贈點數' : '';
   }
 
+  function updateModalBalance() {
+    const cardId = document.getElementById('pointTransferCard')?.value;
+    const option = state.options.get(cardId);
+    const balance = Math.max(0, Number(option?.balance || 0));
+    const amount = document.getElementById('pointTransferAmount');
+    if (amount) amount.max = String(balance);
+    const summary = document.getElementById('pointTransferCardSummary');
+    if (summary) summary.textContent = `${option?.title || state.activeCardTitle || '集點卡'}・可轉贈 ${balance} 點${option?.expiresOn ? `・至 ${option.expiresOn}` : ''}`;
+    const hint = document.getElementById('pointTransferBalanceHint');
+    if (hint) hint.textContent = `本次轉贈會從這張集點卡扣除，最多可轉贈 ${balance} 點。`;
+  }
+
   function openModal() {
     const modal = ensureModal();
     const cardId = currentCardId();
@@ -228,10 +242,12 @@
         }]));
         state.loaded = true;
         updateOpenButton();
+        updateModalBalance();
       } catch (error) {
         state.options = new Map();
         state.loaded = true;
         updateOpenButton();
+        updateModalBalance();
         if (!document.getElementById('pointTransferModal')?.classList.contains('hidden')) {
           setMessage(error?.message || '目前無法讀取可轉贈點數。', true);
         }
@@ -281,22 +297,28 @@
   }
 
   async function lookupReceiver() {
+    if (state.busy) return;
     const s = session();
     if (!s) return;
     const memberCode = String(document.getElementById('pointTransferMemberCode').value || '').trim();
     if (!memberCode) return setMessage('請輸入收件會員編號。', true);
+    clearReceiver();
+    const generation = state.receiverGeneration;
     setMessage('正在確認收件會員…');
     try {
-      state.receiver = await window.MemberSystem.request(
+      const receiver = await window.MemberSystem.request(
         s.config,
         'points',
         s.idToken,
         'points.transfer.receiver',
         { memberCode }
       );
+      if (generation !== state.receiverGeneration) return;
+      state.receiver = receiver;
       renderReceiver();
       setMessage('已確認收件會員，請核對後再送出。');
     } catch (error) {
+      if (generation !== state.receiverGeneration) return;
       state.receiver = null;
       renderReceiver();
       setMessage(error?.message || '目前無法確認收件會員。', true);
@@ -333,6 +355,8 @@
     const close = document.getElementById('pointTransferClose');
     submit.disabled = true;
     close.disabled = true;
+    const fields = ['pointTransferMemberCode', 'pointTransferAmount', 'pointTransferLookup'].map((id) => document.getElementById(id));
+    fields.forEach((field) => { if (field) field.disabled = true; });
     setMessage('正在安全轉贈點數…');
 
     try {
@@ -365,6 +389,7 @@
       state.busy = false;
       submit.disabled = false;
       close.disabled = false;
+      fields.forEach((field) => { if (field) field.disabled = false; });
     }
   }
 

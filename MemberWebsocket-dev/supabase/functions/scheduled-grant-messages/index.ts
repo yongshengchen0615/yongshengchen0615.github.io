@@ -90,9 +90,9 @@ async function refreshScheduledMessage(supabase: SupabaseClient, row: any): Prom
   const memberId = String(row.member_id || "");
   if (!memberId) throw new Error("Scheduled grant member is missing");
 
-  const service = await supabase.from("service_time_entries").select("minutes").eq("member_id",memberId);
+  const service = await supabase.rpc("member_service_minute_totals",{p_member_ids:[memberId]});
   if (service.error) throw service.error;
-  const totalMinutes = (service.data || []).reduce((sum,row:any) => sum + Number(row.minutes || 0),0);
+  const totalMinutes = Number(service.data?.[0]?.total_minutes || 0);
 
   const tiers = await supabase.from("membership_tier_settings").select("tier_key,tier_label,required_service_minutes").order("required_service_minutes",{ ascending:true });
   if (tiers.error) throw tiers.error;

@@ -112,6 +112,7 @@ function dbError(error:unknown):ApiError{
     ["RECEIPT_INVALID_MIME",400,"RECEIPT_INVALID_MIME","請拍攝或選擇支援的圖片格式。"],
     ["RECEIPT_FILE_TOO_LARGE",413,"RECEIPT_FILE_TOO_LARGE","收據圖片不可超過 5 MB。"],
     ["RECEIPT_INVALID_PATH",400,"RECEIPT_INVALID_PATH","收據上傳位置無效。"],
+    ["RECEIPT_NOT_PENDING",409,"RECEIPT_NOT_PENDING","這次收據上傳已被取代，請重新拍攝。"],
     ["RECEIPT_NOT_FOUND",404,"RECEIPT_NOT_FOUND","找不到這筆收據上傳。"],
     ["RECEIPT_NOT_OWNED",403,"RECEIPT_NOT_OWNED","不可操作其他會員的收據。"],
     ["RECEIPT_MIME_MISMATCH",400,"RECEIPT_MIME_MISMATCH","收據圖片格式與上傳資料不一致。"],
@@ -176,7 +177,10 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
   if(result.error) throw new ApiError(500,"DATABASE_ERROR","預約收據資料暫時無法讀取。");
   const now=localTaipeiNowMs();
   const bookings=(result.data||[]).map((row:any)=>{
-    const receipt=Array.isArray(row.booking_receipts)?row.booking_receipts.slice().sort((a:any,b:any)=>String(b.created_at).localeCompare(String(a.created_at)))[0]||null:null;
+    const receipt=Array.isArray(row.booking_receipts)?row.booking_receipts.filter((item:any)=>["bound","awaiting_review","pending_upload"].includes(item.status)).sort((a:any,b:any)=>{
+      const priority=(status:string)=>status==="bound"?0:status==="awaiting_review"?1:2;
+      return priority(a.status)-priority(b.status)||String(b.created_at).localeCompare(String(a.created_at));
+    })[0]||null:null;
     const rawEndAt=String(row.end_at||"").trim().replace(" ","T");
     const normalizedEndAt=rawEndAt && !/(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(rawEndAt) ? rawEndAt+"+08:00" : rawEndAt;
     const endMs=normalizedEndAt?Date.parse(normalizedEndAt):Date.parse(`${row.booking_date}T${String(row.end_time||"00:00").slice(0,8)}+08:00`)+(row.starts_next_day?86400000:0);
@@ -214,8 +218,11 @@ async function prepare(supabase:SupabaseClient,identity:Identity,member:any,body
   });
   if(result.error) throw dbError(result.error);
   const prepared=(result.data||{}) as Json;
+  if(prepared.status!=="pending_upload") {
+    return {receiptId:prepared.receiptId,status:prepared.status,alreadyPrepared:true};
+  }
   const path=asText(prepared.objectPath,500);
-  const signed=await supabase.storage.from(BUCKET).createSignedUploadUrl(path,{upsert:true});
+  const signed=await supabase.storage.from(BUCKET).createSignedUploadUrl(path,{upsert:false});
   if(signed.error||!signed.data?.token) {
     await supabase.rpc("fail_booking_receipt_request",{p_receipt_id:prepared.receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,p_reason:"signed-upload-url-failed"});
     throw new ApiError(503,"RECEIPT_UPLOAD_UNAVAILABLE","目前無法建立安全上傳連結。");

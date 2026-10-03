@@ -104,7 +104,7 @@ test('confirmed bookings can upload receipts before service end and reupload ove
   assert.doesNotMatch(source, /服務時間結束後即可拍攝收據/);
 
   assert.match(edge, /canSubmitReceipt:row\.status==="confirmed"&&!cancellationPending,/);
-  assert.match(edge, /createSignedUploadUrl\(path,\{upsert:true\}\)/);
+  assert.match(edge, /createSignedUploadUrl\(path,\{upsert:false\}\)/);
 
   assert.doesNotMatch(migration, /BOOKING_NOT_FINISHED_YET/);
   assert.match(migration, /where booking_id=p_booking_id and status='awaiting_review'/);

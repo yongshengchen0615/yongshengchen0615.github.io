@@ -44,6 +44,7 @@ function database(overrides = {}, fail = '') {
     };
     return q;
   }, async rpc(name, args) {
+    if (name === 'member_service_minute_totals') return { data: args.p_member_ids.map(member_id => ({ member_id, total_minutes: 0 })), error: null };
     calls.push({ rpc: name, args });
     assert.equal(name, 'event_ticket_claim_counts', 'recommendation must never issue, claim or consume tickets');
     return { error: fail === name ? new Error('fixture failure') : null, data: args.p_event_ids.map(id => ({ event_ticket_id: id, claimed_count: data.event_ticket_claims.filter(row => row.event_ticket_id === id).length })) };

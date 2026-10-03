@@ -431,9 +431,9 @@ function tierSettingsClient(rows: any[]): any[] {
 async function serviceMinutesForMembers(supabase: SupabaseClient, memberIds: string[]): Promise<Map<string,number>> {
   const result = new Map<string,number>(memberIds.map((id) => [id,0]));
   if (!memberIds.length) return result;
-  const { data, error } = await supabase.from("service_time_entries").select("member_id,minutes").in("member_id",memberIds);
+  const { data, error } = await supabase.rpc("member_service_minute_totals", { p_member_ids: memberIds });
   if (error) throw mapDatabaseError(error);
-  for (const row of data || []) result.set(row.member_id,(result.get(row.member_id) || 0) + Number(row.minutes || 0));
+  for (const row of data || []) result.set(row.member_id,Number(row.total_minutes || 0));
   return result;
 }
 

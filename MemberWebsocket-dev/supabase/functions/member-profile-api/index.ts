@@ -78,9 +78,9 @@ async function tierSettings(supabase: SupabaseClient): Promise<any[]> {
   return result.data || [];
 }
 async function serviceMinutesTotal(supabase: SupabaseClient, memberId: string): Promise<number> {
-  const result = await supabase.from("service_time_entries").select("minutes").eq("member_id", memberId);
+  const result = await supabase.rpc("member_service_minute_totals", { p_member_ids: [memberId] });
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "會員服務時間暫時無法讀取。");
-  return (result.data || []).reduce((sum: number, row: any) => sum + Number(row.minutes || 0), 0);
+  return Number(result.data?.[0]?.total_minutes || 0);
 }
 async function profileFor(supabase: SupabaseClient, member: any): Promise<Json> {
   const [settings, total] = await Promise.all([tierSettings(supabase), serviceMinutesTotal(supabase, member.id)]);
