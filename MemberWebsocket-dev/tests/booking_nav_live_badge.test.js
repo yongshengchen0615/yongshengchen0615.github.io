@@ -41,6 +41,9 @@ test('booking badge renders unread, pending, and accessible review counts', () =
   assert.match(section, /bookingTab\.dataset\.accessiblePendingCount/);
   assert.match(section, /bookingTab\.dataset\.badgeCount/);
   assert.match(section, /bookingAdminPendingCount\.textContent/);
+  assert.match(section, /bookingAdminAccessiblePendingCount/);
+  assert.match(section, /bookingAdminStandardModeCount/);
+  assert.match(section, /bookingAdminAccessibleModeCount/);
   assert.match(section, /bookingAdminQueueSubtabCount\.textContent/);
   assert.match(section, /setAttribute\('aria-label'/);
   assert.match(section, /筆未讀更新/);
@@ -88,5 +91,17 @@ test('booking combined badge uses a separate pseudo-element from the surface-tab
   assert.match(baseCss, /\.surface-tab::after[\s\S]*transform:\s*scaleX\(0\)/);
   assert.match(bookingCss, /#bookingTab\[data-badge-count\]:not\(\[data-badge-count="0"\]\)::before/);
   assert.doesNotMatch(bookingCss, /#bookingTab\[data-badge-count\]:not\(\[data-badge-count="0"\]\)::after/);
-  assert.match(html, /booking-panel\.css\?v=accessible-booking-badge-20261003-1/);
+  assert.match(html, /booking-panel\.css\?v=booking-operations-split-20261003-1/);
+});
+
+
+test('booking operations split standard and accessible review modes', () => {
+  assert.match(core, /queueMode: 'standard'/);
+  assert.match(core, /id="bookingAdminStandardMode"/);
+  assert.match(core, /id="bookingAdminAccessibleMode"/);
+  assert.match(core, /function setQueueMode\(mode\)/);
+  assert.match(core, /bookingAdminStandardQueueView/);
+  assert.match(core, /member-admin:booking-queue-mode-changed/);
+  assert.match(bookingCss, /booking-admin-queue-modes/);
+  assert.match(bookingCss, /booking-admin-queue-mode\.active/);
 });
