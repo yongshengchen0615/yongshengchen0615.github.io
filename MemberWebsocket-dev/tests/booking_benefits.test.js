@@ -101,7 +101,7 @@ test('point tickets expose current balance and disable unaffordable tickets', as
   assert.match(blocked.disabledReason, /需要 5 點/);
 });
 
-test('ticket booking restrictions expose concrete service ids and service titles', async () => {
+test('partial booking service selection keeps the concrete item label', async () => {
   const { loadBookingBenefits } = await modulePromise;
   const result = await loadBookingBenefits(database({
     point_card_rewards: [{
@@ -111,13 +111,43 @@ test('ticket booking restrictions expose concrete service ids and service titles
       threshold_stamps: 5,
       required_service_ids: ['service-body-60'],
     }],
-    booking_services: [{ id: 'service-body-60', title: '身體60' }],
+    booking_services: [
+      { id: 'service-body-60', title: '身體60', service_type: '身體' },
+      { id: 'service-body-120', title: '身體120', service_type: '身體' },
+    ],
   }), member, 'silver', today);
   const point = result.items.find(item => item.kind === 'points');
   assert.ok(point);
   assert.deepEqual(point.requiredServiceIds, ['service-body-60']);
   assert.deepEqual(point.requiredServiceTitles, ['身體60']);
-  assert.match(point.conditionLabel, /預約項目限制：需包含「身體60」任一項目/);
+  assert.equal(point.requiredServiceRequirementLabel, '需預約「身體60」項目');
+  assert.match(point.conditionLabel, /預約項目限制：需預約「身體60」項目/);
+});
+
+test('selecting every item in a service type displays the service type label', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const result = await loadBookingBenefits(database({
+    point_card_rewards: [{
+      id: 'reward',
+      point_card_id: 'card',
+      ticket_template_id: 'template',
+      threshold_stamps: 5,
+      required_service_ids: ['service-body-60', 'service-body-120'],
+    }],
+    booking_services: [
+      { id: 'service-body-60', title: '身體60', service_type: '身體' },
+      { id: 'service-body-120', title: '身體120', service_type: '身體' },
+      { id: 'service-foot-60', title: '腳底60', service_type: '腳底' },
+      { id: 'service-foot-120', title: '腳底120', service_type: '腳底' },
+    ],
+  }), member, 'silver', today);
+  const point = result.items.find(item => item.kind === 'points');
+  assert.ok(point);
+  assert.deepEqual(point.requiredServiceIds, ['service-body-60', 'service-body-120']);
+  assert.deepEqual(point.requiredServiceTitles, ['身體60', '身體120']);
+  assert.equal(point.requiredServiceRequirementLabel, '需預約「身體」項目類型');
+  assert.match(point.conditionLabel, /預約項目限制：需預約「身體」項目類型/);
+  assert.doesNotMatch(point.conditionLabel, /身體60、身體120/);
 });
 
 test('unclaimed event tickets are selectable by claiming from the booking surface', async () => {
