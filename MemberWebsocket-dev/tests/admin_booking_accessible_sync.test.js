@@ -24,7 +24,8 @@ test('reward-node booking service choices receive live booking catalog updates',
   assert.match(app, /handleBookingServicesUpdated/);
   assert.match(app, /querySelectorAll\('\[data-reward-required-service-ids\]'\)/);
   assert.match(core, /booking\.db\.booking_services\./);
-  assert.match(core, /refreshAll\(false, !els\.bookingPanel\?\.classList\.contains\('hidden'\)\)/);
+  assert.match(core, /if \(catalogInvalidation\) refreshAll\(false, false\)/);
+  assert.match(core, /else refreshAll\(false, true\)/);
 });
 
 test('accessible receipt registration accepts minute-level start times independent of slot interval', () => {
