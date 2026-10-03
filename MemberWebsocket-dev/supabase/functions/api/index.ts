@@ -153,6 +153,8 @@ function mapDatabaseError(error: unknown): ApiError {
     ["INVALID_SERVICE_MINUTES",400,"INVALID_SERVICE_MINUTES","服務時間必須是 1–1440 分鐘。"],
     ["INVALID_TIER_SETTINGS",400,"INVALID_TIER_SETTINGS","會員等級門檻設定不合法。"],
     ["INVALID_CARD_ORDERS",400,"INVALID_CARD_ORDERS","集點卡排序資料不合法。"],
+    ["INVALID_REQUIRED_SERVICE_IDS",400,"INVALID_REQUIRED_SERVICE_IDS","票券指定的預約項目無效，請重新選擇。"],
+    ["BOOKING_SERVICE_IN_USE",409,"BOOKING_SERVICE_IN_USE","此預約項目仍被票券使用條件引用，請先移除票券限制。"],
     ["INVALID_CALENDAR_BATCH",400,"INVALID_CALENDAR_BATCH","日曆批次操作必須是 1–20 筆。"],
     ["CALENDAR_ITEM_NOT_FOUND",404,"CALENDAR_ITEM_NOT_FOUND","找不到日曆項目。"],
   ];
@@ -276,29 +278,53 @@ function normalizeTierKeys(value: unknown, allowEmpty = false): string[] {
   return unique;
 }
 
-async function bookingServiceTypeNames(supabase: SupabaseClient): Promise<string[]> {
-  const result = await supabase.from("booking_service_types")
-    .select("name")
-    .order("sort_order",{ ascending:true })
+type BookingServiceOption = { serviceId: string; title: string; serviceType: string; isActive: boolean };
+
+async function bookingServiceOptions(supabase: SupabaseClient): Promise<BookingServiceOption[]> {
+  const result = await supabase.from("booking_services")
+    .select("id,title,service_type,is_active")
+    .is("deleted_at",null)
     .order("created_at",{ ascending:true });
   if (result.error) throw mapDatabaseError(result.error);
-  return (result.data || []).map((row:any) => asText(row.name,80)).filter(Boolean);
+  return (result.data || []).map((row:any) => ({
+    serviceId: asText(row.id,80),
+    title: asText(row.title,120),
+    serviceType: asText(row.service_type,80),
+    isActive: row.is_active !== false,
+  })).filter((service) => service.serviceId && service.title);
 }
 
-async function normalizeRequiredServiceTypes(supabase: SupabaseClient, value: unknown): Promise<string[]> {
+async function bookingServiceTypeNames(supabase: SupabaseClient): Promise<string[]> {
+  const services = await bookingServiceOptions(supabase);
+  return [...new Set(services.map((service) => service.serviceType).filter(Boolean))];
+}
+
+async function normalizeRequiredServiceIds(supabase: SupabaseClient, value: unknown): Promise<string[]> {
   if (value == null) return [];
   if (!Array.isArray(value) || value.length > 20) {
-    throw new ApiError(400,"INVALID_REQUIRED_SERVICE_TYPES","預約項目限制最多可選 20 種項目類型。");
+    throw new ApiError(400,"INVALID_REQUIRED_SERVICE_IDS","預約項目限制最多可選 20 個項目。");
   }
   const requested = [...new Set(value.map((item) => asText(item,80)).filter(Boolean))];
   if (!requested.length) return [];
-  const allowed = await bookingServiceTypeNames(supabase);
-  const canonical = new Map(allowed.map((name) => [name.toLocaleLowerCase("zh-Hant-TW"),name]));
-  const normalized = requested.map((name) => canonical.get(name.toLocaleLowerCase("zh-Hant-TW")) || "");
-  if (normalized.some((name) => !name)) {
-    throw new ApiError(400,"INVALID_REQUIRED_SERVICE_TYPES","票券指定的預約項目類型已不存在，請重新選擇。");
+  const allowed = await bookingServiceOptions(supabase);
+  const allowedIds = new Set(allowed.map((service) => service.serviceId));
+  if (requested.some((serviceId) => !allowedIds.has(serviceId))) {
+    throw new ApiError(400,"INVALID_REQUIRED_SERVICE_IDS","票券指定的預約項目已不存在，請重新選擇。");
   }
-  return normalized;
+  return requested;
+}
+
+async function serviceIdsForLegacyTypes(supabase: SupabaseClient, value: unknown): Promise<string[]> {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new ApiError(400,"INVALID_REQUIRED_SERVICE_TYPES","預約項目限制最多可選 20 種舊項目類型。");
+  }
+  const requested = new Set(value.map((item) => asText(item,80).toLocaleLowerCase("zh-Hant-TW")).filter(Boolean));
+  if (!requested.size) return [];
+  const services = await bookingServiceOptions(supabase);
+  return services
+    .filter((service) => requested.has(service.serviceType.toLocaleLowerCase("zh-Hant-TW")))
+    .map((service) => service.serviceId);
 }
 
 function normalizePrizes(value: unknown, required: boolean): Array<{ prizeTitle: string; prizeDescription: string; winRate: number }> {
@@ -920,6 +946,7 @@ async function adminCards(supabase: SupabaseClient): Promise<{ cards: any[]; tic
       usageMethod: template.usage_method || "",
       usageInstructions: template.usage_instructions || "",
       prizes: Array.isArray(template.prizes) ? template.prizes : [],
+      requiredServiceIds: Array.isArray(reward.required_service_ids) ? reward.required_service_ids : [],
       requiredServiceTypes: Array.isArray(reward.required_service_types) ? reward.required_service_types : [],
       updatedAt: reward.updated_at,
     });
@@ -1084,6 +1111,7 @@ function eventTicketClient(row: any, claimedCount = 0, admin = false): Json {
     accent: row.accent,
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
     allowedTierLabels: (Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS]).map((key:string) => TIER_LABELS[key]).filter(Boolean),
+    requiredServiceIds: Array.isArray(row.required_service_ids) ? row.required_service_ids : [],
     requiredServiceTypes: Array.isArray(row.required_service_types) ? row.required_service_types : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1622,7 +1650,9 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     || !Number.isInteger(location.radiusMeters) || location.radiusMeters < 50 || location.radiusMeters > 2000))
     throw new ApiError(400,"INVALID_LOCATION_RULE","每個地點需有名稱、有效座標與 50–2000 公尺半徑。");
   const [firstLocation] = locations;
-  const requiredServiceTypes = await normalizeRequiredServiceTypes(supabase,input.requiredServiceTypes);
+  const requiredServiceIds = input.requiredServiceIds !== undefined
+    ? await normalizeRequiredServiceIds(supabase,input.requiredServiceIds)
+    : await serviceIdsForLegacyTypes(supabase,input.requiredServiceTypes);
   const payload = {
     title: requireText(input.title,"活動票券名稱",100),
     ticket_type: ticketType,
@@ -1641,7 +1671,7 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     redemption_radius_meters: firstLocation?.radiusMeters ?? null,
     accent: requireAccent(input.accent),
     allowed_tier_keys: normalizeTierKeys(input.allowedTierKeys),
-    required_service_types: requiredServiceTypes,
+    required_service_ids: requiredServiceIds,
     updated_by: actor,
     updated_at: new Date().toISOString(),
     deleted_at: null,
@@ -2196,7 +2226,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   if (action === "admin.bootstrap") {
     // Share only within this authorized request; never cache member data globally.
     const settings = tierSettings(supabase);
-    const [members,tierRows,cardData,eventTickets,calendar,stats,messagePresets,bookingServiceTypes] = await Promise.all([
+    const [members,tierRows,cardData,eventTickets,calendar,stats,messagePresets,bookingServices] = await Promise.all([
       membersPage(supabase,1,100,"","real",settings),
       settings,
       adminCards(supabase),
@@ -2204,7 +2234,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       calendarItems(supabase,false),
       summaryStats(supabase),
       grantMessagePresets(supabase,true),
-      bookingServiceTypeNames(supabase),
+      bookingServiceOptions(supabase),
     ]);
     return {
       profile:{ displayName:admin.display_name || identity.displayName },
@@ -2217,7 +2247,8 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       eventTickets,
       calendarItems:calendar,
       messagePresets,
-      bookingServiceTypes,
+      bookingServices,
+      bookingServiceTypes:[...new Set(bookingServices.map((service) => service.serviceType).filter(Boolean))],
       stats,
     };
   }
@@ -2296,20 +2327,20 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     return { lineUserId,revokedAt };
   }
   if (action === "admin.pointcards.list") {
-    const [data,bookingServiceTypes,stats] = await Promise.all([
+    const [data,bookingServices,stats] = await Promise.all([
       adminCards(supabase),
-      bookingServiceTypeNames(supabase),
+      bookingServiceOptions(supabase),
       summaryStats(supabase),
     ]);
-    return { ...data,bookingServiceTypes,stats };
+    return { ...data,bookingServices,bookingServiceTypes:[...new Set(bookingServices.map((service) => service.serviceType).filter(Boolean))],stats };
   }
   if (action === "admin.event-tickets.list") {
-    const [eventTickets,bookingServiceTypes,stats] = await Promise.all([
+    const [eventTickets,bookingServices,stats] = await Promise.all([
       adminEventTickets(supabase),
-      bookingServiceTypeNames(supabase),
+      bookingServiceOptions(supabase),
       summaryStats(supabase),
     ]);
-    return { eventTickets,bookingServiceTypes,stats };
+    return { eventTickets,bookingServices,bookingServiceTypes:[...new Set(bookingServices.map((service) => service.serviceType).filter(Boolean))],stats };
   }
   if (action === "admin.calendar-items.list") return { calendarItems:await calendarItems(supabase,false) };
   if (action === "admin.summary") return { stats:await summaryStats(supabase) };
@@ -2424,11 +2455,13 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       if (!Number.isInteger(threshold) || threshold < 1 || threshold > 100 || thresholds.has(threshold)) throw new ApiError(400,"INVALID_REWARD","兌換節點必須是 1–100 且不可重複。");
       thresholds.add(threshold);
       const ticketTemplateId = requireText(reward.ticketTemplateId,"兌換票券",120);
-      const requiredServiceTypes = await normalizeRequiredServiceTypes(supabase,reward.requiredServiceTypes);
-      normalizedRewards.push({ ...reward,thresholdStamps:threshold,ticketTemplateId,requiredServiceTypes });
+      const requiredServiceIds = reward.requiredServiceIds !== undefined
+        ? await normalizeRequiredServiceIds(supabase,reward.requiredServiceIds)
+        : await serviceIdsForLegacyTypes(supabase,reward.requiredServiceTypes);
+      normalizedRewards.push({ ...reward,thresholdStamps:threshold,ticketTemplateId,requiredServiceIds });
     }
     const normalized = { ...card,title:asText(card.title,100),status:asText(card.status,20),accent:requireAccent(card.accent),styleKey:safePointCardStyle(card.styleKey),expiryMode,expiresOn:expiryMode === "date" ? asText(card.expiresOn,20) : "",usageMethod:asText(card.usageMethod,120),usageInstructions:asText(card.usageInstructions,500),benefitDescription:asText(card.benefitDescription,500),rewards:normalizedRewards };
-    const rpc = await supabase.rpc("save_point_card",{ p_actor_line_user_id:identity.lineUserId,p_card:normalized,p_expected_updated_at:asText(body.expectedUpdatedAt,100) || null });
+    const rpc = await supabase.rpc("save_point_card_service_items",{ p_actor_line_user_id:identity.lineUserId,p_card:normalized,p_expected_updated_at:asText(body.expectedUpdatedAt,100) || null });
     if (rpc.error) throw mapDatabaseError(rpc.error);
     const cards = await adminCards(supabase);
     return { card:cards.cards.find((item:any) => item.cardId === rpc.data) || null };
