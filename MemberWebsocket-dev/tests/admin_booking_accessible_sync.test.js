@@ -135,3 +135,15 @@ test('accessible review keeps completed records with pending completed and all f
   assert.match(css, /accessible-admin-history-tabs/);
   assert.match(css, /accessible-admin-record-detail/);
 });
+
+
+test('completed accessible review can reopen its bound receipt snapshot', () => {
+  const receiptApi = read('supabase/functions/booking-receipt-api/index.ts');
+  const start = receiptApi.indexOf('async function adminUrl');
+  const end = receiptApi.indexOf('function selectionLimit', start);
+  const adminUrl = receiptApi.slice(start, end);
+  assert.match(adminUrl, /eq\("submission_mode","accessible"\)/);
+  assert.match(adminUrl, /in\("status",\["awaiting_review","bound"\]\)/);
+  assert.doesNotMatch(adminUrl, /is\("booking_id",null\)/);
+  assert.match(adminUrl, /bookingId:String\(receipt\.data\.booking_id\|\|""\)/);
+});
