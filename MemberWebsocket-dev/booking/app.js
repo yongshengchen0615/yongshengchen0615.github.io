@@ -94,7 +94,7 @@
       showView('booking');
       window.dispatchEvent(new CustomEvent('user-tour:ready', { detail: { surface: 'booking', profile: state.profile } }));
       window.BookingBenefits?.setServiceContext?.(
-        selectedServiceRows().map((item) => String(item.service?.serviceType || serviceTypeOf(item.service) || '').trim()).filter(Boolean)
+        selectedServiceRows().map((item) => String(item.service?.serviceId || item.serviceId || '').trim()).filter(Boolean)
       );
       window.BookingBenefits?.start(state.config, state.idToken);
       state.realtimeUnsubscribe = window.BookingSystem.subscribeRealtime(state.config, () => refresh(false), 'member', (signal = {}) => {
@@ -204,7 +204,7 @@
 
     renderSelectedServices();
     window.BookingBenefits?.setServiceContext?.(
-      selectedServiceRows().map((item) => String(item.service?.serviceType || serviceTypeOf(item.service) || '').trim()).filter(Boolean)
+      selectedServiceRows().map((item) => String(item.service?.serviceId || item.serviceId || '').trim()).filter(Boolean)
     );
   }
 
