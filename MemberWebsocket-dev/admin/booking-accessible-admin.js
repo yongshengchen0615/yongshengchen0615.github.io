@@ -60,6 +60,7 @@
         <fieldset id="accessibleAdminBenefitFields"><legend>本次票券審核</legend>
           <p>請核對會員本次要使用的活動票券與集點卡票券。只有已領取、仍可用且符合本次服務項目的票券才能核銷。</p>
           <div id="accessibleAdminBenefits"></div>
+          <div id="accessibleAdminPointSummary" class="accessible-admin-point-summary" aria-live="polite"></div>
           <p id="accessibleAdminBenefitHint"></p>
         </fieldset>
         <label>核對備註<textarea id="accessibleAdminNote" maxlength="500" rows="2"></textarea></label>
@@ -94,6 +95,61 @@
       .map(input => ({kind:String(input.dataset.kind || ''),id:String(input.dataset.selectionId || '')}))
       .filter(item => item.id && (item.kind === 'points' || item.kind === 'event'));
   }
+  function pointBudgetSnapshot() {
+    const root = el('accessibleAdminBenefits');
+    const budgets = new Map();
+    if (!root) return budgets;
+    [...root.querySelectorAll('[data-benefit-check][data-kind="points"]')].forEach(input => {
+      const cardKey = String(input.dataset.pointCard || input.dataset.pointCardTitle || '未分類集點卡');
+      const cardTitle = String(input.dataset.pointCardTitle || cardKey || '集點卡');
+      const cost = Math.max(0, Number(input.dataset.pointCost || 0));
+      const balance = Math.max(0, Number(input.dataset.pointBalance || 0));
+      const current = budgets.get(cardKey) || {cardTitle, required:0, available:balance};
+      current.available = Math.min(current.available, balance);
+      if (input.checked) current.required += cost;
+      budgets.set(cardKey, current);
+    });
+    return budgets;
+  }
+  function pointBudgetExceeded() {
+    return [...pointBudgetSnapshot().values()].some(budget => budget.required > budget.available);
+  }
+  function updatePointBudgetSummary() {
+    const root = el('accessibleAdminBenefits');
+    const summary = el('accessibleAdminPointSummary');
+    if (!root || !summary) return;
+    const budgets = pointBudgetSnapshot();
+    summary.replaceChildren();
+
+    const selectedPointInputs = [...root.querySelectorAll('[data-benefit-check][data-kind="points"]:checked')];
+    if (!selectedPointInputs.length) {
+      const p = document.createElement('p');
+      p.textContent = '目前未選擇集點卡票券；勾選後會即時計算本次扣點與剩餘點數。';
+      summary.append(p);
+    } else {
+      [...budgets.values()].filter(budget => budget.required > 0).forEach(budget => {
+        const remaining = Math.max(0, budget.available - budget.required);
+        const p = document.createElement('p');
+        p.textContent = `${budget.cardTitle}：目前可用 ${budget.available} 點 · 本次扣除 ${budget.required} 點 · 審核後剩餘 ${remaining} 點`;
+        if (budget.required > budget.available) p.classList.add('error');
+        summary.append(p);
+      });
+    }
+
+    [...root.querySelectorAll('[data-benefit-check][data-kind="points"]')].forEach(input => {
+      const baseDisabled = input.dataset.baseDisabled === 'true';
+      if (baseDisabled || input.checked) {
+        input.disabled = baseDisabled;
+        return;
+      }
+      const cardKey = String(input.dataset.pointCard || input.dataset.pointCardTitle || '未分類集點卡');
+      const budget = budgets.get(cardKey);
+      const remaining = budget ? Math.max(0, budget.available - budget.required) : Math.max(0, Number(input.dataset.pointBalance || 0));
+      const cost = Math.max(0, Number(input.dataset.pointCost || 0));
+      input.disabled = cost > remaining;
+      input.dataset.pointBudgetBlocked = input.disabled ? 'true' : 'false';
+    });
+  }
   function renderBenefits() {
     const root = el('accessibleAdminBenefits');
     const hint = el('accessibleAdminBenefitHint');
@@ -116,6 +172,7 @@
         });
       }
       hint.textContent = '已完成的既有預約只補綁收據，不會再次變更或核銷票券。';
+      updatePointBudgetSummary();
       return;
     }
 
@@ -126,6 +183,7 @@
 
     if (!catalogItems.length && !pendingKeys.size) {
       const p = document.createElement('p'); p.textContent = '目前沒有可審核的票券。'; root.append(p);
+      updatePointBudgetSummary();
       return;
     }
 
@@ -140,6 +198,13 @@
       const check = document.createElement('input'); check.type = 'checkbox'; check.dataset.benefitCheck = ''; check.dataset.kind = item.kind; check.dataset.selectionId = item.selectionId;
       check.checked = Boolean(item.selectionId) && pendingKeys.has(key) && item.selectable === true && serviceEligible;
       check.disabled = !item.selectionId || item.selectable !== true || !serviceEligible;
+      check.dataset.baseDisabled = check.disabled ? 'true' : 'false';
+      if (item.kind === 'points') {
+        check.dataset.pointCard = String(item.cardId || item.cardTitle || '');
+        check.dataset.pointCardTitle = String(item.cardTitle || '集點卡');
+        check.dataset.pointCost = String(Math.max(0, Number(item.pointCost || 0)));
+        check.dataset.pointBalance = String(Math.max(0, Number(item.pointBalance || 0)));
+      }
       const copy = document.createElement('span');
       const strong = document.createElement('strong'); strong.textContent = item.title || '預約票券';
       const small = document.createElement('small');
@@ -149,13 +214,20 @@
       small.textContent = [item.subtitle, reason].filter(Boolean).filter((value,index,list)=>list.indexOf(value)===index).join(' · ');
       copy.append(strong,small); label.append(check,copy); row.append(label); root.append(row);
       check.addEventListener('change', () => {
-        if (!check.checked) return;
-        const limit = benefitLimit(item.kind);
-        const selected = [...root.querySelectorAll(`[data-benefit-check][data-kind="${item.kind}"]:checked`)].length;
-        if (limit > 0 && selected > limit) {
-          check.checked = false;
-          message(item.kind === 'event' ? `活動票券本次最多可審核 ${limit} 張。` : `集點卡票券本次最多可審核 ${limit} 張。`, true);
+        if (check.checked) {
+          const limit = benefitLimit(item.kind);
+          const selected = [...root.querySelectorAll(`[data-benefit-check][data-kind="${item.kind}"]:checked`)].length;
+          if (limit > 0 && selected > limit) {
+            check.checked = false;
+            message(item.kind === 'event' ? `活動票券本次最多可審核 ${limit} 張。` : `集點卡票券本次最多可審核 ${limit} 張。`, true);
+          } else if (item.kind === 'points' && pointBudgetExceeded()) {
+            check.checked = false;
+            const available = Math.max(0, Number(check.dataset.pointBalance || 0));
+            const cost = Math.max(0, Number(check.dataset.pointCost || 0));
+            message(`會員目前可用點數不足：此票券需 ${cost} 點，目前此集點卡可用 ${available} 點；請取消其他集點卡票券後再選擇。`, true);
+          }
         }
+        updatePointBudgetSummary();
       });
     });
 
@@ -171,6 +243,7 @@
     const eventLimit = benefitLimit('event');
     const pointLimit = benefitLimit('points');
     hint.textContent = `活動票券：${eventLimit === 0 ? '張數不限' : `最多 ${eventLimit} 張`}；集點卡票券：${pointLimit === 0 ? '張數不限' : `最多 ${pointLimit} 張`}。管理員不可代替會員領取尚未領取的活動票券。`;
+    updatePointBudgetSummary();
   }
   async function handleExistingBookingChange() {
     const bookingId = el('accessibleAdminExisting')?.value || '';
@@ -214,6 +287,7 @@
     el('accessibleAdminSubmit').disabled = true; el('accessibleAdminDismiss').disabled = true;
     el('accessibleAdminItems').replaceChildren();
     el('accessibleAdminBenefits').replaceChildren();
+    el('accessibleAdminPointSummary').replaceChildren();
     el('accessibleAdminBenefitHint').textContent = '';
     el('accessibleAdminExisting').replaceChildren(new Option('新增已完成的服務紀錄',''));
     message('正在載入收據與登記選項…');
@@ -269,6 +343,7 @@
       .map(row => ({serviceId:row.dataset.serviceId,minutes:Number(row.querySelector('[data-minutes]').value),quantity:Number(row.querySelector('[data-quantity]').value)}));
     if (!bookingId && !items.length) { message('請勾選至少一個實際完成的服務項目。',true); return; }
     const benefits = collectBenefits();
+    if (pointBudgetExceeded()) { message('會員目前可用點數不足，請取消部分集點卡票券後再完成審核。',true); updatePointBudgetSummary(); return; }
     lock(true); message('正在審核票券、登記服務並結算，請稍候…');
     try {
       const result = await request('admin.booking.receipt.register',{
