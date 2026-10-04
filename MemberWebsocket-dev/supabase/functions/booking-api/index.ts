@@ -441,7 +441,7 @@ async function hydrateBookings(supabase: SupabaseClient, rows: any[]): Promise<J
       }));
       for (const benefit of benefitResult.data || []) {
         if (String(benefit.benefit_kind || "") === "points") {
-          benefit._point_card_title = pointCardTitleByTicket.get(String(benefit.benefit_ref || "")) || "";
+          (benefit as any)._point_card_title = pointCardTitleByTicket.get(String(benefit.benefit_ref || "")) || "";
         }
       }
     }
