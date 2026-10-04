@@ -73,11 +73,44 @@ jobs:
             MemberWebsocket-dev/tests/integration/booking_accessible.cjs \
             MemberWebsocket-dev/tests/integration/test_account_phone_sql.cjs \
             MemberWebsocket-dev/tests/integration/e2e_feature_nodes.cjs \
+            MemberWebsocket-dev/tests/integration/fixed_ticket_automation_sql.cjs \
+            MemberWebsocket-dev/tests/integration/automation_health_sql.cjs \
             MemberWebsocket-dev/tests/integration/qa_cleanup_boundaries.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
           node MemberWebsocket-dev/tests/integration/event_coupon_sql.cjs
           node MemberWebsocket-dev/tests/integration/coupon_location_editor.cjs
+
+  browser-e2e:
+    name: Chromium camera and GPS E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: MemberWebsocket-dev/tests/browser/package-lock.json
+      - name: Install browser test dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: MemberWebsocket-dev/tests/browser
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium --only-shell
+        working-directory: MemberWebsocket-dev/tests/browser
+      - name: Run real-browser receipt and location flows
+        run: npm test
+        working-directory: MemberWebsocket-dev/tests/browser
+      - name: Save browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memberwebsocket-browser-${{ github.run_attempt }}
+          path: |
+            MemberWebsocket-dev/tests/browser/browser-results.xml
+            MemberWebsocket-dev/tests/browser/test-results
+          retention-days: 7
+          if-no-files-found: warn
 
   browser-syntax:
     name: Browser JavaScript syntax
@@ -369,7 +402,7 @@ jobs:
   validate:
     name: Validate MemberWebsocket Dev
     if: always()
-    needs: [regression, integration, browser-syntax, edge-functions, wiring]
+    needs: [regression, integration, browser-e2e, browser-syntax, edge-functions, wiring]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -378,6 +411,7 @@ jobs:
           REGRESSION: ${{ needs.regression.result }}
           INTEGRATION: ${{ needs.integration.result }}
           BROWSER_SYNTAX: ${{ needs.browser-syntax.result }}
+          BROWSER_E2E: ${{ needs.browser-e2e.result }}
           EDGE_FUNCTIONS: ${{ needs.edge-functions.result }}
           WIRING: ${{ needs.wiring.result }}
         run: |
@@ -386,5 +420,6 @@ jobs:
           test "$REGRESSION" = success
           test "$INTEGRATION" = success
           test "$BROWSER_SYNTAX" = success
+          test "$BROWSER_E2E" = success
           test "$EDGE_FUNCTIONS" = success
           test "$WIRING" = success

@@ -107,7 +107,7 @@ test('event quota node accepts zero and verifies the current used-count copy and
 
 function adminProbe(w) {
   w.eval(read('admin/e2e-control.js').replace('  window.MemberAdminE2EControl =',
-    '  window.nodeProbe={state,adminTierSettingsCase,adminBirthdaySettingsCase,adminFixedTicketControlsCase,adminTicketServiceRulesCase,adminTicketLocationControlsCase,adminEventDailyLimitSettingsCase,adminPointLimitSettingsCase,adminBookingAccessibleQueueCase,adminBookingHistoryTicketSourcesCase,adminGrantNotificationControlsCase,adminBookingResourceControlsCase};\n  window.MemberAdminE2EControl ='));
+    '  window.nodeProbe={state,adminAutomationHealthCase,adminTierSettingsCase,adminBirthdaySettingsCase,adminFixedTicketControlsCase,adminTicketServiceRulesCase,adminTicketLocationControlsCase,adminEventDailyLimitSettingsCase,adminPointLimitSettingsCase,adminBookingAccessibleQueueCase,adminBookingHistoryTicketSourcesCase,adminGrantNotificationControlsCase,adminBookingResourceControlsCase};\n  window.MemberAdminE2EControl ='));
   return w.nodeProbe;
 }
 async function adminFixture() {
@@ -118,8 +118,11 @@ async function adminFixture() {
   w.MemberSystem={bindDialogKeyboard(){},loadConfig:async()=>config,signIn:async()=> 'fixture',getSession:()=>({config,idToken:'fixture'}),subscribeRealtime:()=>()=>{},
     request:async(_config,_type,_token,action)=>({profile:{displayName:'QA'},role:'Admin',members:[],cards:[],tickets:[],eventTickets:[],calendarItems:[],messagePresets:[],stats:{},
       memberPage:{page:1,pageSize:100,total:0,totalPages:1},tierSettings:['general','silver','gold','platinum'].map((tierKey,i)=>({tierKey,requiredServiceMinutes:i*60,styleKey:'classic'}))})};
-  w.fetch=async()=>({ok:true,status:200,json:async()=>({ok:true,data:{settings,maxTicketsPerDay:0,maxTicketsPerRedemption:0,accessibleRecords:[]}})});
-  for(const file of ['admin-session.js','coupon-location-editor.js','app.js','fixed-ticket-admin-integration.js','fixed-ticket-calendar-option.js','fixed-ticket-admin.js','birthday-benefits.js','pointcard-redemption-limit.js','event-ticket-redemption-limit.js','grant-automation.js'])w.eval(read('admin/'+file));
+  w.fetch=async(url)=>{
+    assert.ok(!String(url).includes('birthday-benefits'),'retired birthday endpoint must never be used');
+    return {ok:true,status:200,json:async()=>({ok:true,data:{templates:[],settings,maxTicketsPerDay:0,maxTicketsPerRedemption:0,accessibleRecords:[]}})};
+  };
+  for(const file of ['admin-session.js','coupon-location-editor.js','app.js','fixed-ticket-admin-integration.js','fixed-ticket-calendar-option.js','fixed-ticket-admin.js','pointcard-redemption-limit.js','event-ticket-redemption-limit.js','grant-automation.js'])w.eval(read('admin/'+file));
   await tick();await tick();
   return {w,node:adminProbe(w),close:()=>w.close()};
 }
@@ -131,7 +134,22 @@ test('new admin birthday, fixed-ticket, service-rule and location nodes use real
       const result=await h.node[name]();
       assert.equal(result.status,'passed',name+':'+JSON.stringify(result));
     }
-    assert.equal(h.w.document.getElementById('birthdayBenefitTitleTemplate').value,'QA birthday');
+    assert.equal(h.w.document.getElementById('birthdayBenefitTitleTemplate'),null);
+  }finally{h.close();}
+});
+
+test('automation health node fails missing, stale, disabled or failed jobs',async()=>{
+  const h=await adminFixture();
+  try {
+    const names=['issue-fixed-tickets','dispatch-scheduled-grant-messages','dispatch-booking-line-notifications','sync-booking-day-before-reminders','prune-e2e-failure-artifacts'];
+    let jobs=names.map(name=>({name,active:true,fresh:true,lastStatus:'succeeded'}));
+    h.w.fetch=async()=>({ok:true,status:200,json:async()=>({ok:true,data:{checkedAt:new Date().toISOString(),jobs}})});
+    assert.equal((await h.node.adminAutomationHealthCase()).status,'passed');
+    for(const patch of [{active:false},{fresh:false},{lastStatus:'failed'}]) {
+      jobs=names.map(name=>({name,active:true,fresh:true,lastStatus:'succeeded'}));Object.assign(jobs[0],patch);
+      assert.equal((await h.node.adminAutomationHealthCase()).status,'failed');
+    }
+    jobs=[];assert.equal((await h.node.adminAutomationHealthCase()).status,'failed');
   }finally{h.close();}
 });
 

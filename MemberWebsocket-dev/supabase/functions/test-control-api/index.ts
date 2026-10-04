@@ -1836,6 +1836,12 @@ Deno.serve(async (request: Request) => {
       return response(origin, { ok: true, status: 200, data: { deleted: true, alreadyMissing: false } });
     }
 
+    if (action === "admin.test-control.automation-health") {
+      const health = await supabase.rpc("admin_e2e_automation_health");
+      if (health.error) throw new ApiError(503,"AUTOMATION_HEALTH_UNAVAILABLE","目前無法讀取排程健康狀態。");
+      return response(origin,{ok:true,status:200,data:health.data});
+    }
+
     if (action === "admin.test-control.list") {
       return response(origin, {
         ok: true,

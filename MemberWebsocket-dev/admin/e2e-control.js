@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-04.1';
+  const VERSION = '2026-10-04.2';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -42,6 +42,7 @@
     ADMIN_RESOURCE_EDITORS: ['points', 'event', 'calendar', 'booking'],
     ADMIN_TIER_SETTINGS: ['member'], ADMIN_GRANT_NOTIFICATION_CONTROLS: ['member'],
     ADMIN_POINT_LIMIT_SETTINGS: ['points'],
+    ADMIN_AUTOMATION_HEALTH: ['member','event','booking'],
     ADMIN_BIRTHDAY_SETTINGS: ['event'], ADMIN_FIXED_TICKET_CONTROLS: ['event'],
     ADMIN_TICKET_LOCATION_CONTROLS: ['points','event'], ADMIN_TICKET_SERVICE_RULES: ['points','event','booking'],
     ADMIN_BOOKING_ACCESSIBLE_QUEUE: ['booking'], ADMIN_BOOKING_HISTORY_TICKET_SOURCES: ['booking'],
@@ -66,6 +67,7 @@
     ADMIN_TIER_SETTINGS: {module:'member',phase:3,dependencies:['ADMIN_PRIMARY_NAVIGATION']},
     ADMIN_GRANT_NOTIFICATION_CONTROLS: {module:'member',phase:4,dependencies:['ADMIN_TEST_MEMBER_ROSTER']},
     ADMIN_POINT_LIMIT_SETTINGS: {module:'points',phase:3,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_AUTOMATION_HEALTH: {module:'shared',phase:3,dependencies:['ADMIN_AUTH_READY']},
     ADMIN_BIRTHDAY_SETTINGS: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
     ADMIN_FIXED_TICKET_CONTROLS: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
     ADMIN_TICKET_LOCATION_CONTROLS: {module:'ticket',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
@@ -1577,7 +1579,8 @@
       caseDef('ADMIN_TIER_SETTINGS', '會員等級門檻與樣式設定契約', 'Configuration', adminTierSettingsCase),
       caseDef('ADMIN_GRANT_NOTIFICATION_CONTROLS', '發放通知：立即／排程／不傳送切換', 'Human E2E', adminGrantNotificationControlsCase),
       caseDef('ADMIN_POINT_LIMIT_SETTINGS', '集點卡上限：Server/UI 與 0 不限', 'Admin Settings E2E', adminPointLimitSettingsCase),
-      caseDef('ADMIN_BIRTHDAY_SETTINGS', '壽星優惠：讀取與空值驗證', 'Human E2E', adminBirthdaySettingsCase),
+      caseDef('ADMIN_BIRTHDAY_SETTINGS', '生日固定票券：目前 API 與空值驗證', 'Human E2E', adminBirthdaySettingsCase),
+      caseDef('ADMIN_AUTOMATION_HEALTH', '排程工作：啟用、最近結果與執行時效', 'Automation Health', adminAutomationHealthCase),
       caseDef('ADMIN_FIXED_TICKET_CONTROLS', '固定票券：週期與效期草稿切換', 'Human E2E', adminFixedTicketControlsCase),
       caseDef('ADMIN_TICKET_LOCATION_CONTROLS', '票券 GPS 地點編輯器契約', 'Configuration', adminTicketLocationControlsCase),
       caseDef('ADMIN_TICKET_SERVICE_RULES', '票券服務項目與 any／all 編輯器', 'Human E2E', adminTicketServiceRulesCase),
@@ -6003,27 +6006,52 @@
       : fail('集點卡使用上限或不限張數契約不一致。', { range:[0,50], matched:true }, actual);
   }
 
+  async function adminAutomationHealthCase() {
+    const session = await adminSession();
+    const data = await postFunction('test-control-api',{action:'admin.test-control.automation-health',idToken:session.idToken});
+    const expectedNames = ['issue-fixed-tickets','dispatch-scheduled-grant-messages','dispatch-booking-line-notifications','sync-booking-day-before-reminders','prune-e2e-failure-artifacts'];
+    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+    const issues = expectedNames.filter(name => {
+      const job = jobs.find(item => item.name === name);
+      return !job || job.active !== true || job.fresh !== true || !['succeeded','running'].includes(job.lastStatus);
+    });
+    const actual = {checkedAt:data.checkedAt,jobs,issues,deliveryScope:'scheduler-only'};
+    return issues.length === 0
+      ? pass('五個排程工作已啟用且最近執行正常；此結果只驗證排程，LINE 收件另行驗收。',{healthyJobs:5},actual)
+      : fail('排程工作缺失、停用、逾期或最近執行失敗。',{healthyJobs:5},actual);
+  }
+
   async function adminBirthdaySettingsCase() {
     document.getElementById('eventsTab')?.click();
-    const form = await waitFor(() => document.getElementById('birthdayBenefitForm'), 3000);
     const session = await adminSession();
-    const data = await postFunction('birthday-benefits', {action:'admin.birthday-benefit.get',idToken:session.idToken});
-    const title = document.getElementById('birthdayBenefitTitleTemplate');
-    if (!form || !title) return fail('壽星優惠表單未載入。', { form:true }, { form:false });
-    const original = title.value;
+    const data = await postFunction('fixed-ticket-automation', {action:'admin.fixed-tickets.list',idToken:session.idToken});
+    document.getElementById('newEventTicketButton')?.click();
+    const modal = await waitFor(() => {
+      const node = document.getElementById('eventTicketEditorModal');
+      return node && !node.classList.contains('hidden') ? node : null;
+    }, 3000);
+    const form = document.getElementById('eventTicketForm');
+    if (!modal || !form) return fail('生日固定票券編輯器未載入。', { form:true }, { form:false });
     let rejected = false;
+    let birthdayMode = false;
     try {
-      setField('birthdayBenefitTitleTemplate','');
+      setField('eventTicketType','fixed');
+      setField('fixedTicketScheduleType','birthday_month');
+      setField('fixedTicketExpiryMode','month_end');
+      birthdayMode = document.getElementById('fixedTicketScheduleType')?.value === 'birthday_month'
+        && document.getElementById('fixedTicketYearlyMonthField')?.classList.contains('hidden')
+        && document.getElementById('fixedTicketScheduleDayField')?.classList.contains('hidden');
+      setField('eventTicketTitle','');
       form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
-      rejected = /請填寫票券名稱/.test(document.getElementById('birthdayBenefitMessage')?.textContent || '');
+      rejected = /請填寫固定票券名稱/.test(document.getElementById('eventTicketFormMessage')?.textContent || '');
     } finally {
-      setField('birthdayBenefitTitleTemplate',original);
-      document.getElementById('birthdayBenefitMessage')?.classList.add('hidden');
+      modal.querySelector('.editor-modal-close, .close-button')?.click();
     }
-    const actual = { settings:Boolean(data.settings), rejected, tiers:document.querySelectorAll('[data-birthday-tier]').length };
-    return actual.settings && rejected && actual.tiers === 4
-      ? pass('壽星設定可授權讀取，空名稱在前端拒絕；未執行正式發放。', { settings:true, rejected:true,tiers:4 }, actual)
-      : fail('壽星優惠讀取或空值驗證異常。', { settings:true, rejected:true,tiers:4 }, actual);
+    const actual = { templates:Array.isArray(data.templates), birthdayMode:Boolean(birthdayMode), rejected,
+      tiers:document.querySelectorAll('#eventTicketAllowedTiers input[name="eventTicketAllowedTierKey"]').length };
+    return actual.templates && actual.birthdayMode && rejected && actual.tiers === 4
+      ? pass('現行生日固定票券 API 可讀取，月份規則與空名稱驗證正常。', { templates:true,birthdayMode:true,rejected:true,tiers:4 }, actual)
+      : fail('生日固定票券讀取、生日月份或空值驗證異常。', { templates:true,birthdayMode:true,rejected:true,tiers:4 }, actual);
   }
 
   async function adminFixedTicketControlsCase() {

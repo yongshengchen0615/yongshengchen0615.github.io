@@ -16,7 +16,8 @@ test('MemberWebsocket CI separates expensive test lanes and preserves aggregate 
   for (const lane of ['regression:', 'integration:', 'browser-syntax:', 'edge-functions:', 'wiring:', 'validate:']) {
     assert.ok(workflow.includes('\n  ' + lane), lane + ' lane must exist');
   }
-  assert.match(workflow, /needs: \[regression, integration, browser-syntax, edge-functions, wiring\]/);
+  assert.match(workflow, /needs: \[regression, integration, browser-e2e, browser-syntax, edge-functions, wiring\]/);
+  assert.match(workflow, /test "\$BROWSER_E2E" = success/);
   assert.match(workflow, /test "\$REGRESSION" = success/);
   assert.match(workflow, /test "\$EDGE_FUNCTIONS" = success/);
 });

@@ -4,7 +4,7 @@
 
 ## 結論
 
-原本已有 E2E 架構，但尚未完整涵蓋目前功能，而且「完整」模式仍會抽樣略去部分已登記節點。DOM 元件存在、按鈕命名前綴符合分類，不能當成整個功能已完成端到端驗證。本次補上 15 個功能節點，並以 44 個功能群組追蹤登記、排程及實際結果。
+原本已有 E2E 架構，但尚未完整涵蓋目前功能，而且「完整」模式仍會抽樣略去部分已登記節點。DOM 元件存在、按鈕命名前綴符合分類，不能當成整個功能已完成端到端驗證。本次補上 16 個功能節點，並以 45 個功能群組追蹤登記、排程及實際結果。
 
 完成狀態是「功能節點與 CI 已補齊」，不是「已登入線上管理端執行所有實機流程且全部通過」。相機、GPS、LINE 收件及 cron 工作另有外部驗收條件。
 
@@ -14,7 +14,7 @@
 |---|---|
 | 完整管理端／用戶端路徑只取部分節點 | Full 模式納入全部登記節點，仍保留 seed 隨機順序、依賴順序與 locked replay |
 | 介面分類清單被稱為完整功能覆蓋 | 保留清單檢查，新增獨立功能群組結果與契約／互動／生命週期／邊界證據層級 |
-| 缺少等級、通知模式、生日／固定票券、定位、服務限制、無障礙與來源卡片節點 | 新增下表列出的 10 個管理端與 5 個用戶端節點 |
+| 缺少等級、通知模式、生日／固定票券、定位、服務限制、無障礙與來源卡片節點 | 新增下表列出的 11 個管理端與 5 個用戶端節點 |
 | 使用張數上限 0 被當作無效設定；活動額度檢查仍依賴舊文案 | 接受 0＝不限張數，核對目前已使用／剩餘數據及「今日已使用」標籤 |
 | BookingBenefits.syncNow 立即返回造成舊畫面競態 | 等待 aria-busy 結束與 ready／empty 狀態，同步失敗明確回報 |
 | 含略過結果仍顯示「全部通過」 | 產生 verificationStatus／coverageComplete；新舊歷史紀錄均顯示「覆蓋未完成」 |
@@ -29,7 +29,7 @@
 
 | 頁面 | 原有 | 更新後 | 新增節點 |
 |---|---:|---:|---|
-| 管理端 | 28 | 38 | `ADMIN_TIER_SETTINGS`<br>`ADMIN_GRANT_NOTIFICATION_CONTROLS`<br>`ADMIN_POINT_LIMIT_SETTINGS`<br>`ADMIN_BIRTHDAY_SETTINGS`<br>`ADMIN_FIXED_TICKET_CONTROLS`<br>`ADMIN_TICKET_LOCATION_CONTROLS`<br>`ADMIN_TICKET_SERVICE_RULES`<br>`ADMIN_BOOKING_ACCESSIBLE_QUEUE`<br>`ADMIN_BOOKING_HISTORY_TICKET_SOURCES`<br>`ADMIN_BOOKING_RESOURCE_CONTROLS` |
+| 管理端 | 28 | 39 | `ADMIN_TIER_SETTINGS`<br>`ADMIN_GRANT_NOTIFICATION_CONTROLS`<br>`ADMIN_POINT_LIMIT_SETTINGS`<br>`ADMIN_BIRTHDAY_SETTINGS`<br>`ADMIN_FIXED_TICKET_CONTROLS`<br>`ADMIN_TICKET_LOCATION_CONTROLS`<br>`ADMIN_TICKET_SERVICE_RULES`<br>`ADMIN_BOOKING_ACCESSIBLE_QUEUE`<br>`ADMIN_BOOKING_HISTORY_TICKET_SOURCES`<br>`ADMIN_BOOKING_RESOURCE_CONTROLS`<br>`ADMIN_AUTOMATION_HEALTH` |
 | 會員卡 | 27 | 28 | `MEMBER_PHONE_COUNTRY_VALIDATION` |
 | 集點卡 | 25 | 25 | 既有節點全部納入 Full 路徑 |
 | 活動票券 | 25 | 25 | 既有節點全部納入 Full 路徑 |
@@ -37,7 +37,7 @@
 | 預約 | 29 | 33 | `BOOKING_TICKET_RULES`<br>`BOOKING_ACCESSIBLE_MODE`<br>`BOOKING_HISTORY_TICKET_SOURCES`<br>`BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY` |
 
 
-## 44 個功能群組與實際節點對照
+## 45 個功能群組與實際節點對照
 
 每個群組的「通過」只代表下列節點在該輪通過；契約節點不升格成硬體或外部服務的全流程驗收。日曆與整合中心等管理專屬設定，以 — 標示沒有對應用戶端編輯入口。
 
@@ -76,7 +76,7 @@
 | 日曆批次編輯與拒絕邊界 | 介面互動：`ADMIN_CALENDAR_BATCH_CONTROLS` | — | 依節點證據層級判定 |
 | 月份、今日與日期明細 | — | 介面互動：`CALENDAR_NAVIGATION`、`CALENDAR_HUMAN_DETAIL`、`CALENDAR_INVALID_DATE`、`CALENDAR_SERVER_BOUNDARY` | 依節點證據層級判定 |
 | 時段、跨夜、提前日數與通知 | 寫入生命週期：`ADMIN_BOOKING_SHARED_SETTINGS` | — | 依節點證據層級判定 |
-| 服務類型、項目、價格與技師 | 介面互動：`ADMIN_BOOKING_CRUD`、`ADMIN_BOOKING_RESOURCE_CONTROLS` | — | 依節點證據層級判定 |
+| 服務類型、項目、價格與技師 | 介面互動：`ADMIN_BOOKING_CRUD`、`ADMIN_BOOKING_RESOURCE_CONTROLS`<br>`ADMIN_AUTOMATION_HEALTH` | — | 依節點證據層級判定 |
 | 日期、項目、時段與確認步驟 | — | 介面互動：`BOOKING_FORM_INITIAL`、`BOOKING_FLOW_STEPPER`、`BOOKING_HUMAN_CONTROLS` | 依節點證據層級判定 |
 | 新增、修改與取消預約 | — | 寫入生命週期：`BOOKING_HUMAN_LIFECYCLE`、`BOOKING_INVALID_WRITE` | 依節點證據層級判定 |
 | 多人預約與參與者服務 | — | 寫入生命週期：`BOOKING_GROUP_DATA`、`BOOKING_HUMAN_GROUP` | 依節點證據層級判定 |
@@ -132,3 +132,15 @@
 - Supabase `test-control-api` v32、`user-test-api` v24 均為 ACTIVE；回讀部署來源與本次提交一致。`user-test-api` 的共用 Session helper 同步到儲存庫既有的 60 秒使用時間更新節流版本。
 - 無身分 POST：管理端 API 回應 HTTP 401／`AUTH_REQUIRED`，用戶測試 API 回應 HTTP 401／`TEST_SESSION_REQUIRED`。原有自訂身分驗證仍生效。
 - 本次未以 LINE 管理員身分執行整輪線上 Full E2E，亦未開啟實體相機；不能由上述 CI／部署成功推論所有實機及外部服務流程已驗收。
+
+
+## 後續實作與部署（2026-10-04 第二次修正）
+
+- 生日管理節點改測現行 `fixed-ticket-automation` 與生日月份固定票券編輯器；整合測試移除停用的 `birthday-benefits` 模擬回應，避免失效 API 被測試掩蓋。
+- 固定票券 QA 模板僅發给 `is_test_account=true` 的會員，測試帳號不建立 LINE 發送佇列。指定模板／會員的排程測試不再讓其他正式票券或 claim 過期，保留營運日曆同步。
+- 新增 production SQL 行為測試：生日一年一次及修改生日、跨年、週／月／年週期、月底與閏年、四種效期、額度、會員等級、QA 隔離、通知條件、未來日期作用範圍。
+- 新增 `ADMIN_AUTOMATION_HEALTH`：檢查固定發券、LINE 排程、預約 LINE、前一天提醒、E2E 附件清理的啟用狀態、最近結果與時效。RPC 僅 service role 可執行，不公開 cron 命令、Token 或錯誤原文。cron SQL 成功只證明排程執行，不代表 LINE 最終收件。
+- 新增 Chromium E2E：正常／無障礙相機拍攝、真實 Canvas/JPEG、HTTP 圖片上傳、送審邊界、權限拒絕後重試、重新拍攝、重複送出鎖定、不確定結果重试，以及 GPS 拒絕／範圍／重試。使用 Chromium 虛擬相機、瀏覽器定位與本機 API/Storage fixture；實際 Supabase 收據原子替換／審核／結算由既有 production SQL 測試補充。
+- GitHub Actions 新增必要 `browser-e2e` 檢查與失敗 trace、畫面、JUnit 留存；Validate 必須六條測試工作皆成功。
+
+已驗證：626 回歸測試、88 DOM／SQL 整合測試；Supabase migration 與 `test-control-api` v33 已部署；正式資料庫以交易回滾驗證 QA 發券隔離、重复發券及零通知。五個主要 cron 皆 active、fresh、最近 succeeded。Chromium 在此工作環境啟動時被 SIGTRAP 終止，交由 Ubuntu GitHub Actions 完成最終驗證。
