@@ -214,17 +214,7 @@ async function fullBooking(s: SupabaseClient, id: string) {
   if (br.error) throw mapDbError(br.error);
   if (ir.error) throw mapDbError(ir.error);
   if (benefitResult.error) throw mapDbError(benefitResult.error);
-  const pointRefs=[...new Set((benefitResult.data||[]).filter((x:any)=>String(x.benefit_kind||"")==="points").map((x:any)=>String(x.benefit_ref||"")).filter(Boolean))];
-  const pointCardTitleByTicket=new Map<string,string>();
-  if(pointRefs.length){
-    const pointTickets=await s.from("point_tickets").select("ticket_id,point_cards(title)").in("ticket_id",pointRefs);
-    if(pointTickets.error) console.warn("group booking point-card title hydration failed",pointTickets.error.message);
-    else for(const ticket of pointTickets.data||[]){
-      const relation=Array.isArray((ticket as any).point_cards)?(ticket as any).point_cards[0]:(ticket as any).point_cards;
-      pointCardTitleByTicket.set(String((ticket as any).ticket_id||""),String(relation?.title||""));
-    }
-  }
-  const items=(ir.data||[]).map(itemClient), benefits=(benefitResult.data||[]).filter((x:any)=>["points","event"].includes(String(x.benefit_kind||""))).map((x:any)=>({kind:x.benefit_kind,id:x.benefit_ref,title:x.title_snapshot||"可用權益",cardTitle:x.benefit_kind==="points"?(pointCardTitleByTicket.get(String(x.benefit_ref||""))||""):"",status:x.status||"pending",redeemedAt:x.redeemed_at||null})), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
+  const items=(ir.data||[]).map(itemClient), benefits=(benefitResult.data||[]).filter((x:any)=>["points","event"].includes(String(x.benefit_kind||""))).map((x:any)=>({kind:x.benefit_kind,id:x.benefit_ref,title:x.title_snapshot||"可用權益",status:x.status||"pending",redeemedAt:x.redeemed_at||null})), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
   return { bookingId:r.id, requestId:r.request_id, serviceId:r.service_id, serviceTitle:items.map((x:any)=>x.serviceTitle).join(" + ")||"預約項目", items, benefits, totalDurationMinutes:Number(r.total_duration_minutes||30), totalAmount:items.reduce((sum:number,x:any)=>sum+Number(x.subtotalAmount||0),0), memberId:r.member_id, memberDisplayName:r.members?.display_name||"", memberCode:r.members?.member_code||"", bookingDate:r.booking_date, startTime:String(r.start_time||"").slice(0,5), endTime:String(r.end_time||"").slice(0,5), startAt:localTimestamp(r.start_at), endAt:localTimestamp(r.end_at), status:r.status, memberNote:r.member_note||"", adminNote:r.admin_note||"", completedAt:r.completed_at||null, confirmedAt:r.confirmed_at, rejectedAt:r.rejected_at, cancelledAt:r.cancelled_at, createdAt:r.created_at, updatedAt:r.updated_at, contactSource:r.contact_source||"member", contactSurname:r.contact_surname||"", contactSalutation:r.contact_salutation||"", contactPhone:r.contact_phone||"", ...g };
 }
 
