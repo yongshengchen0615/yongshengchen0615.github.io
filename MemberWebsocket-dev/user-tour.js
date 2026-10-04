@@ -101,7 +101,7 @@
     });
     window.addEventListener('resize', queuePositionFocus);
     window.addEventListener('scroll', queuePositionFocus, true);
-    window.addEventListener('pagehide', () => close('dismiss'));
+    window.addEventListener('pagehide', () => { identityGeneration += 1; close('dismiss'); });
     window.addEventListener('pagehide', stopAutoOpenObserver, { once: true });
     window.addEventListener('beforeunload', stopAutoOpenObserver, { once: true });
     window.addEventListener('member-profile-ready', (event) => { void considerProfile(event.detail?.profile); });
@@ -200,9 +200,10 @@
       // Web Crypto can be unavailable in some embedded browsers. Manual replay remains available after setup.
       return;
     }
-    if (generation !== identityGeneration) return;
+    if (generation !== identityGeneration || !window.document?.body) return;
     if (storageKey && storageKey !== key && active) close('switch');
     storageKey = key;
+    ui.memberTourDialog.dataset.storageKey = key;
     if (checkedKey === key) return;
     checkedKey = key;
     let saved = null;
@@ -222,6 +223,8 @@
 
   function queueAutoOpen(generation, key) {
     stopAutoOpenObserver();
+    const doc = window.document;
+    if (!doc?.body || generation !== identityGeneration) return;
     const attempt = () => {
       if (generation !== identityGeneration || storageKey !== key) {
         stopAutoOpenObserver();
@@ -233,7 +236,7 @@
       }
     };
     autoOpenObserver = new MutationObserver(attempt);
-    autoOpenObserver.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden'] });
+    autoOpenObserver.observe(doc.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden'] });
     // Hidden/background tabs may pause requestAnimationFrame. Auto-start is functional state,
     // so attempt synchronously and keep rAF only as a visual/lifecycle refinement.
     attempt();

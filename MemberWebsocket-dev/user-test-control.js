@@ -1254,8 +1254,9 @@
       return fail('使用教學必要控制項缺失。', expected, evidence);
     }
 
-    const tourKeys = () => Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
-      .filter((key) => key && key.startsWith(prefix));
+    const storageKey = String(dialog.dataset.storageKey || '');
+    if (!storageKey.startsWith(prefix)) return fail('教學未綁定目前使用者的儲存狀態。',expected,evidence);
+    const tourKeys = () => localStorage.getItem(storageKey) === null ? [] : [storageKey];
     let before;
     let touchedKey = '';
     let outcome;

@@ -14,13 +14,13 @@ const scenarioGraph = require(path.join(root, 'e2e-scenario-graph.js'));
 const profile = (id = 'LINE_TEST_A') => ({ lineUserId: id, profileComplete: true, membershipRequired: false });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 40));
 
-async function page({ surface = 'member', saved = {}, now = '2026-09-27T15:59:00Z', missing = '', testSession = false, query = '' } = {}) {
+async function page({ surface = 'member', saved = {}, now = '2026-09-27T15:59:00Z', missing = '', testSession = false, query = '', cryptoImpl = webcrypto.subtle } = {}) {
   const html = fs.readFileSync(path.join(root, surface, 'index.html'), 'utf8');
   const suffix = query ? `?${String(query).replace(/^\?/, '')}` : '';
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: `https://example.test/${surface}/${suffix}` });
   const w = dom.window;
   await new Promise((resolve) => w.addEventListener('load', resolve, { once: true }));
-  Object.defineProperty(w.crypto, 'subtle', { value: webcrypto.subtle });
+  Object.defineProperty(w.crypto, 'subtle', { value: cryptoImpl });
   w.TextEncoder = TextEncoder;
   w.Date = class extends Date {
     constructor(...args) { super(...(args.length ? args : [now])); }
@@ -37,6 +37,12 @@ async function page({ surface = 'member', saved = {}, now = '2026-09-27T15:59:00
   const ready = async (id = 'LINE_TEST_A') => {
     const eventName = surface === 'member' ? 'member-profile-ready' : 'user-tour:ready';
     w.dispatchEvent(new w.CustomEvent(eventName, { detail: { surface, profile: profile(id) } }));
+    const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode(id))).toString('hex');
+    const deadline = Date.now()+3000;
+    while (!w.document.getElementById('memberTourDialog').dataset.storageKey?.endsWith(hash)) {
+      if(Date.now()>deadline)throw new Error('Tutorial identity initialization timed out');
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
     await tick();
   };
   return { dom, w, ready, dialog: w.document.getElementById('memberTourDialog') };
@@ -114,6 +120,21 @@ test('only an explicit current-format daily skip suppresses auto-start', async (
   await tomorrow.ready();
   assert.equal(tomorrow.dialog.classList.contains('hidden'), false);
   tomorrow.dom.window.close();
+});
+
+test('late identity digest cannot open a departed or detached tutorial page',async()=>{
+  for(const detached of [false,true]) {
+    let release;
+    const cryptoImpl={digest(...args){const actual=webcrypto.subtle.digest(...args);return new Promise(resolve=>{release=async()=>resolve(await actual);});}};
+    const current=await page({cryptoImpl});const {w,dialog}=current;
+    w.dispatchEvent(new w.CustomEvent('member-profile-ready',{detail:{profile:profile()}}));
+    assert.equal(typeof release,'function');
+    if(detached)w.close();else w.dispatchEvent(new w.PageTransitionEvent('pagehide'));
+    await release();await tick();
+    assert.equal(dialog.classList.contains('hidden'),true);
+    assert.equal(dialog.dataset.storageKey,undefined);
+    if(!detached) {assert.notEqual(w.document.getElementById('app').inert,true);w.close();}
+  }
 });
 
 test('spotlight dims only outside the selected UI and moves the dialog away from its target', async () => {
@@ -464,10 +485,15 @@ test('the unified E2E runner completes the tutorial journey on all five client s
     const auto = await w.__tourQa.tourAutoStartCase();
     assert.equal(auto.status, 'passed', `${surface}: ${auto.message}`);
     assert.equal(dialog.classList.contains('hidden'), true);
+    const foreignKey = surface === 'member' ? 'member-tour:other-participant' : `user-tour:${surface}:other-participant`;
+    w.localStorage.setItem(foreignKey,'before-concurrent-write');
+    w.document.getElementById('memberTourSkip').addEventListener('click',()=>w.localStorage.setItem(foreignKey,'concurrent-write'));
     const journey = await w.__tourQa.tourJourneyCase();
     assert.equal(journey.status, 'passed', `${surface}: ${journey.message}`);
     assert.ok(journey.actual.steps.length >= 2, surface);
     assert.equal(journey.actual.stateRestored, true, surface);
+    assert.equal(w.localStorage.getItem(foreignKey),'concurrent-write',surface+' must preserve another participant state');
+    w.localStorage.removeItem(foreignKey);
     assert.deepEqual(Object.fromEntries(Object.entries(w.localStorage)), saved, surface);
     current.dom.window.close();
   }

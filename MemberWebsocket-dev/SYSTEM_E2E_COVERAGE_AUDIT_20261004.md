@@ -145,7 +145,7 @@
 - 新增 Chromium E2E：正常／無障礙相機拍攝、真實 Canvas/JPEG、HTTP 圖片上傳、送審邊界、權限拒絕後重試、重新拍攝、重複送出鎖定、不確定結果重试，以及 GPS 拒絕／範圍／重試。使用 Chromium 虛擬相機、瀏覽器定位與本機 API/Storage fixture；實際 Supabase 收據原子替換／審核／結算由既有 production SQL 測試補充。
 - GitHub Actions 新增必要 `browser-e2e` 檢查與失敗 trace、畫面、JUnit 留存；Validate 必須六條測試工作皆成功。
 
-已驗證：626 回歸測試、91 DOM／SQL 整合測試；Supabase migration 與 `test-control-api` v33、`user-test-api` v25 已部署；正式資料庫以交易回滾驗證 QA 發券隔離、重复發券及零通知。五個主要 cron 皆 active、fresh、最近 succeeded。Chromium 8 個流程已由 Ubuntu GitHub Actions 實際執行通過。
+已驗證：626 回歸測試、92 DOM／SQL 整合測試；Supabase migration 與 `test-control-api` v33、`user-test-api` v25 已部署；正式資料庫以交易回滾驗證 QA 發券隔離、重复發券及零通知。五個主要 cron 皆 active、fresh、最近 succeeded。Chromium 8 個流程已由 Ubuntu GitHub Actions 實際執行通過。
 
 
 ### 最新線上失敗紀錄修正
@@ -167,11 +167,16 @@
 
 ### 最終部署證據
 
-- 程式版本：`8bc8f9e5628c277fa120839f3794f27af8f87be6`；[完整 CI／Validate 成功](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37180450845)。六條必要工作全部通過；Chromium 8 個流程無略過。
+- 首次完整通過的程式版本：`8bc8f9e5628c277fa120839f3794f27af8f87be6`；[完整 CI／Validate 成功](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37180450845)。六條必要工作全部通過；Chromium 8 個流程無略過。
 - [GitHub Pages 部署](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37180450544)完成；六頁入口與四個 E2E JS 已逐檔核對發布内容與本地版本一致。
 - Supabase `test-control-api` v33、`user-test-api` v25 為 ACTIVE，所有相對依賴已讀回比對；未登入請求分別維持 401 AUTH_REQUIRED／TEST_SESSION_REQUIRED。
 - 三個 migration 已部署：QA 固定發券隔離、service-only 排程健康、本人 QA 活動券日期 fixture。正式資料庫以回滾交易驗證發券去重／零通知與日期 fixture，不留下驗證會員或票券。
-- 本地結果：626 回歸、91 DOM／SQL 整合全部通過；五個主要 cron active、fresh、最近 succeeded。
+- 本地結果：626 回歸、92 DOM／SQL 整合全部通過；五個主要 cron active、fresh、最近 succeeded。
 - Advisors：既有 service-role-only 表 RLS 無直接用戶 policy（INFO）、既有 pg_net public schema（WARN）、3 個未使用索引（INFO）；本次未增加授權或效能告警。
 
 這些證據完成程式實作、可自動化驗證與發布。尚未以真實 LINE 收件者或實體手機進行硬體驗收，也未將先前失敗的登入協同 Root 紀錄改寫成成功；應以部署後新執行的 Root 判定該次線上完整結果。
+
+
+協同教學的儲存還原已限縮為當前使用者的雜湊 key，新增五頁同時有其他參與者寫入的回歸驗證，避免完整教學並行時還原其他會員的偏好。
+
+另修正延遲身分雜湊在頁面離開／關閉後仍嘗試開教學的競態，新增晚到回呼測試；教學整合等待已解析的 storage key，解除 CI 計時假設造成的偶發錯誤。最新版狀態以 [main 分支 CI](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/workflows/test-memberwebsocket-dev.yml) 為準。
