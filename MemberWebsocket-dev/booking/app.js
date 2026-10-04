@@ -805,6 +805,98 @@
     return titles.length ? titles.join(' + ') : booking.serviceTitle || '預約項目';
   }
 
+  function bookingBenefitPresentation(benefit) {
+    const kind = String(benefit?.kind || '');
+    const kindLabel = kind === 'points' ? '集點卡票券' : kind === 'event' ? '活動票券' : '預約票券';
+    let sourceTitle = String(benefit?.cardTitle || '').trim();
+    let ticketTitle = String(benefit?.title || '可用權益').trim() || '可用權益';
+
+    if (kind === 'points') {
+      const separator = ticketTitle.indexOf('｜');
+      if (!sourceTitle && separator > 0) {
+        sourceTitle = ticketTitle.slice(0, separator).trim();
+        ticketTitle = ticketTitle.slice(separator + 1).trim() || '集點卡票券';
+      } else if (sourceTitle && ticketTitle.startsWith(`${sourceTitle}｜`)) {
+        ticketTitle = ticketTitle.slice(sourceTitle.length + 1).trim() || '集點卡票券';
+      }
+    }
+
+    const status = String(benefit?.status || 'pending');
+    const statusLabel = ({ pending: '待核銷', redeemed: '已核銷', applied: '已核銷', cancelled: '已取消' })[status] || status;
+    return { kind, kindLabel, sourceTitle, ticketTitle, status, statusLabel };
+  }
+
+  function renderBookingBenefitCards(benefits, options = {}) {
+    const rows = (Array.isArray(benefits) ? benefits : [])
+      .filter((benefit) => benefit?.kind === 'points' || benefit?.kind === 'event');
+    if (!rows.length) return null;
+
+    const section = document.createElement('section');
+    section.className = 'booking-ticket-summary';
+    section.setAttribute('aria-label', options.heading || '本次使用票券');
+
+    const heading = document.createElement('div');
+    heading.className = 'booking-ticket-summary-heading';
+    const headingTitle = document.createElement('strong');
+    headingTitle.textContent = options.heading || '本次使用票券';
+    const count = document.createElement('span');
+    count.className = 'booking-ticket-count';
+    count.textContent = `${rows.length} 張`;
+    heading.append(headingTitle, count);
+
+    const grid = document.createElement('div');
+    grid.className = 'booking-ticket-grid';
+
+    rows.forEach((benefit) => {
+      const view = bookingBenefitPresentation(benefit);
+      const card = document.createElement('article');
+      card.className = `booking-ticket-card kind-${view.kind || 'other'}`;
+
+      const top = document.createElement('div');
+      top.className = 'booking-ticket-card-top';
+      const kind = document.createElement('span');
+      kind.className = 'booking-ticket-kind';
+      kind.textContent = view.kindLabel;
+      top.appendChild(kind);
+
+      if (options.showStatus !== false) {
+        const status = document.createElement('span');
+        status.className = `booking-ticket-status status-${view.status || 'pending'}`;
+        status.textContent = view.statusLabel;
+        top.appendChild(status);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'booking-ticket-body';
+
+      if (view.kind === 'points' && view.sourceTitle) {
+        const sourceField = document.createElement('div');
+        sourceField.className = 'booking-ticket-field booking-ticket-source';
+        const sourceLabel = document.createElement('small');
+        sourceLabel.textContent = '來源集點卡';
+        const sourceValue = document.createElement('strong');
+        sourceValue.textContent = view.sourceTitle;
+        sourceField.append(sourceLabel, sourceValue);
+        body.appendChild(sourceField);
+      }
+
+      const titleField = document.createElement('div');
+      titleField.className = 'booking-ticket-field';
+      const titleLabel = document.createElement('small');
+      titleLabel.textContent = '票券名稱';
+      const titleValue = document.createElement('strong');
+      titleValue.textContent = view.ticketTitle;
+      titleField.append(titleLabel, titleValue);
+      body.appendChild(titleField);
+
+      card.append(top, body);
+      grid.appendChild(card);
+    });
+
+    section.append(heading, grid);
+    return section;
+  }
+
   function renderBookings() {
     const bookings = state.data.bookings || [];
     els.bookingList.replaceChildren();
@@ -863,16 +955,8 @@
       );
       item.appendChild(totals);
 
-      if (Array.isArray(booking.benefits) && booking.benefits.length) {
-        const benefits = document.createElement('p');
-        benefits.className = 'booking-note booking-benefit-note';
-        benefits.textContent = `本次使用票券：${booking.benefits.map((benefit) => {
-          const kindLabel = benefit.kind === 'points' ? '集點卡票券' : benefit.kind === 'event' ? '活動票券' : '票券';
-          const sourceTitle = benefit.kind === 'points' && benefit.cardTitle ? `${benefit.cardTitle}｜` : '';
-          return `${kindLabel}：${sourceTitle}${benefit.title || '可用權益'}`;
-        }).join('、')}'}`;
-        item.appendChild(benefits);
-      }
+      const benefitCards = renderBookingBenefitCards(booking.benefits, { heading: '本次使用票券', showStatus: true });
+      if (benefitCards) item.appendChild(benefitCards);
       if (booking.memberNote) {
         const note = document.createElement('p');
         note.className = 'booking-note';
