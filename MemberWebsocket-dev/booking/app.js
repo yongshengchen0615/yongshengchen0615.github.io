@@ -620,7 +620,8 @@
       ticketList.className = 'booking-confirm-ticket-list';
       benefits.forEach((item) => {
         const ticket = document.createElement('li');
-        ticket.textContent = `${ticketKinds[item.kind] || '票券'}：${item.title || '未命名票券'}`;
+        const sourceTitle = item.kind === 'points' && item.cardTitle ? `${item.cardTitle}｜` : '';
+        ticket.textContent = `${ticketKinds[item.kind] || '票券'}：${sourceTitle}${item.title || '未命名票券'}`;
         ticketList.appendChild(ticket);
       });
       benefitBox.appendChild(ticketList);
@@ -865,7 +866,11 @@
       if (Array.isArray(booking.benefits) && booking.benefits.length) {
         const benefits = document.createElement('p');
         benefits.className = 'booking-note booking-benefit-note';
-        benefits.textContent = `本次選用優惠：${booking.benefits.map((benefit) => benefit.title || '可用權益').join('、')}`;
+        benefits.textContent = `本次使用票券：${booking.benefits.map((benefit) => {
+          const kindLabel = benefit.kind === 'points' ? '集點卡票券' : benefit.kind === 'event' ? '活動票券' : '票券';
+          const sourceTitle = benefit.kind === 'points' && benefit.cardTitle ? `${benefit.cardTitle}｜` : '';
+          return `${kindLabel}：${sourceTitle}${benefit.title || '可用權益'}`;
+        }).join('、')}'}`;
         item.appendChild(benefits);
       }
       if (booking.memberNote) {
