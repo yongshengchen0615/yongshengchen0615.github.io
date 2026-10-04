@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-04.1';
+  const VERSION = '2026-10-04.2';
   const els = {};
   const artifactPreviewCache = new Map();
   const artifactPrefetchQueue = [];
@@ -12,6 +12,19 @@
   let pollTimer = 0;
   let pollInFlight = false;
   let busy = false;
+  let historyTimer = 0;
+  let historyRequest = null;
+  let detailRevision = 0;
+  let followLatest = true;
+  let latestDetail = null;
+  let latestRuns = [];
+  let lastMessage = '';
+  let lastMessageError = false;
+  let backgroundRunId = '';
+  let backgroundRevision = -1;
+  let statusRevision = 0;
+  let detailFingerprint = '';
+  let historyFingerprint = '';
 
   window.addEventListener('DOMContentLoaded', () => {
     [
@@ -45,7 +58,20 @@
       }
     });
 
+    const resume = () => {
+      if (historyVisible()) loadHistory().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('focus', resume);
+    window.addEventListener('pageshow', () => { startHistorySync(); resume(); });
+    window.addEventListener('pagehide', () => {
+      stopPolling();
+      if (historyTimer) window.clearInterval(historyTimer);
+      historyTimer = 0;
+      detailRevision += 1;
+    });
     window.addEventListener('beforeunload', stopPolling);
+    startHistorySync();
   });
 
   function apiUrl(config) {
@@ -206,23 +232,97 @@
     return body.data || {};
   }
 
-  async function loadHistory() {
-    const data = await request('admin.test-control.list');
-    const runs = Array.isArray(data.runs) ? data.runs : [];
-    renderHistory(runs);
-    if (!runs.length) {
-      currentRunId = '';
-      resetDetail();
-      return;
-    }
-    if (!currentRunId || !runs.some((run) => String(run.id || '') === currentRunId)) {
-      currentRunId = String(runs[0].id || '');
-      if (currentRunId) {
-        const detail = await request('admin.test-control.status', { runId: currentRunId });
-        renderDetail(detail);
-        if (String(detail.run?.status || '') === 'running') beginPolling();
+  function isBackgroundRunner() {
+    return new URLSearchParams(window.location.search).get('e2eBackgroundRunner') === '1';
+  }
+
+  function historyVisible() {
+    return !isBackgroundRunner() && !document.hidden &&
+      els.testModeTab?.getAttribute('aria-selected') === 'true' &&
+      document.documentElement.dataset.memberAdminReady === 'true';
+  }
+
+  function startHistorySync() {
+    if (historyTimer || isBackgroundRunner()) return;
+    // The Runner pushes backend progress; this bounded fallback discovers new
+    // browser records and changes made in another admin tab without a reload.
+    historyTimer = window.setInterval(() => {
+      if (historyVisible() && !busy && !pollTimer) loadHistory().catch(() => {});
+    }, 5000);
+  }
+
+  function loadHistory() {
+    if (historyRequest) return historyRequest;
+    historyRequest = (async () => {
+      const revision = detailRevision;
+      const data = await request('admin.test-control.list');
+      if (revision !== detailRevision) return;
+      const runs = Array.isArray(data.runs) ? data.runs : [];
+      if (!runs.length) {
+        currentRunId = '';
+        stopPolling();
+        resetDetail();
+        renderHistory(runs);
+        return;
       }
+      if (followLatest || !currentRunId || !runs.some((run) => String(run.id || '') === currentRunId)) {
+        currentRunId = String(runs[0].id || '');
+      }
+      renderHistory(runs);
+      // Refresh the selected run even when its identity did not change.
+      await loadSelectedRun();
+    })().finally(() => { historyRequest = null; });
+    return historyRequest;
+  }
+
+  async function loadSelectedRun() {
+    const runId = currentRunId;
+    const revision = ++detailRevision;
+    if (!runId) return;
+    const data = await request('admin.test-control.status', { runId });
+    if (revision !== detailRevision || runId !== currentRunId) return;
+    renderDetail(data);
+    renderHistory(Array.isArray(data.runs) ? data.runs : latestRuns);
+    if (['queued', 'running'].includes(String(data.run?.status || ''))) beginPolling();
+    else stopPolling();
+  }
+
+  function publishTestStatus() {
+    statusRevision += 1;
+    if (isBackgroundRunner()) window.MemberAdminE2EControl?.publishStatus?.();
+  }
+
+  function testStatusSnapshot() {
+    return { revision: statusRevision, detail: latestDetail, runs: latestRuns,
+      busy, message: lastMessage, messageError: lastMessageError };
+  }
+
+  function receiveBackgroundStatus(snapshot, runId) {
+    if (isBackgroundRunner() || !snapshot || !runId) return false;
+    const revision = Number(snapshot.revision);
+    if (!Number.isFinite(revision) || revision < 0) return false;
+    if (backgroundRunId !== runId) {
+      backgroundRunId = runId;
+      backgroundRevision = -1;
+      followLatest = true;
     }
+    if (revision <= backgroundRevision) return false;
+    backgroundRevision = revision;
+    detailRevision += 1;
+    stopPolling(); // The isolated Runner already polls this same backend run.
+    if (snapshot.detail?.run && (followLatest || String(snapshot.detail.run.id || '') === currentRunId)) {
+      renderDetail(snapshot.detail);
+    }
+    renderHistory(Array.isArray(snapshot.runs) ? snapshot.runs : latestRuns);
+    setBusy(snapshot.busy);
+    setMessage(snapshot.message, snapshot.messageError);
+    return true;
+  }
+
+  function acceptRecordedRun(data) {
+    detailRevision += 1;
+    if (data?.run && (followLatest || String(data.run.id || '') === currentRunId)) renderDetail(data);
+    if (Array.isArray(data?.runs)) renderHistory(data.runs);
   }
 
   async function purgeTestData() {
@@ -235,6 +335,7 @@
     if (!confirmed) return;
 
     stopPolling();
+    detailRevision += 1;
     setBusy(true);
     setMessage('正在移除測試資料…');
     try {
@@ -274,6 +375,8 @@
       throw error;
     }
     const rethrow = options?.rethrow === true;
+    followLatest = true;
+    detailRevision += 1;
     setBusy(true);
     setMessage(suite === 'full' ? '正在建立完整測試…' : '正在建立快速測試…');
     try {
@@ -286,8 +389,10 @@
       setMessage('完整 E2E 後端階段執行中；畫面會持續更新每個案例與測試數據。');
       beginPolling();
 
-      const finalData = await request('admin.test-control.execute', { runId: currentRunId });
+      const executingRunId = currentRunId;
+      const finalData = await request('admin.test-control.execute', { runId: executingRunId });
       stopPolling();
+      detailRevision += 1;
       renderDetail(finalData);
       renderHistory(Array.isArray(finalData.runs) ? finalData.runs : []);
       const failed = Number(finalData.run?.failedCases || 0);
@@ -307,6 +412,7 @@
       return finalData;
     } catch (error) {
       stopPolling();
+      detailRevision += 1;
       showError(error);
       if (rethrow) throw error;
       return { error: { code: String(error?.code || error?.name || 'ERROR'), message: String(error?.message || '未知錯誤') } };
@@ -319,9 +425,12 @@
     stopPolling();
     const tick = async () => {
       if (!currentRunId || pollInFlight) return;
+      const runId = currentRunId;
+      const revision = detailRevision;
       pollInFlight = true;
       try {
-        const data = await request('admin.test-control.status', { runId: currentRunId });
+        const data = await request('admin.test-control.status', { runId });
+        if (revision !== detailRevision || runId !== currentRunId) return;
         renderDetail(data);
         renderHistory(Array.isArray(data.runs) ? data.runs : []);
         const status = String(data.run?.status || '');
@@ -341,11 +450,14 @@
   function setBusy(value) {
     busy = Boolean(value);
     if (els.purgeTestDataButton) els.purgeTestDataButton.disabled = busy;
-    if (els.automationTestRunnerBadge) {
+    if (els.automationTestRunnerBadge && (busy || !latestDetail?.run)) {
       els.automationTestRunnerBadge.textContent = busy ? 'Runner：完整 E2E 執行中' : 'Runner：待命';
       els.automationTestRunnerBadge.classList.toggle('is-on', busy);
       els.automationTestRunnerBadge.classList.toggle('is-off', !busy);
+    } else if (latestDetail?.run) {
+      renderRunnerBadge(runVerificationStatus(latestDetail.run));
     }
+    publishTestStatus();
   }
 
   function statusText(status) {
@@ -411,6 +523,8 @@
   }
 
   function resetDetail() {
+    latestDetail = null;
+    detailFingerprint = '';
     els.automationTestRunCode.textContent = '尚未執行';
     els.automationTestRunStatus.textContent = '等待執行';
     els.automationTestRunStatus.className = 'test-control-run-status is-queued';
@@ -426,6 +540,7 @@
     els.automationTestRunnerBadge.className = 'test-mode-status-badge is-off';
     els.automationTestCaseList.replaceChildren();
     els.automationTestCaseEmpty.classList.remove('hidden');
+    publishTestStatus();
   }
 
   function renderDetail(data) {
@@ -435,6 +550,13 @@
       resetDetail();
       return;
     }
+
+    const fingerprint = JSON.stringify({ run, cases });
+    if (fingerprint === detailFingerprint) return;
+    detailFingerprint = fingerprint;
+    latestDetail = { run, cases };
+    const openCases = new Set(Array.from(els.automationTestCaseList.querySelectorAll('details[open][data-test-case-id]'))
+      .map((node) => node.dataset.testCaseId));
 
     currentRunId = String(run.id || currentRunId);
     const total = Number(run.totalCases || cases.length || 0);
@@ -457,6 +579,19 @@
     els.automationTestProgress.setAttribute('aria-valuenow', String(progress));
     els.automationTestProgress.setAttribute('aria-valuetext', progress + '%');
 
+    renderRunnerBadge(status);
+
+    els.automationTestCaseList.replaceChildren(...cases.map((testCase) => {
+      const node = renderCase(testCase);
+      node.dataset.testCaseId = String(testCase.id || testCase.key || '');
+      if (openCases.has(node.dataset.testCaseId)) node.open = true;
+      return node;
+    }));
+    els.automationTestCaseEmpty.classList.toggle('hidden', cases.length !== 0);
+    publishTestStatus();
+  }
+
+  function renderRunnerBadge(status) {
     els.automationTestRunnerBadge.textContent = status === 'running'
       ? 'Runner：執行中'
       : status === 'incomplete' ? 'Runner：覆蓋未完成（有略過）'
@@ -470,9 +605,6 @@
       status === 'passed' ? ' is-active' :
       status === 'failed' ? ' is-error' : ' is-off'
     );
-
-    els.automationTestCaseList.replaceChildren(...cases.map(renderCase));
-    els.automationTestCaseEmpty.classList.toggle('hidden', cases.length !== 0);
   }
 
   function renderCase(testCase) {
@@ -719,13 +851,17 @@
   }
   function renderHistory(runs) {
     const list=Array.isArray(runs)?runs:[];
+    latestRuns = list;
+    const fingerprint = currentRunId + ':' + JSON.stringify(list);
+    if (fingerprint === historyFingerprint) return;
+    historyFingerprint = fingerprint;
     els.automationTestHistoryList.replaceChildren(...list.map((run)=>{
       const entry=document.createElement('div');
       entry.className='test-control-history-entry'+(String(run.id||'')===currentRunId?' active':'');
       const button=document.createElement('button'); button.type='button'; button.className='test-control-history-item'; button.dataset.testRunId=String(run.id||'');
       button.addEventListener('click',async()=>{
-        if(busy)return; currentRunId=String(run.id||''); renderHistory(list);
-        try{const data=await request('admin.test-control.status',{runId:currentRunId});renderDetail(data);}catch(error){showError(error);}
+        if(busy)return; followLatest=false; stopPolling(); currentRunId=String(run.id||''); renderHistory(latestRuns);
+        try{await loadSelectedRun();}catch(error){showError(error);}
       });
       const top=document.createElement('span'); top.className='test-control-history-top';
       const code=document.createElement('strong'); code.textContent=String(run.runCode||'Test run');
@@ -753,12 +889,16 @@
       return entry;
     }));
     els.automationTestHistoryEmpty.classList.toggle('hidden',list.length!==0);
+    publishTestStatus();
   }
 
   function setMessage(message, error = false) {
+    lastMessage = String(message || '');
+    lastMessageError = Boolean(error);
     els.automationTestMessage.textContent = String(message || '');
     els.automationTestMessage.classList.toggle('hidden', !message);
     els.automationTestMessage.classList.toggle('error', Boolean(error));
+    publishTestStatus();
   }
 
   function showError(error) {
@@ -769,6 +909,9 @@
     version: VERSION,
     runFull: (selectedModules) => startRun('full', { rethrow: true, selectedModules }),
     refresh: () => loadHistory(),
+    getStatus: () => testStatusSnapshot(),
+    receiveBackgroundStatus: (snapshot, runId) => receiveBackgroundStatus(snapshot, runId),
+    acceptRecordedRun: (data) => acceptRecordedRun(data),
     isRunning: () => busy,
     currentRunId: () => currentRunId
   });

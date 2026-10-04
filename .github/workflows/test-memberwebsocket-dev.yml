@@ -66,6 +66,7 @@ jobs:
             MemberWebsocket-dev/tests/integration/booking_copy.cjs \
             MemberWebsocket-dev/tests/integration/dialog_accessibility.cjs \
             MemberWebsocket-dev/tests/integration/e2e_background_startup.cjs \
+            MemberWebsocket-dev/tests/integration/e2e_background_sync.cjs \
             MemberWebsocket-dev/tests/integration/member_first_use_tour.cjs \
             MemberWebsocket-dev/tests/integration/member_terms_startup.cjs \
             MemberWebsocket-dev/tests/integration/transaction_lifecycle.cjs \

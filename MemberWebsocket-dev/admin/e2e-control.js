@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-04.3';
+  const VERSION = '2026-10-04.4';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -527,8 +527,9 @@
       cancelled: state.cancelled,
       message: state.lastMessage,
       messageError: state.lastMessageError,
+      testControl: isBackgroundRunnerWindow() ? safe(window.MemberAdminTestControl?.getStatus?.()) : null,
       summary: { total: state.results.length, passed, failed, skipped },
-      coverage: safe(state.featureCoverage),
+      coverage: state.featureCoverage ? safe(state.featureCoverage) : null,
       clientCoverage:safe(state.clientCoverage.map(item => ({participant:item.participant,surface:item.surface,coverage:item.coverage ? {total:item.coverage.total,counts:item.coverage.counts,complete:item.coverage.complete}:null}))),
       results: state.results.slice(-200).map((row) => ({
         key: String(row?.key || ''),
@@ -562,14 +563,13 @@
 
   function receiveBackgroundStatus(snapshot) {
     if (isBackgroundRunnerWindow() || !snapshot || typeof snapshot !== 'object') return false;
-    if (state.backgroundRunId && snapshot.runId && String(snapshot.runId) !== String(state.backgroundRunId)) return false;
-    if (!state.backgroundRunId && snapshot.runId) state.backgroundRunId = String(snapshot.runId);
+    if (!state.backgroundRunId || !snapshot.runId || String(snapshot.runId) !== String(state.backgroundRunId)) return false;
     state.backgroundLastStatusAt = Date.now();
     state.cancelled = Boolean(snapshot.cancelled);
     state.lastMessage = String(snapshot.message || '');
     state.lastMessageError = Boolean(snapshot.messageError);
-    state.featureCoverage = snapshot.coverage || null;
-    state.clientCoverage = snapshot.clientCoverage || [];
+    state.featureCoverage = snapshot.coverage?.counts ? snapshot.coverage : null;
+    state.clientCoverage = Array.isArray(snapshot.clientCoverage) ? snapshot.clientCoverage : [];
     state.results = Array.isArray(snapshot.results) ? snapshot.results.map((row) => ({ ...row })) : state.results;
     state.participants = Array.isArray(snapshot.participants)
       ? snapshot.participants.map((participant) => ({ ...participant }))
@@ -584,8 +584,21 @@
     }
     render();
     renderParticipants();
+    if (snapshot.testControl) window.MemberAdminTestControl?.receiveBackgroundStatus?.(snapshot.testControl, String(snapshot.runId));
     return true;
   }
+
+  function resumeBackgroundStatus() {
+    if (isBackgroundRunnerWindow() || document.hidden) return;
+    const runner = state.backgroundRunnerWindow;
+    try {
+      if (runner && !runner.closed) receiveBackgroundStatus(runner.MemberAdminE2EControl?.getStatus?.());
+    } catch {}
+  }
+
+  window.addEventListener('focus', resumeBackgroundStatus);
+  window.addEventListener('pageshow', resumeBackgroundStatus);
+  document.addEventListener?.('visibilitychange', resumeBackgroundStatus);
 
   async function waitForBackgroundRunnerControl(runnerWindow) {
     const deadline = Date.now() + BACKGROUND_RUNNER_READY_TIMEOUT_MS;
@@ -991,9 +1004,10 @@
       state.summary?.before(host);
     }
     host.replaceChildren();
-    if (!state.featureCoverage) return;
+    if (!state.featureCoverage?.counts) return;
     const reports = [['管理端',state.featureCoverage],...state.clientCoverage.map(item => ['用戶 ' + item.participant + ' · ' + item.surface,item.coverage])];
-    for (const [label,report] of reports) {
+    for (const [label,value] of reports) {
+      const report = value?.counts ? value : null;
       const card = document.createElement('article');
       card.className = 'e2e-feature-coverage-card';
       const heading = document.createElement('strong'); heading.textContent = label;
@@ -1551,7 +1565,9 @@
     if (new TextEncoder().encode(JSON.stringify(fitted)).byteLength > 320000) {
       throw Object.assign(new Error('E2E 紀錄容量超過限制。'),{code:'E2E_RECORD_TOO_LARGE'});
     }
-    return postFunction('test-control-api', fitted);
+    const recorded = await postFunction('test-control-api', fitted);
+    window.MemberAdminTestControl?.acceptRecordedRun?.(recorded);
+    return recorded;
   }
 
   async function recordRun(runnerKind, suite, memberId = '', extraMeta = {}) {
@@ -7821,6 +7837,7 @@
     receiveBackgroundStatus: (snapshot) => receiveBackgroundStatus(snapshot),
     provideBackgroundSession: (runId) => provideBackgroundSession(runId),
     getStatus: () => backgroundStatusSnapshot(),
+    publishStatus: () => publishBackgroundStatus(),
     stop: () => requestStop(),
     maxPairedParticipants: MAX_PAIRED_PARTICIPANTS
   });
