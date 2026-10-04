@@ -313,6 +313,7 @@ function benefitClient(row: any): Json {
     kind: row.benefit_kind,
     id: row.benefit_ref,
     title: row.title_snapshot || "可用權益",
+    cardTitle: row.benefit_kind === "points" ? String(row._point_card_title || "") : "",
     status: row.status || "pending",
     redeemedAt: row.redeemed_at || null,
   };
@@ -422,6 +423,30 @@ async function hydrateBookings(supabase: SupabaseClient, rows: any[]): Promise<J
   ]);
   if (itemResult.error) throw mapDatabaseError(itemResult.error);
   if (benefitResult.error) throw mapDatabaseError(benefitResult.error);
+
+  const pointBenefitRefs = [...new Set((benefitResult.data || [])
+    .filter((benefit: any) => String(benefit.benefit_kind || "") === "points")
+    .map((benefit: any) => String(benefit.benefit_ref || "").trim())
+    .filter(Boolean))];
+  if (pointBenefitRefs.length) {
+    const pointTicketResult = await supabase.from("point_tickets")
+      .select("ticket_id,point_cards(title)")
+      .in("ticket_id", pointBenefitRefs);
+    if (pointTicketResult.error) {
+      console.warn("booking point-card title hydration failed", pointTicketResult.error.message);
+    } else {
+      const pointCardTitleByTicket = new Map((pointTicketResult.data || []).map((ticket: any) => {
+        const relation = Array.isArray(ticket.point_cards) ? ticket.point_cards[0] : ticket.point_cards;
+        return [String(ticket.ticket_id || ""), String(relation?.title || "")];
+      }));
+      for (const benefit of benefitResult.data || []) {
+        if (String(benefit.benefit_kind || "") === "points") {
+          benefit._point_card_title = pointCardTitleByTicket.get(String(benefit.benefit_ref || "")) || "";
+        }
+      }
+    }
+  }
+
   const grouped = new Map<string, any[]>();
   const benefitGrouped = new Map<string, any[]>();
   for (const item of itemResult.data || []) {
