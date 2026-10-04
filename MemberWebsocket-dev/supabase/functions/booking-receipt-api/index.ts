@@ -47,7 +47,7 @@ function dbClient(): SupabaseClient {
   if(!url||!key) throw new ApiError(503,"SUPABASE_CONFIG_MISSING","Supabase server 設定尚未完成。");
   return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
 }
-function sha256Hex(value: string):Promise<string>{
+async function sha256Hex(value: string):Promise<string>{
   const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
 }
@@ -348,6 +348,7 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
     .order("updated_at",{ascending:false})
     .limit(200);
   if(accessible.error) throw new ApiError(500,"DATABASE_ERROR","無障礙審核紀錄暫時無法讀取。");
+
   const accessibleRecords=(accessible.data||[]).map((row:any)=>{
     const booking=Array.isArray(row.bookings)?row.bookings[0]||null:row.bookings||null;
     const settlements=Array.isArray(booking?.booking_completion_settlements)
@@ -665,6 +666,7 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
     memberResult.data,
     currentBooking&&String(currentBooking.status)==="confirmed"?requestedBookingId:"",
   );
+
   return {
     rewardRules:(rewardRules.data||[]).map((r:any)=>({serviceType:r.booking_service_types?.name||"",minutesPerPoint:r.minutes_per_point,cardTitle:r.point_cards?.title||""})),
     services:services.data||[],
