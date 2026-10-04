@@ -6,7 +6,7 @@
 
 原本已有 E2E 架構，但尚未完整涵蓋目前功能，而且「完整」模式仍會抽樣略去部分已登記節點。DOM 元件存在、按鈕命名前綴符合分類，不能當成整個功能已完成端到端驗證。本次補上 16 個功能節點，並以 45 個功能群組追蹤登記、排程及實際結果。
 
-完成狀態是「功能節點與 CI 已補齊」，不是「已登入線上管理端執行所有實機流程且全部通過」。相機、GPS、LINE 收件及 cron 工作另有外部驗收條件。
+完成狀態是「功能節點與 CI 已補齊」，不是「已登入線上管理端執行所有實機流程且全部通過」。相機與 GPS 已加入 Chromium 虛擬裝置驗證；LINE 真實收件與實體裝置權限仍需實機驗收，cron 健康已直接查核正式排程。
 
 ## 原始缺口與修正
 
@@ -134,6 +134,8 @@
 - 本次未以 LINE 管理員身分執行整輪線上 Full E2E，亦未開啟實體相機；不能由上述 CI／部署成功推論所有實機及外部服務流程已驗收。
 
 
+補充功能群組：`automation.health` → `ADMIN_AUTOMATION_HEALTH`（member／event／booking 範圍，boundary 證據）。
+
 ## 後續實作與部署（2026-10-04 第二次修正）
 
 - 生日管理節點改測現行 `fixed-ticket-automation` 與生日月份固定票券編輯器；整合測試移除停用的 `birthday-benefits` 模擬回應，避免失效 API 被測試掩蓋。
@@ -143,4 +145,21 @@
 - 新增 Chromium E2E：正常／無障礙相機拍攝、真實 Canvas/JPEG、HTTP 圖片上傳、送審邊界、權限拒絕後重試、重新拍攝、重複送出鎖定、不確定結果重试，以及 GPS 拒絕／範圍／重試。使用 Chromium 虛擬相機、瀏覽器定位與本機 API/Storage fixture；實際 Supabase 收據原子替換／審核／結算由既有 production SQL 測試補充。
 - GitHub Actions 新增必要 `browser-e2e` 檢查與失敗 trace、畫面、JUnit 留存；Validate 必須六條測試工作皆成功。
 
-已驗證：626 回歸測試、88 DOM／SQL 整合測試；Supabase migration 與 `test-control-api` v33 已部署；正式資料庫以交易回滾驗證 QA 發券隔離、重复發券及零通知。五個主要 cron 皆 active、fresh、最近 succeeded。Chromium 在此工作環境啟動時被 SIGTRAP 終止，交由 Ubuntu GitHub Actions 完成最終驗證。
+已驗證：626 回歸測試、91 DOM／SQL 整合測試；Supabase migration 與 `test-control-api` v33、`user-test-api` v25 已部署；正式資料庫以交易回滾驗證 QA 發券隔離、重复發券及零通知。五個主要 cron 皆 active、fresh、最近 succeeded。Chromium 8 個流程已由 Ubuntu GitHub Actions 實際執行通過。
+
+
+### 最新線上失敗紀錄修正
+
+2026-10-04 05:07–05:13 UTC 的協同執行揭露以下問題，均已加入修正與回歸驗證；原失敗紀錄保留，未改寫成通過。
+
+| 線上失敗 | 修正 |
+|---|---|
+| MEMBER_PROFILE_WRITE／MEMBER_HUMAN_PROFILE_EDIT: INVALID_PHONE | QA 正常写入改用新版電話規則接受的號碼，UI 指定台灣國碼並以正式 E.164 normalizer 比對回讀 |
+| 四頁 BUTTON_COVERAGE 未辨識教學控制、會員條款更新 | 明確納入既有教學與條款節點；各頁新按鈕未知時仍會失敗 |
+| BOOKING_HISTORY_TICKET_SOURCES: INVALID_CLIENT_TYPE | 使用 booking-api 現行 member bootstrap 契約，新增真正來源卡片比對的整合測試 |
+| EVENT_HUMAN_LIFECYCLE 第二張票超過每日 1 張 | 用 service-only QA 日期 fixture 將本人 QA UI 已使用票券移至前一個測試日；正式每日上限、正式歷史與其他會員資料不變，E2E 留存 fixture 影響筆數 |
+| 管理端優惠交接誤判缺少待核銷資訊 | 比對現在的 `.booking-ticket-status.status-pending` 與票券名稱，符合目前卡片 UI |
+| 第二位起的協同用戶教學被略過，完整覆蓋永久未完成 | 每位用戶完整走教學、還原個別儲存狀態；保持錯誤清理，避免 inert 鎖住後續節點 |
+| Chromium fixture 被正式 CSP 阻擋 | fixture 改用同來源外部腳本與正式 CSS，保留 production CSP；8 個相機/GPS 流程全部通過 |
+
+瀏覽器證據：[Chromium E2E 成功工作](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37180326482)。該次整合工作抓到的教學變數錯誤已修正，最後發布需核對新版整體 Validate 成功。

@@ -1203,6 +1203,7 @@
   }
 
   async function tourAutoStartCase() {
+    const pairedRunner = new URLSearchParams(window.location.search).has('qaPair');
     const dialog = document.getElementById('memberTourDialog');
     const app = document.getElementById('app') || document.querySelector('.app-shell');
     const opened = Boolean(await waitFor(
