@@ -106,7 +106,7 @@
 - 5 個用戶端頁面：完整登記節點全部納入 Full 計畫，既有安全／真人操作／Mutation 節點保留。
 - 瀏覽器與共用 JavaScript：68 個檔案語法檢查通過。
 - CI 保留回歸、DOM／SQL、JavaScript 語法、全部 Edge Functions 型別與靜態 wiring 五條驗證路徑，並加入新檔案。
-- 本機 Deno 型別檢查因 registry.npmjs.org 連線遭拒而無法完成；需由 GitHub Actions 的 Edge Function lane 判定。
+- 本機 Deno 曾因 registry.npmjs.org 連線遭拒而受阻；GitHub Actions 已完成全部 Edge Functions 型別檢查，結果通過。
 
 ## 實機與外部驗收項目
 
@@ -121,3 +121,14 @@
 管理端 → 測試管理 → 勾選模組／測試會員 → 開始所選模組完整 E2E。結果新增管理端與各用戶端的功能群組通過比例、證據層級及未通過節點；查看案例中的 Expected／Actual、失敗代碼、Trace 與截圖定位第一個差異。
 
 本次 QA 服務限制票券沿用 `qa:e2e:<runTag>` 所有權與現有手動測試資料清理流程；沒有資料庫 schema 變更。
+
+
+## 發布與線上驗證結果
+
+- 程式提交：[`938004c`](https://github.com/yongshengchen0615/yongshengchen0615.github.io/commit/938004c76889fbc7ed4a70a6653d74bfbb4d69c1)。
+- [GitHub CI](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37177672223)：回歸、DOM／SQL、瀏覽器語法、Edge Functions 型別、靜態 wiring 與最終 Validate 全部成功。CI 回歸紀錄為 626 項通過、0 失敗；DOM lane 的 Node 測試為 75 項通過，並執行另列的預約、SQL 與定位編輯器檢查。本機直接以所有 `.cjs` 執行的統計為 79 項通過。
+- [GitHub Pages](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37177671945)：部署成功。
+- 6 個入口 HTML 與 5 個共用／管理端／用戶端測試腳本已逐檔與發布來源比對，11 個線上檔案內容完全一致；6 個入口均載入新版功能覆蓋模組。
+- Supabase `test-control-api` v32、`user-test-api` v24 均為 ACTIVE；回讀部署來源與本次提交一致。`user-test-api` 的共用 Session helper 同步到儲存庫既有的 60 秒使用時間更新節流版本。
+- 無身分 POST：管理端 API 回應 HTTP 401／`AUTH_REQUIRED`，用戶測試 API 回應 HTTP 401／`TEST_SESSION_REQUIRED`。原有自訂身分驗證仍生效。
+- 本次未以 LINE 管理員身分執行整輪線上 Full E2E，亦未開啟實體相機；不能由上述 CI／部署成功推論所有實機及外部服務流程已驗收。
