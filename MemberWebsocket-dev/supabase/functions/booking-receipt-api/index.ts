@@ -47,22 +47,7 @@ function dbClient(): SupabaseClient {
   if(!url||!key) throw new ApiError(503,"SUPABASE_CONFIG_MISSING","Supabase server 設定尚未完成。");
   return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
 }
-async function pointCardTitlesForBenefits(supabase:SupabaseClient,rows:any[]):Promise<Map<string,string>>{
-  const refs=[...new Set((rows||[]).filter(row=>String(row?.benefit_kind||"")==="points").map(row=>String(row?.benefit_ref||"")).filter(Boolean))];
-  const titles=new Map<string,string>();
-  if(!refs.length) return titles;
-  const result=await supabase.from("point_tickets").select("ticket_id,point_cards(title)").in("ticket_id",refs);
-  if(result.error){
-    console.warn("booking receipt point-card title hydration failed",result.error.message);
-    return titles;
-  }
-  for(const ticket of result.data||[]){
-    const relation=Array.isArray((ticket as any).point_cards)?(ticket as any).point_cards[0]:(ticket as any).point_cards;
-    titles.set(String((ticket as any).ticket_id||""),String(relation?.title||""));
-  }
-  return titles;
-}
-async function sha256Hex(value: string):Promise<string>{
+function sha256Hex(value: string):Promise<string>{
   const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
 }
@@ -355,7 +340,7 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
         id,booking_date,start_time,status,total_duration_minutes,completed_at,
         booking_items(service_id,service_title,unit_duration_minutes,quantity,service_type),
         booking_completion_settlements(service_minutes,reward_details,created_at),
-        booking_benefit_selections(benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,result)
+        booking_benefit_selections(benefit_kind,title_snapshot,status,redeemed_at,result)
       )
     `)
     .eq("submission_mode","accessible")
@@ -363,12 +348,6 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
     .order("updated_at",{ascending:false})
     .limit(200);
   if(accessible.error) throw new ApiError(500,"DATABASE_ERROR","無障礙審核紀錄暫時無法讀取。");
-  const accessibleBenefitRows=(accessible.data||[]).flatMap((row:any)=>{
-    const booking=Array.isArray(row.bookings)?row.bookings[0]||null:row.bookings||null;
-    return Array.isArray(booking?.booking_benefit_selections)?booking.booking_benefit_selections:[];
-  });
-  const accessiblePointCardTitles=await pointCardTitlesForBenefits(supabase,accessibleBenefitRows);
-
   const accessibleRecords=(accessible.data||[]).map((row:any)=>{
     const booking=Array.isArray(row.bookings)?row.bookings[0]||null:row.bookings||null;
     const settlements=Array.isArray(booking?.booking_completion_settlements)
@@ -391,7 +370,6 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
       .map((item:any)=>({
         kind:String(item?.benefit_kind||""),
         title:String(item?.title_snapshot||"預約票券"),
-        cardTitle:String(item?.benefit_kind||"")==="points"?(accessiblePointCardTitles.get(String(item?.benefit_ref||""))||""):"",
         status:String(item?.status||""),
         redeemedAt:item?.redeemed_at||null,
       }));
@@ -687,8 +665,6 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
     memberResult.data,
     currentBooking&&String(currentBooking.status)==="confirmed"?requestedBookingId:"",
   );
-  const currentPointCardTitles=await pointCardTitlesForBenefits(supabase,currentBenefitsResult.data||[]);
-
   return {
     rewardRules:(rewardRules.data||[]).map((r:any)=>({serviceType:r.booking_service_types?.name||"",minutesPerPoint:r.minutes_per_point,cardTitle:r.point_cards?.title||""})),
     services:services.data||[],
@@ -702,7 +678,6 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
       kind:String(item.benefit_kind||""),
       id:String(item.benefit_ref||""),
       title:String(item.title_snapshot||"預約票券"),
-      cardTitle:String(item.benefit_kind||"")==="points"?(currentPointCardTitles.get(String(item.benefit_ref||""))||""):"",
       status:String(item.status||"pending"),
       redeemedAt:item.redeemed_at||null,
     })),
