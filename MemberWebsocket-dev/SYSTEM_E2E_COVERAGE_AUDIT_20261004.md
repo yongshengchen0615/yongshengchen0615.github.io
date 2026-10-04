@@ -162,4 +162,16 @@
 | 第二位起的協同用戶教學被略過，完整覆蓋永久未完成 | 每位用戶完整走教學、還原個別儲存狀態；保持錯誤清理，避免 inert 鎖住後續節點 |
 | Chromium fixture 被正式 CSP 阻擋 | fixture 改用同來源外部腳本與正式 CSS，保留 production CSP；8 個相機/GPS 流程全部通過 |
 
-瀏覽器證據：[Chromium E2E 成功工作](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37180326482)。該次整合工作抓到的教學變數錯誤已修正，最後發布需核對新版整體 Validate 成功。
+瀏覽器證據：[Chromium E2E 成功工作](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37180326482)。該次整合工作抓到的教學變數錯誤已修正；最新版 8bc8f9e 的六條工作與整體 Validate 全部成功。
+
+
+### 最終部署證據
+
+- 程式版本：`8bc8f9e5628c277fa120839f3794f27af8f87be6`；[完整 CI／Validate 成功](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37180450845)。六條必要工作全部通過；Chromium 8 個流程無略過。
+- [GitHub Pages 部署](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37180450544)完成；六頁入口與四個 E2E JS 已逐檔核對發布内容與本地版本一致。
+- Supabase `test-control-api` v33、`user-test-api` v25 為 ACTIVE，所有相對依賴已讀回比對；未登入請求分別維持 401 AUTH_REQUIRED／TEST_SESSION_REQUIRED。
+- 三個 migration 已部署：QA 固定發券隔離、service-only 排程健康、本人 QA 活動券日期 fixture。正式資料庫以回滾交易驗證發券去重／零通知與日期 fixture，不留下驗證會員或票券。
+- 本地結果：626 回歸、91 DOM／SQL 整合全部通過；五個主要 cron active、fresh、最近 succeeded。
+- Advisors：既有 service-role-only 表 RLS 無直接用戶 policy（INFO）、既有 pg_net public schema（WARN）、3 個未使用索引（INFO）；本次未增加授權或效能告警。
+
+這些證據完成程式實作、可自動化驗證與發布。尚未以真實 LINE 收件者或實體手機進行硬體驗收，也未將先前失敗的登入協同 Root 紀錄改寫成成功；應以部署後新執行的 Root 判定該次線上完整結果。
