@@ -59,10 +59,69 @@
   function benefitKindLabel(benefit) {
     return benefit?.kind === 'points' ? '集點卡票券' : benefit?.kind === 'event' ? '活動票券' : '預約票券';
   }
+  function benefitPresentation(benefit) {
+    const kind=String(benefit?.kind||'');
+    let sourceTitle=String(benefit?.cardTitle||'').trim();
+    let ticketTitle=String(benefit?.title||'預約票券').trim()||'預約票券';
+
+    if(kind==='points'){
+      const separator=ticketTitle.indexOf('｜');
+      if(!sourceTitle&&separator>0){
+        sourceTitle=ticketTitle.slice(0,separator).trim();
+        ticketTitle=ticketTitle.slice(separator+1).trim()||'集點卡票券';
+      }else if(sourceTitle&&ticketTitle.startsWith(`${sourceTitle}｜`)){
+        ticketTitle=ticketTitle.slice(sourceTitle.length+1).trim()||'集點卡票券';
+      }
+    }
+
+    const status=String(benefit?.status||'pending');
+    const statusLabel=({pending:'待核銷',redeemed:'已核銷',applied:'已核銷',cancelled:'已取消'})[status]||status;
+    return {kind,sourceTitle,ticketTitle,status,statusLabel};
+  }
   function benefitRecordTitle(benefit) {
-    const title=String(benefit?.title||'預約票券');
-    const cardTitle=String(benefit?.cardTitle||'').trim();
-    return benefit?.kind==='points'&&cardTitle?`${cardTitle}｜${title}`:title;
+    const view=benefitPresentation(benefit);
+    return view.sourceTitle?`${view.sourceTitle}｜${view.ticketTitle}`:view.ticketTitle;
+  }
+  function createBenefitRecordCard(benefit) {
+    const view=benefitPresentation(benefit);
+    const card=document.createElement('article');
+    card.className=`booking-ticket-card kind-${view.kind||'other'}`;
+
+    const top=document.createElement('div');
+    top.className='booking-ticket-card-top';
+    const kind=document.createElement('span');
+    kind.className='booking-ticket-kind';
+    kind.textContent=benefitKindLabel(benefit);
+    const status=document.createElement('span');
+    status.className=`booking-ticket-status status-${view.status||'pending'}`;
+    status.textContent=view.statusLabel;
+    top.append(kind,status);
+
+    const body=document.createElement('div');
+    body.className='booking-ticket-body';
+
+    if(view.kind==='points'&&view.sourceTitle){
+      const source=document.createElement('div');
+      source.className='booking-ticket-field booking-ticket-source';
+      const label=document.createElement('small');
+      label.textContent='來源集點卡';
+      const value=document.createElement('strong');
+      value.textContent=view.sourceTitle;
+      source.append(label,value);
+      body.append(source);
+    }
+
+    const title=document.createElement('div');
+    title.className='booking-ticket-field';
+    const titleLabel=document.createElement('small');
+    titleLabel.textContent='票券名稱';
+    const titleValue=document.createElement('strong');
+    titleValue.textContent=view.ticketTitle;
+    title.append(titleLabel,titleValue);
+    body.append(title);
+
+    card.append(top,body);
+    return card;
   }
   function formatTaipei(value, options = {}) {
     if (!value) return '';
@@ -213,13 +272,16 @@
 
     const benefits = el('accessibleAdminRecordBenefits'); benefits.replaceChildren();
     if (!(record.benefits || []).length) {
-      const empty = document.createElement('p'); empty.className = 'accessible-admin-section-note'; empty.textContent = '本次沒有核銷票券。'; benefits.append(empty);
-    } else (record.benefits || []).forEach(benefit => {
-      const row = document.createElement('div'); row.className = 'accessible-admin-record-list-row';
-      const strong = document.createElement('strong'); strong.textContent = benefitRecordTitle(benefit);
-      const small = document.createElement('small'); small.textContent = `${benefitKindLabel(benefit)} · ${benefit.status === 'redeemed' || benefit.status === 'applied' ? '已核銷' : benefit.status || '已記錄'}`;
-      row.append(strong,small); benefits.append(row);
-    });
+      const empty = document.createElement('p');
+      empty.className = 'accessible-admin-section-note';
+      empty.textContent = '本次沒有核銷票券。';
+      benefits.append(empty);
+    } else {
+      const grid = document.createElement('div');
+      grid.className = 'booking-ticket-grid';
+      (record.benefits || []).forEach(benefit => grid.append(createBenefitRecordCard(benefit)));
+      benefits.append(grid);
+    }
 
     el('accessibleAdminRecordImageLoading').classList.remove('hidden');
     el('accessibleAdminRecordImage').classList.add('hidden');
