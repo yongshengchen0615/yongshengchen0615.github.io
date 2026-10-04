@@ -910,7 +910,8 @@
       ticketList.className = 'booking-confirm-ticket-list';
       benefits.forEach((item) => {
         const ticket = document.createElement('li');
-        ticket.textContent = `${ticketKinds[item.kind] || '票券'}：${item.title || '未命名票券'}`;
+        const sourceTitle = item.kind === 'points' && item.cardTitle ? `${item.cardTitle}｜` : '';
+        ticket.textContent = `${ticketKinds[item.kind] || '票券'}：${sourceTitle}${item.title || '未命名票券'}`;
         ticketList.appendChild(ticket);
       });
       benefitBox.appendChild(ticketList);
