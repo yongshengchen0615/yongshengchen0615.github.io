@@ -422,7 +422,6 @@ async function hydrateBookings(supabase: SupabaseClient, rows: any[]): Promise<J
   ]);
   if (itemResult.error) throw mapDatabaseError(itemResult.error);
   if (benefitResult.error) throw mapDatabaseError(benefitResult.error);
-
   const grouped = new Map<string, any[]>();
   const benefitGrouped = new Map<string, any[]>();
   for (const item of itemResult.data || []) {
