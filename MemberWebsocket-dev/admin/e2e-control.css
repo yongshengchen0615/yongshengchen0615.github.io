@@ -399,3 +399,9 @@ html[data-theme="dark"] .admin-e2e-paired-config .admin-e2e-module-grid label:ha
   background: color-mix(in srgb, var(--theme-positive) 12%, var(--theme-surface-raised));
   border-color: color-mix(in srgb, var(--theme-positive) 42%, var(--theme-border-strong));
 }
+.e2e-feature-coverage { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+.e2e-feature-coverage:empty { display:none; }
+.e2e-feature-coverage-card { padding:14px; border:1px solid var(--line,#d8e0dc); border-radius:14px; background:var(--surface,#fff); color:var(--ink,#263c33); }
+.e2e-feature-coverage-card p { margin:8px 0; }
+.e2e-feature-coverage-card progress { width:100%; accent-color:var(--accent,#39826b); }
+.e2e-feature-coverage-card small { display:block; margin-top:6px; color:var(--muted,#647069); line-height:1.6; }

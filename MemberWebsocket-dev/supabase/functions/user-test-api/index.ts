@@ -1,3 +1,4 @@
+import { summarizeE2EExecution } from "../_shared/e2e-coverage.js";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
 import { readJsonObject } from "../_shared/request-body.ts";
@@ -706,6 +707,7 @@ async function persistUserQaRun(
       runnerVersion: "user-test-api-20260921-11",
       source: "member-client",
       surface,
+      ...summarizeE2EExecution(cases),
       skippedCases: skippedCount,
       memberId: identity.memberId,
       failureArtifactCases: failedCount,
@@ -1824,7 +1826,8 @@ function safeDiagnosticSnapshot(value: unknown, maxChars = 7000): Json {
 }
 
 async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawCases: unknown, timing: Json = {}): Promise<Json> {
-  const cases = Array.isArray(rawCases) ? rawCases.slice(0, 60) : [];
+  const cases = Array.isArray(rawCases) ? rawCases : [];
+  if (cases.length > 60) throw new ApiError(400,"INVALID_BROWSER_CASES","會員 E2E 案例不可超過 60 個，拒絕截斷測試證據。");
   if (!cases.length) throw new ApiError(400, "QA_BROWSER_CASES_REQUIRED", "沒有可記錄的瀏覽器測試案例。");
   const normalized = cases.map((raw: any, index: number) => {
     const status = ["passed","failed","skipped"].includes(String(raw?.status)) ? String(raw.status) : "failed";
@@ -1863,6 +1866,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       runnerVersion: "user-test-control-human-e2e-20260923-trace1",
       source: "member-client-browser",
       surface,
+      ...summarizeE2EExecution(normalized),
       skippedCases: skippedCount,
       memberId: identity.memberId,
       diagnosticsVersion: 3,
@@ -1870,8 +1874,8 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
         normalized.map((item) => item.diagnosis).filter(Boolean),
       ),
     },
-    started_at: now,
-    completed_at: now,
+    started_at: startedAt,
+    completed_at: completedAt,
     updated_at: now,
   }).select("id").single();
   if (run.error || !run.data) throw new ApiError(503, "QA_RECORD_WRITE_FAILED", "無法建立真人操作測試紀錄。");

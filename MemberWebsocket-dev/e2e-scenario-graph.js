@@ -105,6 +105,9 @@
 
     nodes.filter((node) => node.required).forEach((node) => include(node.key));
     const explicitRequired = Array.isArray(options?.requiredKeys) ? options.requiredKeys : [];
+    // Full coverage is independent of seed/complexity. Randomness changes order,
+    // never whether a registered feature is tested.
+    if (options?.coverageMode === 'full') nodes.forEach((node) => include(node.key));
     explicitRequired.forEach((key) => include(String(key || '')));
 
     const level = clamp(options?.complexityLevel || 1, 1, 8);
@@ -149,6 +152,7 @@
       version: 1,
       seed,
       complexityLevel: level,
+      coverageMode: options?.coverageMode === 'full' ? 'full' : 'sampled',
       fingerprint,
       keys,
       path: ordered.map((node, index) => ({

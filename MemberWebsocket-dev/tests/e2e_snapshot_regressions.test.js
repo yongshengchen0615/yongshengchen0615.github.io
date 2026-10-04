@@ -159,12 +159,12 @@ test('admin E2E API failures retain bounded transport context', () => {
 
 test('all affected entrypoints bust caches for the fixed controllers', () => {
   for (const surface of ['member','points','event','calendar','booking']) {
-    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=qa-e2e-20261001-\d+/);
+    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=qa-e2e-20261004-\d+/);
   }
   assert.match(read('booking/index.html'), /app\.js\?v=booking-member-chat-20261003-1/);
   assert.match(read('event/index.html'), /app\.js\?v=[^" ]+/);
   assert.match(read('admin/index.html'), /test-control\.js\?v=test-control-[A-Za-z0-9._-]+/);
-  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261001-\d+/);
+  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261004-\d+/);
 });
 
 
@@ -215,7 +215,7 @@ test('skipped backend cases complete the unified server phase without becoming a
 
 test('event daily-limit E2E waits for the current server snapshot to reach the badge', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const badge = await waitFor\(\(\) => \{[\s\S]*?domUsable === usable[\s\S]*?domLimit === limit/);
+  assert.match(runner, /const badge = await waitFor\(\(\) => \{[\s\S]*?node.textContent === expectedText[\s\S]*?Number\(node.dataset.maxTicketsPerDay\) === limit/);
   assert.match(runner, /6000, 100\)/);
   assert.doesNotMatch(runner, /const badge = await waitFor\(\(\) => document\.getElementById\('todayUsableTicketCount'\), 3000\)/);
 });

@@ -1,3 +1,4 @@
+import { summarizeE2EExecution, prepareE2EServiceRuleFixtures } from "../_shared/e2e-coverage.js";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
@@ -320,8 +321,13 @@ async function prepareComplexFixtures(
     throw new ApiError(503, "E2E_FIXTURE_PREPARE_FAILED", "目前無法建立完整 E2E 前置資料。", rpc.error.message || null);
   }
   const fixtureBase = rpc.data && typeof rpc.data === "object" ? rpc.data : {};
+  let serviceRules;
+  try { serviceRules = await prepareE2EServiceRuleFixtures(supabase, fixtureBase); }
+  catch (_) { throw new ApiError(503, "E2E_RULE_FIXTURE_PREPARE_FAILED", "目前無法建立服務項目限制測試票券。"); }
   const fixture = {
     ...(fixtureBase as Json),
+    ...serviceRules,
+    eventTickets: Number(fixtureBase.eventTickets || 0) + serviceRules.serviceRuleTickets,
     complexityLevel,
     seed,
   };
@@ -1452,8 +1458,8 @@ async function recordBrowserRun(
   }
 
   const rawCases = Array.isArray(body.cases) ? body.cases : [];
-  if (!rawCases.length || rawCases.length > 80) {
-    throw new ApiError(400, "INVALID_BROWSER_CASES", "瀏覽器 E2E 案例數量必須介於 1–80。");
+  if (!rawCases.length || rawCases.length > 500) {
+    throw new ApiError(400, "INVALID_BROWSER_CASES", "瀏覽器 E2E 案例數量必須介於 1–500。");
   }
 
   let memberId: string | null = null;
@@ -1530,6 +1536,7 @@ async function recordBrowserRun(
     summary: {
       runnerVersion: asText(body.runnerVersion, 80) || "admin-browser-e2e-legacy",
       runnerKind,
+      ...summarizeE2EExecution(normalized),
       skippedCases: skipped,
       memberId,
       durationMs,

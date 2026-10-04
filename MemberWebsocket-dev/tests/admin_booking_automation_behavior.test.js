@@ -365,7 +365,7 @@ test('maintenance must be enabled before any fixtures or accounts are created', 
   assert.equal(created, false);
 });
 
-test('large paired reports retain every case within the server limit of 80 per run', async () => {
+test('large paired reports retain every case within the server limit of 500 per run', async () => {
   const { qa } = harness();
   const payloads = [];
   qa.recordIO(async (slug, payload) => {
@@ -373,14 +373,14 @@ test('large paired reports retain every case within the server limit of 80 per r
     payloads.push(payload);
     return { run: { runCode: 'batch-' + payloads.length } };
   });
-  const rows = Array.from({ length: 185 }, (_, index) => ({
-    key: 'case-' + index, status: index === 184 ? 'failed' : 'passed', actual: { index }
+  const rows = Array.from({ length: 1185 }, (_, index) => ({
+    key: 'case-' + index, status: index === 1184 ? 'failed' : 'passed', actual: { index }
   }));
   const result = await qa.recordResultRows(rows, 'paired-browser', 'full', account.memberId, startedAt);
-  assert.deepEqual(payloads.map((payload) => payload.cases.length), [80, 80, 25]);
+  assert.deepEqual(payloads.map((payload) => payload.cases.length), [500, 500, 185]);
   assert.deepEqual(payloads.flatMap((payload) => Array.from(payload.cases, (row) => row.key)), rows.map((row) => row.key));
   assert.ok(payloads.every((payload) => payload.memberId === account.memberId && payload.startedAt === startedAt));
-  assert.equal(payloads[2].cases[24].status, 'failed');
+  assert.equal(payloads[2].cases[184].status, 'failed');
   assert.equal(result.runs.length, 3);
 });
 
@@ -490,4 +490,15 @@ test('admin item mutation avoids extending a booked technician when a safer part
   assert.match(source, /decrease-existing-quantity/);
   assert.match(source, /increase-unassigned-participant/);
   assert.match(source, /避免擴張已指定技師的預約時段/);
+});
+
+test('complete root recording retains every case together and refuses a partial oversized root',async()=>{
+  const {qa}=harness();const payloads=[];
+  qa.recordIO(async(_slug,payload)=>{payloads.push(payload);return {run:{runCode:'whole-root'}};});
+  const rows=Array.from({length:185},(_,i)=>({key:'ROOT_'+i,status:i===0?'failed':'passed'}));
+  await qa.recordResultRows(rows,'paired-browser','full','',startedAt,{rootRun:true,replayManifest:{seed:'same-run'}});
+  assert.equal(payloads.length,1);assert.equal(payloads[0].cases.length,185);assert.equal(payloads[0].rootRun,true);
+  assert.equal(payloads[0].replayManifest.seed,'same-run');
+  await assert.rejects(qa.recordResultRows(Array.from({length:501},()=>rows[0]),'paired-browser','full','',startedAt,{rootRun:true}),{code:'E2E_ROOT_CASE_LIMIT'});
+  assert.equal(payloads.length,1);
 });

@@ -16,7 +16,7 @@ test('user E2E captures bounded diagnostics only for failed cases', () => {
   assert.match(runner, /running\.status === 'failed'/);
   assert.match(runner, /trace: item\.status === 'failed'/);
   assert.match(runner, /function compactFailureTrace\(/);
-  assert.match(runner, /bytes > 60_000/);
+  assert.match(runner, /compactRecordPayload\?\.\(payload, 60_000\)/);
   assert.match(runner, /events: state\.traceEvents\.slice/);
   assert.match(runner, /booking:bookings-rendered/);
 });
@@ -29,7 +29,7 @@ test('admin E2E keeps failure diagnostics separate from ordinary successful resu
   assert.match(runner, /trace: item\.status === 'failed'/);
   assert.match(runner, /dataBox\('Diagnostics', item\.trace\)/);
   assert.match(runner, /childFailures/);
-  assert.match(runner, /trace: item\.status === 'failed' \? compactRecordSnapshot\(item\.trace \|\| \{\}, 1600\)/);
+  assert.match(runner, /compactRecordPayload\?\.\(payload\)/);
 });
 
 test('both browser-run APIs persist a second failure-trace step only for failures', () => {
@@ -48,8 +48,8 @@ test('both browser-run APIs persist a second failure-trace step only for failure
 });
 
 test('failure-trace assets are cache-busted on admin and every member surface', () => {
-  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261001-\d+/);
+  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261004-\d+/);
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
-    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=qa-e2e-20261001-\d+/);
+    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=qa-e2e-20261004-\d+/);
   }
 });

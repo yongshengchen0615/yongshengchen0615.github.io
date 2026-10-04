@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-01.6';
+  const VERSION = '2026-10-04.1';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -38,8 +38,14 @@
     ADMIN_TEST_MEMBER_PROFILE_EDIT: ['member'], ADMIN_MEMBER_DIRECTORY_CONTROLS: ['member'],
     ADMIN_MEMBERSHIP_TERMS: ['member'],
     ADMIN_FORCE_LOGOUT_SECURITY: ['member'],
-    ADMIN_MESSAGE_PRESET_EDITOR: ['member'], ADMIN_THEME_TOGGLE: ['member'],
-    ADMIN_RESOURCE_EDITORS: ['points', 'event', 'calendar'],
+    ADMIN_MESSAGE_PRESET_EDITOR: ['member'],
+    ADMIN_RESOURCE_EDITORS: ['points', 'event', 'calendar', 'booking'],
+    ADMIN_TIER_SETTINGS: ['member'], ADMIN_GRANT_NOTIFICATION_CONTROLS: ['member'],
+    ADMIN_POINT_LIMIT_SETTINGS: ['points'],
+    ADMIN_BIRTHDAY_SETTINGS: ['event'], ADMIN_FIXED_TICKET_CONTROLS: ['event'],
+    ADMIN_TICKET_LOCATION_CONTROLS: ['points','event'], ADMIN_TICKET_SERVICE_RULES: ['points','event','booking'],
+    ADMIN_BOOKING_ACCESSIBLE_QUEUE: ['booking'], ADMIN_BOOKING_HISTORY_TICKET_SOURCES: ['booking'],
+    ADMIN_BOOKING_RESOURCE_CONTROLS: ['booking'],
     ADMIN_TICKET_CRUD: ['points'], ADMIN_LOTTERY_TICKET_CRUD: ['points', 'event'],
     ADMIN_POINT_CARD_CRUD: ['points'], ADMIN_EVENT_TICKET_CRUD: ['event'],
     ADMIN_EVENT_DAILY_LIMIT_SETTINGS: ['event'],
@@ -57,6 +63,16 @@
     booking: 'ADMIN_BOOKING_CONTROLS'
   });
   const ADMIN_NODE_META = Object.freeze({
+    ADMIN_TIER_SETTINGS: {module:'member',phase:3,dependencies:['ADMIN_PRIMARY_NAVIGATION']},
+    ADMIN_GRANT_NOTIFICATION_CONTROLS: {module:'member',phase:4,dependencies:['ADMIN_TEST_MEMBER_ROSTER']},
+    ADMIN_POINT_LIMIT_SETTINGS: {module:'points',phase:3,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_BIRTHDAY_SETTINGS: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_FIXED_TICKET_CONTROLS: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_TICKET_LOCATION_CONTROLS: {module:'ticket',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_TICKET_SERVICE_RULES: {module:'ticket',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_BOOKING_ACCESSIBLE_QUEUE: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_BOOKING_HISTORY_TICKET_SOURCES: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_BOOKING_RESOURCE_CONTROLS: {module:'booking',phase:3,dependencies:['ADMIN_BOOKING_CONTROLS']},
     ADMIN_AUTH_READY: { module: 'shared', phase: 0, required: true, risk: 'auth' },
     ADMIN_PRIMARY_NAVIGATION: { module: 'shared', phase: 1, required: true, dependencies: ['ADMIN_AUTH_READY'] },
     ADMIN_TEST_MEMBER_ROSTER: { module: 'member', phase: 2, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
@@ -104,6 +120,8 @@
     activeHumanCaptureCleanup: null,
     rootRunId: '',
     adminScenarioPlan: null,
+    featureCoverage: null,
+    clientCoverage: [],
     adminRandomStateAfterPlan: 0,
     replayContext: null,
     replayManifest: null,
@@ -508,6 +526,8 @@
       message: state.lastMessage,
       messageError: state.lastMessageError,
       summary: { total: state.results.length, passed, failed, skipped },
+      coverage: safe(state.featureCoverage),
+      clientCoverage:safe(state.clientCoverage.map(item => ({participant:item.participant,surface:item.surface,coverage:item.coverage ? {total:item.coverage.total,counts:item.coverage.counts,complete:item.coverage.complete}:null}))),
       results: state.results.slice(-200).map((row) => ({
         key: String(row?.key || ''),
         name: String(row?.name || ''),
@@ -546,6 +566,8 @@
     state.cancelled = Boolean(snapshot.cancelled);
     state.lastMessage = String(snapshot.message || '');
     state.lastMessageError = Boolean(snapshot.messageError);
+    state.featureCoverage = snapshot.coverage || null;
+    state.clientCoverage = snapshot.clientCoverage || [];
     state.results = Array.isArray(snapshot.results) ? snapshot.results.map((row) => ({ ...row })) : state.results;
     state.participants = Array.isArray(snapshot.participants)
       ? snapshot.participants.map((participant) => ({ ...participant }))
@@ -755,6 +777,8 @@
     state.cancelled = false;
     state.failureScreenshotsCaptured = 0;
     state.results = [];
+    state.featureCoverage = null;
+    state.clientCoverage = [];
     state.participants = [];
     state.runStartedAt = new Date().toISOString();
     state.adminScenarioPlan = null;
@@ -785,6 +809,8 @@
         replay
       }), runnerWindow);
 
+      state.featureCoverage = result?.coverage || null;
+      state.clientCoverage = result?.clientCoverage || [];
       if (Array.isArray(result?.results)) state.results = result.results.map((row) => ({ ...row }));
       render();
       try { await window.MemberAdminTestControl?.refresh?.(); } catch {}
@@ -938,6 +964,50 @@
     publishBackgroundStatus();
   }
 
+  function finalizeFeatureCoverage() {
+    const coverage = window.MemberE2EFeatureCoverage?.report?.({side:'admin',modules:state.selectedModules,
+      registeredKeys:adminDefinitions('full').map(item => item.key),
+      plannedKeys:state.adminScenarioPlan?.keys || [], results:state.results});
+    state.featureCoverage = coverage || null;
+    const gaps = coverage?.features.filter(item => item.status !== 'passed').map(item => ({id:item.id,level:item.level,status:item.status,keys:item.keys})) || [];
+    state.results.push({key:'ADMIN_FEATURE_COVERAGE_SUMMARY',name:'管理端功能節點執行覆蓋摘要',domain:'Coverage',durationMs:0,
+      ...(!coverage || coverage.counts.unregistered || coverage.counts.unplanned
+        ? fail('功能節點缺少登記或本輪路徑不完整。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps})
+        : coverage.complete ? pass('所選模組的管理端登記節點均通過。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})
+        : skip('管理端仍有失敗、略過或未執行功能，未宣稱完整驗證。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps}))});
+    render();
+  }
+
+  function renderFeatureCoverage() {
+    if (!state.section) return;
+    let host = state.section.querySelector('[data-e2e-feature-coverage]');
+    if (!host) {
+      host = document.createElement('div');
+      host.dataset.e2eFeatureCoverage = 'true';
+      host.className = 'e2e-feature-coverage';
+      host.setAttribute('aria-live','polite');
+      state.summary?.before(host);
+    }
+    host.replaceChildren();
+    if (!state.featureCoverage) return;
+    const reports = [['管理端',state.featureCoverage],...state.clientCoverage.map(item => ['用戶 ' + item.participant + ' · ' + item.surface,item.coverage])];
+    for (const [label,report] of reports) {
+      const card = document.createElement('article');
+      card.className = 'e2e-feature-coverage-card';
+      const heading = document.createElement('strong'); heading.textContent = label;
+      const count = document.createElement('p');
+      count.textContent = report ? `${report.counts.passed || 0} / ${report.total} 功能群組通過` : '尚無覆蓋結果';
+      card.append(heading,count);
+      if (report) {
+        const progress = document.createElement('progress');progress.max=report.total || 1;progress.value=report.counts.passed || 0;progress.setAttribute('aria-label',label + ' 功能群組通過數');card.append(progress);
+        const status = document.createElement('small');
+        status.textContent = report.complete ? '登記節點均通過；裝置／外部服務限制另列' : `失敗 ${report.counts.failed || 0} · 阻擋 ${report.counts.blocked || 0} · 未執行 ${report.counts['not-run'] || 0} · 未納入 ${(report.counts.unplanned || 0) + (report.counts.unregistered || 0)}`;
+        card.append(status);
+      }
+      host.append(card);
+    }
+  }
+
   function render() {
     const passed = state.results.filter((r) => r.status === 'passed').length;
     const failed = state.results.filter((r) => r.status === 'failed').length;
@@ -946,6 +1016,7 @@
       publishBackgroundStatus();
       return;
     }
+    renderFeatureCoverage();
     state.summary.textContent = `共 ${state.results.length} 案例 · ${passed} 通過 · ${failed} 失敗 · ${skipped} 略過`;
     state.list.replaceChildren(...state.results.map((item, index) => {
       const details = document.createElement('details');
@@ -1418,10 +1489,13 @@
   async function recordResultRows(rows, runnerKind, suite, memberId = '', startedAt = '', recordMeta = {}) {
     const sourceRows = Array.isArray(rows) ? rows : [];
     if (!sourceRows.length) return null;
-    // test-control-api accepts at most 80 cases per browser run.
-    if (sourceRows.length > 80) {
+    // Keep a complete root in one record; only oversized non-root reports may batch.
+    if (sourceRows.length > 500 && recordMeta?.rootRun === true) {
+      throw Object.assign(new Error('Root E2E 超過 500 個案例，拒絕只保存部分 Root 結果。'), {code:'E2E_ROOT_CASE_LIMIT'});
+    }
+    if (sourceRows.length > 500) {
       const chunks = [];
-      for (let offset = 0; offset < sourceRows.length; offset += 80) chunks.push(sourceRows.slice(offset, offset + 80));
+      for (let offset = 0; offset < sourceRows.length; offset += 500) chunks.push(sourceRows.slice(offset, offset + 500));
       let rootBatchIndex = chunks.length - 1;
       if (recordMeta?.rootRun === true) {
         const failedIndex = chunks.map((chunk) => chunk.some((row) => row?.status === 'failed')).lastIndexOf(true);
@@ -1471,16 +1545,11 @@
       replayManifest: recordMeta?.replayManifest || undefined,
       replayOfRunId: String(recordMeta?.replayOfRunId || '') || undefined
     };
-    const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
-    if (bytes > 320000) {
-      payload.cases = cases.map((item) => ({
-        ...item,
-        expected: compactRecordSnapshot(item.expected, 500),
-        actual: compactRecordSnapshot(item.actual, 900),
-        trace: item.status === 'failed' ? compactRecordSnapshot(item.trace || {}, 1600) : undefined
-      }));
+    const fitted = window.MemberE2EFeatureCoverage?.compactRecordPayload?.(payload) || payload;
+    if (new TextEncoder().encode(JSON.stringify(fitted)).byteLength > 320000) {
+      throw Object.assign(new Error('E2E 紀錄容量超過限制。'),{code:'E2E_RECORD_TOO_LARGE'});
     }
-    return postFunction('test-control-api', payload);
+    return postFunction('test-control-api', fitted);
   }
 
   async function recordRun(runnerKind, suite, memberId = '', extraMeta = {}) {
@@ -1505,6 +1574,16 @@
     if (suite !== 'full') return common;
     const allSelected = modules.length === E2E_MODULES.length;
     return common.concat([
+      caseDef('ADMIN_TIER_SETTINGS', '會員等級門檻與樣式設定契約', 'Configuration', adminTierSettingsCase),
+      caseDef('ADMIN_GRANT_NOTIFICATION_CONTROLS', '發放通知：立即／排程／不傳送切換', 'Human E2E', adminGrantNotificationControlsCase),
+      caseDef('ADMIN_POINT_LIMIT_SETTINGS', '集點卡上限：Server/UI 與 0 不限', 'Admin Settings E2E', adminPointLimitSettingsCase),
+      caseDef('ADMIN_BIRTHDAY_SETTINGS', '壽星優惠：讀取與空值驗證', 'Human E2E', adminBirthdaySettingsCase),
+      caseDef('ADMIN_FIXED_TICKET_CONTROLS', '固定票券：週期與效期草稿切換', 'Human E2E', adminFixedTicketControlsCase),
+      caseDef('ADMIN_TICKET_LOCATION_CONTROLS', '票券 GPS 地點編輯器契約', 'Configuration', adminTicketLocationControlsCase),
+      caseDef('ADMIN_TICKET_SERVICE_RULES', '票券服務項目與 any／all 編輯器', 'Human E2E', adminTicketServiceRulesCase),
+      caseDef('ADMIN_BOOKING_ACCESSIBLE_QUEUE', '無障礙：待確認／已完成／全部篩選', 'Human E2E', adminBookingAccessibleQueueCase),
+      caseDef('ADMIN_BOOKING_HISTORY_TICKET_SOURCES', '管理端預約：票券來源卡片', 'Booking / History', adminBookingHistoryTicketSourcesCase),
+      caseDef('ADMIN_BOOKING_RESOURCE_CONTROLS', '技師：啟用／停用列表與新增取消', 'Human E2E', adminBookingResourceControlsCase),
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
       caseDef('ADMIN_MEMBERSHIP_TERMS', '會員條款：管理端版本清單與啟用版本契約', 'Legal E2E', adminMembershipTermsCase),
       caseDef('ADMIN_FORCE_LOGOUT_SECURITY', '強制下線：測試會員 Session 撤銷與維護邊界', 'Security E2E', adminForceLogoutSecurityCase),
@@ -1532,6 +1611,7 @@
     ]).filter((definition) => {
       if (definition.key === 'ADMIN_AUTH_READY' || definition.key === 'ADMIN_PRIMARY_NAVIGATION') return true;
       const owners = ADMIN_CASE_MODULES[definition.key];
+      if (['ADMIN_THEME_TOGGLE','ADMIN_TEST_MODE_CONTROLS','ADMIN_TEST_ACCOUNT_LIFECYCLE'].includes(definition.key)) return true;
       return owners ? owners.some((key) => modules.includes(key)) : allSelected;
     });
   }
@@ -1568,7 +1648,7 @@
     const plan = planner.planScenario({
       nodes: catalog, metaByKey: ADMIN_NODE_META, randomUnit: nextRandomUnit,
       seed: state.randomSeed + '-ADMIN', complexityLevel: state.complexityLevel,
-      minNodes: Math.min(10,catalog.length), maxNodes: Math.min(18,catalog.length), requiredKeys
+      coverageMode: 'full', minNodes: catalog.length, maxNodes: catalog.length, requiredKeys
     });
     const byKey = new Map(catalog.map((item) => [item.key,item]));
     state.adminScenarioPlan = plan;
@@ -1752,6 +1832,8 @@
     }
 
     state.results = [];
+    state.featureCoverage = null;
+    state.clientCoverage = [];
     state.participants = [];
     state.runStartedAt = new Date().toISOString();
     const runTraceMarker = adminDiagnosticMarker();
@@ -1940,6 +2022,7 @@
         ], '真人互動覆蓋驗證');
       }
 
+      finalizeFeatureCoverage();
       const cancelled = state.cancelled;
       state.replayManifest = !cancelled ? buildReplayManifest() : null;
       const recorded = !cancelled && state.results.length
@@ -1958,6 +2041,8 @@
       setMessage(
         cancelled
           ? '協同 E2E 已停止；已完成案例與管理端建立的測試資料均保留，用戶端視窗保留供檢查。'
+          : state.results.some(item => item.status === 'skipped') && !failed
+            ? '測試已結束，仍有環境阻擋或未驗證功能；請查看功能覆蓋摘要。'
           : failed
             ? participantCount + ' 位測試用戶隨機協同 E2E 完成，發現 ' + failed + ' 個異常；高複雜度測試資料保留供檢查。'
             : participantCount + ' 位測試用戶已完成隨機多路徑管理端 ↔ 用戶端協同 E2E；高複雜度測試資料保留，需由「移除測試資料」統一清理。',
@@ -1969,6 +2054,8 @@
         backendRun: safe(backendRun?.run || {}),
         selectedModules: safe(selectedModules),
         adminScenario: safe(state.adminScenarioPlan),
+        coverage:safe(state.featureCoverage),
+        clientCoverage:safe(state.clientCoverage),
         replayManifest: safe(state.replayManifest),
         replayOfRunId: String(state.replayContext?.sourceRunId || ''),
         replayComparison: safe(recorded?.run?.summary?.replayComparison || {}),
@@ -2074,6 +2161,7 @@
           await participant.adminBookingTask;
         }
         const summary = child?.summary || {};
+        state.clientCoverage.push({ participant:participant.index, surface, coverage:child.coverage || null });
         participant.surfaceReplayResults = participant.surfaceReplayResults || {};
         participant.surfaceReplayResults[surface] = {
           scenarioFingerprint: String(summary.scenarioFingerprint || ''),
@@ -2094,6 +2182,8 @@
           memberCode: participant.account?.memberCode || null,
           sessionSurface: surface,
           sameTestMember: childMemberId === participant.account?.memberId,
+          coverageComplete:child.coverage?.complete === true,
+          coverageCounts:safe(child.coverage?.counts || {}),
           humanInteractionVerified,
           humanInteraction: safe(humanInteraction),
           passed: Number(summary.passed || 0),
@@ -2108,11 +2198,14 @@
           Object.assign(row, skip(label + ' E2E 已依停止要求中止。', { stoppedSafely: true }, row.actual));
         } else {
           const sameMember = childMemberId === participant.account?.memberId;
+          const blocked = Number(summary.failed || 0) === 0 && child.coverage?.complete === false && sameMember && humanInteractionVerified;
           const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember && humanInteractionVerified;
-          Object.assign(row, ok
+          Object.assign(row, blocked
+            ? skip(label + '有略過或未驗證節點，查看功能覆蓋摘要。', row.expected, row.actual)
+            : ok
             ? pass(label + '隨機真人 E2E 通過，且使用的是該用戶端專屬測試 Session。', row.expected, row.actual)
             : fail(label + '真人 E2E、Session surface 或測試用戶一致性驗證失敗。', row.expected, row.actual));
-          if (!ok) {
+          if (!ok && !blocked) {
             const childFailures = Array.isArray(child?.results)
               ? child.results.filter((item) => item?.status === 'failed').slice(0, 8).map((item) => ({
                   key: item.key,
@@ -5861,6 +5954,193 @@
   }
 
 
+  async function adminTierSettingsCase() {
+    const values = ['General','Silver','Gold','Platinum'].map(tier => ({
+      tier, minutes:Number(document.getElementById('tier' + tier + 'Minutes')?.value ?? NaN),
+      style:String(document.getElementById('tier' + tier + 'Style')?.value || '')
+    }));
+    const valid = values.every((item,index) => Number.isInteger(item.minutes) && item.style &&
+      (index === 0 ? item.minutes === 0 : item.minutes > values[index - 1].minutes));
+    return valid
+      ? pass('四級會員門檻依序遞增且具有卡面設定。', { orderedThresholds:true, styles:true }, {values})
+      : fail('會員門檻或卡面設定契約不完整。', { orderedThresholds:true, styles:true }, {values});
+  }
+
+  async function adminGrantNotificationControlsCase() {
+    const edit = await ensureTestRoster();
+    await clickRowAction('add-grant', edit.dataset.value);
+    const modal = await waitFor(() => !document.getElementById('grantModal')?.classList.contains('hidden') && document.getElementById('grantModal'), 4000);
+    if (!modal) return fail('發放視窗未開啟。', { opened:true }, { opened:false });
+    const original = modal.querySelector('input[name="grantNotificationMode"]:checked')?.value || 'immediate';
+    const checks = [];
+    try {
+      for (const mode of ['scheduled','none','immediate']) {
+        const radio = modal.querySelector('input[name="grantNotificationMode"][value="' + mode + '"]');
+        radio?.click();
+        const input = document.getElementById('grantNotificationScheduledAt');
+        checks.push({mode, selected:radio?.checked === true,
+          correctRequired:input?.required === (mode === 'scheduled'), correctDisabled:input?.disabled === (mode !== 'scheduled')});
+      }
+    } finally {
+      modal.querySelector('input[name="grantNotificationMode"][value="' + original + '"]')?.click();
+      document.getElementById('cancelGrantButton')?.click();
+    }
+    return checks.every(item => item.selected && item.correctRequired && item.correctDisabled)
+      ? pass('通知三種模式可切換，排程日期只在排程模式必填；未送出發放。', { modes:3 }, {checks})
+      : fail('通知模式與日期狀態不一致。', { modes:3 }, {checks});
+  }
+
+  async function adminPointLimitSettingsCase() {
+    document.getElementById('cardsTab')?.click();
+    const input = await waitFor(() => document.getElementById('globalMaxTicketsPerRedemption'), 3000);
+    const session = await adminSession();
+    const data = await postFunction('pointcard-extension-api', { operation:'admin.settings.get', idToken:session.idToken });
+    const limit = Number(data.maxTicketsPerRedemption);
+    const actual = { limit, uiLimit:Number(input?.value ?? NaN), min:input?.min,
+      saveButton:Boolean(document.getElementById('saveGlobalTicketSettingButton')) };
+    const ok = Number.isInteger(limit) && limit >= 0 && limit <= 50 && actual.uiLimit === limit && actual.min === '0' && actual.saveButton;
+    return ok ? pass('集點卡使用上限與 Server 一致，0 是合法不限張數。', { range:[0,50], matched:true }, actual)
+      : fail('集點卡使用上限或不限張數契約不一致。', { range:[0,50], matched:true }, actual);
+  }
+
+  async function adminBirthdaySettingsCase() {
+    document.getElementById('eventsTab')?.click();
+    const form = await waitFor(() => document.getElementById('birthdayBenefitForm'), 3000);
+    const session = await adminSession();
+    const data = await postFunction('birthday-benefits', {action:'admin.birthday-benefit.get',idToken:session.idToken});
+    const title = document.getElementById('birthdayBenefitTitleTemplate');
+    if (!form || !title) return fail('壽星優惠表單未載入。', { form:true }, { form:false });
+    const original = title.value;
+    let rejected = false;
+    try {
+      setField('birthdayBenefitTitleTemplate','');
+      form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+      rejected = /請填寫票券名稱/.test(document.getElementById('birthdayBenefitMessage')?.textContent || '');
+    } finally {
+      setField('birthdayBenefitTitleTemplate',original);
+      document.getElementById('birthdayBenefitMessage')?.classList.add('hidden');
+    }
+    const actual = { settings:Boolean(data.settings), rejected, tiers:document.querySelectorAll('[data-birthday-tier]').length };
+    return actual.settings && rejected && actual.tiers === 4
+      ? pass('壽星設定可授權讀取，空名稱在前端拒絕；未執行正式發放。', { settings:true, rejected:true,tiers:4 }, actual)
+      : fail('壽星優惠讀取或空值驗證異常。', { settings:true, rejected:true,tiers:4 }, actual);
+  }
+
+  async function adminFixedTicketControlsCase() {
+    document.getElementById('eventsTab')?.click();
+    document.getElementById('newEventTicketButton')?.click();
+    const modal = await waitFor(() => document.getElementById('eventTicketEditorModal'), 3000);
+    const checks = [];
+    try {
+      setField('eventTicketType','fixed');
+      for (const mode of ['birthday_month','yearly','monthly','weekly']) {
+        setField('fixedTicketScheduleType',mode);
+        checks.push({mode,monthVisible:!document.getElementById('fixedTicketYearlyMonthField')?.classList.contains('hidden'),
+          dayVisible:!document.getElementById('fixedTicketScheduleDayField')?.classList.contains('hidden'),
+          weekdayVisible:!document.getElementById('fixedTicketWeekdayField')?.classList.contains('hidden')});
+      }
+      for (const mode of ['month_end','week_end','days_after_issue','fixed_date']) {
+        setField('fixedTicketExpiryMode',mode);
+        const id = mode === 'days_after_issue' ? 'fixedTicketExpiryDays' : mode === 'fixed_date' ? 'fixedTicketExpiryDate' : '';
+        checks.push({mode,expiryControl:!id || Boolean(document.getElementById(id) && !document.getElementById(id).disabled)});
+      }
+    } finally { modal?.querySelector('.editor-modal-close, .close-button')?.click(); }
+    const scheduleOk = checks.slice(0,4).every(item => item.monthVisible === (item.mode === 'yearly') &&
+      item.dayVisible === ['yearly','monthly'].includes(item.mode) && item.weekdayVisible === (item.mode === 'weekly'));
+    return scheduleOk && checks.slice(4).every(item => item.expiryControl)
+      ? pass('固定票券四種週期與四種效期控制可操作；未儲存或發放。', { scheduleModes:4,expiryModes:4 }, {checks})
+      : fail('固定票券週期或效期控制異常。', { scheduleModes:4,expiryModes:4 }, {checks});
+  }
+
+  async function adminTicketLocationControlsCase() {
+    const editors = window.TicketLocationEditors;
+    const actual = { event:Boolean(editors?.event?.get && editors?.event?.setDraft && editors?.event?.commitDraft),
+      template:Boolean(editors?.template?.get && editors?.template?.setDraft && editors?.template?.commitDraft),
+      eventToggle:Boolean(document.getElementById('eventTicketRequiresLocation')),
+      templateToggle:Boolean(document.getElementById('ticketRequiresLocation')) };
+    return Object.values(actual).every(Boolean)
+      ? pass('兩種票券皆掛載 GPS 地點編輯及驗證契約；實機定位另外驗收。', { editors:2 }, actual)
+      : fail('票券 GPS 編輯器契約未完整掛載。', { editors:2 }, actual);
+  }
+
+  async function adminTicketServiceRulesCase() {
+    const actual = {event:false,reward:false};
+    try {
+      document.getElementById('eventsTab')?.click();
+      document.getElementById('newEventTicketButton')?.click();
+      const mode = await waitFor(() => document.getElementById('eventTicketRequiredServiceMatchMode'), 3000);
+      actual.event = Boolean(document.getElementById('eventTicketRequiredServiceIds')) && ['any','all'].every(value => mode?.querySelector('option[value="' + value + '"]'));
+      if (mode) { setField(mode.id,'all'); actual.event = actual.event && mode.value === 'all'; setField(mode.id,'any'); }
+    } finally { document.getElementById('eventTicketEditorModal')?.querySelector('.editor-modal-close, .close-button')?.click(); }
+    try {
+      document.getElementById('cardsTab')?.click();
+      document.getElementById('newCardButton')?.click();
+      const row = await waitFor(() => document.querySelector('[data-reward-required-service-ids]'), 3000);
+      const mode = document.querySelector('[data-reward-row] [data-field="requiredServiceMatchMode"]');
+      actual.reward = Boolean(row && mode && ['any','all'].every(value => mode.querySelector('option[value="' + value + '"]')));
+      if (mode) { mode.value='all';mode.dispatchEvent(new Event('change',{bubbles:true}));actual.reward = actual.reward && mode.value === 'all'; }
+    } finally { document.getElementById('cardEditorModal')?.querySelector('.editor-modal-close, .close-button')?.click(); }
+    return actual.event && actual.reward
+      ? pass('活動券及集點卡節點均可設定具體服務項目與 any／all。', {event:true,reward:true}, actual)
+      : fail('票券服務項目或 any／all 編輯器未完整掛載。', {event:true,reward:true}, actual);
+  }
+
+  async function adminBookingAccessibleQueueCase() {
+    document.getElementById('bookingTab')?.click();
+    const mode = await waitFor(() => document.getElementById('bookingAdminAccessibleMode'), 4000);
+    const originalMode = document.getElementById('bookingAdminQueuePanel')?.getAttribute('data-queue-mode') || 'normal';
+    const originalFilter = document.querySelector('[data-accessible-filter][aria-selected="true"]')?.dataset.accessibleFilter || 'pending';
+    const session = await adminSession();
+    const data = await postFunction('booking-receipt-api',{action:'admin.booking.receipt.list',clientType:'admin',idToken:session.idToken});
+    const checks = [];
+    try {
+      mode?.click();
+      for (const filter of ['pending','completed','all']) {
+        const tab = document.querySelector('[data-accessible-filter="' + filter + '"]');
+        tab?.click();
+        checks.push({filter,selected:tab?.getAttribute('aria-selected') === 'true',queueVisible:!document.getElementById('accessibleAdminQueue')?.classList.contains('hidden')});
+      }
+    } finally {
+      document.querySelector('[data-accessible-filter="' + originalFilter + '"]')?.click();
+      if (originalMode !== 'accessible') document.getElementById('bookingAdminStandardMode')?.click();
+    }
+    const actual = { recordsArray:Array.isArray(data.accessibleRecords), checks };
+    return actual.recordsArray && checks.every(item => item.selected && item.queueVisible)
+      ? pass('無障礙紀錄可讀取，三個狀態篩選可操作並還原。', {recordsArray:true,filters:3}, actual)
+      : fail('無障礙列表或狀態篩選異常。', {recordsArray:true,filters:3}, actual);
+  }
+
+  async function adminBookingHistoryTicketSourcesCase() {
+    document.getElementById('bookingTab')?.click();
+    const cards = Array.from(document.querySelectorAll('#bookingPanel .booking-ticket-card'));
+    if (!cards.length) return skip('管理端目前沒有帶票券的預約卡片。', { ticketCards:true }, {blockerCode:'E2E_BOOKING_BENEFITS_HISTORY_MISSING'});
+    const malformed = cards.filter(card => !card.querySelector('.booking-ticket-kind') ||
+      !card.querySelector('.booking-ticket-status') || !card.querySelector('.booking-ticket-field strong') ||
+      (card.classList.contains('kind-points') && !card.querySelector('.booking-ticket-source strong')));
+    return !malformed.length
+      ? pass('管理端票券卡片具有種類、狀態、票券名稱與來源集點卡。', {malformed:0}, {cards:cards.length,malformed:malformed.length})
+      : fail('管理端票券來源卡片缺少必要欄位。', {malformed:0}, {cards:cards.length,malformed:malformed.length});
+  }
+
+  async function adminBookingResourceControlsCase() {
+    document.getElementById('bookingTab')?.click();
+    const active = await waitFor(() => document.getElementById('bookingAdminTechnicianActiveTab'),4000);
+    const disabled = document.getElementById('bookingAdminTechnicianDisabledTab');
+    const original = active?.getAttribute('aria-selected') !== 'false';
+    const checks = [];
+    try {
+      for (const button of [disabled,active]) { button?.click();checks.push(Boolean(button?.classList.contains('active') || button?.getAttribute('aria-selected') === 'true')); }
+      document.getElementById('bookingAdminNewTechnicianButton')?.click();
+      const modal = document.getElementById('bookingAdminTechnicianModal');
+      checks.push(Boolean(modal && !modal.classList.contains('hidden')));
+      document.getElementById('bookingAdminTechnicianModalCancel')?.click();
+      checks.push(Boolean(modal?.classList.contains('hidden')));
+    } finally { (original ? active : disabled)?.click(); }
+    return checks.every(Boolean)
+      ? pass('技師列表可切換，新增視窗可以取消而不建立資料。', {allChecks:true}, {checks})
+      : fail('技師狀態列表或新增取消流程異常。', {allChecks:true}, {checks});
+  }
+
   async function adminForceLogoutSecurityCase() {
     return pairedForceLogoutRevocationCase();
   }
@@ -5874,7 +6154,7 @@
       operation: 'admin.settings.get',
       idToken: session.idToken
     });
-    const serverLimit = Number(server?.maxTicketsPerDay || server?.maxTicketsPerRedemption || 0);
+    const serverLimit = Number(server?.maxTicketsPerDay ?? server?.maxTicketsPerRedemption ?? 0);
     const uiLimit = Number(input?.value || 0);
     const actual = {
       input: Boolean(input),
@@ -5882,10 +6162,10 @@
       serverLimit,
       uiLimit,
       matched: serverLimit === uiLimit,
-      validRange: Number.isInteger(serverLimit) && serverLimit >= 1 && serverLimit <= 50,
+      validRange: Number.isInteger(serverLimit) && serverLimit >= 0 && serverLimit <= 50,
       labelUsesDailySemantics: /每日最多使用活動票券數/.test(String(input?.closest('label')?.textContent || ''))
     };
-    return Object.values(actual).every(Boolean)
+    return actual.input && actual.saveButton && actual.matched && actual.validRange && actual.labelUsesDailySemantics
       ? pass('管理端活動票券每日使用上限與 Server 設定一致，且 UI 使用「每日」語意而非單次勾選。', {
           input: true, saveButton: true, matched: true, validRange: true, labelUsesDailySemantics: true
         }, actual)
@@ -5968,7 +6248,7 @@
     const missing = contracts.filter(([, selector]) => !document.querySelector(selector)).map(([key, selector]) => ({ key, selector }));
     const actual = { contractCount: contracts.length, missing };
     return missing.length === 0
-      ? pass('管理端主要非按鈕功能區塊均已納入完整 E2E 契約清單。', { missing: [] }, actual)
+      ? pass('主要非按鈕 DOM 契約存在；操作結果由各功能節點與覆蓋摘要判定。', { missing: [] }, actual)
       : fail('管理端發現未掛入 E2E 的功能區塊。', { missing: [] }, actual);
   }
 
@@ -5979,7 +6259,7 @@
       ['saveEventTicketSettingButton', 'ADMIN_EVENT_DAILY_LIMIT_SETTINGS'],
       ['adminBookingReceiptClose', 'ADMIN_BOOKING_RECEIPT_VIEWER']
     ]);
-    const registeredCaseKeys = new Set(adminDefinitions('full').map((item) => item.key));
+    const registeredCaseKeys = new Set(adminDefinitions('full', E2E_MODULES.map(([key]) => key)).map((item) => item.key));
     const unmapped = [];
     const mapped = [];
     for (const button of buttons) {
@@ -5997,7 +6277,7 @@
     }
     const actual = { totalButtons: buttons.length, mapped: mapped.length, unmapped };
     return unmapped.length === 0
-      ? pass('目前管理端所有按鈕與動態控制皆已可被 E2E runner 分類追蹤。', { unmapped: [] }, actual)
+      ? pass('管理端按鈕已分類；按鈕名稱與 data 屬性不作為行為通過證據。', { unmapped: [] }, actual)
       : fail('發現尚未納入管理端 E2E 覆蓋分類的新控制。', { unmapped: [] }, actual);
   }
 

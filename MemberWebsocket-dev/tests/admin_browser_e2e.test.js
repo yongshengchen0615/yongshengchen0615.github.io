@@ -9,8 +9,8 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('admin exposes only the unified background full E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.css\?v=admin-e2e-20260923-\d+/);
-  assert.match(html, /e2e-control\.js\?v=qa-e2e-20261001-\d+/);
+  assert.match(html, /e2e-control\.css\?v=feature-coverage-20261004-\d+/);
+  assert.match(html, /e2e-control\.js\?v=qa-e2e-20261004-\d+/);
   assert.match(runner, /runPairedFullE2EButton/);
   assert.match(runner, /模組 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
   assert.match(runner, /stopAdminE2EButton/);
@@ -101,7 +101,7 @@ test('paired E2E account pool is server-filtered to test users and real-user mut
 
 test('user E2E returns structured results to the paired admin runner', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-10-01\.\d+'/);
+  assert.match(runner, /const VERSION = '2026-10-04\.\d+'/);
   assert.match(runner, /browserRun: state\.browserRun \|\| null/);
   assert.match(runner, /stop: \(\) => requestStop\(\)/);
   assert.match(runner, /pairedLaneIndex/);
@@ -211,7 +211,9 @@ test('browser E2E recording stays bounded as case detail grows', () => {
   const runner = read('admin/e2e-control.js');
   const api = read('supabase/functions/test-control-api/index.ts');
   assert.match(runner, /compactRecordSnapshot/);
-  assert.match(runner, /bytes > 320000/);
+  assert.match(runner, /byteLength > 320000/);
+  assert.match(runner, /compactRecordPayload/);
+  assert.match(runner, /E2E_RECORD_TOO_LARGE/);
   assert.match(api, /MAX_REQUEST_BYTES = 384_000/);
   assert.match(api, /STANDARD_REQUEST_BYTES = 20_000/);
   assert.match(api, /action !== "admin\.test-control\.record-browser-run"/);

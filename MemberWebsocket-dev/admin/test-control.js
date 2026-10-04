@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-09-27.1';
+  const VERSION = '2026-10-04.1';
   const els = {};
   const artifactPreviewCache = new Map();
   const artifactPrefetchQueue = [];
@@ -355,9 +355,17 @@
       passed: '通過',
       failed: '失敗',
       cancelled: '已取消',
-      skipped: '略過'
+      skipped: '略過',
+      incomplete: '覆蓋未完成'
     };
     return map[status] || status || '尚未執行';
+  }
+
+  function runVerificationStatus(run) {
+    const status = String(run?.status || 'queued');
+    if (status !== 'passed') return status;
+    return run.summary?.verificationStatus === 'incomplete' || Number(run.skippedCases || run.summary?.skippedCases || 0) > 0
+      ? 'incomplete' : status;
   }
 
   function suiteText(suite) {
@@ -365,6 +373,7 @@
   }
 
   function statusClass(status) {
+    if (status === 'incomplete') return ' is-skipped';
     return ['queued', 'running', 'passed', 'failed', 'cancelled', 'skipped'].includes(status)
       ? ' is-' + status
       : '';
@@ -434,7 +443,7 @@
     const skipped = Number(run.skippedCases || cases.filter((testCase) => testCase?.status === 'skipped').length || 0);
     const complete = Math.min(total, passed + failed + skipped);
     const progress = total > 0 ? Math.round((complete / total) * 100) : 0;
-    const status = String(run.status || 'queued');
+    const status = runVerificationStatus(run);
 
     els.automationTestRunCode.textContent = String(run.runCode || '—');
     els.automationTestRunStatus.textContent = statusText(status);
@@ -450,13 +459,14 @@
 
     els.automationTestRunnerBadge.textContent = status === 'running'
       ? 'Runner：執行中'
-      : status === 'passed'
-        ? (skipped > 0 ? 'Runner：完成（含略過）' : 'Runner：全部通過')
+      : status === 'incomplete' ? 'Runner：覆蓋未完成（有略過）'
+        : status === 'passed'
+        ? 'Runner：全部通過'
         : status === 'failed'
           ? 'Runner：發現異常'
           : 'Runner：待命';
     els.automationTestRunnerBadge.className = 'test-mode-status-badge' + (
-      status === 'running' ? ' is-warning' :
+      ['running','incomplete'].includes(status) ? ' is-warning' :
       status === 'passed' ? ' is-active' :
       status === 'failed' ? ' is-error' : ' is-off'
     );
@@ -719,7 +729,7 @@
       });
       const top=document.createElement('span'); top.className='test-control-history-top';
       const code=document.createElement('strong'); code.textContent=String(run.runCode||'Test run');
-      const status=document.createElement('span'); status.className='test-control-history-status'+statusClass(String(run.status||'queued')); status.textContent=statusText(String(run.status||'queued'));
+      const status=document.createElement('span'); status.className='test-control-history-status'+statusClass(runVerificationStatus(run)); status.textContent=statusText(runVerificationStatus(run));
       top.append(code,status);
       const meta=document.createElement('small');
       const failureCodes=Object.entries(run.summary?.failureDiagnostics?.byCode||{}).filter(([,count])=>Number(count)>0).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,2).map(([code,count])=>String(code)+' ×'+Number(count));

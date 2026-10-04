@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-10-01.4';
+  const VERSION = '2026-10-04.1';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -66,6 +66,7 @@
     COMMON_MEMBERSHIP_MILESTONE: { module: 'shared', phase: 3 },
     COMMON_FEATURE_CONTRACT_COVERAGE: { module: 'shared', phase: 6 },
 
+    MEMBER_PHONE_COUNTRY_VALIDATION: { module: 'member', phase: 4, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_PROFILE_DATA: { module: 'member', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     MEMBER_TERMS_CONSENT: { module: 'member', phase: 3, required: true, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_REFERRAL_BOUNDARY: { module: 'member', phase: 4, required: true, risk: 'security', dependencies: ['MEMBER_PROFILE_DATA'] },
@@ -103,6 +104,10 @@
     CALENDAR_LINE_SUPPRESSION: { module: 'calendar', phase: 5, required: true, risk: 'notification' },
     CALENDAR_BUTTON_COVERAGE: { module: 'calendar', phase: 6 },
 
+    BOOKING_ACCESSIBLE_MODE: { module: 'booking', phase: 5, dependencies: ['BOOKING_DATA'] },
+    BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY: { module: 'booking', phase: 5, risk: 'security', dependencies: ['BOOKING_DATA'] },
+    BOOKING_TICKET_RULES: { module: 'booking', phase: 5, dependencies: ['BOOKING_BENEFIT_REDEMPTION_LIFECYCLE'] },
+    BOOKING_HISTORY_TICKET_SOURCES: { module: 'booking', phase: 5, dependencies: ['BOOKING_BENEFIT_REDEMPTION_LIFECYCLE','BOOKING_HUMAN_LIFECYCLE','BOOKING_HUMAN_GROUP'] },
     BOOKING_DATA: { module: 'booking', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     BOOKING_GROUP_DATA: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
     BOOKING_FORM_INITIAL: { module: 'booking', phase: 3, required: true, dependencies: ['BOOKING_DATA'] },
@@ -144,6 +149,8 @@
     complexityLevel: 1,
     participantIndex: 1,
     scenarioPlan: null,
+    caseCatalogKeys: [],
+    featureCoverage: null,
     replayConfig: null,
     adaptiveReplaySourceKeys: [],
     randomStateAfterBuild: 0,
@@ -269,6 +276,7 @@
   }
 
   function planUserScenario(nodes) {
+    state.caseCatalogKeys = nodes.map(item => item.key);
     const planner = window.MemberE2EScenarioGraph;
     const requiredKeys = nodes.filter((item) => item.humanRequired === true).map((item) => item.key);
     if (state.replayConfig) {
@@ -296,7 +304,7 @@
     const plan = planner.planScenario({
       nodes, metaByKey: USER_NODE_META, randomUnit: nextRandomUnit,
       seed: state.randomSeed, complexityLevel: state.complexityLevel,
-      minNodes: Math.min(12, nodes.length), maxNodes: Math.min(18, nodes.length), requiredKeys
+      coverageMode: 'full', minNodes: nodes.length, maxNodes: nodes.length, requiredKeys
     });
     const byKey = new Map(nodes.map((item) => [String(item.key || ''), item]));
     return { plan, nodes: plan.keys.map((key) => byKey.get(key)).filter(Boolean) };
@@ -710,6 +718,8 @@
     configureRunProfile();
     state.currentSuite = requestedSuite;
     state.results = [];
+    state.featureCoverage = null;
+    state.caseCatalogKeys = [];
     state.bootstrap = null;
     state.mutationSuite = null;
     state.browserRun = null;
@@ -868,6 +878,19 @@
         renderResults();
       }
     }
+    if (state.currentSuite === 'full') {
+      const catalog = window.MemberE2EFeatureCoverage;
+      state.featureCoverage = catalog?.report?.({ side:'user', modules:[surface], registeredKeys:state.caseCatalogKeys,
+        plannedKeys:state.scenarioPlan?.keys || [], results:state.results });
+      const coverage = state.featureCoverage;
+      const gaps = coverage?.features.filter(item => item.status !== 'passed').map(item => ({id:item.id,level:item.level,status:item.status,keys:item.keys})) || [];
+      state.results.push({ key:'QA_FEATURE_COVERAGE_SUMMARY', name:'功能節點執行覆蓋摘要', domain:'Coverage', durationMs:0,
+        ...(coverage?.complete ? pass('本頁登記的功能節點均通過；契約與裝置驗收限制仍分開保留。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})
+          : !coverage || coverage.counts.unregistered || coverage.counts.unplanned
+            ? fail('功能節點缺少登記或未納入本輪路徑。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps})
+            : skip('功能節點有失敗、環境阻擋或未執行，不能宣稱完整驗證。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})) });
+      renderResults();
+    }
     // A node deadline is a failed run, not a user cancellation: persist its trace.
     const cancelled = state.cancelled && !timedOutCase;
     if (!cancelled) {
@@ -888,11 +911,13 @@
       }
     }
     const failed = state.results.filter((item) => item.status === 'failed').length;
+    const incomplete = state.currentSuite === 'full' && state.featureCoverage?.complete !== true;
     setRunning(false);
-    setStatus(cancelled ? '已停止' : failed ? '有異常' : '全部通過');
+    setStatus(cancelled ? '已停止' : failed ? '有異常' : incomplete ? '覆蓋未完成' : '全部通過');
     setMessage(
       cancelled ? '測試已停止。' :
       failed ? '測試完成，發現 ' + failed + ' 個異常；展開失敗案例查看 Expected / Actual。' :
+      incomplete ? '測試完成，仍有略過或未驗證功能；查看功能覆蓋摘要。' :
       '測試完成，所有已執行案例通過；真人操作結果已同步到會員名冊。',
       failed > 0
     );
@@ -905,7 +930,8 @@
     const humanMissingEvidence = humanRows.filter((item) => Number(item?.actual?.humanInteraction?.eventCount || 0) < 1);
     stopDiagnosticTrace();
     return {
-      ok: !cancelled && failed === 0,
+      ok: !cancelled && failed === 0 && !incomplete,
+      coverage: safeJson(state.featureCoverage),
       humanInteraction: {
         requiredCases: humanRows.length,
         passedCases: humanRows.filter((item) => item.status === 'passed').length,
@@ -992,6 +1018,7 @@
 
     const surfaceCases = {
       member: [
+        caseDef('電話：國碼、重複數字與後端拒絕', 'Validation', memberPhoneCountryValidationCase, 'MEMBER_PHONE_COUNTRY_VALIDATION'),
         caseDef('會員資料完整性', 'Member', memberProfileCase, 'MEMBER_PROFILE_DATA'),
         caseDef('會員條款：有效版本與拒絕邊界', 'Member / Legal', membershipTermsConsentCase, 'MEMBER_TERMS_CONSENT'),
         caseDef('好友邀請：邀請碼／Modal／自邀前端拒絕', 'Member / Growth', memberReferralBoundaryCase, 'MEMBER_REFERRAL_BOUNDARY'),
@@ -1027,6 +1054,10 @@
         caseDef('日曆寫入權限邊界', 'Mutation QA', () => mutationQaCase('CALENDAR_READ_ONLY'), 'CALENDAR_SERVER_BOUNDARY')
       ],
       booking: [
+        caseDef('無障礙模式切換、票券與狀態同步', 'Human E2E', bookingAccessibleModeCase, 'BOOKING_ACCESSIBLE_MODE'),
+        caseDef('無障礙收據：錯誤格式與大小拒絕', 'Security', bookingAccessibleReceiptBoundaryCase, 'BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY'),
+        caseDef('票券：具體服務 any／all、上限與點數預算', 'Validation', bookingTicketRulesCase, 'BOOKING_TICKET_RULES'),
+        caseDef('預約歷史：票券來源卡片對照', 'Booking / History', bookingHistoryTicketSourcesCase, 'BOOKING_HISTORY_TICKET_SOURCES'),
         caseDef('會員與預約 Bootstrap 一致性', 'Booking', bookingDataCase, 'BOOKING_DATA'),
         caseDef('多人預約資源 Bootstrap', 'Booking', bookingGroupBootstrapCase, 'BOOKING_GROUP_DATA'),
         caseDef('預約表單安全初始狀態', 'UI', bookingFormCase, 'BOOKING_FORM_INITIAL'),
@@ -1536,6 +1567,23 @@
     }
   }
 
+  async function memberPhoneCountryValidationCase() {
+    const phone = window.MemberPhone;
+    const vectors = [
+      ['+886','0912-345-678','+886912345678'], ['+852','23456789','+85223456789'],
+      ['+886','111111111',''], ['+886','0911111111',''], ['+886','abc',''],
+      ['+886','+886912345678','+886912345678']
+    ];
+    const mismatches = vectors.filter(([country, number, expected]) => phone?.compose?.(country, number) !== expected);
+    const rejected = await expectApiError('user.member.profile.save', { phone:'+886111111111' }, ['INVALID_PHONE']);
+    const selectors = ['profileCountryCode','phoneEditCountryCode'];
+    const countryControls = selectors.every(id => document.getElementById(id)?.querySelector('option[value="+886"]'));
+    const actual = { vectors:vectors.length, mismatches, countryControls, rejected };
+    return !mismatches.length && countryControls && rejected.ok
+      ? pass('申請與修改皆有國碼選項，合法電話正規化且 Server 拒絕重複數字。', { countryControls:true, mismatches:[], rejected:true }, actual)
+      : fail('國碼、電話正規化或 Server 拒絕邊界異常。', { countryControls:true, mismatches:[], rejected:true }, actual);
+  }
+
   async function memberProfileCase() {
     const data = state.bootstrap || await requestCore('user.member.bootstrap', {});
     const profile = data && data.profile || {};
@@ -1893,14 +1941,11 @@
       startedAt: state.runStartedAt || undefined,
       completedAt: new Date().toISOString()
     };
-    const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
-    if (bytes > 60_000) {
-      payload.cases = cases.map((item) => ({
-        ...item,
-        trace: item.status === 'failed' ? compactFailureTrace(item.trace || {}, 1200) : undefined
-      }));
+    const fitted = window.MemberE2EFeatureCoverage?.compactRecordPayload?.(payload, 60_000) || payload;
+    if (new TextEncoder().encode(JSON.stringify(fitted)).byteLength > 60_000) {
+      throw Object.assign(new Error('會員 E2E 紀錄超過容量，拒絕省略案例。'),{code:'E2E_RECORD_TOO_LARGE'});
     }
-    return qaServiceRequest('user.qa.browser-run.record', payload, 30000);
+    return qaServiceRequest('user.qa.browser-run.record', fitted, 30000);
   }
 
   async function memberHumanProfileEditCase() {
@@ -2551,6 +2596,23 @@
         }, actual);
   }
 
+  async function verifyBookingCancellation(bookingId, timeoutMs = 7000) {
+    const rendered = () => /取消待確認/.test(Array.from(document.querySelectorAll('#bookingList .booking-item'))
+      .find(card => card.dataset.bookingId === bookingId)?.querySelector('.status-badge')?.textContent || '');
+    let uiPending = Boolean(await waitFor(rendered, timeoutMs));
+    const config = await loadConfig();
+    const data = await window.BookingSystem.request(config, 'member', '', 'user.booking.bootstrap', {});
+    const booking = (Array.isArray(data?.bookings) ? data.bookings : []).find(row => row.bookingId === bookingId);
+    const serverPending = Boolean(booking && (booking.status === 'cancel_requested'
+      || (booking.cancellationRequestedAt && !booking.cancellationReviewedAt)));
+    if (serverPending && !uiPending) {
+      await refreshRealClient();
+      uiPending = Boolean(await waitFor(rendered, Math.min(4000, timeoutMs)));
+    }
+    return {serverPending,uiPending,serverStatus:String(booking?.status || ''),
+      formMessage:serverPending && uiPending ? '' : String(document.getElementById('formMessage')?.textContent || '').slice(0,240)};
+  }
+
   async function bookingHumanLifecycleCase() {
     const note = 'QA HUMAN E2E ' + Date.now().toString(36);
     const updatedNote = note + ' updated';
@@ -2672,7 +2734,8 @@
         } finally {
           window.confirm = originalConfirm;
         }
-        actual.cancelRequested = Boolean(await waitFor(() => /取消待確認/.test(document.querySelector('#bookingList .booking-item[data-booking-id="' + bookingId + '"] .status-badge')?.textContent || ''), 7000));
+        actual.cancellation = await verifyBookingCancellation(bookingId);
+        actual.cancelRequested = actual.cancellation.serverPending && actual.cancellation.uiPending;
       }
     } finally {
       if (!bookingId) {
@@ -2966,7 +3029,7 @@
       .map(([key, selector]) => ({ key, selector }));
     const actual = { surface, contractCount: contracts.length, missing };
     return missing.length === 0
-      ? pass('此頁面的非按鈕功能契約也已納入完整 E2E 覆蓋。', { missing: [] }, actual)
+      ? pass('非按鈕 DOM 契約存在；實際操作結果由各功能節點與覆蓋摘要判定。', { missing: [] }, actual)
       : fail('發現尚未掛入 E2E 的功能區塊或互動契約。', { missing: [] }, actual);
   }
 
@@ -2980,7 +3043,7 @@
       points: /^(retryButton|joinMemberButton|logoutButton|pointTransferButton|pointTransferClose|pointTransferCopyOwnCode|pointTransferLookup|pointTransferSubmit)$|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
       event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button/,
       calendar: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|todayButton|nextMonthButton|closeCalendarDetailButton)$|calendar-day/,
-      booking: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|nextMonthButton|closeAppointmentButton|cancelEditBookingButton|submitBookingButton|confirmBookingNoticeButton|closeBookingConfirmButton|cancelBookingConfirmButton|confirmBookingButton|closeBookingHolidayButton|bookingBenefitsRetry|bookingReceiptClose|bookingReceiptCapture|bookingReceiptRetake|bookingReceiptCancel|bookingReceiptSubmit)$|calendar-day|service-add-button|selected-service-remove|slot-button|text-danger-button|button-light|拍攝收據送出審核|收據上傳未完成/
+      booking: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|nextMonthButton|closeAppointmentButton|cancelEditBookingButton|submitBookingButton|confirmBookingNoticeButton|closeBookingConfirmButton|cancelBookingConfirmButton|confirmBookingButton|closeBookingHolidayButton|bookingBenefitsRetry|bookingReceiptClose|bookingReceiptCapture|bookingReceiptRetake|bookingReceiptCancel|bookingReceiptSubmit|bookingAccessibleToggle|bookingAccessibleUpload|bookingAccessibleRefresh)$|calendar-day|service-add-button|selected-service-remove|slot-button|text-danger-button|button-light|拍攝收據送出審核|收據上傳未完成/
     };
     const mapped = [];
     const unmapped = [];
@@ -2997,7 +3060,7 @@
     }
     const actual = { totalButtons: buttons.length, mappedFunctional: mapped.length, navigationSessionControls: navigation, qaInfrastructureControls, unmapped };
     return unmapped.length === 0
-      ? pass('目前頁面的功能按鈕都已納入真人操作劇本或明確列為會中斷 Session 的導覽控制。', { unmapped: [] }, actual)
+      ? pass('功能按鈕已分類；分類結果不代表每個按鈕均完成行為驗證。', { unmapped: [] }, actual)
       : fail('發現尚未納入測試劇本的新按鈕，完整測試需補案例。', { unmapped: [] }, actual);
   }
 
@@ -3248,48 +3311,26 @@
     const usable = Math.max(0, Number(data.todayUsableCount || 0));
     const used = Math.max(0, Number(data.usedTodayCount || 0));
     const remaining = Math.max(0, Number(data.remainingTodayCount ?? usable));
-    const limit = Number(data.maxTicketsPerDay || data.maxTicketsPerRedemption || 0);
+    const limit = Number(data.maxTicketsPerDay ?? data.maxTicketsPerRedemption ?? 0);
 
-    // The badge may already exist from a previous focus/realtime refresh. Wait for
-    // this API snapshot to be rendered instead of treating element existence as
-    // proof that its text/datasets are current.
+    window.dispatchEvent(new CustomEvent('event:realtime-refresh'));
+    const available = Math.max(0, Number(data.availableTodayCount ?? usable));
+    const expectedText = `今日已使用 ${used} 張 · 每日上限 ${limit === 0 ? '不限張數' : limit + ' 張'}`;
     const badge = await waitFor(() => {
       const node = document.getElementById('todayUsableTicketCount');
-      if (!node) return null;
-      const text = String(node.textContent || '');
-      const match = text.match(/今日可使用\s+([0-9]+)\s*張/);
-      const domUsable = match ? Number(match[1]) : -1;
-      const domUsed = Number(node.dataset?.usedTodayCount ?? -1);
-      const domRemaining = Number(node.dataset?.remainingTodayCount ?? -1);
-      const domLimit = Number(node.dataset?.maxTicketsPerDay ?? -1);
-      return domUsable === usable && domUsed === used && domRemaining === remaining && domLimit === limit
-        ? node
-        : null;
+      return node && node.textContent === expectedText &&
+        Number(node.dataset.usedTodayCount) === used &&
+        Number(node.dataset.availableTodayCount) === available &&
+        Number(node.dataset.remainingTodayCount) === remaining &&
+        Number(node.dataset.maxTicketsPerDay) === limit ? node : null;
     }, 6000, 100);
-
-    const text = String(badge?.textContent || '');
-    const usableMatch = text.match(/今日可使用\s+([0-9]+)\s*張/);
-    const actual = {
-      badge: Boolean(badge),
-      usable,
-      used,
-      remaining,
-      limit,
-      domUsable: usableMatch ? Number(usableMatch[1]) : -1,
-      domUsed: Number(badge?.dataset?.usedTodayCount ?? -1),
-      domRemaining: Number(badge?.dataset?.remainingTodayCount ?? -1),
-      domLimit: Number(badge?.dataset?.maxTicketsPerDay ?? -1)
-    };
-    const ok = Boolean(badge) && Number.isInteger(limit) && limit >= 1 && limit <= 50 &&
-      actual.domUsable === usable && actual.domUsed === used && actual.domRemaining === remaining &&
-      actual.domLimit === limit && usable <= remaining && used <= limit;
+    const actual = { badge: Boolean(badge), used, available, remaining, limit,
+      text: String(badge?.textContent || ''), unlimited: limit === 0 };
+    const valid = Number.isInteger(limit) && limit >= 0 && limit <= 50;
+    const ok = Boolean(badge) && valid && (limit === 0 || (usable <= remaining && used <= limit));
     return ok
-      ? pass('活動票券今日可使用張數、已使用數、剩餘額度與每日上限由同一 Server 結果同步到 UI。', {
-          badge: true, serverUiMatched: true, limitRange: [1, 50]
-        }, actual)
-      : fail('活動票券今日額度的 Server／UI 數字不一致。', {
-          badge: true, serverUiMatched: true, limitRange: [1, 50]
-        }, actual);
+      ? pass('今日已使用數與每日上限符合 Server 設定，0 正確顯示不限張數。', { limitRange:[0,50], expectedText }, actual)
+      : fail('每日額度或不限張數顯示與 Server 設定不一致。', { limitRange:[0,50], expectedText }, actual);
   }
 
   async function bookingBenefitsRecommendationsCase() {
@@ -3325,6 +3366,118 @@
         }, actual);
   }
 
+  async function syncBookingBenefitsForE2E() {
+    window.BookingBenefits?.syncNow?.();
+    const settled = await waitFor(() => {
+      const list = document.getElementById('bookingBenefitsList');
+      const section = document.getElementById('bookingBenefits');
+      return list && list.getAttribute('aria-busy') !== 'true' && ['ready','empty','error'].includes(section?.dataset.state) ? section.dataset.state : null;
+    }, 6000, 100);
+    if (!settled || settled === 'error' || /同步失敗/.test(document.getElementById('bookingBenefitsStatus')?.textContent || '')) {
+      const error = new Error('票券刷新未取得可驗證的新狀態。');error.code='E2E_BENEFITS_SYNC_INCOMPLETE';throw error;
+    }
+  }
+
+  async function bookingAccessibleModeCase() {
+    const toggle = document.getElementById('bookingAccessibleToggle');
+    const panel = document.getElementById('bookingAccessiblePanel');
+    if (!toggle || !panel) return fail('無障礙模式入口未載入。', { entrance:true }, { entrance:false });
+    const original = toggle.getAttribute('aria-pressed') === 'true';
+    let preference;
+    try { preference = localStorage.getItem('booking-accessible-mode'); } catch (_) {}
+    const actual = { enabled:false, ticketCountMatched:false, statusLoaded:false, restored:false };
+    try {
+      if (!original) toggle.click();
+      actual.enabled = toggle.getAttribute('aria-pressed') === 'true' && !panel.classList.contains('hidden');
+      await syncBookingBenefitsForE2E();
+      await window.BookingReceipts?.refresh?.();
+      const items = window.BookingBenefits?.getItems?.() || [];
+      const available = items.filter(item => ['points','event'].includes(item.kind) && item.selectable === true && !item.reservedForBooking);
+      actual.ticketCountMatched = document.querySelectorAll('#bookingAccessibleTickets article').length === available.length;
+      const config = await loadConfig();
+      const data = await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.list', {});
+      actual.submissionsArray = Array.isArray(data.submissions);
+      actual.statusLoaded = Boolean(document.getElementById('bookingAccessibleStatus')?.textContent?.trim()) &&
+        !/暫時無法|正在更新/.test(document.getElementById('bookingAccessibleStatus')?.textContent || '');
+      actual.cameraEntrance = typeof window.BookingReceipts?.openAccessible === 'function' && Boolean(document.getElementById('bookingAccessibleUpload'));
+      // Camera permission is a separate device acceptance step; do not open it.
+    } finally {
+      if ((toggle.getAttribute('aria-pressed') === 'true') !== original) toggle.click();
+      actual.restored = (toggle.getAttribute('aria-pressed') === 'true') === original;
+      try { if (preference === null) localStorage.removeItem('booking-accessible-mode'); else if (preference !== undefined) localStorage.setItem('booking-accessible-mode', preference); } catch (_) {}
+    }
+    return Object.values(actual).every(Boolean)
+      ? pass('無障礙模式可切換、顯示可用票券與真實登記狀態，完成後還原偏好。', { allChecks:true, physicalCamera:'device acceptance' }, actual)
+      : fail('無障礙模式、票券或收據狀態未同步。', { allChecks:true }, actual);
+  }
+
+  async function bookingAccessibleReceiptBoundaryCase() {
+    const config = await loadConfig();
+    const checks = [];
+    for (const [mimeType,sizeBytes,expectedCode] of [['text/plain',1,'RECEIPT_INVALID_MIME'],['image/jpeg',0,'RECEIPT_FILE_TOO_LARGE'],['image/jpeg',5242881,'RECEIPT_FILE_TOO_LARGE']]) {
+      try {
+        await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.prepare', { accessible:true, mimeType,sizeBytes,requestId:'QA-INVALID-RECEIPT' });
+        checks.push({expectedCode,code:'UNEXPECTED_SUCCESS'});
+      } catch (error) { checks.push({expectedCode,code:String(error.code || '')}); }
+    }
+    return checks.every(item => item.code === item.expectedCode)
+      ? pass('無障礙收據在建立上傳前拒絕錯誤 MIME、空圖片與超過 5 MB。', { invalidInputRejected:true }, {checks})
+      : fail('無障礙收據的 Server 輸入邊界異常。', { invalidInputRejected:true }, {checks});
+  }
+
+  async function bookingTicketRulesCase() {
+    await syncBookingBenefitsForE2E();
+    const items = window.BookingBenefits?.getItems?.() || [];
+    const tickets = items.filter(item => ['points','event'].includes(item.kind) && item.selectable === true);
+    if (!tickets.length) return skip('沒有可驗證規則的測試票券。', { fixtureTickets:true }, { blockerCode:'E2E_TICKET_FIXTURE_MISSING' });
+    const malformed = tickets.filter(item => !Array.isArray(item.requiredServiceIds) ||
+      !['any','all'].includes(item.requiredServiceMatchMode) ||
+      (item.kind === 'points' && (!Number.isFinite(Number(item.pointBalance)) || Number(item.pointCost) <= 0)));
+    const originalSelection = window.BookingBenefits.selectionPayload();
+    const checks = [];
+    // Closing the appointment clears its service context. With zero selected
+    // services, every service-restricted ticket must be rejected before claiming.
+    document.getElementById('closeAppointmentButton')?.click();
+    try {
+      window.BookingBenefits.clearSelection();
+      const restricted = tickets.filter(item => item.requiredServiceIds?.length);
+      const samples = ['any','all'].map(mode => restricted.find(item => item.requiredServiceMatchMode === mode)).filter(Boolean);
+      for (const item of samples) {
+        const id = String(item.selectionId || item.id || '');
+        const input = Array.from(document.querySelectorAll('[data-booking-benefit-id]')).find(node => node.dataset.bookingBenefitId === id);
+        if (!input) { checks.push({kind:item.kind,matchMode:item.requiredServiceMatchMode,rejected:false}); continue; }
+        input.click();
+        const rejected = await waitFor(() => window.BookingBenefits.selectionPayload().length === 0 && /需先預約|需預約|必須預約/.test(document.getElementById('bookingBenefitsStatus')?.textContent || ''), 1500);
+        checks.push({kind:item.kind,matchMode:item.requiredServiceMatchMode,rejected:Boolean(rejected)});
+      }
+    } finally { window.BookingBenefits.setSelection(originalSelection); }
+    const actual = { ticketCount:tickets.length, malformed:malformed.map(item => ({kind:item.kind,title:item.title})), serviceChecks:checks };
+    if (malformed.length || checks.some(item => !item.rejected)) return fail('票券服務限制或點數資料異常。', { malformed:[], restrictedSelectionRejected:true }, actual);
+    if (!['any','all'].every(mode => checks.some(item => item.matchMode === mode))) return skip('票券結構正確，但缺少 any／all 服務限制 fixture，未宣稱行為通過。', { restrictedFixture:true }, {...actual,blockerCode:'E2E_RESTRICTED_TICKET_FIXTURE_MISSING'});
+    return pass('真實服務限制票券在未選服務時拒絕勾選，不觸發領取。', { malformed:[], restrictedSelectionRejected:true }, actual);
+  }
+
+  async function bookingHistoryTicketSourcesCase() {
+    const config = await loadConfig();
+    const data = await window.BookingSystem.request(config, 'booking', '', 'user.booking.bootstrap', {});
+    const bookings = (data.bookings || []).filter(row => row.benefits?.length);
+    if (!bookings.length) return skip('沒有含票券的預約歷史，來源卡片等待 fixture。', { bookingWithBenefits:true }, { blockerCode:'E2E_BOOKING_BENEFITS_HISTORY_MISSING' });
+    const mismatches = [];
+    for (const booking of bookings) {
+      const row = Array.from(document.querySelectorAll('#bookingList [data-booking-id]')).find(node => node.dataset.bookingId === booking.bookingId);
+      if (!row) { mismatches.push({reason:'history-row-missing'}); continue; }
+      const cards = Array.from(row.querySelectorAll('.booking-ticket-card'));
+      for (const benefit of booking.benefits) {
+        const card = cards.find(node => node.classList.contains('kind-' + benefit.kind) && node.textContent.includes(String(benefit.title || '').split('｜').pop()));
+        const source = String(benefit.cardTitle || (benefit.kind === 'points' && String(benefit.title || '').includes('｜') ? benefit.title.split('｜')[0] : ''));
+        if (!card || (benefit.kind === 'points' && source && !card.querySelector('.booking-ticket-source')?.textContent.includes(source))) mismatches.push({kind:benefit.kind,reason:'source-card-mismatch'});
+      }
+    }
+    return !mismatches.length
+      ? pass('會員預約歷史以票券卡片呈現種類、名稱與來源集點卡。', { mismatches:[] }, {bookings:bookings.length,mismatches})
+      : fail('會員預約歷史票券卡片與 Server 來源不一致。', { mismatches:[] }, {bookings:bookings.length,mismatches});
+  }
+
   async function bookingReceiptReviewContractCase() {
     const config = await loadConfig();
     const data = await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.list', {});
@@ -3350,8 +3503,8 @@
       fileInputs,
       awaitingReviewCount: awaiting,
       boundCount: bound,
-      reviewCopy: /送出審核/.test(String(document.getElementById('bookingReceiptTitle')?.textContent || '')) &&
-        /等待管理端|待管理端/.test(String(modal?.textContent || ''))
+      reviewCopy: /送出審核|管理員登記/.test(String(document.getElementById('bookingReceiptTitle')?.textContent || '')) &&
+        /等待管理端|待管理端|管理端確認前|管理員核對(?:前|服務項目後)/.test(String(modal?.textContent || ''))
     };
     const ok = actual.bookingsArray && actual.modal && actual.camera && actual.capture && actual.retake &&
       actual.submit && fileInputs === 0 && actual.reviewCopy;
@@ -3398,10 +3551,10 @@
   async function pointSettingsCase() {
     const data = await pointExtensionRequest('member.settings.get', {});
     const limit = Number(data.maxTicketsPerRedemption);
-    const ok = Number.isInteger(limit) && limit >= 1 && limit <= 50;
+    const ok = Number.isInteger(limit) && limit >= 0 && limit <= 50;
     return ok
-      ? pass('票券單次核銷上限可由測試 Session 正確讀取。', { min: 1, max: 50 }, { maxTicketsPerRedemption: limit })
-      : fail('票券核銷設定不合法。', { min: 1, max: 50 }, { maxTicketsPerRedemption: data.maxTicketsPerRedemption });
+      ? pass('票券單次核銷上限可由測試 Session 正確讀取。', { min: 0, max: 50, zeroMeansUnlimited: true }, { maxTicketsPerRedemption: limit })
+      : fail('票券核銷設定不合法。', { min: 0, max: 50, zeroMeansUnlimited: true }, { maxTicketsPerRedemption: data.maxTicketsPerRedemption });
   }
 
   async function pointsInteractionCase() {
