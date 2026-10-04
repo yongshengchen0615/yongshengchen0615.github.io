@@ -1219,7 +1219,7 @@
       card.appendChild(heading);
 
       if (Array.isArray(booking.benefits) && booking.benefits.length) {
-        appendNote(card, `待核銷優惠：${booking.benefits.map((benefit) => `${benefit.title || '可用權益'}（${benefit.status === 'pending' ? '待核銷' : benefit.status}）`).join('、')}`, true);
+        appendNote(card, `使用票券：${booking.benefits.map((benefit) => `${bookingBenefitKindLabel(benefit)}：${bookingBenefitDisplayTitle(benefit)}（${benefit.status === 'pending' ? '待核銷' : benefit.status}）`).join('、')}`, true);
       }
       if (booking.memberNote) appendNote(card, `會員備註：${booking.memberNote}`, false);
       if (booking.adminNote) appendNote(card, `管理端說明：${booking.adminNote}`, true);
@@ -1606,7 +1606,7 @@
       : '<p class="integration-empty">依目前項目類型規則，本次沒有自動集點。</p>';
     const pendingBenefits = Array.isArray(booking.benefits) ? booking.benefits.filter((benefit) => benefit.status === 'pending') : [];
     const benefitRows = pendingBenefits.length
-      ? pendingBenefits.map((benefit) => `<div class="booking-completion-preview-item"><div><strong>${escapeHtml(benefit.title || '可用權益')}</strong><p>${escapeHtml(({points:'集點卡票券',event:'活動票券',calendar:'會員活動'})[benefit.kind] || '預約優惠')} · 完成服務時重新驗證</p></div><span class="integration-status is-attention">待核銷</span></div>`).join('')
+      ? pendingBenefits.map((benefit) => `<div class="booking-completion-preview-item"><div><strong>${escapeHtml(bookingBenefitDisplayTitle(benefit))}</strong><p>${escapeHtml(bookingBenefitKindLabel(benefit))} · 完成服務時重新驗證</p></div><span class="integration-status is-attention">待核銷</span></div>`).join('')
       : '<p class="integration-empty">會員本次沒有選用優惠。</p>';
     els.bookingAdminCrudModalBody.innerHTML = `
       <form class="booking-admin-form booking-completion-preview">
@@ -1696,6 +1696,16 @@
     button.dataset.bookingAdminAction = String(label || 'action');
     button.addEventListener('click', handler);
     return button;
+  }
+
+  function bookingBenefitKindLabel(benefit) {
+    return ({ points: '集點卡票券', event: '活動票券', calendar: '會員活動' })[String(benefit?.kind || '')] || '預約票券';
+  }
+
+  function bookingBenefitDisplayTitle(benefit) {
+    const title = String(benefit?.title || '可用權益');
+    const cardTitle = String(benefit?.cardTitle || '').trim();
+    return benefit?.kind === 'points' && cardTitle ? `${cardTitle}｜${title}` : title;
   }
 
   function appendNote(card, text, admin) {
