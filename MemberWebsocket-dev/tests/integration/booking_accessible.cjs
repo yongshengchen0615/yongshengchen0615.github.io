@@ -113,7 +113,12 @@ test('admin receipt queue registers actual minutes with one locked submission an
     recordButton.click(); await tick();
     assert.match(w.document.getElementById('accessibleAdminRecordStats').textContent,/60 分鐘.*2 點.*1 張/);
     assert.match(w.document.getElementById('accessibleAdminRecordServices').textContent,/Body/);
-    assert.match(w.document.getElementById('accessibleAdminRecordBenefits').textContent,/Body Ticket.*已核銷/);
+    const benefitRecord=w.document.getElementById('accessibleAdminRecordBenefits');
+    const ticketCard=benefitRecord.querySelector('.booking-ticket-card.kind-points');
+    assert.ok(ticketCard,'Completed accessible records should render a point-ticket card');
+    assert.equal(ticketCard.querySelector('.booking-ticket-kind')?.textContent,'集點卡票券');
+    assert.equal(ticketCard.querySelector('.booking-ticket-status')?.textContent,'已核銷');
+    assert.equal(ticketCard.querySelector('.booking-ticket-field strong')?.textContent,'Body Ticket');
   } finally {w.dispatchEvent(new w.Event('pagehide')); w.close();}
 });
 
