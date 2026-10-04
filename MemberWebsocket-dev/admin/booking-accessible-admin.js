@@ -56,6 +56,14 @@
     if (record.reviewStatus === 'failed') return {label:'處理失敗',className:'failed'};
     return {label:'待確認',className:'pending'};
   }
+  function benefitKindLabel(benefit) {
+    return benefit?.kind === 'points' ? '集點卡票券' : benefit?.kind === 'event' ? '活動票券' : '預約票券';
+  }
+  function benefitRecordTitle(benefit) {
+    const title=String(benefit?.title||'預約票券');
+    const cardTitle=String(benefit?.cardTitle||'').trim();
+    return benefit?.kind==='points'&&cardTitle?`${cardTitle}｜${title}`:title;
+  }
   function formatTaipei(value, options = {}) {
     if (!value) return '';
     const date = new Date(value);
@@ -208,8 +216,8 @@
       const empty = document.createElement('p'); empty.className = 'accessible-admin-section-note'; empty.textContent = '本次沒有核銷票券。'; benefits.append(empty);
     } else (record.benefits || []).forEach(benefit => {
       const row = document.createElement('div'); row.className = 'accessible-admin-record-list-row';
-      const strong = document.createElement('strong'); strong.textContent = benefit.title || '預約票券';
-      const small = document.createElement('small'); small.textContent = `${benefit.kind === 'points' ? '集點卡票券' : '活動票券'} · ${benefit.status === 'redeemed' || benefit.status === 'applied' ? '已核銷' : benefit.status || '已記錄'}`;
+      const strong = document.createElement('strong'); strong.textContent = benefitRecordTitle(benefit);
+      const small = document.createElement('small'); small.textContent = `${benefitKindLabel(benefit)} · ${benefit.status === 'redeemed' || benefit.status === 'applied' ? '已核銷' : benefit.status || '已記錄'}`;
       row.append(strong,small); benefits.append(row);
     });
 
@@ -391,9 +399,9 @@
       } else {
         currentBenefits.forEach(benefit => {
           const row = document.createElement('div'); row.className = 'accessible-admin-benefit';
-          const strong = document.createElement('strong'); strong.textContent = benefit.title || '預約票券';
+          const strong = document.createElement('strong'); strong.textContent = benefitRecordTitle(benefit);
           const small = document.createElement('small');
-          small.textContent = benefit.status === 'redeemed' || benefit.status === 'applied' ? '已完成核銷' : `狀態：${benefit.status || '已記錄'}`;
+          small.textContent = `${benefitKindLabel(benefit)} · ${benefit.status === 'redeemed' || benefit.status === 'applied' ? '已完成核銷' : `狀態：${benefit.status || '已記錄'}`}`;
           row.append(strong,small); root.append(row);
         });
       }
