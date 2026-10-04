@@ -5,6 +5,7 @@ const path=require('node:path');
 const root=path.resolve(__dirname,'../..');
 let server,base;
 const runs=new Map();
+const fixtureScripts=new Map();
 const blank=()=>({prepare:[],finalize:[],uploads:[],redeem:[],attempts:0,status:'confirmed'});
 const json=(res,data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
 function shell(surface,run,mode) {
@@ -23,13 +24,15 @@ function shell(surface,run,mode) {
     window.MemberSystem={loadConfig:async()=>config,signIn:async()=> 'local-fixture',request,subscribeRealtime:()=>()=>{},bindDialogKeyboard(){}};
     window.MembershipProgress={render(){}};
   `;
-  return html.replace('</head>','<style>.hidden{display:none!important}</style></head>').replace('</body>',`<script>${fixture}</script><script src="/${surface==='booking'?'booking/booking-receipt.js':'event/app.js'}"></script></body>`);
+  fixtureScripts.set(run,fixture);
+  return html.replace(/href="\.\//g,`href="/${surface}/`).replace('</body>',`<script src="/fixture.js?run=${encodeURIComponent(run)}"></script><script src="/${surface==='booking'?'booking/booking-receipt.js':'event/app.js'}"></script></body>`);
 }
 test.beforeAll(async()=>{
   server=http.createServer(async(req,res)=>{
     try {
       const url=new URL(req.url,'http://localhost');
       const run=url.searchParams.get('run');
+      if(url.pathname==='/fixture.js') {res.writeHead(200,{'Content-Type':'text/javascript'});res.end(fixtureScripts.get(run));return;}
       if(url.pathname==='/receipt'||url.pathname==='/geo') {
         runs.set(run,blank());res.writeHead(200,{'Content-Type':'text/html'});res.end(shell(url.pathname==='/receipt'?'booking':'event',run,url.searchParams.get('mode')||''));return;
       }
@@ -72,6 +75,7 @@ test.afterAll(async()=>{await new Promise(resolve=>server.close(resolve));});
 test.beforeEach(async({page})=>{await page.route('https://**',route=>route.abort());page.on('dialog',dialog=>dialog.accept());});
 async function open(page,run,mode='',accessible=true) {
   await page.goto(base+'/receipt?run='+run+'&mode='+mode);
+  expect(await page.evaluate(()=>typeof window.BookingSystem?.getSession)).toBe('function');
   await page.evaluate(accessible=>accessible?window.BookingReceipts.openAccessible():window.BookingReceipts.openBooking('QA-BOOKING','version-1'),accessible);
 }
 async function capture(page) {

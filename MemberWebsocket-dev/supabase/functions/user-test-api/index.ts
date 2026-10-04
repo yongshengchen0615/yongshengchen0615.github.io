@@ -154,7 +154,7 @@ async function memberProfileWrite(s: any, identity: any, token: string): Promise
 
   const before = beforeResult.data;
   const nextBirthday = String(before.birthday || "") === "1990-01-15" ? "1991-02-16" : "1990-01-15";
-  const nextPhone = String(before.phone || "") === "+886900000001" ? "+886900000002" : "+886900000001";
+  const nextPhone = String(before.phone || "") === "+886912345671" ? "+886912345672" : "+886912345671";
   const nextSurname = String(before.surname || "") === "測" ? "驗" : "測";
   const nextSalutation = String(before.salutation || "").toLowerCase() === "mr" ? "ms" : "mr";
   let writeSucceeded = false;
@@ -1965,7 +1965,7 @@ Deno.serve(async (request: Request) => {
   try {
     const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
     const action = asText(body.action, 80);
-    if (!["user.qa.mutations","user.qa.usage-state.prepare","user.qa.fixture.prepare","user.qa.fixture.cleanup","user.qa.browser-run.record"].includes(action)) {
+    if (!["user.qa.mutations","user.qa.usage-state.prepare","user.qa.fixture.prepare","user.qa.fixture.cleanup","user.qa.event-day.prepare","user.qa.browser-run.record"].includes(action)) {
       throw new ApiError(404, "ACTION_NOT_FOUND", "不支援的 QA 操作。");
     }
     const surface = asText(body.surface, 20) as Surface;
@@ -1989,6 +1989,13 @@ Deno.serve(async (request: Request) => {
       throw new ApiError(409, "TEST_SESSION_SURFACE_MISMATCH", "此測試登入屬於其他用戶端，請重新選擇測試帳號。");
     }
 
+    if (action === "user.qa.event-day.prepare") {
+      if (surface !== "event") throw new ApiError(403,"EVENT_SURFACE_REQUIRED","請從活動票券測試使用。");
+      const fixtureTag = requireFixtureTag(body.fixtureTag);
+      const prepared = await s.rpc("prepare_e2e_event_redemption_day",{p_member_id:identity.memberId,p_fixture_tag:fixtureTag});
+      if (prepared.error) throw new ApiError(503,"QA_EVENT_DAY_PREPARE_FAILED","無法準備測試帳號的票券日期狀態。");
+      return reply(origin,{ok:true,status:200,data:prepared.data});
+    }
     if (action === "user.qa.usage-state.prepare") {
       const usageState = await prepareUsageState(s, identity, token, surface);
       return reply(origin, { ok: true, status: 200, data: { surface, ...usageState } });

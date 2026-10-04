@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-04.2';
+  const VERSION = '2026-10-04.3';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -4752,7 +4752,9 @@
       benefitBefore = {
         pendingCount: pendingBenefits.length,
         titles: pendingBenefits.map((benefit) => String(benefit?.title || '可用權益')),
-        cardPendingVisible: pendingBenefits.length === 0 || /待核銷優惠/.test(String(card.textContent || ''))
+        cardPendingVisible: pendingBenefits.length === 0 || pendingBenefits.every(benefit =>
+          Array.from(card.querySelectorAll('.booking-ticket-card .booking-ticket-status.status-pending')).some(status =>
+            /待核銷/.test(status.textContent || '') && status.closest('.booking-ticket-card')?.textContent.includes(String(benefit.title || '').split('｜').pop().trim())))
       };
       if (!benefitBefore.cardPendingVisible) {
         throw new Error('預約有待核銷優惠，但管理端預約卡片沒有顯示待核銷資訊。');

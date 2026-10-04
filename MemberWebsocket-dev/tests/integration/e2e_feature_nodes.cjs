@@ -9,7 +9,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve,25));
 
 function userProbe(w) {
   w.eval(read('user-test-control.js').replace('  window.MemberUserTestControl =',
-    '  window.nodeProbe={state,verifyBookingCancellation,bookingReceiptReviewContractCase,memberPhoneCountryValidationCase,bookingAccessibleModeCase,bookingAccessibleReceiptBoundaryCase,bookingTicketRulesCase,bookingHistoryTicketSourcesCase,eventTodayUsableLimitCase,pointSettingsCase};\n  window.MemberUserTestControl ='));
+    '  window.nodeProbe={state,buttonCoverageCase,verifyBookingCancellation,bookingReceiptReviewContractCase,memberPhoneCountryValidationCase,bookingAccessibleModeCase,bookingAccessibleReceiptBoundaryCase,bookingTicketRulesCase,bookingHistoryTicketSourcesCase,eventTodayUsableLimitCase,pointSettingsCase};\n  window.MemberUserTestControl ='));
   w.nodeProbe.state.config={supabaseUrl:'https://fixture.supabase.co'};
   return w.nodeProbe;
 }
@@ -86,6 +86,34 @@ test('ticket rule node tests real any/all selection rejection without claiming a
     w.BookingSystem.bookingBenefits=async()=>({items:[]});
     assert.equal((await node.bookingTicketRulesCase()).status,'skipped','missing data must be blocked, not pass');
   }finally{w.close();}
+});
+
+test('booking history sources node uses member bootstrap and checks production ticket cards',async()=>{
+  const d=dom('booking'),w=d.window;
+  try {
+    w.BookingSystem={request:async(_config,type,_token,action)=>{
+      assert.equal(type,'member');assert.equal(action,'user.booking.bootstrap');
+      return {bookings:[{bookingId:'QA-HISTORY',benefits:[{kind:'points',title:'QA card｜QA ticket',status:'pending'}]}]};
+    }};
+    w.document.getElementById('bookingList').innerHTML='<article data-booking-id="QA-HISTORY"><article class="booking-ticket-card kind-points"><div class="booking-ticket-source">QA card</div><strong>QA ticket</strong></article></article>';
+    const node=userProbe(w);assert.equal((await node.bookingHistoryTicketSourcesCase()).status,'passed');
+    w.document.querySelector('.booking-ticket-source').textContent='Wrong card';assert.equal((await node.bookingHistoryTicketSourcesCase()).status,'failed');
+  }finally{w.close();}
+});
+
+test('all surfaces classify actual tour controls while unknown buttons still fail',async()=>{
+  for(const surface of ['member','points','event','calendar','booking']) {
+    const d=dom(surface),w=d.window;
+    try {
+      w.document.body.replaceChildren();
+      for(const id of ['openMemberTour','memberTourSkip','memberTourBack','memberTourNext',...(surface==='member'?['renewTermsButton']:[])]) {
+        const button=w.document.createElement('button');button.id=id;w.document.body.append(button);
+      }
+      const node=userProbe(w);assert.equal((await node.buttonCoverageCase()).status,'passed',surface);
+      const unknown=w.document.createElement('button');unknown.id='unregisteredFeature';w.document.body.append(unknown);
+      assert.equal((await node.buttonCoverageCase()).status,'failed',surface);
+    }finally{w.close();}
+  }
 });
 
 test('event quota node accepts zero and verifies the current used-count copy and datasets',async()=>{

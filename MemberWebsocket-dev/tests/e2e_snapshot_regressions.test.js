@@ -125,7 +125,7 @@ test('tutorial journey keeps the skipped-result helper callable', () => {
   const runner = read('user-test-control.js');
   assert.match(runner, /const skipButton = document\.getElementById\('memberTourSkip'\)/);
   assert.doesNotMatch(runner, /const skip = document\.getElementById\('memberTourSkip'\)/);
-  assert.match(runner, /pairedRunner && state\.participantIndex > 1[\s\S]*?\? skip\(/);
+  assert.doesNotMatch(runner, /if \(pairedRunner && state\.participantIndex > 1\)/);
 });
 
 test('paired runner reuses a valid same-run surface session instead of creating a conflicting login', () => {

@@ -75,6 +75,7 @@ jobs:
             MemberWebsocket-dev/tests/integration/e2e_feature_nodes.cjs \
             MemberWebsocket-dev/tests/integration/fixed_ticket_automation_sql.cjs \
             MemberWebsocket-dev/tests/integration/automation_health_sql.cjs \
+            MemberWebsocket-dev/tests/integration/qa_event_day_sql.cjs \
             MemberWebsocket-dev/tests/integration/qa_cleanup_boundaries.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs

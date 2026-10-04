@@ -1205,7 +1205,6 @@
   async function tourAutoStartCase() {
     const dialog = document.getElementById('memberTourDialog');
     const app = document.getElementById('app') || document.querySelector('.app-shell');
-    const pairedRunner = new URLSearchParams(window.location.search).has('qaPair');
     const opened = Boolean(await waitFor(
       () => dialog && !dialog.classList.contains('hidden') ? dialog : null,
       8000,
@@ -1252,23 +1251,6 @@
     const expected = { overlayOutsideTarget: true, stepsNavigable: true, explicitDailySkip: true, manualReplay: true, completionClearsSkip: true, stateRestored: true };
     if (![dialog, launcher, overlay, focus, app, next, back, skipButton, progress].every(Boolean)) {
       return fail('使用教學必要控制項缺失。', expected, evidence);
-    }
-
-    if (pairedRunner && state.participantIndex > 1) {
-      const cleanup = await dismissTourForE2E();
-      evidence.forcedCleanup = cleanup.forced;
-      evidence.stateRestored = true;
-      return cleanup.dismissed && !cleanup.forced
-        ? skip(
-            '協同 E2E 僅由第一位測試會員完整走教學；其他會員已驗證自動啟動並安全關閉，避免重複導覽拖慢整輪診斷。',
-            { fullJourneyParticipant: 1, blockerCleared: true },
-            { ...evidence, blockerCleared: true }
-          )
-        : fail(
-            '次要測試會員的教學無法解除，可能阻塞後續 E2E。',
-            { blockerCleared: true },
-            { ...evidence, blockerCleared: cleanup.dismissed }
-          );
     }
 
     const tourKeys = () => Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
@@ -1958,7 +1940,7 @@
     const nextSurname = originalSurname === '測' ? '驗' : '測';
     const nextSalutation = originalSalutation === 'mr' ? 'ms' : 'mr';
     const nextBirthday = originalBirthday === '1990-01-15' ? '1991-02-16' : '1990-01-15';
-    const nextPhone = originalPhone.replace(/\D/g, '') === '0900000001' ? '0900000002' : '0900000001';
+    const nextPhone = window.MemberPhone.normalizeStored(originalPhone) === '+886912345671' ? '0912345672' : '0912345671';
     const actual = {
       honorificCancelled: false, honorificSaved: false, honorificRestored: false,
       birthdayClosed: false, birthdaySaved: false, birthdayRestored: false,
@@ -2034,11 +2016,12 @@
       actual.phoneCancelled = await waitClosed('phoneEditModal');
 
       await open('editPhoneButton', 'phoneEditModal');
+      setFieldValue(document.getElementById('phoneEditCountryCode'), '+886');
       setFieldValue(document.getElementById('phoneEditInput'), nextPhone);
       document.getElementById('savePhoneEditButton')?.click();
       await waitClosed('phoneEditModal');
       fresh = await requestCore('user.member.bootstrap', {});
-      actual.phoneSaved = String(fresh?.profile?.phone || '').replace(/\D/g, '') === nextPhone.replace(/\D/g, '');
+      actual.phoneSaved = window.MemberPhone.normalizeStored(fresh?.profile?.phone) === window.MemberPhone.normalizeStored(nextPhone);
 
       await open('editPhoneButton', 'phoneEditModal');
       setFieldValue(document.getElementById('phoneEditInput'), originalPhone);
@@ -2189,6 +2172,8 @@
     }
 
     async function claimAndRedeem(label) {
+      const dayFixture = await qaServiceRequest('user.qa.event-day.prepare',{fixtureTag:fixture.fixtureTag});
+      actual.qaDayFixtures = (actual.qaDayFixtures || []).concat([{label,...dayFixture}]);
       if (!action || action.disabled) throw new Error(label + '領取按鈕不可操作。');
       action.click();
       const claimed = Boolean(await waitFor(() => !action.disabled && /確認使用/.test(action.textContent || ''), 7000));
@@ -3039,7 +3024,7 @@
     const buttons = Array.from(document.querySelectorAll('button')).filter((button) => !qaPanel?.contains(button) && button.id !== LAUNCHER_ID);
     const navigationIds = new Set(['retryButton','logoutButton','joinMemberButton','refreshProfileButton','refreshTicketButton']);
     const patterns = {
-      member: /^(edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|copyMemberInviteCode|bindMemberReferral)/,
+      member: /^(edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|copyMemberInviteCode|bindMemberReferral|renewTermsButton)/,
       points: /^(retryButton|joinMemberButton|logoutButton|pointTransferButton|pointTransferClose|pointTransferCopyOwnCode|pointTransferLookup|pointTransferSubmit)$|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
       event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button/,
       calendar: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|todayButton|nextMonthButton|closeCalendarDetailButton)$|calendar-day/,
@@ -3055,7 +3040,7 @@
         continue;
       }
       const pattern = patterns[surface];
-      if (matchesButtonCoverage(button, pattern)) mapped.push(signature);
+      if (/^(openMemberTour|memberTourSkip|memberTourBack|memberTourNext)$/.test(button.id) || matchesButtonCoverage(button, pattern)) mapped.push(signature);
       else unmapped.push(signature);
     }
     const actual = { totalButtons: buttons.length, mappedFunctional: mapped.length, navigationSessionControls: navigation, qaInfrastructureControls, unmapped };
@@ -3459,7 +3444,7 @@
 
   async function bookingHistoryTicketSourcesCase() {
     const config = await loadConfig();
-    const data = await window.BookingSystem.request(config, 'booking', '', 'user.booking.bootstrap', {});
+    const data = await window.BookingSystem.request(config, 'member', '', 'user.booking.bootstrap', {});
     const bookings = (data.bookings || []).filter(row => row.benefits?.length);
     if (!bookings.length) return skip('沒有含票券的預約歷史，來源卡片等待 fixture。', { bookingWithBenefits:true }, { blockerCode:'E2E_BOOKING_BENEFITS_HISTORY_MISSING' });
     const mismatches = [];
