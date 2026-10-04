@@ -45,6 +45,7 @@
       kind: item.kind,
       id: item.id,
       title: item.title || kinds[item.kind] || '可用權益',
+      cardTitle: item.cardTitle || '',
       status: item.status || 'pending',
     }));
   }
@@ -259,7 +260,7 @@
       render(renderedItems);
       return;
     }
-    selected.set(selectedKey, { kind: item.kind, id: selectionId, title: String(item.title || ''), status: 'pending' });
+    selected.set(selectedKey, { kind: item.kind, id: selectionId, title: String(item.title || ''), cardTitle: item.kind === 'points' ? String(item.cardTitle || '') : '', status: 'pending' });
     render(renderedItems);
     emitSelectionChange();
   }
@@ -428,6 +429,7 @@
       selected.set(keyFor(kind, id), {
         kind, id,
         title: String(item?.title || item?.titleSnapshot || ''),
+        cardTitle: String(item?.cardTitle || ''),
         status: String(item?.status || 'pending'),
       });
     }
