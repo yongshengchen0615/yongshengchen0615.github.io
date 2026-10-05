@@ -69,6 +69,7 @@
     MEMBER_PHONE_COUNTRY_VALIDATION: { module: 'member', phase: 4, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_PROFILE_DATA: { module: 'member', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     MEMBER_TERMS_CONSENT: { module: 'member', phase: 3, required: true, dependencies: ['MEMBER_PROFILE_DATA'] },
+    MEMBER_JOIN_TERMS_FLOW: { module: 'member', phase: 4, required: true, dependencies: ['MEMBER_TERMS_CONSENT'] },
     MEMBER_REFERRAL_BOUNDARY: { module: 'member', phase: 4, required: true, risk: 'security', dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_JOIN_LINE_AUTOMATION_CONTRACT: { module: 'member', phase: 5, required: true, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_MODAL_OPEN_CLOSE: { module: 'member', phase: 3, dependencies: ['MEMBER_PROFILE_DATA'] },
@@ -106,6 +107,7 @@
 
     BOOKING_ACCESSIBLE_MODE: { module: 'booking', phase: 5, dependencies: ['BOOKING_DATA'] },
     BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY: { module: 'booking', phase: 5, risk: 'security', dependencies: ['BOOKING_DATA'] },
+    BOOKING_ACCESSIBLE_SCREENSHOT_RECEIPT: { module: 'booking', phase: 5, required: true, risk: 'mutation', dependencies: ['BOOKING_ACCESSIBLE_MODE', 'BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY'] },
     BOOKING_TICKET_RULES: { module: 'booking', phase: 5, dependencies: ['BOOKING_BENEFIT_REDEMPTION_LIFECYCLE'] },
     BOOKING_HISTORY_TICKET_SOURCES: { module: 'booking', phase: 5, dependencies: ['BOOKING_BENEFIT_REDEMPTION_LIFECYCLE','BOOKING_HUMAN_LIFECYCLE','BOOKING_HUMAN_GROUP'] },
     BOOKING_DATA: { module: 'booking', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
@@ -1021,6 +1023,7 @@
         caseDef('電話：國碼、重複數字與後端拒絕', 'Validation', memberPhoneCountryValidationCase, 'MEMBER_PHONE_COUNTRY_VALIDATION'),
         caseDef('會員資料完整性', 'Member', memberProfileCase, 'MEMBER_PROFILE_DATA'),
         caseDef('會員條款：有效版本與拒絕邊界', 'Member / Legal', membershipTermsConsentCase, 'MEMBER_TERMS_CONSENT'),
+        caseDef('會員申請條款：未同意阻擋與目前版本確認', 'Human E2E', memberJoinTermsFlowCase, 'MEMBER_JOIN_TERMS_FLOW'),
         caseDef('好友邀請：邀請碼／Modal／自邀前端拒絕', 'Member / Growth', memberReferralBoundaryCase, 'MEMBER_REFERRAL_BOUNDARY'),
         caseDef('加入會員後 LINE 自動訊息 UI 契約', 'Member / Notification', memberJoinLineAutomationContractCase, 'MEMBER_JOIN_LINE_AUTOMATION_CONTRACT'),
         caseDef('稱呼／生日／電話編輯視窗', 'UI', memberModalCase, 'MEMBER_MODAL_OPEN_CLOSE'),
@@ -1056,6 +1059,7 @@
       booking: [
         caseDef('無障礙模式切換、票券與狀態同步', 'Human E2E', bookingAccessibleModeCase, 'BOOKING_ACCESSIBLE_MODE'),
         caseDef('無障礙收據：錯誤格式與大小拒絕', 'Security', bookingAccessibleReceiptBoundaryCase, 'BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY'),
+        caseDef('無障礙收據：螢幕快照上傳與待審核', 'Human E2E', bookingAccessibleScreenshotReceiptCase, 'BOOKING_ACCESSIBLE_SCREENSHOT_RECEIPT'),
         caseDef('票券：具體服務 any／all、上限與點數預算', 'Validation', bookingTicketRulesCase, 'BOOKING_TICKET_RULES'),
         caseDef('預約歷史：票券來源卡片對照', 'Booking / History', bookingHistoryTicketSourcesCase, 'BOOKING_HISTORY_TICKET_SOURCES'),
         caseDef('會員與預約 Bootstrap 一致性', 'Booking', bookingDataCase, 'BOOKING_DATA'),
@@ -3106,6 +3110,117 @@
         }, actual);
   }
 
+
+  async function memberJoinTermsFlowCase() {
+    const data = state.bootstrap || await requestCore('user.member.bootstrap', {});
+    const terms = data?.terms || null;
+    const form = document.getElementById('profileForm');
+    const summary = document.getElementById('joinTermsSummary');
+    const title = document.getElementById('joinTermsTitle');
+    const body = document.getElementById('joinTermsBody');
+    const checkbox = document.getElementById('joinTermsAccepted');
+    const message = document.getElementById('profileFormMessage');
+    const fields = {
+      surname: document.getElementById('profileSurname'),
+      salutation: document.getElementById('profileSalutation'),
+      birthday: document.getElementById('profileBirthday'),
+      country: document.getElementById('profileCountryCode'),
+      phone: document.getElementById('profilePhone')
+    };
+    const required = [form, summary, title, body, checkbox, message, ...Object.values(fields)];
+    if (!terms?.id || !terms?.version) {
+      return skip(
+        '會員申請條款尚未由管理端啟用；真人流程無法安全執行。',
+        { activeTerms: true },
+        { activeTerms: false, blockerCode: 'MEMBERSHIP_TERMS_NOT_CONFIGURED' }
+      );
+    }
+    if (required.some((node) => !node)) {
+      return fail(
+        '會員申請條款真人流程缺少必要 DOM。',
+        { requiredDom: true },
+        { requiredDom: false }
+      );
+    }
+
+    const previous = {
+      surname: fields.surname.value,
+      salutation: fields.salutation.value,
+      birthday: fields.birthday.value,
+      country: fields.country.value,
+      phone: fields.phone.value,
+      checked: checkbox.checked,
+      messageText: message.textContent,
+      messageHidden: message.classList.contains('hidden')
+    };
+    const actual = {
+      versionVisible: false,
+      uncheckedBlocked: false,
+      checkboxVerified: false,
+      noProfileWriteTriggered: true,
+      restored: false
+    };
+
+    try {
+      actual.versionVisible =
+        String(summary.textContent || '').includes(String(terms.version)) &&
+        String(title.textContent || '').includes(String(terms.version)) &&
+        String(body.textContent || '').trim().length > 0;
+
+      setFieldValue(fields.surname, '測');
+      setFieldValue(fields.salutation, 'mr');
+      setFieldValue(fields.birthday, '1990-01-15');
+      setFieldValue(fields.country, '+886');
+      setFieldValue(fields.phone, '0912345678');
+      checkbox.checked = false;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      actual.uncheckedBlocked = Boolean(await waitFor(
+        () => /請閱讀並勾選同意會員條款/.test(String(message.textContent || '')) ? message : null,
+        1800,
+        50
+      ));
+
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      await wait(500);
+      actual.checkboxVerified =
+        checkbox.checked === true &&
+        String(summary.textContent || '').includes(String(terms.version)) &&
+        !/條款剛剛更新|無法確認最新會員條款/.test(String(message.textContent || ''));
+    } finally {
+      fields.surname.value = previous.surname;
+      fields.salutation.value = previous.salutation;
+      fields.birthday.value = previous.birthday;
+      fields.country.value = previous.country;
+      fields.phone.value = previous.phone;
+      checkbox.checked = previous.checked;
+      message.textContent = previous.messageText;
+      message.classList.toggle('hidden', previous.messageHidden);
+      actual.restored =
+        fields.surname.value === previous.surname &&
+        fields.salutation.value === previous.salutation &&
+        fields.birthday.value === previous.birthday &&
+        fields.country.value === previous.country &&
+        fields.phone.value === previous.phone &&
+        checkbox.checked === previous.checked;
+    }
+
+    const ok = Object.values(actual).every(Boolean);
+    return ok
+      ? pass(
+          '會員申請條款已用真人 submit/change 事件驗證：目前版本有完整內容、未勾選會被前端阻擋、勾選後會再次確認仍為目前版本，且不送出正式會員資料寫入。',
+          { versionVisible: true, uncheckedBlocked: true, checkboxVerified: true, noProfileWriteTriggered: true, restored: true },
+          actual
+        )
+      : fail(
+          '會員申請條款真人流程至少一個步驟不符合預期。',
+          { versionVisible: true, uncheckedBlocked: true, checkboxVerified: true, noProfileWriteTriggered: true, restored: true },
+          actual
+        );
+  }
+
   async function memberInvalidWriteCase() {
     const contact = await expectApiError(
       'user.member.profile.save',
@@ -3396,6 +3511,84 @@
     return Object.values(actual).every(Boolean)
       ? pass('無障礙模式可切換、顯示可用票券與真實登記狀態，完成後還原偏好。', { allChecks:true, physicalCamera:'device acceptance' }, actual)
       : fail('無障礙模式、票券或收據狀態未同步。', { allChecks:true }, actual);
+  }
+
+
+  async function bookingAccessibleScreenshotReceiptCase() {
+    const token = window.TestModeClient?.getSessionToken?.();
+    if (!token) return fail('缺少測試 Session，無法安全建立無障礙 E2E 收據。', { testSession: true }, { testSession: false });
+    if (typeof window.BookingReceipts?.openAccessibleE2ESnapshot !== 'function') {
+      return fail('目前版本缺少無障礙 E2E 螢幕快照入口。', { e2eSnapshotHook: true }, { e2eSnapshotHook: false });
+    }
+
+    const config = await loadConfig();
+    const before = await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.list', {});
+    const existingIds = new Set((Array.isArray(before?.submissions) ? before.submissions : []).map((item) => String(item?.receiptId || '')));
+    const actual = {
+      screenshotCaptured: false,
+      previewReady: false,
+      submitted: false,
+      awaitingReview: false,
+      mimeType: '',
+      sizeBytes: 0,
+      preservedForAdmin: false
+    };
+    let modal = null;
+    try {
+      const captured = await captureFailureScreenshotBlob();
+      actual.screenshotCaptured = Boolean(captured?.blob && captured.blob.size > 0);
+      const injected = window.BookingReceipts.openAccessibleE2ESnapshot(captured.blob);
+      actual.mimeType = String(injected?.mimeType || '');
+      actual.sizeBytes = Number(injected?.sizeBytes || 0);
+      modal = document.getElementById('bookingReceiptModal');
+      actual.previewReady = Boolean(await waitFor(() => {
+        const submit = document.getElementById('bookingReceiptSubmit');
+        const preview = document.getElementById('bookingReceiptPreview');
+        return submit && !submit.disabled && /^data:image\/(?:webp|jpeg|png)/.test(String(preview?.getAttribute('src') || '')) ? submit : null;
+      }, 5000, 80));
+      if (!actual.previewReady) throw new Error('螢幕快照沒有進入收據預覽。');
+
+      document.getElementById('bookingReceiptSubmit')?.click();
+      actual.submitted = Boolean(await waitFor(
+        () => modal?.classList.contains('hidden') ? modal : null,
+        18000,
+        120
+      ));
+      if (!actual.submitted) throw new Error('無障礙收據送出後視窗未完成關閉。');
+
+      const after = await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.list', {});
+      const created = (Array.isArray(after?.submissions) ? after.submissions : []).find((item) => {
+        const id = String(item?.receiptId || '');
+        return id && !existingIds.has(id) && String(item?.status || '') === 'awaiting_review';
+      });
+      actual.awaitingReview = Boolean(created);
+      actual.preservedForAdmin = Boolean(created);
+    } finally {
+      if (modal && !modal.classList.contains('hidden')) {
+        document.getElementById('bookingReceiptCancel')?.click();
+      }
+    }
+
+    const ok =
+      actual.screenshotCaptured &&
+      actual.previewReady &&
+      actual.submitted &&
+      actual.awaitingReview &&
+      actual.preservedForAdmin &&
+      ['image/webp','image/jpeg','image/png'].includes(actual.mimeType) &&
+      actual.sizeBytes > 0 &&
+      actual.sizeBytes <= 5 * 1024 * 1024;
+    return ok
+      ? pass(
+          '無障礙模式已用去識別化螢幕快照取代實體收據照片，完成 Storage 上傳與 finalize，並確認新收據進入管理端待審核狀態。',
+          { screenSnapshot: true, uploaded: true, awaitingReview: true, preservedForAdmin: true },
+          actual
+        )
+      : fail(
+          '無障礙模式螢幕快照收據沒有完整進入待審核流程。',
+          { screenSnapshot: true, uploaded: true, awaitingReview: true, preservedForAdmin: true },
+          actual
+        );
   }
 
   async function bookingAccessibleReceiptBoundaryCase() {
