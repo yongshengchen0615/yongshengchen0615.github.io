@@ -9,6 +9,28 @@ export function summarizeE2EExecution(cases) {
     executedCases:passed + failed, skippedCases:skipped };
 }
 
+export function normalizeFeatureCoverage(value) {
+  const total = Number(value?.total);
+  if (!value?.counts || !Number.isInteger(total) || total < 1 || total > 200) return null;
+  const counts = {};
+  for (const key of ['passed', 'failed', 'blocked', 'not-run', 'unplanned', 'unregistered']) {
+    const count = Number(value.counts[key] || 0);
+    if (!Number.isInteger(count) || count < 0 || count > total) return null;
+    if (count) counts[key] = count;
+  }
+  if (Object.values(counts).reduce((sum, n) => sum + n, 0) !== total) return null;
+  return { version: 1, total, counts, complete: counts.passed === total };
+}
+
+export function normalizeClientFeatureCoverage(items) {
+  const surfaces = ['member', 'points', 'event', 'calendar', 'booking'];
+  return (Array.isArray(items) ? items : []).slice(0, 50).map(item => ({
+    participant: Math.max(1, Math.min(10, Number(item?.participant) || 1)),
+    surface: surfaces.includes(item?.surface) ? item.surface : 'member',
+    coverage: normalizeFeatureCoverage(item?.coverage)
+  }));
+}
+
 export async function prepareE2EServiceRuleFixtures(supabase, fixture) {
   const tag = String(fixture?.runTag || '');
   const createdBy = String(fixture?.createdBy || '');

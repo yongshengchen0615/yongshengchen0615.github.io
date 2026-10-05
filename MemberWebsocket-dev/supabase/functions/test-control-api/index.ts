@@ -1,4 +1,4 @@
-import { summarizeE2EExecution, prepareE2EServiceRuleFixtures } from "../_shared/e2e-coverage.js";
+import { summarizeE2EExecution, prepareE2EServiceRuleFixtures, normalizeFeatureCoverage, normalizeClientFeatureCoverage } from "../_shared/e2e-coverage.js";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
@@ -1513,6 +1513,10 @@ async function recordBrowserRun(
     item.status === "failed" && (item.trace as any)?.screenshotCapture?.status === "skipped"
   ).length;
   const failureDiagnostics = summarizeE2EFailureDiagnoses(normalized.map((item)=>item.diagnosis).filter(Boolean));
+  const featureCoverage = body.rootRun === true ? normalizeFeatureCoverage(body.featureCoverage) : null;
+  const clientCoverage = body.rootRun === true ? normalizeClientFeatureCoverage(body.clientCoverage) : [];
+  const featureIncomplete = (featureCoverage && !featureCoverage.complete) ||
+    clientCoverage.some((item: any) => item.coverage && !item.coverage.complete);
   const shouldPersistReplayManifest = body.rootRun === true && runnerKind === "paired-browser" && suite === "full";
   const replayManifest = shouldPersistReplayManifest ? normalizeReplayManifest(body.replayManifest) : null;
   const replayOfRunId = asText(body.replayOfRunId,80);
@@ -1536,7 +1540,10 @@ async function recordBrowserRun(
     summary: {
       runnerVersion: asText(body.runnerVersion, 80) || "admin-browser-e2e-legacy",
       runnerKind,
+      featureCoverage,
+      clientCoverage,
       ...summarizeE2EExecution(normalized),
+      ...(featureIncomplete ? { coverageComplete: false, verificationStatus: failed ? "failed" : "incomplete" } : {}),
       skippedCases: skipped,
       memberId,
       durationMs,
@@ -1853,11 +1860,20 @@ Deno.serve(async (request: Request) => {
     if (action === "admin.test-control.status") {
       const runId = asText(body.runId, 80);
       if (!UUID_RE.test(runId)) throw new ApiError(400, "INVALID_RUN_ID", "測試執行識別不正確。");
+      let view: Json;
+      try {
+        view = await runView(supabase, runId);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.code !== "TEST_RUN_NOT_FOUND") throw error;
+        // A purge in another tab can remove a run between list and status.
+        // This is an expected observation, not a missing Edge Function.
+        view = { run: null, cases: [], runMissing: true };
+      }
       return response(origin, {
         ok: true,
         status: 200,
         data: {
-          ...(await runView(supabase, runId)),
+          ...view,
           runs: await recentRuns(supabase),
         },
       });

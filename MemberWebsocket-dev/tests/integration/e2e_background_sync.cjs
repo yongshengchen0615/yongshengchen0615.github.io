@@ -24,7 +24,7 @@ function view(id = 'qa-1', status = 'running', passed = 0) {
   };
 }
 
-async function page(query = '') {
+async function page(query = '', savedCoverage = null, preloadedDetail = null) {
   const dom = new JSDOM(read('admin/index.html'), {
     runScripts: 'outside-only', pretendToBeVisual: true,
     url: 'https://example.test/MemberWebsocket-dev/admin/' + query
@@ -50,8 +50,10 @@ async function page(query = '') {
     return { ok: true, json: async () => ({ ok: true, data }) };
   };
   w.respond = async () => ({ runs: [] });
+  if (savedCoverage) w.sessionStorage.setItem('member-admin-e2e-coverage-v1', savedCoverage);
   w.eval(read('admin/test-control.js'));
   w.dispatchEvent(new w.Event('DOMContentLoaded'));
+  if (preloadedDetail) w.MemberAdminTestControl.acceptRecordedRun(preloadedDetail);
   w.document.documentElement.dataset.memberAdminReady = 'true';
   w.eval(read('admin/e2e-control.js').replace('  window.MemberAdminE2EControl =',
     '  window.syncProbe = { state };\n  window.MemberAdminE2EControl ='));
@@ -99,6 +101,107 @@ test('backend QA pushes creation, per-case progress and completion to parent wit
     assert.equal(parent.w.requests.length, 0);
     assert.doesNotMatch(JSON.stringify(child.w.MemberAdminE2EControl.getStatus()), /private-fixture-session/);
   } finally { child.close(); parent.close(); }
+});
+
+const partialFeatureCoverage = () => ({ total: 33, counts: { passed: 2, 'not-run': 31 }, complete: false });
+
+test('reloading restores 2/33 coverage and client counts without persisting credentials or case details', async () => {
+  const first = await page();
+  let reloaded;
+  try {
+    first.w.syncProbe.state.backgroundRunId = 'BG-reload';
+    first.w.MemberAdminE2EControl.receiveBackgroundStatus({
+      runId: 'BG-reload', running: true, coverage: partialFeatureCoverage(),
+      clientCoverage: [{ participant: 1, surface: 'booking', coverage: { total: 3, counts: { passed: 1, blocked: 2 } } }],
+      results: [{ key: 'NODE', message: 'private-case-details', status: 'passed' }],
+      idToken: 'private-session-must-not-persist'
+    });
+    const saved = first.w.sessionStorage.getItem('member-admin-e2e-coverage-v1');
+    assert.ok(saved, 'coverage must be stored before reload');
+    assert.doesNotMatch(saved, /private-|results|idToken/);
+    reloaded = await page('', saved);
+    assert.equal(reloaded.w.document.querySelector('.e2e-feature-coverage-card p').textContent, '2 / 33 功能群組通過');
+    assert.match(reloaded.w.document.querySelector('.e2e-feature-coverage-card small').textContent, /未執行 31/);
+    assert.equal(reloaded.w.document.querySelectorAll('.e2e-feature-coverage-card').length, 2);
+    assert.equal(reloaded.w.MemberAdminE2EControl.isRunning(), false, 'cached counts cannot claim the Runner is still alive');
+    assert.equal(reloaded.w.MemberAdminE2EControl.receiveBackgroundStatus({ runId: 'BG-old', running: true }), false);
+    assert.equal(reloaded.w.MemberAdminE2EControl.receiveBackgroundStatus({ runId: 'BG-reload', running: true,
+      coverage: { total: 33, counts: { passed: 3, 'not-run': 30 } } }), true);
+    assert.equal(reloaded.w.document.querySelector('.e2e-feature-coverage-card p').textContent, '3 / 33 功能群組通過');
+    let stopped = 0;
+    const runner = { location: { origin: reloaded.w.location.origin }, closed: false,
+      MemberAdminE2EControl: { stop: () => { stopped++; } } };
+    reloaded.w.MemberAdminE2EControl.receiveBackgroundStatus({ runId: 'BG-reload', running: true,
+      coverage: partialFeatureCoverage() }, runner);
+    reloaded.w.MemberAdminE2EControl.stop();
+    assert.equal(stopped, 1, 'the refreshed parent can still stop the original Runner after its heartbeat');
+  } finally { reloaded?.close(); first.close(); }
+});
+
+test('history loaded before lazy E2E startup restores persisted feature coverage without local storage', async () => {
+  const record = view('browser-history', 'passed', 2);
+  record.run.summary = { runnerKind: 'paired-browser', featureCoverage: partialFeatureCoverage(), clientCoverage: [] };
+  const p = await page('', null, record);
+  try {
+    assert.equal(p.w.document.querySelector('.e2e-feature-coverage-card p')?.textContent, '2 / 33 功能群組通過');
+    assert.match(p.w.document.querySelector('[data-e2e-feature-coverage]').textContent, /BROWSER-HISTORY/);
+    const other = view('browser-other', 'passed', 2);
+    other.run.summary = { runnerKind: 'admin-browser', featureCoverage: { total: 4, counts: { passed: 4 } } };
+    p.w.MemberAdminTestControl.acceptRecordedRun(other);
+    assert.equal(p.w.document.querySelector('.e2e-feature-coverage-card p').textContent, '4 / 4 功能群組通過');
+  } finally { p.close(); }
+});
+
+test('expired, corrupt and inflated cached coverage cannot appear as a passed run', async () => {
+  for (const saved of ['invalid-json', JSON.stringify({ version: 1, savedAt: Date.now() - 25 * 3600000, coverage: partialFeatureCoverage() }),
+    JSON.stringify({ version: 1, savedAt: Date.now(), coverage: { total: 33, counts: { passed: 33, failed: 1 }, complete: true } })]) {
+    const p = await page('', saved);
+    try {
+      assert.equal(p.w.document.querySelectorAll('.e2e-feature-coverage-card').length, 0);
+      assert.equal(p.w.sessionStorage.getItem('member-admin-e2e-coverage-v1'), null);
+    } finally { p.close(); }
+  }
+});
+
+test('a deleted selected run recovers once to current history and never keeps polling its old id', async () => {
+  const p = await page();
+  try {
+    const deleted = view('qa-deleted', 'passed', 2);
+    const replacement = view('qa-replacement', 'passed', 2);
+    p.w.respond = body => body.action.endsWith('.list') ? { runs: [deleted.run] }
+      : body.runId === deleted.run.id ? { run: null, cases: [], runMissing: true, runs: [replacement.run] }
+        : { ...replacement, runs: [replacement.run] };
+    await p.w.MemberAdminTestControl.refresh();
+    assert.equal(p.w.MemberAdminTestControl.currentRunId(), replacement.run.id);
+    assert.equal(p.w.document.getElementById('automationTestRunCode').textContent, 'QA-REPLACEMENT');
+    assert.equal(p.w.requests.filter(body => body.runId === deleted.run.id).length, 1);
+    assert.equal(p.timer(900), undefined);
+  } finally { p.close(); }
+});
+
+test('a second concurrent deletion stops recovery instead of recursively retrying history', async () => {
+  const p = await page();
+  try {
+    const a = view('qa-a'), b = view('qa-b');
+    p.w.respond = body => body.action.endsWith('.list') ? { runs: [a.run] }
+      : { run: null, cases: [], runMissing: true, runs: [body.runId === a.run.id ? b.run : a.run] };
+    await p.w.MemberAdminTestControl.refresh();
+    assert.equal(p.w.requests.length, 3);
+    assert.equal(p.w.MemberAdminTestControl.currentRunId(), '');
+    assert.equal(p.timer(900), undefined);
+  } finally { p.close(); }
+});
+
+test('cleared history also removes cached coverage so refresh cannot resurrect deleted results', async () => {
+  const saved = JSON.stringify({ version: 1, savedAt: Date.now(), runId: 'BG-cleared', coverage: partialFeatureCoverage() });
+  const p = await page('', saved);
+  try {
+    assert.equal(p.w.document.querySelectorAll('.e2e-feature-coverage-card').length, 1);
+    p.w.respond = async () => ({ runs: [] });
+    await p.w.MemberAdminTestControl.refresh();
+    assert.equal(p.w.document.querySelectorAll('.e2e-feature-coverage-card').length, 0);
+    assert.equal(p.w.sessionStorage.getItem('member-admin-e2e-coverage-v1'), null);
+  } finally { p.close(); }
 });
 
 test('an empty or incomplete coverage report cannot interrupt background progress rendering', async () => {
