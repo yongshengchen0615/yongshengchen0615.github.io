@@ -237,3 +237,51 @@ test('service-restricted tickets require a matching booked service and are remov
     h.close();
   }
 });
+
+test('live ticket limit changes reconcile existing selections for each kind and preserve zero as unlimited', async () => {
+  const inventory = [
+    ...['A', 'B', 'C'].map(id => ({ kind: 'points', id, selectionId: 'PT-' + id, selectable: true,
+      title: 'Points ' + id, cardId: 'CARD', pointCost: 2, pointBalance: 20 })),
+    ...['A', 'B', 'C'].map(id => ({ kind: 'event', id, selectionId: 'EC-' + id, selectable: true,
+      title: 'Event ' + id })),
+  ];
+  let limit = 0;
+  const h = fixture(async () => ({ items: inventory, pointTicketMaxPerRedemption: limit, eventTicketMaxPerDay: limit }));
+  try {
+    h.start(); await tick(10);
+    for (const item of inventory) h.el('bookingBenefitsList').querySelector(`input[data-booking-benefit-id="${item.selectionId}"]`).click();
+    assert.equal(h.w.BookingBenefits.selectionPayload().length, 6);
+    const events = [];
+    h.w.addEventListener('booking:benefits-changed', e => events.push(e.detail.benefits));
+    limit = 1; h.w.BookingBenefits.syncNow(); await tick(10);
+    assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), [
+      { kind: 'points', id: 'PT-A' }, { kind: 'event', id: 'EC-A' },
+    ], 'a lowered live limit must remove excess tickets before the booking is submitted');
+    assert.equal(events.length, 1, 'the confirmation summary receives the reconciled selection');
+    assert.match(h.el('bookingBenefitsStatus').textContent, /已取消超出|已移除超出/);
+    limit = 0; h.w.BookingBenefits.syncNow(); await tick(10);
+    assert.equal(h.w.BookingBenefits.selectionPayload().length, 2, 'raising the limit never chooses tickets for the member');
+    for (const id of ['PT-B', 'PT-C', 'EC-B', 'EC-C']) h.el('bookingBenefitsList').querySelector(`input[data-booking-benefit-id="${id}"]`).click();
+    assert.equal(h.w.BookingBenefits.selectionPayload().length, 6, 'zero restores unlimited selection');
+  } finally { h.close(); }
+});
+
+test('switching booking context while inventory is loading discards the previous context response', async () => {
+  let release;
+  const requests = [];
+  const h = fixture((_config, _token, bookingId) => {
+    requests.push(bookingId);
+    return requests.length === 1 ? new Promise(resolve => { release = resolve; }) : Promise.resolve({ items });
+  });
+  try {
+    const rendered = [];
+    h.w.addEventListener('booking:benefits-loaded', e => rendered.push(e.detail.items.map(i => i.id)));
+    h.start();
+    h.w.BookingBenefits.setBookingContext('edit-booking');
+    release({ items: [{ ...items[0], id: 'old-context', selectable: false }] });
+    await tick(10);
+    assert.deepEqual(requests, ['', 'edit-booking']);
+    assert.equal(rendered.some(ids => ids.includes('old-context')), false, 'stale reservations must never overwrite the editing context');
+    assert.equal(h.w.BookingBenefits.getItems().length, items.length);
+  } finally { h.close(); }
+});
