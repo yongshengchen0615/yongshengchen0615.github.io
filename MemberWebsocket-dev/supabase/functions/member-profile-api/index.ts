@@ -120,11 +120,24 @@ async function profileFor(supabase: SupabaseClient, member: any): Promise<Json> 
   };
 }
 async function termsForMember(supabase: SupabaseClient, member: any): Promise<{ terms: any; consentRequired: boolean }> {
-  const result = await supabase.from("membership_terms").select("id,version,title,summary,body,required,effective_at,reconsent_existing,activated_at").eq("status", "active").maybeSingle();
-  if (result.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法讀取會員條款。");
-  const terms = result.data && new Date(result.data.effective_at).getTime() <= Date.now() ? result.data : null;
+  const scopes = member?.is_test_account === true ? ["e2e", "production"] : ["production"];
+  let terms: any = null;
+  for (const scope of scopes) {
+    const result = await supabase.from("membership_terms")
+      .select("id,scope,version,title,summary,body,required,effective_at,reconsent_existing,activated_at")
+      .eq("scope", scope)
+      .eq("status", "active")
+      .maybeSingle();
+    if (result.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法讀取會員條款。");
+    if (result.data && new Date(result.data.effective_at).getTime() <= Date.now()) {
+      terms = result.data;
+      break;
+    }
+  }
   if (member.membership_status !== "active") return { terms, consentRequired: true };
-  if (!terms?.reconsent_existing || (member.is_test_account !== true && new Date(member.joined_at || member.created_at).getTime() >= new Date(terms.activated_at).getTime())) return { terms, consentRequired: false };
+  if (!terms?.reconsent_existing || (member.is_test_account !== true && new Date(member.joined_at || member.created_at).getTime() >= new Date(terms.activated_at).getTime())) {
+    return { terms, consentRequired: false };
+  }
   const consent = await supabase.from("membership_consents").select("id").eq("member_id", member.id).eq("terms_id", terms.id).maybeSingle();
   if (consent.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法確認條款同意紀錄。");
   return { terms, consentRequired: !consent.data };
