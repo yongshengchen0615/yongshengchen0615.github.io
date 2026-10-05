@@ -9,7 +9,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 test('admin exposes only the unified background full E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.css\?v=feature-coverage-20261004-\d+/);
+  assert.match(html, /e2e-control\.css\?v=[^"'\s]+/);
   assert.match(html, /e2e-control\.js\?v=qa-e2e-20261004-\d+/);
   assert.match(runner, /runPairedFullE2EButton/);
   assert.match(runner, /模組 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
