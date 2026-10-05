@@ -10,7 +10,7 @@ test('admin exposes only the unified background full E2E entrypoint', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
   assert.match(html, /e2e-control\.css\?v=[^"'\s]+/);
-  assert.match(html, /e2e-control\.js\?v=qa-e2e-20261004-\d+/);
+  assert.match(html, /e2e-control\.js\?v=qa-e2e-\d{8}-\d+/);
   assert.match(runner, /runPairedFullE2EButton/);
   assert.match(runner, /模組 E2E · 後端 QA \+ 管理端 ↔ 用戶端協同/);
   assert.match(runner, /stopAdminE2EButton/);
@@ -140,7 +140,7 @@ test('test data is retained until an admin manually purges it', () => {
   assert.match(control, /測試帳號與測試模式環境設定會保留/);
   assert.match(api, /action === "admin\.test-control\.purge-test-data"/);
   assert.match(api, /await requireActiveAdminContract\(\{/);
-  assert.match(api, /admin_purge_test_data/);
+  assert.match(api, /admin_purge_all_test_data/);
 
   assert.match(userRunner, /action: 'user\.qa\.fixture\.cleanup', surface: otherSurface, testSessionToken: token/);
   assert.doesNotMatch(userRunner, /qaServiceRequest\('user\.qa\.fixture\.cleanup'/);
