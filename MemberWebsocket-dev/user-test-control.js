@@ -3128,7 +3128,8 @@
   }
 
   async function membershipTermsConsentCase() {
-    const data = state.bootstrap || await requestCore('user.member.bootstrap', {});
+    const data = await requestCore('user.member.bootstrap', {});
+    state.bootstrap = data;
     const terms = data?.terms || null;
     const domIds = [
       'joinTermsSummary','joinTermsTitle','joinTermsBody','joinTermsAccepted',
@@ -3152,29 +3153,60 @@
       { termsId: terms.id, termsVersion: String(terms.version) + '-E2E-STALE', accepted: true },
       ['TERMS_VERSION_STALE']
     );
+    let validAccepted = false;
+    let consentRequiredAfterAccept = true;
+    let validAcceptCode = '';
+    try {
+      const accepted = await requestCore('user.member.terms.accept', {
+        termsId: terms.id,
+        termsVersion: terms.version,
+        accepted: true
+      });
+      validAccepted = true;
+      consentRequiredAfterAccept = accepted?.consentRequired === true;
+      const refreshed = await requestCore('user.member.bootstrap', {});
+      state.bootstrap = refreshed;
+      consentRequiredAfterAccept = refreshed?.consentRequired === true;
+    } catch (error) {
+      validAcceptCode = String(error?.code || '');
+    }
     const actual = {
       activeTerms: true,
+      scope: String(terms.scope || ''),
       version: terms.version,
       required: terms.required === true,
       missing,
       uncheckedRejected: unchecked.ok,
       uncheckedCode: unchecked.code,
       staleRejected: stale.ok,
-      staleCode: stale.code
+      staleCode: stale.code,
+      validAccepted,
+      validAcceptCode,
+      consentRecorded: validAccepted && consentRequiredAfterAccept === false
     };
-    const ok = terms.required === true && missing.length === 0 && unchecked.ok && stale.ok;
+    const ok =
+      terms.scope === 'e2e'
+      && terms.required === true
+      && missing.length === 0
+      && unchecked.ok
+      && stale.ok
+      && validAccepted
+      && consentRequiredAfterAccept === false;
     return ok
-      ? pass('會員條款 Browser E2E 已確認有效版本渲染，且 Server 會拒絕未同意與過期版本，不修改正式條款內容。', {
-          activeTerms: true, required: true, missing: [], uncheckedRejected: true, staleRejected: true
+      ? pass('會員條款 E2E 已建立隔離測試版本，確認未同意／舊版本會被拒絕，並實際寫入目前測試會員的同意紀錄。', {
+          activeTerms: true, scope: 'e2e', required: true, missing: [],
+          uncheckedRejected: true, staleRejected: true, validAccepted: true, consentRecorded: true
         }, actual)
-      : fail('會員條款版本、DOM 或 Server-side 同意邊界至少一項不符合預期。', {
-          activeTerms: true, required: true, missing: [], uncheckedRejected: true, staleRejected: true
+      : fail('會員條款 E2E fixture、版本邊界或實際同意紀錄至少一項不符合預期。', {
+          activeTerms: true, scope: 'e2e', required: true, missing: [],
+          uncheckedRejected: true, staleRejected: true, validAccepted: true, consentRecorded: true
         }, actual);
   }
 
 
   async function memberJoinTermsFlowCase() {
-    const data = state.bootstrap || await requestCore('user.member.bootstrap', {});
+    const data = await requestCore('user.member.bootstrap', {});
+    state.bootstrap = data;
     const terms = data?.terms || null;
     const form = document.getElementById('profileForm');
     const summary = document.getElementById('joinTermsSummary');
@@ -3216,6 +3248,7 @@
       messageHidden: message.classList.contains('hidden')
     };
     const actual = {
+      e2eScope: terms.scope === 'e2e',
       versionVisible: false,
       uncheckedBlocked: false,
       checkboxVerified: false,
@@ -3272,13 +3305,13 @@
     const ok = Object.values(actual).every(Boolean);
     return ok
       ? pass(
-          '會員申請條款已用真人 submit/change 事件驗證：目前版本有完整內容、未勾選會被前端阻擋、勾選後會再次確認仍為目前版本，且不送出正式會員資料寫入。',
-          { versionVisible: true, uncheckedBlocked: true, checkboxVerified: true, noProfileWriteTriggered: true, restored: true },
+          '會員申請條款已使用隔離 E2E 條款資料進行真人 submit/change 驗證：目前版本有完整內容、未勾選會被前端阻擋、勾選後會再次確認仍為目前版本。',
+          { e2eScope: true, versionVisible: true, uncheckedBlocked: true, checkboxVerified: true, noProfileWriteTriggered: true, restored: true },
           actual
         )
       : fail(
           '會員申請條款真人流程至少一個步驟不符合預期。',
-          { versionVisible: true, uncheckedBlocked: true, checkboxVerified: true, noProfileWriteTriggered: true, restored: true },
+          { e2eScope: true, versionVisible: true, uncheckedBlocked: true, checkboxVerified: true, noProfileWriteTriggered: true, restored: true },
           actual
         );
   }

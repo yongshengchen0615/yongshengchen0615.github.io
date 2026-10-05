@@ -31,10 +31,12 @@ test('user QA service exposes state-pack preparation only behind a test session'
 
 test('member state pack includes historical and recent service usage', () => {
   const api = read('supabase/functions/user-test-api/index.ts');
-  assert.match(api, /service-history-mixed/);
+  assert.match(api, /service-history-and-membership-terms/);
   assert.match(api, /historical-service/);
   assert.match(api, /recent-service/);
   assert.match(api, /membership-progress/);
+  assert.match(api, /membership-terms-e2e/);
+  assert.match(api, /prepare_e2e_membership_terms_fixture/);
   assert.match(api, /service_time_entries/);
 });
 

@@ -244,6 +244,13 @@
   background: var(--theme-surface-muted, #edf1ed);
 }
 
+.terms-status-badge.is-e2e,
+.terms-editor-status.is-e2e {
+  color: var(--theme-accent-strong, #5d4d8a);
+  border-color: color-mix(in srgb, var(--theme-accent-strong, #5d4d8a) 28%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-soft, #eee9f8) 84%, var(--paper));
+}
+
 .terms-version-empty {
   display: grid;
   gap: 4px;
