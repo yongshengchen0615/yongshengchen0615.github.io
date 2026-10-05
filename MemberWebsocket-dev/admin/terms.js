@@ -16,7 +16,11 @@
     let busy = false;
     let selectedRow = null;
 
-    const statusMeta = (status) => {
+    const statusMeta = (status, scope) => {
+      if (scope === 'e2e') {
+        if (status === 'active') return { label: 'E2E 測試中', className: 'is-e2e' };
+        return { label: 'E2E 測試歷史', className: 'is-e2e' };
+      }
       if (status === 'active') return { label: '啟用中', className: 'is-active' };
       if (status === 'draft') return { label: '草稿', className: 'is-draft' };
       return { label: '歷史版本', className: 'is-history' };
@@ -46,12 +50,13 @@
     }
 
     function updateOverview() {
-      const active = rows.find((row) => row.status === 'active') || null;
-      const draftCount = rows.filter((row) => row.status === 'draft').length;
+      const productionRows = rows.filter((row) => (row.scope || 'production') === 'production');
+      const active = productionRows.find((row) => row.status === 'active') || null;
+      const draftCount = productionRows.filter((row) => row.status === 'draft').length;
       el.termsActiveVersion.textContent = active?.version || '尚未啟用';
       el.termsActiveTitle.textContent = active?.title || '建立第一版草稿後再啟用';
       el.termsDraftCount.textContent = String(draftCount);
-      el.termsVersionCount.textContent = String(rows.length);
+      el.termsVersionCount.textContent = String(productionRows.length);
     }
 
     function updateEditorMeta() {
@@ -64,12 +69,16 @@
         return;
       }
 
-      const meta = statusMeta(selectedRow.status);
+      const meta = statusMeta(selectedRow.status, selectedRow.scope);
       el.termsEditorState.textContent = meta.label;
       el.termsEditorState.className = `terms-editor-status ${meta.className}`;
       el.termsSave.textContent = '儲存草稿';
 
-      if (selectedRow.status === 'draft') {
+      if (selectedRow.scope === 'e2e') {
+        el.termsEditorHint.textContent = '此版本由 E2E 測試自動建立，只提供測試帳號驗證會員申請條款。';
+        el.termsReadonlyNote.textContent = 'E2E 條款與正式會員條款完全隔離；請使用「移除測試資料」清除，不可從一般條款管理流程修改或啟用。';
+        el.termsReadonlyNote.classList.remove('hidden');
+      } else if (selectedRow.status === 'draft') {
         el.termsEditorHint.textContent = '草稿可繼續修改；啟用後內容會鎖定。';
         el.termsReadonlyNote.classList.add('hidden');
       } else if (selectedRow.status === 'active') {
@@ -84,12 +93,12 @@
     }
 
     function updateControls() {
-      const editable = !selectedRow || selectedRow.status === 'draft';
+      const editable = !selectedRow || (selectedRow.scope !== 'e2e' && selectedRow.status === 'draft');
       for (const control of el.termsDraftForm.querySelectorAll('input:not([type="hidden"]),textarea')) {
         control.disabled = busy || !editable;
       }
       el.termsSave.disabled = busy || !editable;
-      el.termsActivate.disabled = busy || !selectedRow || selectedRow.status !== 'draft';
+      el.termsActivate.disabled = busy || !selectedRow || selectedRow.scope === 'e2e' || selectedRow.status !== 'draft';
       el.termsReload.disabled = busy;
       el.termsNewDraft.disabled = busy;
       el.termsDraftForm.setAttribute('aria-busy', String(busy));
@@ -150,7 +159,7 @@
       }
 
       for (const row of rows) {
-        const meta = statusMeta(row.status);
+        const meta = statusMeta(row.status, row.scope);
         const button = document.createElement('button');
         button.type = 'button';
         button.dataset.id = row.id;
@@ -173,7 +182,8 @@
         const metaLine = document.createElement('span');
         metaLine.className = 'terms-version-meta';
         const consentText = row.reconsent_existing === true ? '既有會員需重新同意' : '既有會員不強制重新同意';
-        metaLine.textContent = `${formatDate(row.effective_at)} · ${consentText}`;
+        const scopeText = row.scope === 'e2e' ? 'E2E 測試資料' : '正式會員條款';
+        metaLine.textContent = `${scopeText} · ${formatDate(row.effective_at)} · ${consentText}`;
 
         button.append(top, title, metaLine);
         button.addEventListener('click', () => show(row));
@@ -188,7 +198,8 @@
       updateOverview();
       show(
         rows.find((row) => row.id === selectedId)
-        || rows.find((row) => row.status === 'active')
+        || rows.find((row) => row.scope !== 'e2e' && row.status === 'active')
+        || rows.find((row) => row.scope !== 'e2e')
         || rows[0]
         || null
       );
