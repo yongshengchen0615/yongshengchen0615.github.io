@@ -86,6 +86,18 @@ test('main admin panels stay outside the member workspace after terms UI restruc
 });
 
 test('admin terms assets use the same UI cache version', () => {
-  assert.match(html, /terms\.css\?v=membership-terms-ui-20260930-1/);
-  assert.match(html, /terms\.js\?v=membership-terms-ui-20260930-1/);
+  assert.match(html, /terms\.css\?v=membership-terms-ui-20261005-2/);
+  assert.match(html, /terms\.js\?v=membership-terms-ui-20261005-2/);
+});
+
+
+test('admin membership terms separates E2E fixtures from production legal terms', () => {
+  assert.match(js, /row\.scope === 'e2e'/);
+  assert.match(js, /E2E 測試中/);
+  assert.match(js, /E2E 測試資料/);
+  assert.match(js, /正式會員條款/);
+  assert.match(js, /selectedRow\.scope === 'e2e'/);
+  assert.match(js, /productionRows = rows\.filter/);
+  assert.match(css, /\.terms-status-badge\.is-e2e/);
+  assert.match(css, /\.terms-editor-status\.is-e2e/);
 });
