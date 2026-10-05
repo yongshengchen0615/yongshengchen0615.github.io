@@ -123,11 +123,12 @@ async function termsForMember(supabase: SupabaseClient, member: any): Promise<{ 
   const scopes = member?.is_test_account === true ? ["e2e", "production"] : ["production"];
   let terms: any = null;
   for (const scope of scopes) {
-    const result = await supabase.from("membership_terms")
-      .select("id,scope,version,title,summary,body,required,effective_at,reconsent_existing,activated_at")
+    let query = supabase.from("membership_terms")
+      .select("id,scope,e2e_member_id,version,title,summary,body,required,effective_at,reconsent_existing,activated_at")
       .eq("scope", scope)
-      .eq("status", "active")
-      .maybeSingle();
+      .eq("status", "active");
+    if (scope === "e2e") query = query.eq("e2e_member_id", member.id);
+    const result = await query.maybeSingle();
     if (result.error) throw new ApiError(503, "TERMS_UNAVAILABLE", "暫時無法讀取會員條款。");
     if (result.data && new Date(result.data.effective_at).getTime() <= Date.now()) {
       terms = result.data;
