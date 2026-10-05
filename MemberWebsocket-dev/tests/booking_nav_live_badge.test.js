@@ -91,7 +91,7 @@ test('booking combined badge uses a separate pseudo-element from the surface-tab
   assert.match(baseCss, /\.surface-tab::after[\s\S]*transform:\s*scaleX\(0\)/);
   assert.match(bookingCss, /#bookingTab\[data-badge-count\]:not\(\[data-badge-count="0"\]\)::before/);
   assert.doesNotMatch(bookingCss, /#bookingTab\[data-badge-count\]:not\(\[data-badge-count="0"\]\)::after/);
-  assert.match(html, /booking-panel\.css\?v=booking-operations-split-20261003-1/);
+  assert.match(html, /booking-panel\.css\?v=booking-standard-filter-parity-20261005-1/);
 });
 
 
