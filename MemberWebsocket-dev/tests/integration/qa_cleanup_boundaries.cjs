@@ -161,7 +161,7 @@ test('test purge removes QA point-card rewards and fixed-ticket automation desce
     assert.equal((await db.query("select count(*)::int n from point_cards where created_by like 'qa:%'")).rows[0].n, 0);
     assert.equal((await db.query("select count(*)::int n from ticket_templates where created_by like 'qa:%'")).rows[0].n, 0);
     assert.equal((await db.query("select count(*)::int n from fixed_ticket_templates where created_by like 'qa:%'")).rows[0].n, 0);
-    assert.equal((await db.query("select count(*)::int n from event_tickets where fixed_ticket_template_id='${qaFixedId}'")).rows[0].n, 0);
+    assert.equal((await db.query(`select count(*)::int n from event_tickets where fixed_ticket_template_id='${qaFixedId}'`)).rows[0].n, 0);
 
     assert.equal((await db.query("select count(*)::int n from point_cards where created_by='admin'")).rows[0].n, 1);
     assert.equal((await db.query("select count(*)::int n from ticket_templates where created_by='admin'")).rows[0].n, 1);
