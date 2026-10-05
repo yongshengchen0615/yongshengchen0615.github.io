@@ -399,9 +399,57 @@ html[data-theme="dark"] .admin-e2e-paired-config .admin-e2e-module-grid label:ha
   background: color-mix(in srgb, var(--theme-positive) 12%, var(--theme-surface-raised));
   border-color: color-mix(in srgb, var(--theme-positive) 42%, var(--theme-border-strong));
 }
+/* Feature coverage cards: semantic light/dark surfaces */
 .e2e-feature-coverage { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
 .e2e-feature-coverage:empty { display:none; }
-.e2e-feature-coverage-card { padding:14px; border:1px solid var(--line,#d8e0dc); border-radius:14px; background:var(--surface,#fff); color:var(--ink,#263c33); }
+.e2e-feature-coverage-card {
+  padding:14px;
+  border:1px solid var(--theme-border,var(--line,#d8e0dc));
+  border-radius:14px;
+  background:var(--theme-surface-raised,var(--surface,#fff));
+  color:var(--theme-text,var(--ink,#263c33));
+  box-shadow:var(--theme-shadow,none);
+}
+.e2e-feature-coverage-card strong,
+.e2e-feature-coverage-card p { color:var(--theme-text,var(--ink,#263c33)); }
 .e2e-feature-coverage-card p { margin:8px 0; }
-.e2e-feature-coverage-card progress { width:100%; accent-color:var(--accent,#39826b); }
-.e2e-feature-coverage-card small { display:block; margin-top:6px; color:var(--muted,#647069); line-height:1.6; }
+.e2e-feature-coverage-card progress {
+  display:block;
+  width:100%;
+  height:10px;
+  overflow:hidden;
+  border:0;
+  border-radius:999px;
+  background:var(--theme-surface-muted,#edf1ed);
+  color:var(--theme-positive,#39826b);
+  accent-color:var(--theme-positive,#39826b);
+  appearance:none;
+  -webkit-appearance:none;
+}
+.e2e-feature-coverage-card progress::-webkit-progress-bar {
+  border-radius:999px;
+  background:var(--theme-surface-muted,#edf1ed);
+}
+.e2e-feature-coverage-card progress::-webkit-progress-value {
+  border-radius:999px;
+  background:var(--theme-positive,#39826b);
+}
+.e2e-feature-coverage-card progress::-moz-progress-bar {
+  border-radius:999px;
+  background:var(--theme-positive,#39826b);
+}
+.e2e-feature-coverage-card small {
+  display:block;
+  margin-top:7px;
+  color:var(--theme-text-muted,var(--muted,#647069));
+  line-height:1.6;
+}
+html[data-theme="dark"] .e2e-feature-coverage-card {
+  background:var(--theme-surface-raised);
+  border-color:var(--theme-border-strong);
+  color:var(--theme-text);
+}
+html[data-theme="dark"] .e2e-feature-coverage-card progress,
+html[data-theme="dark"] .e2e-feature-coverage-card progress::-webkit-progress-bar {
+  background:var(--theme-surface-muted);
+}
