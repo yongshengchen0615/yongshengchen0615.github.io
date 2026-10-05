@@ -7,9 +7,28 @@
 - 線上業務 schema 清理前有 54 張 public 資料表、194 個非 extension 函式。
 - 舊壽星 API 已停用；舊發放紀錄為 0、舊設定停用。
 - 票券具體項目 ID、地點陣列與每日上限無待轉換資料或衝突。
-- 兩階段變更移除 2 張資料表、13 個過渡欄位、18 個舊 RPC；清理後目標為 52 張 public 表、176 個非 extension 函式。
+- 兩階段變更移除 2 張資料表、13 個過渡欄位、18 個舊 RPC；線上清理後實際為 52 張 public 表、176 個非 extension 函式。
 - 3 個舊轉換 trigger 被移除，避免新增票券時覆寫新版 required_service_ids。
 - 不刪除會員、預約、點數、票券、稽核、收據或 E2E 業務紀錄。
+
+## 線上部署與驗證紀錄
+
+2026-10-05 UTC 已完成 main 部署與 Supabase 清理。GitHub 實作 commit 為 `0a1a6188d8a6daf2bcc9bcd3663e08eb8e3bb4b4`，驗證 SQL 修正 commit 為 `6fd69f808afcc8dddf3bbd78949ea3393fe4bc13`。
+
+| 項目 | 結果 |
+|---|---|
+| Supabase migration `prepare_current_schema_contract` | 已套用；線上 version `20261005105018` |
+| Supabase migration `retire_unused_legacy_schema` | 已套用；線上 version `20261005105101` |
+| Edge Functions | api v60、booking-api v40、booking-group-api v28、event-ticket-extension-api v9、booking-receipt-api v13、booking-admin-operations v15；皆 ACTIVE，所有部署檔案與 main 程式一致 |
+| 線上 contract | 52 張 public 表、176 個非 extension 函式、6 個 active cron；舊表、舊欄位、舊 RPC、失效定義引用、未啟用 RLS 的 public 表、新公開 RPC 權限皆為 0 |
+| 資料保留 | 會員、管理員、預約、點數異動、活動票券、發放紀錄、測試執行、稽核與收據的筆數與清理前一致 |
+| Schema 文件 | `schema-current.json` 的全部 56 張 public/私有支援表與線上欄位、PK、FK、RLS metadata 完全一致 |
+| CI | [run 37298250673](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37298250673) 全部通過：回歸、PostgreSQL 清理回歸、DOM、Edge 型別、架構與 Chromium 管理/會員/收據/GPS 測試 |
+| 前端 | GitHub Pages build/deploy 成功 |
+
+migration 檔名由 Supabase CLI 產生；Management API 套用時記錄實際套用時間，因此上表明確對應線上 version。線上未操作真實會員或 LINE 訊息；瀏覽器與資料變更測試使用隔離 fixture。直接 HTTP 探測受此執行環境的網路限制而未完成，已透過 Supabase 讀回完整部署程式、ACTIVE 狀態與 catalog 驗證部署結果。
+
+Security advisor 沒有新增警示；保留既有 `pg_net` 位於 public 的 [extension placement 警示](https://supabase.com/docs/guides/database/database-linter?lint=0014_extension_in_public)。它是目前通知排程使用的系統 extension，不是舊業務功能。
 
 ## 現行 Domain 與資料表
 
