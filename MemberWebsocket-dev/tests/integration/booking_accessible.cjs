@@ -153,6 +153,32 @@ test('accessible receipt camera sends a receipt without a booking and locks dupl
   } finally {w.dispatchEvent(new w.Event('pagehide')); w.close();}
 });
 
+test('accessible E2E screen snapshot hook is test-session gated and skips the physical camera',async()=>{
+  const dom=new JSDOM('<div id="bookingView"></div>',{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
+  const w=dom.window; let cameraCalls=0;
+  try {
+    Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:async()=>{cameraCalls+=1;throw new Error('camera must not run');}}});
+    w.BookingSystem={getSession:()=>({config:{},idToken:'fixture'}),request:async()=>({bookings:[],submissions:[]})};
+    w.supabase={createClient:()=>({storage:{from:()=>({uploadToSignedUrl:async()=>({})})}})};
+    w.eval(read('booking/booking-receipt.js'));
+
+    assert.throws(
+      ()=>w.BookingReceipts.openAccessibleE2ESnapshot(new w.Blob(['snapshot'],{type:'image/webp'})),
+      error=>error?.code==='TEST_SESSION_REQUIRED'
+    );
+
+    w.TestModeClient={getSessionToken:()=> 'qa-test-session'};
+    const meta=w.BookingReceipts.openAccessibleE2ESnapshot(new w.Blob(['snapshot'],{type:'image/webp'}));
+    assert.equal(meta.mimeType,'image/webp');
+    assert.ok(meta.sizeBytes>0);
+    await tick();
+    assert.equal(cameraCalls,0,'E2E screenshot injection must not request a physical camera');
+    assert.equal(w.document.getElementById('bookingReceiptModal').classList.contains('hidden'),false);
+    assert.equal(w.document.getElementById('bookingReceiptSubmit').disabled,false);
+    assert.match(w.document.getElementById('bookingReceiptPreview').getAttribute('src')||'',/^data:image\/webp/);
+  } finally {w.dispatchEvent(new w.Event('pagehide'));w.close();}
+});
+
 test('receipt registration is owner scoped, atomic, replay safe, records real points/minutes and retains online time guards',async()=>{
   const db=new PGlite();
   const member='10000000-0000-4000-8000-000000000001';
