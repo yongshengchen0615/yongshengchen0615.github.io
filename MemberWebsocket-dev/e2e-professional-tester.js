@@ -254,6 +254,8 @@
     const cleanup = () => {
       if (documentRef?.removeEventListener) CAPTURE_TYPES.forEach((type) => documentRef.removeEventListener(type, handler, true));
     };
+    const registerCleanup = typeof options.registerCleanup === 'function' ? options.registerCleanup : () => {};
+    registerCleanup(cleanup);
     const before = documentSnapshot(documentRef, labelTarget);
     try {
       if (plan.focusProbe) safeFocusProbe(documentRef, { excludeTarget });
@@ -264,6 +266,7 @@
       return { outcome, evidence: summarizeProfessionalEvidence(events, before, after, plan), plan };
     } finally {
       cleanup();
+      registerCleanup(null);
     }
   }
 
