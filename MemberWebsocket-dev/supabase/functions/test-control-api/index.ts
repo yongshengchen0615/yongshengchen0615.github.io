@@ -1707,7 +1707,7 @@ async function recordBrowserRun(
     throw error;
   }
 
-  const learningRefresh = await supabase.rpc("admin_refresh_e2e_case_learning", { p_run_id: runId });
+  const learningRefresh = await supabase.rpc("admin_accumulate_e2e_case_learning", { p_run_id: runId });
   if (learningRefresh.error) {
     console.error("E2E case learning refresh failed", learningRefresh.error.message);
   }
@@ -1816,7 +1816,7 @@ async function executeRun(supabase: any, runId: string): Promise<Json> {
     })
     .eq("id", runId);
   if (finalUpdate.error) throw new ApiError(503, "TEST_RUN_FINISH_FAILED", "目前無法完成自動化測試。");
-  const learningRefresh = await supabase.rpc("admin_refresh_e2e_case_learning", { p_run_id: runId });
+  const learningRefresh = await supabase.rpc("admin_accumulate_e2e_case_learning", { p_run_id: runId });
   if (learningRefresh.error) {
     console.error("Backend E2E case learning refresh failed", learningRefresh.error.message);
   }
