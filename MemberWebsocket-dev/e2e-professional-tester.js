@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const VERSION = 1;
+  const VERSION = 2;
   const PRIMARY_TYPES = new Set(['click', 'input', 'change', 'submit']);
   const CAPTURE_TYPES = Object.freeze(['click', 'input', 'change', 'submit', 'keydown', 'focusin', 'focusout', 'pointerdown']);
   const PROFILES = Object.freeze(['deliberate', 'impatient', 'exploratory', 'skeptical']);
@@ -28,6 +28,28 @@
     return [...new Set((Array.isArray(items) ? items : []).filter(Boolean))];
   }
 
+  function normalizeLearning(value = {}) {
+    const source = value && typeof value === 'object' ? value : {};
+    const preferredTesterProfile = PROFILES.includes(String(source.preferredTesterProfile || ''))
+      ? String(source.preferredTesterProfile)
+      : '';
+    return Object.freeze({
+      executions: Math.max(0, Math.trunc(Number(source.executions) || 0)),
+      passCount: Math.max(0, Math.trunc(Number(source.passCount) || 0)),
+      failCount: Math.max(0, Math.trunc(Number(source.failCount) || 0)),
+      skipCount: Math.max(0, Math.trunc(Number(source.skipCount) || 0)),
+      failureRate: clamp(source.failureRate, 0, 1),
+      failureEwma: clamp(source.failureEwma, 0, 1),
+      flakyScore: clamp(source.flakyScore, 0, 1),
+      riskScore: clamp(source.riskScore, 0, 1),
+      avgDurationMs: Math.max(0, Math.trunc(Number(source.avgDurationMs) || 0)),
+      p95DurationMs: Math.max(0, Math.trunc(Number(source.p95DurationMs) || 0)),
+      preferredTesterProfile,
+      lastFailureCode: String(source.lastFailureCode || '').slice(0, 120),
+      lastFailureFingerprint: String(source.lastFailureFingerprint || '').slice(0, 80)
+    });
+  }
+
   function inferRisk(options = {}) {
     const explicit = String(options.risk || '').trim().toLowerCase();
     if (explicit && explicit !== 'normal') return explicit;
@@ -42,12 +64,30 @@
     const caseKey = String(options.caseKey || 'UNKNOWN_CASE').trim() || 'UNKNOWN_CASE';
     const side = String(options.side || 'shared').trim() || 'shared';
     const surface = String(options.surface || options.module || 'shared').trim() || 'shared';
-    const complexityLevel = Math.max(1, Math.min(8, Math.trunc(Number(options.complexityLevel) || 1)));
+    const baseComplexityLevel = Math.max(1, Math.min(8, Math.trunc(Number(options.complexityLevel) || 1)));
+    const learning = normalizeLearning(options.learning);
+    const complexityBoost = learning.riskScore >= 0.75 || learning.flakyScore >= 0.55
+      ? 2
+      : learning.riskScore >= 0.45 || learning.flakyScore >= 0.25
+        ? 1
+        : 0;
+    const complexityLevel = Math.max(1, Math.min(8, baseComplexityLevel + complexityBoost));
     const risk = inferRisk(options);
     const seed = String(options.seed || 'professional-tester');
     const unit = hashText(seed + '|' + side + '|' + surface + '|' + caseKey + '|' + risk + '|' + complexityLevel);
-    const profile = PROFILES[unit % PROFILES.length];
+    const baselineProfile = PROFILES[unit % PROFILES.length];
+    const preferenceChance = learning.executions >= 4 ? 75 : learning.executions >= 2 ? 65 : 55;
+    const usePreferred = Boolean(
+      learning.preferredTesterProfile
+      && learning.executions > 0
+      && ((unit >>> 16) % 100) < preferenceChance
+    );
+    const profile = usePreferred ? learning.preferredTesterProfile : baselineProfile;
     const strategies = ['precondition-scan', 'timing-variance', 'postcondition-scan', 'structural-regression-guard'];
+    if (learning.failCount > 0) strategies.push('historical-failure-replay');
+    if (learning.riskScore >= 0.65) strategies.push('risk-weighted-postcondition');
+    if (learning.flakyScore >= 0.25) strategies.push('repeat-and-recovery-evidence');
+    if (learning.flakyScore >= 0.5) strategies.push('refresh-persistence-evidence');
     if (risk === 'security' || risk === 'auth') strategies.push('negative-boundary-observation');
     if (risk === 'mutation') strategies.push('correction-observation', 'repeat-action-guard', 'post-mutation-consistency');
     if (risk === 'eventual-consistency' || risk === 'notification') strategies.push('eventual-consistency-observation');
@@ -74,6 +114,9 @@
       surface,
       caseKey,
       complexityLevel,
+      baseComplexityLevel,
+      learning,
+      profileSource: usePreferred ? 'historical-preference' : 'deterministic-exploration',
       strategies: Object.freeze(unique(strategies)),
       beforeDelayMs,
       afterDelayMs,
@@ -199,6 +242,8 @@
         risk: plan?.risk || 'normal',
         evidenceTarget: plan?.evidenceTarget || 'basic',
         strategies: Array.isArray(plan?.strategies) ? plan.strategies.slice(0, 16) : [],
+        learning: plan?.learning || null,
+        profileSource: plan?.profileSource || 'deterministic-exploration',
         score,
         grade,
         ok,

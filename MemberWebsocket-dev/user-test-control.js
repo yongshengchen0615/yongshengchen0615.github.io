@@ -14,6 +14,7 @@
   const LAUNCHER_ID = 'userAutomationTestLauncher';
   const MAX_HISTORY = 5;
   const REPLAY_STORAGE_KEY = 'member-e2e-replay-v1';
+  const LEARNING_STORAGE_KEY = 'member-e2e-learning-v2';
 
   const SURFACES = Object.freeze({
     member: {
@@ -154,6 +155,7 @@
     caseCatalogKeys: [],
     featureCoverage: null,
     replayConfig: null,
+    learningByCase: {},
     adaptiveReplaySourceKeys: [],
     randomStateAfterBuild: 0,
     runStartedAt: '',
@@ -237,9 +239,37 @@
     };
   }
 
+  function readHistoricalLearning() {
+    try {
+      const parsed = JSON.parse(String(localStorage.getItem(LEARNING_STORAGE_KEY) || '{}'));
+      if (Number(parsed?.version) !== 2) return {};
+      if (Number(parsed?.expiresAt || 0) <= Date.now()) return {};
+      return parsed?.caseLearning && typeof parsed.caseLearning === 'object'
+        ? parsed.caseLearning
+        : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function historicalLearning(caseKey) {
+    const value = state.learningByCase?.[String(caseKey || '')];
+    return value && typeof value === 'object' ? value : {};
+  }
+
+  function historicalPriorityMap() {
+    return Object.fromEntries(
+      Object.entries(state.learningByCase || {}).map(([key, value]) => [
+        key,
+        Math.max(0, Math.min(1, Number(value?.riskScore || 0)))
+      ])
+    );
+  }
+
   function configureRunProfile() {
     const params = new URLSearchParams(window.location.search);
     state.replayConfig = readReplayConfig();
+    state.learningByCase = readHistoricalLearning();
     state.randomSeed = String(state.replayConfig?.seed || params.get('e2eSeed') || ('USER-' + surface + '-' + Date.now().toString(36)));
     state.randomState = hashSeed(state.randomSeed);
     state.complexityLevel = Math.max(1, Math.min(8, Number(state.replayConfig?.complexityLevel || params.get('e2eComplexity') || 1) || 1));
@@ -306,7 +336,8 @@
     const plan = planner.planScenario({
       nodes, metaByKey: USER_NODE_META, randomUnit: nextRandomUnit,
       seed: state.randomSeed, complexityLevel: state.complexityLevel,
-      coverageMode: 'full', minNodes: nodes.length, maxNodes: nodes.length, requiredKeys
+      coverageMode: 'full', minNodes: nodes.length, maxNodes: nodes.length, requiredKeys,
+      priorityByKey: historicalPriorityMap()
     });
     const byKey = new Map(nodes.map((item) => [String(item.key || ''), item]));
     return { plan, nodes: plan.keys.map((key) => byKey.get(key)).filter(Boolean) };
@@ -1127,7 +1158,12 @@
         return item;
       });
     } else {
-      replaySources = shuffled(replayPool).slice(0, replayCount);
+      replaySources = shuffled(replayPool)
+        .sort((left, right) =>
+          Number(historicalLearning(right?.key).riskScore || 0)
+          - Number(historicalLearning(left?.key).riskScore || 0)
+        )
+        .slice(0, replayCount);
     }
     state.adaptiveReplaySourceKeys = replaySources.map((item) => String(item.key || ''));
     const adaptiveReplays = replaySources.map((item, index) =>
@@ -1684,6 +1720,7 @@
         surface,
         complexityLevel: state.complexityLevel,
         seed: state.randomSeed,
+        learning: historicalLearning(testCase?.key),
         delay: wait,
         maxEvents: 120,
         labelTarget: humanTargetLabel,

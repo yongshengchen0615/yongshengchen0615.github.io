@@ -79,6 +79,11 @@
       return { version: 1, seed: String(options?.seed || ''), complexityLevel: 1, fingerprint: 'SG1-empty', keys: [], path: [] };
     }
     const nodes = source.map((node, index) => normalizeNode(node, index, options?.metaByKey || {}));
+    const rawPriority = options?.priorityByKey && typeof options.priorityByKey === 'object' ? options.priorityByKey : {};
+    const priorityByKey = new Map(nodes.map((node) => [
+      node.key,
+      clamp(rawPriority[node.key], 0, 1)
+    ]));
     const byKey = new Map();
     for (const node of nodes) {
       if (byKey.has(node.key)) throw new Error('Duplicate E2E scenario node: ' + node.key);
@@ -139,7 +144,26 @@
       const minPhase = ready[0].phase;
       const pool = ready.filter((node) => node.phase <= minPhase + 1);
       const unit = Math.max(0, Math.min(0.999999999, Number(next()) || 0));
-      const chosen = pool[Math.floor(unit * pool.length)] || pool[0];
+      const hasHistoricalPriority = pool.some((node) => Number(priorityByKey.get(node.key) || 0) > 0);
+      let chosen;
+      if (hasHistoricalPriority) {
+        const weighted = pool.map((node) => ({
+          node,
+          weight: 1 + 4 * Number(priorityByKey.get(node.key) || 0)
+        }));
+        const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+        let threshold = unit * totalWeight;
+        chosen = weighted[weighted.length - 1]?.node || pool[0];
+        for (const item of weighted) {
+          threshold -= item.weight;
+          if (threshold <= 0) {
+            chosen = item.node;
+            break;
+          }
+        }
+      } else {
+        chosen = pool[Math.floor(unit * pool.length)] || pool[0];
+      }
       ordered.push(chosen);
       emitted.add(chosen.key);
       pending.delete(chosen.key);
@@ -163,6 +187,7 @@
         module: node.module,
         phase: node.phase,
         risk: node.risk,
+        priority: Number(priorityByKey.get(node.key) || 0),
         required: node.required
       }))
     };

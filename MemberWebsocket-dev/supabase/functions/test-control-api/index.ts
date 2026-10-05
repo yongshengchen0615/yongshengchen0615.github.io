@@ -592,7 +592,7 @@ async function runView(supabase: any, runId: string): Promise<Json> {
 }
 
 async function e2eProfile(supabase: any): Promise<Json> {
-  const [stateResult, historyResult, surfaceCaseResult] = await Promise.all([
+  const [stateResult, historyResult, surfaceCaseResult, caseLearningResult] = await Promise.all([
     supabase
       .from("e2e_evolution_state")
       .select("run_count,last_complexity_level,last_seed,last_root_run_id,updated_at")
@@ -612,6 +612,11 @@ async function e2eProfile(supabase: any): Promise<Json> {
       .eq("status", "passed")
       .not("duration_ms", "is", null)
       .order("created_at", { ascending: false })
+      .limit(500),
+    supabase
+      .from("e2e_case_learning_state")
+      .select("case_key,executions,pass_count,fail_count,skip_count,failure_rate,failure_ewma,flaky_score,avg_duration_ms,p95_duration_ms,risk_score,preferred_tester_profile,profile_stats,last_status,last_failure_code,last_failure_fingerprint,last_failed_at,last_passed_at,updated_at")
+      .order("risk_score", { ascending: false })
       .limit(500),
   ]);
   if (stateResult.error || historyResult.error) {
@@ -656,6 +661,34 @@ async function e2eProfile(supabase: any): Promise<Json> {
     );
   }
 
+  const caseLearning: Record<string, Json> = {};
+  if (!caseLearningResult.error) {
+    for (const row of caseLearningResult.data || []) {
+      const key = asText(row?.case_key, 120);
+      if (!key) continue;
+      caseLearning[key] = {
+        executions: Math.max(0, Number(row.executions || 0)),
+        passCount: Math.max(0, Number(row.pass_count || 0)),
+        failCount: Math.max(0, Number(row.fail_count || 0)),
+        skipCount: Math.max(0, Number(row.skip_count || 0)),
+        failureRate: Math.max(0, Math.min(1, Number(row.failure_rate || 0))),
+        failureEwma: Math.max(0, Math.min(1, Number(row.failure_ewma || 0))),
+        flakyScore: Math.max(0, Math.min(1, Number(row.flaky_score || 0))),
+        avgDurationMs: Math.max(0, Number(row.avg_duration_ms || 0)),
+        p95DurationMs: Math.max(0, Number(row.p95_duration_ms || 0)),
+        riskScore: Math.max(0, Math.min(1, Number(row.risk_score || 0))),
+        preferredTesterProfile: asText(row.preferred_tester_profile, 40),
+        profileStats: row.profile_stats && typeof row.profile_stats === "object" ? row.profile_stats : {},
+        lastStatus: asText(row.last_status, 20),
+        lastFailureCode: asText(row.last_failure_code, 120),
+        lastFailureFingerprint: asText(row.last_failure_fingerprint, 80),
+        lastFailedAt: row.last_failed_at || null,
+        lastPassedAt: row.last_passed_at || null,
+        updatedAt: row.updated_at || null,
+      };
+    }
+  }
+
   const rootRuns = (historyResult.data || []).filter((row: any) => row?.summary?.rootRun === true);
   const durableRunCount = Math.max(0, Number(stateResult.data?.run_count || 0) || 0);
   const completedRootRuns = Math.max(durableRunCount, rootRuns.length);
@@ -673,6 +706,8 @@ async function e2eProfile(supabase: any): Promise<Json> {
     evolutionUpdatedAt: stateResult.data?.updated_at || null,
     surfaceWeightsMs,
     surfaceSamples,
+    learningAvailable: !caseLearningResult.error,
+    caseLearning,
   };
 }
 
@@ -1672,6 +1707,11 @@ async function recordBrowserRun(
     throw error;
   }
 
+  const learningRefresh = await supabase.rpc("admin_accumulate_e2e_case_learning", { p_run_id: runId });
+  if (learningRefresh.error) {
+    console.error("E2E case learning refresh failed", learningRefresh.error.message);
+  }
+
   if (body.rootRun === true && !sourceReplay) {
     const rootRunId = asText(body.rootRunId, 80);
     if (rootRunId) {
@@ -1776,6 +1816,10 @@ async function executeRun(supabase: any, runId: string): Promise<Json> {
     })
     .eq("id", runId);
   if (finalUpdate.error) throw new ApiError(503, "TEST_RUN_FINISH_FAILED", "目前無法完成自動化測試。");
+  const learningRefresh = await supabase.rpc("admin_accumulate_e2e_case_learning", { p_run_id: runId });
+  if (learningRefresh.error) {
+    console.error("Backend E2E case learning refresh failed", learningRefresh.error.message);
+  }
   return runView(supabase, runId);
 }
 
