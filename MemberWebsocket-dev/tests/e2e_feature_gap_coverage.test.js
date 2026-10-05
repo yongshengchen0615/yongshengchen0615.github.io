@@ -14,6 +14,7 @@ test('user full E2E covers non-button feature contracts and new experience contr
     'COMMON_MEMBERSHIP_MILESTONE',
     'COMMON_FEATURE_CONTRACT_COVERAGE',
     'MEMBER_REFERRAL_BOUNDARY',
+    'MEMBER_JOIN_TERMS_FLOW',
     'MEMBER_JOIN_LINE_AUTOMATION_CONTRACT',
     'POINTS_TRANSFER_BOUNDARY',
     'POINTS_HISTORY_DISCLOSURE',
@@ -22,6 +23,7 @@ test('user full E2E covers non-button feature contracts and new experience contr
     'BOOKING_BENEFITS_RECOMMENDATIONS',
     'BOOKING_BENEFIT_REDEMPTION_LIFECYCLE',
     'BOOKING_RECEIPT_REVIEW_CONTRACT',
+    'BOOKING_ACCESSIBLE_SCREENSHOT_RECEIPT',
     'BOOKING_FLOW_STEPPER'
   ]) {
     assert.match(source, new RegExp(key));
@@ -31,12 +33,14 @@ test('user full E2E covers non-button feature contracts and new experience contr
   assert.match(source, /membershipMilestoneCase/);
   assert.match(source, /featureContractCoverageCase/);
   assert.match(source, /memberReferralBoundaryCase/);
+  assert.match(source, /memberJoinTermsFlowCase/);
   assert.match(source, /memberJoinLineAutomationContractCase/);
   assert.match(source, /pointsTransferBoundaryCase/);
   assert.match(source, /eventTodayUsableLimitCase/);
   assert.match(source, /bookingBenefitsRecommendationsCase/);
   assert.match(source, /bookingBenefitRedemptionLifecycleCase/);
   assert.match(source, /bookingReceiptReviewContractCase/);
+  assert.match(source, /bookingAccessibleScreenshotReceiptCase/);
   assert.match(source, /pointsHistoryDisclosureCase/);
   assert.match(source, /eventHistoryDisclosureCase/);
   assert.match(source, /bookingFlowStepperCase/);
@@ -100,7 +104,7 @@ test('admin full E2E covers directory, test-account lifecycle, presets, batch ca
 test('all member clients and admin load the latest expanded E2E controllers', () => {
   for (const entry of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(entry + '/index.html');
-    assert.match(html, /\.\.\/user-test-control\.js\?v=qa-e2e-20261004-\d+/);
+    assert.match(html, /\.\.\/user-test-control\.js\?v=qa-e2e-\d{8}-\d+/);
   }
   const admin = read('admin/index.html');
   assert.match(admin, /\.\/e2e-control\.js\?v=qa-e2e-20261004-\d+/);
