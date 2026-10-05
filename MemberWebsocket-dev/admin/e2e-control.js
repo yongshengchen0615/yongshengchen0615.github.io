@@ -1208,7 +1208,7 @@
     return cls ? tag + '.' + cls : tag;
   }
 
-  async function captureAdminHumanInteraction(def, run) {
+  async function captureAdminHumanInteraction(run, def = null) {
     const professional = window.MemberE2EProfessionalTester;
     if (professional && typeof professional.capture === 'function') {
       const meta = ADMIN_NODE_META[String(def?.key || '')] || {};
@@ -1296,7 +1296,7 @@
         const outcome = await window.MemberE2EScenarioGraph.runWithDeadline(async () => {
           let result;
           if (def.humanRequired === true) {
-            const captured = await captureAdminHumanInteraction(def, def.run);
+            const captured = await captureAdminHumanInteraction(def.run, def);
             result = captured.outcome;
             const mergedActual = result?.actual && typeof result.actual === 'object' && !Array.isArray(result.actual)
               ? { ...result.actual, humanInteraction: captured.evidence }
