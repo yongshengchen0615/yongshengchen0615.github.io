@@ -78,19 +78,47 @@ async function open(page,run,mode='',accessible=true) {
   expect(await page.evaluate(()=>typeof window.BookingSystem?.getSession)).toBe('function');
   await page.evaluate(accessible=>accessible?window.BookingReceipts.openAccessible():window.BookingReceipts.openBooking('QA-BOOKING','version-1'),accessible);
 }
-async function capture(page) {
+async function capture(page,{screenSnapshot=false}={}) {
+  let snapshotSize=0;
   await expect(page.locator('#bookingReceiptCapture')).toHaveText('拍攝收據');
+  if(screenSnapshot) {
+    await page.evaluate(()=>{
+      const existing=document.getElementById('e2eReceiptSnapshotSource'); if(existing)existing.remove();
+      const source=document.createElement('article');
+      source.id='e2eReceiptSnapshotSource';
+      source.setAttribute('aria-label','E2E 無障礙收據替代快照');
+      source.style.cssText='width:360px;padding:24px;background:#fff;color:#111;border:2px solid #222;font:16px/1.6 sans-serif';
+      source.innerHTML='<strong>E2E 無障礙收據快照</strong><p>測試服務：QA Body Service</p><p>金額：NT$ 100</p><p>用途：以螢幕快照代替實體收據照片</p>';
+      document.querySelector('.booking-receipt-modal-card')?.append(source);
+    });
+    const snapshot=await page.locator('#e2eReceiptSnapshotSource').screenshot({type:'jpeg',quality:84});
+    snapshotSize=snapshot.length;
+    await page.evaluate((bytes)=>{
+      const canvas=document.getElementById('bookingReceiptCanvas');
+      const original=canvas.toBlob.bind(canvas);
+      canvas.toBlob=(callback)=>{
+        canvas.toBlob=original;
+        callback(new Blob([Uint8Array.from(bytes)],{type:'image/jpeg'}));
+      };
+    },Array.from(snapshot));
+  }
   await page.locator('#bookingReceiptCapture').click();
   await expect(page.locator('#bookingReceiptSubmit')).toBeEnabled();
   await expect(page.locator('#bookingReceiptPreview')).toHaveAttribute('src',/^data:image\/jpeg/);
+  return snapshotSize;
 }
 for(const accessible of [true,false])test(`${accessible?'accessible':'booking'} camera to JPEG, signed upload, finalize and review boundary`,async({page})=>{
-  const run='receipt-'+accessible;await open(page,run,'',accessible);await capture(page);
+  const run='receipt-'+accessible;await open(page,run,'',accessible);
+  const screenshotSize=await capture(page,{screenSnapshot:accessible});
   await page.locator('#bookingReceiptSubmit').click();
   await expect(page.locator('#bookingReceiptModal')).toBeHidden();
   const state=runs.get(run);expect(state.prepare).toHaveLength(1);expect(state.finalize).toHaveLength(1);expect(state.uploads).toHaveLength(1);
   expect(state.prepare[0].mimeType).toBe('image/jpeg');expect(state.prepare[0].sizeBytes).toBeGreaterThan(100);
   expect(state.uploads[0]).toMatchObject({jpeg:true,type:'image/jpeg',token:'qa-token'});
+  if(accessible) {
+    expect(screenshotSize).toBeGreaterThan(100);
+    expect(state.uploads[0].size).toBe(screenshotSize);
+  }
   expect(state.status).toBe('awaiting_review');expect(state.prepare[0].accessible===true).toBe(accessible);
   expect(state.finalize[0].expectedUpdatedAt).toBe(accessible?'':'version-1');
   expect(await page.evaluate(()=>fixtureEvents)).toBe(accessible?1:0);
