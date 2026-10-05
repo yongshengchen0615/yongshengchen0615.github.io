@@ -1208,7 +1208,27 @@
     return cls ? tag + '.' + cls : tag;
   }
 
-  async function captureAdminHumanInteraction(run) {
+  async function captureAdminHumanInteraction(def, run) {
+    const professional = window.MemberE2EProfessionalTester;
+    if (professional && typeof professional.capture === 'function') {
+      const meta = ADMIN_NODE_META[String(def?.key || '')] || {};
+      return professional.capture({
+        document,
+        caseKey: String(def?.key || ''),
+        domain: String(def?.domain || ''),
+        module: String(meta.module || 'shared'),
+        risk: String(meta.risk || ''),
+        side: 'admin',
+        surface: 'admin',
+        complexityLevel: state.complexityLevel,
+        seed: state.randomSeed,
+        delay: sleep,
+        maxEvents: 140,
+        labelTarget: adminHumanTargetLabel,
+        excludeTarget: (target) => Boolean(state.section?.contains?.(target)),
+        registerCleanup: (cleanup) => { state.activeHumanCaptureCleanup = typeof cleanup === 'function' ? cleanup : null; }
+      }, run);
+    }
     const events = [];
     const types = ['click', 'input', 'change', 'submit'];
     const handler = (event) => {
@@ -1276,7 +1296,7 @@
         const outcome = await window.MemberE2EScenarioGraph.runWithDeadline(async () => {
           let result;
           if (def.humanRequired === true) {
-            const captured = await captureAdminHumanInteraction(def.run);
+            const captured = await captureAdminHumanInteraction(def, def.run);
             result = captured.outcome;
             const mergedActual = result?.actual && typeof result.actual === 'object' && !Array.isArray(result.actual)
               ? { ...result.actual, humanInteraction: captured.evidence }
@@ -1285,6 +1305,11 @@
               result = fail(
                 '案例邏輯完成，但沒有觀察到管理端真人 UI 互動事件；完整 E2E 不接受只走 API／內部函式。',
                 { humanInteractionEventsAtLeast: 1 }, mergedActual
+              );
+            } else if (result?.status === 'passed' && captured.evidence.professionalTester?.ok === false) {
+              result = fail(
+                '專業 QA 行為檢查偵測到管理端操作引入 UI 結構回歸；完整 E2E 不接受新增重複 ID 或水平溢位。',
+                { humanInteractionEventsAtLeast: 1, professionalTesterStructuralRegressionFree: true }, mergedActual
               );
             } else {
               result = { ...result, actual: safe(mergedActual) };
