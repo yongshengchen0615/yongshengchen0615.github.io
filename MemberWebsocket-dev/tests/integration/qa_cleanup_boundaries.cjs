@@ -6,6 +6,7 @@ const { PGlite } = require('@electric-sql/pglite');
 const dir = path.join(__dirname, '../../supabase/migrations');
 const read = name => fs.readFileSync(path.join(dir, name), 'utf8');
 const fix = fs.readdirSync(dir).find(name => name.endsWith('_harden_qa_cleanup_boundaries.sql'));
+const evolutionPurgeFix = fs.readdirSync(dir).find(name => name.endsWith('_fix_test_purge_evolution_delete_guard.sql'));
 
 async function fixture() {
   const db = new PGlite();
@@ -118,4 +119,11 @@ test('removing a QA primary repairs the baseline without keeping QA configuratio
     assert.equal(primary.is_active, true);
     assert.equal((await db.query("select count(*)::int n from booking_technicians where created_by like 'qa:%'")).rows[0].n, 0);
   } finally { await db.close(); }
+});
+
+
+test('all-test purge uses a guarded singleton delete for E2E evolution state', () => {
+  const sql = read(evolutionPurgeFix);
+  assert.match(sql, /delete\s+from\s+public\.e2e_evolution_state\s+where\s+id\s*=\s*true\s*;/i);
+  assert.doesNotMatch(sql, /delete\s+from\s+public\.e2e_evolution_state\s*;/i);
 });
