@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-05.1';
+  const VERSION = '2026-10-05.2';
   const els = {};
   const artifactPreviewCache = new Map();
   const artifactPrefetchQueue = [];
@@ -379,11 +379,22 @@
         Number(purge.deletedExtendedQaArtifacts || 0),
         Number(purge.deletedStorageObjects || 0)
       ].reduce((sum, value) => sum + value, 0);
+      let refreshFailed = false;
+      if (typeof window.MemberAdminDataSync?.refresh === 'function') {
+        try {
+          await window.MemberAdminDataSync.refresh();
+        } catch (_) {
+          refreshFailed = true;
+        }
+      }
+      window.dispatchEvent(new CustomEvent('test-data-purged', { detail: purge }));
       setMessage(
         '測試資料已移除，共清除 ' + removed + ' 筆主要測試資料；' +
-        Number(purge.testAccountCount || 0) + ' 個測試帳號已保留。測試用戶端請重新登入。'
+        Number(purge.testAccountCount || 0) + ' 個測試帳號已保留。' +
+        (refreshFailed ? ' 管理畫面同步失敗，請按重新整理確認。' : ' 管理畫面已重新同步。') +
+        ' 測試用戶端請重新登入。',
+        refreshFailed
       );
-      window.dispatchEvent(new CustomEvent('test-data-purged', { detail: purge }));
     } finally {
       setBusy(false);
     }

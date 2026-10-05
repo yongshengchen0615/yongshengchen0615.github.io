@@ -55,7 +55,7 @@ test('admin entry references current booking assets', () => {
   assert.match(html, /booking-panel\.css\?v=[^"']+/);
   assert.match(html, /booking-panel\.js\?v=[^"']+/);
   assert.equal((html.match(/booking-panel\.js/g) || []).length, 1);
-  assert.ok(html.includes('fixed-ticket-admin.js?v=admin-human-e2e-20261004-1'));
+  assert.ok(html.includes('fixed-ticket-admin.js?v=qa-purge-sync-20261005-1'));
   assert.ok(html.includes('pointcard-redemption-limit.js?v=ticket-unlimited-zero-20261002-1'));
   assert.ok(html.includes('../booking-copy-format.js?v=booking-overnight-20260928-1'));
   for (const asset of [
