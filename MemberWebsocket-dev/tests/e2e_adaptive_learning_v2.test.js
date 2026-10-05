@@ -97,7 +97,7 @@ test('adaptive QA v2 persists private learning state and refreshes it after runs
   assert.match(migration, /flaky_score/);
   assert.match(migration, /preferred_tester_profile/);
   assert.match(migration, /last_failure_fingerprint/);
-  const incremental = read('supabase/migrations/20261005133000_accumulate_adaptive_e2e_learning.sql');
+  const incremental = read('supabase/migrations/20261005132510_accumulate_adaptive_e2e_learning.sql');
   assert.match(incremental, /last_learned_run_id/);
   assert.match(incremental, /admin_accumulate_e2e_case_learning/);
   assert.match(incremental, /Ordinary test-data purge may remove raw E2E runs/);
