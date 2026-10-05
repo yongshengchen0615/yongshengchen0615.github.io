@@ -140,7 +140,7 @@
     state.selectedExpectedUpdatedAt = '';
   }
 
-  function openModal(bookingId, expectedUpdatedAt, accessible = false) {
+  function openModal(bookingId, expectedUpdatedAt, accessible = false, options = {}) {
     const modal = ensureModal();
     resetModalState();
     state.accessible = accessible;
@@ -151,7 +151,23 @@
     state.selectedBookingId = String(bookingId || '');
     state.selectedExpectedUpdatedAt = String(expectedUpdatedAt || '');
     modal.classList.remove('hidden');
-    void startCamera();
+    if (options?.skipCamera !== true) void startCamera();
+  }
+
+  function openAccessibleE2ESnapshot(blob) {
+    const testSessionToken = window.TestModeClient?.getSessionToken?.();
+    if (!testSessionToken) throw Object.assign(new Error('只有有效測試 Session 可以使用 E2E 收據快照。'), { code: 'TEST_SESSION_REQUIRED' });
+    if (!(blob instanceof Blob)) throw Object.assign(new Error('E2E 收據快照格式不正確。'), { code: 'E2E_RECEIPT_SNAPSHOT_REQUIRED' });
+    const mimeType = String(blob.type || '').toLowerCase();
+    const extension = mimeType === 'image/webp' ? 'webp' : mimeType === 'image/png' ? 'png' : mimeType === 'image/jpeg' ? 'jpg' : '';
+    if (!extension) throw Object.assign(new Error('E2E 收據快照必須是 JPG、PNG 或 WebP。'), { code: 'E2E_RECEIPT_SNAPSHOT_MIME' });
+    openModal('', '', true, { skipCamera: true });
+    const file = new File([blob], `e2e-accessible-receipt-${Date.now()}.${extension}`, {
+      type: mimeType,
+      lastModified: Date.now(),
+    });
+    acceptFile(file);
+    return { mimeType, sizeBytes: file.size };
   }
 
   async function startCamera() {
@@ -489,6 +505,7 @@
 
   window.BookingReceipts = Object.freeze({
     openAccessible: () => openModal('', '', true),
+    openAccessibleE2ESnapshot,
     openBooking: openModal,
     refresh: refreshListAndDecorate,
   });
