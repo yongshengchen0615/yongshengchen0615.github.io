@@ -523,11 +523,14 @@
   }
 
   function setBusy(value) {
+    const wasBusy = busy;
     busy = value;
     const save = document.getElementById('saveEventTicketButton');
-    if (save && document.getElementById('eventTicketType')?.value === 'fixed') {
+    if (save && (document.getElementById('eventTicketType')?.value === 'fixed' || (!value && wasBusy))) {
+      // Deletion resets the editor to coupon before this request settles.
+      // Release the save button owned by the completed fixed-ticket request.
       save.disabled = value;
-      save.textContent = value ? '儲存中…' : '儲存固定票券';
+      save.textContent = value ? '儲存中…' : document.getElementById('eventTicketType')?.value === 'fixed' ? '儲存固定票券' : '儲存活動票券';
     }
     const run = document.getElementById('fixedTicketRunButton');
     if (run) run.disabled = value || !selectedFixedTicketId;

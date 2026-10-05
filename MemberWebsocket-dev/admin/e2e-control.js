@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-04.4';
+  const VERSION = '2026-10-04.5';
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -34,6 +34,20 @@
   ]);
   const E2E_MODULES = Object.freeze([...PAIRED_SURFACES.slice(0, 4), ['integration', '整合中心'], PAIRED_SURFACES[4]]);
   const ADMIN_CASE_MODULES = Object.freeze({
+    ADMIN_TIER_EDITOR_JOURNEY: ['member'],
+    ADMIN_TERMS_EDITOR_JOURNEY: ['member'],
+    ADMIN_CARD_EDITOR_OPTIONS: ['points'],
+    ADMIN_CARD_SORT_JOURNEY: ['points'],
+    ADMIN_EVENT_AUDIENCE_JOURNEY: ['event'],
+    ADMIN_CALENDAR_NAVIGATION: ['calendar'],
+    ADMIN_CALENDAR_EVENT_CRUD: ['calendar'],
+    ADMIN_EVENT_CALENDAR_SYNC: ['event','calendar'],
+    ADMIN_BOOKING_BATCH_EDITOR: ['booking'],
+    ADMIN_FIXED_DRAFT_BIRTHDAY_MONTH: ['event'],
+    ADMIN_FIXED_DRAFT_WEEKLY: ['event'],
+    ADMIN_FIXED_DRAFT_MONTHLY: ['event'],
+    ADMIN_FIXED_DRAFT_YEARLY: ['event'],
+
     ADMIN_TEST_MEMBER_ROSTER: ['member'], ADMIN_MEMBER_MODALS: ['member'],
     ADMIN_TEST_MEMBER_PROFILE_EDIT: ['member'], ADMIN_MEMBER_DIRECTORY_CONTROLS: ['member'],
     ADMIN_MEMBERSHIP_TERMS: ['member'],
@@ -64,6 +78,19 @@
     booking: 'ADMIN_BOOKING_CONTROLS'
   });
   const ADMIN_NODE_META = Object.freeze({
+    ADMIN_TIER_EDITOR_JOURNEY: {module:'member',phase:4,dependencies:['ADMIN_PRIMARY_NAVIGATION']},
+    ADMIN_TERMS_EDITOR_JOURNEY: {module:'member',phase:4,dependencies:['ADMIN_PRIMARY_NAVIGATION']},
+    ADMIN_CARD_EDITOR_OPTIONS: {module:'points',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_CARD_SORT_JOURNEY: {module:'points',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_EVENT_AUDIENCE_JOURNEY: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_CALENDAR_NAVIGATION: {module:'calendar',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_CALENDAR_EVENT_CRUD: {module:'calendar',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS'],risk:'mutation'},
+    ADMIN_EVENT_CALENDAR_SYNC: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS'],risk:'mutation'},
+    ADMIN_BOOKING_BATCH_EDITOR: {module:'booking',phase:4,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_FIXED_DRAFT_BIRTHDAY_MONTH: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_FIXED_DRAFT_WEEKLY: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_FIXED_DRAFT_MONTHLY: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
+    ADMIN_FIXED_DRAFT_YEARLY: {module:'event',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
     ADMIN_TIER_SETTINGS: {module:'member',phase:3,dependencies:['ADMIN_PRIMARY_NAVIGATION']},
     ADMIN_GRANT_NOTIFICATION_CONTROLS: {module:'member',phase:4,dependencies:['ADMIN_TEST_MEMBER_ROSTER']},
     ADMIN_POINT_LIMIT_SETTINGS: {module:'points',phase:3,dependencies:['ADMIN_RESOURCE_EDITORS']},
@@ -1592,6 +1619,19 @@
     if (suite !== 'full') return common;
     const allSelected = modules.length === E2E_MODULES.length;
     return common.concat([
+      caseDef('ADMIN_TIER_EDITOR_JOURNEY', '會員卡：全部樣式與預覽', 'Human E2E', adminTierEditorJourneyCase),
+      caseDef('ADMIN_TERMS_EDITOR_JOURNEY', '會員條款：版本／唯讀／草稿互動', 'Human E2E', adminTermsEditorJourneyCase),
+      caseDef('ADMIN_CARD_EDITOR_OPTIONS', '集點卡：樣式／到期／節點／清除', 'Human E2E', adminCardEditorOptionsCase),
+      caseDef('ADMIN_CARD_SORT_JOURNEY', '集點卡：排序與草稿還原', 'Human E2E', adminCardSortJourneyCase),
+      caseDef('ADMIN_EVENT_AUDIENCE_JOURNEY', '活動票券：對象與類型完整切換', 'Human E2E', adminEventAudienceJourneyCase),
+      caseDef('ADMIN_CALENDAR_EVENT_CRUD', '營運日曆：活動連結／對象／加贈草稿 CRUD', 'Human E2E', () => adminCalendarCrudCase('event')),
+      caseDef('ADMIN_EVENT_CALENDAR_SYNC', '活動票券：草稿同步日曆／唯讀／移除', 'Human E2E', adminEventCalendarSyncCase),
+      caseDef('ADMIN_CALENDAR_NAVIGATION', '營運日曆：月份／今日／點日期新增', 'Human E2E', adminCalendarNavigationCase),
+      caseDef('ADMIN_BOOKING_BATCH_EDITOR', '預約項目：批次新增／移除／取消', 'Human E2E', adminBookingBatchEditorCase),
+      caseDef('ADMIN_FIXED_DRAFT_BIRTHDAY_MONTH', '固定票券草稿 CRUD：birthday_month', 'Human E2E', () => adminFixedTicketDraftLifecycleCase('birthday_month')),
+      caseDef('ADMIN_FIXED_DRAFT_WEEKLY', '固定票券草稿 CRUD：weekly', 'Human E2E', () => adminFixedTicketDraftLifecycleCase('weekly')),
+      caseDef('ADMIN_FIXED_DRAFT_MONTHLY', '固定票券草稿 CRUD：monthly', 'Human E2E', () => adminFixedTicketDraftLifecycleCase('monthly')),
+      caseDef('ADMIN_FIXED_DRAFT_YEARLY', '固定票券草稿 CRUD：yearly', 'Human E2E', () => adminFixedTicketDraftLifecycleCase('yearly')),
       caseDef('ADMIN_TIER_SETTINGS', '會員等級門檻與樣式設定契約', 'Configuration', adminTierSettingsCase),
       caseDef('ADMIN_GRANT_NOTIFICATION_CONTROLS', '發放通知：立即／排程／不傳送切換', 'Human E2E', adminGrantNotificationControlsCase),
       caseDef('ADMIN_POINT_LIMIT_SETTINGS', '集點卡上限：Server/UI 與 0 不限', 'Admin Settings E2E', adminPointLimitSettingsCase),
@@ -3391,7 +3431,7 @@
       : fail('活動票券 CRUD E2E 至少一個階段失敗。', { created: true, updated: true, locationSaved: true, deleted: true, cleaned: true }, actual);
   }
 
-  async function adminCalendarCrudCase() {
+  async function adminCalendarCrudCase(itemType = 'holiday') {
     const stamp = qaCrudStamp();
     const createdTitle = 'E2E 日曆 ' + stamp;
     const updatedTitle = createdTitle + ' 修改';
@@ -3405,7 +3445,15 @@
 
     try {
       setField('calendarItemTitle', createdTitle);
-      setField('calendarItemType', 'holiday');
+      setField('calendarItemType', itemType);
+      if (itemType === 'event') {
+        setField('calendarItemLinkLabel', 'E2E 活動連結');
+        setField('calendarItemLinkUrl', 'https://example.com/e2e-qa');
+        setField('calendarBonusPoints', '4');
+        toggleCheckbox('calendarBonusPointsEnabled', true);
+        const audience = document.querySelector('#calendarItemAllowedTiers input[value="general"]');
+        if (audience?.checked) audience.click();
+      }
       setField('calendarItemDescription', '管理端 CRUD E2E 測試日期');
       setField('calendarItemStatus', 'draft');
       const startInput = document.getElementById('calendarItemStartsOn');
@@ -3418,7 +3466,12 @@
 
       document.getElementById('saveCalendarItemButton')?.click();
       createdId = String(await waitFor(() => document.getElementById('calendarItemId')?.value || null, 15000) || '');
-      actual.created = Boolean(createdId);
+      await waitAdminWriteSettled('saveCalendarItemButton');
+      const session = await adminSession();
+      const stored = await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.calendar-items.list', {});
+      const own = (stored.calendarItems || []).find(item => item.calendarItemId === createdId);
+      actual.created = Boolean(own && own.title === createdTitle && own.status === 'draft' &&
+        (itemType !== 'event' || (own.bonusPointsEnabled && own.bonusPoints === 4 && own.linkUrl === 'https://example.com/e2e-qa' && !own.allowedTierKeys.includes('general'))));
 
       if (actual.created) {
         setField('calendarItemTitle', updatedTitle);
@@ -3426,7 +3479,9 @@
         document.getElementById('saveCalendarItemButton')?.click();
         actual.updated = Boolean(await waitFor(() => {
           return String(document.getElementById('calendarItemId')?.value || '') === createdId &&
-            String(document.getElementById('calendarItemTitle')?.value || '') === updatedTitle;
+            String(document.getElementById('calendarItemTitle')?.value || '') === updatedTitle &&
+            document.getElementById('saveCalendarItemButton')?.disabled === false &&
+            Array.from(document.querySelectorAll('#adminCalendarGrid [data-admin-calendar-item-id]')).some(button => button.dataset.adminCalendarItemId === createdId && button.textContent.includes(updatedTitle));
         }, 15000));
       }
 
@@ -5955,6 +6010,12 @@
     const actual = { added: false, invalidSaveRejected: false, cleared: false };
     if (!add || !rows) return fail('日曆批次編輯控制不存在。', { controls: true }, { controls: false });
 
+    if (rows.children.length || document.querySelector('[data-admin-calendar-date-select]:checked')) {
+      return skip('保留尚未儲存的日曆批次與日期選取，請清空後重跑。', {emptyDraft:true}, {blockerCode:'E2E_CALENDAR_DRAFT_PRESENT'});
+    }
+    const date = document.querySelector('[data-admin-calendar-date-select]');
+    if (!date) return fail('日曆沒有可選日期。', {date:true}, {date:false});
+    date.click();
     add.click();
     actual.added = Boolean(await waitFor(() => rows.children.length >= 1, 1200));
     document.getElementById('saveCalendarBatchButton')?.click();
@@ -5974,6 +6035,240 @@
         }, actual);
   }
 
+
+  // Human journeys supplement (not replace) server contracts. Global publication
+  // and destructive real-data workflows are exercised by Chromium isolation tests.
+  async function adminTierEditorJourneyCase() {
+    document.getElementById('membersTab').click();
+    document.getElementById('memberTierSettingsTab').click();
+    const checks = [];
+    const controls = ['General','Silver','Gold','Platinum'].map(tier => document.getElementById('tier'+tier+'Style'));
+    const original = controls.map(input => input.value);
+    try {
+      for (const input of controls) {
+        const preview = input.closest('label').querySelector('[data-tier-style-preview]');
+        for (const option of Array.from(input.options)) {
+          await adminHumanSelect(input, option.value, '會員卡樣式');
+          checks.push({tier:input.id,style:option.value,matched:preview?.dataset.style===option.value});
+        }
+      }
+    } finally { controls.forEach((input,index) => setField(input.id,original[index])); }
+    return checks.length >= 40 && checks.every(row=>row.matched)
+      ? pass('四級會員全部卡面皆經下拉選取與預覽確認，草稿已還原。',{allStyles:true},{checks})
+      : fail('會員卡面選取與預覽不同步。',{allStyles:true},{checks});
+  }
+
+  async function adminTermsEditorJourneyCase() {
+    document.getElementById('membersTab').click();
+    document.getElementById('memberTermsTab').click();
+    const checks = {versionOpened:false,activeReadonly:false,draftReset:false,counters:false,reconsent:false,reloaded:false};
+    await waitFor(()=>document.querySelector('#termsVersionList button:not(:disabled)') && !document.getElementById('termsNewDraft').disabled,5000);
+    const active = Array.from(document.querySelectorAll('#termsVersionList button')).find(button=>/使用中|啟用中/.test(button.textContent));
+    const first = active || document.querySelector('#termsVersionList button');
+    try {
+      if (first) { await adminHumanClick(first); checks.versionOpened=Boolean(document.getElementById('termsId').value); }
+      checks.activeReadonly = !active || document.getElementById('termsBody').disabled;
+      await adminHumanClick(document.getElementById('termsNewDraft'));
+      checks.draftReset = !document.getElementById('termsId').value && !document.getElementById('termsBody').disabled;
+      await adminHumanTextInput(document.getElementById('termsSummary'),'E2E 草稿摘要');
+      await adminHumanTextInput(document.getElementById('termsBody'),'E2E 草稿內容');
+      checks.counters = document.getElementById('termsSummaryCount').textContent.includes('8') && document.getElementById('termsBodyCount').textContent.includes('8');
+      const toggle=document.getElementById('termsReconsent');
+      if(!toggle.checked) await adminHumanClick(toggle);
+      checks.reconsent=!document.getElementById('termsReconsentNote').classList.contains('hidden');
+    } finally {
+      document.getElementById('termsReload').click();
+      checks.reloaded=Boolean(await waitFor(()=>document.querySelector('#termsVersionList button:not(:disabled)') && !document.getElementById('termsReload').disabled,5000));
+      // Discard an unsaved draft explicitly; reload alone may retain it.
+      document.querySelector('#termsVersionList button')?.click();
+    }
+    return Object.values(checks).every(Boolean)
+      ? pass('條款版本、唯讀、草稿、計數及重新同意提示可操作；啟用流程由隔離 Chromium 驗證。',{allChecks:true},checks)
+      : fail('條款編輯流程異常。',{allChecks:true},checks);
+  }
+
+  async function adminCardEditorOptionsCase() {
+    document.getElementById('cardsTab').click();document.getElementById('cardSettingsTab').click();
+    document.getElementById('newCardButton').click();await waitEditorOpen('cardEditorModal');
+    const checks={styles:[],expiry:false,rewardAdded:false,rewardRemoved:false,reset:false};
+    try {
+      const style=document.getElementById('cardStyle');
+      for(const option of Array.from(style.options)){
+        await adminHumanSelect(style,option.value,'集點卡樣式');
+        checks.styles.push(document.querySelector('[data-point-card-style-preview]')?.dataset.style===option.value);
+      }
+      setField('cardExpiryMode','date');
+      checks.expiry=document.getElementById('cardExpiresOn').required && !document.getElementById('cardExpiresOnField').classList.contains('hidden');
+      setField('cardExpiryMode','unlimited');checks.expiry=checks.expiry&&!document.getElementById('cardExpiresOn').required;
+      const count=document.querySelectorAll('#rewardRows [data-reward-row]').length;
+      document.getElementById('addRewardButton').click();checks.rewardAdded=document.querySelectorAll('#rewardRows [data-reward-row]').length===count+1;
+      document.querySelector('#rewardRows [data-reward-row]:last-child [data-remove-reward]').click();
+      checks.rewardRemoved=document.querySelectorAll('#rewardRows [data-reward-row]').length===count;
+      setField('cardTitle','E2E 尚未儲存');document.getElementById('resetCardButton').click();
+      checks.reset=!document.getElementById('cardId').value&&!document.getElementById('cardTitle').value;
+    } finally {closeEditorModalById('cardEditorModal');}
+    return checks.styles.length===10&&checks.styles.every(Boolean)&&checks.expiry&&checks.rewardAdded&&checks.rewardRemoved&&checks.reset
+      ? pass('集點卡十款樣式、到期切換、增刪節點與清除已實際操作。',{allChecks:true},checks)
+      : fail('集點卡完整編輯流程異常。',{allChecks:true},checks);
+  }
+
+  async function adminCardSortJourneyCase() {
+    document.getElementById('cardsTab').click();document.getElementById('cardSettingsTab').click();
+    const rows=()=>Array.from(document.querySelectorAll('#cardListItems [data-card-sort-move="up"]'));
+    const original=rows().map(button=>button.dataset.cardId);
+    if(original.length<2)return skip('排序至少需要兩張集點卡。',{cards:2},{blockerCode:'E2E_SORT_FIXTURE_REQUIRED'});
+    const target=original[1];let moved=false,restored=false;
+    try {
+      await adminHumanClick(rows()[1],'上移集點卡');
+      moved=rows()[0]?.dataset.cardId===target&&!document.getElementById('saveCardSortButton').disabled;
+    } finally {
+      const down=Array.from(document.querySelectorAll('#cardListItems [data-card-sort-move="down"]')).find(button=>button.dataset.cardId===target);
+      if(rows()[0]?.dataset.cardId===target)down?.click();
+      restored=JSON.stringify(rows().map(button=>button.dataset.cardId))===JSON.stringify(original);
+    }
+    return moved&&restored?pass('集點卡上／下移與未儲存草稿還原正常；持久化由隔離 Chromium 驗證。',{moved:true,restored:true},{moved,restored})
+      :fail('集點卡排序或草稿還原異常。',{moved:true,restored:true},{moved,restored});
+  }
+
+  async function adminFixedTicketDraftLifecycleCase(scheduleType) {
+    const title='E2E QA fixed '+scheduleType+' '+qaCrudStamp();
+    const session=await adminSession();let created=null;const checks={created:false,reopened:false,updated:false,deleted:false};
+    const list=async()=>{const data=await postFunction('fixed-ticket-automation',{action:'admin.fixed-tickets.list',idToken:session.idToken});return data.templates||[];};
+    const readOwn=async()=> (await list()).find(row=>row.title===title||row.fixedTicketId===created?.fixedTicketId);
+    try {
+      document.getElementById('eventsTab').click();document.getElementById('newEventTicketButton').click();await waitEditorOpen('eventTicketEditorModal');
+      setField('eventTicketType','fixed');setField('eventTicketTitle',title);setField('eventTicketDescription','E2E QA isolated draft');setField('eventTicketUsageMethod','E2E QA only');setField('eventTicketUsageInstructions','E2E QA cleanup');
+      setField('eventTicketStatus','draft');setField('fixedTicketScheduleType',scheduleType);
+      if(scheduleType==='yearly')setField('fixedTicketScheduleMonth','12');
+      if(['monthly','yearly'].includes(scheduleType))setField('fixedTicketScheduleDay','15');
+      if(scheduleType==='weekly')setField('fixedTicketScheduleWeekday','3');
+      setField('fixedTicketExpiryMode','days_after_issue');setField('fixedTicketExpiryDays','14');
+      for(const id of ['fixedTicketNotifyLine','fixedTicketCalendarEnabled']){const input=document.getElementById(id);if(input?.checked)input.click();}
+      document.getElementById('saveEventTicketButton').click();await waitAdminWriteSettled('saveEventTicketButton');
+      created=await readOwn();
+      checks.created=Boolean(created?.fixedTicketId&&created.status==='draft'&&created.scheduleType===scheduleType&&created.expiryDays===14&&!created.notifyLine&&!created.calendarEnabled);
+      if(!checks.created)throw new Error('固定票券草稿未正確儲存，拒絕操作其他規則。');
+      const row=document.querySelector('[data-fixed-ticket-id="'+CSS.escape(created.fixedTicketId)+'"]');
+      await adminHumanClick(row,'重新開啟本次固定票券');
+      checks.reopened=document.getElementById('eventTicketTitle').value===title&&document.getElementById('fixedTicketScheduleType').value===scheduleType;
+      setField('fixedTicketExpiryDays','21');document.getElementById('saveEventTicketButton').click();await waitAdminWriteSettled('saveEventTicketButton');
+      checks.updated=(await readOwn())?.expiryDays===21;
+      await withAutoConfirm(async()=>{document.getElementById('deleteEventTicketButton').click();await waitAdminWriteSettled('saveEventTicketButton');});
+      checks.deleted=!(await readOwn());
+    } finally {
+      // Only the unique draft owned by this node may be cleaned up. No global run.
+      const own=await readOwn();
+      if(own&&own.title===title&&own.status==='draft'){
+        await postFunction('fixed-ticket-automation',{action:'admin.fixed-tickets.delete',idToken:session.idToken,fixedTicketId:own.fixedTicketId,expectedUpdatedAt:own.updatedAt});
+      }
+      closeEditorModalById('eventTicketEditorModal');
+    }
+    return Object.values(checks).every(Boolean)?pass('固定票券草稿經 UI 新增、回讀、修改及刪除；未發布或發通知。',{allChecks:true},checks):fail('固定票券草稿 CRUD 未完整通過。',{allChecks:true},checks);
+  }
+
+  async function adminEventCalendarSyncCase() {
+    const title = 'E2E QA calendar sync ' + qaCrudStamp();
+    const session = await adminSession();
+    const request = (action, payload = {}) => window.MemberSystem.request(session.config, 'admin', session.idToken, action, payload);
+    const list = async () => (await request('admin.calendar-items.list')).calendarItems || [];
+    let ticketId = '';
+    const checks = {created:false,linked:false,readonly:false,unlinked:false,deleted:false};
+    try {
+      document.getElementById('eventsTab').click();
+      document.getElementById('newEventTicketButton').click();
+      await waitEditorOpen('eventTicketEditorModal');
+      setField('eventTicketType','coupon');setField('eventTicketTitle',title);
+      setField('eventTicketDescription','E2E QA calendar linkage');setField('eventTicketUsageMethod','QA draft only');setField('eventTicketUsageInstructions','QA cleanup');
+      setField('eventTicketStatus','draft');setField('eventTicketStartsOn',new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'}));
+      await adminHumanClick(document.getElementById('eventTicketAddToCalendar'),'加入日曆');
+      document.getElementById('saveEventTicketButton').click();
+      ticketId = String(await waitFor(()=>document.getElementById('eventTicketId').value || null,15000) || '');
+      await waitAdminWriteSettled('saveEventTicketButton');
+      const data = await request('admin.event-tickets.list');
+      const own = (data.eventTickets || []).find(item=>item.eventTicketId===ticketId);
+      checks.created = Boolean(own && own.title===title && own.status==='draft');
+      if (!checks.created) throw new Error('未確認本輪專用草稿，停止日曆同步操作。');
+      const linked = (await list()).find(item=>item.title===title && item.linkUrl?.includes(ticketId));
+      checks.linked = Boolean(linked?.calendarItemId && linked.status==='draft');
+      if (!checks.linked) throw new Error('活動票券未同步至日曆。');
+      closeEditorModalById('eventTicketEditorModal');
+      document.getElementById('calendarTab').click();document.getElementById('adminCalendarTodayButton').click();
+      // Workspace loading can replace the calendar grid; select the current row
+      // after the human pause so a detached element cannot produce false evidence.
+      await adminHumanPause(200,400);
+      const row = await waitFor(()=>document.querySelector('[data-admin-calendar-item-id="'+CSS.escape(linked.calendarItemId)+'"][data-event-ticket-calendar-readonly="true"]'),5000);
+      if (!row) throw new Error('同步日曆項目沒有唯讀標記。');
+      row.scrollIntoView?.({block:'center'});row.focus();row.click();
+      const info = await waitEditorOpen('eventTicketCalendarInfoModal');
+      checks.readonly = Boolean(info && document.getElementById('calendarEditorModal').classList.contains('hidden') && info.textContent.includes('活動票券同步'));
+      document.getElementById('closeEventTicketCalendarInfoButton')?.click();
+      document.getElementById('eventsTab').click();
+      await clickResourceRow('#eventTicketListItems [data-event-ticket-id]','eventTicketId',ticketId);
+      await waitEditorOpen('eventTicketEditorModal');
+      await waitFor(()=>!document.getElementById('eventTicketAddToCalendar').disabled,5000);
+      if (document.getElementById('eventTicketAddToCalendar').checked) await adminHumanClick(document.getElementById('eventTicketAddToCalendar'),'移除日曆連結');
+      document.getElementById('saveEventTicketButton').click();await waitAdminWriteSettled('saveEventTicketButton');
+      checks.unlinked = !(await list()).some(item=>item.calendarItemId===linked.calendarItemId);
+      await withAutoConfirm(async()=>{document.getElementById('deleteEventTicketButton').click();await waitFor(()=>!document.getElementById('eventTicketId').value,15000);});
+      checks.deleted = !(await request('admin.event-tickets.list')).eventTickets?.some(item=>item.eventTicketId===ticketId);
+    } finally {
+      // Read ownership before cleanup; never delete another administrator's data.
+      const own = (await request('admin.event-tickets.list')).eventTickets?.find(item=>item.eventTicketId===ticketId);
+      if (own?.title===title && own.status==='draft') await request('admin.event-tickets.delete',{eventTicketId:ticketId,expectedUpdatedAt:own.updatedAt});
+      closeEditorModalById('eventTicketEditorModal');document.getElementById('closeEventTicketCalendarInfoButton')?.click();
+    }
+    return Object.values(checks).every(Boolean)
+      ? pass('專用活動草稿同步日曆、唯讀資訊、移除連結及刪除完成。',{allChecks:true},checks)
+      : fail('活動草稿與日曆同步未完整通過。',{allChecks:true},checks);
+  }
+
+  async function adminCalendarNavigationCase() {
+    document.getElementById('calendarTab').click();document.getElementById('adminCalendarTodayButton').click();
+    const title=()=>document.getElementById('adminCalendarMonthTitle').textContent;
+    const current=title();const checks={next:false,previous:false,today:false,dateEditor:false};
+    try {
+      await adminHumanClick(document.getElementById('adminCalendarNextMonthButton'));checks.next=title()!==current;
+      await adminHumanClick(document.getElementById('adminCalendarPreviousMonthButton'));checks.previous=title()===current;
+      document.getElementById('adminCalendarPreviousMonthButton').click();document.getElementById('adminCalendarTodayButton').click();checks.today=title()===current;
+      const date=document.querySelector('#adminCalendarGrid [data-admin-calendar-date]');
+      await adminHumanClick(date);await waitEditorOpen('calendarEditorModal');checks.dateEditor=document.getElementById('calendarItemStartsOn').value===date.dataset.adminCalendarDate;
+    }finally{closeEditorModalById('calendarEditorModal');document.getElementById('adminCalendarTodayButton').click();}
+    return Object.values(checks).every(Boolean)?pass('日曆前後月、今日及點日期新增已操作。',{allChecks:true},checks):fail('日曆導覽或日期帶入錯誤。',{allChecks:true},checks);
+  }
+
+  async function adminEventAudienceJourneyCase() {
+    document.getElementById('eventsTab').click();document.getElementById('newEventTicketButton').click();await waitEditorOpen('eventTicketEditorModal');
+    const presets={all:['general','silver','gold','platinum'],general:['general'],'silver-plus':['silver','gold','platinum'],'gold-plus':['gold','platinum'],platinum:['platinum']};
+    const checks=[];
+    try {
+      for(const [preset,expected] of Object.entries(presets)){
+        await adminHumanClick(document.querySelector('#eventTicketAllowedTiers [data-audience-preset="'+preset+'"]'));
+        const actual=Array.from(document.querySelectorAll('#eventTicketAllowedTiers input:checked')).map(input=>input.value);
+        checks.push({preset,matched:JSON.stringify(actual)===JSON.stringify(expected)});
+      }
+      for(const type of ['coupon','lottery','referral','membership_join','fixed']){
+        await adminHumanSelect(document.getElementById('eventTicketType'),type);
+        checks.push({type,matched:document.getElementById('eventTicketType').value===type});
+      }
+    }finally{document.getElementById('resetEventTicketButton').click();closeEditorModalById('eventTicketEditorModal');}
+    return checks.every(row=>row.matched)?pass('五種適用對象快捷設定與五種票券類型已逐一選取。',{allChecks:true},{checks}):fail('活動票券對象或類型切換異常。',{allChecks:true},{checks});
+  }
+
+  async function adminBookingBatchEditorCase() {
+    document.getElementById('bookingTab').click();document.getElementById('bookingAdminServicesSubtab').click();await waitBookingAdminReady();
+    const checks={opened:false,added:false,removed:false,cancelled:false};
+    try {
+      await adminHumanClick(document.getElementById('bookingAdminBatchAddButton'));
+      const modal=await waitEditorOpen('bookingAdminCrudModal');
+      if(!modal)return skip('批次服務編輯需要至少一個服務類型。',{editor:true},{blockerCode:'E2E_SERVICE_TYPE_REQUIRED'});
+      checks.opened=modal.querySelectorAll('[data-batch-row]').length===2;
+      modal.querySelector('[data-add-row]').click();checks.added=modal.querySelectorAll('[data-batch-row]').length===3;
+      const last=modal.querySelector('[data-batch-row]:last-child');
+      Array.from(last.querySelectorAll('button')).find(button=>button.textContent==='移除此列')?.click();checks.removed=modal.querySelectorAll('[data-batch-row]').length===2;
+      modal.querySelector('[data-cancel]').click();checks.cancelled=modal.classList.contains('hidden');
+    }finally{document.getElementById('bookingAdminCrudModalClose')?.click();}
+    return Object.values(checks).every(Boolean)?pass('批次預約項目新增列、移除列與取消可操作；批次寫入由隔離 Chromium 驗證。',{allChecks:true},checks):fail('批次預約項目編輯異常。',{allChecks:true},checks);
+  }
 
   async function adminTierSettingsCase() {
     const values = ['General','Silver','Gold','Platinum'].map(tier => ({

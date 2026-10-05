@@ -78,15 +78,16 @@ jobs:
             MemberWebsocket-dev/tests/integration/automation_health_sql.cjs \
             MemberWebsocket-dev/tests/integration/qa_event_day_sql.cjs \
             MemberWebsocket-dev/tests/integration/qa_cleanup_boundaries.cjs
+          node --max-old-space-size=1024 --test MemberWebsocket-dev/tests/integration/admin_human_journeys.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
           node MemberWebsocket-dev/tests/integration/event_coupon_sql.cjs
           node MemberWebsocket-dev/tests/integration/coupon_location_editor.cjs
 
   browser-e2e:
-    name: Chromium camera and GPS E2E
+    name: Chromium admin, camera and GPS E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -100,7 +101,7 @@ jobs:
       - name: Install Chromium and system dependencies
         run: npx playwright install --with-deps chromium --only-shell
         working-directory: MemberWebsocket-dev/tests/browser
-      - name: Run real-browser receipt and location flows
+      - name: Run real-browser admin, receipt and location flows
         run: npm test
         working-directory: MemberWebsocket-dev/tests/browser
       - name: Save browser diagnostics
@@ -234,7 +235,7 @@ jobs:
           grep -q 'supabaseGrantAutomationUrl' MemberWebsocket-dev/config.json
           grep -q 'fixed-ticket-admin-integration.js?v=fixed-ticket-sync-20260916-1' MemberWebsocket-dev/admin/index.html
           grep -q 'fixed-ticket-calendar-option.js?v=fixed-ticket-calendar-20260917-4' MemberWebsocket-dev/admin/index.html
-          grep -q 'fixed-ticket-admin.js?v=all-ticket-gps-search-20260929-1' MemberWebsocket-dev/admin/index.html
+          grep -q 'fixed-ticket-admin.js?v=admin-human-e2e-20261004-1' MemberWebsocket-dev/admin/index.html
           grep -q 'pointcard-redemption-limit.js?v=ticket-unlimited-zero-20261002-1' MemberWebsocket-dev/admin/index.html
           ! grep -q 'event-ticket-activity-link.js' MemberWebsocket-dev/admin/index.html
           grep -Eq 'app\.js\?v=[^" ]+' MemberWebsocket-dev/event/index.html
