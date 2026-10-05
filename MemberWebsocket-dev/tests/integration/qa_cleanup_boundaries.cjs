@@ -7,6 +7,7 @@ const dir = path.join(__dirname, '../../supabase/migrations');
 const read = name => fs.readFileSync(path.join(dir, name), 'utf8');
 const fix = fs.readdirSync(dir).find(name => name.endsWith('_harden_qa_cleanup_boundaries.sql'));
 const evolutionPurgeFix = fs.readdirSync(dir).find(name => name.endsWith('_fix_test_purge_evolution_delete_guard.sql'));
+const ticketPurgeFix = fs.readdirSync(dir).find(name => name.endsWith('_fix_qa_ticket_purge_residuals.sql'));
 
 async function fixture() {
   const db = new PGlite();
@@ -36,10 +37,10 @@ async function fixture() {
     create table test_login_sessions(member_id uuid);
     create table member_presence_sessions(member_id uuid);
     create table calendar_items(id uuid primary key default gen_random_uuid(),created_by text,calendar_item_id text,title text,source_event_ticket_id uuid);
-    create table event_tickets(id uuid primary key default gen_random_uuid(),created_by text,event_ticket_id text,title text,fixed_ticket_template_id uuid);
+    create table event_tickets(id uuid primary key default gen_random_uuid(),created_by text,event_ticket_id text,title text,fixed_ticket_template_id uuid,referral_source_event_ticket_id uuid references event_tickets(id));
     create table point_cards(id uuid primary key default gen_random_uuid(),created_by text,card_id text,title text);
     create table ticket_templates(id uuid primary key default gen_random_uuid(),created_by text,ticket_template_id text,title text);
-    create table point_card_rewards(ticket_template_id uuid);
+    create table point_card_rewards(point_card_id uuid references point_cards(id) on delete cascade,ticket_template_id uuid references ticket_templates(id));
     create table booking_service_type_rewards(created_by text,updated_by text);
     create table booking_services(id uuid primary key default gen_random_uuid(),created_by text,service_type text,deleted_at timestamptz);
     create table booking_items(service_id uuid);
@@ -50,6 +51,8 @@ async function fixture() {
     create table booking_participant_reservations(technician_id uuid);
     create table booking_settings(id int primary key,primary_technician_id uuid,updated_by text,updated_at timestamptz default now());
     create table fixed_ticket_templates(id uuid primary key default gen_random_uuid(),created_by text,title text);
+    alter table event_tickets add constraint event_tickets_fixed_template_fk foreign key(fixed_ticket_template_id) references fixed_ticket_templates(id);
+    alter table fixed_ticket_grants add constraint fixed_grants_template_fk foreign key(fixed_ticket_template_id) references fixed_ticket_templates(id);
     create table realtime_events(event_type text);
     insert into booking_technicians(id,created_by,name,is_active,sort_order) values
       ('10000000-0000-4000-8000-000000000001','admin','正式主要技師',true,5);
@@ -126,4 +129,42 @@ test('all-test purge uses a guarded singleton delete for E2E evolution state', (
   const sql = read(evolutionPurgeFix);
   assert.match(sql, /delete\s+from\s+public\.e2e_evolution_state\s+where\s+id\s*=\s*true\s*;/i);
   assert.doesNotMatch(sql, /delete\s+from\s+public\.e2e_evolution_state\s*;/i);
+});
+
+test('test purge removes QA point-card rewards and fixed-ticket automation descendants without touching formal data', async () => {
+  const db = await fixture();
+  try {
+    await db.exec(read(fix));
+    await db.exec(read(ticketPurgeFix));
+
+    const qaCardId = '20000000-0000-4000-8000-000000000001';
+    const qaTemplateId = '20000000-0000-4000-8000-000000000002';
+    const qaFixedId = '20000000-0000-4000-8000-000000000003';
+    const generatedEventId = '20000000-0000-4000-8000-000000000004';
+
+    await db.exec(`
+      insert into point_cards(id,created_by,card_id,title)
+      values ('${qaCardId}','qa-ui:fixture','QA-PC','QA 集點卡');
+      insert into ticket_templates(id,created_by,ticket_template_id,title)
+      values ('${qaTemplateId}','qa-state:fixture','QA-TPL','QA 票券模板');
+      insert into point_card_rewards(point_card_id,ticket_template_id)
+      values ('${qaCardId}','${qaTemplateId}');
+      insert into fixed_ticket_templates(id,created_by,title)
+      values ('${qaFixedId}','qa:e2e:fixture','E2E QA 固定票券');
+      insert into event_tickets(id,created_by,event_ticket_id,title,fixed_ticket_template_id)
+      values ('${generatedEventId}','fixed-ticket-automation','FIXED-QA','E2E QA 固定票券','${qaFixedId}');
+    `);
+
+    await db.query('select admin_purge_test_data()');
+    await db.query('select admin_purge_extended_qa_artifacts()');
+
+    assert.equal((await db.query("select count(*)::int n from point_cards where created_by like 'qa:%'")).rows[0].n, 0);
+    assert.equal((await db.query("select count(*)::int n from ticket_templates where created_by like 'qa:%'")).rows[0].n, 0);
+    assert.equal((await db.query("select count(*)::int n from fixed_ticket_templates where created_by like 'qa:%'")).rows[0].n, 0);
+    assert.equal((await db.query("select count(*)::int n from event_tickets where fixed_ticket_template_id='${qaFixedId}'")).rows[0].n, 0);
+
+    assert.equal((await db.query("select count(*)::int n from point_cards where created_by='admin'")).rows[0].n, 1);
+    assert.equal((await db.query("select count(*)::int n from ticket_templates where created_by='admin'")).rows[0].n, 1);
+    assert.equal((await db.query("select count(*)::int n from fixed_ticket_templates where created_by='admin'")).rows[0].n, 1);
+  } finally { await db.close(); }
 });
