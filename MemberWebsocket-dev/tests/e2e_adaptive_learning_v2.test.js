@@ -97,13 +97,19 @@ test('adaptive QA v2 persists private learning state and refreshes it after runs
   assert.match(migration, /flaky_score/);
   assert.match(migration, /preferred_tester_profile/);
   assert.match(migration, /last_failure_fingerprint/);
+  const incremental = read('supabase/migrations/20261005133000_accumulate_adaptive_e2e_learning.sql');
+  assert.match(incremental, /last_learned_run_id/);
+  assert.match(incremental, /admin_accumulate_e2e_case_learning/);
+  assert.match(incremental, /Ordinary test-data purge may remove raw E2E runs/);
+  const purge = read('supabase/migrations/20261005174200_fix_test_purge_evolution_delete_guard.sql');
+  assert.doesNotMatch(purge, /e2e_case_learning_state/);
 
   const adminApi = read('supabase/functions/test-control-api/index.ts');
   const userApi = read('supabase/functions/user-test-api/index.ts');
   assert.match(adminApi, /from\("e2e_case_learning_state"\)/);
   assert.match(adminApi, /caseLearning/);
-  assert.match(adminApi, /admin_refresh_e2e_case_learning/);
-  assert.match(userApi, /admin_refresh_e2e_case_learning/);
+  assert.match(adminApi, /admin_accumulate_e2e_case_learning/);
+  assert.match(userApi, /admin_accumulate_e2e_case_learning/);
 });
 
 test('admin and user orchestration consume history for planning and professional tester behavior', () => {
