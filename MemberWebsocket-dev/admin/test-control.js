@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-04.2';
+  const VERSION = '2026-10-05.1';
   const els = {};
   const artifactPreviewCache = new Map();
   const artifactPrefetchQueue = [];
@@ -263,6 +263,7 @@
         stopPolling();
         resetDetail();
         renderHistory(runs);
+        window.dispatchEvent(new Event('member-admin-test-history-cleared'));
         return;
       }
       if (followLatest || !currentRunId || !runs.some((run) => String(run.id || '') === currentRunId)) {
@@ -275,12 +276,27 @@
     return historyRequest;
   }
 
-  async function loadSelectedRun() {
+  async function loadSelectedRun(recoverMissing = true) {
     const runId = currentRunId;
     const revision = ++detailRevision;
     if (!runId) return;
     const data = await request('admin.test-control.status', { runId });
     if (revision !== detailRevision || runId !== currentRunId) return;
+    if (data.runMissing === true) {
+      const runs = (Array.isArray(data.runs) ? data.runs : []).filter(run => String(run.id || '') !== runId);
+      currentRunId = '';
+      stopPolling();
+      resetDetail();
+      renderHistory(runs);
+      if (recoverMissing && runs.length) {
+        followLatest = true;
+        currentRunId = String(runs[0].id || '');
+        await loadSelectedRun(false);
+      } else if (!runs.length) {
+        window.dispatchEvent(new Event('member-admin-test-history-cleared'));
+      }
+      return;
+    }
     renderDetail(data);
     renderHistory(Array.isArray(data.runs) ? data.runs : latestRuns);
     if (['queued', 'running'].includes(String(data.run?.status || ''))) beginPolling();
@@ -343,6 +359,7 @@
       currentRunId = '';
       renderHistory(Array.isArray(data.runs) ? data.runs : []);
       resetDetail();
+      window.dispatchEvent(new Event('member-admin-test-history-cleared'));
       const purge = data && data.purge && typeof data.purge === 'object' ? data.purge : {};
       const removed = [
         Number(purge.deletedAutomationRuns || 0),
@@ -431,6 +448,14 @@
       try {
         const data = await request('admin.test-control.status', { runId });
         if (revision !== detailRevision || runId !== currentRunId) return;
+        if (data.runMissing === true) {
+          stopPolling();
+          currentRunId = '';
+          detailRevision += 1;
+          resetDetail();
+          await loadHistory();
+          return;
+        }
         renderDetail(data);
         renderHistory(Array.isArray(data.runs) ? data.runs : []);
         const status = String(data.run?.status || '');
@@ -555,6 +580,7 @@
     if (fingerprint === detailFingerprint) return;
     detailFingerprint = fingerprint;
     latestDetail = { run, cases };
+    window.dispatchEvent(new CustomEvent('member-admin-test-detail', { detail: latestDetail }));
     const openCases = new Set(Array.from(els.automationTestCaseList.querySelectorAll('details[open][data-test-case-id]'))
       .map((node) => node.dataset.testCaseId));
 

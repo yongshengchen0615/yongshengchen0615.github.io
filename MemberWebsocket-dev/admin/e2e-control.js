@@ -1,7 +1,9 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-04.5';
+  const VERSION = '2026-10-05.1';
+  const COVERAGE_STORAGE_KEY = 'member-admin-e2e-coverage-v1';
+  const COVERAGE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
@@ -151,6 +153,7 @@
     adminScenarioPlan: null,
     featureCoverage: null,
     clientCoverage: [],
+    coverageRunCode: '',
     adminRandomStateAfterPlan: 0,
     replayContext: null,
     replayManifest: null,
@@ -264,7 +267,89 @@
       runButton?.addEventListener('click', startUnifiedBackgroundE2E);
     }
     section.querySelector('#stopAdminE2EButton')?.addEventListener('click', requestStop);
+    if (!isBackgroundRunnerWindow()) {
+      restoreStoredCoverage();
+      receiveRecordedCoverage(window.MemberAdminTestControl?.getStatus?.().detail);
+    }
   }
+
+  function compactFeatureReport(value) {
+    const total = Number(value?.total);
+    if (!value?.counts || !Number.isInteger(total) || total < 1 || total > 200) return null;
+    const counts = {};
+    for (const key of ['passed', 'failed', 'blocked', 'not-run', 'unplanned', 'unregistered']) {
+      const count = Number(value.counts[key] || 0);
+      if (!Number.isInteger(count) || count < 0 || count > total) return null;
+      if (count) counts[key] = count;
+    }
+    if (Object.values(counts).reduce((sum, n) => sum + n, 0) !== total) return null;
+    return { version: 1, total, counts, complete: counts.passed === total };
+  }
+
+  function compactClientCoverage(items) {
+    return (Array.isArray(items) ? items : []).slice(0, 50).map(item => ({
+      participant: Math.max(1, Math.min(10, Number(item?.participant) || 1)),
+      surface: PAIRED_SURFACES.some(([key]) => key === item?.surface) ? item.surface : 'member',
+      coverage: compactFeatureReport(item?.coverage)
+    }));
+  }
+
+  function persistCoverage() {
+    if (isBackgroundRunnerWindow()) return;
+    const coverage = compactFeatureReport(state.featureCoverage);
+    try {
+      if (!coverage) { window.sessionStorage.removeItem(COVERAGE_STORAGE_KEY); return; }
+      window.sessionStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify({
+        version: 1, savedAt: Date.now(), runId: String(state.backgroundRunId || '').slice(0, 100),
+        runCode: String(state.coverageRunCode || '').slice(0, 100), coverage,
+        clientCoverage: compactClientCoverage(state.clientCoverage)
+      }));
+    } catch {} // Storage can be unavailable; live and server history still work.
+  }
+
+  function restoreStoredCoverage() {
+    try {
+      const saved = JSON.parse(window.sessionStorage.getItem(COVERAGE_STORAGE_KEY) || 'null');
+      const age = Date.now() - Number(saved?.savedAt);
+      const coverage = compactFeatureReport(saved?.coverage);
+      if (saved?.version !== 1 || !Number.isFinite(age) || age < 0 || age > COVERAGE_STORAGE_TTL_MS || !coverage) {
+        window.sessionStorage.removeItem(COVERAGE_STORAGE_KEY);
+        return;
+      }
+      state.backgroundRunId = String(saved.runId || '').slice(0, 100);
+      state.coverageRunCode = String(saved.runCode || '').slice(0, 100);
+      state.featureCoverage = coverage;
+      state.clientCoverage = compactClientCoverage(saved.clientCoverage);
+      renderFeatureCoverage();
+    } catch { try { window.sessionStorage.removeItem(COVERAGE_STORAGE_KEY); } catch {} }
+  }
+
+  function receiveRecordedCoverage(data) {
+    if (isBackgroundRunnerWindow() || state.running) return false;
+    const summary = data?.run?.summary;
+    if (!['admin-browser', 'paired-browser'].includes(summary?.runnerKind)) return false;
+    const coverage = compactFeatureReport(summary.featureCoverage);
+    if (!coverage) return false;
+    state.featureCoverage = coverage;
+    state.clientCoverage = compactClientCoverage(summary.clientCoverage);
+    state.coverageRunCode = String(data.run.runCode || '').slice(0, 100);
+    persistCoverage();
+    renderFeatureCoverage();
+    return true;
+  }
+
+  function clearSavedCoverage() {
+    if (state.running) return;
+    state.featureCoverage = null;
+    state.clientCoverage = [];
+    state.coverageRunCode = '';
+    state.backgroundRunId = '';
+    persistCoverage();
+    renderFeatureCoverage();
+  }
+
+  window.addEventListener('member-admin-test-detail', event => receiveRecordedCoverage(event.detail));
+  window.addEventListener('member-admin-test-history-cleared', clearSavedCoverage);
 
   function isBackgroundRunnerWindow() {
     try { return new URLSearchParams(window.location.search).get(BACKGROUND_RUNNER_PARAM) === '1'; }
@@ -583,20 +668,27 @@
     try {
       const opener = window.opener;
       if (opener && !opener.closed && typeof opener.MemberAdminE2EControl?.receiveBackgroundStatus === 'function') {
-        opener.MemberAdminE2EControl.receiveBackgroundStatus(snapshot);
+        opener.MemberAdminE2EControl.receiveBackgroundStatus(snapshot, window);
       }
     } catch {}
   }
 
-  function receiveBackgroundStatus(snapshot) {
+  function receiveBackgroundStatus(snapshot, runnerWindow = null) {
     if (isBackgroundRunnerWindow() || !snapshot || typeof snapshot !== 'object') return false;
     if (!state.backgroundRunId || !snapshot.runId || String(snapshot.runId) !== String(state.backgroundRunId)) return false;
     state.backgroundLastStatusAt = Date.now();
+    if (runnerWindow) {
+      try {
+        if (runnerWindow !== window && runnerWindow.location.origin === window.location.origin) state.backgroundRunnerWindow = runnerWindow;
+      } catch {}
+    }
     state.cancelled = Boolean(snapshot.cancelled);
     state.lastMessage = String(snapshot.message || '');
     state.lastMessageError = Boolean(snapshot.messageError);
     state.featureCoverage = snapshot.coverage?.counts ? snapshot.coverage : null;
     state.clientCoverage = Array.isArray(snapshot.clientCoverage) ? snapshot.clientCoverage : [];
+    state.coverageRunCode = '';
+    persistCoverage();
     state.results = Array.isArray(snapshot.results) ? snapshot.results.map((row) => ({ ...row })) : state.results;
     state.participants = Array.isArray(snapshot.participants)
       ? snapshot.participants.map((participant) => ({ ...participant }))
@@ -821,6 +913,8 @@
     state.results = [];
     state.featureCoverage = null;
     state.clientCoverage = [];
+    state.coverageRunCode = '';
+    persistCoverage();
     state.participants = [];
     state.runStartedAt = new Date().toISOString();
     state.adminScenarioPlan = null;
@@ -853,6 +947,8 @@
 
       state.featureCoverage = result?.coverage || null;
       state.clientCoverage = result?.clientCoverage || [];
+      state.coverageRunCode = String(result?.recorded?.run?.runCode || '');
+      persistCoverage();
       if (Array.isArray(result?.results)) state.results = result.results.map((row) => ({ ...row }));
       render();
       try { await window.MemberAdminTestControl?.refresh?.(); } catch {}
@@ -1032,6 +1128,10 @@
     }
     host.replaceChildren();
     if (!state.featureCoverage?.counts) return;
+    const source = document.createElement('p');
+    source.textContent = state.coverageRunCode ? '功能覆蓋紀錄：' + state.coverageRunCode
+      : state.running ? '本輪功能覆蓋' : '上次保存的功能覆蓋；未執行項目仍待驗證';
+    host.append(source);
     const reports = [['管理端',state.featureCoverage],...state.clientCoverage.map(item => ['用戶 ' + item.participant + ' · ' + item.surface,item.coverage])];
     for (const [label,value] of reports) {
       const report = value?.counts ? value : null;
@@ -1586,7 +1686,9 @@
       rootRunId: String(recordMeta?.rootRunId || state.rootRunId || ''),
       clientConcurrency: Number(recordMeta?.clientConcurrency || state.clientConcurrency || 1),
       replayManifest: recordMeta?.replayManifest || undefined,
-      replayOfRunId: String(recordMeta?.replayOfRunId || '') || undefined
+      replayOfRunId: String(recordMeta?.replayOfRunId || '') || undefined,
+      featureCoverage: recordMeta?.rootRun === true ? compactFeatureReport(state.featureCoverage) : undefined,
+      clientCoverage: recordMeta?.rootRun === true ? compactClientCoverage(state.clientCoverage) : undefined
     };
     const fitted = window.MemberE2EFeatureCoverage?.compactRecordPayload?.(payload) || payload;
     if (new TextEncoder().encode(JSON.stringify(fitted)).byteLength > 320000) {
@@ -8129,7 +8231,7 @@
     runUnifiedBackground: (options) => runUnifiedBackground(options),
     replayFailedRun: (runId) => replayFailedRun(runId),
     isRunning: () => state.running,
-    receiveBackgroundStatus: (snapshot) => receiveBackgroundStatus(snapshot),
+    receiveBackgroundStatus: (snapshot, runnerWindow) => receiveBackgroundStatus(snapshot, runnerWindow),
     provideBackgroundSession: (runId) => provideBackgroundSession(runId),
     getStatus: () => backgroundStatusSnapshot(),
     publishStatus: () => publishBackgroundStatus(),
