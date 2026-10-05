@@ -345,7 +345,7 @@
     if (busy) return;
     const confirmed = window.confirm(
       '確定移除測試資料？\n\n' +
-      '會清除所有測試帳號產生的點數、票券、服務時數、預約、測試 Session／Presence、相關稽核與冪等資料，以及 E2E 測試歷史。\n\n' +
+      '會清除所有測試帳號產生的點數、票券、服務時數、預約、收據快照、測試條款同意、測試 Session／Presence、相關稽核與冪等資料，以及 E2E 測試歷史與 QA 前置資源。\n\n' +
       '測試帳號與測試模式環境設定會保留。既有測試用戶端 Session 會失效，需要重新登入。此操作無法復原。'
     );
     if (!confirmed) return;
@@ -364,6 +364,10 @@
       const removed = [
         Number(purge.deletedAutomationRuns || 0),
         Number(purge.deletedBookings || 0),
+        Number(purge.deletedBookingReceipts || 0),
+        Number(purge.deletedReceiptObjects || 0),
+        Number(purge.deletedMembershipConsents || 0),
+        Number(purge.deletedEvolutionStateRows || 0),
         Number(purge.deletedEventClaims || 0),
         Number(purge.deletedPointEntries || 0),
         Number(purge.deletedPointTickets || 0),
