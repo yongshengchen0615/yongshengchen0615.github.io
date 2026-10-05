@@ -1953,6 +1953,7 @@
     let openedWindows = [];
     let backendRun = null;
     let selectedModules = [];
+    let cleanupLeaseId = '';
     const mobileViewport = options?.mobileViewport === true || (!isBackgroundRunnerWindow() && selectedClientMobileViewport());
     state.clientMobileViewport = mobileViewport;
     try {
@@ -2009,6 +2010,7 @@
         throw error;
       }
 
+      cleanupLeaseId = await acquireE2ECleanupLease();
       backendRun = await runUnifiedServerFullPhase(selectedModules);
       if (state.cancelled) return { cancelled: true, backendRun: safe(backendRun?.run || {}), results: safe(state.results) };
 
@@ -2264,6 +2266,10 @@
       }
       return { cancelled: stoppedByUser, error: stoppedByUser ? null : plainError(error), results: safe(state.results) };
     } finally {
+      if (cleanupLeaseId) {
+        await releaseE2ECleanupLease(cleanupLeaseId);
+        cleanupLeaseId = '';
+      }
       state.adminTestAccount = null;
       setBusy(false);
       render();
@@ -6883,6 +6889,39 @@
       throw error;
     }
     return selected;
+  }
+
+  async function acquireE2ECleanupLease() {
+    const session = await adminSession();
+    const data = await postFunction('test-control-api', {
+      action: 'admin.test-control.acquire-e2e-lease',
+      clientType: 'admin',
+      idToken: session.idToken
+    });
+    const leaseId = String(data?.leaseId || '').trim();
+    if (!/^[0-9a-f-]{36}$/i.test(leaseId)) {
+      const error = new Error('完整 E2E 執行鎖建立失敗，已停止以避免測試資料與清除流程互相干擾。');
+      error.code = 'E2E_LEASE_INVALID';
+      throw error;
+    }
+    return leaseId;
+  }
+
+  async function releaseE2ECleanupLease(leaseId) {
+    const normalized = String(leaseId || '').trim();
+    if (!/^[0-9a-f-]{36}$/i.test(normalized)) return false;
+    try {
+      const session = await adminSession();
+      const data = await postFunction('test-control-api', {
+        action: 'admin.test-control.release-e2e-lease',
+        clientType: 'admin',
+        idToken: session.idToken,
+        leaseId: normalized
+      });
+      return data?.released === true;
+    } catch {
+      return false;
+    }
   }
 
   async function prepareComplexE2EFixtures(profile = {}) {
