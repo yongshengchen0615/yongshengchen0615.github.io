@@ -207,6 +207,39 @@ async function emitRealtimeEvent(supabase: any, eventType: string): Promise<void
   }
 }
 
+async function acquireE2EExecutionLease(
+  supabase: any,
+  identity: { lineUserId: string },
+): Promise<Json> {
+  const result = await supabase.rpc("admin_acquire_test_execution_lease", {
+    p_actor: identity.lineUserId,
+    p_ttl_minutes: 60,
+  });
+  if (result.error || !UUID_RE.test(String(result.data || ""))) {
+    throw new ApiError(503, "E2E_LEASE_ACQUIRE_FAILED", "目前無法鎖定完整 E2E 執行期間。", result.error?.message || null);
+  }
+  return { leaseId: String(result.data), expiresInMinutes: 60 };
+}
+
+async function releaseE2EExecutionLease(
+  supabase: any,
+  identity: { lineUserId: string },
+  body: Json,
+): Promise<Json> {
+  const leaseId = asText(body.leaseId, 80);
+  if (!UUID_RE.test(leaseId)) {
+    throw new ApiError(400, "INVALID_E2E_LEASE_ID", "E2E 執行鎖識別不正確。");
+  }
+  const result = await supabase.rpc("admin_release_test_execution_lease", {
+    p_lease_id: leaseId,
+    p_actor: identity.lineUserId,
+  });
+  if (result.error) {
+    throw new ApiError(503, "E2E_LEASE_RELEASE_FAILED", "目前無法解除完整 E2E 執行鎖。", result.error.message || null);
+  }
+  return { released: result.data === true };
+}
+
 async function prepareTestAccountConsents(
   supabase: any,
   identity: { lineUserId: string },
@@ -313,7 +346,7 @@ async function prepareComplexFixtures(
   const seed = asText(body.seed, 160);
   const requestedTag = asText(body.runTag, 40).replace(/[^A-Za-z0-9_-]/g, "");
   const runTag = requestedTag || (new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + crypto.randomUUID().replaceAll("-", "").slice(0, 8));
-  const rpc = await supabase.rpc("admin_prepare_complex_e2e_fixtures", {
+  const rpc = await supabase.rpc("admin_prepare_complex_e2e_fixtures_v2", {
     p_run_tag: runTag,
     p_actor: identity.lineUserId,
   });
@@ -1787,6 +1820,22 @@ Deno.serve(async (request: Request) => {
       await expireAbandonedRuns(supabase);
     }
 
+    if (action === "admin.test-control.acquire-e2e-lease") {
+      return response(origin, {
+        ok: true,
+        status: 200,
+        data: await acquireE2EExecutionLease(supabase, identity),
+      });
+    }
+
+    if (action === "admin.test-control.release-e2e-lease") {
+      return response(origin, {
+        ok: true,
+        status: 200,
+        data: await releaseE2EExecutionLease(supabase, identity, body),
+      });
+    }
+
     if (action === "admin.test-control.e2e-profile") {
       return response(origin, {
         ok: true,
@@ -1922,7 +1971,7 @@ Deno.serve(async (request: Request) => {
         .from("automation_test_runs")
         .select("id", { count: "exact", head: true })
         .eq("environment", "MemberWebsocket-dev")
-        .eq("status", "running");
+        .in("status", ["queued", "running"]);
       if (running.error) {
         throw new ApiError(503, "TEST_RUN_CHECK_FAILED", "目前無法確認是否仍有測試執行中。");
       }
@@ -1930,21 +1979,22 @@ Deno.serve(async (request: Request) => {
         throw new ApiError(409, "TEST_RUN_ACTIVE", "仍有測試執行中，請先停止或等待測試完成後再移除測試資料。");
       }
 
-      const purge = await supabase.rpc("admin_purge_test_data");
+      const purge = await supabase.rpc("admin_purge_all_test_data");
       if (purge.error) {
+        const source = String(purge.error.message || purge.error.details || "");
+        if (source.includes("TEST_EXECUTION_ACTIVE")) {
+          throw new ApiError(409, "TEST_EXECUTION_ACTIVE", "完整 E2E 仍在執行或準備中，請停止或等待完成後再移除測試資料。");
+        }
+        if (source.includes("TEST_RUN_ACTIVE")) {
+          throw new ApiError(409, "TEST_RUN_ACTIVE", "仍有測試執行中，請先停止或等待測試完成後再移除測試資料。");
+        }
         throw new ApiError(503, "TEST_DATA_PURGE_FAILED", "目前無法移除測試資料。", purge.error.message || null);
-      }
-      const extended = await supabase.rpc("admin_purge_extended_qa_artifacts");
-      if (extended.error) {
-        throw new ApiError(503, "TEST_EXTENDED_PURGE_FAILED", "測試會員資料已清理，但延伸 E2E 資源清理失敗。", extended.error.message || null);
       }
       const deletedReceiptObjects = await purgeBookingReceiptCleanupQueue(supabase);
       const deletedStorageObjects = await purgeE2EArtifactStorage(supabase);
       const baseSummary = purge.data && typeof purge.data === "object" ? purge.data : {};
-      const extendedSummary = extended.data && typeof extended.data === "object" ? extended.data : {};
       const summary = {
         ...(baseSummary as Json),
-        ...(extendedSummary as Json),
         deletedStorageObjects,
         deletedReceiptObjects,
       };
