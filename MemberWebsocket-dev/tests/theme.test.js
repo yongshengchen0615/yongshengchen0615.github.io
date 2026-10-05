@@ -190,3 +190,15 @@ test('event ticket Calendar sync modal has explicit dark-mode coverage', () => {
   assert.match(css, /#eventTicketEditorModal #eventTicketCalendarControls \.grant-toggle/);
   assert.match(css, /#eventTicketEditorModal #eventTicketCalendarStatus/);
 });
+
+
+test('E2E feature coverage cards use semantic dark surfaces', () => {
+  const css = read('admin/e2e-control.css');
+
+  assert.match(css, /\.e2e-feature-coverage-card\s*\{[\s\S]*?background:var\(--theme-surface-raised/);
+  assert.match(css, /\.e2e-feature-coverage-card small\s*\{[\s\S]*?color:var\(--theme-text-muted/);
+  assert.match(css, /\.e2e-feature-coverage-card progress\s*\{[\s\S]*?background:var\(--theme-surface-muted[\s\S]*?color:var\(--theme-positive/);
+  assert.match(css, /progress::\-webkit-progress-value\s*\{[\s\S]*?background:var\(--theme-positive/);
+  assert.match(css, /progress::\-moz-progress-bar\s*\{[\s\S]*?background:var\(--theme-positive/);
+  assert.match(css, /html\[data-theme="dark"\] \.e2e-feature-coverage-card\s*\{[\s\S]*?border-color:var\(--theme-border-strong\)/);
+});
