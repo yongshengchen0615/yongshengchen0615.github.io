@@ -12,6 +12,7 @@ const spec=path.resolve(__dirname,'../browser/admin-human.spec.cjs');
 const pause=()=>new Promise(r=>setTimeout(r,20));
 async function eventually(fn){let error;for(let n=0;n<150;n++){try{return await fn();}catch(e){error=e;await pause();}}throw error;}
 function visible(el){for(let n=el;n&&n.nodeType===1;n=n.parentElement){if(n.hidden||n.classList.contains('hidden')||n.style.display==='none')return false;}return !!el;}
+function disabled(el){return Boolean(el?.matches(':disabled'));}
 class Locator {
   constructor(page,query){this.page=page;this.query=query;}
   nodes(){return this.query();}
@@ -75,8 +76,8 @@ function expectation(value,negate=false,poll=false,context=""){
     toMatchObject:expected=>check(v=>{for(const [k,x]of Object.entries(expected))assert.deepEqual(v[k],x);}),
     toBeVisible:()=>check(v=>truth(visible(v.nodes()[0]),'Visibility')),
     toBeHidden:()=>check(v=>truth(!visible(v.nodes()[0]),'Hidden')),
-    toBeDisabled:()=>check(v=>truth(v.one().disabled,'Disabled')),
-    toBeEnabled:()=>check(v=>truth(!v.one().disabled,'Enabled')),
+    toBeDisabled:()=>check(v=>truth(disabled(v.one()),'Disabled')),
+    toBeEnabled:()=>check(v=>truth(!disabled(v.one()),'Enabled')),
     toHaveCount:n=>check(v=>truth(v.nodes().length===n,`Count ${v.nodes().length} expected ${n}`)),
     toHaveText:s=>check(v=>truth(typeof s==='string'?v.one().textContent.trim()===s:s.test(v.one().textContent),`Text ${v.one().textContent} expected ${s}`)),
     toContainText:s=>check(v=>truth(typeof s==='string'?v.one().textContent.includes(s):s.test(v.one().textContent),`Text ${v.one().textContent} expected ${s}`)),

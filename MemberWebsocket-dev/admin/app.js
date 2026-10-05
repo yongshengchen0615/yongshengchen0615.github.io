@@ -1427,6 +1427,9 @@
 
   function handleCardSortPointerDown(event) {
     if (state.cardSortBusy || state.writeConfirmationRequired || (event.pointerType && event.pointerType !== 'mouse') || (event.button !== undefined && event.button !== 0)) return;
+    // Keep the move buttons' click target; pointer capture would retarget their
+    // native mouse click to the card and open its editor instead of sorting.
+    if (event.target instanceof Element && event.target.closest('[data-card-sort-move]')) return;
     const item = event.target instanceof Element ? event.target.closest('[data-card-sort-item]') : null;
     if (!item || item.parentElement !== els.cardListItems) return;
     state.cardSortDrag = { item, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false };
