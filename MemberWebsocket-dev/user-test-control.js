@@ -794,7 +794,7 @@
         const outcome = await window.MemberE2EScenarioGraph.runWithDeadline(async () => {
           let result;
           if (testCase.humanRequired === true) {
-            const captured = await captureHumanInteraction(testCase, testCase.run);
+            const captured = await captureHumanInteraction(testCase.run, testCase);
             result = captured.outcome;
             const mergedActual = result?.actual && typeof result.actual === 'object' && !Array.isArray(result.actual)
               ? { ...result.actual, humanInteraction: captured.evidence }
@@ -1670,7 +1670,7 @@
     return cls ? tag + '.' + cls : tag;
   }
 
-  async function captureHumanInteraction(testCase, run) {
+  async function captureHumanInteraction(run, testCase = null) {
     const professional = window.MemberE2EProfessionalTester;
     if (professional && typeof professional.capture === 'function') {
       const meta = USER_NODE_META[String(testCase?.key || '')] || {};
