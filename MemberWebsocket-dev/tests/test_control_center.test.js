@@ -128,3 +128,19 @@ test('test control persistence is service-role only with RLS enabled', () => {
   assert.match(notification, /grant execute on function public\.automation_test_notification_snapshot\(\)[\s\S]*to service_role/);
   assert.doesNotMatch(notification, /security definer/);
 });
+
+
+test('purge refreshes admin cards, event tickets and fixed-ticket cache without manual reload', () => {
+  const client = read('admin/test-control.js');
+  const admin = read('admin/app.js');
+  const fixed = read('admin/fixed-ticket-admin.js');
+
+  assert.match(client, /MemberAdminDataSync\?\.refresh/);
+  assert.match(client, /await window\.MemberAdminDataSync\.refresh\(\)/);
+  assert.match(client, /new CustomEvent\('test-data-purged'/);
+  assert.match(admin, /window\.MemberAdminDataSync = Object\.freeze/);
+  assert.match(admin, /refresh: \(\) => refreshData\(false\)/);
+  assert.match(fixed, /addEventListener\('test-data-purged'/);
+  assert.match(fixed, /templates = \[\]/);
+  assert.match(fixed, /renderFixedList\(\)/);
+});
