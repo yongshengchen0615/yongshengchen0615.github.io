@@ -803,13 +803,29 @@ async function prepareUsageState(s: any, identity: any, token: string, surface: 
     }));
     const inserted = await s.from("service_time_entries").insert(rows);
     if (inserted.error) throw new ApiError(500, "QA_USAGE_MEMBER_STATE_FAILED", "無法建立會員使用狀態。", inserted.error.message);
+
+    const termsFixture = await s.rpc("prepare_e2e_membership_terms_fixture", {
+      p_member_id: identity.memberId,
+      p_actor: actor,
+      p_fixture_tag: tag,
+    });
+    if (termsFixture.error || !termsFixture.data) {
+      throw new ApiError(
+        500,
+        "QA_USAGE_MEMBER_TERMS_FAILED",
+        "無法建立會員申請條款 E2E 測試資料。",
+        termsFixture.error?.message || null,
+      );
+    }
+
     return {
       usageStateTag: tag,
       prepared: true,
-      scenario: "service-history-mixed",
-      recordsCreated: rows.length,
-      stateKinds: ["historical-service", "recent-service", "membership-progress"],
+      scenario: "service-history-and-membership-terms",
+      recordsCreated: rows.length + 1,
+      stateKinds: ["historical-service", "recent-service", "membership-progress", "membership-terms-e2e"],
       serviceMinutesAdded: pattern.reduce((sum, value) => sum + value, 0),
+      termsFixture: termsFixture.data,
     };
   }
 
