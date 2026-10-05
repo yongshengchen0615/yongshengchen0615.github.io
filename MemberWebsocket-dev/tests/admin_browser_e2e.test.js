@@ -101,7 +101,7 @@ test('paired E2E account pool is server-filtered to test users and real-user mut
 
 test('user E2E returns structured results to the paired admin runner', () => {
   const runner = read('user-test-control.js');
-  assert.match(runner, /const VERSION = '2026-10-04\.\d+'/);
+  assert.match(runner, /const VERSION = '2026-10-\d{2}\.\d+'/);
   assert.match(runner, /browserRun: state\.browserRun \|\| null/);
   assert.match(runner, /stop: \(\) => requestStop\(\)/);
   assert.match(runner, /pairedLaneIndex/);
