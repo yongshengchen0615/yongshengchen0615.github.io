@@ -41,7 +41,7 @@ test.beforeEach(async ({ page }, info) => {
   page.on('pageerror', error => info.errors.push(error.message));
   await page.route(/https?:\/\/(?!127\.0\.0\.1|fixture\.supabase\.co)/, route => route.abort());
 });
-test.afterEach(async (_fixtures, info) => expect(info.errors).toEqual([]));
+test.afterEach(async ({}, info) => expect(info.errors).toEqual([]));
 
 function record(id, featureCoverage = null) {
   return { run: { id, runCode: id.toUpperCase(), suite: 'full', status: 'passed', totalCases: 1, passedCases: 1,
