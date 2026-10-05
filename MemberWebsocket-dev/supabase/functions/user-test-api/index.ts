@@ -769,7 +769,7 @@ async function persistUserQaRun(
     throw error;
   }
 
-  const learningRefresh = await s.rpc("admin_refresh_e2e_case_learning", { p_run_id: runId });
+  const learningRefresh = await s.rpc("admin_accumulate_e2e_case_learning", { p_run_id: runId });
   if (learningRefresh.error) {
     console.error("User QA case learning refresh failed", learningRefresh.error.message);
   }
@@ -1943,7 +1943,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
     await s.from("automation_test_runs").delete().eq("id", runId);
     throw error;
   }
-  const learningRefresh = await s.rpc("admin_refresh_e2e_case_learning", { p_run_id: runId });
+  const learningRefresh = await s.rpc("admin_accumulate_e2e_case_learning", { p_run_id: runId });
   if (learningRefresh.error) {
     console.error("User browser E2E case learning refresh failed", learningRefresh.error.message);
   }
