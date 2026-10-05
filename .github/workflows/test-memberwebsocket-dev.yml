@@ -134,6 +134,7 @@ jobs:
             MemberWebsocket-dev/user-tour.js \
             MemberWebsocket-dev/e2e-feature-coverage.js \
             MemberWebsocket-dev/e2e-scenario-graph.js \
+            MemberWebsocket-dev/e2e-professional-tester.js \
             MemberWebsocket-dev/membership-milestones.js \
             MemberWebsocket-dev/test-mode-client.js \
             MemberWebsocket-dev/user-test-control.js \
