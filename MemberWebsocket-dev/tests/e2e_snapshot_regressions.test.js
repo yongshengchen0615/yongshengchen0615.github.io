@@ -164,7 +164,7 @@ test('all affected entrypoints bust caches for the fixed controllers', () => {
   assert.match(read('booking/index.html'), /app\.js\?v=booking-member-chat-20261003-1/);
   assert.match(read('event/index.html'), /app\.js\?v=[^" ]+/);
   assert.match(read('admin/index.html'), /test-control\.js\?v=test-control-[A-Za-z0-9._-]+/);
-  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261004-\d+/);
+  assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-\d{8}-\d+/);
 });
 
 

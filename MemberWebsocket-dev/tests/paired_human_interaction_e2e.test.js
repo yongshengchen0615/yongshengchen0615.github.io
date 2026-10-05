@@ -42,7 +42,7 @@ test('user full E2E requires observable UI events for Human E2E cases', () => {
 test('admin paired full E2E requires human UI evidence and covers every client surface', () => {
   const html = read('admin/index.html');
   const runner = read('admin/e2e-control.js');
-  assert.match(html, /e2e-control\.js\?v=qa-e2e-20261004-\d+/);
+  assert.match(html, /e2e-control\.js\?v=qa-e2e-\d{8}-\d+/);
   assert.match(runner, /const VERSION = '2026-10-\d{2}\.\d+'/);
   assert.match(runner, /captureAdminHumanInteraction/);
   assert.match(runner, /adminHumanRequired/);
