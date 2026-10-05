@@ -8,6 +8,7 @@ const read = name => fs.readFileSync(path.join(dir, name), 'utf8');
 const fix = fs.readdirSync(dir).find(name => name.endsWith('_harden_qa_cleanup_boundaries.sql'));
 const evolutionPurgeFix = fs.readdirSync(dir).find(name => name.endsWith('_fix_test_purge_evolution_delete_guard.sql'));
 const ticketPurgeFix = fs.readdirSync(dir).find(name => name.endsWith('_fix_qa_ticket_purge_residuals.sql'));
+const provenancePurgeFix = fs.readdirSync(dir).find(name => name.endsWith('_fix_single_pass_test_purge_qa_provenance.sql'));
 
 async function fixture() {
   const db = new PGlite();
@@ -136,6 +137,7 @@ test('test purge removes QA point-card rewards and fixed-ticket automation desce
   try {
     await db.exec(read(fix));
     await db.exec(read(ticketPurgeFix));
+    await db.exec(read(provenancePurgeFix));
 
     const qaCardId = '20000000-0000-4000-8000-000000000001';
     const qaTemplateId = '20000000-0000-4000-8000-000000000002';
@@ -158,13 +160,24 @@ test('test purge removes QA point-card rewards and fixed-ticket automation desce
     await db.query('select admin_purge_test_data()');
     await db.query('select admin_purge_extended_qa_artifacts()');
 
-    assert.equal((await db.query("select count(*)::int n from point_cards where created_by like 'qa:%'")).rows[0].n, 0);
-    assert.equal((await db.query("select count(*)::int n from ticket_templates where created_by like 'qa:%'")).rows[0].n, 0);
-    assert.equal((await db.query("select count(*)::int n from fixed_ticket_templates where created_by like 'qa:%'")).rows[0].n, 0);
+    assert.equal((await db.query(`select count(*)::int n from point_cards where id='${qaCardId}'`)).rows[0].n, 0);
+    assert.equal((await db.query(`select count(*)::int n from ticket_templates where id='${qaTemplateId}'`)).rows[0].n, 0);
+    assert.equal((await db.query(`select count(*)::int n from fixed_ticket_templates where id='${qaFixedId}'`)).rows[0].n, 0);
     assert.equal((await db.query(`select count(*)::int n from event_tickets where fixed_ticket_template_id='${qaFixedId}'`)).rows[0].n, 0);
 
     assert.equal((await db.query("select count(*)::int n from point_cards where created_by='admin'")).rows[0].n, 1);
     assert.equal((await db.query("select count(*)::int n from ticket_templates where created_by='admin'")).rows[0].n, 1);
     assert.equal((await db.query("select count(*)::int n from fixed_ticket_templates where created_by='admin'")).rows[0].n, 1);
   } finally { await db.close(); }
+});
+
+
+test('canonical QA provenance recognizes colon, ui and state families and converged purge is bounded', () => {
+  const sql = read(provenancePurgeFix);
+  assert.match(sql, /p_value like 'qa:%'/);
+  assert.match(sql, /p_value like 'qa-ui:%'/);
+  assert.match(sql, /p_value like 'qa-state:%'/);
+  assert.match(sql, /for v_passes in 1\.\.4 loop/);
+  assert.match(sql, /'cleanupComplete'/);
+  assert.match(sql, /'remainingQaArtifacts'/);
 });

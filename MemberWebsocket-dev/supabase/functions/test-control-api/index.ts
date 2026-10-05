@@ -2023,7 +2023,7 @@ Deno.serve(async (request: Request) => {
         throw new ApiError(409, "TEST_RUN_ACTIVE", "仍有測試執行中，請先停止或等待測試完成後再移除測試資料。");
       }
 
-      const purge = await supabase.rpc("admin_purge_all_test_data");
+      const purge = await supabase.rpc("admin_purge_all_test_data_converged");
       if (purge.error) {
         const source = String(purge.error.message || purge.error.details || "");
         if (source.includes("TEST_EXECUTION_ACTIVE")) {
