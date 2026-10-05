@@ -8,6 +8,7 @@ const fixture = require('./fixtures/schema-before-legacy-cleanup.json');
 const contract = require('../../supabase/schema-contract.json');
 const prepare = fs.readFileSync(path.join(root, 'supabase/migrations/20261005101816_prepare_current_schema_contract.sql'), 'utf8');
 const retire = fs.readFileSync(path.join(root, 'supabase/migrations/20261005101853_retire_unused_legacy_schema.sql'), 'utf8');
+const rateLimitRepair = fs.readFileSync(path.join(root, 'supabase/migrations/20261005121343_fix_rate_limit_after_test_mode_cleanup.sql'), 'utf8');
 
 (async () => {
   const db = new PGlite({ extensions: { btree_gist } });
@@ -43,7 +44,7 @@ const retire = fs.readFileSync(path.join(root, 'supabase/migrations/202610051018
     await db.exec("insert into public.test_execution_leases(lease_type,actor_line_user_id,expires_at) values('full_e2e','qa:cleanup',now()+interval '1 hour');");
     await assert.rejects(db.exec('begin;'+prepare+'commit;'), /LEGACY_CLEANUP_ACTIVE_TEST_RUN/);
     await db.exec('rollback; delete from public.test_execution_leases;');
-    await db.exec('begin;'+prepare+retire+'commit;');
+    await db.exec('begin;'+prepare+retire+rateLimitRepair+'commit;');
     for (const table of contract.retiredTables) {
       assert.equal((await db.query('select to_regclass($1) as value',['public.'+table])).rows[0].value,null);
     }
@@ -54,7 +55,9 @@ const retire = fs.readFileSync(path.join(root, 'supabase/migrations/202610051018
     for (const f of contract.retiredFunctions) {
       assert.equal((await db.query("select count(*)::int n from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname=$1 and p.proname=$2 and pg_get_function_identity_arguments(p.oid)=$3",[f.schema,f.name,f.identity])).rows[0].n,0);
     }
-    console.log('PASS enabled legacy rules and active E2E runs block cleanup; 2 tables, 13 columns and 18 obsolete RPCs removed atomically');
+    const rateAllowed=(await db.query("select public.consume_api_rate_limit('qa:legacy-cleanup-contract',false,1,90,30) allowed")).rows[0].allowed;
+    assert.equal(rateAllowed,true);
+    console.log('PASS enabled legacy rules and active E2E runs block cleanup; retired mode columns are removed and rate limiting still works');
 
     await db.exec('select maintenance.ensure_required_system_baseline(); select maintenance.ensure_event_ticket_settings_baseline();');
     await db.exec('update public.event_ticket_settings set max_tickets_per_day=0; select maintenance.ensure_event_ticket_settings_baseline();');
