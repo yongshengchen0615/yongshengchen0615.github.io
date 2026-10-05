@@ -87,7 +87,7 @@ test('historical risk biases scenario order but full mode still executes every n
 });
 
 test('adaptive QA v2 persists private learning state and refreshes it after runs', () => {
-  const migration = read('supabase/migrations/20261005133000_adaptive_e2e_learning_v2.sql');
+  const migration = read('supabase/migrations/20261005131714_adaptive_e2e_learning_v2.sql');
   assert.match(migration, /create table if not exists public\.e2e_case_learning_state/);
   assert.match(migration, /alter table public\.e2e_case_learning_state enable row level security/);
   assert.match(migration, /revoke all on table public\.e2e_case_learning_state from public, anon, authenticated/);
