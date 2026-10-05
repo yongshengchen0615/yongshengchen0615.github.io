@@ -119,5 +119,6 @@ npm test
 - 既有其他 DOM/SQL integration：100 項通過；本次新增操作案例的最後修正已獨立完整重跑。
 - 功能映射、63 種模組組合排程、資產版本與 lazy loader：17 項針對性驗證全部通過。
 - 47 個正式 JavaScript 與瀏覽器測試檔案語法檢查通過。
-- 本機 Chromium 啟動遇到 `SIGTRAP`；原生瀏覽器證據由 GitHub CI 執行。第一輪 97/100 通過，查明並修正原生排序 click 攔截、條款可見標籤選取及 fieldset 停用斷言。完整 100 個案例需在修正版 CI 全數通過才可合併。
+- 原生 Chromium：100 個案例全數通過，包含新增 92 個管理端案例及既有 8 個相機/GPS 案例，沒有略過。[CI 證據](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37252043072)。本機 Chromium 的 `SIGTRAP` 啟動限制不作為通過證據。
+- DOM 輔助程式新增等待動態勾選欄位及下拉選項的行為，避免非同步資料尚未載入的競態；實際 Chromium 的原生等待行為維持不變。
 - 變更已發布至 [PR #278](https://github.com/yongshengchen0615/yongshengchen0615.github.io/pull/278)。使用者已明確要求合併 `main`；完整 Chromium 與其他 CI 檢查通過後合併，並驗證該合併 commit 的 Pages 部署。測試執行期間沒有修改線上會員資料。
