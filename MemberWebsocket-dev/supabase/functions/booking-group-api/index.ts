@@ -327,7 +327,7 @@ async function validateBookingBenefitSelectionLimit(s: SupabaseClient, value: un
   if (!eventCount && !pointCount) return benefits;
   const [eventSetting,pointSetting]=await Promise.all([
     eventCount
-      ? s.from("event_ticket_settings").select("max_tickets_per_day,max_tickets_per_redemption").eq("id",1).maybeSingle()
+      ? s.from("event_ticket_settings").select("max_tickets_per_day").eq("id",1).maybeSingle()
       : Promise.resolve({data:null,error:null}),
     pointCount
       ? s.from("point_card_settings").select("max_tickets_per_redemption").eq("id",1).maybeSingle()
@@ -335,7 +335,7 @@ async function validateBookingBenefitSelectionLimit(s: SupabaseClient, value: un
   ]);
   if (eventSetting.error) throw mapDbError(eventSetting.error);
   if (pointSetting.error) throw mapDbError(pointSetting.error);
-  const rawEvent=Number(eventSetting.data?.max_tickets_per_day??eventSetting.data?.max_tickets_per_redemption??1);
+  const rawEvent=Number(eventSetting.data?.max_tickets_per_day??1);
   const maxEvent=Number.isInteger(rawEvent)&&rawEvent>=0&&rawEvent<=50?rawEvent:1;
   const rawPoint=Number(pointSetting.data?.max_tickets_per_redemption??1);
   const maxPoint=Number.isInteger(rawPoint)&&rawPoint>=0&&rawPoint<=50?rawPoint:1;

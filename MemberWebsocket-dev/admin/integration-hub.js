@@ -144,7 +144,7 @@
           <div id="integrationFixedTickets" class="integration-list"></div>
         </section>
         <section class="integration-card">
-          <div class="integration-card-heading"><div><p class="kicker">Legacy birthday rule</p><h3>生日自動權益</h3></div><button class="text-button" type="button" data-integration-target="birthday-fixed-new">改用生日固定票券</button></div>
+          <div class="integration-card-heading"><div><p class="kicker">Birthday benefits</p><h3>生日固定票券</h3></div><button class="text-button" type="button" data-integration-target="birthday-fixed-new">新增生日固定票券</button></div>
           <div id="integrationBirthday" class="integration-list"></div>
         </section>
       </section>
@@ -315,11 +315,11 @@
 
   function renderBenefits() {
     const fixed = Array.isArray(state.data?.automation?.fixedTickets) ? state.data.automation.fixedTickets : [];
-    const birthday = state.data?.automation?.birthday || null;
+    const birthday = fixed.filter((row) => row.scheduleType === 'birthday_month');
     const summary = document.getElementById('integrationBenefitSummary');
     if (summary) {
       const active = fixed.filter((row) => row.status === 'active').length;
-      summary.innerHTML = `<article><span>固定票券</span><strong>${active} / ${fixed.length}</strong><small>啟用規則</small></article><article><span>生日舊規則</span><strong>${birthday?.enabled ? '啟用' : '停用'}</strong><small>建議逐步改用生日固定票券</small></article><article><span>LINE 通知</span><strong>${fixed.filter((row)=>row.notifyLine).length}</strong><small>固定規則啟用通知</small></article>`;
+      summary.innerHTML = `<article><span>固定票券</span><strong>${active} / ${fixed.length}</strong><small>啟用規則</small></article><article><span>生日固定票券</span><strong>${birthday.filter((row)=>row.status === 'active').length} / ${birthday.length}</strong><small>啟用規則</small></article><article><span>LINE 通知</span><strong>${fixed.filter((row)=>row.notifyLine).length}</strong><small>固定規則啟用通知</small></article>`;
     }
     const fixedHost = document.getElementById('integrationFixedTickets');
     if (fixedHost) {
@@ -338,14 +338,14 @@
     }
     const birthdayHost=document.getElementById('integrationBirthday');
     if (birthdayHost) {
-      if (!birthday) renderEmpty(birthdayHost,'目前沒有生日舊規則設定。');
-      else {
+      if (!birthday.length) renderEmpty(birthdayHost,'尚未建立生日固定票券規則。');
+      else birthdayHost.replaceChildren(...birthday.map((row) => {
         const item=document.createElement('article'); item.className='integration-list-item';
         const main=document.createElement('div');
-        const title=document.createElement('strong'); title.textContent=String(birthday.titleTemplate||'生日權益');
-        const meta=document.createElement('p'); meta.textContent=`${tierSummary(birthday.allowedTierKeys)} · ${birthday.notifyLine?'LINE 通知':'不通知'} · 最後更新 ${formatDateTime(birthday.updatedAt)}`;
-        main.append(title,meta); item.append(main,statusBadge(birthday.enabled?'active':'archived')); birthdayHost.replaceChildren(item);
-      }
+        const title=document.createElement('strong'); title.textContent=String(row.title||'生日固定票券');
+        const meta=document.createElement('p'); meta.textContent=`${tierSummary(row.allowedTierKeys)} · ${row.notifyLine?'LINE 通知':'不通知'} · 最後更新 ${formatDateTime(row.updatedAt)}`;
+        main.append(title,meta); item.append(main,statusBadge(row.status)); return item;
+      }));
     }
   }
 

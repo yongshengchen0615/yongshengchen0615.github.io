@@ -42,14 +42,14 @@ test('ticket usage setting zero means unlimited across admin, member, booking, e
   assert.match(bookingShared, /每日使用張數不限/);
   assert.match(bookingShared, /單次預約使用張數不限/);
 
-  assert.match(bookingApi, /max_tickets_per_day \?\? eventSetting\.data\?\.max_tickets_per_redemption \?\? 1/);
+  assert.match(bookingApi, /max_tickets_per_day \?\? 1/);
   assert.match(bookingApi, /max_tickets_per_redemption \?\? 1/);
   assert.match(bookingApi, /rawEventLimit >= 0/);
   assert.match(bookingApi, /rawPointLimit >= 0/);
   assert.match(bookingApi, /maxTicketsPerDay > 0 && eventCount > maxTicketsPerDay/);
   assert.match(bookingApi, /maxPointTicketsPerRedemption > 0 && pointCount > maxPointTicketsPerRedemption/);
 
-  assert.match(bookingGroupApi, /max_tickets_per_day\?\?eventSetting\.data\?\.max_tickets_per_redemption\?\?1/);
+  assert.match(bookingGroupApi, /max_tickets_per_day\?\?1/);
   assert.match(bookingGroupApi, /max_tickets_per_redemption\?\?1/);
   assert.match(bookingGroupApi, /rawEvent>=0/);
   assert.match(bookingGroupApi, /rawPoint>=0/);
@@ -59,6 +59,6 @@ test('ticket usage setting zero means unlimited across admin, member, booking, e
   assert.match(pointExtension, /max_tickets_per_redemption \?\? 1/);
   assert.match(pointExtension, /setting\.maxTicketsPerRedemption > 0/);
   assert.match(pointExtension, /maxTickets < 0/);
-  assert.match(eventExtension, /max_tickets_per_day \?\? result\.data\?\.max_tickets_per_redemption \?\? 1/);
+  assert.match(eventExtension, /max_tickets_per_day \?\? 1/);
   assert.match(eventExtension, /maxTickets < 0/);
 });

@@ -107,7 +107,11 @@ for(const type of ['holiday','event'])test('CALENDAR_'+type+' — create, date r
   await click(p,'saveCalendarItemButton');await expect(p.locator('#calendarItemId')).not.toHaveValue('');await expect(p.locator('#saveCalendarItemButton')).toBeEnabled();await fill(p,'calendarItemTitle','QA calendar edited');await click(p,'saveCalendarItemButton');await expect.poll(()=>info.fixture.calendarItems[0]?.title).toBe('QA calendar edited');await click(p,'deleteCalendarItemButton');await expect(p.locator('#calendarItemId')).toHaveValue('');expect(info.fixture.calendarItems).toHaveLength(0);
 });
 test('INTEGRATION — each view, every notification/domain filter, search and refresh',async({page:p},info)=>{
+  info.fixture.templates.push({fixedTicketId:'birthday-current',title:'QA birthday current',status:'active',scheduleType:'birthday_month',allowedTierKeys:['general'],notifyLine:true,updatedAt:'2026-10-05T00:00:00Z'});
   await click(p,'operationsHubTab');await expect(p.locator('#integrationMetricGrid article')).toHaveCount(6);
+  await expect(p.locator('#integrationBirthday')).toContainText('QA birthday current');
+  await expect(p.locator('#integrationBenefitSummary')).toContainText('生日固定票券');
+  await expect(p.locator('#operationsHubPanel')).not.toContainText('生日舊規則');
   for(const view of ['benefits','notifications','audit','overview']){await p.locator('[data-integration-view-tab="'+view+'"]').click();await expect(p.locator('[data-integration-view="'+view+'"]')).toBeVisible();}
   await p.locator('[data-integration-view-tab="notifications"]').click();for(const filter of ['pending','sent','failed','all']){await select(p,'integrationNotificationFilter',filter);await expect(p.locator('#integrationNotifications tbody tr')).toHaveCount(filter==='all'?3:1);if(filter!=='all')await expect(p.locator('#integrationNotifications')).toContainText('QA '+filter);}
   await p.locator('[data-integration-view-tab="audit"]').click();for(const domain of ['member','booking','event_ticket','calendar','system','all']){await select(p,'integrationAuditFilter',domain);await expect(p.locator('#integrationAuditTimeline article')).toHaveCount(domain==='all'?5:1);}

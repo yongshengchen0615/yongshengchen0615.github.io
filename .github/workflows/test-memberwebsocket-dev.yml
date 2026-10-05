@@ -83,6 +83,7 @@ jobs:
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
           node MemberWebsocket-dev/tests/integration/event_coupon_sql.cjs
           node MemberWebsocket-dev/tests/integration/coupon_location_editor.cjs
+          node MemberWebsocket-dev/tests/integration/legacy_schema_cleanup.cjs
 
   browser-e2e:
     name: Chromium admin, member, receipt and GPS E2E

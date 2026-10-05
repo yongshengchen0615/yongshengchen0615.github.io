@@ -14,7 +14,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       .is('source_event_ticket_id', null).lte('starts_on', today)
       .order('starts_on', { ascending: true }),
     db.from('event_ticket_settings')
-      .select('max_tickets_per_day,max_tickets_per_redemption')
+      .select('max_tickets_per_day')
       .eq('id', 1)
       .maybeSingle(),
     db.from('point_card_settings')
@@ -31,7 +31,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   if (eventSettings.error) throw eventSettings.error;
   if (pointSettings.error) throw pointSettings.error;
   if (pendingPointSelections.error) throw pendingPointSelections.error;
-  const rawEventLimit = Number(eventSettings.data?.max_tickets_per_day ?? eventSettings.data?.max_tickets_per_redemption ?? 1);
+  const rawEventLimit = Number(eventSettings.data?.max_tickets_per_day ?? 1);
   const eventTicketMaxPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 0 && rawEventLimit <= 50 ? rawEventLimit : 1;
   const rawPointLimit = Number(pointSettings.data?.max_tickets_per_redemption ?? 1);
   const pointTicketMaxPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 0 && rawPointLimit <= 50 ? rawPointLimit : 1;

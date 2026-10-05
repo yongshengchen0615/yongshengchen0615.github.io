@@ -344,7 +344,7 @@ async function validateBookingBenefitSelectionLimit(supabase: SupabaseClient, va
   const [eventSetting, pointSetting] = await Promise.all([
     eventCount
       ? supabase.from("event_ticket_settings")
-          .select("max_tickets_per_day,max_tickets_per_redemption")
+          .select("max_tickets_per_day")
           .eq("id", 1)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -358,7 +358,7 @@ async function validateBookingBenefitSelectionLimit(supabase: SupabaseClient, va
   if (eventSetting.error) throw mapDatabaseError(eventSetting.error);
   if (pointSetting.error) throw mapDatabaseError(pointSetting.error);
 
-  const rawEventLimit = Number(eventSetting.data?.max_tickets_per_day ?? eventSetting.data?.max_tickets_per_redemption ?? 1);
+  const rawEventLimit = Number(eventSetting.data?.max_tickets_per_day ?? 1);
   const maxTicketsPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 0 && rawEventLimit <= 50 ? rawEventLimit : 1;
   const rawPointLimit = Number(pointSetting.data?.max_tickets_per_redemption ?? 1);
   const maxPointTicketsPerRedemption = Number.isInteger(rawPointLimit) && rawPointLimit >= 0 && rawPointLimit <= 50 ? rawPointLimit : 1;
@@ -1061,7 +1061,7 @@ Deno.serve(async (request: Request) => {
     const supabase = dbClient();
     if (clientType === "member") {
       const mode = await supabase.from("test_mode_settings")
-        .select("enabled,maintenance_enabled,maintenance_message")
+        .select("maintenance_enabled,maintenance_message")
         .eq("id", true)
         .maybeSingle();
       if (mode.error) throw new ApiError(503, "TEST_MODE_CHECK_FAILED", "目前無法確認系統維護狀態。");

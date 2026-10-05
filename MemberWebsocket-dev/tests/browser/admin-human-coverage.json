@@ -3,7 +3,7 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "342146ee8569de1a8ab8e3e106f91132f8ace06157aee5d30729b1970af92524",
+    "admin/index.html": "ed270bab037d92d198c888b667b3b08960f1ba2bf50b16dcf7a5218b1604dcca",
     "admin/app.js": "7f6648488d17e827486022e1f989d3f7fbea4f262ac0af4e10d7690eeb8c5e8a",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "85f5ee6e8e45cd08636584fefde461a8227ab46561932631ff55dd6028e75c2b",
@@ -14,7 +14,7 @@
     "admin/fixed-ticket-calendar-option.js": "4e1a45e5e563a303d4b610f7699b9bbe4ebf549c14bc63a908d1b9c5f33e7bb4",
     "admin/pointcard-redemption-limit.js": "a391a001602667e48e63ee5cb7353ac44596f4a39de36ac03b0084b88f0e2d2f",
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
-    "admin/integration-hub.js": "b428ca03dd8a30466e79aa5172532a7c45867eaa4151cdc292264a21fb103d9e",
+    "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
     "admin/booking-panel.js": "4c4f367d098ed12ca07e0d0f4e16f2077a129bf3bfc2df3171e931e9c79bf472",
     "admin/booking-panel-core.js": "c31cd1195edde0e4f263fdd3a8847e9e0782d9ce9487ff758434db0f49e6861f",
     "admin/booking-resources.js": "136a14edf9dc1699a7284b0b5905e1f2f4f21c952471a0fbb2fdab632f2e61e9",

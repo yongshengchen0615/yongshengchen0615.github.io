@@ -948,7 +948,7 @@ async function adminCards(supabase: SupabaseClient): Promise<{ cards: any[]; tic
       prizes: Array.isArray(template.prizes) ? template.prizes : [],
       requiredServiceIds: Array.isArray(reward.required_service_ids) ? reward.required_service_ids : [],
       requiredServiceMatchMode: reward.required_service_match_mode === "all" ? "all" : "any",
-      requiredServiceTypes: Array.isArray(reward.required_service_types) ? reward.required_service_types : [],
+      requiredServiceTypes: [],
       updatedAt: reward.updated_at,
     });
     rewardsByCard.set(reward.point_card_id,list);
@@ -1105,16 +1105,16 @@ function eventTicketClient(row: any, claimedCount = 0, admin = false): Json {
       ? row.redemption_locations.map((location:any) => String(location.name || "")).filter(Boolean) : [],
     ...(admin ? {
       redemptionLocations: Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
-      redemptionLatitude: row.redemption_latitude == null ? null : Number(row.redemption_latitude),
-      redemptionLongitude: row.redemption_longitude == null ? null : Number(row.redemption_longitude),
-      redemptionRadiusMeters: row.redemption_radius_meters == null ? null : Number(row.redemption_radius_meters),
+      redemptionLatitude: row.redemption_locations?.[0]?.latitude ?? null,
+      redemptionLongitude: row.redemption_locations?.[0]?.longitude ?? null,
+      redemptionRadiusMeters: row.redemption_locations?.[0]?.radiusMeters ?? null,
     } : {}),
     accent: row.accent,
     allowedTierKeys: Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS],
     allowedTierLabels: (Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [...TIER_KEYS]).map((key:string) => TIER_LABELS[key]).filter(Boolean),
     requiredServiceIds: Array.isArray(row.required_service_ids) ? row.required_service_ids : [],
     requiredServiceMatchMode: row.required_service_match_mode === "all" ? "all" : "any",
-    requiredServiceTypes: Array.isArray(row.required_service_types) ? row.required_service_types : [],
+    requiredServiceTypes: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1651,7 +1651,6 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     || !Number.isFinite(location.longitude) || location.longitude < -180 || location.longitude > 180
     || !Number.isInteger(location.radiusMeters) || location.radiusMeters < 50 || location.radiusMeters > 2000))
     throw new ApiError(400,"INVALID_LOCATION_RULE","每個地點需有名稱、有效座標與 50–2000 公尺半徑。");
-  const [firstLocation] = locations;
   const requiredServiceIds = input.requiredServiceIds !== undefined
     ? await normalizeRequiredServiceIds(supabase,input.requiredServiceIds)
     : await serviceIdsForLegacyTypes(supabase,input.requiredServiceTypes);
@@ -1669,9 +1668,6 @@ async function saveEventTicket(supabase: SupabaseClient, actor: string, body: Js
     quota,
     requires_location: requiresLocation,
     redemption_locations: locations,
-    redemption_latitude: firstLocation?.latitude ?? null,
-    redemption_longitude: firstLocation?.longitude ?? null,
-    redemption_radius_meters: firstLocation?.radiusMeters ?? null,
     accent: requireAccent(input.accent),
     allowed_tier_keys: normalizeTierKeys(input.allowedTierKeys),
     required_service_ids: requiredServiceIds,
@@ -1734,7 +1730,6 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
     serviceTypesRes,
     serviceRewardsRes,
     fixedTicketsRes,
-    birthdayRes,
     calendarRes,
     eventTicketsRes,
     scheduledRes,
@@ -1751,10 +1746,6 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
       .is("deleted_at",null)
       .order("updated_at",{ ascending:false })
       .limit(40),
-    supabase.from("birthday_benefit_settings")
-      .select("enabled,title_template,allowed_tier_keys,notify_line,updated_at")
-      .eq("singleton",true)
-      .maybeSingle(),
     supabase.from("calendar_items")
       .select("calendar_item_id,title,item_type,status,starts_on,ends_on,allowed_tier_keys,bonus_points_enabled,bonus_points,source_event_ticket_id,updated_at")
       .order("starts_on",{ ascending:false })
@@ -1784,7 +1775,7 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
   ]);
 
   for (const result of [
-    pointCardsRes,serviceTypesRes,serviceRewardsRes,fixedTicketsRes,birthdayRes,calendarRes,
+    pointCardsRes,serviceTypesRes,serviceRewardsRes,fixedTicketsRes,calendarRes,
     eventTicketsRes,scheduledRes,auditRes,bookingAuditRes,settlementsRes,
   ]) {
     if (result.error) throw mapDatabaseError(result.error);
@@ -1966,13 +1957,6 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
         calendarEnabled:row.calendar_enabled === true,
         updatedAt:row.updated_at || "",
       })),
-      birthday:birthdayRes.data ? {
-        enabled:birthdayRes.data.enabled === true,
-        titleTemplate:String(birthdayRes.data.title_template || ""),
-        allowedTierKeys:Array.isArray(birthdayRes.data.allowed_tier_keys) ? birthdayRes.data.allowed_tier_keys : [],
-        notifyLine:birthdayRes.data.notify_line === true,
-        updatedAt:birthdayRes.data.updated_at || "",
-      } : null,
     },
     campaigns:campaignRows,
     notifications,
@@ -2671,7 +2655,7 @@ async function handleRequest(request: Request): Promise<Response> {
     const supabase = dbClient();
     if (clientType !== "admin") {
       const mode = await supabase.from("test_mode_settings")
-        .select("enabled,maintenance_enabled,maintenance_message")
+        .select("maintenance_enabled,maintenance_message")
         .eq("id",true)
         .maybeSingle();
       if (mode.error) throw new ApiError(503,"TEST_MODE_CHECK_FAILED","目前無法確認系統維護狀態。");

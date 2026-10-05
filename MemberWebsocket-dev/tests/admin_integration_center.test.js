@@ -12,7 +12,7 @@ const api = fs.readFileSync(path.join(root, 'supabase', 'functions', 'api', 'ind
 
 test('admin loads the integration center assets', () => {
   assert.match(html, /integration-hub\.css\?v=admin-integration-center-20260925-1/);
-  assert.match(html, /integration-hub\.js\?v=admin-integration-center-20260925-1/);
+  assert.match(html, /integration-hub\.js\?v=admin-integration-center-20261005-2/);
   assert.match(hub, /operationsHubTab/);
   assert.match(hub, /整合營運中心/);
   assert.match(hubCss, /\.integration-metric-grid/);
