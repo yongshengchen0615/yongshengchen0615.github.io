@@ -13,6 +13,8 @@
   let html2canvasLoader = null;
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const REPLAY_STORAGE_KEY = 'member-e2e-replay-v1';
+  const LEARNING_STORAGE_KEY = 'member-e2e-learning-v2';
+  const LEARNING_STORAGE_TTL_MS = 2 * 60 * 60 * 1000;
   const BACKGROUND_RUNNER_PARAM = 'e2eBackgroundRunner';
   const BACKGROUND_RUNNER_READY_TIMEOUT_MS = 90 * 1000;
   const BACKGROUND_RUNNER_STALE_MS = 8 * 60 * 1000;
@@ -157,6 +159,7 @@
     adminRandomStateAfterPlan: 0,
     replayContext: null,
     replayManifest: null,
+    learningByCase: {},
     participantCount: 1,
     participantExecutionOrder: [],
     syncOrder: [],
@@ -395,6 +398,23 @@
     return (state.randomState >>> 0) / 4294967296;
   }
 
+  function historicalLearning(caseKey) {
+    const key = String(caseKey || '');
+    const value = state.learningByCase && typeof state.learningByCase === 'object'
+      ? state.learningByCase[key]
+      : null;
+    return value && typeof value === 'object' ? value : {};
+  }
+
+  function historicalPriorityMap() {
+    return Object.fromEntries(
+      Object.entries(state.learningByCase || {}).map(([key, value]) => [
+        key,
+        Math.max(0, Math.min(1, Number(value?.riskScore || 0)))
+      ])
+    );
+  }
+
   function randomInt(min, max) {
     const low = Math.ceil(Number(min) || 0);
     const high = Math.floor(Number(max) || low);
@@ -442,6 +462,17 @@
     const surfaceSamples = data?.surfaceSamples && typeof data.surfaceSamples === 'object'
       ? { ...data.surfaceSamples }
       : {};
+    state.learningByCase = data?.caseLearning && typeof data.caseLearning === 'object'
+      ? { ...data.caseLearning }
+      : {};
+    try {
+      localStorage.setItem(LEARNING_STORAGE_KEY, JSON.stringify({
+        version: 2,
+        storedAt: Date.now(),
+        expiresAt: Date.now() + LEARNING_STORAGE_TTL_MS,
+        caseLearning: state.learningByCase
+      }));
+    } catch (_) {}
     return {
       completedRootRuns,
       complexityLevel: level,
@@ -460,7 +491,9 @@
       },
       rootRunId: state.rootRunId,
       surfaceWeightsMs,
-      surfaceSamples
+      surfaceSamples,
+      learningAvailable: data?.learningAvailable === true,
+      learningCaseCount: Object.keys(state.learningByCase).length
     };
   }
 
@@ -1222,6 +1255,7 @@
         surface: 'admin',
         complexityLevel: state.complexityLevel,
         seed: state.randomSeed,
+        learning: historicalLearning(def?.key),
         delay: sleep,
         maxEvents: 140,
         labelTarget: adminHumanTargetLabel,
@@ -1834,7 +1868,8 @@
     const plan = planner.planScenario({
       nodes: catalog, metaByKey: ADMIN_NODE_META, randomUnit: nextRandomUnit,
       seed: state.randomSeed + '-ADMIN', complexityLevel: state.complexityLevel,
-      coverageMode: 'full', minNodes: catalog.length, maxNodes: catalog.length, requiredKeys
+      coverageMode: 'full', minNodes: catalog.length, maxNodes: catalog.length, requiredKeys,
+      priorityByKey: historicalPriorityMap()
     });
     const byKey = new Map(catalog.map((item) => [item.key,item]));
     state.adminScenarioPlan = plan;
