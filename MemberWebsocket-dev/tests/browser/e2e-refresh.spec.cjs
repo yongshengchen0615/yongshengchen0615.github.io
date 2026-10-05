@@ -4,24 +4,30 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
 let server, base;
+const fixtureScript = `
+  document.documentElement.dataset.memberAdminReady = 'true';
+  document.getElementById('loadingView').classList.add('hidden');
+  document.getElementById('adminView').classList.remove('hidden');
+  document.getElementById('testModeTab').addEventListener('click', () => {
+    document.getElementById('testModeTab').setAttribute('aria-selected', 'true');
+    document.getElementById('testModePanel').classList.remove('hidden');
+  });
+  window.MemberAdminSession = { wait: async () => ({ config: {
+    supabaseUrl: 'https://fixture.supabase.co', supabasePublishableKey: 'fixture-publishable'
+  }, idToken: 'private-fixture-token' }) };
+`;
 
 test.beforeAll(async () => {
   server = http.createServer((req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    if (pathname === '/fixture.js') {
+      res.writeHead(200, { 'Content-Type': 'text/javascript' });
+      return res.end(fixtureScript);
+    }
     if (pathname === '/admin/') {
       const html = fs.readFileSync(path.join(root, 'admin/index.html'), 'utf8')
         .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-      const fixture = `<script>
-        document.documentElement.dataset.memberAdminReady = 'true';
-        document.getElementById('adminView').classList.remove('hidden');
-        document.getElementById('testModeTab').addEventListener('click', () => {
-          document.getElementById('testModeTab').setAttribute('aria-selected', 'true');
-          document.getElementById('testModePanel').classList.remove('hidden');
-        });
-        window.MemberAdminSession = { wait: async () => ({ config: {
-          supabaseUrl: 'https://fixture.supabase.co', supabasePublishableKey: 'fixture-publishable'
-        }, idToken: 'private-fixture-token' }) };
-      </script><script src="/admin/test-control.js"></script><script src="/admin/e2e-control-loader.js"></script>`;
+      const fixture = '<script src="/fixture.js"></script><script src="/admin/test-control.js"></script><script src="/admin/e2e-control-loader.js"></script>';
       res.writeHead(200, { 'Content-Type': 'text/html' });
       return res.end(html.replace('</body>', fixture + '</body>'));
     }
@@ -37,11 +43,11 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => new Promise(resolve => server.close(resolve)));
 test.beforeEach(async ({ page }, info) => {
-  info.errors = [];
-  page.on('pageerror', error => info.errors.push(error.message));
+  info.browserErrors = [];
+  page.on('pageerror', error => info.browserErrors.push(error.message));
   await page.route(/https?:\/\/(?!127\.0\.0\.1|fixture\.supabase\.co)/, route => route.abort());
 });
-test.afterEach(async ({}, info) => expect(info.errors).toEqual([]));
+test.afterEach(async ({}, info) => expect(info.browserErrors).toEqual([]));
 
 function record(id, featureCoverage = null) {
   return { run: { id, runCode: id.toUpperCase(), suite: 'full', status: 'passed', totalCases: 1, passedCases: 1,
