@@ -5,7 +5,7 @@
 
 ## 結論
 
-**FACT：找到並重現兩個票券 UI 回歸，另找到原有快照 API 的原始碼授權退回較簡化版本，以及管理端部署共用依賴落後。不能宣稱所有功能皆無錯誤。**
+**FACT：找到並重現兩個票券 UI 回歸，另找到原有快照 API 的原始碼授權比線上部署版本簡化，以及管理端部署共用依賴落後。未將全部差異歸因於某一次新功能提交；不能宣稱所有功能皆無錯誤。**
 
 本次修正保留既有 API、資料表、票券核銷／扣點規則，不改會員等級、管理權限、排程或正式設定。沒有執行線上扣點、核銷、完成預約、刪除資料、發 LINE 訊息或啟用條款。
 
@@ -13,10 +13,10 @@
 
 | 問題 | 觸發／影響 | 證據與處置 |
 | --- | --- | --- |
-| 票券上限調低沒有修正既有選取 | 管理員從 0（不限）改成 1，會員已選的 3 張集點券及 3 張活動券仍全數送出；後端可能拒絕原有預約送出／修改 | 新增 DOM 測試修正前實際得到 6 張、預期 2 張。依最新各類上限及點數／服务條件保留先選且仍有效的票券，移除超額項目、更新確認摘要並提示；改回 0 不代替會員自動選券 |
-| 舊票券回應覆蓋新預約編輯對象 | 可用權益請求尚未完成時切換預約，較早請求仍渲染旧預約的保留／可用狀態，可能取消剛帶入的票券 | 新增 DOM 測試修正前觀察到 `old-context` 渲染。立即同步遇到既有請求時使舊 sequence 失效，再合併執行最新 context 請求 |
+| 票券上限調低沒有修正既有選取 | 管理員從 0（不限）改成 1，會員已選的 3 張集點券及 3 張活動券仍全數送出；後端可能拒絕原有預約送出／修改 | 新增 DOM 測試修正前實際得到 6 張、預期 2 張。依最新各類上限及點數／服務條件保留先選且仍有效的票券，移除超額項目、更新確認摘要並提示；改回 0 不代替會員自動選券 |
+| 舊票券回應覆蓋新預約編輯對象 | 可用權益請求尚未完成時切換預約，較早請求仍渲染舊預約的保留／可用狀態，可能取消剛帶入的票券 | 新增 DOM 測試修正前觀察到 `old-context` 渲染。立即同步遇到既有請求時使舊 sequence 失效，再合併執行最新 context 請求 |
 | E2E 快照 API 的 Repository 登入驗證比線上版本弱 | 下次直接部署原始碼會失去共用 issuer／audience／expiry／iat、session 與一致的管理員授權契約 | 全部線上 bundle 比對找到差異。將 source 改回 canonical auth helper；納入共用契約清單及依賴計畫，避免未來發布回退。**不是聲稱線上快照目前已採用該較弱 source** |
-| 管理端票券 options 的 bundle 使用舊服務類型規則 | 新功能已改成「具體服務項目 any／all」，但 `booking-admin-operations` 的 `_shared/booking-benefits.ts`／`latest-available-offers.ts` 仍回傳 `requiredServiceTypes`，缺少新 UI 預期的 `requiredServiceIds` 與 match mode | FACT：線上檔案與 main 差異已確認。INFERENCE：設定限制後，管理端修改原有預約票券可能顯示錯誤條件，並在送出時遭 DB 的新規則拒絕。需要重新部署該函式及最新版共用依賴；本次未修改線上部署 |
+| 管理端票券 options 的 bundle 使用舊服務類型規則 | 新功能已改成「具體服務項目 any／all」，但 `booking-admin-operations` 的 `_shared/booking-benefits.ts`／`latest-available-offers.ts` 仍回傳 `requiredServiceTypes`，缺少新 UI 預期的 `requiredServiceIds` 與 match mode | FACT：取回線上 helper，在隔離的模擬 DB 用同一組指定服務及 all 限制重播：舊版遺漏 IDs／match mode 並顯示「不限預約項目」，repo 正確保留限制。INFERENCE：實際設定限制後可能干擾原有預約修改；目前線上限制資料為 0，未重現正式會員受影響。需要重新部署該函式及最新版共用依賴；本次未修改線上部署 |
 
 新增 `scripts/edge-deployment-plan.cjs`，列出相對 import／reexport 的直接及間接使用者，避免只部署入口而遺漏共用依賴。它不呼叫管理 API、不取得憑證、不自動部署。
 
@@ -64,16 +64,16 @@ node MemberWebsocket-dev/scripts/edge-deployment-plan.cjs _shared/auth-contract.
 - FACT：會員條款表沒有 active 版本；點數節點／活動票券目前沒有具體服務限制 fixture。因此 latest E2E 的限制案例無法完整實跑。
 - FACT：最新會員 E2E `UE2E-MUUN2GAG-F64B3A60`：33 passed、2 skipped，`coverageComplete=false`、`verificationStatus=incomplete`；不能把 terminal `passed` 當完整覆蓋。
 - FACT：較早 `UE2E-MUULZRKQ-7C09C62C` 留有 `BOOKING_HUMAN_GROUP` 240 秒逾時及 `BOOKING_ACCESSIBLE_MODE` 同步失敗；最新輪這兩個案例已通過。歷史錯誤並非本輪新重現結果。
-- FACT：檢查近 24 小時 Function logs 有 3 筆 503（api／booking-api／booking-cancellation-api）；沒有足夠 error body 或 server log 判定根因。未将預期 401／403／409／413 負面測試回應全部誤報成故障。
+- FACT：檢查近 24 小時 Function logs 有 3 筆 503（api／booking-api／booking-cancellation-api）；沒有足夠 error body 或 server log 判定根因。未將預期 401／403／409／413 負面測試回應全部誤報成故障。
 - Security advisor：52 個 RLS enabled no policy 資訊提示符合 Edge 封鎖 direct client access 的架構；另有 [pg_net 位於 public 的警告](https://supabase.com/docs/guides/database/database-linter?lint=0014_extension_in_public)，本次未搬移 extension。
 
 ## 驗證與發布狀態
 
-本機檢查結果記錄於本次 PR 描述；Node／DOM／SQL 已執行，不以只有測試名稱或接線存在當行為通過。兩個新增票券 DOM 案例在修正前均實際失敗，修正後均通過。
+修正版本機回歸測試 **639 passed**、整合測試 **196 passed**，均無失敗或略過；`git diff --check` 通過。Node／DOM／SQL 已執行，不以只有測試名稱或接線存在當行為通過。兩個新增票券 DOM 案例在修正前均實際失敗，修正後均通過。
 
 基準 main CI：[37257276401](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37257276401)，全部六個 lane 成功，Chromium log 有 **101 passed**。這是基準版本的證據。
 
-本機 Chromium 下載完成後因環境 `SIGSEGV` 無法啟動；這不是產品測試成功，也不能從該啟動失敗推論 UI 故障。修正版的 Chromium／Deno 結果由本次 PR CI 提供。
+本機 Chromium 下載完成後因環境 `SIGSEGV` 無法啟動；這不是產品測試成功，也不能從該啟動失敗推論 UI 故障。修正版 [PR #279](https://github.com/yongshengchen0615/yongshengchen0615.github.io/pull/279) 的 [CI 37271049577](https://github.com/yongshengchen0615/yongshengchen0615.github.io/actions/runs/37271049577) 全部六個 lane 及最終 gate 成功，包含 Chromium **101 passed**、Supabase Deno 型別檢查、DOM、回歸、JS 語法及靜態接線。此 CI 對應修正程式碼提交 `323a7eccfb04e92e7658f53c42b641ac516f163e`；其後僅補充本報告。
 
 本次建立可審查的修正與檢查報告，不合併 main、不變更正式部署。無 schema migration。前端發布時需使用已更新的 `booking-benefits.js` 版本。
 
