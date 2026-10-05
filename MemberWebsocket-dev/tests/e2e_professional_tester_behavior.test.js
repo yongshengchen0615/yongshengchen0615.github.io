@@ -158,7 +158,7 @@ test('both admin and user E2E entry points load and enforce the professional tes
   const workflow = read('../.github/workflows/test-memberwebsocket-dev.yml');
 
   assert.match(adminHtml, /e2e-professional-tester\.js\?v=professional-qa-20261005-2/);
-  assert.match(adminHtml, /e2e-control\.js\?v=qa-e2e-20261005-4/);
+  assert.match(adminHtml, /e2e-control\.js\?v=qa-e2e-20261005-3/);
   assert.match(adminRunner, /MemberE2EProfessionalTester/);
   assert.match(adminRunner, /professionalTesterStructuralRegressionFree/);
   assert.match(adminRunner, /registerCleanup/);
