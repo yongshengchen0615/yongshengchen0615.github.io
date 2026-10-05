@@ -144,3 +144,10 @@ test('purge refreshes admin cards, event tickets and fixed-ticket cache without 
   assert.match(fixed, /templates = \[\]/);
   assert.match(fixed, /renderFixedList\(\)/);
 });
+
+
+test('test control uses the single-request converged purge RPC', () => {
+  const api = read('supabase/functions/test-control-api/index.ts');
+  assert.match(api, /admin_purge_all_test_data_converged/);
+  assert.doesNotMatch(api, /rpc\("admin_purge_all_test_data"\)/);
+});
