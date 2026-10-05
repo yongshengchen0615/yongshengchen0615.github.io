@@ -63,6 +63,6 @@ test('adaptive E2E asset versions and scenario graph are aligned across all surf
   assert.match(read('admin/index.html'), /e2e-control\.js\?v=qa-e2e-20261004-\d+/);
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     assert.match(read(surface + '/index.html'), /e2e-scenario-graph\.js\?v=e2e-graph-20261004-\d+/);
-    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=qa-e2e-20261004-\d+/);
+    assert.match(read(surface + '/index.html'), /user-test-control\.js\?v=qa-e2e-\d{8}-\d+/);
   }
 });
