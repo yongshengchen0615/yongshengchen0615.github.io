@@ -159,6 +159,13 @@
     window.addEventListener('member-admin-data-refreshed', () => {
       if (document.documentElement.dataset.memberAdminReady === 'true' && !busy) loadTemplates();
     });
+    window.addEventListener('test-data-purged', () => {
+      templates = [];
+      selectedFixedTicketId = '';
+      selectedUpdatedAt = '';
+      renderFixedList();
+      if (document.documentElement.dataset.memberAdminReady === 'true' && !busy) loadTemplates();
+    });
   });
 
   async function adminSession() {
