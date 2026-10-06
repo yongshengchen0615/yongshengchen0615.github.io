@@ -1,13 +1,15 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-06.2';
+  const VERSION = '2026-10-06.3';
   const COVERAGE_STORAGE_KEY = 'member-admin-e2e-coverage-v1';
   const COVERAGE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
   const DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP = 2;
+  const E2E_LEASE_HEARTBEAT_MS = 15000;
+  const E2E_LEASE_HEARTBEAT_FAILURE_LIMIT = 2;
   const ADMIN_NODE_TIMEOUT_MS = 90000;
   const ADMIN_BOOKING_NODE_TIMEOUT_MS = 7 * 60 * 1000;
   let html2canvasLoader = null;
@@ -2057,6 +2059,9 @@
     let backendRun = null;
     let selectedModules = [];
     let cleanupLeaseId = '';
+    let cleanupLeaseHeartbeatTimer = 0;
+    let cleanupLeaseHeartbeatBusy = false;
+    let cleanupLeaseHeartbeatFailures = 0;
     const mobileViewport = options?.mobileViewport === true || (!isBackgroundRunnerWindow() && selectedClientMobileViewport());
     state.clientMobileViewport = mobileViewport;
     try {
@@ -2114,6 +2119,24 @@
       }
 
       cleanupLeaseId = await acquireE2ECleanupLease();
+      const renewCleanupLease = async () => {
+        if (!cleanupLeaseId || cleanupLeaseHeartbeatBusy || state.cancelled) return;
+        cleanupLeaseHeartbeatBusy = true;
+        try {
+          const renewed = await heartbeatE2ECleanupLease(cleanupLeaseId);
+          if (!renewed) throw new Error('E2E execution lease is no longer active.');
+          cleanupLeaseHeartbeatFailures = 0;
+        } catch (error) {
+          cleanupLeaseHeartbeatFailures += 1;
+          if (cleanupLeaseHeartbeatFailures >= E2E_LEASE_HEARTBEAT_FAILURE_LIMIT && !state.cancelled) {
+            requestStop();
+            setMessage('完整 E2E 執行鎖續租失敗，已自動停止以避免測試資料與清除流程互相干擾。', true);
+          }
+        } finally {
+          cleanupLeaseHeartbeatBusy = false;
+        }
+      };
+      cleanupLeaseHeartbeatTimer = window.setInterval(() => { renewCleanupLease().catch(() => {}); }, E2E_LEASE_HEARTBEAT_MS);
       backendRun = await runUnifiedServerFullPhase(selectedModules);
       if (state.cancelled) return { cancelled: true, backendRun: safe(backendRun?.run || {}), results: safe(state.results) };
 
@@ -2369,6 +2392,10 @@
       }
       return { cancelled: stoppedByUser, error: stoppedByUser ? null : plainError(error), results: safe(state.results) };
     } finally {
+      if (cleanupLeaseHeartbeatTimer) {
+        window.clearInterval(cleanupLeaseHeartbeatTimer);
+        cleanupLeaseHeartbeatTimer = 0;
+      }
       if (cleanupLeaseId) {
         await releaseE2ECleanupLease(cleanupLeaseId);
         cleanupLeaseId = '';
@@ -7448,6 +7475,19 @@
     } catch {
       return false;
     }
+  }
+
+  async function heartbeatE2ECleanupLease(leaseId) {
+    const normalized = String(leaseId || '').trim();
+    if (!/^[0-9a-f-]{36}$/i.test(normalized)) return false;
+    const session = await adminSession();
+    const data = await postFunction('test-control-api', {
+      action: 'admin.test-control.heartbeat-e2e-lease',
+      clientType: 'admin',
+      idToken: session.idToken,
+      leaseId: normalized
+    });
+    return data?.renewed === true;
   }
 
   async function prepareComplexE2EFixtures(profile = {}) {
