@@ -427,7 +427,7 @@ function normalizeReplayManifest(value: unknown): Json {
   const complexityLevel=Math.trunc(Number(input.complexityLevel||0)); if(complexityLevel<1||complexityLevel>8) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 難度不正確。");
   const selectedModules=selectedE2EModules(input.selectedModules); if(!selectedModules) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 模組不完整。");
   const participantCount=Math.trunc(Number(input.participantCount||0)); if(participantCount<1||participantCount>10) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 測試人數不正確。");
-  const clientConcurrency=Math.trunc(Number(input.clientConcurrency||0)); if(clientConcurrency<1||clientConcurrency>4) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 併發設定不正確。");
+  const clientConcurrency=Math.trunc(Number(input.clientConcurrency||0)); if(clientConcurrency<1||clientConcurrency>10) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","Replay 併發設定不正確。");
   const admin=input.adminScenario&&typeof input.adminScenario==="object"?input.adminScenario:{};
   const adminFingerprint=asText(admin.scenarioFingerprint,40); if(!/^SG1-[0-9a-f]{8}$/i.test(adminFingerprint)) throw new ApiError(400,"INVALID_REPLAY_MANIFEST","管理端 Scenario Fingerprint 不正確。");
   const adminScenario={scenarioFingerprint:adminFingerprint,scenarioPath:replayKeyList(admin.scenarioPath,"管理端 Scenario"),randomStateAfterPlan:Number(admin.randomStateAfterPlan||0)>>>0};
