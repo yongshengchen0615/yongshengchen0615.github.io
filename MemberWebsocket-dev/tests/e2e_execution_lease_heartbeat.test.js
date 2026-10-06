@@ -31,9 +31,14 @@ test('full E2E execution lease is short-lived and heartbeat-renewed', () => {
   assert.match(runner, /releaseE2ECleanupLease\(cleanupLeaseId\)/);
 });
 
-test('purge keeps the execution safety boundary while expired leases can be reclaimed', () => {
+test('purge keeps the execution safety boundary while expired and stale leases can be reclaimed', () => {
   const purge = read('supabase/migrations/20261005174200_fix_test_purge_evolution_delete_guard.sql');
+  const staleRecovery = read('supabase/migrations/20261006045939_reclaim_stale_e2e_leases_before_purge.sql');
   assert.match(purge, /delete from public\.test_execution_leases[\s\S]*where expires_at <= clock_timestamp\(\)/);
   assert.match(purge, /raise exception 'TEST_EXECUTION_ACTIVE'/);
   assert.match(purge, /status in \('queued','running'\)/);
+  assert.match(staleRecovery, /last_heartbeat_at < clock_timestamp\(\) - interval '90 seconds'/);
+  assert.match(staleRecovery, /admin_purge_all_test_data_converged/);
+  assert.match(staleRecovery, /pg_advisory_xact_lock\(2026092001\)/);
+  assert.match(staleRecovery, /pg_advisory_xact_lock\(2026092202\)/);
 });
