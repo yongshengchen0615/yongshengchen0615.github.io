@@ -11,7 +11,7 @@ test('E2E live flow visualizer shows side, module, flow and feature from start t
   const ui = read('admin/e2e-flow-visualizer.js');
   const css = read('admin/e2e-flow-visualizer.css');
 
-  assert.match(html, /e2e-flow-visualizer\.css\?v=e2e-flow-20261006-1/);
+  assert.match(html, /e2e-flow-visualizer\\.css\\?v=e2e-flow-20261006-2/);
   assert.match(html, /e2e-flow-visualizer\.js\?v=e2e-flow-20261006-1/);
   assert.match(ui, /E2E 即時流程圖/);
   for (const label of ['端別', '模組', '流程', '功能']) assert.match(ui, new RegExp(label));
@@ -24,6 +24,11 @@ test('E2E live flow visualizer shows side, module, flow and feature from start t
   assert.match(ui, /trackedWindows/);
   assert.match(css, /\.e2e-flow-rail/);
   assert.match(css, /\.e2e-flow-activity-path/);
+  assert.match(css, /html\[data-theme="dark"\] \.e2e-flow-visualizer/);
+  assert.match(css, /html\[data-theme="dark"\] \.e2e-flow-step\.is-running/);
+  assert.match(css, /html\[data-theme="dark"\] \.e2e-flow-step\.is-passed/);
+  assert.match(css, /html\[data-theme="dark"\] \.e2e-flow-step\.is-failed/);
+  assert.match(css, /html\[data-theme="dark"\] \.e2e-flow-module\.is-running/);
 });
 
 test('selected modules remain observable across background runner and user child cases expose current feature', () => {
