@@ -22,6 +22,7 @@ const sharedAuthFunctions = [
   'booking-group-slots-api',
   'test-mode-api',
   'test-control-api',
+  'e2e-artifact-api',
 ];
 
 test('deployed shared-auth function set stays source-controlled', () => {
