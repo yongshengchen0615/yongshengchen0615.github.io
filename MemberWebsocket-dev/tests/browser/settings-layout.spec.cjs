@@ -27,6 +27,13 @@ for(const variant of [
   await page.goto(host.base+'/admin/?run='+info.testId);
   await expect(page.locator('#adminView')).toBeVisible();
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,variant.theme);
+  const topbar=page.locator('#adminView > .topbar');await fitsViewport(page,topbar);
+  if(variant.width<=640) {
+    const title=await topbar.locator('h1').boundingBox();const account=await topbar.locator('.account-menu').boundingBox();
+    expect(title.y+title.height).toBeLessThanOrEqual(account.y);
+    const lineHeight=await topbar.locator('h1').evaluate(el=>parseFloat(getComputedStyle(el).lineHeight));
+    expect(title.height).toBeLessThanOrEqual(lineHeight+1);
+  }
   await page.locator('#bookingTab').click();
   await page.locator('#bookingAdminTechniciansSubtab').click();
   const policy=page.locator('#bookingAdminPartySizeForm');
@@ -41,8 +48,10 @@ for(const variant of [
   const checkbox=await page.locator('#bookingAdminRequirePrimaryTechnician').boundingBox();expect(checkbox.height).toBeLessThanOrEqual(24);
   const save=await page.locator('#bookingAdminSavePartySizeButton').boundingBox();expect(save.height).toBeGreaterThanOrEqual(44);
   const policyImage=info.outputPath('primary-technician-settings.png');
-  await page.evaluate(()=>window.scrollTo(0,0));
-  await page.screenshot({fullPage:true,path:policyImage});
+  if(variant.width<=640) {
+    await page.evaluate(()=>window.scrollTo(0,0));
+    await page.screenshot({fullPage:true,path:policyImage});
+  } else await policy.screenshot({path:policyImage});
   await info.attach('primary-technician-settings',{path:policyImage,contentType:'image/png'});
 
   await page.locator('#eventsTab').click();await page.locator('#newEventTicketButton').click();
