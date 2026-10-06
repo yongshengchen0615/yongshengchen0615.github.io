@@ -50,3 +50,33 @@ test('the member receipt list prefers the submitted snapshot over failed or pend
   assert.equal(result.bookings[0].receipt.receiptId,'old');
   assert.equal(result.bookings[0].canSubmitReceipt,true);
 });
+
+
+test('bound accessible receipt replay skips consumed benefit validation and reaches idempotent register RPC', async () => {
+  const validateCode = source.slice(
+    source.indexOf('async function validateAccessibleBenefits('),
+    source.indexOf('async function registrationOptions(')
+  );
+  const context = vm.createContext({
+    normalizeAccessibleBenefits:(value) => Array.isArray(value) ? value : [],
+    dbError:(error) => error,
+    ApiError:class extends Error {},
+    String,
+  });
+  vm.runInContext(stripTypeScriptTypes(validateCode),context);
+  let selected = '';
+  const query = {
+    select(value){ selected = String(value || ''); return query; },
+    eq(){ return query; },
+    maybeSingle:async () => ({ data:{ member_id:member.id,status:'bound' },error:null }),
+  };
+  const result = await context.validateAccessibleBenefits(
+    { from:(table) => { assert.equal(table,'booking_receipts'); return query; } },
+    'receipt-bound',
+    '',
+    [],
+    [{kind:'points',id:'already-redeemed-ticket'}]
+  );
+  assert.deepEqual(Array.from(result),[]);
+  assert.match(selected,/status/);
+});

@@ -551,12 +551,15 @@ async function validateAccessibleBenefits(
   if(!requested.length) return requested;
 
   const receipt=await supabase.from("booking_receipts")
-    .select("member_id")
+    .select("member_id,status")
     .eq("receipt_id",receiptId)
     .eq("submission_mode","accessible")
     .maybeSingle();
   if(receipt.error) throw dbError(receipt.error);
   if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到這筆收據。");
+  // Completed accessible receipts are immutable. Skip consumed-benefit validation
+  // so the database RPC can return its existing settlement idempotently.
+  if(String(receipt.data.status||"")==="bound") return [];
 
   const memberResult=await supabase.from("members").select("id,birthday").eq("id",receipt.data.member_id).maybeSingle();
   if(memberResult.error) throw dbError(memberResult.error);
