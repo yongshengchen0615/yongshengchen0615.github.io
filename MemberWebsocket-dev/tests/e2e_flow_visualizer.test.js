@@ -11,7 +11,7 @@ test('E2E live flow visualizer shows side, module, flow and feature from start t
   const ui = read('admin/e2e-flow-visualizer.js');
   const css = read('admin/e2e-flow-visualizer.css');
 
-  assert.match(html, /e2e-flow-visualizer\\.css\\?v=e2e-flow-20261006-2/);
+  assert.match(html, /e2e-flow-visualizer\.css\?v=e2e-flow-20261006-2/);
   assert.match(html, /e2e-flow-visualizer\.js\?v=e2e-flow-20261006-1/);
   assert.match(ui, /E2E 即時流程圖/);
   for (const label of ['端別', '模組', '流程', '功能']) assert.match(ui, new RegExp(label));
