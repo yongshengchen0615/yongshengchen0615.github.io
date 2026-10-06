@@ -1714,7 +1714,8 @@
     }
 
     const status = String(benefit?.status || 'pending');
-    const statusLabel = ({ pending: '待核銷', redeemed: '已核銷', applied: '已核銷', cancelled: '已取消' })[status] || status;
+    let statusLabel = ({ pending: '待核銷', redeemed: '已核銷', applied: '已核銷', cancelled: '已取消' })[status] || status;
+    if (status === 'cancelled' && benefit?.cancellationReason === 'booking_services_changed') statusLabel = '項目變更，已解除綁定';
     return { kind, kindLabel, sourceTitle, ticketTitle, status, statusLabel };
   }
 

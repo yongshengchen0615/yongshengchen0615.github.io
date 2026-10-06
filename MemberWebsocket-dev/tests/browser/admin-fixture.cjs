@@ -13,7 +13,7 @@ function fixture() {
   const card = n => ({cardId:'card-'+n,title:'QA card '+n,status:'active',styleKey:'denim',pointCardStyleKey:'denim',expiryMode:'unlimited',expiresOn:'',accent:'#df6b4d',usageMethod:'QA',usageInstructions:'QA',benefitDescription:'QA',updatedAt:version,sortOrder:n,rewards:[{thresholdStamps:5,ticketTemplateId:'ticket-1',requiredServiceIds:[],requiredServiceMatchMode:'any'}]});
   const member = n => ({memberId:'member-'+n,lineUserId:'test:member-'+n,memberCode:'TEST'+n,displayName:'QA Member '+n,surname:'QA',salutation:'mr',birthday:'1980-01-01',phone:'+886912345678',status:'active',isTestAccount:true,tierKey:'general',tier:'一般會員',serviceMinutesTotal:0,joinedAt:version,updatedAt:version,isOnline:true,onlineSurfaces:['member']});
   return {
-    calls:[],unexpected:[],fault:null,seq:10,
+    calls:[],unexpected:[],fault:null,hold:null,seq:10,receiptResults:{},settlements:[],
     members:[member(1),member(2),member(3)],cards:[card(1),card(2)],tickets:[ticket],eventTickets:[],calendarItems:[],messagePresets:[],templates:[],
     tierSettings:tiers.map((tierKey,i)=>({tierKey,requiredServiceMinutes:i*100,styleKey:'forest'})),
     terms:[{id:'terms-1',version:'1',title:'QA terms',summary:'QA summary',body:'QA terms body',effectiveAt:version,status:'active',required:true,reconsentExisting:false}],
@@ -25,9 +25,9 @@ function fixture() {
     bookings:[],groups:{},benefitCatalog:{items:[]},receipts:[],submissions:[],accessibleRecords:[],grants:[],
   };
 }
-function transport(s, action, p={}, slug='api') {
-  s.calls.push({action,payload:structuredClone(p),slug});
-  if(s.fault && s.fault.action===action && (!s.fault.onCall || s.calls.filter(c=>c.action===action).length===s.fault.onCall)){const f=s.fault;s.fault=null;throw Object.assign(new Error(f.message||'QA rejected write'),{code:f.code||'CONFLICT'});}
+function transport(s, action, p={}, slug='api',record=true) {
+  if(record)s.calls.push({action,payload:structuredClone(p),slug});
+  if(s.fault && !s.fault.afterCommit && s.fault.action===action && (!s.fault.onCall || s.calls.filter(c=>c.action===action).length===s.fault.onCall)){const f=s.fault;s.fault=null;throw Object.assign(new Error(f.message||'QA rejected write'),{code:f.code||'CONFLICT'});}
   const stamp=()=>new Date(Date.parse(version)+(++s.seq)*1000).toISOString();
   const save=(table,key,value)=>{const row={...value,[key]:value[key]||'qa-'+(++s.seq),updatedAt:stamp()};const i=s[table].findIndex(x=>x[key]===row[key]);if(i<0)s[table].push(row);else s[table][i]=row;return structuredClone(row);};
   const del=(table,key,id)=>{s[table]=s[table].filter(x=>x[key]!==id);return {deleted:true};};
@@ -88,7 +88,18 @@ function transport(s, action, p={}, slug='api') {
   if(action==='admin.booking.receipt.list')return {submissions:s.submissions,accessibleRecords:s.accessibleRecords,bookings:s.bookings,receipts:s.receipts};
   if(action==='admin.booking.receipt.url')return {signedUrl:'https://fixture.supabase.co/storage/v1/object/sign/booking-receipts/qa.svg?token=fixture'};
   if(action==='admin.booking.receipt.options')return {services:s.services.map(x=>({id:x.serviceId,title:x.title,service_type:x.serviceType,duration_minutes:x.durationMinutes})),bookings:s.bookings,primaryTechnicianConfigured:true,rewardRules:[],benefitCatalog:s.benefitCatalog,currentBenefits:s.bookings.find(b=>b.bookingId===p.bookingId)?.benefits||[],currentBookingStatus:s.bookings.find(b=>b.bookingId===p.bookingId)?.status||''};
-  if(action==='admin.booking.receipt.register'){s.submissions=[];s.accessibleRecords=[{receiptId:p.receiptId,bookingId:'qa-completed',status:'bound',reviewStatus:'completed',memberName:'QA Member',memberCode:'TEST1',createdAt:version,completedAt:stamp(),bookingDate:p.bookingDate,startTime:p.startTime,serviceMinutes:p.items.reduce((n,i)=>n+i.minutes*i.quantity,0),points:2,services:p.items.map(i=>({title:'QA service',minutes:i.minutes,quantity:i.quantity})),benefits:[]}];return {bookingId:'qa-completed',settlement:{serviceMinutes:30,rewards:[{points:2}]}};}
+  if(action==='admin.booking.receipt.register'){
+    if(s.hold?.action===action){const wait=s.hold.wait;s.hold=null;return wait.then(()=>transport(s,action,p,slug,false));}
+    if(s.receiptResults[p.receiptId])return {...structuredClone(s.receiptResults[p.receiptId]),alreadyApplied:true};
+    const serviceMinutes=p.bookingId?s.bookings.find(b=>b.bookingId===p.bookingId)?.totalDurationMinutes||0:p.items.reduce((n,i)=>n+i.minutes*i.quantity,0);
+    // Explicit test reward: two points per review. This fixture is UI evidence only.
+    const result={bookingId:p.bookingId||'qa-completed',settlement:{serviceMinutes,rewards:[{points:2}],redemptions:p.benefits||[]}};
+    s.receiptResults[p.receiptId]=structuredClone(result);s.settlements.push(result.settlement);
+    s.submissions=s.submissions.filter(r=>r.receiptId!==p.receiptId);
+    s.accessibleRecords=s.accessibleRecords.filter(r=>r.receiptId!==p.receiptId).concat({receiptId:p.receiptId,bookingId:result.bookingId,status:'bound',reviewStatus:'completed',memberName:'QA Member',memberCode:'TEST1',createdAt:version,completedAt:stamp(),bookingDate:p.bookingDate,startTime:p.startTime,serviceMinutes,points:2,services:p.items.map(i=>({title:s.services.find(service=>service.serviceId===i.serviceId)?.title,minutes:i.minutes,quantity:i.quantity})),benefits:p.benefits||[]});
+    if(s.fault?.action===action&&s.fault.afterCommit){const fault=s.fault;s.fault=null;throw Object.assign(new Error('QA response lost after commit'),{code:fault.code});}
+    return result;
+  }
   if(action==='admin.booking.receipt.dismiss'){s.submissions=[];return {dismissed:true};}
   if(action==='admin.integration-overview')return {generatedAt:version,stats:bootstrap().stats,pointSources:[{title:'QA source',detail:'30 分鐘',pointCardTitle:'QA card 1',status:'active'}],campaigns:s.eventTickets,settlements:[],automation:{fixedTickets:s.templates},notifications:['pending','sent','failed'].map(status=>({status,memberDisplayName:'QA '+status,memberCode:status,scheduledFor:version,attemptCount:1})),auditTimeline:['member','booking','event_ticket','calendar','system'].map(domain=>({domain,action:'QA '+domain,targetLabel:'Target '+domain,actorRole:'Admin',result:'success',createdAt:version}))};
   s.unexpected.push({action,slug});throw Object.assign(new Error('Unimplemented fixture action '+action),{code:'FIXTURE_UNEXPECTED_ACTION'});
@@ -114,7 +125,7 @@ async function startFixture() {
       `);
       if(url.pathname.startsWith('/functions/v1/')){
         const chunks=[];for await(const c of req)chunks.push(c);const body=JSON.parse(Buffer.concat(chunks));const {action,operation,...payload}=body;
-        const data=transport(sessions.get(id),action||operation,payload,url.pathname.split('/').at(-1));
+        const data=await transport(sessions.get(id),action||operation,payload,url.pathname.split('/').at(-1));
         return send(200,'application/json',JSON.stringify({ok:true,data}));
       }
       if(url.pathname==='/receipt.svg')return send(200,'image/svg+xml','<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><text y="40">QA Receipt</text></svg>');

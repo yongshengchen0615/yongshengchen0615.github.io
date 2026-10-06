@@ -43,7 +43,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      const result = load('booking-panel-core.js', 'booking-operations-split-20261003-1-ticket-source-20261004-1-ticket-card-ui-20261004-1');
+      const result = load('booking-panel-core.js', 'booking-operations-split-20261003-1-ticket-source-20261004-1-ticket-card-ui-20261004-1-ticket-booking-20261006-1');
       // Compatibility marker for legacy architecture checks:
       // load('booking-panel-core.js', 'layout-stability-20261001-1')
       return result;

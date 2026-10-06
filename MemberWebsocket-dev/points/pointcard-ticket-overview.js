@@ -220,6 +220,7 @@
         else if (expired) statusText = '集點卡已超過使用期限';
         else if (!active) statusText = '集點卡目前未開放使用';
         else if (shortage > 0) statusText = `點數不足，還差 ${shortage} 點`;
+        else if (ticketId && !ticket?.eligibleBookings?.length) statusText = '需先有已確認、尚未完成且符合項目的預約';
         else if (!ticketId) statusText = '已達兌換點數，但票券尚未可用，請更新後再試';
 
         return {
@@ -237,8 +238,9 @@
           prizes: Array.isArray(ticket ? ticket.prizes : reward.prizes) ? (ticket ? ticket.prizes : reward.prizes) : [],
           requiresLocation: Boolean(ticket && ticket.requiresLocation),
           reservedForBooking,
+          eligibleBookings: Array.isArray(ticket?.eligibleBookings) ? ticket.eligibleBookings : [],
           shortage,
-          baseCanUse: Boolean(ticketId) && !reservedForBooking && !expired && active && shortage === 0,
+          baseCanUse: Boolean(ticketId) && !reservedForBooking && !expired && active && shortage === 0 && Boolean(ticket?.eligibleBookings?.length),
           statusText
         };
       });
@@ -579,6 +581,11 @@
       ? '此選取包含需 GPS 定位的票券。確認後會讀取目前位置；位置符合指定地點後才會立即扣點與核銷。'
       : '送出後將立即完成扣點與票券核銷，此操作無法取消或復原。';
 
+    let bookingChoice = modal.querySelector('[data-ticket-booking-choice]');
+    if (!bookingChoice) { bookingChoice = document.createElement('div'); bookingChoice.dataset.ticketBookingChoice = ''; modal.querySelector('[data-batch-list]').before(bookingChoice); }
+    bookingChoice.hidden = false;
+    const eligibleBookings = window.TicketBookingChoice?.common(tickets) || [];
+    window.TicketBookingChoice?.mount(bookingChoice, eligibleBookings, () => { modal.querySelector('.ticket-batch-confirm').disabled = !window.TicketBookingChoice.selected(bookingChoice); });
     const list = modal.querySelector('[data-batch-list]');
     list.replaceChildren(...tickets.map((ticket) => {
       const line = document.createElement('article');
@@ -616,7 +623,7 @@
     modal.querySelector('.ticket-batch-cancel').hidden = false;
     const confirm = modal.querySelector('.ticket-batch-confirm');
     confirm.dataset.mode = 'redeem';
-    confirm.disabled = false;
+    confirm.disabled = !window.TicketBookingChoice?.selected(bookingChoice);
     confirm.textContent = '確認使用';
     modal.classList.remove('hidden');
     confirm.focus();
@@ -636,6 +643,9 @@
     }
 
     const modal = modalBase();
+    const bookingChoice = modal.querySelector('[data-ticket-booking-choice]');
+    const bookingId = window.TicketBookingChoice?.selected(bookingChoice);
+    if (!bookingId) { overviewError('請選擇這些票券共同符合的已確認預約。'); return; }
     const confirm = modal.querySelector('.ticket-batch-confirm');
     const message = modal.querySelector('[data-batch-message]');
     const cancel = modal.querySelector('.ticket-batch-cancel');
@@ -644,6 +654,7 @@
     const needsLocation = tickets.some((ticket) => ticket.requiresLocation);
 
     state.busy = true;
+    window.TicketBookingChoice?.lock(bookingChoice, true);
     confirm.disabled = true;
     confirm.textContent = '使用中…';
     cancel.hidden = true;
@@ -659,12 +670,17 @@
         confirm.textContent = '使用中…';
         message.textContent = 'GPS 已取得，正在確認使用地點並核銷票券…';
       }
+      const usageKey = bookingId + ':' + tickets.map(ticket => ticket.ticketId).sort().join(',');
+      if (state.usageAttempt?.key !== usageKey) state.usageAttempt = { key: usageKey, requestId: newRequestId() };
       const result = await extensionRequest('member.redeem', {
+        bookingId,
         ticketIds: tickets.map((ticket) => ticket.ticketId),
-        requestId: newRequestId(),
+        requestId: state.usageAttempt.requestId,
         ...(location ? { location } : {})
       });
       redeemed = true;
+      state.usageAttempt = null;
+      bookingChoice.hidden = true;
 
       const resultTickets = Array.isArray(result.tickets) ? result.tickets : [];
       modal.querySelector('[data-batch-title]').textContent = `已完成 ${Number(result.ticketCount || resultTickets.length)} 張票券使用`;
@@ -721,6 +737,7 @@
       }
     } finally {
       state.busy = false;
+      window.TicketBookingChoice?.lock(bookingChoice, false);
       if (synced) render();
       else if (!redeemed) {
         updateSelection();

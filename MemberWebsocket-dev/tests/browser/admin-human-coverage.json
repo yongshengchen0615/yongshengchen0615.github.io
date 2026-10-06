@@ -3,7 +3,7 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "5e5b527b6850c79a26635bbd5c89e1d158fbbb738de56f934d5016dcf576849b",
+    "admin/index.html": "af6c84978af2c5a1f0218c5398543f34cf23192cdc6c883e11ef03b1ca13b2bb",
     "admin/app.js": "849e8a327f0e73c65c775f4a6c29519a9c1777abc4074cdf7e347b12ede362d9",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
@@ -15,13 +15,13 @@
     "admin/pointcard-redemption-limit.js": "a391a001602667e48e63ee5cb7353ac44596f4a39de36ac03b0084b88f0e2d2f",
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
     "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
-    "admin/booking-panel.js": "4c4f367d098ed12ca07e0d0f4e16f2077a129bf3bfc2df3171e931e9c79bf472",
-    "admin/booking-panel-core.js": "c31cd1195edde0e4f263fdd3a8847e9e0782d9ce9487ff758434db0f49e6861f",
+    "admin/booking-panel.js": "810ef2b0cae0ad6b1d971914ada4363fef6963caf4c530a163682c09c1c37371",
+    "admin/booking-panel-core.js": "609d6e25690fa6813f414a2892391047d542e5b8c2b02b5ec01aeffd126c9bcf",
     "admin/booking-resources.js": "136a14edf9dc1699a7284b0b5905e1f2f4f21c952471a0fbb2fdab632f2e61e9",
     "admin/booking-always-open.js": "9cb236902a7f3f36cf3fe4c3f13fbbac622f000c72d36ec34f7d4dde08e6e54a",
     "admin/booking-cancellation-sync.js": "54b6d5eafd064687439a3b84d3fdbb730413ddb06af4f18977294a9e628ac0ee",
     "admin/booking-receipt-admin.js": "b5873c2753c0f2f9c267d0d13583405c2205cc70c0f2103f5899f741a74cf920",
-    "admin/booking-accessible-admin.js": "bcb30ea8be9d5a38d0173ad374e7e4f6ba77590f07086df106e0c34ee2bee021"
+    "admin/booking-accessible-admin.js": "3400051e47c2839d33c7ba2c12fd8de6e97624fa1d12e5b7a5f7fb96c84097af"
   },
   "features": [
     {
@@ -386,12 +386,19 @@
     {
       "id": "booking.41",
       "module": "booking",
-      "name": "無障礙登記、略過、已完成紀錄與狀態篩選",
+      "name": "無障礙審核、票券額度、失敗保留、同收據重送、連續送出與完成歷史",
       "cases": [
         "BOOKING_ACCESSIBLE_register",
         "BOOKING_ACCESSIBLE_dismiss",
         "BOOKING_ACCESSIBLE_BENEFITS",
-        "BOOKING_ACCESSIBLE_EXISTING"
+        "BOOKING_ACCESSIBLE_EXISTING",
+        "BOOKING_ACCESSIBLE_FAILURE_BOOKING_CONFLICT",
+        "BOOKING_ACCESSIBLE_FAILURE_ADMIN_REQUIRED",
+        "BOOKING_ACCESSIBLE_FAILURE_API_RESPONSE_UNCERTAIN",
+        "BOOKING_ACCESSIBLE_UNCERTAIN_REPLAY",
+        "BOOKING_ACCESSIBLE_DOUBLE_SUBMIT",
+        "BOOKING_ACCESSIBLE_READ_FAILURE",
+        "BOOKING_RELEASED_TICKET"
       ]
     },
     {

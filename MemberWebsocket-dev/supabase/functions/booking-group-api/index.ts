@@ -50,6 +50,7 @@ function mapDbError(error: any): ApiError {
     ["INVALID_BOOKING_BENEFITS",400,"INVALID_BOOKING_BENEFITS","選用優惠資料格式不正確。"],
     ["BOOKING_BENEFIT_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一項優惠目前已不可使用，請重新整理後再選擇。"],
     ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法綁定至預約自動核銷。"],
+    ["BOOKING_REDEEMED_BENEFIT_SERVICE_REQUIRED",409,"BOOKING_REDEEMED_BENEFIT_SERVICE_REQUIRED","已核銷票券所需的服務項目不能移除。"],
     ["BOOKING_BENEFIT_SERVICE_REQUIRED",409,"BOOKING_BENEFIT_SERVICE_REQUIRED","所選票券需要預約指定項目，請確認本次預約項目後再試。"],
     ["POINT_TICKET_INSUFFICIENT_POINTS",409,"POINT_TICKET_INSUFFICIENT_POINTS","集點卡點數不足，請取消部分票券後再預約。"],
     ["BOOKING_CONFLICT",409,"BOOKING_CONFLICT","預約已被更新，請重新整理後再操作。"],
@@ -209,12 +210,12 @@ async function fullBooking(s: SupabaseClient, id: string) {
   const [br, ir, benefitResult] = await Promise.all([
     s.from("bookings").select("*, members(display_name,member_code), booking_technicians(name)").eq("id",id).single(),
     s.from("booking_items").select("booking_id,service_id,service_title,unit_duration_minutes,unit_price_amount,quantity").eq("booking_id",id).order("created_at",{ascending:true}),
-    s.from("booking_benefit_selections").select("benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at").eq("booking_id",id).order("selected_at",{ascending:true}),
+    s.from("booking_benefit_selections").select("benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at,result").eq("booking_id",id).order("selected_at",{ascending:true}),
   ]);
   if (br.error) throw mapDbError(br.error);
   if (ir.error) throw mapDbError(ir.error);
   if (benefitResult.error) throw mapDbError(benefitResult.error);
-  const items=(ir.data||[]).map(itemClient), benefits=(benefitResult.data||[]).filter((x:any)=>["points","event"].includes(String(x.benefit_kind||""))).map((x:any)=>({kind:x.benefit_kind,id:x.benefit_ref,title:x.title_snapshot||"可用權益",status:x.status||"pending",redeemedAt:x.redeemed_at||null})), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
+  const items=(ir.data||[]).map(itemClient), benefits=(benefitResult.data||[]).filter((x:any)=>["points","event"].includes(String(x.benefit_kind||""))).map((x:any)=>({kind:x.benefit_kind,id:x.benefit_ref,title:x.title_snapshot||"可用權益",status:x.status||"pending",cancellationReason:x.result?.cancellationReason||"",redeemedAt:x.redeemed_at||null})), g=(await groupData(s,[id])).get(id)||{}, r=br.data;
   return { bookingId:r.id, requestId:r.request_id, serviceId:r.service_id, serviceTitle:items.map((x:any)=>x.serviceTitle).join(" + ")||"預約項目", items, benefits, totalDurationMinutes:Number(r.total_duration_minutes||30), totalAmount:items.reduce((sum:number,x:any)=>sum+Number(x.subtotalAmount||0),0), memberId:r.member_id, memberDisplayName:r.members?.display_name||"", memberCode:r.members?.member_code||"", bookingDate:r.booking_date, startTime:String(r.start_time||"").slice(0,5), endTime:String(r.end_time||"").slice(0,5), startAt:localTimestamp(r.start_at), endAt:localTimestamp(r.end_at), status:r.status, memberNote:r.member_note||"", adminNote:r.admin_note||"", completedAt:r.completed_at||null, confirmedAt:r.confirmed_at, rejectedAt:r.rejected_at, cancelledAt:r.cancelled_at, createdAt:r.created_at, updatedAt:r.updated_at, contactSource:r.contact_source||"member", contactSurname:r.contact_surname||"", contactSalutation:r.contact_salutation||"", contactPhone:r.contact_phone||"", ...g };
 }
 

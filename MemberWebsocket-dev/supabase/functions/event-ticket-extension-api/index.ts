@@ -1,3 +1,4 @@
+import { bookingTicketUsageError, ticketBookingId } from "../_shared/booking-ticket-usage.ts";
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
@@ -95,6 +96,8 @@ async function globalSetting(supabase: ReturnType<typeof db>) {
   };
 }
 function mapRpcError(error: unknown): ApiError {
+  const bookingError = bookingTicketUsageError(error, (status, code, message) => new ApiError(status, code, message));
+  if (bookingError) return bookingError as ApiError;
   const message = String((error as { message?: string })?.message || "");
   if (message.includes("MEMBERSHIP_REQUIRED")) return new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入後再使用此功能。");
   if (message.includes("CLAIM_NOT_FOUND")) return new ApiError(404, "CLAIM_NOT_FOUND", "找不到其中一張已領取票券。");
@@ -144,16 +147,11 @@ async function redeemTickets(origin: string | null, body: Json) {
   if (!(await hasCurrentTermsConsent(supabase, member.id))) {
     throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意最新版會員條款。");
   }
-  const reserved = await supabase.from("booking_benefit_selections").select("benefit_ref")
-    .eq("member_id", member.id).eq("benefit_kind", "event").eq("status", "pending").in("benefit_ref", claimIds).limit(1);
-  if (reserved.error) throw new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
-  if ((reserved.data || []).length) throw new ApiError(409, "BOOKING_BENEFIT_RESERVED", "其中一張活動票券已預約使用，將於預約服務完成時自動核銷。");
   await consumeRateLimit(supabase, identity.lineUserId, true, claimIds.length);
-  const rpc = await supabase.rpc("redeem_event_tickets_with_location", {
+  const rpc = await supabase.rpc("redeem_member_tickets_for_booking_request", {
     p_line_user_id: identity.lineUserId,
-    p_claim_ids: claimIds,
-    p_request_id: requestId,
-    p_location: location,
+    p_booking_id: ticketBookingId(body.bookingId, (status, code, message) => new ApiError(status, code, message)),
+    p_kind: "event", p_refs: claimIds, p_request_id: requestId, p_location: location,
   });
   if (rpc.error) throw mapRpcError(rpc.error);
   const realtime = await supabase.from("realtime_events").insert([

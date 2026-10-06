@@ -10,7 +10,7 @@ test.beforeEach(async({page},info)=>{
   await page.route('https://fixture.supabase.co/**',async route=>{
     if(route.request().url().includes('/storage/'))return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><text y="40">QA receipt</text></svg>'});
     const {action,operation,...payload}=route.request().postDataJSON();
-    try {await route.fulfill({json:{ok:true,data:transport(host.sessions.get(run),action||operation,payload,new URL(route.request().url()).pathname.split('/').at(-1))}});}
+    try {await route.fulfill({json:{ok:true,data:await transport(host.sessions.get(run),action||operation,payload,new URL(route.request().url()).pathname.split('/').at(-1))}});}
     catch(e){await route.fulfill({status:400,json:{ok:false,error:{code:e.code,message:e.message}}});}
   });
   await page.route('https://nominatim.openstreetmap.org/**',r=>r.fulfill({json:[{lat:'25.033',lon:'121.5654',display_name:'QA Taipei'}]}));
@@ -23,6 +23,7 @@ test.beforeEach(async({page},info)=>{
 test.afterEach(async({page},info)=>{
   expect(info.fixture?.unexpected||[], 'All API actions must be modeled explicitly').toEqual([]);
   expect(info.browserErrors||[], 'No uncaught production UI errors').toEqual([]);
+  if(typeof page.screenshot==='function' && /BOOKING_ACCESSIBLE|BOOKING_RELEASED_TICKET/.test(info.title)) await info.attach('admin-final-state',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
   await info.attach('admin-interaction-evidence',{body:JSON.stringify({evidence:'chromium-isolated-transport',calls:info.fixture?.calls},null,2),contentType:'application/json'});
 });
 const click=(p,id)=>p.locator('#'+id).click();
@@ -264,4 +265,51 @@ test('BOOKING_ACCESSIBLE_BENEFITS — owned tickets, concrete services, shared p
 });
 test('BOOKING_ACCESSIBLE_EXISTING — bind existing completed booking and recheck current tickets',async({page:p},info)=>{
   seedBooking(info.fixture,'completed');await seedAccessible(p,info.fixture);await select(p,'accessibleAdminExisting','booking-1');await expect(p.locator('#accessibleAdminSubmit')).toBeEnabled();await expect(p.locator('#accessibleAdminNewFields')).toHaveAttribute('disabled','');await expect(p.locator('#accessibleAdminDate')).toBeDisabled();await expect(p.locator('#accessibleAdminMessage')).toContainText('已完成');await click(p,'accessibleAdminSubmit');await expect(p.locator('#accessibleAdminModal')).toBeHidden();expect(calls(info.fixture,'admin.booking.receipt.register')[0].payload.bookingId).toBe('booking-1');expect(calls(info.fixture,'admin.booking.receipt.options').some(c=>c.payload.bookingId==='booking-1')).toBe(true);
+});
+
+async function prepareAccessibleReview(p,s){
+  await seedAccessible(p,s);await expect(p.locator('#accessibleAdminImage')).toHaveAttribute('src','https://fixture.supabase.co/storage/v1/object/sign/booking-receipts/qa.svg?token=fixture');
+  await p.locator('[data-service-check]').first().check();await p.locator('[data-minutes]').first().fill('60');
+  await fill(p,'accessibleAdminDate',today());await fill(p,'accessibleAdminTime','10:03');await fill(p,'accessibleAdminNote','QA review retained');
+}
+for(const code of ['BOOKING_CONFLICT','ADMIN_REQUIRED','API_RESPONSE_UNCERTAIN'])test('BOOKING_ACCESSIBLE_FAILURE_'+code+' — rejected review preserves receipt and form without a settlement',async({page:p},info)=>{
+  await prepareAccessibleReview(p,info.fixture);info.fixture.fault={action:'admin.booking.receipt.register',code,message:'QA '+code};
+  await click(p,'accessibleAdminSubmit');await expect(p.locator('#accessibleAdminMessage')).toContainText(code==='API_RESPONSE_UNCERTAIN'?'同一張收據':'QA '+code);
+  await expect(p.locator('#accessibleAdminModal')).toBeVisible();await expect(p.locator('#accessibleAdminSubmit')).toBeEnabled();
+  await expect(p.locator('#accessibleAdminNote')).toHaveValue('QA review retained');expect(info.fixture.settlements).toHaveLength(0);expect(info.fixture.submissions).toHaveLength(1);
+  await click(p,'accessibleAdminSubmit');await expect(p.locator('#accessibleAdminModal')).toBeHidden();expect(info.fixture.settlements).toHaveLength(1);
+  expect(calls(info.fixture,'admin.booking.receipt.register')[0].payload).toEqual(calls(info.fixture,'admin.booking.receipt.register')[1].payload);
+});
+test('BOOKING_ACCESSIBLE_UNCERTAIN_REPLAY — lost response replays same receipt and settles time and points once',async({page:p},info)=>{
+  await prepareAccessibleReview(p,info.fixture);info.fixture.fault={action:'admin.booking.receipt.register',code:'API_RESPONSE_UNCERTAIN',afterCommit:true};
+  await click(p,'accessibleAdminSubmit');await expect(p.locator('#accessibleAdminMessage')).toContainText('同一張收據');
+  expect(info.fixture.settlements).toHaveLength(1);await click(p,'accessibleAdminSubmit');await expect(p.locator('#accessibleAdminModal')).toBeHidden();
+  expect(info.fixture.settlements).toEqual([{serviceMinutes:60,rewards:[{points:2}],redemptions:[]}]);expect(info.fixture.accessibleRecords).toHaveLength(1);
+  const writes=calls(info.fixture,'admin.booking.receipt.register');expect(writes).toHaveLength(2);expect(writes[0].payload).toEqual(writes[1].payload);
+  await expect(p.locator('#accessibleAdminQueueList')).toContainText('60 分鐘');await p.reload();await booking(p,'bookingAdminQueueSubtab');await click(p,'bookingAdminAccessibleMode');
+  await p.locator('[data-accessible-filter="completed"]').click();await expect(p.locator('#accessibleAdminQueueList')).toContainText('60 分鐘');
+});
+test('BOOKING_ACCESSIBLE_DOUBLE_SUBMIT — form lock rejects parallel submission and keeps modal open until confirmed',async({page:p},info)=>{
+  await prepareAccessibleReview(p,info.fixture);let release;const wait=new Promise(resolve=>{release=resolve;});info.fixture.hold={action:'admin.booking.receipt.register',wait};
+  try{
+    await p.evaluate(()=>{const form=document.getElementById('accessibleAdminForm');form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+    await expect(p.locator('#accessibleAdminSubmit')).toBeDisabled();await expect(p.locator('#accessibleAdminForm')).toHaveAttribute('aria-busy','true');
+    await expect.poll(()=>calls(info.fixture,'admin.booking.receipt.register').length).toBe(1);await expect(p.locator('#accessibleAdminClose')).toBeDisabled();await p.evaluate(()=>document.getElementById('accessibleAdminClose').click());await expect(p.locator('#accessibleAdminModal')).toBeVisible();
+  }finally{release();}
+  await expect(p.locator('#accessibleAdminModal')).toBeHidden();expect(calls(info.fixture,'admin.booking.receipt.register')).toHaveLength(1);expect(info.fixture.settlements).toHaveLength(1);
+});
+
+test('BOOKING_ACCESSIBLE_READ_FAILURE — unavailable options prevent review and reopening reloads authoritative data',async({page:p},info)=>{
+  info.fixture.fault={action:'admin.booking.receipt.options',code:'DATABASE_ERROR',message:'QA options unavailable'};await seedAccessible(p,info.fixture);
+  await expect(p.locator('#accessibleAdminMessage')).toContainText('QA options unavailable');await expect(p.locator('#accessibleAdminSubmit')).toBeDisabled();
+  expect(calls(info.fixture,'admin.booking.receipt.register')).toHaveLength(0);expect(info.fixture.submissions).toHaveLength(1);
+  await click(p,'accessibleAdminClose');await p.locator('#accessibleAdminQueueList button').click();await expect(p.locator('[data-service-check]').first()).toBeEnabled();
+  await click(p,'accessibleAdminClose');await expect(p.locator('#accessibleAdminImage')).not.toHaveAttribute('src','https://fixture.supabase.co/storage/v1/object/sign/booking-receipts/qa.svg?token=fixture');
+});
+test('BOOKING_RELEASED_TICKET — booking and accessible history explain why a held ticket was released',async({page:p},info)=>{
+  seedBooking(info.fixture);const benefit={kind:'points',id:'qa-released',title:'QA released coupon',sourceTitle:'QA card',ticketTitle:'QA released coupon',status:'cancelled',cancellationReason:'booking_services_changed'};
+  info.fixture.bookings[0].benefits=[benefit];
+  info.fixture.accessibleRecords=[{receiptId:'released-receipt',bookingId:'booking-1',status:'bound',reviewStatus:'completed',memberName:'QA Member',memberCode:'TEST1',createdAt:version,completedAt:version,serviceMinutes:30,points:0,services:[],benefits:[benefit]}];
+  await booking(p,'bookingAdminQueueSubtab');await expect(p.locator('[data-booking-id="booking-1"]').first()).toContainText('項目變更，已解除綁定');
+  await click(p,'bookingAdminAccessibleMode');await p.locator('[data-accessible-filter="completed"]').click();await p.locator('#accessibleAdminQueueList button').click();await expect(p.locator('#accessibleAdminRecordModal')).toContainText('項目變更，已解除綁定');
 });

@@ -21,20 +21,24 @@ test('member API exposes booked ticket state and blocks direct redemption', () =
   assert.match(api, /reservedForBooking: Boolean\(reservedForBooking\)/);
   assert.match(api, /reservedPointTicketIds\.has\(String\(ticket\.ticket_id \|\| ""\)\)/);
   assert.match(api, /reservedEventClaimIds\.has\(String\(claimRow\.claim_id \|\| ""\)\)/);
-  assert.match(api, /canUse: Boolean\(claim && claim\.status === "available".*!reservedForBooking\)/);
-  assert.match(api, /BOOKING_BENEFIT_RESERVED/);
-  assert.match(api, /這張票券已預約使用，將於預約服務完成時自動核銷/);
-  assert.match(api, /這張活動票券已預約使用，將於預約服務完成時自動核銷/);
+  assert.match(api, /canUse: Boolean\(claim && claim\.status === "available".*!reservedForBooking.*bookingOptions/);
+  const shared = read('supabase/functions/_shared/booking-ticket-usage.ts');
+  assert.match(api, /redeem_member_tickets_for_booking_request/);
+  assert.match(shared, /BOOKING_BENEFIT_RESERVED/);
+  assert.match(shared, /已預約使用/);
+
 });
 
 test('batch redemption endpoints also reject tickets reserved for bookings', () => {
   const pointApi = read('supabase/functions/pointcard-extension-api/index.ts');
   const eventApi = read('supabase/functions/event-ticket-extension-api/index.ts');
 
+  const migration = read('supabase/migrations/20261006023020_booking_ticket_usage_consistency.sql');
+  assert.match(migration, /BOOKING_BENEFIT_RESERVED/);
+  assert.match(migration, /status='pending'/);
   for (const source of [pointApi, eventApi]) {
-    assert.match(source, /booking_benefit_selections/);
-    assert.match(source, /eq\("status", "pending"\)/);
-    assert.match(source, /BOOKING_BENEFIT_RESERVED/);
+    assert.match(source, /redeem_member_tickets_for_booking_request/);
+    assert.match(source, /bookingTicketUsageError/);
   }
 });
 

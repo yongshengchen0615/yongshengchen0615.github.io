@@ -1,3 +1,4 @@
+import { bookingTicketUsageError } from "../_shared/booking-ticket-usage.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { loadBookingBenefits } from "../_shared/booking-benefits.ts";
@@ -53,6 +54,8 @@ function response(origin: string | null, payload: unknown, status = 200): Respon
   return new Response(JSON.stringify(payload), { status, headers: { ...corsHeaders(origin), "Content-Type": "application/json; charset=utf-8" } });
 }
 function mapDatabaseError(error: unknown): ApiError {
+  const bookingError = bookingTicketUsageError(error, (status, code, message) => new ApiError(status, code, message));
+  if (bookingError) return bookingError as ApiError;
   const raw = error as { message?: string; details?: string; code?: string };
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
@@ -227,7 +230,7 @@ async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Prom
       .select("booking_id,service_id,service_title,service_type,counts_toward_membership,unit_duration_minutes,unit_price_amount,quantity,created_at")
       .eq("booking_id", bookingId).order("created_at", { ascending: true }),
     supabase.from("booking_benefit_selections")
-      .select("benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at")
+      .select("benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at,result")
       .eq("booking_id", bookingId).order("selected_at", { ascending: true }),
   ]);
   if (itemResult.error) throw mapDatabaseError(itemResult.error);
@@ -239,7 +242,7 @@ async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Prom
     kind: row.benefit_kind,
     id: row.benefit_ref,
     title: row.title_snapshot || "可用權益",
-    status: row.status || "pending",
+    status: row.status || "pending", cancellationReason: row.result?.cancellationReason || "",
     redeemedAt: row.redeemed_at || null,
   }));
   const member = bookingResult.data.members || null;
