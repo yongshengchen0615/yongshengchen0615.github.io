@@ -213,12 +213,12 @@ async function acquireE2EExecutionLease(
 ): Promise<Json> {
   const result = await supabase.rpc("admin_acquire_test_execution_lease", {
     p_actor: identity.lineUserId,
-    p_ttl_minutes: 60,
+    p_ttl_minutes: 1,
   });
   if (result.error || !UUID_RE.test(String(result.data || ""))) {
     throw new ApiError(503, "E2E_LEASE_ACQUIRE_FAILED", "目前無法鎖定完整 E2E 執行期間。", result.error?.message || null);
   }
-  return { leaseId: String(result.data), expiresInMinutes: 60 };
+  return { leaseId: String(result.data), expiresInMinutes: 1 };
 }
 
 async function releaseE2EExecutionLease(
@@ -238,6 +238,26 @@ async function releaseE2EExecutionLease(
     throw new ApiError(503, "E2E_LEASE_RELEASE_FAILED", "目前無法解除完整 E2E 執行鎖。", result.error.message || null);
   }
   return { released: result.data === true };
+}
+
+async function heartbeatE2EExecutionLease(
+  supabase: any,
+  identity: { lineUserId: string },
+  body: Json,
+): Promise<Json> {
+  const leaseId = asText(body.leaseId, 80);
+  if (!UUID_RE.test(leaseId)) {
+    throw new ApiError(400, "INVALID_E2E_LEASE_ID", "E2E 執行鎖識別不正確。");
+  }
+  const result = await supabase.rpc("admin_heartbeat_test_execution_lease", {
+    p_lease_id: leaseId,
+    p_actor: identity.lineUserId,
+    p_ttl_minutes: 1,
+  });
+  if (result.error) {
+    throw new ApiError(503, "E2E_LEASE_HEARTBEAT_FAILED", "目前無法續租完整 E2E 執行鎖。", result.error.message || null);
+  }
+  return { renewed: result.data === true, expiresInMinutes: 1 };
 }
 
 async function prepareTestAccountConsents(
@@ -1877,6 +1897,14 @@ Deno.serve(async (request: Request) => {
         ok: true,
         status: 200,
         data: await releaseE2EExecutionLease(supabase, identity, body),
+      });
+    }
+
+    if (action === "admin.test-control.heartbeat-e2e-lease") {
+      return response(origin, {
+        ok: true,
+        status: 200,
+        data: await heartbeatE2EExecutionLease(supabase, identity, body),
       });
     }
 
