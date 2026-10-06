@@ -244,6 +244,12 @@ html[data-theme] .fixed-ticket-notify:hover {
 
 html[data-theme] .fixed-ticket-notify input[type="checkbox"] {
   accent-color: var(--theme-positive);
+  min-width: 20px;
+  min-height: 20px;
+  max-height: 20px;
+  margin-top: 2px;
+  box-shadow: none;
+  outline: 0;
 }
 
 html[data-theme] .fixed-ticket-schedule-summary {

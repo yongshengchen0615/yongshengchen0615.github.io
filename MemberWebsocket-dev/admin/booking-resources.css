@@ -141,6 +141,14 @@
   outline-offset: 3px;
 }
 
+#bookingPanel .booking-admin-policy-toggle > input {
+  min-width: 20px;
+  min-height: 20px;
+  max-height: 20px;
+  box-shadow: none;
+  outline: 0;
+}
+
 .booking-admin-policy-fields {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);

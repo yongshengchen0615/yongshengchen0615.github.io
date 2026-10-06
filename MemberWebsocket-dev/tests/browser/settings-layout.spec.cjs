@@ -38,9 +38,11 @@ for(const variant of [
   else expect(fields[1].y).toBeGreaterThan(fields[0].y+fields[0].height);
   await page.locator('#bookingAdminRequirePrimaryTechnician').uncheck();
   await expect(page.locator('#bookingAdminPrimaryRequirementHint')).toContainText('不必預約主要技師');
+  const checkbox=await page.locator('#bookingAdminRequirePrimaryTechnician').boundingBox();expect(checkbox.height).toBeLessThanOrEqual(24);
   const save=await page.locator('#bookingAdminSavePartySizeButton').boundingBox();expect(save.height).toBeGreaterThanOrEqual(44);
   const policyImage=info.outputPath('primary-technician-settings.png');
-  await policy.screenshot({path:policyImage});
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await page.screenshot({fullPage:true,path:policyImage});
   await info.attach('primary-technician-settings',{path:policyImage,contentType:'image/png'});
 
   await page.locator('#eventsTab').click();await page.locator('#newEventTicketButton').click();
@@ -50,6 +52,7 @@ for(const variant of [
   await page.locator('#fixedTicketNotifyTime').fill('09:30');
   await expect(page.locator('#fixedTicketNotifySummary')).toContainText('09:30');
   await page.locator('#fixedTicketNotifyLine').uncheck();
+  const notifyCheckbox=await page.locator('#fixedTicketNotifyLine').boundingBox();expect(notifyCheckbox.height).toBeLessThanOrEqual(24);
   await expect(page.locator('#fixedTicketNotifySummary')).toContainText('票券仍會依週期發放');
   await expect(page.locator('#fixedTicketNotifyTime')).toHaveValue('09:30');
   await page.locator('.fixed-ticket-notification-details summary').click();
