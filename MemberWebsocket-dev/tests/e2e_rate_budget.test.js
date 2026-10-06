@@ -33,15 +33,19 @@ test('paired E2E uses adaptive booking read budget and next-bucket backoff', () 
   assert.match(runner, /adminBookingBootstrapBackoffUntil/);
 });
 
-test('paired E2E protects workstation CPU and screenshot budget', () => {
+test('paired E2E starts every configured participant while preserving rate and screenshot budgets', () => {
   const runner = read('admin/e2e-control.js');
   const userRunner = read('user-test-control.js');
-  assert.match(runner, /const DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP = 2/);
+  const api = read('supabase/functions/test-control-api/index.ts');
   assert.match(runner, /navigator\?\.hardwareConcurrency|navigator\.hardwareConcurrency/);
   assert.match(runner, /deviceMemory/);
-  assert.match(runner, /participantFanout >= 8/);
-  assert.match(runner, /normalizedParticipantCount >= 3/);
-  assert.match(runner, /participantConcurrencyCap/);
+  assert.match(runner, /participantFanout/);
+  assert.match(runner, /resourceSuggestedConcurrency/);
+  assert.match(runner, /state\.clientConcurrency = normalizedParticipantCount/);
+  assert.match(runner, /allParticipantsStartImmediately: true/);
+  assert.doesNotMatch(runner, /normalizedParticipantCount >= 3 \|\| participantFanout >= 8/);
+  assert.match(runner, /測試用戶 ' \+ \(index \+ 1\) \+ ' \/ ' \+ count/);
+  assert.match(api, /clientConcurrency<1\|\|clientConcurrency>10/);
   assert.match(runner, /const FAILURE_SCREENSHOT_BUDGET = 2/);
   assert.match(runner, /reason: 'run-budget'/);
   assert.match(userRunner, /const FAILURE_SCREENSHOT_BUDGET = 1/);
