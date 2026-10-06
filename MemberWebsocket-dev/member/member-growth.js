@@ -7,6 +7,8 @@
     binding: false,
     bound: false,
     joinSubmitted: false,
+    generation: 0,
+    previewCode: '',
   };
 
   function requestId(prefix) {
@@ -44,7 +46,7 @@
       trigger.className = 'member-referral-trigger';
       trigger.setAttribute('aria-haspopup', 'dialog');
       trigger.setAttribute('aria-controls', 'memberReferralModal');
-      trigger.textContent = '好友邀請';
+      trigger.textContent = '好友與邀請';
       pass.append(trigger);
     }
 
@@ -67,10 +69,10 @@
     const headingCopy = document.createElement('div');
     const kicker = document.createElement('p');
     kicker.className = 'kicker';
-    kicker.textContent = 'Friend referral';
+    kicker.textContent = 'Friends & invitations';
     const title = document.createElement('h2');
     title.id = 'memberReferralTitle';
-    title.textContent = '好友邀請';
+    title.textContent = '好友與邀請';
     headingCopy.append(kicker, title);
     const close = document.createElement('button');
     close.id = 'closeMemberReferral';
@@ -83,10 +85,11 @@
     const description = document.createElement('p');
     description.id = 'memberReferralDescription';
     description.className = 'member-referral-description';
-    description.textContent = '分享自己的邀請碼可持續邀請不同好友；每位會員作為被邀請者只能綁定一次，完成後不可改綁。';
+    description.textContent = '掃描、分享或輸入邀請碼加入好友。好友需要對方接受；首次邀請獎勵由你另外確認綁定，每位會員只能綁定一次。';
 
     const share = document.createElement('section');
     share.className = 'member-referral-section';
+    share.id = 'memberReferralShare';
     const shareTitle = document.createElement('strong');
     shareTitle.textContent = '我的邀請碼';
     const shareRow = document.createElement('div');
@@ -110,26 +113,27 @@
     bind.className = 'member-referral-section member-referral-bind';
     bind.noValidate = true;
     const bindTitle = document.createElement('strong');
-    bindTitle.textContent = '輸入好友邀請碼';
+    bindTitle.textContent = '加入好友';
     const bindLabel = document.createElement('label');
     bindLabel.setAttribute('for', 'memberReferralInviteCode');
-    bindLabel.textContent = '好友邀請碼';
+    bindLabel.textContent = '會員編號、邀請碼或分享連結';
     const input = document.createElement('input');
     input.id = 'memberReferralInviteCode';
     input.type = 'text';
-    input.maxLength = 10;
+    input.maxLength = 2048;
     input.autocomplete = 'off';
     input.inputMode = 'text';
-    input.placeholder = '10 碼邀請碼';
+    input.placeholder = '輸入編號、邀請碼或貼上好友連結';
     input.setAttribute('aria-describedby', 'memberReferralBindHelp');
     const help = document.createElement('small');
     help.id = 'memberReferralBindHelp';
-    help.textContent = '不可使用自己的邀請碼。綁定成功後不可改綁其他人。';
+    help.textContent = '查找後可送出好友邀請；使用 10 碼邀請碼時，也可另外綁定首次邀請獎勵。綁定成功後不可改綁。';
     const submit = document.createElement('button');
     submit.id = 'bindMemberReferral';
-    submit.type = 'submit';
+    submit.type = 'button';
     submit.className = 'button button-dark';
-    submit.textContent = '確認綁定';
+    submit.textContent = '綁定首次邀請獎勵';
+    submit.disabled = true;
     const status = document.createElement('p');
     status.id = 'memberReferralStatus';
     status.className = 'member-growth-status hidden';
@@ -142,8 +146,8 @@
     document.body.append(modal);
 
     const closeModal = () => {
-      if (state.binding) return;
       modal.classList.add('hidden');
+      window.dispatchEvent(new Event('member-referral:closed'));
       trigger.setAttribute('aria-expanded', 'false');
       trigger.focus();
     };
@@ -153,7 +157,8 @@
       modal.classList.remove('hidden');
       trigger.setAttribute('aria-expanded', 'true');
       window.requestAnimationFrame(() => {
-        try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
+        modal.tabIndex = -1;
+        modal.focus({ preventScroll: true });
       });
     };
 
@@ -164,17 +169,27 @@
       if (event.target === modal) closeModal();
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+      if (modal.classList.contains('hidden')) return;
+      if (event.key === 'Escape') { event.preventDefault(); closeModal(); }
+      if (event.key === 'Tab') {
+        const items = Array.from(modal.querySelectorAll('button:not(:disabled),input:not(:disabled),a[href],[tabindex="0"]')).filter(item => item.getClientRects().length && !item.closest('[hidden]'));
+        const first = items[0], last = items.at(-1);
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === modal)) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === modal || document.activeElement === last || !modal.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      }
     });
 
     input.addEventListener('input', () => {
-      const next = input.value.toUpperCase().replace(/[^A-F0-9]/g, '').slice(0, 10);
-      if (input.value !== next) input.value = next;
       if (!state.binding && !state.bound) state.referralRequestId = '';
+      state.previewCode = '';
+      submit.disabled = true;
+      window.MemberFriends?.invalidate?.();
       showReferralStatus('');
     });
 
     copy.addEventListener('click', async () => {
+      const current = state.generation;
       const ownCode = String(state.profile?.inviteCode || '').trim();
       if (!/^[A-F0-9]{10}$/.test(ownCode)) {
         showReferralStatus('邀請碼仍在同步，請稍後重新開啟視窗。', true);
@@ -182,8 +197,10 @@
       }
       try {
         await navigator.clipboard.writeText(ownCode);
+        if (current !== state.generation) return;
         showReferralStatus('邀請碼已複製。');
       } catch (_) {
+        if (current !== state.generation) return;
         const range = document.createRange();
         range.selectNodeContents(code);
         const selection = window.getSelection();
@@ -193,11 +210,15 @@
       }
     });
 
-    bind.addEventListener('submit', async (event) => {
+    bind.addEventListener('submit', (event) => {
       event.preventDefault();
-      if (state.binding || state.bound) return;
+      void window.MemberFriends?.lookup?.();
+    });
+    submit.addEventListener('click', async (event) => {
+      event.preventDefault();
+      if (state.binding || state.bound || window.MemberFriends?.isBusy?.()) return;
 
-      const inviteCode = input.value.trim().toUpperCase();
+      const inviteCode = state.previewCode;
       const ownCode = String(state.profile?.inviteCode || '').trim().toUpperCase();
       if (!/^[A-F0-9]{10}$/.test(inviteCode)) {
         showReferralStatus('請輸入完整的 10 碼好友邀請碼。', true);
@@ -215,6 +236,8 @@
       }
 
       state.binding = true;
+      const current = state.generation;
+      window.MemberFriends?.stopScan?.();
       state.referralRequestId = state.referralRequestId || requestId('ref');
       input.disabled = true;
       submit.disabled = true;
@@ -229,6 +252,7 @@
           'member.referral.bind',
           { inviteCode, requestId: state.referralRequestId }
         );
+        if (current !== state.generation) return;
         state.bound = true;
         const expires = result?.rewardExpiresOn
           ? '，票券效期至 ' + window.MemberSystem.formatDate(result.rewardExpiresOn)
@@ -240,15 +264,17 @@
         );
         submit.textContent = '已完成綁定';
       } catch (error) {
+        if (current !== state.generation) return;
         input.disabled = false;
         submit.disabled = false;
-        submit.textContent = '確認綁定';
+        submit.textContent = '綁定首次邀請獎勵';
         showReferralStatus(error?.code === 'REFERRAL_REWARD_UNAVAILABLE' ? '管理員尚未設定好友邀請票券。' : (error?.message || '好友邀請暫時無法完成，請稍後再試。'), true);
       } finally {
-        state.binding = false;
+        if (current === state.generation) { state.binding = false; input.disabled = false; }
       }
     });
 
+    window.dispatchEvent(new Event('member-referral:ui-ready'));
     return modal;
   }
 
@@ -283,8 +309,28 @@
   });
 
   window.addEventListener('member-profile-ready', (event) => {
-    state.profile = event?.detail?.profile || {};
+    const next = event?.detail?.profile || {};
+    if (state.profile?.lineUserId !== next.lineUserId) {
+      state.generation++; state.binding = false; state.bound = false;
+      state.previewCode = ''; state.referralRequestId = '';
+      document.getElementById('closeMemberReferral')?.click();
+      const input = document.getElementById('memberReferralInviteCode');
+      if (input) { input.value = ''; input.disabled = false; }
+      const submit = document.getElementById('bindMemberReferral');
+      if (submit) { submit.disabled = true; submit.textContent = '綁定首次邀請獎勵'; }
+    }
+    state.profile = next;
     renderInviteCode(state.profile);
     void sendJoinCompletionMessage();
   });
+  window.MemberReferral = {
+    ensureUi: ensureReferralUi,
+    close: () => document.getElementById('closeMemberReferral')?.click(),
+    isBusy: () => state.binding,
+    preview: code => {
+      state.previewCode = /^[A-F0-9]{10}$/.test(code) ? code : '';
+      const button = document.getElementById('bindMemberReferral');
+      if (button) button.disabled = !state.previewCode || state.binding || state.bound;
+    },
+  };
 })();

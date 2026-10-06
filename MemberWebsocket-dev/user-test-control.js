@@ -3092,7 +3092,7 @@
     const buttons = Array.from(document.querySelectorAll('button')).filter((button) => !qaPanel?.contains(button) && button.id !== LAUNCHER_ID);
     const navigationIds = new Set(['retryButton','logoutButton','joinMemberButton','refreshProfileButton','refreshTicketButton']);
     const patterns = {
-      member: /^(refreshFriends|shareFriendLink|confirmFriendRequest|edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|copyMemberInviteCode|bindMemberReferral|renewTermsButton)/,
+      member: /^(refreshFriends|shareFriendLink|confirmFriendRequest|lookupFriend|scanFriendQr|uploadFriendQr|stopFriendQr|edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|copyMemberInviteCode|bindMemberReferral|renewTermsButton)/,
       points: /^(retryButton|joinMemberButton|logoutButton|pointTransferButton|pointTransferClose|pointTransferCopyOwnCode|pointTransferLookup|pointTransferSubmit)$|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
       event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button/,
       calendar: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|todayButton|nextMonthButton|closeCalendarDetailButton)$|calendar-day/,
@@ -3401,7 +3401,7 @@
     const input = document.getElementById('memberReferralInviteCode');
     const form = document.getElementById('memberReferralForm');
     const copy = document.getElementById('copyMemberInviteCode');
-    const status = document.getElementById('memberReferralStatus');
+    const status = document.getElementById('friendStatus');
     const validCode = /^[A-F0-9]{10}$/.test(ownCode);
     let selfRejected = false;
     if (modal && input && form && validCode) {

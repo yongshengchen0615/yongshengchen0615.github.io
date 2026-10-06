@@ -39,7 +39,7 @@
 }
 
 .member-referral-dialog {
-  width: min(100%, 430px);
+  width: min(100%, 620px);
   max-height: min(760px, calc(100vh - 40px));
   overflow: auto;
   display: grid;
@@ -108,8 +108,7 @@
   border-color: var(--theme-border-strong, #c9c5cf);
   background: var(--theme-surface-raised, #fff);
   color: var(--theme-text, #1d1b20);
-  text-transform: uppercase;
-  letter-spacing: .08em;
+  text-transform: none;
 }
 
 .member-referral-section input::placeholder {

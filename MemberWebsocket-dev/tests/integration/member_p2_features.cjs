@@ -3,7 +3,10 @@ const load=require('./fixtures/load-postgres-snapshot.cjs');
 test('settings copy, consented friends and delegated settlement use canonical PostgreSQL',async t=>{
  const db=await load();const one=async(sql,args=[]) => (await db.query(sql,args)).rows[0];
  try{
-  for(const name of ['20261006081433_booking_primary_requirement_fixed_notification_time.sql','20261006133127_member_p2_features.sql'])await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations',name),'utf8'));
+  const dependencyCheck=fs.readFileSync(path.resolve(__dirname,'../../supabase/verify_api_dependencies.sql'),'utf8');
+  assert.equal((await db.query(dependencyCheck)).rows.some(row=>row.missing_rpc==='member_ticket_booking_options'),true);
+  for(const name of ['20261006023020_booking_ticket_usage_consistency.sql','20261006081433_booking_primary_requirement_fixed_notification_time.sql','20261006133127_member_p2_features.sql'])await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations',name),'utf8'));
+  assert.deepEqual((await db.query(dependencyCheck)).rows,[]);
   await db.exec('select maintenance.ensure_required_system_baseline();');
   await db.exec("insert into admins(line_user_id,role,status)values('test:p2-admin','admin','active');");
   const member=async code=>(await one("insert into members(line_user_id,member_code,invite_code,status,membership_status,is_test_account,display_name)values($1,$2,$3,'active','active',true,'QA member')returning id",['test:p2-'+code,code,(code+'0000000000').slice(0,10)])).id;

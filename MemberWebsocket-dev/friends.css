@@ -11,3 +11,16 @@
 .friends-panel [role=status] {min-height:1.6em;}
 #settingsCopyModal .modal-card {width:min(560px,calc(100vw - 24px));max-height:85dvh;overflow:auto;}
 @media(max-width:620px){.friends-panel{padding:16px;} .friend-row{align-items:flex-start;} .friend-actions{width:100%;} }
+.friend-sharing {display:grid;grid-template-columns:192px minmax(0,1fr);gap:18px;align-items:center;}
+.friend-sharing input {font-size:13px;overflow:hidden;text-overflow:ellipsis;}
+.member-referral-dialog .friends-panel {margin:0;padding:16px;}
+.member-referral-dialog .friends-panel h3 {margin:0 0 12px;}
+.member-referral-dialog .friend-actions {align-items:stretch;}
+.member-referral-dialog .friend-actions button {flex:1 1 150px;min-height:44px;}
+#friendQrScanner {border-radius:16px;padding:12px;background:var(--theme-surface-muted);}
+#friendQrScanner[hidden] {display:none;}
+#friendQrVideo {display:block;width:100%;aspect-ratio:4/3;object-fit:contain;border-radius:12px;background:#111;}
+#friendQrScanner p,#friendStatus {margin:10px 0;line-height:1.6;color:var(--theme-text-muted);}
+#friendStatus:empty {display:none;}
+#bindMemberReferral {min-height:44px;}
+@media(max-width:560px){.friend-sharing{grid-template-columns:minmax(0,1fr);gap:8px;}.friend-qr{margin:8px auto;}.member-referral-dialog .friend-actions button{flex-basis:120px;}.member-referral-dialog{padding:16px;}.member-referral-heading{position:sticky;top:-16px;background:var(--theme-surface-raised);padding:12px 0;z-index:1;}}
