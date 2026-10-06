@@ -6819,6 +6819,14 @@
         pointTicketFixture:true
       }, { fixtureReady:false });
     }
+    state.accessibleReviewEvidence = {
+      receiptId:String(pending.receiptId || ''),
+      participantIndex:Number(participant.index || 0),
+      registerPayload:null,
+      fixtureTag:String(fixture.fixtureTag || ''),
+      testSessionToken:String(fixtureResult.login?.testSessionToken || ''),
+      beforeReplay:null
+    };
 
     const refreshed = await adminBookingReceiptRequest('admin.booking.receipt.list');
     window.dispatchEvent(new CustomEvent('admin:accessible-receipts-updated', {
@@ -6866,8 +6874,10 @@
     const yesterday = new Intl.DateTimeFormat('en-CA', {
       timeZone:'Asia/Taipei', year:'numeric', month:'2-digit', day:'2-digit'
     }).format(new Date(Date.now() - 24 * 60 * 60 * 1000));
-    await adminHumanTextInput(document.getElementById('accessibleAdminDate'), yesterday, '服務日期');
-    await adminHumanTextInput(document.getElementById('accessibleAdminTime'), '09:00', '開始時間');
+    if (!setField('accessibleAdminDate', yesterday) || !setField('accessibleAdminTime', '09:00')) {
+      throw new Error('無障礙審核日期或時間欄位未載入。');
+    }
+    await adminHumanPause(80, 180);
 
     const ticketSelector = '#accessibleAdminBenefits [data-benefit-check][data-kind="points"][data-selection-id="' +
       CSS.escape(String(fixture.ticketId || '')) + '"]';
@@ -6941,6 +6951,7 @@
       && actual.completedFilterSelected;
 
     state.accessibleReviewEvidence = {
+      ...(state.accessibleReviewEvidence || {}),
       receiptId:String(pending.receiptId || ''),
       participantIndex:Number(participant.index || 0),
       registerPayload,
@@ -6967,9 +6978,27 @@
   async function adminBookingAccessibleIdempotencyCase() {
     const evidence = state.accessibleReviewEvidence;
     if (!evidence?.receiptId || !evidence?.registerPayload) {
-      return fail('缺少前一個無障礙審核案例的完成證據，無法驗證重送冪等。', {
-        completedAccessibleReviewEvidence:true
-      }, { evidenceReady:false });
+      let fixtureCleanup = false;
+      let cleanupError = '';
+      if (evidence?.fixtureTag && evidence?.testSessionToken) {
+        try {
+          const cleanup = await postFunction('user-test-api', {
+            action:'user.qa.fixture.cleanup',
+            surface:'booking',
+            idToken:'',
+            testSessionToken:evidence.testSessionToken,
+            fixtureTag:evidence.fixtureTag
+          });
+          fixtureCleanup = cleanup?.cleaned === true;
+        } catch (error) {
+          cleanupError = String(error?.code || error?.message || 'cleanup-failed').slice(0, 160);
+        }
+      }
+      state.accessibleReviewEvidence = null;
+      return fail('缺少前一個無障礙審核案例的完成證據，已嘗試清理其 QA Fixture，無法驗證重送冪等。', {
+        completedAccessibleReviewEvidence:true,
+        fixtureCleanup:true
+      }, { evidenceReady:false, fixtureCleanup, cleanupError });
     }
 
     const before = await waitAccessibleReceiptRecord(evidence.receiptId, (record) => record?.reviewStatus === 'completed', 5000);
