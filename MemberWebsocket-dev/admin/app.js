@@ -41,6 +41,7 @@
     ].forEach((id) => { els[id] = document.getElementById(id); });
     window.TicketLocationEditors.init();
     bindEvents();
+    installSettingsCopy();
     window.addEventListener('pagehide', (event) => {
       // Hide private views before Back/Forward Cache snapshots them. A persisted
       // page keeps its in-memory credential only until pageshow, where the server
@@ -1575,6 +1576,47 @@
     els.rewardEditorHint.textContent = duplicate ? '有節點使用相同點數，請調整後再儲存。' : missingTicket ? '每個節點都要選擇一張已啟用票券。' : `${rewards.length} 個兌換節點 · 兌換時會自動扣除該節點需要集到的點數。`; els.rewardEditorHint.classList.toggle('warning', duplicate || missingTicket);
   }
   function validateRewardEditor(title, rewards) { if (!title || title.length > 80) return '請填寫卡片名稱（最多 80 字）。'; if (!rewards.length || rewards.length > 30) return '請至少設定 1 個兌換節點，最多 30 個節點。'; const thresholds = new Set(); for (const reward of rewards) { if (!Number.isInteger(reward.thresholdStamps) || reward.thresholdStamps < 1 || reward.thresholdStamps > 100) return '需要集到的點數必須是 1–100 的整數。'; if (thresholds.has(reward.thresholdStamps)) return '每個點數只能設定一個節點。'; thresholds.add(reward.thresholdStamps); if (!reward.ticketTemplateId) return '請為每個節點選擇一張票券。'; } return ''; }
+
+  function installSettingsCopy() {
+    for(const [kind,idField,titleField,saveId,messageId] of [
+      ['card','cardId','cardTitle','saveCardButton','cardFormMessage'],
+      ['ticket','ticketTemplateId','ticketTitle','saveTicketButton','ticketFormMessage'],
+      ['event','eventTicketId','eventTicketTitle','saveEventTicketButton','eventTicketFormMessage'],
+    ]) {
+      const save=document.getElementById(saveId);if(!save)continue;
+      const button=document.createElement('button');button.type='button';button.className='button button-refresh';button.id='copySettings-'+kind;button.textContent='複製已儲存設定';save.before(button);
+      button.addEventListener('click',()=>{
+        const fixed=kind==='event'&&document.getElementById('eventTicketType').value==='fixed'?window.FixedTicketAdmin?.selected():null;
+        const sourceId=fixed?.fixedTicketId||document.getElementById(idField).value;
+        const copyKind=fixed?'fixed':kind;
+        const source=fixed||(kind==='card'?state.cards:kind==='ticket'?state.tickets:state.eventTickets).find(x=>(x.cardId||x.ticketTemplateId||x.eventTicketId)===sourceId);
+        if(!source || requireRefreshBeforeWrite(els[messageId])) {showMessage(els[messageId],'請先選擇已儲存的設定。');return;}
+        let modal=document.getElementById('settingsCopyModal');
+        if(!modal){modal=document.createElement('div');modal.id='settingsCopyModal';modal.className='modal';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-labelledby','settingsCopyTitle');modal.innerHTML='<section class="modal-card"><h2 id="settingsCopyTitle">複製設定為草稿</h2><p>複製已儲存的設定。請在複本確認規則與效期後再啟用。</p><label>複本名稱<input id="settingsCopyName" maxlength="100" required></label><p id="settingsCopyPreview"></p><p>會員點數、持有票券、使用紀錄及預約綁定不會複製。此操作不發券、不發 LINE 通知。</p><p id="settingsCopyStatus" role="status" aria-live="polite"></p><div class="form-actions"><button id="settingsCopyCancel" type="button" class="button button-refresh">取消</button><button id="settingsCopyConfirm" type="button" class="button button-dark">建立草稿複本</button></div></section>';document.body.append(modal);}
+        modal.classList.remove('hidden');const input=modal.querySelector('#settingsCopyName');input.disabled=false;input.value=(source.title+'（複本）').slice(0,100);
+        modal.querySelector('#settingsCopyPreview').textContent=`來源：${source.title} · 效期：${source.expiresOn||[source.startsOn,source.endsOn].filter(Boolean).join('～')||'不限'}${source.quota!==undefined?' · 限量：'+(source.quota||'不限'):''}${source.rewards?' · '+source.rewards.length+' 個集點節點':''}${source.allowedTierKeys?' · 階級：'+source.allowedTierKeys.map(key=>({general:'一般',silver:'銀級',gold:'金級',platinum:'白金'})[key]||key).join('、'):''}。名稱可在此修改，其餘設定建立後在原編輯器調整。`;
+        const status=modal.querySelector('#settingsCopyStatus');status.textContent='';const confirm=modal.querySelector('#settingsCopyConfirm');const cancel=modal.querySelector('#settingsCopyCancel');confirm.disabled=false;cancel.disabled=false;
+        let operation=null;let busy=false;
+        const close=()=>{if(busy)return;modal.classList.add('hidden');button.focus();};cancel.onclick=close;
+        modal.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();close();}if(event.key==='Tab'){const nodes=[input,cancel,confirm].filter(x=>!x.disabled);const i=nodes.indexOf(document.activeElement);event.preventDefault();nodes[(i+(event.shiftKey?-1:1)+nodes.length)%nodes.length]?.focus();}};
+        confirm.onclick=async()=>{
+          if(busy||!input.reportValidity())return;
+          const title=input.value.trim();if(!title)return;
+          if(!operation || operation.title!==title)operation={title,requestId:'COPY-'+crypto.randomUUID()};
+          busy=true;confirm.disabled=true;cancel.disabled=true;input.disabled=true;status.textContent='正在建立草稿…';
+          try {
+            const result=await window.MemberSystem.request(state.config,'admin',state.idToken,'admin.settings.copy',{kind:copyKind,sourceId,...operation});
+            const panel=kind==='event'?'events':'cards';state.loadedPanels[panel]=false;await ensureAdminPanelData(panel);
+            if(kind==='card')loadCardForm(result.publicId);else if(kind==='ticket')loadTicketForm(result.publicId);else if(fixed)await window.FixedTicketAdmin.loadCopy(result.publicId);else loadEventTicketForm(result.publicId);
+            busy=false;close();showMessage(els[messageId],'草稿複本已建立。請確認名稱、效期、數量、會員階級與規則後再啟用。',true);
+          } catch(error){status.textContent=error.message||'無法確認結果，請重試同一操作。';}
+          finally{busy=false;confirm.disabled=false;cancel.disabled=false;input.disabled=false;}
+        };
+        input.focus();
+      });
+    }
+  }
+
   async function saveCard(event) {
     event.preventDefault(); if (requireRefreshBeforeWrite(els.cardFormMessage)) return; hideMessage(els.cardFormMessage);
     const rewards = collectRewards(); const expiryMode = String(els.cardExpiryMode.value || 'unlimited'); const expiresOn = String(els.cardExpiresOn.value || '').trim(); const usageMethod = String(els.cardUsageMethod.value || '').trim(); const usageInstructions = String(els.cardUsageInstructions.value || '').trim(); const benefitDescription = String(els.cardBenefitDescription.value || '').trim();

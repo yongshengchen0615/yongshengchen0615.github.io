@@ -925,6 +925,7 @@
       status.textContent = STATUS_LABELS[statusKey] || statusKey;
       top.append(titleBox, status);
       item.appendChild(top);
+      if(booking.serviceRecipientMemberCode){const recipient=document.createElement('p');recipient.className='service-info';recipient.textContent='代好友預約 · 受服務者：'+booking.serviceRecipientName+' · '+booking.serviceRecipientMemberCode;item.append(recipient);}
 
       if (hasParticipantDetails) {
         window.BookingGroupUI?.renderBookingHistoryCard?.(item, booking);

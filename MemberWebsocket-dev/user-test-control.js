@@ -1024,7 +1024,7 @@
     const common = [
       caseDef('測試帳號授權邊界', 'Authentication', testSessionCase, 'COMMON_TEST_SESSION'),
       caseDef('測試帳號自動教學啟動', 'UI', tourAutoStartCase, 'COMMON_TOUR_AUTOSTART'),
-      caseDef('使用教學：遮罩、步驟、今日略過與重播', 'UI', tourJourneyCase, 'COMMON_TOUR_JOURNEY'),
+      caseDef('使用教學：遮罩、步驟、不再顯示與重播', 'UI', tourJourneyCase, 'COMMON_TOUR_JOURNEY'),
       caseDef('公開設定與 Client 設定', 'Configuration', configCase, 'COMMON_CONFIG'),
       caseDef('目前頁面載入狀態', 'UI', surfaceReadyCase, 'COMMON_SURFACE_READY'),
       caseDef(definition.label + ' Bootstrap API', 'API', bootstrapCase, 'COMMON_BOOTSTRAP'),
@@ -1309,7 +1309,7 @@
       before = new Map(tourKeys().map((key) => [key, localStorage.getItem(key)]));
       launcher.click();
       if (dialog.classList.contains('hidden') || !app.inert) throw new Error('手動開啟教學後，對話框未顯示或主畫面仍可操作。');
-      if (skipButton.textContent.trim() !== '今日略過') throw new Error('略過按鈕文案不正確。');
+      if (skipButton.textContent.trim() !== '不再顯示') throw new Error('略過按鈕文案不正確。');
       overlay.click();
       if (dialog.classList.contains('hidden')) throw new Error('點擊遮罩意外略過教學。');
       const regions = new Set(masks.map((mask) => mask.dataset.memberTourMask));
@@ -1333,20 +1333,20 @@
       }
 
       skipButton.click();
-      if (!dialog.classList.contains('hidden') || app.inert) throw new Error('今日略過後未關閉教學或恢復主畫面。');
+      if (!dialog.classList.contains('hidden') || app.inert) throw new Error('不再顯示後未關閉教學或恢復主畫面。');
       const changed = tourKeys().filter((key) => localStorage.getItem(key) !== before.get(key));
-      if (changed.length !== 1) throw new Error('今日略過未寫入單一用戶的教學狀態。');
+      if (changed.length !== 1) throw new Error('不再顯示未寫入單一用戶的教學狀態。');
       touchedKey = changed[0];
       const saved = JSON.parse(localStorage.getItem(touchedKey) || 'null');
       const today = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
-      if (saved?.outcome !== 'skip' || saved?.source !== 'explicit'
+      if (saved?.version !== 2 || saved?.disabled !== true || saved?.outcome !== 'skip' || saved?.source !== 'explicit'
         || today.format(new Date(saved.skippedAt)) !== today.format(new Date())) {
-        throw new Error('今日略過狀態沒有依台北日期正確記錄。');
+        throw new Error('不再顯示狀態沒有依台北日期正確記錄。');
       }
       evidence.skippedToday = true;
 
       launcher.click();
-      if (dialog.classList.contains('hidden') || !app.inert) throw new Error('今日略過後無法手動重播教學。');
+      if (dialog.classList.contains('hidden') || !app.inert) throw new Error('不再顯示後無法手動重播教學。');
       evidence.replayed = true;
       const first = progress.textContent.trim();
       if (!/^使用教學 1 \/ \d+$/.test(first)) throw new Error('重播未從第一步開始。');
@@ -1366,9 +1366,9 @@
       if (!dialog.classList.contains('hidden') || app.inert || evidence.steps.length < 2) {
         throw new Error('教學未能逐步完成並恢復主畫面。');
       }
-      if (localStorage.getItem(touchedKey) !== null) throw new Error('完成教學後未清除今日略過狀態。');
+      if (JSON.parse(localStorage.getItem(touchedKey)||'null')?.disabled !== true) throw new Error('手動完成教學後永久選擇被清除。');
       evidence.completed = true;
-      outcome = pass('五個用戶端共用教學已完成遮罩、導覽、今日略過、重播與狀態驗證。', expected, evidence);
+      outcome = pass('五個用戶端共用教學已完成遮罩、導覽、不再顯示、重播與狀態驗證。', expected, evidence);
     } catch (error) {
       outcome = fail(String(error?.message || error), expected, evidence);
     } finally {

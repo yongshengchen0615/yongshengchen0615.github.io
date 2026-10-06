@@ -10,7 +10,7 @@ const loader = fs.readFileSync(path.join(root, 'admin/booking-panel.js'), 'utf8'
 
 test('admin cancellation list returns contact and per-participant booking details', () => {
   assert.match(api, /contact_surname,contact_salutation,contact_phone/);
-  assert.match(api, /members\(display_name,member_code,surname,salutation,phone\)/);
+  assert.match(api, /members!bookings_member_id_fkey\(display_name,member_code,surname,salutation,phone\)/);
   assert.match(api, /from\("booking_participants"\)/);
   assert.match(api, /from\("booking_participant_items"\)/);
   assert.match(api, /technicianName:/);

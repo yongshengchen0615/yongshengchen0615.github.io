@@ -29,7 +29,7 @@
     event: [
       { selector: '#membershipProgress', title: '確認會員資格', description: '部分活動依會員階級開放，先在這裡確認目前階級。' },
       { selector: '.event-toolbar', title: '查看活動狀態', description: '這裡會顯示目前開放的票券及已使用紀錄數量。' },
-      { selector: '#eventList .event-ticket', title: '查看或領取票券', description: '點開票券後先閱讀說明；領取與核銷是不同操作。' },
+      { selector: '#eventList .event-ticket button', title: '查看並使用活動票券', description: '「查看並使用」先開啟詳情，不會自動領取或核銷。請確認期間、會員階級與預約項目；領取後選擇已確認且符合條件的預約，最後按確認使用才會核銷。預約頁勾選未領取票券時，會先提醒勾選等於領取。' },
       { selector: '#usedTicketHistory:not(.hidden)', title: '查詢核銷紀錄', description: '已使用的票券與結果保留在這裡。' },
       { selector: '#emptyView:not(.hidden)', title: '尚無開放活動', description: '有新的活動票券時，會顯示在這個區域。' },
     ],
@@ -40,8 +40,9 @@
     ],
     booking: [
       { selector: '#membershipProgress', title: '確認會員階級', description: '預約前可先查看會員階級與服務時間進度。' },
+      { selector: '.booking-accessible-switch', title: '選擇操作模式', description: '一般模式可選日期、項目、技師與票券；大字拍收據模式可上傳收據，由管理員登記服務。切換會保留未送出的草稿。' },
       { selector: '#bookingNotice', title: '閱讀預約說明', description: '請先確認店家公告與可預約時段規則。' },
-      { selector: '#calendarGrid', title: '選擇預約日期', description: '點選可預約日期後，再選服務與時間；送出前會再次確認。' },
+      { selector: '#calendarGrid button', title: '選擇預約日期', description: '點選可預約日期後，再選服務與時間；送出前會再次確認。' },
       { selector: '#bookingView .booking-card[aria-labelledby="myBookingsTitle"]', title: '查看我的預約', description: '已預約、已完成與已取消的紀錄都會顯示在這裡。' },
     ],
   };
@@ -90,7 +91,7 @@
     ui.memberTourDialog.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close('dismiss'); }
       if (event.key !== 'Tab') return;
-      const focusable = [ui.memberTourSkip, ui.memberTourBack, ui.memberTourNext].filter((button) => !button.disabled);
+      const focusable = [document.getElementById('memberTourDismiss'), ui.memberTourSkip, ui.memberTourBack, ui.memberTourNext].filter((button) => !button.disabled);
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (event.shiftKey && (document.activeElement === first || document.activeElement === ui.memberTourTitle)) {
@@ -122,7 +123,7 @@
     }
     const existingOverlay = document.getElementById('memberTourOverlay');
     if (existingOverlay) ensureTourMasks(existingOverlay);
-    if (document.getElementById('memberTourDialog')) return;
+    if (document.getElementById('memberTourDialog')) { installDismiss(); return; }
     const overlay = document.createElement('div');
     overlay.id = 'memberTourOverlay';
     overlay.className = 'member-tour-overlay hidden';
@@ -140,8 +141,18 @@
     dialog.setAttribute('aria-labelledby', 'memberTourTitle');
     dialog.setAttribute('aria-describedby', 'memberTourDescription');
     dialog.tabIndex = -1;
-    dialog.innerHTML = '<p id="memberTourProgress" class="member-tour-progress" aria-live="polite"></p><h2 id="memberTourTitle" tabindex="-1"></h2><p id="memberTourDescription"></p><div class="member-tour-actions"><button id="memberTourSkip" type="button">今日略過</button><button id="memberTourBack" type="button">上一步</button><button id="memberTourNext" type="button">下一步</button></div>';
+    dialog.innerHTML = '<p id="memberTourProgress" class="member-tour-progress" aria-live="polite"></p><h2 id="memberTourTitle" tabindex="-1"></h2><p id="memberTourDescription"></p><div class="member-tour-actions"><button id="memberTourSkip" type="button">不再顯示</button><button id="memberTourBack" type="button">上一步</button><button id="memberTourNext" type="button">下一步</button></div>';
     document.body.append(overlay, focus, dialog);
+    installDismiss();
+  }
+
+  function installDismiss() {
+    const dialog=document.getElementById('memberTourDialog');
+    const skip=document.getElementById('memberTourSkip');
+    if(skip) skip.textContent='不再顯示';
+    if(!dialog || document.getElementById('memberTourDismiss')) return;
+    const button=document.createElement('button');button.id='memberTourDismiss';button.type='button';button.className='member-tour-dismiss';button.textContent='關閉';button.setAttribute('aria-label','關閉使用教學');
+    button.addEventListener('click',()=>close('dismiss'));dialog.prepend(button);
   }
 
   function ensureTourMasks(overlay) {
@@ -210,6 +221,7 @@
     try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { /* storage blocked */ }
     const skippedAt = saved?.skippedAt || (saved?.outcome === 'skip' ? saved.completedAt : null);
     const explicitSkip = saved?.outcome === 'skip' && saved?.source === 'explicit';
+    if(saved?.version===2 && saved?.disabled===true && saved?.source==='explicit') return;
     const isPairedE2ERunner = new URLSearchParams(window.location?.search || '').has('qaPair');
     if (!isPairedE2ERunner && explicitSkip && skippedAt && taipeiDay(new Date(skippedAt)) === taipeiDay(new Date())) return;
     // Test accounts follow the same tutorial rules as real members. Paired E2E explicitly validates and dismisses the tour.
@@ -286,7 +298,7 @@
       else if (!available(stepIndex)) renderStep({ scroll: false });
     });
     activeObserver.observe(ui.view, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden'] });
-    renderStep({ scroll: Boolean(trigger) });
+    renderStep({ scroll: true });
     return true;
   }
 
@@ -319,7 +331,7 @@
     ui.memberTourDescription.textContent = step.description;
     ui.memberTourBack.disabled = findStep(stepIndex - 1, -1) < 0;
     ui.memberTourNext.textContent = findStep(stepIndex + 1, 1) < 0 ? '完成' : '下一步';
-    if (options.scroll === true) target.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+    if (options.scroll !== false) target.scrollIntoView?.({ block: 'center', behavior: 'instant' });
     // Geometry must exist even when the page is backgrounded and rAF is throttled.
     positionFocus();
     queuePositionFocus();
@@ -348,10 +360,18 @@
     const box = target.getBoundingClientRect();
     const dialog = ui.memberTourDialog.getBoundingClientRect();
     const edge = innerWidth <= 620 ? 10 : 20;
-    const overlap = (top) => Math.max(0, Math.min(box.right, dialog.right) - Math.max(box.left, dialog.left))
-      * Math.max(0, Math.min(box.bottom, top + dialog.height) - Math.max(box.top, top));
-    const bottomTop = innerHeight - edge - dialog.height;
-    ui.memberTourDialog.classList.toggle('member-tour-dialog-top', overlap(edge) < overlap(bottomTop));
+    const width=dialog.width || Math.max(0,dialog.right-dialog.left);
+    const height=dialog.height;
+    const candidates=[
+      {left:Math.max(edge,innerWidth-edge-width),top:Math.max(edge,innerHeight-edge-height)},
+      {left:Math.max(edge,innerWidth-edge-width),top:edge},
+      {left:edge,top:Math.max(edge,innerHeight-edge-height)},
+      {left:edge,top:edge},
+    ];
+    const overlap=p=>Math.max(0,Math.min(box.right,p.left+width)-Math.max(box.left,p.left))*Math.max(0,Math.min(box.bottom,p.top+height)-Math.max(box.top,p.top));
+    candidates.sort((a,b)=>overlap(a)-overlap(b));const position=candidates[0];
+    ui.memberTourDialog.classList.toggle('member-tour-dialog-top',position.top===edge);
+    Object.assign(ui.memberTourDialog.style,{left:position.left+'px',top:position.top+'px',right:'auto',bottom:'auto'});
     if (box.bottom <= 0 || box.top >= innerHeight || box.right <= 0 || box.left >= innerWidth) {
       ui.memberTourFocus.classList.add('hidden');
       positionMasks(null);
@@ -406,11 +426,13 @@
     ui.memberTourDialog.classList.add('hidden');
     ui.memberTourDialog.classList.remove('member-tour-dialog-top');
     ui.memberTourDialog.style.removeProperty('--member-tour-progress');
+    for(const property of ['left','top','right','bottom']) ui.memberTourDialog.style.removeProperty(property);
     ui.app.inert = false;
     if (storageKey) {
       try {
-        if (outcome === 'skip') localStorage.setItem(storageKey, JSON.stringify({ skippedAt: new Date().toISOString(), outcome, source: 'explicit' }));
-        if (outcome === 'complete') localStorage.removeItem(storageKey);
+        if (outcome === 'skip') localStorage.setItem(storageKey, JSON.stringify({ version:2,disabled:true,skippedAt: new Date().toISOString(), outcome, source: 'explicit' }));
+        // Completing a manual replay preserves permanent opt-out. Legacy daily skips may expire.
+        if (outcome === 'complete') { const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved?.disabled!==true) localStorage.removeItem(storageKey); }
       } catch (_) { /* optional UX state */ }
     }
     const focusTarget = opener?.isConnected

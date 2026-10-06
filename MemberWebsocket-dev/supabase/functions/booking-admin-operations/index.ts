@@ -222,7 +222,7 @@ function itemClient(row: any): Json {
   };
 }
 async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Promise<Json> {
-  const bookingResult = await supabase.from("bookings").select("*, members(display_name, member_code)").eq("id", bookingId).maybeSingle();
+  const bookingResult = await supabase.from("bookings").select("*, members!bookings_member_id_fkey(display_name, member_code)").eq("id", bookingId).maybeSingle();
   if (bookingResult.error) throw mapDatabaseError(bookingResult.error);
   if (!bookingResult.data) throw new ApiError(404, "BOOKING_NOT_FOUND", "找不到這筆預約。");
   const [itemResult, benefitResult] = await Promise.all([

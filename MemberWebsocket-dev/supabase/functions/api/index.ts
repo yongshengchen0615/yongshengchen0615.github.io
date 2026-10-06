@@ -1,3 +1,4 @@
+import { tierVisibility, loadVisibilityPolicy } from "../_shared/tier-visibility.ts";
 import { bookingTicketUsageError, ticketBookingId } from "../_shared/booking-ticket-usage.ts";
 import { loadBookingBenefits } from "../_shared/booking-benefits.ts";
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
@@ -44,6 +45,8 @@ const WRITE_ACTIONS = new Set([
   "admin.member.update",
   "admin.member.force-logout",
   "admin.member-tiers.save",
+  "admin.settings.copy",
+  "admin.ticket-visibility.save",
   "admin.pointcards.save",
   "admin.pointcards.reorder",
   "admin.pointcards.archive",
@@ -124,6 +127,9 @@ function mapDatabaseError(error: unknown): ApiError {
     ["TERMS_UNAVAILABLE",503,"TERMS_UNAVAILABLE","目前尚無有效會員條款。"],
     ["TERMS_IMMUTABLE",409,"TERMS_IMMUTABLE","已發佈條款不可修改。"],
     ["TERMS_NOT_EFFECTIVE",400,"TERMS_NOT_EFFECTIVE","條款尚未生效或未設為必須同意。"],
+    ["COPY_SOURCE_NOT_FOUND",404,"COPY_SOURCE_NOT_FOUND","找不到可複製的已儲存設定。"],
+    ["INVALID_COPY_INPUT",400,"INVALID_COPY_INPUT","請填寫有效名稱與操作識別。"],
+    ["INVALID_COPY_KIND",400,"INVALID_COPY_KIND","不支援此設定類型。"],
     ["ADMIN_REQUIRED",403,"ADMIN_REQUIRED","管理員權限不足。"],
     ["INVALID_TERMS",400,"INVALID_TERMS","條款內容不完整或格式不正確。"],
     ["CONFLICT",409,"CONFLICT","資料已被其他操作更新，請重新整理後再試。"],
@@ -1183,6 +1189,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   const counts = new Map<string,number>();
   for (const row of countRes.data || []) counts.set(row.event_ticket_id,Number(row.claimed_count));
   const today = taipeiDate();
+  const visibilityPolicy = await loadVisibilityPolicy(supabase);
   const offers = (eventRows || []).flatMap((row:any) => {
     const claimRow = claimByEvent.get(row.id);
     // Fixed tickets are server-issued member benefits, not public claimable offers.
@@ -1194,7 +1201,9 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     const scheduled = Boolean(row.starts_on && today < row.starts_on);
     const ended = Boolean(row.ends_on && today > row.ends_on);
     const availability = scheduled ? "scheduled" : ended ? "ended" : "active";
-    const tierEligible = (row.allowed_tier_keys || []).includes(profile.tierKey);
+    const visibility = tierVisibility(row.allowed_tier_keys,profile.tierKey,visibilityPolicy);
+    if (!visibility.visible) return [];
+    const tierEligible = visibility.tierEligible;
     const soldOut = Number(row.quota || 0) > 0 && (counts.get(row.id)||0) >= Number(row.quota);
     const reservedForBooking = Boolean(claimRow && reservedEventClaimIds.has(String(claimRow.claim_id || "")));
     return [{
@@ -1202,6 +1211,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       claim,
       availability,
       tierEligible,
+      locked:visibility.locked, lockReason:visibility.lockReason, requiredTierLabels:visibility.requiredTierLabels,
       canClaim: !["referral","membership_join"].includes(String(row.ticket_type || "")) && !claim && tierEligible && availability === "active" && !soldOut,
       canUse: Boolean(claim && claim.status === "available" && tierEligible && availability === "active" && !reservedForBooking && (bookingOptions.data as any)?.event?.[claimRow.claim_id]?.length),
       eligibleBookings: claimRow ? (bookingOptions.data as any)?.event?.[claimRow.claim_id] || [] : [],
@@ -2208,9 +2218,11 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       profileFor(supabase,member),
       calendarItems(supabase,true),
     ]);
-    if (action === "user.calendar.bootstrap") return { profile,items };
+    const policy=await loadVisibilityPolicy(supabase);
+    const visibleItems=items.flatMap((item:any)=>{const v=tierVisibility(item.allowedTierKeys,profile.tierKey,policy);return item.itemType==='holiday'?[item]:v.visible?[{...item,...v}]:[];});
+    if (action === "user.calendar.bootstrap") return { profile,items:visibleItems };
     const date = asText(body.date,20);
-    return { profile,items:items.filter((item:any) => item.startsOn <= date && (item.endsOn || item.startsOn) >= date) };
+    return { profile,items:visibleItems.filter((item:any) => item.startsOn <= date && (item.endsOn || item.startsOn) >= date) };
   }
 
   if (!action.startsWith("admin.")) throw new ApiError(404,"ACTION_NOT_FOUND","不支援的 API action。");
@@ -2318,6 +2330,26 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       ["member","points","event","calendar","booking","admin"].map((scope) => ({ scope,event_type:"admin.member.force-logout" })),
     );
     return { lineUserId,revokedAt };
+  }
+  if (action === "admin.settings.copy") {
+    const result=await supabase.rpc("copy_admin_settings",{p_actor:identity.lineUserId,p_kind:asText(body.kind,20),p_source:asText(body.sourceId,120),p_title:asText(body.title,101),p_request_id:asText(body.requestId,120)});
+    if(result.error) throw mapDatabaseError(result.error);
+    return result.data as Json;
+  }
+  if (action === "admin.ticket-visibility.get") {
+    const r=await supabase.from("event_ticket_settings").select("visibility_policy,updated_at").eq("id",1).single();
+    if(r.error) throw mapDatabaseError(r.error);
+    return {visibilityPolicy:r.data.visibility_policy,updatedAt:r.data.updated_at};
+  }
+  if (action === "admin.ticket-visibility.save") {
+    const policy=asText(body.visibilityPolicy,40);
+    if(!["eligible_only","higher_preview"].includes(policy)) throw new ApiError(400,"INVALID_VISIBILITY_POLICY","可見性設定不正確。");
+    const r=await supabase.from("event_ticket_settings").update({visibility_policy:policy,updated_by:identity.lineUserId,updated_at:new Date().toISOString()}).eq("id",1).eq("updated_at",asText(body.expectedUpdatedAt,100)).select("updated_at").maybeSingle();
+    if(r.error) throw mapDatabaseError(r.error);
+    if(!r.data) throw new ApiError(409,"CONFLICT","設定已更新，請重新整理後再試。");
+    await supabase.from("audit_logs").insert({audit_id:requestId("AUD"),actor_line_user_id:identity.lineUserId,actor_role:admin.role,action:"TICKET_VISIBILITY_UPDATED",target_type:"event_ticket_settings",target_id:"1",result:"success",detail:{policy}});
+    await supabase.from("realtime_events").insert(["event","booking","calendar","admin"].map(scope=>({scope,event_type:action})));
+    return {visibilityPolicy:policy,updatedAt:r.data.updated_at};
   }
   if (action === "admin.pointcards.list") {
     const [data,bookingServices,stats] = await Promise.all([

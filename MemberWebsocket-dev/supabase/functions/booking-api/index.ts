@@ -876,7 +876,7 @@ async function adminServiceSave(supabase: SupabaseClient, identity: Identity, bo
 async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
   const today = taipeiDate();
   const pending = await supabase.from("bookings")
-    .select("*, members(display_name, member_code)")
+    .select("*, members!bookings_member_id_fkey(display_name, member_code)")
     .eq("status", "pending")
     .order("booking_date", { ascending: true })
     .order("start_time", { ascending: true })
@@ -884,7 +884,7 @@ async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
   if (pending.error) throw mapDatabaseError(pending.error);
 
   const recent = await supabase.from("bookings")
-    .select("*, members(display_name, member_code)")
+    .select("*, members!bookings_member_id_fkey(display_name, member_code)")
     .gte("booking_date", addDays(today, -7))
     .order("booking_date", { ascending: true })
     .order("start_time", { ascending: true })
@@ -1007,7 +1007,7 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
   }
 
   const updated = await supabase.from("bookings").update(patch).eq("id", bookingId).eq("status", booking.status).eq("updated_at", booking.updated_at)
-    .select("*, members(display_name, member_code)").single();
+    .select("*, members!bookings_member_id_fkey(display_name, member_code)").single();
   if (updated.error) throw mapDatabaseError(updated.error);
   const hydrated = await hydrateBookings(supabase, [updated.data]);
   await audit(supabase, identity, "admin", `BOOKING_${nextStatus.toUpperCase()}`, "booking", bookingId, { previousStatus: booking.status });

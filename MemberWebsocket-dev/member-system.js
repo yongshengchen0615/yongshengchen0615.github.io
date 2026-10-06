@@ -402,7 +402,7 @@
   }
 
   function request(config, clientType, idToken, action, payload = {}) {
-    const isWrite = WRITE_ACTIONS.includes(action);
+    const isWrite = WRITE_ACTIONS.includes(action) || ['admin.settings.copy','admin.ticket-visibility.save','member.friend.request','member.friend.accept','member.friend.remove','member.friend.block'].includes(action);
     if (isWrite) {
       pendingReads.clear();
       return sendRequest(config, clientType, idToken, action, payload).finally(() => pendingReads.clear());
@@ -419,7 +419,7 @@
   }
 
   function requestEndpoint(config, clientType, action) {
-    if (['event.today-usable','member.referral.bind','points.transfer.options','points.transfer.receiver','points.transfer.create'].includes(action)) {
+    if (String(action || '').startsWith('member.friend.') || ['event.today-usable','member.referral.bind','points.transfer.options','points.transfer.receiver','points.transfer.create'].includes(action)) {
       return String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/member-growth-api';
     }
     if (clientType === 'admin' && String(action || '').startsWith('admin.booking.receipt.')) {
@@ -440,7 +440,7 @@
     if (!SUPABASE_FUNCTION_PATTERN.test(endpoint) || endpoint.includes('REPLACE_')) {
       throw clientError('CONFIG_ERROR', '此功能的 Supabase Edge Function URL 尚未設定。');
     }
-    const isWrite = WRITE_ACTIONS.includes(action);
+    const isWrite = WRITE_ACTIONS.includes(action) || ['admin.settings.copy','admin.ticket-visibility.save','member.friend.request','member.friend.accept','member.friend.remove','member.friend.block'].includes(action);
     const timeoutMs = isWrite ? WRITE_TIMEOUT_MS : isFullBootstrap(clientType, action, payload) ? BOOTSTRAP_TIMEOUT_MS : READ_TIMEOUT_MS;
     const attempts = isWrite ? 1 : 2;
     const deadline = Date.now() + timeoutMs;

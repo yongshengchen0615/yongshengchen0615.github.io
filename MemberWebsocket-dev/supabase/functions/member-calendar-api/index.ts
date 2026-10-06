@@ -1,3 +1,4 @@
+import { tierVisibility, loadVisibilityPolicy } from "../_shared/tier-visibility.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
@@ -287,6 +288,8 @@ Deno.serve(async (request: Request) => {
     let items = rows
       .map(calendarClient)
       .map((item) => decorateTierEligibility(item, profile));
+    const policy=await loadVisibilityPolicy(db);
+    items=items.flatMap(item=>{const v=tierVisibility(item.allowedTierKeys,profile.tierKey,policy);return item.itemType==='holiday'?[item]:v.visible?[{...item,...v}]:[];});
     items = applyCalendarDisplayRules(items);
 
     if (action === "user.calendar.date.details") {

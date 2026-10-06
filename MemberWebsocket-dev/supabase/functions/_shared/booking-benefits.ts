@@ -1,3 +1,4 @@
+import { tierVisibility, loadVisibilityPolicy } from "./tier-visibility.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 import { loadLatestPointOffers, loadLatestEventOffers } from './latest-available-offers.ts';
 import { isEligibleTierActivity } from './activity-eligibility.ts';
@@ -7,7 +8,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   // Fixed-size batched reads; no ticket issuance, claim or redemption occurs here.
   const [points, events, calendar, eventSettings, pointSettings, pendingPointSelections] = await Promise.all([
     loadLatestPointOffers(db, String(member.id), true),
-    loadLatestEventOffers(db, String(member.id), tier, true),
+    loadLatestEventOffers(db, String(member.id), tier, true, true),
     db.from('calendar_items')
       .select('calendar_item_id,title,item_type,starts_on,ends_on,status,allowed_tier_keys,source_event_ticket_id,audience_type,audience_month')
       .eq('item_type', 'event').in('status', ['active', 'targeted'])
@@ -153,8 +154,10 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       : `需預約 ${typePart} 或 ${itemPart}`;
   };
 
+  const visibilityPolicy=await loadVisibilityPolicy(db);
+  const visibleEvents=events.filter(offer=>tierVisibility(offer.allowedTierKeys,tier,visibilityPolicy).visible);
   const activities = (calendar.data || []).filter((item: any) =>
-    isEligibleTierActivity(item, tier, today, member.birthday, undefined, undefined, true)
+    isEligibleTierActivity(item, tier, today, member.birthday, undefined, undefined, true) || (tierVisibility(item.allowed_tier_keys,tier,visibilityPolicy).visible && isEligibleTierActivity(item,(item.allowed_tier_keys||[])[0],today,member.birthday,undefined,undefined,true))
   ).slice(0, 8);
   return {
     asOf: new Date().toISOString(),
@@ -199,26 +202,28 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
                 : '',
         };
       }),
-      ...events.map((offer) => {
+      ...visibleEvents.map((offer) => {
+        const visibility=tierVisibility(offer.allowedTierKeys,tier,visibilityPolicy);
         const requiredServiceIds = Array.isArray(offer.requiredServiceIds) ? offer.requiredServiceIds : [];
         const requiredServiceMatchMode = offer.requiredServiceMatchMode === 'all' ? 'all' : 'any';
         const requiredServiceTitles = requiredServiceTitlesFor(requiredServiceIds);
         const requiredServiceRequirementLabel = requiredServiceRequirementLabelFor(requiredServiceIds, requiredServiceMatchMode);
         return {
           kind: 'event', id: offer.eventTicketId, title: offer.title,
-          subtitle: offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
-          statusLabel: offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
-          selectable: !offer.requiresLocation,
+          subtitle: visibility.locked ? visibility.lockReason : offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
+          statusLabel: visibility.locked ? '需升級' : offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
+          selectable: visibility.tierEligible && !offer.requiresLocation,
+          locked:visibility.locked,
           selectionId: offer.claimId || '',
-          claimRequired: !offer.claimed,
+          claimRequired: visibility.tierEligible && !offer.claimed,
           requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · ${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel}` : '預約項目限制：不限'}`,
-          disabledReason: offer.requiresLocation ? '此票券需於票券頁完成定位核銷' : '',
+          disabledReason: visibility.locked ? visibility.lockReason : offer.requiresLocation ? '此票券需於票券頁完成定位核銷' : '',
         };
       }),
       ...activities.map((item: any) => ({
         kind: 'calendar', id: item.calendar_item_id, title: item.title,
-        subtitle: '適用於目前會員階級', statusLabel: '活動進行中',
+        subtitle: tierVisibility(item.allowed_tier_keys,tier,visibilityPolicy).lockReason || '適用於目前會員階級', statusLabel: tierVisibility(item.allowed_tier_keys,tier,visibilityPolicy).locked ? '需升級' : '活動進行中',
         startsOn: item.starts_on || '', endsOn: item.ends_on || item.starts_on || '',
         selectable: false, selectionId: '',
         conditionLabel: '會員條件：目前會員階級適用 · 活動資訊僅供預約參考',

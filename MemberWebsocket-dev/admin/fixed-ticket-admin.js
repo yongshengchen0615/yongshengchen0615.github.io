@@ -356,6 +356,8 @@
     hideMessage();
   }
 
+  window.FixedTicketAdmin={selected:()=>templates.find(item=>item.fixedTicketId===selectedFixedTicketId)||null,loadCopy:async(id)=>{await loadTemplates();loadFixedTicket(id);}};
+
   function updateFixedUI() {
     const fixed = document.getElementById('eventTicketType')?.value === 'fixed';
     const section = document.getElementById('fixedTicketScheduleFields');

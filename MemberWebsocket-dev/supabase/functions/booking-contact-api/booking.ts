@@ -105,7 +105,7 @@ export function contactClient(row: any): Json {
 }
 
 export async function hydrateBooking(supabase: SupabaseClient, bookingId: string): Promise<Json> {
-  const booking = await supabase.from("bookings").select("*, members(display_name,member_code,surname,salutation,phone)").eq("id", bookingId).single();
+  const booking = await supabase.from("bookings").select("*, members!bookings_member_id_fkey(display_name,member_code,surname,salutation,phone)").eq("id", bookingId).single();
   if (booking.error) throw mapDbError(booking.error);
   const itemsResult = await supabase.from("booking_items").select("*").eq("booking_id", bookingId).order("created_at", { ascending: true });
   if (itemsResult.error) throw mapDbError(itemsResult.error);
@@ -143,7 +143,7 @@ export async function hydrateBooking(supabase: SupabaseClient, bookingId: string
 export async function contactsForIds(supabase: SupabaseClient, bookingIds: string[], memberId = ""): Promise<Json[]> {
   if (!bookingIds.length) return [];
   let query = supabase.from("bookings")
-    .select("id,contact_source,contact_surname,contact_salutation,contact_phone,members(surname,salutation,phone)")
+    .select("id,contact_source,contact_surname,contact_salutation,contact_phone,members!bookings_member_id_fkey(surname,salutation,phone)")
     .in("id", bookingIds);
   if (memberId) query = query.eq("member_id", memberId);
   const result = await query;

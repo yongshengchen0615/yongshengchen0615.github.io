@@ -130,7 +130,7 @@
     const marker = document.createElement('i');
     marker.setAttribute('aria-hidden', 'true');
     const title = document.createElement('span');
-    title.textContent = String(item.title || (item.itemType === 'holiday' ? '休假日' : '活動'));
+    title.textContent = (item.locked?'🔒 需升級 · ':'') + String(item.title || (item.itemType === 'holiday' ? '休假日' : '活動'));
     entry.append(marker, title);
     return entry;
   }
@@ -176,7 +176,7 @@
     detail.className = 'calendar-detail-item';
     detail.style.setProperty('--item-accent', safeAccent(item.accent));
     const title = document.createElement('h3');
-    title.textContent = String(item.title || (item.itemType === 'holiday' ? '休假日' : '活動'));
+    title.textContent = (item.locked?'🔒 需升級 · ':'') + String(item.title || (item.itemType === 'holiday' ? '休假日' : '活動'));
     const description = document.createElement('p');
     description.textContent = String(item.description || '尚未提供其他說明。');
     detail.append(title, description);

@@ -3,25 +3,26 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "aa012c389c0186ac53d63739a0fc68e2e197b49cb7e7cbf0942d2e69577e5858",
-    "admin/app.js": "849e8a327f0e73c65c775f4a6c29519a9c1777abc4074cdf7e347b12ede362d9",
+    "admin/index.html": "e7c38ae9e906610413551c6b7da251117e06c50ba034e9a18ff1885db17af806",
+    "admin/app.js": "f306b35271a05538406a850625469e1e9c6ff77a61dc9eea3198fcf5de84ee43",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
     "admin/grant-automation.js": "f3178a0bb26745d6cd7731b24ab8ab9aaec96a4dada62699a3609ae8b803e2b0",
     "admin/coupon-location-editor.js": "96484e05db55f418b0f71bc118a406c04d79c6187cae995115c35c0333af8347",
-    "admin/fixed-ticket-admin.js": "65d0bafdc7bc5ffa9a46aed5f67dfa5456b07b9cad2b1ca349897311aeb67ab4",
+    "admin/fixed-ticket-admin.js": "df9065a0c15a22de730d3b20ed9c5e7a51207d4cceae1bcf3c3d4572280e8e69",
     "admin/fixed-ticket-admin-integration.js": "af65455cf96f6770fdbb0a72558d970b5a4377b0d42557ef55b2f5e70c43c190",
     "admin/fixed-ticket-calendar-option.js": "4e1a45e5e563a303d4b610f7699b9bbe4ebf549c14bc63a908d1b9c5f33e7bb4",
     "admin/pointcard-redemption-limit.js": "a391a001602667e48e63ee5cb7353ac44596f4a39de36ac03b0084b88f0e2d2f",
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
     "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
     "admin/booking-panel.js": "707d4d7dbd92361a01f9b69bb726acbf60b68b6ae5eb168e439e44f3a16cdd3e",
-    "admin/booking-panel-core.js": "6ed63b0fc2c62874e552a1a66bb1c0fca7a7fb5f5b6258c27b9ac65f079479ce",
+    "admin/booking-panel-core.js": "2d5a951d1693ddc96153da6677c07220cbce47890d7f58b0e109d546afe13ca5",
     "admin/booking-resources.js": "421534c24977f3e9756a150990dd7accb109fc7074a4986840ad22282ecb8542",
     "admin/booking-always-open.js": "9cb236902a7f3f36cf3fe4c3f13fbbac622f000c72d36ec34f7d4dde08e6e54a",
     "admin/booking-cancellation-sync.js": "54b6d5eafd064687439a3b84d3fdbb730413ddb06af4f18977294a9e628ac0ee",
     "admin/booking-receipt-admin.js": "b5873c2753c0f2f9c267d0d13583405c2205cc70c0f2103f5899f741a74cf920",
-    "admin/booking-accessible-admin.js": "903adf76adbbce3f39f680854973593d19606ddd386d7dddb264caa06eb0e524"
+    "admin/booking-accessible-admin.js": "903adf76adbbce3f39f680854973593d19606ddd386d7dddb264caa06eb0e524",
+    "admin/ticket-visibility.js": "8d4c78f03a198b94fe5cf7eb305c7e2b9bfb67a07d367c73050349fab45802c2"
   },
   "features": [
     {
@@ -453,6 +454,32 @@
       "name": "必填、活動日期反向與不安全連結拒絕",
       "cases": [
         "INVALID_EDITORS"
+      ]
+    },
+    {
+      "id": "points.copy",
+      "module": "points",
+      "name": "設定草稿複製、預覽與來源隔離",
+      "cases": [
+        "SETTINGS_COPY_card",
+        "SETTINGS_COPY_ticket"
+      ]
+    },
+    {
+      "id": "event.copy",
+      "module": "event",
+      "name": "活動與固定票券草稿複製",
+      "cases": [
+        "SETTINGS_COPY_event",
+        "SETTINGS_COPY_fixed"
+      ]
+    },
+    {
+      "id": "event.visibility",
+      "module": "event",
+      "name": "會員階級可見性策略儲存與重新載入",
+      "cases": [
+        "TICKET_VISIBILITY"
       ]
     }
   ]
